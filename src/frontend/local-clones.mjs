@@ -75,9 +75,14 @@ export function createLocalClones(root, proc, opts) {
 
 // Linked first, which costs nothing on the same disk; a clone git could not link is copied. A failed
 // clone leaves no directory behind (git removes what it made), so the copy starts clean.
+// A clone is checked out BYTE FOR BYTE (0.0.2): a person's or a machine's `core.autocrlf` -- Git for Windows ships it
+// on in its system configuration -- would write CRLF files the anchor (which reads no such configuration) names as
+// another tree, and every fresh workspace would read as changed. The project's own attributes still apply to both.
+const VERBATIM = ["--config", "core.autocrlf=false"];
+
 function cloned(call, git, root, dir, revision) {
-  const linked = call(root, ["clone", "--quiet", "--local", "--no-checkout", root, dir]);
-  if (!linked.ok) git(root, ["clone", "--quiet", "--local", "--no-hardlinks", "--no-checkout", root, dir]);
+  const linked = call(root, ["clone", "--quiet", "--local", ...VERBATIM, "--no-checkout", root, dir]);
+  if (!linked.ok) git(root, ["clone", "--quiet", "--local", "--no-hardlinks", ...VERBATIM, "--no-checkout", root, dir]);
   git(dir, ["checkout", "--quiet", "--detach", revision]);
   return dir;
 }

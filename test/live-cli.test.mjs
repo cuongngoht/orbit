@@ -87,8 +87,10 @@ test("watch --jsonl follows a line another process appends, and Ctrl+C detaches 
   await until(() => out.text.includes('"stage":"TESTING"'));
   const before = journal(c, id);
   child.kill("SIGINT");
-  const code = await new Promise((resolve) => child.on("exit", resolve));
-  assert.equal(code, 0);
+  const [code, signal] = await new Promise((resolve) => child.on("exit", (c, sig) => resolve([c, sig])));
+  // Windows has no Ctrl+C to send a child: Node ends it there at once, so no exit code is ever seen. What Ctrl+C must
+  // never do -- touch the journal or stop the task -- is held on every OS below.
+  assert.ok(code === 0 || (process.platform === "win32" && signal === "SIGINT"), `ended with ${code ?? signal}`);
   assert.equal(journal(c, id), before);
   assert.equal(JSON.parse(task(c, "show", id, "--json")).terminal, false, "the task goes on");
   const frames = out.text.trim().split("\n").map((l) => JSON.parse(l));

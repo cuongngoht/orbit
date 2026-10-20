@@ -8,9 +8,22 @@ export const within = (root, path) => {
   return rel !== ".." && !rel.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) && !isAbsolute(rel);
 };
 
+// On Windows the JavaScript realpath keeps an 8.3 short name (C:\Users\RUNNER~1) that git -- and the file system's
+// own answer -- spell long (C:\Users\runneradmin): one checkout reached two ways would hash to two checkout ids, and a
+// binding written through git would never be found from the shell's directory. There the native call names the one
+// path the file system does; anywhere else the realpath every id was already taken with stands.
+export const realpathFor = (platform, fs = { realpathSync }) => (platform === "win32" ? nativeOr(fs) : (p) => fs.realpathSync(p));
+
+const nativeOr = (fs) => (p) => {
+  try { return fs.realpathSync.native(p); }
+  catch { return fs.realpathSync(p); }
+};
+
+const real = realpathFor(process.platform);
+
 export function physical(path) {
   const full = resolve(path);
-  if (existsSync(full)) return realpathSync(full);
+  if (existsSync(full)) return real(full);
   if (isLink(full)) throw new Refused(`broken symlink at ${full}`);
   if (dirname(full) === full) return full;
   return join(physical(dirname(full)), relative(dirname(full), full));

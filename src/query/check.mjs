@@ -124,8 +124,14 @@ function partialAdvisory(ctx) {
 // effect record produces a run that can only say "the toast appeared".
 const MUTATES = /\b(save|create|add|new|delete|remove|update|edit|submit|apply|finish|confirm|provision|archive|restore|assign|invite|import|export|sync|enable|disable|activate)\b/i;
 
+// A control that LEADS somewhere -- an Add that opens the dialog the Save is in -- commits nothing itself: the write
+// is the effect of the control it leads to, so asking it for an effect record is advice nobody can follow.
+const LEADS = new Set(["dialog", "panel", "screen"]);
+
+const commits = (e) => MUTATES.test(e.via) && !LEADS.has(e.opens);
+
 function coverage(ctx) {
-  const mutating = ctx.graph.edges.filter((e) => MUTATES.test(e.via));
+  const mutating = ctx.graph.edges.filter(commits);
   const gaps = mutating.map((e) => gapOf(ctx, e)).filter(Boolean);
   out(`\neffect coverage on the ${mutating.length} control(s) whose label reads like a mutation:`);
   out(`  ${mutating.length - gaps.length} fully traced, ${gaps.length} not`);

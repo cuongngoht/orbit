@@ -1,0 +1,96 @@
+{
+  "schema": 1,
+  "about": "Scripted fake applications. Each row says what the PRODUCT does and what a person approved, never what the engine should conclude -- that is truth.json's.",
+  "apps": [
+    {
+      "id": "write-lost",
+      "why": "Save answers 201 and the row never lands",
+      "way": "screen", "mode": "explore-write", "objective": "does Save keep the thing it says it saved", "scope": "thing",
+      "product": { "requests": [{ "call": "save", "status": 201 }], "rows": [0] }
+    },
+    {
+      "id": "double-write",
+      "why": "one click sends the save twice, and two rows land",
+      "way": "screen", "mode": "explore-write", "objective": "check why Save sends two API requests", "scope": "thing",
+      "product": { "requests": [{ "call": "save", "status": 201 }, { "call": "save", "status": 201 }], "rows": [2] }
+    },
+    {
+      "id": "telemetry-beside-write",
+      "why": "a telemetry beacon fires beside the real save, and the row lands",
+      "way": "screen", "mode": "explore-write", "objective": "does Save keep the thing it says it saved", "scope": "thing",
+      "product": { "requests": [{ "call": "telemetry", "status": 200 }, { "call": "save", "status": 201 }], "rows": [1] }
+    },
+    {
+      "id": "accepted-within-window",
+      "why": "Save answers 202 and the row lands on the third read, inside the window a person declared",
+      "way": "screen", "mode": "explore-write", "objective": "does Save keep the thing it says it saved", "scope": "thing",
+      "product": { "requests": [{ "call": "save", "status": 202 }], "rows": [0, 0, 1], "timing": "deferred" },
+      "settings": { "consistency": { "deferred": 30 } }
+    },
+    {
+      "id": "declared-retry",
+      "why": "the first save answers 503, the client retries as the team declared, and one row lands",
+      "way": "screen", "mode": "explore-write", "objective": "check why Save sends two API requests", "scope": "thing",
+      "product": { "requests": [{ "call": "save", "status": 503 }, { "call": "save", "status": 201 }], "rows": [1] },
+      "settings": { "duplicates": { "polling": [], "retries": [{ "match": "/api/things", "method": "POST", "attempts": 3 }], "idempotent": [], "intentional": [], "contracts": [] } }
+    },
+    {
+      "id": "tenant-leak",
+      "why": "tenant B is shown tenant A's thing, on the screen and through the API",
+      "way": "screen", "mode": "security-test", "objective": "can tenant B read tenant A's thing", "scope": "thing",
+      "product": { "tenancy": "shows-a-to-everyone" },
+      "tenancy": [
+        { "identity": "tenantA", "resource": "a-thing", "operation": "read", "expect": "allowed" },
+        { "identity": "tenantB", "resource": "a-thing", "operation": "read", "expect": "denied", "status": [403, 404] }
+      ]
+    },
+    {
+      "id": "denied-with-positive-control",
+      "why": "tenant A reads its own thing, and tenant B is told it does not exist",
+      "way": "screen", "mode": "security-test", "objective": "can tenant B read tenant A's thing", "scope": "thing",
+      "product": { "tenancy": "keeps-tenants-apart" },
+      "tenancy": [
+        { "identity": "tenantA", "resource": "a-thing", "operation": "read", "expect": "allowed" },
+        { "identity": "tenantB", "resource": "a-thing", "operation": "read", "expect": "denied", "status": [403, 404] }
+      ]
+    },
+    {
+      "id": "observe-only",
+      "why": "a person approved looking, not writing: Save would write if anybody clicked it",
+      "way": "screen", "mode": "observe", "objective": "look at the thing dialog", "scope": "thing",
+      "product": { "requests": [{ "call": "save", "status": 201 }], "rows": [1] }
+    },
+    {
+      "id": "pbi-headless",
+      "why": "PBI-7's refund rule refuses a refund over the limit, and nothing about it is on a screen",
+      "way": "pbi", "mode": "observe", "objective": "verify PBI-7: a refund above the limit is refused", "scope": "",
+      "product": { "rule": "refuses-over-limit" }
+    },
+    {
+      "id": "pbi-headless-broken",
+      "why": "PBI-7's refund rule accepts every refund, the one over the limit included",
+      "way": "pbi", "mode": "observe", "objective": "verify PBI-7: a refund above the limit is refused", "scope": "",
+      "product": { "rule": "allows-everything" }
+    },
+    {
+      "id": "hybrid",
+      "why": "the things plan on its screen: creating and resubmitting work, archiving is destructive, and one scenario is a person's to check",
+      "way": "hybrid", "mode": "explore-write", "objective": "verify the things plan on its screen", "scope": "thing",
+      "product": { "runs": { "create-thing": { "status": "PASS", "proved": { "ui": 1, "api": 1, "sql": 1 } }, "resubmit-thing": { "status": "PASS", "proved": { "ui": 1, "api": 1, "sql": 1 } } } }
+    },
+    {
+      "id": "crash-resume",
+      "why": "Save works, and the host dies after the click and before the step settles",
+      "way": "screen", "mode": "explore-write", "objective": "does Save keep the thing it says it saved", "scope": "thing",
+      "product": { "requests": [{ "call": "save", "status": 201 }], "rows": [1] },
+      "crash": { "settling": "dlg-thing/Save" }
+    },
+    {
+      "id": "intermittent-across-sessions",
+      "why": "Monday the save lands; Tuesday, from another laptop, the same save answers 201 and nothing lands",
+      "way": "screen", "mode": "explore-write", "objective": "does Save keep the thing it says it saved", "scope": "thing",
+      "product": { "requests": [{ "call": "save", "status": 201 }] },
+      "sessions": [{ "host": "laptop-a", "rows": [1] }, { "host": "laptop-b", "rows": [0] }]
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "input": {
+    "session_id": "fixture-session",
+    "turn_id": "fixture-turn",
+    "transcript_path": "/fixture-host/transcript.jsonl",
+    "cwd": "/fixture",
+    "hook_event_name": "PostToolUse",
+    "model": "fixture-model",
+    "permission_mode": "bypassPermissions",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "ls ui-tests"
+    },
+    "tool_response": "fixture output",
+    "tool_use_id": "fixture-call-1"
+  },
+  "argv": [
+    "--host=codex",
+    "--protocol=2"
+  ],
+  "expected": {
+    "protocol": 2,
+    "hostEvent": "PostToolUse",
+    "event": "post-tool",
+    "session": "codex:d6440983c454c2e5",
+    "turn": "codex:b91a31db35cdd028",
+    "delivery": "codex:eab173320f4b8c75",
+    "cwd": "/fixture",
+    "prompt": null,
+    "outcome": "unknown",
+    "tool": {
+      "name": "Bash",
+      "kind": "command"
+    },
+    "paths": [],
+    "pattern": null,
+    "command": "ls ui-tests",
+    "background": false,
+    "invokes": null,
+    "host": "codex",
+    "ok": null
+  }
+}

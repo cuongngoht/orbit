@@ -1,0 +1,25 @@
+{
+  "id": "case-bad",
+  "name": "Every mistake the validator must catch",
+  "start": "nowhere",
+  "identity": { "as": "admin", "profile": "local-admin" },
+  "creates": "a thing",
+  "params": [ { "n": "lower case!", "bogus": 1 } ],
+  "waits": "typo at root",
+  "steps": [
+    { "do": "goto", "screen": "home" },
+    { "do": "click", "on": "home/Add" },
+    { "do": "click", "on": "home/Nope", "wait": "1" },
+    { "do": "click", "on": "home/Delete", "wait": "1" },
+    { "do": "fill", "on": "dlg-thing/Name", "value": "${UNDECLARED}", "expect": "1" },
+    { "do": "press" },
+    { "do": "api", "match": "(", "status": 9, "method": "FETCH" },
+    { "do": "sql", "query": "DELETE FROM Things", "expect": "true" },
+    { "do": "as", "identity": "admin" },
+    { "do": "hover", "on": "home/Add" },
+    { "do": "wait", "js": "1", "query": "SELECT 1" },
+    { "do": "screenshot" },
+    { "do": "assert", "js": "true", "times": 0, "tries": -5 }
+  ],
+  "seen": "maybe"
+}

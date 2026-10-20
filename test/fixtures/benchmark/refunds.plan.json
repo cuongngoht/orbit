@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "id": "refunds",
+  "title": "Refunds — the limit",
+  "feature": "Refunds",
+  "revision": "1",
+  "at": "2026-09-29",
+  "author": "the benchmark",
+  "scope": { "in": ["a refund above the limit"], "out": ["the refund screen", "how a refund is paid out"] },
+  "sources": [
+    { "id": "PBI7", "kind": "requirement", "ref": "PBI-7", "revision": "1", "at": "2026-09-29", "authority": "accepted", "says": "A refund above the limit of 100 is refused." }
+  ],
+  "environments": ["test"],
+  "criteria": [
+    { "id": "AC1", "says": "A refund above 100 is refused.", "source": "PBI7" }
+  ],
+  "scenarios": [
+    {
+      "id": "S1",
+      "name": "A refund of 150 is refused",
+      "covers": ["AC1"],
+      "technique": "boundary",
+      "why": "the limit is the rule the PBI exists for",
+      "priority": "P1",
+      "expect": {
+        "api": { "need": "required", "says": "the refund rule refuses 150" },
+        "ui": { "need": "n-a", "because": "the rule lives below every screen" },
+        "sql": { "need": "n-a", "because": "a decision writes nothing" }
+      },
+      "execution": "auto",
+      "cases": [{ "id": "refund-limit", "state": "validated" }],
+      "readiness": "ready"
+    }
+  ]
+}

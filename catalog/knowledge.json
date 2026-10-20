@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "doc": "Orbit's GENERIC relation vocabulary: exactly one relation per derivation role (src/extensions/knowledge-v1.mjs ROLES), and nothing more — a starting vocabulary, never an ontology. A project names its own relations as rows in <store>/knowledge/vocabulary/*.json, an organisation in <storeBase>/organization/knowledge/vocabulary/*.json, and an extension may ship rows and interpreters; nothing under src/knowledge/ names any of them, and test/knowledge-vocab.test.mjs holds this file to one row per role.",
+  "relations": [
+    { "id": "results-in", "role": "consequence", "doc": "the object happens, changes or is produced when the subject does" },
+    { "id": "implemented-by", "role": "implementation", "cardinality": "one", "doc": "in this context, the object is the mechanism that implements the subject — how, never what" },
+    { "id": "observed-through", "role": "observation", "doc": "the object is a way to observe that the subject happened" },
+    { "id": "requires-capability", "role": "capability", "doc": "the object is a capability id something needs in order to do or to prove the subject" }
+  ]
+}

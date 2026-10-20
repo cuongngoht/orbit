@@ -1,0 +1,21 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  XTests -> /private/tmp/orbit-185-probe/dn/XTests/bin/Debug/net10.0/XTests.dll
+Test run for /private/tmp/orbit-185-probe/dn/XTests/bin/Debug/net10.0/XTests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:00.15]     XTests.FastFailing.A_Fails [FAIL]
+[xUnit.net 00:00:00.16]     XTests.FastFailing.B_Skipped [SKIP]
+  Failed XTests.FastFailing.A_Fails [4 ms]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+                ↓ (pos 5)
+Expected: "tool-a"
+Actual:   "tool-b"
+                ↑ (pos 5)
+  Stack Trace:
+     at XTests.FastFailing.A_Fails() in /private/tmp/orbit-185-probe/dn/XTests/UnitTest1.cs:line 6
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Skipped XTests.FastFailing.B_Skipped [1 ms]
+
+Failed!  - Failed:     1, Passed:     6, Skipped:     1, Total:     8, Duration: 9 s - XTests.dll (net10.0)

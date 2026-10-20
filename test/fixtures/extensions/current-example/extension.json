@@ -1,0 +1,12 @@
+{
+  "id": "current-example",
+  "version": "1.0.0",
+  "apiVersion": "orbit.extension/v2",
+  "engine": ">=0.0.1 <99",
+  "status": "verified",
+  "createdFor": "QC",
+  "tools": ["fake-probe"],
+  "mutates": false,
+  "note": "Current Orbit extension fixture. Exercises every supported module shape directly.",
+  "capabilities": "./capabilities.mjs"
+}

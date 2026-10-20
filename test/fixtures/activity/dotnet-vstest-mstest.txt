@@ -1,0 +1,18 @@
+Test run for /private/tmp/orbit-185-probe/dn/MTests/bin/Debug/net10.0/MTests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+  Skipped B_Skipped
+  Failed A_Fails [13 ms]
+  Error Message:
+   Assert.AreEqual failed. String lengths are both 6 but differ at index 5. 'expected' expression: '"tool-a"', 'actual' expression: '"tool-b"'.
+Expected: "tool-a"
+But was:  "tool-b"
+----------------^
+  Stack Trace:
+     at Microsoft.VisualStudio.TestTools.UnitTesting.Assert.ThrowAssertAreEqualFailed(Object expected, Object actual, String userMessage) in /_/src/TestFramework/TestFramework/Assertions/Assert.AreEqual.cs:line 665
+   at Microsoft.VisualStudio.TestTools.UnitTesting.Assert.AreEqual[T](T expected, T actual, IEqualityComparer`1 comparer, String message, String expectedExpression, String actualExpression) in /_/src/TestFramework/TestFramework/Assertions/Assert.AreEqual.cs:line 492
+   at Microsoft.VisualStudio.TestTools.UnitTesting.Assert.AreEqual[T](T expected, T actual, String message, String expectedExpression, String actualExpression) in /_/src/TestFramework/TestFramework/Assertions/Assert.AreEqual.cs:line 405
+   at MTests.Routing.A_Fails() in /private/tmp/orbit-185-probe/dn/MTests/Test1.cs:line 7
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+
+Failed!  - Failed:     1, Passed:     3, Skipped:     1, Total:     5, Duration: 1 s - MTests.dll (net10.0)

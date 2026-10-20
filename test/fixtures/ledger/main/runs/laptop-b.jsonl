@@ -1,0 +1,1 @@
+{"at":"2026-09-18T08:10:00.000Z","host":"laptop-b","case":"create-thing","status":"FAIL","done":2,"of":8,"fe_commit":"abc1234","failedStep":{"i":2,"do":"click","on":"home/Add"}}

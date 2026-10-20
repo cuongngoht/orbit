@@ -1,0 +1,1 @@
+{ "name": "fixture", "origin": "https://app.test", "signIn": { "hosts": ["login.idp.test"] } }

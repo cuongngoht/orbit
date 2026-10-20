@@ -1,0 +1,21 @@
+node_modules/
+.DS_Store
+tmp/
+*.log
+.playwright-cli/
+# control-panel/ development leftovers. Its BUILD is not ignored: it lands in
+# control-server/public/ and is committed, so the plugin archive carries it.
+control-panel/coverage/
+control-panel/.vite/
+*.tsbuildinfo
+# Editor and assistant-tool workspace settings belong to one machine, not the plugin.
+.nexus/
+.vscode/
+
+# Python bytecode never belongs in the tree: parts run with -B, and a stray
+# cache would change the kit digest a render checks.
+__pycache__/
+*.pyc
+
+# Claude Code writes the API types for an editor into a plugin folder it loads (claude --plugin-dir .)
+.claude-plugin/types/

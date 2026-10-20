@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "doc": "The systems a work item can live in, as DATA: how a link names one, which connection reads it, which of its words mean parent, child and related, and which tools and servers can already do the reading. The engine reads this and knows no provider; a new one is a row here, a reader in sources/ and a line in bind.mjs.",
+  "providers": [
+    {
+      "id": "github",
+      "label": "GitHub",
+      "connection": "github",
+      "credentialEnv": "GH_TOKEN",
+      "provides": ["workitem.read", "workitem.relations.read", "workitem.comments.read"],
+      "match": {
+        "urls": ["^https://github\\.com/(?<organization>[^/]+)/(?<project>[^/]+)/issues/(?<id>\\d+)(?:[/?#].*)?$"],
+        "bareId": "^#?(?<id>\\d+)$"
+      },
+      "relations": {},
+      "kinds": { "pull_request": "pr" },
+      "mcp": {
+        "catalog": "github",
+        "tools": {
+          "read": {
+            "tool": "get_issue",
+            "args": { "owner": "{organization}", "repo": "{project}", "issue_number": "{id:int}" },
+            "map": { "title": "title", "body": "body", "state": "state", "revision": "updated_at", "updatedAt": "updated_at", "url": "html_url" }
+          }
+        }
+      },
+      "tools": [
+        {
+          "catalog": "github-cli",
+          "bin": "gh",
+          "defaults": { "argv": ["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"], "parse": "^(?<organization>[^/\\s]+)/(?<project>[^/\\s]+)\\s*$" }
+        }
+      ]
+    },
+    {
+      "id": "azure-devops",
+      "label": "Azure DevOps",
+      "connection": "azure-devops",
+      "credentialEnv": "AZURE_DEVOPS_EXT_PAT",
+      "provides": ["workitem.read", "workitem.relations.read", "workitem.comments.read", "workitem.history.read"],
+      "match": {
+        "urls": [
+          "^https://dev\\.azure\\.com/(?<organization>[^/]+)/(?<project>[^/]+)/_workitems/edit/(?<id>\\d+)(?:[/?#].*)?$",
+          "^https://(?<organization>[^./]+)\\.visualstudio\\.com/(?<project>[^/]+)/_workitems/edit/(?<id>\\d+)(?:[/?#].*)?$"
+        ],
+        "bareId": "^#?(?<id>\\d+)$"
+      },
+      "relations": {
+        "System.LinkTypes.Hierarchy-Reverse": "parent",
+        "System.LinkTypes.Hierarchy-Forward": "child",
+        "System.LinkTypes.Related": "related"
+      },
+      "kinds": { "Pull Request": "pr", "Fixed in Commit": "commit", "Fixed in Changeset": "commit" },
+      "mcp": null,
+      "tools": [
+        {
+          "catalog": "azure-cli",
+          "bin": "az",
+          "defaults": { "argv": ["devops", "configure", "--list"], "parse": "organization\\s*=\\s*https://dev\\.azure\\.com/(?<organization>[^\\s/]+)[\\s\\S]*?project\\s*=\\s*(?<project>[^\\r\\n]+)" }
+        }
+      ]
+    }
+  ]
+}

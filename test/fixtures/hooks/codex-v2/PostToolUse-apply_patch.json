@@ -1,0 +1,45 @@
+{
+  "input": {
+    "session_id": "fixture-session",
+    "turn_id": "fixture-turn",
+    "transcript_path": "/fixture-host/transcript.jsonl",
+    "cwd": "/fixture",
+    "hook_event_name": "PostToolUse",
+    "model": "fixture-model",
+    "permission_mode": "bypassPermissions",
+    "tool_name": "apply_patch",
+    "tool_input": {
+      "command": "*** Begin Patch\n*** Add File: /fixture/scratch.txt\n+hello\n*** End Patch"
+    },
+    "tool_response": "fixture output",
+    "tool_use_id": "fixture-call-2"
+  },
+  "argv": [
+    "--host=codex",
+    "--protocol=2"
+  ],
+  "expected": {
+    "protocol": 2,
+    "hostEvent": "PostToolUse",
+    "event": "post-tool",
+    "session": "codex:d6440983c454c2e5",
+    "turn": "codex:b91a31db35cdd028",
+    "delivery": "codex:f77b5758be8147ec",
+    "cwd": "/fixture",
+    "prompt": null,
+    "outcome": "unknown",
+    "tool": {
+      "name": "apply_patch",
+      "kind": "edit"
+    },
+    "paths": [
+      "/fixture/scratch.txt"
+    ],
+    "pattern": null,
+    "command": null,
+    "background": false,
+    "invokes": null,
+    "host": "codex",
+    "ok": null
+  }
+}

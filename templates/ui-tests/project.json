@@ -1,0 +1,11 @@
+{
+  "$schema": "./project.schema.json",
+  "name": "my-app",
+  "origin": "https://CHANGE-ME.example.com",
+  "sql": { "command": ["node", "${CLAUDE_PLUGIN_ROOT}/skills/orbit-sql/sqlcmd.mjs"] },
+  "signIn": { "hosts": [] },
+  "identity": {},
+
+  "launch": { "channel": "chromium", "env": "test" },
+  "frontend": { "roots": ["frontend"], "srcDir": "src" }
+}

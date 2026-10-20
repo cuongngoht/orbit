@@ -1,0 +1,7 @@
+[
+  { "from": "home", "via": "Add", "kind": "button", "selector": "getByRole('button',{name:'Add'})", "opens": "dialog", "to": "dlg-thing", "seen": "live", "fe_commit": "abc1234" },
+  { "from": "dlg-thing", "via": "Name", "kind": "textbox", "selector": "getByRole('textbox',{name:'Name'})", "opens": "none", "to": null, "required": true, "seen": "live", "fe_commit": "abc1234" },
+  { "from": "dlg-thing", "via": "Save", "kind": "button", "selector": "getByRole('button',{name:'Save'})", "opens": "inline", "to": null, "seen": "live", "fe_commit": "abc1234" },
+  { "from": "home", "via": "Delete", "kind": "button", "selector": "UNKNOWN", "opens": "none", "to": null, "destructive": true, "seen": "src" },
+  { "from": "detail", "via": "Archive", "kind": "button", "selector": "getByRole('button',{name:'Archive'})", "opens": "inline", "to": null, "destructive": true, "seen": "live", "fe_commit": "abc1234" }
+]

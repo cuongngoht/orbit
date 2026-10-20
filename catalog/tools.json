@@ -1,0 +1,223 @@
+{
+  "schema": 1,
+  "doc": "CLI tools and runtimes Orbit knows how to find and, where a verified private install exists, how to install into the machine store. Immutable data shipped with the plugin: an upgrade may change a row, never what a person installed. `detection` says where to look, `install.strategy` which installer runs. An `archive` install is PINNED here, version and SHA-256 per platform, so nothing fetched at install time decides what is trusted.",
+  "tools": [
+    {
+      "id": "node-control",
+      "name": "Node (Orbit Control)",
+      "summary": "runs Orbit Control, which needs Node >= 24.15",
+      "provides": ["control.runtime"],
+      "detection": { "strategy": "control-node" },
+      "install": { "strategy": "node-dist", "source": "https://nodejs.org/dist (official LTS, SHA-256 from SHASUMS256.txt)" }
+    },
+    {
+      "id": "git",
+      "name": "Git",
+      "summary": "source control; the engine reads the checkout through it",
+      "provides": ["source-control", "command:git"],
+      "detection": { "commands": ["git"], "versionPattern": "git version (\\d+\\.\\d+\\.\\d+)" },
+      "install": { "strategy": "manual", "instructions": "Install Git from https://git-scm.com/downloads or your operating system's package manager. Orbit does not install it: it belongs to the whole machine." }
+    },
+    {
+      "id": "github-cli",
+      "observe": "demand",
+      "name": "GitHub CLI",
+      "summary": "reads issues, pull requests and repositories from GitHub as the signed-in user (gh)",
+      "provides": ["command:gh"],
+      "detection": { "commands": ["gh"], "versionPattern": "gh version (\\d+\\.\\d+\\.\\d+)" },
+      "install": { "strategy": "manual", "instructions": "Install the GitHub CLI from https://cli.github.com or your operating system's package manager. Orbit does not install it: it belongs to the whole machine." }
+    },
+    {
+      "id": "azure-cli",
+      "observe": "demand",
+      "name": "Azure CLI",
+      "summary": "reads Azure DevOps work items and other Azure resources as the signed-in user (az)",
+      "provides": ["command:az"],
+      "detection": { "commands": ["az"], "versionPattern": "azure-cli\\s+(\\d+\\.\\d+\\.\\d+)" },
+      "install": { "strategy": "manual", "instructions": "Install the Azure CLI from https://learn.microsoft.com/cli/azure/install-azure-cli or your operating system's package manager. Orbit does not install it: it belongs to the whole machine." }
+    },
+    {
+      "id": "playwright",
+      "name": "Playwright CLI",
+      "summary": "drives the browser for UI test runs (playwright-cli)",
+      "provides": ["browser.automation", "command:playwright-cli"],
+      "detection": { "commands": ["playwright-cli"], "project": true, "versionPattern": "(\\d+\\.\\d+\\.\\d+)" },
+      "install": { "strategy": "manual", "instructions": "The engine runs playwright-cli from PATH. `node <plugin>/cli/setup.mjs --install` installs @playwright/cli with npm -g, which changes this machine's global npm; a project may instead add @playwright/cli to its own devDependencies. Orbit Control never installs it for you." }
+    },
+    {
+      "id": "sqlcmd",
+      "name": "SQLCMD",
+      "summary": "required for SQL Server verification",
+      "provides": ["sqlserver.query", "command:sqlcmd"],
+      "detection": { "commands": ["sqlcmd"], "versionPattern": "Version:?\\s*v?(\\d+(?:\\.\\d+){1,3})" },
+      "install": {
+        "strategy": "archive",
+        "version": "1.10.0",
+        "source": "https://github.com/microsoft/go-sqlcmd/releases/tag/v1.10.0",
+        "assets": {
+          "darwin-arm64": { "url": "https://github.com/microsoft/go-sqlcmd/releases/download/v1.10.0/sqlcmd-darwin-arm64.tar.bz2", "sha256": "e08fc8f6a884140fbeda29ac82fecad8e71548892381e6e572a82eda7b0ca204", "format": "tar.bz2", "bin": "sqlcmd" },
+          "darwin-x64": { "url": "https://github.com/microsoft/go-sqlcmd/releases/download/v1.10.0/sqlcmd-darwin-amd64.tar.bz2", "sha256": "edf30d54272bfde11516beb01b33f883a058ee8dd912afa2d6647dfb4dcd30c6", "format": "tar.bz2", "bin": "sqlcmd" },
+          "linux-x64": { "url": "https://github.com/microsoft/go-sqlcmd/releases/download/v1.10.0/sqlcmd-linux-amd64.tar.bz2", "sha256": "92516d98c63d99b0994de5b61350c91f6915f9b76f139a59039fbcb225c2e987", "format": "tar.bz2", "bin": "sqlcmd" },
+          "linux-arm64": { "url": "https://github.com/microsoft/go-sqlcmd/releases/download/v1.10.0/sqlcmd-linux-arm64.tar.bz2", "sha256": "9faaa981f9c374f319ac796dedb4678499b8596c87d5b6c512e9b0e7a3b74f8e", "format": "tar.bz2", "bin": "sqlcmd" },
+          "win32-x64": { "url": "https://github.com/microsoft/go-sqlcmd/releases/download/v1.10.0/sqlcmd-windows-amd64.zip", "sha256": "a4c28332fcc6e497d655e53ac8f4939f4ab170f9cfd32d0fa5081b60f4d9d691", "format": "zip", "bin": "sqlcmd.exe" },
+          "win32-arm64": { "url": "https://github.com/microsoft/go-sqlcmd/releases/download/v1.10.0/sqlcmd-windows-arm64.zip", "sha256": "ac6f257dce55e7f34d618ea9af736d9077854cadb6af6fdb0259c90d42e0b8d2", "format": "zip", "bin": "sqlcmd.exe" }
+        }
+      }
+    },
+    {
+      "id": "python",
+      "name": "Python",
+      "summary": "runs the project report's metrics, forecast and extensions — standard library only, isolated from any project's own Python",
+      "provides": ["python.runtime", "command:python"],
+      "detection": { "commands": ["python3.14", "python3.13", "python3.12", "python3.11", "python3", "python"], "versionPattern": "Python (\\d+\\.\\d+\\.\\d+)", "minimum": "3.11" },
+      "install": {
+        "strategy": "archive",
+        "version": "3.13.15",
+        "source": "https://github.com/astral-sh/python-build-standalone/releases/tag/20260924",
+        "assets": {
+          "darwin-arm64": { "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260924/cpython-3.13.15%2B20260924-aarch64-apple-darwin-install_only.tar.gz", "sha256": "a18e1d1b6067d39cf7b2b605fdb78ad6b8a3aed221c44ef934d399dccf355453", "format": "tar.gz", "bin": "python/bin/python3" },
+          "darwin-x64": { "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260924/cpython-3.13.15%2B20260924-x86_64-apple-darwin-install_only.tar.gz", "sha256": "f445e867ad221c006af745bc0e8d2c168149e14fe194abef1d7ac0da9a4c9de1", "format": "tar.gz", "bin": "python/bin/python3" },
+          "linux-x64": { "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260924/cpython-3.13.15%2B20260924-x86_64-unknown-linux-gnu-install_only.tar.gz", "sha256": "c20e1ff8600a0241849588b36948942eaccdc80da34df69674f3784a687197de", "format": "tar.gz", "bin": "python/bin/python3" },
+          "linux-arm64": { "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260924/cpython-3.13.15%2B20260924-aarch64-unknown-linux-gnu-install_only.tar.gz", "sha256": "c8dd48f5e5be632b518a79076189419cb8591559959ec137e4d30f5ce143c04d", "format": "tar.gz", "bin": "python/bin/python3" },
+          "win32-x64": { "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260924/cpython-3.13.15%2B20260924-x86_64-pc-windows-msvc-install_only.tar.gz", "sha256": "cc5e5a61adbe02ae93e01a90c4b0718cc119d86cb6fa855441ff5c606b6dd6f4", "format": "tar.gz", "bin": "python/python.exe" },
+          "win32-arm64": { "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260924/cpython-3.13.15%2B20260924-aarch64-pc-windows-msvc-install_only.tar.gz", "sha256": "7299105677eb0833e20badb56ee07c9b79c2184b071b06a132ab02a5ff64852a", "format": "tar.gz", "bin": "python/python.exe" }
+        }
+      }
+    },
+    {
+      "id": "node",
+      "observe": "demand",
+      "name": "Node.js",
+      "summary": "Node.js, asked about only when a project's runtime needs it",
+      "provides": ["command:node"],
+      "detection": { "commands": ["node"], "versionPattern": "v?(\\d+\\.\\d+\\.\\d+)" },
+      "install": { "strategy": "manual", "instructions": "Install Node.js from https://nodejs.org or your operating system's package manager. Orbit does not install it: it belongs to the whole machine." }
+    },
+    {
+      "id": "npm",
+      "observe": "demand",
+      "name": "npm",
+      "summary": "npm, asked about only when a project's runtime needs it",
+      "provides": ["command:npm"],
+      "detection": { "commands": ["npm"], "versionPattern": "(\\d+\\.\\d+\\.\\d+)" },
+      "install": { "strategy": "manual", "instructions": "Install npm from https://nodejs.org or your operating system's package manager. Orbit does not install it: it belongs to the whole machine." }
+    },
+    {
+      "id": "pnpm",
+      "observe": "demand",
+      "name": "pnpm",
+      "summary": "pnpm, asked about only when a project's runtime needs it",
+      "provides": ["command:pnpm"],
+      "detection": { "commands": ["pnpm"], "versionPattern": "(\\d+\\.\\d+\\.\\d+)" },
+      "install": { "strategy": "manual", "instructions": "Install pnpm from https://pnpm.io/installation or your operating system's package manager. Orbit does not install it: it belongs to the whole machine." }
+    },
+    {
+      "id": "yarn",
+      "observe": "demand",
+      "name": "Yarn",
+      "summary": "Yarn, asked about only when a project's runtime needs it",
+      "provides": ["command:yarn"],
+      "detection": { "commands": ["yarn"], "versionPattern": "(\\d+\\.\\d+\\.\\d+)" },
+      "install": { "strategy": "manual", "instructions": "Install Yarn from https://yarnpkg.com/getting-started/install or your operating system's package manager. Orbit does not install it: it belongs to the whole machine." }
+    },
+    {
+      "id": "dotnet",
+      "observe": "demand",
+      "name": ".NET SDK",
+      "summary": ".NET SDK, asked about only when a project's runtime needs it",
+      "provides": ["command:dotnet"],
+      "detection": { "commands": ["dotnet"], "versionPattern": "(\\d+\\.\\d+\\.\\d+)" },
+      "install": { "strategy": "manual", "instructions": "Install .NET SDK from https://dotnet.microsoft.com/download or your operating system's package manager. Orbit does not install it: it belongs to the whole machine." }
+    },
+    {
+      "id": "python3",
+      "observe": "demand",
+      "name": "Python",
+      "summary": "Python, asked about only when a project's runtime needs it",
+      "provides": ["command:python3"],
+      "detection": { "commands": ["python3"], "versionPattern": "Python (\\d+\\.\\d+\\.\\d+)" },
+      "install": { "strategy": "manual", "instructions": "Install Python from https://www.python.org/downloads or your operating system's package manager. Orbit does not install it: it belongs to the whole machine." }
+    },
+    {
+      "id": "go",
+      "observe": "demand",
+      "name": "Go",
+      "summary": "Go, asked about only when a project's runtime needs it",
+      "provides": ["command:go"],
+      "detection": { "commands": ["go"], "versionArgs": ["version"], "versionPattern": "go version go(\\d+\\.\\d+(?:\\.\\d+)?)" },
+      "install": { "strategy": "manual", "instructions": "Install Go from https://go.dev/dl or your operating system's package manager. Orbit does not install it: it belongs to the whole machine." }
+    },
+    {
+      "id": "java",
+      "observe": "demand",
+      "name": "Java",
+      "summary": "Java, asked about only when a project's runtime needs it",
+      "provides": ["command:java"],
+      "detection": { "commands": ["java"], "versionArgs": ["-version"], "versionPattern": "version \"(\\d+(?:\\.\\d+)*)" },
+      "install": { "strategy": "manual", "instructions": "Install Java from https://adoptium.net or your operating system's package manager. Orbit does not install it: it belongs to the whole machine." }
+    },
+    {
+      "id": "ruby",
+      "observe": "demand",
+      "name": "Ruby",
+      "summary": "Ruby, asked about only when a project's runtime needs it",
+      "provides": ["command:ruby"],
+      "detection": { "commands": ["ruby"], "versionPattern": "ruby (\\d+\\.\\d+\\.\\d+)" },
+      "install": { "strategy": "manual", "instructions": "Install Ruby from https://www.ruby-lang.org/en/downloads or your operating system's package manager. Orbit does not install it: it belongs to the whole machine." }
+    },
+    {
+      "id": "make",
+      "observe": "demand",
+      "name": "make",
+      "summary": "make, asked about only when a project's runtime needs it",
+      "provides": ["command:make"],
+      "detection": { "commands": ["make"], "versionPattern": "Make (\\d+\\.\\d+(?:\\.\\d+)?)" },
+      "install": { "strategy": "manual", "instructions": "Install make from your operating system or your operating system's package manager. Orbit does not install it: it belongs to the whole machine." }
+    },
+    {
+      "id": "docker",
+      "observe": "demand",
+      "name": "Docker CLI",
+      "summary": "Docker CLI, asked about only when a project's runtime needs it",
+      "provides": ["command:docker"],
+      "detection": { "commands": ["docker"], "versionPattern": "Docker version (\\d+\\.\\d+\\.\\d+)" },
+      "install": { "strategy": "manual", "instructions": "Install Docker CLI from https://docs.docker.com/get-docker or your operating system's package manager. Orbit does not install it: it belongs to the whole machine." }
+    },
+    {
+      "id": "docker-daemon",
+      "observe": "demand",
+      "name": "Docker daemon",
+      "summary": "whether the container runtime behind the Docker CLI answers, asked about only when a dev container is in play",
+      "provides": ["container.runtime"],
+      "detection": { "strategy": "docker-daemon" },
+      "install": { "strategy": "manual", "instructions": "Start Docker Desktop, or the docker service. Orbit does not start it: it belongs to the whole machine." }
+    },
+    {
+      "id": "devcontainer",
+      "observe": "demand",
+      "name": "Dev Containers CLI",
+      "summary": "Dev Containers CLI, asked about only when a project's runtime needs it",
+      "provides": ["command:devcontainer"],
+      "detection": { "commands": ["devcontainer"], "versionPattern": "(\\d+\\.\\d+\\.\\d+)" },
+      "install": { "strategy": "manual", "instructions": "Install Dev Containers CLI from https://github.com/devcontainers/cli or your operating system's package manager. Orbit does not install it: it belongs to the whole machine." }
+    },
+    {
+      "id": "task",
+      "observe": "demand",
+      "name": "Task",
+      "summary": "Task, asked about only when a project's runtime needs it",
+      "provides": ["command:task"],
+      "detection": { "commands": ["task"], "versionPattern": "v?(\\d+\\.\\d+\\.\\d+)" },
+      "install": { "strategy": "manual", "instructions": "Install Task from https://taskfile.dev/installation or your operating system's package manager. Orbit does not install it: it belongs to the whole machine." }
+    },
+    {
+      "id": "just",
+      "observe": "demand",
+      "name": "just",
+      "summary": "just, asked about only when a project's runtime needs it",
+      "provides": ["command:just"],
+      "detection": { "commands": ["just"], "versionPattern": "just (\\d+\\.\\d+\\.\\d+)" },
+      "install": { "strategy": "manual", "instructions": "Install just from https://github.com/casey/just or your operating system's package manager. Orbit does not install it: it belongs to the whole machine." }
+    }
+  ]
+}

@@ -1,0 +1,211 @@
+{
+  "$schema": "../../schema/plan.schema.json",
+  "schema": 1,
+  "id": "things",
+  "screen": "home",
+  "title": "Things — create, resubmit, archive",
+  "feature": "Things",
+  "revision": "2",
+  "at": "2026-09-18",
+  "author": "the fixture",
+  "scope": {
+    "in": ["creating a thing from the home screen", "submitting the same thing twice", "archiving a thing", "who may archive"],
+    "out": ["bulk operations", "anything the cleanup consumer does after the message is queued"]
+  },
+  "sources": [
+    { "id": "REQ1", "kind": "requirement", "ref": "THING-1", "revision": "3", "at": "2026-09-18", "says": "A thing can be created, a duplicate name is refused, and only an administrator may archive." },
+    { "id": "SRC1", "kind": "code", "ref": "y.cs:9", "revision": "abc1234", "says": "What the save path does today. Implementation: it describes the product as built, so it can confirm a criterion but never be one." }
+  ],
+  "map": { "fe_commit": "abc1234", "captured": "2026-01-01" },
+  "environments": ["test"],
+  "budget": { "minutes": 20, "profile": "smoke", "because": "the slot between the build finishing and the standup" },
+  "done": [
+    "every acceptance criterion is covered or carries a disposition",
+    "what no browser can see is a manual check with an owner",
+    "no scenario is marked verified on evidence from an older revision"
+  ],
+  "criteria": [
+    { "id": "AC1", "says": "A thing created from the home screen is there after a reload.", "source": "REQ1", "risk": { "impact": 5, "likelihood": 3, "usage": 5, "because": "the feature is the product's front door" } },
+    { "id": "AC2", "says": "Submitting the same name twice leaves exactly one thing.", "source": "REQ1", "risk": { "impact": 4, "likelihood": 4, "usage": 3 } },
+    { "id": "AC3", "says": "A viewer cannot archive a thing.", "source": "REQ1", "risk": { "impact": 5, "likelihood": 2, "usage": 2 } },
+    { "id": "AC4", "says": "An archived thing no longer appears in the list.", "source": "REQ1", "risk": { "impact": 3, "likelihood": 3 } },
+    { "id": "AC5", "says": "Archiving a thing tells the cleanup consumer about it.", "source": "REQ1" }
+  ],
+  "assumptions": [
+    { "id": "A1", "says": "A duplicate is decided on the name alone, not on the name plus the owner.", "because": "that is what the map's single unique index implies — nobody has confirmed it" }
+  ],
+  "questions": [
+    { "id": "Q1", "asks": "How long may the cleanup consumer take before we would call it broken?", "blocks": ["AC5"], "owner": "unassigned", "state": "open" }
+  ],
+  "exclusions": [
+    { "id": "X1", "says": "Archiving several things at once.", "because": "the control is not in this release; there is nothing to drive" }
+  ],
+  "scenarios": [
+    {
+      "id": "S1",
+      "name": "An administrator creates a thing",
+      "covers": ["AC1"],
+      "technique": "crud",
+      "why": "if this breaks there is no feature; it is also the path every other scenario starts from",
+      "priority": "P1",
+      "must": true,
+      "profiles": ["smoke", "regression"],
+      "risk": { "impact": 5, "likelihood": 3, "usage": 5, "because": "three factors scored; nobody has the defect history for this area yet" },
+      "actor": { "as": "admin", "roles": ["App.Admin"], "owner": "the actor", "state": "no thing by this name exists" },
+      "preconditions": ["signed in as an administrator", "no thing named ${NAME} exists"],
+      "data": { "data": "per-run", "key": "a TC- prefixed name, unique to the run", "scope": "the actor's own tenant", "cleanup": "the archive case removes it; otherwise it is left and the TC- prefix makes it findable", "onFailure": "a half-created thing keeps the TC- name and is archived by hand", "isolation": "the name carries the run, so two machines never meet" },
+      "intent": ["open the add dialog", "give it the name", "save", "read the list back"],
+      "expect": {
+        "ui": { "need": "required", "says": "the list on home contains ${NAME}" },
+        "api": { "need": "required", "says": "POST api/things answers 201" },
+        "sql": { "need": "required", "says": "exactly one row in Things named ${NAME}, read after a reload" }
+      },
+      "mutation": {
+        "kind": "create",
+        "before": "no row in Things named ${NAME}",
+        "action": "the administrator saves the add dialog",
+        "after": "exactly one row in Things named ${NAME}",
+        "unchanged": ["every other row in Things", "the things belonging to any other tenant"],
+        "onRefusal": "no row is written and the dialog stays open with the message",
+        "effect": "dlg-thing/Save"
+      },
+      "execution": "auto",
+      "cases": [{ "id": "create-thing", "state": "validated" }],
+      "estimate": { "minutes": 4, "because": "the ledger records it at 12s plus the browser opening" },
+      "readiness": "ready"
+    },
+    {
+      "id": "S2",
+      "name": "A viewer cannot archive another tenant's thing",
+      "covers": ["AC3"],
+      "technique": "permission",
+      "why": "the bug we would be embarrassed to ship: a hidden control over an endpoint that still accepts the call",
+      "priority": "P1",
+      "profiles": ["regression", "release"],
+      "risk": { "impact": 5, "likelihood": 2, "because": "high cost, low chance — which is exactly the shape of a bug that ships" },
+      "actor": { "as": "viewer", "roles": ["App.Viewer"], "notRoles": ["App.Admin"], "owner": "another user", "tenant": "another tenant", "state": "the thing is active" },
+      "preconditions": ["a thing exists that belongs to another tenant"],
+      "data": { "data": "fixture", "key": "the seeded thing TC-OTHER", "scope": "a tenant the actor does not belong to", "cleanup": "nothing is changed, so there is nothing to put back", "onFailure": "if the archive DID happen, the seeded thing has to be restored by hand before the next run", "isolation": "read-only against a fixture nobody else writes" },
+      "intent": ["open the other tenant's thing", "look for the archive control", "attempt the archive if it is there"],
+      "expect": {
+        "ui": { "need": "required", "says": "the Archive control is not rendered on the detail screen for a viewer" },
+        "api": { "need": "unverifiable", "because": "the map records no effect for detail/Archive, so nothing here knows which call to attempt past the UI" },
+        "sql": { "need": "unverifiable", "because": "this project declares no sql.command, so no row can be read to show it is untouched" }
+      },
+      "denial": {
+        "lacks": ["App.Admin"],
+        "action": "archive a thing belonging to another tenant",
+        "ui": "the Archive control is absent; if it is somehow reached, the attempt shows a refusal rather than succeeding quietly",
+        "backend": { "need": "unverifiable", "because": "no effect record names the call, so there is no request to replay past the screen — a capability gap, not a lowered bar" },
+        "unchanged": { "need": "required", "says": "the thing is still active and still belongs to the other tenant" },
+        "because": "a hidden control and a refusing server are different products, and only one of them is safe"
+      },
+      "mutation": {
+        "kind": "transition",
+        "before": "the thing is active and owned by another tenant",
+        "action": "a viewer attempts to archive it",
+        "after": "the thing is still active — the attempt changes nothing",
+        "unchanged": ["the thing's status", "the thing's owner", "every other thing in either tenant"],
+        "onRefusal": "the list is unchanged and no message is queued"
+      },
+      "blockers": [
+        { "id": "B1", "kind": "map", "says": "the map records no viewer view of the detail screen and no effect for detail/Archive. Record them with record-edge.mjs and this becomes automatable — until then it is a blocker on AUTOMATION, not a reason to drop the scenario" }
+      ],
+      "execution": "manual",
+      "cases": [],
+      "estimate": { "minutes": 6, "because": "a person signing in as a viewer and looking" },
+      "readiness": "blocked"
+    },
+    {
+      "id": "S3",
+      "name": "Submitting the same thing twice leaves one thing",
+      "covers": ["AC2"],
+      "technique": "idempotency",
+      "why": "a double-click on a slow save is the commonest way a duplicate reaches a real database",
+      "priority": "P1",
+      "must": true,
+      "profiles": ["regression"],
+      "risk": { "impact": 4, "likelihood": 4, "usage": 3 },
+      "actor": { "as": "admin", "roles": ["App.Admin"], "owner": "the actor" },
+      "preconditions": ["no thing named ${NAME} exists"],
+      "data": { "data": "per-run", "key": "a TC- prefixed name, unique to the run", "scope": "the actor's own tenant", "cleanup": "archived by hand or by the archive case", "onFailure": "two rows with the TC- name mean the bug reproduced — keep them as evidence", "isolation": "the name carries the run" },
+      "intent": ["create the thing", "submit the identical thing again", "count the rows"],
+      "expect": {
+        "ui": { "need": "required", "says": "the list still shows one ${NAME}" },
+        "api": { "need": "required", "says": "the second POST api/things answers 409 — the duplicate is refused, not quietly accepted" },
+        "sql": { "need": "required", "says": "exactly one row in Things named ${NAME} after both submits" }
+      },
+      "mutation": {
+        "kind": "create",
+        "before": "no row named ${NAME}",
+        "action": "the add dialog is saved twice with the same name",
+        "after": "exactly one row named ${NAME}",
+        "unchanged": ["the row created by the first submit — same id, same values"],
+        "onRefusal": "the second attempt leaves the first row exactly as it was",
+        "effect": "dlg-thing/Save"
+      },
+      "repeat": {
+        "kind": "resubmit",
+        "expect": "the second submit is refused with 409 and the first thing is untouched",
+        "extra": "a second row in Things, a second message on the queue",
+        "guarded": true
+      },
+      "execution": "auto",
+      "cases": [{ "id": "resubmit-thing", "state": "validated" }],
+      "estimate": { "minutes": 5, "because": "twice the create path" },
+      "readiness": "ready"
+    },
+    {
+      "id": "S4",
+      "name": "An administrator archives a thing",
+      "covers": ["AC4"],
+      "technique": "state-transition",
+      "why": "the only way a thing leaves the list, and the trigger for everything downstream",
+      "priority": "P2",
+      "profiles": ["regression"],
+      "risk": { "impact": 3, "likelihood": 3 },
+      "actor": { "as": "admin", "roles": ["App.Admin"], "owner": "the actor", "state": "the thing is active" },
+      "preconditions": ["a thing exists and the run knows its id"],
+      "data": { "data": "per-run", "key": "the id resolved from the TC- name", "scope": "the actor's own tenant", "cleanup": "none — archiving IS the cleanup for this run's data", "onFailure": "an unarchived TC- thing is left behind and archived by hand", "isolation": "it only ever touches the thing this run created" },
+      "intent": ["open the thing", "archive it", "read the list back"],
+      "expect": {
+        "ui": { "need": "required", "says": "the detail screen says Archived and the thing is gone from the list" },
+        "api": { "need": "unverifiable", "because": "the map records no effect for detail/Archive — nothing here knows which call it makes. Trace it with query effect and this becomes required" },
+        "sql": { "need": "unverifiable", "because": "the map names no table for detail/Archive, and this project declares no sql.command either" }
+      },
+      "mutation": {
+        "kind": "transition",
+        "before": "the thing is active and in the list",
+        "action": "the administrator archives it",
+        "after": "the thing is archived and no longer in the list",
+        "unchanged": ["the thing's name and id", "every other thing in the list"],
+        "onRefusal": "the thing stays active and the screen says why",
+        "effect": "detail/Archive"
+      },
+      "execution": "auto",
+      "cases": [{ "id": "archive-thing", "state": "validated" }],
+      "checks": ["M1"],
+      "estimate": { "minutes": 3, "because": "one navigation and one click" },
+      "readiness": "ready"
+    }
+  ],
+  "manual": [
+    {
+      "id": "M1",
+      "name": "the thing-removed message reaches the cleanup consumer",
+      "covers": ["AC5", "S4"],
+      "because": "it is a queue. No browser can see one, and a JSON case pretending to check it would assert nothing",
+      "owner": "unassigned",
+      "preconditions": ["a thing has just been archived by S4", "access to the queue this project declares in graph/meta.json"],
+      "steps": [
+        "note the id of the thing S4 archived",
+        "look for a thing-removed message carrying that id",
+        "check the cleanup consumer acknowledged it, and look at the dead letters"
+      ],
+      "expect": "one thing-removed message for that id, acknowledged, and nothing in the dead letters",
+      "evidence": ["the message body", "the consumer's log line", "the dead-letter count before and after"],
+      "state": "todo"
+    }
+  ],
+  "note": "The fixture plan. It is deliberately not all green: S2 is blocked by the map, S4 cannot see below the screen, and M1 is somebody's job. A plan that reported none of that would be the bug this vocabulary exists to prevent."
+}

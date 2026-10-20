@@ -1,0 +1,182 @@
+<!doctype html>
+<!-- The report's markup, as a file. {{x}} is an escaped value, {{{x}}} a raw one,
+     {{#x}}…{{/x}} repeats for a list or renders once for anything else truthy, and
+     {{^x}}…{{/x}} is the empty case. What each name means is decided in view.mjs;
+     nothing is computed here. Open this file in a browser to work on the layout -
+     the placeholders show as text and the structure is all visible. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="orbit-export-version" content="{{exportVersion}}">
+<meta name="orbit-run-key" content="{{runKey}}">
+<meta name="orbit-complete" content="{{exportComplete}}">
+<title>{{case}} — {{status}}</title>
+<style>{{{style}}}</style>
+</head>
+<body class="case-report">
+
+<header class="top">
+  <h1>{{title}}</h1>
+  <p class="case-id">{{case}}</p>
+  <div class="meta">{{status}} · {{steps}} steps · {{secs}}{{#stamp}} · {{stamp}}{{/stamp}} · proved {{#proved}}<code>{{id}} {{n}}</code> {{/proved}}{{^proved}}<code>nothing</code>{{/proved}}</div>
+</header>
+
+<div class="wrap">
+
+  <div class="callout {{calloutClass}}">{{calloutText}}</div>
+
+  <div class="summary-grid">
+    <div class="metric-card"><strong>{{steps}}</strong><span>Steps completed</span></div>
+    <div class="metric-card"><strong>{{secs}}</strong><span>Duration</span></div>
+    {{#proved}}<div class="metric-card"><strong>{{n}}</strong><span>{{id}} verifications held</span></div>{{/proved}}
+  </div>
+
+  <p id="report-action-status" role="status" aria-live="polite"></p>
+
+{{#failed}}
+  <h2 class="section-title"><span class="dot"></span>Where this run stopped</h2>
+  <div class="tc">
+    <div class="tc-head"><span class="tc-id">Step {{i}} — {{do}}</span><span class="badge warn">{{what}}</span></div>
+    <div class="tc-body">
+      {{#why}}<pre>{{why}}</pre>{{/why}}
+      {{#evidence}}<h3>{{k}}</h3><pre>{{v}}</pre>{{/evidence}}
+      {{#shot}}<a href="#{{shot}}">View captured screen</a>{{/shot}}
+    </div>
+  </div>
+{{/failed}}
+
+  <h2 class="section-title"><span class="dot"></span>What this run was</h2>
+  <table>
+    <tr><th>params</th><td>{{#params}}<code>{{k}}={{v}}</code> {{/params}}{{^params}}—{{/params}}</td></tr>
+    <tr><th>ran as</th><td>{{#identities}}{{as}} <span class="mono">{{upn}}</span> {{roles}} · from {{atStep}}<br>{{/identities}}{{^identities}}—{{/identities}}</td></tr>
+    <tr><th>environment</th><td>{{#env}}{{env}}{{/env}}{{^env}}—{{/env}}</td></tr>
+    <tr><th>origin</th><td>{{#origin}}<code>{{origin}}</code>{{/origin}}{{^origin}}—{{/origin}}</td></tr>
+    <tr><th>frontend commit</th><td>{{#commit}}<code>{{commit}}</code>{{/commit}}{{^commit}}—{{/commit}}</td></tr>
+    <tr><th>slice</th><td>{{slice}}</td></tr>
+    <tr><th>evidence source</th><td><code>{{log}}</code> — rendered below</td></tr>
+  </table>
+
+  <h2 class="section-title"><span class="dot"></span>Interaction journey</h2>
+  <ol class="journey">
+  {{#journey}}
+    <li><span class="step-number">{{i}}</span><div><strong>{{what}}</strong><p><code>{{do}}</code> <span class="badge {{tone}}">{{state}}</span> {{#recorded}}<a href="#step-{{i}}">Step details</a>{{/recorded}} {{#shot}}<a href="#{{shot}}">Screen</a>{{/shot}}</p></div></li>
+  {{/journey}}
+  </ol>
+
+{{#resolve}}
+  <h2 class="section-title"><span class="dot"></span>Resolve</h2>
+  <p class="note">SQL run before the browser, to find which row this case is about. SQL is shown verbatim so it can be re-run and may contain real values.</p>
+  {{#items}}
+  <div class="ask">
+    <div class="ask-head"><span class="n">{{ref}}</span><span>resolved to</span><span class="mono">{{value}}</span></div>
+    <div class="copyable"><pre class="sql">{{sql}}</pre><button type="button" data-copy>copy</button></div>
+    {{#rerun}}<div class="copyable"><pre>{{rerun}}</pre><button type="button" data-copy>copy</button></div>{{/rerun}}
+  </div>
+  {{/items}}
+{{/resolve}}
+
+  <h2 class="section-title"><span class="dot"></span>The case, layer by layer</h2>
+{{#tc}}
+  <div class="tc">
+    <div class="tc-head">
+      <span class="tc-id">{{id}}</span>
+      <span class="badge {{badgeClass}}">{{badgeText}}</span>
+    </div>
+    <div class="tc-body">
+    {{#layers}}
+      <div class="layer">
+        <span class="lbl {{id}}">{{title}}</span>
+        <span class="badge {{countClass}}">{{countText}}</span>
+        <div class="note">{{sub}}</div>
+      {{#asks}}
+        <div class="ask">
+          <div class="ask-head"><span class="n">#{{i}}</span><span>{{do}}</span><span>{{what}}</span><span class="{{verdictClass}}">{{verdictText}}</span></div>
+          {{#ui}}{{#js}}<div class="copyable"><pre class="js">{{js}}</pre><button type="button" data-copy>copy</button></div>{{/js}}{{/ui}}
+          {{#api}}<pre>{{want}}</pre>{{#got}}<p class="note"><b>answered</b> <span class="mono">{{got}}</span></p>{{/got}}{{/api}}
+          {{#sql}}{{#query}}<div class="copyable"><pre class="sql">{{query}}</pre><button type="button" data-copy>copy</button></div>{{/query}}{{/sql}}
+          {{#expect}}<p class="note"><b>expect</b> <span class="mono">{{expect}}</span></p>{{/expect}}
+          {{#answer}}<p class="note"><b>reported</b> <span class="mono">{{answer}}</span></p>{{/answer}}
+          {{#table}}<p class="note">{{count}} row(s) recorded</p><div class="table-scroll" tabindex="0" role="region" aria-label="Query result rows"><table><thead><tr>{{#cols}}<th>{{.}}</th>{{/cols}}</tr></thead><tbody>{{#body}}<tr>{{#cells}}<td class="mono">{{.}}</td>{{/cells}}</tr>{{/body}}</tbody></table></div>{{/table}}
+          {{#sql}}{{^table}}<p class="note">no rows</p>{{/table}}{{/sql}}
+          {{#rerun}}<p class="note"><b>run it yourself</b> — shown verbatim so it can be re-run, so it carries whatever real values the run used. Runtime text is masked; screenshots and the case JSON may contain real values.</p><div class="copyable"><pre>{{rerun}}</pre><button type="button" data-copy>copy</button></div>{{/rerun}}
+          {{#json}}<pre>{{json}}</pre>{{/json}}
+          {{#broke}}<p class="note broke">{{broke}}</p>{{/broke}}
+          {{#shot}}<p><a href="#{{shot}}">View captured screen</a></p>{{/shot}}
+        </div>
+      {{/asks}}
+      {{^asks}}<div class="none">This run proved nothing at this layer.</div>{{/asks}}
+      </div>
+    {{/layers}}
+      <div class="verdict {{verdictClass}}">{{verdictText}}</div>
+    </div>
+  </div>
+{{/tc}}
+
+
+
+{{#anyShots}}
+  <h2 class="section-title"><span class="dot"></span>Visual evidence</h2>
+  <div class="controls-bar"><button type="button" data-expand-shots="true">Expand all screenshots</button><button type="button" data-expand-shots="false">Collapse all screenshots</button><span>Images embedded · select an image to enlarge</span></div>
+  <div class="shots-grid">
+  {{#shots}}
+    <details class="shot-card" id="{{id}}" open>
+      <summary>{{caption}}</summary>
+      {{#src}}<button class="shot-button" type="button" data-shot aria-label="Enlarge {{alt}}"><img class="shot" src="{{src}}" alt="{{alt}}" loading="lazy"></button>{{/src}}
+      {{^src}}<p class="note broke">screenshot not readable — {{missing}}</p>{{/src}}
+    </details>
+  {{/shots}}
+  </div>
+{{/anyShots}}
+
+{{#source}}
+  <h2 class="section-title"><span class="dot"></span>The case, as written</h2>
+  <p class="note">The exact JSON captured when this run started. This block is not masked and may contain authored real values. To change the case, save a new draft; this report is a historical snapshot.</p>
+  <details class="case-source">
+    <summary>JSON DSL · view, copy or download</summary>
+    <div class="copyable"><pre id="orbit-case">{{source}}</pre><button type="button" data-copy>copy JSON</button></div>
+    <button type="button" data-download-case>Download case JSON</button>
+  </details>
+  <h3 class="rerun-title">Run this case again</h3>
+  <p class="note">Use the project with the matching configuration and map, with a signed-in browser. Supply current parameter values; masked values are not inputs. Resolved and captured values are obtained again. Identity, stale and destructive checks still apply.</p>
+  <div class="copyable"><pre>node &lt;plugin&gt;/cli/run-case.mjs "/path/report.html" --dry</pre><button type="button" data-copy>copy</button></div>
+  <div class="copyable"><pre>node &lt;plugin&gt;/cli/run-case.mjs "/path/report.html" --report</pre><button type="button" data-copy>copy</button></div>
+  <p class="note">Replace the paths and add required NAME=value parameters. A new run produces a new report. Opening this file never runs a test.</p>
+{{/source}}
+{{^source}}<p class="note">This older run has no embedded case JSON. Its report can be read, but cannot supply a case for a re-run.</p>{{/source}}
+
+{{#anyHistory}}
+  <h2 class="section-title"><span class="dot"></span>The last few runs of this case</h2>
+  <p class="note">From the ledger, not from this run's log — the one question a single run cannot answer about itself: is this case steady, or is it flipping?</p>
+  <table>
+    <thead><tr><th>when</th><th>result</th><th>machine</th><th>took</th></tr></thead>
+    <tbody>{{#history}}<tr><td class="mono">{{when}}</td><td><span class="badge {{tone}}">{{status}}</span></td><td class="mono">{{host}}</td><td class="mono">{{secs}}</td></tr>{{/history}}</tbody>
+  </table>
+{{/anyHistory}}
+
+  <h2 class="section-title"><span class="dot"></span>Every step</h2>
+  <table>
+    <thead><tr><th>#</th><th>do</th><th>screen</th><th>what</th><th>polls</th><th>took</th></tr></thead>
+    <tbody>{{#stepRows}}<tr id="step-{{i}}" class="{{rowClass}}"><td class="mono">{{i}}</td><td>{{do}}</td><td>{{screen}}</td><td>{{what}}</td><td class="mono">{{polls}}</td><td class="mono">{{secs}}</td></tr>{{/stepRows}}</tbody>
+  </table>
+
+
+
+  <details class="technical-records">
+    <summary>Recorded step details and captured values</summary>
+    {{#observations}}<h3>Step {{i}}</h3><pre>{{json}}</pre>{{/observations}}
+    {{#captured}}<h3>Captured value</h3><pre>{{json}}</pre>{{/captured}}
+  </details>
+
+</div>
+
+<footer>Generated from <code>{{log}}</code> by orbit-ui-test. Every value shown was recorded while the case ran; nothing here was re-derived afterwards.</footer>
+
+<dialog id="shot-viewer" aria-label="Screenshot viewer">
+  <button type="button" autofocus>Close screenshot</button>
+  <div class="viewer-image"></div><p class="viewer-caption"></p>
+</dialog>
+<script>{{{script}}}</script>
+</body>
+</html>
+<!-- orbit-report-end -->

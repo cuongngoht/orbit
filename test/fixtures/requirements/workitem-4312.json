@@ -1,0 +1,56 @@
+{
+  "note": "Synthetic work item for the Day-1 / Day-2 acceptance test: no real tenant, person, product or system. Revision 8 contradicts what a person decided about revision 7 and changes one stated fact; nothing else moves.",
+  "revisions": {
+    "7": {
+      "4312": {
+        "ref": "4312",
+        "provider": "azure-devops",
+        "type": "Product Backlog Item",
+        "title": "Refund limit",
+        "state": "Active",
+        "revision": "7",
+        "body": "SENTINEL-E2E-BODY A refund above the limit needs a manager. A cart holds at most fifty lines.",
+        "acceptance": "SENTINEL-E2E-CRITERIA Refunds above 500 need approval. The duplicate-email rule is not said.",
+        "parent": "100",
+        "children": [],
+        "related": [{ "ref": "pr-77", "relation": "implements", "kind": "pr" }],
+        "comments": [{ "id": "1", "at": "2026-09-01T00:00:00Z", "by": "person-aaaaaa", "text": "SENTINEL-E2E-COMMENT please cap it" }]
+      },
+      "100": {
+        "ref": "100",
+        "provider": "azure-devops",
+        "type": "Feature",
+        "title": "Refunds",
+        "state": "Active",
+        "revision": "3",
+        "body": "SENTINEL-E2E-PARENT The refunds feature.",
+        "children": ["4312"]
+      }
+    },
+    "8": {
+      "4312": {
+        "ref": "4312",
+        "provider": "azure-devops",
+        "type": "Product Backlog Item",
+        "title": "Refund limit",
+        "state": "Active",
+        "revision": "8",
+        "body": "SENTINEL-E2E-BODY-8 A refund above 1000 needs a manager. A duplicate email creates a second account.",
+        "acceptance": "SENTINEL-E2E-CRITERIA-8 Refunds above 1000 need approval.",
+        "parent": "100",
+        "children": [],
+        "related": [{ "ref": "pr-77", "relation": "implements", "kind": "pr" }]
+      },
+      "100": {
+        "ref": "100",
+        "provider": "azure-devops",
+        "type": "Feature",
+        "title": "Refunds",
+        "state": "Active",
+        "revision": "3",
+        "body": "SENTINEL-E2E-PARENT The refunds feature.",
+        "children": ["4312"]
+      }
+    }
+  }
+}

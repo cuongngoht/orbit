@@ -1,0 +1,10 @@
+{
+  "id": "company-delta",
+  "version": "1.0.0",
+  "apiVersion": "orbit.extension/v2",
+  "engine": ">=0.0.1 <99",
+  "status": "verified",
+  "createdFor": "QC",
+  "note": "A FICTIONAL provider for the fictional capability company.capability.delta — registering it is what makes the acceptance test's proof need PROVIDED, and removing it is what turns the need into an opportunity.",
+  "capabilities": "./capabilities.mjs"
+}

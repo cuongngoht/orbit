@@ -1,0 +1,23 @@
+{
+  "name": "orbit",
+  "version": "0.0.1",
+  "description": "Orbit Engineering — From Goal to Verified Outcome. Goal orchestration, project context and memory, requirements to verified changes in task-owned sandboxes, runtime understanding, UI tests, autonomous QA, Orbit Control, and managed MCP — governed and local. No dependencies.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "bin": {
+    "orbit": "./cli/orbit.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test",
+    "lint": "node cli/check-five-lines.mjs src cli skills --strict",
+    "schema": "node cli/schema.mjs --write"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cuongngoht/orbit.git"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "schema": 2,
+  "fe_commit": "abc1234",
+  "captured": "2026-01-01",
+  "layers": [
+    { "key": "sql", "label": "SQL", "describe": ["${table}", " (${cols})"] },
+    { "key": "queue", "label": "Queue", "describe": ["${topic}", " -> ${consumer}"] }
+  ],
+  "timings": [
+    { "name": "sync" },
+    { "name": "deferred", "layer": "queue", "note": "The 2xx is not success here — allow for the consumer, then check the dead letters." }
+  ]
+}

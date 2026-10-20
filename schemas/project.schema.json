@@ -1,0 +1,127 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://orbit.dev/schema/project.schema.json",
+  "title": "orbit project configuration (ui-tests/project.json)",
+  "description": "The consuming project's answers to what the engine cannot know: where the app is, how to read the database, which script opens a signed-in browser, which browser it opens, which hosts mean an identity provider is asking for credentials, where the frontend checkout is. Relative paths resolve against the project root (the parent of ui-tests/); `~` and `${ENV}` expand; an entry whose ${ENV} is unset is dropped. ORBIT_ORIGIN, ORBIT_RUN_DIR, ORBIT_FRONTEND_ROOT, ORBIT_CHANNEL and ORBIT_ENV override their fields per run (the older PT_ names are still read).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "description": "Short project name; the default run directory is <tmpdir>/pw-<name>."
+    },
+    "origin": {
+      "type": "string",
+      "format": "uri",
+      "description": "The app under test. A goto step's path is appended to it."
+    },
+    "runDir": {
+      "type": "string",
+      "description": "Where the launcher writes .playwright/cli.config.json — the directory playwright-cli finds its session through. Default <tmpdir>/pw-<name>."
+    },
+    "launcher": {
+      "type": "string",
+      "description": "Script that opens a signed-in browser and prints `run directory : <dir>` and `target        : <url>` lines. run-awake spawns it with --channel/--headed|--headless/--env/--profile and, per identity, --run-dir."
+    },
+    "reports": {
+      "type": "string",
+      "description": "Directory for the generated HTML reports \u2014 the one artefact meant for a person rather than for the engine. A run's report is filed under <screen>/<case>/, a page about many runs under _screens/, _plans/, _sessions/ or _investigations/, and each is a single self-contained file with every screenshot base64-embedded. Defaults to <store>/reports/, in the machine store and never in the checkout: a committed report publishes the pictures of whatever tenant the run drove. A path inside the checkout is copied into the store as well."
+    },
+    "retention": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "How many evidence directories to keep per case in the machine store; the newest failure is always kept. 0 keeps everything. Evidence is disposable once its report exists, because the report embeds every picture it shows."
+    },
+    "sql": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "description": "Command that runs a read-only query given as its LAST argument and prints pipe-separated rows under a dashed line. Credentials stay with this tool, never here."
+        },
+        "timeoutSec": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Seconds one sql.command call may take before it is killed (default 120, ORBIT_DB_TIMEOUT). A query that never answers is BLOCKED, not a product failure."
+        }
+      }
+    },
+    "signIn": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "How to tell that the browser is parked on a sign-in page instead of in the app — a per-product fact, since the host belongs to your identity provider.",
+      "properties": {
+        "hosts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Host fragments that mean \"an identity provider is asking for credentials\", e.g. [\"login.microsoftonline.com\"] or [\"accounts.google.com\"] or your own SSO host. A session on one of these is REFUSED with \"finish signing in\" instead of timing out mid-case. Empty: no host is ever treated as a sign-in page."
+        }
+      }
+    },
+    "launch": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Defaults run-awake passes to the launcher; ORBIT_CHANNEL and ORBIT_ENV override them per run.",
+      "properties": {
+        "channel": {
+          "type": "string",
+          "description": "Browser channel the launcher should open, e.g. chromium, chrome, msedge. Default chromium."
+        },
+        "env": {
+          "type": "string",
+          "description": "Which deployment the launcher should point at, passed as --env. Default test."
+        }
+      }
+    },
+    "frontend": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "roots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Candidate checkouts of the frontend, first existing wins; `git rev-parse` there is the fe_commit a live run is stamped with."
+        },
+        "srcDir": {
+          "type": "string",
+          "description": "Sub-directory of a root that `src` references in the map are relative to, e.g. app/src."
+        }
+      }
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Which of the tokens a signed-in profile holds speaks for THIS app, and what its provider calls the claims. A profile holds several -- the app's id token carries the roles, a token for some other API carries none -- and picking the wrong one decides whose authority a permission case believes it observed. Needed only where a session holds more than one: with a single token the engine uses it, with several and nothing declared it REFUSES and names them rather than guessing.",
+      "properties": {
+        "audience": {
+          "type": "string",
+          "description": "The `aud` claim of the app's own token, e.g. \"api://my-app\". The one key most projects need."
+        },
+        "issuer": {
+          "type": "string",
+          "description": "The `iss` claim, when audience alone still matches more than one token."
+        },
+        "rolesClaim": {
+          "type": "string",
+          "description": "The claim carrying the role list, if your provider does not call it `roles`."
+        },
+        "upnClaim": {
+          "type": "string",
+          "description": "The claim carrying the user's name, if your provider does not call it `upn`."
+        }
+      }
+    }
+  }
+}

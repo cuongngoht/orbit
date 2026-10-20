@@ -1,0 +1,96 @@
+{
+  "id": "plan-bad",
+  "schema": 1,
+  "title": "Every mistake plan-check must catch",
+  "feature": "the checker itself",
+  "revision": "1",
+  "at": "2026-09-18",
+  "wanted": "typo at root",
+  "sources": [
+    { "id": "REQ1", "kind": "requirement", "ref": "THING-9", "revision": "1" }
+  ],
+  "criteria": [
+    { "id": "AC1", "says": "covered by nothing and disposed of by nothing" },
+    { "id": "AC2", "says": "cited to a source that does not exist", "source": "REQ9" },
+    { "id": "AC3", "says": "covered by S1" }
+  ],
+  "scenarios": [
+    {
+      "id": "S1",
+      "name": "commits to a layer its case cannot rule on, and covers a criterion that does not exist",
+      "covers": ["AC3", "AC7"],
+      "technique": "crud",
+      "priority": "P1",
+      "must": true,
+      "readiness": "ready",
+      "dependsOn": ["S2"],
+      "expect": {
+        "ui": { "need": "required", "says": "the list shows it" },
+        "api": { "need": "required", "says": "POST api/things answers 201" },
+        "sql": { "need": "n-a" },
+        "queue": { "need": "required", "says": "not a layer this engine has a verb for" }
+      },
+      "cases": [{ "id": "archive-thing", "state": "validated" }, { "id": "no-such-case", "state": "written" }]
+    },
+    {
+      "id": "S2",
+      "name": "a permission scenario that only declares who is running",
+      "covers": ["AC3"],
+      "technique": "permission",
+      "readiness": "ready",
+      "dependsOn": ["S1"],
+      "actor": { "as": "viewer", "notRoles": ["App.Admin"] },
+      "mutation": { "kind": "delete" },
+      "expect": { "ui": { "need": "required", "says": "the run comes back REFUSED" } }
+    },
+    {
+      "id": "S3",
+      "name": "an idempotency scenario that offers the skip guard as its evidence",
+      "covers": ["AC3"],
+      "technique": "idempotency",
+      "readiness": "ready",
+      "repeat": { "kind": "none", "guarded": true },
+      "expect": { "ui": { "need": "required", "says": "one row on the screen" } },
+      "cases": [{ "id": "create-thing", "state": "validated" }]
+    },
+    {
+      "id": "S4",
+      "name": "a delete that says nothing about state, data or any layer below the screen",
+      "covers": ["AC3"],
+      "technique": "crud",
+      "readiness": "ready",
+      "mutation": { "kind": "delete" },
+      "async": { "deadline": 60, "observe": ["ui"] },
+      "expect": { "ui": { "need": "required", "says": "it is gone from the list" } }
+    },
+    {
+      "id": "S5",
+      "name": "ready, and blocked by something",
+      "covers": ["AC3"],
+      "technique": "concurrency",
+      "readiness": "ready",
+      "repeat": { "kind": "resubmit", "expect": "the second one wins" },
+      "blockers": [{ "id": "B1", "kind": "map", "says": "no control recorded" }],
+      "expect": { "ui": { "need": "unverifiable" } },
+      "checks": ["M9"]
+    },
+    {
+      "id": "S5",
+      "name": "the same id twice",
+      "covers": ["AC3"],
+      "expect": { "ui": { "need": "required", "says": "anything" } }
+    },
+    {
+      "id": "S6",
+      "name": "a capability blocker that says nothing, while every layer still claims required",
+      "covers": ["AC3"],
+      "technique": "crud",
+      "readiness": "blocked",
+      "blockers": [{ "id": "B2", "kind": "capability", "says": "" }],
+      "expect": { "ui": { "need": "required", "says": "the row appears" } }
+    }
+  ],
+  "manual": [
+    { "id": "M1", "name": "a check nobody owns, with no steps and no expected result", "state": "done" }
+  ]
+}

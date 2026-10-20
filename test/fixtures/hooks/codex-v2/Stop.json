@@ -1,0 +1,39 @@
+{
+  "input": {
+    "session_id": "fixture-session",
+    "turn_id": "fixture-turn",
+    "transcript_path": "/fixture-host/transcript.jsonl",
+    "cwd": "/fixture",
+    "hook_event_name": "Stop",
+    "model": "fixture-model",
+    "permission_mode": "bypassPermissions",
+    "stop_hook_active": false,
+    "last_assistant_message": "done"
+  },
+  "argv": [
+    "--host=codex",
+    "--protocol=2"
+  ],
+  "expected": {
+    "protocol": 2,
+    "hostEvent": "Stop",
+    "event": "turn-end",
+    "session": "codex:d6440983c454c2e5",
+    "turn": "codex:b91a31db35cdd028",
+    "delivery": null,
+    "cwd": "/fixture",
+    "prompt": null,
+    "outcome": "unknown",
+    "tool": {
+      "name": null,
+      "kind": "other"
+    },
+    "paths": [],
+    "pattern": null,
+    "command": null,
+    "background": false,
+    "invokes": null,
+    "host": "codex",
+    "ok": null
+  }
+}

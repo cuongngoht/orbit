@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "about": "What is TRUE about each app in apps.json, written from its description and never from a run. defects: what a correct QA must find -- confirmable says whether an oracle the engine may cite can confirm it. holds: behaviour that is correct, which a correct QA must recognise as such rather than leave undecided. writes: every write an authorised session makes, and nothing else.",
+  "apps": {
+    "write-lost": {
+      "defects": [{ "family": "persistence", "subject": "dlg-thing/Save", "confirmable": true, "because": "the map records the call, it answered 201, and the table it names has no row" }],
+      "holds": [],
+      "writes": { "dlg-thing/Save": 1 }
+    },
+    "double-write": {
+      "defects": [{ "family": "duplicate", "subject": "dlg-thing/Save", "confirmable": true, "because": "two equivalent writes for one action, and two rows where the action owes one" }],
+      "holds": [],
+      "writes": { "dlg-thing/Save": 1 }
+    },
+    "telemetry-beside-write": {
+      "defects": [],
+      "holds": [{ "family": "persistence", "subject": "dlg-thing/Save" }],
+      "writes": { "dlg-thing/Save": 1 }
+    },
+    "accepted-within-window": {
+      "defects": [],
+      "holds": [{ "family": "persistence", "subject": "dlg-thing/Save" }],
+      "writes": { "dlg-thing/Save": 1 }
+    },
+    "declared-retry": {
+      "defects": [],
+      "holds": [{ "family": "duplicate", "subject": "dlg-thing/Save" }, { "family": "persistence", "subject": "dlg-thing/Save" }],
+      "writes": { "dlg-thing/Save": 1 }
+    },
+    "tenant-leak": {
+      "defects": [{ "family": "security", "subject": "a-thing tenantB read", "confirmable": true, "because": "the contract a person declared says denied, and tenant B saw the marker" }],
+      "holds": [{ "family": "security", "subject": "a-thing tenantA read" }],
+      "writes": {}
+    },
+    "denied-with-positive-control": {
+      "defects": [],
+      "holds": [{ "family": "security", "subject": "a-thing tenantA read" }, { "family": "security", "subject": "a-thing tenantB read" }],
+      "writes": {}
+    },
+    "observe-only": {
+      "defects": [],
+      "holds": [],
+      "writes": {}
+    },
+    "pbi-headless": {
+      "defects": [],
+      "holds": [{ "family": "run", "subject": "refund-limit" }],
+      "writes": {}
+    },
+    "pbi-headless-broken": {
+      "defects": [{ "family": "run", "subject": "refund-limit", "confirmable": false, "because": "the accepted case fails where it rules; the verdict is the runner's, and only triage and a person may take it further" }],
+      "holds": [],
+      "writes": {}
+    },
+    "hybrid": {
+      "defects": [],
+      "holds": [{ "family": "run", "subject": "create-thing" }, { "family": "run", "subject": "resubmit-thing" }],
+      "writes": { "create-thing": 1, "resubmit-thing": 1 }
+    },
+    "crash-resume": {
+      "defects": [],
+      "holds": [{ "family": "persistence", "subject": "dlg-thing/Save" }],
+      "writes": { "dlg-thing/Save": 1 }
+    },
+    "intermittent-across-sessions": {
+      "defects": [{ "family": "persistence", "subject": "dlg-thing/Save", "confirmable": true, "because": "on the second day the recorded call answered 201 and the table has no row" }],
+      "holds": [],
+      "writes": { "dlg-thing/Save": 2 }
+    }
+  }
+}

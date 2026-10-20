@@ -1,0 +1,96 @@
+{
+  "input": {
+    "hookEventName": "post_tool_use",
+    "sessionId": "grok-fixture-session",
+    "cwd": "/fixture",
+    "workspaceRoot": "/fixture",
+    "timestamp": "2026-10-18T07:04:54.014002+00:00",
+    "permissionMode": "bypassPermissions",
+    "transcriptPath": "/fixture-host/updates.jsonl",
+    "toolName": "grep",
+    "toolUseId": "grok-fixture-call-5",
+    "toolInput": {
+      "pattern": "world",
+      "path": "/fixture"
+    },
+    "toolInputTruncated": false,
+    "toolResult": {
+      "type": "GrepSearch",
+      "stdout": [],
+      "stderr": [],
+      "exit_code": 0,
+      "match_count": 1,
+      "file_matches": [
+        {
+          "path": "/fixture/README.md",
+          "matches": [
+            {
+              "line_number": 1,
+              "content": "world fixture"
+            }
+          ]
+        }
+      ]
+    },
+    "toolResultTruncated": false,
+    "durationMs": 51,
+    "isBackgrounded": false,
+    "transcript_path": "/fixture-host/updates.jsonl",
+    "tool_name": "grep",
+    "tool_input": {
+      "pattern": "world",
+      "path": "/fixture"
+    },
+    "tool_use_id": "grok-fixture-call-5",
+    "hook_event_name": "PostToolUse",
+    "session_id": "grok-fixture-session",
+    "permission_mode": "bypassPermissions",
+    "tool_response": {
+      "type": "GrepSearch",
+      "stdout": [],
+      "stderr": [],
+      "exit_code": 0,
+      "match_count": 1,
+      "file_matches": [
+        {
+          "path": "/fixture/README.md",
+          "matches": [
+            {
+              "line_number": 1,
+              "content": "world fixture"
+            }
+          ]
+        }
+      ]
+    },
+    "duration_ms": 51
+  },
+  "argv": [
+    "--host=grok",
+    "--protocol=2"
+  ],
+  "expected": {
+    "protocol": 2,
+    "hostEvent": "PostToolUse",
+    "event": "post-tool",
+    "session": "grok:22d57f5bf67e48dc",
+    "turn": null,
+    "delivery": "grok:1ceb530ed1880ef8",
+    "cwd": "/fixture",
+    "prompt": null,
+    "outcome": "unknown",
+    "tool": {
+      "name": "grep",
+      "kind": "search"
+    },
+    "paths": [
+      "/fixture"
+    ],
+    "pattern": "world",
+    "command": null,
+    "background": false,
+    "invokes": null,
+    "host": "grok",
+    "ok": null
+  }
+}

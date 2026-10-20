@@ -1,0 +1,21 @@
+// One exploration session over the fixture project's Home screen: every record
+// kind a session can write, including the two contradictions the page is able to
+// spot on its own, and one control nobody ever touched.
+{"kind":"charter","at":"2026-09-18T09:00:00.000Z","screen":"home","say":"What can an admin do on Home, and what does each control touch underneath?","fe_commit":"abc1234","write":true}
+{"kind":"control","at":"2026-09-18T09:01:00.000Z","on":"home/Add","role":"button","selector":"getByRole('button',{name:'Add'})","opens":"dialog","to":"dlg-thing"}
+{"kind":"control","at":"2026-09-18T09:01:10.000Z","on":"dlg-thing/Name","role":"textbox","selector":"getByRole('textbox',{name:'Name'})","opens":"none","to":null}
+{"kind":"control","at":"2026-09-18T09:01:20.000Z","on":"dlg-thing/Save","role":"button","selector":"getByRole('button',{name:'Save'})","opens":"inline","to":null}
+{"kind":"control","at":"2026-09-18T09:01:30.000Z","on":"home/Star","role":"button","selector":"getByRole('button',{name:'Star'})","opens":"inline","to":null}
+{"kind":"control","at":"2026-09-18T09:01:40.000Z","on":"home/Refresh","role":"button","selector":"getByRole('button',{name:'Refresh'})","opens":"inline","to":null}
+{"kind":"control","at":"2026-09-18T09:01:45.000Z","on":"home/Import","role":"button","selector":"getByRole('button',{name:'Import'})","opens":"inline","to":null}
+{"kind":"control","at":"2026-09-18T09:01:50.000Z","on":"home/Export","role":"button","selector":"getByRole('button',{name:'Export'})","opens":"none","to":null}
+{"kind":"action","at":"2026-09-18T09:02:00.000Z","on":"home/Add","saw":{"ui":"the Thing dialog opened","api":[{"method":"GET","url":"api/things/form","status":200}]}}
+{"kind":"action","at":"2026-09-18T09:02:20.000Z","on":"dlg-thing/Name","saw":{"ui":"the textbox holds TC-1","api":[]}}
+{"kind":"action","at":"2026-09-18T09:02:40.000Z","on":"dlg-thing/Save","why":"the one control on this screen that commits","commits":true,"saw":{"ui":"the list shows TC-1","api":[{"method":"POST","url":"api/things","status":201}],"sql":"Things has one row named TC-1 (effects.json names the table)"}}
+{"kind":"action","at":"2026-09-18T09:03:00.000Z","on":"home/Star","commits":true,"saw":{"ui":"the star filled in","api":[{"method":"POST","url":"api/things/1/star","status":500}]}}
+{"kind":"action","at":"2026-09-18T09:03:20.000Z","on":"home/Refresh","saw":{"ui":"the TC-1 row disappeared from the list","api":[]}}
+{"kind":"action","at":"2026-09-18T09:03:40.000Z","on":"home/Import","why":"the Import button — the session clicked it to commit","commits":true,"saw":{"ui":"two new rows appeared in the list","api":[]}}
+{"kind":"finding","at":"2026-09-18T09:03:10.000Z","on":"home/Star","why":"the star filled in but POST api/things/1/star returned 500, and the body was <script>alert(1)</script>","evidence":"step-04.png"}
+{"kind":"question","at":"2026-09-18T09:04:00.000Z","about":"home/Export","ask":"which table does Export read? effects.json has no record for it, so no sql verdict can be written"}
+{"kind":"case","at":"2026-09-18T09:10:00.000Z","id":"create-thing","status":"PASS","proved":{"ui":1,"api":1,"sql":1}}
+{"kind":"case","at":"2026-09-18T09:12:00.000Z","id":"star-thing","status":"FAIL","proved":{"ui":1}}

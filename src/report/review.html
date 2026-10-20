@@ -1,0 +1,56 @@
+<!doctype html>
+<!-- The session review's markup, as a file. Same rules as report.html: {{x}} is an
+     escaped value, {{{x}}} a raw one, {{#x}}…{{/x}} repeats for a list or renders once
+     for anything else truthy, {{^x}}…{{/x}} is the empty case. What each name means is
+     decided in review.mjs; nothing is computed here. It borrows report.css, so a project
+     that restyles one page has restyled both. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Test session review{{#project}} — {{project}}{{/project}}</title>
+<style>{{{style}}}</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>Test session review{{#project}} — {{project}}{{/project}}</h1>
+  <div class="meta">{{n}} run(s){{#window}} · {{window}}{{/window}}{{#hosts}} · on {{hosts}}{{/hosts}}{{#generated}} · written {{generated}}{{/generated}}</div>
+</header>
+
+<div class="wrap">
+
+  <div class="callout {{calloutClass}}">{{callout}}</div>
+
+  <h2 class="section-title"><span class="dot"></span>What ran</h2>
+  <table>
+    <tr><th>case</th><th>verdict</th><th>steps</th><th>proved</th><th>as</th><th>when</th><th>evidence</th></tr>
+    {{#rows}}
+    <tr class="{{broke}}">
+      <td><strong>{{case}}</strong>{{#why}}<br><span class="mono">{{why}}</span>{{/why}}</td>
+      <td><span class="badge {{tone}}">{{status}}</span></td>
+      <td>{{steps}}{{#secs}} · {{secs}}{{/secs}}</td>
+      <td>{{#proved}}<code>{{id}} {{n}}</code> {{/proved}}{{^proved}}<code>nothing</code>{{/proved}}</td>
+      <td>{{#as}}{{as}}{{/as}}{{^as}}—{{/as}}</td>
+      <td>{{when}}<br><span class="mono">{{host}}</span></td>
+      <td>{{#report}}<a href="{{report}}">report</a>{{/report}}{{^report}}—{{/report}}</td>
+    </tr>
+    {{/rows}}
+  </table>
+  <p class="note"><code>proved ui n · api n · sql n</code> is what each run RULED on. A count of steps is not a count of layers: three asserts on one screen prove the screen three times, and the row underneath not at all.</p>
+
+  <h2 class="section-title"><span class="dot"></span>Still needs a person</h2>
+  {{#manual}}
+  <div class="verdict warn">
+    <strong>{{case}}</strong> — {{kind}}<br>{{say}}
+  </div>
+  {{/manual}}
+  {{^manual}}
+  <p class="note">Nothing outstanding: every case in the project ran in this window, each one ruled below the screen, and none of them failed.</p>
+  {{/manual}}
+
+  <p class="note">This page reports the verdicts the runs earned; it does not re-judge them. A row with no witness below the screen is not a failure — it is a case nobody has asked to prove one. Sign off by hand, then record what you concluded with <code>cli/note.mjs</code>, so the next session does not investigate it again.</p>
+
+</div>
+</body>
+</html>

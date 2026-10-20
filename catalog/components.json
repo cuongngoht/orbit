@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "doc": "What each skill and agent this plugin ships is FOR, as routing data, and the engine's own built-in providers. The prompt router reads it; nothing in src/ names a component. `provides` is what a component can satisfy, `signals` are words that make it relevant, `requiresSignal` means it is only recommended when one of those words is in the prompt, `needs` names the capabilities it cannot work without and `optional` the ones it can use when the task names a provider for them -- capabilities, never a server or a tool: the resolver finds who provides each. `builtins` are what the engine answers itself; `implicit` marks one the session already has, which the router never adds as a line. test/resources.test.mjs holds one row per shipped skill and agent.",
+  "skills": {
+    "orbit-architecture": { "summary": "evidence-backed architecture facts for this project", "provides": ["architecture.context", "capability.lookup"] },
+    "orbit-engineer": { "summary": "take a requirement to a verified change: its own workspace, the project's build and tests, diagnose and fix until verified, every step recorded", "provides": ["engineering.execution"], "signals": ["autonomously", "autonomous engineering", "until verified"], "requiresSignal": true, "needs": ["project.context", "repository.read"], "optional": ["requirement.snapshot", "runtime.discovery", "qa.investigation"] },
+    "orbit-qa": { "summary": "investigate a live application: explore, watch every layer, check the data and tenant isolation, report with evidence", "provides": ["qa.investigation"], "signals": ["autonomous qa", "investigate", "tenant isolation", "duplicate requests", "find bugs", "acceptance criteria"], "needs": ["project.context"], "optional": ["browser.automation", "database.query", "qc.tooling", "failure.classification"] },
+    "orbit-sql": { "summary": "read-only SQL Server checks for a test", "provides": ["database.query", "sqlserver.verification"], "signals": ["sql server", "sqlserver", "mssql", "t-sql", "tsql", "sqlcmd"], "requiresSignal": true, "needs": ["sqlserver.query"] },
+    "orbit-control": { "summary": "opens Orbit Control, the local panel for skills, MCP, tools and routing", "provides": ["mcp.management", "tool.management", "control.panel"] },
+    "orbit-develop": { "summary": "implement a change the way this project builds code: project context first, then the smallest verified edit", "provides": ["development.implementation"], "needs": ["project.context", "repository.read"], "optional": ["documentation.search", "documentation.microsoft", "technology.context", "requirement.snapshot"] },
+    "orbit-dotnet": { "summary": "which .NET technologies this project uses, and for what", "provides": ["technology.context"], "signals": [".net", "dotnet", "c#", "csharp", "asp.net", "ef core", "entity framework", "nuget", "blazor", "csom", "masstransit", "dapper"], "requiresSignal": true },
+    "orbit-ui-test": { "summary": "run or author one JSON UI test case", "provides": ["qa.authoring", "qa.execution", "ui.lookup"], "signals": ["case", "test case", "screen", "flow"] },
+    "orbit-ui-explore": { "summary": "explore a live screen nobody has written cases for", "provides": ["ui.exploration"], "signals": ["explore", "exploratory"], "requiresSignal": true },
+    "orbit-help": { "summary": "where to start, and which Orbit workflow comes next", "provides": ["workflow.navigation"], "signals": ["orbit-help", "orbit help"] },
+    "orbit-learn": { "summary": "lessons learned across sessions from the run ledger", "provides": ["qa.lessons"], "signals": ["lesson", "lessons", "learned"], "requiresSignal": true },
+    "orbit-ui-map": { "summary": "fill or correct the UI map (screens, controls, effects)", "provides": ["ui.mapping"], "signals": ["map", "ui map", "locator", "selector", "control"], "requiresSignal": true },
+    "orbit": { "summary": "Orbit goal orchestrator: full-text goals, planning, and verified outcomes", "provides": ["goal.orchestration"], "signals": ["orbit", "goal", "pbi", "acceptance criteria", "from goal to"], "requiresSignal": true, "needs": ["project.context"], "optional": ["requirement.snapshot", "engineering.execution", "qa.investigation", "workflow.navigation"] },
+    "orbit-browser": { "summary": "pick a local browser and signed-in profile for a run", "provides": ["browser.session"], "signals": ["profile", "signed in", "sign in", "login", "session"], "requiresSignal": true, "needs": ["browser.automation"] },
+    "orbit-report": {
+      "summary": "a project report for a product owner: one batch from GitHub or Azure DevOps, frozen, computed and rendered offline",
+      "provides": ["project.reporting"],
+      "needs": ["python.runtime"],
+      "signals": ["po report", "product owner", "project report", "sprint report", "status report", "pull request report", "work items", "azure boards", "github", "azure devops"]
+    },
+    "orbit-test-plan": { "summary": "decide what to test: one checkable plan per feature", "provides": ["qa.planning"], "signals": ["plan", "test plan", "scenario", "scenarios", "coverage", "acceptance criteria"], "optional": ["requirement.snapshot"], "requiresSignal": true },
+    "orbit-qc-builder": { "summary": "build the smallest project-local QC tool a verification needs", "provides": ["qc.tooling"], "signals": ["qc tool", "capability", "verify through", "vendor sdk", "queue"], "requiresSignal": true },
+    "orbit-requirements": { "summary": "settle what a work item, PBI or issue asks for: atomic facts, blocking questions, one frozen snapshot, and the work that rests on it", "provides": ["requirement.snapshot"], "signals": ["pbi", "work item", "user story", "issue", "ticket", "requirement", "requirements", "backlog"], "needs": ["workitem.read"] },
+    "orbit-test-suite": { "summary": "run an agreed set of cases and write one review", "provides": ["qa.execution", "qa.review"], "signals": ["run", "regression", "suite", "the tests", "release", "build"], "needs": ["browser.automation"] },
+    "orbit-runtime": { "summary": "what a checkout needs to run, whether this machine can run it, and how: read once, kept per checkout, started only when asked", "provides": ["runtime.discovery"], "signals": ["dev container", "devcontainer", "dev environment", "development environment", "port conflict"], "needs": ["project.context", "repository.read"] },
+    "orbit-release": { "summary": "release this plugin: definition of done, versions, archive", "provides": ["release.gate"], "signals": ["orbit", "orbit", "plugin", "engine"], "requiresSignal": true }
+  },
+  "agents": {
+    "orbit-engineering-agent": { "summary": "drives one autonomous engineering task in its own context and returns where it stands, with the evidence", "provides": ["engineering.execution"] },
+    "orbit-qa-agent": { "summary": "runs one bounded autonomous QA investigation in its own context and returns the evidence", "provides": ["qa.investigation"] },
+    "orbit-architecture-scanner": { "summary": "answers one bounded architecture question with evidence", "provides": ["architecture.investigation"] },
+    "orbit-dsl-doctor": { "summary": "repairs how an invalid JSON case is written", "provides": ["qa.case-repair"], "signals": ["invalid case", "dsl", "query check"], "requiresSignal": true },
+    "orbit-engineering-observer": { "summary": "proposes how this project builds code from what a session touched", "provides": ["engineering.observation"] },
+    "orbit-failure-analyst": { "summary": "classifies one failed run into one cause", "provides": ["failure.classification"] },
+    "orbit-map-healer": { "summary": "proposes one locator repair for a drifted map record", "provides": ["ui.map-repair"], "signals": ["drift", "drifted", "locator", "selector"], "requiresSignal": true },
+    "orbit-map-recorder": { "summary": "reads one screen's source into candidate map records", "provides": ["ui.map-recording"], "signals": ["map", "screen", "controls"], "requiresSignal": true },
+    "orbit-qa-case-writer": { "summary": "turns one ready scenario into one validated JSON case", "provides": ["qa.authoring"], "signals": ["scenario", "write case", "write the case", "author"], "requiresSignal": true },
+    "orbit-requirement-reviewer": { "summary": "proposes or challenges the questions a requirement still owes a person, from one perspective", "provides": ["requirement.clarification"] },
+    "orbit-requirement-product": { "summary": "the Product perspective of a roundtable, as its own agent: missing intent and scope", "provides": ["requirement.clarification.product"] },
+    "orbit-requirement-domain": { "summary": "the Domain perspective of a roundtable, as its own agent: missing business semantics", "provides": ["requirement.clarification.domain"] },
+    "orbit-requirement-qa": { "summary": "the QA perspective of a roundtable, as its own agent: behaviour nobody specified", "provides": ["requirement.clarification.qa"] },
+    "orbit-requirement-socrates": { "summary": "the critic of a roundtable, as its own agent: keeps, drops, merges or refines the questions", "provides": ["requirement.clarification.socrates"] }
+  },
+  "builtins": {
+    "project-context": { "summary": "what this project is and how it builds code, memory first: architecture, technology, engineering, the working set", "provides": ["project.context"], "optional": ["architecture.context", "technology.context", "engineering.context"], "run": "node <engine>/cli/context.mjs --for=\"<the task>\"" },
+    "local-checkout": { "summary": "the checkout this session already reads, searches and changes", "provides": ["repository.read"], "implicit": true }
+  }
+}

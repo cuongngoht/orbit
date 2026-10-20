@@ -1,0 +1,4 @@
+1 GET https://app.test/home => [200]
+2 GET https://app.test/api/things => [200]
+3 GET https://app.test/static/app.js => [200]
+4 GET https://app.test/api/me => [200]

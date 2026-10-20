@@ -1,0 +1,152 @@
+/* The report's whole appearance, in a file a person can open and edit without
+   reading a line of JavaScript. Nothing here knows what is being tested: the
+   palette is CSS custom properties, so a project restyles the report by
+   overriding the variables and nothing else. */
+:root {
+  --accent: #5b5fc7; --accent-hover: #4f52b2; --accent-tint: #f0f0fb; --accent-border: #bdbde6;
+  --bg: #f5f5f5; --panel: #ffffff; --panel2: #fafafa; --panel3: #f0f0f0;
+  --border: #e0e0e0; --border-strong: #d1d1d1; --text: #242424; --text2: #424242; --muted: #616161;
+  --ok: #0e700e; --ok-bg: #f1faf1; --ok-border: #9fd89f; --ok-ink: #0e4f0e;
+  --warn: #bc4b09; --warn-bg: #fff9e6; --warn-border: #f2c661; --warn-ink: #6b3400;
+  --danger: #b10e1c; --danger-bg: #fdf3f4; --danger-border: #f1bbbc; --danger-ink: #7a0d18;
+  --radius: 8px; --radius-sm: 4px;
+  --shadow2: 0 1px 2px rgba(0,0,0,.14), 0 0 2px rgba(0,0,0,.12);
+  --mono: Consolas, ui-monospace, SFMono-Regular, Menlo, "Courier New", monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5;
+  font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", sans-serif; }
+a { color: var(--accent); }
+code, .mono { font-family: var(--mono); font-size: .9em; }
+code { background: var(--panel3); padding: 1px 5px; border-radius: var(--radius-sm); color: var(--text2); }
+
+header.top { padding: 26px 32px 22px; color: #fff; background: linear-gradient(135deg, #7579e7 0%, var(--accent) 45%, var(--accent-hover) 100%); }
+header.top h1 { margin: 0 0 6px; font-size: 24px; font-weight: 600; }
+header.top .meta { color: rgba(255,255,255,.88); font-size: 13px; }
+header.top code { background: rgba(255,255,255,.16); color: #fff; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 24px 32px 72px; }
+
+.callout { border-radius: var(--radius); padding: 14px 16px; margin-bottom: 20px; font-size: 13.5px;
+  border: 1px solid var(--warn-border); background: var(--warn-bg); color: var(--warn-ink); }
+.callout.danger { border-color: var(--danger-border); background: var(--danger-bg); color: var(--danger-ink); }
+.callout.ok { border-color: var(--ok-border); background: var(--ok-bg); color: var(--ok-ink); }
+
+h2.section-title { font-size: 19px; font-weight: 600; margin: 36px 0 12px; padding-bottom: 8px;
+  border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+h2.section-title .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+h3 { margin: 0 0 6px; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; background: var(--panel);
+  border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow2); margin-bottom: 14px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { background: var(--panel3); color: var(--text2); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+tr:last-child td { border-bottom: none; }
+tr.broke td { background: var(--danger-bg); }
+
+/* One test case, and inside it one block per layer it ruled on. The layout is
+   per CASE rather than per layer because that is how a reader asks: "this case
+   -- what did the screen, the call and the row each say?" */
+.tc { border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel);
+  margin-bottom: 14px; box-shadow: var(--shadow2); overflow: hidden; }
+.tc-head { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 14px; background: var(--panel2); border-bottom: 1px solid var(--border); }
+.tc-head .tc-id { font-weight: 600; font-size: 13.5px; }
+.tc-body { padding: 12px 14px; }
+
+.layer { margin: 10px 0; }
+.layer .lbl { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase; color: #fff; padding: 2px 8px; border-radius: 999px; margin-bottom: 4px; background: var(--accent); }
+.layer .lbl.ui { background: #b146c2; }
+.layer .lbl.api { background: #0f7b8a; }
+.layer .lbl.sql { background: #8764b8; }
+.layer .none { color: var(--muted); font-style: italic; font-size: 12.5px; }
+
+.ask { border-top: 1px solid var(--border); padding: 10px 0; }
+.ask:first-of-type { border-top: none; }
+.ask-head { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.ask-head .n { font-family: var(--mono); }
+.ask-head .held { margin-left: auto; font-weight: 600; color: var(--ok); }
+.ask-head .broke { margin-left: auto; font-weight: 600; color: var(--danger); }
+
+.verdict { border-radius: var(--radius-sm); padding: 8px 10px; font-size: 13px; margin-top: 8px; font-weight: 600; }
+.verdict.pass { background: var(--ok-bg); border: 1px solid var(--ok-border); color: var(--ok-ink); }
+.verdict.fail { background: var(--danger-bg); border: 1px solid var(--danger-border); color: var(--danger-ink); }
+.verdict.warn { background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-ink); }
+
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid transparent; }
+.badge.pass { background: var(--ok-bg); color: var(--ok); border-color: var(--ok-border); }
+.badge.fail { background: var(--danger-bg); color: var(--danger); border-color: var(--danger-border); }
+.badge.warn { background: var(--warn-bg); color: var(--warn); border-color: var(--warn-border); }
+.badge.flat { background: var(--panel3); color: var(--muted); border-color: var(--border-strong); }
+
+pre { margin: 6px 0; font-family: var(--mono); font-size: 12px; white-space: pre-wrap; word-break: break-word;
+  background: var(--panel3); border-radius: var(--radius-sm); padding: 10px; overflow-x: auto; }
+pre.js { border-left: 3px solid var(--accent); }
+pre.sql { border-left: 3px solid #8764b8; }
+/* Copy, because the point of printing a query is that somebody runs it. Only on
+   text that IS runnable -- a button on prose teaches people to ignore it. */
+.copyable { position: relative; }
+.copyable pre { padding-right: 62px; }
+.copyable button { position: absolute; top: 8px; right: 8px; font: inherit; font-size: 11px; padding: 2px 8px;
+  border: 1px solid var(--border-strong); background: var(--panel); color: var(--muted); border-radius: var(--radius-sm); cursor: pointer; }
+.copyable button:hover { color: var(--accent); border-color: var(--accent); }
+
+.note { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+.note b { color: var(--text); font-weight: 600; }
+.note.broke { color: var(--danger); }
+img.shot { display: block; max-width: 100%; border: 1px solid var(--border); border-radius: var(--radius-sm); margin-top: 6px; }
+footer { color: var(--muted); font-size: 12px; text-align: center; padding: 24px 0 40px; }
+
+/* Case-report additions stay scoped: session and plan pages share this file. */
+.case-report .case-id { margin: 0 0 8px; opacity: .9; }
+.case-report .summary-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(145px,1fr)); gap: 14px; margin: 22px 0; }
+.case-report .metric-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow2); }
+.case-report .metric-card strong { display: block; font-size: 27px; color: var(--accent); }
+.case-report .metric-card span { color: var(--muted); text-transform: uppercase; font-size: 11px; font-weight: 600; }
+.case-report .journey { list-style: none; padding: 16px; background: var(--panel); border: 1px solid var(--accent-border); border-radius: var(--radius); }
+.case-report .journey li { display: flex; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.case-report .journey li:last-child { border-bottom: 0; }
+.case-report .journey li > div { min-width: 0; overflow-wrap: anywhere; }
+.case-report .journey p { margin: 6px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.case-report .step-number { display: grid; place-items: center; width: 26px; height: 26px; flex: none; background: var(--accent); color: white; border-radius: 50%; font-weight: 600; }
+.case-report .controls-bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+.case-report .controls-bar span { font-size: 12px; color: var(--muted); }
+.case-report button { cursor: pointer; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 7px 12px; background: var(--panel); color: var(--accent-hover); font: inherit; font-size: 12px; }
+.case-report button:hover { background: var(--accent-tint); }
+.case-report :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.case-report .shots-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,320px),1fr)); align-items: start; gap: 14px; }
+.case-report details { border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); overflow: hidden; }
+.case-report summary { cursor: pointer; padding: 12px 14px; background: var(--panel2); font-weight: 600; overflow-wrap: anywhere; }
+.case-report .shot-button { display: block; width: 100%; padding: 8px; background: var(--panel3); border: 0; }
+.case-report .shot { margin: 0; width: 100%; }
+.case-report .shot-card .note { padding: 12px; }
+.case-report .case-source > button { margin: 12px; }
+.case-report .case-source pre { margin: 0; max-height: 480px; overflow: auto; }
+.case-report .rerun-title { margin-top: 20px; }
+.case-report .table-scroll { max-height: 400px; overflow: auto; }
+.case-report .table-scroll table { margin: 0; }
+.case-report .table-scroll th { position: sticky; top: 0; }
+.case-report pre { max-height: 480px; overflow: auto; }
+.case-report td { overflow-wrap: anywhere; }
+.case-report .ask-head { flex-wrap: wrap; }
+.case-report #report-action-status { min-height: 20px; color: var(--muted); font-size: 12px; }
+.case-report dialog { max-width: 95vw; max-height: 95vh; padding: 16px; border: 0; border-radius: var(--radius); }
+.case-report dialog::backdrop { background: rgba(0,0,0,.85); }
+.case-report .viewer-image img { display: block; width: auto; max-width: 88vw; max-height: 75vh; object-fit: contain; }
+.case-report .viewer-caption { max-width: 85vw; overflow-wrap: anywhere; }
+.case-report .viewer-image { margin-top: 12px; }
+@media (max-width: 600px) {
+  .case-report .wrap { padding: 16px 12px 40px; }
+  .case-report header.top { padding: 22px 16px; }
+  .case-report header.top h1 { font-size: 21px; overflow-wrap: anywhere; }
+  .case-report .summary-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+  .case-report .tc-body { padding: 10px; }
+  .case-report table { display: block; overflow-x: auto; }
+  .case-report .badge { white-space: normal; }
+}
+@media print {
+  .case-report button, .case-report dialog, .case-report #report-action-status { display: none; }
+  .case-report .wrap { max-width: none; padding: 0; }
+  .case-report pre, .case-report .table-scroll, .case-report .case-source pre { max-height: none; overflow: visible; }
+  .case-report details > * { display: block; }
+}

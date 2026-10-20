@@ -1,0 +1,12 @@
+{
+  "schema": 2,
+  "fe_commit": null,
+  "captured": null,
+  "note": "Provenance of the map (which frontend commit it was recorded against, when, against which environment) and this product's own vocabulary below.",
+  "layers": [
+    { "key": "sql", "label": "SQL", "describe": ["${table}", " (${cols})"] }
+  ],
+  "timings": [
+    { "name": "sync" }
+  ]
+}

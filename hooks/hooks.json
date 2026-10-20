@@ -1,0 +1,111 @@
+{
+  "modules": ["./live-pane.tsx"],
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/cli/learn-hook.mjs\"",
+            "timeout": 15,
+            "statusMessage": "recalling what past sessions learned"
+          },
+          {
+            "type": "command",
+            "async": true,
+            "timeout": 60,
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/cli/resources.mjs\" observe --hook"
+          },
+          {
+            "type": "command",
+            "async": true,
+            "timeout": 10,
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/cli/knowledge.mjs\" locate --hook"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 5,
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/cli/router-hook.mjs\""
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Skill|Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 10,
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/cli/learn-hook.mjs\""
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "async": true,
+            "timeout": 10,
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/cli/learn-hook.mjs\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "async": true,
+            "timeout": 120,
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/cli/learn-hook.mjs\""
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 10,
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/cli/learn-hook.mjs\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "async": true,
+            "timeout": 10,
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/cli/learn-hook.mjs\""
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 10,
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/cli/learn-hook.mjs\""
+          }
+        ]
+      }
+    ]
+  }
+}

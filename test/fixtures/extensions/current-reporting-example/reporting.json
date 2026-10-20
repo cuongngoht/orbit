@@ -1,0 +1,24 @@
+{
+  "parts": [
+    {
+      "id": "pr-aging.metric",
+      "version": "0.1.0",
+      "kind": "metric",
+      "contract": "orbit.report.part/v1",
+      "runtime": "python",
+      "requires": ">=3.11",
+      "entry": "./pr_aging.py",
+      "doc": "How long the pull requests still open at the cut-off had been waiting",
+      "provides": ["report.metric.pr-aging.open-at-cutoff", "report.metric.pr-aging.median-age", "report.metric.pr-aging.over-two-weeks"],
+      "needs": ["report.collection.pullRequests"],
+      "metrics": [
+        { "id": "pr-aging.open-at-cutoff", "version": "1", "label": "Pull requests open at the cut-off", "unit": "count", "definition": "Pull requests created before the cut-off and neither merged nor closed then, by their own events" },
+        { "id": "pr-aging.median-age", "version": "1", "label": "Median age of open pull requests", "unit": "days", "definition": "Median of (cut-off minus opened) over the pull requests open at the cut-off" },
+        { "id": "pr-aging.over-two-weeks", "version": "1", "label": "Open pull requests waiting two weeks or more", "unit": "%", "definition": "Share of the pull requests open at the cut-off that had been open 14 days or more" }
+      ],
+      "section": { "id": "pr-aging.section", "title": "Open PR aging", "placement": "after:orbit.report.section.backlog" },
+      "timeoutSec": 60,
+      "basedOn": ["need: how long the pull requests still open at the cut-off had been waiting", "collection: pullRequests"]
+    }
+  ]
+}

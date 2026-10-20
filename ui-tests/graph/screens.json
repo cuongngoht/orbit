@@ -1,0 +1,9 @@
+[
+  {
+    "id": "home",
+    "name": "Home",
+    "url": "/",
+    "seen": "src",
+    "note": "Replace with your first real screen. `seen: src` until someone drives it in a browser."
+  }
+]

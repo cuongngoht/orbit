@@ -1,0 +1,49 @@
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: "Segoe UI", "Segoe UI Web (West European)", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", sans-serif;
+}
+
+/*
+ * .app-root is the FluentProvider's class, and Fluent COPIES that class onto
+ * every portal it mounts (tooltips, menus, dialogs) so the theme reaches them.
+ * So nothing here may paint or size: a `min-height: 100vh` on it once turned the
+ * tooltip portal into a white sheet over the whole page. Variables only; the
+ * shell (app/layout/AppShell.tsx) owns height and background.
+ */
+
+/*
+ * Chart and status colors, from the dataviz reference palette and checked with
+ * its validator against Fluent's own card surfaces (#ffffff light, #292929
+ * dark): series slot 1 passes every check in both modes. Status colors are
+ * fixed across themes and never carry meaning alone -- each ships with an icon
+ * and words. Chart chrome (gridlines, axes, labels) uses Fluent tokens instead,
+ * because those are the ones matched to Fluent's surfaces.
+ */
+.app-root[data-theme="light"] {
+  --viz-series-1: #2a78d6;
+}
+
+.app-root[data-theme="dark"] {
+  --viz-series-1: #3987e5;
+}
+
+.app-root {
+  --viz-good: #0ca30c;
+  --viz-warning: #fab219;
+  --viz-critical: #d03b3b;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

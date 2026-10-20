@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://orbit.dev/schema/graph.schema.json",
+  "title": "drive-ui UI map",
+  "description": "The map a test case points into: which screens exist, which control is where, and what each control does below the UI. Three files, one record kind each — screens.json, edges.json, effects.json — plus meta.json, which carries provenance AND this product's own vocabulary for layers and timings. A record carries no `t` discriminator: the file it lives in says what it is, so the two cannot disagree. Point a file at the matching definition with \"$ref\", or validate with `node query.mjs check`, which also enforces the rules a shape cannot express (an edge pointing at a screen that does not exist, an effect hanging off a control that was renamed, an effect using a layer or timing meta.json never declared).",
+  "oneOf": [
+    { "type": "array", "items": { "$ref": "#/definitions/screen" } },
+    { "type": "array", "items": { "$ref": "#/definitions/edge" } },
+    { "type": "array", "items": { "$ref": "#/definitions/effect" } },
+    { "$ref": "#/definitions/meta" }
+  ],
+  "definitions": {
+    "seen": {
+      "enum": ["live", "src"],
+      "description": "live = driven in a real browser and observed; trust it. src = read from frontend source and never watched render; verify on first use, then flip it. Never delete a record to tidy up — a wrong record is evidence."
+    },
+    "meta": {
+      "type": "object",
+      "description": "meta.json: where this map came from, and the words this product uses for what it touches. The engine ships no stack vocabulary of its own — declare yours here and `check` holds every effect to it.",
+      "properties": {
+        "schema": { "type": "integer", "description": "Map format version." },
+        "fe_commit": { "type": "string", "description": "Frontend commit the map was recorded against." },
+        "captured": { "type": "string", "description": "When it was recorded." },
+        "note": { "type": "string" },
+        "layers": {
+          "type": "array",
+          "description": "The layers below the UI this product can touch, in the order a QC sheet lists them. Declaring any replaces the engine's default of `sql` alone, so list sql too when you use it.",
+          "items": {
+            "type": "object",
+            "required": ["key"],
+            "properties": {
+              "key": { "type": "string", "description": "The key an effect uses inside `layers` — sql, queue, directory, blob, mail, whatever this stack has." },
+              "label": { "type": "string", "description": "What to print. Defaults to the key." },
+              "describe": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "How to say one entry, as segments each holding one ${field} of that entry: [\"${table}\", \" (${cols})\"]. A segment whose field is absent disappears, so one template covers a full and a bare entry. Without it an entry prints as raw JSON."
+              }
+            }
+          }
+        },
+        "timings": {
+          "type": "array",
+          "description": "When an action is finished. The engine assumes `sync` alone; declare every other word an effect may use, or check reports it as undeclared.",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string", "description": "The word an effect's timing uses. `sync` = done when the response returns." },
+              "layer": { "type": "string", "description": "The layer key an effect with this timing MUST name: deferred work that does not say what finishes it sends a QC engineer to watch nothing." },
+              "note": { "type": "string", "description": "The sentence plan.mjs prints above such a step — what makes this timing a trap, and how to verify it instead of waiting." }
+            }
+          }
+        }
+      }
+    },
+    "screen": {
+      "type": "object",
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string", "description": "Stable key. Steps say `screen: \"<id>\"` and edges say `from: \"<id>\"`." },
+        "name": { "type": "string", "description": "What the screen calls itself on screen." },
+        "url": { "type": "string", "description": "Route, if it has one. A node with no url is a dialog, wizard tab or row menu — reached by clicking, not by navigating. `{param}` marks a templated segment." },
+        "module": { "type": "string", "description": "Frontend module, bundle or feature area it belongs to." },
+        "admin": { "type": "boolean", "description": "Reachable only by an account holding an administrator role." },
+        "dead": { "type": "boolean", "description": "The navigation offers it but no router registers it. Deep-linking renders a fallback screen while keeping the URL, so a case that goes here believes it is somewhere it is not." },
+        "stub": { "type": "boolean", "description": "Placeholder component — there is no UI to drive." },
+        "traced": { "type": "boolean", "description": "A promise that every commit action on this screen has an effect record. It is what lets `query.mjs layers` print “—” (proven untouched) instead of “?” (nobody looked)." },
+        "reachable": { "type": "boolean", "description": "Observed reachable in the crawled environment. An ENVIRONMENT fact, not a product fact: routes can come from a per-environment menu payload, so re-crawl rather than inherit it." },
+        "seen": { "$ref": "#/definitions/seen" },
+        "fe_commit": { "type": "string" },
+        "note": { "type": "string", "description": "Whatever misleads people about this screen — timing traps, what the rows really are, which shell it belongs to." }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "required": ["from", "via", "kind", "selector", "opens"],
+      "properties": {
+        "from": { "type": "string", "description": "Screen id this control sits on." },
+        "via": { "type": "string", "description": "Its label. `from/via` is the key a case step and an effect both address it by, and it is unique across the map." },
+        "kind": { "type": "string", "description": "button, link, tab, combobox, textbox, rowmenu, menuitem, icon …" },
+        "selector": { "type": "string", "description": "The Playwright locator, defined HERE and nowhere else — correcting it fixes every case that walks through this control. \"UNKNOWN\" means it was never captured and any case naming it will be refused." },
+        "options": { "type": "array", "items": { "type": "string" }, "description": "For a combobox: the choices it offers." },
+        "opens": {
+          "enum": ["screen", "dialog", "panel", "inline", "external", "none"],
+          "description": "screen = navigates elsewhere; dialog = modal; panel = inline/side panel; inline = acts in place, no new surface; external = leaves the app; none = no surface change."
+        },
+        "to": { "type": ["string", "null"], "description": "Destination node id, or null when nothing new opens." },
+        "required": { "type": "boolean", "description": "An input that must be filled before the commit control enables." },
+        "destructive": { "type": "boolean", "description": "Deletes or hard-changes real data. Emitted commented-out by plan.mjs, and a case using it needs --force-destructive." },
+        "seen": { "$ref": "#/definitions/seen" },
+        "fe_commit": { "type": "string" },
+        "note": { "type": "string", "description": "The trap. Why this selector and not the obvious one, what the label really matches, what a click here silently fails to do." }
+      }
+    },
+    "effect": {
+      "type": "object",
+      "required": ["on", "backend", "timing"],
+      "properties": {
+        "on": { "type": "string", "pattern": "^[^/]+/.+$", "description": "The `<screen>/<via>` of the control this describes. Unique — one effect per control." },
+        "api": { "type": "string", "description": "The call it makes. Absent when backend is \"none\"." },
+        "backend": { "type": "string", "description": "Which deployable serves it — your own names, plus the reserved \"none\" for a control that calls nothing. Verify it with an `api` step in a case rather than by grepping source." },
+        "auth": { "type": "string", "description": "The authorization attribute on the controller action." },
+        "src": { "type": "string", "description": "file:line → file:line, frontend through to backend. `query.mjs verify` resolves these and flags any whose file has changed." },
+        "timing": { "type": "string", "description": "When it is finished: `sync` (done when the response returns), or any timing meta.json declares. An undeclared word is a check finding." },
+        "partial": { "type": "boolean", "description": "A hop could not be traced. The gap belongs in the QC sheet's Open questions." },
+        "persistedBy": { "type": "string", "description": "For a backend:\"none\" control whose input is written later by another action — names that action." },
+        "layers": {
+          "type": "object",
+          "description": "What it touches below the UI, keyed by a layer meta.json declares. OMIT a layer, never empty-array it: an absent key claims “does not touch that layer” and prints “—”, while an untraced control prints “?”. Conflating them is how a QC engineer stops checking something that does happen. Every entry needs its own src — a table name without a file:line is a guess, and worse than a missing one because someone will query it and pass.",
+          "additionalProperties": { "type": "array", "items": { "type": "object" } }
+        },
+        "seen": { "$ref": "#/definitions/seen" },
+        "fe_commit": { "type": "string" },
+        "note": { "type": "string" }
+      }
+    }
+  }
+}

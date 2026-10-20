@@ -1,0 +1,92 @@
+# The plugin ships to every Orbit team, and those teams are not all on one OS.
+# Both of the defects this workflow was written after were Windows-only and
+# invisible on Linux, so the matrix is the point of the file.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ["20", "22"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      # The project report's computations run on Python (3.11 or newer). A
+      # developer's machine without one skips those tests and the gate prints the
+      # count; CI never skips them -- ORBIT_REQUIRE_PYTHON turns a missing
+      # interpreter into a failure, on Windows as on Linux.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: no dependencies to install
+        run: node -e "const p=require('./package.json'); if (p.dependencies||p.devDependencies) { console.error('zero dependencies is a rule'); process.exit(1) }"
+      - name: the plugin manifests are valid
+        run: node -e "for (const f of ['.claude-plugin/plugin.json','.claude-plugin/marketplace.json']) JSON.parse(require('fs').readFileSync(f,'utf8'))"
+
+      # The definition of done, run the same way a person runs it before tagging:
+      # the suite and its count, Five Lines, the fixture project (exit code and
+      # all), the generated schema, and the three version fields. It used to be
+      # five steps here, three of which existed only as an inline node -e -- so
+      # the release gate and CI could disagree about what "done" meant, and one
+      # of those copies compared file bytes and failed on every CRLF checkout.
+      - name: the definition of done
+        run: node skills/orbit-release/ship.mjs
+        env:
+          ORBIT_REQUIRE_PYTHON: "1"
+
+  # Orbit Control sits BESIDE the engine and declares its own Node (>= 24.15), so
+  # it gets its own jobs and the core matrix above installs nothing for it. Its
+  # server tests also run inside the core suite (a bare `node --test` finds
+  # them); here they run on the Node the server actually requires.
+  control-server:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: no dependencies to install
+        run: node -e "const p=require('./control-server/package.json'); if (p.dependencies||p.devDependencies) { console.error('the control server uses Node built-ins only'); process.exit(1) }"
+      - name: the server's tests
+        run: node --test "control-server/test/*.test.mjs"
+      - name: every line holds to Five Lines
+        run: node cli/check-five-lines.mjs control-server/src --strict
+
+  # The page is built from control-panel/ into control-server/public/, and the
+  # BUILT files are committed -- a person running Orbit Control never needs Vite.
+  # So the last step fails when the committed build is not what the source
+  # produces, the same promise the schema gate makes about cases/schema.json.
+  control-panel:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: control-panel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: control-panel/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: the committed build is what the source produces
+        run: |
+          git status --porcelain -- ../control-server/public
+          test -z "$(git status --porcelain -- ../control-server/public)" || { echo "control-server/public/ is stale: run npm run build in control-panel/ and commit it"; exit 1; }

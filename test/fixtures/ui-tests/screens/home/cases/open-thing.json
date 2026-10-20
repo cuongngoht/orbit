@@ -1,0 +1,15 @@
+{
+  "$schema": "../../../schema/case.schema.json",
+  "id": "open-thing",
+  "name": "Open the thing by the id the database holds",
+  "start": "home",
+  "identity": { "as": "admin", "roles": ["App.Admin"] },
+  "params": [ { "n": "NAME", "required": true, "desc": "TC- prefix, the thing to open" } ],
+  "steps": [
+    { "do": "goto", "screen": "home", "wait": "document.body.innerText.length>0" },
+    { "do": "sql", "query": "SELECT Id FROM Things WHERE Name='${NAME}'", "expect": "it.length === 1", "into": "ID", "why": "the id is never on the screen, and hard-coding one rots the case" },
+    { "do": "goto", "screen": "detail", "url": "/things/${ID}", "wait": "document.body.innerText.includes('${NAME}')" },
+    { "do": "report", "js": "JSON.stringify({open: location.pathname.endsWith('/${ID}')})", "expect": "it.open === true" }
+  ],
+  "seen": "src"
+}

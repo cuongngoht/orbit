@@ -1,0 +1,16 @@
+{
+  "$schema": "../../../schema/case.schema.json",
+  "id": "archive-thing",
+  "name": "Archive a thing from its detail screen",
+  "start": "detail",
+  "identity": { "as": "admin", "roles": ["App.Admin"] },
+  "destructive": true,
+  "params": [ { "n": "ID", "required": true, "desc": "the thing to archive" } ],
+  "steps": [
+    { "do": "goto", "screen": "detail", "url": "/things/${ID}", "wait": "document.body.innerText.length>0" },
+    { "do": "click", "on": "detail/Archive", "wait": "document.body.innerText.includes('Archived')" },
+    { "do": "report", "js": "JSON.stringify({archived: document.body.innerText.includes('Archived')})", "expect": "it.archived === true" }
+  ],
+  "seen": "src",
+  "note": "It rules on the screen alone: the map records no effect for detail/Archive, so nothing here knows which call it makes or which table it writes. The plan records that as a capability gap rather than pretending otherwise."
+}

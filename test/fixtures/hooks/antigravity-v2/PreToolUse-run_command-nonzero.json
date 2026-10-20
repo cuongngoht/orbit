@@ -1,0 +1,49 @@
+{
+  "input": {
+    "artifactDirectoryPath": "/fixture-host/artifacts",
+    "conversationId": "fixture-session",
+    "modelName": "fixture-model",
+    "stepIdx": 5,
+    "toolCall": {
+      "args": {
+        "CommandLine": "ls does-not-exist",
+        "Cwd": "/fixture",
+        "WaitMsBeforeAsync": 5000,
+        "toolAction": "fixture action",
+        "toolSummary": "fixture summary"
+      },
+      "name": "run_command"
+    },
+    "transcriptPath": "/fixture-host/transcript.jsonl",
+    "workspacePaths": [
+      "/fixture"
+    ]
+  },
+  "argv": [
+    "--host=antigravity",
+    "--protocol=2",
+    "--event=PreToolUse"
+  ],
+  "expected": {
+    "protocol": 2,
+    "hostEvent": "PreToolUse",
+    "event": "pre-tool",
+    "session": "antigravity:d6440983c454c2e5",
+    "turn": null,
+    "delivery": "antigravity:ef2d127de37b942b",
+    "cwd": "/fixture",
+    "outcome": "unknown",
+    "idle": false,
+    "tool": {
+      "name": "run_command",
+      "kind": "command"
+    },
+    "paths": [],
+    "pattern": null,
+    "command": "ls does-not-exist",
+    "background": false,
+    "invokes": null,
+    "host": "antigravity",
+    "ok": null
+  }
+}

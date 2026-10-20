@@ -1,0 +1,10 @@
+{
+  "id": "pr-aging",
+  "version": "0.1.0",
+  "apiVersion": "orbit.extension/v2",
+  "engine": ">=0.0.1 <1",
+  "status": "active",
+  "createdFor": "PO wants to know how long the pull requests still open at the cut-off had been waiting",
+  "note": "Made for: PO wants to know how long the pull requests still open at the cut-off had been waiting. What was tried first: the standard parts, the report settings' mapping, and the extensions already registered.",
+  "reporting": "./reporting.json"
+}

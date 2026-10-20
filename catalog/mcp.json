@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "doc": "MCP servers Orbit knows about, as immutable product data shipped with the plugin. A row is never proof that anything is installed or enabled. A `recommended` row with a `definition` can be ADDED TO Orbit from Orbit Control: it then becomes a Orbit-managed resource kept in the machine store -- no host configuration is written. `install` says how its runtime gets here: remote-http (nothing to install), archive (pinned, SHA-256 per platform, into <storeBase>/runtimes/mcp/) or manual. Every row also RECOGNISES a server a host has configured (by id, url or command) so it can be shown with what it provides; such a server stays external and observe-only. `provides` names capabilities, never a skill. No row holds a secret: a definition names the environment variable a secret comes from.",
+  "servers": [
+    {
+      "id": "microsoft-learn",
+      "name": "Microsoft Learn",
+      "description": "Microsoft documentation and learning resources: search, fetch pages, code samples",
+      "recommended": true,
+      "definition": { "transport": "http", "url": "https://learn.microsoft.com/api/mcp" },
+      "install": { "strategy": "remote-http" },
+      "match": { "ids": ["microsoft-learn", "microsoft-docs", "mslearn", "learn"], "urls": ["learn.microsoft.com/api/mcp"] },
+      "provides": ["documentation.search", "documentation.microsoft", "dotnet.documentation", "azure.documentation"],
+      "routing": {
+        "requiresSignal": true,
+        "signals": ["microsoft", ".net", "dotnet", "c#", "csharp", "asp.net", "aspnet", "ef core", "entity framework", "azure", "entra", "graph", "microsoft graph", "sharepoint", "teams", "onedrive", "outlook", "m365", "office 365", "power platform", "powershell", "windows", "visual studio", "vs code", "sql server", "t-sql", "bicep", "blazor", "maui", "nuget", "msal", "iis", "exchange", "intune", "dataverse", "fabric", "cosmos db", "service bus", "key vault"]
+      }
+    },
+    {
+      "id": "github",
+      "name": "GitHub",
+      "description": "Repositories, pull requests, issues and code search on GitHub",
+      "recommended": false,
+      "match": { "ids": ["github"], "urls": ["api.githubcopilot.com/mcp"] },
+      "provides": ["repository.read", "repository.search", "repository.write", "code.review", "workitem.read", "workitem.relations.read", "workitem.comments.read"],
+      "routing": { "requiresSignal": true, "signals": ["github", "pr", "pull request", "issue", "issues", "repository", "repo", "work item"] }
+    },
+    {
+      "id": "azure-devops",
+      "name": "Azure DevOps",
+      "description": "Boards work items, repositories and pipelines on Azure DevOps",
+      "recommended": false,
+      "match": { "ids": ["azure-devops", "ado", "azuredevops"] },
+      "provides": ["workitem.read", "workitem.relations.read", "workitem.comments.read", "workitem.history.read"],
+      "routing": { "requiresSignal": true, "signals": ["azure devops", "ado", "azure boards", "work item"] }
+    },
+    {
+      "id": "playwright",
+      "name": "Playwright",
+      "description": "Drive a browser page: navigate, click, read the accessibility tree, screenshot",
+      "recommended": false,
+      "match": { "ids": ["playwright"], "commands": ["@playwright/mcp"] },
+      "provides": ["browser.automation"],
+      "routing": { "signals": ["browser", "screenshot", "page", "click"] }
+    }
+  ]
+}

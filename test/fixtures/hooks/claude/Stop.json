@@ -1,0 +1,31 @@
+{
+  "input": {
+    "hook_event_name": "Stop",
+    "session_id": "fixture-session",
+    "cwd": "/fixture",
+    "prompt": "fixture task",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "node cli/run-case.mjs fixture"
+    }
+  },
+  "argv": [],
+  "expected": {
+    "hostEvent": "Stop",
+    "session": "claude:d6440983c454c2e5",
+    "cwd": "/fixture",
+    "prompt": null,
+    "tool": {
+      "name": "Bash",
+      "kind": "command"
+    },
+    "paths": [],
+    "pattern": null,
+    "command": "node cli/run-case.mjs fixture",
+    "ok": true,
+    "background": false,
+    "invokes": null,
+    "event": "turn-end",
+    "host": "claude"
+  }
+}

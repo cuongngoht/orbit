@@ -1,0 +1,40 @@
+{
+  "input": {
+    "hookEventName": "session_start",
+    "sessionId": "grok-fixture-session",
+    "cwd": "/fixture",
+    "workspaceRoot": "/fixture",
+    "timestamp": "2026-10-18T07:04:54.014002+00:00",
+    "permissionMode": "bypassPermissions",
+    "source": "new",
+    "hook_event_name": "SessionStart",
+    "session_id": "grok-fixture-session",
+    "permission_mode": "bypassPermissions"
+  },
+  "argv": [
+    "--host=grok",
+    "--protocol=2"
+  ],
+  "expected": {
+    "protocol": 2,
+    "hostEvent": "SessionStart",
+    "event": "session-start",
+    "session": "grok:22d57f5bf67e48dc",
+    "turn": null,
+    "delivery": null,
+    "cwd": "/fixture",
+    "prompt": null,
+    "outcome": "unknown",
+    "tool": {
+      "name": null,
+      "kind": "other"
+    },
+    "paths": [],
+    "pattern": null,
+    "command": null,
+    "background": false,
+    "invokes": null,
+    "host": "grok",
+    "ok": null
+  }
+}

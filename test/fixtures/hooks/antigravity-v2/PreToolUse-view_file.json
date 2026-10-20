@@ -1,0 +1,49 @@
+{
+  "input": {
+    "artifactDirectoryPath": "/fixture-host/artifacts",
+    "conversationId": "fixture-session",
+    "modelName": "fixture-model",
+    "stepIdx": 4,
+    "toolCall": {
+      "args": {
+        "AbsolutePath": "/fixture/ui-tests/project.json",
+        "toolAction": "fixture action",
+        "toolSummary": "fixture summary"
+      },
+      "name": "view_file"
+    },
+    "transcriptPath": "/fixture-host/transcript.jsonl",
+    "workspacePaths": [
+      "/fixture"
+    ]
+  },
+  "argv": [
+    "--host=antigravity",
+    "--protocol=2",
+    "--event=PreToolUse"
+  ],
+  "expected": {
+    "protocol": 2,
+    "hostEvent": "PreToolUse",
+    "event": "pre-tool",
+    "session": "antigravity:d6440983c454c2e5",
+    "turn": null,
+    "delivery": "antigravity:4b227777d4dd1fc6",
+    "cwd": "/fixture",
+    "outcome": "unknown",
+    "idle": false,
+    "tool": {
+      "name": "view_file",
+      "kind": "read"
+    },
+    "paths": [
+      "/fixture/ui-tests/project.json"
+    ],
+    "pattern": null,
+    "command": null,
+    "background": false,
+    "invokes": null,
+    "host": "antigravity",
+    "ok": null
+  }
+}

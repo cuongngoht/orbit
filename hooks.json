@@ -1,0 +1,42 @@
+{
+  "orbit-learn": {
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "node cli/learn-hook.mjs --host=antigravity --protocol=2 --event=PreInvocation",
+        "timeout": 15
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node cli/learn-hook.mjs --host=antigravity --protocol=2 --event=PreToolUse",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node cli/learn-hook.mjs --host=antigravity --protocol=2 --event=PostToolUse",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "node cli/learn-hook.mjs --host=antigravity --protocol=2 --event=Stop",
+        "timeout": 3
+      }
+    ]
+  }
+}

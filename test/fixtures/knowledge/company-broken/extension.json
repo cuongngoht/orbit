@@ -1,0 +1,10 @@
+{
+  "id": "company-broken",
+  "version": "1.0.0",
+  "apiVersion": "orbit.extension/v2",
+  "engine": ">=0.0.1 <99",
+  "status": "verified",
+  "note": "A knowledge module that does not hold to the contract — a role nobody publishes — beside a capability that would be fine on its own. The whole extension must be refused, capability included.",
+  "capabilities": "./capabilities.mjs",
+  "knowledge": "./knowledge.mjs"
+}

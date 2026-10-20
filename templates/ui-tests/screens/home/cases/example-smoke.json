@@ -1,0 +1,14 @@
+{
+  "$schema": "../../../schema/case.schema.json",
+  "id": "example-smoke",
+  "name": "The home screen paints (replace me)",
+  "start": "home",
+  "destructive": false,
+  "steps": [
+    { "do": "goto", "screen": "home", "wait": "document.body.innerText.length > 0", "why": "the shell has painted" },
+    { "do": "assert", "js": "document.title.length > 0", "why": "the page has a title" },
+    { "do": "report", "js": "JSON.stringify({title: document.title})", "expect": "typeof it.title === 'string'" }
+  ],
+  "seen": "src",
+  "note": "A minimal case: one goto, one fact, one reported value with a verdict. Delete once you have a real one."
+}

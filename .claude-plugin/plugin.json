@@ -1,0 +1,264 @@
+{
+  "name": "orbit",
+  "description": "Orbit Engineering for Claude Code, Codex and Antigravity: From Goal to Verified Outcome — context, requirements, sandboxes, runtime, UI tests, autonomous QA, Orbit Control, MCP and tools. Governed and local. No dependencies.",
+  "version": "0.0.1",
+  "author": {
+    "name": "Orbit Engineering",
+    "email": "40376533+cuongngoht@users.noreply.github.com"
+  },
+  "license": "MIT",
+  "keywords": [
+    "qa",
+    "playwright",
+    "ui-testing",
+    "json-dsl",
+    "test-runner",
+    "autonomous-qa",
+    "api-testing",
+    "security-testing"
+  ],
+  "homepage": "https://github.com/cuongngoht/orbit",
+  "repository": "https://github.com/cuongngoht/orbit",
+  "userConfig": {
+    "working_set": {
+      "type": "boolean",
+      "title": "Record the working set",
+      "description": "After each Read, Edit, Write, Grep, Glob or Bash call, keep one line of metadata about what this session touched: repo-relative paths, a class per command, pass or fail. Never file contents, command arguments, tool output or prompts. Kept outside every repository and expired after 7 days. An exported ORBIT_WORKING_SET overrides this on one machine.",
+      "default": true
+    },
+    "engineering_observe": {
+      "type": "boolean",
+      "title": "Learn how this project builds code",
+      "description": "On by default. At a milestone only (a commit, the end of a session, a check passing after an edit, a task that completed on its own proof), propose engineering facts from file names and the checks that passed. Every proposal is reconciled: one session is only ever 'possible', and nothing it proposes can be adopted or enforced. Only a checkout somebody used Orbit in is observed. Needs the working set. Turn it off here, or with ORBIT_ENGINEERING_OBSERVE=off on one machine.",
+      "default": true
+    },
+    "prompt_router": {
+      "type": "boolean",
+      "title": "Route each prompt to what can help",
+      "description": "Before each prompt, a UserPromptSubmit hook adds at most 2 KB naming the skills, agents, MCP servers, CLI tools and capabilities that are relevant and usable here, and what is relevant but missing. It only recommends: it never starts, calls or installs anything, reads only local snapshots, and never stores the prompt. At session start it also re-reads the host's MCP configuration and detects tools, in the background. An exported ORBIT_PROMPT_ROUTER overrides this on one machine.",
+      "default": true
+    },
+    "trace": {
+      "type": "boolean",
+      "title": "Keep the session trail",
+      "description": "Record, on this machine only, what each session did through Orbit: for every prompt a salted fingerprint, its length and what the prompt router decided; which skills and agents started; which Orbit commands (and which classes of other command) ran and whether they passed; which tools were used; where a turn ended. Never a prompt's text, a response, a command's arguments, a tool's output, a path or a file's contents. Orbit Control's Trace and Analytics pages read it. Kept 90 days, never sent anywhere. An exported ORBIT_TRACE overrides this on one machine.",
+      "default": true
+    },
+    "host_memory": {
+      "type": "boolean",
+      "title": "Use the host's project memory as hints",
+      "description": "At session start, remember where Claude Code keeps its own memory for this project (the location only), so project knowledge can use those notes as hints for a task: never as facts, never copied into Orbit's store, and always outranked by what current source shows. An exported ORBIT_HOST_MEMORY overrides this on one machine.",
+      "default": true
+    },
+    "skill_architecture": {
+      "type": "boolean",
+      "title": "Skill · orbit-architecture",
+      "description": "Let Claude start the orbit-architecture skill. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_ARCHITECTURE overrides this on one machine.",
+      "default": true
+    },
+    "skill_autonomous_engineering": {
+      "type": "boolean",
+      "title": "Skill · orbit-engineer",
+      "description": "Let Claude start the orbit-engineer skill. Off: a PreToolUse hook refuses it and says why, and cli/autonomous-engineering.mjs reads but takes no step. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_AUTONOMOUS_ENGINEERING overrides this on one machine.",
+      "default": true
+    },
+    "skill_autonomous_qa": {
+      "type": "boolean",
+      "title": "Skill · orbit-qa",
+      "description": "Let Claude start the orbit-qa skill. Off: a PreToolUse hook refuses it and says why, and cli/autonomous-qa.mjs refuses to act in a browser. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_AUTONOMOUS_QA overrides this on one machine.",
+      "default": true
+    },
+    "skill_connect_sql": {
+      "type": "boolean",
+      "title": "Skill · orbit-sql",
+      "description": "Let Claude start the orbit-sql skill. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_CONNECT_SQL overrides this on one machine.",
+      "default": true
+    },
+    "skill_control": {
+      "type": "boolean",
+      "title": "Skill · orbit-control",
+      "description": "Let Claude start the orbit-control skill. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_CONTROL overrides this on one machine.",
+      "default": true
+    },
+    "skill_developer": {
+      "type": "boolean",
+      "title": "Skill · orbit-develop",
+      "description": "Let Claude start the orbit-develop skill. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_DEVELOPER overrides this on one machine.",
+      "default": true
+    },
+    "skill_dotnet_intelligence": {
+      "type": "boolean",
+      "title": "Skill · orbit-dotnet",
+      "description": "Let Claude start the orbit-dotnet skill. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_DOTNET_INTELLIGENCE overrides this on one machine.",
+      "default": true
+    },
+    "skill_drive_ui": {
+      "type": "boolean",
+      "title": "Skill · orbit-ui-test",
+      "description": "Let Claude start the orbit-ui-test skill. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_DRIVE_UI overrides this on one machine.",
+      "default": true
+    },
+    "skill_explore_ui": {
+      "type": "boolean",
+      "title": "Skill · orbit-ui-explore",
+      "description": "Let Claude start the orbit-ui-explore skill. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_EXPLORE_UI overrides this on one machine.",
+      "default": true
+    },
+    "skill_help": {
+      "type": "boolean",
+      "title": "Skill · orbit-help",
+      "description": "Let Claude start the orbit-help skill. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_HELP overrides this on one machine.",
+      "default": true
+    },
+    "skill_learn_ui": {
+      "type": "boolean",
+      "title": "Skill · orbit-learn",
+      "description": "Let Claude start the orbit-learn skill. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_LEARN_UI overrides this on one machine.",
+      "default": true
+    },
+    "skill_map_ui": {
+      "type": "boolean",
+      "title": "Skill · orbit-ui-map",
+      "description": "Let Claude start the orbit-ui-map skill. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_MAP_UI overrides this on one machine.",
+      "default": true
+    },
+    "skill_orbit": {
+      "type": "boolean",
+      "title": "Skill · orbit",
+      "description": "Let Claude start the Orbit goal orchestrator (/orbit). Off: a PreToolUse hook refuses it and says why. Unset counts as on. An exported ORBIT_SKILL_ORBIT overrides this on one machine.",
+      "default": true
+    },
+    "skill_open_browser": {
+      "type": "boolean",
+      "title": "Skill · orbit-browser",
+      "description": "Let Claude start the orbit-browser skill. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_OPEN_BROWSER overrides this on one machine.",
+      "default": true
+    },
+    "skill_project_reporter": {
+      "type": "boolean",
+      "title": "Skill · orbit-report",
+      "description": "Let Claude start the orbit-report skill. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_PROJECT_REPORTER overrides this on one machine.",
+      "default": true
+    },
+    "skill_qa_plan": {
+      "type": "boolean",
+      "title": "Skill · orbit-test-plan",
+      "description": "Let Claude start the orbit-test-plan skill. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_QA_PLAN overrides this on one machine.",
+      "default": true
+    },
+    "skill_qc_tool_builder": {
+      "type": "boolean",
+      "title": "Skill · orbit-qc-builder",
+      "description": "Let Claude start the orbit-qc-builder skill. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_QC_TOOL_BUILDER overrides this on one machine.",
+      "default": true
+    },
+    "skill_requirements": {
+      "type": "boolean",
+      "title": "Skill · orbit-requirements",
+      "description": "Let Claude start the orbit-requirements skill. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_REQUIREMENTS overrides this on one machine.",
+      "default": true
+    },
+    "skill_run_tests": {
+      "type": "boolean",
+      "title": "Skill · orbit-test-suite",
+      "description": "Let Claude start the orbit-test-suite skill. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_RUN_TESTS overrides this on one machine.",
+      "default": true
+    },
+    "skill_runtime_discover": {
+      "type": "boolean",
+      "title": "Skill · orbit-runtime",
+      "description": "Let Claude start the orbit-runtime skill. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_RUNTIME_DISCOVER overrides this on one machine.",
+      "default": true
+    },
+    "skill_ship_plugin": {
+      "type": "boolean",
+      "title": "Skill · orbit-release",
+      "description": "Let Claude start the orbit-release skill. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_SHIP_PLUGIN overrides this on one machine.",
+      "default": true
+    },
+    "agent_engineering_agent": {
+      "type": "boolean",
+      "title": "Agent · orbit-engineering-agent",
+      "description": "Let Claude start the orbit-engineering-agent agent. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_AGENT_ENGINEERING_AGENT overrides this on one machine.",
+      "default": true
+    },
+    "agent_qa_agent": {
+      "type": "boolean",
+      "title": "Agent · orbit-qa-agent",
+      "description": "Let Claude start the orbit-qa-agent agent. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_AGENT_QA_AGENT overrides this on one machine.",
+      "default": true
+    },
+    "agent_architecture_scanner": {
+      "type": "boolean",
+      "title": "Agent · orbit-architecture-scanner",
+      "description": "Let Claude start the orbit-architecture-scanner agent. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_AGENT_ARCHITECTURE_SCANNER overrides this on one machine.",
+      "default": true
+    },
+    "agent_dsl_doctor": {
+      "type": "boolean",
+      "title": "Agent · orbit-dsl-doctor",
+      "description": "Let Claude start the orbit-dsl-doctor agent. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_AGENT_DSL_DOCTOR overrides this on one machine.",
+      "default": true
+    },
+    "agent_engineering_observer": {
+      "type": "boolean",
+      "title": "Agent · orbit-engineering-observer",
+      "description": "Let Claude start the orbit-engineering-observer agent. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_AGENT_ENGINEERING_OBSERVER overrides this on one machine.",
+      "default": true
+    },
+    "agent_failure_analyst": {
+      "type": "boolean",
+      "title": "Agent · orbit-failure-analyst",
+      "description": "Let Claude start the orbit-failure-analyst agent. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_AGENT_FAILURE_ANALYST overrides this on one machine.",
+      "default": true
+    },
+    "agent_map_healer": {
+      "type": "boolean",
+      "title": "Agent · orbit-map-healer",
+      "description": "Let Claude start the orbit-map-healer agent. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_AGENT_MAP_HEALER overrides this on one machine.",
+      "default": true
+    },
+    "agent_map_recorder": {
+      "type": "boolean",
+      "title": "Agent · orbit-map-recorder",
+      "description": "Let Claude start the orbit-map-recorder agent. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_AGENT_MAP_RECORDER overrides this on one machine.",
+      "default": true
+    },
+    "agent_qa_case_writer": {
+      "type": "boolean",
+      "title": "Agent · orbit-qa-case-writer",
+      "description": "Let Claude start the orbit-qa-case-writer agent. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_AGENT_QA_CASE_WRITER overrides this on one machine.",
+      "default": true
+    },
+    "agent_requirement_reviewer": {
+      "type": "boolean",
+      "title": "Agent · orbit-requirement-reviewer",
+      "description": "Let Claude start the orbit-requirement-reviewer agent. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_AGENT_REQUIREMENT_REVIEWER overrides this on one machine.",
+      "default": true
+    },
+    "agent_requirement_product": {
+      "type": "boolean",
+      "title": "Agent · orbit-requirement-product",
+      "description": "Let Claude start the orbit-requirement-product agent. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_AGENT_REQUIREMENT_PRODUCT overrides this on one machine.",
+      "default": true
+    },
+    "agent_requirement_domain": {
+      "type": "boolean",
+      "title": "Agent · orbit-requirement-domain",
+      "description": "Let Claude start the orbit-requirement-domain agent. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_AGENT_REQUIREMENT_DOMAIN overrides this on one machine.",
+      "default": true
+    },
+    "agent_requirement_qa": {
+      "type": "boolean",
+      "title": "Agent · orbit-requirement-qa",
+      "description": "Let Claude start the orbit-requirement-qa agent. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_AGENT_REQUIREMENT_QA overrides this on one machine.",
+      "default": true
+    },
+    "agent_requirement_socrates": {
+      "type": "boolean",
+      "title": "Agent · orbit-requirement-socrates",
+      "description": "Let Claude start the orbit-requirement-socrates agent. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_AGENT_REQUIREMENT_SOCRATES overrides this on one machine.",
+      "default": true
+    }
+  }
+}

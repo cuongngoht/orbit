@@ -1,0 +1,8 @@
+{
+  "id": "refund-limit",
+  "name": "A refund above the limit is refused",
+  "seen": "src",
+  "steps": [
+    { "do": "call", "capability": "refunds.decide", "input": { "amount": 150 }, "expect": "it.allowed === false", "proves": "api" }
+  ]
+}

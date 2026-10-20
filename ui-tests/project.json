@@ -1,0 +1,10 @@
+{
+  "$schema": "./project.schema.json",
+  "name": "orbit-control",
+  "origin": "http://127.0.0.1:4173",
+  "signIn": { "hosts": [] },
+  "identity": {},
+
+  "launch": { "channel": "chromium", "env": "test" },
+  "frontend": { "roots": ["control-panel"], "srcDir": "src" }
+}

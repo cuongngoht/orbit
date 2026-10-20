@@ -1,0 +1,20 @@
+{
+  "id": "create-thing",
+  "name": "Create a thing",
+  "start": "home",
+  "identity": { "as": "admin", "roles": ["App.Admin"] },
+  "creates": "one thing ${NAME}",
+  "params": [ { "n": "NAME", "required": true } ],
+  "steps": [
+    { "do": "goto", "screen": "home", "wait": "document.body.innerText.length>0" },
+    { "do": "skip-if", "js": "document.body.innerText.includes('${NAME}')", "why": "already there" },
+    { "do": "click", "on": "home/Add", "wait": "document.querySelector('[role=dialog]')" },
+    { "do": "fill", "on": "dlg-thing/Name", "value": "${NAME}" },
+    { "do": "click", "on": "dlg-thing/Save", "wait": "document.body.innerText.includes('${NAME}')" },
+    { "do": "api", "match": "api/things", "method": "POST", "status": 201 },
+    { "do": "sql", "query": "SELECT COUNT(*) AS n FROM Things WHERE Name='${NAME}'", "expect": "Number(it[0].n) === 1" },
+    { "do": "report", "js": "JSON.stringify({created: document.body.innerText.includes('${NAME}')})", "expect": "it.created === true" }
+  ],
+  "seen": "live",
+  "fe_commit": "abc1234"
+}

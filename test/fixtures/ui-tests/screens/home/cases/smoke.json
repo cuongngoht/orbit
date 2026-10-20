@@ -1,0 +1,11 @@
+{
+  "id": "smoke",
+  "name": "Home paints",
+  "start": "home",
+  "steps": [
+    { "do": "goto", "screen": "home", "wait": "document.body.innerText.length>0" },
+    { "do": "assert", "js": "document.title.length>0", "why": "has a title" },
+    { "do": "report", "js": "JSON.stringify({ok:true})", "expect": "it.ok === true" }
+  ],
+  "seen": "src"
+}

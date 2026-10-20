@@ -1,0 +1,32 @@
+{
+  "name": "orbit-live",
+  "displayName": "Orbit Live companion",
+  "description": "Opens Orbit Live in a terminal split beside the terminal your AI CLI (Claude Code, Codex) runs in, when Orbit asks. It runs Orbit's own viewer and nothing else.",
+  "version": "1.8.5",
+  "publisher": "orbit",
+  "license": "MIT",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "main": "./extension.js",
+  "activationEvents": ["onStartupFinished"],
+  "contributes": {
+    "configuration": {
+      "title": "Orbit Live",
+      "properties": {
+        "orbit.live.storeDirs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "scope": "machine",
+          "description": "Orbit stores to watch besides ~/.orbit/projects (set one when your terminals export ORBIT_STORE_DIR). Absolute paths, in your User or Remote settings only: a workspace cannot set this."
+        },
+        "orbit.live.nodePath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Required: the absolute path of the node Orbit Live runs with (`command -v node` prints it). No PATH is searched; until it is set, nothing opens. In your User or Remote settings only."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "input": {
+    "artifactDirectoryPath": "/fixture-host/artifacts",
+    "conversationId": "fixture-session",
+    "initialNumSteps": 6,
+    "invocationNum": 1,
+    "modelName": "fixture-model",
+    "transcriptPath": "/fixture-host/transcript.jsonl",
+    "workspacePaths": [
+      "/fixture"
+    ]
+  },
+  "argv": [
+    "--host=antigravity",
+    "--protocol=2",
+    "--event=PreInvocation"
+  ],
+  "expected": null
+}

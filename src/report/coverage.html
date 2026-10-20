@@ -1,0 +1,92 @@
+<!doctype html>
+<!-- The coverage page's markup, as a file. Same rules as report.html: {{x}} is an
+     escaped value, {{{x}}} a raw one, {{#x}}…{{/x}} repeats for a list or renders once
+     for anything else truthy, {{^x}}…{{/x}} is the empty case. What each name means is
+     decided in src/report/coverage.mjs; nothing is computed here. It borrows report.css,
+     so a project that restyles one page has restyled them all. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coverage — {{title}}</title>
+<style>{{{style}}}</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>Coverage — {{title}}</h1>
+  <div class="meta">{{#project}}{{project}} · {{/project}}plan {{plan}}{{#revision}} rev {{revision}}{{/revision}}{{#at}} · written {{at}}{{/at}}{{#generated}} · rendered {{generated}}{{/generated}}</div>
+</header>
+
+<div class="wrap">
+
+  <div class="callout {{calloutClass}}">{{callout}}</div>
+
+  <h2 class="section-title"><span class="dot"></span>Ratios, with their denominators</h2>
+  <table>
+    <tr><th>measure</th><th>count</th><th>share</th><th>out of</th></tr>
+    {{#ratios}}
+    <tr><td><strong>{{name}}</strong></td><td>{{n}}/{{of}}</td><td>{{pct}}</td><td>{{scope}}</td></tr>
+    {{/ratios}}
+  </table>
+  <p class="note">A share with no denominator is not a measurement. Where the scope is empty the share reads <code>—</code>: a plan with no scenarios has verified nothing, and rounding that to 100% is how an empty plan reports a finished feature.</p>
+
+  <h2 class="section-title"><span class="dot"></span>Where each scenario has got to</h2>
+  <table>
+    <tr><th>stage</th><th>n</th><th>what it means</th></tr>
+    {{#stages}}
+    <tr><td><span class="badge {{tone}}">{{name}}</span></td><td>{{n}}</td><td>{{say}}</td></tr>
+    {{/stages}}
+  </table>
+
+  <h2 class="section-title"><span class="dot"></span>The chain: criterion → scenario → case → run → evidence</h2>
+  <table>
+    <tr><th>criterion</th><th>scenario</th><th>stage</th><th>runs</th><th>evidence</th></tr>
+    {{#trace}}
+    <tr class="{{rowClass}}">
+      <td><strong>{{criterion}}</strong><br><span class="mono">{{says}}</span></td>
+      <td>{{#scenario}}<strong>{{scenario}}</strong> {{/scenario}}{{name}}</td>
+      <td><span class="badge {{tone}}">{{stage}}</span></td>
+      <td>{{#runs}}<code>{{case}} {{status}}</code> <span class="mono">{{fresh}}</span><br>{{/runs}}{{^runs}}<span class="mono">no run</span>{{/runs}}</td>
+      <td>{{#runs}}<span class="mono">{{evidence}}</span><br>{{/runs}}</td>
+    </tr>
+    {{/trace}}
+  </table>
+
+  <h2 class="section-title"><span class="dot"></span>What could not be verified, and why</h2>
+  {{#gaps}}
+  <div class="verdict warn"><strong>{{scenario}} · {{layer}}</strong> — {{because}} <span class="mono">({{from}})</span></div>
+  {{/gaps}}
+  {{^gaps}}
+  <p class="note">No layer in this plan is recorded as unverifiable.</p>
+  {{/gaps}}
+
+  <h2 class="section-title"><span class="dot"></span>Evidence that is not about this revision</h2>
+  {{#unknown}}
+  <div class="verdict warn"><strong>{{scenario}} · {{case}}</strong> — {{state}}: {{says}}<br>{{#refs}}{{say}} is {{state}}. {{/refs}}</div>
+  {{/unknown}}
+  {{^unknown}}
+  <p class="note">Every run cited above was recorded against this plan revision, this build and this environment.</p>
+  {{/unknown}}
+
+  <h2 class="section-title"><span class="dot"></span>Deliberately not covered</h2>
+  {{#excluded}}
+  <div class="verdict warn"><strong>{{id}}</strong> {{says}} — {{because}}</div>
+  {{/excluded}}
+  {{^excluded}}
+  <p class="note">Nothing is excluded from this plan.</p>
+  {{/excluded}}
+
+  <h2 class="section-title"><span class="dot"></span>Handed to a person</h2>
+  {{#checks}}
+  <div class="verdict warn"><strong>{{id}} {{name}}</strong> ({{owner}}{{#state}}, {{state}}{{/state}}) — {{expect}}</div>
+  {{/checks}}
+  {{^checks}}
+  <p class="note">This plan hands nothing to a person.</p>
+  {{/checks}}
+
+  <p class="note">Only a run that <b>verifies</b> raises verified coverage. SKIP, PARTIAL, REFUSED, BLOCKED and INCONCLUSIVE are outcomes, not evidence — each says what happened and none of them says the product is right. This page also does not count <b>effect tracing</b>: <code>query check</code> reports how much of the map has a backend trace, which is a measure of the MAP, not of what has been tested.</p>
+
+</div>
+</body>
+</html>

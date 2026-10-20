@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "doc": "What runtime discovery and environment design (src/runtime/) may be told about the outside world, as DATA. This file is where a runtime, a package manager, a service or a container feature is NAMED: nothing under src/runtime/ knows one, so a new stack is a row here and an ecosystem adapter registered beside the others, never an edit to the engine. A `requirement` is what a unit needs to run, under the id an ecosystem adapter (src/ecosystems/) reports it by; `tool` names the row of catalog/tools.json that detects it on a machine, `os` the platforms it can be met on (null: any), `container` whether a Linux dev container can provide it, `feature` the dev container feature that does, and `with` another requirement that brings it along (npm comes with node). `launchers` say how a unit's declared command is RUN, `versionFiles` which tool-version files pin a requirement, `services` which images are servers a project depends on, and `environment` what a created dev container is built from, `shells` which scripts hint at the systems a checkout is run on, and `platforms` the operating systems a component's matrix is drawn over, and `connectivity` how a check of a server the checkout needs is asked from inside a container. Immutable shipped data: an upgrade may change a row.",
+  "requirements": [
+    { "id": "node", "name": "Node.js", "tool": "node", "os": null, "container": true, "feature": { "id": "ghcr.io/devcontainers/features/node", "tag": "1", "option": "version" }, "images": ["node", "mcr.microsoft.com/devcontainers/javascript-node", "mcr.microsoft.com/devcontainers/typescript-node"], "dependencies": [] },
+    { "id": "npm", "name": "npm", "tool": "npm", "os": null, "container": true, "feature": null, "with": "node", "images": [], "dependencies": [] },
+    { "id": "pnpm", "name": "pnpm", "tool": "pnpm", "os": null, "container": true, "feature": null, "images": [], "dependencies": [] },
+    { "id": "yarn", "name": "Yarn", "tool": "yarn", "os": null, "container": true, "feature": null, "images": [], "dependencies": [] },
+    { "id": "dotnet", "name": ".NET (modern)", "tool": "dotnet", "os": null, "container": true, "feature": { "id": "ghcr.io/devcontainers/features/dotnet", "tag": "2", "option": "version" }, "images": ["mcr.microsoft.com/dotnet/sdk", "mcr.microsoft.com/dotnet/aspnet", "mcr.microsoft.com/dotnet/runtime", "mcr.microsoft.com/devcontainers/dotnet"], "dependencies": [] },
+    { "id": "dotnet-windows", "name": ".NET (modern) for Windows", "tool": "dotnet", "os": ["win32"], "container": false, "feature": null, "images": [], "dependencies": [], "doc": "A modern target that names Windows (net8.0-windows) and no target that names no platform: the same SDK as .NET, and an application only a Windows machine runs, most often a desktop UI. A Linux container does not provide it." },
+    { "id": "dotnet-framework", "name": ".NET Framework (classic)", "tool": null, "os": ["win32"], "container": false, "feature": null, "images": [], "dependencies": [], "doc": "The classic Windows framework. It is not the modern .NET, a Linux container does not provide it, and this engine does not assume Mono can stand in for it." },
+    { "id": "python", "name": "Python", "tool": "python3", "os": null, "container": true, "feature": { "id": "ghcr.io/devcontainers/features/python", "tag": "1", "option": "version" }, "images": ["python", "mcr.microsoft.com/devcontainers/python"], "dependencies": [] },
+    { "id": "go", "name": "Go", "tool": "go", "os": null, "container": true, "feature": { "id": "ghcr.io/devcontainers/features/go", "tag": "1", "option": "version" }, "images": ["golang", "mcr.microsoft.com/devcontainers/go"], "dependencies": [] },
+    { "id": "java", "name": "Java", "tool": "java", "os": null, "container": true, "feature": { "id": "ghcr.io/devcontainers/features/java", "tag": "1", "option": "version" }, "images": ["eclipse-temurin", "openjdk", "mcr.microsoft.com/devcontainers/java"], "dependencies": [] },
+    { "id": "ruby", "name": "Ruby", "tool": "ruby", "os": null, "container": true, "feature": { "id": "ghcr.io/devcontainers/features/ruby", "tag": "1", "option": "version" }, "images": ["ruby", "mcr.microsoft.com/devcontainers/ruby"], "dependencies": [] },
+    { "id": "make", "name": "make", "tool": "make", "os": null, "container": true, "feature": null, "images": [], "dependencies": [] },
+    { "id": "task", "name": "Task", "tool": "task", "os": null, "container": true, "feature": null, "images": [], "dependencies": [] },
+    { "id": "just", "name": "just", "tool": "just", "os": null, "container": true, "feature": null, "images": [], "dependencies": [] },
+    { "id": "playwright", "name": "Playwright browsers and their system libraries", "tool": null, "os": null, "container": true, "feature": null, "images": [], "dependencies": ["@playwright/test", "playwright"], "doc": "Browsers need system libraries a dev container does not carry. No catalog feature provides them, so a proposal names the requirement and leaves how to a person." }
+  ],
+  "launchers": [
+    { "ecosystem": "node", "mode": "script", "via": [
+      { "file": "pnpm-lock.yaml", "argv": ["pnpm", "run", "{name}"], "requires": "pnpm", "restore": ["pnpm", "install", "--frozen-lockfile"] },
+      { "file": "yarn.lock", "argv": ["yarn", "run", "{name}"], "requires": "yarn", "restore": ["yarn", "install", "--frozen-lockfile"] },
+      { "file": "package-lock.json", "argv": ["npm", "run", "{name}"], "requires": "npm", "restore": ["npm", "ci"] }
+    ] },
+    { "ecosystem": "dotnet", "kind": "test", "purpose": "test", "argv": ["dotnet", "test"], "requires": "dotnet" },
+    { "ecosystem": "dotnet", "every": true, "purpose": "restore", "argv": ["dotnet", "restore"], "requires": "dotnet" }
+  ],
+  "versionFiles": [
+    { "file": ".nvmrc", "requirement": "node", "format": "line" },
+    { "file": ".node-version", "requirement": "node", "format": "line" },
+    { "file": ".python-version", "requirement": "python", "format": "line" },
+    { "file": ".ruby-version", "requirement": "ruby", "format": "line" },
+    { "file": ".go-version", "requirement": "go", "format": "line" },
+    { "file": ".java-version", "requirement": "java", "format": "line" },
+    { "file": ".tool-versions", "format": "pairs", "aliases": { "nodejs": "node", "golang": "go" } }
+  ],
+  "services": [
+    { "id": "postgres", "name": "PostgreSQL", "images": ["postgres", "postgis/postgis"], "ports": [5432] },
+    { "id": "mysql", "name": "MySQL", "images": ["mysql", "mariadb"], "ports": [3306] },
+    { "id": "redis", "name": "Redis", "images": ["redis", "valkey/valkey"], "ports": [6379] },
+    { "id": "mongodb", "name": "MongoDB", "images": ["mongo"], "ports": [27017] },
+    { "id": "rabbitmq", "name": "RabbitMQ", "images": ["rabbitmq"], "ports": [5672] },
+    { "id": "sqlserver", "name": "SQL Server", "images": ["mcr.microsoft.com/mssql/server"], "ports": [1433] }
+  ],
+  "shells": {
+    "doc": "Scripts a checkout keeps where a person runs them from -- its top, and a scripts directory -- and the systems each kind is written for. A checkout whose every such script is of one family is POSSIBLY run there: evidence beside the operating-system matrix, never a requirement, because PowerShell runs elsewhere too and a file name is not a runtime.",
+    "places": ["^[^/]+$", "^scripts/[^/]+$"],
+    "kinds": [
+      { "id": "powershell", "match": "\\.(ps1|psm1)$", "os": ["win32"], "name": "PowerShell scripts" },
+      { "id": "batch", "match": "\\.(cmd|bat)$", "os": ["win32"], "name": "batch files" },
+      { "id": "shell", "match": "\\.sh$", "os": ["linux", "darwin"], "name": "shell scripts" }
+    ]
+  },
+  "platforms": [
+    { "id": "win32", "name": "Windows" },
+    { "id": "linux", "name": "Linux" },
+    { "id": "darwin", "name": "macOS" }
+  ],
+  "ci": {
+    "files": ["^\\.github/workflows/[^/]+\\.ya?ml$"],
+    "runners": [
+      { "match": "^(ubuntu|linux)", "os": "linux" },
+      { "match": "^windows", "os": "win32" },
+      { "match": "^(macos|osx)", "os": "darwin" }
+    ]
+  },
+  "scripts": [
+    { "file": "^(GNUmakefile|[Mm]akefile)$", "format": "makefile", "runner": "make", "argv": ["make", "{name}"] },
+    { "file": "^[Tt]askfile\\.ya?ml$", "format": "taskfile", "runner": "task", "argv": ["task", "{name}"] },
+    { "file": "^([Jj]ustfile|\\.justfile)$", "format": "justfile", "runner": "just", "argv": ["just", "{name}"] }
+  ],
+  "environment": {
+    "directory": ".devcontainer",
+    "baseImage": "mcr.microsoft.com/devcontainers/base:ubuntu",
+    "containerPlatforms": { "linux": ["linux"], "windows": ["win32"] }
+  },
+  "connectivity": {
+    "doc": "How a connectivity check is asked from INSIDE a container: a fixed script per tool an image may already have, tried in this order until one is there. `${HOST}`, `${PORT}` and `${TIMEOUT_MS}` are WHOLE argument elements the engine replaces with the value as an element of its own -- never text inside a script, and a row that puts one inside another element is dropped. Each script prints exactly one line, `<RESOLVED|FAILED|UNKNOWN> <REACHABLE|UNREACHABLE|NOT_ATTEMPTED>`, and exits 0; it sends nothing and reads nothing a server says. Orbit installs none of these tools: with none of them in the image the answer is UNKNOWN.",
+    "primitives": [
+      {"id":"node","argv":["node","-e","const [h, p, m] = process.argv.slice(-3), ms = Number(m), say = (l) => { process.stdout.write(l + \"\\n\"); process.exit(0); }, t = setTimeout(() => say(\"UNKNOWN NOT_ATTEMPTED\"), ms); require(\"dns\").lookup(h, { all: true }, (e) => { clearTimeout(t); if (e) return say(\"FAILED NOT_ATTEMPTED\"); const s = require(\"net\").connect({ host: h, port: Number(p) }); s.setTimeout(ms); s.on(\"connect\", () => say(\"RESOLVED REACHABLE\")); s.on(\"timeout\", () => say(\"RESOLVED UNREACHABLE\")); s.on(\"error\", () => say(\"RESOLVED UNREACHABLE\")); });","--","${HOST}","${PORT}","${TIMEOUT_MS}"],"doc":"Node's own resolver, then one connection with the deadline; a lookup that never answers is UNKNOWN."},
+      {"id":"python3","argv":["python3","-c","import socket, sys\nh, p, m = sys.argv[1], sys.argv[2], sys.argv[3]\nif not (p.isdigit() and m.isdigit()):\n    print(\"UNKNOWN NOT_ATTEMPTED\"); sys.exit(0)\ntry:\n    socket.getaddrinfo(h, int(p), proto=socket.IPPROTO_TCP)\nexcept Exception:\n    print(\"FAILED NOT_ATTEMPTED\"); sys.exit(0)\ntry:\n    socket.create_connection((h, int(p)), timeout=int(m) / 1000).close(); print(\"RESOLVED REACHABLE\")\nexcept Exception:\n    print(\"RESOLVED UNREACHABLE\")","${HOST}","${PORT}","${TIMEOUT_MS}"],"doc":"getaddrinfo, then create_connection with the deadline; a port or a deadline that is not a number is never used."},
+      {"id":"bash","argv":["bash","-c","case \"$2$3\" in ''|*[!0-9]*) echo \"UNKNOWN NOT_ATTEMPTED\"; exit 0;; esac\nr=UNKNOWN\nif command -v getent >/dev/null 2>&1; then if getent ahosts \"$1\" >/dev/null 2>&1; then r=RESOLVED; else echo \"FAILED NOT_ATTEMPTED\"; exit 0; fi; fi\nt=\"\"\nif command -v timeout >/dev/null 2>&1; then t=\"timeout $(( ($3 + 999) / 1000 ))\"; fi\nif $t bash -c 'exec 3<>\"/dev/tcp/$1/$2\"' bash \"$1\" \"$2\" 2>/dev/null; then echo \"RESOLVED REACHABLE\"; else echo \"$r UNREACHABLE\"; fi","bash","${HOST}","${PORT}","${TIMEOUT_MS}"],"doc":"getent when the image has it (else the name is UNKNOWN), then /dev/tcp under `timeout` when the image has it; every value a quoted positional parameter."}
+    ]
+  }
+}

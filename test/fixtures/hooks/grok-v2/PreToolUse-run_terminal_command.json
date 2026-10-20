@@ -1,0 +1,54 @@
+{
+  "input": {
+    "hookEventName": "pre_tool_use",
+    "sessionId": "grok-fixture-session",
+    "cwd": "/fixture",
+    "workspaceRoot": "/fixture",
+    "timestamp": "2026-10-18T07:04:54.014002+00:00",
+    "permissionMode": "bypassPermissions",
+    "transcriptPath": "/fixture-host/updates.jsonl",
+    "toolName": "run_terminal_command",
+    "toolUseId": "grok-fixture-call-3",
+    "toolInput": {
+      "command": "ls",
+      "description": "fixture"
+    },
+    "toolInputTruncated": false,
+    "transcript_path": "/fixture-host/updates.jsonl",
+    "tool_name": "run_terminal_command",
+    "tool_input": {
+      "command": "ls",
+      "description": "fixture"
+    },
+    "tool_use_id": "grok-fixture-call-3",
+    "hook_event_name": "PreToolUse",
+    "session_id": "grok-fixture-session",
+    "permission_mode": "bypassPermissions"
+  },
+  "argv": [
+    "--host=grok",
+    "--protocol=2"
+  ],
+  "expected": {
+    "protocol": 2,
+    "hostEvent": "PreToolUse",
+    "event": "pre-tool",
+    "session": "grok:22d57f5bf67e48dc",
+    "turn": null,
+    "delivery": "grok:c8138236b4aacf1e",
+    "cwd": "/fixture",
+    "prompt": null,
+    "outcome": "unknown",
+    "tool": {
+      "name": "run_terminal_command",
+      "kind": "command"
+    },
+    "paths": [],
+    "pattern": null,
+    "command": "ls",
+    "background": false,
+    "invokes": null,
+    "host": "grok",
+    "ok": null
+  }
+}

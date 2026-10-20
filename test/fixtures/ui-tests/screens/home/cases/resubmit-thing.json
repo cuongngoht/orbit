@@ -1,0 +1,24 @@
+{
+  "$schema": "../../../schema/case.schema.json",
+  "id": "resubmit-thing",
+  "name": "Submitting the same thing twice leaves one thing",
+  "start": "home",
+  "identity": { "as": "admin", "roles": ["App.Admin"] },
+  "creates": "one thing ${NAME}, however many times Save is pressed",
+  "params": [ { "n": "NAME", "required": true, "desc": "TC- prefix" } ],
+  "steps": [
+    { "do": "goto", "screen": "home", "wait": "document.body.innerText.length>0" },
+    { "do": "skip-if", "js": "document.body.innerText.includes('${NAME}')", "why": "the thing is already there. This guard protects the RE-RUN; a SKIP proves nothing about how the product handles a second submit" },
+    { "do": "click", "on": "home/Add", "wait": "document.querySelector('[role=dialog]')" },
+    { "do": "fill", "on": "dlg-thing/Name", "value": "${NAME}" },
+    { "do": "click", "on": "dlg-thing/Save", "wait": "document.body.innerText.includes('${NAME}')" },
+    { "do": "api", "match": "api/things", "method": "POST", "status": 201, "why": "the first submit is the one that creates it" },
+    { "do": "click", "on": "home/Add", "wait": "document.querySelector('[role=dialog]')", "why": "the SECOND attempt — the one this case exists for" },
+    { "do": "fill", "on": "dlg-thing/Name", "value": "${NAME}" },
+    { "do": "click", "on": "dlg-thing/Save", "wait": "document.body.innerText.includes('${NAME}')" },
+    { "do": "api", "match": "api/things", "method": "POST", "status": 409, "why": "the contract: a duplicate name is refused, not quietly accepted" },
+    { "do": "sql", "query": "SELECT COUNT(*) AS n FROM Things WHERE Name='${NAME}'", "expect": "Number(it[0].n) === 1", "why": "one row after two submits — the whole point" },
+    { "do": "report", "js": "JSON.stringify({once: true})", "expect": "it.once === true" }
+  ],
+  "seen": "src"
+}

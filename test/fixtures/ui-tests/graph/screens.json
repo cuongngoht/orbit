@@ -1,0 +1,5 @@
+[
+  { "id": "home", "name": "Home", "url": "/home", "seen": "live", "fe_commit": "abc1234" },
+  { "id": "dlg-thing", "name": "Thing dialog", "seen": "live", "fe_commit": "abc1234" },
+  { "id": "detail", "name": "Detail", "url": "/things/{id}", "seen": "src" }
+]

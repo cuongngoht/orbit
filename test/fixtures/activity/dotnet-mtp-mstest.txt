@@ -1,0 +1,33 @@
+Running tests from /private/tmp/orbit-185-probe/dn/MTests/bin/Debug/net10.0/MTests.dll (net10.0|arm64)
+skipped B_Skipped
+  not yet
+  from /private/tmp/orbit-185-probe/dn/MTests/bin/Debug/net10.0/MTests.dll (net10.0|arm64)
+failed A_Fails (22ms)
+  Assert.AreEqual failed. String lengths are both 6 but differ at index 5. 'expected' expression: '"tool-a"', 'actual' expression: '"tool-b"'.
+Expected: "tool-a"
+But was:  "tool-b"
+----------------^
+  from /private/tmp/orbit-185-probe/dn/MTests/bin/Debug/net10.0/MTests.dll (net10.0|arm64)
+  Assert.AreEqual failed. String lengths are both 6 but differ at index 5. 'expected' expression: '"tool-a"', 'actual' expression: '"tool-b"'.
+  Expected: "tool-a"
+  But was:  "tool-b"
+  ----------------^
+    at Microsoft.VisualStudio.TestTools.UnitTesting.Assert.ThrowAssertAreEqualFailed(Object expected, Object actual, String userMessage) in /_/src/TestFramework/TestFramework/Assertions/Assert.AreEqual.cs:665
+    at Microsoft.VisualStudio.TestTools.UnitTesting.Assert.AreEqual[T](T expected, T actual, IEqualityComparer`1 comparer, String message, String expectedExpression, String actualExpression) in /_/src/TestFramework/TestFramework/Assertions/Assert.AreEqual.cs:492
+    at Microsoft.VisualStudio.TestTools.UnitTesting.Assert.AreEqual[T](T expected, T actual, String message, String expectedExpression, String actualExpression) in /_/src/TestFramework/TestFramework/Assertions/Assert.AreEqual.cs:405
+    at MTests.Routing.A_Fails() in /private/tmp/orbit-185-probe/dn/MTests/Test1.cs:7
+    at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+    at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+/private/tmp/orbit-185-probe/dn/MTests/bin/Debug/net10.0/MTests.dll (net10.0|arm64) failed with 1 error(s) (2s 050ms)
+Exit code: 2
+  Standard output: MSTest v4.0.2 (UTC 11/11/2025) [osx-arm64 - .NET 10.0.6]
+  Test Parallelization enabled for /private/tmp/orbit-185-probe/dn/MTests/bin/Debug/net10.0/MTests.dll (Workers: 10, Scope: MethodLevel)
+  
+
+Test run summary: Failed!
+  total: 5
+  failed: 1
+  succeeded: 3
+  skipped: 1
+  duration: 3s 086ms
+Test run completed with non-success exit code: 2 (see: https://aka.ms/testingplatform/exitcodes)

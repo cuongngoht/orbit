@@ -1,0 +1,160 @@
+<!doctype html>
+<!-- One investigation's markup, as a file. Same rules as report.html: {{x}} is an escaped
+     value, {{{x}}} a raw one, {{#x}}…{{/x}} repeats for a list or renders once for anything
+     else truthy, {{^x}}…{{/x}} is the empty case. What each name means is decided in
+     investigation.mjs; nothing is computed here. It borrows report.css. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Investigation {{#overview}}{{id}}{{/overview}}{{#project}} — {{project}}{{/project}}</title>
+<style>{{{style}}}</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>Investigation{{#project}} — {{project}}{{/project}}</h1>
+  {{#overview}}<div class="meta">{{id}} · {{mode}} on {{environment}} · as {{identity}} · revision {{revision}} · began {{at}}</div>{{/overview}}
+</header>
+
+<div class="wrap">
+
+  <div class="callout {{calloutClass}}">{{callout}}</div>
+  {{#redacted}}<p class="note">REDACTED: SQL literals and synthetic values read <b>…</b>. This page is safe to forward; the unredacted one exists only where a person allowed it.</p>{{/redacted}}
+  {{^redacted}}<div class="callout danger">INTERNAL — unredacted SQL literals and synthetic values. Do not forward this page.</div>{{/redacted}}
+
+  <h2 class="section-title"><span class="dot"></span>Overview</h2>
+  {{#overview}}
+  <table>
+    <tr><th>objective</th><td>{{objective}}</td></tr>
+    <tr><th>scope</th><td>{{scope}}</td></tr>
+    <tr><th>mode</th><td>{{mode}}</td></tr>
+    <tr><th>environment</th><td>{{environment}}</td></tr>
+    <tr><th>identity</th><td>{{identity}}</td></tr>
+    <tr><th>source revision</th><td>{{revision}}</td></tr>
+    {{#cancelled}}<tr><th>cancelled</th><td>{{cancelled}}</td></tr>{{/cancelled}}
+  </table>
+  {{/overview}}
+  <p class="note">An investigation is not a run. Its outcomes are about what the evidence shows; none of them is PASS, and none replaces a runner verdict.</p>
+
+  <h2 class="section-title"><span class="dot"></span>The loop</h2>
+  {{#loop}}
+  <table>
+    <tr><th>way in</th><td>{{inputMode}}</td></tr>
+    <tr><th>where it stands</th><td>{{lifecycle}}{{#stop}} — {{by}}: <b>{{reason}}</b> — {{say}}{{/stop}}</td></tr>
+    <tr><th>counted</th><td>{{asOf}}</td></tr>
+    <tr><th>memory</th><td>{{memory}}</td></tr>
+  </table>
+  <h3>Inputs</h3>
+  {{#inputs}}<div class="layer">{{type}} <b>{{ref}}</b>{{#revision}} · revision {{revision}}{{/revision}}{{#authority}} · {{authority}}{{/authority}} · {{state}}{{#why}} — {{why}}{{/why}}</div>{{/inputs}}
+  {{^inputs}}<p class="note">Only the objective's words: the map's surfaces were what there was to look at.</p>{{/inputs}}
+  <h3>What was owed</h3>
+  {{#counts}}<p>{{total}} obligation(s) in scope — {{#rows}}<span class="badge {{badge}}">{{status}} · {{n}}</span> {{/rows}}</p>{{/counts}}
+  {{^counts}}<p class="note">No step has settled, so nothing has been counted yet.</p>{{/counts}}
+  {{#next}}<div class="layer"><span class="none">next: {{title}} ({{id}})</span></div>{{/next}}
+  {{#questions}}<div class="layer">asked {{id}}: {{asks}}{{#answer}} — a person answered: {{answer}}{{/answer}}{{^answer}} — <b>waiting for a person</b>{{/answer}}</div>{{/questions}}
+  <h3>Receipts</h3>
+  <p class="note">What each settled obligation came to, on what evidence and against which oracle. A receipt is a result, never a verdict: PASS is only ever a runner's.</p>
+  {{#receipts}}
+  <div class="tc">
+    <div class="tc-head"><span class="tc-id">{{id}} · {{type}} · {{subject}} · {{layer}}</span><span class="badge {{badge}}">{{outcome}}</span></div>
+    <div class="tc-body">
+      <div class="layer">oracle: {{oracle}}</div>
+      <div class="layer">evidence: {{evidence}}</div>
+      <div class="layer">{{why}}</div>
+      {{#supersedes}}<div class="layer"><span class="none">replaces {{supersedes}}</span></div>{{/supersedes}}
+    </div>
+  </div>
+  {{/receipts}}
+  {{^receipts}}<p class="note">No receipt yet — a checkpoint keeps them.</p>{{/receipts}}
+  {{/loop}}
+
+  <h2 class="section-title"><span class="dot"></span>Coverage</h2>
+  {{#coverage}}
+  <p>Surfaces: <b>{{surfaces}}</b> · actions: {{actions}} ({{done}} done, {{notDone}} not)</p>
+  <table>
+    <tr><th>layer</th><th>observed</th><th>empty</th><th>not observed</th><th>unavailable</th><th>blocked</th></tr>
+    {{#layers}}<tr><td>{{layer}}</td><td>{{observed}}</td><td>{{empty}}</td><td>{{notobserved}}</td><td>{{unavailable}}</td><td>{{blocked}}</td></tr>{{/layers}}
+  </table>
+  <h3>Not inspected</h3>
+  {{#unverified}}<div class="layer"><span class="none">{{.}}</span></div>{{/unverified}}
+  {{^unverified}}<p class="note">The plan skipped nothing it named.</p>{{/unverified}}
+  {{/coverage}}
+
+  <h2 class="section-title"><span class="dot"></span>Findings</h2>
+  <p>{{#counts}}<span class="badge {{badge}}">{{outcome}} · {{n}}</span> {{/counts}}{{^counts}}No findings.{{/counts}}</p>
+  {{#findings}}
+  <div class="tc">
+    <div class="tc-head">
+      <span class="tc-id">{{id}} · {{family}}</span>
+      <span class="badge {{badge}}">{{outcome}}</span>
+    </div>
+    <div class="tc-body">
+      <div><b>{{say}}</b></div>
+      <div class="note">confidence {{confidence}} · oracle {{oracle}} · reproduced {{reproduced}}{{#action}} · action {{action}}{{/action}} · evidence {{evidence}}</div>
+      <div class="layer"><span class="lbl">expected</span> {{expected}}</div>
+      <div class="layer"><span class="lbl">actual</span> {{actual}}</div>
+      {{#source}}<div class="layer"><span class="lbl">source</span> {{source}}</div>{{/source}}
+      {{#alternatives}}<div class="layer"><span class="lbl">alternative</span> {{.}}</div>{{/alternatives}}
+      {{#needs}}<div class="layer"><span class="lbl">would settle it</span> {{.}}</div>{{/needs}}
+      {{#missing}}<div class="layer"><span class="none">not observed: {{.}}</span></div>{{/missing}}
+    </div>
+  </div>
+  {{/findings}}
+
+  <h2 class="section-title"><span class="dot"></span>Evidence, action by action</h2>
+  {{#actions}}
+  <div class="tc">
+    <div class="tc-head">
+      <span class="tc-id">{{id}} · {{kind}} {{on}}{{#identity}} · as {{identity}}{{/identity}}{{#reproduces}} · replays {{reproduces}}{{/reproduces}}</span>
+      <span class="badge flat">{{state}}</span>
+    </div>
+    <div class="tc-body">
+      {{#why}}<div class="note broke">{{why}}</div>{{/why}}
+      {{#layers}}
+      <div class="layer"><span class="lbl">{{layer}}</span> {{state}}{{#why}} — {{why}}{{/why}}
+        {{#lines}}<div class="note">{{.}}</div>{{/lines}}
+      </div>
+      {{/layers}}
+      {{#shot}}<img class="shot" alt="after {{id}}" src="{{{shot}}}">{{/shot}}
+    </div>
+  </div>
+  {{/actions}}
+
+  <h2 class="section-title"><span class="dot"></span>Data checks</h2>
+  <table>
+    <tr><th>check</th><th>action</th><th>state</th><th>query</th><th>tables</th><th>expected</th><th>rows</th><th>reads</th><th>window</th></tr>
+    {{#checks}}<tr><td>{{id}}</td><td>{{action}}</td><td>{{state}}{{#why}} — {{why}}{{/why}}</td><td><code>{{query}}</code></td><td>{{tables}} ({{provenance}})</td><td>{{expect}}</td><td>{{rows}}</td><td>{{attempts}}</td><td>{{within}}s</td></tr>{{/checks}}
+  </table>
+  <p class="note">Only the NUMBER of rows is kept. What the rows hold never left the database.</p>
+
+  <h2 class="section-title"><span class="dot"></span>Tenant isolation</h2>
+  <table>
+    <tr><th>row</th><th>identity</th><th>tenant</th><th>resource</th><th>operation</th><th>expected</th><th>channel</th><th>state</th><th>status</th><th>marker seen</th><th>data moved</th></tr>
+    {{#security}}<tr><td>{{row}}</td><td>{{identity}}</td><td>{{tenant}}</td><td>{{resource}}</td><td>{{operation}}</td><td>{{expect}}</td><td>{{channel}}</td><td>{{state}}{{#why}} — {{why}}{{/why}}</td><td>{{status}}</td><td>{{leaked}}</td><td>{{changed}}</td></tr>{{/security}}
+  </table>
+  <p class="note">A probe keeps a status and a yes/no, never a body: another tenant's data is not copied onto this page, even when it leaked.</p>
+
+  <h2 class="section-title"><span class="dot"></span>Reproduction</h2>
+  {{#reproductions}}<div class="layer"><span class="lbl">{{finding}}</span> {{reproduced}} on {{action}} — {{why}}</div>{{/reproductions}}
+  {{^reproductions}}<p class="note">Nothing was replayed.</p>{{/reproductions}}
+
+  <h2 class="section-title"><span class="dot"></span>Handover</h2>
+  {{#handover}}
+  <h3>Regression drafts</h3>
+  {{#drafts}}<div class="layer"><span class="lbl">{{finding}}</span> {{#case}}<b>{{case}}</b> — {{/case}}{{why}}</div>{{/drafts}}
+  {{^drafts}}<p class="note">None generated.</p>{{/drafts}}
+  <h3>Requirements to clarify</h3>
+  {{#requirements}}<div class="layer">{{.}}</div>{{/requirements}}
+  {{^requirements}}<p class="note">None.</p>{{/requirements}}
+  <h3>What would settle the open findings</h3>
+  {{#settle}}<div class="layer">{{.}}</div>{{/settle}}
+  {{^settle}}<p class="note">Nothing open.</p>{{/settle}}
+  <h3>Approvals a person has to give</h3>
+  {{#approvals}}<div class="layer">{{.}}</div>{{/approvals}}
+  {{^approvals}}<p class="note">None were missing.</p>{{/approvals}}
+  {{/handover}}
+
+</div>
+</body>
+</html>

@@ -1,0 +1,4 @@
+[
+  { "on": "dlg-thing/Save", "api": "POST api/things", "backend": "app", "src": "x.ts:1 → y.cs:2", "timing": "sync", "layers": { "sql": [ { "table": "Things", "src": "y.cs:9" } ] }, "seen": "live", "fe_commit": "abc1234" },
+  { "on": "home/Delete", "api": "DELETE api/things/{id}", "backend": "app", "src": "x.ts:4 → y.cs:20", "timing": "deferred", "layers": { "queue": [ { "topic": "thing-removed", "consumer": "cleanup", "src": "y.cs:31" } ] }, "seen": "src" }
+]

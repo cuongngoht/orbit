@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "hosts": [
+    {
+      "id": "claude",
+      "name": "Claude Code",
+      "protocols": [
+        "native"
+      ],
+      "capabilities": {
+        "promptRouter": true,
+        "sessionEnd": true,
+        "nativeMemory": true,
+        "nativeAgents": true,
+        "statusLine": true
+      }
+    },
+    {
+      "id": "codex",
+      "name": "Codex",
+      "protocols": [
+        "2"
+      ],
+      "capabilities": {
+        "promptRouter": true,
+        "sessionEnd": true,
+        "nativeMemory": false,
+        "nativeAgents": false,
+        "statusLine": false
+      }
+    },
+    {
+      "id": "antigravity",
+      "name": "Antigravity CLI",
+      "protocols": [
+        "2"
+      ],
+      "capabilities": {
+        "promptRouter": false,
+        "sessionEnd": false,
+        "nativeMemory": false,
+        "nativeAgents": false,
+        "statusLine": false
+      }
+    },
+    {
+      "id": "grok",
+      "name": "Grok Build",
+      "protocols": [
+        "2"
+      ],
+      "capabilities": {
+        "promptRouter": false,
+        "sessionEnd": true,
+        "nativeMemory": false,
+        "nativeAgents": false,
+        "statusLine": false
+      }
+    }
+  ]
+}

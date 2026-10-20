@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "doc": "The sources a project report can read, as DATA: what a connection to each asks for, what its scope may name, the read-only permissions a token needs (with the official pages they were checked against), the published token shapes a log must never show, and which permission each optional part of the report depends on. One project uses exactly ONE of these.",
+  "providers": [
+    {
+      "id": "github",
+      "label": "GitHub",
+      "connection": {
+        "fields": [
+          { "name": "host", "label": "API host", "default": "https://api.github.com", "doc": "https://api.github.com, or https://<your-server>/api/v3 for GitHub Enterprise Server" },
+          { "name": "organization", "label": "Owner (organization or user)", "required": true, "doc": "The account that owns the repositories. A fine-grained token reaches one owner." }
+        ]
+      },
+      "scope": {
+        "fields": [
+          { "name": "repositories", "label": "Repositories", "type": "list", "required": true, "doc": "owner/name, one or more, all under this connection's owner" },
+          { "name": "projects", "label": "Projects (v2) numbers", "type": "list", "doc": "Optional: organization project numbers whose Status and Iteration fields the report may map" },
+          { "name": "issues", "label": "Issues", "type": "boolean", "default": true, "doc": "Read issues as the backlog" },
+          { "name": "actions", "label": "Actions runs", "type": "boolean", "default": true, "doc": "Read workflow runs as builds" },
+          { "name": "deployments", "label": "Deployments", "type": "boolean", "default": true, "doc": "Read deployment records" }
+        ]
+      },
+      "credential": {
+        "kind": "fine-grained personal access token",
+        "advice": "Create a fine-grained personal access token for the owner above, limited to the repositories this report reads, with READ-ONLY repository permissions: Metadata, Pull requests, Issues — and Actions and Deployments if those parts are on. Add the organization permission Projects (read) only if Projects are read. Never grant a write permission for a report.",
+        "docs": [
+          "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens",
+          "https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens"
+        ],
+        "shapes": ["gh[pousr]_[A-Za-z0-9]{30,}", "github_pat_[A-Za-z0-9_]{40,}"]
+      },
+      "capabilities": [
+        { "id": "pullRequests", "collections": ["repositories", "pullRequests"], "required": true, "permission": "Pull requests (read) and Metadata (read)" },
+        { "id": "issues", "collections": ["workItems", "workItemTypes"], "setting": "issues", "permission": "Issues (read)" },
+        { "id": "projects", "collections": ["iterations"], "setting": "projects", "permission": "Projects (read), an organization permission" },
+        { "id": "actions", "collections": ["builds"], "setting": "actions", "permission": "Actions (read)" },
+        { "id": "deployments", "collections": ["deployments"], "setting": "deployments", "permission": "Deployments (read)" }
+      ]
+    },
+    {
+      "id": "azure-devops",
+      "label": "Azure DevOps",
+      "connection": {
+        "fields": [
+          { "name": "host", "label": "Organization URL", "default": "https://dev.azure.com", "doc": "https://dev.azure.com for Azure DevOps Services, or your Azure DevOps Server collection URL" },
+          { "name": "organization", "label": "Organization", "required": true, "doc": "The organization (Services) — a token is scoped to exactly one" }
+        ]
+      },
+      "scope": {
+        "fields": [
+          { "name": "project", "label": "Project", "required": true, "doc": "The project whose Boards, Repos and Pipelines are read", "pattern": "^[^\\\\/:*?\"<>|#%&]+$", "says": "the project's NAME as Azure DevOps shows it, not its URL -- it cannot contain \\ / : * ? \" < > | # % &" },
+          { "name": "repositories", "label": "Repositories", "type": "list", "doc": "Repository names; empty reads every repository of the project" },
+          { "name": "team", "label": "Team", "doc": "Whose iterations define the periods; empty uses the project's default team" },
+          { "name": "areaPath", "label": "Area path", "doc": "Optional: only work items under this area path" },
+          { "name": "boards", "label": "Boards", "type": "boolean", "default": true, "doc": "Read work items" },
+          { "name": "repos", "label": "Repos", "type": "boolean", "default": true, "doc": "Read pull requests" },
+          { "name": "pipelines", "label": "Pipelines", "type": "boolean", "default": true, "doc": "Read builds and deployment records" }
+        ]
+      },
+      "credential": {
+        "kind": "organization-scoped personal access token",
+        "advice": "Create a personal access token scoped to this ONE organization (global tokens stop working on 1 December 2026) with READ scopes only: Work Items (Read), Code (Read), Build (Read), Project and Team (Read) — and Release (Read) if classic releases are read. Never grant Read & write for a report.",
+        "docs": [
+          "https://learn.microsoft.com/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate",
+          "https://learn.microsoft.com/azure/devops/integrate/get-started/authentication/oauth#scopes"
+        ],
+        "shapes": ["\\b[a-z2-7]{52}\\b", "\\b[A-Za-z0-9]{84}\\b"]
+      },
+      "capabilities": [
+        { "id": "project", "collections": [], "required": true, "permission": "Project and Team (Read)" },
+        { "id": "boards", "collections": ["workItems", "workItemTypes", "iterations"], "setting": "boards", "permission": "Work Items (Read)" },
+        { "id": "repos", "collections": ["repositories", "pullRequests"], "setting": "repos", "permission": "Code (Read)" },
+        { "id": "pipelines", "collections": ["builds", "deployments"], "setting": "pipelines", "permission": "Build (Read)" }
+      ]
+    }
+  ]
+}

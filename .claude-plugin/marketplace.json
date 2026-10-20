@@ -1,0 +1,30 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "orbit",
+  "description": "Orbit Engineering plugins",
+  "owner": {
+    "name": "Orbit Engineering",
+    "email": "40376533+cuongngoht@users.noreply.github.com"
+  },
+  "plugins": [
+    {
+      "name": "orbit",
+      "description": "Orbit Engineering for Claude Code, Codex and Antigravity: From Goal to Verified Outcome — context, requirements, sandboxes, runtime, UI tests, autonomous QA, Orbit Control, MCP and tools. Governed and local. No dependencies.",
+      "version": "0.0.1",
+      "source": "./",
+      "author": {
+        "name": "Orbit Engineering",
+        "email": "40376533+cuongngoht@users.noreply.github.com"
+      },
+      "category": "testing",
+      "keywords": [
+        "orbit",
+        "playwright",
+        "ui-testing",
+        "json-dsl",
+        "qa",
+        "engineering"
+      ]
+    }
+  ]
+}

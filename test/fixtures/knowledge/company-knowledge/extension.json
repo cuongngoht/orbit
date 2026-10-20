@@ -1,0 +1,10 @@
+{
+  "id": "company-knowledge",
+  "version": "1.0.0",
+  "apiVersion": "orbit.extension/v2",
+  "engine": ">=0.0.1 <99",
+  "status": "verified",
+  "createdFor": "knowledge",
+  "note": "A FICTIONAL company's own vocabulary, taught to Orbit by an extension. Every id here is invented for the acceptance tests and must never appear anywhere under src/, cli/, catalog/ or skills/ — test/knowledge-acceptance.test.mjs greps for them.",
+  "knowledge": "./knowledge.mjs"
+}

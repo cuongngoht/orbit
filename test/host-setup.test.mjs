@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { join } from 'node:path';
+import { fakeIo } from './fakes/io.mjs';
+import { stateRooms } from '../src/store/control.mjs';
+import { inspectSetup, applySetup, removeSetup } from '../src/host/setup.mjs';
+import { renderHooks } from '../skills/orbit-learn/hosts/setup.mjs';
+import { hostStore } from '../src/host/store.mjs';
+const target = '/workspace/.agents/hooks.json';
+test('setup replaces only the owned entry with a checked revision and rollback preserves other hooks', () => {
+  const io = fakeIo();
+  const rooms = stateRooms('/machine');
+  const original = { other: { Stop: [] }, 'orbit-learn': { PreInvocation: [] } };
+  io.write(target, JSON.stringify(original));
+  const revision = inspectSetup(io, target).revision;
+  const request = { target, revision, key: 'orbit-learn', entry: renderHooks('antigravity', '/plugin root') };
+  assert.throws(() => applySetup(io, rooms, request), /replacement/);
+  applySetup(io, rooms, { ...request, replace: true });
+  assert.deepEqual(inspectSetup(io, target).document.other, original.other);
+  assert.throws(() => applySetup(io, rooms, { ...request, replace: true }), /changed/);
+  const changed = inspectSetup(io, target).document;
+  changed.third = { Stop: [] };
+  io.write(target, JSON.stringify(changed));
+  removeSetup(io, rooms, target, inspectSetup(io, target).revision);
+  assert.deepEqual(inspectSetup(io, target).document, { ...original, third: { Stop: [] } });
+  assert.ok([...io.files.keys()].some((f) => f.includes('.backup-')));
+});
+test('host settings refuse stale revisions, malformed values and newer schemas', () => {
+  const io = fakeIo();
+  const rooms = stateRooms('/machine');
+  const store = hostStore(rooms, io, 'codex');
+  assert.equal(store.update({ trace: false }, 0), 1);
+  assert.throws(() => store.update({ trace: true }, 0), /changed/);
+  assert.throws(() => store.update({ trace: 'yes' }, 1));
+  io.write(join(rooms.hosts, 'codex', 'settings.json'), JSON.stringify({ schema: 99, revision: 1 }));
+  assert.throws(() => store.update({ trace: true }, 1));
+});

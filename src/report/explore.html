@@ -1,0 +1,116 @@
+<!doctype html>
+<!-- The exploration session's markup, as a file. Same rules as report.html: {{x}} is an
+     escaped value, {{{x}}} a raw one, {{#x}}…{{/x}} repeats for a list or renders once
+     for anything else truthy, {{^x}}…{{/x}} is the empty case. What each name means is
+     decided in explore.mjs; nothing is computed here. It borrows report.css, so a project
+     that restyles one page has restyled all three. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Exploration session{{#project}} — {{project}}{{/project}}</title>
+<style>{{{style}}}</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>Exploration session{{#project}} — {{project}}{{/project}}</h1>
+  <div class="meta">{{#charter}}{{screen}}{{/charter}}{{#charter}}{{#fe_commit}} · frontend {{fe_commit}}{{/fe_commit}}{{/charter}}{{#host}} · on {{host}}{{/host}}{{#generated}} · written {{generated}}{{/generated}}</div>
+</header>
+
+<div class="wrap">
+
+  <div class="callout {{calloutClass}}">{{callout}}</div>
+
+  <h2 class="section-title"><span class="dot"></span>The charter</h2>
+  {{#charter}}
+  <div class="tc">
+    <div class="tc-head">
+      <span class="tc-id">{{screen}}</span>
+      {{#write}}<span class="badge warn">--write: it was allowed to submit</span>{{/write}}
+      {{^write}}<span class="badge flat">read only: it never submitted</span>{{/write}}
+    </div>
+    <div class="tc-body">{{say}}</div>
+  </div>
+  {{/charter}}
+  <p class="note">An exploration is not a run. Nothing on this page is a verdict on the product: it is what one session <b>saw</b>, and the questions it could not answer without a person.</p>
+
+  <h2 class="section-title"><span class="dot"></span>What was on the surface</h2>
+  <table>
+    <tr><th>control</th><th>kind</th><th>opens</th><th>leads to</th><th>locator</th></tr>
+    {{#controls}}
+    <tr>
+      <td><strong>{{on}}</strong>{{#untouched}} <span class="badge flat">never touched</span>{{/untouched}}</td>
+      <td>{{#role}}{{role}}{{/role}}{{^role}}—{{/role}}</td>
+      <td>{{#opens}}{{opens}}{{/opens}}{{^opens}}—{{/opens}}</td>
+      <td>{{#to}}{{to}}{{/to}}{{^to}}—{{/to}}</td>
+      <td>{{#selector}}<span class="mono">{{selector}}</span>{{/selector}}{{^selector}}—{{/selector}}</td>
+    </tr>
+    {{/controls}}
+  </table>
+  {{^controls}}<p class="note">No control was recorded. A session that opened a screen and wrote nothing down leaves the next person exactly where it found them.</p>{{/controls}}
+
+  <h2 class="section-title"><span class="dot"></span>What happened when it was touched</h2>
+  {{#actions}}
+  <div class="tc">
+    <div class="tc-head">
+      <span class="tc-id">{{on}}</span>
+      {{#commits}}<span class="badge flat">commits</span>{{/commits}}
+      {{#broke}}<span class="badge fail">a call failed</span>{{/broke}}
+      {{#quiet}}<span class="badge warn">it commits, and no call was made</span>{{/quiet}}
+    </div>
+    <div class="tc-body">
+      {{#why}}<p class="note">{{why}}</p>{{/why}}
+      {{#layers}}
+      <div class="layer">
+        <span class="lbl {{id}}">{{id}}</span>
+        {{#none}}<span class="none">not watched</span>{{/none}}
+        {{#silent}}<span class="none">watched — nothing happened here</span>{{/silent}}
+        {{#text}}{{text}}{{/text}}
+        {{#calls}}<div><code>{{method}} {{url}}</code> <span class="badge {{tone}}">{{status}}</span></div>{{/calls}}
+      </div>
+      {{/layers}}
+    </div>
+  </div>
+  {{/actions}}
+  {{^actions}}<p class="note">Nothing was touched. Every control above is still a hypothesis about what this screen does.</p>{{/actions}}
+  <p class="note">A layer marked <b>not watched</b> was never observed, which is not the same as proven untouched. <code>sql</code> cannot be seen from a browser at all: it is read from <code>graph/effects.json</code>, and where the map does not name a table it is an open question below, never a guess.</p>
+
+  <h2 class="section-title"><span class="dot"></span>Contradictions</h2>
+  {{#findings}}
+  <div class="verdict fail">
+    <strong>{{on}}</strong> — {{why}}{{#evidence}}<br><span class="mono">{{evidence}}</span>{{/evidence}}
+  </div>
+  {{/findings}}
+  {{^findings}}<p class="note">Nothing contradicted itself where this session looked. That is not the same as "it works": only a case with a verdict can say that.</p>{{/findings}}
+
+  <h2 class="section-title"><span class="dot"></span>Cases left behind</h2>
+  <table>
+    <tr><th>case</th><th>verdict</th><th>proved</th><th>kept</th></tr>
+    {{#cases}}
+    <tr>
+      <td><strong>{{id}}</strong></td>
+      <td><span class="badge {{tone}}">{{status}}</span></td>
+      <td>{{#proved}}<code>{{id}} {{n}}</code> {{/proved}}{{^proved}}<code>nothing</code>{{/proved}}</td>
+      <td>{{#kept}}in <span class="mono">cases/</span>{{/kept}}{{^kept}}<span class="mono">.local/</span> only{{/kept}}</td>
+    </tr>
+    {{/cases}}
+  </table>
+  {{^cases}}<p class="note">No case was written. A session that found only open questions is a successful session — the questions are the deliverable.</p>{{/cases}}
+  <p class="note">Every expectation in these cases is what the product <b>did</b>, not what it <b>should</b> do. A case derived from behaviour freezes that behaviour, bug and all, so read each one before it is trusted as a test.</p>
+
+  <h2 class="section-title"><span class="dot"></span>Still needs a person</h2>
+  {{#manual}}
+  <div class="verdict warn">
+    <strong>{{about}}</strong> — {{kind}}<br>{{say}}
+  </div>
+  {{/manual}}
+  {{^manual}}
+  <p class="note">Nothing outstanding: every control on the surface was exercised, every case survived its own run, and the session left no question behind.</p>
+  {{/manual}}
+
+  <p class="note">Record what you concluded with <code>cli/note.mjs</code>, so the next session does not investigate it again. The notes are committed and shared, so nothing secret goes in one.</p>
+
+</div>
+</body>
+</html>

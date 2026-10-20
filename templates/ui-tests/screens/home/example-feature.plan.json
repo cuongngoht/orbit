@@ -1,0 +1,70 @@
+{
+  "$schema": "../../schema/plan.schema.json",
+  "schema": 1,
+  "id": "example-feature",
+  "screen": "home",
+  "title": "Example feature",
+  "feature": "the one thing this plan is about",
+  "revision": "1",
+  "at": "2026-01-01",
+  "author": "whoever designed it",
+  "scope": {
+    "in": [
+      "what this plan covers"
+    ],
+    "out": [
+      "what it deliberately does not, so nobody assumes it was tested"
+    ]
+  },
+  "sources": [
+    {
+      "id": "REQ1",
+      "kind": "requirement",
+      "ref": "",
+      "revision": "",
+      "says": "what the person who owns this feature said it must do"
+    }
+  ],
+  "map": {},
+  "environments": [
+    "test"
+  ],
+  "budget": {
+    "minutes": 30,
+    "profile": "smoke",
+    "because": "replace with the slot you actually have"
+  },
+  "done": [
+    "every acceptance criterion is covered or has a disposition",
+    "what no browser can see is a manual check with an owner"
+  ],
+  "criteria": [
+    {
+      "id": "AC1",
+      "says": "replace this with their words — never with what the application currently does",
+      "source": "REQ1"
+    }
+  ],
+  "assumptions": [],
+  "questions": [],
+  "exclusions": [],
+  "scenarios": [
+    {
+      "id": "S1",
+      "name": "replace this",
+      "covers": [
+        "AC1"
+      ],
+      "technique": "crud",
+      "why": "why this is worth the time",
+      "priority": "P1",
+      "readiness": "draft",
+      "actor": {},
+      "preconditions": [],
+      "intent": [],
+      "expect": {},
+      "cases": []
+    }
+  ],
+  "manual": []
+}

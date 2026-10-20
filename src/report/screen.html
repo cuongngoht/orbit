@@ -1,0 +1,105 @@
+<!doctype html>
+<!-- ONE SCREEN, every case that has touched it. Same markup vocabulary and the
+     same report.css as report.html, so the two read as one system: {{x}} is an
+     escaped value, {{{x}}} a raw one, {{#x}}…{{/x}} repeats for a list or renders
+     once for anything else truthy, {{^x}}…{{/x}} is the empty case. What each
+     name means is decided in screen.mjs; nothing is computed here. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{screen}} — {{verified}}/{{total}} verified</title>
+<style>{{{style}}}</style>
+</head>
+<body class="case-report">
+
+<header class="top">
+  <h1>{{title}}</h1>
+  <p class="case-id">{{screen}}</p>
+  <div class="meta">{{total}} case(s){{#target}} · {{target}}{{/target}}{{#env}} · {{env}}{{/env}}{{#commit}} · build <code>{{commit}}</code>{{/commit}}{{#generated}} · {{generated}}{{/generated}}</div>
+</header>
+
+<div class="wrap">
+
+  <div class="callout {{verdictClass}}">{{verdict}}</div>
+
+  <div class="summary-grid">
+    <div class="metric-card"><strong>{{total}}</strong><span>Cases that touched this screen</span></div>
+    <div class="metric-card"><strong>{{verified}}</strong><span>Verified (PASS only)</span></div>
+    {{#per}}<div class="metric-card"><strong>{{n}}</strong><span>{{id}} verifications held</span></div>{{/per}}
+  </div>
+
+  <p class="note">Only PASS verifies anything. SKIP, PARTIAL, REFUSED, BLOCKED and INCONCLUSIVE are counted as unverified, because a table of grey cannot be summed as &ldquo;checked&rdquo;. Each verdict below is the one its run earned &mdash; nothing on this page re-judges a run.</p>
+
+{{^cases}}
+  <div class="none">No run has touched this screen yet. Run a case whose <code>start</code> is this screen, or one whose steps name it, and it will appear here.</div>
+{{/cases}}
+
+{{#anyIdentities}}
+  <h2 class="section-title"><span class="dot"></span>Who drove this screen, and with which rights</h2>
+  <p class="note">A scoping question is answered by this table or it is not answered: &ldquo;the administrator could&rdquo; says nothing about what somebody without the role could. Addresses are masked; which roles were held is the point of recording an identity, so those are not.</p>
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>as</th><th>roles held</th><th>in these cases</th></tr></thead>
+    <tbody>{{#identities}}<tr><td class="mono">{{as}}</td><td>{{roles}}</td><td class="mono">{{cases}}</td></tr>{{/identities}}</tbody>
+  </table>
+  </div>
+{{/anyIdentities}}
+
+{{#anyQueries}}
+  <h2 class="section-title"><span class="dot"></span>The data underneath, as it was asked</h2>
+  <p class="note"><b>Shown verbatim so it can be re-run</b>, which is the only reason this page is worth more than a screenshot &mdash; so each query carries whatever real values its run used. Everything else on this page is masked.</p>
+  {{#queries}}
+  <div class="ask">
+    <div class="ask-head"><span class="mono">{{asked}}</span><span class="badge flat">{{case}}</span></div>
+    <pre class="sql">{{query}}</pre>
+    {{#rerun}}<p class="rerun-title"><b>run it yourself</b></p><div class="copyable"><pre>{{rerun}}</pre></div>{{/rerun}}
+  </div>
+  {{/queries}}
+{{/anyQueries}}
+
+{{#anyChecks}}
+  <h2 class="section-title"><span class="dot"></span>Still needs a person</h2>
+  <p class="note">Every reason a run left something for somebody to look at, in the run&rsquo;s own words. Nothing here invents a reason a run did not give.</p>
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>case</th><th>why</th></tr></thead>
+    <tbody>{{#checks}}<tr><td class="mono">{{case}}</td><td>{{say}}</td></tr>{{/checks}}</tbody>
+  </table>
+  </div>
+{{/anyChecks}}
+
+{{#cases}}
+  <h2 class="section-title"><span class="dot"></span>{{case}}</h2>
+  <div class="tc">
+    <div class="tc-head">
+      <span class="tc-id">{{name}}</span>
+      <span class="badge {{tone}}">{{status}}</span>
+    </div>
+    <div class="tc-body">
+      <div class="meta">{{steps}} steps{{#secs}} · {{secs}}{{/secs}}{{#when}} · {{when}}{{/when}}{{#host}} · <span class="mono">{{host}}</span>{{/host}} · proved {{#proved}}<code>{{id}} {{n}}</code> {{/proved}}{{^proved}}<code>nothing</code>{{/proved}}</div>
+      {{#why}}<p class="note broke">{{why}}</p>{{/why}}
+      {{#slowest}}<p class="note">{{slowest}}</p>{{/slowest}}
+      {{#gone}}<p class="note warn">{{gone}}</p>{{/gone}}
+
+      {{#shots}}
+      <div class="shot-card">
+        {{#src}}<img class="shot" src="{{src}}" alt="{{alt}}" loading="lazy">{{/src}}{{^src}}<p class="note broke">screenshot not readable — {{missing}}</p>{{/src}}
+        <p class="viewer-caption">{{caption}}</p>
+      </div>
+      {{/shots}}
+
+      {{#source}}
+      <p class="rerun-title"><b>the case, as written</b> — this page is enough to run it again: <code>run-case &lt;that run&rsquo;s report.html&gt;</code>, or save the block below as <code>cases/{{case}}.json</code></p>
+      <div class="copyable"><pre class="case-source">{{source}}</pre></div>
+      {{/source}}
+    </div>
+  </div>
+{{/cases}}
+
+</div>
+
+<footer class="note">One page per SCREEN, built from the ledger and from each run&rsquo;s own <code>run-log.jsonl</code>. A case whose evidence has been pruned keeps its verdict here and its pictures in that run&rsquo;s own report &mdash; dropping it would make a screen look less tested the longer you keep testing it.</footer>
+
+</body>
+</html>

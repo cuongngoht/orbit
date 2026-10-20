@@ -229,6 +229,23 @@ test("the map is held against the case: the call and the table it says a control
   assert.deepEqual(said(drive([api({ match: "things" })])), [], "a broader pattern still matches — only a different one is caught");
 });
 
+// The map writes a call's id as a template (`api/items/{id}`); the case asserts the very call it made, with the id
+// the run bound (`api/items/${ID}`). Those are the same call, and a different path is still caught.
+test("a placeholder in a match stands for the map's templated segment", () => {
+  const archive = { ...graph, effectOn: new Map([["detail/Archive", { on: "detail/Archive", api: "DELETE api/things/{id}", timing: "sync" }]]) };
+  const drive = (match) => validate({
+    id: "x", _file: "/x.json", name: "x", seen: "src", start: "detail", params: [{ n: "ID", required: true }],
+    steps: [
+      { do: "goto", screen: "detail", url: "/things/${ID}", wait: "1" },
+      { do: "click", on: "detail/Archive", wait: "1" },
+      { do: "api", match, method: "DELETE", status: 200 },
+      { do: "report", js: "1", expect: "true" },
+    ],
+  }, archive).filter((f) => /effects\.json/.test(f));
+  assert.deepEqual(drive("api/things/${ID}"), [], "the id the run bound is the map's {id}");
+  assert.match(drive("api/widgets/${ID}")[0] ?? "", /does not match api\/things\/\{id\}/);
+});
+
 // An effect record that names no call at all: asserting a request against it
 // says the case and the map disagree about whether anything is even sent.
 test("a verdict about a call the map says never happens is a finding", () => {

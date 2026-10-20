@@ -49,9 +49,16 @@ const methodAgrees = (at, st, method, fx) =>
 // the call IS -- not whether the two strings are equal. A broad pattern always
 // passes; only a genuinely different one is caught. An unparseable pattern is
 // semantic.mjs's finding, not this one's.
+//
+// A `${PARAM}` in the pattern is a value the run fills in, and the map writes the same segment as a template
+// (`api/items/{id}`): so a placeholder stands for one segment of the path, whatever the map called it.
+const PLACEHOLDER = /\$\{[A-Za-z_][A-Za-z0-9_]*\}/g;
+
+const templated = (match) => String(match).replace(PLACEHOLDER, "[^/]+");
+
 function pathAgrees(at, st, path, fx) {
-  if (!path || !parses(st.match)) return [];
-  return new RegExp(st.match).test(path) ? [] : [`${at}: match /${st.match}/ does not match ${path}, the call the map says ${fx.on} makes (graph/effects.json)`];
+  if (!path || !parses(templated(st.match))) return [];
+  return new RegExp(templated(st.match)).test(path) ? [] : [`${at}: match /${st.match}/ does not match ${path}, the call the map says ${fx.on} makes (graph/effects.json)`];
 }
 
 const parses = (p) => { try { new RegExp(p); return true; } catch { return false; } };

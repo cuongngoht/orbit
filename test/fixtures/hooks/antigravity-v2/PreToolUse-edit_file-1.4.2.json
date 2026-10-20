@@ -1,0 +1,49 @@
+{
+  "input": {
+    "artifactDirectoryPath": "/fixture-host/artifacts",
+    "conversationId": "fixture-session-142",
+    "modelName": "fixture-model",
+    "stepIdx": 5,
+    "toolCall": {
+      "args": {
+        "Path": "/fixture/notes/smoke.txt",
+        "Replacement": "fixture new",
+        "Target": "fixture old"
+      },
+      "name": "edit_file"
+    },
+    "transcriptPath": "/fixture-host/transcript.jsonl",
+    "workspacePaths": [
+      "/fixture"
+    ]
+  },
+  "argv": [
+    "--host=antigravity",
+    "--protocol=2",
+    "--event=PreToolUse"
+  ],
+  "expected": {
+    "protocol": 2,
+    "hostEvent": "PreToolUse",
+    "event": "pre-tool",
+    "session": "antigravity:6b5e08feb9d2b3ed",
+    "turn": null,
+    "delivery": "antigravity:ef2d127de37b942b",
+    "cwd": "/fixture",
+    "outcome": "unknown",
+    "idle": false,
+    "tool": {
+      "name": "edit_file",
+      "kind": "edit"
+    },
+    "paths": [
+      "/fixture/notes/smoke.txt"
+    ],
+    "pattern": null,
+    "command": null,
+    "background": false,
+    "invokes": null,
+    "host": "antigravity",
+    "ok": null
+  }
+}

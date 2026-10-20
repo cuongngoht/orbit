@@ -1,0 +1,49 @@
+{
+  "input": {
+    "artifactDirectoryPath": "/fixture-host/artifacts",
+    "conversationId": "fixture-session-142",
+    "error": "",
+    "modelName": "fixture-model",
+    "stepIdx": 3,
+    "toolCall": {
+      "args": {
+        "Content": "fixture content\n",
+        "Path": "/fixture/notes/smoke.txt"
+      },
+      "name": "write_file"
+    },
+    "transcriptPath": "/fixture-host/transcript.jsonl",
+    "workspacePaths": [
+      "/fixture"
+    ]
+  },
+  "argv": [
+    "--host=antigravity",
+    "--protocol=2",
+    "--event=PostToolUse"
+  ],
+  "expected": {
+    "protocol": 2,
+    "hostEvent": "PostToolUse",
+    "event": "post-tool",
+    "session": "antigravity:6b5e08feb9d2b3ed",
+    "turn": null,
+    "delivery": "antigravity:4e07408562bedb8b",
+    "cwd": "/fixture",
+    "outcome": "success",
+    "idle": false,
+    "tool": {
+      "name": "write_file",
+      "kind": "edit"
+    },
+    "paths": [
+      "/fixture/notes/smoke.txt"
+    ],
+    "pattern": null,
+    "command": null,
+    "background": false,
+    "invokes": null,
+    "host": "antigravity",
+    "ok": true
+  }
+}

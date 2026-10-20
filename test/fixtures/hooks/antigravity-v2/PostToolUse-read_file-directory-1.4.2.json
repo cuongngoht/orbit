@@ -1,0 +1,48 @@
+{
+  "input": {
+    "artifactDirectoryPath": "/fixture-host/artifacts",
+    "conversationId": "fixture-session-142",
+    "error": "path is a directory, not a file",
+    "modelName": "fixture-model",
+    "stepIdx": 7,
+    "toolCall": {
+      "args": {
+        "Path": "/fixture/src"
+      },
+      "name": "read_file"
+    },
+    "transcriptPath": "/fixture-host/transcript.jsonl",
+    "workspacePaths": [
+      "/fixture"
+    ]
+  },
+  "argv": [
+    "--host=antigravity",
+    "--protocol=2",
+    "--event=PostToolUse"
+  ],
+  "expected": {
+    "protocol": 2,
+    "hostEvent": "PostToolUse",
+    "event": "post-tool-failure",
+    "session": "antigravity:6b5e08feb9d2b3ed",
+    "turn": null,
+    "delivery": "antigravity:7902699be42c8a8e",
+    "cwd": "/fixture",
+    "outcome": "failure",
+    "idle": false,
+    "tool": {
+      "name": "read_file",
+      "kind": "read"
+    },
+    "paths": [
+      "/fixture/src"
+    ],
+    "pattern": null,
+    "command": null,
+    "background": false,
+    "invokes": null,
+    "host": "antigravity",
+    "ok": false
+  }
+}

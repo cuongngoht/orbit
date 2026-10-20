@@ -7,13 +7,11 @@
 //
 //   workOf(ctx) -> view | null
 //   workNowRows(ctx, narrow) -> [row]      WORK · ref · mode · state · files · checks · blocker · note
-import { dim, joined, row, seg } from "./sections/parts.mjs";
+import { dim, joined, labelled, row, seg } from "./sections/parts.mjs";
 
 export const WORK_NOW_ITEMS = 3;
 
 export const workOf = (ctx) => ctx.state.work ?? null;
-
-const labelled = (label, segs) => row([dim(label.padEnd(10)), ...segs], [], { label });
 
 const listed = (items, n) => `${items.slice(0, n).join(", ")}${items.length > n ? ` +${items.length - n} more` : ""}`;
 

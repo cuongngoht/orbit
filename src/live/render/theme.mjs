@@ -22,7 +22,29 @@ export const PALETTE = Object.freeze({
   tabs: { rgb: [18, 20, 24], xterm: 233 },
   card: { rgb: [19, 21, 27], xterm: 234 },
   footer: { rgb: [20, 22, 27], xterm: 234 },
+  // The orbit's (0.0.3, ADR 0029): its satellite bright in front of the planet and darker behind it, the ring it runs
+  // on dimmer still, and two greys for a satellite that turns while the task does not move.
+  peachLight: { rgb: [255, 163, 130], xterm: 216 },
+  peachDark: { rgb: [217, 110, 72], xterm: 173 },
+  orbitTrack: { rgb: [64, 69, 82], xterm: 238 },
+  faint: { rgb: [88, 94, 108], xterm: 240 },
 });
+
+// The orbit (src/live/orbit.mjs, 0.0.3, ADR 0029): the planet always the brand's; the satellite near (in front) and far
+// (behind) in peach while the task moves and in grey otherwise -- motion never reads as ORBITING; the track darker. Its
+// depth is colour alone, never bold: a terminal that draws a Braille cell bold may fall back to a font that draws every
+// one of the cell's eight dots, the empty ones as rings, and the satellite reads as a cluster.
+const ORBIT_LOOK = Object.freeze({
+  "orbit:planet": { fg: "peach" },
+  "orbit:near": { fg: "peachLight" },
+  "orbit:far": { fg: "peachDark" },
+  "orbit:near:gentle": { fg: "muted" },
+  "orbit:far:gentle": { fg: "faint" },
+  "orbit:track": { fg: "orbitTrack" },
+});
+
+// The badge's orbit sits on the badge's chip: every orbit tone again, on the chip's colour (tui/sections/top.mjs).
+const onChip = (looks) => Object.fromEntries(Object.entries(looks).map(([tone, look]) => [`pill:${tone}`, { ...look, bg: "elevated" }]));
 
 export const LOOK = Object.freeze({
   success: { fg: "green" },
@@ -44,6 +66,8 @@ export const LOOK = Object.freeze({
   "pill:warning": { fg: "yellow", bg: "elevated", bold: true },
   "pill:info": { fg: "cyan", bg: "elevated", bold: true },
   "pill:subtle": { fg: "muted", bg: "elevated" },
+  ...ORBIT_LOOK,
+  ...onChip(ORBIT_LOOK),
 });
 
 export const BANDS = Object.freeze({ header: "header", tabs: "tabs", card: "card", footer: "footer" });

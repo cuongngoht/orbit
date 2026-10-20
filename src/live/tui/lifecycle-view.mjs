@@ -8,7 +8,7 @@
 //   lifecycleOf(ctx) -> [{ label, mark, text }]      the data, one entry per row; [] when no task is shown
 //   lifecycleRows(ctx, narrow) -> [row]              the rows, drawn after the tracked work's own; none when narrow
 import { LIFECYCLE_GLYPHS } from "../words.mjs";
-import { dim, row, seg } from "./sections/parts.mjs";
+import { LABEL_CELLS, dim, row, seg } from "./sections/parts.mjs";
 
 const WORD = /^(NOT_INITIALIZED|BLOCKED|BOOTSTRAPPED|STALE|PARTIAL|READY):\s*(.*)$/;
 const TALLY = /(\d+) of (\d+) known(?:; unknown: ([^),]*(?:, [^),]*)*))?/;
@@ -69,4 +69,4 @@ export function lifecycleOf(ctx) {
 }
 
 // A narrow pane keeps only what runs and how far, so the lifecycle gives way there, as the work's wider rows do.
-export const lifecycleRows = (ctx, narrow = false) => (narrow ? [] : lifecycleOf(ctx).map((e) => row([dim(e.label.padEnd(12)), seg(`${LIFECYCLE_GLYPHS[e.mark].glyph} `, LIFECYCLE_GLYPHS[e.mark].tone), seg(e.text)], [], { label: e.label })));
+export const lifecycleRows = (ctx, narrow = false) => (narrow ? [] : lifecycleOf(ctx).map((e) => row([dim(e.label.padEnd(LABEL_CELLS)), seg(`${LIFECYCLE_GLYPHS[e.mark].glyph} `, LIFECYCLE_GLYPHS[e.mark].tone), seg(e.text)], [], { label: e.label })));

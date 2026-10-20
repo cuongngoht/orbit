@@ -104,10 +104,10 @@ test("a start that fails gives the terminal back and says so", async () => {
 });
 
 test("only the rows that changed are written; a resize redraws the whole screen at its new size", () => {
-  const o = opened();
+  const o = opened({ world: { settings: { ...SETTINGS, pane: { animation: "off" } } } });
   const before = o.tty.stdout.writes.length;
   o.timers.fire(100);
-  assert.equal(o.tty.stdout.writes.length, before, "a quiet second within the same second writes nothing");
+  assert.equal(o.tty.stdout.writes.length, before, "a quiet second within the same second writes nothing (the orbit still: 0.0.3)");
   o.w.feeds[0].push({ event: "task-event", id: "t=10", data: { source: "task", n: 9, at: ago(0), kind: "blocked", stop: "ENVIRONMENT_BLOCKED", needs: "environment" } });
   o.timers.fire(100);
   const last = o.tty.stdout.writes.at(-1);
@@ -118,6 +118,69 @@ test("only the rows that changed are written; a resize redraws the whole screen 
   assert.equal(o.screen().length, 24);
   assert.match(o.screen().join("\n"), /blocked: ENVIRONMENT_BLOCKED/);
   o.tty.type("q");
+});
+
+// THE ORBIT in a terminal (0.0.3, ADR 0029): it turns on the timers' own clock between data frames -- no line has to
+// arrive -- every paint a moment of it, writing the row that holds it and nothing else; and nothing at all for a person
+// who asked for no motion. It has no timer of its own: the paint the viewer already has is its clock's tick.
+const positioned = (bytes) => bytes.match(/\u001b\[(\d+);1H/g) ?? [];
+
+test("0.0.3: the orbit turns on the terminal's own clock with no line arriving, writing its row alone -- no clear, every other row standing", async () => {
+  const o = opened();
+  const before = o.tty.stdout.writes.length;
+  const screen = o.screen();
+  for (let i = 0; i < 30; i++) o.timers.fire(100);
+  const ticks = o.tty.stdout.writes.slice(before);
+  assert.ok(ticks.length >= 10, `${ticks.length} orbit ticks written in three seconds of its clock`);
+  for (const w of ticks) assert.deepEqual(positioned(w), ["\u001b[1;1H"], "the header's row, and only it");
+  assert.ok(ticks.every((w) => !w.includes(clearScreen())), "never the whole screen");
+  assert.ok(new Set(ticks).size > 5, "a different picture each time the satellite moved on");
+  assert.deepEqual(o.screen().slice(1), screen.slice(1), "every other row exactly as it was");
+  assert.equal(o.w.feeds[0].ticks, 0, "and no journal was asked anything for it");
+  o.tty.type("q");
+  await o.run;
+});
+
+test("0.0.3: with pane.animation off nothing turns, and a quiet terminal is written nothing at all", async () => {
+  const o = opened({ world: { settings: { ...SETTINGS, pane: { animation: "off" } } } });
+  const before = o.tty.stdout.writes.length;
+  for (let i = 0; i < 30; i++) o.timers.fire(100);
+  assert.equal(o.tty.stdout.writes.length, before);
+  o.tty.type("q");
+  await o.run;
+});
+
+test("0.0.3: a terminal that has not drained skips the orbit's tick -- never a line that arrived -- and the orbit goes on from its clock", async () => {
+  const o = opened();
+  o.tty.stdout.writableNeedDrain = true;
+  const before = o.tty.stdout.writes.length;
+  for (let i = 0; i < 10; i++) o.timers.fire(100);
+  assert.equal(o.tty.stdout.writes.length, before, "no orbit tick while the terminal is behind");
+  o.w.feeds[0].push({ event: "task-event", id: "t=10", data: { source: "task", n: 9, at: ago(0), kind: "blocked", stop: "ENVIRONMENT_BLOCKED", needs: "environment" } });
+  o.timers.fire(100);
+  assert.match(o.screen().join("\n"), /blocked: ENVIRONMENT_BLOCKED/, "a data frame is never skipped");
+  o.tty.stdout.writableNeedDrain = false;
+  const caught = o.tty.stdout.writes.length;
+  for (let i = 0; i < 5; i++) o.timers.fire(100);
+  assert.ok(o.tty.stdout.writes.length > caught);
+  o.tty.type("q");
+  await o.run;
+});
+
+test("0.0.3: a resize mid-turn redraws the whole screen once at its new size, then the ticks are the orbit's row again -- and q leaves no timer", async () => {
+  const o = opened();
+  for (let i = 0; i < 5; i++) o.timers.fire(100);
+  o.tty.resize(90, 24);
+  assert.ok(o.tty.stdout.writes.at(-1).startsWith(clearScreen()));
+  const before = o.tty.stdout.writes.length;
+  for (let i = 0; i < 10; i++) o.timers.fire(100);
+  const ticks = o.tty.stdout.writes.slice(before);
+  assert.ok(ticks.length > 0);
+  for (const w of ticks) assert.deepEqual(positioned(w), ["\u001b[1;1H"]);
+  assert.equal(o.screen().length, 24);
+  o.tty.type("q");
+  await o.run;
+  assert.equal(o.timers.active(), 0, "no animation timer outlives the viewer");
 });
 
 test("every byte it writes is one of ansi.mjs's own sequences or text: a journal's ESC never reaches the terminal", () => {

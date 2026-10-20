@@ -238,7 +238,8 @@ test("a terminal pane cut to its room keeps the TOP of the Timeline view, as a d
   const short = reduce(start, actionOfKey(start.viewer, "6"));
   assert.equal(short.viewer.view, "timeline");
   const lines = frameOf(short).lines.map((l) => unstyled(l).trimEnd());
-  const tabs = lines.findIndex((l) => /6: Timeline/.test(l));
+  // The tabs' last row: their labels, under their keys beside an AI CLI (0.0.3) -- or the one row where all of them fit.
+  const tabs = lines.findIndex((l) => /\bTimeline\b/.test(l));
   assert.ok(tabs >= 0, "the Timeline view is drawn");
   const ctx = contextOf(short, derivedOf(short));
   const events = timelineFor(ctx, 30).filter((e) => e.type !== "plan.revised");
@@ -255,6 +256,17 @@ test("the pane layout keeps progress and the LIVE indicator at the bottom edge, 
   assert.match(lines[status], /(ORBITING|IDLE)$/, "the indicator on the right of the status bar, at every width");
   assert.equal(status, lines.length - 3, "then only the rule and the footer");
   assert.ok(lines.some((l) => /plan-2 \(engineering\)/.test(l)), "the Plan view picked with 5");
+});
+
+test("0.0.3: on bands the regions' rules give way -- the header's band meets the tabs', the footer's band is the bottom edge", () => {
+  const s = reduce(planned({ columns: 72, rows: 34, start: { layout: "pane" } }), { type: "view", at: 4 });
+  const banded = { ...s, viewer: { ...s.viewer, colour: true, depth: "truecolor", bands: true } };
+  const lines = frameOf(banded).lines.map((l) => unstyled(l).trimEnd());
+  assert.equal(lines.findIndex((l) => /STEPS /.test(l)), lines.length - 2, "the status bar, then the keys: no rule between");
+  assert.ok(!lines.some((l) => /^═+$/.test(l)), "no rule under the header");
+  assert.match(lines[1], /^1:/, "the tabs right under the header");
+  const dashboard = { ...banded, viewer: { ...banded.viewer, layout: "dashboard" } };
+  assert.match(unstyled(frameOf(dashboard).lines[1]), /^═+$/, "the dashboard keeps its rules");
 });
 
 test("a viewer an opener started beside an AI CLI starts as the pane; one a person started is the dashboard", () => {

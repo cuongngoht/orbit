@@ -1,11 +1,11 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import type { PaneHeader, PaneModel, PaneOrbit, PaneRow, PaneSegment, PaneView } from '../types'
+import type { PaneHeader, PaneModel, PaneOrbit, PaneOrbitRing, PaneRow, PaneSegment, PaneView } from '../types'
 
 // Orbit LIVE, docked beside the Claude Code session (Orbit 1.8.5; 1.8.6 Live Pane 2.0): the AI CLI keeps the left, the
 // prompt and the keyboard; this pane is a viewer on the right. It draws what the Orbit engine answers -- the header
-// line (0.0.1: the orbit, turning on this pane's own clock while -- and only while -- the engine says the task moves),
+// line (0.0.3: its two orbits, turning on this pane's own clock the whole time it is open, in every state of the task),
 // the work as a TASK EXECUTION checklist (the steps it actually took, the checks nested under them), what it is
 // doing NOW, the views a person switches between (events, tests, changes, notices, plan, timeline), task and test
 // progress, and a status bar ending in the LIVE indicator -- from
@@ -30,7 +30,7 @@ const ASK_MS = 5000
 const INLINE_ROWS = 18
 // The skills that open it: `orbit` (a goal) and `orbit-help` -- by name, so no other orbit-* skill does.
 const ENTRY = /(^|:)orbit(-help)?$/
-// How often the orbit turns while it moves: its frames are the engine's, at most ten a second.
+// How often the orbits turn: their frames are the engine's, at most ten a second.
 const SPIN_MS = 100
 const SHARE = 36
 // A terminal draws a row of Buttons as written, with nothing between them: the view tabs keep two cells apart.
@@ -43,8 +43,9 @@ const saying = (text: string, tone = 'warning'): PaneModel => ({ version: 1, lea
 const model = atom({ plugin: 'orbit', key: 'model' } as const, saying('reading this session’s task…', 'subtle'))
 const lease = atom({ plugin: 'orbit', key: 'lease' } as const, '')
 const view = atom({ plugin: 'orbit', key: 'view' } as const, 'events')
-// The orbit's frame this pane drew last, '' while the engine's own header stands (the orbit parked).
-const spin = atom({ plugin: 'orbit', key: 'spin' } as const, '')
+// The phase this pane drew the orbits at last, in steps of the largest ring; -1 while the engine's own header stands
+// (the orbits parked: the animation is off, or the pane is not following).
+const spin = atom({ plugin: 'orbit', key: 'spin' } as const, -1)
 
 type Run = { timer: Timer | null; spin: Timer | null; busy: boolean; columns: number; rows: number; terminal: number | null; asked: number | null }
 
@@ -100,11 +101,21 @@ const progressOf = (value: unknown): PaneRow[] => (isRecord(value) ? rowsOf(valu
 
 const numberOf = (v: unknown, fallback: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : fallback)
 
-// 0.0.1: what turning the header's orbit takes (src/live/orbit.mjs `orbitTrackOf`), or null for an answer without one.
-const orbitOf = (value: unknown): PaneOrbit | null =>
-  isRecord(value) && Array.isArray(value.frames) && value.frames.length > 0 && typeof value.parked === 'string'
-    ? { moving: value.moving === true, tone: text(value.tone), frames: value.frames.map((f) => String(f)), parked: value.parked, lastAt: text(value.lastAt), kickMs: numberOf(value.kickMs, 3000), fps: { kick: numberOf(isRecord(value.fps) ? value.fps.kick : null, 10), cruise: numberOf(isRecord(value.fps) ? value.fps.cruise : null, 4) } }
+// 0.0.3: one of the header's orbits (src/live/orbit.mjs `orbitTrackOf`): the parked text the header holds for it, and
+// every frame of it as segments -- or null for one this pane could not turn.
+const ringOf = (value: unknown): PaneOrbitRing | null =>
+  isRecord(value) && typeof value.parked === 'string' && Array.isArray(value.frames) && value.frames.length > 0
+    ? { size: text(value.size) ?? '', parked: value.parked, frames: value.frames.map(segmentsOf) }
     : null
+
+const isRing = (r: PaneOrbitRing | null): r is PaneOrbitRing => r !== null
+
+// What turning the header's orbits takes, or null for an answer without them: an answer whose orbit this pane does not
+// know (the one an older engine drew) leaves the header as the engine said it, parked.
+const orbitOf = (value: unknown): PaneOrbit | null => {
+  const rings = isRecord(value) && Array.isArray(value.rings) ? value.rings.map(ringOf).filter(isRing) : []
+  return isRecord(value) && rings.length > 0 ? { moving: value.moving === true, revMs: Math.max(100, numberOf(value.revMs, 3000)), rings } : null
+}
 
 export function modelOf(stdout: string): PaneModel | null {
   const doc = parsed(stdout)
@@ -161,24 +172,27 @@ async function refreshed($: EngineInterface, extra: readonly string[] = []): Pro
   }
 }
 
-// ---- the orbit: turned here, on this pane's clock, only while the engine says the task moves ------------------
+// ---- the orbits: turned here, on this pane's clock, the whole time it is open (0.0.3, ADR 0029) ------------------
+// In every state of the task: the orbit is the viewer's motion, never the task's -- the badge's word says what the task
+// does. They stand still only where the engine says they do not turn (`pane.animation: off`).
 
-// Where the satellite is now: the engine's frames and numbers (src/live/orbit.mjs `phaseOf`) on this pane's clock --
-// launched by the newest evidence, fast for kickMs, then cruising.
-export function orbitFrameAt(o: PaneOrbit, nowMs: number): string {
-  const at = Date.parse(o.lastAt ?? '')
-  const since = Number.isFinite(at) ? Math.max(0, nowMs - at) : nowMs
-  const phase = Math.floor((o.fps.kick * Math.min(since, o.kickMs) + o.fps.cruise * Math.max(0, since - o.kickMs)) / 1000)
-  return o.frames[phase % o.frames.length] ?? o.parked
-}
+// The largest ring's steps: the phase this pane keeps, from which each ring takes its own frame at one angle.
+const stepsOf = (o: PaneOrbit): number => Math.max(1, ...o.rings.map((r) => r.frames.length))
+
+// Where the orbits are now: the share of a revolution this pane's clock is at (src/live/orbit.mjs `indexAt`), in steps.
+export const phaseOf = (o: PaneOrbit, nowMs: number): number => Math.floor(((((nowMs % o.revMs) + o.revMs) % o.revMs) / o.revMs) * stepsOf(o)) % stepsOf(o)
+
+// One ring's frame at a phase: the same share of its own frames.
+export const orbitFrameAt = (o: PaneOrbit, ring: PaneOrbitRing, phase: number): PaneSegment[] =>
+  ring.frames[Math.floor((phase / stepsOf(o)) * ring.frames.length) % ring.frames.length] ?? [{ text: ring.parked, tone: null }]
 
 async function turned($: EngineInterface): Promise<void> {
   const o = (await read($, model)).orbit
-  const frame = o?.moving ? orbitFrameAt(o, await $.clock.now()) : ''
-  if (frame !== (await read($, spin))) await update($, spin, () => frame)
+  const phase = o?.moving ? phaseOf(o, await $.clock.now()) : -1
+  if (phase !== (await read($, spin))) await update($, spin, () => phase)
 }
 
-// A timer of its own while the orbit moves and the pane follows; gone the moment either stops.
+// A timer of its own while the orbits turn and the pane follows; gone the moment either stops, and never two.
 async function spun($: EngineInterface): Promise<void> {
   if ((await read($, model)).orbit?.moving && run.timer) {
     run.spin ??= $.clock.every(SPIN_MS, () => void turned($))
@@ -186,13 +200,13 @@ async function spun($: EngineInterface): Promise<void> {
   }
   run.spin?.cancel()
   run.spin = null
-  if ((await read($, spin)) !== '') await update($, spin, () => '')
+  if ((await read($, spin)) !== -1) await update($, spin, () => -1)
 }
 
-// The header with the orbit turned: only over the engine's own parked frame, so a header without one is drawn as said --
-// every one of them (0.0.2): the one the header opens with and the one in the badge turn together.
-export const withOrbit = (header: PaneSegment[], o: PaneOrbit | null | undefined, frame: string): PaneSegment[] =>
-  frame && o ? header.map((s) => (s.text === o.parked ? { ...s, text: frame } : s)) : header
+// The header with its orbits turned: each segment holding a ring's parked text is that ring's frame at the phase -- the
+// one the header opens with and the one in the badge, at one angle. A header without them is drawn as it was said.
+export const withOrbit = (header: PaneSegment[], o: PaneOrbit | null | undefined, phase: number): PaneSegment[] =>
+  o && phase >= 0 ? header.flatMap((s) => ((ring) => (ring ? orbitFrameAt(o, ring, phase) : [s]))(o.rings.find((r) => r.parked === s.text))) : header
 
 // ---- the width a person set: asked of the dock once the terminal's width is known, again only when it moved ----
 
@@ -268,9 +282,21 @@ const LOOKS: Readonly<Record<string, Look>> = {
   'pill:warning': { color: 'warning', weight: 'bold' },
   'pill:info': { color: 'suggestion', weight: 'bold' },
   'pill:subtle': { dimColor: true },
+  // The orbits (0.0.3, ADR 0029): the planet and the satellite in front of it the brand's, behind it dimmer; grey while
+  // the task does not move, the track dim. Never bold: a Braille cell drawn bold may come out as all eight of its dots.
+  'orbit:planet': { color: 'claude' },
+  'orbit:near': { color: 'claude' },
+  'orbit:far': { color: 'claude', dimColor: true },
+  'orbit:near:gentle': { dimColor: true },
+  'orbit:far:gentle': { dimColor: true },
+  'orbit:track': { dimColor: true },
 }
 
 export const lookOf = (tone: string | null): Look => (tone === null ? {} : LOOKS[tone] ?? {})
+
+// The badge's border, by its word's tone: the brand's, bright, while the task orbits (`chip`); else the indicator's own colour.
+export const edgeOf = (badge: PaneSegment[]): { color: string; dim: boolean } =>
+  ((tone) => ({ color: lookOf(tone).color ?? 'claude', dim: tone !== 'chip' }))(badge.at(-1)?.tone ?? null)
 
 // The room the engine lays the picture out for: docked, the whole column; above the prompt, a short block.
 function measured(columns: number, rows: number, docked: boolean): void {
@@ -366,8 +392,8 @@ export const register: Register = (on) => {
     run.terminal = e.viewport ? e.viewport.columns + (docked ? e.props.bodyColumns + 3 : 0) : run.terminal
     const m = await read($, model)
     const picked = await read($, view)
-    const frame = await read($, spin)
-    const header = withOrbit(m.header, m.orbit, frame)
+    const phase = await read($, spin)
+    const header = withOrbit(m.header, m.orbit, phase)
     const b = budgetOf(m, run.rows)
     const line = (segs: PaneSegment[], key: string) => (
       <Text key={key} wrap="truncate-end">
@@ -398,15 +424,17 @@ export const register: Register = (on) => {
           rowEl(g.rows[0], `${key}.r${i}`)
         ),
       )
-    const parts: PaneHeader | null = m.headerParts ? { left: withOrbit(m.headerParts.left, m.orbit, frame), badge: withOrbit(m.headerParts.badge, m.orbit, frame), right: m.headerParts.right } : null
+    const parts: PaneHeader | null = m.headerParts ? { left: withOrbit(m.headerParts.left, m.orbit, phase), badge: withOrbit(m.headerParts.badge, m.orbit, phase), right: m.headerParts.right } : null
     // The header (0.0.2, ADR 0028): where the viewer stands on the left; the badge in a border and the task on the right.
+    // The badge's border (0.0.3) is the brand's while the task orbits, and the indicator's own colour otherwise.
+    const edge = parts ? edgeOf(parts.badge) : { color: 'claude', dim: true }
     const headerEl = parts ? (
       <Box key="header" flexDirection="row" justifyContent="space-between" alignItems="center" flexShrink={0}>
         <Box flexShrink={1} overflow="hidden">
           {line(parts.left, 'h.l')}
         </Box>
         <Box flexDirection="row" alignItems="center" flexShrink={0}>
-          <Box borderStyle="round" borderColor="claude" borderDimColor paddingX={1}>
+          <Box borderStyle="round" borderColor={edge.color} borderDimColor={edge.dim} paddingX={1}>
             {line(parts.badge, 'h.b')}
           </Box>
           <Box marginLeft={1}>{line(parts.right, 'h.r')}</Box>

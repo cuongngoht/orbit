@@ -1,8 +1,9 @@
 // Orbit Live's WORDS for a terminal: every state a glyph AND a word (colour is never the only signal, and a
 // screen reader or a log hears the word), the same glyphs Orbit Control's page draws
-// (control-panel/.../live/liveWords.ts GLYPHS), held equal by a test. Only LIVE animates, and only because a
+// (control-panel/.../live/liveWords.ts GLYPHS), held equal by a test. Only LIVE pulses, and only because a
 // line arrived lately: a viewer's pulse says its feed is healthy and the task is moving, never more. LIVE is the
-// STATE; since 0.0.1 (ADR 0027) a terminal and a docked pane SAY it as ORBITING -- the word, never the key.
+// STATE; since 0.0.1 (ADR 0027) a terminal and a docked pane SAY it as ORBITING -- the word, never the key. The
+// header's orbit (orbit.mjs) turns whatever the state (0.0.3, ADR 0029): it is the viewer's motion, never this word.
 export const PRESENTATION_WORDS = Object.freeze({
   CONNECTING: { word: "CONNECTING", glyph: "◌", tone: "info", say: "opening the task's journal" },
   UNAVAILABLE: { word: "UNAVAILABLE", glyph: "!", tone: "danger", say: "the task's journal cannot be read here" },
@@ -142,14 +143,9 @@ export const INDICATOR_WORDS = Object.freeze({
   IDLE: { word: "IDLE", glyph: "●", tone: "success", say: "connected; nothing written lately" },
 });
 
-// THE ORBIT (0.0.1, orbit.mjs): a planet with a satellite going round it, three Braille cells wide -- each frame the
-// satellite one step further on a 6x4 dot ring, a dot of trail behind it -- and the frame it rests on when nothing
-// moves. A viewer drawing ASCII is given its own frames whole, and every Unicode cell has its row in the ASCII table
-// (tui/glyphs.mjs) too.
-export const ORBIT_GLYPHS = Object.freeze({
-  unicode: Object.freeze({ frames: Object.freeze(["⠊⠶⠀", "⠈⠷⠀", "⠀⠿⠀", "⠀⠾⠁", "⠀⠶⠑", "⠀⠶⠰", "⠀⠶⡠", "⠀⢶⡀", "⠀⣶⠀", "⢀⡶⠀", "⢄⠶⠀", "⠆⠶⠀"]), parked: "⠀⠷⠀" }),
-  ascii: Object.freeze({ frames: Object.freeze(["(o)", "(o.", "(o:", "(o)", ".o)", ":o)"]), parked: "(o)" }),
-});
+// What a task's provider is called where a header names it (0.0.3): its kind, never the provider's long name, which
+// squeezed the header beside an AI CLI. A provider not here is named as it is.
+export const PROVIDER_WORDS = Object.freeze({ "autonomous-engineering": "engineering", automation: "workflow" });
 
 // THIS SESSION's own activity (1.8.7, session.mjs): what the host's hooks observed this session's tools do, shown when
 // no task's journal speaks for the work, and beside a task while the host works a step itself. A state of what the

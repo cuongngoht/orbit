@@ -34,6 +34,7 @@ def pump(t):
 deadline = time.time() + 15
 while b"ORBIT LIVE" not in out and time.time() < deadline: pump(0.2)
 pump(0.5)
+pump(float(os.environ.get("ORBIT_PTY_SETTLE", "0")))
 if len(sys.argv) > 4:
     import subprocess
     subprocess.run(json.loads(sys.argv[4]), cwd=cwd, check=True, capture_output=True)
@@ -41,6 +42,9 @@ if len(sys.argv) > 4:
     while sys.argv[5].encode() not in out and time.time() < deadline: pump(0.2)
     pump(0.5)
 for k in keys: os.write(fd, k.encode()); pump(0.4)
+if os.environ.get("ORBIT_PTY_SIGNAL"):
+    import signal
+    os.kill(pid, getattr(signal, os.environ["ORBIT_PTY_SIGNAL"])); pump(0.8)
 pump(1.0)
 _, st = os.waitpid(pid, 0)
 sys.stdout.buffer.write(json.dumps({"exit": os.waitstatus_to_exitcode(st), "out": out.decode("utf8", "replace")}).encode())
@@ -117,4 +121,60 @@ test("a leased viewer says it is ready, waits for the session's task, and record
   assert.ok(Number.isInteger(lease.pid) && lease.pid > 1, "with its own pid");
   assert.equal(lease.state, "detached");
   assert.equal(lease.detachedWhy, "detached", "q is a person leaving it");
+});
+
+// THE ORBIT in a real terminal (0.0.3, ADR 0029): left alone -- no key, no line written to the journal -- the viewer goes on
+// drawing the orbit, many frames of it, writing the header's row and never the whole screen again; and every way out
+// gives the terminal back. The process ending at all is the proof that no animation timer outlived the viewer: one left
+// running would keep it alive, and the driver would wait for it until this test timed out.
+const SGR = /\u001b\[[0-9;]*m/g;
+
+// What the viewer wrote to each row, in order: every write of a row is a position, a clear and the row.
+const rowWrites = (out) => out.split(/(?=\u001b\[\d+;1H)/).map((p) => p.match(/^\u001b\[(\d+);1H/) && { row: Number(p.match(/^\u001b\[(\d+);1H/)[1]), text: p.replace(/^\u001b\[\d+;1H\u001b\[2K/, "").replace(SGR, "").replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "") }).filter(Boolean);
+
+function taskRepo(t) {
+  const dir = mkdtempSync(join(tmpdir(), "orbit-tui-pty-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const repo = join(dir, "repo");
+  execFileSync("git", ["init", "-q", repo], { env: sealed() });
+  execFileSync("git", ["-C", repo, "-c", "user.email=a@b.c", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init"], { env: sealed() });
+  const env = sealed({ ORBIT_STORE_DIR: join(dir, "store"), ORBIT_TRACE: "off", TERM: "xterm-256color", COLORTERM: "truecolor" });
+  const task = (...args) => execFileSync(process.execPath, [join(ROOT, "cli", "task.mjs"), ...args], { cwd: repo, env, encoding: "utf8" });
+  const id = JSON.parse(task("create", "PBI-482 Refund validation", "--json")).task;
+  task("stage", id, "BUILDING");
+  return { repo, env, id };
+}
+
+const viewed = (r, keys, extra = {}) => JSON.parse(execFileSync(python, ["-c", DRIVER, JSON.stringify([process.execPath, join(ROOT, "cli", "live.mjs"), "tui"]), r.repo, keys], { env: { ...r.env, ...extra }, encoding: "utf8", timeout: 40_000 }));
+
+const givenBack = (out) => ((left) => left > 0 && out.lastIndexOf("\u001b[?25h") < left && out.lastIndexOf("\u001b[?7h") < left)(out.lastIndexOf("\u001b[?1049l"));
+
+test("0.0.3: left alone for two and a half seconds the orbit keeps turning -- many header frames, one screen clear, the task still there -- and q gives the screen back", { skip: python ? false : "no POSIX pty here (Windows, or no python3): NOT TESTED" }, (t) => {
+  const r = taskRepo(t);
+  const got = viewed(r, "q", { ORBIT_PTY_SETTLE: "2.5" });
+  assert.equal(got.exit, 0);
+  const writes = rowWrites(got.out);
+  const heads = writes.filter((w) => w.row === 1).map((w) => w.text);
+  assert.ok(new Set(heads).size >= 6, `${new Set(heads).size} different header frames in two and a half seconds`);
+  assert.equal(got.out.split("\u001b[2J").length - 1, 1, "the whole screen cleared once, when the viewer opened");
+  const first = writes.findIndex((w, i) => i > 0 && w.row === 1);
+  assert.ok(writes.slice(first).filter((w) => w.row === 1).length > writes.slice(first).filter((w) => w.row !== 1).length, "after the first frame, the orbit's row is most of what is written");
+  assert.match(got.out.replace(SGR, ""), /STAGE +EXECUTING · BUILDING/, "the task is still on the screen");
+  assert.ok(heads.every((h) => /ORBIT LIVE/.test(h) && /ORBITING|IDLE/.test(h)), "every header frame says the indicator's word");
+  assert.ok(givenBack(got.out), "colour, wrap and cursor restored, then the screen given back");
+});
+
+test("0.0.3: Ctrl+C in the raw terminal leaves the same way, the orbit's timer and all", { skip: python ? false : "no POSIX pty here (Windows, or no python3): NOT TESTED" }, (t) => {
+  const r = taskRepo(t);
+  const got = viewed(r, "\u0003", { ORBIT_PTY_SETTLE: "0.6" });
+  assert.equal(got.exit, 0);
+  assert.ok(givenBack(got.out));
+  assert.match(got.out.slice(got.out.lastIndexOf("\u001b[?1049l")), /live: detached — .*the task itself is untouched/);
+});
+
+test("0.0.3: SIGTERM from outside leaves the same way, the screen given back", { skip: python ? false : "no POSIX pty here (Windows, or no python3): NOT TESTED" }, (t) => {
+  const r = taskRepo(t);
+  const got = viewed(r, "", { ORBIT_PTY_SETTLE: "0.6", ORBIT_PTY_SIGNAL: "SIGTERM" });
+  assert.ok(givenBack(got.out));
+  assert.match(got.out.slice(got.out.lastIndexOf("\u001b[?1049l")), /live: detached/);
 });

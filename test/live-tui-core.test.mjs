@@ -12,7 +12,7 @@ import { changedRows } from "../src/live/tui/diff.mjs";
 import { ASCII, glyph } from "../src/live/tui/glyphs.mjs";
 import { bar, bytesOf } from "../src/live/tui/bars.mjs";
 import { pickerItems } from "../src/live/tui/tree.mjs";
-import { GLYPHS, LIFECYCLE_WORDS, ORBIT_GLYPHS, PRESENTATION_WORDS, PULSE, WORKFLOW_GLYPHS } from "../src/live/words.mjs";
+import { GLYPHS, LIFECYCLE_WORDS, PRESENTATION_WORDS, PULSE, WORKFLOW_GLYPHS } from "../src/live/words.mjs";
 import { displayWidth } from "../src/live/render/width.mjs";
 import { unstyled } from "../src/live/render/ansi.mjs";
 import { ENG, HERE, INV, NOW, WF, ago, engView, engineering, fed, keys, stateOf, workflow } from "./live-tui.fixture.mjs";
@@ -166,13 +166,14 @@ test("NO_COLOR draws no escape at all; colour draws only SGR", () => {
   assert.ok(seqs.length > 0 && seqs.every((x) => /^\u001b\[\d*(;\d+)*m$/.test(x)));
 });
 
-test("--ascii leaves no glyph behind, and every live glyph has an ASCII row", () => {
-  const all = [...PULSE, ...Object.values(GLYPHS).map((g) => g.char), ...Object.values(LIFECYCLE_WORDS).map((w) => w.glyph), ...Object.values(PRESENTATION_WORDS).map((w) => w.glyph), ...Object.values(WORKFLOW_GLYPHS), ...ORBIT_GLYPHS.unicode.frames, ORBIT_GLYPHS.unicode.parked];
+test("--ascii leaves no glyph behind, and every live glyph has an ASCII row -- the orbit is drawn ASCII of its own (0.0.3)", () => {
+  const all = [...PULSE, ...Object.values(GLYPHS).map((g) => g.char), ...Object.values(LIFECYCLE_WORDS).map((w) => w.glyph), ...Object.values(PRESENTATION_WORDS).map((w) => w.glyph), ...Object.values(WORKFLOW_GLYPHS)];
   for (const g of all) assert.ok(/^[\x20-\x7e]*$/.test(glyph(g, true)), `${g} -> ${glyph(g, true)}`);
   assert.ok(Object.keys(ASCII).length > 20);
-  for (const s of [engineering({ ascii: true }), workflow({ ascii: true })]) {
+  for (const s of [engineering({ ascii: true }), workflow({ ascii: true }), workflow({ ascii: true, start: { layout: "pane" } })]) {
     const odd = [...frameOf(s).lines.join("")].filter((ch) => ch.codePointAt(0) > 0x7e && !/\p{L}|\p{N}/u.test(ch));
     assert.deepEqual([...new Set(odd)], []);
+    for (const orbitMs of [0, 400, 1300, 2900]) assert.doesNotMatch(frameOf(s, undefined, { orbitMs }).lines.join(""), /[\u2800-\u28ff]/, "no Braille cell in an ASCII frame, at any moment of the orbit");
   }
 });
 

@@ -17,8 +17,12 @@ const ESC = "\u001b[";
 
 const SGR = Object.freeze({ bold: "1", dim: "2", reverse: "7", red: "31", green: "32", yellow: "33", blue: "34", magenta: "35", cyan: "36", gray: "90" });
 
+// The orbit's tones in sixteen colours (0.0.3): the planet and the satellite in front of it in the brand's; behind it,
+// grey -- and the badge's orbit (`pill:` before the tone) the same.
+const ORBIT_TONES = Object.freeze({ "orbit:planet": "magenta", "orbit:near": "magenta", "orbit:far": "gray", "orbit:near:gentle": "gray", "orbit:far:gentle": "gray", "orbit:track": "gray" });
+
 // A word's TONE as a colour; a tone not here is drawn plain.
-export const TONES = Object.freeze({ success: "green", danger: "red", warning: "yellow", info: "cyan", brand: "magenta", subtle: "gray", label: "bold", match: "reverse", title: "magenta", chip: "magenta", key: "magenta", selected: "reverse", track: "gray", "pill:success": "green", "pill:danger": "red", "pill:warning": "yellow", "pill:info": "cyan", "pill:subtle": "gray" });
+export const TONES = Object.freeze({ success: "green", danger: "red", warning: "yellow", info: "cyan", brand: "magenta", subtle: "gray", label: "bold", match: "reverse", title: "magenta", chip: "magenta", key: "magenta", selected: "reverse", track: "gray", "pill:success": "green", "pill:danger": "red", "pill:warning": "yellow", "pill:info": "cyan", "pill:subtle": "gray", ...ORBIT_TONES, ...Object.fromEntries(Object.entries(ORBIT_TONES).map(([tone, c]) => [`pill:${tone}`, c])) });
 
 export const style = (text, name, colour) => (colour && SGR[name] ? `${ESC}${SGR[name]}m${text}${ESC}0m` : text);
 

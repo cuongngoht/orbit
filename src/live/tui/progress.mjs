@@ -66,12 +66,12 @@ const taskWords = (p) => [`${p.done}/${p.total} ${p.unit}`, `${p.percent}%`, p.v
 const DONE_CELL = "━";
 const TRACK_CELL = "─";
 
-const barSegs = (done, total) => ((b) => (b ? [seg(b.replace(/░/g, "").replace(/▓/g, DONE_CELL), "success"), seg(b.replace(/▓/g, "").replace(/░/g, TRACK_CELL), "track")] : []))(bar(done, total, BAR_CELLS));
+const barSegs = (done, total, cells = BAR_CELLS) => ((b) => (b ? [seg(b.replace(/░/g, "").replace(/▓/g, DONE_CELL), "success"), seg(b.replace(/▓/g, "").replace(/░/g, TRACK_CELL), "track")] : []))(bar(done, total, cells));
 
 // The label on the left and the bar with its words on the right edge (0.0.2, ADR 0028), as Orbit Live's footer draws them.
 const RIGHT = Object.freeze({ rightShare: 0.85 });
 
-const taskRow = (p) => (p.indeterminate ? row([label("TASK"), dim("indeterminate — no plan or required checks to count yet")], [], { label: "task" }) : row([label("TASK")], [...barSegs(p.done, p.total), seg(` ${taskWords(p)}`)], { label: "task", ...RIGHT }));
+const taskRow = (p, st) => (p.indeterminate ? row([label("TASK"), dim(st.vague)], [], { label: "task" }) : row([label("TASK")], [...barSegs(p.done, p.total, st.cells), seg(` ${st.task(p)}`)], { label: "task", ...RIGHT }));
 
 const OF = [
   { when: (t) => t.said, words: (t) => (t.pending ? `of ${t.total}, as the runner said · ${t.pending} it did not account for` : `of ${t.total}, as the runner said`) },
@@ -82,13 +82,27 @@ const OF = [
 const testWords = (t) => joined([seg(`${t.passed} passed`, "success"), t.failed ? seg(`${t.failed} failed`, "danger") : null, t.skipped ? dim(`${t.skipped} skipped`) : null, dim(OF.find((r) => r.when(t)).words(t)), t.aborted ? seg("aborted", "warning") : t.running ? seg("runner running", "info") : null]);
 
 // The TESTS line draws a bar only over a total the runner SAID (bars.mjs: no total, no bar), never over the cases seen.
-const testBar = (t) => (t.said ? [...barSegs(t.passed, t.total), seg(" ")] : []);
+const testBar = (t, st) => (t.said ? [...barSegs(t.passed, t.total, st.cells), seg(" ")] : []);
 
 // Every case the runner said passed is one sentence in the success tone: "30 passed of 30, as the runner said".
 const clean = (t) => t.said && !t.failed && !t.skipped && !t.pending && !t.aborted && !t.running;
 
 const allPassed = (t) => [seg(`${t.passed} passed ${OF[0].words(t)}`, "success")];
 
-const testRow = (t) => (t ? row([label("TESTS")], [...testBar(t), ...(clean(t) ? allPassed(t) : testWords(t))], { label: "tests", ...RIGHT }) : row([label("TESTS"), dim("no test runner has reported anything yet")], [], { label: "tests" }));
+const fullTests = (t) => (clean(t) ? allPassed(t) : testWords(t));
 
-export const progressRows = (ctx) => [taskRow(taskProgressOf(ctx)), testRow(testProgressOf(ctx))];
+// In a narrow pane (0.0.3): the same counts, said short -- passed over the total only when the runner said one.
+const passedOf = (t) => (t.said ? `${t.passed}/${t.total} passed` : `${t.passed} passed`);
+
+const shortTests = (t) => joined([seg(passedOf(t), "success"), t.failed ? seg(`${t.failed} failed`, "danger") : null, t.aborted ? seg("aborted", "warning") : null]);
+
+const testRow = (t, st) => (t ? row([label("TESTS")], [...testBar(t, st), ...st.tests(t)], { label: "tests", ...RIGHT }) : row([label("TESTS"), dim(st.none)], [], { label: "tests" }));
+
+// How the two lines are said, by the room (0.0.3): beside an AI CLI in a narrow pane a shorter bar and the counts alone,
+// so neither a label nor what a runner said is cut; the counts are the same counts either way.
+const STYLES = Object.freeze([
+  { when: (ctx) => (ctx.size?.columns ?? Infinity) < 60, style: Object.freeze({ cells: 8, task: (p) => `${p.done}/${p.total} · ${p.percent}%`, tests: shortTests, none: "none reported yet", vague: "indeterminate" }) },
+  { when: () => true, style: Object.freeze({ cells: BAR_CELLS, task: taskWords, tests: fullTests, none: "no test runner has reported anything yet", vague: "indeterminate — no plan or required checks to count yet" }) },
+]);
+
+export const progressRows = (ctx) => ((st) => [taskRow(taskProgressOf(ctx), st), testRow(testProgressOf(ctx), st)])(STYLES.find((s) => s.when(ctx)).style);

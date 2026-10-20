@@ -83,7 +83,7 @@ test("a workflow's engineering task appears by itself when the workflow links it
   assert.match(v.screen(), new RegExp(`engineering ${eng} VERIFYING · TESTING`));
   assert.match(v.screen(), /ENGINEER/);
   v.tty.type("c");
-  assert.match(v.screen().split("\n")[0], new RegExp(`${eng} .*ORBITING +engineering task`));
+  assert.match(v.screen().split("\n")[0], new RegExp(`${eng} .*ORBITING ▕ +engineering task`));
   v.tty.type("q");
   await v.run;
   assert.equal(v.followers.size(), 0);

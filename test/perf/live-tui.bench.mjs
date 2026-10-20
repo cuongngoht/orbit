@@ -83,7 +83,7 @@ test("through the real adapter: a resize storm, fifty switches and an idle minut
   const switches = timed(() => Array.from({ length: 50 }, (_, i) => ["t", i % 2 ? "k" : "j", "\r"].forEach((k) => tty.type(k))));
   const before = tty.all().length;
   const idle = timed(() => Array.from({ length: 600 }, () => timers.fire(100)));
-  console.log(`resize storm: 1,000 resizes in ${ms(storm)} · 50 switches in ${ms(switches)} · 600 idle paints (one clock second) in ${ms(idle)}, ${tty.all().length - before} bytes`);
+  console.log(`resize storm: 1,000 resizes in ${ms(storm)} · 50 switches in ${ms(switches)} · 600 paints (one wall-clock second; a minute of the orbit's own clock, 0.0.3) in ${ms(idle)}, ${tty.all().length - before} bytes`);
   tty.type("q");
   await run;
   console.log(`after leaving: ${timers.active()} timers, ${followers.size()} leases, ${tty.stdin.listenerCount("data")} key listeners, ${feeds.filter((f) => !f.closed).length} feeds open, rss +${((process.memoryUsage().rss - rss) / 1048576).toFixed(1)} MiB`);

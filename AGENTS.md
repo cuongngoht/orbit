@@ -631,8 +631,11 @@ place real adapters are bound to real config.
   state (LIVE, IDLE, DEGRADED ...) is never the task's lifecycle, and a tick or a refresh is never progress: LIVE needs
   EVIDENCE the task moved -- a running action, a journal line or a running check's observation, written lately -- and
   the LIVE pulse's phase is the newest evidence's, never the clock that redraws (ADR 0022). Since 0.0.1 a terminal and a
-  docked pane SAY that state as ORBITING (the key stays LIVE), and the header's orbit, which replaced the starship lane,
-  turns only while the indicator is ACTIVE, with the newest evidence's phase (ADR 0027, `test/live-orbit.test.mjs`). Every viewer draws ONE view
+  docked pane SAY that state as ORBITING (the key stays LIVE). The header's orbit, which replaced the starship lane, is
+  the VIEWER's motion and never the task's (ADR 0029): it turns the whole time a viewer is open, in every state, on the
+  viewer's own monotonic clock -- never `nowMs`, never evidence -- still only for `pane.animation: off`; the indicator,
+  a lifecycle and a count are the same at every moment of it, and a tick draws the orbit's rows alone
+  (`test/live-orbit.test.mjs`, `test/live-tui-pty.test.mjs`). Every viewer draws ONE view
   model (`src/live/tui/pane.mjs`): a host's docked pane and the terminal's pane layout alike; a host with no pane API
   says so in a surface matrix and never gets a dock it does not have (`test/live-pane2.test.mjs`,
   `test/live-hosts.test.mjs`). Every

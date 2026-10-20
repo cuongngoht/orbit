@@ -44,6 +44,17 @@ the progress bars on the right edge and a status bar spread across the width. Tw
   parts are spread across the width with a dot between each, and it ends in the indicator's WORD: its glyph is the
   badge's.
 
+- **The look's own details** (from its HTML, after the first cut):
+  - Where the six tabs fit, they sit on one row (`1: Events  2: Tests …`) with the hint after them. Otherwise each
+    key goes over its label.
+  - A whole line says what it came to: a run or check that passed is green, one that failed red, one blocked yellow,
+    one not run quiet. A workflow's step reads green once done, quiet while only reported or pending. A step with
+    nothing under it is said quietly.
+  - In the Events view the newest step's lines are lit and older steps' are quiet. A line written in the same second,
+    in the same tone, continues the line above: its glyph and time give way to space.
+  - A bar is a heavy line on a light one (`━━━───`), so it reads as one bar without colour too.
+  - Only a card's rows sit on the card band.
+
 ## Consequences
 
 - `live pane` stays version 2: `headerParts`, a row's `box` and a view's `hint` are additive, and a pane that does

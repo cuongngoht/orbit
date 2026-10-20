@@ -238,8 +238,7 @@ test("a terminal pane cut to its room keeps the TOP of the Timeline view, as a d
   const short = reduce(start, actionOfKey(start.viewer, "6"));
   assert.equal(short.viewer.view, "timeline");
   const lines = frameOf(short).lines.map((l) => unstyled(l).trimEnd());
-  const tabs = lines.findIndex((l) => /6:/.test(l)) + 1;
-  assert.match(lines[tabs], /Timeline/, "each view's key over its label (0.0.2)");
+  const tabs = lines.findIndex((l) => /6: Timeline/.test(l));
   assert.ok(tabs >= 0, "the Timeline view is drawn");
   const ctx = contextOf(short, derivedOf(short));
   const events = timelineFor(ctx, 30).filter((e) => e.type !== "plan.revised");

@@ -29,7 +29,7 @@ const budgetOf = (tier, room, n) => BUDGETS.find((b) => b.when(tier)).of(tier, r
 
 const plainRow = (r) => ({ ...r, label: undefined });
 
-// ---- the tabs: each view's key over its label, and what the picked view shows (0.0.2, ADR 0028) -----------------
+// ---- the tabs: each view's key and label, and what the picked view shows (0.0.2, ADR 0028) ----------------------
 
 const TAB_GAP = 3;
 
@@ -55,7 +55,18 @@ function hintLines(hint, room) {
 
 const tabRow = (cells, hint, ctx) => row(cells, [dim(hint)], { band: "tabs", rightShare: Math.max(0, ctx.width - tabsWidth() - 1) / ctx.width });
 
-const tabsRows = (ctx) => ((h) => [tabRow(keyCells(), h[0], ctx), tabRow(labelCells(pickedOf(ctx).id), h[1], ctx)])(hintLines(pickedOf(ctx).hint, Math.max(0, ctx.width - tabsWidth() - 1)));
+const stackedTabs = (ctx) => ((h) => [tabRow(keyCells(), h[0], ctx), tabRow(labelCells(pickedOf(ctx).id), h[1], ctx)])(hintLines(pickedOf(ctx).hint, Math.max(0, ctx.width - tabsWidth() - 1)));
+
+// One row where the six fit (the look's own: `1: Events  2: Tests …`, the hint after them); else each key over its label.
+const INLINE_GAP = "  ";
+
+const inlineCells = (picked) => PANE_VIEWS.flatMap((id, i) => [seg(`${i + 1}:`, "key"), seg(` ${VIEW_LABELS[id]}`, id === picked ? "label" : "subtle"), seg(INLINE_GAP)]);
+
+const inlineWidth = () => PANE_VIEWS.reduce((n, id, i) => n + displayWidth(`${i + 1}: ${VIEW_LABELS[id]}${INLINE_GAP}`), 0);
+
+const inlineTabs = (ctx) => [row(inlineCells(pickedOf(ctx).id), [dim(fitting(String(pickedOf(ctx).hint ?? "").split(" · ").filter(Boolean), Math.max(0, ctx.width - inlineWidth() - 1)).join(" · "))], { band: "tabs", rightShare: Math.max(0, ctx.width - inlineWidth() - 1) / ctx.width })];
+
+const tabsRows = (ctx) => (inlineWidth() <= ctx.width ? inlineTabs : stackedTabs)(ctx);
 
 // ---- TASK EXECUTION and NOW -------------------------------------------------------------------------------------
 

@@ -27,13 +27,18 @@ test("the header names where the viewer stands and carries the badge -- the orbi
   assert.match(screen(workflow({ columns: 100, rows: 40 }))[0], /tsk-/, "the dashboard keeps naming which task it shows");
 });
 
-test("the tabs are each view's key over its label, the picked view's words beside them, never cutting a key", () => {
+test("the tabs are each view's key and label on one row where the six fit, the picked view's words after them", () => {
   const lines = screen(pane(100, 40));
+  const tabs = lines.find((l) => /^1: Events {2}2: Tests {2}3: Changes {2}4: Notices {2}5: Plan {2}6: Timeline/.test(l));
+  assert.ok(tabs, lines.join("\n"));
+  assert.match(tabs, /newest on top · milestones$/, "the hint, cut at a part, never inside one");
+});
+
+test("a pane too narrow for one row puts each view's key over its label, never cutting a key", () => {
+  const lines = screen(pane(60, 40));
   const keys = lines.findIndex((l) => /^1: +2: +3: +4: +5: +6:/.test(l));
   assert.ok(keys > 0, lines.join("\n"));
   assert.match(lines[keys + 1], /^Events +Tests +Changes +Notices +Plan +Timeline/);
-  assert.match(`${lines[keys]} ${lines[keys + 1]}`, /newest on top/);
-  assert.match(screen(pane(60, 40)).find((l) => /^1:/.test(l)), /6:/, "a narrow pane drops the hint, never a key");
 });
 
 test("TASK EXECUTION says NOW on its right, and the baseline's runs are a card with a border and a status column", () => {
@@ -96,4 +101,34 @@ test("a frame says whether the orbit turns in it, so the viewer draws every fram
   assert.equal(frameOf(pane(100, 40)).orbiting, true);
   const done = reduce(fed(stateOf({ columns: 100, rows: 40, start: { layout: "pane" } }), ENG, engView({ lifecycle: "COMPLETED", terminal: true, ended: { kind: "completed", at: ago(30) } }), engEvents()), { type: "tick", nowMs: NOW });
   assert.equal(frameOf(done).orbiting, false);
+});
+
+test("a whole line says what it came to: a run that failed red, one that passed green, a step that is done green, one only reported quiet", () => {
+  const s = pane(100, 40);
+  const rows = checklistOf(contextOf(s, derivedOf(s)));
+  const toneOf = (re) => rows.flatMap((r) => r.left).find((x) => re.test(x.text)).tone;
+  assert.equal(toneOf(/^test$/), "danger");
+  assert.equal(toneOf(/^build$/), "success");
+  assert.equal(toneOf(/Requirements/), "success");
+  assert.equal(toneOf(/Project context/), "subtle");
+  assert.equal(toneOf(/the tests pass/), "danger");
+});
+
+test("in the Events view a line written in the same second and tone continues the one above; the newest step is lit, older ones quiet", () => {
+  const ev = (n, s, kind, over = {}) => ({ source: "task", n, at: ago(s), kind, ...over });
+  const events = [ev(0, 400, "created"), ev(1, 379, "receipt", { domain: "step", ref: "requirement", outcome: "SUCCEEDED" }), ev(2, 20, "receipt", { domain: "step", ref: "engineering", outcome: "BLOCKED", summary: "nothing here provides it" }), ev(3, 20, "blocked", { stop: "ENVIRONMENT_BLOCKED", needs: "capability" })];
+  const view = wfView({ actions: [{ id: "act-1", type: "engine.run", state: "succeeded", startedAt: ago(390), endedAt: ago(380), receipts: [] }, { id: "act-3", type: "agent.dispatch", state: "running", startedAt: ago(301), endedAt: null, receipts: [] }] });
+  const s = fed(fed(stateOf({ root: WF, columns: 100, rows: 40, start: { layout: "pane" } }), WF, view, events), ENG, engView(), engEvents(), "child");
+  const rows = eventsView(contextOf(s, derivedOf(s))).rows;
+  const words = rows.map((r) => r.left.map((x) => x.text).join(""));
+  const blocked = words.findIndex((w) => /Blocked: ENVIRONMENT_BLOCKED/.test(w));
+  assert.match(words[blocked + 1], /^ {13}Step engineering blocked/, words.join("\n"));
+  assert.equal(rows[blocked].left[2].tone, "warning", "the newest step's warning is yellow");
+  const older = rows.find((r) => /Requirement/.test(r.left.map((x) => x.text).join("")) && r.at);
+  assert.equal(older.left[2].tone, "subtle");
+});
+
+test("a progress bar is a heavy line on a light one, so it reads as one bar without colour too", () => {
+  const lines = screen(workflow({ columns: 100, rows: 40, start: { layout: "pane" } }));
+  assert.match(lines.find((l) => /^TASK {2,}/.test(l)), /━+─+ \d+\/\d+ steps/);
 });

@@ -291,9 +291,9 @@ export function budgetOf(m: PaneModel, rows: number): { checklist: number; curre
   return { checklist, current, view: Math.max(0, room - checklist - current - TITLES - 1) }
 }
 
-// 0.0.2 (ADR 0028): the header's badge is drawn in a border, two rows taller than a line; TASK EXECUTION and NOW are a
-// title row and a rule over the blocks; a card adds its two edges.
-const HEADER_EXTRA = 2
+// 0.0.2 (ADR 0028): the header's badge is drawn in a border, two rows taller than a line, and a rule closes the header;
+// TASK EXECUTION and NOW are a title row and a rule over the blocks; a card adds its two edges.
+const HEADER_EXTRA = 3
 const TITLES = 2
 
 export const cardEdges = (rows: PaneRow[]): number => rows.filter((r, i) => r.box && rows[i - 1]?.box !== r.box).length * 2
@@ -465,6 +465,7 @@ export const register: Register = (on) => {
     return (
       <Box flexDirection="column" {...(docked ? { height: e.props.scroll.bodyRows } : {})}>
         {headerEl}
+        {parts ? rule('rule.header') : null}
         {!docked && m.hints.inline ? line([{ text: `⚠ ${m.hints.inline}`, tone: 'warning' }], 'hint') : null}
         {tabsEl}
         {b.checklist > 0 || b.current > 0 ? titleEl : null}

@@ -125,13 +125,24 @@ const indent = (depth) => "  ".repeat(depth);
 const stepRow = (key, status, words, detail, depth) => row([seg(indent(depth)), glyphSeg(status), seg(words, "label"), depth > 0 && detail ? dim(`  ${detail}`) : null], depth === 0 && detail ? [dim(detail)] : [], { depth, status });
 
 // The step a person's eye goes to, in the brand's tone (0.0.2): the one running, else the newest that ran.
-const emphasized = (r) => ({ ...r, left: r.left.map((s, i) => (i === 1 || i === 2 ? { ...s, tone: "title" } : s)) });
+// A step row's label is its one segment in the label's tone, and its glyph the segment before it.
+const labelAt = (r) => r.left.findIndex((x) => x.tone === "label");
+
+const relabel = (r, tone, glyph = false) => ((at) => ({ ...r, left: r.left.map((x, i) => (i === at || (glyph && i === at - 1) ? { ...x, tone } : x)) }))(labelAt(r));
+
+const emphasized = (r) => relabel(r, "title", true);
 
 // The baseline is a CARD (0.0.2, ADR 0028): its head names it with a column for what each run came to, its runs inside.
 const cardHead = (words, depth, status) => row([seg(indent(depth)), seg("▶ ", "subtle"), seg(words, "label")], [dim("status")], { depth, status, box: "baseline" });
 
 // One check run under the baseline: what it ran, what it came to, what its runner reported.
-const runRow = (a, o, depth, box = null) => ((status) => row([seg(indent(depth)), glyphSeg(status), seg(str(a.label) ?? a.type), dim(observedWords(o) ? `  ${observedWords(o)}` : "")], [statusSeg(status)], { depth, status, card: true, box }))(checkStatus(a, o));
+// What a run or a check came to colours its whole line (0.0.2, ADR 0028): passed green, failed red, blocked yellow, not
+// run quiet -- a running one keeps the plain text, its glyph says it runs.
+const LINE_TONE = Object.freeze({ PASSED: "success", FAILED: "danger", BLOCKED: "warning", NOT_RUN: "subtle", UNKNOWN: "subtle" });
+
+const lineTone = (status) => LINE_TONE[status] ?? null;
+
+const runRow = (a, o, depth, box = null) => ((status) => row([seg(indent(depth)), glyphSeg(status), seg(str(a.label) ?? a.type, lineTone(status)), dim(observedWords(o) ? `  ${observedWords(o)}` : "")], [statusSeg(status)], { depth, status, card: Boolean(box), box }))(checkStatus(a, o));
 
 // The runs that verify the change: those after its first implementation -- a baseline run is the base revision's,
 // never the change's, however the check is named.
@@ -144,10 +155,10 @@ function heldRow(snap, v, depth) {
   const o = run ? snap.observations?.[run.id] : null;
   const status = run?.state === "running" ? "RUNNING" : o?.aborted ? "BLOCKED" : ROW_STATUS[kindOf(v).kind];
   const note = [status === "BLOCKED" && o?.aborted ? `held as ${kindOf(v).word}` : null, kindOf(v).kind === "excluded" ? "not affected" : null, kindOf(v).kind === "asBefore" ? "as before the change" : null, run ? observedWords(o) : null].filter(Boolean).join(" · ");
-  return row([seg(indent(depth)), glyphSeg(status), seg(String(v.obligation ?? v.subject).replace(/ — not affected, not run$/, "")), dim(note ? `  ${note}` : "")], [statusSeg(status)], { depth, status, card: true });
+  return row([seg(indent(depth)), glyphSeg(status), seg(String(v.obligation ?? v.subject).replace(/ — not affected, not run$/, ""), lineTone(status)), dim(note ? `  ${note}` : "")], [statusSeg(status)], { depth, status });
 }
 
-const fileRow = (p, depth) => row([seg(indent(depth)), seg(`${String(p.change ?? "modified").slice(0, 1).toUpperCase()} `, "info"), seg(p.path)], [dim(`+${p.added ?? 0} −${p.removed ?? 0}`)], { depth, status: "PASSED" });
+const fileRow = (p, depth) => row([seg(indent(depth)), seg(`${String(p.change ?? "modified").slice(0, 1).toUpperCase()} `, "info"), seg(p.path)], [seg(`+${p.added ?? 0} −${p.removed ?? 0}`, "success")], { depth, status: "PASSED" });
 
 const HELD_ORDER = ["regressed", "blocked", "owed", "asBefore", "passed", "missing", "excluded"];
 
@@ -166,7 +177,13 @@ const stepDetail = (s) => str(s.actions.at(-1)?.summary) ?? str(s.actions.at(-1)
 
 const HEADS = { baseline: (s, status, depth) => cardHead(STEP_WORDS.baseline, depth, status) };
 
-const headOf = (s, status, depth) => (HEADS[s.key] ?? ((x) => stepRow(x.key, status, STEP_WORDS[x.key] ?? x.key, CHECK_TYPES.has(x.actions[0]?.type) ? null : stepDetail(x), depth)))(s, status, depth);
+// A step with nothing under it (gathering context, the environment, the workspace) is said quietly; one that holds
+// runs, files or checks is said in the label's tone.
+const quiet = (r) => relabel(r, "subtle");
+
+const leafRow = (x, status, depth) => ((r) => (NESTED[x.key] ? r : quiet(r)))(stepRow(x.key, status, STEP_WORDS[x.key] ?? x.key, CHECK_TYPES.has(x.actions[0]?.type) ? null : stepDetail(x), depth));
+
+const headOf = (s, status, depth) => (HEADS[s.key] ?? leafRow)(s, status, depth);
 
 const stepRows = (snap, s, depth, last) => [headOf(s, statusOfStep(s, snap.observations), depth), ...(NESTED[s.key]?.(snap, s, depth + 1, last) ?? [])];
 
@@ -193,12 +210,15 @@ const outcomeOf = (s, name) => s.receipts.get(name)?.outcome ?? "PENDING";
 
 const focusName = (s) => s.names.find((n) => outcomeOf(s, n) === "RUNNING") ?? s.names.filter((n) => outcomeOf(s, n) !== "PENDING").at(-1) ?? null;
 
-const workflowStepRow = (ctx, s, name) => ((outcome) => stepRow(name, OUTCOME_STATUS[outcome] ?? "UNKNOWN", stepLabel(name, ctx.d.root?.plan), outcome === "REPORTED" ? "reported, no receipt" : null, 0))(outcomeOf(s, name));
+// A workflow's step is said in what it came to: done green, failed red, blocked yellow, reported or pending quiet.
+const toneLabel = (r) => (lineTone(r.status) ? relabel(r, lineTone(r.status)) : r);
+
+const workflowStepRow = (ctx, s, name) => ((outcome) => (stepRow(name, OUTCOME_STATUS[outcome] ?? "UNKNOWN", stepLabel(name, ctx.d.root?.plan), outcome === "REPORTED" ? "reported, no receipt" : null, 0)))(outcomeOf(s, name));
 
 function workflowRows(ctx, view) {
   const s = workflowSteps(view, ctx.d.root?.plan);
   const focus = focusName(s);
-  return s.names.flatMap((name) => [((r) => (name === focus ? emphasized(r) : r))(workflowStepRow(ctx, s, name)), ...childSteps(ctx, name)]);
+  return s.names.flatMap((name) => [(name === focus ? emphasized : toneLabel)(workflowStepRow(ctx, s, name)), ...childSteps(ctx, name)]);
 }
 
 export function checklistOf(ctx) {

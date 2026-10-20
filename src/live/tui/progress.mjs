@@ -62,7 +62,11 @@ const label = (text) => seg(text.padEnd(7), "label");
 const taskWords = (p) => [`${p.done}/${p.total} ${p.unit}`, `${p.percent}%`, p.verified ? `${p.verified} verified` : null, p.reported ? `${p.reported} reported` : null, p.asBefore ? `${p.asBefore} failing as before` : null, p.revision > 1 ? `plan-${p.revision}` : null].filter(Boolean).join(" · ");
 
 // A bar as two segments (0.0.1): the cells done in the success tone on the rest of its track.
-const barSegs = (done, total) => ((b) => (b ? [seg(b.replace(/░/g, ""), "success"), seg(b.replace(/▓/g, ""), "track")] : []))(bar(done, total, BAR_CELLS));
+// 0.0.2 (ADR 0028): a heavy line for what is done on a light one for the rest, so the bar reads as one bar in any colour.
+const DONE_CELL = "━";
+const TRACK_CELL = "─";
+
+const barSegs = (done, total) => ((b) => (b ? [seg(b.replace(/░/g, "").replace(/▓/g, DONE_CELL), "success"), seg(b.replace(/▓/g, "").replace(/░/g, TRACK_CELL), "track")] : []))(bar(done, total, BAR_CELLS));
 
 // The label on the left and the bar with its words on the right edge (0.0.2, ADR 0028), as Orbit Live's footer draws them.
 const RIGHT = Object.freeze({ rightShare: 0.85 });

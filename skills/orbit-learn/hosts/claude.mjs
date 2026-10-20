@@ -52,7 +52,10 @@ const named = (row, args) => (row && typeof args?.[row[1]] === "string" ? { kind
 // handed over RAW and hashed there, never stored as it arrives; `tool_response`
 // is never read at all -- output is not something this engine keeps. `prompt`
 // is read off UserPromptSubmit alone, and only for the router to look at.
-export const normalize = (input) => (input?.hook_event_name ? { hostEvent: input.hook_event_name, session: input.session_id ?? null, cwd: input.cwd ?? process.cwd(), prompt: promptOf(input), ...toolOf(input) } : null);
+const deliveryOf = (input) => (typeof input.tool_use_id === "string" && input.tool_use_id ? { delivery: input.tool_use_id } : {});
+
+// 0.0.2: `tool_use_id` is the call's delivery key, as Codex's and Grok's are: a hook Claude delivers twice is one call.
+export const normalize = (input) => (input?.hook_event_name ? { hostEvent: input.hook_event_name, session: input.session_id ?? null, ...deliveryOf(input), cwd: input.cwd ?? process.cwd(), prompt: promptOf(input), ...toolOf(input) } : null);
 
 const promptOf = (input) => (input.hook_event_name === "UserPromptSubmit" && typeof input.prompt === "string" ? input.prompt : null);
 

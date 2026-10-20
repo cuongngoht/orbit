@@ -24,9 +24,13 @@ export const workingSet = {
   run: (event, world) => appended(event, world.workingSet?.()),
 };
 
+// A native host's line carries the call's delivery key when it sent one (0.0.2), so a hook delivered twice is one call
+// however long apart the two deliveries ran.
+const delivered = (line, event) => (event.delivery ? { ...line, delivery: event.delivery } : line);
+
 function appended(event, ws) {
   if (!ws) return null;
   const line = collect(event, ws.roots, ws.now());
-  if (line) ws.append(sessionOf(event, ws.host, ws.now()), event.protocol === 2 ? { ...line, v: 2, delivery: event.delivery, turn: event.turn, outcome: event.outcome } : line);
+  if (line) ws.append(sessionOf(event, ws.host, ws.now()), event.protocol === 2 ? { ...line, v: 2, delivery: event.delivery, turn: event.turn, outcome: event.outcome } : delivered(line, event));
   return null;
 }

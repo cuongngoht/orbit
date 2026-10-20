@@ -37,17 +37,21 @@ node skills/orbit-release/ship.mjs                 # every gate, one command
 node skills/orbit-release/ship.mjs --bump=added    # …and what the next version would be
 ```
 
-It runs the repo's definition of done and exits 2 if any gate fails. Six gates, because six
-separate commands is how a release goes out with five of them run:
+It runs the repo's definition of done and exits 2 if any gate fails. Eleven gates in one command,
+because eleven separate commands is how a release goes out with ten of them run:
 
 | gate | what a failure means |
 |---|---|
 | the suite passes, and says how many tests | a real regression, or a test that no longer means anything |
 | every line holds to Five Lines | a function grew instead of being split |
 | the fixture project is clean, **and check exits 0** | the engine's own example map or cases broke |
-| `schema/case.schema.json` is what the generator produces | the DSL moved and the published schema did not — every consuming repo will report drift |
+| `plan-check` on the fixture finds no errors | the engine's own example plan broke |
+| `schema/case.schema.json` and `schema/plan.schema.json` are what the generator produces | the DSL moved and the published schema did not — every consuming repo will report drift |
 | the five version files agree | a half-done bump, which is the one thing CI cannot fix for you |
 | the layout, the manifest and the descriptions a host reads | a host **rejects the archive**: a top-level `bin/` goes on PATH without appearing on the surface an admin approves (so the entry points stay in `cli/`), and a `SKILL.md` or agent **description** containing `<angle brackets>` reads as XML and is refused — a placeholder belongs in `argument-hint` |
+| every `SKILL.md` and agent has frontmatter a host parses | a host drops the skill silently |
+| `test/no-compat-layer.test.mjs` passes | an alias, adapter or schema upgrade crept back in |
+| native host acceptance (`docs/host-acceptance.json`) matches `hostSourceDigest` | a host was never smoke-tested on this source; recorded only from real runs |
 
 Never edit a generated `schema.json` to make the fourth gate pass. Run
 `node cli/schema.mjs --write` and commit what it produces.

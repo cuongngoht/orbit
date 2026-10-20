@@ -32,6 +32,7 @@ test("fixture path: intake → analyze → plan → source projection", () => {
   const ref = `spec@${digest}`;
   analyzeGoal(p, started.id, {
     objective: "Deliver Orbit 1.9.0 RC",
+    intent: { category: "change", workKinds: ["change", "verify"] },
     requirements: [],
     acceptance: [
       { id: "ac-11111111", statement: "goals persist", sourceRef: `${ref}#L1` },

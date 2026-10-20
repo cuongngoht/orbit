@@ -52,7 +52,7 @@ export const TERMINAL = [LIFE.CANCELLED, LIFE.COMPLETED, LIFE.FAILED];
 
 // The receipt domains a coordinator links: its steps, its plans, the child tasks it started, the snapshot a
 // requirement step read back, a project playbook it offered; and two it shares with every task.
-export const DOMAIN = { STEP: "step", PLAN: "plan", TASK: "task", REQUIREMENT: "requirement", SKILL: "skill", INVESTIGATION: "investigation", RUNTIME: "runtime" };
+export const DOMAIN = { STEP: "step", PLAN: "plan", TASK: "task", REQUIREMENT: "requirement", SKILL: "skill", INVESTIGATION: "investigation", RUNTIME: "runtime", GOAL: "goal" };
 
 // What an action of a coordinator IS: a skill the host runs, an agent the host dispatches, or something the
 // engine does itself through an owner's port. Never a command line.

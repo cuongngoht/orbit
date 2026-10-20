@@ -51,3 +51,12 @@ function askedOf(best, refined) {
 }
 
 const unique = (list) => [...new Set(list)];
+
+// An intent somebody DECLARED (0.0.4: a goal's structured reading names the routing intent each unit is planned
+// under), answered in classify's shape -- the row's own requirements, no cue, no gram -- so a declared intent is
+// never read off the words again. An id no row has is null: the caller refuses it.
+export function declared(id, intents = INTENTS) {
+  const row = intents.find((r) => r.id === id);
+  if (!row) return null;
+  return { intent: { id: row.id, confidence: "declared" }, cues: [], requirements: [...row.requires], asked: [], matched: [row.id], grams: new Set() };
+}

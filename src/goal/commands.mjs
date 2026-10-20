@@ -49,8 +49,12 @@ function refuseOrphans(units, acceptance) {
   if (orphans.length) throw new Refused(`acceptance criteria have no work unit: ${orphans.join(", ")}`);
 }
 
+// Planning again (after a person answered what a unit was missing, and the goal was analyzed again) is plan-2, plan-3
+// ...: an earlier plan's artifact is never written over.
+const planNumber = (model) => model.records.filter((r) => r.kind === "planned" || r.kind === "replanned").length + 1;
+
 function writePlan(ports, id, units) {
-  const artifact = planArtifact(units, 1);
+  const artifact = planArtifact(units, planNumber(viewOf(ports.goals.read(id))));
   ports.io.write(`${ports.goals.dirOf(id)}/${artifact.plan}.json`, `${JSON.stringify(artifact.body, null, 2)}\n`);
   ports.goals.append(id, "planned", { id: nextId(viewOf(ports.goals.read(id)), "planned"), plan: artifact.plan, digest: artifact.digest, units, because: "initial plan" });
   return { id, plan: artifact.plan, units: units.length };

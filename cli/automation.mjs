@@ -6,12 +6,15 @@
 // model reasons and runs the skills; this engine keeps the plan, the state, the gates and the evidence, and
 // reads every step's evidence back from the owner that keeps it.
 //
-//   node automation.mjs start --for="<objective>" [--ref=<work item|req-…|rs-…|w-…>] [--capability=<a.b,c.d>] [--attempts= --actions= --minutes=]
+//   node automation.mjs start --for="<objective>" [--ref=<work item|req-…|rs-…|w-…>] [--capability=<a.b,c.d>] [--intent=<routing intent>] [--goal=<goal-…:gu-…>] [--attempts= --actions= --minutes=]
 //                                          classify the objective, plan its workflow as a graph, create the
 //                                          coordinator's task (or pick up the one running for the same objective).
 //                                          --capability names capabilities the objective needs beyond what the
 //                                          router's table reads off it: each gets a step, and one nothing here
 //                                          provides gets its playbook drafted first when a person allows that.
+//                                          --intent DECLARES the routing intent (a goal unit's kind names one), so
+//                                          the objective's words are not classified at all; --goal links the goal
+//                                          and unit it was started for, and picks up THAT unit's running workflow.
 //                                          Run it, and every command below, from YOUR checkout
 //   node automation.mjs context <task>     the plan, each step's state from the journal, the engineering task it
 //                                          started, what runs next and how, how to watch it. Writes nothing
@@ -90,7 +93,7 @@ import { storeBase } from "../src/project/repository.mjs";
 import { requirementsContext } from "../src/requirements/context.mjs";
 import { status as requirementStatus } from "../src/requirements/views/status.mjs";
 import { effectiveResourcesOf } from "../src/resources/compose.mjs";
-import { classify } from "../src/routing/classify.mjs";
+import { classify, declared } from "../src/routing/classify.mjs";
 import { createContext } from "../src/run/context.mjs";
 import { runtimeProject } from "../src/runtime/context.mjs";
 import { COMMANDS as RUNTIME } from "../src/runtime/index.mjs";
@@ -381,7 +384,7 @@ async function portsHere() {
 function assembled(h, lz) {
   const tctx = taskContext(h);
   const factory = factoryPort(h, () => settingsOf(h).effective.values, (cap) => resolvedOne(lz.effective(), cap));
-  return { task: taskPort(tctx), settings: () => settingsOf(h).effective, settingsView: () => settingsOf(h), classify: classified, resolve: (cap) => resolvedOne(lz.effective(), cap), gapOf: gapPort(h, (cap) => resolvedOne(lz.effective(), cap)), requirements: requirementsPort(lz.rooms), runtime: { readiness: () => readiness(lz.rt), startable: () => startable(lz.rt) }, context: { gather: async (text) => gathered(h, text) }, child: { start: async (spec) => childStart(h, spec), view: (id) => viewed(tctx, id) }, investigations: { outcome: (id) => outcomeOf(h, id) }, factory, host: hostOf(h), roomOf: (id) => roomAt(h.io, roomDir(h, id)), lock: (id, fn) => locked(h, id, fn), liveness: livenessOf(h), session: session(), now: () => new Date().toISOString(), hostName: h.io.host, pid: process.pid, actor: actor(), readInput: (file) => readFileSync(file ?? 0, "utf8"), doctor: () => doctorOf(h), where: () => whereOf(h) };
+  return { task: taskPort(tctx), settings: () => settingsOf(h).effective, settingsView: () => settingsOf(h), classify: classified, declared: (id) => declared(id), resolve: (cap) => resolvedOne(lz.effective(), cap), gapOf: gapPort(h, (cap) => resolvedOne(lz.effective(), cap)), requirements: requirementsPort(lz.rooms), runtime: { readiness: () => readiness(lz.rt), startable: () => startable(lz.rt) }, context: { gather: async (text) => gathered(h, text) }, child: { start: async (spec) => childStart(h, spec), view: (id) => viewed(tctx, id) }, investigations: { outcome: (id) => outcomeOf(h, id) }, factory, host: hostOf(h), roomOf: (id) => roomAt(h.io, roomDir(h, id)), lock: (id, fn) => locked(h, id, fn), liveness: livenessOf(h), session: session(), now: () => new Date().toISOString(), hostName: h.io.host, pid: process.pid, actor: actor(), readInput: (file) => readFileSync(file ?? 0, "utf8"), doctor: () => doctorOf(h), where: () => whereOf(h) };
 }
 
 // Whether the process that ran an engine step is still alive on this machine.

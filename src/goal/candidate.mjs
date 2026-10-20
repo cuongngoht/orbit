@@ -1,6 +1,7 @@
 import { Refused } from "../errors.mjs";
 import { scrub } from "../scrub.mjs";
 import { AC_ROW, ANALYSIS_FIELDS, REQUIREMENT_ROW, SOURCE_REF, STAMPED } from "./fields.mjs";
+import { intentFindings } from "./intent.mjs";
 import { REQ_KINDS, TITLE_LIMIT } from "./vocab.mjs";
 
 const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -33,9 +34,16 @@ const rowListFindings = (raw) => [...list(raw.requirements).flatMap((r, i) => ro
 
 const refFindings = (raw) => [...list(raw.requirements), ...list(raw.acceptance)].flatMap((r) => (r.sourceRef && !SOURCE_REF.test(r.sourceRef) ? [`bad sourceRef ${r.sourceRef}`] : []));
 
-export function analysisFindings(raw, specDigest) {
+// What the host SENT, judged before anything is filled in: a field nobody declared, a field the engine stamps, and the
+// structured intent (src/goal/intent.mjs) are refused as sent -- never dropped on the way to the journal.
+export function rawFindings(raw) {
   if (!isObject(raw)) return ["analysis: must be a JSON object"];
-  return [...unknownFields(raw), ...stampedFields(raw), ...objectiveFinding(raw), ...rowListFindings(raw), ...refFindings(raw), ...kindFindings(raw), ...secretFindings(raw)];
+  return [...unknownFields(raw), ...stampedFields(raw), ...intentFindings(raw.intent)];
+}
+
+// What the analysis SAYS once the engine filled in its ids and references.
+export function analysisFindings(stamped, specDigest) {
+  return [...objectiveFinding(stamped), ...rowListFindings(stamped), ...refFindings(stamped), ...kindFindings(stamped), ...secretFindings(stamped)];
 }
 
 const kindFindings = (raw) => list(raw.requirements).filter((r) => r.kind && !REQ_KINDS.includes(r.kind)).map((k) => `analysis: unknown requirement kind ${k.kind}`);

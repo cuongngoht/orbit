@@ -47,11 +47,14 @@ function delegateControl(args) {
   execFileSync(process.execPath, [join(PLUGIN_ROOT, "skills/orbit-control/start.mjs"), ...args], { stdio: "inherit", env: ENV });
 }
 
+// What a unit's workflow is started with: its title, and -- when the unit has them -- the work item it settles, the
+// routing intent its kind declares, the goal and unit it belongs to, and the capabilities it takes.
+const START_FLAGS = [["ref", (s) => s.ref], ["intent", (s) => s.intent], ["goal", (s) => s.goal], ["capability", (s) => (s.capabilities?.length ? s.capabilities.join(",") : null)]];
+
+const startArgs = (spec) => ["start", `--for=${spec.objective}`, "--json", ...START_FLAGS.filter(([, v]) => v(spec)).map(([k, v]) => `--${k}=${v(spec)}`)];
+
 function automationStart(spec, cwd, env, root) {
-  const args = ["start", `--for=${spec.objective}`, "--json"];
-  if (spec.ref) args.push(`--ref=${spec.ref}`);
-  if (spec.capabilities?.length) args.push(`--capability=${spec.capabilities.join(",")}`);
-  const out = execFileSync(process.execPath, [join(root, "cli/automation.mjs"), ...args], { cwd, env: ENV, encoding: "utf8" });
+  const out = execFileSync(process.execPath, [join(root, "cli/automation.mjs"), ...startArgs(spec)], { cwd, env: ENV, encoding: "utf8" });
   return JSON.parse(out);
 }
 

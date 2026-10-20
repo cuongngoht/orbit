@@ -37,10 +37,22 @@ function capabilitiesOf(text) {
   return list;
 }
 
+// A routing intent DECLARED for the objective (0.0.4: a goal unit's kind names one), so the objective's words are not
+// classified again -- the intent's own word, never a sentence. Whether a routing row has it is the planner's to say.
+const INTENT = /^[a-z][a-z-]{1,39}$/;
+
+// The goal and unit a workflow is started for (`goal-…:gu-…`): the lineage the coordinator links, never a reason to act.
+const GOAL_UNIT = /^goal-[0-9a-f]{12}:gu-[0-9a-f]{8}$/;
+
+const checked = (value, re, say) => {
+  if (value !== undefined && !re.test(String(value))) throw new Refused(say);
+  return value;
+};
+
 function specOf(args) {
   const objective = flag(args, "for") ?? (words(args).join(" ") || undefined);
-  if (!objective) throw new Refused('start --for="<the objective, in one sentence>" [--ref=<work item, req-…, rs-… or w-…>] [--capability=<a.b,c.d>]');
-  return { objective, ref: flag(args, "ref"), capabilities: capabilitiesOf(flag(args, "capability")), attempts: int(flag(args, "attempts")), actions: int(flag(args, "actions")), minutes: int(flag(args, "minutes")) };
+  if (!objective) throw new Refused('start --for="<the objective, in one sentence>" [--ref=<work item, req-…, rs-… or w-…>] [--capability=<a.b,c.d>] [--intent=<routing intent>] [--goal=<goal-…:gu-…>]');
+  return { objective, ref: flag(args, "ref"), capabilities: capabilitiesOf(flag(args, "capability")), intent: checked(flag(args, "intent"), INTENT, "--intent names one routing intent's id (qa, development, …) — never a sentence"), goal: checked(flag(args, "goal"), GOAL_UNIT, "--goal names a goal and its unit: goal-<12 hex>:gu-<8 hex>"), attempts: int(flag(args, "attempts")), actions: int(flag(args, "actions")), minutes: int(flag(args, "minutes")) };
 }
 
 const planned = (ports, args) => (flag(args, "for") ? planFor(ports, specOf(args)) : planOfTask(ports, task(args)));

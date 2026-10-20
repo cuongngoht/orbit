@@ -19,7 +19,7 @@ test("resume reloads plan and frontier", () => {
   const intake = intakeFromText(ctx, "Fix bug\nAC1: one payment only\n");
   persistIntake(p.goals, io, intake);
   const digest = intake.spec.digest;
-  analyzeGoal(p, intake.id, { objective: "Fix double payment", requirements: [], acceptance: [{ statement: "one payment", sourceRef: `spec@${digest}#L3` }] });
+  analyzeGoal(p, intake.id, { objective: "Fix double payment", intent: { category: "change", workKinds: ["change", "verify"] }, requirements: [], acceptance: [{ statement: "one payment", sourceRef: `spec@${digest}#L3` }] });
   planGoal(p, intake.id);
   const r = resumeGoal(p, intake.id);
   assert.match(r.say, /goal-/);

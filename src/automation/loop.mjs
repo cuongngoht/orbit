@@ -522,6 +522,11 @@ const activeFor = (ports, match) => coordinators(ports).find((v) => !v.terminal 
 
 const sameObjective = (objective) => (v) => objectiveKey(v.task.objective) === objectiveKey(objective);
 
+// A goal unit's workflow is the one linked to that unit -- never another goal's workflow that happens to share its title.
+const sameGoal = (goal) => (v) => v.receipts.some((r) => r.domain === DOMAIN.GOAL && r.ref === goal);
+
+const runningFor = (spec) => (spec.goal ? sameGoal(spec.goal) : sameObjective(spec.objective));
+
 export function planFor(ports, spec) {
   const values = ports.settings().values;
   const facts = factsOf(ports, spec, values);
@@ -533,19 +538,23 @@ export function planFor(ports, spec) {
 function created(ports, spec, facts, plan) {
   const values = ports.settings().values;
   const id = ports.task.create({ objective: spec.objective, root: facts.requirement?.root, provider: PROVIDER, actor: ports.actor ?? undefined, ...narrowedBudget(values, spec) }).task;
-  ports.lock(id, () => opened(ports, id, plan));
+  ports.lock(id, () => opened(ports, id, plan, spec));
   return id;
 }
 
-function opened(ports, id, plan) {
+// The goal and unit a workflow was started for (0.0.4), linked before anything runs: the goal's journal names this task
+// for its unit, and this task names the goal back -- one lineage, read from either end.
+const goalOps = (spec) => (spec.goal ? [["link-receipt", { domain: DOMAIN.GOAL, ref: spec.goal, outcome: "LINKED", summary: clip(`unit ${spec.goal.split(":")[1]} of goal ${spec.goal.split(":")[0]}`) }]] : []);
+
+function opened(ports, id, plan, spec) {
   ports.roomOf(id).write(`plans/${plan.digest}`, plan);
-  applied(ports, id, [planReceipt(plan, "ACTIVE"), ["attempt-start", { cause: CAUSE.FRESH }]]);
+  applied(ports, id, [...goalOps(spec), planReceipt(plan, "ACTIVE"), ["attempt-start", { cause: CAUSE.FRESH }]]);
 }
 
 const nothingToDo = (got) => Object.assign(new Refused(`NOTHING_TO_COORDINATE: the objective reads as ${got.facts.intent} (${got.facts.confidence} confidence), which no workflow here coordinates — orbit-help names the one workflow for it`), { code: "NOTHING_TO_COORDINATE" });
 
 export function start(ports, spec) {
-  const running = activeFor(ports, sameObjective(spec.objective));
+  const running = activeFor(ports, runningFor(spec));
   if (running) return { task: running, created: false, resumed: true, context: contextOf(ports, running) };
   return startedNew(ports, spec);
 }

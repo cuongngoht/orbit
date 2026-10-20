@@ -47,7 +47,27 @@ node ${CLAUDE_PLUGIN_ROOT}/cli/orbit.mjs goal resume <goal-id> --json
 
 ## Analyze (host supplies structure; engine validates)
 
-Read the stored spec, produce JSON with `objective`, `requirements[]`, `acceptance[]`, `unknowns[]`, `conflicts[]`. Every row needs `sourceRef` as `spec@<digest>#L<n>` from the start response.
+Read the stored spec, produce JSON with `objective`, `intent`, `requirements[]`, `acceptance[]`, `unknowns[]`, `conflicts[]`. Every row needs `sourceRef` as `spec@<digest>#L<n>` from the start response.
+
+`intent` is YOUR structured reading of the goal, and the plan is drawn from it alone — the engine never looks for words
+in the objective, so a goal in any language plans the same way:
+
+```json
+{
+  "category": "change | quality | investigation | procedure | question",
+  "workKinds": ["analyze", "change", "investigate", "procedure", "verify"],
+  "capabilities": ["release.quality.verification"],
+  "verification": ["how the outcome must be shown, one sentence each"],
+  "dependencies": ["what it rests on outside this goal"],
+  "missing": [{ "statement": "a prerequisite nobody has yet", "blocks": ["verify"] }]
+}
+```
+
+`category` and `workKinds` (1–5, each once) are required. One work unit is planned per kind, in the engine's own order
+(analyze → change → investigate → procedure → verify), each waiting for the one before it. A `procedure` names the
+capability it provides in `capabilities`; with none it is unresolved. A unit a `missing` row blocks is planned as
+`unresolved` and never started — ask the person, then analyze and plan the goal again (that plan is `plan-2`). A field
+the engine owns (`id`, `digest`, `state`, …) or one it does not know is refused, never dropped.
 
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/cli/orbit.mjs goal analyze <goal-id> --stdin --json

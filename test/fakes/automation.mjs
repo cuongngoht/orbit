@@ -4,6 +4,7 @@
 // engineering task is a REAL task in the same store, created by the fake `child.start` and moved by a test
 // through the same door (`w.op`), so the coordinator reads it back exactly as it would in a checkout.
 import { effectiveOf } from "../../src/automation/settings.mjs";
+import { declared } from "../../src/routing/classify.mjs";
 import { contextOf, settle, start, step } from "../../src/automation/loop.mjs";
 import { fingerprintOf } from "../../src/task/approvals.mjs";
 import { loadTask } from "../../src/task/load.mjs";
@@ -39,6 +40,7 @@ export function automationWorld(t, opts = {}) {
     settings: () => effectiveOf(docs()),
     settingsView: () => ({ machine: docs()[0], project: docs()[1] ?? null, effective: effectiveOf(docs()) }),
     classify: () => ({ intent: { id: opts.intent ?? "development", confidence: "high" }, matched: opts.matched ?? [opts.intent ?? "development"], requirements: opts.requirements ?? ["development.implementation"] }),
+    declared: (id) => declared(id),
     resolve: (cap) => opts.resolved?.[cap] ?? { ...providedBy(cap), status: opts.resourceApproval ? "approval" : "selected" },
     gapOf: () => opts.gap ?? null,
     requirements: { resolve: (ref) => ({ root: ROOT, identity: { id: ref } }), look: () => ({ latest: state.requirement.latest, blocking: state.requirement.blocking }) },

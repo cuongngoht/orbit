@@ -5,7 +5,9 @@ import { hasCycle } from "./plan-cycle.mjs";
 
 export { unitId, acId, reqId } from "./plan-ids.mjs";
 
+// A plan is drawn from the analysis's structured intent and nothing else: an analysis without one is analyzed again.
 export function planUnits(analysis, specDigest) {
+  if (!analysis?.intent) throw Object.assign(new Refused("GOAL_INTENT_MISSING: the analysis has no structured intent — analyze the goal again with one"), { code: "GOAL_INTENT_MISSING" });
   return validateGraph(buildPlanUnits(analysis, specDigest));
 }
 

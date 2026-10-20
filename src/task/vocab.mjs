@@ -56,7 +56,8 @@ export const OUTCOMES = ["succeeded", "failed", "abandoned"];
 // `learning` (1.8.9) is what a FINISHED task taught engineering memory, linked after it ended: its ref names the
 // observation (`task:<id>`), its outcome OBSERVED or NOTHING, its summary the candidates, kept and refused -- or why
 // nothing was learned. Read by Live's lifecycle rows; never read to move a task.
-export const RECEIPT_DOMAINS = ["runtime", "run", "investigation", "data", "browser", "work", "test", "check", "sandbox", "step", "plan", "task", "requirement", "skill", "impact", "learning"];
+// `goal` (0.0.4) is the goal and unit a coordinator was started for (`goal-…:gu-…`): lineage, never evidence.
+export const RECEIPT_DOMAINS = ["runtime", "run", "investigation", "data", "browser", "work", "test", "check", "sandbox", "step", "plan", "task", "requirement", "skill", "impact", "learning", "goal"];
 
 // What a requirement or an obligation came to, as evidence shows it. `satisfied` and `violated`
 // need a receipt; with none, it is `not-verified`, and nothing here may say otherwise.

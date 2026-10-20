@@ -16,6 +16,7 @@
 // `missingOf(facts, plan)` says what the plan cannot know yet, and whether a step finds it out or a person must
 // say it -- once the workflow is known, since what a playbook workflow lacks is not what a change lacks. An
 // acceptance criterion is never invented to fill one.
+import { Refused } from "../errors.mjs";
 import { verdictOf } from "./policy.mjs";
 import { MAX_CAPABILITIES } from "./vocab.mjs";
 
@@ -75,8 +76,19 @@ export const MISSING = [
 
 export const missingOf = (f, plan) => MISSING.filter((m) => m.when(f, plan)).map((m) => ({ what: m.what, by: m.by, say: m.say(f, plan) }));
 
+// What the objective is ABOUT: the intent a caller declared (a goal unit's kind), in classify's own shape, or -- for an
+// objective nobody structured -- the routing table's reading of its words. A declared intent with named capabilities
+// is planned for exactly those: the intent row's own requirements stand in only when nothing is named.
+function declaredOf(ports, spec) {
+  const d = ports.declared(spec.intent);
+  if (!d) throw Object.assign(new Refused(`INTENT_UNKNOWN: ${spec.intent} is no routing intent — a declared intent is one row's id`), { code: "INTENT_UNKNOWN" });
+  return named(spec).length ? { ...d, requirements: [] } : d;
+}
+
+const classifiedOf = (ports, spec) => (spec.intent ? declaredOf(ports, spec) : ports.classify(spec.objective));
+
 export function factsOf(ports, spec, values) {
-  const classified = ports.classify(spec.objective);
+  const classified = classifiedOf(ports, spec);
   const capabilities = capabilityFacts(ports, classified, spec, values);
   const base = { objective: spec.objective, ref: spec.ref ?? null, intent: classified.intent.id, confidence: classified.intent.confidence, matched: classified.matched, capabilities, named: named(spec), playbook: capabilities[0] ?? null };
   return { ...base, requirement: requirementFacts(ports, spec.ref), startable: quietly(() => ports.runtime.startable(), []), host: ports.host };

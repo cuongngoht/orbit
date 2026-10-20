@@ -33,9 +33,12 @@ const answering = (signal) => TECHNIQUES.filter((t) => (t.owedBy ?? []).includes
 
 export function securityFindings(p) {
   const all = scenariosOf(p);
-  const used = new Set(all.map((s) => s.technique));
+  const used = new Set([...all.map((s) => s.technique), ...excludedTechniques(p)]);
   return SIGNALS.filter((sig) => owed(sig, all, used)).map((sig) => unmet(p, sig, all));
 }
+
+// A team that decided against a technique says so in an exclusion naming it, and the obligation is answered.
+const excludedTechniques = (p) => (Array.isArray(p.exclusions) ? p.exclusions : []).map((x) => x?.technique).filter(Boolean);
 
 // A signal nothing answers is not an obligation -- it is a row somebody added
 // without a technique to discharge it, and nagging about that helps nobody.

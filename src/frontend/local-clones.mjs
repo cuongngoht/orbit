@@ -20,8 +20,8 @@
 // `core.fsmonitor` off -- a checkout's hooks are code it brought with it. A failing git is BLOCKED
 // with the line that says why (its `fatal:` or `error:` line, else its last), scrubbed: the
 // machine could not answer, and nothing about the change was learned.
-import { lstatSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { devNull, tmpdir } from "node:os";
+import { lstatSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { baseEnv } from "../process/env.mjs";
 import { Blocked, Refused } from "../errors.mjs";
@@ -75,9 +75,14 @@ export function createLocalClones(root, proc, opts) {
 
 // Linked first, which costs nothing on the same disk; a clone git could not link is copied. A failed
 // clone leaves no directory behind (git removes what it made), so the copy starts clean.
+// A clone is checked out BYTE FOR BYTE (0.0.2): a person's or a machine's `core.autocrlf` -- Git for Windows ships it
+// on in its system configuration -- would write CRLF files the anchor (which reads no such configuration) names as
+// another tree, and every fresh workspace would read as changed. The project's own attributes still apply to both.
+const VERBATIM = ["--config", "core.autocrlf=false"];
+
 function cloned(call, git, root, dir, revision) {
-  const linked = call(root, ["clone", "--quiet", "--local", "--no-checkout", root, dir]);
-  if (!linked.ok) git(root, ["clone", "--quiet", "--local", "--no-hardlinks", "--no-checkout", root, dir]);
+  const linked = call(root, ["clone", "--quiet", "--local", ...VERBATIM, "--no-checkout", root, dir]);
+  if (!linked.ok) git(root, ["clone", "--quiet", "--local", "--no-hardlinks", ...VERBATIM, "--no-checkout", root, dir]);
   git(dir, ["checkout", "--quiet", "--detach", revision]);
   return dir;
 }
@@ -139,8 +144,12 @@ function treeIn(git, dir) {
 //              included -- moves it, and an unprivileged process cannot set it back
 // HOME and XDG_CONFIG_HOME are the anchor itself, which is empty: git's per-user DEFAULT ignore and attributes
 // files ($XDG_CONFIG_HOME/git/ignore, …/attributes) are read even with the global config off, and nothing
-// a process wrote there may decide what a tree holds.
-const anchorEnv = (opts, anchor) => ({ ...baseEnv(opts.env ?? opts.inherit ?? {}), HOME: anchor, XDG_CONFIG_HOME: anchor, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: devNull, GIT_ATTR_NOSYSTEM: "1" });
+// a process wrote there may decide what a tree holds. The global configuration is an EMPTY file the anchor itself
+// holds (0.0.2): Git for Windows refuses the null device as a config file (`unable to access '\\.\nul'`), and an
+// empty file in a directory made for this one look says the same thing on every OS.
+const EMPTY_CONFIG = "empty.gitconfig";
+
+const anchorEnv = (opts, anchor) => ({ ...baseEnv(opts.env ?? opts.inherit ?? {}), HOME: anchor, XDG_CONFIG_HOME: anchor, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: join(anchor, EMPTY_CONFIG), GIT_ATTR_NOSYSTEM: "1" });
 
 // A file's own change time -- a link's, never its target's -- or NaN when it cannot be read, and then the
 // whole stamp is null: an unreadable file is never a stamp that cannot move.
@@ -155,6 +164,7 @@ const anchoredIn = (git, dir, anchor) => (args) => git(dir, [`--git-dir=${anchor
 
 function anchoredState(proc, opts, dir) {
   const anchor = mkdtempSync(join(tmpdir(), "orbit-anchor-"));
+  writeFileSync(join(anchor, EMPTY_CONFIG), "");
   try { return stateWith(gitOf(callOf(proc, { ...opts, env: anchorEnv(opts, anchor) })), dir, anchor); }
   finally { rmSync(anchor, { recursive: true, force: true }); }
 }

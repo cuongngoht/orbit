@@ -4,18 +4,19 @@
 // UI swallowed, and by the time anyone looks the session is gone. The whole
 // request list goes to a file; only the non-2xx lines reach the terminal.
 import { mkdirSync, writeFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join } from "node:path";
+import { shownPath } from "../shown-path.mjs";
 import { summarize } from "../browser/index.mjs";
 import { contained } from "../project/boundary.mjs";
 
 // A run that needs no page has no screen, console or browser network to
 // capture, and asking a browser anyway is how a FAIL of a backend check turned
 // into a BLOCKED about a browser nobody needed. What it has is its log.
-export const pagelessEvidence = (out) => ({ pageless: true, shot: null, netFile: null, calls: 0, bad: [], consoleOut: null, url: null, observed: null, outRel: relative(process.cwd(), out) });
+export const pagelessEvidence = (out) => ({ pageless: true, shot: null, netFile: null, calls: 0, bad: [], consoleOut: null, url: null, observed: null, outRel: shownPath(out) });
 
 export function captureEvidence(ctx, s, out) {
   const shot = captureScreen(ctx, s, out);
-  return { shot, ...network(ctx, out, pad(s)), consoleOut: ctx.browser.console().slice(0, 4000), ...page(ctx), outRel: relative(process.cwd(), out) };
+  return { shot, ...network(ctx, out, pad(s)), consoleOut: ctx.browser.console().slice(0, 4000), ...page(ctx), outRel: shownPath(out) };
 }
 
 // A verdict that HELD deserves its screen too: a PASS that cannot show what it

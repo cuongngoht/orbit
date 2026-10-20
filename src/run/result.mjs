@@ -1,6 +1,7 @@
 // What a finished run looks like to the outside: the exit code, the RESULT
 // line, and the one JSON object a machine reads instead of the log.
-import { join, relative, resolve } from "node:path";
+import { join, resolve } from "node:path";
+import { shownPath } from "../shown-path.mjs";
 import { caseDigest } from "../dsl/digest.mjs";
 import { memoryPaths } from "../memory/store.mjs";
 import { insideRepo } from "../store/context.mjs";
@@ -67,7 +68,7 @@ function budgetSpent(run, ms) {
 
 export function resultLine(outcome) {
   const { run, status, ms, log } = outcome;
-  const tail = `  (${Math.round(ms / 1000)}s)  log: ${relative(process.cwd(), log)}`;
+  const tail = `  (${Math.round(ms / 1000)}s)  log: ${shownPath(log)}`;
   if (status === "FAIL") return `RESULT: FAIL at step ${run.slice[run.done].i}/${run.c.steps.length}${proved(run)}${tail}`;
   return `RESULT: ${status} ${run.done}/${run.slice.length}${SUFFIX[status]?.(run) ?? ""}${proved(run)}${tail}`;
 }

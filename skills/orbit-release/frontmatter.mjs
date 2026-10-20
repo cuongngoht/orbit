@@ -30,8 +30,11 @@ export const LINE_RULES = [
 const brokenRule = (lines, i) => LINE_RULES.find((r) => r.breaks(lines[i], lines.slice(0, i).some((x) => KEY.test(x)))) ?? null;
 
 // -> null, or the first problem, with the line number as an editor counts it.
-export function frontmatterProblem(text) {
-  if (!String(text).startsWith("---\n")) return "it does not open with a --- line, so a host finds no frontmatter at all";
+// A file checked out with CRLF line ends (Windows, or a consumer's repository) is read as a host reads it: the same lines.
+export const frontmatterProblem = (text) => problemOf(String(text).replace(/\r\n/g, "\n"));
+
+function problemOf(text) {
+  if (!text.startsWith("---\n")) return "it does not open with a --- line, so a host finds no frontmatter at all";
   const end = text.indexOf("\n---", 3);
   if (end < 0) return "its frontmatter is never closed by a --- line";
   const lines = text.slice(4, end).split("\n");

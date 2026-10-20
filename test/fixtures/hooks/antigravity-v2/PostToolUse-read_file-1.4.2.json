@@ -1,0 +1,48 @@
+{
+  "input": {
+    "artifactDirectoryPath": "/fixture-host/artifacts",
+    "conversationId": "fixture-session-142",
+    "error": "",
+    "modelName": "fixture-model",
+    "stepIdx": 15,
+    "toolCall": {
+      "args": {
+        "Path": "/fixture/src/store.mjs"
+      },
+      "name": "read_file"
+    },
+    "transcriptPath": "/fixture-host/transcript.jsonl",
+    "workspacePaths": [
+      "/fixture"
+    ]
+  },
+  "argv": [
+    "--host=antigravity",
+    "--protocol=2",
+    "--event=PostToolUse"
+  ],
+  "expected": {
+    "protocol": 2,
+    "hostEvent": "PostToolUse",
+    "event": "post-tool",
+    "session": "antigravity:6b5e08feb9d2b3ed",
+    "turn": null,
+    "delivery": "antigravity:e629fa6598d73276",
+    "cwd": "/fixture",
+    "outcome": "success",
+    "idle": false,
+    "tool": {
+      "name": "read_file",
+      "kind": "read"
+    },
+    "paths": [
+      "/fixture/src/store.mjs"
+    ],
+    "pattern": null,
+    "command": null,
+    "background": false,
+    "invokes": null,
+    "host": "antigravity",
+    "ok": true
+  }
+}

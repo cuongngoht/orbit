@@ -31,6 +31,11 @@ Review the entry/revision, then explicitly `apply` with `--revision=<sha>`. Repl
 
 Setup detects an owned entry at its target. Confirm the integration in the native loaded inventory.
 
+AGY CLI 1.4.2 (measured for 0.0.2) names its file tools `read_file`, `write_file` and `edit_file`, each with a
+`Path` argument, beside `run_command`; Orbit maps them as it mapped `view_file` and the edit tools of 1.2.12, so work
+tracking sees what a session read and changed (sanitized captures: `test/fixtures/hooks/antigravity-v2/*-1.4.2.json`).
+A command's exit status is still not sent: a command's result is `not reported`, never failed.
+
 PreInvocation at invocation zero bootstraps context, not prompt routing. Stop is an execution boundary, not SessionEnd, and never asks AGY to continue for pending Orbit work. Use the [stdin routing workflow](hosts.md#root-and-session-binding). Native external MCP inventory is unknown because this target CLI publishes no JSON list contract; managed Orbit MCP remains available.
 
 `agy plugin validate .` validates package structure only. Native acceptance must also verify permission responses, recall, multi-workspace containment, background outcomes, Stop, retry/rollback and operation without Control.

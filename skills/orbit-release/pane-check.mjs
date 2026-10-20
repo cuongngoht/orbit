@@ -2,7 +2,8 @@
 // The Claude Code pane's own tests (hooks/live-pane.tsx), by the host's own runner. `claude plugin test <dir>` runs
 // every *.test.ts and *.test.tsx under <dir>, and this plugin's root holds Orbit Control's vitest files too, which the
 // runner cannot load. So the pane is staged alone -- the manifest, the hooks, the contract -- into a scratch folder,
-// tested there, and the folder removed. Exits with the runner's code.
+// tested there, and the folder removed. Exits with the runner's code. Its name matches none of `node --test`'s default
+// patterns (`*-test.mjs` does): the suite must not need the `claude` CLI, which a CI runner has not got.
 import { cpSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";

@@ -31,6 +31,7 @@ import { currentStepOf, nextStepOf, planRows } from "./plan-view.mjs";
 import { taskProgressOf } from "./progress.mjs";
 import { timelineRows } from "./timeline-view.mjs";
 import { workNowRows } from "./work-view.mjs";
+import { eventsView } from "./events-view.mjs";
 import { lifecycleRows } from "./lifecycle-view.mjs";
 import { sessionBarOf, sessionIndicator, sessionLine, sessionNowRows, sessionOf, sessionViewRows } from "./session-view.mjs";
 
@@ -120,10 +121,28 @@ const statusOfStep = (s, observations) => (STATUS_OF_STEP[s.key] ?? stepStatus)(
 
 const indent = (depth) => "  ".repeat(depth);
 
-const stepRow = (key, status, words, detail, depth) => row([seg(indent(depth)), glyphSeg(status), seg(words, "label")], detail ? [dim(detail)] : [], { depth, status });
+// A step's detail is said on the right of a step of the work, and after the label of a step inside one (0.0.2).
+const stepRow = (key, status, words, detail, depth) => row([seg(indent(depth)), glyphSeg(status), seg(words, "label"), depth > 0 && detail ? dim(`  ${detail}`) : null], depth === 0 && detail ? [dim(detail)] : [], { depth, status });
+
+// The step a person's eye goes to, in the brand's tone (0.0.2): the one running, else the newest that ran.
+// A step row's label is its one segment in the label's tone, and its glyph the segment before it.
+const labelAt = (r) => r.left.findIndex((x) => x.tone === "label");
+
+const relabel = (r, tone, glyph = false) => ((at) => ({ ...r, left: r.left.map((x, i) => (i === at || (glyph && i === at - 1) ? { ...x, tone } : x)) }))(labelAt(r));
+
+const emphasized = (r) => relabel(r, "title", true);
+
+// The baseline is a CARD (0.0.2, ADR 0028): its head names it with a column for what each run came to, its runs inside.
+const cardHead = (words, depth, status) => row([seg(indent(depth)), seg("▶ ", "subtle"), seg(words, "label")], [dim("status")], { depth, status, box: "baseline" });
 
 // One check run under the baseline: what it ran, what it came to, what its runner reported.
-const runRow = (a, o, depth) => ((status) => row([seg(indent(depth)), glyphSeg(status), seg(str(a.label) ?? a.type)], [statusSeg(status), dim(observedWords(o) ? `  ${observedWords(o)}` : "")], { depth, status, card: true }))(checkStatus(a, o));
+// What a run or a check came to colours its whole line (0.0.2, ADR 0028): passed green, failed red, blocked yellow, not
+// run quiet -- a running one keeps the plain text, its glyph says it runs.
+const LINE_TONE = Object.freeze({ PASSED: "success", FAILED: "danger", BLOCKED: "warning", NOT_RUN: "subtle", UNKNOWN: "subtle" });
+
+const lineTone = (status) => LINE_TONE[status] ?? null;
+
+const runRow = (a, o, depth, box = null) => ((status) => row([seg(indent(depth)), glyphSeg(status), seg(str(a.label) ?? a.type, lineTone(status)), dim(observedWords(o) ? `  ${observedWords(o)}` : "")], [statusSeg(status)], { depth, status, card: Boolean(box), box }))(checkStatus(a, o));
 
 // The runs that verify the change: those after its first implementation -- a baseline run is the base revision's,
 // never the change's, however the check is named.
@@ -136,10 +155,10 @@ function heldRow(snap, v, depth) {
   const o = run ? snap.observations?.[run.id] : null;
   const status = run?.state === "running" ? "RUNNING" : o?.aborted ? "BLOCKED" : ROW_STATUS[kindOf(v).kind];
   const note = [status === "BLOCKED" && o?.aborted ? `held as ${kindOf(v).word}` : null, kindOf(v).kind === "excluded" ? "not affected" : null, kindOf(v).kind === "asBefore" ? "as before the change" : null, run ? observedWords(o) : null].filter(Boolean).join(" · ");
-  return row([seg(indent(depth)), glyphSeg(status), seg(String(v.obligation ?? v.subject).replace(/ — not affected, not run$/, ""))], [statusSeg(status), dim(note ? `  ${note}` : "")], { depth, status, card: true });
+  return row([seg(indent(depth)), glyphSeg(status), seg(String(v.obligation ?? v.subject).replace(/ — not affected, not run$/, ""), lineTone(status)), dim(note ? `  ${note}` : "")], [statusSeg(status)], { depth, status });
 }
 
-const fileRow = (p, depth) => row([seg(indent(depth)), seg(`${String(p.change ?? "modified").slice(0, 1).toUpperCase()} `, "info"), seg(p.path)], [dim(`+${p.added ?? 0} −${p.removed ?? 0}`)], { depth, status: "PASSED" });
+const fileRow = (p, depth) => row([seg(indent(depth)), seg(`${String(p.change ?? "modified").slice(0, 1).toUpperCase()} `, "info"), seg(p.path)], [seg(`+${p.added ?? 0} −${p.removed ?? 0}`, "success")], { depth, status: "PASSED" });
 
 const HELD_ORDER = ["regressed", "blocked", "owed", "asBefore", "passed", "missing", "excluded"];
 
@@ -147,7 +166,7 @@ const heldRows = (snap, depth) => ((g) => HELD_ORDER.flatMap((k) => g[k]).map((v
 
 // What sits under a step: the baseline's runs, the files the last change touched, what the change is held to.
 const NESTED = {
-  baseline: (snap, s, depth) => s.actions.map((a) => runRow(a, snap.observations?.[a.id], depth)),
+  baseline: (snap, s, depth) => s.actions.map((a) => runRow(a, snap.observations?.[a.id], depth, "baseline")),
   implement: (snap, s, depth, last) => (last.implement === s ? (snap.view.changes?.paths ?? []).slice(0, 8).map((p) => fileRow(p, depth)) : []),
   verify: (snap, s, depth, last) => (last.verify === s ? heldRows(snap, depth) : s.actions.map((a) => runRow(a, snap.observations?.[a.id], depth))),
 };
@@ -156,7 +175,17 @@ const lastOf = (list) => ({ implement: list.filter((s) => s.key === "implement")
 
 const stepDetail = (s) => str(s.actions.at(-1)?.summary) ?? str(s.actions.at(-1)?.label);
 
-const stepRows = (snap, s, depth, last) => [stepRow(s.key, statusOfStep(s, snap.observations), STEP_WORDS[s.key] ?? s.key, CHECK_TYPES.has(s.actions[0]?.type) ? null : stepDetail(s), depth), ...(NESTED[s.key]?.(snap, s, depth + 1, last) ?? [])];
+const HEADS = { baseline: (s, status, depth) => cardHead(STEP_WORDS.baseline, depth, status) };
+
+// A step with nothing under it (gathering context, the environment, the workspace) is said quietly; one that holds
+// runs, files or checks is said in the label's tone.
+const quiet = (r) => relabel(r, "subtle");
+
+const leafRow = (x, status, depth) => ((r) => (NESTED[x.key] ? r : quiet(r)))(stepRow(x.key, status, STEP_WORDS[x.key] ?? x.key, CHECK_TYPES.has(x.actions[0]?.type) ? null : stepDetail(x), depth));
+
+const headOf = (s, status, depth) => (HEADS[s.key] ?? leafRow)(s, status, depth);
+
+const stepRows = (snap, s, depth, last) => [headOf(s, statusOfStep(s, snap.observations), depth), ...(NESTED[s.key]?.(snap, s, depth + 1, last) ?? [])];
 
 // The checks the plan holds the change to, before any of them ran: a step the impact receipt itself named.
 const pendingVerify = (snap, list, depth) => (snap.view.verification?.length && !list.some((s) => s.key === "verify") && !snap.view.terminal ? [stepRow("verify", "NOT_RUN", STEP_WORDS.verify, "required by the plan, not run yet", depth), ...heldRows(snap, depth + 1)] : []);
@@ -177,9 +206,19 @@ const childSteps = (ctx, name) => (name === "engineering" && ctx.d.child?.view ?
 // (1.8.6: `playbook.release.gate` reads "Playbook · release.gate").
 const stepLabel = (name, plan) => ((p) => (p?.for ? `${WORKFLOW_STEP_WORDS[p.kind] ?? p.kind} · ${p.for}` : WORKFLOW_STEP_WORDS[name] ?? WORKFLOW_STEP_WORDS[p?.kind] ?? name))(plan?.steps?.find((x) => x.id === name));
 
+const outcomeOf = (s, name) => s.receipts.get(name)?.outcome ?? "PENDING";
+
+const focusName = (s) => s.names.find((n) => outcomeOf(s, n) === "RUNNING") ?? s.names.filter((n) => outcomeOf(s, n) !== "PENDING").at(-1) ?? null;
+
+// A workflow's step is said in what it came to: done green, failed red, blocked yellow, reported or pending quiet.
+const toneLabel = (r) => (lineTone(r.status) ? relabel(r, lineTone(r.status)) : r);
+
+const workflowStepRow = (ctx, s, name) => ((outcome) => (stepRow(name, OUTCOME_STATUS[outcome] ?? "UNKNOWN", stepLabel(name, ctx.d.root?.plan), outcome === "REPORTED" ? "reported, no receipt" : null, 0)))(outcomeOf(s, name));
+
 function workflowRows(ctx, view) {
   const s = workflowSteps(view, ctx.d.root?.plan);
-  return s.names.flatMap((name) => ((outcome) => [stepRow(name, OUTCOME_STATUS[outcome] ?? "UNKNOWN", stepLabel(name, ctx.d.root?.plan), outcome === "REPORTED" ? "reported, no receipt" : null, 0), ...childSteps(ctx, name)])(s.receipts.get(name)?.outcome ?? "PENDING"));
+  const focus = focusName(s);
+  return s.names.flatMap((name) => [(name === focus ? emphasized : toneLabel)(workflowStepRow(ctx, s, name)), ...childSteps(ctx, name)]);
 }
 
 export function checklistOf(ctx) {
@@ -305,7 +344,8 @@ export const sessionShown = (ctx) => noTask(ctx) && ((a) => Boolean(a) && (a.obs
 
 export const indicatorFor = (ctx) => (sessionShown(ctx) ? sessionIndicator(sessionOf(ctx)) : indicatorOf(movingOf(ctx.d.root ?? chosen(ctx), ctx.d.child), ctx.state.viewer.settings));
 
-const indicatorText = (i) => `${i.glyph} ${i.word}`;
+// The status bar ends in the indicator's WORD (0.0.2): its glyph is the header's badge's.
+const indicatorText = (i) => i.word;
 
 const indicatorSeg = (i) => seg(indicatorText(i), i.tone);
 
@@ -341,7 +381,7 @@ export const timelineRowsWanted = (ctx) => ctx.state.viewer.settings?.pane?.time
 
 // Each view by its id, in PANE_VIEWS' order (model.mjs) -- the order keys 1 to 6 and a docked pane's tabs share.
 const VIEWS = {
-  events: { label: "Events", rows: (ctx) => sectionRows(recentSection(ctx)) },
+  events: { label: "Events", rows: (ctx) => eventsView(ctx).rows, hint: (ctx) => eventsView(ctx).hint },
   tests: { label: "Tests", rows: (ctx) => testRows(ctx.d.engineering ?? chosen(ctx)) },
   changes: { label: "Changes", rows: (ctx) => changeRows((ctx.d.engineering ?? chosen(ctx))?.view) },
   notices: { label: "Notices", rows: (ctx) => sectionRows(noticesSection(ctx)) },
@@ -362,6 +402,11 @@ const sessionInstead = (ctx, id) => ((a) => Boolean(a) && (noTask(ctx) || SESSIO
 
 const rowsOfView = (ctx, id) => (sessionInstead(ctx, id) && sessionViewRows(ctx, id)) || VIEWS[id].rows(ctx);
 
-export const viewsOf = (ctx) => PANE_VIEWS.map((id) => ({ id, label: VIEWS[id].label, rows: rowsOfView(ctx, id) }));
+// What a view shows, in its own words (0.0.2): the tabs' hint. A session's own rows have none.
+const hintOfView = (ctx, id) => (sessionInstead(ctx, id) ? null : VIEWS[id].hint?.(ctx) ?? null);
 
-export const viewOf = (ctx, id) => ((key) => ({ id: key, label: VIEWS[key].label, rows: rowsOfView(ctx, key) }))(VIEWS[id] ? id : PANE_VIEWS[0]);
+const viewAt = (ctx, id) => ({ id, label: VIEWS[id].label, rows: rowsOfView(ctx, id), hint: hintOfView(ctx, id) });
+
+export const viewsOf = (ctx) => PANE_VIEWS.map((id) => viewAt(ctx, id));
+
+export const viewOf = (ctx, id) => viewAt(ctx, VIEWS[id] ? id : PANE_VIEWS[0]);

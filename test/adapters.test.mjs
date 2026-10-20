@@ -55,6 +55,15 @@ test("ev parses the CLI's single JSON encoding once and keeps error text as text
   assert.equal(truthy("nope"), false);
 });
 
+// playwright-cli prints an object or an array over several lines; the last line of one is "}" or "]".
+test("ev reads a pretty-printed object or array whole, never its last line", () => {
+  const said = { obj: '{\n  "n": 1,\n  "listed": true\n}\n', arr: "[\n  1,\n  2\n]\n", noisy: "a warning\n42\n" };
+  const { ev } = createEval({ cli: (args) => said[args[2]] });
+  assert.deepEqual(ev("obj"), { n: 1, listed: true });
+  assert.deepEqual(ev("arr"), [1, 2]);
+  assert.equal(ev("noisy"), 42, "a line before the result is still not the result");
+});
+
 // A request with no `=> [status]` yet is IN FLIGHT. It used to be dropped by
 // the pattern, so one that had not answered when the watermark was taken looked
 // NEW when it finally landed -- the same false pass, one step further along.

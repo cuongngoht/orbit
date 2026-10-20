@@ -223,3 +223,19 @@ test("a file whose change time cannot be read makes the stamp null -- never one 
   writeFileSync(join(ws.path, "planted.js"), "module.exports = 1;\n");
   assert.notEqual(trees.stateOf(ws.path).tree, base, "a per-user ignore file hides nothing from the anchor");
 });
+
+// Git for Windows ships `core.autocrlf=true` in its SYSTEM configuration, which the anchor never reads: a clone checked
+// out under it held CRLF files whose anchored tree was not the base revision's, so every fresh workspace read as
+// changed (0.0.2). The clone is checked out byte for byte, whatever the person's or the machine's git says.
+test("a person's git that converts line endings on checkout makes no fresh workspace read as changed", (t) => {
+  const repo = repository(t, FILES);
+  const home = mkdtempSync(join(tmpdir(), "orbit-home-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  writeFileSync(join(home, ".gitconfig"), "[core]\n\tautocrlf = true\n");
+  const trees = createLocalClones(repo.dir, createProcess(), { noHooks: join(repo.store, "workspaces", ".no-hooks"), env: { ...sealed(IDENTITY), HOME: home, XDG_CONFIG_HOME: join(home, ".config") } });
+  const ws = createWorkspaces({ root: repo.store, io: guardedIo(repo.store, realIo()), trees, host: "laptop-a", now: () => "2026-10-07T10:00:00.000Z" });
+  const head = { task: TASK, project: "repo-a", checkout: "c".repeat(64), baseRevision: trees.head() };
+  const made = ws.prepare(head);
+  assert.equal(readFileSync(join(made.path, "src", "refund.js"), "utf8"), FILES["src/refund.js"], "the file as the revision holds it");
+  assert.equal(ws.treeOf(TASK), ws.treeAt(TASK, head.baseRevision), "nothing changed: a baseline here is on the base revision");
+});

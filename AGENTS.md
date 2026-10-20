@@ -763,7 +763,7 @@ ORBIT_STORE_DIR=/tmp/l node cli/live.mjs tui [<task>] [--ascii] [--logs] [--unti
 ORBIT_STORE_DIR=/tmp/l node cli/live.mjs open [<task>] [--print]   # that viewer beside this session (tmux · Windows Terminal · macOS window), a person's choice
 ORBIT_STORE_DIR=/tmp/l node cli/live.mjs ensure [<task>] [--json]   # what /orbit and /orbit-help run: this session's viewer, opened once and reused (ADR 0020)
 ORBIT_STORE_DIR=/tmp/l node cli/live.mjs pane --host=claude [--auto] < session.json   # the view a docked pane draws (hooks/live-pane.tsx), one JSON object
-claude plugin validate . && node skills/orbit-release/pane-test.mjs   # the Claude Code pane module, by the host's own tools (tested staged: Orbit Control's vitest files sit under this root)
+claude plugin validate . && node skills/orbit-release/pane-check.mjs   # the Claude Code pane module, by the host's own tools (tested staged: Orbit Control's vitest files sit under this root)
 ORBIT_STORE_DIR=/tmp/l node cli/live.mjs settings --apply='{"pane":{"widthPercent":36,"focusCli":true}}' --revision=<r>   # how wide the viewer beside the CLI is
 ORBIT_BENCH=1 node --test --test-reporter=spec test/perf/activity.bench.mjs   # what observing a running check costs, measured
 ORBIT_STORE_DIR=/tmp/l node cli/live.mjs pin <task> | unpin | settings | where | doctor [--claude]
@@ -797,8 +797,9 @@ agy                                                          # run antigravity w
 
 ## Definition of done
 
-All of 1-4 are one command — `node skills/orbit-release/ship.mjs`, which CI runs too, so the
-gate and the pipeline cannot disagree about what done means.
+All of 1-4 are one command — `node skills/orbit-release/ship.mjs`, which CI runs too (`--ci`), so the
+gate and the pipeline cannot disagree about what done means. The one gate a pipeline cannot hold -- native host
+acceptance, recorded from live runs on every host -- is `wait` under `--ci` and still refuses a release without it.
 
 1. `node --test` passes, and the gate prints the test count.
 2. The strict lint prints `0 finding(s)`.

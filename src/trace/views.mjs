@@ -21,7 +21,13 @@ const clock = (at) => String(at ?? "").slice(11, 19);
 
 const spent = (ms) => (ms === null || ms === undefined ? "open" : ms < 1000 ? `${ms}ms` : `${Math.floor(ms / 60000)}m${String(Math.round((ms % 60000) / 1000)).padStart(2, "0")}s`);
 
-const pathText = (t) => t.path.slice(0, 10).map((s) => `${s.label}${s.times > 1 ? ` ×${s.times}` : ""}${s.ok ? "" : " ✖"}`).join(" → ") + (t.path.length > 10 ? ` → … ${t.path.length - 10} more` : "");
+// How a step ended, as the trail knows it: ok, failed, or not reported -- a host that sends no exit status (AGY,
+// Codex's shell) leaves a command's result unknown, and printing that as a failure invented one.
+const ENDED = { true: { short: "", long: "" }, false: { short: " ✖", long: "  ✖ failed" }, null: { short: " ?", long: "  ? not reported" } };
+
+export const ended = (s) => ENDED[s.ok === true ? "true" : s.ok === false ? "false" : "null"];
+
+const pathText = (t) => t.path.slice(0, 10).map((s) => `${s.label}${s.times > 1 ? ` ×${s.times}` : ""}${ended(s).short}`).join(" → ") + (t.path.length > 10 ? ` → … ${t.path.length - 10} more` : "");
 
 export function turnsView(ctx, args) {
   const events = ctx.log.read(windowOf(ctx, args, 1));
@@ -48,7 +54,7 @@ function printedTurn(t) {
 
 function walked(t) {
   out("PATH");
-  for (const s of t.steps) out(`  ${clock(s.at)}  ${s.kind.padEnd(11)} ${s.label}${s.ok ? "" : "  ✖ failed"}${s.refused ? "  (refused by its switch)" : ""}`);
+  for (const s of t.steps) out(`  ${clock(s.at)}  ${s.kind.padEnd(11)} ${s.label}${ended(s).long}${s.refused ? "  (refused by its switch)" : ""}`);
   out(`FOLLOWED  ${t.followed.verdict} — ${t.followed.say}`);
 }
 

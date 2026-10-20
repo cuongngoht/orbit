@@ -16,7 +16,9 @@ export const formatFailure = () => ({});
 export const formatDeny = (reason) => ({ decision: "deny", reason });
 export const formatSessionStart = (value, input) => ({ injectSteps: [{ ephemeralMessage: [value, binding(name, input?.conversationId)].filter(Boolean).join("\n\n") }] });
 export const formatStop = () => ({ decision: "stop" });
-const TOOLS = { run_command: ["command"], view_file: ["read", "AbsolutePath"], list_dir: ["read", "DirectoryPath"], write_to_file: ["edit", "TargetFile"], replace_file_content: ["edit", "TargetFile"], multi_replace_file_content: ["edit", "TargetFile"], find_by_name: ["search", "SearchDirectory", "Pattern"], grep_search: ["search", "SearchPath", "Query"] };
+// AGY CLI 1.2.12's tools (measured), and the file tools AGY CLI 1.4.2 sends instead (measured: `read_file`,
+// `write_file` and `edit_file`, each naming its file `Path`; 1.4.2 has no list, find or search tool of its own).
+const TOOLS = { run_command: ["command"], view_file: ["read", "AbsolutePath"], list_dir: ["read", "DirectoryPath"], write_to_file: ["edit", "TargetFile"], replace_file_content: ["edit", "TargetFile"], multi_replace_file_content: ["edit", "TargetFile"], find_by_name: ["search", "SearchDirectory", "Pattern"], grep_search: ["search", "SearchPath", "Query"], read_file: ["read", "Path"], write_file: ["edit", "Path"], edit_file: ["edit", "Path"] };
 const text = (v) => typeof v === "string" ? v : null;
 
 export function normalize(input, argv = []) {
@@ -43,7 +45,7 @@ const deliveryOf = (input) => Number.isInteger(input.stepIdx) ? String(input.ste
 function cwdOf(input) {
   const roots = (input?.workspacePaths ?? []).filter((p) => typeof p === "string" && isAbsolute(p));
   const args = input?.toolCall?.args ?? {};
-  const selected = [args.Cwd, args.TargetFile, args.AbsolutePath, args.DirectoryPath, args.SearchPath, args.SearchDirectory, input?.cwd].find((p) => typeof p === "string" && isAbsolute(p));
+  const selected = [args.Cwd, args.TargetFile, args.AbsolutePath, args.Path, args.DirectoryPath, args.SearchPath, args.SearchDirectory, input?.cwd].find((p) => typeof p === "string" && isAbsolute(p));
   if (selected) return roots.filter((r) => within(r, resolve(selected))).sort((a, b) => b.length - a.length)[0] ?? null;
   return roots.length === 1 ? roots[0] : null;
 }

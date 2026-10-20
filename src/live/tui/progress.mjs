@@ -62,9 +62,16 @@ const label = (text) => seg(text.padEnd(7), "label");
 const taskWords = (p) => [`${p.done}/${p.total} ${p.unit}`, `${p.percent}%`, p.verified ? `${p.verified} verified` : null, p.reported ? `${p.reported} reported` : null, p.asBefore ? `${p.asBefore} failing as before` : null, p.revision > 1 ? `plan-${p.revision}` : null].filter(Boolean).join(" · ");
 
 // A bar as two segments (0.0.1): the cells done in the success tone on the rest of its track.
-const barSegs = (done, total) => ((b) => (b ? [seg(b.replace(/░/g, ""), "success"), seg(b.replace(/▓/g, ""), "track")] : []))(bar(done, total, BAR_CELLS));
+// 0.0.2 (ADR 0028): a heavy line for what is done on a light one for the rest, so the bar reads as one bar in any colour.
+const DONE_CELL = "━";
+const TRACK_CELL = "─";
 
-const taskRow = (p) => (p.indeterminate ? row([label("TASK"), dim("indeterminate — no plan or required checks to count yet")], [], { label: "task" }) : row([label("TASK"), ...barSegs(p.done, p.total), seg(` ${taskWords(p)}`)], [], { label: "task" }));
+const barSegs = (done, total) => ((b) => (b ? [seg(b.replace(/░/g, "").replace(/▓/g, DONE_CELL), "success"), seg(b.replace(/▓/g, "").replace(/░/g, TRACK_CELL), "track")] : []))(bar(done, total, BAR_CELLS));
+
+// The label on the left and the bar with its words on the right edge (0.0.2, ADR 0028), as Orbit Live's footer draws them.
+const RIGHT = Object.freeze({ rightShare: 0.85 });
+
+const taskRow = (p) => (p.indeterminate ? row([label("TASK"), dim("indeterminate — no plan or required checks to count yet")], [], { label: "task" }) : row([label("TASK")], [...barSegs(p.done, p.total), seg(` ${taskWords(p)}`)], { label: "task", ...RIGHT }));
 
 const OF = [
   { when: (t) => t.said, words: (t) => (t.pending ? `of ${t.total}, as the runner said · ${t.pending} it did not account for` : `of ${t.total}, as the runner said`) },
@@ -77,6 +84,11 @@ const testWords = (t) => joined([seg(`${t.passed} passed`, "success"), t.failed 
 // The TESTS line draws a bar only over a total the runner SAID (bars.mjs: no total, no bar), never over the cases seen.
 const testBar = (t) => (t.said ? [...barSegs(t.passed, t.total), seg(" ")] : []);
 
-const testRow = (t) => (t ? row([label("TESTS"), ...testBar(t), ...testWords(t)], [], { label: "tests" }) : row([label("TESTS"), dim("no test runner has reported anything yet")], [], { label: "tests" }));
+// Every case the runner said passed is one sentence in the success tone: "30 passed of 30, as the runner said".
+const clean = (t) => t.said && !t.failed && !t.skipped && !t.pending && !t.aborted && !t.running;
+
+const allPassed = (t) => [seg(`${t.passed} passed ${OF[0].words(t)}`, "success")];
+
+const testRow = (t) => (t ? row([label("TESTS")], [...testBar(t), ...(clean(t) ? allPassed(t) : testWords(t))], { label: "tests", ...RIGHT }) : row([label("TESTS"), dim("no test runner has reported anything yet")], [], { label: "tests" }));
 
 export const progressRows = (ctx) => [taskRow(taskProgressOf(ctx)), testRow(testProgressOf(ctx))];

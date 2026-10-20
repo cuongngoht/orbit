@@ -65,7 +65,7 @@ test("in a real terminal it enters the alternate screen, leaves on q with exit 0
   assert.match(plain, /STAGE +EXECUTING · BUILDING/);
   assert.match(plain, /KEYS/, "? showed the keys");
   assert.match(plain, /EVIDENCE/, "e showed the evidence");
-  assert.match(plain, /[◐◓◑◒] ORBITING/, "the viewer's own state is in the header at this width too");
+  assert.match(plain, /● ORBITING/, "the viewer's own state is in the header at this width too");
   const left = got.out.lastIndexOf("\u001b[?1049l");
   assert.ok(left > 0 && got.out.lastIndexOf("\u001b[?25h") < left && got.out.lastIndexOf("\u001b[?7h") < left, "colour, wrap and cursor restored, then the screen given back");
   assert.match(got.out.slice(left), new RegExp(`live: detached — ${id} EXECUTING BUILDING .*the task itself is untouched`));

@@ -7,12 +7,13 @@
 // the views a person switches between, with the pane's own tier. Pure, like the rest of tui/: the same rows the
 // terminal draws, as segments of text and a tone, so a host's drawer adds no word.
 //
-//   paneOf(state, d?) -> { header: [seg], overview: [[seg]], now: [[seg]],
+//   paneOf(state, d?) -> { header: [seg], headerParts: { left, badge, right },                            (0.0.2)
+//                          overview: [[seg]], now: [[seg]],
 //                          tier, checklist: [prow], current: [prow], statusBar: prow, views: [{ id, label, rows: [prow] }],
 //                          indicator, progress: { task, tests, rows: [prow] }, plan, timeline,       (1.8.6)
 //                          lifecycle: [{ label, mark, text }],                                         (1.8.9)
 //                          orbit: { moving, tone, frames, parked, lastAt, kickMs, fps } }              (0.0.1)
-//     seg: { text, tone }    prow: { left: [seg], right: [seg], depth, status, label }
+//     seg: { text, tone }    prow: { left: [seg], right: [seg], depth, status, label, box }   view: + hint (0.0.2)
 //     state.viewer.size is the pane's: its columns pick the tier (labels, detail rows), its rows the budget
 //
 // What 1.8.6 adds is DATA as well as rows: the LIVE indicator (indicator.mjs), task and test progress over the
@@ -25,7 +26,7 @@ import { derivedOf } from "./derive.mjs";
 import { contextOf } from "./frame.mjs";
 import { LABELS, budgetOf } from "./layout.mjs";
 import { SECTIONS } from "./sections/index.mjs";
-import { headerRow } from "./sections/top.mjs";
+import { headerParts, headerRow } from "./sections/top.mjs";
 import { checklistOf, currentRows, indicatorFor, paneTierOf, sessionShown, statusBarOf, timelineRowsWanted, viewsOf } from "./workspace.mjs";
 import { lifecycleOf } from "./lifecycle-view.mjs";
 import { planOf } from "./plan-view.mjs";
@@ -53,13 +54,16 @@ function overviewOf(ctx, sections, height) {
   return budget.sections.flatMap((s) => rowsOf(ctx, s, budget.rows.get(s.name)));
 }
 
+// The header in its three parts (0.0.2), so a docked pane can put the badge in a border and the rest on the right edge.
+const partsOfHeader = (ctx) => ((h) => ({ left: h.left.map(segOf).filter(nonEmpty), badge: h.badge.map(segOf).filter(nonEmpty), right: h.rest.map(segOf).filter(nonEmpty) }))(headerParts({ ...ctx, clock: false }));
+
 const nowOf = (all) => (all.find((s) => s.name === "activity")?.rows ?? []).slice(0, NOW_MAX).map(segsOf);
 
 export function paneOf(state, d = derivedOf(state)) {
   const ctx = contextOf(state, d);
   const all = SECTIONS.map((f) => f(ctx)).filter(Boolean);
   const now = nowOf(all);
-  return { header: segsOf(headerRow({ ...ctx, clock: false })), overview: overviewOf(ctx, all.filter((s) => OVERVIEW.includes(s.name)), ctx.size.rows - 2 - now.length), now, ...workspaceOf(ctx) };
+  return { header: segsOf(headerRow({ ...ctx, clock: false })), headerParts: partsOfHeader(ctx), overview: overviewOf(ctx, all.filter((s) => OVERVIEW.includes(s.name)), ctx.size.rows - 2 - now.length), now, ...workspaceOf(ctx) };
 }
 
 // ---- the workspace parts, bounded: a pane is asked again every few seconds --------------------------------------
@@ -70,12 +74,13 @@ const CHECKLIST_ROWS = 60;
 
 const nonEmpty = (s) => s.text !== "";
 
-const prowOf = (r) => ({ left: r.left.map(segOf).filter(nonEmpty), right: r.right.map(segOf).filter(nonEmpty), depth: r.depth ?? 0, status: r.status ?? null, label: r.label ?? null });
+// 0.0.2: `box` names the card a row is drawn in (the baseline's).
+const prowOf = (r) => ({ left: r.left.map(segOf).filter(nonEmpty), right: r.right.map(segOf).filter(nonEmpty), depth: r.depth ?? 0, status: r.status ?? null, label: r.label ?? null, box: r.box ?? null });
 
 function workspaceOf(ctx) {
   const tier = paneTierOf(ctx.size.columns, ctx.size.rows);
   const checklist = checklistOf(ctx);
-  return { tier, titles: PANE_TITLES, checklist: checklist.slice(0, CHECKLIST_ROWS).map(prowOf), current: currentRows(ctx, tier === "narrow" || tier === "tiny").map(prowOf), statusBar: prowOf(statusBarOf(ctx, checklist)), views: viewsOf(ctx).map((v) => ({ id: v.id, label: v.label, rows: v.rows.slice(0, VIEW_ROWS).map(prowOf) })), ...inspectorsOf(ctx) };
+  return { tier, titles: PANE_TITLES, checklist: checklist.slice(0, CHECKLIST_ROWS).map(prowOf), current: currentRows(ctx, tier === "narrow" || tier === "tiny").map(prowOf), statusBar: prowOf(statusBarOf(ctx, checklist)), views: viewsOf(ctx).map((v) => ({ id: v.id, label: v.label, hint: v.hint ? clean(v.hint) : null, rows: v.rows.slice(0, VIEW_ROWS).map(prowOf) })), ...inspectorsOf(ctx) };
 }
 
 // ---- 1.8.6: what the pane shows, as data -------------------------------------------------------------------------

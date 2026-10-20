@@ -21,7 +21,7 @@ const FILTER_WORDS = { all: "every line", task: "the task's lines", qa: "QA line
 
 const ATTENTION = new Set(["danger", "warning"]);
 
-const milestoneRow = (m) => row([seg(m.glyph, m.tone), dim(`  ${clock(m.at)}  `), seg(m.say, ATTENTION.has(m.tone) ? m.tone : undefined)]);
+const milestoneRow = (m) => row([seg(m.glyph, m.tone), dim(`  ${clock(m.at)}  `), seg(m.say, ATTENTION.has(m.tone) ? m.tone : undefined)], [], { at: m.at });
 
 function lineRow(e) {
   const l = lineOf(e);

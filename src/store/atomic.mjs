@@ -15,7 +15,9 @@
 // be cost with no matching risk.
 import { Blocked, Refused } from "../errors.mjs";
 
-export const RENAME_BACKOFF = [10, 40, 160];
+// About two seconds in all (0.0.2): three sessions seating one project at once on a busy Windows runner held one
+// another's files open longer than the first 210 ms, and a seat that could have finished was BLOCKED.
+export const RENAME_BACKOFF = [10, 40, 160, 640, 1280];
 export const BAK = ".bak";
 
 export function writeAtomic(file, text, io, keepBackup = true) {

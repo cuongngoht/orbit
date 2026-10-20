@@ -47,12 +47,12 @@ const verifying = () => observed(fed(stateOf({ columns: 64, rows: 40 }), ENG, vi
 test("an engineering task's checklist is the steps its journal recorded, in order, with what each ran or changed under it", () => {
   const rows = checklistOf(ctxOf(verifying()));
   const lines = rows.map((r) => `${"  ".repeat(r.depth)}${text(r).trim()}`);
-  assert.deepEqual(rows.filter((r) => r.depth === 0).map((r) => [r.left.map((x) => x.text).join("").trim(), r.status]), [["✓ Project context", "PASSED"], ["✓ Plan", "PASSED"], ["✓ Baseline (before the change)", "PASSED"], ["✓ Implement", "PASSED"], ["✓ Changes recorded", "PASSED"], ["● Verify", "RUNNING"]]);
+  assert.deepEqual(rows.filter((r) => r.depth === 0).map((r) => [r.left.map((x) => x.text).join("").trim(), r.status]), [["✓ Project context", "PASSED"], ["✓ Plan", "PASSED"], ["▶ Baseline (before the change)", "PASSED"], ["✓ Implement", "PASSED"], ["✓ Changes recorded", "PASSED"], ["● Verify", "RUNNING"]]);
   assert.ok(lines.some((l) => /^ {2}✗ test · node:web · test\s*FAILED/.test(l)), "the baseline's run, as it came: failed before the change");
   assert.ok(lines.some((l) => /^ {2}M web\/src\/pricing\.js\s*\+1 −1/.test(l)), "the files under the change");
   assert.ok(lines.some((l) => /^ {2}✓ node:web · build build passes\s*PASSED/.test(l)));
-  assert.ok(lines.some((l) => /^ {2}● node:web · test test passes\s*RUNNING\s+24 passed · 2 failed \(26 reported · total unknown\)/.test(l)), "what the runner reported so far, never a total it did not say");
-  assert.ok(lines.some((l) => /^ {2}○ node:api · test test\s*NOT RUN\s+not affected/.test(l)));
+  assert.ok(lines.some((l) => /^ {2}● node:web · test test passes\s+24 passed · 2 failed \(26 reported · total unknown\)\s*RUNNING$/.test(l)), "what the runner reported so far, never a total it did not say");
+  assert.ok(lines.some((l) => /^ {2}○ node:api · test test\s+not affected\s*NOT RUN$/.test(l)));
   assert.equal(rows.find((r) => text(r).includes("Baseline")).status, "PASSED", "a baseline that recorded a failure is a baseline taken, not a step that failed");
 });
 
@@ -78,7 +78,7 @@ test("a runner that aborted before any case is BLOCKED -- an environment's doing
   const state = observed(fed(stateOf({ columns: 64, rows: 40 }), ENG, viewWith(actions, held, { lifecycle: "FAILED", terminal: true, stopReason: "VERIFICATION_FAILED" }), engEvents()), "act-7", aborted);
   const row = checklistOf(ctxOf(state)).find((r) => text(r).includes("test test passes"));
   assert.equal(row.status, "BLOCKED");
-  assert.match(text(row), /BLOCKED\s+held as REGRESSED · no case ran: the test run aborted: System\.Net\.Sockets\.SocketException \(13\): Permission denied \(environment\)/);
+  assert.match(text(row), /held as REGRESSED · no case ran: the test run aborted: System\.Net\.Sockets\.SocketException \(13\): Permission denied \(environment\)\s*BLOCKED$/);
   assert.equal(checkStatus({ state: "failed" }, aborted), "BLOCKED");
   assert.equal(checkStatus({ state: "failed" }, { ...aborted, aborted: null }), "FAILED");
   assert.match(currentRows(ctxOf(state)).map(text).find((l) => l.startsWith("status")), /■ BLOCKED/);

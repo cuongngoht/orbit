@@ -119,7 +119,19 @@ test("apply is a person's, refuses to overwrite a status line they have, and rem
   assert.deepEqual(m.settings(), { theme: "dark", statusLine: { type: "command", command: "echo mine" } });
 });
 
-test("keep-existing keeps the person's command to run first, and is not offered on Windows", (t) => {
+// --keep-existing runs the person's command through /bin/sh, so Windows is refused it (keptCommand): there the CLI's
+// own answer is the refusal, and nothing is kept.
+const WINDOWS = process.platform === "win32";
+
+test("on Windows keep-existing is refused by the CLI itself, and nothing is kept", { skip: !WINDOWS && "POSIX keeps it: the next test" }, (t) => {
+  const m = machine(t, { statusLine: { type: "command", command: "echo mine" } });
+  const r = hostCli(m, "apply", `--revision=${json(hostCli(m, "render")).revision}`, "--keep-existing", "--human");
+  assert.deepEqual([r.status, /not offered on Windows/.test(r.stderr)], [2, true]);
+  assert.equal(existsSync(join(m.hostDir, "keep.json")), false);
+  assert.equal(m.settings().statusLine.command, "echo mine", "the person's status line is left as it was");
+});
+
+test("keep-existing keeps the person's command to run first, and is not offered on Windows", { skip: WINDOWS && "not offered on Windows: the test above holds the refusal" }, (t) => {
   const m = machine(t, { statusLine: { type: "command", command: "echo mine" } });
   assert.equal(hostCli(m, "apply", `--revision=${json(hostCli(m, "render")).revision}`, "--keep-existing", "--human").status, 0);
   assert.equal(JSON.parse(readFileSync(join(m.hostDir, "keep.json"), "utf8")).command, "echo mine");
@@ -156,7 +168,7 @@ test("the shim runs the engine the host last loaded, and shows this session's ta
   assert.ok(r.stdout.split("\n").filter(Boolean).length <= 3);
 });
 
-test("the shim keeps a person's own line above Orbit's, and with Live off shows only theirs", (t) => {
+test("the shim keeps a person's own line above Orbit's, and with Live off shows only theirs", { skip: WINDOWS && "keep-existing is not offered on Windows: the refusal test holds it" }, (t) => {
   const m = installed(t, { statusLine: { type: "command", command: "echo mine" } });
   sessionStart(m, "session-A", join(m.dir, "none.sh"));
   node(m, cli("task.mjs"), ["create", "refund", "--json"]);

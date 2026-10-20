@@ -1,3 +1,11 @@
+# Every text file is checked out with LF line ends, on Windows too (0.0.2): a SKILL.md's frontmatter, a JSON fixture, a
+# shell shim and a journal line are read byte for byte, and a checkout that turned them into CRLF was a different
+# plugin from the one the gates held to. The rules below this one say which bytes are kept exactly as committed.
+* text=auto eol=lf
+
+# A fixture is a capture: its bytes are what a program printed (a runner's CRLF included), checked out as committed.
+/test/fixtures/** -text
+
 # integrations/ holds what another program installs (1.8.5: the VS Code companion, an extension a person adds to
 # VS Code), never part of this plugin's archive.
 /integrations/** export-ignore

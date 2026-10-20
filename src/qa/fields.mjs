@@ -113,6 +113,7 @@ export const EXCLUSION_FIELDS = {
   id: id("Stable id, e.g. X1."),
   says: { type: "string", doc: "What is excluded." },
   because: { type: "string", doc: "Why. Shown in the coverage report beside what was covered." },
+  technique: { enum: TECHNIQUE_NAMES, doc: "The technique this exclusion decides against -- a security obligation the plan derived (permission, scoping) is then answered, not owed." },
 };
 
 export const RISK_FIELDS = {

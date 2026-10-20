@@ -272,7 +272,13 @@ const bindingProject = (loc) => ((runtime) => ({ layout: 3, runtime, sessionDir:
 
 const sessionProject = (loc) => (ENV.ORBIT_HOST_PROTOCOL === "2" ? quietly(() => loadProject(ENV, loc.root)) : bindingProject(loc));
 
-function sessionFrom(file, nowMs, settings) {
+// Something at the session's path that is not a file is unreadable, never empty (0.0.2): Windows reports a directory's
+// size as 0, and such a path read as "nothing observed" there and "could not be read" everywhere else.
+const notAFile = (file) => ((kind) => kind !== null && kind !== "file")(io.kind(file));
+
+const sessionFrom = (file, nowMs, settings) => (notAFile(file) ? noSessionActivity("unreadable") : sessionTail(file, nowMs, settings));
+
+function sessionTail(file, nowMs, settings) {
   const size = io.size(file);
   const got = size ? quietly(() => io.readFrom(file, Math.max(0, size - SESSION_LIMITS.TAIL_BYTES), SESSION_LIMITS.TAIL_BYTES)) : null;
   const lines = !size ? [] : got ? sessionLinesOf(got.buffer.toString("utf8"), size > SESSION_LIMITS.TAIL_BYTES) : null;
@@ -1001,7 +1007,7 @@ const fedWith = (state, loc, task, role, known) => ((c) => reduceTui(reduceTui(s
 function paneView(loc, input) {
   const settings = settingsNow(loc);
   const association = loc ? chosen(loc, { explicit: null, mark: input.mark, nowMs: Date.now(), settings }) : { how: "none", task: null, ids: [], createdAt: null };
-  const base = initialTui({ association, root: association.task, place: placeOf(loc), columns: sizeArg("columns"), rows: sizeArg("rows"), colour: false, nowMs: Date.now(), settings, auto: true, waiting: !association.task, activity: sessionRead(loc, input.mark, Date.now(), settings), work: workRead(loc, input.mark, Date.now(), settings) });
+  const base = initialTui({ association, root: association.task, place: placeOf(loc), columns: sizeArg("columns"), rows: sizeArg("rows"), colour: false, nowMs: Date.now(), settings, auto: true, layout: "pane", waiting: !association.task, activity: sessionRead(loc, input.mark, Date.now(), settings), work: workRead(loc, input.mark, Date.now(), settings) });
   const state = association.task ? withChild(fedWith(base, loc, association.task, "root", association.createdAt), loc) : base;
   return { task: association.task, look: { widthPercent: settings.pane?.widthPercent ?? 36, focusCli: settings.pane?.focusCli !== false }, ...paneOf(state) };
 }

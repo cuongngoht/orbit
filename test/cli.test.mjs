@@ -46,6 +46,13 @@ test("query check stays 0 when only advisories print", () => {
   assert.equal(r.status, 0);
 });
 
+// An Add that opens the dialog the Save is in writes nothing itself; only the controls that commit owe an effect.
+test("effect coverage asks only the controls that commit, never one that opens a dialog", () => {
+  const r = run("query.mjs", ["check"]);
+  assert.doesNotMatch(r.stdout, /\? home\/Add /, "home/Add opens dlg-thing: its write is dlg-thing/Save's");
+  assert.match(r.stdout, /effect coverage on the \d+ control\(s\)/);
+});
+
 test("run-case maps each outcome to the exit code its callers branch on", () => {
   assert.equal(run("run-case.mjs", ["create-thing", "NAME=TC-1", "--dry"]).status, 0, "a dry run");
 

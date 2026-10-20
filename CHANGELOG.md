@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.0.2
+
+- Orbit Live's pane as drawn (ADR 0028): a bordered badge on the header (the orbit, a dot, `ORBITING`) with the
+  workflow's age, the views' keys over their labels with the view's words beside them, `TASK EXECUTION` with `NOW` on
+  its right, the baseline as a bordered card, the step in focus in the brand's tone, a workflow's milestones under the
+  step whose turn it was, progress bars on the right edge and a status bar spread across the width -- in a terminal and
+  in Claude Code's docked pane alike. `live pane` adds `headerParts`, a row's `box` and a view's `hint` (version 2).
+- `live tui` draws every frame of the orbit while it turns, instead of one a second.
+- The release skill lists all eleven gates `ship.mjs` runs.
+- Found by running a consumer-style project end to end (six cases, ui · api · sql): a pretty-printed `eval` result is
+  read whole; a `${PARAM}` in an api match stands for the map's templated segment; an exclusion may name the
+  `technique` that settles a security obligation (plan schema, optional); effect coverage asks only controls that
+  commit; a log or report outside the checkout prints whole; `init`, `draft write` and `qa-plan` say what is next.
+- Antigravity CLI 1.4.2's file tools (`read_file`, `write_file`, `edit_file`) are observed, with captures; a command
+  whose result a host did not report shows `not reported` in the trail, never failed; a host session's missing browser
+  names its own run directory.
+- Windows: one checkout is one id whatever way its path is spelled (the file system's own real path, so a short 8.3
+  name and its long form agree); text checks out with LF and frontmatter is read across CRLF; the anchor git reads an
+  empty config file of its own instead of the null device; process ancestry is asked the way a cold machine answers.
+- A hook Claude Code delivers twice is one call: its `tool_use_id` is now the call's delivery key, as Codex's and
+  Grok's are.
+- CI runs `ship.mjs --ci`: native host acceptance is awaited there (`wait`), never failed; a release still requires it.
+  The pane's own test runner is `skills/orbit-release/pane-check.mjs`, so `node --test` leaves it alone.
+
 ## 0.0.1
 
 Orbit's first open-source release, under the MIT License ([LICENSE](LICENSE)): plugin `orbit`, skills `orbit-*`, CLI `orbit`, store `~/.orbit`, configuration `ORBIT_*`. Repository: [cuongngoht/orbit](https://github.com/cuongngoht/orbit).

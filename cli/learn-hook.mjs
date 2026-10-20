@@ -194,7 +194,7 @@ function workingSetOf(cwd) {
   const project = located(cwd);
   if (!project) return null;
   const io = realIo();
-  return { ...createWorkingSet(workingSetDir(project), io), roots: checkoutOf(project), host: io.host, now: io.now };
+  return { ...createWorkingSet(workingSetDir(project), io), roots: [...checkoutOf(project), ...spelledRoot(cwd)], host: io.host, now: io.now };
 }
 
 // Paths are kept in the source port's language -- relative to the CHECKOUT
@@ -210,6 +210,13 @@ function checkoutOf(project) {
   const given = project.dataHome === "explicit" ? resolve(project.dataRoot, "..") : project.root;
   return [real, resolve(given, relative(realpathSync(given), real))];
 }
+
+// And the checkout root as the HOST spells it (0.0.2): walked up from the directory it named, nothing resolved -- on
+// Windows a host's temp checkout is C:\Users\RUNNER~1\... while git and the real path say C:\Users\runneradmin\...,
+// and a file the host names through the short spelling would otherwise read as outside the repository.
+const spelledRoot = (cwd) => (typeof cwd === "string" && cwd ? [lexicalRepo(resolve(cwd))].filter(Boolean) : []);
+
+const lexicalRepo = (at) => (existsSync(join(at, ".git")) ? at : dirname(at) === at ? null : lexicalRepo(dirname(at)));
 
 // A recording subscriber that threw leaves ONE finding in the engineering room
 // -- the message scrubbed and clipped, never a stack -- and surfaces on the

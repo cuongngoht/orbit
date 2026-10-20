@@ -27,11 +27,15 @@ const sessionWorks = (a) => Boolean(a) && (a.observed > 0 || a.running?.length >
 
 const taskId = (ctx, snap) => snap?.view?.task?.id ?? ctx.state.root ?? null;
 
-const whoWords = (ctx, snap) => (taskId(ctx, snap) ? [dim(taskId(ctx, snap))] : [dim(sessionWorks(ctx.state.session) ? "no task · this session's activity" : "no task selected")]);
+// 0.0.2: beside an AI CLI the task's id is NOW's first line, so the pane's header names only where the viewer stands;
+// the dashboard, where `c` moves between a workflow and its engineering task, keeps naming which one it shows.
+const idWords = (ctx, snap) => (ctx.state.viewer.layout === "pane" ? [] : [dim(taskId(ctx, snap))]);
+
+const whoWords = (ctx, snap) => (taskId(ctx, snap) ? idWords(ctx, snap) : [dim(sessionWorks(ctx.state.session) ? "no task · this session's activity" : "no task selected")]);
 
 function taskWords(ctx, snap) {
   const v = snap?.view;
-  return taskId(ctx, snap) ? joined([roleWord(ctx) ? seg(roleWord(ctx), "info") : str(v?.task?.provider) && dim(v.task.provider), str(v?.task?.host) && dim(v.task.host), ageOf(ctx, v) && dim(ageOf(ctx, v))]) : [];
+  return taskId(ctx, snap) ? joined([roleWord(ctx) ? dim(roleWord(ctx)) : str(v?.task?.provider) && dim(v.task.provider), ageOf(ctx, v) && dim(ageOf(ctx, v))]) : [];
 }
 
 const held = (ctx) => ctx.state.viewer.frozen || ctx.state.viewer.hold.recent !== null || ctx.state.viewer.hold.sandbox !== null;
@@ -40,17 +44,24 @@ const held = (ctx) => ctx.state.viewer.frozen || ctx.state.viewer.hold.recent !=
 // clock, so it is parked there and the pane turns it itself.
 const orbitSeg = (ctx, i) => ((o) => seg(o.text, o.tone))(orbitOf(i, { ascii: ctx.state.viewer.ascii === true, nowMs: ctx.clock === false ? null : ctx.nowMs }));
 
-// The pill: the indicator's glyph and word on a chip, each in the indicator's tone -- ORBITING's word in the brand's.
+// The pill (0.0.2, ADR 0028): a badge holding the orbit, a dot in the indicator's tone and its word -- ORBITING's word
+// in the brand's. A terminal draws it on a chip; a docked pane draws a border round it (`pill` on the row).
 const PILL_WORD_TONE = Object.freeze({ ACTIVE: "chip" });
 
-const pillSegs = (i) => [seg(` ${i.glyph} `, `pill:${i.tone}`), seg(`${i.word} `, PILL_WORD_TONE[i.state] ?? `pill:${i.tone}`)];
+// While the task moves the orbit is the motion, so the dot stands still; any other state keeps its own glyph.
+const PILL_GLYPH = Object.freeze({ ACTIVE: "●" });
 
-export function headerRow(ctx) {
+const pillSegs = (ctx, i) => [seg(" ", `pill:${i.tone}`), { ...orbitSeg(ctx, i), pill: true }, seg(` ${PILL_GLYPH[i.state] ?? i.glyph} `, `pill:${i.tone}`), seg(`${i.word} `, PILL_WORD_TONE[i.state] ?? `pill:${i.tone}`)];
+
+// The header's three parts (0.0.2): where the viewer stands, the badge, and what the task is and how old -- a docked
+// pane lays them out itself, a terminal as one row.
+export function headerParts(ctx) {
   const i = indicatorFor(ctx);
   const left = [orbitSeg(ctx, i), seg(" "), seg(" ORBIT LIVE ", "chip"), seg("  "), dim(placeWords(ctx.state.place)), seg("  "), ...whoWords(ctx, ctx.d.focus)];
-  const right = [held(ctx) ? seg("FROZEN  ", "warning") : null, ...pillSegs(i), seg("  "), ...taskWords(ctx, ctx.d.focus)];
-  return row(left, right, { always: true, band: "header" });
+  return { left, badge: [held(ctx) ? seg("FROZEN  ", "warning") : null, ...pillSegs(ctx, i)].filter(Boolean), rest: taskWords(ctx, ctx.d.focus) };
 }
+
+export const headerRow = (ctx) => ((h) => row(h.left, [...h.badge, seg("  "), ...h.rest], { always: true, band: "header", rightShare: 0.55 }))(headerParts(ctx));
 
 // ---- STAGE ------------------------------------------------------------------------------------------------
 

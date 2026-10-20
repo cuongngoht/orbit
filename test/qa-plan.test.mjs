@@ -318,3 +318,16 @@ test("an obligation already discharged is not raised again, and a plan with noth
     "a read-only scenario with no actor declares no attack surface, and inventing one would be noise");
   assert.deepEqual(securityFindings({ id: "p" }), [], "and a plan with no scenarios is not yet a plan");
 });
+
+// The advice says "or put it in exclusions with a reason"; an exclusion naming the technique is that decision.
+test("an exclusion naming a technique answers the obligation it decides against", () => {
+  const writes = [{ id: "S1", technique: "crud", mutation: { kind: "create" }, actor: { owner: "the actor" } }];
+  assert.equal(securityFindings({ id: "p", scenarios: writes }).length, 2, "owned data and a write: scoping and permission are owed");
+  const decided = { id: "p", scenarios: writes, exclusions: [
+    { id: "X1", says: "Permission.", because: "one kind of user", technique: "permission" },
+    { id: "X2", says: "Tenant scoping.", because: "no tenants", technique: "scoping" },
+  ] };
+  assert.deepEqual(securityFindings(decided), []);
+  assert.equal(securityFindings({ ...decided, exclusions: [{ id: "X1", says: "Permission.", because: "one kind of user" }] }).length, 2,
+    "an exclusion that names no technique decides nothing a rule can read");
+});

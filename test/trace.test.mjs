@@ -17,6 +17,14 @@ import { turnsOf } from "../src/trace/projections/turns.mjs";
 import { ruleOf, usageOf } from "../src/trace/projections/usage.mjs";
 import { fakeIo } from "./fakes/io.mjs";
 import { sealed } from "./home.mjs";
+import { ended } from "../src/trace/views.mjs";
+
+// A host that sends no exit status (AGY, Codex's shell) leaves a step's result null: "not reported", never "failed".
+test("a step whose result the host did not report is shown as not reported, never as failed", () => {
+  assert.equal(ended({ ok: null }).long, "  ? not reported");
+  assert.equal(ended({ ok: false }).long, "  ✖ failed");
+  assert.equal(ended({ ok: true }).long, "");
+});
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Built with join, as the code builds every path under it: a POSIX literal here

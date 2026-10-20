@@ -377,6 +377,21 @@
         "because": {
           "type": "string",
           "description": "Why. Shown in the coverage report beside what was covered."
+        },
+        "technique": {
+          "enum": [
+            "crud",
+            "boundary",
+            "decision-table",
+            "state-transition",
+            "negative",
+            "permission",
+            "scoping",
+            "idempotency",
+            "concurrency",
+            "exploratory"
+          ],
+          "description": "The technique this exclusion decides against -- a security obligation the plan derived (permission, scoping) is then answered, not owed."
         }
       }
     },

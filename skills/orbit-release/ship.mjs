@@ -3,11 +3,14 @@
 //
 //   node skills/orbit-release/ship.mjs              # from the plugin's own clone
 //   node skills/orbit-release/ship.mjs --bump=added # …and what the next version would be
+//   node skills/orbit-release/ship.mjs --ci         # what a pipeline can hold (0.0.2): CI's run
 //
-// Exit 0 = every gate held · 2 = a gate failed, and nothing should be tagged.
+// Exit 0 = every gate held · 2 = a gate failed, and nothing should be tagged. With --ci, native host acceptance --
+// recorded from live host runs a pipeline cannot make -- is PENDING instead of a failure: CI is green on everything a
+// pipeline can prove, and the release (ship.mjs without --ci) is still refused until the record names this source.
 // The gates themselves are data in gates.mjs; this file only binds them to a
 // real process and prints.
-import { nativeAcceptance } from "./hosts.mjs";
+import { awaited, nativeAcceptance } from "./hosts.mjs";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -16,6 +19,7 @@ import { GATES, bump, report, shippable } from "./gates.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const CHANGE = process.argv.find((a) => a.startsWith("--bump="))?.slice(7);
+const CI = process.argv.includes("--ci");
 
 // Every gate is `node <args>` from the plugin root, so the child inherits
 // nothing about where this was invoked from. The deadline only stops a hang: a Windows runner takes
@@ -29,10 +33,14 @@ function runner(args, env = {}) {
 
 const read = (file) => (existsSync(join(ROOT, file)) ? readFileSync(join(ROOT, file), "utf8") : null);
 
+const mark = (r) => (r.pending ? "wait" : r.ok ? "ok  " : "FAIL");
+
+const verdict = (rows) => (!shippable(rows) ? "\nNOT shippable — fix the FAIL above; nothing is tagged." : rows.some((r) => r.pending) ? "\nevery gate a pipeline can hold held; native host acceptance is awaited -- a release runs ship.mjs without --ci." : `\nshippable. ${next(rows)}`);
+
 function main() {
-  const rows = [...report(runner, GATES), nativeAcceptance(ROOT)];
-  for (const r of rows) console.log(`${r.ok ? "ok  " : "FAIL"}  ${r.name}\n        ${r.detail}`);
-  console.log(shippable(rows) ? `\nshippable. ${next(rows)}` : "\nNOT shippable — fix the FAIL above; nothing is tagged.");
+  const rows = [...report(runner, GATES), awaited(nativeAcceptance(ROOT), CI)];
+  for (const r of rows) console.log(`${mark(r)}  ${r.name}\n        ${r.detail}`);
+  console.log(verdict(rows));
   process.exit(shippable(rows) ? 0 : 2);
 }
 

@@ -13,6 +13,7 @@
 //
 // Exit 0 done · 2 refused (not a Git checkout, a tree already there for --in-checkout, a checkout bound to another
 // project) · 3 blocked (the store cannot be written here).
+import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { caseSchema } from "../src/dsl/index.mjs";
@@ -43,8 +44,16 @@ const SAID = {
 
 function seated(root) {
   const seat = ensureProject(process.env, root, { checkout: true, origin: flag("origin"), projectId: flag("project-id") });
-  return [...SAID[seat.status](seat.paths), `reports: ${seat.paths.reportsDir ?? "(the project's reports setting)"}`, `next: set origin in ${join(seat.paths.dataRoot, "project.json")} (or ORBIT_ORIGIN), record screens (orbit-ui-map), then query check`].join("\n");
+  return [...SAID[seat.status](seat.paths), `reports: ${seat.paths.reportsDir ?? "(the project's reports setting)"}`, nextOf(seat.paths)].join("\n");
 }
+
+// What is left for a person: an origin the seated project.json already names is not asked for again.
+const originOf = (dataRoot) => {
+  try { return JSON.parse(readFileSync(join(dataRoot, "project.json"), "utf8")).origin ?? null; }
+  catch { return null; }
+};
+
+const nextOf = (p) => (originOf(p.dataRoot) ? "next: record screens (orbit-ui-map), then query check" : `next: set origin in ${join(p.dataRoot, "project.json")} (or ORBIT_ORIGIN), record screens (orbit-ui-map), then query check`);
 
 function inCheckout(root) {
   const project = initialize(root, process.env, options());

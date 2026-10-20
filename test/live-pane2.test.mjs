@@ -149,12 +149,13 @@ test("test progress takes a runner's own totals once it said them, as the status
   const ctxOf = (observation) => ({ d: { engineering: { activities: [{ kind: "test", observation }] } } });
   const vstest = { adapter: { id: "dotnet-test", runner: "vstest" }, state: "ended", counts: { passed: 0, failed: 1, skipped: 0 }, reported: 1, total: 30, totals: { tests: 30, passed: 29, failed: 1, skipped: 0 } };
   assert.deepEqual(testProgressOf(ctxOf(vstest)), { runner: "vstest", passed: 29, failed: 1, skipped: 0, reported: 1, total: 30, pending: 0, said: true, running: false, aborted: false });
-  const words = (o) => progressRows(ctxOf(o))[1].left.map((s) => s.text).join("");
+  const words = (o) => ((r) => [...r.left, ...r.right].map((s) => s.text).join(""))(progressRows(ctxOf(o))[1]);
   assert.match(words(vstest), /29 passed · 1 failed · of 30, as the runner said/, "never 0 passed beside a status bar that says 29/30");
   const streaming = { state: "running", counts: { passed: 12, failed: 1, skipped: 0 }, reported: 13, total: null, totals: null };
   assert.deepEqual([testProgressOf(ctxOf(streaming)).passed, testProgressOf(ctxOf(streaming)).said], [12, false], "before the runner said its totals, the cases observed");
   assert.match(words(streaming), /12 passed · 1 failed · 13 reported, total not said yet · runner running/);
   assert.match(words({ ...vstest, totals: { tests: 30, passed: 27, failed: 1 } }), /of 30, as the runner said · 2 it did not account for/, "totals that do not add up say so");
+  assert.match(words({ ...vstest, totals: { tests: 30, passed: 30, failed: 0, skipped: 0 } }), /30 passed of 30, as the runner said$/, "every case passed: one sentence (0.0.2)");
 });
 
 // ---- the timeline --------------------------------------------------------------------------------------------
@@ -237,7 +238,7 @@ test("a terminal pane cut to its room keeps the TOP of the Timeline view, as a d
   const short = reduce(start, actionOfKey(start.viewer, "6"));
   assert.equal(short.viewer.view, "timeline");
   const lines = frameOf(short).lines.map((l) => unstyled(l).trimEnd());
-  const tabs = lines.findIndex((l) => /6 Timeline/.test(l));
+  const tabs = lines.findIndex((l) => /6: Timeline/.test(l));
   assert.ok(tabs >= 0, "the Timeline view is drawn");
   const ctx = contextOf(short, derivedOf(short));
   const events = timelineFor(ctx, 30).filter((e) => e.type !== "plan.revised");

@@ -73,7 +73,7 @@
 // and SAYS so, never read as one that hung).
 import { spawn as spawnAsync, spawnSync } from "node:child_process";
 import { closeSync, openSync } from "node:fs";
-import { baseEnv } from "./env.mjs";
+import { baseEnv, childEnv } from "./env.mjs";
 import { launchable } from "./shim.mjs";
 
 export const DEFAULT_PROCESS_TIMEOUT_MS = 60000;
@@ -400,15 +400,33 @@ function startedAt(os, pid) {
 // The chain from `pid` up through its parents (itself first, at most 32), read from ONE listing of every process --
 // `ps` on POSIX, PowerShell's CIM on Windows -- so a viewer can be split beside the terminal a process runs in. Empty
 // when the listing cannot be read: never a guess.
+// 0.0.2: on Windows the listing asks only the two properties it reads and quotes with single quotes alone (no `"` for
+// a command line to re-escape), and it is given the time a cold PowerShell and CIM take on a fresh machine -- five
+// seconds was a listing that never answered there, and an empty chain.
+// Windows is asked through CIM first and, where CIM does not answer, through WMI -- the same class, an older door --
+// with the few names PowerShell itself needs to find its modules and the machine's drive (never a secret).
+const LISTING = "| ForEach-Object { '{0} {1}' -f $_.ProcessId, $_.ParentProcessId }";
+
+const powershell = (command) => ["powershell", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command], 30000];
+
 const TREE_PROBES = {
-  win32: () => ["powershell", ["-NoProfile", "-NonInteractive", "-Command", "Get-CimInstance Win32_Process | ForEach-Object { \"$($_.ProcessId) $($_.ParentProcessId)\" }"]],
-  posix: () => ["ps", ["-axo", "pid=,ppid="]],
+  win32: () => [powershell(`Get-CimInstance -ClassName Win32_Process -Property ProcessId,ParentProcessId ${LISTING}`), powershell(`Get-WmiObject -Class Win32_Process ${LISTING}`)],
+  posix: () => [["ps", ["-axo", "pid=,ppid="], 5000]],
 };
 
+const POWERSHELL_ENV = ["SystemDrive", "PSModulePath", "ProgramData", "ProgramFiles", "ProgramFiles(x86)", "CommonProgramFiles", "PROCESSOR_ARCHITECTURE", "NUMBER_OF_PROCESSORS"];
+
+const treeEnv = (os) => ({ ...childEnv(os.env, os.platform === "win32" ? POWERSHELL_ENV : []), LC_ALL: "C", LANG: "C" });
+
+const listed = (os, [file, args, timeout]) => ((r) => (r?.status === 0 ? parentsOf(String(r.stdout ?? "")) : null))(os.spawn(file, args, { encoding: "utf8", timeout, windowsHide: true, maxBuffer: 8 * 1024 * 1024, env: treeEnv(os) }));
+
+// The first listing that answers with this pid in it; none, and the chain is empty.
+const firstListing = (os, pid) => TREE_PROBES[os.platform === "win32" ? "win32" : "posix"]().reduce((got, probe) => got ?? ((m) => (m?.has(pid) ? m : null))(listed(os, probe)), null);
+
 function ancestryOf(os, pid) {
-  const [file, args] = TREE_PROBES[os.platform === "win32" ? "win32" : "posix"]();
-  const r = Number.isInteger(pid) && pid > 0 ? os.spawn(file, args, { encoding: "utf8", timeout: 5000, windowsHide: true, maxBuffer: 8 * 1024 * 1024, env: { ...baseEnv(os.env), LC_ALL: "C", LANG: "C" } }) : null;
-  return r?.status === 0 ? chainOf(parentsOf(String(r.stdout ?? "")), pid) : [];
+  if (!Number.isInteger(pid) || pid < 1) return [];
+  const parents = firstListing(os, pid);
+  return parents ? chainOf(parents, pid) : [];
 }
 
 const parentsOf = (text) => new Map(text.split(/\r?\n/).map((l) => l.trim().split(/\s+/).map(Number)).filter(([a, b]) => Number.isInteger(a) && Number.isInteger(b)));

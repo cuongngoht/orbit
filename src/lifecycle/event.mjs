@@ -39,4 +39,7 @@ export function lifecycleEvent(host, input, argv = []) {
   return { ...seen, event, host: host.name, session: hostSession(host.name, seen.session), paths: seen.paths ?? [], ok: okOf(seen), ...identities(host, seen) };
 }
 
-const identities = (host, seen) => seen.protocol === 2 ? { turn: hostSession(host.name, seen.turn), delivery: hostSession(host.name, seen.delivery) } : {};
+// A call's delivery key is hashed for every host that sends one (0.0.2: Claude's too); a turn is protocol 2's.
+const deliveryOf = (host, seen) => (seen.delivery ? { delivery: hostSession(host.name, seen.delivery) } : {});
+
+const identities = (host, seen) => seen.protocol === 2 ? { turn: hostSession(host.name, seen.turn), delivery: hostSession(host.name, seen.delivery) } : deliveryOf(host, seen);

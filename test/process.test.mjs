@@ -267,3 +267,15 @@ test("on Windows the ancestry is one CIM listing, quoted without a double quote,
   assert.deepEqual([asked[0].opts.env.SystemRoot, asked[0].opts.env.SECRET], ["C:\\Windows", undefined]);
   assert.deepEqual(createProcess({ spawn: () => ({ status: 1, stdout: "" }), platform: "win32" }).ancestry(4321), [], "no listing, no guess");
 });
+
+test("on Windows a CIM listing that does not answer -- or does not hold the pid -- is asked again through WMI, with PowerShell's own names", () => {
+  const asked = [];
+  const spawn = (file, args, opts) => {
+    asked.push({ args, opts });
+    return /Get-WmiObject/.test(args.at(-1)) ? { status: 0, stdout: "4321 4000\r\n4000 4\r\n" } : { status: 0, stdout: "" };
+  };
+  const proc = createProcess({ spawn, platform: "win32", env: { SystemRoot: "C:\\Windows", SystemDrive: "C:", PSModulePath: "C:\\m", SECRET: "x" } });
+  assert.deepEqual(proc.ancestry(4321), [4321, 4000, 4]);
+  assert.equal(asked.length, 2, "CIM first, then WMI");
+  assert.deepEqual([asked[1].opts.env.SystemDrive, asked[1].opts.env.PSModulePath, asked[1].opts.env.SECRET], ["C:", "C:\\m", undefined]);
+});

@@ -9,6 +9,7 @@
 // the store they were left in. Then the engine's half: `live open` in a VS Code terminal leaves the request (and
 // nothing is started from there), and the companion opens it.
 import { test } from "node:test";
+import { createProcess } from "../src/process/index.mjs";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -361,6 +362,9 @@ function engineInstalled(w) {
   return at;
 }
 
+// When the ancestry is missing, what this machine's own listing says -- so a failure names its cause, on Windows above all.
+const listingSaid = () => ((r) => ` — ancestry: ${JSON.stringify(createProcess().ancestry(process.pid))} · listing status ${r.status} · ${String(r.stderr ?? r.error ?? "").slice(0, 400)}`)(process.platform === "win32" ? spawnSync("powershell", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "Get-CimInstance -ClassName Win32_Process -Property ProcessId,ParentProcessId | Measure-Object | ForEach-Object { $_.Count }"], { encoding: "utf8", timeout: 30000 }) : spawnSync("ps", ["-p", String(process.pid)], { encoding: "utf8" }));
+
 test("`live open` in a VS Code terminal with a companion alive leaves the request -- and the companion opens it beside this terminal", async (t) => {
   const w = world(t);
   const engine = engineInstalled(w);
@@ -376,7 +380,7 @@ test("`live open` in a VS Code terminal with a companion alive leaves the reques
   assert.equal(files.length, 1);
   const req = JSON.parse(readFileSync(join(w.requests, files[0]), "utf8"));
   assert.deepEqual([realpathSync(req.argv[1]), ...req.argv.slice(2)], [join(engine, "cli", "live.mjs"), "tui", "--until-done"]);
-  assert.ok(req.ancestry.includes(process.pid), "the asking process's ancestors include the shell it runs under (here: this test)");
+  assert.ok(req.ancestry.includes(process.pid), `the asking process's ancestors include the shell it runs under (here: this test)${listingSaid()}`);
   const v = fakeVscode([process.pid], { storeDirs: [w.store], nodePath: PERSONS_NODE });
   const c = createCompanion({ ...w.deps, vscode: v.api, now: () => Date.now() });
   assert.deepEqual(await c.tick(), ["opened"]);

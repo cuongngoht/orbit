@@ -75,7 +75,7 @@ test("every viewer's header opens with it: turning while the task moves, parked 
   const head = (s) => [...unstyled(frameOf(s).lines[0])].slice(0, 3).join("");
   const moving = workflow({ columns: 100, rows: 30, start: { layout: "pane" } });
   assert.ok(U.frames.includes(head(moving)), head(moving));
-  assert.match(unstyled(frameOf(moving).lines[0]), /ORBIT LIVE .*[◐◓◑◒] ORBITING/);
+  assert.match(unstyled(frameOf(moving).lines[0]), /ORBIT LIVE .*● ORBITING/, "the badge: the orbit, a dot and the word (0.0.2)");
   const blocked = engineering({ columns: 100, rows: 30, start: { layout: "pane" }, view: { lifecycle: "BLOCKED", blocked: { stop: "ENVIRONMENT_BLOCKED" } } });
   assert.equal(head(blocked), U.parked, "a blocked task does not orbit, however its checks run");
   assert.match(unstyled(frameOf(blocked).lines[0]), /■ BLOCKED/);

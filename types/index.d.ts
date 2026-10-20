@@ -5,10 +5,13 @@
 export type PaneSegment = { text: string; tone: string | null }
 
 /** One row of the workspace: what is on its left, what is on its right, how deep it sits, what it came to. */
-export type PaneRow = { left: PaneSegment[]; right: PaneSegment[]; depth: number; status: string | null; label: string | null }
+export type PaneRow = { left: PaneSegment[]; right: PaneSegment[]; depth: number; status: string | null; label: string | null; /** 0.0.2: the card it is drawn in */ box?: string | null }
 
 /** A view a person switches to under the workspace: its id, its label, its rows. */
-export type PaneView = { id: string; label: string; rows: PaneRow[] }
+export type PaneView = { id: string; label: string; rows: PaneRow[]; /** 0.0.2: what the view shows, beside the tabs */ hint?: string | null }
+
+/** 0.0.2: the header in three parts -- where the viewer stands, the badge (drawn in a border), what the task is and how old. */
+export type PaneHeader = { left: PaneSegment[]; badge: PaneSegment[]; right: PaneSegment[] }
 
 /** 0.0.1: what turning the header's orbit takes -- its frames, whether it moves, the newest evidence's time it turns from. */
 export type PaneOrbit = { moving: boolean; tone: string | null; frames: string[]; parked: string; lastAt: string | null; kickMs: number; fps: { kick: number; cruise: number } }
@@ -20,6 +23,8 @@ export type PaneModel = {
   held: boolean
   task: string | null
   header: PaneSegment[]
+  /** 0.0.2: the same header in its parts; null when the answer has none. */
+  headerParts?: PaneHeader | null
   overview: PaneSegment[][]
   now: PaneSegment[][]
   tier: string | null

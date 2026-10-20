@@ -1001,7 +1001,7 @@ const fedWith = (state, loc, task, role, known) => ((c) => reduceTui(reduceTui(s
 function paneView(loc, input) {
   const settings = settingsNow(loc);
   const association = loc ? chosen(loc, { explicit: null, mark: input.mark, nowMs: Date.now(), settings }) : { how: "none", task: null, ids: [], createdAt: null };
-  const base = initialTui({ association, root: association.task, place: placeOf(loc), columns: sizeArg("columns"), rows: sizeArg("rows"), colour: false, nowMs: Date.now(), settings, auto: true, waiting: !association.task, activity: sessionRead(loc, input.mark, Date.now(), settings), work: workRead(loc, input.mark, Date.now(), settings) });
+  const base = initialTui({ association, root: association.task, place: placeOf(loc), columns: sizeArg("columns"), rows: sizeArg("rows"), colour: false, nowMs: Date.now(), settings, auto: true, layout: "pane", waiting: !association.task, activity: sessionRead(loc, input.mark, Date.now(), settings), work: workRead(loc, input.mark, Date.now(), settings) });
   const state = association.task ? withChild(fedWith(base, loc, association.task, "root", association.createdAt), loc) : base;
   return { task: association.task, look: { widthPercent: settings.pane?.widthPercent ?? 36, focusCli: settings.pane?.focusCli !== false }, ...paneOf(state) };
 }

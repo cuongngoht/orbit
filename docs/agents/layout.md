@@ -499,10 +499,12 @@ src/live/      Orbit LIVE's CORE, every viewer's (ADR 0016): delivery, never sta
                ROOM, PRIORITY · derive.mjs a snapshot per followed task per second · sections/ (STAGE, ACTIVITY,
                WORKFLOW, ENGINEER, VERIFY, QA, SANDBOX, RECENT, NOTICES as rows of segments) · overlays/ (picker,
                activity (`i`), evidence, diagnostics, help) · frame.mjs the ONE caller of `drawn` for it · diff.mjs
-               the rows that changed · pane.mjs (1.8.5) the same sections laid out for a pane a HOST docks: a
+               the rows that changed · events-view.mjs (0.0.2, ADR 0028: a pane's Events view, a workflow's milestones under
+               the step whose turn it was -- a read of times, never written -- and the view's hint) · pane.mjs (1.8.5) the same sections laid out for a pane a HOST docks: a
                header line, the overview, NOW pinned last, as segments a host's drawer adds no word to ·
                workspace.mjs (1.8.5, ADR 0021) the pane's own model: the TASK EXECUTION checklist (a workflow's
-               plan, or an engineering task's steps as its journal recorded them), NOW, the status bar, the views,
+               plan, or an engineering task's steps as its journal recorded them; 0.0.2, ADR 0028: the baseline a
+               card by its rows' `box`, the step in focus in the brand's tone), NOW, the status bar, the views,
                seven status words and the pane's own tiers · progress.mjs (1.8.6: task and test progress over a
                recorded denominator, or indeterminate) · plan-view.mjs (1.8.6: the Plan view) · timeline-view.mjs
                (1.8.6: the Timeline view) · pane-frame.mjs (1.8.6: the pane's parts as the terminal's pane layout,

@@ -45,7 +45,7 @@ export const MILESTONES = [
   { when: (e) => e.kind === "cancelled", glyph: "failed", say: () => "Cancelled by a person" },
 ];
 
-const GLYPH = { ok: ["✓", "success"], failed: ["✗", "danger"], started: ["▶", "info"], warning: ["⚠", "warning"], person: ["👤", "warning"], state: ["●", "subtle"] };
+const GLYPH = { ok: ["✓", "success"], failed: ["✗", "danger"], started: ["▶", "info"], warning: ["▲", "warning"], person: ["👤", "warning"], state: ["●", "subtle"] };
 
 const IMPACT_GLYPH = { SCOPED: GLYPH.state, MISSING: GLYPH.warning, WIDENED: GLYPH.warning };
 

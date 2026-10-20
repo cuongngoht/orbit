@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import type { PaneModel, PaneOrbit, PaneRow, PaneSegment, PaneView } from '../types'
+import type { PaneHeader, PaneModel, PaneOrbit, PaneRow, PaneSegment, PaneView } from '../types'
 
 // Orbit LIVE, docked beside the Claude Code session (Orbit 1.8.5; 1.8.6 Live Pane 2.0): the AI CLI keeps the left, the
 // prompt and the keyboard; this pane is a viewer on the right. It draws what the Orbit engine answers -- the header
@@ -75,11 +75,14 @@ const segmentsOf = (value: unknown): PaneSegment[] => (Array.isArray(value) ? va
 
 const linesOf = (value: unknown): PaneSegment[][] => (Array.isArray(value) ? value.map(segmentsOf) : [])
 
-const rowOf = (value: unknown): PaneRow | null => (isRecord(value) ? { left: segmentsOf(value.left), right: segmentsOf(value.right), depth: typeof value.depth === 'number' ? value.depth : 0, status: text(value.status), label: text(value.label) } : null)
+const rowOf = (value: unknown): PaneRow | null => (isRecord(value) ? { left: segmentsOf(value.left), right: segmentsOf(value.right), depth: typeof value.depth === 'number' ? value.depth : 0, status: text(value.status), label: text(value.label), box: text(value.box) } : null)
 
 const rowsOf = (value: unknown): PaneRow[] => (Array.isArray(value) ? value.map(rowOf).filter((r): r is PaneRow => r !== null) : [])
 
-const viewOf = (value: unknown): PaneView | null => (isRecord(value) && typeof value.id === 'string' ? { id: value.id, label: text(value.label) ?? value.id, rows: rowsOf(value.rows) } : null)
+const viewOf = (value: unknown): PaneView | null => (isRecord(value) && typeof value.id === 'string' ? { id: value.id, label: text(value.label) ?? value.id, rows: rowsOf(value.rows), hint: text(value.hint) } : null)
+
+// 0.0.2: the header in its parts, or null for an answer without them (the flat header is drawn then).
+const headerPartsOf = (value: unknown): PaneHeader | null => (isRecord(value) ? { left: segmentsOf(value.left), badge: segmentsOf(value.badge), right: segmentsOf(value.right) } : null)
 
 const viewsOf = (value: unknown): PaneView[] => (Array.isArray(value) ? value.map(viewOf).filter((v): v is PaneView => v !== null) : [])
 
@@ -106,7 +109,7 @@ const orbitOf = (value: unknown): PaneOrbit | null =>
 export function modelOf(stdout: string): PaneModel | null {
   const doc = parsed(stdout)
   if (!isRecord(doc) || typeof doc.version !== 'number' || doc.version !== VERSION) return null
-  return { version: doc.version, lease: text(doc.lease), held: doc.held === true, task: text(doc.task), header: segmentsOf(doc.header), overview: linesOf(doc.overview), now: linesOf(doc.now), tier: text(doc.tier), titles: titlesOf(doc.titles), checklist: rowsOf(doc.checklist), current: rowsOf(doc.current), statusBar: rowOf(doc.statusBar), views: viewsOf(doc.views), progress: progressOf(doc.progress), look: lookOfAnswer(doc.look), hints: hintsOf(doc.hints), orbit: orbitOf(doc.orbit) }
+  return { version: doc.version, lease: text(doc.lease), held: doc.held === true, task: text(doc.task), header: segmentsOf(doc.header), headerParts: headerPartsOf(doc.headerParts), overview: linesOf(doc.overview), now: linesOf(doc.now), tier: text(doc.tier), titles: titlesOf(doc.titles), checklist: rowsOf(doc.checklist), current: rowsOf(doc.current), statusBar: rowOf(doc.statusBar), views: viewsOf(doc.views), progress: progressOf(doc.progress), look: lookOfAnswer(doc.look), hints: hintsOf(doc.hints), orbit: orbitOf(doc.orbit) }
 }
 
 // `node <engine>/cli/live.mjs pane --host=claude …` once, with this session's id and directory on stdin, as the
@@ -135,7 +138,7 @@ async function opensHere($: EngineInterface): Promise<boolean> {
 // seconds about a quiet task would redraw for nothing. Only what the pane DRAWS is compared (the overview and NOW's
 // lines are not drawn while a status bar is). The engine leaves the wall clock and "how long ago" out of its answer,
 // so a quiet task costs no redraw; a running action's elapsed time, and the LIVE glyph when evidence arrives, do redraw.
-const drawnOf = (m: PaneModel): string => JSON.stringify([m.header, m.tier, m.titles, m.checklist, m.current, m.views, m.progress ?? [], m.statusBar, m.statusBar ? null : (m.now[0] ?? null), m.look, m.hints, m.orbit ?? null])
+const drawnOf = (m: PaneModel): string => JSON.stringify([m.header, m.headerParts ?? null, m.tier, m.titles, m.checklist, m.current, m.views, m.progress ?? [], m.statusBar, m.statusBar ? null : (m.now[0] ?? null), m.look, m.hints, m.orbit ?? null])
 
 const same = (a: PaneModel, b: PaneModel): boolean => drawnOf(a) === drawnOf(b)
 
@@ -186,9 +189,10 @@ async function spun($: EngineInterface): Promise<void> {
   if ((await read($, spin)) !== '') await update($, spin, () => '')
 }
 
-// The header with the orbit turned: only over the engine's own parked frame, so a header without one is drawn as said.
+// The header with the orbit turned: only over the engine's own parked frame, so a header without one is drawn as said --
+// every one of them (0.0.2): the one the header opens with and the one in the badge turn together.
 export const withOrbit = (header: PaneSegment[], o: PaneOrbit | null | undefined, frame: string): PaneSegment[] =>
-  frame && o && header[0]?.text === o.parked ? [{ ...header[0], text: frame }, ...header.slice(1)] : header
+  frame && o ? header.map((s) => (s.text === o.parked ? { ...s, text: frame } : s)) : header
 
 // ---- the width a person set: asked of the dock once the terminal's width is known, again only when it moved ----
 
@@ -277,23 +281,42 @@ function measured(columns: number, rows: number, docked: boolean): void {
 // How many rows each block may have, by the pane's tier: what the work went through and what it does now first, the
 // view a person picked takes what is left. Wide puts the two blocks side by side.
 export function budgetOf(m: PaneModel, rows: number): { checklist: number; current: number; view: number } {
-  const room = Math.max(0, rows - 4 - (m.hints.inline ? 1 : 0) - (m.progress ?? []).length)
+  const room = Math.max(0, rows - 4 - (m.headerParts ? HEADER_EXTRA : 0) - (m.hints.inline ? 1 : 0) - (m.progress ?? []).length - cardEdges(m.checklist))
   const tier = m.tier ?? 'medium'
-  if (tier === 'tiny' || tier === 'narrow') return { checklist: 0, current: tier === 'tiny' ? 0 : room, view: 0 }
-  const top = Math.min(Math.max(m.checklist.length, m.current.length) + 1, Math.floor(room * 0.62))
-  if (tier === 'wide') return { checklist: top, current: top, view: Math.max(0, room - top - 1) }
-  const checklist = Math.min(m.checklist.length + 1, Math.floor(room * 0.4))
-  const current = Math.min(m.current.length + 1, Math.floor(room * 0.3))
-  return { checklist, current, view: Math.max(0, room - checklist - current - 1) }
+  if (tier === 'tiny' || tier === 'narrow') return { checklist: 0, current: tier === 'tiny' ? 0 : Math.max(0, room - TITLES), view: 0 }
+  const top = Math.min(Math.max(m.checklist.length, m.current.length), Math.floor(room * 0.62))
+  if (tier === 'wide') return { checklist: top, current: top, view: Math.max(0, room - top - TITLES - 1) }
+  const checklist = Math.min(m.checklist.length, Math.floor(room * 0.6))
+  const current = Math.min(m.current.length, Math.floor(room * 0.15))
+  return { checklist, current, view: Math.max(0, room - checklist - current - TITLES - 1) }
 }
 
-const SPACE: PaneSegment = { text: '  ', tone: null }
+// 0.0.2 (ADR 0028): the header's badge is drawn in a border, two rows taller than a line; TASK EXECUTION and NOW are a
+// title row and a rule over the blocks; a card adds its two edges.
+const HEADER_EXTRA = 2
+const TITLES = 2
 
-// A check's status word (a nested row: what a step ran or is held to) keeps its place on the right; a step's own detail
-// and everything else flows after the label and is cut at the end, so a label is never squeezed by a sentence.
-const fixedOf = (r: PaneRow): PaneSegment[] => (r.status && r.depth > 0 && r.right[0] ? [r.right[0]] : [])
+export const cardEdges = (rows: PaneRow[]): number => rows.filter((r, i) => r.box && rows[i - 1]?.box !== r.box).length * 2
 
-const flowingOf = (r: PaneRow): PaneSegment[] => [...r.left, ...(fixedOf(r).length ? r.right.slice(1) : r.right).flatMap((s, i) => (i === 0 ? [SPACE, s] : [s]))]
+// Rows in their cards: consecutive rows of one card are one group, every other row stands alone.
+export function carded(rows: PaneRow[]): Array<{ box: string | null; rows: PaneRow[] }> {
+  const out: Array<{ box: string | null; rows: PaneRow[] }> = []
+  for (const r of rows) {
+    const last = out[out.length - 1]
+    if (r.box && last?.box === r.box) last.rows.push(r)
+    else out.push({ box: r.box ?? null, rows: [r] })
+  }
+  return out
+}
+
+// The status bar's parts, its separators taken out: the pane spreads them across the width with a dot between each.
+export const barParts = (r: PaneRow): PaneSegment[] => [...r.left.filter((s) => s.text.trim() !== '·'), ...r.right]
+
+// 0.0.2: whatever a row says on its right keeps the right edge -- a check's status word, a step's detail, a bar -- and
+// its left flows and is cut at the end.
+const fixedOf = (r: PaneRow): PaneSegment[] => r.right
+
+const flowingOf = (r: PaneRow): PaneSegment[] => r.left
 
 export const register: Register = (on) => {
   on('session.start', async ($, e, next) => {
@@ -343,7 +366,8 @@ export const register: Register = (on) => {
     run.terminal = e.viewport ? e.viewport.columns + (docked ? e.props.bodyColumns + 3 : 0) : run.terminal
     const m = await read($, model)
     const picked = await read($, view)
-    const header = withOrbit(m.header, m.orbit, await read($, spin))
+    const frame = await read($, spin)
+    const header = withOrbit(m.header, m.orbit, frame)
     const b = budgetOf(m, run.rows)
     const line = (segs: PaneSegment[], key: string) => (
       <Text key={key} wrap="truncate-end">
@@ -354,6 +378,7 @@ export const register: Register = (on) => {
         ))}
       </Text>
     )
+    // A row: its left flows and is cut, its right keeps the right edge.
     const rowEl = (r: PaneRow, key: string) => (
       <Box key={key} flexDirection="row">
         <Box flexGrow={1} flexShrink={1} overflow="hidden">
@@ -362,40 +387,104 @@ export const register: Register = (on) => {
         {fixedOf(r).length ? <Box flexShrink={0} marginLeft={1}>{line(fixedOf(r), `${key}.s`)}</Box> : null}
       </Box>
     )
-    const block = (title: string, rows: PaneRow[], room: number, key: string) =>
+    // Rows in their cards: a card's rows inside a round border, the others as they are.
+    const rowsEl = (rows: PaneRow[], key: string) =>
+      carded(rows).map((g, i) =>
+        g.box ? (
+          <Box key={`${key}.c${i}`} flexDirection="column" borderStyle="round" borderDimColor paddingX={1} flexShrink={0}>
+            {g.rows.map((r, j) => rowEl({ ...r, left: r.left.map((s, k) => (k === 0 && /^ *$/.test(s.text) ? { ...s, text: '  '.repeat(Math.max(0, r.depth - g.rows[0].depth)) } : s)) }, `${key}.c${i}.${j}`))}
+          </Box>
+        ) : (
+          rowEl(g.rows[0], `${key}.r${i}`)
+        ),
+      )
+    const parts: PaneHeader | null = m.headerParts ? { left: withOrbit(m.headerParts.left, m.orbit, frame), badge: withOrbit(m.headerParts.badge, m.orbit, frame), right: m.headerParts.right } : null
+    // The header (0.0.2, ADR 0028): where the viewer stands on the left; the badge in a border and the task on the right.
+    const headerEl = parts ? (
+      <Box key="header" flexDirection="row" justifyContent="space-between" alignItems="center" flexShrink={0}>
+        <Box flexShrink={1} overflow="hidden">
+          {line(parts.left, 'h.l')}
+        </Box>
+        <Box flexDirection="row" alignItems="center" flexShrink={0}>
+          <Box borderStyle="round" borderColor="claude" borderDimColor paddingX={1}>
+            {line(parts.badge, 'h.b')}
+          </Box>
+          <Box marginLeft={1}>{line(parts.right, 'h.r')}</Box>
+        </Box>
+      </Box>
+    ) : (
+      line(header, 'header')
+    )
+    const shown: PaneView | undefined = m.views.find((v) => v.id === picked) ?? m.views[0]
+    // The tabs under the header: each view's key over its label, the picked one bright, and what it shows on the right.
+    const tabsEl = m.views.length ? (
+      <Box key="tabbar" flexDirection="row" justifyContent="space-between" flexShrink={0}>
+        <Box key="tabs" flexDirection="row" gap={TAB_GAP}>
+          {m.views.map((v, i) => (
+            <Button key={`tab.${v.id}`} label={v.label} hotkey={String(i + 1)} plain {...(v.id === shown?.id ? { variant: 'primary' as const } : { dimColor: true })} onPress={() => void update($, view, () => v.id)} />
+          ))}
+        </Box>
+        {shown?.hint ? (
+          <Box flexShrink={1} marginLeft={2} overflow="hidden">
+            <Text dimColor wrap="truncate-end">
+              {shown.hint}
+            </Text>
+          </Box>
+        ) : null}
+      </Box>
+    ) : null
+    const rule = (key: string) => (
+      <Text key={key} dimColor wrap="truncate-end">
+        {'─'.repeat(run.columns)}
+      </Text>
+    )
+    // TASK EXECUTION on the left, NOW on the right; under them the checklist, and NOW beside it (wide) or below it.
+    const titleEl = (
+      <Box key="titles" flexDirection="row" justifyContent="space-between" flexShrink={0}>
+        <Text {...lookOf('title')}>{b.checklist > 0 ? m.titles.checklist : ''}</Text>
+        <Text color="success" bold>
+          {m.titles.current}
+        </Text>
+      </Box>
+    )
+    const block = (rows: PaneRow[], room: number, key: string) =>
       room > 0 ? (
         <Box key={key} flexDirection="column" flexGrow={1} flexShrink={1} overflow="hidden">
-          <Text {...lookOf('title')}>{title}</Text>
-          {rows.slice(0, Math.max(0, room - 1)).map((r, i) => rowEl(r, `${key}.${i}`))}
+          {key === 'checklist' ? rowsEl(rows.slice(0, room), key) : rows.slice(0, room).map((r, i) => rowEl(r, `${key}.${i}`))}
         </Box>
       ) : null
-    const shown: PaneView | undefined = m.views.find((v) => v.id === picked) ?? m.views[0]
+    const bar = m.statusBar ? barParts(m.statusBar) : []
+    // The status bar spread across the width, a dot between each part, the indicator on the right edge.
+    const statusEl = m.statusBar ? (
+      <Box key="status" flexDirection="row" justifyContent="space-between">
+        {bar.flatMap((s, i) => [...(i ? [<Text key={`status.d${i}`} dimColor>·</Text>] : []), <Text key={`status.${i}`} {...lookOf(s.tone)}>{s.text}</Text>])}
+      </Box>
+    ) : (
+      line(m.now[0] ?? [], 'status')
+    )
     return (
       <Box flexDirection="column" {...(docked ? { height: e.props.scroll.bodyRows } : {})}>
-        {line(header, 'header')}
+        {headerEl}
         {!docked && m.hints.inline ? line([{ text: `⚠ ${m.hints.inline}`, tone: 'warning' }], 'hint') : null}
+        {tabsEl}
+        {b.checklist > 0 || b.current > 0 ? titleEl : null}
+        {b.checklist > 0 || b.current > 0 ? rule('rule.top') : null}
         <Box flexDirection={m.tier === 'wide' ? 'row' : 'column'} flexShrink={0}>
-          {block(m.titles.checklist, m.checklist, b.checklist, 'checklist')}
+          {block(m.checklist, b.checklist, 'checklist')}
           {m.tier === 'wide' && b.checklist > 0 ? <Box width={2} /> : null}
-          {block(m.titles.current, m.current, b.current, 'current')}
+          {block(m.current, b.current, 'current')}
         </Box>
-        {b.view > 0 && m.views.length ? (
+        {b.view > 0 && shown ? (
           <Box flexDirection="column" flexGrow={1} flexShrink={1} overflow="hidden">
-            <Box key="tabs" flexDirection="row" gap={TAB_GAP}>
-              {m.views.map((v, i) => (
-                <Button key={`tab.${v.id}`} label={v.label} hotkey={String(i + 1)} plain {...(v.id === shown?.id ? { variant: 'primary' as const } : { dimColor: true })} onPress={() => void update($, view, () => v.id)} />
-              ))}
-            </Box>
-            {(shown?.rows ?? []).slice(0, b.view).map((r, i) => rowEl(r, `view.${i}`))}
+            {rule('rule.view')}
+            {(shown.rows ?? []).slice(0, b.view).map((r, i) => rowEl(r, `view.${i}`))}
           </Box>
         ) : (
           <Box flexGrow={1} />
         )}
         {(m.progress ?? []).map((r, i) => rowEl(r, `progress.${i}`))}
-        <Text dimColor wrap="truncate-end">
-          {'─'.repeat(run.columns)}
-        </Text>
-        {m.statusBar ? rowEl(m.statusBar, 'status') : line(m.now[0] ?? [], 'status')}
+        {rule('rule.status')}
+        {statusEl}
       </Box>
     )
   })

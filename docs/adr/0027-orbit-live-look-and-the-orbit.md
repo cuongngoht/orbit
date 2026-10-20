@@ -48,4 +48,5 @@ it did not (ADR 0022).
 - A live settings file that still holds `pane.starship` is refused as an unknown setting and left unchanged, as every
   unsupported key is.
 - Not in 0.0.1: a theme a person picks, a viewer on the left (the right side stays, ADR 0021), events grouped by step
-  (no journal line says which step an event belongs to).
+  (no journal line says which step an event belongs to). 0.0.2 groups them by step as a READ of times, and draws the
+  pane as its mockup does (ADR 0028).

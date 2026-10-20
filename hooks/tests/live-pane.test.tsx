@@ -56,8 +56,17 @@ const withOrbitAnswer = (a: ReturnType<typeof answer>, moving: boolean) => ({
   orbit: { moving, tone: moving ? 'brand' : 'subtle', frames: FRAMES, parked: PARKED, lastAt: '1970-01-01T00:00:00.000Z', kickMs: 3000, fps: { kick: 10, cruise: 4 } },
 })
 
+// What 0.0.2's engine adds (ADR 0028): the header in its parts, the baseline's runs in a card, each view's hint.
+const answer002 = () => ({
+  ...answerV2('medium'),
+  headerParts: { left: [{ text: PARKED, tone: 'brand' }, { text: ' ORBIT LIVE ', tone: 'chip' }, { text: 'my-app → main', tone: 'subtle' }], badge: [{ text: PARKED, tone: 'brand' }, { text: ' ● ', tone: 'pill:success' }, { text: 'ORBITING ', tone: 'chip' }], right: [{ text: 'workflow', tone: 'subtle' }, { text: ' · ', tone: 'subtle' }, { text: '2m47s', tone: 'subtle' }] },
+  checklist: [r('✓ Engineering', [], 0, 'PASSED'), { ...r('  ▶ Baseline (before the change)', ['status'], 1, 'PASSED'), box: 'baseline' }, { ...r('    ✗ test dotnet:ledger.tests', ['FAILED'], 2, 'FAILED'), box: 'baseline' }, r('  ✓ Verify', [], 1, 'PASSED')],
+  statusBar: r('STEPS 4/6  ·  CHECKS 3/3  ·  TESTS 30/30  ·  COMPLETED', ['BLOCKED'], 0, null, null),
+  views: answerV2('medium').views.map((v) => (v.id === 'events' ? { ...v, hint: 'newest on top · milestones · every line · scroll' } : v)),
+})
+
 type Asked = { argv: readonly string[]; stdin: string | undefined }
-type Machine = { opens?: boolean; placed?: boolean; tier?: string; broken?: boolean; v2?: boolean; version?: number; orbit?: { moving: boolean } }
+type Machine = { opens?: boolean; placed?: boolean; tier?: string; broken?: boolean; v2?: boolean; v002?: boolean; version?: number; orbit?: { moving: boolean } }
 type World = { asked: Asked[]; opened: number; open: boolean; columns: (number | undefined)[]; clock: MockClock; shown: () => Asked[] }
 
 function machine(on: On, m: Machine = {}): World {
@@ -70,7 +79,7 @@ function machine(on: On, m: Machine = {}): World {
   on('process.run', (_$, e) => {
     w.asked.push({ argv: e.argv, stdin: e.init?.stdin })
     const auto = { version: 2, opens: m.opens ?? true, why: m.opens === false ? 'opening it by itself is switched off' : null }
-    const base = m.v2 ? answerV2(m.tier) : m.version ? { ...answer(m.tier), version: m.version } : answer(m.tier)
+    const base = m.v002 ? answer002() : m.v2 ? answerV2(m.tier) : m.version ? { ...answer(m.tier), version: m.version } : answer(m.tier)
     const picture = m.orbit ? withOrbitAnswer(base, m.orbit.moving) : base
     const said = m.broken ? 'not json' : JSON.stringify(e.argv.includes('--auto') ? auto : picture)
     return { value: { exitCode: m.broken ? 1 : 0, stdout: `${said}\n`, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
@@ -304,6 +313,22 @@ describe('Orbit Live pane', () => {
     expect(await ui.find({ type: 'Text', text: /CAPABILITY_MISSING/ })).toBeDefined()
     await ui.press({ key: 'tab.timeline' })
     expect(await ui.find({ type: 'Text', text: /expected 2  actual 1/ })).toBeDefined()
+  })
+
+  test('a 0.0.2 answer: the badge in a round border on the right, the baseline in a card, the hint beside the tabs, the status bar spread', async ($, on) => {
+    machine(on, { v002: true })
+    await $.prompt.submit(help)
+    const ui = await $.ui.mount({ plugin: 'orbit', surface: 'terminal', component: 'Pane', requestId: PANE, props: DOCKED })
+    const header = await ui.find({ key: 'header' })
+    expect(header?.props.justifyContent).toBe('space-between')
+    const borders = (await ui.findAll({ type: 'Box' })).filter((b) => b.props.borderStyle === 'round')
+    expect(borders.length).toBe(2)
+    expect(await ui.find({ type: 'Text', text: /ORBITING/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /workflow/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /Baseline \(before the change\)/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /newest on top · milestones · every line · scroll/ })).toBeDefined()
+    expect((await ui.find({ key: 'status' }))?.props.justifyContent).toBe('space-between')
+    expect(await ui.find({ type: 'Text', text: /^BLOCKED$/ })).toBeDefined()
   })
 
   test('an answer of a version this pane does not know is not drawn as if it were one it does', async ($, on) => {

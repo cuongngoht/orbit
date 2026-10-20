@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.2
+
+- Orbit Live's pane as drawn (ADR 0028): a bordered badge on the header (the orbit, a dot, `ORBITING`) with the
+  workflow's age, the views' keys over their labels with the view's words beside them, `TASK EXECUTION` with `NOW` on
+  its right, the baseline as a bordered card, the step in focus in the brand's tone, a workflow's milestones under the
+  step whose turn it was, progress bars on the right edge and a status bar spread across the width -- in a terminal and
+  in Claude Code's docked pane alike. `live pane` adds `headerParts`, a row's `box` and a view's `hint` (version 2).
+- `live tui` draws every frame of the orbit while it turns, instead of one a second.
+- The release skill lists all eleven gates `ship.mjs` runs.
+
 ## 0.0.1
 
 Orbit's first open-source release, under the MIT License ([LICENSE](LICENSE)): plugin `orbit`, skills `orbit-*`, CLI `orbit`, store `~/.orbit`, configuration `ORBIT_*`. Repository: [cuongngoht/orbit](https://github.com/cuongngoht/orbit).

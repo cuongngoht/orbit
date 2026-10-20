@@ -427,10 +427,14 @@ function clockMoved(t) {
 
 const extentsMoved = (t, frame) => JSON.stringify(frame.extents) !== JSON.stringify(t.state.viewer.extents);
 
+// 0.0.2: while the header's orbit turns (the frame last drawn says so) every paint is a frame of it, so the satellite
+// goes round at its own speed instead of once a second; only the rows that changed are written.
+const spinning = (t) => t.frame?.orbiting === true;
+
 function painted(t) {
   if (t.closed) return;
   [...t.feeds.values()].forEach((entry) => drained(t, entry));
-  const moved = clockMoved(t);
+  const moved = clockMoved(t) || spinning(t);
   if (!endingChecked(t) && (t.dirty || moved)) drawn(t, frameOf(t.state));
 }
 

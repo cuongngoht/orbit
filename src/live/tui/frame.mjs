@@ -19,6 +19,8 @@ import { evidenceOverlay } from "./overlays/evidence.mjs";
 import { diagnosticsOverlay } from "./overlays/diagnostics.mjs";
 import { helpOverlay, tooSmallRows } from "./overlays/help.mjs";
 import { emptyRow, paneBody } from "./pane-frame.mjs";
+import { orbitOf } from "../orbit.mjs";
+import { indicatorFor } from "./workspace.mjs";
 
 const OVERLAYS = Object.freeze({ picker: (s) => pickerOverlay(s), activity: (s, d) => activityOverlay(s, d), evidence: (s) => evidenceOverlay(s), diagnostics: (s, d, t) => diagnosticsOverlay(s, d, t.name), help: () => helpOverlay() });
 
@@ -75,7 +77,7 @@ const paintOf = (ctx, r) => ((v) => PAINTS.find((p) => p.when(v)).paint(v, bandO
 function rightOf(ctx, r, paint) {
   const segs = ctx.tier.right || r.always ? glyphed(ctx, r.right ?? []) : [];
   const want = displayWidth(segs.map((s) => s.text).join(""));
-  return segs.length ? drawn(segs, Math.min(want, Math.floor(ctx.width * RIGHT_SHARE)), paint) : "";
+  return segs.length ? drawn(segs, Math.min(want, Math.floor(ctx.width * (r.rightShare ?? RIGHT_SHARE))), paint) : "";
 }
 
 // The cut a row gets when it is too long ends in `…`, added after the glyphs were swapped: in ASCII it is a dot.
@@ -88,6 +90,13 @@ function rendered(ctx, r) {
   const left = asciiCut(ctx, drawn(glyphed(ctx, [...labelSegs(ctx, r), ...shown(ctx, r)]), room, paint));
   return right ? `${padded(left, room, paint)}${blankOn(1, paint)}${right}` : padded(left, ctx.width, paint);
 }
+
+// Two rows side by side (0.0.2, the pane's wide tier): each drawn at its own column's width, one cell between them.
+const columnCtx = (ctx, width) => ({ ...ctx, width: Math.max(1, width), tier: { ...ctx.tier, right: true } });
+
+const sideBySide = (ctx, r) => `${rendered(columnCtx(ctx, r.split), r.columns[0])}${blankOn(1, paintOf(ctx, r))}${rendered(columnCtx(ctx, ctx.width - r.split - 1), r.columns[1])}`;
+
+const renderedRow = (ctx, r) => (r.columns ? sideBySide : rendered)(ctx, r);
 
 const blank = () => row([]);
 const rule = (ctx, ch) => row([dim(ch.repeat(ctx.width))]);
@@ -172,14 +181,17 @@ const BODIES = [
 function body(ctx) {
   const height = Math.max(0, ctx.size.rows - FIXED);
   const got = BODIES.find((b) => b.when(ctx)).body(ctx, height);
-  return { lines: fill(got.lines.map((r) => rendered(ctx, r)), height, ctx), extents: EXTENTS(got.extents) };
+  return { lines: fill(got.lines.map((r) => renderedRow(ctx, r)), height, ctx), extents: EXTENTS(got.extents) };
 }
 
 const tooSmall = (ctx) => ({ lines: fill(tooSmallRows(ctx.size).map((r) => rendered(ctx, r)), ctx.size.rows, ctx), extents: EXTENTS({}) });
+
+// Whether the header's orbit is turning in this frame (0.0.2): a viewer that paints often asks, to draw every frame of it.
+const orbitingOf = (ctx) => ctx.tier.name !== "too-small" && orbitOf(indicatorFor(ctx), { nowMs: ctx.nowMs }).moving;
 
 export function frameOf(state, d = derivedOf(state)) {
   const ctx = contextOf(state, d);
   const got = ctx.tier.name === "too-small" ? tooSmall(ctx) : { ...body(ctx), top: [headerRow(ctx), rule(ctx, "═")], bottom: [rule(ctx, "─"), footerRow(ctx)] };
   const lines = got.top ? [...got.top.map((r) => rendered(ctx, r)), ...got.lines, ...got.bottom.map((r) => rendered(ctx, r))] : got.lines;
-  return { columns: ctx.size.columns, rows: ctx.size.rows, lines: lines.slice(0, ctx.size.rows), full: Boolean(state.viewer.redraw), extents: got.extents };
+  return { columns: ctx.size.columns, rows: ctx.size.rows, lines: lines.slice(0, ctx.size.rows), full: Boolean(state.viewer.redraw), extents: got.extents, orbiting: orbitingOf(ctx) };
 }

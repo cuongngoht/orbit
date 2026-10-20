@@ -18,7 +18,12 @@
 //   9  SF_SCRIPT_BLOCK · SF_COMMAND_*       a fenced block holds only Orbit commands, each one its own usage
 //                                           header documents, and none that is a person's (--human, approve,
 //                                           trust)
-//   10 SF_HIDDEN_CHARS · SF_INJECTION · SF_SECRET   no hidden or reordering characters, no known instruction-
+//   10 SF_WORKFLOW_* · WF_*                 (0.0.4) a playbook that runs DECLARED brings a workflow.json held to the
+//                                           workflow contract (workflow.mjs), and one that is followed brings none;
+//                                           each step's capability served, as the resolver answers today, only by a
+//                                           managed server (naming its tool) or a project capability -- never by
+//                                           another playbook (WF_RECURSION), an agent or a builtin
+//   11 SF_HIDDEN_CHARS · SF_INJECTION · SF_SECRET   no hidden or reordering characters, no known instruction-
 //                                           override patterns, no secret-shaped value
 //
 //   validateSkill(candidate, deps) -> { ok, findings: [{ id, says }] }

@@ -3,7 +3,10 @@
 //   scaffold   a DRAFT for a capability a workflow lacks: its manifest, under the automation policy (mode,
 //              reuse first, scope, budgets). The host writes the playbook's text with `put`
 //   put        one .md file into a draft -- the only text a host ever hands the factory; never into a
-//              registered playbook
+//              registered playbook. Since 0.0.4 also the one workflow.json, which makes the draft DECLARED and adds
+//              its steps' capabilities to its needs
+//   workflowOf a pinned version's declared workflow, its files proved to be what was registered and held to the
+//              workflow contract again -- what the engine runs (0.0.4)
 //   verify     the draft held to the contract (validate.mjs), writing nothing
 //   register   under the room's lock, from the attempt it counts to the row it writes: verify, keep the
 //              version in place aside (.versions/), copy the draft in, stamp what the engine owns (version,

@@ -183,7 +183,10 @@ echo '<outcome>'  | node <engine>/cli/automation.mjs settle <task> --json   # on
 3. **A host step answers `how`**: `mode` (skill, agent or playbook), the provider, and `invoke` -- what
    to do. On Claude Code dispatch the named agent with the Agent tool, or run the named skill; on a host
    with no native agents (Codex, Antigravity) run the skill's own loop here, one step at a time. For a
-   project `playbook`, read it with `skill-factory.mjs show <pin>` and follow it in this session.
+   project `playbook`, read it with `skill-factory.mjs show <pin>` and follow it in this session. A project
+   playbook that DECLARES its workflow is not yours to follow: its step runs in the engine (`mode` engine) and
+   settles itself -- every step of its workflow asked through its provider's own gate, reading only, its run
+   nested under the step in Orbit Live and Mission Control.
 4. **Settle it** with `{ "schemaVersion": 1, "decisionId": "<the same id>", "expectedRevision": <the
    step answer's revision>, "stepId": "<id>", "executionState": "succeeded|failed|blocked",
    "evidenceRefs": ["task:tsk-…" | "investigation:inv-…" | "requirement:rs-…" | "skill:<id>"] }`. The
@@ -196,6 +199,30 @@ echo '<outcome>'  | node <engine>/cli/automation.mjs settle <task> --json   # on
    record a listed Orbit command reads back), put it with `skill-factory.mjs put <id> <file> --needs=<a,b>`, and
    settle with `skill:<id>`. The engine holds it to the contract and registers it; you never do. A plan may draft
    one playbook per capability: each step says which (`for`), and its draft is that capability's own.
+5a. **When the workflow is a sequence of calls to capabilities provided here** (a project's own capability, or a
+   managed MCP server), DECLARE it, so the engine runs it and every later workflow reuses it: beside the SKILL.md, write
+   a `workflow.json` and put it the same way (`skill-factory.mjs put <id> workflow.json`) -- that makes the draft
+   `runs: declared`, and its steps' capabilities its needs. It is DATA, held to `orbit.skill-workflow/v1`:
+
+   ```json
+   { "api": "orbit.skill-workflow/v1", "bounds": { "maxCalls": 6 },
+     "steps": [
+       { "id": "evidence", "capability": "release.evidence.read", "input": { "q": { "from": "context.objective" } },
+         "outputs": { "first": { "type": "string", "path": "first" } },
+         "success": [{ "output": "first", "op": "nonempty" }] },
+       { "id": "notes", "capability": "release.notes.search", "tool": "search", "after": ["evidence"],
+         "input": { "query": { "from": "steps.evidence.first" } },
+         "outputs": { "hits": { "type": "count", "path": "hits" } } } ] }
+   ```
+
+   An input is `{ "from": "context.objective" | "context.ref" | "steps.<an earlier step>.<its output>" }` or
+   `{ "value": … }` -- never an expression, a secret or a path; an output is a typed value (`string`, `number`,
+   `boolean`, `count`, `record`) read by a dotted path; `tool` names a managed server's tool; `evidence:
+   "owner-record"` (with a `record` output, `task:…` or `investigation:…`) is the only way a step is VERIFIED --
+   a call that answered within its contract is REPORTED. `retries` (0-3), `timeoutMs`, `required: false` and
+   `approval: "owner"` (a person allows the call in Orbit Control) are what else a step may say; any other field is
+   refused. Check what a capability is with `skill-factory.mjs discover --for=<capability>` (REUSABLE means a skill
+   already provides it: nothing is drafted), and a registered one with `skill-factory.mjs workflow|runs|review <id>`.
 5b. **A step that answers `replanned`** means the engine REVISED the plan on evidence -- it names the trigger: a
    playbook step nothing provided got its draft and register steps, a
    requirement that moved has the steps built on it planned again, a QA step went in once discovery found something

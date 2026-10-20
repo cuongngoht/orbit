@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.0.4
+
+- Reusable, governed skills (ADR 0030). A generated playbook may DECLARE its workflow (`workflow.json`,
+  `orbit.skill-workflow/v1`): steps, each a capability the playbook needs, typed input bindings, typed outputs, an output
+  contract, evidence, retries, a timeout, an approval -- data the engine interprets, never code. Validation refuses any
+  undeclared field, cycles, unsafe bindings, recursion, bounds past their limits and a step no owner gate can serve, and
+  a dry run carries the workflow over typed stand-ins.
+- The coordinator RUNS a declared playbook at its playbook step: pinned to one version for the whole run, each step
+  recorded before it is asked, its provider picked by the resolver at that moment, every call through the MCP broker
+  (now reading only for these calls) or the capability pipeline -- `invokeBound`, the door `invokeNeed` uses. A step is
+  VERIFIED only by a record its owner proves; a call that answered within its contract is reported. Reconcile closes an
+  interrupted read as INTERRUPTED and anything that may have written as AMBIGUOUS, never replayed.
+- Goals plan from a validated structured `intent` (category, work kinds, capabilities, verification, dependencies,
+  missing prerequisites) instead of English keywords: the same goal in Vietnamese and in English plans the same. Units
+  declare their routing intent (`automation start --intent=`) and their goal (`--goal=<goal>:<unit>`, linked back); a
+  unit a missing prerequisite blocks is unresolved and never started; planning again writes `plan-2`.
+- Skill discovery and review: `skill-factory discover --for=<capability>` (REUSABLE with its pin, or which gap it is --
+  a provider present but not ready here is now an ENVIRONMENT_GAP), `workflow <id|pin>`, `runs <id>` and `review <id>`,
+  read from the project's coordinated workflows; a review proposes a successor and never writes one.
+- Orbit Live draws a declared run nested under its plan step -- the pinned version, each step's word, its tool, the
+  provider it went through, how long, its retries and the approval it waits for -- and NOW names the step being
+  carried. The feed sends one `skill-view` per pin; `planViewOf` is the one projection of a plan the pane, the Plan view,
+  `live status --json` (new `plan` field) and Mission Control share. Mission Control: `GET …/tasks/:id/plan`, a Plan card
+  on a workflow's page, and a declared skill's workflow, runs and review on its Automation page.
+- Hardening: a coordinated workflow's journal is its engine's alone -- what it reads back (steps, plans, pins, runs,
+  goals, a child task) and every non-person line need the coordinator's door or Control's, so a terminal can no longer
+  forge them; `automation settle` and `reconcile` load the project's capabilities as `step` does.
+
 ## 0.0.3
 
 - Orbit Live's orbit turns the whole time a viewer is open (ADR 0029), in every state of the task -- ORBITING, IDLE,

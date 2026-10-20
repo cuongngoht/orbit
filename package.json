@@ -1,6 +1,6 @@
 {
   "name": "orbit",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Orbit Engineering — From Goal to Verified Outcome. Goal orchestration, project context and memory, requirements to verified changes in task-owned sandboxes, runtime understanding, UI tests, autonomous QA, Orbit Control, and managed MCP — governed and local. No dependencies.",
   "type": "module",
   "private": true,

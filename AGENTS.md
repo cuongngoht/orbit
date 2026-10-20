@@ -231,6 +231,38 @@ place real adapters are bound to real config.
   (`test/skill-factory-boundary.test.mjs` holds the line). Since 1.8.6 one workflow may draft one playbook per
   capability it needs that nothing provides, within `skillFactory.maxSkillsPerTask`; its SHAPE and the contract in its
   manifest are the engine's to write, its PHASE is derived on every read, and a generated executable stays refused.
+  Since 0.0.4 the playbook may DECLARE its workflow (`workflow.json`, `orbit.skill-workflow/v1`, ADR 0030): DATA the
+  engine interprets -- steps, each a capability the manifest needs, typed bindings, typed outputs, an output contract,
+  bounds -- and never code: a field nobody declared is refused, so it has no command, script, expression or module;
+  a step whose provider is not a managed server or a project capability, or one that would run a playbook, is refused
+  at registration; and the factory's lifecycle, its person-only moves and `allowExecutableCode = false` are unchanged.
+- **A declared playbook runs only through the doors that exist, and a call is never an outcome (0.0.4, ADR 0030).** At
+  its playbook step the coordinator runs the workflow itself (`src/automation/skill-run.mjs`, mode `engine`): the version
+  is PINNED for the run (a later attempt keeps it, whatever is registered after; a playbook a person switched off runs no
+  version), each step is recorded (`act-start`, `skillstep … RUNNING`) before it is asked, the RESOLVER picks its provider
+  at that moment (a provider switched off since the plan blocks the step there), an approval is checked then and spent
+  once, and the call goes through the provider's own gate -- the MCP broker, narrowed to reading only, or the capability
+  pipeline with no case -- by `invokeBound` (`src/work/invoke.mjs`, the door `invokeNeed` uses), never a tool executor.
+  An `invocation` receipt keeps the provider's key and digests of what was asked and answered, never either; outputs a
+  later step binds are read off the scrubbed answer and kept nowhere. A step is VERIFIED only when the `record` it
+  names is read back from its owner and proves it; a call that answered within its contract is CONTRACT_MET and the run
+  REPORTED. Reconcile closes an interrupted read as INTERRUPTED (the next attempt asks again) and anything that may
+  have written as AMBIGUOUS (never asked again; a person decides). `src/automation/` still imports no subject: the
+  interpreter (`src/skill-factory/interpret.mjs`) and the door are handed in by `cli/automation.mjs`
+  (`test/skill-run.test.mjs`, `test/skill-lifecycle-e2e.test.mjs`).
+- **A coordinated workflow's journal is its engine's alone (0.0.4).** The lines a coordinator reads its own state back
+  from (`ENGINE_DOMAINS`: step, plan, skill, skillrun, skillstep, invocation, goal), a verification whose subject or
+  obligation names one, and every line but a person's own decision in a task an engine owns (`ENGINE_OWNED`:
+  `automation`) are written only through the coordinator's door (`door: "coordinator"`, set by `cli/automation.mjs`,
+  never typed) or Orbit Control's. A terminal's `task link` or `task complete` on a workflow is refused; a person there
+  still pauses, cancels and rejects (`src/task/rules.mjs`, `test/skill-run.test.mjs`).
+- **A goal is planned from its structured intent, never from its words (0.0.4).** The host's model reads a goal into
+  `intent` (category, work kinds, capabilities, verification, dependencies, missing prerequisites), held to
+  `src/goal/intent.mjs` as it was SENT -- an unknown or engine-owned field is refused, never dropped -- and units come
+  from `WORK_KINDS` alone, so a Vietnamese goal and its English twin plan the same; a unit a missing prerequisite blocks
+  is UNRESOLVED and never started. Each unit's workflow is started with the routing intent its kind DECLARES
+  (`automation start --intent=`, never classified again) and `--goal=<goal>:<unit>`, which the coordinator links back
+  (`test/goal-intent.test.mjs`).
 - **A report is computed from its own frozen snapshot, and says what it stands on.** A run collects
   ONCE, every page, then freezes the snapshot; every render reads only that snapshot. Nothing after
   the cut-off is counted; a gap is "not available (needs …)", never a zero; a state is read by its

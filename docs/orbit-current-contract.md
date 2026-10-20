@@ -5,7 +5,7 @@
 | project / store | Repository identity, explicit data home; all CLI and Control contexts | Layout 3 only, no discovery or mirror | Storage, containment, fresh-install tests |
 | extensions / capabilities | Validate modules before registry mutation; runner and report parts | Direct extension v2 and capability v1 contracts | Loader, real execution, negative contract tests |
 | MCP | Managed resources and observed external resources; broker, CLI, Control | State schema 3; delete historical conversion and actions | State, invocation, HTTP 404, Control UI tests |
-| automation / goals | Evidence-governed orchestration; CLI, Live, Control | Settings schema 3, plan schema 2, playbook manifest and registry schema 2, goal v1; strict reads | Workflow, approval, goal and fresh-install tests |
+| automation / goals | Evidence-governed orchestration; CLI, Live, Control | Settings schema 3, plan schema 2, playbook manifest and registry schema 2 (0.0.4: optional `runs`), declared workflow `orbit.skill-workflow/v1`, goal v1 with a required structured `intent`; strict reads | Workflow, approval, goal, skill-run and fresh-install tests |
 | knowledge / engineering | Contextual claims and independent evidence | Journal v3, evidence v2; no seeded support or projection wrappers | Reconciliation, replay, observer and knowledge tests |
 | report | Snapshot-based project reports and extensions | Create current settings directly; remove standalone import | Report command, Python and extension tests |
 | runtime | Checkout facts, environment compatibility, owned sessions and sandboxes | Keep current platform/service adapters and all safety gates | Runtime, sandbox, scope, trust tests |

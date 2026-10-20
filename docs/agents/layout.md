@@ -686,7 +686,7 @@ hooks/live-pane.tsx       Claude Code's Orbit Live pane (1.8.5), a Claude Code M
                           draws the answer, nothing more. Its state is declared in types/index.d.ts
                           (the manifest's `types`), typed by tsconfig.json, and tested by the host's
                           own runner (hooks/tests/*.test.tsx, because a bare `node --test` would run
-                          a *.test.ts) through skills/orbit-release/pane-test.mjs, which stages it
+                          a *.test.ts) through skills/orbit-release/pane-check.mjs, which stages it
                           away from Orbit Control's vitest files; the Five Lines check and this suite
                           read it only through test/live-pane.test.mjs. 1.8.6: it reads every answer
                           version it names (VERSION: 2), draws the progress rows above the status

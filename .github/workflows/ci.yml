@@ -39,8 +39,11 @@ jobs:
       # five steps here, three of which existed only as an inline node -e -- so
       # the release gate and CI could disagree about what "done" meant, and one
       # of those copies compared file bytes and failed on every CRLF checkout.
+      # --ci (0.0.2): native host acceptance is recorded from live host runs a
+      # pipeline cannot make, so here it is awaited, never failed; tagging runs
+      # ship.mjs without --ci and is still refused until the record exists.
       - name: the definition of done
-        run: node skills/orbit-release/ship.mjs
+        run: node skills/orbit-release/ship.mjs --ci
         env:
           ORBIT_REQUIRE_PYTHON: "1"
 

@@ -28,3 +28,6 @@ export function acceptanceOf(record, digest) {
   const ok = record?.schema === 1 && record.sourceDigest === digest && missing.length === 0;
   return { name: 'native host acceptance', ok, detail: ok ? `${TARGETS.length} live host integrations accepted for this source digest` : `native evidence absent/stale (${missing.join(', ') || 'source digest changed'}); do not release`, sourceDigest: digest };
 }
+// In a pipeline (ship.mjs --ci, 0.0.2) the record is AWAITED, never failed: only live runs on every host make it, and
+// a pipeline makes none. A release runs without --ci, where a missing or stale record still refuses it.
+export const awaited = (row, ci) => (ci && !row.ok ? { ...row, ok: true, pending: true } : row);

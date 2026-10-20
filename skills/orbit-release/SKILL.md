@@ -35,6 +35,7 @@ design, and both halves below exist to keep it.
 ```bash
 node skills/orbit-release/ship.mjs                 # every gate, one command
 node skills/orbit-release/ship.mjs --bump=added    # …and what the next version would be
+node skills/orbit-release/ship.mjs --ci            # CI's run: host acceptance is awaited (`wait`), never failed
 ```
 
 It runs the repo's definition of done and exits 2 if any gate fails. Eleven gates in one command,

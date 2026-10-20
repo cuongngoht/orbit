@@ -797,8 +797,9 @@ agy                                                          # run antigravity w
 
 ## Definition of done
 
-All of 1-4 are one command — `node skills/orbit-release/ship.mjs`, which CI runs too, so the
-gate and the pipeline cannot disagree about what done means.
+All of 1-4 are one command — `node skills/orbit-release/ship.mjs`, which CI runs too (`--ci`), so the
+gate and the pipeline cannot disagree about what done means. The one gate a pipeline cannot hold -- native host
+acceptance, recorded from live runs on every host -- is `wait` under `--ci` and still refuses a release without it.
 
 1. `node --test` passes, and the gate prints the test count.
 2. The strict lint prints `0 finding(s)`.

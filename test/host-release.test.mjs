@@ -40,3 +40,12 @@ test('the acceptance digest moves with the pane module and its types, as with an
   writeFileSync(join(root, '.claude-plugin', 'types', 'claude-code', 'index.d.ts'), 'export type Api = 1\n');
   assert.equal(hostSourceDigest(root), lf, 'the types Claude Code writes into a plugin folder it loaded are the host\'s, never the source');
 });
+
+test("a pipeline awaits the host record and never passes it; a release without --ci is still refused", async () => {
+  const { awaited } = await import("../skills/orbit-release/hosts.mjs");
+  const missing = { name: "native host acceptance", ok: false, detail: "live smoke evidence not recorded" };
+  assert.deepEqual(awaited(missing, true), { ...missing, ok: true, pending: true });
+  assert.equal(awaited(missing, false), missing, "a release is refused as before");
+  const held = { ...missing, ok: true };
+  assert.equal(awaited(held, true), held, "a record that holds is no longer awaited");
+});

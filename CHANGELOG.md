@@ -9,6 +9,13 @@
   in Claude Code's docked pane alike. `live pane` adds `headerParts`, a row's `box` and a view's `hint` (version 2).
 - `live tui` draws every frame of the orbit while it turns, instead of one a second.
 - The release skill lists all eleven gates `ship.mjs` runs.
+- Found by running a consumer-style project end to end (six cases, ui · api · sql): a pretty-printed `eval` result is
+  read whole; a `${PARAM}` in an api match stands for the map's templated segment; an exclusion may name the
+  `technique` that settles a security obligation (plan schema, optional); effect coverage asks only controls that
+  commit; a log or report outside the checkout prints whole; `init`, `draft write` and `qa-plan` say what is next.
+- Antigravity CLI 1.4.2's file tools (`read_file`, `write_file`, `edit_file`) are observed, with captures; a command
+  whose result a host did not report shows `not reported` in the trail, never failed; a host session's missing browser
+  names its own run directory.
 
 ## 0.0.1
 

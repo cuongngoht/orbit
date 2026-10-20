@@ -12,7 +12,7 @@ for (const family of ["claude"]) {
   });
 }
 
-// Protocol v2 payloads are sanitized LIVE captures (Codex 0.157.1, AGY CLI 1.2.12, Grok Build 1.0.62),
+// Protocol v2 payloads are sanitized LIVE captures (Codex 0.157.1, AGY CLI 1.2.12 and 1.4.2, Grok Build 1.0.62),
 // resolved the way the hook resolves them: explicitly, never by payload shape.
 for (const family of ["codex-v2", "antigravity-v2", "grok-v2"]) {
   const root = new URL(`./fixtures/hooks/${family}/`, import.meta.url);

@@ -8,7 +8,7 @@
 //   node qa-plan.mjs select <id> [--profile=smoke] [--budget=90]   what to run, and what that leaves unproven
 //   node qa-plan.mjs impact <id> [--now=REQ1=v3] [--changed=home/Add]   what moved under it
 //   node qa-plan.mjs suggest <id>               what past runs suggest — proposals, never edits
-//   node qa-plan.mjs new <id> ["Title"]         a plan to fill in
+//   node qa-plan.mjs new <id> (--screen=<screen> | --no-screen --feature=<f>) ["Title"]   a plan to fill in
 //
 // Checking a plan is a GATE and lives in its own command: cli/plan-check.mjs.
 //

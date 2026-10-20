@@ -32,7 +32,8 @@ test("a draft saved by one process is found by the next", () => {
   const c = { id: "c1", name: "C 1", steps: [] };
   const write = run("draft.mjs", ["write"], { ORBIT_STORE_DIR: store }, JSON.stringify(c));
   assert.equal(write.status, 0, write.stderr);
-  
+  assert.match(write.stdout, /saved draft c1 in .*run-case c1 --draft --dry/, "a write says what it saved and how to prove it");
+
   const list = run("draft.mjs", ["list"], { ORBIT_STORE_DIR: store });
   assert.equal(list.status, 0);
   assert.match(list.stdout, /c1: C 1/);

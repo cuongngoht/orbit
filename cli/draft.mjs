@@ -81,7 +81,12 @@ function writeDraft() {
   const c = JSON.parse(readFileSync(0, "utf8"));
   if (!c.id) throw new Refused("No id given");
   const { store, io } = context();
-  createDrafts(store.root, io).save(c);
+  saved(c, createDrafts(store.root, io));
+}
+
+function saved(c, drafts) {
+  drafts.save(c);
+  console.log(`saved draft ${c.id} in ${drafts.paths.cases} — prove it with: run-case ${c.id} --draft --dry`);
 }
 
 function promoteDrafts([id]) {

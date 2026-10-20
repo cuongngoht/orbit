@@ -143,11 +143,13 @@ test("init seats the store and says so; a person's edit survives a second init",
   assert.equal(first.status, 0, first.stderr);
   assert.match(first.stdout, /home: store/);
   assert.match(first.stdout, /status: seated/);
+  assert.match(first.stdout, /next: set origin in /, "no origin yet, so the next step asks for one");
   const p = loadProject(env, root);
   writeFileSync(join(p.dataRoot, "project.json"), JSON.stringify({ name: "kept", origin: "https://app.example.test" }));
   const second = cli(root, "init", [root, "--origin=https://other.example.test"]);
   assert.equal(second.status, 0, second.stderr);
   assert.match(second.stdout, /already seated, nothing overwritten/);
+  assert.match(second.stdout, /next: record screens/, "an origin the project already names is not asked for again");
   assert.deepEqual(json(join(p.dataRoot, "project.json")), { name: "kept", origin: "https://app.example.test" });
   assert.deepEqual(readdirSync(root).sort(), [".git", "README.md"]);
 });

@@ -12,6 +12,9 @@ import { factoryPort } from "../../skills/orbit-help/factory.mjs";
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const [storeRoot, id, at] = process.argv.slice(2);
 
+// The test runner loads every module under test/; run without its arguments, this is nobody's session and does nothing.
+if (!storeRoot || !id) process.exit(0);
+
 const PROVIDERS = { "release.evidence.read": { kind: "capability", id: "acme.evidence", key: "acme:acme.evidence", ownership: "project" }, "release.notes.search": { kind: "mcp", id: "corp", key: "managed:corp", ownership: "orbit-managed" } };
 
 const resolve = (capability) => (PROVIDERS[capability] ? { capability, outcome: "provided", status: "selected", provider: PROVIDERS[capability], why: "provided" } : { capability, outcome: "gap", remedy: "prepare", why: "nothing provides it" });

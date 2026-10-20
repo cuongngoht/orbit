@@ -2,6 +2,7 @@
 // receipt, the pid and the pid's start time -- a pid alone proves nothing.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { join } from "node:path";
 import { EXTERNAL, OWNED, OWNERSHIP, UNKNOWN, judge, mayStop } from "../src/runtime/ownership.mjs";
 import { KEEP_FINISHED, commandFingerprint, createSessions, sessionId } from "../src/runtime/sessions.mjs";
 import { fakeIo } from "./fakes/io.mjs";
@@ -69,7 +70,7 @@ test("sessions are written, read back and listed oldest first; a missing or fore
   assert.equal(sessions.read("rs-aaaaaaaaaaaa").pid, 4321);
   assert.equal(sessions.read("rs-cccccccccccc"), null);
   assert.equal(sessions.read("../../etc/passwd"), null, "an id that is not an id is never a path");
-  io.write(`${LIVE}/sessions/rs-dddddddddddd.json`, JSON.stringify({ schema: 99, id: "rs-dddddddddddd" }));
+  io.write(join(LIVE, "sessions", "rs-dddddddddddd.json"), JSON.stringify({ schema: 99, id: "rs-dddddddddddd" }));
   assert.throws(() => sessions.read("rs-dddddddddddd"), /newer Orbit/);
 });
 
@@ -94,13 +95,14 @@ test("a damaged receipt is not read as a session -- and what is optional in a go
   const sessions = createSessions(LIVE, io);
   sessions.write(receipt({ id: "rs-bbbbbbbbbbbb", provider: "native", ports: "8080" }));
   sessions.write(receipt({ id: "rs-cccccccccccc", provider: "native", ports: [3000, "x", 4000.5] }));
-  const dir = `${LIVE}/sessions`;
-  io.write(`${dir}/rs-dddddddddddd.json`, JSON.stringify({ schema: 1, id: "rs-dddddddddddd", component: "node:web", provider: "native", state: "TELEPORTING", requestedAt: T0, pid: 1 }));
-  io.write(`${dir}/rs-eeeeeeeeeeee.json`, JSON.stringify({ schema: 1, id: "rs-eeeeeeeeeeee", component: "node:web", provider: "native", state: "RUNNING", pid: 1 }));
-  io.write(`${dir}/rs-ffffffffffff.json`, "{ torn");
+  // Built as the engine builds them (join): on Windows that is `\`, and the fake keeps a file by the path it was given.
+  const at = (id) => join(LIVE, "sessions", `${id}.json`);
+  io.write(at("rs-dddddddddddd"), JSON.stringify({ schema: 1, id: "rs-dddddddddddd", component: "node:web", provider: "native", state: "TELEPORTING", requestedAt: T0, pid: 1 }));
+  io.write(at("rs-eeeeeeeeeeee"), JSON.stringify({ schema: 1, id: "rs-eeeeeeeeeeee", component: "node:web", provider: "native", state: "RUNNING", pid: 1 }));
+  io.write(at("rs-ffffffffffff"), "{ torn");
   assert.throws(() => sessions.list(), /corrupt Orbit state/);
-  assert.equal(io.read(`${dir}/rs-ffffffffffff.json`), "{ torn");
-  io.removeFile(`${dir}/rs-ffffffffffff.json`);
+  assert.equal(io.read(at("rs-ffffffffffff")), "{ torn");
+  io.removeFile(at("rs-ffffffffffff"));
   const listed = sessions.list();
   assert.deepEqual(listed.map((s) => s.id).sort(), ["rs-bbbbbbbbbbbb", "rs-cccccccccccc"], "only the ones that are sessions");
   assert.deepEqual(listed.map((s) => s.ports), [[], [3000]], "ports are always a list of ports");

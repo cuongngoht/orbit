@@ -7,7 +7,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ADAPTERS, CAPABILITY_MATRIX } from "../skills/orbit-engineer/observers/index.mjs";
 import { DOTNET_TEST, dotnetParser } from "../skills/orbit-engineer/observers/dotnet-test.mjs";
@@ -338,7 +338,8 @@ test("a dotnet test command is claimed from its first line, before the runner an
 // ---- the source a viewer follows ------------------------------------------------------------------------------
 
 test("an observation's file is the action's own, inside the task's room, and a line is kept only as its writer wrote it", () => {
-  assert.equal(activityFile("/s", "tsk-0123456789ab", "act-7"), join("/s", "orchestration", "tsk-0123456789ab", "activity", "act-7.jsonl"));
+  // The containment check answers the RESOLVED path: on Windows a rooted path gains the drive it is on.
+  assert.equal(activityFile("/s", "tsk-0123456789ab", "act-7"), resolve("/s", "orchestration", "tsk-0123456789ab", "activity", "act-7.jsonl"));
   assert.throws(() => activityFile("/s", "tsk-0123456789ab", "../../etc"), /act- id/);
   assert.throws(() => activityFile("/s", "../x", "act-1"), /act- id/);
   assert.equal(activityLine('{"v":1,"seq":0,"gen":1,"kind":"case.reported"}').kind, "case.reported");

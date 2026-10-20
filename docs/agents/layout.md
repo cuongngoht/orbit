@@ -482,9 +482,13 @@ src/live/      Orbit LIVE's CORE, every viewer's (ADR 0016): delivery, never sta
                none -- never the newest on the machine) · presentation.mjs (the VIEWER's state, CONNECTING ... LIVE,
                IDLE, never the task's lifecycle; a tick is never progress; 1.8.6: EVIDENCE rows, the pulse's phase
                the newest evidence's) · indicator.mjs (1.8.6, ADR 0022: INDICATOR, the viewer's state and the task's
-               lifecycle in one word, only ACTIVE pulsing; shown as ORBITING since 0.0.1) · orbit.mjs (0.0.1, ADR 0027:
-               the header's orbit, MOTION by indicator state; it turns only while ACTIVE, its phase the newest
-               evidence's, parked otherwise; `orbitTrackOf` for a pane that turns it on its own clock) · plan.mjs (1.8.6: a workflow's plan as a viewer reads it
+               lifecycle in one word, only ACTIVE pulsing; shown as ORBITING since 0.0.1) · orbit.mjs (0.0.3, ADR 0029:
+               the header's orbits and a waiting viewer's, turning the whole time a viewer is open, in every
+               state, on the viewer's own clock and never on evidence; MOTION is only the satellite's tone by
+               indicator state, SPEEDS a revolution by `pane.orbitSpeed`, `orbitFrameAt` pure, still for
+               `pane.animation: off`, parked with no clock; `orbitTrackOf` the rings a pane turns on its own
+               clock) · orbit/ (0.0.3: geometry.mjs SIZES and each size's ring, sampled from an ellipse a dot at a
+               time · raster.mjs every frame of a size as Braille or ASCII segments, made once) · plan.mjs (1.8.6: a workflow's plan as a viewer reads it
                -- steps and their states, progress on each step's own contract, revisions, the skill factory per
                capability, the receipts when no projection came) · timeline.mjs (1.8.6: one normalized fold of every
                source, provenance per event, deduplicated) · current.mjs (what it is doing now, the
@@ -498,8 +502,10 @@ src/live/      Orbit LIVE's CORE, every viewer's (ADR 0016): delivery, never sta
                `wanted` open · reducer.mjs TRANSITIONS · keys.mjs KEY_SEQUENCES + KEYMAP + HELP · layout.mjs TIERS,
                ROOM, PRIORITY · derive.mjs a snapshot per followed task per second · sections/ (STAGE, ACTIVITY,
                WORKFLOW, ENGINEER, VERIFY, QA, SANDBOX, RECENT, NOTICES as rows of segments) · overlays/ (picker,
-               activity (`i`), evidence, diagnostics, help) · frame.mjs the ONE caller of `drawn` for it · diff.mjs
-               the rows that changed · events-view.mjs (0.0.2, ADR 0028: a pane's Events view, a workflow's milestones under
+               activity (`i`), evidence, diagnostics, help) · frame.mjs the ONE caller of `drawn` for it (0.0.3:
+               which rows hold the orbit, and `orbitFrameOf` drawing those alone) · regions.mjs (0.0.3, ADR 0029:
+               REGIONS, the screen's top, body and bottom as rows of a table, each with its `when`; ORBIT_PARTS) ·
+               diff.mjs the rows that changed · events-view.mjs (0.0.2, ADR 0028: a pane's Events view, a workflow's milestones under
                the step whose turn it was -- a read of times, never written -- and the view's hint) · pane.mjs (1.8.5) the same sections laid out for a pane a HOST docks: a
                header line, the overview, NOW pinned last, as segments a host's drawer adds no word to ·
                workspace.mjs (1.8.5, ADR 0021) the pane's own model: the TASK EXECUTION checklist (a workflow's
@@ -508,7 +514,8 @@ src/live/      Orbit LIVE's CORE, every viewer's (ADR 0016): delivery, never sta
                seven status words and the pane's own tiers · progress.mjs (1.8.6: task and test progress over a
                recorded denominator, or indeterminate) · plan-view.mjs (1.8.6: the Plan view) · timeline-view.mjs
                (1.8.6: the Timeline view) · pane-frame.mjs (1.8.6: the pane's parts as the terminal's pane layout,
-               `v`, keys 1-6) · lifecycle-view.mjs (1.8.9: Context · Memory · Engineering · Learning, one row each,
+               `v`, keys 1-6; 0.0.3: TABS, how the tabs are laid out by the room, and the waiting viewer's
+               expanded orbit) · lifecycle-view.mjs (1.8.9: Context · Memory · Engineering · Learning, one row each,
                off the context command's word, the task's lifecycle and its `learning` receipt; none in a narrow
                pane)). A plan reaches the feed through PLAN_SOURCE (src/automation/source.mjs), handed in
                like the activity source. cli/live-open.mjs (1.8.3) is the OPENERS table (a tmux pane, a Windows

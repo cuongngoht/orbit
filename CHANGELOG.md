@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.0.3
+
+- Orbit Live's orbit turns the whole time a viewer is open (ADR 0029), in every state of the task -- ORBITING, IDLE,
+  WAITING, BLOCKED, COMPLETED, DISCONNECTED -- on the viewer's own monotonic clock, never on evidence. The badge's word
+  is still the indicator's, moved only by evidence (ADR 0022); the orbit changes only its satellite's tone, peach while
+  the task moves and grey otherwise. `pane.animation: off` keeps it still, and the new `pane.orbitSpeed` (slow,
+  normal, fast) sets its pace.
+- The orbit is geometry: a planet and a satellite on an ellipse of Braille dots, sampled a dot at a time
+  (`src/live/orbit/`), in three sizes -- the header's (5 cells, 3 in a narrow pane), the badge's (3) at the same angle,
+  and a 9×3 one in the middle of a viewer waiting for its task. The satellite is brighter in front of the planet than
+  behind it, a dim track draws the ring where there is colour, and ASCII has frames of its own.
+- An orbit tick draws only the rows that hold the orbit (`orbitFrameOf`): `live tui` keeps its one paint and adds no
+  timer, a tick costs about 0.03 ms against 0.4-2 ms for the whole frame it drew before, and a terminal that has not
+  drained skips a tick, never a line. `test/perf/live-orbit.bench.mjs` measures it; `live tui` itself spent about
+  0.35% of a core more with the orbit turning than still.
+- The screen is a table of REGIONS (`src/live/tui/regions.mjs`): top, body, bottom. Beside an AI CLI on bands the rules
+  under the header and over the footer give way to the bands, as Orbit Live's look draws them.
+- The pane, closer to its look: the badge has edges, peach while the task orbits and the indicator's colour otherwise;
+  the tabs are each key over its label with the view's words over two rows, one row where everything fits, and two rows
+  of three in a pane of 40 to 55 columns so no label is cut; NOW's labels share one column; a header names a task's
+  kind (`engineering`, `workflow`); below 60 columns the header keeps the badge whole and the footer is compact.
+- `live pane`'s `orbit` is `{ moving, revMs, variant, rings }`: Claude Code's docked pane turns the header's two
+  orbits at one angle, in every state, on its own clock, with a border round the badge in the state's colour.
+- Tests in a real pseudo-terminal: left alone the viewer draws many header frames with one clear of the screen, and
+  `q`, Ctrl+C and SIGTERM each give the terminal back and end the process.
+
 ## 0.0.2
 
 - Orbit Live's pane as drawn (ADR 0028): a bordered badge on the header (the orbit, a dot, `ORBITING`) with the

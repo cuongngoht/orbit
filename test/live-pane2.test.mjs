@@ -258,6 +258,17 @@ test("the pane layout keeps progress and the LIVE indicator at the bottom edge, 
   assert.ok(lines.some((l) => /plan-2 \(engineering\)/.test(l)), "the Plan view picked with 5");
 });
 
+test("0.0.3: on bands the regions' rules give way -- the header's band meets the tabs', the footer's band is the bottom edge", () => {
+  const s = reduce(planned({ columns: 72, rows: 34, start: { layout: "pane" } }), { type: "view", at: 4 });
+  const banded = { ...s, viewer: { ...s.viewer, colour: true, depth: "truecolor", bands: true } };
+  const lines = frameOf(banded).lines.map((l) => unstyled(l).trimEnd());
+  assert.equal(lines.findIndex((l) => /STEPS /.test(l)), lines.length - 2, "the status bar, then the keys: no rule between");
+  assert.ok(!lines.some((l) => /^═+$/.test(l)), "no rule under the header");
+  assert.match(lines[1], /^1:/, "the tabs right under the header");
+  const dashboard = { ...banded, viewer: { ...banded.viewer, layout: "dashboard" } };
+  assert.match(unstyled(frameOf(dashboard).lines[1]), /^═+$/, "the dashboard keeps its rules");
+});
+
 test("a viewer an opener started beside an AI CLI starts as the pane; one a person started is the dashboard", () => {
   assert.equal(stateOf({ start: { layout: "pane" } }).viewer.layout, "pane");
   assert.equal(stateOf().viewer.layout, "dashboard");

@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted (0.0.1)
+Accepted (0.0.1). Amended by ADR 0029 (0.0.3): the orbit turns the whole time a viewer is open, in every state, on
+the viewer's own clock -- its motion rule below is the one 0.0.1 shipped.
 
 ## Context
 

@@ -6,6 +6,7 @@
 // `execution.environment` (a person's setting) is passed on, never decided here: `sandbox` tells the host
 // that the change must be run and investigated in the task's own sandbox.
 import { READ_BACK } from "./evidence.mjs";
+import { pinFor, pinReceipt, runIdOf, skillRun } from "./skill-run.mjs";
 import { DOMAIN } from "./vocab.mjs";
 
 const clip = (text) => String(text ?? "").slice(0, 240) || undefined;
@@ -60,6 +61,9 @@ export const ENGINE = {
   regression: async (ports, lw) => fromChild(ports, lw),
   review: async (ports, lw) => fromChild(ports, lw),
   "register-skill": registerRun,
+  // A playbook step reaches the ENGINE only when its provider declares its workflow (select.mjs DECLARED): the engine
+  // runs its steps through each provider's owner gate (skill-run.mjs). A followed playbook is still the host's.
+  playbook: skillRun,
 };
 
 // ---- before a host takes over ----------------------------------------------------------------------
@@ -81,7 +85,16 @@ async function draftScaffolded(ports, lw, budget, step) {
   return { shape: got.shape ?? null, receipts: [{ domain: DOMAIN.SKILL, ref: got.id, outcome: "DRAFT", summary: clip(`draft playbook ${got.id} scaffolded for ${got.provides}${got.shape ? ` (${got.shape})` : ""}`) }] };
 }
 
-export const BEFORE_HOST = { engineering: childStarted, "propose-skill": draftScaffolded };
+// A project playbook a host follows is PINNED before it is handed over (0.0.4): the version this workflow registered,
+// or the one in place now, recorded as REUSED -- so a host shown it reads that exact version, whatever is registered
+// after. A shipped skill has no versions of its own here and pins nothing.
+async function playbookPinned(ports, lw, budget, step, dispatch) {
+  if (dispatch?.provider?.ownership !== "project") return { receipts: [] };
+  const pinned = pinFor(ports, lw, runIdOf(lw.id, step.id), dispatch.provider);
+  return { receipts: pinned?.word ? [pinReceipt(pinned, dispatch.provider)] : [] };
+}
+
+export const BEFORE_HOST = { engineering: childStarted, "propose-skill": draftScaffolded, playbook: playbookPinned };
 
 // ---- what the host is told ---------------------------------------------------------------------------
 

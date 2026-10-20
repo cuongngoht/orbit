@@ -28,7 +28,8 @@ import { STAMPED } from "./manifest.mjs";
 import { allowed, activationOf } from "./policy.mjs";
 import { digestOf, filesIn } from "./store.mjs";
 import { validateSkill } from "./validate.mjs";
-import { DRAFTED_UNDER, MANIFEST, MANIFEST_SCHEMA, MOVES, SIDECAR, SKILL_FILE, phaseOf, statusRow } from "./vocab.mjs";
+import { DRAFTED_UNDER, MANIFEST, MANIFEST_SCHEMA, MOVES, SIDECAR, SKILL_FILE, WORKFLOW_FILE, phaseOf, statusRow } from "./vocab.mjs";
+import { parsedWorkflow, workflowFindings } from "./workflow.mjs";
 
 const refused = (code, say) => Object.assign(new Refused(`${code}: ${say}`), { code });
 
@@ -83,9 +84,12 @@ function drafted(store, id, s) {
 
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.md$/;
 
+// A playbook file a host may put: its .md text, or -- since 0.0.4 -- the one workflow.json the engine runs.
+const puttable = (name) => NAME.test(name) || name === WORKFLOW_FILE;
+
 // p: { id, name, text, needs? } -- the playbook's text, and the needs it declares when the host knows them.
 export function put(store, p) {
-  if (!NAME.test(p.name)) throw refused("SF_FILE_NAME", `${p.name} is not a playbook file: a .md name, no directory`);
+  if (!puttable(p.name)) throw refused("SF_FILE_NAME", `${p.name} is not a playbook file: a .md name or ${WORKFLOW_FILE}, no directory`);
   if (!store.io.exists(join(store.draftDir(p.id), MANIFEST))) throw refused("SF_NO_DRAFT", `${p.id} has no draft — a coordinated workflow's propose-skill step scaffolds one`);
   return locked(store, () => written(store, p));
 }
@@ -95,9 +99,27 @@ export function put(store, p) {
 function written(store, p) {
   const dir = store.draftDir(p.id);
   store.io.write(join(dir, p.name), p.text);
-  if (p.needs) store.io.write(join(dir, MANIFEST), json({ ...parsed(store.io.read(join(dir, MANIFEST))), needs: p.needs }));
+  manifestRewritten(store, dir, p);
   if (store.io.exists(attemptsFile(store, p.id))) store.io.write(attemptsFile(store, p.id), json({ n: attemptsOf(store, p.id).n ?? 0 }));
   return { id: p.id, file: p.name, bytes: Buffer.byteLength(p.text) };
+}
+
+// The needs a put declares, when it declares them.
+const manifestFor = (m, p) => (p.needs ? { ...m, needs: p.needs } : m);
+
+// The capabilities a workflow's steps ask, as words: what a declared playbook needs, beside what it already said.
+const stepCapabilities = (wf) => (Array.isArray(wf?.steps) ? wf.steps.map((s) => s?.capability).filter((c) => typeof c === "string" && /^[a-z][a-z0-9]*(\.[a-z0-9][a-z0-9-]*)+$/.test(c)) : []);
+
+// Putting a workflow.json is what makes a draft DECLARED: the engine says so in its manifest, and adds what its steps
+// ask to its needs -- a reading of the workflow, never the host's word -- so validation holds every one of them to
+// being provided here.
+const declaredManifest = (m, p) => (p.name === WORKFLOW_FILE ? { ...m, runs: "declared", needs: [...new Set([...(m.needs ?? []), ...stepCapabilities(parsedWorkflow(p.text))])].slice(0, 16) } : m);
+
+// The draft's manifest is written again only when the put changed what it says.
+function manifestRewritten(store, dir, p) {
+  const current = parsed(store.io.read(join(dir, MANIFEST)));
+  const next = current ? declaredManifest(manifestFor(current, p), p) : current;
+  if (next !== current) store.io.write(join(dir, MANIFEST), json(next));
 }
 
 // ---- verify and register ----------------------------------------------------------------------------
@@ -194,7 +216,7 @@ function finished(store, id, p, row) {
 
 const manifestIn = (files) => parsed(files.find((f) => f.name === MANIFEST)?.text ?? "null") ?? {};
 
-const rowOf = (id, p) => ((m) => ({ id, version: bumped(p.prior?.version), digest: p.digest, status: activationOf(p.values), scope: m.scope, provides: m.provides, needs: m.needs, optional: m.optional ?? [], signals: m.signals ?? [], workflow: m.workflow, shape: m.shape ?? null, sourceTask: m.sourceTask ?? null, summary: summaryOf(p.files, m), registeredBy: p.by, at: p.at, ...(p.rolledBackTo ? { rolledBackTo: p.rolledBackTo } : {}) }))(manifestIn(p.files));
+const rowOf = (id, p) => ((m) => ({ id, version: bumped(p.prior?.version), digest: p.digest, status: activationOf(p.values), scope: m.scope, provides: m.provides, needs: m.needs, optional: m.optional ?? [], signals: m.signals ?? [], workflow: m.workflow, runs: m.runs ?? "followed", shape: m.shape ?? null, sourceTask: m.sourceTask ?? null, summary: summaryOf(p.files, m), registeredBy: p.by, at: p.at, ...(p.rolledBackTo ? { rolledBackTo: p.rolledBackTo } : {}) }))(manifestIn(p.files));
 
 function keptAside(store, prior) {
   if (!prior || !store.io.exists(store.dirOf(prior.id))) return;
@@ -266,6 +288,30 @@ export function playbookOf(store, ref, printable) {
   const row = PIN.test(String(ref)) ? pinned(store, ref) : ((e) => (e ? pinned(store, pinOf(e)) : null))(entryOf(store, ref));
   if (!row) throw refused("SF_UNKNOWN", `${ref} is no playbook this project keeps`);
   return { pin: row.pin, status: row.status, files: filesIn(store.io, row.dir).filter((f) => f.name.endsWith(".md")).map((f) => ({ name: f.name, text: printable(f.text) })) };
+}
+
+// A pinned version's DECLARED WORKFLOW (0.0.4), for the engine to run: read from wherever that version is kept, its
+// files proved to be what was registered (the digest its manifest was stamped with), and held to the workflow
+// contract again -- what runs is what was verified, or nothing does.
+export function workflowOf(store, pin) {
+  const row = pinned(store, pin);
+  if (!row) throw refused("SF_UNKNOWN", `${pin} is no playbook version this project keeps`);
+  return declaredAt(store, row);
+}
+
+function declaredAt(store, row) {
+  const files = filesIn(store.io, row.dir);
+  const manifest = manifestIn(files);
+  if (digestOf(files) !== manifest.digest) throw refused("SF_QUARANTINED", `${row.pin}'s files changed after they were verified — it runs nothing until it is registered again`);
+  return { ...row, manifest, workflow: checkedWorkflow(row, files, manifest) };
+}
+
+function checkedWorkflow(row, files, manifest) {
+  if (manifest.runs !== "declared") throw refused("SF_NOT_DECLARED", `${row.pin} is followed by a host — it declares no workflow for the engine to run`);
+  const wf = parsedWorkflow(files.find((f) => f.name === WORKFLOW_FILE)?.text ?? "null");
+  const findings = workflowFindings(wf, manifest);
+  if (findings.length) throw refused("SF_WORKFLOW_INVALID", `${row.pin}'s workflow no longer holds: ${findings[0].id}: ${findings[0].says}`);
+  return wf;
 }
 
 export function archive(store, id, opts = {}) {

@@ -10,7 +10,7 @@
 //
 //   manifestFindings(raw) -> [{ id, says }]
 import { SHAPE_IDS } from "./gap.mjs";
-import { MANIFEST_SCHEMA, SCOPES } from "./vocab.mjs";
+import { MANIFEST_SCHEMA, RUNS, SCOPES } from "./vocab.mjs";
 
 const CAPABILITY = /^[a-z][a-z0-9]*(\.[a-z0-9][a-z0-9-]*)+$/;
 const isList = (v, re) => Array.isArray(v) && v.length <= 16 && v.every((x) => typeof x === "string" && re.test(x));
@@ -39,6 +39,7 @@ export const FIELDS = {
   outputs: { required: true, ok: (v) => isText(v, 240), say: "outputs is one sentence of at most 240 characters: what following it gives back" },
   evidence: { required: true, ok: (v) => EVIDENCE.includes(v), say: `evidence is one of ${EVIDENCE.join(", ")}: what a host following it can show` },
   restrictions: { required: true, ok: (v) => isText(v, 240), say: "restrictions is one sentence of at most 240 characters: what it never does" },
+  runs: { required: false, ok: (v) => RUNS.includes(v), say: `runs is one of ${RUNS.join(", ")}: followed by a host, or its declared workflow.json run by the engine` },
 };
 
 // What the lifecycle writes, and a draft may never bring.

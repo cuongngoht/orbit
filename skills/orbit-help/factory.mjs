@@ -17,8 +17,10 @@ import { satisfies } from "../../src/extensions/engine-range.mjs";
 import { printable } from "../../src/printable.mjs";
 import { pluginComponents } from "../../src/resources/plugin.mjs";
 import { frontmatter } from "../../src/skill-factory/frontmatter.mjs";
+import { discoveryOf } from "../../src/skill-factory/discover.mjs";
 import { gapOf } from "../../src/skill-factory/gap.mjs";
-import { archive, draftsOf, listOf, pinned, playbookOf, put, register, revalidate, rollback, scaffold, setStatus, verifyDraft } from "../../src/skill-factory/lifecycle.mjs";
+import { contractOf, inputFor, orderOf, outputsOf, stepOf } from "../../src/skill-factory/interpret.mjs";
+import { archive, draftsOf, listOf, pinned, playbookOf, put, register, revalidate, rollback, scaffold, setStatus, verifyDraft, workflowOf } from "../../src/skill-factory/lifecycle.mjs";
 import { skillRows } from "../../src/skill-factory/register.mjs";
 import { createGeneratedSkills } from "../../src/skill-factory/store.mjs";
 import { documented, headerOf } from "../../src/trace/commands.mjs";
@@ -58,11 +60,18 @@ const storeOf = (h) => createGeneratedSkills(h.paths.storeRoot, h.io);
 
 const now = () => new Date().toISOString();
 
+// How a declared workflow is carried (src/skill-factory/interpret.mjs), handed to the coordinator's skill runner: the
+// runner imports no subject, so what validation proved and what runs are the same functions, bound here.
+export const INTERPRETER = { orderOf, stepOf, inputFor, outputsOf, contractOf };
+
+// The registry row of the playbook a resolver answer names, when it names a project playbook.
+const rowFor = (store, resolved) => (resolved?.provider?.ownership === "project" && resolved.provider.kind === "skill" ? listOf(store).find((r) => r.id === resolved.provider.id) ?? null : null);
+
 export function factoryPort(h, values, resolve, opts = {}) {
   const store = storeOf(h);
   const deps = () => depsOf(opts.pluginRoot ?? PLUGIN_ROOT, h.io, resolve);
   const registered = (id, r) => register(store, id, { values: values(), deps: deps(), by: r.by ?? "session", at: now(), engineVersion: engineVersion() });
-  return { store, scaffold: async (s) => scaffold(store, { ...s, values: values(), engineVersion: engineVersion() }), put: (p) => put(store, p), verify: (id) => verifyDraft(store, id, deps()), revalidate: (id) => revalidate(store, id, deps()), register: async (id, r = {}) => registered(id, r), status: (id, status, o = {}) => setStatus(store, id, status, { by: o.by ?? "person", at: now() }), pinned: (pin) => pinned(store, pin), playbook: (ref) => playbookOf(store, ref, printable), list: () => listOf(store), archive: (id, o = {}) => archive(store, id, { by: o.by ?? "person", at: now() }), rollback: (id, version, r = {}) => rollback(store, id, version, { values: values(), deps: deps(), by: r.by ?? "person", at: now(), engineVersion: engineVersion() }), drafts: () => store.drafts(), draftRows: () => draftsOf(store) };
+  return { store, workflow: (pin) => workflowOf(store, pin), current: (id) => listOf(store).find((r) => r.id === id) ?? null, discover: (x) => discoveryOf({ ...x, row: rowFor(store, x.resolved) }), interpreter: INTERPRETER, scaffold: async (s) => scaffold(store, { ...s, values: values(), engineVersion: engineVersion() }), put: (p) => put(store, p), verify: (id) => verifyDraft(store, id, deps()), revalidate: (id) => revalidate(store, id, deps()), register: async (id, r = {}) => registered(id, r), status: (id, status, o = {}) => setStatus(store, id, status, { by: o.by ?? "person", at: now() }), pinned: (pin) => pinned(store, pin), playbook: (ref) => playbookOf(store, ref, printable), list: () => listOf(store), archive: (id, o = {}) => archive(store, id, { by: o.by ?? "person", at: now() }), rollback: (id, version, r = {}) => rollback(store, id, version, { values: values(), deps: deps(), by: r.by ?? "person", at: now(), engineVersion: engineVersion() }), drafts: () => store.drafts(), draftRows: () => draftsOf(store) };
 }
 
 export const gapPort = () => (resolved, values, needs) => gapOf(resolved, needs ?? []);

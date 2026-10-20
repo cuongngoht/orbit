@@ -92,7 +92,10 @@ import { switchOf } from "../src/project/env.mjs";
 import { storeBase } from "../src/project/repository.mjs";
 import { requirementsContext } from "../src/requirements/context.mjs";
 import { status as requirementStatus } from "../src/requirements/views/status.mjs";
-import { effectiveResourcesOf } from "../src/resources/compose.mjs";
+import { effectiveResourcesOf, mcpInvokeContext } from "../src/resources/compose.mjs";
+import { connectionEnvFor, connectionReader } from "../skills/orbit-requirements/bind.mjs";
+import { fingerprintOf as bindingFingerprint, resourceOf } from "../src/work/bind.mjs";
+import { invokeBound } from "../src/work/invoke.mjs";
 import { classify, declared } from "../src/routing/classify.mjs";
 import { createContext } from "../src/run/context.mjs";
 import { runtimeProject } from "../src/runtime/context.mjs";
@@ -377,14 +380,33 @@ const actor = () => (/^[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}$/.test(ENV.ORBIT_HOST ??
 async function portsHere() {
   const h = here();
   const caps = ["start", "step", "plan", "context"].includes(cmd) ? await extended(h) : null;
-  const lz = { rt: lazy(() => bindRuntime({ pluginRoot: PLUGIN_ROOT, env: ENV, cwd: h.paths.root })), rooms: lazy(() => requirementRooms(h)), effective: lazy(() => effectiveFor(h, caps)) };
+  const lz = { rt: lazy(() => bindRuntime({ pluginRoot: PLUGIN_ROOT, env: ENV, cwd: h.paths.root })), rooms: lazy(() => requirementRooms(h)), effective: lazy(() => effectiveFor(h, caps)), caps };
   return assembled(h, lz);
+}
+
+// ---- a declared playbook's calls (0.0.4): the doors that already exist, and no other -----------------------
+
+// The provider the resolver picked, bound by its registry key and the fingerprint of what made it eligible -- what
+// the door checks again the moment it is asked.
+const boundOf = (effective, r) => ((res) => (res ? { provider: r.provider, fingerprint: bindingFingerprint(res) } : null))(resourceOf(effective, r?.provider));
+
+// A capability that names a connection is asked in a context that holds that one credential for the moment of its call.
+async function capabilityContextOf(caps, real, io, connection) {
+  if (!connection || !caps) return caps;
+  return { ...caps, ...(await connectionEnvFor({ providerId: connection, connections: connectionReader(real.rooms, io), secrets: real.secrets, env: real.env })) };
+}
+
+// The broker over the SAME managed state the registry read, and the project's capabilities as the step loaded them.
+function invokePort(h, lz) {
+  const real = lazy(() => realWorld({ pluginRoot: PLUGIN_ROOT, projectRoot: h.paths.root, env: ENV }));
+  const w = { effective: () => lz.effective(), get mcp() { return mcpInvokeContext(real()); }, capabilityContext: (connection) => capabilityContextOf(lz.caps, real(), h.io, connection), host: h.io.host, session: session() };
+  return { bind: (r) => boundOf(lz.effective(), r), call: (binding, ask) => invokeBound(w, binding, ask) };
 }
 
 function assembled(h, lz) {
   const tctx = taskContext(h);
   const factory = factoryPort(h, () => settingsOf(h).effective.values, (cap) => resolvedOne(lz.effective(), cap));
-  return { task: taskPort(tctx), settings: () => settingsOf(h).effective, settingsView: () => settingsOf(h), classify: classified, declared: (id) => declared(id), resolve: (cap) => resolvedOne(lz.effective(), cap), gapOf: gapPort(h, (cap) => resolvedOne(lz.effective(), cap)), requirements: requirementsPort(lz.rooms), runtime: { readiness: () => readiness(lz.rt), startable: () => startable(lz.rt) }, context: { gather: async (text) => gathered(h, text) }, child: { start: async (spec) => childStart(h, spec), view: (id) => viewed(tctx, id) }, investigations: { outcome: (id) => outcomeOf(h, id) }, factory, host: hostOf(h), roomOf: (id) => roomAt(h.io, roomDir(h, id)), lock: (id, fn) => locked(h, id, fn), liveness: livenessOf(h), session: session(), now: () => new Date().toISOString(), hostName: h.io.host, pid: process.pid, actor: actor(), readInput: (file) => readFileSync(file ?? 0, "utf8"), doctor: () => doctorOf(h), where: () => whereOf(h) };
+  return { task: taskPort(tctx), settings: () => settingsOf(h).effective, settingsView: () => settingsOf(h), classify: classified, declared: (id) => declared(id), resolve: (cap) => resolvedOne(lz.effective(), cap), gapOf: gapPort(h, (cap) => resolvedOne(lz.effective(), cap)), requirements: requirementsPort(lz.rooms), invoke: invokePort(h, lz), runtime: { readiness: () => readiness(lz.rt), startable: () => startable(lz.rt) }, context: { gather: async (text) => gathered(h, text) }, child: { start: async (spec) => childStart(h, spec), view: (id) => viewed(tctx, id) }, investigations: { outcome: (id) => outcomeOf(h, id) }, factory, host: hostOf(h), roomOf: (id) => roomAt(h.io, roomDir(h, id)), lock: (id, fn) => locked(h, id, fn), liveness: livenessOf(h), session: session(), now: () => new Date().toISOString(), hostName: h.io.host, pid: process.pid, actor: actor(), readInput: (file) => readFileSync(file ?? 0, "utf8"), doctor: () => doctorOf(h), where: () => whereOf(h) };
 }
 
 // Whether the process that ran an engine step is still alive on this machine.

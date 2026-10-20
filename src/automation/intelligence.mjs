@@ -40,10 +40,15 @@ const resolvedOf = (ports) => (capability) => ({ capability, r: quietly(() => po
 
 // One capability's facts. `composes`: the other capabilities the objective needs that ARE provided -- what a
 // playbook drafted for this one would compose, and so its shape.
+// What skill discovery calls it (0.0.4, src/skill-factory/discover.mjs, through the factory's port): REUSABLE and the
+// pin it would run, a gap's one word, or UNRESOLVED -- a reading of the same answer, never a second ranking.
+const discoveryOf = (ports, x, gap, values) => quietly(() => ports.factory?.discover?.({ capability: x.capability, resolved: x.r, gap, generates: generates(gap, values) }), null);
+
 function capabilityFact(ports, values, x, composes) {
   const gap = x.r?.outcome === "provided" ? null : quietly(() => ports.gapOf(x.r, values, composes), null);
   const word = gap?.word ?? (x.r?.outcome === "provided" ? "NO_GAP" : null);
-  return { capability: x.capability, outcome: x.r?.outcome ?? "cannot-tell", provider: x.r?.provider ?? null, gap: gap?.kind ?? null, word, shape: gap?.shape ?? null, because: gap?.because ?? x.r?.why ?? null, generates: generates(gap, values) };
+  const found = discoveryOf(ports, x, gap, values);
+  return { capability: x.capability, outcome: x.r?.outcome ?? "cannot-tell", provider: x.r?.provider ?? null, gap: gap?.kind ?? null, word, shape: gap?.shape ?? null, because: gap?.because ?? x.r?.why ?? null, generates: generates(gap, values), discovery: found?.label ?? null, pin: found?.pin ?? null };
 }
 
 const unique = (list) => [...new Set(list)];

@@ -81,7 +81,13 @@ function changesView(files) {
   return { files: paths.length, added: total(paths, "added"), removed: total(paths, "removed"), paths };
 }
 
-const receiptsView = (m) => [...m.receipts.entries()].map(([key, r]) => ({ key, domain: r.domain, ref: r.ref, outcome: r.outcome ?? null, summary: r.summary ?? null, action: r.action ?? null, environment: r.environment ?? null, sourceTree: r.sourceTree ?? null, at: r.at }));
+// A run's receipts (0.0.4) carry what they rest on -- a pin, a provider's key, digests, what the call did -- and say so
+// only when they do, so every other receipt reads exactly as it did.
+const RUN_FIELDS = ["pin", "providerKey", "queryDigest", "resultDigest", "operation"];
+
+const runFieldsOf = (r) => Object.fromEntries(RUN_FIELDS.filter((k) => r[k] !== undefined).map((k) => [k, r[k]]));
+
+const receiptsView = (m) => [...m.receipts.entries()].map(([key, r]) => ({ key, domain: r.domain, ref: r.ref, outcome: r.outcome ?? null, summary: r.summary ?? null, action: r.action ?? null, environment: r.environment ?? null, sourceTree: r.sourceTree ?? null, ...runFieldsOf(r), at: r.at }));
 
 const verificationView = (m) => [...m.verifications.values()].map((v) => ({ subject: v.subject ?? null, obligation: v.obligation, evidence: v.evidence ?? null, state: v.state, at: v.at }));
 

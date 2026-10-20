@@ -24,7 +24,7 @@ export const STEP_KINDS = [
   { id: "review", provides: "code.review", stage: STAGE.REVIEWING, skill: null, agent: null, engine: () => true, strict: true, domains: [DOMAIN.TASK], retryFrom: "engineering", class: "read-context", goal: "the change reviewed against its plan", obligation: "the change was reviewed against its plan" },
   { id: "propose-skill", provides: null, stage: null, skill: "orbit-help", agent: null, engine: () => false, strict: true, domains: [DOMAIN.SKILL], retryFrom: "propose-skill", class: "generate-instruction-skill", goal: "a draft playbook for the workflow nothing here provides", obligation: "a draft playbook was written for the gap" },
   { id: "register-skill", provides: null, stage: null, skill: null, agent: null, engine: () => true, strict: true, domains: [DOMAIN.SKILL], retryFrom: "propose-skill", class: "generate-instruction-skill", goal: "the draft held to the contract and registered for this project", obligation: "the playbook verified and was registered" },
-  { id: "playbook", provides: null, stage: null, skill: null, agent: null, engine: () => false, strict: false, domains: [DOMAIN.INVESTIGATION, DOMAIN.TASK], retryFrom: "playbook", class: "dispatch-skill", goal: "the workflow the objective asks for, as its playbook says", obligation: "the playbook was followed" },
+  { id: "playbook", provides: null, stage: null, skill: null, agent: null, engine: () => false, strict: false, domains: [DOMAIN.INVESTIGATION, DOMAIN.TASK, DOMAIN.SKILLRUN], retryFrom: "playbook", class: "dispatch-skill", goal: "the workflow the objective asks for, as its playbook says", obligation: "the playbook was followed" },
 ];
 
 export const kindOf = (id) => STEP_KINDS.find((k) => k.id === id) ?? null;

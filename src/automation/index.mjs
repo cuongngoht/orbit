@@ -67,7 +67,7 @@ const stepLine = (s) => `  ${s.state.padEnd(9)} ${s.id}${waitsFor(s)}${s.summary
 
 const replanLine = (r) => `REPLAN     plan-${r.n}: ${r.trigger} → ${r.response}${r.step ? ` at ${r.step}` : ""}${r.summary ? ` — ${r.summary}` : ""}`;
 
-const capabilityLine = (c) => `  ${(c.word ?? c.outcome).padEnd(17)} ${c.capability}${c.named ? " (named)" : ""}${c.provider ? ` · ${c.provider.id}` : ""}${c.generates ? " · the skill factory may draft it" : ""}`;
+const capabilityLine = (c) => `  ${(c.discovery ?? c.word ?? c.outcome).padEnd(17)} ${c.capability}${c.named ? " (named)" : ""}${c.provider ? ` · ${c.provider.id}` : ""}${c.pin ? ` · pinned ${c.pin}` : ""}${c.generates ? " · the skill factory may draft it" : ""}`;
 
 const missingLine = (m) => `  ${m.what.padEnd(17)} ${m.by === "person" ? "a person says" : "a step finds out"} — ${m.say}`;
 

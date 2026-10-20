@@ -56,8 +56,11 @@ export const OUTCOMES = ["succeeded", "failed", "abandoned"];
 // `learning` (1.8.9) is what a FINISHED task taught engineering memory, linked after it ended: its ref names the
 // observation (`task:<id>`), its outcome OBSERVED or NOTHING, its summary the candidates, kept and refused -- or why
 // nothing was learned. Read by Live's lifecycle rows; never read to move a task.
-// `goal` (0.0.4) is the goal and unit a coordinator was started for (`goal-…:gu-…`): lineage, never evidence.
-export const RECEIPT_DOMAINS = ["runtime", "run", "investigation", "data", "browser", "work", "test", "check", "sandbox", "step", "plan", "task", "requirement", "skill", "impact", "learning", "goal"];
+// `goal` (0.0.4) is the goal and unit a coordinator was started for (`goal-…:gu-…`): lineage, never evidence. The
+// three after it (0.0.4) are a declared playbook's RUN (src/automation/skill-run.mjs): `skillrun` the run, pinned to one
+// version; `skillstep` one of its workflow's steps; `invocation` one call a step made through its provider's owner
+// gate -- the provider's key, a digest of what was asked and of what came back, how it ended, and never either.
+export const RECEIPT_DOMAINS = ["runtime", "run", "investigation", "data", "browser", "work", "test", "check", "sandbox", "step", "plan", "task", "requirement", "skill", "impact", "learning", "goal", "skillrun", "skillstep", "invocation"];
 
 // What a requirement or an obligation came to, as evidence shows it. `satisfied` and `violated`
 // need a receipt; with none, it is `not-verified`, and nothing here may say otherwise.
@@ -108,7 +111,7 @@ export const KINDS = {
   "action-failed": { material: false, fields: ["id", "reason", "receipt", "summary"] },
   workspace: { material: false, fields: ["workspace", "baseRevision"] },
   "file-changed": { material: false, fields: ["attempt", "path", "change", "added", "removed"] },
-  receipt: { material: false, fields: ["domain", "ref", "outcome", "summary", "action", "environment", "sourceTree"] },
+  receipt: { material: false, fields: ["domain", "ref", "outcome", "summary", "action", "environment", "sourceTree", "pin", "providerKey", "queryDigest", "resultDigest", "operation"] },
   verification: { material: false, fields: ["subject", "obligation", "evidence", "state"] },
   "approval-requested": { material: true, fields: ["id", "action", "fingerprint", "environment", "reason", "risk", "expires", "attempt"] },
   "approval-granted": { material: true, fields: ["id", "by", "session", "seen"] },

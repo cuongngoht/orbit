@@ -52,11 +52,13 @@ export const TERMINAL = [LIFE.CANCELLED, LIFE.COMPLETED, LIFE.FAILED];
 
 // The receipt domains a coordinator links: its steps, its plans, the child tasks it started, the snapshot a
 // requirement step read back, a project playbook it offered; and two it shares with every task.
-export const DOMAIN = { STEP: "step", PLAN: "plan", TASK: "task", REQUIREMENT: "requirement", SKILL: "skill", INVESTIGATION: "investigation", RUNTIME: "runtime", GOAL: "goal" };
+export const DOMAIN = { STEP: "step", PLAN: "plan", TASK: "task", REQUIREMENT: "requirement", SKILL: "skill", INVESTIGATION: "investigation", RUNTIME: "runtime", GOAL: "goal", SKILLRUN: "skillrun", SKILLSTEP: "skillstep", INVOCATION: "invocation" };
 
 // What an action of a coordinator IS: a skill the host runs, an agent the host dispatches, or something the
 // engine does itself through an owner's port. Never a command line.
-export const ACTION_TYPE = { SKILL: "skill.invoke", AGENT: "agent.dispatch", ENGINE: "engine.run" };
+// `skill.step` (0.0.4) is one step of a declared playbook's workflow, started inside the playbook step's own engine
+// action: a call through its provider's owner gate, reading only.
+export const ACTION_TYPE = { SKILL: "skill.invoke", AGENT: "agent.dispatch", ENGINE: "engine.run", SKILL_STEP: "skill.step" };
 
 // The word a step's receipt carries, rewritten as the step moves. Lower case is the state a context shows.
 export const STEP_WORD = { PENDING: "PENDING", RUNNING: "RUNNING", SUCCEEDED: "SUCCEEDED", FAILED: "FAILED", BLOCKED: "BLOCKED", REPORTED: "REPORTED", SKIPPED: "SKIPPED" };

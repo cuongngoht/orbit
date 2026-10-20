@@ -88,7 +88,10 @@ async function answered(ctx, c, session, started) {
   return (ctx.activity.record({ kind: "mcp-invoked", resource: c.entry.key, tool: c.ask.tool, capability: c.ask.capability, workflow: c.ask.workflow, operation: operationOf(tool), outcome: result.isError ? "tool-error" : "ok", ms: ctx.now() - started }), { resource: c.entry.key, tool: c.ask.tool, operation: operationOf(tool), result });
 }
 
+// A caller that asked for reading only (`readOnly`, 0.0.4: a declared workflow's step) gets reading only: a tool its
+// server does not call read-only is refused before it is called. A narrowing of the policy, never a widening.
 function operationGate(c, tool) {
+  if (c.ask.readOnly === true && operationOf(tool) !== "read") throw refused(`${tool.name} on ${c.entry.id} is a ${operationOf(tool)} tool, and this call asked for reading only`);
   const verdict = strictest([verdictOf(c), operationVerdict(c.entry.policy, operationOf(tool))]);
   if (verdict === "deny") throw refused(`policy denies a ${operationOf(tool)} tool (${tool.name}) on ${c.entry.id}`);
   const problem = approvalProblem(c, verdict);

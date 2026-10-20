@@ -22,6 +22,7 @@ export const OPERATIONS = [
   { class: "CHILD_TASK", commands: [], steps: ["engineering"], mutates: "store", approval: "none", says: "starts or picks up the engineering task through autonomous engineering's own start; that task's governance applies to all it does" },
   { class: "HOST_DISPATCH", commands: ["step"], steps: ["qa", "propose-skill", "playbook"], mutates: "none", approval: "none", says: "tells the host which skill, agent or project playbook runs the step; the engine runs nothing itself" },
   { class: "APPROVAL_REQUEST", commands: [], steps: [], mutates: "store", approval: "none", says: "asks a person to allow one step, once; never decides" },
+  { class: "GOVERNED_INVOCATION", commands: [], steps: [], mutates: "none", approval: "none", says: "a DECLARED playbook's step (0.0.4): the engine asks the provider the resolver picks, now, through that provider's own owner gate -- a managed server's broker or a project capability's pipeline -- for reading only; a write is refused before it is sent" },
 ];
 
 export const NOT_AUTOMATION = ["MODEL_CALL", "ARBITRARY_SHELL", "PRIMARY_CHECKOUT_WRITE", "CHILD_JOURNAL_WRITE", "HUMAN_APPROVAL_GRANT", "SETTINGS_WRITE", "PUSH", "MERGE", "DEPLOY"];

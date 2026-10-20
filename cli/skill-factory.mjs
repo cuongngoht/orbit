@@ -13,6 +13,13 @@
 //                                          the playbook's text (and the capabilities it needs) into its DRAFT --
 //                                          never into a registered playbook
 //   node skill-factory.mjs verify <id>     the draft held to the contract; writes nothing
+//   node skill-factory.mjs discover --for=<capability>
+//                                          what the resolver answers for a capability, in one word: REUSABLE (and the
+//                                          pin it would be), APPROVAL_REQUIRED, WORKFLOW_GAP, POLICY_GAP,
+//                                          ENVIRONMENT_GAP, CAPABILITY_GAP or UNRESOLVED -- read, never stored
+//   node skill-factory.mjs workflow <id|pin>
+//                                          a declared playbook's workflow.json, its steps in the order they run, read
+//                                          from that exact version and held to the workflow contract again
 //   node skill-factory.mjs where           where this project's playbooks are kept
 //
 // Every command takes --json. Registering a draft is a coordinated workflow's own step (automation.mjs), gated
@@ -24,7 +31,9 @@ import { readFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { commandEnvironment } from "../skills/orbit-learn/hosts/settings.mjs";
-import { factoryPort } from "../skills/orbit-help/factory.mjs";
+import { factoryPort, projectSkillsOf } from "../skills/orbit-help/factory.mjs";
+import { generates } from "../src/automation/intelligence.mjs";
+import { gapOf } from "../src/skill-factory/gap.mjs";
 import { effectiveOf, readAutomation } from "../src/automation/settings.mjs";
 import { Refused } from "../src/errors.mjs";
 import { resolved } from "../src/knowledge/verify.mjs";
@@ -64,16 +73,25 @@ async function extended(h) {
   catch (e) { if (e instanceof Refused) return null; throw e; }
 }
 
-// `verify` holds every need a draft declares to the SAME registry the router and a workflow resolve against.
+// `verify` and `discover` ask the SAME registry the router and a workflow resolve against -- the project's own
+// capabilities loaded, and (for discover, as a workflow sees it) its active playbooks.
+const RESOLVES = ["verify", "discover"];
+
 async function resolverFor(h) {
-  const caps = cmd === "verify" ? await extended(h) : null;
-  const effective = cmd === "verify" ? effectiveResourcesOf({ ...realWorld({ pluginRoot: PLUGIN_ROOT, projectRoot: h.paths.root, env: ENV }), capabilities: () => caps?.capabilities?.list?.() ?? [] }) : null;
+  const caps = RESOLVES.includes(cmd) ? await extended(h) : null;
+  const effective = RESOLVES.includes(cmd) ? effectiveResourcesOf({ ...realWorld({ pluginRoot: PLUGIN_ROOT, projectRoot: h.paths.root, env: ENV }), capabilities: () => caps?.capabilities?.list?.() ?? [], ...(cmd === "discover" ? { projectSkills: projectSkillsOf(h, valuesOf(h)) } : {}) }) : null;
   return (capability) => resolved([{ capability, proves: { subject: capability } }], effective).results[0];
 }
 
+// One capability, read the way a coordinated workflow reads it: the resolver's answer, its gap, and whether the
+// automation policy lets the factory close it.
+const discovered = (factory, resolve, values) => (capability) => ((r) => ((gap) => factory.discover({ capability, resolved: r, gap, generates: generates(gap, values) }))(r?.outcome === "provided" ? null : gapOf(r, [])))(resolve(capability));
+
 async function portsHere() {
   const h = here();
-  return { factory: factoryPort(h, () => valuesOf(h), await resolverFor(h)), readFile: (file) => readFileSync(file, "utf8"), basename: (file) => basename(file) };
+  const resolve = await resolverFor(h);
+  const factory = factoryPort(h, () => valuesOf(h), resolve);
+  return { factory, discover: discovered(factory, resolve, valuesOf(h)), readFile: (file) => readFileSync(file, "utf8"), basename: (file) => basename(file) };
 }
 
 function help() {

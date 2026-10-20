@@ -16,7 +16,7 @@ import { constraintFindings, missingFindings } from "../constraints.mjs";
 import { relativeInside } from "../project/boundary.mjs";
 import { STALE_REVISION } from "../store/revisioned.mjs";
 import { FIELDS } from "./fields.mjs";
-import { CODES, PROVEN_STATES, TEXT_LIMIT, isMaterial } from "./vocab.mjs";
+import { CODES, ENGINE_DOMAINS, ENGINE_WRITERS, PROVEN_STATES, TEXT_LIMIT, isMaterial } from "./vocab.mjs";
 
 // Rules are called (given, world, op, name); `world` is src/task/load.mjs's { model, now, state }.
 
@@ -45,6 +45,17 @@ export const HUMAN = { id: "HUMAN", fails: (g) => g.human !== true, say: (g, w, 
 // composition root says which door it is (`door` on the task context), and nothing a caller types
 // can say it.
 export const PERSON = { id: "PERSON_UNPROVEN", code: CODES.PERSON_UNPROVEN, fails: (g, w, op) => op.grants === true && w.door !== "control", say: (g, w, op, name) => `${name} allows what a person withheld, so it is decided in Orbit Control's Mission Control, where the page proves the decision is a person's; a terminal cannot prove who typed it, and stops work only (pause, cancel, reject)` };
+
+// A line the coordinator's engine reads its own state back from (0.0.4, vocab.mjs ENGINE_DOMAINS) is written only
+// through the coordinator's door (or Control's): a receipt in one of those domains, or a verification whose subject is
+// one -- `step:…`, `skillstep:…` -- refused from a terminal, so nobody but the engine can say a step was proven.
+const engineDomain = (key) => ENGINE_DOMAINS.includes(String(key ?? "").split(":")[0]);
+
+const doorless = (w) => !ENGINE_WRITERS.includes(w.door);
+
+export const ENGINE_RECEIPT = { id: "ENGINE_DOMAIN", fails: (g, w) => ENGINE_DOMAINS.includes(g.domain) && doorless(w), say: (g) => `a ${g.domain} receipt is what the coordinator's engine says happened — only its own door writes one (automation step, settle, reconcile), never a terminal's link` };
+
+export const ENGINE_SUBJECT = { id: "ENGINE_DOMAIN", fails: (g, w) => engineDomain(g.subject) && doorless(w), say: (g) => `${g.subject} is a coordinator's own step — only its door records how it was verified, never a terminal's link` };
 
 export const FIELD_RULES = { id: "FIELDS", fails: (g, w, op, name) => problemsOf(g, op, name).length > 0, say: (g, w, op, name) => problemsOf(g, op, name).join("; ") };
 

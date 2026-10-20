@@ -259,3 +259,25 @@ test("AC-12: the next attempt of an interrupted run keeps what settled, asks a r
   assert.equal(r.stepState, "blocked");
   assert.equal(eventsOf(s, id, "skillrun").filter((x) => x.outcome === "RUNNING").length, 2, "the same run, resumed: one RUNNING line per attempt");
 });
+
+test("a terminal cannot forge what the engine reads its state back from: a run's words, a pin, a step's verification", async (t) => {
+  const s = skillWorld(t);
+  const reg = await declared(s);
+  const st = start(s.ports, spec);
+  const terminal = { ...s.w.ctx, door: null };
+  const run = runIdOf(st.task, "playbook");
+  const forged = [
+    ["link-receipt", { domain: "skillstep", ref: `${run}.evidence`, outcome: "VERIFIED" }],
+    ["link-receipt", { domain: "skillrun", ref: run, outcome: "VERIFIED", pin: reg.pin }],
+    ["link-receipt", { domain: "skill", ref: reg.pin, outcome: "ACTIVE" }],
+    ["link-receipt", { domain: "step", ref: "playbook", outcome: "SUCCEEDED" }],
+    ["link-receipt", { domain: "invocation", ref: `${run}.evidence.1`, outcome: "OK" }],
+  ];
+  for (const [op, given] of forged) assert.throws(() => apply(terminal, st.task, op, given), (e) => /ENGINE_DOMAIN/.test(e.message), `${given.domain} from a terminal`);
+  apply(terminal, st.task, "link-receipt", { domain: "test", ref: "t-1", outcome: "PASSED" });
+  assert.throws(() => apply(terminal, st.task, "link-verification", { subject: "step:playbook", obligation: "x", state: "satisfied", evidence: "test:t-1" }), /ENGINE_DOMAIN/);
+  assert.throws(() => apply(terminal, st.task, "link-verification", { subject: `skillstep:${run}.evidence`, obligation: "x", state: "satisfied", evidence: "test:t-1" }), /ENGINE_DOMAIN/);
+  await next(s, st.task);
+  await next(s, st.task);
+  assert.equal(runWord(s, st.task), "REPORTED", "the run says what its own steps came to, and nothing a terminal tried");
+});

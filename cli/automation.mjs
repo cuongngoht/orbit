@@ -262,7 +262,10 @@ function settingsOf(h) {
 
 const session = () => taskSessionMark(ENV.ORBIT_SESSION);
 
-const taskContext = (h) => ({ tasks: createTasks(h.paths.storeRoot, h.io), project: h.paths.storeKey, checkout: h.paths.checkoutId, session: session(), now: () => new Date().toISOString() });
+// The coordinator's own door (0.0.4): the one that may write the lines its engine reads its state back from -- steps,
+// plans, pins, a declared playbook's runs -- which a terminal's `task link` may not. It proves no person: nothing it
+// writes allows anything (src/task/rules.mjs PERSON).
+const taskContext = (h) => ({ tasks: createTasks(h.paths.storeRoot, h.io), project: h.paths.storeKey, checkout: h.paths.checkoutId, session: session(), now: () => new Date().toISOString(), door: "coordinator" });
 
 const viewed = (ctx, id) => ((t) => taskView(t.model, t.now))(loadTask(ctx, id));
 

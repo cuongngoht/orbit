@@ -36,7 +36,7 @@ export function automationWorld(t, opts = {}) {
     return { task: id, created: true };
   };
   const ports = {
-    task: { create: (g) => createTask(w.ctx, { project: w.ctx.project, checkout: w.ctx.checkout, ...g }), apply: (id, op, g) => apply(w.ctx, id, op, g), view: (id) => w.view(id), events: (id) => eventsView(loadTask(w.ctx, id).model).events, list: () => w.tasks.list(), fingerprint: (g) => fingerprintOf(g) },
+    task: { create: (g) => createTask(w.ctx, { project: w.ctx.project, checkout: w.ctx.checkout, ...g }), apply: (id, op, g) => apply({ ...w.ctx, door: "coordinator" }, id, op, g), view: (id) => w.view(id), events: (id) => eventsView(loadTask(w.ctx, id).model).events, list: () => w.tasks.list(), fingerprint: (g) => fingerprintOf(g) },
     settings: () => effectiveOf(docs()),
     settingsView: () => ({ machine: docs()[0], project: docs()[1] ?? null, effective: effectiveOf(docs()) }),
     classify: () => ({ intent: { id: opts.intent ?? "development", confidence: "high" }, matched: opts.matched ?? [opts.intent ?? "development"], requirements: opts.requirements ?? ["development.implementation"] }),

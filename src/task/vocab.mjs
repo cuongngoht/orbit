@@ -62,6 +62,19 @@ export const OUTCOMES = ["succeeded", "failed", "abandoned"];
 // gate -- the provider's key, a digest of what was asked and of what came back, how it ended, and never either.
 export const RECEIPT_DOMAINS = ["runtime", "run", "investigation", "data", "browser", "work", "test", "check", "sandbox", "step", "plan", "task", "requirement", "skill", "impact", "learning", "goal", "skillrun", "skillstep", "invocation"];
 
+// The receipt domains a COORDINATOR'S ENGINE writes and reads its own state back from (0.0.4): its steps, its plans,
+// the playbook versions it pinned, a declared playbook's runs, steps and calls, and the goal it serves. A line in one of
+// them is what the engine says happened, so only the coordinator's own door writes one (`door: "coordinator"`, set by
+// cli/automation.mjs, never typed) -- or Orbit Control's, which proves a person -- and a terminal's `task link` is
+// refused: a host that could write `skillstep … VERIFIED` or a `skill:` pin could forge what a run proved.
+export const ENGINE_DOMAINS = ["step", "plan", "skill", "skillrun", "skillstep", "invocation", "goal"];
+
+// The doors a composition root may say it is: Orbit Control's (a person, behind its mutation token) and the
+// coordinator's (the engine itself). A terminal is no door at all (`null`).
+export const DOORS = { CONTROL: "control", COORDINATOR: "coordinator" };
+
+export const ENGINE_WRITERS = [DOORS.COORDINATOR, DOORS.CONTROL];
+
 // What a requirement or an obligation came to, as evidence shows it. `satisfied` and `violated`
 // need a receipt; with none, it is `not-verified`, and nothing here may say otherwise.
 export const VERIFICATION_STATES = ["satisfied", "violated", "not-verified", "blocked", "needs-requirement", "not-applicable"];

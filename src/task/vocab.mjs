@@ -75,6 +75,12 @@ export const DOORS = { CONTROL: "control", COORDINATOR: "coordinator" };
 
 export const ENGINE_WRITERS = [DOORS.COORDINATOR, DOORS.CONTROL];
 
+// The tasks whose WHOLE journal is their engine's (0.0.4): a coordinated workflow (provider `automation`) reads every
+// line it holds -- the child task it started, the snapshot it read back, its actions, its stops, its ending -- as what
+// its engine did. So nothing but the coordinator's door (or Control's) records anything in one; from a terminal a
+// person only stops it (pause, cancel, reject), and nothing a host types can link a child, complete it or prove a step.
+export const ENGINE_OWNED = ["automation"];
+
 // What a requirement or an obligation came to, as evidence shows it. `satisfied` and `violated`
 // need a receipt; with none, it is `not-verified`, and nothing here may say otherwise.
 export const VERIFICATION_STATES = ["satisfied", "violated", "not-verified", "blocked", "needs-requirement", "not-applicable"];

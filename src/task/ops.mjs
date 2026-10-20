@@ -23,7 +23,7 @@ import { ASKING, CONSUMING, DECIDING, EXPIRING, fingerprintOf } from "./approval
 import { ATTEMPT_OUTCOME, RECEIPT_REF } from "./fields.mjs";
 import { loadTask } from "./load.mjs";
 import { modelOf, nextId, stateOf } from "./model.mjs";
-import { ACTION_KNOWN, ACTION_OPEN, BUDGET_ACTIONS, BUDGET_ATTEMPTS, BUDGET_MINUTES, ENGINE_RECEIPT, ENGINE_SUBJECT, EVIDENCE_KNOWN, EVIDENCE_LIMIT, FIELD_RULES, HUMAN, IS_BLOCKED, PERSON, IS_PAUSED, NO_OPEN_ATTEMPT, NOT_YET_PAUSED, OPEN_ATTEMPT, PATH, PHASES, PROVEN_NEEDS_RECEIPT, RECEIPT_KNOWN, REFS, STALE, STILL_RUNNING, TEXT, UNFINISHED_ATTEMPT } from "./rules.mjs";
+import { ACTION_KNOWN, ACTION_OPEN, BUDGET_ACTIONS, BUDGET_ATTEMPTS, BUDGET_MINUTES, ENGINE_OWNED_TASK, ENGINE_RECEIPT, ENGINE_SUBJECT, EVIDENCE_KNOWN, EVIDENCE_LIMIT, FIELD_RULES, HUMAN, IS_BLOCKED, PERSON, IS_PAUSED, NO_OPEN_ATTEMPT, NOT_YET_PAUSED, OPEN_ATTEMPT, PATH, PHASES, PROVEN_NEEDS_RECEIPT, RECEIPT_KNOWN, REFS, STALE, STILL_RUNNING, TEXT, UNFINISHED_ATTEMPT } from "./rules.mjs";
 import { CODES, FREE_TEXT, TASK_SCHEMA } from "./vocab.mjs";
 
 const current = (w) => w.model.current?.id ?? null;
@@ -76,7 +76,7 @@ const cleaned = (given) => Object.fromEntries(Object.entries(given ?? {}).filter
 const refusal = (rule, args) => Object.assign(new Refused(`${rule.id}: ${rule.say(...args)}`), rule.code ? { code: rule.code } : {});
 
 // The order a refusal is told in: who may ask, through which door, what was sent, then what the task allows.
-const rulesOf = (op) => [...(op.human ? [HUMAN, PERSON] : []), FIELD_RULES, TEXT, ...(PHASES[op.phase] ?? []), ...(op.rules ?? []), ...(op.human ? [STALE] : [])];
+const rulesOf = (op) => [...(op.human ? [HUMAN, PERSON] : [ENGINE_OWNED_TASK]), FIELD_RULES, TEXT, ...(PHASES[op.phase] ?? []), ...(op.rules ?? []), ...(op.human ? [STALE] : [])];
 
 function judged(rules, args) {
   const failed = rules.find((rule) => rule.fails(...args));

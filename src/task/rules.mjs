@@ -16,7 +16,7 @@ import { constraintFindings, missingFindings } from "../constraints.mjs";
 import { relativeInside } from "../project/boundary.mjs";
 import { STALE_REVISION } from "../store/revisioned.mjs";
 import { FIELDS } from "./fields.mjs";
-import { CODES, ENGINE_DOMAINS, ENGINE_WRITERS, PROVEN_STATES, TEXT_LIMIT, isMaterial } from "./vocab.mjs";
+import { CODES, ENGINE_DOMAINS, ENGINE_OWNED, ENGINE_WRITERS, PROVEN_STATES, TEXT_LIMIT, isMaterial } from "./vocab.mjs";
 
 // Rules are called (given, world, op, name); `world` is src/task/load.mjs's { model, now, state }.
 
@@ -55,7 +55,12 @@ const doorless = (w) => !ENGINE_WRITERS.includes(w.door);
 
 export const ENGINE_RECEIPT = { id: "ENGINE_DOMAIN", fails: (g, w) => ENGINE_DOMAINS.includes(g.domain) && doorless(w), say: (g) => `a ${g.domain} receipt is what the coordinator's engine says happened — only its own door writes one (automation step, settle, reconcile), never a terminal's link` };
 
-export const ENGINE_SUBJECT = { id: "ENGINE_DOMAIN", fails: (g, w) => engineDomain(g.subject) && doorless(w), say: (g) => `${g.subject} is a coordinator's own step — only its door records how it was verified, never a terminal's link` };
+// A verification is kept by its subject, or -- with none -- its obligation: either naming an engine's own line is the
+// engine's to record.
+export const ENGINE_SUBJECT = { id: "ENGINE_DOMAIN", fails: (g, w) => engineDomain(g.subject ?? g.obligation) && doorless(w), say: (g) => `${g.subject ?? g.obligation} is a coordinator's own step — only its door records how it was verified, never a terminal's link` };
+
+// Every line but a person's own decision, in a journal an engine owns whole, is written through that engine's door.
+export const ENGINE_OWNED_TASK = { id: "ENGINE_OWNED", fails: (g, w, op) => op.human !== true && ENGINE_OWNED.includes(w.model.meta?.provider) && doorless(w), say: (g, w, op, name) => `this is a coordinated workflow: its journal is written by its coordinator (automation step, settle, reconcile, finish), and ${name} is not a person's decision — from a terminal a person only pauses, cancels or rejects` };
 
 export const FIELD_RULES = { id: "FIELDS", fails: (g, w, op, name) => problemsOf(g, op, name).length > 0, say: (g, w, op, name) => problemsOf(g, op, name).join("; ") };
 

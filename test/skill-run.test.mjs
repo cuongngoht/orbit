@@ -132,7 +132,7 @@ test("AC-10: a step a person must allow waits for a grant of exactly that action
   const asked = s.w.view(st.task).approvals.find((a) => a.open);
   assert.ok(asked, "an approval was asked for the step");
   assert.deepEqual(s.server.calls, []);
-  apply({ ...s.w.ctx, door: null }, st.task, "approval-expire", { approval: asked.id });
+  apply({ ...s.w.ctx, door: "control" }, st.task, "approval-expire", { approval: asked.id });
   await next(s, st.task);
   assert.deepEqual(s.server.calls, [], "an expired grant let nothing through");
   const fresh = s.w.view(st.task).approvals.find((a) => a.open);
@@ -273,10 +273,18 @@ test("a terminal cannot forge what the engine reads its state back from: a run's
     ["link-receipt", { domain: "step", ref: "playbook", outcome: "SUCCEEDED" }],
     ["link-receipt", { domain: "invocation", ref: `${run}.evidence.1`, outcome: "OK" }],
   ];
-  for (const [op, given] of forged) assert.throws(() => apply(terminal, st.task, op, given), (e) => /ENGINE_DOMAIN/.test(e.message), `${given.domain} from a terminal`);
-  apply(terminal, st.task, "link-receipt", { domain: "test", ref: "t-1", outcome: "PASSED" });
-  assert.throws(() => apply(terminal, st.task, "link-verification", { subject: "step:playbook", obligation: "x", state: "satisfied", evidence: "test:t-1" }), /ENGINE_DOMAIN/);
-  assert.throws(() => apply(terminal, st.task, "link-verification", { subject: `skillstep:${run}.evidence`, obligation: "x", state: "satisfied", evidence: "test:t-1" }), /ENGINE_DOMAIN/);
+  for (const [op, given] of forged) assert.throws(() => apply(terminal, st.task, op, given), (e) => /ENGINE_OWNED/.test(e.message), `${given.domain} from a terminal`);
+  const other = [
+    ["link-receipt", { domain: "task", ref: "tsk-0123456789ab", outcome: "COMPLETED" }],
+    ["link-receipt", { domain: "test", ref: "t-1", outcome: "PASSED" }],
+    ["link-verification", { obligation: "step:playbook", state: "not-verified" }],
+    ["act-start", { type: "skill.step", label: "forged" }],
+    ["complete", { summary: "done, says the terminal" }],
+  ];
+  for (const [op, given] of other) assert.throws(() => apply(terminal, st.task, op, given), /ENGINE_OWNED/, `${op} from a terminal`);
+  apply(terminal, st.task, "pause", { expected: s.w.view(st.task).revision, human: true });
+  assert.equal(s.w.view(st.task).lifecycle, "PAUSED", "a person may still stop it from a terminal");
+  apply({ ...s.w.ctx, door: "control" }, st.task, "resume", { expected: s.w.view(st.task).revision, human: true });
   await next(s, st.task);
   await next(s, st.task);
   assert.equal(runWord(s, st.task), "REPORTED", "the run says what its own steps came to, and nothing a terminal tried");

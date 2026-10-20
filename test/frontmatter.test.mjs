@@ -24,6 +24,11 @@ test("the 1.8.8 break is refused at its line: a list item at the margin", () => 
   assert.equal(frontmatterProblem(broken.replace("- Bash(node b.mjs*)", "  - Bash(node b.mjs*)")), null, "indented, it is a list item again");
 });
 
+test("a file checked out with CRLF line ends is read as the same lines: Windows, or a consumer's repository", () => {
+  assert.equal(frontmatterProblem("---\r\nname: a\r\ndescription: b\r\n---\r\n# a\r\n"), null);
+  assert.match(frontmatterProblem("---\r\nname: a\r\n- loose\r\n---\r\n"), /^line 3: it is at the margin/);
+});
+
 test("each mistake that breaks a host's parse is named; what the shipped files do is allowed", () => {
   assert.match(frontmatterProblem("# no frontmatter"), /does not open with a --- line/);
   assert.match(frontmatterProblem("---\nname: x\n# never closed"), /never closed/);

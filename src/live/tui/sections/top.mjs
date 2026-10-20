@@ -2,8 +2,8 @@
 // shown is doing, in the journal's words) and the FOOTER (the keys this layer has). Every word is a field of
 // a task's view, a journal line, or the viewer's own state, said as such.
 import { activityOf, attemptOf, failureLine } from "../../render/compact.mjs";
-import { orbitOf } from "../../orbit.mjs";
-import { LIFECYCLE_WORDS, PRESENTATION_WORDS } from "../../words.mjs";
+import { orbitOf, trackFor } from "../../orbit.mjs";
+import { LIFECYCLE_WORDS, PRESENTATION_WORDS, PROVIDER_WORDS } from "../../words.mjs";
 import { isCoordinator } from "../model.mjs";
 import { layerOf } from "../keys.mjs";
 import { indicatorFor } from "../workspace.mjs";
@@ -33,35 +33,71 @@ const idWords = (ctx, snap) => (ctx.state.viewer.layout === "pane" ? [] : [dim(t
 
 const whoWords = (ctx, snap) => (taskId(ctx, snap) ? idWords(ctx, snap) : [dim(sessionWorks(ctx.state.session) ? "no task · this session's activity" : "no task selected")]);
 
+// What the task is, by its kind (0.0.3): a provider's long name squeezed the header beside an AI CLI.
+const providerWord = (v) => PROVIDER_WORDS[v?.task?.provider] ?? str(v?.task?.provider);
+
 function taskWords(ctx, snap) {
   const v = snap?.view;
-  return taskId(ctx, snap) ? joined([roleWord(ctx) ? dim(roleWord(ctx)) : str(v?.task?.provider) && dim(v.task.provider), ageOf(ctx, v) && dim(ageOf(ctx, v))]) : [];
+  return taskId(ctx, snap) ? joined([roleWord(ctx) ? dim(roleWord(ctx)) : providerWord(v) && dim(providerWord(v)), ageOf(ctx, v) && dim(ageOf(ctx, v))]) : [];
 }
 
 const held = (ctx) => ctx.state.viewer.frozen || ctx.state.viewer.hold.recent !== null || ctx.state.viewer.hold.sandbox !== null;
 
-// The orbit turns on the view's clock only while the indicator is ACTIVE (orbit.mjs); a docked pane's header has no
-// clock, so it is parked there and the pane turns it itself.
-const orbitSeg = (ctx, i) => ((o) => seg(o.text, o.tone))(orbitOf(i, { ascii: ctx.state.viewer.ascii === true, nowMs: ctx.clock === false ? null : ctx.nowMs }));
+// ---- the orbit (0.0.3, ADR 0029) ----------------------------------------------------------------------------------
+// It turns the whole time the viewer is open, in every state, on the view's own clock (`ctx.orbitMs`, frame.mjs) -- the
+// indicator's word says what the task does, the orbit never. A docked pane's header has no clock (`clock: false`), so
+// its orbit is parked there, as one segment the pane turns itself.
 
-// The pill (0.0.2, ADR 0028): a badge holding the orbit, a dot in the indicator's tone and its word -- ORBITING's word
-// in the brand's. A terminal draws it on a chip; a docked pane draws a border round it (`pill` on the row).
+export const orbitRows = (ctx, i, size) => orbitOf(i, { size, ascii: ctx.state.viewer.ascii === true, orbitMs: ctx.orbitMs, clock: ctx.clock, settings: ctx.state.viewer.settings, track: trackFor(ctx.state.viewer) }).rows;
+
+// The size the header opens with: compact where the screen has room for it, mini beside an AI CLI in a narrow pane.
+const OPENING = Object.freeze([
+  { when: (ctx) => ctx.size.columns >= 60, size: "compact" },
+  { when: () => true, size: "mini" },
+]);
+
+const openingSegs = (ctx, i) => orbitRows(ctx, i, OPENING.find((r) => r.when(ctx)).size)[0];
+
+// The pill (0.0.2, ADR 0028; its edges 0.0.3): a badge holding the orbit (always mini, at the opening orbit's angle), a
+// dot in the indicator's tone and its word -- ORBITING's word in the brand's -- between two edges, peach while the task
+// moves and the indicator's own colour otherwise. A terminal draws it on a chip; a docked pane draws a border round it
+// and leaves the edges out (`edge`).
 const PILL_WORD_TONE = Object.freeze({ ACTIVE: "chip" });
+
+const PILL_EDGE_TONE = Object.freeze({ ACTIVE: "chip" });
 
 // While the task moves the orbit is the motion, so the dot stands still; any other state keeps its own glyph.
 const PILL_GLYPH = Object.freeze({ ACTIVE: "●" });
 
-const pillSegs = (ctx, i) => [seg(" ", `pill:${i.tone}`), { ...orbitSeg(ctx, i), pill: true }, seg(` ${PILL_GLYPH[i.state] ?? i.glyph} `, `pill:${i.tone}`), seg(`${i.word} `, PILL_WORD_TONE[i.state] ?? `pill:${i.tone}`)];
+const pillTone = (i, table) => table[i.state] ?? `pill:${i.tone}`;
+
+const edgeSeg = (text, i) => ({ ...seg(text, pillTone(i, PILL_EDGE_TONE)), edge: true });
+
+// The orbit's cells on the chip: each orbit tone has its look on the chip (render/theme.mjs), a blank cell is the chip's.
+const onChip = (s) => ({ ...s, tone: String(s.tone ?? "").startsWith("orbit:") ? `pill:${s.tone}` : s.tone ?? "pill:subtle", pill: true });
+
+const pillSegs = (ctx, i) => [edgeSeg("▏", i), seg(" ", `pill:${i.tone}`), ...orbitRows(ctx, i, "mini")[0].map(onChip), seg(` ${PILL_GLYPH[i.state] ?? i.glyph} `, `pill:${i.tone}`), seg(`${i.word} `, pillTone(i, PILL_WORD_TONE)), edgeSeg("▕", i)];
 
 // The header's three parts (0.0.2): where the viewer stands, the badge, and what the task is and how old -- a docked
 // pane lays them out itself, a terminal as one row.
 export function headerParts(ctx) {
   const i = indicatorFor(ctx);
-  const left = [orbitSeg(ctx, i), seg(" "), seg(" ORBIT LIVE ", "chip"), seg("  "), dim(placeWords(ctx.state.place)), seg("  "), ...whoWords(ctx, ctx.d.focus)];
+  const left = [...openingSegs(ctx, i), seg(" "), seg(" ORBIT LIVE ", "chip"), seg("  "), dim(placeWords(ctx.state.place)), seg("  "), ...whoWords(ctx, ctx.d.focus)];
   return { left, badge: [held(ctx) ? seg("FROZEN  ", "warning") : null, ...pillSegs(ctx, i)].filter(Boolean), rest: taskWords(ctx, ctx.d.focus) };
 }
 
-export const headerRow = (ctx) => ((h) => row(h.left, [...h.badge, seg("  "), ...h.rest], { always: true, band: "header", rightShare: 0.55 }))(headerParts(ctx));
+// What follows the badge on the header's right (0.0.3): what the task is and how old, where the row has the room; in a
+// narrow pane only the badge, so the indicator's word is never the part that is cut.
+const RESTS = Object.freeze([
+  { when: (ctx, h) => ctx.size.columns >= 60 && h.rest.length > 0, rest: (h) => [seg("  "), ...h.rest] },
+  { when: () => true, rest: () => [] },
+]);
+
+const restOf = (ctx, h) => RESTS.find((r) => r.when(ctx, h)).rest(h);
+
+// The header row says it holds an orbit (0.0.3): `orbit.part` names it in tui/regions.mjs ORBIT_PARTS, so the terminal
+// draws this row again between data frames, and nothing else.
+export const headerRow = (ctx) => ((h) => row(h.left, [...h.badge, ...restOf(ctx, h)], { always: true, band: "header", rightShare: 0.55, orbit: { part: "header", k: 0 } }))(headerParts(ctx));
 
 // ---- STAGE ------------------------------------------------------------------------------------------------
 
@@ -97,9 +133,12 @@ const FOOTERS = {
   help: () => "any key closes this list",
 };
 
+// Beside an AI CLI the keys are the last row of the footer's band (0.0.3), under the progress and the status bar.
+const footerBand = (v) => (v.layout === "pane" ? { band: "footer" } : {});
+
 export function footerRow(ctx) {
   const v = ctx.state.viewer;
   const lead = held(ctx) ? [seg("FROZEN — the task keeps running · ", "warning")] : [];
   const message = v.message ? [seg(`${v.message}   `, "warning")] : [];
-  return row([seg(" "), ...message, ...lead, dim(FOOTERS[layerOf(v)](ctx))]);
+  return row([seg(" "), ...message, ...lead, dim(FOOTERS[layerOf(v)](ctx))], [], footerBand(v));
 }

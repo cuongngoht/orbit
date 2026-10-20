@@ -9,8 +9,9 @@
 //   paneBody(ctx, height) -> { lines: [row], extents }
 import { PANE_VIEWS } from "./model.mjs";
 import { progressRows } from "./progress.mjs";
-import { dim, row, seg } from "./sections/parts.mjs";
-import { checklistOf, currentRows, paneTierOf, statusBarOf, viewOf } from "./workspace.mjs";
+import { blank, dim, row, rule, seg } from "./sections/parts.mjs";
+import { orbitRows } from "./sections/top.mjs";
+import { checklistOf, currentRows, indicatorFor, paneTierOf, statusBarOf, viewOf } from "./workspace.mjs";
 import { PANE_TITLES } from "../words.mjs";
 import { displayWidth } from "../render/width.mjs";
 
@@ -53,24 +54,52 @@ function hintLines(hint, room) {
   return [first.join(" · "), fitting(parts.slice(first.length), room).join(" · ")];
 }
 
-const tabRow = (cells, hint, ctx) => row(cells, [dim(hint)], { band: "tabs", rightShare: Math.max(0, ctx.width - tabsWidth() - 1) / ctx.width });
+// The hint's room on a tab row is what the tabs leave of the width.
+const hintRoom = (ctx, width) => Math.max(0, ctx.width - width - 1);
 
-const stackedTabs = (ctx) => ((h) => [tabRow(keyCells(), h[0], ctx), tabRow(labelCells(pickedOf(ctx).id), h[1], ctx)])(hintLines(pickedOf(ctx).hint, Math.max(0, ctx.width - tabsWidth() - 1)));
+const tabRow = (cells, hint, ctx, width = tabsWidth()) => row(cells, [dim(hint)], { band: "tabs", rightShare: hintRoom(ctx, width) / ctx.width });
 
-// One row where the six fit (the look's own: `1: Events  2: Tests …`, the hint after them); else each key over its label.
+const stackedTabs = (ctx) => ((h) => [tabRow(keyCells(), h[0], ctx), tabRow(labelCells(pickedOf(ctx).id), h[1], ctx)])(hintLines(pickedOf(ctx).hint, hintRoom(ctx, tabsWidth())));
+
+// One row where the six fit with the widest hint a view says beside them (`1: Events  2: Tests …`).
 const INLINE_GAP = "  ";
+
+// The widest hint a view says -- the Events view's four parts (events-view.mjs) -- and a cell before it.
+const HINT_ROOM = 48;
 
 const inlineCells = (picked) => PANE_VIEWS.flatMap((id, i) => [seg(`${i + 1}:`, "key"), seg(` ${VIEW_LABELS[id]}`, id === picked ? "label" : "subtle"), seg(INLINE_GAP)]);
 
 const inlineWidth = () => PANE_VIEWS.reduce((n, id, i) => n + displayWidth(`${i + 1}: ${VIEW_LABELS[id]}${INLINE_GAP}`), 0);
 
-const inlineTabs = (ctx) => [row(inlineCells(pickedOf(ctx).id), [dim(fitting(String(pickedOf(ctx).hint ?? "").split(" · ").filter(Boolean), Math.max(0, ctx.width - inlineWidth() - 1)).join(" · "))], { band: "tabs", rightShare: Math.max(0, ctx.width - inlineWidth() - 1) / ctx.width })];
+const inlineTabs = (ctx) => [tabRow(inlineCells(pickedOf(ctx).id), fitting(String(pickedOf(ctx).hint ?? "").split(" · ").filter(Boolean), hintRoom(ctx, inlineWidth())).join(" · "), ctx, inlineWidth())];
 
-const tabsRows = (ctx) => (inlineWidth() <= ctx.width ? inlineTabs : stackedTabs)(ctx);
+// Two rows of three where neither fits (0.0.3, a pane of 40 to 55 columns): each key before its label, the columns
+// lined up, so no label is ever cut -- `6: Timeline` was, at 44.
+const HALVES = Object.freeze([PANE_VIEWS.slice(0, 3), PANE_VIEWS.slice(3)]);
+
+const keyOf = (id) => `${PANE_VIEWS.indexOf(id) + 1}:`;
+
+const columnWidth = (col) => Math.max(...HALVES.map((ids) => (ids[col] ? displayWidth(`${keyOf(ids[col])} ${VIEW_LABELS[ids[col]]}`) : 0)));
+
+const pairedCells = (ids, picked) => ids.flatMap((id, col) => [seg(keyOf(id), "key"), seg(` ${VIEW_LABELS[id]}`.padEnd(columnWidth(col) - keyOf(id).length), id === picked ? "label" : "subtle"), seg(INLINE_GAP)]);
+
+const pairedWidth = () => HALVES[0].reduce((n, _, col) => n + columnWidth(col) + INLINE_GAP.length, 0);
+
+const pairedTabs = (ctx) => ((h) => HALVES.map((ids, i) => tabRow(pairedCells(ids, pickedOf(ctx).id), h[i], ctx, pairedWidth())))(hintLines(pickedOf(ctx).hint, hintRoom(ctx, pairedWidth())));
+
+// How the tabs are laid out, the first row that holds: one row where it all fits; each key over its label with the hint
+// over the two rows beside them, as Orbit Live's look draws them beside an AI CLI; two rows of three in a narrow pane;
+// else each key over its label, cut.
+const TABS = Object.freeze([
+  { when: (ctx) => inlineWidth() + HINT_ROOM <= ctx.width, rows: inlineTabs },
+  { when: (ctx) => tabsWidth() < ctx.width, rows: stackedTabs },
+  { when: (ctx) => pairedWidth() <= ctx.width, rows: pairedTabs },
+  { when: () => true, rows: stackedTabs },
+]);
+
+const tabsRows = (ctx) => TABS.find((t) => t.when(ctx)).rows(ctx);
 
 // ---- TASK EXECUTION and NOW -------------------------------------------------------------------------------------
-
-const rule = (width) => row([dim("─".repeat(Math.max(0, width)))]);
 
 // A card's border round the rows that share its `box` (0.0.2): its corners, its sides beside every row, its status
 // words kept inside the right side.
@@ -115,10 +144,40 @@ const fitted = (view, n) => view.rows.slice(0, n).map(plainRow);
 
 const viewLines = (ctx, n) => (n > 0 ? [rule(ctx.width), ...fitted(pickedOf(ctx), n - 1)] : []);
 
-// What a viewer with no task to show says, in either layout: waiting for this session's, or how to pick one.
-export const emptyRow = (viewer) => row([dim(viewer.waiting ? "waiting for this session's task: /orbit or /orbit-help starts or picks one up · t shows another" : "no task is shown: press t to pick one")], [], { label: "" });
+// ---- a viewer with no task to show (0.0.3) --------------------------------------------------------------------------
+// In either layout: the orbit, expanded, in the middle of the body where it has the room -- turning while the viewer
+// waits, so the viewer is plainly alive -- over what it waits for: this session's task, or a person's pick. The words
+// are wrapped at a word, never cut, and centred with the orbit; nothing here says the task moved.
 
-export const paneBody = (ctx, height) => (ctx.d.root?.view || ctx.d.focus?.view ? paneOf(ctx, height) : { lines: [emptyRow(ctx.state.viewer)], extents: {} });
+const sentenceOf = (viewer) => (viewer.waiting ? "waiting for this session's task: /orbit or /orbit-help starts or picks one up · t shows another" : "no task is shown: press t to pick one");
+
+const widthOf = (segs) => displayWidth(segs.map((s) => s.text).join(""));
+
+const centred = (ctx, segs) => [seg(" ".repeat(Math.max(0, Math.floor((ctx.width - widthOf(segs)) / 2)))), ...segs];
+
+const wrappedOnto = (lines, word, width) => (lines.length && displayWidth(`${lines.at(-1)} ${word}`) <= width ? [...lines.slice(0, -1), `${lines.at(-1)} ${word}`] : [...lines, word]);
+
+const wrapped = (text, width) => text.split(" ").reduce((lines, word) => wrappedOnto(lines, word, width), []);
+
+const sentenceRows = (ctx) => wrapped(sentenceOf(ctx.state.viewer), Math.max(10, ctx.width - 2)).map((line) => row(centred(ctx, [dim(line)])));
+
+// The expanded orbit's rows, each saying it holds an orbit (tui/regions.mjs ORBIT_PARTS), so the terminal turns them.
+export const expandedOrbitRows = (ctx) => orbitRows(ctx, indicatorFor(ctx), "expanded").map((segs, k) => row(centred(ctx, segs), [], { orbit: { part: "expanded", k } }));
+
+const ORBIT_ROOM = 8;
+
+const blanks = (n) => Array.from({ length: Math.max(0, n) }, blank);
+
+const withOrbit = (ctx, height) => ((words) => [...blanks(Math.floor((height - 4 - words.length) / 2)), ...expandedOrbitRows(ctx), blank(), ...words])(sentenceRows(ctx));
+
+const EMPTY = Object.freeze([
+  { when: (ctx, height) => height >= ORBIT_ROOM, rows: withOrbit },
+  { when: () => true, rows: (ctx) => sentenceRows(ctx) },
+]);
+
+export const emptyRows = (ctx, height) => EMPTY.find((e) => e.when(ctx, height)).rows(ctx, height);
+
+export const paneBody = (ctx, height) => (ctx.d.root?.view || ctx.d.focus?.view ? paneOf(ctx, height) : { lines: emptyRows(ctx, height), extents: {} });
 
 // ---- the bottom edge: progress, then the status bar spread across the width ----------------------------------------
 

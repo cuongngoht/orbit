@@ -2,29 +2,31 @@
 // (the last column is never written, so no terminal scrolls or wraps on it), holding no line break and no
 // sequence but colour. This is the ONE place a row becomes a string: every segment of data goes through
 // src/live/render/width.mjs `drawn` -- cleaned by printable(), cut by display width, then coloured -- so a
-// journal's text cannot reach the terminal as anything but text.
+// journal's text cannot reach the terminal as anything but text. The screen is laid out by the REGIONS table
+// (regions.mjs, 0.0.3): its top, the body between, its bottom.
 //
-//   frameOf(state, derived?) -> { columns, rows, lines, full, extents }
+//   frameOf(state, derived?, { orbitMs }?) -> { columns, rows, lines, full, extents, orbitRows, orbiting }
+//     orbitRows   [{ row, part, k }]: which rows hold the orbit (0.0.3) -- the only ones an orbit tick draws again
+//     orbiting    the orbit turns in this frame: motion is on and a row holds it, in whatever state the task is
+//   orbitFrameOf(state, derived, frame, { orbitMs }) -> frame      those rows only, at a later moment of the orbit
 import { drawn, displayWidth } from "../render/width.mjs";
 import { blankOn, unstyled } from "../render/ansi.mjs";
 import { derivedOf, yielded } from "./derive.mjs";
 import { glyph } from "./glyphs.mjs";
 import { LABELS, RIGHT_SHARE, TIERS, budgetOf, tierOf } from "./layout.mjs";
 import { SECTIONS } from "./sections/index.mjs";
-import { footerRow, headerRow } from "./sections/top.mjs";
-import { dim, row, seg } from "./sections/parts.mjs";
+import { blank, row, seg } from "./sections/parts.mjs";
 import { activityOverlay } from "./overlays/activity.mjs";
 import { pickerOverlay } from "./overlays/picker.mjs";
 import { evidenceOverlay } from "./overlays/evidence.mjs";
 import { diagnosticsOverlay } from "./overlays/diagnostics.mjs";
 import { helpOverlay, tooSmallRows } from "./overlays/help.mjs";
-import { emptyRow, paneBody } from "./pane-frame.mjs";
-import { orbitOf } from "../orbit.mjs";
-import { indicatorFor } from "./workspace.mjs";
+import { emptyRows, paneBody } from "./pane-frame.mjs";
+import { ORBIT_PARTS, placed } from "./regions.mjs";
+import { movingOf } from "../orbit.mjs";
 
 const OVERLAYS = Object.freeze({ picker: (s) => pickerOverlay(s), activity: (s, d) => activityOverlay(s, d), evidence: (s) => evidenceOverlay(s), diagnostics: (s, d, t) => diagnosticsOverlay(s, d, t.name), help: () => helpOverlay() });
 
-const FIXED = 4;
 const NO_EXTENT = Object.freeze({ max: 0, page: 1 });
 
 // The pane layout is a COLUMN beside an AI CLI (1.8.6): it is drawn down to PANE_MIN -- a 36% split of a 110-column
@@ -37,11 +39,13 @@ const paneFits = (state, size) => state.viewer.layout === "pane" && !state.viewe
 
 const tierFor = (state, size) => ((t) => (t.name === "too-small" && paneFits(state, size) ? NARROW : t))(tierOf(size.columns, size.rows));
 
-export function contextOf(state, d) {
+// `orbitMs` (0.0.3) is the viewer's own monotonic clock, handed in by the terminal for the orbit alone: never the view
+// model's `nowMs`, which every "ago" and the evidence rule read.
+export function contextOf(state, d, opts = {}) {
   const size = state.viewer.size;
   const tier = tierFor(state, size);
   const width = Math.max(1, size.columns - 1);
-  return { state: yielded(state), d, tier, width, inner: Math.max(10, width - tier.label), nowMs: state.viewer.nowMs, size };
+  return { state: yielded(state), d, tier, width, inner: Math.max(10, width - tier.label), nowMs: state.viewer.nowMs, size, orbitMs: opts.orbitMs ?? 0 };
 }
 
 // ---- a row as a string ----------------------------------------------------------------------------------
@@ -98,9 +102,6 @@ const sideBySide = (ctx, r) => `${rendered(columnCtx(ctx, r.split), r.columns[0]
 
 const renderedRow = (ctx, r) => (r.columns ? sideBySide : rendered)(ctx, r);
 
-const blank = () => row([]);
-const rule = (ctx, ch) => row([dim(ch.repeat(ctx.width))]);
-
 // ---- scrolling windows ----------------------------------------------------------------------------------
 
 const textOf = (r) => [...r.left, ...(r.right ?? [])].map((s) => s.text).join("").toLowerCase();
@@ -146,7 +147,7 @@ function dashboard(ctx, height) {
   const budget = budgetOf(sections, height);
   const lines = budget.sections.flatMap((s, i) => [...(i && budget.gaps ? [blank()] : []), ...sectionLines(ctx, s, budget.rows.get(s.name))]);
   const extents = Object.fromEntries(budget.sections.filter((s) => s.scroll).map((s) => [s.scroll, extentOf(s, roomOf(s, budget))]));
-  return { lines: sections.length ? lines : [emptyRow(ctx.state.viewer)], extents };
+  return { lines: sections.length ? lines : emptyRows(ctx, height), extents };
 }
 
 // ---- an overlay ---------------------------------------------------------------------------------------
@@ -166,11 +167,12 @@ function overlay(ctx, height) {
 
 // ---- the frame ----------------------------------------------------------------------------------------
 
-const fill = (lines, n, ctx) => [...lines.slice(0, n), ...Array.from({ length: Math.max(0, n - lines.length) }, () => padded("", ctx.width))];
+// Rows to exactly `n`: cut, or made up with blank rows.
+const padRows = (rows, n) => [...rows.slice(0, n), ...Array.from({ length: Math.max(0, n - rows.length) }, blank)];
 
 const EXTENTS = (got) => ({ recent: got.recent ?? NO_EXTENT, sandbox: got.sandbox ?? NO_EXTENT, overlay: got.overlay ?? NO_EXTENT });
 
-// What fills the screen between the header and the footer: an overlay a person opened, the pane (1.8.6) when the
+// What fills the body region between the top and the bottom: an overlay a person opened, the pane (1.8.6) when the
 // viewer is laid out as one, else the dashboard.
 const BODIES = [
   { when: (ctx) => Boolean(ctx.state.viewer.overlay), body: overlay },
@@ -178,20 +180,42 @@ const BODIES = [
   { when: () => true, body: dashboard },
 ];
 
-function body(ctx) {
-  const height = Math.max(0, ctx.size.rows - FIXED);
+// The top, the body and the bottom (regions.mjs): the body is given every row the regions above and below it leave.
+function laidOut(ctx) {
+  const top = placed(ctx, "top");
+  const bottom = placed(ctx, "bottom");
+  const height = Math.max(0, ctx.size.rows - top.length - bottom.length);
   const got = BODIES.find((b) => b.when(ctx)).body(ctx, height);
-  return { lines: fill(got.lines.map((r) => renderedRow(ctx, r)), height, ctx), extents: EXTENTS(got.extents) };
+  return { rows: [...top, ...padRows(got.lines, height), ...bottom], extents: EXTENTS(got.extents) };
 }
 
-const tooSmall = (ctx) => ({ lines: fill(tooSmallRows(ctx.size).map((r) => rendered(ctx, r)), ctx.size.rows, ctx), extents: EXTENTS({}) });
+const tooSmall = (ctx) => ({ rows: padRows(tooSmallRows(ctx.size), ctx.size.rows), extents: EXTENTS({}) });
 
-// Whether the header's orbit is turning in this frame (0.0.2): a viewer that paints often asks, to draw every frame of it.
-const orbitingOf = (ctx) => ctx.tier.name !== "too-small" && orbitOf(indicatorFor(ctx), { nowMs: ctx.nowMs }).moving;
+const SCREENS = Object.freeze([
+  { when: (ctx) => ctx.tier.name === "too-small", of: tooSmall },
+  { when: () => true, of: laidOut },
+]);
 
-export function frameOf(state, d = derivedOf(state)) {
-  const ctx = contextOf(state, d);
-  const got = ctx.tier.name === "too-small" ? tooSmall(ctx) : { ...body(ctx), top: [headerRow(ctx), rule(ctx, "═")], bottom: [rule(ctx, "─"), footerRow(ctx)] };
-  const lines = got.top ? [...got.top.map((r) => rendered(ctx, r)), ...got.lines, ...got.bottom.map((r) => rendered(ctx, r))] : got.lines;
-  return { columns: ctx.size.columns, rows: ctx.size.rows, lines: lines.slice(0, ctx.size.rows), full: Boolean(state.viewer.redraw), extents: got.extents, orbiting: orbitingOf(ctx) };
+// Which rows hold the orbit, by their place on the screen -- read before the rows become strings.
+const orbitRowsOf = (rows) => rows.flatMap((r, i) => (r.orbit ? [{ row: i, part: r.orbit.part, k: r.orbit.k }] : []));
+
+// Whether the orbit turns in this frame (0.0.3): the motion is on and a row holds it -- in every state of the task, for
+// the orbit is the viewer's motion and never the task's. A viewer that paints often asks it, to draw every frame.
+const orbitOfFrame = (ctx, rows) => ((orbitRows) => ({ orbitRows, orbiting: orbitRows.length > 0 && movingOf(ctx.state.viewer.settings) }))(orbitRowsOf(rows));
+
+export function frameOf(state, d = derivedOf(state), opts = {}) {
+  const ctx = contextOf(state, d, opts);
+  const rows = SCREENS.find((s) => s.when(ctx)).of(ctx);
+  const shown = rows.rows.slice(0, ctx.size.rows);
+  return { columns: ctx.size.columns, rows: ctx.size.rows, lines: shown.map((r) => renderedRow(ctx, r)), full: Boolean(state.viewer.redraw), extents: rows.extents, ...orbitOfFrame(ctx, shown) };
+}
+
+// The rows that hold the orbit drawn again at a later moment of it (0.0.3), over the frame last drawn from the same state
+// and the same derived picture: every other row is the frame's own string, so the diff (diff.mjs) writes none of them.
+const orbitLine = (ctx, o) => renderedRow(ctx, ORBIT_PARTS[o.part](ctx)[o.k]);
+
+export function orbitFrameOf(state, d, frame, opts = {}) {
+  const ctx = contextOf(state, d, opts);
+  const lines = frame.orbitRows.reduce((all, o) => all.with(o.row, orbitLine(ctx, o)), frame.lines);
+  return { ...frame, lines, full: false };
 }

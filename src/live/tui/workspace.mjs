@@ -23,7 +23,7 @@ import { skillsOf } from "../plan.mjs";
 import { LIFECYCLE_WORDS, PROVENANCE_WORDS, STATUS_WORDS, STEP_WORDS, WORKFLOW_STEP_WORDS } from "../words.mjs";
 import { PANE_VIEWS, isCoordinator } from "./model.mjs";
 import { chosen } from "./sections/activity.mjs";
-import { between, dim, joined, row, seg, str } from "./sections/parts.mjs";
+import { between, dim, joined, labelled, row, seg, str } from "./sections/parts.mjs";
 import { noticesSection, recentSection } from "./sections/recent.mjs";
 import { grouped, kindOf } from "./sections/verify.mjs";
 import { steps as workflowSteps } from "./sections/work.mjs";
@@ -228,8 +228,6 @@ export function checklistOf(ctx) {
 }
 
 // ---- the task worked on now ---------------------------------------------------------------------------------------
-
-const labelled = (label, segs) => row([dim(`${label.padEnd(10)}`), ...segs], [], { label });
 
 const lifecycleSeg = (view) => ((w) => seg(w?.word ?? view.lifecycle ?? "UNKNOWN", w?.tone ?? "info"))(LIFECYCLE_WORDS[view.lifecycle]);
 

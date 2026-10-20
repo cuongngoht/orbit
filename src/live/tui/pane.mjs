@@ -12,7 +12,7 @@
 //                          tier, checklist: [prow], current: [prow], statusBar: prow, views: [{ id, label, rows: [prow] }],
 //                          indicator, progress: { task, tests, rows: [prow] }, plan, timeline,       (1.8.6)
 //                          lifecycle: [{ label, mark, text }],                                         (1.8.9)
-//                          orbit: { moving, tone, frames, parked, lastAt, kickMs, fps } }              (0.0.1)
+//                          orbit: { moving, revMs, variant, rings: [{ size, parked, frames }] } }      (0.0.3)
 //     seg: { text, tone }    prow: { left: [seg], right: [seg], depth, status, label, box }   view: + hint (0.0.2)
 //     state.viewer.size is the pane's: its columns pick the tier (labels, detail rows), its rows the budget
 //
@@ -55,7 +55,7 @@ function overviewOf(ctx, sections, height) {
 }
 
 // The header in its three parts (0.0.2), so a docked pane can put the badge in a border and the rest on the right edge.
-const partsOfHeader = (ctx) => ((h) => ({ left: h.left.map(segOf).filter(nonEmpty), badge: h.badge.map(segOf).filter(nonEmpty), right: h.rest.map(segOf).filter(nonEmpty) }))(headerParts({ ...ctx, clock: false }));
+const partsOfHeader = (ctx) => ((h) => ({ left: h.left.map(segOf).filter(nonEmpty), badge: h.badge.filter((s) => !s.edge).map(segOf).filter(nonEmpty), right: h.rest.map(segOf).filter(nonEmpty) }))(headerParts({ ...ctx, clock: false }));
 
 const nowOf = (all) => (all.find((s) => s.name === "activity")?.rows ?? []).slice(0, NOW_MAX).map(segsOf);
 
@@ -88,11 +88,12 @@ function workspaceOf(ctx) {
 // What changes on every ask whether or not anything happened is left out of the answer (1.8.6): the wall clock (the
 // host shows its own; a docked pane's header leaves it out) and how long ago the last evidence was -- so a quiet task's
 // answer is the same answer, and a drawer that skips a picture it already drew redraws nothing. The header's orbit is
-// therefore parked in it (0.0.1, orbit.mjs): `orbit` hands the pane what turning it takes -- its frames, whether it
-// moves and the newest evidence's time it takes its phase from -- and the pane turns it on its own clock.
+// therefore parked in it (orbit.mjs): `orbit` hands the pane what turning it takes (0.0.3, ADR 0029) -- whether it turns
+// at all, one revolution's length and, for each of the header's two orbits, the parked text and every frame -- and the
+// pane turns both on its own clock, at one angle. It holds no time, so it is the same answer however often it is asked.
 const steady = (indicator) => Object.fromEntries(Object.entries(indicator).filter(([k]) => k !== "since"));
 
 // Every string of a value, cleaned as a row's text is; numbers, booleans and nulls as they are.
 const plain = (v) => (typeof v === "string" ? clean(v) : Array.isArray(v) ? v.map(plain) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, plain(x)])) : v);
 
-const inspectorsOf = (ctx) => plain({ indicator: steady(indicatorFor(ctx)), orbit: orbitTrackOf(indicatorFor(ctx), { ascii: ctx.state.viewer.ascii === true }), progress: { task: taskProgressOf(ctx), tests: testProgressOf(ctx), rows: sessionShown(ctx) ? [] : progressRows(ctx).map(prowOf) }, plan: planOf(ctx), timeline: timelineFor(ctx, timelineRowsWanted(ctx)), lifecycle: lifecycleOf(ctx) });
+const inspectorsOf = (ctx) => plain({ indicator: steady(indicatorFor(ctx)), orbit: orbitTrackOf(indicatorFor(ctx), { ascii: ctx.state.viewer.ascii === true, settings: ctx.state.viewer.settings, track: true }), progress: { task: taskProgressOf(ctx), tests: testProgressOf(ctx), rows: sessionShown(ctx) ? [] : progressRows(ctx).map(prowOf) }, plan: planOf(ctx), timeline: timelineFor(ctx, timelineRowsWanted(ctx)), lifecycle: lifecycleOf(ctx) });

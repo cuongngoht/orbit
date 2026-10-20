@@ -6,11 +6,9 @@ export const ASCII = Object.freeze({
   "◇": "<>", "⚠": "!", "⏸": "||", "■": "#", "📸": "[pic]", "👤": "[person]", "→": "->", "⏎": "|", "·": "-",
   "▓": "#", "░": ".", "═": "=", "─": "-", "…": "...", "›": ">", "▸": ">", "←": "<-", "↑": "^", "↓": "v",
   "−": "-", "—": "-", "▏": "|", "↻": "~>", "•": "o", "▲": "^",
-  // A card's border (0.0.2): its corners a plus, its sides a bar.
-  "╭": "+", "╮": "+", "╰": "+", "╯": "+", "│": "|", "━": "=",
-  // The orbit's Braille cells (words.mjs ORBIT_GLYPHS): a cell holding the planet reads "o", the satellite ".".
-  "⠶": "o", "⠷": "o", "⠿": "o", "⠾": "o", "⢶": "o", "⣶": "o", "⡶": "o", "⠀": " ",
-  "⠊": ".", "⠈": ".", "⠁": ".", "⠑": ".", "⠰": ".", "⡠": ".", "⡀": ".", "⢀": ".", "⢄": ".", "⠆": ".",
+  // A card's border (0.0.2): its corners a plus, its sides a bar. The badge's edges (0.0.3) are bars too.
+  "╭": "+", "╮": "+", "╰": "+", "╯": "+", "│": "|", "━": "=", "▕": "|",
+  // The orbit is not here (0.0.3, ADR 0029): an ASCII viewer is drawn ASCII frames of its own (src/live/orbit/raster.mjs).
 });
 
 const PATTERN = new RegExp(`[${Object.keys(ASCII).map((k) => k.replace(/[\\\]^-]/g, "\\$&")).join("")}]`, "gu");

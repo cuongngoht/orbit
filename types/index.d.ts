@@ -13,8 +13,12 @@ export type PaneView = { id: string; label: string; rows: PaneRow[]; /** 0.0.2: 
 /** 0.0.2: the header in three parts -- where the viewer stands, the badge (drawn in a border), what the task is and how old. */
 export type PaneHeader = { left: PaneSegment[]; badge: PaneSegment[]; right: PaneSegment[] }
 
-/** 0.0.1: what turning the header's orbit takes -- its frames, whether it moves, the newest evidence's time it turns from. */
-export type PaneOrbit = { moving: boolean; tone: string | null; frames: string[]; parked: string; lastAt: string | null; kickMs: number; fps: { kick: number; cruise: number } }
+/** 0.0.3: one of the header's two orbits -- the parked text the engine's header holds for it, and every frame of its one row. */
+export type PaneOrbitRing = { size: string; parked: string; frames: PaneSegment[][] }
+
+/** 0.0.3 (ADR 0029): what turning the header's orbits takes -- whether they turn at all (the animation is not off), one
+ * revolution's length, and their rings, turned at one angle. It holds no time: a quiet task's answer stays the same. */
+export type PaneOrbit = { moving: boolean; revMs: number; rings: PaneOrbitRing[] }
 
 /** `node <engine>/cli/live.mjs pane --host=claude`'s one JSON object, as the pane draws it. */
 export type PaneModel = {
@@ -37,7 +41,7 @@ export type PaneModel = {
   progress: PaneRow[]
   look: { widthPercent: number; focusCli: boolean }
   hints: { inline: string | null }
-  /** 0.0.1: the header's orbit, turned by the pane while it moves; null when the answer has none. */
+  /** 0.0.3: the header's orbits, turned by the pane on its own clock in every state; null when the answer has none. */
   orbit?: PaneOrbit | null
 }
 
@@ -47,7 +51,8 @@ declare module 'claude-code' {
       model: PaneModel
       lease: string
       view: string
-      spin: string
+      /** 0.0.3: the share of a revolution the orbits were drawn at, in steps of the largest ring; 0 while parked. */
+      spin: number
     }
   }
 }

@@ -23,7 +23,8 @@ import { clearLine, clearScreen, cursorTo, enterAlt, hideCursor, leaveAlt, reset
 import { decodeKeys, actionOfKey } from "../src/live/tui/keys.mjs";
 import { childIdOf, initialState, TASK_ID, wanted } from "../src/live/tui/model.mjs";
 import { reduce, rootEnded } from "../src/live/tui/reducer.mjs";
-import { frameOf } from "../src/live/tui/frame.mjs";
+import { frameOf, orbitFrameOf } from "../src/live/tui/frame.mjs";
+import { derivedOf } from "../src/live/tui/derive.mjs";
 import { changedRows } from "../src/live/tui/diff.mjs";
 
 export const TIMING = Object.freeze({ paintMs: 100, tickMs: 15_000, listMs: 5_000, retryMs: [1000, 2000, 4000, 8000, 16000], coordinatorsPerList: 5, expandedCheckouts: 3, leaseMs: HEARTBEAT_MS, selectionMs: 1000 });
@@ -54,7 +55,7 @@ function runOf(world, terminal, opts) {
   const timing = { ...TIMING, ...(opts.timing ?? {}) };
   const size = sizeOf(terminal);
   const state = initialState({ ...opts.start, columns: size.columns, rows: size.rows, colour: terminal.colour, depth: terminal.depth, bands: terminal.bands, ascii: opts.ascii, nowMs: world.nowMs(), settings: world.settings });
-  return { world, terminal, timing, untilDone: opts.untilDone ?? null, ending: null, kept: false, timers: opts.timers ?? globalThis, state, frame: null, feeds: new Map(), console: { key: null, generation: 0, reader: null, leases: [], session: null, busy: {} }, intervals: [], retries: new Set(), listeners: [], closed: false, dirty: true, second: null, shows: new Map(), loaded: new Set() };
+  return { world, terminal, timing, untilDone: opts.untilDone ?? null, ending: null, kept: false, timers: opts.timers ?? globalThis, state, frame: null, picture: null, feeds: new Map(), console: { key: null, generation: 0, reader: null, leases: [], session: null, busy: {} }, intervals: [], retries: new Set(), listeners: [], closed: false, dirty: true, second: null, shows: new Map(), loaded: new Set() };
 }
 
 const sizeOf = (terminal) => ({ columns: terminal.stdout.columns || 100, rows: terminal.stdout.rows || 30 });
@@ -416,26 +417,56 @@ function consoleSessions(t) {
 
 // ---- painting ---------------------------------------------------------------------------------------------
 
-// A new second moves the pulse and every "ago"; within one, nothing that is drawn moved with the clock.
+// A new second moves the pulse and every "ago"; within one, nothing that is drawn moved with the clock -- so the state
+// is left as it is (its identity is what an orbit tick draws from), unless a data frame is due anyway.
 function clockMoved(t) {
   const now = t.world.nowMs();
   const moved = Math.floor(now / 1000) !== t.second;
-  apply(t, { type: "tick", nowMs: now });
+  if (moved || t.dirty) apply(t, { type: "tick", nowMs: now });
   t.second = Math.floor(now / 1000);
   return moved;
 }
 
 const extentsMoved = (t, frame) => JSON.stringify(frame.extents) !== JSON.stringify(t.state.viewer.extents);
 
-// 0.0.2: while the header's orbit turns (the frame last drawn says so) every paint is a frame of it, so the satellite
-// goes round at its own speed instead of once a second; only the rows that changed are written.
+// THE ORBIT'S CLOCK (0.0.3, ADR 0029): this terminal's own monotonic time -- a test's fake timers carry one -- and never
+// the wall clock the view model holds: `nowMs` is what every "ago" and the evidence rule read, and the orbit moves
+// neither. It is never put into the state, never written anywhere: a frame is handed it, and draws it.
+const orbitNow = (t) => t.timers.now?.() ?? globalThis.performance.now();
+
+// While the orbit turns (the frame last drawn says so) every paint is a moment of it -- in every state of the task, the
+// way the satellite goes round at its own speed -- and only the rows that hold it are drawn again.
 const spinning = (t) => t.frame?.orbiting === true;
+
+// The derived picture of the state the last frame was drawn from, by that state's identity: an orbit tick between two
+// data frames draws from it, and asks nothing of the journals.
+const derived = (t) => (t.picture?.state === t.state ? t.picture.d : derivedOf(t.state));
+
+// What one paint draws, the first row that holds: a data frame when anything changed -- a line arrived, a key, a size,
+// a new second, a state no frame was drawn from yet; else the orbit's rows alone, while it turns and the terminal has
+// taken the last write (a tick skipped is never a frame lost: the orbit's phase is the clock's); else nothing.
+const PAINTS = Object.freeze([
+  { when: (t, moved) => t.dirty || moved || t.picture?.state !== t.state, paint: (t) => drawnWhole(t) },
+  { when: (t) => spinning(t) && t.terminal.stdout.writableNeedDrain !== true, paint: (t) => spun(t) },
+  { when: () => true, paint: () => null },
+]);
 
 function painted(t) {
   if (t.closed) return;
   [...t.feeds.values()].forEach((entry) => drained(t, entry));
-  const moved = clockMoved(t) || spinning(t);
-  if (!endingChecked(t) && (t.dirty || moved)) drawn(t, frameOf(t.state));
+  const moved = clockMoved(t);
+  if (endingChecked(t)) return;
+  PAINTS.find((p) => p.when(t, moved)).paint(t);
+}
+
+const drawnWhole = (t) => ((d) => drawn(t, frameOf(t.state, d, { orbitMs: orbitNow(t) }), d))(derived(t));
+
+// An orbit tick: the rows that hold the orbit, at this moment, over the frame last drawn. Nothing enters the state.
+function spun(t) {
+  const frame = orbitFrameOf(t.state, t.picture.d, t.frame, { orbitMs: orbitNow(t) });
+  const bytes = bytesOf(t.frame, frame);
+  if (bytes) write(t, bytes);
+  t.frame = frame;
 }
 
 // The rows that changed, each placed and cleared before it is written; the whole screen cleared first when the
@@ -446,12 +477,19 @@ function bytesOf(prev, frame) {
   return ops.length || head ? `${head}${ops.map((op) => `${cursorTo(op.row + 1, 1)}${clearLine()}${op.text}`).join("")}${resetStyle()}` : "";
 }
 
-// After a frame, the scroll limits it measured go back into the state; when they moved, the next frame is drawn.
-function drawn(t, frame) {
+// After a frame, the scroll limits it measured go back into the state; when they moved, the next frame is drawn. The
+// picture it was drawn from is kept, by the state it was drawn for, for the orbit's ticks until the next one.
+function drawn(t, frame, d) {
   const bytes = bytesOf(t.frame, frame);
   if (bytes) write(t, bytes);
   Object.assign(t, { frame, dirty: extentsMoved(t, frame) });
-  apply(t, { type: "painted" });
+  settled(t, frame);
+  t.picture = { state: t.state, d };
+}
+
+// A redraw asked for is done (only then is the state touched, so a frame that honoured none leaves it as it was).
+function settled(t, frame) {
+  if (t.state.viewer.redraw) apply(t, { type: "painted" });
   if (t.dirty) apply(t, { type: "extents", extents: frame.extents });
 }
 

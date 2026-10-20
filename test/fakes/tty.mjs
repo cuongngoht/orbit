@@ -45,10 +45,11 @@ function printed(s, ch, columns, rows) {
 }
 
 // Timers a test fires by hand: what `live tui` schedules (its paint, its feed tick, its list refresh, a retry),
-// held in a table, so a test says when time passes and can count what is still scheduled after the viewer left.
+// held in a table, so a test says when time passes and can count what is still scheduled after the viewer left. Their
+// own monotonic clock (0.0.3), the one the orbit turns on: `fire(ms)` lets `ms` pass on it first, `fire()` none.
 export function fakeTimers() {
   const live = new Map();
-  const next = { id: 0 };
+  const next = { id: 0, ms: 0 };
   const add = (fn, ms, repeat) => ((id) => (live.set(id, { fn, ms, repeat }), id))(++next.id);
   return {
     setInterval: (fn, ms) => add(fn, ms, true),
@@ -56,6 +57,12 @@ export function fakeTimers() {
     clearInterval: (id) => live.delete(id),
     clearTimeout: (id) => live.delete(id),
     active: () => live.size,
-    fire: (ms = null) => [...live].filter(([, t]) => ms === null || t.ms === ms).forEach(([id, t]) => (t.repeat ? null : live.delete(id), t.fn())),
+    now: () => next.ms,
+    fire: (ms = null) => fired(live, next, ms),
   };
+}
+
+function fired(live, next, ms) {
+  next.ms += ms ?? 0;
+  [...live].filter(([, t]) => ms === null || t.ms === ms).forEach(([id, t]) => (t.repeat ? null : live.delete(id), t.fn()));
 }

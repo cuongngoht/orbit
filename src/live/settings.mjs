@@ -26,7 +26,8 @@ export const FIELDS = [
   { path: ["terminal", "showLogs"], type: "boolean", default: false, say: "open the sandbox console in a terminal" },
   { path: ["pane", "widthPercent"], type: "integer", min: 20, max: 60, default: 36, say: "share of the terminal's width a viewer asks for beside the AI CLI (a docked pane, a split pane)" },
   { path: ["pane", "focusCli"], type: "boolean", default: true, say: "give the keyboard back to the AI CLI once a viewer opened beside it" },
-  { path: ["pane", "animation"], type: "enum", values: ["auto", "off"], default: "auto", say: "auto: the ORBITING indicator pulses as evidence arrives and the orbit circles while the task moves (motion, never progress) · off: neither moves (reduced motion)" },
+  { path: ["pane", "animation"], type: "enum", values: ["auto", "off"], default: "auto", say: "auto: the orbit turns while the viewer is open and the ORBITING indicator pulses as evidence arrives (motion, never progress) · off: neither moves (reduced motion)" },
+  { path: ["pane", "orbitSpeed"], type: "enum", values: ["slow", "normal", "fast"], default: "normal", say: "how long the orbit takes to go round once: slow (6 s), normal (3 s), fast (1.5 s)" },
   { path: ["pane", "timelineRows"], type: "integer", min: 10, max: 80, default: 30, say: "events the pane's timeline keeps, newest last" },
   { path: ["attendedHosts"], type: "hosts", default: [], say: "hosts used interactively here that cannot say so themselves: /orbit and /orbit-help open a viewer beside them (a headless run of one on this machine opens one too)" },
 ];

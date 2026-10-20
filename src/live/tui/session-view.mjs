@@ -11,15 +11,13 @@
 //   sessionBarOf(ctx) -> row                  the counts, and the session's own indicator on the right
 //   sessionIndicator(activity) -> indicator   the shape indicator.mjs answers, of the TOOLS' state, never a task's
 import { SESSION_KIND_WORDS, SESSION_SOURCE_WORDS, SESSION_WORDS, STATUS_WORDS } from "../words.mjs";
-import { clock, dim, joined, row, seg } from "./sections/parts.mjs";
+import { clock, dim, joined, labelled, row, seg } from "./sections/parts.mjs";
 
 export const SESSION_NOW_ITEMS = 3;
 
 export const sessionOf = (ctx) => ctx.state.session ?? null;
 
 const has = (a) => Boolean(a) && (a.observed > 0 || a.running.length > 0);
-
-const labelled = (label, segs) => row([dim(`${label.padEnd(10)}`), ...segs], [], { label });
 
 const RESULTS = [
   { when: (e) => e.bg, segs: () => [dim("started in the background; its end is not observed")] },

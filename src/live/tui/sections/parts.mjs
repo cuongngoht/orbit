@@ -15,6 +15,15 @@ export const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : nul
 // Segments joined by a dimmed separator, nothing kept that has nothing to say.
 export const joined = (segs, sep = " · ") => segs.filter((s) => s && s.text !== "").flatMap((s, i) => (i ? [dim(sep), s] : [s]));
 
+// A row with nothing in it, and a rule across a width (0.0.3: the screen's regions, tui/regions.mjs, and the pane's).
+export const blank = () => row([]);
+export const rule = (width, ch = "─") => row([dim(ch.repeat(Math.max(0, width)))]);
+
+// NOW's label column (0.0.3): one width for every row of it -- the task's, the tracked work's, the session's and the
+// lifecycle's -- so their words start in one column, as Orbit Live's look lines them up.
+export const LABEL_CELLS = 12;
+export const labelled = (label, segs) => row([dim(label.padEnd(LABEL_CELLS)), ...segs], [], { label });
+
 // The pulse of a row that is genuinely running: by wall-clock second, the LIVE glyphs (src/live/words.mjs PULSE).
 export const pulseOf = (nowMs) => PULSE[Math.floor(nowMs / 1000) % PULSE.length];
 

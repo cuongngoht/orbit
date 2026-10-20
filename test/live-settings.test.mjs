@@ -69,12 +69,15 @@ test("a corrupt pin is no pin", (t) => {
   assert.equal(readFileSync(join(dir, "checkout.json"), "utf8"), "{ not json");
 });
 
-test("1.8.6: the pane's animation is one of two words and its timeline a bounded number -- anything else refused, never clamped", () => {
+test("1.8.6/0.0.3: the pane's animation is one of two words, the orbit's speed one of three, its timeline a bounded number -- anything else refused, never clamped", () => {
   assert.deepEqual(settingsProblems({ pane: { animation: "off", timelineRows: 40 } }), []);
   assert.equal(settingsProblems({ pane: { animation: "blink" } }).length, 1);
   assert.match(settingsProblems({ pane: { animation: "blink" } })[0], /one of auto, off/);
   assert.equal(settingsProblems({ pane: { timelineRows: 500 } }).length, 1);
   assert.equal(defaultsOf().pane.animation, "auto");
   assert.equal(defaultsOf().pane.timelineRows, 30);
+  for (const speed of ["slow", "normal", "fast"]) assert.deepEqual(settingsProblems({ pane: { orbitSpeed: speed } }), [], speed);
+  assert.match(settingsProblems({ pane: { orbitSpeed: "warp" } })[0], /one of slow, normal, fast/);
+  assert.equal(defaultsOf().pane.orbitSpeed, "normal");
 });
 

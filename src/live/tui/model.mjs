@@ -52,7 +52,7 @@ export const initialState = (input) => ({
   work: input.work ?? null,
 });
 
-export const taskSlot = (id, role) => ({ id, role, view: null, cursor: "t=0", end: null, events: [], dropped: 0, activity: {}, plan: null, seq: 0, read: { reads: 0, failures: 0, good: false, partial: false }, status: "opening", error: null });
+export const taskSlot = (id, role) => ({ id, role, view: null, cursor: "t=0", end: null, events: [], dropped: 0, activity: {}, plan: null, skills: {}, seq: 0, read: { reads: 0, failures: 0, good: false, partial: false }, status: "opening", error: null });
 
 // The last `n` of a list, and how many were let go: a viewer keeps a window, and says how much it dropped.
 export function bounded(list, n) {

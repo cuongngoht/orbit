@@ -20,6 +20,12 @@
 //   node skill-factory.mjs workflow <id|pin>
 //                                          a declared playbook's workflow.json, its steps in the order they run, read
 //                                          from that exact version and held to the workflow contract again
+//   node skill-factory.mjs runs <id>       every run of it this project's coordinated workflows carried, newest first:
+//                                          the version each pinned and what each step came to, read from their journals
+//   node skill-factory.mjs review <id>     what its runs show, question by question (did every required step run, through
+//                                          the provider an owner gate serves, within its contract, proven by an owner's
+//                                          record?), how far to trust it, and whether a successor version is PROPOSED --
+//                                          never written; one run is never called reliable
 //   node skill-factory.mjs where           where this project's playbooks are kept
 //
 // Every command takes --json. Registering a draft is a coordinated workflow's own step (automation.mjs), gated
@@ -33,6 +39,9 @@ import { fileURLToPath } from "node:url";
 import { commandEnvironment } from "../skills/orbit-learn/hosts/settings.mjs";
 import { factoryPort, projectSkillsOf } from "../skills/orbit-help/factory.mjs";
 import { generates } from "../src/automation/intelligence.mjs";
+import { skillRunsOf } from "../src/live/plan.mjs";
+import { recentOf } from "../src/task/recent.mjs";
+import { createTasks } from "../src/task/store.mjs";
 import { gapOf } from "../src/skill-factory/gap.mjs";
 import { effectiveOf, readAutomation } from "../src/automation/settings.mjs";
 import { Refused } from "../src/errors.mjs";
@@ -87,10 +96,14 @@ async function resolverFor(h) {
 // automation policy lets the factory close it.
 const discovered = (factory, resolve, values) => (capability) => ((r) => ((gap) => factory.discover({ capability, resolved: r, gap, generates: generates(gap, values) }))(r?.outcome === "provided" ? null : gapOf(r, [])))(resolve(capability));
 
+// A declared playbook's history (0.0.4): this project's coordinated workflows, read only, and the live core's one
+// reading of a run off them.
+const historyOf = (h) => ({ tasks: () => recentOf({ tasks: createTasks(h.paths.storeRoot, h.io), now: () => new Date().toISOString() }, "automation"), runsOf: skillRunsOf });
+
 async function portsHere() {
   const h = here();
   const resolve = await resolverFor(h);
-  const factory = factoryPort(h, () => valuesOf(h), resolve);
+  const factory = factoryPort(h, () => valuesOf(h), resolve, { history: historyOf(h) });
   return { factory, discover: discovered(factory, resolve, valuesOf(h)), readFile: (file) => readFileSync(file, "utf8"), basename: (file) => basename(file) };
 }
 

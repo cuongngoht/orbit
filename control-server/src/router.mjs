@@ -53,7 +53,7 @@ import { adoptProposal, checkReach, designEnvironment, discoverRuntime, doctorRu
 import { listSandboxes, revokeTrust, trustDefinition } from "./project-runtime/sandbox.mjs";
 import { missionApprovals, missionControl } from "./mission-control/read.mjs";
 import { openLogStream } from "./live/log-stream.mjs";
-import { openTaskStream, taskActivity } from "./live/task-stream.mjs";
+import { openTaskStream, taskActivity, taskPlan } from "./live/task-stream.mjs";
 import { listTasks, readTask, taskEvents } from "./tasks/read.mjs";
 import { readSandbox, releaseSandbox, sandboxLogs, stopSandbox } from "./tasks/sandbox.mjs";
 import { listWorks, readWork } from "./works/read.mjs";
@@ -136,6 +136,9 @@ export const ROUTES = [
   // as a Server-Sent Events stream. Both are reads: GET, never `mutates`, and nothing they do writes anything.
   { method: "GET", path: taskPath("/([^/]+)/activity"), ids: TASK, run: ({ ctx, ids, query }) => taskActivity(ctx, ids, query) },
   { method: "GET", path: taskPath("/([^/]+)/events/stream"), ids: TASK, stream: true, open: (asked) => openTaskStream(asked) },
+  // A coordinated workflow's plan (0.0.4), as every viewer draws it: its steps, revisions, the skill factory's work and
+  // every declared playbook's run with its own steps -- the projection a terminal's Plan view is, read, never kept.
+  { method: "GET", path: taskPath("/([^/]+)/plan"), ids: TASK, run: ({ ctx, ids }) => taskPlan(ctx, ids) },
   // A task's sandbox is the task's own: found from its journal, read through the runtime, and stopped or
   // released by a person. There is no row that starts, restarts or builds one -- the agent's loop does.
   { method: "GET", path: taskPath("/([^/]+)/sandbox"), ids: TASK, run: ({ ctx, ids }) => readSandbox(ctx, ids) },

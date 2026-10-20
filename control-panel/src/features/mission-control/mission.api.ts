@@ -5,6 +5,7 @@ import type { LogStream, SandboxLogPage, SandboxLogs, SandboxOperationResult, Sa
 import type { ActivityResponse } from "./live/live.types";
 import { isUnreadable, type ApprovalQueue, type HealthView, type MachineView, type TaskDecision, type TaskEvents, type TaskRef, type TaskResponse, type TaskSandboxResponse } from "./mission.types";
 import { taskApiPath } from "./missionWords";
+import type { PlanResponse } from "./plan.types";
 
 // Mission Control's reads are one projection of the machine and one task at a time; its only writes
 // are a person's decisions, each a POST that names the revision the person saw. The server judges
@@ -29,6 +30,8 @@ export const missionApi = {
   activity: (ref: TaskRef, since: string | null) => api.get<ActivityResponse>(`${taskApiPath(ref)}/activity?since=${encodeURIComponent(since ?? "t=0")}`),
   // A log from a byte offset on: only what the page does not hold yet.
   sandboxLogPage: (ref: TaskRef, session: string, stream: LogStream, from: number) => api.get<SandboxLogPage>(`${taskApiPath(ref)}/sandbox/logs/${encodeURIComponent(session)}?stream=${stream}&from=${from}`),
+  // A coordinated workflow's plan (0.0.4): the projection every viewer draws, computed by the server. A read.
+  plan: (ref: TaskRef) => api.get<PlanResponse>(`${taskApiPath(ref)}/plan`),
   // A person's, relayed from the button they pressed and confirmed.
   decide: (ref: TaskRef, decision: TaskDecision) => api.post<TaskResponse>(decisionPath(ref, decision), bodyOf(decision)),
   // The task's own sandbox, found by the server from the task's journal. A read starts nothing.
@@ -54,6 +57,7 @@ export const missionKeys = {
   task: (ref: TaskRef) => [...missionKeys.all, "task", ref.key, ref.checkout, ref.task] as const,
   events: (ref: TaskRef) => [...missionKeys.all, "events", ref.key, ref.checkout, ref.task] as const,
   sandbox: (ref: TaskRef) => [...missionKeys.all, "sandbox", ref.key, ref.checkout, ref.task] as const,
+  plan: (ref: TaskRef, revision: number) => [...missionKeys.all, "plan", ref.key, ref.checkout, ref.task, revision] as const,
   logs: (ref: TaskRef, session: string, stream: LogStream) => [...missionKeys.all, "logs", ref.key, ref.checkout, ref.task, session, stream] as const,
 };
 
@@ -121,3 +125,7 @@ export function useSandboxOperation(ref: TaskRef, operation: SandboxOperation) {
     onSettled: () => Promise.all([client.invalidateQueries({ queryKey: missionKeys.all, refetchType: "all" }), client.invalidateQueries({ queryKey: runtimeKeys.all(ref) })]),
   });
 }
+
+// The plan is read again exactly when the task moved: its key is the revision the page holds (the live stream writes
+// each view it receives into the task query), so a new journal line asks the server once more, and nothing else does.
+export const useTaskPlan = (ref: TaskRef, revision: number, enabled: boolean) => useQuery({ queryKey: missionKeys.plan(ref, revision), queryFn: () => missionApi.plan(ref), enabled, placeholderData: (previous) => previous });

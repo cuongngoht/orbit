@@ -10,7 +10,7 @@ import { LoadingState } from "../../shared/components/LoadingState";
 import { PageHeader } from "../../shared/components/PageHeader";
 import { useProjects } from "../projects/projects.api";
 import { automationKeys, useAutomation, useGeneratedSkill, useGeneratedSkills, useMoveSkill, useProjectAutomation, useSaveLive, useSaveMachine, useSaveProject } from "./automation.api";
-import type { AutomationOverview, Effective, FieldRow, GeneratedSkill, HostReadiness, MatrixRow, SettingValue, SettingsDoc, SettingsTree, SkillMove } from "./automation.types";
+import type { AutomationOverview, DeclaredWorkflow, Effective, FieldRow, GeneratedSkill, GeneratedSkillDetail, HostReadiness, MatrixRow, SettingValue, SettingsDoc, SettingsTree, SkillMove } from "./automation.types";
 import { STATUS_COLOR, TABS, VERDICT_COLOR, VERDICT_LABEL, byLabel, fieldsOf, isTab, treeOf, valueAt, type TabId } from "./automationWords";
 
 const useStyles = makeStyles({
@@ -271,9 +271,69 @@ function PlaybookView({ project, id }: { project: string; id: string }) {
   const detail = useGeneratedSkill(project, id);
   if (detail.isPending) return <LoadingState label="Reading the playbook…" />;
   if (detail.isError) return <ErrorState error={detail.error} title="Could not read the playbook" />;
+  const declared = detail.data.skill.runs === "declared";
   return (
-    <Card title={`${detail.data.playbook.pin} (${detail.data.playbook.status})`} subtitle="Its text as a host is handed it — printable, never run by Orbit.">
+    <Card title={`${detail.data.playbook.pin} (${detail.data.playbook.status})`} subtitle={declared ? "Its text, and the workflow the engine runs step by step — each step through its provider's own owner gate, reading only." : "Its text as a host is handed it — printable, never run by Orbit."}>
+      {declared && <WorkflowView workflow={detail.data.workflow ?? null} />}
+      {declared && <RunsView detail={detail.data} />}
       {detail.data.playbook.files.map((f) => <div key={f.name}><Caption1>{f.name}</Caption1><pre className={styles.code}>{f.text}</pre></div>)}
     </Card>
+  );
+}
+
+// A declared playbook's workflow: each step, the capability it asks (the resolver picks who serves it, at the moment
+// it runs), what it waits for and what it must prove.
+function WorkflowView({ workflow }: { workflow: GeneratedSkillDetail["workflow"] }) {
+  if (!workflow) return <Caption1>No workflow is declared.</Caption1>;
+  if ("unreadable" in workflow) return <Caption1>{`Its workflow cannot be read: ${workflow.because}`}</Caption1>;
+  return <WorkflowTable workflow={workflow} />;
+}
+
+function WorkflowTable({ workflow }: { workflow: DeclaredWorkflow }) {
+  return (
+    <Table size="small" aria-label="Workflow steps">
+      <TableHeader><TableRow><TableHeaderCell>Step</TableHeaderCell><TableHeaderCell>Asks</TableHeaderCell><TableHeaderCell>Waits for</TableHeaderCell><TableHeaderCell>Must prove</TableHeaderCell></TableRow></TableHeader>
+      <TableBody>
+        {workflow.steps.map((s) => (
+          <TableRow key={s.id}>
+            <TableCell><Text weight="semibold">{s.id}</Text>{!s.required && <Caption1> optional</Caption1>}</TableCell>
+            <TableCell><Caption1>{s.capability}{s.tool ? ` · ${s.tool}` : ""}</Caption1></TableCell>
+            <TableCell><Caption1>{s.after.join(", ") || "—"}</Caption1></TableCell>
+            <TableCell><Caption1>{s.evidence === "owner-record" ? "an owner's record, read back" : "a report: its call answered within its contract"}{s.approval === "owner" ? " · a person allows it" : ""}</Caption1></TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
+
+// What its runs did, newest first, and the review they answer -- read from the project's journals on every look.
+function RunsView({ detail }: { detail: GeneratedSkillDetail }) {
+  const runs = detail.runs ?? [];
+  const review = detail.review;
+  return (
+    <div>
+      {review && <Caption1>{`Review: ${review.reliability.word} — ${review.reliability.because}`}</Caption1>}
+      {review && (
+        <ul aria-label="Review">
+          {review.questions.map((q) => <li key={q.id}><Caption1>{`${q.answer} · ${q.ask} — ${q.because}`}</Caption1></li>)}
+          <li><Caption1>{`${review.proposal.successor ? "A successor version is proposed" : "No successor is proposed"} — ${review.proposal.because}`}</Caption1></li>
+        </ul>
+      )}
+      <Table size="small" aria-label="Runs">
+        <TableHeader><TableRow><TableHeaderCell>When</TableHeaderCell><TableHeaderCell>Came to</TableHeaderCell><TableHeaderCell>Version</TableHeaderCell><TableHeaderCell>Steps</TableHeaderCell></TableRow></TableHeader>
+        <TableBody>
+          {runs.map((r) => (
+            <TableRow key={`${r.task}/${r.run}`}>
+              <TableCell><Caption1>{r.at ?? "—"}</Caption1></TableCell>
+              <TableCell><Badge appearance="tint" color={r.word === "VERIFIED" ? "success" : r.word === "FAILED" ? "danger" : "warning"}>{r.word}</Badge></TableCell>
+              <TableCell><Caption1>{r.pin}</Caption1></TableCell>
+              <TableCell><Caption1>{r.steps.map((s) => `${s.id} ${s.word}`).join(", ")}</Caption1></TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+      {runs.length === 0 && <Caption1>It has not run in this project's workflows yet.</Caption1>}
+    </div>
   );
 }

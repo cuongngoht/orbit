@@ -23,7 +23,7 @@ const providedBy = (cap) => ({ capability: cap, outcome: "provided", status: "se
 // opts: settings (machine document) · project (project document) · intent · matched · requirement
 // ({ latest, blocking }) · startable · resolved ({ cap: answer }) · gap · agents · investigations ({ id: outcome })
 export function automationWorld(t, opts = {}) {
-  const w = taskWorld(t, { door: null });
+  const w = taskWorld(t, { door: null, ...(opts.world ?? {}) });
   const state = { requirement: { latest: SNAPSHOT, blocking: 0, ...opts.requirement }, investigations: new Map(Object.entries(opts.investigations ?? {})), rooms: new Map(), children: [], gathered: 0, running: null, factory: opts.factory ?? null };
   const room = (id) => (state.rooms.has(id) ? state.rooms.get(id) : state.rooms.set(id, new Map()).get(id));
   const docs = () => [{ by: "machine", content: opts.settings ?? {} }, ...(opts.project ? [{ by: "project", content: opts.project }] : [])];

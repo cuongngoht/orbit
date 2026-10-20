@@ -17,6 +17,8 @@ import { fingerprintOf, resourceOf } from "../../src/work/bind.mjs";
 import { engineVersion } from "../../src/version.mjs";
 import { invokeBound } from "../../src/work/invoke.mjs";
 import { factoryPort, gapPort, projectSkillsOf } from "../../skills/orbit-help/factory.mjs";
+import { skillRunsOf } from "../../src/live/plan.mjs";
+import { recentOf } from "../../src/task/recent.mjs";
 import { automationWorld } from "./automation.mjs";
 import { fakeContext } from "./context.mjs";
 import { managedMcp } from "./managed-mcp.mjs";
@@ -99,9 +101,10 @@ export const workflowOf = (over = {}) => ({
 });
 
 // opts: server · evidence (evidenceCapability) · settings · investigations · project · session · base (a factory room
-// another world already holds: a second session of the same project) · mcpProvides · mcpEnv
+// another world already holds: a second session of the same project) · mcpProvides · mcpEnv · world (where the task
+// journals are: { dir, project, checkout })
 export function skillWorld(t, opts = {}) {
-  const o = automationWorld(t, { settings: opts.settings, project: opts.project, investigations: opts.investigations, session: opts.session });
+  const o = automationWorld(t, { settings: opts.settings, project: opts.project, investigations: opts.investigations, session: opts.session, world: opts.world });
   const base = opts.base ?? mkdtempSync(join(tmpdir(), "orbit-skill-run-"));
   if (!opts.base) t.after(() => rmSync(base, { recursive: true, force: true }));
   const server = opts.server ?? notesServer();
@@ -113,7 +116,7 @@ export function skillWorld(t, opts = {}) {
   const values = () => o.ports.settings().values;
   const effective = () => getEffectiveResources({ env: {}, plugin: "orbit", components: () => [], builtins: () => ({}), capabilities: () => registry.list(), packCapabilities: () => [], tools: () => [], mcp: () => mcp.entries(), projectSkills: projectSkillsOf(h, values) }, PROVIDERS);
   const resolve = (cap) => resolved([{ capability: cap, proves: { subject: cap } }], effective()).results[0];
-  const factory = factoryPort(h, values, resolve, { pluginRoot: REPO });
+  const factory = factoryPort(h, values, resolve, { pluginRoot: REPO, history: { tasks: () => recentOf({ tasks: o.w.tasks, now: o.w.now }, "automation"), runsOf: skillRunsOf } });
   const w = { effective, get mcp() { return mcp.context(); }, capabilityContext: { ...fakeContext(), capabilities: registry, process: fakeProcess(), tools: fakeTools({}) }, host: "laptop-a", session: "sess-1" };
   const calls = [];
   Object.assign(o.ports, { resolve, gapOf: gapPort(h, resolve), factory, invoke: { bind: (r) => ((res) => (res ? { provider: r.provider, fingerprint: fingerprintOf(res) } : null))(resourceOf(effective(), r?.provider)), call: async (binding, ask) => (calls.push({ provider: binding.provider.key, ask }), invokeBound(w, binding, ask)) } });
@@ -138,3 +141,9 @@ export const spec = { objective: "Check the release is ready", intent: "release"
 export const receiptsOf = (s, id, domain) => s.w.view(id).receipts.filter((r) => r.domain === domain);
 
 export const eventsOf = (s, id, domain) => s.ports.task.events(id).filter((e) => e.kind === "receipt" && e.domain === domain);
+
+// The coordinator's room as a checkout keeps it: each plan artifact the in-memory room holds, written where the plan
+// source reads it (<store>/automation/<task>/plans/<digest>.json) -- so a viewer reads the plan as it would.
+export function roomWritten(s, id, storeRoot = s.w.dir) {
+  for (const [name, value] of s.room(id).entries()) if (name.startsWith("plans/")) s.h.io.write(join(storeRoot, "automation", id, `${name}.json`), `${JSON.stringify(value, null, 2)}\n`);
+}

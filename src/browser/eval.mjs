@@ -15,11 +15,26 @@ export function createEval(session) {
 // taking its last line threw away the "ERROR" marker and the sentence that
 // mattered -- leaving classify() with "  playwright-cli open [params]", which it
 // could not recognise, so a browser nobody had opened reported as a HOST.
+//
+// An object or an array is printed PRETTY, over several lines (measured on playwright-cli: `{`, a line per key,
+// `}`), so the whole text is the result before the last line is: taking the last line alone reported every
+// object a `report` returned as "}".
 function parseOnce(raw) {
   const text = String(raw).trim();
   if (text.startsWith("ERROR")) return text;
+  const whole = jsonOf(text);
+  return whole.ok ? whole.value : lastLine(text);
+}
+
+const jsonOf = (text) => {
+  try { return { ok: true, value: JSON.parse(text) }; }
+  catch { return { ok: false }; }
+};
+
+function lastLine(text) {
   const last = text.split("\n").pop() ?? "";
-  try { return JSON.parse(last); } catch { return last; }
+  const it = jsonOf(last);
+  return it.ok ? it.value : last;
 }
 
 // The polling loop used to live here, with its own Date.now -- so a deadline was

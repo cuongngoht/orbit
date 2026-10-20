@@ -24,7 +24,7 @@
 //
 // It never opens a browser. The launcher does, behind the preflight question;
 // this drives the session in PT_RUN_DIR (or the project's default run dir).
-import { relative } from "node:path";
+import { shownPath } from "../src/shown-path.mjs";
 import { publishRun } from "../src/report/publish.mjs";
 import { createContext } from "../src/run/context.mjs";
 import { withExtensions } from "../src/extensions/index.mjs";
@@ -67,7 +67,7 @@ function finish(ctx, outcome) {
 function reported(ctx, outcome) {
   if (!REPORT) return;
   const file = publishRun(ctx, outcome);
-  if (file && !JSON_OUT) console.log(`report: ${relative(process.cwd(), file)}`);
+  if (file && !JSON_OUT) console.log(`report: ${shownPath(file)}`);
 }
 
 function stopped(e, ctx) {

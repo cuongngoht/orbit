@@ -251,3 +251,19 @@ test("signal with tree reaches the whole process GROUP -- a negative pid on POSI
   const gone = createProcess({ platform: "win32", spawn: () => ({ status: 128 }) });
   assert.deepEqual(gone.signal(4321, "SIGTERM", { tree: true }), { ok: false, error: "no such process" });
 });
+
+test("on Windows the ancestry is one CIM listing, quoted without a double quote, given a cold machine's time; CRLF lines are read", () => {
+  const asked = [];
+  const spawn = (file, args, opts) => {
+    asked.push({ file, args, opts });
+    return { status: 0, stdout: "4321 4000\r\n4000 1200\r\n1200 4\r\n4 0\r\n" };
+  };
+  const proc = createProcess({ spawn, platform: "win32", env: { SystemRoot: "C:\\Windows", SECRET: "x" } });
+  assert.deepEqual(proc.ancestry(4321), [4321, 4000, 1200, 4]);
+  assert.equal(asked[0].file, "powershell");
+  assert.ok(!asked[0].args.at(-1).includes('"'), "a single-quoted command: nothing for a command line to re-escape");
+  assert.match(asked[0].args.at(-1), /Win32_Process -Property ProcessId,ParentProcessId/);
+  assert.ok(asked[0].opts.timeout >= 30000, "a cold PowerShell and CIM have time to answer");
+  assert.deepEqual([asked[0].opts.env.SystemRoot, asked[0].opts.env.SECRET], ["C:\\Windows", undefined]);
+  assert.deepEqual(createProcess({ spawn: () => ({ status: 1, stdout: "" }), platform: "win32" }).ancestry(4321), [], "no listing, no guess");
+});

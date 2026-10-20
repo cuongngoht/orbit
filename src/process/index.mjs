@@ -400,14 +400,17 @@ function startedAt(os, pid) {
 // The chain from `pid` up through its parents (itself first, at most 32), read from ONE listing of every process --
 // `ps` on POSIX, PowerShell's CIM on Windows -- so a viewer can be split beside the terminal a process runs in. Empty
 // when the listing cannot be read: never a guess.
+// 0.0.2: on Windows the listing asks only the two properties it reads and quotes with single quotes alone (no `"` for
+// a command line to re-escape), and it is given the time a cold PowerShell and CIM take on a fresh machine -- five
+// seconds was a listing that never answered there, and an empty chain.
 const TREE_PROBES = {
-  win32: () => ["powershell", ["-NoProfile", "-NonInteractive", "-Command", "Get-CimInstance Win32_Process | ForEach-Object { \"$($_.ProcessId) $($_.ParentProcessId)\" }"]],
-  posix: () => ["ps", ["-axo", "pid=,ppid="]],
+  win32: () => ["powershell", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "Get-CimInstance -ClassName Win32_Process -Property ProcessId,ParentProcessId | ForEach-Object { '{0} {1}' -f $_.ProcessId, $_.ParentProcessId }"], 30000],
+  posix: () => ["ps", ["-axo", "pid=,ppid="], 5000],
 };
 
 function ancestryOf(os, pid) {
-  const [file, args] = TREE_PROBES[os.platform === "win32" ? "win32" : "posix"]();
-  const r = Number.isInteger(pid) && pid > 0 ? os.spawn(file, args, { encoding: "utf8", timeout: 5000, windowsHide: true, maxBuffer: 8 * 1024 * 1024, env: { ...baseEnv(os.env), LC_ALL: "C", LANG: "C" } }) : null;
+  const [file, args, timeout] = TREE_PROBES[os.platform === "win32" ? "win32" : "posix"]();
+  const r = Number.isInteger(pid) && pid > 0 ? os.spawn(file, args, { encoding: "utf8", timeout, windowsHide: true, maxBuffer: 8 * 1024 * 1024, env: { ...baseEnv(os.env), LC_ALL: "C", LANG: "C" } }) : null;
   return r?.status === 0 ? chainOf(parentsOf(String(r.stdout ?? "")), pid) : [];
 }
 

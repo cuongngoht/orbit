@@ -379,10 +379,14 @@ const whereOf = (h) => ({ machine: machineFile(), project: projectFile(h), rooms
 
 const actor = () => (/^[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}$/.test(ENV.ORBIT_HOST ?? "") ? ENV.ORBIT_HOST : undefined);
 
-// The project's own capabilities are loaded first, so what a step resolves against is what the router sees.
+// The project's own capabilities are loaded first, so what a step resolves against is what the router sees -- by every
+// command that resolves or reads evidence back through the resolver: a settle holds a draft's needs to being provided
+// (0.0.4: a declared workflow's steps are what it needs), and a reconcile reads back what a step proved.
+const RESOLVING = ["start", "step", "plan", "context", "settle", "reconcile"];
+
 async function portsHere() {
   const h = here();
-  const caps = ["start", "step", "plan", "context"].includes(cmd) ? await extended(h) : null;
+  const caps = RESOLVING.includes(cmd) ? await extended(h) : null;
   const lz = { rt: lazy(() => bindRuntime({ pluginRoot: PLUGIN_ROOT, env: ENV, cwd: h.paths.root })), rooms: lazy(() => requirementRooms(h)), effective: lazy(() => effectiveFor(h, caps)), caps };
   return assembled(h, lz);
 }

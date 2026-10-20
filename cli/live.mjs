@@ -95,6 +95,7 @@ import { commandEnvironment } from "../skills/orbit-learn/hosts/settings.mjs";
 import { effectiveOf, readAutomation } from "../src/automation/settings.mjs";
 import { PLAN_SOURCE } from "../src/automation/source.mjs";
 import { SKILL_SOURCE } from "../src/skill-factory/source.mjs";
+import { planViewOf } from "../src/live/plan.mjs";
 import { surfaceRows } from "../skills/orbit-learn/hosts/live-surfaces.mjs";
 import { Blocked, Refused } from "../src/errors.mjs";
 import { QA_SOURCE } from "../src/investigation/live.mjs";
@@ -358,7 +359,11 @@ function statusFacts(loc, settings) {
 // `session` (1.8.7): what this session's own tools did, as its hooks observed them -- never the task's state.
 // `work` (1.8.8): the work this session tracks -- its identity, mode, lifecycle, evidence level, the files and checks that were
 // OBSERVED and its blocker -- or null when it tracks none.
-const statusJson = (snap, session, work) => ({ work, association: snap.association, presentation: snap.presentation, lifecycle: snap.view?.lifecycle ?? null, stage: snap.view?.stage ?? null, attempt: snap.view?.attempt ?? null, revision: snap.view?.revision ?? null, current: snap.current, activity: focusOf(snap.activities ?? []), failure: snap.failure, cursor: snap.cursor, session: sessionJson(session) });
+// `plan` (0.0.4): a coordinated workflow's plan as every viewer draws it -- its steps, revisions and every declared
+// playbook's run with its own steps (src/live/plan.mjs planViewOf) -- or null for a task that is no workflow.
+const planJson = (snap) => (snap.view?.task?.provider === "automation" ? planViewOf(snap.plan, snap.view, snap.events, snap.skills) : null);
+
+const statusJson = (snap, session, work) => ({ work, association: snap.association, presentation: snap.presentation, lifecycle: snap.view?.lifecycle ?? null, stage: snap.view?.stage ?? null, attempt: snap.view?.attempt ?? null, revision: snap.view?.revision ?? null, current: snap.current, activity: focusOf(snap.activities ?? []), failure: snap.failure, cursor: snap.cursor, plan: planJson(snap), session: sessionJson(session) });
 
 const sessionText = (a) => (a.running.length ? `this session is running ${a.running.at(-1).what} (observed)` : a.recent[0] ? `this session last ${a.recent[0].kind === "command" ? "ran" : a.recent[0].kind === "edit" ? "edited" : "used"} ${a.recent[0].what ?? "a tool"} (observed)` : null);
 

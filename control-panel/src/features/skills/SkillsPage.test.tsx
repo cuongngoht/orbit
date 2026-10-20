@@ -108,8 +108,9 @@ describe("Skill editor", () => {
     fireEvent.change(await editor(), { target: { value: "typed but never saved" } });
     fireEvent.click(within(nav()).getByRole("link", { name: /Analytics/ }));
     const dialog = await screen.findByRole("alertdialog");
-    expect(within(dialog).getByText("Leave without saving?")).toBeTruthy();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Keep editing" }));
+    expect(await within(dialog).findByText("Leave without saving?")).toBeTruthy();
+    // The dialog can be in the document a beat before its buttons are: wait for the one this test presses.
+    fireEvent.click(await within(dialog).findByRole("button", { name: "Keep editing" }));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(router.state.location.pathname).toBe("/skills/alpha");
     expect((await editor()).value).toBe("typed but never saved");

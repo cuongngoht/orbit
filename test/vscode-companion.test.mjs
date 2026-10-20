@@ -32,7 +32,23 @@ const LEASE = `--lease=${"a".repeat(16)}.${"b".repeat(16)}`;
 const TASK = "tsk-0123456789ab";
 const UID = typeof process.getuid === "function" ? process.getuid() : undefined;
 const NO_BITS = UID === undefined && "Windows keeps no owner or mode bits";
-const NODE = realpathSync(process.execPath);
+// The node a person names in `orbit.live.nodePath` is theirs (or root's) and writable by nobody else, or the companion
+// refuses it -- rightly. The node running this suite usually is; a CI runner's tool cache is not (GitHub's images leave
+// it writable by everyone), so there the person's node is a copy of it kept the way an installed node is kept.
+const ownOnly = (st) => (st.uid === UID || st.uid === 0) && (st.mode & 0o022) === 0;
+
+function personsNode() {
+  const real = realpathSync(process.execPath);
+  if (UID === undefined || ownOnly(fs.statSync(real))) return real;
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "orbit-node-")));
+  process.on("exit", () => rmSync(dir, { recursive: true, force: true }));
+  cpSync(real, join(dir, path.basename(real)));
+  chmodSync(join(dir, path.basename(real)), 0o755);
+  return join(dir, path.basename(real));
+}
+
+const PERSONS_NODE = personsNode();
+const NODE = PERSONS_NODE;
 
 // VS Code, as far as the companion asks it: the window's terminals (each with its shell's pid), what was created, what
 // it was told, and the settings -- the person's own values, and what a workspace says, which `get` would merge in.
@@ -64,7 +80,7 @@ function world(t, over = {}) {
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const store = join(dir, "store");
   const home = join(dir, "home");
-  const v = fakeVscode(over.pids, { storeDirs: [store], nodePath: process.execPath });
+  const v = fakeVscode(over.pids, { storeDirs: [store], nodePath: PERSONS_NODE });
   const timers = [];
   const deps = { vscode: v.api, fs, path, os: { homedir: () => home }, env: {}, pid: over.pid ?? 777, uid: UID, now: () => over.now ?? NOW, every: (ms, fn) => (timers.push({ ms, fn }), () => timers.splice(timers.findIndex((x) => x.fn === fn), 1)) };
   const plugin = installed(join(hostFolder(home), "orbit", "orbit", "2.0.0"));
@@ -152,7 +168,7 @@ test("a request no terminal of this window answers is left for another window; o
 test("two windows that both see the request open it once: the first to claim it", async (t) => {
   const w = world(t);
   left(w, "viewer-k1", request(w));
-  const other = fakeVscode([4321], { storeDirs: [w.store], nodePath: process.execPath });
+  const other = fakeVscode([4321], { storeDirs: [w.store], nodePath: PERSONS_NODE });
   const a = createCompanion(w.deps);
   const b = createCompanion({ ...w.deps, vscode: other.api, pid: 888 });
   const both = await Promise.all([a.tick(), b.tick()]);
@@ -262,7 +278,7 @@ test("a link inside an install is held to its owner and never followed: an insta
 test("a repository cannot name a store: a workspace's orbit.live.storeDirs is ignored -- no request taken there, no heartbeat written", async (t) => {
   const w = world(t);
   const repoStore = join(w.dir, "repo", ".orbit");
-  const v = fakeVscode([4321], { storeDirs: [w.store], nodePath: process.execPath }, { storeDirs: [repoStore] });
+  const v = fakeVscode([4321], { storeDirs: [w.store], nodePath: PERSONS_NODE }, { storeDirs: [repoStore] });
   const file = left(w, "viewer-k1", request(w, { env: { ORBIT_STORE_DIR: repoStore } }), 0o644, join(repoStore, "control", "live", "requests"));
   const c = createCompanion({ ...w.deps, vscode: v.api });
   assert.deepEqual(await c.tick(), []);
@@ -361,7 +377,7 @@ test("`live open` in a VS Code terminal with a companion alive leaves the reques
   const req = JSON.parse(readFileSync(join(w.requests, files[0]), "utf8"));
   assert.deepEqual([realpathSync(req.argv[1]), ...req.argv.slice(2)], [join(engine, "cli", "live.mjs"), "tui", "--until-done"]);
   assert.ok(req.ancestry.includes(process.pid), "the asking process's ancestors include the shell it runs under (here: this test)");
-  const v = fakeVscode([process.pid], { storeDirs: [w.store], nodePath: process.execPath });
+  const v = fakeVscode([process.pid], { storeDirs: [w.store], nodePath: PERSONS_NODE });
   const c = createCompanion({ ...w.deps, vscode: v.api, now: () => Date.now() });
   assert.deepEqual(await c.tick(), ["opened"]);
   assert.equal(v.created[0].location.parentTerminal, v.terminals[0]);

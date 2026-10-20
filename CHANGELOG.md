@@ -16,6 +16,13 @@
 - Antigravity CLI 1.4.2's file tools (`read_file`, `write_file`, `edit_file`) are observed, with captures; a command
   whose result a host did not report shows `not reported` in the trail, never failed; a host session's missing browser
   names its own run directory.
+- Windows: one checkout is one id whatever way its path is spelled (the file system's own real path, so a short 8.3
+  name and its long form agree); text checks out with LF and frontmatter is read across CRLF; the anchor git reads an
+  empty config file of its own instead of the null device; process ancestry is asked the way a cold machine answers.
+- A hook Claude Code delivers twice is one call: its `tool_use_id` is now the call's delivery key, as Codex's and
+  Grok's are.
+- CI runs `ship.mjs --ci`: native host acceptance is awaited there (`wait`), never failed; a release still requires it.
+  The pane's own test runner is `skills/orbit-release/pane-check.mjs`, so `node --test` leaves it alone.
 
 ## 0.0.1
 

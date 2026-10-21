@@ -6,6 +6,7 @@
 // which engine operation it IS: the same function the CLI calls, inside the
 // same gates. There is no free-form step, no command string and no second way
 // to reach the browser, the database or a capability.
+import { generated } from "./generate.mjs";
 import { Refused } from "../errors.mjs";
 import { CORE } from "../dsl/registry.mjs";
 import { capabilityMutates } from "../dsl/rules/head.mjs";
@@ -62,6 +63,7 @@ export const ACTIONS = {
   reproduce: { fields: ["finding"], required: ["finding"], modes: "any; replaying a write needs explore-write (the act gates say so)", allowed: () => true, mutates: (a, lw) => reproducesWrite(lw, a.finding), check: () => null, run: (w, a) => reproduce(w, a.finding) },
   "run-case": { fields: ["case", "draft", "params"], required: ["case"], modes: "any; a case that writes needs a mode that mutates (explore-write, fixture-write); a destructive case never", allowed: (m, a, lw) => writeAllowed(m, lw, a), mutates: (a, lw) => caseWrites(lw, a), check: (a, lw) => caseProblem(a, lw), run: (w, a) => ranCase(w, a) },
   ask: { fields: ["asks"], required: ["asks"], modes: "any", allowed: () => true, mutates: () => false, check: (a) => (typeof a.asks === "string" && a.asks.trim() && a.asks.length <= 400 ? null : "ask.asks is one question, 400 characters at most"), run: (w, a, d) => asked(w, a, d) },
+  generate: { fields: ["obligation", "design"], required: ["obligation", "design"], modes: "any — it writes a draft into the machine store, freezes its version and runs nothing", allowed: () => true, mutates: () => false, check: (a) => (a.design && typeof a.design === "object" && !Array.isArray(a.design) ? null : "generate.design is one design proposal (orbit.qa-sidecar/v1 design)"), run: (w, a) => generated(w, a) },
 };
 
 export const ACTION_KINDS = Object.keys(ACTIONS);

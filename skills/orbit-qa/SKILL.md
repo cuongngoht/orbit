@@ -124,7 +124,15 @@ needs explore-write) · `check-data` reads below the screen — `${TC}` is what 
 when it typed two values you name one with `${TC:<screen/via>}`; with no SQL here, `via` a registered
 read-only capability · `run-case` runs a plan scenario's case (a draft with `draft: true`; only
 synthetic `TC-` params) · `reproduce` replays a finding's chain · `security` runs the tenant matrix ·
-`ask` puts ONE requirement question to a person, and what it is about waits for the answer.
+`ask` puts ONE requirement question to a person, and what it is about waits for the answer ·
+`generate` proposes ONE design for an obligation (`obligation`, `design`: the skeleton's steps with no
+`expect`, `js` or window, the assertions as accepted criterion slots — `<criterion>/<expectation>`,
+a template, a step — the controls its shape needs, the fixture and observation plan, the trigger
+step). The engine compiles every verdict from the accepted criterion, validates the case with the
+real grammar, saves it as a DRAFT and freezes its version; a design that does not hold comes back
+with its word (`GENERATION_FAILED`, `REQUIRES_REQUIREMENT`, `INVALID_TEST`) and the stage that
+stopped it. You never write a predicate, a value or a window, and a repair may change only how a
+step is written.
 
 After a write settles, and whenever a few steps have moved things, keep what they came to:
 

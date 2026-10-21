@@ -13,9 +13,12 @@ import { unknownFields } from "./common.mjs";
 const ROOT_KEYS = new Set([...Object.keys(ROOT_FIELDS), "_file", "_broken"]);
 const PARAM_KEYS = new Set(Object.keys(PARAM_FIELDS));
 
-export function headFindings(c, graph, dsl = CORE) {
+// `capabilityOf(id)` answers what a step's capability declares (src/capability/registry.mjs), or
+// null when this check has no project capabilities in hand -- then a capability that writes is
+// not seen, exactly as before.
+export function headFindings(c, graph, dsl = CORE, capabilityOf = () => null) {
   const declared = [...missingFindings(ROOT_REQUIRED, c, c.id), ...constraintFindings(ROOT_FIELDS, c, c.id)];
-  const own = [...identityOf(c), ...seenOf(c), ...startOf(c, graph), ...paramFindings(c), ...createsOf(c, dsl), ...destructiveOf(c, graph)];
+  const own = [...identityOf(c), ...seenOf(c), ...startOf(c, graph), ...paramFindings(c), ...createsOf(c, dsl, capabilityOf), ...destructiveOf(c, graph)];
   return [...unknownFields(c, ROOT_KEYS, c.id), ...declared, ...own];
 }
 
@@ -58,12 +61,22 @@ function destructiveOf(c, graph) {
 // Which verbs mutate is asked of the registry, not spelled out here: `ACTS minus
 // goto` was an enumeration pretending to be a concept, and a new act -- core's or
 // a project's -- would have been missed.
-function createsOf(c, dsl) {
+//
+// A step also mutates when the CAPABILITY it calls declares that it does -- asked of the
+// capability's own declaration, never of a verb's name. A case whose every mutating step is such
+// a call writes into its run's FIXTURE (ADR 0037): a fresh namespace per run is what makes a
+// re-run safe there, and src/run/gates/fixture.mjs refuses the run unless it carries one. A
+// skip-if would only force a browser on a case that has nothing to show one.
+function createsOf(c, dsl, capabilityOf) {
   if (!c.creates) return [];
   const steps = c.steps ?? [];
-  const guard = steps.findIndex((st) => st.do === "skip-if");
-  const mutates = steps.findIndex((st) => dsl.verbsWhere("changes").has(st.do));
-  return unguarded(guard, mutates) ? [`${c.id}: creates something but has no skip-if guard before its first mutating step — a re-run would make a duplicate`] : [];
+  const mutating = steps.filter((st) => changesOf(dsl, st) || capabilityMutates(capabilityOf, st));
+  if (mutating.length && mutating.every((st) => capabilityMutates(capabilityOf, st))) return [];
+  return unguarded(steps.findIndex((st) => st.do === "skip-if"), steps.findIndex((st) => changesOf(dsl, st) || capabilityMutates(capabilityOf, st))) ? [`${c.id}: creates something but has no skip-if guard before its first mutating step — a re-run would make a duplicate`] : [];
 }
+
+const changesOf = (dsl, st) => dsl.verbsWhere("changes").has(st.do);
+
+export const capabilityMutates = (capabilityOf, st) => typeof st.capability === "string" && capabilityOf(st.capability)?.mutates === true;
 
 const unguarded = (guard, mutates) => guard < 0 || (mutates >= 0 && guard > mutates);

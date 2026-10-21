@@ -33,6 +33,7 @@ import { join, relative } from "node:path";
 import { readAll } from "../src/capability/helper-protocol.mjs";
 import { shaBytes } from "../src/hash.mjs";
 import { argvOf, requestProblem, sealedBinder, WORKER_API } from "../src/run/worker.mjs";
+import { grantLedger } from "../src/run/grants.mjs";
 import { shownPath } from "../src/shown-path.mjs";
 import { publishRun } from "../src/report/publish.mjs";
 import { createContext } from "../src/run/context.mjs";
@@ -121,7 +122,7 @@ async function workerMain() {
   const request = jsonOf(await readAll(process.stdin));
   const problem = requestProblem(request);
   if (problem) return enveloped(request ?? {}, { status: "REFUSED", why: problem });
-  try { enveloped(request, ran(await withExtensions({ ...createContext(), binder: sealedBinder(request) }), request)); }
+  try { enveloped(request, ran(await withExtensions({ ...createContext(), binder: sealedBinder(request), grants: grantLedger(request.grants, request.runId, Date.now), fixture: request.fixture ?? null }), request)); }
   catch (e) { enveloped(request, stopOf(e)); }
 }
 

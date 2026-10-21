@@ -87,13 +87,17 @@ function boundInto(ctx, run, cap, invocation, key, kind, ref) {
   Object.assign(invocation.env, r.env ?? {});
 }
 
-// The guard a destructive case already has, reused rather than reinvented. A
-// capability that says it mutates may only be reached from a case that said so
-// too -- and the destructive gate is then what demands --force-destructive, so
-// there is still exactly one place that decides whether a run may change things.
-function mutationProblem(ctx, run, cap) {
+// A capability that mutates is reached in one of two ways, and only these. A PERSON's case that
+// declares `destructive: true` -- the destructive gate then demands --force-destructive, so there
+// is still one place deciding whether a person's run may change things. Or a generated test
+// running under a TEST GRANT the engine minted for this run's fixture (ADR 0037): the run's
+// grant ledger is asked here, and one use is spent only after every gate held, just before the
+// call (`answered`). Nothing a case says can stand in for a grant.
+function mutationProblem(ctx, run, cap, input) {
   if (!cap.mutates || run?.c?.destructive) return null;
-  return { message: `${cap.id} declares that it can change external state, and this case does not declare "destructive": true — a case that writes has to say so, and then --force-destructive is what allows it` };
+  const why = typeof ctx.grants?.check === "function" ? ctx.grants.check(cap, input) : "no test grant was minted for this run";
+  if (why === null) return null;
+  return { message: `${cap.id} declares that it can change external state, and nothing allows this run to — ${why}. A person's case that writes declares "destructive": true and runs with --force-destructive; a generated test writes only under a grant minted for its fixture` };
 }
 
 // Blocked, deliberately. See the header: the product is not broken because this
@@ -121,6 +125,7 @@ function connectionProblem(ctx, run, cap) {
 // must never reach the ledger, a lesson or a report. The value a verdict judges is the answer as
 // given.
 function answered(ctx, run, cap, input, invocation) {
+  spendGrant(ctx, run, cap, input);
   const value = called(cap, extensionContextV1(ctx, run, cap, invocation), input);
   run?.log?.record({ kind: "capability", id: cap.id, by: cap.from, mutates: Boolean(cap.mutates), result: scrubbed(value) });
   return value;
@@ -129,6 +134,13 @@ function answered(ctx, run, cap, input, invocation) {
 // A capability that throws something the engine does not recognise is the TOOL
 // failing. Filing that as a product defect is how a generated script's own bug
 // gets shipped as a bug report against somebody's feature.
+// The one use a grant gives, taken after every gate held. A person's destructive run spends none.
+function spendGrant(ctx, run, cap, input) {
+  if (!cap.mutates || run?.c?.destructive || !ctx.grants?.spend) return;
+  const why = ctx.grants.spend(cap, input, run);
+  if (why) throw new Refused(`${cap.id}: ${why}`);
+}
+
 function called(cap, ext, input) {
   try { return cap.invoke(ext, input); }
   catch (e) { throw typed(cap, e); }

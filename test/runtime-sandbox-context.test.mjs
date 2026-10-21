@@ -25,7 +25,7 @@ test("a sandbox inherits the project, the store, the checkout and a person's set
   const { ctx, sandbox } = setup();
   const sb = sandbox();
   for (const key of ["project", "storeBase", "storeRoot", "checkout", "registry", "host", "catalog", "machine", "process", "probe", "reach", "readSettings", "ecosystems"]) assert.strictEqual(sb[key], ctx[key], `${key} is the person's`);
-  assert.deepEqual(sb.providers.map((p) => p.id), ["native", "devcontainer", "sandbox"], "the ways a component runs, and the one that places a component on them");
+  assert.deepEqual(sb.providers.map((p) => p.id), ["native", "devcontainer", "isolated", "sandbox"], "the ways a component runs, what an isolated sandbox's containers are, and the one that places a component on them");
   assert.equal(sb.checkout, CHECKOUT);
   assert.equal(sb.storeRoot, STORE_ROOT);
   assert.equal(sb.rooms.live, ctx.rooms.live, "the live room is shared: port ownership is read from it host-wide");
@@ -42,7 +42,7 @@ test("what it replaces: the workspace as root, what it holds as source, its own 
   assert.notEqual(sb.rooms.understanding, ctx.rooms.understanding);
   assert.match(sb.rooms.understanding.replaceAll("\\", "/"), new RegExp(`/checkouts/${CHECKOUT}/sandboxes/${sandboxId({ checkout: CHECKOUT, task: TASK })}/understanding$`));
   assert.equal(sb.envId, sandboxId({ checkout: CHECKOUT, task: TASK }));
-  assert.deepEqual(Object.values(sb.envs), [sb.envId, sb.envId, sb.envId], "for every provider the environment IS the sandbox");
+  assert.deepEqual(Object.values(sb.envs), [sb.envId, sb.envId, sb.envId, sb.envId], "for every provider the environment IS the sandbox");
   assert.deepEqual(sb.owner, { kind: "task", id: TASK });
   assert.notEqual(sb.observations, ctx.observations, "a container's answer is kept per sandbox");
 });

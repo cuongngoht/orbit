@@ -8,6 +8,7 @@
 // to reach the browser, the database or a capability.
 import { Refused } from "../errors.mjs";
 import { CORE } from "../dsl/registry.mjs";
+import { capabilityMutates } from "../dsl/rules/head.mjs";
 import { act, withJournal } from "./act.mjs";
 import { checkData } from "./data.mjs";
 import { modelOf, nextId } from "./model.mjs";
@@ -17,18 +18,22 @@ import { runMatrix } from "./security.mjs";
 import { isDestructiveCase } from "./obligations.mjs";
 import { controlOf } from "./surfaces.mjs";
 import { matrixOf } from "./tenancy.mjs";
+import { modeOf } from "./vocab.mjs";
 
 const SYNTHETIC = /^TC-[A-Za-z0-9-]{1,60}$/;
 
 const writesAt = (lw, on) => Boolean(on && lw.ctx.graph.edgeOn.get(on) && controlOf(lw.ctx.graph, lw.ctx.graph.edgeOn.get(on)).writes);
 
-// A case writes if it says so, or a step of it changes a control the map says writes.
+// A case writes if it says so, if a step of it changes a control the map says writes, or if a step
+// calls a capability that declares it mutates -- asked of the capability, never of a verb's name.
 function caseWrites(lw, a) {
   const c = lw.findCase?.(a.case, Boolean(a.draft));
   if (!c) throw new Refused(`no ${a.draft ? "draft " : ""}case ${a.case} — run-case takes a case in the checkout, or a draft with draft: true`);
   const changes = CORE.verbsWhere("changes");
-  return Boolean(c.creates || c.destructive) || (c.steps ?? []).some((s) => changes.has(s.do) && writesAt(lw, s.on));
+  return Boolean(c.creates || c.destructive) || (c.steps ?? []).some((s) => (changes.has(s.do) && writesAt(lw, s.on)) || capabilityMutates(capabilityIn(lw), s));
 }
+
+const capabilityIn = (lw) => (id) => (lw.ctx?.capabilities?.has?.(id) ? lw.ctx.capabilities.resolve(id) : null);
 
 // No mode runs a destructive case: a person reads it with --dry and runs it on
 // purpose, exactly as the runner's own gate asks (src/run/gates/destructive.mjs).
@@ -46,7 +51,7 @@ export const ACTIONS = {
   "check-data": { fields: ["action", "query", "via", "input", "expect", "within"], required: ["action", ["query", "via"]], modes: "any — it only reads", allowed: () => true, mutates: () => false, check: () => null, run: (w, a) => checkData(w, a) },
   security: { fields: ["rows"], required: [], modes: "security-test", allowed: (m) => m === "security-test", mutates: (a, lw) => updatesIn(lw, a.rows), check: (a) => (a.rows === undefined || (Array.isArray(a.rows) && a.rows.every(Number.isInteger)) ? null : "security.rows is a list of matrix row numbers"), run: (w, a) => runMatrix({ ...w, mode: "security-test" }, a.rows ?? null) },
   reproduce: { fields: ["finding"], required: ["finding"], modes: "any; replaying a write needs explore-write (the act gates say so)", allowed: () => true, mutates: (a, lw) => reproducesWrite(lw, a.finding), check: () => null, run: (w, a) => reproduce(w, a.finding) },
-  "run-case": { fields: ["case", "draft", "params"], required: ["case"], modes: "any; a case that writes needs explore-write; a destructive case never", allowed: (m, a, lw) => !caseWrites(lw, a) || m === "explore-write", mutates: (a, lw) => caseWrites(lw, a), check: (a, lw) => caseProblem(a, lw), run: (w, a) => ranCase(w, a) },
+  "run-case": { fields: ["case", "draft", "params"], required: ["case"], modes: "any; a case that writes needs a mode that mutates (explore-write, fixture-write); a destructive case never", allowed: (m, a, lw) => !caseWrites(lw, a) || modeOf(m)?.mutates === true, mutates: (a, lw) => caseWrites(lw, a), check: (a, lw) => caseProblem(a, lw), run: (w, a) => ranCase(w, a) },
   ask: { fields: ["asks"], required: ["asks"], modes: "any", allowed: () => true, mutates: () => false, check: (a) => (typeof a.asks === "string" && a.asks.trim() && a.asks.length <= 400 ? null : "ask.asks is one question, 400 characters at most"), run: (w, a, d) => asked(w, a, d) },
 };
 

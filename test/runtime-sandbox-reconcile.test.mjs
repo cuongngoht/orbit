@@ -55,7 +55,7 @@ test("reading says what applying would do and changes nothing; a sandbox waiting
 });
 
 test("every row is reachable in order and the last always matches", () => {
-  assert.deepEqual(RECONCILE.map((r) => r.name), ["SETTLED", "STILL_RUNNING", "RESTORE_DIED", "OPERATION_DIED", "WAITING", "NOTHING_OPEN"]);
+  assert.deepEqual(RECONCILE.map((r) => r.name), ["SETTLED", "STILL_RUNNING", "RESTORE_DIED", "DISPATCH_DIED", "OPERATION_DIED", "WAITING", "NOTHING_OPEN"]);
   assert.ok(RECONCILE.every((r) => typeof r.say({ doc: { blocked: { needs: "x", because: "y" } } }) === "string") && RECONCILE.at(-1).when({}));
 });
 

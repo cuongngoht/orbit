@@ -84,3 +84,17 @@ const CLAIM_RULES = [
   (k) => (JSON.stringify(nonzero(k.result.proved)) === JSON.stringify(nonzero(k.counted.proved)) ? [] : ["the layers the result claims are not the layers its steps prove"]),
   (k) => (k.result.verdicts === k.counted.verdicts && k.result.done === k.counted.done ? [] : ["the result's counts are not its steps'"]),
 ];
+
+// The grants a worker spent, held to the grants the host minted (ADR 0037): every spend names a
+// grant this run was given, for that grant's capability, and no grant is used past its bound.
+export function spendFindings(records, grants) {
+  const minted = new Map((grants ?? []).map((g) => [g.id, g]));
+  const spends = records.filter((r) => r.kind === "grant");
+  const strays = spends.filter((s) => minted.get(s.grant)?.capability?.id !== s.capability).map((s) => `a spend names ${String(s.grant).slice(0, 40)}, which was not minted for ${s.capability}`);
+  return [...strays, ...overspent(spends, minted)];
+}
+
+function overspent(spends, minted) {
+  const counts = spends.reduce((m, s) => m.set(s.grant, (m.get(s.grant) ?? 0) + 1), new Map());
+  return [...counts].filter(([id, n]) => minted.has(id) && n > (minted.get(id).bounds?.maxUses ?? 1)).map(([id, n]) => `${id} was used ${n} times and allows ${minted.get(id).bounds?.maxUses ?? 1}`);
+}

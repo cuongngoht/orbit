@@ -53,10 +53,12 @@ const missingWhy = (ref, draft) => (draft ? `no draft case ${ref}` : `no case ${
 const draftDir = (ctx) => draftPaths(ctx.store()).cases;
 
 function validated(ctx, c) {
-  const problems = validate(c, ctx.graph, ctx.dsl, ctx.validators);
+  const problems = validate(c, ctx.graph, ctx.dsl, ctx.validators, capabilityLookup(ctx));
   if (problems.length) throw new Refused(`case is invalid — fix it before running:\n  ${problems.join("\n  ")}`);
   return c;
 }
+
+export const capabilityLookup = (ctx) => (id) => (ctx.capabilities?.has?.(id) ? ctx.capabilities.resolve(id) : null);
 
 // --dry promises to touch nothing -- the database included, so no resolve.
 function dryRun(ctx, c, values, args, print) {

@@ -13,11 +13,14 @@
 // Execution modes. A mode that `mutates` or `crossIdentity` needs a PERSON's
 // approval for the environment it runs in (settings `environments[].modes`),
 // and `production: false` means no approval can buy it on a production build.
+// `isolated` runs only where the task's sandbox PROVED isolation (ADR 0038), and
+// `grants` writes only under a test grant minted for the run's fixture (ADR 0037).
 export const MODES = [
   { id: "observe", mutates: false, crossIdentity: false, production: true, say: "read-only: navigate, look, listen to the network, run read-only checks" },
   { id: "explore-write", mutates: true, crossIdentity: false, production: false, say: "controlled creation and change of synthetic TC- data; a destructive control is still never touched" },
   { id: "security-test", mutates: false, crossIdentity: true, production: false, say: "an authorised tenant-isolation matrix over approved identities and resources" },
   { id: "regression", mutates: false, crossIdentity: false, production: true, say: "run already-accepted cases through run-case; nothing exploratory is asserted" },
+  { id: "fixture-write", mutates: true, crossIdentity: false, production: false, grants: true, isolated: true, say: "generated tests that write, publish, enqueue or trigger -- only in the task's isolated sandbox, only on the run's own fixture, each write under a grant the engine mints (ADR 0037)" },
 ];
 
 export const MODE_IDS = MODES.map((m) => m.id);

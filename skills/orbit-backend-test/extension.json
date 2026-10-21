@@ -8,5 +8,5 @@
   "mutates": true,
   "capabilities": "./capabilities.mjs",
   "adapters": "./adapters.json",
-  "note": "Every backend family operation (orbit.messaging.*, orbit.observe.await, orbit.scheduler.*, orbit.job.*, orbit.worker.observe, orbit.state.read, orbit.fixture.*, orbit.clock.advance, orbit.workload.control, orbit.identity.issue), answered by whichever registered adapter serves the bound resource's transport, plus orbit.schedule.expect. Ships the AMQP 0-9-1 reference adapter. Loaded only for a project whose project.json packs lists orbit-backend-test."
+  "note": "Every backend family operation (orbit.messaging.*, orbit.observe.await, orbit.scheduler.*, orbit.job.*, orbit.worker.observe, orbit.state.read, orbit.fixture.*, orbit.clock.advance, orbit.workload.control, orbit.identity.issue), answered by whichever registered adapter serves the bound resource's transport, plus orbit.schedule.expect. Ships two reference adapters, AMQP 0-9-1 and NATS JetStream. Loaded only for a project whose project.json packs lists orbit-backend-test."
 }

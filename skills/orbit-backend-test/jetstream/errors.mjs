@@ -24,15 +24,16 @@ export const refusedError = (message, details = {}) => new NatsError("refused", 
 export const ambiguousError = (e, cause) => new NatsError("ambiguous", `publish to ${e.subject}${e.msgId ? ` (message ${e.msgId})` : ""} was sent and its ack never arrived: ${cause?.message ?? "the connection ended"}`, { subject: e.subject, msgId: e.msgId ?? null, cause });
 
 // What a server's -ERR says, in the words the server uses (NATS has no codes for these): which
-// kind of failure it is, and whether the server closes the connection after it. A permissions
-// violation keeps the connection and names the subject; it is DENIED, and the request it was
+// kind of failure it is, and whether the server closes the connection after it. The protocol
+// keeps three open -- a permissions violation, an invalid subject, too many subscriptions -- and
+// closes on every other. A permissions violation names the subject; it is DENIED, and what it was
 // about is the one refused.
 export const ERR_ROWS = [
   { re: /^permissions violation/i, kind: "denied", fatal: false },
-  { re: /^(authorization violation|user authentication (expired|revoked)|authentication timeout)/i, kind: "refused", fatal: true },
-  { re: /^maximum (payload|subscriptions|connections)/i, kind: "refused", fatal: true },
-  { re: /^(stale connection|slow consumer)/i, kind: "transport", fatal: true },
-  { re: /^(unknown protocol operation|parser error|invalid (subject|client protocol)|secure connection)/i, kind: "protocol", fatal: true },
+  { re: /^maximum subscriptions exceeded/i, kind: "refused", fatal: false },
+  { re: /^invalid subject/i, kind: "protocol", fatal: false },
+  { re: /^(authorization violation|(user|account) authentication (expired|revoked)|attempted to connect to route port|maximum payload violation)/i, kind: "refused", fatal: true },
+  { re: /^(stale connection|slow consumer|authorization timeout|maximum connections exceeded)/i, kind: "transport", fatal: true },
   { re: /^/, kind: "protocol", fatal: true },
 ];
 
@@ -48,10 +49,22 @@ export const apiError = (error, verb) => new NatsError("api", `${verb} answered 
 // JetStream API errors (nats-server errors.json), by err_code: a request that names what is not
 // there, conflicts with what is, or is malformed is REFUSED -- the case's or the binding's
 // mistake. JetStream not enabled or out of resources is the machine's: transport. A code not
-// listed falls back on its HTTP-like status, and then on protocol.
+// listed falls back on its HTTP-like status, and then on protocol, so a row here only ever makes
+// a class more exact than the status alone.
 export const API_ERRORS = [
-  { codes: [10003, 10012, 10014, 10025, 10037, 10052, 10058, 10059, 10060, 10065, 10070, 10071, 10148], is: "refused" },
-  { codes: [10023, 10039, 10076], is: "transport" },
+  { errCode: 10003, says: "bad request", is: "refused" },
+  { errCode: 10014, says: "consumer not found", is: "refused" },
+  { errCode: 10023, says: "insufficient resources", is: "transport" },
+  { errCode: 10025, says: "invalid JSON", is: "refused" },
+  { errCode: 10037, says: "no message found", is: "refused" },
+  { errCode: 10039, says: "JetStream not enabled for account", is: "transport" },
+  { errCode: 10058, says: "stream name already in use with a different configuration", is: "refused" },
+  { errCode: 10059, says: "stream not found", is: "refused" },
+  { errCode: 10060, says: "expected stream does not match", is: "refused" },
+  { errCode: 10070, says: "wrong last msg ID", is: "refused" },
+  { errCode: 10071, says: "wrong last sequence", is: "refused" },
+  { errCode: 10076, says: "JetStream not enabled", is: "transport" },
+  { errCode: 10148, says: "consumer already exists", is: "refused" },
 ];
 
 const BY_STATUS = [
@@ -60,7 +73,7 @@ const BY_STATUS = [
   { when: () => true, is: "protocol" },
 ];
 
-const apiClass = (e) => API_ERRORS.find((row) => row.codes.includes(e.errCode))?.is ?? BY_STATUS.find((row) => row.when(e.code)).is;
+const apiClass = (e) => API_ERRORS.find((row) => row.errCode === e.errCode)?.is ?? BY_STATUS.find((row) => row.when(e.code)).is;
 
 const CLASSES = {
   transport: () => "transport",

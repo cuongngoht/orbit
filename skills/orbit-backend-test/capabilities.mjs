@@ -5,9 +5,10 @@
 //
 // A family capability knows no transport. Its rows come from the engine's family table
 // (src/adapters/core.mjs): it binds logical refs, carries the operation's own parameters in
-// `request`, and asks the ADAPTER its bound resource resolves to -- this pack's AMQP reference
-// adapter (adapters.json), or any adapter a project registers for its own broker, scheduler or
-// queue. A transport nothing serves is a named gap, never a fallback.
+// `request`, and asks the ADAPTER its bound resource resolves to -- one of this pack's reference
+// adapters (adapters.json: AMQP 0-9-1, NATS JetStream, and the test-hook adapters for a project's
+// own scheduler, clock, workloads and workers), or any adapter a project registers for its own
+// broker, scheduler or queue. A transport nothing serves is a named gap, never a fallback.
 //
 // orbit.schedule.expect computes, from the accepted schedule contract the run bound
 // (`scheduleRef`), the occurrences it implies -- which are due, which were missed and what the

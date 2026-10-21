@@ -22,11 +22,12 @@ export const MAX_PAYLOAD = 64 * 1024 * 1024;
 const CRLF_BYTES = Buffer.from(CRLF);
 
 // A subject, a queue group or a header is never allowed to carry what would end its line or
-// split its tokens: that would be a second operation written by whoever chose the name.
-const UNSAFE = /[\s\u0000-\u001f\u007f]/;
+// split its tokens: that would be a second operation written by whoever chose the name. An empty
+// token (`a..b`, `a.`) is refused too -- the server would only answer it with an -ERR.
+const UNSAFE = /[\s\u0000-\u001f\u007f]|^\.|\.\.|\.$/;
 
 export function checkedSubject(subject) {
-  if (typeof subject !== "string" || !subject || UNSAFE.test(subject)) throw refusedError(`"${String(subject).slice(0, 60)}" is not a subject: a subject is one token string with no whitespace or control character`);
+  if (typeof subject !== "string" || !subject || UNSAFE.test(subject)) throw refusedError(`"${String(subject).slice(0, 60)}" is not a subject: dot-separated tokens, none empty, with no whitespace or control character`);
   return subject;
 }
 
@@ -119,16 +120,16 @@ const size = (token) => {
 // The tokens of each payload operation, by how many there are: the reply subject is the one
 // optional token, so its presence is read off the count.
 const PAYLOAD_LAYOUTS = {
-  MSG: { 3: ["subject", "sid", null, "total"], 4: ["subject", "sid", "reply", "total"] },
-  HMSG: { 4: ["subject", "sid", null, "headerBytes", "total"], 5: ["subject", "sid", "reply", "headerBytes", "total"] },
-  PUB: { 2: ["subject", null, "total"], 3: ["subject", "reply", "total"] },
-  HPUB: { 3: ["subject", null, "headerBytes", "total"], 4: ["subject", "reply", "headerBytes", "total"] },
+  MSG: { 3: ["subject", "sid", "total"], 4: ["subject", "sid", "reply", "total"] },
+  HMSG: { 4: ["subject", "sid", "headerBytes", "total"], 5: ["subject", "sid", "reply", "headerBytes", "total"] },
+  PUB: { 2: ["subject", "total"], 3: ["subject", "reply", "total"] },
+  HPUB: { 3: ["subject", "headerBytes", "total"], 4: ["subject", "reply", "headerBytes", "total"] },
 };
 
 function payloadArgs(name, tokens) {
   const layout = PAYLOAD_LAYOUTS[name][tokens.length];
   if (!layout) throw protocolError(`${name} with ${tokens.length} arguments`);
-  const args = Object.fromEntries(layout.map((k, i) => [k, tokens[i]]).filter(([k]) => k));
+  const args = Object.fromEntries(layout.map((k, i) => [k, tokens[i]]));
   return { ...args, sid: args.sid, reply: args.reply ?? null, headerBytes: args.headerBytes === undefined ? 0 : size(args.headerBytes), total: size(args.total) };
 }
 
@@ -209,9 +210,15 @@ function payloadStep(st) {
   const n = st.need;
   if (st.buffer.length < n.total + 2) return false;
   if (st.buffer[n.total] !== 13 || st.buffer[n.total + 1] !== 10) throw protocolError(`${n.op} payload not followed by CRLF at byte ${n.total}`);
-  const bytes = Buffer.from(st.buffer.subarray(0, n.total));
-  st.buffer = st.buffer.subarray(n.total + 2);
-  return emittedPayload(st, n, bytes);
+  return emittedPayload(st, n, taken(st, n.total));
+}
+
+// The payload's own bytes, copied out so a later chunk can never change a body already handed on,
+// and the CRLF after them consumed.
+function taken(st, count) {
+  const bytes = Buffer.from(st.buffer.subarray(0, count));
+  st.buffer = st.buffer.subarray(count + 2);
+  return bytes;
 }
 
 function emittedPayload(st, n, bytes) {

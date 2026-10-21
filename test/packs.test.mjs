@@ -41,9 +41,11 @@ test("a project that names every pack loads them all, and each registers only or
     for (const id of pack.capabilities) assert.equal(ctx.capabilities.sourceOf(id), `pack:${pack.id}`);
   }
   const backend = out.loaded.find((p) => p.id === "orbit-backend-test");
-  assert.deepEqual(backend.adapters, ["amqp.reference"]);
-  assert.equal(ctx.adapters.get("amqp.reference").from, "pack:orbit-backend-test");
-  assert.deepEqual(ctx.adapters.get("amqp.reference").undeclared, [], "every semantics field the reference adapter states is declared vocabulary");
+  assert.deepEqual(backend.adapters, JSON.parse(readFileSync(join(ROOT, "skills/orbit-backend-test/adapters.json"), "utf8")).adapters.map((a) => a.id), "every adapter the pack declares registers");
+  for (const id of backend.adapters) {
+    assert.equal(ctx.adapters.get(id).from, "pack:orbit-backend-test");
+    assert.deepEqual(ctx.adapters.get(id).undeclared, [], `${id}: every semantics field a reference adapter states is declared vocabulary`);
+  }
   assert.ok(ctx.capabilities.has("orbit.messaging.publish") && ctx.capabilities.has("orbit.schedule.expect"));
   rmSync(store, { recursive: true, force: true });
 });

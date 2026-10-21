@@ -10,6 +10,10 @@
 # VS Code), never part of this plugin's archive.
 /integrations/** export-ignore
 
+# acceptance/ (0.1.0) is the native acceptance harness and its example projects: run by a person or a CI job, never
+# shipped, and kept outside test/ because `node --test` runs every module under test/.
+/acceptance/** export-ignore
+
 # Bytes that are PINNED must be checked out as they were committed: the report's
 # vendored chart library, fonts and licences are hashed in their VENDOR.json and
 # checked by the suite, and a CRLF checkout would change every hash.

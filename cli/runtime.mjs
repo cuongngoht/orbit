@@ -113,6 +113,10 @@
 //   node runtime.mjs sandbox-signal --task=<tsk> --signal=pause|resume|cancel [--by=<who>] [--why=<text>] [--json]
 //                                          a pause, resume or cancel for the sandbox's supervisor; interrupts nothing
 //                                          by itself
+//   node runtime.mjs sandbox-topology --task=<tsk> [--json]
+//                                          what the sandbox's topology is NOW -- each node's alias on the task's
+//                                          network, its ports and the service it runs -- for the host's binder;
+//                                          composed as a dispatch composes it, writing nothing
 //   node runtime.mjs trust --restore=<fingerprint> | --definition=<fingerprint> | --topology=<fingerprint>
 //                          | --worker-image=<fingerprint> | --adapter-image=<fingerprint> [--revoke] --revision=<rev>
 //                                          Orbit Control's door, not a terminal's: a standing

@@ -12,7 +12,6 @@
 // A credential is NAMED in the value (`credential.userEnv` ...) and its value is kept apart, in
 // `secrets`, which the worker hands only to a helper's environment (src/run/worker.mjs). Anything
 // that cannot be bound is a GAP with its reason -- never a guess, never a host's address.
-import { BIND_KIND_IDS } from "../../topology/vocab.mjs";
 
 const SECRET = (alias, what) => `ORBIT_BIND_${String(alias).toUpperCase().replace(/[^A-Z0-9]+/g, "_")}_${what}`;
 const HOOKS_TOKEN = "ORBIT_BIND_HOOKS_TOKEN";
@@ -29,7 +28,7 @@ const uniqueRefs = (refs) => [...new Map((refs ?? []).map((r) => [`${r.kind}:${r
 
 function bound(out, ref, input) {
   const row = KINDS[ref.kind];
-  const got = row ? row(ref, input) : { why: `"${ref.kind}" is not a kind of binding (${BIND_KIND_IDS.join(", ")})` };
+  const got = row ? row(ref, input) : { why: `"${ref.kind}" is not a kind of binding this table answers (${Object.keys(KINDS).join(", ")})` };
   if (got.why) return void out.gaps.push({ kind: ref.kind, alias: ref.alias, why: got.why });
   out.bindings[ref.kind] = { ...(out.bindings[ref.kind] ?? {}), [ref.alias]: got.value };
   Object.assign(out.secrets, got.secrets ?? {});

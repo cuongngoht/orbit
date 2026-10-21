@@ -20,8 +20,9 @@ import { trust } from "./trust.mjs";
 import { dispatched } from "./dispatch.mjs";
 import { signalled, supervisionRoom } from "./supervise.mjs";
 import { logsOf, sandboxView, sandboxesView } from "./view.mjs";
-import { sayDispatched, saySandbox, saySandboxes, saySignalled, sayLaunched, sayLogs, sayPrepared, sayReleased, sayStopped, sayTrusted } from "./views.mjs";
+import { sayDispatched, saySandbox, saySandboxes, saySignalled, sayLaunched, sayLogs, sayPrepared, sayReleased, sayStopped, sayTopology, sayTrusted } from "./views.mjs";
 import { stop } from "../lifecycle/stop.mjs";
+import { recomposed } from "./isolated-launch.mjs";
 
 const ABOUT_ONE = "this is about ONE task's sandbox: name it with --task=<tsk-…> (and run from the checkout it belongs to)";
 
@@ -57,6 +58,13 @@ const logs = (ctx, args) => logsOf(sandboxed(ctx), flag(args, "session"), { stre
 
 const listed = (ctx) => sandboxesView(ctx);
 
+// What the sandbox's topology is NOW -- each node's key, role, alias on the task's network, ports, the
+// catalog service it runs and what it was started with -- for the host's binder
+// (src/runtime/sandbox/bindings.mjs); composed exactly as a dispatch composes it, gated the same way.
+const topologyOf = (ctx) => ((now) => (now.needs ? { environment: ctx.envId, needs: now.needs, say: now.say } : { environment: ctx.envId, mode: now.topology.mode, fingerprint: now.topology.fingerprint, nodes: now.topology.nodes.map(nodeOf) }))(recomposed(sandboxed(ctx), deps(ctx)));
+
+const nodeOf = (n) => ({ key: n.key, role: n.role, name: n.name, alias: n.alias, service: n.service ?? null, ports: n.ports ?? [], argv: n.argv ?? [], compose: { env: n.compose?.env ?? [] }, env: { names: n.env?.names ?? [], values: n.env?.values ?? {} } });
+
 // Which kind of trust a flag names, in the table's order: the first one given.
 const TRUST_FLAGS = ["restore", "definition", "topology", "worker-image", "adapter-image"];
 
@@ -74,6 +82,7 @@ export const SANDBOX_COMMANDS = {
   "sandbox-logs": { about: "task", run: logs, say: sayLogs, writes: "nothing", needs: "checkout" },
   "sandbox-dispatch": { about: "task", run: dispatch, say: sayDispatched, writes: "machine", needs: "checkout" },
   "sandbox-signal": { about: "task", run: signal, say: saySignalled, writes: "store", needs: "checkout" },
+  "sandbox-topology": { about: "task", run: topologyOf, say: sayTopology, writes: "nothing", needs: "checkout" },
   trust: { run: trusted, say: sayTrusted, writes: "store", needs: "checkout" },
 };
 

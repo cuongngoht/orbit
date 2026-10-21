@@ -19,6 +19,7 @@
 // run, and when nothing is left nothing is started.
 import { Blocked, Refused } from "../errors.mjs";
 import { scrub } from "../scrub.mjs";
+import { CAPABILITY_ID } from "./contract-v1.mjs";
 
 export const HELPER_API = "orbit.helper/v1";
 export const DEFAULT_ANSWER_BYTES = 4 * 1024 * 1024;
@@ -110,5 +111,12 @@ function typedError(cap, op, a) {
   const row = HELPER_CLASSES.find((c) => c.id === a.class) ?? HELPER_CLASSES[1];
   const message = `${cap.id} ${op}: ${scrub(String(a.message ?? "").slice(0, 300))} — ${row.say}`;
   const err = row.stop === "refused" ? new Refused(message) : new Blocked(message);
-  return Object.assign(err, { helperClass: row.id, gap: a.gap ?? null, ambiguous: row.ambiguous ? String(a.operationKey ?? "unknown") : null });
+  return Object.assign(err, { helperClass: row.id, gap: gapOf(a.gap), ambiguous: row.ambiguous ? keyOf(a.operationKey) : null });
 }
+
+// A gap a helper names is held to the one shape a gap has -- a capability id and a reason -- and
+// anything else it put there is dropped: the helper is untrusted, and a gap is what a person reads.
+const gapOf = (g) => (g && typeof g === "object" && CAPABILITY_ID.test(String(g.capability ?? "")) ? { need: "capability", capability: g.capability, why: scrub(String(g.why ?? "").slice(0, 200)) } : null);
+
+// The key a write whose outcome is unknown is read back by: bounded, and printable.
+const keyOf = (k) => (typeof k === "string" && /^[\x21-\x7e]{1,128}$/.test(k) ? k : "unknown");

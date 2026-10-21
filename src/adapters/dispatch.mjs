@@ -11,6 +11,7 @@
 import { helperFacade } from "../capability/helper.mjs";
 import { Blocked } from "../errors.mjs";
 import { canonicalJson, sha } from "../hash.mjs";
+import { LIMIT_FIELDS } from "./contract-v1.mjs";
 import { operationFor } from "./families.mjs";
 import { opKeyOf, selectAdapter } from "./select.mjs";
 
@@ -18,22 +19,30 @@ export const adapterFacade = (ctx, run, cap, invocation = {}) => ({ ask: (reques
 
 function asked(ctx, run, cap, inv, request) {
   const row = operationFor(cap.id);
-  const target = targetOf(inv.bound ?? {});
+  const target = targetOf(inv.bound ?? {}, row);
   const chosen = selectAdapter(ctx.adapters, { family: row.family, op: row.op, transport: target.transport, pinned: target.adapter });
-  if (chosen.gap) throw Object.assign(new Blocked(`${cap.id}: ${chosen.gap.why} — nothing about the product was observed`), { gap: chosen.gap, helperClass: "incomplete" });
+  if (chosen.gap) throw Object.assign(new Blocked(`${cap.id}: ${chosen.gap.why} — nothing about the product was observed`), { gap: chosen.gap });
   return answered(ctx, run, inv, chosen.adapter, row, request, target);
 }
 
-// The resource a binding resolved that says how to reach it: its transport, and the adapter it
-// is pinned to when one armed it.
-const targetOf = (bound) => Object.values(bound).find((v) => v && typeof v === "object" && (v.transport || v.adapter)) ?? {};
+// The resource the operation is ABOUT -- its first ref, the one a case must bind -- says how to
+// reach it: its transport, and the adapter it is pinned to when one armed it. Another bound
+// value (an identity, a fixture) never chooses the adapter.
+function targetOf(bound, row) {
+  const value = bound[`${row.refs[0]}Ref`];
+  return value && typeof value === "object" ? value : {};
+}
 
 function answered(ctx, run, inv, adapter, row, request, target) {
   const key = opKeyOf(adapter, row);
   const declared = adapter.operations[key];
-  const answer = helperFacade(ctx, run, asCapability(adapter), { ...inv, limits: { ...(adapter.limits ?? {}), ...(declared.limits ?? {}) } }).run(declared.op ?? key, request);
+  const answer = helperFacade(ctx, run, asCapability(adapter), { ...inv, limits: narrowest(inv.limits, adapter.limits, declared.limits) }).run(declared.op ?? key, request);
   return { ...projected(answer ?? {}, declared.outputs ?? {}), adapter: stampOf(adapter, target.transport ?? null) };
 }
+
+// Each limit at its narrowest: what the invocation was allowed, the adapter's own ceiling and the
+// operation's. A wider number anywhere never widens what a narrower one said.
+const narrowest = (...sets) => Object.fromEntries(Object.keys(LIMIT_FIELDS).map((k) => [k, Math.min(...sets.map((s) => s?.[k] ?? Infinity))]).filter(([, v]) => v !== Infinity));
 
 const asCapability = (a) => ({ id: a.id, from: a.from, helper: a.helper, ...(a.limits?.timeoutMs ? { timeoutSec: Math.ceil(a.limits.timeoutMs / 1000) } : {}) });
 

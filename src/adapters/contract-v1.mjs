@@ -11,7 +11,7 @@
 // proves it. A support level is never declared: it is computed from the kit's receipts
 // (src/adapters/matrix.mjs).
 import { HELPER_FIELDS, helperFindings } from "../capability/helper.mjs";
-import { meaningAt } from "../topology/vocab.mjs";
+import { meaningAt, meaningEntries } from "../topology/vocab.mjs";
 import { walkFindings } from "../walk.mjs";
 import { EFFECT_IDS, FAMILY_IDS, familyOf, operationOf } from "./families.mjs";
 import { semanticsFindings } from "./semantics.mjs";
@@ -109,7 +109,5 @@ function effectFindings(d, name, o, at) {
 }
 
 // An output field carries a meaning, or -- for a list -- each item's fields do: `{ each: {...} }`.
-const outputFindings = (name, o, at) => outputsOf(isTable(o?.outputs) ? o.outputs : {}, "").filter(([, means]) => !meaningAt(String(means))).map(([field, means]) => `${at}: ${name} output ${field} means "${means}", which is not a meaning (src/topology/vocab.mjs)`);
-
-const outputsOf = (outputs, prefix) => Object.entries(outputs).flatMap(([field, means]) => (isTable(means) && isTable(means.each) ? outputsOf(means.each, `${prefix}${field}[].`) : [[`${prefix}${field}`, means]]));
+const outputFindings = (name, o, at) => meaningEntries(o?.outputs).filter(([, means]) => !meaningAt(String(means))).map(([field, means]) => `${at}: ${name} output ${field} means "${means}", which is not a meaning (src/topology/vocab.mjs)`);
 

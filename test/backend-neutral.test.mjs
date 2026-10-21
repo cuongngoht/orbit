@@ -50,8 +50,10 @@ test("no new module under src/ names a product, a standard or the example projec
 
 // The graph's roles import nothing but leaves; the adapter contract sits just above the capability
 // pipeline it shares a helper shape with (src/capability/helper.mjs), and imports nothing above it.
+// The family capabilities it emits (src/adapters/core.mjs) name the capability contract they are
+// written against (src/capability/contract-v1.mjs, a leaf) -- and nothing else of the pipeline.
 test("the graph's roles and the adapter families import nothing above them", () => {
   const leaves = files.filter((p) => /src[\\/](topology|adapters)[\\/]/.test(p));
-  const bad = leaves.flatMap((p) => [...code(p).matchAll(/from\s+"(\.[^"]+)"/g)].map((m) => m[1]).filter((t) => !/^\.\/|^\.\.\/(constraints|walk|catalog|hash|errors)\.mjs$|^\.\.\/topology\/|^\.\.\/capability\/helper\.mjs$/.test(t)).map((t) => `${relative(ROOT, p)} imports ${t}`));
+  const bad = leaves.flatMap((p) => [...code(p).matchAll(/from\s+"(\.[^"]+)"/g)].map((m) => m[1]).filter((t) => !/^\.\/|^\.\.\/(constraints|walk|catalog|hash|errors)\.mjs$|^\.\.\/topology\/|^\.\.\/capability\/(helper|contract-v1)\.mjs$/.test(t)).map((t) => `${relative(ROOT, p)} imports ${t}`));
   assert.deepEqual(bad, []);
 });

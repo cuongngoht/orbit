@@ -11,6 +11,7 @@
 //                           undefined means route it: "return" for a mandatory
 //                           message nothing took, "ack" otherwise
 //   hold                    method names the peer never answers
+//   consumers               { queue: n } -- the consumers somebody else holds on a queue
 //   mute                    never answer the protocol header at all
 // and the test can act as the broker mid-conversation: closeConnection,
 // closeChannel, silence (stop sending, heartbeats included), raw (any bytes).
@@ -31,7 +32,10 @@ export function fakeAmqpPeer(script = {}) {
   };
 }
 
+// Each socket is a CONNECTION of its own -- its handshake, its channels -- to the same broker:
+// exchanges, queues, bindings and what was published outlive it, as they do on a real one.
 function attach(peer) {
+  Object.assign(peer, { greeted: null, parser: null, channels: new Map() });
   const socket = new EventEmitter();
   socket.destroyed = false;
   socket.write = (buf) => (socket.destroyed ? false : fromClient(peer, buf));
@@ -48,9 +52,12 @@ function shut(socket) {
   setImmediate(() => socket.emit("close"));
 }
 
+// Bytes go to the socket of the connection that earned them, even when a newer one has attached
+// by the time they are sent.
 function toClient(peer, bytes) {
-  if (peer.silent || peer.socket.destroyed) return;
-  setImmediate(() => peer.socket.destroyed || peer.socket.emit("data", bytes));
+  const socket = peer.socket;
+  if (peer.silent || socket.destroyed) return;
+  setImmediate(() => socket.destroyed || socket.emit("data", bytes));
 }
 
 function fromClient(peer, buf) {
@@ -98,10 +105,14 @@ const HANDLERS = {
     ok(peer, 0, "connection.open-ok", { knownHosts: "" });
   },
   "connection.close": (peer) => {
+    const socket = peer.socket;
     ok(peer, 0, "connection.close-ok");
-    setImmediate(() => shut(peer.socket));
+    setImmediate(() => shut(socket));
   },
-  "connection.close-ok": (peer) => setImmediate(() => shut(peer.socket)),
+  "connection.close-ok": (peer) => {
+    const socket = peer.socket;
+    setImmediate(() => shut(socket));
+  },
   "channel.open": (peer, id) => {
     peer.channels.set(id, { confirm: false, seq: 0, deliveryTag: 0, unacked: new Map(), publishing: null, consumers: new Map() });
     ok(peer, id, "channel.open-ok", { channelId: "" });
@@ -124,7 +135,7 @@ const HANDLERS = {
     if (a.passive && !peer.queues.has(a.queue)) return closeChannelFor(peer, id, 404, `NOT_FOUND - no queue '${a.queue}' in vhost '${peer.vhost}'`, 50, 10);
     const name = a.queue || `amq.gen-${(peer.generated += 1)}`;
     if (!peer.queues.has(name)) peer.queues.set(name, { name, args: a, messages: [] });
-    ok(peer, id, "queue.declare-ok", { queue: name, messageCount: peer.queues.get(name).messages.length, consumerCount: 0 });
+    ok(peer, id, "queue.declare-ok", { queue: name, messageCount: peer.queues.get(name).messages.length, consumerCount: peer.script.consumers?.[name] ?? 0 });
   },
   "queue.bind": (peer, id, a) => {
     peer.bindings.push({ queue: a.queue, exchange: a.exchange, routingKey: a.routingKey });

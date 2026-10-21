@@ -1,0 +1,63 @@
+{
+  "adapters": [
+    {
+      "id": "amqp.reference",
+      "apiVersion": "orbit.adapter/v1",
+      "version": "0.0.4",
+      "doc": "AMQP 0-9-1 brokers (RabbitMQ 4.x is the one its kit runs against), through the zero-dependency client in amqp/: confirmed publication, an observer on a queue of its own bound beside the application's, and the fixture's own queues",
+      "family": "messaging",
+      "transports": ["amqp-0-9-1"],
+      "operations": {
+        "publish": {
+          "doc": "publish one message with its logical id on a confirm channel, mandatory: confirmed, rejected or returned; a confirm that never came is ambiguous",
+          "effects": ["publish"],
+          "outputs": { "messageId": "message.id", "outcome": "settlement.outcome", "elapsedMs": "elapsed.ms" }
+        },
+        "observe": {
+          "doc": "arm an observer: declare its own expiring queue and bind it to the channel's exchange, refusing one somebody else consumes",
+          "effects": ["create-resource", "read"],
+          "outputs": { "baseline": "cursor.baseline", "completeness": "observation.completeness" }
+        },
+        "observe.await": {
+          "doc": "read the observer's own queue for a bounded window, acknowledging what it takes; complete only when the queue was read empty",
+          "effects": ["read", "consume"],
+          "outputs": {
+            "messages": { "each": { "id": "message.id", "key": "message.key", "correlation": "message.correlation", "payload": "message.payload", "terminal": "terminal.reason" } },
+            "through": "cursor.through",
+            "completeness": "observation.completeness",
+            "gaps": "observation.gaps"
+          }
+        },
+        "fixture.prepare": {
+          "doc": "declare the fixture's own exchanges, queues and bindings, every name inside its namespace",
+          "effects": ["create-resource"],
+          "outputs": { "namespace": "fixture.namespace" }
+        },
+        "fixture.cleanup": {
+          "doc": "delete the fixture's own queues while unused, and say what it left and why; it never deletes an exchange",
+          "effects": ["delete-resource"],
+          "outputs": { "cleanup": "fixture.cleanup" }
+        }
+      },
+      "semantics": {
+        "delivery": "at-least-once",
+        "publishAck": "broker-confirm",
+        "publishDedupe": "none",
+        "unroutable": "returned",
+        "consumerAck": "explicit-ack",
+        "redeliveryTriggers": ["nack", "crash-before-settle", "connection-loss"],
+        "redeliveryMarker": "flag",
+        "orderingScope": "queue",
+        "deadLetter": "broker-routed",
+        "retryLimit": "unknown",
+        "observation": ["shadow-subscription"],
+        "replay": [],
+        "cursor": "none",
+        "leaseMinSec": "unknown"
+      },
+      "limits": { "timeoutMs": 120000, "answerBytes": 4194304 },
+      "helper": { "argv": ["amqp/helper.mjs"], "runIn": "worker" },
+      "conformance": { "kit": "messaging", "params": {} }
+    }
+  ]
+}

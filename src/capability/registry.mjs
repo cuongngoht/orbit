@@ -12,7 +12,7 @@
 // of thing that must not be shared by accident.
 import { constraintFindings, missingFindings } from "../constraints.mjs";
 import { Refused } from "../errors.mjs";
-import { BIND_KIND_IDS, EFFECT_IDS, meaningAt, mutatingEffect } from "../topology/vocab.mjs";
+import { BIND_KIND_IDS, EFFECT_IDS, meaningAt, meaningEntries, mutatingEffect } from "../topology/vocab.mjs";
 import { CAPABILITY_FIELDS, CAPABILITY_REQUIRED, SUPPORTED_CAPABILITY_APIS, providesFindings } from "./contract-v1.mjs";
 import { helperFindings } from "./helper.mjs";
 
@@ -48,7 +48,7 @@ function problems(byId, cap, from) {
 const DECLARED = [
   (cap, at) => (Array.isArray(cap.effects) ? cap.effects : []).filter((e) => !EFFECT_IDS.includes(e)).map((e) => `${at}: effect "${e}" is not one of ${EFFECT_IDS.join(", ")}`),
   (cap, at) => (Array.isArray(cap.effects) && cap.effects.some(mutatingEffect) && cap.mutates !== true ? [`${at}: it declares a mutating effect and not mutates: true — the two must say the same thing`] : []),
-  (cap, at) => Object.entries(isObject(cap.outputs) ? cap.outputs : {}).filter(([, m]) => !meaningAt(String(m))).map(([f, m]) => `${at}: output ${f} means "${m}", which is not a meaning (src/topology/vocab.mjs)`),
+  (cap, at) => meaningEntries(cap.outputs).filter(([, m]) => !meaningAt(String(m))).map(([f, m]) => `${at}: output ${f} means "${m}", which is not a meaning (src/topology/vocab.mjs)`),
   (cap, at) => helperFindings(cap.helper, at),
   (cap, at) => Object.entries(isObject(cap.inputSchema) ? cap.inputSchema : {}).filter(([, row]) => row?.bind !== undefined && !BIND_KIND_IDS.includes(row.bind)).map(([k, row]) => `${at}: input ${k} binds "${row.bind}", which is not a bind kind (${BIND_KIND_IDS.join(", ")})`),
   (cap, at, from) => (String(cap.id ?? "").startsWith("orbit.") && !ORBIT_OWNERS.test(String(from ?? "core")) ? [`${at}: orbit.* ids belong to the engine and the packs it ships — a project names its own capability project.<domain>.<operation>`] : []),

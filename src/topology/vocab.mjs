@@ -148,3 +148,10 @@ export const relationRoleOf = (id) => RELATION_ROLES.find((r) => r.id === id) ??
 // A meaning may be named with a sub-path -- `response.body.id` is the `id` field of the
 // response body -- so the meaning is its longest known prefix.
 export const meaningAt = (path) => MEANINGS.filter((m) => path === m.id || String(path).startsWith(`${m.id}.`)).sort((a, b) => b.id.length - a.id.length)[0] ?? null;
+
+// What an OUTPUTS map declares, flat: each field and the meaning it carries, or -- for a list --
+// each item's fields, as `field[].item` (`{ messages: { each: { id: "message.id" } } }`). A
+// capability and an adapter declare outputs the same way, so they are read the same way.
+export const meaningEntries = (outputs, prefix = "") => Object.entries(isTable(outputs) ? outputs : {}).flatMap(([field, means]) => (isTable(means) && isTable(means.each) ? meaningEntries(means.each, `${prefix}${field}[].`) : [[`${prefix}${field}`, means]]));
+
+const isTable = (v) => typeof v === "object" && v !== null && !Array.isArray(v);

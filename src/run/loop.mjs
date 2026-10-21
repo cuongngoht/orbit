@@ -105,14 +105,14 @@ function stopped(ctx, run, s, err) {
 function refused(ctx, run, s, err) {
   run.status = "REFUSED";
   run.print.refused(s, err.message);
-  run.log.record({ kind: "step", i: s.i, ...asked(ctx, s), ok: false, refused: err.message, phase: phaseOf(err) });
+  run.log.record({ kind: "step", i: s.i, ...asked(ctx, s), ok: false, refused: err.message, phase: phaseOf(err), ...typedOf(err) });
   noted(run, s, err, "refused");
 }
 
 function blocked(ctx, run, s, err) {
   run.status = "BLOCKED";
   run.print.blocked(s, err.message);
-  run.log.record({ kind: "step", i: s.i, ...asked(ctx, s), ok: false, blocked: err.message, phase: phaseOf(err) });
+  run.log.record({ kind: "step", i: s.i, ...asked(ctx, s), ok: false, blocked: err.message, phase: phaseOf(err), ...typedOf(err) });
   noted(run, s, err, "blocked");
 }
 
@@ -134,8 +134,13 @@ function failed(ctx, run, s, err) {
 // Truncated, because this reaches the committed ledger; the full text stays in
 // the evidence directory, which remains the detailed source.
 function noted(run, s, err, kind) {
-  run.failure = { kind, phase: phaseOf(err), message: trunc(err.message, 200), step: s.i, do: s.do, on: s.on ?? null, selector: s.selector ?? null };
+  run.failure = { kind, phase: phaseOf(err), message: trunc(err.message, 200), step: s.i, do: s.do, on: s.on ?? null, selector: s.selector ?? null, ...typedOf(err) };
 }
+
+// What a helper or an adapter said about WHY it stopped (ADR 0036): its class, the capability gap
+// it named and the operation key of a write whose outcome is unknown -- the facts verification
+// classifies by (CAPABILITY_MISSING, AMBIGUOUS), never the text of a message.
+const typedOf = (err) => Object.fromEntries([["helperClass", err.helperClass], ["gap", err.gap], ["ambiguous", err.ambiguous]].filter(([, v]) => v !== undefined && v !== null));
 
 // Set by whoever threw (poll.mjs, step.mjs); a browser command that simply
 // failed carries nothing, and "act" is the honest default for it.

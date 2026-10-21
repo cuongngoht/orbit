@@ -6,6 +6,11 @@
       "id": "orbit-api-test",
       "dir": "skills/orbit-api-test",
       "doc": "synchronous interfaces: orbit.http.read and orbit.http.write, with JSON Schema assertions"
+    },
+    {
+      "id": "orbit-backend-test",
+      "dir": "skills/orbit-backend-test",
+      "doc": "backend family operations -- messaging, observation, scheduler, job, worker, state, fixture, clock, workload, identity -- answered by registered adapters, the AMQP 0-9-1 reference adapter, and orbit.schedule.expect"
     }
   ]
 }

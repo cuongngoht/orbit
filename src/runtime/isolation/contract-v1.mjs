@@ -13,7 +13,12 @@
 //   imageDigest(ref, deps)             a content-addressed reference for an image ALREADY on this machine, or null:
 //                                      nothing is pulled, so nothing is fetched behind a person's back
 //   imageEnv(ref, deps)                the environment NAMES an image sets itself (never their values)
-//   build(spec, deps)                  build an image from a definition a person trusted -> { ok, ref?, why? }
+//   envProblems(env)                   -> [sentence]: why an environment ({ names, values }) cannot be handed to a
+//                                      container, or nothing. A name is filled from THIS machine's environment at the
+//                                      moment of the call; a value is a literal of the topology's. Neither may reach
+//                                      the provider's client in a way that changes how the client itself runs
+//   build(spec, deps)                  build an image from a definition a person trusted, with the network the spec
+//                                      names (`none` unless a person's policy says otherwise) -> { ok, ref?, why? }
 //   network.create(spec, deps)         an INTERNAL network, labelled -> { ok, id?, why? }
 //   network.inspect(name, deps)        -> { exists, id, internal, labels, containers } | { exists: false }
 //   network.remove(name, deps)         -> { ok, why? }
@@ -30,7 +35,9 @@
 //                                      output observed chunk by chunk -> runObserved()'s answer
 //   facts(raw)                         the record as the generic facts the PROFILE rows read
 //
-// Everything goes through `deps.process`, the one door to a child (src/process/): argv, never a shell.
+// Everything goes through `deps.process`, the one door to a child (src/process/): argv, never a shell. A value a
+// container is handed goes through `deps.scratch` ({ write(text) -> path, remove(path) }: a sandbox's own room, a
+// new file only its owner reads), for one call; a provider with values to hand and no scratch room refuses the call.
 import { constraintFindings, missingFindings } from "../../constraints.mjs";
 
 export const ISOLATION_API = "orbit.isolation-provider/v1";
@@ -45,7 +52,7 @@ export const ISOLATION_FIELDS = {
 };
 
 export const ISOLATION_METHODS = [
-  { at: null, names: ["doctor", "imageDigest", "imageEnv", "build", "facts"] },
+  { at: null, names: ["doctor", "imageDigest", "imageEnv", "envProblems", "build", "facts"] },
   { at: "network", names: ["create", "inspect", "remove"] },
   { at: "container", names: ["create", "start", "startAttached", "inspect", "stop", "remove", "exec", "runOnce"] },
 ];

@@ -35,10 +35,11 @@ export function machineContext(ctx, env = process.env, deps = {}) {
 function writableContext(store, io, sink) {
   const target = guardedIo(store.root, io);
   const prepare = () => prepareStore(store, io, target);
-  const write = (...args) => { prepare(); return target.write(...args); };
-  const append = (...args) => { prepare(); return target.append(...args); };
-  return { store, io: { ...target, write, append }, sink, prepare };
+  return { store, io: { ...target, ...preparedWriters(target, prepare) }, sink, prepare };
 }
+
+// The writers that make a file, each of which labels the store first.
+const preparedWriters = (target, prepare) => Object.fromEntries(["write", "append", "writePrivate"].map((name) => [name, (...args) => (prepare(), target[name](...args))]));
 
 function prepareStore(store, raw, target) {
   prepareRepository(store, raw);

@@ -21,6 +21,10 @@
 //
 //   helper   ask its own helper program once, bounded -- src/capability/helper.mjs
 //
+// and, only for a FAMILY operation the engine or one of its packs registered (ADR 0035):
+//
+//   adapters ask the adapter its bound resource resolves to -- src/adapters/dispatch.mjs
+//
 // What is deliberately absent: the memory store, the ledger, the notes, the
 // lessons, the identity claims, process.env, the graph, and anything that can
 // decide a verdict. An extension OBSERVES and REPORTS; the engine judges. A
@@ -30,6 +34,8 @@
 // runtime has become, and it only has to because this is the only thing a v1
 // extension was ever allowed to see.
 import { join } from "node:path";
+import { adapterFacade } from "../adapters/dispatch.mjs";
+import { operationFor } from "../adapters/families.mjs";
 import { helperFacade } from "../capability/helper.mjs";
 import { Blocked, Refused } from "../errors.mjs";
 import { contained } from "../project/boundary.mjs";
@@ -44,8 +50,14 @@ export function extensionContextV1(ctx, run, cap, invocation = {}) {
     capability: cap?.id ?? null,
     ...surfaces(ctx, run, who, cap),
     ...(cap?.helper ? { helper: helperFacade(ctx, run, cap, invocation) } : {}),
+    ...(familyCapability(cap) ? { adapters: adapterFacade(ctx, run, cap, invocation) } : {}),
   };
 }
+
+// The one surface only a FAMILY operation gets (ADR 0035): an orbit.* capability the engine or a
+// pack it ships registered, asking the adapter its bound resource resolves to. A project's own
+// capability never sees it.
+const familyCapability = (cap) => Boolean(operationFor(cap?.id)) && /^(core|pack:[a-z0-9-]+)$/.test(String(cap?.from ?? ""));
 
 const surfaces = (ctx, run, who, cap) => ({
   process: processFacade(ctx, run, who, cap),

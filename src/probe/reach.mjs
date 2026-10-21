@@ -30,7 +30,8 @@ export function createReach(deps = {}) {
   return { resolve: (host, opts = {}) => resolved(io, String(host), opts.timeoutMs ?? io.timeoutMs), tcp: (host, port, opts = {}) => connected(io, String(host), port, opts.timeoutMs ?? io.timeoutMs) };
 }
 
-// -> { ok, addresses } | { ok: false, error, timedOut? }. A resolver that never answers is a spent
+// -> { ok, addresses, address } | { ok: false, error, timedOut? }: how many addresses the name has, and the one a
+// connection would be tried at (the first IPv4 one when there is one). A resolver that never answers is a spent
 // deadline, never a hang.
 function resolved(io, host, timeoutMs) {
   return new Promise((resolve) => {
@@ -43,11 +44,13 @@ function resolved(io, host, timeoutMs) {
 async function looked(io, host) {
   try {
     const all = await io.lookup(host, { all: true });
-    return { ok: true, addresses: Array.isArray(all) ? all.length : 1 };
+    return { ok: true, addresses: Array.isArray(all) ? all.length : 1, address: firstAddress(all) };
   } catch (e) {
     return { ok: false, error: `${host} did not resolve (${e?.code ?? e?.message ?? e})` };
   }
 }
+
+const firstAddress = (all) => ((list) => String((list.find((a) => a?.family === 4) ?? list[0])?.address ?? "") || null)(Array.isArray(all) ? all : [all]);
 
 // -> { ok } | { ok: false, error, timedOut? }
 function connected(io, host, port, timeoutMs) {

@@ -168,7 +168,7 @@ async function readiness(c, { go, halt }) {
 
 const nodesKept = (t) => t.nodes.map((n) => ({ key: n.key, role: n.role, alias: n.alias, ports: n.ports, image: n.image.pinned ?? n.image.built ?? null, readiness: n.readiness }));
 
-const recordOf = (c, result) => ({ mode: "required", provider: c.state.iso.id, attested: result.ok, at: result.at, because: result.ok ? "every row of the isolation profile holds" : unattested(result), network: c.state.topology.network, podId: c.state.place.attest.podId, topology: { mode: c.state.topology.mode, fingerprint: c.state.topology.fingerprint, nodes: nodesKept(c.state.topology) }, rows: result.rows.length });
+const recordOf = (c, result) => ({ mode: "required", provider: c.state.iso.id, attested: result.ok, at: result.at, because: result.ok ? "every row of the isolation profile holds" : unattested(result), network: c.state.topology.network, podId: c.state.place.attest.podId, topology: { mode: c.state.topology.mode, fingerprint: c.state.topology.fingerprint, nodes: nodesKept(c.state.topology) }, rows: result.rows.length, egress: result.egress });
 
 async function attest(c, { go, halt }) {
   const op = c.ops.begin("attest");

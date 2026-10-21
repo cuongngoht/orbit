@@ -13,6 +13,7 @@
 //   instances      the sandbox's backing environment, read-only
 //   proposals      none: a sandbox adopts nothing into anybody's repository
 //   observations   the connectivity this sandbox's locations were asked
+//   scratch        its own room for a file one container call reads and nobody else may (src/runtime/sandbox/scratch.mjs)
 //   envId / envs   the sandbox: for every provider, the environment is this one
 //   owner          the task
 //   writeSettings  refused: settings are a person's
@@ -20,6 +21,7 @@
 // `rooms.live` is NOT replaced. A sandbox's sessions sit in the checkout's live room with their owner
 // stamped, because the host-wide question "whose is this port" reads that room; what a context sees of it
 // is ENV_SCOPE's to say (src/runtime/sessions.mjs).
+import { join } from "node:path";
 import { Refused } from "../../errors.mjs";
 import { createObservations } from "../connectivity/observations.mjs";
 import { createdSandbox, createInstances, sandboxId } from "../instances.mjs";
@@ -30,6 +32,7 @@ import { sandbox } from "../providers/sandbox.mjs";
 import { createRuntimeStore } from "../store.mjs";
 import { filesOn } from "../validate.mjs";
 import { sandboxNow } from "./model.mjs";
+import { createScratch } from "./scratch.mjs";
 
 const NO_WORKSPACES = "this machine has no workspace owner bound to the runtime, so there is nowhere to run a task's change";
 
@@ -68,7 +71,7 @@ function derived(primary, task, workspace) {
   return withViews({ ...primary, ...scopedTo(id, task, primary.providers, primary), rooms, sandboxes, sandboxId: id, task, workspace, primaryRoot: primary.root, root: workspace.path, ...held(primary, workspace, rooms, doc) }, doc);
 }
 
-const held = (primary, workspace, rooms, doc) => ({ source: primary.workspaces.sourceOf(workspace.path), tree: primary.workspaces.treeOf(workspace.path), store: createRuntimeStore(rooms.understanding, primary.io), instances: readOnlyInstances(doc), proposals: noProposals, observations: createObservations(rooms.liveSandbox, primary.io) });
+const held = (primary, workspace, rooms, doc) => ({ source: primary.workspaces.sourceOf(workspace.path), tree: primary.workspaces.treeOf(workspace.path), store: createRuntimeStore(rooms.understanding, primary.io), instances: readOnlyInstances(doc), proposals: noProposals, observations: createObservations(rooms.liveSandbox, primary.io), scratch: createScratch(join(rooms.liveSandbox, "scratch"), primary.io) });
 
 // The sandbox as it is NOW: the document, and what the workspace says about it (src/runtime/sandbox/model.mjs).
 const withViews = (ctx, doc) => ({ ...ctx, sandboxDoc: doc, sandboxNow: () => sandboxNow(doc(), { tree: ctx.workspaces.tree(ctx.task), files: filesOn(ctx) }) });

@@ -1,0 +1,54 @@
+{
+  "asyncapi": "3.0.0",
+  "info": {
+    "title": "Synthetic invoice billing events",
+    "version": "r1",
+    "description": "The accepted message contract of the synthetic invoice application (FIX-ASYNC-1). A reminder request is published from the outbox by the relay and consumed by the reminder worker."
+  },
+  "channels": {
+    "reminderRequested": {
+      "address": "billing.reminder.requested",
+      "messages": { "ReminderRequested": { "$ref": "#/components/messages/ReminderRequested" } },
+      "description": "Reminder requests, routed to the reminder worker's queue."
+    },
+    "reminderDead": {
+      "address": "billing.reminder.dead",
+      "messages": { "ReminderRequested": { "$ref": "#/components/messages/ReminderRequested" } },
+      "description": "Where a reminder request that cannot succeed ends: a payload that does not conform, a tenant the invoice does not belong to, or the delivery limit reached."
+    }
+  },
+  "operations": {
+    "requestReminder": { "action": "send", "channel": { "$ref": "#/channels/reminderRequested" }, "summary": "The outbox relay publishes, with a publisher confirm, after the transaction that wrote the request committed." },
+    "handleReminder": { "action": "receive", "channel": { "$ref": "#/channels/reminderRequested" }, "summary": "The reminder worker writes one reminder and one notification per business key, then acknowledges." }
+  },
+  "components": {
+    "messages": {
+      "ReminderRequested": {
+        "name": "ReminderRequested",
+        "contentType": "application/json",
+        "correlationId": { "location": "$message.payload#/businessKey" },
+        "payload": {
+          "type": "object",
+          "required": ["messageId", "invoiceId", "tenantId", "occurrenceId", "businessKey"],
+          "properties": {
+            "messageId": { "type": "string", "pattern": "^msg-[0-9a-f]{16,64}$" },
+            "invoiceId": { "type": "string" },
+            "tenantId": { "type": "string" },
+            "occurrenceId": { "type": "string", "pattern": "^billing-daily:" },
+            "businessKey": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  },
+  "x-delivery": {
+    "guarantee": "at-least-once",
+    "publication": "a publication counts once the broker confirmed it; a lost confirm is republished from the outbox with the same messageId",
+    "consumerIdempotentBy": "businessKey (tenantId|invoiceId|occurrenceId): a redelivered or duplicated message leaves one reminder and one notification",
+    "ordering": "none",
+    "retry": "a transient failure is retried by redelivery",
+    "deadLetterAfter": 3,
+    "deadLetterReasons": ["schema-invalid", "tenant-mismatch", "dependency-failure"]
+  }
+}

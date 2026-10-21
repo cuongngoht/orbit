@@ -13,6 +13,7 @@
 // else's labels -- or none -- is never touched.
 import { join } from "node:path";
 import { short } from "../../hash.mjs";
+import { scrub } from "../../scrub.mjs";
 import { primitiveArgv } from "../catalog.mjs";
 import { judge, mayStop } from "../ownership.mjs";
 import { commandFingerprint, sessionId } from "../sessions.mjs";
@@ -154,24 +155,37 @@ const primitiveOf = (catalog) => (catalog.connectivity?.primitives ?? []).find((
 
 const lineOf = (out) => String(out ?? "").trim().split("\n").map((l) => l.trim()).filter(Boolean).at(-1)?.split(/\s+/) ?? [];
 
+// The probe's whole vocabulary (catalog connectivity.primitives): a word outside it is not an answer.
+export const RESOLUTIONS = ["RESOLVED", "FAILED", "UNKNOWN"];
+export const TRANSPORTS = ["REACHABLE", "UNREACHABLE", "NOT_ATTEMPTED"];
+
+const NOT_ASKED = (because) => ({ ran: false, resolution: "UNKNOWN", transport: "NOT_ATTEMPTED", because });
+
 // One probe, from a throwaway container of the worker image placed on the task's network (or in its pod): a FIXED
-// script from the catalog with the host and the port as arguments of their own. -> { resolution, transport }
+// script from the catalog with the host and the port as arguments of their own. -> { ran, resolution, transport,
+// because? }, where `ran` is the only thing that makes the two words EVIDENCE: the container ran the script to its end
+// and its last line is two words of the vocabulary. A probe that could not be asked, did not run, ended any other way
+// or said anything else answers `ran: false`, and nothing reads that as an answer.
 export async function probedFrom(iso, topology, place, target, deps) {
   const primitive = primitiveOf(place.catalog);
-  if (!primitive || !place.policy.isolation.workerImage) return { resolution: "UNKNOWN", transport: "NOT_ATTEMPTED", because: !primitive ? "the catalog names no probe the worker image answers" : "no worker image is set, so nothing on the task's network can be asked" };
+  if (!primitive || !place.policy.isolation.workerImage) return NOT_ASKED(!primitive ? "the catalog names no probe the worker image answers" : "no worker image is set, so nothing on the task's network can be asked");
   const spec = probeSpec(primitive, topology, place, target);
   return answeredProbe(await iso.container.runOnce({ ...spec, name: `${spec.name}-${short(String(deps.now?.() ?? Date.now()), 4)}` }, deps, { timeoutMs: PROBE_TIMEOUT_MS + 15000 }));
 }
 
 const probeSpec = (primitive, topology, place, target) => specOf({ key: `probe-${short(String(target.host) + target.port, 6)}`, role: "probe", alias: null, argv: primitiveArgv(primitive, { "${HOST}": target.host, "${PORT}": target.port, "${TIMEOUT_MS}": PROBE_TIMEOUT_MS }), env: { names: [], values: {} }, image: { pinned: place.policy.isolation.workerImage } }, topology, place);
 
-const answeredProbe = (r) => ((said) => (said.length === 2 ? { resolution: said[0], transport: said[1] } : { resolution: "UNKNOWN", transport: "NOT_ATTEMPTED", because: r.error ?? "the probe said nothing" }))(lineOf(r.out));
+const spoken = (said) => said.length === 2 && RESOLUTIONS.includes(said[0]) && TRANSPORTS.includes(said[1]);
+
+const unspoken = (r, said) => scrub(r.ok ? `the probe's last line was ${JSON.stringify(said.join(" "))}, which is not a probe's answer` : `the probe did not run to its end: ${r.error ?? `exit ${r.status ?? "?"}`}`).slice(0, 240);
+
+const answeredProbe = (r) => ((said) => (r?.ok === true && spoken(said) ? { ran: true, resolution: said[0], transport: said[1] } : NOT_ASKED(unspoken(r ?? {}, said))))(lineOf(r?.out));
 
 // Where a node is asked FROM inside: its alias on the network, or localhost in a pod.
 export const hostOf = (node, topology) => (topology.mode === "pod" ? "localhost" : node.alias);
 
 const READY_KINDS = {
-  tcp: async (node, ctx) => ((p) => ({ ok: p.transport === "REACHABLE", because: p.transport === "REACHABLE" ? `${hostOf(node, ctx.topology)}:${node.readiness.port} accepts a connection on the task's network` : (p.because ?? `${hostOf(node, ctx.topology)}:${node.readiness.port} did not accept a connection yet (${p.resolution} ${p.transport})`) }))(await probedFrom(ctx.iso, ctx.topology, ctx.place, { host: hostOf(node, ctx.topology), port: node.readiness.port }, ctx.deps)),
+  tcp: async (node, ctx) => ((p) => ({ ok: p.ran && p.transport === "REACHABLE", because: p.ran && p.transport === "REACHABLE" ? `${hostOf(node, ctx.topology)}:${node.readiness.port} accepts a connection on the task's network` : (p.because ?? `${hostOf(node, ctx.topology)}:${node.readiness.port} did not accept a connection yet (${p.resolution} ${p.transport})`) }))(await probedFrom(ctx.iso, ctx.topology, ctx.place, { host: hostOf(node, ctx.topology), port: node.readiness.port }, ctx.deps)),
   http: async (node, ctx) => READY_KINDS.tcp(node, ctx),
   running: async (node, ctx) => ((s) => ({ ok: Boolean(s), because: s ? "it is running; nothing says how to tell it is ready" : "it is not running" }))(runningOf(ctx.ctx, ctx.iso, node.key, ctx.deps)),
 };

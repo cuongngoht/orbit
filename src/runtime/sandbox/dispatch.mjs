@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { Blocked, Refused } from "../../errors.mjs";
 import { short } from "../../hash.mjs";
 import { scrub } from "../../scrub.mjs";
-import { attestation, unattested } from "./isolation.mjs";
+import { PREPARED_EGRESS, attestation, unattested } from "./isolation.mjs";
 import { recomposed } from "./isolated-launch.mjs";
 import { ROLE_HARDENING, containerNameOf, podNameOf, receiptOf } from "./network.mjs";
 import { createOperations } from "./operations.mjs";
@@ -36,6 +36,7 @@ const GATES = [
   { fails: (g) => !g.doc?.isolation || g.doc.isolation.mode !== "required", stop: Refused, say: () => "this sandbox is not isolated: a generated test runs only in a worker whose isolation was attested (sandbox.isolation.mode is required)" },
   { fails: (g) => g.doc.state !== "READY", stop: Blocked, say: (g) => `the sandbox is ${g.doc.state}: \`sandbox-prepare\` makes it READY first` },
   { fails: (g) => !g.doc.isolation.attested, stop: Blocked, say: (g) => `the sandbox's isolation was not attested: ${g.doc.isolation.because}` },
+  { fails: (g) => g.doc.isolation.egress?.held !== true, stop: Blocked, say: () => "the sandbox's preparation keeps no egress evidence that held, and a dispatch never asks it again on its own: `sandbox-prepare` attests the sandbox again" },
   { fails: (g) => g.signals.cancelled, stop: Refused, say: () => "the sandbox was cancelled: nothing more is dispatched to it" },
   { fails: (g) => g.signals.paused, stop: Blocked, say: (g) => `the sandbox is paused (${g.signals.last?.by ?? "unknown"}): nothing new is dispatched until it is resumed` },
   { fails: (g) => !g.ctx.io.exists(dispatchDirs(g.ctx, g.args.run).in), stop: Refused, say: () => "the run's inputs are not prepared: the caller writes them into the run's in/ room first" },
@@ -92,7 +93,7 @@ function lost(ctx, receipt, args, why) {
 
 async function attestedThenRun(ctx, args, deps, now, spec, receipt) {
   const facts = now.iso.facts(now.iso.container.inspect(receipt.container.id, deps));
-  const held = attestation({ containers: [{ node: { key: receipt.component, role: "worker", mounts: spec.mounts, allowedEnv: [...now.iso.imageEnv(spec.image, deps), ...Object.keys(spec.env.values)] }, facts }], network: now.iso.network.inspect(now.topology.network.name, deps), egress: undefined, attest: { ...now.place.attest, podId: ctx.sandboxes.read(ctx.envId).isolation.podId } });
+  const held = attestation({ containers: [{ node: { key: receipt.component, role: "worker", mounts: spec.mounts, allowedEnv: [...now.iso.imageEnv(spec.image, deps), ...Object.keys(spec.env.values)] }, facts }], network: now.iso.network.inspect(now.topology.network.name, deps), egress: PREPARED_EGRESS, attest: { ...now.place.attest, podId: ctx.sandboxes.read(ctx.envId).isolation.podId } });
   if (!held.ok) return refusedWorker(ctx, args, deps, now, receipt, unattested(held));
   ctx.sessions.write({ ...receipt, state: "RUNNING", startedAt: ctx.now(), pidStartedAt: facts?.startedAt ?? null });
   return finished(ctx, args, deps, now, receipt, await runAttached(ctx, args, deps, now, receipt));

@@ -63,7 +63,7 @@ test("what a person left unsaid is filled by level, and the engine's hard rules 
   assert.deepEqual([policy.hard.listen, policy.hard.reuseExternal, policy.hard.restoreCheckout, policy.hard.stopOnlyOwned], ["127.0.0.1", false, false, true], "nothing a person set can reach these");
   assert.equal(isTrusted({ ...SANDBOX_DEFAULTS, restore: { mode: "approved", trusted: [FP] } }, "restore", FP), true);
   assert.equal(isTrusted(SANDBOX_DEFAULTS, "nothing", FP), false);
-  assert.deepEqual(TRUST_KINDS.map((k) => k.kind), ["restore", "definition"]);
+  assert.deepEqual(TRUST_KINDS.map((k) => k.kind), ["restore", "definition", "topology", "worker-image", "adapter-image"]);
 });
 
 test("a definition is trusted by the fingerprint of every file it is built from, so an edited one asks again", () => {

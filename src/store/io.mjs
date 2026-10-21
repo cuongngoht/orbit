@@ -71,6 +71,9 @@ function entryKind(path) {
 
 const writers = () => ({
   write: (p, text) => wrote(p, text),
+  // A file only this machine's user may read, made NEW: refused when anything is already at the path, so a link
+  // somebody planted there is never followed. For what must not sit readable on a disk even for one call.
+  writePrivate: (p, text) => wrotePrivate(p, text),
   append: (p, text) => added(p, text),
   mkdir: (p) => mkdirSync(p),
   ensureDir: (p) => mkdirSync(p, { recursive: true }),
@@ -83,6 +86,12 @@ const writers = () => ({
 function wrote(path, text) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(contained(dirname(path), path), text);
+  return path;
+}
+
+function wrotePrivate(path, text) {
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  writeFileSync(contained(dirname(path), path), text, { mode: 0o600, flag: "wx" });
   return path;
 }
 

@@ -3,9 +3,17 @@
 // What it creates is always LABELLED (the task, the checkout, the environment) and always told which network to
 // join: an INTERNAL network of the task's own (`network create --internal`), so a container reaches the task's
 // services and nothing beyond them. Nothing is pulled: an image is used only by a content-addressed reference
-// already on this machine (`imageDigest`), and an image built is built only from a definition a person trusted.
-// A value never rides a command line: an environment variable is named (`-e NAME`) and its value travels in the
-// docker client's own environment, which is BASE_ENV plus exactly the names declared.
+// already on this machine (`imageDigest`), and an image built is built only from a definition a person trusted, with
+// no network unless a person's policy gave the build one.
+//
+// What a container is handed of an environment comes two ways, and neither can steer the docker CLIENT itself:
+//
+//   by NAME   `-e NAME`, which the client fills from its OWN environment (BASE_ENV, its own names and exactly the
+//             names declared, read at the moment of calling). So a name handed this way is a plain upper-case name
+//             and never one HANDED_NEVER lists: what the client, its loader or its runtime reads to change how it runs.
+//   by VALUE  never on the command line and never in the client's environment: `NAME=value` a line, in a file of the
+//             sandbox's scratch room only its owner may read (`deps.scratch`), named with `--env-file` and removed
+//             when the one call ends -- whatever it answered.
 //
 // It decides nothing about whether what it created is isolated enough: `facts` turns what `inspect` says into
 // the generic facts src/runtime/sandbox/isolation.mjs holds to the PROFILE, and only that verdict counts.
@@ -23,17 +31,81 @@ export const STOP_GRACE_S = 10;
 // A reference that cannot move under a tag: `name@sha256:<64>` or an image id `sha256:<64>`.
 export const PINNED = /(^sha256:[0-9a-f]{64}$)|(@sha256:[0-9a-f]{64}$)/;
 
-// The client's environment for one call: BASE_ENV, the docker client's own names, the names a container is handed
-// from this machine's environment, and the literal values its definition named -- so `-e NAME` on the command line
-// carries a name and never a value.
-const clientEnv = (deps, env = {}) => ({ ...childEnv(deps.env ?? {}, [...CLIENT_ENV, ...(env.names ?? [])]), ...carried(env) });
+// The client's environment for one call: BASE_ENV, the docker client's own names, and the names a container is
+// handed from this machine's environment -- never a value a spec carries.
+const clientEnv = (deps, env = {}) => childEnv(deps.env ?? {}, [...CLIENT_ENV, ...(env.names ?? [])]);
 
-// A value whose name the docker client itself needs (HOME, PATH, its own) cannot travel in the client's environment
-// without changing the client: it rides the command line instead, which only a FIXED, non-secret value ever does --
-// a scratch HOME, a store directory inside the container.
-const RESERVED = new Set([...BASE_ENV, ...CLIENT_ENV]);
+// ---- what a container may be handed --------------------------------------------------------------------------
 
-const carried = (env) => Object.fromEntries(Object.entries(env.values ?? {}).filter(([k]) => !RESERVED.has(k)));
+export const HANDED_NAME = /^[A-Z_][A-Z0-9_]{0,63}$/;
+export const VALUE_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/;
+export const MAX_VALUE = 32 * 1024;
+
+// Names never handed BY NAME, because the client reads its own environment to fill them: each row is something a
+// program reads to change how IT runs. Values are untouched by these -- a value never reaches the client.
+export const HANDED_NEVER = [
+  { id: "STARTED_WITH", test: (n) => BASE_ENV.includes(n), why: "every process on this machine is started with it" },
+  { id: "CLIENT", test: (n) => CLIENT_ENV.includes(n) || /^(DOCKER|BUILDKIT|BUILDX|COMPOSE)_/.test(n), why: "it configures the container client itself" },
+  { id: "LOADER", test: (n) => /^(LD|DYLD)_/.test(n), why: "the dynamic loader reads it before the client runs" },
+  { id: "RUNTIME", test: (n) => /^NODE_(?!ENV$)|^PY[A-Z]|^(GODEBUG|GOMAXPROCS|GOTRACEBACK|GOGC|GOMEMLIMIT|JAVA_TOOL_OPTIONS|JDK_JAVA_OPTIONS|_JAVA_OPTIONS|PERL5OPT|PERL5LIB|RUBYOPT|RUBYLIB)$/.test(n), why: "a language runtime reads it to change how a program runs" },
+  { id: "PROXY", test: (n) => /_PROXY$/.test(n), why: "it sends the client's connections through somebody else" },
+  { id: "TRUST", test: (n) => /^SSL_|CA_(BUNDLE|CERTS?|FILE|PATH|DIR)$/.test(n), why: "it changes which certificates the client trusts" },
+  { id: "ELSEWHERE", test: (n) => /^(XDG|OTEL)_/.test(n), why: "it moves where the client reads its configuration, or sends what it reports" },
+];
+
+const nameProblem = (n) => (HANDED_NAME.test(String(n)) ? HANDED_NEVER.find((r) => r.test(n))?.why ?? null : "a name handed from this machine's environment is a plain upper-case name");
+
+const UNWRITABLE = /[\r\n\u0000]/;
+
+// What the client's env file can say of a value: one line, handed verbatim.
+const VALUE_RULES = [
+  { fails: ([k]) => !VALUE_NAME.test(k), why: () => "a value is handed under a name of letters, digits and underscores" },
+  { fails: ([, v]) => typeof v !== "string" || UNWRITABLE.test(v) || !v.isWellFormed(), why: () => "its value is not one line of text, so it cannot be handed as one" },
+  { fails: ([, v]) => v.length > MAX_VALUE, why: () => `its value is longer than ${MAX_VALUE} characters` },
+];
+
+const valueProblem = (entry) => ((row) => (row ? `${entry[0]}: ${row.why()}` : null))(VALUE_RULES.find((r) => r.fails(entry)));
+
+// -> [sentence]: why the environment a spec names cannot be handed to a container, or nothing.
+export const envProblems = (env) => [...(env?.names ?? []).map((n) => ((why) => (why ? `${n}: ${why}` : null))(nameProblem(n))), ...Object.entries(env?.values ?? {}).map(valueProblem)].filter(Boolean);
+
+const envFileText = (values) => Object.entries(values).map(([k, v]) => `${k}=${v}\n`).join("");
+
+const refusedEnv = (problems) => ((why) => ({ ok: false, out: "", why, error: why, refused: true }))(`the container's environment cannot be handed to it: ${problems.join("; ")}`);
+
+const NO_SCRATCH = "no scratch room was bound to hand a container its values through, and a value never rides the command line or the client's environment";
+
+// A call whose spec hands a container an environment: refused before anything runs when it cannot be handed, and its
+// values in a scratch file for exactly the length of the call.
+function handed(spec, deps, call) {
+  const problems = envProblems(spec.env);
+  if (problems.length) return refusedEnv(problems);
+  if (!Object.keys(spec.env?.values ?? {}).length) return call(null);
+  return deps.scratch ? inScratch(deps.scratch, envFileText(spec.env.values), call) : refusedEnv([NO_SCRATCH]);
+}
+
+function inScratch(scratch, text, call) {
+  const file = madeOrNull(scratch, text);
+  return file ? removedAfter(scratch, file, call) : refusedEnv(["the scratch file a container's values are handed through could not be made"]);
+}
+
+function madeOrNull(scratch, text) {
+  try { return scratch.write(text); }
+  catch { return null; }
+}
+
+// Removed when the call ends: at once for an answer, when it settles for a promise, and on a throw.
+function removedAfter(scratch, file, call) {
+  const answer = calledOrRemoved(scratch, file, call);
+  if (typeof answer?.then === "function") return answer.finally(() => scratch.remove(file));
+  scratch.remove(file);
+  return answer;
+}
+
+function calledOrRemoved(scratch, file, call) {
+  try { return call(file); }
+  catch (e) { throw (scratch.remove(file), e); }
+}
 
 const asked = (deps, args, opts = {}) => deps.process.run("docker", args, { timeoutMs: opts.timeoutMs ?? QUICK_MS, env: clientEnv(deps, opts.env), ...(opts.input === undefined ? {} : { input: opts.input }) });
 
@@ -65,17 +137,23 @@ const volumeArg = (v) => `type=volume,source=${v.name},target=${v.target}`;
 
 const limitArgs = (l) => ["--cpus", String(l.cpus), "--memory", `${l.memoryMb}m`, "--pids-limit", String(l.pids)];
 
-const envArgs = (env) => [...(env?.names ?? []), ...Object.keys(env?.values ?? {}).filter((k) => !RESERVED.has(k))].flatMap((n) => ["-e", n]).concat(Object.entries(env?.values ?? {}).filter(([k]) => RESERVED.has(k)).flatMap(([k, v]) => ["-e", `${k}=${v}`]));
+const envArgs = (env, file) => [...(env?.names ?? []).flatMap((n) => ["-e", n]), ...(file ? ["--env-file", file] : [])];
 
 const hardening = (s) => [...(s.readOnly ? ["--read-only"] : []), ...(s.tmpfs ?? []).flatMap((t) => ["--tmpfs", t]), ...(s.capDrop ?? []).flatMap((c) => ["--cap-drop", c]), ...(s.noNewPrivileges ? ["--security-opt", "no-new-privileges"] : [])];
 
 const storage = (s) => [...(s.mounts ?? []).flatMap((m) => ["--mount", mountArg(m)]), ...(s.volumes ?? []).flatMap((v) => ["--mount", volumeArg(v)])];
 
-const flags = (s) => ["--name", s.name, ...networkArgs(s.network), ...labelArgs(s.labels), ...hardening(s), ...storage(s), ...limitArgs(s.limits), ...envArgs(s.env), ...(s.workdir ? ["-w", s.workdir] : [])];
+const flags = (s, file) => ["--name", s.name, ...networkArgs(s.network), ...labelArgs(s.labels), ...hardening(s), ...storage(s), ...limitArgs(s.limits), ...envArgs(s.env, file), ...(s.workdir ? ["-w", s.workdir] : [])];
 
-export const createArgv = (s) => ["create", ...flags(s), s.image, ...(s.argv ?? [])];
+// `file` is the scratch env file a call's values are in (null when it hands none).
+export const createArgv = (s, file = null) => ["create", ...flags(s, file), s.image, ...(s.argv ?? [])];
 
-export const runOnceArgv = (s) => ["run", "--rm", "-i", ...flags(s), s.image, ...(s.argv ?? [])];
+export const runOnceArgv = (s, file = null) => ["run", "--rm", "-i", ...flags(s, file), s.image, ...(s.argv ?? [])];
+
+// What a build may reach while it builds: nothing, unless a person's policy says the build needs the network.
+const BUILD_NETWORK = { none: "none", default: "default" };
+
+export const buildArgv = (spec) => ["build", "--network", BUILD_NETWORK[spec.network] ?? "none", "-f", spec.dockerfile, "-t", spec.tag, ...labelArgs(spec.labels), spec.context];
 
 export const networkArgv = (n) => ["network", "create", "--internal", ...labelArgs(n.labels), n.name];
 
@@ -115,7 +193,7 @@ function imageDigest(ref, deps) {
 const imageEnv = (ref, deps) => (imageOf(ref, deps)?.Config?.Env ?? []).map((e) => String(e).split("=")[0]);
 
 function build(spec, deps) {
-  const r = asked(deps, ["build", "-f", spec.dockerfile, "-t", spec.tag, ...labelArgs(spec.labels), spec.context], { timeoutMs: BUILD_MS });
+  const r = asked(deps, buildArgv(spec), { timeoutMs: BUILD_MS });
   return r.ok ? { ok: true, ref: imageDigest(spec.tag, deps) } : failed(r);
 }
 
@@ -124,7 +202,7 @@ function doctor(deps) {
   return r.ok ? { ok: true, version: parsed(r.out) } : { ok: false, why: r.error ?? "the docker daemon did not answer" };
 }
 
-const runOnce = (spec, deps, opts = {}) => deps.process.runObserved("docker", runOnceArgv(spec), { timeoutMs: opts.timeoutMs ?? QUICK_MS, env: clientEnv(deps, spec.env), input: opts.input ?? "", observe: opts.observe });
+const runOnce = (spec, deps, opts = {}) => handed(spec, deps, (file) => deps.process.runObserved("docker", runOnceArgv(spec, file), { timeoutMs: opts.timeoutMs ?? QUICK_MS, env: clientEnv(deps, spec.env), input: opts.input ?? "", observe: opts.observe }));
 
 export const docker = {
   apiVersion: ISOLATION_API,
@@ -134,6 +212,7 @@ export const docker = {
   doctor,
   imageDigest,
   imageEnv,
+  envProblems,
   build,
   facts,
   network: {
@@ -142,7 +221,7 @@ export const docker = {
     remove: (name, deps) => done(asked(deps, ["network", "rm", name])),
   },
   container: {
-    create: (spec, deps) => done(asked(deps, createArgv(spec), { env: spec.env }), (r) => ({ id: String(r.out).trim() })),
+    create: (spec, deps) => handed(spec, deps, (file) => done(asked(deps, createArgv(spec, file), { env: spec.env }), (r) => ({ id: String(r.out).trim() }))),
     start: (id, deps) => done(asked(deps, ["start", id])),
     startAttached: (id, deps, opts = {}) => deps.process.runObserved("docker", ["start", "-a", "-i", id], { timeoutMs: opts.timeoutMs ?? QUICK_MS, env: clientEnv(deps, opts.env), input: opts.input ?? "", observe: opts.observe }),
     inspect: (id, deps) => firstOf(asked(deps, ["inspect", id])),

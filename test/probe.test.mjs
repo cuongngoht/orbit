@@ -136,7 +136,8 @@ test("reach.tcp: a connection nothing answers is a spent deadline, said as one",
 });
 
 test("reach.resolve counts the addresses, says when a name does not resolve, and gives up at the deadline instead of hanging", async () => {
-  assert.deepEqual(await createReach({ lookup: async () => [{ address: "10.0.0.5" }, { address: "10.0.0.6" }] }).resolve("sql.internal.example"), { ok: true, addresses: 2 });
+  assert.deepEqual(await createReach({ lookup: async () => [{ address: "10.0.0.5" }, { address: "10.0.0.6" }] }).resolve("sql.internal.example"), { ok: true, addresses: 2, address: "10.0.0.5" });
+  assert.equal((await createReach({ lookup: async () => [{ address: "2001:db8::5", family: 6 }, { address: "10.0.0.5", family: 4 }] }).resolve("sql.internal.example")).address, "10.0.0.5", "the address a connection is tried at is IPv4 when the name has one");
   assert.deepEqual(await createReach({ lookup: async () => { throw Object.assign(new Error("nope"), { code: "ENOTFOUND" }); } }).resolve("sql.internal.example"), { ok: false, error: "sql.internal.example did not resolve (ENOTFOUND)" });
   assert.deepEqual(await createReach({ lookup: () => new Promise(() => {}) }).resolve("sql.internal.example", { timeoutMs: 20 }), { ok: false, timedOut: true, error: "sql.internal.example did not resolve within 0.02s" });
 });

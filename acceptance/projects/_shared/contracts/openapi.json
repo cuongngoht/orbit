@@ -1,0 +1,84 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "Synthetic invoices",
+    "version": "r1",
+    "description": "The accepted HTTP contract of a synthetic invoice application used to accept Orbit. Statuses are this fixture's contract only."
+  },
+  "security": [{ "bearer": [] }],
+  "paths": {
+    "/api/invoices": {
+      "get": {
+        "operationId": "searchInvoices",
+        "summary": "Search the caller's tenant's invoices by name (UI-AC-1)",
+        "parameters": [{ "name": "q", "in": "query", "required": true, "schema": { "type": "string", "minLength": 1, "maxLength": 120 } }],
+        "responses": {
+          "200": { "description": "The caller's tenant's invoices whose name contains q", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/InvoiceList" } } } },
+          "401": { "description": "No valid identity", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "post": {
+        "operationId": "createInvoice",
+        "summary": "Create an invoice in the caller's tenant, idempotent by key (API-AC-3)",
+        "parameters": [{ "name": "Idempotency-Key", "in": "header", "required": true, "schema": { "type": "string", "minLength": 8, "maxLength": 120 } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NewInvoice" } } } },
+        "responses": {
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Invoice" } } } },
+          "200": { "description": "The invoice an earlier request with the same key created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Invoice" } } } },
+          "400": { "description": "The body does not conform", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "No valid identity", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "The identity may not create", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/invoices/{id}": {
+      "get": {
+        "operationId": "readInvoice",
+        "summary": "Read one invoice (API-AC-1, API-AC-2)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^[a-z0-9-]{1,64}$" } }],
+        "responses": {
+          "200": { "description": "The invoice, to an identity of its own tenant", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Invoice" } } } },
+          "404": { "description": "No such invoice for the caller's tenant -- another tenant's invoice is not found, and nothing of it is returned", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "No valid identity", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": { "bearer": { "type": "http", "scheme": "bearer" } },
+    "schemas": {
+      "Invoice": {
+        "type": "object",
+        "required": ["id", "tenantId", "name", "amount", "status"],
+        "properties": {
+          "id": { "type": "string" },
+          "tenantId": { "type": "string" },
+          "name": { "type": "string" },
+          "amount": { "type": "number", "minimum": 0 },
+          "status": { "type": "string", "enum": ["open", "paid"] },
+          "marker": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "InvoiceList": {
+        "type": "object",
+        "required": ["invoices"],
+        "properties": { "invoices": { "type": "array", "items": { "$ref": "#/components/schemas/Invoice" } } },
+        "additionalProperties": false
+      },
+      "NewInvoice": {
+        "type": "object",
+        "required": ["name", "amount"],
+        "properties": { "name": { "type": "string", "minLength": 1, "maxLength": 120 }, "amount": { "type": "number", "minimum": 0, "maximum": 1000000 } },
+        "additionalProperties": false
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": { "error": { "type": "string", "enum": ["not_found", "unauthorized", "forbidden", "invalid"] } },
+        "additionalProperties": false
+      }
+    }
+  }
+}

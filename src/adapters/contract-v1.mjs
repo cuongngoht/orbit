@@ -80,7 +80,7 @@ const crossFindings = (decl, at) => CROSS.flatMap((rule) => rule(decl, at));
 
 const CROSS = [
   (d, at) => (Array.isArray(d.transports) ? d.transports : []).filter((t) => typeof t !== "string" || !TRANSPORT_TOKEN.test(t)).map((t) => `${at}: transport "${String(t).slice(0, 48)}" is not a token`),
-  (d, at) => Object.keys(isTable(d.operations) ? d.operations : {}).filter((name) => familyOf(d.family) && !operationOf(d.family, name)).map((name) => `${at}: ${name} is not an operation of the ${d.family} family`),
+  (d, at) => Object.keys(isTable(d.operations) ? d.operations : {}).filter((name) => familyOf(d.family) && !rowOf(d, name)).map((name) => `${at}: ${name} is not an operation of the ${d.family} family, nor ${SHARED.join(".<op> or ")}.<op> for a resource it owns`),
   (d, at) => operationEntries(d).flatMap(([name, o]) => effectFindings(d, name, o, at)),
   (d, at) => operationEntries(d).flatMap(([name, o]) => outputFindings(name, o, at)),
   (d, at) => helperFindings(d.helper, at),
@@ -88,13 +88,28 @@ const CROSS = [
 
 const isTable = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 
-const operationEntries = (d) => Object.entries(isTable(d.operations) ? d.operations : {}).filter(([name]) => operationOf(d.family, name));
+// The families any adapter serves FOR the resources it owns: an observer it armed is awaited
+// through it, and the fixture resources it created are prepared and cleaned up through it. Named
+// as `<family>.<op>` (observe.await, fixture.cleanup) beside its own family's operations.
+export const SHARED = ["observe", "fixture"];
 
-function effectFindings(d, name, o, at) {
-  const allowed = operationOf(d.family, name).effects;
-  const effects = Array.isArray(o?.effects) ? o.effects : [];
-  return effects.filter((e) => !EFFECT_IDS.includes(e) || !allowed.includes(e)).map((e) => `${at}: ${name} may not declare effect "${e}" — ${d.family}.${name} allows ${allowed.join(", ")}`);
+export function rowOf(d, name) {
+  const own = operationOf(d.family, name);
+  if (own || !String(name).includes(".")) return own;
+  const [family, op] = String(name).split(".");
+  return SHARED.includes(family) ? operationOf(family, op) : null;
 }
 
-const outputFindings = (name, o, at) => Object.entries(isTable(o?.outputs) ? o.outputs : {}).filter(([, means]) => !meaningAt(String(means))).map(([field, means]) => `${at}: ${name} output ${field} means "${means}", which is not a meaning (src/topology/vocab.mjs)`);
+const operationEntries = (d) => Object.entries(isTable(d.operations) ? d.operations : {}).filter(([name]) => rowOf(d, name));
+
+function effectFindings(d, name, o, at) {
+  const allowed = rowOf(d, name).effects;
+  const effects = Array.isArray(o?.effects) ? o.effects : [];
+  return effects.filter((e) => !EFFECT_IDS.includes(e) || !allowed.includes(e)).map((e) => `${at}: ${name} may not declare effect "${e}" — it allows ${allowed.join(", ")}`);
+}
+
+// An output field carries a meaning, or -- for a list -- each item's fields do: `{ each: {...} }`.
+const outputFindings = (name, o, at) => outputsOf(isTable(o?.outputs) ? o.outputs : {}, "").filter(([, means]) => !meaningAt(String(means))).map(([field, means]) => `${at}: ${name} output ${field} means "${means}", which is not a meaning (src/topology/vocab.mjs)`);
+
+const outputsOf = (outputs, prefix) => Object.entries(outputs).flatMap(([field, means]) => (isTable(means) && isTable(means.each) ? outputsOf(means.each, `${prefix}${field}[].`) : [[`${prefix}${field}`, means]]));
 

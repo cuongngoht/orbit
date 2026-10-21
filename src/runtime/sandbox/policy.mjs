@@ -35,11 +35,24 @@ export const PLACEMENTS = ["auto", "native", "devcontainer"];
 // How a task's generated active tests are ISOLATED (ADR 0038, 0039): off -- the sandbox runs what it places, as before
 // -- or required, when every component and service runs in a container on an internal network of the task's own, and
 // a test runs only in a worker whose isolation was attested. The worker image is a person's choice, pinned by digest
-// and trusted by fingerprint like a topology and an adapter's image; `egress` is the address an attestation tries to
-// reach from inside, which must fail. Every number is a ceiling a person may only narrow.
+// and trusted by fingerprint like a topology and an adapter's image; `egress` is what an attestation tries to reach
+// from inside, which must fail -- its NAME must not resolve, and its ADDRESS (a person's literal, else what this
+// machine resolves the name to) must not be reached. `buildNetwork` is what an image built for the sandbox may reach
+// while it builds: nothing, unless a person says the build needs the network (and then the topology a person trusts
+// covers every file the build is sent). Every number is a ceiling a person may only narrow.
 export const ISOLATION_MODES = ["off", "required"];
 export const NETWORK_MODES = ["auto", "aliases", "pod"];
+export const BUILD_NETWORKS = ["none", "default"];
 export const PINNED_IMAGE = /(^sha256:[0-9a-f]{64}$)|(@sha256:[0-9a-f]{64}$)/;
+
+// A literal address, IPv4 dotted or IPv6 hexadecimal: what a probe connects to without asking a resolver.
+export const ADDRESS = /^((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}|(?=[0-9a-f:]*:[0-9a-f:]*:)[0-9a-f:]{2,39})$/i;
+
+// An address that says nothing about leaving a network: the container's own loopback, the unspecified address, a
+// link-local or a multicast one. A refusal there, asked from inside, proves nothing about what is outside.
+const NOWHERE = [/^127\./, /^0\./, /^169\.254\./, /^2(2[4-9]|3\d)\./, /^::1?$/, /^(0:){7}[01]$/, /^fe[89ab][0-9a-f]?:/i, /^ff/i];
+
+export const outsideAddress = (a) => typeof a === "string" && ADDRESS.test(a) && !NOWHERE.some((r) => r.test(a));
 
 export const ISOLATION_DEFAULTS = Object.freeze({
   mode: "off",
@@ -49,7 +62,8 @@ export const ISOLATION_DEFAULTS = Object.freeze({
   limits: { cpus: 2, memoryMb: 2048, pids: 512 },
   lifetimeMinutes: 120,
   teardownSeconds: 120,
-  egress: { host: "example.com", port: 443 },
+  egress: { host: "example.com", port: 443, address: null },
+  buildNetwork: "none",
   trustedTopologies: [],
   trustedWorkers: [],
   trustedAdapters: [],
@@ -86,7 +100,7 @@ const HOSTNAME = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}
 
 const limitsOk = (l) => isObject(l) && unknownOf(l, ["cpus", "memoryMb", "pids"]).length === 0 && between(l.cpus, 0.1, 64, false) && between(l.memoryMb, 64, 65536) && between(l.pids, 16, 65536);
 
-const egressOk = (e) => isObject(e) && unknownOf(e, ["host", "port"]).length === 0 && HOSTNAME.test(String(e.host)) && between(e.port, 1, 65535);
+const egressOk = (e) => isObject(e) && unknownOf(e, ["host", "port", "address"]).length === 0 && HOSTNAME.test(String(e.host)) && between(e.port, 1, 65535) && ((e.address ?? null) === null || outsideAddress(e.address));
 
 // Ordered: the first reason the isolation block does not hold.
 const ISOLATION_RULES = [
@@ -97,7 +111,8 @@ const ISOLATION_RULES = [
   { fails: (i) => !NETWORK_MODES.includes(i.networkMode), says: () => `sandbox.isolation.networkMode is ${NETWORK_MODES.join(", ")}` },
   { fails: (i) => !limitsOk(i.limits), says: () => "sandbox.isolation.limits is { cpus: 0.1-64, memoryMb: 64-65536, pids: 16-65536 }" },
   { fails: (i) => !between(i.lifetimeMinutes, 1, 1440) || !between(i.teardownSeconds, 5, 3600), says: () => "sandbox.isolation.lifetimeMinutes is 1-1440 and teardownSeconds 5-3600" },
-  { fails: (i) => !egressOk(i.egress), says: () => "sandbox.isolation.egress is { host: a host name, port: 1-65535 }: the address an attestation must fail to reach" },
+  { fails: (i) => !egressOk(i.egress), says: () => "sandbox.isolation.egress is { host: a host name, port: 1-65535, address: null or a literal address outside this machine }: what an attestation must fail to reach" },
+  { fails: (i) => !BUILD_NETWORKS.includes(i.buildNetwork), says: () => `sandbox.isolation.buildNetwork is ${BUILD_NETWORKS.join(" or ")}` },
   { fails: (i) => ![i.trustedTopologies, i.trustedWorkers, i.trustedAdapters].every(fingerprintsOk), says: () => `sandbox.isolation's trusted lists each hold up to ${MAX_TRUSTED} distinct 64-character fingerprints` },
 ];
 

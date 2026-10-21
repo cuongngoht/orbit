@@ -1,10 +1,11 @@
 // A Reach port that opens nothing. `dns[host]` is how many addresses a name has, `false` (it does
-// not resolve) or "timeout"; a name nobody set resolves to one address. `tcp["host:port"]` is `true`
+// not resolve) or "timeout"; a name nobody set resolves to one address, and `addresses[host]` is the
+// address it answers with (none unless a test says). `tcp["host:port"]` is `true`
 // (accepted), `false` (refused), "timeout", or an ARRAY consumed one answer per ask, the last one
 // repeating -- a server that comes up on the third try is the case a retry exists for. Every ask is
 // recorded, because what a check ASKED is as much of the contract as what it concluded.
 export function fakeReach(world = {}) {
-  const state = { dns: { ...(world.dns ?? {}) }, tcp: { ...(world.tcp ?? {}) } };
+  const state = { dns: { ...(world.dns ?? {}) }, tcp: { ...(world.tcp ?? {}) }, addresses: { ...(world.addresses ?? {}) } };
   const calls = [];
   return { state, calls, resolve: async (host, opts = {}) => resolveAnswer(state, calls, host, opts), tcp: async (host, port, opts = {}) => tcpAnswer(state, calls, host, port, opts), answer: (host, port, value) => void (state.tcp[`${host}:${port}`] = value), named: (host, value) => void (state.dns[host] = value) };
 }
@@ -13,7 +14,7 @@ function resolveAnswer(state, calls, host, opts) {
   calls.push({ kind: "resolve", host, opts });
   const said = state.dns[host] ?? 1;
   if (said === "timeout") return { ok: false, timedOut: true, error: `${host} did not resolve within ${(opts.timeoutMs ?? 3000) / 1000}s` };
-  return said === false ? { ok: false, error: `${host} did not resolve (ENOTFOUND)` } : { ok: true, addresses: said };
+  return said === false ? { ok: false, error: `${host} did not resolve (ENOTFOUND)` } : { ok: true, addresses: said, address: state.addresses[host] ?? null };
 }
 
 function tcpAnswer(state, calls, host, port, opts) {

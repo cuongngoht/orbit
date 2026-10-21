@@ -26,6 +26,9 @@ import { baseEnv } from "../process/env.mjs";
 import { realIo } from "../store/io.mjs";
 import { pluginRoot } from "../version.mjs";
 import { localLauncher } from "./worker.mjs";
+import { createAdapterRegistry } from "../adapters/registry.mjs";
+import { catalogLayer, loadSemantics, mergeSemantics } from "../adapters/semantics.mjs";
+import { storeBase } from "../project/repository.mjs";
 
 // `overrides.runDir` is a TASK-SCOPED run directory (a sandbox's): its own browser session by name, its
 // own driving lock, and no profile -- a blank browser that shares nothing with the person's.
@@ -79,6 +82,14 @@ function finish(ctx, config) {
 // see each other's words, and a global would make that a matter of load order.
 const runtimeOver = (dsl) => agree(dsl, coreExecutors(dsl));
 
+// The semantics layers in effect, read when an adapter is first judged. A store that cannot be
+// resolved (a refused path, a directory that is not a checkout) still has the plugin's own
+// vocabulary: an adapter is never judged against nothing.
+function semanticsFor(ctx, store) {
+  try { return loadSemantics({ pluginRoot: pluginRoot(), storeBase: storeBase(ctx.env ?? {}), storeRoot: store(false), io: realIo() }); }
+  catch { return mergeSemantics([catalogLayer(pluginRoot(), realIo())]); }
+}
+
 const ports = (ctx, config, store) => ({
   db: createDatabase(config.sql.command, { timeoutMs: ms(ctx.env, "DB_TIMEOUT", config.sql.timeoutSec ?? 120) }),
   identity: createIdentity(ctx.browser, ctx.env, config.identity, ctx.project),
@@ -86,6 +97,9 @@ const ports = (ctx, config, store) => ({
   tools: createTools(undefined, ctx.env),
   process: createProcess({ timeoutMs: ms(ctx.env, "PROCESS_TIMEOUT", 60) }),
   capabilities: createCapabilityRegistry(),
+  // The adapters a project's packs and extensions declare (ADR 0035), judged against the semantics
+  // vocabulary in effect: the plugin's, then the organisation's and the project's own layers.
+  adapters: createAdapterRegistry(() => semanticsFor(ctx, store)),
   validators: createValidatorRegistry(),
   // What a project's extensions teach project knowledge (src/knowledge/). Bound
   // for EVERY context, because the loader refuses one without it rather than

@@ -13,7 +13,7 @@ const T0 = "2026-10-03T10:00:00.000Z";
 const receipt = (over = {}) => ({ id: "rs-aaaaaaaaaaaa", env: "env-x", component: "node:web", state: "RUNNING", pid: 4321, requestedAt: T0, startedAt: T0, pidStartedAt: T0, ...over });
 
 test("a receipt is judged by an ordered table, the last row always answering, a sentence per row", () => {
-  assert.deepEqual(OWNERSHIP.map((r) => r.name), ["NO_RECEIPT", "UNSETTLED", "FINISHED", "GONE", "CANNOT_TELL_WHEN", "PID_REUSED", "PROVEN"]);
+  assert.deepEqual(OWNERSHIP.map((r) => r.name), ["NO_RECEIPT", "UNSETTLED", "FINISHED", "CONTAINER_MISMATCH", "GONE", "CANNOT_TELL_WHEN", "PID_REUSED", "PROVEN"]);
   assert.equal(OWNERSHIP.at(-1).when(), true);
   for (const row of OWNERSHIP) assert.equal(typeof row.answer(receipt(), { alive: true, startedAt: "2026-10-03T11:00:00.000Z" }).why, "string", row.name);
 });

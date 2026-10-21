@@ -12,14 +12,14 @@ export const SUPPORTED_EXTENSION_APIS = [EXTENSION_API];
 // loaded, held to its own shape, and registered -- and one that is named but
 // absent is REFUSED, because half a declared extension is worse than none.
 //
-export const MODULES = ["capabilities", "dsl", "executors", "validators", "knowledge", "reporting"];
+export const MODULES = ["capabilities", "dsl", "executors", "validators", "knowledge", "reporting", "adapters"];
 
 // What FORM each module takes. Code is imported; DATA is parsed and never run.
 // `reporting` joined in 1.6.0 as data on purpose: a report extension's only code
 // is a script the report runner starts as its own process, so nothing a project
 // generated for its report ever executes inside the engine, where this process's
 // environment -- and every credential in it -- lives.
-export const MODULE_FORMS = { capabilities: "mjs", dsl: "mjs", executors: "mjs", validators: "mjs", knowledge: "mjs", reporting: "json" };
+export const MODULE_FORMS = { capabilities: "mjs", dsl: "mjs", executors: "mjs", validators: "mjs", knowledge: "mjs", reporting: "json", adapters: "json" };
 
 // A tool this extension shells out to -- `psql`, a vendor CLI. Declared so
 // `query doctor` can say it is missing BEFORE a QC run fails somewhere that
@@ -40,6 +40,7 @@ export const MANIFEST_FIELDS = {
   validators: { type: "string", doc: "Module exporting extra validation rules over a case." },
   knowledge: { type: "string", doc: "Module exporting { relations, interpreters } this extension teaches project knowledge: relation rows as data (src/extensions/knowledge-v1.mjs) and code that understands a relation. Relative to the extension directory." },
   reporting: { type: "string", doc: "A JSON file ({ parts: [...] }) declaring this extension's project-report parts (src/extensions/reporting-v1.mjs): scripts the report runner starts, and playbooks a host reads. Parsed, never imported. Relative to the extension directory." },
+  adapters: { type: "string", doc: "A JSON file ({ adapters: [...] }) declaring this extension's backend ADAPTERS (orbit.adapter/v1, src/adapters/contract-v1.mjs): which family and transports each answers, its operations, effects, outputs and semantics, and the helper program it is reached through. Parsed, never imported. Relative to the extension directory." },
 };
 
 export const MANIFEST_REQUIRED = ["id", "version", "apiVersion", "status"];

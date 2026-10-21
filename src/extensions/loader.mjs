@@ -149,6 +149,15 @@ function coherent(ctx, shaped, id) {
   declared(ctx, shaped, id);
   taught(ctx, shaped);
   reported(ctx, shaped, id);
+  return adapted(ctx, shaped);
+}
+
+// An adapter declaration is judged whole BEFORE anything of the extension registers, against the
+// semantics vocabulary in effect (ADR 0035); a context that holds no adapters refuses one loudly.
+function adapted(ctx, shaped) {
+  if (shaped.adapters.length && typeof ctx.adapters?.check !== "function") throw new Error("it declares adapters and this context holds none — src/run/context.mjs binds an adapter registry");
+  const wrong = shaped.adapters.flatMap((a) => ctx.adapters.check(a));
+  if (wrong.length) throw new Error(`what it declares as adapters does not hold — ${wrong.join("; ")} — so nothing of it was registered`);
   return shaped;
 }
 
@@ -180,7 +189,7 @@ function taught(ctx, shaped) {
   if (wrong.length) throw new Error(`what it teaches project knowledge does not hold — ${wrong.join("; ")} — so nothing of it was registered`);
 }
 
-const counted = (s) => ({ capabilities: s.capabilities.map((c) => c.id), verbs: s.dsl.verbs.map((v) => v.name), fields: Object.keys(s.dsl.fields), validators: s.validators.map((v) => v.id), relations: s.knowledge.relations.map((r) => r.id), interpreters: s.knowledge.interpreters.map((i) => i.id), reportParts: s.reporting.parts.map((p) => p.id) });
+const counted = (s) => ({ capabilities: s.capabilities.map((c) => c.id), verbs: s.dsl.verbs.map((v) => v.name), fields: Object.keys(s.dsl.fields), validators: s.validators.map((v) => v.id), relations: s.knowledge.relations.map((r) => r.id), interpreters: s.knowledge.interpreters.map((i) => i.id), reportParts: s.reporting.parts.map((p) => p.id), adapters: s.adapters.map((a) => a.id) });
 
 // A module the manifest NAMED and that is not there is a refusal, not a shrug:
 // half a declared extension is worse than none, because the half that loaded
@@ -228,19 +237,28 @@ function behaviours(ctx, id, shaped) {
   for (const cap of shaped.capabilities) ctx.capabilities.register(cap, id);
   ctx.validators?.register?.(shaped.validators, id);
   ctx.knowledge.register(shaped.knowledge, id);
+  declaredData(ctx, id, shaped);
+}
+
+// What an extension declares as DATA, registered last: its report parts and its adapters.
+function declaredData(ctx, id, shaped) {
   if (shaped.reporting.parts.length) reportingOf(ctx).register(shaped.reporting.parts, id);
+  for (const a of shaped.adapters) ctx.adapters.register(a, id);
 }
 
 // Module values are validated as declared. No version conversion or coercion.
 function moduleValues(manifest, modules) {
   for (const name of MODULES.filter((key) => manifest[key])) validateModule(name, modules[name]);
-  return { capabilities: modules.capabilities?.default ?? [], executors: modules.executors?.default ?? [], validators: modules.validators?.default ?? [], dsl: modules.dsl?.default ?? { verbs: [], fields: {} }, knowledge: modules.knowledge?.default ?? { relations: [], interpreters: [] }, reporting: modules.reporting ?? { parts: [] } };
+  return { capabilities: modules.capabilities?.default ?? [], executors: modules.executors?.default ?? [], validators: modules.validators?.default ?? [], dsl: modules.dsl?.default ?? { verbs: [], fields: {} }, knowledge: modules.knowledge?.default ?? { relations: [], interpreters: [] }, reporting: modules.reporting ?? { parts: [] }, adapters: modules.adapters?.adapters ?? [] };
 }
 
 function validateModule(name, module) {
-  const value = name === "reporting" ? module : module?.default;
+  const value = MODULE_FORMS[name] === "json" ? module : module?.default;
   const list = ["capabilities", "executors", "validators"].includes(name);
   if (list ? !Array.isArray(value) : !value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${name}: needs ${list ? "a default array export" : "an object"}`);
-  if (name === "reporting" && !Array.isArray(value.parts)) throw new Error("reporting: needs { parts: [...] }");
+  if (DATA_LISTS[name] && !Array.isArray(value[DATA_LISTS[name]])) throw new Error(`${name}: needs { ${DATA_LISTS[name]}: [...] }`);
 }
+
+// The one list each DATA module carries.
+const DATA_LISTS = { reporting: "parts", adapters: "adapters" };
 

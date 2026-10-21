@@ -16,11 +16,15 @@
 //                    rejected by the stream, or unroutable (no stream captures the subject) -- or
 //                    AMBIGUOUS with its message id when the ack never came, never sent twice
 //   observe          arm an observer: a durable consumer of its OWN on the stream, starting just
-//                    after the last sequence and expiring when idle -- an independent cursor that
-//                    moves nobody else's. A name that exists is somebody's and is refused, and so
-//                    is a work-queue stream, where a second consumer would take the messages
-//   observe.await    fetch from the observer's consumer for a bounded window, acknowledging what
-//                    it took; complete only when a fetch found it empty
+//                    after the last sequence, expiring when idle and marked as the observer's --
+//                    an independent cursor that moves nobody else's. A name that exists is
+//                    somebody's and is refused, and so is a work-queue stream, where a second
+//                    consumer would take the messages
+//   observe.await    the same gate first: before anything is fetched or acknowledged, the server
+//                    must show the consumer is one observe armed -- its mark and every stamp, on a
+//                    stream observe would arm -- or it is somebody's, and refused. Then fetch from
+//                    it for a bounded window, acknowledging what it took; complete only when a
+//                    fetch found it empty
 //   fixture.prepare  create the fixture's own streams and consumers, each marked with it
 //   fixture.cleanup  delete the fixture's own consumers and streams, and say what it left and why
 //
@@ -44,6 +48,8 @@ const FETCH_BATCH = 100;
 const ACK_WAIT_MS = 30_000;
 const NS_PER_MS = 1_000_000;
 export const FIXTURE_MARK = "orbit.fixture";
+export const OBSERVER_MARK = "orbit.observer";
+const OBSERVER_DESCRIPTION = "orbit observer ";
 
 // A stream or consumer name, and so a JetStream fixture namespace: one token, no dot or wildcard.
 const NAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$/;
@@ -192,9 +198,12 @@ async function observe(asked, deps) {
   return withJetStream(asked, channel, deps, (js) => armed(js, observer, channel, deps));
 }
 
+// What a binding must say of an observer, held by observe AND by await, so neither is a way around
+// the other: a namespace the observer value carries, or the fixture's, holds its consumer's name.
 const OBSERVER_RULES = [
   { bad: (o) => !NAME.test(String(o.consumer ?? "")), why: () => "the bound observer names no consumer of its own" },
   { bad: (o) => !NAME.test(String(o.stream ?? "")), why: () => "the bound observer names no stream to observe" },
+  { bad: (o) => Boolean(o.namespace) && !insideName(o.namespace, o.consumer), why: (o) => `the observer's consumer ${o.consumer} is outside its namespace ${o.namespace}` },
   { bad: (o, c) => typeof c.stream === "string" && c.stream !== o.stream, why: (o, c) => `the observer's stream ${o.stream} is not the channel's ${c.stream}` },
   { bad: (o, c, f) => Boolean(f?.namespace) && !insideName(f.namespace, o.consumer), why: (o, c, f) => `the observer's consumer ${o.consumer} is outside the fixture's namespace ${f.namespace}` },
 ];
@@ -205,13 +214,15 @@ const observerProblem = (o, c, f) => OBSERVER_RULES.find((rule) => rule.bad(o, c
 // whatever is published from here on -- and nothing before -- is what it will read.
 async function armed(js, observer, channel, deps) {
   const info = await js.streamInfo(observer.stream);
-  if (info.config?.retention === "workqueue") return refusal(`${observer.stream} is a work-queue stream: each message goes to one consumer, so an observer's own would take it from the application — not armed`);
+  if (info.config?.retention === "workqueue") return refusal(`${workQueue(observer.stream)} — not armed`);
   const last = info.state?.last_seq ?? 0;
   const created = await js.consumerCreate(observer.stream, observerConfig(observer, channel, last));
   return { value: { baseline: { sequence: last, messages: created.num_pending ?? 0, at: isoAt(deps) }, completeness: "armed" } };
 }
 
-const observerConfig = (o, c, last) => ({ durable_name: o.consumer, description: `orbit observer ${String(o.alias ?? o.consumer).slice(0, 60)}`, deliver_policy: "by_start_sequence", opt_start_seq: last + 1, ack_policy: "explicit", ack_wait: nanos(ACK_WAIT_MS), inactive_threshold: nanos(o.expiresMs ?? DEFAULT_EXPIRES_MS), ...filterOf(o, c) });
+const workQueue = (stream) => `${stream} is a work-queue stream: each message goes to one consumer, so an observer's own would take it from the application`;
+
+const observerConfig = (o, c, last) => ({ durable_name: o.consumer, description: `${OBSERVER_DESCRIPTION}${String(o.alias ?? o.consumer).slice(0, 60)}`, metadata: { [OBSERVER_MARK]: o.consumer }, deliver_policy: "by_start_sequence", opt_start_seq: last + 1, ack_policy: "explicit", ack_wait: nanos(ACK_WAIT_MS), inactive_threshold: nanos(o.expiresMs ?? DEFAULT_EXPIRES_MS), ...filterOf(o, c) });
 
 function filterOf(o, c) {
   const subject = o.filterSubject ?? c.subject;
@@ -222,10 +233,40 @@ function filterOf(o, c) {
 
 async function awaitObserver(asked, deps) {
   const observer = asked.bound.observerRef ?? {};
-  if (!NAME.test(String(observer.stream ?? "")) || !NAME.test(String(observer.consumer ?? ""))) return refusal("the bound observer names no stream and consumer to await");
   const until = untilOf(asked.request);
-  if (until.refused) return refusal(until.refused);
-  return withJetStream(asked, observer, deps, (js) => watched(js, observer, until, asked, deps));
+  const problem = observerProblem(observer, {}, null) ?? until.refused;
+  if (problem) return refusal(problem);
+  return withJetStream(asked, observer, deps, (js) => provenThenWatched(js, observer, until, asked, deps));
+}
+
+// A binding naming an application's consumer would otherwise make await fetch from it and
+// acknowledge its messages: the stealing the observer exists not to do. So nothing is fetched or
+// acknowledged until the server shows this consumer is one observe armed.
+async function provenThenWatched(js, observer, until, asked, deps) {
+  const why = await notOwnProblem(js, observer);
+  if (why) return refusal(why);
+  return watched(js, observer, until, asked, deps);
+}
+
+async function notOwnProblem(js, observer) {
+  const stream = await js.streamInfo(observer.stream);
+  if (stream.config?.retention === "workqueue") return `${workQueue(observer.stream)} — nothing was fetched`;
+  const consumer = await js.consumerInfo(observer.stream, observer.consumer);
+  return stampProblem(observer, consumer.config ?? {});
+}
+
+// Everything observe stamps on the consumer it creates, each a row the consumer is held to.
+const OBSERVER_STAMP = [
+  { holds: (c, o) => c.metadata?.[OBSERVER_MARK] === o.consumer, says: "the observer mark observe sets" },
+  { holds: (c) => String(c.description ?? "").startsWith(OBSERVER_DESCRIPTION), says: "the observer's description" },
+  { holds: (c) => c.deliver_policy === "by_start_sequence", says: "a start just after a baseline sequence" },
+  { holds: (c) => c.ack_policy === "explicit", says: "an explicit ack policy" },
+  { holds: (c) => Number(c.inactive_threshold) > 0, says: "an idle expiry" },
+];
+
+function stampProblem(o, config) {
+  const row = OBSERVER_STAMP.find((r) => !r.holds(config, o));
+  return row ? `${o.stream}/${o.consumer} is not an observer this adapter armed: it lacks ${row.says} — nothing was fetched or acknowledged` : null;
 }
 
 // `count` ends the window early once that many matching messages were read AND a fetch found the

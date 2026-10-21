@@ -11,7 +11,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { connect, jetstream } from "../skills/orbit-backend-test/jetstream/index.mjs";
-import { FIXTURE_MARK, MAX_MESSAGES, OPERATIONS, PAYLOAD_BYTES, run } from "../skills/orbit-backend-test/jetstream/operations.mjs";
+import { FIXTURE_MARK, MAX_MESSAGES, OBSERVER_MARK, OPERATIONS, PAYLOAD_BYTES, run } from "../skills/orbit-backend-test/jetstream/operations.mjs";
 import { fakeNatsPeer } from "./fakes/nats-peer.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -107,6 +107,31 @@ test("an observer is armed on a durable consumer of its own, starting just after
   assert.deepEqual(out.value, { baseline: { sequence: 2, messages: 0, at: "2026-10-22T02:00:00.000Z" }, completeness: "armed" });
   const c = b.fake.server.consumers.get("INVOICES/orbit-ab12-obs-1").config;
   assert.deepEqual([c.deliver_policy, c.opt_start_seq, c.ack_policy, c.filter_subject, c.inactive_threshold], ["by_start_sequence", 3, "explicit", "invoice.created", 30 * 60 * 1000 * 1e6]);
+  assert.deepEqual([c.metadata, c.description], [{ [OBSERVER_MARK]: "orbit-ab12-obs-1" }, "orbit observer obs-1"], "marked as the observer's own, for await to prove");
+});
+
+// The gate await shares with observe: a binding naming somebody else's consumer -- the
+// application's, or one made to look like an observer -- must never be fetched from or acknowledged.
+test("await proves the consumer is the observer's own before anything is fetched: anybody else's is refused, and nothing is taken", async () => {
+  const b = await broker();
+  await b.app.publishAck("invoice.created", "{}", { msgId: "app-1" });
+  const before = position(await b.app.consumerInfo("INVOICES", "billing"));
+  const stolen = await b.ask("observe.await", { waitMs: 20 }, { observerRef: { ...observer, consumer: "billing" } });
+  assert.equal(stolen.failure.class, "refused");
+  assert.match(stolen.failure.message, /INVOICES\/billing is not an observer this adapter armed: it lacks the observer mark/);
+  await b.app.consumerCreate("INVOICES", { durable_name: "orbit-ab12-lookalike", description: "orbit observer x", deliver_policy: "by_start_sequence", opt_start_seq: 1, ack_policy: "explicit", inactive_threshold: 60e9 });
+  assert.match((await b.ask("observe.await", { waitMs: 20 }, { observerRef: { ...observer, consumer: "orbit-ab12-lookalike" } })).failure.message, /lacks the observer mark/, "every stamp but the mark is not the mark");
+  await b.app.consumerCreate("INVOICES", { durable_name: "orbit-ab12-marked", metadata: { [OBSERVER_MARK]: "orbit-ab12-marked" }, ack_policy: "explicit" });
+  assert.match((await b.ask("observe.await", { waitMs: 20 }, { observerRef: { ...observer, consumer: "orbit-ab12-marked" } })).failure.message, /lacks the observer's description/, "the mark without the rest of what observe stamps is not enough either");
+  const conns = b.fake.server.conns.length;
+  assert.match((await b.ask("observe.await", { waitMs: 20 }, { observerRef: { ...observer, consumer: "billing", namespace: "orbit-ab12" } })).failure.message, /outside its namespace orbit-ab12/);
+  assert.equal(b.fake.server.conns.length, conns, "a name outside the observer's namespace is refused before any connection");
+  assert.deepEqual(b.fake.calls().filter((c) => c.verb === "CONSUMER.MSG.NEXT"), [], "nothing was fetched");
+  assert.deepEqual(b.fake.acks(), [], "nothing was acknowledged");
+  assert.deepEqual(position(await b.app.consumerInfo("INVOICES", "billing")), before, "the application's consumer did not move");
+  const wq = await broker({}, { retention: "workqueue" });
+  assert.match((await wq.ask("observe.await", { waitMs: 20 }, { observerRef: { ...observer, consumer: "billing" } })).failure.message, /work-queue stream: .* — nothing was fetched/);
+  assert.deepEqual([wq.fake.calls().filter((c) => c.verb === "CONSUMER.MSG.NEXT").length, wq.fake.acks().length], [0, 0]);
 });
 
 test("an observer is never somebody else's consumer: outside the namespace, a name that exists, another stream, a work queue -- nor one nobody armed", async () => {

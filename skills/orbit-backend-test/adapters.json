@@ -519,6 +519,47 @@
         "kit": "identity",
         "params": {}
       }
+    },
+    {
+      "id": "postgres.reference",
+      "apiVersion": "orbit.adapter/v1",
+      "version": "0.0.4",
+      "doc": "PostgreSQL (16 is the one its kit runs against), through the zero-dependency client in postgres/: the rows one table holds for a key or a few column values, counted and sampled in one REPEATABLE READ, READ ONLY transaction the server itself enforces",
+      "family": "state",
+      "transports": [
+        "postgres-wire"
+      ],
+      "operations": {
+        "read": {
+          "doc": "count and sample the rows of the bound table whose bound key column (or a few named columns) equal the values asked; the statement is built from quoted identifiers and every value is a parameter",
+          "effects": [
+            "read"
+          ],
+          "outputs": {
+            "count": "effect.count",
+            "rows": "effect.value"
+          }
+        }
+      },
+      "semantics": {
+        "observation": [
+          "read-only-query"
+        ]
+      },
+      "limits": {
+        "timeoutMs": 30000,
+        "answerBytes": 1048576
+      },
+      "helper": {
+        "argv": [
+          "postgres/helper.mjs"
+        ],
+        "runIn": "worker"
+      },
+      "conformance": {
+        "kit": "state",
+        "params": {}
+      }
     }
   ]
 }

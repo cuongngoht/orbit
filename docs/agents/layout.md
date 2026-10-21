@@ -884,11 +884,15 @@ skills/orbit-api-test/  (0.1.0) the HTTP PACK, opted into by `packs`: orbit.http
 skills/orbit-backend-test/  (0.1.0) the BACKEND PACK: capabilities.mjs (every selecting family operation, from
                           src/adapters/core.mjs, and orbit.schedule.expect) · adapters.json + reference ADAPTERS
                           (amqp/, jetstream/ -- examples of `orbit.adapter/v1`, their product words kept here;
-                          hooks/ -- the orbit.scheduler/v1, orbit.clock/v1 and orbit.workload/v1 test hooks a
-                          project exposes) · schedule/ (dialects, time zones through Intl, helper.mjs) ·
-                          contracts/asyncapi.mjs
-skills/orbit-adapter-kit/  (0.1.0) CONFORMANCE KITS, one per family, and conform.mjs; their receipts are what the
-                          support matrix is computed from
+                          postgres/ -- state read below the interface, a zero-dependency client: trust, cleartext,
+                          MD5 or SCRAM-SHA-256, one REPEATABLE READ READ ONLY transaction, statements built from
+                          quoted identifiers with every value a parameter; hooks/ -- the orbit.scheduler/v1,
+                          orbit.clock/v1, orbit.workload/v1 and orbit.identity/v1 test hooks a project exposes) ·
+                          schedule/ (dialects, time zones through Intl, helper.mjs) · contracts/asyncapi.mjs
+skills/orbit-adapter-kit/  (0.1.0) CONFORMANCE KITS, one per family (messaging.mjs, hooks.mjs -- scheduler, clock,
+                          workload, worker, identity -- and state.mjs); acceptance/kits/ runs each against a real
+                          system through the adapter's real helper, and their receipts are what the support matrix
+                          is computed from
 skills/orbit-reverse-engineer/  (0.1.0) the REVERSE ENGINEERING playbook: graph facts and unknowns from source,
                           contracts and runtime observations, through `architecture record`; never an oracle
 skills/orbit-security-audit/  (0.1.0) the SECURITY AUDIT playbook + catalogs/ (the shipped default: ASVS 5.0.0 L1

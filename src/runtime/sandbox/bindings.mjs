@@ -90,18 +90,20 @@ const portOf = (service, transport, node) => service?.transports?.find((t) => t.
 function withCredential(ref, d, service, value) {
   const found = credentialOf(service, d.node);
   if (!found) return { value };
-  return { value: { ...value, credential: { userEnv: SECRET(ref.alias, "USER"), passwordEnv: SECRET(ref.alias, "PASSWORD") } }, secrets: { [SECRET(ref.alias, "USER")]: found.user, [SECRET(ref.alias, "PASSWORD")]: found.password } };
+  const names = { userEnv: SECRET(ref.alias, "USER"), ...(found.password !== undefined ? { passwordEnv: SECRET(ref.alias, "PASSWORD") } : {}) };
+  return { value: { ...value, credential: names }, secrets: { [names.userEnv]: found.user, ...(names.passwordEnv ? { [names.passwordEnv]: found.password } : {}) } };
 }
 
 // The credential a node was STARTED with, where its catalog row says it is declared: compose
 // environment names, or argument flags. A synthetic value of the sandbox's own -- never this
-// machine's environment.
+// machine's environment. A server started with a user and no password (a trusted local network)
+// is reached as that user, with none.
 function credentialOf(service, node) {
   const c = service?.credentials;
   if (!c || !node) return null;
   const read = (spec) => (spec?.env ? Object.fromEntries(node.compose?.env ?? [])[spec.env] ?? node.env?.values?.[spec.env] : flagOf(node.argv ?? [], spec?.flag));
   const pair = { user: read(c.user), password: read(c.password) };
-  return pair.user !== undefined && pair.password !== undefined ? pair : null;
+  return pair.user !== undefined ? pair : null;
 }
 
 const flagOf = (argv, flag) => (flag && argv.indexOf(flag) >= 0 ? argv[argv.indexOf(flag) + 1] : undefined);
@@ -165,7 +167,9 @@ function asDeclared(ref, input) {
 // adapter that speaks that protocol is the one chosen.
 export const HOOK_PROTOCOLS = { schedule: "orbit-scheduler-v1", clock: "orbit-clock-v1", workload: "orbit-workload-v1", identity: "orbit-identity-v1" };
 
-const KINDS = { endpoint, channel, queue: channel, observer, fixture, schedule: hooked(HOOK_PROTOCOLS.schedule), clock: hooked(HOOK_PROTOCOLS.clock), workload: hooked(HOOK_PROTOCOLS.workload), identity, schema: asDeclared, occurrence: asDeclared, state: asDeclared };
+// A state a test reads below the interface is reached like a channel: the server its declaration places it on, the
+// transport and port that server's catalog row says, the credential it was started with.
+const KINDS = { endpoint, channel, queue: channel, state: channel, observer, fixture, schedule: hooked(HOOK_PROTOCOLS.schedule), clock: hooked(HOOK_PROTOCOLS.clock), workload: hooked(HOOK_PROTOCOLS.workload), identity, schema: asDeclared, occurrence: asDeclared };
 
 // ── templates ──────────────────────────────────────────────────────────────
 

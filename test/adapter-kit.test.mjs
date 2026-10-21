@@ -64,6 +64,7 @@ test("an observer that took the application's message fails non-stealing on the 
 // The test-hook kit (skills/orbit-adapter-kit/hooks.mjs): which schedule, clock and workload is the
 // system's, and whether a dispatch really happened is the WITNESS's word.
 import { SCENARIOS as HOOK_SCENARIOS, scenarioResult as hookResult } from "../skills/orbit-adapter-kit/hooks.mjs";
+import { SCENARIOS as STATE_SCENARIOS, scenarioResult as stateResult } from "../skills/orbit-adapter-kit/state.mjs";
 
 function hookKit(semantics, executed = true, issued = () => `syn_${Math.random().toString(16).slice(2)}_0123456789`) {
   const answers = {
@@ -85,4 +86,19 @@ test("the hook kit passes a system that behaves, and a dispatch the witness cann
   assert.equal(JSON.stringify(hookResult(k, identity)).includes("syn_"), false, "a receipt keeps whether they differed, never a token");
   assert.equal(hookResult(hookKit({}, false), HOOK_SCENARIOS[0]).outcome, "failed", "an execution ref the system has no record of");
   assert.equal(hookResult(hookKit({ clockInjection: "none" }), HOOK_SCENARIOS.find((s) => s.id === "clock-barrier")).outcome, "not-applicable");
+});
+
+function stateKit(answer, store = { rows: 3, total: 4 }) {
+  return { adapter: { semantics: { observation: ["read-only-query"] } }, ask: (op, request) => answer(request, store), system: { bound: { key: "k-1", state: { table: "kit.Reminders" } }, witness: { count: (key) => (key === "k-1" ? store.rows : 0), total: () => store.total }, nonce: "n" } };
+}
+
+const honest = (request) => (request.match ? { ok: false, class: "refused" } : { ok: true, value: request.key === "k-1" ? { count: 3, rows: [{}, {}] } : { count: 0, rows: [] } });
+
+test("the state kit passes a store that reads what was written, and catches one that counts a value as SQL or a name as a name", () => {
+  assert.deepEqual(STATE_SCENARIOS.map((s) => stateResult(stateKit(honest), s).outcome), ["passed", "passed", "passed", "passed"]);
+  const injectable = (request, store) => (request.key?.includes("DELETE") ? ((store.total = 0), { ok: true, value: { count: 4, rows: [] } }) : honest(request));
+  assert.equal(stateResult(stateKit(injectable), STATE_SCENARIOS.find((s) => s.id === "values-are-parameters")).outcome, "failed", "a value that changed the store is no read");
+  const lax = (request) => (request.match ? { ok: true, value: { count: 4, rows: [] } } : honest(request));
+  assert.equal(stateResult(stateKit(lax), STATE_SCENARIOS.find((s) => s.id === "names-are-refused")).outcome, "failed");
+  assert.equal(stateResult(stateKit((r) => ({ ok: true, value: { count: 2, rows: [{}, {}] } })), STATE_SCENARIOS[0]).outcome, "failed", "a count that is not the witness's");
 });

@@ -34,10 +34,16 @@ const componentOf = (nodes, node) => nodes.find((n) => n.role === "component" &&
 
 const hooksPortOf = (nodes, node) => Number(componentOf(nodes, node)?.attributes?.hooksPort) || null;
 
-function channel(nodes, alias) {
-  const node = named(nodes, ["channel"], alias);
-  return node ? { node: ownerOf(node), ...(node.transport ? { transport: node.transport } : {}), address: namesOf(node.attributes) } : null;
+// A resource a server holds -- a channel on a broker, a table in a database -- is placed on that server's node, with
+// its own names as its address.
+function held(roles) {
+  return (nodes, alias) => {
+    const node = named(nodes, roles, alias);
+    return node ? { node: ownerOf(node), ...(node.transport ? { transport: node.transport } : {}), address: namesOf(node.attributes) } : null;
+  };
 }
+
+const channel = held(["channel"]);
 
 function endpoint(nodes, alias) {
   const node = named(nodes, ["interface"], alias);
@@ -74,4 +80,4 @@ function identity(nodes, alias, design, tenancy) {
 // The claim value of the first tenant the contract says this identity may act in.
 const tenantOf = (tenancy, alias) => ((logical) => (logical ? tenancy?.tenants?.[logical] ?? null : null))(tenancy?.identities?.[alias]?.[0]);
 
-const DECLARE = { channel, queue: channel, endpoint, schedule: hooked(["schedule"], "schedule"), workload: hooked(["workload"], "workload"), clock, observer, fixture, identity };
+const DECLARE = { channel, queue: channel, state: held(["data-resource"]), endpoint, schedule: hooked(["schedule"], "schedule"), workload: hooked(["workload"], "workload"), clock, observer, fixture, identity };

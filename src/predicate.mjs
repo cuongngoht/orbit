@@ -24,6 +24,7 @@ const KEYS = new Set(["template", "path", "value", "values", "completeness", "me
 export const TEMPLATE_SHAPES = {
   "value-eq": { needs: ["path", "value"], single: true },
   "value-in": { needs: ["path", "values"], single: true },
+  "value-present": { needs: ["path"], single: true },
   "value-excludes": { needs: ["path", "value"] },
   "count-eq": { needs: ["path", "value"] },
   "count-at-most": { needs: ["path", "value"] },

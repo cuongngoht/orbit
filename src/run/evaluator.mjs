@@ -43,6 +43,7 @@ function windowed(it, p, values, seen) {
 export const TEMPLATES = {
   "value-eq": { judge: (it, p, values) => single(values, (v) => same(v, p.value)) },
   "value-in": { judge: (it, p, values) => single(values, (v) => p.values.some((w) => same(v, w))) },
+  "value-present": { judge: (it, p, values) => single(values, (v) => v !== null && v !== "") },
   "value-excludes": { judge: (it, p, values) => verdictOf(values.every((v) => !contains(v, p.value))) },
   "count-eq": { judge: (it, p, values) => counted(p, values, (n) => n === p.value) },
   "count-at-most": { judge: (it, p, values) => counted(p, values, (n) => n <= p.value) },

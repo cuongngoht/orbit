@@ -31,6 +31,9 @@ test("an observer armed at or after the trigger saw nothing that came before it"
 
 test("an await of an observer nobody armed earlier is refused", () => {
   assert.deepEqual(rules(observationFindings(design([trigger, awaitIt()], 1), SHADOW)), ["AWAIT_ARMED"]);
+  const planned = { ...design([trigger, awaitIt()], 1), observationPlan: [{ observerRef: "obs-1", channelRef: "invoice-events" }] };
+  assert.deepEqual(observationFindings(planned, { observerSemantics: () => ({ observation: ["independent-cursor"] }) }), [], "an observer the plan arms at prepare is armed before any step");
+  assert.deepEqual(rules(observationFindings(planned, { observerSemantics: () => ({}) })), ["NON_STEALING"]);
 });
 
 test("an adapter that takes messages, or does not say how it observes, never arms an observer", () => {

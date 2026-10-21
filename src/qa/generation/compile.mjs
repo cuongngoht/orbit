@@ -11,6 +11,7 @@
 // What does not map is REFUSED with its reason -- a criterion nobody accepted, a template its op
 // does not compile to or its obligation's shape does not allow, a meaning the step's answer does
 // not carry, a window on an observation that cannot say it saw everything -- and never guessed.
+import { operationFor } from "../../adapters/families.mjs";
 import { predicateDigest, predicateFindings, renderOf } from "../../predicate.mjs";
 import { MEANINGS, meaningAt, meaningEntries } from "../../topology/vocab.mjs";
 import { EXPECT_OP } from "../vocab.mjs";
@@ -91,8 +92,8 @@ function windowOf(outputs, e) {
 // the mapping verdict per assertion. A design with a refused assertion compiles nothing for the step
 // it was on -- a step is never judged by part of what it was meant to rule on.
 export function compileDesign(design, context) {
-  const results = (design.assertions ?? []).map((a) => ({ a, r: compiledAssertion(a, context) }));
-  const mapping = results.map(({ a, r }) => ({ criterionRef: a.criterionRef, template: a.template, step: a.step, verdict: r.refused ? "refused" : "mapped", ...(r.refused ? { why: r.refused } : {}) }));
+  const results = [...(design.assertions ?? []), ...triggerEvidence(design)].map((a) => ({ a, r: a.structural ? structuralTree(a, context) : compiledAssertion(a, context) }));
+  const mapping = results.map(({ a, r }) => ({ criterionRef: a.criterionRef ?? null, ...(a.structural ? { structural: a.structural } : {}), template: a.template ?? r.tree?.template ?? null, step: a.step, verdict: r.refused ? "refused" : "mapped", ...(r.refused ? { why: r.refused } : {}) }));
   const steps = stepsOf(results);
   return { steps, mapping, digests: Object.fromEntries(Object.entries(steps).map(([i, s]) => [i, s.digest])), windows: results.filter(({ r }) => r.window).map(({ a, r }) => ({ step: a.step, waitMs: r.window.waitMs })) };
 }
@@ -106,5 +107,28 @@ function stepsOf(results) {
 
 function stepPredicate(trees) {
   const tree = trees.length === 1 ? trees[0] : { template: "all", of: trees };
-  return { expect: renderOf(tree), digest: predicateDigest(tree) };
+  return { expect: renderOf(tree), digest: predicateDigest(tree), proves: provesOf(trees) };
+}
+
+// Which layer a step's verdict rules on: the layer of the meanings it reads (src/topology/vocab.mjs
+// MEANINGS), the first that has one -- an interface's answer otherwise.
+function provesOf(trees) {
+  const layers = trees.map((t) => MEANINGS.find((m) => m.id === meaningAt(String(t.means ?? ""))?.id)?.layer).filter(Boolean);
+  return layers[0] ?? "api";
+}
+
+// The TRIGGER step rules on what its own operation's answer shows when the system took the request
+// (families.mjs `accepted`), unless an accepted criterion already speaks about it. A trigger whose
+// operation shows nothing of the kind -- an HTTP write -- must be ruled on by a criterion.
+function triggerEvidence(design) {
+  const at = design.trigger?.step;
+  if (!Number.isInteger(at) || (design.assertions ?? []).some((a) => a.step === at)) return [];
+  return [{ structural: "trigger-accepted", step: at, capability: design.skeleton?.steps?.[at - 1]?.capability }];
+}
+
+function structuralTree(a, context) {
+  const accepted = operationFor(a.capability)?.accepted;
+  if (!accepted) return { refused: `the trigger step (${a.step}) asks ${a.capability ?? "nothing"}, whose answer shows nothing of being accepted — an accepted criterion must rule on it` };
+  const path = pathOf(context.outputsOf(a.step) ?? {}, accepted.means, accepted.template);
+  return path.refused ? path : checked({ template: accepted.template, path: path.path, ...(accepted.value !== undefined ? { value: accepted.value } : {}), means: accepted.means });
 }

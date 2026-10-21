@@ -107,6 +107,7 @@ export const FRESHNESS = [
 // assertion without anybody's judgement.
 export const EXPECT_OPS = [
   { name: "eq", template: "value-eq", doc: "the observed value equals the stated value" },
+  { name: "present", template: "value-present", doc: "the observed value is there -- an id, a reference -- whatever it is" },
   { name: "in", template: "value-in", doc: "the observed value is one of the stated values" },
   { name: "excludes", template: "value-excludes", doc: "the observed value never contains the stated value -- a marker that must not appear" },
   { name: "count-eq", template: "count-eq", doc: "exactly this many durable effects" },

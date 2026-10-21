@@ -59,10 +59,16 @@ function stop(problem) {
 // goes through. A capability that declares no inputSchema is taken at its word
 // and asked nothing -- silence is not a licence to invent a rule it never stated.
 function inputProblem(ctx, run, cap, input) {
-  if (!cap.inputSchema) return null;
-  const at = `${cap.id} input`;
-  const wrong = [...missingFindings(cap.required ?? [], input, at), ...unknown(cap, input, at), ...constraintFindings(cap.inputSchema, input, at)];
+  const wrong = inputFindings(cap, input);
   return wrong.length ? { message: `${cap.id} was asked for something it cannot accept:\n  ${wrong.join("\n  ")}` } : null;
+}
+
+// The same check, for a caller that holds a step before any run: a generated case is validated
+// with it (src/qa/generation/design.mjs), so a draft the gate would refuse is never written.
+export function inputFindings(cap, input = {}) {
+  if (!cap?.inputSchema) return [];
+  const at = `${cap.id} input`;
+  return [...missingFindings(cap.required ?? [], input, at), ...unknown(cap, input, at), ...constraintFindings(cap.inputSchema, input, at)];
 }
 
 const unknown = (cap, input, at) => Object.keys(input).filter((k) => !(k in cap.inputSchema)).map((k) => `${at}: unknown key "${k}" — it accepts ${Object.keys(cap.inputSchema).join(", ")}`);

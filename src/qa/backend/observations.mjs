@@ -10,25 +10,27 @@ export const NON_STEALING = ["shadow-subscription", "independent-cursor", "peek-
 const ARM = "orbit.messaging.observe";
 const AWAIT = "orbit.observe.await";
 
-const armedBefore = (steps, ref, i) => steps.some((s) => isOp(s, ARM) && refOf(s, "observer") === ref && s.i < i);
+// Armed by Runtime at prepare -- named in the design's observation plan -- or by an earlier step.
+const planned = (d, ref) => (d.observationPlan ?? []).some((o) => o.observerRef === ref);
+const armedBefore = (d, steps, ref, i) => planned(d, ref) || steps.some((s) => isOp(s, ARM) && refOf(s, "observer") === ref && s.i < i);
 
 export const OBSERVATION_RULES = [
-  { id: "AWAIT_ARMED", findings: (d, steps) => steps.filter((s) => isOp(s, AWAIT) && !armedBefore(steps, refOf(s, "observer"), s.i)).map((s) => `step ${s.i} awaits ${refOf(s, "observer") ?? "no observer"}, which no earlier step armed`) },
+  { id: "AWAIT_ARMED", findings: (d, steps) => steps.filter((s) => isOp(s, AWAIT) && !armedBefore(d, steps, refOf(s, "observer"), s.i)).map((s) => `step ${s.i} awaits ${refOf(s, "observer") ?? "no observer"}, which neither the observation plan nor an earlier step armed`) },
   { id: "ARMED_BEFORE_TRIGGER", findings: (d, steps) => armedAfterTrigger(d, steps) },
-  { id: "NON_STEALING", findings: (d, steps, ctx) => steps.filter((s) => isOp(s, ARM)).flatMap((s) => stealing(s, ctx)) },
+  { id: "NON_STEALING", findings: (d, steps, ctx) => [...steps.filter((s) => isOp(s, ARM)).flatMap((s) => stealing(`step ${s.i} arms ${refOf(s, "observer")}`, ctx.semanticsOf?.(s.i), ctx)), ...(d.observationPlan ?? []).flatMap((o) => stealing(`the plan arms ${o.observerRef}`, ctx.observerSemantics?.(o.observerRef), ctx))] },
 ];
 
 function armedAfterTrigger(d, steps) {
   const trigger = triggerStep(d);
-  if (trigger === null) return steps.some((s) => isOp(s, ARM)) ? ["the design arms an observer and names no trigger step to arm it before"] : [];
+  if (trigger === null) return steps.some((s) => isOp(s, ARM)) || (d.observationPlan ?? []).length ? ["the design arms an observer and names no trigger step to arm it before"] : [];
   return steps.filter((s) => isOp(s, ARM) && s.i >= trigger).map((s) => `step ${s.i} arms ${refOf(s, "observer")} at or after the trigger (step ${trigger}) — what happened before it was armed is unseen`);
 }
 
 // Unknown is not met: an adapter that does not say how it observes is never assumed to be harmless.
-function stealing(s, ctx) {
-  const fit = meets(ctx.semanticsOf?.(s.i) ?? {}, { observation: NON_STEALING });
+function stealing(who, semantics) {
+  const fit = meets(semantics ?? {}, { observation: NON_STEALING });
   if (fit.met.length) return [];
-  return [`step ${s.i} arms ${refOf(s, "observer")} through an adapter whose observation is ${fit.unknown.length ? "unknown" : "not one that leaves the application's messages where they are"} — an observer never takes what the application would have consumed`];
+  return [`${who} through an adapter whose observation is ${fit.unknown.length ? "unknown" : "not one that leaves the application's messages where they are"} — an observer never takes what the application would have consumed`];
 }
 
 export const observationFindings = (design, ctx = {}) => {

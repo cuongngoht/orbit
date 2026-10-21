@@ -8,6 +8,11 @@
 // adapter may declare for it, which meanings its output may carry
 // (src/topology/vocab.mjs MEANINGS) and which semantics fields an obligation may need of it.
 //
+// `accepted` is what an operation's OWN answer shows when the system took the request -- a
+// trigger dispatched, a publication confirmed -- the verdict a generated test's trigger step is
+// compiled with when no accepted criterion speaks about that step (src/qa/generation/compile.mjs).
+// It names a meaning and a word of that meaning's vocabulary, never a product's.
+//
 // `selects` is false for an operation Orbit answers itself, with no transport to choose by
 // (computing the occurrences an accepted schedule implies). `contractOnly` marks a family the
 // model REPRESENTS from 0.1.0 but no adapter is published for yet: an obligation on one is a
@@ -28,25 +33,25 @@ export const FAMILIES = [
     op("call", "rpc", ["endpoint", "identity", "schema"], ["read", "write"], ["response.status", "response.body", "schema.valid", "elapsed.ms"]),
   ] },
   { id: "messaging", doc: "publication and observation on channels", operations: [
-    op("publish", "messaging", ["channel", "identity", "fixture"], ["publish"], ["message.id", "settlement.outcome", "elapsed.ms"], ["publishAck"]),
+    { ...op("publish", "messaging", ["channel", "identity", "fixture"], ["publish"], ["message.id", "settlement.outcome", "elapsed.ms"], ["publishAck"]), accepted: { means: "settlement.outcome", template: "value-eq", value: "confirmed" } },
     op("observe", "messaging", ["channel", "observer", "fixture"], ["create-resource", "read"], ["cursor.baseline", "observation.completeness"], ["observation"]),
   ] },
   { id: "job", doc: "work queues", operations: [
-    op("enqueue", "job", ["queue", "identity", "fixture"], ["enqueue"], ["execution.ref", "elapsed.ms"]),
+    { ...op("enqueue", "job", ["queue", "identity", "fixture"], ["enqueue"], ["execution.ref", "elapsed.ms"]), accepted: { means: "execution.ref", template: "value-present" } },
     op("observe", "job", ["queue", "observer"], ["read"], ["execution.ref", "execution.status", "execution.attempt", "cursor.through"]),
   ] },
   { id: "scheduler", doc: "the decisions a running scheduler makes", operations: [
-    op("trigger", "scheduler", ["schedule", "occurrence", "fixture"], ["trigger"], ["execution.ref", "occurrence.id", "occurrence.scheduledFor"]),
+    { ...op("trigger", "scheduler", ["schedule", "occurrence", "fixture"], ["trigger"], ["execution.ref", "occurrence.id", "occurrence.scheduledFor"]), accepted: { means: "execution.ref", template: "value-present" } },
     op("observe", "scheduler", ["schedule", "observer"], ["read"], ["occurrence.id", "occurrence.scheduledFor", "occurrence.decision", "execution.ref", "cursor.through"], ["decisionReceipts"]),
   ] },
   { id: "schedule", doc: "the occurrences an accepted schedule contract implies, computed by Orbit", operations: [
     { ...op("expect", "schedule", ["schedule"], ["none"], ["occurrence.id", "occurrence.scheduledFor"]), selects: false },
   ] },
   { id: "clock", doc: "an injected business clock", operations: [
-    op("advance", "clock", ["clock", "fixture"], ["advance-clock"], ["clock.evaluatedThrough"], ["clockInjection"]),
+    { ...op("advance", "clock", ["clock", "fixture"], ["advance-clock"], ["clock.evaluatedThrough"], ["clockInjection"]), accepted: { means: "clock.evaluatedThrough", template: "value-present" } },
   ] },
   { id: "workload", doc: "control of a workload the task owns", operations: [
-    op("control", "workload", ["workload", "fixture"], ["control-workload"], ["execution.status"]),
+    { ...op("control", "workload", ["workload", "fixture"], ["control-workload"], ["execution.status"]), accepted: { means: "execution.status", template: "value-present" } },
   ] },
   { id: "worker", doc: "what a consumer or worker did with each delivery", operations: [
     op("observe", "worker", ["workload", "observer"], ["read"], ["message.id", "delivery.attempt", "settlement.outcome", "terminal.reason", "execution.ref", "cursor.through"]),

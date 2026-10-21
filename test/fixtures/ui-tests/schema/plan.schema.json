@@ -306,6 +306,7 @@
         "op": {
           "enum": [
             "eq",
+            "present",
             "in",
             "excludes",
             "count-eq",

@@ -61,7 +61,8 @@ const design = { assertions: [{ criterionRef: "API-AC-2/E1", template: "value-eq
 test("a design compiles each step's predicate whole, renders and digests it, and keeps the mapping verdict of every assertion", () => {
   const out = compileDesign(design, context());
   const tree = { template: "all", of: [one(design.assertions[0]).tree, one(design.assertions[1]).tree] };
-  assert.deepEqual(out.steps["2"], { expect: renderOf(tree), digest: predicateDigest(tree) });
+  assert.deepEqual(out.steps["2"], { expect: renderOf(tree), digest: predicateDigest(tree), proves: "api" });
+  assert.equal(compileDesign({ assertions: [{ criterionRef: "FIX-ASYNC-1/E2", template: "count-eq", step: 4 }] }, context()).steps["4"].proves, "sql", "a count of durable effects proves the data layer");
   assert.equal(out.digests["2"], predicateDigest(tree));
   assert.equal(out.steps["4"], undefined, "a step with a refused assertion is judged by nothing compiled -- never by part of what it was meant to rule on");
   assert.deepEqual(out.mapping.map((m) => m.verdict), ["mapped", "mapped", "mapped", "refused"]);

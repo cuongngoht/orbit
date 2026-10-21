@@ -271,6 +271,18 @@
       "title": "Agent · orbit-requirement-socrates",
       "description": "Let Claude start the orbit-requirement-socrates agent. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_AGENT_REQUIREMENT_SOCRATES overrides this on one machine.",
       "default": true
+    },
+    "skill_security_audit": {
+      "type": "boolean",
+      "title": "Skill · orbit-security-audit",
+      "description": "Let Claude start the orbit-security-audit skill. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_SECURITY_AUDIT overrides this on one machine.",
+      "default": true
+    },
+    "agent_security_auditor": {
+      "type": "boolean",
+      "title": "Agent · orbit-security-auditor",
+      "description": "Let Claude start the orbit-security-auditor agent. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_AGENT_SECURITY_AUDITOR overrides this on one machine.",
+      "default": true
     }
   }
 }

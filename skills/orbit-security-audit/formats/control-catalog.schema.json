@@ -1,0 +1,223 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://orbit/security/control-catalog.schema.json",
+  "title": "Security control catalog (orbit)",
+  "description": "orbit.control-catalog/v1. GENERATED from src/qa/security/catalog.mjs. The rules a shape cannot say -- unique control ids, declared labels, known shapes and roles, a reason for a runtime test with no shape -- are catalogFindings().",
+  "type": "object",
+  "required": [
+    "apiVersion",
+    "catalog",
+    "title",
+    "version",
+    "controls"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "enum": [
+        "orbit.control-catalog/v1"
+      ],
+      "description": "Which published contract this catalog was written against."
+    },
+    "catalog": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9.-]{0,63}$",
+      "description": "The catalog's id: lower case, the same for every version of it."
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 400,
+      "description": "What a person calls it."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,31}$",
+      "description": "The version of the standard or the policy it carries."
+    },
+    "source": {
+      "$ref": "#/definitions/source",
+      "description": "Where it came from: a link, a tag, the digest of what was retrieved and when."
+    },
+    "licence": {
+      "type": "string",
+      "maxLength": 400,
+      "description": "The licence of what it was derived from."
+    },
+    "note": {
+      "type": "string",
+      "maxLength": 2000,
+      "description": "What it holds and what it leaves out."
+    },
+    "default": {
+      "type": "boolean",
+      "description": "The catalog in effect for a project that enabled none. Only a catalog Orbit ships may say so."
+    },
+    "labels": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/labelSet"
+      },
+      "description": "Other standards' categories a control may carry, by set."
+    },
+    "controls": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/control"
+      },
+      "minItems": 1,
+      "description": "Its controls."
+    }
+  },
+  "definitions": {
+    "source": {
+      "type": "object",
+      "required": [],
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string",
+          "pattern": "^https:\\/\\/[^\\s/?#@]+(?:[/?#][^\\s]*)?$",
+          "description": "Where the standard is published."
+        },
+        "tag": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "The tag or edition it was taken from."
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "The SHA-256 of what was retrieved, when it was retrieved."
+        },
+        "retrieved": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}",
+          "description": "When it was retrieved."
+        }
+      }
+    },
+    "labelSet": {
+      "type": "object",
+      "required": [
+        "title",
+        "items"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "maxLength": 400,
+          "description": "What the set is called."
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https:\\/\\/[^\\s/?#@]+(?:[/?#][^\\s]*)?$",
+          "description": "Where the set is published."
+        },
+        "items": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/label"
+          },
+          "minProperties": 1,
+          "description": "Its categories, by id."
+        }
+      }
+    },
+    "label": {
+      "type": "object",
+      "required": [
+        "title"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "maxLength": 400,
+          "description": "The category's name."
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https:\\/\\/[^\\s/?#@]+(?:[/?#][^\\s]*)?$",
+          "description": "Where it is described."
+        }
+      }
+    },
+    "control": {
+      "type": "object",
+      "required": [
+        "id",
+        "summary",
+        "methods"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$",
+          "description": "The control's VERSIONED id, as its standard asks it be cited."
+        },
+        "group": {
+          "type": "string",
+          "maxLength": 120,
+          "description": "The chapter or section it sits in."
+        },
+        "level": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9,
+          "description": "The lowest level the standard owes it at."
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 400,
+          "description": "What it asks, in Orbit's own words -- never the standard's text."
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https:\\/\\/[^\\s/?#@]+(?:[/?#][^\\s]*)?$",
+          "description": "Where the control is described."
+        },
+        "methods": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "description": "How it can be verified: runtime-test, static-evidence, design-review, manual."
+        },
+        "minimumEvidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The controls a conclusion needs: positive, negative, state, duplicate, fault."
+        },
+        "applies": {
+          "type": "object",
+          "description": "Where it applies: a predicate over the graph's structural roles (src/qa/security/applicability.mjs)."
+        },
+        "shapes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The obligation shapes a runtime test of it takes (src/qa/obligations/shapes.mjs)."
+        },
+        "unsupported": {
+          "type": "string",
+          "maxLength": 400,
+          "description": "Why a runtime test cannot verify it here, when it cannot."
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The categories it carries, as <set>:<id>."
+        }
+      }
+    }
+  }
+}

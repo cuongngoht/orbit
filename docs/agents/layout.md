@@ -649,6 +649,12 @@ control-server/src/mission-control/  MISSION CONTROL's reads: read.mjs (the mach
                fold's machine view) · health.mjs (ADR 0023: Health, an ordered table of AREAS -- automation restrictions
                tasks waiting, blocked, stalled or orphaned, tools and managed MCP servers
                enabled but not ready, hosts -- each answering at least one row, read off what Orbit keeps, no probe)
+control-server/src/security-catalogs/  (0.1.0, ADR 0040) SECURITY CATALOGS in Control -- the one place they change:
+               project.mjs (the machine's adopted room, guarded at the store base, and the checkout Control was started
+               from, guarded at its store) · read.mjs (the command table's `catalogs` view; one catalog by digest) ·
+               write.mjs (preview, adopt what was previewed -- a digest that moved is a 409 --, the editor, a project's
+               enabled catalogs, a not-applicable mark with its reason; every write names its revision) · fetch.mjs (the
+               link a person typed: https, no credentials, no redirect, a megabyte and ten seconds at most)
 control-server/src/works/  tracked WORKS in Control (1.8.8): project.mjs (a checkout's works, named in the path;
                a work is a checkout's only when it was tracked there) · read.mjs (the list and one work as
                `workViewOf` -- the SAME view cli/track.mjs and Live read). Reads only: there is no row that
@@ -702,7 +708,10 @@ src/qa/walk.mjs · obligations/ · backend/ · generation/ · security/  (0.1.0,
                ordered STAGES a proposal is held to, ending in the REAL validator; controls; compile.mjs the
                deterministic mapping from an accepted expectation to a predicate; repair keeps the oracle;
                version freezes the case) ·
-               security/ (catalog `orbit.control-catalog/v1`, applicability over structural roles, assessment).
+               security/ (catalog.mjs `orbit.control-catalog/v1`, its layers and a preview · applicability.mjs three
+               answers over structural roles, unknown never not-applicable · assessment.mjs the PAIRING and FINDING
+               tables, obligations, a snapshot pinned to its catalogs, stale on change · store.mjs the rooms and the
+               writers that open only for Control's door · index.mjs the command table the CLI and Control share).
                Imports no requirements, sources or architecture, and names no product, table or status code
                (test/backend-neutral.test.mjs)
 src/query/ plan/ awake/   views and workflows over the above

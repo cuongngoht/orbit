@@ -1,0 +1,178 @@
+{
+  "apiVersion": "orbit.control-catalog/v1",
+  "catalog": "asvs-5.0.0-l1",
+  "title": "OWASP ASVS 5.0.0 — Level 1, a checked selection",
+  "version": "5.0.0",
+  "source": {
+    "url": "https://owasp.org/www-project-application-security-verification-standard/",
+    "tag": "v5.0.0"
+  },
+  "licence": "The OWASP ASVS is CC BY-SA 4.0. This catalog holds its requirement ids, levels and links, with Orbit's own one-line summaries — never the standard's text.",
+  "note": "Orbit's default when a project enabled no catalog: Level 1 requirements whose id and level were checked, from V2 (Validation and Business Logic), V4 (API and Web Service), V7 (Session Management), V8 (Authorization), V9 (Self-contained Tokens), V14 (Data Protection) and V15 (Secure Coding and Architecture). Every other chapter is left out rather than guessed; a person adds the whole standard, another level or another catalog in Orbit Control. OWASP Top 10 2025 and API Security Top 10 2023 are carried as labels, many to many. A control a runtime test cannot settle is not-tested until a person provides design or process evidence — never 'met'.",
+  "default": true,
+  "labels": {
+    "top10-2025": {
+      "title": "OWASP Top 10 2025",
+      "url": "https://owasp.org/www-project-top-ten/",
+      "items": {
+        "A01": { "title": "Broken Access Control" },
+        "A02": { "title": "Security Misconfiguration" },
+        "A03": { "title": "Software Supply Chain Failures" },
+        "A04": { "title": "Cryptographic Failures" },
+        "A05": { "title": "Injection" },
+        "A06": { "title": "Insecure Design" },
+        "A07": { "title": "Authentication Failures" },
+        "A08": { "title": "Software or Data Integrity Failures" },
+        "A09": { "title": "Security Logging and Alerting Failures" },
+        "A10": { "title": "Mishandling of Exceptional Conditions" }
+      }
+    },
+    "api-top10-2023": {
+      "title": "OWASP API Security Top 10 2023",
+      "url": "https://owasp.org/www-project-api-security/",
+      "items": {
+        "API1": { "title": "Broken Object Level Authorization" },
+        "API2": { "title": "Broken Authentication" },
+        "API3": { "title": "Broken Object Property Level Authorization" },
+        "API4": { "title": "Unrestricted Resource Consumption" },
+        "API5": { "title": "Broken Function Level Authorization" },
+        "API6": { "title": "Unrestricted Access to Sensitive Business Flows" },
+        "API7": { "title": "Server Side Request Forgery" },
+        "API8": { "title": "Security Misconfiguration" },
+        "API9": { "title": "Improper Inventory Management" },
+        "API10": { "title": "Unsafe Consumption of APIs" }
+      }
+    }
+  },
+  "controls": [
+    {
+      "id": "v5.0.0-2.2.1",
+      "group": "V2 Validation and Business Logic",
+      "level": 1,
+      "summary": "Input is checked against what the business expects of it before it is acted on.",
+      "methods": ["runtime-test", "design-review"],
+      "minimumEvidence": ["positive", "negative"],
+      "applies": { "role": "interface" },
+      "shapes": ["response-conforms"],
+      "labels": ["top10-2025:A06"]
+    },
+    {
+      "id": "v5.0.0-4.1.1",
+      "group": "V4 API and Web Service",
+      "level": 1,
+      "summary": "Every answer with a body declares the content type it really carries, with its character set.",
+      "methods": ["runtime-test"],
+      "minimumEvidence": ["positive"],
+      "applies": { "boundary": "synchronous" },
+      "shapes": ["response-conforms"],
+      "labels": ["top10-2025:A02", "api-top10-2023:API8"]
+    },
+    {
+      "id": "v5.0.0-7.2.1",
+      "group": "V7 Session Management",
+      "level": 1,
+      "summary": "Every session token is checked by a trusted service on the server side.",
+      "methods": ["runtime-test", "design-review"],
+      "minimumEvidence": ["positive", "negative"],
+      "applies": { "all": [{ "role": "interface" }, { "relation": "identity" }] },
+      "shapes": ["permission-enforced"],
+      "labels": ["top10-2025:A07", "api-top10-2023:API2"]
+    },
+    {
+      "id": "v5.0.0-7.4.1",
+      "group": "V7 Session Management",
+      "level": 1,
+      "summary": "A session that was ended — signed out or expired — can never be used again.",
+      "methods": ["runtime-test"],
+      "minimumEvidence": ["positive", "negative"],
+      "applies": { "all": [{ "role": "interface" }, { "relation": "identity" }] },
+      "shapes": ["permission-enforced"],
+      "labels": ["top10-2025:A07", "api-top10-2023:API2"]
+    },
+    {
+      "id": "v5.0.0-8.1.1",
+      "group": "V8 Authorization",
+      "level": 1,
+      "summary": "The rules for who may use each function and reach each record are written down, by permission and by the resource's own attributes.",
+      "methods": ["design-review"],
+      "applies": { "all": [{ "role": "principal" }, { "relation": "permission" }] },
+      "unsupported": "it is about what is documented; a person settles it from the documentation",
+      "labels": ["top10-2025:A01"]
+    },
+    {
+      "id": "v5.0.0-8.2.1",
+      "group": "V8 Authorization",
+      "level": 1,
+      "summary": "A function answers only callers whose permissions explicitly allow it.",
+      "methods": ["runtime-test", "design-review"],
+      "minimumEvidence": ["positive", "negative"],
+      "applies": { "all": [{ "role": "interface" }, { "relation": "permission" }] },
+      "shapes": ["permission-enforced"],
+      "labels": ["top10-2025:A01", "api-top10-2023:API5"]
+    },
+    {
+      "id": "v5.0.0-8.2.2",
+      "group": "V8 Authorization",
+      "level": 1,
+      "summary": "A record is reached only by callers explicitly allowed to reach that record — an identifier swapped or guessed never reaches another owner's.",
+      "methods": ["runtime-test"],
+      "minimumEvidence": ["positive", "negative", "state"],
+      "applies": { "all": [{ "role": "interface" }, { "relation": "permission" }, { "role": "data-resource" }] },
+      "shapes": ["permission-enforced", "no-foreign-effect"],
+      "labels": ["top10-2025:A01", "api-top10-2023:API1"]
+    },
+    {
+      "id": "v5.0.0-8.3.1",
+      "group": "V8 Authorization",
+      "level": 1,
+      "summary": "Authorization is decided on the server side, never by something the caller can change.",
+      "methods": ["runtime-test", "design-review"],
+      "minimumEvidence": ["positive", "negative"],
+      "applies": { "all": [{ "role": "interface" }, { "relation": "permission" }] },
+      "shapes": ["permission-enforced"],
+      "labels": ["top10-2025:A01", "top10-2025:A06"]
+    },
+    {
+      "id": "v5.0.0-9.1.1",
+      "group": "V9 Self-contained Tokens",
+      "level": 1,
+      "summary": "A self-contained token's signature or MAC is checked before anything it carries is believed.",
+      "methods": ["runtime-test"],
+      "minimumEvidence": ["positive", "negative"],
+      "applies": { "all": [{ "role": "interface" }, { "relation": "identity" }] },
+      "shapes": ["permission-enforced"],
+      "labels": ["top10-2025:A07", "api-top10-2023:API2"]
+    },
+    {
+      "id": "v5.0.0-9.2.1",
+      "group": "V9 Self-contained Tokens",
+      "level": 1,
+      "summary": "A self-contained token is accepted only inside the validity window it states.",
+      "methods": ["runtime-test"],
+      "minimumEvidence": ["positive", "negative"],
+      "applies": { "all": [{ "role": "interface" }, { "relation": "identity" }] },
+      "shapes": ["permission-enforced"],
+      "labels": ["top10-2025:A07", "api-top10-2023:API2"]
+    },
+    {
+      "id": "v5.0.0-14.2.1",
+      "group": "V14 Data Protection",
+      "level": 1,
+      "summary": "Sensitive values travel in a message's body or headers, never in its URL or query string.",
+      "methods": ["static-evidence", "design-review"],
+      "applies": { "role": "interface" },
+      "unsupported": "a runtime test would need every request a client sends observed; it is settled from the code and the contract"
+    },
+    {
+      "id": "v5.0.0-15.3.1",
+      "group": "V15 Secure Coding and Architecture",
+      "level": 1,
+      "summary": "An answer carries only the fields its caller needs and may see, never the whole stored object.",
+      "methods": ["runtime-test"],
+      "minimumEvidence": ["positive", "negative"],
+      "applies": { "all": [{ "role": "interface" }, { "relation": "permission" }] },
+      "shapes": ["fields-restricted"],
+      "labels": ["top10-2025:A01", "api-top10-2023:API3"]
+    }
+  ]
+}

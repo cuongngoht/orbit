@@ -50,9 +50,12 @@ export function invokeCapability(ctx, run, step) {
   return answered(ctx, run, cap, input, invocation);
 }
 
+// A gate that refused for want of PERMISSION says so as a fact (`authorization`), so a reader of the
+// run tells "the policy did not allow it" from "the case was wrong" without reading a sentence.
 function stop(problem) {
   if (!problem) return;
-  throw problem.blocked ? new Blocked(problem.message) : new Refused(problem.message);
+  const err = problem.blocked ? new Blocked(problem.message) : new Refused(problem.message);
+  throw problem.authorization ? Object.assign(err, { authorization: true }) : err;
 }
 
 // Held to the capability's OWN declared schema, by the same enforcer a case field
@@ -103,7 +106,7 @@ function mutationProblem(ctx, run, cap, input) {
   if (!cap.mutates || run?.c?.destructive) return null;
   const why = typeof ctx.grants?.check === "function" ? ctx.grants.check(cap, input) : "no test grant was minted for this run";
   if (why === null) return null;
-  return { message: `${cap.id} declares that it can change external state, and nothing allows this run to — ${why}. A person's case that writes declares "destructive": true and runs with --force-destructive; a generated test writes only under a grant minted for its fixture` };
+  return { authorization: true, message: `${cap.id} declares that it can change external state, and nothing allows this run to — ${why}. A person's case that writes declares "destructive": true and runs with --force-destructive; a generated test writes only under a grant minted for its fixture` };
 }
 
 // Blocked, deliberately. See the header: the product is not broken because this

@@ -16,7 +16,8 @@
 //   retry       safe (ask again within the budget), read-back (read what happened first, never
 //               resend), never (another attempt cannot change it; somebody acts)
 //   recovery    what happens next, said once
-// The rows that DECIDE which word an execution earns come with verification (PBI 16).
+// The rows that DECIDE which word an execution earns are RESULT below (PBI 16); across an
+// obligation's controls, OBLIGATION; across attempts on the same pinned inputs, ATTEMPTS.
 
 export const VERIFICATION_OUTCOMES = [
   { id: "GENERATION_FAILED", counts: false, defect: false, obligation: "pending", retry: "safe", recovery: "keep the reason and repair the proposal within the budget — nothing was learned about the product", say: "no design or case could be made" },
@@ -44,3 +45,66 @@ export const verificationOutcomeOf = (id) => VERIFICATION_OUTCOMES.find((o) => o
 // this table has never heard of is neither.
 export const countsForCoverage = (id) => verificationOutcomeOf(id)?.counts === true;
 export const accusesProduct = (id) => verificationOutcomeOf(id)?.defect === true;
+
+// ── deciding (PBI 16) ──────────────────────────────────────────────────────
+//
+// Which word ONE execution earns: ordered rows over FACTS a record shows -- the host's check of the
+// worker's envelope, whether what it rested on moved, the runner's status and what its stop said
+// about itself (src/run/loop.mjs typedOf: a helper's class, a gap, an ambiguous write, a verdict
+// contradicted, a gate that refused for want of permission), and the authority of the oracle --
+// never the text of a message. The first row that holds wins and the last always answers, and no
+// row can make a word stronger than its evidence: a draft oracle never confirms anything, an
+// observation that could not see everything never passes.
+//
+// facts: { status, failure: { helperClass, gap, ambiguous, contradiction, authorization },
+//          envelope: [findings], stale, authority }
+const failure = (f) => f.failure ?? {};
+
+export const RESULT = [
+  { id: "ENVELOPE", when: (f) => (f.envelope ?? []).length > 0, word: "EXECUTION_ERROR", why: "the worker's envelope did not hold — nothing it claimed is taken" },
+  { id: "MOVED", when: (f) => f.stale === true, word: "STALE", why: "what this ran on moved since: the source, the case or the contract" },
+  { id: "UNSETTLED_WRITE", when: (f) => Boolean(failure(f).ambiguous), word: "AMBIGUOUS", why: "a write was sent and how it ended is not known" },
+  { id: "NOTHING_SERVES", when: (f) => Boolean(failure(f).gap), word: "CAPABILITY_MISSING", why: "nothing here could perform or observe what the step needed" },
+  { id: "NOT_ALLOWED", when: (f) => f.status === "REFUSED" && failure(f).authorization === true, word: "AUTHORIZATION_BLOCKED", why: "a gate refused it for want of permission" },
+  { id: "TEST_WRONG", when: (f) => f.status === "REFUSED", word: "INVALID_TEST", why: "the test itself was refused before it could rule on anything" },
+  { id: "COULD_NOT_SEE", when: (f) => f.status === "BLOCKED" && failure(f).helperClass === "incomplete", word: "INCONCLUSIVE", why: "an observation could not see everything it needed to decide" },
+  { id: "TOOL_BROKE", when: (f) => f.status === "BLOCKED" && failure(f).helperClass === "protocol", word: "EXECUTION_ERROR", why: "a provider answered something no engine can read" },
+  { id: "NOT_READY", when: (f) => f.status === "BLOCKED", word: "ENVIRONMENT_BLOCKED", why: "the sandbox or a dependency was not ready, or a budget was spent" },
+  { id: "NO_ORACLE", when: (f) => f.authority !== "accepted", word: "REQUIRES_REQUIREMENT", why: "no accepted oracle stands behind it — a draft prepares a test and never rules on one" },
+  { id: "CONTRADICTED", when: (f) => f.status === "FAIL" && failure(f).contradiction === true, word: "CONTRADICTED", why: "a verdict compiled from the accepted oracle was contradicted by what was observed" },
+  { id: "STEP_FAILED", when: (f) => f.status === "FAIL", word: "EXECUTION_ERROR", why: "a step failed before any verdict could rule" },
+  { id: "MET", when: (f) => f.status === "PASS", word: "SATISFIED", why: "every verdict held, against the accepted oracle" },
+  { id: "UNDECIDED", when: () => true, word: "INCONCLUSIVE", why: "the run ruled on nothing it could be counted for" },
+];
+
+export function resultOf(facts) {
+  const row = RESULT.find((r) => r.when(facts ?? {}));
+  return { outcome: row.word, rule: row.id, why: row.why };
+}
+
+// Across attempts on the SAME pinned inputs: a contradiction that another attempt did not repeat is
+// FLAKY -- every attempt kept, never the last one that passed chosen.
+export const ATTEMPTS = [
+  { id: "BOTH_WAYS", when: (words) => words.includes("CONTRADICTED") && words.includes("SATISFIED"), word: "FLAKY" },
+  { id: "LATEST", when: () => true, word: null },
+];
+
+export function attemptsOutcome(words) {
+  const row = ATTEMPTS.find((r) => r.when(words));
+  return row.word ?? words.at(-1) ?? "INCONCLUSIVE";
+}
+
+// Across an obligation's CONTROLS: a negative proves nothing without its positive, so a positive that
+// was not satisfied leaves the obligation INCONCLUSIVE whatever the negative did; a contradiction
+// anywhere else stands; only every control satisfied satisfies it.
+export const OBLIGATION = [
+  { id: "POSITIVE_FAILED", when: (c) => c.positive !== undefined && c.positive !== "SATISFIED", word: (c) => (c.positive === "CONTRADICTED" ? "CONTRADICTED" : "INCONCLUSIVE") },
+  { id: "CONTRADICTED", when: (c) => Object.values(c).includes("CONTRADICTED"), word: () => "CONTRADICTED" },
+  { id: "ALL_MET", when: (c) => Object.values(c).length > 0 && Object.values(c).every((w) => w === "SATISFIED"), word: () => "SATISFIED" },
+  { id: "FIRST_UNMET", when: () => true, word: (c) => Object.values(c).find((w) => w !== "SATISFIED") ?? "INCONCLUSIVE" },
+];
+
+export function obligationOutcome(controls) {
+  const row = OBLIGATION.find((r) => r.when(controls ?? {}));
+  return { outcome: row.word(controls ?? {}), rule: row.id };
+}

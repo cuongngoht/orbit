@@ -16,7 +16,7 @@ import { judgeStep, usesEvaluator } from "./evaluator.mjs";
 export function verdict(step, raw, ctx = {}) {
   const it = parsed(raw);
   if (usesEvaluator(step, ctx)) return compiled(step, it, ctx);
-  if (!evaluate(step.expect, it)) throw new StepError(`EXPECT FAILED: ${step.expect}\n     reported: ${JSON.stringify(it)}`);
+  if (!evaluate(step.expect, it)) throw Object.assign(new StepError(`EXPECT FAILED: ${step.expect}\n     reported: ${JSON.stringify(it)}`), { contradiction: true });
   return it;
 }
 

@@ -119,7 +119,7 @@ function blocked(ctx, run, s, err) {
 function failed(ctx, run, s, err) {
   run.status = "FAIL";
   const ev = run.page === false ? pagelessEvidence(run.out) : captureEvidence(ctx, s, run.out);
-  run.log.record({ kind: "step", i: s.i, ...asked(ctx, s), ok: false, error: err.message, phase: phaseOf(err), url: ev.url, screenshot: ev.shot, console: ev.consoleOut, network: ev.netFile, networkCalls: ev.calls, networkFailures: ev.bad, observed: ev.observed });
+  run.log.record({ kind: "step", i: s.i, ...asked(ctx, s), ok: false, error: err.message, phase: phaseOf(err), ...typedOf(err), url: ev.url, screenshot: ev.shot, console: ev.consoleOut, network: ev.netFile, networkCalls: ev.calls, networkFailures: ev.bad, observed: ev.observed });
   noted(run, s, err, "error");
   run.print.fail(s, err, ev);
 }
@@ -137,10 +137,11 @@ function noted(run, s, err, kind) {
   run.failure = { kind, phase: phaseOf(err), message: trunc(err.message, 200), step: s.i, do: s.do, on: s.on ?? null, selector: s.selector ?? null, ...typedOf(err) };
 }
 
-// What a helper or an adapter said about WHY it stopped (ADR 0036): its class, the capability gap
-// it named and the operation key of a write whose outcome is unknown -- the facts verification
-// classifies by (CAPABILITY_MISSING, AMBIGUOUS), never the text of a message.
-const typedOf = (err) => Object.fromEntries([["helperClass", err.helperClass], ["gap", err.gap], ["ambiguous", err.ambiguous]].filter(([, v]) => v !== undefined && v !== null));
+// What a stop SAYS about itself as facts (ADR 0036): a helper's class, the capability gap it named,
+// the operation key of a write whose outcome is unknown, a verdict that was CONTRADICTED by what was
+// observed, a gate that refused for want of permission -- what verification classifies by
+// (src/investigation/verification.mjs), never the text of a message.
+const typedOf = (err) => Object.fromEntries([["helperClass", err.helperClass], ["gap", err.gap], ["ambiguous", err.ambiguous], ["contradiction", err.contradiction], ["authorization", err.authorization]].filter(([, v]) => v !== undefined && v !== null));
 
 // Set by whoever threw (poll.mjs, step.mjs); a browser command that simply
 // failed carries nothing, and "act" is the honest default for it.

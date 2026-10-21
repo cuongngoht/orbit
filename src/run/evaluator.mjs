@@ -110,7 +110,7 @@ export function judgeStep(step, it, ctx) {
   const tree = treeOf(step);
   pinned(step, tree, ctx);
   const r = judgedNode(tree, it);
-  if (r.outcome === VIOLATED) throw new StepError(`EXPECT FAILED: ${r.why} — ${step.expect.slice(0, 300)}\n     reported: ${JSON.stringify(it)?.slice(0, 500)}`);
+  if (r.outcome === VIOLATED) throw Object.assign(new StepError(`EXPECT FAILED: ${r.why} — ${step.expect.slice(0, 300)}\n     reported: ${JSON.stringify(it)?.slice(0, 500)}`), { contradiction: true });
   if (r.outcome === UNDECIDED) throw Object.assign(new Blocked(`expect could not be decided — ${r.why}; an observation that could not see everything never lets a verdict pass`), { helperClass: "incomplete" });
 }
 

@@ -1,0 +1,11 @@
+{
+  "id": "orbit-api-test",
+  "version": "0.0.4",
+  "apiVersion": "orbit.extension/v2",
+  "engine": ">=0.0.4",
+  "status": "active",
+  "createdFor": "the orbit-api-test capability pack Orbit ships (ADR 0034)",
+  "mutates": true,
+  "capabilities": "./capabilities.mjs",
+  "note": "orbit.http.read and orbit.http.write, reached through http/helper.mjs. Loaded only for a project whose project.json packs lists orbit-api-test."
+}

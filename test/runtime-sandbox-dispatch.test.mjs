@@ -60,7 +60,7 @@ test("the worker is created from the trusted image with only its rooms mounted, 
   const dirs = dispatchDirs(w.ctx, RUN);
   assert.deepEqual([create.spec.image, create.spec.labels["orbit.run"], create.spec.readOnly, create.spec.capDrop], [WORKER, RUN, true, ["ALL"]]);
   assert.deepEqual(create.spec.mounts, [{ source: "/plugins/orbit", target: "/orbit", readOnly: true }, { source: dirs.in, target: "/work/in", readOnly: true }, { source: dirs.out, target: "/work/out", readOnly: false }]);
-  assert.deepEqual(Object.keys(create.spec.env.values), ["ORBIT_STORE_DIR", "HOME", "ORBIT_WORKER_DEADLINE_MS"]);
+  assert.deepEqual(create.spec.env.values, { ORBIT_STORE_DIR: "/work/out/store", HOME: "/tmp", ORBIT_WORKER_DEADLINE_MS: "60000", ORBIT_UI_TESTS: "/work/in/ui-tests" }, "a scratch store, a home, a deadline, and the project the caller laid in its inputs -- nothing of this machine's");
   const order = w.iso.state.calls.filter((c) => c.id === create.id || (c.kind === "inspect" && c.id === create.id)).map((c) => c.kind);
   assert.deepEqual(order.filter((k, i) => order.indexOf(k) === i), ["create", "inspect", "startAttached", "remove"], "inspected and attested between being created and being started");
   assert.equal(w.iso.state.calls.find((c) => c.kind === "startAttached").input, '{"v":"orbit.worker/v1"}');

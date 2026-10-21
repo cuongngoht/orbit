@@ -47,11 +47,21 @@ export const entryOf = (a) => chosen(checkedBrowser(a));
 const modesOf = (a) => (a.qa?.modes?.length ? [...a.qa.modes] : ["observe"]);
 
 // -> an environment, as settings.environments rows are: { id, origin, kind, modes } and what binds it.
-export const sandboxEnvironment = (a) => ({ id: a.environment, origin: `http://127.0.0.1:${entryOf(a).port}`, kind: "sandbox", modes: modesOf(a), task: a.owner.id, sourceTree: a.tree });
+//
+// An ISOLATED sandbox (ADR 0038) has no origin on this machine: nothing here reaches inside its network, so it is
+// verified only by a generated version its own worker runs (run-version), and its environment says so.
+export const isolatedSandbox = (a) => a.isolation?.mode === "required";
+
+export const sandboxEnvironment = (a) => (isolatedSandbox(a) ? { id: a.environment, origin: null, kind: "sandbox", isolated: true, modes: modesOf(a), task: a.owner.id, sourceTree: a.tree } : { id: a.environment, origin: `http://127.0.0.1:${entryOf(a).port}`, kind: "sandbox", modes: modesOf(a), task: a.owner.id, sourceTree: a.tree });
 
 // -> what gates.mjs RUNTIME_BLOCKED and RUNTIME_STALE ask of `w.runtime`. `served` is whether anything answers
 // on the entry port now; `current` is whether the sandbox still runs the tree its task holds.
 export function sandboxRuntime(a, served) {
+  if (isolatedSandbox(a)) return isolatedRuntime(a);
   const endpoint = entryOf(a);
   return { component: endpoint.component, port: endpoint.port, served: served === true, next: `start the sandbox (sandbox-start, task ${a.owner.id}), then act again`, environment: a.environment, task: a.owner.id, sourceTree: a.tree, taskTree: a.currentTree, current: a.stale === false };
 }
+
+// An isolated sandbox is served when it is READY, isolated only when its isolation was ATTESTED, and it can give each
+// run a fixture of its own then -- a namespace the host mints for that run before anything is written.
+const isolatedRuntime = (a) => ({ component: null, port: null, served: a.state === "READY", next: `prepare the sandbox again (sandbox-prepare, task ${a.owner.id}): it is ${a.state}${a.isolation.because ? ` — ${a.isolation.because}` : ""}`, environment: a.environment, task: a.owner.id, sourceTree: a.tree, taskTree: a.currentTree, current: a.stale === false, isolated: a.isolation.attested === true, fixture: a.state === "READY" && a.isolation.attested === true ? { minted: "per run" } : null });

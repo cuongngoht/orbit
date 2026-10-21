@@ -86,8 +86,8 @@
     ]
   },
   "isolation": {
-    "doc": "How the containers an ISOLATED sandbox starts for itself are run (ADR 0038, 0039): argument lists as data, so the engine names no runtime. The worker IMAGE is a person's (sandbox.isolation.workerImage, pinned by digest and trusted in Orbit Control); these say only what runs in it, where the plugin, a run's inputs and its outputs are mounted, and which connectivity primitive (connectivity.primitives) the worker image answers readiness and egress probes with.",
-    "worker": { "argv": ["node", "/orbit/cli/sandbox-worker.mjs"], "plugin": "/orbit", "in": "/work/in", "out": "/work/out", "home": "/tmp", "store": "/work/out/store" },
+    "doc": "How the containers an ISOLATED sandbox starts for itself are run (ADR 0038, 0039): argument lists as data, so the engine names no runtime. The worker IMAGE is a person's (sandbox.isolation.workerImage, pinned by digest and trusted in Orbit Control); these say only what runs in it, where the plugin, a run's inputs and its outputs are mounted (and, inside the inputs, the project's configuration and the frozen case), and which connectivity primitive (connectivity.primitives) the worker image answers readiness and egress probes with.",
+    "worker": { "argv": ["node", "/orbit/cli/sandbox-worker.mjs"], "plugin": "/orbit", "in": "/work/in", "out": "/work/out", "home": "/tmp", "store": "/work/out/store", "project": "/work/in/ui-tests", "case": "/work/in/case.json" },
     "pod": { "argv": ["node", "-e", "setInterval(() => {}, 2147483647)"] },
     "probe": "node",
     "appMount": "/work/app"

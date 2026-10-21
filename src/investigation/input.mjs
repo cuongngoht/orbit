@@ -67,7 +67,10 @@ export function snapshotAsInput(snapshot, now, opts = {}) {
   return { type: "pbi", ref: snapshot.id, revision: snapshot.digest.slice(0, 16), digest: snapshot.digest, authority: opts.accepted ? "accepted" : snapshot.authority, state: "read", read: now };
 }
 
-const digestOf = (plan) => sha(JSON.stringify(Object.fromEntries(Object.entries(plan).filter(([k]) => !k.startsWith("_")))));
+// A plan's digest as an input records it: its own fields, never the loader's `_` marks.
+export const planDigestOf = (plan) => sha(JSON.stringify(Object.fromEntries(Object.entries(plan).filter(([k]) => !k.startsWith("_")))));
+
+const digestOf = planDigestOf;
 
 // A JSON snapshot may say its own id and revision; anything else says neither.
 const ownRef = (text) => jsonOf(text)?.ref ?? jsonOf(text)?.id ?? null;

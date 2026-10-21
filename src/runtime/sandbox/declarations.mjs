@@ -58,7 +58,8 @@ function clock(nodes, alias) {
   return component ? { node: component.name, port: Number(component.attributes.hooksPort) } : null;
 }
 
-const observer = (nodes, alias, design) => ((o) => (o?.channelRef ? { channel: o.channelRef } : null))((design.observationPlan ?? []).find((x) => x.observerRef === alias));
+// An observer watches the channel the design says: its observation plan's, or the one the step that arms it names.
+const observer = (nodes, alias, design) => ((o) => (o?.channelRef ? { channel: o.channelRef } : null))((design.observationPlan ?? []).find((x) => x.observerRef === alias) ?? (design.skeleton?.steps ?? []).map((s) => s.input ?? {}).find((i) => i.observerRef === alias && i.channelRef));
 
 const fixture = (nodes, alias, design) => ((design.fixtureRefs ?? []).includes(alias) ? {} : null);
 

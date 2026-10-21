@@ -119,7 +119,7 @@ export const KINDS = {
   // TEST_RUNNING, in the progress sidecar (PROGRESS_KINDS below).
   binding: ["id", "eventId", "binding", "type", "ref", "revision", "digest", "authority", "acceptance", "state"],
   discovery: ["id", "eventId", "state", "count", "graph", "unknowns"],
-  obligation: ["id", "eventId", "obligation", "revision", "digest", "shape", "target", "bindings", "applicability", "authority", "method", "missing", "conflict"],
+  obligation: ["id", "eventId", "obligation", "revision", "digest", "shape", "target", "bindings", "expected", "applicability", "authority", "method", "missing", "conflict"],
   designed: ["id", "eventId", "attempt", "obligation", "design", "digest", "state", "why"],
   version: ["id", "eventId", "design", "case", "version", "digest"],
   validated: ["id", "eventId", "attempt", "version", "state", "validator", "findings", "repair"],

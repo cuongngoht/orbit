@@ -149,7 +149,11 @@ function asDeclared(ref, input) {
   return decl ? { value: { ...addressOf(decl.address ?? decl), alias: ref.alias } } : { why: `nothing declares what ${ref.alias} is as a ${ref.kind}` };
 }
 
-const KINDS = { endpoint, channel, queue: channel, observer, fixture, schedule: hooked("orbit-scheduler-v1"), clock: hooked("orbit-clock-v1"), workload: hooked("orbit-workload-v1"), identity, schema: asDeclared, occurrence: asDeclared, state: asDeclared };
+// The open test-hook protocol each hooked kind is reached by (ADR 0035): the transport its value carries, so the
+// adapter that speaks that protocol is the one chosen.
+export const HOOK_PROTOCOLS = { schedule: "orbit-scheduler-v1", clock: "orbit-clock-v1", workload: "orbit-workload-v1" };
+
+const KINDS = { endpoint, channel, queue: channel, observer, fixture, schedule: hooked(HOOK_PROTOCOLS.schedule), clock: hooked(HOOK_PROTOCOLS.clock), workload: hooked(HOOK_PROTOCOLS.workload), identity, schema: asDeclared, occurrence: asDeclared, state: asDeclared };
 
 // ── templates ──────────────────────────────────────────────────────────────
 

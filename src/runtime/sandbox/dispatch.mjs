@@ -5,7 +5,8 @@
 //
 // What it runs is the engine's own entry (catalog isolation.worker: `cli/sandbox-worker.mjs`, the plugin mounted
 // read-only), with a run's inputs mounted read-only (`/work/in`, prepared by the caller in this sandbox's live room)
-// and its outputs writable (`/work/out`), its store a scratch one INSIDE that (`ORBIT_STORE_DIR`). It never mounts
+// and its outputs writable (`/work/out`), its store a scratch one INSIDE that (`ORBIT_STORE_DIR`), and the project it
+// runs as the configuration the caller laid in the inputs (`ORBIT_UI_TESTS`, catalog `worker.project`). It never mounts
 // the machine store, a journal, a vault, a control socket or a home directory. It decides no verdict: it answers how
 // the worker ended and where its envelope is, and the HOST validates that envelope (src/run/envelope.mjs) before
 // anything authoritative is written.
@@ -47,7 +48,7 @@ const W = (ctx) => ctx.catalog.isolation.worker;
 
 const workerPlace = (ctx, now, run) => (now.topology.mode === "pod" ? { mode: "container", container: podNameOf(ctx.envId) } : { mode: "network", name: now.topology.network.name, alias: `worker-${short(run, 6)}` });
 
-export const workerSpec = (ctx, now, run, deadlineMs) => ({ name: `${containerNameOf(ctx.envId, "worker")}-${short(run, 8)}`, image: now.place.policy.isolation.workerImage, network: workerPlace(ctx, now, run), labels: { ...now.topology.network.labels, "orbit.node": "worker", "orbit.role": "worker", "orbit.run": run }, ...ROLE_HARDENING.worker, mounts: [{ source: ctx.pluginRoot, target: W(ctx).plugin, readOnly: true }, { source: dispatchDirs(ctx, run).in, target: W(ctx).in, readOnly: true }, { source: dispatchDirs(ctx, run).out, target: W(ctx).out, readOnly: false }], env: { names: [], values: { ORBIT_STORE_DIR: W(ctx).store, HOME: W(ctx).home, ORBIT_WORKER_DEADLINE_MS: String(deadlineMs) } }, limits: now.place.policy.isolation.limits, workdir: W(ctx).out, argv: W(ctx).argv });
+export const workerSpec = (ctx, now, run, deadlineMs) => ({ name: `${containerNameOf(ctx.envId, "worker")}-${short(run, 8)}`, image: now.place.policy.isolation.workerImage, network: workerPlace(ctx, now, run), labels: { ...now.topology.network.labels, "orbit.node": "worker", "orbit.role": "worker", "orbit.run": run }, ...ROLE_HARDENING.worker, mounts: [{ source: ctx.pluginRoot, target: W(ctx).plugin, readOnly: true }, { source: dispatchDirs(ctx, run).in, target: W(ctx).in, readOnly: true }, { source: dispatchDirs(ctx, run).out, target: W(ctx).out, readOnly: false }], env: { names: [], values: { ORBIT_STORE_DIR: W(ctx).store, HOME: W(ctx).home, ORBIT_WORKER_DEADLINE_MS: String(deadlineMs), ...(W(ctx).project ? { ORBIT_UI_TESTS: W(ctx).project } : {}) } }, limits: now.place.policy.isolation.limits, workdir: W(ctx).out, argv: W(ctx).argv });
 
 const deadlineOf = (args) => Math.min(Number(args.deadlineMs) > 0 ? Number(args.deadlineMs) : 120000, MAX_DEADLINE_MS);
 

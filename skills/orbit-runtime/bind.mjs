@@ -16,7 +16,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { builtinEcosystems } from "../../src/ecosystems/builtin.mjs";
 import { Blocked, Refused } from "../../src/errors.mjs";
-import { entryOf } from "../../src/investigation/sandbox.mjs";
+import { entryOf, isolatedSandbox } from "../../src/investigation/sandbox.mjs";
 import { createSourceTree } from "../../src/frontend/composite.mjs";
 import { createLocalClones } from "../../src/frontend/local-clones.mjs";
 import { createWorktree } from "../../src/frontend/worktree.mjs";
@@ -115,7 +115,7 @@ export async function sandboxAnswer(where, envId, deps = {}) {
   const table = await commands();
   const ctx = bindOwned({ ...where, task: await ownerOfSandbox(table, personal(bind, where), envId) });
   const view = await table.sandbox.run(ctx, []);
-  return { view, served: await entryServed(ctx, view) };
+  return { view, served: isolatedSandbox(view) ? view.state === "READY" : await entryServed(ctx, view) };
 }
 
 // A checkout the runtime cannot be bound to (a loose ui-tests/, not a Git checkout) has no sandboxes: say so, typed.

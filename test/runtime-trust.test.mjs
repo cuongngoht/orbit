@@ -49,7 +49,10 @@ test("the policy refuses a fingerprint that is not a whole SHA-256, a mode nobod
   const bad = (over) => sandboxProblems({ ...sandboxFilled({}), ...over })[0];
   assert.match(bad({ restore: { mode: "approved", trusted: ["a".repeat(16)] } }), /64-character/);
   assert.match(bad({ restore: { mode: "force", trusted: [] } }), /restore is/);
-  assert.match(bad({ qa: { modes: [], entry: null, browser: "approved-profile-copy" } }), /not offered yet/);
+  assert.match(bad({ qa: { modes: [], entry: null, browser: "approved-profile-copy", writes: [] } }), /not offered yet/);
+  assert.match(bad({ qa: { modes: [], entry: null, browser: "isolated", writes: ["publish", "publish"] } }), /distinct kinds of effect/);
+  assert.match(bad({ qa: { modes: [], entry: null, browser: "isolated", writes: ["Publish!"] } }), /distinct kinds of effect/);
+  assert.deepEqual(sandboxFilled({ qa: { modes: ["observe"] } }).qa.writes, [], "a person who allowed nothing allowed nothing");
   assert.match(bad({ ports: { mode: "lease", from: 80, to: 90 } }), /1024 to 65535/);
   assert.match(bad({ ports: { mode: "lease", from: 42000, to: 45000 } }), /at most 2000/);
   assert.match(bad({ limits: { active: 99 } }), /active: 1 to 10/);

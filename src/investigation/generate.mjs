@@ -21,10 +21,30 @@ import { eventIdOf } from "./store.mjs";
 
 export function generated(w, a) {
   const g = generationOf(w);
-  const obligation = current(w).obligations.findLast((o) => o.obligation === a.obligation);
-  if (!obligation) throw new Refused(`${a.obligation} is not an obligation of ${w.id} — discovery derives one before anything is designed for it`);
+  const obligation = obligationWithin(w, a.obligation);
   const out = generatedCase(a.design, g.contextFor(obligation, a));
   return withJournal(w, () => (out.ok ? keptVersion(w, g, obligation, out) : keptFailure(w, obligation, a, out)));
+}
+
+// The obligation as the journal holds it now, while its budget lasts.
+function obligationWithin(w, id) {
+  const obligation = current(w).obligations.findLast((o) => o.obligation === id);
+  if (!obligation) throw new Refused(`${id} is not an obligation of ${w.id} — discovery derives one before anything is designed for it`);
+  budgetHeld(w, obligation);
+  return obligation;
+}
+
+// What one obligation may cost (doc §6.4): designs that held, and proposals that failed and were
+// repaired again -- a design is never retried until it goes green.
+const BUDGET = [
+  { limit: "designs", fallback: 4, over: (ds, n) => ds.filter((d) => d.state === "designed").length >= n, say: "designs" },
+  { limit: "repairs", fallback: 2, over: (ds, n) => ds.filter((d) => d.state === "failed").length > n, say: "repairs of a design that failed" },
+];
+
+function budgetHeld(w, obligation) {
+  const designs = current(w).designs.filter((d) => d.obligation === obligation.obligation);
+  const spent = BUDGET.find((b) => b.over(designs, w.settings?.limits?.[b.limit] ?? b.fallback));
+  if (spent) throw new Refused(`${obligation.obligation}'s budget of ${spent.say} is spent (settings limits.${spent.limit} ${w.settings?.limits?.[spent.limit] ?? spent.fallback}) — what it came to is reported, or a person raises the limit`);
 }
 
 function generationOf(w) {

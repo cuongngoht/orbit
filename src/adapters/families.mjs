@@ -13,41 +13,9 @@
 // model REPRESENTS from 0.1.0 but no adapter is published for yet: an obligation on one is a
 // coverage gap with its reason, never dropped from the denominator (doc §5.6).
 
-// What an operation can DO to the world. `mutates` is the column the grant rows read
-// (src/runtime/sandbox/test-grants.mjs): an observation that takes a message is `consume`,
-// a mutation however it is named (doc §5.7).
-export const EFFECTS = [
-  { id: "none", mutates: false, doc: "computes, asks nothing of the system under test" },
-  { id: "read", mutates: false, doc: "reads without changing anything anybody else can see" },
-  { id: "write", mutates: true, doc: "changes durable state" },
-  { id: "publish", mutates: true, doc: "sends a message" },
-  { id: "enqueue", mutates: true, doc: "puts a job on a queue" },
-  { id: "trigger", mutates: true, doc: "makes a workload run now" },
-  { id: "consume", mutates: true, doc: "reserves or takes a message -- allowed only on a resource the fixture owns" },
-  { id: "settle", mutates: true, doc: "acknowledges, rejects, commits or completes a delivery" },
-  { id: "create-resource", mutates: true, doc: "creates a channel, a subscription, a group or a namespace" },
-  { id: "delete-resource", mutates: true, doc: "removes a resource the fixture owns" },
-  { id: "advance-clock", mutates: true, doc: "moves an injected business clock" },
-  { id: "control-workload", mutates: true, doc: "stops, starts, restarts or faults a workload" },
-  { id: "replay", mutates: true, doc: "delivers stored messages again, over a bounded range" },
-];
-
-// The kinds of logical ref an operation binds. A ref is an ALIAS the binding resolves through
-// Runtime and the fixture; a URL, an address, a credential or a shell line is never one.
-export const BIND_KINDS = [
-  { id: "endpoint", doc: "a synchronous interface of a component the task started" },
-  { id: "identity", doc: "an approved synthetic principal" },
-  { id: "channel", doc: "a channel the accepted contract names" },
-  { id: "queue", doc: "a work queue" },
-  { id: "schedule", doc: "a declared schedule" },
-  { id: "occurrence", doc: "one planned period of a schedule" },
-  { id: "clock", doc: "an injected business clock" },
-  { id: "workload", doc: "a workload the task's sandbox runs" },
-  { id: "state", doc: "a store the fixture may read back" },
-  { id: "observer", doc: "an observer session armed before a trigger" },
-  { id: "fixture", doc: "a fixture namespace of this run" },
-  { id: "schema", doc: "a pinned schema document" },
-];
+// The effects and bind kinds are leaf vocabulary (src/topology/vocab.mjs): a capability's own
+// declaration and the grant rows read them too, and neither may import this file.
+export { BIND_KINDS, BIND_KIND_IDS, EFFECTS, EFFECT_IDS, effectOf, mutatingEffect } from "../topology/vocab.mjs";
 
 const op = (name, family, refs, effects, outputs, needs = []) => ({ op: name, capability: `orbit.${family}.${name}`, refs, effects, outputs, needs, selects: true });
 
@@ -114,16 +82,10 @@ export const FAMILIES = [
   ] },
 ];
 
-const ids = (rows) => rows.map((r) => r.id);
-
-export const EFFECT_IDS = ids(EFFECTS);
-export const BIND_KIND_IDS = ids(BIND_KINDS);
-export const FAMILY_IDS = ids(FAMILIES);
+export const FAMILY_IDS = FAMILIES.map((f) => f.id);
 
 export const familyOf = (id) => FAMILIES.find((f) => f.id === id) ?? null;
 export const operationOf = (family, name) => familyOf(family)?.operations.find((o) => o.op === name) ?? null;
-export const effectOf = (id) => EFFECTS.find((e) => e.id === id) ?? null;
-export const mutatingEffect = (id) => effectOf(id)?.mutates === true;
 
 // Every family operation as the capability id a case names, with its family -- what the core
 // capability rows are registered from (src/adapters/core.mjs).

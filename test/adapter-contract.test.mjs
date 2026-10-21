@@ -67,8 +67,8 @@ test("what a declaration may not say", () => {
   assert.match(problems({ operations: { publish: { effects: ["delete-resource"] } } }), /publish may not declare effect "delete-resource"/);
   assert.match(problems({ operations: { publish: { outputs: { depth: "broker.queueDepth" } } } }), /means "broker.queueDepth", which is not a meaning/);
   assert.match(problems({ transports: ["Example MQ"] }), /transport "Example MQ" is not a token/);
-  assert.match(problems({ helper: { argv: ["/usr/bin/helper"] } }), /leaves the adapter's directory/);
-  assert.match(problems({ helper: { argv: ["../helper.mjs"] } }), /leaves the adapter's directory/);
+  assert.match(problems({ helper: { argv: ["/usr/bin/helper"] } }), /leaves its directory/);
+  assert.match(problems({ helper: { argv: ["../helper.mjs"] } }), /leaves its directory/);
   assert.match(problems({ helper: { argv: ["helper.mjs"], runIn: "image" } }), /no image is pinned/);
   assert.match(problems({ helper: { argv: ["helper.mjs"], runIn: "image", image: "example/helper:latest" } }), /image does not look like/);
   assert.match(problems({ semantics: { delivery: "exactly-once" } }), /semantics.delivery is "exactly-once" — one of/);

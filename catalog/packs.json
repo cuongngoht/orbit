@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "doc": "The capability PACKS this plugin ships (ADR 0034): extension directories under skills/, each an orbit.extension/v2 manifest whose capabilities and adapters a project loads only by naming the pack's id in project.json `packs`. A pack is product code of this plugin, loaded where it sits by the same loader and contract as a project's own QC tools; its `orbit.*` capability ids belong to the engine and its packs alone. test/packs.test.mjs holds every row to a directory with a manifest at the engine's version.",
+  "packs": [
+    {
+      "id": "orbit-api-test",
+      "dir": "skills/orbit-api-test",
+      "doc": "synchronous interfaces: orbit.http.read and orbit.http.write, with JSON Schema assertions"
+    }
+  ]
+}

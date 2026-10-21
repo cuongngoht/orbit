@@ -12,6 +12,7 @@
 // row. The order is the order a reader should be told:
 //
 //   input     the case asked for something the capability cannot accept
+//   binding   a logical ref it binds cannot be resolved for this run (ADR 0036)
 //   mutation  it can change the world and the case never said it would
 //   tools     the command it needs is not usable on this machine
 //   connection the connection it needs (a credential reference a person set up)
@@ -28,19 +29,25 @@
 import { constraintFindings, missingFindings } from "../constraints.mjs";
 import { Blocked, Refused, StepError } from "../errors.mjs";
 import { extensionContextV1 } from "../extensions/context-v1.mjs";
+import { scrubbed } from "../scrub.mjs";
 
 const GATES = [
   { name: "input", ask: inputProblem },
+  { name: "binding", ask: bindingProblem },
   { name: "mutation", ask: mutationProblem },
   { name: "tools", ask: toolProblem },
   { name: "connection", ask: connectionProblem },
 ];
 
+// `invocation` is what the gates learn on the way -- the values the binding gate resolved, the
+// secrets an identity needs in a helper's environment -- handed to the capability's facade and
+// never to the capability itself.
 export function invokeCapability(ctx, run, step) {
   const cap = ctx.capabilities.resolve(step.capability);
   const input = step.input ?? {};
-  for (const gate of GATES) stop(gate.ask(ctx, run, cap, input));
-  return answered(ctx, run, cap, input);
+  const invocation = { bound: {}, env: {} };
+  for (const gate of GATES) stop(gate.ask(ctx, run, cap, input, invocation));
+  return answered(ctx, run, cap, input, invocation);
 }
 
 function stop(problem) {
@@ -59,6 +66,26 @@ function inputProblem(ctx, run, cap, input) {
 }
 
 const unknown = (cap, input, at) => Object.keys(input).filter((k) => !(k in cap.inputSchema)).map((k) => `${at}: unknown key "${k}" — it accepts ${Object.keys(cap.inputSchema).join(", ")}`);
+
+// A row that says `bind: <kind>` names a LOGICAL ref -- an endpoint, an identity, a channel --
+// which this run's binder resolves to what the task's sandbox actually holds. The capability is
+// never told an address or a credential: the resolved values go to its helper in `bound`, a
+// secret only into the helper's environment. Blocked when nothing binds here: an unbound ref is
+// a precondition nobody established, never the product being wrong.
+function bindingProblem(ctx, run, cap, input, invocation) {
+  const rows = Object.entries(cap.inputSchema ?? {}).filter(([k, row]) => row?.bind && input[k] !== undefined);
+  if (!rows.length) return null;
+  if (typeof ctx.binder?.resolve !== "function") return { blocked: true, message: `${cap.id} binds ${rows.map(([k, row]) => `${k} (${row.bind})`).join(", ")}, and nothing binds them here — a task's sandbox does; nothing about the product was observed` };
+  const problems = rows.map(([k, row]) => boundInto(ctx, run, cap, invocation, k, row.bind, input[k])).filter(Boolean);
+  return problems.length ? { blocked: problems.some((p) => p.blocked), message: problems.map((p) => p.message).join("\n  ") } : null;
+}
+
+function boundInto(ctx, run, cap, invocation, key, kind, ref) {
+  const r = ctx.binder.resolve(kind, ref, { run, cap });
+  if (!r?.ok) return { blocked: r?.blocked !== false, message: `${cap.id}: ${key} "${ref}" could not be bound as ${kind} — ${r?.why ?? "the binder had no answer"}` };
+  invocation.bound[key] = r.value;
+  Object.assign(invocation.env, r.env ?? {});
+}
 
 // The guard a destructive case already has, reused rather than reinvented. A
 // capability that says it mutates may only be reached from a case that said so
@@ -89,9 +116,13 @@ function connectionProblem(ctx, run, cap) {
   return { blocked: true, message: `${cap.id} needs a connection for ${cap.connection}, and none is set up here — nothing was asked of the product, so nothing about it was proved wrong. Add one in Orbit Control (Connections); a person enters the credential once, and it is never kept in this project.` };
 }
 
-function answered(ctx, run, cap, input) {
-  const value = called(cap, extensionContextV1(ctx, run, cap), input);
-  run?.log?.record({ kind: "capability", id: cap.id, by: cap.from, mutates: Boolean(cap.mutates), result: value });
+// What the log keeps is scrubbed by shape (src/scrub.mjs): a capability's answer is the one
+// value in run-log.jsonl that came from outside the engine, and a token echoed in a response body
+// must never reach the ledger, a lesson or a report. The value a verdict judges is the answer as
+// given.
+function answered(ctx, run, cap, input, invocation) {
+  const value = called(cap, extensionContextV1(ctx, run, cap, invocation), input);
+  run?.log?.record({ kind: "capability", id: cap.id, by: cap.from, mutates: Boolean(cap.mutates), result: scrubbed(value) });
   return value;
 }
 
@@ -99,8 +130,17 @@ function answered(ctx, run, cap, input) {
 // failing. Filing that as a product defect is how a generated script's own bug
 // gets shipped as a bug report against somebody's feature.
 function called(cap, ext, input) {
-  try { return cap.invoke(ext, input); }
+  try { return settled(cap, cap.invoke(ext, input)); }
   catch (e) { throw typed(cap, e); }
+}
+
+// A promise is not an answer. Judged, it reads as `{}` and `Boolean(it)` passes -- the one false
+// PASS this pipeline could produce. So it is refused as the tool's failure, and its rejection, if
+// one ever comes, is swallowed rather than allowed to crash the run later.
+function settled(cap, value) {
+  if (!value || typeof value.then !== "function") return value;
+  value.then(undefined, () => {});
+  throw new Blocked(`${cap.id} answered with a promise — a capability answers synchronously, and an unsettled answer would be judged as {}. That is the tool failing, not the product: nothing about the product was observed. Reach an asynchronous SDK through a helper (ext.helper.run).`);
 }
 
 const typed = (cap, e) =>

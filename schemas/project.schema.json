@@ -35,6 +35,11 @@
       "minimum": 0,
       "description": "How many evidence directories to keep per case in the machine store; the newest failure is always kept. 0 keeps everything. Evidence is disposable once its report exists, because the report embeds every picture it shows."
     },
+    "packs": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+      "description": "The capability PACKS this project opts into, by id (catalog/packs.json): packs Orbit ships, inert until named here. A pack's capabilities and adapters are loaded where the plugin keeps them, by the same loader and contract as a project's own QC tools. An id the catalog does not list is refused and said."
+    },
     "sql": {
       "type": "object",
       "additionalProperties": false,

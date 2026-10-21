@@ -10,6 +10,7 @@
 // the system behind it, its limits, how its helper is launched and which conformance kit
 // proves it. A support level is never declared: it is computed from the kit's receipts
 // (src/adapters/matrix.mjs).
+import { HELPER_FIELDS, helperFindings } from "../capability/helper.mjs";
 import { meaningAt } from "../topology/vocab.mjs";
 import { walkFindings } from "../walk.mjs";
 import { EFFECT_IDS, FAMILY_IDS, familyOf, operationOf } from "./families.mjs";
@@ -21,8 +22,6 @@ export const SUPPORTED_ADAPTER_APIS = [ADAPTER_API];
 // Namespaced like a capability: `<transport-ish>.<name>`, two segments at least.
 export const ADAPTER_ID = /^[a-z][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)+$/;
 export const TRANSPORT_TOKEN = /^[a-z][a-z0-9.+-]{0,47}$/;
-// A digest-pinned image reference: anything that could move under a tag is refused.
-export const PINNED_IMAGE = "^[^\\s@]+@sha256:[0-9a-f]{64}$";
 
 export const ADAPTER_FIELDS = {
   id: { type: "string", pattern: ADAPTER_ID.source, doc: "Namespaced name, e.g. queue.reference. Two segments at least." },
@@ -54,12 +53,6 @@ export const LIMIT_FIELDS = {
   answerBytes: { type: "integer", minimum: 1, doc: "The largest answer it may return." },
   rate: { type: "number", minimum: 0, doc: "Calls per second at most." },
   concurrency: { type: "integer", minimum: 1, doc: "Calls in flight at most." },
-};
-
-export const HELPER_FIELDS = {
-  argv: { type: "array", items: { type: "string" }, minItems: 1, doc: "The program and its arguments. The first is a path inside the adapter's own directory or a tool name; never an absolute path, never a shell line." },
-  runIn: { enum: ["host", "worker", "image"], doc: "Where it runs: on this machine, inside the task's isolated worker, or in its own pinned image on the task's network." },
-  image: { type: "string", pattern: PINNED_IMAGE, doc: "The digest-pinned image it runs in, when runIn is image. Trusted by fingerprint in Orbit Control." },
 };
 
 export const CONFORMANCE_FIELDS = {
@@ -105,9 +98,3 @@ function effectFindings(d, name, o, at) {
 
 const outputFindings = (name, o, at) => Object.entries(isTable(o?.outputs) ? o.outputs : {}).filter(([, means]) => !meaningAt(String(means))).map(([field, means]) => `${at}: ${name} output ${field} means "${means}", which is not a meaning (src/topology/vocab.mjs)`);
 
-function helperFindings(h, at) {
-  if (!isTable(h) || !Array.isArray(h.argv)) return [];
-  const first = String(h.argv[0] ?? "");
-  const where = /^([/\\]|[A-Za-z]:)/.test(first) || first.split(/[/\\]/).includes("..") ? [`${at}: helper.argv[0] "${first.slice(0, 60)}" leaves the adapter's directory — an absolute path or .. is refused`] : [];
-  return [...where, ...(h.runIn === "image" && !h.image ? [`${at}: helper.runIn is image and no image is pinned`] : []), ...h.argv.filter((a) => /[\0\n\r]/.test(String(a))).map(() => `${at}: helper.argv holds a control character`)];
-}

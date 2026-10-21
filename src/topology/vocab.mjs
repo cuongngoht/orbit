@@ -93,12 +93,53 @@ export const BOUNDARIES = [
   { id: "chain", provedBy: [], doc: "every boundary along one lineage, each proved by its own evidence" },
 ];
 
+// What an operation can DO to the world. `mutates` is the column the grant rows read
+// (the grant rows, src/runtime/sandbox/test-grants.mjs): an observation that takes a message is `consume`,
+// a mutation however it is named (doc §5.7).
+export const EFFECTS = [
+  { id: "none", mutates: false, doc: "computes, asks nothing of the system under test" },
+  { id: "read", mutates: false, doc: "reads without changing anything anybody else can see" },
+  { id: "write", mutates: true, doc: "changes durable state" },
+  { id: "publish", mutates: true, doc: "sends a message" },
+  { id: "enqueue", mutates: true, doc: "puts a job on a queue" },
+  { id: "trigger", mutates: true, doc: "makes a workload run now" },
+  { id: "consume", mutates: true, doc: "reserves or takes a message -- allowed only on a resource the fixture owns" },
+  { id: "settle", mutates: true, doc: "acknowledges, rejects, commits or completes a delivery" },
+  { id: "create-resource", mutates: true, doc: "creates a channel, a subscription, a group or a namespace" },
+  { id: "delete-resource", mutates: true, doc: "removes a resource the fixture owns" },
+  { id: "advance-clock", mutates: true, doc: "moves an injected business clock" },
+  { id: "control-workload", mutates: true, doc: "stops, starts, restarts or faults a workload" },
+  { id: "replay", mutates: true, doc: "delivers stored messages again, over a bounded range" },
+];
+
+// The kinds of logical ref an operation binds. A ref is an ALIAS the binding resolves through
+// Runtime and the fixture; a URL, an address, a credential or a shell line is never one.
+export const BIND_KINDS = [
+  { id: "endpoint", doc: "a synchronous interface of a component the task started" },
+  { id: "identity", doc: "an approved synthetic principal" },
+  { id: "channel", doc: "a channel the accepted contract names" },
+  { id: "queue", doc: "a work queue" },
+  { id: "schedule", doc: "a declared schedule" },
+  { id: "occurrence", doc: "one planned period of a schedule" },
+  { id: "clock", doc: "an injected business clock" },
+  { id: "workload", doc: "a workload the task's sandbox runs" },
+  { id: "state", doc: "a store the fixture may read back" },
+  { id: "observer", doc: "an observer session armed before a trigger" },
+  { id: "fixture", doc: "a fixture namespace of this run" },
+  { id: "schema", doc: "a pinned schema document" },
+];
+
 const ids = (rows) => rows.map((r) => r.id);
 
 export const NODE_ROLE_IDS = ids(NODE_ROLES);
 export const RELATION_ROLE_IDS = ids(RELATION_ROLES);
 export const MEANING_IDS = ids(MEANINGS);
 export const BOUNDARY_IDS = ids(BOUNDARIES);
+export const EFFECT_IDS = ids(EFFECTS);
+export const BIND_KIND_IDS = ids(BIND_KINDS);
+
+export const effectOf = (id) => EFFECTS.find((e) => e.id === id) ?? null;
+export const mutatingEffect = (id) => effectOf(id)?.mutates === true;
 
 export const meaningOf = (id) => MEANINGS.find((m) => m.id === id) ?? null;
 export const boundaryOf = (id) => BOUNDARIES.find((b) => b.id === id) ?? null;

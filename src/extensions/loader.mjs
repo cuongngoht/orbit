@@ -18,10 +18,11 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { contained } from "../project/boundary.mjs";
 import { realIo } from "../store/io.mjs";
-import { engineVersion } from "../version.mjs";
+import { engineVersion, pluginRoot } from "../version.mjs";
 import { MANIFEST_FILE, MODULE_FORMS, MODULES } from "./contract.mjs";
 import { satisfies } from "./engine-range.mjs";
 import { isLoadable, manifestFindings, notLoadableWhy } from "./manifest.mjs";
+import { packRoom } from "./packs.mjs";
 import { createReportingParts } from "./reporting-parts.mjs";
 import { createQcTools } from "./store.mjs";
 
@@ -40,13 +41,33 @@ import { createQcTools } from "./store.mjs";
 // while it collects, and a capability module imported now would run beside it.
 // What it needs from an extension is data anyway -- the parts it runs are
 // scripts started as their own processes.
+//
+// The packs a project opts into (project.json `packs`, ADR 0034) are loaded FIRST, where the
+// plugin keeps them, then the project's own room -- so a project's tool can never take an id a
+// pack it asked for already holds, and the order two machines load in is the same.
 export async function loadExtensions(ctx, deps = {}) {
   if (typeof ctx.knowledge?.register !== "function") throw new TypeError("loadExtensions needs a knowledge registry on its context — src/extensions/registries.mjs emptyRegistries() builds one");
   if (deps.tools) return gathered(ctx, { ...deps.tools, dataOnly: Boolean(deps.dataOnly) });
-  const room = roomOf(ctx, deps.io ?? realIo());
+  const io = deps.io ?? realIo();
+  const packs = await packsOf(ctx, io, deps);
+  return merged(packs, await ownOf(ctx, io, deps));
+}
+
+async function packsOf(ctx, io, deps) {
+  const ids = ctx.config?.packs ?? [];
+  if (!ids.length) return { loaded: [], refused: [], room: null };
+  const asked = packRoom(deps.pluginRoot ?? pluginRoot(), ids, io);
+  const out = await gathered(ctx, { ...asked.room, dataOnly: Boolean(deps.dataOnly) });
+  return { ...out, refused: [...asked.refused, ...out.refused] };
+}
+
+async function ownOf(ctx, io, deps) {
+  const room = roomOf(ctx, io);
   if (!room.tools) return { loaded: [], refused: [], room: room.why };
   return gathered(ctx, { ...room.tools, dataOnly: Boolean(deps.dataOnly) });
 }
+
+const merged = (a, b) => ({ loaded: [...a.loaded, ...b.loaded], refused: [...a.refused, ...b.refused], room: b.room ?? a.room ?? null });
 
 // Reading never creates, so the store is asked for WITHOUT preparing it. A
 // machine with nowhere to write has no extensions rather than an error: a
@@ -107,11 +128,14 @@ async function register(ctx, tools, id, manifest, out) {
   catch (e) { out.refused.push({ id, status: manifest.status, why: e.message }); }
 }
 
+// `from` is who a registry records as the owner: the extension's id, or `pack:<id>` for a pack
+// the plugin ships -- asked of the room, so nothing a manifest says can claim to be a pack.
 async function registered(ctx, tools, id, manifest) {
   const modules = await imported(tools, id, manifest);
   const shaped = moduleValues(manifest, modules);
-  applied(ctx, id, coherent(ctx, shaped, id));
-  return { id, version: manifest.version, apiVersion: manifest.apiVersion, status: manifest.status, tools: manifest.tools ?? [], mutates: Boolean(manifest.mutates), ...counted(shaped) };
+  const from = tools.fromOf?.(id) ?? id;
+  applied(ctx, from, coherent(ctx, shaped, from));
+  return { id, from, version: manifest.version, apiVersion: manifest.apiVersion, status: manifest.status, tools: manifest.tools ?? [], mutates: Boolean(manifest.mutates), ...counted(shaped) };
 }
 
 // Checked BEFORE a single registration, because the registries are append-only
@@ -122,7 +146,7 @@ async function registered(ctx, tools, id, manifest) {
 // contract here too, for the same reason.
 function coherent(ctx, shaped, id) {
   runnable(shaped);
-  declared(ctx, shaped);
+  declared(ctx, shaped, id);
   taught(ctx, shaped);
   reported(ctx, shaped, id);
   return shaped;
@@ -146,8 +170,8 @@ function runnable(shaped) {
 
 // What a capability says it provides is held to the contract before any of it
 // registers, for the reason above: nothing can be taken back afterwards.
-function declared(ctx, shaped) {
-  const wrong = shaped.capabilities.flatMap((c) => ctx.capabilities.check(c));
+function declared(ctx, shaped, from) {
+  const wrong = shaped.capabilities.flatMap((c) => ctx.capabilities.check(c, from));
   if (wrong.length) throw new Error(`what it declares as provided does not hold — ${wrong.join("; ")} — so nothing of it was registered`);
 }
 

@@ -9,6 +9,7 @@ import { Blocked, Refused, StepError } from "../src/errors.mjs";
 import { EXPECT_OPS } from "../src/qa/vocab.mjs";
 import { COMPILED_PREFIX, HOLDS, TEMPLATES, UNDECIDED, VIOLATED, predicateDigest, predicateFindings, renderOf, valuesAt } from "../src/run/evaluator.mjs";
 import { verdict } from "../src/run/verdict.mjs";
+import { TEMPLATE_SHAPES } from "../src/predicate.mjs";
 
 const outcome = (tree, it) => {
   try {
@@ -23,6 +24,7 @@ const outcome = (tree, it) => {
 
 test("every template an EXPECT_OPS row names has exactly one row here, and nothing else but all", () => {
   assert.deepEqual(Object.keys(TEMPLATES).filter((t) => t !== "all").sort(), [...new Set(EXPECT_OPS.map((o) => o.template))].sort());
+  assert.deepEqual(Object.keys(TEMPLATES).sort(), Object.keys(TEMPLATE_SHAPES).sort(), "one judge per template the predicate format declares");
 });
 
 test("each template holds, is violated, and -- where the answer cannot say -- stays undecided", () => {

@@ -73,9 +73,10 @@ export const OBLIGATION_FIELDS = {
 };
 
 export const ASSERTION_FIELDS = {
-  criterionRef: text("The accepted criterion slot this assertion is mapped to."),
+  criterionRef: text("The accepted criterion slot this assertion is mapped to: <criterion id>/<expectation id>."),
   template: text("The approved assertion template it is compiled from."),
   slot: text("Which part of the template the slot fills."),
+  step: { type: "integer", minimum: 1, doc: "The step of the skeleton whose answer it rules on, counted from 1 as a run counts them." },
 };
 
 export const CONTROL_FIELDS = {

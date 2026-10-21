@@ -68,7 +68,7 @@ export const MEANINGS = [
   { id: "execution.ref", layer: "api", doc: "a job, workflow or consumer execution a workload reported" },
   { id: "execution.status", layer: "api", doc: "how that execution stands" },
   { id: "execution.attempt", layer: "api", doc: "which attempt of that execution" },
-  { id: "effect.count", layer: "sql", doc: "how many durable effects a read-back found" },
+  { id: "effect.count", layer: "sql", countOf: "effect.value", doc: "how many durable effects a read-back found -- or, where only the effects are answered, how many of them there are" },
   { id: "effect.value", layer: "sql", doc: "the value a durable effect holds" },
   { id: "clock.evaluatedThrough", layer: null, doc: "the business time an injected clock has been evaluated through" },
   { id: "cursor.baseline", layer: null, doc: "where an observer stood before the trigger" },

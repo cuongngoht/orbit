@@ -15,23 +15,14 @@
 // UNDECIDED -- the answer has no such path, or an absence or a deadline rests on an observation
 // that did not stay complete -- which BLOCKS as `incomplete` and can never pass.
 import { Blocked, Refused, StepError } from "../errors.mjs";
-import { canonicalJson, sha } from "../hash.mjs";
+import { canonicalJson } from "../hash.mjs";
+import { isCompiled, parsedPredicate, predicateDigest, predicateFindings } from "../predicate.mjs";
 
-export const COMPILED_PREFIX = "compiled:";
+export { COMPILED_PREFIX, predicateDigest, predicateFindings, renderOf } from "../predicate.mjs";
+
 export const HOLDS = "holds";
 export const VIOLATED = "violated";
 export const UNDECIDED = "undecided";
-
-const MAX_TEXT = 16 * 1024;
-const MAX_NODES = 32;
-const PATH = /^(\[\]|[A-Za-z0-9_$-]+(\[\])?)(\.[A-Za-z0-9_$-]+(\[\])?)*$/;
-const RESERVED = /(^|\.)(__proto__|constructor|prototype)(\[\])?(\.|$)/;
-const KEYS = new Set(["template", "path", "value", "values", "completeness", "means", "adapter", "of"]);
-
-const isCompiled = (expect) => typeof expect === "string" && expect.startsWith(COMPILED_PREFIX);
-
-export const renderOf = (tree) => `${COMPILED_PREFIX}${canonicalJson(tree)}`;
-export const predicateDigest = (tree) => sha(canonicalJson(tree));
 
 // ── the templates ──────────────────────────────────────────────────────────
 
@@ -48,18 +39,26 @@ function windowed(it, p, values, seen) {
   return completeness.known && completeness.values.length === 1 && completeness.values[0] === "complete" ? (p.template === "absent-within" ? HOLDS : VIOLATED) : UNDECIDED;
 }
 
+// One judge per template the predicate format declares (src/predicate.mjs TEMPLATE_SHAPES).
 export const TEMPLATES = {
-  "value-eq": { needs: ["path", "value"], single: true, judge: (it, p, values) => single(values, (v) => same(v, p.value)) },
-  "value-in": { needs: ["path", "values"], single: true, judge: (it, p, values) => single(values, (v) => p.values.some((w) => same(v, w))) },
-  "value-excludes": { needs: ["path", "value"], judge: (it, p, values) => verdictOf(values.every((v) => !contains(v, p.value))) },
-  "count-eq": { needs: ["path", "value"], judge: (it, p, values) => verdictOf(values.length === p.value) },
-  "count-at-most": { needs: ["path", "value"], judge: (it, p, values) => verdictOf(values.length <= p.value) },
-  "schema-valid": { needs: ["path"], single: true, judge: (it, p, values) => single(values, (v) => v === true) },
-  "order-eq": { needs: ["path", "values"], judge: (it, p, values) => verdictOf(same(values, p.values)) },
-  complete: { needs: ["path", "value", "completeness"], judge: (it, p, values) => windowed(it, p, values, sawIt(values, p.value)) },
-  "absent-within": { needs: ["path", "value", "completeness"], judge: (it, p, values) => windowed(it, p, values, sawIt(values, p.value)) },
-  all: { needs: ["of"], judge: (it, p) => combined(p.of.map((q) => judgedNode(q, it))) },
+  "value-eq": { judge: (it, p, values) => single(values, (v) => same(v, p.value)) },
+  "value-in": { judge: (it, p, values) => single(values, (v) => p.values.some((w) => same(v, w))) },
+  "value-excludes": { judge: (it, p, values) => verdictOf(values.every((v) => !contains(v, p.value))) },
+  "count-eq": { judge: (it, p, values) => counted(p, values, (n) => n === p.value) },
+  "count-at-most": { judge: (it, p, values) => counted(p, values, (n) => n <= p.value) },
+  "schema-valid": { judge: (it, p, values) => single(values, (v) => v === true) },
+  "order-eq": { judge: (it, p, values) => verdictOf(same(values, p.values)) },
+  complete: { judge: (it, p, values) => windowed(it, p, values, sawIt(values, p.value)) },
+  "absent-within": { judge: (it, p, values) => windowed(it, p, values, sawIt(values, p.value)) },
+  all: { judge: (it, p) => combined(p.of.map((q) => judgedNode(q, it))) },
 };
+
+// A count is how many values a LIST path holds, or the number a count field answered; a field that
+// answered anything else cannot be counted, and is undecided.
+function counted(p, values, test) {
+  const n = String(p.path).includes("[]") ? values.length : values.length === 1 && Number.isInteger(values[0]) ? values[0] : null;
+  return n === null ? UNDECIDED : verdictOf(test(n));
+}
 
 function combined(outcomes) {
   if (outcomes.some((o) => o.outcome === VIOLATED)) return VIOLATED;
@@ -100,34 +99,6 @@ function judgedNode(p, it) {
   return { outcome: row.judge(it, p, read.values), why: `${p.template} on ${p.path}` };
 }
 
-// What is wrong with a tree as a predicate, before anything is judged. Empty means it may be.
-export function predicateFindings(tree) {
-  const text = canonicalJson(tree ?? null);
-  if (text.length > MAX_TEXT) return [`the predicate is ${text.length} characters, more than ${MAX_TEXT}`];
-  if (text.includes("${")) return ["the predicate holds a ${…} placeholder — a compiled predicate is concrete"];
-  return nodeFindings(tree, { nodes: 0 }, 0);
-}
-
-function nodeFindings(p, count, depth) {
-  count.nodes += 1;
-  if (!p || typeof p !== "object" || Array.isArray(p)) return ["a predicate is an object"];
-  if (count.nodes > MAX_NODES || depth > 3) return [`a predicate holds at most ${MAX_NODES} parts, ${3} deep`];
-  const row = TEMPLATES[p.template];
-  return row ? [...shapeFindings(p, row), ...(p.template === "all" && Array.isArray(p.of) ? p.of.flatMap((q) => nodeFindings(q, count, depth + 1)) : [])] : [`"${String(p.template).slice(0, 40)}" is not a template this evaluator answers — ${Object.keys(TEMPLATES).join(", ")}`];
-}
-
-const SHAPES = [
-  (p) => Object.keys(p).filter((k) => !KEYS.has(k)).map((k) => `${p.template}: "${k}" is not a field a predicate has`),
-  (p, row) => row.needs.filter((k) => p[k] === undefined).map((k) => `${p.template} needs ${k}`),
-  (p) => ["path", "completeness"].filter((k) => p[k] !== undefined && !(typeof p[k] === "string" && PATH.test(p[k]) && !RESERVED.test(p[k]))).map((k) => `${p.template}: ${k} "${String(p[k]).slice(0, 60)}" is not a dot path into the answer`),
-  (p, row) => (row.single && String(p.path ?? "").includes("[]") ? [`${p.template} rules on one value, and ${p.path} is a list`] : []),
-  (p) => (["count-eq", "count-at-most"].includes(p.template) && !(Number.isInteger(p.value) && p.value >= 0) ? [`${p.template}: value is a whole number`] : []),
-  (p) => (p.values !== undefined && !Array.isArray(p.values) ? [`${p.template}: values is a list`] : []),
-  (p) => (p.template === "all" && !(Array.isArray(p.of) && p.of.length) ? ["all: of is a list of predicates"] : []),
-];
-
-const shapeFindings = (p, row) => SHAPES.flatMap((rule) => rule(p, row));
-
 // ── the step's verdict ─────────────────────────────────────────────────────
 
 // A person's inline `expect` is evaluated as it always was -- unless this run is under a design,
@@ -144,15 +115,10 @@ export function judgeStep(step, it, ctx) {
 
 function treeOf(step) {
   if (!isCompiled(step.expect)) throw new Refused(`step ${step.i}: this run is under a design, and its expect is not a compiled predicate — a generated test is judged only by the predicate its design compiled`);
-  const tree = parsedTree(step.expect.slice(COMPILED_PREFIX.length));
+  const tree = parsedPredicate(step.expect);
   const wrong = predicateFindings(tree);
   if (wrong.length) throw new Refused(`step ${step.i}: its compiled predicate is not one this evaluator judges — ${wrong.join("; ")}`);
   return tree;
-}
-
-function parsedTree(text) {
-  try { return JSON.parse(text); }
-  catch { return null; }
 }
 
 // Under a design, the predicate must be the one the design pinned for this step.

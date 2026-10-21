@@ -45,10 +45,16 @@
   "x-delivery": {
     "guarantee": "at-least-once",
     "publication": "a publication counts once the broker confirmed it; a lost confirm is republished from the outbox with the same messageId",
+    "metadata": {
+      "messageId": "every publication carries the logical message id (the payload's messageId) as the transport's own message id",
+      "correlationId": "the businessKey",
+      "causationId": "the executionRef of the job execution that requested the reminder"
+    },
     "consumerIdempotentBy": "businessKey (tenantId|invoiceId|occurrenceId): a redelivered or duplicated message leaves one reminder and one notification",
     "ordering": "none",
-    "retry": "a transient failure is retried by redelivery",
+    "retry": "a delivery that fails is redelivered after a backoff of 250 ms times its delivery attempt, which is the consumer's own count of the deliveries of that message id",
     "deadLetterAfter": 3,
+    "deadLetterChannel": "billing.reminder.dead",
     "deadLetterReasons": ["schema-invalid", "tenant-mismatch", "dependency-failure"]
   }
 }

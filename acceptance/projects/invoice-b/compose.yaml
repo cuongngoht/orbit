@@ -1,0 +1,52 @@
+# Stack B of the synthetic invoice application: PostgreSQL, a NATS server with JetStream, and the
+# application -- ONE image running every role under its own supervisor (app/main.mjs). Images
+# are pinned by digest, and every environment value and argument is a literal. The ports are
+# published on loopback only, for a person (or the smoke) on this machine; on the compose network
+# the names are db, broker and invoice-app.
+name: invoice-b
+
+services:
+  db:
+    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+    environment:
+      POSTGRES_USER: invoice
+      POSTGRES_DB: invoice
+      POSTGRES_HOST_AUTH_METHOD: trust
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "invoice", "-d", "invoice"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  broker:
+    image: nats:2-alpine@sha256:2ae57dfba3063d5e25fecb75256118c0882a1a2d2cf7d0fba17a7c701df956f6
+    command: ["-js", "--user", "invoice", "--pass", "invoice-pass", "-m", "8222"]
+    ports:
+      - "127.0.0.1:${INVOICE_BROKER_PORT:-34222}:4222"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8222/healthz"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  invoice-app:
+    build: .
+    init: true
+    environment:
+      # the broker's synthetic credential, the same literal the broker service is given
+      NATS_USER: invoice
+      NATS_PASSWORD: invoice-pass
+      # per-run secrets: the sink refuses to start without ORBIT_SINK_TOKEN (16+ characters), and
+      # the test hooks exist only with ORBIT_TEST_HOOKS=on AND an ORBIT_TEST_HOOKS_TOKEN
+      ORBIT_SINK_TOKEN: "${ORBIT_SINK_TOKEN:-}"
+      ORBIT_TEST_HOOKS: "${ORBIT_TEST_HOOKS:-off}"
+      ORBIT_TEST_HOOKS_TOKEN: "${ORBIT_TEST_HOOKS_TOKEN:-}"
+    depends_on:
+      db:
+        condition: service_healthy
+      broker:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${INVOICE_API_PORT:-38080}:8080"
+      - "127.0.0.1:${INVOICE_SINK_PORT:-38081}:8081"
+      - "127.0.0.1:${INVOICE_HOOKS_PORT:-39090}:9090"

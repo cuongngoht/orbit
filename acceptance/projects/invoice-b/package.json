@@ -1,0 +1,11 @@
+{
+  "name": "invoice-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A synthetic invoice application used to accept Orbit: PostgreSQL and NATS JetStream",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node app/main.mjs all"
+  }
+}

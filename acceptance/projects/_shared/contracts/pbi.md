@@ -7,13 +7,24 @@ These are the accepted acceptance criteria of a SYNTHETIC invoice application. E
 is imposed on any real application. The data is synthetic; the NAME a case searches for is issued
 by the fixture's receipt.
 
+Contract fixture quy định rõ search trả 200, chủ sở hữu đọc invoice trả 200, tenant khác đọc
+invoice trả 404 với error not_found và không có dữ liệu hóa đơn. Các status này chỉ là contract của
+fixture; không áp đặt 404 lên ứng dụng thực tế.
+
+(The fixture's contract: search answers 200, the owner reading an invoice gets 200, another tenant
+reading it gets 404 with error not_found and no invoice data. These statuses are only the fixture's
+contract; 404 is not imposed on a real application.)
+
+The HTTP contract is `contracts/openapi.json` (paths relative to its server, `/api`); the message
+contract is `contracts/asyncapi.json`; the schedule is `contracts/schedule.json`.
+
 ## UI-AC-1 — search by name
 
 Tìm kiếm theo tên phải hiển thị hóa đơn đã seed, gọi GET search thành công và kết quả khớp dữ liệu
-tổng hợp.
+tổng hợp. NAME do fixture receipt cấp; dữ liệu không chứa thông tin thật.
 
 (Searching by name shows the seeded invoice, the GET search call succeeds, and the result matches
-the synthetic data.)
+the synthetic data. NAME is issued by the fixture's receipt; the data holds no real information.)
 
 - The search page is `/invoices`; the search box is `[data-testid=search]`, the button
   `[data-testid=search-submit]`, the results `[data-testid=results]`, which carries
@@ -25,7 +36,7 @@ the synthetic data.)
 
 Chủ sở hữu đọc invoice trả 200.
 
-(The owner reading its invoice gets 200.) `GET /api/invoices/inv-a` as an identity of tenant A
+(The owner reading its invoice gets 200.) `GET /invoices/inv-a` as identity `tenant-a-reader`
 answers 200 with `id` = `inv-a` and `tenantId` = `tenant-a`.
 
 ## API-AC-2 — another tenant cannot read it
@@ -33,14 +44,8 @@ answers 200 with `id` = `inv-a` and `tenantId` = `tenant-a`.
 Tenant khác đọc invoice trả 404 với error not_found và không có dữ liệu hóa đơn.
 
 (Another tenant reading the invoice gets 404 with error not_found and no invoice data.) The same
-request as an identity of tenant B answers 404 with `error` = `not_found`, and the answer contains
-nothing of the invoice — in particular not its marker `canary-invoice-a`.
-
-## API-AC-3 — create is idempotent by key
-
-`POST /api/invoices` with an `Idempotency-Key` header creates one invoice and answers 201; the same
-request again with the same key creates nothing more and answers the same invoice. A create the
-interface reported as successful is persisted.
+request as identity `tenant-b-reader` answers 404 with `error` = `not_found`, and the answer
+contains nothing of the invoice — in particular not its marker `canary-invoice-a`.
 
 ## FIX-ASYNC-1 — one reminder and one notification per period
 
@@ -58,5 +63,31 @@ and occurrence; it does not change on a retry or a redelivery.)
 - The reminder and the notification exist within 120 seconds of the occurrence being due.
 - The message is `contracts/asyncapi.json` `ReminderRequested`; a redelivered or duplicated message
   leaves one reminder and one notification per business key.
-- A message whose payload does not conform, or which names a tenant the invoice does not belong
-  to, changes nothing and ends in the dead-letter route after at most 3 deliveries.
+
+## Criteria the fixture adds
+
+The four criteria above are the planning document's own. These are the fixture's, accepted with
+it, so that every planted defect has an accepted criterion it contradicts.
+
+### UI-AC-2 — a create the page reports is persisted
+
+Creating an invoice on `/invoices` (`[data-testid=create-name]`, `[data-testid=create-amount]`,
+`[data-testid=create-submit]`) by an identity that may create shows `[data-testid=toast]` with
+"Invoice created", and the invoice is then stored — the toast alone is not the outcome.
+
+### API-AC-3 — create is idempotent by key
+
+`POST /invoices` with an `Idempotency-Key` header, as an identity that may create (`*-writer`),
+creates one invoice and answers 201; the same request again with the same key creates nothing more
+and answers 200 with the same invoice; the same key with a different body answers 409. An identity
+that may only read (`*-reader`) gets 403.
+
+### FIX-ASYNC-2 — a delivery that cannot succeed changes nothing and ends dead-lettered
+
+A reminder request whose payload does not conform to `ReminderRequested`, or which names a tenant
+the invoice does not belong to, writes no reminder and no notification and changes no tenant's
+data. It is redelivered after a backoff, and its third delivery is dead-lettered with its reason
+(`schema-invalid`, `tenant-mismatch`); the dead-lettered message keeps its message id. A delivery
+whose notification sink cannot be reached is redelivered the same way — its reminder is written
+once, whatever the number of deliveries — and its third failed delivery is dead-lettered with the
+reason `dependency-failure`.

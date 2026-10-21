@@ -4,35 +4,38 @@
   "info": {
     "title": "Synthetic invoices",
     "version": "r1",
-    "description": "The accepted HTTP contract of a synthetic invoice application used to accept Orbit. Statuses are this fixture's contract only."
+    "description": "The accepted HTTP contract of a synthetic invoice application used to accept Orbit. Statuses are this fixture's contract only. Every path is relative to the server below, so `/invoices/inv-a` is served at `<origin>/api/invoices/inv-a`."
   },
+  "servers": [{ "url": "/api", "description": "relative to the application's origin" }],
   "security": [{ "bearer": [] }],
   "paths": {
-    "/api/invoices": {
+    "/invoices": {
       "get": {
         "operationId": "searchInvoices",
         "summary": "Search the caller's tenant's invoices by name (UI-AC-1)",
         "parameters": [{ "name": "q", "in": "query", "required": true, "schema": { "type": "string", "minLength": 1, "maxLength": 120 } }],
         "responses": {
           "200": { "description": "The caller's tenant's invoices whose name contains q", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/InvoiceList" } } } },
+          "400": { "description": "q is missing, empty or too long", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "401": { "description": "No valid identity", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       },
       "post": {
         "operationId": "createInvoice",
-        "summary": "Create an invoice in the caller's tenant, idempotent by key (API-AC-3)",
+        "summary": "Create an invoice in the caller's tenant, idempotent by key (API-AC-3, UI-AC-2)",
         "parameters": [{ "name": "Idempotency-Key", "in": "header", "required": true, "schema": { "type": "string", "minLength": 8, "maxLength": 120 } }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NewInvoice" } } } },
         "responses": {
           "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Invoice" } } } },
-          "200": { "description": "The invoice an earlier request with the same key created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Invoice" } } } },
-          "400": { "description": "The body does not conform", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "200": { "description": "The invoice an earlier request with the same key and the same body created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Invoice" } } } },
+          "400": { "description": "The body or the key does not conform", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "401": { "description": "No valid identity", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "403": { "description": "The identity may not create", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+          "403": { "description": "The identity may not create", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "The key was used before with a different body", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       }
     },
-    "/api/invoices/{id}": {
+    "/invoices/{id}": {
       "get": {
         "operationId": "readInvoice",
         "summary": "Read one invoice (API-AC-1, API-AC-2)",
@@ -76,7 +79,7 @@
       "Error": {
         "type": "object",
         "required": ["error"],
-        "properties": { "error": { "type": "string", "enum": ["not_found", "unauthorized", "forbidden", "invalid"] } },
+        "properties": { "error": { "type": "string", "enum": ["not_found", "unauthorized", "forbidden", "invalid", "conflict"] } },
         "additionalProperties": false
       }
     }

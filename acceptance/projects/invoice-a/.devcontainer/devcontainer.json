@@ -1,0 +1,9 @@
+{
+  "name": "invoice-a",
+  "dockerComposeFile": ["../compose.yaml"],
+  "service": "invoice-app",
+  "runServices": ["db", "broker", "invoice-app"],
+  "workspaceFolder": "/app",
+  "shutdownAction": "stopCompose",
+  "forwardPorts": [8080, 8081, 9090]
+}

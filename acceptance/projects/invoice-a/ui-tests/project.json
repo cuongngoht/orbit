@@ -1,0 +1,6 @@
+{
+  "name": "invoice-a",
+  "origin": "http://invoice-app:8080",
+  "packs": ["orbit-api-test", "orbit-backend-test"],
+  "sql": { "command": ["psql", "-h", "db", "-U", "invoice", "-d", "invoice", "-X", "-c"], "timeoutSec": 30 }
+}

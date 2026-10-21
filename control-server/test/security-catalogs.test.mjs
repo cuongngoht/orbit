@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { createControlServer, listen } from "../src/server.mjs";
 import { TOKEN_HEADER } from "../src/security.mjs";
 import { catalogDigest } from "../src/core.mjs";
-import { MAX_CATALOG_BYTES } from "../src/security-catalogs/fetch.mjs";
+import { MAX_CATALOG_BYTES, isPublicAddress } from "../src/security-catalogs/fetch.mjs";
 import { contextFor, fixture, TOKEN, worldFor } from "./fixture.mjs";
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -65,6 +65,9 @@ function checkoutWorld(root, extra = {}) {
 }
 
 // A fetch that answers what a link would, and remembers what it was asked.
+// A resolver that answers what a public catalog host would, unless a test says otherwise.
+const PUBLIC = async () => [{ address: "93.184.215.14", family: 4 }];
+
 const fetching = (answer) => {
   const asked = [];
   return { asked, fetch: async (url, opts) => (asked.push({ url, redirect: opts.redirect }), answer(url)) };
@@ -98,7 +101,7 @@ test("a preview of a pasted file says what adopting would do, and writes nothing
 test("a link is fetched over https alone, with no credentials, bounded -- and what is adopted is exactly what was previewed", async (t) => {
   const { root } = fixture(t);
   const link = fetching(() => ({ status: 200, text: async () => JSON.stringify(OWN) }));
-  const api = await started(t, contextFor(root, checkoutWorld(root, { fetch: link.fetch })));
+  const api = await started(t, contextFor(root, checkoutWorld(root, { fetch: link.fetch, lookup: PUBLIC })));
   assert.equal((await api.post("/api/v1/security/catalogs/preview", { url: "http://catalogs.example/acme.json" })).json.error.code, "SECURITY_CATALOG_URL");
   assert.equal((await api.post("/api/v1/security/catalogs/preview", { url: "https://me:secret@catalogs.example/acme.json" })).json.error.code, "SECURITY_CATALOG_URL");
   const preview = await api.post("/api/v1/security/catalogs/preview", { url: "https://catalogs.example/acme.json" });
@@ -114,12 +117,12 @@ test("a link is fetched over https alone, with no credentials, bounded -- and wh
 test("a link that answers too much, or an error, is the network's answer: 503, and nothing is kept", async (t) => {
   const { root } = fixture(t);
   const huge = fetching(() => ({ status: 200, text: async () => "x".repeat(MAX_CATALOG_BYTES + 1) }));
-  const api = await started(t, contextFor(root, checkoutWorld(root, { fetch: huge.fetch })));
+  const api = await started(t, contextFor(root, checkoutWorld(root, { fetch: huge.fetch, lookup: PUBLIC })));
   const got = await api.post("/api/v1/security/catalogs/preview", { url: "https://catalogs.example/huge.json" });
   assert.deepEqual([got.status, got.json.error.code], [503, "SECURITY_CATALOG_FETCH"]);
   assert.match(got.json.error.message, /larger than/);
   const failing = fetching(() => ({ status: 500, text: async () => "" }));
-  const api2 = await started(t, contextFor(root, checkoutWorld(root, { fetch: failing.fetch })));
+  const api2 = await started(t, contextFor(root, checkoutWorld(root, { fetch: failing.fetch, lookup: PUBLIC })));
   assert.equal((await api2.post("/api/v1/security/catalogs/preview", { url: "https://catalogs.example/broken.json" })).status, 503);
 });
 
@@ -154,4 +157,32 @@ test("which catalogs a project follows, and the controls marked not applicable, 
   const marked = await api.put("/api/v1/security/project/not-applicable", { catalog: "asvs-5.0.0-l1", control: "v5.0.0-8.1.1", why: "the access rules live in the platform handbook", revision: view.project.revision });
   assert.equal(marked.status, 200, marked.text);
   assert.deepEqual(marked.json.saved.settings.notApplicable.map((m) => m.control), ["v5.0.0-8.1.1"]);
+});
+
+// SSRF (security review of 14d84b9): a catalog is fetched only from a PUBLIC address -- every address
+// its name resolves to is checked before anything is sent, and the error never repeats the upstream.
+test("a link to this machine, a private network or a metadata address is refused before anything is sent", async (t) => {
+  const { root } = fixture(t);
+  const link = fetching(() => ({ status: 200, text: async () => JSON.stringify(OWN) }));
+  const inside = async (host) => (host === "rebind.example" ? [{ address: "93.184.215.14", family: 4 }, { address: "10.0.0.5", family: 4 }] : [{ address: "192.168.1.20", family: 4 }]);
+  const api = await started(t, contextFor(root, checkoutWorld(root, { fetch: link.fetch, lookup: inside })));
+  for (const url of ["https://127.0.0.1/c.json", "https://169.254.169.254/latest/meta-data", "https://[::1]/c.json", "https://[::ffff:127.0.0.1]/c.json", "https://intranet.example/c.json", "https://rebind.example/c.json"]) {
+    const got = await api.post("/api/v1/security/catalogs/preview", { url });
+    assert.deepEqual([got.status, got.json.error.code], [400, "SECURITY_CATALOG_URL"], url);
+  }
+  assert.deepEqual(link.asked, [], "nothing was sent anywhere");
+});
+
+test("what the upstream answered is never repeated in an error", async (t) => {
+  const { root } = fixture(t);
+  const leaky = fetching(() => ({ status: 418, text: async () => "secret internal banner" }));
+  const api = await started(t, contextFor(root, checkoutWorld(root, { fetch: leaky.fetch, lookup: PUBLIC })));
+  const got = await api.post("/api/v1/security/catalogs/preview", { url: "https://catalogs.example/x.json" });
+  assert.equal(got.status, 503);
+  assert.equal(/418|banner/.test(got.json.error.message), false);
+});
+
+test("which addresses are public: an IPv4-mapped address is held to its IPv4 rule, and NAT64 to a private one is refused", () => {
+  for (const a of ["93.184.215.14", "8.8.8.8", "2606:4700::1111", "::ffff:8.8.8.8"]) assert.equal(isPublicAddress(a), true, a);
+  for (const a of ["127.0.0.1", "10.1.2.3", "169.254.169.254", "100.64.0.1", "172.16.5.4", "192.168.0.1", "0.0.0.0", "224.0.0.1", "::1", "::", "fe80::1", "fd00::1", "::ffff:127.0.0.1", "64:ff9b::a00:5", "not-an-address"]) assert.equal(isPublicAddress(a), false, a);
 });

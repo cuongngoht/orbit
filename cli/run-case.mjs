@@ -15,6 +15,10 @@
 //     --out=DIR            evidence dir outside any repository (default: the store's evidence room)
 //     --json               one machine-readable result object, nothing else
 //     --report             also write self-contained HTML into the reports directory
+//     --worker             inside an isolated worker (ADR 0038): read ONE orbit.worker/v1 request on
+//                          stdin -- the frozen case, its params, the sealed bindings and secrets --
+//                          run it, and write <out>/envelope.json beside the evidence. The host
+//                          validates that envelope; nothing a worker writes is authoritative.
 //
 // Exit 0 = PASS or SKIP · 1 = FAIL (evidence written) · 2 = REFUSED before the
 // browser (bad usage, invalid case, missing param, destructive without the
@@ -24,6 +28,11 @@
 //
 // It never opens a browser. The launcher does, behind the preflight question;
 // this drives the session in PT_RUN_DIR (or the project's default run dir).
+import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { join, relative } from "node:path";
+import { readAll } from "../src/capability/helper-protocol.mjs";
+import { shaBytes } from "../src/hash.mjs";
+import { argvOf, requestProblem, sealedBinder, WORKER_API } from "../src/run/worker.mjs";
 import { shownPath } from "../src/shown-path.mjs";
 import { publishRun } from "../src/report/publish.mjs";
 import { createContext } from "../src/run/context.mjs";
@@ -104,4 +113,43 @@ function exitWith(status, text, write) {
   process.exit(EXIT[status]);
 }
 
-await main();
+// ── inside a worker ─────────────────────────────────────────────────────────
+// The request is read whole from stdin and never from argv: its secrets must not be in a process
+// listing. Whatever happens, an envelope is written -- a worker that dies says INTERRUPTED through
+// its supervisor (cli/test-worker.mjs), one that ran says what it ran.
+async function workerMain() {
+  const request = jsonOf(await readAll(process.stdin));
+  const problem = requestProblem(request);
+  if (problem) return enveloped(request ?? {}, { status: "REFUSED", why: problem });
+  try { enveloped(request, ran(await withExtensions({ ...createContext(), binder: sealedBinder(request) }), request)); }
+  catch (e) { enveloped(request, stopOf(e)); }
+}
+
+const ran = (ctx, request) => ((outcome) => ({ status: outcome.status, result: resultJson(outcome) }))(runCase(ctx, argvOf(request)));
+
+const stopOf = (e) => ({ status: e instanceof Refused ? "REFUSED" : "BLOCKED", why: e instanceof Refused || e instanceof Blocked ? e.message : `the runner itself failed — ${e?.message ?? e}` });
+
+function jsonOf(text) {
+  try { return JSON.parse(text); }
+  catch { return null; }
+}
+
+function enveloped(request, o) {
+  const out = request.out ?? ".";
+  const evidence = o.result?.evidence ? relative(out, o.result.evidence).replace(/\\/g, "/") : null;
+  const envelope = { v: WORKER_API, runId: request.runId ?? null, nonce: request.nonce ?? null, caseDigest: request.case?.digest ?? null, status: o.status, why: o.why ?? null, result: o.result ?? null, evidence, files: evidence ? listed(out, join(out, evidence)) : [] };
+  writeFileSync(join(out, "envelope.json"), `${JSON.stringify(envelope)}\n`);
+  process.exit(EXIT[o.status] ?? EXIT.BLOCKED);
+}
+
+function listed(out, dir) {
+  const names = safeList(dir);
+  return names.map((n) => join(dir, n)).filter((p) => statSync(p).isFile()).map((p) => ({ path: relative(out, p).replace(/\\/g, "/"), sha256: shaBytes(readFileSync(p)), bytes: statSync(p).size }));
+}
+
+function safeList(dir) {
+  try { return readdirSync(dir, { recursive: true }).map(String); }
+  catch { return []; }
+}
+
+await (argv.includes("--worker") ? workerMain() : main());

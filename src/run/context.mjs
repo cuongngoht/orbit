@@ -22,6 +22,10 @@ import { loadProject } from "../project/index.mjs";
 import { createTools } from "../tools/index.mjs";
 import { machineContext } from "../store/context.mjs";
 import { runtimePath, runtimeSession } from "../project/runtime.mjs";
+import { baseEnv } from "../process/env.mjs";
+import { realIo } from "../store/io.mjs";
+import { pluginRoot } from "../version.mjs";
+import { localLauncher } from "./worker.mjs";
 
 // `overrides.runDir` is a TASK-SCOPED run directory (a sandbox's): its own browser session by name, its
 // own driving lock, and no profile -- a blank browser that shares nothing with the person's.
@@ -92,6 +96,11 @@ const ports = (ctx, config, store) => ({
   reporting: createReportingParts(),
   store,
   memory: createMemory(store),
+  // How a capability's helper is started (ADR 0036): a pack's program, under this Node and the
+  // minimal environment a child needs -- never the rest of this one. A binder is NOT bound here:
+  // a logical ref is resolved only where a task's sandbox resolved it (a worker's sealed table),
+  // and a run with none says so instead of guessing an address.
+  helpers: localLauncher(pluginRoot(), realIo(), { node: process.execPath, env: baseEnv(ctx.env ?? {}) }),
   now: Date.now,
   warn: (m) => console.error(m),
 });

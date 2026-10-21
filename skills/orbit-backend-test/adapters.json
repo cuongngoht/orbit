@@ -106,7 +106,35 @@
       },
       "conformance": {
         "kit": "messaging",
-        "params": {}
+        "params": {
+          "channel": {
+            "exchange": "amq.topic",
+            "routingKey": "{ns}.{key}"
+          },
+          "observer": {
+            "queue": "{ns}.{obs}",
+            "namespace": "{ns}",
+            "bindingKey": "{ns}.{key}"
+          },
+          "sink": {
+            "namespace": "{ns}.{id}",
+            "queues": [
+              {
+                "name": "{ns}.{id}.app"
+              }
+            ],
+            "bindings": [
+              {
+                "queue": "{ns}.{id}.app",
+                "exchange": "amq.topic",
+                "routingKey": "{ns}.{key}"
+              }
+            ]
+          },
+          "witness": {
+            "queue": "{ns}.{id}.app"
+          }
+        }
       }
     },
     {
@@ -216,7 +244,38 @@
       },
       "conformance": {
         "kit": "messaging",
-        "params": {}
+        "params": {
+          "channel": {
+            "subject": "{ns}{id}.{key}",
+            "stream": "{ns}{id}"
+          },
+          "observer": {
+            "stream": "{ns}{id}",
+            "consumer": "{ns}{id}-{obs}",
+            "namespace": "{ns}{id}"
+          },
+          "sink": {
+            "namespace": "{ns}{id}",
+            "streams": [
+              {
+                "name": "{ns}{id}",
+                "subjects": [
+                  "{ns}{id}.>"
+                ]
+              }
+            ],
+            "consumers": [
+              {
+                "stream": "{ns}{id}",
+                "name": "{ns}{id}-app"
+              }
+            ]
+          },
+          "witness": {
+            "stream": "{ns}{id}",
+            "consumer": "{ns}{id}-app"
+          }
+        }
       }
     },
     {

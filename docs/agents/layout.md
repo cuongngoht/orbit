@@ -348,7 +348,17 @@ src/investigation/verification.mjs · assessments.mjs  (0.1.0, ADR 0032) what a 
                SATISFIED results per obligation. The journal gains the milestone kinds (schema 3, `eventId`
                folded once) and store.mjs an `artifacts/` room, each file written once by its digest ·
                graphs.mjs `freezeGraph`: the system graph an obligation was derived from, kept as it was in
-               artifacts/graphs, refused when its digest no longer names its content; a composition root calls it
+               artifacts/graphs, refused when its digest no longer names its content; derive.mjs calls it ·
+               derive.mjs (the ACCEPTED plans an investigation read, against that graph: a binding per plan and
+               one for the graph, an obligation per kind each criterion names with the slots it may be ruled on
+               by, within limits.obligations; a plan that moved since it was read derives nothing) ·
+               generate.mjs (the generate action: a design held whole by src/qa/generation/, then a draft, a
+               frozen version and its validation, within limits.designs and limits.repairs) · run-version.mjs
+               (the run-version action: authorized, prepared and started BEFORE the dispatch, the execution
+               named first, the worker's envelope held by the host, its evidence kept only when believed,
+               within limits.attempts). Their PORTS -- what a design is compiled against, how a version is
+               sealed, granted, dispatched and read back -- are skills/orbit-qa/ports.mjs, bound by
+               cli/autonomous-qa.mjs
 src/sources/   ACQUISITION of a work item, provider-neutral -- it names no product, vendor, host or tool
                (a test greps it). contract-v1.mjs (the acquisition capabilities, the SOURCE_KINDS with
                their `authorityBearing` column, the reader port) · fields.mjs + model.mjs (identity, ids,
@@ -745,7 +755,11 @@ skills/orbit-ui-map/       the mapping playbook: fill graph/ from source (src) t
 skills/orbit-qa/  the INVESTIGATION playbook: context first, a bounded plan, actions inside
                           the gates, data below the screen, the tenant matrix on a declared contract,
                           findings with alternatives and reproduction, one redacted report; a
-                          verification nothing can perform goes to orbit-qc-builder
+                          verification nothing can perform goes to orbit-qc-builder. ports.mjs: the
+                          generation and dispatch PORTS a generated test's lifecycle asks -- refs read the
+                          way the binder reads them, only accepted expectations at their digest, every ref
+                          sealed and every effect granted before a dispatch, what a worker left read back
+                          only inside its own output
 skills/orbit-engineer/  the AUTONOMOUS ENGINEERING playbook + protocol.md: a requirement (or an
                           objective) to a verified change, one decided step at a time -- the requirement
                           read back, context, environment, the task's own workspace, a plan, the change,

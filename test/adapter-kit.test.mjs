@@ -60,3 +60,25 @@ test("an observer that took the application's message fails non-stealing on the 
   const confirmedNowhere = kit(SEMANTICS, { publish: (bound, request) => ({ ok: true, value: { messageId: request.messageId, outcome: "confirmed" } }) });
   assert.equal(scenarioResult(confirmedNowhere.k, SCENARIOS.find((s) => s.id === "unroutable-not-confirmed")).outcome, "failed", "a publication nothing routed reported confirmed");
 });
+
+// The test-hook kit (skills/orbit-adapter-kit/hooks.mjs): which schedule, clock and workload is the
+// system's, and whether a dispatch really happened is the WITNESS's word.
+import { SCENARIOS as HOOK_SCENARIOS, scenarioResult as hookResult } from "../skills/orbit-adapter-kit/hooks.mjs";
+
+function hookKit(semantics, executed = true) {
+  const answers = {
+    trigger: () => ({ ok: true, value: { executionRef: "exe-1" } }),
+    decisions: (request) => ({ ok: true, value: { decisions: request.since ? [] : [{ occurrenceId: "o-1" }], through: 4, completeness: "complete" } }),
+    advance: (request) => ({ ok: true, value: { evaluatedThrough: request.to } }),
+    control: (request) => ({ ok: true, value: { status: request.action === "stop" ? "stopped" : "running" } }),
+    attempts: () => ({ ok: true, value: { attempts: [], through: 0, completeness: "complete" } }),
+  };
+  return { adapter: { semantics }, ask: (op, request) => answers[op](request), system: { bound: { schedule: {}, clock: {}, workload: {} }, witness: { executed: () => executed }, now: () => Date.parse("2026-10-22T02:00:00Z") } };
+}
+
+test("the hook kit passes a system that behaves, and a dispatch the witness cannot find fails", () => {
+  const k = hookKit({ decisionReceipts: "cursor", clockInjection: "live" });
+  assert.deepEqual(HOOK_SCENARIOS.map((s) => hookResult(k, s).outcome), ["passed", "passed", "passed", "passed", "passed"]);
+  assert.equal(hookResult(hookKit({}, false), HOOK_SCENARIOS[0]).outcome, "failed", "an execution ref the system has no record of");
+  assert.equal(hookResult(hookKit({ clockInjection: "none" }), HOOK_SCENARIOS.find((s) => s.id === "clock-barrier")).outcome, "not-applicable");
+});

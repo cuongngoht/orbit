@@ -121,6 +121,109 @@
           "outcome": "passed"
         }
       ]
+    },
+    {
+      "kit": "scheduler",
+      "adapter": {
+        "id": "scheduler.hooks",
+        "version": "0.0.4",
+        "fingerprint": "29dd8d8771e33ba2116c109424d1ec5bf0c0b055df419ed22374b805893b7e79",
+        "code": "75d2cff268e07862ea2f019c2afb6e1af7adc79182c28141cdbd1a0d48b61d34",
+        "transport": "orbit-scheduler-v1"
+      },
+      "system": {
+        "image": "example invoice-a (acceptance/projects)",
+        "emulated": false
+      },
+      "at": "2026-10-21T18:58:55.020Z",
+      "results": [
+        {
+          "id": "trigger-dispatches",
+          "ops": [
+            "trigger"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "decisions-by-cursor",
+          "ops": [
+            "observe"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "kit": "clock",
+      "adapter": {
+        "id": "clock.hooks",
+        "version": "0.0.4",
+        "fingerprint": "0f803936e385ebaf3ea3bc4074e3e3dbefd0c697e29db147e692f8b895a5c258",
+        "code": "75d2cff268e07862ea2f019c2afb6e1af7adc79182c28141cdbd1a0d48b61d34",
+        "transport": "orbit-clock-v1"
+      },
+      "system": {
+        "image": "example invoice-a (acceptance/projects)",
+        "emulated": false
+      },
+      "at": "2026-10-21T18:58:55.200Z",
+      "results": [
+        {
+          "id": "clock-barrier",
+          "ops": [
+            "advance"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "kit": "workload",
+      "adapter": {
+        "id": "workload.hooks",
+        "version": "0.0.4",
+        "fingerprint": "6fe00f174ef84e4806ac7c9fe5213ab217c76e5b6eb8e0b3a5cd7156c7c2ad19",
+        "code": "75d2cff268e07862ea2f019c2afb6e1af7adc79182c28141cdbd1a0d48b61d34",
+        "transport": "orbit-workload-v1"
+      },
+      "system": {
+        "image": "example invoice-a (acceptance/projects)",
+        "emulated": false
+      },
+      "at": "2026-10-21T18:58:55.835Z",
+      "results": [
+        {
+          "id": "control-stop-start",
+          "ops": [
+            "control"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "kit": "worker",
+      "adapter": {
+        "id": "worker.hooks",
+        "version": "0.0.4",
+        "fingerprint": "18d55d0bedbdf6479fd40f57d93c495f2b138e432203fc5418b365c0e83bc6c0",
+        "code": "75d2cff268e07862ea2f019c2afb6e1af7adc79182c28141cdbd1a0d48b61d34",
+        "transport": "orbit-workload-v1"
+      },
+      "system": {
+        "image": "example invoice-a (acceptance/projects)",
+        "emulated": false
+      },
+      "at": "2026-10-21T18:58:55.907Z",
+      "results": [
+        {
+          "id": "attempts-by-cursor",
+          "ops": [
+            "observe"
+          ],
+          "outcome": "passed"
+        }
+      ]
     }
   ]
 }

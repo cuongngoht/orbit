@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "doc": "Conformance receipts the reference adapters earned on REAL systems, written only by a kit's --record (acceptance/kits/). The support matrix is computed from these (src/adapters/matrix.mjs); a receipt for another version, fingerprint or code digest counts for nothing.",
+  "receipts": [
+    {
+      "kit": "messaging",
+      "adapter": {
+        "id": "amqp.reference",
+        "version": "0.0.4",
+        "fingerprint": "8381fce92fa0108d8fa025760ba0ba4b8de56a007fe0da3d01d5ca1fd06292c2",
+        "code": "77f92fd76fb6f616e4fbe1fa21dec252c42005b9aed11f5c50c55c97d0d51f74",
+        "transport": "amqp-0-9-1"
+      },
+      "system": {
+        "image": "rabbitmq@sha256:71be6ca71cd3ad92f29b354ec381b1ee587894aaaac21f185b8cf43fb50d3feb",
+        "emulated": false
+      },
+      "at": "2026-10-21T18:46:12.744Z",
+      "results": [
+        {
+          "id": "publish-confirmed",
+          "ops": [
+            "publish",
+            "fixture.prepare",
+            "fixture.cleanup"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "unroutable-returned",
+          "ops": [
+            "publish"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "observe-complete-window",
+          "ops": [
+            "observe",
+            "observe.await",
+            "publish"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "observer-non-stealing",
+          "ops": [
+            "observe",
+            "observe.await",
+            "fixture.prepare"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "fixture-own-namespace",
+          "ops": [
+            "fixture.prepare",
+            "fixture.cleanup"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    }
+  ]
+}

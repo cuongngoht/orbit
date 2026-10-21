@@ -3,6 +3,7 @@ import { listCases, showCase } from "./cases.mjs";
 import { check } from "./check.mjs";
 import { doctor } from "./doctor.mjs";
 import { showDsl, showField, showVerb } from "./dsl.mjs";
+import { adapters } from "./adapters.mjs";
 import { capabilities, capability, extensions } from "./extensions.mjs";
 import { regress, showEffect } from "./effect.mjs";
 import { find } from "./find.mjs";
@@ -21,7 +22,7 @@ export const COMMANDS = {
   cases: listCases, flows: listCases, case: showCase, flow: showCase,
   check, doctor, verify, triage, storage,
   dsl: showDsl, verb: showVerb, field: showField,
-  extensions, capabilities, capability,
+  extensions, capabilities, capability, adapters,
   history, flaky, notes,
 };
 

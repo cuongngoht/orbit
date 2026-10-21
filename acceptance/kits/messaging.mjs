@@ -6,17 +6,19 @@
 // program over orbit.helper/v1, exactly as the engine asks it, and each checked against the
 // broker's own witness where the claim is about what the broker holds.
 //
-//   node acceptance/kits/messaging.mjs <adapter-id> [--json]
+//   node acceptance/kits/messaging.mjs <adapter-id> [--json] [--record]
 //
 // A scenario whose semantics are unknown or unmet is NOT APPLICABLE, never a pass; a broker that
 // will not start is BLOCKED (exit 3), never a skip. The receipt names the adapter's id, version and
 // fingerprint and the broker's image digest: support is computed from receipts like it, for that
 // version and that fingerprint only (src/adapters/matrix.mjs).
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { fingerprintOf } from "../../src/adapters/dispatch.mjs";
+import { codeDigestOf } from "../../src/adapters/receipts.mjs";
+import { realIo } from "../../src/store/io.mjs";
 import { meets } from "../../src/adapters/semantics.mjs";
 import { readyWithin, removed, started, witnessed } from "./brokers.mjs";
 
@@ -34,12 +36,13 @@ function asked(kit, op, request, bound, deadlineMs = 15_000) {
 const resource = (kit, over) => ({ transport: kit.adapter.transports[0], endpoint: kit.broker.endpoint, credential: { userEnv: "ORBIT_KIT_USER", passwordEnv: "ORBIT_KIT_PASSWORD" }, ...over });
 
 // Every scenario: what it needs of the adapter's semantics, and the steps that prove it.
+// `ops` is which of the adapter's operations a scenario exercises: the matrix counts a pass for those.
 const SCENARIOS = [
-  { id: "publish-confirmed", needs: { publishAck: ["broker-confirm", "durable-write"] }, run: publishConfirmed },
-  { id: "unroutable-returned", needs: { unroutable: "returned" }, run: unroutableReturned },
-  { id: "observe-complete-window", needs: { observation: ["shadow-subscription", "independent-cursor", "peek-cursor"] }, run: completeWindow },
-  { id: "observer-non-stealing", needs: { observation: ["shadow-subscription", "independent-cursor", "peek-cursor"] }, run: nonStealing },
-  { id: "fixture-own-namespace", needs: {}, run: fixtureLifecycle },
+  { id: "publish-confirmed", ops: ["publish", "fixture.prepare", "fixture.cleanup"], needs: { publishAck: ["broker-confirm", "durable-write"] }, run: publishConfirmed },
+  { id: "unroutable-returned", ops: ["publish"], needs: { unroutable: "returned" }, run: unroutableReturned },
+  { id: "observe-complete-window", ops: ["observe", "observe.await", "publish"], needs: { observation: ["shadow-subscription", "independent-cursor", "peek-cursor"] }, run: completeWindow },
+  { id: "observer-non-stealing", ops: ["observe", "observe.await", "fixture.prepare"], needs: { observation: ["shadow-subscription", "independent-cursor", "peek-cursor"] }, run: nonStealing },
+  { id: "fixture-own-namespace", ops: ["fixture.prepare", "fixture.cleanup"], needs: {}, run: fixtureLifecycle },
 ];
 
 const channel = (kit, key = "invoice.created") => resource(kit, { alias: "events", exchange: "amq.topic", routingKey: key });
@@ -101,10 +104,23 @@ function adapterOf(id) {
 
 const verdictOf = (kit, s) => {
   const fit = meets(kit.adapter.semantics, s.needs);
-  if (fit.unknown.length || fit.unmet.length) return { id: s.id, outcome: "not-applicable", why: { unknown: fit.unknown, unmet: fit.unmet.map((u) => u.field) } };
+  if (fit.unknown.length || fit.unmet.length) return { id: s.id, ops: s.ops, outcome: "not-applicable", why: { unknown: fit.unknown, unmet: fit.unmet.map((u) => u.field) } };
   const r = s.run(kit);
-  return { id: s.id, outcome: r.ok ? "passed" : "failed", saw: r.saw };
+  return { id: s.id, ops: s.ops, outcome: r.ok ? "passed" : "failed", saw: r.saw };
 };
+
+// The digest of the helper's own code, beside the declaration's fingerprint: a receipt is for the
+// program that ran, and a helper whose code moved since has earned nothing yet.
+const codeOf = (adapter) => codeDigestOf(join(PACK, dirname(adapter.helper.argv[0])), realIo());
+
+// --record: the receipt joins docs/backend-acceptance.json, replacing one for the same kit, adapter,
+// version and fingerprint -- written only from a real run, which this is.
+function recorded(receipt) {
+  const file = join(ROOT, "docs", "backend-acceptance.json");
+  const doc = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : { schema: 1, doc: "Conformance receipts the reference adapters earned on REAL systems, written only by a kit's --record (acceptance/kits/). The support matrix is computed from these (src/adapters/matrix.mjs); a receipt for another version, fingerprint or code digest counts for nothing.", receipts: [] };
+  const others = doc.receipts.filter((r) => !(r.kit === receipt.kit && r.adapter.id === receipt.adapter.id && r.adapter.version === receipt.adapter.version && r.adapter.fingerprint === receipt.adapter.fingerprint));
+  writeFileSync(file, `${JSON.stringify({ ...doc, receipts: [...others, receipt] }, null, 2)}\n`);
+}
 
 async function main() {
   const adapter = adapterOf(process.argv[2] ?? "amqp.reference");
@@ -120,7 +136,8 @@ async function main() {
 }
 
 function report({ adapter, broker, results, blocked }, code) {
-  const receipt = { kit: "messaging", adapter: { id: adapter.id, version: adapter.version, fingerprint: fingerprintOf(adapter), transport: adapter.transports[0] }, system: { image: broker.image }, at: new Date().toISOString(), ...(blocked ? { blocked } : { results }) };
+  const receipt = { kit: "messaging", adapter: { id: adapter.id, version: adapter.version, fingerprint: fingerprintOf(adapter), code: codeOf(adapter), transport: adapter.transports[0] }, system: { image: broker.image, emulated: false }, at: new Date().toISOString(), ...(blocked ? { blocked } : { results: results.map(({ saw, ...r }) => r) }) };
+  if (process.argv.includes("--record") && !blocked) recorded(receipt);
   const human = !process.argv.includes("--json");
   process.stdout.write(human ? `${(results ?? []).map((r) => `${r.outcome.padEnd(15)} ${r.id}${r.outcome === "failed" ? `  ${JSON.stringify(r.saw)}` : ""}`).join("\n")}${blocked ? `BLOCKED ${blocked}` : ""}\n${JSON.stringify(receipt.adapter)} on ${receipt.system.image}\n` : `${JSON.stringify(receipt, null, 2)}\n`);
   process.exitCode = code;

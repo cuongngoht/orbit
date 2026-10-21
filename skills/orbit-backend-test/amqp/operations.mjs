@@ -15,7 +15,10 @@
 //   observe          arm an observer: its own queue, bound beside the application's, with the
 //                    count it stood at -- a queue somebody else consumes is refused
 //   observe.await    read the observer's queue for a bounded window, acknowledging what it
-//                    took from its own queue; complete only when it read the queue empty
+//                    took from its own queue; complete only when it read the queue empty. The
+//                    same gate as arming, asked again before the first read: a queue outside the
+//                    observer's namespace, or one anybody else consumes, is never read -- reading
+//                    it would take the application's messages
 //   fixture.prepare  declare the fixture's own exchanges, queues and bindings
 //   fixture.cleanup  delete the fixture's own queues, and say what it left and why
 //
@@ -127,15 +130,18 @@ async function published(conn, message, asked, deps) {
 async function observe(asked, deps) {
   const channel = asked.bound.channelRef ?? {};
   const observer = asked.bound.observerRef ?? {};
-  const problem = observerProblem(observer, channel, asked.bound.fixtureRef);
+  const problem = ownedProblem(observer, asked.bound.fixtureRef) ?? (typeof channel.exchange === "string" ? null : "the bound channel names no exchange to observe");
   if (problem) return refusal(problem);
   return withConnection(asked, channel, deps, (conn) => armed(conn, observer, channel, deps));
 }
 
-function observerProblem(observer, channel, fixture) {
+// An observer's queue is its OWN: named, and inside the namespace its binding gives (or the
+// fixture's, when only that is bound) -- an observer with no namespace to be inside is refused.
+function ownedProblem(observer, fixture) {
+  const namespace = observer.namespace ?? fixture?.namespace;
   if (!NAME.test(String(observer.queue ?? ""))) return "the bound observer names no queue of its own";
-  if (fixture?.namespace && !inside(fixture.namespace, observer.queue)) return `the observer's queue ${observer.queue} is outside the fixture's namespace ${fixture.namespace}`;
-  return typeof channel.exchange === "string" ? null : "the bound channel names no exchange to observe";
+  if (!NAME.test(String(namespace ?? ""))) return "the bound observer names no namespace its queue belongs to — an observer is only ever a fixture's own";
+  return inside(namespace, observer.queue) ? null : `the observer's queue ${observer.queue} is outside its namespace ${namespace}`;
 }
 
 async function armed(conn, observer, channel, deps) {
@@ -150,10 +156,18 @@ async function armed(conn, observer, channel, deps) {
 
 async function awaitObserver(asked, deps) {
   const observer = asked.bound.observerRef ?? {};
-  if (!NAME.test(String(observer.queue ?? ""))) return refusal("the bound observer names no queue to await");
   const until = untilOf(asked.request);
-  if (until.refused) return refusal(until.refused);
-  return withConnection(asked, observer, deps, (conn) => watched(conn, observer.queue, until, asked, deps));
+  const problem = ownedProblem(observer) ?? until.refused;
+  if (problem) return refusal(problem);
+  return withConnection(asked, observer, deps, (conn) => ownedThenWatched(conn, observer.queue, until, asked, deps));
+}
+
+// Asked of the broker before the first read: the queue exists, and nobody else consumes it. A
+// queue the observer never armed closes its channel as NOT_FOUND, which is a refusal.
+async function ownedThenWatched(conn, queue, until, asked, deps) {
+  const held = await (await conn.channel()).declareQueue({ name: queue, passive: true });
+  if (held.consumerCount > 0) return refusal(`${queue} has ${held.consumerCount} consumer(s) — an observer reads a queue nobody else does, so it was not read`);
+  return watched(conn, queue, until, asked, deps);
 }
 
 // `count` ends the window early once that many matching messages were read AND the queue was

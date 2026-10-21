@@ -43,7 +43,7 @@ const SCENARIOS = [
 ];
 
 const channel = (kit, key = "invoice.created") => resource(kit, { alias: "events", exchange: "amq.topic", routingKey: key });
-const observer = (kit, id) => resource(kit, { alias: id, adapter: kit.adapter.id, queue: `${NS}.${id}`, bindingKey: "invoice.created" });
+const observer = (kit, id) => resource(kit, { alias: id, adapter: kit.adapter.id, queue: `${NS}.${id}`, namespace: NS, bindingKey: "invoice.created" });
 
 // A publication something is bound to receive: the kit's own queue routes it, so the broker's
 // confirm is the only thing being judged.

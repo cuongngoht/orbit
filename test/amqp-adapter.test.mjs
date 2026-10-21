@@ -16,7 +16,7 @@ const CREDENTIAL = { userEnv: "ORBIT_BROKER_USER", passwordEnv: "ORBIT_BROKER_PA
 const ENV = { ORBIT_BROKER_USER: "orbit", ORBIT_BROKER_PASSWORD: "s3cr3t-broker" };
 
 const channel = { alias: "invoice-events", transport: "amqp-0-9-1", endpoint: ENDPOINT, credential: CREDENTIAL, exchange: "amq.topic", routingKey: "invoice.created" };
-const observer = { alias: "obs-1", transport: "amqp-0-9-1", adapter: "amqp.reference", endpoint: ENDPOINT, credential: CREDENTIAL, queue: "orbit-ab12.obs-1" };
+const observer = { alias: "obs-1", transport: "amqp-0-9-1", adapter: "amqp.reference", endpoint: ENDPOINT, credential: CREDENTIAL, queue: "orbit-ab12.obs-1", namespace: "orbit-ab12" };
 const fixture = { alias: "fx", transport: "amqp-0-9-1", endpoint: ENDPOINT, credential: CREDENTIAL, namespace: "orbit-ab12" };
 
 function broker(script = {}) {
@@ -78,7 +78,7 @@ test("an observer is armed on a queue of its own, bound beside the application's
 });
 
 test("an observer is never somebody else's queue: outside the namespace, or consumed by another, it is not armed", async () => {
-  assert.match((await broker().ask("observe", {}, { channelRef: channel, observerRef: { ...observer, queue: "billing.work" }, fixtureRef: fixture })).failure.message, /outside the fixture's namespace/);
+  assert.match((await broker().ask("observe", {}, { channelRef: channel, observerRef: { ...observer, queue: "billing.work" }, fixtureRef: fixture })).failure.message, /outside its namespace orbit-ab12/);
   const taken = await broker({ consumers: { "orbit-ab12.obs-1": 1 } }).ask("observe", {}, { channelRef: channel, observerRef: observer });
   assert.match(taken.failure.message, /already has a consumer/);
 });
@@ -164,4 +164,21 @@ test("orbit.schedule.expect computes the accepted contract's occurrences from th
   const gap = scheduleAnswered({ op: "expect", request: { ask: "occurrences", from: 0, to: 86_400_000 }, bound: { scheduleRef: { ...schedule, dialect: "quartz-like" } } });
   assert.equal(gap.failure.class, "incomplete");
   assert.equal(gap.failure.gap.capability, "orbit.schedule.expect");
+});
+
+// The gate arming asks is asked again before the first read: await never reads a queue that is
+// not the observer's own, so it can never take an application's messages.
+test("await reads only the observer's own queue: outside its namespace, never armed, or consumed by another, nothing is read or acknowledged", async () => {
+  const b = broker();
+  const app = await b.ask("observe.await", { waitMs: 10 }, { observerRef: { ...observer, queue: "billing.work" } });
+  assert.match(app.failure.message, /outside its namespace orbit-ab12/);
+  assert.match((await b.ask("observe.await", { waitMs: 10 }, { observerRef: { ...observer, namespace: undefined } })).failure.message, /names no namespace/);
+  const never = await b.ask("observe.await", { waitMs: 10 }, { observerRef: observer });
+  assert.equal(never.failure.class, "refused", "a queue nobody armed is NOT_FOUND, a refusal");
+  const shared = broker({ consumers: { "orbit-ab12.obs-1": 1 } });
+  shared.fake.peer.queues.set("orbit-ab12.obs-1", { name: "orbit-ab12.obs-1", args: {}, messages: [{ exchange: "amq.topic", routingKey: "invoice.created", properties: { messageId: "app-msg" }, body: Buffer.from("{}"), redelivered: false }] });
+  const taken = await shared.ask("observe.await", { waitMs: 10 }, { observerRef: observer });
+  assert.match(taken.failure.message, /has 1 consumer\(s\)/);
+  assert.equal(shared.fake.peer.acks.length, 0, "nothing of the application's was acknowledged");
+  assert.equal(shared.fake.peer.queues.get("orbit-ab12.obs-1").messages.length, 1, "nothing was taken");
 });

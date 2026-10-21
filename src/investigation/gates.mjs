@@ -51,8 +51,12 @@ export const GATES = [
   { id: "SIGNED_OUT", stop: "refused", applies: (w) => w.host !== undefined, fails: (w) => w.host === "SIGNIN", say: () => "the session is parked on a sign-in page — a person signs in; a signed-out session is never a finding" },
   { id: "WRONG_HOST", stop: "refused", applies: (w) => w.host !== undefined && Boolean(w.environment), fails: (w) => w.host !== hostOf(w.environment.origin), say: (w) => `the browser is on ${w.host}, not on the approved environment ${w.environment.id} (${hostOf(w.environment.origin)})` },
   { id: "DESTRUCTIVE", stop: "refused", applies: (w) => Boolean(w.edge), fails: (w) => w.edge.destructive === true, say: (w) => `${w.edge.from}/${w.edge.via} is DESTRUCTIVE — autonomous QA never touches one, in any mode` },
-  { id: "WRITES", stop: "refused", applies: (w) => Boolean(w.edge && modeOf(w.mode)), fails: (w) => w.edge.writes && !modeOf(w.mode).mutates, say: (w) => `${w.edge.from}/${w.edge.via} may change data (${w.edge.why}) and ${w.mode} mode does not — explore-write, approved for this environment, does` },
+  { id: "WRITES", stop: "refused", applies: (w) => Boolean(w.edge && modeOf(w.mode)), fails: (w) => w.edge.writes && !controlWrites(w.mode), say: (w) => `${w.edge.from}/${w.edge.via} may change data (${w.edge.why}) and ${w.mode} mode does not write through the screen — explore-write, approved for this environment, does; fixture-write writes only through capabilities a grant covers` },
 ];
+
+// A mode that writes through the SCREEN: one that mutates and is not held to grants. Under
+// fixture-write every write goes through a capability a grant covers, never a control.
+export const controlWrites = (mode) => Boolean(modeOf(mode)?.mutates && !modeOf(mode)?.grants);
 
 export const blockers = (w) => GATES.filter((g) => g.applies(w) && g.fails(w)).map((g) => ({ id: g.id, stop: g.stop, say: g.say(w) }));
 

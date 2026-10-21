@@ -3,7 +3,8 @@
 // The host mints grants at dispatch (src/runtime/sandbox/test-grants.mjs) and seals them into
 // the worker's request; here they are a LEDGER the capability pipeline asks. `check` answers
 // whether a mutating call is covered -- the capability, the run, the resources its refs bind,
-// the input's digest when the grant pinned one, a use left, not expired -- and `spend` takes ONE
+// the input's digest, the operation's selectors, the principal it acts as, the provider, a use
+// left, not expired -- and `spend` takes ONE
 // use, recorded in the run log, at the last moment before the effect. A second use of a
 // one-use grant is refused, which is what makes a transport retry impossible to mistake for an
 // intentional duplicate: that is a grant of its own. The host reads the spends back and holds
@@ -22,13 +23,22 @@ const inputDigest = (input) => sha(canonicalJson(input ?? {}));
 
 const boundRefs = (cap, input) => Object.entries(cap.inputSchema ?? {}).filter(([k, row]) => row?.bind && input?.[k] !== undefined && row.bind !== "identity" && row.bind !== "schema").map(([k]) => String(input[k]));
 
+// Who the call would act as: the value of its identity-bound input, or nobody.
+const principalOf = (cap, input) => Object.entries(cap.inputSchema ?? {}).filter(([k, row]) => row?.bind === "identity" && input?.[k] !== undefined).map(([k]) => String(input[k]))[0] ?? null;
+
+// Every selector the grant was minted for (a method, a path, a channel) must be what the call asks.
+const selectorsHold = (selectors, input) => Object.entries(selectors ?? {}).every(([k, v]) => String(input?.[k]) === String(v));
+
 // Why each grant does not cover this call, in order; the first that does wins.
 const REASONS = [
   { why: (g, c) => (g.capability?.id === c.cap.id ? null : "another capability") },
   { why: (g, c) => (g.run === c.runId ? null : "another run") },
   { why: (g, c) => (c.now() < g.expiresAtMs ? null : "it expired") },
   { why: (g, c) => ((c.used.get(g.id) ?? 0) < (g.bounds?.maxUses ?? 1) ? null : "every use is spent") },
-  { why: (g, c) => (!g.input?.digest || g.input.digest === inputDigest(c.input) ? null : "the input differs from the one it was minted for") },
+  { why: (g, c) => (g.input?.digest && g.input.digest === inputDigest(c.input) ? null : "the input differs from the one it was minted for") },
+  { why: (g, c) => (selectorsHold(g.operation?.selectors, c.input) ? null : "the operation differs from the one it was minted for") },
+  { why: (g, c) => (principalOf(c.cap, c.input) === (g.principal ?? null) ? null : "it would act as another principal than the one it was minted for") },
+  { why: (g, c) => (!g.capability?.from || g.capability.from === c.cap.from ? null : "another provider of that capability") },
   { why: (g, c) => (boundRefs(c.cap, c.input).every((r) => (g.resources ?? []).includes(r)) ? null : "a resource it would touch is not granted") },
 ];
 

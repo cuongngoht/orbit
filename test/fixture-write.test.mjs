@@ -60,3 +60,10 @@ test("the run refuses such a case unless a fresh fixture namespace is there, and
   assert.doesNotThrow(() => fixtureGate({ capabilities }, { c: { ...CREATES, destructive: true } }));
   assert.doesNotThrow(() => fixtureGate({ capabilities }, { c: { ...CREATES, creates: undefined } }));
 });
+
+test("fixture-write never writes through the screen: a control the map says writes is refused there, and allowed in explore-write", () => {
+  const edge = { from: "list-things", via: "Save", writes: true, why: "saves a thing" };
+  const w = (mode) => ({ ...world({ environment: "sbx", isolated: true, fixture: { namespace: "orbit-ab12" }, current: true }), mode, environment: { id: "sbx", kind: "sandbox", modes: ["fixture-write", "explore-write"] }, edge });
+  assert.ok(blockers(w("fixture-write")).some((b) => b.id === "WRITES"), "a screen write under fixture-write would escape the grants");
+  assert.equal(blockers(w("explore-write")).some((b) => b.id === "WRITES"), false);
+});

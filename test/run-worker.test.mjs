@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { caseDigest } from "../src/dsl/digest.mjs";
 import { createDslRegistry } from "../src/dsl/registry.mjs";
 import { shaBytes } from "../src/hash.mjs";
-import { envelopeFindings, rederivedFindings } from "../src/run/envelope.mjs";
+import { envelopeFindings, rederivedFindings, workerFindings } from "../src/run/envelope.mjs";
 import { WORKER_API, argvOf, sealedBinder } from "../src/run/worker.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -87,8 +87,8 @@ test("the owner's read passes and the other tenant's is refused by the product -
     const { code, err, envelope } = await worker(p, request);
     assert.equal(envelope.status, "PASS", `${c.id}: ${envelope.why ?? err}`);
     assert.equal(code, 0);
-    assert.deepEqual(envelopeFindings(envelope, { runId: request.runId, nonce: "n-1", caseDigest: caseDigest(c) }, listedBy(p.out, envelope)), []);
-    assert.deepEqual(rederivedFindings(envelope.result, c, recordsOf(p.out, envelope), (s) => dsl.provedBy(s), { caseDigest: caseDigest(c) }), []);
+    const expected = { runId: request.runId, nonce: "n-1", caseDigest: caseDigest(c) };
+    assert.deepEqual(workerFindings({ envelope, expected, listed: listedBy(p.out, envelope), records: recordsOf(p.out, envelope), frozen: c, provedBy: (s) => dsl.provedBy(s), grants: [] }), [], "the one call the host makes holds the envelope, the claim and the spends");
     assert.equal(JSON.stringify(envelope).includes("token-a"), false, "a secret never reaches the envelope");
     rmSync(p.dir, { recursive: true, force: true });
   }

@@ -98,3 +98,11 @@ function overspent(spends, minted) {
   const counts = spends.reduce((m, s) => m.set(s.grant, (m.get(s.grant) ?? 0) + 1), new Map());
   return [...counts].filter(([id, n]) => minted.has(id) && n > (minted.get(id).bounds?.maxUses ?? 1)).map(([id, n]) => `${id} was used ${n} times and allows ${minted.get(id).bounds?.maxUses ?? 1}`);
 }
+
+// Everything the host holds a worker's run to, in one call, so no check can be left out of the
+// path that writes authoritative records: the envelope, the re-derived claim and the grant spends.
+export function workerFindings({ envelope, expected, listed, records, frozen, provedBy, canStop, grants }) {
+  const own = envelopeFindings(envelope, expected, listed);
+  if (own.length || !envelope.result) return own;
+  return [...rederivedFindings(envelope.result, frozen, records, provedBy, expected, canStop), ...spendFindings(records, grants)];
+}

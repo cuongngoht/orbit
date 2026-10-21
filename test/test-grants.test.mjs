@@ -10,6 +10,10 @@ import { Refused } from "../src/errors.mjs";
 import { spendFindings } from "../src/run/envelope.mjs";
 import { grantLedger } from "../src/run/grants.mjs";
 import { GRANT_API, MINT, mintGrant } from "../src/runtime/sandbox/test-grants.mjs";
+import { canonicalJson, sha } from "../src/hash.mjs";
+
+const INPUT = { endpointRef: "backend", identityRef: "tenant-a-writer", method: "POST", path: "/invoices" };
+const DIGEST = sha(canonicalJson(INPUT));
 import { fakeTools } from "./fakes/tools.mjs";
 
 const world = (over = {}) => ({
@@ -18,10 +22,10 @@ const world = (over = {}) => ({
   attempt: 1,
   sandbox: { owner: { kind: "task", id: "tsk-1" }, tree: "tree-a", currentTree: "tree-a", isolated: true },
   mode: { id: "fixture-write", mutates: true },
-  capability: { id: "orbit.http.write", version: "0.0.4", mutatingEffects: ["write"] },
+  capability: { id: "orbit.http.write", version: "0.0.4", from: "pack:orbit-api-test", mutatingEffects: ["write"] },
   operation: { class: "write", selectors: { method: "POST", path: "/invoices" } },
   fixture: { namespace: "orbit-ab12", resources: ["backend"] },
-  requested: { resources: ["backend"], indirect: ["notification-sink"], inputDigest: null },
+  requested: { resources: ["backend"], indirect: ["notification-sink"], inputDigest: DIGEST },
   sinks: ["notification-sink"],
   design: { oracleRef: "bnd-abc123", designRef: "tds-abc123", operations: ["write"] },
   budget: { uses: 4 },
@@ -36,9 +40,10 @@ const breaks = {
   ISOLATED: { sandbox: { owner: { kind: "task", id: "tsk-1" }, tree: "tree-a", currentTree: "tree-a", isolated: false } },
   MODE: { mode: { id: "observe", mutates: false } },
   CAPABILITY: { capability: { id: "orbit.http.read", mutatingEffects: [] } },
-  FIXTURE: { requested: { resources: ["someone-elses-db"], indirect: [] } },
-  INDIRECT: { requested: { resources: ["backend"], indirect: ["real-payment-gateway"] } },
+  FIXTURE: { requested: { resources: ["someone-elses-db"], indirect: [], inputDigest: DIGEST } },
+  INDIRECT: { requested: { resources: ["backend"], indirect: ["real-payment-gateway"], inputDigest: DIGEST } },
   DESIGN: { design: { operations: ["write"] } },
+  INPUT: { requested: { resources: ["backend"], indirect: ["notification-sink"], inputDigest: null } },
   ALLOWLIST: { design: { oracleRef: "bnd-abc123", designRef: "tds-abc123", operations: ["read"] } },
   BUDGET: { budget: { uses: 0 } },
   TREE: { sandbox: { owner: { kind: "task", id: "tsk-1" }, tree: "tree-a", currentTree: "tree-b", isolated: true } },
@@ -66,7 +71,7 @@ test("a duplicate or a replay on purpose is a grant of its own, and a grant neve
   assert.notEqual(mintGrant(world()).grant.id, dup.id);
 });
 
-const writer = { id: "orbit.http.write", apiVersion: "orbit.capability/v1", doc: "writes", page: false, mutates: true, effects: ["write"], inputSchema: { endpointRef: { type: "string", bind: "endpoint", doc: "where" }, path: { type: "string", doc: "what" } }, invoke: (ext, input) => ({ wrote: input.path }) };
+const writer = { id: "orbit.http.write", apiVersion: "orbit.capability/v1", doc: "writes", page: false, mutates: true, effects: ["write"], inputSchema: { endpointRef: { type: "string", bind: "endpoint", doc: "where" }, identityRef: { type: "string", bind: "identity", doc: "as whom" }, method: { type: "string", doc: "how" }, path: { type: "string", doc: "what" } }, invoke: (ext, input) => ({ wrote: input.path }) };
 
 function setup(grants, now = () => 2_000) {
   const capabilities = createCapabilityRegistry();
@@ -76,7 +81,7 @@ function setup(grants, now = () => 2_000) {
   return { ctx, records, run: { c: { id: "generated-write" }, log: { record: (r) => records.push(r) } } };
 }
 
-const step = (input = { endpointRef: "backend", path: "/invoices" }) => ({ do: "call", capability: "orbit.http.write", input });
+const step = (input = INPUT) => ({ do: "call", capability: "orbit.http.write", input });
 
 test("a write under a grant is made once; a second use of a one-use grant is refused -- a retry is never a duplicate", () => {
   const { grant } = mintGrant(world());
@@ -92,8 +97,12 @@ test("no grant, another run's grant, an expired one, another resource or another
     [[], /no test grant was minted for this run/],
     [[{ ...grant, run: "run-2" }], /another run/],
     [[grant], /it expired/, () => grant.expiresAtMs + 1],
-    [[grant], /a resource it would touch is not granted/, undefined, { endpointRef: "someone-elses", path: "/x" }],
+    [[{ ...grant, input: { digest: sha(canonicalJson({ ...INPUT, endpointRef: "someone-elses" })) } }], /a resource it would touch is not granted/, undefined, { ...INPUT, endpointRef: "someone-elses" }],
     [[{ ...grant, input: { digest: "0".repeat(64) } }], /the input differs/],
+    [[grant], /the input differs/, undefined, { ...INPUT, path: "/other" }],
+    [[{ ...grant, input: { digest: sha(canonicalJson({ ...INPUT, path: "/other" })) } }], /the operation differs/, undefined, { ...INPUT, path: "/other" }],
+    [[{ ...grant, input: { digest: sha(canonicalJson({ ...INPUT, identityRef: "tenant-b-writer" })) } }], /another principal/, undefined, { ...INPUT, identityRef: "tenant-b-writer" }],
+    [[{ ...grant, capability: { ...grant.capability, from: "pack:another" } }], /another provider/],
   ];
   for (const [grants, re, now, input] of cases) {
     const s = setup(grants, now);

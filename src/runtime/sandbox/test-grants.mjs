@@ -31,6 +31,7 @@ export const MINT = [
   { id: "FIXTURE", holds: (w) => Boolean(w.fixture?.namespace) && (w.requested?.resources ?? []).every((r) => (w.fixture.resources ?? []).includes(r)), say: (w) => `a resource it would touch is not in this run's fixture (${missing(w.requested?.resources, w.fixture?.resources).join(", ") || "no fixture"})` },
   { id: "INDIRECT", holds: (w) => (w.requested?.indirect ?? []).every((r) => (w.sinks ?? []).includes(r)), say: (w) => `an indirect effect would leave the fixture (${missing(w.requested?.indirect, w.sinks).join(", ")}) — a publish never allows a consumer to reach a real sink` },
   { id: "DESIGN", holds: (w) => Boolean(w.design?.oracleRef && w.design?.designRef), say: () => "no oracle and design are bound — a write is never made to see what happens" },
+  { id: "INPUT", holds: (w) => typeof w.requested?.inputDigest === "string" && w.requested.inputDigest.length === 64, say: () => "the exact input is not pinned — a grant covers one input, digested, never whatever a call sends" },
   { id: "ALLOWLIST", holds: (w) => (w.design?.operations ?? []).includes(w.operation?.class), say: (w) => `the design did not declare ${w.operation?.class ?? "this operation"}` },
   { id: "BUDGET", holds: (w) => (w.budget?.uses ?? 0) > 0, say: () => "the run's write budget is spent" },
   { id: "TREE", holds: (w) => Boolean(w.sandbox?.tree) && w.sandbox.tree === w.sandbox.currentTree, say: (w) => `the sandbox runs tree ${w.sandbox?.tree ?? "?"}, the task now holds ${w.sandbox?.currentTree ?? "?"}` },
@@ -46,7 +47,7 @@ export function mintGrant(world) {
 }
 
 function grantOf(w) {
-  const body = { v: GRANT_API, task: w.task, run: w.run, attempt: w.attempt ?? 1, sandbox: { tree: w.sandbox.tree }, capability: { id: w.capability.id, version: w.capability.version ?? null }, principal: w.principal ?? null, resources: [...(w.requested.resources ?? [])].sort(), operation: { class: w.operation.class, selectors: w.operation.selectors ?? {} }, input: { digest: w.requested.inputDigest ?? null }, effects: { scope: "fixture", indirect: [...(w.requested.indirect ?? [])].sort() }, bounds: boundsOf(w), expiresAtMs: w.nowMs + (w.ttlMs ?? 15 * 60 * 1000), policyRevision: w.policy.revision ?? null };
+  const body = { v: GRANT_API, task: w.task, run: w.run, attempt: w.attempt ?? 1, sandbox: { tree: w.sandbox.tree }, capability: { id: w.capability.id, version: w.capability.version ?? null, from: w.capability.from ?? null }, principal: w.principal ?? null, resources: [...(w.requested.resources ?? [])].sort(), operation: { class: w.operation.class, selectors: w.operation.selectors ?? {} }, input: { digest: w.requested.inputDigest ?? null }, effects: { scope: "fixture", indirect: [...(w.requested.indirect ?? [])].sort() }, bounds: boundsOf(w), expiresAtMs: w.nowMs + (w.ttlMs ?? 15 * 60 * 1000), policyRevision: w.policy.revision ?? null };
   return { ...body, id: `grt-${short(canonicalJson(body), 16)}`, digest: sha(canonicalJson(body)) };
 }
 

@@ -654,9 +654,12 @@ control-server/src/live/  Orbit LIVE in Control: the TRANSPORT of the live core 
                before any header; every refusal is the ordinary JSON one, and nothing here writes
 src/run/       the interpreter: gates/ → step.mjs → verbs/<verb>.mjs; loop, evidence, log, printer, result
                budget.mjs + poll.mjs the ONE wait loop; watermark.mjs; status.mjs the final verdict
-src/run/evaluator.mjs · envelope.mjs · gates/fixture.mjs  (0.1.0, ADR 0038, 0037) the PREDICATE port: inline
-               (`new Function`, kept for accepted person-authored cases) or compiled (a pure op-table
-               interpreter; a generated predicate is only ever this) · the HOST's check of a worker's
+src/run/evaluator.mjs · envelope.mjs · gates/fixture.mjs  (0.1.0, ADR 0038, 0037) the PREDICATE judge: a
+               compiled predicate (`compiled:` + canonical JSON, whose format is the leaf src/predicate.mjs)
+               interpreted by one judge per template -- HOLDS, VIOLATED or UNDECIDED (blocked as incomplete),
+               never `new Function`; a person's inline expect stays in verdict.mjs, and a run under a design
+               (`ctx.evaluation`) judges nothing inline and holds each step to the digest its design pinned ·
+               the HOST's check of a worker's
                envelope: ids, digests, attestation, files, status and `proved` re-derived from the frozen case,
                and only after it passes is anything recorded · the gate a fixture-scoped write needs
 src/report/    one run's evidence -> ONE self-contained report.html, pictures embedded AND the
@@ -687,8 +690,11 @@ src/qa/walk.mjs · obligations/ · backend/ · generation/ · security/  (0.1.0,
                plans and sidecars share · obligations/ (contract.mjs `orbit.qa-sidecar/v1` with STAMPED ·
                authority.mjs the ordered AUTHORITY rows over owners' answers HANDED IN · validate.mjs ·
                shapes.mjs OBLIGATION_SHAPES · derive.mjs) · backend/ (workloads, bindings, semantics,
-               observations, temporal, correlation: absence only within a closed window) · generation/ (design,
-               controls, compile.mjs ASSERTION_TEMPLATES and the deterministic mapping, repair, version) ·
+               skeleton.mjs, observations, temporal, correlation: armed before the trigger, non-stealing,
+               matched by identity, a window only from an accepted `within`) · generation/ (design.mjs the
+               ordered STAGES a proposal is held to, ending in the REAL validator; controls; compile.mjs the
+               deterministic mapping from an accepted expectation to a predicate; repair keeps the oracle;
+               version freezes the case) ·
                security/ (catalog `orbit.control-catalog/v1`, applicability over structural roles, assessment).
                Imports no requirements, sources or architecture, and names no product, table or status code
                (test/backend-neutral.test.mjs)
@@ -845,9 +851,12 @@ skills/orbit-api-test/  (0.1.0) the HTTP PACK, opted into by `packs`: orbit.http
                           byte cap, every response an observation) · schema.mjs (a DECLARED subset of JSON Schema
                           2020-12; anything else a CAPABILITY_MISSING gap) · contracts/openapi.mjs (an accepted
                           API contract read into structured expectations)
-skills/orbit-backend-test/  (0.1.0) the BACKEND PACK: reference ADAPTERS (amqp/, jetstream/ -- examples of
-                          `orbit.adapter/v1`, their product words kept here) · schedule/ (dialects, time zones
-                          through Intl) · contracts/asyncapi.mjs
+skills/orbit-backend-test/  (0.1.0) the BACKEND PACK: capabilities.mjs (every selecting family operation, from
+                          src/adapters/core.mjs, and orbit.schedule.expect) · adapters.json + reference ADAPTERS
+                          (amqp/, jetstream/ -- examples of `orbit.adapter/v1`, their product words kept here;
+                          hooks/ -- the orbit.scheduler/v1, orbit.clock/v1 and orbit.workload/v1 test hooks a
+                          project exposes) · schedule/ (dialects, time zones through Intl, helper.mjs) ·
+                          contracts/asyncapi.mjs
 skills/orbit-adapter-kit/  (0.1.0) CONFORMANCE KITS, one per family, and conform.mjs; their receipts are what the
                           support matrix is computed from
 skills/orbit-reverse-engineer/  (0.1.0) the REVERSE ENGINEERING playbook: graph facts and unknowns from source,

@@ -3,126 +3,6 @@
   "doc": "Conformance receipts the reference adapters earned on REAL systems, written only by a kit's --record (acceptance/kits/). The support matrix is computed from these (src/adapters/matrix.mjs); a receipt for another version, fingerprint or code digest counts for nothing.",
   "receipts": [
     {
-      "kit": "messaging",
-      "adapter": {
-        "id": "amqp.reference",
-        "version": "0.0.4",
-        "fingerprint": "e2f0008c881ed950cbee765d8ceceb1c84d9dcffd7930da06f895e22dd11b201",
-        "code": "77f92fd76fb6f616e4fbe1fa21dec252c42005b9aed11f5c50c55c97d0d51f74",
-        "transport": "amqp-0-9-1"
-      },
-      "system": {
-        "image": "rabbitmq@sha256:71be6ca71cd3ad92f29b354ec381b1ee587894aaaac21f185b8cf43fb50d3feb",
-        "emulated": false
-      },
-      "at": "2026-10-21T18:54:52.237Z",
-      "results": [
-        {
-          "id": "publish-confirmed",
-          "ops": [
-            "publish",
-            "fixture.prepare",
-            "fixture.cleanup"
-          ],
-          "outcome": "passed"
-        },
-        {
-          "id": "unroutable-not-confirmed",
-          "ops": [
-            "publish"
-          ],
-          "outcome": "passed"
-        },
-        {
-          "id": "observe-complete-window",
-          "ops": [
-            "observe",
-            "observe.await",
-            "publish",
-            "fixture.prepare"
-          ],
-          "outcome": "passed"
-        },
-        {
-          "id": "observer-non-stealing",
-          "ops": [
-            "observe",
-            "observe.await",
-            "fixture.prepare"
-          ],
-          "outcome": "passed"
-        },
-        {
-          "id": "fixture-own-namespace",
-          "ops": [
-            "fixture.prepare",
-            "fixture.cleanup"
-          ],
-          "outcome": "passed"
-        }
-      ]
-    },
-    {
-      "kit": "messaging",
-      "adapter": {
-        "id": "jetstream.reference",
-        "version": "0.0.4",
-        "fingerprint": "1ea0015bf09184707246003cfe5c6912060af54f495cdb1a5208378b3e1e9add",
-        "code": "7c4d74d4586916c06b63571cfd65cecaefea6c5f4fb2f3b702770789ca960408",
-        "transport": "nats-jetstream"
-      },
-      "system": {
-        "image": "nats@sha256:2ae57dfba3063d5e25fecb75256118c0882a1a2d2cf7d0fba17a7c701df956f6",
-        "emulated": false
-      },
-      "at": "2026-10-21T18:54:55.781Z",
-      "results": [
-        {
-          "id": "publish-confirmed",
-          "ops": [
-            "publish",
-            "fixture.prepare",
-            "fixture.cleanup"
-          ],
-          "outcome": "passed"
-        },
-        {
-          "id": "unroutable-not-confirmed",
-          "ops": [
-            "publish"
-          ],
-          "outcome": "passed"
-        },
-        {
-          "id": "observe-complete-window",
-          "ops": [
-            "observe",
-            "observe.await",
-            "publish",
-            "fixture.prepare"
-          ],
-          "outcome": "passed"
-        },
-        {
-          "id": "observer-non-stealing",
-          "ops": [
-            "observe",
-            "observe.await",
-            "fixture.prepare"
-          ],
-          "outcome": "passed"
-        },
-        {
-          "id": "fixture-own-namespace",
-          "ops": [
-            "fixture.prepare",
-            "fixture.cleanup"
-          ],
-          "outcome": "passed"
-        }
-      ]
-    },
-    {
       "kit": "scheduler",
       "adapter": {
         "id": "scheduler.hooks",
@@ -220,6 +100,126 @@
           "id": "attempts-by-cursor",
           "ops": [
             "observe"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "kit": "messaging",
+      "adapter": {
+        "id": "amqp.reference",
+        "version": "0.0.4",
+        "fingerprint": "d47cbf9ee6f335b8cc23ab42b3d1135cdd78b521924ca20c19eb18b75a009768",
+        "code": "77f92fd76fb6f616e4fbe1fa21dec252c42005b9aed11f5c50c55c97d0d51f74",
+        "transport": "amqp-0-9-1"
+      },
+      "system": {
+        "image": "rabbitmq@sha256:71be6ca71cd3ad92f29b354ec381b1ee587894aaaac21f185b8cf43fb50d3feb",
+        "emulated": false
+      },
+      "at": "2026-10-21T19:19:20.279Z",
+      "results": [
+        {
+          "id": "publish-confirmed",
+          "ops": [
+            "publish",
+            "fixture.prepare",
+            "fixture.cleanup"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "unroutable-not-confirmed",
+          "ops": [
+            "publish"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "observe-complete-window",
+          "ops": [
+            "observe",
+            "observe.await",
+            "publish",
+            "fixture.prepare"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "observer-non-stealing",
+          "ops": [
+            "observe",
+            "observe.await",
+            "fixture.prepare"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "fixture-own-namespace",
+          "ops": [
+            "fixture.prepare",
+            "fixture.cleanup"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "kit": "messaging",
+      "adapter": {
+        "id": "jetstream.reference",
+        "version": "0.0.4",
+        "fingerprint": "4a2f302ee6866d0df19fcaaf24a1008215ab18538264734bef252c3a644b5e70",
+        "code": "7c4d74d4586916c06b63571cfd65cecaefea6c5f4fb2f3b702770789ca960408",
+        "transport": "nats-jetstream"
+      },
+      "system": {
+        "image": "nats@sha256:2ae57dfba3063d5e25fecb75256118c0882a1a2d2cf7d0fba17a7c701df956f6",
+        "emulated": false
+      },
+      "at": "2026-10-21T19:19:23.884Z",
+      "results": [
+        {
+          "id": "publish-confirmed",
+          "ops": [
+            "publish",
+            "fixture.prepare",
+            "fixture.cleanup"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "unroutable-not-confirmed",
+          "ops": [
+            "publish"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "observe-complete-window",
+          "ops": [
+            "observe",
+            "observe.await",
+            "publish",
+            "fixture.prepare"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "observer-non-stealing",
+          "ops": [
+            "observe",
+            "observe.await",
+            "fixture.prepare"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "fixture-own-namespace",
+          "ops": [
+            "fixture.prepare",
+            "fixture.cleanup"
           ],
           "outcome": "passed"
         }

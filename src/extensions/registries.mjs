@@ -20,8 +20,12 @@ import { createReportingParts } from "./reporting-parts.mjs";
 
 export function emptyRegistries() {
   const dsl = createDslRegistry();
-  return { dsl, executors: coreExecutors(dsl), capabilities: createCapabilityRegistry(), adapters: emptyAdapters(), validators: createValidatorRegistry(), knowledge: createKnowledgeParts(), reporting: createReportingParts() };
+  return { dsl, executors: coreExecutors(dsl), capabilities: createCapabilityRegistry(), adapters: emptyAdapters(), helpers: INERT_LAUNCHER, validators: createValidatorRegistry(), knowledge: createKnowledgeParts(), reporting: createReportingParts() };
 }
+
+// A throwaway LOADS what it judges and runs none of it: a candidate being verified names no home
+// in the launcher of the context it was judged beside, and nothing it declares can be started.
+const INERT_LAUNCHER = Object.freeze({ launch: () => ({ why: "a context that only judges what it loads launches nothing" }), home: () => {} });
 
 // A throwaway judges an adapter against the plugin's own semantics vocabulary, exactly as a
 // registered one is judged (ADR 0035).

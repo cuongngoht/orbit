@@ -50,11 +50,23 @@ function sealed(r, kind, ref) {
 // here.
 export function localLauncher(pluginRoot, io, base = {}) {
   const homes = new Map();
-  return { launch: (cap, op) => launched(pluginRoot, io, base, homes, cap), home: (from, home) => void homes.set(String(from), home) };
+  return { launch: (cap, op) => launched(pluginRoot, io, base, homes, cap), home: (from, home) => homed(homes, String(from), home) };
+}
+
+// A home is recorded ONCE, and only for an extension's own id. A pack is found only where the
+// plugin's catalog says it is -- nothing a project's room holds can stand in for one -- and a
+// second home for an id already recorded (a candidate being verified, a room edited by hand) never
+// replaces the first.
+const OWN_ID = /^[a-z0-9][a-z0-9-]*$/;
+
+function homed(homes, from, home) {
+  if (!OWN_ID.test(from) || homes.has(from)) return;
+  homes.set(from, home);
 }
 
 function launched(pluginRoot, io, base, homes, cap) {
-  const home = homes.get(String(cap?.from ?? "")) ?? packHome(pluginRoot, io, String(cap?.from ?? ""));
+  const from = String(cap?.from ?? "");
+  const home = from.startsWith("pack:") ? packHome(pluginRoot, io, from) : homes.get(from) ?? null;
   const argv = cap?.helper?.argv ?? [];
   if (!home || !argv.length || cap.helper.runIn === "image") return { why: home ? "it runs in an image of its own, which this launcher does not start" : "nothing here knows where its helper lives — only a pack or an extension this context loaded can be launched" };
   return { env: { ...(base.env ?? {}) }, cwd: home.dir, ...LAUNCHES.find((row) => row.when(String(argv[0]))).as(home, argv, base) };

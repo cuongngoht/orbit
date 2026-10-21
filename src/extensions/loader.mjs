@@ -109,6 +109,7 @@ function parsed(tools, id) {
 // A draft is well formed and not trusted; an engine mismatch is trusted and not
 // this engine. Saying which is what tells somebody whether to verify or upgrade.
 function gateOf(manifest, id) {
+  if (manifest.id !== id) return `its directory is named ${String(id).slice(0, 60)} and its manifest says ${String(manifest.id).slice(0, 60)} — an extension's directory IS its id, so it is who a registry records`;
   if (!isLoadable(manifest)) return notLoadableWhy(manifest);
   return engineProblem(manifest);
 }

@@ -22,10 +22,10 @@ const PATH = /^\/(?![\/\\])[A-Za-z0-9/_.~-]{0,200}$/;
 
 const ownerOf = (node) => (node?.of ? String(node.of).replace(/^[a-z-]+:/, "") : null);
 
-// in: { graph: graphOf(...) view, design: the design sidecar }
-export function declarationsFrom({ graph, design }) {
+// in: { graph: graphOf(...) view, design: the design sidecar, tenancy: a PERSON's declared tenancy contract }
+export function declarationsFrom({ graph, design, tenancy }) {
   const nodes = graph?.nodes ?? [];
-  return (kind, alias) => (DECLARE[kind] ? DECLARE[kind](nodes, alias, design ?? {}) : null);
+  return (kind, alias) => (DECLARE[kind] ? DECLARE[kind](nodes, alias, design ?? {}, tenancy ?? null) : null);
 }
 
 const named = (nodes, roles, alias) => nodes.find((n) => roles.includes(n.role) && aliasOf(n.name) === alias) ?? null;
@@ -63,4 +63,15 @@ const observer = (nodes, alias, design) => ((o) => (o?.channelRef ? { channel: o
 
 const fixture = (nodes, alias, design) => ((design.fixtureRefs ?? []).includes(alias) ? {} : null);
 
-const DECLARE = { channel, queue: channel, endpoint, schedule: hooked(["schedule"], "schedule"), workload: hooked(["workload"], "workload"), clock, observer, fixture };
+// An identity is a principal-class node, issued through the test hooks of the component it belongs to, as the tenant a
+// PERSON's tenancy contract says it acts in -- never a tenant read off the code, and none at all when nobody said.
+function identity(nodes, alias, design, tenancy) {
+  const node = named(nodes, ["principal"], alias);
+  const tenant = tenantOf(tenancy, alias);
+  return node && tenant && hooksPortOf(nodes, node) ? { node: ownerOf(node), port: hooksPortOf(nodes, node), principal: alias, tenant } : null;
+}
+
+// The claim value of the first tenant the contract says this identity may act in.
+const tenantOf = (tenancy, alias) => ((logical) => (logical ? tenancy?.tenants?.[logical] ?? null : null))(tenancy?.identities?.[alias]?.[0]);
+
+const DECLARE = { channel, queue: channel, endpoint, schedule: hooked(["schedule"], "schedule"), workload: hooked(["workload"], "workload"), clock, observer, fixture, identity };

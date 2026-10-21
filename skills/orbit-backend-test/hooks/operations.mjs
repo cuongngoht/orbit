@@ -8,6 +8,12 @@
 //   orbit.clock/v1      POST /orbit/clock/v1/advance {to} -> { evaluatedThrough }, a barrier
 //   orbit.workload/v1   GET  /orbit/workload/v1/attempts?since&workload    -> { attempts, through }
 //                       POST /orbit/workload/v1/control {workload, action, point?}
+//   orbit.identity/v1   POST /orbit/identity/v1/issue {principal, tenant}  -> { token }
+//
+// An identity is issued INSIDE the task's network, by the run's own binder (src/run/worker.mjs):
+// nothing on the host reaches the hooks of an isolated sandbox. The token it answers is handed back
+// to that binder alone and goes into a helper's environment -- it is never an output, a log line or
+// an answer a case can read.
 //
 // The ORIGIN is the bound resource's -- a component the task started -- and the path is the
 // protocol's, never the request's; a redirect is not followed. The hooks' own credential is read
@@ -30,6 +36,7 @@ const OPS = {
   advance: (asked, deps) => advance(asked, deps),
   attempts: (asked, deps) => attempts(asked, deps),
   control: (asked, deps) => control(asked, deps),
+  issue: (asked, deps) => issue(asked, deps),
 };
 
 export const OPERATIONS = Object.keys(OPS);
@@ -128,6 +135,15 @@ async function control(asked, deps) {
   if (!ACTIONS.includes(action)) return refusal(`request.action is one of ${ACTIONS.join(", ")}`);
   const body = await called(asked, deps, { origin: originOf(workload), auth: authOf(workload, deps), method: "POST", path: "/orbit/workload/v1/control", body: { workload: workload.workload, action, ...(point ? { point: String(point) } : {}) }, writes: `control:${workload.workload}:${action}${point ? `:${point}` : ""}` });
   return { value: { status: body.status ?? null } };
+}
+
+// A synthetic identity, as the principal and tenant the binding names: a write whose answer was lost is AMBIGUOUS,
+// keyed by who it was for, and never sent again.
+async function issue(asked, deps) {
+  const identity = asked.bound.identityRef ?? {};
+  if (!NAME.test(String(identity.principal ?? "")) || !NAME.test(String(identity.tenant ?? ""))) return refusal("the bound identity names no principal and tenant its hooks can issue it as");
+  const body = await called(asked, deps, { origin: originOf(identity), auth: authOf(identity, deps), method: "POST", path: "/orbit/identity/v1/issue", body: { principal: identity.principal, tenant: identity.tenant }, writes: `issue:${identity.principal}:${identity.tenant}` });
+  return typeof body.token === "string" && body.token.length >= 16 ? { value: { principal: body.principal ?? identity.principal, token: body.token } } : { failure: { class: "protocol", message: "the identity hooks answered no token" } };
 }
 
 // ── reads by a cursor, for a bounded window ────────────────────────────────

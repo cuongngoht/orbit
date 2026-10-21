@@ -37,8 +37,8 @@ import { engineVersion } from "../../src/version.mjs";
 
 // ── what a ref is, read once for both ports ────────────────────────────────
 
-// in: { ctx, graph, topology, services, design }
-const resolver = (b) => ({ ctx: b.ctx, declarationOf: declarationsFrom({ graph: b.graph, design: b.design }), topology: b.topology ?? null, services: b.services ?? {}, lookup: capabilityLookup(b.ctx) });
+// in: { ctx, graph, topology, services, design, tenancy }
+const resolver = (b) => ({ ctx: b.ctx, declarationOf: declarationsFrom({ graph: b.graph, design: b.design, tenancy: b.tenancy }), topology: b.topology ?? null, services: b.services ?? {}, lookup: capabilityLookup(b.ctx) });
 
 const nodeNamed = (r, name) => (r.topology?.nodes ?? []).find((n) => n.name === name || n.key === name || n.alias === name) ?? null;
 

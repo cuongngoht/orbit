@@ -32,7 +32,7 @@ import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { readAll } from "../src/capability/helper-protocol.mjs";
 import { shaBytes } from "../src/hash.mjs";
-import { argvOf, requestProblem, sealedBinder, WORKER_API } from "../src/run/worker.mjs";
+import { argvOf, identityIssuer, requestProblem, sealedBinder, WORKER_API } from "../src/run/worker.mjs";
 import { grantLedger } from "../src/run/grants.mjs";
 import { shownPath } from "../src/shown-path.mjs";
 import { publishRun } from "../src/report/publish.mjs";
@@ -122,8 +122,17 @@ async function workerMain() {
   const request = jsonOf(await readAll(process.stdin));
   const problem = requestProblem(request);
   if (problem) return enveloped(request ?? {}, { status: "REFUSED", why: problem });
-  try { enveloped(request, ran(await withExtensions({ ...createContext(), binder: sealedBinder(request), grants: grantLedger(request.grants, request.runId, Date.now), fixture: request.fixture ?? null, evaluation: request.evaluation ?? null }), request)); }
+  try { enveloped(request, ran(await issuing(request), request)); }
   catch (e) { enveloped(request, stopOf(e)); }
+}
+
+// The worker's context: its binder holds only what the host sealed, and issues an identity the host could not
+// through this very context's adapters -- bound after the context, which the binder is part of.
+async function issuing(request) {
+  const late = {};
+  const ctx = await withExtensions({ ...createContext(), binder: sealedBinder(request, { issue: (value, env) => late.issue(value, env) }), grants: grantLedger(request.grants, request.runId, Date.now), fixture: request.fixture ?? null, evaluation: request.evaluation ?? null });
+  late.issue = identityIssuer(ctx);
+  return ctx;
 }
 
 const ran = (ctx, request) => ((outcome) => ({ status: outcome.status, result: resultJson(outcome) }))(runCase(ctx, argvOf(request)));

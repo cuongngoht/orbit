@@ -115,7 +115,7 @@ const HOOKS_TOKEN_ENV = "ORBIT_TEST_HOOKS_TOKEN";
 // graph frozen into it, and -- when it was begun against one -- the task's isolated sandbox.
 function portsFor(ctx, machine, w) {
   if (!w.id) return {};
-  const b = { ctx, model: () => modelOf(w.store.read(w.id)), planOf: (id) => qaPlan(ctx, id), graph: () => frozenGraph(w), drafts: createDrafts(machine.store.root, machine.io), settings: w.settings, mode: w.mode, now: () => Date.now(), ...sandboxPorts(ctx, machine, w) };
+  const b = { ctx, model: () => modelOf(w.store.read(w.id)), planOf: (id) => qaPlan(ctx, id), graph: () => frozenGraph(w), drafts: createDrafts(machine.store.root, machine.io), settings: w.settings, tenancy: w.settings.tenancy, mode: w.mode, now: () => Date.now(), ...sandboxPorts(ctx, machine, w) };
   return { generation: generationPort(b), dispatch: dispatchPort(b) };
 }
 

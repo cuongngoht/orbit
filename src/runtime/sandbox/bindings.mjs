@@ -138,10 +138,22 @@ function hooked(protocol) {
   };
 }
 
+// An identity the host issued is sealed with its token. One it cannot -- nothing on this machine reaches the hooks
+// of an isolated sandbox -- is sealed as HOW to issue it inside the task's network: the principal and tenant a
+// person's contract names and the identity hooks of the component it belongs to, with the token those hooks need.
+// The run's binder issues it there (src/run/worker.mjs), and its token goes nowhere but a helper's environment.
 function identity(ref, input) {
   const issued = input.minted?.identities?.[ref.alias];
-  if (!issued?.token) return { why: `no identity named ${ref.alias} was issued for this run` };
-  return { value: { alias: ref.alias, principal: issued.principal ?? ref.alias, env: SECRET(ref.alias, "TOKEN") }, secrets: { [SECRET(ref.alias, "TOKEN")]: issued.token } };
+  if (issued?.token) return { value: { alias: ref.alias, principal: issued.principal ?? ref.alias, env: SECRET(ref.alias, "TOKEN") }, secrets: { [SECRET(ref.alias, "TOKEN")]: issued.token } };
+  return issuedInside(ref, input);
+}
+
+function issuedInside(ref, input) {
+  const d = declared(ref, input);
+  if (d.why) return { why: `no identity named ${ref.alias} was issued for this run, and ${d.why}` };
+  if (!input.minted?.hooksToken) return { why: `${ref.alias} is issued through test hooks, and this sandbox minted no hooks token` };
+  const port = portNumber(d.decl.port);
+  return port ? { value: { alias: ref.alias, principal: d.decl.principal, tenant: d.decl.tenant, env: SECRET(ref.alias, "TOKEN"), issue: { transport: HOOK_PROTOCOLS.identity, origin: `http://${hostOf(d.node, input.topology)}:${port}`, credential: { tokenEnv: HOOKS_TOKEN } } }, secrets: { [HOOKS_TOKEN]: input.minted.hooksToken } } : { why: `${ref.alias}'s hooks name no port a TCP port can be` };
 }
 
 function asDeclared(ref, input) {
@@ -151,7 +163,7 @@ function asDeclared(ref, input) {
 
 // The open test-hook protocol each hooked kind is reached by (ADR 0035): the transport its value carries, so the
 // adapter that speaks that protocol is the one chosen.
-export const HOOK_PROTOCOLS = { schedule: "orbit-scheduler-v1", clock: "orbit-clock-v1", workload: "orbit-workload-v1" };
+export const HOOK_PROTOCOLS = { schedule: "orbit-scheduler-v1", clock: "orbit-clock-v1", workload: "orbit-workload-v1", identity: "orbit-identity-v1" };
 
 const KINDS = { endpoint, channel, queue: channel, observer, fixture, schedule: hooked(HOOK_PROTOCOLS.schedule), clock: hooked(HOOK_PROTOCOLS.clock), workload: hooked(HOOK_PROTOCOLS.workload), identity, schema: asDeclared, occurrence: asDeclared, state: asDeclared };
 

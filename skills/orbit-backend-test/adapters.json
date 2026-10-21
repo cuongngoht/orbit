@@ -482,6 +482,43 @@
         "kit": "worker",
         "params": {}
       }
+    },
+    {
+      "id": "identity.hooks",
+      "apiVersion": "orbit.adapter/v1",
+      "version": "0.0.4",
+      "doc": "a project's own synthetic identities, through the orbit.identity/v1 test hooks it exposes: one issued for a principal and a tenant, its token handed to the run's binder alone",
+      "family": "identity",
+      "transports": [
+        "orbit-identity-v1"
+      ],
+      "operations": {
+        "issue": {
+          "op": "issue",
+          "doc": "issue one synthetic identity as the principal and tenant the binding names; its token is never an output",
+          "effects": [
+            "create-resource"
+          ],
+          "outputs": {
+            "principal": "principal.claims"
+          }
+        }
+      },
+      "semantics": {},
+      "limits": {
+        "timeoutMs": 30000,
+        "answerBytes": 65536
+      },
+      "helper": {
+        "argv": [
+          "hooks/helper.mjs"
+        ],
+        "runIn": "worker"
+      },
+      "conformance": {
+        "kit": "identity",
+        "params": {}
+      }
     }
   ]
 }

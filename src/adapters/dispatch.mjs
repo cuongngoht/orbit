@@ -44,7 +44,8 @@ function answered(ctx, run, inv, adapter, row, request, target) {
 // operation's. A wider number anywhere never widens what a narrower one said.
 const narrowest = (...sets) => Object.fromEntries(Object.keys(LIMIT_FIELDS).map((k) => [k, Math.min(...sets.map((s) => s?.[k] ?? Infinity))]).filter(([, v]) => v !== Infinity));
 
-const asCapability = (a) => ({ id: a.id, from: a.from, helper: a.helper, ...(a.limits?.timeoutMs ? { timeoutSec: Math.ceil(a.limits.timeoutMs / 1000) } : {}) });
+// An adapter as the helper facade launches it: its own id, owner and helper, under its own ceiling.
+export const asCapability = (a) => ({ id: a.id, from: a.from, helper: a.helper, ...(a.limits?.timeoutMs ? { timeoutSec: Math.ceil(a.limits.timeoutMs / 1000) } : {}) });
 
 // Only the fields the adapter declared, and inside a list only each item's declared fields.
 function projected(answer, outputs) {

@@ -9,6 +9,9 @@
 // resolved (no URL a case typed, no address a model guessed) and the secrets an identity needs,
 // on stdin only -- they reach a helper's environment and nothing else.
 import { join } from "node:path";
+import { asCapability } from "../adapters/dispatch.mjs";
+import { selectAdapter } from "../adapters/select.mjs";
+import { helperFacade } from "../capability/helper.mjs";
 import { catalogFile, readCatalog, rowsOf } from "../catalog.mjs";
 import { contained } from "../project/boundary.mjs";
 
@@ -34,16 +37,49 @@ export function argvOf(r) {
 // The binder a worker gets: only what the host sealed, by kind and alias. Every secret a bound value
 // NAMES -- its `env`, or a credential's user, password or token variable -- is handed back as
 // environment for the helper, the only place it may go; a name the host sealed no value for is not.
-export const sealedBinder = (r) => ({ resolve: (kind, ref) => sealed(r, kind, ref) });
+//
+// An identity the host could not issue (nothing on the host reaches an isolated sandbox's hooks) is
+// sealed as how to issue it (`issue`): the binder issues it HERE, once per alias for the run, through
+// `deps.issue` -- bound by the composition root to the adapter that speaks the identity hooks'
+// protocol -- and its token joins the helper's environment and nothing else. The value a capability
+// is handed never carries how it was issued.
+export const sealedBinder = (r, deps = {}) => ((issued) => ({ resolve: (kind, ref) => sealed(r, kind, ref, { ...deps, issued }) }))(new Map());
 
-function sealed(r, kind, ref) {
+function sealed(r, kind, ref, deps) {
   const value = r.bindings?.[kind]?.[ref];
   if (!value) return { ok: false, why: `nothing named ${String(ref).slice(0, 60)} is bound as ${kind} for this run` };
-  const env = Object.fromEntries(secretNamesOf(value).filter((n) => r.secrets?.[n] !== undefined).map((n) => [n, String(r.secrets[n])]));
-  return { ok: true, value, env };
+  const token = value.issue ? issuedOnce(r, value, deps) : null;
+  if (token?.why) return { ok: false, why: token.why };
+  return { ok: true, value: withoutIssue(value), env: { ...envOf(r, secretNamesOf(value)), ...(token ? { [value.env]: token.token } : {}) } };
 }
 
+const envOf = (r, names) => Object.fromEntries(names.filter((n) => r.secrets?.[n] !== undefined).map((n) => [n, String(r.secrets[n])]));
+
 const secretNamesOf = (value) => [value.env, ...Object.values(value.credential ?? {})].filter((n) => typeof n === "string" && n);
+
+const withoutIssue = (value) => Object.fromEntries(Object.entries(value).filter(([k]) => k !== "issue"));
+
+// Issued once for the run: a second call that binds the same identity is the same principal, not a second one.
+function issuedOnce(r, value, deps) {
+  if (!deps.issued.has(value.alias)) deps.issued.set(value.alias, typeof deps.issue === "function" ? deps.issue(value, envOf(r, secretNamesOf(value.issue))) : { why: `${value.alias} is issued inside the sandbox, and nothing here can issue it` });
+  return deps.issued.get(value.alias);
+}
+
+// -> (value, env) => { token } | { why }: an identity issued through the adapter selection picks for the identity
+// hooks' protocol, by the helper facade -- the same bounded helper protocol a pack's capability uses.
+export const identityIssuer = (ctx) => (value, env) => issuedBy(ctx, value, env);
+
+function issuedBy(ctx, value, env) {
+  const chosen = selectAdapter(ctx.adapters, { family: "identity", op: "issue", transport: value.issue.transport });
+  if (chosen.gap) return { why: chosen.gap.why };
+  const answer = askedSafely(() => helperFacade(ctx, null, asCapability(chosen.adapter), { bound: { identityRef: { ...value.issue, principal: value.principal, tenant: value.tenant } }, env }).run("issue", {}));
+  return typeof answer?.token === "string" ? { token: answer.token } : { why: answer?.why ?? "the identity hooks issued no token" };
+}
+
+function askedSafely(fn) {
+  try { return fn(); }
+  catch (e) { return { why: e.message }; }
+}
 
 // How a helper is started where the runner runs, as an argument list, in the directory that
 // declared it, under the minimal environment the composition root hands in (`base.node`,

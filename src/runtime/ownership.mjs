@@ -33,10 +33,15 @@ export const TOLERANCE_MS = 2000;
 
 const same = (a, b) => Math.abs(Date.parse(a) - Date.parse(b)) <= TOLERANCE_MS;
 
+// A CONTAINER is proven the one a receipt names by its id and every label it was created with -- a name is somebody's
+// to reuse, and a container with the right name and no labels is not Orbit's (ADR 0039).
+const sameContainer = (receipt, seen) => (!receipt.id || receipt.id === seen.id) && Object.entries(receipt.labels ?? {}).every(([k, v]) => seen.labels?.[k] === v);
+
 export const OWNERSHIP = [
   { name: "NO_RECEIPT", when: (s) => !s, answer: () => ({ ownership: EXTERNAL, state: "RUNNING", why: "Orbit has no receipt for it: it was not started by Orbit" }) },
   { name: "UNSETTLED", when: (s) => s.state === "AMBIGUOUS" || (s.state === "STARTING" && s.pid === null), answer: () => ({ ownership: UNKNOWN, state: "AMBIGUOUS", why: "a start was recorded and never settled, so what it launched, if anything, cannot be named" }) },
   { name: "FINISHED", when: (s) => ["STOPPED", "LOST"].includes(s.state), answer: (s) => ({ ownership: OWNED, state: s.state, why: s.state === "STOPPED" ? "it was stopped" : "it was lost" }) },
+  { name: "CONTAINER_MISMATCH", when: (s, o) => Boolean(s.container && o.container) && !sameContainer(s.container, o.container), answer: () => ({ ownership: UNKNOWN, state: "LOST", why: "a container by that name is there, and its id or its labels are not the ones Orbit created it with — it is somebody else's now, and it is never stopped" }) },
   { name: "GONE", when: (s, o) => !o.alive, answer: () => ({ ownership: OWNED, state: "STOPPED", why: "the process is no longer there" }) },
   { name: "CANNOT_TELL_WHEN", when: (s, o) => !o.startedAt || !s.pidStartedAt, answer: () => ({ ownership: UNKNOWN, state: "RUNNING", why: "the OS would not say when that process started, so it cannot be told from one that took the pid over" }) },
   { name: "PID_REUSED", when: (s, o) => !same(o.startedAt, s.pidStartedAt), answer: (s, o) => ({ ownership: UNKNOWN, state: "LOST", why: `the pid now belongs to a process that started at ${o.startedAt}, not the one Orbit launched` }) },

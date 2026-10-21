@@ -9,6 +9,7 @@
 import { Refused } from "../../errors.mjs";
 import { providerProblems } from "./contract-v1.mjs";
 import { devcontainer } from "./devcontainer.mjs";
+import { isolated } from "./isolated.mjs";
 import { native } from "./native.mjs";
 import { sandbox } from "./sandbox.mjs";
 
@@ -17,9 +18,10 @@ export const PROVIDERS = [native, devcontainer];
 export const PROVIDER_IDS = PROVIDERS.map((p) => p.id);
 
 // What a SANDBOX's context is bound to: the two ways a component runs, which the sandbox provider places each
-// component on, and the sandbox provider itself. It is a separate list because a person's runtime never asks it:
-// a sandbox runs only a task's workspace.
-export const SANDBOX_PROVIDERS = [...PROVIDERS, sandbox];
+// component on, the containers of an ISOLATED sandbox (`isolated`, ADR 0039 -- what their sessions name, never a
+// placement the resolver offers), and the sandbox provider itself. It is a separate list because a person's runtime
+// never asks it: a sandbox runs only a task's workspace.
+export const SANDBOX_PROVIDERS = [...PROVIDERS, isolated, sandbox];
 
 // Refuses a malformed provider the way the capability and ecosystem registries do:
 // a sentence, never a TypeError three layers up.

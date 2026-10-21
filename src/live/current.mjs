@@ -13,7 +13,7 @@
 
 import { DISPATCH_WORDS } from "./words.mjs";
 
-const emptyQa = (id, at) => ({ id, mode: null, origin: null, startedAt: at, step: null, url: null, lastFailure: null, consoleErrors: 0, screenshots: 0, steps: 0, runs: { passed: 0, failed: 0 }, findings: 0, ended: null });
+const emptyQa = (id, at) => ({ id, mode: null, origin: null, startedAt: at, step: null, url: null, lastFailure: null, consoleErrors: 0, screenshots: 0, steps: 0, runs: { passed: 0, failed: 0 }, findings: 0, ended: null, tests: null });
 
 const str = (v) => (typeof v === "string" ? v : null);
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
@@ -30,7 +30,46 @@ const FOLDS = {
   "qa.run": (qa, e) => ({ ...qa, runs: runsAfter(qa.runs, e), screenshots: qa.screenshots + (e.evidence === true ? 1 : 0) }),
   "qa.finding": (qa) => ({ ...qa, findings: qa.findings + 1 }),
   "qa.ended": (qa, e) => ({ ...qa, ended: { at: e.at, lifecycle: str(e.lifecycle) } }),
+  "qa.discovery": tested((t, e) => ({ ...t, discovery: { state: str(e.state), count: num(e.count) } })),
+  "qa.obligation.discovered": tested((t, e) => (str(e.obligation) && !t.obligations[e.obligation] ? withObligation(t, e.obligation, { state: "discovered", outcome: null, at: e.at }) : t)),
+  "qa.test.designed": tested((t, e) => (str(e.design) ? { ...t, designs: { ...t.designs, [e.design]: str(e.obligation) } } : t)),
+  "qa.draft.persisted": tested((t, e) => (str(e.version) ? { ...t, versions: { ...t.versions, [e.version]: str(e.design) } } : t)),
+  "qa.test.started": tested((t, e) => newer(withExecution(t, e), obligationOfVersion(t, e.version), { state: "running", outcome: null, at: e.at })),
+  "qa.result.evaluated": tested((t, e) => newer(t, str(e.obligation) ?? obligationOfVersion(t, t.executions[e.execution]), { state: "evaluated", outcome: str(e.outcome), at: e.at })),
 };
+
+// ---- a generated test's progress (0.1.0): one entry per OBLIGATION, never per attempt ----------
+// A retry is the same test again; a delivery the channel repeats is not a test at all. So a count is
+// how many obligations stand where -- the latest word each one earned -- and an event folded twice
+// (a reconnect, a replayed line) changes nothing: it is folded once by its eventId. An event older
+// than what an obligation already shows (an attempt's start read after its result) moves nothing.
+// Until a test's first event arrives `tests` is null, which a viewer draws as nothing -- never 0.
+const emptyTests = () => ({ discovery: null, obligations: {}, designs: {}, versions: {}, executions: {}, seen: {} });
+
+function tested(fold) {
+  return (qa, e) => {
+    const t = qa.tests ?? emptyTests();
+    if (str(e.eventId) && t.seen[e.eventId]) return qa;
+    return { ...qa, tests: fold({ ...t, seen: str(e.eventId) ? { ...t.seen, [e.eventId]: true } : t.seen }, e) };
+  };
+}
+
+const withObligation = (t, id, entry) => ({ ...t, obligations: { ...t.obligations, [id]: entry } });
+
+const withExecution = (t, e) => (str(e.execution) ? { ...t, executions: { ...t.executions, [e.execution]: str(e.version) } } : t);
+
+const obligationOfVersion = (t, version) => t.designs[t.versions[version]] ?? null;
+
+const newer = (t, id, entry) => (id && !((t.obligations[id]?.at ?? "") > entry.at) ? withObligation(t, id, entry) : t);
+
+// -> { total, satisfied, contradicted, running, done, discovering } for one investigation, or null when
+// it has said nothing about a generated test yet.
+export function testCountsOf(q) {
+  if (!q?.tests) return null;
+  const all = Object.values(q.tests.obligations);
+  const outcome = (word) => all.filter((o) => o.outcome === word).length;
+  return { total: all.length, satisfied: outcome("SATISFIED"), contradicted: outcome("CONTRADICTED"), running: all.filter((o) => o.state === "running").length, done: all.filter((o) => o.state === "evaluated").length, discovering: q.tests.discovery?.state === "open" };
+}
 
 const isQa = (e) => e.source !== "task" && typeof e.kind === "string" && e.kind.startsWith("qa.");
 

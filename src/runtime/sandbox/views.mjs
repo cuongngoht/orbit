@@ -34,3 +34,7 @@ export const sayReleased = (r) => (r.released ? `RELEASED  ${r.environment}  sto
 export const sayLogs = (r) => [`LOG  ${r.session}  ${r.stream}${r.truncated ? "  (the end of it)" : ""}`, ...r.lines].join("\n");
 
 export const sayTrusted = (r) => `TRUST  kept; revision ${r.saved.revision}`;
+
+export const sayDispatched = (r) => `DISPATCHED  ${r.run}  ${r.timedOut ? "its deadline passed and it was stopped" : `ended with status ${r.status ?? "none"}`}${r.envelope ? "" : "  (no envelope was written)"}`;
+
+export const saySignalled = (r) => `SIGNAL  ${r.signal.signal} #${r.signal.seq} for ${r.environment}`;

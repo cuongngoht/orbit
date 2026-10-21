@@ -18,6 +18,7 @@ const ENVELOPE_RULES = [
   (e, x) => (e.runId === x.runId && e.nonce === x.nonce ? [] : ["the envelope answers another dispatch (run id or nonce)"]),
   (e, x) => (e.caseDigest === x.caseDigest ? [] : ["the envelope ran another case than the frozen one dispatched"]),
   (e) => (RUN_STATE_NAMES.includes(e.status) || e.status === "INTERRUPTED" ? [] : [`"${String(e.status).slice(0, 20)}" is no status a run can have`]),
+  (e) => (e.result === null || e.result === undefined || e.result.status === e.status ? [] : ["the envelope's status is not its result's — one of them is not what ran"]),
   (e) => (e.evidence === null || e.evidence === undefined || RELATIVE(e.evidence) ? [] : [`the envelope names evidence outside its output: ${String(e.evidence).slice(0, 80)}`]),
   (e) => (Array.isArray(e.files) ? e.files : []).filter((f) => !RELATIVE(f?.path)).map((f) => `the envelope names a file outside its output: ${String(f?.path).slice(0, 80)}`),
 ];
@@ -40,14 +41,20 @@ function fileFindings(declared, listed) {
 
 const sizeFindings = (listed, max) => (max && [...listed.values()].reduce((n, f) => n + (f.bytes ?? 0), 0) > max ? [`the output is larger than the ${max} bytes this run was allowed`] : []);
 
-// The claim, re-derived from the run log and the frozen case. `provedBy(step)` is the DSL's own
-// answer (src/dsl/registry.mjs), so a layer is never a word the worker chose.
-export function rederivedFindings(result, frozen, records, provedBy) {
-  const run = records.find((r) => r.kind === "run");
+// The claim, re-derived from the run log and the frozen case (ADR 0038). `provedBy(step)` is the
+// DSL's own answer (src/dsl/registry.mjs) and `canStop(step)` the verb's (a stopping verb is what a
+// SKIP needs), so a layer and a stop are never words the worker chose. The run log must account
+// for the dispatched slice exactly: one record per step, in order, from the slice's first step,
+// none outside it -- a worker that drops the record of a step that failed is refused, not
+// believed.
+export function rederivedFindings(result, frozen, records, provedBy, expected = {}, canStop = () => false) {
   const steps = records.filter((r) => r.kind === "step");
-  const counted = countedOf(steps.filter((s) => s.ok === true), frozen, provedBy);
-  return CLAIM_RULES.flatMap((rule) => rule({ result, run, steps, counted, frozen }));
+  const slice = sliceOf(result, frozen);
+  const k = { result, frozen, steps, slice, expected, canStop, run: records.find((r) => r.kind === "run"), counted: countedOf(steps.filter((s) => s.ok === true), frozen, provedBy) };
+  return CLAIM_RULES.flatMap((rule) => rule(k));
 }
+
+const sliceOf = (result, frozen) => ({ from: result?.slice?.from ?? 1, to: result?.slice?.to ?? (frozen.steps?.length ?? 0) });
 
 function countedOf(passed, frozen, provedBy) {
   const proved = {};
@@ -61,9 +68,18 @@ function tallied(proved, layer) {
 
 const nonzero = (proved) => Object.fromEntries(Object.entries(proved ?? {}).filter(([, n]) => n > 0));
 
+// The indices the log covers must be the slice's own, from its first step, each once.
+const inOrder = (k) => k.steps.every((s, n) => s.i === k.slice.from + n && s.i <= k.slice.to);
+
+const COVERS_ALL = new Set(["PASS", "PARTIAL", "INCONCLUSIVE"]);
+const STOPPED_BY = { FAIL: "error", REFUSED: "refused", BLOCKED: "blocked" };
+
 const CLAIM_RULES = [
-  (k) => (k.run?.case_digest === k.result.case_digest ? [] : ["the run log ran another case than the result claims"]),
-  (k) => (k.result.status === "PASS" && k.steps.some((s) => s.ok === false) ? ["the result claims PASS over a step that did not pass"] : []),
+  (k) => (k.run?.case_digest === k.result.case_digest && (!k.expected.caseDigest || k.result.case_digest === k.expected.caseDigest) ? [] : ["the run log ran another case than the one dispatched"]),
+  (k) => (inOrder(k) ? [] : ["the run log does not account for the dispatched slice one step at a time, in order — a record is missing, repeated or outside it"]),
+  (k) => (COVERS_ALL.has(k.result.status) && (k.steps.length !== k.slice.to - k.slice.from + 1 || k.steps.some((s) => s.ok !== true)) ? [`the result claims ${k.result.status} and its steps did not all run and hold`] : []),
+  (k) => (STOPPED_BY[k.result.status] && !(k.steps.at(-1)?.ok === false && k.steps.at(-1)?.[STOPPED_BY[k.result.status]] !== undefined) ? [`the result claims ${k.result.status} and its last step does not say so`] : []),
+  (k) => (k.result.status === "SKIP" && !(k.steps.at(-1)?.ok === true && k.canStop(k.frozen.steps?.[k.steps.at(-1).i - 1] ?? {})) ? ["the result claims SKIP and no step that can stop a run stopped it"] : []),
   (k) => (k.result.status === "PASS" && !k.counted.verdicts ? ["the result claims PASS and no verdict executed"] : []),
   (k) => (JSON.stringify(nonzero(k.result.proved)) === JSON.stringify(nonzero(k.counted.proved)) ? [] : ["the layers the result claims are not the layers its steps prove"]),
   (k) => (k.result.verdicts === k.counted.verdicts && k.result.done === k.counted.done ? [] : ["the result's counts are not its steps'"]),

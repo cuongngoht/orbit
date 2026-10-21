@@ -27,7 +27,7 @@
 // Every check first passes the investigation's own gate table -- a cancelled
 // investigation reads nothing -- with its browser and action-budget rows silent.
 import { Blocked, Refused } from "../errors.mjs";
-import { invokeCapability } from "../capability/invoke.mjs";
+import { invokeNow } from "../capability/invoke.mjs";
 import { gate } from "./gates.mjs";
 import { readOnlyProblem } from "../dsl/sql-text.mjs";
 import { encode } from "../dsl/escape.mjs";
@@ -184,7 +184,7 @@ function sqlRead(w, query) {
 const capabilityReader = (w, cap, input) => ({ what: `capability ${cap.id}`, unavailable: null, read: () => capabilityRead(w, cap, input) });
 
 function capabilityRead(w, cap, input) {
-  try { return { ok: true, count: countOfAnswer(cap, invokeCapability(w.ctx, { c: { id: w.id }, page: false, values: {} }, { capability: cap.id, input })) }; }
+  try { return { ok: true, count: countOfAnswer(cap, invokeNow(w.ctx, { c: { id: w.id }, page: false, values: {} }, { capability: cap.id, input })) }; }
   catch (e) { return blockedOr(e); }
 }
 

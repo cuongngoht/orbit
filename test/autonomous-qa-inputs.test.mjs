@@ -61,7 +61,7 @@ test("an investigation records its inputs, the way in they make, and the journal
   const { id } = begin(t.make(), { objective: "check the things plan", scope: "", inputs: [planAsInput(plan, "things"), screenInput(t.ctx.graph, "nowhere")] });
   const m = modelOf(t.make({ id }).store.read(id));
   assert.equal(m.meta.inputMode, "hybrid");
-  assert.equal(m.meta.schema, 2);
+  assert.equal(m.meta.schema, 3, "0.1.0: the generated-test lifecycle kinds");
   assert.deepEqual(m.inputs.map((i) => [i.id, i.type, i.ref, i.state]), [["inp-1", "plan", "things", "read"], ["inp-2", "screen", "nowhere", "unavailable"]]);
   assert.equal(m.inputs[0].authority, "accepted", "a committed plan is the team's contract");
 });

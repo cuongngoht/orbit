@@ -15,7 +15,7 @@ import { readState, writeState } from "../../store/control.mjs";
 
 export const OPERATIONS_SCHEMA = 1;
 
-export const KINDS = ["prepare", "restore", "up", "start", "release"];
+export const KINDS = ["prepare", "restore", "up", "start", "release", "network", "build", "service", "attest", "dispatch", "teardown"];
 
 export const STATES = ["STARTED", "DONE", "FAILED"];
 

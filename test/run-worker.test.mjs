@@ -88,7 +88,7 @@ test("the owner's read passes and the other tenant's is refused by the product -
     assert.equal(envelope.status, "PASS", `${c.id}: ${envelope.why ?? err}`);
     assert.equal(code, 0);
     assert.deepEqual(envelopeFindings(envelope, { runId: request.runId, nonce: "n-1", caseDigest: caseDigest(c) }, listedBy(p.out, envelope)), []);
-    assert.deepEqual(rederivedFindings(envelope.result, c, recordsOf(p.out, envelope), (s) => dsl.provedBy(s)), []);
+    assert.deepEqual(rederivedFindings(envelope.result, c, recordsOf(p.out, envelope), (s) => dsl.provedBy(s), { caseDigest: caseDigest(c) }), []);
     assert.equal(JSON.stringify(envelope).includes("token-a"), false, "a secret never reaches the envelope");
     rmSync(p.dir, { recursive: true, force: true });
   }
@@ -106,9 +106,17 @@ test("what a host refuses of a worker: another dispatch, another case, a file it
   assert.match(envelopeFindings({ ...envelope, files: envelope.files.slice(1) }, expected, listed).join(), /is there and not declared/);
   assert.match(envelopeFindings({ ...envelope, files: envelope.files.map((f) => ({ ...f, sha256: "0".repeat(64) })) }, expected, listed).join(), /does not have the digest/);
   const records = recordsOf(p.out, envelope);
+  const proved = (s) => dsl.provedBy(s);
   const failedStep = records.map((r) => (r.kind === "step" ? { ...r, ok: false, error: "x" } : r));
-  assert.match(rederivedFindings(envelope.result, OWNER, failedStep, (s) => dsl.provedBy(s)).join(), /claims PASS over a step that did not pass/);
-  assert.match(rederivedFindings({ ...envelope.result, proved: { ui: 1, api: 1, sql: 0 } }, OWNER, records, (s) => dsl.provedBy(s)).join(), /layers the result claims are not the layers its steps prove/);
+  assert.match(rederivedFindings(envelope.result, OWNER, failedStep, proved, expected).join(), /claims PASS and its steps did not all run and hold/);
+  const dropped = records.filter((r) => r.kind !== "step");
+  assert.match(rederivedFindings({ ...envelope.result, done: 0, verdicts: 0, proved: {} }, OWNER, dropped, proved, expected).join(), /did not all run and hold/, "a worker that drops the record of a step is refused, not believed");
+  const twice = [...records, ...records.filter((r) => r.kind === "step")];
+  assert.match(rederivedFindings(envelope.result, OWNER, twice, proved, expected).join(), /one step at a time, in order/);
+  assert.match(rederivedFindings(envelope.result, OWNER, records, proved, { caseDigest: "another" }).join(), /ran another case than the one dispatched/);
+  assert.match(rederivedFindings({ ...envelope.result, proved: { ui: 1, api: 1, sql: 0 } }, OWNER, records, proved, expected).join(), /layers the result claims are not the layers its steps prove/);
+  assert.match(rederivedFindings({ ...envelope.result, status: "SKIP" }, OWNER, records, proved, expected).join(), /no step that can stop a run stopped it/);
+  assert.match(envelopeFindings({ ...envelope, status: "FAIL" }, expected, listed).join(), /status is not its result's/);
   rmSync(p.dir, { recursive: true, force: true });
 });
 

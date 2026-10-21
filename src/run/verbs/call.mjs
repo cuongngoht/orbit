@@ -12,7 +12,7 @@
 // news about the call the screen made; asking it cold is news about the data
 // underneath. dsl/core/verbs.mjs says why, and `proves` is enum-constrained to
 // the three, so this cannot invent a fourth.
-import { invokeCapability } from "../../capability/invoke.mjs";
+import { invokeNow } from "../../capability/invoke.mjs";
 import { interpolate, placeholders } from "../../dsl/interpolate.mjs";
 import { oneValue } from "../capture.mjs";
 import { StepError, trunc } from "../errors.mjs";
@@ -22,7 +22,7 @@ export default {
   name: "call",
   label: (s) => `${s.capability}${s.select ? ` → ${s.select}` : ""}`,
   act(ctx, run, s) {
-    const value = invokeCapability(ctx, run, { ...s, input: filled(ctx, run, s) });
+    const value = invokeNow(ctx, run, { ...s, input: filled(ctx, run, s) });
     verdict(s, value);
     return value;
   },

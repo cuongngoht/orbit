@@ -22,6 +22,15 @@ export const SESSION_SCHEMA = 1;
 
 export const SESSION_STATES = ["STARTING", "RUNNING", "STOPPED", "LOST", "AMBIGUOUS"];
 
+// What a session IS (0.1.0): a component a file declared -- the only kind a receipt written before kinds existed can
+// be, so an absent kind reads as one -- or, in an isolated sandbox, a container the topology needs (a service the
+// project is defined with, the pod that holds one shared namespace), a test worker, an observer, a helper, a probe,
+// or the sandbox's supervisor. A container's receipt also carries `container`: the isolation provider, the name, the
+// labels it was created with and, once it exists, its id -- which is what proves it Orbit's (src/runtime/ownership.mjs).
+export const SESSION_KINDS = ["component", "service", "pod", "worker", "observer", "helper", "probe", "supervisor"];
+
+export const kindOf = (session) => session.kind ?? "component";
+
 // How many finished sessions a component keeps, with their logs. A process that
 // writes logs for a week must not be allowed to keep every one it ever wrote.
 export const KEEP_FINISHED = 3;

@@ -25,7 +25,7 @@ import { planOf } from "./plan.mjs";
 import { environmentOf, readSettings } from "./settings.mjs";
 import { inputModeOf } from "./input.mjs";
 import { JOURNAL_SCHEMA } from "./vocab.mjs";
-import { createInvestigations } from "./store.mjs";
+import { createInvestigations, eventIdOf } from "./store.mjs";
 
 export { act } from "./act.mjs";
 export { answer, checkpoint, finish, loopWorld, protocolOf, release, resume, step } from "./loop.mjs";
@@ -48,7 +48,7 @@ export function worldFor(b) {
   const { settings } = readSettings(store.paths, b.machine.io);
   const id = b.id ?? null;
   const model = id ? modelOf(store.read(id)) : null;
-  return { ctx: b.ctx, store, io: b.machine.io, settings, environment: b.environment ?? environmentOf(settings, b.env ?? model?.meta?.environment?.id), mode: b.mode ?? model?.meta?.mode ?? "observe", id, on: b.on, identity: b.identity ?? model?.meta?.identity ?? null, now: b.ctx.now, pace: b.pace, runtime: b.runtime ?? null };
+  return { ctx: b.ctx, store, io: b.machine.io, settings, environment: b.environment ?? environmentOf(settings, b.env ?? model?.meta?.environment?.id), mode: b.mode ?? model?.meta?.mode ?? "observe", id, on: b.on, identity: b.identity ?? model?.meta?.identity ?? null, now: b.ctx.now, pace: b.pace, runtime: b.runtime ?? null, task: b.task ?? model?.meta?.task ?? null };
 }
 
 // What a plan is made of, from the world and the question.
@@ -70,8 +70,9 @@ export function begin(w, q) {
   return { id, plan };
 }
 
-// The task's sandbox and the source tree an investigation was begun against, when its environment is one.
-const boundTo = (w) => (w.runtime?.environment ? { runtime: { environment: w.runtime.environment, task: w.runtime.task, sourceTree: w.runtime.sourceTree } } : {});
+// The task's sandbox and the source tree an investigation was begun against, when its environment is one;
+// and the task it was begun FOR, when a task began it (`created.task`, read by discover.mjs belongsTo).
+const boundTo = (w) => ({ ...(w.runtime?.environment ? { runtime: { environment: w.runtime.environment, task: w.runtime.task, sourceTree: w.runtime.sourceTree } } : {}), ...(w.task ? { task: w.task } : {}) });
 
 // Derived from the journal as it stands, then recorded under the journal lock
 // against the journal as it is by then -- the ids are the lock's to hand out.
@@ -99,6 +100,27 @@ export function addInput(w, input) {
 }
 
 export { linkRun } from "./runs.mjs";
+
+// ---- a generated test's lifecycle (0.1.0, ADR 0032) ---------------------------------------------
+// Every write below is taken under the journal lock and recorded ONCE: an event appended again with
+// the same eventId is the same event, and the record already there is what comes back.
+
+// One lifecycle record. `subject` is what it is about (an obligation, a version, an execution),
+// `inputs` what it was made from; together with the kind and the attempt they are its eventId.
+export function recordOnce(w, kind, record, { subject, attempt, inputs } = {}) {
+  const eventId = record.eventId ?? eventIdOf(kind, subject ?? record.obligation ?? record.version ?? record.execution ?? null, attempt ?? record.attempt, inputs ?? record);
+  return withJournal(w, () => w.store.appendOnce(w.id, kind, { ...record, eventId, id: record.id ?? nextId(current(w), kind) }));
+}
+
+// A document the test is bound to, written once under the name of its own digest.
+export const keepArtifact = (w, kind, value) => withJournal(w, () => w.store.putArtifact(w.id, kind, value));
+
+// A frozen case version (src/qa/generation/version.mjs freezeVersion), written once.
+export const keepVersion = (w, frozen) => withJournal(w, () => w.store.putVersion(w.id, frozen));
+
+export { testsOf, lineageOf } from "./model.mjs";
+export { VERIFICATION_OUTCOMES, countsForCoverage, accusesProduct } from "./verification.mjs";
+export { MILESTONES, milestoneOf } from "./vocab.mjs";
 
 // Every investigation, newest first, as a list can show it.
 export function summaries(store, limit = 50) {

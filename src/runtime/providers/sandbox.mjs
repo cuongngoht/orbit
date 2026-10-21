@@ -31,7 +31,7 @@ const willBuild = (p, world) => p.id === "devcontainer" && world.view.definition
 
 const asIfBuilt = (world) => ({ ...world, instances: [...world.instances.filter((i) => i.provider !== "devcontainer"), { id: world.envId, kind: "sandbox", provider: "devcontainer", state: "VALIDATED", files: {}, name: "devcontainer" }] });
 
-const candidates = (component, world, providers) => providers.filter((p) => p.id !== "sandbox").map((p) => ({ provider: p.id, via: "sandbox", ...p.compatibility(component, willBuild(p, world) ? asIfBuilt(world) : world) }));
+const candidates = (component, world, providers) => providers.filter((p) => p.id !== "sandbox" && p.id !== "isolated").map((p) => ({ provider: p.id, via: "sandbox", ...p.compatibility(component, willBuild(p, world) ? asIfBuilt(world) : world) }));
 
 const leaseOf = (world, key) => (world.sandbox?.endpoints ?? []).find((e) => e.component === key && e.source === "lease") ?? null;
 

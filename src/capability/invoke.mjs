@@ -130,17 +130,21 @@ function answered(ctx, run, cap, input, invocation) {
 // failing. Filing that as a product defect is how a generated script's own bug
 // gets shipped as a bug report against somebody's feature.
 function called(cap, ext, input) {
-  try { return settled(cap, cap.invoke(ext, input)); }
+  try { return cap.invoke(ext, input); }
   catch (e) { throw typed(cap, e); }
 }
 
-// A promise is not an answer. Judged, it reads as `{}` and `Boolean(it)` passes -- the one false
-// PASS this pipeline could produce. So it is refused as the tool's failure, and its rejection, if
-// one ever comes, is swallowed rather than allowed to crash the run later.
-function settled(cap, value) {
+// The pipeline for a SYNCHRONOUS caller -- a case's `call` step, an investigation's data check --
+// whose next line judges the answer. A promise is not an answer there: judged, it reads as `{}`
+// and `Boolean(it)` passes, the one false PASS this pipeline could produce. So it is refused as
+// the tool's failure, and its rejection, if one ever comes, is swallowed rather than allowed to
+// crash the run later. A caller that awaits (a work's door, src/work/invoke.mjs) uses
+// invokeCapability itself and may be handed one.
+export function invokeNow(ctx, run, step) {
+  const value = invokeCapability(ctx, run, step);
   if (!value || typeof value.then !== "function") return value;
   value.then(undefined, () => {});
-  throw new Blocked(`${cap.id} answered with a promise — a capability answers synchronously, and an unsettled answer would be judged as {}. That is the tool failing, not the product: nothing about the product was observed. Reach an asynchronous SDK through a helper (ext.helper.run).`);
+  throw new Blocked(`${step.capability} answered with a promise, and this caller judges its answer at once — an unsettled answer would be judged as {}. That is the tool failing, not the product: nothing about the product was observed. Reach an asynchronous SDK through a helper (ext.helper.run).`);
 }
 
 const typed = (cap, e) =>

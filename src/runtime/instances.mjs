@@ -49,14 +49,19 @@ export const TRANSITIONS = {
 // built from (STALE), unknown after a crash (AMBIGUOUS) until runtime reads the world back, and finally
 // RELEASED. Nothing moves out of RELEASED, and STALE is DERIVED on every read
 // (src/runtime/sandbox/model.mjs) -- this road only says which words may be written.
-export const SANDBOX_STATES = ["ALLOCATED", "PREPARING", "READY", "STALE", "AMBIGUOUS", "RELEASED"];
+//
+// QUARANTINED (0.1.0, ADR 0039) is a teardown that could not be PROVEN: a container that would not stop, a network
+// something else is still attached to, a session nobody can prove Orbit's. It is never called RELEASED, and only
+// Orbit Control releases it once a person has looked.
+export const SANDBOX_STATES = ["ALLOCATED", "PREPARING", "READY", "STALE", "AMBIGUOUS", "QUARANTINED", "RELEASED"];
 
 export const SANDBOX_TRANSITIONS = {
-  ALLOCATED: ["PREPARING", "RELEASED"],
-  PREPARING: ["PREPARING", "READY", "AMBIGUOUS", "RELEASED"],
-  READY: ["PREPARING", "STALE", "RELEASED"],
-  STALE: ["PREPARING", "READY", "RELEASED"],
-  AMBIGUOUS: ["PREPARING", "READY", "STALE", "RELEASED"],
+  ALLOCATED: ["PREPARING", "QUARANTINED", "RELEASED"],
+  PREPARING: ["PREPARING", "READY", "AMBIGUOUS", "QUARANTINED", "RELEASED"],
+  READY: ["PREPARING", "STALE", "QUARANTINED", "RELEASED"],
+  STALE: ["PREPARING", "READY", "QUARANTINED", "RELEASED"],
+  AMBIGUOUS: ["PREPARING", "READY", "STALE", "QUARANTINED", "RELEASED"],
+  QUARANTINED: ["QUARANTINED", "RELEASED"],
   RELEASED: [],
 };
 

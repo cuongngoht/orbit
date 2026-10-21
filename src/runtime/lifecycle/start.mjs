@@ -47,8 +47,12 @@ import { gatesOf, targetsOf as reachTargetsOf, whereOf } from "../connectivity/t
 // now. The live room holds both, and port ownership reads all of it (src/runtime/ports.mjs); everything
 // that asks "is it already running" asks this, so a developer's server is never a task's.
 export function sessionsNow(ctx) {
-  return ctx.sessions.list(scopeOf(ctx)).map((s) => ({ session: s, judgement: judge(s, ctx.process.alive(s.pid) ? { alive: true, startedAt: ctx.process.startedAtOf(s.pid) } : { alive: false }) }));
+  return ctx.sessions.list(scopeOf(ctx)).map((s) => ({ session: s, judgement: judge(s, observedNow(ctx, s)) }));
 }
+
+// A process is asked of the OS; a CONTAINER of an isolated sandbox is asked of the isolation provider its receipt
+// names, through its own provider (src/runtime/providers/isolated.mjs) -- never as a pid it does not have.
+const observedNow = (ctx, s) => (s.container ? (providerOf(s.provider, ctx.providers)?.status(s, deps(ctx)) ?? { alive: false }) : ctx.process.alive(s.pid) ? { alive: true, startedAt: ctx.process.startedAtOf(s.pid) } : { alive: false });
 
 // Which components a start is about: the one named (and it must be startable), or
 // every one that is ready. A component the person named that is not ready is

@@ -7,7 +7,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { invokeCapability } from "../src/capability/invoke.mjs";
+import { invokeCapability, invokeNow } from "../src/capability/invoke.mjs";
+import call from "../src/run/verbs/call.mjs";
 import { createCapabilityRegistry } from "../src/capability/registry.mjs";
 import { HELPER_API } from "../src/capability/helper.mjs";
 import { Blocked, Refused } from "../src/errors.mjs";
@@ -132,14 +133,19 @@ test("with no launcher bound, a helper is never started", () => {
   assert.equal(w.process.calls.length, 0);
 });
 
-test("a capability that answers with a promise is Blocked, never judged as {} -- so Boolean(it) can never pass", () => {
+test("to a caller that judges at once, a promise is Blocked -- never judged as {}, so Boolean(it) can never pass", () => {
   const w = world({ cap: reader({ id: "orbit.example.sneaky", inputSchema: undefined, required: undefined, helper: undefined, invoke: () => Promise.resolve({ status: 201 }) }) });
-  assert.throws(() => invokeCapability(w.ctx, w.run, { do: "call", capability: "orbit.example.sneaky", input: {} }), (e) => e instanceof Blocked && /answered with a promise/.test(e.message));
+  assert.throws(() => invokeNow(w.ctx, w.run, { do: "call", capability: "orbit.example.sneaky", input: {} }), (e) => e instanceof Blocked && /answered with a promise/.test(e.message));
 });
 
-test("an async invoke is refused when it registers", () => {
-  const reg = createCapabilityRegistry();
-  assert.throws(() => reg.register({ id: "project.x.y", apiVersion: "orbit.capability/v1", doc: "d", invoke: async () => ({}) }, "acme"), /invoke is async/);
+test("a caller that awaits -- a work's door -- may still be handed a promise, as before", async () => {
+  const w = world({ cap: reader({ id: "orbit.example.later", inputSchema: undefined, required: undefined, helper: undefined, invoke: async () => ({ status: 201 }) }) });
+  assert.deepEqual(await invokeCapability(w.ctx, w.run, { do: "call", capability: "orbit.example.later", input: {} }), { status: 201 });
+});
+
+test("the case's call verb is the synchronous caller: its step is Blocked on a promise", () => {
+  const w = world({ cap: reader({ id: "orbit.example.sneaky", inputSchema: undefined, required: undefined, helper: undefined, invoke: () => Promise.resolve({ status: 201 }) }) });
+  assert.throws(() => call.act(w.ctx, { ...w.run, values: {} }, { do: "call", capability: "orbit.example.sneaky", input: {}, expect: "Boolean(it)" }), (e) => e instanceof Blocked);
 });
 
 test("the log keeps a scrubbed answer; the verdict judges the answer as given", () => {

@@ -46,7 +46,6 @@ function problems(byId, cap, from) {
 
 // The rules across the optional 0.1.0 fields (ADR 0035, 0036), one row each.
 const DECLARED = [
-  (cap, at) => (cap.invoke?.constructor?.name === "AsyncFunction" ? [`${at}: invoke is async — a capability answers synchronously, and a promise would be judged as {} (Boolean(it) would pass); reach an asynchronous SDK through a helper (ext.helper.run)`] : []),
   (cap, at) => (Array.isArray(cap.effects) ? cap.effects : []).filter((e) => !EFFECT_IDS.includes(e)).map((e) => `${at}: effect "${e}" is not one of ${EFFECT_IDS.join(", ")}`),
   (cap, at) => (Array.isArray(cap.effects) && cap.effects.some(mutatingEffect) && cap.mutates !== true ? [`${at}: it declares a mutating effect and not mutates: true — the two must say the same thing`] : []),
   (cap, at) => Object.entries(isObject(cap.outputs) ? cap.outputs : {}).filter(([, m]) => !meaningAt(String(m))).map(([f, m]) => `${at}: output ${f} means "${m}", which is not a meaning (src/topology/vocab.mjs)`),

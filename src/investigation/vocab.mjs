@@ -87,7 +87,7 @@ export const confirms = (oracle) => ORACLES.find((o) => o.id === oracle)?.confir
 // (src/trace/events.mjs), for the same reason: a list of what to hide falls
 // behind, a list of what to keep cannot.
 export const KINDS = {
-  created: ["id", "objective", "scope", "mode", "environment", "identity", "revision", "salt", "budget", "by", "schema", "inputMode", "runtime"],
+  created: ["id", "objective", "scope", "mode", "environment", "identity", "revision", "salt", "budget", "by", "schema", "inputMode", "runtime", "task"],
   input: ["id", "type", "ref", "revision", "digest", "authority", "screen", "read", "state", "why"],
   plan: ["goals", "surfaces", "actions", "layers", "blockers", "unknowns", "known", "budget", "stops", "history"],
   action: ["id", "do", "on", "surface", "target", "identity", "reproduces", "boundary", "url", "synthetic", "state", "why", "ms", "screenshot"],
@@ -97,7 +97,7 @@ export const KINDS = {
   finding: ["id", "key", "family", "outcome", "confidence", "action", "evidence", "say", "expected", "actual", "oracle", "alternatives", "needs", "missing", "source", "reproduced", "supersedes", "occurrences", "pattern"],
   analysis: ["id", "keys"],
   reproduction: ["id", "finding", "action", "reproduced", "why"],
-  run: ["id", "case", "status", "proved", "cause", "confidence", "evidence", "case_digest", "authority"],
+  run: ["id", "case", "status", "proved", "cause", "confidence", "evidence", "case_digest", "authority", "version", "execution", "attempt"],
   draft: ["id", "finding", "case", "oracle", "why"],
   cancelled: ["why", "by"],
   decision: ["id", "revision", "target", "action", "evidence", "hypothesis", "reason", "mutates"],
@@ -108,19 +108,88 @@ export const KINDS = {
   completed: ["id", "reason", "lifecycle", "by", "why", "snapshot", "next"],
   receipt: ["id", "key", "obligation", "type", "subject", "layer", "oracle", "outcome", "why", "evidence", "scope", "fingerprints", "context", "seen", "engine", "supersedes"],
   checkpoint: ["id", "upto", "receipts", "projected", "memory", "why", "snapshot"],
+  // ── a generated test's lifecycle (0.1.0, ADR 0032) ─────────────────────────
+  // One kind per milestone a test reaches, each carrying the `eventId` it is folded once by
+  // (store.mjs appendOnce) and, where a test can be tried again, its `attempt`. They are the
+  // investigation's own record of a test: no state.json beside the journal, and nothing a
+  // broker's retry or a scheduler's wait adds a kind for -- those are observations inside
+  // TEST_RUNNING, in the progress sidecar (PROGRESS_KINDS below).
+  binding: ["id", "eventId", "binding", "type", "ref", "revision", "digest", "authority", "acceptance", "state"],
+  discovery: ["id", "eventId", "state", "count", "graph", "unknowns"],
+  obligation: ["id", "eventId", "obligation", "revision", "digest", "shape", "target", "bindings", "applicability", "authority", "method", "missing", "conflict"],
+  designed: ["id", "eventId", "attempt", "obligation", "design", "digest", "state", "why"],
+  version: ["id", "eventId", "design", "case", "version", "digest"],
+  validated: ["id", "eventId", "attempt", "version", "state", "validator", "findings", "repair"],
+  authorized: ["id", "eventId", "attempt", "version", "state", "policy", "grant", "why"],
+  prepared: ["id", "eventId", "attempt", "version", "state", "sandbox", "tree", "bindings"],
+  started: ["id", "eventId", "attempt", "version", "execution", "intent"],
+  observed: ["id", "eventId", "attempt", "execution", "completeness", "gaps", "through", "late", "evidence"],
+  evaluated: ["id", "eventId", "attempt", "execution", "obligation", "result", "digest", "outcome", "runner", "cause", "boundary"],
+  assessed: ["id", "eventId", "assessment", "digest", "scope", "results", "supersedes"],
+  published: ["id", "eventId", "report", "assessment", "digest", "state"],
+  cleanup: ["id", "eventId", "attempt", "execution", "state", "receipts", "pending"],
+  applicability: ["id", "eventId", "control", "state", "why", "by"],
 };
+
+// The milestone each lifecycle kind marks (doc §4.5), read off the record: a kind whose state
+// says it did NOT get there marks the failure word, or none. The views are generated from this
+// table, so a milestone is never spelled in a caller.
+export const MILESTONES = [
+  { kind: "obligation", word: "OBLIGATION_DISCOVERED" },
+  { kind: "designed", word: "TEST_DESIGNED", states: { failed: "GENERATION_FAILED" } },
+  { kind: "version", word: "DRAFT_CREATED" },
+  { kind: "validated", word: "SCHEMA_VALIDATED", states: { invalid: null } },
+  { kind: "authorized", word: "EXECUTION_AUTHORIZED", states: { blocked: null } },
+  { kind: "prepared", word: "SANDBOX_PREPARED", states: { blocked: null } },
+  { kind: "started", word: "TEST_RUNNING" },
+  { kind: "observed", word: "OBSERVATIONS_CAPTURED" },
+  { kind: "evaluated", word: "RESULT_EVALUATED" },
+  { kind: "published", word: "REPORT_PUBLISHED", states: { failed: "REPORT_FAILED" } },
+];
+
+export const MILESTONE_WORDS = [...new Set(MILESTONES.flatMap((m) => [m.word, ...Object.values(m.states ?? {})]).filter(Boolean))];
+
+const milestoneRow = (kind) => MILESTONES.find((m) => m.kind === kind) ?? null;
+
+// -> the milestone word a record marks, or null (a kind with no milestone, or a state that did not reach it).
+export function milestoneOf(record) {
+  const row = milestoneRow(record?.kind);
+  if (!row) return null;
+  return row.states && record.state in row.states ? row.states[record.state] : row.word;
+}
+
+// What a RUNNING test's progress may say: observations inside TEST_RUNNING, written beside the
+// journal in `investigations/<id>/activity/<execution>.jsonl` and never in it -- the journal's
+// position is the revision every decision names, and a scheduler ticking must not make a
+// person's decision stale. Every line also carries the envelope (v, seq, at, kind, authority:
+// "observation"). Nothing reads a progress line to move an outcome (the ADR 0020 rule).
+export const PROGRESS_SCHEMA = 1;
+export const PROGRESS_AUTHORITY = "observation";
+export const PROGRESS_KINDS = Object.freeze({
+  "schedule.due": ["schedule", "occurrence", "scheduledFor"],
+  "job.dispatched": ["job", "occurrence", "attempt"],
+  "message.published": ["channel", "message", "outcome"],
+  "delivery.observed": ["channel", "message", "attempt", "redelivered"],
+  "consumer.attempt": ["workload", "message", "attempt", "state", "backoffMs"],
+  "message.settled": ["message", "outcome", "reason"],
+  "effect.observed": ["store", "key", "count"],
+  "workload.settled": ["workload", "state", "inFlight"],
+  "observer.armed": ["observer", "channel", "baseline"],
+  "observation.closed": ["observer", "through", "completeness"],
+});
+export const PROGRESS_LIMITS = Object.freeze({ LINE_BYTES: 4096, EXECUTION_LINES: 2000, INVESTIGATION_BYTES: 16 * 1024 * 1024 });
 
 export const KIND_NAMES = Object.keys(KINDS);
 
-// Which journal this engine writes. A journal with no `schema` on its `created`
-// record was written before 1.7.0 and is read as 1. A NEWER one is refused by
-// the fold (src/investigation/model.mjs) rather than read with the records it
-// does not know silently dropped.
-export const JOURNAL_SCHEMA = 2;
+// Which journal this engine writes, and the only one it reads (0.1.0: 3, the generated-test
+// lifecycle kinds). A journal of any other schema -- an older one included -- is refused by the
+// fold (src/investigation/model.mjs) and kept exactly as it is: never read with the records it
+// does not know silently dropped, never migrated. A person starts a new investigation.
+export const JOURNAL_SCHEMA = 3;
 
 // Free text a record may carry: scrubbed on the way in (src/scrub.mjs), the
 // same door every other store in this engine has.
-export const FREE_TEXT = ["objective", "scope", "why", "say", "expected", "actual", "alternatives", "needs", "hypothesis", "reason", "asks", "says"];
+export const FREE_TEXT = ["objective", "scope", "why", "say", "expected", "actual", "alternatives", "needs", "hypothesis", "reason", "asks", "says", "missing", "unknowns", "findings", "gaps", "intent"];
 
 // ── The loop ────────────────────────────────────────────────────────────────
 // What one piece of work the investigation still owes can come to. `pending`

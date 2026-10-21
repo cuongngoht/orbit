@@ -4,7 +4,7 @@
 //
 // `providers` is handed in so a provider that DELEGATES (a sandbox places each component on another
 // provider) finds its backing without importing the registry it is a row of.
-export const deps = (ctx, extra = {}) => ({ process: ctx.process, probe: ctx.probe, reach: ctx.reach, root: ctx.root, env: ctx.env ?? {}, now: ctx.clock, sleep: ctx.sleep, providers: ctx.providers, ...extra });
+export const deps = (ctx, extra = {}) => ({ process: ctx.process, probe: ctx.probe, reach: ctx.reach, root: ctx.root, env: ctx.env ?? {}, now: ctx.clock, sleep: ctx.sleep, providers: ctx.providers, isolation: ctx.isolation, ...extra });
 
 // Which sessions of the live room a context speaks about: a person's runtime, or one task's sandbox
 // (src/runtime/sessions.mjs ENV_SCOPE). A fake context with no owner is a person's.

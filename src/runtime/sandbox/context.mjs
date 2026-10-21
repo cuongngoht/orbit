@@ -24,6 +24,8 @@ import { Refused } from "../../errors.mjs";
 import { createObservations } from "../connectivity/observations.mjs";
 import { createdSandbox, createInstances, sandboxId } from "../instances.mjs";
 import { sandboxLiveRoom, sandboxUnderstandingRoom, sandboxesRoom } from "../rooms.mjs";
+import { ISOLATION_PROVIDERS } from "../isolation/index.mjs";
+import { isolated } from "../providers/isolated.mjs";
 import { sandbox } from "../providers/sandbox.mjs";
 import { createRuntimeStore } from "../store.mjs";
 import { filesOn } from "../validate.mjs";
@@ -47,7 +49,7 @@ function roomsOf(primary, id) {
   return { ...primary.rooms, understanding: sandboxUnderstandingRoom(storeRoot, checkout, id), sandboxes: sandboxesRoom(storeRoot, checkout), liveSandbox: sandboxLiveRoom(primary.rooms.live, id) };
 }
 
-const scopedTo = (id, task, providers) => ({ envId: id, envs: { native: id, devcontainer: id, sandbox: id }, owner: { kind: "task", id: task }, writeSettings: settingsRefused, providers: [...providers.filter((p) => !p.composite), sandbox] });
+const scopedTo = (id, task, providers, primary) => ({ envId: id, envs: { native: id, devcontainer: id, isolated: id, sandbox: id }, owner: { kind: "task", id: task }, writeSettings: settingsRefused, providers: [...providers.filter((p) => !p.composite && p.id !== "isolated"), isolated, sandbox], isolation: primary.isolation ?? ISOLATION_PROVIDERS });
 
 // -> the context of the sandbox `task` owns here. Refused when the task has no workspace of its own on this
 // machine: preparing one is the workspace owner's, never this subject's.
@@ -63,7 +65,7 @@ function derived(primary, task, workspace) {
   const rooms = roomsOf(primary, id);
   const sandboxes = createInstances(rooms.sandboxes, primary.io);
   const doc = () => sandboxes.read(id) ?? createdSandbox({ checkout: primary.checkout, task, workspace: workspace.id, baseRevision: workspace.baseRevision }, primary.now());
-  return withViews({ ...primary, ...scopedTo(id, task, primary.providers), rooms, sandboxes, sandboxId: id, task, workspace, primaryRoot: primary.root, root: workspace.path, ...held(primary, workspace, rooms, doc) }, doc);
+  return withViews({ ...primary, ...scopedTo(id, task, primary.providers, primary), rooms, sandboxes, sandboxId: id, task, workspace, primaryRoot: primary.root, root: workspace.path, ...held(primary, workspace, rooms, doc) }, doc);
 }
 
 const held = (primary, workspace, rooms, doc) => ({ source: primary.workspaces.sourceOf(workspace.path), tree: primary.workspaces.treeOf(workspace.path), store: createRuntimeStore(rooms.understanding, primary.io), instances: readOnlyInstances(doc), proposals: noProposals, observations: createObservations(rooms.liveSandbox, primary.io) });

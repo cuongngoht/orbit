@@ -1,6 +1,9 @@
 // A zero-dependency PostgreSQL client for ONE thing: reading state below the interface. It opens a
-// connection, authenticates as the startup user (trust, a cleartext or MD5 password, or
-// SCRAM-SHA-256 with the server held to its own proof), runs the statements it is handed inside ONE
+// connection, authenticates as the startup user -- by SCRAM-SHA-256 with the server held to its own
+// proof whenever a password is bound, or by nothing at all on a trusted network when none is; a
+// server that asks for the password itself (cleartext, MD5) or says it accepted a connection that
+// never finished its proof is refused, so the password never leaves and nobody can stand in for
+// the server -- then runs the statements it is handed inside ONE
 // transaction that is REPEATABLE READ and READ ONLY -- so every statement sees one snapshot, and
 // the server itself refuses a write -- rolls it back and says goodbye.
 //
@@ -10,8 +13,8 @@
 // reading a message string.
 import { createConnection } from "node:net";
 import { PgError, serverError, closedError, protocolError, timeoutError, transportError } from "./errors.mjs";
-import { MECHANISM, clientFinal, clientFirst, md5Answer, serverFirstOf, serverProved } from "./scram.mjs";
-import { authCodeOf, columnsOf, createReader, fieldsOf, mechanismsOf, passwordMessage, saslInitial, saslResponse, simpleQuery, startupMessage, statement, terminate, valuesOf } from "./wire.mjs";
+import { MECHANISM, clientFinal, clientFirst, serverFirstOf, serverProved } from "./scram.mjs";
+import { authCodeOf, columnsOf, createReader, fieldsOf, mechanismsOf, saslInitial, saslResponse, simpleQuery, startupMessage, statement, terminate, valuesOf } from "./wire.mjs";
 
 const SYSTEM_TIMERS = { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t) };
 const netSocket = (o) => createConnection({ host: o.host, port: o.port });
@@ -43,7 +46,7 @@ function ended(s, deps, timer) {
 // ── the socket and the messages it delivers ────────────────────────────────
 
 function opened(options, deps) {
-  const s = { socket: (deps.socket ?? netSocket)(options), queue: [], waiters: [], error: null, open: false, connected: deferred() };
+  const s = { socket: (deps.socket ?? netSocket)(options), queue: [], waiters: [], error: null, open: false, accepted: false, scram: null, connected: deferred() };
   s.reader = createReader((m) => delivered(s, m));
   listened(s);
   return s;
@@ -97,33 +100,33 @@ const send = (s, bytes) => s.socket.write(bytes);
 // ── authentication ─────────────────────────────────────────────────────────
 
 // Until the server is ready: an AuthenticationRequest is answered, parameters and keys are taken
-// as they come, and an ErrorResponse is the end.
+// as they come, and an ErrorResponse is the end. Ready means authenticated as the binding requires.
 async function authenticated(s, options) {
   for (let m = await waitFor(s); m.type !== "Z"; m = await waitFor(s)) {
     if (m.type === "E") throw serverError(fieldsOf(m.body));
     if (m.type === "R") answered(s, options, m.body);
   }
+  if (!s.accepted) throw new PgError("refused", "the server said it was ready before it accepted this connection");
 }
 
-// One row per authentication request this client answers; a request it cannot is refused, said.
+const hasPassword = (o) => typeof o.password === "string";
+
+// One row per authentication request, and WHEN this client answers it. A password bound means SCRAM
+// and nothing weaker; no password means a trusted network, and nothing that asks for one.
 const AUTH = [
-  { code: 0, answer: () => null },
-  { code: 3, answer: (s, o) => send(s, passwordMessage(passwordOf(o))) },
-  { code: 5, answer: (s, o, body) => send(s, passwordMessage(md5Answer(o.user, passwordOf(o), body.subarray(4, 8)))) },
-  { code: 10, answer: (s, o, body) => scramStarted(s, body) },
-  { code: 11, answer: (s, o, body) => scramContinued(s, o, body) },
-  { code: 12, answer: (s, o, body) => scramFinished(s, body) },
+  { code: 0, allowed: (o, s) => (hasPassword(o) ? s.scram?.proved === true : !s.scram), answer: (s) => (s.accepted = true), say: "the server says it accepted this connection without the proof the bound password requires — it is not the server this connection was meant to reach" },
+  { code: 3, allowed: () => false, say: "the server asks for the password in the clear — this client never sends one: it authenticates by SCRAM-SHA-256, or not at all" },
+  { code: 5, allowed: () => false, say: "the server asks for an MD5 password — this client never sends a password a server can replay or crack: it authenticates by SCRAM-SHA-256, or not at all" },
+  { code: 10, allowed: (o, s) => hasPassword(o) && !s.scram, answer: (s, o, body) => scramStarted(s, body), say: "the server asks for a password, and none is bound for this connection" },
+  { code: 11, allowed: (o, s) => Boolean(s.scram?.first && !s.scram.final), answer: (s, o, body) => scramContinued(s, o, body), say: "the server continued a SCRAM exchange this client did not start" },
+  { code: 12, allowed: (o, s) => Boolean(s.scram?.final && !s.scram.proved), answer: (s, o, body) => scramFinished(s, body), say: "the server finished a SCRAM exchange this client did not get to" },
 ];
 
 function answered(s, options, body) {
   const row = AUTH.find((r) => r.code === authCodeOf(body));
   if (!row) throw new PgError("refused", `the server asks for an authentication this client does not speak (${authCodeOf(body)})`);
+  if (!row.allowed(options, s)) throw new PgError("refused", row.say);
   row.answer(s, options, body);
-}
-
-function passwordOf(o) {
-  if (typeof o.password !== "string") throw new PgError("refused", "the server asks for a password, and none is bound for this connection");
-  return o.password;
 }
 
 function scramStarted(s, body) {
@@ -133,14 +136,15 @@ function scramStarted(s, body) {
 }
 
 function scramContinued(s, o, body) {
-  const server = serverFirstOf(body.subarray(4).toString("utf8"), s.scram?.first.nonce ?? "");
+  const server = serverFirstOf(body.subarray(4).toString("utf8"), s.scram.first.nonce);
   if (!server) throw protocolError("the server's SCRAM challenge does not extend this client's nonce");
-  s.scram.final = clientFinal(passwordOf(o), s.scram.first, server);
+  s.scram.final = clientFinal(o.password, s.scram.first, server);
   send(s, saslResponse(s.scram.final.message));
 }
 
 function scramFinished(s, body) {
-  if (!s.scram?.final || !serverProved(body.subarray(4).toString("utf8"), s.scram.final.serverSignature)) throw new PgError("refused", "the server could not prove it knows the password — it is not the server this connection was meant to reach");
+  if (!serverProved(body.subarray(4).toString("utf8"), s.scram.final.serverSignature)) throw new PgError("refused", "the server could not prove it knows the password — it is not the server this connection was meant to reach");
+  s.scram.proved = true;
 }
 
 // ── one read-only snapshot ─────────────────────────────────────────────────

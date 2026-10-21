@@ -45,11 +45,11 @@ test("the wire: a statement carries its values as parameters, and a reader keeps
   assert.deepEqual(columnsOf(desc), ["count"]);
 });
 
-for (const auth of ["trust", "cleartext", "md5", "scram"]) {
+for (const [auth, password] of [["trust", undefined], ["scram", "pencil"]]) {
   test(`authenticated by ${auth}, every statement runs inside one READ ONLY snapshot and the connection says goodbye`, async () => {
     const peer = await pgPeer({ auth, tables: { reminders: REMINDERS } });
     try {
-      const out = await readRows({ host: "127.0.0.1", port: peer.port, user: "invoice", password: "pencil", timeoutMs: 5000 }, [{ sql: 'SELECT count(*) FROM "reminders" WHERE "business_key" = $1', params: [KEY] }]);
+      const out = await readRows({ host: "127.0.0.1", port: peer.port, user: "invoice", password, timeoutMs: 5000 }, [{ sql: 'SELECT count(*) FROM "reminders" WHERE "business_key" = $1', params: [KEY] }]);
       assert.deepEqual(out[0].rows, [["1"]]);
       assert.deepEqual(peer.seen.queries, [BEGIN, "ROLLBACK"]);
       assert.equal(peer.seen.statements[0].inReadOnlyTx, true);
@@ -70,9 +70,21 @@ test("a wrong password, a server that cannot prove itself, and a server nobody a
   const nobody = await pgPeer();
   await nobody.close();
   await assert.rejects(readRows({ host: "127.0.0.1", port: nobody.port, user: "invoice", timeoutMs: 5000 }, []), (e) => e.kind === "transport");
-  const silent = await pgPeer({ auth: "cleartext" });
+  const silent = await pgPeer({ auth: "scram" });
   await assert.rejects(readRows({ host: "127.0.0.1", port: silent.port, user: "invoice", timeoutMs: 5000 }, []), (e) => e.kind === "refused" && /none is bound/.test(e.message));
   await silent.close();
+});
+
+test("a password is never handed to a server that asks for it, and a server that skips its proof is refused -- no downgrade", async () => {
+  for (const auth of ["cleartext", "md5"]) {
+    const peer = await pgPeer({ auth });
+    await assert.rejects(readRows({ host: "127.0.0.1", port: peer.port, user: "invoice", password: "pencil", timeoutMs: 5000 }, []), (e) => e.kind === "refused" && /SCRAM-SHA-256, or not at all/.test(e.message), auth);
+    assert.deepEqual(peer.seen.passwords, [], `${auth}: the password never left`);
+    await peer.close();
+  }
+  const impostor = await pgPeer({ auth: "trust" });
+  await assert.rejects(readRows({ host: "127.0.0.1", port: impostor.port, user: "invoice", password: "pencil", timeoutMs: 5000 }, []), (e) => e.kind === "refused" && /without the proof the bound password requires/.test(e.message), "a bound password means a server that proves it knows it");
+  await impostor.close();
 });
 
 test("the adapter builds the only statements it asks: the bound table and key column quoted, the request's values as parameters, a whole table never", () => {
@@ -86,7 +98,7 @@ test("the adapter builds the only statements it asks: the bound table and key co
 });
 
 test("a read answers how many rows and the first few, as text; the server's error is the binding's or the environment's, never the product's", async () => {
-  const peer = await pgPeer({ auth: "md5", tables: { reminders: REMINDERS } });
+  const peer = await pgPeer({ auth: "scram", tables: { reminders: REMINDERS } });
   const deps = { readRows, env: { ORBIT_BIND_DB_USER: "invoice", ORBIT_BIND_DB_PASSWORD: "pencil" }, now: () => performance.now() };
   const bound = { stateRef: { alias: "reminders", transport: "postgres-wire", endpoint: { host: "127.0.0.1", port: peer.port }, credential: { userEnv: "ORBIT_BIND_DB_USER", passwordEnv: "ORBIT_BIND_DB_PASSWORD" }, table: "reminders", key: "business_key" } };
   try {

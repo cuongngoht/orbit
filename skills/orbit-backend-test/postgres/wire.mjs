@@ -2,7 +2,7 @@
 // STREAMING reader of what the server sends -- a socket hands over whatever bytes arrived, half a
 // message included, and the reader keeps the rest for the next chunk.
 //
-// Only what a read below the interface needs: startup, a password or a SASL message, a simple
+// Only what a read below the interface needs: startup, a SASL message, a simple
 // query, and one parameterized statement (Parse, Bind, Describe, Execute, Sync). Every parameter
 // travels as a parameter, in text format: a value is never text in a query.
 export const PROTOCOL_VERSION = 196608;
@@ -22,7 +22,6 @@ export function startupMessage(params) {
   return Buffer.concat([int32(body.length + 4), body]);
 }
 
-export const passwordMessage = (text) => message("p", cstr(text));
 export const saslInitial = (mechanism, first) => ((data) => message("p", Buffer.concat([cstr(mechanism), int32(data.length), data])))(Buffer.from(first, "utf8"));
 export const saslResponse = (text) => message("p", Buffer.from(text, "utf8"));
 export const simpleQuery = (sql) => message("Q", cstr(sql));

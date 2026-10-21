@@ -40,5 +40,3 @@ export function serverProved(text, expected) {
   return got.length === expected.length && timingSafeEqual(got, expected);
 }
 
-// The MD5 answer an older server asks for: "md5" and md5(md5(password + user) + salt), in hex.
-export const md5Answer = (user, password, salt) => `md5${createHash("md5").update(Buffer.concat([Buffer.from(createHash("md5").update(`${password}${user}`).digest("hex")), salt])).digest("hex")}`;

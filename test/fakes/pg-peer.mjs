@@ -14,7 +14,7 @@ const msg = (type, body = Buffer.alloc(0)) => Buffer.concat([Buffer.from(type, "
 const hmac = (key, text) => createHmac("sha256", key).update(text).digest();
 
 export async function pgPeer({ auth = "trust", user = "invoice", password = "pencil", tables = {}, errorOn = null, lieAboutServer = false } = {}) {
-  const seen = { startup: null, queries: [], statements: [], terminated: false };
+  const seen = { startup: null, queries: [], statements: [], terminated: false, passwords: [] };
   const server = createServer((socket) => conversation(socket, { auth, user, password, tables, errorOn, lieAboutServer, seen }));
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   return { port: server.address().port, seen, close: () => new Promise((r) => server.close(r)) };
@@ -74,6 +74,7 @@ const ready = (socket, ...before) => socket.write(Buffer.concat([...before, msg(
 const refused = (socket, code, text) => socket.write(Buffer.concat([msg("E", Buffer.concat([cstr("SFATAL"), cstr(`C${code}`), cstr(`M${text}`), Buffer.from([0])]))]));
 
 function password(socket, o, st, body) {
+  if (o.auth === "cleartext" || o.auth === "md5") o.seen.passwords.push(body.subarray(0, body.indexOf(0)).toString("utf8"));
   if (o.auth === "cleartext") return body.subarray(0, body.indexOf(0)).toString("utf8") === o.password ? ready(socket, msg("R", int32(0))) : refused(socket, "28P01", "password authentication failed");
   if (o.auth === "md5") return body.subarray(0, body.indexOf(0)).toString("utf8") === md5Of(o, st.salt) ? ready(socket, msg("R", int32(0))) : refused(socket, "28P01", "password authentication failed");
   return st.scram ? scramFinal(socket, o, st, body.toString("utf8")) : scramFirst(socket, o, st, body);

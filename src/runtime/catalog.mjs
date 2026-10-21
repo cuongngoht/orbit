@@ -55,11 +55,17 @@ const platformsOf = (rows) => rowsOf(rows).filter((r) => typeof r.id === "string
 
 const featureOf = (f) => (f && typeof f.id === "string" && typeof f.option === "string" ? { id: f.id, tag: String(f.tag ?? ""), option: f.option } : null);
 
-const serviceOf = (s) => ({ id: s.id, name: String(s.name ?? s.id), images: list(s.images), ports: (Array.isArray(s.ports) ? s.ports : []).filter(Number.isInteger), transports: transportsOf(s.transports) });
+const serviceOf = (s) => ({ id: s.id, name: String(s.name ?? s.id), images: list(s.images), ports: (Array.isArray(s.ports) ? s.ports : []).filter(Number.isInteger), transports: transportsOf(s.transports), ...credentialsOf(s.credentials) });
 
 // Which transport tokens a service speaks, and where: what an adapter's declaration is matched against (ADR 0035).
 // A token, never interpreted here.
 const TOKEN = /^[a-z][a-z0-9.+-]{0,47}$/;
+
+// Where a service's credential is DECLARED when a project starts it -- an environment variable its
+// image reads, or an argument flag -- so a sandbox's binder can hand a helper the synthetic value
+// the sandbox started it with (src/runtime/sandbox/bindings.mjs). A name, never a value.
+const SPEC = (v) => (typeof v?.env === "string" && /^[A-Z_][A-Z0-9_]*$/.test(v.env) ? { env: v.env } : typeof v?.flag === "string" && /^--?[a-z][a-z0-9-]*$/.test(v.flag) ? { flag: v.flag } : null);
+const credentialsOf = (c) => (SPEC(c?.user) && SPEC(c?.password) ? { credentials: { user: SPEC(c.user), password: SPEC(c.password) } } : {});
 
 const transportsOf = (rows) => (Array.isArray(rows) ? rows : []).filter((t) => TOKEN.test(String(t?.id)) && Number.isInteger(t?.port)).map((t) => ({ id: t.id, port: t.port }));
 

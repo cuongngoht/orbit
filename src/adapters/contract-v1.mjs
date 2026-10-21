@@ -35,6 +35,7 @@ export const ADAPTER_FIELDS = {
   limits: { $ref: "#/definitions/limits", doc: "Its own ceilings. The effective limit is the narrowest of policy, grant, these and the run budget left." },
   helper: { $ref: "#/definitions/helper", doc: "How its helper program is launched. An argument list, never a shell line." },
   conformance: { $ref: "#/definitions/conformance", doc: "Which conformance kit proves it, with the parameters the kit needs." },
+  bind: { type: "object", doc: "How the resources it OWNS for a run are named -- an observer, a fixture -- as templates over {ns}, {alias} and the bound channel's own fields ({channel.<field>}); the sandbox's binder fills them (src/runtime/sandbox/bindings.mjs)." },
 };
 
 export const ADAPTER_REQUIRED = ["id", "apiVersion", "version", "doc", "family", "transports", "operations", "helper"];

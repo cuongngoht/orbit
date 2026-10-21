@@ -135,6 +135,14 @@
             "queue": "{ns}.{id}.app"
           }
         }
+      },
+      "bind": {
+        "observer": {
+          "queue": "{ns}.{alias}",
+          "namespace": "{ns}",
+          "bindingKey": "{channel.routingKey}",
+          "exchange": "{channel.exchange}"
+        }
       }
     },
     {
@@ -275,6 +283,13 @@
             "stream": "{ns}{id}",
             "consumer": "{ns}{id}-app"
           }
+        }
+      },
+      "bind": {
+        "observer": {
+          "stream": "{channel.stream}",
+          "consumer": "{ns}-{alias}",
+          "namespace": "{ns}"
         }
       }
     },

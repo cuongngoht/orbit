@@ -31,16 +31,19 @@ export function argvOf(r) {
   return [r.case.file, ...params, "--json", ...(r.slice ? [`--from=${r.slice.from}`, `--to=${r.slice.to}`] : [])];
 }
 
-// The binder a worker gets: only what the host sealed, by kind and alias. A secret an identity
-// names is handed back as environment for the helper -- the only place it may go.
+// The binder a worker gets: only what the host sealed, by kind and alias. Every secret a bound value
+// NAMES -- its `env`, or a credential's user, password or token variable -- is handed back as
+// environment for the helper, the only place it may go; a name the host sealed no value for is not.
 export const sealedBinder = (r) => ({ resolve: (kind, ref) => sealed(r, kind, ref) });
 
 function sealed(r, kind, ref) {
   const value = r.bindings?.[kind]?.[ref];
   if (!value) return { ok: false, why: `nothing named ${String(ref).slice(0, 60)} is bound as ${kind} for this run` };
-  const env = value.env && r.secrets?.[value.env] !== undefined ? { [value.env]: String(r.secrets[value.env]) } : {};
+  const env = Object.fromEntries(secretNamesOf(value).filter((n) => r.secrets?.[n] !== undefined).map((n) => [n, String(r.secrets[n])]));
   return { ok: true, value, env };
 }
+
+const secretNamesOf = (value) => [value.env, ...Object.values(value.credential ?? {})].filter((n) => typeof n === "string" && n);
 
 // How a helper is started where the runner runs, as an argument list, in the directory that
 // declared it, under the minimal environment the composition root hands in (`base.node`,

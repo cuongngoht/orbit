@@ -7,6 +7,8 @@ import { AutomationPage } from "../features/automation/AutomationPage";
 import { AUTOMATION_PATH } from "../features/automation/automationWords";
 import { AutonomousQaPage } from "../features/autonomous-qa/AutonomousQaPage";
 import { AQA_PATH } from "../features/autonomous-qa/aqaWords";
+import { SecurityCatalogsPage } from "../features/security/SecurityCatalogsPage";
+import { SECURITY_PATH } from "../features/security/securityWords";
 import { AnalyticsPage } from "../features/analytics/AnalyticsPage";
 import { ApprovalsPage } from "../features/mission-control/ApprovalsPage";
 import { HealthPage } from "../features/mission-control/HealthPage";
@@ -114,6 +116,14 @@ export const DESTINATIONS: Destination[] = [
     group: "Reports",
     icon: bundleIcon(Bug20Filled, Bug20Regular),
     element: <AutonomousQaPage />,
+  },
+  {
+    id: "security",
+    path: SECURITY_PATH,
+    label: "Security catalogs",
+    group: "Reports",
+    icon: bundleIcon(ShieldCheckmark20Filled, ShieldCheckmark20Regular),
+    element: <SecurityCatalogsPage />,
   },
   { id: "agentic-hosts", path: "/agentic-hosts", label: "Agentic Hosts", group: "Resources", icon: bundleIcon(PlugConnected20Filled, PlugConnected20Regular), element: <AgenticHostsPage /> },
   {

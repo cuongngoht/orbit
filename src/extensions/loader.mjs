@@ -132,7 +132,7 @@ async function register(ctx, tools, id, manifest, out) {
 // the plugin ships -- asked of the room, so nothing a manifest says can claim to be a pack.
 async function registered(ctx, tools, id, manifest) {
   const modules = await imported(tools, id, manifest);
-  const shaped = moduleValues(manifest, modules);
+  const shaped = { ...moduleValues(manifest, modules), home: { dir: tools.dirOf(id), tools: manifest.tools ?? [] } };
   const from = tools.fromOf?.(id) ?? id;
   applied(ctx, from, coherent(ctx, shaped, from));
   return { id, from, version: manifest.version, apiVersion: manifest.apiVersion, status: manifest.status, tools: manifest.tools ?? [], mutates: Boolean(manifest.mutates), ...counted(shaped) };
@@ -240,10 +240,13 @@ function behaviours(ctx, id, shaped) {
   declaredData(ctx, id, shaped);
 }
 
-// What an extension declares as DATA, registered last: its report parts and its adapters.
+// What an extension declares as DATA, registered last: its report parts and its adapters -- and,
+// when anything of it is reached through a helper, where that helper lives and the tools its
+// manifest declared, for the launcher the composition root bound (src/run/worker.mjs).
 function declaredData(ctx, id, shaped) {
   if (shaped.reporting.parts.length) reportingOf(ctx).register(shaped.reporting.parts, id);
   for (const a of shaped.adapters) ctx.adapters.register(a, id);
+  if (shaped.adapters.length || shaped.capabilities.some((c) => c?.helper)) ctx.helpers?.home?.(id, shaped.home);
 }
 
 // Module values are validated as declared. No version conversion or coercion.

@@ -42,20 +42,39 @@ function sealed(r, kind, ref) {
   return { ok: true, value, env };
 }
 
-// How a helper is started where the runner runs: a pack's program, from where the plugin keeps
-// it, as an argument list, under the Node binary and the minimal environment the composition
-// root hands in (`base.node`, `base.env` -- src/ reads no process state of its own). Only packs
-// here; a helper that wants an image of its own is not started from inside a worker, and a
-// project's own tool brings its own launcher.
+// How a helper is started where the runner runs, as an argument list, in the directory that
+// declared it, under the minimal environment the composition root hands in (`base.node`,
+// `base.env` -- src/ reads no process state of its own). Where a helper LIVES is the loader's to
+// say: it names the home of every extension it registered that declares a helper (`home`), a
+// pack's from where the plugin keeps it. A helper that wants an image of its own is not started
+// here.
 export function localLauncher(pluginRoot, io, base = {}) {
-  return { launch: (cap, op) => launched(pluginRoot, io, base, cap) };
+  const homes = new Map();
+  return { launch: (cap, op) => launched(pluginRoot, io, base, homes, cap), home: (from, home) => void homes.set(String(from), home) };
 }
 
-function launched(pluginRoot, io, base, cap) {
-  const dir = packDir(pluginRoot, io, String(cap?.from ?? ""));
+function launched(pluginRoot, io, base, homes, cap) {
+  const home = homes.get(String(cap?.from ?? "")) ?? packHome(pluginRoot, io, String(cap?.from ?? ""));
   const argv = cap?.helper?.argv ?? [];
-  if (!dir || !argv.length || !base.node || cap.helper.runIn === "image") return null;
-  return { file: base.node, args: [contained(dir, join(dir, argv[0])), ...argv.slice(1)], env: { ...(base.env ?? {}) } };
+  if (!home || !argv.length || cap.helper.runIn === "image") return { why: home ? "it runs in an image of its own, which this launcher does not start" : "nothing here knows where its helper lives — only a pack or an extension this context loaded can be launched" };
+  return { env: { ...(base.env ?? {}) }, cwd: home.dir, ...LAUNCHES.find((row) => row.when(String(argv[0]))).as(home, argv, base) };
+}
+
+// What a helper's first argument IS decides how it starts: a Node script of its directory runs
+// under the Node binary the composition root named; a program inside its directory runs as
+// itself; a bare name is a tool on PATH -- in any language, with its own SDK -- and only one the
+// extension DECLARED in its manifest's `tools`, so `query doctor` can say it is missing first.
+const LAUNCHES = [
+  { when: (first) => /\.(mjs|cjs|js)$/i.test(first), as: (home, argv, base) => (base.node ? { file: base.node, args: [inside(home, argv[0]), ...argv.slice(1)] } : { why: "no Node binary was named to run its script" }) },
+  { when: (first) => /[\\/]/.test(first), as: (home, argv) => ({ file: inside(home, argv[0]), args: argv.slice(1) }) },
+  { when: () => true, as: (home, argv) => ((home.tools ?? []).includes(argv[0]) ? { file: argv[0], args: argv.slice(1) } : { why: `its helper is the program "${String(argv[0]).slice(0, 40)}", which its manifest does not declare in tools` }) },
+];
+
+const inside = (home, path) => contained(home.dir, join(home.dir, path));
+
+function packHome(pluginRoot, io, from) {
+  const dir = packDir(pluginRoot, io, from);
+  return dir ? { dir, tools: [] } : null;
 }
 
 function packDir(pluginRoot, io, from) {

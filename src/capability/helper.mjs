@@ -67,9 +67,11 @@ function asked(ctx, run, cap, inv, op, request) {
   return answerOf(cap, op, out);
 }
 
+// A launcher answers what to start, or WHY it starts nothing -- said, because "nothing could be
+// launched" is the first thing a person reads when an adapter of their own does not run.
 function launchOf(ctx, cap, op) {
   const launch = ctx.helpers?.launch?.(cap, op) ?? null;
-  if (!launch?.file) throw new Blocked(`${cap.id} asks its helper, and nothing here can launch one — the composition root that loaded its pack binds the launcher; nothing about the product was observed`);
+  if (!launch?.file) throw new Blocked(`${cap.id} asks its helper, and ${launch?.why ?? "nothing here can launch one — the composition root that loaded its pack binds the launcher"}; nothing about the product was observed`);
   return launch;
 }
 

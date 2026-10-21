@@ -134,3 +134,11 @@ test("a declared base path is only ever a plain path -- never a userinfo, a host
   const graphDecl = declarationsFrom({ graph: { nodes: [{ key: "endpoint:e", role: "interface", name: "e", of: "component:app", attributes: { port: 8080, path: "//attacker.example" } }] } })("endpoint", "e");
   assert.equal(graphDecl.path, undefined);
 });
+
+test("a port is only ever a TCP port: a declared one that is anything else never reaches an origin", () => {
+  const hostile = { ...DECLARED, "schedule:billing-daily": { node: "invoice-app", port: "80@attacker.example", address: { schedule: "billing-daily" } }, "channel:reminders": { node: "broker", port: "5672@x", address: {} } };
+  const out = sealedBindings(input({ refs: [{ kind: "schedule", alias: "billing-daily" }, { kind: "channel", alias: "reminders" }], declarationOf: (kind, alias) => hostile[`${kind}:${alias}`] ?? null }));
+  assert.equal(out.bindings.schedule, undefined);
+  assert.match(out.gaps[0].why, /no port a TCP port can be/);
+  assert.equal(out.bindings.channel.reminders.endpoint.port, null, "never the string");
+});

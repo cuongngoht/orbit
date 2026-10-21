@@ -54,11 +54,15 @@ function declared(ref, input) {
 // path, so nothing a declaration says can become a userinfo, a host or a scheme.
 const PATH = /^\/(?![\/\\])[A-Za-z0-9/_.~-]{0,200}$/;
 
+// A port is a whole number a TCP port can be, or nothing: a value that is anything else never
+// reaches an origin, where "80@another.host" would be a userinfo and another host.
+const portNumber = (v) => (Number.isInteger(Number(v)) && Number(v) > 0 && Number(v) < 65536 && /^\d+$/.test(String(v)) ? Number(v) : null);
+
 function endpoint(ref, input) {
   const d = declared(ref, input);
   if (d.why) return d;
-  const port = Number(d.decl.port ?? d.node?.ports?.[0]);
-  if (!(Number.isInteger(port) && port > 0 && port < 65536)) return { why: `${ref.alias} names no port, and ${d.decl.node} declares none` };
+  const port = portNumber(d.decl.port ?? d.node?.ports?.[0]);
+  if (!port) return { why: `${ref.alias} names no port, and ${d.decl.node} declares none` };
   return d.decl.path === undefined || PATH.test(String(d.decl.path)) ? { value: { alias: ref.alias, transport: "http", origin: `http://${hostOf(d.node, input.topology)}:${port}${d.decl.path ?? ""}` } } : { why: `${ref.alias} declares a base path that is not a plain path` };
 }
 
@@ -80,7 +84,7 @@ const RESERVED = new Set(["alias", "transport", "endpoint", "host", "port", "ori
 
 const addressOf = (address) => Object.fromEntries(Object.entries(address ?? {}).filter(([k]) => !RESERVED.has(k)));
 
-const channelValue = (ref, d, input, service, transport) => ({ ...addressOf(d.decl.address), alias: ref.alias, transport, endpoint: { host: hostOf(d.node, input.topology), port: d.decl.port ?? portOf(service, transport, d.node) } });
+const channelValue = (ref, d, input, service, transport) => ({ ...addressOf(d.decl.address), alias: ref.alias, transport, endpoint: { host: hostOf(d.node, input.topology), port: portNumber(d.decl.port ?? portOf(service, transport, d.node)) } });
 
 const portOf = (service, transport, node) => service?.transports?.find((t) => t.id === transport)?.port ?? node?.ports?.[0];
 
@@ -130,7 +134,8 @@ function hooked(protocol) {
     const d = declared(ref, input);
     if (d.why) return d;
     if (!input.minted?.hooksToken) return { why: `${ref.alias} is reached through test hooks, and this sandbox minted no hooks token` };
-    return { value: { ...addressOf(d.decl.address), alias: ref.alias, transport: protocol, origin: `http://${hostOf(d.node, input.topology)}:${d.decl.port ?? d.node.ports?.[0]}`, credential: { tokenEnv: HOOKS_TOKEN } }, secrets: { [HOOKS_TOKEN]: input.minted.hooksToken } };
+    const port = portNumber(d.decl.port ?? d.node.ports?.[0]);
+    return port ? { value: { ...addressOf(d.decl.address), alias: ref.alias, transport: protocol, origin: `http://${hostOf(d.node, input.topology)}:${port}`, credential: { tokenEnv: HOOKS_TOKEN } }, secrets: { [HOOKS_TOKEN]: input.minted.hooksToken } } : { why: `${ref.alias}'s hooks name no port a TCP port can be` };
   };
 }
 

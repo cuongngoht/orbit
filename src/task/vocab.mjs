@@ -60,7 +60,9 @@ export const OUTCOMES = ["succeeded", "failed", "abandoned"];
 // three after it (0.0.4) are a declared playbook's RUN (src/automation/skill-run.mjs): `skillrun` the run, pinned to one
 // version; `skillstep` one of its workflow's steps; `invocation` one call a step made through its provider's owner
 // gate -- the provider's key, a digest of what was asked and of what came back, how it ended, and never either.
-export const RECEIPT_DOMAINS = ["runtime", "run", "investigation", "data", "browser", "work", "test", "check", "sandbox", "step", "plan", "task", "requirement", "skill", "impact", "learning", "goal", "skillrun", "skillstep", "invocation"];
+// `assessment` (0.1.0) is a security assessment snapshot the Security Auditor kept (`asm-…`, src/qa/security/): the
+// catalogs it pinned and what each control came to -- linked by a standalone audit task, never read to move one.
+export const RECEIPT_DOMAINS = ["runtime", "run", "investigation", "data", "browser", "work", "test", "check", "sandbox", "step", "plan", "task", "requirement", "skill", "impact", "learning", "goal", "skillrun", "skillstep", "invocation", "assessment"];
 
 // The receipt domains a COORDINATOR'S ENGINE writes and reads its own state back from (0.0.4): its steps, its plans,
 // the playbook versions it pinned, a declared playbook's runs, steps and calls, and the goal it serves. A line in one of

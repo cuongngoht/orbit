@@ -26,7 +26,15 @@ import { resultOf } from "./verification.mjs";
 export function ranVersion(w, a) {
   const d = dispatchOf(w);
   const v = versionOf(w, a.version);
-  const attempt = current(w).starts.filter((s) => s.version === v.record.version).length + 1;
+  const unsettled = unsettledOf(current(w), v.record.version);
+  if (unsettled) return { outcome: "AMBIGUOUS", execution: unsettled.execution, why: `a dispatch of ${v.record.version} (${unsettled.execution}) was started and never settled — it is read back, never sent again; reconcile it first` };
+  return prepareThenRun(w, d, v, current(w).starts.filter((s) => s.version === v.record.version).length + 1);
+}
+
+// A start with no evaluation is a dispatch whose end nobody saw: whatever it wrote may have happened.
+const unsettledOf = (model, version) => model.starts.filter((s) => s.version === version).find((s) => !model.evaluations.some((e) => e.execution === s.execution)) ?? null;
+
+function prepareThenRun(w, d, v, attempt) {
   const prepared = d.prepare({ frozen: v.frozen, design: v.design, attempt });
   return prepared.gaps?.length || prepared.refused?.length ? blocked(w, v, attempt, prepared) : dispatchedRun(w, d, v, attempt, prepared);
 }
@@ -87,7 +95,7 @@ function intended(w, v, attempt, p, execution, request) {
 function evaluatedRun(w, d, v, attempt, execution, request, r, p) {
   const findings = hostFindings(d, v, execution, request, r, p);
   const result = resultOf({ status: r.envelope?.status ?? "BLOCKED", failure: r.envelope?.result?.failure ?? {}, envelope: findings, authority: v.obligation?.authority ?? "accepted" });
-  recorded(w, v, attempt, execution, r, result);
+  recorded(w, v, attempt, execution, r, result, findings);
   return { outcome: result.outcome, rule: result.rule, why: result.why, execution, findings };
 }
 
@@ -98,8 +106,11 @@ function hostFindings(d, v, execution, request, r, p) {
   return workerFindings({ envelope: r.envelope, expected: { runId: execution, nonce: request.nonce, caseDigest: v.record.digest }, listed: r.listed ?? new Map(), records: r.records ?? [], frozen: v.frozen.case, provedBy: d.provedBy, canStop: d.canStop, grants: p.grants ?? [] });
 }
 
-function recorded(w, v, attempt, execution, r, result) {
-  const status = r.envelope?.status ?? "BLOCKED";
-  w.store.append(w.id, "run", { id: nextId(current(w), "run"), case: v.record.case, status, proved: r.envelope?.result?.proved ?? null, version: v.record.version, execution, attempt, evidence: r.envelope?.evidence ?? null, case_digest: v.record.digest, authority: "draft" });
+// The run as the HOST holds it: a worker whose envelope did not hold said nothing the run record
+// repeats -- its status is BLOCKED and it proved nothing, whatever it claimed.
+function recorded(w, v, attempt, execution, r, result, findings) {
+  const believed = findings.length === 0;
+  const status = believed ? r.envelope.status : "BLOCKED";
+  w.store.append(w.id, "run", { id: nextId(current(w), "run"), case: v.record.case, status, proved: believed ? (r.envelope.result?.proved ?? null) : null, cause: believed ? null : "envelope", version: v.record.version, execution, attempt, evidence: believed ? (r.envelope.evidence ?? null) : null, case_digest: v.record.digest, authority: "draft" });
   w.store.appendOnce(w.id, "evaluated", { id: nextId(current(w), "evaluated"), eventId: eventIdOf("evaluated", execution, attempt, result.outcome), attempt, execution, obligation: v.obligation?.obligation ?? null, result: `res-${execution.slice(4, 24)}`, outcome: result.outcome, runner: status, cause: result.rule });
 }

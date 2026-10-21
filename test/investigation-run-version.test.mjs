@@ -86,3 +86,29 @@ test("a version that writes runs only in a mode that may write", () => {
   assert.equal(ACTIONS["run-version"].allowed("fixture-write", { version: t.version }, lw), true);
   assert.match(ACTIONS["run-version"].check({ version: "nope" }), /frozen version id/);
 });
+
+// Security review (PBI 12): the run record is the HOST's, a dispatch that never settled is never
+// sent again, and a step nothing can vouch for is taken to write.
+test("a worker the host did not believe leaves a run record that is BLOCKED and proved nothing", () => {
+  const liar = world((x) => ({ ...envelopeFor(x, "PASS", [{ kind: "step", i: 1, ok: true }, { kind: "step", i: 2, ok: true }]), records: [{ kind: "run", case_digest: x.request.case.digest }, { kind: "step", i: 1, ok: true }, { kind: "step", i: 2, ok: false, error: "x" }] }));
+  ranVersion(liar.w, { version: liar.version });
+  const run = liar.model().runs.at(-1);
+  assert.deepEqual([run.status, run.proved, run.cause], ["BLOCKED", null, "envelope"]);
+});
+
+test("a dispatch that started and never settled is read back, never sent again", () => {
+  const t = world(() => assert.fail("never dispatched twice"));
+  t.w.store.appendOnce(ID, "started", { id: "str-1", eventId: "e-unsettled", attempt: 1, version: t.version, execution: "exe-dead-1" });
+  const out = ranVersion(t.w, { version: t.version });
+  assert.equal(out.outcome, "AMBIGUOUS");
+  assert.equal(t.calls.prepare.length, 0, "nothing was even prepared");
+});
+
+test("a version step nothing can vouch for is taken to write", () => {
+  const t = world(() => ({}));
+  const lw = (c) => ({ versionCaseOf: () => c, ctx: { graph: { edgeOn: new Map() } } });
+  assert.equal(ACTIONS["run-version"].mutates({ version: t.version }, lw({ steps: [{ do: "call", capability: "acme.unknown" }] })), true);
+  assert.equal(ACTIONS["run-version"].mutates({ version: t.version }, lw({ steps: [{ do: "click", on: "home/Unmapped" }] })), true);
+  assert.equal(ACTIONS["run-version"].mutates({ version: t.version }, lw({ steps: [{ do: "call", capability: "orbit.worker.observe" }, { do: "sql", query: "SELECT 1" }] })), false);
+  assert.equal(ACTIONS["run-version"].mutates({ version: t.version }, lw({ destructive: true, steps: [] })), true);
+});

@@ -46,11 +46,32 @@ const caseWrites = (lw, a) => ((w) => w.screen || w.capability)(writesOf(lw, a))
 // needs a mode that mutates, and under fixture-write it is covered by a grant at run time.
 const writeAllowed = (m, lw, a) => ((w) => (!w.screen || controlWrites(m)) && (!w.capability || modeOf(m)?.mutates === true))(writesOf(lw, a));
 
-// A frozen version writes when a step asks a family operation that may change the world; one this
-// investigation cannot read back is taken to write.
+// A frozen version writes unless every step is shown NOT to: a family operation none of whose effects
+// mutate, a capability this context knows does not mutate, a read-only verb, or a screen action the
+// map says writes nothing. A step nothing can vouch for -- a capability nobody here knows, a
+// version that cannot be read back -- is taken to write. It fails closed.
 function versionWrites(lw, a) {
   const c = lw.versionCaseOf?.(a.version);
-  return !c || (c.steps ?? []).some((s) => s.do === "call" && (operationFor(s.capability)?.effects ?? []).some(mutatingEffect));
+  return !c || Boolean(c.destructive) || (c.steps ?? []).some((s) => stepWrites(lw, s));
+}
+
+const CHANGES = CORE.verbsWhere("changes");
+
+function stepWrites(lw, s) {
+  if (s.do === "call") return callWrites(lw, s.capability);
+  return CHANGES.has(s.do) ? screenWrites(lw, s.on) : false;
+}
+
+// A control the map knows says whether it writes; one it does not know is taken to write.
+function screenWrites(lw, on) {
+  const edge = on ? lw.ctx.graph.edgeOn.get(on) : null;
+  return !edge || controlOf(lw.ctx.graph, edge).writes !== false;
+}
+
+function callWrites(lw, id) {
+  const op = operationFor(id);
+  if (op) return op.effects.some(mutatingEffect);
+  return capabilityIn(lw)(id)?.mutates !== false;
 }
 
 const capabilityIn = (lw) => (id) => (lw.ctx?.capabilities?.has?.(id) ? lw.ctx.capabilities.resolve(id) : null);

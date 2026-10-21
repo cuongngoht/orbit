@@ -87,3 +87,31 @@ test("the worker hands a helper every secret its bound value names, and no other
   assert.deepEqual(got.env, { ORBIT_BIND_REMINDERS_USER: "invoice", ORBIT_BIND_REMINDERS_PASSWORD: "invoice-pass" });
   assert.deepEqual(binder.resolve("schedule", "billing-daily").env, { ORBIT_BIND_HOOKS_TOKEN: "s3cr3t-hooks" });
 });
+
+// What a ref IS comes from the system graph and the design's own plan -- never from a case.
+import { aliasOf, declarationsFrom } from "../src/runtime/sandbox/declarations.mjs";
+
+const GRAPH = { nodes: [
+  { key: "component:broker", role: "component", name: "broker", attributes: {} },
+  { key: "component:invoice-app", role: "component", name: "invoice-app", attributes: { hooksPort: 9090 } },
+  { key: "exchange:billing.reminder.requested", role: "channel", name: "billing.reminder.requested", of: "component:broker", transport: "amqp-0-9-1", attributes: { exchange: "billing", routingKey: "billing.reminder.requested" } },
+  { key: "endpoint:invoices-api", role: "interface", name: "invoices-api", of: "component:invoice-app", attributes: { port: 8080, path: "/api" } },
+  { key: "schedule:billing-daily", role: "schedule", name: "billing-daily", of: "component:invoice-app", attributes: {} },
+  { key: "worker:reminder-worker", role: "workload", name: "worker", of: "component:invoice-app", attributes: {} },
+] };
+
+test("the graph's nodes declare what each ref is: placed on the component that holds them, hooks where it says", () => {
+  const decl = declarationsFrom({ graph: GRAPH, design: { observationPlan: [{ observerRef: "obs-1", channelRef: "billing-reminder-requested" }], fixtureRefs: ["fx"] } });
+  assert.equal(aliasOf("billing.reminder.requested"), "billing-reminder-requested");
+  assert.deepEqual(decl("channel", "billing-reminder-requested"), { node: "broker", transport: "amqp-0-9-1", address: { exchange: "billing", routingKey: "billing.reminder.requested" } });
+  assert.deepEqual(decl("endpoint", "invoices-api"), { node: "invoice-app", port: 8080, path: "/api" });
+  assert.deepEqual(decl("schedule", "billing-daily"), { node: "invoice-app", port: 9090, address: { schedule: "billing-daily" } });
+  assert.deepEqual(decl("workload", "worker"), { node: "invoice-app", port: 9090, address: { workload: "worker" } });
+  assert.deepEqual(decl("clock", "invoice-app"), { node: "invoice-app", port: 9090 });
+  assert.deepEqual(decl("observer", "obs-1"), { channel: "billing-reminder-requested" });
+  assert.deepEqual(decl("fixture", "fx"), {});
+  assert.equal(decl("channel", "nowhere"), null, "what the graph does not hold is null -- the binder says it is a gap");
+  const sealed = sealedBindings(input({ refs: [{ kind: "channel", alias: "billing-reminder-requested" }, { kind: "observer", alias: "obs-1" }], declarationOf: decl }));
+  assert.deepEqual(sealed.gaps, []);
+  assert.equal(sealed.bindings.observer["obs-1"].bindingKey, "billing.reminder.requested");
+});

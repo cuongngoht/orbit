@@ -90,6 +90,8 @@ export const CRITERION_FIELDS = {
   risk: ref("risk", "What it would cost to get this wrong."),
   disposition: ref("disposition", "Only when no scenario covers it: why not, and what happens instead."),
   expects: list("criterionExpect", "What the criterion states as STRUCTURED expectations over observed meanings. Only these can be mapped to an assertion without anybody's judgement; prose still prepares a test, and never confirms one."),
+  about: { type: "string", pattern: "^[a-z0-9][a-z0-9-]{0,63}$", doc: "The system graph node it is about, by its logical alias (a node's name, lower-case, every other character a dash)." },
+  obligations: { type: "array", items: { type: "string", pattern: "^[a-z][a-z0-9-]{0,63}$" }, doc: "Which kinds of property it states, as obligation shapes (src/qa/obligations/shapes.mjs). Only these are derived into test obligations; none is guessed from the prose." },
 };
 
 // A meaning (src/topology/vocab.mjs MEANINGS), optionally with a sub-path: response.status,

@@ -50,11 +50,16 @@ function declared(ref, input) {
 
 // ── one row per kind ───────────────────────────────────────────────────────
 
+// The origin is the node's alias on the task's network and a port; a base path is only ever a plain
+// path, so nothing a declaration says can become a userinfo, a host or a scheme.
+const PATH = /^\/(?![\/\\])[A-Za-z0-9/_.~-]{0,200}$/;
+
 function endpoint(ref, input) {
   const d = declared(ref, input);
   if (d.why) return d;
-  const port = d.decl.port ?? d.node?.ports?.[0];
-  return port ? { value: { alias: ref.alias, transport: "http", origin: `http://${hostOf(d.node, input.topology)}:${port}${d.decl.path ?? ""}` } } : { why: `${ref.alias} names no port, and ${d.decl.node} declares none` };
+  const port = Number(d.decl.port ?? d.node?.ports?.[0]);
+  if (!(Number.isInteger(port) && port > 0 && port < 65536)) return { why: `${ref.alias} names no port, and ${d.decl.node} declares none` };
+  return d.decl.path === undefined || PATH.test(String(d.decl.path)) ? { value: { alias: ref.alias, transport: "http", origin: `http://${hostOf(d.node, input.topology)}:${port}${d.decl.path ?? ""}` } } : { why: `${ref.alias} declares a base path that is not a plain path` };
 }
 
 // A service's transport and port from the catalog row of what the node runs; its credential from
@@ -67,7 +72,15 @@ function channel(ref, input) {
   return transport ? withCredential(ref, d, service, channelValue(ref, d, input, service, transport)) : { why: `${ref.alias} is on ${d.decl.node}, and nothing says which transport it speaks` };
 }
 
-const channelValue = (ref, d, input, service, transport) => ({ alias: ref.alias, transport, endpoint: { host: hostOf(d.node, input.topology), port: d.decl.port ?? portOf(service, transport, d.node), ...(d.decl.endpoint ?? {}) }, ...(d.decl.address ?? {}) });
+// What an address may say is the resource's own names -- an exchange, a key, a subject, a stream --
+// and never where to connect or as whom: those are the HOST's, from the topology and the sandbox,
+// and they are laid over whatever an address said, so a declaration read from a checkout can
+// never point a helper somewhere else or hand it another credential.
+const RESERVED = new Set(["alias", "transport", "endpoint", "host", "port", "origin", "credential", "adapter", "namespace", "env"]);
+
+const addressOf = (address) => Object.fromEntries(Object.entries(address ?? {}).filter(([k]) => !RESERVED.has(k)));
+
+const channelValue = (ref, d, input, service, transport) => ({ ...addressOf(d.decl.address), alias: ref.alias, transport, endpoint: { host: hostOf(d.node, input.topology), port: d.decl.port ?? portOf(service, transport, d.node) } });
 
 const portOf = (service, transport, node) => service?.transports?.find((t) => t.id === transport)?.port ?? node?.ports?.[0];
 
@@ -108,7 +121,7 @@ function fixture(ref, input) {
   const decl = input.declarationOf?.("fixture", ref.alias) ?? {};
   const base = decl.channel ? channel({ kind: "channel", alias: decl.channel }, input) : { value: {} };
   if (base.why) return base;
-  return { value: { ...base.value, alias: ref.alias, namespace: input.namespace, ...filledFrom(decl.resources ?? {}, { ns: input.namespace, alias: ref.alias, channel: base.value }) }, secrets: base.secrets };
+  return { value: { ...base.value, ...addressOf(filledFrom(decl.resources ?? {}, { ns: input.namespace, alias: ref.alias, channel: base.value })), alias: ref.alias, namespace: input.namespace }, secrets: base.secrets };
 }
 
 // The test hooks a component exposes, reached at its hooks port with the token the SANDBOX minted.
@@ -117,7 +130,7 @@ function hooked(protocol) {
     const d = declared(ref, input);
     if (d.why) return d;
     if (!input.minted?.hooksToken) return { why: `${ref.alias} is reached through test hooks, and this sandbox minted no hooks token` };
-    return { value: { alias: ref.alias, transport: protocol, origin: `http://${hostOf(d.node, input.topology)}:${d.decl.port ?? d.node.ports?.[0]}`, credential: { tokenEnv: HOOKS_TOKEN }, ...(d.decl.address ?? {}) }, secrets: { [HOOKS_TOKEN]: input.minted.hooksToken } };
+    return { value: { ...addressOf(d.decl.address), alias: ref.alias, transport: protocol, origin: `http://${hostOf(d.node, input.topology)}:${d.decl.port ?? d.node.ports?.[0]}`, credential: { tokenEnv: HOOKS_TOKEN } }, secrets: { [HOOKS_TOKEN]: input.minted.hooksToken } };
   };
 }
 
@@ -129,7 +142,7 @@ function identity(ref, input) {
 
 function asDeclared(ref, input) {
   const decl = input.declarationOf?.(ref.kind, ref.alias) ?? null;
-  return decl ? { value: { alias: ref.alias, ...(decl.address ?? decl) } } : { why: `nothing declares what ${ref.alias} is as a ${ref.kind}` };
+  return decl ? { value: { ...addressOf(decl.address ?? decl), alias: ref.alias } } : { why: `nothing declares what ${ref.alias} is as a ${ref.kind}` };
 }
 
 const KINDS = { endpoint, channel, queue: channel, observer, fixture, schedule: hooked("orbit-scheduler-v1"), clock: hooked("orbit-clock-v1"), workload: hooked("orbit-workload-v1"), identity, schema: asDeclared, occurrence: asDeclared, state: asDeclared };

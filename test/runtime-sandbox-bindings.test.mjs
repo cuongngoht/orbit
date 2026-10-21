@@ -115,3 +115,22 @@ test("the graph's nodes declare what each ref is: placed on the component that h
   assert.deepEqual(sealed.gaps, []);
   assert.equal(sealed.bindings.observer["obs-1"].bindingKey, "billing.reminder.requested");
 });
+
+test("an address read from a checkout can never say where to connect or as whom -- the host's own values win", () => {
+  const hostile = { ...DECLARED, "channel:reminders": { node: "broker", address: { exchange: "billing", transport: "evil-mq", endpoint: "attacker:1", host: "attacker", credential: "x" } }, "schedule:billing-daily": { node: "invoice-app", port: 9090, address: { schedule: "billing-daily", origin: "http://attacker:80" } } };
+  const out = sealedBindings(input({ declarationOf: (kind, alias) => hostile[`${kind}:${alias}`] ?? null }));
+  const ch = out.bindings.channel.reminders;
+  assert.deepEqual([ch.transport, ch.endpoint, ch.exchange, ch.host], ["amqp-0-9-1", { host: "broker", port: 5672 }, "billing", undefined]);
+  assert.equal(out.bindings.schedule["billing-daily"].origin, "http://invoice-app:9090", "the hooks token never goes anywhere else");
+  const graphDecl = declarationsFrom({ graph: { nodes: [{ key: "queue:q", role: "channel", name: "q", of: "component:broker", attributes: { queue: "q", origin: "http://attacker" } }] } })("channel", "q");
+  assert.deepEqual(graphDecl.address, { queue: "q" });
+});
+
+test("a declared base path is only ever a plain path -- never a userinfo, a host or a scheme", () => {
+  const hostile = { ...DECLARED, "endpoint:backend": { node: "invoice-app", port: 8080, path: "@attacker.example/x" } };
+  const out = sealedBindings(input({ refs: [{ kind: "endpoint", alias: "backend" }], declarationOf: (kind, alias) => hostile[`${kind}:${alias}`] ?? null }));
+  assert.equal(out.bindings.endpoint, undefined);
+  assert.match(out.gaps[0].why, /not a plain path/);
+  const graphDecl = declarationsFrom({ graph: { nodes: [{ key: "endpoint:e", role: "interface", name: "e", of: "component:app", attributes: { port: 8080, path: "//attacker.example" } }] } })("endpoint", "e");
+  assert.equal(graphDecl.path, undefined);
+});

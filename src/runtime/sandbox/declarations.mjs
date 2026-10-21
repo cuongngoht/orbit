@@ -12,6 +12,14 @@ const SLUG = /[^a-z0-9]+/g;
 
 export const aliasOf = (name) => String(name ?? "").toLowerCase().replace(SLUG, "-").replace(/^-+|-+$/g, "").slice(0, 64);
 
+// A node's attributes are what a checkout said, so only its own NAMES travel as an address: never a
+// key that says where to connect or as whom (the binder lays the host's over them anyway).
+const RESERVED = new Set(["alias", "transport", "endpoint", "host", "port", "origin", "credential", "adapter", "namespace", "env"]);
+const namesOf = (attributes) => Object.fromEntries(Object.entries(attributes ?? {}).filter(([k]) => !RESERVED.has(k)));
+
+// A base path is a plain path: a leading slash, plain segments -- never a userinfo, a host or a scheme.
+const PATH = /^\/(?![\/\\])[A-Za-z0-9/_.~-]{0,200}$/;
+
 const ownerOf = (node) => (node?.of ? String(node.of).replace(/^[a-z-]+:/, "") : null);
 
 // in: { graph: graphOf(...) view, design: the design sidecar }
@@ -28,12 +36,12 @@ const hooksPortOf = (nodes, node) => Number(componentOf(nodes, node)?.attributes
 
 function channel(nodes, alias) {
   const node = named(nodes, ["channel"], alias);
-  return node ? { node: ownerOf(node), ...(node.transport ? { transport: node.transport } : {}), address: { ...node.attributes } } : null;
+  return node ? { node: ownerOf(node), ...(node.transport ? { transport: node.transport } : {}), address: namesOf(node.attributes) } : null;
 }
 
 function endpoint(nodes, alias) {
   const node = named(nodes, ["interface"], alias);
-  return node ? { node: ownerOf(node), ...(Number(node.attributes?.port) ? { port: Number(node.attributes.port) } : {}), ...(node.attributes?.path ? { path: String(node.attributes.path) } : {}) } : null;
+  return node ? { node: ownerOf(node), ...(Number.isInteger(Number(node.attributes?.port)) && Number(node.attributes.port) > 0 ? { port: Number(node.attributes.port) } : {}), ...(PATH.test(String(node.attributes?.path ?? "")) ? { path: String(node.attributes.path) } : {}) } : null;
 }
 
 // A schedule, or a workload, is reached through the test hooks of the component that holds it.

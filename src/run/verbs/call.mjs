@@ -23,7 +23,7 @@ export default {
   label: (s) => `${s.capability}${s.select ? ` → ${s.select}` : ""}`,
   act(ctx, run, s) {
     const value = invokeNow(ctx, run, { ...s, input: filled(ctx, run, s) });
-    verdict(s, value);
+    verdict(s, value, ctx);
     return value;
   },
   tail: (s, r) => trunc(JSON.stringify(r.result), 60),

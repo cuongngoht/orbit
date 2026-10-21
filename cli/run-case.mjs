@@ -122,7 +122,7 @@ async function workerMain() {
   const request = jsonOf(await readAll(process.stdin));
   const problem = requestProblem(request);
   if (problem) return enveloped(request ?? {}, { status: "REFUSED", why: problem });
-  try { enveloped(request, ran(await withExtensions({ ...createContext(), binder: sealedBinder(request), grants: grantLedger(request.grants, request.runId, Date.now), fixture: request.fixture ?? null }), request)); }
+  try { enveloped(request, ran(await withExtensions({ ...createContext(), binder: sealedBinder(request), grants: grantLedger(request.grants, request.runId, Date.now), fixture: request.fixture ?? null, evaluation: request.evaluation ?? null }), request)); }
   catch (e) { enveloped(request, stopOf(e)); }
 }
 

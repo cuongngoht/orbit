@@ -56,6 +56,12 @@
       "description": "Let Claude start the orbit-architecture skill. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_ARCHITECTURE overrides this on one machine.",
       "default": true
     },
+    "skill_reverse_engineer": {
+      "type": "boolean",
+      "title": "Skill · orbit-reverse-engineer",
+      "description": "Let Claude start the orbit-reverse-engineer skill. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_REVERSE_ENGINEER overrides this on one machine.",
+      "default": true
+    },
     "skill_autonomous_engineering": {
       "type": "boolean",
       "title": "Skill · orbit-engineer",
@@ -192,6 +198,12 @@
       "type": "boolean",
       "title": "Agent · orbit-architecture-scanner",
       "description": "Let Claude start the orbit-architecture-scanner agent. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_AGENT_ARCHITECTURE_SCANNER overrides this on one machine.",
+      "default": true
+    },
+    "agent_reverse_engineering_agent": {
+      "type": "boolean",
+      "title": "Agent · orbit-reverse-engineering-agent",
+      "description": "Let Claude start the orbit-reverse-engineering-agent agent. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_AGENT_REVERSE_ENGINEERING_AGENT overrides this on one machine.",
       "default": true
     },
     "agent_dsl_doctor": {

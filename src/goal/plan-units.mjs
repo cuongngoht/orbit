@@ -7,7 +7,7 @@
 // analysis names when its kind takes them, and whether it settles the goal's work item. A unit a missing prerequisite
 // blocks is UNRESOLVED: planned, so a person sees it, and never started on a guess.
 import { unitId } from "./plan-ids.mjs";
-import { TITLE_LIMIT, WORK_KINDS } from "./vocab.mjs";
+import { TITLE_LIMIT, WORK_KINDS, capabilitiesOfKind } from "./vocab.mjs";
 
 const clip = (t) => String(t ?? "").slice(0, TITLE_LIMIT);
 
@@ -18,7 +18,7 @@ const blockingOf = (k, a) => a.intent.missing.filter((m) => m.blocks.includes(k.
 // Why a unit of this kind may not start: the first row that holds, or nothing.
 const UNRESOLVED = [
   { when: (k, a) => blockingOf(k, a).length > 0, because: (k, a) => `missing: ${blockingOf(k, a).map((m) => m.statement).join("; ")}` },
-  { when: (k, a) => k.named && a.intent.capabilities.length === 0, because: () => "a procedure names the capability it provides, and the analysis names none" },
+  { when: (k, a) => k.named && capabilitiesOfKind(k, a.intent.capabilities).length === 0, because: () => "a procedure names the capability it provides, and the analysis names none" },
 ];
 
 const unresolvedOf = (k, a) => ((row) => (row ? clip(row.because(k, a)) : null))(UNRESOLVED.find((r) => r.when(k, a)));
@@ -31,7 +31,7 @@ const refsOf = (rows) => (rows ?? []).map((r) => r.id);
 
 function unitOf(a, base, kinds) {
   const owners = accepting(kinds);
-  return (k) => ({ id: unitId(`${base}:${k.id}`), title: clip(k.title(a) || a.objective), workflow: "automation", kind: k.id, intent: k.intent, takesRef: k.ref, capabilities: k.named ? a.intent.capabilities : [], dependsOn: [], acceptanceRefs: owners.includes(k) ? refsOf(a.acceptance) : [], requirementRefs: k.ref ? refsOf(a.requirements) : [], unresolved: unresolvedOf(k, a) });
+  return (k) => ({ id: unitId(`${base}:${k.id}`), title: clip(k.title(a) || a.objective), workflow: "automation", kind: k.id, intent: k.intent, takesRef: k.ref, capabilities: capabilitiesOfKind(k, a.intent.capabilities), dependsOn: [], acceptanceRefs: owners.includes(k) ? refsOf(a.acceptance) : [], requirementRefs: k.ref ? refsOf(a.requirements) : [], unresolved: unresolvedOf(k, a) });
 }
 
 // Each unit waits for the one before it; its state is where it starts from.

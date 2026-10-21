@@ -60,7 +60,9 @@ export const OUTCOMES = ["succeeded", "failed", "abandoned"];
 // three after it (0.0.4) are a declared playbook's RUN (src/automation/skill-run.mjs): `skillrun` the run, pinned to one
 // version; `skillstep` one of its workflow's steps; `invocation` one call a step made through its provider's owner
 // gate -- the provider's key, a digest of what was asked and of what came back, how it ended, and never either.
-export const RECEIPT_DOMAINS = ["runtime", "run", "investigation", "data", "browser", "work", "test", "check", "sandbox", "step", "plan", "task", "requirement", "skill", "impact", "learning", "goal", "skillrun", "skillstep", "invocation"];
+// `architecture` (0.1.0) is what a standalone reverse-engineering pass recorded: the system graph it left, by the
+// projection's digest (src/architecture/graph-view.mjs) -- a receipt that names a graph, never a verdict about it.
+export const RECEIPT_DOMAINS = ["runtime", "run", "investigation", "data", "browser", "work", "test", "check", "sandbox", "step", "plan", "task", "requirement", "skill", "impact", "learning", "goal", "skillrun", "skillstep", "invocation", "architecture"];
 
 // The receipt domains a COORDINATOR'S ENGINE writes and reads its own state back from (0.0.4): its steps, its plans,
 // the playbook versions it pinned, a declared playbook's runs, steps and calls, and the goal it serves. A line in one of

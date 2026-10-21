@@ -884,9 +884,10 @@ skills/orbit-api-test/  (0.1.0) the HTTP PACK, opted into by `packs`: orbit.http
 skills/orbit-backend-test/  (0.1.0) the BACKEND PACK: capabilities.mjs (every selecting family operation, from
                           src/adapters/core.mjs, and orbit.schedule.expect) · adapters.json + reference ADAPTERS
                           (amqp/, jetstream/ -- examples of `orbit.adapter/v1`, their product words kept here;
-                          postgres/ -- state read below the interface, a zero-dependency client: trust, cleartext,
-                          MD5 or SCRAM-SHA-256, one REPEATABLE READ READ ONLY transaction, statements built from
-                          quoted identifiers with every value a parameter; hooks/ -- the orbit.scheduler/v1,
+                          postgres/ -- state read below the interface, a zero-dependency client: SCRAM-SHA-256
+                          whenever a password is bound (never cleartext or MD5, never a server that skips its
+                          proof), one REPEATABLE READ READ ONLY transaction, statements built from quoted
+                          identifiers with every value a parameter; hooks/ -- the orbit.scheduler/v1,
                           orbit.clock/v1, orbit.workload/v1 and orbit.identity/v1 test hooks a project exposes) ·
                           schedule/ (dialects, time zones through Intl, helper.mjs) · contracts/asyncapi.mjs
 skills/orbit-adapter-kit/  (0.1.0) CONFORMANCE KITS, one per family (messaging.mjs, hooks.mjs -- scheduler, clock,

@@ -52,7 +52,7 @@ function inputOf(ctx, files, opts) {
   const counted = { n: 0 };
   const read = (p) => (counted.n++, ctx.source.read(p));
   const search = (p) => (counted.n++, ctx.source.search(p));
-  return { files, read, search, counted, budget: opts.budget, facts: shape({ files, read }).facts, layerTools: opts.layerTools ?? {} };
+  return { files, read, search, counted, budget: opts.budget, facts: shape({ files, read }).facts, layerTools: opts.layerTools ?? {}, yaml: ctx.yaml ?? null };
 }
 
 function harvested(rows, input, ctx, decision) {

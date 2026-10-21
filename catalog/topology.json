@@ -36,7 +36,8 @@
     { "id": "offset", "role": "cursor", "doc": "a position in an ordered log" },
     { "id": "external-dependency", "role": "external", "doc": "a system the component calls" },
     { "id": "external-sink", "role": "external", "doc": "a system the component writes or notifies" },
-    { "id": "trust-boundary", "role": "boundary", "doc": "where identity, tenant or network trust changes" }
+    { "id": "trust-boundary", "role": "boundary", "doc": "where identity, tenant or network trust changes" },
+    { "id": "network", "role": "boundary", "doc": "a network segment: what may reach what, as a composition file or an environment declares it" }
   ],
   "relations": [
     { "id": "calls", "role": "invocation", "doc": "the subject asks the object synchronously" },

@@ -29,6 +29,12 @@ export const KINDS = [
   { name: "convention", doc: "a shape the tree repeats. A repetition, never an agreement — the difference is in `because`" },
   { name: "extension-point", fields: ["pattern"], doc: "sibling directories sharing a shape: where a new integration of that kind goes" },
   { name: "invariant", doc: "a rule this project enforces on itself — a gate a script or a pipeline runs" },
+  // The SYSTEM GRAPH (0.1.0, ADR 0033): a part of the running system and an edge between two of
+  // them. What a node's kind or a relation's name MEANS is its vocabulary row's role
+  // (src/topology/vocabulary.mjs), read when the graph is projected and never stored on a fact --
+  // so a name no layer declares is kept and shown, and derives nothing.
+  { name: "node", fields: ["nodeKind", "name", "of", "transport", "attributes"], doc: "a part of the running system — a component, a workload, an interface, a principal, a store, a channel, a schedule, a cursor, an external dependency or a boundary — as a file declares it" },
+  { name: "relation", fields: ["relation", "from", "to", "attributes"], doc: "an edge between two nodes — who calls, reads, writes, publishes to, consumes from or schedules what. A target the source does not fix is `unknown`, never guessed" },
 ];
 
 // WHERE a fact came from, and whether that place counts as the source tree.

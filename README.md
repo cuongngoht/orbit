@@ -109,6 +109,18 @@ When a declared check runs beside an engineering task, Orbit binds one adapter b
 
 A tracked work’s lifecycle is one of: `RECEIVED`, `IN_PROGRESS`, `INTERRUPTED`, `WAITING`, `BLOCKED`, `PAUSED`, `REPORTED_DONE`, `FAILED`, `CANCELLED`. Evidence (`none` · `observed` · `reported` · `verified`) and session liveness are separate axes.
 
+## System graph (0.1.0)
+
+`architecture graph [--json]` projects the running system from the architecture snapshot: `node` facts (components,
+workloads, interfaces, channels, schedules, stores …) and `relation` facts (calls, publishes-to, consumes-from,
+schedules …), each with its evidence, freshness and unknowns, and a digest over what the graph means. `architecture
+ensure` reads what a composition file declares (services, start order, networks); everything else arrives as candidates
+through `architecture record`, which refuses a key that is not the subject, an end marked certain that nobody could fix,
+a secret attribute and a file the repository does not track. What a kind or a relation MEANS is the vocabulary's
+(`catalog/topology.json` and the organisation's and project's layers): an undeclared name is kept and derives nothing.
+The **`orbit-reverse-engineer`** skill runs a standalone pass as its own task, one `orbit-reverse-engineering-agent` per
+unknown scope, and closes on the graph's digest; it never sets an acceptance criterion.
+
 ## Architecture notes
 
 Engine rules, module map, and extension guidance:

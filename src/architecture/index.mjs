@@ -3,6 +3,7 @@
 import { capabilities, diff, where } from "./views/store.mjs";
 import { ensure } from "./views/ensure.mjs";
 import { facts, why } from "./views/facts.mjs";
+import { graph } from "./views/graph.mjs";
 import { projectInto } from "./views/project.mjs";
 import { record } from "./views/record.mjs";
 
@@ -15,6 +16,7 @@ export const COMMANDS = {
   scan: { run: (ctx, args) => ensure(ctx, [...args, "--rescan"]), writes: "store" },
   facts: { run: facts, writes: "nothing" },
   why: { run: why, writes: "nothing" },
+  graph: { run: graph, writes: "nothing" },
   capabilities: { run: capabilities, writes: "nothing" },
   diff: { run: diff, writes: "nothing" },
   where: { run: where, writes: "nothing" },

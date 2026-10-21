@@ -17,6 +17,11 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SCOPE = [
   "src/walk.mjs",
   "src/topology",
+  "src/architecture/relations.mjs",
+  "src/architecture/graph-view.mjs",
+  "src/architecture/views/graph.mjs",
+  "src/architecture/analyzers/topology.mjs",
+  "src/investigation/graphs.mjs",
   "src/adapters",
   "src/qa/obligations",
   "src/qa/backend",

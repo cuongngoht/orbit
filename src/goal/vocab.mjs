@@ -63,6 +63,20 @@ export const WORK_KIND_IDS = WORK_KINDS.map((k) => k.id);
 
 export const workKindOf = (id) => WORK_KINDS.find((k) => k.id === id) ?? null;
 
+// The capability words a goal's analysis may name that a work kind OTHER than the one that names its
+// own (`named`) takes: the unit of that kind carries the word into its coordinated workflow, where
+// the resolver finds who provides it (catalog/components.json `provides`). A word in a table, never
+// a pattern over the goal's text, so a standalone reverse-engineering pass is asked for the same way
+// in any language. A capability no row here names goes to the kind that names its own, as before.
+export const KIND_CAPABILITIES = [
+  { capability: "architecture.reverse", kind: "analyze", doc: "the system graph -- components, workloads, channels, schedules and how they relate -- read from what the project's files declare, with evidence and unknowns" },
+];
+
+const CAPABILITY_KIND = new Map(KIND_CAPABILITIES.map((r) => [r.capability, r.kind]));
+
+// Which of the analysis's capabilities a unit of this kind carries.
+export const capabilitiesOfKind = (kind, capabilities) => (capabilities ?? []).filter((c) => (CAPABILITY_KIND.get(c) ?? (kind.named ? kind.id : null)) === kind.id);
+
 // How much a structured reading may hold.
 export const INTENT_LIMITS = { workKinds: 5, capabilities: 8, verification: 8, dependencies: 8, missing: 8 };
 

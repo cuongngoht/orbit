@@ -123,13 +123,16 @@ export const NOTE_TEXT = ["title", "body"];
 // An architecture fact: the three fields built from prose rather than from a
 // path or a hash. `because` is where a quoted line out of somebody's README
 // lands, which is the one place a connection string could realistically arrive.
+// A graph fact's `attributes` (0.1.0) are what a file declared, copied out of it,
+// so they are masked too -- behind the record door's refusal of a secret-named
+// attribute or a URL carrying a credential, as a backstop.
 //
 // Everything else on a fact is deliberately absent from this list, and
 // `fingerprint` and `commit` are why the list exists at all rather than the
 // whole record going through `scrubbed`: both are long hex, both look exactly
 // like the `blob` pattern, and masking either would leave nothing able to say
 // whether a fact still describes the tree. Same reasoning as `fe_commit` below.
-export const ARCH_TEXT = ["statement", "because", "unknowns"];
+export const ARCH_TEXT = ["statement", "because", "unknowns", "attributes"];
 
 // An engineering fact: the same three prose fields as an architecture fact,
 // plus the prose only engineering kinds carry -- when a pattern applies, when

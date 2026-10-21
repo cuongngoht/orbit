@@ -1,5 +1,5 @@
 // The analysers, as a table. Adding one is a row plus a file; no caller
-// anywhere spells the four names out.
+// anywhere spells their names out.
 //
 // Each is PURE -- `(input) => {facts, unknowns}` -- which is what makes a
 // targeted scan possible at all: a scan is this table filtered, over an input
@@ -13,12 +13,14 @@ import { docs } from "./docs.mjs";
 import { imports } from "./imports.mjs";
 import { manifests } from "./manifests.mjs";
 import { shape } from "./shape.mjs";
+import { topology } from "./topology.mjs";
 
 export const ANALYZERS = [
   { name: "manifests", reads: "manifests", run: manifests, doc: "what this project declares it depends on, and the gates it runs on itself" },
   { name: "shape", reads: "listing", run: shape, doc: "what the tracked paths alone demonstrate: modules, repeated shapes, sibling directories that look like an extension point" },
   { name: "imports", reads: "source", run: imports, doc: "which module actually imports which — observed, never prescribed" },
   { name: "docs", reads: "documents", run: docs, doc: "what this project's own documents SAY about its boundaries. Quoted, never obeyed" },
+  { name: "topology", reads: "declarations", run: topology, doc: "what a composition file declares about the running system: its services, what each starts after, the networks each is attached to. Read, never run" },
 ];
 
 export const ANALYZER_NAMES = ANALYZERS.map((a) => a.name);

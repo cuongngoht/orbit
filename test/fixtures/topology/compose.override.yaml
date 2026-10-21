@@ -1,0 +1,8 @@
+# An override of the same composition: one service it adds to, and one it adds.
+x-common: &common
+  restart: unless-stopped
+services:
+  api:
+    depends_on: [cache]
+  cache:
+    image: redis:7

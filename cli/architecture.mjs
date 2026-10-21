@@ -6,6 +6,7 @@
 //   node architecture.mjs scan [--dry]        re-read everything, whatever the snapshot says
 //   node architecture.mjs facts [<kind>]      the index of what is known
 //   node architecture.mjs why <fact-id>       one fact: evidence, provenance, and what it cannot know
+//   node architecture.mjs graph [--json]      the system graph: nodes, relations, conflicts, its digest
 //   node architecture.mjs capabilities        what this project can be held to, and the gaps
 //   node architecture.mjs diff                what has moved under the snapshot
 //   node architecture.mjs record [<file>]     validated candidate facts — stdin when no file
@@ -34,7 +35,12 @@ import { fileURLToPath } from "node:url";
 import { Blocked, EXIT, Refused } from "../src/run/errors.mjs";
 import { COMMANDS, runArchitecture } from "../src/architecture/index.mjs";
 import { architectureContext } from "../src/architecture/context.mjs";
+import { storeBase } from "../src/project/repository.mjs";
 import { createContext } from "../src/run/context.mjs";
+import { parseYaml } from "../src/runtime/discover/yaml-lite.mjs";
+import { realIo } from "../src/store/io.mjs";
+import { loadVocabulary } from "../src/topology/vocabulary.mjs";
+import { pluginRoot } from "../src/version.mjs";
 
 const [cmd, ...args] = taskArguments(process.argv.slice(2), () => readTaskStdin(0, "utf8"));
 
@@ -49,8 +55,16 @@ function main() {
 
 function ready() {
   const ctx = architectureContext(createContext());
-  return { ...ctx, read: readInput, now: () => new Date().toISOString() };
+  return { ...ctx, read: readInput, now: () => new Date().toISOString(), yaml: (text) => parseYaml(text), topology: vocabularyOf(ctx), joins: joinsOf(ctx) };
 }
+
+// What architecture is handed rather than imports (AGENTS.md): the tolerant YAML reader the
+// composition files are read with, the layered words the graph's roles are read from -- the
+// plugin's, the organisation's, the project's; read, never created -- and the ids the UI map knows
+// its screens by, which the graph links an interface node to by id.
+const vocabularyOf = (ctx) => loadVocabulary({ pluginRoot: pluginRoot(), storeBase: storeBase(process.env), storeRoot: ctx.store.root, io: realIo() });
+
+const joinsOf = (ctx) => [{ id: "ui-map", roles: ["interface"], ids: [...(ctx.graph?.screens?.keys?.() ?? [])] }];
 
 // stdin when no path is named, because the scanner agent has no Write: it
 // reports candidates and the parent pipes them here. A temp file inside the

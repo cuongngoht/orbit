@@ -116,9 +116,14 @@ src/architecture/  what this project IS, as evidence-backed facts kept beside th
                fact alone · analyzers/ four pure (input) => {facts, unknowns} · capability.mjs
                GRADES a token search and holds NO list of capability names -- one arrives as
                tokens off a task, and a row here naming one would be a product learned.
-               (0.1.0, ADR 0033) `node` and `relation` facts, through the same door; analyzers/topology.mjs
-               over canonical records packs' extractors emit; relations.mjs; graph-view.mjs the SYSTEM GRAPH
-               as a projection with a digest, joined by id at the composition root -- never a second store
+               (0.1.0, ADR 0033) `node` and `relation` facts, through the same door; relations.mjs the rules a
+               field table cannot say (a node's key is its kind and name, a relation's its from, name and to,
+               so one edge is one fact; an end nobody can fix is `unknown`, never certain; no secret attribute);
+               analyzers/topology.mjs what a composition file DECLARES -- services, depends_on, networks -- with
+               the YAML reader handed in, an image kept and never read for what it suggests; graph-view.mjs the
+               SYSTEM GRAPH as a projection with a digest over what it means (freshness shown, never digested),
+               roles read off src/topology/vocabulary.mjs, other subjects joined by id at the composition root
+               -- never a second store; views/graph.mjs is `architecture graph [--json]`
 src/topology/  (0.1.0, ADR 0033) a LEAF architecture and qa both read: vocab.mjs the STRUCTURAL roles (node
                roles, relation roles, MEANINGS, BOUNDARIES) · vocabulary.mjs the NAMES, layered plugin
                (catalog/topology.json, catalog/semantics.json) → organisation → project; an id nobody declared
@@ -341,7 +346,9 @@ src/investigation/verification.mjs · assessments.mjs  (0.1.0, ADR 0032) what a 
                VERIFICATION_OUTCOMES, a table apart from runner statuses and from OUTCOMES, reached by ordered
                RESULT rows over facts read back from their owners · an ASSESSMENT frozen from the current
                SATISFIED results per obligation. The journal gains the milestone kinds (schema 3, `eventId`
-               folded once) and store.mjs an `artifacts/` room, each file written once by its digest
+               folded once) and store.mjs an `artifacts/` room, each file written once by its digest ·
+               graphs.mjs `freezeGraph`: the system graph an obligation was derived from, kept as it was in
+               artifacts/graphs, refused when its digest no longer names its content; a composition root calls it
 src/sources/   ACQUISITION of a work item, provider-neutral -- it names no product, vendor, host or tool
                (a test greps it). contract-v1.mjs (the acquisition capabilities, the SOURCE_KINDS with
                their `authorityBearing` column, the reader port) · fields.mjs + model.mjs (identity, ids,

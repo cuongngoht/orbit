@@ -14,6 +14,7 @@ import { constraintFindings, missingFindings } from "../constraints.mjs";
 import { short } from "../hash.mjs";
 import { scrubFact } from "../scrub.mjs";
 import { FACT_FIELDS, REQUIRED, allowedOn, misplacedOn } from "./fields.mjs";
+import { graphFactFindings } from "./relations.mjs";
 import { KIND_NAMES, kindsWith, verifiedBy } from "./vocab.mjs";
 
 export const MODEL_VERSION = 1;
@@ -27,7 +28,7 @@ export const factId = (f) => `arch-${f.kind}-${short(`${f.kind}\u0000${f.key}`)}
 export function factFindings(raw, where = "fact") {
   if (!isObject(raw)) return [`${where}: must be a JSON object`];
   const shape = [...missingFindings(REQUIRED, raw, where), ...constraintFindings(FACT_FIELDS, raw, where)];
-  return [...shape, ...extraFindings(raw, where)];
+  return [...shape, ...extraFindings(raw, where), ...graphFactFindings(raw, where)];
 }
 
 const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);

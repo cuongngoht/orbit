@@ -37,6 +37,14 @@ export const KIND_FIELDS = {
   providedBy: { type: "string", doc: "What supplies it — a declared dependency, a directory, a configured command. Absent when the answer is that nothing does." },
   optional: { type: "boolean", doc: "Whether the project works without it." },
   pattern: { type: "string", doc: "The shape the siblings share, and therefore what a new one has to look like." },
+  nodeKind: { type: "string", pattern: "^[a-z][a-z0-9-]{0,47}$", doc: "The node's kind as a vocabulary names it (catalog/topology.json, an organisation's or the project's own layer). What it means is that row's role, read when the graph is projected; a kind no layer declares is kept and derives nothing." },
+  name: { type: "string", doc: "What the system itself calls it: a service's name, a channel's, a schedule's id, an endpoint's method and path. Never an address a sandbox gives, never a credential." },
+  of: { type: "string", doc: "The key of the node this one belongs to: a workload's component, a subscription's topic." },
+  transport: { type: "string", pattern: "^[a-z][a-z0-9.+-]{0,47}$", doc: "The transport token a file declares for it, as a token. Matched against what adapters serve, never interpreted." },
+  attributes: { type: "object", doc: "What the file declares about it, as flat name → value pairs: a routing key, a timezone, an image. Never a secret, and never a URL that carries one." },
+  relation: { type: "string", pattern: "^[a-z][a-z0-9-]{0,47}$", doc: "The relation's name as a vocabulary names it. What it means is that row's role, read when the graph is projected; one nobody declares is kept and derives nothing." },
+  from: { type: "string", doc: "The key of the node the edge starts at, or `unknown` when the source does not fix it." },
+  to: { type: "string", doc: "The key of the node the edge ends at, or `unknown` for a target the source does not fix — a name computed at run time is never guessed." },
 };
 
 export const FACT_FIELDS = { ...COMMON_FIELDS, ...KIND_FIELDS };

@@ -7,6 +7,7 @@ import { ANALYZERS, ANALYZER_NAMES, analyseWith, analyzersReading } from "../src
 import { KIND_NAMES, kindRow } from "../src/architecture/vocab.mjs";
 import { factFindings } from "../src/architecture/model.mjs";
 import { look } from "../src/architecture/capability.mjs";
+import { parseYaml } from "../src/runtime/discover/yaml-lite.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -28,6 +29,7 @@ const FILES = [
   "adapters/widget/adapter.mjs",
   "adapters/gadget/index.mjs",
   "adapters/gadget/adapter.mjs",
+  "deploy/compose.yaml",
 ];
 
 const SOURCES = {
@@ -36,6 +38,7 @@ const SOURCES = {
   "CLAUDE.md": "# rules\n\n```\nthis fenced -> arrow is not a rule somebody stated\n```\n\nEvery adapter must expose an index.mjs that the registry can load at start-up.\n",
   "src/api/handler.mjs": "import { u } from '../ui/util.mjs';\nimport express from 'express';\n",
   "adapters/widget/index.mjs": "import { thing } from '../../src/api/index.mjs';\n",
+  "deploy/compose.yaml": "services:\n  front:\n    image: demo-front:1\n    depends_on: [store]\n  store:\n    image: demo-store:1\n",
 };
 
 const HITS = [
@@ -43,7 +46,7 @@ const HITS = [
   { path: "adapters/widget/index.mjs", line: 1, text: "import { thing } from '../../src/api/index.mjs';" },
 ];
 
-const input = (over = {}) => ({ files: FILES, read: (p) => SOURCES[p] ?? "", search: () => HITS, facts: [], ...over });
+const input = (over = {}) => ({ files: FILES, read: (p) => SOURCES[p] ?? "", search: () => HITS, facts: [], yaml: (t) => parseYaml(t), ...over });
 
 const run = () => analyseWith(ANALYZERS, withShape());
 
@@ -162,7 +165,7 @@ test("a declared dependency is certain, a path is only possible, and nothing is 
   assert.match(by.widget.statement, /declared dependency/);
   assert.equal(by.gadget.confidence, "possible", "a directory sharing the word is not an integration");
   assert.equal(by.nowhere.confidence, "unknown");
-  assert.match(by.nowhere.statement, /nothing here provides nowhere — searched 1 manifest\(s\).*14 tracked path\(s\)/);
+  assert.match(by.nowhere.statement, /nothing here provides nowhere — searched 1 manifest\(s\).*15 tracked path\(s\)/);
 });
 
 // Absence has to name the closest thing that already exists, or a reader has

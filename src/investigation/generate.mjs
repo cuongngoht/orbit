@@ -54,9 +54,10 @@ function frozenVersion(w, g, out) {
   return frozen.id;
 }
 
+// `digest` is the ARTIFACT's -- what the design is read back by (store.mjs readArtifact).
 function designKept(w, obligation, design) {
-  w.store.putArtifact(w.id, "designs", design);
-  w.store.appendOnce(w.id, "designed", { id: nextId(current(w), "designed"), eventId: eventIdOf("designed", obligation.obligation, 0, design.digest), obligation: obligation.obligation, design: design.id, digest: design.digest, state: "designed" });
+  const kept = w.store.putArtifact(w.id, "designs", design);
+  w.store.appendOnce(w.id, "designed", { id: nextId(current(w), "designed"), eventId: eventIdOf("designed", obligation.obligation, 0, design.digest), obligation: obligation.obligation, design: design.id, digest: kept.digest, state: "designed" });
 }
 
 function versionKept(w, out, frozen, validator) {

@@ -28,6 +28,10 @@ const ROUTES = {
   "GET /same": () => [302, null, { location: "/invoices/inv-a" }],
   "GET /away": () => [302, null, { location: "http://elsewhere.invalid/x" }],
   "GET /boom": () => [500, { error: "internal" }],
+  "GET /echo-header": (req) => [401, { error: "denied" }, { "www-authenticate": `Bearer error="invalid_token", token="${bearer(req)}"` }],
+  "GET /echo-escaped": (req) => [200, `{"t":"${[...bearer(req)].map((ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`).join("")}"}`, { "content-type": "application/json" }],
+  "GET /echo-hop": (req) => [302, null, { location: `/landing?t=${bearer(req)}` }],
+  "GET /landing": () => [200, { landed: true }],
   "POST /invoices": (req) => [201, { created: true, key: req.headers["idempotency-key"] ?? null }],
   "POST /lost": (req) => (req.socket.destroy(), null),
 };
@@ -83,6 +87,18 @@ test("headers are an allow-list both ways, and a credential the product echoes n
   assert.match(r.value.body.youSent, new RegExp(MASK.replace(/[[\]]/g, "\\$&")));
   assert.equal("set-cookie" in r.value.headers, false, "a response header nobody declared is not kept");
   assert.ok(r.value.receipt.requestDigest && r.value.receipt.responseDigest);
+});
+
+test("an echoed credential is masked in a header, in a JSON escape the raw text hid, and in a redirect hop", async () => {
+  const header = await exchange(asked({ path: "/echo-header" }), deps("token-a"));
+  assert.equal(header.value.echoedCredential, true);
+  assert.equal(JSON.stringify(header.value).includes("token-a"), false);
+  const escaped = await exchange(asked({ path: "/echo-escaped" }), deps("token-a"));
+  assert.equal(escaped.value.echoedCredential, true, "JSON.parse decodes what the raw text hid -- masked after parsing too");
+  assert.equal(JSON.stringify(escaped.value).includes("token-a"), false);
+  const hop = await exchange(asked({ path: "/echo-hop", redirects: 1 }), deps("token-a"));
+  assert.equal(hop.value.echoedCredential, true);
+  assert.equal(JSON.stringify(hop.value).includes("token-a"), false);
 });
 
 test("a case cannot route, name a host or carry an identity of its own", async () => {

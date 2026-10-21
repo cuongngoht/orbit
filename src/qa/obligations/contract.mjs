@@ -89,6 +89,7 @@ export const CONTROL_FIELDS = {
 export const TRIGGER_FIELDS = {
   kind: { enum: TRIGGER_KINDS, doc: "How the system under test is made to act." },
   ref: alias("The interface, schedule, channel or step that triggers it."),
+  step: { type: "integer", minimum: 1, doc: "The skeleton step that is the trigger, counted from 1 -- what every observer must be armed before." },
 };
 
 export const OBSERVATION_PLAN_FIELDS = {

@@ -28,8 +28,8 @@ function hooks(routes) {
   return { calls, ask: (op, request = {}, bound = {}, deadlineMs = 2_000) => run({ v: "orbit.helper/v1", op, request, bound, deadlineMs }, deps) };
 }
 
-test("it answers the five hook operations, and nothing else", async () => {
-  assert.deepEqual(OPERATIONS, ["trigger", "decisions", "advance", "attempts", "control"]);
+test("it answers the six hook operations, and nothing else", async () => {
+  assert.deepEqual(OPERATIONS, ["trigger", "decisions", "advance", "attempts", "control", "issue"]);
   assert.equal((await hooks({}).ask("purge")).failure.class, "refused");
 });
 
@@ -115,4 +115,16 @@ test("the hooks' credential travels only as a bearer header, from the variable t
   const refused = await anonymous.ask("trigger", {}, { scheduleRef: { ...schedule, credential: undefined } });
   assert.equal(anonymous.calls[0].headers.authorization, undefined);
   assert.equal(refused.failure.class, "transport", "a credential the hooks refuse is the environment's, never the product's");
+});
+
+test("an identity is issued as the principal and tenant the binding names, behind the hooks' own credential -- a lost answer is AMBIGUOUS, and a hook that answers no token is the tool's", async () => {
+  const identity = { alias: "tenant-b-reader", principal: "tenant-b-reader", tenant: "tenant-b", transport: "orbit-identity-v1", origin: ORIGIN, credential: HOOKS_CREDENTIAL };
+  const h = hooks({ "POST /orbit/identity/v1/issue": answer(200, { token: "syn_0123456789abcdef0123", principal: "tenant-b-reader", tenant: "tenant-b", role: "reader" }) });
+  const out = await h.ask("issue", {}, { identityRef: identity });
+  assert.deepEqual(out.value, { principal: "tenant-b-reader", token: "syn_0123456789abcdef0123" }, "only the principal and the token, which the binder alone receives");
+  assert.deepEqual([h.calls[0].url, h.calls[0].body, h.calls[0].headers.authorization], [`${ORIGIN}/orbit/identity/v1/issue`, { principal: "tenant-b-reader", tenant: "tenant-b" }, "Bearer s3cr3t-hooks"]);
+  assert.match((await h.ask("issue", {}, { identityRef: { ...identity, tenant: "Tenant B" } })).failure.message, /no principal and tenant/);
+  assert.equal((await hooks({ "POST /orbit/identity/v1/issue": answer(200, { token: "short" }) }).ask("issue", {}, { identityRef: identity })).failure.class, "protocol");
+  const lost = await hooks({ "POST /orbit/identity/v1/issue": () => Promise.reject(Object.assign(new Error("aborted"), { name: "AbortError" })) }).ask("issue", {}, { identityRef: identity });
+  assert.deepEqual([lost.failure.class, lost.failure.operationKey], ["ambiguous", "issue:tenant-b-reader:tenant-b"]);
 });

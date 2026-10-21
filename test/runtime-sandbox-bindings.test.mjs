@@ -142,3 +142,32 @@ test("a port is only ever a TCP port: a declared one that is anything else never
   assert.match(out.gaps[0].why, /no port a TCP port can be/);
   assert.equal(out.bindings.channel.reminders.endpoint.port, null, "never the string");
 });
+
+test("an identity the host cannot issue is sealed as HOW to issue it inside: a principal node, the tenant a PERSON's contract names, the hooks of its component", () => {
+  const graph = { nodes: [...GRAPH.nodes, { key: "principal-class:tenant-b-reader", name: "tenant-b-reader", role: "principal", of: "component:invoice-app", attributes: {} }] };
+  const tenancy = { tenants: { B: "tenant-b" }, identities: { "tenant-b-reader": ["B"] } };
+  const decl = declarationsFrom({ graph, design: {}, tenancy });
+  assert.deepEqual(decl("identity", "tenant-b-reader"), { node: "invoice-app", port: 9090, principal: "tenant-b-reader", tenant: "tenant-b" });
+  assert.equal(declarationsFrom({ graph, design: {} })("identity", "tenant-b-reader"), null, "no tenant a person declared is no identity -- never one read off the code");
+  const out = sealedBindings(input({ refs: [{ kind: "identity", alias: "tenant-b-reader" }], declarationOf: decl }));
+  assert.deepEqual(out.gaps, []);
+  assert.deepEqual(out.bindings.identity["tenant-b-reader"], { alias: "tenant-b-reader", principal: "tenant-b-reader", tenant: "tenant-b", env: "ORBIT_BIND_TENANT_B_READER_TOKEN", issue: { transport: "orbit-identity-v1", origin: "http://invoice-app:9090", credential: { tokenEnv: "ORBIT_BIND_HOOKS_TOKEN" } } });
+  assert.deepEqual(out.secrets, { ORBIT_BIND_HOOKS_TOKEN: "s3cr3t-hooks" }, "the hooks' token is sealed; the identity's own is issued inside, and nowhere else");
+  assert.match(sealedBindings(input({ refs: [{ kind: "identity", alias: "tenant-b-reader" }], declarationOf: decl, minted: {} })).gaps[0].why, /minted no hooks token/);
+  const minted = sealedBindings(input({ refs: [{ kind: "identity", alias: "tenant-b-reader" }], declarationOf: decl, minted: { identities: { "tenant-b-reader": { token: "issued-by-the-host" } } } }));
+  assert.deepEqual(minted.secrets, { ORBIT_BIND_TENANT_B_READER_TOKEN: "issued-by-the-host" }, "an identity the host could issue is sealed with its token, as before");
+});
+
+test("the worker's binder issues a sealed identity ONCE for the run, hands its token to the helper alone, and never tells a capability how it was issued", () => {
+  const value = { alias: "tenant-b-reader", principal: "tenant-b-reader", tenant: "tenant-b", env: "ORBIT_BIND_TENANT_B_READER_TOKEN", issue: { transport: "orbit-identity-v1", origin: "http://invoice-app:9090", credential: { tokenEnv: "ORBIT_BIND_HOOKS_TOKEN" } } };
+  const asked = [];
+  const binder = sealedBinder({ bindings: { identity: { "tenant-b-reader": value } }, secrets: { ORBIT_BIND_HOOKS_TOKEN: "s3cr3t-hooks" } }, { issue: (v, env) => (asked.push([v.alias, env]), { token: "syn_issued_inside" }) });
+  const first = binder.resolve("identity", "tenant-b-reader");
+  binder.resolve("identity", "tenant-b-reader");
+  assert.deepEqual(first.env, { ORBIT_BIND_TENANT_B_READER_TOKEN: "syn_issued_inside" }, "the identity's token, and not the hooks' one");
+  assert.equal("issue" in first.value, false);
+  assert.deepEqual(asked, [["tenant-b-reader", { ORBIT_BIND_HOOKS_TOKEN: "s3cr3t-hooks" }]], "issued once, with the hooks' token and nothing else");
+  const refused = sealedBinder({ bindings: { identity: { "tenant-b-reader": value } }, secrets: {} }, { issue: () => ({ why: "the hooks refused" }) });
+  assert.deepEqual(refused.resolve("identity", "tenant-b-reader"), { ok: false, why: "the hooks refused" });
+  assert.match(sealedBinder({ bindings: { identity: { "tenant-b-reader": value } } }).resolve("identity", "tenant-b-reader").why, /nothing here can issue it/);
+});

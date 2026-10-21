@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // Runs the TEST-HOOK conformance kit (skills/orbit-adapter-kit/hooks.mjs) against the example
-// project's REAL hooks -- stack A, with its injected clock -- for the four hook adapters, through
+// project's REAL hooks -- stack A, with its injected clock -- for the five hook adapters, through
 // their REAL helper, with psql in the stack's own database as the witness.
 //
 //   node acceptance/kits/hooks.mjs [--json] [--record]
 import { spawnSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -37,7 +37,7 @@ function askerFor(adapter, token) {
   };
 }
 
-const adapters = () => JSON.parse(readFileSync(join(PACK, "adapters.json"), "utf8")).adapters.filter((a) => ["scheduler", "clock", "workload", "worker"].includes(a.family));
+const adapters = () => JSON.parse(readFileSync(join(PACK, "adapters.json"), "utf8")).adapters.filter((a) => ["scheduler", "clock", "workload", "worker", "identity"].includes(a.family));
 const codeOf = (adapter) => codeDigestOf(join(PACK, dirname(adapter.helper.argv[0])), realIo());
 
 async function main() {
@@ -47,10 +47,11 @@ async function main() {
   const stack = stackUp(dir, ports, token);
   try {
     if (stack.up.status !== 0) return void process.stdout.write(`BLOCKED the stack did not come up: ${stack.up.stderr.slice(-400)}\n`, () => (process.exitCode = 3));
-    const witness = { executed: (ref) => stack.compose(["exec", "-T", "db", "psql", "-U", "invoice", "-d", "invoice", "-X", "-At", "-c", `SELECT count(*) FROM billing_jobs WHERE execution_ref = '${String(ref).replace(/'/g, "''")}'`]).stdout.trim() === "1" };
+    const psql = (sql) => stack.compose(["exec", "-T", "db", "psql", "-U", "invoice", "-d", "invoice", "-X", "-At", "-c", sql]).stdout.trim();
+    const witness = { executed: (ref) => psql(`SELECT count(*) FROM billing_jobs WHERE execution_ref = '${String(ref).replace(/'/g, "''")}'`) === "1", authenticates: (token, principal) => psql(`SELECT count(*) FROM tokens WHERE token_hash = '${createHash("sha256").update(String(token)).digest("hex")}' AND principal = '${String(principal).replace(/'/g, "''")}'`) === "1" };
     const credential = { tokenEnv: "ORBIT_KIT_HOOKS_TOKEN" };
     const origin = `http://127.0.0.1:${ports.hooks}`;
-    const bound = { schedule: { origin, credential, schedule: "billing-daily" }, clock: { origin, credential }, workload: { origin, credential, workload: "worker" } };
+    const bound = { schedule: { origin, credential, schedule: "billing-daily" }, clock: { origin, credential }, workload: { origin, credential, workload: "worker" }, identity: { origin, credential, principal: "tenant-a-reader", tenant: "tenant-a" } };
     const receipts = adapters().map((adapter) => receiptOf(adapter, SCENARIOS.filter((s) => s.family === adapter.family).map((s) => scenarioResult({ adapter, ask: askerFor(adapter, token), system: { bound, witness, now: () => Date.now() } }, s))));
     reported(receipts);
   } finally {

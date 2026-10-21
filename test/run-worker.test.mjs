@@ -24,9 +24,30 @@ const dsl = createDslRegistry();
 const OWNER = { id: "invoice-owner-read", name: "Tenant A reads its own invoice", seen: "src", steps: [{ do: "call", capability: "orbit.http.read", proves: "api", input: { endpointRef: "backend", identityRef: "tenant-a-reader", method: "GET", path: "/invoices/inv-a" }, expect: "it.status === 200 && it.body.id === 'inv-a' && it.body.tenantId === 'tenant-a'" }] };
 const OTHER = { id: "invoice-other-tenant-read", name: "Tenant B cannot read tenant A invoice", seen: "src", steps: [{ do: "call", capability: "orbit.http.read", proves: "api", input: { endpointRef: "backend", identityRef: "tenant-b-reader", method: "GET", path: "/invoices/inv-a" }, expect: "it.status === 404 && it.body.error === 'not_found' && !JSON.stringify(it.body).includes('canary-invoice-a')" }] };
 
+// The application's API, and -- as orbit.identity/v1 -- its identity hooks: an identity issued there, behind the
+// hooks' own token, reads as its tenant.
+const HOOKS_TOKEN = "hooks-secret-0123456789";
+const ISSUED = new Map();
+
+function issued(req, res) {
+  let body = "";
+  req.on("data", (c) => (body += c));
+  req.on("end", () => answeredIssue(req, res, JSON.parse(body || "{}")));
+}
+
+function answeredIssue(req, res, asked) {
+  const ok = req.headers.authorization === `Bearer ${HOOKS_TOKEN}`;
+  const token = `syn_${asked.principal}_${ISSUED.size}_0123456789`;
+  if (ok) ISSUED.set(token, asked.tenant);
+  res.writeHead(ok ? 200 : 401, { "content-type": "application/json" });
+  res.end(JSON.stringify(ok ? { token, principal: asked.principal, tenant: asked.tenant } : { error: "unauthorized" }));
+}
+
 before(async () => {
   server.http = createServer((req, res) => {
-    const mine = req.headers.authorization === "Bearer token-a";
+    if (req.method === "POST" && req.url === "/orbit/identity/v1/issue") return issued(req, res);
+    const bearer = String(req.headers.authorization ?? "").replace(/^Bearer /, "");
+    const mine = bearer === "token-a" || ISSUED.get(bearer) === "tenant-a";
     res.writeHead(mine ? 200 : 404, { "content-type": "application/json" });
     res.end(JSON.stringify(mine ? { id: "inv-a", tenantId: "tenant-a", marker: "canary-invoice-a" } : { error: "not_found" }));
   });
@@ -39,7 +60,7 @@ after(() => server.http.close());
 function project(c) {
   const dir = mkdtempSync(join(tmpdir(), "orbit-worker-"));
   cpSync(join(ROOT, "test/fixtures/ui-tests"), join(dir, "in/ui-tests"), { recursive: true });
-  writeFileSync(join(dir, "in/ui-tests/project.json"), JSON.stringify({ name: "worker-fixture", packs: ["orbit-api-test"] }));
+  writeFileSync(join(dir, "in/ui-tests/project.json"), JSON.stringify({ name: "worker-fixture", packs: ["orbit-api-test", "orbit-backend-test"] }));
   const cases = join(dir, "in/ui-tests/screens/_no-screen/cases");
   mkdirSync(cases, { recursive: true });
   writeFileSync(join(cases, `${c.id}.json`), JSON.stringify(c, null, 2));
@@ -126,4 +147,20 @@ test("a ref the host did not seal is never bound, and the arguments a request st
   assert.match(binder.resolve("endpoint", "elsewhere").why, /nothing named elsewhere is bound as endpoint/);
   const argv = argvOf({ case: { file: "/work/in/c.json" }, out: "/work/out", params: { NAME: "TC-1" } });
   assert.deepEqual(argv, ["/work/in/c.json", "NAME=TC-1", "--json"]);
+});
+
+const issuingRequest = (p, hooksToken) => ({ ...requestOf(p, OWNER), bindings: { endpoint: { backend: { alias: "backend", origin: server.origin } }, identity: { "tenant-a-reader": { alias: "tenant-a-reader", principal: "tenant-a-reader", tenant: "tenant-a", env: "ORBIT_BIND_TENANT_A_READER_TOKEN", issue: { transport: "orbit-identity-v1", origin: server.origin, credential: { tokenEnv: "ORBIT_BIND_HOOKS_TOKEN" } } } } }, secrets: { ORBIT_BIND_HOOKS_TOKEN: hooksToken } });
+
+test("an identity the host could not issue is issued INSIDE the worker, through the identity hooks, and its token reaches the helper alone", async () => {
+  const p = project(OWNER);
+  const { envelope, err } = await worker(p, issuingRequest(p, HOOKS_TOKEN));
+  assert.equal(envelope.status, "PASS", envelope.why ?? err);
+  const log = readFileSync(join(p.out, envelope.evidence, "run-log.jsonl"), "utf8");
+  for (const token of ISSUED.keys()) assert.equal(log.includes(token) || JSON.stringify(envelope).includes(token), false, "an issued token is in no log and no envelope");
+  assert.equal(log.includes(HOOKS_TOKEN), false);
+  const q = project(OWNER);
+  const refused = await worker(q, issuingRequest(q, "not-the-hooks-token-000"));
+  assert.equal(refused.envelope.status, "BLOCKED", "hooks that refuse the token issue nothing, and nothing about the product was observed");
+  rmSync(p.dir, { recursive: true, force: true });
+  rmSync(q.dir, { recursive: true, force: true });
 });

@@ -1,5 +1,5 @@
 // The TEST-HOOK conformance kit (doc §5.3, §5.5, §5.10): the scenarios an adapter over a project's
-// orbit.scheduler/v1, orbit.clock/v1 and orbit.workload/v1 hooks is held to, on a REAL system,
+// orbit.scheduler/v1, orbit.clock/v1, orbit.workload/v1 and orbit.identity/v1 hooks is held to, on a REAL system,
 // through its REAL helper. It knows no product: which schedule, workload and clock a scenario
 // asks about is the SYSTEM's -- bound values the caller hands in (`system.bound`) -- and what the
 // system did is asked of a WITNESS the caller binds (`system.witness.executed(ref)`), never of the
@@ -12,6 +12,7 @@ export const SCENARIOS = [
   { id: "clock-barrier", family: "clock", ops: ["advance"], needs: { clockInjection: ["live"] }, run: clockBarrier },
   { id: "control-stop-start", family: "workload", ops: ["control"], needs: {}, run: stopStart },
   { id: "attempts-by-cursor", family: "worker", ops: ["observe"], needs: {}, run: attemptsByCursor },
+  { id: "identity-issued", family: "identity", ops: ["issue"], needs: {}, run: identityIssued },
 ];
 
 // A dispatch the scheduler took names an execution, and the system's own record of it exists.
@@ -46,6 +47,14 @@ function stopStart(kit) {
 function attemptsByCursor(kit) {
   const out = kit.ask("attempts", {}, { workloadRef: kit.system.bound.workload });
   return { ok: out.ok && out.value.completeness === "complete" && Number.isInteger(out.value.through), saw: { count: out.value?.attempts?.length, through: out.value?.through } };
+}
+
+// An identity is issued for the bound principal and tenant, a second one is another token, and the SYSTEM's witness
+// says the first authenticates as that principal. What the receipt keeps is whether they differed -- never a token.
+function identityIssued(kit) {
+  const [a, b] = [1, 2].map(() => kit.ask("issue", {}, { identityRef: kit.system.bound.identity }));
+  const distinct = a.ok && b.ok && typeof a.value.token === "string" && a.value.token !== b.value.token;
+  return { ok: distinct && kit.system.witness.authenticates(a.value.token, kit.system.bound.identity.principal) === true, saw: { principal: a.value?.principal ?? null, distinct, failure: a.ok ? null : a.class ?? null } };
 }
 
 // One scenario's word for one adapter: not applicable on semantics it does not meet.

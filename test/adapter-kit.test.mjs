@@ -65,20 +65,24 @@ test("an observer that took the application's message fails non-stealing on the 
 // system's, and whether a dispatch really happened is the WITNESS's word.
 import { SCENARIOS as HOOK_SCENARIOS, scenarioResult as hookResult } from "../skills/orbit-adapter-kit/hooks.mjs";
 
-function hookKit(semantics, executed = true) {
+function hookKit(semantics, executed = true, issued = () => `syn_${Math.random().toString(16).slice(2)}_0123456789`) {
   const answers = {
     trigger: () => ({ ok: true, value: { executionRef: "exe-1" } }),
     decisions: (request) => ({ ok: true, value: { decisions: request.since ? [] : [{ occurrenceId: "o-1" }], through: 4, completeness: "complete" } }),
     advance: (request) => ({ ok: true, value: { evaluatedThrough: request.to } }),
     control: (request) => ({ ok: true, value: { status: request.action === "stop" ? "stopped" : "running" } }),
     attempts: () => ({ ok: true, value: { attempts: [], through: 0, completeness: "complete" } }),
+    issue: () => ({ ok: true, value: { principal: "tenant-a-reader", token: issued() } }),
   };
-  return { adapter: { semantics }, ask: (op, request) => answers[op](request), system: { bound: { schedule: {}, clock: {}, workload: {} }, witness: { executed: () => executed }, now: () => Date.parse("2026-10-22T02:00:00Z") } };
+  return { adapter: { semantics }, ask: (op, request) => answers[op](request), system: { bound: { schedule: {}, clock: {}, workload: {}, identity: { principal: "tenant-a-reader", tenant: "tenant-a" } }, witness: { executed: () => executed, authenticates: (token, principal) => token.startsWith("syn_") && principal === "tenant-a-reader" }, now: () => Date.parse("2026-10-22T02:00:00Z") } };
 }
 
 test("the hook kit passes a system that behaves, and a dispatch the witness cannot find fails", () => {
   const k = hookKit({ decisionReceipts: "cursor", clockInjection: "live" });
-  assert.deepEqual(HOOK_SCENARIOS.map((s) => hookResult(k, s).outcome), ["passed", "passed", "passed", "passed", "passed"]);
+  assert.deepEqual(HOOK_SCENARIOS.map((s) => hookResult(k, s).outcome), ["passed", "passed", "passed", "passed", "passed", "passed"]);
+  const identity = HOOK_SCENARIOS.find((s) => s.id === "identity-issued");
+  assert.equal(hookResult(hookKit({}, true, () => "syn_the_same_token_000"), identity).outcome, "failed", "two identities issued are two tokens");
+  assert.equal(JSON.stringify(hookResult(k, identity)).includes("syn_"), false, "a receipt keeps whether they differed, never a token");
   assert.equal(hookResult(hookKit({}, false), HOOK_SCENARIOS[0]).outcome, "failed", "an execution ref the system has no record of");
   assert.equal(hookResult(hookKit({ clockInjection: "none" }), HOOK_SCENARIOS.find((s) => s.id === "clock-barrier")).outcome, "not-applicable");
 });

@@ -8,6 +8,7 @@ import { capabilityFindings } from "./capability.mjs";
 import { coverFindings } from "./cover.mjs";
 import { declaredFindings } from "./declared.mjs";
 import { expectFindings } from "./expect.mjs";
+import { expectsFindings } from "./expects.mjs";
 import { freshnessFindings } from "./freshness.mjs";
 import { idFindings } from "./ids.mjs";
 import { linkFindings } from "./links.mjs";
@@ -23,6 +24,7 @@ export const FAMILIES = {
   ids: idFindings,
   cover: coverFindings,
   expect: expectFindings,
+  expects: expectsFindings,
   permission: permissionFindings,
   security: securityFindings,
   repeat: repeatFindings,

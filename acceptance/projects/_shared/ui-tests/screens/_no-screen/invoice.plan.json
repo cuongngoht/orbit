@@ -1,0 +1,236 @@
+{
+  "schema": 1,
+  "id": "invoice",
+  "feature": "Invoices",
+  "title": "Invoice reads, tenant isolation and the daily billing reminder",
+  "revision": "r1",
+  "at": "2026-10-22",
+  "author": "the invoice product team (synthetic acceptance fixture)",
+  "scope": {
+    "in": [
+      "reading an invoice through the API, as its owner and as another tenant",
+      "one reminder and one notification per due period",
+      "a delivery that cannot succeed"
+    ],
+    "out": [
+      "the search page, which a browser in the worker verifies",
+      "creating invoices"
+    ]
+  },
+  "sources": [
+    {
+      "id": "PBI",
+      "kind": "requirement",
+      "ref": "PBI-INV-1",
+      "revision": "r1",
+      "at": "2026-10-22",
+      "says": "contracts/pbi.md: API-AC-1, API-AC-2, FIX-ASYNC-1 and FIX-ASYNC-2, accepted with the fixture."
+    }
+  ],
+  "criteria": [
+    {
+      "id": "API-AC-1",
+      "says": "The owner reading its invoice gets 200: GET /invoices/inv-a as tenant-a-reader answers id inv-a and tenantId tenant-a.",
+      "source": "PBI",
+      "about": "invoice-read",
+      "obligations": [
+        "response-conforms"
+      ],
+      "expects": [
+        {
+          "id": "E1",
+          "property": "response.status",
+          "op": "eq",
+          "value": 200,
+          "because": "API-AC-1: answers 200"
+        },
+        {
+          "id": "E2",
+          "property": "response.body.id",
+          "op": "eq",
+          "value": "inv-a",
+          "because": "API-AC-1: with id = inv-a"
+        },
+        {
+          "id": "E3",
+          "property": "response.body.tenantId",
+          "op": "eq",
+          "value": "tenant-a",
+          "because": "API-AC-1: and tenantId = tenant-a"
+        }
+      ]
+    },
+    {
+      "id": "API-AC-2",
+      "says": "Another tenant reading the invoice gets 404 with error not_found and nothing of the invoice, in particular not its marker canary-invoice-a.",
+      "source": "PBI",
+      "about": "invoice-read",
+      "obligations": [
+        "permission-enforced"
+      ],
+      "expects": [
+        {
+          "id": "E1",
+          "property": "response.status",
+          "op": "eq",
+          "value": 404,
+          "because": "API-AC-2: answers 404"
+        },
+        {
+          "id": "E2",
+          "property": "response.body.error",
+          "op": "eq",
+          "value": "not_found",
+          "because": "API-AC-2: with error = not_found"
+        },
+        {
+          "id": "E3",
+          "property": "response.body",
+          "op": "excludes",
+          "value": "canary-invoice-a",
+          "because": "API-AC-2: the answer contains nothing of the invoice, in particular not its marker"
+        }
+      ]
+    },
+    {
+      "id": "FIX-ASYNC-1",
+      "says": "A valid period creates exactly one reminder record for invoice inv-a of tenant A and exactly one notification; the business key does not change on a retry or a redelivery.",
+      "source": "PBI",
+      "about": "billing-reminder-requested",
+      "obligations": [
+        "effect-once-per-key"
+      ],
+      "expects": [
+        {
+          "id": "E1",
+          "property": "message.id",
+          "op": "present",
+          "because": "FIX-ASYNC-1: the period's reminder request is published"
+        },
+        {
+          "id": "E2",
+          "property": "effect.count",
+          "op": "count-eq",
+          "value": 1,
+          "because": "FIX-ASYNC-1: exactly one reminder record per business key"
+        }
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "S1",
+      "name": "The owner reads its own invoice",
+      "covers": [
+        "API-AC-1"
+      ],
+      "technique": "crud",
+      "why": "the positive control every permission check below rests on",
+      "priority": "P1",
+      "must": true,
+      "actor": {
+        "as": "tenant-a-reader",
+        "roles": [
+          "reader"
+        ],
+        "owner": "tenant-a",
+        "state": "the seeded invoice inv-a exists"
+      },
+      "preconditions": [
+        "the fixture's seeded invoice inv-a belongs to tenant-a"
+      ],
+      "intent": [
+        "read inv-a as its owner"
+      ],
+      "expect": {
+        "api": {
+          "need": "required",
+          "says": "GET /invoices/inv-a answers 200 with id inv-a and tenantId tenant-a"
+        }
+      },
+      "readiness": "ready"
+    },
+    {
+      "id": "S2",
+      "name": "Another tenant cannot read it",
+      "covers": [
+        "API-AC-2"
+      ],
+      "technique": "permission",
+      "why": "a leak across tenants is the defect this feature must never have",
+      "priority": "P1",
+      "must": true,
+      "actor": {
+        "as": "tenant-b-reader",
+        "roles": [
+          "reader"
+        ],
+        "owner": "tenant-b",
+        "state": "the seeded invoice inv-a belongs to tenant-a"
+      },
+      "preconditions": [
+        "the owner's read passes (S1)"
+      ],
+      "intent": [
+        "read inv-a as tenant B"
+      ],
+      "expect": {
+        "api": {
+          "need": "required",
+          "says": "GET /invoices/inv-a answers 404 not_found with nothing of the invoice"
+        }
+      },
+      "readiness": "ready",
+      "denial": {
+        "lacks": [
+          "tenant-a"
+        ],
+        "action": "read tenant A's invoice inv-a",
+        "backend": {
+          "need": "required",
+          "says": "the API answers 404 not_found, and nothing of the invoice"
+        },
+        "unchanged": {
+          "need": "required",
+          "says": "inv-a still belongs to tenant A"
+        },
+        "because": "a refusing server is the only safe product here: there is no screen to hide the invoice behind"
+      }
+    },
+    {
+      "id": "S3",
+      "name": "One reminder per due period, whatever is redelivered",
+      "covers": [
+        "FIX-ASYNC-1"
+      ],
+      "technique": "idempotency",
+      "why": "a duplicate reminder is a second notification to a customer",
+      "priority": "P1",
+      "must": true,
+      "actor": {
+        "as": "the scheduler",
+        "roles": [
+          "system"
+        ],
+        "owner": "tenant-a",
+        "state": "inv-a is open and marked for a reminder"
+      },
+      "preconditions": [
+        "the 09:00 period is due"
+      ],
+      "intent": [
+        "make the period due",
+        "watch the reminder request",
+        "read the reminders below the interface"
+      ],
+      "expect": {
+        "sql": {
+          "need": "required",
+          "says": "one reminder for the period's business key"
+        }
+      },
+      "readiness": "ready",
+      "repeat": null
+    }
+  ]
+}

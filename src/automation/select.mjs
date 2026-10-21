@@ -16,14 +16,18 @@ const engine = (kind) => ({ dispatch: { mode: "engine", provider: { kind: "engin
 // A step a SHIPPED skill or agent owns: its agent on a host that has native agents, else its skill.
 const owned = (kind, host) => (kind.agent && host.agents ? { mode: "agent", provider: { kind: "agent", id: kind.agent, key: `agent:${kind.agent}` } } : { mode: "skill", provider: { kind: "skill", id: kind.skill, key: kind.skill } });
 
-const fromResolver = (r) => (r.provider.ownership === "project" ? { mode: "playbook", provider: r.provider } : { mode: r.provider.kind === "agent" ? "agent" : "skill", provider: r.provider });
+// A project playbook is followed by the host -- unless its version in place DECLARES its workflow (0.0.4,
+// `facts.declared`), which the engine runs itself, step by step, through each provider's owner gate.
+const fromProject = (r, f) => (f.declared ? { mode: "engine", provider: r.provider, note: "declared workflow" } : { mode: "playbook", provider: r.provider });
+
+const fromResolver = (r, f = {}) => (r.provider.ownership === "project" ? fromProject(r, f) : { mode: r.provider.kind === "agent" ? "agent" : "skill", provider: r.provider });
 
 const blocked = (needs, because) => ({ blocked: { needs, because } });
 
 export const SELECTION = [
   { id: "engine", when: (s, k, r, h, f) => k.engine(f), then: (s, k) => engine(k) },
   { id: "no-resolution", when: (s, k, r) => !r, then: (s, k, r, h) => (k.skill ? { dispatch: owned(k, h) } : blocked(NEEDS.CAPABILITY, `nothing answered for ${s.provides ?? s.kind}`)) },
-  { id: "provided", when: (s, k, r) => r.outcome === "provided", then: (s, k, r, h) => (k.skill && r.provider.id === k.skill ? { dispatch: owned(k, h) } : { dispatch: fromResolver(r) }) },
+  { id: "provided", when: (s, k, r) => r.outcome === "provided", then: (s, k, r, h, f) => (k.skill && r.provider.id === k.skill ? { dispatch: owned(k, h) } : { dispatch: fromResolver(r, f) }) },
   // Provided, with a need of its own unmet here: the owner is still the one to run the step -- its own gates
   // decide what it needs (a work item's reader only matters for a work item) -- and the note travels with it.
   { id: "impaired", when: (s, k, r) => r.outcome === "impaired" && k.skill !== null, then: (s, k, r, h) => ({ dispatch: { ...owned(k, h), note: r.why } }) },

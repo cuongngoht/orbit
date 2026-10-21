@@ -11,9 +11,12 @@ export function unitObjective(unit, analysis) {
   return String(title).slice(0, 240);
 }
 
+// What a unit's coordinated workflow is started with: its title, the routing intent its kind DECLARES (so the title is
+// never classified again, in whatever language it is written), the capabilities it takes, the work item only for the
+// kind that settles it, and the lineage back to this goal and unit.
 export function bindAutomationStart(unit, analysis, opts = {}) {
   if (!unit) throw new Refused("no work unit is ready");
-  return { objective: unitObjective(unit, analysis), ref: opts.ref ?? null, capabilities: opts.capabilities ?? [], unit: unit.id };
+  return { objective: unitObjective(unit, analysis), ref: unit.takesRef ? opts.ref ?? null : null, intent: unit.intent ?? null, capabilities: [...new Set([...(unit.capabilities ?? []), ...(opts.capabilities ?? [])])], goal: opts.goal ? `${opts.goal}:${unit.id}` : null, unit: unit.id };
 }
 
 export function settleUnit(model, unitId, state, task, because) {

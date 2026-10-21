@@ -6,9 +6,10 @@
 //   openFeed(deps, opened, cursor)    -> { start(sink), tick(), close(), cursor() }
 //   collectFeed(deps, opened, cursor) -> { version, task, cursor, terminal, view, events }
 //
-//   deps   { io, followers, task: <task source>, qa: <qa source>, activity?: <activity source>, plan?: <plan source> }
+//   deps   { io, followers, task: <task source>, qa: <qa source>, activity?: <activity source>, plan?: <plan source>,
+//            skill?: <skill source> }
 //   opened { taskCtx: { tasks, checkoutSummary, now }, task, createdAt, qa: <investigation store>, activity?: { fileOf },
-//            plans?: { read(task, ref) } }
+//            plans?: { read(task, ref) }, skills?: { read(pin) } }
 //   sink   { send({ event, id, data }) -> bool, end(), closed }
 //
 // What a sink receives, in order:
@@ -21,6 +22,9 @@
 //   plan-view      a coordinated workflow's ACTIVE plan (1.8.6, ADR 0022): { source: "plan", task, ref, revision, view }
 //                  -- sent when the plan receipt names another artifact, the projection its source made; a viewer
 //                  REPLACES it, so it needs no part of the cursor either
+//   skill-view     a declared playbook's WORKFLOW (0.0.4): { source: "skill", task, pin, view } -- sent once for each pin
+//                  a run of the task holds, the projection the skill source made; where each of its steps stands is
+//                  the task's own receipts, so it needs no part of the cursor
 //   end            the task ended (and every line was sent), or its journal could not be followed
 // and every event's id is the cursor AFTER it, so a viewer that drops comes back exactly there.
 //
@@ -43,7 +47,7 @@ export function openFeed(deps, opened, cursor) {
 
 function stateOf(deps, opened, cursor) {
   const lease = deps.followers.acquire(`task:${opened.taskCtx.tasks.journalFile(opened.task)}`, () => taskSubject(deps.task, deps.io, opened.taskCtx, opened.task));
-  return { ...opened, deps, cursor, lease, inv: new Map(), known: new Map(), acts: new Map(), actPrints: new Map(), activity: opened.activity ?? null, plans: opened.plans ?? null, planRef: null, since: sinceOf(deps.qa, opened.createdAt), print: null, terminal: false, sink: null, closed: false };
+  return { ...opened, deps, cursor, lease, inv: new Map(), known: new Map(), acts: new Map(), actPrints: new Map(), activity: opened.activity ?? null, plans: opened.plans ?? null, planRef: null, skills: opened.skills ?? null, skillPins: new Set(), since: sinceOf(deps.qa, opened.createdAt), print: null, terminal: false, sink: null, closed: false };
 }
 
 // A minute of slack: the task's clock is its store's, an investigation's id is its own process's.
@@ -157,6 +161,7 @@ function viewedNow(s) {
   viewSent(s);
   observedJoined(s);
   planSent(s);
+  skillsSent(s);
 }
 
 // Before the end goes out, every observation is read once more: a check's last cases come before it.
@@ -226,6 +231,22 @@ function planOut(s, ref) {
   if (view) s.sink.send({ event: "plan-view", id: formatCursor(s.cursor), data: { source: "plan", task: s.task, ref, revision: view.n, view } });
 }
 
+// ---- a declared playbook's workflow (0.0.4) ----------------------------------------------------------------
+
+// Sent once per pin a run of this task holds. A version its source cannot read is not sent: a viewer then draws the
+// steps the run's own receipts name, and says the workflow could not be read.
+function skillsSent(s) {
+  if (!s.deps.skill || !s.skills) return;
+  const pins = s.deps.skill.activeRefs(s.lease.subject.live.viewOf(s.taskCtx.now())).filter((p) => !s.skillPins.has(p));
+  pins.forEach((pin) => skillOut(s, pin));
+}
+
+function skillOut(s, pin) {
+  s.skillPins.add(pin);
+  const view = s.skills.read(pin);
+  if (view) s.sink.send({ event: "skill-view", id: formatCursor(s.cursor), data: { source: "skill", task: s.task, pin, view } });
+}
+
 // ---- the plain read ----------------------------------------------------------------------------
 
 // The same replay a feed starts with, collected instead of sent: what a page paints first, what a finished
@@ -238,6 +259,9 @@ export function collectFeed(deps, opened, cursor) {
   return answered(deps, opened.task, feed.cursor(), sink.frames);
 }
 
+// Each pinned workflow sent, by its pin (0.0.4).
+export const skillViewsOf = (frames) => Object.fromEntries(frames.filter((f) => f.event === "skill-view").map((f) => [f.data.pin, f.data.view]));
+
 const collector = () => ((frames) => ({ frames, send: (f) => frames.push(f) > 0, end: () => {}, closed: false }))([]);
 
 function answered(deps, task, cursor, frames) {
@@ -245,5 +269,5 @@ function answered(deps, task, cursor, frames) {
   const events = frames.filter((f) => f.event === "task-event" || f.event === "qa-event").map((f) => f.data);
   const activity = Object.fromEntries(frames.filter((f) => f.event === "activity-view").map((f) => [f.data.action, f.data.view]));
   const plan = frames.findLast((f) => f.event === "plan-view")?.data.view ?? null;
-  return { version: deps.task.version, task, cursor, terminal: view?.terminal ?? false, view, events, activity, plan };
+  return { version: deps.task.version, task, cursor, terminal: view?.terminal ?? false, view, events, activity, plan, skills: skillViewsOf(frames) };
 }

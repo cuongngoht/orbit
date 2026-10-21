@@ -101,7 +101,40 @@ export interface GeneratedSkill {
   quarantined: boolean;
   offered: boolean;
   archived?: boolean;
+  /** `declared` (0.0.4): its workflow.json is run by the engine, step by step, through each provider's owner gate. */
+  runs?: "followed" | "declared";
   at: string;
+}
+
+/** A declared playbook's workflow, as the skill source projects it: what each step asks, never an input's value. */
+export interface DeclaredWorkflow {
+  pin: string;
+  id: string;
+  version: string;
+  status: string;
+  provides: string[];
+  steps: { id: string; capability: string; tool: string | null; after: string[]; required: boolean; evidence: string; approval: string; retries: number }[];
+  bounds: { maxCalls: number };
+}
+
+/** One run a project's coordinated workflow carried of it, read from that workflow's journal. */
+export interface SkillRunRecord {
+  task: string;
+  run: string;
+  pin: string;
+  word: string;
+  at: string | null;
+  session: string | null;
+  steps: { id: string; word: string; required: boolean | null; calls: number; retries: number; waiting: string | null }[];
+}
+
+/** What its runs show, question by question -- a review proposes, never writes. */
+export interface SkillReview {
+  id: string;
+  versions: { pin: string; version: string; status: string; holds: boolean; runs: number; verified: number; reported: number; failed: number; blocked: number }[];
+  questions: { id: string; ask: string; answer: "yes" | "no" | "unknown"; because: string }[];
+  reliability: { word: string; runs: number; because: string };
+  proposal: { successor: boolean; because: string; writes: string };
 }
 
 export interface GeneratedSkills {
@@ -121,6 +154,9 @@ export interface GeneratedSkillDetail {
   project: string;
   skill: GeneratedSkill;
   playbook: { pin: string; status: string; files: PlaybookFile[] };
+  workflow?: DeclaredWorkflow | { unreadable: string; because: string } | null;
+  runs?: SkillRunRecord[];
+  review?: SkillReview;
 }
 
 export interface Finding {

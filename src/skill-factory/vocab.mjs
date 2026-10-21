@@ -16,6 +16,14 @@ export const SKILL_FILE = "SKILL.md";
 
 export const SIDECAR = ".registered.json";
 
+// A playbook that DECLARES its workflow (0.0.4): steps the engine runs itself, each through the owner gate of the
+// provider the resolver picks -- data the engine interprets, never code it executes (src/skill-factory/workflow.mjs).
+export const WORKFLOW_FILE = "workflow.json";
+
+// How a registered playbook is carried out: `followed` by the host as its SKILL.md says (every playbook before
+// 0.0.4), or `declared` -- its workflow.json run by the engine, step by step (src/automation/skill-run.mjs).
+export const RUNS = ["followed", "declared"];
+
 export const MANIFEST_SCHEMA = 2;
 
 // The stored lifecycle, in the words an extension's already uses. `loadable` is offered to the resolver

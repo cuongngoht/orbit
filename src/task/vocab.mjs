@@ -56,7 +56,30 @@ export const OUTCOMES = ["succeeded", "failed", "abandoned"];
 // `learning` (1.8.9) is what a FINISHED task taught engineering memory, linked after it ended: its ref names the
 // observation (`task:<id>`), its outcome OBSERVED or NOTHING, its summary the candidates, kept and refused -- or why
 // nothing was learned. Read by Live's lifecycle rows; never read to move a task.
-export const RECEIPT_DOMAINS = ["runtime", "run", "investigation", "data", "browser", "work", "test", "check", "sandbox", "step", "plan", "task", "requirement", "skill", "impact", "learning"];
+// `goal` (0.0.4) is the goal and unit a coordinator was started for (`goal-…:gu-…`): lineage, never evidence. The
+// three after it (0.0.4) are a declared playbook's RUN (src/automation/skill-run.mjs): `skillrun` the run, pinned to one
+// version; `skillstep` one of its workflow's steps; `invocation` one call a step made through its provider's owner
+// gate -- the provider's key, a digest of what was asked and of what came back, how it ended, and never either.
+export const RECEIPT_DOMAINS = ["runtime", "run", "investigation", "data", "browser", "work", "test", "check", "sandbox", "step", "plan", "task", "requirement", "skill", "impact", "learning", "goal", "skillrun", "skillstep", "invocation"];
+
+// The receipt domains a COORDINATOR'S ENGINE writes and reads its own state back from (0.0.4): its steps, its plans,
+// the playbook versions it pinned, a declared playbook's runs, steps and calls, and the goal it serves. A line in one of
+// them is what the engine says happened, so only the coordinator's own door writes one (`door: "coordinator"`, set by
+// cli/automation.mjs, never typed) -- or Orbit Control's, which proves a person -- and a terminal's `task link` is
+// refused: a host that could write `skillstep … VERIFIED` or a `skill:` pin could forge what a run proved.
+export const ENGINE_DOMAINS = ["step", "plan", "skill", "skillrun", "skillstep", "invocation", "goal"];
+
+// The doors a composition root may say it is: Orbit Control's (a person, behind its mutation token) and the
+// coordinator's (the engine itself). A terminal is no door at all (`null`).
+export const DOORS = { CONTROL: "control", COORDINATOR: "coordinator" };
+
+export const ENGINE_WRITERS = [DOORS.COORDINATOR, DOORS.CONTROL];
+
+// The tasks whose WHOLE journal is their engine's (0.0.4): a coordinated workflow (provider `automation`) reads every
+// line it holds -- the child task it started, the snapshot it read back, its actions, its stops, its ending -- as what
+// its engine did. So nothing but the coordinator's door (or Control's) records anything in one; from a terminal a
+// person only stops it (pause, cancel, reject), and nothing a host types can link a child, complete it or prove a step.
+export const ENGINE_OWNED = ["automation"];
 
 // What a requirement or an obligation came to, as evidence shows it. `satisfied` and `violated`
 // need a receipt; with none, it is `not-verified`, and nothing here may say otherwise.
@@ -107,7 +130,7 @@ export const KINDS = {
   "action-failed": { material: false, fields: ["id", "reason", "receipt", "summary"] },
   workspace: { material: false, fields: ["workspace", "baseRevision"] },
   "file-changed": { material: false, fields: ["attempt", "path", "change", "added", "removed"] },
-  receipt: { material: false, fields: ["domain", "ref", "outcome", "summary", "action", "environment", "sourceTree"] },
+  receipt: { material: false, fields: ["domain", "ref", "outcome", "summary", "action", "environment", "sourceTree", "pin", "providerKey", "queryDigest", "resultDigest", "operation"] },
   verification: { material: false, fields: ["subject", "obligation", "evidence", "state"] },
   "approval-requested": { material: true, fields: ["id", "action", "fingerprint", "environment", "reason", "risk", "expires", "attempt"] },
   "approval-granted": { material: true, fields: ["id", "by", "session", "seen"] },

@@ -10,6 +10,7 @@ import { DB_ID } from "./fakeRuntime";
 import { reply, type Call } from "./fakeServer";
 import { fieldOf, isRecord } from "./required";
 import type { LiveEvent } from "../features/mission-control/live/live.types";
+import type { PlanView } from "../features/mission-control/plan.types";
 
 export const M_KEY = "repo-payments";
 export const M_CHECKOUT = "b".repeat(64);
@@ -191,6 +192,10 @@ export function healthView(): HealthView {
 export interface MissionState {
   /** What Health answers; a lift on its revision clears the kept restriction. */
   health: HealthView;
+  /** A coordinated workflow's plan as the server projects it (0.0.4); null for a task that is no workflow. */
+  plan: PlanView | null;
+  /** How many times the plan was read. */
+  planReads: number;
   /** The revisions each lift named. */
   view: TaskView | null;
   /** Lines of investigations begun against the task's sandbox, as the live feed carries them. */
@@ -294,7 +299,7 @@ function sandboxRead(state: MissionState): Response {
 // A lift on the revision Health showed clears the restriction; any other is a 409, as the server's is.
 
 export function fakeMission(over: Partial<MissionState> = {}) {
-  const state: MissionState = { health: healthView(), view: pbi482View(), qa: [], more: [], activityReads: [], sandbox: sandboxView(), sandboxRefused: false, releasedElsewhere: false, others: OTHERS, overviewFailures: 0, movedSince: false, ...over };
+  const state: MissionState = { health: healthView(), plan: null, planReads: 0, view: pbi482View(), qa: [], more: [], activityReads: [], sandbox: sandboxView(), sandboxRefused: false, releasedElsewhere: false, others: OTHERS, overviewFailures: 0, movedSince: false, ...over };
   const handle = (call: Call): Response | null => {
     if (call.path === "/api/v1/mission-control") return state.overviewFailures-- > 0 ? reply(503, { error: { code: "UNAVAILABLE", message: "the store could not be read just now" } }) : reply(200, machineOf(state.view, state.others));
     if (call.path === "/api/v1/mission-control/approvals") return reply(200, { version: 1, approvals: machineOf(state.view, state.others).approvals });
@@ -304,9 +309,27 @@ export function fakeMission(over: Partial<MissionState> = {}) {
     if (call.path.startsWith(`${TASK_API}/sandbox/logs/`) && call.method === "GET") return sandboxLogs(state, call.path);
     if ((call.path === `${TASK_API}/sandbox/stop` || call.path === `${TASK_API}/sandbox/release`) && call.method === "POST") return sandboxOperation(state, call, call.path.endsWith("/stop") ? "stop" : "release");
     if (call.path.startsWith(`${TASK_API}/activity`) && call.method === "GET") return activity(state, call.path);
+    if (call.path === `${TASK_API}/plan` && call.method === "GET") return (state.planReads++, reply(200, { task: TASK, revision: state.view?.revision ?? null, terminal: state.view?.terminal ?? false, plan: state.plan }));
     if (call.path === `${TASK_API}/events`) return reply(200, { version: 1, task: TASK, revision: state.view?.revision ?? 0, since: 0, events: pbi482Events() });
     const decision = /^\/api\/v1\/projects\/[^/]+\/checkouts\/[^/]+\/tasks\/[^/]+\/(?:approvals\/([^/]+)\/)?(approve|reject|pause|resume|cancel)$/.exec(call.path);
     return decision && call.method === "POST" ? decided(state, call, decision[2], decision[1] ?? "") : null;
   };
   return { handle, state };
+}
+
+/** A declared playbook's run as the server projects it (0.0.4): its evidence read through a project capability and
+ * answered within its contract, its notes asked through a managed server -- REPORTED, never VERIFIED, for nothing an
+ * owner keeps proved either. */
+export function workflowPlan(): PlanView {
+  const step = (id: string, capability: string, tool: string | null, provider: string, n: number) => ({ id, capability, tool, required: true, evidence: "report", approval: "none", word: "CONTRACT_MET", because: "answered, and its output contract held — reported, not proven", provider, action: `act-${n + 2}`, startedAt: at(20 + n), endedAt: at(20 + n), calls: 1, retries: 0, waiting: null, verification: null, receipt: `skillstep:srun-0123456789ab.${id}`, invocation: `invocation:srun-0123456789ab.${id}.${n}` });
+  return {
+    ref: "0123456789abcdef", n: 1, workflow: "playbook", readable: true, goal: { goal: "goal-0123456789ab", unit: "gu-11111111" },
+    steps: [
+      { id: "context", kind: "context", after: [], for: null, because: "what the project already knows is read first", state: "REPORTED", summary: null, at: at(18) },
+      { id: "playbook", kind: "playbook", after: ["context"], for: "release.readiness.verification", because: "the objective needs release.readiness.verification", state: "REPORTED", summary: null, at: at(22) },
+    ],
+    progress: { done: 2, verified: 0, reported: 2, total: 2 },
+    replans: [],
+    runs: [{ run: "srun-0123456789ab", pin: "release-readiness-verification:0.1.0:7c195e58", step: "playbook", word: "REPORTED", state: "REPORTED", unread: false, calls: 2, at: at(22), summary: null, steps: [step("evidence", "release.evidence.read", null, "acme:acme.evidence", 1), step("notes", "release.notes.search", "search", "managed:corp", 2)] }],
+  };
 }

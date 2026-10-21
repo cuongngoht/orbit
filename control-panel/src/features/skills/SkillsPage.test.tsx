@@ -107,11 +107,12 @@ describe("Skill editor", () => {
     const router = renderApp("/skills/alpha");
     fireEvent.change(await editor(), { target: { value: "typed but never saved" } });
     fireEvent.click(within(nav()).getByRole("link", { name: /Analytics/ }));
-    const dialog = await screen.findByRole("alertdialog");
+    // Fluent marks a dialog aria-hidden while it settles which layer is modal: read it with hidden: true, and wait for
+    // the button this test presses rather than the dialog around it (a slow runner draws the two a beat apart).
+    const dialog = await screen.findByRole("alertdialog", { hidden: true });
     expect(await within(dialog).findByText("Leave without saving?")).toBeTruthy();
-    // The dialog can be in the document a beat before its buttons are: wait for the one this test presses.
-    fireEvent.click(await within(dialog).findByRole("button", { name: "Keep editing" }));
-    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    fireEvent.click(await within(dialog).findByRole("button", { name: "Keep editing", hidden: true }, { timeout: 5000 }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog", { hidden: true })).toBeNull());
     expect(router.state.location.pathname).toBe("/skills/alpha");
     expect((await editor()).value).toBe("typed but never saved");
   });

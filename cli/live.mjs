@@ -94,6 +94,8 @@ import { attendedOf } from "../skills/orbit-learn/hosts/attended.mjs";
 import { commandEnvironment } from "../skills/orbit-learn/hosts/settings.mjs";
 import { effectiveOf, readAutomation } from "../src/automation/settings.mjs";
 import { PLAN_SOURCE } from "../src/automation/source.mjs";
+import { SKILL_SOURCE } from "../src/skill-factory/source.mjs";
+import { planViewOf } from "../src/live/plan.mjs";
 import { surfaceRows } from "../skills/orbit-learn/hosts/live-surfaces.mjs";
 import { Blocked, Refused } from "../src/errors.mjs";
 import { QA_SOURCE } from "../src/investigation/live.mjs";
@@ -310,7 +312,7 @@ const sessionJson = (a) => ({ state: a.state, source: a.source, observed: a.obse
 
 // ---- reading one task: the SAME feed Orbit Control streams ----------------------------------------
 
-const deps = (followers) => ({ io, followers, task: TASK_SOURCE, qa: QA_SOURCE, activity: ACTIVITY_SOURCE, plan: PLAN_SOURCE });
+const deps = (followers) => ({ io, followers, task: TASK_SOURCE, qa: QA_SOURCE, activity: ACTIVITY_SOURCE, plan: PLAN_SOURCE, skill: SKILL_SOURCE });
 
 // A task named on the line is read through `show` first -- the same door every reader uses, which refuses
 // another checkout's id. One chosen from this checkout's own first lines needs no second whole read.
@@ -318,7 +320,7 @@ const createdAtOf = (loc, task, known) => known ?? TASK_COMMANDS.show.run({ task
 
 function openedTask(loc, task, known = null) {
   const tasks = tasksOf(loc);
-  return { taskCtx: { tasks, checkoutSummary: checkoutSummary(loc), now: nowIso }, task, createdAt: createdAtOf(loc, task, known), qa: QA_SOURCE.open(loc.storeRoot, io), activity: ACTIVITY_SOURCE.open(loc.storeRoot), plans: PLAN_SOURCE.open(loc.storeRoot, io) };
+  return { taskCtx: { tasks, checkoutSummary: checkoutSummary(loc), now: nowIso }, task, createdAt: createdAtOf(loc, task, known), qa: QA_SOURCE.open(loc.storeRoot, io), activity: ACTIVITY_SOURCE.open(loc.storeRoot), plans: PLAN_SOURCE.open(loc.storeRoot, io), skills: SKILL_SOURCE.open(loc.storeRoot, io) };
 }
 
 const collected = (loc, task, known = null) => collectFeed(deps(createFollowers()), openedTask(loc, task, known), zeroCursor());
@@ -357,7 +359,11 @@ function statusFacts(loc, settings) {
 // `session` (1.8.7): what this session's own tools did, as its hooks observed them -- never the task's state.
 // `work` (1.8.8): the work this session tracks -- its identity, mode, lifecycle, evidence level, the files and checks that were
 // OBSERVED and its blocker -- or null when it tracks none.
-const statusJson = (snap, session, work) => ({ work, association: snap.association, presentation: snap.presentation, lifecycle: snap.view?.lifecycle ?? null, stage: snap.view?.stage ?? null, attempt: snap.view?.attempt ?? null, revision: snap.view?.revision ?? null, current: snap.current, activity: focusOf(snap.activities ?? []), failure: snap.failure, cursor: snap.cursor, session: sessionJson(session) });
+// `plan` (0.0.4): a coordinated workflow's plan as every viewer draws it -- its steps, revisions and every declared
+// playbook's run with its own steps (src/live/plan.mjs planViewOf) -- or null for a task that is no workflow.
+const planJson = (snap) => (snap.view?.task?.provider === "automation" ? planViewOf(snap.plan, snap.view, snap.events, snap.skills) : null);
+
+const statusJson = (snap, session, work) => ({ work, association: snap.association, presentation: snap.presentation, lifecycle: snap.view?.lifecycle ?? null, stage: snap.view?.stage ?? null, attempt: snap.view?.attempt ?? null, revision: snap.view?.revision ?? null, current: snap.current, activity: focusOf(snap.activities ?? []), failure: snap.failure, cursor: snap.cursor, plan: planJson(snap), session: sessionJson(session) });
 
 const sessionText = (a) => (a.running.length ? `this session is running ${a.running.at(-1).what} (observed)` : a.recent[0] ? `this session last ${a.recent[0].kind === "command" ? "ran" : a.recent[0].kind === "edit" ? "edited" : "used"} ${a.recent[0].what ?? "a tool"} (observed)` : null);
 
@@ -998,7 +1004,7 @@ function paneRecord(current, p) {
 
 // ---- the pane's picture: the same state the full-screen viewer would hold, laid out for a column ------------------
 
-const framesOf = (c) => [...c.events.map((e) => ({ event: e.source === "task" ? "task-event" : "qa-event", id: c.cursor, data: e })), ...(c.view ? [{ event: "task-view", id: c.cursor, data: { view: c.view } }] : []), ...Object.entries(c.activity ?? {}).map(([action, view]) => ({ event: "activity-view", id: c.cursor, data: { action, revision: view.seq, view } })), ...(c.plan ? [{ event: "plan-view", id: c.cursor, data: { source: "plan", ref: c.plan.ref, revision: c.plan.n, view: c.plan } }] : []), ...(c.terminal ? [{ event: "end", id: c.cursor, data: { reason: "terminal" } }] : [])];
+const framesOf = (c) => [...c.events.map((e) => ({ event: e.source === "task" ? "task-event" : "qa-event", id: c.cursor, data: e })), ...(c.view ? [{ event: "task-view", id: c.cursor, data: { view: c.view } }] : []), ...Object.entries(c.activity ?? {}).map(([action, view]) => ({ event: "activity-view", id: c.cursor, data: { action, revision: view.seq, view } })), ...(c.plan ? [{ event: "plan-view", id: c.cursor, data: { source: "plan", ref: c.plan.ref, revision: c.plan.n, view: c.plan } }] : []), ...Object.entries(c.skills ?? {}).map(([pin, view]) => ({ event: "skill-view", id: c.cursor, data: { source: "skill", pin, view } })), ...(c.terminal ? [{ event: "end", id: c.cursor, data: { reason: "terminal" } }] : [])];
 
 const fedWith = (state, loc, task, role, known) => ((c) => reduceTui(reduceTui(state, { type: "feed-opened", task, role }), { type: "frames", task, frames: framesOf(c) }))(collected(loc, task, known));
 

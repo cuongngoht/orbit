@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { analysisFindings, refuseAnalysis } from "./candidate.mjs";
+import { analysisFindings, rawFindings, refuseAnalysis } from "./candidate.mjs";
+import { intentOf } from "./intent.mjs";
 import { acId, reqId } from "./plan.mjs";
 import { digestOf } from "./spec.mjs";
 
@@ -12,13 +13,14 @@ export function stampAnalysis(raw, specDigest) {
     if (req) row.requirementRef = req;
     return row;
   });
-  return { objective: String(raw.objective ?? "").trim(), requirements, acceptance, unknowns: raw.unknowns ?? [], conflicts: raw.conflicts ?? [] };
+  return { objective: String(raw.objective ?? "").trim(), intent: intentOf(raw.intent), requirements, acceptance, unknowns: raw.unknowns ?? [], conflicts: raw.conflicts ?? [] };
 }
 
+// What the host sent is judged as it was sent, then the engine fills in what it owns, and that is judged again.
 export function validateAnalysis(raw, specDigest) {
+  refuseAnalysis(rawFindings(raw));
   const stamped = stampAnalysis(raw, specDigest);
-  const findings = analysisFindings(stamped, specDigest);
-  refuseAnalysis(findings);
+  refuseAnalysis(analysisFindings(stamped, specDigest));
   const digest = createHash("sha256").update(JSON.stringify(stamped), "utf8").digest("hex");
   return { ...stamped, digest };
 }

@@ -4,6 +4,7 @@
 // engineering task is a REAL task in the same store, created by the fake `child.start` and moved by a test
 // through the same door (`w.op`), so the coordinator reads it back exactly as it would in a checkout.
 import { effectiveOf } from "../../src/automation/settings.mjs";
+import { declared } from "../../src/routing/classify.mjs";
 import { contextOf, settle, start, step } from "../../src/automation/loop.mjs";
 import { fingerprintOf } from "../../src/task/approvals.mjs";
 import { loadTask } from "../../src/task/load.mjs";
@@ -22,7 +23,7 @@ const providedBy = (cap) => ({ capability: cap, outcome: "provided", status: "se
 // opts: settings (machine document) · project (project document) · intent · matched · requirement
 // ({ latest, blocking }) · startable · resolved ({ cap: answer }) · gap · agents · investigations ({ id: outcome })
 export function automationWorld(t, opts = {}) {
-  const w = taskWorld(t, { door: null });
+  const w = taskWorld(t, { door: null, ...(opts.world ?? {}) });
   const state = { requirement: { latest: SNAPSHOT, blocking: 0, ...opts.requirement }, investigations: new Map(Object.entries(opts.investigations ?? {})), rooms: new Map(), children: [], gathered: 0, running: null, factory: opts.factory ?? null };
   const room = (id) => (state.rooms.has(id) ? state.rooms.get(id) : state.rooms.set(id, new Map()).get(id));
   const docs = () => [{ by: "machine", content: opts.settings ?? {} }, ...(opts.project ? [{ by: "project", content: opts.project }] : [])];
@@ -35,10 +36,11 @@ export function automationWorld(t, opts = {}) {
     return { task: id, created: true };
   };
   const ports = {
-    task: { create: (g) => createTask(w.ctx, { project: w.ctx.project, checkout: w.ctx.checkout, ...g }), apply: (id, op, g) => apply(w.ctx, id, op, g), view: (id) => w.view(id), events: (id) => eventsView(loadTask(w.ctx, id).model).events, list: () => w.tasks.list(), fingerprint: (g) => fingerprintOf(g) },
+    task: { create: (g) => createTask(w.ctx, { project: w.ctx.project, checkout: w.ctx.checkout, ...g }), apply: (id, op, g) => apply({ ...w.ctx, door: "coordinator" }, id, op, g), view: (id) => w.view(id), events: (id) => eventsView(loadTask(w.ctx, id).model).events, list: () => w.tasks.list(), fingerprint: (g) => fingerprintOf(g) },
     settings: () => effectiveOf(docs()),
     settingsView: () => ({ machine: docs()[0], project: docs()[1] ?? null, effective: effectiveOf(docs()) }),
     classify: () => ({ intent: { id: opts.intent ?? "development", confidence: "high" }, matched: opts.matched ?? [opts.intent ?? "development"], requirements: opts.requirements ?? ["development.implementation"] }),
+    declared: (id) => declared(id),
     resolve: (cap) => opts.resolved?.[cap] ?? { ...providedBy(cap), status: opts.resourceApproval ? "approval" : "selected" },
     gapOf: () => opts.gap ?? null,
     requirements: { resolve: (ref) => ({ root: ROOT, identity: { id: ref } }), look: () => ({ latest: state.requirement.latest, blocking: state.requirement.blocking }) },

@@ -342,7 +342,9 @@ src/goal/      ORBIT GOAL: full-text specifications, analysis, work-unit plannin
                automation tasks, acceptance verification and resume. store.mjs the room beside work
                and tasks · spec.mjs user-submitted text (orbit.goal/v1) · model.mjs fold · plan.mjs
                DAG · execute.mjs coordinator ports · verification.mjs completion gate · live.mjs
-               projection. Imports leaves and store only; cli/orbit.mjs is the composition root.
+               projection · intent.mjs (0.0.4: the STRUCTURED intent a host's model reads a goal into, held as sent) ·
+               plan-units.mjs (units from WORK_KINDS alone, never the objective's words). Imports leaves and store only;
+               cli/orbit.mjs is the composition root.
 src/work/      WORK: what is being done about a requirement, resumable by another session. vocab.mjs
                (NEED_TYPES with a rank, the journal's KINDS) · store.mjs (one journal per requirement) ·
                model.mjs (a fold; NEED_STATES an ordered table; the frontier) · needs.mjs (what a need may
@@ -371,7 +373,9 @@ src/work/track/  UNIFIED WORK TRACKING (1.8.8, README §4.18): identity, links a
                cli/track.mjs is the composition root. It imports no task, no live core and no host
 src/task/      TASK EXECUTION: what happened while something autonomous tried to do a work -- never what the
                work needs (that is src/work/), and never the doing (nothing here runs, stops or writes
-               anything but a task's journal). vocab.mjs (STAGES with `preparing`/`verifying` columns, STOP_REASONS
+               anything but a task's journal; 0.0.4: ENGINE_DOMAINS and ENGINE_OWNED say which lines only the
+               coordinator's door writes, and recent.mjs is a bounded read of a provider's newest tasks a composition
+               root hands on). vocab.mjs (STAGES with `preparing`/`verifying` columns, STOP_REASONS
                with `writable`, the journal's KINDS with a `material` column, CODES) · fields.mjs (each input
                field as a JSON-Schema fragment, enforced by src/constraints.mjs) · store.mjs (one journal per
                task, the work store's discipline: allow-list, scrub, torn tail, a lock per task and one on the
@@ -512,12 +516,17 @@ src/live/      Orbit LIVE's CORE, every viewer's (ADR 0016): delivery, never sta
                plan, or an engineering task's steps as its journal recorded them; 0.0.2, ADR 0028: the baseline a
                card by its rows' `box`, the step in focus in the brand's tone), NOW, the status bar, the views,
                seven status words and the pane's own tiers · progress.mjs (1.8.6: task and test progress over a
-               recorded denominator, or indeterminate) · plan-view.mjs (1.8.6: the Plan view) · timeline-view.mjs
+               recorded denominator, or indeterminate) · plan-view.mjs (1.8.6: the Plan view; 0.0.4: a declared
+               playbook's run nested under its step) · skill-run-view.mjs (0.0.4: a run's head and its steps' rows, in
+               words their evidence earns, each glyph with an ASCII spelling) · timeline-view.mjs
                (1.8.6: the Timeline view) · pane-frame.mjs (1.8.6: the pane's parts as the terminal's pane layout,
                `v`, keys 1-6; 0.0.3: TABS, how the tabs are laid out by the room, and the waiting viewer's
                expanded orbit) · lifecycle-view.mjs (1.8.9: Context · Memory · Engineering · Learning, one row each,
                off the context command's word, the task's lifecycle and its `learning` receipt; none in a narrow
-               pane)). A plan reaches the feed through PLAN_SOURCE (src/automation/source.mjs), handed in
+               pane)). 0.0.4: plan.mjs `planViewOf` is the ONE projection of a plan -- the pane's JSON, the Plan view,
+               `live status --json` and Mission Control's plan route draw it -- and `skillRunsOf` the one reading of
+               a declared run off a task's receipts; a pinned workflow reaches the feed as `skill-view` through
+               SKILL_SOURCE (src/skill-factory/source.mjs). A plan reaches the feed through PLAN_SOURCE (src/automation/source.mjs), handed in
                like the activity source. cli/live-open.mjs (1.8.3) is the OPENERS table (a tmux pane, a Windows
                Terminal pane, a macOS Terminal window through a `.command` file in the store, else the command
                printed), argv only but for that one fixed, quoted line, starting nothing but Orbit's own viewer
@@ -548,7 +557,10 @@ src/automation/  a COORDINATED WORKFLOW (ADR 0017): one objective taken through 
                (ENGINE, BEFORE_HOST, how a host is told) · settings.mjs (machine and project documents, narrowed with
                provenance, written only through Control's door; schema 2, ADR 0023: autonomous by default, RETIRED
                current settings schema 3 only) · policy.mjs (ACTION_CLASSES, never wider than a
-               resource's verdict) · loop.mjs · governance.mjs · index.mjs. cli/automation.mjs is the composition root
+               resource's verdict) · loop.mjs · governance.mjs · index.mjs · skill-run.mjs + skill-run-vocab.mjs (0.0.4: a
+               DECLARED playbook run as the playbook step's engine step -- pinned, each step recorded before it is asked
+               through its provider's own door, `invokeBound` and the interpreter handed in; interrupted reads INTERRUPTED,
+               anything that may have written AMBIGUOUS). cli/automation.mjs is the composition root
 src/skill-factory/  instruction-only PLAYBOOKS a coordinated workflow may draft for the current project (the second scoped
                exception above): gap.mjs (GAP_KINDS, exactly one generates; 1.8.6 a WORD per row and SHAPES, the
                shape a playbook for a workflow gap takes) · policy.mjs (mode, reuse first, scope,
@@ -559,7 +571,13 @@ src/skill-factory/  instruction-only PLAYBOOKS a coordinated workflow may draft 
                plugin) · lifecycle.mjs (scaffold · put · verify · register · status · pinned · rollback · archive; the
                engine never deletes a playbook; 1.8.6 the contract a scaffold writes, registration under one hold of
                the lock, phases on read) · vocab.mjs (STATUSES, MOVES; 1.8.6 PHASES, derived) · register.mjs (rows of the existing skills family, `project:` keys) ·
-               index.mjs (what a terminal may run: list, show, put, verify -- never register or activate).
+               index.mjs (what a terminal may run: list, show, put, verify, discover, workflow, runs, review -- never
+               register or activate). 0.0.4 (ADR 0030): workflow.mjs (a DECLARED workflow's contract,
+               orbit.skill-workflow/v1: RULES, each refusal its own id) · interpret.mjs (the one interpreter the dry run and
+               the skill runner share: order, bindings, typed outputs, the output contract) · discover.mjs (DISCOVERY,
+               the resolver's answer in one word, never a ranking) · source.mjs (SKILL_SOURCE, a pinned workflow as a live
+               source) · history.mjs + review.mjs (a skill's runs, from data a composition root hands in, and the
+               questions they answer -- a successor proposed, never written).
                skills/orbit-help/factory.mjs is the one real binding
 src/printable.mjs  a LEAF: text a terminal may be handed -- control characters and reordering marks removed, so a
                manifest's text cannot drive the terminal it is printed to

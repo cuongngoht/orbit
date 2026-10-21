@@ -5,7 +5,7 @@
 // a person -- with nothing on the page that starts a workflow.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { fakeAutomation } from "../../testing/fakeAutomation";
+import { declaredDetail, fakeAutomation } from "../../testing/fakeAutomation";
 import { fakeServer } from "../../testing/fakeServer";
 import { renderApp } from "../../testing/renderApp";
 
@@ -94,5 +94,19 @@ describe("Automation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Test again" }));
     await waitFor(() => expect(auto.state.moves).toContain("revalidate"));
     expect(screen.queryByRole("button", { name: /^delete/i })).toBeNull();
+  });
+
+  it("a declared playbook shows the workflow the engine runs, its runs and the review they answer -- and nothing that runs it", async () => {
+    auto.state.skill = { ...auto.state.skill, runs: "declared" };
+    auto.state.declared = declaredDetail();
+    renderApp("/automation?tab=skills");
+    fireEvent.click(await screen.findByRole("button", { name: "View" }));
+    const steps = await screen.findByRole("table", { name: "Workflow steps" });
+    expect(within(steps).getByText("release.notes.search · search")).toBeTruthy();
+    expect(within(steps).getByText(/an owner's record, read back · a person allows it/)).toBeTruthy();
+    expect(within(screen.getByRole("table", { name: "Runs" })).getByText("REPORTED")).toBeTruthy();
+    expect(screen.getByText(/Review: INSUFFICIENT — 1 run\(s\) in 1 session\(s\)/)).toBeTruthy();
+    expect(screen.getByText(/No successor is proposed/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^(run|start|execute|rewrite)/i })).toBeNull();
   });
 });

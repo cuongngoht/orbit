@@ -28,6 +28,7 @@ import { noticesSection, recentSection } from "./sections/recent.mjs";
 import { grouped, kindOf } from "./sections/verify.mjs";
 import { steps as workflowSteps } from "./sections/work.mjs";
 import { currentStepOf, nextStepOf, planRows } from "./plan-view.mjs";
+import { activeOf, skillRunRows } from "./skill-run-view.mjs";
 import { taskProgressOf } from "./progress.mjs";
 import { timelineRows } from "./timeline-view.mjs";
 import { workNowRows } from "./work-view.mjs";
@@ -200,7 +201,11 @@ function engineeringRows(snap, depth) {
 
 const OUTCOME_STATUS = Object.freeze({ SUCCEEDED: "PASSED", FAILED: "FAILED", BLOCKED: "BLOCKED", RUNNING: "RUNNING", PENDING: "NOT_RUN", SKIPPED: "NOT_RUN", REPORTED: "UNKNOWN" });
 
-const childSteps = (ctx, name) => (name === "engineering" && ctx.d.child?.view ? engineeringRows(ctx.d.child, 1) : []);
+// What a step carried, under it: the engineering task an engineering step started, or the run a playbook step made
+// of a declared workflow (0.0.4), its own steps nested one deeper.
+const childSteps = (ctx, name) => (name === "engineering" && ctx.d.child?.view ? engineeringRows(ctx.d.child, 1) : playbookStep(ctx, name) ? skillRunRows(ctx.d.root, name, 1, ctx.nowMs ?? 0) : []);
+
+const playbookStep = (ctx, name) => ctx.d.root?.plan?.steps?.find((s) => s.id === name)?.kind === "playbook" || name.split(".")[0] === "playbook";
 
 // A step's words: its kind's, and the capability it is for when the plan has one step of its kind per capability
 // (1.8.6: `playbook.release.gate` reads "Playbook · release.gate").
@@ -213,7 +218,11 @@ const focusName = (s) => s.names.find((n) => outcomeOf(s, n) === "RUNNING") ?? s
 // A workflow's step is said in what it came to: done green, failed red, blocked yellow, reported or pending quiet.
 const toneLabel = (r) => (lineTone(r.status) ? relabel(r, lineTone(r.status)) : r);
 
-const workflowStepRow = (ctx, s, name) => ((outcome) => (stepRow(name, OUTCOME_STATUS[outcome] ?? "UNKNOWN", stepLabel(name, ctx.d.root?.plan), outcome === "REPORTED" ? "reported, no receipt" : null, 0)))(outcomeOf(s, name));
+// A reported step is said for what it rests on: a declared playbook's run (0.0.4) kept receipts of every call, and
+// proved nothing past them; any other reported step has no receipt at all.
+const reportedWords = (ctx, name) => (playbookStep(ctx, name) && skillRunRows(ctx.d.root, name, 0, 0).length ? "reported: its calls answered, nothing proved it" : "reported, no receipt");
+
+const workflowStepRow = (ctx, s, name) => ((outcome) => (stepRow(name, OUTCOME_STATUS[outcome] ?? "UNKNOWN", stepLabel(name, ctx.d.root?.plan), outcome === "REPORTED" ? reportedWords(ctx, name) : null, 0)))(outcomeOf(s, name));
 
 function workflowRows(ctx, view) {
   const s = workflowSteps(view, ctx.d.root?.plan);
@@ -256,6 +265,12 @@ const workWords = (view) => ((t, r) => [t?.work, t?.root, t?.snapshot ?? r?.ref,
 // A coordinated workflow's step running now, else the one whose turn is next -- and why it is in the plan.
 const stepWords = (root) => ((now, next) => (now ? `${now.id} — ${now.because ?? "running"}` : next ? `next: ${next.id} — ${next.because ?? "ready"}` : null))(currentStepOf(root), nextStepOf(root));
 
+// A declared playbook's step running now (0.0.4): its capability, the provider and tool it is asked through, since
+// when, how often it was asked again and what it waits for -- each only as the journal says it.
+const toolWords = (root) => ((a) => (a?.step ? [`${a.step.id} · ${a.step.capability ?? "?"}`, a.step.provider, a.step.tool, a.step.retries ? `retried ${a.step.retries}×` : null, a.step.waiting ? `waits for ${a.step.waiting}` : null].filter(Boolean).join(" · ") : null))(activeOf(root));
+
+const runWords = (root) => ((a) => (a ? `${String(a.run.pin ?? "?")} · ${a.run.state} · ${a.run.steps.filter((s) => ["VERIFIED", "CONTRACT_MET"].includes(s.word)).length}/${a.run.steps.length} step(s) answered` : null))(activeOf(root));
+
 // What the skill factory is doing for a capability whose playbook is not followed yet.
 const skillWords = (root) => ((k) => (k ? `${k.capability ?? "a capability"} · registered ${k.registered}${k.reused ? " (reused)" : ""}` : null))(skillsOf(root?.plan, root?.view).find((k) => !["SUCCEEDED", "REPORTED"].includes(k.followed ?? "")));
 
@@ -281,6 +296,8 @@ const CURRENT = [
   { label: "observed", narrow: true, segs: (c) => (c.a && observedWords(c.a.observation) ? [seg(observedWords(c.a.observation))] : null) },
   { label: "status", narrow: true, segs: (c) => (c.a ? [glyphSeg(actionStatus(c.a)), statusSeg(actionStatus(c.a))] : null) },
   { label: "skill", narrow: false, segs: (c) => (skillWords(c.root) ? [seg(skillWords(c.root), "info")] : null) },
+  { label: "skill run", narrow: true, segs: (c) => (runWords(c.root) ? [seg(runWords(c.root), "info")] : null) },
+  { label: "tool", narrow: true, segs: (c) => (toolWords(c.root) ? [seg(toolWords(c.root))] : null) },
   { label: "blocker", narrow: false, segs: (c) => (blockerWords(c.view) ? [seg(blockerWords(c.view), "warning")] : null) },
   { label: "next", narrow: true, segs: (c) => (nextWords(c.a) ? [seg(nextWords(c.a), "info")] : null) },
   { label: "session", narrow: true, segs: (c) => c.session },

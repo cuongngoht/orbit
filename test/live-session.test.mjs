@@ -183,7 +183,7 @@ test("a workflow whose step the host works itself: the task stays shown, and NOW
   const p = project(t);
   const mark = hostSession("claude", "s-a");
   const id = JSON.parse(execFileSync(process.execPath, [TASK, "create", "fix the validation bug", "--provider=automation", "--json"], { cwd: p.repo, env: p.env({ ORBIT_SESSION: mark }), encoding: "utf8" })).task;
-  execFileSync(process.execPath, [TASK, "act", "start", id, "--type=agent.dispatch", "--label=engineering"], { cwd: p.repo, env: p.env({ ORBIT_SESSION: mark }), stdio: "ignore" });
+  execFileSync(process.execPath, [join(ROOT, "test", "fakes", "coordinator-door.mjs"), id, "act-start", JSON.stringify({ type: "agent.dispatch", label: "engineering" })], { cwd: p.repo, env: p.env({ ORBIT_SESSION: mark }), stdio: "ignore" });
   edited(p, "s-a", "src/validate.js", "w-1");
   started(p, "s-a", "node --test", "w-2");
   const got = pane(p, "s-a");

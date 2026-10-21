@@ -11,7 +11,7 @@ const MEMO = new WeakMap();
 
 const idleOf = (state) => (state.viewer.settings?.idleAfterSec ?? 120) * 1000;
 
-const pictured = (state, slot) => snapshotOf({ association: state.association, collected: slot.view ? { view: slot.view, cursor: slot.cursor } : null, events: slot.events, read: slot.read, nowMs: state.viewer.nowMs, idleAfterMs: idleOf(state), activity: slot.activity ?? {}, plan: slot.plan ?? null });
+const pictured = (state, slot) => snapshotOf({ association: state.association, collected: slot.view ? { view: slot.view, cursor: slot.cursor } : null, events: slot.events, read: slot.read, nowMs: state.viewer.nowMs, idleAfterMs: idleOf(state), activity: slot.activity ?? {}, plan: slot.plan ?? null, skills: slot.skills ?? {} });
 
 function pictureOf(state, slot) {
   const key = Math.floor(state.viewer.nowMs / 1000);

@@ -13,9 +13,18 @@
 // Each row also carries the WORD a planner and a viewer say (1.8.6): NO_GAP, PERMISSION_GAP, ENVIRONMENT_GAP,
 // CAPABILITY_GAP, and -- for the one generating kind -- the word of its SHAPE (below). A word is a reading of
 // the row, never a second row: a composition or a verification gap is still the one workflow gap.
+// A provider that is there but not ready on THIS machine -- not installed, or present and missing what it needs (a
+// secret that is not set) -- is an environment gap (0.0.4), told apart from one a person or a policy keeps off.
+const NOT_READY = ["not-installed", "needs-attention"];
+
+const topOf = (r) => (r?.candidates ?? []).find((c) => c.key === r.provider?.key) ?? null;
+
+const notReadyHere = (r) => ((c) => Boolean(c) && c.verdict !== "deny" && NOT_READY.includes(c.state))(topOf(r));
+
 export const GAP_KINDS = [
   { kind: null, word: () => "NO_GAP", when: (r) => r?.outcome === "provided", generates: false, because: () => "provided" },
   { kind: "policy", word: () => "PERMISSION_GAP", when: (r) => r?.outcome === "decision", generates: false, because: (r) => `${r.why} — a person's decision; nothing is generated around it` },
+  { kind: "environment", word: () => "ENVIRONMENT_GAP", when: (r) => r?.outcome === "gap" && r.remedy === "enable" && notReadyHere(r), generates: false, because: (r) => `${r.why} — what it needs is not ready on this machine; nothing is generated around it` },
   { kind: "policy", word: () => "PERMISSION_GAP", when: (r) => r?.outcome === "gap" && r.remedy === "enable", generates: false, because: (r) => `${r.why} — a switched-off provider is never replaced by a generated one` },
   { kind: "environment", word: () => "ENVIRONMENT_GAP", when: (r) => r?.outcome === "impaired", generates: false, because: (r) => r.why },
   { kind: "workflow", word: (shape) => shapeRow(shape).word, when: (r) => r?.outcome === "gap" && r.remedy === "prepare", generates: true, because: () => "nothing here provides it: a playbook may be drafted, held to every need it declares being provided" },

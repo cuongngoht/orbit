@@ -4,12 +4,13 @@
 // terminal following one journal show the same line in the same place.
 //
 //   openTaskStream({ ctx, ids, query, lastEventId }) -> { task, start(sink), tick(), close(), cursor() }
-//   taskActivity(ctx, ids, query) -> { version, task, cursor, terminal, view, events }
+//   taskActivity(ctx, ids, query) -> { version, task, cursor, terminal, view, events, plan, skills }
+//   taskPlan(ctx, ids) -> { task, revision, terminal, plan }   the plan as every viewer draws it (0.0.4)
 //
 // Everything that can refuse happens in `open`, before a single header: an unknown project, a malformed
 // id, a task of another checkout -- each is the one JSON failure every route has. The task is read
 // through the SAME `show` the page's other reads use, so a stream can never address what a read cannot.
-import { ACTIVITY_SOURCE, collectFeed, openFeed, parseCursor, QA_SOURCE, TASK_COMMANDS, TASK_SOURCE } from "../core.mjs";
+import { ACTIVITY_SOURCE, collectFeed, openFeed, parseCursor, PLAN_SOURCE, planViewOf, QA_SOURCE, SKILL_SOURCE, TASK_COMMANDS, TASK_SOURCE } from "../core.mjs";
 import { guarded } from "../errors.mjs";
 import { taskIdOf, tasksOf } from "../tasks/project.mjs";
 import { liveOf } from "./index.mjs";
@@ -28,11 +29,18 @@ export async function taskActivity(ctx, ids, query) {
   return collectFeed(feedDeps(ctx), opened, parseCursor(query?.since));
 }
 
+// A workflow's plan as the page's plan card draws it: the replay a stream opens with, read into the projection a
+// terminal's Plan view draws (src/live/plan.mjs planViewOf) -- computed here, never again in the page.
+export async function taskPlan(ctx, ids) {
+  const c = await taskActivity(ctx, ids, {});
+  return { task: c.task, revision: c.view?.revision ?? null, terminal: c.terminal, plan: c.view?.task?.provider === "automation" ? planViewOf(c.plan, c.view, c.events, c.skills) : null };
+}
+
 function openedTask(ctx, ids) {
   const taskCtx = tasksOf(ctx, ids);
   const task = taskIdOf(ids[2]);
   const view = TASK_COMMANDS.show.run(taskCtx, [task]);
-  return { taskCtx, task, createdAt: view.task.createdAt ?? null, qa: QA_SOURCE.open(taskCtx.root, ctx.world.io), activity: ACTIVITY_SOURCE.open(taskCtx.root) };
+  return { taskCtx, task, createdAt: view.task.createdAt ?? null, qa: QA_SOURCE.open(taskCtx.root, ctx.world.io), activity: ACTIVITY_SOURCE.open(taskCtx.root), plans: PLAN_SOURCE.open(taskCtx.root, ctx.world.io), skills: SKILL_SOURCE.open(taskCtx.root, ctx.world.io) };
 }
 
-const feedDeps = (ctx) => ({ io: ctx.world.io, followers: liveOf(ctx).followers, task: TASK_SOURCE, qa: QA_SOURCE, activity: ACTIVITY_SOURCE });
+const feedDeps = (ctx) => ({ io: ctx.world.io, followers: liveOf(ctx).followers, task: TASK_SOURCE, qa: QA_SOURCE, activity: ACTIVITY_SOURCE, plan: PLAN_SOURCE, skill: SKILL_SOURCE });

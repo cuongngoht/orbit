@@ -108,6 +108,7 @@ export { COMMANDS as TASK_COMMANDS } from "../../src/task/index.mjs";
 export { CONFLICT_CODES as TASK_CONFLICTS, MISSING_CODES as TASK_MISSING } from "../../src/task/vocab.mjs";
 export { localDayStart, machineApprovals, machineView } from "../../src/task/machine.mjs";
 export { createTasks, journalLine as taskJournalLine } from "../../src/task/store.mjs";
+export { recentOf as recentTasks } from "../../src/task/recent.mjs";
 // Orbit Live: a follower over a journal, a task as a live page reads it, and what an investigation's
 // lines say as live QA activity. Read-only, every one of them.
 export { createFollower } from "../../src/store/follow.mjs";
@@ -121,6 +122,11 @@ export { ACTIVITY_SOURCE } from "../../src/orchestration/activity/source.mjs";
 // The live core every viewer shares (ADR 0016): a page here, a terminal's `live watch`, the status line.
 // Control keeps only the transport -- Server-Sent Events, its routes, a context named by the path.
 export { collectFeed, openFeed } from "../../src/live/feed.mjs";
+// A coordinated workflow's plan and a declared playbook's workflow (0.0.4) as the live core reads them, and the ONE
+// projection of a plan every viewer draws -- the page's plan card and a terminal's Plan view are this function.
+export { PLAN_SOURCE } from "../../src/automation/source.mjs";
+export { SKILL_SOURCE } from "../../src/skill-factory/source.mjs";
+export { planViewOf, skillRunsOf } from "../../src/live/plan.mjs";
 export { createFollowers, POLL_MS } from "../../src/live/followers.mjs";
 export { tickSubject } from "../../src/live/subjects.mjs";
 export { CURSOR, formatCursor, formatOffset, MAX_CURSOR, parseCursor, parseOffset, zeroCursor } from "../../src/live/cursor.mjs";

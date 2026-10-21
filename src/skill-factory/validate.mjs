@@ -18,7 +18,12 @@
 //   9  SF_SCRIPT_BLOCK · SF_COMMAND_*       a fenced block holds only Orbit commands, each one its own usage
 //                                           header documents, and none that is a person's (--human, approve,
 //                                           trust)
-//   10 SF_HIDDEN_CHARS · SF_INJECTION · SF_SECRET   no hidden or reordering characters, no known instruction-
+//   10 SF_WORKFLOW_* · WF_*                 (0.0.4) a playbook that runs DECLARED brings a workflow.json held to the
+//                                           workflow contract (workflow.mjs), and one that is followed brings none;
+//                                           each step's capability served, as the resolver answers today, only by a
+//                                           managed server (naming its tool) or a project capability -- never by
+//                                           another playbook (WF_RECURSION), an agent or a builtin
+//   11 SF_HIDDEN_CHARS · SF_INJECTION · SF_SECRET   no hidden or reordering characters, no known instruction-
 //                                           override patterns, no secret-shaped value
 //
 //   validateSkill(candidate, deps) -> { ok, findings: [{ id, says }] }
@@ -28,7 +33,8 @@ import { scrub } from "../scrub.mjs";
 import { frontmatter, frontmatterBlock } from "./frontmatter.mjs";
 import { problemsOf } from "./instruction.mjs";
 import { manifestFindings } from "./manifest.mjs";
-import { DRAFTED_UNDER, ID, LIMITS, MANIFEST, READ_TOOLS, SKILL_FILE } from "./vocab.mjs";
+import { DRAFTED_UNDER, ID, LIMITS, MANIFEST, READ_TOOLS, SKILL_FILE, WORKFLOW_FILE } from "./vocab.mjs";
+import { parsedWorkflow, workflowFindings } from "./workflow.mjs";
 
 const fileOf = (c, name) => c.files.find((f) => f.name === name) ?? null;
 
@@ -162,6 +168,35 @@ const notDeclared = (c) => frontTools(c).filter((t) => !(manifestOf(c)?.allowedT
 
 const widerThan = (c, deps) => ((m) => (m ? (m.allowedTools ?? []).filter((t) => !READ_TOOLS.includes(t) && !(deps.toolsOf(m.workflow) ?? []).includes(t)) : []))(manifestOf(c));
 
+// ---- a declared workflow (0.0.4) --------------------------------------------------------------------------
+
+const declares = (c) => manifestOf(c)?.runs === "declared";
+
+const workflowOf = (c) => parsedWorkflow(fileOf(c, WORKFLOW_FILE)?.text ?? "null");
+
+// A playbook that says it is run by the engine brings the workflow it runs, held to the workflow contract
+// (workflow.mjs); one that is followed by a host brings none -- a workflow.json nobody runs is a second story.
+function declaredFindings(c) {
+  if (!declares(c)) return fileOf(c, WORKFLOW_FILE) ? [finding("SF_WORKFLOW_UNDECLARED", "it brings a workflow.json, and its manifest does not say it runs declared")] : [];
+  if (!fileOf(c, WORKFLOW_FILE)) return [finding("SF_WORKFLOW_MISSING", "its manifest says it runs declared, and it brings no workflow.json")];
+  return workflowFindings(workflowOf(c) ?? null, manifestOf(c)).map((f) => finding(f.id, f.says));
+}
+
+// Who the resolver picks for each step's capability TODAY: a step is run only through a managed server's broker or a
+// project capability's pipeline, never by following another playbook (no recursion), an agent or a builtin -- and a
+// managed server's step names the tool it calls.
+const PROVIDERS = [
+  { when: (r) => r?.outcome !== "provided", says: () => null },
+  { when: (r) => r.provider?.ownership === "project" && r.provider?.kind !== "capability", says: (s) => finding("WF_RECURSION", `step ${s.id}: ${s.capability} is provided by a project playbook — a workflow never runs another playbook`) },
+  { when: (r, s) => r.provider?.kind === "mcp" && !s.tool, says: (s) => finding("SF_WORKFLOW_TOOL", `step ${s.id}: ${s.capability} is provided by a managed server — the step names the tool it calls`) },
+  { when: (r) => r.provider?.kind === "mcp" || (r.provider?.kind === "capability" && r.provider?.ownership === "project"), says: () => null },
+  { when: () => true, says: (s, r) => finding("SF_WORKFLOW_PROVIDER", `step ${s.id}: ${s.capability} is served by ${r.provider?.kind ?? "nothing"} ${r.provider?.id ?? ""} — a step is run only through a managed server or a project capability`.replace(/ +—/, " —")) },
+];
+
+const providerFinding = (s, r) => PROVIDERS.find((row) => row.when(r, s)).says(s, r);
+
+const providerFindings = (c, deps) => (declares(c) && Array.isArray(workflowOf(c)?.steps) ? workflowOf(c).steps.filter((s) => typeof s?.capability === "string").map((s) => providerFinding(s, deps.resolve(s.capability))).filter(Boolean) : []);
+
 // ---- the table ------------------------------------------------------------------------------------------
 
 export const RULES = [
@@ -176,6 +211,8 @@ export const RULES = [
   { id: "SF_WORKFLOW", check: (c) => (manifestOf(c)?.workflow && manifestOf(c).workflow !== DRAFTED_UNDER ? [finding("SF_WORKFLOW_FIXED", `a playbook is drafted under ${DRAFTED_UNDER}, the coordinator that drafts it — not ${manifestOf(c).workflow}: a draft never chooses whose tools it borrows`)] : []) },
   { id: "SF_TOOLS", check: (c, deps) => [...each("SF_TOOLS_UNDECLARED", notDeclared(c), (t) => `SKILL.md allows ${t}, which manifest.json does not declare — the two must say the same`), ...each("SF_TOOLS_WILDCARD", [...new Set([...(manifestOf(c)?.allowedTools ?? []), ...frontTools(c)])].filter(wildcard), (t) => `${t} is a wildcard — a playbook names exactly the Orbit commands it runs`), ...(manifestOf(c)?.workflow && deps.toolsOf(manifestOf(c).workflow) === null ? [finding("SF_WORKFLOW_UNKNOWN", `${manifestOf(c).workflow} is not a shipped skill`)] : each("SF_TOOLS_WIDER", widerThan(c, deps), (t) => `${t} is wider than ${manifestOf(c).workflow} allows itself — a playbook never gets more than the workflow it was drafted under`))] },
   { id: "SF_FILES", check: (c) => [...each("SF_FILE_LINK", c.files.filter((f) => f.kind !== "file"), (f) => `${f.name} is not a regular file (a link or a directory) — a playbook is flat files only`), ...each("SF_EXECUTABLE", c.files.filter((f) => f.kind === "file" && !/\.(md|json)$/.test(f.name)), (f) => `${f.name} is not a playbook file — executable artifacts are refused in this release`), ...(fileOf(c, SKILL_FILE).bytes > LIMITS.skillBytes || c.files.reduce((n, f) => n + f.bytes, 0) > LIMITS.totalBytes || c.files.filter((f) => f.name.endsWith(".md")).length > LIMITS.references + 1 ? [finding("SF_TOO_LARGE", `a playbook is at most ${LIMITS.skillBytes} bytes of SKILL.md, ${LIMITS.references} references and ${LIMITS.totalBytes} bytes in all`)] : [])] },
+  { id: "SF_WORKFLOW_SPEC", check: declaredFindings },
+  { id: "SF_WORKFLOW_PROVIDER", check: providerFindings },
   { id: "SF_COMMANDS", check: (c) => instructions(c).flatMap((t) => [...each("SF_SCRIPT_BLOCK", badFences(t), (f) => `a ${f.lang || "plain"} block holds something other than Orbit commands a playbook may run — a playbook runs no script`), ...each("SF_COMMAND_NOT_ALLOWED", commandsOf(t).filter((x) => !allowedCommand(x)), (x) => `${x.tool}.${x.ext} ${x.sub || ""} is not a command a playbook may name — only the read-only Orbit commands in PLAYBOOK_COMMANDS`.replace(/ +—/, " —")), ...each("SF_COMMAND_NOT_ALLOWED", spansOf(t).filter((span) => !allowedLine(span)), (span) => `\`${span.slice(0, 60)}\` reads as a command, and it is not one a playbook may name`), ...(RUNNERS.test(t) ? [finding("SF_COMMAND_NOT_ALLOWED", "it hands code to a runner to execute (inline code, a module loaded by expression, or text piped into a program)")] : []), ...(PERSON_ONLY.test(t) ? [finding("SF_COMMAND_PERSON_ONLY", "it names a person's decision (--human, approve, trust, resume) — a playbook never takes one")] : [])]) },
   { id: "SF_BOUND_TO_RECORD", check: (c) => instructions(c).flatMap((t) => each("SF_BOUND_TO_RECORD", [...new Set(t.match(RECORD_IDS) ?? [])].slice(0, 3), (id) => `it names ${id} — a playbook serves every task that needs its capability, so it writes <task> or <work> and asks the step for the record, never one task's id`)) },
   { id: "SF_TEXT", check: (c) => texts(c).flatMap((t) => [...(hidden(t) ? [finding("SF_HIDDEN_CHARS", "it holds control, zero-width or reordering characters")] : []), ...each("SF_INJECTION", INJECTION.filter((p) => p.test(t)).slice(0, 1), () => "it holds text that tries to override a host's instructions or a gate"), ...(scrub(t) !== t ? [finding("SF_SECRET", "it holds a secret-shaped value — a playbook names a secret's variable, never its value")] : [])]) },

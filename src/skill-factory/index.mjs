@@ -29,6 +29,26 @@ const sayVerify = (v) => (v.ok ? `VERIFIED   ${v.id} holds to the contract (noth
 
 const sayPut = (r) => `DRAFT      ${r.id} · ${r.file} (${r.bytes} bytes)`;
 
+const CAPABILITY = /^[a-z][a-z0-9]*(\.[a-z0-9][a-z0-9-]*)+$/;
+
+function capabilityOf(args) {
+  const cap = flag(args, "for") ?? words(args)[0];
+  if (!CAPABILITY.test(String(cap ?? ""))) throw new Refused("discover --for=<capability> — one dotted, lower-case capability word");
+  return cap;
+}
+
+const sayDiscover = (d) => [`DISCOVER   ${d.capability} → ${d.label}`, `BECAUSE    ${d.because}`, ...(d.provider ? [`PROVIDER   ${d.provider.kind} ${d.provider.id}${d.pin ? ` · pinned ${d.pin}` : ""}${d.runs ? ` · ${d.runs}` : ""}`] : [])].join("\n");
+
+const stepLine = (s) => `  ${s.id.padEnd(24)} ${s.capability}${s.tool ? ` · ${s.tool}` : ""}${(s.after ?? []).length ? ` ← ${s.after.join(", ")}` : ""}${s.required === false ? " · optional" : ""} · evidence ${s.evidence ?? "report"}${s.approval === "owner" ? " · a person allows it" : ""}`;
+
+const sayWorkflow = (w) => [`WORKFLOW   ${w.pin} (${w.status}) · ${w.workflow.steps.length} step(s), at most ${w.workflow.bounds?.maxCalls ?? 16} call(s)`, `ORDER      ${w.order.join(" → ")}`, ...w.workflow.steps.map(stepLine)].join("\n");
+
+const runLine = (r) => `  ${String(r.at ?? "").slice(0, 19).padEnd(20)} ${r.word.padEnd(12)} ${r.pin} · ${r.task} · ${r.steps.map((s) => `${s.id} ${s.word}`).join(", ")}`;
+
+const sayRuns = (x) => (x.runs.length ? [`RUNS       ${x.id} · ${x.runs.length} run(s), newest first`, ...x.runs.map(runLine)].join("\n") : `RUNS       ${x.id} has not run in this project's workflows`);
+
+const sayReview = (r) => [`REVIEW     ${r.id} · ${r.reliability.word} — ${r.reliability.because}`, ...r.versions.map((v) => `VERSION    ${v.pin} (${v.status}) · ${v.runs} run(s): ${v.verified} verified, ${v.reported} reported, ${v.failed} failed, ${v.blocked} blocked${v.holds ? "" : " · NO LONGER HOLDS"}`), ...r.questions.map((q) => `  ${q.answer.padEnd(8)} ${q.ask} — ${q.because}`), `PROPOSE    ${r.proposal.successor ? "a successor version" : "nothing"} — ${r.proposal.because}`].join("\n");
+
 export const COMMANDS = {
   where: { run: (ports) => ({ room: ports.factory.store.paths.room }), say: (r) => `ROOM       ${r.room}`, writes: "nothing" },
   list: { run: (ports) => ports.factory.list(), say: sayList, writes: "nothing" },
@@ -36,7 +56,14 @@ export const COMMANDS = {
   show: { run: (ports, args) => ports.factory.playbook(idOf(args)), say: sayShow, writes: "nothing" },
   verify: { run: (ports, args) => ports.factory.verify(idOf(args)), say: sayVerify, writes: "nothing" },
   put: { run: putOf, say: sayPut, writes: "store" },
+  discover: { run: (ports, args) => ports.discover(capabilityOf(args)), say: sayDiscover, writes: "nothing" },
+  runs: { run: (ports, args) => ({ id: idOf(args), runs: ports.factory.runs(idOf(args)).slice(0, 20) }), say: sayRuns, writes: "nothing" },
+  review: { run: (ports, args) => ports.factory.review(idOf(args)), say: sayReview, writes: "nothing" },
+  workflow: { run: (ports, args) => ((w) => ({ pin: w.pin, status: w.status, runs: w.manifest.runs, needs: w.manifest.needs, provides: w.manifest.provides, workflow: w.workflow, order: ports.factory.interpreter.orderOf(w.workflow) }))(ports.factory.workflow(pinArg(ports, args))), say: sayWorkflow, writes: "nothing" },
 };
+
+// A pin, or the id of a registered playbook -- its version in place.
+const pinArg = (ports, args) => ((ref) => (ref.includes(":") ? ref : ports.factory.current(ref)?.pin ?? ref))(idOf(args));
 
 export const COMMAND_NAMES = Object.keys(COMMANDS);
 

@@ -38,6 +38,7 @@ import { allDone, digestOf, planOf, readyOf, replanOf, stateOf, validate } from 
 import { classOf, verdictOf } from "./policy.mjs";
 import { RESPONSE_IDS, TRIGGERS, respond, structuralOf } from "./replan.mjs";
 import { selectionOf } from "./select.mjs";
+import { interruptedRunOps, interruptedStepOps } from "./skill-run.mjs";
 import { narrowedBudget } from "./settings.mjs";
 import { kindOf, STEP_KINDS } from "./steps.mjs";
 import { STOP_EVIDENCE, stopOf } from "./stop.mjs";
@@ -127,10 +128,14 @@ const resolvedFor = (ports, step, kind, facts) => (step.provides && !kind.engine
 
 const liveFacts = (ports, lw, kind) => (kind.id === "requirement" && lw.ref ? { requirement: { ready: ((l) => Boolean(l?.latest) && l.blocking === 0)(quietly(() => ports.requirements.look(lw.ref))) } } : {});
 
+// Whether the project playbook the resolver picked DECLARES its workflow, read off its version in place (0.0.4).
+const declaredFor = (ports, r) => r?.provider?.ownership === "project" && r.provider.kind === "skill" && quietly(() => ports.factory?.current?.(r.provider.id))?.runs === "declared";
+
 function selected(ports, lw, step) {
   const kind = kindOf(step.kind);
   const facts = liveFacts(ports, lw, kind);
-  return selectionOf(step, kind, resolvedFor(ports, step, kind, facts), ports.host, facts);
+  const r = resolvedFor(ports, step, kind, facts);
+  return selectionOf(step, kind, r, ports.host, { ...facts, declared: declaredFor(ports, r) });
 }
 
 // ---- the person's gate ------------------------------------------------------------------------------
@@ -162,8 +167,9 @@ const stageOps = (lw, kind) => (kind.stage && kind.stage !== lw.view.stage ? [["
 
 const unblockOps = (lw) => (lw.view.lifecycle === LIFE.BLOCKED ? [["unblock", { because: "the blocked step runs again" }]] : []);
 
-// A step the engine reads back itself (a snapshot that is already frozen) dispatches no skill: it is reading.
-const classFor = (kind, sel) => (sel.dispatch?.mode === "engine" && kind.class === "dispatch-skill" ? "read-context" : kind.class);
+// A step the engine reads back itself (a snapshot that is already frozen) dispatches no skill: it is reading. A
+// declared playbook the engine runs is still a dispatched skill -- what a person set for dispatch-skill governs it.
+const classFor = (kind, sel) => (sel.dispatch?.mode === "engine" && kind.class === "dispatch-skill" && kind.id !== "playbook" ? "read-context" : kind.class);
 
 function judgedStep(ports, lw, d) {
   const step = lw.plan?.steps.find((s) => s.id === d.action.step) ?? null;
@@ -257,13 +263,13 @@ async function ran(ports, fn) {
   catch (e) { return { verdict: "violated", receipt: null, because: clip(scrub(e.message)), error: true }; }
 }
 
-const engineRun = (ports, taken) => ran(ports, () => ENGINE[taken.kind.id](ports, { ...loopWorld(ports, taken.lw.id), plan: taken.lw.plan }, taken.step));
+const engineRun = (ports, taken) => ran(ports, () => ENGINE[taken.kind.id](ports, { ...loopWorld(ports, taken.lw.id), plan: taken.lw.plan }, taken.step, taken.dispatch));
 
 const budgetOf = (lw) => ({ minutes: lw.view.budget.minutes.limit ?? undefined });
 
 async function hostHanded(ports, taken) {
   const before = BEFORE_HOST[taken.kind.id];
-  const r = before ? await ran(ports, () => before(ports, taken.lw, budgetOf(taken.lw), taken.step)) : { receipts: [] };
+  const r = before ? await ran(ports, () => before(ports, taken.lw, budgetOf(taken.lw), taken.step, taken.dispatch)) : { receipts: [] };
   return ports.lock(taken.lw.id, () => handed(ports, taken, r));
 }
 
@@ -457,18 +463,32 @@ const ENGINE_GONE = [
 
 const childEvidence = (lw, kind) => (kind.domains.includes(DOMAIN.TASK) && childOf(lw.view) ? [`${DOMAIN.TASK}:${childOf(lw.view)}`] : []);
 
+// What an ENGINE ran is alive while the process the room names is: a declared playbook's step (0.0.4) is carried
+// inside its playbook step's engine action, so it is alive exactly while that action's runner is -- and with no
+// runner left at all, nothing is running it.
+const nested = (act) => act.type === ACTION_TYPE.SKILL_STEP;
+
+const runnerOf = (runner, act) => (runner?.action === act.id || nested(act) ? runner : null);
+
+const aliveOf = (ports, runner, act) => (runner ? ports.liveness(runner) : nested(act) ? false : null);
+
 function verdictFor(ports, lw, act) {
   const st = lw.states.find((s) => s.action === act.id);
-  const runner = ports.roomOf(lw.id).read("running");
-  const host = act.type !== ACTION_TYPE.ENGINE;
-  const c = { read: host && st ? verifyOf(ports, kindOf(st.kind), childEvidence(lw, kindOf(st.kind)), lw) : { verdict: "unreadable" }, runner: runner?.action === act.id ? runner : null, session: ports.session, age: ageOf(lw, act), alive: runner?.action === act.id ? ports.liveness(runner) : null };
+  const runner = runnerOf(ports.roomOf(lw.id).read("running"), act);
+  const host = act.type !== ACTION_TYPE.ENGINE && !nested(act);
+  const c = { read: host && st ? verifyOf(ports, kindOf(st.kind), childEvidence(lw, kindOf(st.kind)), lw) : { verdict: "unreadable" }, runner, session: ports.session, age: ageOf(lw, act), alive: aliveOf(ports, runner, act) };
   return { st, c, then: (host ? HOST_GONE : ENGINE_GONE).find((r) => r.when(c)).then };
 }
+
+const GONE_SAY = "what ran this step is gone, and its owner keeps no record of it — closed as interrupted, never run again";
+
+// An interrupted action, closed: a declared step as INTERRUPTED or AMBIGUOUS, a playbook step's run with it.
+const closedOps = (lw, act, v) => (nested(act) ? interruptedStepOps(lw.view, act) : [...interruptedRunOps(lw.view, act), ...interruptedOps(v.st ?? { id: "unknown" }, act.id, GONE_SAY)]);
 
 function reconciledOne(ports, lw, act) {
   const v = verdictFor(ports, lw, act);
   if (v.then === "running") throw Object.assign(new Refused(`STILL_RUNNING: ${act.id} (${act.label ?? act.type}) is still being run — it settles itself, or settle it with its evidence`), { code: "STILL_RUNNING" });
-  const ops = v.then === "settle" ? settledOf({ step: v.st, kind: kindOf(v.st.kind), act: act.id, read: v.c.read }).ops : interruptedOps(v.st ?? { id: "unknown" }, act.id, "what ran this step is gone, and its owner keeps no record of it — closed as interrupted, never run again");
+  const ops = v.then === "settle" ? settledOf({ step: v.st, kind: kindOf(v.st.kind), act: act.id, read: v.c.read }).ops : closedOps(lw, act, v);
   applied(ports, lw.id, ops);
   return { action: act.id, step: v.st?.id ?? null, settled: v.then };
 }
@@ -522,6 +542,11 @@ const activeFor = (ports, match) => coordinators(ports).find((v) => !v.terminal 
 
 const sameObjective = (objective) => (v) => objectiveKey(v.task.objective) === objectiveKey(objective);
 
+// A goal unit's workflow is the one linked to that unit -- never another goal's workflow that happens to share its title.
+const sameGoal = (goal) => (v) => v.receipts.some((r) => r.domain === DOMAIN.GOAL && r.ref === goal);
+
+const runningFor = (spec) => (spec.goal ? sameGoal(spec.goal) : sameObjective(spec.objective));
+
 export function planFor(ports, spec) {
   const values = ports.settings().values;
   const facts = factsOf(ports, spec, values);
@@ -533,19 +558,23 @@ export function planFor(ports, spec) {
 function created(ports, spec, facts, plan) {
   const values = ports.settings().values;
   const id = ports.task.create({ objective: spec.objective, root: facts.requirement?.root, provider: PROVIDER, actor: ports.actor ?? undefined, ...narrowedBudget(values, spec) }).task;
-  ports.lock(id, () => opened(ports, id, plan));
+  ports.lock(id, () => opened(ports, id, plan, spec));
   return id;
 }
 
-function opened(ports, id, plan) {
+// The goal and unit a workflow was started for (0.0.4), linked before anything runs: the goal's journal names this task
+// for its unit, and this task names the goal back -- one lineage, read from either end.
+const goalOps = (spec) => (spec.goal ? [["link-receipt", { domain: DOMAIN.GOAL, ref: spec.goal, outcome: "LINKED", summary: clip(`unit ${spec.goal.split(":")[1]} of goal ${spec.goal.split(":")[0]}`) }]] : []);
+
+function opened(ports, id, plan, spec) {
   ports.roomOf(id).write(`plans/${plan.digest}`, plan);
-  applied(ports, id, [planReceipt(plan, "ACTIVE"), ["attempt-start", { cause: CAUSE.FRESH }]]);
+  applied(ports, id, [...goalOps(spec), planReceipt(plan, "ACTIVE"), ["attempt-start", { cause: CAUSE.FRESH }]]);
 }
 
 const nothingToDo = (got) => Object.assign(new Refused(`NOTHING_TO_COORDINATE: the objective reads as ${got.facts.intent} (${got.facts.confidence} confidence), which no workflow here coordinates — orbit-help names the one workflow for it`), { code: "NOTHING_TO_COORDINATE" });
 
 export function start(ports, spec) {
-  const running = activeFor(ports, sameObjective(spec.objective));
+  const running = activeFor(ports, runningFor(spec));
   if (running) return { task: running, created: false, resumed: true, context: contextOf(ports, running) };
   return startedNew(ports, spec);
 }

@@ -3,7 +3,7 @@
 // refused; a fixed field is refused; a project only narrows the machine; a restriction a person kept from before
 // is shown, narrows, and is lifted only on the revision read; and a generated playbook whose files changed cannot
 // be activated.
-import type { AutomationOverview, FieldRow, GeneratedSkill, MatrixRow, SettingValue, SettingsTree } from "../features/automation/automation.types";
+import type { GeneratedSkillDetail, AutomationOverview, FieldRow, GeneratedSkill, MatrixRow, SettingValue, SettingsTree } from "../features/automation/automation.types";
 import { reply, type Call } from "./fakeServer";
 
 const FIELDS: FieldRow[] = [
@@ -76,7 +76,7 @@ const isBody = (v: unknown): v is Body => typeof v === "object" && v !== null &&
 
 
 export function fakeAutomation() {
-  const state = { machine: {} as SettingsTree, machineRev: null as string | null, project: {} as SettingsTree, projectRev: null as string | null, n: 0, skill: { ...SKILL }, moves: [] as string[] };
+  const state = { machine: {} as SettingsTree, machineRev: null as string | null, project: {} as SettingsTree, projectRev: null as string | null, n: 0, skill: { ...SKILL }, moves: [] as string[], declared: null as Pick<GeneratedSkillDetail, "workflow" | "runs" | "review"> | null };
   const doc = (set: SettingsTree, revision: string | null) => ({ settings: valued(set), set, revision, exists: revision !== null, unreadable: null, updatedAt: revision ? "2026-10-08T10:00:00.000Z" : null });
   const overview = (): AutomationOverview => ({ version: 1, fields: FIELDS, fixed: { "skillFactory.allowExecutableCode": false, "skillFactory.requireValidation": true }, machine: doc(state.machine, state.machineRev), effective: narrowed(state.machine, null), live: { fields: [{ path: "statusLine.lines", type: "integer", values: null, min: 1, max: 3, default: 2, narrow: "min", say: "lines the status line may use" }], settings: { statusLine: { lines: 2 } }, revision: null, exists: false }, readiness: [{ id: "claude", name: "Claude Code", agents: true, promptRouter: true, statusLine: "not-installed" }, { id: "codex", name: "Codex", agents: false, promptRouter: true, statusLine: "unavailable" }, { id: "antigravity", name: "Antigravity CLI", agents: false, promptRouter: false, statusLine: "unavailable" }] });
   const projectView = () => ({ version: 1, project: "repo-shop", machine: doc(state.machine, state.machineRev), settings: doc(state.project, state.projectRev), effective: narrowed(state.machine, state.project) });
@@ -105,10 +105,18 @@ export function fakeAutomation() {
     if (call.path === "/api/v1/projects/repo-shop/automation") return reply(200, projectView());
     if (call.path === "/api/v1/projects/repo-shop/automation/settings" && call.method === "PUT") return save(call, "project");
     if (call.path === "/api/v1/projects/repo-shop/generated-skills") return reply(200, { version: 1, project: "repo-shop", skills: [state.skill], drafts: [] });
-    if (call.path === `/api/v1/projects/repo-shop/generated-skills/${SKILL.id}`) return reply(200, { version: 1, project: "repo-shop", skill: state.skill, playbook: { pin: state.skill.pin, status: state.skill.status, files: [{ name: "SKILL.md", text: "# Release checklist verification\n\nRead the checklist." }] } });
+    if (call.path === `/api/v1/projects/repo-shop/generated-skills/${SKILL.id}`) return reply(200, { version: 1, project: "repo-shop", skill: state.skill, playbook: { pin: state.skill.pin, status: state.skill.status, files: [{ name: "SKILL.md", text: "# Release checklist verification\n\nRead the checklist." }] }, ...(state.declared ?? {}) });
     const action = new RegExp(`^/api/v1/projects/repo-shop/generated-skills/${SKILL.id}/([a-z]+)$`).exec(call.path);
     if (action && call.method === "POST") return move(action[1] ?? "");
     return null;
   };
   return { handle, state };
 }
+
+/** A declared playbook's page as the server answers it (0.0.4): its workflow, one run that answered within its contract
+ * and proved nothing past it, and the review that run answers. */
+export const declaredDetail = (): Pick<GeneratedSkillDetail, "workflow" | "runs" | "review"> => ({
+  workflow: { pin: SKILL.pin, id: SKILL.id, version: "0.1.0", status: "active", provides: SKILL.provides, bounds: { maxCalls: 8 }, steps: [{ id: "evidence", capability: "release.evidence.read", tool: null, after: [], required: true, evidence: "report", approval: "none", retries: 0 }, { id: "notes", capability: "release.notes.search", tool: "search", after: ["evidence"], required: true, evidence: "owner-record", approval: "owner", retries: 1 }] },
+  runs: [{ task: "tsk-0123456789ab", run: "srun-0123456789ab", pin: SKILL.pin, word: "REPORTED", at: "2026-10-20T10:00:00.000Z", session: "s-1", steps: [{ id: "evidence", word: "CONTRACT_MET", required: true, calls: 1, retries: 0, waiting: null }, { id: "notes", word: "CONTRACT_MET", required: true, calls: 1, retries: 0, waiting: null }] }],
+  review: { id: SKILL.id, versions: [{ pin: SKILL.pin, version: "0.1.0", status: "active", holds: true, runs: 1, verified: 0, reported: 1, failed: 0, blocked: 0 }], questions: [{ id: "EVIDENCE", ask: "Is what it did proven by an owner's record?", answer: "no", because: "1 of 1 run(s) were reported" }], reliability: { word: "INSUFFICIENT", runs: 1, because: "1 run(s) in 1 session(s) — one session's success is an observation, never a rule" }, proposal: { successor: false, because: "nothing its runs show asks for a new version", writes: "nothing" } },
+});

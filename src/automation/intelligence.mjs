@@ -16,6 +16,7 @@
 // `missingOf(facts, plan)` says what the plan cannot know yet, and whether a step finds it out or a person must
 // say it -- once the workflow is known, since what a playbook workflow lacks is not what a change lacks. An
 // acceptance criterion is never invented to fill one.
+import { Refused } from "../errors.mjs";
 import { verdictOf } from "./policy.mjs";
 import { MAX_CAPABILITIES } from "./vocab.mjs";
 
@@ -39,10 +40,15 @@ const resolvedOf = (ports) => (capability) => ({ capability, r: quietly(() => po
 
 // One capability's facts. `composes`: the other capabilities the objective needs that ARE provided -- what a
 // playbook drafted for this one would compose, and so its shape.
+// What skill discovery calls it (0.0.4, src/skill-factory/discover.mjs, through the factory's port): REUSABLE and the
+// pin it would run, a gap's one word, or UNRESOLVED -- a reading of the same answer, never a second ranking.
+const discoveryOf = (ports, x, gap, values) => quietly(() => ports.factory?.discover?.({ capability: x.capability, resolved: x.r, gap, generates: generates(gap, values) }), null);
+
 function capabilityFact(ports, values, x, composes) {
   const gap = x.r?.outcome === "provided" ? null : quietly(() => ports.gapOf(x.r, values, composes), null);
   const word = gap?.word ?? (x.r?.outcome === "provided" ? "NO_GAP" : null);
-  return { capability: x.capability, outcome: x.r?.outcome ?? "cannot-tell", provider: x.r?.provider ?? null, gap: gap?.kind ?? null, word, shape: gap?.shape ?? null, because: gap?.because ?? x.r?.why ?? null, generates: generates(gap, values) };
+  const found = discoveryOf(ports, x, gap, values);
+  return { capability: x.capability, outcome: x.r?.outcome ?? "cannot-tell", provider: x.r?.provider ?? null, gap: gap?.kind ?? null, word, shape: gap?.shape ?? null, because: gap?.because ?? x.r?.why ?? null, generates: generates(gap, values), discovery: found?.label ?? null, pin: found?.pin ?? null };
 }
 
 const unique = (list) => [...new Set(list)];
@@ -75,8 +81,19 @@ export const MISSING = [
 
 export const missingOf = (f, plan) => MISSING.filter((m) => m.when(f, plan)).map((m) => ({ what: m.what, by: m.by, say: m.say(f, plan) }));
 
+// What the objective is ABOUT: the intent a caller declared (a goal unit's kind), in classify's own shape, or -- for an
+// objective nobody structured -- the routing table's reading of its words. A declared intent with named capabilities
+// is planned for exactly those: the intent row's own requirements stand in only when nothing is named.
+function declaredOf(ports, spec) {
+  const d = ports.declared(spec.intent);
+  if (!d) throw Object.assign(new Refused(`INTENT_UNKNOWN: ${spec.intent} is no routing intent — a declared intent is one row's id`), { code: "INTENT_UNKNOWN" });
+  return named(spec).length ? { ...d, requirements: [] } : d;
+}
+
+const classifiedOf = (ports, spec) => (spec.intent ? declaredOf(ports, spec) : ports.classify(spec.objective));
+
 export function factsOf(ports, spec, values) {
-  const classified = ports.classify(spec.objective);
+  const classified = classifiedOf(ports, spec);
   const capabilities = capabilityFacts(ports, classified, spec, values);
   const base = { objective: spec.objective, ref: spec.ref ?? null, intent: classified.intent.id, confidence: classified.intent.confidence, matched: classified.matched, capabilities, named: named(spec), playbook: capabilities[0] ?? null };
   return { ...base, requirement: requirementFacts(ports, spec.ref), startable: quietly(() => ports.runtime.startable(), []), host: ports.host };

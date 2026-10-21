@@ -9,6 +9,7 @@ import { LoadingState } from "../../shared/components/LoadingState";
 import { PageHeader } from "../../shared/components/PageHeader";
 import { formatDateTime } from "../../shared/format";
 import { useNow } from "../../shared/hooks/useNow";
+import { PlanCard } from "./PlanCard";
 import { SandboxCard } from "./SandboxCard";
 import { LiveTask } from "./live/LiveTask";
 import { covers, useTaskStream } from "./live/useTaskStream";
@@ -112,6 +113,7 @@ function Detail({ view, taskRef, onConfirm, children }: { view: TaskView; taskRe
   return (
     <div className={styles.grid}>
       <div className={styles.wide}>{children}</div>
+      <PlanCard view={view} taskRef={taskRef} />
       <ReadinessCard view={view} />
       <SandboxCard taskRef={taskRef} active={!view.terminal} onConfirm={onConfirm} />
       <StateCard view={view} labels={labels} />

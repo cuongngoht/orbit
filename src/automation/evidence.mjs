@@ -102,11 +102,24 @@ function draftBack(ports, ref, lw) {
 
 const skillBack = (ports, ref, lw) => (ref.includes(":") ? pinBack(ports, ref, lw) : draftBack(ports, ref, lw));
 
+// ---- a declared playbook's run (0.0.4) ---------------------------------------------------------------
+
+// A run is read back off THIS workflow's own receipts: VERIFIED proves the step, a reported run proves nothing (a host
+// settling one is held to what a report may say), and one that failed, blocked or was interrupted says so.
+const RUN_BACK = { VERIFIED: "satisfied", FAILED: "violated", INTERRUPTED: "violated", BLOCKED: "blocked", RUNNING: "open" };
+
+function skillRunBack(ports, ref, lw) {
+  const r = lw.view.receipts.find((x) => x.domain === DOMAIN.SKILLRUN && x.ref === ref);
+  if (!r) return unreadable(DOMAIN.SKILLRUN, ref, "not a run this workflow carried");
+  return { verdict: RUN_BACK[r.outcome] ?? "unreadable", receipt: { domain: DOMAIN.SKILLRUN, ref, outcome: r.outcome, summary: clip(r.summary), ...(r.pin ? { pin: r.pin } : {}) }, needs: r.outcome === "BLOCKED" ? NEEDS.PERSON : undefined, because: RUN_BACK[r.outcome] ? undefined : `skillrun:${ref} is ${r.outcome} — reported, not proven` };
+}
+
 export const READ_BACK = {
   [DOMAIN.TASK]: childBack,
   [DOMAIN.INVESTIGATION]: investigationBack,
   [DOMAIN.REQUIREMENT]: requirementBack,
   [DOMAIN.SKILL]: skillBack,
+  [DOMAIN.SKILLRUN]: skillRunBack,
 };
 
 // "task:tsk-…" -> { domain, ref }, or null for anything that is not a domain:ref this engine reads.

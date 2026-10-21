@@ -57,6 +57,26 @@ All durable state lives outside your product repository:
 
 Reports, evidence, lessons, goals, tasks, and generated instruction playbooks are store-only unless you explicitly export test data.
 
+## Reusable skills (0.0.4)
+
+When a coordinated workflow needs a capability nothing here provides, the skill factory drafts a project-scoped
+playbook; the host writes its `SKILL.md` and -- when the work is a sequence of calls to capabilities this machine
+already provides -- a declared `workflow.json`. The engine validates it, registers it in the machine store, and at the
+playbook step RUNS it: pinned to one version, each step asked through its provider's own gate (the MCP broker or the
+capability pipeline), every call a receipt of digests. A later workflow, in any session, reuses the pinned skill
+instead of drafting again ([ADR 0030](docs/adr/0030-a-generated-skill-declares-a-workflow-the-engine-runs-through-owner-gates.md)).
+
+```bash
+node cli/skill-factory.mjs discover --for=release.readiness.verification   # REUSABLE (and its pin) or which gap
+node cli/skill-factory.mjs workflow <id|pin>                               # its steps, in the order they run
+node cli/skill-factory.mjs runs <id>                                        # what each run came to
+node cli/skill-factory.mjs review <id>                                      # what the runs show; a successor proposed, never written
+```
+
+A step is VERIFIED only by a record its owner keeps and proves; a call that answered within its contract is reported.
+Goals plan from a structured `intent` the host's model writes (`skills/orbit/SKILL.md`), never from the objective's
+words, so a goal in any language plans the same.
+
 ## Orbit Live and Orbit Control
 
 - **Orbit Live** — read-only viewer beside your session; one feed from journals (tasks, goals, checks). `/orbit` and `/orbit-help` open it (a docked pane in Claude Code, a split or a window elsewhere). Its header opens with an orbit whose satellite goes round its planet the whole time the viewer is open, in a peach-on-dark look on terminals with 256 or 24-bit colour (ADR 0027, 0029). The orbit is motion, never progress: the badge's word (`ORBITING`, `IDLE`, `BLOCKED`, `COMPLETED` …) says what the task does, and only on evidence. A tick redraws the orbit's row alone. The pane reads as its mockup does (ADR 0028): a bordered `ORBITING` badge, tabs with each view's words, `TASK EXECUTION` with `NOW`, the baseline as a card, a workflow's milestones under their step, and a footer of bars; a viewer waiting for a task shows a larger orbit. `pane.animation: off` keeps it still; `pane.orbitSpeed` (slow, normal, fast) sets its pace.

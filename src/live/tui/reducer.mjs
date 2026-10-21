@@ -29,7 +29,7 @@ function folded(slot, frames) {
   const got = bounded([...slot.events, ...frames.filter(isEvent).map((f) => f.data)], LIMITS.EVENTS_KEPT);
   const ended = frames.some((f) => f.event === "end" && f.data?.reason === "terminal");
   const view = frames.findLast((f) => f.event === "task-view")?.data?.view ?? slot.view;
-  return { ...slot, events: got.kept, dropped: slot.dropped + got.dropped, view, activity: observationsAfter(slot.activity ?? {}, frames), plan: planAfter(slot.plan ?? null, frames), end: ended ? "terminal" : slot.end, cursor: frames.findLast((f) => f.id)?.id ?? slot.cursor, seq: slot.seq + 1, read: readOk(slot.read), status: ended || slot.end ? "finished" : "live", error: null };
+  return { ...slot, events: got.kept, dropped: slot.dropped + got.dropped, view, activity: observationsAfter(slot.activity ?? {}, frames), plan: planAfter(slot.plan ?? null, frames), skills: skillsAfter(slot.skills ?? {}, frames), end: ended ? "terminal" : slot.end, cursor: frames.findLast((f) => f.id)?.id ?? slot.cursor, seq: slot.seq + 1, read: readOk(slot.read), status: ended || slot.end ? "finished" : "live", error: null };
 }
 
 // An observation is a projection the viewer REPLACES, by action, and only with a newer one (its revision grew, or its
@@ -41,6 +41,9 @@ const observationsAfter = (acts, frames) => frames.filter((f) => f.event === "ac
 
 // A workflow's plan is a projection the viewer REPLACES with the newest one sent (1.8.6): a revision always counts up.
 const planAfter = (was, frames) => ((f) => (f?.data?.view && (!was || f.data.view.n >= was.n) ? f.data.view : was))(frames.findLast((x) => x.event === "plan-view"));
+
+// A declared playbook's workflow (0.0.4) is one projection per PIN, which never changes: kept as first sent.
+const skillsAfter = (was, frames) => frames.filter((f) => f.event === "skill-view" && f.data?.view && typeof f.data.pin === "string").reduce((all, f) => (all[f.data.pin] ? all : { ...all, [f.data.pin]: f.data.view }), was);
 
 const failed = (slot, error, status) => (slot ? { status, error: String(error ?? "").slice(0, 300), read: readFailed(slot.read), seq: slot.seq + 1 } : {});
 

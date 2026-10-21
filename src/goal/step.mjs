@@ -10,7 +10,7 @@ export function stepGoal(ports, id, opts = {}) {
 }
 
 function dryOrStart(ports, id, loaded, unit, opts) {
-  const spec = bindAutomationStart(unit, loaded.model.analyzed, { ref: loaded.model.meta.sourceRef, capabilities: opts.capabilities });
+  const spec = bindAutomationStart(unit, loaded.model.analyzed, { ref: loaded.model.meta.sourceRef, capabilities: opts.capabilities, goal: id });
   if (opts.dry) return { id, dry: true, unit: unit.id, automation: spec };
   const started = ports.automation.start(spec);
   return ports.goals.transact(id, () => recordUnit(ports, id, unit.id, started.task));

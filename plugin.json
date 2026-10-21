@@ -1,6 +1,6 @@
 {
   "name": "orbit",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Orbit Engineering for Claude Code, Codex, Antigravity and Grok Build: From Goal to Verified Outcome — context, requirements, sandboxes, runtime, UI tests, autonomous QA, Orbit Control, MCP and tools. Governed and local. No dependencies.",
   "hooks": "./hooks/grok.json",
   "agents": []

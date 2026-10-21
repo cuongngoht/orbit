@@ -16,7 +16,7 @@ const KEY = /^[a-z][a-z0-9-]{0,40}$/;
 export function observerStarted(ctx, iso, now, observer, deps) {
   if (!KEY.test(String(observer.key))) return { ok: false, because: "an observer is named by a short logical key" };
   const node = { key: `observer:${observer.key}`, role: "observer", alias: `obs-${observer.key}`.slice(0, 40), image: { pinned: observer.image }, argv: observer.argv ?? [], env: observer.env ?? { names: [], values: {} }, ports: [] };
-  return startedNode(ctx, iso, node, specOf(node, now.topology, now.place), { kind: "observer", tree: ctx.sandboxDoc().source?.tree ?? null }, deps);
+  return startedNode(ctx, iso, node, specOf(node, now.topology, now.place), { kind: "observer", tree: ctx.sandboxDoc().source?.tree ?? null, topology: now.topology.fingerprint }, deps);
 }
 
 export const observersOf = (ctx) => ctx.sessions.list({ env: ctx.envId, owner: ctx.owner }).filter((s) => s.container && OBSERVER_KINDS.includes(s.kind) && s.state === "RUNNING");

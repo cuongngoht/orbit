@@ -22,7 +22,7 @@ import { startsKind } from "../vocab.mjs";
 import { attestedNow, unattested } from "./isolation.mjs";
 import { START_WAIT_MS, builtImage, ensuredNetwork, readyNode, specOf, startedNode } from "./network.mjs";
 import { effectivePolicy, isTrusted } from "./policy.mjs";
-import { composed, imageRefs } from "./topology.mjs";
+import { buildScopes, composed, imageRefs } from "./topology.mjs";
 
 const policyOf = (c) => effectivePolicy(c.state.settings).policy;
 
@@ -32,7 +32,7 @@ const modelOf = (ctx) => look(ctx).model ?? {};
 
 export const composeOf = (ctx) => (modelOf(ctx).inventory ?? []).filter(isCompose).map((path) => ({ path, doc: parseYaml(ctx.source.read(path) ?? "").value }));
 
-export const dockerfilesOf = (ctx) => ((m) => (m.inventory ?? []).filter(isDockerfile).map((path) => ({ path, digest: m.scopes?.[path]?.hash ?? null })))(modelOf(ctx));
+export const dockerfilesOf = (ctx) => (modelOf(ctx).inventory ?? []).filter(isDockerfile).map((path) => ({ path }));
 
 // ---- PLACEMENTS and CONNECTIVITY ---------------------------------------------------------------------------------------
 
@@ -53,15 +53,26 @@ function reached(c, { go, halt }) {
 
 const namesOf = (ctx) => ({ task: ctx.task, checkout: ctx.checkout, envId: ctx.envId });
 
-const inputOf = (c, policy) => ({ view: c.state.view, catalog: c.ctx.catalog, settings: c.state.settings, policy, names: namesOf(c.ctx), closure: c.closure, compose: composeOf(c.ctx), dockerfiles: dockerfilesOf(c.ctx) });
+// What the workspace's index says of every file a build would be made from, asked fresh each time: a scope the
+// source port cannot answer for is absent, and a build resting on it is a gap.
+const fingerprintsOf = (ctx, scopes) => (scopes.length ? (ctx.source.fingerprints?.(scopes) ?? {}) : {});
+
+function inputOf(c, policy) {
+  const input = { view: c.state.view, catalog: c.ctx.catalog, settings: c.state.settings, policy, names: namesOf(c.ctx), closure: c.closure, compose: composeOf(c.ctx), dockerfiles: dockerfilesOf(c.ctx) };
+  return { ...input, fingerprints: fingerprintsOf(c.ctx, buildScopes(input)) };
+}
 
 const resolvedOf = (iso, input, deps) => Object.fromEntries(imageRefs(input).map((ref) => [ref, iso.imageDigest(ref, deps)]));
 
 export const digestOf = (ref) => /sha256:([0-9a-f]{64})/.exec(String(ref ?? ""))?.[1] ?? null;
 
+// What the provider says it cannot hand a container of the environment each node names.
+const envRefusals = (iso, t) => t.nodes.flatMap((n) => iso.envProblems(n.env ?? {}).map((why) => `${n.key}: ${why}`));
+
 const TOPOLOGY_GATES = [
   { fails: (t) => t.gaps.length > 0, needs: (t) => (t.gaps.some((g) => g.needs === "person") ? "person" : "capability"), say: (t) => t.gaps.map((g) => g.say).join("\n") },
   { fails: (t) => !t.nodes.length, needs: () => "capability", say: () => "nothing in the workspace runs in a container: no component starts and no compose service names an image" },
+  { fails: (t, p, iso) => envRefusals(iso, t).length > 0, needs: () => "person", say: (t, p, iso) => `a container would be handed an environment it may not be: ${envRefusals(iso, t).join("; ")} — a person sets the names differently, or the file names a literal` },
   { fails: (t, p) => !p.isolation.workerImage, needs: () => "person", say: () => "no test worker image is set: a person names one, pinned by digest, in Orbit Control (Runtime → Sandbox policy → isolation)" },
   { fails: (t, p) => !isTrusted(p, "worker-image", digestOf(p.isolation.workerImage)), needs: () => "person", say: (t, p) => `the test worker image ${p.isolation.workerImage} (fingerprint ${digestOf(p.isolation.workerImage)}) is not trusted for autonomous use on this machine: a person trusts it in Orbit Control (Runtime → Sandbox policy)` },
   { fails: (t, p) => !isTrusted(p, "topology", t.fingerprint), needs: () => "person", say: (t) => `the isolated topology (fingerprint ${t.fingerprint}) is not trusted for autonomous use on this machine: it runs ${t.nodes.map((n) => `${n.key} from ${n.image.pinned ?? "an image built from its own files"}`).join(", ")} on an internal network of the task's own. A person trusts it in Orbit Control (Runtime → Sandbox policy)` },
@@ -84,8 +95,8 @@ export function composedNow(c) {
 }
 
 function gated(c, policy, iso, t) {
-  const gate = TOPOLOGY_GATES.find((g) => g.fails(t, policy));
-  return gate ? { needs: gate.needs(t), say: gate.say(t, policy) } : { iso, topology: t, place: placeOf(c, policy, t) };
+  const gate = TOPOLOGY_GATES.find((g) => g.fails(t, policy, iso));
+  return gate ? { needs: gate.needs(t), say: gate.say(t, policy, iso) } : { iso, topology: t, place: placeOf(c, policy, t) };
 }
 
 function topology(c, { go, halt }) {
@@ -113,7 +124,7 @@ const withAllowed = (iso, node, spec, deps) => ({ name: spec.name, key: node.key
 function oneUp(c, node, kind) {
   const spec = specOf(node, c.state.topology, c.state.place);
   const op = c.ops.begin("service");
-  const r = startedNode(c.ctx, c.state.iso, node, spec, { kind, tree: c.state.tree }, c.deps);
+  const r = startedNode(c.ctx, c.state.iso, node, spec, { kind, tree: c.state.tree, topology: c.state.topology.fingerprint }, c.deps);
   c.ops.settle(op, r.ok ? "DONE" : "FAILED", r.because ?? null);
   return r.ok ? { ok: true, session: r.session, spec: withAllowed(c.state.iso, node, spec, c.deps) } : { ok: false, because: r.because };
 }
@@ -170,9 +181,14 @@ const nodesKept = (t) => t.nodes.map((n) => ({ key: n.key, role: n.role, alias: 
 
 const recordOf = (c, result) => ({ mode: "required", provider: c.state.iso.id, attested: result.ok, at: result.at, because: result.ok ? "every row of the isolation profile holds" : unattested(result), network: c.state.topology.network, podId: c.state.place.attest.podId, topology: { mode: c.state.topology.mode, fingerprint: c.state.topology.fingerprint, nodes: nodesKept(c.state.topology) }, rows: result.rows.length, egress: result.egress });
 
+// What every container of the topology was created FROM, for the attestation: the pod and the services this
+// preparation started, and each component as its node says it starts -- so a component already running (a sandbox is
+// prepared again at every start) is held to its own declared mounts and names, never to none.
+const specsOf = (c) => [...c.state.place.specs, ...c.state.topology.nodes.filter((n) => n.role === "component").map((n) => withAllowed(c.state.iso, n, specOf(n, c.state.topology, c.state.place), c.deps))];
+
 async function attest(c, { go, halt }) {
   const op = c.ops.begin("attest");
-  const result = await attestedNow(c.ctx, c.state.iso, c.state.topology, c.state.place, c.deps);
+  const result = await attestedNow(c.ctx, c.state.iso, c.state.topology, { ...c.state.place, specs: specsOf(c) }, c.deps);
   c.ops.settle(op, result.ok ? "DONE" : "FAILED", result.ok ? null : unattested(result));
   return result.ok ? go({ isolation: recordOf(c, result) }) : halt("environment", `the isolation profile does not hold, so no generated test may run here: ${unattested(result)}`);
 }

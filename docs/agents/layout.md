@@ -7,7 +7,7 @@ agent has loaded; this map does not repeat them and they win where the two seem 
 
 ```
 cli/           composition roots: argv → build a ctx → call src → exit code. No logic.
-cli/test-worker.mjs · cli/sandbox-supervisor.mjs · cli/security-audit.mjs  (0.1.0) roots too: the WORKER side of
+cli/sandbox-worker.mjs · cli/sandbox-supervisor.mjs · cli/security-audit.mjs  (0.1.0) roots too: the WORKER side of
                an isolated run (supervises `run-case --worker` inside the isolation provider's container and
                writes an envelope -- never a record, ADR 0038) · a sandbox's SUPERVISOR (heartbeats, signals,
                deadlines; launches nothing, ADR 0036) · the Security Auditor's catalogs, applicability, plan,

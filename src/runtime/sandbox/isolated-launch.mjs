@@ -52,7 +52,7 @@ async function startedAll(ctx, args, deps, now) {
 async function oneComponent(ctx, args, deps, now, node) {
   const built = builtImage(now.iso, node, now.place, deps);
   if (!built.ok) return { component: node.key, blocked: built.because };
-  const r = startedNode(ctx, now.iso, built.node, specOf(built.node, now.topology, now.place), { kind: "component", tree: ctx.sandboxDoc().source?.tree ?? null }, deps);
+  const r = startedNode(ctx, now.iso, built.node, specOf(built.node, now.topology, now.place), { kind: "component", tree: ctx.sandboxDoc().source?.tree ?? null, topology: now.topology.fingerprint }, deps);
   if (!r.ok) return { component: node.key, blocked: r.because };
   return { component: node.key, session: r.session, reused: Boolean(r.reused), readiness: args.wait ? await readyNode(built.node, { ctx, iso: now.iso, topology: now.topology, place: now.place, deps }, args.wait * 1000) : null };
 }

@@ -58,7 +58,7 @@ test("the overview: off by default, every blocker the gates would raise, the mod
   assert.equal(got.available, true);
   assert.equal(got.settings.enabled, false);
   assert.equal(got.exists, false);
-  assert.deepEqual(got.modes.map((m) => m.id), ["observe", "explore-write", "security-test", "regression"]);
+  assert.deepEqual(got.modes.map((m) => m.id), ["observe", "explore-write", "security-test", "regression", "fixture-write"]);
   assert.deepEqual(got.blockers[0].blockers.map((b) => b.id), ["DISABLED", "NO_ENVIRONMENT"]);
   assert.deepEqual(got.investigations, []);
   assert.equal(got.switchedOn, true);

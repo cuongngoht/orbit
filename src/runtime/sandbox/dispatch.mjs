@@ -3,7 +3,7 @@
 // attached with its request on stdin, every chunk it prints observed as it arrives, and -- when its deadline passes --
 // stopped by its receipt, because ending the docker client alone does not end the container.
 //
-// What it runs is the engine's own entry (catalog isolation.worker: `cli/test-worker.mjs`, the plugin mounted
+// What it runs is the engine's own entry (catalog isolation.worker: `cli/sandbox-worker.mjs`, the plugin mounted
 // read-only), with a run's inputs mounted read-only (`/work/in`, prepared by the caller in this sandbox's live room)
 // and its outputs writable (`/work/out`), its store a scratch one INSIDE that (`ORBIT_STORE_DIR`). It never mounts
 // the machine store, a journal, a vault, a control socket or a home directory. It decides no verdict: it answers how

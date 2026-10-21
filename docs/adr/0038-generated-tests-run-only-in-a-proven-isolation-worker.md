@@ -33,7 +33,7 @@ Proposed (0.1.0). Extends ADR 0014 (sandbox) and the AGENTS.md rule that generat
   - CPU, memory and pids limits are set;
   - environment names stay inside the allow-list;
   - an egress probe from inside fails.
-- **The worker runs the pinned runner** (`cli/test-worker.mjs`, `run-case --worker`) on a trusted image pinned by
+- **The worker runs the pinned runner** (`cli/sandbox-worker.mjs`, `run-case --worker`) on a trusted image pinned by
   digest. The frozen case, the sidecar and the compiled design are mounted read-only; output and store are scratch.
   Credentials arrive only on stdin, and the browser runs inside the worker.
 - **Only the host writes authoritative records.** `src/run/envelope.mjs` first checks:

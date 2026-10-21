@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // TEST WORKER: the entry a generated test runs through INSIDE an isolated sandbox's worker container (ADR 0038).
 //
-//   node test-worker.mjs            reads ONE request from stdin -- { v: "orbit.worker/v1", runId, nonce, out,
+//   node sandbox-worker.mjs         reads ONE request from stdin -- { v: "orbit.worker/v1", runId, nonce, out,
 //                                   limits: { deadlineMs }, … } -- and hands the SAME request to
 //                                   `node cli/run-case.mjs --worker` on its stdin; enforces the deadline; and when it
 //                                   is stopped (SIGTERM from its supervisor or its dispatch) or the runner ends
@@ -60,20 +60,27 @@ function supervised(request, text, io, done) {
   const w = { request, io, done, child, settled: false };
   w.timer = io.setTimer(() => interrupted(w, "its deadline passed before the runner finished"), Number(request.limits?.deadlineMs) || DEFAULT_DEADLINE_MS);
   io.on("SIGTERM", () => interrupted(w, "it was stopped by its supervisor or its dispatch before the runner finished"));
-  child.on("exit", (code) => exited(w, code));
+  listened(w);
 }
 
-function interrupted(w, why) {
+// A runner that could not even be started ends the same way as one that ended without its envelope.
+function listened(w) {
+  w.child.on("exit", (code) => exited(w, code));
+  w.child.on("error", () => interrupted(w, "the runner could not be started", { started: false }));
+}
+
+function interrupted(w, why, { started = true } = {}) {
   if (w.settled) return;
   w.why = why;
+  if (!started) return exited(w, null);
   w.child.kill("SIGTERM");
-  w.io.setTimer(() => w.child.kill("SIGKILL"), KILL_GRACE_MS);
+  w.grace = w.io.setTimer(() => w.child.kill("SIGKILL"), KILL_GRACE_MS);
 }
 
 function exited(w, code) {
   if (w.settled) return;
   w.settled = true;
-  w.io.clearTimer(w.timer);
+  [w.timer, w.grace].filter((t) => t !== undefined && t !== null).forEach((t) => w.io.clearTimer(t));
   const missing = !w.io.exists(join(w.request.out, "envelope.json"));
   w.done(missing || w.why ? written(w, code) : code ?? 1);
 }

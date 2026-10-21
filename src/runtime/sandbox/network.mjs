@@ -14,6 +14,7 @@
 import { join } from "node:path";
 import { short } from "../../hash.mjs";
 import { scrub } from "../../scrub.mjs";
+import { contained } from "../../project/boundary.mjs";
 import { primitiveArgv } from "../catalog.mjs";
 import { judge, mayStop } from "../ownership.mjs";
 import { commandFingerprint, sessionId } from "../sessions.mjs";
@@ -51,7 +52,9 @@ export const specOf = (node, topology, place) => ({ name: containerNameOf(place.
 
 // ---- receipts -------------------------------------------------------------------------------------------------------
 
-export const receiptOf = (ctx, node, spec, { iso, kind, tree }) => ((requestedAt) => ({ id: sessionId({ env: ctx.envId, component: node.key, requestedAt }), env: ctx.envId, owner: ctx.owner, component: node.key, kind, provider: "isolated", executionProvider: "isolated", state: "STARTING", pid: null, requestedAt, startedAt: null, pidStartedAt: null, host: ctx.host, checkout: ctx.checkout, command: { declaredAs: kind, argv: spec.argv, cwd: "." }, commandFingerprint: commandFingerprint(spec.argv, "."), ports: [], sourceTree: tree ?? null, container: { provider: iso.id, name: spec.name, labels: spec.labels, image: spec.image, network: spec.network, id: null } }))(new Date(ctx.clock()).toISOString());
+// `topology` is the fingerprint of the topology the container was started under: one started under another is never
+// reused for this one (startedNode).
+export const receiptOf = (ctx, node, spec, { iso, kind, tree, topology = null }) => ((requestedAt) => ({ id: sessionId({ env: ctx.envId, component: node.key, requestedAt }), env: ctx.envId, owner: ctx.owner, component: node.key, kind, provider: "isolated", executionProvider: "isolated", state: "STARTING", pid: null, requestedAt, startedAt: null, pidStartedAt: null, host: ctx.host, checkout: ctx.checkout, command: { declaredAs: kind, argv: spec.argv, cwd: "." }, commandFingerprint: commandFingerprint(spec.argv, "."), ports: [], sourceTree: tree ?? null, topology, container: { provider: iso.id, name: spec.name, labels: spec.labels, image: spec.image, network: spec.network, id: null } }))(new Date(ctx.clock()).toISOString());
 
 // What the provider says of a container a receipt names, in the words ownership is judged by.
 export function observedOf(iso, session, deps) {
@@ -106,17 +109,33 @@ export function builtImage(iso, node, place, deps) {
 }
 
 function builtNow(iso, node, place, tag, deps) {
-  const b = iso.build({ context: join(place.paths.workspace, node.image.build.context), dockerfile: join(place.paths.workspace, posixJoin(node.image.build.context, node.image.build.dockerfile ?? "Dockerfile")), tag, labels: { "orbit.env": place.names.envId } }, deps);
+  const at = insideWorkspace(place.paths.workspace, node.image.build);
+  if (!at.ok) return { ok: false, because: `${node.key}: its build reaches outside the workspace (${at.because})` };
+  const b = iso.build({ context: at.context, dockerfile: at.dockerfile, tag, labels: { "orbit.env": place.names.envId }, network: place.policy.isolation.buildNetwork ?? "none" }, deps);
   return b.ok && b.ref ? { ok: true, node: { ...node, image: { ...node.image, built: b.ref } } } : { ok: false, because: `${node.key}: its image could not be built (${b.why ?? "no image came of it"})` };
 }
 
-const posixJoin = (a, b) => (a === "." ? b : `${a}/${b}`);
+// Both paths a build reads, held inside the workspace through every link (src/project/boundary.mjs).
+function insideWorkspace(root, build) {
+  try { return { ok: true, context: contained(root, join(root, build.context)), dockerfile: contained(root, join(root, build.dockerfile)) }; }
+  catch (e) { return { ok: false, because: e.message }; }
+}
+
+// A running container is reused only under the topology it was started under (when the caller names one): a node of
+// an earlier topology -- placed on the network where the pod now is, or the other way round -- is ended first.
+const sameTopology = (session, opts) => !opts.topology || session.topology === opts.topology;
 
 // -> { ok, session, reused? , because? }: the receipt is written BEFORE the container is created.
 export function startedNode(ctx, iso, node, spec, opts, deps) {
   const running = runningOf(ctx, iso, node.key, deps);
-  if (running) return { ok: true, session: running, reused: true };
-  const receipt = receiptOf(ctx, node, spec, { iso, kind: opts.kind ?? node.role, tree: opts.tree });
+  if (running && sameTopology(running, opts)) return { ok: true, session: running, reused: true };
+  const earlier = running ? stoppedNode(ctx, iso, running, deps) : { ok: true };
+  if (!earlier.ok) return { ok: false, because: `${node.key}: a container started under an earlier topology is still running and could not be ended (${earlier.because})` };
+  return createdNode(ctx, iso, node, spec, opts, deps);
+}
+
+function createdNode(ctx, iso, node, spec, opts, deps) {
+  const receipt = receiptOf(ctx, node, spec, { iso, kind: opts.kind ?? node.role, tree: opts.tree, topology: opts.topology ?? null });
   ctx.sessions.write(receipt);
   return settled(ctx, iso, receipt, created(iso, spec, deps), deps);
 }

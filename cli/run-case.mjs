@@ -117,7 +117,7 @@ function exitWith(status, text, write) {
 // ── inside a worker ─────────────────────────────────────────────────────────
 // The request is read whole from stdin and never from argv: its secrets must not be in a process
 // listing. Whatever happens, an envelope is written -- a worker that dies says INTERRUPTED through
-// its supervisor (cli/test-worker.mjs), one that ran says what it ran.
+// its supervisor (cli/sandbox-worker.mjs), one that ran says what it ran.
 async function workerMain() {
   const request = jsonOf(await readAll(process.stdin));
   const problem = requestProblem(request);

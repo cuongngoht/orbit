@@ -132,7 +132,11 @@ step). The engine compiles every verdict from the accepted criterion, validates 
 real grammar, saves it as a DRAFT and freezes its version; a design that does not hold comes back
 with its word (`GENERATION_FAILED`, `REQUIRES_REQUIREMENT`, `INVALID_TEST`) and the stage that
 stopped it. You never write a predicate, a value or a window, and a repair may change only how a
-step is written.
+step is written · `run-version` runs ONE frozen version (`version`: `<case>@<digest16>`) in the task's
+isolated sandbox: its writes need fixture-write and run under grants minted for its fixture, its refs
+are bound by the engine, and what it came to (`SATISFIED`, `CONTRADICTED`, `INCONCLUSIVE`,
+`ENVIRONMENT_BLOCKED`, …) is decided from the host's own check of the worker's envelope — never from
+what the worker says. A run that did not settle is read back, never sent again.
 
 After a write settles, and whenever a few steps have moved things, keep what they came to:
 

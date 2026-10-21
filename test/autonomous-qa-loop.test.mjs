@@ -244,7 +244,7 @@ test("the plan's own word comes first: a manual check and a scenario not ready a
 test("the protocol is printed from its tables", () => {
   const p = protocolOf();
   assert.equal(p.schemaVersion, 1);
-  assert.deepEqual(p.actions.map((a) => a.kind), ["act", "check-data", "security", "reproduce", "run-case", "ask", "generate"]);
+  assert.deepEqual(p.actions.map((a) => a.kind), ["act", "check-data", "security", "reproduce", "run-case", "ask", "run-version", "generate"]);
   assert.ok(p.forbidden.includes("verdict") && p.forbidden.includes("approved"));
   assert.ok(p.stops.some((s) => s.id === "completed-scope" && s.lifecycle === "completed"));
 });

@@ -38,9 +38,16 @@ import { DECISION_FIELDS, DECISION_FORBIDDEN, DECISION_SCHEMA, LIFECYCLE, OBLIGA
 // runCase(id, opts). Absent, each reads as "not available here".
 export function loopWorld(w) {
   const model = current(w);
-  const base = { model, ctx: { graph: w.ctx.graph }, settings: w.settings, mode: w.mode, inputMode: model.meta?.inputMode ?? "screen", plans: plansOf(w, model), digestOf: w.digestOf, findCase: w.findCase, now: w.now ?? w.ctx.now, applicable: (r) => applicabilityOf(r, w.receipting?.fingerprints?.(r.scope ?? [])), ...readersOf(w) };
+  const base = { model, ctx: { graph: w.ctx.graph }, settings: w.settings, mode: w.mode, inputMode: model.meta?.inputMode ?? "screen", plans: plansOf(w, model), digestOf: w.digestOf, findCase: w.findCase, versionCaseOf: (id) => versionCaseOf(w, model, id), now: w.now ?? w.ctx.now, applicable: (r) => applicabilityOf(r, w.receipting?.fingerprints?.(r.scope ?? [])), ...readersOf(w) };
   const obligations = obligationsOf(base);
   return { ...base, obligations, frontier: frontierOf(obligations) };
+}
+
+// A version this investigation froze, read back as frozen -- or null, never a guess.
+function versionCaseOf(w, model, id) {
+  const v = model.versions.find((x) => x.version === id);
+  try { return v && w.store?.readVersion ? w.store.readVersion(w.id, `versions/${String(id).split("@")[1]}/${v.case}.json`)?.case ?? null : null; }
+  catch { return null; }
 }
 
 const plansOf = (w, model) => model.inputs.filter((i) => i.type === "plan" && i.state === "read").map((i) => w.planOf?.(i.ref)).filter(Boolean);

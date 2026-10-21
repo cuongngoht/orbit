@@ -7,6 +7,9 @@
 // same gates. There is no free-form step, no command string and no second way
 // to reach the browser, the database or a capability.
 import { generated } from "./generate.mjs";
+import { ranVersion } from "./run-version.mjs";
+import { operationFor } from "../adapters/families.mjs";
+import { mutatingEffect } from "../topology/vocab.mjs";
 import { Refused } from "../errors.mjs";
 import { CORE } from "../dsl/registry.mjs";
 import { capabilityMutates } from "../dsl/rules/head.mjs";
@@ -43,6 +46,13 @@ const caseWrites = (lw, a) => ((w) => w.screen || w.capability)(writesOf(lw, a))
 // needs a mode that mutates, and under fixture-write it is covered by a grant at run time.
 const writeAllowed = (m, lw, a) => ((w) => (!w.screen || controlWrites(m)) && (!w.capability || modeOf(m)?.mutates === true))(writesOf(lw, a));
 
+// A frozen version writes when a step asks a family operation that may change the world; one this
+// investigation cannot read back is taken to write.
+function versionWrites(lw, a) {
+  const c = lw.versionCaseOf?.(a.version);
+  return !c || (c.steps ?? []).some((s) => s.do === "call" && (operationFor(s.capability)?.effects ?? []).some(mutatingEffect));
+}
+
 const capabilityIn = (lw) => (id) => (lw.ctx?.capabilities?.has?.(id) ? lw.ctx.capabilities.resolve(id) : null);
 
 // No mode runs a destructive case: a person reads it with --dry and runs it on
@@ -63,6 +73,7 @@ export const ACTIONS = {
   reproduce: { fields: ["finding"], required: ["finding"], modes: "any; replaying a write needs explore-write (the act gates say so)", allowed: () => true, mutates: (a, lw) => reproducesWrite(lw, a.finding), check: () => null, run: (w, a) => reproduce(w, a.finding) },
   "run-case": { fields: ["case", "draft", "params"], required: ["case"], modes: "any; a case that writes needs a mode that mutates (explore-write, fixture-write); a destructive case never", allowed: (m, a, lw) => writeAllowed(m, lw, a), mutates: (a, lw) => caseWrites(lw, a), check: (a, lw) => caseProblem(a, lw), run: (w, a) => ranCase(w, a) },
   ask: { fields: ["asks"], required: ["asks"], modes: "any", allowed: () => true, mutates: () => false, check: (a) => (typeof a.asks === "string" && a.asks.trim() && a.asks.length <= 400 ? null : "ask.asks is one question, 400 characters at most"), run: (w, a, d) => asked(w, a, d) },
+  "run-version": { fields: ["version"], required: ["version"], modes: "a version that writes -- a trigger, a publication, an await that consumes its observer's own messages -- needs fixture-write, and runs only under grants minted for its fixture", allowed: (m, a, lw) => !versionWrites(lw, a) || modeOf(m)?.mutates === true, mutates: (a, lw) => versionWrites(lw, a), check: (a) => (/^[A-Za-z0-9][A-Za-z0-9._-]{0,120}@[0-9a-f]{16}$/.test(String(a.version)) ? null : "run-version.version is a frozen version id, <case>@<digest16>"), run: (w, a) => ranVersion(w, a) },
   generate: { fields: ["obligation", "design"], required: ["obligation", "design"], modes: "any — it writes a draft into the machine store, freezes its version and runs nothing", allowed: () => true, mutates: () => false, check: (a) => (a.design && typeof a.design === "object" && !Array.isArray(a.design) ? null : "generate.design is one design proposal (orbit.qa-sidecar/v1 design)"), run: (w, a) => generated(w, a) },
 };
 

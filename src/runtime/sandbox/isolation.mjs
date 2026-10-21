@@ -10,7 +10,7 @@
 // every row holds, and it is attested at preparation and again before every dispatch -- a container somebody changed
 // in between is refused.
 import { outsideAddress } from "./policy.mjs";
-import { probedFrom } from "./network.mjs";
+import { LOOKUP_PROBE_MS, probedFrom } from "./network.mjs";
 
 const ALL = ["worker", "probe", "helper", "observer", "pod", "component", "service"];
 const STRICT = ["worker", "probe", "helper", "observer", "pod"];
@@ -122,7 +122,7 @@ async function addressOf(reach, egress) {
 export async function egressFrom(iso, topology, place, deps) {
   const egress = place.policy.isolation.egress;
   const address = await addressOf(deps.reach, egress);
-  const byName = await probedFrom(iso, topology, place, { host: egress.host, port: egress.port }, deps);
+  const byName = await probedFrom(iso, topology, place, { host: egress.host, port: egress.port, timeoutMs: LOOKUP_PROBE_MS }, deps);
   const byAddress = address ? await probedFrom(iso, topology, place, { host: address, port: egress.port }, deps) : { ran: false, because: NO_ADDRESS(egress.host) };
   return { target: { host: egress.host, port: egress.port, address }, byName, byAddress };
 }

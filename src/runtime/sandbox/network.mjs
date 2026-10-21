@@ -24,6 +24,11 @@ export const START_WAIT_MS = 60000;
 export const PROBE_INTERVAL_MS = 1000;
 export const PROBE_TIMEOUT_MS = 3000;
 
+// How long a probe that LOOKS A NAME UP waits: longer than a stub resolver's own deadline (five seconds by default),
+// so the resolver's own answer -- even "try again" from a network that forwards nothing -- arrives before the probe's
+// and is evidence; a probe that gave up first would have to say it does not know.
+export const LOOKUP_PROBE_MS = 12000;
+
 // What each kind of container is held to. The WORKER runs generated tests, and is the strictest: a read-only root,
 // a scratch /tmp, every capability dropped. A service keeps the capabilities its own image starts with (a database
 // changes owners as it starts) and is still on the task's network only, unprivileged, limited and without new
@@ -189,10 +194,10 @@ export async function probedFrom(iso, topology, place, target, deps) {
   const primitive = primitiveOf(place.catalog);
   if (!primitive || !place.policy.isolation.workerImage) return NOT_ASKED(!primitive ? "the catalog names no probe the worker image answers" : "no worker image is set, so nothing on the task's network can be asked");
   const spec = probeSpec(primitive, topology, place, target);
-  return answeredProbe(await iso.container.runOnce({ ...spec, name: `${spec.name}-${short(String(deps.now?.() ?? Date.now()), 4)}` }, deps, { timeoutMs: PROBE_TIMEOUT_MS + 15000 }));
+  return answeredProbe(await iso.container.runOnce({ ...spec, name: `${spec.name}-${short(String(deps.now?.() ?? Date.now()), 4)}` }, deps, { timeoutMs: (target.timeoutMs ?? PROBE_TIMEOUT_MS) + 15000 }));
 }
 
-const probeSpec = (primitive, topology, place, target) => specOf({ key: `probe-${short(String(target.host) + target.port, 6)}`, role: "probe", alias: null, argv: primitiveArgv(primitive, { "${HOST}": target.host, "${PORT}": target.port, "${TIMEOUT_MS}": PROBE_TIMEOUT_MS }), env: { names: [], values: {} }, image: { pinned: place.policy.isolation.workerImage } }, topology, place);
+const probeSpec = (primitive, topology, place, target) => specOf({ key: `probe-${short(String(target.host) + target.port, 6)}`, role: "probe", alias: null, argv: primitiveArgv(primitive, { "${HOST}": target.host, "${PORT}": target.port, "${TIMEOUT_MS}": target.timeoutMs ?? PROBE_TIMEOUT_MS }), env: { names: [], values: {} }, image: { pinned: place.policy.isolation.workerImage } }, topology, place);
 
 const spoken = (said) => said.length === 2 && RESOLUTIONS.includes(said[0]) && TRANSPORTS.includes(said[1]);
 

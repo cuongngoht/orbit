@@ -108,7 +108,10 @@ export function safeNext(next) {
   } catch {
     return "/invoices";
   }
-  return url.origin === "http://local" ? `${url.pathname}${url.search}` : "/invoices";
+  const back = `${url.pathname}${url.search}`;
+  // The value RETURNED is held too: "/.//evil.example" normalises to "//evil.example", which a
+  // browser reads as another origin. Only a single-slash path of plain segments goes back.
+  return url.origin === "http://local" && /^\/(?![\/\\])[A-Za-z0-9/_.~%-]*(\?[^\s#]*)?$/.test(back) ? back : "/invoices";
 }
 
 // A state-changing form post must come from this origin: its Origin header, else its Referer,

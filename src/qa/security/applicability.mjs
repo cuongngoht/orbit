@@ -69,7 +69,8 @@ function termFindings(key, value, at) {
 // A graph is { nodes: [{ id, role }], relations: [{ id, role }], complete } -- the System Graph's
 // projection, handed in. No graph at all is the same as one that covers nothing.
 const listOf = (v) => (Array.isArray(v) ? v : []);
-const held = (graph, key, value) => listOf(key === "role" ? graph?.nodes : graph?.relations).filter((x) => x?.role === value).map((x) => String(x.id));
+// A part is named by its id, or -- in the System Graph's own projection (src/architecture/graph-view.mjs) -- its key.
+const held = (graph, key, value) => listOf(key === "role" ? graph?.nodes : graph?.relations).filter((x) => x?.role === value).map((x) => String(x.id ?? x.key));
 
 const EVALUATE = {
   role: (graph, value) => termOf(graph, "role", value),

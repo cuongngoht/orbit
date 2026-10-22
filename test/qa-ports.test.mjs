@@ -18,6 +18,8 @@ import { planDigestOf } from "../src/investigation/input.mjs";
 import { modelOf } from "../src/investigation/model.mjs";
 import { createInvestigations, eventIdOf } from "../src/investigation/store.mjs";
 import { WORKER_API } from "../src/run/worker.mjs";
+import { grantLedger } from "../src/run/grants.mjs";
+import { canonicalJson, sha } from "../src/hash.mjs";
 import { dispatchPort, generationPort, keptEvidence } from "../skills/orbit-qa/ports.mjs";
 import { fakeContext } from "./fakes/context.mjs";
 import { fakeIo } from "./fakes/io.mjs";
@@ -213,5 +215,18 @@ test("a page design is bound by the host: the origin of the interface it drives,
   ports(ctx, j, { runtime }).dispatch.run({ request: { runId: "exe-0123456789abcdef-1", page: out.page }, frozen: { case: frozen } });
   assert.equal(JSON.parse(readFileSync(join(dirs.in, "ui-tests", "project.json"), "utf8")).origin, "http://invoice-app:8080", "the worker's project is laid in with the bound origin");
   rmSync(room, { recursive: true, force: true });
+  rmSync(store, { recursive: true, force: true });
+});
+
+test("a write whose input names ${FIXTURE} is minted for the input the worker will SEND -- the run's namespace filled in -- so the ledger honours it", async () => {
+  const { ctx, store } = await packed();
+  const j = journal();
+  const publish = call("orbit.messaging.publish", { channelRef: "reminders", request: { messageId: "msg-${FIXTURE}", correlationId: "bk", payload: { a: 1 } } });
+  const x = { frozen: { case: { id: "gen-fx", params: [{ n: "FIXTURE", required: true }], steps: [publish] } }, design: { obligation: "tob-000000000001", id: "tds-fx", skeleton: { steps: [publish] }, controls: [{ role: "state" }] }, obligation: j.model().obligations[0], attempt: 1, execution: "exe-0123456789abcdef-1" };
+  const out = ports(ctx, j, { writes: ["publish"] }).dispatch.prepare(x);
+  const sent = { channelRef: "reminders", request: { messageId: `msg-${out.fixture.namespace}`, correlationId: "bk", payload: { a: 1 } } };
+  assert.equal(out.grants[0].input.digest, sha(canonicalJson(sent)));
+  const cap = ctx.capabilities.resolve("orbit.messaging.publish");
+  assert.equal(grantLedger(out.grants, x.execution, () => 1_700_000_000_000).check(cap, sent), null, "the ledger covers the call as it is sent");
   rmSync(store, { recursive: true, force: true });
 });

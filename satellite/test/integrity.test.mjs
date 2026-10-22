@@ -122,3 +122,13 @@ test("the same report twice is a replay; a different one for an ended run is ref
   assert.deepEqual([agentReport(w, mission, "arn-1", reportOf("arn-1")).replay, worldOf(w, mission).m.position], [true, after]);
   assert.throws(() => agentReport(w, mission, "arn-1", reportOf("arn-1", { summary: "a different story" })), (e) => e.code === "RUN_ENDED");
 });
+
+test("a checkout that could not be witnessed -- past the witness's bounds, or with no snapshot -- fails the run closed", async () => {
+  for (const tree of [{ head: "a".repeat(40), dirty: 2001, digest: "d".repeat(64), witnessed: false, why: "it lists 2001 files, more than 2000" }, null]) {
+    const w = satelliteWorld({ files: { "src/client.mjs": "x" }, tree });
+    const mission = await dispatched(w, { key: "look", kind: "explore", objective: "look", acceptanceCriteriaRefs: ["acc-1"] }, explorerRole());
+    const r = agentReport(w, mission, "arn-1", reportOf("arn-1", { evidenceRefs: ["file:src/client.mjs"] }));
+    const row = [...worldOf(w, mission).m.evidence.values()].find((e) => e.owner === "checkout");
+    assert.deepEqual([r.outcome, row?.level, /could not be witnessed/.test(row?.say ?? "")], ["violated", "BLOCKED", true], JSON.stringify(tree));
+  }
+});

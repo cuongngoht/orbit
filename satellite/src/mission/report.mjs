@@ -23,7 +23,16 @@ const contractMet = (r, unit) => list(unit.outputContract?.fields).every((f) => 
 
 const reportRow = (r, unit, run) => ({ owner: "report", ref: `report:${run.id}`, level: contractMet(r, unit) ? "CONTRACT_MET" : "TOOL_COMPLETED", independent: false, digest: reportDigest(r), open: false, say: contractMet(r, unit) ? "the report holds to the unit's output contract" : "the report does not hold every field the unit's output contract names" });
 
-const witnessRows = (now, run) => (run.tree?.digest && now?.digest && now.digest !== run.tree.digest ? [{ owner: "checkout", ref: `checkout:${String(now.head ?? "none").slice(0, 12)}:${now.digest.slice(0, 8)}`, level: "BLOCKED", independent: false, digest: now.digest, open: false, say: "the primary checkout changed while this run was open: what the run says cannot be told apart from what changed" }] : []);
+// The primary checkout, witnessed when the run began and now. A checkout that could not be witnessed on either side is
+// treated as one that changed: nothing a run says can be told apart from what may have.
+const WITNESS_ROWS = [
+  { when: (now, run) => !now || !run.tree || now.witnessed === false || run.tree.witnessed === false, say: (now) => `the primary checkout could not be witnessed (${now?.why ?? "no snapshot could be taken"}): what the run says cannot be told apart from what may have changed` },
+  { when: (now, run) => Boolean(run.tree?.digest && now?.digest && now.digest !== run.tree.digest), say: () => "the primary checkout changed while this run was open: what the run says cannot be told apart from what changed" },
+];
+
+const witnessRow = (now, say) => ({ owner: "checkout", ref: `checkout:${String(now?.head ?? "none").slice(0, 12)}:${String(now?.digest ?? "unwitnessed").slice(0, 8)}`, level: "BLOCKED", independent: false, digest: now?.digest ?? null, open: false, say });
+
+const witnessRows = (now, run) => ((row) => (row ? [witnessRow(now, row.say(now))] : []))(WITNESS_ROWS.find((r) => r.when(now, run)));
 
 export const evidenceRowsOf = (ports, lw, run, r, unit) => ((now) => [...(r ? [reportRow(r, unit, run)] : []), ...list(r?.evidenceRefs ?? (run.task ? [`task:${run.task}`] : [])).map(refOf).filter(Boolean).map((ref) => readBack(ports, ref, lw)), ...witnessRows(now, run)])(quietly(() => ports.checkout.snapshot()));
 

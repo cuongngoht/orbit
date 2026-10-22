@@ -4,7 +4,8 @@
 // piece of evidence is read back from: Orbit's engineering tasks and QA investigations, the checkout's own git, and the
 // Orbit commands a provider is asked through (argv only, never a shell). Nothing under satellite/src/ reads an
 // environment, a working directory or a child process; everything it needs is handed in from here.
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, statSync } from "node:fs";
 import { hostname } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -96,10 +97,12 @@ const tasksSince = (tasks, at) => tasks.list().map((id) => ({ id, created: creat
 
 const fileOf = (root, p) => ((full) => (existsSync(full) && statSync(full).isFile() ? { exists: true, digest: shaBytes(readFileSync(full)).slice(0, 16) } : { exists: false }))(contained(root, join(root, String(p))));
 
-// THE WITNESS of the primary checkout: HEAD, what `git status` lists, and the CONTENT of every file it lists -- so a file
-// edited again while it was already modified still moves the digest. Read through the filesystem, bounded, and never
-// through anything that writes: not even the checkout's .git.
-const WITNESS = Object.freeze({ files: 500, bytes: 8 * 1024 * 1024 });
+// THE WITNESS of the primary checkout: HEAD, the WHOLE `git status -z` listing, and the content of every file it lists,
+// stream-hashed -- so a path added, removed or renamed and a file edited again while it was already modified both move
+// the digest. It is read through the filesystem and never through anything that writes, not even the checkout's .git.
+// It fails CLOSED: past its bounds, or when git cannot list the checkout, the snapshot says it is NOT witnessed, and a
+// run beside it cannot succeed (satellite/src/mission/report.mjs).
+const WITNESS = Object.freeze({ files: 2000, bytes: 256 * 1024 * 1024, chunk: 1024 * 1024 });
 
 // `git status -z` records -> the paths they list; a rename's or a copy's source path is the record after it.
 function listedPaths(z) {
@@ -109,17 +112,43 @@ function listedPaths(z) {
   return out;
 }
 
-const contentOf = (full) => ((st) => (!st.isFile() ? "not-a-file" : st.size > WITNESS.bytes ? `${st.size}:${st.mtimeMs}` : shaBytes(readFileSync(full)).slice(0, 16)))(statSync(full));
+const spent = (h, buf, n, budget) => {
+  h.update(buf.subarray(0, n));
+  budget.left -= n;
+};
 
-const witnessed = (root, rel) => `${rel}\0${quietly(() => contentOf(contained(root, join(root, rel)))) ?? "absent"}`;
+function chunked(fd, budget) {
+  const h = createHash("sha256");
+  const buf = Buffer.alloc(WITNESS.chunk);
+  for (let n = readSync(fd, buf); n > 0; n = readSync(fd, buf)) spent(h, buf, n, budget);
+  return h.digest("hex").slice(0, 16);
+}
 
-const contentsOf = (root, z) => listedPaths(z).slice(0, WITNESS.files).map((rel) => witnessed(root, rel)).join("\n");
+function hashedFile(full, budget) {
+  const fd = openSync(full, "r");
+  try { return chunked(fd, budget); }
+  finally { closeSync(fd); }
+}
+
+const overBy = (budget, why) => (Object.assign(budget, { over: budget.over ?? why }), "over-limit");
+
+const contentOf = (full, budget) => ((st) => (!st.isFile() ? "not-a-file" : st.size > budget.left ? overBy(budget, `the files it lists hold more than ${WITNESS.bytes / 1048576} MiB`) : hashedFile(full, budget)))(statSync(full));
+
+const witnessed = (root, rel, budget) => `${rel}\0${quietly(() => contentOf(contained(root, join(root, rel)), budget)) ?? "absent"}`;
+
+function witnessOf(root, z) {
+  const paths = listedPaths(z);
+  const budget = { left: WITNESS.bytes, over: paths.length > WITNESS.files ? `it lists ${paths.length} files, more than ${WITNESS.files}` : null };
+  const contents = budget.over ? "" : paths.map((rel) => witnessed(root, rel, budget)).join("\n");
+  return { contents, over: budget.over, count: paths.length };
+}
 
 function snapshotOf(proc, root) {
   const git = (args) => proc.run("git", args, { cwd: root, timeoutMs: 15000 });
   const head = git(["rev-parse", "HEAD"]);
   const status = git(["status", "--porcelain=v1", "--untracked-files=all", "-z"]);
-  return { head: head.ok ? head.out.trim() : null, dirty: status.ok ? listedPaths(status.out).length : null, digest: sha(`${head.ok ? head.out.trim() : ""}\0${status.ok ? contentsOf(root, status.out) : "unreadable"}`) };
+  const seen = status.ok ? witnessOf(root, status.out) : { contents: "", over: "git could not list the checkout", count: null };
+  return { head: head.ok ? head.out.trim() : null, dirty: seen.count, digest: sha(`${head.ok ? head.out.trim() : ""}\0${status.ok ? status.out : "unreadable"}\0${seen.contents}`), witnessed: !seen.over, why: seen.over };
 }
 
 const ownersOf = (b) => ((tasks) => ({ owners: { task: (id) => taskViewOf(tasks, b.io, id), tasksSince: (at) => tasksSince(tasks, at), investigation: (id) => investigationOf(createInvestigations(b.paths.storeRoot, b.io), id), file: (p) => fileOf(b.paths.root, p) }, checkout: { snapshot: () => snapshotOf(b.proc, b.paths.root) } }))(createTasks(b.paths.storeRoot, b.io));

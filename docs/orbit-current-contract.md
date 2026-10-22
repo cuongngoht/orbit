@@ -11,6 +11,7 @@
 | runtime | Checkout facts, environment compatibility, owned sessions and sandboxes | Keep current platform/service adapters and all safety gates | Runtime, sandbox, scope, trust tests |
 | hosts / integrations | Native host hooks and VS Code companion | Keep platform protocols; remove historical transport and configuration names | Native fixture conformance, pane tests |
 | packaging / UI | Plugin manifests, schemas, committed Control assets | Rebuild from current producers | Release, frontend build and archive scans |
+| satellite (0.1.1) | Mission journals above the owners; `/orbit:satellite`, `satellite/cli/satellite.mjs`, Satellite Live | Mission schema 1, definition, workflow, envelope, report, event and acceptance contracts at v1; additive under `satellite/`, `skills/satellite/`, `agents/satellite-*` | `node --test satellite/test/*.test.mjs`; repository safety, boundary, recovery and opt-in end-to-end tests |
 
 The engine and server retain Node built-ins only. External host and service adapters remain supported
 where they implement a current protocol. Runtime OS compatibility and analysis of a consuming project's

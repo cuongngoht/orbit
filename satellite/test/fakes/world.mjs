@@ -25,7 +25,7 @@ export function satelliteWorld(opts = {}) {
   const io = fakeIo({ now: opts.now ?? ticking(), host: "laptop-a", pid: 4242, nowMs: opts.nowMs ?? Date.parse(FIXED_AT) });
   const rooms = roomsOf(opts.storeRoot ?? "/orbit-store/repo-satellite-test");
   const policy = opts.policy ?? policyOf(opts.limits, opts.revoked);
-  const state = { tree: opts.tree ?? tree(), tasks: opts.tasks ?? {}, investigations: opts.investigations ?? {}, files: opts.files ?? {}, started: [], asked: [], invoked: [] };
+  const state = { tree: opts.tree === undefined ? tree() : opts.tree, tasks: opts.tasks ?? {}, investigations: opts.investigations ?? {}, files: opts.files ?? {}, started: [], asked: [], invoked: [] };
   return { io, rooms, policy, state, definitions: definitionsPort(io, rooms, policy), limits: opts.values ? { values: opts.values } : effectiveOf([]), project: { key: "repo-satellite-test", checkout: "c".repeat(64), root: "/checkout" }, session: opts.session === undefined ? SESSION : opts.session, hostId: opts.host ?? "claude", hostRow: hostRowOf(opts.host ?? "claude", new Set(opts.passed ?? ["claude:agent-dispatch", "claude:agent-parallel"])), acceptance: { passed: new Set(opts.passed ?? []), receipts: 0, stale: 0, digest: null }, now: () => io.now(), nowMs: () => io.nowMs(), host: io.host, pid: io.pid, pidStartedAt: () => 1700000000, roots: { orbit: "/orbit", satellite: "/orbit/satellite" }, liveness: opts.liveness ?? (() => false), owners: ownersOf(state, opts), checkout: { snapshot: () => state.tree }, providers: providersOf(state, opts), invoker: invokerOf(state, opts), ...(opts.capabilities ? { resolve: resolverOf(opts) } : {}), input: { input: () => "", file: () => "" } };
 }
 

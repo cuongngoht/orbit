@@ -1,7 +1,7 @@
 {
   "name": "orbit",
   "description": "Orbit Engineering for Claude Code, Codex and Antigravity: From Goal to Verified Outcome — context, requirements, sandboxes, runtime, UI tests, autonomous QA, Orbit Control, MCP and tools. Governed and local. No dependencies.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": {
     "name": "Orbit Engineering",
     "email": "40376533+cuongngoht@users.noreply.github.com"

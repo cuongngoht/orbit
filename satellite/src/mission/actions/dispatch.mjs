@@ -72,7 +72,7 @@ function contracted(ports, lw, a, p) {
   return row ? finding(row.rule, row.say(p, a, ports, lw), { lines: row.lines ? row.lines(p, lw) : [], trigger: row.trigger }) : null;
 }
 
-const runLineOf = (ports, lw, a, p, x) => ({ id: p.runId, unit: p.unit.id, parentAgentRun: a.parentAgentRun, templatePin: p.unit.templatePin, rolePin: p.template.content.rolePin, skillPins: list(p.unit.skillPins), actualHost: ports.hostId, actualProvider: p.kind.provider, agent: subagentTypeOf(profileOf(p)), profile: profileOf(p), grants: list(x?.grants), budget: { maxMinutes: p.unit.executionBudget.maxMinutes ?? null }, attempt: runsOfUnit(lw.m, p.unit).length + 1, mode: p.kind.mode, action: lw.action, dispatch: serialOnly(ports.hostRow) ? "serial" : "native", task: p.task ?? undefined, depth: depthOf(p), tree: p.tree ? { head: p.tree.head, digest: p.tree.digest } : undefined });
+const runLineOf = (ports, lw, a, p, x) => ({ id: p.runId, unit: p.unit.id, parentAgentRun: a.parentAgentRun, templatePin: p.unit.templatePin, rolePin: p.template.content.rolePin, skillPins: list(p.unit.skillPins), actualHost: ports.hostId, actualProvider: p.kind.provider, agent: subagentTypeOf(profileOf(p)), profile: profileOf(p), grants: list(x?.grants), budget: { maxMinutes: p.unit.executionBudget.maxMinutes ?? null }, attempt: runsOfUnit(lw.m, p.unit).length + 1, mode: p.kind.mode, action: lw.action, dispatch: serialOnly(ports.hostRow) ? "serial" : "native", task: p.task ?? undefined, depth: depthOf(p), tree: p.tree ? { head: p.tree.head, digest: p.tree.digest, witnessed: p.tree.witnessed !== false } : undefined });
 
 const consumed = (lw, p) => p.inputs.forEach((i) => lw.append("handoff.consumed", { id: i.published.id, unit: p.unit.id, agentRun: p.runId, action: lw.action }));
 

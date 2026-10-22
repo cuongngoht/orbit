@@ -36,9 +36,12 @@ function interrupted(ports, lw, a, because) {
   return r;
 }
 
+// AMBIGUOUS takes the lease too: a worker that wakes after this must find it gone and write nothing (FENCED), or the
+// journal would say both that a person decides and what the worker says happened.
 function ambiguous(ports, lw, a, because) {
   const r = note(lw, a, "AMBIGUOUS", because);
   lw.append("action.ambiguous", { id: a.id, because: clip(because) });
+  releaseLease(ports, lw.id, a.id);
   return r;
 }
 

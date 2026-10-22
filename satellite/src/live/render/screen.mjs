@@ -4,12 +4,7 @@
 // Orbit Live's one escape emitter.
 import { drawn } from "../../../../src/live/render/width.mjs";
 import { dim, seg } from "../../../../src/live/tui/sections/parts.mjs";
-
-const TONE_OF_STATE = { done: "success", running: "info", ready: "brand", blocked: "warning", failed: "danger", cancelled: "subtle", skipped: "subtle", unresolved: "warning", planned: "subtle" };
-
-const TONE_OF_LEVEL = { VERIFIED: "success", BEHAVIOR_OBSERVED: "info", CONTRACT_MET: "info", TOOL_COMPLETED: "subtle", BLOCKED: "warning", UNKNOWN: "subtle" };
-
-const VERDICT_SAY = { VERIFIED: "verified by independent evidence", NOT_VERIFIED: "not verified", PENDING: "not yet verified" };
+import { TONE_OF_LEVEL, TONE_OF_STATE, VERDICT_SAY } from "../tones.mjs";
 
 const header = (view, viewer) => [seg(" SATELLITE LIVE ", "chip"), seg(" "), seg(`${viewer.glyph} ${viewer.word}`, viewer.tone), dim(`   ${view.mission.id ?? "no mission"}   revision ${view.meta.seq}`)];
 

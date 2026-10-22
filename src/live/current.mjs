@@ -31,11 +31,11 @@ const FOLDS = {
   "qa.finding": (qa) => ({ ...qa, findings: qa.findings + 1 }),
   "qa.ended": (qa, e) => ({ ...qa, ended: { at: e.at, lifecycle: str(e.lifecycle) } }),
   "qa.discovery": tested((t, e) => ({ ...t, discovery: { state: str(e.state), count: num(e.count) } })),
-  "qa.obligation.discovered": tested((t, e) => (str(e.obligation) && !t.obligations[e.obligation] ? withObligation(t, e.obligation, { state: "discovered", outcome: null, at: e.at }) : t)),
+  "qa.obligation.discovered": tested((t, e) => (str(e.obligation) && !t.obligations[e.obligation] ? withObligation(t, e.obligation, { state: "discovered", outcome: null, at: e.at, shape: str(e.shape), target: str(e.target), authority: str(e.authority) }) : t)),
   "qa.test.designed": tested((t, e) => (str(e.design) ? { ...t, designs: { ...t.designs, [e.design]: str(e.obligation) } } : t)),
   "qa.draft.persisted": tested((t, e) => (str(e.version) ? { ...t, versions: { ...t.versions, [e.version]: str(e.design) } } : t)),
-  "qa.test.started": tested((t, e) => newer(withExecution(t, e), obligationOfVersion(t, e.version), { state: "running", outcome: null, at: e.at })),
-  "qa.result.evaluated": tested((t, e) => newer(t, str(e.obligation) ?? obligationOfVersion(t, t.executions[e.execution]), { state: "evaluated", outcome: str(e.outcome), at: e.at })),
+  "qa.test.started": tested((t, e) => newer(withExecution(t, e), obligationOfVersion(t, e.version), { state: "running", outcome: null, cause: null, execution: str(e.execution), attempt: num(e.attempt), at: e.at })),
+  "qa.result.evaluated": tested((t, e) => newer(t, str(e.obligation) ?? obligationOfVersion(t, t.executions[e.execution]), { state: "evaluated", outcome: str(e.outcome), cause: str(e.cause), execution: str(e.execution), attempt: num(e.attempt), at: e.at })),
 };
 
 // ---- a generated test's progress (0.1.0): one entry per OBLIGATION, never per attempt ----------
@@ -60,7 +60,8 @@ const withExecution = (t, e) => (str(e.execution) ? { ...t, executions: { ...t.e
 
 const obligationOfVersion = (t, version) => t.designs[t.versions[version]] ?? null;
 
-const newer = (t, id, entry) => (id && !((t.obligations[id]?.at ?? "") > entry.at) ? withObligation(t, id, entry) : t);
+// What an obligation was discovered as (its shape, target and authority) stays; where it stands moves.
+const newer = (t, id, entry) => (id && !((t.obligations[id]?.at ?? "") > entry.at) ? withObligation(t, id, { ...t.obligations[id], ...entry }) : t);
 
 // -> { total, satisfied, contradicted, running, done, discovering } for one investigation, or null when
 // it has said nothing about a generated test yet.

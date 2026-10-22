@@ -146,7 +146,7 @@ const sizes = [[200, 50], [120, 34], [100, 30], [90, 24], [70, 20], [60, 12], [5
 
 test("every line of every frame is exactly the width it may have, the frame exactly the screen's height", () => {
   for (const [columns, rows] of sizes) {
-    for (const s of [engineering({ columns, rows }), workflow({ columns, rows }), keys(engineering({ columns, rows }), { type: "overlay", name: "evidence" })]) {
+    for (const s of [engineering({ columns, rows }), workflow({ columns, rows }), keys(engineering({ columns, rows }), { type: "overlay", name: "evidence" }), keys(engineering({ columns, rows }), { type: "overlay", name: "inspect" })]) {
       const f = frameOf(s);
       assert.equal(f.lines.length, rows, `${columns}×${rows}`);
       for (const line of f.lines) assert.equal(displayWidth(unstyled(line)), columns - 1, `${columns}×${rows}: ${line}`);

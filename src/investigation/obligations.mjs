@@ -38,7 +38,7 @@ import { chainOf } from "./model.mjs";
 import { controlOf, tablesOf } from "./surfaces.mjs";
 import { latestFor } from "./receipts.mjs";
 import { matrixOf } from "./tenancy.mjs";
-import { verificationOutcomeOf } from "./verification.mjs";
+import { attemptsOutcome, verificationOutcomeOf } from "./verification.mjs";
 
 export const ATTEMPTS = 3;
 
@@ -331,11 +331,18 @@ const TEST_STATES = [
   { when: () => true, as: (e) => pending(`${e.execution} was ${e.outcome} — another attempt, or a repaired design, may settle it`) },
 ];
 
+// The word that stands is the one ACROSS the attempts of its latest version (verification.mjs ATTEMPTS): a contradiction
+// another attempt did not repeat is FLAKY, and the last attempt that passed is never chosen over it.
 function testObligationState(o, lw) {
-  const last = lw.model.evaluations.filter((e) => e.obligation === o.subject).at(-1);
+  const evaluations = lw.model.evaluations.filter((e) => e.obligation === o.subject);
+  const last = evaluations.at(-1);
   if (o.template.method === "manual") return blocked("capability", `${o.template.shape} is represented and counted, and no adapter or oracle can run it yet — a gap, never a pass`);
-  return last ? TEST_STATES.find((r) => r.when(last)).as(last) : pending(lw.model.versions.length ? "a version may be frozen for it, and nothing it ran has come back yet" : "nothing has been designed for it yet");
+  return last ? TEST_STATES.find((r) => r.when(standing(evaluations, last))).as(standing(evaluations, last)) : pending(lw.model.versions.length ? "a version may be frozen for it, and nothing it ran has come back yet" : "nothing has been designed for it yet");
 }
+
+const versionOfExecution = (execution) => String(execution).split("-").slice(0, 2).join("-");
+
+const standing = (evaluations, last) => ({ ...last, outcome: attemptsOutcome(evaluations.filter((e) => versionOfExecution(e.execution) === versionOfExecution(last.execution)).map((e) => e.outcome)) });
 
 const KINDS = [
   { kind: "post-write", rank: 1, derive: postWrites, state: postWriteState },

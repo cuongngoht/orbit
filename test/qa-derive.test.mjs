@@ -40,3 +40,14 @@ test("a draft plan's obligations carry its weaker authority, and prose alone der
   assert.equal(out.obligations.length, 1);
   assert.equal(out.obligations[0].authority, "draft");
 });
+
+test("an expectation says which obligations it states: absent, every shape that rules with its op; empty, none", () => {
+  const c = { id: "FIX-1", says: "one reminder, in time, whatever is redelivered", about: "billing-reminders", obligations: ["completes-by-deadline", "effect-once-per-key"], expects: [
+    { id: "E1", property: "message.id", op: "complete-within", value: "m", within: 120, for: ["completes-by-deadline"] },
+    { id: "E2", property: "effect.count", op: "count-eq", value: 1 },
+    { id: "E3", property: "delivery.attempt", op: "complete-within", value: 2, within: 120, for: [] },
+  ] };
+  const out = derivedObligations({ plan: plan([c]), binding, graph });
+  const of = (shape) => out.obligations.find((o) => o.shape === shape).expected;
+  assert.deepEqual([of("completes-by-deadline"), of("effect-once-per-key")], [["FIX-1/E1"], ["FIX-1/E2"]], "E3 is a barrier's window, nobody's own slot");
+});

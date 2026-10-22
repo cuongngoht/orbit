@@ -57,7 +57,7 @@ export const accusesProduct = (id) => verificationOutcomeOf(id)?.defect === true
 // observation that could not see everything never passes.
 //
 // facts: { status, failure: { helperClass, gap, ambiguous, contradiction, authorization },
-//          envelope: [findings], stale, authority, positiveFailed }
+//          envelope: [findings], stale, authority, positiveFailed, faultMissed }
 const failure = (f) => f.failure ?? {};
 
 export const RESULT = [
@@ -72,6 +72,7 @@ export const RESULT = [
   { id: "NOT_READY", when: (f) => f.status === "BLOCKED", word: "ENVIRONMENT_BLOCKED", why: "the sandbox or a dependency was not ready, or a budget was spent" },
   { id: "NO_ORACLE", when: (f) => f.authority !== "accepted", word: "REQUIRES_REQUIREMENT", why: "no accepted oracle stands behind it — a draft prepares a test and never rules on one" },
   { id: "POSITIVE_CONTROL", when: (f) => f.status === "FAIL" && f.positiveFailed === true, word: "INCONCLUSIVE", why: "the positive control did not hold, so the refusal this obligation is about proves nothing — what it contradicted is its own criterion's finding" },
+  { id: "FAULT_NOT_SEEN", when: (f) => f.status === "FAIL" && f.faultMissed === true, word: "INCONCLUSIVE", why: "the fault the design injects never showed in what the run observed, so what failed after it says nothing about how the system survives that fault" },
   { id: "CONTRADICTED", when: (f) => f.status === "FAIL" && failure(f).contradiction === true, word: "CONTRADICTED", why: "a verdict compiled from the accepted oracle was contradicted by what was observed" },
   { id: "STEP_FAILED", when: (f) => f.status === "FAIL", word: "EXECUTION_ERROR", why: "a step failed before any verdict could rule" },
   { id: "MET", when: (f) => f.status === "PASS", word: "SATISFIED", why: "every verdict held, against the accepted oracle" },

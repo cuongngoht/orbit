@@ -30,9 +30,11 @@ function obligationOf(plan, binding, graph, c, id) {
 
 const stamped = (plan, c, shape, record) => ({ obligation: `tob-${sha(`${plan.id}|${c.id}|${shape.id}`).slice(0, 12)}`, digest: sha(canonicalJson(record)), ...record });
 
-// The slots this obligation is ABOUT: the criterion's expectations its shape rules with. A criterion that names
-// several kinds of property states each one's slots; one that states none a shape rules with leaves it missing.
-const ownSlots = (c, shape) => c.expects.filter((e) => shape.templates.includes(EXPECT_OP.get(e.op)?.template)).map((e) => `${c.id}/${e.id}`);
+// The slots this obligation is ABOUT: the expectations that say they state it (`for`), or -- an expectation that says
+// nothing of the kind -- the ones its shape rules with. A criterion that names several kinds of property states each
+// one's slots; one that states none of this one's leaves it missing.
+const statesIt = (e, shape) => (Array.isArray(e.for) ? e.for.includes(shape.id) : shape.templates.includes(EXPECT_OP.get(e.op)?.template));
+const ownSlots = (c, shape) => c.expects.filter((e) => statesIt(e, shape)).map((e) => `${c.id}/${e.id}`);
 
 function recordOf(plan, binding, graph, c, shape) {
   const target = (graph?.nodes ?? []).find((n) => aliasOf(n.name) === c.about) ?? null;

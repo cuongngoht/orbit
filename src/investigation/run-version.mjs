@@ -105,7 +105,7 @@ function intended(w, v, attempt, p, execution, request) {
 // The host's own check, then the word RESULT gives it -- recorded as the run and its evaluation.
 function evaluatedRun(w, d, v, attempt, execution, request, r, p) {
   const findings = hostFindings(d, v, execution, request, r, p);
-  const result = resultOf({ status: r.envelope?.status ?? "BLOCKED", failure: r.envelope?.result?.failure ?? {}, envelope: findings, authority: v.obligation?.authority ?? "accepted", positiveFailed: positiveFailed(v, r) });
+  const result = resultOf({ status: r.envelope?.status ?? "BLOCKED", failure: r.envelope?.result?.failure ?? {}, envelope: findings, authority: v.obligation?.authority ?? "accepted", positiveFailed: positiveFailed(v, r), faultMissed: faultMissed(v, r) });
   recorded(w, d, { v, attempt, execution }, r, result, findings);
   return { outcome: result.outcome, rule: result.rule, why: result.why, execution, findings };
 }
@@ -120,6 +120,17 @@ function positiveFailed(v, r) {
   const at = (r.records ?? []).find((x) => x.kind === "step" && x.ok === false)?.i;
   return controls.some((c) => c.role === "negative") && Number.isInteger(at) && ids.includes(v.frozen.case.steps?.[at - 1]?.input?.identityRef);
 }
+
+// Whether a FAULT control's point never showed in what the run observed: the open workload protocol says a delivery
+// an injected fault ended carries the terminal reason `fault:<point>`, so a run whose observations hold none for the
+// point its design declared never had the fault it was about.
+function faultMissed(v, r) {
+  const points = (v.design.controls ?? []).filter((c) => c.role === "fault" && c.point).map((c) => `fault:${c.point}`);
+  const seen = (r.records ?? []).filter((x) => x.kind === "capability").flatMap((x) => stringsIn(x.result));
+  return points.length > 0 && !points.every((p) => seen.includes(p));
+}
+
+const stringsIn = (v) => (typeof v === "string" ? [v] : v && typeof v === "object" ? Object.values(v).flatMap(stringsIn) : []);
 
 // Nothing a worker said is taken: the envelope is held to what was dispatched, the files the host
 // listed and the claim re-derived from the run log and the frozen case.

@@ -104,6 +104,7 @@ export const CRITERION_EXPECT_FIELDS = {
   op: { enum: EXPECT_OP_NAMES, doc: "What must hold of it (src/qa/vocab.mjs EXPECT_OPS)." },
   value: { doc: "The value the criterion states: a number, a word, a list -- exactly as its owner wrote it." },
   within: { type: "integer", minimum: 1, doc: "The window, in seconds, an absence or a completion is claimed within. Required for those two; never invented." },
+  for: { type: "array", items: { type: "string", pattern: "^[a-z][a-z0-9-]{0,63}$" }, doc: "Which of the criterion's obligations this expectation states, by shape. Absent: every one whose shape rules with its op. Empty: none -- a slot a design may still rule an auxiliary step with (a barrier, a positive control)." },
   because: { type: "string", doc: "Where in the source it says so." },
 };
 

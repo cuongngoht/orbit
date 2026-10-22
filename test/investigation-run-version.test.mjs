@@ -15,6 +15,7 @@ import { modelOf } from "../src/investigation/model.mjs";
 import { ranVersion } from "../src/investigation/run-version.mjs";
 import { createInvestigations, eventIdOf } from "../src/investigation/store.mjs";
 import { WORKER_API } from "../src/run/worker.mjs";
+import { freezeVersion } from "../src/qa/generation/version.mjs";
 import { shapeOf } from "../src/qa/obligations/shapes.mjs";
 import { fakeContext } from "./fakes/context.mjs";
 import { fakeIo } from "./fakes/io.mjs";
@@ -111,4 +112,49 @@ test("a version step nothing can vouch for is taken to write", () => {
   assert.equal(ACTIONS["run-version"].mutates({ version: t.version }, lw({ steps: [{ do: "click", on: "home/Unmapped" }] })), true);
   assert.equal(ACTIONS["run-version"].mutates({ version: t.version }, lw({ steps: [{ do: "call", capability: "orbit.worker.observe" }, { do: "sql", query: "SELECT 1" }] })), false);
   assert.equal(ACTIONS["run-version"].mutates({ version: t.version }, lw({ destructive: true, steps: [] })), true);
+});
+
+// What the first real runs taught (0.1.0): a control that did not hold makes its obligation INCONCLUSIVE, never a
+// contradiction -- a positive one a negative rests on, and a fault the run never saw happen.
+function controlled(controls, records) {
+  const io = fakeIo();
+  const store = createInvestigations("/store/repo-1", io);
+  store.create({ id: ID, objective: "controls" });
+  store.appendOnce(ID, "obligation", { id: "obr-1", eventId: eventIdOf("obligation", "tob-abc123", 0, "r1"), obligation: "tob-abc123", revision: "r1", shape: "permission-enforced", authority: "accepted" });
+  const steps = ["owner", "other"].map((who) => ({ do: "call", capability: "orbit.http.read", input: { endpointRef: "api", identityRef: who, method: "GET", path: "/x" }, expect: "compiled:{}", proves: "api" }));
+  const frozen = freezeVersion({ case: { id: "gen-ctl", name: "controls", seen: "src", steps }, design: "tds-ctl", versionNumber: 1, engineVersion: "0.1.0", validatorVersion: "core", dslDigest: "d".repeat(64), extensionsDigest: "e".repeat(64) });
+  const kept = store.putArtifact(ID, "designs", { id: "tds-ctl", controls, compiled: [] });
+  store.appendOnce(ID, "designed", { id: "dsg-1", eventId: "e-dsg", obligation: "tob-abc123", design: "tds-ctl", digest: kept.digest, state: "designed" });
+  store.putVersion(ID, frozen);
+  store.appendOnce(ID, "version", { id: "ver-1", eventId: "e-ver", design: "tds-ctl", case: "gen-ctl", version: frozen.id, digest: frozen.version.caseDigest });
+  const dispatch = { prepare: () => ({ bindings: {}, secrets: {}, grants: [], gaps: [] }), run: ({ request }) => answered(request, records(request.case.digest)), provedBy: () => "api", canStop: () => false };
+  return { w: { id: ID, store, io, dispatch }, version: frozen.id };
+}
+
+// A worker's answer that holds to its own records: what passed before the failure is what it proved.
+function answered(request, records) {
+  const ok = records.filter((r) => r.kind === "step" && r.ok).length;
+  return { envelope: { v: WORKER_API, runId: request.runId, nonce: request.nonce, caseDigest: request.case.digest, status: "FAIL", result: { status: "FAIL", case_digest: request.case.digest, proved: { ui: 0, api: ok, sql: 0 }, verdicts: ok, done: ok, failure: { contradiction: true } }, evidence: null, files: [] }, records, listed: new Map() };
+}
+
+const failedAt = (i, more = []) => (digest) => [{ kind: "run", case_digest: digest }, ...more, ...[1, 2].slice(0, i - 1).map((n) => ({ kind: "step", i: n, ok: true })), { kind: "step", i, ok: false, error: "EXPECT FAILED", contradiction: true }];
+
+test("a failed POSITIVE control a negative rests on is INCONCLUSIVE; one in a design about its positive case alone is that case's contradiction", () => {
+  const paired = controlled([{ role: "positive", identityRef: "owner" }, { role: "negative", identityRef: "other" }], failedAt(1));
+  const a = ranVersion(paired.w, { version: paired.version });
+  const alone = controlled([{ role: "positive", identityRef: "owner" }], failedAt(1));
+  const b = ranVersion(alone.w, { version: alone.version });
+  const negative = controlled([{ role: "positive", identityRef: "owner" }, { role: "negative", identityRef: "other" }], failedAt(2));
+  const c = ranVersion(negative.w, { version: negative.version });
+  assert.deepEqual([a.outcome, a.rule, b.outcome, c.outcome], ["INCONCLUSIVE", "POSITIVE_CONTROL", "CONTRADICTED", "CONTRADICTED"], JSON.stringify([a.findings, b.findings, c.findings]));
+});
+
+test("a fault the run never saw happen makes what failed after it INCONCLUSIVE, and a fault it saw lets a contradiction stand", () => {
+  const seenAs = (reason) => (reason ? [{ kind: "capability", result: { attempts: [{ outcome: "fault", terminalReason: reason }] } }] : []);
+  const fault = [{ role: "fault", point: "after-commit-before-ack", step: 1 }, { role: "state" }];
+  const unseen = controlled(fault, failedAt(2, seenAs(null)));
+  const a = ranVersion(unseen.w, { version: unseen.version });
+  const seen = controlled(fault, failedAt(2, seenAs("fault:after-commit-before-ack")));
+  const b = ranVersion(seen.w, { version: seen.version });
+  assert.deepEqual([a.outcome, a.rule, b.outcome, b.rule], ["INCONCLUSIVE", "FAULT_NOT_SEEN", "CONTRADICTED", "CONTRADICTED"], JSON.stringify([a.findings, b.findings]));
 });

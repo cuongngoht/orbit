@@ -52,3 +52,10 @@ test("a window is never proposed, a clock moves only where it can be injected, a
   assert.deepEqual(rules(temporalFindings(d, { semanticsOf: (i) => (i === 4 ? { clockInjection: "none" } : {}) })), ["WINDOW_FROM_SOURCE", "CLOCK_INJECTABLE", "NO_VERDICT_TEXT"]);
   assert.deepEqual(rules(temporalFindings(design([call("orbit.clock.advance", { clockRef: "clock", request: {} })], 1), { semanticsOf: () => ({ clockInjection: "live" }) })), []);
 });
+
+test("only a control's witness may wait within its own bound -- any other window is compiled from an accepted criterion", () => {
+  const witness = { do: "call", capability: "orbit.worker.observe", input: { workloadRef: "w", request: { count: 1, waitMs: 30_000 } } };
+  const design = (controls) => ({ skeleton: { steps: [witness] }, controls });
+  assert.deepEqual(temporalFindings(design([{ role: "fault", point: "p", step: 1 }])), [], "a fault's witness waits for what the control injects; failing there is never a contradiction");
+  assert.match(temporalFindings(design([{ role: "fault", point: "p" }])).map((f) => f.say).join(), /sets its own window/);
+});

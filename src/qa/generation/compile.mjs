@@ -94,7 +94,7 @@ function windowOf(outputs, e) {
 // the mapping verdict per assertion. A design with a refused assertion compiles nothing for the step
 // it was on -- a step is never judged by part of what it was meant to rule on.
 export function compileDesign(design, context) {
-  const results = [...(design.assertions ?? []), ...triggerEvidence(design)].map((a) => ({ a, r: a.structural ? structuralTree(a, context) : compiledAssertion(a, context) }));
+  const results = [...(design.assertions ?? []), ...witnessEvidence(design), ...triggerEvidence(design)].map((a) => ({ a, r: a.structural === "fault-witnessed" ? witnessTree(a, context) : a.structural ? structuralTree(a, context) : compiledAssertion(a, context) }));
   const mapping = results.map(({ a, r }) => ({ criterionRef: a.criterionRef ?? null, ...(a.structural ? { structural: a.structural } : {}), template: a.template ?? r.tree?.template ?? null, step: a.step, verdict: r.refused ? "refused" : "mapped", ...(r.refused ? { why: r.refused } : {}) }));
   const steps = stepsOf(results);
   return { steps, mapping, digests: Object.fromEntries(Object.entries(steps).map(([i, s]) => [i, s.digest])), windows: results.filter(({ r }) => r.window).map(({ a, r }) => ({ step: a.step, waitMs: r.window.waitMs })) };
@@ -125,14 +125,27 @@ function provesOf(trees) {
 // nothing is left for the verdict stage to refuse.
 function triggerEvidence(design) {
   const steps = design.skeleton?.steps ?? [];
-  const ruled = new Set((design.assertions ?? []).map((a) => a.step));
+  const ruled = new Set([...(design.assertions ?? []).map((a) => a.step), ...(design.controls ?? []).filter((c) => Number.isInteger(c.step)).map((c) => c.step)]);
   const trigger = Number.isInteger(design.trigger?.step) && !ruled.has(design.trigger.step) ? [{ structural: "trigger-accepted", step: design.trigger.step, capability: steps[design.trigger.step - 1]?.capability }] : [];
   return [...trigger, ...steps.map((s, n) => ({ s, step: n + 1 })).filter(({ s, step }) => step !== design.trigger?.step && !ruled.has(step) && operationFor(s?.capability)?.accepted).map(({ s, step }) => ({ structural: "step-accepted", step, capability: s.capability }))];
+}
+
+// A FAULT control's witness rules on what the control itself says happened: a delivery its observation shows ended at
+// the declared point (the open workload protocol's terminal reason `fault:<point>`) -- compiled from the control,
+// never proposed.
+const witnessEvidence = (design) => (design.controls ?? []).filter((c) => c.role === "fault" && c.point && Number.isInteger(c.step) && !(design.assertions ?? []).some((a) => a.step === c.step)).map((c) => ({ structural: "fault-witnessed", step: c.step, point: c.point }));
+
+function witnessTree(a, context) {
+  const outputs = context.outputsOf(a.step) ?? {};
+  const path = pathOf(outputs, "terminal.reason", "complete");
+  const completeness = fieldsMeaning(outputs, COMPLETENESS);
+  if (path.refused || completeness.length !== 1) return path.refused ? path : { refused: `the fault's witness (step ${a.step}) cannot say whether it saw everything — its answer has no ${COMPLETENESS}` };
+  return checked({ template: "complete", path: path.path, value: `fault:${a.point}`, completeness: completeness[0], means: "terminal.reason" });
 }
 
 function structuralTree(a, context) {
   const accepted = operationFor(a.capability)?.accepted;
   if (!accepted) return { refused: `the trigger step (${a.step}) asks ${a.capability ?? "nothing"}, whose answer shows nothing of being accepted — an accepted criterion must rule on it` };
   const path = pathOf(context.outputsOf(a.step) ?? {}, accepted.means, accepted.template);
-  return path.refused ? path : checked({ template: accepted.template, path: path.path, ...(accepted.value !== undefined ? { value: accepted.value } : {}), means: accepted.means });
+  return path.refused ? path : checked({ template: accepted.template, path: path.path, ...(accepted.value !== undefined ? { value: accepted.value } : {}), ...(accepted.values !== undefined ? { values: accepted.values } : {}), means: accepted.means });
 }

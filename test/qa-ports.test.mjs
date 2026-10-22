@@ -173,3 +173,19 @@ test("a run lays its inputs where the worker reads them, and reads back only wha
   rmSync(room, { recursive: true, force: true });
   rmSync(store, { recursive: true, force: true });
 });
+
+test("an identical write sent twice is minted a grant of its own naming the first -- and only when the design says it is on purpose", async () => {
+  const { ctx, store } = await packed();
+  const j = journal();
+  const publish = call("orbit.messaging.publish", { channelRef: "reminders", request: { messageId: "msg-1", correlationId: "bk", payload: { a: 1 } } });
+  const x = (controls) => ({ frozen: { case: { id: "gen-dup", steps: [publish, publish] } }, design: { obligation: "tob-000000000001", id: "tds-dup", skeleton: { steps: [publish, publish] }, controls }, obligation: j.model().obligations[0], attempt: 1, execution: "exe-0123456789abcdef-1" });
+  const p = ports(ctx, j, { writes: ["publish"] });
+  const unmarked = p.dispatch.prepare(x([{ role: "state" }]));
+  assert.deepEqual(unmarked.refused.map((r) => r.id), ["DUPLICATE"], "a second effect is never covered by the first's grant");
+  const marked = p.dispatch.prepare(x([{ role: "duplicate", why: "on purpose" }, { role: "state" }]));
+  assert.deepEqual(marked.refused, []);
+  assert.equal(marked.grants.length, 2);
+  assert.notEqual(marked.grants[0].id, marked.grants[1].id);
+  assert.equal(marked.grants[1].bounds.duplicateOf, marked.grants[0].id, "the duplicate names the grant of the call it repeats");
+  rmSync(store, { recursive: true, force: true });
+});

@@ -78,3 +78,25 @@ test("an assertion edited to true, or weakened, after the design pinned it is th
   assert.deepEqual(verdict({ i: 2, expect: out.steps["2"].expect }, { status: 404, body: { error: "not_found" } }, underDesign).status, 404);
   assert.throws(() => verdict({ i: 2, expect: out.steps["2"].expect }, { status: 404, body: { owner: "inv-tenant-a" } }, underDesign), StepError, "a leak is a contradiction");
 });
+
+// What multi-step designs taught (0.1.0): a shape's templates bind only its own slots; a step no criterion speaks about
+// is ruled on by what its own operation's answer shows; a fault control's witness is compiled from the control.
+const ATTEMPTS = { attempts: { each: { messageId: "message.id", outcome: "settlement.outcome", terminalReason: "terminal.reason" } }, through: "cursor.through", completeness: "observation.completeness" };
+
+test("a shape's templates bind its OWN slots, and an auxiliary slot compiles by its own op", () => {
+  const shape = shapeOf("effect-once-per-key");
+  const window = new Map([...expectations, ["FIX-ASYNC-1/E3", { id: "E3", property: "message.id", op: "complete-within", value: "msg-1", within: 120 }]]);
+  assert.match(compiledAssertion({ criterionRef: "FIX-ASYNC-1/E3", template: "complete", step: 3 }, { expectations: window, outputsOf: (s) => OUTPUTS[s], shape, expected: ["FIX-ASYNC-1/E3"] }).refused, /does not rule with complete/, "its own slot is held to its shape");
+  const aux = compiledAssertion({ criterionRef: "FIX-ASYNC-1/E3", template: "complete", step: 3 }, { expectations: window, outputsOf: (s) => OUTPUTS[s], shape, expected: ["FIX-ASYNC-1/E2"] });
+  assert.deepEqual([aux.tree?.template, aux.window?.waitMs], ["complete", 120_000], "an auxiliary barrier rules with what its own op compiles to, within its own window");
+});
+
+test("an armed observer is ruled on by its baseline, and a fault's witness by the terminal reason the control declared", () => {
+  const steps = [{ do: "call", capability: "orbit.messaging.observe", input: { channelRef: "c", observerRef: "o" } }, { do: "call", capability: "orbit.workload.control", input: { workloadRef: "w", request: { action: "fault", point: "p1" } } }, { do: "call", capability: "orbit.worker.observe", input: { workloadRef: "w", request: { count: 1, waitMs: 30_000 } } }];
+  const outputs = { 1: { baseline: "cursor.baseline", completeness: "observation.completeness" }, 2: { status: "execution.status" }, 3: ATTEMPTS };
+  const design = { skeleton: { steps }, assertions: [], controls: [{ role: "fault", point: "p1", step: 3 }, { role: "state" }] };
+  const out = compileDesign(design, { expectations, outputsOf: (s) => outputs[s], shape: null, expected: [] });
+  assert.deepEqual(out.mapping.map((m) => [m.step, m.structural, m.verdict]), [[3, "fault-witnessed", "mapped"], [1, "step-accepted", "mapped"], [2, "step-accepted", "mapped"]]);
+  assert.match(out.steps["3"].expect, /"template":"complete".*"value":"fault:p1"|"value":"fault:p1".*"template":"complete"/, "the witness holds when the declared fault is seen, within its observation");
+  assert.match(out.steps["1"].expect, /cursor\.baseline/);
+});

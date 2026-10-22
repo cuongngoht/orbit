@@ -517,5 +517,293 @@
         }
       ]
     }
-  ]
+  ],
+  "acceptance": {
+    "schema": 1,
+    "at": "2026-10-22T04:18:34.763Z",
+    "sourceDigest": "3e8c57dd57c3decb55c4a01549be1f67b0e248b5aad7900b54cdb5bd462b0639",
+    "worker": "sha256:1a57a52b5842e1a00102c7e227266303674685982df6bf6d9e1cd26cc793856e",
+    "runs": [
+      {
+        "stack": "invoice-a",
+        "variant": "correct",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "SATISFIED",
+          "permission-enforced": "SATISFIED",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "SATISFIED",
+          "effect-once-per-key": "SATISFIED",
+          "crash-before-effect": "SATISFIED",
+          "crash-after-effect-before-ack": "SATISFIED",
+          "screen-shows-result": "SATISFIED",
+          "persisted-after-write": "SATISFIED",
+          "v5.0.0-4.1.1": "verified",
+          "v5.0.0-8.2.1": "verified",
+          "v5.0.0-8.3.1": "verified",
+          "v5.0.0-8.2.2": "pending"
+        }
+      },
+      {
+        "stack": "invoice-a",
+        "variant": "no-tenant-check",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "SATISFIED",
+          "permission-enforced": "CONTRADICTED",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "SATISFIED",
+          "effect-once-per-key": "SATISFIED",
+          "crash-before-effect": "SATISFIED",
+          "crash-after-effect-before-ack": "SATISFIED",
+          "screen-shows-result": "SATISFIED",
+          "persisted-after-write": "SATISFIED",
+          "v5.0.0-4.1.1": "verified",
+          "v5.0.0-8.2.1": "finding:confirmed",
+          "v5.0.0-8.3.1": "finding:confirmed",
+          "v5.0.0-8.2.2": "finding:confirmed"
+        }
+      },
+      {
+        "stack": "invoice-a",
+        "variant": "broken-auth",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "CONTRADICTED",
+          "permission-enforced": "INCONCLUSIVE",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "SATISFIED",
+          "effect-once-per-key": "SATISFIED",
+          "crash-before-effect": "SATISFIED",
+          "crash-after-effect-before-ack": "SATISFIED",
+          "screen-shows-result": "EXECUTION_ERROR",
+          "persisted-after-write": "EXECUTION_ERROR",
+          "v5.0.0-4.1.1": "inconclusive",
+          "v5.0.0-8.2.1": "inconclusive",
+          "v5.0.0-8.3.1": "inconclusive",
+          "v5.0.0-8.2.2": "inconclusive"
+        }
+      },
+      {
+        "stack": "invoice-a",
+        "variant": "no-dedupe",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "SATISFIED",
+          "permission-enforced": "SATISFIED",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "SATISFIED",
+          "effect-once-per-key": "CONTRADICTED",
+          "crash-before-effect": "SATISFIED",
+          "crash-after-effect-before-ack": "CONTRADICTED",
+          "screen-shows-result": "SATISFIED",
+          "persisted-after-write": "SATISFIED",
+          "v5.0.0-4.1.1": "verified",
+          "v5.0.0-8.2.1": "verified",
+          "v5.0.0-8.3.1": "verified",
+          "v5.0.0-8.2.2": "pending"
+        }
+      },
+      {
+        "stack": "invoice-a",
+        "variant": "early-ack",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "SATISFIED",
+          "permission-enforced": "SATISFIED",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "SATISFIED",
+          "effect-once-per-key": "SATISFIED",
+          "crash-before-effect": "CONTRADICTED",
+          "crash-after-effect-before-ack": "INCONCLUSIVE",
+          "screen-shows-result": "SATISFIED",
+          "persisted-after-write": "SATISFIED",
+          "v5.0.0-4.1.1": "verified",
+          "v5.0.0-8.2.1": "verified",
+          "v5.0.0-8.3.1": "verified",
+          "v5.0.0-8.2.2": "pending"
+        }
+      },
+      {
+        "stack": "invoice-a",
+        "variant": "no-db-write",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "SATISFIED",
+          "permission-enforced": "SATISFIED",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "SATISFIED",
+          "effect-once-per-key": "CONTRADICTED",
+          "crash-before-effect": "CONTRADICTED",
+          "crash-after-effect-before-ack": "CONTRADICTED",
+          "screen-shows-result": "SATISFIED",
+          "persisted-after-write": "SATISFIED",
+          "v5.0.0-4.1.1": "verified",
+          "v5.0.0-8.2.1": "verified",
+          "v5.0.0-8.3.1": "verified",
+          "v5.0.0-8.2.2": "pending"
+        }
+      },
+      {
+        "stack": "invoice-a",
+        "variant": "toast-without-persistence",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "SATISFIED",
+          "permission-enforced": "SATISFIED",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "SATISFIED",
+          "effect-once-per-key": "SATISFIED",
+          "crash-before-effect": "SATISFIED",
+          "crash-after-effect-before-ack": "SATISFIED",
+          "screen-shows-result": "SATISFIED",
+          "persisted-after-write": "CONTRADICTED",
+          "v5.0.0-4.1.1": "verified",
+          "v5.0.0-8.2.1": "verified",
+          "v5.0.0-8.3.1": "verified",
+          "v5.0.0-8.2.2": "pending"
+        }
+      },
+      {
+        "stack": "invoice-b",
+        "variant": "correct",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "SATISFIED",
+          "permission-enforced": "SATISFIED",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "CAPABILITY_MISSING",
+          "effect-once-per-key": "SATISFIED",
+          "crash-before-effect": "SATISFIED",
+          "crash-after-effect-before-ack": "SATISFIED",
+          "screen-shows-result": "SATISFIED",
+          "persisted-after-write": "SATISFIED",
+          "v5.0.0-4.1.1": "verified",
+          "v5.0.0-8.2.1": "verified",
+          "v5.0.0-8.3.1": "verified",
+          "v5.0.0-8.2.2": "pending"
+        }
+      },
+      {
+        "stack": "invoice-b",
+        "variant": "no-tenant-check",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "SATISFIED",
+          "permission-enforced": "CONTRADICTED",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "CAPABILITY_MISSING",
+          "effect-once-per-key": "SATISFIED",
+          "crash-before-effect": "SATISFIED",
+          "crash-after-effect-before-ack": "SATISFIED",
+          "screen-shows-result": "SATISFIED",
+          "persisted-after-write": "SATISFIED",
+          "v5.0.0-4.1.1": "verified",
+          "v5.0.0-8.2.1": "finding:confirmed",
+          "v5.0.0-8.3.1": "finding:confirmed",
+          "v5.0.0-8.2.2": "finding:confirmed"
+        }
+      },
+      {
+        "stack": "invoice-b",
+        "variant": "broken-auth",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "CONTRADICTED",
+          "permission-enforced": "INCONCLUSIVE",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "CAPABILITY_MISSING",
+          "effect-once-per-key": "SATISFIED",
+          "crash-before-effect": "SATISFIED",
+          "crash-after-effect-before-ack": "SATISFIED",
+          "screen-shows-result": "EXECUTION_ERROR",
+          "persisted-after-write": "EXECUTION_ERROR",
+          "v5.0.0-4.1.1": "inconclusive",
+          "v5.0.0-8.2.1": "inconclusive",
+          "v5.0.0-8.3.1": "inconclusive",
+          "v5.0.0-8.2.2": "inconclusive"
+        }
+      },
+      {
+        "stack": "invoice-b",
+        "variant": "no-dedupe",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "SATISFIED",
+          "permission-enforced": "SATISFIED",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "CAPABILITY_MISSING",
+          "effect-once-per-key": "SATISFIED",
+          "crash-before-effect": "SATISFIED",
+          "crash-after-effect-before-ack": "CONTRADICTED",
+          "screen-shows-result": "SATISFIED",
+          "persisted-after-write": "SATISFIED",
+          "v5.0.0-4.1.1": "verified",
+          "v5.0.0-8.2.1": "verified",
+          "v5.0.0-8.3.1": "verified",
+          "v5.0.0-8.2.2": "pending"
+        }
+      },
+      {
+        "stack": "invoice-b",
+        "variant": "early-ack",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "SATISFIED",
+          "permission-enforced": "SATISFIED",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "CAPABILITY_MISSING",
+          "effect-once-per-key": "SATISFIED",
+          "crash-before-effect": "CONTRADICTED",
+          "crash-after-effect-before-ack": "INCONCLUSIVE",
+          "screen-shows-result": "SATISFIED",
+          "persisted-after-write": "SATISFIED",
+          "v5.0.0-4.1.1": "verified",
+          "v5.0.0-8.2.1": "verified",
+          "v5.0.0-8.3.1": "verified",
+          "v5.0.0-8.2.2": "pending"
+        }
+      },
+      {
+        "stack": "invoice-b",
+        "variant": "no-db-write",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "SATISFIED",
+          "permission-enforced": "SATISFIED",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "CAPABILITY_MISSING",
+          "effect-once-per-key": "CONTRADICTED",
+          "crash-before-effect": "CONTRADICTED",
+          "crash-after-effect-before-ack": "CONTRADICTED",
+          "screen-shows-result": "SATISFIED",
+          "persisted-after-write": "SATISFIED",
+          "v5.0.0-4.1.1": "verified",
+          "v5.0.0-8.2.1": "verified",
+          "v5.0.0-8.3.1": "verified",
+          "v5.0.0-8.2.2": "pending"
+        }
+      },
+      {
+        "stack": "invoice-b",
+        "variant": "toast-without-persistence",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "SATISFIED",
+          "permission-enforced": "SATISFIED",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "CAPABILITY_MISSING",
+          "effect-once-per-key": "SATISFIED",
+          "crash-before-effect": "SATISFIED",
+          "crash-after-effect-before-ack": "SATISFIED",
+          "screen-shows-result": "SATISFIED",
+          "persisted-after-write": "CONTRADICTED",
+          "v5.0.0-4.1.1": "verified",
+          "v5.0.0-8.2.1": "verified",
+          "v5.0.0-8.3.1": "verified",
+          "v5.0.0-8.2.2": "pending"
+        }
+      }
+    ]
+  }
 }

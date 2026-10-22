@@ -369,7 +369,11 @@ place real adapters are bound to real config.
   BLOCKED while discovery and validation go on. The worker never holds the store, a journal, the vault, a control
   socket or a home directory; a worker's claimed status is never taken: only the HOST, after validating its envelope
   (`src/run/envelope.mjs`: digests, attestation, files, status and `proved` re-derived from the frozen case), writes
-  the ledger line, the evidence and the investigation's run line.
+  the ledger line, the evidence and the investigation's run line. A generated PAGE test drives a browser of its own in
+  that worker (0.1.0): the host proposes what to wait for and read, the engine writes every script the page runs from
+  templates that only read the DOM, and ONE engine-written route carries the approved identity's credential to the
+  bound origin alone -- never along a redirect, never in an argument or a file the host reads back -- and lets a write
+  through only under a page grant this run was minted (`src/qa/generation/page.mjs`, `src/run/worker.mjs`).
 - **A test writes only through a grant (ADR 0037).** `mutates` does not imply destructive: a write, publish, enqueue,
   trigger, consume, settle (an ack or a commit), replay or workload control on a resource of the run's own fixture
   needs a grant the engine mints at dispatch through the ordered `MINT` rows (`src/runtime/sandbox/test-grants.mjs`)
@@ -825,6 +829,10 @@ node cli/explore.mjs <observations.jsonl> [--out=…]          # one exploration
 # NB: the seed ledgers a test needs live in test/fixtures/ledger/ -- its README says why.
 ORBIT_UI_TESTS=test/fixtures/ui-tests ORBIT_STORE_DIR=/tmp/l \
   node cli/qa-plan.mjs coverage things   # plans|show|render|coverage|select|impact|suggest|new
+ORBIT_STORE_DIR=/tmp/l node cli/autonomous-qa.mjs derive|reconcile --investigation=<id>   # obligations from accepted plans; a dispatch that never settled, read back
+ORBIT_STORE_DIR=/tmp/l node cli/security-audit.mjs assess --investigation=<id>   # the controls in effect, from an investigation's own record
+node cli/qa-plan.mjs expects <openapi|asyncapi|schedule>.json [--operation=… --status=… | --channel=… --within=… | --at=…]   # candidate expectations
+node acceptance/run.mjs [--stack=…] [--variant=…] [--keep] [--record]   # native acceptance: two stacks, planted defects, a ground truth (Docker)
 ORBIT_STORE_DIR=/tmp/l node cli/qc-tool.mjs where|list        # this project's own QC tools (README §7.2)
 ORBIT_STORE_DIR=/tmp/l node cli/qc-tool.mjs new <id> <scratch-dir> [--tool=psql] [--mutates]
 ORBIT_STORE_DIR=/tmp/l node cli/qc-tool.mjs verify|register <dir>   # exit 2 if it would not load

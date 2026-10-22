@@ -47,9 +47,10 @@ directory is that component's image source — one container, run with the image
 handed none of the compose file's environment. So the image's `CMD` (`node app/main.mjs all`)
 runs every role under an in-container supervisor, every default a role needs is the Dockerfile's
 `ENV`, and stopping, restarting or faulting one role is the control hook's job, never a container's.
-The package and the compose service share the name `invoice-app`, so the application answers to the
-same host name under compose and on a sandbox's network (where a component's alias is its package
-name).
+Under compose the application answers as `invoice-app`, the compose service's name. On a sandbox's
+network a component's alias is the PROJECT's name -- the name its checkout is assembled under,
+`invoice-a` or `invoice-b` -- which is also the name the system graph's component carries
+(`acceptance/graph/`), so every binding the host seals points there.
 
 ## The variants are ground truth
 
@@ -65,7 +66,7 @@ find out, as it could read a real defect.
 | `no-dedupe` | no inbox claim and no unique index: a second delivery writes a second reminder | FIX-ASYNC-1 | a duplicate reminder proven and CONTRADICTED. On stack B the stream's own Nats-Msg-Id window drops a duplicate PUBLICATION, which is another guard, so there only the redelivery after a commit is ground truth |
 | `early-ack` | the worker acks before its effect | FIX-ASYNC-1 under a crash after the ack (`after-ack-before-effect`) | the effect missing once the completion deadline passed |
 | `no-db-write` | the worker notifies and acks but never writes the reminder | FIX-ASYNC-1 (no reminder row, one notification) | CONTRADICTED below the interface |
-| `toast-without-persistence` | create answers 201 and the page toasts, but nothing is stored | UI-AC-2, API-AC-3 | a case ruling only on the toast passes wrongly; the witness below the screen does not |
+| `toast-without-persistence` | create answers 201 and the page toasts, but nothing is stored | UI-AC-2, API-AC-3 | a case ruling only on the toast passes wrongly; the generated test's witness below the screen makes it CONTRADICTED |
 
 ## The smoke
 
@@ -85,10 +86,10 @@ zones, identities, fire-once, the payload rule, SQL literals) with no container 
 
 | what | stack A | stack B |
 |---|---|---|
-| UI origin | `http://invoice-app:8080` | same |
-| HTTP endpoint (`backend`) | `http://invoice-app:8080/api` (openapi `servers`) | same |
-| sink read-back | `http://invoice-app:8081/notifications?key=<businessKey>` | same |
-| test hooks | `http://invoice-app:9090` | same (clock advance answers 409) |
+| UI origin (`page:invoices`) | `http://invoice-a:8080` | `http://invoice-b:8080` |
+| HTTP endpoint (`invoice-read`, …) | `http://invoice-a:8080/api` (openapi `servers`) | `http://invoice-b:8080/api` |
+| sink read-back | `http://invoice-a:8081/notifications?key=<businessKey>` | `http://invoice-b:8081/…` |
+| test hooks | `http://invoice-a:9090` | `http://invoice-b:9090` (clock advance answers 409) |
 | channel | `{exchange: "billing", routingKey: "billing.reminder.requested", endpoint: {host: "broker", port: 5672, vhost: "/"}, credential: {userEnv: "AMQP_USER", passwordEnv: "AMQP_PASSWORD"}}` | `{subject: "billing.reminder.requested", stream: "BILLING", endpoint: {host: "broker", port: 4222}, credential: {userEnv: "NATS_USER", passwordEnv: "NATS_PASSWORD"}}` |
 | dead letters | exchange `billing.dlx`, key `billing.reminder.dead`, queue `billing.reminders.dead` (`x-death`) | subject `billing.reminder.dead`, stream `BILLING_DEAD` (`Terminal-Reason`) |
 | observer | a queue of the fixture's namespace bound to `billing` (or `billing.dlx`) | a durable consumer of the fixture's namespace on `BILLING` (limits retention) |
@@ -107,3 +108,22 @@ The SQL witness reads `invoices`, `reminders`, `inbox`, `reminder_requests`, `ou
 `sink.notifications`. The identities a case names are minted by `POST /orbit/identity/v1/issue`
 (`tenant-a-reader`, `tenant-b-reader`, `tenant-a-writer`, ...). Each stack's README gives the exact
 shape of every hook.
+
+## The acceptance run
+
+```bash
+node acceptance/run.mjs                                   # every stack, every variant, held to acceptance/truth.json
+node acceptance/run.mjs --stack=invoice-a --variant=correct --keep   # one run, its checkout and store kept to read
+node acceptance/run.mjs --record                          # a run that matched, kept for the release gate
+```
+
+It builds the worker image first (`acceptance/worker/Dockerfile`: Node, the browser CLI and the Chromium it was made
+for), pins it by the id it gets, and trusts it the way a person does in Orbit Control. Then, for each stack and
+variant, from nothing: a checkout committed, a store of its own, the system graph recorded
+(`acceptance/graph/<stack>.jsonl`), an isolated sandbox started, and the QA loop, every command as a terminal types it
+-- plan, derive, and for each shape the design in `acceptance/designs/` (the host's proposal, scripted) generated and
+its frozen version run. The five groups of the plan document are its shapes: a search and a create on the page
+(`screen-shows-result`, `persisted-after-write`), the HTTP interface (`response-conforms`, `permission-enforced`), the
+schedule (`occurrence-one-execution`), messaging (`completes-by-deadline`, `effect-once-per-key` and the two crash
+shapes) and, from the same investigation's record, the security controls. A run leaves no container, network, volume or
+secret behind, and the checkout exactly as it was committed.

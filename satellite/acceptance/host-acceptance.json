@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "doc": "What a person saw a REAL host session do with Satellite, written only by satellite/acceptance/record-host-acceptance.mjs. The host matrix (satellite/src/hosts/matrix.mjs) counts a claimed capability verified only while a receipt for THIS source digest says its result passed; an edit to satellite/src, satellite/cli, skills/satellite or agents/satellite-* makes every receipt stale.",
+  "receipts": [
+    {
+      "kit": "host",
+      "host": {
+        "id": "claude",
+        "version": "2.1.308 (Claude Code)",
+        "code": "4c3a30104de5bccbf1c2c0c2c3cf333e656ee14929a7925dc086a787db6adee9"
+      },
+      "system": {
+        "emulated": false,
+        "platform": "darwin",
+        "arch": "arm64",
+        "node": "v22.23.1"
+      },
+      "at": "2026-10-22T14:13:08.227Z",
+      "results": [
+        {
+          "id": "claude:agent-dispatch",
+          "ops": [
+            "mission.start",
+            "dispatch",
+            "agent.ack",
+            "Agent(general-purpose)",
+            "agent.report",
+            "mission.finish"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "claude:agent-parallel",
+          "ops": [
+            "dispatch",
+            "dispatch",
+            "agent.ack",
+            "agent.ack",
+            "Agent(general-purpose)x2-one-message",
+            "agent.report",
+            "agent.report"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    }
+  ]
+}

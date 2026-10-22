@@ -17,10 +17,10 @@ import { prepared } from "./prepare.mjs";
 import { reconciled } from "./reconcile.mjs";
 import { released } from "./release.mjs";
 import { trust } from "./trust.mjs";
-import { dispatched } from "./dispatch.mjs";
+import { dispatched, dispatchedNow } from "./dispatch.mjs";
 import { signalled, supervisionRoom } from "./supervise.mjs";
 import { logsOf, sandboxView, sandboxesView } from "./view.mjs";
-import { sayDispatched, saySandbox, saySandboxes, saySignalled, sayLaunched, sayLogs, sayPrepared, sayReleased, sayStopped, sayTopology, sayTrusted } from "./views.mjs";
+import { sayDispatched, sayDispatchState, saySandbox, saySandboxes, saySignalled, sayLaunched, sayLogs, sayPrepared, sayReleased, sayStopped, sayTopology, sayTrusted } from "./views.mjs";
 import { stop } from "../lifecycle/stop.mjs";
 import { recomposed } from "./isolated-launch.mjs";
 
@@ -42,6 +42,9 @@ const prepare = async (ctx, args = []) => {
 
 // One generated test, to the sandbox's worker: the request is read from --request=<file>, or stdin.
 const dispatch = (ctx, args) => dispatched(sandboxed(ctx), { run: flag(args, "run"), deadlineMs: flag(args, "deadline-ms"), input: ctx.read?.(flag(args, "request")) ?? "" }, deps(ctx));
+
+// What became of one dispatch, read back: its worker's receipt, whether it still runs, whether it left an envelope.
+const dispatchState = (ctx, args) => dispatchedNow(sandboxed(ctx), { run: flag(args, "run") }, deps(ctx));
 
 // A signal the roots that own a cancel write: pause, resume, cancel.
 const signal = (ctx, args) => ({ environment: sandboxed(ctx).envId, signal: signalled(ctx.io, supervisionRoom(ctx.rooms.liveSandbox), { signal: flag(args, "signal"), by: flag(args, "by") ?? "terminal", why: flag(args, "why") ?? "" }, ctx.now()) });
@@ -81,6 +84,7 @@ export const SANDBOX_COMMANDS = {
   "sandbox-release": { about: "task", run: release, say: sayReleased, writes: "machine", needs: "checkout" },
   "sandbox-logs": { about: "task", run: logs, say: sayLogs, writes: "nothing", needs: "checkout" },
   "sandbox-dispatch": { about: "task", run: dispatch, say: sayDispatched, writes: "machine", needs: "checkout" },
+  "sandbox-dispatched": { about: "task", run: dispatchState, say: sayDispatchState, writes: "nothing", needs: "checkout" },
   "sandbox-signal": { about: "task", run: signal, say: saySignalled, writes: "store", needs: "checkout" },
   "sandbox-topology": { about: "task", run: topologyOf, say: sayTopology, writes: "nothing", needs: "checkout" },
   trust: { run: trusted, say: sayTrusted, writes: "store", needs: "checkout" },

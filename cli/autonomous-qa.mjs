@@ -13,6 +13,7 @@
 //   node autonomous-qa.mjs resume --investigation=<id> [--why="…"]             go on with a paused investigation
 //   node autonomous-qa.mjs answer --investigation=<id> --question=<qst-n> --says="…" --human
 //   node autonomous-qa.mjs release --investigation=<id> --decision=<id> --why="…" --human   settle a step that never did, once a person looked at what it did
+//   node autonomous-qa.mjs reconcile --investigation=<id> [--json]              read back every generated test's dispatch that started and never settled, and say what each came to -- never sent again
 //   node autonomous-qa.mjs protocol                                           the decision protocol, printed from its tables (JSON)
 //   node autonomous-qa.mjs explore [--investigation=<id> | --objective="…" --scope="…"] [--env=<id> | --sandbox=<env-id>] [--mode=…] [--json]
 //   node autonomous-qa.mjs act --investigation=<id> (--goto=<path> | --click=<screen/via> | --fill=<screen/via> --value=TC-…) [--identity=<as>] [--json]
@@ -77,6 +78,8 @@ import { machineContext } from "../src/store/context.mjs";
 import { bindSandbox, originAnswer, sandboxAnswer } from "../skills/orbit-runtime/bind.mjs";
 import { dispatchPort, generationPort, keptEvidence } from "../skills/orbit-qa/ports.mjs";
 import { derivedInto } from "../src/investigation/derive.mjs";
+import { reconciledRuns } from "../src/investigation/reconcile-runs.mjs";
+import { DISPATCH_SLACK_MS } from "../src/investigation/run-version.mjs";
 import { architectureContext } from "../src/architecture/context.mjs";
 import { graphOf } from "../src/architecture/graph-view.mjs";
 import { loadVocabulary } from "../src/topology/vocabulary.mjs";
@@ -125,7 +128,7 @@ const frozenGraph = (w) => ((bound) => (bound ? w.store.readArtifact(w.id, "grap
 function sandboxPorts(ctx, machine, w) {
   const s = BOUND.isolated;
   if (!s) return { topology: () => ({ needs: "environment", say: "this investigation is bound to no ISOLATED sandbox — a generated version runs only in one (begin with --sandbox=<env-id> on a sandbox whose isolation is required)" }) };
-  return { sandbox: s.sandbox, topology: () => BOUND.runtimeCommands["sandbox-topology"].run(s.ctx, []), services: Object.fromEntries(s.ctx.catalog.services.map((x) => [x.id, x])), policy: policyOf(s.ctx), place: { in: s.ctx.catalog.isolation.worker.in, out: s.ctx.catalog.isolation.worker.out }, hooksToken: () => process.env[HOOKS_TOKEN_ENV] ?? null, runtime: { dirs: (run) => dispatchDirs(s.ctx, run), dispatch: (request) => dispatchedBy(ctx, s, request) }, project: { name: ctx.config.name, packs: ctx.config.packs, sql: ctx.config.sql, graphDir: ctx.project.graphDir }, keep: (dir, run) => keptEvidence(dir, join(w.store.evidenceDir(w.id), run), machine.store.root) };
+  return { sandbox: s.sandbox, topology: () => BOUND.runtimeCommands["sandbox-topology"].run(s.ctx, []), services: Object.fromEntries(s.ctx.catalog.services.map((x) => [x.id, x])), policy: policyOf(s.ctx), place: { in: s.ctx.catalog.isolation.worker.in, out: s.ctx.catalog.isolation.worker.out }, hooksToken: () => process.env[HOOKS_TOKEN_ENV] ?? null, runtime: { dirs: (run) => dispatchDirs(s.ctx, run), dispatch: (request) => dispatchedBy(ctx, s, request), worker: (run) => BOUND.runtimeCommands["sandbox-dispatched"].run(s.ctx, [`--run=${run}`]).worker }, project: { name: ctx.config.name, packs: ctx.config.packs, sql: ctx.config.sql, graphDir: ctx.project.graphDir }, keep: (dir, run) => keptEvidence(dir, join(w.store.evidenceDir(w.id), run), machine.store.root) };
 }
 
 // A person's standing write policy for this sandbox, at the revision it was read.
@@ -135,7 +138,7 @@ const policyOf = (sctx) => ((read) => ({ revision: read.revision, writes: effect
 // an argument, a file or a log line; the deadline the request carries, and room for the worker to be made and removed.
 function dispatchedBy(ctx, s, request) {
   const ms = Number(request.limits?.deadlineMs) || 120000;
-  const r = ctx.process.run(process.execPath, [join(HERE, "runtime.mjs"), "sandbox-dispatch", `--task=${s.sandbox.task}`, `--run=${request.runId}`, `--deadline-ms=${ms}`, "--json"], { input: JSON.stringify(request), timeoutMs: ms + 180000, cwd: whereOf().cwd });
+  const r = ctx.process.run(process.execPath, [join(HERE, "runtime.mjs"), "sandbox-dispatch", `--task=${s.sandbox.task}`, `--run=${request.runId}`, `--deadline-ms=${ms}`, "--json"], { input: JSON.stringify(request), timeoutMs: ms + DISPATCH_SLACK_MS, cwd: whereOf().cwd });
   return r.ok ? { ok: true, answer: lastJson(r.out) } : { ok: false, why: String(r.error ?? "the dispatch did not answer").slice(0, 400) };
 }
 
@@ -395,6 +398,9 @@ function releaseCmd() {
   return said(release(investigating(), needed("decision"), flag("why")));
 }
 
+// Every dispatch that started and never settled, read back by the rows of src/investigation/reconcile-runs.mjs.
+const reconcileCmd = () => ((w) => said({ investigation: w.id, reconciled: reconciledRuns(w) }))(investigating());
+
 const protocolCmd = () => said(protocolOf());
 
 function parsedJson(text, what) {
@@ -473,7 +479,7 @@ function help() {
   process.exitCode = cmd && cmd !== "--help" ? 2 : 0;
 }
 
-const COMMANDS = { plan: planCmd, "draft-plan": draftPlanCmd, derive: deriveCmd, context: contextCmd, step: stepCmd, checkpoint: checkpointCmd, finish: finishCmd, resume: resumeCmd, answer: answerCmd, release: releaseCmd, protocol: protocolCmd, explore: exploreCmd, act: actCmd, "check-data": checkCmd, security: securityCmd, investigate: investigateCmd, reproduce: reproduceCmd, draft: draftCmd, "link-run": linkCmd, report: reportCmd, list: listCmd, show: showCmd, cancel: cancelCmd, settings: settingsCmd };
+const COMMANDS = { plan: planCmd, "draft-plan": draftPlanCmd, derive: deriveCmd, context: contextCmd, step: stepCmd, checkpoint: checkpointCmd, finish: finishCmd, resume: resumeCmd, answer: answerCmd, release: releaseCmd, protocol: protocolCmd, reconcile: reconcileCmd, explore: exploreCmd, act: actCmd, "check-data": checkCmd, security: securityCmd, investigate: investigateCmd, reproduce: reproduceCmd, draft: draftCmd, "link-run": linkCmd, report: reportCmd, list: listCmd, show: showCmd, cancel: cancelCmd, settings: settingsCmd };
 
 // The commands that stand in front of an approved environment -- a plan, an action, a check --
 // are the ones that ask what this checkout's own runtime says about it. Silence is an answer:

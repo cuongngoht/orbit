@@ -29,7 +29,7 @@
 // machine itself (a process, a container, an image). `approval` is `human` where the
 // command refuses without --human -- for `prepare`, only when it would act (--apply).
 export const OPERATIONS = [
-  { class: "READ", commands: ["status", "proposal", "projects", "settings", "connectivity", "sandboxes", "sandbox", "sandbox-logs", "sandbox-topology"], mutates: "none", approval: "none", says: "looks at what is already kept and the machine as it is" },
+  { class: "READ", commands: ["status", "proposal", "projects", "settings", "connectivity", "sandboxes", "sandbox", "sandbox-logs", "sandbox-topology", "sandbox-dispatched"], mutates: "none", approval: "none", says: "looks at what is already kept and the machine as it is" },
   { class: "DISCOVERY", commands: ["discover", "record"], mutates: "store", approval: "none", says: "reads a checkout's evidence files and keeps what they say; never runs anything and never touches the repository" },
   { class: "ENVIRONMENT_DESIGN", commands: ["design"], mutates: "store", approval: "none", says: "works out what an environment would need to change, and keeps it as a proposal; writes no file in the repository" },
   { class: "REPOSITORY_ENVIRONMENT_WRITE", commands: ["adopt"], mutates: "repository", approval: "human", says: "writes the environment files of an approved, unchanged proposal into the working tree, and reads them back" },

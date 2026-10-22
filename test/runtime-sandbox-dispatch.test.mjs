@@ -8,7 +8,7 @@ import { Blocked, Refused } from "../src/errors.mjs";
 import { classOf } from "../src/runtime/governance.mjs";
 import { COMMANDS } from "../src/runtime/index.mjs";
 import { deps } from "../src/runtime/lifecycle/deps.mjs";
-import { dispatchDirs, dispatched } from "../src/runtime/sandbox/dispatch.mjs";
+import { WORKER_NOW, dispatchDirs, dispatched, dispatchedNow } from "../src/runtime/sandbox/dispatch.mjs";
 import { signalled, supervisionRoom } from "../src/runtime/sandbox/supervise.mjs";
 import { TASK } from "./sandbox.harness.mjs";
 import { WORKER, readyWorld } from "./isolated.harness.mjs";
@@ -102,4 +102,22 @@ test("the dispatch command is the runtime's, writes the machine, and is the TEST
   const w = await dispatchable();
   const answer = await w.run("sandbox-dispatch", TASK, [`--run=${RUN}`]);
   assert.equal(answer.run, RUN);
+});
+
+test("what became of a dispatch is READ BACK from its worker's receipt and container -- each row of WORKER_NOW, and nothing written", async () => {
+  const seen = {};
+  const w = await dispatchable({ iso: { attached: () => ((seen.during = dispatchedNow(w.ctx, { run: RUN }, w.d)), { ok: true, status: 0, out: "" }) } });
+  assert.deepEqual(dispatchedNow(w.ctx, { run: RUN }, w.d), { run: RUN, worker: "none", session: null, envelope: false }, "no receipt is no worker: none was ever created");
+  const r = await dispatched(w.ctx, { run: RUN }, w.d);
+  assert.equal(seen.during.worker, "running", "while it runs, its container says so");
+  const ended = dispatchedNow(w.ctx, { run: RUN }, w.d);
+  assert.deepEqual([ended.worker, ended.session], ["ended", r.session]);
+  const receipt = w.ctx.sessions.read(r.session);
+  const as = (state) => (w.ctx.sessions.write({ ...receipt, state }), dispatchedNow(w.ctx, { run: RUN }, w.d).worker);
+  assert.deepEqual([as("LOST"), as("STARTING"), as("RUNNING")], ["lost", "unstarted", "gone"], "a receipt that says it runs over a container that is gone: whatever was attached to it is gone");
+  assert.deepEqual(WORKER_NOW.map((x) => x.id), ["none", "lost", "unstarted", "ended", "running", "gone"]);
+  w.io.write(join(dispatchDirs(w.ctx, RUN).out, "envelope.json"), "{}");
+  assert.equal(dispatchedNow(w.ctx, { run: RUN }, w.d).envelope, true, "that an envelope was left is said -- what it says is the host's to judge");
+  assert.throws(() => dispatchedNow(w.ctx, { run: "Run 1" }, w.d), (e) => e instanceof Refused);
+  assert.deepEqual([COMMANDS["sandbox-dispatched"].writes, classOf("sandbox-dispatched").class], ["nothing", "READ"]);
 });

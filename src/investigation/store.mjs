@@ -53,6 +53,7 @@ export const ARTIFACT_KINDS = [
   { id: "designs", doc: "a test design" },
   { id: "versions", doc: "a frozen case version and its sidecar" },
   { id: "results", doc: "what one execution came to" },
+  { id: "dispatches", doc: "what one execution was dispatched with, its secrets by name only -- the request a late envelope is held to" },
   { id: "assessments", doc: "an assessment, frozen" },
   { id: "graphs", doc: "the system graph projection an obligation was derived from" },
   { id: "catalogs", doc: "the control catalog an assessment pinned" },

@@ -26,7 +26,7 @@ function room(opts = {}) {
 const CASE = { id: "reminder-once", name: "one reminder per occurrence", seen: "src", steps: [{ do: "call", capability: "orbit.state.read", proves: "sql", input: { stateRef: "reminders" }, expect: "it.count === 1" }] };
 
 test("the kinds of artifact are a table, and nothing else is kept", () => {
-  assert.deepEqual(ARTIFACT_KINDS.map((k) => k.id), ["bindings", "obligations", "designs", "versions", "results", "assessments", "graphs", "catalogs"]);
+  assert.deepEqual(ARTIFACT_KINDS.map((k) => k.id), ["bindings", "obligations", "designs", "versions", "results", "dispatches", "assessments", "graphs", "catalogs"]);
   const t = room();
   assert.throws(() => t.store.putArtifact(ID, "secrets", {}), refused(/keeps no "secrets" artifact/));
   assert.throws(() => t.store.putArtifact(ID, "../evidence", {}), refused(/keeps no/));

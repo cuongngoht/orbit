@@ -110,6 +110,10 @@
 //                                          isolation profile before it starts, its request on stdin (or --request),
 //                                          stopped by its receipt when the deadline passes. Decides no verdict: the
 //                                          worker's envelope is the host's to validate
+//   node runtime.mjs sandbox-dispatched --task=<tsk> --run=<id> [--json]
+//                                          what became of ONE dispatch whose end its caller never saw: its worker's
+//                                          receipt, whether its container still runs, whether it left an envelope.
+//                                          Reads only; what the envelope says is the host's to judge
 //   node runtime.mjs sandbox-signal --task=<tsk> --signal=pause|resume|cancel [--by=<who>] [--why=<text>] [--json]
 //                                          a pause, resume or cancel for the sandbox's supervisor; interrupts nothing
 //                                          by itself

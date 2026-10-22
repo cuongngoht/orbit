@@ -16,7 +16,8 @@ import { short } from "../../hash.mjs";
 import { scrub } from "../../scrub.mjs";
 import { PREPARED_EGRESS, attestation, unattested } from "./isolation.mjs";
 import { recomposed } from "./isolated-launch.mjs";
-import { ROLE_HARDENING, containerNameOf, podNameOf, receiptOf } from "./network.mjs";
+import { ROLE_HARDENING, containerNameOf, observedOf, podNameOf, receiptOf } from "./network.mjs";
+import { ISOLATION_PROVIDERS, isolationOf } from "../isolation/index.mjs";
 import { createOperations } from "./operations.mjs";
 import { operationsRoom } from "../rooms.mjs";
 import { supervisionNow, supervisionRoom } from "./supervise.mjs";
@@ -122,4 +123,35 @@ function finished(ctx, args, deps, now, receipt, r) {
   now.iso.container.remove(receipt.container.id, deps);
   ctx.sessions.write({ ...receipt, state: "STOPPED", stoppedAt: ctx.now(), stoppedHow: r.timedOut ? "its deadline passed" : "it ended" });
   return { ok: true, run: args.run, session: receipt.id, status: r.status ?? null, timedOut: Boolean(r.timedOut), stopped, out: dispatchDirs(ctx, args.run).out, envelope: ctx.io.exists(join(dispatchDirs(ctx, args.run).out, "envelope.json")) };
+}
+
+// ---- what became of a dispatch, read back ---------------------------------------------------------------------------
+
+// What became of ONE dispatch whose end its caller never saw (PBI 19; src/investigation/reconcile-runs.mjs): what its
+// worker's receipt says -- written before the worker is created, so no receipt is no worker -- and, while it says the
+// worker runs, whether its container still does; and whether an envelope was left. Never what the envelope says: that
+// is the host's to judge. Ordered, the first that holds:
+export const WORKER_NOW = [
+  { id: "none", when: (x) => !x.session, doc: "no receipt: no worker was ever created for it" },
+  { id: "lost", when: (x) => x.session.state === "LOST", doc: "the worker could not be created, so it never ran" },
+  { id: "unstarted", when: (x) => x.session.state === "STARTING", doc: "the worker was created and never started" },
+  { id: "ended", when: (x) => x.session.state !== "RUNNING", doc: "it ended, and its receipt says how" },
+  { id: "running", when: (x) => x.alive, doc: "its container still runs" },
+  { id: "gone", when: () => true, doc: "its receipt says it runs and its container does not: whatever was attached to it is gone" },
+];
+
+// -> { run, worker: WORKER_NOW id, session, envelope }: reads, and writes nothing.
+export function dispatchedNow(ctx, args, deps) {
+  if (!RUN.test(String(args.run ?? ""))) throw new Refused("name the run with --run=<id>: lowercase letters, digits and dashes");
+  const session = workerSessionOf(ctx, args.run);
+  const alive = session?.state === "RUNNING" && aliveNow(ctx, session, deps);
+  return { run: args.run, worker: WORKER_NOW.find((r) => r.when({ session, alive })).id, session: session?.id ?? null, envelope: ctx.io.exists(join(dispatchDirs(ctx, args.run).out, "envelope.json")) };
+}
+
+const workerSessionOf = (ctx, run) => ctx.sessions.list({ env: ctx.envId, owner: ctx.owner }).filter((s) => s.component === `worker:${run}`).sort((a, b) => String(a.requestedAt).localeCompare(String(b.requestedAt))).at(-1) ?? null;
+
+// A provider nobody can ask is a container nobody can say runs.
+function aliveNow(ctx, session, deps) {
+  const iso = isolationOf(session.container?.provider, ctx.isolation ?? ISOLATION_PROVIDERS);
+  return iso ? observedOf(iso, session, deps).alive === true : false;
 }

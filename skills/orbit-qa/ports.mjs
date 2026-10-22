@@ -120,10 +120,10 @@ const versionsOf = (ctx) => ({ engineVersion: engineVersion() ?? "unknown", vali
 // ── dispatch ───────────────────────────────────────────────────────────────
 
 // in: { ctx, model(), graph(), topology(), services, sandbox: {id, task, tree, currentTree, isolated}, mode, settings,
-//       policy: {revision, writes}, place: {in, out}, hooksToken(), now(), runtime: {dirs(run), dispatch(request)},
-//       project: {name, packs, sql, graphDir}, keep(dir, run) }
+//       policy: {revision, writes}, place: {in, out}, hooksToken(), now(),
+//       runtime: {dirs(run), dispatch(request), worker(run)}, project: {name, packs, sql, graphDir}, keep(dir, run) }
 export function dispatchPort(b) {
-  return { prepare: (x) => prepared(b, x), run: (x) => ran(b, x), keep: (r) => (r.evidence ? b.keep(r.evidence, r.envelope.runId) : null), provedBy: (s) => b.ctx.dsl.provedBy(s), canStop: (s) => typeof b.ctx.executors?.resolve?.(s.do)?.stops === "function" };
+  return { prepare: (x) => prepared(b, x), run: (x) => ran(b, x), readBack: (execution) => readBackOf(b, execution), keep: (r) => (r.evidence ? b.keep(r.evidence, r.envelope.runId) : null), provedBy: (s) => b.ctx.dsl.provedBy(s), canStop: (s) => typeof b.ctx.executors?.resolve?.(s.do)?.stops === "function" };
 }
 
 function prepared(b, x) {
@@ -229,6 +229,10 @@ function jsonFilesIn(dir) {
   try { return dir ? readdirSync(dir).filter((n) => n.endsWith(".json") && lstatSync(join(dir, n)).isFile()) : []; }
   catch { return []; }
 }
+
+// What a dispatch whose end nobody recorded left (src/investigation/reconcile-runs.mjs): its room, read exactly as a
+// live run's is, and what the runtime says became of its worker -- read, never sent again.
+const readBackOf = (b, execution) => ({ ...readBack(b.runtime.dirs(execution).out), worker: b.runtime.worker?.(execution) ?? null });
 
 // What the worker left, as the HOST finds it: its envelope, and -- only inside its own output -- the run log and the
 // files under the evidence it names, each listed by the host and digested, a link or a directory never followed. The

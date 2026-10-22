@@ -23,12 +23,23 @@ import { nextId } from "./model.mjs";
 import { eventIdOf } from "./store.mjs";
 import { resultOf } from "./verification.mjs";
 
+// Beyond a request's own deadline, the time a dispatch is given to make and remove its worker: what the composition root
+// gives the runtime's dispatch, and what a reconcile waits out before it calls a start that never settled ended.
+export const DISPATCH_SLACK_MS = 180000;
+
 export function ranVersion(w, a) {
   const d = dispatchOf(w);
   const v = versionOf(w, a.version);
-  const unsettled = unsettledOf(current(w), v.record.version);
-  if (unsettled) return { outcome: "AMBIGUOUS", execution: unsettled.execution, why: `a dispatch of ${v.record.version} (${unsettled.execution}) was started and never settled — it is read back, never sent again; reconcile it first` };
-  return prepareThenRun(w, d, v, attemptOf(w, v));
+  return heldBack(current(w), v.record.version) ?? prepareThenRun(w, d, v, attemptOf(w, v));
+}
+
+// A version that is never sent now: a dispatch of it started and never settled (it is read back, never sent again), or
+// its last dispatch is AMBIGUOUS (what it did is unknown, and a person decides).
+function heldBack(model, version) {
+  const unsettled = unsettledOf(model, version);
+  if (unsettled) return { outcome: "AMBIGUOUS", execution: unsettled.execution, why: `a dispatch of ${version} (${unsettled.execution}) was started and never settled — it is read back, never sent again; reconcile it first (autonomous-qa.mjs reconcile)` };
+  const last = model.evaluations.filter((e) => model.starts.some((s) => s.execution === e.execution && s.version === version)).at(-1);
+  return last?.outcome === "AMBIGUOUS" ? { outcome: "AMBIGUOUS", execution: last.execution, why: `the last dispatch of ${version} (${last.execution}) is AMBIGUOUS — what it did is unknown, and it is never sent again: a person reads back and decides` } : null;
 }
 
 // One more attempt of the same frozen version, within the budget (doc §6.4): a version is never run
@@ -94,12 +105,22 @@ function dispatchedRun(w, d, v, attempt, p, execution) {
 // and the digests its design pinned on every verdict.
 const requestOf = (v, execution, p) => ({ v: WORKER_API, runId: execution, nonce: randomBytes(12).toString("hex"), case: { file: p.place?.case ?? null, digest: v.record.digest }, params: {}, bindings: p.bindings ?? {}, secrets: p.secrets ?? {}, grants: p.grants ?? [], fixture: p.fixture ?? null, evaluation: { mode: "compiled", digests: Object.fromEntries((v.design.compiled ?? []).map((c) => [String(c.step), c.digest])) }, limits: { deadlineMs: p.deadlineMs ?? null }, out: p.place?.out ?? null });
 
-// Written BEFORE the dispatch: what was authorized, what was bound, and the intent to run.
+// Written BEFORE the dispatch: what was authorized, what was bound, and the intent to run -- the request itself kept,
+// its secrets by name only, under the digest the start records (`request`, a structural field the scrubber never
+// masks), so a late envelope is held to exactly what was sent.
 function intended(w, v, attempt, p, execution, request) {
   const at = (kind, rec) => w.store.appendOnce(w.id, kind, { id: nextId(current(w), kind), eventId: eventIdOf(kind, v.record.version, attempt, execution), attempt, version: v.record.version, ...rec });
+  const kept = w.store.putArtifact(w.id, "dispatches", { ...request, secrets: Object.keys(request.secrets).sort() });
   at("authorized", { state: "granted", grant: (p.grants ?? []).map((g) => g.id).join(",") || null });
   at("prepared", { state: "prepared", sandbox: p.sandbox ?? null, tree: p.tree ?? null, bindings: sha(canonicalJson(request.bindings)) });
-  at("started", { execution, intent: sha(canonicalJson({ ...request, secrets: Object.keys(request.secrets).sort() })) });
+  at("started", { execution, request: kept.digest });
+}
+
+// A LATE envelope (src/investigation/reconcile-runs.mjs LATE): held to the very request that was dispatched and judged
+// on the path a live one is -- the same findings, the same RESULT, the same records. The caller holds the journal.
+export function lateEvaluated(w, start, back, request) {
+  const v = versionOf(w, start.version);
+  return evaluatedRun(w, dispatchOf(w), v, start.attempt, start.execution, request, back, { grants: request.grants ?? [] });
 }
 
 // The host's own check, then the word RESULT gives it -- recorded as the run and its evaluation.

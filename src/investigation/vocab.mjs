@@ -125,7 +125,7 @@ export const KINDS = {
   validated: ["id", "eventId", "attempt", "version", "state", "validator", "findings", "repair"],
   authorized: ["id", "eventId", "attempt", "version", "state", "policy", "grant", "why"],
   prepared: ["id", "eventId", "attempt", "version", "state", "sandbox", "tree", "bindings"],
-  started: ["id", "eventId", "attempt", "version", "execution", "intent"],
+  started: ["id", "eventId", "attempt", "version", "execution", "request"],
   observed: ["id", "eventId", "attempt", "execution", "completeness", "gaps", "through", "late", "evidence"],
   evaluated: ["id", "eventId", "attempt", "execution", "obligation", "result", "digest", "outcome", "runner", "cause", "boundary"],
   assessed: ["id", "eventId", "assessment", "digest", "scope", "results", "supersedes"],

@@ -37,6 +37,8 @@ export const sayTrusted = (r) => `TRUST  kept; revision ${r.saved.revision}`;
 
 export const sayDispatched = (r) => `DISPATCHED  ${r.run}  ${r.timedOut ? "its deadline passed and it was stopped" : `ended with status ${r.status ?? "none"}`}${r.envelope ? "" : "  (no envelope was written)"}`;
 
+export const sayDispatchState = (r) => `DISPATCH  ${r.run}  worker ${r.worker}${r.session ? ` (${r.session})` : ""}  ${r.envelope ? "an envelope was left — the host judges it" : "no envelope"}`;
+
 export const saySignalled = (r) => `SIGNAL  ${r.signal.signal} #${r.signal.seq} for ${r.environment}`;
 
 // The topology in words: which node runs where and on which ports -- never an environment value.

@@ -32,6 +32,43 @@ export const PORT_MODES = ["lease", "fixed"];
 export const BROWSERS = ["isolated"];
 export const PLACEMENTS = ["auto", "native", "devcontainer"];
 
+// How a task's generated active tests are ISOLATED (ADR 0038, 0039): off -- the sandbox runs what it places, as before
+// -- or required, when every component and service runs in a container on an internal network of the task's own, and
+// a test runs only in a worker whose isolation was attested. The worker image is a person's choice, pinned by digest
+// and trusted by fingerprint like a topology and an adapter's image; `egress` is what an attestation tries to reach
+// from inside, which must fail -- its NAME must not resolve, and its ADDRESS (a person's literal, else what this
+// machine resolves the name to) must not be reached. `buildNetwork` is what an image built for the sandbox may reach
+// while it builds: nothing, unless a person says the build needs the network (and then the topology a person trusts
+// covers every file the build is sent). Every number is a ceiling a person may only narrow.
+export const ISOLATION_MODES = ["off", "required"];
+export const NETWORK_MODES = ["auto", "aliases", "pod"];
+export const BUILD_NETWORKS = ["none", "default"];
+export const PINNED_IMAGE = /(^sha256:[0-9a-f]{64}$)|(@sha256:[0-9a-f]{64}$)/;
+
+// A literal address, IPv4 dotted or IPv6 hexadecimal: what a probe connects to without asking a resolver.
+export const ADDRESS = /^((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}|(?=[0-9a-f:]*:[0-9a-f:]*:)[0-9a-f:]{2,39})$/i;
+
+// An address that says nothing about leaving a network: the container's own loopback, the unspecified address, a
+// link-local or a multicast one. A refusal there, asked from inside, proves nothing about what is outside.
+const NOWHERE = [/^127\./, /^0\./, /^169\.254\./, /^2(2[4-9]|3\d)\./, /^::1?$/, /^(0:){7}[01]$/, /^fe[89ab][0-9a-f]?:/i, /^ff/i];
+
+export const outsideAddress = (a) => typeof a === "string" && ADDRESS.test(a) && !NOWHERE.some((r) => r.test(a));
+
+export const ISOLATION_DEFAULTS = Object.freeze({
+  mode: "off",
+  provider: "docker",
+  workerImage: null,
+  networkMode: "auto",
+  limits: { cpus: 2, memoryMb: 2048, pids: 512 },
+  lifetimeMinutes: 120,
+  teardownSeconds: 120,
+  egress: { host: "example.com", port: 443, address: null },
+  buildNetwork: "none",
+  trustedTopologies: [],
+  trustedWorkers: [],
+  trustedAdapters: [],
+});
+
 export const SANDBOX_DEFAULTS = Object.freeze({
   enabled: true,
   strategy: "auto",
@@ -39,8 +76,9 @@ export const SANDBOX_DEFAULTS = Object.freeze({
   restore: { mode: "approved", trusted: [] },
   ports: { mode: "lease", from: 42000, to: 42999 },
   trustedDefinitions: [],
-  qa: { modes: [], entry: null, browser: "isolated" },
+  qa: { modes: [], entry: null, browser: "isolated", writes: [] },
   network: { denyProductionWrites: true },
+  isolation: ISOLATION_DEFAULTS,
 });
 
 const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -56,6 +94,28 @@ const KEY = /^[a-z][a-z0-9-]*:[^\u0000-\u001f]{1,200}$/;
 
 const MODE_WORD = /^[a-z][a-z-]{1,31}$/;
 
+const between = (n, low, high, integer = true) => typeof n === "number" && (!integer || Number.isInteger(n)) && n >= low && n <= high;
+
+const HOSTNAME = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i;
+
+const limitsOk = (l) => isObject(l) && unknownOf(l, ["cpus", "memoryMb", "pids"]).length === 0 && between(l.cpus, 0.1, 64, false) && between(l.memoryMb, 64, 65536) && between(l.pids, 16, 65536);
+
+const egressOk = (e) => isObject(e) && unknownOf(e, ["host", "port", "address"]).length === 0 && HOSTNAME.test(String(e.host)) && between(e.port, 1, 65535) && ((e.address ?? null) === null || outsideAddress(e.address));
+
+// Ordered: the first reason the isolation block does not hold.
+const ISOLATION_RULES = [
+  { fails: (i) => !isObject(i) || unknownOf(i, Object.keys(ISOLATION_DEFAULTS)).length > 0, says: () => `sandbox.isolation is { ${Object.keys(ISOLATION_DEFAULTS).join(", ")} }` },
+  { fails: (i) => !ISOLATION_MODES.includes(i.mode), says: () => `sandbox.isolation.mode is ${ISOLATION_MODES.join(" or ")}` },
+  { fails: (i) => !/^[a-z][a-z0-9-]{0,31}$/.test(String(i.provider)), says: () => "sandbox.isolation.provider names an isolation provider by id" },
+  { fails: (i) => i.workerImage !== null && !PINNED_IMAGE.test(String(i.workerImage)), says: () => "sandbox.isolation.workerImage is null, or an image pinned by digest (name@sha256:… or sha256:…) — a tag can move" },
+  { fails: (i) => !NETWORK_MODES.includes(i.networkMode), says: () => `sandbox.isolation.networkMode is ${NETWORK_MODES.join(", ")}` },
+  { fails: (i) => !limitsOk(i.limits), says: () => "sandbox.isolation.limits is { cpus: 0.1-64, memoryMb: 64-65536, pids: 16-65536 }" },
+  { fails: (i) => !between(i.lifetimeMinutes, 1, 1440) || !between(i.teardownSeconds, 5, 3600), says: () => "sandbox.isolation.lifetimeMinutes is 1-1440 and teardownSeconds 5-3600" },
+  { fails: (i) => !egressOk(i.egress), says: () => "sandbox.isolation.egress is { host: a host name, port: 1-65535, address: null or a literal address outside this machine }: what an attestation must fail to reach" },
+  { fails: (i) => !BUILD_NETWORKS.includes(i.buildNetwork), says: () => `sandbox.isolation.buildNetwork is ${BUILD_NETWORKS.join(" or ")}` },
+  { fails: (i) => ![i.trustedTopologies, i.trustedWorkers, i.trustedAdapters].every(fingerprintsOk), says: () => `sandbox.isolation's trusted lists each hold up to ${MAX_TRUSTED} distinct 64-character fingerprints` },
+];
+
 // Ordered: the first reason the block does not hold, said with the field it is about.
 const SANDBOX_RULES = [
   { fails: (s) => !isObject(s), says: () => "sandbox is an object" },
@@ -69,11 +129,13 @@ const SANDBOX_RULES = [
   { fails: (s) => !portOk(s.ports.from) || !portOk(s.ports.to) || s.ports.from > s.ports.to, says: () => `sandbox.ports.from and to are ports ${PORT_FLOOR} to ${PORT_CEILING}, from not above to` },
   { fails: (s) => s.ports.to - s.ports.from + 1 > MAX_SPAN, says: () => `sandbox.ports spans at most ${MAX_SPAN} ports` },
   { fails: (s) => !fingerprintsOk(s.trustedDefinitions), says: () => `sandbox.trustedDefinitions lists up to ${MAX_TRUSTED} distinct 64-character fingerprints` },
-  { fails: (s) => !isObject(s.qa) || unknownOf(s.qa, ["modes", "entry", "browser"]).length > 0, says: () => "sandbox.qa is { modes, entry, browser }" },
+  { fails: (s) => !isObject(s.qa) || unknownOf(s.qa, ["modes", "entry", "browser", "writes"]).length > 0, says: () => "sandbox.qa is { modes, entry, browser, writes }" },
   { fails: (s) => !Array.isArray(s.qa.modes) || s.qa.modes.length > 8 || s.qa.modes.some((m) => !MODE_WORD.test(m)), says: () => "sandbox.qa.modes lists up to 8 investigation modes by name" },
   { fails: (s) => s.qa.entry !== null && !KEY.test(String(s.qa.entry)), says: () => "sandbox.qa.entry is null, or the component the browser opens (<ecosystem>:<directory>)" },
+  { fails: (s) => !Array.isArray(s.qa.writes) || s.qa.writes.length > 16 || s.qa.writes.some((m) => !MODE_WORD.test(m)) || new Set(s.qa.writes).size !== s.qa.writes.length, says: () => "sandbox.qa.writes lists, by name, up to 16 distinct kinds of effect a generated test may have on its own run's fixture (publish, trigger, consume …): a person's standing policy, and nothing else mints a grant for one (ADR 0037)" },
   { fails: (s) => !BROWSERS.includes(s.qa.browser), says: () => `sandbox.qa.browser is ${BROWSERS.join(" or ")} in this release: a signed-in profile copy is not offered yet` },
   { fails: (s) => !isObject(s.network) || unknownOf(s.network, ["denyProductionWrites"]).length > 0 || typeof s.network.denyProductionWrites !== "boolean", says: () => "sandbox.network is { denyProductionWrites: true|false }" },
+  ...ISOLATION_RULES.map((r) => ({ fails: (s) => r.fails(s.isolation), says: r.says })),
 ];
 
 export const sandboxProblems = (block) => SANDBOX_RULES.filter((r) => safely(r, block)).map((r) => r.says(block));
@@ -142,7 +204,12 @@ export const effectivePolicy = (settings) => ({ policy: { ...sandboxFilled(setti
 export const TRUST_KINDS = [
   { kind: "restore", say: "a dependency restore plan", read: (policy) => policy.restore.trusted, write: (policy, list) => ({ ...policy, restore: { ...policy.restore, trusted: list } }) },
   { kind: "definition", say: "a dev container definition", read: (policy) => policy.trustedDefinitions, write: (policy, list) => ({ ...policy, trustedDefinitions: list }) },
+  { kind: "topology", say: "an isolated sandbox topology", read: (policy) => policy.isolation.trustedTopologies, write: (policy, list) => isolationWith(policy, "trustedTopologies", list) },
+  { kind: "worker-image", say: "a test worker image", read: (policy) => policy.isolation.trustedWorkers, write: (policy, list) => isolationWith(policy, "trustedWorkers", list) },
+  { kind: "adapter-image", say: "an adapter's image", read: (policy) => policy.isolation.trustedAdapters, write: (policy, list) => isolationWith(policy, "trustedAdapters", list) },
 ];
+
+const isolationWith = (policy, key, list) => ({ ...policy, isolation: { ...policy.isolation, [key]: list } });
 
 export const trustKind = (kind) => TRUST_KINDS.find((k) => k.kind === kind) ?? null;
 

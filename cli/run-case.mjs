@@ -15,6 +15,10 @@
 //     --out=DIR            evidence dir outside any repository (default: the store's evidence room)
 //     --json               one machine-readable result object, nothing else
 //     --report             also write self-contained HTML into the reports directory
+//     --worker             inside an isolated worker (ADR 0038): read ONE orbit.worker/v1 request on
+//                          stdin -- the frozen case, its params, the sealed bindings and secrets --
+//                          run it, and write <out>/envelope.json beside the evidence. The host
+//                          validates that envelope; nothing a worker writes is authoritative.
 //
 // Exit 0 = PASS or SKIP · 1 = FAIL (evidence written) · 2 = REFUSED before the
 // browser (bad usage, invalid case, missing param, destructive without the
@@ -24,6 +28,14 @@
 //
 // It never opens a browser. The launcher does, behind the preflight question;
 // this drives the session in PT_RUN_DIR (or the project's default run dir).
+import { randomBytes } from "node:crypto";
+import { appendFileSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, relative } from "node:path";
+import { readAll } from "../src/capability/helper-protocol.mjs";
+import { shaBytes } from "../src/hash.mjs";
+import { argvOf, closedPage, identityIssuer, openedPage, pageSpendRecords, pageSpendsOf, requestProblem, sealedBinder, WORKER_API } from "../src/run/worker.mjs";
+import { grantLedger } from "../src/run/grants.mjs";
 import { shownPath } from "../src/shown-path.mjs";
 import { publishRun } from "../src/report/publish.mjs";
 import { createContext } from "../src/run/context.mjs";
@@ -104,4 +116,78 @@ function exitWith(status, text, write) {
   process.exit(EXIT[status]);
 }
 
-await main();
+// ── inside a worker ─────────────────────────────────────────────────────────
+// The request is read whole from stdin and never from argv: its secrets must not be in a process
+// listing. Whatever happens, an envelope is written -- a worker that dies says INTERRUPTED through
+// its supervisor (cli/sandbox-worker.mjs), one that ran says what it ran.
+async function workerMain() {
+  const request = jsonOf(await readAll(process.stdin));
+  const problem = requestProblem(request);
+  if (problem) return enveloped(request ?? {}, { status: "REFUSED", why: problem });
+  try { enveloped(request, paged(await issuing(request), request)); }
+  catch (e) { enveloped(request, stopOf(e)); }
+}
+
+// A page case's browser is opened before the run and closed after it, whatever the run came to.
+function paged(ctx, request) {
+  if (!request.page) return ran(ctx, request);
+  openedPage(ctx, request, PAGE_IO);
+  try { return spendsKept(ctx, request, ran(ctx, request)); }
+  finally { closedPage(ctx); }
+}
+
+// What the page's writes spent goes into the run log beside the steps, the way a call's spend does, before the
+// evidence is listed -- so the host holds every spend to what it minted (src/run/envelope.mjs spendFindings).
+function spendsKept(ctx, request, o) {
+  const records = pageSpendRecords(pageSpendsOf(ctx), request.grants);
+  if (records.length && o.result?.evidence) appendFileSync(join(o.result.evidence, "run-log.jsonl"), records.map((r) => `${JSON.stringify(r)}\n`).join(""));
+  return o;
+}
+
+// What the page's browser is set up through: the run directory's config, and the route as a file of the worker's own
+// scratch -- the system temp, a tmpfs in a worker the host never reads -- readable by this user alone, removed as
+// soon as the browser has loaded it.
+const PAGE_IO = {
+  now: () => Date.now(),
+  write: (file, text) => (mkdirSync(dirname(file), { recursive: true }), writeFileSync(file, text)),
+  scratch: (text) => ((file) => (writeFileSync(file, text, { mode: 0o600, flag: "wx" }), file))(join(tmpdir(), `orbit-page-${randomBytes(8).toString("hex")}.js`)),
+  remove: (file) => rmSync(file, { force: true }),
+};
+
+// The worker's context: its binder holds only what the host sealed, and issues an identity the host could not
+// through this very context's adapters -- bound after the context, which the binder is part of.
+async function issuing(request) {
+  const late = {};
+  const ctx = await withExtensions({ ...createContext(), binder: sealedBinder(request, { issue: (value, env) => late.issue(value, env) }), grants: grantLedger(request.grants, request.runId, Date.now), fixture: request.fixture ?? null, evaluation: request.evaluation ?? null });
+  late.issue = identityIssuer(ctx);
+  return ctx;
+}
+
+const ran = (ctx, request) => ((outcome) => ({ status: outcome.status, result: resultJson(outcome) }))(runCase(ctx, argvOf(request)));
+
+const stopOf = (e) => ({ status: e instanceof Refused ? "REFUSED" : "BLOCKED", why: e instanceof Refused || e instanceof Blocked ? e.message : `the runner itself failed — ${e?.message ?? e}` });
+
+function jsonOf(text) {
+  try { return JSON.parse(text); }
+  catch { return null; }
+}
+
+function enveloped(request, o) {
+  const out = request.out ?? ".";
+  const evidence = o.result?.evidence ? relative(out, o.result.evidence).replace(/\\/g, "/") : null;
+  const envelope = { v: WORKER_API, runId: request.runId ?? null, nonce: request.nonce ?? null, caseDigest: request.case?.digest ?? null, status: o.status, why: o.why ?? null, result: o.result ?? null, evidence, files: evidence ? listed(out, join(out, evidence)) : [] };
+  writeFileSync(join(out, "envelope.json"), `${JSON.stringify(envelope)}\n`);
+  process.exit(EXIT[o.status] ?? EXIT.BLOCKED);
+}
+
+function listed(out, dir) {
+  const names = safeList(dir);
+  return names.map((n) => join(dir, n)).filter((p) => statSync(p).isFile()).map((p) => ({ path: relative(out, p).replace(/\\/g, "/"), sha256: shaBytes(readFileSync(p)), bytes: statSync(p).size }));
+}
+
+function safeList(dir) {
+  try { return readdirSync(dir, { recursive: true }).map(String); }
+  catch { return []; }
+}
+
+await (argv.includes("--worker") ? workerMain() : main());

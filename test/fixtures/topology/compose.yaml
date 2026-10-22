@@ -1,0 +1,25 @@
+# A composition file for the topology analysis test: read, never run. The images name products on
+# purpose -- the analysis must keep each as an attribute and infer nothing from it.
+services:
+  api:
+    image: invoice-api:dev
+    depends_on:
+      - db
+      - broker
+    networks: [task]
+  worker:
+    build: ./worker
+    depends_on:
+      broker:
+        condition: service_healthy
+    networks:
+      - task
+  db:
+    image: postgres:16
+  broker:
+    image: rabbitmq:4
+    networks: [task, ops]
+networks:
+  task:
+    internal: true
+  ops: {}

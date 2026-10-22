@@ -29,6 +29,7 @@
 //   node query.mjs extensions           this project's own QC tools: loaded, refused, why
 //   node query.mjs capabilities         what a {"do":"call"} step may ask here
 //   node query.mjs capability <id>      one capability: its input contract and what it needs
+//   node query.mjs adapters [--matrix]  the adapters this project may select, and their computed support
 import { command } from "../src/project/command.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -36,18 +37,45 @@ import { loadCases } from "../src/dsl/index.mjs";
 import { COMMANDS, runQuery } from "../src/query/index.mjs";
 import { createContext } from "../src/run/context.mjs";
 import { withExtensions } from "../src/extensions/index.mjs";
+import { codeDigestOf, readReceipts, receiptFiles } from "../src/adapters/receipts.mjs";
+import { catalogFile, readCatalog, rowsOf } from "../src/catalog.mjs";
+import { qcToolPaths } from "../src/extensions/store.mjs";
+import { dirname, join } from "node:path";
+import { realIo } from "../src/store/io.mjs";
+import { pluginRoot } from "../src/version.mjs";
 
 const [cmd, ...args] = process.argv.slice(2);
 
 async function main() {
-  if (!COMMANDS[cmd]) return console.log(readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(1, 31).join("\n"));
+  if (!COMMANDS[cmd]) return console.log(readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(1, 32).join("\n"));
   const ctx = await withExtensions(createContext());
-  process.exitCode = badly(runQuery({ ...ctx, cases: loadCases(ctx.project.screensDir) }, cmd, args));
+  process.exitCode = badly(runQuery({ ...ctx, cases: loadCases(ctx.project.screensDir), adapterReceipts: () => receiptsHere(ctx), adapterCode: codeOfAdapter(ctx) }, cmd, args));
 }
 
 // `check` is a GATE: CI runs it, record-edge rolls an append back on it, and
 // every playbook tells an agent to see zero findings. It always exited 0, so not
 // one of those could actually fail. Advisories never affect the code.
 const badly = (result) => (result?.findings ? 1 : 0);
+
+// The receipts support is computed from: the plugin's own, then this project's store -- asked
+// without preparing the store, because reading never creates.
+function receiptsHere(ctx) {
+  const io = realIo();
+  return readReceipts(receiptFiles(pluginRoot(), storeOf(ctx), io), io);
+}
+
+function storeOf(ctx) {
+  try { return ctx.store(false); }
+  catch { return null; }
+}
+
+// Where an adapter's helper code lives, so a receipt is held to the code that ran: a pack's from
+// the plugin's catalog, a project's own from its QC-tools room.
+function codeOfAdapter(ctx) {
+  const io = realIo();
+  const packs = new Map(rowsOf(readCatalog(io, catalogFile(pluginRoot(), "packs")).packs).map((p) => [`pack:${p.id}`, join(pluginRoot(), p.dir)]));
+  const homeOf = (a) => packs.get(a.from) ?? (storeOf(ctx) ? join(qcToolPaths(storeOf(ctx)).root, a.from) : null);
+  return (a) => (homeOf(a) ? codeDigestOf(join(homeOf(a), dirname(a.helper.argv[0])), io) : undefined);
+}
 
 command(main);

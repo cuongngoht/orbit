@@ -13,7 +13,7 @@
 // engine has no verb for, and the day a verb proves a fourth one, plans can
 // speak about it with no edit here.
 import { LAYERS } from "../dsl/verbs.mjs";
-import { EXECUTIONS, LINK_STATE_NAMES, MUTATION_NAMES, NEED_NAMES, PRIORITIES, READINESS_NAMES, REPEAT_NAMES, TECHNIQUE_NAMES } from "./vocab.mjs";
+import { EXECUTIONS, EXPECT_OP_NAMES, LINK_STATE_NAMES, MUTATION_NAMES, NEED_NAMES, PRIORITIES, READINESS_NAMES, REPEAT_NAMES, TECHNIQUE_NAMES } from "./vocab.mjs";
 import { FOLDER } from "../tests-tree.mjs";
 
 // A plan id names a file; a member id is quoted in tickets, commits and
@@ -68,6 +68,8 @@ export const SOURCE_FIELDS = {
   at: { type: "string", doc: "When it was read." },
   says: { type: "string", doc: "What it says, quoted or summarised." },
   authority: { enum: ["accepted", "draft"], doc: "Whether this is the team's ACCEPTED requirement or still a draft. Absent reads accepted in a committed plan and draft in an agent's draft plan; a criterion from a draft source prepares tests and never confirms a finding." },
+  digest: { type: "string", doc: "The digest of what was read, so a source that moved with no new revision is noticed rather than trusted." },
+  dialect: { type: "string", doc: "The dialect a contract document is written in -- e.g. openapi-3.1, asyncapi-3.0, json-schema/2020-12 -- so a reader of it is chosen by what it is, never guessed." },
 };
 
 export const MAPREF_FIELDS = {
@@ -87,6 +89,23 @@ export const CRITERION_FIELDS = {
   source: { type: "string", doc: "Which source id it came from." },
   risk: ref("risk", "What it would cost to get this wrong."),
   disposition: ref("disposition", "Only when no scenario covers it: why not, and what happens instead."),
+  expects: list("criterionExpect", "What the criterion states as STRUCTURED expectations over observed meanings. Only these can be mapped to an assertion without anybody's judgement; prose still prepares a test, and never confirms one."),
+  about: { type: "string", pattern: "^[a-z0-9][a-z0-9-]{0,63}$", doc: "The system graph node it is about, by its logical alias (a node's name, lower-case, every other character a dash)." },
+  obligations: { type: "array", items: { type: "string", pattern: "^[a-z][a-z0-9-]{0,63}$" }, doc: "Which kinds of property it states, as obligation shapes (src/qa/obligations/shapes.mjs). Only these are derived into test obligations; none is guessed from the prose." },
+};
+
+// A meaning (src/topology/vocab.mjs MEANINGS), optionally with a sub-path: response.status,
+// response.body.error, effect.count.
+const MEANING_PATH = /^[a-z][a-zA-Z]*\.[a-zA-Z][a-zA-Z0-9]*(\.[A-Za-z0-9_-]+)*$/;
+
+export const CRITERION_EXPECT_FIELDS = {
+  id: id("Stable id, e.g. E1."),
+  property: { type: "string", pattern: MEANING_PATH.source, doc: "The observed meaning it is about, e.g. response.status, effect.count, message.id -- never a provider's field name." },
+  op: { enum: EXPECT_OP_NAMES, doc: "What must hold of it (src/qa/vocab.mjs EXPECT_OPS)." },
+  value: { doc: "The value the criterion states: a number, a word, a list -- exactly as its owner wrote it." },
+  within: { type: "integer", minimum: 1, doc: "The window, in seconds, an absence or a completion is claimed within. Required for those two; never invented." },
+  for: { type: "array", items: { type: "string", pattern: "^[a-z][a-z0-9-]{0,63}$" }, doc: "Which of the criterion's obligations this expectation states, by shape. Absent: every one whose shape rules with its op. Empty: none -- a slot a design may still rule an auxiliary step with (a barrier, a positive control)." },
+  because: { type: "string", doc: "Where in the source it says so." },
 };
 
 export const DISPOSITION_FIELDS = {
@@ -257,6 +276,7 @@ export const DEFINITIONS = {
   mapref: { table: MAPREF_FIELDS, required: [] },
   budget: { table: BUDGET_FIELDS, required: [] },
   criterion: { table: CRITERION_FIELDS, required: ["id", "says"] },
+  criterionExpect: { table: CRITERION_EXPECT_FIELDS, required: ["id", "property", "op"] },
   disposition: { table: DISPOSITION_FIELDS, required: ["state", "because"] },
   assumption: { table: ASSUMPTION_FIELDS, required: ["id", "says"] },
   question: { table: QUESTION_FIELDS, required: ["id", "asks"] },

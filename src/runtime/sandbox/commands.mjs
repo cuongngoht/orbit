@@ -17,9 +17,12 @@ import { prepared } from "./prepare.mjs";
 import { reconciled } from "./reconcile.mjs";
 import { released } from "./release.mjs";
 import { trust } from "./trust.mjs";
+import { dispatched, dispatchedNow } from "./dispatch.mjs";
+import { signalled, supervisionRoom } from "./supervise.mjs";
 import { logsOf, sandboxView, sandboxesView } from "./view.mjs";
-import { saySandbox, saySandboxes, sayLaunched, sayLogs, sayPrepared, sayReleased, sayStopped, sayTrusted } from "./views.mjs";
+import { sayDispatched, sayDispatchState, saySandbox, saySandboxes, saySignalled, sayLaunched, sayLogs, sayPrepared, sayReleased, sayStopped, sayTopology, sayTrusted } from "./views.mjs";
 import { stop } from "../lifecycle/stop.mjs";
+import { recomposed } from "./isolated-launch.mjs";
 
 const ABOUT_ONE = "this is about ONE task's sandbox: name it with --task=<tsk-…> (and run from the checkout it belongs to)";
 
@@ -28,10 +31,23 @@ const sandboxed = (ctx) => {
   return ctx;
 };
 
-const prepare = async (ctx) => {
+// A closure is the components and servers what is about to be tested needs: `--closure=<key,key>` names components by
+// key and servers by their compose name. Absent, everything the workspace declares.
+const closureOf = (args) => ((list) => (list ? { components: list, services: list } : null))(flag(args, "closure")?.split(",").map((k) => k.trim()).filter(Boolean));
+
+const prepare = async (ctx, args = []) => {
   reconciled(sandboxed(ctx), { apply: true });
-  return prepared(ctx, deps(ctx));
+  return prepared(ctx, deps(ctx), { closure: closureOf(args) });
 };
+
+// One generated test, to the sandbox's worker: the request is read from --request=<file>, or stdin.
+const dispatch = (ctx, args) => dispatched(sandboxed(ctx), { run: flag(args, "run"), deadlineMs: flag(args, "deadline-ms"), input: ctx.read?.(flag(args, "request")) ?? "" }, deps(ctx));
+
+// What became of one dispatch, read back: its worker's receipt, whether it still runs, whether it left an envelope.
+const dispatchState = (ctx, args) => dispatchedNow(sandboxed(ctx), { run: flag(args, "run") }, deps(ctx));
+
+// A signal the roots that own a cancel write: pause, resume, cancel.
+const signal = (ctx, args) => ({ environment: sandboxed(ctx).envId, signal: signalled(ctx.io, supervisionRoom(ctx.rooms.liveSandbox), { signal: flag(args, "signal"), by: flag(args, "by") ?? "terminal", why: flag(args, "why") ?? "" }, ctx.now()) });
 
 const launch = (ctx, args) => launched(sandboxed(ctx), { component: flag(args, "component"), wait: flag(args, "wait") === undefined ? undefined : Number(flag(args, "wait")) }, deps(ctx));
 
@@ -45,7 +61,19 @@ const logs = (ctx, args) => logsOf(sandboxed(ctx), flag(args, "session"), { stre
 
 const listed = (ctx) => sandboxesView(ctx);
 
-const trusted = (ctx, args) => ({ saved: trust(ctx, { kind: has(args, "restore") || flag(args, "restore") ? "restore" : "definition", fingerprint: flag(args, "restore") ?? flag(args, "definition"), revoke: has(args, "revoke"), revision: flag(args, "revision") ?? null }) });
+// What the sandbox's topology is NOW -- each node's key, role, alias on the task's network, ports, the
+// catalog service it runs and what it was started with -- for the host's binder
+// (src/runtime/sandbox/bindings.mjs); composed exactly as a dispatch composes it, gated the same way.
+const topologyOf = (ctx) => ((now) => (now.needs ? { environment: ctx.envId, needs: now.needs, say: now.say } : { environment: ctx.envId, mode: now.topology.mode, fingerprint: now.topology.fingerprint, nodes: now.topology.nodes.map(nodeOf) }))(recomposed(sandboxed(ctx), deps(ctx)));
+
+const nodeOf = (n) => ({ key: n.key, role: n.role, name: n.name, alias: n.alias, service: n.service ?? null, ports: n.ports ?? [], argv: n.argv ?? [], compose: { env: n.compose?.env ?? [] }, env: { names: n.env?.names ?? [], values: n.env?.values ?? {} } });
+
+// Which kind of trust a flag names, in the table's order: the first one given.
+const TRUST_FLAGS = ["restore", "definition", "topology", "worker-image", "adapter-image"];
+
+const trustFlagOf = (args) => TRUST_FLAGS.find((k) => flag(args, k) !== undefined) ?? "definition";
+
+const trusted = (ctx, args) => ({ saved: trust(ctx, { kind: trustFlagOf(args), fingerprint: flag(args, trustFlagOf(args)), revoke: has(args, "revoke"), revision: flag(args, "revision") ?? null }) });
 
 export const SANDBOX_COMMANDS = {
   sandboxes: { run: listed, say: saySandboxes, writes: "nothing", needs: "checkout" },
@@ -55,6 +83,10 @@ export const SANDBOX_COMMANDS = {
   "sandbox-stop": { about: "task", run: stopped, say: sayStopped, writes: "machine", needs: "checkout" },
   "sandbox-release": { about: "task", run: release, say: sayReleased, writes: "machine", needs: "checkout" },
   "sandbox-logs": { about: "task", run: logs, say: sayLogs, writes: "nothing", needs: "checkout" },
+  "sandbox-dispatch": { about: "task", run: dispatch, say: sayDispatched, writes: "machine", needs: "checkout" },
+  "sandbox-dispatched": { about: "task", run: dispatchState, say: sayDispatchState, writes: "nothing", needs: "checkout" },
+  "sandbox-signal": { about: "task", run: signal, say: saySignalled, writes: "store", needs: "checkout" },
+  "sandbox-topology": { about: "task", run: topologyOf, say: sayTopology, writes: "nothing", needs: "checkout" },
   trust: { run: trusted, say: sayTrusted, writes: "store", needs: "checkout" },
 };
 

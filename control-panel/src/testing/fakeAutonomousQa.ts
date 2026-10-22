@@ -1,14 +1,14 @@
 // Autonomous QA as control-server answers it, in memory. Like the real server,
 // a save names the revision it read and a stale one is a 409, a writing mode on
 // production is refused, and the report is always the redacted page.
-import type { AqaOverview, AqaSettings, InvestigationSummary, Unavailable } from "../features/autonomous-qa/aqa.types";
+import type { AqaOverview, AqaSettings, GeneratedTest, InvestigationSummary, Unavailable } from "../features/autonomous-qa/aqa.types";
 import { reply, type Call } from "./fakeServer";
 
 const DEFAULTS: AqaSettings = {
   enabled: false,
   environments: [],
   identities: [],
-  limits: { actions: 25, requestsPerAction: 40, minutes: 20, pollSeconds: 30, decisions: 50, noProgress: 4 },
+  limits: { actions: 25, requestsPerAction: 40, minutes: 20, pollSeconds: 30, decisions: 50, noProgress: 4, obligations: 20, designs: 4, repairs: 2, attempts: 3, writes: 10, caseSeconds: 120 },
   network: { details: true, fingerprints: true, correlationHeaders: [], idempotencyHeaders: ["idempotency-key"], ignoreFields: [] },
   duplicates: { polling: [], retries: [], idempotent: [], intentional: [], contracts: [] },
   consistency: {},
@@ -18,6 +18,19 @@ const DEFAULTS: AqaSettings = {
 };
 
 const INVESTIGATION: InvestigationSummary = { id: "inv-20260925-120000-ab12", at: "2026-09-25T12:00:00.000Z", objective: "why Save sends two requests", mode: "explore-write", environment: "test", actions: 4, findings: { CONFIRMED_DEFECT: 1, OBSERVED_EXPECTED_BEHAVIOR: 2 }, cancelled: false, lifecycle: "paused", stop: "needs-requirement", inputMode: "hybrid", openQuestions: 1 };
+
+const DESIGN_DIGEST = "d".repeat(64);
+const VERSION = "gen-perm-ab12@0123456789abcdef";
+
+// One generated test as the journal folds it: a permission obligation, one design, one frozen version, two attempts --
+// the first came back INCONCLUSIVE, the second SATISFIED.
+const TEST: GeneratedTest = {
+  obligation: "tob-0123456789ab",
+  current: { obligation: "tob-0123456789ab", shape: "permission-enforced", target: "endpoint:invoice-read", authority: "accepted" },
+  revisions: [{ obligation: "tob-0123456789ab", shape: "permission-enforced", target: "endpoint:invoice-read", authority: "accepted" }],
+  designs: [{ design: "tds-0123456789abcdef", digest: DESIGN_DIGEST, state: "designed", versions: [{ version: VERSION, case: "gen-perm-ab12", digest: "c".repeat(64), design: "tds-0123456789abcdef", validations: [{ state: "valid" }], executions: [] }] }],
+  evaluations: [{ id: "evl-1", execution: "exe-0123456789abcdef-1", attempt: 1, outcome: "INCONCLUSIVE", cause: "POSITIVE_CONTROL" }, { id: "evl-2", execution: "exe-0123456789abcdef-2", attempt: 2, outcome: "SATISFIED", cause: "MET" }],
+};
 
 interface SettingsBody {
   settings: AqaSettings;
@@ -48,6 +61,12 @@ export function fakeAutonomousQa() {
     if (call.path === "/api/v1/autonomous-qa/settings" && call.method === "PUT") return save(call);
     const report = /^\/api\/v1\/autonomous-qa\/investigations\/([^/]+)\/report$/.exec(call.path);
     if (report) return (state.reports.push(decodeURIComponent(report[1] ?? "")), reply(200, { version: 1, html: "<!doctype html><title>Investigation</title>REDACTED" }));
+    const tests = /^\/api\/v1\/autonomous-qa\/investigations\/([^/]+)\/tests$/.exec(call.path);
+    if (tests) return reply(200, { version: 1, investigation: decodeURIComponent(tests[1] ?? ""), tests: [TEST] });
+    const artifact = /^\/api\/v1\/autonomous-qa\/investigations\/([^/]+)\/artifacts\/designs\/([0-9a-f]{64})$/.exec(call.path);
+    if (artifact) return reply(200, { version: 1, investigation: decodeURIComponent(artifact[1] ?? ""), kind: "designs", digest: artifact[2], artifact: { obligation: TEST.obligation, controls: [{ role: "positive", identityRef: "tenant-a-reader" }] } });
+    const version = /^\/api\/v1\/autonomous-qa\/investigations\/([^/]+)\/versions\/([^/]+)$/.exec(call.path);
+    if (version) return reply(200, { version: 1, investigation: decodeURIComponent(version[1] ?? ""), record: { version: VERSION, case: "gen-perm-ab12", digest: "c".repeat(64) }, frozen: { case: { id: "gen-perm-ab12", steps: [{ do: "call", capability: "orbit.http.read" }] } } });
     return reply(404, { error: { code: "NOT_FOUND", message: `no endpoint at ${call.path}` } });
   };
 

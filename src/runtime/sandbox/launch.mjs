@@ -11,7 +11,9 @@ import { sessionsNow, start } from "../lifecycle/start.mjs";
 import { stop } from "../lifecycle/stop.mjs";
 import { planned } from "../lifecycle/world.mjs";
 import { look } from "../understanding.mjs";
+import { effectivePolicy } from "./policy.mjs";
 import { prepared } from "./prepare.mjs";
+import { isolatedLaunched } from "./isolated-launch.mjs";
 
 // How long a start waits for what it started to answer or to stop: an agent needs to know whether it came up.
 export const WAIT_SECONDS = 30;
@@ -66,12 +68,19 @@ function answered(ctx, prep, swap, got) {
 
 const unprepared = (ctx, prep) => ({ ...answered(ctx, prep, { replaced: [], refused: [] }, { stuck: prep.blocked.because }), blocked: [{ component: "*", because: prep.blocked.because, needs: prep.blocked.needs }], state: "BLOCKED" });
 
+// An ISOLATED sandbox starts its components in containers of their own (src/runtime/sandbox/isolated-launch.mjs).
+const isolatedSandbox = (ctx) => effectivePolicy(ctx.readSettings().settings).policy.isolation.mode === "required";
+
 const touched = (ctx) => ctx.sandboxes.write({ ...ctx.sandboxes.read(ctx.envId), lastActiveAt: ctx.now() });
 
 // -> { environment, tree, started, reused, skipped, replaced, exited, blocked, notReady, endpoints }
 export async function launched(ctx, args, deps) {
   const prep = await prepared(ctx, deps);
   if (prep.state !== "READY") return unprepared(ctx, prep);
+  return isolatedSandbox(ctx) ? (touched(ctx), isolatedLaunched(ctx, args, deps, prep)) : placedLaunched(ctx, args, deps, prep);
+}
+
+async function placedLaunched(ctx, args, deps, prep) {
   const swap = await replacing(ctx, prep.tree);
   const got = swap.refused.length ? {} : await attempted(ctx, args);
   return (touched(ctx), answered(ctx, prep, swap, got));

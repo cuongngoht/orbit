@@ -97,7 +97,7 @@ test("a capability that can change the world may only be reached from a case tha
   const writer = { ...ROWS, id: "acme.write", mutates: true };
   const e = refusal(() => ask(writer, { q: "x" }));
   assert.ok(e instanceof Refused, String(e));
-  assert.match(e.message, /declares that it can change external state, and this case does not declare "destructive": true/);
+  assert.match(e.message, /declares that it can change external state, and nothing allows this run to — no test grant was minted for this run\. A person's case that writes declares "destructive": true/);
   assert.deepEqual(ask(writer, { q: "x" }, { destructive: true }), { asked: "x" });
 });
 

@@ -12,7 +12,8 @@
   "criteria": [
     { "id": "AC1", "says": "covered by nothing and disposed of by nothing" },
     { "id": "AC2", "says": "cited to a source that does not exist", "source": "REQ9" },
-    { "id": "AC3", "says": "covered by S1" }
+    { "id": "AC3", "says": "covered by S1" },
+    { "id": "AC4", "says": "structured, about a provider field and an absence with no window", "disposition": { "state": "open", "because": "only here to trip the expects rule" }, "expects": [{ "id": "E1", "property": "broker.queueDepth", "op": "eq", "value": 0 }, { "id": "E2", "property": "effect.count", "op": "absent-within" }] }
   ],
   "scenarios": [
     {

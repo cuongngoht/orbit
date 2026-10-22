@@ -19,13 +19,14 @@ import { blank, row, seg } from "./sections/parts.mjs";
 import { activityOverlay } from "./overlays/activity.mjs";
 import { pickerOverlay } from "./overlays/picker.mjs";
 import { evidenceOverlay } from "./overlays/evidence.mjs";
+import { inspectOverlay } from "./overlays/inspect.mjs";
 import { diagnosticsOverlay } from "./overlays/diagnostics.mjs";
 import { helpOverlay, tooSmallRows } from "./overlays/help.mjs";
 import { emptyRows, paneBody } from "./pane-frame.mjs";
 import { ORBIT_PARTS, placed } from "./regions.mjs";
 import { movingOf } from "../orbit.mjs";
 
-const OVERLAYS = Object.freeze({ picker: (s) => pickerOverlay(s), activity: (s, d) => activityOverlay(s, d), evidence: (s) => evidenceOverlay(s), diagnostics: (s, d, t) => diagnosticsOverlay(s, d, t.name), help: () => helpOverlay() });
+const OVERLAYS = Object.freeze({ picker: (s) => pickerOverlay(s), activity: (s, d) => activityOverlay(s, d), evidence: (s) => evidenceOverlay(s), inspect: (s, d) => inspectOverlay(s, d), diagnostics: (s, d, t) => diagnosticsOverlay(s, d, t.name), help: () => helpOverlay() });
 
 const NO_EXTENT = Object.freeze({ max: 0, page: 1 });
 

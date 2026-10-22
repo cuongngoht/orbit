@@ -6,11 +6,13 @@
 //   node skills/orbit-release/ship.mjs --ci         # what a pipeline can hold (0.0.2): CI's run
 //
 // Exit 0 = every gate held · 2 = a gate failed, and nothing should be tagged. With --ci, native host acceptance --
-// recorded from live host runs a pipeline cannot make -- is PENDING instead of a failure: CI is green on everything a
-// pipeline can prove, and the release (ship.mjs without --ci) is still refused until the record names this source.
+// recorded from live host runs a pipeline cannot make -- and native backend acceptance (0.1.0: acceptance/run.mjs on a
+// machine with Docker) are PENDING instead of failures: CI is green on everything a pipeline can prove, and the release
+// (ship.mjs without --ci) is still refused until each record names this source.
 // The gates themselves are data in gates.mjs; this file only binds them to a
 // real process and prints.
 import { awaited, nativeAcceptance } from "./hosts.mjs";
+import { backendAcceptance } from "./backend.mjs";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -38,7 +40,7 @@ const mark = (r) => (r.pending ? "wait" : r.ok ? "ok  " : "FAIL");
 const verdict = (rows) => (!shippable(rows) ? "\nNOT shippable — fix the FAIL above; nothing is tagged." : rows.some((r) => r.pending) ? "\nevery gate a pipeline can hold held; native host acceptance is awaited -- a release runs ship.mjs without --ci." : `\nshippable. ${next(rows)}`);
 
 function main() {
-  const rows = [...report(runner, GATES), awaited(nativeAcceptance(ROOT), CI)];
+  const rows = [...report(runner, GATES), awaited(nativeAcceptance(ROOT), CI), awaited(backendAcceptance(ROOT), CI)];
   for (const r of rows) console.log(`${mark(r)}  ${r.name}\n        ${r.detail}`);
   console.log(verdict(rows));
   process.exit(shippable(rows) ? 0 : 2);

@@ -7,7 +7,7 @@
 // shows what it kept. The resolved capabilities the skill needs are the Skills
 // page's existing view (/api/v1/skills/orbit-qa/resources), not a
 // second one here.
-import { AQA_MODES, aqaBlockers, componentOn, investigationHtml, investigationJson, investigationModel, investigationSummaries, readAqaSettings } from "../core.mjs";
+import { AQA_MODES, aqaBlockers, componentOn, investigationHtml, investigationJson, investigationModel, investigationSummaries, investigationTests, readAqaSettings } from "../core.mjs";
 import { invalid, missing } from "../errors.mjs";
 import { aqaProject, NOT_IN_CHECKOUT } from "./project.mjs";
 
@@ -40,6 +40,34 @@ function opened(ctx, id) {
 export function autonomousQaInvestigation(ctx, id) {
   const { found, model } = opened(ctx, id);
   return { version: 1, investigation: investigationJson(model, { project: found.project.name }) };
+}
+
+// A GENERATED test, as one tree per obligation (0.1.0, doc §9): its revisions, the designs made for it, their frozen
+// versions and validations, and every execution attempt with the run the host recorded and the word it earned --
+// read off the journal (src/investigation/model.mjs testsOf), the same record the terminal and Live fold. What a
+// design proposed, a case was frozen as and a graph was derived against are ARTIFACTS, opened by their digest.
+export function autonomousQaTests(ctx, id) {
+  const { model } = opened(ctx, id);
+  return { version: 1, investigation: id, tests: investigationTests(model) };
+}
+
+// The kinds of artifact a page may open: what a test was made from and what it froze. Never anything else.
+const ARTIFACTS = new Set(["designs", "graphs", "assessments", "obligations", "results"]);
+
+export function autonomousQaArtifact(ctx, id, kind, digest) {
+  const { found } = opened(ctx, id);
+  if (!ARTIFACTS.has(kind) || !/^[0-9a-f]{64}$/.test(String(digest))) throw invalid("INVALID_ARTIFACT", `an artifact is one of ${[...ARTIFACTS].join(", ")}, by its 64-character digest`);
+  const value = found.store.readArtifact(id, kind, digest);
+  if (value === null || value === undefined) throw missing("NO_ARTIFACT", `no ${kind} artifact ${digest.slice(0, 12)} in ${id}`);
+  return { version: 1, investigation: id, kind, digest, artifact: value };
+}
+
+// A frozen VERSION of a generated case, by its version id (<case>@<digest16>): the case exactly as it ran.
+export function autonomousQaVersion(ctx, id, version) {
+  const { found, model } = opened(ctx, id);
+  const record = model.versions.find((v) => v.version === version);
+  if (!record) throw missing("NO_VERSION", `${String(version).slice(0, 80)} is not a version ${id} froze`);
+  return { version: 1, investigation: id, record, frozen: found.store.readVersion(id, `versions/${record.version.split("@")[1]}/${record.case}.json`) };
 }
 
 // Always REDACTED here. An unredacted page is the CLI's, where a person who set

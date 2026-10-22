@@ -56,8 +56,12 @@ export async function sandboxView(ctx) {
 function composed(ctx, now, seen, settings) {
   const doc = ctx.sandboxes.read(ctx.envId) ?? now;
   const sessions = seen.sessions;
-  return { environment: ctx.envId, owner: doc.owner, workspace: doc.workspace, state: now.state, tree: doc.source?.tree ?? null, currentTree: ctx.workspaces.tree(ctx.task), stale: now.state === "STALE", ...(now.because ? { because: now.because } : {}), blocked: doc.blocked ?? null, components: Object.keys(doc.placements ?? {}).map(componentOf(doc, sessions)), endpoints: doc.endpoints ?? [], leases: leasesOf(ctx).list().filter((l) => l.env === ctx.envId).map((l) => ({ port: l.port, component: l.component, since: l.requestedAt })), connectivity: reachOf(ctx, doc), ownership: ownershipOf(sessions, doc, settings), dataIsolation: dataIsolation(settings, doc.placements ?? {}), qa: effectivePolicy(settings).policy.qa, reconcile: ["PREPARING", "AMBIGUOUS"].includes(doc.state) ? reconciled(ctx) : null, createdAt: doc.createdAt, updatedAt: doc.updatedAt };
+  return { environment: ctx.envId, owner: doc.owner, workspace: doc.workspace, state: now.state, tree: doc.source?.tree ?? null, currentTree: ctx.workspaces.tree(ctx.task), stale: now.state === "STALE", ...(now.because ? { because: now.because } : {}), blocked: doc.blocked ?? null, components: Object.keys(doc.placements ?? {}).map(componentOf(doc, sessions)), endpoints: doc.endpoints ?? [], leases: leasesOf(ctx).list().filter((l) => l.env === ctx.envId).map((l) => ({ port: l.port, component: l.component, since: l.requestedAt })), connectivity: reachOf(ctx, doc), ownership: ownershipOf(sessions, doc, settings), dataIsolation: dataIsolation(settings, doc.placements ?? {}), isolation: isolationOf(doc), qa: effectivePolicy(settings).policy.qa, reconcile: ["PREPARING", "AMBIGUOUS"].includes(doc.state) ? reconciled(ctx) : null, createdAt: doc.createdAt, updatedAt: doc.updatedAt };
 }
+
+// Whether the sandbox runs ISOLATED, and whether that was proved (ADR 0038): a mode, an attestation and why not --
+// never an address, because nothing on this machine reaches inside one.
+const isolationOf = (doc) => (doc.isolation ? { mode: doc.isolation.mode ?? null, attested: doc.isolation.attested === true, because: doc.isolation.because ?? null } : null);
 
 // -> the sandboxes of this checkout, as a person's context lists them.
 export function sandboxesView(ctx) {

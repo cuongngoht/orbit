@@ -7,6 +7,11 @@ agent has loaded; this map does not repeat them and they win where the two seem 
 
 ```
 cli/           composition roots: argv → build a ctx → call src → exit code. No logic.
+cli/sandbox-worker.mjs · cli/sandbox-supervisor.mjs · cli/security-audit.mjs  (0.1.0) roots too: the WORKER side of
+               an isolated run (supervises `run-case --worker` inside the isolation provider's container and
+               writes an envelope -- never a record, ADR 0038) · a sandbox's SUPERVISOR (heartbeats, signals,
+               deadlines; launches nothing, ADR 0036) · the Security Auditor's catalogs, applicability, plan,
+               assess and report (ADR 0040)
 src/errors.mjs the three typed stops, as a LEAF -- the ports throw them too
 src/constraints.mjs  a field table's JSON-Schema fragment, ENFORCED (dsl and project both use it)
 src/scrub.mjs  masking by SHAPE, as a LEAF -- the committed corpus and the lessons both pass
@@ -48,10 +53,26 @@ src/extensions/ what a PROJECT taught this engine, from OUTSIDE every repository
                both register into: all or nothing from an extension, row by row from data, a
                differing duplicate refused · registries.mjs the ONE recipe for an empty set of
                registries (a throwaway context, Control's summary, `query extensions`)
+src/extensions/packs.mjs  (0.1.0, ADR 0034) the packs Orbit SHIPS: a project's `packs` ids, resolved against
+               catalog/packs.json into the same room shape the store room has, so the one loader loads them
+               IN PLACE, first, through the same contract; nothing is copied, and `orbit.*` ids are the
+               engine's and the packs' alone
 src/capability/  one named thing the engine can ask of the world outside the browser.
                contract-v1.mjs · registry.mjs (namespaced ids, duplicates REFUSED) ·
                invoke.mjs the ordered gate table every invocation passes: input · mutation ·
                tools · invoke. There is no second route, and a capability NEVER decides a verdict
+src/capability/helper.mjs  (0.1.0, ADR 0036) the ONE way out of the process for an asynchronous operation:
+               `helper.run(op, request)` over the Process port, `orbit.helper/v1` on stdin, exactly one JSON
+               line back, typed error classes, a timeout no longer than the run's `remainingMs`; the `bind:`
+               kinds an inputSchema row names and the binding gate that resolves them. A thenable is BLOCKED
+src/adapters/  (0.1.0, ADR 0035) the ORBIT ADAPTER PROTOCOL, product-free: families.mjs (EFFECTS, BIND_KINDS and
+               each family's operations: ref kinds, effect, output allow-list with `means`, the semantics they
+               need) · semantics.mjs (the layered semantics vocabulary, `unknown` legal) · contract-v1.mjs
+               (`orbit.adapter/v1`, validated before anything registers) · registry.mjs ·
+               core.mjs (registers `orbit.<family>.<op>`) · select.mjs (ordered rows over discovered
+               transports and DECLARED semantics; the last answers a boundary-scoped gap, never a fallback) ·
+               dispatch.mjs (binding → select → helper → allow-list → stamp) · matrix.mjs (support COMPUTED
+               from declarations and conformance-kit receipts, never written)
 src/browser/ database/ identity/ frontend/ process/ memory/   PORTS with one real adapter each; fakes in test/fakes/
                process/ is the one door to a child process for generated code: argv only, never
                a shell, so a value containing `;` is an argument and not a second command.
@@ -94,7 +115,19 @@ src/architecture/  what this project IS, as evidence-backed facts kept beside th
                thing it is safe to lose) · freshness is SCOPED, so an unrelated commit leaves a
                fact alone · analyzers/ four pure (input) => {facts, unknowns} · capability.mjs
                GRADES a token search and holds NO list of capability names -- one arrives as
-               tokens off a task, and a row here naming one would be a product learned
+               tokens off a task, and a row here naming one would be a product learned.
+               (0.1.0, ADR 0033) `node` and `relation` facts, through the same door; relations.mjs the rules a
+               field table cannot say (a node's key is its kind and name, a relation's its from, name and to,
+               so one edge is one fact; an end nobody can fix is `unknown`, never certain; no secret attribute);
+               analyzers/topology.mjs what a composition file DECLARES -- services, depends_on, networks -- with
+               the YAML reader handed in, an image kept and never read for what it suggests; graph-view.mjs the
+               SYSTEM GRAPH as a projection with a digest over what it means (freshness shown, never digested),
+               roles read off src/topology/vocabulary.mjs, other subjects joined by id at the composition root
+               -- never a second store; views/graph.mjs is `architecture graph [--json]`
+src/topology/  (0.1.0, ADR 0033) a LEAF architecture and qa both read: vocab.mjs the STRUCTURAL roles (node
+               roles, relation roles, MEANINGS, BOUNDARIES) · vocabulary.mjs the NAMES, layered plugin
+               (catalog/topology.json, catalog/semantics.json) → organisation → project; an id nobody declared
+               is kept and derives nothing. Imports only src/constraints.mjs
 src/engineering/  how this project TENDS or is REQUIRED to build code, evidence-backed and kept
                beside the architecture facts, never duplicating what architecture already owns.
                A second axis architecture does not have -- `strength` (enforced · adopted ·
@@ -309,6 +342,27 @@ src/investigation/  AUTONOMOUS QA's engine half -- Claude reasons, this acts ins
                invoke (a read-only data check `via` a capability), qa's commit (what a scenario
                committed to) and knowledge's stamped judge and ingest (receipts into claims);
                nothing reads it back but cli/autonomous-qa.mjs, src/report/investigation.mjs and Control
+src/investigation/verification.mjs · assessments.mjs  (0.1.0, ADR 0032) what a GENERATED test came to:
+               VERIFICATION_OUTCOMES, a table apart from runner statuses and from OUTCOMES, reached by ordered
+               RESULT rows over facts read back from their owners · an ASSESSMENT frozen from the current
+               SATISFIED results per obligation. The journal gains the milestone kinds (schema 3, `eventId`
+               folded once) and store.mjs an `artifacts/` room, each file written once by its digest ·
+               graphs.mjs `freezeGraph`: the system graph an obligation was derived from, kept as it was in
+               artifacts/graphs, refused when its digest no longer names its content; derive.mjs calls it ·
+               derive.mjs (the ACCEPTED plans an investigation read, against that graph: a binding per plan and
+               one for the graph, an obligation per kind each criterion names with the slots it may be ruled on
+               by, within limits.obligations; a plan that moved since it was read derives nothing) ·
+               generate.mjs (the generate action: a design held whole by src/qa/generation/, then a draft, a
+               frozen version and its validation, within limits.designs and limits.repairs) · run-version.mjs
+               (the run-version action: authorized, prepared and started BEFORE the dispatch, the execution
+               named first, the worker's envelope held by the host, its evidence kept only when believed,
+               within limits.attempts; the request kept as a `dispatches` artifact under the digest its start
+               records, and a version whose last dispatch is AMBIGUOUS never sent again) · reconcile-runs.mjs
+               (PBI 19: RECONCILE rows over a start that never settled -- IN_FLIGHT · LATE · RUNNING · NEVER_RAN ·
+               LOST_READ · LOST; a late envelope held to the request that was sent, on the live path; a known one
+               settles its step, an AMBIGUOUS one leaves it for a person). Their PORTS -- what a design is
+               compiled against, how a version is sealed, granted, dispatched and read back -- are
+               skills/orbit-qa/ports.mjs, bound by cli/autonomous-qa.mjs
 src/sources/   ACQUISITION of a work item, provider-neutral -- it names no product, vendor, host or tool
                (a test greps it). contract-v1.mjs (the acquisition capabilities, the SOURCE_KINDS with
                their `authorityBearing` column, the reader port) · fields.mjs + model.mjs (identity, ids,
@@ -457,6 +511,22 @@ src/runtime/   RUNTIME UNDERSTANDING: what a CHECKOUT needs to run, whether this
                at an answer that settles it · check.mjs the one operation behind check, retry, Control and the
                before-start gate -- a target named by ID, never a host handed in) · index.mjs the COMMANDS table.
                cli/runtime.mjs and skills/orbit-runtime/bind.mjs are the composition roots
+src/runtime/isolation/  (0.1.0, ADR 0038) the ISOLATION PROVIDER contract (`orbit.isolation-provider/v1`: what a
+               provider proves -- filesystem, network, credential, limits -- and its networks and containers)
+               · docker.mjs the first provider, argv through the Process port · index.mjs the list. A host with
+               none is a capability gap, never an isolated run pretended
+src/runtime/sandbox/ (0.1.0 additions) topology.mjs (IMAGE_SOURCES · NETWORK_MODES · READINESS over discovery; a
+               compose file read, never run, ADR 0039) · network.mjs (the task's own INTERNAL network, labelled,
+               receipted) · isolation.mjs (PROFILE, attested at prepare and at every dispatch) · fixtures.mjs +
+               bindings.mjs (a namespace per run, receipts first; logical refs sealed into a binding table) ·
+               test-grants.mjs + fixture-policy.mjs (MINT, one use spent before the effect, ADR 0037) ·
+               supervise.mjs + observers.mjs (SUPERVISE and TEARDOWN: heartbeats, signals, deadlines; launches
+               nothing, ADR 0036) · test-faults.mjs + replay-policy.mjs (a designed fault or a replay, each its
+               own grant) · dispatch.mjs (one generated test to the worker; `dispatchedNow`, WORKER_NOW -- none ·
+               lost · unstarted · ended · running · gone -- what became of a dispatch whose caller never saw its
+               end, read off the worker's receipt and container, for `sandbox-dispatched`). QUARANTINED joins the
+               instance states: released from Control only. A container is removed with the anonymous volumes it
+               was created with, never a named one (isolation/docker.mjs)
 src/probe/     the PROBE port: one loopback connection or GET, a deadline, `{ok}` as data; never throws, and a host
                that is not this machine is refused. src/runtime opens no socket itself. reach.mjs is a SECOND
                port with its own boundary: a name lookup and one TCP connect to a host and port a person
@@ -506,7 +576,8 @@ src/live/      Orbit LIVE's CORE, every viewer's (ADR 0016): delivery, never sta
                `wanted` open · reducer.mjs TRANSITIONS · keys.mjs KEY_SEQUENCES + KEYMAP + HELP · layout.mjs TIERS,
                ROOM, PRIORITY · derive.mjs a snapshot per followed task per second · sections/ (STAGE, ACTIVITY,
                WORKFLOW, ENGINEER, VERIFY, QA, SANDBOX, RECENT, NOTICES as rows of segments) · overlays/ (picker,
-               activity (`i`), evidence, diagnostics, help) · frame.mjs the ONE caller of `drawn` for it (0.0.3:
+               activity (`i`), evidence, inspect (`o`, 0.1.0: the generated tests followed, one row per obligation,
+               from their own activity), diagnostics, help) · frame.mjs the ONE caller of `drawn` for it (0.0.3:
                which rows hold the orbit, and `orbitFrameOf` drawing those alone) · regions.mjs (0.0.3, ADR 0029:
                REGIONS, the screen's top, body and bottom as rows of a table, each with its `when`; ORBIT_PARTS) ·
                diff.mjs the rows that changed · events-view.mjs (0.0.2, ADR 0028: a pane's Events view, a workflow's milestones under
@@ -597,6 +668,12 @@ control-server/src/mission-control/  MISSION CONTROL's reads: read.mjs (the mach
                fold's machine view) · health.mjs (ADR 0023: Health, an ordered table of AREAS -- automation restrictions
                tasks waiting, blocked, stalled or orphaned, tools and managed MCP servers
                enabled but not ready, hosts -- each answering at least one row, read off what Orbit keeps, no probe)
+control-server/src/security-catalogs/  (0.1.0, ADR 0040) SECURITY CATALOGS in Control -- the one place they change:
+               project.mjs (the machine's adopted room, guarded at the store base, and the checkout Control was started
+               from, guarded at its store) · read.mjs (the command table's `catalogs` view; one catalog by digest) ·
+               write.mjs (preview, adopt what was previewed -- a digest that moved is a 409 --, the editor, a project's
+               enabled catalogs, a not-applicable mark with its reason; every write names its revision) · fetch.mjs (the
+               link a person typed: https, no credentials, no redirect, a megabyte and ten seconds at most)
 control-server/src/works/  tracked WORKS in Control (1.8.8): project.mjs (a checkout's works, named in the path;
                a work is a checkout's only when it was tracked there) · read.mjs (the list and one work as
                `workViewOf` -- the SAME view cli/track.mjs and Live read). Reads only: there is no row that
@@ -609,6 +686,18 @@ control-server/src/live/  Orbit LIVE in Control: the TRANSPORT of the live core 
                before any header; every refusal is the ordinary JSON one, and nothing here writes
 src/run/       the interpreter: gates/ → step.mjs → verbs/<verb>.mjs; loop, evidence, log, printer, result
                budget.mjs + poll.mjs the ONE wait loop; watermark.mjs; status.mjs the final verdict
+src/run/evaluator.mjs · envelope.mjs · gates/fixture.mjs  (0.1.0, ADR 0038, 0037) the PREDICATE judge: a
+               compiled predicate (`compiled:` + canonical JSON, whose format is the leaf src/predicate.mjs)
+               interpreted by one judge per template -- HOLDS, VIOLATED or UNDECIDED (blocked as incomplete),
+               never `new Function`; a person's inline expect stays in verdict.mjs, and a run under a design
+               (`ctx.evaluation`) judges nothing inline and holds each step to the digest its design pinned ·
+               the HOST's check of a worker's
+               envelope: ids, digests, attestation, files, status and `proved` re-derived from the frozen case
+               (the layers compared whatever order each side counted them in), and only after it passes is
+               anything recorded · the gate a fixture-scoped write needs · worker.mjs (the request, the sealed
+               binder, and a PAGE run's browser: blank, headless, ONE engine-written route over every request --
+               a write only under a page grant this run was minted, the approved identity's credential only to
+               the bound origin, never along a redirect, never in an argument or a file the host reads back)
 src/report/    one run's evidence -> ONE self-contained report.html, pictures embedded AND the
                case's own JSON, so the report is enough to run it again when the file is gone
                screen.mjs + screen.html: ONE SCREEN, every case that has touched it -- who drove
@@ -623,12 +712,34 @@ src/report/    one run's evidence -> ONE self-contained report.html, pictures em
                a surface, every layer per action, the contradictions, the open questions
                coverage.mjs + coverage.html: one PLAN, read off the plan and the ledger --
                criterion -> scenario -> case -> run -> evidence, every ratio with its denominator
+               assessment.mjs + assessment.html (0.1.0, ADR 0032): one ASSESSMENT, rendered only from its
+               frozen snapshot into _investigations/ -- scope and revisions, every attempt, controls,
+               findings, gaps as "not available (needs …)", how to reproduce it; a failed render re-renders
+               and never re-runs
 src/qa/        the TEST PLAN as DATA: vocab.mjs (tables with columns a rule asks) + fields.mjs
                → generated plans/schema.json; rules/ one family per file, findings carry a LEVEL
                (error = demonstrable, advice = heuristic, and `unknown` is neither)
                states.mjs the FOUR axes · coverage.mjs the chain and its denominators
                risk.mjs scoring + budget selection · impact.mjs what moved · suggest.mjs what a
                lesson may propose · markdown.mjs renders the .md nobody edits by hand
+src/qa/walk.mjs · obligations/ · backend/ · generation/ · security/  (0.1.0, ADR 0031-0033, 0040) the walker
+               plans and sidecars share · obligations/ (contract.mjs `orbit.qa-sidecar/v1` with STAMPED ·
+               authority.mjs the ordered AUTHORITY rows over owners' answers HANDED IN · validate.mjs ·
+               shapes.mjs OBLIGATION_SHAPES · derive.mjs) · backend/ (workloads, bindings, semantics,
+               skeleton.mjs, observations, temporal, correlation: armed before the trigger, non-stealing,
+               matched by identity, a window only from an accepted `within`) · generation/ (design.mjs the
+               ordered STAGES a proposal is held to, ending in the REAL validator; controls; compile.mjs the
+               deterministic mapping from an accepted expectation to a predicate; repair keeps the oracle;
+               version freezes the case; page.mjs (0.1.0, group 1) the ONE place a generated test's page script
+               comes from -- `until` and `reads` written as a wait and a reader from templates that only read the
+               DOM, an api witness ruling only on its status, PAGE_RULES: proposable verbs, a goto to a path of
+               the bound interface, selectors of a bounded alphabet) ·
+               security/ (catalog.mjs `orbit.control-catalog/v1`, its layers and a preview · applicability.mjs three
+               answers over structural roles, unknown never not-applicable · assessment.mjs the PAIRING and FINDING
+               tables, obligations, a snapshot pinned to its catalogs, stale on change · store.mjs the rooms and the
+               writers that open only for Control's door · index.mjs the command table the CLI and Control share).
+               Imports no requirements, sources or architecture, and names no product, table or status code
+               (test/backend-neutral.test.mjs)
 src/query/ plan/ awake/   views and workflows over the above
                dsl.mjs  INTROSPECTION: `dsl` `verb <n>` `field <n>`, printed FROM the tables --
                         a third generated artefact, so no playbook carries a copy of the grammar
@@ -660,7 +771,11 @@ skills/orbit-ui-map/       the mapping playbook: fill graph/ from source (src) t
 skills/orbit-qa/  the INVESTIGATION playbook: context first, a bounded plan, actions inside
                           the gates, data below the screen, the tenant matrix on a declared contract,
                           findings with alternatives and reproduction, one redacted report; a
-                          verification nothing can perform goes to orbit-qc-builder
+                          verification nothing can perform goes to orbit-qc-builder. ports.mjs: the
+                          generation and dispatch PORTS a generated test's lifecycle asks -- refs read the
+                          way the binder reads them, only accepted expectations at their digest, every ref
+                          sealed and every effect granted before a dispatch, what a worker left read back
+                          only inside its own output
 skills/orbit-engineer/  the AUTONOMOUS ENGINEERING playbook + protocol.md: a requirement (or an
                           objective) to a verified change, one decided step at a time -- the requirement
                           read back, context, environment, the task's own workspace, a plan, the change,
@@ -777,6 +892,35 @@ skills/orbit-report/  the PO REPORT pack -- the product words src/project-report
                           adds: the autonomy boundary, the static look, the part RUN) · bind.mjs (the
                           one real binding CLI and Control share) · samples.mjs (synthetic snapshots)
 skills/orbit-sql/  OPTIONAL adapter: SQL Server via sqlcmd, opted into by sql.command
+skills/orbit-api-test/  (0.1.0) the HTTP PACK, opted into by `packs`: orbit.http.read/write over a bounded helper
+                          (relative paths, an allow-listed header set, manual redirects checked hop by hop, a
+                          byte cap, every response an observation) · schema.mjs (a DECLARED subset of JSON Schema
+                          2020-12; anything else a CAPABILITY_MISSING gap) · contracts/openapi.mjs (an accepted
+                          API contract read into structured expectations)
+skills/orbit-backend-test/  (0.1.0) the BACKEND PACK: capabilities.mjs (every selecting family operation, from
+                          src/adapters/core.mjs, and orbit.schedule.expect) · adapters.json + reference ADAPTERS
+                          (amqp/, jetstream/ -- examples of `orbit.adapter/v1`, their product words kept here;
+                          postgres/ -- state read below the interface, a zero-dependency client: SCRAM-SHA-256
+                          whenever a password is bound (never cleartext or MD5, never a server that skips its
+                          proof), one REPEATABLE READ READ ONLY transaction, statements built from quoted
+                          identifiers with every value a parameter; hooks/ -- the orbit.scheduler/v1,
+                          orbit.clock/v1, orbit.workload/v1 and orbit.identity/v1 test hooks a project exposes) ·
+                          schedule/ (dialects, time zones through Intl, helper.mjs) · window.mjs (the ONE window every
+                          observer in the pack waits through: a window its call's deadline cut short of what it waited
+                          for is PARTIAL, never complete) · contracts/asyncapi.mjs + contracts/schedule.mjs (an accepted
+                          message contract or schedule policy read into a pinned binding and candidate expectations;
+                          `qa-plan expects`)
+skills/orbit-adapter-kit/  (0.1.0) CONFORMANCE KITS, one per family (messaging.mjs, hooks.mjs -- scheduler, clock,
+                          workload, worker, identity -- and state.mjs); acceptance/kits/ runs each against a real
+                          system through the adapter's real helper, and their receipts are what the support matrix
+                          is computed from
+skills/orbit-reverse-engineer/  (0.1.0) the REVERSE ENGINEERING playbook: graph facts and unknowns from source,
+                          contracts and runtime observations, through `architecture record`; never an oracle
+skills/orbit-security-audit/  (0.1.0) the SECURITY AUDIT playbook + catalogs/ (the shipped default: ASVS 5.0.0 L1
+                          ids with Top 10 labels, Orbit's own summaries) + formats/ (readers for public catalog
+                          formats); a catalog a person adds lives in Orbit Control (ADR 0040) · evidence.mjs (an
+                          investigation's generated tests READ BACK as the auditor's results, one per control role,
+                          each role earning a word only from the steps of the frozen case that show it)
 skills/orbit-browser/ OPTIONAL adapter: pick a local browser+profile, opted into by launcher
 skills/orbit-release/  release + adoption: the DoD as gates, the version rule, the install routes;
                           frontmatter.mjs (1.8.9) holds every SKILL.md and agent to the frontmatter shape a
@@ -790,8 +934,21 @@ agents/                   subagents the skills delegate to (no conversation, one
                           engineering-observer (PROPOSES observed/suggested candidates from what a
                           session touched; no Write, the parent pipes them to `engineering record`) ·
                           autonomous-engineering (drives ONE task's loop; edits only its workspace,
-                          never approves, resumes or passes --human)
+                          never approves, resumes or passes --human) · reverse-engineering (0.1.0:
+                          PROPOSES graph candidates; no Write, never an oracle) · security-auditor (0.1.0:
+                          applicability and an assessment from evidence; hands executable tests to QA and
+                          never re-judges a verdict)
 test/          node:test; fixtures/ui-tests is a complete tiny project; fakes/ implement every port
+acceptance/    (0.1.0) NATIVE ACCEPTANCE, outside test/ because `node --test` runs every module under test/, and
+               export-ignored: projects/ (example consuming projects on two stacks, ordinary to Orbit, with the
+               plan document's examples as their contracts, and expected-cases/ -- its three example cases,
+               verbatim) · graph/ (the System Graph facts reverse engineering records for each stack) · designs/
+               (the host's proposals, scripted, one per shape) · truth.json (what every generated test and every
+               security control must come to, per stack and planted variant) · kits/ (conformance runs on real
+               systems) · run.mjs (stack × variant from nothing through the real CLIs: seat, sandbox, QA loop,
+               security audit; held to the truth, to no leftover container, network, volume or secret, and to
+               an unchanged checkout; Docker or the worker image missing is BLOCKED exit 3, never a skip;
+               receipts written only by `--record` from a run that matched)
 integrations/  what ANOTHER program installs, never part of this plugin's archive. vscode-orbit-live/ (1.8.5, ADR 0021)
                is the Orbit Live companion for VS Code: plain CommonJS with no dependency and no build step, a
                person installs it; companion.js (what it does: a heartbeat in the store's live room, a request

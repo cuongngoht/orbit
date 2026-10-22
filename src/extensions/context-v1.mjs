@@ -17,6 +17,14 @@
 //   log      say something to the person watching
 //   tools    ask whether a command is usable here
 //
+// and, only for a capability that DECLARES a helper (ADR 0036), one more:
+//
+//   helper   ask its own helper program once, bounded -- src/capability/helper.mjs
+//
+// and, only for a FAMILY operation the engine or one of its packs registered (ADR 0035):
+//
+//   adapters ask the adapter its bound resource resolves to -- src/adapters/dispatch.mjs
+//
 // What is deliberately absent: the memory store, the ledger, the notes, the
 // lessons, the identity claims, process.env, the graph, and anything that can
 // decide a verdict. An extension OBSERVES and REPORTS; the engine judges. A
@@ -26,23 +34,33 @@
 // runtime has become, and it only has to because this is the only thing a v1
 // extension was ever allowed to see.
 import { join } from "node:path";
-import { Refused } from "../errors.mjs";
+import { adapterFacade } from "../adapters/dispatch.mjs";
+import { operationFor } from "../adapters/families.mjs";
+import { helperFacade } from "../capability/helper.mjs";
+import { Blocked, Refused } from "../errors.mjs";
 import { contained } from "../project/boundary.mjs";
 import { scrub } from "../scrub.mjs";
 
 export const CONTEXT_API_VERSION = 1;
 
-export function extensionContextV1(ctx, run, cap) {
+export function extensionContextV1(ctx, run, cap, invocation = {}) {
   const who = cap?.id ?? cap?.from ?? "extension";
   return {
     apiVersion: CONTEXT_API_VERSION,
     capability: cap?.id ?? null,
     ...surfaces(ctx, run, who, cap),
+    ...(cap?.helper ? { helper: helperFacade(ctx, run, cap, invocation) } : {}),
+    ...(familyCapability(cap) ? { adapters: adapterFacade(ctx, run, cap, invocation) } : {}),
   };
 }
 
+// The one surface only a FAMILY operation gets (ADR 0035): an orbit.* capability the engine or a
+// pack it ships registered, asking the adapter its bound resource resolves to. A project's own
+// capability never sees it.
+const familyCapability = (cap) => Boolean(operationFor(cap?.id)) && /^(core|pack:[a-z0-9-]+)$/.test(String(cap?.from ?? ""));
+
 const surfaces = (ctx, run, who, cap) => ({
-  process: processFacade(ctx, who, cap),
+  process: processFacade(ctx, run, who, cap),
   browser: run?.page === false ? noPage(who) : browserFacade(ctx),
   storage: storageFacade(ctx, who),
   bindings: bindingsFacade(run),
@@ -66,9 +84,23 @@ const surfaces = (ctx, run, who, cap) => ({
 // each call, after the options an extension passed, so an extension can neither
 // supply nor override it -- and it never appears on the surface an extension can
 // read: there is no way to ASK for a secret, only a command that receives one.
-const processFacade = (ctx, who, cap) => ({
-  run: (file, args, opts = {}) => ctx.process.run(file, args, { ...limit(cap?.timeoutSec), ...allowed(opts), ...connected(ctx, cap), by: who }),
+//
+// No child outlives the run: whatever timeout it asked for is clipped to what is left of the
+// run's own budget, and when nothing is left nothing is started -- a spent deadline is the
+// harness giving up, Blocked, and never a step that hangs past it.
+const processFacade = (ctx, run, who, cap) => ({
+  run: (file, args, opts = {}) => ctx.process.run(file, args, { ...allowed(opts), ...clipped(ctx, run, who, cap, opts), ...connected(ctx, cap), by: who }),
 });
+
+// A run with no budget (a capability asked outside run-case) has no deadline to clip to.
+const leftOf = (ctx, run) => (run?.budget?.endsAt === undefined ? Infinity : Math.max(run.budget.endsAt - ctx.now(), 0));
+
+function clipped(ctx, run, who, cap, opts) {
+  const left = leftOf(ctx, run);
+  if (left <= 0) throw new Blocked(`${who}: the run's deadline is spent — nothing was started, and nothing about the product was observed`);
+  const asked = opts.timeoutMs ?? limit(cap?.timeoutSec).timeoutMs;
+  return Number.isFinite(left) || asked ? { timeoutMs: Math.min(asked ?? left, left) } : {};
+}
 
 function connected(ctx, cap) {
   const env = cap?.connection && ctx.connectionEnv ? ctx.connectionEnv(cap.connection) : undefined;

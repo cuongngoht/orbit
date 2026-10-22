@@ -1,0 +1,19 @@
+{
+  "id": "invoice-owner-read",
+  "name": "Tenant A reads its own invoice",
+  "seen": "src",
+  "steps": [
+    {
+      "do": "call",
+      "capability": "orbit.http.read",
+      "proves": "api",
+      "input": {
+        "endpointRef": "backend",
+        "identityRef": "tenant-a-reader",
+        "method": "GET",
+        "path": "/invoices/inv-a"
+      },
+      "expect": "it.status === 200 && it.body.id === 'inv-a' && it.body.tenantId === 'tenant-a'"
+    }
+  ]
+}

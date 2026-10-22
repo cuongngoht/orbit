@@ -9,6 +9,6 @@ export function guardedIo(root, io) {
 }
 
 function singlePaths(io, guard) {
-  const names = ["write", "append", "mkdir", "ensureDir", "remove", "removeFile"];
+  const names = ["write", "writePrivate", "append", "mkdir", "ensureDir", "remove", "removeFile"];
   return Object.fromEntries(names.map((name) => [name, (path, ...args) => io[name](guard(path), ...args)]));
 }

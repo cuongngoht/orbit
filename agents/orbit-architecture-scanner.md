@@ -84,6 +84,27 @@ For "does this project provide X", the places that can settle it, in order:
 Do not read the whole tree. Do not read a module the question does not touch. If four searches
 have not settled it, that is an answer and its name is `unknown`.
 
+### A question about how the running system's parts talk
+
+Some questions are about the SYSTEM GRAPH rather than a capability: a route, a schedule, a
+publisher, a consumer, a queue binding, a worker, a checkpoint. Read what is already recorded first
+(`node <engine>/cli/architecture.mjs graph --json`), and answer with **node and relation**
+candidates in exactly the shape `${CLAUDE_PLUGIN_ROOT}/agents/orbit-reverse-engineering-agent.md` gives — the same keys,
+the same rule that a target the source does not fix is `unknown`, never guessed.
+
+| question | settled by | comes back as |
+|---|---|---|
+| a route | the framework's route registration, or the API contract's path | an `endpoint` node (method and path as attributes) and a `calls` from the caller, or from the handler it maps to |
+| a schedule | the schedule's own definition or registration | a `schedule` node (expression and timezone as attributes) and a `schedules` relation to the workload it starts |
+| a publisher | the line that publishes, and the channel name it uses | a `publishes-to` relation from the workload to the channel |
+| a consumer | the registration that binds a handler to a channel or subscription | a `consumes-from` relation, and the `consumer` or `worker` workload `of` its component |
+| a queue binding | the declaration that binds a queue to an exchange or topic, with its key | a `routes-to` relation from the exchange to the queue, its key as an attribute |
+| a worker | the hosted service or worker registration | a `worker` workload node `of` its component |
+| a checkpoint | where a processor stores how far it got | a `checkpoint` node and a `checkpoints-at` relation |
+
+A channel name read from configuration nobody tracks, or built at run time, is an `unknown` end
+with what would settle it — never the most likely name.
+
 ## 3. What you may never do
 
 - **Never write a file.** Not a candidate file, not a scratch file, not in a temp directory.

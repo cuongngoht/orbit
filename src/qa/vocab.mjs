@@ -100,6 +100,25 @@ export const FRESHNESS = [
   { name: "unknown", counts: false, say: "not enough reference to tell — treated as unproven, never as fresh" },
 ];
 
+// What a STRUCTURED criterion may say about an observed meaning (ADR 0031): each op names the
+// assertion template it compiles to (src/qa/generation/compile.mjs), and `window` marks the two
+// that can only ever be claimed within one -- an absence and a completion. A criterion that
+// says it in prose still prepares a test; only one that says it like this can be MAPPED to an
+// assertion without anybody's judgement.
+export const EXPECT_OPS = [
+  { name: "eq", template: "value-eq", doc: "the observed value equals the stated value" },
+  { name: "present", template: "value-present", doc: "the observed value is there -- an id, a reference -- whatever it is" },
+  { name: "in", template: "value-in", doc: "the observed value is one of the stated values" },
+  { name: "excludes", template: "value-excludes", doc: "the observed value never contains the stated value -- a marker that must not appear" },
+  { name: "contains", template: "value-includes", doc: "the observed text contains the stated text -- a name a screen shows" },
+  { name: "count-eq", template: "count-eq", doc: "exactly this many durable effects" },
+  { name: "count-at-most", template: "count-at-most", doc: "no more than this many" },
+  { name: "conforms", template: "schema-valid", doc: "the observed value conforms to the stated, pinned schema" },
+  { name: "ordered", template: "order-eq", doc: "the observed sequence is in the stated order" },
+  { name: "complete-within", template: "complete", window: true, doc: "the business condition holds within the window" },
+  { name: "absent-within", template: "absent-within", window: true, doc: "nothing matching appears within the window, on observation that stayed complete" },
+];
+
 export const PRIORITIES = ["P1", "P2", "P3"];
 export const EXECUTIONS = ["auto", "manual", "mixed"];
 
@@ -114,6 +133,7 @@ export const READY = index(READINESS);
 export const LINK_STATE = index(LINK_STATES);
 export const RUN_STATE = index(RUN_STATES);
 export const FRESH = index(FRESHNESS);
+export const EXPECT_OP = index(EXPECT_OPS);
 
 export const TECHNIQUE_NAMES = names(TECHNIQUES);
 export const MUTATION_NAMES = names(MUTATIONS);
@@ -122,6 +142,7 @@ export const NEED_NAMES = names(NEEDS);
 export const READINESS_NAMES = names(READINESS);
 export const LINK_STATE_NAMES = names(LINK_STATES);
 export const RUN_STATE_NAMES = names(RUN_STATES);
+export const EXPECT_OP_NAMES = names(EXPECT_OPS);
 // The one way to ask "which rows do X", mirroring verbsWhere(). A caller
 // computes its set once, at module scope, so a new row is covered by the row.
 const rowsWhere = (rows, key, value = true) => new Set(rows.filter((r) => r[key] === value).map((r) => r.name));

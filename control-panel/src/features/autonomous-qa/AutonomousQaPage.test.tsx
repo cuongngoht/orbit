@@ -92,4 +92,28 @@ describe("Autonomous QA", () => {
     await waitFor(() => expect(opened).toHaveBeenCalledWith("blob:report", "_blank", "noopener"));
     expect(aqa.state.reports).toEqual(["inv-20260925-120000-ab12"]);
   });
+
+  it("a generation's limits are a person's too: a write budget and a repair budget may be none, and a test gets at least ten seconds", async () => {
+    renderApp("/autonomous-qa");
+    fireEvent.change(await screen.findByLabelText(/Writes a generated test may be granted/), { target: { value: "0" } });
+    fireEvent.change(screen.getByLabelText(/Repairs of a design's representation/), { target: { value: "0" } });
+    fireEvent.change(screen.getByLabelText(/Seconds a generated test may run/), { target: { value: "3" } });
+    fireEvent.change(screen.getByLabelText(/Attempts of one frozen version/), { target: { value: "5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(aqa.state.settings.limits.writes).toBe(0));
+    expect([aqa.state.settings.limits.repairs, aqa.state.settings.limits.caseSeconds, aqa.state.settings.limits.attempts]).toEqual([0, 10, 5]);
+  });
+
+  it("an investigation's generated tests are read only: the word each attempt earned, its design and its frozen case -- nothing that runs one", async () => {
+    renderApp("/autonomous-qa");
+    fireEvent.click(await screen.findByRole("button", { name: "Generated tests of inv-20260925-120000-ab12" }));
+    expect(await screen.findByText("permission-enforced")).toBeTruthy();
+    expect(screen.getByText("SATISFIED (MET)")).toBeTruthy();
+    expect(screen.getByText("endpoint:invoice-read")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Design of permission-enforced" }));
+    expect(await screen.findByText(/"identityRef": "tenant-a-reader"/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Frozen case of permission-enforced" }));
+    expect(await screen.findByText(/"capability": "orbit.http.read"/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^(run|repair|promote|retry)/i })).toBeNull();
+  });
 });

@@ -1,0 +1,88 @@
+{
+  "order": 9,
+  "design": {
+    "page": {
+      "endpointRef": "invoices",
+      "identityRef": "tenant-a-writer"
+    },
+    "skeleton": {
+      "steps": [
+        {
+          "do": "goto",
+          "url": "/invoices",
+          "until": {
+            "selector": "[data-testid=create-form]"
+          }
+        },
+        {
+          "do": "fill",
+          "selector": "[data-testid=create-name]",
+          "value": "${FIXTURE} acceptance invoice"
+        },
+        {
+          "do": "fill",
+          "selector": "[data-testid=create-amount]",
+          "value": "42"
+        },
+        {
+          "do": "click",
+          "selector": "[data-testid=create-submit]",
+          "until": {
+            "selector": "[data-testid=toast]",
+            "attribute": "hidden",
+            "equals": null
+          }
+        },
+        {
+          "do": "api",
+          "match": "/api/invoices$",
+          "method": "POST"
+        },
+        {
+          "do": "call",
+          "capability": "orbit.state.read",
+          "input": {
+            "stateRef": "invoices",
+            "request": {
+              "key": "${FIXTURE} acceptance invoice"
+            }
+          }
+        },
+        {
+          "do": "report",
+          "reads": {
+            "selector": "[data-testid=toast]"
+          }
+        }
+      ]
+    },
+    "assertions": [
+      {
+        "criterionRef": "UI-AC-2/E3",
+        "template": "value-eq",
+        "step": 5
+      },
+      {
+        "criterionRef": "UI-AC-2/E1",
+        "template": "count-eq",
+        "step": 6
+      },
+      {
+        "criterionRef": "UI-AC-2/E2",
+        "template": "value-includes",
+        "step": 7
+      }
+    ],
+    "controls": [
+      {
+        "role": "positive",
+        "why": "the page reports the create, so a row missing below it means something"
+      },
+      {
+        "role": "state",
+        "why": "the created invoice is there, read back below the page"
+      }
+    ],
+    "effectScope": "fixture"
+  }
+}

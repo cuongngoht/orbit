@@ -1,0 +1,37 @@
+<!doctype html>
+<!-- One assessment, rendered from its frozen snapshot only. {{x}} is an escaped value, {{{x}}} a raw
+     one; what each name means is decided in assessment.mjs and nothing is computed here. It
+     borrows report.css. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assessment {{id}}{{#project}} — {{project}}{{/project}}</title>
+<style>{{{style}}}</style>
+</head>
+<body>
+<header class="top">
+  <h1>Assessment{{#project}} — {{project}}{{/project}}</h1>
+  <div class="meta">{{id}} · source revision {{revision}} · scope {{scopeDigest}}{{#generated}} · rendered {{generated}}{{/generated}}</div>
+</header>
+<div class="wrap">
+  <div class="callout">Coverage {{coverage}} — counted only where a valid run met an ACCEPTED oracle, over every obligation that applies. Nothing here is called compliant.</div>
+  <table>
+    <tr><th>objective</th><td>{{objective}}</td></tr>
+    <tr><th>results counted</th><td>{{results}}</td></tr>
+    <tr><th>findings held</th><td>{{findings}}</td></tr>
+  </table>
+
+  <h2 class="section-title"><span class="dot"></span>Obligations</h2>
+  <table>
+    <tr><th>obligation</th><th>shape</th><th>came to</th><th>controls</th><th>gaps</th></tr>
+    {{#obligations}}<tr><td>{{obligation}}</td><td>{{shape}}</td><td><span class="badge {{badge}}">{{outcome}}</span></td><td>{{controls}}</td><td>{{gaps}}</td></tr>{{/obligations}}
+    {{^obligations}}<tr><td colspan="5">No obligation was derived — nothing here was assessed.</td></tr>{{/obligations}}
+  </table>
+
+  <h2 class="section-title"><span class="dot"></span>What this could not show</h2>
+  <ul>{{#gaps}}<li>{{.}}</li>{{/gaps}}{{^gaps}}<li>No gap was recorded.</li>{{/gaps}}</ul>
+  <p class="note">Rendered from a frozen snapshot: rendering it again runs nothing, and a later result makes a NEW assessment that names this one, never an edit of it.</p>
+</div>
+</body>
+</html>

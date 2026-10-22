@@ -121,7 +121,7 @@ describe("Skill editor", () => {
     const router = renderApp("/skills/alpha");
     fireEvent.change(await editor(), { target: { value: "typed but never saved" } });
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Discard changes" }));
+    fireEvent.click(await within(await screen.findByRole("alertdialog", { hidden: true })).findByRole("button", { name: "Discard changes", hidden: true }, { timeout: 5000 }));
     expect(await screen.findByRole("heading", { level: 1, name: "Skills" })).toBeTruthy();
     expect(router.state.location.pathname).toBe("/skills");
     expect(server.calls.some((c) => c.method === "PUT")).toBe(false);
@@ -132,19 +132,19 @@ describe("Deleting a skill", () => {
   it("asks first, says the whole directory goes and a backup comes first, and Cancel deletes nothing", async () => {
     renderApp("/skills");
     fireEvent.click(await screen.findByRole("button", { name: "Delete alpha" }));
-    const dialog = await screen.findByRole("alertdialog");
-    expect(within(dialog).getByText("Delete alpha?")).toBeTruthy();
+    const dialog = await screen.findByRole("alertdialog", { hidden: true });
+    expect(await within(dialog).findByText("Delete alpha?")).toBeTruthy();
     expect(within(dialog).getByText(/removes the entire skill directory.*including the scripts, helpers and templates/)).toBeTruthy();
     expect(within(dialog).getByText("A backup will be created first.")).toBeTruthy();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel", hidden: true }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog", { hidden: true })).toBeNull());
     expect(server.calls.some((c) => c.method === "DELETE")).toBe(false);
   });
 
   it("deletes on confirmation, then the refreshed list no longer has the skill and the backup is named", async () => {
     renderApp("/skills");
     fireEvent.click(await screen.findByRole("button", { name: "Delete alpha" }));
-    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Delete skill" }));
+    fireEvent.click(await within(await screen.findByRole("alertdialog", { hidden: true })).findByRole("button", { name: "Delete skill", hidden: true }, { timeout: 5000 }));
     expect(await screen.findByText(/Deleted alpha\. Backup: 2026-09-23T10-15-30-123Z\/alpha/)).toBeTruthy();
     const del = server.calls.find((c) => c.method === "DELETE")!;
     expect(del.path).toBe("/api/v1/skills/alpha");

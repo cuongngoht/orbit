@@ -115,6 +115,15 @@ test("a skip guard is not idempotency, and a sequence is not concurrency", () =>
   has(found, /S5: is a concurrency scenario with repeat.kind "resubmit" — that is a sequence/);
 });
 
+// A structured expectation is what an assertion can be MAPPED to without anybody's judgement
+// (ADR 0031), so it names a meaning the engine knows, and an absence or a completion its window.
+test("a structured expectation names a known meaning, and an absence or a completion its window", () => {
+  const found = planFindings(bad(), world);
+  has(found, /AC4: expectation E1 is about "broker.queueDepth", which is no meaning this engine knows/);
+  has(found, /AC4: expectation E2 claims absent-within with no window/);
+  hasNot(planFindings(things(), world), /no meaning this engine knows|with no window/);
+});
+
 test("the case that really does it twice is accepted", () => {
   const found = planFindings(things(), world);
   hasNot(found, /performs its action once/);

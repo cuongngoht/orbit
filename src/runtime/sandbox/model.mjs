@@ -15,6 +15,7 @@ const asStale = (doc, because, extra = {}) => ({ ...doc, state: "STALE", because
 // Ordered; the first row that matches decides, and the last always matches. `say` is the sentence a person reads.
 export const SANDBOX_NOW = [
   { name: "RELEASED", when: (d) => d.state === "RELEASED", as: (d) => d, say: "released: nothing of it runs and nothing is leased" },
+  { name: "QUARANTINED", when: (d) => d.state === "QUARANTINED", as: (d) => d, say: "its teardown could not be proven: what was left is named, and only Orbit Control releases it" },
   { name: "UNPREPARED", when: (d) => ["ALLOCATED", "PREPARING", "AMBIGUOUS"].includes(d.state), as: (d) => d, say: "not prepared yet, or a preparation that never settled" },
   { name: "NO_TREE", when: (d, now) => !now.tree, as: (d) => asStale(d, "the workspace is not there, or git did not answer for it"), say: "the workspace cannot be read, so nothing built from it can be trusted" },
   { name: "MOVED", when: (d, now) => d.source?.tree !== now.tree, as: (d, now) => asStale(d, "the workspace moved after this sandbox was built from it", { stale: { prepared: d.source?.tree ?? null, current: now.tree } }), say: "the workspace's source tree is not the one the sandbox was built from" },

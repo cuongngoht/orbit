@@ -8,8 +8,8 @@ import { Card } from "../../shared/components/Card";
 import { ErrorState } from "../../shared/components/ErrorState";
 import { LoadingState } from "../../shared/components/LoadingState";
 import { PageHeader } from "../../shared/components/PageHeader";
-import { aqaApi, aqaKeys, useAqaOverview, useSaveAqaSettings } from "./aqa.api";
-import type { AqaOverview, AqaSettings, Environment, EnvironmentKind, InvestigationSummary, JsonValue, Limits, ModeId } from "./aqa.types";
+import { aqaApi, aqaKeys, useAqaOverview, useAqaTests, useSaveAqaSettings } from "./aqa.api";
+import type { AqaOverview, AqaSettings, Environment, EnvironmentKind, GeneratedTest, InvestigationSummary, JsonValue, Limits, ModeId } from "./aqa.types";
 import { APPROVABLE, ENVIRONMENT_KINDS, OUTCOME_LABEL, OUTCOME_ORDER, isAvailable, listOf } from "./aqaWords";
 
 const useStyles = makeStyles({
@@ -18,6 +18,7 @@ const useStyles = makeStyles({
   actions: { display: "flex", gap: tokens.spacingHorizontalS, alignItems: "center", flexWrap: "wrap" },
   muted: { color: tokens.colorNeutralForeground3 },
   code: { fontFamily: tokens.fontFamilyMonospace, minHeight: "8rem" },
+  shown: { fontFamily: tokens.fontFamilyMonospace, fontSize: tokens.fontSizeBase200, whiteSpace: "pre-wrap", maxHeight: "24rem", overflow: "auto", margin: 0 },
 });
 
 // `/autonomous-qa`: what a PERSON approves autonomous QA to do in the project
@@ -143,14 +144,24 @@ function EnvironmentsCard({ environments, onChange }: { environments: Environmen
   );
 }
 
-const LIMIT_FIELDS: readonly { key: keyof Limits; label: string }[] = [
-  { key: "actions", label: "Actions per investigation" },
-  { key: "requestsPerAction", label: "Requests read per action" },
-  { key: "minutes", label: "Minutes per investigation" },
-  { key: "pollSeconds", label: "Seconds to wait for a quiet network" },
-  { key: "decisions", label: "Decisions per investigation (the loop's steps)" },
-  { key: "noProgress", label: "Steps without anything new before it stops" },
+// Each limit with the least the server accepts (src/investigation/settings.mjs LIMITS): a repair budget and a write
+// budget may be zero -- none at all -- and a generated test is given at least ten seconds.
+const LIMIT_FIELDS: readonly { key: keyof Limits; label: string; min: number }[] = [
+  { key: "actions", label: "Actions per investigation", min: 1 },
+  { key: "requestsPerAction", label: "Requests read per action", min: 1 },
+  { key: "minutes", label: "Minutes per investigation", min: 1 },
+  { key: "pollSeconds", label: "Seconds to wait for a quiet network", min: 1 },
+  { key: "decisions", label: "Decisions per investigation (the loop's steps)", min: 1 },
+  { key: "noProgress", label: "Steps without anything new before it stops", min: 1 },
+  { key: "obligations", label: "Test obligations derived per investigation", min: 1 },
+  { key: "designs", label: "Designs per test obligation", min: 1 },
+  { key: "repairs", label: "Repairs of a design's representation", min: 0 },
+  { key: "attempts", label: "Attempts of one frozen version", min: 1 },
+  { key: "writes", label: "Writes a generated test may be granted", min: 0 },
+  { key: "caseSeconds", label: "Seconds a generated test may run", min: 10 },
 ];
+
+const limitOf = (text: string, min: number): number => (text.trim() !== "" && Number.isFinite(Number(text)) ? Math.max(min, Math.trunc(Number(text))) : min);
 
 function AccessCard({ draft, onChange }: { draft: AqaSettings; onChange: (next: AqaSettings) => void }) {
   const styles = useStyles();
@@ -162,7 +173,7 @@ function AccessCard({ draft, onChange }: { draft: AqaSettings; onChange: (next: 
         </Field>
         {LIMIT_FIELDS.map((f) => (
           <Field key={f.key} label={f.label}>
-            <Input type="number" min={1} value={String(draft.limits[f.key])} onChange={(_, d) => onChange({ ...draft, limits: { ...draft.limits, [f.key]: Number(d.value) || 1 } })} />
+            <Input type="number" min={f.min} value={String(draft.limits[f.key])} onChange={(_, d) => onChange({ ...draft, limits: { ...draft.limits, [f.key]: limitOf(d.value, f.min) } })} />
           </Field>
         ))}
         <Switch checked={draft.network.details} label="Read each request's detail (headers are kept as names only)" onChange={(_, d) => onChange({ ...draft, network: { ...draft.network, details: d.checked } })} />
@@ -233,6 +244,7 @@ function ContractsCard({ text, onChange, problem }: { text: ContractText; onChan
 
 function InvestigationsCard({ investigations }: { investigations: InvestigationSummary[] }) {
   const [problem, setProblem] = useState<string | null>(null);
+  const [testsOf, setTestsOf] = useState<string | null>(null);
   const open = (id: string) => aqaApi.report(id).then((page) => showPage(page.html)).catch((e: unknown) => setProblem(e instanceof Error ? e.message : String(e)));
   return (
     <Card title="Investigations" subtitle="Newest first. A report is always redacted here; the outcomes are the engine's, never a PASS or a FAIL.">
@@ -263,16 +275,81 @@ function InvestigationsCard({ investigations }: { investigations: InvestigationS
                     <Badge key={o} appearance="tint" color={o === "CONFIRMED_DEFECT" ? "danger" : o === "SUSPECTED_DEFECT" ? "warning" : "informative"}>{OUTCOME_LABEL[o]} {i.findings[o]}</Badge>
                   ))}
                 </TableCell>
-                <TableCell><Button size="small" onClick={() => open(i.id)}>Open report {i.id}</Button></TableCell>
+                <TableCell>
+                  <Button size="small" onClick={() => open(i.id)}>Open report {i.id}</Button>
+                  <Button size="small" appearance="subtle" onClick={() => setTestsOf(testsOf === i.id ? null : i.id)}>Generated tests of {i.id}</Button>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       )}
       {problem && <ErrorState error={new Error(problem)} title="Could not open the report" />}
+      {testsOf && <TestsPanel id={testsOf} />}
     </Card>
   );
 }
+
+// An investigation's GENERATED tests, read only: each obligation, what its latest attempt came to (the engine's
+// verification outcome and the row that gave it), how many attempts it took, and -- opened on demand -- the design it
+// was made from and the case exactly as it was frozen. Nothing here runs, repairs or promotes a test.
+function TestsPanel({ id }: { id: string }) {
+  const styles = useStyles();
+  const tests = useAqaTests(id);
+  const [shown, setShown] = useState<{ title: string; body: JsonValue } | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const show = (title: string, read: Promise<JsonValue>) => read.then((body) => setShown({ title, body })).catch((e: unknown) => setProblem(e instanceof Error ? e.message : String(e)));
+  if (tests.isPending) return <LoadingState label={`Reading the generated tests of ${id}…`} />;
+  if (tests.isError) return <ErrorState error={tests.error} title="Could not read the generated tests" />;
+  return (
+    <div className={styles.stack}>
+      <Caption1>{tests.data.tests.length} generated test(s) in {id}. A word here is what the host's own check earned; a draft is never promoted from here.</Caption1>
+      {tests.data.tests.length > 0 && (
+        <Table aria-label={`Generated tests of ${id}`} size="small">
+          <TableHeader>
+            <TableRow>
+              <TableHeaderCell>obligation</TableHeaderCell>
+              <TableHeaderCell>target</TableHeaderCell>
+              <TableHeaderCell>authority</TableHeaderCell>
+              <TableHeaderCell>latest</TableHeaderCell>
+              <TableHeaderCell>attempts</TableHeaderCell>
+              <TableHeaderCell />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {tests.data.tests.map((t) => (
+              <TableRow key={t.obligation}>
+                <TableCell>{t.current.shape}</TableCell>
+                <TableCell>{t.current.target ?? "a node the graph does not hold"}</TableCell>
+                <TableCell>{t.current.authority ?? "draft"}</TableCell>
+                <TableCell><LatestWord test={t} /></TableCell>
+                <TableCell>{t.evaluations.length}</TableCell>
+                <TableCell>
+                  {designOf(t)?.digest && <Button size="small" onClick={() => show(`design of ${t.current.shape}`, aqaApi.artifact(id, "designs", designOf(t)?.digest ?? "").then((v) => v.artifact))}>Design of {t.current.shape}</Button>}
+                  {versionOf(t) && <Button size="small" onClick={() => show(`case ${versionOf(t)}`, aqaApi.version(id, versionOf(t) ?? "").then((v) => v.frozen))}>Frozen case of {t.current.shape}</Button>}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+      {shown && <Card title={shown.title}><pre className={styles.shown}>{JSON.stringify(shown.body, null, 2)}</pre></Card>}
+      {problem && <ErrorState error={new Error(problem)} title="Could not open it" />}
+    </div>
+  );
+}
+
+const OUTCOME_COLOR: Record<string, "success" | "danger" | "warning" | "informative"> = { SATISFIED: "success", CONTRADICTED: "danger", FLAKY: "warning", AMBIGUOUS: "warning" };
+
+function LatestWord({ test }: { test: GeneratedTest }) {
+  const last = test.evaluations.at(-1);
+  if (!last) return <Caption1>not run yet</Caption1>;
+  return <Badge appearance="tint" color={OUTCOME_COLOR[last.outcome] ?? "informative"}>{last.outcome}{last.cause ? ` (${last.cause})` : ""}</Badge>;
+}
+
+// The design a test's latest version was frozen from, and that version.
+const designOf = (t: GeneratedTest) => t.designs.filter((d) => d.state === "designed").at(-1) ?? null;
+const versionOf = (t: GeneratedTest): string | null => designOf(t)?.versions.at(-1)?.version ?? null;
 
 // Where an investigation stands, as a person scanning the list needs it: what
 // it is doing, why it stopped, and whether it is waiting for somebody.

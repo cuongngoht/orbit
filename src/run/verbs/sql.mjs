@@ -11,7 +11,7 @@ export default {
     refuseWrite(s.query);
     const res = ctx.db.query(s.query);
     if (!res.ok) throw new Blocked(`the database could not be read — ${res.error}`);
-    verdict(s, res.rows);
+    verdict(s, res.rows, ctx);
     return res.rows;
   },
   tail: (s, r) => `${r.result.length} row(s)`,

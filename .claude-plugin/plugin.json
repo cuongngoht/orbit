@@ -1,7 +1,7 @@
 {
   "name": "orbit",
   "description": "Orbit Engineering for Claude Code, Codex and Antigravity: From Goal to Verified Outcome — context, requirements, sandboxes, runtime, UI tests, autonomous QA, Orbit Control, MCP and tools. Governed and local. No dependencies.",
-  "version": "0.0.4",
+  "version": "0.1.0",
   "author": {
     "name": "Orbit Engineering",
     "email": "40376533+cuongngoht@users.noreply.github.com"
@@ -54,6 +54,12 @@
       "type": "boolean",
       "title": "Skill · orbit-architecture",
       "description": "Let Claude start the orbit-architecture skill. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_ARCHITECTURE overrides this on one machine.",
+      "default": true
+    },
+    "skill_reverse_engineer": {
+      "type": "boolean",
+      "title": "Skill · orbit-reverse-engineer",
+      "description": "Let Claude start the orbit-reverse-engineer skill. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_REVERSE_ENGINEER overrides this on one machine.",
       "default": true
     },
     "skill_autonomous_engineering": {
@@ -194,6 +200,12 @@
       "description": "Let Claude start the orbit-architecture-scanner agent. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_AGENT_ARCHITECTURE_SCANNER overrides this on one machine.",
       "default": true
     },
+    "agent_reverse_engineering_agent": {
+      "type": "boolean",
+      "title": "Agent · orbit-reverse-engineering-agent",
+      "description": "Let Claude start the orbit-reverse-engineering-agent agent. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_AGENT_REVERSE_ENGINEERING_AGENT overrides this on one machine.",
+      "default": true
+    },
     "agent_dsl_doctor": {
       "type": "boolean",
       "title": "Agent · orbit-dsl-doctor",
@@ -258,6 +270,18 @@
       "type": "boolean",
       "title": "Agent · orbit-requirement-socrates",
       "description": "Let Claude start the orbit-requirement-socrates agent. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_AGENT_REQUIREMENT_SOCRATES overrides this on one machine.",
+      "default": true
+    },
+    "skill_security_audit": {
+      "type": "boolean",
+      "title": "Skill · orbit-security-audit",
+      "description": "Let Claude start the orbit-security-audit skill. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_SECURITY_AUDIT overrides this on one machine.",
+      "default": true
+    },
+    "agent_security_auditor": {
+      "type": "boolean",
+      "title": "Agent · orbit-security-auditor",
+      "description": "Let Claude start the orbit-security-auditor agent. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_AGENT_SECURITY_AUDITOR overrides this on one machine.",
       "default": true
     }
   }

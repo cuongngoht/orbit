@@ -28,7 +28,10 @@ export const DEFAULTS = {
   identities: [],
   // decisions and noProgress bound the loop (src/investigation/loop.mjs):
   // provisional numbers, to be measured against the benchmark before tuning.
-  limits: { actions: 25, requestsPerAction: 40, minutes: 20, pollSeconds: 30, decisions: 50, noProgress: 4 },
+  // The rest bound what a GENERATED test may cost (doc §6.4): obligations derived per
+  // investigation, designs per obligation and failed ones repaired again, attempts per frozen
+  // version, writes one run may make (a grant's uses), and the seconds one run may take.
+  limits: { actions: 25, requestsPerAction: 40, minutes: 20, pollSeconds: 30, decisions: 50, noProgress: 4, obligations: 20, designs: 4, repairs: 2, attempts: 3, writes: 10, caseSeconds: 120 },
   network: { details: true, fingerprints: true, correlationHeaders: [], idempotencyHeaders: ["idempotency-key"], ignoreFields: [] },
   duplicates: { polling: [], retries: [], idempotent: [], intentional: [], contracts: [] },
   consistency: {},
@@ -44,7 +47,7 @@ const KNOWN = new Set([...Object.keys(DEFAULTS), ...STAMPS]);
 // The kind of an environment nobody declares: a task's sandbox, projected when it is asked about.
 const PROJECTED = "sandbox";
 const ENV_ID = /^[a-z0-9][a-z0-9-]{0,31}$/;
-const LIMITS = { actions: [1, 200], requestsPerAction: [1, 500], minutes: [1, 240], pollSeconds: [1, 600], decisions: [1, 500], noProgress: [1, 50] };
+const LIMITS = { actions: [1, 200], requestsPerAction: [1, 500], minutes: [1, 240], pollSeconds: [1, 600], decisions: [1, 500], noProgress: [1, 50], obligations: [1, 500], designs: [1, 50], repairs: [0, 10], attempts: [1, 10], writes: [0, 200], caseSeconds: [10, 1800] };
 const DUPLICATE_LISTS = { polling: null, retries: "attempts", idempotent: null, intentional: "count", contracts: "maxPerAction" };
 
 const isList = (v) => Array.isArray(v);

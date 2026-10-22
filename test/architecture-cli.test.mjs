@@ -43,6 +43,7 @@ const FILES = {
   "ui-tests/graph/screens.json": "[]",
   "ui-tests/graph/edges.json": "[]",
   "ui-tests/graph/effects.json": "[]",
+  "compose.yaml": "services:\n  api:\n    image: demo-api:dev\n    depends_on: [db]\n  db:\n    image: some-db:1\n",
 };
 
 function written(dir, path, text) {
@@ -73,6 +74,7 @@ const ARGS = {
   where: ["where"],
   record: ["record"],
   project: ["project"],
+  graph: ["graph", "--json"],
 };
 
 test("every command has arguments here, so a new one cannot skip the tree check", () => {
@@ -184,6 +186,22 @@ test("a capability nobody provides is reported as missing, with where it looked"
   assert.match(asked.stdout, /unknown {2}nothing here provides acme — searched/);
   assert.match(asked.stdout, /tracked path\(s\)/);
   assert.match(arch(["capabilities"], store).stdout, /MISSING/);
+});
+
+// The system graph is a projection of what was recorded: nothing to read creates no store, and after
+// a scan it is what the composition file declared, its roles read off the vocabulary the CLI binds.
+test("the system graph is projected from the snapshot, read-only, and as JSON when asked", () => {
+  const store = temp("store");
+  assert.match(arch(["graph"], store).stdout, /no node or relation fact is recorded yet/);
+  assert.deepEqual(readdirSync(store), [], "reading the graph created a store");
+  assert.equal(arch(["ensure"], store).status, 0);
+  const out = arch(["graph", "--json"], store);
+  assert.equal(out.status, 0, out.stderr);
+  const g = JSON.parse(out.stdout);
+  assert.deepEqual(g.nodes.map((n) => [n.key, n.role]), [["component:api", "component"], ["component:db", "component"]]);
+  assert.deepEqual(g.relations.map((r) => [r.key, r.role]), [["component:api depends-on component:db", null]]);
+  assert.match(g.digest, /^[0-9a-f]{64}$/);
+  assert.match(arch(["graph"], store).stdout, /SYSTEM GRAPH {2}2 node\(s\) · 1 relation\(s\)/);
 });
 
 function snapshot(dir, seen = {}) {

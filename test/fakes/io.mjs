@@ -54,7 +54,15 @@ function writing(files, dirs, state) {
     files.set(p, text);
     return p;
   };
-  return { write, ...mutating(files, dirs, state, write) };
+  return { write, writePrivate: (p, text) => writtenPrivate(files, state, write, p, text), ...mutating(files, dirs, state, write) };
+}
+
+// What src/store/io.mjs writePrivate does on a disk: a NEW file only its owner reads -- one already there is an
+// EEXIST, never overwritten -- remembered in `state.private` so a test can see which files were made that way.
+function writtenPrivate(files, state, write, p, text) {
+  if (files.has(p)) throw Object.assign(new Error("EEXIST"), { code: "EEXIST" });
+  (state.private ??= new Set()).add(p);
+  return write(p, text);
 }
 
 const mutating = (files, dirs, state, write) => ({

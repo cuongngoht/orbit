@@ -1,0 +1,12 @@
+{
+  "id": "orbit-backend-test",
+  "version": "0.1.0",
+  "apiVersion": "orbit.extension/v2",
+  "engine": ">=0.0.4",
+  "status": "active",
+  "createdFor": "the orbit-backend-test capability pack Orbit ships (ADR 0034, 0035)",
+  "mutates": true,
+  "capabilities": "./capabilities.mjs",
+  "adapters": "./adapters.json",
+  "note": "Every backend family operation (orbit.messaging.*, orbit.observe.await, orbit.scheduler.*, orbit.job.*, orbit.worker.observe, orbit.state.read, orbit.fixture.*, orbit.clock.advance, orbit.workload.control, orbit.identity.issue), answered by whichever registered adapter serves the bound resource's transport, plus orbit.schedule.expect. Ships reference adapters: AMQP 0-9-1 and NATS JetStream for messaging, PostgreSQL for state, and the open test-hook protocols a project exposes for its scheduler, clock, workers and synthetic identities. Loaded only for a project whose project.json packs lists orbit-backend-test."
+}

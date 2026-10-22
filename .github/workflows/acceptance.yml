@@ -1,0 +1,48 @@
+# Native BACKEND acceptance (doc §15; PBI 21): the example project on both stacks, in every planted variant, taken
+# through the engine's real commands into an isolated Docker sandbox and held to acceptance/truth.json. It needs Docker
+# and takes hours (it builds the worker image, starts each stack, and runs every generated test for real), so it is
+# not a check on every push: a person runs it on a branch that is about to be released. A run that matched every
+# variant uploads the record the release gate reads (skills/orbit-release/backend.mjs); committing it is a person's
+# act, on the source it names.
+name: acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      stack:
+        description: "a stack, or nothing for every stack"
+        required: false
+        default: ""
+      variant:
+        description: "a variant, or nothing for every variant"
+        required: false
+        default: ""
+
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: docker answers
+        run: docker version
+      # The inputs reach the shell as environment, never spliced into the script, and only as plain names.
+      - name: the acceptance, recorded when every run matched
+        env:
+          STACK: ${{ inputs.stack }}
+          VARIANT: ${{ inputs.variant }}
+        run: |
+          case "$STACK$VARIANT" in *[!a-z0-9,-]*) echo "a stack and a variant are lowercase names"; exit 2;; esac
+          args=()
+          if [ -n "$STACK" ]; then args+=("--stack=$STACK"); fi
+          if [ -n "$VARIANT" ]; then args+=("--variant=$VARIANT"); fi
+          node acceptance/run.mjs "${args[@]}" --record
+      - name: the record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-acceptance
+          path: docs/backend-acceptance.json

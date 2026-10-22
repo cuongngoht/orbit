@@ -1,0 +1,83 @@
+// What the binder is told a logical ref IS (doc §6.1; PBI 06): read off the SYSTEM GRAPH -- the
+// node facts reverse engineering recorded with their evidence (src/architecture/graph-view.mjs) --
+// and off the design's own observation plan, never off a case. A ref's alias is its node's name as
+// a logical alias (`aliasOf`), so a generator proposes `channelRef: "billing-reminders"` from the
+// graph and the binder finds the same node. What the graph does not hold is null: the binder then
+// says it is a gap.
+//
+// A node is placed on the topology node of the component that holds it (`of`); a component's
+// test hooks are where its own `hooksPort` attribute says. Which role a ref kind is read from is a
+// row, never a branch.
+const SLUG = /[^a-z0-9]+/g;
+
+export const aliasOf = (name) => String(name ?? "").toLowerCase().replace(SLUG, "-").replace(/^-+|-+$/g, "").slice(0, 64);
+
+// A node's attributes are what a checkout said, so only its own NAMES travel as an address: never a
+// key that says where to connect or as whom (the binder lays the host's over them anyway).
+const RESERVED = new Set(["alias", "transport", "endpoint", "host", "port", "origin", "credential", "adapter", "namespace", "env"]);
+const namesOf = (attributes) => Object.fromEntries(Object.entries(attributes ?? {}).filter(([k]) => !RESERVED.has(k)));
+
+// A base path is a plain path: a leading slash, plain segments -- never a userinfo, a host or a scheme.
+const PATH = /^\/(?![\/\\])[A-Za-z0-9/_.~-]{0,200}$/;
+
+const ownerOf = (node) => (node?.of ? String(node.of).replace(/^[a-z-]+:/, "") : null);
+
+// in: { graph: graphOf(...) view, design: the design sidecar, tenancy: a PERSON's declared tenancy contract }
+export function declarationsFrom({ graph, design, tenancy }) {
+  const nodes = graph?.nodes ?? [];
+  return (kind, alias) => (DECLARE[kind] ? DECLARE[kind](nodes, alias, design ?? {}, tenancy ?? null) : null);
+}
+
+const named = (nodes, roles, alias) => nodes.find((n) => roles.includes(n.role) && aliasOf(n.name) === alias) ?? null;
+
+const componentOf = (nodes, node) => nodes.find((n) => n.role === "component" && aliasOf(n.name) === aliasOf(ownerOf(node))) ?? null;
+
+const hooksPortOf = (nodes, node) => Number(componentOf(nodes, node)?.attributes?.hooksPort) || null;
+
+// A resource a server holds -- a channel on a broker, a table in a database -- is placed on that server's node, with
+// its own names as its address.
+function held(roles) {
+  return (nodes, alias) => {
+    const node = named(nodes, roles, alias);
+    return node ? { node: ownerOf(node), ...(node.transport ? { transport: node.transport } : {}), address: namesOf(node.attributes) } : null;
+  };
+}
+
+const channel = held(["channel"]);
+
+function endpoint(nodes, alias) {
+  const node = named(nodes, ["interface"], alias);
+  return node ? { node: ownerOf(node), ...(Number.isInteger(Number(node.attributes?.port)) && Number(node.attributes.port) > 0 ? { port: Number(node.attributes.port) } : {}), ...(PATH.test(String(node.attributes?.path ?? "")) ? { path: String(node.attributes.path) } : {}) } : null;
+}
+
+// A schedule, or a workload, is reached through the test hooks of the component that holds it.
+function hooked(roles, field) {
+  return (nodes, alias) => {
+    const node = named(nodes, roles, alias);
+    return node && hooksPortOf(nodes, node) ? { node: ownerOf(node), port: hooksPortOf(nodes, node), address: { [field]: node.name } } : null;
+  };
+}
+
+// A clock is a component's own -- the one whose hooks inject it -- named by the component.
+function clock(nodes, alias) {
+  const component = nodes.find((n) => n.role === "component" && aliasOf(n.name) === alias && Number(n.attributes?.hooksPort));
+  return component ? { node: component.name, port: Number(component.attributes.hooksPort) } : null;
+}
+
+// An observer watches the channel the design says: its observation plan's, or the one the step that arms it names.
+const observer = (nodes, alias, design) => ((o) => (o?.channelRef ? { channel: o.channelRef } : null))((design.observationPlan ?? []).find((x) => x.observerRef === alias) ?? (design.skeleton?.steps ?? []).map((s) => s.input ?? {}).find((i) => i.observerRef === alias && i.channelRef));
+
+const fixture = (nodes, alias, design) => ((design.fixtureRefs ?? []).includes(alias) ? {} : null);
+
+// An identity is a principal-class node, issued through the test hooks of the component it belongs to, as the tenant a
+// PERSON's tenancy contract says it acts in -- never a tenant read off the code, and none at all when nobody said.
+function identity(nodes, alias, design, tenancy) {
+  const node = named(nodes, ["principal"], alias);
+  const tenant = tenantOf(tenancy, alias);
+  return node && tenant && hooksPortOf(nodes, node) ? { node: ownerOf(node), port: hooksPortOf(nodes, node), principal: alias, tenant } : null;
+}
+
+// The claim value of the first tenant the contract says this identity may act in.
+const tenantOf = (tenancy, alias) => ((logical) => (logical ? tenancy?.tenants?.[logical] ?? null : null))(tenancy?.identities?.[alias]?.[0]);
+
+const DECLARE = { channel, queue: channel, state: held(["data-resource"]), endpoint, schedule: hooked(["schedule"], "schedule"), workload: hooked(["workload"], "workload"), clock, observer, fixture, identity };

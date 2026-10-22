@@ -1,0 +1,63 @@
+{
+  "order": 2,
+  "design": {
+    "skeleton": {
+      "steps": [
+        {
+          "do": "call",
+          "capability": "orbit.http.read",
+          "input": {
+            "endpointRef": "invoice-read",
+            "identityRef": "tenant-a-reader",
+            "method": "GET",
+            "path": "/invoices/inv-a"
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.http.read",
+          "input": {
+            "endpointRef": "invoice-read",
+            "identityRef": "tenant-b-reader",
+            "method": "GET",
+            "path": "/invoices/inv-a"
+          }
+        }
+      ]
+    },
+    "assertions": [
+      {
+        "criterionRef": "API-AC-1/E1",
+        "template": "value-eq",
+        "step": 1
+      },
+      {
+        "criterionRef": "API-AC-2/E1",
+        "template": "value-eq",
+        "step": 2
+      },
+      {
+        "criterionRef": "API-AC-2/E2",
+        "template": "value-eq",
+        "step": 2
+      },
+      {
+        "criterionRef": "API-AC-2/E3",
+        "template": "value-excludes",
+        "step": 2
+      }
+    ],
+    "controls": [
+      {
+        "role": "positive",
+        "identityRef": "tenant-a-reader",
+        "why": "the owner is served, so a refusal below means something"
+      },
+      {
+        "role": "negative",
+        "identityRef": "tenant-b-reader",
+        "why": "another tenant is refused, and sees nothing"
+      }
+    ]
+  }
+}

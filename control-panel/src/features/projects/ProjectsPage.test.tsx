@@ -41,7 +41,9 @@ describe("Projects", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Forget /work/shop-review" }));
     expect(await screen.findByText("Forget this checkout?")).toBeTruthy();
     expect(server.calls.some((c) => c.path.endsWith("/forget"))).toBe(false);
-    fireEvent.click(await screen.findByRole("button", { name: "Forget it" }));
+    // Fluent marks a dialog aria-hidden while it settles which layer is modal: its buttons are read with hidden: true,
+    // and waited for (a slow runner draws the dialog and its buttons a beat apart).
+    fireEvent.click(await screen.findByRole("button", { name: "Forget it", hidden: true }, { timeout: 5000 }));
     // The dialog names the directory too, and closes on its own schedule: the TABLE is what must lose it.
     await waitFor(() => expect(within(screen.getByRole("table", { name: "Checkouts" })).queryByText("/work/shop-review")).toBeNull(), { timeout: 4000 });
     const sent = server.calls.find((c) => c.path.endsWith("/forget"));
@@ -54,7 +56,7 @@ describe("Projects", () => {
     expect(await screen.findByText("/work/shop")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Forget /work/shop" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Forget /work/shop-review" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel", hidden: true }, { timeout: 5000 }));
     await waitFor(() => expect(screen.queryByText("Forget this checkout?")).toBeNull(), { timeout: 4000 });
     expect(server.calls.some((c) => c.path.endsWith("/forget"))).toBe(false);
   });

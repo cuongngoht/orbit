@@ -1,0 +1,809 @@
+{
+  "schema": 1,
+  "doc": "Conformance receipts the reference adapters earned on REAL systems, written only by a kit's --record (acceptance/kits/). The support matrix is computed from these (src/adapters/matrix.mjs); a receipt for another version, fingerprint or code digest counts for nothing.",
+  "receipts": [
+    {
+      "kit": "scheduler",
+      "adapter": {
+        "id": "scheduler.hooks",
+        "version": "0.0.4",
+        "fingerprint": "29dd8d8771e33ba2116c109424d1ec5bf0c0b055df419ed22374b805893b7e79",
+        "code": "75d2cff268e07862ea2f019c2afb6e1af7adc79182c28141cdbd1a0d48b61d34",
+        "transport": "orbit-scheduler-v1"
+      },
+      "system": {
+        "image": "example invoice-a (acceptance/projects)",
+        "emulated": false
+      },
+      "at": "2026-10-21T18:58:55.020Z",
+      "results": [
+        {
+          "id": "trigger-dispatches",
+          "ops": [
+            "trigger"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "decisions-by-cursor",
+          "ops": [
+            "observe"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "kit": "clock",
+      "adapter": {
+        "id": "clock.hooks",
+        "version": "0.0.4",
+        "fingerprint": "0f803936e385ebaf3ea3bc4074e3e3dbefd0c697e29db147e692f8b895a5c258",
+        "code": "75d2cff268e07862ea2f019c2afb6e1af7adc79182c28141cdbd1a0d48b61d34",
+        "transport": "orbit-clock-v1"
+      },
+      "system": {
+        "image": "example invoice-a (acceptance/projects)",
+        "emulated": false
+      },
+      "at": "2026-10-21T18:58:55.200Z",
+      "results": [
+        {
+          "id": "clock-barrier",
+          "ops": [
+            "advance"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "kit": "workload",
+      "adapter": {
+        "id": "workload.hooks",
+        "version": "0.0.4",
+        "fingerprint": "6fe00f174ef84e4806ac7c9fe5213ab217c76e5b6eb8e0b3a5cd7156c7c2ad19",
+        "code": "75d2cff268e07862ea2f019c2afb6e1af7adc79182c28141cdbd1a0d48b61d34",
+        "transport": "orbit-workload-v1"
+      },
+      "system": {
+        "image": "example invoice-a (acceptance/projects)",
+        "emulated": false
+      },
+      "at": "2026-10-21T18:58:55.835Z",
+      "results": [
+        {
+          "id": "control-stop-start",
+          "ops": [
+            "control"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "kit": "worker",
+      "adapter": {
+        "id": "worker.hooks",
+        "version": "0.0.4",
+        "fingerprint": "18d55d0bedbdf6479fd40f57d93c495f2b138e432203fc5418b365c0e83bc6c0",
+        "code": "75d2cff268e07862ea2f019c2afb6e1af7adc79182c28141cdbd1a0d48b61d34",
+        "transport": "orbit-workload-v1"
+      },
+      "system": {
+        "image": "example invoice-a (acceptance/projects)",
+        "emulated": false
+      },
+      "at": "2026-10-21T18:58:55.907Z",
+      "results": [
+        {
+          "id": "attempts-by-cursor",
+          "ops": [
+            "observe"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "kit": "messaging",
+      "adapter": {
+        "id": "amqp.reference",
+        "version": "0.0.4",
+        "fingerprint": "d47cbf9ee6f335b8cc23ab42b3d1135cdd78b521924ca20c19eb18b75a009768",
+        "code": "77f92fd76fb6f616e4fbe1fa21dec252c42005b9aed11f5c50c55c97d0d51f74",
+        "transport": "amqp-0-9-1"
+      },
+      "system": {
+        "image": "rabbitmq@sha256:71be6ca71cd3ad92f29b354ec381b1ee587894aaaac21f185b8cf43fb50d3feb",
+        "emulated": false
+      },
+      "at": "2026-10-21T19:19:20.279Z",
+      "results": [
+        {
+          "id": "publish-confirmed",
+          "ops": [
+            "publish",
+            "fixture.prepare",
+            "fixture.cleanup"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "unroutable-not-confirmed",
+          "ops": [
+            "publish"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "observe-complete-window",
+          "ops": [
+            "observe",
+            "observe.await",
+            "publish",
+            "fixture.prepare"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "observer-non-stealing",
+          "ops": [
+            "observe",
+            "observe.await",
+            "fixture.prepare"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "fixture-own-namespace",
+          "ops": [
+            "fixture.prepare",
+            "fixture.cleanup"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "kit": "messaging",
+      "adapter": {
+        "id": "jetstream.reference",
+        "version": "0.0.4",
+        "fingerprint": "4a2f302ee6866d0df19fcaaf24a1008215ab18538264734bef252c3a644b5e70",
+        "code": "7c4d74d4586916c06b63571cfd65cecaefea6c5f4fb2f3b702770789ca960408",
+        "transport": "nats-jetstream"
+      },
+      "system": {
+        "image": "nats@sha256:2ae57dfba3063d5e25fecb75256118c0882a1a2d2cf7d0fba17a7c701df956f6",
+        "emulated": false
+      },
+      "at": "2026-10-21T19:19:23.884Z",
+      "results": [
+        {
+          "id": "publish-confirmed",
+          "ops": [
+            "publish",
+            "fixture.prepare",
+            "fixture.cleanup"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "unroutable-not-confirmed",
+          "ops": [
+            "publish"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "observe-complete-window",
+          "ops": [
+            "observe",
+            "observe.await",
+            "publish",
+            "fixture.prepare"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "observer-non-stealing",
+          "ops": [
+            "observe",
+            "observe.await",
+            "fixture.prepare"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "fixture-own-namespace",
+          "ops": [
+            "fixture.prepare",
+            "fixture.cleanup"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "kit": "scheduler",
+      "adapter": {
+        "id": "scheduler.hooks",
+        "version": "0.1.0",
+        "fingerprint": "3414e8d2cd598d02f040c2b27f35038b7da7a2add4a5b961479508e87e98c8d0",
+        "code": "01f6de3811b37f539b114bb1acd20c972f68274a08ed89aeb66122a15335f5d7",
+        "transport": "orbit-scheduler-v1"
+      },
+      "system": {
+        "image": "example invoice-a (acceptance/projects)",
+        "emulated": false
+      },
+      "at": "2026-10-22T03:17:07.583Z",
+      "results": [
+        {
+          "id": "trigger-dispatches",
+          "ops": [
+            "trigger"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "decisions-by-cursor",
+          "ops": [
+            "observe"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "kit": "clock",
+      "adapter": {
+        "id": "clock.hooks",
+        "version": "0.1.0",
+        "fingerprint": "5b0f447eb1d7fe1d5d1f6fd814a5ae26797063809328913cccf01fd3f032536e",
+        "code": "01f6de3811b37f539b114bb1acd20c972f68274a08ed89aeb66122a15335f5d7",
+        "transport": "orbit-clock-v1"
+      },
+      "system": {
+        "image": "example invoice-a (acceptance/projects)",
+        "emulated": false
+      },
+      "at": "2026-10-22T03:17:07.716Z",
+      "results": [
+        {
+          "id": "clock-barrier",
+          "ops": [
+            "advance"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "kit": "workload",
+      "adapter": {
+        "id": "workload.hooks",
+        "version": "0.1.0",
+        "fingerprint": "b6916f9b7acbf2137bac3af06f8d712b1b322a086b965a266f977c9c299d6e85",
+        "code": "01f6de3811b37f539b114bb1acd20c972f68274a08ed89aeb66122a15335f5d7",
+        "transport": "orbit-workload-v1"
+      },
+      "system": {
+        "image": "example invoice-a (acceptance/projects)",
+        "emulated": false
+      },
+      "at": "2026-10-22T03:17:08.618Z",
+      "results": [
+        {
+          "id": "control-stop-start",
+          "ops": [
+            "control"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "kit": "worker",
+      "adapter": {
+        "id": "worker.hooks",
+        "version": "0.1.0",
+        "fingerprint": "86cdd31cb21ccb17df5d5a7355c538b79162dfa622a16bb0b99be4f13d453901",
+        "code": "01f6de3811b37f539b114bb1acd20c972f68274a08ed89aeb66122a15335f5d7",
+        "transport": "orbit-workload-v1"
+      },
+      "system": {
+        "image": "example invoice-a (acceptance/projects)",
+        "emulated": false
+      },
+      "at": "2026-10-22T03:17:08.701Z",
+      "results": [
+        {
+          "id": "attempts-by-cursor",
+          "ops": [
+            "observe"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "kit": "identity",
+      "adapter": {
+        "id": "identity.hooks",
+        "version": "0.1.0",
+        "fingerprint": "6f33f3368870153aa95caf7c47fb74fc9715126c2ed0216718579a29f0d01972",
+        "code": "01f6de3811b37f539b114bb1acd20c972f68274a08ed89aeb66122a15335f5d7",
+        "transport": "orbit-identity-v1"
+      },
+      "system": {
+        "image": "example invoice-a (acceptance/projects)",
+        "emulated": false
+      },
+      "at": "2026-10-22T03:17:09.008Z",
+      "results": [
+        {
+          "id": "identity-issued",
+          "ops": [
+            "issue"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "kit": "state",
+      "adapter": {
+        "id": "postgres.reference",
+        "version": "0.1.0",
+        "fingerprint": "8b880b67c6a603e48e1988805c2f676f041d031977b32990b981727972367490",
+        "code": "cffa317d1b85162850ad952dce5991800327da09214505ef1a00e514171c9199",
+        "transport": "postgres-wire"
+      },
+      "system": {
+        "image": "postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+        "emulated": false
+      },
+      "at": "2026-10-22T03:17:12.035Z",
+      "results": [
+        {
+          "id": "count-by-key",
+          "ops": [
+            "read"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "absent-is-zero",
+          "ops": [
+            "read"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "values-are-parameters",
+          "ops": [
+            "read"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "names-are-refused",
+          "ops": [
+            "read"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "kit": "messaging",
+      "adapter": {
+        "id": "amqp.reference",
+        "version": "0.1.0",
+        "fingerprint": "f9022b3fb5c9ca249b26bd578f74edfc1f202c06f577aefcd66b2d2eeadf9883",
+        "code": "b25e89df68b25e631d66141430a752de271701ea0bad413e9ecffc1143b5987a",
+        "transport": "amqp-0-9-1"
+      },
+      "system": {
+        "image": "rabbitmq@sha256:71be6ca71cd3ad92f29b354ec381b1ee587894aaaac21f185b8cf43fb50d3feb",
+        "emulated": false
+      },
+      "at": "2026-10-22T03:17:41.622Z",
+      "results": [
+        {
+          "id": "publish-confirmed",
+          "ops": [
+            "publish",
+            "fixture.prepare",
+            "fixture.cleanup"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "unroutable-not-confirmed",
+          "ops": [
+            "publish"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "observe-complete-window",
+          "ops": [
+            "observe",
+            "observe.await",
+            "publish",
+            "fixture.prepare"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "observer-non-stealing",
+          "ops": [
+            "observe",
+            "observe.await",
+            "fixture.prepare"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "fixture-own-namespace",
+          "ops": [
+            "fixture.prepare",
+            "fixture.cleanup"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "kit": "messaging",
+      "adapter": {
+        "id": "jetstream.reference",
+        "version": "0.1.0",
+        "fingerprint": "fc566cf5cb29602ce2ec733bafc8746c458d95b6297f81ab32846c87af6b7319",
+        "code": "1308b11dfdde6529b412a3a0de5f1f5b29c212f88a370ea3edb8f69931d89f1b",
+        "transport": "nats-jetstream"
+      },
+      "system": {
+        "image": "nats@sha256:2ae57dfba3063d5e25fecb75256118c0882a1a2d2cf7d0fba17a7c701df956f6",
+        "emulated": false
+      },
+      "at": "2026-10-22T03:17:45.593Z",
+      "results": [
+        {
+          "id": "publish-confirmed",
+          "ops": [
+            "publish",
+            "fixture.prepare",
+            "fixture.cleanup"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "unroutable-not-confirmed",
+          "ops": [
+            "publish"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "observe-complete-window",
+          "ops": [
+            "observe",
+            "observe.await",
+            "publish",
+            "fixture.prepare"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "observer-non-stealing",
+          "ops": [
+            "observe",
+            "observe.await",
+            "fixture.prepare"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "fixture-own-namespace",
+          "ops": [
+            "fixture.prepare",
+            "fixture.cleanup"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    }
+  ],
+  "acceptance": {
+    "schema": 1,
+    "at": "2026-10-22T04:18:34.763Z",
+    "sourceDigest": "3e8c57dd57c3decb55c4a01549be1f67b0e248b5aad7900b54cdb5bd462b0639",
+    "worker": "sha256:1a57a52b5842e1a00102c7e227266303674685982df6bf6d9e1cd26cc793856e",
+    "runs": [
+      {
+        "stack": "invoice-a",
+        "variant": "correct",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "SATISFIED",
+          "permission-enforced": "SATISFIED",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "SATISFIED",
+          "effect-once-per-key": "SATISFIED",
+          "crash-before-effect": "SATISFIED",
+          "crash-after-effect-before-ack": "SATISFIED",
+          "screen-shows-result": "SATISFIED",
+          "persisted-after-write": "SATISFIED",
+          "v5.0.0-4.1.1": "verified",
+          "v5.0.0-8.2.1": "verified",
+          "v5.0.0-8.3.1": "verified",
+          "v5.0.0-8.2.2": "pending"
+        }
+      },
+      {
+        "stack": "invoice-a",
+        "variant": "no-tenant-check",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "SATISFIED",
+          "permission-enforced": "CONTRADICTED",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "SATISFIED",
+          "effect-once-per-key": "SATISFIED",
+          "crash-before-effect": "SATISFIED",
+          "crash-after-effect-before-ack": "SATISFIED",
+          "screen-shows-result": "SATISFIED",
+          "persisted-after-write": "SATISFIED",
+          "v5.0.0-4.1.1": "verified",
+          "v5.0.0-8.2.1": "finding:confirmed",
+          "v5.0.0-8.3.1": "finding:confirmed",
+          "v5.0.0-8.2.2": "finding:confirmed"
+        }
+      },
+      {
+        "stack": "invoice-a",
+        "variant": "broken-auth",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "CONTRADICTED",
+          "permission-enforced": "INCONCLUSIVE",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "SATISFIED",
+          "effect-once-per-key": "SATISFIED",
+          "crash-before-effect": "SATISFIED",
+          "crash-after-effect-before-ack": "SATISFIED",
+          "screen-shows-result": "EXECUTION_ERROR",
+          "persisted-after-write": "EXECUTION_ERROR",
+          "v5.0.0-4.1.1": "inconclusive",
+          "v5.0.0-8.2.1": "inconclusive",
+          "v5.0.0-8.3.1": "inconclusive",
+          "v5.0.0-8.2.2": "inconclusive"
+        }
+      },
+      {
+        "stack": "invoice-a",
+        "variant": "no-dedupe",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "SATISFIED",
+          "permission-enforced": "SATISFIED",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "SATISFIED",
+          "effect-once-per-key": "CONTRADICTED",
+          "crash-before-effect": "SATISFIED",
+          "crash-after-effect-before-ack": "CONTRADICTED",
+          "screen-shows-result": "SATISFIED",
+          "persisted-after-write": "SATISFIED",
+          "v5.0.0-4.1.1": "verified",
+          "v5.0.0-8.2.1": "verified",
+          "v5.0.0-8.3.1": "verified",
+          "v5.0.0-8.2.2": "pending"
+        }
+      },
+      {
+        "stack": "invoice-a",
+        "variant": "early-ack",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "SATISFIED",
+          "permission-enforced": "SATISFIED",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "SATISFIED",
+          "effect-once-per-key": "SATISFIED",
+          "crash-before-effect": "CONTRADICTED",
+          "crash-after-effect-before-ack": "INCONCLUSIVE",
+          "screen-shows-result": "SATISFIED",
+          "persisted-after-write": "SATISFIED",
+          "v5.0.0-4.1.1": "verified",
+          "v5.0.0-8.2.1": "verified",
+          "v5.0.0-8.3.1": "verified",
+          "v5.0.0-8.2.2": "pending"
+        }
+      },
+      {
+        "stack": "invoice-a",
+        "variant": "no-db-write",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "SATISFIED",
+          "permission-enforced": "SATISFIED",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "SATISFIED",
+          "effect-once-per-key": "CONTRADICTED",
+          "crash-before-effect": "CONTRADICTED",
+          "crash-after-effect-before-ack": "CONTRADICTED",
+          "screen-shows-result": "SATISFIED",
+          "persisted-after-write": "SATISFIED",
+          "v5.0.0-4.1.1": "verified",
+          "v5.0.0-8.2.1": "verified",
+          "v5.0.0-8.3.1": "verified",
+          "v5.0.0-8.2.2": "pending"
+        }
+      },
+      {
+        "stack": "invoice-a",
+        "variant": "toast-without-persistence",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "SATISFIED",
+          "permission-enforced": "SATISFIED",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "SATISFIED",
+          "effect-once-per-key": "SATISFIED",
+          "crash-before-effect": "SATISFIED",
+          "crash-after-effect-before-ack": "SATISFIED",
+          "screen-shows-result": "SATISFIED",
+          "persisted-after-write": "CONTRADICTED",
+          "v5.0.0-4.1.1": "verified",
+          "v5.0.0-8.2.1": "verified",
+          "v5.0.0-8.3.1": "verified",
+          "v5.0.0-8.2.2": "pending"
+        }
+      },
+      {
+        "stack": "invoice-b",
+        "variant": "correct",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "SATISFIED",
+          "permission-enforced": "SATISFIED",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "CAPABILITY_MISSING",
+          "effect-once-per-key": "SATISFIED",
+          "crash-before-effect": "SATISFIED",
+          "crash-after-effect-before-ack": "SATISFIED",
+          "screen-shows-result": "SATISFIED",
+          "persisted-after-write": "SATISFIED",
+          "v5.0.0-4.1.1": "verified",
+          "v5.0.0-8.2.1": "verified",
+          "v5.0.0-8.3.1": "verified",
+          "v5.0.0-8.2.2": "pending"
+        }
+      },
+      {
+        "stack": "invoice-b",
+        "variant": "no-tenant-check",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "SATISFIED",
+          "permission-enforced": "CONTRADICTED",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "CAPABILITY_MISSING",
+          "effect-once-per-key": "SATISFIED",
+          "crash-before-effect": "SATISFIED",
+          "crash-after-effect-before-ack": "SATISFIED",
+          "screen-shows-result": "SATISFIED",
+          "persisted-after-write": "SATISFIED",
+          "v5.0.0-4.1.1": "verified",
+          "v5.0.0-8.2.1": "finding:confirmed",
+          "v5.0.0-8.3.1": "finding:confirmed",
+          "v5.0.0-8.2.2": "finding:confirmed"
+        }
+      },
+      {
+        "stack": "invoice-b",
+        "variant": "broken-auth",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "CONTRADICTED",
+          "permission-enforced": "INCONCLUSIVE",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "CAPABILITY_MISSING",
+          "effect-once-per-key": "SATISFIED",
+          "crash-before-effect": "SATISFIED",
+          "crash-after-effect-before-ack": "SATISFIED",
+          "screen-shows-result": "EXECUTION_ERROR",
+          "persisted-after-write": "EXECUTION_ERROR",
+          "v5.0.0-4.1.1": "inconclusive",
+          "v5.0.0-8.2.1": "inconclusive",
+          "v5.0.0-8.3.1": "inconclusive",
+          "v5.0.0-8.2.2": "inconclusive"
+        }
+      },
+      {
+        "stack": "invoice-b",
+        "variant": "no-dedupe",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "SATISFIED",
+          "permission-enforced": "SATISFIED",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "CAPABILITY_MISSING",
+          "effect-once-per-key": "SATISFIED",
+          "crash-before-effect": "SATISFIED",
+          "crash-after-effect-before-ack": "CONTRADICTED",
+          "screen-shows-result": "SATISFIED",
+          "persisted-after-write": "SATISFIED",
+          "v5.0.0-4.1.1": "verified",
+          "v5.0.0-8.2.1": "verified",
+          "v5.0.0-8.3.1": "verified",
+          "v5.0.0-8.2.2": "pending"
+        }
+      },
+      {
+        "stack": "invoice-b",
+        "variant": "early-ack",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "SATISFIED",
+          "permission-enforced": "SATISFIED",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "CAPABILITY_MISSING",
+          "effect-once-per-key": "SATISFIED",
+          "crash-before-effect": "CONTRADICTED",
+          "crash-after-effect-before-ack": "INCONCLUSIVE",
+          "screen-shows-result": "SATISFIED",
+          "persisted-after-write": "SATISFIED",
+          "v5.0.0-4.1.1": "verified",
+          "v5.0.0-8.2.1": "verified",
+          "v5.0.0-8.3.1": "verified",
+          "v5.0.0-8.2.2": "pending"
+        }
+      },
+      {
+        "stack": "invoice-b",
+        "variant": "no-db-write",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "SATISFIED",
+          "permission-enforced": "SATISFIED",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "CAPABILITY_MISSING",
+          "effect-once-per-key": "CONTRADICTED",
+          "crash-before-effect": "CONTRADICTED",
+          "crash-after-effect-before-ack": "CONTRADICTED",
+          "screen-shows-result": "SATISFIED",
+          "persisted-after-write": "SATISFIED",
+          "v5.0.0-4.1.1": "verified",
+          "v5.0.0-8.2.1": "verified",
+          "v5.0.0-8.3.1": "verified",
+          "v5.0.0-8.2.2": "pending"
+        }
+      },
+      {
+        "stack": "invoice-b",
+        "variant": "toast-without-persistence",
+        "matched": true,
+        "outcomes": {
+          "response-conforms": "SATISFIED",
+          "permission-enforced": "SATISFIED",
+          "completes-by-deadline": "SATISFIED",
+          "occurrence-one-execution": "CAPABILITY_MISSING",
+          "effect-once-per-key": "SATISFIED",
+          "crash-before-effect": "SATISFIED",
+          "crash-after-effect-before-ack": "SATISFIED",
+          "screen-shows-result": "SATISFIED",
+          "persisted-after-write": "CONTRADICTED",
+          "v5.0.0-4.1.1": "verified",
+          "v5.0.0-8.2.1": "verified",
+          "v5.0.0-8.3.1": "verified",
+          "v5.0.0-8.2.2": "pending"
+        }
+      }
+    ]
+  }
+}

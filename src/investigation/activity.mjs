@@ -54,11 +54,34 @@ export const ACTIVITY = {
   resumed: [{ event: "qa.resumed", fields: ["id", "by", "why"] }],
   cancelled: [{ event: "qa.ended", fields: ["by", "why"], derive: { lifecycle: () => "cancelled" } }],
   completed: [{ event: "qa.ended", fields: ["id", "reason", "lifecycle", "by", "why"] }],
+  // A generated test's lifecycle (0.1.0, doc §9): the milestone events a viewer shows, each carrying
+  // the eventId a viewer folds it ONCE by, and the ids that tie an execution back to its obligation.
+  discovery: [{ event: "qa.discovery", fields: ["id", "eventId", "state", "count"], derive: { unknowns: (r) => count(r.unknowns) } }],
+  obligation: [{ event: "qa.obligation.discovered", fields: ["id", "eventId", "obligation", "revision", "shape", "target", "applicability", "authority", "method"] }],
+  designed: [{ event: "qa.test.designed", fields: ["id", "eventId", "attempt", "obligation", "design", "state", "why"] }],
+  version: [{ event: "qa.draft.persisted", fields: ["id", "eventId", "design", "case", "version", "digest"] }],
+  validated: [
+    { event: "qa.test.validated", when: (r) => r.state !== "invalid", fields: ["id", "eventId", "attempt", "version", "state", "validator"] },
+    { event: "qa.test.invalid", when: (r) => r.state === "invalid", fields: ["id", "eventId", "attempt", "version", "state", "validator", "repair"], derive: { findings: (r) => count(r.findings) } },
+  ],
+  authorized: [
+    { event: "qa.execution.authorized", when: (r) => r.state !== "blocked", fields: ["id", "eventId", "attempt", "version", "state", "policy"] },
+    { event: "qa.execution.blocked", when: (r) => r.state === "blocked", fields: ["id", "eventId", "attempt", "version", "state", "policy", "why"] },
+  ],
+  prepared: [{ event: "qa.sandbox.prepared", fields: ["id", "eventId", "attempt", "version", "state", "sandbox", "tree"] }],
+  started: [{ event: "qa.test.started", fields: ["id", "eventId", "attempt", "version", "execution"] }],
+  observed: [{ event: "qa.observation.closed", fields: ["id", "eventId", "attempt", "execution", "completeness", "through", "late"], derive: { gaps: (r) => count(r.gaps) } }],
+  evaluated: [{ event: "qa.result.evaluated", fields: ["id", "eventId", "attempt", "execution", "obligation", "result", "outcome", "runner", "cause", "boundary"] }],
+  assessed: [{ event: "qa.assessment.frozen", fields: ["id", "eventId", "assessment", "digest", "supersedes"], derive: { results: (r) => count(r.results) } }],
+  published: [{ event: "qa.report.persisted", fields: ["id", "eventId", "report", "assessment", "digest", "state"] }],
+  cleanup: [{ event: "qa.cleanup.settled", fields: ["id", "eventId", "attempt", "execution", "state"], derive: { pending: (r) => count(r.pending) } }],
 };
 
 // Kinds a live page deliberately says nothing about: what an input source was (a reference, not an
-// event), the analysis keys, a receipt for knowledge and a checkpoint of the loop.
-export const SILENT = ["input", "analysis", "receipt", "checkpoint"];
+// event), the analysis keys, a receipt for knowledge, a checkpoint of the loop, which source an
+// obligation was bound to (a reference and its authority, read in an inspect view, not a moment) and
+// a person's applicability decision (recorded for the assessment, never an event of the run).
+export const SILENT = ["input", "analysis", "receipt", "checkpoint", "binding", "applicability"];
 
 // Every kind chooses: a row, or silence. The test asks this.
 export const unchosen = () => KIND_NAMES.filter((k) => !ACTIVITY[k] && !SILENT.includes(k));

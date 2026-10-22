@@ -69,7 +69,7 @@ const MOVING = {
 // The pane layout's views, by number (1.8.6): the same order a docked pane's tabs are in.
 const VIEWING = Object.fromEntries(["1", "2", "3", "4", "5", "6"].map((k, i) => [k, act("view", { at: i })]));
 
-const OPENING = { t: act("overlay", { name: "picker" }), i: act("overlay", { name: "activity" }), e: act("overlay", { name: "evidence" }), d: act("overlay", { name: "diagnostics" }), "?": act("overlay", { name: "help" }) };
+const OPENING = { t: act("overlay", { name: "picker" }), i: act("overlay", { name: "activity" }), e: act("overlay", { name: "evidence" }), o: act("overlay", { name: "inspect" }), d: act("overlay", { name: "diagnostics" }), "?": act("overlay", { name: "help" }) };
 
 export const KEYMAP = Object.freeze({
   normal: {
@@ -121,6 +121,7 @@ export const HELP = Object.freeze([
   ["a", "every journal line, or only the milestones"],
   ["f", "which lines RECENT shows: all, the task's, QA's, or what went wrong"],
   ["e", "the evidence: receipts, verifications, approvals"],
+  ["o", "the generated tests: where each stands, the word its latest attempt earned, its attempts; enter opens one"],
   ["d", "how this viewer's reads are going"],
   ["r", "read the task list again and draw the whole screen"],
   ["v", "the pane: the work's checklist, NOW, a view, progress and the LIVE indicator -- or the dashboard again"],

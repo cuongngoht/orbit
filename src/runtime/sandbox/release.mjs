@@ -5,12 +5,14 @@
 // developer's server on the same port, another task's sandbox, a service somebody else runs, and anything that
 // cannot be PROVEN Orbit's are not here and are not touched. A session that would not stop is said, and the rest
 // still goes: refusing to release because one thing would not stop would leave the leases and the containers.
+import { Refused } from "../../errors.mjs";
 import { moved } from "../instances.mjs";
 import { operationsRoom, sandboxLiveRoom } from "../rooms.mjs";
 import { providerOf } from "../providers/index.mjs";
 import { stop } from "../lifecycle/stop.mjs";
 import { leasesOf } from "./held.mjs";
 import { createOperations } from "./operations.mjs";
+import { teardown } from "./supervise.mjs";
 
 const opsOf = (ctx) => createOperations(operationsRoom(sandboxLiveRoom(ctx.rooms.live, ctx.envId)), ctx.io, ctx.now);
 
@@ -18,11 +20,28 @@ const opsOf = (ctx) => createOperations(operationsRoom(sandboxLiveRoom(ctx.rooms
 const containersOf = (ctx, deps) => (Object.values(ctx.sandboxDoc().placements ?? {}).includes("devcontainer") ? providerOf("devcontainer", ctx.providers).down({ checkout: ctx.checkout, envId: ctx.envId }, deps) : null);
 
 // -> { released, environment, why?, stopped, gone, refused, leases, containers }
-export async function released(ctx, deps) {
+export async function released(ctx, deps, hooks = {}) {
   const doc = ctx.sandboxes.read(ctx.envId);
   if (!doc) return { released: false, environment: ctx.envId, reason: "NONE", why: "this task has no sandbox here: there is nothing to release", stopped: [], gone: [], refused: [], leases: [], containers: null };
   if (doc.state === "RELEASED") return { released: false, environment: ctx.envId, reason: "RELEASED", why: "it was released already", stopped: [], gone: [], refused: [], leases: [], containers: null };
-  return ended(ctx, deps, opsOf(ctx));
+  if (doc.state === "QUARANTINED" && ctx.door !== "control") throw new Refused("this sandbox is QUARANTINED: its teardown could not be proven, and only a person releases it, in Orbit Control, after looking at what was left");
+  return doc.isolation?.mode === "required" ? isolatedReleased(ctx, deps, hooks) : ended(ctx, deps, opsOf(ctx));
+}
+
+// An ISOLATED sandbox is torn down in the one order that keeps evidence and takes nothing that is not proven its own
+// (src/runtime/sandbox/supervise.mjs TEARDOWN). What could not be proven leaves it QUARANTINED -- and when a person
+// releases a quarantined one from Control, it is RELEASED with what was left said, for the person to deal with.
+async function isolatedReleased(ctx, deps, hooks) {
+  const ops = opsOf(ctx);
+  const op = ops.begin("teardown");
+  const done = await teardown(ctx, deps, hooks);
+  ops.settle(op, done.state === "RELEASED" ? "DONE" : "FAILED", done.left.map((l) => `${l.step}: ${l.because}`).join("; ") || null);
+  return done.state === "QUARANTINED" && ctx.door === "control" ? personReleased(ctx, done) : { released: done.state === "RELEASED", environment: ctx.envId, reason: done.state, why: done.left.map((l) => `${l.step}: ${l.because}`).join("; ") || null, stopped: [], gone: [], refused: done.left, leases: [], containers: null, teardown: done.steps.map((s) => ({ step: s.id, ok: s.ok, say: s.say })) };
+}
+
+function personReleased(ctx, done) {
+  ctx.sandboxes.write(moved(ctx.sandboxes.read(ctx.envId), "RELEASED", ctx.now(), { endpoints: [], blocked: null, lastActiveAt: ctx.now() }));
+  return { released: true, environment: ctx.envId, reason: "RELEASED_BY_PERSON", why: `released by a person in Orbit Control; left as it was: ${done.left.map((l) => `${l.step}: ${l.because}`).join("; ")}`, stopped: [], gone: [], refused: done.left, leases: [], containers: null, teardown: done.steps.map((s) => ({ step: s.id, ok: s.ok, say: s.say })) };
 }
 
 async function ended(ctx, deps, ops) {

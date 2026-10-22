@@ -1,0 +1,519 @@
+{
+  "schema": 1,
+  "id": "invoice",
+  "feature": "Invoices",
+  "title": "Invoice reads, tenant isolation and the daily billing reminder",
+  "revision": "r1",
+  "at": "2026-10-22",
+  "author": "the invoice product team (synthetic acceptance fixture)",
+  "scope": {
+    "in": [
+      "reading an invoice through the API, as its owner and as another tenant",
+      "one reminder and one notification per due period",
+      "a delivery that cannot succeed"
+    ],
+    "out": [
+      "the search page, which a browser in the worker verifies",
+      "creating invoices"
+    ]
+  },
+  "sources": [
+    {
+      "id": "PBI",
+      "kind": "requirement",
+      "ref": "PBI-INV-1",
+      "revision": "r1",
+      "at": "2026-10-22",
+      "says": "contracts/pbi.md: UI-AC-1, API-AC-1, API-AC-2, FIX-ASYNC-1 and FIX-ASYNC-2, and the fixture's UI-AC-2, API-AC-3 and SCHED-1, accepted with the fixture."
+    }
+  ],
+  "criteria": [
+    {
+      "id": "UI-AC-1",
+      "says": "Searching by name shows the seeded invoice, the GET search call succeeds, and the result matches the synthetic data: exactly one stored invoice has that name.",
+      "source": "PBI",
+      "about": "invoices",
+      "obligations": [
+        "screen-shows-result"
+      ],
+      "expects": [
+        {
+          "id": "E1",
+          "property": "ui.text",
+          "op": "contains",
+          "value": "Synthetic invoice A",
+          "because": "UI-AC-1: the results show the seeded invoice"
+        },
+        {
+          "id": "E2",
+          "property": "response.status",
+          "op": "eq",
+          "value": 200,
+          "because": "UI-AC-1: the search call GET /api/invoices?q=<name> answers 200"
+        },
+        {
+          "id": "E3",
+          "property": "effect.count",
+          "op": "count-eq",
+          "value": 1,
+          "because": "UI-AC-1: exactly one stored invoice has that name"
+        }
+      ]
+    },
+    {
+      "id": "UI-AC-2",
+      "says": "A create the page reports is persisted: the toast says Invoice created, and the invoice is then stored -- the toast alone is not the outcome.",
+      "source": "PBI",
+      "about": "invoice-create",
+      "obligations": [
+        "persisted-after-write"
+      ],
+      "expects": [
+        {
+          "id": "E1",
+          "property": "effect.count",
+          "op": "count-eq",
+          "value": 1,
+          "because": "UI-AC-2: the invoice is then stored, one row for the name it was created with"
+        },
+        {
+          "id": "E2",
+          "property": "ui.text",
+          "op": "contains",
+          "value": "Invoice created",
+          "for": [],
+          "because": "UI-AC-2: the page shows the toast with Invoice created"
+        },
+        {
+          "id": "E3",
+          "property": "response.status",
+          "op": "eq",
+          "value": 201,
+          "for": [],
+          "because": "API-AC-3: a create answers 201"
+        }
+      ]
+    },
+    {
+      "id": "API-AC-1",
+      "says": "The owner reading its invoice gets 200: GET /invoices/inv-a as tenant-a-reader answers id inv-a and tenantId tenant-a.",
+      "source": "PBI",
+      "about": "invoice-read",
+      "obligations": [
+        "response-conforms"
+      ],
+      "expects": [
+        {
+          "id": "E1",
+          "property": "response.status",
+          "op": "eq",
+          "value": 200,
+          "because": "API-AC-1: answers 200"
+        },
+        {
+          "id": "E2",
+          "property": "response.body.id",
+          "op": "eq",
+          "value": "inv-a",
+          "because": "API-AC-1: with id = inv-a"
+        },
+        {
+          "id": "E3",
+          "property": "response.body.tenantId",
+          "op": "eq",
+          "value": "tenant-a",
+          "because": "API-AC-1: and tenantId = tenant-a"
+        }
+      ]
+    },
+    {
+      "id": "API-AC-2",
+      "says": "Another tenant reading the invoice gets 404 with error not_found and nothing of the invoice, in particular not its marker canary-invoice-a.",
+      "source": "PBI",
+      "about": "invoice-read",
+      "obligations": [
+        "permission-enforced"
+      ],
+      "expects": [
+        {
+          "id": "E1",
+          "property": "response.status",
+          "op": "eq",
+          "value": 404,
+          "because": "API-AC-2: answers 404"
+        },
+        {
+          "id": "E2",
+          "property": "response.body.error",
+          "op": "eq",
+          "value": "not_found",
+          "because": "API-AC-2: with error = not_found"
+        },
+        {
+          "id": "E3",
+          "property": "response.body",
+          "op": "excludes",
+          "value": "canary-invoice-a",
+          "because": "API-AC-2: the answer contains nothing of the invoice, in particular not its marker"
+        }
+      ]
+    },
+    {
+      "id": "FIX-ASYNC-1",
+      "says": "A valid period creates exactly one reminder record for invoice inv-a of tenant A and exactly one notification; the business key does not change on a retry or a redelivery.",
+      "source": "PBI",
+      "about": "billing-reminder-requested",
+      "obligations": [
+        "completes-by-deadline",
+        "effect-once-per-key",
+        "crash-before-effect",
+        "crash-after-effect-before-ack"
+      ],
+      "expects": [
+        {
+          "id": "E1",
+          "property": "message.correlation.correlationId",
+          "op": "complete-within",
+          "value": "tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00",
+          "within": 120,
+          "because": "FIX-ASYNC-1 and the message contract: the period's reminder request, correlated by its business key, exists within 120 seconds of the occurrence being due",
+          "for": [
+            "completes-by-deadline"
+          ]
+        },
+        {
+          "id": "E2",
+          "property": "effect.count",
+          "op": "count-eq",
+          "value": 1,
+          "because": "FIX-ASYNC-1: exactly one reminder record per business key, whatever is redelivered or duplicated"
+        },
+        {
+          "id": "E3",
+          "property": "settlement.outcome",
+          "op": "complete-within",
+          "value": "processed",
+          "within": 120,
+          "because": "FIX-ASYNC-1 and the message contract: the worker writes the reminder and the notification, then acknowledges, within 120 seconds",
+          "for": [
+            "completes-by-deadline"
+          ]
+        },
+        {
+          "id": "E4",
+          "property": "delivery.attempt",
+          "op": "complete-within",
+          "value": 2,
+          "within": 120,
+          "because": "the message contract: at-least-once, and a delivery that fails or is interrupted before it is acknowledged is delivered again after its backoff",
+          "for": []
+        }
+      ]
+    },
+    {
+      "id": "SCHED-1",
+      "says": "The scheduler's own decision loop decides the pinned occurrence billing-daily:2026-10-22T09:00:00+07:00 due within 120 seconds of it being due, and exactly one job execution runs for it -- a manual trigger proves the handler, never the schedule.",
+      "source": "PBI",
+      "about": "billing-daily",
+      "obligations": [
+        "occurrence-one-execution"
+      ],
+      "expects": [
+        {
+          "id": "E1",
+          "property": "occurrence.decision",
+          "op": "complete-within",
+          "value": "due",
+          "within": 120,
+          "because": "SCHED-1: the loop itself decides the period due"
+        },
+        {
+          "id": "E2",
+          "property": "effect.count",
+          "op": "count-eq",
+          "value": 1,
+          "because": "SCHED-1: one job execution for the occurrence"
+        }
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "S1",
+      "name": "The owner reads its own invoice",
+      "covers": [
+        "API-AC-1"
+      ],
+      "technique": "crud",
+      "why": "the positive control every permission check below rests on",
+      "priority": "P1",
+      "must": true,
+      "actor": {
+        "as": "tenant-a-reader",
+        "roles": [
+          "reader"
+        ],
+        "owner": "tenant-a",
+        "state": "the seeded invoice inv-a exists"
+      },
+      "preconditions": [
+        "the fixture's seeded invoice inv-a belongs to tenant-a"
+      ],
+      "intent": [
+        "read inv-a as its owner"
+      ],
+      "expect": {
+        "api": {
+          "need": "required",
+          "says": "GET /invoices/inv-a answers 200 with id inv-a and tenantId tenant-a"
+        }
+      },
+      "readiness": "ready"
+    },
+    {
+      "id": "S2",
+      "name": "Another tenant cannot read it",
+      "covers": [
+        "API-AC-2"
+      ],
+      "technique": "permission",
+      "why": "a leak across tenants is the defect this feature must never have",
+      "priority": "P1",
+      "must": true,
+      "actor": {
+        "as": "tenant-b-reader",
+        "roles": [
+          "reader"
+        ],
+        "owner": "tenant-b",
+        "state": "the seeded invoice inv-a belongs to tenant-a"
+      },
+      "preconditions": [
+        "the owner's read passes (S1)"
+      ],
+      "intent": [
+        "read inv-a as tenant B"
+      ],
+      "expect": {
+        "api": {
+          "need": "required",
+          "says": "GET /invoices/inv-a answers 404 not_found with nothing of the invoice"
+        }
+      },
+      "readiness": "ready",
+      "denial": {
+        "lacks": [
+          "tenant-a"
+        ],
+        "action": "read tenant A's invoice inv-a",
+        "backend": {
+          "need": "required",
+          "says": "the API answers 404 not_found, and nothing of the invoice"
+        },
+        "unchanged": {
+          "need": "required",
+          "says": "inv-a still belongs to tenant A"
+        },
+        "because": "a refusing server is the only safe product here: there is no screen to hide the invoice behind"
+      }
+    },
+    {
+      "id": "S3",
+      "name": "One reminder per due period, whatever is redelivered",
+      "covers": [
+        "FIX-ASYNC-1"
+      ],
+      "technique": "idempotency",
+      "why": "a duplicate reminder is a second notification to a customer",
+      "priority": "P1",
+      "must": true,
+      "actor": {
+        "as": "the scheduler",
+        "roles": [
+          "system"
+        ],
+        "owner": "tenant-a",
+        "state": "inv-a is open and marked for a reminder"
+      },
+      "preconditions": [
+        "the 09:00 period is due"
+      ],
+      "intent": [
+        "make the period due",
+        "watch the reminder request",
+        "read the reminders below the interface"
+      ],
+      "expect": {
+        "sql": {
+          "need": "required",
+          "says": "one reminder for the period's business key"
+        }
+      },
+      "readiness": "ready",
+      "repeat": {
+        "kind": "retry",
+        "expect": "the redelivered message changes nothing: still one reminder for the business key",
+        "extra": "a second reminder, a second notification"
+      }
+    },
+    {
+      "id": "S4",
+      "name": "Tenant B's own data is untouched by tenant A's read",
+      "covers": [
+        "API-AC-2"
+      ],
+      "technique": "scoping",
+      "why": "isolation is two-way: a read must neither leak nor reach across",
+      "priority": "P2",
+      "readiness": "ready",
+      "actor": {
+        "as": "tenant-a-reader",
+        "roles": [
+          "reader"
+        ],
+        "owner": "tenant-a",
+        "state": "tenant B has its own invoice"
+      },
+      "intent": [
+        "read inv-a as tenant A",
+        "tenant B's invoice is unchanged"
+      ],
+      "expect": {
+        "api": {
+          "need": "required",
+          "says": "tenant A's read answers only tenant A's invoice"
+        }
+      },
+      "denial": {
+        "lacks": [
+          "tenant-b"
+        ],
+        "action": "see tenant B's invoice in tenant A's answer",
+        "backend": {
+          "need": "required",
+          "says": "nothing of tenant B is in the answer"
+        },
+        "unchanged": {
+          "need": "required",
+          "says": "tenant B's invoice is as it was"
+        },
+        "because": "scoping is what a tenant may see, not only what it may not read"
+      }
+    },
+    {
+      "id": "S5",
+      "name": "The schedule decides the period, once",
+      "covers": [
+        "SCHED-1"
+      ],
+      "technique": "state-transition",
+      "why": "a period decided twice is two reminders; one never decided is none",
+      "priority": "P1",
+      "must": true,
+      "readiness": "ready",
+      "actor": {
+        "as": "the scheduler",
+        "roles": [
+          "system"
+        ],
+        "owner": "the fixture",
+        "state": "the business clock stands before 09:00"
+      },
+      "intent": [
+        "move the business clock to 09:00",
+        "read what the loop decided",
+        "count the job executions for the period"
+      ],
+      "expect": {
+        "sql": {
+          "need": "required",
+          "says": "one job execution for the occurrence"
+        }
+      }
+    },
+    {
+      "id": "S6",
+      "name": "A search shows the seeded invoice",
+      "covers": [
+        "UI-AC-1"
+      ],
+      "technique": "crud",
+      "why": "what a person sees is what the feature is; a screen that draws stale or wrong rows is a defect no API test sees",
+      "priority": "P1",
+      "must": true,
+      "actor": {
+        "as": "tenant-a-reader",
+        "roles": [
+          "reader"
+        ],
+        "owner": "tenant-a",
+        "state": "the seeded invoice inv-a exists"
+      },
+      "preconditions": [
+        "the fixture's seeded invoice inv-a, named Synthetic invoice A, belongs to tenant-a"
+      ],
+      "intent": [
+        "open /invoices",
+        "search for Synthetic invoice A",
+        "read the results and the row below them"
+      ],
+      "expect": {
+        "ui": {
+          "need": "required",
+          "says": "the results show Synthetic invoice A"
+        },
+        "api": {
+          "need": "required",
+          "says": "GET /api/invoices?q= answers 200"
+        },
+        "sql": {
+          "need": "required",
+          "says": "exactly one stored invoice is named Synthetic invoice A"
+        }
+      },
+      "readiness": "ready"
+    },
+    {
+      "id": "S7",
+      "name": "A create the page reports is there below it",
+      "covers": [
+        "UI-AC-2"
+      ],
+      "technique": "crud",
+      "why": "a toast can say created while nothing was stored; only the row below the screen says it happened",
+      "priority": "P1",
+      "must": true,
+      "actor": {
+        "as": "tenant-a-writer",
+        "roles": [
+          "writer"
+        ],
+        "owner": "tenant-a",
+        "state": "no invoice has the name the run creates"
+      },
+      "preconditions": [
+        "the name is the run's own, so nothing earlier has it"
+      ],
+      "intent": [
+        "open /invoices",
+        "create an invoice with the run's own name",
+        "read the toast and the row below it"
+      ],
+      "expect": {
+        "ui": {
+          "need": "required",
+          "says": "the toast says Invoice created"
+        },
+        "api": {
+          "need": "required",
+          "says": "POST /api/invoices answers 201"
+        },
+        "sql": {
+          "need": "required",
+          "says": "one stored invoice has the name it was created with"
+        }
+      },
+      "readiness": "ready"
+    }
+  ]
+}

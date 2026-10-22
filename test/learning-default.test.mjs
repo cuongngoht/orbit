@@ -25,7 +25,8 @@ import { sealed } from "./home.mjs";
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const MANIFEST = JSON.parse(readFileSync(join(ROOT, ".claude-plugin", "plugin.json"), "utf8"));
 const temp = realpathSync.native(mkdtempSync(join(tmpdir(), "orbit-learning-default-")));
-after(() => rmSync(temp, { recursive: true, force: true }));
+// A checkout's git may still be finishing its own detached upkeep after a commit when the file ends.
+after(() => rmSync(temp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
 
 test("one default, declared for the dialog and for a host that never sends the option, and both say on", () => {
   assert.equal(DEFAULTS.engineering_observe, true);

@@ -38,9 +38,16 @@ import { DECISION_FIELDS, DECISION_FORBIDDEN, DECISION_SCHEMA, LIFECYCLE, OBLIGA
 // runCase(id, opts). Absent, each reads as "not available here".
 export function loopWorld(w) {
   const model = current(w);
-  const base = { model, ctx: { graph: w.ctx.graph }, settings: w.settings, mode: w.mode, inputMode: model.meta?.inputMode ?? "screen", plans: plansOf(w, model), digestOf: w.digestOf, findCase: w.findCase, now: w.now ?? w.ctx.now, applicable: (r) => applicabilityOf(r, w.receipting?.fingerprints?.(r.scope ?? [])), ...readersOf(w) };
+  const base = { model, ctx: { graph: w.ctx.graph }, settings: w.settings, mode: w.mode, inputMode: model.meta?.inputMode ?? "screen", plans: plansOf(w, model), digestOf: w.digestOf, findCase: w.findCase, versionCaseOf: (id) => versionCaseOf(w, model, id), now: w.now ?? w.ctx.now, applicable: (r) => applicabilityOf(r, w.receipting?.fingerprints?.(r.scope ?? [])), ...readersOf(w) };
   const obligations = obligationsOf(base);
   return { ...base, obligations, frontier: frontierOf(obligations) };
+}
+
+// A version this investigation froze, read back as frozen -- or null, never a guess.
+function versionCaseOf(w, model, id) {
+  const v = model.versions.find((x) => x.version === id);
+  try { return v && w.store?.readVersion ? w.store.readVersion(w.id, `versions/${String(id).split("@")[1]}/${v.case}.json`)?.case ?? null : null; }
+  catch { return null; }
 }
 
 const plansOf = (w, model) => model.inputs.filter((i) => i.type === "plan" && i.state === "read").map((i) => w.planOf?.(i.ref)).filter(Boolean);
@@ -117,8 +124,10 @@ function settle(w, taken, outcome) {
   return w.store.append(w.id, "settled", { id: nextId(lw.model, "settled"), decision: taken.decision.id, state: outcome.state, refs: refs.map((r) => r.id), why: outcome.why ?? null, progress, snapshot: { ...snapshotOf(lw.obligations, lw.model.position + 1), stop: stopOf(lw) } });
 }
 
-// What this step put on the journal, in journal order: the records after its decision.
-const EVIDENCE = new Set(["action", "observation", "check", "security", "run", "reproduction", "question", "draft"]);
+// What this step put on the journal, in journal order: the records after its decision. A design and the version
+// frozen from it are steps a generated test's obligation took -- written once each, so proposing the same design
+// again puts nothing new here and teaches nothing.
+const EVIDENCE = new Set(["action", "observation", "check", "security", "run", "reproduction", "question", "draft", "designed", "version"]);
 
 function evidenceSince(w, decisionId) {
   const records = w.store.read(w.id);

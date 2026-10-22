@@ -1,6 +1,7 @@
 // WHICH investigations were begun against a task's sandbox -- found by reading, never by asking anyone to
 // say so. An investigation begun with `--sandbox=<env>` writes the task that owns the sandbox on its
-// FIRST line (`created.runtime.task`, src/investigation/index.mjs boundTo); the task itself learns of it
+// FIRST line (`created.task`, or `created.runtime.task` through its sandbox; src/investigation/index.mjs
+// boundTo); the task itself learns of it
 // only when the agent links it after it ended. A live page cannot wait for that, so:
 //
 //   1. list the investigations room (one listing; ids sort by when they began, newest first);
@@ -18,7 +19,9 @@ export const stampOf = (iso) => `${iso.slice(0, 10).replaceAll("-", "")}-${iso.s
 
 export const begunAfter = (id, stamp) => id.slice(4, 19) >= stamp;
 
-export const belongsTo = (head, task) => head?.kind === "created" && head.runtime?.task === task;
+// The task an investigation was begun for: named on its first line, directly (`created.task`, a
+// task's own investigation) or through the sandbox it was begun against (`created.runtime.task`).
+export const belongsTo = (head, task) => head?.kind === "created" && (head.task ?? head.runtime?.task) === task;
 
 // -> ids, newest first. `known` is a Map the caller keeps across calls: id -> belongs (boolean).
 export function investigationsOf(store, { task, since, known = new Map(), claimed = [], limit = MAX_FOLLOWED }) {

@@ -200,6 +200,14 @@
             "draft"
           ],
           "description": "Whether this is the team's ACCEPTED requirement or still a draft. Absent reads accepted in a committed plan and draft in an agent's draft plan; a criterion from a draft source prepares tests and never confirms a finding."
+        },
+        "digest": {
+          "type": "string",
+          "description": "The digest of what was read, so a source that moved with no new revision is noticed rather than trusted."
+        },
+        "dialect": {
+          "type": "string",
+          "description": "The dialect a contract document is written in -- e.g. openapi-3.1, asyncapi-3.0, json-schema/2020-12 -- so a reader of it is chosen by what it is, never guessed."
         }
       }
     },
@@ -266,6 +274,83 @@
         "disposition": {
           "$ref": "#/definitions/disposition",
           "description": "Only when no scenario covers it: why not, and what happens instead."
+        },
+        "expects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/criterionExpect"
+          },
+          "description": "What the criterion states as STRUCTURED expectations over observed meanings. Only these can be mapped to an assertion without anybody's judgement; prose still prepares a test, and never confirms one."
+        },
+        "about": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+          "description": "The system graph node it is about, by its logical alias (a node's name, lower-case, every other character a dash)."
+        },
+        "obligations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,63}$"
+          },
+          "description": "Which kinds of property it states, as obligation shapes (src/qa/obligations/shapes.mjs). Only these are derived into test obligations; none is guessed from the prose."
+        }
+      }
+    },
+    "criterionExpect": {
+      "type": "object",
+      "required": [
+        "id",
+        "property",
+        "op"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_-]*$",
+          "description": "Stable id, e.g. E1."
+        },
+        "property": {
+          "type": "string",
+          "pattern": "^[a-z][a-zA-Z]*\\.[a-zA-Z][a-zA-Z0-9]*(\\.[A-Za-z0-9_-]+)*$",
+          "description": "The observed meaning it is about, e.g. response.status, effect.count, message.id -- never a provider's field name."
+        },
+        "op": {
+          "enum": [
+            "eq",
+            "present",
+            "in",
+            "excludes",
+            "contains",
+            "count-eq",
+            "count-at-most",
+            "conforms",
+            "ordered",
+            "complete-within",
+            "absent-within"
+          ],
+          "description": "What must hold of it (src/qa/vocab.mjs EXPECT_OPS)."
+        },
+        "value": {
+          "description": "The value the criterion states: a number, a word, a list -- exactly as its owner wrote it."
+        },
+        "within": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The window, in seconds, an absence or a completion is claimed within. Required for those two; never invented."
+        },
+        "for": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,63}$"
+          },
+          "description": "Which of the criterion's obligations this expectation states, by shape. Absent: every one whose shape rules with its op. Empty: none -- a slot a design may still rule an auxiliary step with (a barrier, a positive control)."
+        },
+        "because": {
+          "type": "string",
+          "description": "Where in the source it says so."
         }
       }
     },

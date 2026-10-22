@@ -245,3 +245,23 @@ test("sandboxAnswer: a checkout the runtime cannot be bound to has no sandbox, s
   const deps = { commands: async () => ({ sandboxes: {}, sandbox: {} }), bind: () => { throw new TypeError("storeBase is undefined"); }, bindOwned: () => ({}) };
   await assert.rejects(() => sandboxAnswer(WHERE, "env-0123456789ab", deps), (e) => e instanceof Refused && /has no sandbox/.test(e.message));
 });
+
+// ----------------------------------------------------------- isolated
+test("an ISOLATED sandbox has no origin here: it is projected without one, ready only when READY, isolated only when attested, and never reached by this machine's browser", () => {
+  const isolated = (over = {}) => view({ state: "READY", components: [], endpoints: [{ component: "npm:.", kind: "tcp", alias: "invoice-app", port: 8080, source: "network" }], isolation: { mode: "required", attested: true, because: null }, qa: { modes: ["observe", "fixture-write"], entry: null, browser: "isolated" }, ...over });
+  const env = sandboxEnvironment(isolated());
+  assert.deepEqual([env.origin, env.isolated, env.modes], [null, true, ["observe", "fixture-write"]], "nothing on this machine reaches inside its network, so it has no origin to name");
+  const rt = sandboxRuntime(isolated(), false);
+  assert.deepEqual([rt.served, rt.isolated, Boolean(rt.fixture), rt.current], [true, true, true, true], "served is the sandbox's own READY, never a probe of a port this machine cannot reach");
+  const unattested = sandboxRuntime(isolated({ isolation: { mode: "required", attested: false, because: "egress answered" } }), true);
+  assert.deepEqual([unattested.isolated, unattested.fixture], [false, null]);
+  assert.match(sandboxRuntime(isolated({ state: "BLOCKED" }), true).next, /sandbox-prepare/);
+  const order = GATES.map((g) => g.id);
+  assert.ok(order.indexOf("WORKER_ONLY") < order.indexOf("NO_BROWSER"), "said before anything asks this machine's browser");
+  const gate = GATES.find((g) => g.id === "WORKER_ONLY");
+  assert.equal(gate.fails({ environment: env }), true);
+  assert.match(gate.say({ environment: env }), /verified only by a generated version its own worker runs \(run-version\)/);
+  assert.equal(gate.fails({ environment: sandboxEnvironment(view()) }), false, "a sandbox on this machine is still driven by its browser");
+  const blocked = GATES.find((g) => g.id === "RUNTIME_BLOCKED");
+  assert.match(blocked.say({ environment: env, runtime: sandboxRuntime(isolated({ state: "BLOCKED" }), false) }), /^the sandbox env-0123456789ab is not ready — prepare the sandbox again/);
+});

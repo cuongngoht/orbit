@@ -32,7 +32,7 @@ export const CAPABILITY_FIELDS = {
   id: { type: "string", pattern: CAPABILITY_ID.source, doc: "Namespaced name, e.g. postgres.query. Two segments at least: a bare \"query\" is a word two providers would both claim." },
   apiVersion: { type: "string", enum: SUPPORTED_CAPABILITY_APIS, doc: "Which published contract this was written against." },
   doc: { type: "string", doc: "One line: what asking this tells you." },
-  inputSchema: { type: "object", doc: "A field table for `input`, same shape as a DSL field row — constraints.mjs enforces it, so a wrong input is a sentence, not a stack trace." },
+  inputSchema: { type: "object", doc: "A field table for `input`, same shape as a DSL field row — constraints.mjs enforces it, so a wrong input is a sentence, not a stack trace. A row may say `bind: <kind>` (src/topology/vocab.mjs BIND_KINDS): its value is then a logical ALIAS the binding gate resolves for this run, and the resolved value reaches only the helper, never this code." },
   required: { type: "array", items: { type: "string" }, doc: "Which input keys must be present." },
   mutates: { type: "boolean", doc: "true if invoking it can change external state. Read-only verification is what QC should prefer; declaring otherwise is what lets the engine guard it." },
   tools: { type: "array", items: { type: "string" }, doc: "External commands it needs on PATH. query doctor reports a missing one BEFORE a run fails somewhere that reads like a product defect." },
@@ -40,6 +40,9 @@ export const CAPABILITY_FIELDS = {
   provides: { type: "array", items: { type: "string" }, doc: "Semantic capabilities this one answers besides its own id, e.g. workitem.read. The resource registry lists it as a provider of each, so a need names the capability and never this adapter -- and a different provider can take its place." },
   connection: { type: "string", pattern: CONNECTION_PROVIDER, doc: "The provider of the CONNECTION it needs (a credential REFERENCE a person set up). It is refused, as Blocked, when no such connection exists here; the engine hands the credential to the command it spawns and never to this code." },
   page: { type: "boolean", doc: "false if it never touches ext.browser. A case made only of sql and call steps asking such capabilities runs with no browser at all; unset means it may, and the run then needs a page (src/dsl/page.mjs)." },
+  effects: { type: "array", items: { type: "string" }, doc: "What invoking it does to the world (src/topology/vocab.mjs EFFECTS). A mutating effect is what a test grant is minted for (ADR 0037); an observation that takes a message is `consume`, however it is named." },
+  outputs: { type: "object", doc: "Each field of its answer and the MEANING it carries (src/topology/vocab.mjs MEANINGS), so a compiled assertion reads a field by what it means, never by a provider's name for it." },
+  helper: { type: "object", doc: "The helper program it reaches through ext.helper.run (ADR 0036): {argv, runIn, image}. An argument list, never a shell line; where it runs is the launcher's decision, never this declaration's." },
 };
 
 export const CAPABILITY_REQUIRED = ["id", "apiVersion", "doc"];

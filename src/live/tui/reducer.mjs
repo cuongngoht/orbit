@@ -92,6 +92,7 @@ const PICKS = {
   picker: (s) => pickedItem(s, pickerItems(s)[s.viewer.cursor]),
   activity: detailToggled,
   evidence: detailToggled,
+  inspect: detailToggled,
 };
 
 // `f` in the activity inspector: the next filter, the list from its top, no item open.

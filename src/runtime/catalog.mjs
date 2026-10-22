@@ -20,7 +20,7 @@ const ID = /^[a-z][a-z0-9-]*$/;
 
 export function runtimeCatalog(data) {
   const requirements = rowsOf(data?.requirements).filter((r) => ID.test(r.id)).map(requirementOf);
-  return { digest: short(canonicalJson(data ?? {}), 12), requirements, launchers: launchersOf(data?.launchers), versionFiles: versionFilesOf(data?.versionFiles), services: rowsOf(data?.services).map(serviceOf), scripts: scriptsOf(data?.scripts), ci: ciOf(data?.ci), shells: shellsOf(data?.shells), platforms: platformsOf(data?.platforms), environment: environmentOf(data?.environment), connectivity: connectivityOf(data?.connectivity) };
+  return { digest: short(canonicalJson(data ?? {}), 12), requirements, launchers: launchersOf(data?.launchers), versionFiles: versionFilesOf(data?.versionFiles), services: rowsOf(data?.services).map(serviceOf), scripts: scriptsOf(data?.scripts), ci: ciOf(data?.ci), shells: shellsOf(data?.shells), platforms: platformsOf(data?.platforms), environment: environmentOf(data?.environment), connectivity: connectivityOf(data?.connectivity), isolation: isolationOf(data?.isolation) };
 }
 
 // A pattern a catalog row carries is compiled once, and a row whose pattern does
@@ -55,7 +55,29 @@ const platformsOf = (rows) => rowsOf(rows).filter((r) => typeof r.id === "string
 
 const featureOf = (f) => (f && typeof f.id === "string" && typeof f.option === "string" ? { id: f.id, tag: String(f.tag ?? ""), option: f.option } : null);
 
-const serviceOf = (s) => ({ id: s.id, name: String(s.name ?? s.id), images: list(s.images), ports: (Array.isArray(s.ports) ? s.ports : []).filter(Number.isInteger) });
+const serviceOf = (s) => ({ id: s.id, name: String(s.name ?? s.id), images: list(s.images), ports: (Array.isArray(s.ports) ? s.ports : []).filter(Number.isInteger), transports: transportsOf(s.transports), ...credentialsOf(s.credentials) });
+
+// Which transport tokens a service speaks, and where: what an adapter's declaration is matched against (ADR 0035).
+// A token, never interpreted here.
+const TOKEN = /^[a-z][a-z0-9.+-]{0,47}$/;
+
+// Where a service's credential is DECLARED when a project starts it -- an environment variable its
+// image reads, or an argument flag -- so a sandbox's binder can hand a helper the synthetic value
+// the sandbox started it with (src/runtime/sandbox/bindings.mjs). A name, never a value.
+const SPEC = (v) => (typeof v?.env === "string" && /^[A-Z_][A-Z0-9_]*$/.test(v.env) ? { env: v.env } : typeof v?.flag === "string" && /^--?[a-z][a-z0-9-]*$/.test(v.flag) ? { flag: v.flag } : null);
+const credentialsOf = (c) => (SPEC(c?.user) && SPEC(c?.password) ? { credentials: { user: SPEC(c.user), password: SPEC(c.password) } } : {});
+
+const transportsOf = (rows) => (Array.isArray(rows) ? rows : []).filter((t) => TOKEN.test(String(t?.id)) && Number.isInteger(t?.port)).map((t) => ({ id: t.id, port: t.port }));
+
+// What an ISOLATED sandbox runs in the containers it starts for itself (ADR 0038): argument lists and mount points as
+// data. A path is an absolute container path or the row is not one; an argument list is strings or nothing.
+const CONTAINER_PATH = /^\/[A-Za-z0-9._/-]{0,200}$/;
+
+const pathOr = (v, fallback) => (typeof v === "string" && CONTAINER_PATH.test(v) ? v : fallback);
+
+const workerOf = (w) => ({ argv: list(w?.argv), plugin: pathOr(w?.plugin, null), in: pathOr(w?.in, null), out: pathOr(w?.out, null), home: pathOr(w?.home, null), store: pathOr(w?.store, null), project: pathOr(w?.project, null) });
+
+const isolationOf = (i) => ({ worker: workerOf(i?.worker), pod: { argv: list(i?.pod?.argv) }, probe: typeof i?.probe === "string" ? i.probe : null, appMount: pathOr(i?.appMount, null) });
 
 // `restore` is how a unit's dependencies are fetched, by the same tool the lock file names: an argument list a
 // sandbox runs only under a person's trust (src/runtime/sandbox/restore.mjs).

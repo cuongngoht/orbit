@@ -1,0 +1,7 @@
+.git
+.devcontainer
+ui-tests
+README.md
+compose.yaml
+Dockerfile
+.dockerignore

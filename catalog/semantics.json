@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "doc": "Orbit's starting SEMANTICS vocabulary for adapter declarations (ADR 0035): the fields an adapter states about how the system it reaches behaves, so an obligation can ask whether what it needs holds without the engine knowing any product. Every field accepts \"unknown\", which switches off the features that depend on it and is never read as a default. An organisation adds fields in <storeBase>/organization/adapters/semantics/*.json and a project in <store>/adapters/semantics/*.json; a field nobody declares is still kept and shown on an adapter, and derives nothing. test/adapter-contract.test.mjs holds every row to a known kind.",
+  "fields": [
+    { "id": "delivery", "kind": "enum", "values": ["at-most-once", "at-least-once", "effectively-once-within-window"], "doc": "how many times one logical message may reach a consumer" },
+    { "id": "publishAck", "kind": "enum", "values": ["none", "broker-confirm", "durable-write"], "doc": "what a successful publication was acknowledged by" },
+    { "id": "publishDedupe", "kind": "enum", "values": ["none", "id-window"], "doc": "whether the channel itself drops a second publication of one message id, and within what" },
+    { "id": "unroutable", "kind": "enum", "values": ["returned", "dropped", "error"], "doc": "what happens to a publication nothing is bound to receive" },
+    { "id": "consumerAck", "kind": "enum", "values": ["auto", "explicit-ack", "commit-offset", "lock-complete", "delete"], "doc": "how a consumer says it is done with a delivery" },
+    { "id": "redeliveryTriggers", "kind": "set", "values": ["nack", "crash-before-settle", "connection-loss", "lock-expiry", "visibility-timeout", "ack-wait", "rebalance"], "doc": "what makes the channel deliver the same message again" },
+    { "id": "redeliveryMarker", "kind": "enum", "values": ["flag", "count", "none"], "doc": "how a redelivery says it is one" },
+    { "id": "orderingScope", "kind": "enum", "values": ["none", "key", "partition", "session", "group", "queue", "stream"], "doc": "the widest scope inside which order is kept" },
+    { "id": "deadLetter", "kind": "enum", "values": ["broker-routed", "broker-subqueue", "advisory", "app-managed", "none"], "doc": "where a delivery that cannot succeed ends, and who puts it there" },
+    { "id": "retryLimit", "kind": "integer", "doc": "how many deliveries before the terminal policy applies" },
+    { "id": "observation", "kind": "set", "values": ["shadow-subscription", "independent-cursor", "peek-cursor", "read-only-query", "tap"], "doc": "how an observer can see messages without taking them from the application" },
+    { "id": "replay", "kind": "set", "values": ["by-offset", "by-sequence", "by-time", "by-id"], "doc": "how stored messages can be delivered again over a bounded range" },
+    { "id": "cursor", "kind": "enum", "values": ["offset", "sequence", "timestamp", "none"], "doc": "what a position in the channel is measured in" },
+    { "id": "leaseMinSec", "kind": "number", "doc": "the shortest reservation, visibility or ack-wait a delivery can be held for, in seconds" },
+    { "id": "clockInjection", "kind": "enum", "values": ["live", "restart", "none"], "doc": "whether the business clock the decision loop reads can be moved: while it runs, by a restart, or not at all" },
+    { "id": "dialects", "kind": "strings", "doc": "the schedule expression dialects a scheduler evaluates" },
+    { "id": "decisionReceipts", "kind": "enum", "values": ["cursor", "none"], "doc": "whether the scheduler's decisions can be read back by a cursor" }
+  ]
+}

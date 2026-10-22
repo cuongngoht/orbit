@@ -12,7 +12,9 @@
 // of thing that must not be shared by accident.
 import { constraintFindings, missingFindings } from "../constraints.mjs";
 import { Refused } from "../errors.mjs";
+import { BIND_KIND_IDS, EFFECT_IDS, meaningAt, meaningEntries, mutatingEffect } from "../topology/vocab.mjs";
 import { CAPABILITY_FIELDS, CAPABILITY_REQUIRED, SUPPORTED_CAPABILITY_APIS, providesFindings } from "./contract-v1.mjs";
+import { helperFindings } from "./helper.mjs";
 
 const KNOWN = new Set([...Object.keys(CAPABILITY_FIELDS), "invoke"]);
 
@@ -39,8 +41,20 @@ function problems(byId, cap, from) {
   if (!isObject(cap)) return ["a capability is an object"];
   const at = `capability "${cap.id ?? "?"}"`;
   const declared = [...missingFindings(CAPABILITY_REQUIRED, cap, at), ...constraintFindings(CAPABILITY_FIELDS, cap, at)];
-  return [...declared, ...unknownKeys(cap, at), ...providesFindings(cap, at), ...invokeProblems(cap, at), ...takenProblem(byId, cap.id, at), ...apiProblems(cap, at)];
+  return [...declared, ...unknownKeys(cap, at), ...providesFindings(cap, at), ...invokeProblems(cap, at), ...takenProblem(byId, cap.id, at), ...apiProblems(cap, at), ...DECLARED.flatMap((rule) => rule(cap, at, from))];
 }
+
+// The rules across the optional 0.1.0 fields (ADR 0035, 0036), one row each.
+const DECLARED = [
+  (cap, at) => (Array.isArray(cap.effects) ? cap.effects : []).filter((e) => !EFFECT_IDS.includes(e)).map((e) => `${at}: effect "${e}" is not one of ${EFFECT_IDS.join(", ")}`),
+  (cap, at) => (Array.isArray(cap.effects) && cap.effects.some(mutatingEffect) && cap.mutates !== true ? [`${at}: it declares a mutating effect and not mutates: true — the two must say the same thing`] : []),
+  (cap, at) => meaningEntries(cap.outputs).filter(([, m]) => !meaningAt(String(m))).map(([f, m]) => `${at}: output ${f} means "${m}", which is not a meaning (src/topology/vocab.mjs)`),
+  (cap, at) => helperFindings(cap.helper, at),
+  (cap, at) => Object.entries(isObject(cap.inputSchema) ? cap.inputSchema : {}).filter(([, row]) => row?.bind !== undefined && !BIND_KIND_IDS.includes(row.bind)).map(([k, row]) => `${at}: input ${k} binds "${row.bind}", which is not a bind kind (${BIND_KIND_IDS.join(", ")})`),
+  (cap, at, from) => (String(cap.id ?? "").startsWith("orbit.") && !ORBIT_OWNERS.test(String(from ?? "core")) ? [`${at}: orbit.* ids belong to the engine and the packs it ships — a project names its own capability project.<domain>.<operation>`] : []),
+];
+
+const ORBIT_OWNERS = /^(core|pack:[a-z0-9-]+)$/;
 
 const unknownKeys = (cap, at) => Object.keys(cap).filter((k) => !KNOWN.has(k)).map((k) => `${at}: unknown key "${k}"`);
 

@@ -37,8 +37,10 @@ import { publicTool, toolOf, toolsNow } from "./tools/view.mjs";
 import { knowledgeView } from "./knowledge/read.mjs";
 import { traceTurn, traceTurns, usageAnalytics } from "./trace/read.mjs";
 import { clearCredential, createConnection, listConnections, readConnection, removeConnection, setCredential, testConnection, updateConnection } from "./connections/operate.mjs";
-import { autonomousQaInvestigation, autonomousQaOverview, autonomousQaReport } from "./autonomous-qa/read.mjs";
+import { autonomousQaArtifact, autonomousQaInvestigation, autonomousQaOverview, autonomousQaReport, autonomousQaTests, autonomousQaVersion } from "./autonomous-qa/read.mjs";
 import { putAutonomousQaSettings } from "./autonomous-qa/write.mjs";
+import { securityCatalog, securityCatalogs } from "./security-catalogs/read.mjs";
+import { adoptSecurityCatalog, previewSecurityCatalog, putSecurityEnabled, putSecurityMark, saveSecurityCatalog } from "./security-catalogs/write.mjs";
 import { automationOverview, liveSettings, projectAutomation } from "./automation/read.mjs";
 import { putAutomation, putLiveSettings, putProjectAutomation } from "./automation/write.mjs";
 import { missionHealth } from "./mission-control/health.mjs";
@@ -232,6 +234,21 @@ export const ROUTES = [
   { method: "PUT", path: /^\/api\/v1\/autonomous-qa\/settings$/, mutates: true, body: true, run: ({ ctx, body }) => putAutonomousQaSettings(ctx, body) },
   { method: "GET", path: /^\/api\/v1\/autonomous-qa\/investigations\/([^/]+)$/, id: "investigation", run: ({ ctx, id }) => autonomousQaInvestigation(ctx, id) },
   { method: "GET", path: /^\/api\/v1\/autonomous-qa\/investigations\/([^/]+)\/report$/, id: "investigation", run: ({ ctx, id }) => autonomousQaReport(ctx, id) },
+  { method: "GET", path: /^\/api\/v1\/autonomous-qa\/investigations\/([^/]+)\/tests$/, id: "investigation", run: ({ ctx, id }) => autonomousQaTests(ctx, id) },
+  { method: "GET", path: /^\/api\/v1\/autonomous-qa\/investigations\/([^/]+)\/artifacts\/([^/]+)\/([^/]+)$/, ids: ["investigation", "kind", "digest"], run: ({ ctx, ids }) => autonomousQaArtifact(ctx, ids[0], ids[1], ids[2]) },
+  { method: "GET", path: /^\/api\/v1\/autonomous-qa\/investigations\/([^/]+)\/versions\/([^/]+)$/, ids: ["investigation", "version"], run: ({ ctx, ids }) => autonomousQaVersion(ctx, ids[0], ids[1]) },
+
+  // Security catalogs (ADR 0040): what Orbit ships, what a person adopted on this machine, and which catalogs the
+  // project Control was started from is held to -- read here, and CHANGED only here: a preview (which fetches the
+  // https link a person typed, on their action), adopting what was previewed, the editor, enabling, a not-applicable
+  // mark. No agent and no terminal reaches any of these: the engine's writers open only for this door.
+  { method: "GET", path: /^\/api\/v1\/security\/catalogs$/, run: ({ ctx }) => securityCatalogs(ctx) },
+  { method: "GET", path: /^\/api\/v1\/security\/catalogs\/([^/]+)$/, id: "catalog", run: ({ ctx, id }) => securityCatalog(ctx, id) },
+  { method: "POST", path: /^\/api\/v1\/security\/catalogs\/preview$/, mutates: true, body: true, run: ({ ctx, body }) => previewSecurityCatalog(ctx, body) },
+  { method: "POST", path: /^\/api\/v1\/security\/catalogs\/adopt$/, mutates: true, body: true, run: ({ ctx, body }) => adoptSecurityCatalog(ctx, body) },
+  { method: "PUT", path: /^\/api\/v1\/security\/catalogs\/editor$/, mutates: true, body: true, run: ({ ctx, body }) => saveSecurityCatalog(ctx, body) },
+  { method: "PUT", path: /^\/api\/v1\/security\/project\/enabled$/, mutates: true, body: true, run: ({ ctx, body }) => putSecurityEnabled(ctx, body) },
+  { method: "PUT", path: /^\/api\/v1\/security\/project\/not-applicable$/, mutates: true, body: true, run: ({ ctx, body }) => putSecurityMark(ctx, body) },
 
   { method: "GET", path: /^\/api\/v1\/reports\/overview$/, run: ({ ctx }) => reportsOverview(ctx) },
   { method: "GET", path: /^\/api\/v1\/reports\/settings$/, run: ({ ctx }) => reportSettings(ctx) },

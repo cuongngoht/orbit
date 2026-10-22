@@ -137,6 +137,11 @@ is usually a fact about something the analysis structurally cannot see.
 A fact marked **NOT checked against the code** came from somebody's memory. It is useful context
 and it is not evidence — say which one you are relying on.
 
+**The running system's parts and how they talk** — components, workloads, channels, schedules and
+the edges between them — are `node` and `relation` facts, projected with
+`node <engine>/cli/architecture.mjs graph [--json]`. `ensure` reads what a composition file
+declares; mapping the rest is the `orbit-reverse-engineer` playbook's, one scope per agent.
+
 ## 6. A gap is reported, never designed around
 
 When a plan needs a capability this project does not have, that is a `blockers` entry of kind

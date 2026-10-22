@@ -16,6 +16,9 @@
 //   question        a requirement question put to a person
 //   control-effect  a control in scope the map records -- the screen way in
 //   surface-visit   a screen in scope nobody has looked at yet
+//   test-obligation a GENERATED test's obligation (0.1.0): derived from an accepted plan
+//                   against the frozen graph, owed until what its latest execution came
+//                   to settles it -- a design and a version are steps toward it, never its end
 //
 // The rank is the default order of the frontier: what a write owes comes
 // first, then suspicions, then requirements, then exploration. In hybrid mode a
@@ -35,6 +38,7 @@ import { chainOf } from "./model.mjs";
 import { controlOf, tablesOf } from "./surfaces.mjs";
 import { latestFor } from "./receipts.mjs";
 import { matrixOf } from "./tenancy.mjs";
+import { attemptsOutcome, verificationOutcomeOf } from "./verification.mjs";
 
 export const ATTEMPTS = 3;
 
@@ -307,9 +311,43 @@ function surfaceState(o, lw) {
 }
 
 // ------------------------------------------------------------------- kinds
+// ---------------------------------------------------------- test-obligation
+// One per obligation the journal derived, at its latest revision. What settles it is the word its latest execution
+// earned (verification.mjs), read through that word's own row: satisfied and violated are final, a word that needs a
+// person or a provider waits for one, and anything that may safely be tried again is still owed -- within the
+// budgets generate and run-version hold it to.
+const latestObligations = (model) => [...new Map((model.obligations ?? []).map((o) => [o.obligation, o])).values()];
+
+function testObligations(lw) {
+  return latestObligations(lw.model).map((o) => ({ subject: o.obligation, layer: o.shape, title: `${o.shape} — ${o.target ?? "a node the graph does not hold"}`, sources: (o.bindings ?? []).map((ref) => ({ from: "binding", ref })), oracle: { kind: "plan", ref: o.bindings?.[0] ?? null, authority: o.authority ?? "draft" }, can: ["generate", "run-version", "ask"], template: { kind: "generate", obligation: o.obligation, shape: o.shape, expected: o.expected ?? [], method: o.method ?? null } }));
+}
+
+const TEST_STATES = [
+  { when: (e) => e.outcome === "SATISFIED", as: (e) => satisfied(`${e.execution} was SATISFIED against its accepted criterion`, [e.id]) },
+  { when: (e) => e.outcome === "CONTRADICTED", as: (e) => violated(`${e.execution} CONTRADICTED its accepted criterion`, [e.id]) },
+  { when: (e) => e.outcome === "REQUIRES_REQUIREMENT", as: (e) => person(`${e.execution} was REQUIRES_REQUIREMENT — no accepted oracle stands behind it`) },
+  { when: (e) => e.outcome === "CAPABILITY_MISSING", as: (e) => blocked("capability", `${e.execution} was CAPABILITY_MISSING — nothing here could perform or observe what it needed`, [e.id]) },
+  { when: (e) => verificationOutcomeOf(e.outcome)?.retry === "never" || e.outcome === "AMBIGUOUS", as: (e) => blocked("person", `${e.execution} was ${e.outcome} — a person decides what comes next`, [e.id]) },
+  { when: () => true, as: (e) => pending(`${e.execution} was ${e.outcome} — another attempt, or a repaired design, may settle it`) },
+];
+
+// The word that stands is the one ACROSS the attempts of its latest version (verification.mjs ATTEMPTS): a contradiction
+// another attempt did not repeat is FLAKY, and the last attempt that passed is never chosen over it.
+function testObligationState(o, lw) {
+  const evaluations = lw.model.evaluations.filter((e) => e.obligation === o.subject);
+  const last = evaluations.at(-1);
+  if (o.template.method === "manual") return blocked("capability", `${o.template.shape} is represented and counted, and no adapter or oracle can run it yet — a gap, never a pass`);
+  return last ? TEST_STATES.find((r) => r.when(standing(evaluations, last))).as(standing(evaluations, last)) : pending(lw.model.versions.length ? "a version may be frozen for it, and nothing it ran has come back yet" : "nothing has been designed for it yet");
+}
+
+const versionOfExecution = (execution) => String(execution).split("-").slice(0, 2).join("-");
+
+const standing = (evaluations, last) => ({ ...last, outcome: attemptsOutcome(evaluations.filter((e) => versionOfExecution(e.execution) === versionOfExecution(last.execution)).map((e) => e.outcome)) });
+
 const KINDS = [
   { kind: "post-write", rank: 1, derive: postWrites, state: postWriteState },
   { kind: "finding-need", rank: 2, derive: findingNeeds, state: findingNeedState },
+  { kind: "test-obligation", rank: 2.5, derive: testObligations, state: testObligationState },
   { kind: "scenario-layer", rank: 3, derive: scenarioLayers, state: scenarioState },
   { kind: "tenancy-row", rank: 4, derive: tenancyRows, state: tenancyState },
   { kind: "question", rank: 5, derive: openQuestions, state: questionState },

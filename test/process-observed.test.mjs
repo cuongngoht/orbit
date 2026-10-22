@@ -59,8 +59,22 @@ test("a deadline stops the child's whole group -- a worker it started too -- and
   assert.equal(answer.timedOut, true);
   assert.match(answer.error, /was killed after 1\.5s — it never answered/);
   const pid = Number(readFileSync(pidFile, "utf8"));
-  assert.throws(() => process.kill(pid, 0), /ESRCH/, "the worker the child started is gone too: nothing it left holds the pipes open");
+  // The answer comes when the child is gone; SIGKILL reached its worker at the same moment, but a loaded machine
+  // delivers it and reaps the worker a moment later. Its own condition decides, never a sleep.
+  assert.equal(await goneWithin(pid, 5000), true, "the worker the child started is gone too: nothing it left holds the pipes open");
 });
+
+function gone(pid) {
+  try { process.kill(pid, 0); }
+  catch (e) { return e.code === "ESRCH"; }
+  return false;
+}
+
+async function goneWithin(pid, ms) {
+  const end = Date.now() + ms;
+  while (!gone(pid) && Date.now() < end) await new Promise((r) => setTimeout(r, 25));
+  return gone(pid);
+}
 
 test("each stream keeps run()'s own cap: past it the child is stopped and SAYS so", async (t) => {
   const d = dir(t);

@@ -7,7 +7,7 @@ export default {
   label: (s) => (s.expect ? `expect ${trunc(s.expect, 50)}` : ""),
   act(ctx, run, s) {
     const raw = ctx.browser.ev(s.js);
-    if (s.expect) verdict(s, raw);
+    if (s.expect) verdict(s, raw, ctx);
     return raw;
   },
   tail: (s, r) => (typeof r.result === "string" ? r.result : JSON.stringify(r.result)),

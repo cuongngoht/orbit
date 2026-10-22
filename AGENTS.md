@@ -309,7 +309,10 @@ place real adapters are bound to real config.
   with the environment NAMES a person set; nothing a prompt, a body or a setting says is a command -- there is no
   `command` readiness probe, because a setting is a person's preference and a read of status must never run a
   program. A session receipt is written before the launch, so a start that dies is AMBIGUOUS and is never resent,
-  and the look for what is running and the launch are one step taken in turn per checkout (`exclusive.mjs`).
+  and the look for what is running and the launch are one step taken in turn per checkout (`exclusive.mjs`). A
+  sandbox's containers are a TOPOLOGY Runtime composed from those declarations (ADR 0039): a compose file is read and
+  never run, every container is created from argv, labelled and receipted, and the topology runs only under a
+  fingerprint a person trusted in Control.
 - **A checkout is untrusted data, and what it can make this machine do is a person's.** A tool's version is asked
   from a neutral directory (`src/tools/real.mjs`), never from inside the checkout; text that came from a file is made
   printable before a terminal sees it (`src/printable.mjs`); a reader is linear in what it reads and a scan reads at
@@ -330,7 +333,10 @@ place real adapters are bound to real config.
   argument list, nothing installed. Nothing is sent and nothing an answer says is read; `REACHABLE` is not a
   login. Retries are bounded by the saved policy and never run in the background; an answer older than five
   minutes is STALE and moves no plan. Orbit never touches a VPN, a route, DNS, a firewall or a container's
-  networking.
+  networking. ONE scoped exception (ADR 0039): for a task's sandbox the isolation provider creates, attaches and
+  removes an INTERNAL network of the task's own -- labelled with the checkout, the environment and the task,
+  receipted before it exists, joined only by containers Runtime created, and removed only when its labels and receipt
+  prove it Orbit's and nothing else is attached. A network Orbit did not create is never touched.
 - **`src/runtime/writer.mjs` is the one module that writes a checkout outside `ui-tests/`, and only for a person.**
   `adopt --human` writes a proposal's files while the understanding and the environment files are what it was made
   against (`STALE_PROPOSAL`), reads each back and verifies it (`ADOPT_UNVERIFIED` leaves the files as written), and
@@ -342,7 +348,10 @@ place real adapters are bound to real config.
   runtime is every session no task owns). `reuseExternal` does not reach inside one (a provider that says
   `reuses: false` is never offered a holder), `stop` and `release` end only sessions whose ownership is proven, and
   a sandbox of one task is unknown to another (`test/runtime-sessions-scope.test.mjs`,
-  `test/runtime-sandbox-ownership.test.mjs`).
+  `test/runtime-sandbox-ownership.test.mjs`). A teardown that cannot be proven leaves the sandbox QUARANTINED, never
+  RELEASED, and only Control releases it. A sandbox's supervisor (ADR 0036) writes heartbeats, takes the signals the
+  roots that own cancel hand it, enforces deadlines and stops only what ownership proves; it launches nothing and
+  knows no transport.
 - **A port is leased, never taken, and a component is told one only by evidence.** A lease is a receipt in the
   machine-global lease room, written before anything listens; a candidate something answers on is somebody's and is
   passed over; nothing frees, moves or signals a holder. A component is told its port by an override its project's
@@ -354,6 +363,25 @@ place real adapters are bound to real config.
   fingerprint, and the fingerprint is taken again immediately before the run. The `trust` command refuses unless the
   context has `door: "control"`, which only Control sets after its mutation token: a terminal cannot prove who typed
   `--human` (`test/runtime-trust.test.mjs`).
+- **An active generated test runs only where isolation is PROVEN (ADR 0038).** An isolation provider
+  (`orbit.isolation-provider/v1`, Docker first) says what it proves, and the PROFILE is attested at prepare and again at
+  every dispatch; a native process or a dev container proves nothing, and with no provider an active generated test is
+  BLOCKED while discovery and validation go on. The worker never holds the store, a journal, the vault, a control
+  socket or a home directory; a worker's claimed status is never taken: only the HOST, after validating its envelope
+  (`src/run/envelope.mjs`: digests, attestation, files, status and `proved` re-derived from the frozen case), writes
+  the ledger line, the evidence and the investigation's run line. A generated PAGE test drives a browser of its own in
+  that worker (0.1.0): the host proposes what to wait for and read, the engine writes every script the page runs from
+  templates that only read the DOM, and ONE engine-written route carries the approved identity's credential to the
+  bound origin alone -- never along a redirect, never in an argument or a file the host reads back -- and lets a write
+  through only under a page grant this run was minted (`src/qa/generation/page.mjs`, `src/run/worker.mjs`).
+- **A test writes only through a grant (ADR 0037).** `mutates` does not imply destructive: a write, publish, enqueue,
+  trigger, consume, settle (an ack or a commit), replay or workload control on a resource of the run's own fixture
+  needs a grant the engine mints at dispatch through the ordered `MINT` rows (`src/runtime/sandbox/test-grants.mjs`)
+  -- owned, isolated, the mode, the capability's declared effects, the fixture, indirect effects inside fixture
+  sinks, a bound oracle and design, the allow-list, the budget, the tree, a person's policy -- and spends one use
+  before the effect. Nothing an
+  agent sends (a field, a flag, `--human`) mints one; a destructive test outside the fixture stays refused in every
+  mode; a lost answer is read back, never resent, and an intentional duplicate or a replay is a grant of its own.
 - **Live evidence names a source tree.** A sandbox session, a task's `sandbox` and `runtime` receipts and an
   investigation bound to a sandbox carry the `write-tree` id they ran on; a workspace that moved past it makes the
   sandbox STALE (derived on read, never written by whoever edited), the QA gate `RUNTIME_STALE` holds every browser
@@ -457,8 +485,19 @@ place real adapters are bound to real config.
 - **A PROVIDER IS NOT A VERB.** A verb is grammar: the set of them shapes every case, every
   report column and every coverage denominator, so it has grown once in five releases. A provider
   is a thing you can ask. So `postgres`, `redis`, `msgraph` and everything like them are
-  CAPABILITIES behind the one `call` verb, registered by a project from OUTSIDE this repo, and a
-  row here naming one would be a product learned. Providers grow; the grammar does not.
+  CAPABILITIES behind the one `call` verb, registered by a project from OUTSIDE this repo -- or
+  shipped by Orbit as a PACK that stays inert until a project opts in by id (`project.json` `packs`,
+  ADR 0034) -- and a row here naming one would be a product learned. Providers grow; the grammar does not.
+- **A technology is an adapter's to know, and the engine reasons only over what an adapter DECLARES
+  (ADR 0035).** A broker, a scheduler, a store or an identity system is reached through a family
+  operation (`orbit.<family>.<op>`) whose adapter (`orbit.adapter/v1`, a helper in any language, using
+  the technology's own SDK, CLI or API) is chosen at run time by what discovery found and the
+  semantics the adapter declared; `unknown` is a legal semantics value that switches off what needs
+  it. No adapter is a boundary-scoped CAPABILITY_MISSING gap and one knowledge opportunity -- never a
+  fallback to another transport, an emulator or a fake -- and `supported` is COMPUTED from
+  declarations and conformance-kit receipts, never written in a file. Nothing under `src/adapters/`,
+  `src/topology/` or the new `src/qa/` subjects names a product, a transport's vendor or an example
+  project (`test/backend-neutral.test.mjs`).
 - **A project extends Orbit through its current contract.** Project extensions live outside repositories.
   `orbit.extension/v2` is the sole accepted manifest API. The loader validates default exports directly,
   before registration. Capabilities explicitly declare `orbit.capability/v1`. No adapter converts older
@@ -470,6 +509,9 @@ place real adapters are bound to real config.
   object, and no way to write a binding or a verdict. A capability that could write the ledger
   could write a PASS. It observes and reports; `expect` in the case rules. Nothing it can reach
   spawns through a shell, so a value containing `;` is an argument and never a second command.
+  A GENERATED predicate is compiled and interpreted (`src/run/evaluator.mjs`, ADR 0038) and is never
+  handed to `new Function` in a process that writes an authoritative record: there it could reach
+  `process.getBuiltinModule` and `import()`, which is the whole host.
 - **A candidate is held to the contract BEFORE it is trusted, by the same loader.** There is no
   validation mode: `verifyTool` loads it for real into a throwaway context. A `draft` is never
   loaded, so something generated and unproved is inert rather than quietly live, and
@@ -479,7 +521,9 @@ place real adapters are bound to real config.
 - **A concrete tool lives in `skills/`, never in `src/`.** When a real adapter is worth shipping
   (`skills/orbit-sql`: SQL Server via sqlcmd), it is a command a project opts into through
   `project.json`, with its own `ORBIT_<TOOL>_*` variables. `src/` keeps knowing only "a command".
-  The Five Lines check and the suite cover `skills/` too — shipped code is code.
+  The Five Lines check and the suite cover `skills/` too — shipped code is code. A shipped capability
+  PACK (ADR 0034) lives there too: loaded in place by the same loader and contract, only for a project
+  whose `packs` lists it, and `orbit.*` ids belong to the engine and its packs alone.
 - **The entry points live in `cli/`, and there is no top-level `bin/`.** A hosted plugin archive
   is **rejected at upload** for one: the CLI would put that directory on PATH, while the approval
   surface a team's admin reads never mentions it, so the host refuses to be what adds it. Every
@@ -546,6 +590,15 @@ place real adapters are bound to real config.
   from what a plan already declares — roles, an owner or a tenant, a write — and `owedBy` on a
   technique's row says which signals it discharges. Advice, never an error: it can demonstrate
   nobody considered the question, never that they were wrong not to.
+- **Standards and policies are a person's sources, configured in Orbit Control (ADR 0040).** A
+  security catalog (`orbit.control-catalog/v1`) is added by URL or file, fetched, previewed and
+  ADOPTED with its digest pinned, or written in Control's editor, and enabled per project -- as many
+  as a person wants; budgets, limits and vocabulary layers are set the same way, through Control's
+  door and naming the revision read. Orbit ships defaults as DATA (ASVS 5.0.0 L1 with OWASP Top 10
+  2025 and API Security Top 10 2023 as labels; ids, links and Orbit's own summaries, never a
+  standard's text). No agent or CLI fetches or edits a catalog; an assessment pins the catalog it
+  used, a change makes what was derived from the old one STALE, and nothing is ever called
+  "compliant".
 - **The host reasons; the engine keeps the state, and a decision carries no verdict.** An
   investigation's loop is the host's choice of ONE next step, sent as a decision
   (`src/investigation/decision.mjs`) the engine judges before anything runs. The decision's
@@ -776,6 +829,10 @@ node cli/explore.mjs <observations.jsonl> [--out=…]          # one exploration
 # NB: the seed ledgers a test needs live in test/fixtures/ledger/ -- its README says why.
 ORBIT_UI_TESTS=test/fixtures/ui-tests ORBIT_STORE_DIR=/tmp/l \
   node cli/qa-plan.mjs coverage things   # plans|show|render|coverage|select|impact|suggest|new
+ORBIT_STORE_DIR=/tmp/l node cli/autonomous-qa.mjs derive|reconcile --investigation=<id>   # obligations from accepted plans; a dispatch that never settled, read back
+ORBIT_STORE_DIR=/tmp/l node cli/security-audit.mjs assess --investigation=<id>   # the controls in effect, from an investigation's own record
+node cli/qa-plan.mjs expects <openapi|asyncapi|schedule>.json [--operation=… --status=… | --channel=… --within=… | --at=…]   # candidate expectations
+node acceptance/run.mjs [--stack=…] [--variant=…] [--keep] [--record]   # native acceptance: two stacks, planted defects, a ground truth (Docker)
 ORBIT_STORE_DIR=/tmp/l node cli/qc-tool.mjs where|list        # this project's own QC tools (README §7.2)
 ORBIT_STORE_DIR=/tmp/l node cli/qc-tool.mjs new <id> <scratch-dir> [--tool=psql] [--mutates]
 ORBIT_STORE_DIR=/tmp/l node cli/qc-tool.mjs verify|register <dir>   # exit 2 if it would not load

@@ -37,12 +37,13 @@
     { "file": ".tool-versions", "format": "pairs", "aliases": { "nodejs": "node", "golang": "go" } }
   ],
   "services": [
-    { "id": "postgres", "name": "PostgreSQL", "images": ["postgres", "postgis/postgis"], "ports": [5432] },
-    { "id": "mysql", "name": "MySQL", "images": ["mysql", "mariadb"], "ports": [3306] },
-    { "id": "redis", "name": "Redis", "images": ["redis", "valkey/valkey"], "ports": [6379] },
-    { "id": "mongodb", "name": "MongoDB", "images": ["mongo"], "ports": [27017] },
-    { "id": "rabbitmq", "name": "RabbitMQ", "images": ["rabbitmq"], "ports": [5672] },
-    { "id": "sqlserver", "name": "SQL Server", "images": ["mcr.microsoft.com/mssql/server"], "ports": [1433] }
+    { "id": "postgres", "name": "PostgreSQL", "images": ["postgres", "postgis/postgis"], "ports": [5432], "transports": [{ "id": "postgres-wire", "port": 5432 }], "credentials": { "user": { "env": "POSTGRES_USER" }, "password": { "env": "POSTGRES_PASSWORD" } } },
+    { "id": "mysql", "name": "MySQL", "images": ["mysql", "mariadb"], "ports": [3306], "transports": [{ "id": "mysql-wire", "port": 3306 }], "credentials": { "user": { "env": "MYSQL_USER" }, "password": { "env": "MYSQL_PASSWORD" } } },
+    { "id": "redis", "name": "Redis", "images": ["redis", "valkey/valkey"], "ports": [6379], "transports": [{ "id": "resp", "port": 6379 }] },
+    { "id": "mongodb", "name": "MongoDB", "images": ["mongo"], "ports": [27017], "transports": [{ "id": "mongodb-wire", "port": 27017 }], "credentials": { "user": { "env": "MONGO_INITDB_ROOT_USERNAME" }, "password": { "env": "MONGO_INITDB_ROOT_PASSWORD" } } },
+    { "id": "rabbitmq", "name": "RabbitMQ", "images": ["rabbitmq"], "ports": [5672], "transports": [{ "id": "amqp-0-9-1", "port": 5672 }], "credentials": { "user": { "env": "RABBITMQ_DEFAULT_USER" }, "password": { "env": "RABBITMQ_DEFAULT_PASS" } } },
+    { "id": "sqlserver", "name": "SQL Server", "images": ["mcr.microsoft.com/mssql/server"], "ports": [1433], "transports": [{ "id": "tds", "port": 1433 }] },
+    { "id": "nats", "name": "NATS", "images": ["nats"], "ports": [4222], "transports": [{ "id": "nats", "port": 4222 }, { "id": "nats-jetstream", "port": 4222 }], "credentials": { "user": { "flag": "--user" }, "password": { "flag": "--pass" } } }
   ],
   "shells": {
     "doc": "Scripts a checkout keeps where a person runs them from -- its top, and a scripts directory -- and the systems each kind is written for. A checkout whose every such script is of one family is POSSIBLY run there: evidence beside the operating-system matrix, never a requirement, because PowerShell runs elsewhere too and a file name is not a runtime.",
@@ -83,5 +84,12 @@
       {"id":"python3","argv":["python3","-c","import socket, sys\nh, p, m = sys.argv[1], sys.argv[2], sys.argv[3]\nif not (p.isdigit() and m.isdigit()):\n    print(\"UNKNOWN NOT_ATTEMPTED\"); sys.exit(0)\ntry:\n    socket.getaddrinfo(h, int(p), proto=socket.IPPROTO_TCP)\nexcept Exception:\n    print(\"FAILED NOT_ATTEMPTED\"); sys.exit(0)\ntry:\n    socket.create_connection((h, int(p)), timeout=int(m) / 1000).close(); print(\"RESOLVED REACHABLE\")\nexcept Exception:\n    print(\"RESOLVED UNREACHABLE\")","${HOST}","${PORT}","${TIMEOUT_MS}"],"doc":"getaddrinfo, then create_connection with the deadline; a port or a deadline that is not a number is never used."},
       {"id":"bash","argv":["bash","-c","case \"$2$3\" in ''|*[!0-9]*) echo \"UNKNOWN NOT_ATTEMPTED\"; exit 0;; esac\nr=UNKNOWN\nif command -v getent >/dev/null 2>&1; then if getent ahosts \"$1\" >/dev/null 2>&1; then r=RESOLVED; else echo \"FAILED NOT_ATTEMPTED\"; exit 0; fi; fi\nt=\"\"\nif command -v timeout >/dev/null 2>&1; then t=\"timeout $(( ($3 + 999) / 1000 ))\"; fi\nif $t bash -c 'exec 3<>\"/dev/tcp/$1/$2\"' bash \"$1\" \"$2\" 2>/dev/null; then echo \"RESOLVED REACHABLE\"; else echo \"$r UNREACHABLE\"; fi","bash","${HOST}","${PORT}","${TIMEOUT_MS}"],"doc":"getent when the image has it (else the name is UNKNOWN), then /dev/tcp under `timeout` when the image has it; every value a quoted positional parameter."}
     ]
+  },
+  "isolation": {
+    "doc": "How the containers an ISOLATED sandbox starts for itself are run (ADR 0038, 0039): argument lists as data, so the engine names no runtime. The worker IMAGE is a person's (sandbox.isolation.workerImage, pinned by digest and trusted in Orbit Control); these say only what runs in it, where the plugin, a run's inputs and its outputs are mounted (and, inside the inputs, the project's configuration; the frozen case lies beside it, named by its id), and which connectivity primitive (connectivity.primitives) the worker image answers readiness and egress probes with.",
+    "worker": { "argv": ["node", "/orbit/cli/sandbox-worker.mjs"], "plugin": "/orbit", "in": "/work/in", "out": "/work/out", "home": "/tmp", "store": "/work/out/store", "project": "/work/in/ui-tests" },
+    "pod": { "argv": ["node", "-e", "setInterval(() => {}, 2147483647)"] },
+    "probe": "node",
+    "appMount": "/work/app"
   }
 }

@@ -1,0 +1,96 @@
+{
+  "order": 5,
+  "design": {
+    "skeleton": {
+      "steps": [
+        {
+          "do": "call",
+          "capability": "orbit.messaging.publish",
+          "input": {
+            "channelRef": "billing-reminder-requested",
+            "request": {
+              "messageId": "msg-a1b2c3d4e5f60718",
+              "correlationId": "tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00",
+              "payload": {
+                "messageId": "msg-a1b2c3d4e5f60718",
+                "invoiceId": "inv-a",
+                "tenantId": "tenant-a",
+                "occurrenceId": "billing-daily:2026-10-23T09:00:00+07:00",
+                "businessKey": "tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00"
+              }
+            }
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.messaging.publish",
+          "input": {
+            "channelRef": "billing-reminder-requested",
+            "request": {
+              "messageId": "msg-a1b2c3d4e5f60718",
+              "correlationId": "tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00",
+              "payload": {
+                "messageId": "msg-a1b2c3d4e5f60718",
+                "invoiceId": "inv-a",
+                "tenantId": "tenant-a",
+                "occurrenceId": "billing-daily:2026-10-23T09:00:00+07:00",
+                "businessKey": "tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00"
+              }
+            }
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.worker.observe",
+          "input": {
+            "workloadRef": "worker",
+            "request": {
+              "count": 2,
+              "match": {
+                "messageId": "msg-a1b2c3d4e5f60718"
+              }
+            }
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.state.read",
+          "input": {
+            "stateRef": "reminders",
+            "request": {
+              "key": "tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00"
+            }
+          }
+        }
+      ]
+    },
+    "assertions": [
+      {
+        "criterionRef": "FIX-ASYNC-1/E3",
+        "template": "complete",
+        "step": 3
+      },
+      {
+        "criterionRef": "FIX-ASYNC-1/E2",
+        "template": "count-eq",
+        "step": 4
+      }
+    ],
+    "controls": [
+      {
+        "role": "duplicate",
+        "why": "the same logical message, published twice on purpose"
+      },
+      {
+        "role": "state",
+        "why": "one reminder for the business key after both deliveries settled"
+      }
+    ],
+    "trigger": {
+      "kind": "message",
+      "ref": "billing-reminder-requested",
+      "step": 1
+    },
+    "effectScope": "fixture"
+  }
+}

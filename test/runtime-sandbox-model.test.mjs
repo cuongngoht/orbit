@@ -59,6 +59,7 @@ test("STALE is derived from the workspace on every read -- the document is never
 test("every row of the table is reachable, in order, and the last always matches", () => {
   const rows = [
     ["RELEASED", { ...built(), state: "RELEASED" }, { tree: null }],
+    ["QUARANTINED", { ...built(), state: "QUARANTINED" }, { tree: null }],
     ["UNPREPARED", { ...built(), state: "PREPARING" }, { tree: "t9" }],
     ["NO_TREE", built(), { tree: null }],
     ["MOVED", built(), { tree: "t2" }],

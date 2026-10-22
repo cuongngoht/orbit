@@ -8,6 +8,7 @@
 import { apiWatermarkGate } from "./api-watermark.mjs";
 import { bindingGate } from "./bindings.mjs";
 import { destructiveGate } from "./destructive.mjs";
+import { fixtureGate } from "./fixture.mjs";
 import { identityGate } from "./identity.mjs";
 import { originGate } from "./origin.mjs";
 import { sessionGate } from "./session.mjs";
@@ -16,6 +17,7 @@ import { startScreenGate } from "./start-screen.mjs";
 
 export const GATES = [
   { gate: destructiveGate },
+  { gate: fixtureGate },
   { gate: bindingGate },
   { gate: apiWatermarkGate },
   { gate: staleGate },

@@ -5,6 +5,7 @@
 //
 //   node autonomous-qa.mjs plan --objective="…" [--scope="…"] [--screen=<id,…>] [--plan=<plan-id>] [--snapshot=<rs-id,…>] [--input=<file,…> [--ref=<id>] [--revision=<r>] [--authority=accepted --human]] [--env=<id> | --sandbox=<env-id>] [--mode=observe] [--identity=<as>] [--dry] [--json]
 //   node autonomous-qa.mjs draft-plan --investigation=<id> [--file=<plan.json>]     (the plan on stdin without --file)
+//   node autonomous-qa.mjs derive --investigation=<id>                         the test obligations its accepted plans imply, read against the system graph frozen into it (JSON)
 //   node autonomous-qa.mjs context --investigation=<id>                        where it stands: position, frontier, budget, stop (JSON; writes nothing)
 //   node autonomous-qa.mjs step --investigation=<id> [--decision=<file>]       one decision, as JSON on stdin (the protocol: `protocol`)
 //   node autonomous-qa.mjs checkpoint --investigation=<id>                     keep what each settled obligation came to (receipts) and project results into knowledge
@@ -12,6 +13,7 @@
 //   node autonomous-qa.mjs resume --investigation=<id> [--why="…"]             go on with a paused investigation
 //   node autonomous-qa.mjs answer --investigation=<id> --question=<qst-n> --says="…" --human
 //   node autonomous-qa.mjs release --investigation=<id> --decision=<id> --why="…" --human   settle a step that never did, once a person looked at what it did
+//   node autonomous-qa.mjs reconcile --investigation=<id> [--json]              read back every generated test's dispatch that started and never settled, and say what each came to -- never sent again
 //   node autonomous-qa.mjs protocol                                           the decision protocol, printed from its tables (JSON)
 //   node autonomous-qa.mjs explore [--investigation=<id> | --objective="…" --scope="…"] [--env=<id> | --sandbox=<env-id>] [--mode=…] [--json]
 //   node autonomous-qa.mjs act --investigation=<id> (--goto=<path> | --click=<screen/via> | --fill=<screen/via> --value=TC-…) [--identity=<as>] [--json]
@@ -36,7 +38,10 @@
 //
 // --sandbox=<env-id> is the sandbox a TASK owns in this checkout (runtime sandboxes): its origin, its source
 // tree and its approved modes come from the runtime and a person's sandbox policy, never from a flag, and the
-// browser is its own, blank. Every later command of the investigation finds it again from the journal.
+// browser is its own, blank. Every later command of the investigation finds it again from the journal. An
+// ISOLATED sandbox (sandbox.isolation.mode required) has no origin on this machine: it is verified only by the
+// generated versions its own worker runs (a `generate` then a `run-version` step), whose test hooks are reached
+// with the token a person set in ORBIT_TEST_HOOKS_TOKEN for the component and for this command alike.
 // Exit 0 = done, whatever was found -- a finding is never an exit code, and
 // no investigation outcome is PASS or FAIL · 2 = refused (usage, a gate, a
 // missing approval) · 3 = blocked (the machine: browser, store, deadline).
@@ -70,7 +75,18 @@ import { sandboxEnvironment, sandboxRuntime } from "../src/investigation/sandbox
 import { withExtensions } from "../src/extensions/index.mjs";
 import { REPORT_ROOMS } from "../src/tests-tree.mjs";
 import { machineContext } from "../src/store/context.mjs";
-import { originAnswer, sandboxAnswer } from "../skills/orbit-runtime/bind.mjs";
+import { bindSandbox, originAnswer, sandboxAnswer } from "../skills/orbit-runtime/bind.mjs";
+import { dispatchPort, generationPort, keptEvidence } from "../skills/orbit-qa/ports.mjs";
+import { derivedInto } from "../src/investigation/derive.mjs";
+import { reconciledRuns } from "../src/investigation/reconcile-runs.mjs";
+import { DISPATCH_SLACK_MS } from "../src/investigation/run-version.mjs";
+import { architectureContext } from "../src/architecture/context.mjs";
+import { graphOf } from "../src/architecture/graph-view.mjs";
+import { loadVocabulary } from "../src/topology/vocabulary.mjs";
+import { storeBase } from "../src/project/repository.mjs";
+import { realIo } from "../src/store/io.mjs";
+import { dispatchDirs } from "../src/runtime/sandbox/dispatch.mjs";
+import { effectivePolicy } from "../src/runtime/sandbox/policy.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const [cmd, ...args] = process.argv.slice(2);
@@ -84,13 +100,46 @@ const shown = (value, human) => (has("json") ? console.log(JSON.stringify(value,
 // capabilities an investigation may ask are the ones the project registered,
 // and a plan that listed none because nobody loaded them was a plan about a
 // different project.
-const BOUND = { ctx: null, runtime: null, sandbox: null };
+const BOUND = { ctx: null, runtime: null, sandbox: null, isolated: null, runtimeCommands: null };
 
 function world(extra = {}) {
   const ctx = BOUND.ctx;
   const machine = machineContext(ctx);
   const on = componentOn({ kind: "skill", name: "orbit-qa-agent" }, process.env, "orbit");
-  return { ...worldFor({ ctx, machine, env: flag("env"), mode: flag("mode"), id: flag("investigation") ?? null, on, identity: flag("identity"), pace: 250, runtime: BOUND.runtime, environment: BOUND.sandbox?.environment, ...extra }), machine, ...boundFor(ctx, machine) };
+  const w = worldFor({ ctx, machine, env: flag("env"), mode: flag("mode"), id: flag("investigation") ?? null, on, identity: flag("identity"), pace: 250, runtime: BOUND.runtime, environment: BOUND.sandbox?.environment, ...extra });
+  return { ...w, machine, ...boundFor(ctx, machine), ...portsFor(ctx, machine, w) };
+}
+
+// The test hooks' token: the one variable a person sets for the component's hooks and for this command alike
+// (orbit.scheduler/v1, orbit.clock/v1, orbit.workload/v1) -- read when a version is prepared, never kept.
+const HOOKS_TOKEN_ENV = "ORBIT_TEST_HOOKS_TOKEN";
+
+// The ports a generated test's lifecycle asks (skills/orbit-qa/ports.mjs), bound to this investigation, the system
+// graph frozen into it, and -- when it was begun against one -- the task's isolated sandbox.
+function portsFor(ctx, machine, w) {
+  if (!w.id) return {};
+  const b = { ctx, model: () => modelOf(w.store.read(w.id)), planOf: (id) => qaPlan(ctx, id), graph: () => frozenGraph(w), drafts: createDrafts(machine.store.root, machine.io), settings: w.settings, tenancy: w.settings.tenancy, mode: w.mode, now: () => Date.now(), ...sandboxPorts(ctx, machine, w) };
+  return { generation: generationPort(b), dispatch: dispatchPort(b) };
+}
+
+// The graph the obligations were derived against, as it was frozen; none is a graph that holds nothing.
+const frozenGraph = (w) => ((bound) => (bound ? w.store.readArtifact(w.id, "graphs", bound.digest) : null) ?? { nodes: [], relations: [] })(modelOf(w.store.read(w.id)).bindings.findLast((x) => x.type === "graph"));
+
+function sandboxPorts(ctx, machine, w) {
+  const s = BOUND.isolated;
+  if (!s) return { topology: () => ({ needs: "environment", say: "this investigation is bound to no ISOLATED sandbox — a generated version runs only in one (begin with --sandbox=<env-id> on a sandbox whose isolation is required)" }) };
+  return { sandbox: s.sandbox, topology: () => BOUND.runtimeCommands["sandbox-topology"].run(s.ctx, []), services: Object.fromEntries(s.ctx.catalog.services.map((x) => [x.id, x])), policy: policyOf(s.ctx), place: { in: s.ctx.catalog.isolation.worker.in, out: s.ctx.catalog.isolation.worker.out }, hooksToken: () => process.env[HOOKS_TOKEN_ENV] ?? null, runtime: { dirs: (run) => dispatchDirs(s.ctx, run), dispatch: (request) => dispatchedBy(ctx, s, request), worker: (run) => BOUND.runtimeCommands["sandbox-dispatched"].run(s.ctx, [`--run=${run}`]).worker }, project: { name: ctx.config.name, packs: ctx.config.packs, sql: ctx.config.sql, graphDir: ctx.project.graphDir }, keep: (dir, run) => keptEvidence(dir, join(w.store.evidenceDir(w.id), run), machine.store.root) };
+}
+
+// A person's standing write policy for this sandbox, at the revision it was read.
+const policyOf = (sctx) => ((read) => ({ revision: read.revision, writes: effectivePolicy(read.settings).policy.qa.writes }))(sctx.readSettings());
+
+// ONE dispatch, through the runtime's own command: its request -- sealed bindings and secrets -- on stdin, never in
+// an argument, a file or a log line; the deadline the request carries, and room for the worker to be made and removed.
+function dispatchedBy(ctx, s, request) {
+  const ms = Number(request.limits?.deadlineMs) || 120000;
+  const r = ctx.process.run(process.execPath, [join(HERE, "runtime.mjs"), "sandbox-dispatch", `--task=${s.sandbox.task}`, `--run=${request.runId}`, `--deadline-ms=${ms}`, "--json"], { input: JSON.stringify(request), timeoutMs: ms + DISPATCH_SLACK_MS, cwd: whereOf().cwd });
+  return r.ok ? { ok: true, answer: lastJson(r.out) } : { ok: false, why: String(r.error ?? "the dispatch did not answer").slice(0, 400) };
 }
 
 // What the loop may ask of this machine, bound HERE because only a composition
@@ -191,7 +240,7 @@ function headOf(w) {
 // that browser lives in and the address it opens -- printed, never kept in a journal. The directory is the one the bound
 // browser itself answers (`browser.dir()`), never the project's run directory: a sandbox's browser lives under
 // <runDir>/sandbox/<env>, and a browser opened anywhere else is one no investigation step will ever find.
-const browserLine = () => (BOUND.sandbox ? `\nbrowser: blank, its own session -- open it once:\n  node ${join(dirname(HERE), "skills", "orbit-browser", "open.mjs")} --blank --url ${BOUND.sandbox.environment.origin} --run-dir ${BOUND.ctx.browser.dir()}` : "");
+const browserLine = () => (BOUND.sandbox?.environment.isolated ? `\nsandbox ${BOUND.sandbox.environment.id} is isolated: nothing on this machine reaches inside it -- generate a version, then run-version` : BOUND.sandbox ? `\nbrowser: blank, its own session -- open it once:\n  node ${join(dirname(HERE), "skills", "orbit-browser", "open.mjs")} --blank --url ${BOUND.sandbox.environment.origin} --run-dir ${BOUND.ctx.browser.dir()}` : "");
 
 function planCmd() {
   const w = world();
@@ -216,6 +265,21 @@ function draftPlanCmd() {
 function checkedDraft(w, plan) {
   const wrong = errors(planFindings(plan, planWorld(w.ctx, { drafts: true })));
   if (wrong.length) stop(`the draft plan does not check — ${wrong.slice(0, 3).map((f) => f.say).join("; ")}`);
+}
+
+// The obligations an investigation's accepted plans imply, read against the system graph as it is NOW -- frozen into
+// the investigation first, so what each rests on is kept as it was (src/investigation/derive.mjs).
+function deriveCmd() {
+  const w = investigating();
+  return said(derivedInto(w, { planOf: (id) => qaPlan(w.ctx, id), graph: systemGraph(w.ctx) }));
+}
+
+// The system graph as `architecture graph` projects it: the recorded node and relation facts, read in the layered
+// words of the plugin, the organisation and the project, joined to the UI map's screens.
+function systemGraph(ctx) {
+  const arch = architectureContext(ctx);
+  const vocab = loadVocabulary({ pluginRoot: dirname(HERE), storeBase: storeBase(process.env), storeRoot: arch.store.root, io: realIo() });
+  return graphOf(arch.arch.all(), vocab, [{ id: "ui-map", roles: ["interface"], ids: [...(ctx.graph?.screens?.keys?.() ?? [])] }]);
 }
 
 function exploreCmd() {
@@ -334,6 +398,9 @@ function releaseCmd() {
   return said(release(investigating(), needed("decision"), flag("why")));
 }
 
+// Every dispatch that started and never settled, read back by the rows of src/investigation/reconcile-runs.mjs.
+const reconcileCmd = () => ((w) => said({ investigation: w.id, reconciled: reconciledRuns(w) }))(investigating());
+
 const protocolCmd = () => said(protocolOf());
 
 function parsedJson(text, what) {
@@ -412,7 +479,7 @@ function help() {
   process.exitCode = cmd && cmd !== "--help" ? 2 : 0;
 }
 
-const COMMANDS = { plan: planCmd, "draft-plan": draftPlanCmd, context: contextCmd, step: stepCmd, checkpoint: checkpointCmd, finish: finishCmd, resume: resumeCmd, answer: answerCmd, release: releaseCmd, protocol: protocolCmd, explore: exploreCmd, act: actCmd, "check-data": checkCmd, security: securityCmd, investigate: investigateCmd, reproduce: reproduceCmd, draft: draftCmd, "link-run": linkCmd, report: reportCmd, list: listCmd, show: showCmd, cancel: cancelCmd, settings: settingsCmd };
+const COMMANDS = { plan: planCmd, "draft-plan": draftPlanCmd, derive: deriveCmd, context: contextCmd, step: stepCmd, checkpoint: checkpointCmd, finish: finishCmd, resume: resumeCmd, answer: answerCmd, release: releaseCmd, protocol: protocolCmd, reconcile: reconcileCmd, explore: exploreCmd, act: actCmd, "check-data": checkCmd, security: securityCmd, investigate: investigateCmd, reproduce: reproduceCmd, draft: draftCmd, "link-run": linkCmd, report: reportCmd, list: listCmd, show: showCmd, cancel: cancelCmd, settings: settingsCmd };
 
 // The commands that stand in front of an approved environment -- a plan, an action, a check --
 // are the ones that ask what this checkout's own runtime says about it. Silence is an answer:
@@ -458,9 +525,22 @@ const sandboxContext = (ctx, id) => withExtensions(createContext({ project: ctx.
 async function main() {
   BOUND.ctx = COMMANDS[cmd] ? await withExtensions(createContext()) : null;
   BOUND.sandbox = GATED.has(cmd) ? await sandboxFor() : null;
-  if (BOUND.sandbox) BOUND.ctx = await sandboxContext(BOUND.ctx, BOUND.sandbox.environment.id);
+  if (BOUND.sandbox) await sandboxBound(BOUND.sandbox);
   BOUND.runtime = GATED.has(cmd) ? await runtimeFor() : null;
   return (COMMANDS[cmd] ?? help)();
+}
+
+async function sandboxBound(sb) {
+  BOUND.ctx = await sandboxContext(BOUND.ctx, sb.environment.id);
+  BOUND.isolated = sb.environment.isolated ? await isolatedBinding(sb) : null;
+}
+
+// An isolated sandbox, bound once for what a generated version needs of it: the task's own runtime context (its
+// topology, its rooms, its policy) and the runtime's commands, read lazily so nothing else pays for them.
+async function isolatedBinding(sb) {
+  const ctx = bindSandbox({ pluginRoot: dirname(HERE), env: process.env, cwd: whereOf().cwd, task: sb.runtime.task });
+  BOUND.runtimeCommands = (await import("../src/runtime/index.mjs")).COMMANDS;
+  return { ctx, sandbox: { id: sb.environment.id, task: sb.runtime.task, tree: sb.runtime.sourceTree, currentTree: sb.runtime.taskTree, isolated: sb.runtime.isolated === true } };
 }
 
 command(main);

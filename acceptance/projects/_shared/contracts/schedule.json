@@ -1,0 +1,15 @@
+{
+  "id": "billing-daily",
+  "revision": "r1",
+  "doc": "The accepted schedule of the synthetic invoice application's billing job (FIX-ASYNC-1): every day at 09:00 in Asia/Ho_Chi_Minh, the job selects the open invoices marked for a reminder and records one reminder request per invoice, in one transaction with its outbox message.",
+  "dialect": "cron5",
+  "expression": "0 9 * * *",
+  "timezone": "Asia/Ho_Chi_Minh",
+  "dst": { "gap": "skip", "overlap": "first" },
+  "misfire": "fire-once",
+  "overlap": "forbid",
+  "deadlineMs": 120000,
+  "occurrenceId": "billing-daily:<scheduledFor as ISO 8601 with the zone's offset>",
+  "businessKey": "<tenantId>|<invoiceId>|<occurrenceId>",
+  "effect": "one reminder record and one sink notification per business key, within deadlineMs of the occurrence being due"
+}

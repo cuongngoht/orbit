@@ -18,10 +18,11 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { contained } from "../project/boundary.mjs";
 import { realIo } from "../store/io.mjs";
-import { engineVersion } from "../version.mjs";
+import { engineVersion, pluginRoot } from "../version.mjs";
 import { MANIFEST_FILE, MODULE_FORMS, MODULES } from "./contract.mjs";
 import { satisfies } from "./engine-range.mjs";
 import { isLoadable, manifestFindings, notLoadableWhy } from "./manifest.mjs";
+import { packRoom } from "./packs.mjs";
 import { createReportingParts } from "./reporting-parts.mjs";
 import { createQcTools } from "./store.mjs";
 
@@ -40,13 +41,33 @@ import { createQcTools } from "./store.mjs";
 // while it collects, and a capability module imported now would run beside it.
 // What it needs from an extension is data anyway -- the parts it runs are
 // scripts started as their own processes.
+//
+// The packs a project opts into (project.json `packs`, ADR 0034) are loaded FIRST, where the
+// plugin keeps them, then the project's own room -- so a project's tool can never take an id a
+// pack it asked for already holds, and the order two machines load in is the same.
 export async function loadExtensions(ctx, deps = {}) {
   if (typeof ctx.knowledge?.register !== "function") throw new TypeError("loadExtensions needs a knowledge registry on its context — src/extensions/registries.mjs emptyRegistries() builds one");
   if (deps.tools) return gathered(ctx, { ...deps.tools, dataOnly: Boolean(deps.dataOnly) });
-  const room = roomOf(ctx, deps.io ?? realIo());
+  const io = deps.io ?? realIo();
+  const packs = await packsOf(ctx, io, deps);
+  return merged(packs, await ownOf(ctx, io, deps));
+}
+
+async function packsOf(ctx, io, deps) {
+  const ids = ctx.config?.packs ?? [];
+  if (!ids.length) return { loaded: [], refused: [], room: null };
+  const asked = packRoom(deps.pluginRoot ?? pluginRoot(), ids, io);
+  const out = await gathered(ctx, { ...asked.room, dataOnly: Boolean(deps.dataOnly) });
+  return { ...out, refused: [...asked.refused, ...out.refused] };
+}
+
+async function ownOf(ctx, io, deps) {
+  const room = roomOf(ctx, io);
   if (!room.tools) return { loaded: [], refused: [], room: room.why };
   return gathered(ctx, { ...room.tools, dataOnly: Boolean(deps.dataOnly) });
 }
+
+const merged = (a, b) => ({ loaded: [...a.loaded, ...b.loaded], refused: [...a.refused, ...b.refused], room: b.room ?? a.room ?? null });
 
 // Reading never creates, so the store is asked for WITHOUT preparing it. A
 // machine with nowhere to write has no extensions rather than an error: a
@@ -88,6 +109,7 @@ function parsed(tools, id) {
 // A draft is well formed and not trusted; an engine mismatch is trusted and not
 // this engine. Saying which is what tells somebody whether to verify or upgrade.
 function gateOf(manifest, id) {
+  if (manifest.id !== id) return `its directory is named ${String(id).slice(0, 60)} and its manifest says ${String(manifest.id).slice(0, 60)} — an extension's directory IS its id, so it is who a registry records`;
   if (!isLoadable(manifest)) return notLoadableWhy(manifest);
   return engineProblem(manifest);
 }
@@ -107,11 +129,14 @@ async function register(ctx, tools, id, manifest, out) {
   catch (e) { out.refused.push({ id, status: manifest.status, why: e.message }); }
 }
 
+// `from` is who a registry records as the owner: the extension's id, or `pack:<id>` for a pack
+// the plugin ships -- asked of the room, so nothing a manifest says can claim to be a pack.
 async function registered(ctx, tools, id, manifest) {
   const modules = await imported(tools, id, manifest);
-  const shaped = moduleValues(manifest, modules);
-  applied(ctx, id, coherent(ctx, shaped, id));
-  return { id, version: manifest.version, apiVersion: manifest.apiVersion, status: manifest.status, tools: manifest.tools ?? [], mutates: Boolean(manifest.mutates), ...counted(shaped) };
+  const shaped = { ...moduleValues(manifest, modules), home: { dir: tools.dirOf(id), tools: manifest.tools ?? [] } };
+  const from = tools.fromOf?.(id) ?? id;
+  applied(ctx, from, coherent(ctx, shaped, from));
+  return { id, from, version: manifest.version, apiVersion: manifest.apiVersion, status: manifest.status, tools: manifest.tools ?? [], mutates: Boolean(manifest.mutates), ...counted(shaped) };
 }
 
 // Checked BEFORE a single registration, because the registries are append-only
@@ -122,9 +147,18 @@ async function registered(ctx, tools, id, manifest) {
 // contract here too, for the same reason.
 function coherent(ctx, shaped, id) {
   runnable(shaped);
-  declared(ctx, shaped);
+  declared(ctx, shaped, id);
   taught(ctx, shaped);
   reported(ctx, shaped, id);
+  return adapted(ctx, shaped);
+}
+
+// An adapter declaration is judged whole BEFORE anything of the extension registers, against the
+// semantics vocabulary in effect (ADR 0035); a context that holds no adapters refuses one loudly.
+function adapted(ctx, shaped) {
+  if (shaped.adapters.length && typeof ctx.adapters?.check !== "function") throw new Error("it declares adapters and this context holds none — src/run/context.mjs binds an adapter registry");
+  const wrong = shaped.adapters.flatMap((a) => ctx.adapters.check(a));
+  if (wrong.length) throw new Error(`what it declares as adapters does not hold — ${wrong.join("; ")} — so nothing of it was registered`);
   return shaped;
 }
 
@@ -146,8 +180,8 @@ function runnable(shaped) {
 
 // What a capability says it provides is held to the contract before any of it
 // registers, for the reason above: nothing can be taken back afterwards.
-function declared(ctx, shaped) {
-  const wrong = shaped.capabilities.flatMap((c) => ctx.capabilities.check(c));
+function declared(ctx, shaped, from) {
+  const wrong = shaped.capabilities.flatMap((c) => ctx.capabilities.check(c, from));
   if (wrong.length) throw new Error(`what it declares as provided does not hold — ${wrong.join("; ")} — so nothing of it was registered`);
 }
 
@@ -156,7 +190,7 @@ function taught(ctx, shaped) {
   if (wrong.length) throw new Error(`what it teaches project knowledge does not hold — ${wrong.join("; ")} — so nothing of it was registered`);
 }
 
-const counted = (s) => ({ capabilities: s.capabilities.map((c) => c.id), verbs: s.dsl.verbs.map((v) => v.name), fields: Object.keys(s.dsl.fields), validators: s.validators.map((v) => v.id), relations: s.knowledge.relations.map((r) => r.id), interpreters: s.knowledge.interpreters.map((i) => i.id), reportParts: s.reporting.parts.map((p) => p.id) });
+const counted = (s) => ({ capabilities: s.capabilities.map((c) => c.id), verbs: s.dsl.verbs.map((v) => v.name), fields: Object.keys(s.dsl.fields), validators: s.validators.map((v) => v.id), relations: s.knowledge.relations.map((r) => r.id), interpreters: s.knowledge.interpreters.map((i) => i.id), reportParts: s.reporting.parts.map((p) => p.id), adapters: s.adapters.map((a) => a.id) });
 
 // A module the manifest NAMED and that is not there is a refusal, not a shrug:
 // half a declared extension is worse than none, because the half that loaded
@@ -204,19 +238,31 @@ function behaviours(ctx, id, shaped) {
   for (const cap of shaped.capabilities) ctx.capabilities.register(cap, id);
   ctx.validators?.register?.(shaped.validators, id);
   ctx.knowledge.register(shaped.knowledge, id);
+  declaredData(ctx, id, shaped);
+}
+
+// What an extension declares as DATA, registered last: its report parts and its adapters -- and,
+// when anything of it is reached through a helper, where that helper lives and the tools its
+// manifest declared, for the launcher the composition root bound (src/run/worker.mjs).
+function declaredData(ctx, id, shaped) {
   if (shaped.reporting.parts.length) reportingOf(ctx).register(shaped.reporting.parts, id);
+  for (const a of shaped.adapters) ctx.adapters.register(a, id);
+  if (shaped.adapters.length || shaped.capabilities.some((c) => c?.helper)) ctx.helpers?.home?.(id, shaped.home);
 }
 
 // Module values are validated as declared. No version conversion or coercion.
 function moduleValues(manifest, modules) {
   for (const name of MODULES.filter((key) => manifest[key])) validateModule(name, modules[name]);
-  return { capabilities: modules.capabilities?.default ?? [], executors: modules.executors?.default ?? [], validators: modules.validators?.default ?? [], dsl: modules.dsl?.default ?? { verbs: [], fields: {} }, knowledge: modules.knowledge?.default ?? { relations: [], interpreters: [] }, reporting: modules.reporting ?? { parts: [] } };
+  return { capabilities: modules.capabilities?.default ?? [], executors: modules.executors?.default ?? [], validators: modules.validators?.default ?? [], dsl: modules.dsl?.default ?? { verbs: [], fields: {} }, knowledge: modules.knowledge?.default ?? { relations: [], interpreters: [] }, reporting: modules.reporting ?? { parts: [] }, adapters: modules.adapters?.adapters ?? [] };
 }
 
 function validateModule(name, module) {
-  const value = name === "reporting" ? module : module?.default;
+  const value = MODULE_FORMS[name] === "json" ? module : module?.default;
   const list = ["capabilities", "executors", "validators"].includes(name);
   if (list ? !Array.isArray(value) : !value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${name}: needs ${list ? "a default array export" : "an object"}`);
-  if (name === "reporting" && !Array.isArray(value.parts)) throw new Error("reporting: needs { parts: [...] }");
+  if (DATA_LISTS[name] && !Array.isArray(value[DATA_LISTS[name]])) throw new Error(`${name}: needs { ${DATA_LISTS[name]}: [...] }`);
 }
+
+// The one list each DATA module carries.
+const DATA_LISTS = { reporting: "parts", adapters: "adapters" };
 

@@ -78,6 +78,12 @@ export { reportProject } from "../../src/project-report/context.mjs";
 // same modules cli/autonomous-qa.mjs uses, never a copy.
 export { createInvestigations, MODES as AQA_MODES, modelOf as investigationModel, readSettings as readAqaSettings, STALE_REVISION as AQA_STALE_REVISION, summaries as investigationSummaries, writeSettings as writeAqaSettings } from "../../src/investigation/index.mjs";
 export { blockers as aqaBlockers } from "../../src/investigation/gates.mjs";
+export { testsOf as investigationTests } from "../../src/investigation/model.mjs";
+// Security catalogs (0.1.0, ADR 0040): the catalogs a person adopts on this machine and enables for a project, read and
+// written through the SAME modules cli/security-audit.mjs runs -- and a write opens only for Control's door.
+export { COMMANDS as SECURITY_COMMANDS, stateOf as securityState } from "../../src/qa/security/index.mjs";
+export { catalogDigest, parsedCatalog, previewOf } from "../../src/qa/security/catalog.mjs";
+export { adoptCatalog, enableCatalogs, markControl, securityRooms } from "../../src/qa/security/store.mjs";
 export { investigationHtml, investigationJson } from "../../src/report/investigation.mjs";
 export { componentOn } from "../../src/project/components.mjs";
 export { planReport, reportStatus } from "../../src/project-report/index.mjs";

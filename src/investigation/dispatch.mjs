@@ -6,8 +6,13 @@
 // which engine operation it IS: the same function the CLI calls, inside the
 // same gates. There is no free-form step, no command string and no second way
 // to reach the browser, the database or a capability.
+import { generated } from "./generate.mjs";
+import { ranVersion } from "./run-version.mjs";
+import { operationFor } from "../adapters/families.mjs";
+import { mutatingEffect } from "../topology/vocab.mjs";
 import { Refused } from "../errors.mjs";
 import { CORE } from "../dsl/registry.mjs";
+import { capabilityMutates } from "../dsl/rules/head.mjs";
 import { act, withJournal } from "./act.mjs";
 import { checkData } from "./data.mjs";
 import { modelOf, nextId } from "./model.mjs";
@@ -17,18 +22,59 @@ import { runMatrix } from "./security.mjs";
 import { isDestructiveCase } from "./obligations.mjs";
 import { controlOf } from "./surfaces.mjs";
 import { matrixOf } from "./tenancy.mjs";
+import { controlWrites } from "./gates.mjs";
+import { modeOf } from "./vocab.mjs";
 
 const SYNTHETIC = /^TC-[A-Za-z0-9-]{1,60}$/;
 
 const writesAt = (lw, on) => Boolean(on && lw.ctx.graph.edgeOn.get(on) && controlOf(lw.ctx.graph, lw.ctx.graph.edgeOn.get(on)).writes);
 
-// A case writes if it says so, or a step of it changes a control the map says writes.
-function caseWrites(lw, a) {
+// How a case writes: through the SCREEN (it says it creates or destroys, or a step changes a
+// control the map says writes) or through a CAPABILITY that declares it mutates -- asked of the
+// capability, never of a verb's name. The two are allowed by different modes.
+function writesOf(lw, a) {
   const c = lw.findCase?.(a.case, Boolean(a.draft));
   if (!c) throw new Refused(`no ${a.draft ? "draft " : ""}case ${a.case} — run-case takes a case in the checkout, or a draft with draft: true`);
   const changes = CORE.verbsWhere("changes");
-  return Boolean(c.creates || c.destructive) || (c.steps ?? []).some((s) => changes.has(s.do) && writesAt(lw, s.on));
+  const screen = Boolean(c.destructive) || (c.steps ?? []).some((s) => changes.has(s.do) && writesAt(lw, s.on));
+  return { screen: screen || (Boolean(c.creates) && !(c.steps ?? []).some((s) => capabilityMutates(capabilityIn(lw), s))), capability: (c.steps ?? []).some((s) => capabilityMutates(capabilityIn(lw), s)) };
 }
+
+const caseWrites = (lw, a) => ((w) => w.screen || w.capability)(writesOf(lw, a));
+
+// A screen write needs a mode that writes through the screen (explore-write); a capability write
+// needs a mode that mutates, and under fixture-write it is covered by a grant at run time.
+const writeAllowed = (m, lw, a) => ((w) => (!w.screen || controlWrites(m)) && (!w.capability || modeOf(m)?.mutates === true))(writesOf(lw, a));
+
+// A frozen version writes unless every step is shown NOT to: a family operation none of whose effects
+// mutate, a capability this context knows does not mutate, a read-only verb, or a screen action the
+// map says writes nothing. A step nothing can vouch for -- a capability nobody here knows, a
+// version that cannot be read back -- is taken to write. It fails closed.
+function versionWrites(lw, a) {
+  const c = lw.versionCaseOf?.(a.version);
+  return !c || Boolean(c.destructive) || (c.steps ?? []).some((s) => stepWrites(lw, s));
+}
+
+const CHANGES = CORE.verbsWhere("changes");
+
+function stepWrites(lw, s) {
+  if (s.do === "call") return callWrites(lw, s.capability);
+  return CHANGES.has(s.do) ? screenWrites(lw, s.on) : false;
+}
+
+// A control the map knows says whether it writes; one it does not know is taken to write.
+function screenWrites(lw, on) {
+  const edge = on ? lw.ctx.graph.edgeOn.get(on) : null;
+  return !edge || controlOf(lw.ctx.graph, edge).writes !== false;
+}
+
+function callWrites(lw, id) {
+  const op = operationFor(id);
+  if (op) return op.effects.some(mutatingEffect);
+  return capabilityIn(lw)(id)?.mutates !== false;
+}
+
+const capabilityIn = (lw) => (id) => (lw.ctx?.capabilities?.has?.(id) ? lw.ctx.capabilities.resolve(id) : null);
 
 // No mode runs a destructive case: a person reads it with --dry and runs it on
 // purpose, exactly as the runner's own gate asks (src/run/gates/destructive.mjs).
@@ -46,8 +92,10 @@ export const ACTIONS = {
   "check-data": { fields: ["action", "query", "via", "input", "expect", "within"], required: ["action", ["query", "via"]], modes: "any — it only reads", allowed: () => true, mutates: () => false, check: () => null, run: (w, a) => checkData(w, a) },
   security: { fields: ["rows"], required: [], modes: "security-test", allowed: (m) => m === "security-test", mutates: (a, lw) => updatesIn(lw, a.rows), check: (a) => (a.rows === undefined || (Array.isArray(a.rows) && a.rows.every(Number.isInteger)) ? null : "security.rows is a list of matrix row numbers"), run: (w, a) => runMatrix({ ...w, mode: "security-test" }, a.rows ?? null) },
   reproduce: { fields: ["finding"], required: ["finding"], modes: "any; replaying a write needs explore-write (the act gates say so)", allowed: () => true, mutates: (a, lw) => reproducesWrite(lw, a.finding), check: () => null, run: (w, a) => reproduce(w, a.finding) },
-  "run-case": { fields: ["case", "draft", "params"], required: ["case"], modes: "any; a case that writes needs explore-write; a destructive case never", allowed: (m, a, lw) => !caseWrites(lw, a) || m === "explore-write", mutates: (a, lw) => caseWrites(lw, a), check: (a, lw) => caseProblem(a, lw), run: (w, a) => ranCase(w, a) },
+  "run-case": { fields: ["case", "draft", "params"], required: ["case"], modes: "any; a case that writes needs a mode that mutates (explore-write, fixture-write); a destructive case never", allowed: (m, a, lw) => writeAllowed(m, lw, a), mutates: (a, lw) => caseWrites(lw, a), check: (a, lw) => caseProblem(a, lw), run: (w, a) => ranCase(w, a) },
   ask: { fields: ["asks"], required: ["asks"], modes: "any", allowed: () => true, mutates: () => false, check: (a) => (typeof a.asks === "string" && a.asks.trim() && a.asks.length <= 400 ? null : "ask.asks is one question, 400 characters at most"), run: (w, a, d) => asked(w, a, d) },
+  "run-version": { fields: ["version"], required: ["version"], modes: "a version that writes -- a trigger, a publication, an await that consumes its observer's own messages -- needs fixture-write, and runs only under grants minted for its fixture", allowed: (m, a, lw) => !versionWrites(lw, a) || modeOf(m)?.mutates === true, mutates: (a, lw) => versionWrites(lw, a), check: (a) => (/^[A-Za-z0-9][A-Za-z0-9._-]{0,120}@[0-9a-f]{16}$/.test(String(a.version)) ? null : "run-version.version is a frozen version id, <case>@<digest16>"), run: (w, a) => ranVersion(w, a) },
+  generate: { fields: ["obligation", "design"], required: ["obligation", "design"], modes: "any — it writes a draft into the machine store, freezes its version and runs nothing", allowed: () => true, mutates: () => false, check: (a) => (a.design && typeof a.design === "object" && !Array.isArray(a.design) ? null : "generate.design is one design proposal (orbit.qa-sidecar/v1 design)"), run: (w, a) => generated(w, a) },
 };
 
 export const ACTION_KINDS = Object.keys(ACTIONS);

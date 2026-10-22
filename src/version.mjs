@@ -21,6 +21,11 @@ const manifest = () => (cached ??= read());
 
 export const engineVersion = () => manifest().version ?? null;
 
+// Where this plugin IS: the directory its package.json sits in. What a shipped capability pack
+// is read from (src/extensions/packs.mjs), for the reason the version is read from here -- the
+// engine is installed somewhere and run from somewhere else.
+export const pluginRoot = () => dirname(MANIFEST);
+
 // The name the host namespaces this plugin's skills and agents under (`orbit:orbit-help`).
 export const engineName = () => manifest().name ?? null;
 

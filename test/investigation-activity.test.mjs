@@ -15,6 +15,8 @@ const AT = "2026-10-08T09:00:00.000Z";
 
 // One record per row that makes the row's `when` hold.
 const SAMPLES = {
+  validated: [{ kind: "validated", id: "val-1", state: "valid" }, { kind: "validated", id: "val-2", state: "invalid", findings: ["x"] }],
+  authorized: [{ kind: "authorized", id: "aut-1", state: "authorized" }, { kind: "authorized", id: "aut-2", state: "blocked", why: "no grant" }],
   observation: [
     { kind: "observation", id: "obs-1", action: "act-1", layer: "console", state: "observed", data: { errors: 2, messages: ["TypeError: x is undefined"] } },
     { kind: "observation", id: "obs-2", action: "act-1", layer: "network", state: "observed", data: { requests: [{ n: 21, method: "POST", endpoint: "/api/refund", status: 500, failed: false, durationMs: 41 }] } },

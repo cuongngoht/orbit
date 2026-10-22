@@ -59,6 +59,21 @@ const QA = {
   "qa.answer": () => ["person", "a person answered"],
   "qa.resumed": () => ["started", "QA resumed"],
   "qa.ended": (e) => ["state", joined("QA ended", str(e.lifecycle), str(e.reason) ?? str(e.why))],
+  "qa.discovery": (e) => ["state", joined("discovery", str(e.state), num(e.count) !== null ? `${e.count} found` : null)],
+  "qa.obligation.discovered": (e) => ["state", joined("obligation", str(e.obligation), str(e.shape), str(e.authority))],
+  "qa.test.designed": (e) => [e.state === "failed" ? "warning" : "state", joined("test designed", str(e.design), str(e.state))],
+  "qa.draft.persisted": (e) => ["evidence", joined("draft version", str(e.version))],
+  "qa.test.validated": (e) => ["ok", joined("test valid", str(e.version))],
+  "qa.test.invalid": (e) => ["warning", joined("test invalid", str(e.version), num(e.findings) !== null ? `${e.findings} finding(s)` : null)],
+  "qa.execution.authorized": (e) => ["ok", joined("execution authorized", str(e.version))],
+  "qa.execution.blocked": (e) => ["warning", joined("execution blocked", str(e.version), str(e.why))],
+  "qa.sandbox.prepared": (e) => ["state", joined("sandbox prepared", str(e.sandbox), str(e.state))],
+  "qa.test.started": (e) => ["started", joined("test started", str(e.version), str(e.execution))],
+  "qa.observation.closed": (e) => [e.completeness === "complete" ? "evidence" : "warning", joined("observation closed", str(e.completeness))],
+  "qa.result.evaluated": (e) => [e.outcome === "SATISFIED" ? "ok" : e.outcome === "CONTRADICTED" ? "failed" : "state", joined("result", str(e.obligation), str(e.outcome))],
+  "qa.assessment.frozen": (e) => ["evidence", joined("assessment frozen", str(e.assessment))],
+  "qa.report.persisted": (e) => [e.state === "failed" ? "warning" : "evidence", joined("report", str(e.report), str(e.state))],
+  "qa.cleanup.settled": (e) => [e.state === "settled" ? "ok" : "warning", joined("cleanup", str(e.execution), str(e.state))],
 };
 
 const FAILED_GLYPHS = new Set(["failed", "warning"]);

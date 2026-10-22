@@ -104,10 +104,29 @@
 //                                          containers that carry its labels. The workspace stays
 //   node runtime.mjs sandbox-logs --task=<tsk> --session=<rs-id> [--stream=out|err] [--tail=<n> | --from=<byte offset>] [--json]
 //                                          the last lines of one of ITS sessions' logs, scrubbed
-//   node runtime.mjs trust --restore=<fingerprint> | --definition=<fingerprint> [--revoke] --revision=<rev>
+//   node runtime.mjs sandbox-dispatch --task=<tsk> --run=<id> [--deadline-ms=<n>] [--request=<file>] [--json]
+//                                          ONE generated test, to an ISOLATED sandbox's worker: a container of the
+//                                          pinned, trusted worker image on the task's internal network, held to the
+//                                          isolation profile before it starts, its request on stdin (or --request),
+//                                          stopped by its receipt when the deadline passes. Decides no verdict: the
+//                                          worker's envelope is the host's to validate
+//   node runtime.mjs sandbox-dispatched --task=<tsk> --run=<id> [--json]
+//                                          what became of ONE dispatch whose end its caller never saw: its worker's
+//                                          receipt, whether its container still runs, whether it left an envelope.
+//                                          Reads only; what the envelope says is the host's to judge
+//   node runtime.mjs sandbox-signal --task=<tsk> --signal=pause|resume|cancel [--by=<who>] [--why=<text>] [--json]
+//                                          a pause, resume or cancel for the sandbox's supervisor; interrupts nothing
+//                                          by itself
+//   node runtime.mjs sandbox-topology --task=<tsk> [--json]
+//                                          what the sandbox's topology is NOW -- each node's alias on the task's
+//                                          network, its ports and the service it runs -- for the host's binder;
+//                                          composed as a dispatch composes it, writing nothing
+//   node runtime.mjs trust --restore=<fingerprint> | --definition=<fingerprint> | --topology=<fingerprint>
+//                          | --worker-image=<fingerprint> | --adapter-image=<fingerprint> [--revoke] --revision=<rev>
 //                                          Orbit Control's door, not a terminal's: a standing
-//                                          permission to restore a dependency plan or build a
-//                                          container definition for autonomous use, kept by the
+//                                          permission to restore a dependency plan, build a
+//                                          container definition, run an isolated topology or run a
+//                                          worker or adapter image for autonomous use, kept by the
 //                                          fingerprint of exactly what would run. A terminal cannot
 //                                          prove a person, so this refuses here and works from the
 //                                          Runtime page in Control

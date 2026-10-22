@@ -1,0 +1,565 @@
+{
+  "adapters": [
+    {
+      "id": "amqp.reference",
+      "apiVersion": "orbit.adapter/v1",
+      "version": "0.1.0",
+      "doc": "AMQP 0-9-1 brokers (RabbitMQ 4.x is the one its kit runs against), through the zero-dependency client in amqp/: confirmed publication, an observer on a queue of its own bound beside the application's, and the fixture's own queues",
+      "family": "messaging",
+      "transports": [
+        "amqp-0-9-1"
+      ],
+      "operations": {
+        "publish": {
+          "doc": "publish one message with its logical id on a confirm channel, mandatory: confirmed, rejected or returned; a confirm that never came is ambiguous",
+          "effects": [
+            "publish"
+          ],
+          "outputs": {
+            "messageId": "message.id",
+            "outcome": "settlement.outcome",
+            "elapsedMs": "elapsed.ms"
+          }
+        },
+        "observe": {
+          "doc": "arm an observer: declare its own expiring queue and bind it to the channel's exchange, refusing one somebody else consumes",
+          "effects": [
+            "create-resource",
+            "read"
+          ],
+          "outputs": {
+            "baseline": "cursor.baseline",
+            "completeness": "observation.completeness"
+          }
+        },
+        "observe.await": {
+          "doc": "read the observer's own queue for a bounded window, acknowledging what it takes; complete only when the queue was read empty",
+          "effects": [
+            "read",
+            "consume"
+          ],
+          "outputs": {
+            "messages": {
+              "each": {
+                "id": "message.id",
+                "key": "message.key",
+                "correlation": "message.correlation",
+                "payload": "message.payload",
+                "terminal": "terminal.reason"
+              }
+            },
+            "through": "cursor.through",
+            "completeness": "observation.completeness",
+            "gaps": "observation.gaps"
+          }
+        },
+        "fixture.prepare": {
+          "doc": "declare the fixture's own exchanges, queues and bindings, every name inside its namespace",
+          "effects": [
+            "create-resource"
+          ],
+          "outputs": {
+            "namespace": "fixture.namespace"
+          }
+        },
+        "fixture.cleanup": {
+          "doc": "delete the fixture's own queues while unused, and say what it left and why; it never deletes an exchange",
+          "effects": [
+            "delete-resource"
+          ],
+          "outputs": {
+            "cleanup": "fixture.cleanup"
+          }
+        }
+      },
+      "semantics": {
+        "delivery": "at-least-once",
+        "publishAck": "broker-confirm",
+        "publishDedupe": "none",
+        "unroutable": "returned",
+        "consumerAck": "explicit-ack",
+        "redeliveryTriggers": [
+          "nack",
+          "crash-before-settle",
+          "connection-loss"
+        ],
+        "redeliveryMarker": "flag",
+        "orderingScope": "queue",
+        "deadLetter": "broker-routed",
+        "retryLimit": "unknown",
+        "observation": [
+          "shadow-subscription"
+        ],
+        "replay": [],
+        "cursor": "none",
+        "leaseMinSec": "unknown"
+      },
+      "limits": {
+        "timeoutMs": 150000,
+        "answerBytes": 4194304
+      },
+      "helper": {
+        "argv": [
+          "amqp/helper.mjs"
+        ],
+        "runIn": "worker"
+      },
+      "conformance": {
+        "kit": "messaging",
+        "params": {
+          "channel": {
+            "exchange": "amq.topic",
+            "routingKey": "{ns}.{key}"
+          },
+          "observer": {
+            "queue": "{ns}.{obs}",
+            "namespace": "{ns}",
+            "bindingKey": "{ns}.{key}"
+          },
+          "sink": {
+            "namespace": "{ns}.{id}",
+            "queues": [
+              {
+                "name": "{ns}.{id}.app"
+              }
+            ],
+            "bindings": [
+              {
+                "queue": "{ns}.{id}.app",
+                "exchange": "amq.topic",
+                "routingKey": "{ns}.{key}"
+              }
+            ]
+          },
+          "witness": {
+            "queue": "{ns}.{id}.app"
+          }
+        }
+      },
+      "bind": {
+        "observer": {
+          "queue": "{ns}.{alias}",
+          "namespace": "{ns}",
+          "bindingKey": "{channel.routingKey}",
+          "exchange": "{channel.exchange}"
+        }
+      }
+    },
+    {
+      "id": "jetstream.reference",
+      "apiVersion": "orbit.adapter/v1",
+      "version": "0.1.0",
+      "doc": "NATS JetStream (nats-server 2.x with JetStream enabled is the one its kit runs against), through the zero-dependency client in jetstream/: a publication the stream acknowledges, deduplicated by Nats-Msg-Id inside the stream's window; an observer through a durable consumer of its own, an independent cursor; and the fixture's own streams and consumers, each marked with it",
+      "family": "messaging",
+      "transports": [
+        "nats-jetstream"
+      ],
+      "operations": {
+        "publish": {
+          "doc": "publish one message with its logical id as Nats-Msg-Id and wait for the stream's ack: confirmed, duplicate (dropped inside the duplicate window), rejected by the stream, or unroutable (no stream captures the subject); an ack that never came is ambiguous",
+          "effects": [
+            "publish"
+          ],
+          "outputs": {
+            "messageId": "message.id",
+            "outcome": "settlement.outcome",
+            "elapsedMs": "elapsed.ms"
+          }
+        },
+        "observe": {
+          "doc": "arm an observer: create its own durable consumer on the stream, starting just after the last sequence and expiring when idle; a consumer name that exists and a work-queue stream are refused",
+          "effects": [
+            "create-resource",
+            "read"
+          ],
+          "outputs": {
+            "baseline": "cursor.baseline",
+            "completeness": "observation.completeness"
+          }
+        },
+        "observe.await": {
+          "doc": "fetch from the observer's own consumer for a bounded window, acknowledging what it takes; complete only when a fetch found the consumer empty",
+          "effects": [
+            "read",
+            "consume"
+          ],
+          "outputs": {
+            "messages": {
+              "each": {
+                "id": "message.id",
+                "key": "message.key",
+                "correlation": "message.correlation",
+                "payload": "message.payload"
+              }
+            },
+            "through": "cursor.through",
+            "completeness": "observation.completeness",
+            "gaps": "observation.gaps"
+          }
+        },
+        "fixture.prepare": {
+          "doc": "create the fixture's own streams and consumers, every name and captured subject inside its namespace, each marked with it",
+          "effects": [
+            "create-resource"
+          ],
+          "outputs": {
+            "namespace": "fixture.namespace"
+          }
+        },
+        "fixture.cleanup": {
+          "doc": "delete the fixture's own consumers and streams, only what the server shows carries the fixture's mark, and say what it left and why; it never purges",
+          "effects": [
+            "delete-resource"
+          ],
+          "outputs": {
+            "cleanup": "fixture.cleanup"
+          }
+        }
+      },
+      "semantics": {
+        "delivery": "at-least-once",
+        "publishAck": "broker-confirm",
+        "publishDedupe": "id-window",
+        "unroutable": "error",
+        "consumerAck": "explicit-ack",
+        "redeliveryTriggers": [
+          "nack",
+          "ack-wait"
+        ],
+        "redeliveryMarker": "count",
+        "orderingScope": "stream",
+        "deadLetter": "advisory",
+        "retryLimit": "unknown",
+        "observation": [
+          "independent-cursor"
+        ],
+        "replay": [
+          "by-sequence",
+          "by-time"
+        ],
+        "cursor": "sequence",
+        "leaseMinSec": "unknown"
+      },
+      "limits": {
+        "timeoutMs": 150000,
+        "answerBytes": 4194304
+      },
+      "helper": {
+        "argv": [
+          "jetstream/helper.mjs"
+        ],
+        "runIn": "worker"
+      },
+      "conformance": {
+        "kit": "messaging",
+        "params": {
+          "channel": {
+            "subject": "{ns}{id}.{key}",
+            "stream": "{ns}{id}"
+          },
+          "observer": {
+            "stream": "{ns}{id}",
+            "consumer": "{ns}{id}-{obs}",
+            "namespace": "{ns}{id}"
+          },
+          "sink": {
+            "namespace": "{ns}{id}",
+            "streams": [
+              {
+                "name": "{ns}{id}",
+                "subjects": [
+                  "{ns}{id}.>"
+                ]
+              }
+            ],
+            "consumers": [
+              {
+                "stream": "{ns}{id}",
+                "name": "{ns}{id}-app"
+              }
+            ]
+          },
+          "witness": {
+            "stream": "{ns}{id}",
+            "consumer": "{ns}{id}-app"
+          }
+        }
+      },
+      "bind": {
+        "observer": {
+          "stream": "{channel.stream}",
+          "consumer": "{ns}-{alias}",
+          "namespace": "{ns}"
+        }
+      }
+    },
+    {
+      "id": "scheduler.hooks",
+      "apiVersion": "orbit.adapter/v1",
+      "version": "0.1.0",
+      "doc": "a project's own scheduler, through the orbit.scheduler/v1 test hooks it exposes: its decisions read back by a cursor, a dispatch asked for behind a barrier",
+      "family": "scheduler",
+      "transports": [
+        "orbit-scheduler-v1"
+      ],
+      "operations": {
+        "trigger": {
+          "op": "trigger",
+          "doc": "ask the scheduler to dispatch now -- an occurrence it names, or the current one; proves the handler, never the schedule",
+          "effects": [
+            "trigger"
+          ],
+          "outputs": {
+            "executionRef": "execution.ref",
+            "occurrenceId": "occurrence.id",
+            "scheduledFor": "occurrence.scheduledFor",
+            "decision": "occurrence.decision"
+          }
+        },
+        "observe": {
+          "op": "decisions",
+          "doc": "read the decisions the scheduler's own loop recorded since a cursor, for a bounded window",
+          "effects": [
+            "read"
+          ],
+          "outputs": {
+            "decisions": {
+              "each": {
+                "occurrenceId": "occurrence.id",
+                "scheduledFor": "occurrence.scheduledFor",
+                "decision": "occurrence.decision",
+                "executionRef": "execution.ref"
+              }
+            },
+            "through": "cursor.through",
+            "completeness": "observation.completeness",
+            "gaps": "observation.gaps"
+          }
+        }
+      },
+      "semantics": {
+        "decisionReceipts": "cursor",
+        "clockInjection": "unknown",
+        "dialects": "unknown"
+      },
+      "limits": {
+        "timeoutMs": 150000,
+        "answerBytes": 4194304
+      },
+      "helper": {
+        "argv": [
+          "hooks/helper.mjs"
+        ],
+        "runIn": "worker"
+      },
+      "conformance": {
+        "kit": "scheduler",
+        "params": {}
+      }
+    },
+    {
+      "id": "clock.hooks",
+      "apiVersion": "orbit.adapter/v1",
+      "version": "0.1.0",
+      "doc": "a project's injected business clock, through the orbit.clock/v1 test hook: moved forward behind a barrier that answers how far the scheduler has evaluated",
+      "family": "clock",
+      "transports": [
+        "orbit-clock-v1"
+      ],
+      "operations": {
+        "advance": {
+          "op": "advance",
+          "doc": "move the business clock to an instant and wait until the decision loop has evaluated through it; a deployment that cannot move it is a gap",
+          "effects": [
+            "advance-clock"
+          ],
+          "outputs": {
+            "evaluatedThrough": "clock.evaluatedThrough"
+          }
+        }
+      },
+      "semantics": {
+        "clockInjection": "live"
+      },
+      "limits": {
+        "timeoutMs": 150000,
+        "answerBytes": 4194304
+      },
+      "helper": {
+        "argv": [
+          "hooks/helper.mjs"
+        ],
+        "runIn": "worker"
+      },
+      "conformance": {
+        "kit": "clock",
+        "params": {}
+      }
+    },
+    {
+      "id": "workload.hooks",
+      "apiVersion": "orbit.adapter/v1",
+      "version": "0.1.0",
+      "doc": "control of a workload the task owns, through the orbit.workload/v1 test hook: stop, start, restart, or arm a fault point the project declared",
+      "family": "workload",
+      "transports": [
+        "orbit-workload-v1"
+      ],
+      "operations": {
+        "control": {
+          "op": "control",
+          "doc": "stop, start, restart or fault one workload and wait for it to settle",
+          "effects": [
+            "control-workload"
+          ],
+          "outputs": {
+            "status": "execution.status"
+          }
+        }
+      },
+      "semantics": {},
+      "limits": {
+        "timeoutMs": 150000,
+        "answerBytes": 4194304
+      },
+      "helper": {
+        "argv": [
+          "hooks/helper.mjs"
+        ],
+        "runIn": "worker"
+      },
+      "conformance": {
+        "kit": "workload",
+        "params": {}
+      }
+    },
+    {
+      "id": "worker.hooks",
+      "apiVersion": "orbit.adapter/v1",
+      "version": "0.1.0",
+      "doc": "what a project's consumers and workers did with each delivery, through the orbit.workload/v1 attempts hook, read back by a cursor",
+      "family": "worker",
+      "transports": [
+        "orbit-workload-v1"
+      ],
+      "operations": {
+        "observe": {
+          "op": "attempts",
+          "doc": "read the attempts the workers recorded since a cursor, for a bounded window",
+          "effects": [
+            "read"
+          ],
+          "outputs": {
+            "attempts": {
+              "each": {
+                "messageId": "message.id",
+                "deliveryAttempt": "delivery.attempt",
+                "outcome": "settlement.outcome",
+                "terminalReason": "terminal.reason",
+                "executionRef": "execution.ref"
+              }
+            },
+            "through": "cursor.through",
+            "completeness": "observation.completeness",
+            "gaps": "observation.gaps"
+          }
+        }
+      },
+      "semantics": {
+        "redeliveryMarker": "count"
+      },
+      "limits": {
+        "timeoutMs": 150000,
+        "answerBytes": 4194304
+      },
+      "helper": {
+        "argv": [
+          "hooks/helper.mjs"
+        ],
+        "runIn": "worker"
+      },
+      "conformance": {
+        "kit": "worker",
+        "params": {}
+      }
+    },
+    {
+      "id": "identity.hooks",
+      "apiVersion": "orbit.adapter/v1",
+      "version": "0.1.0",
+      "doc": "a project's own synthetic identities, through the orbit.identity/v1 test hooks it exposes: one issued for a principal and a tenant, its token handed to the run's binder alone",
+      "family": "identity",
+      "transports": [
+        "orbit-identity-v1"
+      ],
+      "operations": {
+        "issue": {
+          "op": "issue",
+          "doc": "issue one synthetic identity as the principal and tenant the binding names; its token is never an output",
+          "effects": [
+            "create-resource"
+          ],
+          "outputs": {
+            "principal": "principal.claims"
+          }
+        }
+      },
+      "semantics": {},
+      "limits": {
+        "timeoutMs": 30000,
+        "answerBytes": 65536
+      },
+      "helper": {
+        "argv": [
+          "hooks/helper.mjs"
+        ],
+        "runIn": "worker"
+      },
+      "conformance": {
+        "kit": "identity",
+        "params": {}
+      }
+    },
+    {
+      "id": "postgres.reference",
+      "apiVersion": "orbit.adapter/v1",
+      "version": "0.1.0",
+      "doc": "PostgreSQL (16 is the one its kit runs against), through the zero-dependency client in postgres/: the rows one table holds for a key or a few column values, counted and sampled in one REPEATABLE READ, READ ONLY transaction the server itself enforces",
+      "family": "state",
+      "transports": [
+        "postgres-wire"
+      ],
+      "operations": {
+        "read": {
+          "doc": "count and sample the rows of the bound table whose bound key column (or a few named columns) equal the values asked; the statement is built from quoted identifiers and every value is a parameter",
+          "effects": [
+            "read"
+          ],
+          "outputs": {
+            "count": "effect.count",
+            "rows": "effect.value"
+          }
+        }
+      },
+      "semantics": {
+        "observation": [
+          "read-only-query"
+        ]
+      },
+      "limits": {
+        "timeoutMs": 30000,
+        "answerBytes": 1048576
+      },
+      "helper": {
+        "argv": [
+          "postgres/helper.mjs"
+        ],
+        "runIn": "worker"
+      },
+      "conformance": {
+        "kit": "state",
+        "params": {}
+      }
+    }
+  ]
+}

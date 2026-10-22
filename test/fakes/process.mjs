@@ -18,13 +18,26 @@
 // chunk -- as the answer's own `chunks` say ([[stream, text], …], which a test uses to split a line, a character or a
 // secret across two chunks), else its `out` and `err` as one chunk each. An observer that throws is let go and the
 // answer says `observerFailed`, as the real port's does.
+//
+// `start` is the real port's long-lived child with its stdin and stdout piped: it starts nothing, records what was
+// asked in `starts`, and hands back a child a test drives -- `stdout.push(text)` delivers output, `exit(code)` ends it,
+// and whatever was written to its stdin is in `stdin.written`.
 export function fakeProcess(answers = {}, world = {}) {
   const calls = [];
   const run = (file, args = [], opts = {}) => {
     calls.push({ file, args, opts });
     return answerOf(answers[file], args, opts);
   };
-  return { calls, run, runAsync: async (file, args = [], opts = {}) => run(file, args, opts), runObserved: async (file, args = [], opts = {}) => observedRun(run(file, args, opts), opts), ...outliving(world) };
+  const starts = [];
+  return { calls, starts, run, runAsync: async (file, args = [], opts = {}) => run(file, args, opts), runObserved: async (file, args = [], opts = {}) => observedRun(run(file, args, opts), opts), start: (file, args = [], opts = {}) => startedChild(starts, file, args, opts), ...outliving(world) };
+}
+
+function startedChild(starts, file, args, opts) {
+  if (!file || typeof file !== "string" || !Array.isArray(args)) throw new TypeError("start(file, args[]) takes a command and an argv array — never a shell string");
+  const listeners = { exit: [], data: [] };
+  const child = { pid: 9000 + starts.length, stdin: { written: [], write: (text) => (child.stdin.written.push(String(text)), true), end: (text) => void (text === undefined ? null : child.stdin.written.push(String(text))) }, stdout: { on: (event, fn) => void (event === "data" ? listeners.data.push(fn) : null), push: (text) => listeners.data.forEach((fn) => fn(Buffer.from(String(text)))) }, on: (event, fn) => void (event === "exit" ? listeners.exit.push(fn) : null), kill: (sig = "SIGTERM") => (child.killed = sig, listeners.exit.forEach((fn) => fn(null, sig)), true), exit: (code) => listeners.exit.forEach((fn) => fn(code, null)) };
+  starts.push({ file, args, opts, child });
+  return child;
 }
 
 const answerOf = (answer, args, opts) => (typeof answer === "function" ? answer(args, opts) : answer ?? { ok: true, out: "", err: "", status: 0 });

@@ -35,6 +35,7 @@ import { createOperations } from "./operations.mjs";
 import { effectivePolicy } from "./policy.mjs";
 import { fingerprintOf, planOf, restore, trustOf } from "./restore.mjs";
 import { definitionFingerprint, definitionTrust } from "./trust.mjs";
+import { isolatedSteps } from "./isolated-prepare.mjs";
 
 const go = (patch = {}) => ({ ok: true, patch });
 
@@ -57,13 +58,14 @@ const attempted = (fn) => {
 
 // A person's switches, before anything is read, written or run: sandboxes may be turned off for this checkout on
 // this machine, and only so many may be active at once. A refusal here is a person's to lift, in Orbit Control.
-const ACTIVE_STATES = ["ALLOCATED", "PREPARING", "READY", "STALE", "AMBIGUOUS"];
+const ACTIVE_STATES = ["ALLOCATED", "PREPARING", "READY", "STALE", "AMBIGUOUS", "QUARANTINED"];
 
 const othersActive = (c) => c.ctx.sandboxes.list().filter((d) => d.kind === "sandbox" && d.id !== c.ctx.envId && ACTIVE_STATES.includes(d.state)).length;
 
 const POLICY = [
   { fails: (c, policy) => !policy.enabled, say: () => "sandboxes are turned off for this checkout on this machine: a person turns them on in Orbit Control (Runtime → Sandbox policy)" },
   { fails: (c) => c.ctx.sandboxDoc().state === "AMBIGUOUS", say: () => "a restore of dependencies died before it settled and may have half-run, so nothing is prepared on top of it: a person releases this sandbox in Orbit Control, and the next one starts clean" },
+  { fails: (c) => c.ctx.sandboxDoc().state === "QUARANTINED", say: () => "this sandbox's teardown could not be proven, so it is quarantined and nothing is prepared on top of it: a person looks at what was left and releases it in Orbit Control" },
   { fails: (c, policy) => othersActive(c) >= policy.limits.active, say: (c, policy) => `${policy.limits.active} sandboxes are active already, which is the most this machine allows: release one, or a person raises the limit in Orbit Control` },
 ]; // guards, not a decision: the first that holds stops the preparation, and none holding lets it go on
 
@@ -102,9 +104,13 @@ const NOT_PLACED = [
 const placementsOf = (plan) => Object.fromEntries(plan.components.filter(ready).map((x) => [x.key, x.execution]));
 
 function placed(c) {
+  if (isolatedMode(c)) return isolatedSteps.placed(c, { go, halt });
   const row = NOT_PLACED.find((r) => r.when(c.state.plan));
   return row ? halt(row.needs, row.say(c.state.plan)) : go({ placements: placementsOf(c.state.plan) });
 }
+
+// Whether this sandbox runs ISOLATED (ADR 0038): every component and service in a container on the task's own network.
+export const isolatedMode = (c) => policyOf(c.state).isolation.mode === "required";
 
 // A restore is run for the components placed on THIS machine; a container restores in its own lifecycle.
 function restoresOf(c) {
@@ -117,7 +123,7 @@ const definitionOf = (c) => (Object.values(c.state.placements).includes("devcont
 
 const printOf = (c, restores, definition) => short(sha(canonicalJson({ task: c.ctx.task, workspace: c.ctx.workspace.id, tree: c.state.tree, policy: { sandbox: c.state.settings.sandbox, strategy: c.state.settings.strategy, components: c.state.settings.components }, placements: c.state.placements, definition, restore: restores.map((r) => r.fingerprint) })), 16);
 
-const unchanged = (doc, fingerprint) => doc.state === "READY" && doc.fingerprint === fingerprint;
+const unchanged = (doc, fingerprint, c) => !isolatedMode(c) && doc.state === "READY" && doc.fingerprint === fingerprint;
 
 // From here on the sandbox is being prepared, and says so BEFORE anything is done: a crash is then a PREPARING
 // document with an operation that never settled, which `reconcile` recognises.
@@ -126,7 +132,7 @@ const entered = (c) => c.ctx.sandboxes.write(moved(c.ctx.sandboxDoc(), "PREPARIN
 function fingerprinted(c) {
   const restores = restoresOf(c);
   const fingerprint = printOf(c, restores, definitionOf(c));
-  if (unchanged(c.ctx.sandboxDoc(), fingerprint)) return { ok: true, done: true, reused: true, patch: { fingerprint } };
+  if (unchanged(c.ctx.sandboxDoc(), fingerprint, c)) return { ok: true, done: true, reused: true, patch: { fingerprint } };
   entered(c);
   return go({ restores, fingerprint });
 }
@@ -218,6 +224,7 @@ async function fixedEndpoint(c, x, ports) {
 }
 
 async function leased(c) {
+  if (isolatedMode(c)) return go({ endpoints: [] });
   const found = [];
   for (const x of c.state.plan.components.filter(ready)) found.push(await endpointOf(c, x));
   const stuck = found.find((f) => f.blocked);
@@ -254,6 +261,7 @@ function backed(c) {
 }
 
 async function reached(c) {
+  if (isolatedMode(c)) return isolatedSteps.reached(c, { go, halt });
   const gate = await gated(c.ctx, c.state.plan.components.filter(ready), c.state.world);
   return gate.blocked.length ? halt("person", gate.blocked.map((b) => `${b.component}: ${b.blocking.join("; ")}`).join("\n")) : go();
 }
@@ -265,7 +273,7 @@ const restoreKept = (doc, s) => ({ plans: (s.restores ?? []).map((r) => ({ compo
 function readied(c) {
   const doc = c.ctx.sandboxDoc();
   const now = c.ctx.now();
-  const next = moved(doc, "READY", now, { source: { baseRevision: doc.source.baseRevision, tree: c.state.tree }, placements: c.state.placements, endpoints: c.state.endpoints, backing: c.state.backing, restore: restoreKept(doc, c.state), fingerprint: c.state.fingerprint, policy: { revision: c.ctx.readSettings().revision }, lastActiveAt: now, blocked: null });
+  const next = moved(doc, "READY", now, { source: { baseRevision: doc.source.baseRevision, tree: c.state.tree }, placements: c.state.placements, endpoints: c.state.endpoints, backing: c.state.backing, restore: restoreKept(doc, c.state), fingerprint: c.state.fingerprint, policy: { revision: c.ctx.readSettings().revision }, isolation: c.state.isolation ?? null, lastActiveAt: now, blocked: null });
   c.ctx.sandboxes.write(next);
   return go();
 }
@@ -281,6 +289,11 @@ export const PREPARE_STEPS = [
   { name: "LEASES", run: leased },
   { name: "BACKING", run: backed },
   { name: "CONNECTIVITY", run: reached },
+  { name: "TOPOLOGY", run: (c) => (isolatedMode(c) ? isolatedSteps.topology(c, { go, halt }) : go()) },
+  { name: "NETWORK", run: (c) => (isolatedMode(c) ? isolatedSteps.network(c, { go, halt }) : go()) },
+  { name: "SERVICES", run: (c) => (isolatedMode(c) ? isolatedSteps.services(c, { go, halt }) : go()) },
+  { name: "READINESS", run: (c) => (isolatedMode(c) ? isolatedSteps.readiness(c, { go, halt }) : go()) },
+  { name: "ATTEST", run: (c) => (isolatedMode(c) ? isolatedSteps.attest(c, { go, halt }) : go()) },
   { name: "READY", run: readied },
 ];
 
@@ -303,8 +316,8 @@ function blockedOn(c, outcome) {
 
 // -> { environment, state: READY | BLOCKED, tree, reused, placements, endpoints, blocked }. Idempotent: a sandbox
 // that is READY at the print of what it would be built from is the answer, and nothing runs again.
-export async function prepared(ctx, deps) {
-  const c = { ctx, deps, state: {}, ops: opsOf(ctx), notes: [] };
+export async function prepared(ctx, deps, opts = {}) {
+  const c = { ctx, deps, state: {}, ops: opsOf(ctx), notes: [], closure: opts.closure ?? null };
   const op = begun(c);
   const outcome = blockedOn(c, await stepped(c));
   c.ops.settle(op, outcome.ok ? "DONE" : "FAILED", outcome.ok ? null : outcome.because);

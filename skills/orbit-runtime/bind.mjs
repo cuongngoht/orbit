@@ -16,7 +16,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { builtinEcosystems } from "../../src/ecosystems/builtin.mjs";
 import { Blocked, Refused } from "../../src/errors.mjs";
-import { entryOf } from "../../src/investigation/sandbox.mjs";
+import { entryOf, isolatedSandbox } from "../../src/investigation/sandbox.mjs";
 import { createSourceTree } from "../../src/frontend/composite.mjs";
 import { createLocalClones } from "../../src/frontend/local-clones.mjs";
 import { createWorktree } from "../../src/frontend/worktree.mjs";
@@ -27,6 +27,7 @@ import { createProcess } from "../../src/process/index.mjs";
 import { createProbe } from "../../src/probe/index.mjs";
 import { createReach } from "../../src/probe/reach.mjs";
 import { runtimeCatalog } from "../../src/runtime/catalog.mjs";
+import { ISOLATION_PROVIDERS, boundIsolation } from "../../src/runtime/isolation/index.mjs";
 import { runtimeContext, runtimeProject } from "../../src/runtime/context.mjs";
 import { runtimeSandboxContext } from "../../src/runtime/sandbox/context.mjs";
 import { loopbackPort, originOf } from "../../src/runtime/origin.mjs";
@@ -52,7 +53,7 @@ export function bindRuntime({ pluginRoot, env, cwd, read = readInput, host }) {
   const found = runtimeProject(env, cwd);
   const raw = realIo();
   const portsOf = ports(found, raw, { pluginRoot, env });
-  return runtimeContext(found, env, { raw, read, host, ...portsOf, workspaces: workspacesOf(portsOf.process, env), capabilities: () => (found.config ? capabilitiesOf(found.config) : {}) });
+  return runtimeContext(found, env, { raw, read, host, ...portsOf, pluginRoot, isolation: boundIsolation(ISOLATION_PROVIDERS), supervisorArgv: [process.execPath, join(pluginRoot, "cli", "sandbox-supervisor.mjs")], workspaces: workspacesOf(portsOf.process, env), capabilities: () => (found.config ? capabilitiesOf(found.config) : {}) });
 }
 
 // -> the runtime context of the SANDBOX `task` owns in the checkout `cwd` is in: the checkout's own context,
@@ -114,7 +115,7 @@ export async function sandboxAnswer(where, envId, deps = {}) {
   const table = await commands();
   const ctx = bindOwned({ ...where, task: await ownerOfSandbox(table, personal(bind, where), envId) });
   const view = await table.sandbox.run(ctx, []);
-  return { view, served: await entryServed(ctx, view) };
+  return { view, served: isolatedSandbox(view) ? view.state === "READY" : await entryServed(ctx, view) };
 }
 
 // A checkout the runtime cannot be bound to (a loose ui-tests/, not a Git checkout) has no sandboxes: say so, typed.

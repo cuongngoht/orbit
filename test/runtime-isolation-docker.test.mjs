@@ -113,6 +113,13 @@ test("a run-once container keeps its scratch file until its run settles, then re
   assert.deepEqual(answer.args.slice(0, 3), ["run", "--rm", "-i"]);
 });
 
+test("a container is removed with the anonymous volumes it was created with -- never a named volume, never a prune", () => {
+  const m = machine(() => ({ ok: true, out: "", status: 0 }));
+  assert.equal(docker.container.remove("cid-1", m.deps).ok, true);
+  assert.deepEqual(m.process.calls.map((c) => c.args), [["rm", "-v", "cid-1"]], "an image's own VOLUME belongs to the container that made it, and leaves with it");
+  assert.equal(m.process.calls.some((c) => ["volume", "prune", "system"].includes(c.args[0]) || c.args.includes("--volumes")), false);
+});
+
 test("facts are what docker inspect SAID, in the generic words the profile reads", () => {
   const raw = { Id: "f00d", Name: "/orbit-abc-worker", Image: PIN, State: { Running: true, StartedAt: "2026-10-21T10:00:01.5Z" }, Config: { Labels: { "orbit.task": "tsk-1" }, Env: ["PATH=/usr/bin", "ORBIT_STORE_DIR=/work/out/store"] }, HostConfig: { ReadonlyRootfs: true, NetworkMode: "orbit-net", PortBindings: { "80/tcp": [{ HostPort: "8080" }], "81/tcp": [] }, Privileged: false, Devices: [], PidMode: "", IpcMode: "private", UTSMode: "", UsernsMode: "", CapDrop: ["ALL"], CapAdd: null, SecurityOpt: ["no-new-privileges"], NanoCpus: 2e9, Memory: 2147483648, PidsLimit: 512 }, Mounts: [{ Type: "bind", Source: "/plugins/orbit", Destination: "/orbit", RW: false }, { Type: "volume", Name: "data", Destination: "/data", RW: true }], NetworkSettings: { Networks: { "orbit-net": {} } } };
   assert.deepEqual(facts(raw), { id: "f00d", name: "orbit-abc-worker", running: true, startedAt: "2026-10-21T10:00:01.5Z", image: PIN, labels: { "orbit.task": "tsk-1" }, readOnly: true, mounts: [{ type: "bind", source: "/plugins/orbit", target: "/orbit", readOnly: true }, { type: "volume", source: "data", target: "/data", readOnly: false }], networks: ["orbit-net"], networkMode: "orbit-net", published: ["80/tcp"], privileged: false, devices: 0, hostNamespaces: 0, capDrop: ["ALL"], capAdd: [], securityOpt: ["no-new-privileges"], limits: { cpus: 2e9, memory: 2147483648, pids: 512 }, env: ["PATH", "ORBIT_STORE_DIR"] });

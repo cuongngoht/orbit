@@ -228,7 +228,7 @@ export const docker = {
     startAttached: (id, deps, opts = {}) => deps.process.runObserved("docker", ["start", "-a", "-i", id], { timeoutMs: opts.timeoutMs ?? QUICK_MS, env: clientEnv(deps, opts.env), input: opts.input ?? "", observe: opts.observe }),
     inspect: (id, deps) => firstOf(asked(deps, ["inspect", id])),
     stop: (id, deps, opts = {}) => done(asked(deps, ["stop", "-t", String(opts.graceSeconds ?? STOP_GRACE_S), id], { timeoutMs: QUICK_MS + (opts.graceSeconds ?? STOP_GRACE_S) * 1000 })),
-    remove: (id, deps) => done(asked(deps, ["rm", id])),
+    remove: (id, deps) => done(asked(deps, ["rm", "-v", id])),
     exec: (id, argv, deps, opts = {}) => asked(deps, ["exec", ...(opts.input === undefined ? [] : ["-i"]), id, ...argv], { timeoutMs: opts.timeoutMs ?? QUICK_MS, input: opts.input }),
     runOnce,
   },

@@ -29,7 +29,9 @@
 //                                      is inspected and attested between being created and being started
 //   container.inspect(idOrName, deps)  -> the provider's raw record, or null
 //   container.stop(id, deps, opts)     -> { ok, why? }
-//   container.remove(id, deps)         -> { ok, why? }
+//   container.remove(id, deps)         -> { ok, why? }   the container and the ANONYMOUS volumes it was created with
+//                                      (an image's own VOLUME), which nothing else can name; a named volume is never
+//                                      touched
 //   container.exec(id, argv, deps, o)  run a FIXED argument list inside -> run()'s answer
 //   container.runOnce(spec, deps, o)   create, run attached and remove one container, its stdin handed in and its
 //                                      output observed chunk by chunk -> runObserved()'s answer

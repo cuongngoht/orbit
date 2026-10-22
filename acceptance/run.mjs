@@ -13,8 +13,10 @@
 // through the runtime context); then the QA loop, every command a terminal would type: plan on the
 // sandbox, derive the obligations, and for each one generate its design (acceptance/designs/ -- the
 // host's proposal, scripted) and run the frozen version. What each came to is read off the
-// investigation's journal and compared with the truth; the sandbox is released, nothing labelled is
-// left on the machine, and the checkout is exactly as it was committed.
+// investigation's journal and compared with the truth; the Security Auditor assesses the controls in
+// effect from that same journal, and each control's conclusion is held to the truth too; the sandbox
+// is released, nothing labelled is left on the machine, no secret the run was handed is in anything
+// the store kept, and the checkout is exactly as it was committed.
 //
 // It needs Docker and the worker image (WORKER) on this machine; without them it says BLOCKED and
 // exits 3. A mismatch is exit 1. `--record` keeps a receipt of a run that matched in
@@ -76,10 +78,12 @@ async function oneRun(stack, variant) {
     const rt = await sandboxUp(run);
     if (rt.state !== "READY") return { ...run, blocked: `the sandbox did not come up: ${JSON.stringify(rt.blocked ?? rt).slice(0, 400)}` };
     qaLoop(run);
+    audited(run);
     return run;
   } finally {
     await sandboxDown(run);
     left(run);
+    sentinels(run);
     if (!args.includes("--keep")) rmSync(base, { recursive: true, force: true });
   }
 }
@@ -241,21 +245,50 @@ function journalOf(run) {
 
 const latestOf = (run, kind, keep) => journalOf(run).filter((r) => r.kind === kind && keep(r)).at(-1) ?? null;
 
+// ── the security audit, from the investigation's own record (group 5) ──────
+
+// The Security Auditor's assessment of the controls in effect, from what each generated test came to as the
+// investigation's journal holds it -- evidence read back from its owner -- and each control's conclusion, a finding
+// with its status.
+function audited(run) {
+  const kept = said(cli(run, "security-audit.mjs", ["assess", `--investigation=${run.investigation}`, "--json"]), "security-audit assess");
+  const report = said(cli(run, "security-audit.mjs", ["report", kept.id, `--investigation=${run.investigation}`, "--json"]), "security-audit report");
+  run.security = Object.fromEntries((report.snapshot?.controls ?? []).map((c) => [c.control, c.conclusion === "finding" ? `finding:${findingOf(report, c)?.status ?? "unknown"}` : c.conclusion]));
+  run.securityFresh = report.freshness?.state ?? null;
+}
+
+const findingOf = (report, c) => (report.snapshot?.findings ?? []).find((f) => f.control === c.control && f.catalog === c.catalog) ?? null;
+
+// The secrets a run was handed, by value, must appear in nothing the store kept -- a journal, an artifact, a report, the
+// evidence, a worker's room, a workspace (doc §15). The broker's credential is the project's own synthetic data, committed
+// in its compose file, so it is not one of them.
+function sentinels(run) {
+  const values = [run.env.ORBIT_SINK_TOKEN, run.env.ORBIT_TEST_HOOKS_TOKEN];
+  const store = join(run.base, "store");
+  run.leaked = existsSync(store) ? filesUnder(store).filter((f) => ((text) => values.some((v) => text.includes(v)))(readFileSync(f, "latin1"))).map((f) => f.slice(run.base.length + 1)).slice(0, 10) : [];
+}
+
+const filesUnder = (dir) => readdirSync(dir, { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).map((e) => join(e.parentPath ?? e.path, e.name));
+
 // ── held to the truth ──────────────────────────────────────────────────────
 
 const expectedOf = (stack, variant, shape) => TRUTH.stacks[stack]?.variants?.[variant]?.[shape] ?? TRUTH.default;
 
+const securityOf = (variant, control) => TRUTH.security.variants?.[variant]?.[control] ?? TRUTH.security.default[control];
+
 function judged(run) {
-  const rows = TRUTH.shapes.map((shape) => ({ shape, expected: expectedOf(run.stack, run.variant, shape), got: run.outcomes[shape]?.outcome ?? (run.blocked ? "BLOCKED" : "NOT_RUN"), rule: run.outcomes[shape]?.rule ?? null }));
-  const clean = !run.leftover?.containers?.length && !run.leftover?.networks?.length && !run.leftover?.checkout?.length;
-  return { stack: run.stack, variant: run.variant, rows, matched: !run.blocked && clean && rows.every((r) => r.expected === r.got), blocked: run.blocked ?? null, leftover: run.leftover, investigation: run.investigation ?? null };
+  const tests = TRUTH.shapes.map((shape) => ({ shape, expected: expectedOf(run.stack, run.variant, shape), got: run.outcomes[shape]?.outcome ?? (run.blocked ? "BLOCKED" : "NOT_RUN"), rule: run.outcomes[shape]?.rule ?? null }));
+  const controls = TRUTH.security.controls.map((control) => ({ shape: control, expected: securityOf(run.variant, control), got: run.security?.[control] ?? (run.blocked ? "BLOCKED" : "NOT_ASSESSED"), rule: null }));
+  const rows = [...tests, ...controls];
+  const clean = !run.leftover?.containers?.length && !run.leftover?.networks?.length && !run.leftover?.checkout?.length && !run.leaked?.length;
+  return { stack: run.stack, variant: run.variant, rows, matched: !run.blocked && clean && rows.every((r) => r.expected === r.got), blocked: run.blocked ?? null, leftover: { ...run.leftover, leaked: run.leaked ?? [] }, investigation: run.investigation ?? null };
 }
 
 function printed(results) {
   for (const r of results) {
     process.stdout.write(`${r.stack} ${r.variant}: ${r.matched ? "MATCHED" : r.blocked ? `BLOCKED — ${r.blocked}` : "MISMATCH"}\n`);
     for (const row of r.rows) process.stdout.write(`  ${row.expected === row.got ? "✓" : "✗"} ${row.shape.padEnd(30)} ${row.got.padEnd(20)}${row.expected === row.got ? "" : `expected ${row.expected}`}${row.rule ? `  (${row.rule})` : ""}\n`);
-    if (r.leftover && (r.leftover.containers.length || r.leftover.networks.length || r.leftover.checkout.length)) process.stdout.write(`  ✗ left behind: ${JSON.stringify(r.leftover)}\n`);
+    if (r.leftover && (r.leftover.containers?.length || r.leftover.networks?.length || r.leftover.checkout?.length || r.leftover.leaked?.length)) process.stdout.write(`  ✗ left behind: ${JSON.stringify(r.leftover)}\n`);
   }
 }
 

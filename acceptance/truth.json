@@ -74,5 +74,33 @@
     "effect-once-per-key",
     "crash-before-effect",
     "crash-after-effect-before-ack"
-  ]
+  ],
+  "security": {
+    "doc": "What the Security Auditor must conclude of each control, from the investigation's own record (security-audit assess --investigation): a control is verified only when every role its minimum evidence names was SATISFIED on a fresh, accepted oracle; a refusal that did not hold is a finding; a positive control that did not hold leaves every refusal beside it inconclusive; a control still owed a role (8.2.2's state control, which no design here runs) stays pending. The same on both stacks: the HTTP slice is the same contract.",
+    "controls": [
+      "v5.0.0-4.1.1",
+      "v5.0.0-8.2.1",
+      "v5.0.0-8.3.1",
+      "v5.0.0-8.2.2"
+    ],
+    "default": {
+      "v5.0.0-4.1.1": "verified",
+      "v5.0.0-8.2.1": "verified",
+      "v5.0.0-8.3.1": "verified",
+      "v5.0.0-8.2.2": "pending"
+    },
+    "variants": {
+      "no-tenant-check": {
+        "v5.0.0-8.2.1": "finding:confirmed",
+        "v5.0.0-8.3.1": "finding:confirmed",
+        "v5.0.0-8.2.2": "finding:confirmed"
+      },
+      "broken-auth": {
+        "v5.0.0-4.1.1": "inconclusive",
+        "v5.0.0-8.2.1": "inconclusive",
+        "v5.0.0-8.3.1": "inconclusive",
+        "v5.0.0-8.2.2": "inconclusive"
+      }
+    }
+  }
 }

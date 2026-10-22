@@ -283,10 +283,24 @@ const findingOf = (report, c) => (report.snapshot?.findings ?? []).find((f) => f
 function sentinels(run) {
   const values = [run.env.ORBIT_SINK_TOKEN, run.env.ORBIT_TEST_HOOKS_TOKEN];
   const store = join(run.base, "store");
-  run.leaked = existsSync(store) ? filesUnder(store).filter((f) => ((text) => values.some((v) => text.includes(v)))(readFileSync(f, "latin1"))).map((f) => f.slice(run.base.length + 1)).slice(0, 10) : [];
+  run.leaked = existsSync(store) ? filesUnder(store).filter((f) => ((text) => values.some((v) => text.includes(v)))(readOrNothing(f))).map((f) => f.slice(run.base.length + 1)).slice(0, 10) : [];
 }
 
-const filesUnder = (dir) => readdirSync(dir, { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).map((e) => join(e.parentPath ?? e.path, e.name));
+// A sandbox's supervisor may still be removing what it owns while the store is read: a file gone between the listing
+// and the read held nothing.
+function readOrNothing(file) {
+  try { return readFileSync(file, "latin1"); }
+  catch { return ""; }
+}
+
+// Walked one directory at a time, so a subtree removed while it is read is skipped -- it is gone, it holds nothing --
+// and never the whole store with it.
+const filesUnder = (dir) => entriesOf(dir).flatMap((e) => (e.isDirectory() ? filesUnder(join(dir, e.name)) : e.isFile() ? [join(dir, e.name)] : []));
+
+function entriesOf(dir) {
+  try { return readdirSync(dir, { withFileTypes: true }); }
+  catch { return []; }
+}
 
 // ── held to the truth ──────────────────────────────────────────────────────
 

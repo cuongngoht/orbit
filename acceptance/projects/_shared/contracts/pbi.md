@@ -91,3 +91,10 @@ data. It is redelivered after a backoff, and its third delivery is dead-lettered
 whose notification sink cannot be reached is redelivered the same way — its reminder is written
 once, whatever the number of deliveries — and its third failed delivery is dead-lettered with the
 reason `dependency-failure`.
+
+### SCHED-1 — the period is decided by the schedule, once
+
+The scheduler's own decision loop decides the pinned occurrence
+`billing-daily:2026-10-22T09:00:00+07:00` due within 120 seconds of it being due, and exactly one job
+execution runs for that occurrence (`contracts/schedule.json`: misfire fire-once, overlap forbid). A
+manual trigger proves the handler, never the schedule.

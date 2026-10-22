@@ -57,7 +57,7 @@ export const MEANINGS = [
   { id: "principal.claims", layer: "api", doc: "the claims of the identity an interface saw" },
   { id: "message.id", layer: "api", doc: "the logical identity of a message, stable across deliveries" },
   { id: "message.key", layer: "api", doc: "the routing or partition key a message carried" },
-  { id: "message.correlation", layer: "api", doc: "the correlation and causation a message carried" },
+  { id: "message.correlation", layer: "api", doc: "the correlation and causation a message carried, as { correlationId, causationId } -- a criterion about one names it (message.correlation.correlationId)" },
   { id: "message.payload", layer: "api", doc: "the projected payload of a message" },
   { id: "delivery.attempt", layer: "api", doc: "which delivery of a message this was" },
   { id: "settlement.outcome", layer: "api", doc: "how a publication or a delivery was settled: confirmed, rejected, acknowledged, dead-lettered" },

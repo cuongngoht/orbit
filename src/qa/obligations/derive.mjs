@@ -10,6 +10,7 @@
 // graph says more. Ids are stamped from what an obligation is made of, so the same plan and graph
 // derive the same obligations every time.
 import { canonicalJson, sha } from "../../hash.mjs";
+import { EXPECT_OP } from "../vocab.mjs";
 import { shapeOf } from "./shapes.mjs";
 
 const aliasOf = (name) => String(name ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64);
@@ -29,9 +30,14 @@ function obligationOf(plan, binding, graph, c, id) {
 
 const stamped = (plan, c, shape, record) => ({ obligation: `tob-${sha(`${plan.id}|${c.id}|${shape.id}`).slice(0, 12)}`, digest: sha(canonicalJson(record)), ...record });
 
+// The slots this obligation is ABOUT: the criterion's expectations its shape rules with. A criterion that names
+// several kinds of property states each one's slots; one that states none a shape rules with leaves it missing.
+const ownSlots = (c, shape) => c.expects.filter((e) => shape.templates.includes(EXPECT_OP.get(e.op)?.template)).map((e) => `${c.id}/${e.id}`);
+
 function recordOf(plan, binding, graph, c, shape) {
   const target = (graph?.nodes ?? []).find((n) => aliasOf(n.name) === c.about) ?? null;
-  return { statement: String(c.says ?? "").slice(0, 300), shape: shape.id, target: target?.key ?? c.about ?? null, bindings: [binding?.id ?? plan.id], expected: c.expects.map((e) => `${c.id}/${e.id}`), method: shape.contractOnly ? "manual" : "runtime-test", applicability: applicabilityOf(shape, target, graph, c), authority: binding?.authority ?? "draft", boundary: shape.boundary, revision: String(plan.revision ?? "unknown") };
+  const expected = ownSlots(c, shape);
+  return { statement: String(c.says ?? "").slice(0, 300), shape: shape.id, target: target?.key ?? c.about ?? null, bindings: [binding?.id ?? plan.id], expected, ...(expected.length ? {} : { missing: [`${c.id} states nothing the ${shape.id} obligation rules with (${shape.templates.join(", ")})`] }), method: shape.contractOnly ? "manual" : "runtime-test", applicability: applicabilityOf(shape, target, graph, c), authority: binding?.authority ?? "draft", boundary: shape.boundary, revision: String(plan.revision ?? "unknown") };
 }
 
 // Where the node it is about takes part in a relation of a role the shape is about.

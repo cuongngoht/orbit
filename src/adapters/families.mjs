@@ -34,7 +34,7 @@ export const FAMILIES = [
   ] },
   { id: "messaging", doc: "publication and observation on channels", operations: [
     { ...op("publish", "messaging", ["channel", "identity", "fixture"], ["publish"], ["message.id", "settlement.outcome", "elapsed.ms"], ["publishAck"]), accepted: { means: "settlement.outcome", template: "value-eq", value: "confirmed" } },
-    op("observe", "messaging", ["channel", "observer", "fixture"], ["create-resource", "read"], ["cursor.baseline", "observation.completeness"], ["observation"]),
+    { ...op("observe", "messaging", ["channel", "observer", "fixture"], ["create-resource", "read"], ["cursor.baseline", "observation.completeness"], ["observation"]), accepted: { means: "cursor.baseline", template: "value-present" } },
   ] },
   { id: "job", doc: "work queues", operations: [
     { ...op("enqueue", "job", ["queue", "identity", "fixture"], ["enqueue"], ["execution.ref", "elapsed.ms"]), accepted: { means: "execution.ref", template: "value-present" } },

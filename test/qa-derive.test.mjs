@@ -25,7 +25,10 @@ test("nothing is guessed: no kind is a question, an unknown kind is refused, and
   const out = derivedObligations({ plan: plan([{ ...AC2, id: "AC9", obligations: [] }, { ...AC2, id: "AC8", obligations: ["telepathy"] }, { ...AC2, id: "AC7", about: "ghost" }, { ...AC2, id: "AC6", about: "billing-reminders", obligations: ["effect-once-per-key"] }]), binding, graph });
   assert.deepEqual(out.questions.map((q) => q.criterion), ["AC9"]);
   assert.match(out.refused[0], /AC8: "telepathy" is not an obligation shape/);
-  const byId = Object.fromEntries(out.obligations.map((o) => [o.expected[0].split("/")[0], o]));
+  const byId = { AC7: out.obligations.find((o) => o.target === "ghost"), AC6: out.obligations.find((o) => o.shape === "effect-once-per-key") };
+  assert.deepEqual(byId.AC6.expected, [], "AC6 states no count -- nothing effect-once-per-key rules with");
+  assert.match(byId.AC6.missing[0], /AC6 states nothing the effect-once-per-key obligation rules with \(count-eq\)/);
+  assert.deepEqual(byId.AC7.expected, ["AC7/E1"], "a slot the shape rules with is the obligation's own");
   assert.equal(byId.AC7.applicability.state, "unknown");
   assert.match(byId.AC7.applicability.why, /holds no ghost/);
   assert.equal(byId.AC6.applicability.state, "unknown", "the queue takes part in no consume or data-write relation the graph records");

@@ -152,24 +152,26 @@ async function decisions(asked, deps) {
   const schedule = asked.bound.scheduleRef ?? {};
   const page = (since) => called(asked, deps, { origin: originOf(schedule), auth: authOf(schedule, deps), method: "GET", path: `/orbit/scheduler/v1/decisions?since=${since}&limit=${LIMIT}${schedule.schedule ? `&schedule=${encodeURIComponent(schedule.schedule)}` : ""}` });
   const seen = await watched(asked, deps, (since) => page(since).then((b) => ({ items: b.decisions ?? [], through: b.through })), { occurrenceId: (d) => d.occurrenceId, decision: (d) => d.decision });
-  return seen.failure ? seen : { value: { decisions: seen.items, through: seen.through, completeness: seen.completeness, gaps: seen.gaps } };
+  return seen.failure ? seen : { value: { decisions: seen.answered, through: seen.through, completeness: seen.completeness, gaps: seen.gaps } };
 }
 
 async function attempts(asked, deps) {
   const workload = asked.bound.workloadRef ?? {};
   const page = (since) => called(asked, deps, { origin: originOf(workload), auth: authOf(workload, deps), method: "GET", path: `/orbit/workload/v1/attempts?since=${since}&limit=${LIMIT}${workload.workload ? `&workload=${encodeURIComponent(workload.workload)}` : ""}` });
   const seen = await watched(asked, deps, (since) => page(since).then((b) => ({ items: b.attempts ?? [], through: b.through })), { messageId: (a) => a.messageId, outcome: (a) => a.outcome, executionRef: (a) => a.executionRef });
-  return seen.failure ? seen : { value: { attempts: seen.items, through: seen.through, completeness: seen.completeness, gaps: seen.gaps } };
+  return seen.failure ? seen : { value: { attempts: seen.answered, through: seen.through, completeness: seen.completeness, gaps: seen.gaps } };
 }
 
 // Pages from `since` until the window closes or `count` matching items were read and the cursor
-// caught up. Complete only when the last page said there was nothing more to read.
+// caught up. Complete only when the last page said there was nothing more to read. What it ANSWERS
+// is what the request asked about: the items its `match` names when it names one, every item read
+// otherwise -- so an outcome another message had is never this message's.
 async function watched(asked, deps, page, fields) {
   const until = untilOf(asked.request, fields);
   if (until.refused) return refusal(until.refused);
   const state = { items: [], through: until.since, caughtUp: false, matched: 0, endsAt: deps.now() + Math.min(until.waitMs ?? 0, remaining(asked, deps)) };
   while (!finished(state, until, deps)) await paged(state, page, until, deps);
-  return { ...state, completeness: state.caughtUp ? "complete" : "partial", gaps: state.caughtUp ? [] : [`more than ${until.max} items were waiting — one answer holds at most that many; read on from through`] };
+  return { ...state, answered: Object.keys(until.match).length ? state.items.filter((i) => matches(i, until)) : state.items, completeness: state.caughtUp ? "complete" : "partial", gaps: state.caughtUp ? [] : [`more than ${until.max} items were waiting — one answer holds at most that many; read on from through`] };
 }
 
 function untilOf(r, fields) {

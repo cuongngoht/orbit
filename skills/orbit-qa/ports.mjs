@@ -145,7 +145,7 @@ const observingAdapter = (r, transport) => (r.ctx.adapters?.list?.() ?? []).filt
 
 function withGrants(b, r, x, sealed) {
   const fixture = { namespace: namespaceOf(x.execution), resources: boundAliases(sealed) };
-  const minted = mutatingCalls(r, x.frozen.case).map((m) => mintGrant(grantWorld(b, r, x, m, fixture)));
+  const minted = mintedInOrder(b, r, x, fixture);
   return { ...sealed, gaps: [...sealed.gaps, ...unarmedGaps(x)], grants: minted.flatMap((m) => (m.grant ? [m.grant] : [])), refused: minted.flatMap((m) => m.refused), fixture, sandbox: b.sandbox.id, tree: b.sandbox.tree, place: placeOf(b, x.frozen.case), deadlineMs: deadlineOf(b) };
 }
 
@@ -165,12 +165,32 @@ const unarmedGaps = (x) => (x.design?.observationPlan ?? []).filter((o) => !arme
 
 const armedByStep = (c, ref) => (c.steps ?? []).some((s) => s.capability === "orbit.messaging.observe" && s.input?.observerRef === ref);
 
+// A call that repeats an earlier one exactly -- the same capability, effect and input -- is a DUPLICATE. It is minted a
+// grant of its own, naming the grant of the call it duplicates (test-grants.mjs `duplicateOf`), and only when the
+// design says it sends one on purpose; one it does not declare is refused, never quietly covered by the first's grant.
+function mintedInOrder(b, r, x, fixture) {
+  const first = new Map();
+  return mutatingCalls(r, x.frozen.case).map((m) => mintedOne(b, r, x, fixture, first, m));
+}
+
+function mintedOne(b, r, x, fixture, first, m) {
+  const key = `${m.cap.id}|${m.cls}|${canonicalJson(m.step.input ?? {})}`;
+  if (first.has(key) && !hasDuplicateControl(x.design)) return unintended(m);
+  const out = mintGrant(grantWorld(b, r, x, { ...m, duplicateOf: first.get(key) ?? null }, fixture));
+  if (!first.has(key) && out.grant) first.set(key, out.grant.id);
+  return out;
+}
+
+const hasDuplicateControl = (design) => (design?.controls ?? []).some((c) => c.role === "duplicate");
+
+const unintended = (m) => ({ grant: null, refused: [{ id: "DUPLICATE", say: `${m.cap.id} is asked again with exactly the same input, and the design declares no duplicate control — a second effect is minted only on purpose` }] });
+
 // One grant per mutating effect a call would have: a call is covered only when EVERY effect it may have is.
 const mutatingCalls = (r, c) => (c.steps ?? []).filter((s) => s.do === "call").flatMap((step) => ((e) => e.effects.filter(mutatingEffect).map((cls, _, classes) => ({ step, cls, classes, adapter: e.adapter, cap: r.lookup(step.capability) ?? { id: step.capability } })))(effectsOf(r, step)));
 
 // The world a grant is minted from: owners' records only -- the sandbox's view, a person's policy and settings, the
 // design the version was frozen from, the input it will send -- never a field a proposal carried.
-const grantWorld = (b, r, x, m, fixture) => ({ task: b.sandbox.task, run: x.execution, attempt: x.attempt, sandbox: { owner: { kind: "task", id: b.sandbox.task }, tree: b.sandbox.tree, currentTree: b.sandbox.currentTree, isolated: b.sandbox.isolated === true }, mode: { id: b.mode, mutates: modeOf(b.mode)?.mutates === true }, capability: { id: m.cap.id, version: m.adapter?.version ?? m.cap.version ?? null, from: m.cap.from ?? null, mutatingEffects: m.classes }, operation: { class: m.cls, selectors: selectorsOf(m.cap, m.step) }, fixture, requested: { resources: resourcesOf(m.cap, m.step), indirect: [], inputDigest: sha(canonicalJson(m.step.input ?? {})) }, sinks: [], design: { oracleRef: x.obligation?.bindings?.[0] ?? null, designRef: x.design?.id ?? null, operations: designedOperations(r, x.design) }, budget: { uses: b.settings?.limits?.writes ?? 0 }, policy: { revision: b.policy.revision, allows: b.policy.writes }, principal: principalOf(m.cap, m.step), nowMs: b.now(), ttlMs: deadlineOf(b) + 60000 });
+const grantWorld = (b, r, x, m, fixture) => ({ task: b.sandbox.task, run: x.execution, attempt: x.attempt, sandbox: { owner: { kind: "task", id: b.sandbox.task }, tree: b.sandbox.tree, currentTree: b.sandbox.currentTree, isolated: b.sandbox.isolated === true }, mode: { id: b.mode, mutates: modeOf(b.mode)?.mutates === true }, capability: { id: m.cap.id, version: m.adapter?.version ?? m.cap.version ?? null, from: m.cap.from ?? null, mutatingEffects: m.classes }, operation: { class: m.cls, selectors: selectorsOf(m.cap, m.step) }, fixture, requested: { resources: resourcesOf(m.cap, m.step), indirect: [], inputDigest: sha(canonicalJson(m.step.input ?? {})) }, sinks: [], design: { oracleRef: x.obligation?.bindings?.[0] ?? null, designRef: x.design?.id ?? null, operations: designedOperations(r, x.design) }, budget: { uses: b.settings?.limits?.writes ?? 0 }, policy: { revision: b.policy.revision, allows: b.policy.writes }, principal: principalOf(m.cap, m.step), nowMs: b.now(), ttlMs: deadlineOf(b) + 60000, ...(m.duplicateOf ? { bounds: { duplicateOf: m.duplicateOf } } : {}) });
 
 // A call's own scalar parameters -- a method, a path -- are what its grant is minted for, beside its refs and its input.
 const selectorsOf = (cap, step) => Object.fromEntries(Object.entries(cap.inputSchema ?? {}).filter(([k, row]) => !row?.bind && (row?.enum || row?.pattern) && typeof step.input?.[k] === "string").map(([k]) => [k, step.input[k]]));

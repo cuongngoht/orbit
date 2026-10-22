@@ -98,21 +98,58 @@
       "source": "PBI",
       "about": "billing-reminder-requested",
       "obligations": [
+        "completes-by-deadline",
         "effect-once-per-key"
       ],
       "expects": [
         {
           "id": "E1",
-          "property": "message.id",
-          "op": "present",
-          "because": "FIX-ASYNC-1: the period's reminder request is published"
+          "property": "message.correlation.correlationId",
+          "op": "complete-within",
+          "value": "tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00",
+          "within": 120,
+          "because": "FIX-ASYNC-1 and the message contract: the period's reminder request, correlated by its business key, exists within 120 seconds of the occurrence being due"
         },
         {
           "id": "E2",
           "property": "effect.count",
           "op": "count-eq",
           "value": 1,
-          "because": "FIX-ASYNC-1: exactly one reminder record per business key"
+          "because": "FIX-ASYNC-1: exactly one reminder record per business key, whatever is redelivered or duplicated"
+        },
+        {
+          "id": "E3",
+          "property": "settlement.outcome",
+          "op": "complete-within",
+          "value": "processed",
+          "within": 120,
+          "because": "FIX-ASYNC-1 and the message contract: the worker writes the reminder and the notification, then acknowledges, within 120 seconds"
+        }
+      ]
+    },
+    {
+      "id": "SCHED-1",
+      "says": "The scheduler's own decision loop decides the pinned occurrence billing-daily:2026-10-22T09:00:00+07:00 due within 120 seconds of it being due, and exactly one job execution runs for it -- a manual trigger proves the handler, never the schedule.",
+      "source": "PBI",
+      "about": "billing-daily",
+      "obligations": [
+        "occurrence-one-execution"
+      ],
+      "expects": [
+        {
+          "id": "E1",
+          "property": "occurrence.decision",
+          "op": "complete-within",
+          "value": "due",
+          "within": 120,
+          "because": "SCHED-1: the loop itself decides the period due"
+        },
+        {
+          "id": "E2",
+          "property": "effect.count",
+          "op": "count-eq",
+          "value": 1,
+          "because": "SCHED-1: one job execution for the occurrence"
         }
       ]
     }
@@ -278,6 +315,37 @@
           "says": "tenant B's invoice is as it was"
         },
         "because": "scoping is what a tenant may see, not only what it may not read"
+      }
+    },
+    {
+      "id": "S5",
+      "name": "The schedule decides the period, once",
+      "covers": [
+        "SCHED-1"
+      ],
+      "technique": "state-transition",
+      "why": "a period decided twice is two reminders; one never decided is none",
+      "priority": "P1",
+      "must": true,
+      "readiness": "ready",
+      "actor": {
+        "as": "the scheduler",
+        "roles": [
+          "system"
+        ],
+        "owner": "the fixture",
+        "state": "the business clock stands before 09:00"
+      },
+      "intent": [
+        "move the business clock to 09:00",
+        "read what the loop decided",
+        "count the job executions for the period"
+      ],
+      "expect": {
+        "sql": {
+          "need": "required",
+          "says": "one job execution for the occurrence"
+        }
       }
     }
   ]

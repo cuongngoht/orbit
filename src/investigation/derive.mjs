@@ -59,7 +59,7 @@ function graphBound(w, frozen) {
   return { binding: id, digest: frozen.digest };
 }
 
-const obligationKept = (w, o) => !w.store.appendOnce(w.id, "obligation", { id: nextId(current(w), "obligation"), eventId: eventIdOf("obligation", o.obligation, 0, o.digest), obligation: o.obligation, revision: o.revision, digest: o.digest, shape: o.shape, target: o.target, bindings: o.bindings, expected: o.expected, applicability: o.applicability, authority: o.authority, method: o.method }).duplicate;
+const obligationKept = (w, o) => !w.store.appendOnce(w.id, "obligation", { id: nextId(current(w), "obligation"), eventId: eventIdOf("obligation", o.obligation, 0, o.digest), obligation: o.obligation, revision: o.revision, digest: o.digest, shape: o.shape, target: o.target, bindings: o.bindings, expected: o.expected, ...(o.missing ? { missing: o.missing } : {}), applicability: o.applicability, authority: o.authority, method: o.method }).duplicate;
 
 // A question is put once: one already on the journal with the same words is that question.
 function questionKept(w, q) {

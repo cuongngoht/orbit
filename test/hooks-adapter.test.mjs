@@ -89,6 +89,15 @@ test("a bounded wait ends as soon as the matching decision arrives and the curso
   assert.deepEqual([out.value.decisions.map((d) => d.occurrenceId), out.value.through, out.value.completeness], [["o-due"], 5, "complete"]);
 });
 
+test("what a watched read answers is what its match asked about -- another message's outcome is never this one's", async () => {
+  const h = hooks({ "GET /orbit/workload/v1/attempts": answer(200, { attempts: [{ seq: 1, messageId: "msg-other", outcome: "processed" }, { seq: 2, messageId: "msg-mine", outcome: "retry" }], through: 2 }) });
+  const out = await h.ask("attempts", { count: 1, match: { messageId: "msg-mine" } }, { workloadRef: workload });
+  assert.deepEqual(out.value.attempts.map((a) => [a.messageId, a.outcome]), [["msg-mine", "retry"]], "the other message's processed is not an answer about this one");
+  assert.deepEqual([out.value.through, out.value.completeness], [2, "complete"], "while the cursor still covers everything read");
+  const all = await h.ask("attempts", {}, { workloadRef: workload });
+  assert.equal(all.value.attempts.length, 2, "no match asks about everything");
+});
+
 test("what one answer cannot hold is PARTIAL, read on from through", async () => {
   const many = Array.from({ length: 500 }, (_, i) => ({ seq: i + 1, messageId: `m-${i}`, outcome: "processed" }));
   const h = hooks({ "GET /orbit/workload/v1/attempts": () => answer(200, { attempts: many, through: 500 }) });

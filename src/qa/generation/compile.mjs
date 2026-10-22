@@ -21,9 +21,11 @@ const COMPLETENESS = "observation.completeness";
 
 // One assertion: { criterionRef, template, step } against the accepted expectations and the step's
 // declared outputs. Answers { tree, window? } or { refused }.
-export function compiledAssertion(assertion, { expectations, outputsOf, shape }) {
+// The shape's templates bind the obligation's OWN slots (`expected`); another accepted slot a design rules with -- a
+// positive control's, a completion barrier's window -- compiles to what its own op says.
+export function compiledAssertion(assertion, { expectations, outputsOf, shape, expected }) {
   const expectation = expectations.get(assertion.criterionRef);
-  const refused = mappingProblem(assertion, expectation, shape);
+  const refused = mappingProblem(assertion, expectation, (expected ?? [assertion.criterionRef]).includes(assertion.criterionRef) ? shape : null);
   if (refused) return { refused };
   return treeFor(assertion, expectation, outputsOf(assertion.step) ?? {});
 }
@@ -117,13 +119,15 @@ function provesOf(trees) {
   return layers[0] ?? "api";
 }
 
-// The TRIGGER step rules on what its own operation's answer shows when the system took the request
-// (families.mjs `accepted`), unless an accepted criterion already speaks about it. A trigger whose
-// operation shows nothing of the kind -- an HTTP write -- must be ruled on by a criterion.
+// A step no accepted criterion speaks about rules on what its own operation's answer shows when the system took it
+// (families.mjs `accepted`): the TRIGGER, an observer ARMED before it, a duplicate sent on purpose. A trigger whose
+// operation shows nothing of the kind -- an HTTP write -- must be ruled on by a criterion; any other step that shows
+// nothing is left for the verdict stage to refuse.
 function triggerEvidence(design) {
-  const at = design.trigger?.step;
-  if (!Number.isInteger(at) || (design.assertions ?? []).some((a) => a.step === at)) return [];
-  return [{ structural: "trigger-accepted", step: at, capability: design.skeleton?.steps?.[at - 1]?.capability }];
+  const steps = design.skeleton?.steps ?? [];
+  const ruled = new Set((design.assertions ?? []).map((a) => a.step));
+  const trigger = Number.isInteger(design.trigger?.step) && !ruled.has(design.trigger.step) ? [{ structural: "trigger-accepted", step: design.trigger.step, capability: steps[design.trigger.step - 1]?.capability }] : [];
+  return [...trigger, ...steps.map((s, n) => ({ s, step: n + 1 })).filter(({ s, step }) => step !== design.trigger?.step && !ruled.has(step) && operationFor(s?.capability)?.accepted).map(({ s, step }) => ({ structural: "step-accepted", step, capability: s.capability }))];
 }
 
 function structuralTree(a, context) {

@@ -66,7 +66,9 @@ function tallied(proved, layer) {
   if (layer) proved[layer] = (proved[layer] ?? 0) + 1;
 }
 
-const nonzero = (proved) => Object.fromEntries(Object.entries(proved ?? {}).filter(([, n]) => n > 0));
+// The layers a claim names with a count, in one order -- so two tallies of the same layers compare the same whatever
+// order each was counted in (a worker counts in the layers' order, the host in the steps').
+const nonzero = (proved) => Object.fromEntries(Object.entries(proved ?? {}).filter(([, n]) => n > 0).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 
 // The indices the log covers must be the slice's own, from its first step, each once.
 const inOrder = (k) => k.steps.every((s, n) => s.i === k.slice.from + n && s.i <= k.slice.to);

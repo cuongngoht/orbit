@@ -141,6 +141,17 @@ test("what a host refuses of a worker: another dispatch, another case, a file it
   rmSync(p.dir, { recursive: true, force: true });
 });
 
+// What the first generated PAGE test showed: a worker tallies its layers in the layers' order, the host in its steps',
+// and the same layers counted in two orders are the same claim.
+test("the layers a claim names are compared whatever order each side counted them in", () => {
+  const frozen = { id: "gen-page", steps: [{ do: "api", match: "/a", status: 200 }, { do: "call", capability: "x", proves: "sql", expect: "compiled:{}" }, { do: "report", js: "1", expect: "compiled:{}" }] };
+  const records = [{ kind: "run", case_digest: "d" }, { kind: "step", i: 1, ok: true }, { kind: "step", i: 2, ok: true }, { kind: "step", i: 3, ok: true }];
+  const provedBy = (st) => (st.do === "api" ? "api" : st.do === "report" ? "ui" : st.proves);
+  const result = { status: "PASS", case_digest: "d", proved: { ui: 1, api: 1, sql: 1 }, verdicts: 3, done: 3 };
+  assert.deepEqual(rederivedFindings(result, frozen, records, provedBy, { caseDigest: "d" }), []);
+  assert.match(rederivedFindings({ ...result, proved: { ui: 2, api: 1, sql: 1 } }, frozen, records, provedBy, { caseDigest: "d" }).join(), /layers the result claims are not the layers its steps prove/, "a count that differs still differs");
+});
+
 test("a ref the host did not seal is never bound, and the arguments a request stands for carry no secret", () => {
   const binder = sealedBinder({ bindings: { endpoint: { backend: { alias: "backend", origin: "http://app:8080" } } }, secrets: { ORBIT_ID_A: "token-a" } });
   assert.equal(binder.resolve("endpoint", "backend").ok, true);

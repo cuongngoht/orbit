@@ -109,3 +109,24 @@ test("an investigation the engine kept: listed, opened, and its page REDACTED", 
   assert.equal((await api.get("/api/v1/autonomous-qa/investigations/..%2F..%2Fetc")).status, 400);
   assert.equal((await api.get("/api/v1/autonomous-qa/investigations/inv-20990101-000000-abcd")).status, 404);
 });
+
+test("a generated test's tree, its artifacts by digest and its frozen versions are read off the journal -- and only the kinds a page may open", async (t) => {
+  const { root } = fixture(t);
+  const world = checkoutWorld(root);
+  const found = reportProject(world.env, world.projectRoot);
+  const store = createInvestigations(found.store.root, found.io);
+  const id = store.create({ objective: "generated tests", scope: "", mode: "fixture-write", environment: ENV, by: "session" });
+  store.appendOnce(id, "obligation", { id: "obr-1", eventId: "e-obl", obligation: "tob-0123456789ab", revision: "r1", shape: "response-conforms", target: "endpoint:x", bindings: ["bnd-1"], expected: ["AC/E1"], authority: "accepted", method: "runtime-test" });
+  const kept = store.putArtifact(id, "designs", { id: "tds-1", obligation: "tob-0123456789ab", skeleton: { steps: [] } });
+  store.appendOnce(id, "designed", { id: "dsg-1", eventId: "e-dsg", obligation: "tob-0123456789ab", design: "tds-1", digest: kept.digest, state: "designed" });
+  const api = await started(t, contextFor(root, world));
+  const got = await api.get(`/api/v1/autonomous-qa/investigations/${id}/tests`);
+  assert.equal(got.status, 200, got.text);
+  const tests = got.json.tests;
+  assert.deepEqual([tests[0].obligation, tests[0].current.shape, tests[0].designs[0].design], ["tob-0123456789ab", "response-conforms", "tds-1"]);
+  const art = (await api.get(`/api/v1/autonomous-qa/investigations/${id}/artifacts/designs/${kept.digest}`)).json;
+  assert.equal(art.artifact.id, "tds-1");
+  assert.equal((await api.get(`/api/v1/autonomous-qa/investigations/${id}/artifacts/journal/${kept.digest}`)).status, 400, "only what a test was made from and froze");
+  assert.equal((await api.get(`/api/v1/autonomous-qa/investigations/${id}/artifacts/designs/..%2F..%2Fx`)).status, 400);
+  assert.equal((await api.get(`/api/v1/autonomous-qa/investigations/${id}/versions/nope@0000000000000000`)).status, 404);
+});

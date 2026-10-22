@@ -37,7 +37,7 @@ import { publicTool, toolOf, toolsNow } from "./tools/view.mjs";
 import { knowledgeView } from "./knowledge/read.mjs";
 import { traceTurn, traceTurns, usageAnalytics } from "./trace/read.mjs";
 import { clearCredential, createConnection, listConnections, readConnection, removeConnection, setCredential, testConnection, updateConnection } from "./connections/operate.mjs";
-import { autonomousQaInvestigation, autonomousQaOverview, autonomousQaReport } from "./autonomous-qa/read.mjs";
+import { autonomousQaArtifact, autonomousQaInvestigation, autonomousQaOverview, autonomousQaReport, autonomousQaTests, autonomousQaVersion } from "./autonomous-qa/read.mjs";
 import { putAutonomousQaSettings } from "./autonomous-qa/write.mjs";
 import { securityCatalog, securityCatalogs } from "./security-catalogs/read.mjs";
 import { adoptSecurityCatalog, previewSecurityCatalog, putSecurityEnabled, putSecurityMark, saveSecurityCatalog } from "./security-catalogs/write.mjs";
@@ -234,6 +234,9 @@ export const ROUTES = [
   { method: "PUT", path: /^\/api\/v1\/autonomous-qa\/settings$/, mutates: true, body: true, run: ({ ctx, body }) => putAutonomousQaSettings(ctx, body) },
   { method: "GET", path: /^\/api\/v1\/autonomous-qa\/investigations\/([^/]+)$/, id: "investigation", run: ({ ctx, id }) => autonomousQaInvestigation(ctx, id) },
   { method: "GET", path: /^\/api\/v1\/autonomous-qa\/investigations\/([^/]+)\/report$/, id: "investigation", run: ({ ctx, id }) => autonomousQaReport(ctx, id) },
+  { method: "GET", path: /^\/api\/v1\/autonomous-qa\/investigations\/([^/]+)\/tests$/, id: "investigation", run: ({ ctx, id }) => autonomousQaTests(ctx, id) },
+  { method: "GET", path: /^\/api\/v1\/autonomous-qa\/investigations\/([^/]+)\/artifacts\/([^/]+)\/([^/]+)$/, ids: ["investigation", "kind", "digest"], run: ({ ctx, ids }) => autonomousQaArtifact(ctx, ids[0], ids[1], ids[2]) },
+  { method: "GET", path: /^\/api\/v1\/autonomous-qa\/investigations\/([^/]+)\/versions\/([^/]+)$/, ids: ["investigation", "version"], run: ({ ctx, ids }) => autonomousQaVersion(ctx, ids[0], ids[1]) },
 
   // Security catalogs (ADR 0040): what Orbit ships, what a person adopted on this machine, and which catalogs the
   // project Control was started from is held to -- read here, and CHANGED only here: a preview (which fetches the

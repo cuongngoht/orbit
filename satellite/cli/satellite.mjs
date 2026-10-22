@@ -16,7 +16,7 @@
 //   node satellite.mjs agent report <msn> <arn> [--report=<file>] the run's report, on stdin
 //   node satellite.mjs definitions list [--kind=<kind>] | show <pin>
 //   node satellite.mjs host capabilities [--host=<id>] | detect
-//   node satellite.mjs live status|watch|tui|open|where [<msn>] [--plain|--jsonl|--since=o=<n>|--ascii|--print]
+//   node satellite.mjs live status|watch|tui|open|where [<msn>] [--plain|--jsonl|--since=o=<n>|--ascii|--until-done[=<s>]|--print]
 //   node satellite.mjs settings | where | protocol
 //
 // Every answer is JSON. Exit 0 = done · 2 = REFUSED (nothing written, or the refusal recorded) · 3 = BLOCKED.

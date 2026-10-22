@@ -44,12 +44,12 @@ function chosen(ports, args) {
 
 const projected = (ports, id) => ((p) => ((journalOf(ports, id).read() ?? []).forEach((r) => p.push(r)), p))(createProjection());
 
-const viewOfProjection = (p) => liveViewOf(p.model(), p.events());
+const viewOfProjection = (p, ports) => liveViewOf(p.model(), p.events(), ports?.sessionActivity?.(Date.now()) ?? null);
 
 const viewerOf = (view, term) => viewerStateOf(view, { reads: 1, good: 1 }, term.nowMs());
 
 function status(ports, args, term) {
-  const view = viewOfProjection(projected(ports, chosen(ports, args)));
+  const view = viewOfProjection(projected(ports, chosen(ports, args)), ports);
   const lines = has(args, "json") ? [JSON.stringify(view, null, 2)] : screenLines(view, viewerOf(view, term), { columns: term.columns, colour: term.colour });
   term.write(`${lines.join("\n")}\n`);
 }
@@ -71,7 +71,8 @@ const PRINT = {
 };
 
 function painted(s) {
-  const lines = screenLines(viewOfProjection(s.projection), viewerOf(viewOfProjection(s.projection), s.term), { columns: s.term.columns, rows: s.term.rows, colour: s.term.colour });
+  const view = viewOfProjection(s.projection, s.ports);
+  const lines = screenLines(view, viewerOf(view, s.term), { columns: s.term.columns, rows: s.term.rows, colour: s.term.colour });
   s.term.write(`${s.drawn ? `${cursorUp(s.drawn)}\r${clearDown()}` : ""}${lines.join("\n")}\n`);
   s.drawn = lines.length;
 }
@@ -99,7 +100,7 @@ function ended(s) {
 
 async function watch(ports, args, term) {
   const id = chosen(ports, args);
-  const s = { id, term, follower: createFollower(ports.io, journalOf(ports, id).file, { parse: journalLine, keep: false }), projection: createProjection(), since: sinceOf(args), mode: MODES.find((m) => m.when(args, term)).id, once: has(args, "once"), stopped: false, drawn: 0 };
+  const s = { id, term, ports, follower: createFollower(ports.io, journalOf(ports, id).file, { parse: journalLine, keep: false }), projection: createProjection(), since: sinceOf(args), mode: MODES.find((m) => m.when(args, term)).id, once: has(args, "once"), stopped: false, drawn: 0 };
   term.onStop(() => Object.assign(s, { stopped: true }));
   while (!finished(s) && !s.once && !s.stopped) await turned(s);
   return ended(s);

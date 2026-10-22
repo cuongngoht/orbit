@@ -18,7 +18,7 @@ export const HOSTS = Object.freeze({
   claude: {
     nativeAgentDispatch: claimed("claude:agent-dispatch", docs("https://code.claude.com/docs/en/sub-agents")),
     parallelism: claimed("claude:agent-parallel", docs("https://code.claude.com/docs/en/sub-agents"), { max: 20 }),
-    toolObservation: cell("reported", docs(`${HOSTS_MD}#claude-code`), { note: "the session's tool calls through the working set; per agent run only with a SubagentStart hook row" }),
+    toolObservation: cell("reported", docs(`${HOSTS_MD}#claude-code`), { note: "the session's own tool calls, read from the working set Orbit's hooks keep and shown beside the mission; which agent run made a call is UNOBSERVED" }),
     toolOutcomeReliability: cell("reported", docs(`${HOSTS_MD}#claude-code`), { note: "PostToolUseFailure names a failed call" }),
     filesystemIsolation: cell("unavailable", docs(`${HOSTS_MD}#claude-code`), { note: "an agent runs in the checkout; source changes are isolated by an engineering task's own workspace" }),
     permissionEnforcement: cell("reported", docs("https://code.claude.com/docs/en/sub-agents"), { note: "a plugin agent's tools: allowlist is the host's; permissionMode is ignored" }),

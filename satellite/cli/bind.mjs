@@ -5,6 +5,7 @@
 // Orbit commands a provider is asked through (argv only, never a shell). Nothing under satellite/src/ reads an
 // environment, a working directory or a child process; everything it needs is handed in from here.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { hostname } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { effectiveOf, readAutomation } from "../../src/automation/settings.mjs";
@@ -29,6 +30,12 @@ import { withExtensions } from "../../src/extensions/index.mjs";
 import { createContext } from "../../src/run/context.mjs";
 import { fingerprintOf as bindingFingerprint, resourceOf } from "../../src/work/bind.mjs";
 import { invokeBound } from "../../src/work/invoke.mjs";
+import { CHECKS as CHECK_CLASSES } from "../../src/engineering/working-set/collect.mjs";
+import { SESSION_LIMITS, noSessionActivity, sessionActivityOf, sessionLinesOf } from "../../src/live/session.mjs";
+import { switchOf } from "../../src/project/env.mjs";
+import { loadProject } from "../../src/project/index.mjs";
+import { safeName } from "../../src/project/paths.mjs";
+import { workingSetDir } from "../../src/project/runtime.mjs";
 import { realWorld } from "../../skills/orbit-control/world.mjs";
 import { factoryPort, projectSkillsOf } from "../../skills/orbit-help/factory.mjs";
 import { taskView } from "../../src/task/views.mjs";
@@ -36,6 +43,7 @@ import { ACCEPTANCE_FILE, passedOn, sourceDigestOf, staleReceipts } from "../src
 import { hostOf } from "../src/hosts/detect.mjs";
 import { hostRowOf } from "../src/hosts/matrix.mjs";
 import { definitionsPort } from "../src/store/port.mjs";
+import { quietly } from "../src/store/text.mjs";
 import { readPolicy } from "../src/store/policy.mjs";
 import { roomsOf } from "../src/store/rooms.mjs";
 
@@ -88,11 +96,30 @@ const tasksSince = (tasks, at) => tasks.list().map((id) => ({ id, created: creat
 
 const fileOf = (root, p) => ((full) => (existsSync(full) && statSync(full).isFile() ? { exists: true, digest: shaBytes(readFileSync(full)).slice(0, 16) } : { exists: false }))(contained(root, join(root, String(p))));
 
+// THE WITNESS of the primary checkout: HEAD, what `git status` lists, and the CONTENT of every file it lists -- so a file
+// edited again while it was already modified still moves the digest. Read through the filesystem, bounded, and never
+// through anything that writes: not even the checkout's .git.
+const WITNESS = Object.freeze({ files: 500, bytes: 8 * 1024 * 1024 });
+
+// `git status -z` records -> the paths they list; a rename's or a copy's source path is the record after it.
+function listedPaths(z) {
+  const records = String(z).split("\0").filter(Boolean);
+  const out = [];
+  for (let i = 0; i < records.length; i += /[RC]/.test(records[i].slice(0, 2)) ? 2 : 1) out.push(records[i].slice(3));
+  return out;
+}
+
+const contentOf = (full) => ((st) => (!st.isFile() ? "not-a-file" : st.size > WITNESS.bytes ? `${st.size}:${st.mtimeMs}` : shaBytes(readFileSync(full)).slice(0, 16)))(statSync(full));
+
+const witnessed = (root, rel) => `${rel}\0${quietly(() => contentOf(contained(root, join(root, rel)))) ?? "absent"}`;
+
+const contentsOf = (root, z) => listedPaths(z).slice(0, WITNESS.files).map((rel) => witnessed(root, rel)).join("\n");
+
 function snapshotOf(proc, root) {
   const git = (args) => proc.run("git", args, { cwd: root, timeoutMs: 15000 });
   const head = git(["rev-parse", "HEAD"]);
-  const status = git(["status", "--porcelain=v1", "--untracked-files=all"]);
-  return { head: head.ok ? head.out.trim() : null, dirty: status.ok ? status.out.split("\n").filter(Boolean).length : null, digest: sha(`${head.ok ? head.out.trim() : ""}\0${status.ok ? status.out : "unreadable"}`) };
+  const status = git(["status", "--porcelain=v1", "--untracked-files=all", "-z"]);
+  return { head: head.ok ? head.out.trim() : null, dirty: status.ok ? listedPaths(status.out).length : null, digest: sha(`${head.ok ? head.out.trim() : ""}\0${status.ok ? contentsOf(root, status.out) : "unreadable"}`) };
 }
 
 const ownersOf = (b) => ((tasks) => ({ owners: { task: (id) => taskViewOf(tasks, b.io, id), tasksSince: (at) => tasksSince(tasks, at), investigation: (id) => investigationOf(createInvestigations(b.paths.storeRoot, b.io), id), file: (p) => fileOf(b.paths.root, p) }, checkout: { snapshot: () => snapshotOf(b.proc, b.paths.root) } }))(createTasks(b.paths.storeRoot, b.io));
@@ -168,10 +195,41 @@ function baseOf(env, found, io, opts) {
   return { env, paths: found.paths, io, rooms, policy, acceptance, proc, hostId: hostOf(env), limits: limitsOf(env, found.paths), definitions: definitionsPort(io, rooms, policy), project: { key: found.paths.storeKey, checkout: found.paths.checkoutId, root: found.paths.root }, session: taskSessionMark(env.ORBIT_SESSION), now: () => io.now(), nowMs: () => io.nowMs(), host: io.host, pid: io.pid, pidStartedAt: () => proc.startedAtOf(process.pid) ?? null, roots: { orbit: opts.pluginRoot ?? PLUGIN_ROOT, satellite: join(opts.pluginRoot ?? PLUGIN_ROOT, "satellite") }, input: opts.input ?? inputPort(), node: opts.node ?? process.execPath };
 }
 
+// ---- this session's own tool calls: the working set Orbit's hooks keep (src/live/session.mjs), read, never written ----
+//
+// What a viewer shows beside a mission of the host's OWN tool calls in this session -- a tool's kind, a repo-relative
+// path or a command's class, whether it ended well; never an argument, a file's contents or a prompt. It is attributed
+// to no agent run: which run made a call is UNOBSERVED here. Only this session's file, and only its tail.
+const bindingProject = (b) => ((runtime) => ({ layout: 3, runtime, sessionDir: join(runtime, "sessions", b.paths.checkoutId.slice(0, 16)) }))(join(b.paths.storeRoot, "runtime", safeName(hostname())));
+
+const sessionProject = (b) => (b.env.ORBIT_HOST_PROTOCOL === "2" ? quietly(() => loadProject(b.env, b.paths.root)) : bindingProject(b));
+
+function sessionTail(b, file, nowMs) {
+  const size = b.io.size(file);
+  const got = size ? quietly(() => b.io.readFrom(file, Math.max(0, size - SESSION_LIMITS.TAIL_BYTES), SESSION_LIMITS.TAIL_BYTES)) : null;
+  const lines = !size ? [] : got ? sessionLinesOf(got.buffer.toString("utf8"), size > SESSION_LIMITS.TAIL_BYTES) : null;
+  return lines ? sessionActivityOf(lines, { nowMs, checks: CHECK_CLASSES, partial: size > SESSION_LIMITS.TAIL_BYTES }) : noSessionActivity("unreadable");
+}
+
+const sessionFile = (b, project) => join(workingSetDir(project), `${b.session}.jsonl`);
+
+const SESSION_SOURCES = [
+  { when: (b) => !b.session, then: () => noSessionActivity("no-session") },
+  { when: (b) => !switchOf(b.env, "WORKING_SET", "working_set", true), then: () => noSessionActivity("off") },
+  { when: (b, project) => !project, then: () => noSessionActivity("no-project") },
+  { when: (b, project) => !["file", null].includes(b.io.kind?.(sessionFile(b, project)) ?? null), then: () => noSessionActivity("unreadable") },
+  { when: () => true, then: (b, project, nowMs) => sessionTail(b, sessionFile(b, project), nowMs) },
+];
+
+// Where this session's working set is, or null with no session mark or no project to keep one.
+export const sessionFileFor = (b) => ((project) => (project ? sessionFile(b, project) : null))(b.session ? quietly(() => sessionProject(b)) : null);
+
+const sessionActivityFor = (b, nowMs) => ((project) => SESSION_SOURCES.find((r) => r.when(b, project)).then(b, project, nowMs))(b.session ? quietly(() => sessionProject(b)) : null);
+
 // env: the command environment (commandEnvironment); cwd: where the command runs; opts: { pluginRoot, proc, node, input }
 export function bindPorts(env, cwd, opts = {}) {
   const found = runtimeProject(env, cwd);
   const machine = machineContext({ project: found.paths, config: found.config ?? {} }, env);
   const b = baseOf(env, found, machine.io, opts);
-  return { ...b, hostRow: hostRowOf(b.hostId, b.acceptance.passed), liveness: livenessOf(b), ...ownersOf(b), ...providersOf(b), ...resolverOf(b) };
+  return { ...b, hostRow: hostRowOf(b.hostId, b.acceptance.passed), liveness: livenessOf(b), sessionActivity: (nowMs) => sessionActivityFor(b, nowMs), ...ownersOf(b), ...providersOf(b), ...resolverOf(b) };
 }

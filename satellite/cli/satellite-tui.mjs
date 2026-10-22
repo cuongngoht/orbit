@@ -6,7 +6,7 @@
 // The mission is never touched.
 //
 //   runSatelliteTui(world, terminal, opts) -> Promise<{ why, mission, lifecycle, cursor }>   + .restore()
-//     world     { follower: { pull() -> { items: [{ record }] } }, nowMs() }
+//     world     { follower: { pull() -> { items: [{ record }] } }, nowMs(), activity?() -> this session's tool calls }
 //     terminal  { stdin, stdout, signals, term, colour }   process.stdin, process.stdout and process -- or a fake
 //     opts      { ascii, timers, paintMs, untilDone: { lingerMs } }
 //   tuiRefusal(terminal) -> null | why    a pipe or TERM=dumb gets `live watch --plain|--jsonl`
@@ -100,7 +100,7 @@ function pulled(t) {
 function ticked(t) {
   if (t.closed) return;
   for (const item of pulled(t)) t.projection.push(item.record);
-  if (!t.state.frozen || !t.shown) t.shown = liveViewOf(t.projection.model(), t.projection.events());
+  if (!t.state.frozen || !t.shown) t.shown = liveViewOf(t.projection.model(), t.projection.events(), quietly(() => t.world.activity?.()) ?? null);
   painted(t);
   lingered(t);
 }
@@ -165,7 +165,7 @@ export async function tuiMain(ports, args, term, id) {
   const terminal = realTerminal(term);
   const why = tuiRefusal(terminal);
   if (why) throw refused(Refused, "TUI_NEEDS_TERMINAL", why);
-  const out = await runSatelliteTui({ follower: createFollower(ports.io, journalOf(ports, id).file, { parse: journalLine, keep: false }), nowMs: () => Date.now() }, terminal, { ascii: has(args, "ascii"), untilDone: untilDoneOf(args) });
+  const out = await runSatelliteTui({ follower: createFollower(ports.io, journalOf(ports, id).file, { parse: journalLine, keep: false }), nowMs: () => Date.now(), activity: () => ports.sessionActivity(Date.now()) }, terminal, { ascii: has(args, "ascii"), untilDone: untilDoneOf(args) });
   return term.write(`${JSON.stringify(out)}\n`);
 }
 

@@ -93,3 +93,13 @@ test("through the real resolver, a capability nothing on this machine provides i
   assert.deepEqual([r.status, json(r).refused, json(r).rule], [2, true, "CAPABILITY_UNPROVIDED"]);
   assert.match(json(r).say, /nothing may serve runbook\.search now/);
 });
+
+test("a file already modified before a run and edited again during it still voids the run: the witness reads contents", (t) => {
+  const w = mission(t);
+  writeFileSync(join(w.repo, "src", "client.mjs"), "export const retries = 3;\n");
+  assert.equal(driven(w).status, 0);
+  writeFileSync(join(w.repo, "src", "client.mjs"), "export const retries = 1;\n");
+  assert.equal(w.git(["status", "--porcelain"]).stdout.trim(), "M src/client.mjs");
+  const r = satellite(w, ["agent", "report", w.msn, "arn-1"], REPORT);
+  assert.deepEqual([r.status, json(r).outcome], [0, "violated"]);
+});

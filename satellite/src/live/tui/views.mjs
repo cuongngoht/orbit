@@ -9,6 +9,8 @@ import { TONE_OF_HYPOTHESIS, TONE_OF_LEVEL, TONE_OF_STATE, TONE_OF_STATUS, VERDI
 
 const pad = (text, n) => String(text ?? "—").padEnd(n);
 
+const clockOf = (at) => String(at ?? "").slice(11, 19) || "--:--:--";
+
 const title = (text, extra) => [seg(text, "label"), dim(extra ? `  ${extra}` : "")];
 
 const none = (say) => [dim(`  ${say}`)];
@@ -70,10 +72,22 @@ const actionRow = (a) => [dim("  "), seg(pad(a.id, 7)), seg(pad(a.type, 17)), se
 
 const toolCallRows = (v) => Object.entries(v.tools.byRun).map(([run, n]) => [dim("  "), seg(pad(run, 9)), dim(`${n} tool call(s) observed`)]);
 
+// Why a viewer shows none of this session's tool calls, in the source's own word.
+const SESSION_SAY = Object.freeze({ off: "the working set is switched off here (ORBIT_WORKING_SET=off)", "no-session": "this viewer has no session mark, so no session's calls are read", "no-project": "no project here keeps a working set", unreadable: "this session's working set could not be read" });
+
+const okWord = (ok) => (ok === true ? "ok" : ok === false ? "failed" : "");
+
+const sessionRow = (e) => [dim(`  ${clockOf(e.at)}  `), seg(pad(e.kind, 9)), seg(pad(e.what ?? e.class ?? "", 40)), seg(okWord(e.ok), e.ok === false ? "danger" : "subtle")];
+
+const sessionRows = (s) => (!s ? [none("not read by this viewer")] : s.source !== "ok" ? [none(SESSION_SAY[s.source] ?? s.source)] : s.recent.map(sessionRow));
+
+const sessionTitle = (s) => (s?.source === "ok" ? `${s.observed} observed${s.partial ? " lately" : ""} · ${s.running} running · attributed to no agent run` : "attributed to no agent run");
+
 const toolsRows = (v) => [
   ...block(["EXECUTING NOW", `${v.execution.open.length} open`], v.execution.open.map(actionRow), "nothing is executing"),
   ...block(["RECENT ACTIONS", "newest first"], [...v.execution.recent].reverse().map(actionRow), "no action yet"),
-  ...block(["HOST TOOL CALLS"], toolCallRows(v), "no hook reports this host's tool calls here: which agent run made a call is UNOBSERVED"),
+  ...block(["THIS SESSION'S TOOL CALLS", sessionTitle(v.tools.session)], sessionRows(v.tools.session), "none observed yet"),
+  ...block(["TOOL CALLS BY AGENT RUN"], toolCallRows(v), "no hook attributes a host's tool call to an agent run here: per run it is UNOBSERVED"),
 ];
 
 // ---- 7 Memory: what one unit handed the next, what was recalled, what is pinned, what was kept for recovery --------
@@ -94,8 +108,6 @@ const memoryRows = (v) => [
 ];
 
 // ---- 8 Timeline: every event as orbit.satellite.event/v1 named it, by its sequence --------------------------------
-
-const clockOf = (at) => String(at ?? "").slice(11, 19) || "--:--:--";
 
 const eventRow = (e) => [dim(`  ${String(e.seq).padStart(4)}  ${clockOf(e.at)}  `), seg(pad(e.kind, 22)), seg(pad(e.mode ?? "", 17), "info"), seg(pad(e.agentRunId ?? "", 7)), dim(`${e.actionId ?? ""}${e.actionStatus ? ` ${e.actionStatus}` : ""}${e.parentActionId ? ` ⊂ ${e.parentActionId}` : ""}`)];
 

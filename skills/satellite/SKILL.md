@@ -49,6 +49,7 @@ yourself: they need a terminal of their own. A viewer that cannot open never sto
 S mission start --stdin            # the person's whole goal on stdin, exactly as given
 S mission list                     # an earlier mission: continue it instead of starting another
 S mission context <msn>            # what stands, what is allowed now, and `next`
+S mission step <msn> < decision.json   # ONE decision: judged before anything runs, recorded before its effect
 ```
 
 Read `context` before EVERY decision: its `revision` is your decision's `expectedRevision`, `allowed` says which
@@ -81,6 +82,12 @@ never carry. When evidence moves the plan, `replan` with the cause the engine's 
   those is REUSED; otherwise one is GENERATED and named from its responsibilities. A role's name grants nothing.
 - `resolve-template`: the agent template for that role and the unit's provider; the same one is reused across
   missions.
+- `resolve-skill` for a capability a unit needs: a playbook this project already pinned is REUSED, one the resolver
+  finds is WRAPPED, and only a gap Orbit's own skill-factory limits allow is GENERATED -- an instruction-only draft
+  you fill with `write-skill`, then `validate-skill` and `register-skill`. A capability a person disabled or a policy
+  blocks is BLOCKED, and you never generate around it.
+- `plan` with `workflow` and `params` instantiates a pinned workflow template (`resolve-workflow` validates and pins
+  one first): its units are fresh, and a template never carries a state.
 
 ## 5. Dispatch, run the agent, report
 
@@ -89,6 +96,12 @@ never carry. When evidence moves the plan, `replan` with the cause the engine's 
   the envelope itself (its instruction, context slice, grants and report shape) -- never the conversation. Several
   ready units may be in flight at once, up to the mission's concurrency; when `envelope.dispatch.mode` is `serial`
   (no native agents on this host), follow the instruction yourself in this session, one run at a time.
+- When a run needs what a managed server or a project capability answers, `invoke` asks it ONCE on the run's behalf
+  -- before you launch the run's agent, or on a serial host while you follow its instruction:
+  `{ "kind": "invoke", "capability": "<dotted>", "agentRun": "<arn>", "tool": "…", "input": {…}, "expects": [...] }`.
+  The answer comes back once in `result.answer`: hand it to the run, because the journal keeps only its digests. Only a
+  run whose mode reads through a provider (EXPLORING) may ask; a provider that waits for a person's approval, a host's
+  own server, and one that reads through a connection's credential are refused, with nothing asked.
 - Right after launching a run, `S agent ack <msn> <arn>` records that you launched it (your word, said as such).
 - When the agent returns its report JSON, pipe it unchanged: `S agent report <msn> <arn> < report.json`. The engine
   reads every evidence reference back from its owner and decides what the run came to. `EVIDENCE_PENDING` means an
@@ -107,6 +120,7 @@ with what is still owed. `S mission finish <msn> --stop=<REASON> --because="…"
 - invent an evidence reference, or report a check as passing that an owner's record does not show;
 - edit the developer's checkout -- source changes only inside an engineering task's own workspace;
 - pass `--human`, approve anything, or raise a limit;
+- send a secret in a goal, an input or a report -- a secret is named, never sent;
 - resend a step that did not settle, or report a run twice;
 - run `S live tui` or `S live watch` in your own terminal;
 - commit, push, merge or deploy;

@@ -4,12 +4,13 @@
 
 Orbit is a host plugin (Claude Code, Codex, Antigravity CLI, Grok Build) that keeps durable **goals**, **project knowledge**, **requirements**, **runtime understanding**, **UI tests**, **autonomous engineering**, **autonomous QA**, **Orbit Live**, and **Orbit Control** on your machine — with evidence and governance, no cloud dependency, and zero npm dependencies in the engine.
 
-## Two entry points
+## Entry points
 
 | Entry | Use for |
 |-------|---------|
 | **`orbit`** | Full goals: multi-step work, PBIs, acceptance criteria, analyze → plan → execute → verify → report. Prefer `stdin` or `--file` for complete specification text. |
 | **`orbit-help`** | Navigation and bounded coordination: where to start, one recommended workflow, continuing tracked work — not a second goal journal. |
+| **`satellite`** | Autonomous multi-agent missions (0.1.1): any goal taken through an investigated, revisable work graph of fresh agent runs, each under a least-privilege profile, settled only on evidence an independent owner keeps. |
 
 Specialized skills (`orbit-develop`, `orbit-engineer`, `orbit-qa`, `orbit-ui-test`, …) and role agents (`orbit-qa-case-writer`, `orbit-engineering-agent`, …) handle one capability each; the engine enforces deterministic rules.
 
@@ -144,6 +145,29 @@ node acceptance/run.mjs [--stack=…] [--variant=…]              # the native 
 
 Security catalogs (ASVS 5.0.0 L1 by default, labelled with the OWASP Top 10 2025 and the API Security Top 10 2023),
 limits, isolation and trust are a person's, set in Orbit Control ([ADR 0040](docs/adr/0040-standards-and-policies-are-configured-in-orbit-control.md)).
+
+## Orbit Satellite (0.1.1)
+
+`/orbit:satellite <goal>` (or `node <orbit>/satellite/cli/satellite.mjs` on any host) takes a goal through a mission:
+the goal becomes a structured intent, an investigation comes before any decision about who changes what, and a work
+graph is revised only on evidence. Roles, agent templates, skills and workflows are reused first and generated only
+when nothing covers the need, each an immutable definition pinned by digest and reused across missions. Every work
+unit goes to a fresh agent run under a least-privilege profile, through one execution gateway, in a mode of its own.
+A source change happens only in an Orbit engineering task's own workspace, and a criterion is VERIFIED only by an
+independent owner's record: an engineering task's verification, a declared check or a QA investigation.
+
+```bash
+node satellite/cli/satellite.mjs mission start --stdin < goal.txt      # a mission, the goal kept as submitted
+node satellite/cli/satellite.mjs mission context <msn>                 # what stands, what is allowed, the next step
+node satellite/cli/satellite.mjs mission step <msn> < decision.json    # one decision, judged before anything runs
+node satellite/cli/satellite.mjs live tui <msn>                        # Satellite Live: nine views, every action in its mode
+node satellite/cli/satellite.mjs host capabilities                     # what this host can do, verified or reported
+```
+
+Claude Code dispatches agent runs natively and in parallel; Codex, Antigravity CLI and Grok Build run them serially in
+the main session, and the envelope says so. A host capability is `verified` only on a native acceptance receipt for the
+same source. Details: [satellite/docs/README.md](satellite/docs/README.md) and
+[ADR 0041](docs/adr/0041-orbit-satellite-is-a-mission-journal-above-owners.md).
 
 ## Architecture notes
 

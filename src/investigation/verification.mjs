@@ -57,7 +57,7 @@ export const accusesProduct = (id) => verificationOutcomeOf(id)?.defect === true
 // observation that could not see everything never passes.
 //
 // facts: { status, failure: { helperClass, gap, ambiguous, contradiction, authorization },
-//          envelope: [findings], stale, authority }
+//          envelope: [findings], stale, authority, positiveFailed }
 const failure = (f) => f.failure ?? {};
 
 export const RESULT = [
@@ -71,6 +71,7 @@ export const RESULT = [
   { id: "TOOL_BROKE", when: (f) => f.status === "BLOCKED" && failure(f).helperClass === "protocol", word: "EXECUTION_ERROR", why: "a provider answered something no engine can read" },
   { id: "NOT_READY", when: (f) => f.status === "BLOCKED", word: "ENVIRONMENT_BLOCKED", why: "the sandbox or a dependency was not ready, or a budget was spent" },
   { id: "NO_ORACLE", when: (f) => f.authority !== "accepted", word: "REQUIRES_REQUIREMENT", why: "no accepted oracle stands behind it — a draft prepares a test and never rules on one" },
+  { id: "POSITIVE_CONTROL", when: (f) => f.status === "FAIL" && f.positiveFailed === true, word: "INCONCLUSIVE", why: "the positive control did not hold, so the refusal this obligation is about proves nothing — what it contradicted is its own criterion's finding" },
   { id: "CONTRADICTED", when: (f) => f.status === "FAIL" && failure(f).contradiction === true, word: "CONTRADICTED", why: "a verdict compiled from the accepted oracle was contradicted by what was observed" },
   { id: "STEP_FAILED", when: (f) => f.status === "FAIL", word: "EXECUTION_ERROR", why: "a step failed before any verdict could rule" },
   { id: "MET", when: (f) => f.status === "PASS", word: "SATISFIED", why: "every verdict held, against the accepted oracle" },
@@ -94,11 +95,12 @@ export function attemptsOutcome(words) {
   return row.word ?? words.at(-1) ?? "INCONCLUSIVE";
 }
 
-// Across an obligation's CONTROLS: a negative proves nothing without its positive, so a positive that
-// was not satisfied leaves the obligation INCONCLUSIVE whatever the negative did; a contradiction
-// anywhere else stands; only every control satisfied satisfies it.
+// Across an obligation's CONTROLS: a negative proves nothing without its positive (doc §7, §15 group
+// 5), so a positive that was not satisfied leaves the obligation INCONCLUSIVE whatever the negative
+// did -- what the positive contradicts is its OWN criterion's finding, made by that criterion's own
+// obligation; a contradiction anywhere else stands; only every control satisfied satisfies it.
 export const OBLIGATION = [
-  { id: "POSITIVE_FAILED", when: (c) => c.positive !== undefined && c.positive !== "SATISFIED", word: (c) => (c.positive === "CONTRADICTED" ? "CONTRADICTED" : "INCONCLUSIVE") },
+  { id: "POSITIVE_FAILED", when: (c) => c.positive !== undefined && c.positive !== "SATISFIED", word: () => "INCONCLUSIVE" },
   { id: "CONTRADICTED", when: (c) => Object.values(c).includes("CONTRADICTED"), word: () => "CONTRADICTED" },
   { id: "ALL_MET", when: (c) => Object.values(c).length > 0 && Object.values(c).every((w) => w === "SATISFIED"), word: () => "SATISFIED" },
   { id: "FIRST_UNMET", when: () => true, word: (c) => Object.values(c).find((w) => w !== "SATISFIED") ?? "INCONCLUSIVE" },

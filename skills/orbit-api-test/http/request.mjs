@@ -22,11 +22,13 @@ const PATH_RULES = [
 
 export const pathProblem = (path) => PATH_RULES.find((r) => r.when(path))?.say ?? null;
 
-// The URL, resolved against the bound origin and held to it: a path that resolves anywhere else
-// is refused rather than sent.
+// The URL, resolved against the bound endpoint and held to its origin: a path that resolves anywhere
+// else is refused rather than sent. The path is RELATIVE TO THE ENDPOINT: one bound with a base path
+// (`http://app:8080/api`) keeps it, so a case's `/invoices/inv-a` is `/api/invoices/inv-a` there --
+// never the origin's root.
 export function urlOf(origin, path, query) {
   const base = new URL(origin);
-  const url = new URL(path, base);
+  const url = new URL(`${base.pathname.replace(/\/+$/, "")}${path}`, base.origin);
   for (const [k, v] of Object.entries(query ?? {}).sort(([a], [b]) => (a < b ? -1 : 1))) url.searchParams.append(k, String(v));
   return url.origin === base.origin ? { url } : { problem: `the path left the bound origin ${base.origin}` };
 }

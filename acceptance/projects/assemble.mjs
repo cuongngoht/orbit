@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Assembles ONE stack into a self-contained project directory -- what an acceptance run makes a
-// checkout of. It holds the stack's own files, the shared application and the shared contracts
-// byte for byte (so both stacks are held to identical contracts), and the import closure of any
+// checkout of. It holds the stack's own files, the shared application, the shared contracts and the
+// shared ACCEPTED plan byte for byte (so both stacks are held to identical contracts), and the import closure of any
 // client the stack vendors -- nothing else of this repository, and nothing under src/.
 //
 //   node acceptance/projects/assemble.mjs <invoice-a | invoice-b> <dest> [--variant=<name>] [--force]
@@ -50,6 +50,7 @@ export function assemble(stack, dest, { variant = "correct", force = false } = {
   cpSync(join(HERE, stack), dest, { recursive: true });
   cpSync(join(HERE, "_shared", "app"), join(dest, "app"), { recursive: true });
   cpSync(join(HERE, "_shared", "contracts"), join(dest, "contracts"), { recursive: true });
+  cpSync(join(HERE, "_shared", "ui-tests"), join(dest, "ui-tests"), { recursive: true });
   for (const [name, entry] of Object.entries(STACKS[stack].vendor)) {
     mkdirSync(join(dest, "vendor", name), { recursive: true });
     for (const file of closureOf(entry)) copyFileSync(file, join(dest, "vendor", name, file.slice(dirname(entry).length + 1)));

@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import { HELPER_API } from "../src/capability/helper.mjs";
 import { exchange } from "../skills/orbit-api-test/http/exchange.mjs";
 import { MASK } from "../skills/orbit-api-test/http/response.mjs";
+import { pathProblem } from "../skills/orbit-api-test/http/request.mjs";
 import { schemaDigest } from "../skills/orbit-api-test/schema.mjs";
 import capabilities from "../skills/orbit-api-test/capabilities.mjs";
 import { createCapabilityRegistry } from "../src/capability/registry.mjs";
@@ -23,6 +24,7 @@ const server = { origin: null, http: null, seen: [] };
 
 const ROUTES = {
   "GET /invoices/inv-a": (req) => (TOKENS[bearer(req)] === "tenant-a" ? [200, { id: "inv-a", tenantId: "tenant-a", name: "canary-a" }] : [404, { error: "not_found" }]),
+  "GET /api/invoices/inv-a": (req) => (TOKENS[bearer(req)] === "tenant-a" ? [200, { id: "inv-a", via: "/api" }] : [404, { error: "not_found" }]),
   "GET /echo": (req) => [200, { youSent: req.headers.authorization ?? null }],
   "GET /big": () => [200, "x".repeat(4096)],
   "GET /same": () => [302, null, { location: "/invoices/inv-a" }],
@@ -78,6 +80,16 @@ test("the owner reads its own invoice and another tenant is told not_found -- bo
   assert.equal(JSON.stringify(theirs.value.body).includes("canary-a"), false);
   const boom = await exchange(asked({ path: "/boom" }), deps());
   assert.equal(boom.value.status, 500, "a 500 is what the product answered, not a helper failure");
+});
+
+test("a path is relative to the BOUND endpoint: an endpoint bound with a base path keeps it, and the path never climbs out of it", async () => {
+  const based = await exchange(asked({ path: "/invoices/inv-a" }, { bound: { endpointRef: { alias: "backend", origin: `${server.origin}/api` } } }), deps("token-a"));
+  assert.deepEqual([based.value.status, based.value.body], [200, { id: "inv-a", via: "/api" }]);
+  assert.equal(server.seen.at(-1).url, "/api/invoices/inv-a");
+  const slashed = await exchange(asked({ path: "/invoices/inv-a" }, { bound: { endpointRef: { alias: "backend", origin: `${server.origin}/api/` } } }), deps("token-a"));
+  assert.equal(server.seen.at(-1).url, "/api/invoices/inv-a", "one slash between them, whichever side brought it");
+  assert.equal(slashed.value.status, 200);
+  assert.match(String(pathProblem("/../../etc/passwd")), /./, "a path that climbs is refused before it is joined to anything");
 });
 
 test("headers are an allow-list both ways, and a credential the product echoes never leaves the helper", async () => {

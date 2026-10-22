@@ -52,7 +52,8 @@ test("nothing makes a word stronger than its evidence", () => {
 
 test("a negative proves nothing without its positive; a contradiction anywhere stands; only all met satisfies", () => {
   assert.equal(obligationOutcome({ positive: "ENVIRONMENT_BLOCKED", negative: "SATISFIED" }).outcome, "INCONCLUSIVE");
-  assert.equal(obligationOutcome({ positive: "CONTRADICTED", negative: "SATISFIED" }).outcome, "CONTRADICTED", "the allowed actor refused is itself a defect");
+  assert.equal(obligationOutcome({ positive: "CONTRADICTED", negative: "SATISFIED" }).outcome, "INCONCLUSIVE", "a refusal of everybody proves nothing about permission -- the allowed actor's refusal is its own criterion's finding");
+  assert.deepEqual(resultOf({ status: "FAIL", failure: { contradiction: true }, envelope: [], authority: "accepted", positiveFailed: true }), { outcome: "INCONCLUSIVE", rule: "POSITIVE_CONTROL", why: RESULT.find((r) => r.id === "POSITIVE_CONTROL").why });
   assert.equal(obligationOutcome({ positive: "SATISFIED", negative: "CONTRADICTED" }).outcome, "CONTRADICTED");
   assert.equal(obligationOutcome({ positive: "SATISFIED", negative: "SATISFIED", state: "SATISFIED" }).outcome, "SATISFIED");
   assert.equal(obligationOutcome({ positive: "SATISFIED", state: "INCONCLUSIVE" }).outcome, "INCONCLUSIVE");

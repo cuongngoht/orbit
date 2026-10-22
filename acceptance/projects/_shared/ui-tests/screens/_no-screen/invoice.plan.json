@@ -230,7 +230,55 @@
         }
       },
       "readiness": "ready",
-      "repeat": null
+      "repeat": {
+        "kind": "retry",
+        "expect": "the redelivered message changes nothing: still one reminder for the business key",
+        "extra": "a second reminder, a second notification"
+      }
+    },
+    {
+      "id": "S4",
+      "name": "Tenant B's own data is untouched by tenant A's read",
+      "covers": [
+        "API-AC-2"
+      ],
+      "technique": "scoping",
+      "why": "isolation is two-way: a read must neither leak nor reach across",
+      "priority": "P2",
+      "readiness": "ready",
+      "actor": {
+        "as": "tenant-a-reader",
+        "roles": [
+          "reader"
+        ],
+        "owner": "tenant-a",
+        "state": "tenant B has its own invoice"
+      },
+      "intent": [
+        "read inv-a as tenant A",
+        "tenant B's invoice is unchanged"
+      ],
+      "expect": {
+        "api": {
+          "need": "required",
+          "says": "tenant A's read answers only tenant A's invoice"
+        }
+      },
+      "denial": {
+        "lacks": [
+          "tenant-b"
+        ],
+        "action": "see tenant B's invoice in tenant A's answer",
+        "backend": {
+          "need": "required",
+          "says": "nothing of tenant B is in the answer"
+        },
+        "unchanged": {
+          "need": "required",
+          "says": "tenant B's invoice is as it was"
+        },
+        "because": "scoping is what a tenant may see, not only what it may not read"
+      }
     }
   ]
 }

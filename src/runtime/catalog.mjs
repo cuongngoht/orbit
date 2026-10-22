@@ -75,7 +75,7 @@ const CONTAINER_PATH = /^\/[A-Za-z0-9._/-]{0,200}$/;
 
 const pathOr = (v, fallback) => (typeof v === "string" && CONTAINER_PATH.test(v) ? v : fallback);
 
-const workerOf = (w) => ({ argv: list(w?.argv), plugin: pathOr(w?.plugin, null), in: pathOr(w?.in, null), out: pathOr(w?.out, null), home: pathOr(w?.home, null), store: pathOr(w?.store, null), project: pathOr(w?.project, null), case: pathOr(w?.case, null) });
+const workerOf = (w) => ({ argv: list(w?.argv), plugin: pathOr(w?.plugin, null), in: pathOr(w?.in, null), out: pathOr(w?.out, null), home: pathOr(w?.home, null), store: pathOr(w?.store, null), project: pathOr(w?.project, null) });
 
 const isolationOf = (i) => ({ worker: workerOf(i?.worker), pod: { argv: list(i?.pod?.argv) }, probe: typeof i?.probe === "string" ? i.probe : null, appMount: pathOr(i?.appMount, null) });
 

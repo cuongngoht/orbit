@@ -124,8 +124,10 @@ function settle(w, taken, outcome) {
   return w.store.append(w.id, "settled", { id: nextId(lw.model, "settled"), decision: taken.decision.id, state: outcome.state, refs: refs.map((r) => r.id), why: outcome.why ?? null, progress, snapshot: { ...snapshotOf(lw.obligations, lw.model.position + 1), stop: stopOf(lw) } });
 }
 
-// What this step put on the journal, in journal order: the records after its decision.
-const EVIDENCE = new Set(["action", "observation", "check", "security", "run", "reproduction", "question", "draft"]);
+// What this step put on the journal, in journal order: the records after its decision. A design and the version
+// frozen from it are steps a generated test's obligation took -- written once each, so proposing the same design
+// again puts nothing new here and teaches nothing.
+const EVIDENCE = new Set(["action", "observation", "check", "security", "run", "reproduction", "question", "draft", "designed", "version"]);
 
 function evidenceSince(w, decisionId) {
   const records = w.store.read(w.id);

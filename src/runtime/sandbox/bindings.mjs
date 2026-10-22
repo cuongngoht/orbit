@@ -146,16 +146,20 @@ function hooked(protocol) {
 // The run's binder issues it there (src/run/worker.mjs), and its token goes nowhere but a helper's environment.
 function identity(ref, input) {
   const issued = input.minted?.identities?.[ref.alias];
-  if (issued?.token) return { value: { alias: ref.alias, principal: issued.principal ?? ref.alias, env: SECRET(ref.alias, "TOKEN") }, secrets: { [SECRET(ref.alias, "TOKEN")]: issued.token } };
+  if (issued?.token) return { value: { alias: ref.alias, principal: issued.principal ?? ref.alias, ...BEARER, env: SECRET(ref.alias, "TOKEN") }, secrets: { [SECRET(ref.alias, "TOKEN")]: issued.token } };
   return issuedInside(ref, input);
 }
+
+// How an issued identity's token is presented: orbit.identity/v1 issues BEARER tokens, so a helper sends one as
+// `authorization: Bearer <token>` -- said by the binding, never left to a helper's guess.
+const BEARER = { header: "authorization", scheme: "Bearer" };
 
 function issuedInside(ref, input) {
   const d = declared(ref, input);
   if (d.why) return { why: `no identity named ${ref.alias} was issued for this run, and ${d.why}` };
   if (!input.minted?.hooksToken) return { why: `${ref.alias} is issued through test hooks, and this sandbox minted no hooks token` };
   const port = portNumber(d.decl.port);
-  return port ? { value: { alias: ref.alias, principal: d.decl.principal, tenant: d.decl.tenant, env: SECRET(ref.alias, "TOKEN"), issue: { transport: HOOK_PROTOCOLS.identity, origin: `http://${hostOf(d.node, input.topology)}:${port}`, credential: { tokenEnv: HOOKS_TOKEN } } }, secrets: { [HOOKS_TOKEN]: input.minted.hooksToken } } : { why: `${ref.alias}'s hooks name no port a TCP port can be` };
+  return port ? { value: { alias: ref.alias, principal: d.decl.principal, tenant: d.decl.tenant, ...BEARER, env: SECRET(ref.alias, "TOKEN"), issue: { transport: HOOK_PROTOCOLS.identity, origin: `http://${hostOf(d.node, input.topology)}:${port}`, credential: { tokenEnv: HOOKS_TOKEN } } }, secrets: { [HOOKS_TOKEN]: input.minted.hooksToken } } : { why: `${ref.alias}'s hooks name no port a TCP port can be` };
 }
 
 function asDeclared(ref, input) {

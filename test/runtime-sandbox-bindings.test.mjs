@@ -151,7 +151,7 @@ test("an identity the host cannot issue is sealed as HOW to issue it inside: a p
   assert.equal(declarationsFrom({ graph, design: {} })("identity", "tenant-b-reader"), null, "no tenant a person declared is no identity -- never one read off the code");
   const out = sealedBindings(input({ refs: [{ kind: "identity", alias: "tenant-b-reader" }], declarationOf: decl }));
   assert.deepEqual(out.gaps, []);
-  assert.deepEqual(out.bindings.identity["tenant-b-reader"], { alias: "tenant-b-reader", principal: "tenant-b-reader", tenant: "tenant-b", env: "ORBIT_BIND_TENANT_B_READER_TOKEN", issue: { transport: "orbit-identity-v1", origin: "http://invoice-app:9090", credential: { tokenEnv: "ORBIT_BIND_HOOKS_TOKEN" } } });
+  assert.deepEqual(out.bindings.identity["tenant-b-reader"], { alias: "tenant-b-reader", principal: "tenant-b-reader", tenant: "tenant-b", header: "authorization", scheme: "Bearer", env: "ORBIT_BIND_TENANT_B_READER_TOKEN", issue: { transport: "orbit-identity-v1", origin: "http://invoice-app:9090", credential: { tokenEnv: "ORBIT_BIND_HOOKS_TOKEN" } } }, "a bearer token, said by the binding");
   assert.deepEqual(out.secrets, { ORBIT_BIND_HOOKS_TOKEN: "s3cr3t-hooks" }, "the hooks' token is sealed; the identity's own is issued inside, and nowhere else");
   assert.match(sealedBindings(input({ refs: [{ kind: "identity", alias: "tenant-b-reader" }], declarationOf: decl, minted: {} })).gaps[0].why, /minted no hooks token/);
   const minted = sealedBindings(input({ refs: [{ kind: "identity", alias: "tenant-b-reader" }], declarationOf: decl, minted: { identities: { "tenant-b-reader": { token: "issued-by-the-host" } } } }));

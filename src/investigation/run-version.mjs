@@ -105,9 +105,20 @@ function intended(w, v, attempt, p, execution, request) {
 // The host's own check, then the word RESULT gives it -- recorded as the run and its evaluation.
 function evaluatedRun(w, d, v, attempt, execution, request, r, p) {
   const findings = hostFindings(d, v, execution, request, r, p);
-  const result = resultOf({ status: r.envelope?.status ?? "BLOCKED", failure: r.envelope?.result?.failure ?? {}, envelope: findings, authority: v.obligation?.authority ?? "accepted" });
+  const result = resultOf({ status: r.envelope?.status ?? "BLOCKED", failure: r.envelope?.result?.failure ?? {}, envelope: findings, authority: v.obligation?.authority ?? "accepted", positiveFailed: positiveFailed(v, r) });
   recorded(w, d, { v, attempt, execution }, r, result, findings);
   return { outcome: result.outcome, rule: result.rule, why: result.why, execution, findings };
+}
+
+// Whether the step that failed is a POSITIVE control a negative one rests on: a step that acts as the identity a
+// positive control names, in a design that also names a negative control -- a design with no negative is about its
+// positive case itself, and what contradicts it is its own finding. Read off the frozen case and the run log's own
+// record of the step that failed -- the record the host holds the worker's claim to -- never a field the worker added.
+function positiveFailed(v, r) {
+  const controls = v.design.controls ?? [];
+  const ids = controls.filter((c) => c.role === "positive" && c.identityRef).map((c) => c.identityRef);
+  const at = (r.records ?? []).find((x) => x.kind === "step" && x.ok === false)?.i;
+  return controls.some((c) => c.role === "negative") && Number.isInteger(at) && ids.includes(v.frozen.case.steps?.[at - 1]?.input?.identityRef);
 }
 
 // Nothing a worker said is taken: the envelope is held to what was dispatched, the files the host

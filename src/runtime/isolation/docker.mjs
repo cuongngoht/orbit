@@ -146,7 +146,9 @@ const storage = (s) => [...(s.mounts ?? []).flatMap((m) => ["--mount", mountArg(
 const flags = (s, file) => ["--name", s.name, ...networkArgs(s.network), ...labelArgs(s.labels), ...hardening(s), ...storage(s), ...limitArgs(s.limits), ...envArgs(s.env, file), ...(s.workdir ? ["-w", s.workdir] : [])];
 
 // `file` is the scratch env file a call's values are in (null when it hands none).
-export const createArgv = (s, file = null) => ["create", ...flags(s, file), s.image, ...(s.argv ?? [])];
+// A container that is handed its input on stdin (a worker's one request) is created with stdin kept open: `start -a -i`
+// attaches to a stdin only a container created with one has.
+export const createArgv = (s, file = null) => ["create", ...(s.stdin === true ? ["-i"] : []), ...flags(s, file), s.image, ...(s.argv ?? [])];
 
 export const runOnceArgv = (s, file = null) => ["run", "--rm", "-i", ...flags(s, file), s.image, ...(s.argv ?? [])];
 

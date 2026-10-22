@@ -5,6 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EGRESS, NETWORK_PROFILE, PREPARED_EGRESS, PROFILE, attestation, attestedNow, egressFrom } from "../src/runtime/sandbox/isolation.mjs";
 import { ISOLATION_DEFAULTS, effectivePolicy } from "../src/runtime/sandbox/policy.mjs";
+import { LOOKUP_PROBE_MS, PROBE_TIMEOUT_MS } from "../src/runtime/sandbox/network.mjs";
 import { fakeIsolation } from "./fakes/isolation.mjs";
 import { fakeReach } from "./fakes/reach.mjs";
 import { SHIPPED_CATALOG } from "./fakes/runtime.mjs";
@@ -112,7 +113,9 @@ test("the egress name is asked as a name and the egress address as a literal, ea
   assert.deepEqual(iso.state.probes.map((p) => [p.host, p.port]), [["example.com", "443"], ["93.184.215.14", "443"]]);
   const spec = iso.state.probes[0].spec;
   assert.deepEqual([spec.image, spec.network, spec.readOnly, spec.capDrop, spec.noNewPrivileges, spec.labels["orbit.role"]], [PIN, { mode: "network", name: "orbit-net", alias: null }, true, ["ALL"], true, "probe"]);
-  assert.deepEqual(spec.argv.slice(-3), ["example.com", "443", "3000"], "the host, the port and the deadline are arguments of their own");
+  assert.deepEqual(spec.argv.slice(-3), ["example.com", "443", String(LOOKUP_PROBE_MS)], "the host, the port and the deadline are arguments of their own -- a name's deadline longer than a stub resolver's own, so its answer is evidence");
+  assert.deepEqual(iso.state.probes[1].spec.argv.slice(-1), [String(PROBE_TIMEOUT_MS)], "an address is tried for the ordinary deadline");
+  assert.ok(LOOKUP_PROBE_MS > 5000);
 });
 
 test("a person's literal address is tried as it is; one that says nothing about leaving -- a loopback -- is never tried", async () => {

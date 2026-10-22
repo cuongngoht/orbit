@@ -88,7 +88,7 @@ export function generationPort(b) {
 function generationContext(b, obligation, a) {
   const r = resolver({ ...b, graph: b.graph(), topology: quietly(() => b.topology?.()), design: a.design });
   const steps = a.design?.skeleton?.steps ?? [];
-  return { expectations: expectationsOf(b, obligation), outputsOf: (i) => outputsOf(r, steps[i - 1]), semanticsOf: (i) => semanticsOf(r, steps[i - 1]), observerSemantics: (ref) => observerSemantics(r, ref), shape: shapeOf(obligation.shape), caseId: caseIdOf(obligation, a.design), title: titleOf(obligation), validate: (c) => validate(c, b.ctx.graph, b.ctx.dsl, b.ctx.validators, r.lookup), inputFindings: (s) => inputFindings(r.lookup(s.capability), s.input), dsl: b.ctx.dsl, pageOf: (id) => r.lookup(id)?.page };
+  return { expectations: expectationsOf(b, obligation), expected: obligation.expected ?? [], outputsOf: (i) => outputsOf(r, steps[i - 1]), semanticsOf: (i) => semanticsOf(r, steps[i - 1]), observerSemantics: (ref) => observerSemantics(r, ref), shape: shapeOf(obligation.shape), caseId: caseIdOf(obligation, a.design), title: titleOf(obligation), validate: (c) => validate(c, b.ctx.graph, b.ctx.dsl, b.ctx.validators, r.lookup), inputFindings: (s) => inputFindings(r.lookup(s.capability), s.input), dsl: b.ctx.dsl, pageOf: (id) => r.lookup(id)?.page };
 }
 
 // A topology that cannot be composed is no topology: what it would have said is then unknown.
@@ -99,12 +99,13 @@ function topologyNow(fn) {
   catch (e) { return { needs: "environment", say: e.message }; }
 }
 
-// The expectations an obligation may rule on: what its ACCEPTED plan bindings state, read back now and held to the
-// digest they were bound at -- a plan that moved since states nothing here, and a draft states nothing at all.
+// The expectations an obligation's design may rule on: what its ACCEPTED plan bindings state, read back now and held
+// to the digest they were bound at -- a plan that moved since states nothing here, and a draft states nothing at all.
+// Every accepted criterion of those plans may rule (a permission's positive control is another criterion's), and the
+// generator holds the design to ruling on each slot of the obligation's OWN criterion (`expected`).
 function expectationsOf(b, obligation) {
   const bound = b.model().bindings.filter((x) => x.type === "plan" && x.authority === "accepted" && (obligation.bindings ?? []).includes(x.binding));
-  const all = bound.flatMap((x) => expectsOf(b.planOf(x.ref), x));
-  return new Map(all.filter(([key]) => !obligation.expected || obligation.expected.includes(key)));
+  return new Map(bound.flatMap((x) => expectsOf(b.planOf(x.ref), x)));
 }
 
 const expectsOf = (plan, binding) => (plan && planDigestOf(plan) === binding.digest ? (plan.criteria ?? []).flatMap((c) => (c.expects ?? []).map((e) => [`${c.id}/${e.id}`, e])) : []);
@@ -119,7 +120,7 @@ const versionsOf = (ctx) => ({ engineVersion: engineVersion() ?? "unknown", vali
 // ── dispatch ───────────────────────────────────────────────────────────────
 
 // in: { ctx, model(), graph(), topology(), services, sandbox: {id, task, tree, currentTree, isolated}, mode, settings,
-//       policy: {revision, writes}, place: {case, out}, hooksToken(), now(), runtime: {dirs(run), dispatch(request)},
+//       policy: {revision, writes}, place: {in, out}, hooksToken(), now(), runtime: {dirs(run), dispatch(request)},
 //       project: {name, packs, sql, graphDir}, keep(dir, run) }
 export function dispatchPort(b) {
   return { prepare: (x) => prepared(b, x), run: (x) => ran(b, x), keep: (r) => (r.evidence ? b.keep(r.evidence, r.envelope.runId) : null), provedBy: (s) => b.ctx.dsl.provedBy(s), canStop: (s) => typeof b.ctx.executors?.resolve?.(s.do)?.stops === "function" };
@@ -145,7 +146,13 @@ const observingAdapter = (r, transport) => (r.ctx.adapters?.list?.() ?? []).filt
 function withGrants(b, r, x, sealed) {
   const fixture = { namespace: namespaceOf(x.execution), resources: boundAliases(sealed) };
   const minted = mutatingCalls(r, x.frozen.case).map((m) => mintGrant(grantWorld(b, r, x, m, fixture)));
-  return { ...sealed, gaps: [...sealed.gaps, ...unarmedGaps(x)], grants: minted.flatMap((m) => (m.grant ? [m.grant] : [])), refused: minted.flatMap((m) => m.refused), fixture, sandbox: b.sandbox.id, tree: b.sandbox.tree, place: b.place, deadlineMs: deadlineOf(b) };
+  return { ...sealed, gaps: [...sealed.gaps, ...unarmedGaps(x)], grants: minted.flatMap((m) => (m.grant ? [m.grant] : [])), refused: minted.flatMap((m) => m.refused), fixture, sandbox: b.sandbox.id, tree: b.sandbox.tree, place: placeOf(b, x.frozen.case), deadlineMs: deadlineOf(b) };
+}
+
+// Where the worker finds the frozen case -- beside its project in its inputs, named by its id, as a case file is -- and
+// where it writes what it leaves.
+function placeOf(b, frozenCase) {
+  return { case: `${b.place.in}/${frozenCase.id}.json`, out: b.place.out };
 }
 
 // What this run's fixture holds: every resource the host bound for it inside the task's own sandbox. An identity and a
@@ -191,7 +198,7 @@ function ran(b, x) {
 // it opted into, how it reads its data, and its UI map -- never a secret, a store or anything of this machine's.
 function laidIn(b, dir, frozenCase) {
   mkdirSync(join(dir, "ui-tests", "graph"), { recursive: true });
-  writeFileSync(join(dir, "case.json"), `${JSON.stringify(frozenCase, null, 2)}\n`);
+  writeFileSync(join(dir, `${frozenCase.id}.json`), `${JSON.stringify(frozenCase, null, 2)}\n`);
   writeFileSync(join(dir, "ui-tests", "project.json"), `${JSON.stringify(projectOf(b.project), null, 2)}\n`);
   for (const name of jsonFilesIn(b.project.graphDir)) copyFileSync(join(b.project.graphDir, name), join(dir, "ui-tests", "graph", name));
 }

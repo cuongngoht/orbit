@@ -67,7 +67,7 @@ function journal(planAuthority = "accepted", plan = PLAN) {
 
 function ports(ctx, j, over = {}) {
   const drafts = [];
-  const b = { ctx, model: j.model, planOf: () => over.plan ?? PLAN, graph: () => GRAPH, topology: () => over.topology ?? TOPOLOGY, services: SERVICES, drafts: { save: (c) => drafts.push(c) }, settings: { limits: { writes: 10, caseSeconds: 120 } }, mode: over.mode ?? "fixture-write", now: () => 1_700_000_000_000, sandbox: { id: "env-1", task: "tsk-1", tree: "tree-a", currentTree: over.currentTree ?? "tree-a", isolated: true }, policy: { revision: "rev-1", writes: over.writes ?? ["trigger", "create-resource", "consume"] }, place: { case: "/work/in/case.json", out: "/work/out" }, hooksToken: () => ("hooksToken" in over ? over.hooksToken : "hooks-token-0123456789"), runtime: over.runtime, project: { name: "invoice", packs: ["orbit-backend-test"], graphDir: over.graphDir ?? null }, keep: over.keep ?? (() => "kept") };
+  const b = { ctx, model: j.model, planOf: () => over.plan ?? PLAN, graph: () => GRAPH, topology: () => over.topology ?? TOPOLOGY, services: SERVICES, drafts: { save: (c) => drafts.push(c) }, settings: { limits: { writes: 10, caseSeconds: 120 } }, mode: over.mode ?? "fixture-write", now: () => 1_700_000_000_000, sandbox: { id: "env-1", task: "tsk-1", tree: "tree-a", currentTree: over.currentTree ?? "tree-a", isolated: true }, policy: { revision: "rev-1", writes: over.writes ?? ["trigger", "create-resource", "consume"] }, place: { in: "/work/in", out: "/work/out" }, hooksToken: () => ("hooksToken" in over ? over.hooksToken : "hooks-token-0123456789"), runtime: over.runtime, project: { name: "invoice", packs: ["orbit-backend-test"], graphDir: over.graphDir ?? null }, keep: over.keep ?? (() => "kept") };
   return { generation: generationPort(b), dispatch: dispatchPort(b), drafts };
 }
 
@@ -77,7 +77,8 @@ test("a design is compiled against what the binder will bind: the adapter the to
   const p = ports(ctx, j);
   const obligation = j.model().obligations.find((o) => o.obligation === "tob-000000000001");
   const cx = p.generation.contextFor(obligation, { design: ASYNC });
-  assert.deepEqual([...cx.expectations.keys()], ["FIX-ASYNC-1/E1"], "only the slots this obligation may be ruled on by");
+  assert.deepEqual([...cx.expectations.keys()], ["API-AC-2/E1", "FIX-ASYNC-1/E1"], "every accepted slot of the plans it is bound to may rule");
+  assert.deepEqual(cx.expected, ["FIX-ASYNC-1/E1"], "and the design is held to its own");
   assert.deepEqual(cx.outputsOf(3), JSON.parse(readFileSync(join(ROOT, "skills/orbit-backend-test/adapters.json"), "utf8")).adapters.find((a) => a.id === "amqp.reference").operations["observe.await"].outputs, "the broker's service on the topology chose the adapter, and its declaration says what the await carries");
   assert.equal(cx.semanticsOf(1).delivery, "at-least-once");
   assert.match(cx.caseId, /^gen-00000000-[0-9a-f]{8}$/);
@@ -116,7 +117,7 @@ test("a version is prepared with every ref sealed by the host and a grant for ev
   assert.deepEqual(Object.values(out.secrets).sort(), ["hooks-token-0123456789", "invoice", "invoice-pass"].sort());
   assert.deepEqual(out.grants.map((g) => [g.capability.id, g.operation.class]), [["orbit.messaging.observe", "create-resource"], ["orbit.scheduler.trigger", "trigger"], ["orbit.observe.await", "consume"]]);
   assert.ok(out.grants.every((g) => g.run === x.execution && g.sandbox.tree === "tree-a"));
-  assert.deepEqual([out.place, out.deadlineMs, out.fixture.namespace], [{ case: "/work/in/case.json", out: "/work/out" }, 120000, out.bindings.observer.seen.namespace]);
+  assert.deepEqual([out.place, out.deadlineMs, out.fixture.namespace], [{ case: "/work/in/gen-x.json", out: "/work/out" }, 120000, out.bindings.observer.seen.namespace]);
   rmSync(store, { recursive: true, force: true });
 });
 
@@ -156,7 +157,7 @@ test("a run lays its inputs where the worker reads them, and reads back only wha
   };
   const p = ports(ctx, journal(), { runtime: { dirs: () => dirs, dispatch: worker }, graphDir });
   const r = p.dispatch.run({ request: { runId: "exe-1", nonce: "n" }, frozen: { case: { id: "gen-x", steps: [] } } });
-  assert.deepEqual(JSON.parse(readFileSync(join(dirs.in, "case.json"), "utf8")), { id: "gen-x", steps: [] });
+  assert.deepEqual(JSON.parse(readFileSync(join(dirs.in, "gen-x.json"), "utf8")), { id: "gen-x", steps: [] }, "named by its id, as a case file is");
   assert.deepEqual(JSON.parse(readFileSync(join(dirs.in, "ui-tests", "project.json"), "utf8")), { name: "invoice", packs: ["orbit-backend-test"] });
   assert.equal(readFileSync(join(dirs.in, "ui-tests", "graph", "edges.json"), "utf8"), "[]");
   assert.deepEqual([...r.listed.keys()].sort(), ["store/evidence/run-1/run-log.jsonl", "store/evidence/run-1/shot.png"], "the host lists files, and a planted link is not one");

@@ -28,11 +28,11 @@
 //
 // It never opens a browser. The launcher does, behind the preflight question;
 // this drives the session in PT_RUN_DIR (or the project's default run dir).
-import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
 import { readAll } from "../src/capability/helper-protocol.mjs";
 import { shaBytes } from "../src/hash.mjs";
-import { argvOf, identityIssuer, requestProblem, sealedBinder, WORKER_API } from "../src/run/worker.mjs";
+import { argvOf, closedPage, identityIssuer, openedPage, requestProblem, sealedBinder, WORKER_API } from "../src/run/worker.mjs";
 import { grantLedger } from "../src/run/grants.mjs";
 import { shownPath } from "../src/shown-path.mjs";
 import { publishRun } from "../src/report/publish.mjs";
@@ -122,8 +122,21 @@ async function workerMain() {
   const request = jsonOf(await readAll(process.stdin));
   const problem = requestProblem(request);
   if (problem) return enveloped(request ?? {}, { status: "REFUSED", why: problem });
-  try { enveloped(request, ran(await issuing(request), request)); }
+  try { enveloped(request, paged(await issuing(request), request)); }
   catch (e) { enveloped(request, stopOf(e)); }
+}
+
+// A page case's browser is opened before the run and closed after it, whatever the run came to.
+function paged(ctx, request) {
+  if (!request.page) return ran(ctx, request);
+  openedPage(ctx, request, writtenWithDir);
+  try { return ran(ctx, request); }
+  finally { closedPage(ctx); }
+}
+
+function writtenWithDir(file, text) {
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, text);
 }
 
 // The worker's context: its binder holds only what the host sealed, and issues an identity the host could not

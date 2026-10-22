@@ -11,6 +11,7 @@ import { validate } from "../src/dsl/validate.mjs";
 import { generatedCase } from "../src/qa/generation/design.mjs";
 import { conditionJs, pageOutputsOf, readerJs } from "../src/qa/generation/page.mjs";
 import { shapeOf } from "../src/qa/obligations/shapes.mjs";
+import { paramsOf } from "../src/investigation/run-version.mjs";
 import { judgeStep } from "../src/run/evaluator.mjs";
 import { fakeContext } from "./fakes/context.mjs";
 
@@ -107,4 +108,13 @@ test("an api witness rules on the status its call answered, and nothing else is 
   const out = generatedCase(proposal({ assertions: [...proposal().assertions, { criterionRef: "UI-AC-1/E4", template: "value-in", step: 4 }] }), context());
   assert.equal(out.stage, "mapping");
   assert.match(out.findings.join(), /rules only on the status its call answered/);
+});
+
+test("what a test creates is named inside the run's own namespace: a skeleton that says ${FIXTURE} declares it, and the worker is handed the namespace", () => {
+  const named = STEPS.map((s, i) => (i === 1 ? { ...s, value: "${FIXTURE} invoice" } : s));
+  const out = generatedCase(proposal({ skeleton: { steps: named } }), context(named));
+  assert.equal(out.ok, true, JSON.stringify(out.findings));
+  assert.deepEqual(out.case.params, [{ n: "FIXTURE", required: true }]);
+  assert.deepEqual(paramsOf(out.case, { fixture: { namespace: "o0123456789" } }), { FIXTURE: "o0123456789" });
+  assert.deepEqual(paramsOf(generatedCase(proposal(), context()).case, { fixture: { namespace: "o0123456789" } }), {}, "a case that names nothing inside it is handed nothing");
 });

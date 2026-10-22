@@ -132,7 +132,7 @@ function prepared(b, x) {
   const topology = topologyNow(b.topology);
   if (!topology?.nodes) return { gaps: [{ kind: "sandbox", alias: b.sandbox?.id ?? "none", why: topology?.say ?? "no isolated sandbox is bound to this investigation" }] };
   const r = resolver({ ...b, graph: b.graph(), topology, design: x.design });
-  const sealed = sealedBindings({ refs: refsOf(r, x.frozen.case), declarationOf: r.declarationOf, topology, services: b.services, namespace: namespaceOf(x.execution), adapterFor: (t) => observingAdapter(r, t), minted: { hooksToken: b.hooksToken() ?? null } });
+  const sealed = sealedBindings({ refs: [...refsOf(r, x.frozen.case), ...pageRefsOf(x.design)], declarationOf: r.declarationOf, topology, services: b.services, namespace: namespaceOf(x.execution), adapterFor: (t) => observingAdapter(r, t), minted: { hooksToken: b.hooksToken() ?? null } });
   return withGrants(b, r, x, sealed);
 }
 
@@ -142,13 +142,20 @@ const namespaceOf = (execution) => `o${short(execution, 10)}`;
 // Every logical ref the frozen case names, by the kind its capability binds it as.
 const refsOf = (r, c) => (c.steps ?? []).filter((s) => s.do === "call").flatMap((s) => Object.entries(r.lookup(s.capability)?.inputSchema ?? {}).filter(([k, row]) => row?.bind && s.input?.[k] !== undefined).map(([k, row]) => ({ kind: row.bind, alias: String(s.input[k]) })));
 
+// The page a design drives (src/qa/generation/page.mjs): its interface, whose origin the browser opens, and the identity
+// it acts as -- bound like any ref, by the host, never named by the worker.
+const pageRefsOf = (design) => [...(design?.page?.endpointRef ? [{ kind: "endpoint", alias: design.page.endpointRef }] : []), ...(design?.page?.identityRef ? [{ kind: "identity", alias: design.page.identityRef }] : [])];
+
+// What the worker is told of the page: the origin the host bound for it, and the identity its browser acts as.
+const pageOf = (design, sealed) => (design?.page?.endpointRef ? { origin: sealed.bindings.endpoint?.[design.page.endpointRef]?.origin ?? null, identityRef: design.page.identityRef ?? null } : null);
+
 // The adapter that names an observer of its own on a transport: the first, by id, whose declaration says how.
 const observingAdapter = (r, transport) => (r.ctx.adapters?.list?.() ?? []).filter((a) => a.transports.includes(transport) && a.bind?.observer).sort((x, y) => (x.id < y.id ? -1 : 1))[0] ?? null;
 
 function withGrants(b, r, x, sealed) {
   const fixture = { namespace: namespaceOf(x.execution), resources: boundAliases(sealed) };
   const minted = mintedInOrder(b, r, x, fixture);
-  return { ...sealed, gaps: [...sealed.gaps, ...unarmedGaps(x)], grants: minted.flatMap((m) => (m.grant ? [m.grant] : [])), refused: minted.flatMap((m) => m.refused), fixture, sandbox: b.sandbox.id, tree: b.sandbox.tree, place: placeOf(b, x.frozen.case), deadlineMs: deadlineOf(b) };
+  return { ...sealed, gaps: [...sealed.gaps, ...unarmedGaps(x)], grants: minted.flatMap((m) => (m.grant ? [m.grant] : [])), refused: minted.flatMap((m) => m.refused), fixture, sandbox: b.sandbox.id, tree: b.sandbox.tree, place: placeOf(b, x.frozen.case), deadlineMs: deadlineOf(b), page: pageOf(x.design, sealed) };
 }
 
 // Where the worker finds the frozen case -- beside its project in its inputs, named by its id, as a case file is -- and
@@ -172,13 +179,13 @@ const armedByStep = (c, ref) => (c.steps ?? []).some((s) => s.capability === "or
 // design says it sends one on purpose; one it does not declare is refused, never quietly covered by the first's grant.
 function mintedInOrder(b, r, x, fixture) {
   const first = new Map();
-  return mutatingCalls(r, x.frozen.case).map((m) => mintedOne(b, r, x, fixture, first, m));
+  return [...mutatingCalls(r, x.frozen.case), ...pageWrites(x)].map((m) => mintedOne(b, r, x, fixture, first, m));
 }
 
 function mintedOne(b, r, x, fixture, first, m) {
-  const key = `${m.cap.id}|${m.cls}|${canonicalJson(m.step.input ?? {})}`;
+  const key = `${m.cap.id}|${m.cls}|${canonicalJson(m.step.input ?? requestOfWitness(m.step))}`;
   if (first.has(key) && !hasDuplicateControl(x.design)) return unintended(m);
-  const out = mintGrant(grantWorld(b, r, x, { ...m, duplicateOf: first.get(key) ?? null }, fixture));
+  const out = mintGrant((m.page ? pageGrantWorld : grantWorld)(b, r, x, { ...m, duplicateOf: first.get(key) ?? null }, fixture));
   if (!first.has(key) && out.grant) first.set(key, out.grant.id);
   return out;
 }
@@ -189,6 +196,20 @@ const unintended = (m) => ({ grant: null, refused: [{ id: "DUPLICATE", say: `${m
 
 // One grant per mutating effect a call would have: a call is covered only when EVERY effect it may have is.
 const mutatingCalls = (r, c) => (c.steps ?? []).filter((s) => s.do === "call").flatMap((step) => ((e) => e.effects.filter(mutatingEffect).map((cls, _, classes) => ({ step, cls, classes, adapter: e.adapter, cap: r.lookup(step.capability) ?? { id: step.capability } })))(effectsOf(r, step)));
+
+const WRITE_METHODS = ["POST", "PUT", "PATCH", "DELETE"];
+
+const isPageWrite = (s) => s?.do === "api" && WRITE_METHODS.includes(String(s.method ?? "").toUpperCase());
+
+const requestOfWitness = (step) => ({ method: String(step.method ?? "").toUpperCase(), match: step.match ?? null });
+
+// A page's WRITE: the request an api witness declares the page makes -- a POST, PUT, PATCH or DELETE -- on the interface
+// the design drives, minted a grant like any write the run would make (ADR 0037), for that method and that path.
+const pageWrites = (x) => (x.frozen.case.steps ?? []).filter(isPageWrite).map((step) => ({ step, cls: "write", classes: ["write"], adapter: null, cap: { id: "orbit.page.request", from: "engine" }, page: x.design?.page ?? {} }));
+
+// The world a page write's grant is minted from: a call's, with the witness's method and path as what it covers, the
+// interface as the resource it touches, and the design's identity as who makes it.
+const pageGrantWorld = (b, r, x, m, fixture) => ({ ...grantWorld(b, r, x, m, fixture), operation: { class: "write", selectors: requestOfWitness(m.step) }, requested: { resources: [m.page.endpointRef].filter(Boolean), indirect: [], inputDigest: sha(canonicalJson(requestOfWitness(m.step))) }, principal: m.page.identityRef ?? null });
 
 // The world a grant is minted from: owners' records only -- the sandbox's view, a person's policy and settings, the
 // design the version was frozen from, the input it will send -- never a field a proposal carried.
@@ -202,7 +223,7 @@ const resourcesOf = (cap, step) => Object.entries(cap.inputSchema ?? {}).filter(
 const principalOf = (cap, step) => Object.entries(cap.inputSchema ?? {}).filter(([k, row]) => row?.bind === "identity" && step.input?.[k] !== undefined).map(([k]) => String(step.input[k]))[0] ?? null;
 
 // The operations the DESIGN declared, by proposing the steps that have them -- what a frozen case may not exceed.
-const designedOperations = (r, design) => [...new Set((design?.skeleton?.steps ?? []).filter((s) => s.do === "call").flatMap((s) => effectsOf(r, s).effects.filter(mutatingEffect)))];
+const designedOperations = (r, design) => [...new Set([...(design?.skeleton?.steps ?? []).filter((s) => s.do === "call").flatMap((s) => effectsOf(r, s).effects.filter(mutatingEffect)), ...((design?.skeleton?.steps ?? []).some(isPageWrite) ? ["write"] : [])])];
 
 const deadlineOf = (b) => (b.settings?.limits?.caseSeconds ?? 120) * 1000;
 
@@ -210,7 +231,7 @@ const deadlineOf = (b) => (b.settings?.limits?.caseSeconds ?? 120) * 1000;
 
 function ran(b, x) {
   const dirs = b.runtime.dirs(x.request.runId);
-  laidIn(b, dirs.in, x.frozen.case);
+  laidIn(b, dirs.in, x.frozen.case, x.request.page);
   const answer = b.runtime.dispatch(x.request);
   const back = readBack(dirs.out);
   return back.envelope ? back : { why: answer.why ?? back.why };
@@ -218,14 +239,14 @@ function ran(b, x) {
 
 // The run's inputs: the frozen case where the request says it is, and the project it runs as -- its name, the packs
 // it opted into, how it reads its data, and its UI map -- never a secret, a store or anything of this machine's.
-function laidIn(b, dir, frozenCase) {
+function laidIn(b, dir, frozenCase, page) {
   mkdirSync(join(dir, "ui-tests", "graph"), { recursive: true });
   writeFileSync(join(dir, `${frozenCase.id}.json`), `${JSON.stringify(frozenCase, null, 2)}\n`);
-  writeFileSync(join(dir, "ui-tests", "project.json"), `${JSON.stringify(projectOf(b.project), null, 2)}\n`);
+  writeFileSync(join(dir, "ui-tests", "project.json"), `${JSON.stringify(projectOf({ ...b.project, origin: page?.origin }), null, 2)}\n`);
   for (const name of jsonFilesIn(b.project.graphDir)) copyFileSync(join(b.project.graphDir, name), join(dir, "ui-tests", "graph", name));
 }
 
-const projectOf = (p) => Object.fromEntries(Object.entries({ name: p.name, packs: p.packs, sql: p.sql }).filter(([, v]) => v !== undefined && v !== null));
+const projectOf = (p) => Object.fromEntries(Object.entries({ name: p.name, packs: p.packs, sql: p.sql, origin: p.origin }).filter(([, v]) => v !== undefined && v !== null));
 
 function jsonFilesIn(dir) {
   try { return dir ? readdirSync(dir).filter((n) => n.endsWith(".json") && lstatSync(join(dir, n)).isFile()) : []; }

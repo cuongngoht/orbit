@@ -57,8 +57,12 @@ function firstStop(p, cx) {
 // The skeleton's steps, each compiled verdict in its place and each window on its observation.
 function caseOf(proposal, compiled, cx) {
   const steps = (proposal.skeleton?.steps ?? []).map((step, n) => placed(step, String(n + 1), compiled));
-  return { id: cx.caseId, name: String(cx.title ?? proposal.obligation ?? "generated").slice(0, 120), seen: "src", steps };
+  return { id: cx.caseId, name: String(cx.title ?? proposal.obligation ?? "generated").slice(0, 120), seen: "src", ...(usesFixture(proposal) ? { params: [{ n: "FIXTURE", required: true }] } : {}), steps };
 }
+
+// A skeleton that names what it creates inside the run's own namespace says ${FIXTURE}: the case declares it, and the
+// worker is handed the namespace (src/investigation/run-version.mjs) -- so a second attempt never finds the first's.
+const usesFixture = (proposal) => canonicalJson(proposal.skeleton ?? {}).includes("${FIXTURE}");
 
 // A compiled verdict, and the layer it proves for a call (a sql step's layer is its verb's); a page step as the engine
 // writes it (src/qa/generation/page.mjs) -- an api witness carrying only the status it rules on, never an expect.

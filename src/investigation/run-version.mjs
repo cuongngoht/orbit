@@ -103,7 +103,11 @@ function dispatchedRun(w, d, v, attempt, p, execution) {
 // The worker's request (orbit.worker/v1): the frozen case by digest and where the worker finds it
 // (`place`, the sandbox's own layout), its sealed bindings and secrets, the grants minted for it,
 // and the digests its design pinned on every verdict.
-const requestOf = (v, execution, p) => ({ v: WORKER_API, runId: execution, nonce: randomBytes(12).toString("hex"), case: { file: p.place?.case ?? null, digest: v.record.digest }, params: {}, bindings: p.bindings ?? {}, secrets: p.secrets ?? {}, grants: p.grants ?? [], fixture: p.fixture ?? null, evaluation: { mode: "compiled", digests: Object.fromEntries((v.design.compiled ?? []).map((c) => [String(c.step), c.digest])) }, limits: { deadlineMs: p.deadlineMs ?? null }, out: p.place?.out ?? null });
+const requestOf = (v, execution, p) => ({ v: WORKER_API, runId: execution, nonce: randomBytes(12).toString("hex"), case: { file: p.place?.case ?? null, digest: v.record.digest }, params: paramsOf(v.frozen.case, p), bindings: p.bindings ?? {}, secrets: p.secrets ?? {}, grants: p.grants ?? [], fixture: p.fixture ?? null, evaluation: { mode: "compiled", digests: Object.fromEntries((v.design.compiled ?? []).map((c) => [String(c.step), c.digest])) }, limits: { deadlineMs: p.deadlineMs ?? null }, out: p.place?.out ?? null, page: p.page ?? null });
+
+// The one parameter a generated case may declare: FIXTURE, the run's own namespace, so what it creates is named inside
+// it and a second attempt never finds the first one's (src/qa/generation/design.mjs).
+export const paramsOf = (c, p) => ((c.params ?? []).some((x) => x?.n === "FIXTURE") && p.fixture?.namespace ? { FIXTURE: p.fixture.namespace } : {});
 
 // Written BEFORE the dispatch: what was authorized, what was bound, and the intent to run -- the request itself kept,
 // its secrets by name only, under the digest the start records (`request`, a structural field the scrubber never

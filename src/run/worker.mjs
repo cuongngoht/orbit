@@ -13,6 +13,7 @@ import { asCapability } from "../adapters/dispatch.mjs";
 import { selectAdapter } from "../adapters/select.mjs";
 import { helperFacade } from "../capability/helper.mjs";
 import { catalogFile, readCatalog, rowsOf } from "../catalog.mjs";
+import { Blocked, Refused } from "../errors.mjs";
 import { contained } from "../project/boundary.mjs";
 
 export const WORKER_API = "orbit.worker/v1";
@@ -133,3 +134,43 @@ function packDir(pluginRoot, io, from) {
   const row = rowsOf(readCatalog(io, catalogFile(pluginRoot, "packs")).packs).find((p) => p.id === from.slice(5));
   return row ? contained(pluginRoot, join(pluginRoot, row.dir)) : null;
 }
+
+// ── a PAGE run's browser (doc §15.1) ───────────────────────────────────────
+// Opened in the worker before the case runs and closed after it: a blank session of its own in the run directory,
+// nothing copied into it, and -- when the design approved an identity -- that identity's credential carried as a
+// header on the requests to the bound ORIGIN alone, never to another host on the task's network. The credential is
+// issued here (the sealed binding's `issue`) and set on the browser's context in memory, through the CLI: never in a
+// file, because the run directory is in the scratch store the host reads back. What the CLI echoes of it is dropped,
+// and a failure says only that it failed.
+export const PAGE_BROWSER = Object.freeze({ browser: { browserName: "chromium", isolated: true, launchOptions: { headless: true, chromiumSandbox: false, args: ["--disable-dev-shm-usage"] } } });
+
+// write(file, text) is the caller's: the composition root writes, this decides what.
+export function openedPage(ctx, request, write) {
+  if (request.page.origin !== ctx.config.origin) throw new Refused("the page's origin is not the origin the project was laid in with — a worker opens only the interface the host bound");
+  write(join(ctx.browser.dir(), ".playwright", "cli.config.json"), `${JSON.stringify(PAGE_BROWSER)}\n`);
+  quietly(() => ctx.browser.cli(["open", "about:blank"]), "the page's browser could not be opened");
+  if (request.page.identityRef) credentialed(ctx, request.page);
+}
+
+function credentialed(ctx, page) {
+  const bound = ctx.binder.resolve("identity", page.identityRef);
+  if (!bound.ok) throw new Blocked(`the page's identity ${page.identityRef} could not be bound: ${bound.why}`);
+  const script = routedCredential(page.origin, headerOf(bound));
+  quietly(() => ctx.browser.cli(["run-code", script]), "the page's browser could not be given its identity's credential");
+}
+
+function headerOf(bound) {
+  const token = bound.env?.[bound.value.env];
+  if (!token) throw new Blocked("the page's identity was bound and no credential was issued for it — its browser would act as nobody");
+  return { [String(bound.value.header ?? "authorization").toLowerCase()]: `${bound.value.scheme ?? "Bearer"} ${token}` };
+}
+
+// The script the CLI runs: a route on the bound origin's requests that adds the header and changes nothing else.
+const routedCredential = (origin, headers) => `async (page) => { await page.context().route(${JSON.stringify(`${origin}/**`)}, (route) => route.continue({ headers: { ...route.request().headers(), ...${JSON.stringify(headers)} } })); return "ok"; }`;
+
+function quietly(fn, why) {
+  try { fn(); }
+  catch { throw new Blocked(`${why} — nothing about the product was observed`); }
+}
+
+export const closedPage = (ctx) => ctx.browser.cli(["close"], true);

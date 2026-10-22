@@ -35,6 +35,7 @@ const BARE = { nodes: [
   { key: "interface:invoice-read", name: "invoice-read", role: "interface", of: "component:invoice-app", attributes: { port: "8080", path: "/api" } },
   { key: "channel:reminders", name: "reminders", role: "channel", of: "component:broker", attributes: { exchange: "billing", routingKey: "reminder.requested", host: "evil.example" } },
   { key: "schedule:billing-daily", name: "billing-daily", role: "schedule", of: "component:invoice-app" },
+  { key: "interface:invoices", name: "invoices", role: "interface", of: "component:invoice-app", attributes: { port: "8080" } },
 ], relations: [] };
 const GRAPH = { ...BARE, digest: graphDigestOf(BARE) };
 
@@ -187,5 +188,30 @@ test("an identical write sent twice is minted a grant of its own naming the firs
   assert.equal(marked.grants.length, 2);
   assert.notEqual(marked.grants[0].id, marked.grants[1].id);
   assert.equal(marked.grants[1].bounds.duplicateOf, marked.grants[0].id, "the duplicate names the grant of the call it repeats");
+  rmSync(store, { recursive: true, force: true });
+});
+
+// Group 1 (doc §15.1): a PAGE design's screen is bound like any ref -- its origin on the task's network laid in as the
+// project's, never a URL a case typed -- and the write its api witness declares is minted a grant like any write.
+test("a page design is bound by the host: the origin of the interface it drives, laid in as the project's, and a grant for the write its witness declares", async () => {
+  const { ctx, store } = await packed();
+  const j = journal();
+  const skeleton = { steps: [{ do: "goto", url: "/invoices", until: { selector: "#create" } }, { do: "click", selector: "#create", until: { selector: "#toast" } }, { do: "api", match: "/api/invoices$", method: "POST" }, { do: "report", reads: { selector: "#toast" } }] };
+  const frozen = { id: "gen-page", steps: [{ do: "goto", url: "/invoices", wait: "x" }, { do: "click", selector: "#create", wait: "y" }, { do: "api", match: "/api/invoices$", method: "POST", status: 201 }, { do: "report", js: "z", expect: "compiled:{}" }] };
+  const design = { obligation: "tob-000000000002", id: "tds-page", skeleton, controls: [{ role: "positive" }], page: { endpointRef: "invoices" } };
+  const x = { frozen: { case: frozen }, design, obligation: j.model().obligations[1], attempt: 1, execution: "exe-0123456789abcdef-1" };
+  const out = ports(ctx, j, { writes: ["write"] }).dispatch.prepare(x);
+  assert.deepEqual([out.gaps, out.refused], [[], []], JSON.stringify([out.gaps, out.refused]));
+  assert.deepEqual(out.page, { origin: "http://invoice-app:8080", identityRef: null });
+  assert.deepEqual(out.grants.map((g) => [g.capability.id, g.operation.class, g.operation.selectors, g.resources]), [["orbit.page.request", "write", { method: "POST", match: "/api/invoices$" }, ["invoices"]]]);
+  const refused = ports(ctx, j, { writes: ["trigger"] }).dispatch.prepare(x);
+  assert.deepEqual(refused.refused.map((r) => r.id), ["POLICY"], "a page's write is held to a person's standing policy like any other");
+  const room = mkdtempSync(join(tmpdir(), "orbit-page-room-"));
+  const dirs = { in: join(room, "in"), out: join(room, "out") };
+  mkdirSync(dirs.out, { recursive: true });
+  const runtime = { dirs: () => dirs, dispatch: () => ({ ok: true }) };
+  ports(ctx, j, { runtime }).dispatch.run({ request: { runId: "exe-0123456789abcdef-1", page: out.page }, frozen: { case: frozen } });
+  assert.equal(JSON.parse(readFileSync(join(dirs.in, "ui-tests", "project.json"), "utf8")).origin, "http://invoice-app:8080", "the worker's project is laid in with the bound origin");
+  rmSync(room, { recursive: true, force: true });
   rmSync(store, { recursive: true, force: true });
 });

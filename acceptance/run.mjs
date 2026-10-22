@@ -71,7 +71,7 @@ const git = (cwd, ...argv) => spawnSync("git", argv, { cwd, env: { ...process.en
 
 async function oneRun(stack, variant) {
   const base = realpathSync(mkdtempSync(join(tmpdir(), `orbit-accept-${stack}-${variant}-`)));
-  const run = { stack, variant, base, repo: join(base, stack), env: envOf(stack, base), outcomes: {}, steps: [] };
+  const run = { stack, variant, base, repo: join(base, stack), env: envOf(stack, base), outcomes: {}, steps: [], volumesBefore: volumes() };
   try {
     checkout(run);
     seated(run);
@@ -84,6 +84,7 @@ async function oneRun(stack, variant) {
     await sandboxDown(run);
     left(run);
     sentinels(run);
+    builtRemoved(run);
     if (!args.includes("--keep")) rmSync(base, { recursive: true, force: true });
   }
 }
@@ -185,12 +186,25 @@ async function sandboxDown(run) {
   run.released = await run.rt.COMMANDS["sandbox-release"].run(sandboxOf(run, run.rt), []).catch((e) => ({ error: e.message }));
 }
 
-// What a run must leave: no container or network carrying its labels, and the checkout exactly as it was committed.
+// What a run must leave: no container or network carrying its labels, no volume that was not there before it (a
+// container's anonymous volumes leave with it), and the checkout exactly as it was committed.
 function left(run) {
-  const containers = spawnSync("docker", ["ps", "-a", "--filter", "label=orbit.task", "--format", "{{.Names}}"], { encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean);
-  const networks = spawnSync("docker", ["network", "ls", "--filter", "label=orbit.task", "--format", "{{.Name}}"], { encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean);
+  const containers = lines(spawnSync("docker", ["ps", "-a", "--filter", "label=orbit.task", "--format", "{{.Names}}"], { encoding: "utf8" }).stdout);
+  const networks = lines(spawnSync("docker", ["network", "ls", "--filter", "label=orbit.task", "--format", "{{.Name}}"], { encoding: "utf8" }).stdout);
   const dirty = existsSync(run.repo) ? git(run.repo, "status", "--porcelain", "--ignored").stdout.trim() : "";
-  run.leftover = { containers, networks, checkout: dirty ? dirty.split("\n").slice(0, 10) : [] };
+  run.leftover = { containers, networks, volumes: volumes().filter((v) => !run.volumesBefore.includes(v)).slice(0, 10), checkout: dirty ? dirty.split("\n").slice(0, 10) : [] };
+}
+
+const lines = (text) => String(text ?? "").trim().split("\n").filter(Boolean);
+
+const volumes = () => lines(spawnSync("docker", ["volume", "ls", "-q"], { encoding: "utf8" }).stdout);
+
+// The harness's own hygiene, as a person cleaning up after it: the images its sandbox BUILT for this run's environment
+// (labelled with it) are removed, so a machine that runs the acceptance many times does not keep every build.
+function builtRemoved(run) {
+  const env = run.started?.environment;
+  const built = env ? lines(spawnSync("docker", ["image", "ls", "-q", "--filter", `label=orbit.env=${env}`], { encoding: "utf8" }).stdout) : [];
+  if (built.length) spawnSync("docker", ["image", "rm", ...new Set(built)], { encoding: "utf8" });
 }
 
 // ── the QA loop, as a host drives it ───────────────────────────────────────
@@ -280,7 +294,7 @@ function judged(run) {
   const tests = TRUTH.shapes.map((shape) => ({ shape, expected: expectedOf(run.stack, run.variant, shape), got: run.outcomes[shape]?.outcome ?? (run.blocked ? "BLOCKED" : "NOT_RUN"), rule: run.outcomes[shape]?.rule ?? null }));
   const controls = TRUTH.security.controls.map((control) => ({ shape: control, expected: securityOf(run.variant, control), got: run.security?.[control] ?? (run.blocked ? "BLOCKED" : "NOT_ASSESSED"), rule: null }));
   const rows = [...tests, ...controls];
-  const clean = !run.leftover?.containers?.length && !run.leftover?.networks?.length && !run.leftover?.checkout?.length && !run.leaked?.length;
+  const clean = !run.leftover?.containers?.length && !run.leftover?.networks?.length && !run.leftover?.volumes?.length && !run.leftover?.checkout?.length && !run.leaked?.length;
   return { stack: run.stack, variant: run.variant, rows, matched: !run.blocked && clean && rows.every((r) => r.expected === r.got), blocked: run.blocked ?? null, leftover: { ...run.leftover, leaked: run.leaked ?? [] }, investigation: run.investigation ?? null };
 }
 
@@ -288,7 +302,7 @@ function printed(results) {
   for (const r of results) {
     process.stdout.write(`${r.stack} ${r.variant}: ${r.matched ? "MATCHED" : r.blocked ? `BLOCKED — ${r.blocked}` : "MISMATCH"}\n`);
     for (const row of r.rows) process.stdout.write(`  ${row.expected === row.got ? "✓" : "✗"} ${row.shape.padEnd(30)} ${row.got.padEnd(20)}${row.expected === row.got ? "" : `expected ${row.expected}`}${row.rule ? `  (${row.rule})` : ""}\n`);
-    if (r.leftover && (r.leftover.containers?.length || r.leftover.networks?.length || r.leftover.checkout?.length || r.leftover.leaked?.length)) process.stdout.write(`  ✗ left behind: ${JSON.stringify(r.leftover)}\n`);
+    if (r.leftover && (r.leftover.containers?.length || r.leftover.networks?.length || r.leftover.volumes?.length || r.leftover.checkout?.length || r.leftover.leaked?.length)) process.stdout.write(`  ✗ left behind: ${JSON.stringify(r.leftover)}\n`);
   }
 }
 

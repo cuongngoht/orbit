@@ -5,12 +5,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Blocked, Refused } from "../src/errors.mjs";
-import { PAGE_BROWSER, closedPage, openedPage, pageRoute, pageWritesOf } from "../src/run/worker.mjs";
+import { PAGE_BROWSER, closedPage, openedPage, pageRoute, pageSpendRecords, pageSpendsOf, pageWritesOf } from "../src/run/worker.mjs";
 
 const ORIGIN = "http://invoice-a:8080";
 const TOKEN = "eyJ.issued-inside-the-worker.sig";
 const IDENTITY = { ok: true, value: { alias: "tenant-a-reader", principal: "reader-a", tenant: "tenant-a", header: "Authorization", scheme: "Bearer", env: "ORBIT_BIND_IDENTITY" }, env: { ORBIT_BIND_IDENTITY: TOKEN } };
-const GRANT = { id: "grt-0000000000000001", capability: { id: "orbit.page.request" }, operation: { class: "write", selectors: { method: "POST", match: "/api/invoices$" } }, bounds: { maxUses: 1 } };
+const RUN = "exe-0123456789abcdef-1";
+const NOW = Date.now();
+const GRANT = { id: "grt-0000000000000001", run: RUN, principal: "tenant-a-reader", expiresAtMs: NOW + 60_000, capability: { id: "orbit.page.request" }, operation: { class: "write", selectors: { method: "POST", match: "/api/invoices$" } }, input: { digest: "d".repeat(64) }, bounds: { maxUses: 1 } };
 
 function world({ origin = ORIGIN, bound = IDENTITY, fails = null } = {}) {
   const calls = [];
@@ -19,18 +21,20 @@ function world({ origin = ORIGIN, bound = IDENTITY, fails = null } = {}) {
   const removed = [];
   const cli = (args) => (fails?.(args) ? (() => { throw new Error(`Command failed: playwright-cli ${args.join(" ")} ${[...scratch.values()].join("")}`); })() : calls.push(args));
   const ctx = { config: { origin }, browser: { dir: () => "/work/out/store/runtime/run", cli }, binder: { resolve: (kind, ref) => (kind === "identity" && ref === "tenant-a-reader" ? bound : { ok: false, why: "not sealed" }) } };
-  const io = { write: (file, text) => files.set(file, text), scratch: (text) => ((file) => (scratch.set(file, text), file))(`/tmp/orbit-page-${scratch.size}.js`), remove: (file) => removed.push(file) };
+  const io = { now: () => NOW, write: (file, text) => files.set(file, text), scratch: (text) => ((file) => (scratch.set(file, text), file))(`/tmp/orbit-page-${scratch.size}.js`), remove: (file) => removed.push(file) };
   return { ctx, calls, files, scratch, removed, io };
 }
 
-const request = (page, grants = [GRANT]) => ({ runId: "exe-0123456789abcdef-1", grants, page: { origin: ORIGIN, identityRef: "tenant-a-reader", ...page } });
+const request = (page, grants = [GRANT]) => ({ runId: RUN, grants, page: { origin: ORIGIN, identityRef: "tenant-a-reader", ...page } });
 
 // The engine's script, run the way the CLI runs it: handed a page whose context records the one route it installs.
 async function installed(script) {
   const routes = [];
-  const page = { context: () => ({ route: async (pattern, handler) => routes.push({ pattern, handler }) }) };
+  const sockets = [];
+  const context = { route: async (pattern, handler) => routes.push({ pattern, handler }), routeWebSocket: async (pattern, handler) => sockets.push({ pattern, handler }) };
+  const page = { context: () => context };
   assert.equal(await (0, eval)(`(${script})`)(page), "ok");
-  return routes;
+  return Object.assign(routes, { sockets, context });
 }
 
 async function decided(handler, method, url) {
@@ -51,7 +55,7 @@ test("a blank browser of its own is opened, and the route reaches the CLI as a s
 });
 
 test("the route: a credential only on the bound origin's requests, a redirect never followed with it, another host never given it", async () => {
-  const [route] = await installed(pageRoute(ORIGIN, { authorization: `Bearer ${TOKEN}` }, pageWritesOf([GRANT])));
+  const [route] = await installed(pageRoute(ORIGIN, { authorization: `Bearer ${TOKEN}` }, pageWritesOf(request(), NOW)));
   assert.equal(route.pattern, "**/*", "every request the page makes is decided here");
   const own = await decided(route.handler, "GET", `${ORIGIN}/invoices`);
   assert.deepEqual([own.action, own.fetched.maxRedirects, own.fetched.headers.authorization], ["fulfill", 0, `Bearer ${TOKEN}`]);
@@ -60,13 +64,39 @@ test("the route: a credential only on the bound origin's requests, a redirect ne
 });
 
 test("the route: a write goes through only under a grant this run was minted, for its method and path, as many times as it allows", async () => {
-  const [route] = await installed(pageRoute(ORIGIN, {}, pageWritesOf([GRANT])));
+  const routes = await installed(pageRoute(ORIGIN, {}, pageWritesOf(request(), NOW)));
+  const [route] = routes;
   assert.equal((await decided(route.handler, "POST", `${ORIGIN}/api/invoices`)).action, "fulfill");
+  assert.deepEqual(routes.context.__orbitPageSpends, [{ grant: GRANT.id, method: "POST" }], "the spend is kept where the worker reads it back");
   assert.equal((await decided(route.handler, "POST", `${ORIGIN}/api/invoices`)).action, "abort", "a grant used once is spent");
   assert.equal((await decided(route.handler, "DELETE", `${ORIGIN}/api/invoices/inv-a`)).action, "abort", "a write no grant covers");
   assert.equal((await decided(route.handler, "POST", "http://broker:15672/api/queues")).action, "abort", "a write to another host, whatever its path");
   assert.equal((await decided(route.handler, "OPTIONS", `${ORIGIN}/api/invoices`)).action, "fulfill", "a read is not a write");
-  assert.deepEqual(pageWritesOf([GRANT, { capability: { id: "orbit.state.read" } }]), [{ method: "POST", match: "/api/invoices$", uses: 1 }], "only the page's own grants");
+  assert.deepEqual(pageWritesOf(request({}, [GRANT, { ...GRANT, capability: { id: "orbit.state.read" } }]), NOW), [{ grant: GRANT.id, method: "POST", match: "/api/invoices$", uses: 1, until: GRANT.expiresAtMs }], "only the page's own grants");
+});
+
+test("a page is offered only the grants the ledger would honour: this run's, unexpired, for the identity it acts as", () => {
+  const offered = (grant, page = {}) => pageWritesOf(request(page, [grant]), NOW).length;
+  assert.equal(offered(GRANT), 1);
+  assert.equal(offered({ ...GRANT, run: "exe-another-run-1" }), 0, "another run's");
+  assert.equal(offered({ ...GRANT, expiresAtMs: NOW - 1 }), 0, "one that expired");
+  assert.equal(offered(GRANT, { identityRef: "tenant-b-reader" }), 0, "one minted for another principal");
+  assert.equal(offered({ ...GRANT, principal: null }, { identityRef: null }), 1, "a page that acts as nobody, a grant minted for nobody");
+});
+
+test("a websocket is refused outright, and a service worker never answers before the route", async () => {
+  const routes = await installed(pageRoute(ORIGIN, {}, []));
+  const closed = [];
+  await routes.sockets[0].handler({ close: (o) => closed.push(o.code) });
+  assert.deepEqual([routes.sockets[0].pattern, closed], ["**/*", [1008]]);
+  assert.equal(PAGE_BROWSER.browser.contextOptions.serviceWorkers, "block");
+});
+
+test("what the page's writes spent is read back off the browser and recorded as the ledger records a call's spend", () => {
+  const ctx = { browser: { cli: (args) => (args.includes("--raw") ? JSON.stringify(JSON.stringify([{ grant: GRANT.id, method: "POST" }])) : "") } };
+  const spends = pageSpendsOf(ctx);
+  assert.deepEqual(pageSpendRecords(spends, [GRANT]), [{ kind: "grant", grant: GRANT.id, capability: "orbit.page.request", operation: "write", use: 1, input_digest: GRANT.input.digest }]);
+  assert.deepEqual(pageSpendsOf({ browser: { cli: () => "ERROR: not open" } }), [], "nothing read is nothing spent");
 });
 
 test("a page with no identity is a browser that acts as nobody: nothing is issued, and its writes are still held to its grants", async () => {

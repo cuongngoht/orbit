@@ -29,12 +29,12 @@
 // It never opens a browser. The launcher does, behind the preflight question;
 // this drives the session in PT_RUN_DIR (or the project's default run dir).
 import { randomBytes } from "node:crypto";
-import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { readAll } from "../src/capability/helper-protocol.mjs";
 import { shaBytes } from "../src/hash.mjs";
-import { argvOf, closedPage, identityIssuer, openedPage, requestProblem, sealedBinder, WORKER_API } from "../src/run/worker.mjs";
+import { argvOf, closedPage, identityIssuer, openedPage, pageSpendRecords, pageSpendsOf, requestProblem, sealedBinder, WORKER_API } from "../src/run/worker.mjs";
 import { grantLedger } from "../src/run/grants.mjs";
 import { shownPath } from "../src/shown-path.mjs";
 import { publishRun } from "../src/report/publish.mjs";
@@ -132,14 +132,23 @@ async function workerMain() {
 function paged(ctx, request) {
   if (!request.page) return ran(ctx, request);
   openedPage(ctx, request, PAGE_IO);
-  try { return ran(ctx, request); }
+  try { return spendsKept(ctx, request, ran(ctx, request)); }
   finally { closedPage(ctx); }
+}
+
+// What the page's writes spent goes into the run log beside the steps, the way a call's spend does, before the
+// evidence is listed -- so the host holds every spend to what it minted (src/run/envelope.mjs spendFindings).
+function spendsKept(ctx, request, o) {
+  const records = pageSpendRecords(pageSpendsOf(ctx), request.grants);
+  if (records.length && o.result?.evidence) appendFileSync(join(o.result.evidence, "run-log.jsonl"), records.map((r) => `${JSON.stringify(r)}\n`).join(""));
+  return o;
 }
 
 // What the page's browser is set up through: the run directory's config, and the route as a file of the worker's own
 // scratch -- the system temp, a tmpfs in a worker the host never reads -- readable by this user alone, removed as
 // soon as the browser has loaded it.
 const PAGE_IO = {
+  now: () => Date.now(),
   write: (file, text) => (mkdirSync(dirname(file), { recursive: true }), writeFileSync(file, text)),
   scratch: (text) => ((file) => (writeFileSync(file, text, { mode: 0o600, flag: "wx" }), file))(join(tmpdir(), `orbit-page-${randomBytes(8).toString("hex")}.js`)),
   remove: (file) => rmSync(file, { force: true }),

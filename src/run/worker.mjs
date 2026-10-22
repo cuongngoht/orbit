@@ -150,7 +150,8 @@ function packDir(pluginRoot, io, from) {
 // own scratch (`io.scratch`, a tmpfs the host never reads) removed as soon as it is loaded: never an argument a process
 // listing shows, never the run directory, which is in the scratch store the host reads back. What the CLI echoes of it
 // is dropped, and a failure says only that it failed.
-export const PAGE_BROWSER = Object.freeze({ browser: { browserName: "chromium", isolated: true, launchOptions: { headless: true, chromiumSandbox: false, args: ["--disable-dev-shm-usage"] } } });
+// A service worker would answer a page's requests before the route sees them, so the context runs with none.
+export const PAGE_BROWSER = Object.freeze({ browser: { browserName: "chromium", isolated: true, launchOptions: { headless: true, chromiumSandbox: false, args: ["--disable-dev-shm-usage"] }, contextOptions: { serviceWorkers: "block" } } });
 
 // io: { write(file, text), scratch(text) -> path, remove(path) } -- the composition root's; this decides what.
 export function openedPage(ctx, request, io) {
@@ -161,7 +162,7 @@ export function openedPage(ctx, request, io) {
 }
 
 function routed(ctx, request, io) {
-  const file = io.scratch(pageRoute(request.page.origin, request.page.identityRef ? credentialOf(ctx, request.page) : {}, pageWritesOf(request.grants)));
+  const file = io.scratch(pageRoute(request.page.origin, request.page.identityRef ? credentialOf(ctx, request.page) : {}, pageWritesOf(request, io.now())));
   try { quietly(() => ctx.browser.cli(["run-code", `--filename=${file}`]), "the page's browser could not be given its route"); }
   finally { io.remove(file); }
 }
@@ -178,24 +179,34 @@ function headerOf(bound) {
   return { [String(bound.value.header ?? "authorization").toLowerCase()]: `${bound.value.scheme ?? "Bearer"} ${token}` };
 }
 
-// The writes the page may make: one per page grant this run was minted, for its method and path, as many times as it
-// allows (src/runtime/sandbox/test-grants.mjs; skills/orbit-qa/ports.mjs pageWrites).
-export const pageWritesOf = (grants) => (grants ?? []).filter((g) => g?.capability?.id === "orbit.page.request").map((g) => ({ method: String(g.operation?.selectors?.method ?? "").toUpperCase(), match: String(g.operation?.selectors?.match ?? "$^"), uses: Number(g.bounds?.maxUses) || 1 }));
+export const PAGE_GRANT = "orbit.page.request";
+
+// The writes the page may make: one per page grant THIS run was minted, unexpired, for the identity the page acts as
+// -- the predicates the ledger holds a call to (src/run/grants.mjs) -- for its method and path, as many times as it
+// allows, and no later than it expires (skills/orbit-qa/ports.mjs pageWrites).
+export const pageWritesOf = (request, nowMs) => (request.grants ?? []).filter((g) => g?.capability?.id === PAGE_GRANT && g.run === request.runId && nowMs < g.expiresAtMs && (g.principal ?? null) === (request.page?.identityRef ?? null)).map((g) => ({ grant: g.id, method: String(g.operation?.selectors?.method ?? "").toUpperCase(), match: String(g.operation?.selectors?.match ?? "$^"), uses: Number(g.bounds?.maxUses) || 1, until: g.expiresAtMs }));
 
 const literal = (v) => JSON.stringify(v);
 
 // The script the CLI runs. Everything in it is the engine's, and every value is a JSON literal.
+// A grant a write spends is kept on the browser's context (SPENDS), where the worker reads it back after the run
+// (`pageSpendsOf`) and records it as the ledger records a call's: the host holds every spend to what it minted. A
+// WebSocket is refused outright: a frame is a write no grant can describe.
 export const pageRoute = (origin, headers, writes) => `async (page) => {
   const ORIGIN = ${literal(origin)}; const HEADERS = ${literal(headers)}; const WRITES = ${literal(writes)};
   const READS = ["GET", "HEAD", "OPTIONS"];
+  const context = page.context();
+  const spends = (context.${SPENDS} = context.${SPENDS} ?? []);
   const sameOrigin = (u) => u === ORIGIN || u.startsWith(ORIGIN + "/");
-  await page.context().route("**/*", async (route) => {
+  await context.routeWebSocket("**/*", (ws) => ws.close({ code: 1008, reason: "a page's websocket is not a write a grant can cover" }));
+  await context.route("**/*", async (route) => {
     const request = route.request();
     const method = request.method().toUpperCase();
     if (!READS.includes(method)) {
-      const grant = WRITES.find((w) => w.method === method && sameOrigin(request.url()) && new RegExp(w.match).test(request.url()) && w.uses > 0);
+      const grant = WRITES.find((w) => w.method === method && sameOrigin(request.url()) && new RegExp(w.match).test(request.url()) && w.uses > 0 && Date.now() < w.until);
       if (!grant) return route.abort("blockedbyclient");
       grant.uses -= 1;
+      spends.push({ grant: grant.grant, method });
     }
     if (!sameOrigin(request.url())) return route.continue();
     const response = await route.fetch({ headers: { ...request.headers(), ...HEADERS }, maxRedirects: 0 });
@@ -204,6 +215,25 @@ export const pageRoute = (origin, headers, writes) => `async (page) => {
   return "ok";
 }
 `;
+
+const SPENDS = "__orbitPageSpends";
+
+// What the page's writes spent, read back off the browser's context after the run.
+export function pageSpendsOf(ctx) {
+  const raw = ctx.browser.cli(["--raw", "run-code", `async (page) => JSON.stringify(page.context().${SPENDS} ?? [])`], true);
+  return listOf(parsedOnce(parsedOnce(String(raw ?? "").trim())));
+}
+
+const listOf = (v) => (Array.isArray(v) ? v.filter((x) => typeof x?.grant === "string") : []);
+
+function parsedOnce(text) {
+  try { return typeof text === "string" ? JSON.parse(text) : text; }
+  catch { return null; }
+}
+
+// Each spend as the ledger records a call's (src/run/grants.mjs): the grant, its capability and operation, which use,
+// and the digest of what it was minted for.
+export const pageSpendRecords = (spends, grants) => spends.map((s, n) => ((g) => ({ kind: "grant", grant: s.grant, capability: PAGE_GRANT, operation: "write", use: spends.slice(0, n + 1).filter((x) => x.grant === s.grant).length, input_digest: g?.input?.digest ?? null }))((grants ?? []).find((g) => g.id === s.grant)));
 
 function quietly(fn, why) {
   try { fn(); }

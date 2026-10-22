@@ -55,8 +55,8 @@ export const DECISION_FIELDS = Object.freeze(["schemaVersion", "decisionId", "ex
 // `material` says whether a line moves the mission in a way a later decision must have read (a viewer redraws on it).
 export const KINDS = Object.freeze({
   "mission.created": { material: true, fields: ["id", "project", "checkout", "objective", "goalDigest", "bytes", "budget", "session", "host", "schema"] },
-  "intent.recorded": { material: true, fields: ["n", "digest", "facts", "hypotheses", "assumptions", "constraints", "acceptanceCriteria", "unknowns", "evidence", "capabilities", "action"] },
-  "plan.revised": { material: true, fields: ["n", "digest", "file", "replaces", "cause", "affectedUnits", "invalidatedResults", "evidenceRefs", "units", "cancelled", "reset", "workflow", "because", "action"] },
+  "intent.recorded": { material: true, fields: ["rev", "digest", "facts", "hypotheses", "assumptions", "constraints", "acceptanceCriteria", "unknowns", "evidence", "capabilities", "action"] },
+  "plan.revised": { material: true, fields: ["rev", "digest", "file", "replaces", "cause", "affectedUnits", "invalidatedResults", "evidenceRefs", "units", "cancelled", "reset", "workflow", "because", "action"] },
   "unit.created": { material: true, fields: ["id", "key", "planRevision", "unitKind", "objective", "dependencyIds", "requiredCapabilities", "requestedEffects", "scope", "outputContract", "acceptanceCriteriaRefs", "verificationContract", "executionBudget", "inputArtifactRefs", "parentUnit", "action"] },
   "unit.updated": { material: false, fields: ["id", "rolePin", "templatePin", "skillPins", "reset", "because", "action"] },
   "unit.cancelled": { material: true, fields: ["id", "because", "action"] },
@@ -103,7 +103,7 @@ export const KINDS = Object.freeze({
   "mission.reported": { material: true, fields: ["verdict", "owed", "summary"] },
   "mission.failed": { material: true, fields: ["stop", "because"] },
   "mission.cancelled": { material: true, fields: ["by", "session", "because"] },
-  "checkpoint.written": { material: false, fields: ["n", "digest", "file", "revision", "action"] },
+  "checkpoint.written": { material: false, fields: ["count", "digest", "file", "revision", "action"] },
   "recovery.reconciled": { material: true, fields: ["action", "from", "to", "because"] },
   "tool.observed": { material: false, fields: ["eid", "phase", "tool", "toolName", "cmdClass", "exe", "ok", "durationMs", "agentRun", "attribution", "mode"] },
 });

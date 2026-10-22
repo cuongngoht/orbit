@@ -9,7 +9,7 @@ const counted = (intent) => Object.keys(LISTS).map((k) => `${intent[k].length} $
 function analyzed(ports, lw, a) {
   const intent = intentOf(a.intent, lw.m);
   lw.append("intent.recorded", { ...intent, action: lw.action });
-  return { outcome: intent.n === 1 ? "recorded" : "amended", level: "CONTRACT_MET", summary: `intent ${intent.n}: ${counted(intent)}`, refs: [`intent:${intent.digest}`] };
+  return { outcome: intent.rev === 1 ? "recorded" : "amended", level: "CONTRACT_MET", summary: `intent ${intent.rev}: ${counted(intent)}`, refs: [`intent:${intent.digest}`] };
 }
 
 export const analyze = {

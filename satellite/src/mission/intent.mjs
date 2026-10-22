@@ -92,5 +92,5 @@ export function intentOf(raw, m) {
   const prior = m.intent ?? {};
   const lists = Object.fromEntries(Object.keys(LISTS).map((k) => [k, stamped(k, prior[k], raw[k])]));
   const intent = { ...lists, unknowns: settledUnknowns(lists.unknowns, raw.settled), evidence: [...new Set([...list(prior.evidence), ...list(raw.evidence)])], capabilities: [...new Set([...list(prior.capabilities), ...list(raw.capabilities)])] };
-  return { ...intent, n: (m.counts["intent.recorded"] ?? 0) + 1, digest: short(canonicalJson(intent), 16) };
+  return { ...intent, rev: (m.counts["intent.recorded"] ?? 0) + 1, digest: short(canonicalJson(intent), 16) };
 }

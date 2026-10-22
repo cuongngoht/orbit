@@ -27,3 +27,11 @@ test("every action, under every plan it can come to, derives a mode, operation a
     assert.ok(!STRUCTURAL.includes(v.rule), `${kind} ${plan.word ?? plan.kind?.mode ?? ""}: ${v.rule} -- ${v.say}`);
   }
 });
+
+import { KINDS } from "../src/mission/vocab.mjs";
+
+// `kind` and `at` are the journal's own words on every line, and `n` is the fold's word for where a line sits: a line
+// that declared one would have it overwritten.
+test("no journal kind declares a field the journal or the fold writes itself", () => {
+  for (const [kind, row] of Object.entries(KINDS)) for (const reserved of ["kind", "at", "n"]) assert.equal(row.fields.includes(reserved), false, `${kind} declares ${reserved}`);
+});

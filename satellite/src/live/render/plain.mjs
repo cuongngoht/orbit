@@ -9,8 +9,8 @@ const n = (v) => (Array.isArray(v) ? v.length : 0);
 
 const SUMMARIES = {
   "mission.created": (r) => `mission ${r.id}: ${r.objective}`,
-  "intent.recorded": (r) => `intent ${r.n}: ${n(r.facts)} fact(s), ${n(r.hypotheses)} hypothesis(es), ${n(r.acceptanceCriteria)} criterion(a), ${n(r.unknowns)} unknown(s)`,
-  "plan.revised": (r) => `${r.n === 1 ? "PLAN" : "WORKFLOW_REVISED"} revision ${r.n} (${r.cause}): +${n(r.units)} unit(s), ${n(r.cancelled)} cancelled, ${n(r.reset)} reset`,
+  "intent.recorded": (r) => `intent ${r.rev}: ${n(r.facts)} fact(s), ${n(r.hypotheses)} hypothesis(es), ${n(r.acceptanceCriteria)} criterion(a), ${n(r.unknowns)} unknown(s)`,
+  "plan.revised": (r) => `${r.rev === 1 ? "PLAN" : "WORKFLOW_REVISED"} revision ${r.rev} (${r.cause}): +${n(r.units)} unit(s), ${n(r.cancelled)} cancelled, ${n(r.reset)} reset`,
   "unit.created": (r) => `${r.id} ${r.unitKind}: ${r.objective}`,
   "unit.updated": (r) => `${r.id}${r.rolePin ? ` role ${r.rolePin}` : ""}${r.templatePin ? ` template ${r.templatePin}` : ""}${r.reset ? " reset" : ""}`,
   "unit.cancelled": (r) => `${r.id} cancelled: ${r.because ?? ""}`,
@@ -38,7 +38,7 @@ const SUMMARIES = {
   "mission.reported": (r) => `REPORTED ${r.verdict}: ${r.summary ?? ""}`,
   "mission.failed": (r) => `FAILED ${r.stop}: ${r.because ?? ""}`,
   "mission.cancelled": (r) => `CANCELLED by ${r.by}: ${r.because ?? ""}`,
-  "checkpoint.written": (r) => `checkpoint ${r.n} at revision ${r.revision}`,
+  "checkpoint.written": (r) => `checkpoint ${r.count} at revision ${r.revision}`,
   "recovery.reconciled": (r) => `${r.action} ${r.from} -> ${r.to}: ${r.because ?? ""}`,
   "tool.observed": (r) => `${r.toolName ?? r.tool} ${r.phase}${r.ok === false ? " failed" : ""} (${r.attribution})`,
 };

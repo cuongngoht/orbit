@@ -53,7 +53,7 @@ const contracted = (ports, lw, a, p) => ((row) => (row ? row.f(lw, a, p) : null)
 function revised(ports, lw, a, p) {
   const rev = revisionOf({ m: lw.m, units: p.units, cancel: p.cancel, reset: p.reset, cause: a.cause ?? "FIRST_PLAN", because: a.because, evidenceRefs: list(a.proposal ? [a.proposal] : []), workflow: a.workflow });
   writeRevision(ports.io, ports.rooms, lw.id, rev);
-  lw.append("plan.revised", { n: rev.n, digest: rev.digest, file: relativePlanFile(ports.rooms, lw.id, rev), replaces: rev.replaces, cause: rev.cause, affectedUnits: rev.affectedUnits, invalidatedResults: rev.invalidatedResults, evidenceRefs: rev.evidenceRefs, units: p.units.map((u) => u.id), cancelled: p.cancel, reset: p.reset, workflow: a.workflow, because: a.because, action: lw.action });
+  lw.append("plan.revised", { rev: rev.n, digest: rev.digest, file: relativePlanFile(ports.rooms, lw.id, rev), replaces: rev.replaces, cause: rev.cause, affectedUnits: rev.affectedUnits, invalidatedResults: rev.invalidatedResults, evidenceRefs: rev.evidenceRefs, units: p.units.map((u) => u.id), cancelled: p.cancel, reset: p.reset, workflow: a.workflow, because: a.because, action: lw.action });
   unitLines(lw, p, rev.n);
   return { outcome: rev.n === 1 ? "planned" : "revised", level: "CONTRACT_MET", summary: `revision ${rev.n}: ${p.units.length} unit(s) added, ${p.cancel.length} cancelled, ${p.reset.length} reset`, refs: [`plan:${rev.digest}`], digests: [rev.digest] };
 }

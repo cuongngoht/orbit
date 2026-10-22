@@ -1,7 +1,10 @@
 // CONTEXT: what the host reads before its next decision -- the mission's view, what it may do now, and one suggested
 // next step with the decision it would send (its expectedRevision filled in). Writes nothing. SHOW is the view alone;
 // EVENTS the journal from a line on; LIST every mission of this project.
+import { readRevision } from "../planning/plan.mjs";
 import { eventsOf } from "../projection/fold.mjs";
+import { missionDirOf, missionFile } from "../store/rooms.mjs";
+import { readGoal } from "./goal.mjs";
 import { listMissions } from "../store/rooms.mjs";
 import { quietly } from "../store/text.mjs";
 import { actionShapes, allowedNow } from "./actions.mjs";
@@ -35,11 +38,17 @@ const nextOf = (v) => ((row) => ({ say: row.say(v), decide: row.decide(v) }))(NE
 
 export const protocolOf = () => ({ decisionSchema: DECISION_SCHEMA, reportSchema: REPORT_SCHEMA, actions: actionShapes(), rules: protocolRules() });
 
+// Whether the latest plan revision on disk is still the one its journal line names.
+const intactPlan = (ports, lw) => ((p) => (p ? Boolean(quietly(() => readRevision(ports.io, missionFile(ports.rooms, lw.id, ...p.file.split("/"))))?.digest === p.digest) : null))(lw.m.plans.at(-1));
+
 export function contextOf(ports, id) {
   const lw = worldOf(ports, id);
   const v = viewOf(ports, lw);
-  return { ...v, allowed: allowedNow(lw), next: nextOf(v), protocol: { decisionSchema: DECISION_SCHEMA, reportSchema: REPORT_SCHEMA, actions: actionShapes() } };
+  return { ...v, plan: { ...v.plan, intact: intactPlan(ports, lw) }, allowed: allowedNow(lw), next: nextOf(v), protocol: { decisionSchema: DECISION_SCHEMA, reportSchema: REPORT_SCHEMA, actions: actionShapes() } };
 }
+
+// The goal as the person submitted it, read back with its digest checked -- what a resumed session reads first.
+export const goalOf = (ports, id) => ((lw, g) => ({ mission: id, digest: g.digest, bytes: g.bytes, body: g.body, matches: g.digest === lw.m.meta.goalDigest }))(worldOf(ports, id), readGoal(ports.io, missionDirOf(ports.rooms, id)));
 
 export const showOf = (ports, id) => viewOf(ports, worldOf(ports, id));
 

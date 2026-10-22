@@ -9,7 +9,7 @@
 //   node satellite.mjs mission step <msn> [--decision=<file>]     one decision on stdin, through the gateway
 //   node satellite.mjs mission reconcile <msn> [--abandon=<arn>]  open actions read back, never resent
 //   node satellite.mjs mission finish <msn> [--stop=<REASON> --because="…"]
-//   node satellite.mjs mission show|events <msn> [--since=<n>]
+//   node satellite.mjs mission show|goal|events <msn> [--since=<n>]   the goal: as submitted, its digest checked
 //   node satellite.mjs mission list
 //   node satellite.mjs agent envelope <msn> <arn>                 what the host hands one agent run
 //   node satellite.mjs agent ack <msn> <arn>                      the host's word that it launched it

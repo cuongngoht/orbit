@@ -18,7 +18,8 @@
 // is released, nothing labelled is left on the machine, no secret the run was handed is in anything
 // the store kept, and the checkout is exactly as it was committed.
 //
-// It needs Docker and the worker image (WORKER) on this machine; without them it says BLOCKED and
+// It needs Docker, and builds the worker image (acceptance/worker/Dockerfile: Node, the browser CLI and its Chromium)
+// once, pinning it by the image id it gets; without Docker, or with a build that fails, it says BLOCKED and
 // exits 3. A mismatch is exit 1. `--record` keeps a receipt of a run that matched in
 // docs/backend-acceptance.json (`acceptance`), keyed by the engine's tree.
 import { spawnSync } from "node:child_process";
@@ -28,10 +29,13 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assemble } from "./projects/assemble.mjs";
+import { backendSourceDigest } from "../skills/orbit-release/backend.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const TRUTH = JSON.parse(readFileSync(join(ROOT, "acceptance", "truth.json"), "utf8"));
-const WORKER = "node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32";
+// The worker image every generated test runs in, pinned by the id the build gave it (sha256:…) -- set once, in main().
+const WORKER_TAG = "orbit-acceptance-worker:local";
+let WORKER = null;
 const TASK = "tsk-0123456789ab";
 const WRITES = ["trigger", "create-resource", "consume", "publish", "control-workload", "advance-clock", "write", "delete-resource"];
 const EGRESS = { host: "example.com", port: 443, address: "93.184.215.14" };
@@ -111,7 +115,7 @@ function seated(run) {
   for (const [k, v] of [["enabled", "true"], ["tenancy", JSON.stringify(tenancy())], ["limits.caseSeconds", "300"]]) cli(run, "autonomous-qa.mjs", ["settings", "set", `${k}=${v}`, "--human"]);
 }
 
-const tenancy = () => ({ claim: "tid", tenants: { A: "tenant-a", B: "tenant-b" }, identities: { "tenant-a-reader": ["A"], "tenant-b-reader": ["B"] }, resources: { "inv-a": { tenant: "A", marker: "canary-invoice-a", api: "/api/invoices/inv-a" } }, matrix: [{ identity: "tenant-b-reader", resource: "inv-a", operation: "read", expect: "denied" }] });
+const tenancy = () => ({ claim: "tid", tenants: { A: "tenant-a", B: "tenant-b" }, identities: { "tenant-a-reader": ["A"], "tenant-b-reader": ["B"], "tenant-a-writer": ["A"] }, resources: { "inv-a": { tenant: "A", marker: "canary-invoice-a", api: "/api/invoices/inv-a" } }, matrix: [{ identity: "tenant-b-reader", resource: "inv-a", operation: "read", expect: "denied" }] });
 
 // ── the sandbox, as a person sets it up in Control ─────────────────────────
 
@@ -306,17 +310,23 @@ function printed(results) {
   }
 }
 
+// The record the release gate reads (skills/orbit-release/backend.mjs): keyed to the SOURCE the run was on -- the
+// engine and this acceptance alike -- and holding every stack and variant it ran, merged with what an earlier run on
+// the same source already matched, so the stacks can be run one at a time.
 function recorded(results) {
   const file = join(ROOT, "docs", "backend-acceptance.json");
   const doc = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : { schema: 1, receipts: [] };
-  const tree = spawnSync("git", ["rev-parse", "HEAD^{tree}"], { cwd: ROOT, encoding: "utf8" }).stdout.trim();
-  const entry = { at: new Date().toISOString(), engineTree: tree, worker: WORKER, runs: results.map((r) => ({ stack: r.stack, variant: r.variant, matched: r.matched, outcomes: Object.fromEntries(r.rows.map((x) => [x.shape, x.got])) })) };
-  writeFileSync(file, `${JSON.stringify({ ...doc, acceptance: entry }, null, 2)}\n`);
+  const sourceDigest = backendSourceDigest(ROOT);
+  const runs = [...(doc.acceptance?.sourceDigest === sourceDigest ? doc.acceptance.runs : []).filter((r) => !results.some((x) => x.stack === r.stack && x.variant === r.variant)), ...results.map((r) => ({ stack: r.stack, variant: r.variant, matched: r.matched, outcomes: Object.fromEntries(r.rows.map((x) => [x.shape, x.got])) }))];
+  writeFileSync(file, `${JSON.stringify({ ...doc, acceptance: { schema: 1, at: new Date().toISOString(), sourceDigest, worker: WORKER, runs } }, null, 2)}\n`);
 }
 
+// Docker answers, and the worker image is built (a no-op when nothing in its Dockerfile changed) and pinned by its id.
 function docker() {
-  const info = spawnSync("docker", ["image", "inspect", WORKER], { encoding: "utf8" });
-  return info.status === 0 ? null : `the worker image ${WORKER} is not on this machine (docker pull it), or Docker does not answer`;
+  const built = spawnSync("docker", ["build", "-q", "-t", WORKER_TAG, join(ROOT, "acceptance", "worker")], { encoding: "utf8", timeout: 1_800_000 });
+  if (built.status !== 0) return `the worker image could not be built from acceptance/worker (${(built.stderr || built.stdout || "").trim().slice(0, 300)}), or Docker does not answer`;
+  WORKER = spawnSync("docker", ["image", "inspect", "--format", "{{.Id}}", WORKER_TAG], { encoding: "utf8" }).stdout.trim();
+  return /^sha256:[0-9a-f]{64}$/.test(WORKER) ? null : `the worker image was built and has no image id to pin (${WORKER.slice(0, 80)})`;
 }
 
 async function main() {

@@ -10,7 +10,7 @@ import { test } from "node:test";
 import { invokeCapability, invokeNow } from "../src/capability/invoke.mjs";
 import call from "../src/run/verbs/call.mjs";
 import { createCapabilityRegistry } from "../src/capability/registry.mjs";
-import { HELPER_API, helperDeadlineMs } from "../src/capability/helper.mjs";
+import { DEFAULT_HELPER_TIMEOUT_MS, HELPER_API, helperDeadlineMs } from "../src/capability/helper.mjs";
 import { Blocked, Refused } from "../src/errors.mjs";
 import { extensionContextV1 } from "../src/extensions/context-v1.mjs";
 import { loadExtensions } from "../src/extensions/index.mjs";
@@ -67,6 +67,17 @@ test("the helper is asked once, with what the binding resolved; the capability o
   assert.equal(request.bound.endpointRef.origin, "http://app:8080");
   assert.ok(request.deadlineMs > 0 && request.deadlineMs <= 60_000);
   assert.ok(request.deadlineMs < w.process.calls[0].opts.timeoutMs, "the helper is told a deadline inside the host's own bound on it");
+});
+
+// What stack B's early-ack run showed once a cut window stopped calling itself complete: an adapter whose limit was the
+// window itself could never watch a two-minute window whole, so a miss it was asked to rule on was only ever
+// INCONCLUSIVE. Every adapter in the pack that waits holds one: its limit (under the helper ceiling), less the launch
+// allowance and its own margin, is longer.
+test("every pack adapter that waits holds a two-minute window whole", () => {
+  const adapters = JSON.parse(readFileSync(join(import.meta.dirname, "..", "skills", "orbit-backend-test", "adapters.json"), "utf8")).adapters;
+  const waiting = adapters.filter((a) => Object.keys(a.operations).some((op) => /observe|await|advance|control|trigger/.test(op)));
+  assert.ok(waiting.length >= 5);
+  for (const a of waiting) assert.ok(helperDeadlineMs(Math.min(a.limits.timeoutMs, DEFAULT_HELPER_TIMEOUT_MS)) - 250 >= 120_000, `${a.id}: ${a.limits.timeoutMs}`);
 });
 
 test("a helper's deadline leaves the host room to start it and read its answer: the bound less two seconds, or a tenth of a short one", () => {

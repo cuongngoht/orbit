@@ -23,7 +23,10 @@ import { CAPABILITY_ID } from "./contract-v1.mjs";
 
 export const HELPER_API = "orbit.helper/v1";
 export const DEFAULT_ANSWER_BYTES = 4 * 1024 * 1024;
-export const DEFAULT_HELPER_TIMEOUT_MS = 120 * 1000;
+// The longest any one helper call may take, whatever its capability or adapter declares: an observation's window
+// (two minutes is a common accepted one) plus the time to start the helper and read its answer back. Every call is
+// still bounded by the run's own budget, which a person sets (limits.caseSeconds).
+export const DEFAULT_HELPER_TIMEOUT_MS = 180 * 1000;
 
 // What a helper is told its deadline is: the host's own bound on it, less the time it takes to start the helper and to
 // read its one answer back -- so a helper that watches until its deadline has answered before the host's bound ends

@@ -95,7 +95,7 @@
         "leaseMinSec": "unknown"
       },
       "limits": {
-        "timeoutMs": 120000,
+        "timeoutMs": 150000,
         "answerBytes": 4194304
       },
       "helper": {
@@ -241,7 +241,7 @@
         "leaseMinSec": "unknown"
       },
       "limits": {
-        "timeoutMs": 120000,
+        "timeoutMs": 150000,
         "answerBytes": 4194304
       },
       "helper": {
@@ -343,7 +343,7 @@
         "dialects": "unknown"
       },
       "limits": {
-        "timeoutMs": 120000,
+        "timeoutMs": 150000,
         "answerBytes": 4194304
       },
       "helper": {
@@ -382,7 +382,7 @@
         "clockInjection": "live"
       },
       "limits": {
-        "timeoutMs": 120000,
+        "timeoutMs": 150000,
         "answerBytes": 4194304
       },
       "helper": {
@@ -419,7 +419,7 @@
       },
       "semantics": {},
       "limits": {
-        "timeoutMs": 120000,
+        "timeoutMs": 150000,
         "answerBytes": 4194304
       },
       "helper": {
@@ -469,7 +469,7 @@
         "redeliveryMarker": "count"
       },
       "limits": {
-        "timeoutMs": 120000,
+        "timeoutMs": 150000,
         "answerBytes": 4194304
       },
       "helper": {

@@ -3,7 +3,7 @@
 // business clock is moved only through an adapter that says it can inject one; and a skeleton
 // carries no verdict text at all, because the engine compiles every verdict. Each rule is a row.
 import { meets } from "../../adapters/semantics.mjs";
-import { isOp, requestOf, stepsOf } from "./skeleton.mjs";
+import { isOp, requestOf, stepsOf, witnessSteps } from "./skeleton.mjs";
 
 const WINDOWED = ["orbit.observe.await", "orbit.scheduler.observe", "orbit.worker.observe", "orbit.job.observe"];
 const VERDICT_TEXT = ["expect", "js"];
@@ -14,7 +14,7 @@ export const TEMPORAL_RULES = [
   { id: "NO_VERDICT_TEXT", findings: (steps) => steps.filter((s) => VERDICT_TEXT.some((k) => s.step?.[k] !== undefined)).map((s) => `step ${s.i} carries ${VERDICT_TEXT.filter((k) => s.step[k] !== undefined).join(" and ")} — a skeleton proposes steps; the engine compiles every verdict`) },
 ];
 
-const witnesses = (design, i) => (design?.controls ?? []).some((c) => c.step === i);
+const witnesses = (design, i) => witnessSteps(design).has(i);
 
 export const temporalFindings = (design, ctx = {}) => {
   const steps = stepsOf(design);

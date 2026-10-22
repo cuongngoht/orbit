@@ -89,6 +89,17 @@ test("each stage stops a design with its own word, before the next is asked", ()
   for (const word of ["GENERATION_FAILED", "REQUIRES_REQUIREMENT", "INVALID_TEST"]) assert.ok(VERIFICATION_OUTCOME_IDS.includes(word), word);
 });
 
+test("a control is held to what the test can show of it: it acts in a step, a refusal is of somebody else, and only a fault names a witness", () => {
+  const stopped = (controls, steps = STEPS) => ((r) => [r.stage, (r.findings ?? []).join(" | ")])(generatedCase(proposal({ controls, skeleton: skeleton(steps) }), context()));
+  const as = (identityRef) => STEPS.map((s, i) => (i === 2 ? { ...s, input: { ...s.input, identityRef } } : s));
+  const holds = ([stage, said], pattern, why) => assert.ok(stage === "controls" && pattern.test(said), `${why}: ${stage} — ${said}`);
+  holds(stopped([{ role: "positive", identityRef: "tenant-a" }, { role: "state" }]), /no step of the test acts as it/, "a control no step runs as shows nothing");
+  holds(stopped([{ role: "positive", identityRef: "tenant-a" }, { role: "negative", identityRef: "tenant-a" }, { role: "state" }], as("tenant-a")), /a refusal of the allowed actor/, "a refusal of the allowed actor proves nothing about anybody else");
+  holds(stopped([{ role: "positive", step: 2 }, { role: "state" }]), /only a fault control names a point/, "a step a positive control names would escape the rules a step is held to");
+  holds(stopped([{ role: "positive" }, { role: "state" }, { role: "fault", point: "p", step: 9 }]), /witness is a step of the test \(1–3\)/, "a witness past the last step");
+  holds(stopped([{ role: "positive" }, { role: "state" }, { role: "fault", step: 2 }]), /and no point/, "a witness names the point it witnesses");
+});
+
 test("a repair may change how a step is written, never what the test rules on", () => {
   const before = proposal();
   const relocated = proposal({ skeleton: skeleton(STEPS.map((s, i) => (i === 1 ? call("orbit.observe.await", { observerRef: "obs-1", request: { match: { messageId: "rem-1" } } }) : s))) });

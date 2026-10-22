@@ -14,6 +14,7 @@
 import { operationFor } from "../../adapters/families.mjs";
 import { predicateDigest, predicateFindings, renderOf } from "../../predicate.mjs";
 import { MEANINGS, meaningAt, meaningEntries } from "../../topology/vocab.mjs";
+import { witnessControls, witnessSteps } from "../backend/skeleton.mjs";
 import { EXPECT_OP } from "../vocab.mjs";
 
 const VALUE_FIELD = { in: "values", ordered: "values" };
@@ -125,15 +126,15 @@ function provesOf(trees) {
 // nothing is left for the verdict stage to refuse.
 function triggerEvidence(design) {
   const steps = design.skeleton?.steps ?? [];
-  const ruled = new Set([...(design.assertions ?? []).map((a) => a.step), ...(design.controls ?? []).filter((c) => Number.isInteger(c.step)).map((c) => c.step)]);
+  const ruled = new Set([...(design.assertions ?? []).map((a) => a.step), ...witnessSteps(design)]);
   const trigger = Number.isInteger(design.trigger?.step) && !ruled.has(design.trigger.step) ? [{ structural: "trigger-accepted", step: design.trigger.step, capability: steps[design.trigger.step - 1]?.capability }] : [];
   return [...trigger, ...steps.map((s, n) => ({ s, step: n + 1 })).filter(({ s, step }) => step !== design.trigger?.step && !ruled.has(step) && operationFor(s?.capability)?.accepted).map(({ s, step }) => ({ structural: "step-accepted", step, capability: s.capability }))];
 }
 
 // A FAULT control's witness rules on what the control itself says happened: a delivery its observation shows ended at
 // the declared point (the open workload protocol's terminal reason `fault:<point>`) -- compiled from the control,
-// never proposed.
-const witnessEvidence = (design) => (design.controls ?? []).filter((c) => c.role === "fault" && c.point && Number.isInteger(c.step) && !(design.assertions ?? []).some((a) => a.step === c.step)).map((c) => ({ structural: "fault-witnessed", step: c.step, point: c.point }));
+// never proposed, and only for the witnesses src/qa/backend/skeleton.mjs names.
+const witnessEvidence = (design) => witnessControls(design).map((c) => ({ structural: "fault-witnessed", step: c.step, point: c.point }));
 
 function witnessTree(a, context) {
   const outputs = context.outputsOf(a.step) ?? {};

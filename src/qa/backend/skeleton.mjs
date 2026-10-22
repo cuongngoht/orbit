@@ -13,3 +13,12 @@ export const refOf = (s, kind) => s.step?.input?.[`${kind}Ref`];
 export const requestOf = (s) => s.step?.input?.request ?? {};
 
 export const triggerStep = (design) => (Number.isInteger(design?.trigger?.step) ? design.trigger.step : null);
+
+// The FAULT controls whose witness the engine compiles (src/qa/obligations/contract.mjs CONTROL_FIELDS step): a fault
+// control that names its point and a step of the test no criterion's assertion rules on. Only such a step has its
+// verdict compiled from the control and may wait within its own bound -- a step any other control names, or one an
+// assertion already rules on, is held to every rule a step is held to. One definition, read by the compiler, the
+// temporal rules and the design's own control rules alike.
+export const witnessControls = (design) => (design?.controls ?? []).filter((c) => c?.role === "fault" && typeof c.point === "string" && c.point.length > 0 && Number.isInteger(c.step) && c.step >= 1 && c.step <= stepsOf(design).length && !(design.assertions ?? []).some((a) => a?.step === c.step));
+
+export const witnessSteps = (design) => new Set(witnessControls(design).map((c) => c.step));

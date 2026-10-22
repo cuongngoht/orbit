@@ -58,4 +58,6 @@ test("only a control's witness may wait within its own bound -- any other window
   const design = (controls) => ({ skeleton: { steps: [witness] }, controls });
   assert.deepEqual(temporalFindings(design([{ role: "fault", point: "p", step: 1 }])), [], "a fault's witness waits for what the control injects; failing there is never a contradiction");
   assert.match(temporalFindings(design([{ role: "fault", point: "p" }])).map((f) => f.say).join(), /sets its own window/);
+  assert.match(temporalFindings(design([{ role: "positive", point: "p", step: 1 }])).map((f) => f.say).join(), /sets its own window/, "only a FAULT control's witness waits within its own bound");
+  assert.match(temporalFindings({ ...design([{ role: "fault", point: "p", step: 1 }]), assertions: [{ criterionRef: "X/E1", template: "complete", step: 1 }] }).map((f) => f.say).join(), /sets its own window/, "a step a criterion rules on waits within that criterion's window, whoever names it");
 });

@@ -8,10 +8,10 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { resultsFromInvestigation } from "../skills/orbit-security-audit/evidence.mjs";
 
-const DESIGN = { controls: [{ role: "positive", identityRef: "tenant-a-reader" }, { role: "negative", identityRef: "tenant-b-reader" }] };
+const DESIGN = { assertions: [{ criterionRef: "API-AC-1/E1", step: 1 }, { criterionRef: "API-AC-2/E1", step: 2 }], controls: [{ role: "positive", identityRef: "tenant-a-reader" }, { role: "negative", identityRef: "tenant-b-reader" }] };
 const CASE = { id: "gen-perm", steps: [{ input: { identityRef: "tenant-a-reader" } }, { input: { identityRef: "tenant-b-reader" } }] };
 
-function owner(outcome, cause, failedStep) {
+function owner(outcome, cause, failedStep, design = DESIGN) {
   const root = mkdtempSync(join(tmpdir(), "orbit-sec-evidence-"));
   mkdirSync(join(root, "ev"), { recursive: true });
   writeFileSync(join(root, "ev", "run-log.jsonl"), failedStep ? `${JSON.stringify({ kind: "step", i: failedStep, ok: false })}\n` : "");
@@ -25,7 +25,7 @@ function owner(outcome, cause, failedStep) {
     runs: [{ id: "run-1", execution: "exe-1", version: "gen-perm@0123456789abcdef", evidence: "ev" }],
     evaluations: [{ id: "evl-1", obligation: "tob-perm", execution: "exe-1", outcome, cause }],
   };
-  const input = { model, readArtifact: () => DESIGN, readVersion: () => ({ case: CASE }), storeRoot: root, tenancy: { identities: { "tenant-a-reader": ["A"], "tenant-b-reader": ["B"] } }, controls: [{ catalog: "asvs-5.0.0-l1", control: "v5.0.0-8.2.1", shapes: ["permission-enforced"] }, { catalog: "asvs-5.0.0-l1", control: "v5.0.0-15.3.1", shapes: ["fields-restricted"] }] };
+  const input = { model, readArtifact: () => design, readVersion: () => ({ case: CASE }), storeRoot: root, tenancy: { identities: { "tenant-a-reader": ["A"], "tenant-b-reader": ["B"] } }, controls: [{ catalog: "asvs-5.0.0-l1", control: "v5.0.0-8.2.1", shapes: ["permission-enforced"] }, { catalog: "asvs-5.0.0-l1", control: "v5.0.0-15.3.1", shapes: ["fields-restricted"] }] };
   return { results: resultsFromInvestigation(input), done: () => rmSync(root, { recursive: true, force: true }) };
 }
 
@@ -52,4 +52,31 @@ test("a positive control that did not hold is that role's contradiction, and lea
   assert.deepEqual(roles(o.results), { positive: "CONTRADICTED", negative: "INCONCLUSIVE" });
   assert.equal(o.results.some((r) => r.leak), false);
   o.done();
+});
+
+test("a role the frozen case never shows earned nothing: no step acts as it, or none that an assertion rules on", () => {
+  const passed = (design) => ((o) => (o.done(), o.results))(owner("SATISFIED", "MET", null, design));
+  const elsewhere = { ...DESIGN, controls: [DESIGN.controls[0], { role: "negative", identityRef: "tenant-c-reader" }] };
+  assert.deepEqual(roles(passed(elsewhere)), { positive: "SATISFIED", negative: "INCONCLUSIVE" }, "a refusal of somebody the test never acted as verifies nothing");
+  assert.deepEqual(roles(passed({ ...DESIGN, assertions: [DESIGN.assertions[0]] })), { positive: "SATISFIED", negative: "INCONCLUSIVE" }, "a step nothing rules on shows nothing, whatever the run came to");
+  const state = passed({ ...DESIGN, controls: [...DESIGN.controls, { role: "state" }] }).find((x) => x.role === "state");
+  assert.equal(state.outcome, "INCONCLUSIVE", "a state control that names no identity and no resource is shown in no step");
+});
+
+test("a contradiction is the role of the step that failed; a positive control is held only when every step it ran came before", () => {
+  const late = { ...DESIGN, controls: [DESIGN.controls[1], DESIGN.controls[0]].map((c) => ({ ...c, identityRef: c.identityRef === "tenant-a-reader" ? "tenant-b-reader" : "tenant-a-reader" })) };
+  const o = owner("CONTRADICTED", "CONTRADICTED", 1, late);
+  assert.deepEqual(roles(o.results), { negative: "CONTRADICTED", positive: "INCONCLUSIVE" }, "a positive control the run never reached is not held");
+  o.done();
+});
+
+test("an identity is valid only when a person's tenancy contract names it -- a control that names none is held to everybody the test acted as", () => {
+  const unnamed = { ...DESIGN, controls: [...DESIGN.controls, { role: "state", resourceRef: "invoices" }] };
+  const one = owner("SATISFIED", "MET", null, unnamed);
+  assert.equal(one.results.find((x) => x.role === "negative").identityValid, true);
+  const root = mkdtempSync(join(tmpdir(), "orbit-sec-evidence-"));
+  const results = resultsFromInvestigation({ model: { obligations: [{ obligation: "tob-perm", shape: "permission-enforced" }], designs: [{ design: "tds-1", digest: "d1", state: "designed" }], versions: [{ version: "gen-perm@0123456789abcdef", design: "tds-1", case: "gen-perm" }], runs: [{ id: "run-1", execution: "exe-1", version: "gen-perm@0123456789abcdef" }], evaluations: [{ id: "evl-1", obligation: "tob-perm", execution: "exe-1", outcome: "SATISFIED", cause: "MET" }] }, readArtifact: () => DESIGN, readVersion: () => ({ case: CASE }), storeRoot: root, tenancy: { identities: { "tenant-a-reader": ["A"] } }, controls: [{ catalog: "asvs-5.0.0-l1", control: "v5.0.0-8.2.1", shapes: ["permission-enforced"] }] });
+  assert.equal(results.find((x) => x.role === "negative").identityValid, false, "an identity the contract does not name was never checked");
+  rmSync(root, { recursive: true, force: true });
+  one.done();
 });

@@ -100,3 +100,11 @@ test("an armed observer is ruled on by its baseline, and a fault's witness by th
   assert.match(out.steps["3"].expect, /"template":"complete".*"value":"fault:p1"|"value":"fault:p1".*"template":"complete"/, "the witness holds when the declared fault is seen, within its observation");
   assert.match(out.steps["1"].expect, /cursor\.baseline/);
 });
+
+test("a step that a control other than a fault names is ruled like any other step -- naming it never escapes a verdict", () => {
+  const steps = [{ do: "call", capability: "orbit.messaging.observe", input: { channelRef: "c", observerRef: "o" } }, { do: "call", capability: "orbit.worker.observe", input: { workloadRef: "w", request: { count: 1 } } }];
+  const outputs = { 1: { baseline: "cursor.baseline", completeness: "observation.completeness" }, 2: ATTEMPTS };
+  const ruled = (controls) => compileDesign({ skeleton: { steps }, assertions: [], controls }, { expectations, outputsOf: (s) => outputs[s], shape: null, expected: [] }).mapping.map((m) => [m.step, m.structural]);
+  assert.deepEqual(ruled([{ role: "state", step: 1 }]), [[1, "step-accepted"]], "the armed observer is still held to its baseline");
+  assert.deepEqual(ruled([{ role: "fault", point: "p1", step: 9 }]), [[1, "step-accepted"]], "a witness past the test's last step compiles nothing and exempts nothing");
+});

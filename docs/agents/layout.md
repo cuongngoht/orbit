@@ -356,9 +356,13 @@ src/investigation/verification.mjs · assessments.mjs  (0.1.0, ADR 0032) what a 
                frozen version and its validation, within limits.designs and limits.repairs) · run-version.mjs
                (the run-version action: authorized, prepared and started BEFORE the dispatch, the execution
                named first, the worker's envelope held by the host, its evidence kept only when believed,
-               within limits.attempts). Their PORTS -- what a design is compiled against, how a version is
-               sealed, granted, dispatched and read back -- are skills/orbit-qa/ports.mjs, bound by
-               cli/autonomous-qa.mjs
+               within limits.attempts; the request kept as a `dispatches` artifact under the digest its start
+               records, and a version whose last dispatch is AMBIGUOUS never sent again) · reconcile-runs.mjs
+               (PBI 19: RECONCILE rows over a start that never settled -- IN_FLIGHT · LATE · RUNNING · NEVER_RAN ·
+               LOST_READ · LOST; a late envelope held to the request that was sent, on the live path; a known one
+               settles its step, an AMBIGUOUS one leaves it for a person). Their PORTS -- what a design is
+               compiled against, how a version is sealed, granted, dispatched and read back -- are
+               skills/orbit-qa/ports.mjs, bound by cli/autonomous-qa.mjs
 src/sources/   ACQUISITION of a work item, provider-neutral -- it names no product, vendor, host or tool
                (a test greps it). contract-v1.mjs (the acquisition capabilities, the SOURCE_KINDS with
                their `authorityBearing` column, the reader port) · fields.mjs + model.mjs (identity, ids,
@@ -518,7 +522,11 @@ src/runtime/sandbox/ (0.1.0 additions) topology.mjs (IMAGE_SOURCES · NETWORK_MO
                test-grants.mjs + fixture-policy.mjs (MINT, one use spent before the effect, ADR 0037) ·
                supervise.mjs + observers.mjs (SUPERVISE and TEARDOWN: heartbeats, signals, deadlines; launches
                nothing, ADR 0036) · test-faults.mjs + replay-policy.mjs (a designed fault or a replay, each its
-               own grant). QUARANTINED joins the instance states: released from Control only
+               own grant) · dispatch.mjs (one generated test to the worker; `dispatchedNow`, WORKER_NOW -- none ·
+               lost · unstarted · ended · running · gone -- what became of a dispatch whose caller never saw its
+               end, read off the worker's receipt and container, for `sandbox-dispatched`). QUARANTINED joins the
+               instance states: released from Control only. A container is removed with the anonymous volumes it
+               was created with, never a named one (isolation/docker.mjs)
 src/probe/     the PROBE port: one loopback connection or GET, a deadline, `{ok}` as data; never throws, and a host
                that is not this machine is refused. src/runtime opens no socket itself. reach.mjs is a SECOND
                port with its own boundary: a name lookup and one TCP connect to a host and port a person
@@ -568,7 +576,8 @@ src/live/      Orbit LIVE's CORE, every viewer's (ADR 0016): delivery, never sta
                `wanted` open · reducer.mjs TRANSITIONS · keys.mjs KEY_SEQUENCES + KEYMAP + HELP · layout.mjs TIERS,
                ROOM, PRIORITY · derive.mjs a snapshot per followed task per second · sections/ (STAGE, ACTIVITY,
                WORKFLOW, ENGINEER, VERIFY, QA, SANDBOX, RECENT, NOTICES as rows of segments) · overlays/ (picker,
-               activity (`i`), evidence, diagnostics, help) · frame.mjs the ONE caller of `drawn` for it (0.0.3:
+               activity (`i`), evidence, inspect (`o`, 0.1.0: the generated tests followed, one row per obligation,
+               from their own activity), diagnostics, help) · frame.mjs the ONE caller of `drawn` for it (0.0.3:
                which rows hold the orbit, and `orbitFrameOf` drawing those alone) · regions.mjs (0.0.3, ADR 0029:
                REGIONS, the screen's top, body and bottom as rows of a table, each with its `when`; ORBIT_PARTS) ·
                diff.mjs the rows that changed · events-view.mjs (0.0.2, ADR 0028: a pane's Events view, a workflow's milestones under
@@ -889,7 +898,11 @@ skills/orbit-backend-test/  (0.1.0) the BACKEND PACK: capabilities.mjs (every se
                           proof), one REPEATABLE READ READ ONLY transaction, statements built from quoted
                           identifiers with every value a parameter; hooks/ -- the orbit.scheduler/v1,
                           orbit.clock/v1, orbit.workload/v1 and orbit.identity/v1 test hooks a project exposes) ·
-                          schedule/ (dialects, time zones through Intl, helper.mjs) · contracts/asyncapi.mjs
+                          schedule/ (dialects, time zones through Intl, helper.mjs) · window.mjs (the ONE window every
+                          observer in the pack waits through: a window its call's deadline cut short of what it waited
+                          for is PARTIAL, never complete) · contracts/asyncapi.mjs + contracts/schedule.mjs (an accepted
+                          message contract or schedule policy read into a pinned binding and candidate expectations;
+                          `qa-plan expects`)
 skills/orbit-adapter-kit/  (0.1.0) CONFORMANCE KITS, one per family (messaging.mjs, hooks.mjs -- scheduler, clock,
                           workload, worker, identity -- and state.mjs); acceptance/kits/ runs each against a real
                           system through the adapter's real helper, and their receipts are what the support matrix
@@ -898,7 +911,9 @@ skills/orbit-reverse-engineer/  (0.1.0) the REVERSE ENGINEERING playbook: graph 
                           contracts and runtime observations, through `architecture record`; never an oracle
 skills/orbit-security-audit/  (0.1.0) the SECURITY AUDIT playbook + catalogs/ (the shipped default: ASVS 5.0.0 L1
                           ids with Top 10 labels, Orbit's own summaries) + formats/ (readers for public catalog
-                          formats); a catalog a person adds lives in Orbit Control (ADR 0040)
+                          formats); a catalog a person adds lives in Orbit Control (ADR 0040) · evidence.mjs (an
+                          investigation's generated tests READ BACK as the auditor's results, one per control role,
+                          each role earning a word only from the steps of the frozen case that show it)
 skills/orbit-browser/ OPTIONAL adapter: pick a local browser+profile, opted into by launcher
 skills/orbit-release/  release + adoption: the DoD as gates, the version rule, the install routes;
                           frontmatter.mjs (1.8.9) holds every SKILL.md and agent to the frontmatter shape a
@@ -919,8 +934,14 @@ agents/                   subagents the skills delegate to (no conversation, one
 test/          node:test; fixtures/ui-tests is a complete tiny project; fakes/ implement every port
 acceptance/    (0.1.0) NATIVE ACCEPTANCE, outside test/ because `node --test` runs every module under test/, and
                export-ignored: projects/ (example consuming projects on two stacks, ordinary to Orbit, with the
-               plan document's examples as their contracts) · kits/ runs · isolation/ escape checks · run.mjs
-               (preflight → BLOCKED exit 3, never a skip; receipts written only by `--record` from a real run)
+               plan document's examples as their contracts, and expected-cases/ -- its three example cases,
+               verbatim) · graph/ (the System Graph facts reverse engineering records for each stack) · designs/
+               (the host's proposals, scripted, one per shape) · truth.json (what every generated test and every
+               security control must come to, per stack and planted variant) · kits/ (conformance runs on real
+               systems) · run.mjs (stack × variant from nothing through the real CLIs: seat, sandbox, QA loop,
+               security audit; held to the truth, to no leftover container, network, volume or secret, and to
+               an unchanged checkout; Docker or the worker image missing is BLOCKED exit 3, never a skip;
+               receipts written only by `--record` from a run that matched)
 integrations/  what ANOTHER program installs, never part of this plugin's archive. vscode-orbit-live/ (1.8.5, ADR 0021)
                is the Orbit Live companion for VS Code: plain CommonJS with no dependency and no build step, a
                person installs it; companion.js (what it does: a heartbeat in the store's live room, a request

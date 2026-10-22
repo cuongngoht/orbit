@@ -29,7 +29,8 @@
     "orbit-requirements": { "summary": "settle what a work item, PBI or issue asks for: atomic facts, blocking questions, one frozen snapshot, and the work that rests on it", "provides": ["requirement.snapshot"], "signals": ["pbi", "work item", "user story", "issue", "ticket", "requirement", "requirements", "backlog"], "needs": ["workitem.read"] },
     "orbit-test-suite": { "summary": "run an agreed set of cases and write one review", "provides": ["qa.execution", "qa.review"], "signals": ["run", "regression", "suite", "the tests", "release", "build"], "needs": ["browser.automation"] },
     "orbit-runtime": { "summary": "what a checkout needs to run, whether this machine can run it, and how: read once, kept per checkout, started only when asked", "provides": ["runtime.discovery"], "signals": ["dev container", "devcontainer", "dev environment", "development environment", "port conflict"], "needs": ["project.context", "repository.read"] },
-    "orbit-release": { "summary": "release this plugin: definition of done, versions, archive", "provides": ["release.gate"], "signals": ["orbit", "orbit", "plugin", "engine"], "requiresSignal": true }
+    "orbit-release": { "summary": "release this plugin: definition of done, versions, archive", "provides": ["release.gate"], "signals": ["orbit", "orbit", "plugin", "engine"], "requiresSignal": true },
+    "satellite": { "summary": "take a goal through an autonomous multi-agent mission: intent, an evidence-revised work graph, reusable roles and agents, verified outcome", "provides": ["mission.orchestration"], "signals": ["satellite", "orbit satellite", "multi-agent", "mission"], "requiresSignal": true, "needs": ["project.context", "repository.read"], "optional": ["requirement.snapshot", "engineering.execution", "qa.investigation"] }
   },
   "agents": {
     "orbit-engineering-agent": { "summary": "drives one autonomous engineering task in its own context and returns where it stands, with the evidence", "provides": ["engineering.execution"] },
@@ -47,7 +48,11 @@
     "orbit-requirement-product": { "summary": "the Product perspective of a roundtable, as its own agent: missing intent and scope", "provides": ["requirement.clarification.product"] },
     "orbit-requirement-domain": { "summary": "the Domain perspective of a roundtable, as its own agent: missing business semantics", "provides": ["requirement.clarification.domain"] },
     "orbit-requirement-qa": { "summary": "the QA perspective of a roundtable, as its own agent: behaviour nobody specified", "provides": ["requirement.clarification.qa"] },
-    "orbit-requirement-socrates": { "summary": "the critic of a roundtable, as its own agent: keeps, drops, merges or refines the questions", "provides": ["requirement.clarification.socrates"] }
+    "orbit-requirement-socrates": { "summary": "the critic of a roundtable, as its own agent: keeps, drops, merges or refines the questions", "provides": ["requirement.clarification.socrates"] },
+    "satellite-reader": { "summary": "carries one read-only Satellite agent run from its envelope and returns findings with the records that show them", "provides": ["mission.read"] },
+    "satellite-designer": { "summary": "carries one Satellite design run from its envelope and hands off a design artifact", "provides": ["mission.design"] },
+    "satellite-engineer": { "summary": "carries one Satellite implement, build or test run through an Orbit engineering task in its own workspace", "provides": ["mission.implement"] },
+    "satellite-verifier": { "summary": "carries one Satellite verify run: reads independent owner records back against each acceptance criterion", "provides": ["mission.verify"] }
   },
   "builtins": {
     "project-context": { "summary": "what this project is and how it builds code, memory first: architecture, technology, engineering, the working set", "provides": ["project.context"], "optional": ["architecture.context", "technology.context", "engineering.context"], "run": "node <engine>/cli/context.mjs --for=\"<the task>\"" },

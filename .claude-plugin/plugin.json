@@ -283,6 +283,36 @@
       "title": "Agent · orbit-security-auditor",
       "description": "Let Claude start the orbit-security-auditor agent. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_AGENT_SECURITY_AUDITOR overrides this on one machine.",
       "default": true
+    },
+    "skill_satellite": {
+      "type": "boolean",
+      "title": "Skill · satellite",
+      "description": "Let Claude start the satellite skill (Orbit Satellite missions). Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_SATELLITE overrides this on one machine.",
+      "default": true
+    },
+    "agent_satellite_reader": {
+      "type": "boolean",
+      "title": "Agent · satellite-reader",
+      "description": "Let Claude start the satellite-reader agent. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_AGENT_SATELLITE_READER overrides this on one machine.",
+      "default": true
+    },
+    "agent_satellite_designer": {
+      "type": "boolean",
+      "title": "Agent · satellite-designer",
+      "description": "Let Claude start the satellite-designer agent. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_AGENT_SATELLITE_DESIGNER overrides this on one machine.",
+      "default": true
+    },
+    "agent_satellite_engineer": {
+      "type": "boolean",
+      "title": "Agent · satellite-engineer",
+      "description": "Let Claude start the satellite-engineer agent. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_AGENT_SATELLITE_ENGINEER overrides this on one machine.",
+      "default": true
+    },
+    "agent_satellite_verifier": {
+      "type": "boolean",
+      "title": "Agent · satellite-verifier",
+      "description": "Let Claude start the satellite-verifier agent. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_AGENT_SATELLITE_VERIFIER overrides this on one machine.",
+      "default": true
     }
   }
 }

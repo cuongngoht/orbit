@@ -1,0 +1,51 @@
+# Orbit Satellite -- the shapes a host sends and receives
+
+The machine-readable source of every shape here is `node ${CLAUDE_PLUGIN_ROOT}/satellite/cli/satellite.mjs protocol`
+(no checkout needed). This page is its summary; when they differ, the command is right.
+
+## A decision (`mission step <msn>`, on stdin)
+
+```json
+{ "schemaVersion": 1, "decisionId": "yours-1", "expectedRevision": 14,
+  "action": { "kind": "dispatch", "unit": "wu-2" },
+  "observed": "one sentence of what the context showed", "hypothesis": "optional, one sentence" }
+```
+
+`action.kind` is one of `analyze`, `recall`, `plan`, `replan`, `resolve-role`, `resolve-template`, `dispatch`,
+`skip`, `cancel-unit`, `checkpoint` (and the factory actions `protocol` lists). A decision never carries `outcome`,
+`verdict`, `status`, `mode`, `operationKind`, `level`, `lifecycle`, `grants`, `confidence` or `revision`: each is
+refused by name. The same `decisionId` twice is a replay; a moved `expectedRevision` is STALE.
+
+## An envelope (`dispatch` answers it; `agent envelope <msn> <arn>` shows it again)
+
+`agent.subagentType` (the plugin agent whose host-enforced tool allowlist carries the profile), `profile`, `mode`,
+`operationKind`, `role` (pin, display name, purpose, responsibilities, restrictions, completion criteria),
+`instruction.text`, `contextSlice` (the unit, its acceptance criteria, the handoffs it rests on, the playbooks its
+skills pin -- never the conversation, never a secret), `grants`, `drive` (for an engineering run: the task and the
+commands that drive it), `report` (the command, the shape, an example), and `dispatch.mode` -- `native` (several runs
+may be in flight) or `serial` (no native agents here: one run at a time, never shown as parallel).
+
+## A report (`agent report <msn> <arn>`, on stdin)
+
+```json
+{ "schemaVersion": 1, "agentRunId": "arn-2", "executionState": "reported",
+  "findings": [{ "say": "one sentence of what was found", "refs": ["file:src/payment/notify.mjs"] }],
+  "evidenceRefs": ["file:src/payment/notify.mjs", "task:tsk-0123456789ab", "check:tsk-0123456789ab:chk-2"],
+  "remainingUnknowns": ["one sentence each"], "supports": ["hyp-1"], "refutes": [],
+  "proposes": { "units": [{ "key": "trace-consumer", "kind": "diagnose", "objective": "…" }], "because": "…" },
+  "artifacts": [{ "name": "design.md", "text": "…" }],
+  "summary": "one sentence" }
+```
+
+`executionState` is `reported` or `blocked` -- what the run itself can say. Evidence references are read back from
+their owners: `file:<repository-relative path>`, `task:<tsk-id>`, `check:<tsk-id>:<chk-n>`,
+`investigation:<inv-id>`, `handoff:<hof-n>`, `definition:<pin>`. Only an engineering task's verification rows, a
+declared check and a QA investigation are independent: nothing else can make a criterion VERIFIED. A report never
+says `verdict`, `outcome`, `passed`, `failed`, `level`, `mode`, `lifecycle`, `confidence` or `verified`. `artifacts`
+are published only by a DESIGN, IMPLEMENT or VERIFY run.
+
+## What a run comes to (the engine's word)
+
+`succeeded` (evidence reached the unit's verification contract) · `insufficient` (it did not: retried while attempts
+are left) · `blocked` · `violated` (the primary checkout changed while the run was open) · `interrupted` (reconcile
+closed it). Three failures in a row with one signature stop the mission as NO_PROGRESS.

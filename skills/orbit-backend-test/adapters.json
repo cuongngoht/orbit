@@ -3,7 +3,7 @@
     {
       "id": "amqp.reference",
       "apiVersion": "orbit.adapter/v1",
-      "version": "0.0.4",
+      "version": "0.1.0",
       "doc": "AMQP 0-9-1 brokers (RabbitMQ 4.x is the one its kit runs against), through the zero-dependency client in amqp/: confirmed publication, an observer on a queue of its own bound beside the application's, and the fixture's own queues",
       "family": "messaging",
       "transports": [
@@ -148,7 +148,7 @@
     {
       "id": "jetstream.reference",
       "apiVersion": "orbit.adapter/v1",
-      "version": "0.0.4",
+      "version": "0.1.0",
       "doc": "NATS JetStream (nats-server 2.x with JetStream enabled is the one its kit runs against), through the zero-dependency client in jetstream/: a publication the stream acknowledges, deduplicated by Nats-Msg-Id inside the stream's window; an observer through a durable consumer of its own, an independent cursor; and the fixture's own streams and consumers, each marked with it",
       "family": "messaging",
       "transports": [
@@ -296,7 +296,7 @@
     {
       "id": "scheduler.hooks",
       "apiVersion": "orbit.adapter/v1",
-      "version": "0.0.4",
+      "version": "0.1.0",
       "doc": "a project's own scheduler, through the orbit.scheduler/v1 test hooks it exposes: its decisions read back by a cursor, a dispatch asked for behind a barrier",
       "family": "scheduler",
       "transports": [
@@ -360,7 +360,7 @@
     {
       "id": "clock.hooks",
       "apiVersion": "orbit.adapter/v1",
-      "version": "0.0.4",
+      "version": "0.1.0",
       "doc": "a project's injected business clock, through the orbit.clock/v1 test hook: moved forward behind a barrier that answers how far the scheduler has evaluated",
       "family": "clock",
       "transports": [
@@ -399,7 +399,7 @@
     {
       "id": "workload.hooks",
       "apiVersion": "orbit.adapter/v1",
-      "version": "0.0.4",
+      "version": "0.1.0",
       "doc": "control of a workload the task owns, through the orbit.workload/v1 test hook: stop, start, restart, or arm a fault point the project declared",
       "family": "workload",
       "transports": [
@@ -436,7 +436,7 @@
     {
       "id": "worker.hooks",
       "apiVersion": "orbit.adapter/v1",
-      "version": "0.0.4",
+      "version": "0.1.0",
       "doc": "what a project's consumers and workers did with each delivery, through the orbit.workload/v1 attempts hook, read back by a cursor",
       "family": "worker",
       "transports": [
@@ -486,7 +486,7 @@
     {
       "id": "identity.hooks",
       "apiVersion": "orbit.adapter/v1",
-      "version": "0.0.4",
+      "version": "0.1.0",
       "doc": "a project's own synthetic identities, through the orbit.identity/v1 test hooks it exposes: one issued for a principal and a tenant, its token handed to the run's binder alone",
       "family": "identity",
       "transports": [
@@ -523,7 +523,7 @@
     {
       "id": "postgres.reference",
       "apiVersion": "orbit.adapter/v1",
-      "version": "0.0.4",
+      "version": "0.1.0",
       "doc": "PostgreSQL (16 is the one its kit runs against), through the zero-dependency client in postgres/: the rows one table holds for a key or a few column values, counted and sampled in one REPEATABLE READ, READ ONLY transaction the server itself enforces",
       "family": "state",
       "transports": [

@@ -24,10 +24,76 @@
       "ref": "PBI-INV-1",
       "revision": "r1",
       "at": "2026-10-22",
-      "says": "contracts/pbi.md: API-AC-1, API-AC-2, FIX-ASYNC-1 and FIX-ASYNC-2, accepted with the fixture."
+      "says": "contracts/pbi.md: UI-AC-1, API-AC-1, API-AC-2, FIX-ASYNC-1 and FIX-ASYNC-2, and the fixture's UI-AC-2, API-AC-3 and SCHED-1, accepted with the fixture."
     }
   ],
   "criteria": [
+    {
+      "id": "UI-AC-1",
+      "says": "Searching by name shows the seeded invoice, the GET search call succeeds, and the result matches the synthetic data: exactly one stored invoice has that name.",
+      "source": "PBI",
+      "about": "invoices",
+      "obligations": [
+        "screen-shows-result"
+      ],
+      "expects": [
+        {
+          "id": "E1",
+          "property": "ui.text",
+          "op": "contains",
+          "value": "Synthetic invoice A",
+          "because": "UI-AC-1: the results show the seeded invoice"
+        },
+        {
+          "id": "E2",
+          "property": "response.status",
+          "op": "eq",
+          "value": 200,
+          "because": "UI-AC-1: the search call GET /api/invoices?q=<name> answers 200"
+        },
+        {
+          "id": "E3",
+          "property": "effect.count",
+          "op": "count-eq",
+          "value": 1,
+          "because": "UI-AC-1: exactly one stored invoice has that name"
+        }
+      ]
+    },
+    {
+      "id": "UI-AC-2",
+      "says": "A create the page reports is persisted: the toast says Invoice created, and the invoice is then stored -- the toast alone is not the outcome.",
+      "source": "PBI",
+      "about": "invoice-create",
+      "obligations": [
+        "persisted-after-write"
+      ],
+      "expects": [
+        {
+          "id": "E1",
+          "property": "effect.count",
+          "op": "count-eq",
+          "value": 1,
+          "because": "UI-AC-2: the invoice is then stored, one row for the name it was created with"
+        },
+        {
+          "id": "E2",
+          "property": "ui.text",
+          "op": "contains",
+          "value": "Invoice created",
+          "for": [],
+          "because": "UI-AC-2: the page shows the toast with Invoice created"
+        },
+        {
+          "id": "E3",
+          "property": "response.status",
+          "op": "eq",
+          "value": 201,
+          "for": [],
+          "because": "API-AC-3: a create answers 201"
+        }
+      ]
+    },
     {
       "id": "API-AC-1",
       "says": "The owner reading its invoice gets 200: GET /invoices/inv-a as tenant-a-reader answers id inv-a and tenantId tenant-a.",
@@ -364,6 +430,90 @@
           "says": "one job execution for the occurrence"
         }
       }
+    },
+    {
+      "id": "S6",
+      "name": "A search shows the seeded invoice",
+      "covers": [
+        "UI-AC-1"
+      ],
+      "technique": "crud",
+      "why": "what a person sees is what the feature is; a screen that draws stale or wrong rows is a defect no API test sees",
+      "priority": "P1",
+      "must": true,
+      "actor": {
+        "as": "tenant-a-reader",
+        "roles": [
+          "reader"
+        ],
+        "owner": "tenant-a",
+        "state": "the seeded invoice inv-a exists"
+      },
+      "preconditions": [
+        "the fixture's seeded invoice inv-a, named Synthetic invoice A, belongs to tenant-a"
+      ],
+      "intent": [
+        "open /invoices",
+        "search for Synthetic invoice A",
+        "read the results and the row below them"
+      ],
+      "expect": {
+        "ui": {
+          "need": "required",
+          "says": "the results show Synthetic invoice A"
+        },
+        "api": {
+          "need": "required",
+          "says": "GET /api/invoices?q= answers 200"
+        },
+        "sql": {
+          "need": "required",
+          "says": "exactly one stored invoice is named Synthetic invoice A"
+        }
+      },
+      "readiness": "ready"
+    },
+    {
+      "id": "S7",
+      "name": "A create the page reports is there below it",
+      "covers": [
+        "UI-AC-2"
+      ],
+      "technique": "crud",
+      "why": "a toast can say created while nothing was stored; only the row below the screen says it happened",
+      "priority": "P1",
+      "must": true,
+      "actor": {
+        "as": "tenant-a-writer",
+        "roles": [
+          "writer"
+        ],
+        "owner": "tenant-a",
+        "state": "no invoice has the name the run creates"
+      },
+      "preconditions": [
+        "the name is the run's own, so nothing earlier has it"
+      ],
+      "intent": [
+        "open /invoices",
+        "create an invoice with the run's own name",
+        "read the toast and the row below it"
+      ],
+      "expect": {
+        "ui": {
+          "need": "required",
+          "says": "the toast says Invoice created"
+        },
+        "api": {
+          "need": "required",
+          "says": "POST /api/invoices answers 201"
+        },
+        "sql": {
+          "need": "required",
+          "says": "one stored invoice has the name it was created with"
+        }
+      },
+      "readiness": "ready"
     }
   ]
 }

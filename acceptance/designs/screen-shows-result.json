@@ -1,0 +1,79 @@
+{
+  "order": 8,
+  "design": {
+    "page": {
+      "endpointRef": "invoices",
+      "identityRef": "tenant-a-reader"
+    },
+    "skeleton": {
+      "steps": [
+        {
+          "do": "goto",
+          "url": "/invoices",
+          "until": {
+            "selector": "[data-testid=search]"
+          }
+        },
+        {
+          "do": "fill",
+          "selector": "[data-testid=search]",
+          "value": "Synthetic invoice A"
+        },
+        {
+          "do": "click",
+          "selector": "[data-testid=search-submit]",
+          "until": {
+            "selector": "[data-testid=results]",
+            "attribute": "data-loading",
+            "equals": "false"
+          }
+        },
+        {
+          "do": "api",
+          "match": "/api/invoices\\?q=",
+          "method": "GET"
+        },
+        {
+          "do": "call",
+          "capability": "orbit.state.read",
+          "input": {
+            "stateRef": "invoices",
+            "request": {
+              "key": "Synthetic invoice A"
+            }
+          }
+        },
+        {
+          "do": "report",
+          "reads": {
+            "selector": "[data-testid=results]"
+          }
+        }
+      ]
+    },
+    "assertions": [
+      {
+        "criterionRef": "UI-AC-1/E2",
+        "template": "value-eq",
+        "step": 4
+      },
+      {
+        "criterionRef": "UI-AC-1/E3",
+        "template": "count-eq",
+        "step": 5
+      },
+      {
+        "criterionRef": "UI-AC-1/E1",
+        "template": "value-includes",
+        "step": 6
+      }
+    ],
+    "controls": [
+      {
+        "role": "positive",
+        "why": "the owner's search shows its own seeded invoice"
+      }
+    ],
+    "effectScope": "fixture"
+  }
+}

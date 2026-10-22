@@ -12,7 +12,9 @@
         },
         "broken-auth": {
           "response-conforms": "CONTRADICTED",
-          "permission-enforced": "INCONCLUSIVE"
+          "permission-enforced": "INCONCLUSIVE",
+          "screen-shows-result": "EXECUTION_ERROR",
+          "persisted-after-write": "EXECUTION_ERROR"
         },
         "no-dedupe": {
           "effect-once-per-key": "CONTRADICTED",
@@ -26,6 +28,9 @@
           "effect-once-per-key": "CONTRADICTED",
           "crash-before-effect": "CONTRADICTED",
           "crash-after-effect-before-ack": "CONTRADICTED"
+        },
+        "toast-without-persistence": {
+          "persisted-after-write": "CONTRADICTED"
         }
       }
     },
@@ -42,7 +47,9 @@
         "broken-auth": {
           "response-conforms": "CONTRADICTED",
           "permission-enforced": "INCONCLUSIVE",
-          "occurrence-one-execution": "CAPABILITY_MISSING"
+          "occurrence-one-execution": "CAPABILITY_MISSING",
+          "screen-shows-result": "EXECUTION_ERROR",
+          "persisted-after-write": "EXECUTION_ERROR"
         },
         "no-dedupe": {
           "occurrence-one-execution": "CAPABILITY_MISSING",
@@ -57,6 +64,10 @@
           "effect-once-per-key": "CONTRADICTED",
           "crash-before-effect": "CONTRADICTED",
           "crash-after-effect-before-ack": "CONTRADICTED",
+          "occurrence-one-execution": "CAPABILITY_MISSING"
+        },
+        "toast-without-persistence": {
+          "persisted-after-write": "CONTRADICTED",
           "occurrence-one-execution": "CAPABILITY_MISSING"
         }
       },
@@ -73,7 +84,9 @@
     "occurrence-one-execution",
     "effect-once-per-key",
     "crash-before-effect",
-    "crash-after-effect-before-ack"
+    "crash-after-effect-before-ack",
+    "screen-shows-result",
+    "persisted-after-write"
   ],
   "security": {
     "doc": "What the Security Auditor must conclude of each control, from the investigation's own record (security-audit assess --investigation): a control is verified only when every role its minimum evidence names was SATISFIED on a fresh, accepted oracle; a refusal that did not hold is a finding; a positive control that did not hold leaves every refusal beside it inconclusive; a control still owed a role (8.2.2's state control, which no design here runs) stays pending. The same on both stacks: the HTTP slice is the same contract.",

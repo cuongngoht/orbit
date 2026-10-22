@@ -12,6 +12,8 @@
 //   POST /orbit/scheduler/v1/trigger {schedule, occurrenceId?} -> { executionRef, occurrenceId, scheduledFor }
 //   POST /orbit/clock/v1/advance {to}                      -> { evaluatedThrough }   (a barrier)
 //   GET  /orbit/workload/v1/attempts?since=<seq>          -> { attempts: [...], through }
+//                                                            (an attempt an injected fault ended says so: outcome
+//                                                            fault, terminalReason fault:<point>)
 //   POST /orbit/workload/v1/control {workload, action, point?} -> { status }
 //   POST /orbit/identity/v1/issue {principal, tenant}      -> { token }
 //   GET  /orbit/workload/v1/status                         -> { workloads: [...] }
@@ -110,7 +112,7 @@ async function attempts(db, url) {
   const rows = (await db.query(`SELECT seq, workload, message_id, business_key, delivery_attempt, outcome, execution_ref, reason,
       to_char(at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at
     FROM attempts WHERE seq > ${since}${where} ORDER BY seq LIMIT ${limit}`)).rows;
-  const shown = rows.map((r) => ({ seq: r.seq, workload: r.workload, messageId: r.message_id, deliveryAttempt: r.delivery_attempt, outcome: r.outcome, executionRef: r.execution_ref, terminalReason: TERMINAL.has(r.outcome) ? r.reason : null, reason: r.reason, businessKey: r.business_key, at: r.at }));
+  const shown = rows.map((r) => ({ seq: r.seq, workload: r.workload, messageId: r.message_id, deliveryAttempt: r.delivery_attempt, outcome: r.outcome, executionRef: r.execution_ref, terminalReason: TERMINAL.has(r.outcome) || r.outcome === "fault" ? r.reason : null, reason: r.reason, businessKey: r.business_key, at: r.at }));
   return { body: { attempts: shown, through: rows.length ? rows.at(-1).seq : since } };
 }
 

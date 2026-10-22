@@ -99,7 +99,9 @@
       "about": "billing-reminder-requested",
       "obligations": [
         "completes-by-deadline",
-        "effect-once-per-key"
+        "effect-once-per-key",
+        "crash-before-effect",
+        "crash-after-effect-before-ack"
       ],
       "expects": [
         {
@@ -108,7 +110,10 @@
           "op": "complete-within",
           "value": "tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00",
           "within": 120,
-          "because": "FIX-ASYNC-1 and the message contract: the period's reminder request, correlated by its business key, exists within 120 seconds of the occurrence being due"
+          "because": "FIX-ASYNC-1 and the message contract: the period's reminder request, correlated by its business key, exists within 120 seconds of the occurrence being due",
+          "for": [
+            "completes-by-deadline"
+          ]
         },
         {
           "id": "E2",
@@ -123,7 +128,19 @@
           "op": "complete-within",
           "value": "processed",
           "within": 120,
-          "because": "FIX-ASYNC-1 and the message contract: the worker writes the reminder and the notification, then acknowledges, within 120 seconds"
+          "because": "FIX-ASYNC-1 and the message contract: the worker writes the reminder and the notification, then acknowledges, within 120 seconds",
+          "for": [
+            "completes-by-deadline"
+          ]
+        },
+        {
+          "id": "E4",
+          "property": "delivery.attempt",
+          "op": "complete-within",
+          "value": 2,
+          "within": 120,
+          "because": "the message contract: at-least-once, and a delivery that fails or is interrupted before it is acknowledged is delivered again after its backoff",
+          "for": []
         }
       ]
     },

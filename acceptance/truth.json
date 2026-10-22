@@ -1,0 +1,78 @@
+{
+  "schema": 1,
+  "doc": "What each generated test must come to on each stack and variant -- the ground truth acceptance/run.mjs holds a run to. A variant plants a defect in the application's TREE (acceptance/projects/README.md); a word here is the verification outcome the engine must earn, never what a run happened to say. SATISFIED is the default.",
+  "default": "SATISFIED",
+  "stacks": {
+    "invoice-a": {
+      "clock": "live",
+      "variants": {
+        "correct": {},
+        "no-tenant-check": {
+          "permission-enforced": "CONTRADICTED"
+        },
+        "broken-auth": {
+          "response-conforms": "CONTRADICTED",
+          "permission-enforced": "INCONCLUSIVE"
+        },
+        "no-dedupe": {
+          "effect-once-per-key": "CONTRADICTED",
+          "crash-after-effect-before-ack": "CONTRADICTED"
+        },
+        "early-ack": {
+          "crash-before-effect": "CONTRADICTED",
+          "crash-after-effect-before-ack": "INCONCLUSIVE"
+        },
+        "no-db-write": {
+          "effect-once-per-key": "CONTRADICTED",
+          "crash-before-effect": "CONTRADICTED",
+          "crash-after-effect-before-ack": "CONTRADICTED"
+        }
+      }
+    },
+    "invoice-b": {
+      "clock": "none",
+      "variants": {
+        "correct": {
+          "occurrence-one-execution": "CAPABILITY_MISSING"
+        },
+        "no-tenant-check": {
+          "permission-enforced": "CONTRADICTED",
+          "occurrence-one-execution": "CAPABILITY_MISSING"
+        },
+        "broken-auth": {
+          "response-conforms": "CONTRADICTED",
+          "permission-enforced": "INCONCLUSIVE",
+          "occurrence-one-execution": "CAPABILITY_MISSING"
+        },
+        "no-dedupe": {
+          "occurrence-one-execution": "CAPABILITY_MISSING",
+          "crash-after-effect-before-ack": "CONTRADICTED"
+        },
+        "early-ack": {
+          "crash-before-effect": "CONTRADICTED",
+          "crash-after-effect-before-ack": "INCONCLUSIVE",
+          "occurrence-one-execution": "CAPABILITY_MISSING"
+        },
+        "no-db-write": {
+          "effect-once-per-key": "CONTRADICTED",
+          "crash-before-effect": "CONTRADICTED",
+          "crash-after-effect-before-ack": "CONTRADICTED",
+          "occurrence-one-execution": "CAPABILITY_MISSING"
+        }
+      },
+      "why": {
+        "occurrence-one-execution": "stack B's business clock is this machine's: the 09:00 period cannot be made due inside a run's budget, so the schedule's own decision is a gap, never a pass",
+        "effect-once-per-key@no-dedupe": "the stream's Nats-Msg-Id window drops the duplicate PUBLICATION -- another guard -- so only the redelivery after a commit is ground truth there"
+      }
+    }
+  },
+  "shapes": [
+    "response-conforms",
+    "permission-enforced",
+    "completes-by-deadline",
+    "occurrence-one-execution",
+    "effect-once-per-key",
+    "crash-before-effect",
+    "crash-after-effect-before-ack"
+  ]
+}

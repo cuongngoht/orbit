@@ -1,0 +1,116 @@
+{
+  "order": 7,
+  "design": {
+    "skeleton": {
+      "steps": [
+        {
+          "do": "call",
+          "capability": "orbit.workload.control",
+          "input": {
+            "workloadRef": "worker",
+            "request": {
+              "action": "fault",
+              "point": "after-commit-before-ack"
+            }
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.messaging.publish",
+          "input": {
+            "channelRef": "billing-reminder-requested",
+            "request": {
+              "messageId": "msg-c1b2c3d4e5f6071a",
+              "correlationId": "tenant-a|inv-a|billing-daily:2026-10-25T09:00:00+07:00",
+              "payload": {
+                "messageId": "msg-c1b2c3d4e5f6071a",
+                "invoiceId": "inv-a",
+                "tenantId": "tenant-a",
+                "occurrenceId": "billing-daily:2026-10-25T09:00:00+07:00",
+                "businessKey": "tenant-a|inv-a|billing-daily:2026-10-25T09:00:00+07:00"
+              }
+            }
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.worker.observe",
+          "input": {
+            "workloadRef": "worker",
+            "request": {
+              "count": 1,
+              "match": {
+                "messageId": "msg-c1b2c3d4e5f6071a",
+                "outcome": "fault"
+              },
+              "waitMs": 30000
+            }
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.workload.control",
+          "input": {
+            "workloadRef": "worker",
+            "request": {
+              "action": "restart"
+            }
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.worker.observe",
+          "input": {
+            "workloadRef": "worker",
+            "request": {
+              "count": 2,
+              "match": {
+                "messageId": "msg-c1b2c3d4e5f6071a"
+              }
+            }
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.state.read",
+          "input": {
+            "stateRef": "reminders",
+            "request": {
+              "key": "tenant-a|inv-a|billing-daily:2026-10-25T09:00:00+07:00"
+            }
+          }
+        }
+      ]
+    },
+    "assertions": [
+      {
+        "criterionRef": "FIX-ASYNC-1/E4",
+        "template": "complete",
+        "step": 5
+      },
+      {
+        "criterionRef": "FIX-ASYNC-1/E2",
+        "template": "count-eq",
+        "step": 6
+      }
+    ],
+    "controls": [
+      {
+        "role": "fault",
+        "why": "the worker stops after its effect committed and before it acknowledged",
+        "point": "after-commit-before-ack",
+        "step": 3
+      },
+      {
+        "role": "state",
+        "why": "the redelivery does not do it twice"
+      }
+    ],
+    "trigger": {
+      "kind": "message",
+      "ref": "billing-reminder-requested",
+      "step": 2
+    },
+    "effectScope": "fixture"
+  }
+}

@@ -1,0 +1,133 @@
+{
+  "order": 3,
+  "by-clock": {
+    "live": {
+      "skeleton": {
+        "steps": [
+          {
+            "do": "call",
+            "capability": "orbit.messaging.observe",
+            "input": {
+              "channelRef": "billing-reminder-requested",
+              "observerRef": "reminder-requests",
+              "request": {}
+            }
+          },
+          {
+            "do": "call",
+            "capability": "orbit.clock.advance",
+            "input": {
+              "clockRef": "{{component}}",
+              "request": {
+                "to": "2026-10-22T09:00:00+07:00"
+              }
+            }
+          },
+          {
+            "do": "call",
+            "capability": "orbit.observe.await",
+            "input": {
+              "observerRef": "reminder-requests",
+              "request": {
+                "count": 1,
+                "match": {
+                  "correlationId": "tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00"
+                }
+              }
+            }
+          },
+          {
+            "do": "call",
+            "capability": "orbit.worker.observe",
+            "input": {
+              "workloadRef": "worker",
+              "request": {
+                "count": 1,
+                "match": {
+                  "outcome": "processed"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "none": {
+      "skeleton": {
+        "steps": [
+          {
+            "do": "call",
+            "capability": "orbit.messaging.observe",
+            "input": {
+              "channelRef": "billing-reminder-requested",
+              "observerRef": "reminder-requests",
+              "request": {}
+            }
+          },
+          {
+            "do": "call",
+            "capability": "orbit.scheduler.trigger",
+            "input": {
+              "scheduleRef": "billing-daily",
+              "request": {
+                "occurrenceId": "billing-daily:2026-10-22T09:00:00+07:00"
+              }
+            }
+          },
+          {
+            "do": "call",
+            "capability": "orbit.observe.await",
+            "input": {
+              "observerRef": "reminder-requests",
+              "request": {
+                "count": 1,
+                "match": {
+                  "correlationId": "tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00"
+                }
+              }
+            }
+          },
+          {
+            "do": "call",
+            "capability": "orbit.worker.observe",
+            "input": {
+              "workloadRef": "worker",
+              "request": {
+                "count": 1,
+                "match": {
+                  "outcome": "processed"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "design": {
+    "assertions": [
+      {
+        "criterionRef": "FIX-ASYNC-1/E1",
+        "template": "complete",
+        "step": 3
+      },
+      {
+        "criterionRef": "FIX-ASYNC-1/E3",
+        "template": "complete",
+        "step": 4
+      }
+    ],
+    "controls": [
+      {
+        "role": "positive",
+        "why": "the due period's request is published and processed in time"
+      }
+    ],
+    "trigger": {
+      "kind": "schedule",
+      "ref": "billing-daily",
+      "step": 2
+    },
+    "effectScope": "fixture"
+  }
+}

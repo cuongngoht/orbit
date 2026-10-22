@@ -1,0 +1,68 @@
+{
+  "order": 4,
+  "design": {
+    "skeleton": {
+      "steps": [
+        {
+          "do": "call",
+          "capability": "orbit.clock.advance",
+          "input": {
+            "clockRef": "{{component}}",
+            "request": {
+              "to": "2026-10-22T09:00:00+07:00"
+            }
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.scheduler.observe",
+          "input": {
+            "scheduleRef": "billing-daily",
+            "request": {
+              "since": 0,
+              "count": 1,
+              "match": {
+                "occurrenceId": "billing-daily:2026-10-22T09:00:00+07:00",
+                "decision": "due"
+              }
+            }
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.state.read",
+          "input": {
+            "stateRef": "billing-jobs",
+            "request": {
+              "key": "billing-daily:2026-10-22T09:00:00+07:00"
+            }
+          }
+        }
+      ]
+    },
+    "assertions": [
+      {
+        "criterionRef": "SCHED-1/E1",
+        "template": "complete",
+        "step": 2
+      },
+      {
+        "criterionRef": "SCHED-1/E2",
+        "template": "count-eq",
+        "step": 3
+      }
+    ],
+    "controls": [
+      {
+        "role": "positive",
+        "why": "the loop itself decides the pinned period, and one execution runs"
+      }
+    ],
+    "trigger": {
+      "kind": "schedule",
+      "ref": "billing-daily",
+      "step": 1
+    },
+    "effectScope": "fixture"
+  }
+}

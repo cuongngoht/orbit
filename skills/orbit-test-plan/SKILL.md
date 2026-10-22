@@ -106,7 +106,15 @@ node <engine>/cli/query.mjs flaky                  # a case that keeps flipping 
 node <engine>/cli/learn.mjs recall <case|screen>   # what several sessions worked out
 node <engine>/cli/architecture.mjs ensure --for="<what this feature needs verified>"
 node <engine>/cli/plan-check.mjs                   # the plans that already exist, and their state
+node <engine>/cli/qa-plan.mjs expects <contract.json> [--operation=<id> --status=<n> | --channel=<id> --within=<s> | --at=<ISO>]
 ```
+
+When the feature has an ACCEPTED contract -- an OpenAPI 3.x, an AsyncAPI 2/3 or a schedule policy --
+`qa-plan expects` reads it into candidate structured expectations for a criterion, each with where it
+came from, and the source pinned by its revision and digest. It states only what the document
+states: a window comes from the criterion (`--within`), an occurrence only at an instant you name
+(`--at`), and a document it does not read is said, never half-read. Put what you keep into the
+criterion's `expects` yourself; the plan's authority is still the plan's.
 
 `architecture ensure` is what tells you, before you design a single check, whether this project
 can actually verify what the feature needs. It answers from a snapshot and usually reads nothing.

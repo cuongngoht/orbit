@@ -136,13 +136,28 @@ step is written · `run-version` runs ONE frozen version (`version`: `<case>@<di
 isolated sandbox: its writes need fixture-write and run under grants minted for its fixture, its refs
 are bound by the engine, and what it came to (`SATISFIED`, `CONTRADICTED`, `INCONCLUSIVE`,
 `ENVIRONMENT_BLOCKED`, …) is decided from the host's own check of the worker's envelope — never from
-what the worker says. A run that did not settle is read back, never sent again.
+what the worker says. A run that did not settle is read back, never sent again: `reconcile` (below).
+
+A design that drives a PAGE names the screen and who its browser acts as — `page: { endpointRef,
+identityRef }`, both aliases — and its steps say WHAT, never how: `until: { selector, attribute?,
+equals? }` on a goto, click, fill or press (what holds before the next step), `reads: { selector }`
+on a report, and an `api` witness with its `match` and `method`. Only these steps, `call` and `sql`
+are proposed; no `as`, `wait`, `assert` or `skip-if`, and a goto opens a path of the bound interface,
+never a URL. The engine writes every script the browser runs; the witness rules only on the status its
+call answered. Name what a test creates inside the run's own namespace with `${FIXTURE}`. A write the
+page makes is covered only by a grant minted for the method and path its witness declares.
 
 After a write settles, and whenever a few steps have moved things, keep what they came to:
 
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/cli/autonomous-qa.mjs checkpoint --investigation=<id>        # receipts, then memory
+node ${CLAUDE_PLUGIN_ROOT}/cli/autonomous-qa.mjs reconcile --investigation=<id>         # a run-version that never settled, read back
 ```
+
+`reconcile` takes every started version that has no evaluation through ordered rows: still within its
+deadline (nothing decided), an envelope left after all (judged now, against the request that was
+sent), a worker still running, one that never ran (a new attempt may go), one gone that could not
+write, and one gone that could — AMBIGUOUS, kept for a person, never sent again.
 
 ## 3 · When a step is refused, or stops
 

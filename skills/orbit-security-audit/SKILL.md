@@ -94,7 +94,8 @@ provides that evidence.
 
 ```bash
 node <engine>/cli/task.mjs stage <task> REVIEWING --because="assess the controls from QA's evidence"
-node <engine>/cli/security-audit.mjs assess --results=<results.json> --graph=<graph.json>
+node <engine>/cli/security-audit.mjs assess --investigation=<inv-id>           # from QA's own record: evidence that can verify
+node <engine>/cli/security-audit.mjs assess --results=<results.json> --graph=<graph.json>   # a file: shown, never proof
 node <engine>/cli/task.mjs link receipt <task> --domain=assessment --ref=<asm-id> --summary="<the counts by conclusion>"
 node <engine>/cli/security-audit.mjs report <asm-id>
 node <engine>/cli/task.mjs complete <task> --summary="<what the assessment came to, and its gaps>"
@@ -111,7 +112,10 @@ What the conclusions mean is the engine's, in an ordered table — report them a
 - **pending** — what it still owes; **not-tested** — design or process evidence a person provides;
 - **not-applicable** / **applicability-unknown** — from the graph or a person's mark, never guessed.
 
-Evidence in a results file is REPORTED: it is shown and never proof. A finding has an impact,
+With `--investigation`, each control in effect is answered by every generated test whose obligation's
+shape it names, one result per control role the test's design ran, read back from the investigation's
+journal and the run log its host kept; a role earns a word only from the steps of the frozen case that
+show it. Evidence in a results file is REPORTED: it is shown and never proof. A finding has an impact,
 preconditions, a confidence, a reproducibility and a scope — never a severity number. An assessment
 is evidence about the controls in its scope, never a certification: do not call a system compliant.
 When a catalog in effect changes, `report` says the snapshot is stale and why.

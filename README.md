@@ -121,6 +121,30 @@ a secret attribute and a file the repository does not track. What a kind or a re
 The **`orbit-reverse-engineer`** skill runs a standalone pass as its own task, one `orbit-reverse-engineering-agent` per
 unknown scope, and closes on the graph's digest; it never sets an acceptance criterion.
 
+## Autonomous test generation and sandbox verification (0.1.0)
+
+From an accepted requirement to a verified outcome, with the engine holding every step to the record it keeps:
+obligations are DERIVED from accepted plans against the frozen system graph; a host proposes a design and the engine
+compiles every verdict, window and page script from accepted criteria and fixed templates; a frozen version runs only
+in a task's ISOLATED sandbox (Docker), its refs sealed, its writes under grants minted for its own fixture, its browser
+acting as the identity the design approved; the host checks what the worker left before anything is written, and
+ordered RESULT rows give the outcome. Backends are reached through adapters (`orbit.adapter/v1`) shipped as packs a
+project opts into, and what each is proven to support is computed from conformance receipts on real systems.
+
+```bash
+node cli/autonomous-qa.mjs plan --plan=<id> --sandbox=<env-id> --mode=fixture-write   # an investigation of a task's isolated sandbox
+node cli/autonomous-qa.mjs derive --investigation=<id>        # the obligations its accepted plans imply
+node cli/autonomous-qa.mjs step --investigation=<id>          # one decision on stdin: generate a design, run-version a frozen one
+node cli/autonomous-qa.mjs reconcile --investigation=<id>     # a dispatch that never settled, read back -- never resent
+node cli/security-audit.mjs assess --investigation=<id>       # the security controls in effect, from that investigation's record
+node cli/qa-plan.mjs expects <contract.json>                   # an accepted OpenAPI, AsyncAPI or schedule policy, as candidate expectations
+node cli/query.mjs adapters --matrix                           # what each adapter is proven to support, and why
+node acceptance/run.mjs [--stack=…] [--variant=…]              # the native acceptance: two stacks, planted defects, a ground truth
+```
+
+Security catalogs (ASVS 5.0.0 L1 by default, labelled with the OWASP Top 10 2025 and the API Security Top 10 2023),
+limits, isolation and trust are a person's, set in Orbit Control ([ADR 0040](docs/adr/0040-standards-and-policies-are-configured-in-orbit-control.md)).
+
 ## Architecture notes
 
 Engine rules, module map, and extension guidance:

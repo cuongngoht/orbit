@@ -692,8 +692,12 @@ src/run/evaluator.mjs · envelope.mjs · gates/fixture.mjs  (0.1.0, ADR 0038, 00
                never `new Function`; a person's inline expect stays in verdict.mjs, and a run under a design
                (`ctx.evaluation`) judges nothing inline and holds each step to the digest its design pinned ·
                the HOST's check of a worker's
-               envelope: ids, digests, attestation, files, status and `proved` re-derived from the frozen case,
-               and only after it passes is anything recorded · the gate a fixture-scoped write needs
+               envelope: ids, digests, attestation, files, status and `proved` re-derived from the frozen case
+               (the layers compared whatever order each side counted them in), and only after it passes is
+               anything recorded · the gate a fixture-scoped write needs · worker.mjs (the request, the sealed
+               binder, and a PAGE run's browser: blank, headless, ONE engine-written route over every request --
+               a write only under a page grant this run was minted, the approved identity's credential only to
+               the bound origin, never along a redirect, never in an argument or a file the host reads back)
 src/report/    one run's evidence -> ONE self-contained report.html, pictures embedded AND the
                case's own JSON, so the report is enough to run it again when the file is gone
                screen.mjs + screen.html: ONE SCREEN, every case that has touched it -- who drove
@@ -726,7 +730,10 @@ src/qa/walk.mjs · obligations/ · backend/ · generation/ · security/  (0.1.0,
                matched by identity, a window only from an accepted `within`) · generation/ (design.mjs the
                ordered STAGES a proposal is held to, ending in the REAL validator; controls; compile.mjs the
                deterministic mapping from an accepted expectation to a predicate; repair keeps the oracle;
-               version freezes the case) ·
+               version freezes the case; page.mjs (0.1.0, group 1) the ONE place a generated test's page script
+               comes from -- `until` and `reads` written as a wait and a reader from templates that only read the
+               DOM, an api witness ruling only on its status, PAGE_RULES: proposable verbs, a goto to a path of
+               the bound interface, selectors of a bounded alphabet) ·
                security/ (catalog.mjs `orbit.control-catalog/v1`, its layers and a preview · applicability.mjs three
                answers over structural roles, unknown never not-applicable · assessment.mjs the PAIRING and FINDING
                tables, obligations, a snapshot pinned to its catalogs, stale on change · store.mjs the rooms and the

@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.1.0
+
+Autonomous test generation and sandbox verification (ADR 0031-0040): from an accepted requirement to a generated test
+that runs in an isolated sandbox, earns a verification outcome its host decides, and reaches a frozen assessment and a
+report -- for a frontend, a synchronous backend, a scheduler, messaging and security alike.
+
+- **Obligations, derived, never guessed.** An investigation's ACCEPTED plans, read against a frozen System Graph, become
+  test obligations (`autonomous-qa derive`): a criterion's structured expectations, the graph node it is about and the
+  SHAPE of each kind of property (`src/qa/obligations/shapes.mjs`), with applicability, unknowns and authority derived.
+  An obligation's slots are the expectations that state it (`for`), and a design must rule on each of them.
+- **Designs, compiled, never trusted.** A host proposes a skeleton; the engine compiles every verdict from an accepted
+  criterion into a predicate TREE the evaluator interprets (never `new Function`), every window from that criterion's
+  own `within`, and -- for a page -- every wait and reader script from templates that only read the DOM. A skeleton
+  carries no `expect`, `js`, `wait` or `status`. Controls are held to what the test can show of them.
+- **Runs in an isolated sandbox, judged by the host.** A frozen version runs only in a worker whose isolation is
+  attested (Docker: an internal network of the task's own, a read-only root, no capabilities, egress proven to fail),
+  with its refs SEALED by the host, its secrets on stdin, identities issued inside the task's network, and every write
+  under a grant the engine mints for its fixture (ADR 0037). The worker's envelope is checked and the claim re-derived
+  before anything is written; RESULT rows give the word (SATISFIED, CONTRADICTED, INCONCLUSIVE with its reason,
+  AMBIGUOUS, FLAKY across attempts …). A dispatch that never settled is read back and reconciled, never resent
+  (`autonomous-qa reconcile`).
+- **Adapters, not clients.** Backends are reached through family operations (`orbit.<family>.<op>`) answered by the
+  adapter a binding selects (`orbit.adapter/v1`); reference adapters ship as packs a project opts into: HTTP
+  (`orbit-api-test`), AMQP 0-9-1, NATS JetStream, PostgreSQL state reads and the test-hook protocols for a project's
+  scheduler, clock, workloads and identities (`orbit-backend-test`). Support is COMPUTED from conformance-kit receipts on
+  real systems (`query adapters --matrix`).
+- **Pages in the worker.** A generated UI test drives its own headless browser in the worker, as the identity its
+  design approved: one engine-written route carries that identity's credential to the bound origin alone, never along a
+  redirect or to another host, and lets a write through only under a page grant this run was minted.
+- **Security, from evidence.** The Security Auditor assesses the controls in effect (ASVS 5.0.0 L1 by default, labelled
+  with the OWASP Top 10 2025 and the API Security Top 10 2023; catalogs a person adds, adopts and enables in Orbit
+  Control) from an investigation's own record (`security-audit assess --investigation=<id>`): verified, a finding with
+  what it stands on, inconclusive when a positive control did not hold, pending while a role is owed.
+- **The system graph and reverse engineering.** Architecture keeps node and relation facts; `architecture graph`
+  projects them with their evidence and freshness; `orbit-reverse-engineer` is a standalone pass.
+- **Contract readers.** `qa-plan expects <contract.json>` reads an accepted OpenAPI 3.x, AsyncAPI 2/3 or schedule policy
+  into candidate expectations a person puts in a criterion -- stating only what the document states.
+- **Live and Control.** `o` in the full-screen viewer inspects the generated tests a viewer follows; Orbit Control shows
+  an investigation's generated tests, their designs and frozen cases, and the limits a generation is held to.
+- **Native acceptance.** `node acceptance/run.mjs` takes an example project on two stacks (RabbitMQ, NATS JetStream)
+  through the real CLIs from nothing, in every planted-defect variant, and holds every generated test and every security
+  control to `acceptance/truth.json`, with no container, network, volume or secret left behind.
+
 ## 0.0.4
 
 - Reusable, governed skills (ADR 0030). A generated playbook may DECLARE its workflow (`workflow.json`,

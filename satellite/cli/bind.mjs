@@ -23,7 +23,12 @@ import { realIo } from "../../src/store/io.mjs";
 import { modelOf as taskModel } from "../../src/task/model.mjs";
 import { createTasks } from "../../src/task/store.mjs";
 import { resolved } from "../../src/knowledge/verify.mjs";
-import { effectiveResourcesOf } from "../../src/resources/compose.mjs";
+import { effectiveResourcesOf, mcpInvokeContext } from "../../src/resources/compose.mjs";
+import { Blocked, Refused } from "../../src/errors.mjs";
+import { withExtensions } from "../../src/extensions/index.mjs";
+import { createContext } from "../../src/run/context.mjs";
+import { fingerprintOf as bindingFingerprint, resourceOf } from "../../src/work/bind.mjs";
+import { invokeBound } from "../../src/work/invoke.mjs";
 import { realWorld } from "../../skills/orbit-control/world.mjs";
 import { factoryPort, projectSkillsOf } from "../../skills/orbit-help/factory.mjs";
 import { taskView } from "../../src/task/views.mjs";
@@ -71,6 +76,10 @@ const DEFECT = new Set(OUTCOMES.filter((o) => o.defect).map((o) => o.id));
 
 const summarized = (m) => ({ lifecycle: m.lifecycle, ended: ["completed", "cancelled"].includes(m.lifecycle), reason: m.completed.at(-1)?.reason ?? null, findings: m.findings.length, defects: m.findings.filter((f) => DEFECT.has(f.outcome)).length, task: m.meta?.runtime?.task ?? null });
 
+// An investigation as its own journal shows it, or nothing when no journal of that id was ever created: Orbit's model
+// folds an empty journal into an "active" one, and a report citing a wrong id would then wait for ever.
+export const investigationOf = (store, id) => ((records) => (records.some((r) => r?.kind === "created") ? summarized(investigationModel(records)) : null))(store.read(id) ?? []);
+
 const taskViewOf = (tasks, io, id) => ((records) => (records ? taskView(taskModel(records), io.now()) : null))(tasks.read(id));
 
 const createdOf = (tasks, id) => (tasks.read(id) ?? []).find((r) => r.kind === "created") ?? null;
@@ -86,7 +95,7 @@ function snapshotOf(proc, root) {
   return { head: head.ok ? head.out.trim() : null, dirty: status.ok ? status.out.split("\n").filter(Boolean).length : null, digest: sha(`${head.ok ? head.out.trim() : ""}\0${status.ok ? status.out : "unreadable"}`) };
 }
 
-const ownersOf = (b) => ((tasks) => ({ owners: { task: (id) => taskViewOf(tasks, b.io, id), tasksSince: (at) => tasksSince(tasks, at), investigation: (id) => summarized(investigationModel(createInvestigations(b.paths.storeRoot, b.io).read(id))), file: (p) => fileOf(b.paths.root, p) }, checkout: { snapshot: () => snapshotOf(b.proc, b.paths.root) } }))(createTasks(b.paths.storeRoot, b.io));
+const ownersOf = (b) => ((tasks) => ({ owners: { task: (id) => taskViewOf(tasks, b.io, id), tasksSince: (at) => tasksSince(tasks, at), investigation: (id) => investigationOf(createInvestigations(b.paths.storeRoot, b.io), id), file: (p) => fileOf(b.paths.root, p) }, checkout: { snapshot: () => snapshotOf(b.proc, b.paths.root) } }))(createTasks(b.paths.storeRoot, b.io));
 
 // ---- the providers: Orbit's own commands, argv only, the live viewer they would open switched off ----------------
 
@@ -112,11 +121,39 @@ const lazily = (fn) => {
 // Orbit's factory port, narrowed to what a mission may do: a person's moves (status, archive, rollback) are not here.
 export const narrowedFactory = (f) => ({ scaffold: f.scaffold, put: f.put, verify: f.verify, register: f.register, pinned: f.pinned, playbook: f.playbook, list: f.list, current: f.current, workflow: f.workflow });
 
-function resolverOf(b) {
+// The project's own capabilities, loaded by Orbit's one loader before a step resolves anything, so a mission resolves
+// against what the router and Orbit's coordinator resolve against. A project whose extensions cannot load resolves
+// against Orbit's own resources alone -- its capabilities are then simply not offered.
+async function extensionsOf(b) {
+  try { return await withExtensions(createContext({}, b.env, b.paths.root)); }
+  catch (e) { if (e instanceof Refused || e instanceof Blocked) return null; throw e; }
+}
+
+// The registry every resolution reads: Orbit's resources, the person's playbooks, and the project's capabilities once
+// they are loaded (`ready`).
+function registryOf(b) {
   const h = { paths: b.paths, io: b.io };
-  const effective = lazily(() => effectiveResourcesOf({ ...realWorld({ pluginRoot: b.roots.orbit, projectRoot: b.paths.root, env: b.env }), capabilities: () => [], projectSkills: projectSkillsOf(h, b.limits.values) }));
-  const resolve = (cap) => resolved([{ capability: cap, proves: { subject: cap } }], effective()).results[0] ?? null;
-  return { resolve, factory: narrowedFactory(factoryPort(h, () => b.limits.values, resolve, { pluginRoot: b.roots.orbit })) };
+  const kept = { caps: null };
+  const real = lazily(() => realWorld({ pluginRoot: b.roots.orbit, projectRoot: b.paths.root, env: b.env }));
+  const effective = lazily(() => effectiveResourcesOf({ ...real(), capabilities: () => kept.caps?.capabilities?.list?.() ?? [], projectSkills: projectSkillsOf(h, b.limits.values) }));
+  return { h, kept, real, effective };
+}
+
+// The provider the resolver picked, bound by its registry key and the fingerprint of what made it eligible -- what the
+// door checks again the moment it is asked -- and whether it reads through a connection's credential.
+const boundOf = (effective, r) => ((res) => (res ? { provider: r.provider, fingerprint: bindingFingerprint(res), connection: res.detail?.connection ?? null } : null))(resourceOf(effective, r?.provider));
+
+// Orbit's own door for a provider the caller bound (src/work/invoke.mjs invokeBound): the MCP broker over the same managed
+// state the registry read, or the project's capability pipeline with no case. Nothing here calls a provider any other way.
+function invokerOf(b, r) {
+  const w = { effective: r.effective, get mcp() { return mcpInvokeContext(r.real()); }, capabilityContext: () => r.kept.caps, host: b.io.host, session: b.session };
+  return { bind: (res) => boundOf(r.effective(), res), call: (binding, ask) => invokeBound(w, binding, ask) };
+}
+
+function resolverOf(b) {
+  const r = registryOf(b);
+  const resolve = (cap) => resolved([{ capability: cap, proves: { subject: cap } }], r.effective()).results[0] ?? null;
+  return { resolve, ready: async () => Object.assign(r.kept, { caps: await extensionsOf(b) }), invoker: invokerOf(b, r), factory: narrowedFactory(factoryPort(r.h, () => b.limits.values, resolve, { pluginRoot: b.roots.orbit })) };
 }
 
 const livenessOf = (b) => (lease) => (lease.host !== b.io.host ? null : !b.proc.alive(lease.pid) ? false : (b.proc.startedAtOf(lease.pid) ?? null) === (lease.pidStartedAt ?? null));

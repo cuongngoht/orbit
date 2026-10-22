@@ -57,7 +57,11 @@ function deniedAction(lw, x, v) {
   return { refused: true, denied: true, action: x.shape.id, rule: v.rule, say: v.say };
 }
 
-const parentGrantsOf = (lw, x) => (x.shape.parentAgentRun ? lw.m.runs.get(x.shape.parentAgentRun)?.grants ?? [] : undefined);
+// Whose grants cap an action: the parent of a run being dispatched, or the open run a NESTED action is asked for -- a run
+// never reaches through an action of its own what it was not granted.
+const cappedBy = (s) => s.parentAgentRun ?? (s.parentAction ? s.agentRun : null);
+
+const parentGrantsOf = (lw, x) => ((id) => (id ? lw.m.runs.get(id)?.grants ?? [] : undefined))(cappedBy(x.shape));
 
 const grantsFor = (ports, lw, x) => effectiveGrants({ profile: x.shape.profile, mode: x.shape.mode, values: ports.limits.values, spent: lw.spent(), budget: { actions: lw.limits.maxActions }, parentGrants: parentGrantsOf(lw, x) });
 
@@ -81,6 +85,6 @@ export const intended = (ports, lw, x, lease) => lw.append("action.intended", { 
 export function recorded(lw, x, r) {
   lw.append("action.observed", { id: x.shape.id, refs: list(r.refs), digests: list(r.digests), outcome: r.outcome, by: r.by ?? "engine" });
   lw.append("action.recorded", { id: x.shape.id, outcome: r.outcome, level: r.level ?? "UNKNOWN", summary: clip(r.summary) });
-  const ids = list(r.evidence).map((row) => lw.append("evidence.linked", { id: nextId(lw.m, "evidence.linked"), action: x.shape.id, unit: x.shape.unit, owner: row.owner, ref: row.ref, level: row.level, independent: row.independent === true, digest: row.digest, verified: row.level === "VERIFIED" && row.independent === true, say: clip(row.say) }).id);
+  const ids = list(r.evidence).map((row) => lw.append("evidence.linked", { id: nextId(lw.m, "evidence.linked"), action: x.shape.id, unit: x.shape.unit, agentRun: x.shape.agentRun, owner: row.owner, ref: row.ref, level: row.level, independent: row.independent === true, digest: row.digest, verified: row.level === "VERIFIED" && row.independent === true, say: clip(row.say) }).id);
   return { action: x.shape.id, outcome: r.outcome, level: r.level ?? "UNKNOWN", summary: r.summary ?? null, evidence: ids, ...(r.result ? { result: r.result } : {}) };
 }

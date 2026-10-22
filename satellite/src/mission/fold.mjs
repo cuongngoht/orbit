@@ -72,7 +72,13 @@ const factoryLine = (room) => (m, r, n) => {
   if (r.pin) m[room].set(r.pin, { ...(m[room].get(r.pin) ?? {}), ...r, n });
 };
 
-const runLine = (field) => (m, r, n) => ((run) => run && Object.assign(run, { [field]: { ...r, n }, ...(r.providerRef ? { providerRef: r.providerRef } : {}) }))(runOf(m, r.id));
+// A run the engine started an engineering task for drives THAT task: the provider reference it was accepted with names
+// it, and the envelope, the report's default evidence and reconcile all read it from here.
+const taskOfRef = (ref) => (/^task:tsk-[a-f0-9]+$/.test(String(ref ?? "")) ? String(ref).slice(5) : undefined);
+
+const refsOf = (run, r) => (r.providerRef ? { providerRef: r.providerRef, task: run.task ?? taskOfRef(r.providerRef) } : {});
+
+const runLine = (field) => (m, r, n) => ((run) => run && Object.assign(run, { [field]: { ...r, n }, ...refsOf(run, r) }))(runOf(m, r.id));
 
 function evidenceLinked(m, r, n) {
   m.evidence.set(r.id, { ...r, n });

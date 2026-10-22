@@ -49,7 +49,7 @@ export const PROTOCOL = () => ({ ...protocolOf(), envelope: { api: ENVELOPE_API,
 export const COMMANDS = Object.freeze({
   "mission.start": { run: (ports, args) => start(ports, { goal: goalTextOf(ports.input, args) }), say: (r) => `${r.mission} started (goal ${r.goalDigest.slice(0, 8)}) — next: node <satellite>/cli/satellite.mjs mission context ${r.mission}` },
   "mission.context": { run: (ports, args) => contextOf(ports, idArg(args)), say },
-  "mission.step": { run: (ports, args) => step(ports, idArg(args), inputOf(ports.input, args, "decision")), say },
+  "mission.step": { run: (ports, args) => step(ports, idArg(args), inputOf(ports.input, args, "decision")), say, resolves: true },
   "mission.reconcile": { run: (ports, args) => reconcile(ports, idArg(args), { abandon: flag(args, "abandon") }), say },
   "mission.finish": { run: (ports, args) => finish(ports, idArg(args), { stop: flag(args, "stop"), because: flag(args, "because") }), say },
   "mission.show": { run: (ports, args) => showOf(ports, idArg(args)), say },

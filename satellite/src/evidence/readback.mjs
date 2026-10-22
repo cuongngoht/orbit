@@ -43,6 +43,7 @@ function checkBack(ports, ref) {
 
 const INVESTIGATION_LEVELS = [
   { when: (o) => !o, level: "UNKNOWN", say: () => "no QA investigation of this project has that id" },
+  { when: (o) => o.lifecycle === "paused", level: "BLOCKED", say: (o) => `the investigation is paused${o.reason ? ` (${o.reason})` : ""}: it waits for a person, or a limit to be raised` },
   { when: (o) => !o.ended, level: "UNKNOWN", open: true, say: (o) => `the investigation is still ${o.lifecycle}` },
   { when: (o) => o.lifecycle !== "completed", level: "UNKNOWN", say: (o) => `the investigation ended ${o.lifecycle}` },
   { when: (o) => o.defects > 0, level: "BEHAVIOR_OBSERVED", say: (o) => `${o.defects} finding(s) its vocabulary calls a defect` },

@@ -4,6 +4,7 @@
 import { analyze } from "./actions/analyze.mjs";
 import { checkpoint } from "./actions/checkpoint.mjs";
 import { dispatch } from "./actions/dispatch.mjs";
+import { invoke } from "./actions/invoke.mjs";
 import { cancelUnit, plan, replan, skip } from "./actions/plan.mjs";
 import { recall } from "./actions/recall.mjs";
 import { registerSkill, resolveSkill, validateSkill, writeSkill } from "./actions/skills.mjs";
@@ -12,7 +13,7 @@ import { resolveWorkflow } from "./actions/workflows.mjs";
 import { lifecycleOf } from "./state.mjs";
 import { TERMINAL } from "./vocab.mjs";
 
-export const ACTIONS = Object.freeze({ analyze, recall, plan, replan, "resolve-role": resolveRole, "resolve-template": resolveTemplate, "resolve-skill": resolveSkill, "write-skill": writeSkill, "validate-skill": validateSkill, "register-skill": registerSkill, "resolve-workflow": resolveWorkflow, dispatch, skip, "cancel-unit": cancelUnit, checkpoint });
+export const ACTIONS = Object.freeze({ analyze, recall, plan, replan, "resolve-role": resolveRole, "resolve-template": resolveTemplate, "resolve-skill": resolveSkill, "write-skill": writeSkill, "validate-skill": validateSkill, "register-skill": registerSkill, "resolve-workflow": resolveWorkflow, dispatch, invoke, skip, "cancel-unit": cancelUnit, checkpoint });
 
 export const ACTION_KINDS = Object.freeze(Object.keys(ACTIONS));
 

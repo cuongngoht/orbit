@@ -85,3 +85,11 @@ test("Satellite Live follows the journal line by line, resumes at a cursor, and 
   const frames = satellite(w, ["live", "watch", w.msn, "--jsonl"]).stdout.trim().split("\n").map((l) => JSON.parse(l));
   assert.deepEqual([lines.length, resumed.length, frames.at(-1).event, frames.at(-1).data.reason], [revision, 2, "end", "terminal"]);
 });
+
+test("through the real resolver, a capability nothing on this machine provides is refused and nothing is asked", (t) => {
+  const w = mission(t);
+  assert.equal(driven(w).status, 0);
+  const r = stepped(w, w.msn, "d-invoke", { kind: "invoke", capability: "runbook.search", agentRun: "arn-1" });
+  assert.deepEqual([r.status, json(r).refused, json(r).rule], [2, true, "CAPABILITY_UNPROVIDED"]);
+  assert.match(json(r).say, /nothing may serve runbook\.search now/);
+});

@@ -46,12 +46,20 @@ async function livePart(argv) {
   return live.main(ENV, argv.slice(1));
 }
 
+// The ports a command needs: none, the machine's, or the machine's with the project's own capabilities loaded first
+// (a command that resolves a capability resolves what the router would).
+async function portsFor(found) {
+  if (found.entry.needs === "nothing") return null;
+  const ports = bindPorts(ENV, process.cwd());
+  if (found.entry.resolves) await ports.ready();
+  return ports;
+}
+
 async function main() {
   if (ARGV[0] === "live") return livePart(ARGV);
   const found = commandOf(ARGV);
   if (!found) return help();
-  const ports = found.entry.needs === "nothing" ? null : bindPorts(ENV, process.cwd());
-  return printed(found, await found.entry.run(ports, found.args));
+  return printed(found, await found.entry.run(await portsFor(found), found.args));
 }
 
 command(main);

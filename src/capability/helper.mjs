@@ -25,6 +25,14 @@ export const HELPER_API = "orbit.helper/v1";
 export const DEFAULT_ANSWER_BYTES = 4 * 1024 * 1024;
 export const DEFAULT_HELPER_TIMEOUT_MS = 120 * 1000;
 
+// What a helper is told its deadline is: the host's own bound on it, less the time it takes to start the helper and to
+// read its one answer back -- so a helper that watches until its deadline has answered before the host's bound ends
+// it. Told the bound itself, a helper that waited its whole window raced the host, and lost as often as process start
+// and its last read took longer than its margin: a timeout no product caused.
+export const HELPER_LAUNCH_MS = 2000;
+
+export const helperDeadlineMs = (timeoutMs) => Math.max(1, timeoutMs - Math.min(HELPER_LAUNCH_MS, Math.floor(timeoutMs / 10)));
+
 // How a helper is launched, as the capability or the adapter DECLARES it. An argument list,
 // never a shell line; where it runs is the launcher's.
 export const HELPER_FIELDS = {
@@ -62,7 +70,7 @@ export const helperFacade = (ctx, run, cap, invocation = {}) => ({ run: (op, req
 function asked(ctx, run, cap, inv, op, request) {
   const launch = launchOf(ctx, cap, op);
   const timeoutMs = boundedMs(ctx, run, cap, inv);
-  const sent = JSON.stringify({ v: HELPER_API, op, request, bound: inv.bound ?? {}, limits: inv.limits ?? {}, deadlineMs: timeoutMs });
+  const sent = JSON.stringify({ v: HELPER_API, op, request, bound: inv.bound ?? {}, limits: inv.limits ?? {}, deadlineMs: helperDeadlineMs(timeoutMs) });
   const out = ctx.process.run(launch.file, launch.args ?? [], { input: sent, timeoutMs, maxBuffer: inv.limits?.answerBytes ?? DEFAULT_ANSWER_BYTES, env: { ...(launch.env ?? {}), ...(inv.env ?? {}) }, ...(launch.cwd ? { cwd: launch.cwd } : {}) });
   return answerOf(cap, op, out);
 }

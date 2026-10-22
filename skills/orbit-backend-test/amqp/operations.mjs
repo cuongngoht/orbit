@@ -26,6 +26,7 @@
 // (`credential.userEnv`, `credential.passwordEnv`): an identity's, when one is bound, else the
 // resource's. It is never in the request, never in an answer and never in a message.
 import { AmqpError, helperClassOf } from "./errors.mjs";
+import { cutGaps, windowOf } from "../window.mjs";
 
 export const PAYLOAD_BYTES = 64 * 1024;
 export const MAX_MESSAGES = 500;
@@ -183,10 +184,20 @@ const matchOf = (m) => Object.fromEntries(Object.entries(m ?? {}).filter(([k, v]
 
 async function watched(conn, queue, until, asked, deps) {
   const ch = await conn.channel();
-  const state = { seen: [], matched: 0, gaps: [], drained: false, endsAt: deps.now() + Math.max(0, Math.min(until.waitMs ?? Infinity, remaining(asked, deps) - MARGIN_MS)) };
+  const state = waiting(until, asked, deps);
   while (!finished(state, until, deps)) await polled(ch, queue, until, state, deps);
-  if (!state.drained) state.gaps.push(`more than ${until.max} messages were waiting — one answer holds at most that many, so the rest were left unread`);
+  closed(state, until);
   return { value: { messages: state.seen, through: { messages: state.seen.length, at: isoAt(deps) }, completeness: state.gaps.length ? "partial" : "complete", gaps: state.gaps } };
+}
+
+// A wait begun: nothing read yet, and the window it may watch (../window.mjs).
+const waiting = (until, asked, deps) => ((window) => ({ seen: [], matched: 0, gaps: [], drained: false, endsAt: window.endsAt, window }))(windowOf(until.waitMs, remaining(asked, deps) - MARGIN_MS, deps.now()));
+
+// What the wait left unsaid: messages it could not hold in one answer, and a window the deadline cut short of what it
+// waited for.
+function closed(state, until) {
+  if (!state.drained) state.gaps.push(`more than ${until.max} messages were waiting — one answer holds at most that many, so the rest were left unread`);
+  state.gaps.push(...cutGaps(state.window, state.matched >= until.count));
 }
 
 const finished = (state, until, deps) => state.seen.length >= until.max || (state.drained && (state.matched >= until.count || deps.now() >= state.endsAt));

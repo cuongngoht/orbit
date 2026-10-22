@@ -109,6 +109,15 @@ test("a count ends the window early, once that many matching messages were read 
   assert.deepEqual(out.value.messages.map((m) => m.id), ["other", "wanted"], "every message read is reported; the match only ends the wait");
 });
 
+test("a wait its call's own deadline cuts short of what it waited for is PARTIAL, saying so -- never a window it did not watch", async () => {
+  const b = broker();
+  await b.ask("observe", {}, { channelRef: channel, observerRef: observer });
+  await b.ask("publish", publication({ messageId: "once" }), { channelRef: channel });
+  const cut = await b.ask("observe.await", { count: 2, match: { messageId: "once" }, waitMs: 60_000 }, { observerRef: observer }, 600);
+  assert.deepEqual([cut.value.messages.length, cut.value.completeness], [1, "partial"]);
+  assert.match(cut.value.gaps.join(), /cut to \d+ ms by the call's own deadline, short of the 60000 ms asked/);
+});
+
 test("what one answer cannot hold makes the observation PARTIAL, with the reason -- never a quietly short list", async () => {
   const b = broker();
   await b.ask("observe", {}, { channelRef: channel, observerRef: observer });

@@ -23,6 +23,7 @@
 // what was asked (`clock-injection-unsupported`) is a capability GAP; a barrier that timed out is a
 // timeout; a write whose answer was lost -- a trigger, a clock move, a control -- is AMBIGUOUS,
 // keyed so it can be read back, and never sent again.
+import { cutGaps, windowOf } from "../window.mjs";
 const LIMIT = 500;
 const MARGIN_MS = 250;
 const POLL_MS = 100;
@@ -169,9 +170,19 @@ async function attempts(asked, deps) {
 async function watched(asked, deps, page, fields) {
   const until = untilOf(asked.request, fields);
   if (until.refused) return refusal(until.refused);
-  const state = { items: [], through: until.since, caughtUp: false, matched: 0, endsAt: deps.now() + Math.min(until.waitMs ?? 0, remaining(asked, deps)) };
+  const state = waiting(until, asked, deps);
   while (!finished(state, until, deps)) await paged(state, page, until, deps);
-  return { ...state, answered: Object.keys(until.match).length ? state.items.filter((i) => matches(i, until)) : state.items, completeness: state.caughtUp ? "complete" : "partial", gaps: state.caughtUp ? [] : [`more than ${until.max} items were waiting — one answer holds at most that many; read on from through`] };
+  return closed(state, until);
+}
+
+// A wait begun: nothing read yet, and the window it may watch (../window.mjs).
+const waiting = (until, asked, deps) => ((window) => ({ items: [], through: until.since, caughtUp: false, matched: 0, endsAt: window.endsAt, window }))(windowOf(until.waitMs, remaining(asked, deps), deps.now()));
+
+// What the wait came to: the items it was asked about, and -- only when it caught up and its window was not cut
+// short of what it waited for -- complete.
+function closed(state, until) {
+  const gaps = [...(state.caughtUp ? [] : [`more than ${until.max} items were waiting — one answer holds at most that many; read on from through`]), ...cutGaps(state.window, state.matched >= until.count)];
+  return { ...state, answered: Object.keys(until.match).length ? state.items.filter((i) => matches(i, until)) : state.items, completeness: gaps.length ? "partial" : "complete", gaps };
 }
 
 function untilOf(r, fields) {

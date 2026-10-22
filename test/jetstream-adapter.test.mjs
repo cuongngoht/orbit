@@ -110,6 +110,15 @@ test("an observer is armed on a durable consumer of its own, starting just after
   assert.deepEqual([c.metadata, c.description], [{ [OBSERVER_MARK]: "orbit-ab12-obs-1" }, "orbit observer obs-1"], "marked as the observer's own, for await to prove");
 });
 
+test("a wait its call's own deadline cuts short of what it waited for is PARTIAL, saying so -- never a window it did not watch", async () => {
+  const b = await broker();
+  await b.ask("observe", {}, { channelRef: channel, observerRef: observer, fixtureRef: fixture });
+  await b.ask("publish", publication({ messageId: "msg-once" }), { channelRef: channel });
+  const cut = await b.ask("observe.await", { count: 2, match: { messageId: "msg-once" }, waitMs: 60_000 }, { observerRef: observer }, 600);
+  assert.deepEqual([cut.value.messages.length, cut.value.completeness], [1, "partial"]);
+  assert.match(cut.value.gaps.join(), /cut to \d+ ms by the call's own deadline, short of the 60000 ms asked/);
+});
+
 // The gate await shares with observe: a binding naming somebody else's consumer -- the
 // application's, or one made to look like an observer -- must never be fetched from or acknowledged.
 test("await proves the consumer is the observer's own before anything is fetched: anybody else's is refused, and nothing is taken", async () => {

@@ -10,7 +10,7 @@ import { test } from "node:test";
 import { invokeCapability, invokeNow } from "../src/capability/invoke.mjs";
 import call from "../src/run/verbs/call.mjs";
 import { createCapabilityRegistry } from "../src/capability/registry.mjs";
-import { HELPER_API } from "../src/capability/helper.mjs";
+import { HELPER_API, helperDeadlineMs } from "../src/capability/helper.mjs";
 import { Blocked, Refused } from "../src/errors.mjs";
 import { extensionContextV1 } from "../src/extensions/context-v1.mjs";
 import { loadExtensions } from "../src/extensions/index.mjs";
@@ -66,6 +66,11 @@ test("the helper is asked once, with what the binding resolved; the capability o
   assert.deepEqual(request.request, { path: "/invoices/a" });
   assert.equal(request.bound.endpointRef.origin, "http://app:8080");
   assert.ok(request.deadlineMs > 0 && request.deadlineMs <= 60_000);
+  assert.ok(request.deadlineMs < w.process.calls[0].opts.timeoutMs, "the helper is told a deadline inside the host's own bound on it");
+});
+
+test("a helper's deadline leaves the host room to start it and read its answer: the bound less two seconds, or a tenth of a short one", () => {
+  assert.deepEqual([helperDeadlineMs(120_000), helperDeadlineMs(10_000), helperDeadlineMs(1_000), helperDeadlineMs(1)], [118_000, 9_000, 900, 1]);
 });
 
 test("a secret reaches the helper's environment, and never its request, its arguments or the log", () => {

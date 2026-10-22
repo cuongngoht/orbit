@@ -35,6 +35,7 @@
 // answer and never in a message.
 import { helperClassOf } from "./errors.mjs";
 import { jetstream } from "./jetstream.mjs";
+import { cutGaps, windowOf } from "../window.mjs";
 
 export const PAYLOAD_BYTES = 64 * 1024;
 export const MAX_MESSAGES = 500;
@@ -281,10 +282,20 @@ function untilOf(r) {
 const matchOf = (m) => Object.fromEntries(Object.entries(m ?? {}).filter(([k, v]) => MATCH_KEYS.includes(k) && typeof v === "string"));
 
 async function watched(js, observer, until, asked, deps) {
-  const state = { seen: [], matched: 0, gaps: [], drained: false, last: null, endsAt: deps.now() + Math.max(0, Math.min(until.waitMs ?? Infinity, remaining(asked, deps) - MARGIN_MS)) };
+  const state = waiting(until, asked, deps);
   while (!finished(state, until, deps)) await polled(js, observer, until, state, deps);
-  if (!state.drained) state.gaps.push(`more than ${until.max} messages were waiting — one answer holds at most that many, so the rest were left unread`);
+  closed(state, until);
   return { value: { messages: state.seen, through: { messages: state.seen.length, sequence: state.last, at: isoAt(deps) }, completeness: state.gaps.length ? "partial" : "complete", gaps: state.gaps } };
+}
+
+// A wait begun: nothing read yet, and the window it may watch (../window.mjs).
+const waiting = (until, asked, deps) => ((window) => ({ seen: [], matched: 0, gaps: [], drained: false, last: null, endsAt: window.endsAt, window }))(windowOf(until.waitMs, remaining(asked, deps) - MARGIN_MS, deps.now()));
+
+// What the wait left unsaid: messages it could not hold in one answer, and a window the deadline cut short of what it
+// waited for.
+function closed(state, until) {
+  if (!state.drained) state.gaps.push(`more than ${until.max} messages were waiting — one answer holds at most that many, so the rest were left unread`);
+  state.gaps.push(...cutGaps(state.window, state.matched >= until.count));
 }
 
 const finished = (state, until, deps) => state.seen.length >= until.max || (state.drained && (state.matched >= until.count || deps.now() >= state.endsAt));

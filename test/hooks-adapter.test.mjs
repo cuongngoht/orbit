@@ -98,6 +98,17 @@ test("what a watched read answers is what its match asked about -- another messa
   assert.equal(all.value.attempts.length, 2, "no match asks about everything");
 });
 
+test("a wait the call's own deadline cuts short of what it waited for is PARTIAL -- a window it did not watch is never claimed", async () => {
+  const h = hooks({ "GET /orbit/workload/v1/attempts": (url) => answer(200, Number(url.searchParams.get("since")) < 1 ? { attempts: [{ seq: 1, messageId: "msg-1", outcome: "processed" }], through: 1 } : { attempts: [], through: 1 }) });
+  const cut = await h.ask("attempts", { count: 2, match: { messageId: "msg-1" }, waitMs: 60_000 }, { workloadRef: workload }, 300);
+  assert.deepEqual([cut.value.attempts.length, cut.value.completeness], [1, "partial"]);
+  assert.match(cut.value.gaps.join(), /cut to \d+ ms by the call's own deadline, short of the 60000 ms asked/);
+  const met = await h.ask("attempts", { count: 1, match: { messageId: "msg-1" }, waitMs: 60_000 }, { workloadRef: workload }, 300);
+  assert.deepEqual([met.value.completeness, met.value.gaps], ["complete", []], "what it waited for was met before the deadline: nothing was cut");
+  const fits = await h.ask("attempts", { count: 2, match: { messageId: "msg-1" }, waitMs: 100 }, { workloadRef: workload }, 2_000);
+  assert.equal(fits.value.completeness, "complete", "a window that fits the deadline was watched whole");
+});
+
 test("what one answer cannot hold is PARTIAL, read on from through", async () => {
   const many = Array.from({ length: 500 }, (_, i) => ({ seq: i + 1, messageId: `m-${i}`, outcome: "processed" }));
   const h = hooks({ "GET /orbit/workload/v1/attempts": () => answer(200, { attempts: many, through: 500 }) });

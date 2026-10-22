@@ -20,16 +20,18 @@ import { temporalFindings } from "../backend/temporal.mjs";
 import { proposalFindings } from "../obligations/validate.mjs";
 import { compileDesign } from "./compile.mjs";
 import { controlFindings } from "./controls.mjs";
+import { pageFindings, pageStepOf } from "./page.mjs";
 
 const said = (findings) => findings.map((f) => (typeof f === "string" ? f : `${f.rule}: ${f.say}`));
 
-// The verbs that rule on their own answer: a generated one carries a compiled verdict or is not made.
-const RULING = ["call", "sql"];
+// The verbs that rule on their own answer: a generated one carries a compiled verdict or is not made. A report reads a
+// page for nothing else.
+const RULING = ["call", "sql", "report"];
 
 const STAGES = [
   { id: "contract", outcome: "GENERATION_FAILED", findings: (p) => proposalFindings("design", p.proposal) },
   { id: "controls", outcome: "GENERATION_FAILED", findings: (p, cx) => said(controlFindings(p.proposal, cx.shape)) },
-  { id: "rules", outcome: "GENERATION_FAILED", findings: (p, cx) => said([...observationFindings(p.proposal, cx), ...correlationFindings(p.proposal), ...temporalFindings(p.proposal, cx)]) },
+  { id: "rules", outcome: "GENERATION_FAILED", findings: (p, cx) => said([...observationFindings(p.proposal, cx), ...correlationFindings(p.proposal), ...temporalFindings(p.proposal, cx), ...pageFindings(p.proposal)]) },
   { id: "mapping", outcome: (p) => (p.compiled.mapping.some((m) => /ACCEPTED criterion/.test(m.why ?? "")) ? "REQUIRES_REQUIREMENT" : "GENERATION_FAILED"), findings: (p) => p.compiled.mapping.filter((m) => m.verdict === "refused").map((m) => `step ${m.step} (${m.criterionRef ?? m.structural}): ${m.why}`) },
   { id: "coverage", outcome: "GENERATION_FAILED", findings: (p, cx) => (cx.expected ?? []).filter((slot) => !(p.proposal.assertions ?? []).some((a) => a.criterionRef === slot)).map((slot) => `${slot} is a slot of this obligation's own criterion, and nothing in the design rules on it — a design that rules only on other criteria tests something else`) },
   { id: "verdicts", outcome: "GENERATION_FAILED", findings: (p) => (p.case.steps ?? []).flatMap((s, n) => (RULING.includes(s.do) && !s.expect ? [`step ${n + 1} (${s.do}) rules on nothing — every ${s.do} rules on its answer, and nothing accepted was mapped to it`] : [])) },
@@ -58,11 +60,13 @@ function caseOf(proposal, compiled, cx) {
   return { id: cx.caseId, name: String(cx.title ?? proposal.obligation ?? "generated").slice(0, 120), seen: "src", steps };
 }
 
-// A compiled verdict, and the layer it proves for a call (a sql step's layer is its verb's).
+// A compiled verdict, and the layer it proves for a call (a sql step's layer is its verb's); a page step as the engine
+// writes it (src/qa/generation/page.mjs) -- an api witness carrying only the status it rules on, never an expect.
 function placed(step, i, compiled) {
-  const verdict = compiled.steps[i] ? { expect: compiled.steps[i].expect, ...(step.do === "call" ? { proves: compiled.steps[i].proves } : {}) } : {};
+  const c = compiled.steps[i];
+  const verdict = c && step.do !== "api" ? { expect: c.expect, ...(step.do === "call" ? { proves: c.proves } : {}) } : {};
   const window = compiled.windows.find((w) => String(w.step) === i);
-  return { ...step, ...verdict, ...(window ? { input: { ...step.input, request: { ...(step.input?.request ?? {}), waitMs: window.waitMs } } } : {}) };
+  return { ...pageStepOf(step, c), ...verdict, ...(window ? { input: { ...step.input, request: { ...(step.input?.request ?? {}), waitMs: window.waitMs } } } : {}) };
 }
 
 const stepInputs = (c, cx) => (c.steps ?? []).flatMap((s, n) => (s.do === "call" ? (cx.inputFindings?.(s) ?? []).map((f) => `step ${n + 1}: ${f}`) : []));

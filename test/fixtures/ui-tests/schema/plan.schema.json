@@ -322,6 +322,7 @@
             "present",
             "in",
             "excludes",
+            "contains",
             "count-eq",
             "count-at-most",
             "conforms",

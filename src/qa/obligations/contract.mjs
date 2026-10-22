@@ -112,10 +112,18 @@ export const DESIGN_FIELDS = {
   trigger: ref("trigger", "What makes the system act."),
   observationPlan: list("observation-plan", "What is armed before the trigger, and what each can prove."),
   effectScope: { enum: ["fixture"], doc: "Where it may have effects: the task's own fixture. Anything else is refused at authorization." },
+  page: ref("page", "For a design that drives a page: the screen it drives, by its interface's alias, and the identity its browser acts as."),
   compiled: { type: "array", doc: "The compiled assertions, template@version with encoded literals and digest -- stamped." },
   mapping: { type: "object", doc: "The mapping verdict: each assertion verified against its slot, or why not -- stamped." },
   temporalContract: ref("temporal", "The deadline and windows, only from an accepted binding -- stamped."),
   budget: { type: "object", doc: "The budget it runs under, never wider than the settings -- stamped." },
+};
+
+// A page a design drives: both are logical ALIASES the host binds -- the interface's origin on the task's network, and
+// the identity whose credential its browser carries -- never a URL, a cookie or a token.
+export const PAGE_FIELDS = {
+  endpointRef: alias("The interface (an endpoint or a page of the system graph) whose origin the browser opens."),
+  identityRef: alias("The approved identity the browser acts as; absent, it acts as nobody."),
 };
 
 export const VERSION_FIELDS = {
@@ -179,6 +187,7 @@ export const DEFINITIONS = {
   control: { table: CONTROL_FIELDS, required: ["role"], stamped: [] },
   trigger: { table: TRIGGER_FIELDS, required: ["kind"], stamped: [] },
   "observation-plan": { table: OBSERVATION_PLAN_FIELDS, required: ["observerRef"], stamped: [] },
+  page: { table: PAGE_FIELDS, required: ["endpointRef"], stamped: [] },
   design: { table: DESIGN_FIELDS, required: ["obligation"], stamped: ["id", "digest", "compiled", "mapping", "temporalContract", "budget"], aliases: ["fixtureRefs"] },
   version: { table: VERSION_FIELDS, required: ["testCaseRef", "caseDigest", "version"], stamped: all(VERSION_FIELDS), proposable: false },
   execution: { table: EXECUTION_FIELDS, required: ["runId", "attempt"], stamped: all(EXECUTION_FIELDS), proposable: false },

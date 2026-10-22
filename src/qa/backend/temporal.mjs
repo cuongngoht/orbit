@@ -6,7 +6,8 @@ import { meets } from "../../adapters/semantics.mjs";
 import { isOp, requestOf, stepsOf, witnessSteps } from "./skeleton.mjs";
 
 const WINDOWED = ["orbit.observe.await", "orbit.scheduler.observe", "orbit.worker.observe", "orbit.job.observe"];
-const VERDICT_TEXT = ["expect", "js"];
+// What only the engine writes on a step: a verdict, a script, a page condition, the status a witness rules on.
+const VERDICT_TEXT = ["expect", "js", "wait", "status"];
 
 export const TEMPORAL_RULES = [
   { id: "WINDOW_FROM_SOURCE", findings: (steps, ctx, design) => steps.filter((s) => WINDOWED.some((c) => isOp(s, c)) && requestOf(s).waitMs !== undefined && !witnesses(design, s.i)).map((s) => `step ${s.i} sets its own window — a window is compiled from an accepted criterion's within, never proposed (only a control's witness waits within its own bound, and it can only ever make a run inconclusive)`) },

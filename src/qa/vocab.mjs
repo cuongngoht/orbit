@@ -110,6 +110,7 @@ export const EXPECT_OPS = [
   { name: "present", template: "value-present", doc: "the observed value is there -- an id, a reference -- whatever it is" },
   { name: "in", template: "value-in", doc: "the observed value is one of the stated values" },
   { name: "excludes", template: "value-excludes", doc: "the observed value never contains the stated value -- a marker that must not appear" },
+  { name: "contains", template: "value-includes", doc: "the observed text contains the stated text -- a name a screen shows" },
   { name: "count-eq", template: "count-eq", doc: "exactly this many durable effects" },
   { name: "count-at-most", template: "count-at-most", doc: "no more than this many" },
   { name: "conforms", template: "schema-valid", doc: "the observed value conforms to the stated, pinned schema" },

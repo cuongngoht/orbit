@@ -26,6 +26,7 @@ export const TEMPLATE_SHAPES = {
   "value-in": { needs: ["path", "values"], single: true },
   "value-present": { needs: ["path"], single: true },
   "value-excludes": { needs: ["path", "value"] },
+  "value-includes": { needs: ["path", "value"], single: true },
   "count-eq": { needs: ["path", "value"] },
   "count-at-most": { needs: ["path", "value"] },
   "schema-valid": { needs: ["path"], single: true },

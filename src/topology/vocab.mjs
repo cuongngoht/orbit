@@ -51,6 +51,8 @@ export const RELATION_ROLES = [
 // observation (its completeness, its cursor) and proves nothing by itself.
 export const MEANINGS = [
   { id: "response.status", layer: "api", doc: "the status a synchronous interface answered" },
+  { id: "ui.text", layer: "ui", doc: "the text an element of a screen shows a person, read off the page" },
+  { id: "ui.count", layer: "ui", doc: "how many elements of a screen match what was asked about" },
   { id: "response.headers", layer: "api", doc: "the allow-listed headers it answered with" },
   { id: "response.body", layer: "api", doc: "the projected body it answered with" },
   { id: "schema.valid", layer: "api", doc: "whether a body conforms to a pinned schema" },
@@ -85,6 +87,7 @@ export const MEANINGS = [
 // message was delivered -- coverage is never summed from one receipt (doc §5.9).
 export const BOUNDARIES = [
   { id: "synchronous", provedBy: ["response.status", "response.body", "schema.valid"], doc: "what a synchronous interface answered" },
+  { id: "screen", provedBy: ["ui.text", "ui.count"], doc: "what a screen shows a person, read off the page" },
   { id: "publication", provedBy: ["message.id", "settlement.outcome"], doc: "a message was accepted by the channel" },
   { id: "delivery", provedBy: ["delivery.attempt"], doc: "a message reached a consumer" },
   { id: "processing", provedBy: ["execution.status", "settlement.outcome", "terminal.reason"], doc: "a consumer or a job finished with it" },

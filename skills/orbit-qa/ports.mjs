@@ -27,6 +27,7 @@ import { validate } from "../../src/dsl/validate.mjs";
 import { canonicalJson, sha, short, shaBytes } from "../../src/hash.mjs";
 import { planDigestOf } from "../../src/investigation/input.mjs";
 import { modeOf } from "../../src/investigation/vocab.mjs";
+import { pageOutputsOf } from "../../src/qa/generation/page.mjs";
 import { shapeOf } from "../../src/qa/obligations/shapes.mjs";
 import { capabilityLookup } from "../../src/run/run-case.mjs";
 import { HOOK_PROTOCOLS, sealedBindings } from "../../src/runtime/sandbox/bindings.mjs";
@@ -62,6 +63,7 @@ const declaredOp = (adapter, step) => adapter.operations[opKeyOf(adapter, operat
 
 // What a step's answer carries, by meaning: the adapter's declaration of that operation, or the capability's own.
 function outputsOf(r, step) {
+  if (pageOutputsOf(step)) return pageOutputsOf(step);
   const adapter = adapterOf(r, step);
   if (adapter) return declaredOp(adapter, step)?.outputs ?? null;
   return step?.do === "call" ? r.lookup(step.capability)?.outputs ?? null : null;

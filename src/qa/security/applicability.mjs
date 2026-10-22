@@ -29,6 +29,7 @@ const MAX_TERMS = 24;
 // a synchronous interface answers is owed where there is an interface to ask.
 export const BOUNDARY_SUBJECTS = {
   synchronous: { role: "interface" },
+  screen: { role: "interface" },
   publication: { relation: "publish" },
   delivery: { relation: "consume" },
   processing: { any: [{ relation: "consume" }, { relation: "activation" }] },

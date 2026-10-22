@@ -20,6 +20,7 @@ const shape = (id, boundary, relations, contract, controls, templates, doc, extr
 
 export const OBLIGATION_SHAPES = [
   shape("response-conforms", "synchronous", ["invocation"], ["response"], ["positive"], ["value-eq", "value-in", "schema-valid"], "an interface answers what its accepted contract says: status, body, schema and error semantics"),
+  shape("screen-shows-result", "screen", ["invocation"], ["screen"], ["positive"], ["value-includes", "value-eq", "count-eq"], "a screen shows a person what its accepted criterion says, after the call it makes answered, with the state below it agreeing"),
   shape("permission-enforced", "synchronous", ["permission"], ["permission"], ["positive", "negative"], ["value-eq", "value-excludes"], "an actor without the right is refused, and the allowed actor is not -- one without the other proves nothing"),
   shape("fields-restricted", "synchronous", ["permission", "invocation"], ["response", "permission"], ["positive", "negative"], ["value-excludes", "schema-valid"], "an answer carries only the fields its contract and its caller's permission allow -- an allowed read that also carries a field the caller may not see is a leak"),
   shape("no-foreign-effect", "state", ["permission", "data-write", "data-read"], ["tenant-scope"], ["positive", "negative", "state"], ["count-eq", "value-excludes", "absent-within"], "nothing of another owner or tenant is read or changed, within the accepted window"),

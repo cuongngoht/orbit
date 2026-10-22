@@ -28,7 +28,7 @@ test("every template an EXPECT_OPS row names has exactly one row here, and nothi
 });
 
 test("each template holds, is violated, and -- where the answer cannot say -- stays undecided", () => {
-  const answer = { status: 404, body: { error: "not_found" }, schema: true, messages: [{ id: "m-1" }, { id: "m-2" }], completeness: "complete" };
+  const answer = { status: 404, body: { error: "not_found" }, schema: true, messages: [{ id: "m-1" }, { id: "m-2" }], completeness: "complete", text: "Acme Synthetic (120)", count: 1 };
   const rows = [
     [{ template: "value-eq", path: "status", value: 404 }, HOLDS],
     [{ template: "value-eq", path: "status", value: 200 }, VIOLATED],
@@ -36,6 +36,9 @@ test("each template holds, is violated, and -- where the answer cannot say -- st
     [{ template: "value-in", path: "body.error", values: ["not_found", "forbidden"] }, HOLDS],
     [{ template: "value-excludes", path: "body", value: "tenant-b" }, HOLDS],
     [{ template: "value-excludes", path: "messages", value: "m-2" }, VIOLATED],
+    [{ template: "value-includes", path: "text", value: "Acme" }, HOLDS],
+    [{ template: "value-includes", path: "text", value: "Zeta" }, VIOLATED],
+    [{ template: "value-includes", path: "count", value: "1" }, VIOLATED],
     [{ template: "count-eq", path: "messages[]", value: 2 }, HOLDS],
     [{ template: "count-at-most", path: "messages[].id", value: 1 }, VIOLATED],
     [{ template: "schema-valid", path: "schema" }, HOLDS],

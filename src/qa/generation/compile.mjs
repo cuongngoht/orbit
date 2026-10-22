@@ -15,6 +15,7 @@ import { operationFor } from "../../adapters/families.mjs";
 import { predicateDigest, predicateFindings, renderOf } from "../../predicate.mjs";
 import { MEANINGS, meaningAt, meaningEntries } from "../../topology/vocab.mjs";
 import { witnessControls, witnessSteps } from "../backend/skeleton.mjs";
+import { witnessStatusOf } from "./page.mjs";
 import { EXPECT_OP } from "../vocab.mjs";
 
 const VALUE_FIELD = { in: "values", ordered: "values" };
@@ -95,7 +96,7 @@ function windowOf(outputs, e) {
 // the mapping verdict per assertion. A design with a refused assertion compiles nothing for the step
 // it was on -- a step is never judged by part of what it was meant to rule on.
 export function compileDesign(design, context) {
-  const results = [...(design.assertions ?? []), ...witnessEvidence(design), ...triggerEvidence(design)].map((a) => ({ a, r: a.structural === "fault-witnessed" ? witnessTree(a, context) : a.structural ? structuralTree(a, context) : compiledAssertion(a, context) }));
+  const results = [...(design.assertions ?? []), ...witnessEvidence(design), ...triggerEvidence(design)].map((a) => ({ a, r: onlyStatus(design, a, a.structural === "fault-witnessed" ? witnessTree(a, context) : a.structural ? structuralTree(a, context) : compiledAssertion(a, context)) }));
   const mapping = results.map(({ a, r }) => ({ criterionRef: a.criterionRef ?? null, ...(a.structural ? { structural: a.structural } : {}), template: a.template ?? r.tree?.template ?? null, step: a.step, verdict: r.refused ? "refused" : "mapped", ...(r.refused ? { why: r.refused } : {}) }));
   const steps = stepsOf(results);
   return { steps, mapping, digests: Object.fromEntries(Object.entries(steps).map(([i, s]) => [i, s.digest])), windows: results.filter(({ r }) => r.window).map(({ a, r }) => ({ step: a.step, waitMs: r.window.waitMs })) };
@@ -112,6 +113,10 @@ function stepPredicate(trees) {
   const tree = trees.length === 1 ? trees[0] : { template: "all", of: trees };
   return { expect: renderOf(tree), digest: predicateDigest(tree), proves: provesOf(trees) };
 }
+
+// An api WITNESS rules on one thing: the status the call the page made answered (src/qa/generation/page.mjs). Any other
+// assertion on it is refused, never turned into an expect the verb does not have.
+const onlyStatus = (design, a, r) => (design.skeleton?.steps?.[a.step - 1]?.do === "api" && r.tree && witnessStatusOf(r.tree) === undefined ? { refused: `step ${a.step} is an api witness, and it rules only on the status its call answered — a value-eq on response.status` } : r);
 
 // Which layer a step's verdict rules on: the layer of the meanings it reads (src/topology/vocab.mjs
 // MEANINGS), the first that has one -- an interface's answer otherwise.

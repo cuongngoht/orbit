@@ -4,7 +4,7 @@
 // with, and torn down in its order -- stopping only what ownership proves.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { join } from "node:path";
+import { resolve } from "node:path";
 import { judge, mayStop } from "../src/runtime/ownership.mjs";
 import { released } from "../src/runtime/sandbox/release.mjs";
 import { stoppedNode } from "../src/runtime/sandbox/network.mjs";
@@ -79,7 +79,7 @@ test("a component built from its own Dockerfile is built while preparing, with n
   assert.equal(w.ready.state, "READY", w.ready.blocked?.because);
   const [build] = w.iso.state.builds;
   const root = w.sandbox().root;
-  assert.deepEqual([w.iso.state.builds.length, build.network, build.context, build.dockerfile], [1, "none", join(root, "web"), join(root, "web", "Dockerfile")]);
+  assert.deepEqual([w.iso.state.builds.length, build.network, build.context, build.dockerfile], [1, "none", resolve(root, "web"), resolve(root, "web", "Dockerfile")], "the paths a build reads, resolved as containment resolves them");
   const started = await w.run("sandbox-start");
   assert.deepEqual(started.started.map((s) => s.component), ["node:web"], JSON.stringify(started.blocked));
   assert.equal(w.iso.state.builds.length, 1, "the image built for this tree is the one started");

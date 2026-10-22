@@ -100,7 +100,7 @@ test("a helper nothing can launch is BLOCKED with the launcher's own reason, and
 
 // What a project's room can never do: stand in for a pack, replace a home already recorded, or --
 // as a candidate being verified -- leave a home behind in the context it was judged beside.
-test("a room directory that is not its manifest's id is refused, so nothing in a project's room can register as a pack", async () => {
+test("a room directory that is not its manifest's id is refused, so nothing in a project's room can register as a pack", { skip: process.platform === "win32" ? "a directory name cannot hold ':' on Windows, so no room can pose as a pack there: NOT TESTED on Windows" : false }, async () => {
   const s = store();
   const posing = join(qcToolPaths(s.root).root, "pack:orbit-backend-test");
   mkdirSync(posing, { recursive: true });

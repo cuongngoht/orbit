@@ -72,7 +72,7 @@ test("the layers are read from the catalog, the organisation and the project -- 
   const vocab = loadVocabulary({ pluginRoot: "/nowhere", storeBase: base, storeRoot: root, io });
   assert.equal(kindOf(vocab, "ledger").layer, "organization");
   assert.equal(kindOf(vocab, "ignored").declared, false, "a file of another schema offers nothing");
-  assert.ok(vocab.problems.some((p) => /catalog\/topology.json/.test(p)), "a missing catalog is said, never thrown");
+  assert.ok(vocab.problems.some((p) => /catalog[\\/]topology\.json/.test(p)), "a missing catalog is said, never thrown");
   assert.ok(vocab.problems.some((p) => /not a schema 1 topology vocabulary file/.test(p)));
   assert.equal(io.files.size, before);
 });

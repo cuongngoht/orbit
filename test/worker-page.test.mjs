@@ -3,6 +3,7 @@
 // a grant this run was minted, the approved identity's credential goes only to the bound origin and never rides a
 // redirect, and the credential is never in an argument, in a file the host reads back, or in what a failure says.
 import assert from "node:assert/strict";
+import { join } from "node:path";
 import { test } from "node:test";
 import { Blocked, Refused } from "../src/errors.mjs";
 import { PAGE_BROWSER, closedPage, openedPage, pageRoute, pageSpendRecords, pageSpendsOf, pageWritesOf } from "../src/run/worker.mjs";
@@ -47,7 +48,7 @@ async function decided(handler, method, url) {
 test("a blank browser of its own is opened, and the route reaches the CLI as a scratch file -- never an argument, never a file the host reads back", () => {
   const w = world();
   openedPage(w.ctx, request(), w.io);
-  assert.deepEqual(JSON.parse(w.files.get("/work/out/store/runtime/run/.playwright/cli.config.json")), PAGE_BROWSER, "headless, a profile of its own, nothing copied in");
+  assert.deepEqual(JSON.parse(w.files.get(join("/work/out/store/runtime/run", ".playwright", "cli.config.json"))), PAGE_BROWSER, "headless, a profile of its own, nothing copied in");
   assert.equal([...w.files.values()].join().includes(TOKEN), false, "the run directory is in the scratch store the host reads back");
   assert.deepEqual(w.calls, [["open", "about:blank"], ["run-code", "--filename=/tmp/orbit-page-0.js"]]);
   assert.equal(w.calls.flat().join(" ").includes(TOKEN), false, "no process listing shows the credential");

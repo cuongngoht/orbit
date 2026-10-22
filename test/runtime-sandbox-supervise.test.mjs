@@ -3,6 +3,7 @@
 // worker past its deadline by its receipt, and on a cancel or a spent lifetime tears the sandbox down in order.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { join } from "node:path";
 import { Refused } from "../src/errors.mjs";
 import { deps } from "../src/runtime/lifecycle/deps.mjs";
 import { specOf, startedNode } from "../src/runtime/sandbox/network.mjs";
@@ -20,13 +21,13 @@ test("a signal is one of three words, allow-listed, scrubbed and numbered -- and
   const io = fakeIo();
   signalled(io, ROOM, { signal: "pause", by: "control", why: "password=hunter2hunter2 while a person looks", extra: "dropped" }, AT);
   assert.throws(() => signalled(io, ROOM, { signal: "kill", by: "x" }, AT), (e) => e instanceof Refused && /a signal is pause, resume, cancel/.test(e.message));
-  assert.deepEqual(supervisionNow(io, ROOM), { paused: true, cancelled: false, seq: 1, last: linesIn(io, `${ROOM}/signals.jsonl`)[0] });
+  assert.deepEqual(supervisionNow(io, ROOM), { paused: true, cancelled: false, seq: 1, last: linesIn(io, join(ROOM, "signals.jsonl"))[0] });
   signalled(io, ROOM, { signal: "resume", by: "control" }, AT);
   assert.equal(supervisionNow(io, ROOM).paused, false);
   signalled(io, ROOM, { signal: "cancel", by: "orchestrator", why: "the task ended" }, AT);
   const now = supervisionNow(io, ROOM);
   assert.deepEqual([now.paused, now.cancelled, now.seq], [false, true, 3]);
-  const lines = linesIn(io, `${ROOM}/signals.jsonl`);
+  const lines = linesIn(io, join(ROOM, "signals.jsonl"));
   assert.ok(lines.every((l) => Object.keys(l).every((k) => SIGNAL_FIELDS.includes(k))));
   assert.ok(!lines[0].why.includes("hunter2"), "a why is scrubbed before it is kept");
 });

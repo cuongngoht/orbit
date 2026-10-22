@@ -2,6 +2,7 @@
 // test reads the argument list and the environment the client would have been started with -- and never starts it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { dirname, join } from "node:path";
 import { isolationProblems } from "../src/runtime/isolation/contract-v1.mjs";
 import { HANDED_NEVER, buildArgv, createArgv, docker, envProblems, facts, networkArgv } from "../src/runtime/isolation/docker.mjs";
 import { createScratch } from "../src/runtime/sandbox/scratch.mjs";
@@ -9,7 +10,8 @@ import { fakeIo } from "./fakes/io.mjs";
 import { fakeProcess } from "./fakes/process.mjs";
 
 const PIN = `sha256:${"a".repeat(64)}`;
-const ROOM = "/store/runtime/laptop-a/checkouts/c/sandboxes/sbx/scratch";
+// A path of this platform, as the sandbox context makes it (src/runtime/sandbox/context.mjs joins it).
+const ROOM = join("/store/runtime/laptop-a/checkouts/c/sandboxes/sbx/scratch");
 
 const spec = (over = {}) => ({ name: "orbit-abc-worker", image: PIN, network: { mode: "network", name: "orbit-net", alias: "worker" }, labels: { "orbit.task": "tsk-1", "orbit.env": "sbx" }, readOnly: true, tmpfs: ["/tmp:rw,nosuid,nodev,size=256m"], capDrop: ["ALL"], noNewPrivileges: true, mounts: [{ source: "/plugins/orbit", target: "/orbit", readOnly: true }], env: { names: [], values: {} }, limits: { cpus: 2, memoryMb: 2048, pids: 512 }, workdir: "/work/out", argv: ["run-me"], ...over });
 
@@ -55,7 +57,7 @@ test("a value never rides the command line or the client's own environment: it i
   assert.ok(!call.args.includes("-e"), "nothing is handed by name");
   assert.deepEqual(call.env, { PATH: "/usr/bin", HOME: "/Users/someone" }, "the client runs with this machine's own names: no LD_PRELOAD, no NODE_OPTIONS, no DOCKER_HOST a file said");
   assert.equal(call.file, "LD_PRELOAD=/evil.so\nNODE_OPTIONS=--require /e.js\nDOCKER_HOST=tcp://evil:2375\nHOME=/scratch-home\n", "the container is handed them, through the file the client reads");
-  assert.ok(envFileOf(call.args).startsWith(`${ROOM}/`) && m.io.state.private.has(envFileOf(call.args)), "the file is the sandbox's, made owner-only and new");
+  assert.ok(dirname(envFileOf(call.args)) === ROOM && m.io.state.private.has(envFileOf(call.args)), "the file is the sandbox's, made owner-only and new");
   assert.equal(m.io.files.has(envFileOf(call.args)), false, "and it is gone once the call ended");
 });
 

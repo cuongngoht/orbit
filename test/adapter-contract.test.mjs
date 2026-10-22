@@ -116,6 +116,6 @@ test("the semantics layers are read without creating anything", () => {
   const io = fakeIo();
   const before = io.files.size;
   const sem = loadSemantics({ pluginRoot: ROOT.replace(/.*/, "/nowhere"), storeBase: "/s", storeRoot: "/s/r", io });
-  assert.ok(sem.problems.some((p) => /catalog\/semantics.json/.test(p)));
+  assert.ok(sem.problems.some((p) => /catalog[\\/]semantics\.json/.test(p)));
   assert.equal(io.files.size, before);
 });

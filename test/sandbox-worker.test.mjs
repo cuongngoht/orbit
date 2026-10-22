@@ -3,10 +3,11 @@
 // without ever deciding anything about the test. Everything it touches is handed in, so nothing here starts a process.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { join } from "node:path";
 import { DEFAULT_DEADLINE_MS, KILL_GRACE_MS, WORKER_API, workerMain } from "../cli/sandbox-worker.mjs";
 
 const OUT = "/work/out";
-const ENVELOPE = `${OUT}/envelope.json`;
+const ENVELOPE = join(OUT, "envelope.json");
 const REQUEST = { v: WORKER_API, runId: "run-0001", nonce: "n-123", out: OUT, limits: { deadlineMs: 60000 } };
 
 function child(text) {

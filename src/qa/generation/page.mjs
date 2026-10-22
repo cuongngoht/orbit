@@ -50,8 +50,20 @@ const pageStepsOf = (d) => (Array.isArray(d.skeleton?.steps) ? d.skeleton.steps 
 
 const PAGE_VERBS = [...ACT_VERBS, "report", "api", "screenshot"];
 
+// The steps a generated test may PROPOSE at all: the page's own, and the pageless ones a backend test asks. An identity
+// switch (`as`) is never one -- the browser acts only as the design's approved page.identityRef -- and a wait, an
+// assertion or a skip carry script, which only the engine writes.
+export const PROPOSABLE = Object.freeze([...PAGE_VERBS, "call", "sql"]);
+
+// A page is opened at a PATH of the interface the design binds: one leading slash and never two, no scheme, no
+// backslash and nothing a browser would read as another host -- so a run's browser, and the credential it carries,
+// never leave the origin the host bound.
+export const PAGE_PATH = /^\/(?![/\\])[A-Za-z0-9\-._~%!$&'()*+,;=:@/?#[\]]{0,300}$/;
+
 // Each rule a page design is held to, as a row; what the DSL validator already says of a case stays its own.
 export const PAGE_RULES = [
+  { id: "VERB", findings: (d) => pageStepsOf(d).filter(({ step }) => !PROPOSABLE.includes(step?.do)).map(({ i, step }) => `step ${i} (${String(step?.do).slice(0, 20)}) is not a step a generated test proposes — ${PROPOSABLE.join(", ")}; an identity is the design's page.identityRef, and a wait, an assertion or a skip is the engine's to write`) },
+  { id: "GOTO_PATH", findings: (d) => pageStepsOf(d).filter(({ step }) => step.do === "goto" && step.url !== undefined && !(typeof step.url === "string" && PAGE_PATH.test(step.url))).map(({ i, step }) => `step ${i} opens ${String(step.url).slice(0, 60)} — a page is opened at a path of the interface the design binds (one leading slash, no scheme, no host), never anywhere else`) },
   { id: "SELECTOR", findings: (d) => pageStepsOf(d).flatMap(({ step, i }) => selectorsOf(step).filter((x) => typeof x !== "string" || !SELECTOR.test(x)).map((x) => `step ${i} names a selector that is not one: ${String(x).slice(0, 60)} — a CSS selector of letters, digits and selector punctuation, at most 200 characters`)) },
   { id: "UNTIL_ON_ACT", findings: (d) => pageStepsOf(d).filter(({ step }) => step.until !== undefined && !ACT_VERBS.includes(step.do)).map(({ i, step }) => `step ${i} (${step.do}) says what to wait for, and only a step that drives the page waits — ${ACT_VERBS.join(", ")}`) },
   { id: "UNTIL_SHAPE", findings: (d) => pageStepsOf(d).filter(({ step }) => step.until !== undefined && (typeof step.until?.selector !== "string" || (step.until.attribute !== undefined && !ATTRIBUTE.test(String(step.until.attribute))) || (step.until.equals !== undefined && step.until.equals !== null && typeof step.until.equals !== "string"))).map(({ i }) => `step ${i}: until is { selector, attribute?, equals? } — an attribute is a lowercase name, and equals a string or null (the attribute absent)`) },

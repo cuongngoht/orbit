@@ -98,6 +98,9 @@ test("each page rule refuses with its own word, before the design is compiled in
   holds(stop(proposal({ skeleton: { steps: swap(5, { do: "report" }) } })), /names nothing it reads/, "a report with no reads");
   holds(stop(proposal({ skeleton: { steps: swap(1, { ...STEPS[1], selector: "`;alert(1)//" }) } })), /not one/, "a selector outside the alphabet");
   holds(stop(proposal({ page: undefined })), /names the screen it drives/, "a page design names its screen");
+  for (const url of ["//elsewhere.test/x", "https://elsewhere.test/", "/\\elsewhere", "javascript:void(0)"]) holds(stop(proposal({ skeleton: { steps: swap(0, { ...STEPS[0], url }) } })), /a page is opened at a path of the interface/, `a goto to ${url}`);
+  holds(stop(proposal({ skeleton: { steps: [{ do: "as", identity: "admin" }, ...STEPS] } })), /is not a step a generated test proposes/, "an identity switch the design did not approve");
+  for (const verb of ["wait", "assert", "skip-if"]) holds(stop(proposal({ skeleton: { steps: [...STEPS.slice(0, 5), { do: verb }, STEPS[5]] } })), /is not a step a generated test proposes/, verb);
 });
 
 test("an api witness rules on the status its call answered, and nothing else is turned into an expect the verb does not have", () => {

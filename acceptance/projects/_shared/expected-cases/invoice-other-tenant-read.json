@@ -1,0 +1,19 @@
+{
+  "id": "invoice-other-tenant-read",
+  "name": "Tenant B cannot read tenant A invoice",
+  "seen": "src",
+  "steps": [
+    {
+      "do": "call",
+      "capability": "orbit.http.read",
+      "proves": "api",
+      "input": {
+        "endpointRef": "backend",
+        "identityRef": "tenant-b-reader",
+        "method": "GET",
+        "path": "/invoices/inv-a"
+      },
+      "expect": "it.status === 404 && it.body.error === 'not_found' && !JSON.stringify(it.body).includes('canary-invoice-a')"
+    }
+  ]
+}

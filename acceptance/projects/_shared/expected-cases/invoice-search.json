@@ -1,0 +1,48 @@
+{
+  "id": "invoice-search",
+  "name": "Search returns the approved synthetic invoice",
+  "seen": "src",
+  "params": [
+    {
+      "n": "NAME",
+      "required": true
+    }
+  ],
+  "steps": [
+    {
+      "do": "goto",
+      "url": "/invoices",
+      "wait": "document.querySelector('[data-testid=search]') !== null"
+    },
+    {
+      "do": "fill",
+      "selector": "[data-testid=search]",
+      "value": "${NAME}"
+    },
+    {
+      "do": "click",
+      "selector": "[data-testid=search-submit]",
+      "wait": "document.querySelector('[data-testid=results][data-loading=false]') !== null"
+    },
+    {
+      "do": "api",
+      "match": "/api/invoices\\?q=",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "do": "assert",
+      "js": "document.querySelector('[data-testid=results]').textContent.includes('${NAME}')"
+    },
+    {
+      "do": "sql",
+      "query": "SELECT COUNT(*) AS n FROM Invoices WHERE Name = '${NAME}'",
+      "expect": "Number(it[0].n) === 1"
+    },
+    {
+      "do": "report",
+      "js": "JSON.stringify({path: location.pathname})",
+      "expect": "it.path === '/invoices'"
+    }
+  ]
+}

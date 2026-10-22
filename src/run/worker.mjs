@@ -137,26 +137,39 @@ function packDir(pluginRoot, io, from) {
 
 // ── a PAGE run's browser (doc §15.1) ───────────────────────────────────────
 // Opened in the worker before the case runs and closed after it: a blank session of its own in the run directory,
-// nothing copied into it, and -- when the design approved an identity -- that identity's credential carried as a
-// header on the requests to the bound ORIGIN alone, never to another host on the task's network. The credential is
-// issued here (the sealed binding's `issue`) and set on the browser's context in memory, through the CLI: never in a
-// file, because the run directory is in the scratch store the host reads back. What the CLI echoes of it is dropped,
-// and a failure says only that it failed.
+// nothing copied into it, and ONE route over every request the page makes, written by the engine:
+//
+//   a WRITE (anything but GET, HEAD or OPTIONS) goes through only when a grant this run was minted covers its method
+//   and path on the bound origin, and no more times than the grant allows -- anything else is aborted, whoever it is
+//   for (ADR 0037: a test writes only through a grant, and a page is no exception)
+//   a request to the bound ORIGIN is fetched with the approved identity's credential and no redirect followed, so the
+//   browser follows a redirect itself, as a new request this same route decides again -- a credential never rides a
+//   redirect to another host, and never goes to another host on the task's network at all
+//
+// The credential is issued here (the sealed binding's `issue`). The route reaches the CLI as a FILE of the worker's
+// own scratch (`io.scratch`, a tmpfs the host never reads) removed as soon as it is loaded: never an argument a process
+// listing shows, never the run directory, which is in the scratch store the host reads back. What the CLI echoes of it
+// is dropped, and a failure says only that it failed.
 export const PAGE_BROWSER = Object.freeze({ browser: { browserName: "chromium", isolated: true, launchOptions: { headless: true, chromiumSandbox: false, args: ["--disable-dev-shm-usage"] } } });
 
-// write(file, text) is the caller's: the composition root writes, this decides what.
-export function openedPage(ctx, request, write) {
+// io: { write(file, text), scratch(text) -> path, remove(path) } -- the composition root's; this decides what.
+export function openedPage(ctx, request, io) {
   if (request.page.origin !== ctx.config.origin) throw new Refused("the page's origin is not the origin the project was laid in with — a worker opens only the interface the host bound");
-  write(join(ctx.browser.dir(), ".playwright", "cli.config.json"), `${JSON.stringify(PAGE_BROWSER)}\n`);
+  io.write(join(ctx.browser.dir(), ".playwright", "cli.config.json"), `${JSON.stringify(PAGE_BROWSER)}\n`);
   quietly(() => ctx.browser.cli(["open", "about:blank"]), "the page's browser could not be opened");
-  if (request.page.identityRef) credentialed(ctx, request.page);
+  routed(ctx, request, io);
 }
 
-function credentialed(ctx, page) {
+function routed(ctx, request, io) {
+  const file = io.scratch(pageRoute(request.page.origin, request.page.identityRef ? credentialOf(ctx, request.page) : {}, pageWritesOf(request.grants)));
+  try { quietly(() => ctx.browser.cli(["run-code", `--filename=${file}`]), "the page's browser could not be given its route"); }
+  finally { io.remove(file); }
+}
+
+function credentialOf(ctx, page) {
   const bound = ctx.binder.resolve("identity", page.identityRef);
   if (!bound.ok) throw new Blocked(`the page's identity ${page.identityRef} could not be bound: ${bound.why}`);
-  const script = routedCredential(page.origin, headerOf(bound));
-  quietly(() => ctx.browser.cli(["run-code", script]), "the page's browser could not be given its identity's credential");
+  return headerOf(bound);
 }
 
 function headerOf(bound) {
@@ -165,8 +178,32 @@ function headerOf(bound) {
   return { [String(bound.value.header ?? "authorization").toLowerCase()]: `${bound.value.scheme ?? "Bearer"} ${token}` };
 }
 
-// The script the CLI runs: a route on the bound origin's requests that adds the header and changes nothing else.
-const routedCredential = (origin, headers) => `async (page) => { await page.context().route(${JSON.stringify(`${origin}/**`)}, (route) => route.continue({ headers: { ...route.request().headers(), ...${JSON.stringify(headers)} } })); return "ok"; }`;
+// The writes the page may make: one per page grant this run was minted, for its method and path, as many times as it
+// allows (src/runtime/sandbox/test-grants.mjs; skills/orbit-qa/ports.mjs pageWrites).
+export const pageWritesOf = (grants) => (grants ?? []).filter((g) => g?.capability?.id === "orbit.page.request").map((g) => ({ method: String(g.operation?.selectors?.method ?? "").toUpperCase(), match: String(g.operation?.selectors?.match ?? "$^"), uses: Number(g.bounds?.maxUses) || 1 }));
+
+const literal = (v) => JSON.stringify(v);
+
+// The script the CLI runs. Everything in it is the engine's, and every value is a JSON literal.
+export const pageRoute = (origin, headers, writes) => `async (page) => {
+  const ORIGIN = ${literal(origin)}; const HEADERS = ${literal(headers)}; const WRITES = ${literal(writes)};
+  const READS = ["GET", "HEAD", "OPTIONS"];
+  const sameOrigin = (u) => u === ORIGIN || u.startsWith(ORIGIN + "/");
+  await page.context().route("**/*", async (route) => {
+    const request = route.request();
+    const method = request.method().toUpperCase();
+    if (!READS.includes(method)) {
+      const grant = WRITES.find((w) => w.method === method && sameOrigin(request.url()) && new RegExp(w.match).test(request.url()) && w.uses > 0);
+      if (!grant) return route.abort("blockedbyclient");
+      grant.uses -= 1;
+    }
+    if (!sameOrigin(request.url())) return route.continue();
+    const response = await route.fetch({ headers: { ...request.headers(), ...HEADERS }, maxRedirects: 0 });
+    return route.fulfill({ response });
+  });
+  return "ok";
+}
+`;
 
 function quietly(fn, why) {
   try { fn(); }

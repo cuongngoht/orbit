@@ -28,7 +28,9 @@
 //
 // It never opens a browser. The launcher does, behind the preflight question;
 // this drives the session in PT_RUN_DIR (or the project's default run dir).
-import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { readAll } from "../src/capability/helper-protocol.mjs";
 import { shaBytes } from "../src/hash.mjs";
@@ -129,15 +131,19 @@ async function workerMain() {
 // A page case's browser is opened before the run and closed after it, whatever the run came to.
 function paged(ctx, request) {
   if (!request.page) return ran(ctx, request);
-  openedPage(ctx, request, writtenWithDir);
+  openedPage(ctx, request, PAGE_IO);
   try { return ran(ctx, request); }
   finally { closedPage(ctx); }
 }
 
-function writtenWithDir(file, text) {
-  mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, text);
-}
+// What the page's browser is set up through: the run directory's config, and the route as a file of the worker's own
+// scratch -- the system temp, a tmpfs in a worker the host never reads -- readable by this user alone, removed as
+// soon as the browser has loaded it.
+const PAGE_IO = {
+  write: (file, text) => (mkdirSync(dirname(file), { recursive: true }), writeFileSync(file, text)),
+  scratch: (text) => ((file) => (writeFileSync(file, text, { mode: 0o600, flag: "wx" }), file))(join(tmpdir(), `orbit-page-${randomBytes(8).toString("hex")}.js`)),
+  remove: (file) => rmSync(file, { force: true }),
+};
 
 // The worker's context: its binder holds only what the host sealed, and issues an identity the host could not
 // through this very context's adapters -- bound after the context, which the binder is part of.

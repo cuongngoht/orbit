@@ -224,6 +224,298 @@
           "outcome": "passed"
         }
       ]
+    },
+    {
+      "kit": "scheduler",
+      "adapter": {
+        "id": "scheduler.hooks",
+        "version": "0.1.0",
+        "fingerprint": "3414e8d2cd598d02f040c2b27f35038b7da7a2add4a5b961479508e87e98c8d0",
+        "code": "01f6de3811b37f539b114bb1acd20c972f68274a08ed89aeb66122a15335f5d7",
+        "transport": "orbit-scheduler-v1"
+      },
+      "system": {
+        "image": "example invoice-a (acceptance/projects)",
+        "emulated": false
+      },
+      "at": "2026-10-22T03:17:07.583Z",
+      "results": [
+        {
+          "id": "trigger-dispatches",
+          "ops": [
+            "trigger"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "decisions-by-cursor",
+          "ops": [
+            "observe"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "kit": "clock",
+      "adapter": {
+        "id": "clock.hooks",
+        "version": "0.1.0",
+        "fingerprint": "5b0f447eb1d7fe1d5d1f6fd814a5ae26797063809328913cccf01fd3f032536e",
+        "code": "01f6de3811b37f539b114bb1acd20c972f68274a08ed89aeb66122a15335f5d7",
+        "transport": "orbit-clock-v1"
+      },
+      "system": {
+        "image": "example invoice-a (acceptance/projects)",
+        "emulated": false
+      },
+      "at": "2026-10-22T03:17:07.716Z",
+      "results": [
+        {
+          "id": "clock-barrier",
+          "ops": [
+            "advance"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "kit": "workload",
+      "adapter": {
+        "id": "workload.hooks",
+        "version": "0.1.0",
+        "fingerprint": "b6916f9b7acbf2137bac3af06f8d712b1b322a086b965a266f977c9c299d6e85",
+        "code": "01f6de3811b37f539b114bb1acd20c972f68274a08ed89aeb66122a15335f5d7",
+        "transport": "orbit-workload-v1"
+      },
+      "system": {
+        "image": "example invoice-a (acceptance/projects)",
+        "emulated": false
+      },
+      "at": "2026-10-22T03:17:08.618Z",
+      "results": [
+        {
+          "id": "control-stop-start",
+          "ops": [
+            "control"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "kit": "worker",
+      "adapter": {
+        "id": "worker.hooks",
+        "version": "0.1.0",
+        "fingerprint": "86cdd31cb21ccb17df5d5a7355c538b79162dfa622a16bb0b99be4f13d453901",
+        "code": "01f6de3811b37f539b114bb1acd20c972f68274a08ed89aeb66122a15335f5d7",
+        "transport": "orbit-workload-v1"
+      },
+      "system": {
+        "image": "example invoice-a (acceptance/projects)",
+        "emulated": false
+      },
+      "at": "2026-10-22T03:17:08.701Z",
+      "results": [
+        {
+          "id": "attempts-by-cursor",
+          "ops": [
+            "observe"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "kit": "identity",
+      "adapter": {
+        "id": "identity.hooks",
+        "version": "0.1.0",
+        "fingerprint": "6f33f3368870153aa95caf7c47fb74fc9715126c2ed0216718579a29f0d01972",
+        "code": "01f6de3811b37f539b114bb1acd20c972f68274a08ed89aeb66122a15335f5d7",
+        "transport": "orbit-identity-v1"
+      },
+      "system": {
+        "image": "example invoice-a (acceptance/projects)",
+        "emulated": false
+      },
+      "at": "2026-10-22T03:17:09.008Z",
+      "results": [
+        {
+          "id": "identity-issued",
+          "ops": [
+            "issue"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "kit": "state",
+      "adapter": {
+        "id": "postgres.reference",
+        "version": "0.1.0",
+        "fingerprint": "8b880b67c6a603e48e1988805c2f676f041d031977b32990b981727972367490",
+        "code": "cffa317d1b85162850ad952dce5991800327da09214505ef1a00e514171c9199",
+        "transport": "postgres-wire"
+      },
+      "system": {
+        "image": "postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+        "emulated": false
+      },
+      "at": "2026-10-22T03:17:12.035Z",
+      "results": [
+        {
+          "id": "count-by-key",
+          "ops": [
+            "read"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "absent-is-zero",
+          "ops": [
+            "read"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "values-are-parameters",
+          "ops": [
+            "read"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "names-are-refused",
+          "ops": [
+            "read"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "kit": "messaging",
+      "adapter": {
+        "id": "amqp.reference",
+        "version": "0.1.0",
+        "fingerprint": "f9022b3fb5c9ca249b26bd578f74edfc1f202c06f577aefcd66b2d2eeadf9883",
+        "code": "b25e89df68b25e631d66141430a752de271701ea0bad413e9ecffc1143b5987a",
+        "transport": "amqp-0-9-1"
+      },
+      "system": {
+        "image": "rabbitmq@sha256:71be6ca71cd3ad92f29b354ec381b1ee587894aaaac21f185b8cf43fb50d3feb",
+        "emulated": false
+      },
+      "at": "2026-10-22T03:17:41.622Z",
+      "results": [
+        {
+          "id": "publish-confirmed",
+          "ops": [
+            "publish",
+            "fixture.prepare",
+            "fixture.cleanup"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "unroutable-not-confirmed",
+          "ops": [
+            "publish"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "observe-complete-window",
+          "ops": [
+            "observe",
+            "observe.await",
+            "publish",
+            "fixture.prepare"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "observer-non-stealing",
+          "ops": [
+            "observe",
+            "observe.await",
+            "fixture.prepare"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "fixture-own-namespace",
+          "ops": [
+            "fixture.prepare",
+            "fixture.cleanup"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "kit": "messaging",
+      "adapter": {
+        "id": "jetstream.reference",
+        "version": "0.1.0",
+        "fingerprint": "fc566cf5cb29602ce2ec733bafc8746c458d95b6297f81ab32846c87af6b7319",
+        "code": "1308b11dfdde6529b412a3a0de5f1f5b29c212f88a370ea3edb8f69931d89f1b",
+        "transport": "nats-jetstream"
+      },
+      "system": {
+        "image": "nats@sha256:2ae57dfba3063d5e25fecb75256118c0882a1a2d2cf7d0fba17a7c701df956f6",
+        "emulated": false
+      },
+      "at": "2026-10-22T03:17:45.593Z",
+      "results": [
+        {
+          "id": "publish-confirmed",
+          "ops": [
+            "publish",
+            "fixture.prepare",
+            "fixture.cleanup"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "unroutable-not-confirmed",
+          "ops": [
+            "publish"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "observe-complete-window",
+          "ops": [
+            "observe",
+            "observe.await",
+            "publish",
+            "fixture.prepare"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "observer-non-stealing",
+          "ops": [
+            "observe",
+            "observe.await",
+            "fixture.prepare"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "fixture-own-namespace",
+          "ops": [
+            "fixture.prepare",
+            "fixture.cleanup"
+          ],
+          "outcome": "passed"
+        }
+      ]
     }
   ]
 }

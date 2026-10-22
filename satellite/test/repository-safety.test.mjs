@@ -1,9 +1,10 @@
 // REPOSITORY SAFETY for the release that introduced Satellite (0.1.1): everything it changed outside satellite/ is on
 // the allow-list a person approved for it -- the skill and agents that make /orbit:satellite exist, their switches and
-// routing rows, the release's version files (the two shipped packs carry the engine's version too) and documentation
-// -- and nothing else. Everything since the baseline is checked, committed or not, for as long as package.json says this
-// is that release; a later release is not held to it. Skipped where the baseline is not in this clone's history (CI's
-// shallow checkout).
+// routing rows, the release's version files (the two shipped packs carry the engine's version too), its documentation
+// and the native backend acceptance it recorded (docs/backend-acceptance.json, written only by `acceptance/run.mjs
+// --record`) -- and nothing else. Everything since the baseline is checked, committed or not, for as long as
+// package.json says this is that release; a later release is not held to it. Skipped where the baseline is not in this
+// clone's history (CI's shallow checkout).
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -17,7 +18,7 @@ export const RELEASE = "0.1.1";
 
 export const BASELINE = "2f13edcfc3672d742ac572282edc2e12e8a09856";
 
-export const ALLOWED_FILES = new Set(["package.json", ".claude-plugin/plugin.json", ".claude-plugin/marketplace.json", "plugin.json", ".codex-plugin/plugin.json", "catalog/components.json", "CHANGELOG.md", "README.md", "docs/agents/layout.md", "docs/agents/extend.md", "docs/hosts.md", "docs/orbit-current-contract.md", "hooks/hooks.json", "skills/orbit-api-test/extension.json", "skills/orbit-backend-test/extension.json"]);
+export const ALLOWED_FILES = new Set(["package.json", ".claude-plugin/plugin.json", ".claude-plugin/marketplace.json", "plugin.json", ".codex-plugin/plugin.json", "catalog/components.json", "CHANGELOG.md", "README.md", "docs/agents/layout.md", "docs/agents/extend.md", "docs/hosts.md", "docs/orbit-current-contract.md", "hooks/hooks.json", "skills/orbit-api-test/extension.json", "skills/orbit-backend-test/extension.json", "docs/backend-acceptance.json"]);
 
 export const ALLOWED_PATTERNS = [/^satellite\//, /^skills\/satellite\//, /^agents\/satellite-[a-z]+\.md$/, /^docs\/adr\/0041-[a-z0-9-]+\.md$/];
 

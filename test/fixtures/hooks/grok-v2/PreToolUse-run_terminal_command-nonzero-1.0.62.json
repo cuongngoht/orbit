@@ -1,0 +1,54 @@
+{
+  "input": {
+    "hookEventName": "pre_tool_use",
+    "sessionId": "fixture-session",
+    "cwd": "/fixture",
+    "workspaceRoot": "/fixture",
+    "timestamp": "2026-10-23T02:33:38.440810+00:00",
+    "transcriptPath": "/fixture-host/transcript.jsonl",
+    "permissionMode": "auto",
+    "toolName": "run_terminal_command",
+    "toolUseId": "fixture-call-1",
+    "toolInput": {
+      "command": "node -e \"process.exit(3)\"",
+      "description": "fixture description"
+    },
+    "toolInputTruncated": false,
+    "hook_event_name": "PreToolUse",
+    "session_id": "fixture-session",
+    "transcript_path": "/fixture-host/transcript.jsonl",
+    "permission_mode": "auto",
+    "tool_name": "run_terminal_command",
+    "tool_input": {
+      "command": "node -e \"process.exit(3)\"",
+      "description": "fixture description"
+    },
+    "tool_use_id": "fixture-call-1"
+  },
+  "argv": [
+    "--host=grok",
+    "--protocol=2"
+  ],
+  "expected": {
+    "protocol": 2,
+    "hostEvent": "PreToolUse",
+    "event": "pre-tool",
+    "session": "grok:d6440983c454c2e5",
+    "turn": null,
+    "delivery": "grok:eab173320f4b8c75",
+    "cwd": "/fixture",
+    "prompt": null,
+    "outcome": "unknown",
+    "tool": {
+      "name": "run_terminal_command",
+      "kind": "command"
+    },
+    "paths": [],
+    "pattern": null,
+    "command": "node -e \"process.exit(3)\"",
+    "background": false,
+    "invokes": null,
+    "host": "grok",
+    "ok": null
+  }
+}

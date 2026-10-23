@@ -1,0 +1,54 @@
+{
+  "input": {
+    "hookEventName": "pre_tool_use",
+    "sessionId": "fixture-session",
+    "cwd": "/fixture",
+    "workspaceRoot": "/fixture",
+    "timestamp": "2026-10-23T02:33:37.490697+00:00",
+    "transcriptPath": "/fixture-host/transcript.jsonl",
+    "permissionMode": "auto",
+    "toolName": "read_file",
+    "toolUseId": "fixture-call-1",
+    "toolInput": {
+      "target_file": "/fixture/README.md"
+    },
+    "toolInputTruncated": false,
+    "hook_event_name": "PreToolUse",
+    "session_id": "fixture-session",
+    "transcript_path": "/fixture-host/transcript.jsonl",
+    "permission_mode": "auto",
+    "tool_name": "read_file",
+    "tool_input": {
+      "target_file": "/fixture/README.md"
+    },
+    "tool_use_id": "fixture-call-1"
+  },
+  "argv": [
+    "--host=grok",
+    "--protocol=2"
+  ],
+  "expected": {
+    "protocol": 2,
+    "hostEvent": "PreToolUse",
+    "event": "pre-tool",
+    "session": "grok:d6440983c454c2e5",
+    "turn": null,
+    "delivery": "grok:eab173320f4b8c75",
+    "cwd": "/fixture",
+    "prompt": null,
+    "outcome": "unknown",
+    "tool": {
+      "name": "read_file",
+      "kind": "read"
+    },
+    "paths": [
+      "/fixture/README.md"
+    ],
+    "pattern": null,
+    "command": null,
+    "background": false,
+    "invokes": null,
+    "host": "grok",
+    "ok": null
+  }
+}

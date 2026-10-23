@@ -1,0 +1,29 @@
+{
+  "input": {
+    "session_id": "fixture-session",
+    "transcript_path": "/fixture-host/transcript.jsonl",
+    "cwd": "/fixture",
+    "prompt_id": "fixture-prompt",
+    "hook_event_name": "SessionEnd",
+    "reason": "other"
+  },
+  "argv": [],
+  "expected": {
+    "hostEvent": "SessionEnd",
+    "session": "claude:d6440983c454c2e5",
+    "cwd": "/fixture",
+    "prompt": null,
+    "tool": {
+      "name": null,
+      "kind": "other"
+    },
+    "paths": [],
+    "pattern": null,
+    "command": null,
+    "ok": true,
+    "background": false,
+    "invokes": null,
+    "event": "session-end",
+    "host": "claude"
+  }
+}

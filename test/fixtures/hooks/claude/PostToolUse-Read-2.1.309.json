@@ -1,0 +1,51 @@
+{
+  "input": {
+    "session_id": "fixture-session",
+    "transcript_path": "/fixture-host/transcript.jsonl",
+    "cwd": "/fixture",
+    "prompt_id": "fixture-prompt",
+    "permission_mode": "auto",
+    "effort": {
+      "level": "high"
+    },
+    "hook_event_name": "PostToolUse",
+    "tool_name": "Read",
+    "tool_input": {
+      "file_path": "/fixture/README.md"
+    },
+    "tool_response": {
+      "type": "text",
+      "file": {
+        "filePath": "/fixture/README.md",
+        "content": "fixture output",
+        "numLines": 4,
+        "startLine": 1,
+        "totalLines": 4
+      }
+    },
+    "tool_use_id": "fixture-call-1",
+    "duration_ms": 4
+  },
+  "argv": [],
+  "expected": {
+    "hostEvent": "PostToolUse",
+    "session": "claude:d6440983c454c2e5",
+    "delivery": "claude:eab173320f4b8c75",
+    "cwd": "/fixture",
+    "prompt": null,
+    "tool": {
+      "name": "Read",
+      "kind": "read"
+    },
+    "paths": [
+      "/fixture/README.md"
+    ],
+    "pattern": null,
+    "command": null,
+    "ok": true,
+    "background": false,
+    "invokes": null,
+    "event": "post-tool",
+    "host": "claude"
+  }
+}

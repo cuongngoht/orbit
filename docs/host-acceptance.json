@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "doc": "Native host acceptance for this source, recorded only after live runs: each host ran a real, fresh headless session in an isolated consuming checkout with its own ORBIT_STORE_DIR and Orbit Control stopped; every hook delivery was captured on its way into Orbit (a node shim first on PATH, the plugin unchanged), sanitized into test/fixtures/hooks/<family>/*-<version>.json and held by test/host-conformance.test.mjs; the plugin was then uninstalled and the isolated store compared by digest. What a host doc asks for and these runs did not exercise is listed under notVerified.",
+  "sourceDigest": "bddd9cc8fe67ab97c5ee09ef4297b201c24a080da0685c33e673a01cb70d9580",
+  "hosts": [
+    {
+      "id": "claude",
+      "version": "2.1.309 (Claude Code)",
+      "controlStopped": true,
+      "uninstallPreservedStore": true,
+      "sanitizedFixtures": true,
+      "nativeDispatch": true,
+      "at": "2026-10-23T02:37:17.813Z",
+      "evidence": "plugin installed at project scope in the checkout; 10 deliveries captured (SessionStart, UserPromptSubmit, PreToolUse Bash, PostToolUse Read and Bash, PostToolUseFailure Bash, Stop, SessionEnd) plus subagent tool calls carrying agent_id and agent_type; the trail kept prompt.submitted, tool.used, command.ran x2, turn.ended, session.ended; a second session dispatched two orbit:satellite-reader agents in one message, each limited to Read, Glob and Grep; project-scope uninstall left the store digest unchanged (d9e5a0da3390fe3d); 14 fixtures",
+      "notVerified": []
+    },
+    {
+      "id": "codex",
+      "version": "codex-cli 0.163.0",
+      "controlStopped": true,
+      "uninstallPreservedStore": true,
+      "sanitizedFixtures": true,
+      "nativeDispatch": true,
+      "at": "2026-10-23T02:37:17.813Z",
+      "evidence": "codex exec in a workspace-write sandbox; 13 deliveries captured (SessionStart to both hooks, UserPromptSubmit, PreToolUse and PostToolUse for three Bash commands including a non-zero exit, whose outcome stays unknown, and for apply_patch, Stop, SessionEnd); the trail kept prompt.submitted, command.ran x3, tool.used, turn.ended, session.ended; plugin remove left the store digest unchanged (7ba059fdfe26cc3f) and the plugin was added again at the same host digest; 10 fixtures",
+      "notVerified": [
+        "retry"
+      ]
+    },
+    {
+      "id": "antigravity",
+      "version": "agy 1.4.4",
+      "controlStopped": true,
+      "uninstallPreservedStore": true,
+      "sanitizedFixtures": true,
+      "nativeDispatch": true,
+      "at": "2026-10-23T02:37:17.813Z",
+      "evidence": "agy -p with --sandbox; 11 deliveries captured (PreInvocation x4, PreToolUse x3, PostToolUse x3 for read_file and run_command, Stop; AGY sends no SessionEnd); the trail kept tool.used, command.ran x2, turn.ended; plugin uninstall left the store digest unchanged (03609e33e07158f7) and it was installed again at the same host digest; 8 fixtures",
+      "notVerified": [
+        "permission responses",
+        "recall output",
+        "multi-workspace containment",
+        "background outcomes",
+        "retry/rollback"
+      ]
+    },
+    {
+      "id": "grok",
+      "version": "grok 1.0.62",
+      "controlStopped": true,
+      "uninstallPreservedStore": true,
+      "sanitizedFixtures": true,
+      "nativeDispatch": true,
+      "at": "2026-10-23T02:37:17.813Z",
+      "evidence": "grok -p in an isolated GROK_HOME holding only this plugin, installed with --trust: the person's own Grok home copies a local plugin directory with its node_modules (627 MB) on every session start, which stalls any headless session there; the checkout was seated so the working set is written: 11 deliveries captured in the first session (SessionStart, UserPromptSubmit, PreToolUse and PostToolUse for read_file and run_terminal_command including exit 3, Stop, SessionEnd, the teardown Stop); the working set kept ok true for exit 0 and post-tool-failure ok false for exit 3, and turn-end and session-end lines; a second session with an edit ended in learning.observed at SESSION_END (the drain); uninstall left the store digest unchanged (fd0c4ab1002d9153); 12 fixtures",
+      "notVerified": []
+    }
+  ]
+}

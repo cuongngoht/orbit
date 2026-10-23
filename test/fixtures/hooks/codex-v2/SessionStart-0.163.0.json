@@ -1,0 +1,37 @@
+{
+  "input": {
+    "session_id": "fixture-session",
+    "transcript_path": "/fixture-host/transcript.jsonl",
+    "cwd": "/fixture",
+    "hook_event_name": "SessionStart",
+    "model": "fixture-model",
+    "permission_mode": "bypassPermissions",
+    "source": "startup"
+  },
+  "argv": [
+    "--host=codex",
+    "--protocol=2"
+  ],
+  "expected": {
+    "protocol": 2,
+    "hostEvent": "SessionStart",
+    "event": "session-start",
+    "session": "codex:d6440983c454c2e5",
+    "turn": null,
+    "delivery": null,
+    "cwd": "/fixture",
+    "prompt": null,
+    "outcome": "unknown",
+    "tool": {
+      "name": null,
+      "kind": "other"
+    },
+    "paths": [],
+    "pattern": null,
+    "command": null,
+    "background": false,
+    "invokes": null,
+    "host": "codex",
+    "ok": null
+  }
+}

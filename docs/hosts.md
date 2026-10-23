@@ -80,6 +80,40 @@ on every Stop and names no turn.
 
 Grok Build 1.0.62 sends a Claude-shaped envelope -- camelCase keys with Claude's snake_case aliases beside them -- and names its own tools. `run_terminal_command` reports `exit_code` and `timed_out`, so a Grok command's result is known; an edit reports the edits it applied. Its SessionStart output reaches only the person (`systemMessage`), it drops an allowing UserPromptSubmit hook's output, and it fires one more Stop at teardown with a `reason` other than `end_turn`, which is no turn. A turn is `promptId`, which tool events do not carry; a tool call is `tool_use_id`, shared by Pre and Post. A plugin's SessionEnd hook gets about 1.5 seconds, so it only checkpoints. Only the five tools whose payloads were seen are mapped (`read_file`, `search_replace`, `write`, `run_terminal_command`, `grep`); `hashline_edit`, `list_dir` and the rest stay `other` until a payload is seen.
 
+## Orbit Satellite
+
+Satellite (0.1.1, ADR 0041) uses the same root and session binding on every host. Its skill is discovered from the shared
+`skills/` directory everywhere; its four plugin agents exist only on Claude Code. What each host can do for a mission is
+one table, `satellite/src/hosts/matrix.mjs`, rendered in [satellite/docs/hosts.md](../satellite/docs/hosts.md): a cell
+is `verified` only on a native acceptance receipt for the same source (`satellite/acceptance/host-acceptance.json`),
+otherwise `reported` from what is said here.
+
+### Claude Code
+
+Each agent run is dispatched natively with the Agent tool as the plugin agent its envelope names
+(`orbit:satellite-reader`, `-designer`, `-engineer`, `-verifier`); several may be in flight at once, up to the mission's
+limit. The host enforces each profile through that agent's `tools:` allowlist; a plugin agent's `permissionMode` is
+ignored. A run is stopped with `TaskStop`. The session's own tool calls are read from the working set Orbit's hooks keep
+and shown beside the mission; which agent run made a call is UNOBSERVED. `ORBIT_SESSION` reaches every shell command
+through the session's environment file. Satellite Live runs in a terminal beside the session (`live open`); there is no
+docked pane.
+
+### Codex
+
+No native agents are proven: every envelope says `dispatch.mode: serial`, and the main session follows each run's
+instruction itself, one at a time. Only Bash and `apply_patch` tool calls are observed; a command's outcome is unknown.
+Bind the host and session on every command. Satellite Live runs in a terminal.
+
+### Antigravity CLI
+
+As for Codex: serial, in the main session. Native file, search and command tools are observed, with no session end and
+no command outcome. Bind the host and session on every command. Satellite Live runs in a terminal.
+
+### Grok Build
+
+The root manifest declares no agents, so every run is serial in the main session. The five measured tools are observed,
+with a command's exit code. The session is `GROK_SESSION_ID`, bound on every command. Satellite Live runs in a terminal.
+
 ## Acceptance status
 
 Automated tests cover supported native contracts, resolution, evidence permutations/replay, leases, runtime containment, concurrent hook processes, delivery dedupe, privacy sentinels, revisioned setup and host visibility. Process tests are not native delivery acceptance.

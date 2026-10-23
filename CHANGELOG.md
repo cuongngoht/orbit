@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.1.1
+
+Orbit Satellite (ADR 0041): any goal taken through an autonomous, multi-agent mission whose every step is journaled,
+judged and observable -- a structured intent, an investigated and revisable work graph, reusable roles, agent
+templates, skills and workflows, fresh agent runs under least-privilege profiles, and a verdict only an independent
+owner's evidence can earn. Additive: `satellite/`, `skills/satellite/` and `agents/satellite-*.md`; nothing else in the
+engine changed.
+
+- **A mission journal above the owners.** `satellite/cli/satellite.mjs` keeps one append-only journal per mission under
+  `<storeRoot>/satellite/missions/`, folded into its state on every read. The host decides one step at a time; every
+  action passes one gateway -- proposal, contract, policy, durable intent, provider, observation, evidence, journal --
+  and its mode, operation kind and profile are derived, never sent.
+- **Understand first, then plan on evidence.** A goal in any language becomes facts, hypotheses, assumptions,
+  constraints, acceptance criteria and unknowns kept apart; criteria freeze after the first analysis. A work graph of
+  `explore`, `diagnose`, `design`, `review`, `verify`, `implement`, `build` and `test` units is validated (cycles,
+  bounds, effects) and revised only by a trigger, each revision an immutable file naming what it replaced and why.
+- **Reuse first, generate only the gap.** Roles are reused, composed or generated and named from their
+  responsibilities, and request a profile without granting anything. Agent templates are reused across missions.
+  Skills go through Orbit's own skill factory, instruction-only and within its limits, never around a capability a
+  person disabled. Workflow templates (`orbit.satellite.workflow/v1`) carry parameters and bounds and never a state.
+  Every definition is immutable and pinned by its digest.
+- **Owners do the work, and keep the proof.** An implement unit's change is an Orbit autonomous-engineering task in its
+  own workspace; a build or test unit drives the task its dependency handed off; a capability is asked once, read only,
+  through `invokeBound`, nested on its run's mode. A criterion is VERIFIED only by an engineering task's own
+  verification, a declared check or a QA investigation, read back when the run reports.
+- **Typed handoffs, honest hosts.** A run's handoff is published immutably and consumed only after scope, freshness and
+  contract checks. Claude Code dispatches runs natively and in parallel as `orbit:satellite-reader`, `-designer`,
+  `-engineer` and `-verifier`; Codex, Antigravity CLI and Grok Build run them serially and say so. A host capability is
+  verified only on a native acceptance receipt for the same source (`satellite/acceptance/`).
+- **Recovery never resends.** A worker holds a lease while its provider runs and is fenced if reconcile closed its
+  action; reconcile reads every open action back from its owner and leaves a write it cannot prove AMBIGUOUS.
+- **Satellite Live.** `live status`, `live watch` (`--plain`, `--jsonl`, `--since=o=<n>`), the full-screen `live tui`
+  with nine views, and `live open` beside the session: every line as an `orbit.satellite.event/v1` event, each run in its
+  own mode, the viewer's state apart from the mission's, and this session's tool calls beside it.
+
 ## 0.1.0
 
 Autonomous test generation and sandbox verification (ADR 0031-0040): from an accepted requirement to a generated test

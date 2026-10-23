@@ -955,4 +955,24 @@ integrations/  what ANOTHER program installs, never part of this plugin's archiv
                picked up, the asking terminal split through VS Code's Terminal API, only Orbit's viewer ever run)
                and extension.js (VS Code's API handed in). test/vscode-companion.test.mjs drives it with a fake of
                that API, end to end from `live open`
+satellite/     (0.1.1, ADR 0041) ORBIT SATELLITE, a mission journal above Orbit's owners; its own docs are
+               satellite/docs/ (README, hosts, invocation, contract-map, adr/0001-0004). src/ imports only Orbit's
+               leaves (satellite/test/boundary.test.mjs): store/ (rooms under <storeRoot>/satellite/, the journal
+               door, ids, immutable digest-pinned definitions and the registry rebuilt from them, the policy) ·
+               mission/ (the vocabulary of line kinds, the fold, the intent, the decision rules, ACTIONS and one file
+               per action under actions/, the loop, a run's report and its conclusion, finish, reconcile, the view) ·
+               planning/ (units, the graph's rules, immutable plan revisions, the replanning TRIGGERS) · factories/
+               (role naming, validation and discovery; agent templates; skills through Orbit's skill factory; workflow
+               templates) · execution/ (the gateway, the nineteen MODES, UNIT_KINDS, action statuses) · permissions/
+               (operation kinds, profiles, grants, the ordered evaluation) · evidence/ (levels, owners, read-back, the
+               verdict) · handoff/ · hosts/ (the matrix, detection, acceptance receipts, envelopes, reports, the
+               sessions file) · projection/ (orbit.satellite.event/v1) · live/ (the live view, the viewer's state,
+               renderers, and tui/: nine views, a pure state and key table, one frame). cli/: satellite.mjs (the
+               command), bind.mjs (the ONE composition root: owners, providers, the resolver, invokeBound, the narrowed
+               skill factory, the checkout's witness, this session's working set), satellite-live.mjs and
+               satellite-tui.mjs (Satellite Live). acceptance/record-host-acceptance.mjs (a person's native host
+               receipts). test/ (node --test runs it with the suite; fakes/ are export-only)
+skills/satellite/  the SATELLITE playbook (/orbit:satellite) + protocol.md, the shapes a host sends and receives
+agents/satellite-reader.md · -designer.md · -engineer.md · -verifier.md  the plugin agents an envelope names, one per
+               profile; each one's tools allowlist is the profile the host enforces
 ```

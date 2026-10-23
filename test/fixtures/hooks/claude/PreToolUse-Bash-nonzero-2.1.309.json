@@ -1,0 +1,39 @@
+{
+  "input": {
+    "session_id": "fixture-session",
+    "transcript_path": "/fixture-host/transcript.jsonl",
+    "cwd": "/fixture",
+    "prompt_id": "fixture-prompt",
+    "permission_mode": "auto",
+    "effort": {
+      "level": "high"
+    },
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "node -e \"process.exit(3)\"",
+      "description": "fixture description"
+    },
+    "tool_use_id": "fixture-call-1"
+  },
+  "argv": [],
+  "expected": {
+    "hostEvent": "PreToolUse",
+    "session": "claude:d6440983c454c2e5",
+    "delivery": "claude:eab173320f4b8c75",
+    "cwd": "/fixture",
+    "prompt": null,
+    "tool": {
+      "name": "Bash",
+      "kind": "command"
+    },
+    "paths": [],
+    "pattern": null,
+    "command": "node -e \"process.exit(3)\"",
+    "ok": true,
+    "background": false,
+    "invokes": null,
+    "event": "pre-tool",
+    "host": "claude"
+  }
+}

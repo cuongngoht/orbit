@@ -1,0 +1,42 @@
+{
+  "input": {
+    "session_id": "fixture-session",
+    "turn_id": "fixture-turn",
+    "transcript_path": "/fixture-host/transcript.jsonl",
+    "cwd": "/fixture",
+    "hook_event_name": "PreToolUse",
+    "model": "fixture-model",
+    "permission_mode": "bypassPermissions",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "node -e \"process.exit(3)\""
+    },
+    "tool_use_id": "fixture-call-1"
+  },
+  "argv": [
+    "--host=codex",
+    "--protocol=2"
+  ],
+  "expected": {
+    "protocol": 2,
+    "hostEvent": "PreToolUse",
+    "event": "pre-tool",
+    "session": "codex:d6440983c454c2e5",
+    "turn": "codex:b91a31db35cdd028",
+    "delivery": "codex:eab173320f4b8c75",
+    "cwd": "/fixture",
+    "prompt": null,
+    "outcome": "unknown",
+    "tool": {
+      "name": "Bash",
+      "kind": "command"
+    },
+    "paths": [],
+    "pattern": null,
+    "command": "node -e \"process.exit(3)\"",
+    "background": false,
+    "invokes": null,
+    "host": "codex",
+    "ok": null
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "input": {
+    "session_id": "fixture-session",
+    "transcript_path": "/fixture-host/transcript.jsonl",
+    "cwd": "/fixture",
+    "prompt_id": "fixture-prompt",
+    "permission_mode": "auto",
+    "effort": {
+      "level": "high"
+    },
+    "hook_event_name": "Stop",
+    "stop_hook_active": false,
+    "last_assistant_message": "DONE",
+    "background_tasks": [],
+    "session_crons": []
+  },
+  "argv": [],
+  "expected": {
+    "hostEvent": "Stop",
+    "session": "claude:d6440983c454c2e5",
+    "cwd": "/fixture",
+    "prompt": null,
+    "tool": {
+      "name": null,
+      "kind": "other"
+    },
+    "paths": [],
+    "pattern": null,
+    "command": null,
+    "ok": true,
+    "background": false,
+    "invokes": null,
+    "event": "turn-end",
+    "host": "claude"
+  }
+}

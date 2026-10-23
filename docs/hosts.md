@@ -122,4 +122,14 @@ Automated tests cover supported native contracts, resolution, evidence permutati
 
 See [Codex](codex.md), [Antigravity](antigravity.md) and [Grok Build](grok.md).
 
+0.1.1 was accepted natively on all four hosts (`docs/host-acceptance.json`): Claude Code 2.1.309, Codex 0.163.0, AGY CLI
+1.4.4 and Grok Build 1.0.62, each in a fresh headless session in an isolated consuming checkout with its own store and
+Orbit Control stopped. Every hook delivery was captured on its way into Orbit by a `node` shim first on PATH, so the
+plugin and its digest stayed as shipped; the captures are sanitized fixtures (`test/fixtures/hooks/<family>/*-<version>.json`)
+the conformance suite holds. Each plugin was then uninstalled and the isolated store compared by digest. Grok ran in a
+`GROK_HOME` of its own: a person's Grok home that holds a local plugin with a large `node_modules` copies it on every
+session start, which stalls headless sessions there. What the AGY and Codex notes above ask for and these runs did not
+exercise -- AGY permission responses, recall output, multi-workspace containment, background outcomes and
+retry/rollback, and Codex retry -- is listed under `notVerified` in the record.
+
 The shipping command now requires `docs/host-acceptance.json` with schema 1, the current `hostSourceDigest`, and a record for each host in `TARGETS` (`skills/orbit-release/hosts.mjs`: Claude, Codex, AGY and, since 1.8.9, Grok Build). Each must name the native version and attest actual native dispatch, Control stopped, uninstall preserving the store, and sanitized fixtures. The receipt is created only after those runs; unit tests never manufacture it. Any integration-source change invalidates the digest. Missing native acceptance leaves the shipping result NOT shippable.

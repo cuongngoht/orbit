@@ -1,0 +1,41 @@
+{
+  "input": {
+    "hookEventName": "user_prompt_submit",
+    "sessionId": "fixture-session",
+    "cwd": "/fixture",
+    "workspaceRoot": "/fixture",
+    "timestamp": "2026-10-23T02:33:29.049786+00:00",
+    "promptId": "fixture-prompt",
+    "permissionMode": "auto",
+    "prompt": "fixture task",
+    "hook_event_name": "UserPromptSubmit",
+    "session_id": "fixture-session",
+    "permission_mode": "auto"
+  },
+  "argv": [
+    "--host=grok",
+    "--protocol=2"
+  ],
+  "expected": {
+    "protocol": 2,
+    "hostEvent": "UserPromptSubmit",
+    "event": "user-prompt",
+    "session": "grok:d6440983c454c2e5",
+    "turn": "grok:c6c6ca64c5d2e957",
+    "delivery": null,
+    "cwd": "/fixture",
+    "prompt": "fixture task",
+    "outcome": "unknown",
+    "tool": {
+      "name": null,
+      "kind": "other"
+    },
+    "paths": [],
+    "pattern": null,
+    "command": null,
+    "background": false,
+    "invokes": null,
+    "host": "grok",
+    "ok": null
+  }
+}

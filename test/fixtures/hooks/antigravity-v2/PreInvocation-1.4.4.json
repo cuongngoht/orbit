@@ -1,0 +1,40 @@
+{
+  "input": {
+    "artifactDirectoryPath": "/fixture-host/artifacts",
+    "conversationId": "fixture-session",
+    "initialNumSteps": 1,
+    "invocationNum": 0,
+    "modelName": "fixture-model",
+    "transcriptPath": "/fixture-host/transcript.jsonl",
+    "workspacePaths": [
+      "/fixture"
+    ]
+  },
+  "argv": [
+    "--host=antigravity",
+    "--protocol=2",
+    "--event=PreInvocation"
+  ],
+  "expected": {
+    "protocol": 2,
+    "hostEvent": "PreInvocation",
+    "event": "session-start",
+    "session": "antigravity:d6440983c454c2e5",
+    "turn": null,
+    "delivery": null,
+    "cwd": "/fixture",
+    "outcome": "unknown",
+    "idle": false,
+    "tool": {
+      "name": null,
+      "kind": "other"
+    },
+    "paths": [],
+    "pattern": null,
+    "command": null,
+    "background": false,
+    "invokes": null,
+    "host": "antigravity",
+    "ok": null
+  }
+}

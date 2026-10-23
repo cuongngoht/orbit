@@ -1,0 +1,106 @@
+{
+  "input": {
+    "hookEventName": "post_tool_use",
+    "sessionId": "fixture-session",
+    "cwd": "/fixture",
+    "workspaceRoot": "/fixture",
+    "timestamp": "2026-10-23T02:34:35.440275+00:00",
+    "transcriptPath": "/fixture-host/transcript.jsonl",
+    "permissionMode": "auto",
+    "toolName": "write",
+    "toolUseId": "fixture-call-1",
+    "toolInput": {
+      "file_path": "/fixture/src/rates.mjs",
+      "content": "fixture output"
+    },
+    "toolResult": {
+      "type": "SearchReplace",
+      "EditsApplied": {
+        "old_string": "fixture output",
+        "new_string": "fixture output",
+        "tool_output_for_prompt": "fixture output",
+        "tool_output_for_prompt_concise": "fixture output",
+        "absolute_path": "fixture output",
+        "edits": {
+          "details": [
+            {
+              "old_string": "fixture output",
+              "old_line": 1,
+              "new_string": "fixture output",
+              "new_line": 1,
+              "context_before": "fixture output",
+              "context_after": "fixture output",
+              "line_prefix": "fixture output"
+            }
+          ]
+        }
+      }
+    },
+    "toolInputTruncated": false,
+    "toolResultTruncated": false,
+    "durationMs": 2,
+    "isBackgrounded": false,
+    "hook_event_name": "PostToolUse",
+    "session_id": "fixture-session",
+    "transcript_path": "/fixture-host/transcript.jsonl",
+    "permission_mode": "auto",
+    "tool_name": "write",
+    "tool_input": {
+      "file_path": "/fixture/src/rates.mjs",
+      "content": "fixture output"
+    },
+    "tool_response": {
+      "type": "SearchReplace",
+      "EditsApplied": {
+        "old_string": "fixture output",
+        "new_string": "fixture output",
+        "tool_output_for_prompt": "fixture output",
+        "tool_output_for_prompt_concise": "fixture output",
+        "absolute_path": "fixture output",
+        "edits": {
+          "details": [
+            {
+              "old_string": "fixture output",
+              "old_line": 1,
+              "new_string": "fixture output",
+              "new_line": 1,
+              "context_before": "fixture output",
+              "context_after": "fixture output",
+              "line_prefix": "fixture output"
+            }
+          ]
+        }
+      }
+    },
+    "tool_use_id": "fixture-call-1",
+    "duration_ms": 2
+  },
+  "argv": [
+    "--host=grok",
+    "--protocol=2"
+  ],
+  "expected": {
+    "protocol": 2,
+    "hostEvent": "PostToolUse",
+    "event": "post-tool",
+    "session": "grok:d6440983c454c2e5",
+    "turn": null,
+    "delivery": "grok:eab173320f4b8c75",
+    "cwd": "/fixture",
+    "prompt": null,
+    "outcome": "success",
+    "tool": {
+      "name": "write",
+      "kind": "edit"
+    },
+    "paths": [
+      "/fixture/src/rates.mjs"
+    ],
+    "pattern": null,
+    "command": null,
+    "background": false,
+    "invokes": null,
+    "host": "grok",
+    "ok": true
+  }
+}

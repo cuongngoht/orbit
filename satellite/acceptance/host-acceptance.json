@@ -6,7 +6,7 @@
       "kit": "host",
       "host": {
         "id": "claude",
-        "version": "2.1.308 (Claude Code)",
+        "version": "2.1.309 (Claude Code)",
         "code": "4c3a30104de5bccbf1c2c0c2c3cf333e656ee14929a7925dc086a787db6adee9"
       },
       "system": {
@@ -15,7 +15,7 @@
         "arch": "arm64",
         "node": "v22.23.1"
       },
-      "at": "2026-10-22T14:13:08.227Z",
+      "at": "2026-10-23T02:02:01.879Z",
       "results": [
         {
           "id": "claude:agent-dispatch",
@@ -23,7 +23,7 @@
             "mission.start",
             "dispatch",
             "agent.ack",
-            "Agent(general-purpose)",
+            "Agent(satellite-reader)",
             "agent.report",
             "mission.finish"
           ],
@@ -36,9 +36,18 @@
             "dispatch",
             "agent.ack",
             "agent.ack",
-            "Agent(general-purpose)x2-one-message",
+            "Agent(satellite-reader)x2-one-message",
             "agent.report",
             "agent.report"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "claude:agent-tools-allowlist",
+          "ops": [
+            "Agent(satellite-reader)",
+            "tools-Read|Glob|Grep",
+            "no-Bash-use-when-asked"
           ],
           "outcome": "passed"
         }

@@ -1,0 +1,86 @@
+{
+  "input": {
+    "hookEventName": "post_tool_use",
+    "sessionId": "fixture-session",
+    "cwd": "/fixture",
+    "workspaceRoot": "/fixture",
+    "timestamp": "2026-10-23T02:33:38.894231+00:00",
+    "transcriptPath": "/fixture-host/transcript.jsonl",
+    "permissionMode": "auto",
+    "toolName": "run_terminal_command",
+    "toolUseId": "fixture-call-1",
+    "toolInput": {
+      "command": "node --version",
+      "description": "fixture description"
+    },
+    "toolResult": {
+      "type": "Bash",
+      "output": [],
+      "output_for_prompt": "exit: 0\nfixture output\n",
+      "exit_code": 0,
+      "command": "fixture output",
+      "truncated": false,
+      "signal": null,
+      "timed_out": false,
+      "description": "fixture output",
+      "current_dir": "/fixture",
+      "output_file": "/fixture-host/terminal/call.log",
+      "total_bytes": 9
+    },
+    "toolInputTruncated": false,
+    "toolResultTruncated": false,
+    "durationMs": 211,
+    "isBackgrounded": false,
+    "hook_event_name": "PostToolUse",
+    "session_id": "fixture-session",
+    "transcript_path": "/fixture-host/transcript.jsonl",
+    "permission_mode": "auto",
+    "tool_name": "run_terminal_command",
+    "tool_input": {
+      "command": "node --version",
+      "description": "fixture description"
+    },
+    "tool_response": {
+      "type": "Bash",
+      "output": [],
+      "output_for_prompt": "exit: 0\nfixture output\n",
+      "exit_code": 0,
+      "command": "fixture output",
+      "truncated": false,
+      "signal": null,
+      "timed_out": false,
+      "description": "fixture output",
+      "current_dir": "/fixture",
+      "output_file": "/fixture-host/terminal/call.log",
+      "total_bytes": 9
+    },
+    "tool_use_id": "fixture-call-1",
+    "duration_ms": 211
+  },
+  "argv": [
+    "--host=grok",
+    "--protocol=2"
+  ],
+  "expected": {
+    "protocol": 2,
+    "hostEvent": "PostToolUse",
+    "event": "post-tool",
+    "session": "grok:d6440983c454c2e5",
+    "turn": null,
+    "delivery": "grok:eab173320f4b8c75",
+    "cwd": "/fixture",
+    "prompt": null,
+    "outcome": "success",
+    "tool": {
+      "name": "run_terminal_command",
+      "kind": "command"
+    },
+    "paths": [],
+    "pattern": null,
+    "command": "node --version",
+    "background": false,
+    "invokes": null,
+    "host": "grok",
+    "ok": true
+  }
+}

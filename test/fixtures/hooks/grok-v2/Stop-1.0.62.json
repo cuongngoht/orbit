@@ -1,0 +1,49 @@
+{
+  "input": {
+    "hookEventName": "stop",
+    "sessionId": "fixture-session",
+    "cwd": "/fixture",
+    "workspaceRoot": "/fixture",
+    "timestamp": "2026-10-23T02:33:42.232876+00:00",
+    "transcriptPath": "/fixture-host/transcript.jsonl",
+    "promptId": "fixture-prompt",
+    "permissionMode": "auto",
+    "reason": "end_turn",
+    "stopHookActive": false,
+    "lastAssistantMessage": "DONE",
+    "backgroundTasks": [],
+    "sessionCrons": [],
+    "hook_event_name": "Stop",
+    "session_id": "fixture-session",
+    "transcript_path": "/fixture-host/transcript.jsonl",
+    "permission_mode": "auto",
+    "stop_hook_active": false,
+    "last_assistant_message": "DONE"
+  },
+  "argv": [
+    "--host=grok",
+    "--protocol=2"
+  ],
+  "expected": {
+    "protocol": 2,
+    "hostEvent": "Stop",
+    "event": "turn-end",
+    "session": "grok:d6440983c454c2e5",
+    "turn": "grok:c6c6ca64c5d2e957",
+    "delivery": null,
+    "cwd": "/fixture",
+    "prompt": null,
+    "outcome": "unknown",
+    "tool": {
+      "name": null,
+      "kind": "other"
+    },
+    "paths": [],
+    "pattern": null,
+    "command": null,
+    "background": false,
+    "invokes": null,
+    "host": "grok",
+    "ok": null
+  }
+}

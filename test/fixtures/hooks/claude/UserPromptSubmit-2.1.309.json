@@ -1,0 +1,30 @@
+{
+  "input": {
+    "session_id": "fixture-session",
+    "transcript_path": "/fixture-host/transcript.jsonl",
+    "cwd": "/fixture",
+    "prompt_id": "fixture-prompt",
+    "permission_mode": "auto",
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "fixture task"
+  },
+  "argv": [],
+  "expected": {
+    "hostEvent": "UserPromptSubmit",
+    "session": "claude:d6440983c454c2e5",
+    "cwd": "/fixture",
+    "prompt": "fixture task",
+    "tool": {
+      "name": null,
+      "kind": "other"
+    },
+    "paths": [],
+    "pattern": null,
+    "command": null,
+    "ok": true,
+    "background": false,
+    "invokes": null,
+    "event": "user-prompt",
+    "host": "claude"
+  }
+}

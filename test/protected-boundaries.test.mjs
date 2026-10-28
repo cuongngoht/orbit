@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, sep } from "node:path";
 import { AUTO, BOUNDARY_DOOR, PERSON_ACTS, actionFingerprint, authorize, crossing, fingerprintOf, needsApproval, personAct, requestOf } from "../src/protected/authorize.mjs";
 import { ACTION, BOUNDARIES, BOUNDARY_IDS, DECISIONS, DECLARED_KINDS, DESTRUCTIVE_OPERATIONS, HOMES, PRODUCTION_KINDS, boundaryOf } from "../src/protected/boundaries.mjs";
 import { capabilityAction, PROTECTED_EFFECTS, READING_EFFECTS } from "../src/protected/capability.mjs";
@@ -161,13 +161,15 @@ test("one fingerprint: the task's approvals and every executor hash an action on
 const ROOT = join(import.meta.dirname, "..");
 const walk = (dir) => readdirSync(dir).filter((n) => n !== "node_modules").flatMap((n) => (statSync(join(dir, n)).isDirectory() ? walk(join(dir, n)) : [join(dir, n)]));
 const code = (p) => readFileSync(p, "utf8").split("\n").filter((l) => !/^\s*\/\//.test(l)).join("\n");
+// A path as the allow-list spells it: "/" on every OS, so a Windows checkout reads the same names.
+const posix = (p) => relative(ROOT, p).split(sep).join("/");
 const sources = () => ["src", "cli", "skills", "satellite/src", "satellite/cli", "control-server/src"].flatMap((d) => walk(join(ROOT, d))).filter((p) => p.endsWith(".mjs") && !p.includes(`${join("src", "protected")}`));
 
 test("no file outside src/protected/ spells a decision, compares an environment to production, or names a boundary's kind as a string", () => {
   const decisions = /["'](approve_once|approve_once_destructive)["']/;
   const production = /===\s*["']production["']|["']production["']\s*===/;
   const kinds = /["'](deployment\.production|database\.production\.[a-z]+|repository\.primary_checkout\.write)["']/;
-  const hits = sources().flatMap((p) => code(p).split("\n").map((l, i) => [relative(ROOT, p), i + 1, l]).filter(([, , l]) => decisions.test(l) || production.test(l) || kinds.test(l)).map(([f, n, l]) => `${f}:${n}  ${l.trim().slice(0, 100)}`));
+  const hits = sources().flatMap((p) => code(p).split("\n").map((l, i) => [posix(p), i + 1, l]).filter(([, , l]) => decisions.test(l) || production.test(l) || kinds.test(l)).map(([f, n, l]) => `${f}:${n}  ${l.trim().slice(0, 100)}`));
   assert.deepEqual(hits.filter((h) => !/^src\/investigation\/(gates|settings)\.mjs/.test(h)), [], "the QA modes' own production rule is the investigation's hard row, not a boundary");
 });
 
@@ -176,5 +178,5 @@ test("the leaf is a leaf: it imports only hash, scrub and printable, and names n
   const imports = files.flatMap((p) => [...code(p).matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]));
   assert.deepEqual([...new Set(imports.filter((s) => !s.startsWith("./")))].sort(), ["../hash.mjs", "../printable.mjs", "../scrub.mjs"]);
   const products = /\b(github|gitlab|kubectl|terraform|helm|azure|aws|gcloud|postgres|mysql|docker|npm)\b/i;
-  assert.deepEqual(files.filter((p) => products.test(code(p))).map((p) => relative(ROOT, p)), []);
+  assert.deepEqual(files.filter((p) => products.test(code(p))).map(posix), []);
 });

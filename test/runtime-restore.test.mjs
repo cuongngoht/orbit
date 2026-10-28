@@ -1,10 +1,11 @@
-// Restoring a task's dependencies: what is restored is the CATALOG's to say, what is TRUSTED is a person's by the
-// fingerprint of exactly what would run, and it runs argv-only, only in the workspace, clipped and scrubbed.
+// Restoring a task's dependencies: what is restored is the CATALOG's to say; it is AUTONOMOUS in the task's own sandbox
+// (0.2.0), fingerprinted as evidence of exactly what ran -- a person's review mark is named, never waited for -- and it
+// runs argv-only, only in the workspace, clipped and scrubbed.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join, resolve } from "node:path";
 import { Refused } from "../src/errors.mjs";
-import { RESTORE_TRUST, fingerprintOf, planOf, restore, trustOf } from "../src/runtime/sandbox/restore.mjs";
+import { RESTORE_ROWS, fingerprintOf, planOf, restore, restoreRowOf } from "../src/runtime/sandbox/restore.mjs";
 import { SANDBOX_DEFAULTS } from "../src/runtime/sandbox/policy.mjs";
 import { memorySource } from "./fakes/source.mjs";
 import { fakeProcess } from "./fakes/process.mjs";
@@ -22,27 +23,27 @@ test("the fingerprint is the whole SHA-256 of the arguments, where they run and 
   assert.notEqual(fingerprintOf({ ...plan, cwd: "." }, source), fp, "another place");
 });
 
-test("a plan the index cannot name -- a file it does not hold -- has NO fingerprint, and a plan with none is never trusted", () => {
+test("a plan the index cannot name -- a file it does not hold -- has NO fingerprint, and a plan with none is never run", () => {
   assert.equal(fingerprintOf(plan, memorySource({ "web/package.json": "{}" })), null);
-  assert.equal(trustOf({ plan, fingerprint: null, policy: SANDBOX_DEFAULTS, done: null }).name, "NO_PRINT");
+  assert.equal(restoreRowOf({ plan, fingerprint: null, policy: SANDBOX_DEFAULTS, done: null }).name, "NO_PRINT");
 });
 
-test("the trust rows in order: nothing to fingerprint, already done, manual, not trusted -- and only then run", () => {
+test("the rows in order: nothing to fingerprint, already done, a person's manual -- and otherwise it RESTORES, waiting for nobody", () => {
   const c = (over) => ({ plan, fingerprint: "a".repeat(64), policy: SANDBOX_DEFAULTS, done: null, ...over });
   const manual = { ...SANDBOX_DEFAULTS, restore: { mode: "manual", trusted: [] } };
-  const trusted = { ...SANDBOX_DEFAULTS, restore: { mode: "approved", trusted: ["a".repeat(64)] } };
-  assert.deepEqual(["NO_PRINT", "SKIPPED", "MANUAL", "UNTRUSTED", "TRUSTED"], [c({ fingerprint: null }), c({ done: "a".repeat(64), policy: trusted }), c({ policy: manual }), c(), c({ policy: trusted })].map((x) => trustOf(x).name));
-  assert.deepEqual(RESTORE_TRUST.filter((r) => r.run).map((r) => r.name), ["TRUSTED"], "exactly one row runs anything");
-  assert.ok(RESTORE_TRUST.every((r) => typeof r.say(c()) === "string") && RESTORE_TRUST.at(-1).when({}));
-  assert.equal(trustOf(c()).needs, "person");
-  assert.equal(trustOf(c({ policy: manual })).needs, null, "manual is said, and waits on nobody");
+  const reviewed = { ...SANDBOX_DEFAULTS, restore: { mode: "approved", trusted: ["a".repeat(64)] } };
+  assert.deepEqual(["NO_PRINT", "SKIPPED", "MANUAL", "RESTORE", "RESTORE"], [c({ fingerprint: null }), c({ done: "a".repeat(64), policy: reviewed }), c({ policy: manual }), c(), c({ policy: reviewed })].map((x) => restoreRowOf(x).name));
+  assert.deepEqual(RESTORE_ROWS.filter((r) => r.run).map((r) => r.name), ["RESTORE"], "exactly one row runs anything");
+  assert.ok(RESTORE_ROWS.every((r) => typeof r.say(c()) === "string") && RESTORE_ROWS.at(-1).when({}));
+  assert.ok(RESTORE_ROWS.every((r) => r.needs !== "person"), "no row waits for a person: a task's own sandbox restores autonomously");
+  assert.equal(restoreRowOf(c({ policy: manual })).needs, null, "manual is said, and waits on nobody");
 });
 
-test("the untrusted sentence names the fingerprint and the command, so a person can read what they would be trusting", () => {
-  const said = trustOf({ plan, fingerprint: "b".repeat(64), policy: SANDBOX_DEFAULTS, done: null }).say({ plan, fingerprint: "b".repeat(64) });
-  assert.match(said, /npm ci/);
-  assert.match(said, new RegExp("b".repeat(64)));
-  assert.match(said, /Orbit Control/);
+test("what is restored is said with its fingerprint, and a fingerprint a person reviewed is named as such -- evidence, never a gate", () => {
+  const said = restoreRowOf({ plan, fingerprint: "b".repeat(64), policy: SANDBOX_DEFAULTS, done: null }).say({ plan, fingerprint: "b".repeat(64), policy: SANDBOX_DEFAULTS });
+  assert.match(said, new RegExp(`restoring node:web at fingerprint ${"b".repeat(64)}$`));
+  const reviewed = { ...SANDBOX_DEFAULTS, restore: { mode: "approved", trusted: ["b".repeat(64)] } };
+  assert.match(restoreRowOf({ plan, fingerprint: "b".repeat(64), policy: reviewed, done: null }).say({ plan, fingerprint: "b".repeat(64), policy: reviewed }), /a fingerprint a person reviewed/);
 });
 
 function ctxOf(proc, root = join("/store", "workspaces", "tsk-aaaaaaaaaaaa", "tree")) {

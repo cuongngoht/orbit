@@ -51,15 +51,15 @@ test("outside a checkout the page says so, and has nothing to show", async (t) =
   assert.equal(got.json.available, false);
 });
 
-test("the overview: off by default, every blocker the gates would raise, the modes and no investigation yet", async (t) => {
+test("the overview: ON by default (autonomous, 0.2.0), every blocker the gates would raise, the modes and no investigation yet", async (t) => {
   const { root } = fixture(t);
   const api = await started(t, contextFor(root, checkoutWorld(root)));
   const got = (await api.get("/api/v1/autonomous-qa")).json;
   assert.equal(got.available, true);
-  assert.equal(got.settings.enabled, false);
+  assert.equal(got.settings.enabled, true);
   assert.equal(got.exists, false);
   assert.deepEqual(got.modes.map((m) => m.id), ["observe", "explore-write", "security-test", "regression", "fixture-write"]);
-  assert.deepEqual(got.blockers[0].blockers.map((b) => b.id), ["DISABLED", "NO_ENVIRONMENT"]);
+  assert.deepEqual(got.blockers[0].blockers.map((b) => b.id), ["NO_ENVIRONMENT"], "what is left is what only a person can say: which environment to look at");
   assert.deepEqual(got.investigations, []);
   assert.equal(got.switchedOn, true);
 });

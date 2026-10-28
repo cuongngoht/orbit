@@ -14,6 +14,7 @@
 // A refusal writes nothing.
 import { constraintFindings, missingFindings } from "../constraints.mjs";
 import { relativeInside } from "../project/boundary.mjs";
+import { BOUNDARY_IDS } from "../protected/boundaries.mjs";
 import { STALE_REVISION } from "../store/revisioned.mjs";
 import { FIELDS } from "./fields.mjs";
 import { CODES, ENGINE_DOMAINS, ENGINE_OWNED, ENGINE_WRITERS, PROVEN_STATES, TEXT_LIMIT, isMaterial } from "./vocab.mjs";
@@ -135,6 +136,18 @@ export const EVIDENCE_LIMIT = { id: "EVIDENCE_LIMIT", fails: (g) => (g.evidence 
 export const REFS = { id: "REFS", fails: (g, w) => unknownRefs(g, w).length > 0, say: (g, w) => `evidence ${unknownRefs(g, w).join(", ")} names nothing this task recorded — cite an attempt, an action, a decision, an approval or a linked receipt` };
 
 export const PATH = { id: "PATH", fails: (g) => !relativeInside(g.path) || g.path.length > 400 || /[\u0000-\u001f]/.test(g.path), say: () => "path is relative to the repository: no root, no drive letter, no `..`, no control characters" };
+
+// What a person reads before deciding a protected action (src/protected/authorize.mjs): a few short lines, never a
+// payload -- the action's parameters are hashed into its fingerprint and never kept.
+const SHOWN_KEY = /^[a-z][a-zA-Z0-9]{0,23}$/;
+
+const badShown = ([k, v]) => !SHOWN_KEY.test(k) || typeof v !== "string" || v.length > 120;
+
+const shownProblem = (shows) => shows !== undefined && (Object.keys(shows).length > 8 || Object.entries(shows).some(badShown));
+
+export const SHOWN = { id: "SHOWN", fails: (g) => shownProblem(g.shows), say: () => "shows is at most 8 short lines a person reads before deciding: { field: text of at most 120 characters }" };
+
+export const BOUNDARY_KNOWN = { id: "BOUNDARY", fails: (g) => g.boundary !== undefined && !BOUNDARY_IDS.includes(g.boundary), say: (g) => `${g.boundary} is not a protected boundary — ${BOUNDARY_IDS.join(", ")}` };
 
 export const IS_BLOCKED = { id: "NOT_BLOCKED", fails: (g, w) => w.model.blocked === null, say: () => "the task is not blocked" };
 

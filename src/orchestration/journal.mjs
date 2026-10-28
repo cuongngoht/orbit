@@ -5,11 +5,13 @@
 // `lw` (the loop's world, src/orchestration/loop.mjs) carries `view` and `events` (each line with
 // its position `n`), plus what the ports said this time: the declared checks, the workspace, the
 // requirement's movement.
+import { ACTION, PRODUCTION_KINDS } from "../protected/boundaries.mjs";
 import { DOMAIN, PURPOSES } from "./vocab.mjs";
 
 // A journal TYPE back to the action kind that wrote it: a check is recorded by its purpose, an
-// invocation by what it asks; every other kind is its own type.
-const TYPE_KIND = { ...Object.fromEntries(PURPOSES.map((p) => [p, "check"])), "capability.invoke": "invoke" };
+// invocation by what it asks -- and, once a person approved one that crosses a production boundary, by the protected
+// kind it was approved as (src/protected/); every other kind is its own type.
+const TYPE_KIND = { ...Object.fromEntries(PURPOSES.map((p) => [p, "check"])), "capability.invoke": "invoke", ...Object.fromEntries(PRODUCTION_KINDS.map((k) => [k, "invoke"])), [ACTION.PUSH]: "push" };
 
 export const kindOf = (action) => TYPE_KIND[action?.type] ?? action?.type ?? null;
 
@@ -79,6 +81,9 @@ export const sandboxSessions = (lw) => receiptsOf(lw, DOMAIN.RUNTIME).filter((r)
 // The source trees the world can name: the workspace's own, now, and the one the last
 // `record-changes` read back. Lazy, because naming a tree asks git.
 export const treeNow = (lw) => lw.tree?.() ?? { live: null, recorded: null };
+
+// The commit this task last made in its own workspace (its full id), or null: what a push sends.
+export const lastCommit = (lw) => receiptsOf(lw, DOMAIN.COMMIT).at(-1)?.ref ?? null;
 
 // What the checkout declares a sandbox could start (component keys). Lazy: it asks understanding.
 export const startableNow = (lw) => lw.startable?.() ?? [];

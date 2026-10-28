@@ -29,7 +29,7 @@ export const STAGES = [
   { stage: S.DIAGNOSING, actions: ["diagnose", "check", "gather-context", "prepare-sandbox", "start-sandbox"], purposes: PURPOSES, doc: "why it failed, before anything else changes: a look at the running application is a look, never a verdict" },
   { stage: S.FIXING, actions: ["implement", "record-changes", "gather-context"], purposes: [], doc: "the change the diagnosis pointed at" },
   { stage: S.REGRESSION, actions: ["check", "link-investigation", "invoke", "prepare-sandbox", "start-sandbox"], purposes: TESTING_PURPOSES, doc: "every test the change is held to, since the last change" },
-  { stage: S.REVIEWING, actions: ["review", "link-investigation", "gather-context", "start-sandbox"], purposes: [], doc: "the change as a whole, against its plan" },
+  { stage: S.REVIEWING, actions: ["review", "commit", "push", "link-investigation", "gather-context", "start-sandbox"], purposes: [], doc: "the change as a whole, against its plan; once verified it may be committed in the workspace (autonomous) and that commit pushed (a protected boundary: a person approves the exact push once) before the review completes the task" },
 ];
 
 export const stageOf = (name) => STAGES.find((s) => s.stage === name) ?? null;

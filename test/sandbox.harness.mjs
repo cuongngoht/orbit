@@ -16,13 +16,15 @@ export const CONTAINER_TOOLS = { ...TOOLS, docker: "27.3.1", "docker-daemon": "2
 export function sandboxWorld(files = NODE_AND_DOTNET, opts = {}) {
   const workspaces = fakeWorkspaces();
   workspaces.add(TASK, files);
-  const rt = fakeRuntime(files, { tools: TOOLS, ...opts, workspaces });
+  // The developer's own working tree holds what the checkout holds: what a sandbox's host-side commands are held to.
+  const rt = fakeRuntime(files, { tools: TOOLS, worktree: files, ...opts, workspaces });
   const cache = new Map();
   const sandbox = (task = TASK) => cache.get(task) ?? cache.set(task, runtimeSandboxContext(rt.ctx, { task })).get(task);
   return { ...rt, workspaces, sandbox, run: (name, task = TASK, args = []) => COMMANDS[name].run(sandbox(task), args) };
 }
 
 // What a person does in Control: trust what the sandbox said it would run, by the fingerprints it named.
+// A person's review marks on fingerprints (src/runtime/sandbox/trust.mjs): evidence a receipt names, never a gate.
 export function trusted(rt, { restore = [], definitions = [] } = {}) {
   const current = rt.ctx.readSettings();
   const sandbox = current.settings.sandbox;
@@ -32,9 +34,6 @@ export function trusted(rt, { restore = [], definitions = [] } = {}) {
 // Every fingerprint a blocked answer names, in order.
 export const fingerprintsIn = (text) => [...String(text).matchAll(/fingerprint ([a-f0-9]{64})/g)].map((m) => m[1]);
 
-// A sandbox prepared and trusted from the first ask: blocked once, trusted, ready.
-export async function prepared(world, task = TASK) {
-  const first = await world.run("sandbox-prepare", task);
-  if (first.state === "BLOCKED") trusted(world, { restore: fingerprintsIn(first.blocked.because) });
-  return world.run("sandbox-prepare", task);
-}
+// A sandbox prepared from the first ask: a task's own sandbox restores and builds autonomously (0.2.0), so nobody's
+// review mark is waited for.
+export const prepared = (world, task = TASK) => world.run("sandbox-prepare", task);

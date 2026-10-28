@@ -34,17 +34,19 @@ export function fingerprintOf(plan, source) {
 }
 
 // What stands between a plan and running it. Ordered; the first row that matches decides; the last always does.
-export const RESTORE_TRUST = [
+// Restoring a task's own workspace is AUTONOMOUS (0.2.0): it runs in the task's sandbox, from the plan the workspace's
+// own files imply, at a fingerprint kept as evidence of exactly what ran -- marked reviewed when a person listed that
+// fingerprint, never waiting for one. Only a person's own `manual` keeps Orbit from restoring at all.
+export const RESTORE_ROWS = [
   { name: "NO_PRINT", when: (c) => c.fingerprint === null, run: false, needs: "environment", say: (c) => `what ${c.plan.component} would restore cannot be fingerprinted (a manifest or lock file the workspace does not hold), so it is not run` },
   { name: "SKIPPED", when: (c) => c.done === c.fingerprint, run: false, needs: null, say: (c) => `${c.plan.component}'s dependencies were restored at this fingerprint already` },
-  { name: "MANUAL", when: (c) => c.policy.restore.mode === "manual", run: false, needs: null, say: (c) => `restoring is manual on this machine, so ${c.plan.component}'s dependencies are not restored for it: restore them in its workspace yourself, or let a person set restore to approved in Orbit Control` },
-  { name: "UNTRUSTED", when: (c) => !isTrusted(c.policy, "restore", c.fingerprint), run: false, needs: "person", say: (c) => `restoring ${c.plan.component} (${c.plan.argv.join(" ")}) is not trusted on this machine: fetching dependencies can run code they carry. A person trusts fingerprint ${c.fingerprint} in Orbit Control (Runtime → Sandbox policy)` },
-  { name: "TRUSTED", when: () => true, run: true, needs: null, say: (c) => `restoring ${c.plan.component} is trusted at fingerprint ${c.fingerprint}` },
+  { name: "MANUAL", when: (c) => c.policy.restore.mode === "manual", run: false, needs: null, say: (c) => `restoring is manual on this machine, so ${c.plan.component}'s dependencies are not restored for it: restore them in its workspace yourself` },
+  { name: "RESTORE", when: () => true, run: true, needs: null, say: (c) => `restoring ${c.plan.component} at fingerprint ${c.fingerprint}${isTrusted(c.policy, "restore", c.fingerprint) ? ", a fingerprint a person reviewed" : ""}` },
 ];
 
-export const trustOf = (c) => RESTORE_TRUST.find((r) => r.when(c));
+export const restoreRowOf = (c) => RESTORE_ROWS.find((r) => r.when(c));
 
-// Run one trusted plan in the workspace. -> { ok, status, durationMs, log }, the log being text for the room.
+// Run one plan in the workspace. -> { ok, status, durationMs, log }, the log being text for the room.
 export function restore(ctx, plan, envNames) {
   const started = ctx.clock();
   const r = ctx.process.run(plan.argv[0], plan.argv.slice(1), { cwd: contained(ctx.root, join(ctx.root, plan.cwd)), env: childEnv(ctx.env ?? {}, envNames), timeoutMs: RESTORE_TIMEOUT_MS, maxBuffer: RESTORE_OUTPUT_BYTES });

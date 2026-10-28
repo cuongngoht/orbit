@@ -61,8 +61,20 @@ const treeId = (i) => `c0de${String(i).padStart(36, "0")}`;
 
 const sameFiles = (a, b) => a.size === b.size && [...a].every(([k, v]) => b.get(k) === v);
 
+// A task's delivery, as git would answer it (0.2.0): a commit is named by what it holds and its branch; a push lands
+// in `remoteRefs` unless `state.refuse` says the remote refuses it; `remotes` is what the CHECKOUT names.
+function fakeDelivery(state) {
+  return {
+    commit: (task, branch, message) => ((sha) => (state.commits.push({ task, branch, message, sha }), (state.head = sha)))(short(`${JSON.stringify([...state.files.entries()].sort())}\n${branch}`, 40)),
+    headOf: () => state.head ?? BASE,
+    remote: (name) => state.remotes.get(name) ?? null,
+    push: (task, p) => (state.pushes.push({ task, ...p }), state.refuse ? { ok: false, reason: state.refuse } : (state.remoteRefs.set(`${p.url} ${p.ref}`, p.sha), { ok: true, reason: null })),
+    remoteRef: (url, ref) => state.remoteRefs.get(`${url} ${ref}`) ?? null,
+  };
+}
+
 function fakeWorkspace(dir) {
-  const state = { prepared: new Set(), files: new Map(), trees: [new Map()], removed: [] };
+  const state = { prepared: new Set(), files: new Map(), trees: [new Map()], removed: [], commits: [], pushes: [], head: null, refuse: null, remotes: new Map([["origin", "https://bot:tok3n@git.example.invalid/acme/repo.git"]]), remoteRefs: new Map() };
   const snapshotOf = (from) => (from === BASE ? state.trees[0] : state.trees[Number(String(from).slice(4))] ?? state.trees[0]);
   const rowsAgainst = (from) => [...new Set([...snapshotOf(from).keys(), ...state.files.keys()])].filter((p) => snapshotOf(from).get(p) !== state.files.get(p)).sort().map((path) => rowOf(path, snapshotOf(from), state.files));
   // A tree is named by its CONTENT, as git names one: the first snapshot that holds exactly these files.
@@ -84,6 +96,7 @@ function fakeWorkspace(dir) {
     treeAt: (task, revision) => (revision === BASE ? treeId(0) : null),
     stateOf: (task) => ({ tree: treeOf(task), ignored: state.ignored ?? 0, stamp: state.writes ?? 0 }),
     remove: (head) => (state.removed.push(head.task), { id: `ws-${head.task.slice(4)}`, removed: true }),
+    ...fakeDelivery(state),
   };
 }
 
@@ -219,7 +232,7 @@ export function orchestrationWorld(t, opts = {}) {
     base: { head: () => BASE, dirty: () => false },
     checks: { declared: () => opts.declared ?? DECLARED, graph: () => (opts.graph === undefined ? graphOf(opts.declared ?? DECLARED, opts.dependsOn) : opts.graph), run: (command, at) => createCheckRunner({ process, env: { PATH: "/bin", HOME: "/home/x", API_TOKEN: "s3cr3t-value" }, envNamesOf: () => opts.envNames ?? [], clock: () => w.clock.at, keep: (where, text) => roomOf(where.task).keep(where.ref, text), observer: opts.observe ? observerOf(activity, w, opts) : undefined }).run(command, at) },
     context: { gather: async (text) => (calls.context++, { sections: [{ id: "architecture", title: "ARCHITECTURE", known: true, lines: [`for: ${text.slice(0, 40)}`] }], ...(opts.contextStatus ? { status: opts.contextStatus } : {}) }) },
-    capabilities: { describe: (id) => capabilities[id] ?? null, invoke: async (id, input, o) => (calls.invoked.push({ id, input, approved: o.approved }), { written: 1 }) },
+    capabilities: { describe: (id) => (capabilities[id] ? { id, ...capabilities[id] } : null), invoke: async (id, input, o) => (calls.invoked.push({ id, input, approved: o.approved, ...(o.authorized ? { authorized: o.authorized } : {}) }), { written: 1 }) },
     investigations: { outcome: (id) => investigations.get(id) ?? null },
     roomOf,
     lock: (id, fn) => fn(),

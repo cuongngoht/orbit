@@ -93,7 +93,7 @@ export function sayPrepare(r) {
 // reviews the bytes, never a summary of them.
 export function sayProposal(p) {
   const files = [...p.files.create.flatMap((f) => [`create ${f.path}`, ...f.text.trimEnd().split("\n").map((l) => `    | ${l}`)]), ...p.files.patch.flatMap((f) => [`patch  ${f.path}  (${f.edits.length} edit(s); every other byte stays)`, ...f.edits.map(sayEdit)])];
-  return [`ENVIRONMENT PROPOSAL ${p.id} · ${p.state}${p.status === "adopted" ? " · adopted" : ""}`, `  ${p.because}`, ...list("files:", files), ...list("gaps:", p.gaps.map((g) => `${g.id}  ${g.state}  ${g.because}`)), ...list("unresolved (a person decides):", p.unresolved.map((u) => `${u.id}  ${u.why}`)), ...list("risks:", p.risks), ...list("notes:", p.notes), "", p.state === "CREATE" || p.state === "PATCH" ? `adopt it with: runtime adopt ${p.id} --human` : "nothing to adopt"].join("\n");
+  return [`ENVIRONMENT PROPOSAL ${p.id} · ${p.state}${p.status === "adopted" ? " · adopted" : ""}`, `  ${p.because}`, ...list("files:", files), ...list("gaps:", p.gaps.map((g) => `${g.id}  ${g.state}  ${g.because}`)), ...list("unresolved (a person decides):", p.unresolved.map((u) => `${u.id}  ${u.why}`)), ...list("risks:", p.risks), ...list("notes:", p.notes), "", p.state === "CREATE" || p.state === "PATCH" ? `adopt it yourself in Orbit Control (Runtime → proposal ${p.id} → Adopt) — it writes your checkout, a protected boundary only a person crosses` : "nothing to adopt"].join("\n");
 }
 
 // One edit: what it does, the key path it touches, and the value it leaves there.
@@ -137,7 +137,7 @@ export const sayForgotten = (f) => `FORGOTTEN ${f.checkout.root}, a checkout of 
 
 export const sayRecord = (r) => `RECORDED ${r.recorded} inference(s) — never certain, never counted against a machine, and a command among them is shown and never launched`;
 
-const GONE = "  a checkout marked (missing) is forgotten by a person: runtime forget <its directory> --human";
+const GONE = "  a checkout marked (missing) comes off this list with: runtime forget <its directory>";
 
 export function sayProjects(list_) {
   const rows = list_.flatMap((p) => p.checkouts.map((c) => [p.name, c.summary?.branch ?? "", c.summary?.runtime ?? "NOT_DISCOVERED", c.summary?.understanding ?? "NOT_DISCOVERED", c.exists ? c.root : `${c.root} (missing)`]));

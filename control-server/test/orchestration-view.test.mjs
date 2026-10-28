@@ -41,18 +41,22 @@ test("Mission Control shows an orchestrated task the way it shows any task: stag
   assert.deepEqual(events.json.events.filter((e) => e.kind === "stage").map((e) => e.stage).slice(-6), ["DIAGNOSING", "FIXING", "BUILDING", "TESTING", "REGRESSION", "REVIEWING"]);
 });
 
-test("a gated action waits in Mission Control's queue; a person's Approve once there is consumed by exactly that action, once", async (t) => {
-  const { o, api } = await served(t, { capabilities: { "dev.seedRefunds": { mutates: true, connection: null } } });
+test("a protected action waits in Mission Control's queue with what a person reads before deciding; a person's Approve once there is consumed by exactly that action, once", async (t) => {
+  const { o, api } = await served(t, { capabilities: { "orders.deploy": { mutates: true, effects: ["deploy"], environment: "production", connection: null }, "dev.seedRefunds": { mutates: true, effects: ["write"], connection: null } } });
   const { id, go } = await testing(o);
-  const seed = { kind: "invoke", capability: "dev.seedRefunds", input: { refunds: 3 } };
-  await go(seed, { reason: "the integration test needs refund rows" });
+  assert.equal((await go({ kind: "invoke", capability: "dev.seedRefunds", input: { refunds: 3 } })).outcome, "succeeded", "an ordinary write asks nobody");
+  const seed = { kind: "invoke", capability: "orders.deploy", input: { artifact: "orders-api:1.8.2", revision: "abc123" } };
+  await go(seed, { reason: "the verified release goes to production" });
   const queue = await api.get("/api/v1/mission-control/approvals");
   const asked = queue.json.approvals.find((a) => a.task === id);
-  assert.deepEqual([asked.action, asked.id], ["capability.invoke", "apr-1"]);
+  assert.deepEqual([asked.action, asked.id, asked.environment, asked.boundary, asked.title, asked.destructive], ["deployment.production", "apr-1", "production", "PRODUCTION_DEPLOY", "Production deployment", false]);
+  assert.match(asked.risk, /deploys orders-api:1\.8\.2 at abc123 to production/, "the card's Risk row says exactly what is approved");
+  assert.equal((await api.post(path(`/${id}/approvals/apr-1/approve`), { human: true, expectedRevision: asked.revision - 1 })).status, 409, "a decision on a revision the task moved past is refused");
   const approved = await api.post(path(`/${id}/approvals/apr-1/approve`), { human: true, expectedRevision: asked.revision });
   assert.equal(approved.status, 200);
   const ran = await step(o.ports, id, decided(o.ports, id, seed, { approval: "apr-1" }));
-  assert.deepEqual([ran.outcome, o.calls.invoked.length], ["succeeded", 1]);
+  assert.deepEqual([ran.outcome, o.calls.invoked.map((c) => c.id)], ["succeeded", ["dev.seedRefunds", "orders.deploy"]]);
+  assert.match(o.calls.invoked[1].authorized.action, /^[0-9a-f]{16}$/, "the deploy carries the fingerprint of exactly what was approved");
   await assert.rejects(step(o.ports, id, decided(o.ports, id, seed, { approval: "apr-1" })), /NOT_GRANTED/);
   const after = await api.get(path(`/${id}`));
   assert.deepEqual(after.json.task.approvals.map((a) => [a.id, a.state, Boolean(a.consumedBy)]), [["apr-1", "consumed", true]]);

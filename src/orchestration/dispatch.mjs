@@ -12,10 +12,20 @@
 //   { outcome: succeeded | failed | error | open, summary, reason?, receipts?, files?,
 //     verifications?, closes?, failure?, needs?, because?, workspace?, then?, data? }
 //
+// Every row also says what it IS as a structured action (`semantic`): src/orchestration/policy.mjs hands that to the
+// protected-boundary leaf (src/protected/) before ANY step runs. Nearly everything is AUTO -- the task's own workspace,
+// a declared check, its sandbox, a capability doing what it declares off production, a local commit; a push of one
+// commit, and a capability call that declares a production deploy, migration or destructive change, wait for a
+// person's approval of exactly that action, once (0.2.0).
+//
 // `data` goes back to the host and nowhere else; everything the journal keeps is a reference, a
 // count or a sentence.
+import { sha } from "../hash.mjs";
+import { actionFingerprint, needsApproval } from "../protected/authorize.mjs";
+import { ACTION, HOMES } from "../protected/boundaries.mjs";
+import { capabilityAction } from "../protected/capability.mjs";
 import { classify, exactOf, excerptOf, signatureOf } from "./failure.mjs";
-import { changed, checkRuns, currentAttempt, openOf, pinned, treeNow, workspaceProblem } from "./journal.mjs";
+import { changed, checkRuns, currentAttempt, lastCommit, openOf, pinned, treeNow, workspaceProblem } from "./journal.mjs";
 import { allRowsOf, impactReceipt, planOf, requiredIds, rowsOf } from "./obligations.mjs";
 import { environmentOf } from "./readiness.mjs";
 import { error, failed, ok } from "./results.mjs";
@@ -24,6 +34,8 @@ import { needsSandbox, sandboxPrepared, sandboxReadBack, sandboxStarted } from "
 import { CHECKING, purposesNow } from "./stages.mjs";
 import { AS_BEFORE, DOMAIN, RESULT, STAGE, TEXT_LIMIT } from "./vocab.mjs";
 import { briefOf } from "./checks.mjs";
+import { gateOf, verdictOf } from "./policy.mjs";
+import { unmet } from "./verification.mjs";
 import { scrub } from "../scrub.mjs";
 
 const sentence = (v) => typeof v === "string" && v.trim().length > 0 && v.length <= TEXT_LIMIT;
@@ -286,9 +298,136 @@ function invokeProblem(a, lw) {
 
 const bounded = (value) => scrub(JSON.stringify(value ?? null)).slice(0, 4000);
 
+// What the capability DECLARES (its effects, where it lands, what it binds), as the leaf reads a call to it.
+const declaredBy = (lw, a) => ({ id: a.capability, ...(lw.describe?.(a.capability) ?? {}) });
+
+const invokeAction = (a, lw) => capabilityAction(declaredBy(lw, a), a.input ?? {});
+
+// The orchestrator authorizes every call it starts: an AUTO one as it is, and one that crossed a protected boundary by
+// the fingerprint of the action whose approval this action spent -- which the capability pipeline holds the call to.
+const authorizedBy = (v, act) => (needsApproval(v) && act.approval ? { action: actionFingerprint(v) } : null);
+
+// What an approved action IS, re-derived immediately before it runs, must be what was approved and spent: the action
+// line keeps the fingerprint its approval was consumed for (src/task/ops.mjs), so a declaration, a remote or a commit
+// that moved between the decision and the run is refused here -- the approval stays spent, and nothing is done.
+const movedSinceApproval = (ports, row, a, lw, act) => Boolean(act.approval) && ports.task.fingerprint(gateOf(row, a, lw) ?? {}) !== act.fingerprint;
+
+const MOVED = (what) => error(`${what} is no longer exactly what a person approved — nothing was done; the approval is spent, and this needs an approval of its own`);
+
 async function invoked(ports, lw, a, act) {
-  const value = await ports.capabilities.invoke(a.capability, a.input ?? {}, { approved: Boolean(act.approval) });
+  if (movedSinceApproval(ports, ACTIONS.invoke, a, lw, act)) return MOVED(`the call to ${a.capability}`);
+  const authorized = authorizedBy(verdictOf(ACTIONS.invoke, a, lw), act);
+  const value = await ports.capabilities.invoke(a.capability, a.input ?? {}, { approved: true, authorized });
   return ok(`${a.capability} answered`, { data: { answer: bounded(value) } });
+}
+
+// ---- delivery: a local commit, and a push of exactly that commit (0.2.0) -------------------------------------
+
+const inWorkspace = () => ({ kind: ACTION.WRITE, home: HOMES.TASK_WORKSPACE });
+
+function quietly(fn) {
+  try { return fn(); }
+  catch { return null; }
+}
+
+// What a change must still show when it is committed or pushed: every completion row but the review and the end of
+// the attempt, which come after delivery (src/orchestration/verification.mjs COMPLETION).
+const AFTER_DELIVERY = ["REVIEWED", "ATTEMPT"];
+
+const undelivered = (lw) => unmet(lw).filter((r) => !AFTER_DELIVERY.includes(r.id));
+
+function deliveryProblem(lw) {
+  const gap = undelivered(lw)[0];
+  if (gap) return `only a verified change is committed or pushed, and this one is not yet: ${gap.say}`;
+  return movedSince(lw) ? "the workspace holds changes record-changes has not read back — record them, so what is delivered is what was verified" : workspaceProblem(lw);
+}
+
+export const branchOf = (lw) => `orbit/${lw.id}`;
+
+const messageOf = (lw, a) => a.message ?? `orbit: ${lw.view.task.objective}`.slice(0, TEXT_LIMIT);
+
+function commitProblem(a, lw) {
+  if (a.message !== undefined && !sentence(a.message)) return `message is one sentence of at most ${TEXT_LIMIT} characters`;
+  return deliveryProblem(lw);
+}
+
+const commitReceipt = (commit, branch, how = "") => ({ domain: DOMAIN.COMMIT, ref: commit, outcome: "COMMITTED", summary: `${commit.slice(0, 12)} on ${branch}, the task's own${how}` });
+
+async function committedNow(ports, lw, a, act) {
+  const commit = ports.workspace.commit(lw.id, branchOf(lw), messageOf(lw, a));
+  ports.room.write(`commits/${act.id}`, { commit, branch: branchOf(lw) });
+  return ok(`${commit.slice(0, 12)} on ${branchOf(lw)}`, { receipts: [commitReceipt(commit, branchOf(lw))], data: { commit, branch: branchOf(lw) } });
+}
+
+// An interrupted commit is read back from the task's own delivery: a branch that left the base revision is the commit
+// it made.
+async function commitReadBack(ports, lw) {
+  const head = quietly(() => ports.workspace.headOf(lw.id));
+  return head && head !== lw.view.task.baseRevision ? ok("the commit was read back", { receipts: [commitReceipt(head, branchOf(lw), ", read back")] }) : error("nothing it may have committed is on the task's branch — commit again");
+}
+
+const remoteName = (a) => a.remote ?? "origin";
+
+const refOf = (a, lw) => `refs/heads/${a.branch ?? branchOf(lw)}`;
+
+// A remote's URL as a person may read it: where it points, never who it signs in as.
+function shownUrl(url) {
+  if (!url) return null;
+  try { return ((u) => `${u.host}${u.pathname}`)(new URL(url)); }
+  catch { return String(url).replace(/^[^@/:]+@/, ""); }
+}
+
+// What the push IS, as the leaf reads it: the repository, the remote by name and by a digest of its URL (a URL can
+// carry a credential, so it is never kept), the ref, the exact commit, and whether it is forced.
+export function pushAction(a, lw) {
+  const url = quietly(() => lw.remote?.(remoteName(a))) ?? null;
+  return { kind: ACTION.PUSH, repository: lw.view.task.project, remote: remoteName(a), url: url ? sha(url) : null, at: shownUrl(url), ref: refOf(a, lw), commit: lastCommit(lw), force: a.force === true };
+}
+
+const REMOTE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+const BRANCH = /^(?!.*\.\.)(?!.*\/\/)(?!.*@\{)(?!.*\.lock$)(?!.*\/$)[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$/;
+
+const PUSH_CHECKS = [
+  { fails: (a) => a.remote !== undefined && !REMOTE.test(String(a.remote)), say: () => "remote names one of the checkout's remotes: letters, digits, `.`, `_` and `-`" },
+  { fails: (a) => a.branch !== undefined && !BRANCH.test(String(a.branch)), say: () => "branch is a branch name: letters, digits, `.`, `_`, `/` and `-`, with no `..`" },
+  { fails: (a) => a.force !== undefined && typeof a.force !== "boolean", say: () => "force is true or false" },
+  { fails: (a, lw) => lastCommit(lw) === null, say: () => "commit first: a push sends a commit this task made in its own workspace" },
+  { fails: (a, lw) => quietly(() => lw.head?.()) !== lastCommit(lw), say: () => "the task's branch does not name the commit this task last made — commit again, so what is pushed is what was verified" },
+  { fails: (a, lw) => !quietly(() => lw.remote?.(remoteName(a))), say: (a) => `the checkout names no remote ${remoteName(a)}` },
+];
+
+const pushProblem = (a, lw) => PUSH_CHECKS.find((r) => r.fails(a, lw))?.say(a) ?? deliveryProblem(lw);
+
+const pshOf = (act) => `psh-${String(act.id).slice("act-".length)}`;
+
+const pushReceipt = (p, act, outcome, how = "") => ({ domain: DOMAIN.PUSH, ref: pshOf(act), outcome, summary: `${String(p.commit).slice(0, 12)} to ${p.ref} on ${p.remote}${p.force ? ", forced" : ""}${how}` });
+
+const pushAnswer = (p, done, act) => (done.ok ? ok(`pushed ${String(p.commit).slice(0, 12)} to ${p.ref} on ${p.remote}`, { receipts: [pushReceipt(p, act, "PUSHED")] }) : failed(`the remote refused the push: ${done.reason}`, { receipts: [pushReceipt(p, act, "REFUSED")] }));
+
+// Exactly the approved action: the commit and ref it was approved for, to the remote's URL read ONCE, now -- and the push
+// that URL makes is held to the fingerprint the approval was spent on, so a remote pointed elsewhere since is never
+// pushed to on an old approval (spent, nothing pushed).
+async function pushedNow(ports, lw, a, act) {
+  const url = quietly(() => ports.workspace.remote(remoteName(a)));
+  const now = { ...lw, remote: () => url };
+  if (!url || movedSinceApproval(ports, ACTIONS.push, a, now, act)) return error(`the remote ${remoteName(a)} no longer points where the approved push was going — nothing was pushed; the approval is spent, and a push there needs one of its own`);
+  return pushedTo(ports, lw.id, pushAction(a, now), { url, act });
+}
+
+// What is pushed is recorded first (an interrupted push is read back from it), then exactly that is pushed.
+function pushedTo(ports, task, p, at) {
+  ports.room.write(`pushes/${at.act.id}`, { remote: p.remote, ref: p.ref, commit: p.commit, force: p.force });
+  return pushAnswer(p, ports.workspace.push(task, { url: at.url, sha: p.commit, ref: p.ref, force: p.force }), at.act);
+}
+
+// An interrupted push is read back from the remote: the ref at exactly the commit is a push that happened; anything
+// else is unknown, and a push is never sent again by itself.
+async function pushReadBack(ports, lw, act) {
+  const kept = ports.room.read(`pushes/${act.id}`);
+  const url = kept ? quietly(() => ports.workspace.remote(kept.remote)) : null;
+  const at = url ? quietly(() => ports.workspace.remoteRef(url, kept.ref)) : null;
+  return at && at === kept.commit ? ok("the push was read back", { receipts: [pushReceipt(kept, act, "PUSHED", ", read back")] }) : unknownOutcome();
 }
 
 // ---- the review ----------------------------------------------------------------------------------
@@ -327,7 +466,8 @@ const always = () => true;
 const nothing = () => null;
 const self = (kind) => () => kind;
 
-const row = (kind, spec) => ({ fields: [], required: [], type: self(kind), tool: nothing, label: () => kind, mutates: never, settles: "now", check: nothing, readBack: interrupted, ...spec });
+// `semantic`: what the step IS, for the protected-boundary leaf; by default its own kind, which no boundary names.
+const row = (kind, spec) => ({ fields: [], required: [], type: self(kind), tool: nothing, label: () => kind, mutates: never, settles: "now", check: nothing, readBack: interrupted, semantic: () => ({ kind }), ...spec });
 
 export const ACTIONS = {
   "check-requirement": row("check-requirement", { label: () => "the requirement the task rests on", run: requirementChecked }),
@@ -336,15 +476,17 @@ export const ACTIONS = {
   "start-runtime": row("start-runtime", { fields: ["component"], label: (a) => `runtime start${a.component ? ` ${a.component}` : ""}`, mutates: always, run: runtimeStarted, readBack: runtimeReadBack }),
   "prepare-sandbox": row("prepare-sandbox", { label: () => "the task's sandbox, at the workspace's tree", mutates: always, check: needsWorkspace, run: sandboxPrepared, readBack: sandboxReadBack }),
   "start-sandbox": row("start-sandbox", { fields: ["component"], label: (a) => `sandbox start${a.component ? ` ${a.component}` : ""}`, mutates: always, check: needsSandbox, run: sandboxStarted, readBack: sandboxReadBack }),
-  "prepare-workspace": row("prepare-workspace", { label: () => "the task's own workspace", mutates: always, run: workspacePrepared, readBack: workspaceReadBack }),
+  "prepare-workspace": row("prepare-workspace", { label: () => "the task's own workspace", mutates: always, semantic: inWorkspace, run: workspacePrepared, readBack: workspaceReadBack }),
   plan: row("plan", { fields: ["intent", "scope"], required: ["intent", "scope"], label: (a) => a.intent, check: planProblem, run: planned }),
-  implement: row("implement", { label: () => "the change, in the workspace", mutates: always, settles: "later", check: (a, lw) => needsWorkspace(a, lw) ?? needsPlan(a, lw), run: implementing }),
-  "record-changes": row("record-changes", { label: () => "what changed, read back", mutates: always, check: needsImplement, run: changesRecorded }),
+  implement: row("implement", { label: () => "the change, in the workspace", mutates: always, settles: "later", semantic: inWorkspace, check: (a, lw) => needsWorkspace(a, lw) ?? needsPlan(a, lw), run: implementing }),
+  "record-changes": row("record-changes", { label: () => "what changed, read back", mutates: always, semantic: inWorkspace, check: needsImplement, run: changesRecorded }),
   check: row("check", { fields: ["command"], required: ["command"], type: (a, lw) => commandOf(lw, a.command)?.purpose ?? "check", tool: (a) => a.command, label: checkLabel, mutates: always, check: checkProblem, run: checked }),
   diagnose: row("diagnose", { fields: ["then"], required: ["then"], label: (a) => `diagnosed: ${a.then}`, check: (a) => (["fix", "retest"].includes(a.then) ? null : "then is fix (change something) or retest (the same change again)"), run: async (ports, lw, a) => ok(`next: ${a.then}`, { then: a.then }) }),
   "link-investigation": row("link-investigation", { fields: ["investigation"], required: ["investigation"], label: (a) => `investigation ${a.investigation}`, check: (a) => (INVESTIGATION.test(String(a.investigation)) ? null : "investigation is an inv- id"), run: investigationLinked }),
-  invoke: row("invoke", { fields: ["capability", "input"], required: ["capability"], type: () => "capability.invoke", tool: (a) => String(a.capability).toLowerCase(), label: (a) => `capability ${a.capability}`, mutates: (a, lw, gate) => gate !== null, check: invokeProblem, run: invoked, readBack: unknownOutcome }),
+  invoke: row("invoke", { fields: ["capability", "input"], required: ["capability"], type: () => "capability.invoke", tool: (a) => String(a.capability).toLowerCase(), label: (a) => `capability ${a.capability}`, mutates: (a, lw) => lw.describe?.(a.capability)?.mutates === true, semantic: invokeAction, check: invokeProblem, run: invoked, readBack: unknownOutcome }),
   review: row("review", { label: () => "the change against its plan", run: reviewed }),
+  commit: row("commit", { fields: ["message"], label: (a, lw) => `the verified change, committed on ${branchOf(lw)}`, mutates: always, semantic: inWorkspace, check: commitProblem, run: committedNow, readBack: commitReadBack }),
+  push: row("push", { fields: ["remote", "branch", "force"], type: () => ACTION.PUSH, tool: (a) => remoteName(a), where: (a) => remoteName(a), label: (a, lw) => `push ${String(lastCommit(lw) ?? "").slice(0, 12)} to ${refOf(a, lw)} on ${remoteName(a)}${a.force === true ? ", forced" : ""}`, mutates: always, semantic: pushAction, check: pushProblem, run: pushedNow, readBack: pushReadBack }),
 };
 
 export const ACTION_KINDS = Object.keys(ACTIONS);

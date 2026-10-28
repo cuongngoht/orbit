@@ -4,8 +4,9 @@
 //   PLACEMENTS     every component that starts runs in a container of its own on the task's network
 //   CONNECTIVITY   a server outside the sandbox cannot be reached from an internal network: a component that needs
 //                  one is a person's to settle, never a hole in the network
-//   TOPOLOGY       what runs from what, composed from discovery (src/runtime/sandbox/topology.mjs), only under a
-//                  usable isolation provider, a pinned and trusted worker image and a trusted topology fingerprint
+//   TOPOLOGY       what runs from what, composed from discovery (src/runtime/sandbox/topology.mjs), under a usable
+//                  isolation provider and a worker image pinned by digest -- autonomously (0.2.0): the topology's and
+//                  the worker's fingerprints are kept as evidence of exactly what ran, never waited on
 //   NETWORK        the task's internal network, labelled, receipted as an operation before it exists
 //   SERVICES       the pod (a project configured against localhost), the images a component is built from, and
 //                  the servers the project is defined with -- a session receipt per container, BEFORE it exists
@@ -21,7 +22,7 @@ import { look } from "../understanding.mjs";
 import { startsKind } from "../vocab.mjs";
 import { attestedNow, unattested } from "./isolation.mjs";
 import { START_WAIT_MS, builtImage, ensuredNetwork, readyNode, specOf, startedNode } from "./network.mjs";
-import { effectivePolicy, isTrusted } from "./policy.mjs";
+import { effectivePolicy } from "./policy.mjs";
 import { buildScopes, composed, imageRefs } from "./topology.mjs";
 
 const policyOf = (c) => effectivePolicy(c.state.settings).policy;
@@ -74,8 +75,6 @@ const TOPOLOGY_GATES = [
   { fails: (t) => !t.nodes.length, needs: () => "capability", say: () => "nothing in the workspace runs in a container: no component starts and no compose service names an image" },
   { fails: (t, p, iso) => envRefusals(iso, t).length > 0, needs: () => "person", say: (t, p, iso) => `a container would be handed an environment it may not be: ${envRefusals(iso, t).join("; ")} — a person sets the names differently, or the file names a literal` },
   { fails: (t, p) => !p.isolation.workerImage, needs: () => "person", say: () => "no test worker image is set: a person names one, pinned by digest, in Orbit Control (Runtime → Sandbox policy → isolation)" },
-  { fails: (t, p) => !isTrusted(p, "worker-image", digestOf(p.isolation.workerImage)), needs: () => "person", say: (t, p) => `the test worker image ${p.isolation.workerImage} (fingerprint ${digestOf(p.isolation.workerImage)}) is not trusted for autonomous use on this machine: a person trusts it in Orbit Control (Runtime → Sandbox policy)` },
-  { fails: (t, p) => !isTrusted(p, "topology", t.fingerprint), needs: () => "person", say: (t) => `the isolated topology (fingerprint ${t.fingerprint}) is not trusted for autonomous use on this machine: it runs ${t.nodes.map((n) => `${n.key} from ${n.image.pinned ?? "an image built from its own files"}`).join(", ")} on an internal network of the task's own. A person trusts it in Orbit Control (Runtime → Sandbox policy)` },
 ];
 
 const attestOf = (c, policy, t) => ({ network: t.network.name, podId: null, labels: t.network.labels, forbidden: [c.ctx.storeBase, c.ctx.env?.HOME, c.ctx.primaryRoot].filter(Boolean), pluginTarget: c.ctx.catalog.isolation.worker.plugin, egress: policy.isolation.egress });

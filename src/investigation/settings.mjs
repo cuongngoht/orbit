@@ -22,8 +22,11 @@ import { ENVIRONMENT_KINDS, MODE_IDS, modeOf } from "./vocab.mjs";
 
 export const SETTINGS_SCHEMA = 1;
 
+// Autonomous QA is ON by default (0.2.0): Orbit is autonomous unless a protected boundary is reached. What it may LOOK
+// at is still only what a person declared (an environment, an identity), and a task's own sandbox is its own; a person
+// switches it off here.
 export const DEFAULTS = {
-  enabled: false,
+  enabled: true,
   environments: [],
   identities: [],
   // decisions and noProgress bound the loop (src/investigation/loop.mjs):

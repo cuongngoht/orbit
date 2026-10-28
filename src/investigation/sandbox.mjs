@@ -7,10 +7,13 @@
 //         endpoints: [{ component, kind, port, source }],
 //         qa: { modes, entry, browser } }
 //
-// Which modes the environment is approved for are a PERSON's (the sandbox policy `qa.modes`), never a
-// flag of this command: a session that could widen its own modes would be approving itself. Which
-// endpoint the browser opens is a person's too, unless the sandbox has exactly one that speaks http.
+// A task's OWN sandbox is autonomous (0.2.0): every mode the engine's gates allow there is open to its QA -- an isolated
+// mode only where isolation is proven, a writing mode only on the run's own fixture under engine-minted grants, a
+// destructive control never (src/investigation/gates.mjs). A person may NARROW it (the sandbox policy `qa.modes`), and
+// nothing a session sends widens it. Which endpoint the browser opens is a person's choice when the sandbox has more
+// than one that speaks http.
 import { Refused } from "../errors.mjs";
+import { MODE_IDS } from "./vocab.mjs";
 
 const PICK = "a person names which endpoint the browser opens (sandbox policy qa.entry, in Orbit Control)";
 
@@ -44,7 +47,7 @@ function chosen(a) {
 // -> the endpoint the browser opens: { component, kind, port }.
 export const entryOf = (a) => chosen(checkedBrowser(a));
 
-const modesOf = (a) => (a.qa?.modes?.length ? [...a.qa.modes] : ["observe"]);
+const modesOf = (a) => (a.qa?.modes?.length ? [...a.qa.modes] : [...MODE_IDS]);
 
 // -> an environment, as settings.environments rows are: { id, origin, kind, modes } and what binds it.
 //

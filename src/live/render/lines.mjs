@@ -3,6 +3,7 @@
 // `--plain`, the TTY timeline and the status line describe one line the same way. Returned as DATA (strings
 // and a tone); cleaning and colouring are the drawer's.
 import { GLYPHS } from "../words.mjs";
+import { isProtected, protectedSay } from "../protected.mjs";
 
 const str = (v) => (typeof v === "string" && v.length > 0 ? v : null);
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
@@ -27,7 +28,7 @@ const TASK = {
   "file-changed": (e) => ["file", joined(str(e.path), str(e.change), num(e.added) !== null ? `+${e.added} −${num(e.removed) ?? 0}` : null)],
   receipt: (e) => ["evidence", joined(`${str(e.domain) ?? "?"}:${str(e.ref) ?? "?"}`, str(e.outcome), str(e.summary))],
   verification: (e) => [e.state === "satisfied" ? "ok" : e.state === "violated" ? "warning" : "state", joined(str(e.obligation), str(e.state))],
-  "approval-requested": (e) => ["person", joined(str(e.id), str(e.action), str(e.environment) && `on ${e.environment}`, "a person decides in Orbit Control")],
+  "approval-requested": (e) => (isProtected(e) ? [e.destructive === true ? "warning" : "person", joined(str(e.id), `waiting for approval: ${protectedSay(e)}`, "a person decides in Orbit Control")] : ["person", joined(str(e.id), str(e.action), str(e.environment) && `on ${e.environment}`, "a person decides in Orbit Control")]),
   "approval-granted": (e) => ["person", joined(str(e.id), "approved")],
   "approval-rejected": (e) => ["person", joined(str(e.id), "rejected", str(e.reason))],
   "approval-consumed": (e) => ["state", joined(str(e.id), "used")],

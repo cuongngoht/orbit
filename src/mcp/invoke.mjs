@@ -23,6 +23,8 @@
 // line records what happened -- never the arguments, never the result.
 import { Blocked, Refused } from "../errors.mjs";
 import { capabilityVerdict, operationOf, operationVerdict, strictest, undeclaredVerdict } from "../policy.mjs";
+import { authorize, isAuto } from "../protected/authorize.mjs";
+import { mcpAction } from "../protected/mcp.mjs";
 import { resolvedDefinition } from "./connect.mjs";
 import { parseKey } from "./identity.mjs";
 import { specOf } from "./probe.mjs";
@@ -83,9 +85,20 @@ async function called(ctx, c, started) {
 async function answered(ctx, c, session, started) {
   const tool = (await session.tools()).find((t) => t.name === c.ask.tool);
   if (!tool) throw refused(`${c.entry.id} offers no tool named ${c.ask.tool}`);
-  operationGate(c, tool);
+  toolGates(c, tool);
   const result = bounded(await session.call(c.ask.tool, c.ask.args ?? {}));
   return (ctx.activity.record({ kind: "mcp-invoked", resource: c.entry.key, tool: c.ask.tool, capability: c.ask.capability, workflow: c.ask.workflow, operation: operationOf(tool), outcome: result.isError ? "tool-error" : "ok", ms: ctx.now() - started }), { resource: c.entry.key, tool: c.ask.tool, operation: operationOf(tool), result });
+}
+
+const toolGates = (c, tool) => (boundaryGate(c, tool), operationGate(c, tool));
+
+// A PROTECTED BOUNDARY a tool call would cross (src/protected/mcp.mjs, 0.2.0): what the server's catalog row declares
+// the tool IS (a push, a deploy, a migration, a destructive data operation), else what the server says of it. The
+// broker has no task to ask a person through, so a call that is not AUTO is refused here, whoever asks -- reading and
+// every other write go on exactly as the policy below says.
+function boundaryGate(c, tool) {
+  const verdict = authorize(mcpAction(c.entry, tool, c.ask.args ?? {}));
+  if (!isAuto(verdict)) throw refused(`${tool.name} on ${c.entry.id}: ${verdict.title} — ${verdict.risk}. This is a protected boundary: Orbit crosses it only as an engineering task's own action, approved once for exactly it in Orbit Control — never through a direct tool call`);
 }
 
 // A caller that asked for reading only (`readOnly`, 0.0.4: a declared workflow's step) gets reading only: a tool its

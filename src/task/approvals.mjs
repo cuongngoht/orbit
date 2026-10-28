@@ -17,11 +17,12 @@
 //
 // Each list below is a set of rows in the shape of src/investigation/decision.mjs, read in
 // order by src/task/ops.mjs, the first failing row refusing with its id and its code.
-import { canonicalJson, short } from "../hash.mjs";
+import { fingerprintOf } from "../protected/authorize.mjs";
 import { approvalState } from "./model.mjs";
 import { CODES } from "./vocab.mjs";
 
-export const fingerprintOf = ({ type, tool, environment, params }) => short(canonicalJson({ type: type ?? null, tool: tool ?? null, environment: environment ?? null, params: params ?? null }), 16);
+// One definition of "the exact action", shared with every executor that holds a call to it (src/protected/).
+export { fingerprintOf };
 
 const approvalIn = (w, id) => w.model.approvals.get(id) ?? null;
 

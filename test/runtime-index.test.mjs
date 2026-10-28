@@ -21,6 +21,10 @@ const NEWER = { ...NODE_AND_DOTNET, "api/Api.csproj": `<Project Sdk="Vendor.NET.
 
 const run = async (rt, name, ...args) => COMMANDS[name].run(rt.ctx, args);
 
+// A person adopting through Orbit Control's door: adopting writes the checkout, the PRIMARY_CHECKOUT_WRITE protected
+// boundary only a person's own act crosses (src/protected/). A terminal with no person typing in it is refused.
+const asPerson = async (rt, name, ...args) => COMMANDS[name].run({ ...rt.ctx, door: "control" }, args);
+
 // A runtime whose checkout is bound, as it is once Orbit has been used from it.
 function bound(files = NODE_AND_DOTNET, opts = {}) {
   const rt = fakeRuntime(files, { tools: TOOLS, ...opts });
@@ -84,7 +88,7 @@ test("a design and an adopt refuse to rest on facts the files have moved past --
   const proposal = await run(rt, "design");
   rt.source.write("web/package.json", JSON.stringify({ engines: { node: ">=24" }, scripts: { dev: "vite" } }));
   await assert.rejects(() => run(rt, "design"), (e) => e instanceof Refused && /STALE: run `runtime discover` first, so the environment it designs rests on what the files say now/.test(e.message));
-  await assert.rejects(() => run(rt, "adopt", proposal.id, "--human"), (e) => e instanceof Refused && /so what is adopted rests on what the files say now/.test(e.message));
+  await assert.rejects(() => asPerson(rt, "adopt", proposal.id, "--human"), (e) => e instanceof Refused && /so what is adopted rests on what the files say now/.test(e.message));
   assert.deepEqual(rt.tree.state.writes, [], "nothing was written on facts a commit old");
   await run(rt, "discover");
   assert.equal((await run(rt, "design")).state, "CREATE", "and once it is read again, a design is made");
@@ -94,14 +98,14 @@ test("a design asked for again after its files were removed is OPEN again, and c
   const rt = bound();
   await run(rt, "discover");
   const first = await run(rt, "design");
-  await run(rt, "adopt", first.id, "--human");
+  await asPerson(rt, "adopt", first.id, "--human");
   assert.equal(rt.ctx.proposals.read(first.id).status, "adopted");
   const again = await run(rt, "design");
   assert.notEqual(again.state, "CREATE", "while the files are there there is nothing to create: the design is a different one");
   delete rt.tree.state.files[".devcontainer/devcontainer.json"];
   const reopened = await run(rt, "design");
   assert.deepEqual([reopened.id, reopened.state, rt.ctx.proposals.read(first.id).status], [first.id, "CREATE", "open"], "the same design, open again");
-  const done = await run(rt, "adopt", first.id, "--human");
+  const done = await asPerson(rt, "adopt", first.id, "--human");
   assert.equal(done.instance.state, "ADOPTED");
   assert.deepEqual(rt.tree.state.writes, [".devcontainer/devcontainer.json", ".devcontainer/devcontainer.json"], "written the first time and again");
 });
@@ -111,12 +115,12 @@ test("a machine without the container tools is BLOCKED, and the environment is n
   await run(rt, "discover");
   await run(rt, "doctor");
   const proposal = await run(rt, "design");
-  await run(rt, "adopt", proposal.id, "--human");
+  await asPerson(rt, "adopt", proposal.id, "--human");
   const before = JSON.stringify(rt.ctx.instances.list());
-  await assert.rejects(() => run(rt, "validate", "--human"), (e) => e instanceof Blocked && /the Docker command is not available — install Docker/.test(e.message) && /the Dev Containers CLI is not available/.test(e.message));
+  await assert.rejects(() => run(rt, "validate"), (e) => e instanceof Blocked && /the Docker command is not available — install Docker/.test(e.message) && /the Dev Containers CLI is not available/.test(e.message));
   assert.equal(JSON.stringify(rt.ctx.instances.list()), before, "the instance is exactly as it was: ADOPTED, no failed validation recorded");
   assert.deepEqual(rt.process.calls.filter((c) => c.file === "devcontainer"), [], "and nothing was asked of a tool that is not there");
-  await assert.rejects(() => run(rt, "prepare", "--apply", "--human"), (e) => e instanceof Blocked);
+  await assert.rejects(() => run(rt, "prepare", "--apply"), (e) => e instanceof Blocked);
 });
 
 test("--dry says what would be read and leaves the store and the registry alone", async () => {
@@ -132,19 +136,19 @@ test("Scenario B end to end: design -> review -> adopt (a person) -> validate ->
   await run(rt, "discover");
   const proposal = await run(rt, "design");
   assert.equal(proposal.state, "CREATE");
-  assert.match(COMMANDS.design.say(proposal), /adopt it with: runtime adopt ep-[a-f0-9]{12} --human/);
+  assert.match(COMMANDS.design.say(proposal), /adopt it yourself in Orbit Control \(Runtime → proposal ep-[a-f0-9]{12} → Adopt\)/);
   assert.match(COMMANDS.design.say(proposal), /\n {2}create \.devcontainer\/devcontainer\.json\n {6}\| \/\/ Created by Orbit[^\n]*\n(?: {6}\|[^\n]*\n)*? {6}\|\s+"appPort": \[/, "a person reviews the bytes adopting would write");
   assert.equal(rt.tree.state.writes.length, 0, "designing writes nothing");
   assert.equal((await run(rt, "design")).id, proposal.id, "the same design is the same proposal");
   assert.equal(rt.ctx.proposals.list().length, 1);
-  await assert.rejects(() => run(rt, "adopt", proposal.id), /a person's — relay it with --human/);
-  const adopted = await run(rt, "adopt", proposal.id, "--human");
+  await assert.rejects(() => run(rt, "adopt", proposal.id), (e) => e.code === "PROTECTED_DENIED" && /A person does it themselves, in Orbit Control \(Runtime → proposal ep-[a-f0-9]{12} → Adopt\)/.test(e.message));
+  await assert.rejects(() => run(rt, "adopt", proposal.id, "--human"), (e) => e.code === "PROTECTED_DENIED", "--human from a terminal crosses nothing");
+  assert.equal(rt.tree.state.writes.length, 0, "an agent's adopt writes nothing");
+  const adopted = await asPerson(rt, "adopt", proposal.id, "--human");
   assert.deepEqual([adopted.instance.state, rt.tree.state.writes], ["ADOPTED", [".devcontainer/devcontainer.json"]]);
   assert.match(COMMANDS.adopt.say(adopted), /adopted is not validated/);
   rt.process.run = (file, args) => (rt.process.calls.push({ file, args }), { ok: true, out: "", status: 0 });
-  await assert.rejects(() => run(rt, "validate"), /validating is it builds the environment on this machine.*relay it with --human/);
-  assert.equal(rt.process.calls.length, 0, "refused before the machine was asked anything");
-  assert.equal((await run(rt, "validate", "--human")).state, "VALIDATED");
+  assert.equal((await run(rt, "validate")).state, "VALIDATED", "bringing a local environment up is autonomous: nobody relays anything");
   await run(rt, "configure", "--strategy=devcontainer", "--human");
   rt.process.run = (file, args) => (rt.process.calls.push({ file, args }), { ok: true, out: args[0] === "ps" ? "abc\n" : "", status: 0 });
   const started = await run(rt, "start", "--component=node:web");
@@ -169,28 +173,27 @@ test("Scenario C end to end: a stale dev container is PATCHED -- comments intact
   const proposal = await run(rt, "design");
   assert.equal(proposal.state, "PATCH");
   assert.match(COMMANDS.design.say(proposal), /\n {2}patch {2}\.devcontainer\/devcontainer\.json {2}\(2 edit\(s\); every other byte stays\)\n {6}set {4}features › ghcr\.io\/devcontainers\/features\/dotnet:2 › version {2}"9\.0"\n {6}set {4}features › ghcr\.io\/devcontainers\/features\/node:1 › version {2}"22"\n/, "each edit, as the key it touches and the value it leaves");
-  await run(rt, "adopt", "--human");
+  await asPerson(rt, "adopt", "--human");
   assert.equal(rt.tree.read(".devcontainer/devcontainer.json"), DEVCONTAINER_JSONC.replace('"version": "20"', '"version": "22"').replace('"version": "8.0"', '"version": "9.0"'));
 });
 
-test("adopting is refused before anything is touched when a person did not relay it", async () => {
-  const inert = new Proxy({}, { get: () => { throw new Error("the context was touched"); } });
-  await assert.rejects(() => COMMANDS.adopt.run(inert, ["ep-aaaaaaaaaaaa"]), /relay it with --human/);
+test("adopting is refused before anything of the checkout is touched unless Orbit Control's door is acting", async () => {
+  const inert = new Proxy({}, { get: (target, key) => { if (key === "door") return undefined; throw new Error("the context was touched"); } });
+  await assert.rejects(() => COMMANDS.adopt.run(inert, ["ep-aaaaaaaaaaaa"]), (e) => e.code === "PROTECTED_DENIED" && /in Orbit Control \(Runtime → proposal ep-aaaaaaaaaaaa → Adopt\)/.test(e.message));
+  await assert.rejects(() => COMMANDS.adopt.run(inert, ["ep-aaaaaaaaaaaa", "--human"]), (e) => e.code === "PROTECTED_DENIED");
 });
 
-test("forgetting is a person's, refused before anything is read; a checkout is named by the directory projects prints or by twelve characters of its id", async () => {
-  const inert = new Proxy({}, { get: () => { throw new Error("the context was touched"); } });
-  await assert.rejects(() => COMMANDS.forget.run(inert, ["/work/gone"]), /forgetting a checkout is a person's/);
+test("forgetting a checkout whose directory is gone is store bookkeeping, and autonomous; a checkout is named by the directory projects prints or by twelve characters of its id", async () => {
   const asked = [];
   const twins = [{ id: "ab".repeat(32), root: "/work/gone" }, { id: `${"ab".repeat(6)}${"cd".repeat(26)}`, root: "/work/also-gone" }];
   const ctx = { registry: { list: () => [{ key: "repo-aaaa", name: "shop", checkouts: twins.map((c) => ({ ...c, exists: false })) }], forget: (key, id) => asked.push([key, id]) } };
-  const done = await COMMANDS.forget.run(ctx, ["/work/gone", "--human"]);
+  const done = await COMMANDS.forget.run(ctx, ["/work/gone"]);
   assert.match(COMMANDS.forget.say(done), /FORGOTTEN \/work\/gone, a checkout of shop whose directory is gone/);
   await COMMANDS.forget.run(ctx, [twins[1].id.slice(0, 14), "--human"]);
   assert.deepEqual(asked, [["repo-aaaa", twins[0].id], ["repo-aaaa", twins[1].id]]);
   await assert.rejects(() => COMMANDS.forget.run(ctx, ["ab".repeat(6), "--human"]), /names more than one checkout/);
   await assert.rejects(() => COMMANDS.forget.run(ctx, ["/work/nowhere", "--human"]), /no checkout \/work\/nowhere is known on this machine/);
-  assert.match(COMMANDS.projects.say(ctx.registry.list()), /forgotten by a person: runtime forget <its directory> --human/);
+  assert.match(COMMANDS.projects.say(ctx.registry.list()), /comes off this list with: runtime forget <its directory>/);
 });
 
 test("a stale proposal is refused -- the developer's edit is not overwritten -- and designing again makes a fresh one", async () => {
@@ -198,10 +201,10 @@ test("a stale proposal is refused -- the developer's edit is not overwritten -- 
   await run(rt, "discover");
   const proposal = await run(rt, "design");
   rt.tree.edit(".devcontainer/devcontainer.json", `${DEVCONTAINER_JSONC}// mine\n`);
-  await assert.rejects(() => run(rt, "adopt", proposal.id, "--human"), (e) => e.code === "STALE_PROPOSAL");
+  await assert.rejects(() => asPerson(rt, "adopt", proposal.id, "--human"), (e) => e.code === "STALE_PROPOSAL");
   const fresh = await run(rt, "design");
   assert.notEqual(fresh.id, proposal.id);
-  assert.equal((await run(rt, "adopt", fresh.id, "--human")).instance.state, "ADOPTED");
+  assert.equal((await asPerson(rt, "adopt", fresh.id, "--human")).instance.state, "ADOPTED");
   assert.ok(rt.tree.read(".devcontainer/devcontainer.json").includes("// mine"), "their note survived the patch");
 });
 
@@ -210,7 +213,7 @@ test("a definition that appears while a CREATE proposal is being read makes it s
   await run(rt, "discover");
   const proposal = await run(rt, "design");
   rt.tree.edit(".devcontainer.json", "{}");
-  await assert.rejects(() => run(rt, "adopt", proposal.id, "--human"), (e) => e.code === "STALE_PROPOSAL" && /\.devcontainer\.json changed/.test(e.message));
+  await assert.rejects(() => asPerson(rt, "adopt", proposal.id, "--human"), (e) => e.code === "STALE_PROPOSAL" && /\.devcontainer\.json changed/.test(e.message));
 });
 
 test("record keeps an agent's inference as a HYPOTHESIS: possible, never certain, never launched, and never overwriting what a file derived", async () => {

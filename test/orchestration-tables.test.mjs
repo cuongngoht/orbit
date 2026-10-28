@@ -10,7 +10,9 @@ import { documented, headerOf } from "../src/trace/commands.mjs";
 import { ACTIONS, ACTION_KINDS } from "../src/orchestration/dispatch.mjs";
 import { DISPATCHER, NOT_ORCHESTRATION, OPERATIONS, classOfAction, classOfCommand } from "../src/orchestration/governance.mjs";
 import { COMMANDS, COMMAND_NAMES } from "../src/orchestration/index.mjs";
-import { GATED, gateOf } from "../src/orchestration/policy.mjs";
+import { gateOf, verdictOf } from "../src/orchestration/policy.mjs";
+import { fingerprintOf } from "../src/protected/authorize.mjs";
+import { BOUNDARY_IDS } from "../src/protected/boundaries.mjs";
 import { inScope, reviewOf, scopeProblem, unexpectedOf } from "../src/orchestration/review.mjs";
 import { CLEARS, MOVES, STAGES, allowedNow, beforeAct, movesOf, unblocks } from "../src/orchestration/stages.mjs";
 import { STOPS, STOP_EVIDENCE, stopOf } from "../src/orchestration/stop.mjs";
@@ -215,12 +217,23 @@ test("the stop rows, in order of urgency -- and only the evidence-backed ones wr
 
 // ---- policy and governance ------------------------------------------------------------------------
 
-test("only a capability that declares it changes state needs a person, and its fingerprint covers what it asks", () => {
-  assert.deepEqual(GATED.map((g) => g.kind), ["invoke"]);
-  const describe = (id) => ({ "x.write": { mutates: true, connection: "tracker-dev" }, "x.read": { mutates: false } })[id] ?? null;
-  assert.equal(gateOf("invoke", { capability: "x.read" }, describe), null);
-  assert.deepEqual(gateOf("invoke", { capability: "x.write", input: { n: 1 } }, describe), { type: "capability.invoke", tool: "x.write", environment: "tracker-dev", params: { capability: "x.write", input: { n: 1 } }, risk: "x.write declares that it changes state outside the task's workspace" });
-  assert.equal(gateOf("check", { command: "rt" }, describe), null);
+test("every step asks the protected-boundary leaf: a workspace write, a check and an ordinary write are AUTO; a push and a production deploy need a person -- and the gate carries the boundary", () => {
+  const describe = (id) => ({ "x.write": { id: "x.write", mutates: true, effects: ["write"], environment: "production" }, "x.deploy": { id: "x.deploy", mutates: true, effects: ["deploy"], environment: "production" }, "x.read": { id: "x.read", mutates: false } })[id] ?? null;
+  const lw = { id: "tsk-0123456789ab", describe, view: { task: { project: "repo-a" }, receipts: [{ domain: "commit", ref: "c".repeat(40) }] }, remote: () => "https://git.example.invalid/acme/repo.git" };
+  for (const [kind, a] of [["implement", {}], ["record-changes", {}], ["commit", {}], ["check", { command: "rt" }], ["prepare-sandbox", {}], ["invoke", { capability: "x.read" }], ["invoke", { capability: "x.write", input: { n: 1 } }]]) {
+    assert.equal(verdictOf(ACTIONS[kind], a, lw).decision, "auto", `${kind} ${a.capability ?? ""} is autonomous`);
+    assert.equal(gateOf(ACTIONS[kind], a, lw), null);
+  }
+  assert.deepEqual(ACTIONS.implement.semantic({}, lw), { kind: "repository.write", home: "task-workspace" }, "the change is a write to the task's OWN workspace");
+  const deploy = gateOf(ACTIONS.invoke, { capability: "x.deploy", input: { artifact: "a:1" } }, lw);
+  assert.deepEqual([deploy.type, deploy.tool, deploy.environment, deploy.boundary, deploy.destructive], ["deployment.production", "x.deploy", "production", "PRODUCTION_DEPLOY", false]);
+  assert.deepEqual(deploy.params.input, { artifact: "a:1" }, "the whole input is hashed into the fingerprint, and never kept");
+  assert.notEqual(fingerprintOf(deploy), fingerprintOf(gateOf(ACTIONS.invoke, { capability: "x.deploy", input: { artifact: "a:2" } }, lw)));
+  const push = gateOf(ACTIONS.push, {}, lw);
+  assert.deepEqual([push.type, push.tool, push.environment, push.boundary, push.params.ref, push.params.commit, push.params.force], ["repository.push", "origin", "origin", "GIT_PUSH", "refs/heads/orbit/tsk-0123456789ab", "c".repeat(40), false]);
+  assert.match(push.params.url, /^[0-9a-f]{64}$/, "the remote's URL is fingerprinted by digest, never kept");
+  assert.equal(push.shows.at, "git.example.invalid/acme/repo.git", "and shown without who it signs in as");
+  assert.deepEqual(BOUNDARY_IDS, ["PRIMARY_CHECKOUT_WRITE", "GIT_PUSH", "PRODUCTION_DEPLOY", "PRODUCTION_DB_MIGRATION", "PRODUCTION_DESTRUCTIVE_DATA"]);
 });
 
 test("governance: every command but the dispatcher and every action is in exactly one class, writing what its row says; none is a forbidden one", () => {
@@ -234,13 +247,14 @@ test("governance: every command but the dispatcher and every action is in exactl
   assert.equal(COMMANDS[DISPATCHER].writes, "by-action");
   assert.deepEqual(OPERATIONS.filter((o) => NOT_ORCHESTRATION.includes(o.class)), []);
   assert.ok(OPERATIONS.every((o) => !["repository", "primary"].includes(o.mutates)), "nothing writes the primary checkout");
-  assert.deepEqual(OPERATIONS.filter((o) => o.approval !== "none").map((o) => o.class), ["CAPABILITY_INVOKE"]);
+  assert.deepEqual(OPERATIONS.filter((o) => o.approval !== "none").map((o) => [o.class, o.approval]), [["CAPABILITY_INVOKE", "boundary"], ["PROTECTED_DELIVERY", "control"]]);
+  assert.deepEqual([classOfAction("push").class, classOfAction("commit").class], ["PROTECTED_DELIVERY", "WORKSPACE_WRITE"], "a local commit is the workspace's; a push is a protected boundary");
   assert.deepEqual([classOfAction("prepare-sandbox").class, classOfAction("start-sandbox").class], ["SANDBOX_DELEGATION", "SANDBOX_DELEGATION"]);
-  assert.deepEqual([classOfAction("start-sandbox").mutates, classOfAction("start-sandbox").approval], ["machine", "none"], "the person's grant is runtime's own trust gate, never a step's");
+  assert.deepEqual([classOfAction("start-sandbox").mutates, classOfAction("start-sandbox").approval, classOfAction("prepare-sandbox").approval], ["machine", "none", "none"], "a task's own sandbox is autonomous");
   assert.equal(classOfAction("start-runtime").class, "RUNTIME_DELEGATION");
   assert.ok(ACTIONS["start-sandbox"].mutates({}, {}, null) && ACTIONS["prepare-sandbox"].mutates({}, {}, null), "both change the machine, so both are journaled as mutations");
-  assert.deepEqual(ACTION_KINDS.filter((k) => ACTIONS[k].mutates({}, {}, null) === true && !["workspace", "machine"].includes(classOfAction(k).mutates)), []);
-  for (const forbidden of ["PRIMARY_CHECKOUT_WRITE", "PUSH", "MERGE", "DEPLOY", "PRODUCTION_WRITE", "ARBITRARY_SHELL", "HUMAN_APPROVAL_GRANT"]) assert.ok(NOT_ORCHESTRATION.includes(forbidden));
+  assert.deepEqual(ACTION_KINDS.filter((k) => ACTIONS[k].mutates({}, {}, null) === true && !["workspace", "machine"].includes(classOfAction(k).mutates)), ["push"], "the one mutation that leaves the machine is the protected push");
+  assert.deepEqual(NOT_ORCHESTRATION, ["PRIMARY_CHECKOUT_WRITE", "MERGE", "ARBITRARY_SHELL", "HUMAN_APPROVAL_GRANT"]);
 });
 
 test("the CLI documents exactly its commands, offers no command-line, shell or person's flag, and its task context has no door", () => {

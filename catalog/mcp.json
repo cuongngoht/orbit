@@ -23,7 +23,8 @@
       "recommended": false,
       "match": { "ids": ["github"], "urls": ["api.githubcopilot.com/mcp"] },
       "provides": ["repository.read", "repository.search", "repository.write", "code.review", "workitem.read", "workitem.relations.read", "workitem.comments.read"],
-      "routing": { "requiresSignal": true, "signals": ["github", "pr", "pull request", "issue", "issues", "repository", "repo", "work item"] }
+      "routing": { "requiresSignal": true, "signals": ["github", "pr", "pull request", "issue", "issues", "repository", "repo", "work item"] },
+      "protected": { "push_files": "repository.push", "create_or_update_file": "repository.push", "delete_file": "repository.push", "create_branch": "repository.push", "merge_pull_request": "repository.push", "update_pull_request_branch": "repository.push" }
     },
     {
       "id": "azure-devops",

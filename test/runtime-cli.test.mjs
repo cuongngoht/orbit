@@ -103,17 +103,17 @@ test("--json prints the same answer as data, for Orbit Control and for a model t
   assert.equal(JSON.parse(run(c, "projects", "--json").stdout).length, 1);
 });
 
-test("adopting is a person's: without --human it is refused (2) before a thing is touched, with it exactly the proposal's file is written", (t) => {
+test("adopting writes the checkout -- a protected boundary: from any terminal, --human or not, it is refused (2) and nothing is touched", (t) => {
   const c = checkout(t);
   run(c, "discover");
   const proposal = JSON.parse(run(c, "design", "--json").stdout);
   const refused = run(c, "adopt", proposal.id);
   assert.equal(refused.status, 2);
-  assert.match(refused.stderr, /relay it with --human/);
-  assert.equal(status(c.repo), "");
-  const done = run(c, "adopt", proposal.id, "--human");
-  assert.equal(done.status, 0, done.stderr);
-  assert.equal(status(c.repo), "?? .devcontainer/", "exactly the proposal's path is new, and nothing is committed");
+  assert.match(refused.stderr, /PROTECTED_DENIED: .*A person does it themselves, in Orbit Control/s);
+  const relayed = run(c, "adopt", proposal.id, "--human");
+  assert.equal(relayed.status, 2, "an agent relaying --human is not a person: only Orbit Control's door crosses it");
+  assert.match(relayed.stderr, /no terminal can prove a person/);
+  assert.equal(status(c.repo), "", "nothing was written into the checkout");
 });
 
 test("start with nothing known is BLOCKED or REFUSED, never a guess -- and never a failure of the product (1)", (t) => {

@@ -7,6 +7,7 @@ import { durationOf, clockOf } from "./lines.mjs";
 import { headOf } from "./compact.mjs";
 import { drawn } from "./width.mjs";
 import { STEP_DONE, WORKFLOW_GLYPHS } from "../words.mjs";
+import { protectedFold, protectedSay, titleOf } from "../protected.mjs";
 
 const str = (v) => (typeof v === "string" && v.length > 0 ? v : null);
 const joined = (...parts) => parts.filter(Boolean).join(" · ");
@@ -38,6 +39,13 @@ export const MILESTONES = [
   { when: (e) => e.kind === "decision" && /^diagnose/.test(String(e.nextAction ?? "")), glyph: "ok", say: () => "Agent diagnosing failure" },
   { when: (e) => e.kind === "attempt-started" && e.cause === "fix", glyph: "started", say: () => "Fix recorded · running tests again" },
   { when: (e) => e.kind === "attempt-started" && e.cause === "retest", glyph: "started", say: () => "Running tests again" },
+  { when: (e, ctx) => e.kind === "approval-requested" && ctx.asked?.has(e.id), glyph: "person", say: (e) => joined(`Waiting for approval · ${protectedSay(e)}`, e.id, "decide in Orbit Control") },
+  { when: (e, ctx) => e.kind === "approval-granted" && ctx.asked?.has(e.id), glyph: "ok", say: (e, ctx) => joined("Approval granted", titleOf(ctx.asked.get(e.id)), e.id) },
+  { when: (e, ctx) => e.kind === "approval-rejected" && ctx.asked?.has(e.id), glyph: "failed", say: (e, ctx) => joined("Approval rejected", titleOf(ctx.asked.get(e.id)), e.id) },
+  { when: (e, ctx) => e.kind === "approval-expired" && ctx.asked?.has(e.id), glyph: "warning", say: (e, ctx) => joined("Approval expired", titleOf(ctx.asked.get(e.id)), e.id) },
+  { when: (e, ctx) => e.kind === "action-started" && ctx.asked?.has(e.approval), glyph: "started", say: (e, ctx) => `${titleOf(ctx.asked.get(e.approval))} executing` },
+  { when: (e, ctx) => e.kind === "action-completed" && ctx.spentBy?.has(e.id), glyph: "auto", say: (e, ctx) => joined(`${titleOf(ctx.asked.get(ctx.spentBy.get(e.id)))} ${e.outcome === "succeeded" ? "completed" : "failed"}`, str(e.summary)) },
+  { when: (e, ctx) => e.kind === "action-failed" && ctx.spentBy?.has(e.id), glyph: "failed", say: (e, ctx) => joined(`${titleOf(ctx.asked.get(ctx.spentBy.get(e.id)))} failed`, str(e.summary) ?? str(e.reason)) },
   { when: (e) => e.kind === "approval-requested", glyph: "person", say: (e) => joined(`Waiting for a person's approval · ${e.id}`, "decide in Orbit Control") },
   { when: (e) => e.kind === "blocked", glyph: "warning", say: (e) => joined(`Blocked: ${e.stop}`, str(e.needs) && `needs ${e.needs}`) },
   { when: (e) => e.kind === "completed", glyph: "ok", say: () => "Completed" },
@@ -53,7 +61,7 @@ const GLYPH_OF = { auto: (e) => (e.outcome === "succeeded" ? GLYPH.ok : GLYPH.fa
 
 const glyphOf = (row, e) => (GLYPH_OF[row.glyph] ?? (() => GLYPH[row.glyph]))(e);
 
-const contextOf = (events) => ({ types: new Map(events.filter((e) => isTask(e) && e.kind === "action-started").map((e) => [e.id, str(e.type)])) });
+const contextOf = (events) => ({ types: new Map(events.filter((e) => isTask(e) && e.kind === "action-started").map((e) => [e.id, str(e.type)])), ...protectedFold(events.filter(isTask)) });
 
 // The milestones of a journal, oldest first: { at, glyph, tone, say }.
 export function milestonesOf(events) {

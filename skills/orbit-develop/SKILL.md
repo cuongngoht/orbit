@@ -134,8 +134,10 @@ node ${CLAUDE_PLUGIN_ROOT}/cli/resources.mjs route "<the task>" --json
   node ${CLAUDE_PLUGIN_ROOT}/cli/mcp.mjs call <server> <tool> --for=<capability> --workflow=orbit-develop --input='<json>'
   ```
 
-- **Approval** — say so and stop that branch: a person approves it in Orbit Control, then you ask
-  again. Never try another route around an approval or a policy.
+- **Approval** — a server a person put under approval, or a tool that crosses a PROTECTED BOUNDARY (a push, a
+  merge, a production deploy or migration, destroying production data -- refused on any direct call): say so and stop
+  that branch. A push of the change goes through an engineering task's own `push` step, approved once in Orbit Control.
+  Never try another route around an approval, a boundary or a policy.
 - **Missing / blocked** — report it with the reason the resolver gave, and continue without it
   where the task allows. Do **not** install, enable, add or configure anything yourself: that is
   Orbit Control's, and a person's.

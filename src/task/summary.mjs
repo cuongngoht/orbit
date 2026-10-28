@@ -2,7 +2,7 @@
 // -- where it stands, why it is not going on, which attempt, and what waits for them -- taken
 // from the same view a task page shows, so a row and its page cannot disagree.
 
-const approvalBrief = (a) => ({ id: a.id, action: a.action, environment: a.environment, reason: a.reason, risk: a.risk, attempt: a.attempt, requestedAt: a.requestedAt, expires: a.expires });
+const approvalBrief = (a) => ({ id: a.id, action: a.action, environment: a.environment, reason: a.reason, risk: a.risk, attempt: a.attempt, requestedAt: a.requestedAt, expires: a.expires, boundary: a.boundary ?? null, title: a.title ?? null, destructive: a.destructive === true, shows: a.shows ?? null });
 
 const decisionBrief = (d) => (d ? { observed: d.observed, nextAction: d.nextAction, at: d.at } : null);
 

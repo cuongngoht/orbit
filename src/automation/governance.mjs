@@ -25,6 +25,8 @@ export const OPERATIONS = [
   { class: "GOVERNED_INVOCATION", commands: [], steps: [], mutates: "none", approval: "none", says: "a DECLARED playbook's step (0.0.4): the engine asks the provider the resolver picks, now, through that provider's own owner gate -- a managed server's broker or a project capability's pipeline -- for reading only; a write is refused before it is sent" },
 ];
 
+// What a coordinator's OWN commands and steps never are. A push or a production deploy is never the coordinator's: it is
+// an engineering task's own action, crossing a protected boundary (src/protected/) only on a person's approval of it.
 export const NOT_AUTOMATION = ["MODEL_CALL", "ARBITRARY_SHELL", "PRIMARY_CHECKOUT_WRITE", "CHILD_JOURNAL_WRITE", "HUMAN_APPROVAL_GRANT", "SETTINGS_WRITE", "PUSH", "MERGE", "DEPLOY"];
 
 export const classOfCommand = (name) => OPERATIONS.find((o) => o.commands.includes(name)) ?? null;

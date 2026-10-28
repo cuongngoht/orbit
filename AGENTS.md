@@ -111,7 +111,10 @@ reads a host's configuration, a PATH or a catalog file -- it reads the registry.
 is a leaf for the reason `src/freshness.mjs` is one: the resolver (routing) and the MCP invocation
 gate (mcp) must give the same verdict and neither may import the other. `src/store/archive.mjs` is
 the one install transaction both `src/tools/` and `src/mcp/` call, so neither reads the other.
-`src/context/` is pure data; `cli/context.mjs` composes it with the process port. `src/intelligence/` imports none of architecture, engineering, qa, learn or the
+`src/context/` is pure data; `cli/context.mjs` composes it with the process port. `src/protected/` (0.2.0) is a
+LEAF for the reason `src/policy.mjs` is one: the task's approvals, the orchestrator, the capability pipeline, the MCP
+broker, the runtime writer, automation's matrix and Live must give the same verdict about the same action, and none
+may import another -- it imports only `src/hash.mjs`, `src/scrub.mjs` and `src/printable.mjs`. `src/intelligence/` imports none of architecture, engineering, qa, learn or the
 extensions: the source port (asked of `architecture/context.mjs` `scanRoots`), the registered
 capabilities, the binding engineering conventions and engineering's untrusted door
 (`engineering/observe/index.mjs` `admitted`) are all bound by `cli/intelligence.mjs` and handed
@@ -150,6 +153,20 @@ each takes those as parameters so a test can substitute them. `src/run/context.m
 place real adapters are bound to real config.
 
 ## Rules that are enforced, not advised
+
+- **Autonomous by default: a person decides only at a Protected Boundary (0.2.0, ADR 0042).** Everything Orbit does is
+  AUTO -- reading, planning, a task's own workspace and its local commit, building, testing, QA, a task's own sandbox
+  with its restores, containers and local databases, a staging deploy, an ordinary integration write, an action kind
+  nobody has seen -- unless it crosses one of five boundaries declared ONCE in `src/protected/boundaries.mjs`: primary
+  checkout write (DENY; a person's own act crosses it once), git push, production deploy, production database migration
+  (APPROVE_ONCE) and destructive production data (APPROVE_ONCE_DESTRUCTIVE). An executor describes what it is about to
+  do as a structured action and asks `authorize()` (`src/protected/authorize.mjs`) -- never a command string; what is
+  production is what a person or a project DECLARED, and unknown is never production. An approve-once is the existing
+  task approval: one open request per fingerprint, granted only in Orbit Control on the revision read, consumed before
+  the action starts, its fingerprint derived again just before it runs; nothing else is an approval, and no approval is
+  a standing permission. The capability pipeline refuses a protected call that carries no spent approval of exactly it
+  and the MCP broker refuses a protected tool call outright, so no second route crosses
+  (`test/protected-boundaries.test.mjs`, `test/protected-bypass.test.mjs`, `test/orchestration-push.test.mjs`).
 
 - **Plugin code is replaceable; the machine store is durable; neither is "memory".** The plugin
   directory is immutable product code and catalogs. The machine store (`storeBase`) keeps
@@ -311,14 +328,14 @@ place real adapters are bound to real config.
   program. A session receipt is written before the launch, so a start that dies is AMBIGUOUS and is never resent,
   and the look for what is running and the launch are one step taken in turn per checkout (`exclusive.mjs`). A
   sandbox's containers are a TOPOLOGY Runtime composed from those declarations (ADR 0039): a compose file is read and
-  never run, every container is created from argv, labelled and receipted, and the topology runs only under a
-  fingerprint a person trusted in Control.
-- **A checkout is untrusted data, and what it can make this machine do is a person's.** A tool's version is asked
+  never run, every container is created from argv, labelled and receipted, and the topology runs autonomously in the
+  task's own sandbox (0.2.0), its fingerprint kept as evidence of exactly what ran.
+- **A checkout is untrusted data, and Orbit contains what it can make this machine do.** A tool's version is asked
   from a neutral directory (`src/tools/real.mjs`), never from inside the checkout; text that came from a file is made
   printable before a terminal sees it (`src/printable.mjs`); a reader is linear in what it reads and a scan reads at
-  most `MAX_EVIDENCE_FILES` (`test/runtime-bounds.test.mjs`); and bringing an environment up (`validate`,
-  `prepare --apply`), which can run the definition's `initializeCommand` on the host, is `--human` like `adopt`. The
-  playbook pre-approves only the commands that read or keep something in Orbit's own store.
+  most `MAX_EVIDENCE_FILES` (`test/runtime-bounds.test.mjs`). Bringing a local environment up (`validate`,
+  `prepare --apply`) is ordinary development and autonomous (0.2.0), like a task's own sandbox: what ran is
+  fingerprinted, receipted and owned; nothing a checkout says becomes a shell line.
 - **Orbit stops only what it can prove is its own, and never takes what is held.** Ownership is a receipt, a pid and
   the pid's start time in agreement (`OWNERSHIP`); a reused pid is observed, never touched. A port in use blocks
   the start and names its owner when known -- never freed, never moved, and REUSED only when a person turned
@@ -337,11 +354,15 @@ place real adapters are bound to real config.
   removes an INTERNAL network of the task's own -- labelled with the checkout, the environment and the task,
   receipted before it exists, joined only by containers Runtime created, and removed only when its labels and receipt
   prove it Orbit's and nothing else is attached. A network Orbit did not create is never touched.
-- **`src/runtime/writer.mjs` is the one module that writes a checkout outside `ui-tests/`, and only for a person.**
-  `adopt --human` writes a proposal's files while the understanding and the environment files are what it was made
-  against (`STALE_PROPOSAL`), reads each back and verifies it (`ADOPT_UNVERIFIED` leaves the files as written), and
-  a JSONC edit changes the keys it names while every other byte stays. A grep test holds the only-writer rule; a
-  lifecycle hook or a compose file is never rewritten automatically (`UNSAFE`).
+- **`src/runtime/writer.mjs` is the one module that writes a checkout outside `ui-tests/`: the PRIMARY_CHECKOUT_WRITE
+  protected boundary.** `adopt` is DENY from every terminal and every agent, `--human` or not; only a person's own act
+  crosses it, once, through Orbit Control's door (`crossing`, `src/protected/authorize.mjs`: a terminal cannot prove a
+  person -- an agent can make a pseudo-terminal and knows every id it was shown) -- refused before anything is read
+  otherwise. It writes a proposal's files while the
+  understanding and the environment files are what it was made against (`STALE_PROPOSAL`), reads each back and verifies
+  it (`ADOPT_UNVERIFIED` leaves the files as written), and a JSONC edit changes the keys it names while every other
+  byte stays. A grep test holds the only-writer rule; a lifecycle hook or a compose file is never rewritten
+  automatically (`UNSAFE`).
 - **A sandbox never reuses a developer's application, and a developer never reuses a sandbox's.** A sandbox is an
   environment instance with an owner (`{kind: "task", id}`); its sessions carry that owner, the environment and the
   source tree they were built from, and a context sees only the sessions of its own scope (`ENV_SCOPE`: a person's
@@ -357,12 +378,16 @@ place real adapters are bound to real config.
   passed over; nothing frees, moves or signals a holder. A component is told its port by an override its project's
   own files declared or a person set (`portOverride`), never guessed; with none it keeps the port its files declare,
   and a held one is a BLOCKED start naming its holder (`test/runtime-sandbox-ports.test.mjs`).
-- **Trust is a person's, by the whole SHA-256 of what would run, and only through Orbit Control.** Restoring a
-  workspace's dependencies and bringing a container definition up run only under a fingerprint a person trusted in the
-  settings (`sandbox.restore.trusted`, `sandbox.trustedDefinitions`); an edited lock file or definition is a different
-  fingerprint, and the fingerprint is taken again immediately before the run. The `trust` command refuses unless the
-  context has `door: "control"`, which only Control sets after its mutation token: a terminal cannot prove who typed
-  `--human` (`test/runtime-trust.test.mjs`).
+- **A task's own sandbox is autonomous, and what it ran is evidence (0.2.0, ADR 0042).** Restoring a workspace's
+  dependencies, bringing its container definition up and starting its isolated topology wait for nobody: each is
+  fingerprinted by the whole SHA-256 of exactly what runs, taken again immediately before the run, and kept in the
+  sandbox's receipts. A person's list of fingerprints (`sandbox.restore.trusted`, `sandbox.trustedDefinitions`,
+  `isolation.trusted*`) is a REVIEW MARK those receipts name -- never a gate; the `trust` command that sets one refuses
+  unless the context has `door: "control"` (`test/runtime-trust.test.mjs`). `restore.mode: manual` stays a person's
+  opt-out. ONE technical rule keeps what runs on the HOST the developer's: a dev container definition whose host-side
+  command (`initializeCommand`, outside any container) the task's workspace adds or changes against the developer's
+  own checkout waits for a person's review mark on exactly that definition's fingerprint
+  (`test/runtime-sandbox-devcontainer.test.mjs`); every other part of a definition runs inside the container.
 - **An active generated test runs only where isolation is PROVEN (ADR 0038).** An isolation provider
   (`orbit.isolation-provider/v1`, Docker first) says what it proves, and the PROFILE is attested at prepare and again at
   every dispatch; a native process or a dev container proves nothing, and with no provider an active generated test is
@@ -378,7 +403,7 @@ place real adapters are bound to real config.
   trigger, consume, settle (an ack or a commit), replay or workload control on a resource of the run's own fixture
   needs a grant the engine mints at dispatch through the ordered `MINT` rows (`src/runtime/sandbox/test-grants.mjs`)
   -- owned, isolated, the mode, the capability's declared effects, the fixture, indirect effects inside fixture
-  sinks, a bound oracle and design, the allow-list, the budget, the tree, a person's policy -- and spends one use
+  sinks, a bound oracle and design, the allow-list, the budget, the tree, whatever a person narrowed -- and spends one use
   before the effect. Nothing an
   agent sends (a field, a flag, `--human`) mints one; a destructive test outside the fixture stays refused in every
   mode; a lost answer is read back, never resent, and an intentional duplicate or a replay is a grant of its own.
@@ -658,8 +683,12 @@ place real adapters are bound to real config.
   id and run argv-only; nothing a model writes becomes a command, and there is no command endpoint.
   An action that never settled is read back by `reconcile`, never re-sent. Only a person grants an
   approval or resumes a paused task (the orchestrator's task context has no door); a cancel makes it
-  ask runtime to stop only the sessions this task started. It never pushes, merges or deploys
-  (`NOT_ORCHESTRATION`).
+  ask runtime to stop only the sessions this task started. A verified change is committed autonomously (`commit`);
+  that exact commit is pushed only through the GIT_PUSH protected boundary (`push`, approved once in Control, to the
+  URL the checkout names -- a workspace keeps no `origin`); it never merges (`NOT_ORCHESTRATION`). Neither goes through
+  the workspace's own `.git`, which is the task's to write: the commit is made in a bare git directory beside the tree
+  that only the clone port writes, and the push from one made for that push alone (`src/frontend/local-clones.mjs`, THE
+  DELIVERY), so a hook, a rewritten URL or a `.git` naming the checkout cannot move either.
 - **Live is delivery, never state (ADR 0015).** A page follows the journals the engine already keeps; nothing in Orbit
   Live writes a line anywhere -- an orchestrator's decision is STALE on ANY line after the revision it read, so QA
   activity is never written into a task's journal. Every line is numbered with its store's own keep-rule, so a live

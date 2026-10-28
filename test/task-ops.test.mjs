@@ -233,10 +233,10 @@ const walk = (dir) => readdirSync(dir).flatMap((n) => (statSync(join(dir, n)).is
 const files = walk(TASK).filter((p) => p.endsWith(".mjs"));
 const code = (p) => readFileSync(p, "utf8").split("\n").filter((l) => !/^\s*\/\//.test(l)).join("\n");
 
-// Leaves, the store primitives, the one free-text door, and itself. Never another subject: a
-// task references a work, a requirement, a runtime session and an investigation by id, and reads
-// none of them.
-const ALLOWED = /^(task|store)\//;
+// Leaves, the store primitives, the one free-text door, the protected-boundary leaf (src/protected/: which boundary an
+// approval guards), and itself. Never another subject: a task references a work, a requirement, a runtime session and
+// an investigation by id, and reads none of them.
+const ALLOWED = /^(task|store|protected)\//;
 const SINGLE = new Set(["errors.mjs", "hash.mjs", "constraints.mjs", "scrub.mjs", "printable.mjs", "project/boundary.mjs", "learn/args.mjs"]);
 
 test("src/task imports only leaves, the store primitives and itself -- never work, runtime, investigation or requirements", () => {

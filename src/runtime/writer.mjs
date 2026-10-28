@@ -4,7 +4,9 @@
 //
 // The order of its checks is the order of the damage each prevents:
 //
-//   a person            adopting is `--human`, refused before anything is read
+//   a person            adopting writes the developer's own checkout: the PRIMARY_CHECKOUT_WRITE protected
+//                       boundary (src/protected/), crossed only by a person's own act through Orbit Control's door
+//                       -- refused before anything is read otherwise. No terminal crosses it, `--human` or not
 //   something to write  only CREATE and PATCH write; NO_CHANGE, UNRESOLVED and
 //                       UNSAFE have nothing to adopt, and say why
 //   still true          the understanding it was designed from, and every file it
@@ -25,24 +27,52 @@
 // holds that line, because it is the property that makes "design never writes the
 // repository" true.
 import { Refused } from "../errors.mjs";
+import { BOUNDARY_DOOR, authorize, crossing } from "../protected/authorize.mjs";
+import { ACTION, HOMES } from "../protected/boundaries.mjs";
 import { edit, parse, verify } from "./jsonc.mjs";
 import { adoptable, fingerprintOf, freshness, stale } from "./proposal.mjs";
 import { created, moved } from "./instances.mjs";
 
 export const ADOPT_UNVERIFIED = "ADOPT_UNVERIFIED";
 
+export const PROTECTED_DENIED = "PROTECTED_DENIED";
+
+// `actor`: { door } -- who is acting, as the composition root established it.
 // `now` is what is true at this moment: { understanding, environment: { path: fingerprint } }.
-export function adopt(ctx, proposal, { human, now }) {
-  refusedUnless(proposal, human);
+export function adopt(ctx, proposal, { actor, now }) {
+  refusedUnless(proposal);
+  crossed(ctx, proposal, actor);
   const fresh = freshness(proposal, now);
   if (!fresh.fresh) throw stale(fresh.why);
   return written(ctx, proposal, planned(ctx, proposal));
 }
 
-function refusedUnless(proposal, human) {
-  if (!human) throw new Refused("adopting an environment is a person's — relay it with --human");
+function refusedUnless(proposal) {
   if (!adoptable(proposal)) throw new Refused(`there is nothing to adopt: this proposal is ${proposal.state}, ${proposal.because}`);
   if (proposal.status === "adopted") throw new Refused("this proposal has already been adopted");
+}
+
+// What adopting IS, as the protected-boundary leaf reads it: a write of these files into the developer's own checkout.
+const scopeOf = (proposal) => [...proposal.files.create, ...proposal.files.patch].map((f) => f.path).join(", ") || "environment files";
+
+export const checkoutWriteOf = (ctx, proposal) => ({ kind: ACTION.WRITE, home: HOMES.PRIMARY_CHECKOUT, repository: ctx.name ?? null, checkout: ctx.checkout ?? null, scope: scopeOf(proposal), digest: proposal.id });
+
+const WORDS = (id) => ({ lead: "Nothing was written.", where: `Orbit Control (Runtime → proposal ${id} → Adopt)` });
+
+const denied = (says) => Object.assign(new Refused(`${PROTECTED_DENIED}: ${says}`), { code: PROTECTED_DENIED });
+
+function crossed(ctx, proposal, actor) {
+  const act = crossing(authorize(checkoutWriteOf(ctx, proposal)), actor, WORDS(proposal.id));
+  if (!act.allowed) throw denied(act.says);
+}
+
+// Who is acting is known before anything is read: anything but Orbit Control's door is refused with nothing of the
+// checkout read.
+export const mayBeAPerson = (actor) => actor?.door === BOUNDARY_DOOR;
+
+export function refusedEarly(actor, id) {
+  if (mayBeAPerson(actor)) return;
+  throw denied(crossing(authorize({ kind: ACTION.WRITE, home: HOMES.PRIMARY_CHECKOUT, scope: "environment files" }), actor, WORDS(id ?? "<proposal>")).says);
 }
 
 // Every file's final text, worked out and VERIFIED before any is written, so a

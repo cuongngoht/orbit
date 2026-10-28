@@ -113,6 +113,15 @@ export const EFFECTS = [
   { id: "advance-clock", mutates: true, doc: "moves an injected business clock" },
   { id: "control-workload", mutates: true, doc: "stops, starts, restarts or faults a workload" },
   { id: "replay", mutates: true, doc: "delivers stored messages again, over a bounded range" },
+  // What a protected boundary names (src/protected/capability.mjs, 0.2.0): on a target declared production each runs
+  // only once a person approved exactly that call; anywhere else each is as autonomous as any other write.
+  { id: "deploy", mutates: true, doc: "releases an artifact to an environment" },
+  { id: "migrate", mutates: true, doc: "changes a database's schema" },
+  { id: "delete", mutates: true, doc: "removes records" },
+  { id: "truncate", mutates: true, doc: "empties a table" },
+  { id: "drop", mutates: true, doc: "removes a table, a schema or a database" },
+  { id: "purge", mutates: true, doc: "empties a store or a queue for good" },
+  { id: "reset", mutates: true, doc: "returns a store to empty or to a seed" },
 ];
 
 // The kinds of logical ref an operation binds. A ref is an ALIAS the binding resolves through

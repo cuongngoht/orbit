@@ -26,7 +26,7 @@ import { excerptOf } from "./failure.mjs";
 import { hintOf } from "./hints.mjs";
 import { checkRuns, kindOf, openActions, receiptsOf, sandboxReceipt, sandboxSessions, startRuns } from "./journal.mjs";
 import { owedIds, planView, requiredIds } from "./obligations.mjs";
-import { gateOf } from "./policy.mjs";
+import { gateOf, verdictOf } from "./policy.mjs";
 import { requirementOf } from "./readiness.mjs";
 import { sandboxOf, sbxOf } from "./sandbox.mjs";
 import { allowedNow, beforeAct, movesOf, to, unblocks } from "./stages.mjs";
@@ -82,13 +82,18 @@ function baseTreeOf(ports, lw) {
 // The scope of the latest plan, read back from the task's room: what the change will reach before it does.
 const plannedScope = (ports, view) => ((p) => (p ? ports.room?.read(`plans/${p.id}`)?.scope ?? null : null))(view.actions.filter((x) => x.type === "plan" && x.state === "succeeded").at(-1));
 
+// The commit the workspace's HEAD names, and what the checkout calls one of its remotes: what a push is held to.
+const headOf = (ports, lw) => (lw.workspace?.ready ? ports.workspace.headOf?.(lw.id) ?? null : null);
+
+const remoteOf = (ports, name) => ports.workspace.remote?.(name) ?? null;
+
 // ports: task · requirements · work · runtime · sandbox · workspace · checks · context · capabilities ·
 // investigations · roomOf · lock · liveness · now · host · pid · pidStartedAt · actor (cli/autonomous-engineering.mjs)
 export function loopWorld(ports, id) {
   const view = ports.task.view(id);
   const base = { id, view, events: ports.task.events(id), now: ports.now(), checks: ports.checks.declared(), describe: ports.capabilities.describe };
   const lw = { ...base, requirement: requirementLook(ports, view), workspace: workspaceOf(ports, view), investigations: investigationsOf(ports, view) };
-  return Object.assign(lw, { tree: memo(() => treesOf(ports, lw)), startable: memo(() => startableOf(ports)), graph: memo(() => graphOf(ports)), planned: memo(() => plannedScope(ports, view)), baseTree: memo(() => baseTreeOf(ports, lw)), unpinned: (run) => unpinnedRun(ports, run) });
+  return Object.assign(lw, { tree: memo(() => treesOf(ports, lw)), startable: memo(() => startableOf(ports)), graph: memo(() => graphOf(ports)), planned: memo(() => plannedScope(ports, view)), baseTree: memo(() => baseTreeOf(ports, lw)), unpinned: (run) => unpinnedRun(ports, run), head: memo(() => headOf(ports, lw)), remote: (name) => remoteOf(ports, name) });
 }
 
 const roomed = (ports, id) => ({ ...ports, room: ports.roomOf(id) });
@@ -204,13 +209,19 @@ function keepLeft(ports, action, left) {
 
 const decisionOf = (d) => ({ observed: d.observed, hypothesis: d.hypothesis, nextAction: d.action.kind, evidence: d.evidence, reason: d.reason });
 
-const gateFor = (lw, d) => gateOf(d.action.kind, d.action, lw.describe);
+// What the step IS, judged by the protected-boundary leaf (src/protected/), and -- only when it crosses an
+// approve-once boundary -- the approval it asks for. Everything else is AUTO.
+const judgedOf = (lw, d) => ((row) => ((verdict) => ({ verdict, gate: gateOf(row, d.action, lw, verdict) }))(verdictOf(row, d.action, lw)))(ACTIONS[d.action.kind]);
 
-const actStart = (row, d, lw, gate) => ({ type: row.type(d.action, lw), tool: row.tool(d.action, lw) ?? undefined, label: String(row.label(d.action, lw) ?? "").slice(0, 240) || undefined, mutates: row.mutates(d.action, lw, gate) || undefined, approval: d.approval, environment: gate?.environment, params: gate?.params });
+// An action that crossed a boundary is recorded under the SAME type, tool, environment and params its approval was
+// asked for, so the approval it spends is checked against exactly that action (src/task/approvals.mjs CONSUMING).
+const actStart = (row, d, lw, gate) => ({ type: gate?.type ?? row.type(d.action, lw), tool: gate?.tool ?? row.tool(d.action, lw) ?? undefined, label: String(row.label(d.action, lw) ?? "").slice(0, 240) || undefined, mutates: row.mutates(d.action, lw, gate) || undefined, approval: d.approval, environment: gate?.environment, params: gate?.params });
+
+const askedSay = (id, gate) => `${gate.destructive ? "DESTRUCTIVE — " : ""}this crosses a protected boundary: ${id} asks a person to approve exactly this action, once, in Orbit Control (Mission Control → Approvals). Nothing else waits: read the context again; once it is granted, send the same action with "approval": "${id}"`;
 
 function asked(ports, lw, d, gate) {
-  const done = ports.task.apply(lw.id, "request-approval", { type: gate.type, tool: gate.tool, environment: gate.environment, params: gate.params, reason: d.reason ?? d.hypothesis, risk: gate.risk });
-  return { done: { task: lw.id, state: "waiting-approval", approval: done.lines[0].id, say: `${done.lines[0].id} asks a person to allow this action, once, in Orbit Control (Mission Control → Approvals). Read the context again; once it is granted, send the same action with "approval": "${done.lines[0].id}"` } };
+  const done = ports.task.apply(lw.id, "request-approval", { type: gate.type, tool: gate.tool, environment: gate.environment, params: gate.params, reason: d.reason ?? d.hypothesis, risk: gate.risk, boundary: gate.boundary, destructive: gate.destructive, shows: gate.shows });
+  return { done: { task: lw.id, state: "waiting-approval", approval: done.lines[0].id, boundary: gate.boundary, say: askedSay(done.lines[0].id, gate) } };
 }
 
 const runningOf = (ports, act, kind) => ({ action: act.id, kind, host: ports.host, pid: ports.pid, pidStartedAt: ports.pidStartedAt?.() ?? null, at: act.at });
@@ -224,8 +235,8 @@ function started(ports, lw, d, gate) {
 }
 
 function recorded(ports, lw, d) {
-  const gate = gateFor(lw, d);
-  judge(d, { lw, gate, fp: gate ? ports.task.fingerprint(gate) : null });
+  const { verdict, gate } = judgedOf(lw, d);
+  judge(d, { lw, verdict, gate, fp: gate ? ports.task.fingerprint(gate) : null });
   ports.task.apply(lw.id, "decide", decisionOf(d));
   return gate && !d.approval ? asked(ports, lw, d, gate) : started(ports, lw, d, gate);
 }

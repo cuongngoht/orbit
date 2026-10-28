@@ -47,7 +47,7 @@ const breaks = {
   ALLOWLIST: { design: { oracleRef: "bnd-abc123", designRef: "tds-abc123", operations: ["read"] } },
   BUDGET: { budget: { uses: 0 } },
   TREE: { sandbox: { owner: { kind: "task", id: "tsk-1" }, tree: "tree-a", currentTree: "tree-b", isolated: true } },
-  POLICY: { policy: { revision: "p-1", allows: [] } },
+  POLICY: { policy: { revision: "p-1", allows: ["publish"] } },
 };
 
 test("every MINT row refuses on its own, by its own id, and a world where all hold mints a grant", () => {
@@ -57,6 +57,7 @@ test("every MINT row refuses on its own, by its own id, and a world where all ho
     assert.equal(out.grant, null, id);
     assert.deepEqual(out.refused.map((r) => r.id), [id], `${id} alone: ${out.refused.map((r) => r.say).join(" · ")}`);
   }
+  assert.deepEqual(mintGrant(world({ policy: { revision: "p-1", allows: [] } })).refused, [], "a policy that narrows nothing refuses nothing: the run's own fixture in a proven sandbox is autonomous (0.2.0)");
   const { grant } = mintGrant(world());
   assert.equal(grant.v, GRANT_API);
   assert.match(grant.id, /^grt-[0-9a-f]{16}$/);

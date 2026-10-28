@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.2.0
+
+Autonomous by default, with Protected Boundaries (ADR 0042): everything Orbit does runs on its own, and a person is
+asked only where work would leave the autonomous development boundary -- writing the developer's checkout (denied),
+a git push, a production deploy, a production database migration (approved once) and destroying production data
+(approved once, marked destructive). Contract changes: new engineering actions (`commit`, `push`), new approval fields,
+new capability field and effects, runtime commands that no longer ask for `--human`, and `adopt` that only a person's
+own act crosses.
+
+- **One table of where a person decides.** `src/protected/` is a leaf every executor and viewer reads: five boundary
+  rows over STRUCTURED actions (never command strings), one `authorize(action)`, one fingerprint, declared environments
+  read onto one tier (unknown is never production). Anything that is not a boundary -- an unknown action included --
+  is AUTO; there is no allow-list.
+- **Delivery.** An engineering task commits its verified change on its own branch (`orbit/<task>`), autonomously, and
+  pushes exactly that commit only once a person approved exactly that push (repository, remote, URL digest, ref,
+  commit, force) in Orbit Control; a changed push, a moved remote or a second use is refused, and an interrupted push is
+  read back from the remote. Neither goes through the workspace's own `.git`, which the task writes: the commit is made
+  in a bare git directory beside the workspace that only Orbit writes, and the push from one made for that push alone,
+  so a hook, a rewritten URL or a `.git` naming the checkout cannot move either. A task workspace keeps no `origin`,
+  and a clone whose `.git` is a link or names another repository is never read or written through.
+- **Production through what is declared.** A capability declares `environment` and the new effects `deploy`, `migrate`,
+  `delete`, `truncate`, `drop`, `purge`, `reset`; the capability pipeline refuses a protected call that carries no
+  spent approval of exactly it, from every route (a UI case, a work's need, a playbook step, a mission, a worker), and
+  an ordinary production write that declares what it is stays autonomous. The MCP broker refuses a tool a catalog row
+  declares protected (the github row: its ref-writing tools), so a push or a merge never goes around the boundary.
+- **The existing approval, carrying the boundary.** `request-approval` keeps `boundary`, `destructive` and `shows`; the
+  type is the protected kind, the risk sentence says exactly what is approved (DESTRUCTIVE first), and Orbit Control's
+  approval card shows it unchanged. One open request per fingerprint, granted only in Control on the revision read,
+  consumed before the action starts, its fingerprint derived again just before it runs.
+- **Friction removed.** A capability that changes state outside the workspace no longer asks a person; a task's own
+  sandbox restores, builds and starts autonomously (a trust list is now a review mark its receipts name -- the one
+  exception: a host-side `initializeCommand` the task itself added or changed waits for a mark on that definition); `validate`,
+  `prepare --apply` and `forget` ask nobody; autonomous QA is on by default; a task's sandbox opens every mode the
+  engine's gates allow and a fixture grant every declared effect -- `qa.modes` and `qa.writes` only narrow.
+- **The primary checkout.** `runtime adopt` is the PRIMARY_CHECKOUT_WRITE boundary: refused for any agent, `--human` or
+  not, from any terminal; a person adopts in Orbit Control, whose door is the one that proves a person.
+- **Live.** Protected approvals are worded from the journal's own fields (waiting for approval, granted, executing,
+  completed, failed), and `src/live/protected.mjs` names the transitions (`protected.detected`, `approval.*`,
+  `protected.executing|completed|failed`).
+
 ## 0.1.1
 
 Orbit Satellite (ADR 0041): any goal taken through an autonomous, multi-agent mission whose every step is journaled,

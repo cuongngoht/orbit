@@ -7,7 +7,9 @@ goal (a PBI, a bug, an engineering objective); Orbit takes it through requiremen
 review, and calls it done only when there is **evidence** that it is done.
 
 - **Local and private** — every piece of state lives on your machine, outside your repository. No cloud service.
-- **Governed** — each action is checked by deterministic engine rules; approvals, trust and limits stay with a person.
+- **Autonomous by default** — Orbit works on its own; a person is asked only at a small set of **Protected Boundaries**
+  (writing your checkout, a git push, a production deploy or migration, destroying production data).
+- **Governed** — each action is checked by deterministic engine rules; the boundaries, catalogs and limits are a person's.
 - **Evidence-based** — a step is verified only by a record its owner keeps (a passing check, a test run, a QA report).
 - **Zero dependencies** — the engine is plain Node.js (≥ 20) with no npm packages.
 
@@ -99,8 +101,8 @@ Repository: [github.com/cuongngoht/orbit](https://github.com/cuongngoht/orbit) (
 
    Orbit keeps the goal as submitted, analyzes it, plans work units, executes them through its owners, verifies
    against evidence and reports.
-4. **Watch it work** in **Orbit Live** (opens beside your session) and manage resources, approvals and settings in
-   **Orbit Control** (`/orbit-control`).
+4. **Watch it work** in **Orbit Live** (opens beside your session). Normal development needs no approval; when work
+   reaches a [protected boundary](#protected-boundaries), decide it in **Orbit Control** (`/orbit-control`).
 
 ---
 
@@ -121,8 +123,9 @@ A few ideas run through everything:
 | **Every artifact has one owner** | A requirement, a task, a check, a QA investigation each own their records. Nothing re-judges another owner's verdict. |
 | **PASS is earned** | No verdict executed means `INCONCLUSIVE`, never a pass. A failure that existed before your change is shown as `failed-as-before`, never hidden. |
 | **Your repository is untrusted data** | Orbit runs only commands your project files declare, as argument lists, never a shell line a model wrote. |
-| **Changes happen in isolation** | An engineering task edits its own workspace (a local clone), never your checkout. Orbit never pushes, merges or deploys. |
-| **A person decides** | Approvals, trust, security catalogs and limits are set by a person in Orbit Control. An agent cannot approve its own action. |
+| **Changes happen in isolation** | An engineering task edits its own workspace (a local clone) and commits there, never in your checkout. |
+| **Autonomous by default** | Building, testing, QA, sandboxes, containers, local databases and local commits run without asking anybody. |
+| **A person decides at the boundary** | A push, a production deploy or migration, and destroying production data wait for one approval of exactly that action in Orbit Control; writing your checkout is yours alone. An agent cannot approve its own action. |
 | **No product knowledge in the engine** | Products, vendors and stacks live in your project's data, or in adapters and packs a project opts into. |
 
 ---
@@ -258,8 +261,33 @@ node cli/live.mjs open          # open beside this session (tmux · Windows Term
 ### Orbit Control — decide and configure
 
 A local panel (loopback only) for skills, MCP servers, tools, report connections, automation limits, security
-catalogs, trust and approvals. Start it with `/orbit-control`. Orbit never adds, enables or approves anything by
-itself — a person does it here.
+catalogs and the protected actions waiting for a person. Start it with `/orbit-control`. Orbit never adds, enables or
+approves anything by itself — a person does it here.
+
+### Protected boundaries
+
+Orbit is **autonomous by default**: it inspects, plans, edits its own workspace, builds, tests, runs QA, prepares its own
+sandbox (restoring dependencies and building containers there), uses local databases and commits locally without asking.
+Normal development activity does not require approval. A person is asked only where work would leave that boundary
+([ADR 0042](docs/adr/0042-autonomous-by-default-protected-boundaries.md)):
+
+| Action | Policy |
+| --- | --- |
+| Task workspace write, local commit | AUTO |
+| **Primary checkout write** (`runtime adopt`) | DENY — you do it yourself, in Orbit Control (no terminal or agent can) |
+| **Git push** (the exact repository, remote, ref, commit, force) | approve once in Orbit Control |
+| Local, development, preview, staging deploy | AUTO |
+| **Production deploy** (the exact artifact, revision, target) | approve once |
+| Local, test, sandbox database migration | AUTO |
+| **Production database migration** (the exact migration and digest) | approve once |
+| Destructive change on a local or test database | AUTO |
+| **Destructive production data** (delete, truncate, drop, purge, reset, or a production write nobody declared) | approve once, marked **DESTRUCTIVE** |
+| Everything else | AUTO |
+
+An approval is for ONE action: a changed commit, ref, remote, artifact, revision, target or digest asks again; it is
+spent before the action starts and never twice; a rejected or expired one runs nothing. What is production is what you
+or your project **declared** (a capability's `environment` and `effects`, a QA environment's kind), never a guess from a
+command — and unknown is never production.
 
 ---
 
@@ -318,8 +346,8 @@ node cli/query.mjs adapters --matrix                           # what each adapt
 node acceptance/run.mjs [--stack=…] [--variant=…]              # native acceptance: two stacks, planted defects
 ```
 
-Security catalogs (default: ASVS 5.0.0 L1, labelled with OWASP Top 10 2025 and API Security Top 10 2023), limits,
-isolation and trust are configured by a person in Orbit Control
+Security catalogs (default: ASVS 5.0.0 L1, labelled with OWASP Top 10 2025 and API Security Top 10 2023), limits and
+isolation are configured by a person in Orbit Control; a task's own sandbox needs nobody's trust to run
 ([ADR 0040](docs/adr/0040-standards-and-policies-are-configured-in-orbit-control.md)). Orbit never calls anything
 "compliant".
 

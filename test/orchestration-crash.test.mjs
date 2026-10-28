@@ -47,10 +47,10 @@ test("reconcile never touches an action its process is still running, and closes
   assert.equal(o.w.view(id).actions.filter((a) => a.type === "test").length, 2);
 });
 
-test("an interrupted MUTATION is never re-sent: its outcome is unknown, and another needs another approval", async (t) => {
-  const o = orchestrationWorld(t, { capabilities: { "dev.seedRefunds": { mutates: true, connection: null } } });
+test("an interrupted PROTECTED action is never re-sent: its outcome is unknown, and another needs another approval", async (t) => {
+  const o = orchestrationWorld(t, { capabilities: { "orders.migrate": { mutates: true, effects: ["migrate"], environment: "production", connection: null } } });
   const { id, go } = await testing(o);
-  const seed = { kind: "invoke", capability: "dev.seedRefunds", input: { refunds: 3 } };
+  const seed = { kind: "invoke", capability: "orders.migrate", input: { database: "orders", migration: "20261028_add_invoice_index" } };
   await go(seed);
   apply({ ...o.w.ctx, door: "control" }, id, "approve", { approval: "apr-1", human: true, expected: o.w.view(id).revision });
   o.ports.capabilities.invoke = async () => {

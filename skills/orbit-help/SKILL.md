@@ -230,7 +230,8 @@ echo '<outcome>'  | node <engine>/cli/automation.mjs settle <task> --json   # on
    person allows are bounded (past them the answer says BUDGET_EXHAUSTED and blocks or fails, never builds on a
    stale requirement).
 6. **Stop** when the answer says so: COMPLETED, FAILED, BLOCKED (it names who must act), WAITING_APPROVAL
-   (a person decides in Orbit Control), PAUSED. A step whose process died is `reconcile`d -- read back,
+   (the work reached a PROTECTED BOUNDARY -- a push, a production deploy or migration, destroying production data --
+   and a person approves exactly that action once in Orbit Control; nothing else ever waits for one), PAUSED. A step whose process died is `reconcile`d -- read back,
    never sent again. Once `start` (or `resume`) names the workflow's task, run
    `node ${CLAUDE_PLUGIN_ROOT}/cli/live.mjs ensure <task> --json` once, so this session's viewer shows it (a viewer a
    person is reading a task they picked in is told, never moved; one the person closed with q stays closed until they

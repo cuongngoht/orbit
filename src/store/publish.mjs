@@ -19,6 +19,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Blocked, Refused } from "../errors.mjs";
+import { PERSON_ACTS, personAct } from "../protected/authorize.mjs";
 import { short, shaBytes } from "../hash.mjs";
 import { contained } from "../project/boundary.mjs";
 import { DATA_DIR, dataRootOf, checkoutDataRoot } from "../project/data-home.mjs";
@@ -136,17 +137,14 @@ export const countsOf = (files) => Object.fromEntries([...STATES.map((s) => s.st
 // `actor`: { door, human, tty, confirmed } -- what the composition root could establish, never what a caller says.
 // Orbit Control sets door "control" after its mutation token (the proof of a person every grant in this engine
 // needs); a terminal is a person only when one is typing in it and types back the id the preview showed. An
-// agent's shell has no terminal, so `--human` there is refused, with the command a person runs themselves.
-// Ordered; the first that matches decides, and the last always does.
-export const AUTHORIZE = [
-  { when: (a) => a.door === "control", allowed: true, says: () => "a person, through Orbit Control" },
-  { when: (a) => !a.human, allowed: false, says: (a, plan, command) => `writing into the checkout is a person's: this was a preview, and nothing was written. A person runs, in a terminal of their own:\n  ${command}` },
-  { when: (a) => !a.tty, allowed: false, says: (a, plan, command) => `--human needs a terminal a person is typing in, and this one has none (an agent's shell never does) — nothing written. A person runs, in a terminal of their own:\n  ${command}` },
-  { when: (a, plan) => a.confirmed !== plan.id, allowed: false, says: (a, plan) => `what was typed is not ${plan.id}, the export the preview showed — nothing written` },
-  { when: () => true, allowed: true, says: () => "a person at this terminal, who typed the export's id" },
-];
+// agent's shell has no terminal, so `--human` there is refused, with the command a person runs themselves. The rows
+// are the protected-boundary leaf's PERSON_ACTS (src/protected/authorize.mjs): the same definition of a person's own
+// act that `runtime adopt` -- the primary-checkout boundary -- asks.
+export const AUTHORIZE = PERSON_ACTS;
 
-export const authorized = (actor, plan, command) => ((row) => ({ allowed: row.allowed, says: row.says(actor, plan, command) }))(AUTHORIZE.find((r) => r.when(actor, plan)));
+const WORDS = (command) => ({ lead: "writing into the checkout is a person's: this was a preview, and nothing was written.", what: "the export", command });
+
+export const authorized = (actor, plan, command) => personAct(actor, plan.id, WORDS(command));
 
 // ---- applying --------------------------------------------------------------------------------------------------
 

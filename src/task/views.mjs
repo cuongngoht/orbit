@@ -5,6 +5,7 @@
 // journal and the registry's last summary of the checkout say: no runtime is asked, nothing is
 // probed, and what nothing says is UNKNOWN. An action Orbit holds a receipt for is `receipt`
 // evidence; one only the agent reported is `reported`, and a page never shows the two alike.
+import { boundaryOf } from "../protected/boundaries.mjs";
 import { approvalState, stateOf } from "./model.mjs";
 
 export const VIEW_VERSION = 1;
@@ -93,9 +94,17 @@ const verificationView = (m) => [...m.verifications.values()].map((v) => ({ subj
 
 const DECISION_WORD = { "approval-granted": "granted", "approval-rejected": "rejected" };
 
+// Which protected boundary an approval guards, when it says (src/protected/): its title and what a person reads. An
+// approval from before 0.2.0 says none, and reads as it always did.
+const boundaryView = (a) => ({ boundary: a.boundary ?? null, title: boundaryOf(a.boundary)?.title ?? null, destructive: a.destructive === true, shows: a.shows ?? null });
+
+// What became of the action an approval let start: running, or how it ended -- the "executing / completed / failed" a
+// viewer says of a protected action, read off the same fold.
+const outcomeOf = (m, a) => ((act) => (act ? actionState(act) : null))(a.consumed ? m.actions.get(a.consumed.action) : null);
+
 function approvalView(m, a, now) {
   const state = approvalState(a, now);
-  return { id: a.id, action: a.action, environment: a.environment ?? null, reason: a.reason ?? null, risk: a.risk ?? null, attempt: a.attempt ?? null, requestedAt: a.requestedAt, expires: a.expires ?? null, state, open: !m.ended && state === "pending", decision: DECISION_WORD[a.decision?.kind] ?? null, decidedAt: a.decision?.at ?? null, decidedBy: a.decision?.by ?? null, consumedBy: a.consumed?.action ?? null, consumedAt: a.consumed?.at ?? null };
+  return { id: a.id, action: a.action, environment: a.environment ?? null, reason: a.reason ?? null, risk: a.risk ?? null, attempt: a.attempt ?? null, requestedAt: a.requestedAt, expires: a.expires ?? null, state, open: !m.ended && state === "pending", decision: DECISION_WORD[a.decision?.kind] ?? null, decidedAt: a.decision?.at ?? null, decidedBy: a.decision?.by ?? null, consumedBy: a.consumed?.action ?? null, consumedAt: a.consumed?.at ?? null, ...boundaryView(a), outcome: outcomeOf(m, a) };
 }
 
 const pausedView = (m) => (m.paused ? { at: m.paused.at, by: m.paused.by ?? null, because: m.paused.because ?? null } : null);

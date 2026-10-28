@@ -8,6 +8,7 @@ import { durationOf, lineOf } from "./lines.mjs";
 import { drawn } from "./width.mjs";
 import { progressWords } from "../activity.mjs";
 import { LIFECYCLE_WORDS, PRESENTATION_WORDS, PULSE } from "../words.mjs";
+import { protectedSay } from "../protected.mjs";
 
 const VIEWER_FIRST = new Set(["CONNECTING", "UNAVAILABLE", "RECONNECTING", "DEGRADED"]);
 
@@ -36,7 +37,7 @@ const observedOf = (snap, action) => ((w) => (w?.cases ? ` · ${w.cases}` : ""))
 // What it is doing now, in a few words -- one row per kind of `current` (src/live/current.mjs).
 const ACTIVITY = {
   ended: (c) => c.ended.summary ?? c.ended.stop ?? c.ended.kind,
-  approval: (c) => `${c.approval.id} · ${c.approval.action} · decide in Orbit Control`,
+  approval: (c) => `${c.approval.id} · ${c.approval.title ? protectedSay(c.approval) : c.approval.action} · decide in Orbit Control`,
   paused: (c) => `paused${c.paused.because ? `: ${c.paused.because}` : ""}`,
   blocked: (c) => `${c.blocked.stop}${c.blocked.needs ? ` (needs ${c.blocked.needs})` : ""}`,
   qa: (c) => stepWords(c.qa),

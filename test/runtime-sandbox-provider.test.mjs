@@ -1,4 +1,4 @@
-// The sandbox, end to end over fakes: prepared under a person's trust, placed on the way a person would run it,
+// The sandbox, end to end over fakes: prepared autonomously (0.2.0), placed on the way a person would run it,
 // started from the task's workspace on the port it was GIVEN, stale the moment the workspace moves, and ended
 // without touching anything it does not own.
 import { test } from "node:test";
@@ -11,7 +11,7 @@ import { ensure, look } from "../src/runtime/understanding.mjs";
 import { ownerOf } from "../src/runtime/sessions.mjs";
 import { sandboxId } from "../src/runtime/instances.mjs";
 import { CHECKOUT } from "./fakes/runtime-ctx.mjs";
-import { OTHER, TASK, fingerprintsIn, prepared, sandboxWorld, trusted } from "./sandbox.harness.mjs";
+import { OTHER, TASK, prepared, sandboxWorld } from "./sandbox.harness.mjs";
 
 test("a person's runtime never asks the sandbox provider, and a sandbox asks only it: its candidates are the ways it could place a component", () => {
   const world = sandboxWorld();
@@ -22,16 +22,17 @@ test("a person's runtime never asks the sandbox provider, and a sandbox asks onl
   assert.deepEqual([provider.compatibility({}, { sandbox: null }).state, provider.composite, provider.reuses], ["incompatible", true, false]);
 });
 
-test("a prepare that needs a restore nobody trusted runs NOTHING, names every fingerprint and who must act, and leaves the sandbox PREPARING", async () => {
+test("a prepare RESTORES autonomously: every unit, in the task's workspace, fingerprinted as evidence -- nobody is asked", async () => {
   const world = sandboxWorld();
   const answer = await world.run("sandbox-prepare");
-  assert.deepEqual([answer.state, answer.blocked.needs], ["BLOCKED", "person"]);
-  assert.equal(fingerprintsIn(answer.blocked.because).length, 2, "one for each unit that would be restored");
-  assert.deepEqual(world.process.calls.map((c) => c.file), [], "not a single process ran");
-  assert.deepEqual([world.sandbox().sandboxDoc().state, world.sandbox().sandboxDoc().blocked.needs], ["PREPARING", "person"]);
+  assert.deepEqual([answer.state, answer.blocked ?? null], ["READY", null]);
+  assert.deepEqual(world.process.calls.filter((c) => ["npm", "dotnet"].includes(c.file)).map((c) => [c.file, ...c.args].join(" ")).sort(), ["dotnet restore", "npm ci"]);
+  const receipts = world.sandbox().sandboxDoc().restore.receipts;
+  assert.equal(Object.keys(receipts).length, 2, "one fingerprinted receipt per unit restored");
+  assert.ok(Object.keys(receipts).every((fp) => /^[a-f0-9]{64}$/.test(fp)));
 });
 
-test("once trusted it restores only in the task's workspace, with the base environment, behind a receipt -- and a second prepare does nothing at all", async () => {
+test("it restores only in the task's workspace, with the base environment, behind a receipt -- and a second prepare does nothing at all", async () => {
   const world = sandboxWorld(undefined, { env: { PATH: "/usr/bin", SECRET_TOKEN: "s3cr3t-value" } });
   const answer = await prepared(world);
   assert.deepEqual([answer.state, answer.reused, answer.placements], ["READY", false, { "dotnet:api": "native", "node:web": "native" }]);
@@ -44,20 +45,19 @@ test("once trusted it restores only in the task's workspace, with the base envir
   assert.deepEqual([again.state, again.reused, world.process.calls.length], ["READY", true, before]);
 });
 
-test("a restore is run on what the workspace holds NOW: a lock file edited after trust was judged is not what a person trusted", async () => {
+test("a restore is run on what the workspace holds NOW: a lock file edited while the sandbox was prepared is not run", async () => {
   const world = sandboxWorld();
-  trusted(world, { restore: fingerprintsOf(await world.run("sandbox-prepare")) });
   const source = world.sandbox().source;
   const real = source.fingerprints;
   let looks = 0;
-  source.fingerprints = (scopes) => (scopes.includes("web/package-lock.json") && ++looks === 2 ? world.workspaces.edit(TASK, "web/package-lock.json", '{"changed":true}') : null, real(scopes));
+  // The third look at the lock file is the one taken immediately before the restore runs: after understanding read the
+  // workspace and the plan was fingerprinted.
+  source.fingerprints = (scopes) => (scopes.includes("web/package-lock.json") && ++looks === 3 ? world.workspaces.edit(TASK, "web/package-lock.json", '{"changed":true}') : null, real(scopes));
   const answer = await world.run("sandbox-prepare");
   assert.equal(answer.state, "BLOCKED");
-  assert.match(answer.blocked.because, /changed after trust was checked/);
+  assert.match(answer.blocked.because, /changed while the sandbox was prepared/);
   assert.deepEqual(world.process.calls.filter((c) => c.file === "npm"), [], "it did not run");
 });
-
-const fingerprintsOf = (answer) => [...answer.blocked.because.matchAll(/fingerprint ([a-f0-9]{64})/g)].map((m) => m[1]);
 
 test("a component that can be told its port is LEASED one, never the declared port a developer may be using", async () => {
   const world = sandboxWorld();

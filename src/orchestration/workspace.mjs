@@ -3,6 +3,8 @@
 //   <storeRoot>/workspaces/<tsk>/owner.json   who it belongs to -- written FIRST, beside the tree
 //   <storeRoot>/workspaces/<tsk>/tree/        a local clone of the primary checkout, detached at the
 //                                             task's base revision: the checkout's `.git` is only read
+//   <storeRoot>/workspaces/<tsk>/delivery/    the task's commit (0.2.0): a bare git directory the clone port
+//                                             makes beside the tree, never inside it
 //
 // Deterministic: the task's id names the room, and the journal keeps `ws-<the task's 12 hex>`;
 // the absolute path is resolved here, live, for whoever must edit there, and never journaled.
@@ -21,6 +23,10 @@
 //
 // deps: { root (the project's store root), io (the store's guarded io), trees (the primary
 // checkout's local clones, src/frontend/local-clones.mjs), host, now() }
+//
+// The tree is the task's own, and so is its `.git` -- which is why a commit is never made there: the clone port makes it
+// in `delivery/`, beside the tree, from the base revision the owner receipt names, and a push goes from there to the URL
+// it is given (the GIT_PUSH protected boundary, src/protected/). Neither touches the checkout.
 import { join } from "node:path";
 import { Refused } from "../errors.mjs";
 import { contained } from "../project/boundary.mjs";
@@ -28,6 +34,7 @@ import { contained } from "../project/boundary.mjs";
 export const WORKSPACES = "workspaces";
 export const OWNER = "owner.json";
 export const TREE = "tree";
+export const DELIVERY = "delivery";
 export const OWNER_SCHEMA = 1;
 
 const TASK = /^tsk-[a-f0-9]{12}$/;
@@ -102,5 +109,17 @@ function removedAt(deps, head, room) {
 export function createWorkspaces(deps) {
   const base = join(deps.root, WORKSPACES);
   const roomOf = (task) => contained(base, join(base, checkedTask(task)));
-  return { pathOf: (task) => join(roomOf(task), TREE), found: (task) => foundAt(deps, task, roomOf(task)), prepare: (head) => prepared(deps, head, roomOf(head.task)), changes: (task, from) => deps.trees.changes(join(roomOf(task), TREE), from), treeOf: (task) => deps.trees.treeOf(join(roomOf(task), TREE)), treeAt: (task, revision) => deps.trees.treeAt(join(roomOf(task), TREE), revision), stateOf: (task) => deps.trees.stateOf(join(roomOf(task), TREE)), remove: (head) => removedAt(deps, head, roomOf(head.task)) };
+  const treeIn = (task) => join(roomOf(task), TREE);
+  return { pathOf: treeIn, found: (task) => foundAt(deps, task, roomOf(task)), prepare: (head) => prepared(deps, head, roomOf(head.task)), changes: (task, from) => deps.trees.changes(treeIn(task), from), treeOf: (task) => deps.trees.treeOf(treeIn(task)), treeAt: (task, revision) => deps.trees.treeAt(treeIn(task), revision), stateOf: (task) => deps.trees.stateOf(treeIn(task)), remove: (head) => removedAt(deps, head, roomOf(head.task)), ...deliveryOf(deps, roomOf) };
 }
+
+// A task's delivery (0.2.0): its commit, made beside its tree from the base revision its owner receipt names; the commit
+// that store's branch names; what the checkout calls a remote (read); a push of exactly one commit; and what a remote ref
+// holds now (src/frontend/local-clones.mjs, THE DELIVERY).
+function committedIn(deps, room, c) {
+  const owner = ownerAt(deps, room);
+  if (!owner?.baseRevision) throw new Refused(`${room} names no base revision — nothing is committed`);
+  return deps.trees.commit({ tree: join(room, TREE), store: join(room, DELIVERY), base: owner.baseRevision }, c.branch, c.message);
+}
+
+const deliveryOf = (deps, roomOf) => ({ commit: (task, branch, message) => committedIn(deps, roomOf(task), { branch, message }), headOf: (task) => deps.trees.headOf(join(roomOf(task), DELIVERY)), remote: (name) => deps.trees.remoteOf(name), push: (task, p) => deps.trees.push(join(roomOf(task), DELIVERY), p.url, p.sha, p.ref, p.force), remoteRef: (url, ref) => deps.trees.remoteRefOf(url, ref) });

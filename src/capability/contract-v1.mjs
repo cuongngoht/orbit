@@ -17,6 +17,7 @@
 // provider is not grammar; it is a thing you can ask. So providers grow and the
 // grammar does not: one `call` verb, any number of capabilities behind it. That
 // is the whole trade, and it is why there is no `postgres` verb.
+import { DECLARABLE } from "../protected/environments.mjs";
 
 export const CAPABILITY_API = "orbit.capability/v1";
 export const SUPPORTED_CAPABILITY_APIS = [CAPABILITY_API];
@@ -40,7 +41,8 @@ export const CAPABILITY_FIELDS = {
   provides: { type: "array", items: { type: "string" }, doc: "Semantic capabilities this one answers besides its own id, e.g. workitem.read. The resource registry lists it as a provider of each, so a need names the capability and never this adapter -- and a different provider can take its place." },
   connection: { type: "string", pattern: CONNECTION_PROVIDER, doc: "The provider of the CONNECTION it needs (a credential REFERENCE a person set up). It is refused, as Blocked, when no such connection exists here; the engine hands the credential to the command it spawns and never to this code." },
   page: { type: "boolean", doc: "false if it never touches ext.browser. A case made only of sql and call steps asking such capabilities runs with no browser at all; unset means it may, and the run then needs a page (src/dsl/page.mjs)." },
-  effects: { type: "array", items: { type: "string" }, doc: "What invoking it does to the world (src/topology/vocab.mjs EFFECTS). A mutating effect is what a test grant is minted for (ADR 0037); an observation that takes a message is `consume`, however it is named." },
+  effects: { type: "array", items: { type: "string" }, doc: "What invoking it does to the world (src/topology/vocab.mjs EFFECTS). A mutating effect is what a test grant is minted for (ADR 0037); an observation that takes a message is `consume`, however it is named. `deploy`, `migrate`, `delete`, `truncate`, `drop`, `purge` and `reset` name a protected action: on a target declared production it runs only once a person approved exactly that call (src/protected/)." },
+  environment: { type: "string", enum: [...DECLARABLE], doc: "Where invoking it lands, as the project declares it. Only `production` changes anything: a deploy, a migration or a destructive (or undeclared) write there is a protected boundary a person approves once. Unset is unknown, which is never production; inputs that `bind` to a task's sandbox land there (local)." },
   outputs: { type: "object", doc: "Each field of its answer and the MEANING it carries (src/topology/vocab.mjs MEANINGS), so a compiled assertion reads a field by what it means, never by a provider's name for it." },
   helper: { type: "object", doc: "The helper program it reaches through ext.helper.run (ADR 0036): {argv, runIn, image}. An argument list, never a shell line; where it runs is the launcher's decision, never this declaration's." },
 };

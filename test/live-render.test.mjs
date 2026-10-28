@@ -107,6 +107,7 @@ test("a console shows the sandbox's lines as given, under its own rule, within t
 // ---- the milestone console and a coordinated workflow ---------------------------------------------
 
 import { MILESTONES, milestoneLines, milestonesOf } from "../src/live/render/milestones.mjs";
+import { protectedFold, protectedSay } from "../src/live/protected.mjs";
 import { associate } from "../src/live/association.mjs";
 
 const at = (s) => `2026-10-08T21:${s}.000Z`;
@@ -140,14 +141,25 @@ test("the milestone console says each milestone in a sentence, from the journal'
 });
 
 test("every milestone row is reachable from a journal line, and hostile text in one reaches no terminal", () => {
-  const ctx = (e) => ({ types: new Map([["act-1", e.type ?? null]]) });
-  const lines = [t("receipt", "00:00", { domain: "step", ref: "qa", outcome: "SUCCEEDED" }), t("receipt", "00:00", { domain: "step", ref: "qa", outcome: "REPORTED" }), t("receipt", "00:00", { domain: "step", ref: "qa", outcome: "FAILED" }), t("receipt", "00:00", { domain: "step", ref: "qa", outcome: "BLOCKED" }), t("receipt", "00:00", { domain: "step", ref: "qa", outcome: "RUNNING" }), t("receipt", "00:00", { domain: "plan", ref: "x", outcome: "ACTIVE" }), t("receipt", "00:00", { domain: "task", ref: "tsk-1", outcome: "STARTED" }), t("receipt", "00:00", { domain: "skill", ref: "a:0.1.0:12345678", outcome: "ACTIVE" }), t("receipt", "00:00", { domain: "requirement", ref: "rs-1", outcome: "READY" }), t("workspace", "00:00"), { ...t("action-completed", "00:00", { id: "act-1", outcome: "succeeded" }), type: "record-changes" }, { ...t("action-completed", "00:00", { id: "act-1", outcome: "succeeded" }), type: "build" }, { ...t("action-completed", "00:00", { id: "act-1", outcome: "failed" }), type: "verify" }, t("receipt", "00:00", { domain: "impact", ref: "imp-3", outcome: "MISSING", summary: "changes: 1 component(s) reached" }), { ...t("action-completed", "00:00", { id: "act-1", outcome: "failed" }), type: "test" }, t("decision", "00:00", { nextAction: "diagnose" }), t("attempt-started", "00:00", { cause: "fix" }), t("attempt-started", "00:00", { cause: "retest" }), t("approval-requested", "00:00", { id: "apr-1" }), t("blocked", "00:00", { stop: "X" }), t("completed", "00:00"), t("failed", "00:00", { stop: "X" }), t("cancelled", "00:00")];
+  const push = t("approval-requested", "00:00", { id: "apr-9", boundary: "GIT_PUSH", shows: { remote: "origin", ref: "refs/heads/orbit/tsk-1" } });
+  const fold = protectedFold([push, t("approval-consumed", "00:00", { id: "apr-9", action: "act-9" })]);
+  const ctx = (e) => ({ types: new Map([["act-1", e.type ?? null]]), ...fold });
+  const protectedLines = [push, t("approval-granted", "00:00", { id: "apr-9" }), t("approval-rejected", "00:00", { id: "apr-9" }), t("approval-expired", "00:00", { id: "apr-9" }), t("action-started", "00:00", { id: "act-9", approval: "apr-9" }), t("action-completed", "00:00", { id: "act-9", outcome: "succeeded" }), t("action-failed", "00:00", { id: "act-9" })];
+  const lines = [t("receipt", "00:00", { domain: "step", ref: "qa", outcome: "SUCCEEDED" }), t("receipt", "00:00", { domain: "step", ref: "qa", outcome: "REPORTED" }), t("receipt", "00:00", { domain: "step", ref: "qa", outcome: "FAILED" }), t("receipt", "00:00", { domain: "step", ref: "qa", outcome: "BLOCKED" }), t("receipt", "00:00", { domain: "step", ref: "qa", outcome: "RUNNING" }), t("receipt", "00:00", { domain: "plan", ref: "x", outcome: "ACTIVE" }), t("receipt", "00:00", { domain: "task", ref: "tsk-1", outcome: "STARTED" }), t("receipt", "00:00", { domain: "skill", ref: "a:0.1.0:12345678", outcome: "ACTIVE" }), t("receipt", "00:00", { domain: "requirement", ref: "rs-1", outcome: "READY" }), t("workspace", "00:00"), { ...t("action-completed", "00:00", { id: "act-1", outcome: "succeeded" }), type: "record-changes" }, { ...t("action-completed", "00:00", { id: "act-1", outcome: "succeeded" }), type: "build" }, { ...t("action-completed", "00:00", { id: "act-1", outcome: "failed" }), type: "verify" }, t("receipt", "00:00", { domain: "impact", ref: "imp-3", outcome: "MISSING", summary: "changes: 1 component(s) reached" }), { ...t("action-completed", "00:00", { id: "act-1", outcome: "failed" }), type: "test" }, t("decision", "00:00", { nextAction: "diagnose" }), t("attempt-started", "00:00", { cause: "fix" }), t("attempt-started", "00:00", { cause: "retest" }), t("approval-requested", "00:00", { id: "apr-1" }), t("blocked", "00:00", { stop: "X" }), t("completed", "00:00"), t("failed", "00:00", { stop: "X" }), t("cancelled", "00:00"), ...protectedLines];
   MILESTONES.forEach((row, i) => assert.ok(lines.some((e) => row.when(e, ctx(e))), `row ${i} is unreachable`));
   const impact = milestonesOf([t("receipt", "00:00", { domain: "impact", ref: "imp-3", outcome: "MISSING", summary: "changes: 1 component(s) reached" })]);
   assert.deepEqual([impact[0].glyph, impact[0].say], ["▲", "Impact missing · changes: 1 component(s) reached"]);
   const evil = [t("receipt", "00:00", { domain: "step", ref: "qa", outcome: "FAILED", summary: HOSTILE })];
   const out = milestoneLines(msnap(engineeringView, evil), { columns: 200, rows: 20, colour: true }).join("\n");
   assert.ok(!out.includes(BEL) && !out.includes(RLO) && !/\u001b\]/.test(out));
+});
+
+test("a protected approval reads as its boundary and what a person reads, a set flag by its name and DESTRUCTIVE first", () => {
+  const push = (force) => ({ boundary: "GIT_PUSH", shows: { remote: "origin", ref: "refs/heads/orbit/tsk-1", commit: "199dc26070a7", force } });
+  assert.equal(protectedSay(push("false")), "Git push · origin · refs/heads/orbit/tsk-1 · 199dc26070a7", "an unset flag says nothing");
+  assert.equal(protectedSay(push("true")), "Git push · origin · refs/heads/orbit/tsk-1 · 199dc26070a7 · force");
+  assert.match(protectedSay({ boundary: "PRODUCTION_DESTRUCTIVE_DATA", destructive: true, shows: { database: "orders" } }), /^DESTRUCTIVE · .+ · orders$/);
+  assert.equal(protectedSay({ id: "apr-1" }), "", "an approval that names no boundary reads as it always did");
 });
 
 test("a coordinated workflow shows its steps as a strip and the engineering task it started as one line", () => {

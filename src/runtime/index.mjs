@@ -19,7 +19,7 @@ import { sayAdopt, sayCheck, sayConnectivity, sayDiscover, sayDoctor, sayForgott
 import { checkTarget, connectivityNow } from "./connectivity/check.mjs";
 import { OPERATIONS } from "./governance.mjs";
 import { designed, proposalFor, currentOf } from "./design-flow.mjs";
-import { adopt as adoptProposal } from "./writer.mjs";
+import { adopt as adoptProposal, refusedEarly } from "./writer.mjs";
 import { doctor as doctorLifecycle, prepare as prepareLifecycle } from "./lifecycle/prepare.mjs";
 import { deps } from "./lifecycle/deps.mjs";
 import { start as startLifecycle } from "./lifecycle/start.mjs";
@@ -185,10 +185,13 @@ function adoptable(ctx, args) {
   return proposalOf(ctx, args);
 }
 
+// Adopting writes the developer's own checkout: the PRIMARY_CHECKOUT_WRITE protected boundary (src/protected/), which
+// only a person's own act crosses -- through Orbit Control's door (`ctx.door`, set by Control after its token). No
+// terminal and no agent crosses it, `--human` or not; it is refused before anything is read.
 async function adopt(ctx, args) {
-  if (!has(args, "human")) throw new Refused("adopting an environment is a person's — relay it with --human");
+  refusedEarly({ door: ctx.door ?? "terminal" }, words(args)[0]);
   const found = adoptable(ctx, args);
-  const done = adoptProposal(ctx, found, { human: true, now: currentOf(ctx, found, look(ctx)) });
+  const done = adoptProposal(ctx, found, { actor: { door: ctx.door }, now: currentOf(ctx, found, look(ctx)) });
   summarize(ctx);
   return done;
 }
@@ -201,22 +204,18 @@ async function doctor(ctx) {
   return done;
 }
 
-// Bringing an environment up runs what its definition says to run, and `initializeCommand` runs on
-// THIS machine, not in the container. A definition is a checkout's file and a checkout is untrusted
-// data, so -- like adopting -- it is a person's, relayed with --human, and refused before anything is read.
-const BRINGS_UP = "it builds the environment on this machine, and its definition may run commands of its own there (initializeCommand runs on the host, not in the container): a person's — relay it with --human";
-
-async function validate(ctx, args) {
-  if (!has(args, "human")) throw new Refused(`validating is ${BRINGS_UP}`);
+// Bringing an environment up runs what its definition says to run -- `initializeCommand` on THIS machine, not in the
+// container -- and it is AUTONOMOUS (0.2.0): building a local environment is ordinary development, never a protected
+// boundary. `--human` is still accepted, and asks nothing more.
+async function validate(ctx) {
   const { world } = planned(ctx, look(ctx), ctx.readSettings().settings, { probe: true });
   const done = validateInstance(ctx, providerOf("devcontainer", ctx.providers), world, deps(ctx));
   summarize(ctx);
   return done;
 }
 
-// A plan is free; acting on it is the same act as validating.
+// A plan is free; acting on it is the same act as validating -- autonomous too.
 async function prepare(ctx, args) {
-  if (has(args, "apply") && !has(args, "human")) throw new Refused(`prepare --apply is ${BRINGS_UP}`);
   return prepareLifecycle(ctx, { apply: has(args, "apply") });
 }
 
@@ -257,10 +256,9 @@ const retry = (ctx, args) => checkTarget(ctx, words(args)[0], { providers: fromO
 
 const projects = (ctx) => ctx.registry.list();
 
-// A person takes a checkout whose directory is gone off this machine's list, named by the directory
-// `projects` prints or by its id (twelve characters of it are enough).
+// A checkout whose directory is gone comes off this machine's list, named by the directory `projects` prints or by its
+// id (twelve characters of it are enough). Store bookkeeping, and autonomous: what Orbit kept about it stays.
 async function forget(ctx, args) {
-  if (!has(args, "human")) throw new Refused("forgetting a checkout is a person's — relay it with --human");
   const found = checkoutNamed(ctx.registry.list(), words(args)[0]);
   ctx.registry.forget(found.project.key, found.checkout.id);
   return found;

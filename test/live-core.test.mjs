@@ -19,7 +19,7 @@ const lines = (p) => code(p).split("\n").map((l, i) => [name(p), i + 1, l]);
 
 // Leaves, the store primitives, and itself. Never a subject: what a task, an investigation or a sandbox is
 // arrives as a SOURCE a composition root hands in (src/task/live.mjs TASK_SOURCE, src/investigation/live.mjs).
-const ALLOWED = /^(live|store)\//;
+const ALLOWED = /^(live|store|protected)\//;
 const SINGLE = new Set(["errors.mjs", "hash.mjs", "constraints.mjs", "printable.mjs"]);
 
 test("src/live imports only leaves, the store primitives and itself -- never a task, an investigation, a runtime or a host", () => {

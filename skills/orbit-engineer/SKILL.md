@@ -4,14 +4,14 @@ description: >
   Take a requirement or an engineering objective to a VERIFIED change, autonomously and inside
   Orbit's governance: the requirement and its frozen snapshot first, then the project's context,
   whether the project's declared checks can run here, a task-owned isolated workspace, the smallest
-  planned change, the builds and tests of what the change actually reaches (never every check the
-  repository declares), a diagnosis and a fix when something fails,
-  regression, a review against the plan, and completion only when the task's journal proves it.
-  Every step is one decision the engine judges, records before it runs and settles with receipts,
-  and Mission Control shows it as a task. Use when asked to implement, fix or finish a PBI, work
-  item or change autonomously, to continue one ("continue PBI-482"), or to drive a change through
-  build and test until it is verified. It never pushes, merges, deploys, writes the developer's
-  checkout, runs a shell line, grants an approval or resumes a paused task.
+  planned change, the builds and tests of what the change reaches, a diagnosis and a fix when
+  something fails, regression, a review against the plan, and completion only when the task's
+  journal proves it. Every step is one decision the engine judges, records and settles with
+  receipts. Use when asked to implement, fix or finish a PBI, work item or change autonomously, to
+  continue one ("continue PBI-482"), or to drive a change through build and test until it is
+  verified. It commits the verified change by itself; only a push of that exact commit waits, for
+  one approval in Orbit Control. It never merges, writes the developer's checkout, runs a shell
+  line, grants an approval or resumes a paused task.
 argument-hint: '"PBI-482" | "continue PBI-482" | "<one sentence: the change to make>"'
 allowed-tools:
   - Read
@@ -154,7 +154,13 @@ long timeout. If the host killed it, `reconcile` settles it once its process is 
   is never a pass. At least one required test or verify command must pass for the change to count as
   verified.
 - **REVIEWING** — read your own diff (`git -C <workspace> diff <baseRevision>`) against the
-  requirement and the plan, then `review`. Anything outside the plan's scope fails it, and the loop
+  requirement and the plan. When the objective asks for the change to be DELIVERED (a branch, a pull
+  request), `commit` it first -- autonomous: the engine commits the verified change on the task's own
+  branch (`orbit/<task>`), beside the workspace and never in its `.git` (your `git diff` there still
+  reads from the base) -- then `push` (`remote`, `branch`, `force` optional).
+  A push is a PROTECTED BOUNDARY: it waits for a person to approve exactly that push once in Orbit
+  Control (see `waiting-approval` below); never push what the objective did not ask to deliver, and
+  never `force` unless asked. Then `review`. Anything outside the plan's scope fails it, and the loop
   diagnoses that like any failure. When every completion row holds, the engine completes the task
   itself.
 
@@ -170,16 +176,17 @@ with `orbit-qa-agent plan --sandbox=<environment from the context> …`, and lin
 Live evidence names the source tree it was taken from. If the workspace moved since (the context's
 `QA` line says `stale`, and which row), start the sandbox again and investigate again: an
 investigation of code that no longer exists proves nothing about the change. A checkout that
-declares nothing to run (a library) has no sandbox, and is told nothing about one. A sandbox a
-person has not trusted yet blocks the task, `needs person`: say so, and wait for Control. You never
-trust it yourself, and no step carries a port, a provider or a directory — a sandbox picks its own.
+declares nothing to run (a library) has no sandbox, and is told nothing about one. The sandbox is
+autonomous: it restores its dependencies and builds its containers without asking anybody. It can
+still wait on what only a person can give (a worker image to pin, a port somebody holds): say so, in
+its words. No step carries a port, a provider or a directory — a sandbox picks its own.
 
 ## 4 · When the engine says stop
 
 | stop | what you do |
 |---|---|
-| `blocked` (needs requirement · environment · capability · person) | Tell the person what it needs, in its words. Only the recheck it allows may run. A sandbox that waits for a person (`needs person` after `prepare-sandbox` or `start-sandbox`) is trusted in Orbit Control, never by you; once they have, `prepare-sandbox` lifts the block. |
-| `waiting-approval` | Tell the person which action waits in Orbit Control → Mission Control → Approvals, and why. Poll `context`. Once granted, send the SAME action with `"approval": "apr-n"`. |
+| `blocked` (needs requirement · environment · capability · person) | Tell the person what it needs, in its words. Only the recheck it allows may run. A sandbox that waits for a person (`needs person` after `prepare-sandbox` or `start-sandbox`) needs something only they can give; once they have, `prepare-sandbox` lifts the block. |
+| `waiting-approval` | A PROTECTED BOUNDARY: a push, or a capability that deploys, migrates or destroys production data. Tell the person which action waits in Orbit Control → Mission Control → Approvals, and why (the answer's `boundary`). Poll `context`. Once granted, send the SAME action with `"approval": "apr-n"` -- a changed action needs an approval of its own. If they reject it, it is never asked again: go on without it (`review` completes the task). |
 | `paused` | Stop. Only a person resumes, in Control. |
 | `no-progress`, `budget` | The engine has already ended the task. Report why, with the signature and what you tried. |
 | `cancelled` | The engine already asked runtime to stop what the task started, and released its sandbox. Report it, and do nothing else. |
@@ -204,9 +211,11 @@ command when they ask to see progress in Claude Code, and never run `apply` your
 
 The task completes only on evidence. Then report the task id, the workspace path and its base
 revision, the attempts (each with its outcome and signature), the checks that passed after the last
-change, the review, and anything a person must still do. Committing the workspace's change, opening
-a pull request, merging and deploying are a person's: the workspace is a clone of its own, so a person
-takes the change with `git fetch <workspace path> HEAD` from their checkout. `remove-workspace <task>` is theirs to ask for.
+change, the review, the commit and the push when there were any, and anything a person must still do.
+The workspace is a clone of its own: a committed change is on its branch `orbit/<task>`, which a
+person takes with `git fetch <workspace path> orbit/<task>` from their checkout, or which was pushed
+once a person approved it. Opening a pull request and merging are a person's. `remove-workspace <task>`
+is theirs to ask for.
 `cleanup` has already stopped the task's sessions and released its sandbox.
 
 ## Never
@@ -220,4 +229,6 @@ takes the change with `git fetch <workspace path> HEAD` from their checkout. `re
 - resend a step that did not settle: reconcile it;
 - raise a budget, start a second task for the same work, or call a task done that the engine did
   not complete;
-- push, merge, deploy, or write anything a person has not asked for.
+- run `git commit` or `git push` yourself: the engine's `commit` and `push` steps are the only way,
+  and a push waits for a person's approval of exactly that push;
+- merge, deploy, or write anything a person has not asked for.

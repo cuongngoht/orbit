@@ -2,103 +2,351 @@
 
 **From Goal to Verified Outcome**
 
-Orbit is a host plugin (Claude Code, Codex, Antigravity CLI, Grok Build) that keeps durable **goals**, **project knowledge**, **requirements**, **runtime understanding**, **UI tests**, **autonomous engineering**, **autonomous QA**, **Orbit Live**, and **Orbit Control** on your machine — with evidence and governance, no cloud dependency, and zero npm dependencies in the engine.
+Orbit is a plugin for AI coding hosts — **Claude Code**, **Codex**, **Antigravity CLI** and **Grok Build**. You describe a
+goal (a PBI, a bug, an engineering objective); Orbit takes it through requirements, planning, implementation, testing and
+review, and calls it done only when there is **evidence** that it is done.
 
-## Entry points
+- **Local and private** — every piece of state lives on your machine, outside your repository. No cloud service.
+- **Governed** — each action is checked by deterministic engine rules; approvals, trust and limits stay with a person.
+- **Evidence-based** — a step is verified only by a record its owner keeps (a passing check, a test run, a QA report).
+- **Zero dependencies** — the engine is plain Node.js (≥ 20) with no npm packages.
 
-| Entry | Use for |
-|-------|---------|
-| **`orbit`** | Full goals: multi-step work, PBIs, acceptance criteria, analyze → plan → execute → verify → report. Prefer `stdin` or `--file` for complete specification text. |
-| **`orbit-help`** | Navigation and bounded coordination: where to start, one recommended workflow, continuing tracked work — not a second goal journal. |
-| **`satellite`** | Autonomous multi-agent missions (0.1.1): any goal taken through an investigated, revisable work graph of fresh agent runs, each under a least-privilege profile, settled only on evidence an independent owner keeps. |
+## Contents
 
-Specialized skills (`orbit-develop`, `orbit-engineer`, `orbit-qa`, `orbit-ui-test`, …) and role agents (`orbit-qa-case-writer`, `orbit-engineering-agent`, …) handle one capability each; the engine enforces deterministic rules.
+1. [Install](#install)
+2. [Quick start](#quick-start)
+3. [How Orbit works](#how-orbit-works)
+4. [Skills you can call](#skills-you-can-call)
+5. [Command line](#command-line)
+6. [Where your data lives](#where-your-data-lives)
+7. [Orbit Live and Orbit Control](#orbit-live-and-orbit-control)
+8. [Feature guides](#feature-guides)
+9. [Developing Orbit](#developing-orbit)
+10. [Further reading](#further-reading)
+
+---
 
 ## Install
 
-**Claude Code**
+**Requirements:** Node.js 20 or newer. Nothing else — the engine has no npm dependencies.
+
+### Claude Code
 
 ```bash
 /plugin marketplace add cuongngoht/orbit
 /plugin install orbit@orbit
 ```
 
-Repository: [github.com/cuongngoht/orbit](https://github.com/cuongngoht/orbit) (public). First-time publish: [docs/github-orbit-repo.md](docs/github-orbit-repo.md).
+### Grok Build
 
-**Local development**
+```bash
+grok plugin install cuongngoht/orbit --trust
+# or from a local clone:
+grok plugin install /path/to/orbit --trust
+```
+
+`--trust` lets Grok run the plugin's hooks. Details: [docs/grok.md](docs/grok.md).
+
+### Codex
+
+From a clone or an unpacked release:
+
+```bash
+codex plugin marketplace add <plugin-root>
+codex plugin add orbit@orbit
+```
+
+Installing does not trust the hooks — review and trust them in Codex afterwards. Enable only one Orbit installation per
+workspace. Details: [docs/codex.md](docs/codex.md).
+
+### Antigravity CLI
+
+```bash
+agy plugin install <plugin-root>
+```
+
+Details: [docs/antigravity.md](docs/antigravity.md).
+
+### Local development (from this repository)
 
 ```bash
 claude --plugin-dir .
-# or
+```
+
+### Check the install
+
+```bash
+node <plugin-root>/cli/orbit.mjs doctor      # goals store: where it is, how many goals
+node <plugin-root>/cli/query.mjs doctor      # are this project's declared tools usable here?
+```
+
+How each host binds the plugin root and the session: [docs/hosts.md](docs/hosts.md).
+Repository: [github.com/cuongngoht/orbit](https://github.com/cuongngoht/orbit) (public, MIT).
+
+---
+
+## Quick start
+
+1. **Open your product repository** in the host where Orbit is installed. Nothing is written into the repository —
+   Orbit seats the project in its machine store the first time you use it.
+2. **Not sure where to start?** Run `/orbit-help`. It looks at what Orbit already knows about the project and either
+   takes your task through a coordinated workflow or recommends exactly one skill, with the reason.
+3. **Have a full goal?** Run `/orbit` with the whole specification — a PBI, acceptance criteria, a bug report:
+
+   ```text
+   /orbit Implement PBI-482: refunds over 30 days require a manager's approval. Acceptance criteria: …
+   ```
+
+   Orbit keeps the goal as submitted, analyzes it, plans work units, executes them through its owners, verifies
+   against evidence and reports.
+4. **Watch it work** in **Orbit Live** (opens beside your session) and manage resources, approvals and settings in
+   **Orbit Control** (`/orbit-control`).
+
+---
+
+## How Orbit works
+
+```text
+ Goal ──► Requirement ──► Plan ──► Task (own workspace) ──► Checks / QA ──► Evidence ──► Report
+  │         snapshot       units    build · test · fix        verified by       kept by
+  │                                                           their owner       its owner
+  └── kept on your machine, in the Orbit store — never in your repository
+```
+
+A few ideas run through everything:
+
+| Idea | What it means for you |
+| --- | --- |
+| **The host reasons, the engine keeps state** | The AI model decides the next step; the engine judges it, records it before it runs, and settles it with receipts. |
+| **Every artifact has one owner** | A requirement, a task, a check, a QA investigation each own their records. Nothing re-judges another owner's verdict. |
+| **PASS is earned** | No verdict executed means `INCONCLUSIVE`, never a pass. A failure that existed before your change is shown as `failed-as-before`, never hidden. |
+| **Your repository is untrusted data** | Orbit runs only commands your project files declare, as argument lists, never a shell line a model wrote. |
+| **Changes happen in isolation** | An engineering task edits its own workspace (a local clone), never your checkout. Orbit never pushes, merges or deploys. |
+| **A person decides** | Approvals, trust, security catalogs and limits are set by a person in Orbit Control. An agent cannot approve its own action. |
+| **No product knowledge in the engine** | Products, vendors and stacks live in your project's data, or in adapters and packs a project opts into. |
+
+---
+
+## Skills you can call
+
+### Entry points
+
+| Skill | Use it for |
+| --- | --- |
+| **`/orbit`** | Full goals: multi-step work, PBIs, acceptance criteria — analyze → plan → execute → verify → report. Pass the complete specification (stdin or `--file` on the CLI). |
+| **`/orbit-help`** | Where to start: one bounded look at what the project already knows and one recommended workflow, or a coordinated workflow for a concrete task. Continues tracked work. |
+| **`/satellite`** | Autonomous multi-agent missions: a goal taken through a revisable work graph of fresh agent runs, each with least privilege, settled on independent evidence. |
+
+### Engineering
+
+| Skill | Use it for |
+| --- | --- |
+| `orbit-requirements` | Turn a work item, PBI, issue or ticket into atomic requirements and one immutable snapshot; ask a person only what blocks. |
+| `orbit-engineer` | Take a requirement to a **verified** change autonomously: own workspace, smallest change, the builds and tests it reaches, diagnosis, review. |
+| `orbit-develop` | Implement a change the way *this* project builds code, using its architecture and conventions. |
+| `orbit-runtime` | What a checkout needs to run, whether this machine can run it, and how — for any stack. |
+| `orbit-architecture` | An evidence-backed architecture snapshot, recalled from memory and rescanned only when stale. |
+| `orbit-reverse-engineer` | Map a system's running parts (components, interfaces, channels, stores) into a system graph. |
+| `orbit-dotnet` | Which technologies a .NET solution declares and what its code actually uses each for. |
+| `orbit-learn` | Lessons from repeated evidence across independent sessions. |
+
+### Quality and testing
+
+| Skill | Use it for |
+| --- | --- |
+| `orbit-qa` | Investigate a live application like a senior QA engineer, from a screen, a PBI, or both. |
+| `orbit-test-plan` | Decide *what* to test with a person before any case is written: risk-ranked scenarios. |
+| `orbit-ui-test` | Author or run one JSON UI test case through `playwright-cli`, verifying UI, API and SQL. |
+| `orbit-test-suite` | Run an agreed set of cases with evidence and one review page for the session. |
+| `orbit-ui-map` | Fill and correct the UI map (screens, controls, effects) every case points into. |
+| `orbit-ui-explore` | Explore a live screen when the map is thin; leave candidate map records and cases. |
+| `orbit-browser` | Pick a browser and signed-in profile on this machine for a test session. |
+| `orbit-sql` | Read a SQL Server database from a test (read-only, through `sqlcmd`). |
+| `orbit-qc-builder` | Build the smallest project-local QC tool an agreed test needs. |
+| `orbit-security-audit` | Assess a project against the security catalogs it is held to, from evidence. |
+
+### Operations
+
+| Skill | Use it for |
+| --- | --- |
+| `orbit-control` | Start Orbit Control, the local control panel. |
+| `orbit-report` | A product owner's project report from GitHub or Azure DevOps, computed from a frozen snapshot. |
+| `orbit-release` | Ship a new version of Orbit, or install it in another repository. |
+
+Role agents (`orbit-engineering-agent`, `orbit-qa-agent`, `orbit-qa-case-writer`, `orbit-failure-analyst`,
+`orbit-map-healer`, …) each do one bounded job for a parent skill.
+
+---
+
+## Command line
+
+Every skill is backed by a CLI under `cli/`. The reliable form on any host is `node <plugin-root>/cli/<tool>.mjs …`.
+
+```bash
+# Goals
+node cli/orbit.mjs goal start --stdin < goal.txt      # keep a goal as submitted
+node cli/orbit.mjs goal status <goal-id>               # where it stands
+node cli/orbit.mjs goal plan|resume|step|verify|report|list <goal-id>
 node cli/orbit.mjs doctor
+
+# Where to start
+node cli/help.mjs --for="<task>"                       # one recommended next step, and why
+
+# Requirements, work and tasks
+node cli/requirements.mjs resolve <ref>                # find a work item
+node cli/autonomous-engineering.mjs start --ref=<item> # a task taken to a verified change
+node cli/task.mjs list                                 # tasks on this machine
+
+# Project knowledge
+node cli/architecture.mjs ensure                       # is the architecture snapshot current?
+node cli/runtime.mjs discover                          # what this checkout needs to run
+
+# Live view
+node cli/live.mjs status                               # Orbit Live in a terminal
 ```
 
-**Codex / Antigravity / Grok** — see [docs/hosts.md](docs/hosts.md), [docs/codex.md](docs/codex.md), [docs/antigravity.md](docs/antigravity.md), [docs/grok.md](docs/grok.md).
+Exit codes across the CLIs: `0` done · `1` failed · `2` refused · `3` blocked · `4` inconclusive.
+The full command reference is in [AGENTS.md § Commands](AGENTS.md#commands).
 
-## CLI
+> **Trying commands inside this repository?** Set `ORBIT_STORE_DIR=/tmp/orbit` first — everything writes to
+> `~/.orbit` by default.
 
-```bash
-orbit --help
-orbit goal start --stdin
-orbit goal status <goal-id>
-orbit doctor
-orbit live status
-node cli/help.mjs --for="<task>"
-```
+---
 
-The reliable form on any host is `node <plugin-root>/cli/orbit.mjs …`.
+## Where your data lives
 
-## Machine store
+All durable state lives **outside your product repository**, in the machine store:
 
-All durable state lives outside your product repository:
+| What | Location |
+| --- | --- |
+| Default | `~/.orbit/projects/<project-key>/` |
+| Override | `ORBIT_STORE_DIR=/path/to/base` → `/path/to/base/<project-key>/` |
+| Show paths | `node cli/query.mjs storage --json` or `node cli/storage.mjs where` |
 
-- Default: `~/.orbit/projects/<project-key>/`
-- Override base: `ORBIT_STORE_DIR=/path/to/base` → `/path/to/base/<project-key>/`
-- Test data (`ui-tests/`) defaults to the store; a person may explicitly select the checkout (see `node cli/storage.mjs where`).
+- **Test data** (`ui-tests/`) defaults to the store. A team that commits test data with its code can explicitly choose
+  the checkout instead (`init --in-checkout`, or `storage export --all --move`).
+- **Reports, evidence, lessons, goals, tasks and generated playbooks** always stay in the store.
+- Checkouts of the same repository share one store; runtime sessions are isolated per checkout.
+- Reading never creates state; writes are contained, locked and checked for stale revisions.
 
-Reports, evidence, lessons, goals, tasks, and generated instruction playbooks are store-only unless you explicitly export test data.
-
-## Reusable skills (0.0.4)
-
-When a coordinated workflow needs a capability nothing here provides, the skill factory drafts a project-scoped
-playbook; the host writes its `SKILL.md` and -- when the work is a sequence of calls to capabilities this machine
-already provides -- a declared `workflow.json`. The engine validates it, registers it in the machine store, and at the
-playbook step RUNS it: pinned to one version, each step asked through its provider's own gate (the MCP broker or the
-capability pipeline), every call a receipt of digests. A later workflow, in any session, reuses the pinned skill
-instead of drafting again ([ADR 0030](docs/adr/0030-a-generated-skill-declares-a-workflow-the-engine-runs-through-owner-gates.md)).
-
-```bash
-node cli/skill-factory.mjs discover --for=release.readiness.verification   # REUSABLE (and its pin) or which gap
-node cli/skill-factory.mjs workflow <id|pin>                               # its steps, in the order they run
-node cli/skill-factory.mjs runs <id>                                        # what each run came to
-node cli/skill-factory.mjs review <id>                                      # what the runs show; a successor proposed, never written
-```
-
-A step is VERIFIED only by a record its owner keeps and proves; a call that answered within its contract is reported.
-Goals plan from a structured `intent` the host's model writes (`skills/orbit/SKILL.md`), never from the objective's
-words, so a goal in any language plans the same.
+---
 
 ## Orbit Live and Orbit Control
 
-- **Orbit Live** — read-only viewer beside your session; one feed from journals (tasks, goals, checks). `/orbit` and `/orbit-help` open it (a docked pane in Claude Code, a split or a window elsewhere). Its header opens with an orbit whose satellite goes round its planet the whole time the viewer is open, in a peach-on-dark look on terminals with 256 or 24-bit colour (ADR 0027, 0029). The orbit is motion, never progress: the badge's word (`ORBITING`, `IDLE`, `BLOCKED`, `COMPLETED` …) says what the task does, and only on evidence. A tick redraws the orbit's row alone. The pane reads as its mockup does (ADR 0028): a bordered `ORBITING` badge, tabs with each view's words, `TASK EXECUTION` with `NOW`, the baseline as a card, a workflow's milestones under their step, and a footer of bars; a viewer waiting for a task shows a larger orbit. `pane.animation: off` keeps it still; `pane.orbitSpeed` (slow, normal, fast) sets its pace.
-- **Orbit Control** — local panel for skills, MCP, tools, automation, and approvals (`orbit-control` skill or `control-server`).
+### Orbit Live — see what is happening
 
-VS Code: install the companion under [integrations/vscode-orbit-live](integrations/vscode-orbit-live) (machine-scoped settings: `orbit.live.storeDirs`, `orbit.live.nodePath`).
+A **read-only** viewer beside your session, fed from the same journals the engine keeps (tasks, goals, checks).
+`/orbit` and `/orbit-help` open it: a docked pane in Claude Code, a terminal split or a window elsewhere.
 
-Current contracts and fresh-install behavior: [implementation inventory](docs/orbit-current-contract.md).
-
-## Release quality
+- The badge says what the task is doing — `ORBITING`, `IDLE`, `BLOCKED`, `COMPLETED` … — and only on evidence.
+- The animated orbit in the header is the viewer's motion, never progress.
+- The pane shows tabs per view, `TASK EXECUTION` with `NOW`, the baseline as a card, a workflow's milestones under
+  their step, and a footer of bars.
+- Settings: `pane.widthPercent`, `pane.focusCli`, `pane.animation: off` (keep it still), `pane.orbitSpeed`
+  (`slow` · `normal` · `fast`).
 
 ```bash
-npm test
-npm run lint
-ORBIT_UI_TESTS=test/fixtures/ui-tests node cli/query.mjs check
-node skills/orbit-release/ship.mjs
+node cli/live.mjs status        # print once
+node cli/live.mjs watch         # follow in a terminal
+node cli/live.mjs tui           # full screen
+node cli/live.mjs open          # open beside this session (tmux · Windows Terminal · macOS window)
 ```
 
-## Check observation adapters (§4.15)
+**VS Code:** install the companion under [integrations/vscode-orbit-live](integrations/vscode-orbit-live)
+(machine-scoped settings: `orbit.live.storeDirs`, `orbit.live.nodePath`).
 
-When a declared check runs beside an engineering task, Orbit binds one adapter by the command’s output. Each adapter names what it can show:
+### Orbit Control — decide and configure
+
+A local panel (loopback only) for skills, MCP servers, tools, report connections, automation limits, security
+catalogs, trust and approvals. Start it with `/orbit-control`. Orbit never adds, enables or approves anything by
+itself — a person does it here.
+
+---
+
+## Feature guides
+
+### Coordinated workflows and reusable playbooks
+
+When a workflow needs a capability nothing provides, the skill factory drafts a **project-scoped playbook**: a
+`SKILL.md` and, when the work is a sequence of calls to capabilities this machine already has, a declared
+`workflow.json`. The engine validates it, registers it in the store and runs it pinned to one version — each step
+through its provider's own gate (the MCP broker or the capability pipeline), every call a receipt of digests. Later
+workflows reuse the pinned playbook instead of drafting again
+([ADR 0030](docs/adr/0030-a-generated-skill-declares-a-workflow-the-engine-runs-through-owner-gates.md)).
+
+```bash
+node cli/skill-factory.mjs discover --for=release.readiness.verification   # reusable (and its pin) or which gap
+node cli/skill-factory.mjs workflow <id|pin>                               # its steps, in order
+node cli/skill-factory.mjs runs <id>                                        # what each run came to
+node cli/skill-factory.mjs review <id>                                      # what runs show; a successor proposed, never written
+```
+
+Goals are planned from a structured `intent` the host's model writes (`skills/orbit/SKILL.md`), never from the words
+of the objective — so a goal in any language plans the same.
+
+### System graph
+
+`architecture graph [--json]` projects the running system: **nodes** (components, workloads, interfaces, channels,
+schedules, stores …) and **relations** (calls, publishes-to, consumes-from, schedules …), each with evidence,
+freshness and unknowns. `architecture ensure` reads what composition files declare; everything else arrives as
+candidates through `architecture record`, which refuses untracked files and secret attributes. What a kind or
+relation *means* comes from the vocabulary (`catalog/topology.json` plus organisation and project layers). The
+`orbit-reverse-engineer` skill runs a standalone pass, one agent per unknown scope.
+
+### Autonomous test generation and sandbox verification
+
+From an accepted requirement to a verified outcome:
+
+1. Obligations are **derived** from accepted plans against the frozen system graph.
+2. The host proposes a test design; the engine compiles every verdict and page script from accepted criteria and fixed
+   templates.
+3. A frozen version runs only in a task's **isolated sandbox** (Docker), with writes allowed only under grants minted
+   for its own fixture.
+4. The host validates what the worker left before anything is recorded; ordered result rows give the outcome.
+
+Backends are reached through adapters (`orbit.adapter/v1`) shipped as packs a project opts into; what each adapter is
+proven to support is computed from conformance receipts.
+
+```bash
+node cli/autonomous-qa.mjs plan --plan=<id> --sandbox=<env-id> --mode=fixture-write
+node cli/autonomous-qa.mjs derive --investigation=<id>        # obligations its accepted plans imply
+node cli/autonomous-qa.mjs step --investigation=<id>          # one decision on stdin
+node cli/autonomous-qa.mjs reconcile --investigation=<id>     # a dispatch that never settled, read back — never resent
+node cli/security-audit.mjs assess --investigation=<id>       # security controls in effect, from that record
+node cli/qa-plan.mjs expects <contract.json>                   # OpenAPI, AsyncAPI or schedule → candidate expectations
+node cli/query.mjs adapters --matrix                           # what each adapter is proven to support
+node acceptance/run.mjs [--stack=…] [--variant=…]              # native acceptance: two stacks, planted defects
+```
+
+Security catalogs (default: ASVS 5.0.0 L1, labelled with OWASP Top 10 2025 and API Security Top 10 2023), limits,
+isolation and trust are configured by a person in Orbit Control
+([ADR 0040](docs/adr/0040-standards-and-policies-are-configured-in-orbit-control.md)). Orbit never calls anything
+"compliant".
+
+### Orbit Satellite — multi-agent missions
+
+`/orbit:satellite <goal>` (or `node <plugin-root>/satellite/cli/satellite.mjs` on any host) runs a **mission**: the goal
+becomes a structured intent, an investigation comes before deciding who changes what, and the work graph is revised
+only on evidence. Roles, agent templates, skills and workflows are reused first and generated only when nothing fits,
+each pinned by digest. Every unit runs as a fresh agent under a least-privilege profile; source changes happen only in
+an engineering task's own workspace; a criterion is verified only by an independent owner's record.
+
+```bash
+node satellite/cli/satellite.mjs mission start --stdin < goal.txt      # start, goal kept as submitted
+node satellite/cli/satellite.mjs mission context <msn>                 # what stands, what is allowed, next step
+node satellite/cli/satellite.mjs mission step <msn> < decision.json    # one decision, judged before it runs
+node satellite/cli/satellite.mjs live tui <msn>                        # Satellite Live: nine views
+node satellite/cli/satellite.mjs host capabilities                     # what this host can do
+```
+
+Claude Code dispatches agent runs natively and in parallel; Codex, Antigravity CLI and Grok Build run them serially in
+the main session. Details: [satellite/docs/README.md](satellite/docs/README.md),
+[ADR 0041](docs/adr/0041-orbit-satellite-is-a-mission-journal-above-owners.md).
+
+### Check observation adapters
+
+While a declared check runs beside an engineering task, Orbit reads its output through one adapter, chosen by the
+command's output. Observation is shown live and never changes the verdict:
 
   | Adapter | Framework | Cases shown |
   | --- | --- | --- |
@@ -106,78 +354,47 @@ When a declared check runs beside an engineering task, Orbit binds one adapter b
   | `tap` | a TAP stream (Test Anything Protocol 13 or 14) | reported |
   | `generic` | any command | none |
 
-## Unified work tracking (§4.18)
+### Unified work tracking
 
-A tracked work’s lifecycle is one of: `RECEIVED`, `IN_PROGRESS`, `INTERRUPTED`, `WAITING`, `BLOCKED`, `PAUSED`, `REPORTED_DONE`, `FAILED`, `CANCELLED`. Evidence (`none` · `observed` · `reported` · `verified`) and session liveness are separate axes.
+One request is followed from `/orbit-help` to what it came to, on three separate axes:
 
-## System graph (0.1.0)
+- **Lifecycle:** `RECEIVED`, `IN_PROGRESS`, `INTERRUPTED`, `WAITING`, `BLOCKED`, `PAUSED`, `REPORTED_DONE`, `FAILED`,
+  `CANCELLED`.
+- **Evidence:** `none` · `observed` · `reported` · `verified` (only a completed linked task is `verified`).
+- **Liveness:** whether a session is still attached.
 
-`architecture graph [--json]` projects the running system from the architecture snapshot: `node` facts (components,
-workloads, interfaces, channels, schedules, stores …) and `relation` facts (calls, publishes-to, consumes-from,
-schedules …), each with its evidence, freshness and unknowns, and a digest over what the graph means. `architecture
-ensure` reads what a composition file declares (services, start order, networks); everything else arrives as candidates
-through `architecture record`, which refuses a key that is not the subject, an end marked certain that nobody could fix,
-a secret attribute and a file the repository does not track. What a kind or a relation MEANS is the vocabulary's
-(`catalog/topology.json` and the organisation's and project's layers): an undeclared name is kept and derives nothing.
-The **`orbit-reverse-engineer`** skill runs a standalone pass as its own task, one `orbit-reverse-engineering-agent` per
-unknown scope, and closes on the graph's digest; it never sets an acceptance criterion.
+---
 
-## Autonomous test generation and sandbox verification (0.1.0)
-
-From an accepted requirement to a verified outcome, with the engine holding every step to the record it keeps:
-obligations are DERIVED from accepted plans against the frozen system graph; a host proposes a design and the engine
-compiles every verdict, window and page script from accepted criteria and fixed templates; a frozen version runs only
-in a task's ISOLATED sandbox (Docker), its refs sealed, its writes under grants minted for its own fixture, its browser
-acting as the identity the design approved; the host checks what the worker left before anything is written, and
-ordered RESULT rows give the outcome. Backends are reached through adapters (`orbit.adapter/v1`) shipped as packs a
-project opts into, and what each is proven to support is computed from conformance receipts on real systems.
+## Developing Orbit
 
 ```bash
-node cli/autonomous-qa.mjs plan --plan=<id> --sandbox=<env-id> --mode=fixture-write   # an investigation of a task's isolated sandbox
-node cli/autonomous-qa.mjs derive --investigation=<id>        # the obligations its accepted plans imply
-node cli/autonomous-qa.mjs step --investigation=<id>          # one decision on stdin: generate a design, run-version a frozen one
-node cli/autonomous-qa.mjs reconcile --investigation=<id>     # a dispatch that never settled, read back -- never resent
-node cli/security-audit.mjs assess --investigation=<id>       # the security controls in effect, from that investigation's record
-node cli/qa-plan.mjs expects <contract.json>                   # an accepted OpenAPI, AsyncAPI or schedule policy, as candidate expectations
-node cli/query.mjs adapters --matrix                           # what each adapter is proven to support, and why
-node acceptance/run.mjs [--stack=…] [--variant=…]              # the native acceptance: two stacks, planted defects, a ground truth
+npm test                                                     # node --test: no browser, no network, no sleeps
+npm run lint                                                 # Five Lines check, must print 0 finding(s)
+ORBIT_UI_TESTS=test/fixtures/ui-tests node cli/query.mjs check
+ORBIT_UI_TESTS=test/fixtures/ui-tests node cli/plan-check.mjs
+node skills/orbit-release/ship.mjs                           # the whole definition of done, one command
 ```
 
-Security catalogs (ASVS 5.0.0 L1 by default, labelled with the OWASP Top 10 2025 and the API Security Top 10 2023),
-limits, isolation and trust are a person's, set in Orbit Control ([ADR 0040](docs/adr/0040-standards-and-policies-are-configured-in-orbit-control.md)).
+Before changing code, read:
 
-## Orbit Satellite (0.1.1)
-
-`/orbit:satellite <goal>` (or `node <orbit>/satellite/cli/satellite.mjs` on any host) takes a goal through a mission:
-the goal becomes a structured intent, an investigation comes before any decision about who changes what, and a work
-graph is revised only on evidence. Roles, agent templates, skills and workflows are reused first and generated only
-when nothing covers the need, each an immutable definition pinned by digest and reused across missions. Every work
-unit goes to a fresh agent run under a least-privilege profile, through one execution gateway, in a mode of its own.
-A source change happens only in an Orbit engineering task's own workspace, and a criterion is VERIFIED only by an
-independent owner's record: an engineering task's verification, a declared check or a QA investigation.
-
-```bash
-node satellite/cli/satellite.mjs mission start --stdin < goal.txt      # a mission, the goal kept as submitted
-node satellite/cli/satellite.mjs mission context <msn>                 # what stands, what is allowed, the next step
-node satellite/cli/satellite.mjs mission step <msn> < decision.json    # one decision, judged before anything runs
-node satellite/cli/satellite.mjs live tui <msn>                        # Satellite Live: nine views, every action in its mode
-node satellite/cli/satellite.mjs host capabilities                     # what this host can do, verified or reported
-```
-
-Claude Code dispatches agent runs natively and in parallel; Codex, Antigravity CLI and Grok Build run them serially in
-the main session, and the envelope says so. A host capability is `verified` only on a native acceptance receipt for the
-same source. Details: [satellite/docs/README.md](satellite/docs/README.md) and
-[ADR 0041](docs/adr/0041-orbit-satellite-is-a-mission-journal-above-owners.md).
-
-## Architecture notes
-
-Engine rules, module map, and extension guidance:
-
-- [AGENTS.md](AGENTS.md) — invariants and commands
+- [AGENTS.md](AGENTS.md) — invariants, dependency direction, enforced rules, commands, definition of done
 - [docs/agents/layout.md](docs/agents/layout.md) — module map
-- [docs/agents/extend.md](docs/agents/extend.md) — how to extend safely
+- [docs/agents/extend.md](docs/agents/extend.md) — what to touch for each kind of change, and the test that proves it
 
-Orbit **Goal Orchestrator** (`src/goal/`, skill `orbit`) owns full-text goals; work, tasks, and evidence stay in their existing owners.
+Key rules in short: zero dependencies; every function body ≤ 5 statements with no `else`/`switch`; the DSL vocabulary
+is data (`src/dsl/`); no product, vendor or stack named in engine code.
+
+---
+
+## Further reading
+
+| Document | About |
+| --- | --- |
+| [docs/hosts.md](docs/hosts.md) | Host binding, sessions, native acceptance per host |
+| [docs/orbit-current-contract.md](docs/orbit-current-contract.md) | Current contracts and fresh-install behaviour |
+| [docs/adr/](docs/adr/) | Architecture decision records |
+| [satellite/docs/README.md](satellite/docs/README.md) | Orbit Satellite |
+| [docs/github-orbit-repo.md](docs/github-orbit-repo.md) | Publishing the repository |
 
 ## License
 

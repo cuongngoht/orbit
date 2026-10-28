@@ -14,6 +14,7 @@
 // Rows, first failing row refuses, in the order a host should be told. A refusal is REFUSED (2)
 // with the rule's id first and writes nothing.
 import { Refused } from "../errors.mjs";
+import { isDenied } from "../protected/authorize.mjs";
 import { approvalOf, fingerprintAsked, kindOf, openActions, openOf, rejectedFingerprints } from "./journal.mjs";
 import { ACTIONS } from "./dispatch.mjs";
 import { allowedNow } from "./stages.mjs";
@@ -54,7 +55,8 @@ const implementOpen = (lw) => openOf(lw, "implement") !== null;
 
 const askedFor = (lw, fp) => lw.view.approvals.find((a) => ["pending", "granted"].includes(a.state) && fingerprintAsked(lw, a.id) === fp) ?? null;
 
-// `c`: { lw, gate, fp } -- the loop's world, the approval the action needs (or null) and its fingerprint.
+// `c`: { lw, verdict, gate, fp } -- the loop's world, what the protected-boundary leaf decided about the action
+// (src/protected/), the approval it needs (or null: AUTO, or a DENY nobody may ask to cross) and its fingerprint.
 const FRESH = [
   { id: "TEXT", fails: (d) => textProblem(d), say: () => `observed and hypothesis are each one sentence of at most ${TEXT_LIMIT} characters, and reason too when given — a decision says what was seen and why, never a chain of thought` },
   { id: "EVIDENCE", fails: (d) => evidenceProblem(d), say: () => `evidence is a list of at most ${MAX_EVIDENCE} ids this task recorded (an attempt, an action, a decision, an approval or a receipt)` },
@@ -66,6 +68,7 @@ const FRESH = [
   { id: "STAGE", fails: (d, c) => !allowedNow(c.lw).includes(d.action.kind), say: (d, c) => `${c.lw.view.stage ?? "this task"} does not allow ${d.action.kind}${c.lw.view.blocked ? ` while blocked (${c.lw.view.blocked.stop})` : ""}${implementOpen(c.lw) ? " while a change is being made" : ""} — it allows ${allowedSay(c.lw)}` },
   { id: "FIELDS_OF_ACTION", fails: (d) => fieldsProblem(d.action) !== null, say: (d) => fieldsProblem(d.action) },
   { id: "ACTION_CHECK", fails: (d, c) => ACTIONS[d.action.kind].check(d.action, c.lw) !== null, say: (d, c) => ACTIONS[d.action.kind].check(d.action, c.lw) },
+  { id: "PROTECTED_DENIED", fails: (d, c) => Boolean(c.verdict) && isDenied(c.verdict), say: (d, c) => `${c.verdict.title} is a protected boundary Orbit never crosses on its own (${c.verdict.risk}) — a person does it themselves; decide something else` },
   { id: "REJECTED", fails: (d, c) => c.gate !== null && rejectedFingerprints(c.lw).has(c.fp), say: () => "a person rejected exactly this action on this task — it is never asked again; decide something else" },
   { id: "UNNEEDED", fails: (d, c) => d.approval !== undefined && c.gate === null, say: () => "this action needs no person's approval — send it without one" },
   { id: "APPROVAL_UNKNOWN", fails: (d, c) => d.approval !== undefined && approvalOf(c.lw, d.approval) === null, say: (d) => `${d.approval} is not an approval of this task` },
@@ -79,7 +82,7 @@ function refusedBy(rules, d, c) {
   if (failed) throw new Refused(`${failed.id}: ${failed.say(d, c)}`);
 }
 
-// -> nothing; throws Refused for the first rule a decision breaks. `c`: { lw, gate, fp }.
+// -> nothing; throws Refused for the first rule a decision breaks. `c`: { lw, verdict, gate, fp }.
 export function judge(d, c) {
   refusedBy(FORM, d, c);
   refusedBy(FRESH, d, c);

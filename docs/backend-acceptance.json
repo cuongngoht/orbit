@@ -520,9 +520,9 @@
   ],
   "acceptance": {
     "schema": 1,
-    "at": "2026-10-22T15:07:22.923Z",
-    "sourceDigest": "d918c5f92a2231c7d192334ae04ac3cc069afc704b282e2fd2fe8b4333af52d8",
-    "worker": "sha256:cd0f758b7271cb2b78f9fc5f24daaabbaf8236e1e073c27a798a632dc8312661",
+    "at": "2026-10-28T08:01:50.518Z",
+    "sourceDigest": "687682e09ff92949289dab0328cbafcb43e94e349f77242ac60f48bb4fc0d772",
+    "worker": "sha256:2af3710e3f6f37b50cbb630266074b27b6dbf514fbbea9f608d3c56e33db2c56",
     "runs": [
       {
         "stack": "invoice-a",

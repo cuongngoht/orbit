@@ -17,7 +17,7 @@ const item = (kind, data, left) => ({ kind, data, row: row(left) });
 
 const readiness = (v) => ["requirement", "environment", "workspace"].map((k) => item("readiness", { name: k, ...v.readiness?.[k] }, [seg("ready      ", "label"), seg(k.padEnd(12)), seg(v.readiness?.[k]?.state ?? ABSENT.unrecorded, tone(v.readiness?.[k]?.state)), dim(`  ${v.readiness?.[k]?.ref ?? ""}`)]));
 
-const approvals = (v) => v.approvals.map((a) => item("approval", a, [seg("approval   ", "label"), seg(`${a.id}  `), seg(a.state, tone(a.state)), dim(`  ${a.action ?? "?"}${a.environment ? ` on ${a.environment}` : ""}`), a.open ? seg("  decide in Orbit Control", "warning") : null]));
+const approvals = (v) => v.approvals.map((a) => item("approval", a, [seg("approval   ", "label"), seg(`${a.id}  `), seg(a.state, tone(a.state)), a.destructive ? seg("  DESTRUCTIVE", "warning") : null, dim(`  ${a.title ?? a.action ?? "?"}${a.environment ? ` on ${a.environment}` : ""}`), a.open ? seg("  decide in Orbit Control", "warning") : null]));
 
 const receipts = (v) => [...v.receipts].sort((a, b) => domainRank(a) - domainRank(b)).map((r) => item("receipt", r, [seg("receipt    ", "label"), seg(`${r.domain}:${r.ref}`.padEnd(30)), seg(` ${r.outcome ?? ABSENT.unrecorded}`, tone(r.outcome)), dim(`  ${str(r.summary) ?? ""}`)]));
 
@@ -30,7 +30,7 @@ export const evidenceItems = (view) => (view ? [...readiness(view), ...approvals
 // What one item's detail says, field by field; an absent field is NOT RECORDED, never a guess.
 export const CONTEXT_FIELDS = Object.freeze({
   readiness: ["name", "state", "ref", "source", "at", "because"],
-  approval: ["id", "action", "environment", "reason", "risk", "attempt", "requestedAt", "expires", "state", "decidedBy", "decidedAt", "consumedBy"],
+  approval: ["id", "title", "action", "environment", "reason", "risk", "attempt", "requestedAt", "expires", "state", "decidedBy", "decidedAt", "consumedBy", "outcome"],
   receipt: ["domain", "ref", "outcome", "summary", "action", "environment", "sourceTree", "at"],
   verification: ["subject", "obligation", "state", "evidence", "at"],
   action: ["id", "type", "tool", "label", "state", "startedAt", "endedAt", "summary", "reason", "evidence"],

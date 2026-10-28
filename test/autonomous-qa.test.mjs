@@ -43,7 +43,7 @@ test("gates: switched off, disabled, an unapproved mode, production and a wrong 
   const off = started({ on: false });
   assert.throws(() => act(off.w, SAVE_CHAIN[0]), /switched off/);
   const disabled = started({ settings: { enabled: false } });
-  assert.throws(() => act(disabled.w, SAVE_CHAIN[0]), /autonomous QA is off/);
+  assert.throws(() => act(disabled.w, SAVE_CHAIN[0]), /a person switched autonomous QA off/);
   const unapproved = started({ settings: { environments: [{ id: "test", origin: "https://app.test", kind: "test", modes: ["observe"] }] } });
   assert.throws(() => act(unapproved.w, SAVE_CHAIN[0]), /explore-write is not approved/);
   assert.throws(() => writeSettings(unapproved.w.store.paths, unapproved.w.io, { next: { ...unapproved.w.settings, environments: [{ id: "prod", origin: "https://app.test", kind: "production", modes: ["explore-write"] }] }, revision: readSettings(unapproved.w.store.paths, unapproved.w.io).revision, by: "person", now: "x" }), /production/);

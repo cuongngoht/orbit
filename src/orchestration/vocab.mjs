@@ -68,9 +68,10 @@ export const NEEDS = ["environment", "capability", "person", "requirement"];
 export const CAUSE = Object.freeze({ FRESH: "fresh", FIX: "fix", RETEST: "retest", RETRY: "retry" });
 
 // The receipt domains it links: the checks it ran itself, the runtime sessions it asked for,
-// the investigations it read, the sandbox it asked runtime to keep for the task, and what each plan
-// or change was found to reach (`impact`).
-export const DOMAIN = Object.freeze({ CHECK: "check", RUNTIME: "runtime", INVESTIGATION: "investigation", SANDBOX: "sandbox", IMPACT: "impact" });
+// the investigations it read, the sandbox it asked runtime to keep for the task, what each plan
+// or change was found to reach (`impact`), and its delivery (0.2.0): the local `commit` it made in its own
+// workspace and the `push` of exactly that commit a person approved once.
+export const DOMAIN = Object.freeze({ CHECK: "check", RUNTIME: "runtime", INVESTIGATION: "investigation", SANDBOX: "sandbox", IMPACT: "impact", COMMIT: "commit", PUSH: "push" });
 
 // What a sandbox is, in the words its receipt keeps: the states runtime answers with, and the two
 // words an ending adds -- released, or refused because something it held could not be proven the

@@ -70,5 +70,5 @@ test("preparing again after a crash does the reconciling first: a half-run resto
   assert.equal(ctx.sandboxes.read(ctx.envId).state, "AMBIGUOUS");
   assert.deepEqual(w.process.calls.filter((c) => ["npm", "dotnet"].includes(c.file)), [], "nothing was restored on top of it");
   assert.equal((await w.run("sandbox-release")).released, true, "a person's release is the way out");
-  assert.equal((await w.run("sandbox-prepare")).blocked?.needs, "person", "and the next sandbox starts afresh -- here it waits only for the trust it needs");
+  assert.equal((await w.run("sandbox-prepare")).state, "READY", "and the next sandbox starts afresh -- autonomously: nothing but the half-run restore ever waited on a person");
 });

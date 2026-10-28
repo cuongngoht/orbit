@@ -6,16 +6,27 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { effectiveOf } from "../src/automation/settings.mjs";
 import { ACTION_CLASSES, matrixOf, verdictOf } from "../src/automation/policy.mjs";
+import { BOUNDARIES, DECISIONS } from "../src/protected/boundaries.mjs";
 
 const values = (content) => effectiveOf([{ by: "machine", content }]).values;
 
-test("the five classes no workflow may ever take are deny whatever a person set, and nothing maps to them", () => {
-  const never = ACTION_CLASSES.filter((c) => c.default === "deny");
-  assert.deepEqual(never.map((c) => c.id), ["execute-generated-script", "install-dependency", "secrets-or-external-write", "production-mutation", "push-merge-deploy"]);
-  for (const c of never) {
+test("autonomous by default: every class a workflow takes is allow, an owner's is owner, and only two nobody can approve are deny", () => {
+  const own = ACTION_CLASSES.filter((c) => !c.boundary);
+  assert.deepEqual(own.filter((c) => c.default === "deny").map((c) => c.id), ["execute-generated-script", "secret-read"]);
+  assert.ok(own.filter((c) => c.maps.length).every((c) => c.default === "allow"), "a class a workflow step takes itself is never asked of a person");
+  for (const c of own.filter((x) => x.default === "deny")) {
     assert.deepEqual(c.maps, []);
     assert.equal(verdictOf(values({}), c.id), "deny");
   }
+});
+
+test("the protected boundaries are rows DERIVED from src/protected/: approval where a person approves once, deny for the primary checkout -- and no workflow step maps to one", () => {
+  const rows = ACTION_CLASSES.filter((c) => c.boundary);
+  assert.deepEqual(rows.map((c) => c.boundary), BOUNDARIES.map((b) => b.id));
+  assert.deepEqual(rows.map((c) => c.default), BOUNDARIES.map((b) => (b.decision === DECISIONS.DENY ? "deny" : "approval")));
+  assert.ok(rows.every((c) => c.maps.length === 0), "a protected boundary is crossed only as an owner's own approved action");
+  assert.equal(verdictOf(values({}), "protected:git-push"), "approval");
+  assert.equal(verdictOf(values({}), "protected:primary-checkout-write"), "deny");
 });
 
 test("no usage header of a Orbit command offers a never-class", () => {

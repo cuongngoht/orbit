@@ -7,7 +7,7 @@ description: >
   checkout so a second look costs almost nothing, and says which components can start here, which
   are blocked and why, what is running, whether it answers, and whether a server it needs is
   reachable from here and from the dev container. When asked,
-  it proposes a development environment as a reviewable proposal that a person adopts. Use when asked
+  it proposes a development environment as a reviewable proposal that a person adopts in Orbit Control. Use when asked
   what a project needs to run, whether it can run on this machine, why it will not start, to start or
   stop the app, whether a database is reachable, or to design a dev container. It never installs a
   tool, never edits the repository except an adopted proposal, never stops what it did not start,
@@ -50,17 +50,16 @@ order of the steps, the reading that only an agent can do, and the words you car
 | whether it can run HERE, and where | `runtime status` | the resolver, from facts and this machine |
 | an environment to run it in | `runtime design`, then **a person** adopts | a proposal is never applied by itself |
 | starting and stopping | `runtime start` · `runtime stop` | only what a file declared; only what Orbit can prove it started |
-| a task's own application | `runtime sandbox-prepare` · `sandbox-start` · `sandbox-release` with `--task` | only the task's workspace; only under a person's trust; only what the sandbox owns |
+| a task's own application | `runtime sandbox-prepare` · `sandbox-start` · `sandbox-release` with `--task` | only the task's workspace, autonomously; only what the sandbox owns |
 | whether the product is right | not this workflow | `orbit-test-suite`, `orbit-qa-agent` |
 
-**What is pre-approved and what is not.** Only the commands that read, or keep something in Orbit's own
-store, run without asking: `status`, `discover`, `record`, `design`, `proposal`, `doctor`, `settings`,
-`projects`, `connectivity`, `sandboxes`. Everything that starts a process, writes the repository, brings an
-environment up or knocks on another machine (`start`, `stop`, `adopt`, `validate`, `prepare --apply`,
-`configure`, `forget`, `check`, `retry`, and every `sandbox-…` command) is **not** pre-approved: the host asks the person each time,
-and that is the point. A project's own scripts and a dev container's
-definition are untrusted files, and running one is a person's call. Never look for a way around the
-prompt, and never pass `--human` for a person who has not said it.
+**Autonomous by default, and one protected boundary.** Orbit itself asks nobody to read, design, bring a local
+environment up (`validate`, `prepare --apply`), start or stop what it owns, forget a gone checkout, or prepare, start
+and release a task's own sandbox -- your host may still ask the person before a command that starts a process, as
+its own permissions say. The ONE thing here that crosses a protected boundary is `adopt`: it writes the developer's
+own checkout, so Orbit never does it for an agent, `--human` or not -- only a person's own act crosses it, in Orbit
+Control (Runtime → proposal → Adopt). `configure` keeps a person's own settings: relay `--human` only for words a
+person actually said. Never look for a way around a refusal.
 
 **Where it can run is per component.** `status` prints an operating-system matrix -- each component,
 Windows, Linux, macOS. Say which component runs where, from it; never "the project needs Windows" because
@@ -69,9 +68,10 @@ somebody runs it, never what it requires.
 
 **A task's sandbox is the task's.** When a task (orbit-engineering-agent) needs its OWN changed application
 running, `sandbox-prepare --task=<tsk-…>` builds it from the task's workspace and `sandbox-start` starts it on a
-port it leased, never the developer's. What it restores and builds is held to a **person's trust in Orbit Control**
-(by fingerprint): when a prepare answers BLOCKED with `needs=person`, say which fingerprint and what it would run,
-and send the person to Control (Runtime → Sandbox policy); there is no terminal command for it, on purpose.
+port it leased, never the developer's. It restores dependencies and builds containers there AUTONOMOUSLY, each
+fingerprinted as evidence of exactly what ran (a fingerprint a person marked reviewed in Control is named as such,
+and nothing waits for one). A prepare that answers BLOCKED with `needs=person` needs something only a person can give
+(a worker image to pin, a port somebody holds): say what, in its words.
 `sandbox-release` ends only what the sandbox owns. A sandbox that is STALE was built from an older tree than the
 workspace now holds: starting it again replaces it.
 
@@ -172,19 +172,16 @@ with the edits it would make, the gaps it closes, what no feature can provide, a
 written nothing to the repository. Present it **as it is**: do not paraphrase a risk away, and do not
 adopt it yourself.
 
-Adopting writes the repository, and it is the one command that does. It needs a person's explicit word:
+Adopting writes the developer's own checkout -- the PRIMARY_CHECKOUT_WRITE protected boundary -- and it is the one
+command that does. Orbit never adopts from a terminal, `--human` or not: hand the proposal to the person, who adopts it
+themselves in Orbit Control (Runtime → the proposal → Adopt), the one door that proves a person.
 
-```bash
-node ${CLAUDE_PLUGIN_ROOT}/cli/runtime.mjs adopt --human
-```
-
-Run it **only** after the person has read the proposal and said to adopt it, and relay that with
-`--human`. A proposal goes stale when the understanding or an environment file moved since; the
-refusal says so, and the answer is to design again, not to force it. After adopting, the files are
-read back and verified, and the environment is **adopted, not validated**: `runtime validate` brings
-it up to see that it works, which is slow, spends the machine and can run commands the definition
-names **on this machine** (an `initializeCommand` runs on the host, not in the container). It needs
-`--human`, and the proposal's risks name what it found: read them to the person before asking.
+A proposal goes stale when the understanding or an environment file moved since; the refusal says so, and the answer
+is to design again, not to force it. After adopting, the files are read back and verified, and the environment is
+**adopted, not validated**: `runtime validate` brings it up to see that it works -- autonomously, as any local
+environment; it is slow, spends the machine and can run commands the definition names **on this machine** (an
+`initializeCommand` runs on the host, not in the container), so read the proposal's risks to the person when you
+hand it over.
 
 ## 5. Start and stop, never beyond what a file declared
 
@@ -268,9 +265,10 @@ across two.
 
 - Discovery reads and records; it never executes a project's script, hook or command.
 - A command is launched only as a file declared it. You never supply one.
-- A person's `--human` is relayed, never invented: adopting, configuring and releasing are theirs.
+- A person's `--human` is relayed, never invented: configuring and releasing are theirs, and adopting is a person's
+  own act that no relay crosses.
 - A machine that cannot answer is `unknown`, a project that cannot be understood is `PARTIAL` or `UNKNOWN`,
   and neither is a failure. Say what is not known.
 - No test is run, no API is called, no data is seeded or reset by anything in this workflow.
-- Exit codes: 0 done, 2 refused (a stale proposal, a missing `--human`, an unknown id), 3 blocked
+- Exit codes: 0 done, 2 refused (a stale proposal, an adopt only a person may make, an unknown id), 3 blocked
   (nothing could be started). There is no 1: this asks the product nothing.

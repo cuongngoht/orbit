@@ -15,14 +15,31 @@
 //   changes(dir, from)  inside the clone: stage everything (its own index), then what differs from
 //                       `from` (a revision or a tree id) as rows -- path, change, lines added and
 //                       removed, a rename's old path -- and the tree id of what it holds now
+//   commit({ tree, store, base }, branch, message)
+//                       what the clone holds now, committed on `branch` (0.2.0) -- in the STORE beside it, never in
+//                       the clone's own `.git` (THE DELIVERY, below). Answers the commit's full id: the base
+//                       itself when nothing changed
+//   headOf(store)       the commit the store's branch names, or null before the first commit
+//   remoteOf(name)      the push URL the CHECKOUT names for one of its remotes -- read, never written -- or null
+//   push(store, url, sha, ref, force)
+//                       exactly `sha` to `ref` at `url`, from a git directory made for this one push: the
+//                       checkout's `.git` is never the target. Only the GIT_PUSH protected boundary's caller asks
+//                       it (src/protected/), after a person's approval of exactly this push was spent
+//   remoteRefOf(url, ref)
+//                       what `ref` holds at `url` now, or null: how an interrupted push is read back
+//
+// A clone keeps no `origin`: `git clone` points it at the checkout's own path, and a push from inside a workspace --
+// a test's script, a tool, a person's habit -- would write the checkout's refs. A push names its URL every time.
+// And a clone's git directory must be its OWN (`ownGitDir`): a `.git` that is a link, or a file or a `commondir`
+// naming another repository -- the checkout's own -- is never read or written through.
 //
 // No hook runs: every call points `core.hooksPath` at a directory that does not exist, and
 // `core.fsmonitor` off -- a checkout's hooks are code it brought with it. A failing git is BLOCKED
 // with the line that says why (its `fatal:` or `error:` line, else its last), scrubbed: the
 // machine could not answer, and nothing about the change was learned.
-import { lstatSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { baseEnv } from "../process/env.mjs";
 import { Blocked, Refused } from "../errors.mjs";
 import { scrub } from "../scrub.mjs";
@@ -58,8 +75,24 @@ const folded = (p) => (process.platform === "win32" ? placed(p).toLowerCase() : 
 
 export const samePath = (a, b) => folded(a) === folded(b);
 
-// A repository whose top is `dir` itself, and which is not the checkout.
+// A clone's git directory is its OWN: a directory -- never a link, never a `gitdir:` file -- and no `commondir`
+// naming another repository's, through which a git call in the clone would read and write that repository: the
+// checkout's own, its index and its refs. The clone's `.git` is the host's to write (THE ANCHOR, below).
+const realDirAt = (p) => {
+  try { return lstatSync(p).isDirectory(); }
+  catch { return false; }
+};
+
+const ownGitDir = (dir) => realDirAt(join(dir, ".git")) && !existsSync(join(dir, ".git", "commondir"));
+
+function inOwnClone(dir) {
+  if (!ownGitDir(dir)) throw new Refused(`${dir}'s .git is not its own — a link, or a file naming another repository; nothing is read or written through it`);
+  return dir;
+}
+
+// A repository whose top is `dir` itself, its git directory its own, and which is not the checkout.
 function ownTop(call, root, dir) {
+  if (!ownGitDir(dir)) return false;
   const r = call(dir, ["rev-parse", "--show-toplevel"]);
   return r.ok === true && samePath(firstLine(r.out), dir) && !samePath(dir, root);
 }
@@ -70,8 +103,88 @@ export function createLocalClones(root, proc, opts) {
   const call = callOf(proc, opts);
   const anchorGit = (dir) => anchoredState(proc, opts, dir);
   const git = gitOf(call);
-  return { root, head: () => firstLine(git(root, ["rev-parse", "HEAD"])), dirty: () => git(root, ["status", "--porcelain"]).trim().length > 0, listed: (dir) => ownTop(call, root, dir), add: (dir, revision) => cloned(call, git, root, dir, revision), remove: (dir) => removed(call, root, dir), changes: (dir, from) => changesIn(git, anchorGit, dir, from), treeOf: (dir) => anchoredTree(git, anchorGit, dir), stateOf: (dir) => anchorGit(dir), treeAt: (dir, revision) => treeAtIn(git, root, revision) };
+  return { root, head: () => firstLine(git(root, ["rev-parse", "HEAD"])), dirty: () => git(root, ["status", "--porcelain"]).trim().length > 0, listed: (dir) => ownTop(call, root, dir), add: (dir, revision) => cloned(call, git, root, dir, revision), remove: (dir) => removed(call, root, dir), changes: (dir, from) => changesIn(git, anchorGit, inOwnClone(dir), from), treeOf: (dir) => anchoredTree(git, anchorGit, inOwnClone(dir)), stateOf: (dir) => anchorGit(dir), treeAt: (dir, revision) => treeAtIn(git, root, revision), ...delivery(proc, opts, root) };
 }
+
+// ---- THE DELIVERY: a task's commit, and a push of exactly it (0.2.0) -----------------------------------------
+//
+// Never through the clone's own `.git`: that is the host's to write (THE ANCHOR, below), and a hook, a configuration
+// that rewrites a URL (`pushInsteadOf`) or a `.git` naming the checkout's own would make a commit, or a push a person
+// approved, land somewhere else. So a commit is made in a STORE: a bare git directory beside the tree that only this
+// module writes, made FRESH for every commit (whatever stood there is removed, a link unfollowed), with no template --
+// no hook, no exclude -- and the checkout's objects borrowed through `objects/info/alternates`, which git never writes.
+// Its index starts from the base revision and takes the tree's files through the anchored git that names a recorded
+// tree (no system, global or workspace configuration; git passes over the tree's own `.git`, whatever it holds), so the
+// commit holds what the workspace holds -- a file the project tracks though it ignores it included -- and the commit is
+// plumbing (`commit-tree`), which runs no hook. A push goes from a git directory made for that one push, borrowing the
+// checkout's objects and the store's and holding nothing of its own: the URL it pushes to is the one it was given, read
+// only through the machine's and the person's own configuration (their credentials), never through a task's file.
+const delivery = (proc, opts, root) => ({ commit: (place, branch, message) => committedIn(proc, opts, root, place, { branch, message }), headOf: (store) => storeHead(callOf(proc, opts), store), remoteOf: (name) => remoteUrl(callOf(proc, opts), root, name), push: (store, url, sha, ref, force) => pushedFrom(proc, opts, root, store, { url, sha, ref, force }), remoteRefOf: (url, ref) => remoteRef(callOf(proc, opts), root, url, ref) });
+
+const REVISION = /^[0-9a-f]{7,64}$/;
+
+// A commit needs an author: the person's own git identity as the CHECKOUT names it -- their configuration, never the
+// task's -- else Orbit's.
+const configured = (call, root, key) => ((r) => (r.ok === true ? firstLine(r.out) : ""))(call(root, ["config", "--get", key]));
+
+const identityOf = (call, root) => ["-c", `user.name=${configured(call, root, "user.name") || "Orbit"}`, "-c", `user.email=${configured(call, root, "user.email") || "orbit@localhost"}`];
+
+// The checkout's object directory, as git names it: a linked worktree's is its common directory's.
+const objectsOf = (git, root) => join(resolve(root, firstLine(git(root, ["rev-parse", "--git-common-dir"]))), "objects");
+
+// A bare git directory with no template, borrowing these object directories and writing none of them.
+function borrowing(git, dir, objects) {
+  git(dirname(dir), ["init", "--bare", "--quiet", "--template=", dir]);
+  mkdirSync(join(dir, "objects", "info"), { recursive: true });
+  writeFileSync(join(dir, "objects", "info", "alternates"), `${objects.join("\n")}\n`);
+  return dir;
+}
+
+function committedIn(proc, opts, root, place, c) {
+  if (!REVISION.test(String(place.base))) throw new Refused(`${place.base} is not a revision — nothing is committed`);
+  rmSync(place.store, { recursive: true, force: true, maxRetries: 3 });
+  const store = borrowing(gitOf(callOf(proc, opts)), place.store, [objectsOf(gitOf(callOf(proc, opts)), root)]);
+  const identity = identityOf(callOf(proc, opts), root);
+  return anchored(proc, opts, (git) => committedWith(anchoredIn(git, place.tree, store), place.base, identity, c.branch, c.message));
+}
+
+function committedWith(at, base, identity, branch, message) {
+  at(["read-tree", base]);
+  at(["add", "-A"]);
+  at(["symbolic-ref", "HEAD", `refs/heads/${branch}`]);
+  at(["update-ref", "HEAD", commitOf(at, base, identity, message)]);
+  return firstLine(at(["rev-parse", "HEAD"]));
+}
+
+// Nothing changed is the base itself, never an empty commit.
+function commitOf(at, base, identity, message) {
+  const tree = firstLine(at(["write-tree"]));
+  if (tree === firstLine(at(["rev-parse", `${base}^{tree}`]))) return base;
+  return firstLine(at([...identity, "commit-tree", tree, "-p", base, "-m", message]));
+}
+
+// Before the first commit there is no store, and no branch.
+const storeHead = (call, store) => (existsSync(join(store, "HEAD")) ? ((r) => (r.ok === true ? firstLine(r.out) || null : null))(call(store, [`--git-dir=${store}`, "rev-parse", "--verify", "--quiet", "HEAD"])) : null);
+
+function pushedFrom(proc, opts, root, store, p) {
+  const fresh = mkdtempSync(join(tmpdir(), "orbit-push-"));
+  try { return pushedWith(proc, opts, borrowing(gitOf(callOf(proc, opts)), join(fresh, "git"), [objectsOf(gitOf(callOf(proc, opts)), root), join(store, "objects")]), p); }
+  finally { rmSync(fresh, { recursive: true, force: true }); }
+}
+
+// -> { ok, reason }: a refusal (a non-fast-forward, a missing permission) is the remote's answer, kept as said.
+const pushedWith = (proc, opts, dir, p) => ((r) => ({ ok: r.ok === true, reason: r.ok === true ? null : scrub(reasonOf(r)) }))(callOf(proc, opts)(dir, [`--git-dir=${dir}`, "push", "--porcelain", "--no-verify", p.url, `${p.force ? "+" : ""}${p.sha}:${p.ref}`]));
+
+// A remote the checkout names by a RELATIVE path means a directory next to the CHECKOUT, and a push runs from the
+// clone, which lives elsewhere: it is resolved where the checkout would have resolved it. A URL with a scheme, an
+// `host:path` one and an absolute path are taken as said.
+const relativePath = (url) => !/^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(url) && !/^[^/\\]+:/.test(url) && !isAbsolute(url);
+
+const placedUrl = (root, url) => (url && relativePath(url) ? resolve(root, url) : url);
+
+const remoteUrl = (call, root, name) => ((r) => (r.ok === true ? placedUrl(root, firstLine(r.out)) || null : null))(call(root, ["remote", "get-url", "--push", name]));
+
+const remoteRef = (call, root, url, ref) => ((r) => (r.ok === true ? firstLine(r.out).split(/\s+/)[0] || null : null))(call(root, ["ls-remote", url, ref]));
 
 // Linked first, which costs nothing on the same disk; a clone git could not link is copied. A failed
 // clone leaves no directory behind (git removes what it made), so the copy starts clean.
@@ -84,6 +197,7 @@ function cloned(call, git, root, dir, revision) {
   const linked = call(root, ["clone", "--quiet", "--local", ...VERBATIM, "--no-checkout", root, dir]);
   if (!linked.ok) git(root, ["clone", "--quiet", "--local", "--no-hardlinks", ...VERBATIM, "--no-checkout", root, dir]);
   git(dir, ["checkout", "--quiet", "--detach", revision]);
+  call(dir, ["remote", "remove", "origin"]);
   return dir;
 }
 
@@ -162,12 +276,15 @@ const stampOf = (dir, files) => ((times) => (times.some(Number.isNaN) ? null : M
 
 const anchoredIn = (git, dir, anchor) => (args) => git(dir, [`--git-dir=${anchor}`, `--work-tree=${dir}`, "-c", "core.bare=false", ...args]);
 
-function anchoredState(proc, opts, dir) {
+// `fn(git, anchor)` with a git nothing else configured, in a directory made for it and removed after.
+function anchored(proc, opts, fn) {
   const anchor = mkdtempSync(join(tmpdir(), "orbit-anchor-"));
   writeFileSync(join(anchor, EMPTY_CONFIG), "");
-  try { return stateWith(gitOf(callOf(proc, { ...opts, env: anchorEnv(opts, anchor) })), dir, anchor); }
+  try { return fn(gitOf(callOf(proc, { ...opts, env: anchorEnv(opts, anchor) })), anchor); }
   finally { rmSync(anchor, { recursive: true, force: true }); }
 }
+
+const anchoredState = (proc, opts, dir) => anchored(proc, opts, (git, anchor) => stateWith(git, dir, anchor));
 
 function stateWith(git, dir, anchor) {
   git(dirname(dir), ["init", "--bare", "--quiet", join(anchor, "git")]);

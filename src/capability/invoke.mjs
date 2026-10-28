@@ -13,6 +13,8 @@
 //
 //   input     the case asked for something the capability cannot accept
 //   binding   a logical ref it binds cannot be resolved for this run (ADR 0036)
+//   boundary  what it DECLARES it does crosses a protected boundary (src/protected/: a production deploy,
+//             migration or destructive change), and this run carries no approval spent on exactly it
 //   mutation  it can change the world and the case never said it would
 //   tools     the command it needs is not usable on this machine
 //   connection the connection it needs (a credential reference a person set up)
@@ -29,11 +31,14 @@
 import { constraintFindings, missingFindings } from "../constraints.mjs";
 import { Blocked, Refused, StepError } from "../errors.mjs";
 import { extensionContextV1 } from "../extensions/context-v1.mjs";
+import { actionFingerprint, authorize, isAuto } from "../protected/authorize.mjs";
+import { capabilityAction } from "../protected/capability.mjs";
 import { scrubbed } from "../scrub.mjs";
 
 const GATES = [
   { name: "input", ask: inputProblem },
   { name: "binding", ask: bindingProblem },
+  { name: "boundary", ask: boundaryProblem },
   { name: "mutation", ask: mutationProblem },
   { name: "tools", ask: toolProblem },
   { name: "connection", ask: connectionProblem },
@@ -94,6 +99,17 @@ function boundInto(ctx, run, cap, invocation, key, kind, ref) {
   if (!r?.ok) return { blocked: r?.blocked !== false, message: `${cap.id}: ${key} "${ref}" could not be bound as ${kind} — ${r?.why ?? "the binder had no answer"}` };
   invocation.bound[key] = r.value;
   Object.assign(invocation.env, r.env ?? {});
+}
+
+// A PROTECTED BOUNDARY, held at the one door every capability call passes, whoever asks: a run case, a work's need,
+// a playbook step, a mission, a worker. What the capability declares (src/protected/capability.mjs) is asked of the
+// leaf; anything but AUTO runs only when the run carries the fingerprint of exactly this action, which only the
+// engineering orchestrator sets -- after its task spent a person's approval of it (src/orchestration/dispatch.mjs).
+// Nothing a case, a flag or a host sends can set it, so no second route reaches production through a capability.
+function boundaryProblem(ctx, run, cap, input) {
+  const verdict = authorize(capabilityAction(cap, input));
+  if (isAuto(verdict) || run?.authorized?.action === actionFingerprint(verdict)) return null;
+  return { authorization: true, message: `${cap.id}: ${verdict.title} — ${verdict.risk}. This is a protected boundary: it runs only as an engineering task's action that a person approved once, for exactly this call, in Orbit Control` };
 }
 
 // A capability that mutates is reached in one of two ways, and only these. A PERSON's case that

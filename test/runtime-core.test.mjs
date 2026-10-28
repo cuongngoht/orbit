@@ -27,11 +27,11 @@ test("nothing under src/runtime names a stack, a package manager, a database or 
   assert.deepEqual(hits, []);
 });
 
-// What the runtime subject may import: leaves, the ports it is handed, the one shared
-// semver subset, and its own files. Every other subsystem is reached through `cli/` or a
+// What the runtime subject may import: leaves (the protected-boundary leaf among them), the ports it is handed, the one
+// shared semver subset, and its own files. Every other subsystem is reached through `cli/` or a
 // binding, never from here. `version.mjs` is the leaf that says which engine this is -- what
 // reads a checkout's evidence is printed with it, so an upgrade reads again.
-const ALLOWED = /^(errors|hash|constraints|scrub|freshness|catalog|runtime|ecosystems|frontend|process|probe|project|store|tools)\//;
+const ALLOWED = /^(errors|hash|constraints|scrub|freshness|catalog|runtime|ecosystems|frontend|process|probe|project|protected|store|tools)\//;
 const SINGLE = new Set(["errors.mjs", "hash.mjs", "constraints.mjs", "scrub.mjs", "freshness.mjs", "catalog.mjs", "version.mjs", "extensions/engine-range.mjs", "learn/args.mjs"]);
 
 test("src/runtime imports only leaves, ports and itself -- never another subject, and never the engine's extensions beyond one pure semver file", () => {

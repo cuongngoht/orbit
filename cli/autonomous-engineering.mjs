@@ -2,7 +2,9 @@
 // AUTONOMOUS ENGINEERING: a requirement (or an objective) taken to a verified change, one decided
 // step at a time, inside Orbit's governance -- and every step recorded in a TASK that Mission
 // Control reads. The host's model reasons; this engine keeps the state, the gates, the evidence
-// and the reasons to stop. It never pushes, merges, deploys, grants an approval or runs a shell.
+// and the reasons to stop. Autonomous by default (0.2.0): it commits a verified change in the task's own
+// workspace on its own, and pushes that exact commit only once a person approved exactly that push in Orbit
+// Control (a protected boundary, src/protected/). It never merges, grants an approval or runs a shell.
 //
 //   node autonomous-engineering.mjs start --ref=<item|req-…|rs-…|w-…> [--objective="…"]
 //                                          [--attempts=8 --actions=100 --minutes=<n>]
@@ -397,16 +399,22 @@ function describedBy(ctx, id) {
   catch { return null; }
 }
 
-const runOf = (approved) => ({ c: { id: "autonomous-engineering", destructive: approved }, page: false, values: {} });
+// `approved`: the orchestrator authorized this call (it is autonomous, or it spent an approval); `authorized`: for one
+// that crossed a protected boundary, the fingerprint of the action whose approval it spent -- the capability pipeline
+// holds the call to exactly that action (src/capability/invoke.mjs `boundary`), and nothing a host sends can set it.
+const runOf = (opts) => ({ c: { id: "autonomous-engineering", destructive: opts.approved === true }, page: false, values: {}, ...(opts.authorized ? { authorized: opts.authorized } : {}) });
 
-function invokedBy(ctx, id, input, approved) {
+function invokedBy(ctx, id, input, opts) {
   const cap = describedBy(ctx, id);
   if (!cap) throw new Refused(`${id} is not a capability this project registered`);
   if (cap.connection) throw new Blocked(`${id} needs a connection, which autonomous engineering does not bind yet — ask it through work invoke`);
-  return invokeCapability(ctx, runOf(approved === true), { capability: id, input });
+  return invokeCapability(ctx, runOf(opts ?? {}), { capability: id, input });
 }
 
-const capabilitiesPort = (caps) => ({ describe: (id) => ((c) => (c ? { mutates: c.mutates === true, connection: c.connection ?? null } : null))(describedBy(caps(), id)), invoke: (id, input, opts) => invokedBy(caps(), id, input, opts.approved) });
+// What a capability DECLARES, as the protected-boundary leaf reads a call to it (src/protected/capability.mjs).
+const declaration = (c) => ({ id: c.id, mutates: c.mutates === true, effects: c.effects ?? [], environment: c.environment ?? null, connection: c.connection ?? null, inputSchema: c.inputSchema ?? {} });
+
+const capabilitiesPort = (caps) => ({ describe: (id) => ((c) => (c ? declaration(c) : null))(describedBy(caps(), id)), invoke: (id, input, opts) => invokedBy(caps(), id, input, opts) });
 
 const DEFECT = new Set(OUTCOMES.filter((o) => o.defect).map((o) => o.id));
 

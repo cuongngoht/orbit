@@ -53,7 +53,7 @@ const walk = (dir) => readdirSync(dir).flatMap((n) => (statSync(join(dir, n)).is
 const files = walk(HERE).filter((p) => p.endsWith(".mjs"));
 const code = (p) => readFileSync(p, "utf8").split("\n").filter((l) => !/^\s*\/\//.test(l)).join("\n");
 
-const ALLOWED = /^(orchestration)\//;
+const ALLOWED = /^(orchestration|protected)\//;
 const SINGLE = new Set(["errors.mjs", "hash.mjs", "constraints.mjs", "scrub.mjs", "printable.mjs", "project/boundary.mjs", "learn/args.mjs", "process/env.mjs", "store/lock.mjs", "store/atomic.mjs"]);
 
 test("src/orchestration imports only leaves, the store's lock and itself -- no subject: not the task, runtime, work, requirements, investigations or capabilities", () => {

@@ -68,7 +68,7 @@ function derived(primary, task, workspace) {
   const rooms = roomsOf(primary, id);
   const sandboxes = createInstances(rooms.sandboxes, primary.io);
   const doc = () => sandboxes.read(id) ?? createdSandbox({ checkout: primary.checkout, task, workspace: workspace.id, baseRevision: workspace.baseRevision }, primary.now());
-  return withViews({ ...primary, ...scopedTo(id, task, primary.providers, primary), rooms, sandboxes, sandboxId: id, task, workspace, primaryRoot: primary.root, root: workspace.path, ...held(primary, workspace, rooms, doc) }, doc);
+  return withViews({ ...primary, ...scopedTo(id, task, primary.providers, primary), rooms, sandboxes, sandboxId: id, task, workspace, primaryRoot: primary.root, primaryTree: primary.tree, root: workspace.path, ...held(primary, workspace, rooms, doc) }, doc);
 }
 
 const held = (primary, workspace, rooms, doc) => ({ source: primary.workspaces.sourceOf(workspace.path), tree: primary.workspaces.treeOf(workspace.path), store: createRuntimeStore(rooms.understanding, primary.io), instances: readOnlyInstances(doc), proposals: noProposals, observations: createObservations(rooms.liveSandbox, primary.io), scratch: createScratch(join(rooms.liveSandbox, "scratch"), primary.io) });

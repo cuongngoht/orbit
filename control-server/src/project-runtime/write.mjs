@@ -68,7 +68,7 @@ export function adoptProposal(ctx, ids, body) {
   const given = fieldsOf(body, { human: "boolean" });
   if (given.human !== true) throw invalid("HUMAN_REQUIRED", "adopting an environment writes the repository, and is a person's: send { human: true } from the button a person pressed");
   if (!PROPOSAL.test(proposal)) throw invalid("INVALID_PROPOSAL_ID", "a proposal id looks like ep- and twelve hexadecimal characters");
-  return guarded(CODE, () => RUNTIME_COMMANDS.adopt.run(runtimeOf(ctx, ids), [proposal, "--human"]));
+  return guarded(CODE, () => RUNTIME_COMMANDS.adopt.run({ ...runtimeOf(ctx, ids), door: "control" }, [proposal, "--human"]));
 }
 
 // This machine's block of the settings, replaced as a whole against the revision the page read.

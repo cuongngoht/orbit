@@ -61,7 +61,9 @@ test("reading automation writes nothing, says Orbit is autonomous by default, an
   assert.deepEqual(r.json.readiness.map((h) => h.id), ["claude", "codex", "antigravity", "grok"]);
   assert.equal(r.json.readiness.find((h) => h.id === "grok").agents, false, "Grok Build (1.8.9) runs a step's skill in the main session");
   assert.equal(r.json.readiness.find((h) => h.id === "codex").agents, false);
-  assert.ok(r.json.effective.matrix.some((m) => m.id === "push-merge-deploy" && m.verdict === "deny"));
+  assert.ok(r.json.effective.matrix.some((m) => m.id === "protected:git-push" && m.verdict === "approval"), "a push is a protected boundary a person approves once");
+  assert.ok(r.json.effective.matrix.some((m) => m.id === "protected:primary-checkout-write" && m.verdict === "deny"));
+  assert.ok(r.json.effective.matrix.some((m) => m.id === "run-task-sandbox" && m.verdict === "owner"), "a task's own sandbox is autonomous");
   assert.deepEqual(snapshot(root.store), before);
 });
 

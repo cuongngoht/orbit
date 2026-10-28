@@ -1,8 +1,8 @@
 // An ISOLATED task sandbox over fakes: the person's runtime and a task's workspace (test/sandbox.harness.mjs), a
-// policy that says isolation is required, and a scripted container world (test/fakes/isolation.mjs) nobody has trusted
-// anything in yet. What a test varies is what the world does, and what a person trusts.
+// policy that says isolation is required, and a scripted container world (test/fakes/isolation.mjs). What a test varies
+// is what the world does; a person's review marks (`trust`) are evidence, never a gate.
 import { sandboxFilled } from "../src/runtime/sandbox/policy.mjs";
-import { CONTAINER_TOOLS, fingerprintsIn, sandboxWorld } from "./sandbox.harness.mjs";
+import { CONTAINER_TOOLS, sandboxWorld } from "./sandbox.harness.mjs";
 import { fakeIsolation } from "./fakes/isolation.mjs";
 
 export const pin = (c) => `sha256:${c.repeat(64)}`;
@@ -33,12 +33,10 @@ export function isolatedWorld(opts = {}) {
   return { ...world, iso };
 }
 
-// Prepared and trusted the way a person does it: the worker image, then the topology the sandbox named.
+// Prepared from the first ask: a task's own isolated sandbox is brought up autonomously (0.2.0) -- nobody's review mark
+// on its worker image or its topology is waited for; the image is a person's choice, pinned by digest.
 export async function readyWorld(opts = {}) {
   const w = isolatedWorld(opts);
-  trust(w, "worker-image", "e".repeat(64));
-  const first = await w.run("sandbox-prepare");
-  trust(w, "topology", fingerprintsIn(first.blocked?.because)[0]);
   return { ...w, ready: await w.run("sandbox-prepare") };
 }
 

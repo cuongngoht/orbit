@@ -60,7 +60,7 @@ test("ENDED, PAUSED and an action that never settled stop every decision", async
 });
 
 test("an approval that names nothing of this task, or one never granted, allows nothing", async (t) => {
-  const o = orchestrationWorld(t, { capabilities: { "dev.seed": { mutates: true, connection: null } } });
+  const o = orchestrationWorld(t, { capabilities: { "dev.seed": { mutates: true, effects: ["delete"], environment: "production", connection: null } } });
   const { id, go } = await testing(o);
   const seed = { kind: "invoke", capability: "dev.seed", input: {} };
   await refused(o, id, decided(o.ports, id, seed, { approval: "apr-9" }), "APPROVAL_UNKNOWN");

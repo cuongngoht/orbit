@@ -64,7 +64,9 @@ export const OUTCOMES = ["succeeded", "failed", "abandoned"];
 // projection's digest (src/architecture/graph-view.mjs) -- a receipt that names a graph, never a verdict about it.
 // `assessment` (0.1.0) is a security assessment snapshot the Security Auditor kept (`asm-…`, src/qa/security/): the
 // catalogs it pinned and what each control came to -- linked by a standalone audit task, never read to move one.
-export const RECEIPT_DOMAINS = ["runtime", "run", "investigation", "data", "browser", "work", "test", "check", "sandbox", "step", "plan", "task", "requirement", "skill", "impact", "learning", "goal", "skillrun", "skillstep", "invocation", "architecture", "assessment"];
+// `commit` and `push` (0.2.0) are an engineering task's delivery: a local commit in its own workspace (ref: the commit's
+// full id) and a push of exactly that commit, approved once at the GIT_PUSH protected boundary (src/protected/).
+export const RECEIPT_DOMAINS = ["runtime", "run", "investigation", "data", "browser", "work", "test", "check", "sandbox", "step", "plan", "task", "requirement", "skill", "impact", "learning", "goal", "skillrun", "skillstep", "invocation", "architecture", "assessment", "commit", "push"];
 
 // The receipt domains a COORDINATOR'S ENGINE writes and reads its own state back from (0.0.4): its steps, its plans,
 // the playbook versions it pinned, a declared playbook's runs, steps and calls, and the goal it serves. A line in one of
@@ -136,7 +138,7 @@ export const KINDS = {
   "file-changed": { material: false, fields: ["attempt", "path", "change", "added", "removed"] },
   receipt: { material: false, fields: ["domain", "ref", "outcome", "summary", "action", "environment", "sourceTree", "pin", "providerKey", "queryDigest", "resultDigest", "operation"] },
   verification: { material: false, fields: ["subject", "obligation", "evidence", "state"] },
-  "approval-requested": { material: true, fields: ["id", "action", "fingerprint", "environment", "reason", "risk", "expires", "attempt"] },
+  "approval-requested": { material: true, fields: ["id", "action", "fingerprint", "environment", "reason", "risk", "expires", "attempt", "boundary", "destructive", "shows"] },
   "approval-granted": { material: true, fields: ["id", "by", "session", "seen"] },
   "approval-rejected": { material: true, fields: ["id", "by", "session", "seen", "reason"] },
   "approval-consumed": { material: true, fields: ["id", "action", "fingerprint"] },
@@ -159,7 +161,7 @@ export const PREFIX = { "attempt-started": "att", decision: "dec", "action-start
 
 // Text that came from an agent or a person: refused above TEXT_LIMIT, kept as one printable
 // line (src/task/ops.mjs), and scrubbed by shape on the way to the disk (src/task/store.mjs).
-export const FREE_TEXT = ["objective", "because", "observed", "hypothesis", "reason", "summary", "label", "obligation", "risk"];
+export const FREE_TEXT = ["objective", "because", "observed", "hypothesis", "reason", "summary", "label", "obligation", "risk", "shows"];
 
 // The codes a refusal carries, for whoever must answer with a status (Orbit Control maps the
 // first two to 404 and the rest to 409). A stale revision carries src/store/revisioned.mjs's

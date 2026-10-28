@@ -32,7 +32,7 @@ test("a host may assert nothing the engine derives: every word the orchestrator 
   for (const word of DECISION_FORBIDDEN.filter((w) => !["class"].includes(w))) assert.ok(FORBIDDEN.includes(word), word);
 });
 
-const LEAVES = ["../errors.mjs", "../hash.mjs", "../scrub.mjs", "../printable.mjs", "../policy.mjs", "../learn/args.mjs", "../store/control.mjs", "../store/lock.mjs", "../store/revisioned.mjs", "node:path"];
+const LEAVES = ["../errors.mjs", "../hash.mjs", "../scrub.mjs", "../printable.mjs", "../policy.mjs", "../protected/boundaries.mjs", "../learn/args.mjs", "../store/control.mjs", "../store/lock.mjs", "../store/revisioned.mjs", "node:path"];
 
 test("src/automation imports only leaves, store primitives and itself -- never a subject", () => {
   for (const file of walk("src/automation")) {

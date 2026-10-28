@@ -298,7 +298,7 @@ test("a library -- nothing to run -- is told nothing about a sandbox, and may no
   const o = orchestrationWorld(t);
   const { id, go } = await reviewing(o);
   const c = contextOf(o.ports, id);
-  assert.match(c.next, /^next: one of review, link-investigation, gather-context, start-sandbox — decide on revision \d+$/);
+  assert.match(c.next, /^next: one of review, commit, push, link-investigation, gather-context, start-sandbox — decide on revision \d+$/);
   await assert.rejects(go({ kind: "start-sandbox" }), /ACTION_CHECK: this checkout declares nothing a sandbox could start — there is no application to run/);
   assert.equal(o.box.calls.length, 0);
 });

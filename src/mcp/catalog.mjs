@@ -15,6 +15,7 @@
 // `archive` (a release PINNED here, SHA-256 per platform, into
 // <storeBase>/runtimes/mcp/), or `manual`. Nothing here branches on a row's id.
 import { rowsOf } from "../catalog.mjs";
+import { DECLARED_KINDS } from "../protected/boundaries.mjs";
 import { pinnedArchive } from "../store/archive.mjs";
 import { definitionOf, managedProblems } from "./managed.mjs";
 
@@ -26,8 +27,15 @@ export function mcpCatalog(data) {
 
 function entryOf(row) {
   const definition = row.definition && !managedProblems({ ...row.definition, id: row.id }).length ? definitionOf(row.definition) : null;
-  return { id: row.id, name: String(row.name ?? row.id), description: String(row.description ?? ""), recommended: row.recommended === true && definition !== null, definition, install: installOf(row.install ?? {}, definition), match: matchOf(row), provides: list(row.provides), signals: list(row.routing?.signals), requiresSignal: row.routing?.requiresSignal === true };
+  return { id: row.id, name: String(row.name ?? row.id), description: String(row.description ?? ""), recommended: row.recommended === true && definition !== null, definition, install: installOf(row.install ?? {}, definition), match: matchOf(row), provides: list(row.provides), signals: list(row.routing?.signals), requiresSignal: row.routing?.requiresSignal === true, protected: protectedOf(row.protected) };
 }
+
+// Which of the server's tools ARE a protected action (0.2.0): tool name -> a kind src/protected/ knows (a push, a
+// deploy, a migration, a destructive data operation). Data the catalog ships about that server's own tools; an entry
+// naming anything else is dropped, so a typo can only ever leave a tool unprotected-by-name, never widen anything.
+const TOOL_NAME = /^[A-Za-z0-9_.:/-]{1,128}$/;
+
+const protectedOf = (map) => Object.fromEntries(Object.entries(map && typeof map === "object" && !Array.isArray(map) ? map : {}).filter(([tool, kind]) => TOOL_NAME.test(tool) && DECLARED_KINDS.includes(kind)));
 
 const installOf = (i, def) => ({ strategy: typeof i.strategy === "string" ? i.strategy : def?.transport === "http" ? "remote-http" : "manual", version: typeof i.version === "string" ? i.version : null, source: typeof i.source === "string" ? i.source : null, instructions: typeof i.instructions === "string" ? i.instructions : null, launch: i.launch === "node" ? "node" : "direct", assets: assetsOf(i.assets) });
 

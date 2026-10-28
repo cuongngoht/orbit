@@ -1,8 +1,9 @@
 // PREPARING a sandbox: the ordered steps that turn a task's workspace into somewhere its application can run.
 //
 // Each step is a row, and the first one that cannot go on says WHO has to act (a person, the environment, or
-// something nobody has yet provided) -- never "failed": a sandbox that waits on a person's trust is not broken,
-// it is waiting, and the orchestrator reads exactly that word (`needs`) to decide what to say next. Nothing here
+// something nobody has yet provided) -- never "failed": a sandbox that waits on what only a person can give is not
+// broken, it is waiting, and the orchestrator reads exactly that word (`needs`) to decide what to say next. A task's
+// own sandbox is AUTONOMOUS (0.2.0): restoring it and building its containers wait for nobody. Nothing here
 // decides a verdict about the change; it makes a place, and says whether the place is there.
 //
 //   OWNERSHIP      the workspace is the task's, and there
@@ -13,9 +14,10 @@
 //   FINGERPRINT    everything this sandbox would be built from, as one print: if it is READY at that print
 //                  there is nothing to do and nothing runs again. Otherwise it is PREPARING from here on --
 //                  written BEFORE anything is done, so a crash is recognised as one
-//   RESTORE        dependencies fetched, only what a person trusted, only in the workspace
+//   RESTORE        dependencies fetched, autonomously, only in the workspace, at a fingerprint kept as evidence
 //   LEASES         a port each component that can be told one is given, and a held fixed port is named
-//   BACKING        a dev container, when a component is placed on one, only a definition a person trusted
+//   BACKING        a dev container, when a component is placed on one, from the workspace's own definition -- a
+//                  host-side command the task added or changed waits for a person's review mark
 //   CONNECTIVITY   the servers a person said a start needs, asked from where each component will run
 //   READY          the document says what it was built from, where, and on which ports
 import { Blocked } from "../../errors.mjs";
@@ -32,9 +34,11 @@ import { blockedWithout, filesOn } from "../validate.mjs";
 import { bindingOf, portModeOf } from "./binding.mjs";
 import { leasesOf } from "./held.mjs";
 import { createOperations } from "./operations.mjs";
-import { effectivePolicy } from "./policy.mjs";
-import { fingerprintOf, planOf, restore, trustOf } from "./restore.mjs";
-import { definitionFingerprint, definitionTrust } from "./trust.mjs";
+import { HOST_HOOK, inspect } from "../environment/devcontainer.mjs";
+import { parse } from "../jsonc.mjs";
+import { effectivePolicy, isTrusted } from "./policy.mjs";
+import { fingerprintOf, planOf, restore, restoreRowOf } from "./restore.mjs";
+import { definitionFingerprint } from "./trust.mjs";
 import { isolatedSteps } from "./isolated-prepare.mjs";
 
 const go = (patch = {}) => ({ ok: true, patch });
@@ -141,7 +145,7 @@ const envNamesOf = (ctx, key) => ctx.readSettings().settings.components?.[key]?.
 
 const doneOf = (doc, fingerprint) => (doc.restore?.receipts?.[fingerprint]?.ok ? fingerprint : null);
 
-const judgedRestore = (c, r) => ({ ...r, ...{ row: trustOf({ plan: r.plan, fingerprint: r.fingerprint, policy: policyOf(c.state), done: doneOf(c.ctx.sandboxDoc(), r.fingerprint) }) } });
+const judgedRestore = (c, r) => ({ ...r, ...{ row: restoreRowOf({ plan: r.plan, fingerprint: r.fingerprint, policy: policyOf(c.state), done: doneOf(c.ctx.sandboxDoc(), r.fingerprint) }) } });
 
 function ranOne(c, r) {
   const op = c.ops.begin("restore", { fingerprint: r.fingerprint });
@@ -151,12 +155,12 @@ function ranOne(c, r) {
   return { ok: out.ok, receipt: { at: c.ctx.now(), ok: out.ok, status: out.status, durationMs: out.durationMs }, because: `restoring ${r.plan.component} (${r.plan.argv.join(" ")}) ${out.ok ? "finished" : `failed with ${out.status === null ? "no exit status" : `exit ${out.status}`}`}` };
 }
 
-// Trust was judged on the fingerprint of the files as the index held them a while ago. What runs is what the workspace
-// holds NOW, so the workspace is staged again and the fingerprint taken again, immediately before: a lock file edited
-// in between is a different print, and a different print is not what a person trusted.
+// The fingerprint was taken of the files as the index held them a while ago. What runs is what the workspace holds
+// NOW, so the workspace is staged again and the fingerprint taken again, immediately before: a lock file edited in
+// between is a different print, and the evidence must name what actually ran.
 const unchangedSince = (c, r) => (c.ctx.workspaces.tree(c.ctx.task), fingerprintOf(r.plan, c.ctx.source) === r.fingerprint);
 
-const MOVED_UNDER_TRUST = (r) => `the files restoring ${r.plan.component} depends on changed after trust was checked, so it is not run: prepare again, and what a person trusted is judged on what is there`;
+const MOVED_UNDER_TRUST = (r) => `the files restoring ${r.plan.component} depends on changed while the sandbox was prepared, so it is not run: prepare again, and what runs is fingerprinted on what is there`;
 
 async function ranAll(c, rows) {
   const receipts = { ...(c.ctx.sandboxDoc().restore?.receipts ?? {}) };
@@ -243,12 +247,29 @@ function up(c, files, fingerprint) {
   return result.ok ? go({ backing: { devcontainer: { state: "VALIDATED", files, validation: { at: c.ctx.now(), because: result.because, receipt: result.receipt } } } }) : halt("environment", `the dev container did not come up: ${result.because}`);
 }
 
-// What stands between a definition and its container being brought up: a person's trust in exactly these files, then
-// a machine that can do it at all. -> { needs, say } | null
+// What stands between a definition and its container being brought up. A task's own sandbox builds its definition
+// autonomously (0.2.0), its fingerprint kept with the validation as evidence -- with ONE technical rule, never a prompt
+// for the ordinary case: the command a definition runs on THIS machine, outside any container (`initializeCommand`),
+// is the developer's to have written. One the task's workspace ADDS or CHANGES against the developer's own checkout
+// waits for a person's review mark on exactly that definition's fingerprint (Orbit Control); everything else in the
+// definition runs inside the container. Then: a machine that can do it at all. -> { needs, say } | null
+const hostCommandOf = (text) => JSON.stringify(parse(text).value?.[HOST_HOOK] ?? null);
+
+const hostCommandsIn = (tree) => (tree ? Object.fromEntries(inspect(tree).definitions.map((d) => [d.path, hostCommandOf(d.text)])) : {});
+
+const hostCommandsChanged = (c) => ((mine, theirs) => Object.keys(mine).filter((p) => mine[p] !== "null" && mine[p] !== (theirs[p] ?? "null")))(hostCommandsIn(c.ctx.tree), hostCommandsIn(c.ctx.primaryTree));
+
+const HOST_CHANGED = (paths, fp) => `the task's workspace changes what ${paths.join(", ")} runs on this machine itself (${HOST_HOOK}, outside any container): a command a task wrote never runs on the host on its own. A person reviews it and marks fingerprint ${fp} reviewed in Orbit Control (Runtime → Sandbox policy), or the task leaves ${HOST_HOOK} as the checkout has it`;
+
+function hostGate(c, files) {
+  const changed = hostCommandsChanged(c);
+  const fp = definitionFingerprint(files);
+  return changed.length && !isTrusted(policyOf(c.state), "definition", fp) ? { needs: "person", say: HOST_CHANGED(changed, fp) } : null;
+}
+
 function containerGate(c, files) {
-  const fingerprint = definitionFingerprint(files);
-  const row = definitionTrust({ fingerprint, policy: policyOf(c.state) });
-  if (!row.trusted) return { needs: row.needs, say: row.say({ fingerprint }) };
+  const host = hostGate(c, files);
+  if (host) return host;
   const lacking = attempted(() => blockedWithout(providerOf("devcontainer", c.ctx.providers), c.state.world));
   return lacking ? { needs: "environment", say: lacking } : null;
 }

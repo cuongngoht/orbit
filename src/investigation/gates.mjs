@@ -22,7 +22,7 @@
 import { Blocked, Refused } from "../errors.mjs";
 import { MODE_IDS, modeOf, needsApproval } from "./vocab.mjs";
 
-const OFF = "autonomous QA is off for this project — a person turns it on in Orbit Control (Autonomous QA), or relays `node cli/autonomous-qa.mjs settings set enabled=true --human`";
+const OFF = "a person switched autonomous QA off for this project — they turn it back on in Orbit Control (Autonomous QA), or relay `node cli/autonomous-qa.mjs settings set enabled=true --human`";
 const hostOf = (origin) => { try { return new URL(origin).hostname; } catch { return null; } };
 // The minutes budget runs from the start of the CURRENT stretch of work: the
 // investigation's start, or the latest resume. A paused investigation resumed

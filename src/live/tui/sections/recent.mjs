@@ -7,6 +7,7 @@ import { lineOf } from "../../render/lines.mjs";
 import { milestonesOf } from "../../render/milestones.mjs";
 import { LIMITS, focusId } from "../model.mjs";
 import { clock, dim, joined, num, row, seg, str } from "./parts.mjs";
+import { isProtected, protectedSay } from "../../protected.mjs";
 
 const visible = (state, slot) => (state.viewer.hold.recent === null ? slot.events : slot.events.slice(0, Math.max(0, state.viewer.hold.recent - slot.dropped)));
 
@@ -56,6 +57,7 @@ const NOTICES = [
   { when: (e) => e.kind === "action-failed", say: (e) => ["danger", "✗", `${e.id} failed${and(str(e.summary) ?? str(e.reason))}`] },
   { when: (e) => e.kind === "action-completed" && e.outcome === "failed", say: (e, types) => ["danger", "✗", `${(types.get(e.id) ?? "action").toUpperCase()} failed${and(str(e.summary))} (${e.id})`] },
   { when: (e) => e.kind === "blocked", say: (e) => ["warning", "■", `blocked: ${e.stop ?? "?"}${e.needs ? ` (needs ${e.needs})` : ""}${and(str(e.because))}`] },
+  { when: (e) => e.kind === "approval-requested" && isProtected(e), say: (e) => ["warning", "👤", `waiting for approval: ${e.id} · ${protectedSay(e)} · decide in Orbit Control`] },
   { when: (e) => e.kind === "approval-requested", say: (e) => ["warning", "👤", `waiting for a person: ${e.id} · ${e.action ?? "?"}${e.environment ? ` on ${e.environment}` : ""} · decide in Orbit Control`] },
   { when: (e) => e.kind === "approval-expired", say: (e) => ["warning", "⚠", `approval ${e.id} expired`] },
   { when: (e) => e.kind === "verification" && e.state === "violated", say: (e) => ["danger", "✗", `violated: ${e.obligation ?? e.subject ?? "a verification"}`] },

@@ -60,7 +60,7 @@ function managedEntry(m, ctx) {
   const entry = ctx.catalog.find((e) => e.id === m.catalog) ?? null;
   const facts = factsOf(m, key, ctx);
   const policy = policyOf(ctx.policies, key);
-  return { ...identityOf(m, key, entry), ...routingOf(m, entry), ...checkOf(ctx.checks[key], ctx.now), ...answersOf(m, facts, policy), policy, approval: grantOf(ctx.grants[key], ctx.now), install: installOf(m, entry, ctx), runtime: runtimeView(facts.runtime), definition: publicDefinition(m.definition, ctx.secrets.has) };
+  return { ...identityOf(m, key, entry), ...routingOf(m, entry), protected: protectedTools(m, entry, ctx), ...checkOf(ctx.checks[key], ctx.now), ...answersOf(m, facts, policy), policy, approval: grantOf(ctx.grants[key], ctx.now), install: installOf(m, entry, ctx), runtime: runtimeView(facts.runtime), definition: publicDefinition(m.definition, ctx.secrets.has) };
 }
 
 // A catalog server's words come from the catalog this plugin ships when the
@@ -73,6 +73,11 @@ const identityOf = (m, key, entry) => ({ key, id: m.id, name: wordsOf(m, entry, 
 // catalog server better than the copy kept when it was added, so a newer
 // catalog's words win -- and when the row is gone, the kept copy still works.
 const routingOf = (m, entry) => ({ provides: entry?.provides?.length ? entry.provides : m.provides ?? [], signals: entry?.signals?.length ? entry.signals : m.signals ?? [], requiresSignal: entry ? entry.requiresSignal === true : m.requiresSignal === true });
+
+// Which of its tools ARE a protected action (src/protected/mcp.mjs, 0.2.0): what the catalog row it was added from --
+// or the row that recognises it, for a server a person added by hand -- declares. Read on every look, so this plugin's
+// newer knowledge of a server's tools applies to one added before it.
+const protectedTools = (m, entry, ctx) => (entry ?? recognised(ctx.catalog, { id: m.id, url: m.definition?.url, command: m.definition?.command, args: m.definition?.args }))?.protected ?? {};
 
 function factsOf(m, key, ctx) {
   const check = freshCheck(ctx.checks[key], ctx.now);

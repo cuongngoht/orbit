@@ -278,6 +278,13 @@ src/secrets.mjs  a LEAF: the ONE secret port -- an environment variable's name, 
 src/process/env.mjs  a LEAF: the few variables a child needs to START, and nothing else of ours
 src/policy.mjs a LEAF: allow · approval · deny, capability-first with workflow exceptions and
                read/write operation rules -- the one answer the resolver and the MCP gate share
+src/protected/ a LEAF (0.2.0, ADR 0042): the PROTECTED BOUNDARIES -- the five places autonomous work stops
+               for a person -- and nothing else. boundaries.mjs (BOUNDARIES rows: primary checkout write DENY,
+               git push / production deploy / production migration APPROVE_ONCE, destructive production
+               data APPROVE_ONCE_DESTRUCTIVE; everything else AUTO) · authorize.mjs (`authorize(action)`,
+               the one `fingerprintOf`, `requestOf`, PERSON_ACTS: a person's own act) · environments.mjs
+               (declared words onto one tier; unknown is never production) · capability.mjs and mcp.mjs (the
+               only builders of a capability call's and a tool call's action, from their declarations)
 src/context/   PROJECT CONTEXT as a table of what composes it (architecture ensure, intelligence
                ensure, engineering recall, the working set, the resolver), clipped per section;
                cli/context.mjs runs it -- the engine's built-in `project.context`. status.mjs (1.8.9): ONE word
@@ -474,7 +481,7 @@ src/orchestration/  AUTONOMOUS ENGINEERING: what engineering step comes NEXT for
                paths REACHES and why: MODIFIED · SHARED · DEPENDENT · UNRESOLVED, over the component graph the
                composition root hands in) · obligations.mjs (the VERIFICATION PLAN: required, excluded, missing,
                each check's state against its baseline, the verification rows and impact receipt it publishes) ·
-               policy.mjs (GATED: what needs a person) ·
+               policy.mjs (asks src/protected/ for EVERY step: AUTO, DENY or the approval it needs) ·
                workspace.mjs (the WORKSPACE OWNER: owner first, a local clone, refuse what is not this
                task's) · loop.mjs (context · step · finish · reconcile · cleanup · start · resume; the
                orchestrator's own lock is never held across a run) · governance.mjs (OPERATIONS +
@@ -662,8 +669,13 @@ src/frontend/local-clones.mjs  LOCAL CLONES of one checkout, through the Process
                add (`clone --local --no-checkout`, then a detached checkout: objects hard-linked, the
                checkout's `.git` only READ, no branch), remove (a clone of its own, never the checkout),
                changes (stage the clone's OWN index, then name-status + numstat against a revision or a tree
-               id, and `write-tree`). No hook runs: `core.hooksPath` points where nothing is. A failure says
-               git's `fatal:`/`error:` line. The one owner that calls it is src/orchestration/workspace.mjs
+               id, and `write-tree`), and THE DELIVERY (0.2.0): a commit made in a bare git directory beside the
+               tree (the checkout's objects borrowed, the files staged from the base revision by the anchored
+               git, `commit-tree`), and a push from a git directory made for that push alone -- never through
+               the clone's own `.git`, which is the task's to write; a `.git` that is a link or names another
+               repository is never read or written through (`ownGitDir`). No hook runs: `core.hooksPath` points
+               where nothing is. A failure says git's `fatal:`/`error:` line. The one owner that calls it is
+               src/orchestration/workspace.mjs
 control-server/src/mission-control/  MISSION CONTROL's reads: read.mjs (the machine's tasks and approval queue, the task
                fold's machine view) · health.mjs (ADR 0023: Health, an ordered table of AREAS -- automation restrictions
                tasks waiting, blocked, stalled or orphaned, tools and managed MCP servers

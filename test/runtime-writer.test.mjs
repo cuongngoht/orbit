@@ -10,12 +10,16 @@ import { build, fingerprintOf, freshness, STALE_PROPOSAL, understandingDigest } 
 import { requirementsOf } from "../src/runtime/requirements.mjs";
 import { validate } from "../src/runtime/validate.mjs";
 import { sayValidate } from "../src/runtime/views.mjs";
-import { ADOPT_UNVERIFIED, adopt } from "../src/runtime/writer.mjs";
+import { ADOPT_UNVERIFIED, PROTECTED_DENIED, adopt } from "../src/runtime/writer.mjs";
 import { Refused } from "../src/errors.mjs";
 import { ensure } from "../src/runtime/understanding.mjs";
 import { DEVCONTAINER_JSONC, NODE_AND_DOTNET, SHIPPED_CATALOG, machineOf, FULL_TOOLS, viewOf } from "./fakes/runtime.mjs";
 import { fakeRuntime } from "./fakes/runtime-ctx.mjs";
 import { fakeWorktree } from "./fakes/worktree.mjs";
+
+// A person's own act through Orbit Control's door; anything else -- an agent's shell, a terminal -- crosses nothing.
+const PERSON = { door: "control" };
+const AGENT = { door: "terminal", human: true, tty: false };
 
 const NEWER = { ...NODE_AND_DOTNET, "api/Api.csproj": `<Project Sdk="Vendor.NET.Sdk.Web"><PropertyGroup><TargetFramework>net9.0</TargetFramework></PropertyGroup></Project>` };
 
@@ -36,14 +40,17 @@ const envOf = (tree, body) => Object.fromEntries([...body.files.create.map((f) =
 
 test("adopting is a person's: refused before anything is read, written or checked", () => {
   const { ctx, proposal, now, tree } = proposed(NODE_AND_DOTNET);
-  assert.throws(() => adopt(ctx, proposal, { human: false, now: now() }), (e) => e instanceof Refused && /a person's — relay it with --human/.test(e.message));
-  assert.deepEqual(tree.state.writes, []);
+  assert.throws(() => adopt(ctx, proposal, { actor: AGENT, now: now() }), (e) => e instanceof Refused && e.code === PROTECTED_DENIED && /no terminal can prove a person\. Nothing was written\. A person does it themselves, in Orbit Control/.test(e.message));
+  assert.throws(() => adopt(ctx, proposal, { actor: { door: "terminal", human: true, tty: true, confirmed: proposal.id }, now: now() }), (e) => e.code === PROTECTED_DENIED, "even a terminal that typed the proposal's id back: an agent can make a pseudo-terminal and knows the id");
+  assert.deepEqual(tree.state.writes, [], "an agent's adopt wrote nothing");
+  assert.equal(adopt(ctx, proposal, { actor: PERSON, now: now() }).instance.state, "ADOPTED", "a person through Orbit Control's door crosses it once");
+  assert.deepEqual(tree.state.writes, [".devcontainer/devcontainer.json"]);
 });
 
 test("Scenario B: a CREATE proposal is written, READ BACK, and the environment is ADOPTED -- not validated", () => {
   const { ctx, proposal, now, tree } = proposed(NODE_AND_DOTNET);
   assert.equal(proposal.state, "CREATE");
-  const done = adopt(ctx, proposal, { human: true, now: now() });
+  const done = adopt(ctx, proposal, { actor: PERSON, now: now() });
   assert.deepEqual(done.files, [{ path: ".devcontainer/devcontainer.json", created: true }]);
   assert.deepEqual(tree.state.writes, [".devcontainer/devcontainer.json"]);
   assert.equal(tree.read(".devcontainer/devcontainer.json"), proposal.files.create[0].text);
@@ -55,7 +62,7 @@ test("Scenario B: a CREATE proposal is written, READ BACK, and the environment i
 test("Scenario C: a PATCH is written by splicing -- every comment and customisation is still there when it is read back", () => {
   const { ctx, proposal, now, tree } = proposed(NEWER, { ".devcontainer/devcontainer.json": DEVCONTAINER_JSONC });
   assert.equal(proposal.state, "PATCH");
-  adopt(ctx, proposal, { human: true, now: now() });
+  adopt(ctx, proposal, { actor: PERSON, now: now() });
   const after = tree.read(".devcontainer/devcontainer.json");
   assert.equal(after, DEVCONTAINER_JSONC.replace('"version": "20"', '"version": "22"').replace('"version": "8.0"', '"version": "9.0"'));
   assert.ok(after.includes("// pinned: CI runs 20"), "the comment about WHY it was pinned is not lost");
@@ -66,7 +73,7 @@ test("a developer who edits devcontainer.json while a proposal is being read fin
   const { ctx, proposal, now, tree } = proposed(NEWER, { ".devcontainer/devcontainer.json": DEVCONTAINER_JSONC });
   const theirs = `${DEVCONTAINER_JSONC}// my own note\n`;
   tree.edit(".devcontainer/devcontainer.json", theirs);
-  assert.throws(() => adopt(ctx, proposal, { human: true, now: now() }), (e) => e.code === STALE_PROPOSAL && /\.devcontainer\/devcontainer\.json changed since this was designed/.test(e.message));
+  assert.throws(() => adopt(ctx, proposal, { actor: PERSON, now: now() }), (e) => e.code === STALE_PROPOSAL && /\.devcontainer\/devcontainer\.json changed since this was designed/.test(e.message));
   assert.equal(tree.read(".devcontainer/devcontainer.json"), theirs);
   assert.deepEqual(tree.state.writes, []);
   assert.equal(ctx.instances.list().length, 0);
@@ -76,20 +83,20 @@ test("a manifest that moved while a proposal was being read makes it STALE too: 
   const { ctx, proposal, now, source } = proposed(NEWER, { ".devcontainer/devcontainer.json": DEVCONTAINER_JSONC });
   source.write("web/package.json", JSON.stringify({ engines: { node: ">=24" }, scripts: { dev: "vite" } }));
   ensure(ctx);
-  assert.throws(() => adopt(ctx, proposal, { human: true, now: now() }), (e) => e.code === STALE_PROPOSAL && /runtime understanding changed/.test(e.message));
+  assert.throws(() => adopt(ctx, proposal, { actor: PERSON, now: now() }), (e) => e.code === STALE_PROPOSAL && /runtime understanding changed/.test(e.message));
 });
 
 test("a CREATE proposal goes stale when somebody creates the file first: it is never written over", () => {
   const { ctx, proposal, now, tree } = proposed(NODE_AND_DOTNET);
   tree.edit(".devcontainer/devcontainer.json", "{}");
-  assert.throws(() => adopt(ctx, proposal, { human: true, now: now() }), (e) => e.code === STALE_PROPOSAL);
+  assert.throws(() => adopt(ctx, proposal, { actor: PERSON, now: now() }), (e) => e.code === STALE_PROPOSAL);
   assert.equal(tree.read(".devcontainer/devcontainer.json"), "{}");
 });
 
 test("only CREATE and PATCH write; everything else has nothing to adopt, and says why", () => {
   const unsafe = proposed(NODE_AND_DOTNET, { ".devcontainer/devcontainer.json": "{ not json" });
   assert.equal(unsafe.proposal.state, "UNSAFE");
-  assert.throws(() => adopt(unsafe.ctx, unsafe.proposal, { human: true, now: unsafe.now() }), /nothing to adopt: this proposal is UNSAFE/);
+  assert.throws(() => adopt(unsafe.ctx, unsafe.proposal, { actor: PERSON, now: unsafe.now() }), /nothing to adopt: this proposal is UNSAFE/);
   assert.deepEqual(unsafe.tree.state.writes, []);
 });
 
@@ -97,22 +104,22 @@ test("a CREATE never lands on something that is already there, even when it read
   const { ctx, proposal, now, tree } = proposed(NODE_AND_DOTNET);
   assert.equal(proposal.state, "CREATE");
   tree.state.symlinks.add(".devcontainer/devcontainer.json");
-  assert.throws(() => adopt(ctx, proposal, { human: true, now: now() }), (e) => e instanceof Refused && /is already there, so it is not created over.*nothing was written/.test(e.message));
+  assert.throws(() => adopt(ctx, proposal, { actor: PERSON, now: now() }), (e) => e instanceof Refused && /is already there, so it is not created over.*nothing was written/.test(e.message));
   assert.deepEqual(tree.state.writes, [], "not a byte was written");
   assert.equal(ctx.instances.list().length, 0);
 });
 
 test("a proposal adopted once cannot be adopted again", () => {
   const { ctx, proposal, now } = proposed(NODE_AND_DOTNET);
-  adopt(ctx, proposal, { human: true, now: now() });
-  assert.throws(() => adopt(ctx, ctx.proposals.read(proposal.id), { human: true, now: now() }), /already been adopted/);
+  adopt(ctx, proposal, { actor: PERSON, now: now() });
+  assert.throws(() => adopt(ctx, ctx.proposals.read(proposal.id), { actor: PERSON, now: now() }), /already been adopted/);
 });
 
 test("a read-back that disagrees leaves the files as written, adopts nothing and says ADOPT_UNVERIFIED", () => {
   const { ctx, proposal, now, tree } = proposed(NODE_AND_DOTNET);
   const write = tree.write;
   tree.write = (rel, text) => write(rel, `${text}// something else touched it\n`);
-  assert.throws(() => adopt(ctx, proposal, { human: true, now: now() }), (e) => e.code === ADOPT_UNVERIFIED && /reads back differently from what was written/.test(e.message));
+  assert.throws(() => adopt(ctx, proposal, { actor: PERSON, now: now() }), (e) => e.code === ADOPT_UNVERIFIED && /reads back differently from what was written/.test(e.message));
   assert.equal(ctx.instances.list().length, 0, "the environment is not adopted");
   assert.equal(ctx.proposals.read(proposal.id).status, "open");
   assert.deepEqual(tree.state.writes, [".devcontainer/devcontainer.json"], "and nothing was written a second time");
@@ -121,7 +128,7 @@ test("a read-back that disagrees leaves the files as written, adopts nothing and
 test("an edit that would not be faithful is refused BEFORE a byte is written", () => {
   const { ctx, proposal, now, tree } = proposed(NEWER, { ".devcontainer/devcontainer.json": DEVCONTAINER_JSONC });
   const forged = { ...proposal, files: { create: [], patch: [{ path: ".devcontainer/devcontainer.json", edits: [{ op: "set", path: ["name"], value: "x" }, { op: "insert", path: ["name"], key: "k", value: 1 }] }] } };
-  assert.throws(() => adopt(ctx, forged, { human: true, now: now() }), /cannot be edited as proposed \(.*is not an object\); nothing was written/);
+  assert.throws(() => adopt(ctx, forged, { actor: PERSON, now: now() }), /cannot be edited as proposed \(.*is not an object\); nothing was written/);
   assert.deepEqual(tree.state.writes, []);
 });
 
@@ -145,7 +152,7 @@ test("a proposal's id is what it would do: the same inputs design the same propo
 
 function validating(upAnswer) {
   const rt = proposed(NODE_AND_DOTNET);
-  adopt(rt.ctx, rt.proposal, { human: true, now: rt.now() });
+  adopt(rt.ctx, rt.proposal, { actor: PERSON, now: rt.now() });
   const process = Object.assign(rt.process, { run: (file, args) => (rt.process.calls.push({ file, args }), upAnswer) });
   const world = { view: viewOf(NODE_AND_DOTNET), machine: machineOf("darwin", FULL_TOOLS), catalog: SHIPPED_CATALOG, instances: [], checkout: rt.ctx.checkout, envId: "x" };
   return { ...rt, world, deps: { process, root: "/work/shop", env: {}, now: () => "2026-10-03T10:00:00.000Z" } };

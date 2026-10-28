@@ -2,10 +2,12 @@
 // not let them decide.
 //
 // It is one block of the per-host runtime settings (src/runtime/settings.mjs), written only by a person
-// -- in Orbit Control, with the revision they read -- so a task can never loosen it for itself. Trust is
-// kept in it too: a restore plan and a dev container definition are trusted BY FINGERPRINT of exactly what
-// would run, so editing a lock file or a definition voids the trust, and a list of fingerprints is the
-// whole of the permission.
+// -- in Orbit Control, with the revision they read -- so a task can never loosen it for itself. A task's own sandbox
+// is AUTONOMOUS (0.2.0): nothing in this block is waited on before it restores, builds or starts. A person's REVIEW
+// MARKS are kept in it too -- fingerprints of exactly what would run (a restore plan, a dev container definition, an
+// isolated topology, a worker image) -- and a receipt says when what ran was one a person reviewed; a mark permits
+// nothing. `qa.modes` and `qa.writes` NARROW what a task's QA may do in its sandbox when a person lists any; empty, the
+// engine's own gates are the whole of it.
 //
 // The effective policy is the engine's hard rules, then the person's, then the defaults: a person cannot
 // switch a hard rule off, because each is a thing a sandbox is for (the application listens on this
@@ -130,9 +132,9 @@ const SANDBOX_RULES = [
   { fails: (s) => s.ports.to - s.ports.from + 1 > MAX_SPAN, says: () => `sandbox.ports spans at most ${MAX_SPAN} ports` },
   { fails: (s) => !fingerprintsOk(s.trustedDefinitions), says: () => `sandbox.trustedDefinitions lists up to ${MAX_TRUSTED} distinct 64-character fingerprints` },
   { fails: (s) => !isObject(s.qa) || unknownOf(s.qa, ["modes", "entry", "browser", "writes"]).length > 0, says: () => "sandbox.qa is { modes, entry, browser, writes }" },
-  { fails: (s) => !Array.isArray(s.qa.modes) || s.qa.modes.length > 8 || s.qa.modes.some((m) => !MODE_WORD.test(m)), says: () => "sandbox.qa.modes lists up to 8 investigation modes by name" },
+  { fails: (s) => !Array.isArray(s.qa.modes) || s.qa.modes.length > 8 || s.qa.modes.some((m) => !MODE_WORD.test(m)), says: () => "sandbox.qa.modes lists up to 8 investigation modes by name: a person's narrowing of a task sandbox's QA (empty: every mode the engine allows)" },
   { fails: (s) => s.qa.entry !== null && !KEY.test(String(s.qa.entry)), says: () => "sandbox.qa.entry is null, or the component the browser opens (<ecosystem>:<directory>)" },
-  { fails: (s) => !Array.isArray(s.qa.writes) || s.qa.writes.length > 16 || s.qa.writes.some((m) => !MODE_WORD.test(m)) || new Set(s.qa.writes).size !== s.qa.writes.length, says: () => "sandbox.qa.writes lists, by name, up to 16 distinct kinds of effect a generated test may have on its own run's fixture (publish, trigger, consume …): a person's standing policy, and nothing else mints a grant for one (ADR 0037)" },
+  { fails: (s) => !Array.isArray(s.qa.writes) || s.qa.writes.length > 16 || s.qa.writes.some((m) => !MODE_WORD.test(m)) || new Set(s.qa.writes).size !== s.qa.writes.length, says: () => "sandbox.qa.writes lists, by name, up to 16 distinct kinds of effect a generated test may have on its own run's fixture (publish, trigger, consume …): a person's narrowing of what a grant may be minted for (empty: every effect the capability declares, ADR 0037)" },
   { fails: (s) => !BROWSERS.includes(s.qa.browser), says: () => `sandbox.qa.browser is ${BROWSERS.join(" or ")} in this release: a signed-in profile copy is not offered yet` },
   { fails: (s) => !isObject(s.network) || unknownOf(s.network, ["denyProductionWrites"]).length > 0 || typeof s.network.denyProductionWrites !== "boolean", says: () => "sandbox.network is { denyProductionWrites: true|false }" },
   ...ISOLATION_RULES.map((r) => ({ fails: (s) => r.fails(s.isolation), says: r.says })),
@@ -200,7 +202,7 @@ export const HARD = Object.freeze({ listen: "127.0.0.1", reuseExternal: false, r
 // -> { policy, revision }: the person's block over the defaults, with the hard rules over both.
 export const effectivePolicy = (settings) => ({ policy: { ...sandboxFilled(settings?.sandbox), hard: { ...HARD } }, revision: settings?.revision ?? null });
 
-// A fingerprint a person trusted, by kind. The kinds are rows: a new thing a person may trust is a row.
+// A fingerprint a person reviewed, by kind -- evidence a receipt names, never a gate. The kinds are rows.
 export const TRUST_KINDS = [
   { kind: "restore", say: "a dependency restore plan", read: (policy) => policy.restore.trusted, write: (policy, list) => ({ ...policy, restore: { ...policy.restore, trusted: list } }) },
   { kind: "definition", say: "a dev container definition", read: (policy) => policy.trustedDefinitions, write: (policy, list) => ({ ...policy, trustedDefinitions: list }) },

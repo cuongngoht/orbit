@@ -15,7 +15,7 @@ import { GATES } from "../src/investigation/gates.mjs";
 import { act, begin, contextFor, loopWorld, modelOf, planFor, readSettings, step, writeSettings } from "../src/investigation/index.mjs";
 import { receiptsOf } from "../src/investigation/receipts.mjs";
 import { ENTRY, entryOf, sandboxEnvironment, sandboxRuntime } from "../src/investigation/sandbox.mjs";
-import { ENVIRONMENT_KINDS, KINDS } from "../src/investigation/vocab.mjs";
+import { ENVIRONMENT_KINDS, KINDS, MODE_IDS } from "../src/investigation/vocab.mjs";
 import { createContext } from "../src/run/context.mjs";
 import { aqaWorld, SANDBOX_PORT, SAVE_CHAIN, sandboxView, sandboxWorld, TREE_A, TREE_B } from "./autonomous-qa.harness.mjs";
 import { fixtureProject, FIXTURES } from "./fakes/context.mjs";
@@ -54,14 +54,16 @@ test("projection: an environment of kind sandbox on the sandbox's loopback entry
   assert.equal(sandboxRuntime(a, undefined).served, false, "a probe that could not say is not an answer");
 });
 
-test("projection: modes come ONLY from the person's policy -- none means observe, and the CLI has no word in it", () => {
-  assert.deepEqual(sandboxEnvironment(view({ qa: { modes: [], entry: null, browser: "isolated" } })).modes, ["observe"]);
+test("projection: a task's OWN sandbox opens every mode the engine's gates allow; a person's policy may only narrow it, and the CLI has no word in it", () => {
+  assert.deepEqual(sandboxEnvironment(view({ qa: { modes: [], entry: null, browser: "isolated" } })).modes, MODE_IDS, "nothing narrowed: autonomous by default (0.2.0)");
   assert.deepEqual(sandboxEnvironment(view({ qa: { modes: ["observe", "security-test"], entry: null, browser: "isolated" } })).modes, ["observe", "security-test"]);
   assert.equal(sandboxEnvironment.length, 1, "it takes the runtime's view and nothing else: no flag reaches it");
 });
 
-test("modes: --mode=explore-write on a policy without it is NOT_APPROVED, in the plan and before the browser", () => {
-  const observeOnly = sandboxWorld({ view: { qa: { modes: [], entry: null, browser: "isolated" } }, world: { mode: "explore-write" } });
+test("modes: --mode=explore-write on a policy a person NARROWED to observe is NOT_APPROVED, in the plan and before the browser -- and an un-narrowed sandbox needs no approving", () => {
+  const open = sandboxWorld({ view: { qa: { modes: [], entry: null, browser: "isolated" } }, world: { mode: "explore-write" } });
+  assert.equal(planFor(open.w, { objective: "explore", scope: "" }).blockers.some((b) => b.id === "NOT_APPROVED"), false, "a task's own sandbox: nobody is asked");
+  const observeOnly = sandboxWorld({ view: { qa: { modes: ["observe"], entry: null, browser: "isolated" } }, world: { mode: "explore-write" } });
   assert.deepEqual(planFor(observeOnly.w, { objective: "explore", scope: "" }).blockers.filter((b) => b.id === "NOT_APPROVED").map((b) => b.stop), ["refused"]);
   assert.throws(() => act(observeOnly.w, SAVE_CHAIN[0]), (e) => e instanceof Refused && /explore-write is not approved on env-0123456789ab/.test(e.message));
   assert.equal(gotos(observeOnly), 0);
@@ -69,12 +71,12 @@ test("modes: --mode=explore-write on a policy without it is NOT_APPROVED, in the
   assert.equal(planFor(approved.w, { objective: "explore", scope: "" }).blockers.some((b) => b.id === "NOT_APPROVED"), false);
 });
 
-test("a sandbox environment drives the loop: it needs no declaring, and `enabled` is still a person's", () => {
+test("a sandbox environment drives the loop: it needs no declaring, and a person may still switch autonomous QA off", () => {
   const t = sandboxWorld();
   assert.equal(t.w.environment.kind, "sandbox");
   assert.doesNotThrow(() => act(t.w, SAVE_CHAIN[0]));
   const off = sandboxWorld({ world: { settings: { enabled: false } } });
-  assert.throws(() => act(off.w, SAVE_CHAIN[0]), /autonomous QA is off/);
+  assert.throws(() => act(off.w, SAVE_CHAIN[0]), /a person switched autonomous QA off/);
   const named = aqaWorld({ env: "no-such-env" });
   assert.equal(named.make().environment, null, "nothing declared is nothing projected");
 });

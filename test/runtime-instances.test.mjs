@@ -56,8 +56,11 @@ test("every runtime command is in exactly one governance class, and the classes 
   assert.deepEqual(OPERATIONS.filter((o) => o.mutates === "repository").map((o) => o.commands), [["adopt"]], "one command writes the repository");
 });
 
-test("only writing the repository, bringing an environment up, forgetting a checkout and changing settings need a person; start and stop do not widen what they may touch", () => {
-  assert.deepEqual(all("human"), ["adopt", "validate", "prepare", "forget", "configure"]);
+test("autonomous by default: only writing the checkout crosses a protected boundary (a person's own act), only settings are a person's word; bringing an environment up and forgetting a checkout ask nobody", () => {
+  assert.deepEqual(all("protected"), ["adopt"]);
+  assert.deepEqual(all("human"), ["configure"]);
+  assert.deepEqual(all("control"), ["trust"], "a review mark is Control's to write, and gates nothing");
+  assert.ok(["validate", "prepare", "forget", "sandbox-prepare", "start", "sandbox-start"].every((c) => classOf(c).approval === "none"));
   assert.equal(needsHuman("start"), false);
   assert.equal(classOf("stop").class, "STOP_OWNED_RUNTIME");
   assert.equal(classOf("nonesuch"), null);

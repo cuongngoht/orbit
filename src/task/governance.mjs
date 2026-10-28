@@ -23,6 +23,8 @@ export const OPERATIONS = [
   { class: "TASK_GRANT", commands: ["approve", "resume"], mutates: "store", approval: "control", says: "a person's decision that allows something -- one action, once, or work again after a pause -- made in Orbit Control on the revision they read; never from a terminal, and never more than the one action it approves" },
 ];
 
+// A task RECORDS what happened; the protected boundaries (src/protected/) are crossed by an owner's action, never by a
+// task command -- a task only keeps the approval a person gave for exactly that action, and spends it once.
 export const NOT_TASK = ["RUN_COMMAND", "STOP_PROCESS", "REPOSITORY_WRITE", "DEPLOY"];
 
 export const classOf = (command) => OPERATIONS.find((o) => o.commands.includes(command)) ?? null;

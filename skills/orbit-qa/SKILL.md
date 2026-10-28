@@ -83,8 +83,10 @@ layers can be witnessed, every BLOCKER. A blocker is a person's to clear — tel
 approve (Orbit Control, Autonomous QA); relay `settings set … --human` **only when they tell you to**.
 
 `--sandbox=<env-id>` points the investigation at the sandbox a task owns in this checkout instead of
-an approved environment: its origin and source tree come from the runtime, its modes only from the
-person's sandbox policy (`--mode` never widens them), and its browser is its own and blank. When the
+an approved environment: its origin and source tree come from the runtime, and -- a task's own sandbox
+being autonomous -- every mode the engine's gates allow is open there unless a person narrowed the
+sandbox policy (`--mode` never widens it): isolated modes still only where isolation is proven, writes
+only on the run's own fixture, a destructive control never. Its browser is its own and blank. When the
 task has changed code since the sandbox started, every browser action stops with `RUNTIME_STALE`
 (BLOCKED, never a finding): restart the sandbox, then verify again.
 

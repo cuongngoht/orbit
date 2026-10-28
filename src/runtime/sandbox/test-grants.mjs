@@ -3,7 +3,8 @@
 // `mutates` no longer means `destructive`. A generated test may write, publish, enqueue,
 // trigger, consume, settle, replay or control a workload -- but only on its own fixture, in an
 // isolated sandbox its task owns, for an operation its design declared, under a bound oracle,
-// within budget, on the current tree, and inside a person's policy. Each condition is a row of
+// within budget, on the current tree, and inside whatever a person narrowed (sandbox policy `qa.writes`; empty, it
+// narrows nothing -- a fixture of the task's own is inside the autonomous boundary, 0.2.0). Each condition is a row of
 // MINT, ordered, each refusing with its own id; a grant is minted only when every row holds,
 // AT DISPATCH, once the sandbox, the endpoints, the fixture and the tree are known. Nothing an
 // agent sends -- a field, a flag, `--human` -- can mint one: the world below is assembled by the
@@ -35,7 +36,7 @@ export const MINT = [
   { id: "ALLOWLIST", holds: (w) => (w.design?.operations ?? []).includes(w.operation?.class), say: (w) => `the design did not declare ${w.operation?.class ?? "this operation"}` },
   { id: "BUDGET", holds: (w) => (w.budget?.uses ?? 0) > 0, say: () => "the run's write budget is spent" },
   { id: "TREE", holds: (w) => Boolean(w.sandbox?.tree) && w.sandbox.tree === w.sandbox.currentTree, say: (w) => `the sandbox runs tree ${w.sandbox?.tree ?? "?"}, the task now holds ${w.sandbox?.currentTree ?? "?"}` },
-  { id: "POLICY", holds: (w) => (w.policy?.allows ?? []).includes(w.operation?.class), say: (w) => `no standing policy allows ${w.operation?.class ?? "this operation"} here — a person approves it once in Orbit Control, or not at all` },
+  { id: "POLICY", holds: (w) => !(w.policy?.allows ?? []).length || w.policy.allows.includes(w.operation?.class), say: (w) => `a person narrowed what a generated test may do in this sandbox, and ${w.operation?.class ?? "this operation"} is not among it (sandbox policy qa.writes)` },
 ];
 
 const missing = (wanted, held) => (wanted ?? []).filter((r) => !(held ?? []).includes(r));

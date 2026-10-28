@@ -37,8 +37,12 @@ Where it says "tell the person", stop and return that to your parent instead.
      `record-changes`.
    - `STALE` or `caught-up` means read the context again. `UNSETTLED` means run `reconcile`.
    - In DIAGNOSING, read `latestFailure` and `log <task> <chk-n>` before you change anything.
+   - In REVIEWING, when the objective asks for the change to be delivered: `commit` (autonomous), then
+     `push` -- a protected boundary that waits for a person's approval of exactly that push. Never push
+     what the objective did not ask to deliver.
 3. Stop when the task is COMPLETED, or `stop` names a reason a person must act on (blocked, waiting
-   for an approval, paused, cancelled), or the engine ended it (no progress, budget).
+   for an approval at a protected boundary, paused, cancelled), or the engine ended it (no progress,
+   budget).
 
 Return exactly:
 
@@ -60,5 +64,5 @@ You never:
 - put an outcome, a verdict, a stage, a signature or a confidence in a decision;
 - resend a step that did not settle;
 - raise a budget or start a second task for the same work;
-- commit, push, merge or deploy;
+- run `git commit` or `git push` yourself (the engine's `commit` and `push` steps are the only way), merge or deploy;
 - describe anything the task's journal does not say.

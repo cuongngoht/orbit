@@ -22,7 +22,7 @@
 import { Blocked, Refused } from "../../../src/errors.mjs";
 import { AuthBlocked } from "../../../src/connections/auth-errors.mjs";
 import { addDays, dayStart } from "../../../src/project-report/window.mjs";
-import { HttpStop, authorizedHttp, inTurn, limited } from "./http.mjs";
+import { HttpStop, authorizedHttp, inTurn, limited, refused } from "./http.mjs";
 
 export const PROVIDER = "github";
 const PR_PAGE = 25;
@@ -362,7 +362,7 @@ async function deployRecord(api, repo, d) {
 
 // What ends a run, in the words a person can act on. A source that did not accept who is asking is the RequestAuth's to
 // word (a code, and what to do next); the rest is the source's own state.
-const RUN_STOPS = { auth: (a, e) => a.rejected(e), rate: (a, e) => new Blocked(e.message), server: (a, e) => new Blocked(`GitHub is not answering: ${e.message}`), network: (a, e) => new Blocked(e.message), redirect: (a, e) => new Blocked(e.message), invalid: (a, e) => new Blocked(`GitHub's answer could not be used: ${e.message}`) };
+const RUN_STOPS = { auth: refused, rate: (a, e) => new Blocked(e.message), server: (a, e) => new Blocked(`GitHub is not answering: ${e.message}`), network: (a, e) => new Blocked(e.message), redirect: (a, e) => new Blocked(e.message), invalid: (a, e) => new Blocked(`GitHub's answer could not be used: ${e.message}`) };
 
 async function guarded(auth, fn) {
   try { return await fn(); }
@@ -386,7 +386,7 @@ async function probe(req, deps) {
 // word (it ends the test as an authentication answer, in fixed words and with its next step).
 async function identity(api) {
   try { return await rest(api, "/user"); }
-  catch (e) { throw e instanceof HttpStop && ["auth", "forbidden"].includes(e.kind) ? await api.auth.rejected(e) : e; }
+  catch (e) { throw e instanceof HttpStop && ["auth", "forbidden"].includes(e.kind) ? await refused(api.auth, e) : e; }
 }
 
 async function checked(fn) {

@@ -12,7 +12,7 @@
 import { Blocked, Refused } from "../../../src/errors.mjs";
 import { short } from "../../../src/hash.mjs";
 import { maskValues } from "../../../src/scrub.mjs";
-import { HttpStop, authorizedHttp } from "../../orbit-report/sources/http.mjs";
+import { HttpStop, authorizedHttp, refused } from "../../orbit-report/sources/http.mjs";
 
 export const PACK = "orbit-requirements";
 
@@ -59,7 +59,7 @@ export async function guarded(auth, fn) {
   catch (e) { throw e instanceof HttpStop ? await typed(auth, e) : e; }
 }
 
-const STOPS = { "not-found": (a, e) => new Refused(e.message), auth: (a, e) => a.rejected(e), forbidden: (a, e) => a.rejected(e) };
+const STOPS = { "not-found": (a, e) => new Refused(e.message), auth: refused, forbidden: refused };
 
 const typed = (auth, e) => (STOPS[e.kind] ?? ((a, stop) => new Blocked(stop.message)))(auth, e);
 

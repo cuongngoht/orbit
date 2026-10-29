@@ -243,6 +243,11 @@ test("what a source did is told as what it means: not found is the request's, ev
     assert.ok(e instanceof Blocked && re.test(e.message) && e.code === code, `${status}: ${e.message}`);
     assert.ok(!e.message.includes(TOKEN));
   }
+  const sso = await stop(403, { "x-github-sso": "required; url=https://github.com/orgs/acme/sso" });
+  assert.deepEqual([sso.code, /it needs SSO authorization/.test(sso.message)], ["AUTH_FORBIDDEN", true], "what the source itself named as missing is not lost to the fixed words");
+  const named = await readerOf(await world([ADO]), server([[/workitems\/4312/, () => reply(403, { message: "TF401027: you need a permission" })]]), "azure-devops").read(ADO_ID, "workitem.read").catch((e) => e);
+  assert.deepEqual([named.code, /it needs the permission named by TF401027/.test(named.message)], ["AUTH_FORBIDDEN", true]);
+  assert.match(named.next, /another account|credential/);
 });
 
 test("a redirect to another host is not followed, and the credential is not sent there", async () => {

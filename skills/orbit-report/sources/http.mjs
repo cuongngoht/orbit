@@ -26,6 +26,8 @@
 // Nothing here logs a header, a body or a URL with its query string, and no
 // message it builds contains the credential: every sentence is made of a status
 // code and the names of permissions a source reported missing.
+import { AuthBlocked } from "../../../src/connections/auth-errors.mjs";
+
 export class HttpStop extends Error {
   constructor(kind, message, extra = {}) {
     super(message);
@@ -202,6 +204,14 @@ async function replaced(auth, sent) {
 }
 
 const authorizationOf = async (auth) => (await auth.headers()).Authorization;
+
+// A source's refusal of who is asking, as what ends a run or a test: the RequestAuth's words -- its code, and the one thing to
+// do -- and, when the source itself NAMED what was missing (a permission, a single sign-on step), that too, which no fixed words
+// can know. Returns the error: the caller throws it.
+export async function refused(auth, stop) {
+  const refusal = await auth.rejected(stop).catch((e) => e);
+  return stop.permission ? new AuthBlocked(refusal.code, `${refusal.message} — it needs ${stop.permission}`, refusal.next) : refusal;
+}
 
 // ---- pacing ------------------------------------------------------------------
 

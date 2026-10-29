@@ -24,7 +24,7 @@ import { Blocked, Refused } from "../../../src/errors.mjs";
 import { AuthBlocked } from "../../../src/connections/auth-errors.mjs";
 import { dayStart, addDays } from "../../../src/project-report/window.mjs";
 import { baseOf, clientOf } from "./azure-devops-client.mjs";
-import { HttpStop, inTurn, limited } from "./http.mjs";
+import { HttpStop, inTurn, limited, refused } from "./http.mjs";
 
 export const PROVIDER = "azure-devops";
 const API = "api-version=7.1";
@@ -98,7 +98,7 @@ async function projectOf(api) {
 async function unreadable(api, got) {
   const says = `project ${api.project} could not be read in ${api.org}: ${got.reason}${got.permission ? ` — it needs ${got.permission}` : ""}`;
   if (got.kind !== "forbidden") return new Blocked(says);
-  const refusal = await api.auth.rejected(new HttpStop("forbidden", got.reason)).catch((e) => e);
+  const refusal = await refused(api.auth, new HttpStop("forbidden", got.reason));
   return new AuthBlocked(refusal.code, says, refusal.next);
 }
 
@@ -375,7 +375,7 @@ const deploymentRecord = (api, d) => ({ id: `ado:${api.org}/${api.project}/deplo
 
 // What ends a run. A source that did not accept who is asking is the RequestAuth's to word (a code, and what to do next);
 // the rest is the source's own state, said in its own words.
-const RUN_STOPS = { auth: (a, e) => a.rejected(e), rate: (a, e) => new Blocked(e.message), server: (a, e) => new Blocked(`Azure DevOps is not answering: ${e.message}`), network: (a, e) => new Blocked(e.message), redirect: (a, e) => new Blocked(e.message), invalid: (a, e) => new Blocked(`Azure DevOps' answer could not be used: ${e.message}`) };
+const RUN_STOPS = { auth: refused, rate: (a, e) => new Blocked(e.message), server: (a, e) => new Blocked(`Azure DevOps is not answering: ${e.message}`), network: (a, e) => new Blocked(e.message), redirect: (a, e) => new Blocked(e.message), invalid: (a, e) => new Blocked(`Azure DevOps' answer could not be used: ${e.message}`) };
 
 async function guarded(auth, fn) {
   try { return await fn(); }
@@ -398,7 +398,7 @@ const whoOf = (me) => me.value.json?.authenticatedUser?.providerDisplayName ?? n
 // (it ends the test as an authentication answer, in fixed words and with its next step).
 async function identity(api) {
   try { return await call(api, `/_apis/connectionData?api-version=7.1-preview`); }
-  catch (e) { throw e instanceof HttpStop && ["auth", "forbidden"].includes(e.kind) ? await api.auth.rejected(e) : e; }
+  catch (e) { throw e instanceof HttpStop && ["auth", "forbidden"].includes(e.kind) ? await refused(api.auth, e) : e; }
 }
 
 async function checked(fn, permission = null) {

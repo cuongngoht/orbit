@@ -22,6 +22,12 @@
 //                                  network failure, and a token that was good
 //                                  when a long run began can be spent before it
 //                                  ends
+//   a refused token, once          `authorizedHttp` -- a client whose authorization
+//                                  is a RequestAuth's -- forgets a token the
+//                                  source refuses (401, or a sign-in page) and
+//                                  tries once more, only when the token is really
+//                                  another; `refused` words a refusal that ends a
+//                                  run or a test
 //
 // Nothing here logs a header, a body or a URL with its query string, and no
 // message it builds contains the credential: every sentence is made of a status

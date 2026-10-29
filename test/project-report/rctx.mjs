@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { KIT_DIR, SHIM, kitVersion, providers, renderAssets, standardParts, standardSections } from "../../skills/orbit-report/pack.mjs";
 import { renderReport } from "../../skills/orbit-report/render.mjs";
+import { createAuth } from "../../src/connections/auth.mjs";
 import { identityOf } from "../../src/project-report/collect.mjs";
 import { DEFAULTS } from "../../src/project-report/settings.mjs";
 import { freeze } from "../../src/project-report/snapshot.mjs";
@@ -39,4 +40,9 @@ export function frozen(rctx, snapshot, runId = snapshot.run.id) {
   return runId;
 }
 
-export const deps = (over = {}) => ({ process: createProcess(), nowMs: () => Date.parse("2026-09-25T04:00:00Z"), entropy: () => "a1b2", sources: {}, fetch: () => { throw new Error("a render must not reach any source"); }, log: () => {}, ...over });
+// The auth is the real contract over the secrets a test names, as the composition root builds it, with no sign-in adapter:
+// a connection here reads a credential.
+export function deps(over = {}) {
+  const base = { process: createProcess(), nowMs: () => Date.parse("2026-09-25T04:00:00Z"), entropy: () => "a1b2", sources: {}, fetch: () => { throw new Error("a render must not reach any source"); }, log: () => {}, ...over };
+  return { ...base, auth: base.auth ?? createAuth({ secrets: base.secrets ?? {}, adapters: {}, providers: providers(), nowMs: base.nowMs }) };
+}

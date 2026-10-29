@@ -162,7 +162,8 @@ test("a run end to end: one collection, frozen with its raw pages, rendered -- a
 
 test("a collector that leaks the credential into its data freezes NOTHING", async (t) => {
   const base = tempBase(t);
-  const leaky = { collect: async () => ({ source: { provider: "github", host: "https://api.github.com", organization: "acme", scope: {} }, completeness: { pullRequests: { status: "complete" } }, collections: { pullRequests: [{ id: "x", title: `oops ${PAT}` }] }, raw: [], earliest: null }) };
+  // It asks for the authorization the way every collector does -- that is what makes the credential a thing it holds -- and echoes it.
+  const leaky = { collect: async (req) => ({ source: { provider: "github", host: "https://api.github.com", organization: "acme", scope: {} }, completeness: { pullRequests: { status: "complete" } }, collections: { pullRequests: [{ id: "x", title: `oops ${(await req.auth.headers()).Authorization}` }] }, raw: [], earliest: null }) };
   const rctx = rctxOf(base, { file: "/unused", version: "3.12.0" }, { connection: { id: "github-acme", provider: "github", host: "https://api.github.com", organization: "acme", credential: "REPORT_GH_PAT" }, settings: { provider: "github", connection: "github-acme", timezone: TZ } });
   await assert.rejects(runReport(rctx, {}, deps({ sources: { github: leaky }, secrets: secretSource({ env: { REPORT_GH_PAT: PAT } }) })), (e) => e instanceof Blocked && /carried the credential/.test(e.message));
   const kept = existsSync(join(base, "store")) ? everyFile(join(base, "store")) : [];

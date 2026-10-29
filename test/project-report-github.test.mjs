@@ -4,19 +4,25 @@
 // connection's own host.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createAuth } from "../src/connections/auth.mjs";
+import { AuthBlocked } from "../src/connections/auth-errors.mjs";
 import { Blocked } from "../src/errors.mjs";
+import { providers } from "../skills/orbit-report/pack.mjs";
 import { githubSource } from "../skills/orbit-report/sources/github.mjs";
 import { fakeGitHub } from "./project-report/fake-github.mjs";
 import { WINDOW } from "./project-report/snapshots.mjs";
 
 const PAT = "github_pat_11TESTCANARY0000000000000000000000000000000000000000000000000000";
-const connection = { id: "github-acme", host: "https://api.github.com", organization: "acme" };
+const connection = { id: "github-acme", provider: "github", host: "https://api.github.com", organization: "acme", credential: "GITHUB_PAT" };
 const noWait = { sleep: async () => {} };
+
+// What authorizes the requests: the real contract over a fine-grained token the way a person's connection holds one.
+const auth = () => createAuth({ secrets: { read: async () => PAT }, adapters: {}, providers: providers(), nowMs: () => 0 }).resolve(connection);
 
 const pr = (number, over = {}) => ({ number, state: "MERGED", createdAt: "2026-07-05T02:00:00Z", updatedAt: "2026-07-06T02:00:00Z", mergedAt: "2026-07-06T02:00:00Z", ...over });
 
 function collect(fake, scope = { repositories: ["acme/web"] }, deps = noWait) {
-  return githubSource(deps).collect({ connection, scope, window: WINDOW, credential: PAT, fetch: fake.fetch, nowMs: () => Date.parse("2026-09-25T03:00:00Z"), log: () => {} });
+  return githubSource(deps).collect({ connection, scope, window: WINDOW, auth: auth(), fetch: fake.fetch, nowMs: () => Date.parse("2026-09-25T03:00:00Z"), log: () => {} });
 }
 
 test("every page is read: 60 pull requests over three pages, 101 commits through node(id), an old OPEN one, and nothing older than the window", async () => {
@@ -66,8 +72,8 @@ test("a repository the credential cannot see is named, and the rest is read", as
 });
 
 test("what ends a run: a refused credential, a page instead of data, a source that keeps failing -- each BLOCKED, in words", async () => {
-  await assert.rejects(collect(fakeGitHub({ repos: { "acme/web": { prs: [] } }, fail: { Repo: { status: 401 } } })), (e) => e instanceof Blocked && /expired, revoked or wrong/.test(e.message));
-  await assert.rejects(collect(fakeGitHub({ repos: { "acme/web": { prs: [] } }, fail: { Repo: { html: true } } })), (e) => e instanceof Blocked && /a page instead of data/.test(e.message));
+  await assert.rejects(collect(fakeGitHub({ repos: { "acme/web": { prs: [] } }, fail: { Repo: { status: 401 } } })), (e) => e instanceof AuthBlocked && e instanceof Blocked && e.code === "AUTH_REJECTED" && /the credential was refused: the source did not accept it \(HTTP 401\)/.test(e.message) && /when it expires/.test(e.next));
+  await assert.rejects(collect(fakeGitHub({ repos: { "acme/web": { prs: [] } }, fail: { Repo: { html: true } } })), (e) => e instanceof AuthBlocked && e.code === "AUTH_REJECTED" && /\(HTTP 200\)/.test(e.message), "a page where data should be is the source not accepting who asks");
   await assert.rejects(collect(fakeGitHub({ repos: { "acme/web": { prs: [] } }, fail: { Repo: { status: 502 } } })), (e) => e instanceof Blocked && /kept failing \(HTTP 502\)/.test(e.message));
   const once = await collect(fakeGitHub({ repos: { "acme/web": { prs: [pr(1)] } }, fail: { PullRequests: { status: 503, times: 1 } } }));
   assert.equal(once.collections.pullRequests.length, 1, "one failure is retried");
@@ -96,7 +102,7 @@ test("SSO enforcement is named as what to do", async () => {
 
 test("the probe checks authentication, then each thing this scope reads, naming a missing permission", async () => {
   const fake = fakeGitHub({ repos: { "acme/web": {} }, fail: { "/actions/runs": { status: 403, headers: { "x-accepted-github-permissions": "actions=read" } } } });
-  const result = await githubSource(noWait).probe({ connection, scope: { repositories: ["acme/web"], deployments: false }, credential: PAT, fetch: fake.fetch, nowMs: Date.now });
+  const result = await githubSource(noWait).probe({ connection, scope: { repositories: ["acme/web"], deployments: false }, auth: auth(), fetch: fake.fetch, nowMs: Date.now });
   assert.equal(result.identity, "lan");
   const by = Object.fromEntries(result.checks.map((c) => [c.id, c]));
   assert.equal(by.authentication.status, "ok");
@@ -105,6 +111,6 @@ test("the probe checks authentication, then each thing this scope reads, naming 
   assert.equal(by["acme/web · actions"].permission, "actions: read");
   assert.equal(by["acme/web · deployments"].status, "not-configured");
   assert.equal(result.ok, false);
-  const refused = await githubSource(noWait).probe({ connection, scope: {}, credential: PAT, fetch: fakeGitHub({ fail: { "/user": { status: 401 } } }).fetch, nowMs: Date.now });
-  assert.equal(refused.checks[0].status, "unauthorized");
+  const refused = await githubSource(noWait).probe({ connection, scope: {}, auth: auth(), fetch: fakeGitHub({ fail: { "/user": { status: 401 } } }).fetch, nowMs: Date.now }).catch((e) => e);
+  assert.ok(refused instanceof AuthBlocked && refused.code === "AUTH_REJECTED", "a refusal of who is asking ends the test as the contract's answer, and the connection's test words it");
 });

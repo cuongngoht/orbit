@@ -4,20 +4,27 @@
 // limits said out loud.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createAuth } from "../src/connections/auth.mjs";
+import { AuthBlocked } from "../src/connections/auth-errors.mjs";
 import { Blocked } from "../src/errors.mjs";
-import { azureDevOpsSource, baseOf, releaseBaseOf } from "../skills/orbit-report/sources/azure-devops.mjs";
+import { providers } from "../skills/orbit-report/pack.mjs";
+import { azureDevOpsSource, releaseBaseOf } from "../skills/orbit-report/sources/azure-devops.mjs";
+import { baseOf } from "../skills/orbit-report/sources/azure-devops-client.mjs";
 import { fakeAdo } from "./project-report/fake-ado.mjs";
 import { WINDOW } from "./project-report/snapshots.mjs";
 
 const PAT = "abcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqrst";
-const connection = { id: "ado-acme", host: "https://dev.azure.com", organization: "acme" };
+const connection = { id: "ado-acme", provider: "azure-devops", host: "https://dev.azure.com", organization: "acme", auth: { strategy: "credential" }, credential: "ADO_PAT" };
 const scope = { project: "portal" };
 const noWait = { sleep: async () => {} };
+
+// What authorizes the requests: the real contract over a personal access token the way a person's connection holds one.
+const auth = () => createAuth({ secrets: { read: async () => PAT }, adapters: {}, providers: providers(), nowMs: () => 0 }).resolve(connection);
 
 const item = (id, revisions, over = {}) => ({ id, type: "User Story", createdAt: revisions[0].at, revisions, ...over });
 
 function collect(fake, s = scope) {
-  return azureDevOpsSource(noWait).collect({ connection, scope: s, window: WINDOW, credential: PAT, fetch: fake.fetch, nowMs: () => Date.parse("2026-09-25T03:00:00Z"), log: () => {} });
+  return azureDevOpsSource(noWait).collect({ connection, scope: s, window: WINDOW, auth: auth(), fetch: fake.fetch, nowMs: () => Date.parse("2026-09-25T03:00:00Z"), log: () => {} });
 }
 
 test("where the API lives: an organization under dev.azure.com, a Server collection as given, releases on their own host", () => {
@@ -94,12 +101,12 @@ test("a scope the token lacks is that collection's status; a token refused outri
   assert.equal(noCode.completeness.pullRequests.status, "forbidden");
   assert.equal(noCode.completeness.pullRequests.permission, "Code (Read)");
   assert.equal(noCode.completeness.workItems.status, "complete", "the rest was read");
-  await assert.rejects(collect(fakeAdo({ fail: { "/_apis/projects/": { html: true, status: 203 } } })), (e) => e instanceof Blocked && /a page instead of data/.test(e.message));
+  await assert.rejects(collect(fakeAdo({ fail: { "/_apis/projects/": { html: true, status: 203 } } })), (e) => e instanceof AuthBlocked && e.code === "AUTH_REJECTED" && /the credential was refused: the source did not accept it \(HTTP 203\)/.test(e.message), "a sign-in page where data should be is the source not accepting who asks, told as the 203 it was");
   await assert.rejects(collect(fakeAdo({ fail: { "/_apis/projects/": { status: 404, body: { message: "TF200016: The project does not exist" } } } })), (e) => e instanceof Blocked && /project portal could not be read/.test(e.message));
 });
 
 test("the probe: authentication, then each area this scope reads, with the scope a token needs", async () => {
-  const result = await azureDevOpsSource(noWait).probe({ connection, scope: { project: "portal", repos: false }, credential: PAT, fetch: fakeAdo({ fail: { "/_apis/build/builds": { status: 401 } } }).fetch, nowMs: Date.now });
+  const result = await azureDevOpsSource(noWait).probe({ connection, scope: { project: "portal", repos: false }, auth: auth(), fetch: fakeAdo({ fail: { "/_apis/build/builds": { status: 401 } } }).fetch, nowMs: Date.now });
   const by = Object.fromEntries(result.checks.map((c) => [c.id, c]));
   assert.equal(by.authentication.status, "ok");
   assert.equal(result.identity, "Lan Nguyen");
@@ -115,7 +122,7 @@ test("the probe: authentication, then each area this scope reads, with the scope
 // before the credential is even read -- so it names no permission to go and grant.
 test("the probe names a permission only when the credential was refused", async () => {
   const fail = { "/_apis/wit/wiql": { status: 400, body: { message: "A potentially dangerous Request.Path value was detected" } }, "/_apis/build/builds": { status: 403, body: { message: "denied" } } };
-  const result = await azureDevOpsSource(noWait).probe({ connection, scope: { project: "portal" }, credential: PAT, fetch: fakeAdo({ fail }).fetch, nowMs: Date.now });
+  const result = await azureDevOpsSource(noWait).probe({ connection, scope: { project: "portal" }, auth: auth(), fetch: fakeAdo({ fail }).fetch, nowMs: Date.now });
   const by = Object.fromEntries(result.checks.map((c) => [c.id, c]));
   assert.deepEqual([by.boards.status, by.boards.permission], ["error", null]);
   assert.match(by.boards.message, /HTTP 400/);

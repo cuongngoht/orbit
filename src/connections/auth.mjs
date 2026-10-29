@@ -93,8 +93,9 @@ const basic = (token) => `Basic ${Buffer.from(`:${token}`).toString("base64")}`;
 const headerOf = (strategy, token) => ({ Authorization: strategy.request === "basic" ? basic(token) : `Bearer ${token}` });
 
 // 401 and 403 are two different things, and a person is told which: the first says the sign-in or the credential is not
-// good for this source, the second that it is good and not allowed to read this.
-const REFUSALS = { forbidden: ["AUTH_FORBIDDEN", "the account may not read this (HTTP 403)"], auth: ["AUTH_REJECTED", "the source did not accept it (HTTP 401)"] };
+// good for this source, the second that it is good and not allowed to read this. The status is the one the source
+// answered with when the stop knows it: a sign-in page where data should be is a 203, and is told as one.
+const REFUSALS = { forbidden: ["AUTH_FORBIDDEN", "the account may not read this", 403], auth: ["AUTH_REJECTED", "the source did not accept it", 401] };
 
 // The adapter may know better than the status code (it can see what the sign-in reaches); else the two plain answers.
 async function refused(deps, connection, strategy, stop) {
@@ -103,8 +104,8 @@ async function refused(deps, connection, strategy, stop) {
 }
 
 function refusal(strategy, stop) {
-  const [code, says] = REFUSALS[stop?.kind] ?? REFUSALS.auth;
-  return new AuthBlocked(code, `${strategy.kind === "broker" ? "the sign-in" : "the credential"} was refused: ${says}`, strategy.kind === "broker" ? "sign in again, or sign in with another account" : "check the credential, what it may read and when it expires");
+  const [code, says, status] = REFUSALS[stop?.kind] ?? REFUSALS.auth;
+  return new AuthBlocked(code, `${strategy.kind === "broker" ? "the sign-in" : "the credential"} was refused: ${says} (HTTP ${stop?.status ?? status})`, strategy.kind === "broker" ? "sign in again, or sign in with another account" : "check the credential, what it may read and when it expires");
 }
 
 async function statusOf(deps, connection, strategy) {

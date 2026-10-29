@@ -66,6 +66,14 @@ test("a new connection spells out how it gets in; its public view says so, and a
   assert.deepEqual(publicConnection(SESSION).auth, { strategy: "session" });
 });
 
+test("a connection's public view says whether it can be used -- drawn with its provider's descriptor, so whoever lists connections needs neither a descriptor nor a tool", () => {
+  const [svc] = PROVIDERS;
+  const configuredOf = (rec) => publicConnection(rec, svc).configured;
+  assert.deepEqual([configuredOf(SESSION), configuredOf({ id: "old", provider: "svc" }), configuredOf({ id: "old", provider: "svc", credential: "ENV_NAME" }), configuredOf({ id: "old", provider: "svc", credential: { vault: "connection-old" } })], [true, false, true, true], "a sign-in needs nothing until it is used; a credential connection needs its reference");
+  assert.equal(publicConnection({ id: "old", provider: "svc" }).configured, false, "with no descriptor a connection is read as a credential, which is what every record made before sign-in existed is");
+  assert.equal(publicConnection(null, svc), null);
+});
+
 test("a credential is read when a request needs it -- not before -- sent as the descriptor says, and remembered as issued", async () => {
   const reads = [];
   const secrets = { read: async (ref) => (reads.push(ref), ref === "MY_TOKEN" ? "s3cret-credential-value" : null) };

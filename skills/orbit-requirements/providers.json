@@ -52,13 +52,7 @@
       },
       "kinds": { "Pull Request": "pr", "Fixed in Commit": "commit", "Fixed in Changeset": "commit" },
       "mcp": null,
-      "tools": [
-        {
-          "catalog": "azure-cli",
-          "bin": "az",
-          "defaults": { "argv": ["devops", "configure", "--list"], "parse": "organization\\s*=\\s*https://dev\\.azure\\.com/(?<organization>[^\\s/]+)[\\s\\S]*?project\\s*=\\s*(?<project>[^\\r\\n]+)" }
-        }
-      ]
+      "tools": []
     }
   ]
 }

@@ -3,19 +3,24 @@
 // at the cut-off; then any local collector a project added -- and all of it
 // assembled into the snapshot that is frozen before anything computes.
 //
-// The credential is read from the secret port HERE, at the moment of use, and
-// handed to the source adapter -- code in this process -- and to nothing else.
-// No part receives it, the snapshot is scanned for it before it is written, and
-// it is not kept once the collector returns.
+// What authorizes the source's requests is the connection's AUTH (src/connections/auth.mjs): a
+// RequestAuth, resolved here and handed to the source adapter -- code in this process -- and to
+// nothing else. It is LAZY: nothing is read or started until the adapter's first request asks
+// for its header, and it is asked again for every request, so a token that was good when a long
+// run began is replaced before it is spent. A secret is only ever an answer: no part receives it,
+// the snapshot and every raw page are scanned for every token the RequestAuth ISSUED (read after
+// the collection, so a token replaced halfway is covered) before anything is written, and none is
+// kept once the collector returns.
 //
 // A source adapter (bound by the composition root, one per provider) answers
-//   collect({ connection, scope, window, credential, fetch, nowMs, log })
+//   collect({ connection, scope, window, auth, fetch, nowMs, log })
 //     -> { source: { provider, host, organization, scope }, completeness,
 //          collections, raw: [page…], earliest }
-// and throws Refused (the request was wrong) or Blocked (the source could not
-// answer). What it could not read is a completeness status, never an empty list.
+// and throws Refused (the request was wrong) or Blocked (the source could not answer, or did not
+// accept who was asking: an AuthBlocked). What it could not read is a completeness status, never
+// an empty list.
 import { join } from "node:path";
-import { Blocked, Refused } from "../errors.mjs";
+import { Refused } from "../errors.mjs";
 import { sha } from "../hash.mjs";
 import { compose } from "./compose.mjs";
 import { computeParts } from "./compute.mjs";
@@ -23,27 +28,27 @@ import { prepareDocs } from "./documents.mjs";
 import { SNAPSHOT_CONTRACT } from "./snapshot.mjs";
 import { calendarOf } from "./window.mjs";
 
-// ctx: { project, room, io, settings, connection, runId, window, parts, facts, python, env, root }
-// deps: { sources, secrets, fetch, process, shim, nowMs, log }
+// ctx: { project, room, io, settings, connection (the RECORD), runId, window, parts, facts, python, env, root, interactive?, notify? }
+// deps: { sources, auth (createAuth), interactive?, notify?, fetch, process, shim, nowMs, log }
 export async function collect(ctx, deps) {
   const began = new Date(deps.nowMs()).toISOString();
-  const credential = await credentialOf(ctx, deps);
-  const read = await fromSource(ctx, deps, credential);
+  const auth = authOf(ctx, deps);
+  const read = await fromSource(ctx, deps, auth);
   const local = await localCollections(ctx, deps, read);
-  return { snapshot: snapshotOf(ctx, read, local, began, deps), raw: read.raw ?? [], secrets: [credential] };
+  return { snapshot: snapshotOf(ctx, read, local, began, deps), raw: read.raw ?? [], secrets: auth.secrets() };
 }
 
-async function credentialOf(ctx, deps) {
+// What a person may be asked to do while a run goes on -- sign in again -- is the composition root's to allow (`interactive`)
+// and to show (`notify`), on its deps or its ctx; a run that nobody said anything about may ask.
+function authOf(ctx, deps) {
   if (!ctx.connection) throw new Refused("this project's report settings name no connection; choose one in Orbit Control → PO Reports → Connection");
-  const value = await deps.secrets.read(ctx.connection.credential);
-  if (!value) throw new Blocked(`connection ${ctx.connection.id} has no credential set; set it in Orbit Control → Connections`);
-  return value;
+  return deps.auth.resolve(ctx.connection, { interactive: deps.interactive ?? ctx.interactive ?? "when-required", notify: deps.notify ?? ctx.notify });
 }
 
-function fromSource(ctx, deps, credential) {
+function fromSource(ctx, deps, auth) {
   const source = deps.sources[ctx.settings.provider];
   if (!source) throw new Refused(`no collector reads ${ctx.settings.provider}`);
-  return source.collect({ connection: ctx.connection, scope: ctx.settings.scope ?? {}, window: ctx.window, credential, fetch: deps.fetch, nowMs: deps.nowMs, log: deps.log });
+  return source.collect({ connection: ctx.connection, scope: ctx.settings.scope ?? {}, window: ctx.window, auth, fetch: deps.fetch, nowMs: deps.nowMs, log: deps.log });
 }
 
 // ---- local collectors: the documents tree, and a project's own -------------

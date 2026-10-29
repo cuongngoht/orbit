@@ -58,7 +58,7 @@ function world({ graph = GRAPH(), failing = {}, separate = false, connections = 
   });
   const readers = systems.map(readerFor);
   const reader = readers[0];
-  const list = { list: () => (connections ? systems.map((provider) => ({ id: provider, provider, organization: "acme", credential: { set: true, from: "env", name: "T" } })) : []), record: () => ({ credential: "T" }) };
+  const list = { list: () => (connections ? systems.map((provider) => ({ id: provider, provider, organization: "acme", credential: { set: true, from: "env", name: "T" }, configured: true })) : []), record: () => ({ credential: "T" }) };
   const w = {
     descriptors: DESCRIPTORS,
     readers,

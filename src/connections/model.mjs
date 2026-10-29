@@ -83,8 +83,10 @@ export function shapedConnection(input, provider) {
 }
 
 // What any page or answer may SHOW about a connection: where its credential
-// comes from, never what it is. A vault item says only that it is set.
-export const publicConnection = (rec) => (rec ? { ...rec, credential: credentialView(rec.credential), auth: rec.auth ?? { strategy: "credential" } } : null);
+// comes from, never what it is. A vault item says only that it is set. `configured` says whether the
+// connection can be used at all (see `configured`), so whoever only LISTS connections -- a registry row, the
+// discovery ladder -- never needs the provider's descriptor, a reference or a tool to ask it.
+export const publicConnection = (rec, provider) => (rec ? { ...rec, credential: credentialView(rec.credential), auth: rec.auth ?? { strategy: "credential" }, configured: configured(rec, provider) } : null);
 
 function credentialView(ref) {
   if (!ref) return { set: false, from: null };

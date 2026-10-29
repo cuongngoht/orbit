@@ -4,6 +4,8 @@
 // stays ignorant: every provider word lives in providers.json and skills/, never src/.
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { createAuth } from "../src/connections/auth.mjs";
+import { AuthBlocked } from "../src/connections/auth-errors.mjs";
 import { createConnections } from "../src/connections/manage.mjs";
 import { connectionStore } from "../src/connections/store.mjs";
 import { Blocked, Refused } from "../src/errors.mjs";
@@ -32,25 +34,27 @@ function server(routes) {
   return { fetch, calls };
 }
 
-// The real connection store and secret port, over an in-memory disk.
-async function world(made = []) {
+// The real connection store, secret port and auth contract, over an in-memory disk. `adapters` are the sign-in adapters
+// by strategy id: none, unless a test signs in.
+async function world(made = [], adapters = {}) {
   const env = { REQ_TEST_TOKEN: TOKEN, ...Object.fromEntries(made.filter((m) => m.token).map((m) => [m.envName, m.token])) };
   const secrets = secretSource({ env });
   const io = fakeIo();
   const connections = createConnections({ store: connectionStore(stateRooms("/base"), io), secrets, providers: providers(), now: () => AT });
   for (const m of made) {
-    connections.create({ id: m.id, provider: m.provider, host: m.host, organization: m.organization });
+    connections.create({ id: m.id, provider: m.provider, host: m.host, organization: m.organization, ...(m.auth ? { auth: m.auth } : {}) });
     if (m.envName) await connections.setCredential(m.id, { env: m.envName });
   }
-  return { connections, secrets, env, io };
+  return { connections, secrets, env, io, auth: createAuth({ secrets, adapters, providers: providers(), nowMs: () => 0 }) };
 }
 
 const GH = { id: "gh-acme", provider: "github", host: "https://api.github.com", organization: "acme", envName: "REQ_TEST_TOKEN" };
-const ADO = { id: "ado-acme", provider: "azure-devops", host: "https://dev.azure.com", organization: "acme", envName: "REQ_TEST_TOKEN" };
+// A NEW Azure DevOps connection signs in; one that reads a token says so.
+const ADO = { id: "ado-acme", provider: "azure-devops", host: "https://dev.azure.com", organization: "acme", envName: "REQ_TEST_TOKEN", auth: { strategy: "credential" } };
 const GH_ID = { provider: "github", organization: "acme", project: "shop", id: "88" };
 const ADO_ID = { provider: "azure-devops", organization: "acme", project: "Web Shop", id: "4312" };
 
-const readerOf = (w, s, id) => packReaders({ connections: w.connections, secrets: w.secrets, fetch: s.fetch, nowMs: () => 0, sleep: async () => {}, limits: { retries: 0 } }).find((r) => r.key.endsWith(`/${id}`));
+const readerOf = (w, s, id) => packReaders({ connections: w.connections, auth: w.auth, fetch: s.fetch, nowMs: () => 0, sleep: async () => {}, limits: { retries: 0 } }).find((r) => r.key.endsWith(`/${id}`));
 
 // ---- the descriptors ----------------------------------------------------------------------
 
@@ -213,11 +217,11 @@ test("a reader answers only what it provides", async () => {
 
 test("no connection, another owner's connection or an unset credential is BLOCKED, and the credential is never named", async () => {
   const none = await world([]);
-  await assert.rejects(readerOf(none, server([]), "github").read(GH_ID, "workitem.read"), (e) => e instanceof Blocked && /no GitHub connection with a credential is set up here/.test(e.message));
+  await assert.rejects(readerOf(none, server([]), "github").read(GH_ID, "workitem.read"), (e) => e instanceof Blocked && /no GitHub connection is set up here/.test(e.message));
   const other = await world([{ ...GH, organization: "someone-else" }]);
   await assert.rejects(readerOf(other, server([]), "github").read(GH_ID, "workitem.read"), (e) => e instanceof Blocked && /the ones here are for someone-else/.test(e.message));
   const unset = await world([{ ...GH, envName: "REQ_NOT_SET_ANYWHERE" }]);
-  await assert.rejects(readerOf(unset, server([]), "github").read(GH_ID, "workitem.read"), (e) => e instanceof Blocked && /is not set on this machine/.test(e.message) && !e.message.includes(TOKEN));
+  await assert.rejects(readerOf(unset, server([]), "github").read(GH_ID, "workitem.read"), (e) => e instanceof AuthBlocked && e instanceof Blocked && e.code === "AUTH_CREDENTIAL_MISSING" && /has no credential set on this machine/.test(e.message) && !e.message.includes(TOKEN));
 });
 
 test("a source that echoes the credential back is not answered", async () => {
@@ -234,11 +238,16 @@ test("what a source did is told as what it means: not found is the request's, ev
   };
   const missing = await stop(404);
   assert.ok(missing instanceof Refused && /not found, or not visible to this credential/.test(missing.message));
-  for (const [status, re] of [[401, /credential was refused/], [403, /may not read this/]]) {
+  for (const [status, re, code] of [[401, /credential was refused/, "AUTH_REJECTED"], [403, /may not read this/, "AUTH_FORBIDDEN"]]) {
     const e = await stop(status);
-    assert.ok(e instanceof Blocked && re.test(e.message), `${status}: ${e.message}`);
+    assert.ok(e instanceof Blocked && re.test(e.message) && e.code === code, `${status}: ${e.message}`);
     assert.ok(!e.message.includes(TOKEN));
   }
+  const sso = await stop(403, { "x-github-sso": "required; url=https://github.com/orgs/acme/sso" });
+  assert.deepEqual([sso.code, /it needs SSO authorization/.test(sso.message)], ["AUTH_FORBIDDEN", true], "what the source itself named as missing is not lost to the fixed words");
+  const named = await readerOf(await world([ADO]), server([[/workitems\/4312/, () => reply(403, { message: "TF401027: you need a permission" })]]), "azure-devops").read(ADO_ID, "workitem.read").catch((e) => e);
+  assert.deepEqual([named.code, /it needs the permission named by TF401027/.test(named.message)], ["AUTH_FORBIDDEN", true]);
+  assert.match(named.next, /another account|credential/);
 });
 
 test("a redirect to another host is not followed, and the credential is not sent there", async () => {

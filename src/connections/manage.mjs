@@ -1,5 +1,5 @@
 // A PERSON's operations on connections -- create, change, delete, set or clear
-// the credential, test -- the same for Orbit Control and the CLI.
+// the credential, sign in or out, test -- the same for Orbit Control and the CLI.
 //
 // A credential VALUE passes through here exactly once, on its way into the OS
 // secret store: `setCredential` hands it to the secret port and keeps the
@@ -9,18 +9,24 @@
 // store on this machine the answer is BLOCKED -- the person references an
 // environment variable instead, and nothing falls back to a file.
 //
-// `test` asks the source's own probe, handed in by the composition root:
-// authentication first, then every capability the project's scope would read,
+// A connection that SIGNS IN keeps no credential at all: what it uses is a session a tool holds
+// (src/connections/auth.mjs), and `signIn` / `signOut` / `authStatus` are that contract's, nothing more.
+//
+// `test` asks the source's own probe, handed in by the composition root, with the connection's
+// RequestAuth: authentication first, then every capability the project's scope would read,
 // each answered ok · forbidden (with the permission it lacks) · not-found ·
 // error. What it found is kept as `lastTest`, and holds no secret.
 import { Refused } from "../errors.mjs";
+import { createAuth } from "./auth.mjs";
+import { AuthBlocked } from "./auth-errors.mjs";
 import { maskValues, scrub } from "../scrub.mjs";
 import { isVaultRef } from "../secrets.mjs";
 import { CONNECTION_ID, connectionProblems, publicConnection, shapedConnection } from "./model.mjs";
 
-// deps: { store (connectionStore), secrets (secretSource), providers, now }
-export function createConnections(deps) {
-  return { list: () => deps.store.list().map(publicConnection), get: (id) => publicConnection(found(deps, id)), create: (input) => create(deps, input), update: (id, patch) => update(deps, id, patch), remove: (id) => remove(deps, id), setCredential: (id, input) => setCredential(deps, id, input), clearCredential: (id) => clearCredential(deps, id), test: (id, probe) => tested(deps, id, probe), record: (id) => found(deps, id) };
+// deps: { store (connectionStore), secrets (secretSource), providers, auth (createAuth), now }
+export function createConnections(given) {
+  const deps = { ...given, auth: given.auth ?? createAuth({ secrets: given.secrets, providers: given.providers, adapters: {}, nowMs: Date.now }) };
+  return { list: () => deps.store.list().map(publicConnection), get: (id) => publicConnection(found(deps, id)), create: (input) => create(deps, input), update: (id, patch) => update(deps, id, patch), remove: (id) => remove(deps, id), setCredential: (id, input) => setCredential(deps, id, input), clearCredential: (id) => clearCredential(deps, id), test: (id, probe) => tested(deps, id, probe), authStatus: (id) => deps.auth.status(found(deps, id)), signIn: (id, options) => authenticated(deps, id, options), signOut: (id) => unauthenticated(deps, id), record: (id) => found(deps, id) };
 }
 
 function found(deps, id) {
@@ -44,17 +50,19 @@ function held(deps, rec) {
   return rec;
 }
 
-// Where the source is, or which one it is, changes what a past test proved --
-// so a change to either forgets the last test.
+// Where the source is, which one it is, or how it is entered, changes what a past test proved --
+// so a change to any of them forgets the last test.
 function update(deps, id, patch) {
   const was = found(deps, id);
-  const next = held(deps, { ...was, ...pick(patch, ["label", "host", "organization", "note"]), updatedAt: deps.now(), lastTest: moved(was, patch) ? undefined : was.lastTest });
+  const next = held(deps, { ...was, ...pick(patch, ["label", "host", "organization", "note", "auth"]), updatedAt: deps.now(), lastTest: moved(was, patch) ? undefined : was.lastTest });
   deps.store.change((list) => list.map((c) => (c.id === id ? next : c)));
   return publicConnection(next);
 }
 
 const pick = (o, keys) => Object.fromEntries(Object.entries(o ?? {}).filter(([k, v]) => keys.includes(k) && v !== undefined));
-const moved = (was, patch) => ["host", "organization"].some((k) => patch?.[k] !== undefined && patch[k] !== was[k]);
+const moved = (was, patch) => ["host", "organization"].some((k) => patch?.[k] !== undefined && patch[k] !== was[k]) || authMoved(was, patch);
+
+const authMoved = (was, patch) => patch?.auth !== undefined && JSON.stringify(patch.auth) !== JSON.stringify(was.auth ?? { strategy: "credential" });
 
 // Deleting a connection deletes the credential Orbit kept for it; an environment
 // variable is the person's own, and stays.
@@ -89,7 +97,23 @@ async function saved(deps, next, was) {
   return publicConnection(next);
 }
 
-// probe(connection, credential) -> { ok, identity, checks: [{ id, status, permission, message }] }
+// Signing in changes what a past test proved, and says so; the test is forgotten and asked for again.
+async function authenticated(deps, id, options) {
+  const was = found(deps, id);
+  const state = await deps.auth.signIn(was, options);
+  forgotten(deps, id);
+  return state;
+}
+
+async function unauthenticated(deps, id) {
+  const state = await deps.auth.signOut(found(deps, id));
+  forgotten(deps, id);
+  return state;
+}
+
+const forgotten = (deps, id) => deps.store.change((list) => list.map((c) => (c.id === id ? { ...c, lastTest: undefined } : c)));
+
+// probe(connection, auth) -> { ok, identity, checks: [{ id, status, permission, message }] }
 async function tested(deps, id, probe) {
   const rec = found(deps, id);
   const result = await probed(deps, rec, probe);
@@ -99,12 +123,26 @@ async function tested(deps, id, probe) {
 }
 
 // Whatever the probe says passes through the masks before it is kept: its
-// words are about the source, and the credential is never one of them.
+// words are about the source, and no token this connection issued is ever one of them. A probe is
+// never allowed to start a sign-in: a person asked whether the connection WORKS.
 async function probed(deps, rec, probe) {
-  const credential = rec.credential ? await deps.secrets.read(rec.credential) : null;
-  if (!credential) return { ok: false, identity: null, checks: [{ id: "credential", status: "missing", permission: null, message: rec.credential ? "the credential this connection references is not set on this machine" : "no credential is set for this connection" }] };
-  const result = await probe(rec, credential);
-  return { ...result, identity: result.identity ? scrub(maskValues(String(result.identity), [credential])) : null, checks: (result.checks ?? []).map((c) => checkLine(c, credential)) };
+  const auth = deps.auth.resolve(rec, { interactive: "never" });
+  const result = await asked(rec, probe, auth);
+  const secrets = auth.secrets();
+  return { ...result, identity: result.identity ? scrub(maskValues(String(result.identity), secrets)) : null, checks: (result.checks ?? []).map((c) => checkLine(c, secrets)) };
 }
 
-const checkLine = (c, credential) => ({ id: String(c.id), status: String(c.status), permission: c.permission ?? null, message: c.message ? scrub(maskValues(String(c.message), [credential])).slice(0, 300) : null });
+async function asked(rec, probe, auth) {
+  try { return await probe(rec, auth); }
+  catch (error) { return blocked(error); }
+}
+
+// An authentication that cannot proceed is an answer about the connection, not a failure of the test.
+function blocked(error) {
+  if (!(error instanceof AuthBlocked)) throw error;
+  return { ok: false, identity: null, checks: [{ id: error.code === "AUTH_CREDENTIAL_MISSING" ? "credential" : "authentication", status: STATUS[error.code] ?? "error", permission: null, message: error.next ? `${error.message} -- ${error.next}` : error.message }] };
+}
+
+const STATUS = { AUTH_FORBIDDEN: "forbidden", AUTH_CREDENTIAL_MISSING: "missing", AUTH_LOGIN_REQUIRED: "missing", AUTH_TOOL_MISSING: "missing", AUTH_TOOL_UNSUPPORTED: "missing" };
+
+const checkLine = (c, secrets) => ({ id: String(c.id), status: String(c.status), permission: c.permission ?? null, message: c.message ? scrub(maskValues(String(c.message), secrets)).slice(0, 300) : null });

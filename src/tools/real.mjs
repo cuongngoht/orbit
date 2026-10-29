@@ -10,6 +10,7 @@ import { createHash } from "node:crypto";
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { contained } from "../project/boundary.mjs";
 
 export const DOWNLOAD_LIMIT = 512 * 1024 * 1024;
 export const DOWNLOAD_TIMEOUT_MS = 300_000;
@@ -70,6 +71,13 @@ function readOr(path) {
   try { return readFileSync(path, "utf8"); }
   catch { return ""; }
 }
+
+// A lock is a file the plugin ships under catalog/, named by a catalog row relative to it (src/tools/catalog.mjs
+// pinnedLock, which keeps it inside): read from there and from nowhere else.
+export const realLockFile = (pluginRoot) => (rel) => {
+  const path = contained(join(pluginRoot, "catalog"), join(pluginRoot, "catalog", rel));
+  return { path, text: readFileSync(path, "utf8") };
+};
 
 export const realInstallIo = (log = () => {}) => ({ download: (url) => downloaded(url, log), sha256: (bytes) => createHash("sha256").update(bytes).digest("hex"), tempDir, unpack, rename: renameSync, remove: (p) => rmSync(p, { recursive: true, force: true }), setAside });
 

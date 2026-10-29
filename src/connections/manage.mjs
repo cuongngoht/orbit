@@ -26,8 +26,11 @@ import { CONNECTION_ID, connectionProblems, publicConnection, shapedConnection }
 // deps: { store (connectionStore), secrets (secretSource), providers, auth (createAuth), now }
 export function createConnections(given) {
   const deps = { ...given, auth: given.auth ?? createAuth({ secrets: given.secrets, providers: given.providers, adapters: {}, nowMs: Date.now }) };
-  return { list: () => deps.store.list().map(publicConnection), get: (id) => publicConnection(found(deps, id)), create: (input) => create(deps, input), update: (id, patch) => update(deps, id, patch), remove: (id) => remove(deps, id), setCredential: (id, input) => setCredential(deps, id, input), clearCredential: (id) => clearCredential(deps, id), test: (id, probe) => tested(deps, id, probe), authStatus: (id) => deps.auth.status(found(deps, id)), signIn: (id, options) => authenticated(deps, id, options), signOut: (id) => unauthenticated(deps, id), record: (id) => found(deps, id) };
+  return { list: () => deps.store.list().map((rec) => viewOf(deps, rec)), get: (id) => viewOf(deps, found(deps, id)), create: (input) => create(deps, input), update: (id, patch) => update(deps, id, patch), remove: (id) => remove(deps, id), setCredential: (id, input) => setCredential(deps, id, input), clearCredential: (id) => clearCredential(deps, id), test: (id, probe) => tested(deps, id, probe), authStatus: (id) => deps.auth.status(found(deps, id)), signIn: (id, options) => authenticated(deps, id, options), signOut: (id) => unauthenticated(deps, id), record: (id) => found(deps, id) };
 }
+
+// The public view of a record, drawn with the descriptor of its own provider: that is what says whether it is configured.
+const viewOf = (deps, rec) => publicConnection(rec, deps.providers.find((p) => p.id === rec?.provider));
 
 function found(deps, id) {
   const rec = CONNECTION_ID.test(String(id)) ? deps.store.get(id) : null;
@@ -39,7 +42,7 @@ function create(deps, input) {
   const rec = { ...shapedConnection({ ...input, credential: undefined }, deps.providers.find((p) => p.id === input?.provider)), createdAt: deps.now(), updatedAt: deps.now() };
   held(deps, rec);
   deps.store.change((list) => (list.some((c) => c.id === rec.id) ? taken(rec.id) : [...list, rec]));
-  return publicConnection(rec);
+  return viewOf(deps, rec);
 }
 
 const taken = (id) => { throw new Refused(`a connection named ${id} already exists`); };
@@ -56,7 +59,7 @@ function update(deps, id, patch) {
   const was = found(deps, id);
   const next = held(deps, { ...was, ...pick(patch, ["label", "host", "organization", "note", "auth"]), updatedAt: deps.now(), lastTest: moved(was, patch) ? undefined : was.lastTest });
   deps.store.change((list) => list.map((c) => (c.id === id ? next : c)));
-  return publicConnection(next);
+  return viewOf(deps, next);
 }
 
 const pick = (o, keys) => Object.fromEntries(Object.entries(o ?? {}).filter(([k, v]) => keys.includes(k) && v !== undefined));
@@ -94,7 +97,7 @@ async function saved(deps, next, was) {
   held(deps, next);
   deps.store.change((list) => list.map((c) => (c.id === next.id ? next : c)));
   if (isVaultRef(was.credential) && !isVaultRef(next.credential)) await deps.secrets.remove(was.credential);
-  return publicConnection(next);
+  return viewOf(deps, next);
 }
 
 // Signing in changes what a past test proved, and says so; the test is forgotten and asked for again.
@@ -143,6 +146,6 @@ function blocked(error) {
   return { ok: false, identity: null, checks: [{ id: error.code === "AUTH_CREDENTIAL_MISSING" ? "credential" : "authentication", status: STATUS[error.code] ?? "error", permission: null, message: error.next ? `${error.message} -- ${error.next}` : error.message }] };
 }
 
-const STATUS = { AUTH_FORBIDDEN: "forbidden", AUTH_CREDENTIAL_MISSING: "missing", AUTH_LOGIN_REQUIRED: "missing", AUTH_TOOL_MISSING: "missing", AUTH_TOOL_UNSUPPORTED: "missing" };
+const STATUS = { AUTH_FORBIDDEN: "forbidden", AUTH_REJECTED: "unauthorized", AUTH_CREDENTIAL_MISSING: "missing", AUTH_LOGIN_REQUIRED: "missing", AUTH_TOOL_MISSING: "missing", AUTH_TOOL_UNSUPPORTED: "missing" };
 
 const checkLine = (c, secrets) => ({ id: String(c.id), status: String(c.status), permission: c.permission ?? null, message: c.message ? scrub(maskValues(String(c.message), secrets)).slice(0, 300) : null });

@@ -11,7 +11,7 @@ import { formatRelative } from "../../shared/format";
 import { useFollow } from "../../shared/navigation/useFollow";
 import { connectionsApi, useConnectionChange, useConnections } from "./connections.api";
 import type { Connection, Provider } from "./connections.types";
-import { BACKEND_LABEL, CONNECTION_ID, connectionPath, credentialWords } from "./connectionWords";
+import { BACKEND_LABEL, CONNECTION_ID, authLine, connectionPath } from "./connectionWords";
 
 const useStyles = makeStyles({
   stack: { display: "flex", flexDirection: "column", gap: tokens.spacingVerticalL },
@@ -22,7 +22,7 @@ const useStyles = makeStyles({
   form: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(14rem, 1fr))", gap: tokens.spacingHorizontalL, alignItems: "end" },
 });
 
-// Every connection on this machine: which source, where, and where its
+// Every connection on this machine: which source, where, and how it gets in -- a sign-in, or where its
 // credential comes from. Shared by every project; a project's report picks one.
 export function ConnectionsPage() {
   const styles = useStyles();
@@ -33,7 +33,7 @@ export function ConnectionsPage() {
     <>
       <PageHeader
         title="Connections"
-        description="The sources project reports read, and where each credential comes from. A credential you enter goes to this machine's OS secret store and is never shown again; Orbit keeps only a reference."
+        description="The sources project reports read, and how each is let in: a sign-in Orbit keeps a session for, or a credential. A credential you enter goes to this machine's OS secret store and is never shown again; Orbit keeps only a reference."
         actions={
           <Button appearance="primary" icon={<Add20Regular />} disabled={readOnly} onClick={() => setAdding(true)}>
             New connection
@@ -75,7 +75,7 @@ function Rows({ connections, providers }: { connections: Connection[]; providers
               {providers.find((p) => p.id === c.provider)?.label ?? c.provider} · {c.organization} · {c.host}
             </Caption1>
           </div>
-          <Caption1>{credentialWords(c.credential)}</Caption1>
+          <Caption1>{authLine(c, providers.find((p) => p.id === c.provider))}</Caption1>
           <TestBadge connection={c} />
           <Link href={connectionPath(c.id)} onClick={follow(connectionPath(c.id))} aria-label={`Open ${c.id}`}>
             Open
@@ -110,7 +110,7 @@ function NewConnectionCard({ providers, onDone }: { providers: Provider[]; onDon
   const idOk = CONNECTION_ID.test(id);
   const submit = () => create.mutate({ id, provider, organization: organization.trim(), ...(host.trim() ? { host: host.trim() } : {}) }, { onSuccess: (made) => navigate(connectionPath(made.id)) });
   return (
-    <Card title="New connection" subtitle="One account's access to one organization. Set its credential on the next page.">
+    <Card title="New connection" subtitle="One account's access to one organization. How it gets in -- a sign-in or a credential -- is chosen on the next page.">
       <div className={styles.form}>
         <Field label="Source">
           <Dropdown value={chosen?.label ?? ""} selectedOptions={[provider]} onOptionSelect={(_, d) => setProvider(d.optionValue ?? provider)}>

@@ -31,10 +31,12 @@ describe("the API client", () => {
     const answers = [
       new Response(JSON.stringify({ error: { code: "INVALID_SKILL", message: "no", details: ["a", "b"] } }), { status: 400 }),
       new Response("<html>proxy error</html>", { status: 502 }),
+      new Response(JSON.stringify({ error: { code: "AUTH_LOGIN_FAILED", message: "the sign-in failed", next: "sign in again" } }), { status: 503 }),
     ];
     vi.stubGlobal("fetch", vi.fn(async () => answers.shift()!));
     await expect(api.get("/x")).rejects.toMatchObject({ status: 400, code: "INVALID_SKILL", message: "no", details: ["a", "b"] });
     await expect(api.get("/x")).rejects.toMatchObject({ status: 502, code: "HTTP_502" });
+    await expect(api.get("/x")).rejects.toMatchObject({ status: 503, code: "AUTH_LOGIN_FAILED", next: "sign in again" });
     vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new TypeError("fetch failed"))));
     await expect(api.get("/x")).rejects.toBeInstanceOf(ApiError);
   });

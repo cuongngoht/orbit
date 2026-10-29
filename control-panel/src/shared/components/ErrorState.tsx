@@ -10,11 +10,13 @@ interface ErrorStateProps {
 // so a refused save explains itself rather than just failing.
 export function ErrorState({ error, title = "Something went wrong", onRetry }: ErrorStateProps) {
   const details = detailsOf(error);
+  const next = nextOf(error);
   return (
     <MessageBar intent="error" layout="multiline">
       <MessageBarBody>
         <MessageBarTitle>{title}</MessageBarTitle>
         {messageOf(error)}
+        {next && <div>Next: {next}</div>}
         {details.length > 0 && (
           <ul aria-label="Problems">
             {details.map((d) => (
@@ -33,6 +35,12 @@ export function ErrorState({ error, title = "Something went wrong", onRetry }: E
 }
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+// The one step a person can take about it, when the server named one (an ApiError's `next`).
+const nextOf = (error: unknown): string | undefined => {
+  const next = (error as { next?: unknown } | null)?.next;
+  return typeof next === "string" && next ? next : undefined;
+};
 
 // An ApiError's `details`, or any other error that carries a list of problems.
 function detailsOf(error: unknown): string[] {

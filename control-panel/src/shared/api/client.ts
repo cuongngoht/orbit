@@ -13,13 +13,16 @@ export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
   readonly details: string[];
+  /** The one thing a person does about it, when the server knows (a sign-in that cannot go on says so). */
+  readonly next: string | undefined;
 
-  constructor(status: number, code: string, message: string, details: string[] = []) {
+  constructor(status: number, code: string, message: string, details: string[] = [], next?: string) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
     this.details = details;
+    this.next = next;
   }
 }
 
@@ -67,12 +70,12 @@ async function parsed(response: Response): Promise<unknown> {
 }
 
 interface ErrorPayload {
-  error?: { code?: string; message?: string; details?: string[] };
+  error?: { code?: string; message?: string; details?: string[]; next?: string };
 }
 
 function failureOf(status: number, payload: unknown): ApiError {
   const error = (payload as ErrorPayload | null)?.error;
-  return new ApiError(status, error?.code ?? `HTTP_${status}`, error?.message ?? `The server answered ${status}.`, error?.details ?? []);
+  return new ApiError(status, error?.code ?? `HTTP_${status}`, error?.message ?? `The server answered ${status}.`, error?.details ?? [], typeof error?.next === "string" ? error.next : undefined);
 }
 
 export const api = {

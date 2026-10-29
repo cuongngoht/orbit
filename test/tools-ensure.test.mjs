@@ -8,9 +8,14 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { authorize, isAuto } from "../src/protected/authorize.mjs";
 import { AUTONOMOUS_STRATEGIES, ToolBlocked, ensureOne, findOne } from "../src/tools/ensure.mjs";
+import { pathOf } from "../src/tools/launch.mjs";
 import { AZ, CATALOG, IDS, PY, world } from "./fakes/tools-world.mjs";
 
 const REPO = new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
+
+// The directory a platform's OWN path rules make of the room and the profile's name: the fake world's platform is a label,
+// and the host's (a Windows runner's) is not necessarily the one the code under test was told it is running on.
+const profileOf = (w) => pathOf(w.ctx.platform).join(w.rooms.authSessions, "azure-cli");
 
 test("a private runtime that is installed wins over the machine's own `az`, and nothing is installed", async () => {
   const w = world({ system: { path: "/usr/bin/az", version: "2.85.0" }, privateAt: { id: "azure-cli-private" } });
@@ -25,7 +30,7 @@ test("with no private runtime, the machine's `az` is used as a PROGRAM -- verifi
   const got = await ensureOne(IDS, w.ctx);
   assert.deepEqual([got.id, got.source, got.version, got.acquired, w.installs], ["azure-cli", "system", "2.85.0", false, []]);
   const session = got.launcher("session");
-  assert.equal(session.env.AZURE_CONFIG_DIR, join(w.rooms.authSessions, "azure-cli"), "the sign-in is Orbit's whatever program runs");
+  assert.equal(session.env.AZURE_CONFIG_DIR, profileOf(w), "the sign-in is Orbit's whatever program runs");
   assert.equal(session.file, "/usr/bin/az");
   w.done();
 });
@@ -34,7 +39,7 @@ test("with neither, Orbit installs a private runtime of its own -- the interpret
   const w = world();
   const got = await ensureOne(IDS, w.ctx);
   assert.deepEqual([got.id, got.source, got.acquired, w.installs], ["azure-cli-private", "orbit-managed", true, ["python", "azure-cli-private"]]);
-  assert.equal(got.launcher("session").env.AZURE_CONFIG_DIR, join(w.rooms.authSessions, "azure-cli"), "the same profile a machine's az would have used");
+  assert.equal(got.launcher("session").env.AZURE_CONFIG_DIR, profileOf(w), "the same profile a machine's az would have used");
   w.done();
 });
 

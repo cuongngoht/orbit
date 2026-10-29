@@ -64,7 +64,7 @@ test("a project's own copy wins over the machine's, and a copy that will not sta
 test("a Orbit-managed install is found from its RECEIPT and beats the system copy", () => {
   const rooms = stateRooms("/store");
   const receipt = { tool: "sqlcmd", version: "1.10.0", platform: "linux", arch: "x64", home: "toolRuntimes", dir: "sqlcmd/1.10.0-linux-x64", bin: "sqlcmd" };
-  const managed = receiptPath(rooms, receipt);
+  const managed = receiptPath(rooms, receipt, receipt.platform);
   const { ctx } = detection({ files: [managed, "/usr/bin/sqlcmd"], versions: { [managed]: "sqlcmd\n\nVersion: v1.10.0", "/usr/bin/sqlcmd": "Version 15.0.4298.1" }, receipts: [receipt], rooms });
   const found = detectTool(tool("sqlcmd"), ctx);
   assert.deepEqual([found.source, found.version, found.path], ["orbit-managed", "1.10.0", managed]);

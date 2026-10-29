@@ -9,7 +9,7 @@ changes their login, account, subscription, configuration or extensions, so a pe
 terminal and as account B in Orbit. Contract changes: a connection's `auth` field, new catalog row fields and a new
 install strategy, two commands and a flag, a trace event, three Control routes and a new store room, all additive; one
 changed default, because a NEW Azure DevOps connection now signs in with Microsoft unless `--auth=credential` says
-otherwise; and one removal, the azure-devops provider's `az devops configure --list` hint (below).
+otherwise or the command names the variable a credential is read from (`--credential-env`); and one removal, the azure-devops provider's `az devops configure --list` hint (below).
 
 - **A connection says how it gets in.** A connection record gains `auth: { strategy, ...options }`, and a provider
   descriptor gains `authentication` (`default` and `strategies`, each `kind: "credential"` or `"broker"`). Azure DevOps
@@ -18,7 +18,8 @@ otherwise; and one removal, the azure-devops provider's `az devops configure --l
   A `broker` connection accepts no credential at all. `src/connections/auth.mjs` is the one contract every reader, collector
   and probe asks for a request's authorization.
 - **Commands.** `node <engine>/cli/project-report.mjs sign-in <connection-id> [--tenant=<id>] [--device-code]` and
-  `sign-out <connection-id>`; `connect` gains `--auth=azure-cli|credential` (the default for azure-devops is `azure-cli`).
+  `sign-out <connection-id>`; `connect` gains `--auth=azure-cli|credential` (the default for azure-devops is `azure-cli`; naming `--credential-env` on a
+  new connection makes it a credential one, and `--auth=azure-cli` changes it back).
   A connection test never starts a sign-in.
 - **Orbit Control routes.** `POST /api/v1/connections/:id/auth/check`, `.../auth/sign-in` and `.../auth/sign-out`: the
   connection's state, a sign-in and a sign-out. Control's Connections page shows the state and offers all three.

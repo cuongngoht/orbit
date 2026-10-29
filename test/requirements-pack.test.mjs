@@ -217,7 +217,7 @@ test("a reader answers only what it provides", async () => {
 
 test("no connection, another owner's connection or an unset credential is BLOCKED, and the credential is never named", async () => {
   const none = await world([]);
-  await assert.rejects(readerOf(none, server([]), "github").read(GH_ID, "workitem.read"), (e) => e instanceof Blocked && /no GitHub connection with a credential is set up here/.test(e.message));
+  await assert.rejects(readerOf(none, server([]), "github").read(GH_ID, "workitem.read"), (e) => e instanceof Blocked && /no GitHub connection is set up here/.test(e.message));
   const other = await world([{ ...GH, organization: "someone-else" }]);
   await assert.rejects(readerOf(other, server([]), "github").read(GH_ID, "workitem.read"), (e) => e instanceof Blocked && /the ones here are for someone-else/.test(e.message));
   const unset = await world([{ ...GH, envName: "REQ_NOT_SET_ANYWHERE" }]);

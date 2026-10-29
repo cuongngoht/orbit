@@ -69,7 +69,7 @@ export function readerResources(connections, descriptors = descriptorsOf()) {
   return descriptors.map((d) => readerRow(d, configured(d, connections).length > 0));
 }
 
-const readerRow = (d, ready) => resource("capability", { id: `${d.id}.workitem`, key: readerKey(d), source: `pack:${PACK}`, ownership: "plugin", enabled: true, runtimeReady: ready, available: ready, state: ready ? "ready" : "needs-attention", why: ready ? null : `no ${d.label} connection with a credential is set up here — add one in Orbit Control (Connections)`, summary: `reads a ${d.label} work item through a connection`, provides: d.provides, detail: { pack: PACK, connection: d.connection } });
+const readerRow = (d, ready) => resource("capability", { id: `${d.id}.workitem`, key: readerKey(d), source: `pack:${PACK}`, ownership: "plugin", enabled: true, runtimeReady: ready, available: ready, state: ready ? "ready" : "needs-attention", why: ready ? null : `no ${d.label} connection is set up here — add one in Orbit Control (Connections)`, summary: `reads a ${d.label} work item through a connection`, provides: d.provides, detail: { pack: PACK, connection: d.connection } });
 
 const same = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
 

@@ -31,7 +31,7 @@ export function connectionFor(d, identity, connections) {
   const mine = configured(d, connections);
   const found = mine.find((c) => same(c.organization, identity.organization));
   if (found) return found;
-  throw new Blocked(mine.length ? `no ${d.label} connection is set up for ${identity.organization} — the ones here are for ${mine.map((c) => c.organization).join(", ")}; add one in Orbit Control (Connections)` : `no ${d.label} connection with a credential is set up here — add one in Orbit Control (Connections); a person enters the credential once`);
+  throw new Blocked(mine.length ? `no ${d.label} connection is set up for ${identity.organization} — the ones here are for ${mine.map((c) => c.organization).join(", ")}; add one in Orbit Control (Connections)` : `no ${d.label} connection is set up here — add one in Orbit Control (Connections); a person signs in, or enters a credential, once`);
 }
 
 // The RequestAuth of a connection, made once per reader: `resolve` reads nothing (the first

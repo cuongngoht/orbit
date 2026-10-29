@@ -52,7 +52,7 @@ export function secretsFor(env, rooms, processes = createProcess()) {
 // The AUTH every report root shares, bound once: one adapter per strategy, over this machine's tools, secrets and rooms, so
 // no caller can wire a different tool, a different profile or a different adapter. Binding reads and starts nothing.
 // w: { env, rooms, secrets, log?, emit?, next? }
-export const authOver = (w) => authFor({ pluginRoot: PLUGIN_ROOT, env: w.env ?? {}, rooms: w.rooms, io: realIo(), process: createProcess(), secrets: w.secrets, providers: providers(), log: w.log, emit: w.emit, next: w.next });
+const authOver = (w) => authFor({ pluginRoot: PLUGIN_ROOT, env: w.env ?? {}, rooms: w.rooms, io: realIo(), process: createProcess(), secrets: w.secrets, providers: providers(), log: w.log, emit: w.emit, next: w.next });
 
 // The connections of this machine, WITH the auth that signs in, tests and reads them.
 export function connectionsFor(env, rooms, secrets = secretsFor(env, rooms), auth = authOver({ env, rooms, secrets })) {
@@ -71,14 +71,14 @@ export function pythonFor(env, rooms) {
 // A composition root may hand in what it already bound -- Orbit Control its
 // rooms and secret port, a test its sources and fetch -- and say how a run may
 // reach a person who must sign in: `interactive` ("when-required" · "never" · "force")
-// and `notify` (where the sign-in prompt is shown); `next` and `emit` are the auth's own
-// (the command that signs in; a phase and its outcome, never a value).
+// and `notify` (where the sign-in prompt is shown, the root's `log` unless said); `next` and
+// `emit` are the auth's own (the command that signs in; a phase and its outcome, never a value).
 export async function boundReport(w) {
   const { env, cwd, log = () => {}, rooms = stateRooms(storeBase(w.env)), secrets = null, sources = SOURCES, fetch = globalThis.fetch } = w;
   const kept = secrets ?? secretsFor(env, rooms);
   const auth = authOver({ env, rooms, secrets: kept, log, emit: w.emit, next: w.next });
   const rctx = await contextOf(reportProject(env, cwd), env, rooms);
-  return { rctx, deps: depsOf({ secrets: kept, auth, log, sources, fetch, interactive: w.interactive, notify: w.notify }), connections: connectionsFor(env, rooms, kept, auth), rooms, auth, probe: probeFor(rctx, sources, fetch) };
+  return { rctx, deps: depsOf({ secrets: kept, auth, log, sources, fetch, interactive: w.interactive, notify: w.notify ?? log }), connections: connectionsFor(env, rooms, kept, auth), rooms, auth, probe: probeFor(rctx, sources, fetch) };
 }
 
 async function contextOf(found, env, rooms) {

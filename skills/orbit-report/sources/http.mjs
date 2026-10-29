@@ -169,7 +169,7 @@ async function jsonOf(response) {
 
 // What a RequestAuth (src/connections/auth.mjs) says, as the `headers` function a client is asked at every hop: the extra
 // headers of the source, and whatever authorization the RequestAuth answers with NOW. A token is never kept here.
-export const headersFrom = (auth, extra = {}) => async () => ({ ...extra, ...(await auth.headers()) });
+const headersFrom = (auth, extra = {}) => async () => ({ ...extra, ...(await auth.headers()) });
 
 // A client whose authorization is a RequestAuth's: asked for at every hop, and refreshed once when the source refuses it.
 // d: { fetch, origin, auth, headers (the source's own, besides authorization), sleep, nowMs, limits }

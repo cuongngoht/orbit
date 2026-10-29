@@ -307,7 +307,7 @@ test("the composed world reads a work item end to end: a connection makes its re
   const src = sourcesContext(base2, worldEnv);
   const real = realWorld({ pluginRoot: REPO, projectRoot: FIXTURE, env: worldEnv, nativeFactory: () => ({}) });
   const connections = createConnections({ store: connectionStore(stateRooms(storeBase(worldEnv)), realIo()), secrets: secretSource({ env: worldEnv }), providers: providers(), now: () => NOW });
-  connections.create({ id: "ado", provider: "azure-devops", host: "https://dev.azure.com", organization: "acme" });
+  connections.create({ id: "ado", provider: "azure-devops", host: "https://dev.azure.com", organization: "acme", auth: { strategy: "credential" } });
   await connections.setCredential("ado", { env: "REQ_TEST_TOKEN" });
   const net = network();
   const w = sourceWorld({ base: base2, real, sources: src.sources, io: src.io, fetch: net.fetch, nowMs: () => 0, opportunities: { docs: () => [], settle: () => ({ written: [], refused: [] }) } });

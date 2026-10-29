@@ -1,14 +1,18 @@
-// What both provider readers share: which connection a read goes through, the
-// credential read at the moment it is used, one client that cannot leave its origin,
-// and the mapping from what a source did to what a caller is told.
+// What both provider readers share: which connection a read goes through, what authorizes
+// its requests, one client that cannot leave its origin, and the mapping from what a source
+// did to what a caller is told.
 //
-// The credential is never returned by anything here and never appears in what a
-// reader returns: it goes into one header, and the answer is scanned for it before
-// it leaves (a source that echoes a token back is a leak, and BLOCKED).
+// What authorizes a request is a RequestAuth (src/connections/auth.mjs): resolved from the
+// connection's record, LAZY -- a header is asked for at every request, never kept here -- and
+// the same one for every read of a connection for as long as a reader lives, so a token is
+// asked for once and not once per read. Neither a token nor a credential is ever returned by
+// anything here or appears in what a reader returns: it goes into one header, and the answer
+// is scanned for every token the RequestAuth issued before it leaves (a source that echoes a
+// token back is a leak, and BLOCKED).
 import { Blocked, Refused } from "../../../src/errors.mjs";
 import { short } from "../../../src/hash.mjs";
 import { maskValues } from "../../../src/scrub.mjs";
-import { HttpStop, createHttp } from "../../orbit-report/sources/http.mjs";
+import { HttpStop, authorizedHttp } from "../../orbit-report/sources/http.mjs";
 
 export const PACK = "orbit-requirements";
 
@@ -16,46 +20,54 @@ export const readerKey = (d) => `pack:${PACK}/${d.id}`;
 
 const same = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
 
-// The connections of THIS provider that have a credential, from the public view
-// (which says only whether one is set).
-export const usable = (d, connections) => connections.list().filter((c) => c.provider === d.connection && c.credential?.set);
+// The connections of THIS provider that can be used at all, from the public view: a credential
+// connection needs its reference, one that signs in needs nothing until it is read. Pure -- the
+// view already says (`configured`), so asking starts nothing and reads no credential.
+export const configured = (d, connections) => connections.list().filter((c) => c.provider === d.connection && c.configured);
 
-// The one for this item's organization -- a credential reaches the owner it was made
+// The one for this item's organization -- a connection reaches the owner it was made
 // for, and trying another owner with it would only teach a person the wrong lesson.
 export function connectionFor(d, identity, connections) {
-  const mine = usable(d, connections);
+  const mine = configured(d, connections);
   const found = mine.find((c) => same(c.organization, identity.organization));
   if (found) return found;
   throw new Blocked(mine.length ? `no ${d.label} connection is set up for ${identity.organization} — the ones here are for ${mine.map((c) => c.organization).join(", ")}; add one in Orbit Control (Connections)` : `no ${d.label} connection with a credential is set up here — add one in Orbit Control (Connections); a person enters the credential once`);
 }
 
-// Read NOW, from the reference the connection holds (never from its public view),
-// and handed to nothing but the request it is for.
-export async function credentialOf(connection, connections, secrets) {
-  const value = await secrets.read(connections.record(connection.id).credential);
-  if (!value) throw new Blocked(`the credential of connection ${connection.id} is not set on this machine — a person sets it in Orbit Control (Connections)`);
-  return value;
+// The RequestAuth of a connection, made once per reader: `resolve` reads nothing (the first
+// request does), from the RECORD the connection holds -- never from its public view.
+// deps: { auth (createAuth), connections, interactive?, notify? }
+export function authsOf(deps) {
+  const kept = new Map();
+  const made = (c) => deps.auth.resolve(deps.connections.record(c.id), { interactive: deps.interactive ?? "when-required", notify: deps.notify });
+  return (connection) => (kept.has(connection.id) ? kept.get(connection.id) : kept.set(connection.id, made(connection)).get(connection.id));
 }
 
 const sleepMs = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-export const httpFor = (deps, origin, headers) => createHttp({ fetch: deps.fetch, origin, headers: { "user-agent": "orbit-requirements", ...headers }, sleep: deps.sleep ?? sleepMs, nowMs: deps.nowMs, limits: deps.limits });
+// The client of one read: its own headers, and the authorization the RequestAuth answers with. A source that
+// holds itself to more (only reading) hands in the client that does.
+export const httpFor = (deps, origin, auth, headers = {}, client = authorizedHttp) => client({ fetch: deps.fetch, origin, auth, headers: { "user-agent": "orbit-requirements", ...headers }, sleep: deps.sleep ?? sleepMs, nowMs: deps.nowMs, limits: deps.limits });
 
 // What a source did, as what the caller is told. An item that is not there, or not
-// visible to this credential, is the REQUEST's fault; a source that refused the
-// credential, kept failing, could not be reached or asked for another host is the
-// MACHINE's -- and none of it says a word about the work item.
-export async function guarded(fn) {
+// visible to this connection, is the REQUEST's fault; a source that did not accept who was
+// asking is the RequestAuth's to word (a code, and what to do next, BLOCKED); one that kept
+// failing, could not be reached or asked for another host is the MACHINE's -- and none of it
+// says a word about the work item.
+export async function guarded(auth, fn) {
   try { return await fn(); }
-  catch (e) { throw e instanceof HttpStop ? typed(e) : e; }
+  catch (e) { throw e instanceof HttpStop ? await typed(auth, e) : e; }
 }
 
-const typed = (e) => (e.kind === "not-found" ? new Refused(e.message) : new Blocked(e.message));
+const STOPS = { "not-found": (a, e) => new Refused(e.message), auth: (a, e) => a.rejected(e), forbidden: (a, e) => a.rejected(e) };
 
-// A source that echoes the credential back is not answered, however it did it.
-export function leakFree(item, credential) {
+const typed = (auth, e) => (STOPS[e.kind] ?? ((a, stop) => new Blocked(stop.message)))(auth, e);
+
+// A source that echoes a token back is not answered, however it did it: `secrets` is every
+// token the RequestAuth ever issued.
+export function leakFree(item, secrets) {
   const text = JSON.stringify(item);
-  if (maskValues(text, [credential]) !== text) throw new Blocked("the source's answer contained the credential, so it was withheld");
+  if (maskValues(text, secrets) !== text) throw new Blocked("the source's answer contained the credential, so it was withheld");
   return item;
 }
 

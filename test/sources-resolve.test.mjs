@@ -6,6 +6,8 @@
 // resolver ranks them, and a gap goes through the door knowledge already keeps.
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Refused } from "../src/errors.mjs";
 import { effectiveMcp } from "../src/mcp/effective.mjs";
@@ -22,8 +24,12 @@ import { packReaders, descriptorsOf, readerResources } from "../skills/orbit-req
 import { knowledgeWorld } from "./fakes/knowledge.mjs";
 
 const NOW = "2026-09-30T10:00:00.000Z";
+const REPO = join(fileURLToPath(new URL(".", import.meta.url)), "..");
+
+// Every .mjs and .json under a directory, the way a person's grep would see them.
+const filesUnder = (dir) => (existsSync(dir) ? readdirSync(dir, { withFileTypes: true }).filter((e) => e.name !== "node_modules").flatMap((e) => (e.isDirectory() ? filesUnder(join(dir, e.name)) : /\.(mjs|json)$/.test(e.name) ? [join(dir, e.name)] : [])) : []);
 const DESCRIPTORS = descriptorsOf();
-const connection = (provider, organization = "acme") => ({ id: `${provider}-${organization}`, provider, organization, host: "https://example.test", credential: { set: true, from: "env", name: "SOME_TOKEN" } });
+const connection = (provider, organization = "acme") => ({ id: `${provider}-${organization}`, provider, organization, host: "https://example.test", credential: { set: true, from: "env", name: "SOME_TOKEN" }, configured: true });
 const ADO_URL = "https://dev.azure.com/acme/web/_workitems/edit/4312";
 
 // A machine: which connections exist, which tools are here (by catalog id), what a
@@ -35,7 +41,7 @@ function machine({ connections = [], caps = [], mcp = [], binding = null, works 
   const effective = () => getEffectiveResources({ env: {}, plugin: "orbit", components: () => [], builtins: () => ({}), capabilities: () => caps, packCapabilities: () => readerResources(list, descriptors), tools: () => [], mcp: () => mcp }, PROVIDERS);
   const w = {
     descriptors,
-    readers: packReaders({ connections: list, secrets: {}, fetch: null, nowMs: () => 0 }, descriptors),
+    readers: packReaders({ connections: list, auth: {}, fetch: null, nowMs: () => 0 }, descriptors),
     works: () => works,
     bindings: () => ({ doc: binding ?? { default: null, refs: {} } }),
     connections: list,
@@ -127,32 +133,43 @@ test("a server the host configured is recognised and is still not a system: only
   assert.deepEqual([r.rung, r.partial, r.gap], ["gap", null, true]);
 });
 
-test("one ready system with one organization is not enough for a system that names its project: the tool is asked, and only its declared tools", () => {
+test("one ready system with one organization is not enough for a system that names its project: it is a question for a person, and no tool of the developer's is asked", () => {
   const m = ask("4312", { connections: [connection("azure-devops")], tools: { "azure-cli": "/opt/bin/az" }, probes: { az: { ok: true, out: "Defaults\norganization = https://dev.azure.com/acme/\nproject = Web Shop\n" } } });
-  assert.deepEqual([m.r.rung, m.r.identity, m.r.provider.key], ["tool", { provider: "azure-devops", organization: "acme", project: "Web Shop", id: "4312" }, "pack:orbit-requirements/azure-devops"]);
-  assert.deepEqual(m.r.suggest, { default: { provider: "azure-devops", organization: "acme", project: "Web Shop" } }, "offered for the engine to remember after a first read -- not written here");
-  assert.deepEqual(m.calls.observed, [["azure-cli"]], "only the tool the narrowed system names, nothing else on the machine");
-  assert.deepEqual(m.calls.probed, [{ bin: "az", argv: ["devops", "configure", "--list"], path: "/opt/bin/az" }]);
+  assert.deepEqual([m.r.rung, m.r.gap, m.r.identity, m.r.suggest], ["gap", false, null, null]);
+  assert.match(m.r.say, /it looks like azure-devops, but which project is not known here/);
+  assert.deepEqual([m.calls.observed, m.calls.probed], [[], []], "the descriptor lists no tool for this system, so nothing was looked for and nothing was run: a bare id has the registry and the connection, and the link or a person's binding for the rest");
 });
 
-test("with nothing narrowed, only descriptor-listed tools are looked for -- both, and nothing else", () => {
+test("with nothing narrowed, only descriptor-listed tools are looked for -- the one a descriptor lists, and nothing else", () => {
   const m = ask("88", { tools: {} });
-  assert.deepEqual(m.calls.observed, [["github-cli", "azure-cli"]]);
+  assert.deepEqual(m.calls.observed, [["github-cli"]]);
   assert.deepEqual(m.calls.probed, [], "a tool that is not here is not asked anything");
   const found = ask("88", { tools: { "github-cli": "/usr/bin/gh" }, probes: { gh: { ok: true, out: "acme/shop\n" } } });
   assert.deepEqual([found.r.rung, found.r.identity], ["tool", { provider: "github", organization: "acme", project: "shop", id: "88" }]);
   assert.deepEqual(found.calls.probed.map((p) => p.bin), ["gh"]);
 });
 
-test("a tool that answers something that is not what its descriptor expects, or fails, is passed over", () => {
-  const { r, calls } = ask("88", { tools: { "github-cli": "/usr/bin/gh", "azure-cli": "/usr/bin/az" }, probes: { gh: { ok: true, out: "not an owner slash a repo at all\nreally not" }, az: { ok: false, out: "" } } });
+test("a tool that answers something that is not what its descriptor expects, or fails, is passed over -- and a tool no descriptor lists is never asked", () => {
+  const { r, calls } = ask("88", { tools: { "github-cli": "/usr/bin/gh", "azure-cli": "/usr/bin/az" }, probes: { gh: { ok: true, out: "not an owner slash a repo at all\nreally not" }, az: { ok: true, out: "organization = https://dev.azure.com/acme\nproject = web" } } });
   assert.equal(r.rung, "gap");
-  assert.equal(calls.probed.length, 2);
+  assert.deepEqual(calls.probed.map((p) => p.bin), ["gh"], "the other tool is on this machine and answers, and is still not asked: no descriptor names it");
 });
 
+// The shipped descriptors list one tool; the rule is the engine's, so a second one is made up to hold it.
+const TWO = descriptorsOf([DESCRIPTORS[0], { ...DESCRIPTORS[1], tools: [{ catalog: "tracker-cli", bin: "trk", defaults: { argv: ["whoami"], parse: "^(?<organization>[^/\\s]+)/(?<project>[^/\\s]+)\\s*$" } }] }]);
+
 test("two tools configured for two systems are AMBIGUOUS, not the first one that answered", () => {
-  const e = refusal(() => ask("4312", { tools: { "github-cli": "/usr/bin/gh", "azure-cli": "/usr/bin/az" }, probes: { gh: { ok: true, out: "acme/shop" }, az: { ok: true, out: "organization = https://dev.azure.com/acme\nproject = web" } } }));
+  const e = refusal(() => ask("4312", { descriptors: TWO, tools: { "github-cli": "/usr/bin/gh", "tracker-cli": "/usr/bin/trk" }, probes: { gh: { ok: true, out: "acme/shop" }, trk: { ok: true, out: "acme/web" } } }));
   assert.ok(e instanceof Refused && /the tools here are configured for each/.test(e.message), String(e));
+});
+
+test("Azure DevOps is never asked through the developer's own CLI: its descriptor lists no tool, and nothing the engine ships spawns `az devops`", () => {
+  assert.deepEqual(descriptorFor(DESCRIPTORS, "azure-devops").tools, []);
+  assert.ok(descriptorFor(DESCRIPTORS, "github").tools.some((t) => t.defaults), "the mechanism stays: a descriptor's own tool may still say what a checkout is configured for");
+  const files = ["src", "cli", "skills", "catalog", "hooks", "satellite", "control-server/src"].flatMap((d) => filesUnder(join(REPO, d)));
+  assert.ok(files.length > 500, "the scan sees the code it guards");
+  const SPAWNS = /["'`]devops["'`]|\baz\s+devops\b|["']az["']\s*,\s*["']devops["']/;
+  assert.deepEqual(files.filter((f) => SPAWNS.test(readFileSync(f, "utf8"))).map((f) => relative(REPO, f)), []);
 });
 
 test("a system whose links name no project is complete with one connection's organization", () => {

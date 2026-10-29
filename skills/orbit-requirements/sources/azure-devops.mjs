@@ -8,23 +8,19 @@
 // person read. They are untrusted data from another system: nothing here follows
 // them, and the engine never stores them.
 //
-// The credential is read when a request is made and sent in one header to the one
-// host the connection names; nothing this returns contains it. The comments API is a
-// PREVIEW API at the version below, which is why it is named next to its path.
+// What authorizes a request is the connection's RequestAuth, asked for when a request is
+// made and sent in one header to the one host the connection names; nothing this returns
+// contains it. It asks through the one client every Azure DevOps reader shares, which only
+// reads (../../orbit-report/sources/azure-devops-client.mjs). The comments API is a PREVIEW
+// API at the version below, which is why it is named next to its path.
 import { Refused } from "../../../src/errors.mjs";
 import { answered } from "../../../src/sources/readers/answer.mjs";
+import { baseOf, clientOf } from "../../orbit-report/sources/azure-devops-client.mjs";
 import { matchRef } from "../descriptor.mjs";
-import { connectionFor, credentialOf, encoded, guarded, htmlText, httpFor, leakFree, pseudonym, readerKey } from "./common.mjs";
+import { authsOf, connectionFor, encoded, guarded, htmlText, httpFor, leakFree, pseudonym, readerKey } from "./common.mjs";
 
 const API = "api-version=7.1";
 const COMMENTS_API = "api-version=7.1-preview.4";
-
-// https://dev.azure.com/<organization>, or a Server collection URL that already ends
-// in the collection's name.
-export function baseOf(connection) {
-  const host = connection.host.replace(/\/+$/, "");
-  return host.toLowerCase().endsWith(`/${String(connection.organization).toLowerCase()}`) ? host : `${host}/${connection.organization}`;
-}
 
 const F = { title: "System.Title", type: "System.WorkItemType", state: "System.State", body: "System.Description", acceptance: "Microsoft.VSTS.Common.AcceptanceCriteria", changed: "System.ChangedDate", project: "System.TeamProject" };
 
@@ -83,21 +79,25 @@ async function history(api, identity) {
 
 const READS = { "workitem.read": workitem, "workitem.relations.read": relations, "workitem.comments.read": comments, "workitem.history.read": history };
 
-async function clientFor(deps, identity) {
+// The client for ONE read: the connection for this organization, the RequestAuth it resolves
+// to (the same one for every read, so a token is asked for once) and the host it names.
+function clientFor(deps, authOf, identity) {
   const connection = connectionFor(deps.descriptor, identity, deps.connections);
-  const credential = await credentialOf(connection, deps.connections, deps.secrets);
+  const auth = authOf(connection);
   const base = baseOf(connection);
-  const http = httpFor(deps, base, { authorization: `Basic ${Buffer.from(`:${credential}`).toString("base64")}` });
-  return { http, base, credential, descriptor: deps.descriptor };
+  return { http: httpFor(deps, base, auth, {}, clientOf), base, auth, descriptor: deps.descriptor };
 }
 
-async function read(deps, identity, capability) {
+async function read(deps, authOf, identity, capability) {
   const asked = READS[capability];
   if (!asked) throw new Refused(`the ${deps.descriptor.label} reader does not provide ${capability}`);
-  const api = await clientFor(deps, identity);
-  const item = await guarded(() => asked(api, identity));
-  return answered(leakFree(item, api.credential), capability, readerKey(deps.descriptor), identity);
+  const api = clientFor(deps, authOf, identity);
+  const item = await guarded(api.auth, () => asked(api, identity));
+  return answered(leakFree(item, api.auth.secrets()), capability, readerKey(deps.descriptor), identity);
 }
 
-// deps: { descriptor, connections, secrets, fetch, nowMs, sleep?, limits? }
-export const azureDevOpsReader = (deps) => ({ key: readerKey(deps.descriptor), kind: "pack", provides: deps.descriptor.provides.filter((p) => p in READS), resolves: (ref) => matchRef(deps.descriptor, ref), read: (identity, capability) => read(deps, identity, capability) });
+// deps: { descriptor, connections, auth (createAuth), interactive?, notify?, fetch, nowMs, sleep?, limits? }
+export function azureDevOpsReader(deps) {
+  const authOf = authsOf(deps);
+  return { key: readerKey(deps.descriptor), kind: "pack", provides: deps.descriptor.provides.filter((p) => p in READS), resolves: (ref) => matchRef(deps.descriptor, ref), read: (identity, capability) => read(deps, authOf, identity, capability) };
+}

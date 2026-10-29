@@ -30,8 +30,8 @@ const CATALOG = mcpCatalogAt(REPO, io);
 const AT = "2026-09-30T08:00:00.000Z";
 const NEED = [{ capability: "workitem.read", proves: { subject: "source" } }];
 
-// What connections.list() shows: which exist, and only whether a credential is set.
-const connection = (provider, organization = "acme") => ({ id: `${provider}-${organization}`, provider, organization, host: "https://example.test", credential: { set: true, from: "env", name: "SOME_TOKEN" } });
+// What connections.list() shows: which exist, whether a credential is set, and whether the connection can be used at all.
+const connection = (provider, organization = "acme") => ({ id: `${provider}-${organization}`, provider, organization, host: "https://example.test", credential: { set: true, from: "env", name: "SOME_TOKEN" }, configured: true });
 const connectionsOf = (list) => ({ list: () => list, record: () => ({ credential: "SOME_TOKEN" }) });
 
 // A registry the way the recipe builds one: real components, builtins and catalogs,

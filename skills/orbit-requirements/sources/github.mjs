@@ -3,14 +3,14 @@
 // (the issue, the comments, the links) and answers each as the part of a work item
 // it is about; the engine composes them.
 //
-// It reads the credential when a request is made, sends it in one header to the one
-// host the connection names, and returns nothing that contains it. A pull request is
-// not a requirement: asked for one as an issue, it refuses -- a pull request is what
-// was BUILT, and only ever context.
+// It asks the connection's RequestAuth for the authorization when a request is made,
+// sends it in one header to the one host the connection names, and returns nothing
+// that contains it. A pull request is not a requirement: asked for one as an issue, it
+// refuses -- a pull request is what was BUILT, and only ever context.
 import { Refused } from "../../../src/errors.mjs";
 import { answered } from "../../../src/sources/readers/answer.mjs";
 import { matchRef } from "../descriptor.mjs";
-import { connectionFor, credentialOf, encoded, guarded, httpFor, leakFree, optional, pseudonym, readerKey } from "./common.mjs";
+import { authsOf, connectionFor, encoded, guarded, httpFor, leakFree, optional, pseudonym, readerKey } from "./common.mjs";
 
 const PAGE = "per_page=100";
 
@@ -56,23 +56,25 @@ async function relations(api, identity) {
 
 const READS = { "workitem.read": issue, "workitem.comments.read": comments, "workitem.relations.read": relations };
 
-// The client for ONE read: the connection for this owner, its credential read now,
-// the API host it names, and the header the credential goes in.
-async function clientFor(deps, identity) {
+// The client for ONE read: the connection for this owner, the RequestAuth it resolves to
+// (the same one for every read, so a token is asked for once), the API host it names.
+function clientFor(deps, authOf, identity) {
   const connection = connectionFor(deps.descriptor, identity, deps.connections);
-  const credential = await credentialOf(connection, deps.connections, deps.secrets);
+  const auth = authOf(connection);
   const base = connection.host.replace(/\/+$/, "");
-  const http = httpFor(deps, base, { authorization: `Bearer ${credential}`, "x-github-api-version": "2022-11-28" });
-  return { http, base, credential, descriptor: deps.descriptor };
+  return { http: httpFor(deps, base, auth, { "x-github-api-version": "2022-11-28" }), base, auth, descriptor: deps.descriptor };
 }
 
-async function read(deps, identity, capability) {
+async function read(deps, authOf, identity, capability) {
   const asked = READS[capability];
   if (!asked) throw new Refused(`the ${deps.descriptor.label} reader does not provide ${capability}`);
-  const api = await clientFor(deps, identity);
-  const item = await guarded(() => asked(api, identity));
-  return answered(leakFree(item, api.credential), capability, readerKey(deps.descriptor), identity);
+  const api = clientFor(deps, authOf, identity);
+  const item = await guarded(api.auth, () => asked(api, identity));
+  return answered(leakFree(item, api.auth.secrets()), capability, readerKey(deps.descriptor), identity);
 }
 
-// deps: { descriptor, connections, secrets, fetch, nowMs, sleep?, limits? }
-export const githubReader = (deps) => ({ key: readerKey(deps.descriptor), kind: "pack", provides: deps.descriptor.provides.filter((p) => p in READS), resolves: (ref) => matchRef(deps.descriptor, ref), read: (identity, capability) => read(deps, identity, capability) });
+// deps: { descriptor, connections, auth (createAuth), interactive?, notify?, fetch, nowMs, sleep?, limits? }
+export function githubReader(deps) {
+  const authOf = authsOf(deps);
+  return { key: readerKey(deps.descriptor), kind: "pack", provides: deps.descriptor.provides.filter((p) => p in READS), resolves: (ref) => matchRef(deps.descriptor, ref), read: (identity, capability) => read(deps, authOf, identity, capability) };
+}

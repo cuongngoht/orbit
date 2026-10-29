@@ -173,7 +173,7 @@ A few ideas run through everything:
 | Skill | Use it for |
 | --- | --- |
 | `orbit-control` | Start Orbit Control, the local control panel. |
-| `orbit-report` | A product owner's project report from GitHub or Azure DevOps, computed from a frozen snapshot. |
+| `orbit-report` | A product owner's project report from GitHub or Azure DevOps, computed from a frozen snapshot. Azure DevOps signs in with your Microsoft account by default ([how](#microsoft-sign-in-for-azure-devops)); GitHub reads with a token. |
 | `orbit-release` | Ship a new version of Orbit, or install it in another repository. |
 
 Role agents (`orbit-engineering-agent`, `orbit-qa-agent`, `orbit-qa-case-writer`, `orbit-failure-analyst`,
@@ -260,9 +260,11 @@ node cli/live.mjs open          # open beside this session (tmux · Windows Term
 
 ### Orbit Control — decide and configure
 
-A local panel (loopback only) for skills, MCP servers, tools, report connections, automation limits, security
-catalogs and the protected actions waiting for a person. Start it with `/orbit-control`. Orbit never adds, enables or
-approves anything by itself — a person does it here.
+A local panel (loopback only) for skills, MCP servers, tools, report connections (their credential, or their Microsoft
+sign-in), automation limits, security catalogs and the protected actions waiting for a person. Start it with
+`/orbit-control`. Orbit never adds, enables or approves an MCP server, a policy or an approval by itself — a person does
+it here. The one thing it fetches on its own is a pinned, checksum-verified private runtime that work you asked for
+needs (see [Microsoft sign-in](#microsoft-sign-in-for-azure-devops)).
 
 ### Protected boundaries
 
@@ -390,6 +392,48 @@ One request is followed from `/orbit-help` to what it came to, on three separate
   `CANCELLED`.
 - **Evidence:** `none` · `observed` · `reported` · `verified` (only a completed linked task is `verified`).
 - **Liveness:** whether a session is still attached.
+
+### Microsoft sign-in for Azure DevOps
+
+Orbit's Microsoft sign-in is independent from your normal Azure CLI login. If you already use `az` for development, Orbit does not change that account, subscription, configuration or login session. Orbit keeps a separate Azure CLI profile in the Orbit machine store. You may therefore be logged into account A in your terminal and account B in Orbit at the same time.
+
+A connection to Azure DevOps signs in with your Microsoft account by default; a personal access token is the alternative.
+Sign in once per machine and every project that uses the connection reads with it
+([ADR 0043](docs/adr/0043-orbit-signs-in-through-an-azure-cli-profile-of-its-own.md)):
+
+```bash
+node <plugin-root>/cli/project-report.mjs connect <id> --provider=azure-devops --organization=<org>   # a connection that signs in with Microsoft (the default)
+node <plugin-root>/cli/project-report.mjs sign-in <id> [--tenant=<id>] [--device-code]
+node <plugin-root>/cli/project-report.mjs sign-out <id>                                              # Orbit's profile only
+node <plugin-root>/cli/project-report.mjs connect <id> --provider=azure-devops --organization=<org> --auth=credential --credential-env=<NAME>   # a personal access token instead
+```
+
+Orbit Control → Connections shows each connection's state and lets you check it, sign in and sign out. When a read says
+sign-in is required, run `sign-in` yourself (in Claude Code, type `! node <plugin-root>/cli/project-report.mjs sign-in <id>`
+at the prompt): the browser step is yours.
+
+| | |
+| --- | --- |
+| **How it signs in** | The Azure CLI's browser sign-in (a device code with `--device-code`), in Orbit's own profile. Orbit asks the CLI for a short-lived Azure DevOps token each time it needs one and keeps it in memory only; it signs in again only when the CLI says you must act. |
+| **Which `az` runs** | 1. a private copy Orbit already installed; 2. your machine's own `az`, used only as a program (it must start, be 2.61.0 or newer and belong to this operating system), never its sign-in; 3. a private copy Orbit installs by itself when neither is usable; 4. otherwise a blocked answer that names every candidate. To make the private copy win over your own `az`, install it from Orbit Control's Tools page. |
+| **What Orbit installs** | Only in step 3, into Orbit's store: on Windows x64 Microsoft's official Azure CLI 2.91.0 ZIP (91 MB, SHA-256 checked); on macOS and Linux a Python of Orbit's own plus the official `azure-cli` 2.91.0 wheels from PyPI, every distribution pinned and hash-locked (150 of them; about 200 MB to download, about 700 MB on disk). No administrator rights, nothing on PATH, no package manager, no `sudo`, no Program Files, no Homebrew, no system Python. It is a tool Orbit runs, not a dependency of the engine. |
+| **What it never does** | Import or copy your session, or ask to; read `~/.azure` or `%USERPROFILE%\.azure`, or Azure CLI's token-cache files; change your subscription, extensions or configuration; install the Azure DevOps CLI extension; create a personal access token. |
+| **On Windows** | The sign-in is the browser flow. The Windows account broker is turned off for Orbit's profile because it keeps a session outside the profile, shared with your own `az`; so there is no Windows Hello or single sign-on, and a tenant that requires a compliant device through the broker may refuse it. Use a personal access token there. |
+| **Scope** | Azure DevOps Services. Microsoft Entra authentication is not available for Azure DevOps Server collections, which use a personal access token. The token is yours for Azure DevOps and is not narrowed to read-only the way a personal access token can be; Orbit's readers only read. |
+
+| Platform | Private copy Orbit can install | Your own `az`, as a program |
+| --- | --- | --- |
+| Windows x64 | official ZIP | yes |
+| Windows ARM64 | none: Microsoft publishes no ARM64 build | an x64 `az` you already have, started through its own wrapper and never a shell; otherwise blocked |
+| macOS arm64 and x64 | locked Python environment | yes |
+| Linux x64 and arm64 (glibc) | locked Python environment | yes |
+| WSL | as Linux, with its own Orbit state; a Windows `az` reached through WSL is refused, and so is a profile on a Windows drive | a Linux `az` |
+| Alpine (musl) | none: the Python Orbit installs is a glibc build | an `az` already there |
+
+This covers the Azure CLI processes Orbit starts for its own sign-in. A tool a project's own capability declares
+(`tools: ["az"]`) and `query doctor` run as the project asked. How far each platform has been run for real, and how far
+only resolved or faked, is in the
+[platform evidence table](docs/adr/0043-orbit-signs-in-through-an-azure-cli-profile-of-its-own.md#platform-evidence).
 
 ---
 

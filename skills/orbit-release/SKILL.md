@@ -6,7 +6,8 @@ description: >
   install the engine in a product repo, to copy it onto a machine with no network, or when a
   consuming repo is on an old version and `query check` complains about a vocabulary it does not
   recognise. Covers the definition of done, the five version fields that must agree, the three
-  install routes, and what the consuming repo owns afterwards.
+  install routes, how to re-pin a tool Orbit installs by itself (a python-lock or an archive pin)
+  and record its per-platform evidence, and what the consuming repo owns afterwards.
 argument-hint: <"ship it" | "is this major or minor" | "install the engine in <repo>" | "why is my copy stale">
 allowed-tools:
   - Read
@@ -69,7 +70,9 @@ The rule is in `CLAUDE.md` and there is no third answer:
 
 `--bump=changed|added|fixed` prints the next number. Set it by hand in all five: `package.json`, `.claude-plugin/plugin.json`,
 `.claude-plugin/marketplace.json`, the root `plugin.json` and `.codex-plugin/plugin.json`. The gate
-and CI both refuse when they disagree.
+and CI both refuse when they disagree. The two shipped packs carry the same number
+(`skills/orbit-api-test/extension.json` and `skills/orbit-backend-test/extension.json`) and
+`test/packs.test.mjs` holds them to it, so bump them with the rest.
 
 **A prerelease is the same rule read properly, not an exception.** The rule is about *published*
 contracts, and `1.0.0-beta` publishes none — so a breaking change during a beta earns no major
@@ -79,6 +82,61 @@ gate says so out loud while a prerelease is current, so nobody reads a beta as a
 
 A release documents the current contracts and breaking changes. Orbit is installed fresh: do not
 introduce migration, compatibility aliases, automatic upgrades, historical imports or dual state paths.
+
+### When a tool Orbit installs by itself moves: re-pin it
+
+A tool Orbit may fetch on its own (`install.autonomous` in `catalog/tools.json`) is installed from a pin, and the pin is the
+whole trust. Moving a pin is a release act, never an install-time one.
+
+**A `python-lock` tool** (the private Azure CLI on macOS and Linux) is pinned by one lock per platform under `catalog/locks/`.
+The script that writes them needs the network, and `uv` for every platform but the one it runs on:
+
+```bash
+node skills/orbit-release/pin-python-lock.mjs --python=<Orbit's own pinned Python> --package=azure-cli==<v> \
+  --platform=darwin-arm64,darwin-x64,linux-x64,linux-arm64
+```
+
+- `--python` is Orbit's own Python, the private install of the `python` row (it is run with `-I`), never the machine's. The
+  locks are for CPython 3.13. `--package` is exact (`name==version`; a name alone or a range is refused). `--platform` lists
+  the platform keys; its default is every key the script knows, Windows included, so pass the four Orbit ships a lock for.
+  `--out` defaults to `catalog/locks`.
+- pip resolves the platform the script runs on; uv resolves each other platform, seeded with pip's picks. Read the header of
+  **every** lock: each `# re-picked for this platform: ...` line is a version that could not be kept there (the darwin-x64 lock
+  re-picks `cryptography` and `pyOpenSSL`, because the newest `cryptography` ships no Intel-macOS wheel). A pre-release nobody
+  asked for is refused by the script, and is yours to decide. A platform whose closure has no wheel for something gets NO lock
+  and is reported: nobody installs there, and nothing is ever built.
+- Then set the row's `install.version`, each asset's `lock` file name and the `source` in `catalog/tools.json`.
+  `test/tools-lock.test.mjs` fails when a lock the catalog names is missing, outside the grammar, or does not pin the row's own
+  package to the row's own version. Commit the locks with the catalog change, and say in the changelog what was re-picked.
+
+**An `archive` tool** (the private Azure CLI on Windows x64) is pinned by a URL and a SHA-256, so re-verifying is a download
+and two comparisons. Put the file in a directory of its own, compare, and do not unpack it:
+
+```bash
+curl -sI https://azcliprod.blob.core.windows.net/zip/azure-cli-<v>-x64.zip          # Content-Length and Content-MD5
+curl -sS -o azure-cli-<v>-x64.zip https://azcliprod.blob.core.windows.net/zip/azure-cli-<v>-x64.zip
+shasum -a 256 azure-cli-<v>-x64.zip                      # must equal install.assets["win32-x64"].sha256 in the catalog row
+openssl dgst -md5 -binary azure-cli-<v>-x64.zip | base64   # must equal the blob's Content-MD5
+```
+
+For 2.91.0 (checked on 2026-10-29) the blob answers `Content-Length: 91095515` and `Content-MD5: JyebRJfPH6573wXcZr0YcA==`,
+and the SHA-256 is `c0c49639a96d8c0dfb9973cfe08c97c5eeb69be050102138ede806285e6fcf1f`. A new release changes all three.
+
+### Platform evidence for the Azure CLI runtime
+
+Whether the private Azure CLI really installs and answers on each platform is the table at the end of
+`docs/adr/0043-orbit-signs-in-through-an-azure-cli-profile-of-its-own.md`, one honest status per row: `real` (run on that
+platform), `resolved-only` (the lock resolved, nothing was installed there) or `fakes-only` (only the suite's fakes). A pipeline
+cannot make that record by itself, so it is filled from live runs:
+
+1. Dispatch `.github/workflows/azure-cli-runtime.yml` on the commit being released (Actions, then Run workflow, or
+   `gh workflow run azure-cli-runtime.yml`).
+2. Read each platform's job: did the private copy install, was it verified (did it answer the pinned version), and did it run
+   under Orbit's profile.
+3. Paste what each job did into the table and move a row only as far as that run went. An install built and run on that
+   platform is `real` for the private copy; a Microsoft sign-in needs a person at a browser, so the end-to-end flow stays
+   `pending` until somebody has signed in there.
+4. A platform nobody ran stays `fakes-only` or `resolved-only`. Never write `real` for one the workflow did not run.
 
 ## 2. Copy it into a repo
 

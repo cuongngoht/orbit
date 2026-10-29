@@ -1,7 +1,7 @@
 // Every answer this server writes, in one shape.
 //
 //   success   the resource itself, as JSON
-//   failure   { "error": { "code", "message", "details"? } }
+//   failure   { "error": { "code", "message", "details"?, "next"? } }
 //
 // A ControlError's KIND becomes a status here and nowhere else. Anything that
 // is not a ControlError is a bug in this server, and the page gets a generic
@@ -19,7 +19,7 @@ export function json(res, status, body) {
   res.end(text);
 }
 
-const errorBody = (code, message, details) => ({ error: { code, message, ...(details ? { details } : {}) } });
+const errorBody = (code, message, details, next) => ({ error: { code, message, ...(details ? { details } : {}), ...(next ? { next } : {}) } });
 
 export const badRequest = (res, code, message, details) => json(res, 400, errorBody(code, message, details));
 export const forbidden = (res, code, message) => json(res, 403, errorBody(code, message));
@@ -29,7 +29,7 @@ export const serverError = (res) => json(res, 500, errorBody("INTERNAL_ERROR", "
 // The one place an exception becomes a response.
 export function failure(res, error, log = () => {}) {
   if (!(error instanceof ControlError)) return unexpected(res, error, log);
-  json(res, STATUS[error.kind] ?? 500, errorBody(error.code, error.message, error.details));
+  json(res, STATUS[error.kind] ?? 500, errorBody(error.code, error.message, error.details, error.next));
 }
 
 function unexpected(res, error, log) {

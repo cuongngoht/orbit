@@ -71,7 +71,8 @@ The routes are the table in `src/router.mjs`, and nothing else. Anything else un
 404; a known path with the wrong method is 405. There is no route that runs an arbitrary
 command, and no route that writes a host's configuration. Every `POST`/`PUT`/`DELETE` except
 `router/resolve` needs the token — including a connection test (a stdio test starts the
-configured command) and an install; `test/security.test.mjs` walks every mutating row.
+configured command), a connection's sign-in check, sign-in and sign-out (each asks a program, and a
+sign-in opens a browser), and an install; `test/security.test.mjs` walks every mutating row.
 
 | Method | Path | Answers |
 |---|---|---|
@@ -103,7 +104,7 @@ configured command) and an install; `test/security.test.mjs` walks every mutatin
 | GET | `/api/v1/mcp/managed/:id/tools` | the tools the last test found, dated, or `null` |
 | GET | `/api/v1/mcp/external` · `/api/v1/mcp/external/:id` · `…/tools` | the host's servers, observe only (never eligible) |
 | POST | `/api/v1/mcp/external/refresh` · `/api/v1/mcp/external/:id/test` | re-read the host into the external snapshot · one handshake as the host configured it, kept under `external:<id>` |
-| GET | `/api/v1/tools` · `/api/v1/tools/:id` | the effective tools: desired and observed apart, every source that was looked in, what an install would do |
+| GET | `/api/v1/tools` · `/api/v1/tools/:id` | the effective tools: desired and observed apart, every source that was looked in, what an install would do, and `autonomous` — the catalog row's own fact that Orbit may fetch its own pinned copy by itself when a task needs one (never observed; Install is how a person asks for it up front) |
 | POST | `/api/v1/tools/:id/refresh` · `install` · `update` | detect again · install privately (`409` if already usable anywhere) · a managed install older than the catalog's pin |
 | GET | `/api/v1/trace/turns?days=1` | `{ version, days, recording, turns: [{ id, at, ms, prompt: { chars, hash? }, intent, confidence, routing, suggested, followed: { verdict, say }, outcome, steps, path }] }` — one row per prompt off the session trail, newest first, at most 100; `days` 1–90. Never a prompt's text |
 | GET | `/api/v1/trace/turns/:id` | `{ version, turn }` — one prompt in full: the router's decision (requirement graph, selected, approval, blocked, missing) and every step in order. `400` `INVALID_TURN_ID`, `404` `TURN_NOT_FOUND` |
@@ -120,8 +121,9 @@ configured command) and an install; `test/security.test.mjs` walks every mutatin
 | GET (SSE) | `…/tasks/:task/events/stream` | Orbit Live, streamed: `task-event` · `qa-event` · `task-view` (only when what a person watches moved) · `ping` (every 15 s, an event so a page's watchdog sees it) · `end` (`terminal`, after the last line). Every event's `id` is the cursor after it; a reconnect resumes from `Last-Event-ID`, the first connection from `?since=`. Read-only: no token, never `mutates`, and every refusal is JSON before any header (`400`, `404` `TASK_UNKNOWN` · `PROJECT_UNKNOWN`). One poll per followed file, shared by every page on it; `closeAll()` ends every stream before a shutdown |
 | POST | `…/tasks/:task/pause` · `resume` · `cancel` · `…/tasks/:task/approvals/:approval/approve` · `reject` | a PERSON's decision, through the same command table `cli/task.mjs` runs. Body `{ human: true, expectedRevision, because? }` (`reason?` for reject) and nothing else (`400` `TASK_BODY_INVALID`, `400` `HUMAN_REQUIRED`) → `{ task }` as it now stands. `409` `STALE_REVISION` when the task materially moved since that revision (never retried), `409` `APPROVAL_DECIDED` for a second decision, `409` `APPROVAL_EXPIRED`, `409` `TASK_ENDED`, `409` `TASK_PAUSED` · `TASK_NOT_PAUSED`, `404` `APPROVAL_UNKNOWN`, `503` while another session writes the task. Approve once grants that one action, once; nothing stops a process. An approval exists only where work reached a protected boundary (0.2.0: a push, a production deploy or migration, destroying production data); its `action` is the protected kind, its `risk` says exactly what is approved (DESTRUCTIVE first), and the payload carries `boundary`, `title`, `destructive` and `shows`. Approve once and Resume are written ONLY here: the task context Control builds is the one door that may write a decision that allows something, because the token was checked before it -- `cli/task.mjs` refuses both |
 | GET | `/api/v1/knowledge` | project knowledge for the project Control was started in: claims by tier, layer, source and concern, the relations in use (declared, undeclared, interpreters, refused), the context dimensions, conflicts and the capability opportunities by state. Read only |
-| GET · POST | `/api/v1/connections` | `{ connections, providers, backend }` — machine-wide; a credential only ever DESCRIBED (`{ set, from, name? }`); `backend` is the OS secret store here, or `null` · create `{ id, provider, organization, host?, label? }` |
-| GET · PUT · DELETE | `/api/v1/connections/:id` | one connection · change `{ label?, host?, organization?, note? }` (a new host or organization forgets the last test) · delete it and the credential Orbit stored |
+| GET · POST | `/api/v1/connections` | `{ connections, providers, backend }` — machine-wide; a credential only ever DESCRIBED (`{ set, from, name? }`); each connection says how it gets in (`auth: { strategy, ...options }`, `{ strategy: "credential" }` for one made before sign-in existed) and each provider how it can (`authentication: { default, strategies }`: id, kind, label, preferred, words, options, which tools hold its session — by allow-list, never how a request is made); `backend` is the OS secret store here, or `null` · create `{ id, provider, organization, host?, label?, auth? }` (`auth` held to the provider's descriptor; omitted, it is the provider's preferred way in) |
+| GET · PUT · DELETE | `/api/v1/connections/:id` | one connection · change `{ label?, host?, organization?, note?, auth? }` (a new host, organization or way in forgets the last test; an `auth` the descriptor does not hold is `400` `CONNECTION_INVALID` and repeats nothing it was given) · delete it and the credential Orbit stored |
+| POST | `/api/v1/connections/:id/auth/check` · `auth/sign-in` · `auth/sign-out` | the session a connection that signs in keeps with a tool, looked at and moved — each a POST because a look asks a program and a sign-in opens a browser; **a GET never does either**. All three answer the END STATE, `{ strategy, state, tool? }` (`state`: `tool-missing` · `sign-in-required` · `interaction-required` · `authenticated` · `failed`, or `credential-set` · `credential-missing`; `tool`: `{ found, version, source, acquirable, tried[] }`). `check` never signs in and never installs. `sign-in` takes `{ tenant?, deviceCode? }` (`{}` for none), each held to the option the strategy declares (`400` `CONNECTION_AUTH_INVALID`, nothing started), waits for the person to finish in their own browser, and shows the prompt the program prints in the terminal Control runs in — never in the answer. `sign-out` ends Orbit's own session. A connection that reads a credential has nothing to sign in to (`400`). A stop is `503` `{ error: { code, message, next? } }`: the engine's own `AUTH_*` code, a sentence passed through its sanitiser (tokens masked, secrets scrubbed, one printable line) and the one next step; anything unexpected is the generic `500` and stays in the server's log. No token is in any answer, and none is kept |
 | PUT · DELETE | `/api/v1/connections/:id/credential` | body exactly one of `{ value }` (into the OS secret store; `503` where there is none — no plaintext fallback) or `{ env }` (a variable's NAME) → `{ connection, backend }`; the value is in no answer, no log and no file · clear it |
 | POST | `/api/v1/connections/:id/test` | authentication, then each read the current project's scope asks for → `{ at, ok, identity, checks: [{ id, status, permission, message }] }`, masked, kept as the last test |
 | GET | `/api/v1/reports/overview` · `settings` · `parts` | the project Control was started from (`{ available: false, why }` outside a Git checkout): source, connection, runtime, runs and the latest coverage · the settings with their `revision`, providers and sections · every part with provenance, fingerprint, the last run, and what the next run would leave out and why |
@@ -129,11 +131,13 @@ configured command) and an install; `test/security.test.mjs` walks every mutatin
 | POST | `/api/v1/reports/parts/enable` · `disable` · `approve` · `unapprove` | body `{ part, revision }` — a part's switch; `approve` is a PERSON approving a replacement of a standard part |
 | POST | `/api/v1/reports/parts/verify` · `rollback` | body `{ extension }` — verified again (the real loader, the static check, the part run) · body `{ extension, to? }` — back to a kept version, verified again. No route runs a report |
 
-Every failure has one shape: `{ "error": { "code", "message", "details"? } }`. `400` invalid
+Every failure has one shape: `{ "error": { "code", "message", "details"?, "next"? } }` (`next` is the one
+thing a person does about a stop, when the stop knows it). `400` invalid
 input or an invalid SKILL.md (`details` lists every problem) · `403` host, origin or token ·
 `404` no such skill, project or route · `405` wrong method · `409` `STALE_SKILL`, `STALE_REVISION`, `STALE_PROPOSAL`, `CHECKOUT_MISSING` · `413` body over 1 MB ·
 `415` not JSON · `500` a write, backup or delete failed, or a bug (logged on the server, never
-sent to the page) · `503` the page has not been built.
+sent to the page) · `503` the page has not been built, or a machine that could not do it right now
+(a sign-in that cannot go on carries the engine's `AUTH_*` code and its `next`).
 
 The catalog **is** the directory: every direct child of `skills/` that is a plain directory,
 whose name is a skill ID, and that holds a readable `SKILL.md`. There is no registry to keep in
@@ -214,7 +218,10 @@ every delete; the page shows only the `<timestamp>/<id>`. To restore one, copy i
 
 ## Boundary with Orbit core
 
-`src/core.mjs` is the **only** file that imports from `../../src` or `../../skills`, and it only
+`src/core.mjs` is the **only** file that imports from `../../src` or `../../skills`, and it re-exports,
+with one exception that binds: a world's connections manager (`connectionsOf`), made once per world and
+kept as long as the world is, so the one sign-in and the one token request a manager shares between its
+callers are shared between requests too (a token it holds is in memory and goes nowhere else). What it
 re-exports: `contained`/`physical`, `storeBase`, `writeAtomic`/`realIo`, `engineVersion`, the
 resource manager (the registry, the router, MCP and tool reconciliation and their state rooms —
 the same modules the prompt router's hook composes), the session trail's log and projections
@@ -264,6 +271,7 @@ Every page is at a real URL, so a view can be linked to, survives a refresh, and
 | `/mission-control/approvals` | what waits for a person, machine-wide — polled every 5 s while open |
 | `/mission-control/:key/checkouts/:checkout/tasks/:task` | one task, **live** (Orbit Live): a connection badge (`● LIVE` pulses only while the stream is healthy; RECONNECTING · DEGRADED LIVE · OFFLINE · FINISHED · REPLAY), the current activity, a person's approval inline, the feed of journal and QA lines with filters and auto-follow, the sandbox's console; then readiness, state, current decision, attempts, changes, verification, references, budget; Pause · Resume · Cancel · Reject · Approve once, each confirmed. The task is not polled while the stream holds it |
 | `/automation` · `?tab=general\|factory\|execution\|governance\|live\|skills` | how autonomous Orbit may be when a task is handed to `/orbit-help`, for this machine or one project, each value saying who set it; the policy matrix; host readiness; Live's look; generated playbooks with a person's moves. Nothing here starts a workflow |
+| `/connections` · `/connections/:id` | every source a project report reads and how each is let in — the strategy a person chose, or `No credential set` only for one that reads a credential; one connection: where it is, **Authentication** (one choice per way its provider offers, the recommended one marked, each with the options its descriptor declares; for a sign-in the session's state — program, sign-in, whether the source accepted it at the last test, who owns the session — and Check · Sign in · Sign out; the login happens in your browser and its prompt in the terminal Control runs in, the page is told only how it ended; for a credential the store, replace and remove controls), a test, delete |
 | `/skills` · `?show=…&q=…` | the catalog: search, filter tabs with counts, edit, delete |
 | `/skills/:id` | one SKILL.md in the editor |
 | `/trace` | each prompt: the router's intent, what it suggested, whether the session followed, the path, how it ended — polled every 5 s |

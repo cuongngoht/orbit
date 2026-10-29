@@ -33,6 +33,15 @@ describe("Tools", () => {
     expect(within(section("Ready")).queryByRole("button", { name: /Install/ })).toBeNull();
   });
 
+  it("says which tools Orbit may fetch for itself when a task needs one -- and that Install is how a person asks for the same copy up front", async () => {
+    renderApp("/tools");
+    await screen.findByRole("heading", { name: "Ready" });
+    expect(within(section("Needs attention")).getByText("Orbit fetches its own pinned copy when a task needs it; Install does the same now.")).toBeTruthy();
+    expect(within(section("Ready")).queryByText(/Orbit fetches its own pinned copy/), "a tool that is not one of them says nothing of it").toBeNull();
+    expect(screen.getByText(/Orbit may also fetch the same pinned, checksum-verified copy by itself the first time a task needs it/)).toBeTruthy();
+    expect(screen.queryByText(/Nothing is installed unless you press Install/), "the page no longer says what is not true").toBeNull();
+  });
+
   it("installs only when asked, with the token, and the tool becomes ready", async () => {
     renderApp("/tools");
     fireEvent.click(await screen.findByRole("button", { name: "Install SQLCMD" }));
@@ -67,6 +76,7 @@ describe("Tools", () => {
     expect(within(sources).getByText("not installed")).toBeTruthy();
     expect(within(sources).getAllByText("not found")).toHaveLength(2);
     expect(within(section("Installation")).getByText(/Install privately for Orbit — version 1\.10\.0/)).toBeTruthy();
+    expect(within(section("Installation")).getByText(/Orbit fetches its own pinned copy when a task needs it/)).toBeTruthy();
     expect(within(section("Installation")).getByRole("button", { name: "Install SQLCMD" })).toBeTruthy();
   });
 });

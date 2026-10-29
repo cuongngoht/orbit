@@ -4,7 +4,8 @@ import { ErrorState } from "../../../shared/components/ErrorState";
 import { LoadingState } from "../../../shared/components/LoadingState";
 import { formatRelative } from "../../../shared/format";
 import { useFollow } from "../../../shared/navigation/useFollow";
-import { credentialWords } from "../../connections/connectionWords";
+import { useConnections } from "../../connections/connections.api";
+import { authLine } from "../../connections/connectionWords";
 import { TestBadge } from "../../connections/ConnectionsPage";
 import { useReportsOverview } from "../reports.api";
 import type { ReportsOverview } from "../reports.types";
@@ -35,6 +36,7 @@ export const NotHere = ({ why }: { why: string }) => (
 function Overview({ view }: { view: ReportsOverview }) {
   const styles = useStyles();
   const follow = useFollow();
+  const providers = useConnections().data?.providers;
   return (
     <>
       <div className={styles.grid}>
@@ -46,7 +48,7 @@ function Overview({ view }: { view: ReportsOverview }) {
           <Text>{view.provider ?? "Not chosen yet"}</Text>
           {view.connection ? (
             <>
-              <Caption1>{view.connection.id} · {credentialWords(view.connection.credential)}</Caption1>
+              <Caption1>{view.connection.id} · {authLine(view.connection, providers?.find((p) => p.id === view.connection?.provider))}</Caption1>
               <TestBadge connection={view.connection} />
             </>
           ) : (

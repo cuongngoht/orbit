@@ -9,7 +9,7 @@ import { formatRelative } from "../../shared/format";
 import { useFollow } from "../../shared/navigation/useFollow";
 import { toolsApi, useToolChange, useTools } from "./tools.api";
 import type { Tool } from "./tools.types";
-import { SOURCE_LABEL, toolPath } from "./toolWords";
+import { FETCHES_ITSELF, SOURCE_LABEL, toolPath } from "./toolWords";
 
 const useStyles = makeStyles({
   stack: { display: "flex", flexDirection: "column", gap: tokens.spacingVerticalL },
@@ -33,7 +33,7 @@ export function ToolsPage() {
     <>
       <PageHeader
         title="Tools & Runtimes"
-        description="The CLI tools Orbit can use, where each was found, and a private install where one is verified. Nothing is installed unless you press Install."
+        description="The CLI tools Orbit can use, where each was found, and a private install where one is verified. Install puts that private copy in place now. For a tool marked as one Orbit fetches itself, Orbit may also fetch the same pinned, checksum-verified copy by itself the first time a task needs it. Nothing else is installed, and nothing on PATH changes."
         actions={
           <Button icon={<ArrowClockwise20Regular />} disabled={readOnly || refreshAll.isPending || !all.length} onClick={refresh}>
             {refreshAll.isPending ? "Checking…" : "Check again"}
@@ -77,6 +77,7 @@ function Rows({ tools, empty }: { tools: Tool[]; empty: string }) {
               <Text weight="semibold">{t.name}</Text>
             </Link>
             <Caption1 className={styles.muted}>{t.summary}</Caption1>
+            {t.autonomous && t.install.supported && t.status !== "ready" && <Caption1 className={styles.muted}>{FETCHES_ITSELF}</Caption1>}
           </div>
           <Line tool={t} />
           {t.status === "missing" && t.install.supported && <InstallButton tool={t} />}

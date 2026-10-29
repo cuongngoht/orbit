@@ -1,26 +1,55 @@
 // Connections and PO Reports as control-server answers them, in memory -- for
 // the pages that configure a project's report. Like the real server, no answer
 // ever carries a credential: one sent to …/credential is kept here only so a
-// test can prove where it went.
-import type { Connection, ConnectionTest, Provider } from "../features/connections/connections.types";
+// test can prove where it went. A connection's session (…/auth/check · sign-in ·
+// sign-out) answers what `state.auth` says -- or a stop, when `state.auth.stop` is set --
+// and never a token.
+import type { AuthTool, Connection, ConnectionTest, Provider } from "../features/connections/connections.types";
 import type { PartsView, ReportSettings, ReportsOverview, SettingsView, Unavailable } from "../features/reports/reports.types";
 import { reply, type Call } from "./fakeServer";
 
+// The descriptors' own words for how each provider can be signed in to, as the real server sends them.
+const PAT_STRATEGY = { id: "credential", kind: "credential", label: "Personal access token or environment variable", doc: "A personal access token, stored once in this machine's secret store, or the name of an environment variable that holds it." };
+
+const BROKER_STRATEGY = {
+  id: "azure-cli",
+  kind: "broker",
+  label: "Microsoft sign-in",
+  preferred: true,
+  interactive: true,
+  sessionOwner: "azure-cli",
+  tools: ["azure-cli-private", "azure-cli"],
+  doc: "Sign in once with a Microsoft account. Orbit then asks for a short-lived access token each time it needs one -- the token is never stored.",
+  docs: ["https://learn.microsoft.com/azure/devops/cli/entra-tokens"],
+  options: [
+    { name: "tenant", label: "Directory (tenant)", type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9.-]{0,99}$", doc: "Only needed when your account belongs to more than one directory." },
+    { name: "deviceCode", label: "Use a device code", type: "boolean", doc: "Sign in with a code you enter on another device." },
+  ],
+};
+
 export const PROVIDERS: Provider[] = [
-  { id: "github", label: "GitHub", connection: { fields: [{ name: "host", label: "API host", default: "https://api.github.com" }, { name: "organization", label: "Owner", required: true }] }, scope: { fields: [{ name: "repositories", label: "Repositories", type: "list", required: true }, { name: "issues", label: "Issues", type: "boolean", default: true }] }, credential: { kind: "fine-grained personal access token", advice: "Read-only: Metadata, Pull requests, Issues.", docs: ["https://docs.github.com/en/authentication"] }, capabilities: [] },
-  { id: "azure-devops", label: "Azure DevOps", connection: { fields: [{ name: "host", label: "Organization URL", default: "https://dev.azure.com" }, { name: "organization", label: "Organization", required: true }] }, scope: { fields: [{ name: "project", label: "Project", required: true }] }, credential: { kind: "organization-scoped personal access token", advice: "Read scopes only.", docs: ["https://learn.microsoft.com/azure/devops"] }, capabilities: [] },
+  { id: "github", label: "GitHub", connection: { fields: [{ name: "host", label: "API host", default: "https://api.github.com" }, { name: "organization", label: "Owner", required: true }] }, scope: { fields: [{ name: "repositories", label: "Repositories", type: "list", required: true }, { name: "issues", label: "Issues", type: "boolean", default: true }] }, authentication: { default: "credential", strategies: [{ ...PAT_STRATEGY, preferred: true }] }, credential: { kind: "fine-grained personal access token", advice: "Read-only: Metadata, Pull requests, Issues.", docs: ["https://docs.github.com/en/authentication"] }, capabilities: [] },
+  { id: "azure-devops", label: "Azure DevOps", connection: { fields: [{ name: "host", label: "Organization URL", default: "https://dev.azure.com" }, { name: "organization", label: "Organization", required: true }] }, scope: { fields: [{ name: "project", label: "Project", required: true }] }, authentication: { default: "azure-cli", strategies: [BROKER_STRATEGY, PAT_STRATEGY] }, credential: { kind: "organization-scoped personal access token", advice: "Read scopes only.", docs: ["https://learn.microsoft.com/azure/devops"] }, capabilities: [] },
 ];
 
 const DEFAULTS: ReportSettings = { provider: null, connection: null, scope: {}, docs: null, period: { months: 2 }, timezone: null, output: { dir: null, formats: ["html"] }, sections: {}, mapping: {}, assumptions: {}, parts: {}, retention: 20 };
 
 const SECTIONS = [{ id: "orbit.report.section.summary", title: "Summary", enabled: true }, { id: "orbit.report.section.contributors", title: "Contributors", enabled: false }, { id: "orbit.report.section.coverage", title: "Data coverage & method", enabled: true, locked: true }];
 
-const connection = (id: string, over: Partial<Connection> = {}): Connection => ({ id, provider: "github", host: "https://api.github.com", organization: "acme", credential: { set: false, from: null }, ...over });
+const connection = (id: string, over: Partial<Connection> = {}): Connection => ({ id, provider: "github", host: "https://api.github.com", organization: "acme", credential: { set: false, from: null }, auth: { strategy: "credential" }, ...over });
+
+/** A connection that signs in, as Orbit keeps it: no credential at all, only the way in. */
+export const signingIn = (id: string, over: Partial<Connection> = {}): Connection => connection(id, { provider: "azure-devops", host: "https://dev.azure.com", auth: { strategy: "azure-cli" }, ...over });
+
+/** What a found program looks like, as the engine reports it. */
+export const OWN_COPY: AuthTool = { found: true, version: "2.91.0", source: "orbit-managed", acquirable: null, tried: [] };
 
 export function fakeReports() {
   const connections = new Map<string, Connection>([["github-acme", connection("github-acme", { credential: { set: true, from: "vault" } })]]);
   const received: { id: string; body: unknown }[] = [];
-  const state = { backend: "macos-keychain" as string | null, settings: { ...DEFAULTS }, revision: null as string | null, n: 0, inCheckout: true, pythonReady: false };
+  // `auth`: how the session stands when asked, and -- when set -- the stop every move on it ends in (the engine's own code, a sentence, a next step).
+  const auth = { state: "sign-in-required" as string, tool: OWN_COPY as AuthTool | undefined, stop: null as { status: number; code: string; message: string; next?: string } | null };
+  const state = { backend: "macos-keychain" as string | null, settings: { ...DEFAULTS }, revision: null as string | null, n: 0, inCheckout: true, pythonReady: false, auth };
   const test: ConnectionTest = { at: "2026-09-25T04:00:00.000Z", ok: false, identity: "lan", checks: [{ id: "authentication", status: "ok", permission: null, message: "signed in as lan" }, { id: "acme/web · actions", status: "forbidden", permission: "actions: read", message: "the credential may not read this (HTTP 403)" }] };
   const unavailable: Unavailable = { available: false, why: "Start Orbit Control from the project's checkout: a project report is about the repository it was started in." };
 
@@ -44,13 +73,33 @@ export function fakeReports() {
   };
 
   const connectionCall = (call: Call): Response | null => {
-    const [, id, action] = /^\/api\/v1\/connections\/([^/]+)(?:\/(\w+))?$/.exec(call.path) ?? [];
+    const [, id, action] = /^\/api\/v1\/connections\/([^/]+)(?:\/([\w/-]+))?$/.exec(call.path) ?? [];
     const found = id ? connections.get(decodeURIComponent(id)) : undefined;
     if (!found) return reply(404, { error: { code: "CONNECTION_NOT_FOUND", message: "there is no connection by that name on this machine" } });
     if (action === "credential" && call.method === "PUT") return credential(found, call);
+    if (action?.startsWith("auth/")) return session(found, action);
+    if (call.method === "PUT" && !action) return update(found, call);
     if (action === "test") return (connections.set(found.id, { ...found, lastTest: test }), reply(200, test));
     if (call.method === "DELETE" && !action) return (connections.delete(found.id), reply(200, { id: found.id, removed: true }));
     return reply(200, found);
+  };
+
+  // A change of how it gets in forgets the last test, as the real server does.
+  const update = (found: Connection, call: Call): Response => {
+    const patch = call.body as Partial<Connection>;
+    const moved = patch.auth !== undefined && JSON.stringify(patch.auth) !== JSON.stringify(found.auth);
+    const next = { ...found, ...patch, ...(moved ? { lastTest: undefined } : {}) };
+    connections.set(found.id, next);
+    return reply(200, next);
+  };
+
+  // A look, a sign-in, a sign-out: the end state, or the stop the test set up. A sign-in or a sign-out forgets the last test.
+  const session = (found: Connection, action: string): Response => {
+    if (auth.stop) return reply(auth.stop.status, { error: { code: auth.stop.code, message: auth.stop.message, ...(auth.stop.next ? { next: auth.stop.next } : {}) } });
+    if (action === "auth/sign-in") auth.state = "authenticated";
+    if (action === "auth/sign-out") auth.state = "sign-in-required";
+    if (action !== "auth/check") connections.set(found.id, { ...found, lastTest: undefined });
+    return reply(200, { strategy: found.auth.strategy, state: auth.state, ...(auth.tool ? { tool: auth.tool } : {}) });
   };
 
   const credential = (found: Connection, call: Call): Response => {

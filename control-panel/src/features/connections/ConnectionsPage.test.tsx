@@ -1,12 +1,14 @@
-// Connections through the whole app: listed with where each credential comes
-// from, created, given a credential that then exists nowhere in the page, and
-// tested with the permission a token lacks named.
+// Connections through the whole app: listed with how each gets in -- where its
+// credential comes from, or the sign-in it keeps a session for -- created, given
+// a credential that then exists nowhere in the page, and tested with the
+// permission a token lacks named. (The Authentication card has its own tests.)
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { TOKEN_HEADER } from "../../shared/api/client";
-import { fakeReports } from "../../testing/fakeReports";
+import { fakeReports, signingIn } from "../../testing/fakeReports";
 import { fakeServer } from "../../testing/fakeServer";
 import { renderApp } from "../../testing/renderApp";
+import { required } from "../../testing/required";
 import { docLabel, newerTest } from "./connectionWords";
 import type { ConnectionTest } from "./connections.types";
 
@@ -35,6 +37,22 @@ describe("Connections", () => {
     expect(await screen.findByText("github-acme")).toBeTruthy();
     expect(screen.getByText("Stored in this machine's OS secret store")).toBeTruthy();
     expect(screen.getByText(/Credentials: macOS Keychain/)).toBeTruthy();
+  });
+
+  it("lists a connection that signs in by the way it gets in -- never as a missing credential, which it keeps none of by design", async () => {
+    reports.connections.set("azure-acme", signingIn("azure-acme"));
+    renderApp("/connections");
+    expect(await screen.findByText("azure-acme")).toBeTruthy();
+    expect(screen.getByText("Microsoft sign-in")).toBeTruthy();
+    expect(screen.getByText("Stored in this machine's OS secret store"), "a credential connection still says where it comes from").toBeTruthy();
+    expect(screen.queryByText("No credential set")).toBeNull();
+  });
+
+  it("a credential connection with no credential set still says so", async () => {
+    reports.connections.set("github-bare", { ...required(reports.connections.get("github-acme"), "the github-acme connection"), id: "github-bare", credential: { set: false, from: null } });
+    renderApp("/connections");
+    expect(await screen.findByText("github-bare")).toBeTruthy();
+    expect(screen.getByText("No credential set")).toBeTruthy();
   });
 
   it("creates a connection with the fields its provider asks for, and opens it", async () => {

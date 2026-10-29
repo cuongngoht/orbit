@@ -10,7 +10,7 @@ import { formatDateTime, formatRelative } from "../../shared/format";
 import { toolsApi, useTool, useToolChange } from "./tools.api";
 import type { Tool } from "./tools.types";
 import { InstallButton } from "./ToolsPage";
-import { SOURCE_LABEL } from "./toolWords";
+import { FETCHES_ITSELF, SOURCE_LABEL } from "./toolWords";
 
 const useStyles = makeStyles({
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(20rem, 1fr))", gap: tokens.spacingHorizontalL, alignItems: "start" },
@@ -128,6 +128,7 @@ function Installation({ tool }: { tool: Tool }) {
         <>
           <Text>Install privately for Orbit{tool.install.version ? ` — version ${tool.install.version}` : ""}. It goes into Orbit's own store: not the plugin, not the project, not PATH.</Text>
           {tool.install.source && <Caption1 className={styles.muted}>From {tool.install.source}, checked against its published SHA-256.</Caption1>}
+          {tool.autonomous && <Caption1 className={styles.muted}>{FETCHES_ITSELF}</Caption1>}
           {tool.status !== "ready" && <InstallButton tool={tool} />}
           {tool.update && <InstallButton tool={tool} update />}
           {tool.status === "ready" && !tool.update && <Caption1 className={styles.muted}>Already usable here, so nothing needs installing.</Caption1>}

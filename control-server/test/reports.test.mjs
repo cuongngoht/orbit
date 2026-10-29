@@ -108,6 +108,7 @@ test("PO Reports: settings with a revision (a stale one is 409), parts switched 
   const first = await api.get("/api/v1/reports/settings");
   assert.equal(first.json.available, true, first.text);
   assert.deepEqual(first.json.sections.find((s) => s.id === "orbit.report.section.contributors").enabled, false);
+  assert.deepEqual(first.json.providers.find((p) => p.id === "azure-devops").authentication.strategies.map((s) => s.id), ["azure-cli", "credential"], "the settings view says how each source can be signed in to, as the connections view does");
   const saved = await api.put("/api/v1/reports/settings", { settings: { ...first.json.settings, provider: "github", timezone: "Asia/Ho_Chi_Minh", scope: { repositories: ["acme/web"] } }, revision: first.json.revision });
   assert.equal(saved.status, 200, saved.text);
   const stale = await api.put("/api/v1/reports/settings", { settings: { ...first.json.settings, period: { months: 3 } }, revision: first.json.revision });

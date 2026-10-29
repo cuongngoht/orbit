@@ -16,17 +16,24 @@
 //   node project-report.mjs parts [--json]           standard and project parts, and which would run, why
 //   node project-report.mjs probe [--json]           test the bound connection against this project's scope
 //   node project-report.mjs connections [--json]     this machine's connections (never a credential)
-//   node project-report.mjs connect <id> --provider=<p> --organization=<o> [--host=<url>] [--credential-env=<NAME>]
-//                                                    create or change a connection whose credential is an
-//                                                    environment variable (a stored one: Orbit Control)
+//   node project-report.mjs connect <id> --provider=<p> --organization=<o> [--host=<url>] [--auth=<strategy>]
+//                                       [--tenant=<id>] [--device-code] [--credential-env=<NAME>]
+//                                                    create or change a connection: how it gets in (--auth, the
+//                                                    provider's own default when left out), or a credential that is
+//                                                    an environment variable (a stored one: Orbit Control)
+//   node project-report.mjs sign-in <id> [--tenant=<id>] [--device-code]
+//                                                    sign in (a person's act: the browser step is theirs); Orbit
+//                                                    fetches its own Azure CLI first when none is usable, and shows
+//                                                    what the sign-in asks of you as it appears
+//   node project-report.mjs sign-out <id>            sign out of the profile Orbit keeps -- yours is never touched
 //
 // Exit 0 = done · 2 = REFUSED (the request or the settings are wrong) ·
-// 3 = BLOCKED (no connection, no credential, no Python, the source would not answer).
+// 3 = BLOCKED (no connection, no credential or sign-in, no Python, the source would not answer).
 // A credential is never an argument: a --token or --pat is refused by name.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { boundReport } from "../skills/orbit-report/bind.mjs";
+import { boundReport, publicProviders } from "../skills/orbit-report/bind.mjs";
 import { Refused } from "../src/errors.mjs";
 import { command } from "../src/project/command.mjs";
 import { planReport, renderRun, reportStatus, runReport } from "../src/project-report/index.mjs";
@@ -39,14 +46,14 @@ const flag = (n) => rest.find((a) => a.startsWith(`--${n}=`))?.split("=").slice(
 const has = (n) => rest.includes(`--${n}`);
 const json = has("json");
 
-const COMMANDS = { where, status, settings, set, run, render, runs, parts, probe, connections, connect };
+const COMMANDS = { where, status, settings, set, run, render, runs, parts, probe, connections, connect, "sign-in": signIn, "sign-out": signOut };
 
 async function main() {
   refuseSecrets(rest);
-  if (rest.some((a) => a.startsWith("--") && !["revision", "human", "months", "from", "to", "all", "as-of", "out", "dry", "json", "provider", "organization", "host", "credential-env"].includes(a.slice(2).split("=")[0]))) throw new Refused("unknown report option");
+  if (rest.some((a) => a.startsWith("--") && !["revision", "human", "months", "from", "to", "all", "as-of", "out", "dry", "json", "provider", "organization", "host", "credential-env", "auth", "tenant", "device-code"].includes(a.slice(2).split("=")[0]))) throw new Refused("unknown report option");
   if (!cmd || cmd === "--help") return help();
   if (!COMMANDS[cmd]) throw new Refused(`unknown report command: ${cmd}`);
-  await COMMANDS[cmd](await boundReport({ env: process.env, cwd: process.cwd(), log: (l) => console.error(l) }));
+  await COMMANDS[cmd](await boundReport({ env: process.env, cwd: process.cwd(), log: (l) => console.error(l), notify: (l) => console.error(l) }));
 }
 
 // Anything that looks like a credential on the command line is refused before
@@ -76,7 +83,7 @@ function status(b) {
 function statusLines(v, b) {
   say("project", `${v.project.name} (${v.project.root})`);
   say("source", v.provider ? `${v.provider} · scope ${JSON.stringify(b.rctx.settings.scope ?? {})}` : "not chosen — set provider=github|azure-devops and a scope");
-  say("connection", v.connection ? `${v.connection.id} · credential ${v.connection.credential.set ? `from ${v.connection.credential.from}` : "NOT SET"}${v.connection.lastTest ? ` · last test ${v.connection.lastTest.ok ? "ok" : "failed"} ${v.connection.lastTest.at}` : ""}` : "none bound — set connection=<id> (see `connections`)");
+  say("connection", v.connection ? `${v.connection.id} · ${entry(v.connection)}${v.connection.lastTest ? ` · last test ${v.connection.lastTest.ok ? "ok" : "failed"} ${v.connection.lastTest.at}` : ""}` : "none bound — set connection=<id> (see `connections`)");
   say("python", v.python ? `${v.python.version} (${v.python.from}) ${v.python.file}` : `missing — ${v.pythonProblem}`);
   say("runs", v.runs.length ? v.runs.slice(0, 5).map((r) => `${r.runId} ${r.window?.from ?? "start"}→${r.window?.to ?? "?"} ${r.status}`).join("\n          ") : "none yet");
 }
@@ -190,15 +197,53 @@ async function probe(b) {
 }
 
 function connections(b) {
-  printed(b.connections.list(), (rows) => (rows.length ? rows.forEach((c) => say(c.provider, `${c.id} · ${c.organization} · ${c.host} · credential ${c.credential.set ? `from ${c.credential.from}${c.credential.name ? ` ${c.credential.name}` : ""}` : "not set"}`)) : console.log("no connections yet — Orbit Control → Connections, or `connect`")));
+  printed(b.connections.list(), (rows) => (rows.length ? rows.forEach((c) => say(c.provider, `${c.id} · ${c.organization} · ${c.host} · ${entry(c)}`)) : console.log("no connections yet — Orbit Control → Connections, or `connect`")));
 }
+
+// How a connection gets in, in one phrase: a credential says where it comes from; anything else says it signs in.
+const entry = (c) => (c.auth.strategy === "credential" ? `credential ${c.credential.set ? `from ${c.credential.from}${c.credential.name ? ` ${c.credential.name}` : ""}` : "NOT SET"}` : `signs in (${c.auth.strategy}${c.auth.tenant ? `, directory ${c.auth.tenant}` : ""})`);
+
+// What --auth, --tenant and --device-code say about a connection's `auth`: nothing when none was given, else the strategy
+// (the one named, the connection's own, or the provider's default) and the options -- the descriptor decides which are valid.
+function authOf(b, id, existing) {
+  if (!flag("auth") && !flag("tenant") && !has("device-code")) return undefined;
+  const provider = existing?.provider ?? flag("provider");
+  const strategy = flag("auth") ?? existing?.auth?.strategy ?? publicProviders().find((p) => p.id === provider)?.authentication?.default;
+  return { strategy, ...(flag("tenant") ? { tenant: flag("tenant") } : {}), ...(has("device-code") ? { deviceCode: true } : {}) };
+}
+
+const saved = (b, id, existing, auth) => (existing ? b.connections.update(id, { host: flag("host"), organization: flag("organization"), auth }) : b.connections.create({ id, provider: flag("provider"), organization: flag("organization"), ...(flag("host") ? { host: flag("host") } : {}), ...(auth ? { auth } : {}) }));
 
 async function connect(b) {
   const [id] = args;
-  if (!id) throw new Refused("node project-report.mjs connect <id> --provider=<p> --organization=<o> [--host=<url>] [--credential-env=<NAME>]");
-  const exists = b.connections.list().some((c) => c.id === id);
-  const saved = exists ? b.connections.update(id, { host: flag("host"), organization: flag("organization") }) : b.connections.create({ id, provider: flag("provider"), organization: flag("organization"), ...(flag("host") ? { host: flag("host") } : {}) });
-  printed(flag("credential-env") ? await b.connections.setCredential(id, { env: flag("credential-env") }) : saved, (c) => say("saved", `${c.id} · credential ${c.credential.set ? `from ${c.credential.from} ${c.credential.name ?? ""}` : "not set"} — bind it with: set connection=${c.id}`));
+  if (!id) throw new Refused("node project-report.mjs connect <id> --provider=<p> --organization=<o> [--host=<url>] [--auth=<strategy>] [--tenant=<id>] [--device-code] [--credential-env=<NAME>]");
+  const existing = b.connections.list().find((c) => c.id === id);
+  const kept = saved(b, id, existing, authOf(b, id, existing));
+  printed(flag("credential-env") ? await b.connections.setCredential(id, { env: flag("credential-env") }) : kept, (c) => say("saved", `${c.id} · ${entry(c)} — bind it with: set connection=${c.id}`));
+}
+
+// ---- signing in and out ---------------------------------------------------------------------
+
+// A directory or a device code named here is kept on the connection, so the reads that follow use the same ones.
+function remembered(b, id) {
+  const existing = b.connections.list().find((c) => c.id === id);
+  const auth = existing ? authOf(b, id, existing) : undefined;
+  if (auth) b.connections.update(id, { auth: { ...existing.auth, ...auth } });
+}
+
+async function signIn(b) {
+  const [id] = args;
+  if (!id) throw new Refused("node project-report.mjs sign-in <connection-id> [--tenant=<id>] [--device-code]");
+  remembered(b, id);
+  const state = await b.connections.signIn(id, { notify: (line) => console.error(line) });
+  printed(state, (s) => say("signed in", `${id} · ${s.state}${s.tool?.version ? ` · Azure CLI ${s.tool.version} (${s.tool.source === "orbit-managed" ? "Orbit's own copy" : "this machine's, used as a program only"})` : ""}`));
+}
+
+async function signOut(b) {
+  const [id] = args;
+  if (!id) throw new Refused("node project-report.mjs sign-out <connection-id>");
+  const state = await b.connections.signOut(id);
+  printed(state, (s) => say("signed out", `${id} · ${s.state}`));
 }
 
 function help() {

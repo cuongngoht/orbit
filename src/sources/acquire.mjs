@@ -76,12 +76,16 @@ function reused(a, existing) {
   return existing;
 }
 
+// What a person is told: the stop's own sentence and, when the stop knows it (a sign-in that is needed says which command
+// signs in), the one thing to do about it.
+const reasonOf = (error) => (error.next ? `${error.message} -- ${error.next}` : error.message);
+
 // A source that cannot be read: recorded so, unless a record of it that WAS read is
 // already there -- a failed refresh does not throw away what the last good read knew.
 function unavailable(a, identity, existing, error) {
-  const rec = existing && READ.includes(existing.state) ? existing : unavailableRecord(identity, "workitem", identity.id, error.message, a.w.now());
+  const rec = existing && READ.includes(existing.state) ? existing : unavailableRecord(identity, "workitem", identity.id, reasonOf(error), a.w.now());
   if (rec !== existing) a.w.sources.saveRecord(rec);
-  noted(a, rec.id, "unavailable", { why: error.message.slice(0, 200) });
+  noted(a, rec.id, "unavailable", { why: reasonOf(error).slice(0, 200) });
   a.records.push(rec);
   return rec;
 }

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../shared/api/client";
-import type { Connection, ConnectionsView, ConnectionTest, CredentialInput, NewConnection } from "./connections.types";
+import type { AuthRun, AuthState, Connection, ConnectionsView, ConnectionTest, CredentialInput, NewConnection } from "./connections.types";
 
 const BASE = "/api/v1/connections";
 const one = (id: string) => `${BASE}/${encodeURIComponent(id)}`;
@@ -9,11 +9,14 @@ export const connectionsApi = {
   list: () => api.get<ConnectionsView>(BASE),
   get: (id: string) => api.get<Connection>(one(id)),
   create: (input: NewConnection) => api.post<Connection>(BASE, input),
-  update: (id: string, patch: Partial<Pick<Connection, "label" | "host" | "organization" | "note">>) => api.put<Connection>(one(id), patch),
+  update: (id: string, patch: Partial<Pick<Connection, "label" | "host" | "organization" | "note" | "auth">>) => api.put<Connection>(one(id), patch),
   remove: (id: string) => api.delete<{ id: string; removed: boolean }>(one(id)),
   setCredential: (id: string, input: CredentialInput) => api.put<{ connection: Connection; backend: string | null }>(`${one(id)}/credential`, input),
   clearCredential: (id: string) => api.delete<Connection>(`${one(id)}/credential`),
   test: (id: string) => api.post<ConnectionTest>(`${one(id)}/test`),
+  // A look at the session, a sign-in, a sign-out: each a POST, because a look asks a program and a sign-in opens a browser.
+  // What comes back is how the session ended up -- no token, and not the prompt the program printed.
+  auth: (id: string, run: AuthRun) => api.post<AuthState>(`${one(id)}/auth/${run.action}`, run.action === "sign-in" ? run.options : undefined),
 };
 
 export const connectionKeys = {

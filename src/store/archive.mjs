@@ -12,6 +12,9 @@
 //   promote   an earlier copy is set aside, never deleted, then one rename puts
 //             the staged one in place; the temporary directory always goes
 //
+// `promote` is the part ANY installer that stages a runtime beside its final directory shares
+// (src/tools/pylock.mjs builds its environment in a staged directory and promotes it the same way).
+//
 // So there is no moment at which a half-unpacked runtime sits where anything
 // looks, and a caller writes its receipt only after this returns. Every effect
 // is `io` (src/tools/real.mjs realInstallIo), faked in the suite.
@@ -31,12 +34,13 @@ export async function placeArchive(p) {
   const bytes = await p.io.download(p.asset.url);
   if (p.io.sha256(bytes) !== p.asset.sha256) throw new Blocked(`${basename(p.asset.url)} does not match the SHA-256 the catalog pins for it; nothing was installed`);
   const tmp = p.io.tempDir(dirname(p.final));
-  try { promoted(p.io.unpack(bytes, p.asset, tmp), p); }
+  try { promote({ ...p, staged: p.io.unpack(bytes, p.asset, tmp) }); }
   finally { p.io.remove(tmp); }
 }
 
-function promoted(unpacked, p) {
-  if (!p.verify(unpacked)) throw new Blocked(`${p.unverified}; nothing was installed`);
+// { staged, final, verify(stagedDir) -> boolean, unverified: sentence, io }: nothing is put in place that did not answer.
+export function promote(p) {
+  if (!p.verify(p.staged)) throw new Blocked(`${p.unverified}; nothing was installed`);
   p.io.setAside(p.final);
-  p.io.rename(unpacked, p.final);
+  p.io.rename(p.staged, p.final);
 }

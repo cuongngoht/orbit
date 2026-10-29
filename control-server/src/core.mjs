@@ -25,10 +25,14 @@
 //   the session trail     the log the hooks append to, and the projections over
 //                         it -- the decision trace and the usage analytics
 //                         (src/trace/), the same ones `cli/trace.mjs` prints
+//   a world's connections the manager a person's sign-in goes through, bound once
+//                         per world (`connectionsOf`, below)
 //
 // Every other file in control-server/ imports from here and never from
 // ../../src or ../../skills directly -- test/server.test.mjs asserts it -- so
 // the coupling is one list.
+import { connectionsOver } from "../../skills/orbit-report/bind.mjs";
+
 export { contained, physical } from "../../src/project/boundary.mjs";
 export { projectStoreRoot, storeBase } from "../../src/project/repository.mjs";
 export { writeAtomic } from "../../src/store/atomic.mjs";
@@ -57,6 +61,7 @@ export { VERDICTS } from "../../src/policy.mjs";
 export { createToolState, withTool } from "../../src/tools/state.mjs";
 export { detectTool } from "../../src/tools/detect.mjs";
 export { installTool } from "../../src/tools/install.mjs";
+export { installContext } from "../../src/tools/ensure.mjs";
 export { projectCapabilities } from "../../src/extensions/capabilities.mjs";
 export { projectKnowledge } from "../../src/knowledge/summary.mjs";
 export { traceLog } from "../../src/trace/log.mjs";
@@ -68,7 +73,23 @@ export { realWorld } from "../../skills/orbit-control/world.mjs";
 // Project reports and the connections their sources are read through: the
 // pack's binding (the same one cli/project-report.mjs uses), the settings,
 // the runs, and the one extension lifecycle.
-export { boundReport, connectionsOver, probeFor, publicProviders, reportStore, SOURCES } from "../../skills/orbit-report/bind.mjs";
+export { boundReport, probeFor, publicProviders, reportStore, SOURCES } from "../../skills/orbit-report/bind.mjs";
+export { providers as providerDescriptors } from "../../skills/orbit-report/pack.mjs";
+export { connectionProblems } from "../../src/connections/model.mjs";
+export { AuthBlocked, excerpt } from "../../src/connections/auth-errors.mjs";
+
+// The connections manager of a WORLD, bound once and kept as long as that world is -- the one thing here that is more than
+// a re-export. What signs a connection in (src/connections/auth.mjs) shares ONE sign-in and ONE token request between every
+// caller that asks while one is running, and that sharing lives in the manager's auth: a manager made for each request
+// would let two requests each open a browser. A token it holds is in memory and goes nowhere else. A world may hand in the
+// manager it already bound (`world.connections`: how a test gives it a fake auth); otherwise it is bound over the world's
+// rooms, secret port and environment, which is the environment a sign-in tool is started with.
+const managers = new WeakMap();
+
+export function connectionsOf(world) {
+  if (!managers.has(world)) managers.set(world, world.connections ?? connectionsOver(world.rooms, world.secrets, world.env));
+  return managers.get(world);
+}
 export { checkReport } from "../../skills/orbit-report/extend.mjs";
 export { standardParts, standardSections } from "../../skills/orbit-report/pack.mjs";
 export { readSettings, STALE_REVISION, writeSettings } from "../../src/project-report/settings.mjs";

@@ -15,30 +15,32 @@
 //
 // Azure Repos does not report lines changed for a pull request, so its size is
 // UNKNOWN in the snapshot -- never zero.
+//
+// It asks through the one client every Azure DevOps reader shares
+// (./azure-devops-client.mjs): read-only by construction, and authorized by the
+// RequestAuth the connection resolved to -- a signed-in account's short-lived
+// token or a personal access token, which this file cannot tell apart.
 import { Blocked, Refused } from "../../../src/errors.mjs";
+import { AuthBlocked } from "../../../src/connections/auth-errors.mjs";
 import { dayStart, addDays } from "../../../src/project-report/window.mjs";
-import { HttpStop, createHttp, inTurn, limited } from "./http.mjs";
+import { baseOf, clientOf } from "./azure-devops-client.mjs";
+import { HttpStop, inTurn, limited, refused } from "./http.mjs";
 
 export const PROVIDER = "azure-devops";
 const API = "api-version=7.1";
 const BATCH = 200;
 
-export const azureDevOpsSource = (deps = {}) => ({ id: PROVIDER, collect: (req) => guarded(() => collect(req, deps)), probe: (req) => probe(req, deps) });
+export const azureDevOpsSource = (deps = {}) => ({ id: PROVIDER, collect: (req) => guarded(req.auth, () => collect(req, deps)), probe: (req) => probe(req, deps) });
 
 // ---- the client ---------------------------------------------------------------
 
-// https://dev.azure.com/<organization>, or a Server collection URL that already
-// ends in the collection's name.
-export function baseOf(connection) {
-  const host = connection.host.replace(/\/+$/, "");
-  return host.toLowerCase().endsWith(`/${String(connection.organization).toLowerCase()}`) ? host : `${host}/${connection.organization}`;
-}
-
+// `open` makes a client for ANOTHER origin of the same connection (the release service answers on its own host), with the
+// same authorization and the same rules.
 function apiOf(req, deps) {
   const base = baseOf(req.connection);
-  const headers = { authorization: `Basic ${Buffer.from(`:${req.credential}`).toString("base64")}`, "user-agent": "orbit-report" };
-  const http = createHttp({ fetch: req.fetch, origin: base, headers, sleep: deps.sleep ?? sleep, nowMs: req.nowMs, limits: deps.limits });
-  return { http, base, headers, sleep: deps.sleep ?? sleep, limits: deps.limits, org: req.connection.organization, project: req.scope.project, raw: [] };
+  const wait = deps.sleep ?? sleep;
+  const open = (origin) => clientOf({ fetch: req.fetch, origin, auth: req.auth, headers: { "user-agent": "orbit-report" }, sleep: wait, nowMs: req.nowMs, limits: deps.limits });
+  return { http: open(base), open, auth: req.auth, base, org: req.connection.organization, project: req.scope.project, raw: [] };
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -86,8 +88,18 @@ async function collect(req, deps) {
 // anything to, and that is a stop, not an empty report.
 async function projectOf(api) {
   const got = await collectionTry(() => call(api, `/_apis/projects/${encodeURIComponent(api.project)}?${API}`));
-  if (!got.ok) throw new Blocked(`project ${api.project} could not be read in ${api.org}: ${got.reason}${got.permission ? ` — it needs ${got.permission}` : ""}`);
+  if (!got.ok) throw await unreadable(api, got);
   return got.value.json;
+}
+
+// What ends the run when the project cannot be read. A source that said the account may not (HTTP 403) is the contract's
+// to word -- its code, and what to do next -- with the project and the permission named; a project it could not find stays
+// a plain stop.
+async function unreadable(api, got) {
+  const says = `project ${api.project} could not be read in ${api.org}: ${got.reason}${got.permission ? ` — it needs ${got.permission}` : ""}`;
+  if (got.kind !== "forbidden") return new Blocked(says);
+  const refusal = await refused(api.auth, new HttpStop("forbidden", got.reason));
+  return new AuthBlocked(refusal.code, says, refusal.next);
 }
 
 function assembled(api, req, [boards, repos, builds, deployments]) {
@@ -353,26 +365,28 @@ async function deploymentsOf(api, req) {
   return { rows: read.value.map((d) => deploymentRecord(api, d)), state: { status: "complete", items: read.value.length, reason: YAML_NOTE } };
 }
 
-// The same credential, the same rules, for the release service's own host --
+// The same authorization, the same rules, for the release service's own host --
 // derived from the connection, never taken from an answer.
-const releaseApi = (api, req) => ({ ...api, base: releaseBaseOf(req.connection), http: createHttp({ fetch: req.fetch, origin: releaseBaseOf(req.connection), headers: api.headers, sleep: api.sleep, nowMs: req.nowMs, limits: api.limits }) });
+const releaseApi = (api, req) => ({ ...api, base: releaseBaseOf(req.connection), http: api.open(releaseBaseOf(req.connection)) });
 
 const deploymentRecord = (api, d) => ({ id: `ado:${api.org}/${api.project}/deploy/${d.id}`, environment: d.releaseEnvironment?.name ?? "environment", status: DEPLOYED[d.deploymentStatus] ?? "unknown", createdAt: d.startedOn ?? d.queuedOn ?? null, finishedAt: d.completedOn ?? null, ref: d.release?.name ?? null });
 
 // ---- stops ------------------------------------------------------------------------------
 
-const RUN_STOPS = { auth: (e) => new Blocked(`Azure DevOps refused the connection's credential: ${e.message}`), rate: (e) => new Blocked(e.message), server: (e) => new Blocked(`Azure DevOps is not answering: ${e.message}`), network: (e) => new Blocked(e.message), redirect: (e) => new Blocked(e.message), invalid: (e) => new Blocked(`Azure DevOps' answer could not be used: ${e.message}`) };
+// What ends a run. A source that did not accept who is asking is the RequestAuth's to word (a code, and what to do next);
+// the rest is the source's own state, said in its own words.
+const RUN_STOPS = { auth: refused, rate: (a, e) => new Blocked(e.message), server: (a, e) => new Blocked(`Azure DevOps is not answering: ${e.message}`), network: (a, e) => new Blocked(e.message), redirect: (a, e) => new Blocked(e.message), invalid: (a, e) => new Blocked(`Azure DevOps' answer could not be used: ${e.message}`) };
 
-async function guarded(fn) {
+async function guarded(auth, fn) {
   try { return await fn(); }
-  catch (e) { throw e instanceof HttpStop ? (RUN_STOPS[e.kind] ?? RUN_STOPS.invalid)(e) : e; }
+  catch (e) { throw e instanceof HttpStop ? await (RUN_STOPS[e.kind] ?? RUN_STOPS.invalid)(auth, e) : e; }
 }
 
 // ---- probe ----------------------------------------------------------------------------------
 
 async function probe(req, deps) {
   const api = apiOf({ ...req, scope: req.scope ?? {} }, deps);
-  const me = await checked(() => call(api, `/_apis/connectionData?api-version=7.1-preview`));
+  const me = await checked(() => identity(api));
   if (!me.ok) return { ok: false, identity: null, checks: [{ id: "authentication", status: me.status, message: me.message }] };
   const checks = [{ id: "authentication", status: "ok", message: whoOf(me) ? `signed in as ${whoOf(me)}` : "the credential was accepted" }, ...(await scopeChecks(api, req.scope ?? {}))];
   return { ok: checks.every((c) => ["ok", "not-configured"].includes(c.status)), identity: whoOf(me), checks };
@@ -380,9 +394,23 @@ async function probe(req, deps) {
 
 const whoOf = (me) => me.value.json?.authenticatedUser?.providerDisplayName ?? null;
 
+// Who is asking, and is it accepted: the one check that is not about a scope, so its refusal is the RequestAuth's to word
+// (it ends the test as an authentication answer, in fixed words and with its next step).
+async function identity(api) {
+  try { return await call(api, `/_apis/connectionData?api-version=7.1-preview`); }
+  catch (e) { throw e instanceof HttpStop && ["auth", "forbidden"].includes(e.kind) ? await refused(api.auth, e) : e; }
+}
+
 async function checked(fn, permission = null) {
   try { return { ok: true, value: await fn() }; }
-  catch (e) { return probeFailure(e, statusOf(e, permission), permission); }
+  catch (e) { return failure(e, permission); }
+}
+
+// An authentication that cannot go on (no sign-in, a token that cannot be had, a refusal of who is asking) is not a check
+// about a scope: it ends the test as an answer of the connection, for the connection's test to say.
+function failure(e, permission) {
+  if (e instanceof AuthBlocked) throw e;
+  return probeFailure(e, statusOf(e, permission), permission);
 }
 
 // A permission is named only when the source refused the CREDENTIAL. A request

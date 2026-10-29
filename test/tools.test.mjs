@@ -35,7 +35,9 @@ const tool = (id) => CATALOG.find((t) => t.id === id);
 function detection({ files = [], versions = {}, platform = "linux", env = { PATH: "/usr/bin:/opt/bin" }, projectRoot = "/work/app", receipts = [], rooms = stateRooms("/store"), read = () => "" } = {}) {
   const ran = [];
   const run = (file, args) => (ran.push([file, ...args]), versions[file] instanceof Error ? { error: versions[file] } : { status: 0, stdout: versions[file] ?? "", stderr: "" });
-  return { ctx: { platform, arch: "x64", env, projectRoot, receipts, rooms, node: "/node", exists: (p) => files.includes(p), read, run, now: () => "2026-09-23T10:00:00.000Z" }, ran };
+  // A probe of a tool that keeps identity state is given a directory made for it and removed after (src/tools/launch.mjs).
+  const scratch = () => ({ dir: `/scratch/probe-${ran.length}`, dispose: () => {} });
+  return { ctx: { platform, arch: "x64", env, projectRoot, receipts, rooms, node: "/node", exists: (p) => files.includes(p), read, run, scratch, now: () => "2026-09-23T10:00:00.000Z" }, ran };
 }
 
 test("the precedence is explicit: project, then Orbit managed, then system", () => {
@@ -62,7 +64,7 @@ test("a project's own copy wins over the machine's, and a copy that will not sta
 test("a Orbit-managed install is found from its RECEIPT and beats the system copy", () => {
   const rooms = stateRooms("/store");
   const receipt = { tool: "sqlcmd", version: "1.10.0", platform: "linux", arch: "x64", home: "toolRuntimes", dir: "sqlcmd/1.10.0-linux-x64", bin: "sqlcmd" };
-  const managed = receiptPath(rooms, receipt);
+  const managed = receiptPath(rooms, receipt, receipt.platform);
   const { ctx } = detection({ files: [managed, "/usr/bin/sqlcmd"], versions: { [managed]: "sqlcmd\n\nVersion: v1.10.0", "/usr/bin/sqlcmd": "Version 15.0.4298.1" }, receipts: [receipt], rooms });
   const found = detectTool(tool("sqlcmd"), ctx);
   assert.deepEqual([found.source, found.version, found.path], ["orbit-managed", "1.10.0", managed]);
@@ -319,11 +321,11 @@ test("the general observation never runs a row that is observed on demand, and k
   assert.equal(kept["github-cli"], undefined);
 });
 
-test("the shipped catalog marks the two work-item CLIs and the project-runtime tools as on demand, and any other value means always", () => {
+test("the shipped catalog marks the work-item CLIs (and the private copies of the Azure CLI) and the project-runtime tools as on demand, and any other value means always", () => {
   // The runtime tools (1.7.6) are asked about only when a project's runtime needs one: thirteen probes at a
   // session's start would spend a hook's few seconds on a question nobody had asked.
   const runtime = ["node", "npm", "pnpm", "yarn", "dotnet", "python3", "go", "java", "ruby", "make", "docker", "docker-daemon", "devcontainer", "task", "just"];
-  assert.deepEqual(SHIPPED.filter(onDemand).map((t) => t.id), ["github-cli", "azure-cli", ...runtime]);
+  assert.deepEqual(SHIPPED.filter(onDemand).map((t) => t.id), ["github-cli", "azure-cli", "azure-cli-private", "azure-cli-private-win", ...runtime]);
   assert.equal(toolCatalog({ tools: [{ id: "x", observe: "sometimes", detection: { commands: ["x"] } }] })[0].observe, "always");
 });
 

@@ -16,15 +16,19 @@
 // stops the run (Blocked) and nothing is frozen.
 //
 // Normalized records: see skills/orbit-report/references/metrics.md.
+//
+// What authorizes a request is the RequestAuth the connection resolved to
+// (src/connections/auth.mjs): asked for at every request, never built here.
 import { Blocked, Refused } from "../../../src/errors.mjs";
+import { AuthBlocked } from "../../../src/connections/auth-errors.mjs";
 import { addDays, dayStart } from "../../../src/project-report/window.mjs";
-import { HttpStop, createHttp, inTurn, limited } from "./http.mjs";
+import { HttpStop, authorizedHttp, inTurn, limited, refused } from "./http.mjs";
 
 export const PROVIDER = "github";
 const PR_PAGE = 25;
 const NESTED = 100;
 
-export const githubSource = (deps = {}) => ({ id: PROVIDER, collect: (req) => guarded(() => collect(req, deps)), probe: (req) => probe(req, deps) });
+export const githubSource = (deps = {}) => ({ id: PROVIDER, collect: (req) => guarded(req.auth, () => collect(req, deps)), probe: (req) => probe(req, deps) });
 
 // ---- the client --------------------------------------------------------------
 
@@ -32,8 +36,8 @@ export const githubSource = (deps = {}) => ({ id: PROVIDER, collect: (req) => gu
 // <server>/api/graphql for an Enterprise Server whose REST root is /api/v3).
 function apiOf(req, deps) {
   const rest = req.connection.host.replace(/\/+$/, "");
-  const http = createHttp({ fetch: req.fetch, origin: rest, headers: { authorization: `Bearer ${req.credential}`, "x-github-api-version": "2022-11-28", "user-agent": "orbit-report" }, sleep: deps.sleep ?? sleep, nowMs: req.nowMs, limits: deps.limits });
-  return { http, rest, graph: /\/api\/v3$/.test(rest) ? rest.replace(/\/api\/v3$/, "/api/graphql") : `${rest}/graphql`, raw: [] };
+  const http = authorizedHttp({ fetch: req.fetch, origin: rest, auth: req.auth, headers: { "x-github-api-version": "2022-11-28", "user-agent": "orbit-report" }, sleep: deps.sleep ?? sleep, nowMs: req.nowMs, limits: deps.limits });
+  return { http, auth: req.auth, rest, graph: /\/api\/v3$/.test(rest) ? rest.replace(/\/api\/v3$/, "/api/graphql") : `${rest}/graphql`, raw: [] };
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -356,12 +360,13 @@ async function deployRecord(api, repo, d) {
 
 // ---- stops -----------------------------------------------------------------------------------
 
-// What ends a run, in the words a person can act on.
-const RUN_STOPS = { auth: (e) => new Blocked(`GitHub refused the connection's credential: ${e.message}`), rate: (e) => new Blocked(e.message), server: (e) => new Blocked(`GitHub is not answering: ${e.message}`), network: (e) => new Blocked(e.message), redirect: (e) => new Blocked(e.message), invalid: (e) => new Blocked(`GitHub's answer could not be used: ${e.message}`) };
+// What ends a run, in the words a person can act on. A source that did not accept who is asking is the RequestAuth's to
+// word (a code, and what to do next); the rest is the source's own state.
+const RUN_STOPS = { auth: refused, rate: (a, e) => new Blocked(e.message), server: (a, e) => new Blocked(`GitHub is not answering: ${e.message}`), network: (a, e) => new Blocked(e.message), redirect: (a, e) => new Blocked(e.message), invalid: (a, e) => new Blocked(`GitHub's answer could not be used: ${e.message}`) };
 
-async function guarded(fn) {
+async function guarded(auth, fn) {
   try { return await fn(); }
-  catch (e) { throw e instanceof HttpStop ? (RUN_STOPS[e.kind] ?? RUN_STOPS.invalid)(e) : e; }
+  catch (e) { throw e instanceof HttpStop ? await (RUN_STOPS[e.kind] ?? RUN_STOPS.invalid)(auth, e) : e; }
 }
 
 // ---- probe: can this connection read what this project's report needs? ------------------------
@@ -371,15 +376,29 @@ async function guarded(fn) {
 // is named and does not fail the rest.
 async function probe(req, deps) {
   const api = apiOf(req, deps);
-  const me = await checked(() => rest(api, "/user"));
+  const me = await checked(() => identity(api));
   if (!me.ok) return { ok: false, identity: null, checks: [{ id: "authentication", status: me.status, message: me.message }] };
   const checks = [{ id: "authentication", status: "ok", message: `signed in as ${me.value.json?.login ?? "an account"}` }, ...privilegeOf(me.value), ...(await scopeChecks(api, req))];
   return { ok: checks.every((c) => ["ok", "warning", "not-configured"].includes(c.status)), identity: me.value.json?.login ?? null, checks };
 }
 
+// Who is asking, and is it accepted: the one check that is not about a repository, so its refusal is the RequestAuth's to
+// word (it ends the test as an authentication answer, in fixed words and with its next step).
+async function identity(api) {
+  try { return await rest(api, "/user"); }
+  catch (e) { throw e instanceof HttpStop && ["auth", "forbidden"].includes(e.kind) ? await refused(api.auth, e) : e; }
+}
+
 async function checked(fn) {
   try { return { ok: true, value: await fn() }; }
-  catch (e) { return { ok: false, status: e instanceof HttpStop ? statusWord(e) : "error", message: e.message, permission: e.permission ?? null }; }
+  catch (e) { return failure(e); }
+}
+
+// An authentication that cannot go on (no sign-in, a token that cannot be had) is not a check about a repository: it ends
+// the test as an answer of the connection, for the connection's test to say.
+function failure(e) {
+  if (e instanceof AuthBlocked) throw e;
+  return { ok: false, status: e instanceof HttpStop ? statusWord(e) : "error", message: e.message, permission: e.permission ?? null };
 }
 
 const statusWord = (e) => ({ auth: "unauthorized", forbidden: "forbidden", "not-found": "not-found" })[e.kind] ?? "error";

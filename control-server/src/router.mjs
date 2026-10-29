@@ -14,7 +14,9 @@
 //
 // A connection test and an install are `mutates` although a test keeps little:
 // either may start a process or reach the network, and neither is something a
-// page nobody authorised should be able to make happen. MCP rows act on Orbit's
+// page nobody authorised should be able to make happen. So are a connection's
+// sign-in check, sign-in and sign-out: each asks a program, and a sign-in opens a
+// browser. MCP rows act on Orbit's
 // OWN records -- managed, external, policies -- and never write a host's
 // configuration; the host's servers are read, and tested on request.
 import { agenticHosts } from "./agentic-hosts/read.mjs";
@@ -36,7 +38,7 @@ import { installOne, refreshTool } from "./tools/operate.mjs";
 import { publicTool, toolOf, toolsNow } from "./tools/view.mjs";
 import { knowledgeView } from "./knowledge/read.mjs";
 import { traceTurn, traceTurns, usageAnalytics } from "./trace/read.mjs";
-import { clearCredential, createConnection, listConnections, readConnection, removeConnection, setCredential, testConnection, updateConnection } from "./connections/operate.mjs";
+import { checkAuth, clearCredential, createConnection, listConnections, readConnection, removeConnection, setCredential, signIn, signOut, testConnection, updateConnection } from "./connections/operate.mjs";
 import { autonomousQaArtifact, autonomousQaInvestigation, autonomousQaOverview, autonomousQaReport, autonomousQaTests, autonomousQaVersion } from "./autonomous-qa/read.mjs";
 import { putAutonomousQaSettings } from "./autonomous-qa/write.mjs";
 import { securityCatalog, securityCatalogs } from "./security-catalogs/read.mjs";
@@ -201,7 +203,8 @@ export const ROUTES = [
   { method: "POST", path: toolAction("update"), id: "tool", mutates: true, run: ({ ctx, id }) => installOne(ctx, id, true) },
 
   // Connections: machine-wide. A credential arrives once, in PUT …/credential,
-  // and is never in an answer.
+  // and is never in an answer. A sign-in's three moves -- look, sign in, sign out -- are POSTs:
+  // a look asks a program, a sign-in opens a browser, and no GET ever does either.
   { method: "GET", path: /^\/api\/v1\/connections$/, run: ({ ctx }) => listConnections(ctx) },
   { method: "POST", path: /^\/api\/v1\/connections$/, mutates: true, body: true, run: ({ ctx, body }) => createConnection(ctx, body) },
   { method: "GET", path: CONNECTION, id: "connection", run: ({ ctx, id }) => readConnection(ctx, id) },
@@ -210,6 +213,9 @@ export const ROUTES = [
   { method: "PUT", path: connectionAction("credential"), id: "connection", mutates: true, body: true, run: ({ ctx, id, body }) => setCredential(ctx, id, body) },
   { method: "DELETE", path: connectionAction("credential"), id: "connection", mutates: true, run: ({ ctx, id }) => clearCredential(ctx, id) },
   { method: "POST", path: connectionAction("test"), id: "connection", mutates: true, run: ({ ctx, id }) => testConnection(ctx, id) },
+  { method: "POST", path: connectionAction("auth/check"), id: "connection", mutates: true, run: ({ ctx, id }) => checkAuth(ctx, id) },
+  { method: "POST", path: connectionAction("auth/sign-in"), id: "connection", mutates: true, body: true, run: ({ ctx, id, body }) => signIn(ctx, id, body) },
+  { method: "POST", path: connectionAction("auth/sign-out"), id: "connection", mutates: true, run: ({ ctx, id }) => signOut(ctx, id) },
 
   // PO Reports: the project Control was started from. No row runs a report.
   // Automation: how autonomous a person lets Orbit be -- this machine's document, one project's narrowing, how

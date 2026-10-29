@@ -190,7 +190,11 @@ node <engine>/cli/qc-tool.mjs new <tool-id> $SCRATCH/qc-tools/<tool-id> --tool=<
 `--provides` names the semantic capabilities it answers, so the resolver can find it for a need
 without knowing its name; `--connection` names the kind of connection it needs, and the ENGINE puts
 that one credential into the command's environment for the moment of the call — the adapter never
-reads a secret, never receives one as input and never writes one anywhere. It is asked with an
+reads a secret, never receives one as input and never writes one anywhere. A connection that signs in
+with Microsoft (Azure DevOps by default) has no credential to hand over: its command gets the few
+variables a child needs to start and nothing else, so an adapter for such a provider cannot count on a
+token in its environment and says so when it is blocked; reading through the engine's own readers is what
+signs in. It is asked with an
 `{ref, organization, project, id}` and must answer a work item in the shape in
 `src/sources/contract-v1.mjs` (`WORKITEM_FIELDS`): an answer of another shape is Blocked, never
 turned into a requirement. It must not declare `mutates: true`: a reader of requirements changes

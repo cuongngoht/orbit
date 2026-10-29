@@ -20,6 +20,12 @@
           { "name": "deployments", "label": "Deployments", "type": "boolean", "default": true, "doc": "Read deployment records" }
         ]
       },
+      "authentication": {
+        "default": "credential",
+        "strategies": [
+          { "id": "credential", "kind": "credential", "label": "Personal access token or environment variable", "request": "bearer", "preferred": true, "doc": "A fine-grained personal access token, stored once in this machine's secret store, or the name of an environment variable that holds it." }
+        ]
+      },
       "credential": {
         "kind": "fine-grained personal access token",
         "advice": "Create a fine-grained personal access token for the owner above, limited to the repositories this report reads, with READ-ONLY repository permissions: Metadata, Pull requests, Issues — and Actions and Deployments if those parts are on. Add the organization permission Projects (read) only if Projects are read. Never grant a write permission for a report.",
@@ -57,9 +63,35 @@
           { "name": "pipelines", "label": "Pipelines", "type": "boolean", "default": true, "doc": "Read builds and deployment records" }
         ]
       },
+      "authentication": {
+        "default": "azure-cli",
+        "strategies": [
+          {
+            "id": "azure-cli",
+            "kind": "broker",
+            "label": "Microsoft sign-in",
+            "preferred": true,
+            "request": "bearer",
+            "interactive": true,
+            "sessionOwner": "azure-cli",
+            "tools": ["azure-cli-private", "azure-cli-private-win", "azure-cli"],
+            "resource": "499b84ac-1321-427f-aa17-267ca6975798",
+            "doc": "Sign in once with a Microsoft account. Orbit then asks for a short-lived Azure DevOps access token each time it needs one -- the token is never stored -- and signs in again only when the session itself ends. Orbit signs in through an Azure CLI profile of its own: it never uses, reads or changes the account you may be signed in with in your own terminal, so the two can even be different accounts.",
+            "docs": [
+              "https://learn.microsoft.com/azure/devops/cli/entra-tokens",
+              "https://learn.microsoft.com/azure/devops/integrate/get-started/authentication/entra"
+            ],
+            "options": [
+              { "name": "tenant", "label": "Directory (tenant)", "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]{0,99}$", "doc": "The Microsoft Entra directory that owns this organization, as its id or domain. Only needed when your account belongs to more than one directory." },
+              { "name": "deviceCode", "label": "Use a device code", "type": "boolean", "doc": "Sign in with a code you enter on another device, for a machine with no browser or a policy that blocks the browser sign-in." }
+            ]
+          },
+          { "id": "credential", "kind": "credential", "label": "Personal access token or environment variable", "request": "basic", "doc": "A personal access token, stored once in this machine's secret store, or the name of an environment variable that holds it. Use it when Microsoft sign-in is not possible here." }
+        ]
+      },
       "credential": {
         "kind": "organization-scoped personal access token",
-        "advice": "Create a personal access token scoped to this ONE organization (global tokens stop working on 1 December 2026) with READ scopes only: Work Items (Read), Code (Read), Build (Read), Project and Team (Read) — and Release (Read) if classic releases are read. Never grant Read & write for a report.",
+        "advice": "Only needed when this connection uses a token instead of Microsoft sign-in. Create a personal access token scoped to this ONE organization (global tokens stop working on 1 December 2026) with READ scopes only: Work Items (Read), Code (Read), Build (Read), Project and Team (Read) — and Release (Read) if classic releases are read. Never grant Read & write for a report.",
         "docs": [
           "https://learn.microsoft.com/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate",
           "https://learn.microsoft.com/azure/devops/integrate/get-started/authentication/oauth#scopes"

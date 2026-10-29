@@ -15,6 +15,7 @@
 // What this adds on top of every installer: refuse one that cannot serve this
 // platform, and write the RECEIPT -- after the runtime is in place, never
 // before, so a receipt always describes something that was actually verified.
+import { join } from "node:path";
 import { Refused } from "../errors.mjs";
 
 // Under the tool's own install lock (src/tools/state.mjs `installing`), so two
@@ -25,6 +26,7 @@ export async function installTool(entry, ctx) {
 }
 
 async function receipted(entry, installer, ctx) {
+  if (ctx.rooms?.toolRuntimes) ctx.io?.sweepStaging?.(join(ctx.rooms.toolRuntimes, entry.id));
   const placed = await installer.install(entry, ctx);
   const receipt = { tool: entry.id, version: placed.version, platform: ctx.platform, arch: ctx.arch, home: placed.home, dir: placed.dir, bin: placed.bin, installedAt: ctx.now(), source: placed.source ?? null, checksum: placed.checksum ?? null };
   ctx.state.saveReceipt(receipt);

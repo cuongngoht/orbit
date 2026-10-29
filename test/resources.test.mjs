@@ -125,7 +125,7 @@ test("every archive install in the tool catalog is pinned: https, a SHA-256 and 
   const tools = toolCatalog(data);
   // 1.7.6: the rows after `python` are the machine tools a project's runtime is checked against
   // (src/runtime/); every one is manual -- Orbit only ever asks what version a machine has.
-  assert.deepEqual(tools.map((t) => t.id).sort(), ["azure-cli", "devcontainer", "docker", "docker-daemon", "dotnet", "git", "github-cli", "go", "java", "just", "make", "node", "node-control", "npm", "playwright", "pnpm", "python", "python3", "ruby", "sqlcmd", "task", "yarn"]);
+  assert.deepEqual(tools.map((t) => t.id).sort(), ["azure-cli", "azure-cli-private", "azure-cli-private-win", "devcontainer", "docker", "docker-daemon", "dotnet", "git", "github-cli", "go", "java", "just", "make", "node", "node-control", "npm", "playwright", "pnpm", "python", "python3", "ruby", "sqlcmd", "task", "yarn"]);
   for (const row of data.tools.filter((t) => t.install?.strategy === "archive")) {
     const parsed = tools.find((t) => t.id === row.id);
     assert.deepEqual(Object.keys(parsed.install.assets).sort(), Object.keys(row.install.assets).sort(), `${row.id}: every pin survives validation`);
@@ -139,7 +139,7 @@ test("every archive install in the tool catalog is pinned: https, a SHA-256 and 
 // The rule every other part of src/ keeps: no product, vendor or host name is
 // something this code KNOWS. They arrive as catalog data.
 test("nothing under src/resources, src/routing, src/mcp, src/context, the project report, connections, the secret port, the policy leaf or the tool manager names a product", () => {
-  const files = ["resources", "routing", "mcp", "context", "project-report", "connections"].flatMap((d) => walk(join(REPO, "src", d))).concat(["catalog", "detect", "effective", "install", "archive", "observe", "state", "real"].map((f) => join(REPO, "src", "tools", `${f}.mjs`)), [join(REPO, "src", "policy.mjs"), join(REPO, "src", "secrets.mjs"), join(REPO, "src", "process", "env.mjs"), join(REPO, "src", "store", "archive.mjs"), join(REPO, "src", "store", "control.mjs"), join(REPO, "src", "help", "vocab.mjs")], ["reporting-v1", "reporting-parts", "fingerprint"].map((f) => join(REPO, "src", "extensions", `${f}.mjs`)));
+  const files = ["resources", "routing", "mcp", "context", "project-report", "connections"].flatMap((d) => walk(join(REPO, "src", d))).concat(["catalog", "detect", "effective", "install", "archive", "observe", "state", "real", "launch", "ensure", "pylock", "lock"].map((f) => join(REPO, "src", "tools", `${f}.mjs`)), [join(REPO, "src", "policy.mjs"), join(REPO, "src", "secrets.mjs"), join(REPO, "src", "process", "env.mjs"), join(REPO, "src", "store", "archive.mjs"), join(REPO, "src", "store", "control.mjs"), join(REPO, "src", "help", "vocab.mjs")], ["reporting-v1", "reporting-parts", "fingerprint"].map((f) => join(REPO, "src", "extensions", `${f}.mjs`)));
   const PRODUCTS = /microsoft|azure|github|sqlcmd|sql server|playwright|nodejs\.org|entra|sharepoint|dotnet|\.net\b/i;
   for (const f of files) assert.doesNotMatch(readFileSync(f, "utf8").replace(/^\s*\/\/.*$/gm, ""), PRODUCTS, f);
 });

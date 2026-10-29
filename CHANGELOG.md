@@ -1,5 +1,77 @@
 # Changelog
 
+## 0.2.1
+
+Microsoft sign-in for Azure DevOps (ADR 0043): a person signs in once with their Microsoft account, and a connection reads
+Azure DevOps with a short-lived token, through an Azure CLI profile that Orbit owns. Orbit may use an `az` program the
+machine already has, but it never uses the developer's Azure CLI identity state: it never reads, copies, asks about or
+changes their login, account, subscription, configuration or extensions, so a person can be signed in as account A in a
+terminal and as account B in Orbit. Contract changes: a connection's `auth` field, new catalog row fields and a new
+install strategy, two commands and a flag, a trace event, three Control routes and a new store room, all additive; one
+changed default, because a NEW Azure DevOps connection now signs in with Microsoft unless `--auth=credential` says
+otherwise or the command names the variable a credential is read from (`--credential-env`); and one removal, the azure-devops provider's `az devops configure --list` hint (below).
+
+- **A connection says how it gets in.** A connection record gains `auth: { strategy, ...options }`, and a provider
+  descriptor gains `authentication` (`default` and `strategies`, each `kind: "credential"` or `"broker"`). Azure DevOps
+  offers `azure-cli` (Microsoft sign-in, options `tenant` and `deviceCode`, the default for a new connection) and
+  `credential`; GitHub offers `credential` only. A record with no `auth` is a credential connection and is never rewritten.
+  A `broker` connection accepts no credential at all. `src/connections/auth.mjs` is the one contract every reader, collector
+  and probe asks for a request's authorization.
+- **Commands.** `node <engine>/cli/project-report.mjs sign-in <connection-id> [--tenant=<id>] [--device-code]` and
+  `sign-out <connection-id>`; `connect` gains `--auth=azure-cli|credential` (the default for azure-devops is `azure-cli`; naming `--credential-env` on a
+  new connection makes it a credential one, and `--auth=azure-cli` changes it back).
+  A connection test never starts a sign-in.
+- **Orbit Control routes.** `POST /api/v1/connections/:id/auth/check`, `.../auth/sign-in` and `.../auth/sign-out`: the
+  connection's state, a sign-in and a sign-out. Control's Connections page shows the state and offers all three.
+- **Catalog row fields** (`catalog/tools.json`). A row may declare `profile` (`env`, `name`), `launch` (`env`,
+  `platformEnv`, `inherit`, `args`), `detection.native`, `detection.wrapper`, `detection.sources`, `detection.timeoutMs`,
+  `install.autonomous`, `install.python` and `install.package`; an asset may carry its own `launch`, and a locked asset names
+  its `lock` and `bin`. A new install strategy, `python-lock`, is pinned by a lock under the new `catalog/locks/`. New rows:
+  `azure-cli-private` (macOS and Linux) and `azure-cli-private-win` (Windows x64). The `azure-cli` row now says it is used as
+  a program only and declares the profile and the pins; the `python` row is `autonomous`.
+- **New trace event** `connection.auth`: which phase ran (a token request, a sign-in, a sign-out) and how it ended, from an
+  allow-list; never a token, an account or what the CLI printed.
+- **New codes.** A sign-in that cannot proceed is BLOCKED (3) with one of `AUTH_TOOL_MISSING`, `AUTH_TOOL_UNSUPPORTED`,
+  `AUTH_TOOL_UNVERIFIED`, `AUTH_LOGIN_REQUIRED`, `AUTH_LOGIN_CANCELLED`, `AUTH_LOGIN_FAILED`, `AUTH_TOKEN_FAILED`,
+  `AUTH_TENANT_AMBIGUOUS`, `AUTH_REJECTED`, `AUTH_FORBIDDEN`, `AUTH_CREDENTIAL_MISSING` or `AUTH_PROFILE_LOCATION` and the one
+  thing a person does next; a tool that cannot be had is `TOOL_MISSING`, `TOOL_UNSUPPORTED`, `TOOL_UNVERIFIED` or
+  `TOOL_INSTALL_FAILED`.
+- **New store room.** `authSessions`, `<storeBase>/control/auth/`: machine-wide, mode 0700, created by the first sign-in
+  and never by a read. The Azure CLI's profile is `<storeBase>/control/auth/azure-cli`.
+- **Orbit's own profile.** Every Azure CLI process Orbit starts is given `AZURE_CONFIG_DIR` set to that directory, by one owner
+  (`src/tools/launch.mjs`) from the catalog row: the child gets the few names any process needs, the names the row lets
+  through (proxy, CA bundle, display) and the row's pins, and no other `AZURE_*` of the developer's. The pins switch off the
+  Windows account broker (it keeps a session outside the profile, shared with the developer's own `az`), the macOS broker,
+  an encrypted token cache outside Windows (its keystore entry has fixed names every profile shares), the subscription
+  picker and telemetry. A version probe or an install's verification runs in a scratch profile that is removed. On Windows
+  the sign-in is therefore the browser flow, not the account broker: a tenant that requires a compliant device through the
+  broker may refuse it, and a personal access token is the way in there.
+- **Which `az` runs.** A private copy Orbit installed, else the machine's own `az` as a program only, else Orbit installs a
+  private copy itself, else BLOCKED naming every candidate. Each candidate passes one gate: it starts, names a version of 2.61.0
+  or newer, and is a program of this operating system (under WSL a Windows `az` reached through interop is refused). To make
+  the private copy win over a machine `az`, a person installs it from Orbit Control's Tools page.
+- **What Orbit installs by itself.** On Windows x64, Microsoft's official ZIP (`azure-cli-2.91.0-x64.zip`, SHA-256 checked),
+  started as `python.exe -IBm azure.cli`. On macOS and Linux (x64 and arm64), a Python of Orbit's own and the official
+  `azure-cli` 2.91.0 wheels from PyPI: every distribution pinned and every SHA-256 locked (150 distributions per lock),
+  installed by pip with `--isolated --require-hashes --only-binary=:all: --no-deps` into a virtual environment, staged beside
+  the final directory, verified, promoted and receipted last (about 200 MB downloaded, about 700 MB on disk). Windows ARM64
+  has no private copy: Microsoft publishes no ARM64 build. Only a pinned archive or a pinned lock is ever fetched on Orbit's own
+  initiative (AUTO: `tool.acquire`, `auth.token` and `auth.login` cross no Protected Boundary), never through a package manager,
+  `sudo`, PATH, Program Files, Homebrew or the machine's Python.
+- **Tokens.** Orbit asks `az account get-access-token` each time, keeps the answer in memory until shortly before it expires
+  and never reads a token-cache file. The sign-in is one sequence and never a loop: a token, then `az login` ONCE when the
+  CLI says a person must act, then ONE token. `sign-out` is `az logout` against Orbit's profile only.
+- **Removed.** The azure-devops provider no longer looks up a default organization with `az devops configure --list`, which
+  read the developer's `~/.azure/config` and needed the Azure DevOps CLI extension. A bare `#123` resolves only through the
+  project's binding or the connection registry.
+- **Release tooling.** `skills/orbit-release/pin-python-lock.mjs` writes a lock for each platform (pip for the host, uv for the
+  others, preferring the host's picks and recording every re-pick in the lock's header); `skills/orbit-release/SKILL.md` says
+  how to re-pin and how to re-verify the Windows ZIP pin.
+- **Platform evidence.** What has really been run, and what is only resolved or faked, is the table at the end of ADR 0043.
+  At this release the macOS arm64 private copy is `real` (a hash-locked install of its 150 wheels was built and run) and
+  its end-to-end Orbit flow is `pending`; the other Unix locks are `resolved-only`; the Windows rows and WSL are `fakes-only`
+  until the `azure-cli-runtime` workflow is dispatched.
+
 ## 0.2.0
 
 Autonomous by default, with Protected Boundaries (ADR 0042): everything Orbit does runs on its own, and a person is

@@ -114,9 +114,10 @@ function fromBinding(s) {
 // nobody added are none of them ready, so they are none of them a system.
 const readySystems = (s) => [...new Set(s.reading.candidates.filter((c) => c.selectable).map((c) => systemOf(s.resources.get(c.key), s.w.descriptors)).filter(Boolean))];
 
-// One organization when every usable connection of the system is for the same one.
+// One organization when every usable connection of the system is for the same one. A connection is usable when its view
+// says it is configured -- a credential set, or a way in that needs nothing until it is used: pure, it starts no process.
 function soleOrganization(s, d) {
-  const mine = (s.w.connections?.list() ?? []).filter((c) => c.provider === d?.connection && c.credential?.set);
+  const mine = (s.w.connections?.list() ?? []).filter((c) => c.provider === d?.connection && c.configured);
   const names = [...new Set(mine.map((c) => String(c.organization).toLowerCase()))];
   return names.length === 1 ? mine[0].organization : null;
 }

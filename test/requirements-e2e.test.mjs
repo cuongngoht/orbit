@@ -59,7 +59,7 @@ const mcp = managedMcp({ after }, { server });
 
 const machine = { revision: "7", readerCalls: [], input: "", caps: [], connected: true };
 
-const connections = { list: () => (machine.connected ? [{ id: "ado-acme", provider: "azure-devops", organization: "acme", credential: { set: true, from: "env", name: "T" } }] : []), record: () => ({ credential: "T" }) };
+const connections = { list: () => (machine.connected ? [{ id: "ado-acme", provider: "azure-devops", organization: "acme", credential: { set: true, from: "env", name: "T" }, configured: true }] : []), record: () => ({ credential: "T" }) };
 
 // A scripted reader of the fixture at the revision the machine is on, counting every read.
 const reader = {

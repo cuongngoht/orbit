@@ -7,7 +7,7 @@ import { ErrorState } from "../../../shared/components/ErrorState";
 import { LoadingState } from "../../../shared/components/LoadingState";
 import { useFollow } from "../../../shared/navigation/useFollow";
 import { connectionsApi, useConnectionChange } from "../../connections/connections.api";
-import { CONNECTIONS_PATH, connectionPath, credentialWords, newerTest } from "../../connections/connectionWords";
+import { CONNECTIONS_PATH, authLine, connectionPath, newerTest } from "../../connections/connectionWords";
 import { useReportSettings } from "../reports.api";
 import type { SettingsView } from "../reports.types";
 import { isAvailable, reportTabPath } from "../reportWords";
@@ -53,7 +53,7 @@ function Chooser({ view }: { view: SettingsView }) {
         )}
         {current && (
           <Caption1>
-            {current.organization} · {current.host} · {credentialWords(current.credential)} · <Link href={connectionPath(current.id)} onClick={follow(connectionPath(current.id))}>Open</Link>
+            {current.organization} · {current.host} · {authLine(current, view.providers.find((p) => p.id === current.provider))} · <Link href={connectionPath(current.id)} onClick={follow(connectionPath(current.id))}>Open</Link>
           </Caption1>
         )}
       </Card>

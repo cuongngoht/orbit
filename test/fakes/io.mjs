@@ -69,6 +69,8 @@ const mutating = (files, dirs, state, write) => ({
   append: (p, text) => write(p, `${files.get(p) ?? ""}${text}`),
   mkdir: (p) => made(dirs, state, p),
   ensureDir: (p) => dirs.add(p),
+  // What src/store/io.mjs ensurePrivateDir does: the directory exists, and a test can see it was made private.
+  ensurePrivateDir: (p) => (state.privateDirs ??= new Set()).add(p) && dirs.add(p) && p,
   copy: (a, b) => write(b, files.get(a) ?? ""),
   rename: (a, b) => moved(files, dirs, state, a, b),
   remove: (p) => dropped(files, dirs, p),

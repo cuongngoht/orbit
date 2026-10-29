@@ -4,7 +4,7 @@
 // replacement of a standard part waits for a person's confirmation.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { fakeReports } from "../../testing/fakeReports";
+import { fakeReports, signingIn } from "../../testing/fakeReports";
 import { fakeServer } from "../../testing/fakeServer";
 import { renderApp } from "../../testing/renderApp";
 
@@ -26,6 +26,22 @@ describe("PO Reports", () => {
     expect(screen.getByText(/No Python: no Python 3.11 or newer was found/)).toBeTruthy();
     expect(screen.getByRole("link", { name: "Install Python" }).getAttribute("href")).toBe("/tools/python");
     expect(screen.queryByRole("button", { name: /run/i })).toBeNull();
+  });
+
+  it("a connection that signs in is shown on the overview by the way it gets in -- never as a credential that is not set", async () => {
+    reports.connections.set("azure-acme", signingIn("azure-acme"));
+    reports.state.settings = { ...reports.state.settings, provider: "azure-devops", connection: "azure-acme" };
+    renderApp("/reports");
+    expect(await screen.findByText("azure-acme · Microsoft sign-in")).toBeTruthy();
+    expect(screen.queryByText(/No credential set/)).toBeNull();
+  });
+
+  it("and so is the connection a report reads through, on the connection tab", async () => {
+    reports.connections.set("azure-acme", signingIn("azure-acme"));
+    reports.state.settings = { ...reports.state.settings, provider: "azure-devops", connection: "azure-acme" };
+    renderApp("/reports/connection");
+    expect(await screen.findByText(/acme · https:\/\/dev\.azure\.com · Microsoft sign-in/)).toBeTruthy();
+    expect(screen.queryByText(/No credential set/)).toBeNull();
   });
 
   it("started outside a checkout, every tab says where to start Control", async () => {

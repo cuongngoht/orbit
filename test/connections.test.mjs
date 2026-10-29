@@ -83,7 +83,7 @@ test("a test is kept as the last test -- masked, and forgotten when where the co
   const { m, file } = manager(t, { env: { REPORT_GITHUB_PAT: PAT } });
   m.create({ id: "github-acme", provider: "github", organization: "acme" });
   await m.setCredential("github-acme", { env: "REPORT_GITHUB_PAT" });
-  const echoing = async (rec, credential) => ({ ok: false, identity: "lan", checks: [{ id: "authentication", status: "ok" }, { id: "acme/web · actions", status: "forbidden", permission: "actions: read", message: `denied for ${credential}` }] });
+  const echoing = async (rec, auth) => ({ ok: false, identity: "lan", checks: [{ id: "authentication", status: "ok" }, { id: "acme/web · actions", status: "forbidden", permission: "actions: read", message: `denied for ${(await auth.headers()).Authorization.replace(/^Bearer /, "")}` }] });
   const kept = await m.test("github-acme", echoing);
   assert.equal(kept.ok, false);
   assert.ok(!JSON.stringify(kept).includes(PAT) && !file().includes(PAT), "a probe that echoes the credential is masked before it is kept");

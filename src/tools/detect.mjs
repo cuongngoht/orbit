@@ -13,15 +13,21 @@
 // A project's own copy wins because it is the one that project pinned; Orbit's
 // private copy beats the machine's because somebody installed it on purpose for
 // this. None of it changes what the ENGINE runs: the runner still resolves its
-// commands exactly as before, and this is observation only.
+// commands exactly as before, and this is observation only. A row may narrow
+// the places that are looked at (`detection.sources`): a tool Orbit keeps private
+// never looks at PATH.
 //
 // A binary is ASKED its version (argv, never a shell); a file with the right
-// name proves nothing. Only the version survives -- never the output.
+// name proves nothing. Only the version survives -- never the output. A tool
+// that keeps identity state is asked through src/tools/launch.mjs, under an
+// environment of its own and a profile directory made for the question.
 //
 // A row whose `detection.strategy` is not `commands` is answered by a detector
 // the composition root registered under that name; this file names none.
 import { posix, win32 } from "node:path";
 import { shimTarget } from "../process/shim.mjs";
+import { assetFor } from "./catalog.mjs";
+import { ask, launcherOf, onWindowsDrive } from "./launch.mjs";
 import { receiptPath } from "./state.mjs";
 
 export const SOURCES = [
@@ -31,15 +37,20 @@ export const SOURCES = [
 ];
 
 export function detectTool(entry, ctx) {
-  if (entry.detection.strategy === "commands") return finding(entry, SOURCES.map((s) => sourced(s.source, s.paths(entry, ctx), entry, ctx)), ctx);
+  if (entry.detection.strategy === "commands") return finding(entry, askedSources(entry, ctx), ctx);
   const detector = ctx.detectors?.[entry.detection.strategy];
   if (!detector) return finding(entry, [], ctx, `no detector named ${entry.detection.strategy} is registered`);
   return finding(entry, detector(entry, ctx), ctx);
 }
 
+const lookedAt = (entry, source) => !entry.detection.sources || entry.detection.sources.includes(source);
+
+const askedSources = (entry, ctx) => SOURCES.filter((s) => lookedAt(entry, s.source)).map((s) => sourced(s.source, s.paths(entry, ctx), entry, ctx));
+
+// `launch` is where the winner is and what goes between it and its own arguments: what a caller starts it with.
 export function finding(entry, sources, ctx, reason = null) {
   const winner = sources.find((s) => s.found && s.ok);
-  return { id: entry.id, status: statusOf(winner, sources), source: winner?.source ?? null, version: winner?.version ?? null, path: winner?.path ?? null, sources, reason: winner ? null : reason ?? sources.find((s) => s.found)?.reason ?? null, checkedAt: ctx.now() };
+  return { id: entry.id, status: statusOf(winner, sources), source: winner?.source ?? null, version: winner?.version ?? null, path: winner?.path ?? null, launch: winner?.launch ?? null, sources, reason: winner ? null : reason ?? sources.find((s) => s.found)?.reason ?? null, checkedAt: ctx.now() };
 }
 
 // `ready` or `missing` -- and a third answer for a tool that was FOUND and then
@@ -59,22 +70,37 @@ export const MAX_CANDIDATES = 8;
 export function sourced(source, paths, entry, ctx) {
   const existing = paths.filter((p) => ctx.exists(p)).slice(0, MAX_CANDIDATES);
   if (!existing.length) return { source, found: false, ok: false, path: null, version: null };
-  return { source, found: true, ...firstAnswering(existing, entry, ctx) };
+  return { source, found: true, ...firstAnswering(existing, entry, ctx, source) };
 }
 
 // Stops asking once one answers; when none does, the FIRST one's reason is the
 // one worth reading -- it is the candidate a person would have expected to win.
-function firstAnswering(paths, entry, ctx) {
-  const tried = paths.reduce((found, path) => (found.at(-1)?.ok ? found : [...found, { path, ...asked(path, entry, ctx) }]), []);
+function firstAnswering(paths, entry, ctx, source) {
+  const tried = paths.reduce((found, path) => (found.at(-1)?.ok ? found : [...found, { path, ...asked(path, entry, ctx, source) }]), []);
   return tried.at(-1).ok ? tried.at(-1) : tried[0];
 }
 
-function asked(path, entry, ctx) {
-  const call = callOf(path, ctx);
+function asked(path, entry, ctx, source) {
+  const call = callOf(path, entry, ctx);
   if (!call) return { ok: false, version: null, reason: "a shim whose target could not be resolved" };
-  const r = ctx.run(call.file, [...call.prefix, ...entry.detection.versionArgs]);
-  if (r?.error) return unstarted(r.error);
-  return judged(r, entry.detection);
+  if (call.refused) return { ok: false, version: null, reason: call.refused };
+  return probed(call, entry, ctx, source);
+}
+
+// The build a private install runs, for the pins THAT build declares (what it says about how it was installed).
+const assetOf = (entry, ctx, source) => (source === "orbit-managed" ? assetFor(entry, ctx.platform, ctx.arch) : null);
+
+function probed(call, entry, ctx, source) {
+  const asset = assetOf(entry, ctx, source);
+  const launch = { file: call.file, args: [...(asset?.launch?.args ?? []), ...call.prefix] };
+  const launcher = launcherOf(entry, { launch }, ctx, "probe", asset);
+  try { return { ...runOf(ctx, entry, launcher), launch }; }
+  finally { launcher.release(); }
+}
+
+function runOf(ctx, entry, launcher) {
+  const r = ask(ctx, entry, launcher);
+  return r?.error ? unstarted(r.error) : judged(r, entry.detection);
 }
 
 const unstarted = (error) => (error.code === "ETIMEDOUT" ? { ok: false, version: null, timedOut: true, reason: "found, but it did not answer in time" } : { ok: false, version: null, reason: error.code === "EACCES" ? "found, but not executable" : "found, but it could not be started" });
@@ -95,12 +121,30 @@ function floorOf(version, minimum) {
   return newer(minimum, version) > 0 ? { ok: false, version, reason: `found ${version}, older than the ${minimum} this needs` } : { ok: true, version, reason: null };
 }
 
-// Node cannot spawn a Windows .cmd shim directly: run the script it forwards
-// to with this Node instead -- src/process/shim.mjs, which every launch on Windows uses.
-function callOf(path, ctx) {
+const FOREIGN = "a Windows program seen through WSL interop, not a program of this system";
+
+// What starts a candidate: itself; the script an npm `.cmd` shim forwards to, run with this Node; or, for a `.cmd`
+// wrapper the row declares, the interpreter beside it. Node cannot spawn a Windows .cmd directly (src/process/shim.mjs
+// is what every launch on Windows uses), and a shell is never the answer. null: a wrapper whose target is not there.
+function callOf(path, entry, ctx) {
+  if (foreign(path, entry, ctx)) return { refused: FOREIGN };
   if (!/\.(cmd|bat)$/i.test(path)) return { file: path, prefix: [] };
+  return npmShim(path, ctx) ?? wrapped(path, entry, ctx);
+}
+
+// Only where WSL was seen (`windowsMounts` is empty everywhere else): a candidate under a Windows drive, or a file that
+// is a Windows executable, is Windows' own program, and it would read Windows' own state.
+const foreign = (path, entry, ctx) => entry.detection.native && (ctx.windowsMounts ?? []).length > 0 && (onWindowsDrive(path, ctx) || ctx.head?.(path, 2) === "MZ");
+
+function npmShim(path, ctx) {
   const target = shimTarget(path, ctx.read, pathOf(ctx));
   return target && ctx.exists(target) ? { file: ctx.node, prefix: [target] } : null;
+}
+
+function wrapped(path, entry, ctx) {
+  const w = entry.detection.wrapper?.win32;
+  const file = w ? win32.normalize(win32.join(win32.dirname(path), w.interpreter)) : null;
+  return file && ctx.exists(file) ? { file, prefix: w.args } : null;
 }
 
 export function versionIn(text, pattern) {
@@ -119,7 +163,7 @@ function projectPaths(entry, ctx) {
   return named(entry, ctx).map((n) => pathOf(ctx).join(ctx.projectRoot, "node_modules", ".bin", n));
 }
 
-const managedPaths = (entry, ctx) => (ctx.receipts ?? []).filter((r) => r.tool === entry.id && r.platform === ctx.platform && r.arch === ctx.arch).sort((a, b) => newer(b.version, a.version)).map((r) => receiptPath(ctx.rooms, r));
+const managedPaths = (entry, ctx) => (ctx.receipts ?? []).filter((r) => r.tool === entry.id && r.platform === ctx.platform && r.arch === ctx.arch).sort((a, b) => newer(b.version, a.version)).map((r) => receiptPath(ctx.rooms, r, ctx.platform));
 
 function systemPaths(entry, ctx) {
   const dirs = String(ctx.env.PATH ?? ctx.env.Path ?? "").split(pathOf(ctx).delimiter).filter(Boolean);

@@ -6,10 +6,12 @@
 // absolute path -- a path is the server's business, not the page's.
 import { ADOPT_UNVERIFIED, Blocked, CHECKOUT_PRESENT, Refused, STALE_PROPOSAL, STALE_REVISION, TARGET_UNKNOWN, TASK_CONFLICTS, TASK_MISSING } from "./core.mjs";
 
+// `next` is the one thing a person does about a stop, when the stop knows (a sign-in that cannot go on says so): it
+// travels beside the message, never inside it, so a page can show it as its own line.
 export class ControlError extends Error {
-  constructor(kind, code, message, details) {
+  constructor(kind, code, message, details, next) {
     super(message);
-    Object.assign(this, { kind, code, details });
+    Object.assign(this, { kind, code, details, next });
   }
 }
 
@@ -21,7 +23,7 @@ export const conflict = (code, message) => new ControlError("conflict", code, me
 export const tooLarge = (message) => new ControlError("tooLarge", "PAYLOAD_TOO_LARGE", message);
 export const unsupported = (message) => new ControlError("unsupported", "UNSUPPORTED_MEDIA_TYPE", message);
 export const failed = (code, message) => new ControlError("failed", code, message);
-export const unavailable = (code, message) => new ControlError("unavailable", code, message);
+export const unavailable = (code, message, next) => new ControlError("unavailable", code, message, undefined, next);
 
 // Core speaks in two typed stops, and each has one meaning here: Refused is a
 // request that cannot be honoured as asked (400), Blocked is a machine that

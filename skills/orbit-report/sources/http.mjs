@@ -14,10 +14,26 @@
 //                                  rate · server · invalid · redirect · network }
 //                                  -- the adapter decides which of them is a
 //                                  collection's status and which ends the run
+//   headers asked at every hop     `headers` may be a function, and it is asked at
+//                                  the top of every hop -- the first request, a
+//                                  redirect, a request made again after a rate
+//                                  limit -- and never inside the retry loop: an
+//                                  authorization that cannot be had is not a
+//                                  network failure, and a token that was good
+//                                  when a long run began can be spent before it
+//                                  ends
+//   a refused token, once          `authorizedHttp` -- a client whose authorization
+//                                  is a RequestAuth's -- forgets a token the
+//                                  source refuses (401, or a sign-in page) and
+//                                  tries once more, only when the token is really
+//                                  another; `refused` words a refusal that ends a
+//                                  run or a test
 //
 // Nothing here logs a header, a body or a URL with its query string, and no
 // message it builds contains the credential: every sentence is made of a status
 // code and the names of permissions a source reported missing.
+import { AuthBlocked } from "../../../src/connections/auth-errors.mjs";
+
 export class HttpStop extends Error {
   constructor(kind, message, extra = {}) {
     super(message);
@@ -29,7 +45,7 @@ export const LIMITS = { timeoutMs: 60000, requests: 20000, waitMs: 10 * 60 * 100
 
 const LOOPBACK = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/;
 
-// { fetch, origin, headers, limits, sleep, nowMs, log }
+// { fetch, origin, headers (an object, or an async function that answers with one), limits, sleep, nowMs, log }
 export function createHttp(deps) {
   const origin = originOf(deps.origin);
   const state = { requests: 0, waited: 0 };
@@ -42,12 +58,19 @@ function originOf(host) {
   return url.origin;
 }
 
+// One HOP: the headers are asked for here, once, before the retry loop that sends them.
 async function request(deps, origin, state, url, opts, hop = 0) {
   const target = sameOrigin(origin, url);
-  const response = await attempted(deps, state, target, opts);
+  const headers = await headersOf(deps);
+  const response = await attempted(deps, state, target, opts, headers);
   if (response.status >= 300 && response.status < 400) return redirected(deps, origin, state, response, opts, hop);
   return answered(deps, state, response, target, opts);
 }
+
+const headersOf = async (deps) => lowered(typeof deps.headers === "function" ? await deps.headers() : deps.headers);
+
+// Header names are case-insensitive: one spelling keeps a header from travelling twice under two names.
+const lowered = (headers) => Object.fromEntries(Object.entries(headers ?? {}).map(([name, value]) => [name.toLowerCase(), value]));
 
 function sameOrigin(origin, url) {
   const target = new URL(url, origin);
@@ -63,12 +86,12 @@ function redirected(deps, origin, state, response, opts, hop) {
 
 // Network failures and 5xx are retried with a growing pause; anything else is
 // the answer.
-async function attempted(deps, state, target, opts, tries = 0) {
+async function attempted(deps, state, target, opts, headers, tries = 0) {
   counted(deps, state);
-  const response = await once(deps, target, opts).catch((e) => ({ failed: e }));
+  const response = await once(deps, target, opts, headers).catch((e) => ({ failed: e }));
   if (!retryable(response) || tries >= (deps.limits?.retries ?? LIMITS.retries)) return settled(response);
   await deps.sleep(500 * 2 ** tries);
-  return attempted(deps, state, target, opts, tries + 1);
+  return attempted(deps, state, target, opts, headers, tries + 1);
 }
 
 function counted(deps, state) {
@@ -76,7 +99,7 @@ function counted(deps, state) {
   if (state.requests > (deps.limits?.requests ?? LIMITS.requests)) throw new HttpStop("rate", `this run has made ${state.requests - 1} requests, its budget; nothing more was asked of the source`);
 }
 
-const once = (deps, target, opts) => deps.fetch(target.href, { method: opts.method ?? "GET", headers: { ...deps.headers, ...(opts.body ? { "content-type": "application/json" } : {}), accept: opts.accept ?? "application/json", ...(opts.headers ?? {}) }, body: opts.body ? JSON.stringify(opts.body) : undefined, redirect: "manual", signal: AbortSignal.timeout(deps.limits?.timeoutMs ?? LIMITS.timeoutMs) });
+const once = (deps, target, opts, headers) => deps.fetch(target.href, { method: opts.method ?? "GET", headers: { ...headers, ...(opts.body ? { "content-type": "application/json" } : {}), accept: opts.accept ?? "application/json", ...(opts.headers ?? {}) }, body: opts.body ? JSON.stringify(opts.body) : undefined, redirect: "manual", signal: AbortSignal.timeout(deps.limits?.timeoutMs ?? LIMITS.timeoutMs) });
 
 const retryable = (r) => Boolean(r.failed) || r.status >= 500;
 
@@ -113,9 +136,9 @@ async function waited(deps, state, wait, target, opts) {
 // The status says what kind of stop it is; the source's own headers may name
 // the permission it wanted, and that name is kept -- nothing else of the body.
 const STOPS = [
-  { when: (r) => r.status === 401, stop: () => new HttpStop("auth", "the credential was refused (HTTP 401): it is expired, revoked or wrong for this host") },
-  { when: (r) => r.status === 403 && r.headers.get("x-github-sso"), stop: () => new HttpStop("forbidden", "the organization requires single sign-on for this credential; authorize it for SSO, then run again", { permission: "SSO authorization" }) },
-  { when: (r) => r.status === 403, stop: (r, t) => new HttpStop("forbidden", `the credential may not read this (HTTP 403)${permissionOf(r, t) ? `; it needs ${permissionOf(r, t)}` : ""}`, { permission: permissionOf(r, t) }) },
+  { when: (r) => r.status === 401, stop: () => new HttpStop("auth", "the credential was refused (HTTP 401): it is expired, revoked or wrong for this host", { status: 401 }) },
+  { when: (r) => r.status === 403 && r.headers.get("x-github-sso"), stop: () => new HttpStop("forbidden", "the organization requires single sign-on for this credential; authorize it for SSO, then run again", { permission: "SSO authorization", status: 403 }) },
+  { when: (r) => r.status === 403, stop: (r, t) => new HttpStop("forbidden", `the credential may not read this (HTTP 403)${permissionOf(r, t) ? `; it needs ${permissionOf(r, t)}` : ""}`, { permission: permissionOf(r, t), status: 403 }) },
   { when: (r) => r.status === 404, stop: () => new HttpStop("not-found", "not found, or not visible to this credential (HTTP 404)") },
   { when: () => true, stop: (r, t) => new HttpStop("invalid", `the source refused the request (HTTP ${r.status})${errorCode(t)}`, { detail: String(t ?? "").slice(0, 500) }) },
 ];
@@ -145,9 +168,55 @@ async function textOf(response) {
 async function jsonOf(response) {
   if (response.status === 204) return null;
   const type = response.headers.get("content-type") ?? "";
-  if (response.status === 203 || !/json/.test(type)) throw new HttpStop("auth", `the source answered with a page instead of data (HTTP ${response.status}); the credential is most likely not valid for this organization`);
+  if (response.status === 203 || !/json/.test(type)) throw new HttpStop("auth", `the source answered with a page instead of data (HTTP ${response.status}); the credential is most likely not valid for this organization`, { status: response.status });
   try { return await response.json(); }
   catch { throw new HttpStop("invalid", "the source answered with data that is not readable JSON"); }
+}
+
+// ---- authorization: asked for at every hop, and refreshed once ----------------
+
+// What a RequestAuth (src/connections/auth.mjs) says, as the `headers` function a client is asked at every hop: the extra
+// headers of the source, and whatever authorization the RequestAuth answers with NOW. A token is never kept here.
+const headersFrom = (auth, extra = {}) => async () => ({ ...extra, ...(await auth.headers()) });
+
+// A client whose authorization is a RequestAuth's: asked for at every hop, and refreshed once when the source refuses it.
+// d: { fetch, origin, auth, headers (the source's own, besides authorization), sleep, nowMs, limits }
+export const authorizedHttp = (d) => refreshing(createHttp({ fetch: d.fetch, origin: d.origin, headers: headersFrom(d.auth, d.headers), sleep: d.sleep, nowMs: d.nowMs, limits: d.limits }), d.auth);
+
+// A token the source refuses (HTTP 401, or a sign-in page where data should be) may only have ENDED: ask for another and try
+// once more -- but only when it really is another, because the same token again is the same answer. Whatever else a source
+// says (403, 404, a rate limit) is not about the token, and passes through as it came for whoever decides what it means.
+export function refreshing(http, auth) {
+  return { ...http, request: async (url, opts) => refreshed(http, auth, url, opts) };
+}
+
+async function refreshed(http, auth, url, opts) {
+  const sent = await authorizationOf(auth);
+  try { return await http.request(url, opts); }
+  catch (e) { return retried(http, auth, sent, e, url, opts); }
+}
+
+async function retried(http, auth, sent, stop, url, opts) {
+  if (!(stop instanceof HttpStop) || stop.kind !== "auth") throw stop;
+  if (!(await replaced(auth, sent))) throw stop;
+  return http.request(url, opts);
+}
+
+// Another request that met the same refusal may have refreshed already; if not, the token is forgotten and asked for again.
+async function replaced(auth, sent) {
+  if ((await authorizationOf(auth)) !== sent) return true;
+  auth.invalidate();
+  return (await authorizationOf(auth)) !== sent;
+}
+
+const authorizationOf = async (auth) => (await auth.headers()).Authorization;
+
+// A source's refusal of who is asking, as what ends a run or a test: the RequestAuth's words -- its code, and the one thing to
+// do -- and, when the source itself NAMED what was missing (a permission, a single sign-on step), that too, which no fixed words
+// can know. Returns the error: the caller throws it.
+export async function refused(auth, stop) {
+  const refusal = await auth.rejected(stop).catch((e) => e);
+  return stop.permission ? new AuthBlocked(refusal.code, `${refusal.message} — it needs ${stop.permission}`, refusal.next) : refusal;
 }
 
 // ---- pacing ------------------------------------------------------------------

@@ -58,7 +58,7 @@ function world({ graph = GRAPH(), failing = {}, separate = false, connections = 
   });
   const readers = systems.map(readerFor);
   const reader = readers[0];
-  const list = { list: () => (connections ? systems.map((provider) => ({ id: provider, provider, organization: "acme", credential: { set: true, from: "env", name: "T" } })) : []), record: () => ({ credential: "T" }) };
+  const list = { list: () => (connections ? systems.map((provider) => ({ id: provider, provider, organization: "acme", credential: { set: true, from: "env", name: "T" }, configured: true })) : []), record: () => ({ credential: "T" }) };
   const w = {
     descriptors: DESCRIPTORS,
     readers,
@@ -141,6 +141,16 @@ test("a root that cannot be read is recorded unavailable, carries an empty envel
   assert.deepEqual(got.envelope.content, {});
   assert.equal(got.binding, null);
   assert.equal(m.sources.bindings().exists, false, "a system that could not be read is not the one this project uses");
+});
+
+test("a stop that knows what a person does next says it in the record, so the one who reads it is told what to type", async () => {
+  const stop = Object.assign(new Blocked("a sign-in is needed"), { next: "node cli/project-report.mjs sign-in ado-acme" });
+  const m = world({ failing: { 4312: stop } });
+  await acquire(m.w, { identity: ID(4312) });
+  assert.equal(recordOf(m, 4312).why, "a sign-in is needed -- node cli/project-report.mjs sign-in ado-acme");
+  const plain = world({ failing: { 4312: new Blocked("cannot reach the source") } });
+  await acquire(plain.w, { identity: ID(4312) });
+  assert.equal(recordOf(plain, 4312).why, "cannot reach the source", "a stop with nothing to add says only what it says");
 });
 
 test("a failed refresh does not throw away what the last good read knew", async () => {

@@ -6,7 +6,8 @@
 // Reading runs nothing: no source is asked, no part is started, and a Python is
 // only asked its version. There is no route that runs a report -- a report runs
 // from the skill or the CLI.
-import { latestRender, planReport, publicProviders, readRun, registeredState, reportStatus, standardSections, versionsOf } from "../core.mjs";
+import { latestRender, planReport, readRun, registeredState, reportStatus, standardSections, versionsOf } from "../core.mjs";
+import { providersView } from "../connections/providers.mjs";
 import { NOT_IN_CHECKOUT, inCheckout, reportOf } from "./project.mjs";
 
 const unavailable = () => ({ available: false, why: NOT_IN_CHECKOUT });
@@ -31,7 +32,7 @@ function latestOf(record) {
 export async function reportSettings(ctx) {
   if (!inCheckout(ctx)) return unavailable();
   const b = await reportOf(ctx);
-  return { available: true, settings: b.rctx.settings, revision: b.rctx.revision, exists: b.rctx.settingsExist, providers: publicProviders(), sections: standardSections(), connections: b.connections.list(), machineTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone };
+  return { available: true, settings: b.rctx.settings, revision: b.rctx.revision, exists: b.rctx.settingsExist, providers: providersView(), sections: standardSections(), connections: b.connections.list(), machineTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone };
 }
 
 export async function reportParts(ctx) {

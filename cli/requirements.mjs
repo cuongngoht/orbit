@@ -147,7 +147,7 @@ function worldOf(base, ctx) {
   const real = realWorld({ pluginRoot: PLUGIN_ROOT, projectRoot: process.cwd(), env: ENV, nativeFactory });
   const runtimeDir = base.project.layout === 3 ? runtimePath(base.project, join(base.project.sessionDir, "requirements")) : null;
   const works = createWorks(ctx.store.root, ctx.io);
-  return sourceWorld({ base, real, sources: ctx.sources, io: ctx.io, runtimeDir, works: () => listed(works).filter((w) => w.root), opportunities: { docs: () => know.opportunities(), settle: (docs) => settle({ know }, docs) } });
+  return sourceWorld({ base, real, notify: (line) => console.error(line), emit: authTrail(ctx), next: { signIn: (c) => `node ${join(dirname(fileURLToPath(import.meta.url)), "project-report.mjs")} sign-in ${c.id}` }, sources: ctx.sources, io: ctx.io, runtimeDir, works: () => listed(works).filter((w) => w.root), opportunities: { docs: () => know.opportunities(), settle: (docs) => settle({ know }, docs) } });
 }
 
 function readInput(path) {
@@ -177,6 +177,13 @@ const EVENTS = {
 function emitted(ctx, result) {
   const event = EVENTS[cmd]?.(result);
   if (event && switchOf(ENV, "TRACE", "trace", true)) quietly(() => emitterFor(ctx.project).call(null, ...event));
+}
+
+// What a sign-in does while a work item is read goes to the trail as fixed words, unless tracing is off.
+function authTrail(ctx) {
+  if (!switchOf(ENV, "TRACE", "trace", true)) return undefined;
+  const emit = emitterFor(ctx.project);
+  return (event) => quietly(() => emit("connection.auth", event));
 }
 
 function emitterFor(project) {

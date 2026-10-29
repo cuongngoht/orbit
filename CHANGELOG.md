@@ -68,9 +68,10 @@ otherwise or the command names the variable a credential is read from (`--creden
   others, preferring the host's picks and recording every re-pick in the lock's header); `skills/orbit-release/SKILL.md` says
   how to re-pin and how to re-verify the Windows ZIP pin.
 - **Platform evidence.** What has really been run, and what is only resolved or faked, is the table at the end of ADR 0043.
-  At this release the macOS arm64 private copy is `real` (a hash-locked install of its 150 wheels was built and run) and
-  its end-to-end Orbit flow is `pending`; the other Unix locks are `resolved-only`; the Windows rows and WSL are `fakes-only`
-  until the `azure-cli-runtime` workflow is dispatched.
+  At this release Orbit's own installer has run for real on macOS (arm64 and Intel), Linux (x64 and arm64) and Windows x64
+  -- the private copy installed, answered as 2.91.0, and left a decoy developer profile untouched -- and a real Windows ARM64
+  runner refused with the unsupported answer; the machine's own `az` as a program has run for real on macOS arm64. The
+  Windows `az.cmd` wrapper, WSL and Alpine are `fakes-only`, and a real sign-in (a person in a browser) is `pending`.
 
 ## 0.2.0
 

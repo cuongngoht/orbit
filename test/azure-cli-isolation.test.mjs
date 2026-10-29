@@ -37,7 +37,7 @@ function chain({ where = {}, developer = A, people = [B], privateAt = null } = {
   w.ctx.rooms = { ...w.ctx.rooms, authSessions: "/fake/orbit/control/auth" };
   w.ctx.run = (file, args, options) => spawnShape(az.process.run(file, args, options));
   const tools = { ensure: (ids) => ensureOne(ids, w.ctx), find: (ids) => findOne(ids, w.ctx) };
-  const adapter = azureCliAdapter({ tools, process: az.process, io: az.io, nowMs: () => NOW, cwd: "/tmp", next: { signIn: () => "sign in" } });
+  const adapter = azureCliAdapter({ tools, process: az.process, io: az.io, nowMs: () => NOW, next: { signIn: () => "sign in" } });
   const auth = createAuth({ secrets: {}, adapters: { "azure-cli": adapter }, providers: PROVIDERS, nowMs: () => NOW });
   return { az, w, auth, calls: () => az.state.calls, done: () => w.done() };
 }
@@ -186,4 +186,11 @@ test("a launcher with no environment WOULD use the developer's profile: the fake
   const az = createFakeAz({ parentEnv: { PATH: "/usr/bin", HOME: DEV }, developer: A });
   const seen = az.process.run("/opt/homebrew/bin/az", ["account", "show"], {});
   assert.deepEqual([seen.ok, az.state.calls[0].configDir], [true, DEV_PROFILE]);
+});
+
+test("a probe runs from its own scratch profile, never from a shared directory, and a session command from the profile", async () => {
+  const c = chain({ where: { system: SYSTEM } });
+  await c.auth.resolve(CONNECTION, { notify: () => {} }).headers();
+  for (const call of c.calls()) assert.equal(call.cwd, call.configDir, `${call.argv[0]}: the directory it runs from is the profile it was given`);
+  c.done();
 });

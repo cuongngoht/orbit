@@ -104,8 +104,9 @@ export function launcherOf(entry, found, ctx, purpose, asset = null) {
   return { file, args, env: launchEnv(entry, { parent: ctx.env ?? {}, platform: ctx.platform, profileDir: where.dir, asset }), profileDir: where.dir, release: where.release };
 }
 
-// What a probe is asked with: the environment (when there is one) and the row's own deadline (when it has one).
-export const askOptions = (entry, launcher) => ({ ...(launcher.env ? { env: launcher.env } : {}), ...(entry.detection.timeoutMs ? { timeoutMs: entry.detection.timeoutMs } : {}) });
+// What a probe is asked with: the environment (when there is one), the directory it runs from -- the probe's own scratch
+// profile, which only this user can enter, never a shared one -- and the row's own deadline (when it has one).
+export const askOptions = (entry, launcher) => ({ ...(launcher.env ? { env: launcher.env, cwd: launcher.profileDir } : {}), ...(entry.detection.timeoutMs ? { timeoutMs: entry.detection.timeoutMs } : {}) });
 
 // ONE question of a tool, through its launcher: the question's arguments after the launcher's own. A probe with no
 // options is asked exactly as it always was; one with an environment or a deadline says so.

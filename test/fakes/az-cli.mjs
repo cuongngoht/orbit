@@ -19,7 +19,7 @@ export function createFakeAz({ platform = "linux", home = "/fake/developer", par
   const state = { profiles: new Map(), dirs: new Set(), broker: { account: null }, keystore: { account: null }, calls: [], people: [...people], issued: [], seq: 0 };
   const developerDir = path.join(home, ".azure");
   if (developer) seed(state, developerDir, developer);
-  const run = (file, args, opts = {}) => execute(state, { platform, path, home, parentEnv, keystoreByDefault, nowSeconds, file, args, env: opts.env ?? parentEnv });
+  const run = (file, args, opts = {}) => execute(state, { platform, path, home, parentEnv, keystoreByDefault, nowSeconds, file, args, cwd: opts.cwd ?? null, env: opts.env ?? parentEnv });
   const process = { run, runAsync: async (file, args, opts) => run(file, args, opts), runObserved: async (file, args, opts = {}) => observed(run(file, args, opts), opts) };
   return { process, state, developerDir, snapshotOf: (dir) => JSON.stringify(state.profiles.get(dir) ?? null), io: { exists: (p) => state.dirs.has(p), ensurePrivateDir: (p) => state.dirs.add(p) } };
 }
@@ -42,7 +42,7 @@ function execute(state, c) {
   const argv = commandOf(c.args.map(String));
   const configDir = c.env.AZURE_CONFIG_DIR ?? c.path.join(c.env.HOME ?? c.env.USERPROFILE ?? "/nowhere", ".azure");
   state.dirs.add(configDir);
-  const record = { file: c.file, argv, configDir, envNames: Object.keys(c.env), env: { ...c.env }, wrote: [] };
+  const record = { file: c.file, argv, cwd: c.cwd, configDir, envNames: Object.keys(c.env), env: { ...c.env }, wrote: [] };
   state.calls.push(record);
   return handled(state, c, record, sessionOf(state, c, configDir));
 }

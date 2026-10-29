@@ -25,13 +25,13 @@ const PROBE_TIMEOUT_MS = 10_000;
 // configuration names, with this process's whole environment, and another answers "missing" for
 // every project on the machine because THIS checkout pins something that is not installed.
 //
-// `run` takes an optional third argument -- { env, timeoutMs } -- for a tool that keeps identity state, which is asked
+// `run` takes an optional third argument -- { env, cwd, timeoutMs } -- for a tool that keeps identity state, which is asked
 // under an environment of its own (src/tools/launch.mjs), and for one that needs longer than the default deadline.
 // Without it the probe is exactly what it always was.
 export const realDetection = (env = process.env) => ({ env, platform: process.platform, arch: process.arch, node: process.execPath, windowsMounts: windowsMountsOf(env), exists: existsSync, read: (p) => readFileSync(p, "utf8"), head, scratch, run: probe });
 
 function probe(file, args, o = {}) {
-  return spawnSync(file, args, { encoding: "utf8", timeout: o.timeoutMs ?? PROBE_TIMEOUT_MS, windowsHide: true, stdio: ["ignore", "pipe", "pipe"], cwd: tmpdir(), ...(o.env ? { env: o.env } : {}) });
+  return spawnSync(file, args, { encoding: "utf8", timeout: o.timeoutMs ?? PROBE_TIMEOUT_MS, windowsHide: true, stdio: ["ignore", "pipe", "pipe"], cwd: o.cwd ?? tmpdir(), ...(o.env ? { env: o.env } : {}) });
 }
 
 // A directory made for ONE question and removed after it -- what a probe of a tool with a profile is given as that

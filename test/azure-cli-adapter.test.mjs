@@ -36,7 +36,7 @@ function tooling(az, { env = az.parentEnv ?? {}, row = PRIVATE, platform = "linu
 function rig({ people = [B], developer = null, parentEnv = { PATH: "/usr/bin", HOME: "/fake/developer" } } = {}) {
   const az = createFakeAz({ parentEnv, developer, people });
   const events = [];
-  const adapter = azureCliAdapter({ tools: tooling({ ...az, parentEnv }, { env: parentEnv }), process: az.process, io: az.io, nowMs: () => NOW, cwd: "/tmp", emit: (e) => events.push(e), next: { signIn: (c) => `node cli/project-report.mjs sign-in ${c.id}` } });
+  const adapter = azureCliAdapter({ tools: tooling({ ...az, parentEnv }, { env: parentEnv }), process: az.process, io: az.io, nowMs: () => NOW, emit: (e) => events.push(e), next: { signIn: (c) => `node cli/project-report.mjs sign-in ${c.id}` } });
   const auth = createAuth({ secrets: {}, adapters: { "azure-cli": adapter }, providers: PROVIDERS, nowMs: () => NOW });
   return { az, adapter, auth, events, ops: () => az.state.calls.map((c) => c.argv[0] === "account" ? `${c.argv[0]} ${c.argv[1]}` : c.argv[0]) };
 }
@@ -142,7 +142,7 @@ test("status never signs in and never fetches a tool: no profile is `sign-in-req
 
 test("a status with no tool at all says so, and what Orbit could do about it", async () => {
   const az = createFakeAz({});
-  const adapter = azureCliAdapter({ tools: { ensure: async () => { throw new Error("not used"); }, find: () => ({ found: null, tried: [{ id: "azure-cli", reason: "found 2.40.0, older than the 2.61.0 this needs" }], acquirable: "azure-cli-private" }) }, process: az.process, io: az.io, nowMs: () => NOW, cwd: "/tmp" });
+  const adapter = azureCliAdapter({ tools: { ensure: async () => { throw new Error("not used"); }, find: () => ({ found: null, tried: [{ id: "azure-cli", reason: "found 2.40.0, older than the 2.61.0 this needs" }], acquirable: "azure-cli-private" }) }, process: az.process, io: az.io, nowMs: () => NOW });
   const state = await createAuth({ secrets: {}, adapters: { "azure-cli": adapter }, providers: PROVIDERS, nowMs: () => NOW }).status(CONNECTION);
   assert.deepEqual([state.state, state.tool.found, state.tool.acquirable, state.tool.tried[0].reason], ["tool-missing", false, "azure-cli-private", "found 2.40.0, older than the 2.61.0 this needs"]);
 });
@@ -209,4 +209,11 @@ test("the classification is ONE table, read in order: the not-signed-in sentence
   assert.equal(classify({ ok: false, out: "", unstarted: true, error: "could not be started" }), "failed");
   assert.equal(classify(r("ERROR: something nobody has seen")), "failed", "an unknown message is never read as a request to sign in");
   assert.equal(classify({ ok: true, out: "{}" }), "ok");
+});
+
+test("a child of the sign-in never runs from a shared directory: its working directory is the profile, which only this user can enter", async () => {
+  const r = rig();
+  await ask(r, { notify: () => {} });
+  await r.auth.signOut(CONNECTION);
+  for (const call of r.az.state.calls) assert.equal(call.cwd, `${ORBIT}/azure-cli`, call.argv[0]);
 });

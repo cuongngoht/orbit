@@ -26,7 +26,7 @@ const LOGOUT_DEADLINE_MS = 60_000;
 const NOTICE_LINES = 20;
 
 // deps: { tools: { ensure(ids), find(ids) }, process (runAsync, runObserved), io: { exists, ensurePrivateDir }, nowMs,
-//         cwd (a neutral directory), emit?({ phase, outcome }), next?: { signIn(connection) -> the command to type } }
+//         emit?({ phase, outcome }), next?: { signIn(connection) -> the command to type } }
 export function azureCliAdapter(deps) {
   const flight = { login: null, tokens: new Map() };
   return { acquire: (a) => acquired(deps, flight, a), status: (a) => statusOf(deps, flight, a), signIn: (a) => signedIn(deps, flight, a), signOut: (a) => signedOut(deps, a), explain: (a) => explained(deps, a) };
@@ -77,7 +77,9 @@ function tokenOf(deps, flight, launcher, a) {
   return flight.tokens.get(key);
 }
 
-const runOf = (deps, launcher, args, timeoutMs) => deps.process.runAsync(launcher.file, [...launcher.args, ...args], { env: launcher.env, timeoutMs, cwd: deps.cwd });
+// Every child runs FROM the profile directory: a directory only this user can enter and write. Never a shared one (a
+// program that puts its working directory on its module search path would otherwise load what another user planted).
+const runOf = (deps, launcher, args, timeoutMs) => deps.process.runAsync(launcher.file, [...launcher.args, ...args], { env: launcher.env, timeoutMs, cwd: launcher.profileDir });
 
 function outcomeOf(deps, result, a) {
   const outcome = classify(result);
@@ -132,7 +134,7 @@ async function signing(deps, launcher, a) {
 async function login(deps, launcher, a) {
   deps.io.ensurePrivateDir(launcher.profileDir);
   a.notify?.("Opening Microsoft sign-in. Finish it in the browser; if none opens, follow the instructions below.");
-  const result = await deps.process.runObserved(launcher.file, [...launcher.args, ...loginArgs(argsOf(a))], { env: launcher.env, timeoutMs: LOGIN_DEADLINE_MS, cwd: deps.cwd, observe: noticesTo(a.notify) });
+  const result = await deps.process.runObserved(launcher.file, [...launcher.args, ...loginArgs(argsOf(a))], { env: launcher.env, timeoutMs: LOGIN_DEADLINE_MS, cwd: launcher.profileDir, observe: noticesTo(a.notify) });
   said(deps, "login", result.ok ? "ok" : cancelled(result) ? "cancelled" : "failed");
   if (!result.ok) throw loginFailure(deps, result, a);
 }

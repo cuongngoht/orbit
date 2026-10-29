@@ -9,11 +9,17 @@ import { invalid, missing } from "../errors.mjs";
 
 export const TOOL_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
-const PUBLIC = ["id", "name", "summary", "provides", "enabled", "status", "available", "state", "source", "version", "path", "sources", "reason", "checkedAt", "stale", "install", "managed", "update"];
+const PUBLIC = ["id", "name", "summary", "provides", "enabled", "status", "available", "state", "source", "version", "path", "sources", "reason", "checkedAt", "stale", "install", "autonomous", "managed", "update"];
 
 export const publicTool = (t) => Object.fromEntries(PUBLIC.filter((k) => t[k] !== undefined).map((k) => [k, t[k]]));
 
-export const toolsNow = (ctx) => toolsOf(ctx.world);
+// `autonomous` is a fact of the CATALOG row (`install.autonomous`), not of what was observed: Orbit may fetch its own pinned copy of this
+// tool by itself when a task needs one, and `install` -- what a person's press of Install would do -- is how it is asked for up front.
+// The effective list describes the install and leaves that flag in the row, so it is joined here from the same catalog.
+export function toolsNow(ctx) {
+  const rows = toolCatalogAt(ctx.world.pluginRoot, ctx.world.io);
+  return toolsOf(ctx.world).map((t) => ({ ...t, autonomous: rows.find((r) => r.id === t.id)?.install?.autonomous === true }));
+}
 
 export function entryOf(ctx, id) {
   if (typeof id !== "string" || !TOOL_ID.test(id)) throw invalid("INVALID_TOOL_ID", "a tool id is lowercase letters, digits, - and _ only");

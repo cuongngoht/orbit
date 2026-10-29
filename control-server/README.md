@@ -104,7 +104,7 @@ sign-in opens a browser), and an install; `test/security.test.mjs` walks every m
 | GET | `/api/v1/mcp/managed/:id/tools` | the tools the last test found, dated, or `null` |
 | GET | `/api/v1/mcp/external` · `/api/v1/mcp/external/:id` · `…/tools` | the host's servers, observe only (never eligible) |
 | POST | `/api/v1/mcp/external/refresh` · `/api/v1/mcp/external/:id/test` | re-read the host into the external snapshot · one handshake as the host configured it, kept under `external:<id>` |
-| GET | `/api/v1/tools` · `/api/v1/tools/:id` | the effective tools: desired and observed apart, every source that was looked in, what an install would do |
+| GET | `/api/v1/tools` · `/api/v1/tools/:id` | the effective tools: desired and observed apart, every source that was looked in, what an install would do, and `autonomous` — the catalog row's own fact that Orbit may fetch its own pinned copy by itself when a task needs one (never observed; Install is how a person asks for it up front) |
 | POST | `/api/v1/tools/:id/refresh` · `install` · `update` | detect again · install privately (`409` if already usable anywhere) · a managed install older than the catalog's pin |
 | GET | `/api/v1/trace/turns?days=1` | `{ version, days, recording, turns: [{ id, at, ms, prompt: { chars, hash? }, intent, confidence, routing, suggested, followed: { verdict, say }, outcome, steps, path }] }` — one row per prompt off the session trail, newest first, at most 100; `days` 1–90. Never a prompt's text |
 | GET | `/api/v1/trace/turns/:id` | `{ version, turn }` — one prompt in full: the router's decision (requirement graph, selected, approval, blocked, missing) and every step in order. `400` `INVALID_TURN_ID`, `404` `TURN_NOT_FOUND` |

@@ -226,6 +226,21 @@ test("Tools: nothing is detected on a GET; refresh looks; Install installs priva
   assert.equal((await api.get("/api/v1/tools/..%2F..")).json.error.code, "INVALID_TOOL_ID");
 });
 
+test("Tools: `autonomous` says whether Orbit may fetch its own pinned copy by itself -- the catalog row's fact, which looking and installing never change", async (t) => {
+  const { root } = fixture(t);
+  const file = join(root.plugin, "catalog", "tools.json");
+  const catalog = JSON.parse(readFileSync(file, "utf8"));
+  catalog.tools.find((x) => x.id === "sqlcmd").install.autonomous = true;
+  writeFileSync(file, JSON.stringify(catalog));
+  const api = await started(t, contextFor(root, worldFor(root)));
+  assert.deepEqual((await api.get("/api/v1/tools")).json.tools.map((x) => [x.id, x.autonomous]), [["sqlcmd", true], ["git", false]], "a row that does not say so is not autonomous");
+  assert.equal((await api.get("/api/v1/tools/sqlcmd")).json.autonomous, true);
+  assert.equal((await api.post("/api/v1/tools/sqlcmd/refresh")).json.autonomous, true);
+  const installed = await api.post("/api/v1/tools/sqlcmd/install");
+  assert.deepEqual([installed.status, installed.json.tool.autonomous, installed.json.tool.install.strategy], [200, true, "archive"]);
+  assert.equal((await api.post("/api/v1/tools/git/refresh")).json.autonomous, false);
+});
+
 test("there is no generic command endpoint, no way to write a host's configuration, and every route answers only its own methods", async (t) => {
   const { ctx } = fixture(t);
   const api = await started(t, ctx);

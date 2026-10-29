@@ -47,7 +47,7 @@ export function stateRooms(storeBase) {
   const at = (...parts) => contained(storeBase, join(storeBase, ...parts));
   const toolReceipts = at("control", "resources", "tools", "receipts");
   const toolRuntimes = at("runtimes", "tools");
-  return { checkouts: at("state", "checkouts"), projects: at("state", "projects"), hosts: at("control", "hosts"), externalObservations: at("control", "resources", "mcp", "observations"), connections: at("control", "connections"), mcp: at("control", "resources", "mcp"), mcpReceipts: at("control", "resources", "mcp", "receipts"), mcpRuntimes: at("runtimes", "mcp"), tools: at("control", "resources", "tools"), toolReceipts, toolRuntimes, controlRuntime: at("control-runtime"), live: at("control", "live"), automation: at("control", "automation"), activity: at("control", "activity"), trace: at("control", "activity", "trace") };
+  return { checkouts: at("state", "checkouts"), projects: at("state", "projects"), hosts: at("control", "hosts"), externalObservations: at("control", "resources", "mcp", "observations"), connections: at("control", "connections"), authSessions: at("control", "auth"), mcp: at("control", "resources", "mcp"), mcpReceipts: at("control", "resources", "mcp", "receipts"), mcpRuntimes: at("runtimes", "mcp"), tools: at("control", "resources", "tools"), toolReceipts, toolRuntimes, controlRuntime: at("control-runtime"), live: at("control", "live"), automation: at("control", "automation"), activity: at("control", "activity"), trace: at("control", "activity", "trace") };
 }
 
 export function readState(io, file, fallback, schema = STATE_SCHEMA) {

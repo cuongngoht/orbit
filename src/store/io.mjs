@@ -10,7 +10,7 @@
 // and a promise here would turn every caller async for nothing. Atomics.wait on a
 // SharedArrayBuffer is the only zero-dependency way to block for a fixed time;
 // tests inject a clock tick instead, so the suite never actually waits.
-import { appendFileSync, closeSync, copyFileSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, closeSync, copyFileSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { hostname } from "node:os";
 import { contained } from "../project/boundary.mjs";
@@ -77,6 +77,9 @@ const writers = () => ({
   append: (p, text) => added(p, text),
   mkdir: (p) => mkdirSync(p),
   ensureDir: (p) => mkdirSync(p, { recursive: true }),
+  // A directory only this machine's user may enter: what a tool keeps its sign-in state in. Modes mean nothing on
+  // Windows, where the store sits under the person's own profile and inherits its access list.
+  ensurePrivateDir: (p) => madePrivate(p),
   copy: (a, b) => copyFileSync(a, contained(dirname(b), b)),
   rename: (a, b) => renameSync(a, b),
   remove: (p) => rmSync(p, { recursive: true, force: true }),
@@ -87,6 +90,12 @@ function wrote(path, text) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(contained(dirname(path), path), text);
   return path;
+}
+
+function madePrivate(dir) {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  return dir;
 }
 
 function wrotePrivate(path, text) {

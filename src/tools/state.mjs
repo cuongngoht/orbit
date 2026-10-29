@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { withLock, withLockAsync } from "../store/lock.mjs";
 import { readState, writeState } from "../store/control.mjs";
 import { relativeInside } from "./catalog.mjs";
+import { pathOf } from "./launch.mjs";
 
 const EMPTY = { desired: { tools: {} }, observed: { observedAt: null, tools: {} } };
 const RECEIPT = /^[a-z0-9][a-z0-9._-]*\.json$/;
@@ -61,7 +62,8 @@ export const HOMES = ["toolRuntimes", "controlRuntime"];
 
 const isReceipt = (r) => !r.unreadable && typeof r.tool === "string" && typeof r.version === "string" && HOMES.includes(r.home) && relativeInside(r.dir) && relativeInside(r.bin);
 
-// Where a receipt's runtime IS, derived from the store's rooms each time.
-export const receiptPath = (rooms, r) => join(rooms[r.home], r.dir, r.bin);
+// Where a receipt's runtime IS, derived from the store's rooms each time -- with the path rules of the platform the
+// receipt is for, so a Windows store is never joined with a POSIX separator.
+export const receiptPath = (rooms, r, platform = process.platform) => pathOf(platform).join(rooms[r.home], r.dir, r.bin);
 
 export const withTool = (doc, id, value) => ({ ...doc, tools: { ...(doc.tools ?? {}), [id]: value } });

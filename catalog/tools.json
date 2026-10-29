@@ -31,10 +31,67 @@
       "id": "azure-cli",
       "observe": "demand",
       "name": "Azure CLI",
-      "summary": "reads Azure DevOps work items and other Azure resources as the signed-in user (az)",
+      "summary": "the Azure CLI found on this machine -- Orbit uses it as a program only, never its sign-in (az)",
       "provides": ["command:az"],
-      "detection": { "commands": ["az"], "versionPattern": "azure-cli\\s+(\\d+\\.\\d+\\.\\d+)" },
-      "install": { "strategy": "manual", "instructions": "Install the Azure CLI from https://learn.microsoft.com/cli/azure/install-azure-cli or your operating system's package manager. Orbit does not install it: it belongs to the whole machine." }
+      "profile": { "env": "AZURE_CONFIG_DIR", "name": "azure-cli" },
+      "launch": {
+        "env": { "AZURE_CORE_ENABLE_BROKER_ON_WINDOWS": "false", "AZURE_CORE_ENABLE_BROKER_ON_MAC": "false", "AZURE_CORE_LOGIN_EXPERIENCE_V2": "off", "AZURE_CORE_COLLECT_TELEMETRY": "false" },
+        "platformEnv": { "win32": { "AZURE_CORE_ENCRYPT_TOKEN_CACHE": "true" }, "posix": { "AZURE_CORE_ENCRYPT_TOKEN_CACHE": "false" } },
+        "inherit": ["HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "no_proxy", "all_proxy", "REQUESTS_CA_BUNDLE", "SSL_CERT_FILE", "SSL_CERT_DIR", "CURL_CA_BUNDLE", "DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "XDG_SESSION_TYPE", "DBUS_SESSION_BUS_ADDRESS", "BROWSER", "WSL_DISTRO_NAME", "WSL_INTEROP"]
+      },
+      "detection": { "commands": ["az"], "versionPattern": "azure-cli\\s+(\\d+\\.\\d+\\.\\d+)", "minimum": "2.61.0", "timeoutMs": 60000, "sources": ["system"], "native": true, "wrapper": { "win32": { "interpreter": "../python.exe", "args": ["-IBm", "azure.cli"] } } },
+      "install": { "strategy": "manual", "instructions": "Install the Azure CLI from https://learn.microsoft.com/cli/azure/install-azure-cli or your operating system's package manager. Orbit does not install it: it belongs to the whole machine. Orbit installs a copy of its own when none is usable." }
+    },
+    {
+      "id": "azure-cli-private",
+      "observe": "demand",
+      "name": "Azure CLI (Orbit's own copy)",
+      "summary": "a copy of the Azure CLI Orbit keeps for itself, in an environment of its own: the official release, every package pinned and hash-checked (macOS and Linux)",
+      "provides": [],
+      "profile": { "env": "AZURE_CONFIG_DIR", "name": "azure-cli" },
+      "launch": {
+        "env": { "AZURE_CORE_ENABLE_BROKER_ON_WINDOWS": "false", "AZURE_CORE_ENABLE_BROKER_ON_MAC": "false", "AZURE_CORE_LOGIN_EXPERIENCE_V2": "off", "AZURE_CORE_COLLECT_TELEMETRY": "false" },
+        "platformEnv": { "win32": { "AZURE_CORE_ENCRYPT_TOKEN_CACHE": "true" }, "posix": { "AZURE_CORE_ENCRYPT_TOKEN_CACHE": "false" } },
+        "inherit": ["HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "no_proxy", "all_proxy", "REQUESTS_CA_BUNDLE", "SSL_CERT_FILE", "SSL_CERT_DIR", "CURL_CA_BUNDLE", "DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "XDG_SESSION_TYPE", "DBUS_SESSION_BUS_ADDRESS", "BROWSER", "WSL_DISTRO_NAME", "WSL_INTEROP"]
+      },
+      "detection": { "commands": ["az"], "versionPattern": "azure-cli\\s+(\\d+\\.\\d+\\.\\d+)", "timeoutMs": 60000, "sources": ["orbit-managed"] },
+      "install": {
+        "strategy": "python-lock",
+        "autonomous": true,
+        "version": "2.91.0",
+        "package": "azure-cli",
+        "python": "python",
+        "source": "https://pypi.org/project/azure-cli/2.91.0/",
+        "assets": {
+          "darwin-arm64": { "lock": "locks/azure-cli-2.91.0-darwin-arm64.lock", "bin": "venv/bin/python", "launch": { "args": ["-IBm", "azure.cli"] } },
+          "darwin-x64": { "lock": "locks/azure-cli-2.91.0-darwin-x64.lock", "bin": "venv/bin/python", "launch": { "args": ["-IBm", "azure.cli"] } },
+          "linux-x64": { "lock": "locks/azure-cli-2.91.0-linux-x64.lock", "bin": "venv/bin/python", "launch": { "args": ["-IBm", "azure.cli"] } },
+          "linux-arm64": { "lock": "locks/azure-cli-2.91.0-linux-arm64.lock", "bin": "venv/bin/python", "launch": { "args": ["-IBm", "azure.cli"] } }
+        }
+      }
+    },
+    {
+      "id": "azure-cli-private-win",
+      "observe": "demand",
+      "name": "Azure CLI (Orbit's own copy, Windows)",
+      "summary": "the official Azure CLI ZIP package, unpacked into Orbit's own directory -- no administrator rights, nothing on PATH (Windows x64)",
+      "provides": [],
+      "profile": { "env": "AZURE_CONFIG_DIR", "name": "azure-cli" },
+      "launch": {
+        "env": { "AZURE_CORE_ENABLE_BROKER_ON_WINDOWS": "false", "AZURE_CORE_ENABLE_BROKER_ON_MAC": "false", "AZURE_CORE_LOGIN_EXPERIENCE_V2": "off", "AZURE_CORE_COLLECT_TELEMETRY": "false" },
+        "platformEnv": { "win32": { "AZURE_CORE_ENCRYPT_TOKEN_CACHE": "true" }, "posix": { "AZURE_CORE_ENCRYPT_TOKEN_CACHE": "false" } },
+        "inherit": ["HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "no_proxy", "all_proxy", "REQUESTS_CA_BUNDLE", "SSL_CERT_FILE", "SSL_CERT_DIR", "CURL_CA_BUNDLE", "DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "XDG_SESSION_TYPE", "DBUS_SESSION_BUS_ADDRESS", "BROWSER", "WSL_DISTRO_NAME", "WSL_INTEROP"]
+      },
+      "detection": { "commands": ["az"], "versionPattern": "azure-cli\\s+(\\d+\\.\\d+\\.\\d+)", "timeoutMs": 60000, "sources": ["orbit-managed"] },
+      "install": {
+        "strategy": "archive",
+        "autonomous": true,
+        "version": "2.91.0",
+        "source": "https://learn.microsoft.com/cli/azure/install-azure-cli-windows",
+        "assets": {
+          "win32-x64": { "url": "https://azcliprod.blob.core.windows.net/zip/azure-cli-2.91.0-x64.zip", "sha256": "c0c49639a96d8c0dfb9973cfe08c97c5eeb69be050102138ede806285e6fcf1f", "format": "zip", "bin": "python.exe", "launch": { "args": ["-IBm", "azure.cli"], "env": { "AZ_INSTALLER": "ZIP" } } }
+        }
+      }
     },
     {
       "id": "playwright",
@@ -72,6 +129,7 @@
       "detection": { "commands": ["python3.14", "python3.13", "python3.12", "python3.11", "python3", "python"], "versionPattern": "Python (\\d+\\.\\d+\\.\\d+)", "minimum": "3.11" },
       "install": {
         "strategy": "archive",
+        "autonomous": true,
         "version": "3.13.15",
         "source": "https://github.com/astral-sh/python-build-standalone/releases/tag/20260924",
         "assets": {

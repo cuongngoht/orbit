@@ -57,6 +57,7 @@ export { VERDICTS } from "../../src/policy.mjs";
 export { createToolState, withTool } from "../../src/tools/state.mjs";
 export { detectTool } from "../../src/tools/detect.mjs";
 export { installTool } from "../../src/tools/install.mjs";
+export { installContext } from "../../src/tools/ensure.mjs";
 export { projectCapabilities } from "../../src/extensions/capabilities.mjs";
 export { projectKnowledge } from "../../src/knowledge/summary.mjs";
 export { traceLog } from "../../src/trace/log.mjs";

@@ -21,7 +21,7 @@
 // no file, spawns no process and opens no connection. Each effect happens when
 // an operation over the world asks for it.
 import { spawnSync } from "node:child_process";
-import { readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { required, supported } from "../../control-server/src/runtime.mjs";
@@ -31,12 +31,14 @@ import { mcpHost } from "../../src/mcp/port.mjs";
 import { createProbe } from "../../src/mcp/probe.mjs";
 import { createProcess } from "../../src/process/index.mjs";
 import { secretSource } from "../../src/secrets.mjs";
+import { contained } from "../../src/project/boundary.mjs";
 import { repositoryPaths, storeBase } from "../../src/project/repository.mjs";
 import { effectiveOf, readAutomation } from "../../src/automation/settings.mjs";
 import { projectSkillsOf } from "../orbit-help/factory.mjs";
 import { stateRooms } from "../../src/store/control.mjs";
 import { realIo } from "../../src/store/io.mjs";
 import { archiveInstaller } from "../../src/tools/archive.mjs";
+import { pythonLockInstaller } from "../../src/tools/pylock.mjs";
 import { detectionContext } from "../../src/tools/context.mjs";
 import { realInstallIo } from "../../src/tools/real.mjs";
 import { engineName } from "../../src/version.mjs";
@@ -53,7 +55,7 @@ export function realWorld({ pluginRoot, projectRoot, env, log = () => {}, native
   const processes = createProcess({ spawn: spawnSync });
   const native = nativeFactory(processes, projectRoot);
   const host = mcpHost(native.hostPort ?? createClaudeMcpHost({ env, home: homedir(), projectRoot, io, probe: createProbe({ fetch, start: processes.start, env }) }));
-  return { ...native, pluginRoot, projectRoot, env, io, installIo, host, account: () => createClaudeAccount({ env, home: homedir(), io }).account(), detection: detectionOf(env, projectRoot), storeBase: storeBase(env), rooms: stateRooms(storeBase(env)), installers: installersOf(installIo, log), mcpInstallers: Object.fromEntries(MCP_INSTALLERS.map((i) => [i.strategy, i])), managedProbe: createProbe({ fetch, start: processes.start, env: baseEnv(env) }), session: { fetch, start: processes.start, env: baseEnv(env) }, secrets: secretsOf(env, processes, io), packCapabilities: packCapabilitiesOf(env, io), projectSkills: projectSkillsAt(env, projectRoot, io), node: process.execPath, plugin: engineName(), platform: process.platform, arch: process.arch, log };
+  return { ...native, pluginRoot, projectRoot, env, io, installIo, host, account: () => createClaudeAccount({ env, home: homedir(), io }).account(), detection: detectionOf(env, projectRoot), storeBase: storeBase(env), rooms: stateRooms(storeBase(env)), installers: installersOf(installIo, log), process: processes, lockFile: lockFileAt(pluginRoot), mcpInstallers: Object.fromEntries(MCP_INSTALLERS.map((i) => [i.strategy, i])), managedProbe: createProbe({ fetch, start: processes.start, env: baseEnv(env) }), session: { fetch, start: processes.start, env: baseEnv(env) }, secrets: secretsOf(env, processes, io), packCapabilities: packCapabilitiesOf(env, io), projectSkills: projectSkillsAt(env, projectRoot, io), node: process.execPath, plugin: engineName(), platform: process.platform, arch: process.arch, log };
 }
 
 // The secret port connections read through: environment references, and this
@@ -83,7 +85,14 @@ const packCapabilitiesOf = (env, io) => () => readerResources(connectionReader(s
 
 const detectionOf = (env, projectRoot) => detectionContext({ env, projectRoot, detectors: { ...RUNTIME_DETECTORS, "control-node": controlNodeDetector({ home: homedir(), list, supported, required }) } });
 
-const installersOf = (installIo, log) => ({ [archiveInstaller.strategy]: archiveInstaller, "node-dist": nodeDistInstaller({ supported, fetchJson: async (u) => (await got(u)).json(), fetchText: async (u) => (await got(u)).text(), fetchBytes: async (u) => Buffer.from(await (await got(u)).arrayBuffer()), io: installIo, log }) });
+// A lock is a file the plugin ships under catalog/: read from there, by a path the catalog row named relative to it
+// (src/tools/catalog.mjs pinnedLock), which stays inside.
+const lockFileAt = (pluginRoot) => (rel) => {
+  const path = contained(join(pluginRoot, "catalog"), join(pluginRoot, "catalog", rel));
+  return { path, text: readFileSync(path, "utf8") };
+};
+
+const installersOf = (installIo, log) => ({ [archiveInstaller.strategy]: archiveInstaller, [pythonLockInstaller.strategy]: pythonLockInstaller, "node-dist": nodeDistInstaller({ supported, fetchJson: async (u) => (await got(u)).json(), fetchText: async (u) => (await got(u)).text(), fetchBytes: async (u) => Buffer.from(await (await got(u)).arrayBuffer()), io: installIo, log }) });
 
 async function got(url) {
   const response = await fetch(url, { signal: AbortSignal.timeout(120_000) });

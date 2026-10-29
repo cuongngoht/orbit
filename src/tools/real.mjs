@@ -7,7 +7,7 @@
 // time, because a stalled mirror must fail rather than hang a request.
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -23,7 +23,53 @@ const PROBE_TIMEOUT_MS = 10_000;
 // current checkout's, and a checkout is untrusted data: one such tool runs the program its
 // configuration names, with this process's whole environment, and another answers "missing" for
 // every project on the machine because THIS checkout pins something that is not installed.
-export const realDetection = (env = process.env) => ({ env, platform: process.platform, arch: process.arch, node: process.execPath, exists: existsSync, read: (p) => readFileSync(p, "utf8"), run: (file, args) => spawnSync(file, args, { encoding: "utf8", timeout: PROBE_TIMEOUT_MS, windowsHide: true, stdio: ["ignore", "pipe", "pipe"], cwd: tmpdir() }) });
+//
+// `run` takes an optional third argument -- { env, timeoutMs } -- for a tool that keeps identity state, which is asked
+// under an environment of its own (src/tools/launch.mjs), and for one that needs longer than the default deadline.
+// Without it the probe is exactly what it always was.
+export const realDetection = (env = process.env) => ({ env, platform: process.platform, arch: process.arch, node: process.execPath, windowsMounts: windowsMountsOf(env), exists: existsSync, read: (p) => readFileSync(p, "utf8"), head, scratch, run: probe });
+
+function probe(file, args, o = {}) {
+  return spawnSync(file, args, { encoding: "utf8", timeout: o.timeoutMs ?? PROBE_TIMEOUT_MS, windowsHide: true, stdio: ["ignore", "pipe", "pipe"], cwd: tmpdir(), ...(o.env ? { env: o.env } : {}) });
+}
+
+// A directory made for ONE question and removed after it -- what a probe of a tool with a profile is given as that
+// profile, so asking a version creates nothing in anybody's state.
+function scratch() {
+  const dir = mkdtempSync(join(tmpdir(), "orbit-probe-"));
+  return { dir, dispose: () => rmSync(dir, { recursive: true, force: true }) };
+}
+
+// The first `n` bytes of a file as text -- enough to tell what kind of program it is. A file that cannot be read says
+// nothing (null), and nothing is a reason to refuse nothing.
+function head(path, n) {
+  try { return firstBytes(path, n); }
+  catch { return null; }
+}
+
+function firstBytes(path, n) {
+  const fd = openSync(path, "r");
+  try { return readSome(fd, n); }
+  finally { closeSync(fd); }
+}
+
+function readSome(fd, n) {
+  const buffer = Buffer.alloc(n);
+  return buffer.subarray(0, readSync(fd, buffer, 0, n, 0)).toString("latin1");
+}
+
+// Where WSL mounts Windows' drives -- and nothing at all anywhere else. WSL says so in two places: a variable its
+// shell sets, and the kernel's own release string. The mount root is `[automount] root=` of /etc/wsl.conf, `/mnt/` by default.
+const windowsMountsOf = (env) => (underWsl(env) ? [mountRoot()] : []);
+
+const underWsl = (env) => process.platform === "linux" && (Boolean(env.WSL_DISTRO_NAME || env.WSL_INTEROP) || /wsl/i.test(readOr("/proc/sys/kernel/osrelease")));
+
+const mountRoot = () => (/\[automount\][^[]*?^\s*root\s*=\s*(\S+)/m.exec(readOr("/etc/wsl.conf"))?.[1] ?? "/mnt").replace(/\/?$/, "/");
+
+function readOr(path) {
+  try { return readFileSync(path, "utf8"); }
+  catch { return ""; }
+}
 
 export const realInstallIo = (log = () => {}) => ({ download: (url) => downloaded(url, log), sha256: (bytes) => createHash("sha256").update(bytes).digest("hex"), tempDir, unpack, rename: renameSync, remove: (p) => rmSync(p, { recursive: true, force: true }), setAside });
 

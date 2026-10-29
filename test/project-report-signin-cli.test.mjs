@@ -78,3 +78,11 @@ test("the usage header documents both commands, so the session trail may name th
   cli(dir, ["sign-in", "gh-acme"]);
   assert.deepEqual(readdirSync(dir).filter((n) => n !== "control"), [], "a refused sign-in creates nothing beside the connections room");
 });
+
+test("naming an environment variable for a NEW connection means it reads a credential; the way in is the person's to change afterwards", (t) => {
+  const dir = store(t);
+  assert.equal(cli(dir, ["connect", "ado-pat", "--provider=azure-devops", "--organization=acme", "--credential-env=ADO_PAT_FOR_ORBIT"]).status, 0);
+  assert.deepEqual([connectionsOf(dir)[0].auth, connectionsOf(dir)[0].credential.name], [{ strategy: "credential" }, "ADO_PAT_FOR_ORBIT"]);
+  assert.equal(cli(dir, ["connect", "ado-pat", "--auth=azure-cli"]).status, 0, "and it can be changed to sign in");
+  assert.equal(connectionsOf(dir)[0].auth.strategy, "azure-cli");
+});

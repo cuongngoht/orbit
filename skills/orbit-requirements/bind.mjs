@@ -173,14 +173,15 @@ function readersOf(d, w) {
 // The auth every reader of a world asks, bound ONCE from what the world already holds, so no reader can wire a
 // different tool, profile or adapter than the report's. A root that has one of its own hands it in. (Never from
 // skills/orbit-control/world.mjs: that module imports this one.)
-const authOver = (d, known) => d.auth ?? authFor({ pluginRoot: d.real.pluginRoot, env: d.real.env, rooms: d.real.rooms, io: d.io, process: d.real.process, secrets: d.real.secrets, providers: known, log: d.real.log });
+const authOver = (d, known) => d.auth ?? authFor({ pluginRoot: d.real.pluginRoot, env: d.real.env, rooms: d.real.rooms, io: d.io, process: d.real.process, secrets: d.real.secrets, providers: known, log: d.real.log, emit: d.emit, next: d.next });
 
 // d: { base (the run context, with the project's capabilities), real (skills/orbit-control/
 //      world.mjs realWorld), sources (the room), io, opportunities ({ docs(), settle(docs) },
 //      the knowledge room's one opportunity per capability), works?, runtimeDir?,
 //      fetch? and nowMs? (the network and the clock, for a test to replace),
 //      auth? (one already bound), interactive? and notify? (what a read may ask of a person who
-//      must sign in: "when-required" by default, and where the prompt is shown) }
+//      must sign in: "when-required" by default, and where the prompt is shown), emit? and next?
+//      (the trail's moment of a sign-in, and the command that signs in) }
 export function sourceWorld(d) {
   const descriptors = descriptorsOf();
   const known = connectionProviders();

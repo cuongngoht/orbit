@@ -59,7 +59,7 @@ async function main() {
   if (rest.some((a) => a.startsWith("--") && !["revision", "human", "months", "from", "to", "all", "as-of", "out", "dry", "json", "provider", "organization", "host", "credential-env", "auth", "tenant", "device-code"].includes(a.slice(2).split("=")[0]))) throw new Refused("unknown report option");
   if (!cmd || cmd === "--help") return help();
   if (!COMMANDS[cmd]) throw new Refused(`unknown report command: ${cmd}`);
-  await COMMANDS[cmd](await boundReport({ env: process.env, cwd: process.cwd(), log: (l) => console.error(l), notify: (l) => console.error(l), emit: trail() }));
+  await COMMANDS[cmd](await boundReport({ env: process.env, cwd: process.cwd(), log: (l) => console.error(l), notify: (l) => console.error(l), emit: trail(), next: { signIn: (conn) => `node ${fileURLToPath(import.meta.url)} sign-in ${conn.id}` } }));
 }
 
 // A sign-in's moments go to the session trail as fixed words -- machine-wide, so with no project -- unless tracing is off.
@@ -222,9 +222,11 @@ function connections(b) {
 // How a connection gets in, in one phrase: a credential says where it comes from; anything else says it signs in.
 const entry = (c) => (c.auth.strategy === "credential" ? `credential ${c.credential.set ? `from ${c.credential.from}${c.credential.name ? ` ${c.credential.name}` : ""}` : "NOT SET"}` : `signs in (${c.auth.strategy}${c.auth.tenant ? `, directory ${c.auth.tenant}` : ""})`);
 
-// What --auth, --tenant and --device-code say about a connection's `auth`: nothing when none was given, else the strategy
+// What --auth, --tenant and --device-code say about a connection's `auth`: nothing when none was given (a NEW connection made
+// with --credential-env is a credential connection: that is what naming a variable means), else the strategy
 // (the one named, the connection's own, or the provider's default) and the options -- the descriptor decides which are valid.
 function authOf(b, id, existing) {
+  if (!existing && flag("credential-env") && !flag("auth")) return { strategy: "credential" };
   if (!flag("auth") && !flag("tenant") && !has("device-code")) return undefined;
   const provider = existing?.provider ?? flag("provider");
   const strategy = flag("auth") ?? existing?.auth?.strategy ?? publicProviders().find((p) => p.id === provider)?.authentication?.default;

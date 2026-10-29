@@ -407,3 +407,21 @@ test("a CANARY token is in no connections.json and no answer about a connection,
   for (const text of seen) for (const s of [CANARY, ...c.az.state.issued.flatMap(spellings)]) assert.equal(text.includes(s), false, "a record or an answer holds the token");
   assert.deepEqual(m.get("ado-acme").auth, { strategy: "azure-cli" }, "the record says how it signs in, and nothing else of it");
 });
+
+// ---- who may be disturbed ------------------------------------------------------------------------------------------
+
+test("what a run may ask of a person who must sign in is its root's to say: `never` starts nothing and names the way, and a sign-in's prompt reaches `notify`", async (t) => {
+  const quiet = collectOver(t, gated(fakeAdo()).fetch);
+  const stop = await collect(quiet.ctx, { ...quiet.deps, interactive: "never" }).catch((e) => e);
+  assert.deepEqual([stop.code, quiet.chain.ops().length], ["AUTH_LOGIN_REQUIRED", 0], "nothing was started: nobody has signed in, and that is known from a profile that is not there");
+  assert.match(stop.next, /sign in ado-acme/, "and the one thing to do is named");
+  const byCtx = collectOver(t, gated(fakeAdo()).fetch);
+  const again = await collect({ ...byCtx.ctx, interactive: "never" }, { ...byCtx.deps, interactive: undefined }).catch((e) => e);
+  assert.equal(again.code, "AUTH_LOGIN_REQUIRED", "the root may say so on its ctx as well as on its deps");
+  const shown = [];
+  const loud = collectOver(t, gated(fakeAdo()).fetch);
+  await collect(loud.ctx, { ...loud.deps, notify: (line) => shown.push(line) });
+  assert.equal(loud.chain.count("login"), 1);
+  assert.match(shown.join(" "), /Opening Microsoft sign-in/, "the person is shown what is happening, in words the engine wrote");
+  assert.match(shown.join(" "), /A web browser has been opened/, "and what the tool itself said");
+});

@@ -28,7 +28,7 @@ import { prepareDocs } from "./documents.mjs";
 import { SNAPSHOT_CONTRACT } from "./snapshot.mjs";
 import { calendarOf } from "./window.mjs";
 
-// ctx: { project, room, io, settings, connection (the RECORD), runId, window, parts, facts, python, env, root }
+// ctx: { project, room, io, settings, connection (the RECORD), runId, window, parts, facts, python, env, root, interactive?, notify? }
 // deps: { sources, auth (createAuth), interactive?, notify?, fetch, process, shim, nowMs, log }
 export async function collect(ctx, deps) {
   const began = new Date(deps.nowMs()).toISOString();
@@ -39,10 +39,10 @@ export async function collect(ctx, deps) {
 }
 
 // What a person may be asked to do while a run goes on -- sign in again -- is the composition root's to allow (`interactive`)
-// and to show (`notify`); a run that nobody said anything about may ask.
+// and to show (`notify`), on its deps or its ctx; a run that nobody said anything about may ask.
 function authOf(ctx, deps) {
   if (!ctx.connection) throw new Refused("this project's report settings name no connection; choose one in Orbit Control → PO Reports → Connection");
-  return deps.auth.resolve(ctx.connection, { interactive: deps.interactive ?? "when-required", notify: deps.notify });
+  return deps.auth.resolve(ctx.connection, { interactive: deps.interactive ?? ctx.interactive ?? "when-required", notify: deps.notify ?? ctx.notify });
 }
 
 function fromSource(ctx, deps, auth) {

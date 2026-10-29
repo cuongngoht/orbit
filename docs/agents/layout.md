@@ -258,8 +258,9 @@ src/mcp/       MCP as a MANAGED RESOURCE, not a feature of the host. identity.mj
 src/project-report/  a PROJECT REPORT for a product owner, generic: it names no provider, product or
                host (a test greps it). window.mjs the window and the local calendar (Node's Intl,
                so parts need no zone data) · settings.mjs the project's settings, every write
-               naming the revision it read · collect.mjs the one collection -- the credential read
-               at the moment of use and handed to the provider's collector and nothing else ·
+               naming the revision it read · collect.mjs the one collection -- the connection's
+               authorization (a credential read at the moment of use, or, since 0.2.1, a token asked of a
+               signed-in session: src/connections/auth.mjs) handed to the provider's collector and nothing else ·
                snapshot.mjs written ONCE, after a scan for the credential in every spelling ·
                compose.mjs which parts run, as ordered tables (admit · replacement · dependencies ·
                order), every exclusion a sentence · stage.mjs a run COPIES and hashes the
@@ -268,9 +269,16 @@ src/project-report/  a PROJECT REPORT for a product owner, generic: it names no 
                exit 2 a data gap and 3 the part's own failure · compute.mjs · assemble.mjs · runs.mjs
                · baseline.mjs (only a comparable run) · retention.mjs · index.mjs (run · render ·
                plan · status). cli/project-report.mjs is the composition root; the pack binds it
-src/connections/  a CONNECTION: provider, host, organization and a credential REFERENCE, never the
-               credential. model · store (machine-wide, control/connections) · manage (a person's
-               create, change, delete, set or clear the credential, test -- masked, kept as lastTest)
+src/connections/  a CONNECTION: provider, host, organization, how it gets in (`auth`, 0.2.1) and -- for a credential
+               connection -- a credential REFERENCE, never the credential. model · store (machine-wide,
+               control/connections) · manage (a person's create, change, delete, set or clear the credential,
+               sign in, sign out, test -- masked, kept as lastTest; a test never starts a sign-in) · auth.mjs
+               (0.2.1, ADR 0043: the ONE contract every reader, collector and probe asks for a request's
+               authorization: `createAuth`, and a LAZY RequestAuth -- `headers()`, `secrets()`, `invalidate()`,
+               `rejected()`, `expiresAt()`. A credential is read at the moment of a request; a broker's token is
+               asked of its adapter, kept in memory until shortly before it ends and shared by every request
+               waiting on it. It names no tool and no provider) · auth-errors.mjs (AuthBlocked, the AUTH_CODES,
+               and `excerpt`: what a tool printed, made safe before anyone reads it)
 src/secrets.mjs  a LEAF: the ONE secret port -- an environment variable's name, or {vault: id} in
                the OS secret store a composition root binds; read at the moment of use, never
                returned; no store bound is BLOCKED, never a plaintext fallback. src/secrets.mjs
@@ -294,18 +302,31 @@ src/tools/     index.mjs the doctor's port, plus the tool manager: catalog · de
                orbit-managed -> system, each ASKED its version) · effective (desired vs observed) ·
                install (receipts) · archive (a PINNED SHA-256, via src/store/archive.mjs) ·
                observe · real (the effects) · context (the one detection context a composition root builds)
+               (0.2.1, ADR 0043) launch (the ONE owner of what a child of a tool that keeps identity state is
+               given: `launcherOf`, from a row's `profile` and `launch`; a probe runs in a scratch profile) ·
+               ensure (`ensureOne`, `findOne`: the ordered walk that meets a need for a tool -- a private copy,
+               else a machine program, else an install the row lets Orbit make itself, else BLOCKED naming every
+               candidate; `AUTONOMOUS_STRATEGIES`) · pylock (the `python-lock` installer: a virtual environment of
+               Orbit's own interpreter, pip over a lock, staged, verified, promoted, receipted last) · lock (the
+               lock grammar and the version a lock pins, pure)
 src/catalog.mjs  a LEAF: read one of the plugin's catalogs, versioned
 src/store/control.mjs  the control rooms under storeBase -- configuration (control/) apart from
                installations (runtimes/): mcp, mcpReceipts, mcpRuntimes, tools, toolReceipts,
-               toolRuntimes, controlRuntime, activity. Documents say their schema, are atomic, a
-               newer schema refused rather than overwritten, a corrupt one copied aside
+               toolRuntimes, controlRuntime, activity, and (0.2.1) authSessions -- `control/auth/<profile>`, the
+               sign-in state of a tool Orbit signs a person in through, machine-wide and mode 0700. Documents
+               say their schema, are atomic, a newer schema refused rather than overwritten, a corrupt one
+               copied aside
 src/store/archive.mjs  the ONE stage -> SHA-256 -> unpack -> verify -> promote transaction both
-               private installers share (tools, managed MCP runtimes) -- and nothing else
+               private installers share (tools, managed MCP runtimes) -- and nothing else. Its `promote`
+               (verify, set the old copy aside, one rename) is also what the python-lock installer ends in
 catalog/       the plugin's IMMUTABLE product data: components.json (what each skill and agent is
                FOR -- provides, needs, optional -- and the engine's builtins), mcp.json (servers
                it knows: Microsoft Learn recommended, others recognised; how each installs),
-               tools.json (pinned installs), knowledge.json (exactly one GENERIC relation per
-               derivation role -- a starting vocabulary, never an ontology). This is where product
+               tools.json (pinned installs; 0.2.1: a row may declare a `profile` and a `launch`, and an install
+               may be a `python-lock` pinned by a lock under locks/), locks/ (0.2.1: one
+               `<package>-<version>-<platform>.lock` per platform a python-lock tool is pinned for, written by
+               skills/orbit-release/pin-python-lock.mjs and never by hand), knowledge.json (exactly one GENERIC
+               relation per derivation role -- a starting vocabulary, never an ontology). This is where product
                words live, so src/ never needs them
 src/help/      orbit-help's one view: architecture + engineering + the QA plans + the lessons,
                gathered read-only, and -- with `--for` -- the task's intent (a table word, the text
@@ -885,19 +906,26 @@ skills/orbit-control/      starts Orbit Control (control-server/) on a Node >= 2
                           tools.mjs is Control's Node as a TOOL (the `control-node` detector, the
                           `node-dist` installer); world.mjs binds the real host (read-only), the
                           Process port, two probes (the host's servers with the host's environment,
-                          managed ones with BASE_ENV), detectors and installers once, for
-                          control-server, cli/resources.mjs, cli/mcp.mjs and cli/context.mjs
+                          managed ones with BASE_ENV), detectors and installers once (0.2.1: the archive
+                          and python-lock installers, and the lock reader a private Azure CLI install
+                          needs), for control-server, cli/resources.mjs, cli/mcp.mjs and cli/context.mjs
 skills/orbit-control/vault.mjs  the OS SECRET STORE behind src/secrets.mjs: macOS Keychain through
                           /usr/bin/security (the value on stdin, never argv), Windows DPAPI through
                           the system PowerShell by path (a fixed encoded script, the value on stdin,
                           the blob in the store); none on Linux. What the OS says on failure never
                           reaches an error. Bound in world.mjs and the report binding
 skills/orbit-report/  the PO REPORT pack -- the product words src/project-report/ must not
-                          hold: providers.json (what a connection and a scope ask for, read-only
-                          permissions, token shapes) · parts.json (the standard parts and sections,
+                          hold: providers.json (what a connection and a scope ask for, how a connection
+                          gets in -- `authentication.strategies`, 0.2.1 --, read-only permissions, token
+                          shapes) · parts.json (the standard parts and sections,
                           as data) · sources/ (the GitHub and Azure DevOps collectors and probes, in
                           Node, over http.mjs: one origin, no auth across a redirect, bounded, typed
-                          stops) · python/ (the kit the parts run on: the shim, the SDK, the guard,
+                          stops) · auth/ (0.2.1, ADR 0043: the Azure CLI as the way a connection signs in --
+                          azure-cli.mjs the adapter, the sequence and the Azure-specific words ·
+                          azure-cli-command.mjs the argument lists it asks · azure-cli-classify.mjs one ordered
+                          table over what a command printed · tools.mjs the tools port · index.mjs `authFor`,
+                          the ONE binding every composition root uses, so none can wire a different tool,
+                          profile or adapter) · python/ (the kit the parts run on: the shim, the SDK, the guard,
                           the standard metrics, forecast and documents collector; check_part.py the
                           static look at a project's part) · render.mjs + assets/ (one offline page,
                           vendored and pinned) · extend.mjs (scaffold, and the checks registration
@@ -936,7 +964,9 @@ skills/orbit-security-audit/  (0.1.0) the SECURITY AUDIT playbook + catalogs/ (t
 skills/orbit-browser/ OPTIONAL adapter: pick a local browser+profile, opted into by launcher
 skills/orbit-release/  release + adoption: the DoD as gates, the version rule, the install routes;
                           frontmatter.mjs (1.8.9) holds every SKILL.md and agent to the frontmatter shape a
-                          host parses, by line -- a gate, and a suite test
+                          host parses, by line -- a gate, and a suite test; pin-python-lock.mjs (0.2.1) writes
+                          the lock of a python-lock tool for each platform (pip for the host, uv for the others,
+                          every wheel's SHA-256 from PyPI) -- it needs the network and only a release runs it
 agents/                   subagents the skills delegate to (no conversation, one job each)
                           map-recorder · qa-case-writer · failure-analyst (CLASSIFIES, mutates
                           nothing) · dsl-doctor (repairs how a case is WRITTEN) ·

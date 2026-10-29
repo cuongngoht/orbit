@@ -29,6 +29,11 @@ export interface Tool {
   checkedAt: string | null;
   stale: boolean;
   install: { strategy: string; supported: boolean; reason: string | null; version: string | null; source: string | null; instructions: string | null };
+  /**
+   * The catalog's own fact that Orbit may fetch its own pinned copy of this tool by itself when a task needs one -- never
+   * something observed. Install is how a person asks for the same copy up front.
+   */
+  autonomous: boolean;
   managed: { version: string; installedAt: string | null; source: string | null; checksum: string | null } | null;
   update: { from: string; to: string } | null;
 }

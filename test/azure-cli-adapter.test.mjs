@@ -217,3 +217,16 @@ test("a child of the sign-in never runs from a shared directory: its working dir
   await r.auth.signOut(CONNECTION);
   for (const call of r.az.state.calls) assert.equal(call.cwd, `${ORBIT}/azure-cli`, call.argv[0]);
 });
+
+test("under WSL a profile on a Windows drive is refused as an answer with its own code -- not a crash, and nothing is started", async () => {
+  const az = createFakeAz({});
+  const found = { launch: { file: "/orbit/az", args: ["-IBm", "azure.cli"] }, source: "orbit-managed", version: "2.91.0" };
+  const ctx = { platform: "linux", env: {}, rooms: { authSessions: "/mnt/c/Users/dev/.orbit/projects/control/auth" }, scratch: () => ({ dir: "/s", dispose: () => {} }), windowsMounts: ["/mnt/"] };
+  const resolved = { id: PRIVATE.id, found, version: "2.91.0", source: "orbit-managed", launcher: (purpose) => launcherOf(PRIVATE, found, ctx, purpose) };
+  const adapter = azureCliAdapter({ tools: { ensure: async () => resolved, find: () => ({ found: resolved, tried: [], acquirable: null }) }, process: az.process, io: az.io, nowMs: () => NOW });
+  const auth = createAuth({ secrets: {}, adapters: { "azure-cli": adapter }, providers: PROVIDERS, nowMs: () => NOW });
+  const blocked = await auth.resolve(CONNECTION, {}).headers().catch((e) => e);
+  assert.deepEqual([blocked.code, az.state.calls.length], ["AUTH_PROFILE_LOCATION", 0]);
+  assert.match(blocked.message, /cannot live on a Windows drive/);
+  assert.equal((await auth.status(CONNECTION).catch((e) => e)).code, "AUTH_PROFILE_LOCATION");
+});

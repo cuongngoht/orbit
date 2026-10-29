@@ -51,6 +51,12 @@ const TOOL_CODES = { TOOL_MISSING: "AUTH_TOOL_MISSING", TOOL_UNSUPPORTED: "AUTH_
 
 const blockedTool = (e) => new AuthBlocked(TOOL_CODES[e.code] ?? "AUTH_TOOL_MISSING", excerpt(e.message, [], 400), "install the Azure CLI, or use a personal access token for this connection instead");
 
+// The directory the sign-in lives in may be refused (under WSL, on a Windows drive): that is an answer, not a crash.
+function sessionOf(found) {
+  try { return found.launcher("session"); }
+  catch (error) { throw error instanceof AuthBlocked ? error : new AuthBlocked("AUTH_PROFILE_LOCATION", excerpt(error.message, [], 300), "keep Orbit's store on this system's own filesystem (ORBIT_STORE_DIR)"); }
+}
+
 const toolView = (seen) => ({ found: Boolean(seen.found), version: seen.found?.version ?? null, source: seen.found?.source ?? null, acquirable: seen.acquirable ?? null, tried: seen.tried.map((t) => ({ id: t.id, reason: t.reason ? excerpt(t.reason) : null })) });
 
 // ---- a token -------------------------------------------------------------------------------------------------------
@@ -65,7 +71,7 @@ async function acquired(deps, flight, a) {
 
 // No profile directory means nobody has signed in here: that is known without starting anything.
 async function attempt(deps, flight, tool, a) {
-  const launcher = tool.launcher("session");
+  const launcher = sessionOf(tool);
   if (!deps.io.exists(launcher.profileDir)) return { need: "login-required" };
   return outcomeOf(deps, await tokenOf(deps, flight, launcher, a), a);
 }
@@ -121,7 +127,7 @@ async function signedInThen(deps, flight, tool, a) {
 
 // ONE sign-in however many callers want it; the next caller after it ends may start another.
 function loggedIn(deps, flight, tool, a) {
-  flight.login ??= signing(deps, tool.launcher("session"), a).finally(() => { flight.login = null; });
+  flight.login ??= signing(deps, sessionOf(tool), a).finally(() => { flight.login = null; });
   return flight.login;
 }
 
@@ -174,7 +180,7 @@ async function signedIn(deps, flight, a) {
 async function statusOf(deps, flight, a) {
   const seen = deps.tools.find(a.strategy.tools);
   if (!seen.found) return { state: "tool-missing", tool: toolView(seen) };
-  return { state: await stateOf(deps, flight, seen.found.launcher("session"), a), tool: toolView(seen) };
+  return { state: await stateOf(deps, flight, sessionOf(seen.found), a), tool: toolView(seen) };
 }
 
 const STATE = { ok: "authenticated", "login-required": "sign-in-required", "interaction-required": "interaction-required", network: "failed", failed: "failed" };
@@ -187,7 +193,7 @@ async function stateOf(deps, flight, launcher, a) {
 async function signedOut(deps, a) {
   const seen = deps.tools.find(a.strategy.tools);
   if (!seen.found) return { state: "tool-missing", tool: toolView(seen) };
-  const launcher = seen.found.launcher("session");
+  const launcher = sessionOf(seen.found);
   if (deps.io.exists(launcher.profileDir)) await loggedOut(deps, launcher);
   return { state: "sign-in-required", tool: toolView(seen) };
 }
@@ -196,7 +202,7 @@ async function signedOut(deps, a) {
 async function explained(deps, a) {
   if (a.stop?.kind !== "auth" || a.connection?.auth?.tenant) return null;
   const seen = deps.tools.find(a.strategy.tools);
-  const tenants = seen.found ? await tenantsOf(deps, seen.found.launcher("session")) : [];
+  const tenants = seen.found ? await tenantsOf(deps, sessionOf(seen.found)) : [];
   return tenants.length > 1 ? new AuthBlocked("AUTH_TENANT_AMBIGUOUS", "this sign-in reaches more than one directory, and the source did not accept the token it got", "name the directory (its id or domain) on this connection, then try again") : null;
 }
 

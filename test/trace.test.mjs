@@ -209,3 +209,19 @@ test("the task events carry ids and words, never an objective, a decision or an 
   const line = readable({ ...written, data: { ...written.data, objective: "edited in" } });
   assert.deepEqual(Object.keys(line.data).sort(), ["approval", "decision", "task"], "and a line somebody edited is cut again on the way out");
 });
+
+// ---- the sign-in event ----------------------------------------------------------------------------
+
+test("a connection's sign-in leaves a fixed-vocabulary moment on the trail: never an account, a directory, a tenant, a token or what a tool printed", async () => {
+  const { EVENT_TYPES, eventOf, readable } = await import("../src/trace/events.mjs");
+  const rows = EVENT_TYPES.filter((r) => r.type === "connection.auth");
+  assert.equal(rows.length, 1);
+  assert.deepEqual(rows[0].fields, ["provider", "strategy", "phase", "outcome"]);
+  const meta = { id: "e-1", at: "2026-10-29T10:00:00.000Z", session: null, project: null };
+  const leaky = { provider: "azure-devops", strategy: "azure-cli", phase: "login", outcome: "ok", tenant: "contoso.example", account: "person@contoso.example", token: "SENTINEL-TOKEN-aaaaaaaaaaaaaaaaaaaa", stderr: "To sign in, use a web browser ... ABCD1234" };
+  const written = eventOf("connection.auth", leaky, meta);
+  assert.deepEqual(Object.keys(written.data).sort(), ["outcome", "phase", "provider", "strategy"]);
+  assert.doesNotMatch(JSON.stringify(written), /contoso|SENTINEL|ABCD1234|person@/);
+  const line = readable({ ...written, data: { ...written.data, tenant: "edited in" } });
+  assert.deepEqual(Object.keys(line.data).sort(), ["outcome", "phase", "provider", "strategy"], "and a line somebody edited is cut again on the way out");
+});

@@ -1,0 +1,48 @@
+# Native EVIDENCE for the private Azure CLI runtime, one runner per platform Orbit handles on purpose.
+#
+# The suite runs no network and no real `az`, and the regular matrix (ci.yml) is Ubuntu and Windows x64 only. This is the
+# workflow a person runs -- on a branch about to be released, or after the catalog's pins change -- to see Orbit's own
+# installer do the real thing on every platform: fetch Orbit's pinned Python and the official Azure CLI (a hash-locked
+# set of wheels on macOS and Linux, Microsoft's ZIP on Windows x64) into a temporary store, run it, and prove that asking
+# who is signed in creates no session directory and leaves a decoy "developer profile" byte for byte as it was.
+#
+# Windows ARM64 is expected to say "unsupported": Microsoft publishes no ARM64 build, and Orbit does not claim x64
+# emulation. Each job uploads its one-line JSON record; paste them into ADR 0043's "Platform evidence" table. A platform
+# not listed there as `real` has not been run, and nothing may say it has.
+name: azure-cli-runtime
+
+on:
+  workflow_dispatch:
+
+jobs:
+  runtime:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, key: linux-x64, expect: installed }
+          - { os: ubuntu-24.04-arm, key: linux-arm64, expect: installed }
+          - { os: macos-latest, key: darwin-arm64, expect: installed }
+          - { os: macos-15-intel, key: darwin-x64, expect: installed }
+          - { os: windows-latest, key: win32-x64, expect: installed }
+          - { os: windows-11-arm, key: win32-arm64, expect: unsupported }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # The expectation reaches the shell as a plain name from the matrix, never spliced from an input.
+      - name: the private runtime, installed by Orbit's own installer into a temporary store
+        shell: bash
+        env:
+          EXPECT: ${{ matrix.expect }}
+        run: node skills/orbit-release/azure-cli-runtime-smoke.mjs "--expect=$EXPECT" | tee smoke.json
+      - name: the record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-cli-runtime-${{ matrix.key }}
+          path: smoke.json
+          if-no-files-found: ignore

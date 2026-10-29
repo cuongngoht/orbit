@@ -111,6 +111,11 @@ reads a host's configuration, a PATH or a catalog file -- it reads the registry.
 is a leaf for the reason `src/freshness.mjs` is one: the resolver (routing) and the MCP invocation
 gate (mcp) must give the same verdict and neither may import the other. `src/store/archive.mjs` is
 the one install transaction both `src/tools/` and `src/mcp/` call, so neither reads the other.
+`src/tools/pylock.mjs` (0.2.1) stages and promotes through it too. `src/tools/launch.mjs` is the one owner of
+what a child of a tool that keeps identity state is given, and `src/connections/auth.mjs` the one contract
+every reader, collector and probe asks for a request's authorization: `src/connections/` reads no tool,
+because how a connection signs in is an adapter's (`skills/orbit-report/auth/`), bound with the tools port
+by the composition roots.
 `src/context/` is pure data; `cli/context.mjs` composes it with the process port. `src/protected/` (0.2.0) is a
 LEAF for the reason `src/policy.mjs` is one: the task's approvals, the orchestrator, the capability pipeline, the MCP
 broker, the runtime writer, automation's matrix and Live must give the same verdict about the same action, and none
@@ -171,7 +176,9 @@ place real adapters are bound to real config.
 - **Plugin code is replaceable; the machine store is durable; neither is "memory".** The plugin
   directory is immutable product code and catalogs. The machine store (`storeBase`) keeps
   MUTABLE state: `control/` is what a person configured (resource desired state, policies,
-  approvals, receipts, activity), `runtimes/` is what Orbit installed. MEMORY is project and
+  approvals, receipts, activity, and in `control/auth/<profile>/` the sign-in state of a tool Orbit
+  signs a person in through -- Orbit's own, never the developer's), `runtimes/` is what Orbit
+  installed. MEMORY is project and
   engineering KNOWLEDGE (lessons, architecture, engineering, intelligence, runs). Never call a
   resource record "memory", never put a runtime in the plugin, never persist an absolute runtime
   path: a receipt holds a room name and relative paths, re-derived every time.
@@ -200,12 +207,74 @@ place real adapters are bound to real config.
   Orbit accepts, once, from a person in Orbit Control -- and it goes straight to the OS secret store
   (src/secrets.mjs, skills/orbit-control/vault.mjs); what Orbit keeps is the reference. It is never an
   argument, never in a snapshot, a log, a report or a response, never handed to a part, and never
-  read from another tool's store.
-- **A runtime is installed by a person, verified, and receipted last.** remote-http installs
-  nothing; archive stages beside the final directory, checks the pinned SHA-256, verifies,
-  promotes, and only then writes the receipt. A receipt is not proof -- the entrypoint is looked
+  read from another tool's store. A connection may instead SIGN IN (0.2.1, ADR 0043), and then Orbit
+  accepts no credential at all: what it keeps is `auth: { strategy }`, and what it holds while it
+  works is a short-lived token asked of the tool whose session it is each time one is needed -- in
+  memory, never stored, logged, traced, reported, handed to a part or put in an argument or a variable.
+- **A runtime is installed by a person -- or, for a private tool a catalog row lets Orbit fetch
+  itself, by Orbit -- verified, and receipted last.** remote-http installs nothing; archive and
+  python-lock stage beside the final directory, check the pin (the SHA-256, or the lock's hashes),
+  verify, promote, and only then write the receipt. A receipt is not proof -- the entrypoint is looked
   for on every read. Removing a server from Orbit never deletes its runtime; deleting runtime files
   is a second act, only ever inside `runtimes/mcp/`, checked through symlinks.
+- **Orbit may use an Azure CLI executable present on the machine, but it never uses the developer's
+  Azure CLI identity state.** Since 0.2.1 (ADR 0043) every Azure CLI process Orbit starts is given
+  Orbit's own profile: `AZURE_CONFIG_DIR` is `<storeBase>/control/auth/azure-cli` (the `authSessions`
+  room: machine-wide, mode 0700, created by the first sign-in, never by a read and never in a
+  repository). ONE owner builds the child's environment, `launcherOf` in `src/tools/launch.mjs`, from
+  the catalog row's `profile` and `launch`, so no code names the variable, a pin or a product:
+  `BASE_ENV`, the names the row lets through (`launch.inherit`: a proxy, a CA bundle, a display) and
+  the row's pins, with the profile variable set LAST. No other `AZURE_*` of the developer's ever
+  arrives, and nothing of their account, subscription, configuration, extensions or login session
+  (`~/.azure`, `%USERPROFILE%\.azure`) is read, copied, imported or changed. The pins switch off what a
+  profile directory alone does not isolate: the Windows account broker (a session kept OUTSIDE the
+  profile, shared with the developer's own `az`), the macOS broker, and an encrypted token cache
+  everywhere but Windows (a keystore entry has FIXED names every profile shares; on Windows it is a
+  DPAPI file inside the profile), plus the subscription picker and telemetry. A version probe or an
+  install's verification runs in a SCRATCH profile that is removed, because `az --version` alone
+  writes files into whatever directory it is given. Which program runs is a table (`ensureOne`,
+  `src/tools/ensure.mjs`): a private copy Orbit installed, else the machine's own `az` as a PROGRAM
+  only, else an install of Orbit's own, else BLOCKED naming every candidate -- and every candidate
+  passes one gate (it starts, names a version at or above the row's `minimum`, 2.61.0, and is a
+  program of THIS operating system), so whichever runs, the profile is the same. Under WSL the Orbit
+  state is the Linux system's: a Windows `az` reached through interop (under a Windows-drive mount,
+  or a Windows executable) is refused as a candidate, and so is a profile on a Windows drive. The
+  boundary: this governs the Azure CLI
+  processes Orbit starts for its OWN sign-in. A project capability that itself declares
+  `tools: ["az"]`, and `query doctor`, are the project's own declared dependency and are not routed
+  through it (`test/azure-cli-isolation.test.mjs`, `test/tools-launch.test.mjs`,
+  `test/tools-ensure.test.mjs`).
+- **Orbit never reads Azure CLI token-cache files.** Azure CLI owns its own Microsoft authentication
+  session; Orbit asks it for an ephemeral Azure DevOps access token through the documented CLI:
+  `az account get-access-token`, and `az login` and `az logout` against Orbit's profile only. A token is
+  only ever an ANSWER: held in memory until shortly before it expires, shared by every reader that
+  waits on it, and never stored, logged, traced, reported, put in an argument or a variable, or handed
+  to a part. The sign-in is one sequence and never a loop: a token; when the CLI says a person must
+  act, ONE `az login` however many readers wait; then ONE token. A person who cancelled is told and
+  nothing retries, a service that cannot be reached is not a reason to sign in, and a connection test
+  never starts one. Everything the CLI printed is masked, scrubbed and cut to one short line before it
+  is shown (`excerpt`, `src/connections/auth-errors.mjs`), and a refusal is BLOCKED (3) with an
+  `AUTH_*` code and the one thing a person does next. Orbit never creates a personal access token and
+  never installs the Azure DevOps CLI extension (`test/auth-contract.test.mjs`,
+  `test/azure-cli-adapter.test.mjs`).
+- **A private tool runtime Orbit may fetch itself is a pinned archive or a pinned lock, and nothing
+  else (0.2.1, ADR 0043).** A catalog row that says `install.autonomous`, whose strategy is in
+  `AUTONOMOUS_STRATEGIES` (`src/tools/ensure.mjs`: `archive` and `python-lock`) and which an installer
+  serves on this platform, is installed by Orbit on its own initiative when a need finds nothing
+  usable. No Protected Boundary holds it -- `tool.acquire`, `auth.token` and `auth.login` are AUTO
+  (`test/protected-boundaries.test.mjs`) -- so a person is not asked, and the pin is the whole trust.
+  An archive is pinned by URL and SHA-256 per platform. A `python-lock` is pinned by a lock shipped
+  under `catalog/locks/` (grammar in `src/tools/lock.mjs`: `name==version` and every SHA-256 pip may
+  accept, no option, URL, path or marker), which pip is run over with `--isolated --require-hashes
+  --only-binary=:all: --no-deps`, inside a virtual environment of ORBIT's own interpreter (the private
+  install of the row `install.python` names, never the machine's Python), staged beside the final
+  directory, verified the way it will be run, promoted by one rename and receipted last
+  (`src/tools/pylock.mjs`). Never a package manager, never `sudo` or any privilege, nothing put on
+  PATH or in a system directory, and never a distribution a lock does not name. It is a tool Orbit
+  runs, never a dependency of the engine: `package.json` still has none. It is also not a gap: a
+  capability nothing provides stays one opportunity a person decides (below), and this is only a tool a
+  catalog row already names. A release re-pins a lock with `skills/orbit-release/pin-python-lock.mjs`,
+  and a person reads each lock's `re-picked` header lines.
 
 - **Declared is not used, a technology is not a capability, and observed is not a rule.** Project
   intelligence keeps each on its own rung of the maturity ladder, from its own kind of evidence:
@@ -908,11 +977,13 @@ ORBIT_STORE_DIR=/tmp/l node cli/autonomous-engineering.mjs context <task> | step
 ORBIT_STORE_DIR=/tmp/l node cli/project-report.mjs status|settings|runs|parts|where   # a PO report (README §4.10)
 ORBIT_STORE_DIR=/tmp/l node cli/project-report.mjs run [--dry] [--months=N|--from=D --to=D|--all] [--as-of=D]
 ORBIT_STORE_DIR=/tmp/l node cli/project-report.mjs render [<run-id>|latest]          # again, asking no source
-ORBIT_STORE_DIR=/tmp/l node cli/project-report.mjs probe | connections | connect <id> --provider=… --organization=… --credential-env=<NAME>
+ORBIT_STORE_DIR=/tmp/l node cli/project-report.mjs probe | connections | connect <id> --provider=… --organization=… [--auth=azure-cli|credential] [--credential-env=<NAME>]
+ORBIT_STORE_DIR=/tmp/l node cli/project-report.mjs sign-in <id> [--tenant=<id>] [--device-code] | sign-out <id>   # Microsoft sign-in, in Orbit's own Azure CLI profile (ADR 0043)
 ORBIT_STORE_DIR=/tmp/l node cli/qc-tool.mjs new <id> --report=<kind> --for="…" | put <id> <file> | rollback <id>
 node skills/orbit-sql/sqlcmd.mjs preflight            # can this machine read the database?
 node cli/schema.mjs [--plan]                                 # print the generated case (or plan) schema
 node skills/orbit-release/ship.mjs                        # the whole definition of done, one command
+node skills/orbit-release/pin-python-lock.mjs --python=<Orbit's own Python> --package=azure-cli==<v> [--platform=…]   # re-pin a python-lock tool's locks (network; uv for the other platforms)
 agy                                                          # run antigravity with skills/hooks discovered
 ```
 
@@ -934,7 +1005,8 @@ acceptance, recorded from live runs on every host -- is `wait` under `--ci` and 
    `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, the root `plugin.json` and
    `.codex-plugin/plugin.json` — the gate checks every one (`VERSIONS`), and a fourth once drifted
    silently through two releases before it did. The same gate holds every other marketplace entry to
-   that version too: they ship with the release.
+   that version too: they ship with the release. The two shipped packs' `extension.json` carry it as
+   well, and `test/packs.test.mjs` holds them to the same number.
 5. `README.md` and the `skills/*/SKILL.md` playbooks say what the code now does.
 6. New agent-authored cases stay in machine-store drafts, including after PASS. Agents use
    `--report` for every live run; promotion to shared regression requires an explicit request.

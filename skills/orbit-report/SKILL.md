@@ -8,8 +8,9 @@ description: >
   project, sprint or status report, delivery or flow numbers, a forecast, or a section the
   report does not have yet (it then builds, verifies and activates the smallest report
   extension for this project, without asking). Default window: the last two complete calendar
-  months. It never asks for a token in chat, never reads another tool's stored token, never
-  commits or pushes, and never invents a number the source did not give.
+  months. Azure DevOps is read through a Microsoft sign-in by default, a personal access token
+  being the alternative. It never asks for a token in chat, never reads another tool's stored
+  token or login, never commits or pushes, and never invents a number the source did not give.
 argument-hint: the PO report for July and August, with how long open pull requests have waited
 allowed-tools:
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/project-report.mjs*)
@@ -45,11 +46,24 @@ run or be left out, each with its reason. What to do with what it says:
 | It says | Do |
 |---|---|
 | no provider / no scope | set them from what the person said: `set provider=github 'scope.repositories=["owner/name"]'` (Azure DevOps: `provider=azure-devops scope.project=<project>`). Ask only for what you cannot read from the checkout or their words. |
-| no connection, or credential NOT SET | tell the person to create or pick one in **Orbit Control → Connections** (or `connect <id> --provider=… --organization=… --credential-env=<NAME>`). Never ask for the token itself. `references/connections.md` says which read-only permissions to grant. |
+| no connection, or a token connection whose credential is NOT SET | tell the person to create or pick one in **Orbit Control → Connections** (or `connect <id> --provider=… --organization=…`; for a personal access token add `--auth=credential --credential-env=<NAME>`). Azure DevOps signs in with Microsoft by default and needs no token. Never ask for a token itself. `references/connections.md` says which read-only permissions to grant a token. |
+| sign-in required (a connection that signs in with Microsoft, and nobody has) | tell the person to run `! node <engine>/cli/project-report.mjs sign-in <id>` at the prompt, with this plugin's real root in place of `<engine>`, then run `status` again. The browser step is theirs, and a host may time out a long command: do not run it for them. |
+| no Azure CLI usable here | Orbit installs a private copy by itself when a sign-in needs one (pinned and checksum-verified, into its own store). If it says it could not, say what it said: a personal access token connection (`--auth=credential`) is the alternative. |
 | Python MISSING | **Orbit Control → Tools → Python** installs a private, verified copy shared by every project, or `ORBIT_PYTHON` names one already here. Nothing is installed by you. |
 
 A settings change names the revision it read: `settings` prints it; pass it back with
 `--revision=<r>`. Never overwrite a change you did not read.
+
+### Azure DevOps signs in with Microsoft
+
+Orbit's Microsoft sign-in is independent from your normal Azure CLI login. If you already use `az` for development, Orbit does not change that account, subscription, configuration or login session. Orbit keeps a separate Azure CLI profile in the Orbit machine store. You may therefore be logged into account A in your terminal and account B in Orbit at the same time.
+
+An Azure DevOps connection signs in with a Microsoft account by default, once per machine; a personal access token is the
+alternative (`--auth=credential`), and the only way in for GitHub and for an Azure DevOps Server collection. **Orbit Control →
+Connections** says whether anybody is signed in, and lets the person check the connection, sign in and sign out.
+`sign-out <id>` ends Orbit's session and nobody else's. `sign-in` takes `--tenant=<id>` when the account belongs to several
+directories and `--device-code` where no browser can open. Orbit uses a copy of the Azure CLI it keeps for itself, or the
+machine's own `az` as a program only, and never the person's own login.
 
 ## 2. Running
 
@@ -115,10 +129,12 @@ registered again — never rewrite an extension somebody changed.
 ## 5. What this never does
 
 Never puts a credential in chat, a command line, a file, a report or a log; never reads a token
-another tool stored (`gh`, `hosts.yml`, a keychain item it did not create); never switches
-accounts; never needs write access to a source. Never commits, pushes, or moves a submodule
-pointer. A report page holds the project's data: keep it out of commits.
+another tool stored (`gh`, `hosts.yml`, a keychain item it did not create), nor the Azure CLI's own
+login or token cache (`~/.azure`); never switches accounts; never needs write access to a source.
+Never commits, pushes, or moves a submodule pointer. A report page holds the project's data: keep
+it out of commits.
 
 References: `references/metrics.md` (every standard metric, the window, the forecast, the
 baseline) · `references/extensions.md` (the part contract, the SDK, the rules of composition)
-· `references/connections.md` (least-privilege tokens, the OS secret store, what a test checks).
+· `references/connections.md` (Microsoft sign-in, least-privilege tokens, the OS secret store,
+what a test checks).

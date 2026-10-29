@@ -64,6 +64,16 @@ node ${CLAUDE_PLUGIN_ROOT}/cli/requirements.mjs resolve "<the link, or the bare 
 - **A gap** (nothing here can read a work item) is reported in the person's terms: which
   capability is missing, and that `knowledge.mjs opportunities` holds it for a person to accept.
   Stop there. Never install, enable or configure a reader yourself.
+- **Azure DevOps reads through a Microsoft sign-in by default.** A personal access token is the
+  alternative, and the only way in for GitHub and for an Azure DevOps Server collection. If a read
+  says sign-in is required, tell the person to run
+  `! node <engine>/cli/project-report.mjs sign-in <connection-id>` at the prompt, with this plugin's
+  real root in place of `<engine>`: the browser step is theirs, and a host may time out a long
+  command, so do not try to run it for them. Then read again. A bare `#123` resolves through the
+  project's binding or a connection, never from the Azure CLI's own configuration, which Orbit does
+  not read.
+
+Orbit's Microsoft sign-in is independent from your normal Azure CLI login. If you already use `az` for development, Orbit does not change that account, subscription, configuration or login session. Orbit keeps a separate Azure CLI profile in the Orbit machine store. You may therefore be logged into account A in your terminal and account B in Orbit at the same time.
 
 ## 2. Read it once
 

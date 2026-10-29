@@ -4,7 +4,8 @@ description: >
   Start Orbit Control, the local control panel for this plugin (MCP servers, skills, tools, report
   connections, PO reports, the router, activity), and hand back its one URL. Use when asked to
   open the control panel, add, test, approve or police an MCP server, install a CLI tool or an MCP
-  runtime, set up a report connection or its credential, or see what the router would pick. It
+  runtime, set up a report connection, its credential or its Microsoft sign-in, or see what the
+  router would pick. It
   starts the server on loopback only and never adds, enables or approves anything itself; the
   person does.
 argument-hint: open the control panel | restart it on a fixed port
@@ -58,9 +59,12 @@ Give the person the `open` URL **verbatim**, and tell them to open it in their b
   the files on disk, Activity reads the MCP broker's own lines (never what was asked or answered).
 - **Skills** lists, edits and deletes skills, with what each one's needs resolve to. **Tools** is
   a verified private install per tool, Python for project reports included.
-- **Connections** are the sources project reports read, each naming where its credential comes
-  from; the credential itself goes straight to the OS secret store. **PO Reports** holds this
-  project's report settings, sections and extensions.
+- **Connections** are the sources project reports read, each saying how it gets in. A GitHub
+  connection, or an Azure DevOps one that uses a token, names where its credential comes from, and
+  the credential itself goes straight to the OS secret store. An Azure DevOps connection signs in
+  with Microsoft by default and keeps no credential: its row shows whether anybody is signed in and
+  lets the person check it, sign in and sign out (the browser step is theirs). **PO Reports** holds
+  this project's report settings, sections and extensions.
 - **MCP** has four tabs. **Managed** is what Orbit owns, kept in the machine store and independent
   of any host: **Add to Orbit** from the **Catalog** (Microsoft Learn needs nothing installed), or
   **Add custom**. A secret is never typed there: a header or variable is NAMED with the environment
@@ -74,9 +78,13 @@ Give the person the `open` URL **verbatim**, and tell them to open it in their b
 - A task's page in **Mission Control** has a **Sandbox** card: the environment the task owns, built from its changed source tree, with what runs there, its endpoints as text, its output inline, and Stop and Release for a person. **Projects → Runtime** lists every sandbox of a checkout and holds the **Sandbox policy**, including the restore plans and container definitions a person trusts by fingerprint. Control never starts, restarts or builds a sandbox: the agent's next `start-sandbox` rebuilds a stale one.
 - A running task's page in **Mission Control** is **live** (Orbit Live, 1.8.0): it shows each journal line and each browser step of the QA begun against its sandbox as they are written, the current activity, a person's approval inline, and the sandbox's console -- no refresh needed. `● LIVE` pulses only while the page holds a healthy stream; `DEGRADED LIVE` means it reads every 5 seconds instead. Nothing on it runs anything, and the console has no input.
 - **Tools → Install** and **MCP → Install runtime** download only a pinned, checksum-verified build
-  into Orbit's store; neither uses a system package manager.
+  into Orbit's store; neither uses a system package manager. **Tools** also lists Orbit's own copy of
+  the Azure CLI. A Microsoft sign-in installs it by itself when the machine has no usable `az`, and
+  installing it here makes it the one that runs even when the machine has its own.
 - Control shows the project it was started in, so start it from the project the person is
   working on when their question is about that project's MCP servers or tools.
+
+Orbit's Microsoft sign-in is independent from your normal Azure CLI login. If you already use `az` for development, Orbit does not change that account, subscription, configuration or login session. Orbit keeps a separate Azure CLI profile in the Orbit machine store. You may therefore be logged into account A in your terminal and account B in Orbit at the same time.
 
 If the person already has a panel running from this session, give them that URL again rather
 than starting a second server.

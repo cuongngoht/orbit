@@ -146,3 +146,14 @@ test("a platform the row pins no lock for is refused up front, naming the platfo
   assert.match(pythonLockInstaller.supports(ROW, "win32", "arm64"), /no verified build of .* is pinned for win32-arm64/);
   assert.match(pythonLockInstaller.supports(ROW, "linux", "ia32"), /linux-ia32/);
 });
+
+test("a staged install a killed host left behind is swept when the next install holds the lock -- and only staging, never an install that was put in place", async () => {
+  const w = world();
+  const tool = join(w.rooms.toolRuntimes, "azure-cli-private");
+  mkdirSync(join(tool, ".install-ABANDONED", "venv"), { recursive: true });
+  writeFileSync(join(tool, ".install-ABANDONED", "venv", "partial"), "x");
+  mkdirSync(join(tool, "9.9.9-linux-x64"), { recursive: true });
+  await installTool(ROW, w.ctx);
+  assert.deepEqual([leftovers(w), existsSync(join(tool, "9.9.9-linux-x64")), existsSync(w.final)], [[], true, true]);
+  rmSync(w.base, { recursive: true, force: true });
+});

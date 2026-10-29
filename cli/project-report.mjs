@@ -36,9 +36,15 @@ import { fileURLToPath } from "node:url";
 import { boundReport, publicProviders } from "../skills/orbit-report/bind.mjs";
 import { Refused } from "../src/errors.mjs";
 import { command } from "../src/project/command.mjs";
+import { switchOf } from "../src/project/env.mjs";
+import { storeBase } from "../src/project/repository.mjs";
 import { planReport, renderRun, reportStatus, runReport } from "../src/project-report/index.mjs";
 import { setPath, writeSettings } from "../src/project-report/settings.mjs";
 import { runIds } from "../src/project-report/store.mjs";
+import { stateRooms } from "../src/store/control.mjs";
+import { realIo } from "../src/store/io.mjs";
+import { createEmitter } from "../src/trace/emit.mjs";
+import { traceLog } from "../src/trace/log.mjs";
 
 const [cmd, ...rest] = process.argv.slice(2);
 const args = rest.filter((a) => !a.startsWith("--"));
@@ -53,7 +59,20 @@ async function main() {
   if (rest.some((a) => a.startsWith("--") && !["revision", "human", "months", "from", "to", "all", "as-of", "out", "dry", "json", "provider", "organization", "host", "credential-env", "auth", "tenant", "device-code"].includes(a.slice(2).split("=")[0]))) throw new Refused("unknown report option");
   if (!cmd || cmd === "--help") return help();
   if (!COMMANDS[cmd]) throw new Refused(`unknown report command: ${cmd}`);
-  await COMMANDS[cmd](await boundReport({ env: process.env, cwd: process.cwd(), log: (l) => console.error(l), notify: (l) => console.error(l) }));
+  await COMMANDS[cmd](await boundReport({ env: process.env, cwd: process.cwd(), log: (l) => console.error(l), notify: (l) => console.error(l), emit: trail() }));
+}
+
+// A sign-in's moments go to the session trail as fixed words -- machine-wide, so with no project -- unless tracing is off.
+function trail() {
+  if (!switchOf(process.env, "TRACE", "trace", true)) return undefined;
+  const io = realIo();
+  const emit = createEmitter({ log: traceLog(stateRooms(storeBase(process.env)), io), now: io.now, session: process.env.ORBIT_SESSION ?? null, meta: {}, project: null });
+  return (event) => quietly(() => emit("connection.auth", event));
+}
+
+function quietly(fn) {
+  try { return fn(); }
+  catch { return null; }
 }
 
 // Anything that looks like a credential on the command line is refused before

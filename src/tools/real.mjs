@@ -7,7 +7,7 @@
 // time, because a stalled mirror must fail rather than hang a request.
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { contained } from "../project/boundary.mjs";
@@ -79,7 +79,7 @@ export const realLockFile = (pluginRoot) => (rel) => {
   return { path, text: readFileSync(path, "utf8") };
 };
 
-export const realInstallIo = (log = () => {}) => ({ download: (url) => downloaded(url, log), sha256: (bytes) => createHash("sha256").update(bytes).digest("hex"), tempDir, unpack, rename: renameSync, remove: (p) => rmSync(p, { recursive: true, force: true }), setAside });
+export const realInstallIo = (log = () => {}) => ({ download: (url) => downloaded(url, log), sweepStaging, sha256: (bytes) => createHash("sha256").update(bytes).digest("hex"), tempDir, unpack, rename: renameSync, remove: (p) => rmSync(p, { recursive: true, force: true }), setAside });
 
 async function downloaded(url, log) {
   log(`downloading ${url}`);
@@ -87,6 +87,13 @@ async function downloaded(url, log) {
   if (!response.ok) throw new Error(`${url} answered ${response.status}`);
   if (Number(response.headers.get("content-length") ?? 0) > DOWNLOAD_LIMIT) throw new Error(`${url} is larger than ${DOWNLOAD_LIMIT} bytes`);
   return Buffer.from(await response.arrayBuffer());
+}
+
+// A staged install that was never finished -- the host ended a long command, the machine slept -- is left where it was
+// staged. Whoever holds the tool's install lock may remove them: nobody else can be building there.
+function sweepStaging(parent) {
+  if (!existsSync(parent)) return;
+  for (const name of readdirSync(parent)) if (name.startsWith(".install-")) rmSync(join(parent, name), { recursive: true, force: true });
 }
 
 function tempDir(parent) {

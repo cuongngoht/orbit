@@ -18,10 +18,12 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { catalogFile, readCatalog } from "../../src/catalog.mjs";
 import { createProcess } from "../../src/process/index.mjs";
 import { childEnv } from "../../src/process/env.mjs";
 import { stateRooms } from "../../src/store/control.mjs";
 import { realIo } from "../../src/store/io.mjs";
+import { toolCatalog } from "../../src/tools/catalog.mjs";
 import { azureCliAdapter } from "../orbit-report/auth/azure-cli.mjs";
 import { createToolsPort } from "../orbit-report/auth/tools.mjs";
 import { providers } from "../orbit-report/pack.mjs";
@@ -93,11 +95,14 @@ async function unsupported(base, env) {
 
 const meets = (expect, r) => (expect === "unsupported" ? r.result === "unsupported" : r.result === "installed" && r.state === "sign-in-required" && r.sessionDirCreated === false && r.decoyUntouched === true && r.version === "2.91.0");
 
+// The variable a tool names its profile by is the catalog row's to say, as everywhere else.
+const profileVariable = () => toolCatalog(readCatalog(realIo(), catalogFile(REPO, "tools"))).find((r) => r.id === IDS[0]).profile.env;
+
 // A temporary store, and a home with a profile in it that is not Orbit's: both named in the environment as a developer's would be.
 function workspace() {
   const base = mkdtempSync(join(tmpdir(), "orbit-smoke-"));
   const home = join(base, "home");
-  return { base, home, env: { ...childEnv(globalThis.process.env, []), HOME: home, USERPROFILE: home, AZURE_CONFIG_DIR: join(home, ".azure") } };
+  return { base, home, env: { ...childEnv(globalThis.process.env, []), HOME: home, USERPROFILE: home, [profileVariable()]: join(home, ".azure") } };
 }
 
 function report(expect, record) {

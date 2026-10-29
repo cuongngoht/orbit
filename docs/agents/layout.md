@@ -920,7 +920,10 @@ skills/orbit-report/  the PO REPORT pack -- the product words src/project-report
                           shapes) · parts.json (the standard parts and sections,
                           as data) · sources/ (the GitHub and Azure DevOps collectors and probes, in
                           Node, over http.mjs: one origin, no auth across a redirect, bounded, typed
-                          stops) · auth/ (0.2.1, ADR 0043: the Azure CLI as the way a connection signs in --
+                          stops; azure-devops-client.mjs is the ONE way into Azure DevOps for the report AND the
+                          requirement reader -- a table of the only requests it may make, read or query, so a
+                          write is refused before a header is built -- and authorises each hop through a
+                          RequestAuth, never storing a token) · auth/ (0.2.1, ADR 0043: the Azure CLI as the way a connection signs in --
                           azure-cli.mjs the adapter, the sequence and the Azure-specific words ·
                           azure-cli-command.mjs the argument lists it asks · azure-cli-classify.mjs one ordered
                           table over what a command printed · tools.mjs the tools port · index.mjs `authFor`,

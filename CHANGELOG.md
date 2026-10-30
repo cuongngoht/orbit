@@ -54,6 +54,9 @@ decisions in the machine store; every truth stays with its owner. All contract c
   shell can set. Another evaluation runs only when it would add an independent session: asked again on the same
   machine and day, under any session mark or none, it starts nothing. A successor whose text tells its reader to ignore its rules is refused by the factory's own injection rule,
   and no terminal writes a verdict, a qualification or a promotion (`test/improvement-manipulation.test.mjs`).
+- **The hook's detached analyse never stands in the checkout.** It starts in the system's temporary directory and is
+  told its checkout (`analyse --hook --checkout=<dir>`), because on Windows a directory a running process stands in
+  cannot be removed.
 - **Tests.** `test/learning-default.test.mjs` waits for the drained session's trail event as well as its facts: the
   drain keeps the facts first, so a busy machine could read the trail in between.
 - **Native host acceptance** goes stale with this source and is owed again.

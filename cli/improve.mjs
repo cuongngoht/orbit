@@ -6,11 +6,12 @@
 //
 //   node improve.mjs status                what self-improvement is doing here: its switches, the opportunities, every
 //                                          campaign that is open and the last that ended
-//   node improve.mjs analyse [--dry] [--hook]
+//   node improve.mjs analyse [--dry] [--hook [--checkout=<dir>]]
 //                                          read what the owners' records show, keep one opportunity per problem, start a
 //                                          campaign for each eligible one and carry every campaign as far as it goes
 //                                          without a provider being asked (--dry writes nothing; --hook is what a hook's
-//                                          own process runs: debounced, and it never evaluates)
+//                                          own process runs: debounced, and it never evaluates; --checkout names the
+//                                          checkout a hook's process analyses, because it starts outside it)
 //   node improve.mjs opportunities         every opportunity kept: its evidence, why it is or is not eligible
 //   node improve.mjs candidates            every candidate a campaign kept, and what became of it
 //   node improve.mjs show <imp-…|cand-…|opp-…>
@@ -85,6 +86,9 @@ const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const [cmd, ...args] = process.argv.slice(2);
 const HOOK = args.includes("--hook");
 
+// The checkout a hook's own process analyses: it starts outside it and is told (skills/orbit-learn/hosts/drain.mjs).
+const CHECKOUT = HOOK ? (args.find((a) => a.startsWith("--checkout=")) ?? "").slice("--checkout=".length) || null : null;
+
 // What a session or a hook may run with this project's own capabilities loaded: every command that may validate a
 // candidate (its needs must be provided) or run an evaluation through the resolver.
 const RESOLVING = ["analyse", "start", "step", "resume", "evaluate", "candidate", "link"];
@@ -111,7 +115,7 @@ const lazy = (make) => {
 // ---- the checkout, its settings and its rooms ------------------------------------------------------------------------
 
 function here() {
-  const { paths, config } = runtimeProject(ENV, process.cwd());
+  const { paths, config } = runtimeProject(ENV, CHECKOUT ?? process.cwd());
   if (paths.layout !== 3 || !paths.checkoutId) throw new Refused("self-improvement works from a Git checkout — run it inside one");
   return { paths, config, io: machineContext({ project: paths, config: config ?? {} }, ENV).io, proc: createProcess() };
 }

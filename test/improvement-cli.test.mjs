@@ -57,3 +57,13 @@ test("the hook's own process is silent, always ends well, and is debounced in it
   cli(p, ["analyse", "--hook"]);
   assert.equal(statSync(analysed).mtimeMs, at, "debounced: the second run wrote nothing");
 });
+
+test("a hook's process started outside the checkout analyses the checkout it is told, and nothing else", (t) => {
+  const p = repo(t);
+  const told = cli(p, ["analyse", "--hook", `--checkout=${p.repo}`], tmpdir());
+  assert.deepEqual([told.status, told.stdout, told.stderr], [0, "", ""]);
+  const project = readdirSync(p.store).find((n) => n.startsWith("repo-"));
+  assert.ok(project && existsSync(join(p.store, project, "improvement", "state", "analysed.json")), "the told checkout's room was analysed");
+  const ignored = cli(p, ["status", "--json", `--checkout=${tmpdir()}`]);
+  assert.equal(ignored.status, 0, "only a hook's own process takes --checkout: a command keeps its own checkout");
+});

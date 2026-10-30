@@ -56,11 +56,13 @@ const registeredPin = (lw, id) => receiptsIn(lw.view, DOMAIN.SKILL).filter((r) =
 
 const currentPin = (ports, id) => ((row) => (row?.offered ? row.pin : null))(quietly(() => ports.factory.current(id)));
 
-// Which version a playbook step runs, and whether this workflow registered it (PINNED) or found it (REUSED).
-export function pinFor(ports, lw, run, provider) {
+// Which version a playbook step runs, and whether this workflow registered it (PINNED) or found it (REUSED). `chosen`
+// (0.3.0) is a version a caller already holds -- an improvement evaluation running a baseline and its candidate side by
+// side -- and never anything a coordinator's dispatch carries: a pin this run already holds still wins.
+export function pinFor(ports, lw, run, provider, chosen = null) {
   const held = priorPin(lw, run);
   if (held) return { pin: held, word: null };
-  const own = registeredPin(lw, provider.id);
+  const own = chosen ?? registeredPin(lw, provider.id);
   return own ? { pin: own, word: "PINNED" } : ((pin) => (pin ? { pin, word: "REUSED" } : null))(currentPin(ports, provider.id));
 }
 
@@ -102,9 +104,9 @@ function opened(ports, lw, step, base) {
   return c;
 }
 
-function prepared(ports, lw, step, provider) {
+function prepared(ports, lw, step, provider, chosen) {
   const run = runIdOf(lw.id, step.id);
-  const pinned = pinFor(ports, lw, run, provider);
+  const pinned = pinFor(ports, lw, run, provider, chosen);
   if (!pinned) return { read: blockedRead(NEEDS.CAPABILITY, `${BLOCKS.SKILL_UNAVAILABLE}: ${provider.id} has no version this workflow may run — none was registered by it, and none is active`) };
   const got = loaded(ports, pinned.pin, provider.id);
   return got.read ? got : { c: opened(ports, lw, step, { run, provider, ...pinned, version: got.version }) };
@@ -343,7 +345,7 @@ function settledRun(c) {
 
 // The engine step itself (dispatch.mjs ENGINE): a playbook step whose provider declares its workflow.
 export async function skillRun(ports, lw, step, dispatch) {
-  const got = prepared(ports, lw, step, dispatch.provider);
+  const got = prepared(ports, lw, step, dispatch.provider, dispatch.pin ?? null);
   if (got.read) return got.read;
   for (const id of got.c.order) await carried(got.c, id);
   return settledRun(got.c);

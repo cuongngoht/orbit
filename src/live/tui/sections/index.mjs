@@ -4,8 +4,9 @@ import { activitySection } from "./activity.mjs";
 import { stageSection } from "./top.mjs";
 import { engineerSection, workflowSection } from "./work.mjs";
 import { qaSection } from "./qa.mjs";
+import { improvementSection } from "./improvement.mjs";
 import { verifySection } from "./verify.mjs";
 import { sandboxSection } from "./console.mjs";
 import { noticesSection, recentSection } from "./recent.mjs";
 
-export const SECTIONS = Object.freeze([stageSection, activitySection, workflowSection, engineerSection, verifySection, qaSection, sandboxSection, recentSection, noticesSection]);
+export const SECTIONS = Object.freeze([stageSection, activitySection, workflowSection, engineerSection, verifySection, qaSection, improvementSection, sandboxSection, recentSection, noticesSection]);

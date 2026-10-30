@@ -14,15 +14,15 @@ export const tierOf = (columns, rows) => TIERS.find((t) => t.when(columns, rows)
 // The share of a row's width its right-hand cells may take (frame.mjs cuts them to it).
 export const RIGHT_SHARE = 0.4;
 
-export const LABELS = Object.freeze({ stage: ["STAGE", "ST"], activity: ["ACTIVITY", "NOW"], workflow: ["WORKFLOW", "WF"], engineer: ["ENGINEER", "ENG"], verify: ["VERIFY", "VER"], qa: ["QA", "QA"], sandbox: ["SANDBOX", "SBX"], recent: ["RECENT", "NEW"], notices: ["NOTICES", "LOG"] });
+export const LABELS = Object.freeze({ stage: ["STAGE", "ST"], activity: ["ACTIVITY", "NOW"], workflow: ["WORKFLOW", "WF"], engineer: ["ENGINEER", "ENG"], verify: ["VERIFY", "VER"], qa: ["QA", "QA"], improvement: ["IMPROVE", "IMP"], sandbox: ["SANDBOX", "SBX"], recent: ["RECENT", "NEW"], notices: ["NOTICES", "LOG"] });
 
-export const ROOM = Object.freeze({ stage: [1, 3], activity: [2, 9], workflow: [1, 4], engineer: [1, 7], verify: [2, 10], qa: [1, 6], sandbox: [4, 12], notices: [1, 4], recent: [3, Infinity] });
+export const ROOM = Object.freeze({ stage: [1, 3], activity: [2, 9], workflow: [1, 4], engineer: [1, 7], verify: [2, 10], qa: [1, 6], improvement: [1, 8], sandbox: [4, 12], notices: [1, 4], recent: [3, Infinity] });
 
 // Who keeps a minimum on a short terminal: the stage and what the task is doing NOW first (1.8.5), then the recent lines.
-export const PRIORITY = Object.freeze(["stage", "activity", "recent", "engineer", "verify", "workflow", "sandbox", "qa", "notices"]);
+export const PRIORITY = Object.freeze(["stage", "activity", "recent", "engineer", "verify", "workflow", "improvement", "sandbox", "qa", "notices"]);
 
 // Extra rows, once every section has its minimum, go in this order; RECENT is last because it takes the rest.
-const EXTRA = Object.freeze(["stage", "activity", "engineer", "verify", "workflow", "sandbox", "qa", "notices", "recent"]);
+const EXTRA = Object.freeze(["stage", "activity", "engineer", "verify", "workflow", "improvement", "sandbox", "qa", "notices", "recent"]);
 
 // A section with gaps between sections needs this many RECENT rows to be worth it.
 const ROOMY = 8;

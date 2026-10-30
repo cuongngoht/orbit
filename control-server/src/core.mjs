@@ -153,6 +153,17 @@ export { collectFeed, openFeed } from "../../src/live/feed.mjs";
 // projection of a plan every viewer draws -- the page's plan card and a terminal's Plan view are this function.
 export { PLAN_SOURCE } from "../../src/automation/source.mjs";
 export { SKILL_SOURCE } from "../../src/skill-factory/source.mjs";
+export { IMPROVEMENT_SOURCE } from "../../src/improvement/live.mjs";
+// Autonomous self-improvement (0.3.0, ADR 0045): a campaign's one projection, its fold, the nine metrics, a person's
+// three decisions (Control's door), the improvement room -- and Satellite's own binding for a campaign about a role.
+export { createImprovement } from "../../src/improvement/store.mjs";
+export { campaignRow, campaignView, opportunityView } from "../../src/improvement/views.mjs";
+export { modelOf as improvementModel, phaseOf as improvementPhase } from "../../src/improvement/model.mjs";
+export { phasesOf as improvementPhases, qualityOf as improvementQuality } from "../../src/improvement/metrics.mjs";
+export { person as improvementDecision } from "../../src/improvement/loop.mjs";
+export { eventsOf as improvementEvents } from "../../src/improvement/live.mjs";
+export { improvementSubject } from "../../skills/orbit-help/factory.mjs";
+export { improvementPorts as satelliteImprovementPorts } from "../../satellite/cli/improvement.mjs";
 export { planViewOf, skillRunsOf } from "../../src/live/plan.mjs";
 export { createFollowers, POLL_MS } from "../../src/live/followers.mjs";
 export { tickSubject } from "../../src/live/subjects.mjs";

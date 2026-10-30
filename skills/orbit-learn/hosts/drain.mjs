@@ -20,3 +20,13 @@ export function drainLater(pluginRoot, env, opts = {}) {
   child.on("error", () => null);
   child.unref();
 }
+
+// SELF-IMPROVEMENT's detection (0.3.0, ADR 0045), started the same way: `cli/improve.mjs analyse --hook`, detached and
+// forgotten, from a hook or a workflow's end -- never inside the hook's own seconds. It is debounced in its own room,
+// it carries a campaign only as far as reads and owner writes go, and it never evaluates: a provider is asked only
+// from a session (`improve step`, `improve evaluate`).
+export function improveLater(pluginRoot, env, opts = {}) {
+  const child = spawn(process.execPath, [join(pluginRoot, "cli", "improve.mjs"), "analyse", "--hook", ...(opts.flags ?? [])], { cwd: opts.cwd ?? process.cwd(), env, detached: true, stdio: "ignore", windowsHide: true });
+  child.on("error", () => null);
+  child.unref();
+}

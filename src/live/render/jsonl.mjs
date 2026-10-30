@@ -12,6 +12,6 @@ const escaped = (text) => text.replace(UNSAFE, (c) => `\\u${c.charCodeAt(0).toSt
 
 // 0.2.2: a workflow's plan and a declared playbook's projection too -- the frames a declared skill run's identity, its
 // steps and their providers are drawn from, so a program reading a terminal sees what a pane draws.
-const LINES = new Set(["task-event", "qa-event", "task-view", "activity-view", "plan-view", "skill-view", "end", "state", "log", "log-reset"]);
+const LINES = new Set(["task-event", "qa-event", "task-view", "activity-view", "plan-view", "skill-view", "improvement-view", "end", "state", "log", "log-reset"]);
 
 export const jsonlLine = (frame) => (LINES.has(frame.event) ? escaped(JSON.stringify({ v: JSONL_VERSION, event: frame.event, id: frame.id ?? null, data: frame.data })) : null);

@@ -7,9 +7,9 @@
 //   collectFeed(deps, opened, cursor) -> { version, task, cursor, terminal, view, events }
 //
 //   deps   { io, followers, task: <task source>, qa: <qa source>, activity?: <activity source>, plan?: <plan source>,
-//            skill?: <skill source> }
+//            skill?: <skill source>, improvement?: <improvement source> }
 //   opened { taskCtx: { tasks, checkoutSummary, now }, task, createdAt, qa: <investigation store>, activity?: { fileOf },
-//            plans?: { read(task, ref) }, skills?: { read(pin) } }
+//            plans?: { read(task, ref) }, skills?: { read(pin) }, improvements?: { read(id) } }
 //   sink   { send({ event, id, data }) -> bool, end(), closed }
 //
 // What a sink receives, in order:
@@ -25,6 +25,9 @@
 //   skill-view     a declared playbook's WORKFLOW (0.0.4): { source: "skill", task, pin, view } -- sent once for each pin
 //                  a run of the task holds, the projection the skill source made; where each of its steps stands is
 //                  the task's own receipts, so it needs no part of the cursor
+//   improvement-view  a self-improvement CAMPAIGN the task names (0.3.0, ADR 0045): { source: "improvement", task,
+//                  campaign, revision, view } -- the campaign's one projection with its newest lines as named events,
+//                  sent when what it says moved; a viewer REPLACES it, so it needs no part of the cursor
 //   end            the task ended (and every line was sent), or its journal could not be followed
 // and every event's id is the cursor AFTER it, so a viewer that drops comes back exactly there.
 //
@@ -47,7 +50,7 @@ export function openFeed(deps, opened, cursor) {
 
 function stateOf(deps, opened, cursor) {
   const lease = deps.followers.acquire(`task:${opened.taskCtx.tasks.journalFile(opened.task)}`, () => taskSubject(deps.task, deps.io, opened.taskCtx, opened.task));
-  return { ...opened, deps, cursor, lease, inv: new Map(), known: new Map(), acts: new Map(), actPrints: new Map(), activity: opened.activity ?? null, plans: opened.plans ?? null, planRef: null, skills: opened.skills ?? null, skillPins: new Set(), since: sinceOf(deps.qa, opened.createdAt), print: null, terminal: false, sink: null, closed: false };
+  return { ...opened, deps, cursor, lease, inv: new Map(), known: new Map(), acts: new Map(), actPrints: new Map(), activity: opened.activity ?? null, plans: opened.plans ?? null, planRef: null, skills: opened.skills ?? null, skillPins: new Set(), improvements: opened.improvements ?? null, improvementPrints: new Map(), since: sinceOf(deps.qa, opened.createdAt), print: null, terminal: false, sink: null, closed: false };
 }
 
 // A minute of slack: the task's clock is its store's, an investigation's id is its own process's.
@@ -162,6 +165,7 @@ function viewedNow(s) {
   observedJoined(s);
   planSent(s);
   skillsSent(s);
+  improvementsSent(s);
 }
 
 // Before the end goes out, every observation is read once more: a check's last cases come before it.
@@ -247,6 +251,22 @@ function skillOut(s, pin) {
   if (view) s.sink.send({ event: "skill-view", id: formatCursor(s.cursor), data: { source: "skill", task: s.task, pin, view } });
 }
 
+// ---- a self-improvement campaign (0.3.0, ADR 0045) ------------------------------------------------------------------
+
+// Sent when what the campaign says moved (its source's fingerprint) -- never because a minute passed. A campaign its
+// source cannot read is not sent at all.
+function improvementsSent(s) {
+  if (!s.deps.improvement || !s.improvements) return;
+  s.deps.improvement.campaignsOf(s.lease.subject.live.viewOf(s.taskCtx.now())).forEach((id) => improvementOut(s, id));
+}
+
+function improvementOut(s, id) {
+  const view = s.improvements.read(id);
+  if (!view || s.deps.improvement.fingerprintOf(view) === s.improvementPrints.get(id)) return;
+  s.improvementPrints.set(id, s.deps.improvement.fingerprintOf(view));
+  s.sink.send({ event: "improvement-view", id: formatCursor(s.cursor), data: { source: "improvement", task: s.task, campaign: id, revision: view.revision, view } });
+}
+
 // ---- the plain read ----------------------------------------------------------------------------
 
 // The same replay a feed starts with, collected instead of sent: what a page paints first, what a finished
@@ -264,10 +284,13 @@ export const skillViewsOf = (frames) => Object.fromEntries(frames.filter((f) => 
 
 const collector = () => ((frames) => ({ frames, send: (f) => frames.push(f) > 0, end: () => {}, closed: false }))([]);
 
+// Each campaign sent, by its id, the newest projection of each (0.3.0).
+export const improvementViewsOf = (frames) => Object.fromEntries(frames.filter((f) => f.event === "improvement-view").map((f) => [f.data.campaign, f.data.view]));
+
 function answered(deps, task, cursor, frames) {
   const view = frames.findLast((f) => f.event === "task-view")?.data.view ?? null;
   const events = frames.filter((f) => f.event === "task-event" || f.event === "qa-event").map((f) => f.data);
   const activity = Object.fromEntries(frames.filter((f) => f.event === "activity-view").map((f) => [f.data.action, f.data.view]));
   const plan = frames.findLast((f) => f.event === "plan-view")?.data.view ?? null;
-  return { version: deps.task.version, task, cursor, terminal: view?.terminal ?? false, view, events, activity, plan, skills: skillViewsOf(frames) };
+  return { version: deps.task.version, task, cursor, terminal: view?.terminal ?? false, view, events, activity, plan, skills: skillViewsOf(frames), improvement: improvementViewsOf(frames) };
 }

@@ -49,7 +49,9 @@ read: `<store>/sources/` (what each work item WAS, and the project's binding),
 `<store>/work/<id>/` (a journal of needs, bindings, receipts and checkpoints). None of them holds
 the text of a work item, and there is no migration. A fourth, `<store>/tasks/<tsk-id>/`, is one
 autonomous EXECUTION of a work: an append-only journal of its stages, attempts, decisions, actions,
-receipt links and approvals, and the only state a task has (src/task/).
+receipt links and approvals, and the only state a task has (src/task/). A fifth, `<store>/improvement/` (0.3.0, ADR 0045),
+keeps a campaign's journal of decisions, one opportunity per fingerprint and when detection last ran: created on first
+write, never on read, and holding no owner's records, only their ids, pins and digests.
 
 One more is keyed by CHECKOUT and not by project, because what it takes to run a checkout differs per
 checkout: `<store>/checkouts/<checkoutId>/` (the understanding, proposals, environment instances and a
@@ -97,7 +99,11 @@ read it, and it reads none of them back.
 `src/task/` imports only the leaves, the store primitives and itself: a task references a work, a
 requirement, a snapshot, a runtime session and an investigation by id and reads none of them, and
 only `cli/task.mjs`, `cli/autonomous-engineering.mjs`, `cli/live.mjs` and `cli/track.mjs` (readers) and `control-server/src/core.mjs` import it
-(`test/task-ops.test.mjs` greps both). `src/orchestration/` sits above all of them and imports none:
+(`test/task-ops.test.mjs` greps both). `src/improvement/` (0.3.0) imports only the leaves, `learn/args`,
+`memory/session`, `project/boundary` and the store's primitives: the skill factory, the coordinator's skill runner and
+the task door, Satellite's definitions and missions, learn and the trail are bound by `cli/improve.mjs` and handed IN,
+and only it, `cli/live.mjs` and `control-server/src/core.mjs` import it (`test/improvement-boundary.test.mjs` greps
+both). `src/orchestration/` sits above all of them and imports none:
 the task's write door, requirements, work, runtime, the workspace's git, the check runner's Process
 port, project context, capabilities and investigations are bound by `cli/autonomous-engineering.mjs`
 and handed IN (`test/orchestration-vocab.test.mjs` greps the imports).
@@ -356,6 +362,23 @@ place real adapters are bound to real config.
   `automation`) are written only through the coordinator's door (`door: "coordinator"`, set by `cli/automation.mjs`,
   never typed) or Orbit Control's. A terminal's `task link` or `task complete` on a workflow is refused; a person there
   still pauses, cancels and rejects (`src/task/rules.mjs`, `test/skill-run.test.mjs`).
+- **A definition improves only on independent evidence, and only through its owner's doors (0.3.0, ADR 0045).**
+  `src/improvement/` keeps a journal of DECISIONS per campaign and nothing an owner keeps. A signal is an owner's own
+  word on a run (`RUN_SIGNALS`, `SATELLITE_SIGNALS`), only a `definition` category may lead to a candidate, and
+  independence is the session (`sessionKeys`), never the run. A successor is drafted by the skill factory
+  (`scaffoldSuccessor`) or proposed to Satellite, written by the host, and staged as a `candidate` nobody is offered;
+  `SAFETY` refuses one that widens a tool, weakens an acceptance rule (`oracle.mjs`), changes what it provides or carries
+  anything executable, before anything runs. An evaluation runs the version it would replace and the candidate on the
+  same frozen inputs -- through the coordinator's own skill runner in a task of its own (door `improvement`), or linked
+  Satellite missions -- and is judged only from those owners' records: BETTER needs `minSessions` independent sessions
+  and no evaluation saying otherwise, and one WORSE rejects. Which version runs for new work changes only through the
+  owner's ONE selection door (`selectVersion`, `selectDefinition`; doors `improvement` and `control`), after the twelve
+  `PROMOTION_GATES` and naming the revision read. A pin a task holds never moves; a person's disable, retire, archive or
+  revocation always wins; with `improvement.promote` off a qualified candidate waits for a person in Orbit Control, and
+  no terminal promotes, reverts or rejects. A regression in independent sessions selects the replaced version again
+  through the same door. Nothing a campaign does crosses a protected boundary, and no run id, campaign or attribution
+  word is authority (`test/improvement-boundary.test.mjs`, `test/improvement-e2e.test.mjs`,
+  `test/improvement-regression.test.mjs`, `test/improvement-manipulation.test.mjs`, `test/skill-factory-successor.test.mjs`).
 - **A goal is planned from its structured intent, never from its words (0.0.4).** The host's model reads a goal into
   `intent` (category, work kinds, capabilities, verification, dependencies, missing prerequisites), held to
   `src/goal/intent.mjs` as it was SENT -- an unknown or engine-owned field is refused, never dropped -- and units come
@@ -974,6 +997,8 @@ ORBIT_STORE_DIR=/tmp/l node cli/live.mjs pin <task> | unpin | settings | where |
 ORBIT_STORE_DIR=/tmp/l node cli/automation.mjs status | doctor | plan --for="…" | where   # automation, read (README §4.17)
 ORBIT_STORE_DIR=/tmp/l node cli/automation.mjs start --for="…" [--ref=<item>] | context <task> | step <task> | settle <task> | reconcile <task> | finish <task>
 ORBIT_STORE_DIR=/tmp/l node cli/skill-factory.mjs list | drafts | show <id|pin> | put <id> <file.md> | verify <id> | where   # generated playbooks
+ORBIT_STORE_DIR=/tmp/l node cli/improve.mjs status | analyse [--dry] | opportunities | candidates | show <id> | metrics | doctor | where   # self-improvement (ADR 0045)
+ORBIT_STORE_DIR=/tmp/l node cli/improve.mjs start <opp> | step <imp> | resume <imp> | evaluate <imp> | candidate <imp> --file=… | link <imp> --mission=… --side=… | reconcile <imp>
 ORBIT_STORE_DIR=/tmp/l node cli/host.mjs render|apply|remove --host=claude --kind=statusline [--human]   # Claude Code's status line
 ORBIT_STORE_DIR=/tmp/l node cli/requirements.mjs resolve <ref>|acquire <ref>|status <root>|record <root>|ask <root>|snapshot <root>|show <rs>|where   # a requirement (README §4.12)
 ORBIT_STORE_DIR=/tmp/l node cli/requirements.mjs answer <root> --question=rq-… --says="…" --human   # a person's word, relayed

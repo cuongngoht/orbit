@@ -215,7 +215,8 @@ src/trace/     the SESSION TRAIL, event-driven: events.mjs every event type as a
 src/lifecycle/ ONE lifecycle event for any host (event.mjs: the adapter's `normalize`, the host
                session hashed), and dispatch.mjs: every subscriber that listens, each isolated,
                at most one speaking to the host. subscribers/ switches · learning · working-set ·
-               engineering · trace (a PRODUCER: one trail event per moment, `records: false`, never
+               engineering · improvement (0.3.0: asks the root to start a detached, debounced `improve analyse --hook`,
+               which never evaluates) · trace (a PRODUCER: one trail event per moment, `records: false`, never
                speaks) -- and router.mjs hands the trail its decision and the prompt's
                fingerprint, never the prompt. A composition-layer caller like src/help/: cli/learn-hook.mjs builds
                the table and the lazily bound contexts, so nothing here reads process.env
@@ -608,7 +609,8 @@ src/live/      Orbit LIVE's CORE, every viewer's (ADR 0016): delivery, never sta
                FULL-SCREEN viewer, ADR 0018, pure like the rest: model.mjs the one ephemeral state and what it
                `wanted` open · reducer.mjs TRANSITIONS · keys.mjs KEY_SEQUENCES + KEYMAP + HELP · layout.mjs TIERS,
                ROOM, PRIORITY · derive.mjs a snapshot per followed task per second · sections/ (STAGE, ACTIVITY,
-               WORKFLOW, ENGINEER, VERIFY, QA, SANDBOX, RECENT, NOTICES as rows of segments) · overlays/ (picker,
+               WORKFLOW, ENGINEER, VERIFY, QA, IMPROVE (0.3.0: a campaign's phase, both pins, its verdict and gates, off
+               the `improvement-view` frame IMPROVEMENT_SOURCE sends), SANDBOX, RECENT, NOTICES as rows of segments) · overlays/ (picker,
                activity (`i`), evidence, inspect (`o`, 0.1.0: the generated tests followed, one row per obligation,
                from their own activity), diagnostics, help) · frame.mjs the ONE caller of `drawn` for it (0.0.3:
                which rows hold the orbit, and `orbitFrameOf` drawing those alone) · regions.mjs (0.0.3, ADR 0029:
@@ -681,8 +683,32 @@ src/skill-factory/  instruction-only PLAYBOOKS a coordinated workflow may draft 
                the skill runner share: order, bindings, typed outputs, the output contract) · discover.mjs (DISCOVERY,
                the resolver's answer in one word, never a ranking) · source.mjs (SKILL_SOURCE, a pinned workflow as a live
                source) · history.mjs + review.mjs (a skill's runs, from data a composition root hands in, and the
-               questions they answer -- a successor proposed, never written).
-               skills/orbit-help/factory.mjs is the one real binding
+               questions they answer -- a successor proposed, never written). 0.3.0 (ADR 0045): a SUCCESSOR --
+               scaffoldSuccessor (the version it succeeds copied into a draft, `successorOf` and `campaign` stamped by
+               the engine) · stageCandidate (verified like any draft, kept in candidates/ as status `candidate`: pinnable,
+               never offered, the registry row untouched; register refuses a successor, SF_SUCCESSOR) · versionContentOf
+               and validatePinned (one pin read back and held to the contract again) · selectVersion and SELECT_RULES, the
+               ONE door that changes which version runs for new work (doors improvement and control, the policy, a person's
+               withholding, a stale `expect`, a quarantined or archived target), the version it replaced kept whole.
+               skills/orbit-help/factory.mjs is the one real binding (`improvementSubject`, what a campaign may ask of it)
+src/improvement/  (0.3.0, ADR 0045) AUTONOMOUS SELF-IMPROVEMENT of a project's reusable definitions: a playbook the
+               skill factory keeps, a role Satellite keeps. Imports only leaves, `learn/args`, `memory/session`,
+               `project/boundary` and `store/{atomic,id,lock}` (test/improvement-boundary.test.mjs). vocab.mjs (SUBJECT_KINDS,
+               CATEGORIES -- only `definition` may lead to a candidate --, SIGNALS, CAUSES, VERDICTS, OUTCOMES, STAGE_MODES
+               in Satellite's mode words, journal KINDS with their allow-lists, STOPS, CODES) · store.mjs (the room
+               <storeRoot>/improvement/: campaigns/<imp>/journal.jsonl, opportunities/<opp>.json, state/analysed.json;
+               created on first write) · model.mjs (the ONE fold, PHASES derived, last row always matches) · policy.mjs
+               (`improvement.*` read from the automation settings) · fingerprint.mjs · signals.mjs (owners' run records →
+               signals; independence is `sessionKeys`) · detect.mjs (ELIGIBILITY) · diagnose.mjs (DIAGNOSIS) · oracle.mjs
+               (a workflow's or role's acceptance rules, and what WEAKENS them) · safety.mjs (SAFETY, before any
+               evaluation) · evaluation.mjs (COMPARE one evaluation, AGGREGATE many, metrics with denominators, UNKNOWN) ·
+               gates.mjs (PROMOTION_GATES, each with its `onFail`) · monitor.mjs (MONITOR after a promotion) ·
+               learning.mjs (one finding, learn's own ladder decides) · metrics.mjs (the nine quality metrics) · rules.mjs +
+               ops.mjs (the ONE write door, doors improvement and control) · act.mjs · evaluators.mjs (EVALUATORS: a playbook
+               evaluated by the engine in an evaluation task, a role by the host's linked missions) · loop.mjs (STEPS by
+               phase, CHEAP, advance, analyseNow, reconcile, `person`: Control's promote, revert and reject) · views.mjs ·
+               live.mjs (IMPROVEMENT_SOURCE) · governance.mjs (NOT_IMPROVE) · index.mjs (COMMANDS). cli/improve.mjs is the
+               composition root; cli/live.mjs and control-server/src/core.mjs hand IMPROVEMENT_SOURCE to Live
 src/printable.mjs  a LEAF: text a terminal may be handed -- control characters and reordering marks removed, so a
                manifest's text cannot drive the terminal it is printed to
 src/store/registry.mjs  the PROJECT REGISTRY: membership is the binding files (state/checkouts), a one-line summary
@@ -712,6 +738,12 @@ control-server/src/security-catalogs/  (0.1.0, ADR 0040) SECURITY CATALOGS in Co
                write.mjs (preview, adopt what was previewed -- a digest that moved is a 409 --, the editor, a project's
                enabled catalogs, a not-applicable mark with its reason; every write names its revision) · fetch.mjs (the
                link a person typed: https, no credentials, no redirect, a megabyte and ten seconds at most)
+control-server/src/improvement/  (0.3.0, ADR 0045) SELF-IMPROVEMENT in Control: project.mjs (the project named in the
+               path, its campaign room and its effective `improvement.*` settings) · read.mjs (overview, the nine metrics,
+               opportunities, one campaign with its gates, evaluations, history and events; reads write nothing) ·
+               write.mjs (a person's promote, revert and reject on the revision read, door `control`, 409 when it moved;
+               the project's `improvement.*` settings through the automation document). The panel's page is
+               control-panel/src/features/improvement/ (Advanced → Improvement)
 control-server/src/works/  tracked WORKS in Control (1.8.8): project.mjs (a checkout's works, named in the path;
                a work is a checkout's only when it was tracked there) · read.mjs (the list and one work as
                `workViewOf` -- the SAME view cli/track.mjs and Live read). Reads only: there is no row that
@@ -796,7 +828,13 @@ skills/orbit-ui-test/     the agent-facing playbook: run and author a case
                dsl.md (where each DSL answer lives -- it copies no grammar, it points at `query dsl`)
 skills/orbit-help/         the NAVIGATOR playbook: one bounded, read-only look at what architecture,
                           engineering memory, the map, the plans and the lessons already say, and
-                          exactly one recommended `orbit-*` workflow to run next, with why
+                          exactly one recommended `orbit-*` workflow to run next, with why. invoke.mjs (0.3.0)
+                          is the one binding of a declared playbook's door -- the effective resources, the
+                          resolver, `invokeBound` -- that cli/automation.mjs and cli/improve.mjs share
+skills/orbit-improve/      (0.3.0, ADR 0045) the SELF-IMPROVEMENT playbook: status, resume a campaign, write a
+                          successor's text into its draft, propose a role's successor, link the missions a
+                          role's evaluation ran, evaluate again from another session. Never promotes,
+                          reverts or rejects, never `--human`
 skills/orbit-develop/    the DEVELOPER playbook: provides `development.implementation`, needs
                           `project.context` + `repository.read` (capabilities, never a server);
                           project context first, resources as the resolver decides, the smallest
@@ -1024,7 +1062,10 @@ satellite/     (0.1.1, ADR 0041) ORBIT SATELLITE, a mission journal above Orbit'
                command), bind.mjs (the ONE composition root: owners, providers, the resolver, invokeBound, the narrowed
                skill factory, the checkout's witness, this session's working set, the session trail's shards followed
                since the mission began), satellite-live.mjs and
-               satellite-tui.mjs (Satellite Live). acceptance/record-host-acceptance.mjs (a person's native host
+               satellite-tui.mjs (Satellite Live), improvement.mjs (0.3.0, ADR 0045: `improvementPorts`, what a
+               campaign may ask of Satellite -- its runs, a role's content read back and validated, a candidate published
+               HELD, `selectDefinition` through registry/selected/<id>.json, a mission read back -- a candidate never
+               offered, a person's revocation always winning). acceptance/record-host-acceptance.mjs (a person's native host
                receipts). test/ (node --test runs it with the suite; fakes/ are export-only)
 skills/satellite/  the SATELLITE playbook (/orbit:satellite) + protocol.md, the shapes a host sends and receives
 agents/satellite-reader.md · -designer.md · -engineer.md · -verifier.md  the plugin agents an envelope names, one per

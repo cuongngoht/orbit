@@ -110,15 +110,18 @@ test("a Codex session is no longer a blind spot: its checkpoint is drained and t
   const drained = cli(dir, bound, "finalize", ["--hook"]);
   assert.equal(drained.status, 0);
   assert.equal(drained.stdout, "", "a hook's drain says nothing");
-  let facts = "";
-  for (let i = 0; i < 50 && !/repository is a pattern/.test(facts); i += 1) {
-    facts = cli(dir, env, "engineering", ["facts"]).stdout;
-    if (!/repository is a pattern/.test(facts)) await new Promise((done) => setTimeout(done, 200));
+  // The drain is a process of its own: it keeps the facts FIRST and says so on the trail after, so both are waited for --
+  // boundedly -- or a busy machine reads the trail in between.
+  const seenNow = () => ({ facts: cli(dir, env, "engineering", ["facts"]).stdout, said: traceLog(stateRooms(storeOf("codex")), realIo()).read().filter((e) => e.type === "learning.observed") });
+  const told = (seen) => seen.said.some((e) => e.data.milestone === "SESSION_END" && e.data.accepted > 0);
+  let seen = seenNow();
+  for (let i = 0; i < 50 && !(/repository is a pattern/.test(seen.facts) && told(seen)); i += 1) {
+    await new Promise((done) => setTimeout(done, 200));
+    seen = seenNow();
   }
-  assert.match(facts, /observed\s+fresh\s+possible\s+pattern\s+repository is a pattern/, "the session's end was the milestone");
-  const said = traceLog(stateRooms(storeOf("codex")), realIo()).read().filter((e) => e.type === "learning.observed");
-  assert.ok(said.some((e) => e.data.milestone === "SESSION_END" && e.data.accepted > 0), "the trail says the observer ran, and how much it kept");
-  assert.ok(said.every((e) => !JSON.stringify(e).includes(dir)), "and never where");
+  assert.match(seen.facts, /observed\s+fresh\s+possible\s+pattern\s+repository is a pattern/, "the session's end was the milestone");
+  assert.ok(told(seen), "the trail says the observer ran, and how much it kept");
+  assert.ok(seen.said.every((e) => !JSON.stringify(e).includes(dir)), "and never where");
 });
 
 test("finalize --hook outside any project, or for a checkout nobody knows, is silent and exits 0", () => {

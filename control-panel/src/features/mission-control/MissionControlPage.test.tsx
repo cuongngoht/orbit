@@ -37,7 +37,7 @@ describe("Mission Control", () => {
     expect(first).toEqual(["Tasks", "Approvals", "Health"]);
     expect(HOME).toBe("/mission-control");
     expect(DESTINATIONS[0]?.group).toBe("Mission Control");
-    expect(DESTINATIONS.filter((d) => d.group === "Advanced").map((d) => d.label)).toEqual(["Analytics", "Work", "Projects", "Automation limits", "Router", "Activity", "Trace"]);
+    expect(DESTINATIONS.filter((d) => d.group === "Advanced").map((d) => d.label)).toEqual(["Analytics", "Work", "Projects", "Automation limits", "Improvement", "Router", "Activity", "Trace"]);
   });
 
   it("counts what the machine's tasks are doing, and lists each under its project", async () => {

@@ -23,7 +23,7 @@ import { contractOf, inputFor, orderOf, outputsOf, stepOf } from "../../src/skil
 import { historyOf } from "../../src/skill-factory/history.mjs";
 import { reviewOf } from "../../src/skill-factory/review.mjs";
 import { projectionOf } from "../../src/skill-factory/source.mjs";
-import { archive, draftsOf, listOf, pinned, playbookOf, put, register, revalidate, rollback, scaffold, setStatus, verifyDraft, workflowOf } from "../../src/skill-factory/lifecycle.mjs";
+import { archive, candidatesOf, draftsOf, listOf, pinned, playbookOf, put, register, revalidate, rollback, scaffold, scaffoldSuccessor, selectVersion, setStatus, stageCandidate, successorDraftOf, validatePinned, verifyDraft, versionContentOf, workflowOf } from "../../src/skill-factory/lifecycle.mjs";
 import { skillRows } from "../../src/skill-factory/register.mjs";
 import { createGeneratedSkills } from "../../src/skill-factory/store.mjs";
 import { documented, headerOf } from "../../src/trace/commands.mjs";
@@ -95,9 +95,19 @@ export function factoryPort(h, values, resolve, opts = {}) {
   const store = storeOf(h);
   const deps = () => depsOf(opts.pluginRoot ?? PLUGIN_ROOT, h.io, resolve);
   const registered = (id, r) => register(store, id, { values: values(), deps: deps(), by: r.by ?? "session", at: now(), engineVersion: engineVersion() });
-  return { store, runs: (id) => historyFor(store, opts.history, id), review: (id) => reviewFor(store, opts.history, id), workflow: (pin) => workflowOf(store, pin), current: (id) => listOf(store).find((r) => r.id === id) ?? null, discover: (x) => discoveryOf({ ...x, row: rowFor(store, x.resolved) }), interpreter: INTERPRETER, scaffold: async (s) => scaffold(store, { ...s, values: values(), engineVersion: engineVersion() }), put: (p) => put(store, p), verify: (id) => verifyDraft(store, id, deps()), revalidate: (id) => revalidate(store, id, deps()), register: async (id, r = {}) => registered(id, r), status: (id, status, o = {}) => setStatus(store, id, status, { by: o.by ?? "person", at: now() }), pinned: (pin) => pinned(store, pin), playbook: (ref) => playbookOf(store, ref, printable), list: () => listOf(store), archive: (id, o = {}) => archive(store, id, { by: o.by ?? "person", at: now() }), rollback: (id, version, r = {}) => rollback(store, id, version, { values: values(), deps: deps(), by: r.by ?? "person", at: now(), engineVersion: engineVersion() }), drafts: () => store.drafts(), draftRows: () => draftsOf(store) };
+  return { store, runs: (id) => historyFor(store, opts.history, id), review: (id) => reviewFor(store, opts.history, id), workflow: (pin) => workflowOf(store, pin), current: (id) => listOf(store).find((r) => r.id === id) ?? null, discover: (x) => discoveryOf({ ...x, row: rowFor(store, x.resolved) }), interpreter: INTERPRETER, scaffold: async (s) => scaffold(store, { ...s, values: values(), engineVersion: engineVersion() }), put: (p) => put(store, p), verify: (id) => verifyDraft(store, id, deps()), revalidate: (id) => revalidate(store, id, deps()), register: async (id, r = {}) => registered(id, r), status: (id, status, o = {}) => setStatus(store, id, status, { by: o.by ?? "person", at: now() }), pinned: (pin) => pinned(store, pin), playbook: (ref) => playbookOf(store, ref, printable), list: () => listOf(store), archive: (id, o = {}) => archive(store, id, { by: o.by ?? "person", at: now() }), rollback: (id, version, r = {}) => rollback(store, id, version, { values: values(), deps: deps(), by: r.by ?? "person", at: now(), engineVersion: engineVersion() }), drafts: () => store.drafts(), draftRows: () => draftsOf(store), ...successorPort(store, values, deps) };
 }
+
+// What an improvement campaign may ask of the factory (0.3.0, ADR 0045): a successor draft, the draft staged as a
+// candidate, what a kept version says, a version held to today's contract, and -- through its own rules -- which kept
+// version runs. `door` is the composition root's word for itself, never a value anything typed can set.
+const successorPort = (store, values, deps) => ({ scaffoldSuccessor: (s) => scaffoldSuccessor(store, { ...s, values: values() }), successorDraft: (id) => successorDraftOf(store, id), stage: (id, r = {}) => stageCandidate(store, id, { values: values(), deps: deps(), by: r.by ?? "improvement", at: now(), engineVersion: engineVersion() }), candidates: (id) => candidatesOf(store, id), content: (pin) => versionContentOf(store, pin), validate: (pin) => validatePinned(store, pin, deps()), select: (id, sel) => selectVersion(store, id, { ...sel, values: values(), deps: deps(), at: now() }) });
 
 export const gapPort = () => (resolved, values, needs) => gapOf(resolved, needs ?? []);
 
 export const projectSkillsOf = (h, values) => () => skillRows(listOf(storeOf(h)), values);
+
+// The skill factory as an improvement campaign's SUBJECT owner (0.3.0, ADR 0045): which version runs now and who chose
+// it, what a kept version says, a version held to today's contract, a successor's draft and its staging, and -- through
+// the factory's own rules -- which kept version runs. Bound once, for cli/improve.mjs, Orbit Control and a test alike.
+export const improvementSubject = (factory) => ({ current: (id) => ((row) => (row ? { pin: row.pin, status: row.status, archived: row.archived === true, revoked: false, selectedBy: row.selectedBy ?? null } : null))(factory.current(id)), content: (pin) => factory.content(pin), validate: (pin) => factory.validate(pin), successorDraft: (id) => factory.successorDraft(id), scaffoldSuccessor: (s) => factory.scaffoldSuccessor(s), stage: (id) => factory.stage(id), candidates: (id) => factory.candidates(id), select: (id, sel) => factory.select(id, sel) });

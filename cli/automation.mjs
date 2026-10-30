@@ -63,7 +63,7 @@ import { spawn } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { commandEnvironment } from "../skills/orbit-learn/hosts/settings.mjs";
-import { drainLater, hostFlags, protocolTwo } from "../skills/orbit-learn/hosts/drain.mjs";
+import { drainLater, hostFlags, improveLater, protocolTwo } from "../skills/orbit-learn/hosts/drain.mjs";
 import { createArchitecture } from "../src/architecture/store.mjs";
 import { childOf } from "../src/automation/dispatch.mjs";
 import { engineeringContext } from "../src/engineering/context.mjs";
@@ -71,18 +71,15 @@ import { learnedFrom } from "../src/engineering/observe/task.mjs";
 import { attendedOf } from "../skills/orbit-learn/hosts/attended.mjs";
 import { owns, target } from "../skills/orbit-learn/hosts/claude-statusline.mjs";
 import { requirementWorld } from "../skills/orbit-requirements/bind.mjs";
-import { realWorld } from "../skills/orbit-control/world.mjs";
 import { bindRuntime } from "../skills/orbit-runtime/bind.mjs";
 import { COMMANDS } from "../src/automation/index.mjs";
 import { effectiveOf, readAutomation } from "../src/automation/settings.mjs";
 import { readCatalog } from "../src/catalog.mjs";
 import { Blocked, Refused } from "../src/errors.mjs";
-import { withExtensions } from "../src/extensions/index.mjs";
 import { short } from "../src/hash.mjs";
 import { modelOf as investigationModel } from "../src/investigation/model.mjs";
 import { createInvestigations } from "../src/investigation/store.mjs";
 import { OUTCOMES } from "../src/investigation/vocab.mjs";
-import { resolved } from "../src/knowledge/verify.mjs";
 import { taskSessionMark } from "../src/memory/session.mjs";
 import { printable } from "../src/printable.mjs";
 import { createProcess } from "../src/process/index.mjs";
@@ -92,12 +89,8 @@ import { switchOf } from "../src/project/env.mjs";
 import { storeBase } from "../src/project/repository.mjs";
 import { requirementsContext } from "../src/requirements/context.mjs";
 import { status as requirementStatus } from "../src/requirements/views/status.mjs";
-import { effectiveResourcesOf, mcpInvokeContext } from "../src/resources/compose.mjs";
-import { connectionEnvFor, connectionReader } from "../skills/orbit-requirements/bind.mjs";
-import { fingerprintOf as bindingFingerprint, resourceOf } from "../src/work/bind.mjs";
-import { invokeBound } from "../src/work/invoke.mjs";
+import { effectiveFor as effectiveOfFor, extended as extendedFor, invokePort as invokePortOf, resolvedOne } from "../skills/orbit-help/invoke.mjs";
 import { classify, declared } from "../src/routing/classify.mjs";
-import { createContext } from "../src/run/context.mjs";
 import { runtimeProject } from "../src/runtime/context.mjs";
 import { COMMANDS as RUNTIME } from "../src/runtime/index.mjs";
 import { ensureProject } from "../src/seat.mjs";
@@ -122,7 +115,7 @@ import { latestIn, requirementOf } from "../src/work/requirement.mjs";
 import { createWorks, rootOf } from "../src/work/store.mjs";
 import { attach, attached, attachedLine } from "../src/work/track/auto.mjs";
 import { hostFrom } from "../src/work/track/coverage.mjs";
-import { factoryPort, gapPort, projectSkillsOf } from "../skills/orbit-help/factory.mjs";
+import { factoryPort, gapPort } from "../skills/orbit-help/factory.mjs";
 
 const ENV = commandEnvironment(process.env, process.argv);
 const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -171,6 +164,7 @@ function learnedAfter(result) {
   const event = Object.hasOwn(EVENTS, cmd) ? EVENTS[cmd](result) : null;
   if (event?.[0] !== "task.finished") return;
   quietly(() => childTaught(event[1].task));
+  quietly(() => improveLater(PLUGIN_ROOT, ENV, { flags: hostFlags(process.argv) }));
   if (protocolTwo(ENV, process.argv)) drainLater(PLUGIN_ROOT, ENV, { flags: hostFlags(process.argv) });
 }
 
@@ -339,14 +333,9 @@ function outcomeOf(h, id) {
 
 // ---- the resolver, over the SAME effective registry the prompt router and Control build ---------------
 
-async function extended(h) {
-  try { return await withExtensions(createContext({}, ENV, h.paths.root)); }
-  catch (e) { if (e instanceof Refused) return null; throw e; }
-}
+const extended = (h) => extendedFor(ENV, h.paths.root);
 
-const effectiveFor = (h, caps) => effectiveResourcesOf({ ...realWorld({ pluginRoot: PLUGIN_ROOT, projectRoot: h.paths.root, env: ENV }), capabilities: () => caps?.capabilities?.list?.() ?? [], projectSkills: projectSkillsOf(h, settingsOf(h).effective.values) });
-
-const resolvedOne = (effective, capability) => resolved([{ capability, proves: { subject: capability } }], effective).results[0];
+const effectiveFor = (h, caps) => effectiveOfFor(h, caps, { pluginRoot: PLUGIN_ROOT, env: ENV, values: settingsOf(h).effective.values });
 
 // ---- the host this runs under ----------------------------------------------------------------------
 
@@ -392,23 +381,10 @@ async function portsHere() {
 }
 
 // ---- a declared playbook's calls (0.0.4): the doors that already exist, and no other -----------------------
-
-// The provider the resolver picked, bound by its registry key and the fingerprint of what made it eligible -- what
-// the door checks again the moment it is asked.
-const boundOf = (effective, r) => ((res) => (res ? { provider: r.provider, fingerprint: bindingFingerprint(res) } : null))(resourceOf(effective, r?.provider));
-
-// A capability that names a connection is asked in a context that holds that one credential for the moment of its call.
-async function capabilityContextOf(caps, real, io, connection) {
-  if (!connection || !caps) return caps;
-  return { ...caps, ...(await connectionEnvFor({ providerId: connection, connections: connectionReader(real.rooms, io), secrets: real.secrets, env: real.env })) };
-}
-
-// The broker over the SAME managed state the registry read, and the project's capabilities as the step loaded them.
-function invokePort(h, lz) {
-  const real = lazy(() => realWorld({ pluginRoot: PLUGIN_ROOT, projectRoot: h.paths.root, env: ENV }));
-  const w = { effective: () => lz.effective(), get mcp() { return mcpInvokeContext(real()); }, capabilityContext: (connection) => capabilityContextOf(lz.caps, real(), h.io, connection), host: h.io.host, session: session() };
-  return { bind: (r) => boundOf(lz.effective(), r), call: (binding, ask) => invokeBound(w, binding, ask) };
-}
+//
+// Bound once for every engine that runs a declared playbook (skills/orbit-help/invoke.mjs): the broker over the SAME
+// managed state the registry read, and the project's capabilities as the step loaded them.
+const invokePort = (h, lz) => invokePortOf(h, lz, { pluginRoot: PLUGIN_ROOT, env: ENV, session: session() });
 
 function assembled(h, lz) {
   const tctx = taskContext(h);

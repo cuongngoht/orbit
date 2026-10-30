@@ -152,6 +152,7 @@ A few ideas run through everything:
 | `orbit-reverse-engineer` | Map a system's running parts (components, interfaces, channels, stores) into a system graph. |
 | `orbit-dotnet` | Which technologies a .NET solution declares and what its code actually uses each for. |
 | `orbit-learn` | Lessons from repeated evidence across independent sessions. |
+| `orbit-improve` | Improve this project's playbooks and Satellite roles from what they did: a successor compared with the version it would replace in independent sessions, promoted through gates, rolled back on regression. |
 
 ### Quality and testing
 
@@ -210,6 +211,13 @@ node cli/live.mjs status --json                        # session.agents: which a
 
 # How sessions used Orbit
 node cli/trace.mjs usage                               # counts with their denominators; per agent, as the host says (0.2.2)
+
+# Self-improvement (0.3.0)
+node cli/improve.mjs status                            # switches, opportunities, campaigns
+node cli/improve.mjs analyse [--dry]                   # what the owners' records show; one opportunity per problem
+node cli/improve.mjs resume <imp-id>                   # a campaign stepped until it needs the host, a person or a session
+node cli/improve.mjs evaluate <imp-id>                 # the candidate beside the version it would replace, this session
+node cli/improve.mjs metrics                           # nine metrics, each with its numerator and denominator
 ```
 
 Exit codes across the CLIs: `0` done · `1` failed · `2` refused · `3` blocked · `4` inconclusive.
@@ -232,7 +240,7 @@ All durable state lives **outside your product repository**, in the machine stor
 
 - **Test data** (`ui-tests/`) defaults to the store. A team that commits test data with its code can explicitly choose
   the checkout instead (`init --in-checkout`, or `storage export --all --move`).
-- **Reports, evidence, lessons, goals, tasks and generated playbooks** always stay in the store.
+- **Reports, evidence, lessons, goals, tasks, generated playbooks and improvement campaigns** always stay in the store.
 - Checkouts of the same repository share one store; runtime sessions are isolated per checkout.
 - Reading never creates state; writes are contained, locked and checked for stale revisions.
 
@@ -255,6 +263,8 @@ A **read-only** viewer beside your session, fed from the same journals the engin
   activity is grouped per agent — its type, whether the host says it started or stopped, its calls, which agent or the
   session launched it, and the mission run it carries. The session's own calls stay apart, and a coverage line says what
   this host lets the hooks see. A declared playbook's run shows its id, its attempts and `RUNTIME_BOUND`.
+- **Self-improvement** (0.3.0): an evaluation task shows its campaign in an `IMPROVE` section — the phase, both
+  versions, the verdict and the gates.
 
 ```bash
 node cli/live.mjs status        # print once
@@ -269,7 +279,8 @@ node cli/live.mjs open          # open beside this session (tmux · Windows Term
 ### Orbit Control — decide and configure
 
 A local panel (loopback only) for skills, MCP servers, tools, report connections (their credential, or their Microsoft
-sign-in), automation limits, security catalogs and the protected actions waiting for a person. Start it with
+sign-in), automation limits, security catalogs, self-improvement (Advanced → Improvement) and the protected actions
+waiting for a person. Start it with
 `/orbit-control`. Orbit never adds, enables or approves an MCP server, a policy or an approval by itself — a person does
 it here. The one thing it fetches on its own is a pinned, checksum-verified private runtime that work you asked for
 needs (see [Microsoft sign-in](#microsoft-sign-in-for-azure-devops)).
@@ -391,6 +402,29 @@ the main session. Each run says which of the host's agents carries it, and how a
 In `live tui`, press `2`, select a run with `j`/`k` and press `enter` to inspect it: its pins, parent and children, its
 host agent and the basis of the word, its calls (direct, and through the agents it launched) and its records. Details: [satellite/docs/README.md](satellite/docs/README.md),
 [ADR 0041](docs/adr/0041-orbit-satellite-is-a-mission-journal-above-owners.md).
+
+### Autonomous self-improvement
+
+Orbit improves this project's **declared playbooks** and **Satellite roles** from what they actually did, and only on
+independent evidence ([ADR 0045](docs/adr/0045-autonomous-self-improvement-on-independent-evidence.md)):
+
+1. **Detect.** The runs the owners recorded become signals, and one problem is one opportunity by its fingerprint. A
+   single failure, or retries inside one session, never count; neither does a provider, an environment or a person's
+   approval.
+2. **Diagnose and generate.** Only a defect of the definition itself gets a successor. The skill factory drafts it from
+   the version it succeeds, the host writes the change, and it is staged as a candidate nobody is offered.
+3. **Validate.** A candidate that widens its tools, drops a required step, loosens a success rule or carries anything
+   executable is refused before it runs.
+4. **Evaluate.** The candidate and the version it would replace run the same frozen inputs side by side, through the
+   same gates as ordinary work. It is better only when two independent sessions say so and none says otherwise.
+5. **Promote.** Twelve gates, then the owner's own door chooses it for new work. A pin a task already holds never
+   moves, and the replaced version is kept whole.
+6. **Monitor and roll back.** Later runs are watched. A regression in independent sessions puts the replaced version
+   back, and the result becomes a lesson only through learn's own ladder.
+
+It runs by itself after a workflow and from the hooks, never evaluating there. Every switch and bound is a person's,
+under `improvement.*` in Orbit Control, and with automatic promotion off a qualified candidate waits for a person.
+Nothing it does crosses a protected boundary, widens a permission or overrides a person's decision.
 
 ### Check observation adapters
 

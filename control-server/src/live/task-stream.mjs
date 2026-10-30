@@ -10,7 +10,7 @@
 // Everything that can refuse happens in `open`, before a single header: an unknown project, a malformed
 // id, a task of another checkout -- each is the one JSON failure every route has. The task is read
 // through the SAME `show` the page's other reads use, so a stream can never address what a read cannot.
-import { ACTIVITY_SOURCE, collectFeed, openFeed, parseCursor, PLAN_SOURCE, planViewOf, QA_SOURCE, SKILL_SOURCE, TASK_COMMANDS, TASK_SOURCE } from "../core.mjs";
+import { ACTIVITY_SOURCE, collectFeed, IMPROVEMENT_SOURCE, openFeed, parseCursor, PLAN_SOURCE, planViewOf, QA_SOURCE, SKILL_SOURCE, TASK_COMMANDS, TASK_SOURCE } from "../core.mjs";
 import { guarded } from "../errors.mjs";
 import { taskIdOf, tasksOf } from "../tasks/project.mjs";
 import { liveOf } from "./index.mjs";
@@ -40,7 +40,7 @@ function openedTask(ctx, ids) {
   const taskCtx = tasksOf(ctx, ids);
   const task = taskIdOf(ids[2]);
   const view = TASK_COMMANDS.show.run(taskCtx, [task]);
-  return { taskCtx, task, createdAt: view.task.createdAt ?? null, qa: QA_SOURCE.open(taskCtx.root, ctx.world.io), activity: ACTIVITY_SOURCE.open(taskCtx.root), plans: PLAN_SOURCE.open(taskCtx.root, ctx.world.io), skills: SKILL_SOURCE.open(taskCtx.root, ctx.world.io) };
+  return { taskCtx, task, createdAt: view.task.createdAt ?? null, qa: QA_SOURCE.open(taskCtx.root, ctx.world.io), activity: ACTIVITY_SOURCE.open(taskCtx.root), plans: PLAN_SOURCE.open(taskCtx.root, ctx.world.io), skills: SKILL_SOURCE.open(taskCtx.root, ctx.world.io), improvements: IMPROVEMENT_SOURCE.open(taskCtx.root, ctx.world.io) };
 }
 
-const feedDeps = (ctx) => ({ io: ctx.world.io, followers: liveOf(ctx).followers, task: TASK_SOURCE, qa: QA_SOURCE, activity: ACTIVITY_SOURCE, plan: PLAN_SOURCE, skill: SKILL_SOURCE });
+const feedDeps = (ctx) => ({ io: ctx.world.io, followers: liveOf(ctx).followers, task: TASK_SOURCE, qa: QA_SOURCE, activity: ACTIVITY_SOURCE, plan: PLAN_SOURCE, skill: SKILL_SOURCE, improvement: IMPROVEMENT_SOURCE });

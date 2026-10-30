@@ -92,17 +92,27 @@ const doc = (by, content) => ({ by, content });
 
 
 test("narrowing never widens: adding a document never makes any field looser than without it", () => {
-  const machine = doc("machine", { skillFactory: { maxSkillsPerTask: 4 }, execution: { maxAttempts: 6, maxMinutes: 60 } });
-  const projects = [{}, { live: { open: false } }, { skillFactory: { maxSkillsPerTask: 0 } }, { execution: { maxAttempts: 2, maxMinutes: 10 } }, { skillFactory: { maxSkillsPerTask: 9 } }];
+  const machine = doc("machine", { skillFactory: { maxSkillsPerTask: 4 }, execution: { maxAttempts: 6, maxMinutes: 60 }, improvement: { minSessions: 3, cooldownHours: 48, promote: false, isolation: "gated", maxCandidatesPerSubject: 3 } });
+  const projects = [{}, { live: { open: false } }, { skillFactory: { maxSkillsPerTask: 0 } }, { execution: { maxAttempts: 2, maxMinutes: 10 } }, { skillFactory: { maxSkillsPerTask: 9 } }, { improvement: { minSessions: 2, promote: true, cooldownHours: 1, maxCandidatesPerSubject: 9 } }, { improvement: { minSessions: 5, isolation: "sandbox" } }];
   const alone = effectiveOf([machine]).fields;
   for (const p of projects) {
     const both = effectiveOf([machine, doc("project", p)]).fields;
     for (const f of FIELDS) {
       const k = f.path.join(".");
-      const looser = { and: () => alone[k].value === false && both[k].value === true, min: () => alone[k].value !== null && both[k].value !== null && both[k].value > alone[k].value, order: () => f.values.indexOf(both[k].value) > f.values.indexOf(alone[k].value) }[f.narrow]();
+      const looser = { and: () => alone[k].value === false && both[k].value === true, min: () => alone[k].value !== null && both[k].value !== null && both[k].value > alone[k].value, max: () => alone[k].value !== null && both[k].value !== null && both[k].value < alone[k].value, order: () => f.values.indexOf(both[k].value) > f.values.indexOf(alone[k].value) }[f.narrow]();
       assert.equal(looser, false, `${JSON.stringify(p)} widened ${k}`);
     }
   }
+});
+
+test("improvement's floors only rise: a project asks for more evidence than the machine, never less (0.3.0)", () => {
+  const machine = doc("machine", { improvement: { minSessions: 3, cooldownHours: 48, promote: false } });
+  const both = effectiveOf([machine, doc("project", { improvement: { minSessions: 2, cooldownHours: 12, promote: true } })]).fields;
+  assert.deepEqual([both["improvement.minSessions"].value, both["improvement.cooldownHours"].value, both["improvement.promote"].value], [3, 48, false]);
+  const d = defaultsOf();
+  assert.deepEqual([d.improvement.detect, d.improvement.generate, d.improvement.evaluate, d.improvement.promote, d.improvement.minSessions, d.improvement.isolation], [true, true, true, true, 2, "gated"], "autonomous by default, two independent sessions before anything is believed");
+  assert.match(settingsProblems({ improvement: { allowExecutableCandidates: true } })[0], /fixed/);
+  assert.equal(settingsProblems({ improvement: { minSessions: 1 } }).length, 1, "one session is never enough");
 });
 
 test("a task's budget is what was asked, never above what the settings allow", () => {

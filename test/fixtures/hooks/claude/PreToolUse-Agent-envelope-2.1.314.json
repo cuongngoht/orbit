@@ -1,0 +1,45 @@
+{
+  "input": {
+    "session_id": "fixture-session",
+    "transcript_path": "/fixture-host/transcript.jsonl",
+    "cwd": "/fixture",
+    "prompt_id": "fixture-prompt",
+    "permission_mode": "auto",
+    "effort": {
+      "level": "high"
+    },
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "tool_input": {
+      "description": "fixture description",
+      "prompt": "{\n  \"api\": \"orbit.satellite.envelope/v1\",\n  \"missionId\": \"msn-0123456789ab\",\n  \"agentRunId\": \"arn-1\",\n  \"parentAgentRunId\": null,\n  \"attempt\": 1,\n  \"actionId\": \"act-7\",\n  \"workUnitId\": \"wu-1\",\n  \"agent\": {\n    \"subagentType\": \"orbit:satellite-reader\"\n  },\n  \"instruction\": {\n    \"text\": \"fixture instruction\"\n  },\n  \"report\": {\n    \"command\": \"node /fixture-plugin/satellite/cli/satellite.mjs agent report msn-0123456789ab arn-1\"\n  }\n}",
+      "subagent_type": "orbit:satellite-reader",
+      "run_in_background": true
+    },
+    "tool_use_id": "fixture-call-1"
+  },
+  "argv": [],
+  "expected": {
+    "hostEvent": "PreToolUse",
+    "session": "claude:d6440983c454c2e5",
+    "delivery": "claude:eab173320f4b8c75",
+    "cwd": "/fixture",
+    "prompt": null,
+    "tool": {
+      "name": "Agent",
+      "kind": "other"
+    },
+    "paths": [],
+    "pattern": null,
+    "command": null,
+    "ok": true,
+    "background": true,
+    "invokes": {
+      "kind": "agent",
+      "name": "orbit:satellite-reader"
+    },
+    "dispatched": "msn-0123456789ab/arn-1",
+    "event": "pre-tool",
+    "host": "claude"
+  }
+}

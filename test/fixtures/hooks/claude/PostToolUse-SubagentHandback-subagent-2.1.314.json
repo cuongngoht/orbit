@@ -1,0 +1,49 @@
+{
+  "input": {
+    "session_id": "fixture-session",
+    "transcript_path": "/fixture-host/transcript.jsonl",
+    "cwd": "/fixture",
+    "prompt_id": "fixture-prompt",
+    "permission_mode": "auto",
+    "agent_id": "fixture-agent",
+    "agent_type": "orbit:satellite-reader",
+    "effort": {
+      "level": "high"
+    },
+    "hook_event_name": "PostToolUse",
+    "tool_name": "SubagentHandback",
+    "tool_input": {
+      "message": "fixture report"
+    },
+    "tool_response": {
+      "success": true,
+      "message": "fixture output"
+    },
+    "tool_use_id": "fixture-call-1",
+    "duration_ms": 37
+  },
+  "argv": [],
+  "expected": {
+    "hostEvent": "PostToolUse",
+    "session": "claude:d6440983c454c2e5",
+    "delivery": "claude:eab173320f4b8c75",
+    "cwd": "/fixture",
+    "prompt": null,
+    "tool": {
+      "name": "SubagentHandback",
+      "kind": "other"
+    },
+    "paths": [],
+    "pattern": null,
+    "command": null,
+    "ok": true,
+    "background": false,
+    "invokes": null,
+    "agent": {
+      "id": "claude:e139fba95d43a8ac",
+      "type": "orbit:satellite-reader"
+    },
+    "event": "post-tool",
+    "host": "claude"
+  }
+}

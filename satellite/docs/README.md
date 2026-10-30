@@ -139,9 +139,10 @@ envelope says so.
 
 ## What is not here
 
-- Which agent run made a host tool call is known only where the host's payload names the agent (Claude Code); on Codex,
-  Antigravity CLI and Grok Build every call stays UNATTRIBUTED to a run. On Claude Code the SubagentStart/SubagentStop
-  shape is taken from the host's documentation and fixtures until a native capture records it.
+- Which agent run made a host tool call is known only where the host's payload names the agent (Claude Code, captured
+  natively on 2.1.314); on Codex, Antigravity CLI and Grok Build every call stays UNATTRIBUTED to a run. A foreground
+  Agent call names its agent only when it returns, so until then its run is unbound and its agent's calls are shown
+  under the agent alone.
 - An AMBIGUOUS action has no door in Orbit Control yet; reconcile refuses to resend it, and a person decides.
 - Satellite's policy has no writer outside Orbit Control's door, which does not exist for Satellite yet: the defaults
   in code apply.

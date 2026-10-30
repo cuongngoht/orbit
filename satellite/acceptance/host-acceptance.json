@@ -6,8 +6,8 @@
       "kit": "host",
       "host": {
         "id": "claude",
-        "version": "2.1.309 (Claude Code)",
-        "code": "4c3a30104de5bccbf1c2c0c2c3cf333e656ee14929a7925dc086a787db6adee9"
+        "version": "2.1.314 (Claude Code)",
+        "code": "a519189e8757bbd3ba569a1b809212b0b90a8fbf1b277bf6cd7440cef590aa82"
       },
       "system": {
         "emulated": false,
@@ -15,16 +15,16 @@
         "arch": "arm64",
         "node": "v22.23.1"
       },
-      "at": "2026-10-23T02:02:01.879Z",
+      "at": "2026-10-30T04:36:57.892Z",
       "results": [
         {
           "id": "claude:agent-dispatch",
           "ops": [
-            "mission.start",
             "dispatch",
-            "agent.ack",
             "Agent(satellite-reader)",
+            "agent.ack",
             "agent.report",
+            "mission.reconcile",
             "mission.finish"
           ],
           "outcome": "passed"
@@ -32,22 +32,9 @@
         {
           "id": "claude:agent-parallel",
           "ops": [
-            "dispatch",
-            "dispatch",
-            "agent.ack",
-            "agent.ack",
-            "Agent(satellite-reader)x2-one-message",
-            "agent.report",
-            "agent.report"
-          ],
-          "outcome": "passed"
-        },
-        {
-          "id": "claude:agent-tools-allowlist",
-          "ops": [
-            "Agent(satellite-reader)",
-            "tools-Read|Glob|Grep",
-            "no-Bash-use-when-asked"
+            "Agent(satellite-reader)x2",
+            "run_in_background",
+            "agent.ack"
           ],
           "outcome": "passed"
         }

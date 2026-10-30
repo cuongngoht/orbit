@@ -83,7 +83,7 @@ sentinel through real hook processes and find it nowhere on disk. Claude's trail
 
 | Host | Which agent made a call | Proven by |
 |---|---|---|
-| Claude Code | observed: agent ids on a subagent's calls, its start and stop, the launched id | fixtures of the documented payloads (`SubagentStart.json`, `SubagentStop.json`, `PreToolUse-Agent-envelope.json`, `PostToolUse-Agent-launched.json`), and the 2.1.309 native captures of a subagent's tool events; a native capture of SubagentStart/Stop is owed |
+| Claude Code | observed: agent ids on a subagent's calls, its start and stop, the launched id | native captures on 2.1.314 (`test/fixtures/hooks/claude/*-2.1.314.json`), from headless sessions that dispatched two Satellite runs at once, in the foreground and in the background, acknowledged them and reported -- each run bound to its own agent, the dispatcher's word agreeing with the hooks' -- plus the 2.1.309 captures of a subagent's tool events |
 | Codex | none: a subagent's call cannot be told from the session's own | the 0.163.0 captures |
 | Antigravity CLI | none | the 1.4.4 captures |
 | Grok Build | unknown: a child session's end was seen, nothing names an agent on a call | the 1.0.62 captures |
@@ -110,4 +110,7 @@ calls it draws.
   direct and through the agents it launched, a coverage section, and an inspector (select with j and k, enter).
 - A dispatcher that paraphrases the envelope leaves the run UNATTRIBUTED -- correct, and the playbook says to paste it
   verbatim. A run carried serially is never bound to an agent.
+- A foreground Agent call names its agent only when it returns: until then the run says the hooks saw the call that
+  carried its envelope and are waiting for it to answer, and the agent's own calls are shown under the agent, unbound.
+  With `run_in_background` the agent is named as it launches (measured on 2.1.314).
 - The integration source changed, so both native host acceptance records go stale until they are recorded again.

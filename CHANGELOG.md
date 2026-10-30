@@ -42,8 +42,14 @@ fields, a usage section, a Satellite journal line, two envelope fields, a CLI fl
   attribution word (`test/protected-bypass.test.mjs`).
 - **Tests.** `test/skill-lifecycle-e2e.test.mjs` AC-12 listens for its child's exit from the start: the wait no longer
   races a child that ends on its own.
-- **Acceptance.** The integration source changed, so both native host acceptance records (`docs/host-acceptance.json`,
-  `satellite/acceptance/host-acceptance.json`) are owed again for this source.
+- **Native acceptance on Claude Code 2.1.314.** Headless sessions with this plugin dispatched two Satellite runs at
+  once -- in the foreground (`completed`, the agent named when the call returned) and in the background
+  (`async_launched`, named at launch) -- acknowledged each with `--host-agent`, reported, interrupted one through
+  reconcile and retried its unit as a new run (attempt 2): every run was HOST_OBSERVED to its own agent, eight calls
+  each, the dispatcher's word agreeing with the hooks', and the mission ended REPORTED / NOT_VERIFIED. The captures are
+  sanitized fixtures (`test/fixtures/hooks/claude/*-2.1.314.json`), and `satellite/acceptance/host-acceptance.json`
+  holds a receipt for this source (`claude:agent-dispatch`, `claude:agent-parallel`). Orbit's four-host record
+  (`docs/host-acceptance.json`) is owed again for this source, as it was for 0.2.0 and 0.2.1.
 
 ## 0.2.1
 

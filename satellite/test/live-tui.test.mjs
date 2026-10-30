@@ -116,3 +116,18 @@ test("a selection names a run, so a run that arrives above it never moves it, an
   const orphan = liveViewOf(modelOf([records[0], runAt(5, "arn-4")]));
   assert.match(frameOf(reduce(initialState({ view: "agents", columns: 140, rows: 20 }), { type: "select", id: "arn-5" }), orphan, viewer).lines.join("\n"), /parent arn-4 is not in this mission's journal/);
 });
+
+test("a resize keeps the selected run and the inspector, drawn whole at the new width", async () => {
+  const v = viewing({ columns: 140, rows: 40 });
+  v.tty.type("2");
+  v.tty.type("j");
+  v.tty.type("j");
+  v.tty.resize(60, 16);
+  const narrow = screenOf(v.tty.all(), 60, 16).join("\n");
+  assert.match(narrow, /▶ arn-2/, "the selection is a run's, so it survives a resize");
+  for (const line of narrow.split("\n")) assert.ok(line.length <= 60, line);
+  v.tty.type("\r");
+  assert.match(screenOf(v.tty.all(), 60, 16).join("\n"), /RUN arn-2/);
+  v.tty.type("q");
+  await v.run;
+});

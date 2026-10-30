@@ -164,7 +164,7 @@ function learnedAfter(result) {
   const event = Object.hasOwn(EVENTS, cmd) ? EVENTS[cmd](result) : null;
   if (event?.[0] !== "task.finished") return;
   quietly(() => childTaught(event[1].task));
-  quietly(() => improveLater(PLUGIN_ROOT, ENV, { flags: hostFlags(process.argv) }));
+  quietly(() => improveLater(PLUGIN_ROOT, ENV, { flags: hostFlags(process.argv), storeRoot: here().paths.storeRoot }));
   if (protocolTwo(ENV, process.argv)) drainLater(PLUGIN_ROOT, ENV, { flags: hostFlags(process.argv) });
 }
 

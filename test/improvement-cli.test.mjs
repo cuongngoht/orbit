@@ -3,11 +3,15 @@
 // REFUSED; and no command promotes, reverts, rejects or changes a setting.
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { roomsOf } from "../satellite/src/store/rooms.mjs";
+import { IMPROVABLE, improvable } from "../skills/orbit-learn/hosts/drain.mjs";
+import { DIR as IMPROVEMENT_DIR } from "../src/improvement/store.mjs";
+import { DIR as FACTORY_DIR } from "../src/skill-factory/vocab.mjs";
 import { sealed } from "./home.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -66,4 +70,15 @@ test("a hook's process started outside the checkout analyses the checkout it is 
   assert.ok(project && existsSync(join(p.store, project, "improvement", "state", "analysed.json")), "the told checkout's room was analysed");
   const ignored = cli(p, ["status", "--json", `--checkout=${tmpdir()}`]);
   assert.equal(ignored.status, 0, "only a hook's own process takes --checkout: a command keeps its own checkout");
+});
+
+test("a hook starts no process for a project that keeps nothing to improve: no playbook, no mission, no campaign", (t) => {
+  const root = join(repo(t).dir, "store-root");
+  assert.deepEqual(IMPROVABLE.map((parts) => join(root, ...parts)).sort(), [join(root, FACTORY_DIR), roomsOf(root).missions, join(root, IMPROVEMENT_DIR, "campaigns")].sort(), "each room is named by its owner");
+  assert.deepEqual([improvable(root), improvable(null)], [false, false]);
+  for (const parts of IMPROVABLE) {
+    mkdirSync(join(root, ...parts), { recursive: true });
+    assert.equal(improvable(root), true, parts.join("/"));
+    rmSync(join(root, parts[0]), { recursive: true, force: true });
+  }
 });

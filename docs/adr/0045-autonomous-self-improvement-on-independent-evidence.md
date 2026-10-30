@@ -66,7 +66,9 @@ the campaign needs the host, a person or another session.
 
 Detection runs by itself in three places: after a coordinated workflow ends (`cli/automation.mjs`), and from the hooks
 on `turn-end` and `session-end`. The hooks start a detached `improve analyse --hook` through a lifecycle subscriber. That
-run is silent, debounced for ten minutes, and carries a campaign only through `CHEAP` phases. It never asks a provider,
+run is silent, debounced for ten minutes, and carries a campaign only through `CHEAP` phases. It starts only for a
+project that keeps a playbook, a Satellite mission or a campaign, in the system's temporary directory, told its
+checkout: on Windows a directory a running process stands in cannot be removed. It never asks a provider,
 because an evaluation runs only from a session (`improve step`, `resume` or `evaluate`).
 
 ### What counts as evidence, and what never does

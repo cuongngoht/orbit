@@ -150,7 +150,7 @@ function quietlyJson(file) {
 function improveLater(cwd) {
   const project = located(cwd);
   if (!project?.storeRoot || analysedLately(project.storeRoot)) return false;
-  improveInBackground(PLUGIN_ROOT, ENV, { cwd });
+  improveInBackground(PLUGIN_ROOT, ENV, { cwd, storeRoot: project.storeRoot });
   return true;
 }
 

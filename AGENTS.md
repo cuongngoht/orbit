@@ -92,7 +92,8 @@ architecture's facts cite, the tracked listing, the working set, the cases, the 
 and the host-memory providers are bound by `cli/knowledge.mjs` and handed IN
 (`test/knowledge-acceptance.test.mjs` greps the imports). `src/trace/` imports only the leaves and
 the argument and output helpers every view shares; the lifecycle subscribers and the router's hook
-write to it, `cli/trace.mjs` and Control read it, and it reads none of them back.
+write to it, `cli/trace.mjs`, Control and Satellite's composition root (0.2.2: which host agent carries which run)
+read it, and it reads none of them back.
 `src/task/` imports only the leaves, the store primitives and itself: a task references a work, a
 requirement, a snapshot, a runtime session and an investigation by id and reads none of them, and
 only `cli/task.mjs`, `cli/autonomous-engineering.mjs`, `cli/live.mjs` and `cli/track.mjs` (readers) and `control-server/src/core.mjs` import it
@@ -116,7 +117,9 @@ what a child of a tool that keeps identity state is given, and `src/connections/
 every reader, collector and probe asks for a request's authorization: `src/connections/` reads no tool,
 because how a connection signs in is an adapter's (`skills/orbit-report/auth/`), bound with the tools port
 by the composition roots.
-`src/context/` is pure data; `cli/context.mjs` composes it with the process port. `src/protected/` (0.2.0) is a
+`src/context/` is pure data; `cli/context.mjs` composes it with the process port. `src/attribution.mjs` (0.2.2, ADR 0044) is a LEAF
+for the same reason: the trail, Orbit Live, Satellite and Control must say one attribution word about one call, and none
+may import another for it. `src/protected/` (0.2.0) is a
 LEAF for the reason `src/policy.mjs` is one: the task's approvals, the orchestrator, the capability pipeline, the MCP
 broker, the runtime writer, automation's matrix and Live must give the same verdict about the same action, and none
 may import another -- it imports only `src/hash.mjs`, `src/scrub.mjs` and `src/printable.mjs`. `src/intelligence/` imports none of architecture, engineering, qa, learn or the
@@ -173,6 +176,17 @@ place real adapters are bound to real config.
   and the MCP broker refuses a protected tool call outright, so no second route crosses
   (`test/protected-boundaries.test.mjs`, `test/protected-bypass.test.mjs`, `test/orchestration-push.test.mjs`).
 
+- **A run knows its identity, and a call is attributed only by evidence (0.2.2, ADR 0044).** An attribution is one word of
+  `src/attribution.mjs` -- RUNTIME_BOUND (Orbit bound the call as it made it), HOST_OBSERVED (the host's own payload links
+  it), REPORTED (somebody said so), UNATTRIBUTED, CONFLICTING -- settled by its ordered table and shown with its basis;
+  never a call moved onto the latest skill, the nearest run or the closest timestamp. A run's parent is its owner's own
+  field at the dispatch boundary (`agentrun.created.parentAgentRun`; a skill run's action); a Satellite run is said
+  outside its mission as `msn-…/arn-…`. Nothing new is written to hold an attribution: Satellite joins the session trail
+  at read time (`satellite/src/hosts/attribution.mjs`), and the one line it adds is the dispatcher's own word
+  (`agentrun.bound`). A host's agent and call ids are hashed in `src/lifecycle/event.mjs`; a prompt, a subagent's last
+  message and its transcript are never read. An identity is never authority: no gate, approval or protected boundary reads
+  a run id, an agent id, a mode or a word (`test/protected-bypass.test.mjs`, `test/attribution.test.mjs`,
+  `satellite/test/attribution.test.mjs`).
 - **Plugin code is replaceable; the machine store is durable; neither is "memory".** The plugin
   directory is immutable product code and catalogs. The machine store (`storeBase`) keeps
   MUTABLE state: `control/` is what a person configured (resource desired state, policies,

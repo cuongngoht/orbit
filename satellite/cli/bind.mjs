@@ -231,7 +231,8 @@ function baseOf(env, found, io, opts) {
 //
 // What a viewer shows beside a mission of the host's OWN tool calls in this session -- a tool's kind, a repo-relative
 // path or a command's class, whether it ended well; never an argument, a file's contents or a prompt. It is attributed
-// to no agent run: which run made a call is UNOBSERVED here. Only this session's file, and only its tail.
+// to no agent run (UNATTRIBUTED) unless the host's payload named the agent that made it (0.2.2). Only this session's
+// file, and only its tail.
 const bindingProject = (b) => ((runtime) => ({ layout: 3, runtime, sessionDir: join(runtime, "sessions", b.paths.checkoutId.slice(0, 16)) }))(join(b.paths.storeRoot, "runtime", safeName(hostname())));
 
 const sessionProject = (b) => (b.env.ORBIT_HOST_PROTOCOL === "2" ? quietly(() => loadProject(b.env, b.paths.root)) : bindingProject(b));

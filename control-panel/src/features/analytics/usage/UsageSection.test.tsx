@@ -60,6 +60,18 @@ describe("Analytics usage", () => {
     expect(failing.textContent).toMatch(/cli\/knowledge verify — failed 1 of 2 runs · then \(end of turn\) \(1\)/);
   });
 
+  it("says which agent made the calls as the host's payload names it, apart from the skills heuristic, with its denominator", async () => {
+    renderApp("/analytics");
+    const section = await usage();
+    const table = within(await section.findByRole("table", { name: "Which agent made the calls" }));
+    expect(table.getByText("orbit:satellite-reader · 000000aa · ended")).toBeTruthy();
+    expect(table.getByText("the session")).toBeTruthy();
+    expect(table.getByText("msn-0123456789ab/arn-1")).toBeTruthy();
+    expect(section.getByText(/No agent named: 5 tool events · 5 calls — calls that name no agent/)).toBeTruthy();
+    expect(section.getByText(/4 of 9 tool events named an agent \(claude 4\/9\)/)).toBeTruthy();
+    expect(section.getByText(/a heuristic, and a subagent's work counts for its parent's skill/)).toBeTruthy();
+  });
+
   it("holds each skill's pre-approved commands against what it ran", async () => {
     renderApp("/analytics");
     const section = await usage();

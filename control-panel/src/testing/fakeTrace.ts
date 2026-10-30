@@ -89,6 +89,7 @@ export function emptyUsage(days: number): UsageResponse {
     paths: [],
     failures: [],
     privilege: { unused: [], unapproved: [], note: "a skill never started in this window is not judged — no evidence either way" },
+    attribution: { basis: "the host's own payload", byAgent: [], session: { events: 0, calls: 0, commands: 0, failed: 0, unknown: 0, say: "calls that name no agent" }, coverage: { unit: "tool events observed in the window", of: 0, withAgent: 0, withCall: 0, hosts: [], note: "an event names its agent only where the host's payload does" } },
   };
 }
 
@@ -102,7 +103,13 @@ export function fakeUsage(days = 30, over: Partial<UsageResponse> = {}): UsageRe
       { key: "cli/knowledge verify", id: "cli/knowledge", sub: "verify", runs: 2, failed: 1, sessions: 1, last: "2026-09-24T09:00:30.000Z" },
     ],
     shell: [{ key: "vcs|git", class: "vcs", exe: "git", runs: 2, failed: 0, sessions: 1, last: "2026-09-24T08:10:00.000Z" }],
-    skills: [{ id: "orbit-develop", invoked: 2, refused: 0, commands: 5, failed: 1 }],
+    skills: [{ id: "orbit-develop", invoked: 2, runs: 2, refused: 0, commands: 5, failed: 1 }],
+    attribution: {
+      basis: "the host's own payload: the agent id on a call, an agent's start and stop, the Agent call that launched it",
+      byAgent: [{ agent: "claude:00000000000000aa", type: "orbit:satellite-reader", started: true, ended: true, by: "session", call: "claude:0000000000000c01", run: "msn-0123456789ab/arn-1", events: 4, calls: 3, commands: 1, failed: 1, unknown: 0, skills: ["orbit-help"] }],
+      session: { events: 5, calls: 5, commands: 2, failed: 0, unknown: 1, say: "calls that name no agent: the session's own where the host names a subagent's calls (docs/hosts.md), otherwise unattributed" },
+      coverage: { unit: "tool events observed in the window", of: 9, withAgent: 4, withCall: 9, hosts: [{ host: "claude", events: 9, withAgent: 4 }], note: "an event names its agent only where the host's payload does (docs/hosts.md); elsewhere a subagent's call and the session's own cannot be told apart" },
+    },
     transitions: [{ from: "orbit:orbit-develop", to: "cli/context", count: 2 }],
     paths: [{ path: "orbit:orbit-develop → cli/context → cli/knowledge verify ✖", turns: 2 }],
     failures: [{ label: "cli/knowledge verify", failed: 1, of: 2, followedBy: [{ label: "(end of turn)", count: 1 }] }],

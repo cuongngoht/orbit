@@ -96,6 +96,7 @@ function Usage({ usage: u }: { usage: UsageResponse }) {
         <Paths usage={u} />
         <Flows usage={u} />
         <Skills usage={u} />
+        <Agents usage={u} />
         <Failures usage={u} />
         <Privilege usage={u} />
         <Shell usage={u} />
@@ -209,6 +210,7 @@ function Skills({ usage: u }: { usage: UsageResponse }) {
             <TableRow>
               <TableHeaderCell>Skill</TableHeaderCell>
               <TableHeaderCell className={styles.numeric}>Started</TableHeaderCell>
+              <TableHeaderCell className={styles.numeric}>Runs</TableHeaderCell>
               <TableHeaderCell className={styles.numeric}>Refused</TableHeaderCell>
               <TableHeaderCell className={styles.numeric}>Commands (failed)</TableHeaderCell>
             </TableRow>
@@ -218,6 +220,7 @@ function Skills({ usage: u }: { usage: UsageResponse }) {
               <TableRow key={s.id}>
                 <TableCell className={styles.mono}>{s.id}</TableCell>
                 <TableCell className={styles.numeric}>{formatCount(s.invoked)}</TableCell>
+                <TableCell className={styles.numeric}>{formatCount(s.runs ?? s.invoked)}</TableCell>
                 <TableCell className={styles.numeric}>{formatCount(s.refused)}</TableCell>
                 <TableCell className={styles.numeric}>{`${formatCount(s.commands)} (${formatCount(s.failed)})`}</TableCell>
               </TableRow>
@@ -225,6 +228,57 @@ function Skills({ usage: u }: { usage: UsageResponse }) {
           </TableBody>
         </Table>
       )}
+    </Card>
+  );
+}
+
+// WHICH AGENT made the calls (0.2.2, ADR 0044): what the hosts' own payloads say -- the agent id on a subagent's call,
+// its start and stop, the Agent call that launched it -- kept apart from the skills heuristic above and never merged
+// into it. Every count says its unit; the calls that name no agent are their own row; the coverage line says how many
+// of the observed tool events named an agent at all, per host.
+const shortId = (id: string) => id.slice(-8);
+
+const launcher = (a: { by: string | null }) => (a.by === "session" ? "the session" : a.by ? shortId(a.by) : "not observed");
+
+function Agents({ usage: u }: { usage: UsageResponse }) {
+  const styles = useStyles();
+  const a = u.attribution;
+  if (!a) return null;
+  const coverage = `${formatCount(a.coverage.withAgent)} of ${plural(a.coverage.of, "tool event", "tool events")} named an agent${a.coverage.hosts.length ? ` (${a.coverage.hosts.map((h) => `${h.host} ${formatCount(h.withAgent)}/${formatCount(h.events)}`).join(", ")})` : ""}`;
+  return (
+    <Card title="Which agent made the calls" subtitle="As the host's own payload says it — never the skill started most recently. A run is the mission run the launching call's envelope named.">
+      {a.byAgent.length === 0 ? (
+        <Text className={styles.muted}>No call in this window named a subagent.</Text>
+      ) : (
+        <Table size="small" aria-label="Which agent made the calls">
+          <TableHeader>
+            <TableRow>
+              <TableHeaderCell>Agent</TableHeaderCell>
+              <TableHeaderCell>Launched by</TableHeaderCell>
+              <TableHeaderCell>Run</TableHeaderCell>
+              <TableHeaderCell className={styles.numeric}>Tool events</TableHeaderCell>
+              <TableHeaderCell className={styles.numeric}>Calls</TableHeaderCell>
+              <TableHeaderCell className={styles.numeric}>Failed</TableHeaderCell>
+              <TableHeaderCell className={styles.numeric}>Not reported</TableHeaderCell>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {a.byAgent.map((g) => (
+              <TableRow key={g.agent}>
+                <TableCell className={styles.mono}>{`${g.type ?? "an agent"} · ${shortId(g.agent)}${g.ended ? " · ended" : g.started ? " · started" : ""}`}</TableCell>
+                <TableCell className={styles.mono}>{launcher(g)}</TableCell>
+                <TableCell className={styles.mono}>{g.run ?? "—"}</TableCell>
+                <TableCell className={styles.numeric}>{formatCount(g.events)}</TableCell>
+                <TableCell className={styles.numeric}>{formatCount(g.calls)}</TableCell>
+                <TableCell className={styles.numeric}>{formatCount(g.failed)}</TableCell>
+                <TableCell className={styles.numeric}>{formatCount(g.unknown)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+      <Caption1 className={styles.muted}>{`No agent named: ${plural(a.session.events, "tool event", "tool events")} · ${plural(a.session.calls, "call", "calls")} — ${a.session.say}.`}</Caption1>
+      <Caption1 className={styles.muted}>{`${coverage}. ${a.coverage.note}.`}</Caption1>
     </Card>
   );
 }

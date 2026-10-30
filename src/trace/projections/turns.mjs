@@ -32,9 +32,11 @@ export const stepOf = (e) => (STEP[e.type] ? { at: e.at, ...STEP[e.type](e.data 
 // events: oldest first, as src/trace/log.mjs reads them.
 //
 // Events with no session remain separate; they are never attached by timing alone.
+// Each session's events in one list, appended in place (0.2.2: a copy per event made a long window quadratic).
+const bySession = (m, e) => (m.has(sessionKey(e)) ? m.get(sessionKey(e)).push(e) : m.set(sessionKey(e), [e]), m);
+
 export function turnsOf(events, opts = {}) {
-  const sessions = new Map();
-  for (const e of events.filter((x) => x.session)) sessions.set(sessionKey(e), [...(sessions.get(sessionKey(e)) ?? []), e]);
+  const sessions = events.filter((x) => x.session).reduce(bySession, new Map());
   const turns = [...sessions.values()].flatMap(sessionTurns);
   const all = [...turns, ...sessionTurns(events.filter((x) => !x.session))];
   return all.map(finished).sort((a, b) => (a.at > b.at ? -1 : a.at < b.at ? 1 : 0)).slice(0, opts.limit ?? MAX_TURNS);

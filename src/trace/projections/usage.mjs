@@ -46,9 +46,11 @@ function totalsOf(events, turns) {
   return { sessions: new Set(events.map((e) => e.session)).size, turns: turns.filter((t) => t.prompt).length, orbit: runs.filter((e) => e.data.orbit).length, shell: runs.filter((e) => !e.data.orbit).length, tools: of(events, "tool.used").length, skills: of(events, "skill.invoked").length, agents: of(events, "agent.invoked").length, failed: { failed, of: runs.length } };
 }
 
+// One list per key, appended in place (0.2.2: a copy per event made 20,000 events cost half a second).
+const pushed = (map, key, value) => (map.has(key) ? map.get(key).push(value) : map.set(key, [value]), map);
+
 function grouped(events, keyOf, rowOf) {
-  const groups = new Map();
-  for (const e of events) groups.set(keyOf(e), [...(groups.get(keyOf(e)) ?? []), e]);
+  const groups = events.reduce((m, e) => pushed(m, keyOf(e), e), new Map());
   return [...groups.values()].map(rowOf).sort((a, b) => b.runs - a.runs || (a.key < b.key ? -1 : 1)).slice(0, TOP);
 }
 
@@ -71,7 +73,7 @@ function attributed(e, current, out) {
   if (e.type === "skill.invoked" && e.data.outcome !== "refused") return void current.set(e.session, bare(e.data.id));
   if (e.type === "session.ended") return void current.delete(e.session);
   if (e.type !== "command.ran" || !current.has(e.session)) return;
-  out.set(current.get(e.session), [...(out.get(current.get(e.session)) ?? []), e]);
+  pushed(out, current.get(e.session), e);
 }
 
 function skillsOf(events, attributed) {

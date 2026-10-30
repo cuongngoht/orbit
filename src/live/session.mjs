@@ -129,11 +129,13 @@ const byId = (lines) => ((ends) => lines.map((l, i) => ({ l, i })).filter(({ l }
 
 // Nothing runs past what ends it (endsRunOf) -- past the size cap nothing more is written, so a command started before
 // it could never be seen to end.
-const boundaryOf = (lines, agent) => lines.findLastIndex(endsRunOf(agent));
+// Each agent's last boundary, found once: a tail with many calls still open is read once per agent, never once per call.
+const boundariesOf = (lines, open) => new Map([...new Set(open.map(({ l }) => l.agent ?? null))].map((agent) => [agent, lines.findLastIndex(endsRunOf(agent))]));
 
 function runningOf(lines) {
   const open = [...lines.reduce((s, l, i) => paired(s, l, i), { open: [], orphans: [] }).open, ...byId(lines)];
-  return open.filter(({ l, i }) => i > boundaryOf(lines, l.agent ?? null)).sort((x, y) => x.i - y.i).map(({ l }) => entryOf(l));
+  const boundaries = boundariesOf(lines, open);
+  return open.filter(({ l, i }) => i > boundaries.get(l.agent ?? null)).sort((x, y) => x.i - y.i).map(({ l }) => entryOf(l));
 }
 
 // ---- the fold ----------------------------------------------------------------------------------------------------

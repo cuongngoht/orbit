@@ -27,4 +27,6 @@ Proposed (Orbit 0.1.1). Follows Orbit Live (ADR 0015, 0016, 0022, 0029).
 
 - `live watch --since=o=<n>` resumes without a duplicate line, because a line's number is its place in the journal.
 - What the hooks see of the host's tool calls is shown beside the mission, attributed to no agent run, until something
-  can prove which run made a call.
+  can prove which run made a call. Since 0.2.2 (Orbit's ADR 0044) the host's own Agent call and agent ids prove it where a
+  host's payload carries them: the view joins the session trail at read time, keeps no state of its own for it, and says
+  per run which word the evidence earned.

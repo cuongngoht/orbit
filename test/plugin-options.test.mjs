@@ -126,3 +126,14 @@ test("the hook is wired before a Skill or an Agent starts, and answers through t
   assert.equal(off.status, 0);
   assert.equal(JSON.parse(off.stdout).hookSpecificOutput.permissionDecision, "deny");
 });
+
+// 0.2.2, ADR 0044: a subagent's start and stop reach the same hook, in the background, and the hook answers them with
+// nothing -- a SubagentStop answered with a decision would keep a subagent from stopping.
+test("SubagentStart and SubagentStop are wired to the hook in the background, and the hook says nothing to them", () => {
+  const all = JSON.parse(readFileSync(join(ROOT, "hooks", "hooks.json"), "utf8")).hooks;
+  for (const name of ["SubagentStart", "SubagentStop"]) assert.deepEqual(all[name].map((m) => m.hooks.map((h) => [h.async, /cli\/learn-hook\.mjs"$/.test(h.command)])), [[[true, true]]], name);
+  for (const name of ["SubagentStart", "SubagentStop"]) {
+    const r = spawnSync(process.execPath, [join(ROOT, "cli", "learn-hook.mjs")], { encoding: "utf8", input: JSON.stringify({ hook_event_name: name, session_id: "s", cwd: ROOT, agent_id: "a-1", agent_type: "orbit:satellite-reader" }), env: sealed({}) });
+    assert.deepEqual([r.status, r.stdout.trim()], [0, ""], name);
+  }
+});

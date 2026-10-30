@@ -125,3 +125,25 @@ test("a step waiting for a person says WAITING, and for which request", async (t
   const lines = planLines(viewer(s, st.task, framesOf(s, st.task)));
   assert.ok(lines.some((l) => /notes .*WAITING.*waits for apr-1/.test(l)), lines.join("\n"));
 });
+
+// 0.2.2, ADR 0044: a run says WHICH run it is -- its id qualified by the task that keeps it, how many attempts opened
+// it (a later attempt resumes the same run, never a second one) and how it is known (RUNTIME_BOUND: the engine bound
+// every step and call to it as it made them) -- and an approval it waits for names its own run's step, so a second
+// run that carries a step of the same id never borrows it.
+test("a run names itself, the attempts that opened it, and how it is known; its approval names its own step", async (t) => {
+  const s = skillWorld(t);
+  await declared(s, { wf: workflowOf({ notes: { approval: "owner" } }) });
+  const st = start(s.ports, spec);
+  await next(s, st.task);
+  await next(s, st.task);
+  const frames = framesOf(s, st.task);
+  const d = derivedOf(viewer(s, st.task, frames));
+  const [run] = skillRunsOf(d.root.plan, d.root.view, d.root.events, d.root.skills);
+  assert.match(run.run, /^srun-[0-9a-f]{12}$/);
+  assert.deepEqual([run.qualified, run.provenance], [`${st.task}/${run.run}`, "RUNTIME_BOUND"]);
+  assert.ok(run.attempts >= 1);
+  assert.ok(s.w.view(st.task).approvals.some((a) => a.reason.startsWith(`${run.run}.notes of `)), "the request names the step of THIS run");
+  const other = { ...d.root.view, approvals: d.root.view.approvals.map((a) => ({ ...a, reason: a.reason.replace(run.run, "srun-000000000000") })) };
+  assert.equal(skillRunsOf(d.root.plan, other, d.root.events, d.root.skills)[0].steps.find((x) => x.id === "notes").waiting, null, "another run's request is not this run's");
+  assert.ok(planLines(viewer(s, st.task, frames)).some((l) => l.includes(`· ${run.run}`) && /runtime-bound/.test(l)));
+});

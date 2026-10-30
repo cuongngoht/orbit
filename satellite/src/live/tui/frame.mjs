@@ -7,6 +7,7 @@ import { orbitOf } from "../../../../src/live/orbit.mjs";
 import { drawn } from "../../../../src/live/render/width.mjs";
 import { glyph } from "../../../../src/live/tui/glyphs.mjs";
 import { dim, seg } from "../../../../src/live/tui/sections/parts.mjs";
+import { inspectRows } from "./inspect.mjs";
 import { VIEWS, viewOf } from "./views.mjs";
 
 export const CHROME = Object.freeze({ header: 1, tabs: 1, rule: 1, footer: 1 });
@@ -18,7 +19,9 @@ export const bodyHeightOf = (s) => Math.max(1, s.rows - CHROME.header - CHROME.t
 export const HELP = Object.freeze([
   ["1 … 9", "show a view: mission, agents, roles, skills, workflows, tools, memory, timeline, verification"],
   ["tab · shift-tab", "the next or the previous view (also → and ←, l and h)"],
-  ["j k ↑ ↓", "scroll a line"],
+  ["j k ↑ ↓", "scroll a line · in Agents (2), select a run"],
+  ["enter · o", "inspect the selected run: its pins, its host agent and how that is known, its calls and records"],
+  ["esc", "close the inspector"],
   ["pgdn · pgup", "scroll a page"],
   ["g · G", "the top or the bottom"],
   ["space", "freeze what is shown (the journal is still followed) · space again to catch up"],
@@ -39,18 +42,23 @@ const tabsRow = (s) => VIEWS.map((v) => seg(` ${v.key} ${v.title} `, v.id === s.
 
 const ruleRow = (s) => [dim((s.ascii ? "-" : "─").repeat(s.columns))];
 
-const footerRow = () => [dim("q quit · 1-9 view · tab next · j/k scroll · g/G ends · space freeze · r redraw · ? help")];
+const footerRow = (s) => [dim(s.view === "agents" ? "q quit · 1-9 view · j/k select · enter inspect · esc close · ? help" : "q quit · 1-9 view · tab next · j/k scroll · g/G ends · space freeze · r redraw · ? help")];
 
 const helpRows = () => [[seg("SATELLITE LIVE · KEYS", "label")], [], ...HELP.map(([keys, say]) => [seg(`  ${keys.padEnd(18)}`, "key"), dim(say)])];
 
-const bodyOf = (s, view) => (s.help ? helpRows() : viewOf(s.view).rows(view));
+const bodyOf = (s, view) => (s.help ? helpRows() : s.inspect ? inspectRows(view, s.selected) : viewOf(s.view).rows(view, s));
 
 const asciiOf = (segs, ascii) => (ascii ? segs.map((g) => ({ ...g, text: glyph(g.text, true) })) : segs);
 
 const lineOf = (s, segs) => drawn(asciiOf(segs, s.ascii), s.columns, s.colour);
 
-// Where the body starts: the state's scroll, kept inside what the view has.
-const topOf = (s, total) => Math.max(0, Math.min(s.top, total - bodyHeightOf(s)));
+// Where the body starts: the state's scroll, kept inside what the view has -- and, in the Agents view, moved just enough
+// that the selected run's row is on the screen.
+const clampTop = (s, total, top) => Math.max(0, Math.min(top, total - bodyHeightOf(s)));
+
+const shownTop = (s, at) => (at < 0 ? s.top : at < s.top ? at : at >= s.top + bodyHeightOf(s) ? at - bodyHeightOf(s) + 1 : s.top);
+
+const topOf = (s, rows) => clampTop(s, rows.length, s.inspect || s.help ? s.top : shownTop(s, rows.findIndex((r) => r.run !== undefined && r.run === s.selected)));
 
 const windowOf = (s, rows, top) => Array.from({ length: bodyHeightOf(s) }, (_, i) => rows[top + i] ?? []);
 
@@ -62,7 +70,7 @@ const smallFrame = (s) => ({ lines: Array.from({ length: s.rows }, (_, i) => (i 
 export function frameOf(s, view, viewer, orbitMs = 0) {
   if (tooSmall(s)) return smallFrame(s);
   const rows = bodyOf(s, view);
-  const top = topOf(s, rows.length);
-  const lines = [headerRow(s, view, viewer, orbitMs), tabsRow(s), ruleRow(s), ...windowOf(s, rows, top), footerRow()].map((segs) => lineOf(s, segs));
+  const top = topOf(s, rows);
+  const lines = [headerRow(s, view, viewer, orbitMs), tabsRow(s), ruleRow(s), ...windowOf(s, rows, top), footerRow(s)].map((segs) => lineOf(s, segs));
   return { lines, columns: s.columns, rows: s.rows, top, total: rows.length, full: s.full };
 }

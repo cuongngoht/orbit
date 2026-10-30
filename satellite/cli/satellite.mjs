@@ -12,7 +12,7 @@
 //   node satellite.mjs mission show|goal|events <msn> [--since=<n>]   the goal: as submitted, its digest checked
 //   node satellite.mjs mission list
 //   node satellite.mjs agent envelope <msn> <arn>                 what the host hands one agent run
-//   node satellite.mjs agent ack <msn> <arn>                      the host's word that it launched it
+//   node satellite.mjs agent ack <msn> <arn> [--host-agent=<id>]  the host's word that it launched it, and which agent carries it
 //   node satellite.mjs agent report <msn> <arn> [--report=<file>] the run's report, on stdin
 //   node satellite.mjs definitions list [--kind=<kind>] | show <pin>
 //   node satellite.mjs host capabilities [--host=<id>] | detect

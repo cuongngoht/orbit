@@ -14,7 +14,9 @@ import { REPORT_API, REPORT_FIELDS, REPORT_LIMITS } from "./report.mjs";
 
 export const ENVELOPE_API = "orbit.satellite.envelope/v1";
 
-export const ENVELOPE_FIELDS = Object.freeze(["api", "missionId", "agentRunId", "actionId", "workUnitId", "agent", "profile", "mode", "operationKind", "role", "instruction", "contextSlice", "grants", "drive", "report", "dispatch", "fallback"]);
+// 0.2.2 (ADR 0044): the run's parent and attempt travel with it, so the run, its parent and its retry are named where
+// it is dispatched -- the mission ids under the API mark are what the hooks read off an Agent call (src/attribution.mjs).
+export const ENVELOPE_FIELDS = Object.freeze(["api", "missionId", "agentRunId", "parentAgentRunId", "attempt", "actionId", "workUnitId", "agent", "profile", "mode", "operationKind", "role", "instruction", "contextSlice", "grants", "drive", "report", "dispatch", "fallback"]);
 
 export const SLICE_LIMITS = Object.freeze({ handoffs: 6, findingsPerHandoff: 12, excerptChars: 2000, totalChars: 16000, playbookChars: 8000 });
 
@@ -42,5 +44,5 @@ const reportOf = (x) => ({ api: REPORT_API, by: x.run.profile === "READ_ONLY" ||
 export function envelopeOf(x) {
   const slice = { unit: { id: x.unit.id, kind: x.unit.kind, objective: x.unit.objective, scope: x.unit.scope, outputContract: x.unit.outputContract }, criteria: x.criteria, handoffs: x.handoffs.slice(0, SLICE_LIMITS.handoffs).map(handoffSlice), skills: playbooksOf(x.skills), conversation: false, secrets: false };
   const agent = PROFILE_AGENTS[x.run.profile];
-  return { api: ENVELOPE_API, missionId: x.m.meta.id, agentRunId: x.run.id, actionId: x.run.action, workUnitId: x.unit.id, agent: { subagentType: subagentTypeOf(x.run.profile), name: agent, tools: AGENT_TOOLS[agent] }, profile: x.run.profile, mode: x.run.mode, operationKind: UNIT_KINDS[x.unit.kind].operation, role: { pin: x.run.rolePin, displayName: x.role.content.displayName, purpose: x.role.content.purpose, responsibilities: x.role.content.responsibilities, restrictions: x.role.content.restrictions, completionCriteria: x.role.content.completionCriteria }, instruction: { templatePin: x.run.templatePin, text: bounded(instructionOf(x), SLICE_LIMITS.totalChars) }, contextSlice: slice, grants: { operationKinds: list(x.run.grants), tools: AGENT_TOOLS[agent] }, drive: (DRIVE[x.run.actualProvider] ?? DRIVE["host-agent"])(x), report: reportOf(x), dispatch: serialOnly(x.hostRow) ? DISPATCH.serial : DISPATCH.native, fallback: DISPATCH.serial };
+  return { api: ENVELOPE_API, missionId: x.m.meta.id, agentRunId: x.run.id, parentAgentRunId: x.run.parentAgentRun ?? null, attempt: x.run.attempt ?? 1, actionId: x.run.action, workUnitId: x.unit.id, agent: { subagentType: subagentTypeOf(x.run.profile), name: agent, tools: AGENT_TOOLS[agent] }, profile: x.run.profile, mode: x.run.mode, operationKind: UNIT_KINDS[x.unit.kind].operation, role: { pin: x.run.rolePin, displayName: x.role.content.displayName, purpose: x.role.content.purpose, responsibilities: x.role.content.responsibilities, restrictions: x.role.content.restrictions, completionCriteria: x.role.content.completionCriteria }, instruction: { templatePin: x.run.templatePin, text: bounded(instructionOf(x), SLICE_LIMITS.totalChars) }, contextSlice: slice, grants: { operationKinds: list(x.run.grants), tools: AGENT_TOOLS[agent] }, drive: (DRIVE[x.run.actualProvider] ?? DRIVE["host-agent"])(x), report: reportOf(x), dispatch: serialOnly(x.hostRow) ? DISPATCH.serial : DISPATCH.native, fallback: DISPATCH.serial };
 }

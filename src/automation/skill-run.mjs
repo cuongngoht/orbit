@@ -204,7 +204,7 @@ const APPROVAL = [
 ];
 
 function requested(c, s, gate) {
-  const done = apply(c, "request-approval", { ...gate, reason: clip(`${s.id} of ${c.skill}: ${s.capability}`), risk: clip(`a read through ${gate.params.provider}, for a declared workflow`) });
+  const done = apply(c, "request-approval", { ...gate, reason: clip(`${stepRef(c, s.id)} of ${c.skill}: ${s.capability}`), risk: clip(`a read through ${gate.params.provider}, for a declared workflow`) });
   return { word: SKILL_STEP.BLOCKED, needs: NEEDS.PERSON, because: `${BLOCKS.APPROVAL_REQUIRED}: ${done.lines[0].id} asks a person to allow ${s.id} once, in Orbit Control` };
 }
 

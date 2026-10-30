@@ -57,7 +57,7 @@ export const COMMANDS = Object.freeze({
   "mission.events": { run: (ports, args) => eventsView(ports, idArg(args), Number(flag(args, "since") ?? 0)), say },
   "mission.list": { run: (ports) => ({ missions: listOf(ports) }), say },
   "agent.envelope": { run: envelope, say },
-  "agent.ack": { run: (ports, args) => agentAck(ports, idArg(args), idArg(args, 1)), say },
+  "agent.ack": { run: (ports, args) => agentAck(ports, idArg(args), idArg(args, 1), flag(args, "host-agent") ?? null), say },
   "agent.report": { run: (ports, args) => agentReport(ports, idArg(args), idArg(args, 1), inputOf(ports.input, args, "report")), say },
   "definitions.list": { run: (ports, args) => ({ definitions: definitionsOf(ports, args) }), say },
   "definitions.show": { run: (ports, args) => ports.definitions.read(idArg(args)), say },

@@ -22,6 +22,7 @@ Claude Code uses its native hook envelope. Native protocol fixtures protect the 
 | Automation (`/orbit-help`, ADR 0017) | A step's agent dispatched natively (Agent tool); status line shows the coordinator | Each step's skill run in the main session, one step at a time | Same as Codex; `.agents/cli` exposes `cli/automation.mjs` | Same as Codex |
 | Generated playbooks | Never a native skill: printed by `cli/skill-factory.mjs show` and followed in the session | Same | Same | Same |
 | Work tracking (`cli/track.mjs`, README §4.18) | Edits, commands and each command's exit status observed from the hooks; session end reported (so `INTERRUPTED` can be told from a quiet session) | Only Bash and `apply_patch` are mapped, so an edit by any other tool is not seen; a command's exit status is not carried (results stay `unknown`); session end reported | Native file and command tools observed; a command's completion is not reported (results `unknown`) and there is no session end, so `INTERRUPTED` is never derived. A host with no row here is explicit-only: only what is reported through `track.mjs` is tracked and `coverage` says so | The five measured tools are observed, with each command's exit status; session end reported, though a plugin's SessionEnd hook gets about 1.5 seconds |
+| Agent correlation (0.2.2, ADR 0044) | Observed: a subagent's tool events carry its `agent_id` and `agent_type`, `SubagentStart`/`SubagentStop` mark its life, and the Agent call answers with the `agentId` it launched -- kept hashed; a call that names no agent is the session's own. An Orbit envelope pasted as the Agent prompt names its mission run. Captured natively on 2.1.314 (`*-2.1.314.json`): an Agent call in the foreground answers `completed` and names its agent only when it returns, one with `run_in_background` answers `async_launched` with the agent at once; `SubagentStop` carried no `last_assistant_message` there | None: no subagent is named, so a subagent's call cannot be told from the session's own | None | Unknown: a child session's SessionEnd was seen, and nothing measured names which agent made a call |
 | Prompt trigger (`trigger.arbitraryPrompt`) | Advisory line only; starts nothing | Advisory line only | Unavailable (no prompt event) | Unavailable (the advisory never reaches the model) |
 
 A command completion is not a QA verdict. Unknown/background outcomes cannot count as successful verification. Component switches only govern invocations Orbit can identify.
@@ -94,7 +95,10 @@ Each agent run is dispatched natively with the Agent tool as the plugin agent it
 (`orbit:satellite-reader`, `-designer`, `-engineer`, `-verifier`); several may be in flight at once, up to the mission's
 limit. The host enforces each profile through that agent's `tools:` allowlist; a plugin agent's `permissionMode` is
 ignored. A run is stopped with `TaskStop`. The session's own tool calls are read from the working set Orbit's hooks keep
-and shown beside the mission; which agent run made a call is UNOBSERVED. `ORBIT_SESSION` reaches every shell command
+and shown beside the mission. Since 0.2.2 (ADR 0044) a subagent's calls go to the agent run it carries: the hooks read
+the run's two ids off the envelope the Agent call carried and the `agentId` it answered with (HOST_OBSERVED), beside the
+dispatcher's own word from `agent ack --host-agent` (REPORTED); a call that names no agent is the session's own and
+UNATTRIBUTED to any run. `ORBIT_SESSION` reaches every shell command
 through the session's environment file. Satellite Live runs in a terminal beside the session (`live open`); there is no
 docked pane.
 

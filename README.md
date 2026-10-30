@@ -206,6 +206,10 @@ node cli/runtime.mjs discover                          # what this checkout need
 
 # Live view
 node cli/live.mjs status                               # Orbit Live in a terminal
+node cli/live.mjs status --json                        # session.agents: which agent did what (0.2.2)
+
+# How sessions used Orbit
+node cli/trace.mjs usage                               # counts with their denominators; per agent, as the host says (0.2.2)
 ```
 
 Exit codes across the CLIs: `0` done · `1` failed · `2` refused · `3` blocked · `4` inconclusive.
@@ -247,6 +251,10 @@ A **read-only** viewer beside your session, fed from the same journals the engin
   their step, and a footer of bars.
 - Settings: `pane.widthPercent`, `pane.focusCli`, `pane.animation: off` (keep it still), `pane.orbitSpeed`
   (`slow` · `normal` · `fast`).
+- **Which agent did what** (0.2.2): where the host names the subagent that made a call (Claude Code), the session's
+  activity is grouped per agent — its type, whether the host says it started or stopped, its calls, which agent or the
+  session launched it, and the mission run it carries. The session's own calls stay apart, and a coverage line says what
+  this host lets the hooks see. A declared playbook's run shows its id, its attempts and `RUNTIME_BOUND`.
 
 ```bash
 node cli/live.mjs status        # print once
@@ -370,7 +378,18 @@ node satellite/cli/satellite.mjs host capabilities                     # what th
 ```
 
 Claude Code dispatches agent runs natively and in parallel; Codex, Antigravity CLI and Grok Build run them serially in
-the main session. Details: [satellite/docs/README.md](satellite/docs/README.md),
+the main session. Each run says which of the host's agents carries it, and how anybody knows (0.2.2,
+[ADR 0044](docs/adr/0044-run-identity-and-attribution.md)):
+
+| Word | Means |
+| --- | --- |
+| `HOST_OBSERVED` | the hooks saw the Agent call that carried the run's envelope launch that agent |
+| `REPORTED` | only the dispatcher said so (`agent ack <msn> <arn> --host-agent=<agentId>`) |
+| `CONFLICTING` | two agents are named for one run, or one agent for two runs: neither is chosen |
+| `UNATTRIBUTED` | a serial run, or nothing observed: its calls cannot be told from the session's own |
+
+In `live tui`, press `2`, select a run with `j`/`k` and press `enter` to inspect it: its pins, parent and children, its
+host agent and the basis of the word, its calls (direct, and through the agents it launched) and its records. Details: [satellite/docs/README.md](satellite/docs/README.md),
 [ADR 0041](docs/adr/0041-orbit-satellite-is-a-mission-journal-above-owners.md).
 
 ### Check observation adapters

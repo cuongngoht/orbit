@@ -225,3 +225,46 @@ test("a connection's sign-in leaves a fixed-vocabulary moment on the trail: neve
   const line = readable({ ...written, data: { ...written.data, tenant: "edited in" } });
   assert.deepEqual(Object.keys(line.data).sort(), ["outcome", "phase", "provider", "strategy"], "and a line somebody edited is cut again on the way out");
 });
+
+// ---- 0.2.2, ADR 0044: which agent made a call, as the host's own payload says -------------------------------------
+
+const envelopeText = (mission, run) => JSON.stringify({ api: "orbit.satellite.envelope/v1", missionId: mission, agentRunId: run, instruction: { text: "SECRET-SENTINEL read the notifier" } }, null, 2);
+
+test("end to end through the real hooks: a subagent's calls carry its agent, a duplicate delivery is one event, and nothing it said is kept", () => {
+  const store = mkdtempSync(join(tmpdir(), "orbit-trail-agents-"));
+  const env = sealed({ ORBIT_STORE_DIR: store, ORBIT_UI_TESTS: join(ROOT, "test", "fixtures", "ui-tests") });
+  const hook = (input) => spawnSync(process.execPath, [join(ROOT, "cli", "learn-hook.mjs")], { input: JSON.stringify({ session_id: "raw-s-7", cwd: ROOT, ...input }), env, encoding: "utf8", timeout: 30000 });
+  const sub = { agent_id: "raw-agent-X", agent_type: "orbit:satellite-reader" };
+  hook({ hook_event_name: "PreToolUse", tool_name: "Agent", tool_use_id: "toolu_A", tool_input: { subagent_type: "orbit:satellite-reader", prompt: envelopeText("msn-0123456789ab", "arn-1") } });
+  hook({ hook_event_name: "SubagentStart", ...sub });
+  for (const _ of [1, 2]) hook({ hook_event_name: "PostToolUse", ...sub, tool_name: "Read", tool_use_id: "toolu_R1", tool_input: { file_path: join(ROOT, "README.md") }, tool_response: { file: { content: "SECRET-SENTINEL" } } });
+  hook({ hook_event_name: "PostToolUse", ...sub, tool_name: "Bash", tool_use_id: "toolu_B1", tool_input: { command: "node --version" }, tool_response: { stdout: "SECRET-SENTINEL" } });
+  hook({ hook_event_name: "PostToolUse", tool_name: "Agent", tool_use_id: "toolu_A", tool_input: { subagent_type: "orbit:satellite-reader", prompt: envelopeText("msn-0123456789ab", "arn-1") }, tool_response: { status: "async_launched", agentId: "raw-agent-X" } });
+  hook({ hook_event_name: "SubagentStop", ...sub, last_assistant_message: "SECRET-SENTINEL", agent_transcript_path: "/home/p/.claude/projects/x/raw-s-7/subagents/agent-raw-agent-X.jsonl" });
+  hook({ hook_event_name: "PostToolUse", tool_name: "Bash", tool_use_id: "toolu_M1", tool_input: { command: "git status" } });
+  const dir = join(store, "control", "activity", "trace");
+  const text = readdirSync(dir).filter((n) => n.endsWith(".jsonl")).map((n) => readFileSync(join(dir, n), "utf8")).join("");
+  assert.doesNotMatch(text, /SECRET-SENTINEL|raw-agent-X|raw-s-7|toolu_|subagents|notifier/, "no prompt, output, last message, transcript, raw agent, session or call id");
+  const u = JSON.parse(spawnSync(process.execPath, [join(ROOT, "cli", "trace.mjs"), "usage", "--json"], { env, encoding: "utf8" }).stdout).attribution;
+  assert.equal(u.byAgent.length, 1);
+  const [x] = u.byAgent;
+  assert.deepEqual([x.type, x.by, x.run, x.started, x.ended, x.events, x.calls, x.commands], ["orbit:satellite-reader", "session", "msn-0123456789ab/arn-1", true, true, 2, 2, 1], "the Read delivered twice is one event");
+  assert.deepEqual([u.session.events, u.session.calls], [2, 2], "the session's own Agent call and its own command");
+  assert.deepEqual([u.coverage.of, u.coverage.withAgent, u.coverage.hosts.map((h) => [h.host, h.withAgent, h.events])], [4, 2, [["claude", 2, 4]]]);
+});
+
+test("an agent launched by an agent names its parent; two starts of one skill are two runs; a result nobody reported is never a success", () => {
+  const emitted = [];
+  const world = { plugin: "orbit", env: {}, trace: () => ({ emit: (type, data) => emitted.push(eventOf(type, data, { id: `e-${emitted.length}`, at: `2026-10-30T10:00:0${emitted.length}.000Z`, session: "claude:s1", agentHost: "claude" })), lookup: () => null }) };
+  trace.run({ event: "agent-start", agent: { id: "claude:x", type: "orbit:satellite-engineer" } }, world);
+  trace.run({ event: "post-tool", tool: { name: "Agent", kind: "other" }, invokes: { kind: "agent", name: "Explore" }, agent: { id: "claude:x", type: "orbit:satellite-engineer" }, delivery: "claude:c1", launched: "claude:y", ok: true }, world);
+  trace.run({ event: "post-tool", tool: { name: "Read", kind: "read" }, agent: { id: "claude:y", type: "Explore" }, delivery: "claude:c2", ok: true }, world);
+  for (const call of ["claude:k1", "claude:k2", "claude:k2"]) trace.run({ event: "pre-tool", invokes: { kind: "skill", name: "orbit:orbit-develop" }, agent: { id: "claude:y", type: "Explore" }, delivery: call }, world);
+  const launched = emitted.find((e) => e.type === "agent.launched");
+  assert.deepEqual([launched.data.agent, launched.data.launched, launched.data.call], ["claude:x", "claude:y", "claude:c1"]);
+  const u = usageOf([...emitted, ev("tool.used", { tool: "Bash", kind: "command", ok: null, outcome: "unknown" })]);
+  assert.deepEqual(u.attribution.byAgent.find((r) => r.agent === "claude:y").by, "claude:x");
+  assert.deepEqual(u.attribution.byAgent.find((r) => r.agent === "claude:y").skills, ["orbit-develop"]);
+  assert.deepEqual(u.skills.map((s) => [s.id, s.invoked, s.runs]), [["orbit-develop", 3, 2]], "three starts, one delivered twice: two runs");
+  assert.deepEqual([u.attribution.session.unknown, u.attribution.session.failed], [1, 0]);
+});

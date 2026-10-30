@@ -284,6 +284,11 @@ src/secrets.mjs  a LEAF: the ONE secret port -- an environment variable's name, 
                returned; no store bound is BLOCKED, never a plaintext fallback. src/secrets.mjs
                re-exports its environment half
 src/process/env.mjs  a LEAF: the few variables a child needs to START, and nothing else of ours
+src/attribution.mjs  a LEAF (0.2.2, ADR 0044): which run a call belongs to, and how anybody knows -- ATTRIBUTION
+               (RUNTIME_BOUND · HOST_OBSERVED · REPORTED · UNATTRIBUTED · CONFLICTING, ranked), SETTLE and `settle()`
+               over what was observed and what was reported, the qualified run reference RUN_REF (`msn-…/arn-…`),
+               and `envelopeRefOf` (the two ids an envelope's mark names, nothing else of a prompt). Read by the
+               Claude adapter, the trail's readers, src/live/session.mjs and Satellite; it imports nothing
 src/policy.mjs a LEAF: allow · approval · deny, capability-first with workflow exceptions and
                read/write operation rules -- the one answer the resolver and the MCP gate share
 src/protected/ a LEAF (0.2.0, ADR 0042): the PROTECTED BOUNDARIES -- the five places autonomous work stops
@@ -1011,10 +1016,14 @@ satellite/     (0.1.1, ADR 0041) ORBIT SATELLITE, a mission journal above Orbit'
                templates) · execution/ (the gateway, the nineteen MODES, UNIT_KINDS, action statuses) · permissions/
                (operation kinds, profiles, grants, the ordered evaluation) · evidence/ (levels, owners, read-back, the
                verdict) · handoff/ · hosts/ (the matrix, detection, acceptance receipts, envelopes, reports, the
-               sessions file) · projection/ (orbit.satellite.event/v1) · live/ (the live view, the viewer's state,
-               renderers, and tui/: nine views, a pure state and key table, one frame). cli/: satellite.mjs (the
+               sessions file, and attribution.mjs (0.2.2, ADR 0044): the pure read-time JOIN of the mission's runs with
+               the session trail -- which host agent carries each run, the word its evidence earns, what that agent did,
+               direct and through the agents it launched) · projection/ (orbit.satellite.event/v1) · live/ (the live
+               view, the viewer's state, renderers, and tui/: nine views, a pure state and key table with a selection by
+               run id, inspect.mjs the selected run in full, one frame). cli/: satellite.mjs (the
                command), bind.mjs (the ONE composition root: owners, providers, the resolver, invokeBound, the narrowed
-               skill factory, the checkout's witness, this session's working set), satellite-live.mjs and
+               skill factory, the checkout's witness, this session's working set, the session trail's shards followed
+               since the mission began), satellite-live.mjs and
                satellite-tui.mjs (Satellite Live). acceptance/record-host-acceptance.mjs (a person's native host
                receipts). test/ (node --test runs it with the suite; fakes/ are export-only)
 skills/satellite/  the SATELLITE playbook (/orbit:satellite) + protocol.md, the shapes a host sends and receives

@@ -18,6 +18,32 @@ test("a Claude Code payload becomes one normalized event, and its session id is 
   assert.doesNotMatch(JSON.stringify(e), /raw-session-123|secret/, "neither the raw id nor the tool's output travels on");
 });
 
+// 0.2.2, ADR 0044: which subagent a hook speaks for, and which one an Agent call launched -- hashed like a session, so
+// the host's own id never travels; the prompt an Agent call carried, the subagent's last message and its transcript
+// never travel either, and a main-session event carries no agent at all.
+test("a subagent's id is hashed, and nothing it said or wrote travels with it", () => {
+  const raw = { session_id: "raw-session-9", cwd: "/repo", agent_id: "raw-agent-77", agent_type: "orbit:satellite-reader" };
+  const tool = event({ ...raw, hook_event_name: "PostToolUse", tool_name: "Read", tool_input: { file_path: "/repo/a.md" }, tool_response: { file: { content: "SECRET-SENTINEL" } } });
+  const stop = event({ ...raw, hook_event_name: "SubagentStop", last_assistant_message: "SECRET-SENTINEL", agent_transcript_path: "/home/p/.claude/projects/x/s/subagents/agent-raw-agent-77.jsonl" });
+  assert.deepEqual([tool.agent.type, stop.event, event({ ...raw, hook_event_name: "SubagentStart" }).event], ["orbit:satellite-reader", "agent-end", "agent-start"]);
+  assert.match(tool.agent.id, /^claude:[0-9a-f]{16}$/);
+  assert.equal(stop.agent.id, tool.agent.id, "the same agent, the same id, from its tool calls and its stop");
+  assert.doesNotMatch(JSON.stringify([tool, stop]), /raw-agent-77|raw-session-9|SECRET-SENTINEL|subagents/);
+  assert.equal("agent" in event({ hook_event_name: "PostToolUse", session_id: "s", tool_name: "Read", tool_input: {} }), false, "a main-session call names no agent");
+});
+
+test("an Agent call's launched id is hashed, and an envelope's two ids are all that is read of its prompt", () => {
+  const envelope = JSON.stringify({ api: "orbit.satellite.envelope/v1", missionId: "msn-0123456789ab", agentRunId: "arn-4", instruction: { text: "SECRET-SENTINEL" } });
+  const pre = event({ hook_event_name: "PreToolUse", session_id: "s", tool_name: "Agent", tool_use_id: "toolu_9", tool_input: { subagent_type: "orbit:satellite-reader", prompt: envelope } });
+  const post = event({ hook_event_name: "PostToolUse", session_id: "s", tool_name: "Agent", tool_use_id: "toolu_9", tool_input: { subagent_type: "Explore", prompt: envelope }, tool_response: { agentId: "raw-launched-1", content: "SECRET-SENTINEL" } });
+  assert.equal(pre.dispatched, "msn-0123456789ab/arn-4");
+  assert.match(post.launched, /^claude:[0-9a-f]{16}$/);
+  assert.equal(pre.delivery, post.delivery, "the pre and the post of one Agent call share its key");
+  assert.doesNotMatch(JSON.stringify([pre, post]), /SECRET-SENTINEL|raw-launched-1|toolu_9/);
+  assert.equal("dispatched" in post, false, "an Agent call to an agent that is not one of this plugin's Satellite agents is never read for an envelope");
+  assert.equal("dispatched" in event({ hook_event_name: "PreToolUse", session_id: "s", tool_name: "Agent", tool_input: { subagent_type: "Explore", prompt: envelope } }), false, "only this plugin's Satellite agents are read for an envelope");
+});
+
 test("a failure is a failure event with ok false; a background launch says so", () => {
   assert.equal(event({ hook_event_name: "PostToolUseFailure", tool_name: "Bash", tool_input: { command: "x" } }).ok, false);
   assert.equal(event({ hook_event_name: "PostToolUse", tool_name: "Bash", tool_input: { command: "x", run_in_background: true } }).background, true);

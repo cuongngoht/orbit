@@ -50,6 +50,7 @@
       "name": "orbit:satellite-reader"
     },
     "event": "post-tool",
-    "host": "claude"
+    "host": "claude",
+    "launched": "claude:c5739097b02960c2"
   }
 }

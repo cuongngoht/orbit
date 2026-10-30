@@ -1,6 +1,7 @@
 // THIS SESSION'S TOOL CALLS beside a mission: read from the working set Orbit's hooks keep -- only this session's file,
-// only its tail, never written -- and shown attributed to NO agent run. A viewer with no session, a switched-off working
-// set or a file it cannot read says so instead of an empty block.
+// only its tail, never written. The session's own calls are attributed to NO agent run (UNATTRIBUTED, 0.2.2); a call a
+// subagent made goes to the run that agent carries only through the join (src/hosts/attribution.mjs). A viewer with no
+// session, a switched-off working set or a file it cannot read says so instead of an empty block.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -23,8 +24,8 @@ const toolsText = (view) => VIEWS.find((v) => v.id === "tools").rows(view).map((
 
 test("the session's tool calls are shown beside the mission, attributed to no agent run", () => {
   const view = liveViewOf(emptyModel(), [], sessionActivityOf([edit(1, "src/client.mjs"), command(2, false)], { nowMs: T0 + 3000, checks: ["test"] }));
-  assert.deepEqual([view.tools.session.observed, view.tools.session.attribution, view.tools.session.recent.map((e) => e.kind)], [2, "UNOBSERVED", ["command", "edit"]]);
-  assert.match(toolsText(view), /THIS SESSION'S TOOL CALLS\s+2 observed · 0 running · attributed to no agent run[\s\S]*src\/client\.mjs/);
+  assert.deepEqual([view.tools.session.observed, view.tools.session.attribution, view.tools.session.recent.map((e) => e.kind)], [2, "UNATTRIBUTED", ["command", "edit"]]);
+  assert.match(toolsText(view), /THIS SESSION'S OWN TOOL CALLS\s+2 observed · 0 running · UNATTRIBUTED: attributed to no agent run[\s\S]*src\/client\.mjs/);
   assert.match(toolsText(liveViewOf(emptyModel(), [], noSessionActivity("off"))), /switched off here/);
   assert.match(toolsText(liveViewOf(emptyModel(), [])), /not read by this viewer/);
 });

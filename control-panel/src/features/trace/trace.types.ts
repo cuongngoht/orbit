@@ -156,9 +156,49 @@ export interface ShellUse {
 export interface SkillUse {
   id: string;
   invoked: number;
+  /** 0.2.2: distinct starts -- a start the host delivered twice is one run. */
+  runs: number;
   refused: number;
   commands: number;
   failed: number;
+}
+
+/** 0.2.2 (ADR 0044): what the hosts' own payloads say about WHICH agent made a call -- never the heuristic above. */
+export interface CallCounts {
+  events: number;
+  calls: number;
+  commands: number;
+  failed: number;
+  unknown: number;
+}
+
+export interface AgentAttribution extends CallCounts {
+  agent: string;
+  type: string | null;
+  started: boolean;
+  ended: boolean;
+  /** "session", another agent's hashed id, or null when no launch was observed. */
+  by: string | null;
+  call: string | null;
+  /** The qualified mission run (msn-…/arn-…) the launching call's envelope named. */
+  run: string | null;
+  skills: string[];
+}
+
+export interface AttributionCoverage {
+  unit: string;
+  of: number;
+  withAgent: number;
+  withCall: number;
+  hosts: { host: string; events: number; withAgent: number }[];
+  note: string;
+}
+
+export interface UsageAttribution {
+  basis: string;
+  byAgent: AgentAttribution[];
+  session: CallCounts & { say: string };
+  coverage: AttributionCoverage;
 }
 
 export interface Transition {
@@ -198,4 +238,5 @@ export interface UsageResponse {
   paths: CommonPath[];
   failures: FailureUse[];
   privilege: Privilege;
+  attribution: UsageAttribution;
 }

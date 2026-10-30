@@ -44,7 +44,7 @@ function chosen(ports, args) {
 
 const projected = (ports, id) => ((p) => ((journalOf(ports, id).read() ?? []).forEach((r) => p.push(r)), p))(createProjection());
 
-const viewOfProjection = (p, ports) => liveViewOf(p.model(), p.events(), ports?.sessionActivity?.(Date.now()) ?? null);
+const viewOfProjection = (p, ports) => liveViewOf(p.model(), p.events(), ports?.sessionActivity?.(Date.now()) ?? null, ports?.trail?.(p.model().meta?.at) ?? null);
 
 const viewerOf = (view, term) => viewerStateOf(view, { reads: 1, good: 1 }, term.nowMs());
 

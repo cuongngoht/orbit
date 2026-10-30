@@ -29,6 +29,9 @@ const REDUCERS = {
   // Orbit Live's moments (collect.mjs): a command STARTING is not a command run, and a turn ending touches nothing.
   "pre-tool": (s) => s,
   "turn-end": (s) => s,
+  // 0.2.2: a subagent starting or stopping touches nothing either; what it did arrives on its own lines.
+  "agent-start": (s) => s,
+  "agent-end": (s) => s,
   truncated: (s) => ({ ...s, truncated: true }),
 };
 

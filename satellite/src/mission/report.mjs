@@ -89,15 +89,41 @@ function reported(ports, lw, runId, raw) {
 export const agentReport = (ports, id, runId, raw) => locked(ports, id, (lw) => reported(ports, lw, runId, raw));
 
 // The HOST's word that it launched the run: PROVIDER_ACCEPTED, said to be the host's -- a report, never an
-// observation of the run itself.
-function acknowledged(lw, runId, ports) {
+// observation of the run itself. With a host agent (0.2.2, ADR 0044) the host also says WHICH of its agents carries
+// the run: kept hashed beside the run (`agentrun.bound`), REPORTED, and outranked by what the hooks observed of the
+// launch -- a disagreement is shown CONFLICTING, never settled here. A link may come late: binding an ended run
+// changes nothing about how it ended.
+function knownRun(lw, runId, hostAgent) {
   const run = lw.m.runs.get(runId);
-  if (!run || run.ended) throw refused(Refused, run ? "RUN_ENDED" : "RUN_UNKNOWN", `${runId} is no open agent run of ${lw.id}`);
-  if (run.started) return { replay: true, run: runId, by: run.started.by };
-  lw.append("action.accepted", { id: run.action, providerRef: `host:${ports.hostId}`, by: "host" });
-  return { run: runId, accepted: lw.append("agentrun.started", { id: run.id, action: run.action, providerRef: `host:${ports.hostId}`, by: "host" }).by, revision: lw.m.position };
+  if (!run || (run.ended && !hostAgent)) throw refused(Refused, run ? "RUN_ENDED" : "RUN_UNKNOWN", `${runId} is no open agent run of ${lw.id}`);
+  return run;
 }
 
-export const agentAck = (ports, id, runId) => locked(ports, id, (lw) => acknowledged(lw, runId, ports));
+function startedByHost(lw, run, ports) {
+  if (run.started || run.ended) return { replay: true, by: run.started?.by ?? null };
+  lw.append("action.accepted", { id: run.action, providerRef: `host:${ports.hostId}`, by: "host" });
+  return { accepted: lw.append("agentrun.started", { id: run.id, action: run.action, providerRef: `host:${ports.hostId}`, by: "host" }).by };
+}
+
+const boundOnce = (lw, run, hashed) => (run.bound.some((b) => b.hostAgent === hashed) ? { bound: hashed, boundBefore: true } : { bound: lw.append("agentrun.bound", { id: run.id, hostAgent: hashed, by: "host" }).hostAgent });
+
+const HOST_AGENT = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+
+// The agent id the host's own Agent tool answered with, hashed the way the hooks hash it (src/lifecycle/event.mjs), so
+// the two words about one agent are one id -- on a host this command can name; elsewhere there is nothing to compare.
+function hostAgentOf(ports, raw) {
+  if (!raw) return null;
+  if (ports.hostId === "unknown" || !HOST_AGENT.test(String(raw))) throw refused(Refused, "HOST_AGENT", ports.hostId === "unknown" ? "the host this command runs under is not known here, so an agent id it named cannot be compared with what the hooks saw" : "a host agent id is letters, digits and . _ : - only");
+  return ports.hashAgent(String(raw));
+}
+
+function acknowledged(lw, runId, ports, raw) {
+  const run = knownRun(lw, runId, raw);
+  const hashed = hostAgentOf(ports, raw);
+  const started = startedByHost(lw, run, ports);
+  return { run: runId, ...started, ...(hashed ? boundOnce(lw, run, hashed) : {}), revision: lw.m.position };
+}
+
+export const agentAck = (ports, id, runId, hostAgent = null) => locked(ports, id, (lw) => acknowledged(lw, runId, ports, hostAgent));
 
 export const runDigest = (run) => short(canonicalJson(run), 16);

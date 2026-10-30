@@ -38,21 +38,39 @@ const missionRows = (v) => [
 ];
 
 // ---- 2 Agents: every run, children under their parent, each in ITS OWN mode -------------------------------------
+//
+// 0.2.2 (ADR 0044): under each run, the host agent that carries it and the word that says how anybody knows
+// (src/attribution.mjs), the host's own lifecycle of that agent, and the calls it made -- direct, and through the agents
+// it launched, counted apart. The selected run (j/k) is marked; enter or o inspects it.
 
 const subtree = (byId, a) => [a, ...a.children.map((c) => byId.get(c)).filter(Boolean).flatMap((c) => subtree(byId, c))];
 
-const treeOf = (agents) => ((byId) => agents.filter((a) => !a.parent || !byId.has(a.parent)).flatMap((a) => subtree(byId, a)))(new Map(agents.map((a) => [a.id, a])));
+export const treeOf = (agents) => ((byId) => agents.filter((a) => !a.parent || !byId.has(a.parent)).flatMap((a) => subtree(byId, a)))(new Map(agents.map((a) => [a.id, a])));
+
+export const TONE_OF_ATTRIBUTION = Object.freeze({ RUNTIME_BOUND: "success", HOST_OBSERVED: "info", REPORTED: "warning", UNATTRIBUTED: "subtle", CONFLICTING: "danger" });
 
 // The run's own mode, and a nested action's on top of it while it is open: EXPLORING › DISPATCHING.
 const modeOf = (a) => (a.mode ? [a.baseMode, ...a.modes].filter(Boolean).join(" › ") : a.outcome ?? "ended");
 
 const indent = (a, more = 0) => dim("  ".repeat(1 + more + Math.min(a.depth, 3)));
 
-const agentRow = (a) => [indent(a), seg(pad(a.id, 7)), seg(pad(a.role, 28)), seg(pad(modeOf(a), 28), a.mode ? "info" : "subtle"), seg(pad(a.lifecycle, 11)), dim(`${a.provider}${a.dispatch === "serial" ? " · serial" : ""} · ${a.profile} · attempt ${a.attempt}${a.providerRef ? ` · ${a.providerRef}` : ""}`)];
+const marked = (a, s) => (s?.selected === a.id ? seg("▶ ", "selected") : dim("  "));
+
+const agentRow = (a, s) => Object.assign([indent(a), marked(a, s), seg(pad(a.id, 7), s?.selected === a.id ? "selected" : undefined), seg(pad(a.role, 28)), seg(pad(modeOf(a), 28), a.mode ? "info" : "subtle"), seg(pad(a.lifecycle, 11)), dim(`${a.provider}${a.dispatch === "serial" ? " · serial" : ""} · ${a.profile} · attempt ${a.attempt}${a.providerRef ? ` · ${a.providerRef}` : ""}`)], { run: a.id });
 
 const agentUnitRow = (a) => [indent(a, 1), dim(`└ ${a.unit}: ${a.objective ?? ""}`)];
 
-const agentsRows = (v) => block(["AGENT RUNS", `${v.agents.filter((a) => a.mode).length} open · ${v.agents.filter((a) => !a.mode).length} ended`], treeOf(v.agents).flatMap((a) => [agentRow(a), agentUnitRow(a)]), "no agent run yet");
+const shortAgent = (id) => String(id ?? "").slice(-8);
+
+const countsWords = (a) => `${a.counts?.direct ?? 0} call(s)${a.counts?.descendants ? ` · ${a.counts.descendants} through the agents it launched` : ""}`;
+
+const hostWords = (a) => (a.hostAgent ? `host agent ${shortAgent(a.hostAgent)} · ${countsWords(a)}${a.hostLifecycle?.endedAt ? " · the host says it stopped" : a.hostLifecycle?.startedAt ? " · the host says it started" : ""}` : a.basis ?? "no trail was read");
+
+const agentHostRow = (a) => [indent(a, 1), dim("└ "), seg(pad(a.attribution ?? "UNATTRIBUTED", 14), TONE_OF_ATTRIBUTION[a.attribution] ?? "subtle"), dim(hostWords(a))];
+
+const orphanRow = (a) => (a.parentRef && !a.parentRef.known ? [[indent(a, 1), seg(`└ parent ${a.parentRef.id} is not in this mission's journal: drawn at the top, never under another run`, "warning")]] : []);
+
+const agentsRows = (v, s) => block(["AGENT RUNS", `${v.agents.filter((a) => a.mode).length} open · ${v.agents.filter((a) => !a.mode).length} ended · j/k select · enter inspect`], treeOf(v.agents).flatMap((a) => [agentRow(a, s), agentUnitRow(a), agentHostRow(a), ...orphanRow(a)]), "no agent run yet");
 
 // ---- 3 Roles · 4 Skills · 5 Workflows: what each factory generated, reused, validated, registered, rejected ---------
 
@@ -70,7 +88,7 @@ const workflowsRows = (v) => block(["WORKFLOW TEMPLATES"], ofKinds(v, "workflow.
 
 const actionRow = (a) => [dim("  "), seg(pad(a.id, 7)), seg(pad(a.type, 17)), seg(pad(a.operationKind, 20)), seg(pad(a.mode, 17), "info"), seg(pad(a.status, 19), TONE_OF_STATUS[a.status]), dim(`${a.provider}${a.agentRun ? ` · ${a.agentRun}` : ""}${a.parent ? ` ⊂ ${a.parent}` : ""}${a.level ? ` · ${a.level}` : ""}${a.providerRef ? ` · ${a.providerRef}` : ""}`)];
 
-const toolCallRows = (v) => Object.entries(v.tools.byRun).map(([run, n]) => [dim("  "), seg(pad(run, 9)), dim(`${n} tool call(s) observed`)]);
+const toolCallRows = (v) => v.agents.map((a) => [dim("  "), seg(pad(a.id, 9)), seg(pad(a.attribution ?? "UNATTRIBUTED", 14), TONE_OF_ATTRIBUTION[a.attribution] ?? "subtle"), dim(a.hostAgent ? `${countsWords(a)} by host agent ${shortAgent(a.hostAgent)}` : a.basis ?? "")]);
 
 // Why a viewer shows none of this session's tool calls, in the source's own word.
 const SESSION_SAY = Object.freeze({ off: "the working set is switched off here (ORBIT_WORKING_SET=off)", "no-session": "this viewer has no session mark, so no session's calls are read", "no-project": "no project here keeps a working set", unreadable: "this session's working set could not be read" });
@@ -79,15 +97,27 @@ const okWord = (ok) => (ok === true ? "ok" : ok === false ? "failed" : "");
 
 const sessionRow = (e) => [dim(`  ${clockOf(e.at)}  `), seg(pad(e.kind, 9)), seg(pad(e.what ?? e.class ?? "", 40)), seg(okWord(e.ok), e.ok === false ? "danger" : "subtle")];
 
-const sessionRows = (s) => (!s ? [none("not read by this viewer")] : s.source !== "ok" ? [none(SESSION_SAY[s.source] ?? s.source)] : s.recent.map(sessionRow));
+// The session's OWN calls -- the ones no payload named an agent for -- since 0.2.2; a viewer of an older activity reads
+// every call it has.
+const ownOf = (s) => s.own ?? { observed: s.observed, running: s.running, recent: s.recent };
 
-const sessionTitle = (s) => (s?.source === "ok" ? `${s.observed} observed${s.partial ? " lately" : ""} · ${s.running} running · attributed to no agent run` : "attributed to no agent run");
+const sessionRows = (s) => (!s ? [none("not read by this viewer")] : s.source !== "ok" ? [none(SESSION_SAY[s.source] ?? s.source)] : ownOf(s).recent.map(sessionRow));
+
+const sessionTitle = (s) => (s?.source === "ok" ? `${ownOf(s).observed} observed${s.partial ? " lately" : ""} · ${ownOf(s).running} running · UNATTRIBUTED: attributed to no agent run` : "UNATTRIBUTED: attributed to no agent run");
+
+const unboundRow = (g) => [dim("  "), seg(pad(g.type ?? "an agent", 28)), seg(pad(shortAgent(g.agent), 10)), dim(`${g.lifecycle ?? "seen"} · ${g.observed} call(s)${g.run ? ` · its call named ${g.run}, which this mission does not bind` : ""}`)];
+
+const TRAIL_WORDS = { ok: "read", off: "switched off here (ORBIT_TRACE=off): no launch can be observed", unreadable: "could not be read", none: "not read by this viewer" };
+
+const coverageRows = (c) => [[dim("  "), seg(pad("session trail", 16)), dim(TRAIL_WORDS[c?.trail] ?? String(c?.trail))], [dim("  "), seg(pad("this host", 16)), dim(c?.host?.agents ?? "what it lets the hooks see about an agent is not known here")], [dim("  "), seg(pad("counted from", 16)), dim(`${c?.basis ?? ""}${c?.partial ? " (the tail of a longer session)" : ""}`)]];
 
 const toolsRows = (v) => [
   ...block(["EXECUTING NOW", `${v.execution.open.length} open`], v.execution.open.map(actionRow), "nothing is executing"),
   ...block(["RECENT ACTIONS", "newest first"], [...v.execution.recent].reverse().map(actionRow), "no action yet"),
-  ...block(["THIS SESSION'S TOOL CALLS", sessionTitle(v.tools.session)], sessionRows(v.tools.session), "none observed yet"),
-  ...block(["TOOL CALLS BY AGENT RUN"], toolCallRows(v), "no hook attributes a host's tool call to an agent run here: per run it is UNOBSERVED"),
+  ...block(["TOOL CALLS BY AGENT RUN", "direct · through the agents it launched, counted apart"], toolCallRows(v), "no agent run yet"),
+  ...block(["THIS SESSION'S OWN TOOL CALLS", sessionTitle(v.tools.session)], sessionRows(v.tools.session), "none observed yet"),
+  ...block(["AGENTS THE HOOKS SAW THAT NO RUN IS BOUND TO"], (v.tools.session?.unbound ?? []).map(unboundRow), "none"),
+  ...block(["COVERAGE"], coverageRows(v.tools.coverage), "not read"),
 ];
 
 // ---- 7 Memory: what one unit handed the next, what was recalled, what is pinned, what was kept for recovery --------

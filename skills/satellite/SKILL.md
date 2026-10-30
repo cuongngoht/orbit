@@ -93,7 +93,10 @@ never carry. When evidence moves the plan, `replan` with the cause the engine's 
 
 - `dispatch` answers an ENVELOPE. On Claude Code run its agent with the Agent tool: `subagent_type` is
   `envelope.agent.subagentType` (`orbit:satellite-reader`, `-designer`, `-engineer`, `-verifier`), and the prompt is
-  the envelope itself (its instruction, context slice, grants and report shape) -- never the conversation. Several
+  the envelope itself, pasted VERBATIM as its JSON (its instruction, context slice, grants and report shape) -- never
+  the conversation, never a paraphrase: Orbit's hooks read the run's two ids off the envelope's own mark, and that is
+  how Satellite Live knows which of the host's agents carries which run (HOST_OBSERVED). An Agent call in the foreground names
+  its agent only when it returns, so the run is bound then; with `run_in_background: true` it is named as it launches. Several
   ready units may be in flight at once, up to the mission's concurrency; when `envelope.dispatch.mode` is `serial`
   (no native agents on this host), follow the instruction yourself in this session, one run at a time.
 - When a run needs what a managed server or a project capability answers, `invoke` asks it ONCE on the run's behalf
@@ -102,7 +105,10 @@ never carry. When evidence moves the plan, `replan` with the cause the engine's 
   The answer comes back once in `result.answer`: hand it to the run, because the journal keeps only its digests. Only a
   run whose mode reads through a provider (EXPLORING) may ask; a provider that waits for a person's approval, a host's
   own server, and one that reads through a connection's credential are refused, with nothing asked.
-- Right after launching a run, `S agent ack <msn> <arn>` records that you launched it (your word, said as such).
+- Right after launching a run, `S agent ack <msn> <arn> --host-agent=<agentId>` records that you launched it and the
+  `agentId` the Agent tool answered with -- your word, said as such (REPORTED). What the hooks observed of the launch
+  outranks it; if the two name different agents the run shows CONFLICTING and neither is chosen. On a host with no
+  native agents leave `--host-agent` out: a serial run is carried by the session itself and is never bound to an agent.
 - When the agent returns its report JSON, pipe it unchanged: `S agent report <msn> <arn> < report.json`. The engine
   reads every evidence reference back from its owner and decides what the run came to. `EVIDENCE_PENDING` means an
   owner's record is still moving (an engineering task still running): report again once it has ended.

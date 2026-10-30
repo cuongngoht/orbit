@@ -51,20 +51,54 @@ export const CHECKS = ["test", "lint", "build"];
 // how a viewer can say a check is RUNNING; and `turn-end`, the host finishing a
 // reply, after which no foreground command is still running. A protocol-2 host's
 // delivery id (added by the subscriber) pairs a pre-tool with its post-tool.
+//
+// Since 0.2.2 (ADR 0044) a line also says WHICH AGENT it is about -- the subagent's hashed id and its type, when the
+// host's payload named one -- and more is kept: a subagent STARTING and STOPPING (`agent-start`, `agent-end`); a call
+// that STARTED a skill or an agent (`invokes`: which; for an Agent call, the hashed id of the agent it launched and the
+// mission run its envelope named), finished, and an Agent call while it is still launching (a pre-tool line, so a
+// viewer can say it runs); and every call a SUBAGENT made, by the tool's name when it touched no path -- an agent's
+// lines are the whole of what it was seen doing. Names and ids only, never a prompt.
 const BOUNDARIES = { "session-end": true, "turn-end": true };
 
+const AGENT_LIFE = { "agent-start": true, "agent-end": true };
+
+// Which line a lifecycle moment becomes: ordered, the first row that holds, the last always.
+const SHAPES = [
+  { when: (e) => BOUNDARIES[e.event] === true, line: (e, roots, at) => ({ t: at, ev: e.event }) },
+  { when: (e) => AGENT_LIFE[e.event] === true, line: (e, roots, at) => (e.agent?.id ? { t: at, ev: e.event } : null) },
+  { when: (e) => e.event === "pre-tool", line: (e, roots, at) => startOf(e, at) },
+  { when: () => true, line: (e, roots, at) => toolLine(e, roots, at) },
+];
+
 export function collect(event, roots, at) {
-  if (BOUNDARIES[event.event]) return { t: at, ev: event.event };
-  if (event.event === "pre-tool") return startOf(event, at);
-  const line = { t: at, ev: event.event, tool: event.tool?.kind ?? "other", paths: within(event.paths, [roots].flat()), tokens: tokens(scrub(event.pattern ?? "")).slice(0, MAX_TOKENS), cmd: commandOf(event) };
-  if (line.tool === "other" && !line.paths.length) return null;
-  return event.background ? { ...line, bg: true } : line;
+  const line = SHAPES.find((s) => s.when(event)).line(event, roots, at);
+  return line ? withAgent(line, event) : null;
 }
+
+function toolLine(event, roots, at) {
+  const line = { t: at, ev: event.event, tool: event.tool?.kind ?? "other", paths: within(event.paths, [roots].flat()), tokens: tokens(scrub(event.pattern ?? "")).slice(0, MAX_TOKENS), cmd: commandOf(event), ...invocationOf(event) };
+  if (line.tool === "other" && !line.paths.length && !line.invokes && !event.agent?.id) return null;
+  return { ...line, ...(event.background ? { bg: true } : {}), ...namedOf(line, event) };
+}
+
+// A subagent's call that touched no path is said by the tool's name -- the one thing the trail keeps of it too.
+const namedOf = (line, event) => (line.tool === "other" && !line.paths.length && !line.invokes && event.agent?.id && event.tool?.name ? { name: String(event.tool.name).slice(0, 96) } : {});
+
+const some = (key, value) => (value ? { [key]: value } : {});
+
+const invocationOf = (event) => (event.invokes?.name ? { invokes: { kind: event.invokes.kind, name: String(event.invokes.name).slice(0, 96) }, ...some("launched", event.launched), ...some("run", event.dispatched) } : {});
+
+const withAgent = (line, event) => (event.agent?.id ? { ...line, agent: event.agent.id, agentType: event.agent.type ?? null } : line);
 
 function startOf(event, at) {
   const cmd = event.tool?.kind === "command" ? commandOf(event) : null;
-  return cmd ? { t: at, ev: "pre-tool", tool: "command", paths: [], tokens: [], cmd: { ...cmd, ok: null }, ...(event.background ? { bg: true } : {}) } : null;
+  if (!cmd) return launchingOf(event, at);
+  return { t: at, ev: "pre-tool", tool: "command", paths: [], tokens: [], cmd: { ...cmd, ok: null }, ...(event.background ? { bg: true } : {}) };
 }
+
+// An Agent call while it launches (0.2.2): its end names the agent, so until then it is a call that RUNS. A skill's
+// start is not kept here -- a skill has no end to pair it with.
+const launchingOf = (event, at) => (event.invokes?.kind === "agent" && event.invokes.name ? { t: at, ev: "pre-tool", tool: "other", paths: [], tokens: [], cmd: null, ...invocationOf(event) } : null);
 
 const within = (paths, roots) => (paths ?? []).map((p) => roots.map((r) => relativeTo(p, r)).find(Boolean)).filter(Boolean).slice(0, MAX_PATHS);
 

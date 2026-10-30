@@ -113,8 +113,14 @@ incremental read are the same events. `live status` is one look; `live watch` fo
 Skills, Workflows, Tools, Memory, Timeline, Verification), keys `1`-`9`, `tab`, `j`/`k`, `g`/`G`, `space` to freeze,
 `r`, `?` and `q`, and `--ascii`; `live open` starts it beside the session through Orbit Live's own openers. The
 viewer's word (ORBITING, IDLE, FINISHED …) is the viewer's, never the mission's lifecycle, and the orbit in its header
-is motion, never progress. The Tools view shows this session's own tool calls from the working set Orbit's hooks keep,
-attributed to no agent run.
+is motion, never progress. Since 0.2.2 (Orbit's ADR 0044) each run in the Agents view says which of the host's agents
+carries it and how anybody knows -- HOST_OBSERVED when the hooks saw the Agent call that carried its envelope launch that
+agent, REPORTED when only the dispatcher said so (`agent ack --host-agent`), CONFLICTING when two words disagree or one
+agent is named for two runs, UNATTRIBUTED for a serial run or when nothing was observed -- with the calls that agent made,
+direct and through the agents it launched, counted apart. `j`/`k` select a run there and `enter` (or `o`) inspects it:
+its pins, its parent and children, its host agent and the basis of the word, its calls and the records behind it. The
+Tools view counts each run's calls, keeps the session's own calls apart (UNATTRIBUTED: attributed to no agent run),
+lists the agents the hooks saw that no run is bound to, and says what the join stood on.
 
 ## Storage
 
@@ -133,7 +139,10 @@ envelope says so.
 
 ## What is not here
 
-- Which agent run made a given host tool call is UNOBSERVED: no hook attributes a call to a run.
+- Which agent run made a host tool call is known only where the host's payload names the agent (Claude Code, captured
+  natively on 2.1.314); on Codex, Antigravity CLI and Grok Build every call stays UNATTRIBUTED to a run. A foreground
+  Agent call names its agent only when it returns, so until then its run is unbound and its agent's calls are shown
+  under the agent alone.
 - An AMBIGUOUS action has no door in Orbit Control yet; reconcile refuses to resend it, and a person decides.
 - Satellite's policy has no writer outside Orbit Control's door, which does not exist for Satellite yet: the defaults
   in code apply.

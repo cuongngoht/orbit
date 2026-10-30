@@ -174,12 +174,15 @@ test("AC-12: a run killed mid-call is reconciled as INTERRUPTED and is never run
   stepped(p, hung.task, "context", "s-3");
   const c = json(cli(p, "automation.mjs", ["context", hung.task, "--json"], { session: "s-3" }));
   const child = spawn(process.execPath, [join(ROOT, "cli", "automation.mjs"), "step", hung.task, "--json"], { cwd: p.repo, env: p.env("s-3"), stdio: ["pipe", "ignore", "ignore"] });
+  // Listened for from the start: a call that never answers holds no timer, so the child may end on its own before the
+  // kill -- either way the process is gone, which is what reconcile is about (0.2.2: the wait no longer races it).
+  const exited = new Promise((r) => child.once("exit", r));
   child.stdin.end(JSON.stringify({ schemaVersion: 1, decisionId: "d-hang", expectedRevision: c.revision, action: { kind: "run", step: "playbook" }, observed: "the playbook is ready", hypothesis: "its run answers" }));
   const open = () => receipts(p, hung.task, "skillstep", "s-3").some((r) => r.ref.endsWith(".evidence") && r.outcome === "RUNNING");
   for (let i = 0; i < 400 && !open(); i += 1) await new Promise((r) => setTimeout(r, 25));
   assert.ok(open(), "the step was recorded before it was asked");
   child.kill("SIGKILL");
-  await new Promise((r) => child.once("exit", r));
+  await exited;
 
   const reconciled = json(cli(p, "automation.mjs", ["reconcile", hung.task, "--json"], { session: "s-3" }));
   assert.ok(reconciled.settled.length >= 2, "the playbook step's engine action and its open step were both closed");

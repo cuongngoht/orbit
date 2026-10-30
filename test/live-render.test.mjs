@@ -188,3 +188,16 @@ test("once the workflow and its engineering task have ended, the viewer still sh
   assert.equal(associate({ mark: "m", checkout: "c", rows: [wf, child, later], now: Date.parse(at(16)) }).task, later.id, "a task created after the workflow ended is new work");
   assert.equal(associate({ mark: "m", checkout: "c", rows: [wf, child].map((r) => ({ ...r, coordinates: false })), now }).task, child.id, "without a coordinator: the newest, as before");
 });
+
+// 0.2.2, ADR 0044: a program reading `live watch --jsonl` gets the frames a pane draws a declared skill run from.
+test("JSONL carries a workflow's plan and a playbook's projection, the frames a skill run's identity is drawn from", () => {
+  for (const event of ["plan-view", "skill-view"]) assert.equal(JSON.parse(jsonlLine({ event, id: "t=4", data: { source: event.split("-")[0], task: "tsk-0123456789ab", view: {} } })).event, event);
+});
+
+test("the evidence overlay ranks a skill run's receipts with the rest and shows the run's pin, provider and digests", async () => {
+  const { CONTEXT_FIELDS, EVIDENCE_DOMAINS, evidenceItems } = await import("../src/live/tui/overlays/evidence.mjs");
+  const view = { readiness: {}, approvals: [], verification: [], actions: [], receipts: [{ domain: "invocation", ref: "srun-0123456789ab.notes.1", outcome: "OK" }, { domain: "zzz", ref: "x", outcome: "OK" }, { domain: "skillrun", ref: "srun-0123456789ab", outcome: "RUNNING" }] };
+  assert.deepEqual(evidenceItems(view).filter((i) => i.kind === "receipt").map((i) => i.data.domain), ["skillrun", "invocation", "zzz"]);
+  for (const field of ["pin", "providerKey", "operation", "queryDigest", "resultDigest"]) assert.ok(CONTEXT_FIELDS.receipt.includes(field), field);
+  assert.ok(["skillrun", "skillstep", "invocation"].every((d) => EVIDENCE_DOMAINS.includes(d)));
+});

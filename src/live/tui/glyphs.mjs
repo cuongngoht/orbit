@@ -6,6 +6,8 @@ export const ASCII = Object.freeze({
   "◇": "<>", "⚠": "!", "⏸": "||", "■": "#", "📸": "[pic]", "👤": "[person]", "→": "->", "⏎": "|", "·": "-",
   "▓": "#", "░": ".", "═": "=", "─": "-", "…": "...", "›": ">", "▸": ">", "←": "<-", "↑": "^", "↓": "v",
   "−": "-", "—": "-", "▏": "|", "↻": "~>", "•": "o", "▲": "^",
+  // A run's detail under it in Satellite Live's Agents view (0.2.2): its branch.
+  "└": "`-",
   // A card's border (0.0.2): its corners a plus, its sides a bar. The badge's edges (0.0.3) are bars too.
   "╭": "+", "╮": "+", "╰": "+", "╯": "+", "│": "|", "━": "=", "▕": "|",
   // The orbit is not here (0.0.3, ADR 0029): an ASCII viewer is drawn ASCII frames of its own (src/live/orbit/raster.mjs).

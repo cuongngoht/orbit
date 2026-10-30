@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import { collect } from "../src/engineering/working-set/collect.mjs";
 import { fold } from "../src/engineering/working-set/fold.mjs";
 import { SESSION_LIMITS, sessionActivityOf, sessionLinesOf } from "../src/live/session.mjs";
+import { sessionNowRows, sessionViewRows } from "../src/live/tui/session-view.mjs";
 import { hostSession, taskSessionMark } from "../src/memory/session.mjs";
 import { sealed } from "./home.mjs";
 
@@ -34,6 +35,53 @@ const pre = (s, call, cls = "test", exe = "node") => ({ t: at(s), ev: "pre-tool"
 const post = (s, call, ok = true, cls = "test", exe = "node") => ({ t: at(s), ev: ok ? "post-tool" : "post-tool-failure", tool: "command", paths: [], tokens: [], cmd: { class: cls, exe, ok }, ...(call ? { delivery: call } : {}) });
 const edit = (s, path) => ({ t: at(s), ev: "post-tool", tool: "edit", paths: [path], tokens: [], cmd: null });
 const fold7 = (lines, s = 10) => sessionActivityOf(lines, { nowMs: T0 + s * 1000, idleAfterMs: 120_000, checks: CHECKS });
+
+// ---- 0.2.2, ADR 0044: which agent -- only what the host's payload named --------------------------------------------
+
+const X = "claude:000000000000000a";
+const Y = "claude:000000000000000b";
+const by = (agent, line) => ({ ...line, agent, agentType: "orbit:satellite-reader" });
+const life = (s, ev, agent) => ({ t: at(s), ev, agent, agentType: "orbit:satellite-reader" });
+const skill = (s, name, agent, call) => ({ t: at(s), ev: "post-tool", tool: "other", paths: [], tokens: [], cmd: null, invokes: { kind: "skill", name }, ...(agent ? { agent } : {}), delivery: call });
+const launch = (s, launched, call, run = null, agent = null) => ({ t: at(s), ev: "post-tool", tool: "other", paths: [], tokens: [], cmd: null, invokes: { kind: "agent", name: "orbit:satellite-reader" }, launched, ...(run ? { run } : {}), ...(agent ? { agent } : {}), delivery: call });
+
+test("two agents that start one skill stay two, each with its own calls, and the session's own calls stay the session's", () => {
+  const a = fold7([launch(1, X, "c:1", "msn-0123456789ab/arn-1"), launch(1, Y, "c:2", "msn-0123456789ab/arn-2"), life(2, "agent-start", X), life(2, "agent-start", Y), skill(3, "orbit:orbit-help", X, "c:3"), skill(3, "orbit:orbit-help", Y, "c:4"), by(X, edit(4, "a.js")), by(Y, post(5, "c:5")), post(6, "c:6")]);
+  assert.deepEqual(a.agents.map((g) => [g.agent, g.observed, g.lifecycle, g.by, g.run]), [[X, 2, "STARTED", "session", "msn-0123456789ab/arn-1"], [Y, 2, "STARTED", "session", "msn-0123456789ab/arn-2"]]);
+  assert.deepEqual(a.invocations.filter((i) => i.kind === "skill").map((i) => [i.name, i.agent]), [["orbit:orbit-help", Y], ["orbit:orbit-help", X]], "one skill, two runs of it, never merged by name");
+  assert.deepEqual([a.own.observed, a.own.recent.map((e) => e.kind)], [3, ["command", "agent", "agent"]], "the session's own command and its two Agent calls");
+  assert.equal(a.observed, 7, "the whole session's count is unchanged in meaning: every finished call");
+});
+
+test("a subagent outlives its parent's turn, its own stop ends its runs, and a stop after the session's end is still that end", () => {
+  const lines = [life(1, "agent-start", X), by(X, pre(2, "c:1")), pre(3, "c:2"), { t: at(4), ev: "turn-end" }];
+  assert.deepEqual([fold7(lines).agents[0].running.length, fold7(lines).own.running.length], [1, 0], "the parent's turn ended; the subagent's test is still running");
+  assert.deepEqual(fold7([...lines, life(5, "agent-end", X)]).agents[0].running, [], "its own stop ends it");
+  assert.equal(fold7([...lines, life(5, "agent-end", X)]).agents[0].lifecycle, "ENDED");
+  assert.equal(fold7([...lines, { t: at(5), ev: "session-end" }, life(6, "agent-end", X)]).ended, true);
+  assert.equal(fold7([life(1, "agent-start", X), { t: at(5), ev: "turn-end" }]).agents[0].lifecycle, "STARTED", "a quiet agent is not a dead one");
+});
+
+test("by-agent pairing never crosses agents, a duplicate delivery is one call, and a result nobody reported stays unknown", () => {
+  const a = fold7([by(X, pre(1, null)), by(Y, post(1.2, null))]);
+  assert.deepEqual([a.agents.find((g) => g.agent === X).running.length, a.agents.find((g) => g.agent === Y).observed], [1, 1], "Y's end of `node test` is never X's");
+  assert.equal(fold7([by(X, post(1, null)), by(Y, post(1.1, null))]).observed, 2, "two agents' identical commands within the duplicate window are two calls");
+  assert.equal(fold7([by(X, post(1, "c:1")), by(X, post(9, "c:1"))]).agents[0].observed, 1);
+  assert.equal(fold7([by(X, { t: at(1), ev: "post-tool", tool: "command", paths: [], tokens: [], cmd: { class: "other", exe: "x", ok: null } })]).agents[0].recent[0].ok, null);
+});
+
+test("an agent launched by an agent names its parent; a call that names no agent is the session's own, with its coverage said", () => {
+  const a = sessionActivityOf([launch(1, X, "c:1"), launch(2, Y, "c:2", null, X), by(Y, edit(3, "b.js"))], { nowMs: T0, checks: CHECKS, coverage: { host: "claude", agents: "observed: …" } });
+  assert.deepEqual(a.agents.map((g) => [g.agent, g.by, g.type, g.lifecycle]), [[X, "session", "orbit:satellite-reader", "SEEN"], [Y, X, "orbit:satellite-reader", "SEEN"]]);
+  assert.deepEqual(a.coverage, { host: "claude", agents: "observed: …" });
+  assert.deepEqual(fold7([edit(1, "a.js")]).agents, [], "no agent named, no agent drawn");
+});
+
+test("a long tail stays bounded: recent calls, agents, and how many agents were left out", () => {
+  const many = Array.from({ length: 5000 }, (_, i) => by(`claude:${String(i % 40).padStart(16, "0")}`, post(i / 100, `c:${i}`)));
+  const a = fold7(many, 60);
+  assert.deepEqual([a.observed, a.recent.length, a.agents.length, a.agentsCut, a.agents[0].recent.length], [5000, SESSION_LIMITS.RECENT, SESSION_LIMITS.AGENTS, 40 - SESSION_LIMITS.AGENTS, SESSION_LIMITS.AGENT_RECENT]);
+});
 
 test("a command is RUNNING between its own pre-tool and post-tool, paired by delivery or by what ran, even when the hooks wrote them out of order", () => {
   assert.deepEqual(fold7([pre(1, "c:1")]).running.map((e) => e.what), ["node (named like a test)"]);
@@ -253,4 +301,30 @@ test("Claude Code tells the hooks a Bash call STARTED, in the background so no c
   const bash = pre.find((h) => h.matcher === "Bash");
   assert.equal(bash.hooks[0].async, true);
   assert.match(bash.hooks[0].command, /cli\/learn-hook\.mjs/);
+});
+
+test("the session's own calls are its own only where the host names every subagent's call; anywhere else they are unattributed", () => {
+  const own = (coverage) => sessionActivityOf([edit(1, "a.js")], { nowMs: T0, checks: CHECKS, coverage }).own.attribution;
+  assert.deepEqual([own({ namesAgents: true }), own({ namesAgents: false }), own({ namesAgents: null }), own(undefined)], ["HOST_OBSERVED", "UNATTRIBUTED", "UNATTRIBUTED", "UNATTRIBUTED"]);
+});
+
+const rowsText = (rows) => rows.map((r) => [...r.left, ...r.right].map((g) => g.text).join("")).join("\n");
+
+test("the pane says which agent did what, under that agent, and what this host lets the hooks see", () => {
+  const a = sessionActivityOf([launch(1, X, "c:1", "msn-0123456789ab/arn-1"), life(2, "agent-start", X), by(X, edit(3, "a.js")), post(4, "c:4")], { nowMs: T0 + 5000, checks: CHECKS, coverage: { namesAgents: true } });
+  const ctx = { state: { session: a, association: null } };
+  assert.match(rowsText(sessionNowRows(ctx)), /agents\s+1 subagent · orbit:satellite-reader · 0000000a · started · 1 call · launched by the session · run msn-0123456789ab\/arn-1/);
+  assert.match(rowsText(sessionNowRows(ctx)), /coverage\s+a subagent's calls are named by the host/);
+  assert.match(rowsText(sessionViewRows(ctx, "events")), /AGENTS · host-observed[\s\S]*▸ orbit:satellite-reader[\s\S]*edited a\.js[\s\S]*THE SESSION'S OWN CALLS[\s\S]*ran node/);
+  const none = { state: { session: sessionActivityOf([edit(1, "a.js")], { nowMs: T0, checks: CHECKS, coverage: { namesAgents: false } }) } };
+  assert.doesNotMatch(rowsText(sessionViewRows(none, "events")), /AGENTS/, "no agent named, no AGENTS block");
+  assert.match(rowsText(sessionNowRows(none)), /this host names no subagent/);
+});
+
+test("an Agent call runs until it answers with the agent it launched, and a subagent's tool with no path still counts as its call", () => {
+  const pre = { t: at(1), ev: "pre-tool", tool: "other", paths: [], tokens: [], cmd: null, invokes: { kind: "agent", name: "orbit:satellite-reader" }, run: "msn-0123456789ab/arn-1", delivery: "c:1" };
+  const launching = fold7([pre]);
+  assert.deepEqual(launching.running.map((e) => [e.kind, e.what]), [["agent", "orbit:satellite-reader"]], "a launch in progress is a call that runs");
+  const done = fold7([pre, life(2, "agent-start", X), by(X, { t: at(3), ev: "post-tool", tool: "other", paths: [], tokens: [], cmd: null, name: "SubagentHandback", delivery: "c:2" }), launch(4, X, "c:1", "msn-0123456789ab/arn-1")]);
+  assert.deepEqual([done.running.length, done.agents[0].observed, done.agents[0].recent[0].what, done.agents[0].run], [0, 1, "SubagentHandback", "msn-0123456789ab/arn-1"]);
 });

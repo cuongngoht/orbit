@@ -27,10 +27,13 @@ export const TRACE_VERSION = 2;
 
 export const EVENT_TYPES = [
   { type: "prompt.submitted", fields: ["prompt", "routing", "intent", "confidence", "cues", "requirements", "graph", "selected", "approval", "blocked", "missing", "injected"], doc: "a person submitted a prompt: a salted hash of it and its length, and what the prompt router decided — table words and resource ids, never the text" },
-  { type: "skill.invoked", fields: ["id", "ours", "outcome"], doc: "the session started a skill, or its switch refused it" },
-  { type: "agent.invoked", fields: ["id", "ours", "outcome"], doc: "the session started a subagent, or its switch refused it" },
-  { type: "tool.used", fields: ["tool", "kind", "ok"], doc: "the session used a tool: its name and kind, never its input or its output" },
-  { type: "command.ran", fields: ["orbit", "sub", "class", "exe", "ok"], doc: "the session ran a command: the Orbit script and a subcommand its own usage documents, or else a class and the executable's bare name — never an argument" },
+  { type: "skill.invoked", fields: ["id", "ours", "outcome", "call", "agent"], doc: "the session started a skill, or its switch refused it: which call it was and, when a subagent made it, the agent's hashed id" },
+  { type: "agent.invoked", fields: ["id", "ours", "outcome", "call", "agent", "run"], doc: "the session started a subagent, or its switch refused it: which call, the agent that made it when it was a subagent, and the qualified mission run an Orbit envelope named -- never the prompt" },
+  { type: "agent.launched", fields: ["id", "call", "agent", "launched", "run"], doc: "an agent call answered with the hashed id of the agent it launched: which call, which agent made it, the one it launched, and the qualified mission run an Orbit envelope named" },
+  { type: "agent.started", fields: ["id", "agent"], doc: "the host said a subagent began: its type and hashed id -- never its prompt" },
+  { type: "agent.ended", fields: ["id", "agent"], doc: "the host said a subagent stopped: its type and hashed id -- never its last message or its transcript" },
+  { type: "tool.used", fields: ["tool", "kind", "ok", "call", "agent"], doc: "the session used a tool: its name and kind, the call's hashed id and the subagent that used it, never its input or its output" },
+  { type: "command.ran", fields: ["orbit", "sub", "class", "exe", "ok", "call", "agent"], doc: "the session ran a command: the Orbit script and a subcommand its own usage documents, or else a class and the executable's bare name, the call's hashed id and the subagent that ran it — never an argument" },
   { type: "turn.ended", fields: [], doc: "the host finished answering a prompt" },
   { type: "session.ended", fields: [], doc: "the session ended" },
   { type: "knowledge.opportunity.offered", fields: ["opportunity", "capability", "workflow", "purpose", "surface"], doc: "a capability opportunity was put to a person" },

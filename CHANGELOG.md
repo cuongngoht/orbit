@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.2.2
+
+Agent and skill run identity, and attribution on evidence (ADR 0044): every agent run, declared skill run and tool call
+Orbit can see is identified once, carries its parent as its owner recorded it at the dispatch boundary, and says how
+anybody knows which run it belongs to -- `RUNTIME_BOUND`, `HOST_OBSERVED`, `REPORTED`, `UNATTRIBUTED` or `CONFLICTING`
+(`src/attribution.mjs`) -- never moved onto the latest skill or the nearest run. Orbit Live, Satellite Live, `trace usage`
+and Orbit Control show the same identity, outcome and coverage, and every gap says so. Contract changes, all additive
+except Satellite Live's view (version 2, a word renamed): new trail fields and events, two hook events, working-set line
+fields, a usage section, a Satellite journal line, two envelope fields, a CLI flag, two JSONL frames.
+
+- **Hooks.** Claude Code's `SubagentStart` and `SubagentStop` reach `cli/learn-hook.mjs` (in the background; the hook
+  answers nothing). The adapter keeps a subagent's `agent_id` and `agent_type`, the `agentId` an Agent call answers with,
+  and the mission run an Orbit envelope's mark names on an Agent call to a Satellite agent -- every id hashed in
+  `src/lifecycle/event.mjs`; the prompt, a subagent's last message and its transcript are never read. New lifecycle
+  events `agent-start` and `agent-end`.
+- **Session trail.** `tool.used`, `command.ran`, `skill.invoked` and `agent.invoked` gain `call` (the hashed call id) and
+  `agent` (the subagent that made it); `agent.invoked` gains `run` (`msn-…/arn-…`). New events `agent.launched`,
+  `agent.started`, `agent.ended`. A Claude Code event's id now comes from its call, as protocol 2's always did, so a hook
+  delivered twice is one event; a Claude Code event names its host (`agentHost`).
+- **Usage.** `trace usage --json` gains `attribution` -- per agent as the host's payload says it (`byAgent`: type, start
+  and stop, who launched it, the run, events, distinct calls, failed, not reported, skills), the calls that name no agent
+  (`session`), and `coverage` (how many observed tool events named an agent, per host) -- and `skills[].runs` (distinct
+  starts). The `skills` heuristic is unchanged and stays labelled as one. Orbit Control's usage page has a "Which agent
+  made the calls" card.
+- **Working set and Orbit Live.** A line names the subagent that made it; a subagent's start and stop and a finished
+  call that started a skill or an agent are kept. `live status --json` gains `session.agents`, `own`, `invocations` and
+  `coverage`; the pane's NOW and events view draw an AGENTS block. A subagent's command is no longer closed by its
+  parent's turn ending. Work tracking's coverage rows gain `namesAgents`, `agents` and `calls`.
+- **Declared skill runs.** A run carries its id qualified by its task, its attempts and `RUNTIME_BOUND`; an approval's
+  reason names the step's ref (`<run>.<step> of …`), so two runs never share a waiting request. `live watch --jsonl`
+  emits `plan-view` and `skill-view`; the evidence overlay ranks `skillrun`, `skillstep` and `invocation` receipts and
+  shows their pin, provider and digests.
+- **Satellite.** `agent ack <msn> <arn> --host-agent=<agentId>` records the dispatcher's word as `agentrun.bound`
+  (hashed, REPORTED). Satellite Live joins its runs with the session trail at read time: each run's host agent, its word
+  and basis, the host's lifecycle of that agent, and its calls direct and through the agents it launched. The live view
+  is version 2 (`UNOBSERVED` is now `UNATTRIBUTED`); the Tools view adds per-run counts and a coverage section; the Agents
+  view selects a run (`j`/`k`) and inspects it (`enter`, `o`, `esc`). The envelope gains `parentAgentRunId` and
+  `attempt`. The host matrix's `toolObservation` notes say what each host proves.
+- **Identity is never authority.** No gate, approval or protected boundary reads a run id, an agent id, a mode or an
+  attribution word (`test/protected-bypass.test.mjs`).
+- **Tests.** `test/skill-lifecycle-e2e.test.mjs` AC-12 listens for its child's exit from the start: the wait no longer
+  races a child that ends on its own.
+- **Native acceptance on Claude Code 2.1.314.** Headless sessions with this plugin dispatched two Satellite runs at
+  once -- in the foreground (`completed`, the agent named when the call returned) and in the background
+  (`async_launched`, named at launch) -- acknowledged each with `--host-agent`, reported, interrupted one through
+  reconcile and retried its unit as a new run (attempt 2): every run was HOST_OBSERVED to its own agent, eight calls
+  each, the dispatcher's word agreeing with the hooks', and the mission ended REPORTED / NOT_VERIFIED. The captures are
+  sanitized fixtures (`test/fixtures/hooks/claude/*-2.1.314.json`), and `satellite/acceptance/host-acceptance.json`
+  holds a receipt for this source (`claude:agent-dispatch`, `claude:agent-parallel`). Orbit's four-host record
+  (`docs/host-acceptance.json`) is owed again for this source, as it was for 0.2.0 and 0.2.1.
+
 ## 0.2.1
 
 Microsoft sign-in for Azure DevOps (ADR 0043): a person signs in once with their Microsoft account, and a connection reads

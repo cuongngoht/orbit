@@ -54,7 +54,10 @@ const versionOf = (snap, r) => snap.skills?.[r.pin]?.version ?? String(r.pin ?? 
 
 const skillIdOf = (r) => String(r.pin ?? "a playbook").split(":")[0];
 
-const headRow = (snap, r, depth) => ((st) => row([seg(indent(depth)), seg("▸ ", "subtle"), seg(`skill ${skillIdOf(r)}`, "label"), dim(` v${versionOf(snap, r)}${r.unread ? " · its workflow could not be read" : ""}`)], [seg(st.word, st.tone), dim(` ${r.calls} call(s)`)], { depth, status: st.word }))(runStateOf(r));
+// The run's own identity beside its skill (0.2.2): its id, which attempt opened it last, and how it is known.
+const runIdWords = (r) => ` · ${r.run}${r.attempts > 1 ? ` · attempt ${r.attempts}` : ""}${r.provenance ? ` · ${r.provenance.toLowerCase().replace("_", "-")}` : ""}`;
+
+const headRow = (snap, r, depth) => ((st) => row([seg(indent(depth)), seg("▸ ", "subtle"), seg(`skill ${skillIdOf(r)}`, "label"), dim(` v${versionOf(snap, r)}${runIdWords(r)}${r.unread ? " · its workflow could not be read" : ""}`)], [seg(st.word, st.tone), dim(` ${r.calls} call(s)`)], { depth, status: st.word }))(runStateOf(r));
 
 // What the journal says beside a step: its provider, how long it took (or has run), how often it was asked again,
 // and what it waits for -- each only when something recorded it.

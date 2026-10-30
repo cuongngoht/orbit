@@ -87,7 +87,8 @@ const attemptsOf = (events, ref) => (events ?? []).filter((e) => e.kind === "act
 
 const providerOf = (events, ref) => [...lines(events, "skillstep").filter((e) => e.ref === ref), ...callsOf(events, ref)].filter((e) => e.providerKey).at(-1)?.providerKey ?? null;
 
-const waitingOf = (view, id) => (view?.approvals ?? []).find((a) => a.open && String(a.reason ?? "").startsWith(`${id} of `))?.id ?? null;
+// The approval a step waits for names the step's REF (0.2.2): two runs that carry a step of one id each wait for their own.
+const waitingOf = (view, ref) => (view?.approvals ?? []).find((a) => a.open && String(a.reason ?? "").startsWith(`${ref} of `))?.id ?? null;
 
 const verificationOf = (view, ref) => ((v) => (v ? { state: v.state, evidence: v.evidence ?? null } : null))((view?.verification ?? []).find((v) => v.subject === `skillstep:${ref}`));
 
@@ -96,7 +97,7 @@ function runStep(view, events, run) {
     const ref = `${run}.${s.id}`;
     const r = receiptsOf(view, "skillstep").find((x) => x.ref === ref) ?? null;
     const a = ((x) => (x?.type === "skill.step" ? x : null))(actionOf(view, r?.action));
-    return { ...s, word: r?.outcome ?? "PENDING", because: r?.summary ?? null, provider: providerOf(events, ref), action: a?.id ?? null, tool: s.tool ?? a?.tool ?? null, startedAt: a?.startedAt ?? null, endedAt: a?.endedAt ?? null, calls: callsOf(events, ref).length, retries: Math.max(0, callsOf(events, ref).length - attemptsOf(events, ref)), waiting: waitingOf(view, s.id), verification: verificationOf(view, ref), receipt: r ? `skillstep:${ref}` : null, invocation: ((c) => (c ? `invocation:${c.ref}` : null))(callsOf(events, ref).at(-1)) };
+    return { ...s, word: r?.outcome ?? "PENDING", because: r?.summary ?? null, provider: providerOf(events, ref), action: a?.id ?? null, tool: s.tool ?? a?.tool ?? null, startedAt: a?.startedAt ?? null, endedAt: a?.endedAt ?? null, calls: callsOf(events, ref).length, retries: Math.max(0, callsOf(events, ref).length - attemptsOf(events, ref)), waiting: waitingOf(view, ref), verification: verificationOf(view, ref), receipt: r ? `skillstep:${ref}` : null, invocation: ((c) => (c ? `invocation:${c.ref}` : null))(callsOf(events, ref).at(-1)) };
   };
 }
 
@@ -112,7 +113,12 @@ const RUN_STATE = [
   { when: () => true, state: () => "RUNNING" },
 ];
 
-const runOf = (plan, view, events, skills) => (r) => ((steps) => ((run) => ({ ...run, state: RUN_STATE.find((x) => x.when(run)).state(run) }))({ run: r.ref, pin: r.pin ?? null, step: ownerOf(plan, view, r), word: r.outcome ?? "RUNNING", unread: !projectedSteps(skills, r.pin), steps, calls: steps.reduce((n, s) => n + s.calls, 0), at: r.at ?? null, summary: r.summary ?? null }))((projectedSteps(skills, r.pin) ?? namedSteps(view, r.ref)).map(runStep(view, events, r.ref)));
+// Which run it is (0.2.2, ADR 0044): its id qualified by the task that keeps it, how often an attempt opened it (each
+// one writes its RUNNING line; a later attempt RESUMES the same run, never a second one), and how it is known -- the
+// engine bound every step and call of it to the run when it made them: RUNTIME_BOUND (src/attribution.mjs).
+const identityOf = (view, events, r) => ({ qualified: view?.task?.id ? `${view.task.id}/${r.ref}` : r.ref, attempts: lines(events, "skillrun").filter((e) => e.ref === r.ref && e.outcome === "RUNNING").length, provenance: "RUNTIME_BOUND" });
+
+const runOf = (plan, view, events, skills) => (r) => ((steps) => ((run) => ({ ...run, state: RUN_STATE.find((x) => x.when(run)).state(run) }))({ run: r.ref, ...identityOf(view, events, r), pin: r.pin ?? null, step: ownerOf(plan, view, r), word: r.outcome ?? "RUNNING", unread: !projectedSteps(skills, r.pin), steps, calls: steps.reduce((n, s) => n + s.calls, 0), at: r.at ?? null, summary: r.summary ?? null }))((projectedSteps(skills, r.pin) ?? namedSteps(view, r.ref)).map(runStep(view, events, r.ref)));
 
 export const skillRunsOf = (plan, view, events, skills) => receiptsOf(view, "skillrun").slice(0, 8).map(runOf(plan, view, events, skills));
 

@@ -5,7 +5,7 @@
 import { ABSENT, clock, dim, joined, row, seg, str } from "../sections/parts.mjs";
 import { focusId } from "../model.mjs";
 
-export const EVIDENCE_DOMAINS = Object.freeze(["requirement", "plan", "step", "task", "work", "runtime", "sandbox", "check", "test", "run", "browser", "data", "investigation", "skill"]);
+export const EVIDENCE_DOMAINS = Object.freeze(["requirement", "plan", "step", "task", "work", "runtime", "sandbox", "check", "test", "run", "browser", "data", "investigation", "skill", "skillrun", "skillstep", "invocation"]);
 
 const TONES = { satisfied: "success", violated: "danger", "not-verified": "warning", blocked: "warning", READY: "success", SUCCEEDED: "success", succeeded: "success", STALE: "warning", FAILED: "danger", failed: "danger", BLOCKED: "warning", REFUSED: "danger", pending: "warning", granted: "success", rejected: "danger", expired: "subtle", consumed: "subtle", REPORTED: "warning" };
 
@@ -31,7 +31,7 @@ export const evidenceItems = (view) => (view ? [...readiness(view), ...approvals
 export const CONTEXT_FIELDS = Object.freeze({
   readiness: ["name", "state", "ref", "source", "at", "because"],
   approval: ["id", "title", "action", "environment", "reason", "risk", "attempt", "requestedAt", "expires", "state", "decidedBy", "decidedAt", "consumedBy", "outcome"],
-  receipt: ["domain", "ref", "outcome", "summary", "action", "environment", "sourceTree", "at"],
+  receipt: ["domain", "ref", "outcome", "summary", "action", "environment", "sourceTree", "pin", "providerKey", "operation", "queryDigest", "resultDigest", "at"],
   verification: ["subject", "obligation", "state", "evidence", "at"],
   action: ["id", "type", "tool", "label", "state", "startedAt", "endedAt", "summary", "reason", "evidence"],
 });

@@ -12,8 +12,10 @@
 // tool events naming it (direct) and those of the agents it launched in turn (descendants), counted apart, never twice.
 //
 //   bindingsOf({ model, trail, trailSource }) -> Map(arn -> binding)
-//   binding: { word, basis, hostAgent, agents, observed, reported, hostLifecycle: { startedAt, endedAt },
+//   binding: { word, basis, hostAgent, agents, observed, reported, carried, hostLifecycle: { startedAt, endedAt },
 //              counts: { direct, descendants, failed, unknown }, calls: [call], children: [agent] }
+//   carried: how many Agent calls the hooks saw carry the run's envelope -- one seen and not answered yet is a launch
+//            in progress (a foreground agent names itself only when its call ends), never a guess about which agent
 //   call: { at, agent, kind, what, ok }      newest first, at most CALLS_KEPT
 import { parseRunRef, runRefOf, settle } from "../../../src/attribution.mjs";
 import { list } from "../store/text.mjs";
@@ -41,7 +43,7 @@ const reportedFor = (run) => list(run.bound).map((b) => b.hostAgent).filter(Bool
 
 const SERIAL = { word: "UNATTRIBUTED", agents: [], observed: [], reported: [] };
 
-const settledFor = (ix, ref, run) => (run.dispatch === "serial" ? SERIAL : settle({ observed: observedFor(ix, ref), reported: reportedFor(run) }));
+const settledFor = (ix, ref, run) => ({ ...(run.dispatch === "serial" ? SERIAL : settle({ observed: observedFor(ix, ref), reported: reportedFor(run) })), carried: run.dispatch === "serial" ? 0 : callsCarrying(ix, ref).size });
 
 const TRAIL_SAY = { off: "is switched off here", unreadable: "could not be read here", none: "was not read by this viewer" };
 
@@ -52,6 +54,7 @@ const BASIS = [
   { when: (b) => b.word === "CONFLICTING", say: (b) => `${shortOf(b.agents[0])} is named for another run of this mission too: it is chosen for neither` },
   { when: (b) => b.word === "HOST_OBSERVED", say: (b) => `the Agent call that carried its envelope launched ${shortOf(b.hostAgent)}${b.reported.length ? ", as the dispatcher also said" : ""}` },
   { when: (b) => b.word === "REPORTED", say: (b) => `the dispatcher said ${shortOf(b.hostAgent)} carries it; no hook saw the launch` },
+  { when: (b) => b.carried > 0, say: () => "the hooks saw the Agent call that carried its envelope; the agent it launched is named when that call answers -- at once for an agent in the background, at its end for one in the foreground" },
   { when: (b, run, c) => c.trailSource !== "ok", say: (b, run, c) => `the session trail ${TRAIL_SAY[c.trailSource] ?? TRAIL_SAY.unreadable}: no launch can be observed` },
   { when: () => true, say: () => "no hook saw the Agent call that carried its envelope" },
 ];

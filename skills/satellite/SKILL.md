@@ -95,7 +95,8 @@ never carry. When evidence moves the plan, `replan` with the cause the engine's 
   `envelope.agent.subagentType` (`orbit:satellite-reader`, `-designer`, `-engineer`, `-verifier`), and the prompt is
   the envelope itself, pasted VERBATIM as its JSON (its instruction, context slice, grants and report shape) -- never
   the conversation, never a paraphrase: Orbit's hooks read the run's two ids off the envelope's own mark, and that is
-  how Satellite Live knows which of the host's agents carries which run (HOST_OBSERVED). Several
+  how Satellite Live knows which of the host's agents carries which run (HOST_OBSERVED). An Agent call in the foreground names
+  its agent only when it returns, so the run is bound then; with `run_in_background: true` it is named as it launches. Several
   ready units may be in flight at once, up to the mission's concurrency; when `envelope.dispatch.mode` is `serial`
   (no native agents on this host), follow the instruction yourself in this session, one run at a time.
 - When a run needs what a managed server or a project capability answers, `invoke` asks it ONCE on the run's behalf

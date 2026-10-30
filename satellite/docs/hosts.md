@@ -24,7 +24,7 @@ stale ([ADR 0002](adr/0002-a-host-adapter-says-only-what-is-verified.md)). A per
 | sessionAffinity | reported | reported | reported | reported |
 | liveIntegration | reported | reported | reported | reported |
 
-- **Claude Code, toolObservation.** The session's own tool calls, read from the working set Orbit's hooks keep; a subagent's calls go to the agent run it carries through the host's own Agent call and agent ids, HOST_OBSERVED (0.2.2: proven by fixtures, a native capture is owed), and a call no payload names an agent for is UNATTRIBUTED.
+- **Claude Code, toolObservation.** The session's own tool calls, read from the working set Orbit's hooks keep; a subagent's calls go to the agent run it carries through the host's own Agent call and agent ids, HOST_OBSERVED (0.2.2: captured natively on 2.1.314), and a call no payload names an agent for is UNATTRIBUTED.
 - **Claude Code, toolOutcomeReliability.** PostToolUseFailure names a failed call.
 - **Claude Code, filesystemIsolation.** An agent runs in the checkout; source changes are isolated by an engineering task's own workspace.
 - **Claude Code, permissionEnforcement.** A plugin agent's tools: allowlist is the host's; permissionMode is ignored.

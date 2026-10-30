@@ -295,7 +295,7 @@ function trailPortOf(b) {
   const io = realIo();
   const room = stateRooms(storeBase(b.env)).trace;
   const followers = new Map();
-  return (sinceIso) => ((source) => ({ source, events: source === "ok" ? dedupedTrail(shardsSince(io, room, String(sinceIso ?? "").slice(0, 10)).flatMap((n) => pulledShard(io, room, followers, n))) : [] }))(TRAIL_SOURCES.find((r) => r.when(b, io, room)).source);
+  return (sinceIso) => ((source) => ({ source, host: coverageOf(b.hostId), events: source === "ok" ? dedupedTrail(shardsSince(io, room, String(sinceIso ?? "").slice(0, 10)).flatMap((n) => pulledShard(io, room, followers, n))) : [] }))(TRAIL_SOURCES.find((r) => r.when(b, io, room)).source);
 }
 
 // env: the command environment (commandEnvironment); cwd: where the command runs; opts: { pluginRoot, proc, node, input }

@@ -63,6 +63,14 @@ test("a line names the subagent that made it; a subagent's start and stop and a 
   assert.equal(fold([collect({ event: "agent-start", agent }, "/repo", AT), launched]).events, 2, "the engineering fold counts them and learns nothing from them");
 });
 
+test("a subagent's call that touched no path is kept by its tool's name, the session's own is not; an Agent call is kept while it launches", () => {
+  const agent = { id: "claude:0123456789abcdef", type: "orbit:satellite-reader" };
+  assert.equal(collect(ev({ tool: { name: "SubagentHandback", kind: "other" }, agent }), "/repo", AT).name, "SubagentHandback", "an agent's lines are the whole of what it was seen doing");
+  assert.equal(collect(ev({ tool: { name: "TodoWrite", kind: "other" } }), "/repo", AT), null, "the session's own tool with no path stays out, as before");
+  const launching = collect(ev({ event: "pre-tool", tool: { name: "Agent", kind: "other" }, invokes: { kind: "agent", name: "orbit:satellite-reader" }, dispatched: "msn-0123456789ab/arn-1" }), "/repo", AT);
+  assert.deepEqual([launching.ev, launching.invokes.name, launching.run], ["pre-tool", "orbit:satellite-reader", "msn-0123456789ab/arn-1"]);
+});
+
 test("the fold knows what changed since the last observation, and whether a check passed AFTER the last edit", () => {
   const lines = [
     { ev: "post-tool", tool: "edit", paths: ["src/a/x.mjs"], tokens: [] },

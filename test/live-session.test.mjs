@@ -320,3 +320,11 @@ test("the pane says which agent did what, under that agent, and what this host l
   assert.doesNotMatch(rowsText(sessionViewRows(none, "events")), /AGENTS/, "no agent named, no AGENTS block");
   assert.match(rowsText(sessionNowRows(none)), /this host names no subagent/);
 });
+
+test("an Agent call runs until it answers with the agent it launched, and a subagent's tool with no path still counts as its call", () => {
+  const pre = { t: at(1), ev: "pre-tool", tool: "other", paths: [], tokens: [], cmd: null, invokes: { kind: "agent", name: "orbit:satellite-reader" }, run: "msn-0123456789ab/arn-1", delivery: "c:1" };
+  const launching = fold7([pre]);
+  assert.deepEqual(launching.running.map((e) => [e.kind, e.what]), [["agent", "orbit:satellite-reader"]], "a launch in progress is a call that runs");
+  const done = fold7([pre, life(2, "agent-start", X), by(X, { t: at(3), ev: "post-tool", tool: "other", paths: [], tokens: [], cmd: null, name: "SubagentHandback", delivery: "c:2" }), launch(4, X, "c:1", "msn-0123456789ab/arn-1")]);
+  assert.deepEqual([done.running.length, done.agents[0].observed, done.agents[0].recent[0].what, done.agents[0].run], [0, 1, "SubagentHandback", "msn-0123456789ab/arn-1"]);
+});

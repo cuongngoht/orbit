@@ -69,7 +69,7 @@ const sessionOf = (a, bound) => (a ? { source: a.source, state: a.state ?? null,
 
 // What the join could stand on: whether the trail was read, what this host's payload says of an agent, and that the
 // session's calls are a tail, never its whole.
-const coverageOf = (trail, session) => ({ trail: trail?.source ?? "none", host: session?.coverage ?? null, basis: "the session trail's agent events and a subagent's calls, since the mission began; the session's own calls from its working-set tail", partial: session?.partial === true });
+const coverageOf = (trail, session) => ({ trail: trail?.source ?? "none", host: trail?.host ?? session?.coverage ?? null, basis: "the session trail's agent events and a subagent's calls, since the mission began; the session's own calls from its working-set tail", partial: session?.partial === true });
 
 const boundAgents = (bindings) => new Set([...bindings.values()].map((b) => b.hostAgent).filter(Boolean));
 

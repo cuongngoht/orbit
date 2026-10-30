@@ -75,3 +75,9 @@ test("the agent's own start and stop are the host's lifecycle of it, kept beside
   assert.equal(typeof b.hostLifecycle.startedAt, "string");
   assert.equal(b.hostLifecycle.endedAt, null, "no stop observed: never assumed ended");
 });
+
+test("an Agent call seen carrying a run's envelope and not answered yet is a launch in progress, said as such and never guessed", () => {
+  const b = bindingsOf({ model: model(), trail: [invoked("c1", `${MSN}/arn-1`), ev("agent.started", { id: "orbit:satellite-reader", agent: A }), used(A)] }).get("arn-1");
+  assert.deepEqual([b.word, b.hostAgent, b.carried, b.counts.direct], ["UNATTRIBUTED", null, 1, 0], "an agent started beside it is not taken to be its agent");
+  assert.match(b.basis, /the agent it launched is named when that call answers/);
+});

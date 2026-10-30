@@ -81,14 +81,15 @@ const whatOfPaths = (paths) => (paths?.length ? `${paths[0]}${paths.length > 1 ?
 
 const okOfLine = (l) => (l.ev === "post-tool-failure" ? false : l.cmd ? l.cmd.ok ?? null : true);
 
-// A call that started a skill or an agent is said as what it started (0.2.2).
-const whatOf = (l) => (l.cmd ? whatOfCommand(l.cmd) : l.invokes ? l.invokes.name : whatOfPaths(l.paths));
+// A call that started a skill or an agent is said as what it started, and a subagent's call that touched no path by its
+// tool's name (0.2.2).
+const whatOf = (l) => (l.cmd ? whatOfCommand(l.cmd) : l.invokes ? l.invokes.name : whatOfPaths(l.paths) ?? l.name ?? null);
 
 const entryOf = (l) => ({ at: l.t, kind: l.invokes?.kind ?? l.tool ?? "other", what: whatOf(l), ok: okOfLine(l), bg: l.bg === true, class: l.cmd?.class ?? null, exe: l.cmd?.exe ?? null, ...(l.agent ? { agent: l.agent } : {}) });
 
 // ---- what is running: started, and nothing ended it --------------------------------------------------------------
 
-const sameRun = (a, b) => b.cmd?.exe === a.cmd?.exe && b.cmd?.class === a.cmd?.class && (b.agent ?? null) === (a.agent ?? null);
+const sameRun = (a, b) => b.cmd?.exe === a.cmd?.exe && b.cmd?.class === a.cmd?.class && (b.agent ?? null) === (a.agent ?? null) && (b.invokes?.name ?? null) === (a.invokes?.name ?? null);
 
 // With no id, what ran pairs them, in order: a post-tool ends the OLDEST open pre-tool of the same command, and one
 // that finds none open is an orphan a pre-tool written just after it may still claim -- the hooks run in the

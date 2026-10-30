@@ -53,7 +53,8 @@ test("src/automation reads no environment, spawns nothing, calls no model and na
 test("only composition roots import src/automation", () => {
   const importers = ["src", "cli", "skills", "control-server/src"].flatMap(walk).filter((f) => !f.startsWith(join("src", "automation"))).filter((f) => importsOf(f).some((s) => /(^|\/)src\/automation\/[a-z-]+\.mjs$/.test(s) || (f.startsWith("src") && /^\.\.\/automation\//.test(s))));
   // cli/live.mjs (1.8.5) reads `live.open` and `live.display` to decide whether `live ensure` opens a viewer by itself.
-  assert.deepEqual(importers.sort(), [join("cli", "automation.mjs"), join("cli", "help.mjs"), join("cli", "live.mjs"), join("cli", "skill-factory.mjs"), join("control-server", "src", "core.mjs"), join("skills", "orbit-control", "world.mjs")].sort());
+  // cli/improve.mjs (0.3.0) binds the coordinator's own skill runner to run an evaluation's baseline and candidate.
+  assert.deepEqual(importers.sort(), [join("cli", "automation.mjs"), join("cli", "help.mjs"), join("cli", "improve.mjs"), join("cli", "live.mjs"), join("cli", "skill-factory.mjs"), join("control-server", "src", "core.mjs"), join("skills", "orbit-control", "world.mjs")].sort());
 });
 
 test("the usage header, the command table and governance name the same commands, and no forbidden one", () => {

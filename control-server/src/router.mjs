@@ -48,6 +48,8 @@ import { putAutomation, putLiveSettings, putProjectAutomation } from "./automati
 import { missionHealth } from "./mission-control/health.mjs";
 import { generatedSkill, generatedSkills } from "./generated-skills/read.mjs";
 import { archiveSkill, moveSkill, revalidateSkill, rollbackSkill } from "./generated-skills/write.mjs";
+import { improvementCampaign, improvementOpportunities, improvementOverview } from "./improvement/read.mjs";
+import { decided, putImprovementSettings } from "./improvement/write.mjs";
 import { reportParts, reportSettings, reportsOverview } from "./reports/read.mjs";
 import { putReportSettings, rollbackExtension, switchPart, verifyExtension } from "./reports/write.mjs";
 import { forgetCheckout } from "./projects/forget.mjs";
@@ -87,6 +89,10 @@ const SESSION = [...TASK, "session"];
 const GENERATED = /^\/api\/v1\/projects\/([^/]+)\/generated-skills\/([^/]+)$/;
 const generatedAction = (action) => new RegExp(`^/api/v1/projects/([^/]+)/generated-skills/([^/]+)/${action}$`);
 const PLAYBOOK = ["project", "skill"];
+// Autonomous improvement (0.3.0, ADR 0045): one campaign of a project, and a person's three decisions on it.
+const IMPROVEMENT_CAMPAIGN = /^\/api\/v1\/projects\/([^/]+)\/improvement\/campaigns\/([^/]+)$/;
+const campaignAction = (action) => new RegExp(`^/api/v1/projects/([^/]+)/improvement/campaigns/([^/]+)/${action}$`);
+const CAMPAIGN = ["project", "campaign"];
 
 export const ROUTES = [
   { method: "GET", path: /^\/api\/v1\/agentic-hosts$/, run: ({ ctx }) => agenticHosts(ctx) },
@@ -235,6 +241,15 @@ export const ROUTES = [
   { method: "POST", path: generatedAction("retire"), ids: PLAYBOOK, mutates: true, body: true, run: ({ ctx, ids }) => moveSkill("retired")(ctx, ids[0], ids[1]) },
   { method: "POST", path: generatedAction("rollback"), ids: PLAYBOOK, mutates: true, body: true, run: ({ ctx, ids, body }) => rollbackSkill(ctx, ids[0], ids[1], body) },
   { method: "POST", path: generatedAction("archive"), ids: PLAYBOOK, mutates: true, body: true, run: ({ ctx, ids }) => archiveSkill(ctx, ids[0], ids[1]) },
+  // Autonomous improvement (0.3.0, ADR 0045): what the engine found and decided, read; a person's promote, revert and
+  // reject on the revision the page read; and the bounds a person sets for the project. No row evaluates anything.
+  { method: "GET", path: /^\/api\/v1\/projects\/([^/]+)\/improvement$/, id: "project", run: ({ ctx, id }) => improvementOverview(ctx, id) },
+  { method: "GET", path: /^\/api\/v1\/projects\/([^/]+)\/improvement\/opportunities$/, id: "project", run: ({ ctx, id }) => improvementOpportunities(ctx, id) },
+  { method: "GET", path: IMPROVEMENT_CAMPAIGN, ids: CAMPAIGN, run: ({ ctx, ids }) => improvementCampaign(ctx, ids[0], ids[1]) },
+  { method: "POST", path: campaignAction("promote"), ids: CAMPAIGN, mutates: true, body: true, run: ({ ctx, ids, body }) => decided(ctx, ids[0], ids[1], "promote", body) },
+  { method: "POST", path: campaignAction("revert"), ids: CAMPAIGN, mutates: true, body: true, run: ({ ctx, ids, body }) => decided(ctx, ids[0], ids[1], "revert", body) },
+  { method: "POST", path: campaignAction("reject"), ids: CAMPAIGN, mutates: true, body: true, run: ({ ctx, ids, body }) => decided(ctx, ids[0], ids[1], "reject", body) },
+  { method: "PUT", path: /^\/api\/v1\/projects\/([^/]+)\/improvement\/settings$/, id: "project", mutates: true, body: true, run: ({ ctx, id, body }) => putImprovementSettings(ctx, id, body) },
 
   { method: "GET", path: /^\/api\/v1\/autonomous-qa$/, run: ({ ctx }) => autonomousQaOverview(ctx) },
   { method: "PUT", path: /^\/api\/v1\/autonomous-qa\/settings$/, mutates: true, body: true, run: ({ ctx, body }) => putAutonomousQaSettings(ctx, body) },

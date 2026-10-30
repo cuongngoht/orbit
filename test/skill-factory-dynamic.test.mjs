@@ -73,7 +73,7 @@ test("text in the contract fields is held to the same rules as the playbook: an 
 });
 
 test("every phase is reachable, in order, and the last always answers", () => {
-  const rows = [{ archived: true }, { intact: false }, { status: "broken", intact: true }, { draft: true, written: true }, { draft: true }, { status: "verified", intact: true }, { status: "active", intact: true, rolledBackTo: "0.1.0" }, { status: "active", intact: true }, { status: "disabled", intact: true }, { status: "retired", intact: true }];
+  const rows = [{ archived: true }, { intact: false }, { status: "broken", intact: true }, { draft: true, written: true }, { draft: true }, { status: "verified", intact: true }, { status: "candidate", intact: true }, { status: "active", intact: true, rolledBackTo: "0.1.0" }, { status: "active", intact: true, selectedFrom: "x:0.1.0:abcdef12" }, { status: "active", intact: true }, { status: "disabled", intact: true }, { status: "retired", intact: true }];
   assert.deepEqual(rows.map(phaseOf), PHASE_IDS.filter((p) => p !== "FAILED").toSpliced(2, 0, "FAILED"));
   assert.equal(phaseOf({ draft: true, findings: ["SF_INJECTION"] }), "FAILED");
   assert.equal(PHASES.at(-1).when({}), true);

@@ -1,5 +1,67 @@
 # Changelog
 
+## 0.3.0
+
+Autonomous self-improvement on independent evidence (ADR 0045): Orbit now notices when one of this project's reusable
+definitions -- a declared playbook the skill factory keeps, a role Satellite keeps -- fails the same way in independent
+sessions, drafts the smallest successor through that definition's own factory, compares it with the version it would
+replace on the same frozen inputs, chooses it for new work only when twelve gates hold and only through the owner's own
+door, watches the runs that follow, and puts the replaced version back when it regresses. A campaign is a journal of
+decisions in the machine store; every truth stays with its owner. All contract changes are additive.
+
+- **Detection.** `src/improvement/` reads owners' run records into signals (a contract its definition declares that did
+  not hold, an input it could not bind, its own bounds spent, a Satellite run that ended without an owner's proof) and
+  keeps one opportunity per fingerprint. A single failure, retries inside one session, a provider's failure, an
+  environment that blocked a run and a person's approval never start a campaign; a problem more sessions contradict than
+  show is not one. It runs after a coordinated workflow ends and from the hooks (a detached, debounced `improve analyse
+  --hook`, which never evaluates).
+- **Diagnosis and generation.** `DIAGNOSIS` names the cause from what the evidence demonstrates; only the definition's
+  own declaration, with high confidence, gets a candidate. The skill factory gains a SUCCESSOR: `scaffoldSuccessor`
+  drafts it from the pinned version (`successorOf`, `campaign`), the host writes the change with `skill-factory put`,
+  and `stageCandidate` keeps it under `candidates/` with status `candidate` -- pinnable, never offered; `register`
+  refuses a successor (`SF_SUCCESSOR`). A role's successor is published to Satellite HELD.
+- **Validation.** `SAFETY` refuses, before anything runs, a candidate that widens a tool, changes what it provides,
+  carries anything but instruction text or declared data, or weakens an acceptance rule (a lowered bound, a removed rule
+  or required step, a retyped output); its owner's own contract holds it too.
+- **Evaluation.** A playbook's candidate and the version it would replace run the same frozen inputs side by side,
+  `minRuns` times each, in an evaluation task of their own (provider and door `improvement`), through the coordinator's
+  own skill runner pinned by `dispatch.pin` -- the same resolver, gates, approvals and budgets as ordinary work. A role's
+  evaluation is the missions the host links. `COMPARE` judges one evaluation (a newly failed step is WORSE whatever else
+  improved), `AGGREGATE` all of them (BETTER needs two independent sessions and none saying otherwise). Cost is measured
+  beside the verdict, with denominators; tokens, cost and handoffs stay unknown.
+- **Promotion, monitoring and rollback.** Twelve ordered `PROMOTION_GATES`, then `selectVersion` (skill factory) or
+  `selectDefinition` (Satellite's `registry/selected/<id>.json`): doors `improvement` and `control`, the revision read,
+  a person's withholding always winning, the replaced version kept whole and a pin a task holds never moved. With
+  `improvement.promote` off a qualified candidate waits for a person. `MONITOR` reads ordinary runs afterwards; a
+  regression in independent sessions selects the replaced version again and suppresses the candidate. An ended campaign
+  is one finding for learn's own ladder.
+- **Settings.** `improvement.*` in the automation settings (schema 3, additive): `detect`, `generate`, `evaluate`,
+  `promote`, `minSessions`, `minRuns`, `maxCandidatesPerSubject`, `maxEvaluationAttempts`, `maxEvaluationMinutes`,
+  `maxConcurrentEvaluations`, `isolation`, `cooldownHours`, `retentionDays`; `improvement.allowExecutableCandidates` is
+  fixed false. Written only through Orbit Control's door.
+- **CLI and skill.** `cli/improve.mjs`: `status`, `analyse`, `opportunities`, `candidates`, `show`, `start`, `step`,
+  `resume`, `evaluate`, `candidate`, `link`, `reconcile`, `history`, `metrics`, `doctor`, `where` -- none promotes,
+  reverts, rejects or changes a setting. `/orbit-improve` (switch `skill_improve`) is the host's playbook.
+- **Live, Control, trail.** `IMPROVEMENT_SOURCE` sends a campaign an evaluation task names as one `improvement-view`
+  frame and named events; the full-screen viewer and the pane draw an IMPROVE section; `live status --json` lists
+  campaigns. Orbit Control's Advanced → Improvement shows the overview with nine metrics, the opportunities, each
+  campaign (why, the successor, every evaluation, every gate, history, events) and the settings, with a person's
+  promote, revert and reject on the revision read. The trail gains `improvement.detected`, `improvement.decided`,
+  `improvement.promoted` and `improvement.rolled_back`.
+- **Shared binding.** `skills/orbit-help/invoke.mjs` is the one binding of a declared playbook's door, which
+  `cli/automation.mjs` and `cli/improve.mjs` share.
+- **Independence is one machine on one UTC day,** learn's own rule (`src/memory/session.mjs`), never a session mark a
+  shell can set. Another evaluation runs only when it would add an independent session: asked again on the same
+  machine and day, under any session mark or none, it starts nothing. A successor whose text tells its reader to ignore its rules is refused by the factory's own injection rule,
+  and no terminal writes a verdict, a qualification or a promotion (`test/improvement-manipulation.test.mjs`).
+- **The hook's detached analyse never stands in the checkout, and starts only when there is something to analyse.**
+  It starts in the system's temporary directory and is told its checkout (`analyse --hook --checkout=<dir>`), because
+  on Windows a directory a running process stands in cannot be removed. A project that keeps no playbook, no Satellite
+  mission and no campaign starts no process at all.
+- **Tests.** `test/learning-default.test.mjs` waits for the drained session's trail event as well as its facts: the
+  drain keeps the facts first, so a busy machine could read the trail in between.
+- **Native host acceptance** goes stale with this source and is owed again.
+
 ## 0.2.2
 
 Agent and skill run identity, and attribution on evidence (ADR 0044): every agent run, declared skill run and tool call

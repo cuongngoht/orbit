@@ -9,6 +9,7 @@ export const TABS = [
   { id: "execution", label: "Execution", prefix: ["execution"] },
   { id: "governance", label: "Governance", prefix: [] },
   { id: "live", label: "Live", prefix: ["live"] },
+  { id: "improvement", label: "Self-improvement", prefix: ["improvement"] },
   { id: "skills", label: "Generated skills", prefix: [] },
 ] as const;
 

@@ -5,7 +5,8 @@
 //   <storeRoot>/satellite/
 //     definitions/{roles,agent-templates,skills,workflows}/<id>/<version>-<digest8>.json   immutable, one file each
 //     registry/                 the one writer lock for registration, and sessions/<mark>.json (which mission a
-//                               session runs); every index is REBUILT from the definition files on each read
+//                               session runs); every index is REBUILT from the definition files on each read;
+//                               selected/<id>.json (0.3.0) which kept version of an id is offered, when one was chosen
 //     missions/<msn-id>/        journal.jsonl (the mission's ONLY state), goal.json, plans/, agent-runs/, handoffs/,
 //                               artifacts/, evidence/, checkpoints/, running.json (a worker's lease)
 //     knowledge/ lessons/       reusable findings a mission published, by reference
@@ -34,7 +35,7 @@ const inside = (root) => (rel) => contained(root, join(root, rel));
 export function roomsOf(storeRoot) {
   const root = join(storeRoot, ROOT);
   const at = inside(root);
-  return { root, missions: at("missions"), registry: at("registry"), sessions: at(join("registry", "sessions")), knowledge: at("knowledge"), lessons: at("lessons"), policyFile: at(join("policy", "settings.json")), live: at("live"), definitions: Object.fromEntries(Object.entries(DEFINITION_KINDS).map(([kind, k]) => [kind, at(join("definitions", k.dir))])) };
+  return { root, missions: at("missions"), registry: at("registry"), selected: at(join("registry", "selected")), sessions: at(join("registry", "sessions")), knowledge: at("knowledge"), lessons: at("lessons"), policyFile: at(join("policy", "settings.json")), live: at("live"), definitions: Object.fromEntries(Object.entries(DEFINITION_KINDS).map(([kind, k]) => [kind, at(join("definitions", k.dir))])) };
 }
 
 export const missionDirOf = (rooms, id) => contained(rooms.missions, join(rooms.missions, checkedId(id, MISSION_ID)));

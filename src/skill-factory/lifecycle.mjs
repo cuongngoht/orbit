@@ -19,19 +19,32 @@
 //   rollback   an earlier version, verified again and registered as the next version
 //   archive    the version in place moved out of the way; tasks that pinned it still read it
 //
+// and, since 0.3.0 (ADR 0045), a SUCCESSOR of a registered version -- an improvement campaign's, never a workflow's:
+//
+//   scaffoldSuccessor  a draft that starts as a pinned version's files, marked with the version it succeeds and the
+//              campaign that asked for it; the host writes what changes with `put`, exactly as for any draft
+//   stageCandidate     the successor held to the SAME contract (validate.mjs) and kept, verified, in candidates/ --
+//              never in place, never in the registry, offered to nobody: only an evaluation that holds its pin runs it
+//   selectVersion      which KEPT version runs from now on: a candidate the improvement engine promoted on evaluated
+//              evidence, or the version a promotion replaced when it regressed -- through the improvement engine's
+//              door while a person lets it promote, or a person's in Orbit Control. Under the lock, against the version
+//              the caller read (`expect`), never for a playbook a person switched off, never to a version that no longer
+//              holds to the contract; tasks that pinned a version keep it
+//
 // Every write is under the room's lock; nothing here is ever deleted except a draft that was registered.
 //
 // A playbook's PHASE (vocab.mjs PHASES) is read off what is kept here every time -- listOf and draftsOf say it
 // -- and never stored: a phase that could disagree with its files would be a second truth.
 import { join } from "node:path";
 import { Refused } from "../errors.mjs";
+import { canonicalJson, sha } from "../hash.mjs";
 import { withLock } from "../store/lock.mjs";
 import { shapeOf, shapeRow } from "./gap.mjs";
 import { STAMPED } from "./manifest.mjs";
 import { allowed, activationOf } from "./policy.mjs";
-import { digestOf, filesIn } from "./store.mjs";
+import { STAMPED_KEYS, digestOf, filesIn } from "./store.mjs";
 import { validateSkill } from "./validate.mjs";
-import { DRAFTED_UNDER, MANIFEST, MANIFEST_SCHEMA, MOVES, SIDECAR, SKILL_FILE, WORKFLOW_FILE, phaseOf, statusRow } from "./vocab.mjs";
+import { DRAFTED_UNDER, MANIFEST, MANIFEST_SCHEMA, MOVES, SELECT_DOORS, SIDECAR, SKILL_FILE, SUCCESSION, WORKFLOW_FILE, phaseOf, statusRow } from "./vocab.mjs";
 import { parsedWorkflow, workflowFindings } from "./workflow.mjs";
 
 const refused = (code, say) => Object.assign(new Refused(`${code}: ${say}`), { code });
@@ -161,13 +174,23 @@ function refusedDraft(store, id, verdict) {
 
 const hasDraft = (store, id) => store.io.exists(join(store.draftDir(id), MANIFEST));
 
+// A draft is registered in place -- unless it is a SUCCESSOR (0.3.0), which is staged as a candidate and evaluated,
+// and only ever chosen through selectVersion: a version nobody compared never replaces the one that runs.
+function registrable(store, id) {
+  const m = draftManifestOf(store, id);
+  if (m?.successorOf) throw refused("SF_SUCCESSOR", `${id}'s draft succeeds ${m.successorOf} for ${m.campaign ?? "an improvement campaign"}: it is staged as a candidate and evaluated, never registered in place`);
+  return hasDraft(store, id);
+}
+
+const draftManifestOf = (store, id) => parsed(store.io.read(join(store.draftDir(id), MANIFEST)) ?? "null");
+
 // r: { values, deps, by, at, engineVersion, rolledBackTo? } -> { ok, pin, status, summary } | { ok: false, findings }
 export const register = (store, id, r) => locked(store, () => registering(store, id, r));
 
 // From the attempt it counts to the row it writes, under ONE hold of the lock: a `put` landing between the
 // verdict and the copy would register files nobody verified.
 function registering(store, id, r) {
-  if (!hasDraft(store, id)) return alreadyRegistered(store, id);
+  if (!registrable(store, id)) return alreadyRegistered(store, id);
   attempted(store, id, r.values);
   const verdict = verifyDraft(store, id, r.deps);
   if (!verdict.ok) return refusedDraft(store, id, verdict);
@@ -205,7 +228,7 @@ const reused = (row) => ({ ok: true, reused: true, id: row.id, version: row.vers
 
 function placed(store, id, p) {
   keptAside(store, p.prior);
-  const row = rowOf(id, p);
+  const row = rowOf(id, { ...p, version: nextVersion(store, id) });
   copiedIn(store, id, p, row);
   store.saveRegistry([...store.registry().filter((x) => x.id !== id), row]);
   return finished(store, id, p, row);
@@ -219,7 +242,7 @@ function finished(store, id, p, row) {
 
 const manifestIn = (files) => parsed(files.find((f) => f.name === MANIFEST)?.text ?? "null") ?? {};
 
-const rowOf = (id, p) => ((m) => ({ id, version: bumped(p.prior?.version), digest: p.digest, status: activationOf(p.values), scope: m.scope, provides: m.provides, needs: m.needs, optional: m.optional ?? [], signals: m.signals ?? [], workflow: m.workflow, runs: m.runs ?? "followed", shape: m.shape ?? null, sourceTask: m.sourceTask ?? null, summary: summaryOf(p.files, m), registeredBy: p.by, at: p.at, ...(p.rolledBackTo ? { rolledBackTo: p.rolledBackTo } : {}) }))(manifestIn(p.files));
+const rowOf = (id, p) => ((m) => ({ id, version: p.version, digest: p.digest, status: activationOf(p.values), scope: m.scope, provides: m.provides, needs: m.needs, optional: m.optional ?? [], signals: m.signals ?? [], workflow: m.workflow, runs: m.runs ?? "followed", shape: m.shape ?? null, sourceTask: m.sourceTask ?? null, summary: summaryOf(p.files, m), registeredBy: p.by, at: p.at, ...(p.rolledBackTo ? { rolledBackTo: p.rolledBackTo } : {}) }))(manifestIn(p.files));
 
 function keptAside(store, prior) {
   if (!prior || !store.io.exists(store.dirOf(prior.id))) return;
@@ -272,7 +295,7 @@ function moved(store, id, status, opts) {
 
 const PIN = /^([a-z0-9][a-z0-9-]{1,47}):(\d+\.\d+\.\d+):([0-9a-f]{8})$/;
 
-const placesOf = (store, id, version, digest8) => [store.dirOf(id), join(store.paths.versions, id, `${version}-${digest8}`), join(store.paths.archived, id, `${version}-${digest8}`)];
+const placesOf = (store, id, version, digest8) => [store.dirOf(id), join(store.paths.versions, id, `${version}-${digest8}`), join(store.paths.archived, id, `${version}-${digest8}`), join(store.paths.candidates, id, `${version}-${digest8}`)];
 
 const versionAt = (store, dir) => currentManifest(store.io.read(join(dir, MANIFEST)));
 
@@ -284,7 +307,17 @@ export function pinned(store, pin) {
   return dir ? pinRow(store, m[1], dir) : null;
 }
 
-const pinRow = (store, id, dir) => ((manifest, row) => ({ id, dir, version: manifest.version, status: row?.version === manifest.version ? row.status : "retired", loadable: statusRow(row?.version === manifest.version ? row.status : "retired")?.pinnable === true, summary: row?.summary ?? manifest.provides.join(", "), pin: `${id}:${manifest.version}:${manifest.digest.slice(0, 8)}` }))(versionAt(store, dir), entryOf(store, id));
+// Where a kept version stands: the registry row's status when it is the version in place, a candidate while it waits in
+// candidates/ (0.3.0), and retired otherwise -- kept for whoever pinned it.
+const STATUS_AT = [
+  { when: (row, m) => row?.version === m.version && row?.digest === m.digest, status: (row) => row.status },
+  { when: (row, m) => m.status === "candidate", status: () => "candidate" },
+  { when: () => true, status: () => "retired" },
+];
+
+const statusAt = (row, m) => STATUS_AT.find((s) => s.when(row, m)).status(row, m);
+
+const pinRow = (store, id, dir) => ((manifest, row) => ({ id, dir, version: manifest.version, status: statusAt(row, manifest), loadable: statusRow(statusAt(row, manifest))?.pinnable === true, summary: row?.summary ?? manifest.provides.join(", "), pin: `${id}:${manifest.version}:${manifest.digest.slice(0, 8)}` }))(versionAt(store, dir), entryOf(store, id));
 
 // What a host is handed to follow: the playbook's text and its references, as printable text, by pin or id.
 export function playbookOf(store, ref, printable) {
@@ -343,15 +376,19 @@ export function rollback(store, id, version, r) {
 function restored(store, from, id) {
   copyDir(store.io, from, store.draftDir(id));
   const m = parsed(store.io.read(join(store.draftDir(id), MANIFEST)) ?? "null") ?? {};
-  store.io.write(join(store.draftDir(id), MANIFEST), json(Object.fromEntries(Object.entries(m).filter(([k]) => !STAMPED.includes(k)))));
+  store.io.write(join(store.draftDir(id), MANIFEST), json(unstampedManifest(m)));
 }
+
+// A manifest as a draft may carry it: nothing the engine stamped, and no succession -- a version put back by a person is
+// registered as itself, never as somebody's successor.
+const unstampedManifest = (m) => Object.fromEntries(Object.entries(m ?? {}).filter(([k]) => !STAMPED.includes(k) && !SUCCESSION.includes(k)));
 
 const listed = (store) => (r) => ((ok) => ({ ...r, shape: r.shape ?? null, pin: pinOf(r), quarantined: !r.archived && !ok, offered: statusRow(r.status)?.offered === true && !r.archived && ok, phase: phaseOf({ ...r, intact: r.archived || ok }) }))(intact(store, r.id));
 
 export const listOf = (store) => store.registry().map(listed(store));
 
 // Every draft and the phase it is in: scaffolded, written, or held to the contract and refused.
-const draftRow = (store) => (id) => ((m, a) => ({ id, provides: m?.provides ?? [], shape: m?.shape ?? null, sourceTask: m?.sourceTask ?? null, attempts: a.n ?? 0, findings: a.findings ?? [], phase: phaseOf({ draft: true, written: store.io.exists(join(store.draftDir(id), SKILL_FILE)), findings: a.findings ?? [] }) }))(parsed(store.io.read(join(store.draftDir(id), MANIFEST)) ?? "null"), attemptsOf(store, id));
+const draftRow = (store) => (id) => ((m, a) => ({ id, provides: m?.provides ?? [], shape: m?.shape ?? null, sourceTask: m?.sourceTask ?? null, successorOf: m?.successorOf ?? null, attempts: a.n ?? 0, findings: a.findings ?? [], phase: phaseOf({ draft: true, written: store.io.exists(join(store.draftDir(id), SKILL_FILE)), findings: a.findings ?? [] }) }))(parsed(store.io.read(join(store.draftDir(id), MANIFEST)) ?? "null"), attemptsOf(store, id));
 
 export const draftsOf = (store) => store.drafts().map(draftRow(store));
 
@@ -361,3 +398,193 @@ function currentManifest(text) {
   if (manifest?.schema !== MANIFEST_SCHEMA) throw refused("SF_MANIFEST_SHAPE", "Unsupported playbook manifest schema; files unchanged");
   return manifest;
 }
+
+// ---- a SUCCESSOR, staged and selected (0.3.0, ADR 0045) -------------------------------------------------------
+//
+// An improvement campaign asks the factory for three things and nothing more: a draft that starts as a version it
+// keeps, that draft held to the contract and kept as a CANDIDATE nobody is offered, and -- on evaluated evidence --
+// which kept version runs from now on. What runs is chosen here, under the room's lock, by the factory's own rules;
+// the campaign never writes this room.
+
+const quietly = (fn) => {
+  try { return fn(); }
+  catch { return null; }
+};
+
+const VERSION_DIR = /^(\d+\.\d+\.\d+)-[0-9a-f]{8}$/;
+
+const versionsIn = (store, dir) => store.io.list(dir).map((n) => VERSION_DIR.exec(n)?.[1]).filter(Boolean);
+
+const keptRooms = (store, id) => [store.inRoom(".versions", id), store.inRoom("archived", id), store.candidatesOf(id)];
+
+const knownVersions = (store, id) => [entryOf(store, id)?.version, ...keptRooms(store, id).flatMap((dir) => versionsIn(store, dir))].filter(Boolean);
+
+const newest = (versions) => [...versions].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).at(-1) ?? null;
+
+// The next version of a playbook: past EVERY version it keeps -- in place, kept aside, archived or waiting as a
+// candidate -- so two versions never share a number.
+const nextVersion = (store, id) => bumped(newest(knownVersions(store, id)));
+
+const judgedBy = (rules, c) => {
+  const failed = rules.find((r) => r.fails(c));
+  if (failed) throw Object.assign(new Refused(`${failed.id}: ${failed.say(c)}`), { code: failed.code ?? failed.id });
+};
+
+// What a successor may be drafted for: an ACTIVE playbook, one of its kept versions, while a person lets candidates be
+// generated at all. A playbook a person switched off is never improved behind their back.
+export const SUCCESSOR_RULES = [
+  { id: "SF_SUCCESSOR_OFF", fails: (c) => c.values?.improvement?.generate === false, say: () => "a person turned candidate generation off (improvement.generate) — no successor is drafted" },
+  { id: "SF_WITHHELD", fails: (c) => c.row?.status !== "active" || c.row?.archived === true, say: (c) => `${c.id} is ${c.row ? (c.row.archived ? "archived" : c.row.status) : "not registered"} — only an active playbook is improved` },
+  { id: "SF_UNKNOWN", fails: (c) => !c.parent || c.parent.id !== c.id, say: (c) => `${c.of} is no version of ${c.id} this project keeps` },
+];
+
+// s: { id, of: <pin>, campaign: <imp-…>, values } -> { id, draft, of, campaign, created }
+export function scaffoldSuccessor(store, s) {
+  const c = { ...s, row: entryOf(store, s.id), parent: quietly(() => pinned(store, s.of)) };
+  judgedBy(SUCCESSOR_RULES, c);
+  return locked(store, () => successorDrafted(store, s, c.parent));
+}
+
+const successorManifest = (m, s) => ({ ...unstampedManifest(m), successorOf: s.of, campaign: s.campaign, generationReason: `a successor of ${s.of}, drafted for ${s.campaign}: what changes is the host's to write, and an evaluation decides whether it runs` });
+
+function successorDrafted(store, s, parent) {
+  const existing = draftManifestOf(store, s.id);
+  if (existing) return draftedAlready(store, s, existing);
+  copyDir(store.io, parent.dir, store.draftDir(s.id));
+  store.io.write(join(store.draftDir(s.id), MANIFEST), json(successorManifest(draftManifestOf(store, s.id), s)));
+  return { id: s.id, draft: store.draftDir(s.id), of: s.of, campaign: s.campaign, created: true };
+}
+
+// The same campaign asking again is answered with its own draft; anybody else's draft is never taken over.
+function draftedAlready(store, s, m) {
+  if (m.campaign !== s.campaign || m.successorOf !== s.of) throw refused("SF_DRAFT_BUSY", `${s.id} already has a draft being written${m.campaign ? ` for ${m.campaign}` : " by a workflow"} — one draft per playbook at a time`);
+  return { id: s.id, draft: store.draftDir(s.id), of: m.successorOf, campaign: m.campaign, created: false };
+}
+
+const digestOfPin = (store, pin) => ((row) => (row ? versionAt(store, row.dir)?.digest ?? null : null))(quietly(() => pinned(store, pin)));
+
+// What a successor draft holds now: what it succeeds, whether its files already differ from that version (the host has
+// written its change), and what its last refusal said. Reads only.
+export function successorDraftOf(store, id) {
+  const m = draftManifestOf(store, id);
+  if (!m?.successorOf) return { exists: false, id };
+  const digest = digestOf(filesIn(store.io, store.draftDir(id)));
+  return { exists: true, id, successorOf: m.successorOf, campaign: m.campaign ?? null, digest, written: digest !== digestOfPin(store, m.successorOf), attempts: attemptsOf(store, id).n ?? 0, findings: attemptsOf(store, id).findings ?? [] };
+}
+
+// r: { values, deps, by, at, engineVersion } -> { ok, reused, id, version, digest, pin, status, successorOf, campaign } | { ok: false, findings }
+export const stageCandidate = (store, id, r) => locked(store, () => staging(store, id, r));
+
+const unstageable = (draft, id) => refused(draft.exists ? "SF_UNCHANGED" : "SF_NOT_SUCCESSOR", draft.exists ? `${id}'s successor still says what ${draft.successorOf} says — write what changes with skill-factory put first` : `${id} has no successor draft — an improvement campaign scaffolds one`);
+
+// Counted and held to the contract under ONE hold of the lock, like a registration: a `put` landing between the
+// verdict and the copy would stage files nobody verified.
+function staging(store, id, r) {
+  const draft = successorDraftOf(store, id);
+  if (!draft.exists || !draft.written) throw unstageable(draft, id);
+  attempted(store, id, r.values);
+  const verdict = verifyDraft(store, id, r.deps);
+  return verdict.ok ? stagedCandidate(store, id, r, draft) : refusedDraft(store, id, verdict);
+}
+
+// The same files a candidate already holds are that candidate, never a second one.
+function stagedCandidate(store, id, r, draft) {
+  const same = candidatesOf(store, id).find((c) => c.digest === draft.digest && c.intact);
+  return same ? reusedCandidate(store, id, same) : placedCandidate(store, id, { ...r, draft, files: filesIn(store.io, store.draftDir(id)), version: nextVersion(store, id) });
+}
+
+function placedCandidate(store, id, p) {
+  const dir = store.candidateDir(id, p.version, p.draft.digest);
+  copyDir(store.io, store.draftDir(id), dir);
+  store.io.write(join(dir, MANIFEST), json({ ...manifestIn(p.files), status: "candidate", version: p.version, digest: p.draft.digest, createdAt: p.at, verifiedAt: p.at, engineVersion: p.engineVersion, registeredBy: p.by }));
+  store.io.remove(store.draftDir(id));
+  return candidateResult(id, { version: p.version, digest: p.draft.digest, successorOf: p.draft.successorOf, campaign: p.draft.campaign }, false);
+}
+
+function reusedCandidate(store, id, c) {
+  store.io.remove(store.draftDir(id));
+  return candidateResult(id, c, true);
+}
+
+const candidateResult = (id, c, reused) => ({ ok: true, reused, id, version: c.version, digest: c.digest, pin: `${id}:${c.version}:${c.digest.slice(0, 8)}`, status: "candidate", successorOf: c.successorOf, campaign: c.campaign });
+
+const candidateRow = (store, id, dir) => ((m) => (m?.digest && m?.version ? { id, version: m.version, digest: m.digest, pin: `${id}:${m.version}:${m.digest.slice(0, 8)}`, successorOf: m.successorOf ?? null, campaign: m.campaign ?? null, at: m.createdAt ?? null, intact: digestOf(filesIn(store.io, dir)) === m.digest, phase: phaseOf({ status: "candidate" }) } : null))(parsed(store.io.read(join(dir, MANIFEST)) ?? "null"));
+
+// Every candidate a playbook keeps, oldest first, each saying whether its files are still what was staged. Reads only.
+export const candidatesOf = (store, id) => store.io.list(store.candidatesOf(id)).filter((n) => VERSION_DIR.test(n)).map((n) => candidateRow(store, id, join(store.candidatesOf(id), n))).filter(Boolean).sort((a, b) => a.version.localeCompare(b.version, undefined, { numeric: true }));
+
+// ---- what a kept version SAYS, as data -------------------------------------------------------------------------
+
+// A file's digest as the version's own digest counts it: a manifest without what the engine stamped and without its
+// provenance (who drafted it, why, what it succeeds), so a successor's own provenance is never a change.
+const contentOfManifest = (m) => Object.fromEntries(Object.entries(m ?? {}).filter(([k]) => !STAMPED_KEYS.includes(k)));
+
+const fileDigest = (f) => sha(f.name === MANIFEST ? canonicalJson(contentOfManifest(parsed(f.text))) : f.text ?? "");
+
+const manifestWithout = (m) => Object.fromEntries(Object.entries(m ?? {}).filter(([k]) => !STAMPED.includes(k)));
+
+// A kept version's manifest without what the engine stamped, its declared workflow, and each file's name and digest
+// -- never a file's text: what an improvement campaign compares a candidate with its parent by. Reads only.
+export function versionContentOf(store, pin) {
+  const row = quietly(() => pinned(store, pin));
+  if (!row) throw refused("SF_UNKNOWN", `${pin} is no playbook version this project keeps`);
+  const files = filesIn(store.io, row.dir).filter((f) => f.kind === "file");
+  const digest = versionAt(store, row.dir)?.digest ?? null;
+  return { pin: row.pin, id: row.id, status: row.status, digest, intact: digestOf(files) === digest, manifest: manifestWithout(manifestIn(files)), workflow: parsedWorkflow(files.find((f) => f.name === WORKFLOW_FILE)?.text ?? "null") ?? null, files: files.map((f) => ({ name: f.name, digest: fileDigest(f) })) };
+}
+
+// A kept version held to TODAY's contract: what a promotion gate asks of a candidate before it is chosen.
+export const validatePinned = (store, pin, deps) => ((row) => (row ? { pin: row.pin, ...validateSkill({ id: row.id, files: filesIn(store.io, row.dir).map(unstamped) }, deps) } : { pin, ok: false, findings: [{ id: "SF_UNKNOWN", says: `${pin} is no playbook version this project keeps` }] }))(quietly(() => pinned(store, pin)));
+
+// ---- which kept version runs ------------------------------------------------------------------------------------
+
+// The code every revision-protected write answers a stale caller with (src/store/revisioned.mjs STALE_REVISION).
+const STALE = "STALE_REVISION";
+
+const targetOf = (store, id, pin) => ((row) => (row && row.id === id ? { ...row, archived: row.dir.startsWith(store.paths.archived), intact: digestOf(filesIn(store.io, row.dir)) === versionAt(store, row.dir)?.digest } : null))(quietly(() => pinned(store, pin)));
+
+// What must hold before a kept version is chosen to run, in order: the first that fails refuses and nothing moves. A
+// person's switch always wins: a playbook disabled, retired or archived has no version chosen for it by anybody.
+export const SELECT_RULES = [
+  { id: "SF_SELECT_DOOR", fails: (c) => !SELECT_DOORS.includes(c.sel.door), say: () => "which version of a playbook runs is chosen by the improvement engine on evaluated evidence, or by a person in Orbit Control — never from a terminal" },
+  { id: "SF_SELECT_POLICY", fails: (c) => c.sel.door === "improvement" && c.sel.values?.improvement?.promote !== true, say: () => "a person turned automatic promotion off (improvement.promote) — a person chooses the version in Orbit Control" },
+  { id: "SF_SELECT_UNKNOWN", fails: (c) => !c.row, say: (c) => `${c.id} is not a registered playbook of this project` },
+  { id: "SF_SELECT_WITHHELD", fails: (c) => c.row.status !== "active" || c.row.archived === true, say: (c) => `${c.id} is ${c.row.archived ? "archived" : c.row.status} — a person switched it off, and no version of it is chosen until a person moves it back` },
+  { id: "SF_SELECT_STALE", code: STALE, fails: (c) => pinOf(c.row) !== c.sel.expect, say: (c) => `${c.id} runs ${pinOf(c.row)} now, not ${c.sel.expect ?? "the version named"} — read it again and decide on what is there` },
+  { id: "SF_SELECT_QUARANTINED", fails: (c) => !intact(c.store, c.id), say: (c) => `${c.id}'s files in place changed after they were verified — it is registered again through the contract first` },
+  { id: "SF_SELECT_TARGET", fails: (c) => !c.target || c.target.archived, say: (c) => `${c.sel.pin} is no version of ${c.id} kept for choosing${c.target?.archived ? " (a person archived it)" : ""}` },
+  { id: "SF_SELECT_CHANGED", fails: (c) => !c.target.intact, say: (c) => `${c.sel.pin}'s files changed after they were verified — it is never chosen` },
+  { id: "SF_SELECT_INVALID", fails: (c) => c.invalid().length > 0, say: (c) => `${c.sel.pin} no longer holds to the contract: ${c.invalid()[0].id}: ${c.invalid()[0].says}` },
+];
+
+const selectionFacts = (store, id, sel) => ((target) => ({ store, id, sel, row: entryOf(store, id), target, invalid: () => validateSkill({ id, files: filesIn(store.io, target.dir).map(unstamped) }, sel.deps).findings }))(targetOf(store, id, sel.pin));
+
+// sel: { pin, expect, door, campaign?, values, deps, at } -> { ok, unchanged, id, from, pin, status, door }
+export const selectVersion = (store, id, sel) => locked(store, () => selecting(store, id, sel));
+
+// Choosing the version already in place changes nothing and says so: a promotion read back after a crash is never a
+// second move.
+function selecting(store, id, sel) {
+  const c = selectionFacts(store, id, sel);
+  judgedBy(SELECT_RULES, c);
+  return c.target.pin === pinOf(c.row) ? { ok: true, unchanged: true, id, from: pinOf(c.row), pin: pinOf(c.row), status: c.row.status, door: sel.door } : selected(store, c);
+}
+
+// The version in place kept aside first (a task that pinned it still reads it), the chosen one copied in place with its
+// sidecar, then the registry row -- the order a registration writes in.
+function selected(store, c) {
+  const m = versionAt(store, c.target.dir);
+  keptAside(store, c.row);
+  placedIn(store, c, m);
+  store.saveRegistry(store.registry().map((r) => (r.id === c.id ? selectedRow(store, c, m) : r)));
+  return { ok: true, unchanged: false, id: c.id, from: pinOf(c.row), pin: `${c.id}:${m.version}:${m.digest.slice(0, 8)}`, status: "active", door: c.sel.door };
+}
+
+function placedIn(store, c, m) {
+  store.io.remove(store.dirOf(c.id));
+  copyDir(store.io, c.target.dir, store.dirOf(c.id));
+  store.io.write(join(store.dirOf(c.id), MANIFEST), json({ ...m, status: "active" }));
+  store.io.write(join(store.dirOf(c.id), SIDECAR), json({ id: c.id, version: m.version, digest: m.digest, at: c.sel.at, by: c.sel.door }));
+}
+
+const selectedRow = (store, c, m) => ({ ...c.row, version: m.version, digest: m.digest, status: "active", provides: m.provides, needs: m.needs, optional: m.optional ?? [], signals: m.signals ?? [], runs: m.runs ?? "followed", summary: summaryOf(filesIn(store.io, store.dirOf(c.id)), m), rolledBackTo: undefined, selectedFrom: pinOf(c.row), selectedBy: c.sel.door, selectedAt: c.sel.at, campaign: c.sel.campaign ?? null });

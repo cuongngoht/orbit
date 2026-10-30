@@ -27,7 +27,8 @@ test("exactly one gap kind may lead to generating, and it is a WORKFLOW gap", ()
 
 test("instruction-only and project-scoped: no machine scope, statuses in an extension's words", () => {
   assert.deepEqual(SCOPES, ["task", "project"]);
-  assert.ok(STATUSES.map((s) => s.id).filter((id) => id !== "disabled").every((id) => MANIFEST_FIELDS.status.enum.includes(id)), "an extension's words, and a person's `disabled`");
+  assert.ok(STATUSES.map((s) => s.id).filter((id) => !["disabled", "candidate"].includes(id)).every((id) => MANIFEST_FIELDS.status.enum.includes(id)), "an extension's words, a person's `disabled`, and an improvement's `candidate` (0.3.0)");
+  assert.equal(STATUSES.find((s) => s.id === "candidate").offered, false, "a candidate is offered to nobody");
   assert.deepEqual(STATUSES.filter((s) => s.offered).map((s) => s.id), ["active"]);
 });
 

@@ -62,6 +62,7 @@ import { realIo } from "../src/store/io.mjs";
 import { insideRepo } from "../src/store/context.mjs";
 import { scrub } from "../src/scrub.mjs";
 import { trace } from "../src/lifecycle/subscribers/trace.mjs";
+import { improvement } from "../src/lifecycle/subscribers/improvement.mjs";
 import { machineContext } from "../src/store/context.mjs";
 import { within } from "../src/project/boundary.mjs";
 import { documented, headerOf } from "../src/trace/commands.mjs";
@@ -76,7 +77,7 @@ import { finalizerStore } from "../src/lifecycle/finalizer-store.mjs";
 import { hostStore } from "../src/host/store.mjs";
 import { engineVersion } from "../src/version.mjs";
 import { hostEnvironment } from "../skills/orbit-learn/hosts/settings.mjs";
-import { drainLater as drainInBackground } from "../skills/orbit-learn/hosts/drain.mjs";
+import { drainLater as drainInBackground, improveLater as improveInBackground } from "../skills/orbit-learn/hosts/drain.mjs";
 import { envFileOf, exportedSession } from "../skills/orbit-learn/hosts/claude-session.mjs";
 import { liveSession } from "../src/lifecycle/subscribers/live-session.mjs";
 import { effectiveSettings } from "../src/host/config.mjs";
@@ -87,7 +88,7 @@ const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // Order is priority: the first subscriber with something to say to the host is
 // the one the host hears -- so a refusal is heard before any permission answer.
 // The trail speaks to nobody, so it goes last.
-const SUBSCRIBERS = [switches, learning, workingSet, engineering, finalizer, liveSession, trace];
+const SUBSCRIBERS = [switches, learning, workingSet, engineering, finalizer, liveSession, improvement, trace];
 
 async function main() {
   const input = stdin();
@@ -128,12 +129,30 @@ function emit(payload) {
 // must not pay for resolving a store it will never touch.
 function world(host, input, event) {
   const bound = { host, input, env: ENV, plugin: engineName(), project: () => located(event?.cwd), light: () => light(event?.cwd), full: () => learnContext(createContext({}, ENV, event?.cwd ?? process.cwd()), ENV) };
-  return { ...bound, workingSet: () => sessionWorkingSet(event), finalizer: () => finalizerOf(event?.cwd), drainLater: () => drainLater(event?.cwd), observing: () => (ENV === process.env ? switchOf(process.env, "ENGINEERING_OBSERVE", "engineering_observe", true) : switchOf(ENV, "ENGINEERING_OBSERVE", "engineering_observe", true)), engineering: () => engineeringOf(event), trace: () => traceOf(event), liveSession: () => liveSessionOf(host), failed: (name, e) => failed(bound, name, e) };
+  return { ...bound, workingSet: () => sessionWorkingSet(event), finalizer: () => finalizerOf(event?.cwd), drainLater: () => drainLater(event?.cwd), improveLater: () => improveLater(event?.cwd), observing: () => (ENV === process.env ? switchOf(process.env, "ENGINEERING_OBSERVE", "engineering_observe", true) : switchOf(ENV, "ENGINEERING_OBSERVE", "engineering_observe", true)), engineering: () => engineeringOf(event), trace: () => traceOf(event), liveSession: () => liveSessionOf(host), failed: (name, e) => failed(bound, name, e) };
 }
 
 // A protocol-2 session's checkpoint, drained by a process of its own (skills/orbit-learn/hosts/drain.mjs), bound to
 // this session through ENV exactly as every Orbit command of that host is.
 const drainLater = (cwd) => drainInBackground(PLUGIN_ROOT, ENV, { cwd });
+
+// Self-improvement's detection (0.3.0), for a checkout the machine knows, at most once in its debounce: one file read
+// decides, and only then is a process of its own started (skills/orbit-learn/hosts/drain.mjs improveLater).
+const ANALYSE_DEBOUNCE_MS = 10 * 60000;
+
+const analysedLately = (storeRoot) => ((doc) => Boolean(doc?.at) && Date.now() - Date.parse(doc.at) < ANALYSE_DEBOUNCE_MS)(quietlyJson(join(storeRoot, "improvement", "state", "analysed.json")));
+
+function quietlyJson(file) {
+  try { return JSON.parse(readFileSync(file, "utf8")); }
+  catch { return null; }
+}
+
+function improveLater(cwd) {
+  const project = located(cwd);
+  if (!project?.storeRoot || analysedLately(project.storeRoot)) return false;
+  improveInBackground(PLUGIN_ROOT, ENV, { cwd, storeRoot: project.storeRoot });
+  return true;
+}
 
 // Orbit Live's session start (src/lifecycle/subscribers/live-session.mjs), for a host that offers a session
 // environment file -- Claude Code's -- and only while its `live` switch is on: the session mark exported to the

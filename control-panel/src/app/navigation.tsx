@@ -1,10 +1,13 @@
 import type { ComponentType, ReactNode } from "react";
 import type { RouteObject } from "react-router";
-import { BotSparkle20Filled, BotSparkle20Regular, BranchFork20Filled, BranchFork20Regular, Bug20Filled, Bug20Regular, ClipboardTaskListLtr20Filled, ClipboardTaskListLtr20Regular, DataBarVertical20Filled, DataBarVertical20Regular, DocumentData20Filled, DocumentData20Regular, FolderOpen20Filled, FolderOpen20Regular, HeartPulse20Filled, HeartPulse20Regular, History20Filled, History20Regular, Key20Filled, Key20Regular, PlugConnected20Filled, PlugConnected20Regular, PuzzlePiece20Filled, PuzzlePiece20Regular, Rocket20Filled, Rocket20Regular, ShieldCheckmark20Filled, ShieldCheckmark20Regular, Timeline20Filled, Timeline20Regular, Wrench20Filled, Wrench20Regular, bundleIcon, type FluentIcon } from "@fluentui/react-icons";
+import { ArrowTrendingLines20Filled, ArrowTrendingLines20Regular, BotSparkle20Filled, BotSparkle20Regular, BranchFork20Filled, BranchFork20Regular, Bug20Filled, Bug20Regular, ClipboardTaskListLtr20Filled, ClipboardTaskListLtr20Regular, DataBarVertical20Filled, DataBarVertical20Regular, DocumentData20Filled, DocumentData20Regular, FolderOpen20Filled, FolderOpen20Regular, HeartPulse20Filled, HeartPulse20Regular, History20Filled, History20Regular, Key20Filled, Key20Regular, PlugConnected20Filled, PlugConnected20Regular, PuzzlePiece20Filled, PuzzlePiece20Regular, Rocket20Filled, Rocket20Regular, ShieldCheckmark20Filled, ShieldCheckmark20Regular, Timeline20Filled, Timeline20Regular, Wrench20Filled, Wrench20Regular, bundleIcon, type FluentIcon } from "@fluentui/react-icons";
 import { AgenticHostsPage } from "../features/agentic-hosts/AgenticHostsPage";
 import { ActivityPage } from "../features/activity/ActivityPage";
 import { AutomationPage } from "../features/automation/AutomationPage";
 import { AUTOMATION_PATH } from "../features/automation/automationWords";
+import { CampaignPage } from "../features/improvement/CampaignPage";
+import { ImprovementPage } from "../features/improvement/ImprovementPage";
+import { CAMPAIGN_ROUTE, IMPROVEMENT_PATH } from "../features/improvement/improvementWords";
 import { AutonomousQaPage } from "../features/autonomous-qa/AutonomousQaPage";
 import { AQA_PATH } from "../features/autonomous-qa/aqaWords";
 import { SecurityCatalogsPage } from "../features/security/SecurityCatalogsPage";
@@ -204,6 +207,15 @@ export const DESTINATIONS: Destination[] = [
     group: "Advanced",
     icon: bundleIcon(BotSparkle20Filled, BotSparkle20Regular),
     element: <AutomationPage />,
+  },
+  {
+    id: "improvement",
+    path: IMPROVEMENT_PATH,
+    label: "Improvement",
+    group: "Advanced",
+    icon: bundleIcon(ArrowTrendingLines20Filled, ArrowTrendingLines20Regular),
+    element: <ImprovementPage />,
+    children: [{ path: CAMPAIGN_ROUTE, element: <CampaignPage /> }],
   },
   {
     id: "router",

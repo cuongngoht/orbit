@@ -59,6 +59,10 @@ export const EVENT_TYPES = [
   { type: "task.approval.decided", fields: ["task", "approval", "decision"], doc: "a person granted or rejected one action a task asked for: which approval, and the word -- never the action's parameters" },
   { type: "task.finished", fields: ["task", "lifecycle"], doc: "a task completed, failed or was cancelled. The task's journal is its record; this is a projection of one moment of it" },
   { type: "learning.observed", fields: ["host", "milestone", "operation", "candidates", "accepted"], doc: "the engineering observer ran (1.8.9): for which host, at which milestone or for which finished task, how many candidates it proposed and how many reconciliation kept -- never a fact, a path or a file name" },
+  { type: "improvement.detected", fields: ["campaign", "subject", "signal", "sessions", "runs"], doc: "a self-improvement campaign started (0.3.0, ADR 0045): which campaign, about which playbook or definition, on which signal, from how many independent sessions and runs -- the campaign's journal is its record" },
+  { type: "improvement.decided", fields: ["campaign", "phase", "verdict"], doc: "a campaign moved on evidence: the phase it reached and the word that moved it (a verdict, an outcome, a stop) -- never a sentence of why" },
+  { type: "improvement.promoted", fields: ["campaign", "subject", "from", "to"], doc: "a candidate was chosen to run for new work, through its owner's door: the version it replaced and the one it is (pins)" },
+  { type: "improvement.rolled_back", fields: ["campaign", "subject", "from", "to"], doc: "a promoted candidate regressed and the version it replaced was chosen again (pins)" },
   { type: "connection.auth", fields: ["provider", "strategy", "phase", "outcome"], doc: "a connection's sign-in did something: which provider and strategy, which phase (tool, token, login, logout) and how it ended in a fixed word -- never an account, a directory, a tenant, a token or anything a tool printed" },
   { type: "trace.dropped", fields: ["reason"], doc: "the trail stopped keeping events for a while — a shard reached its cap" },
 ];

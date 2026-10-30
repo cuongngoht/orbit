@@ -16,8 +16,32 @@ export const AUTOMATION_DOOR = "AUTOMATION_PERSON_UNPROVEN";
 export const SKILL_SCOPES = ["task", "project"];
 export const ENVIRONMENTS = ["sandbox", "auto"];
 export const DISPLAYS = ["off", "compact", "full", "auto"];
+// (0.3.0, ADR 0045) how an improvement campaign's evaluation must be isolated, most restrictive first: a SANDBOX of
+// its own, or the owner GATES every call already passes (read-only, through the broker or the capability pipeline).
+export const ISOLATIONS = ["sandbox", "gated"];
 
 const RETRY_KINDS = ["requirement", "context", "runtime", "engineering", "qa", "regression", "review", "playbook"];
+
+// AUTONOMOUS SELF-IMPROVEMENT (0.3.0, ADR 0045): what a campaign may do on its own, and the evidence it must have
+// first. Every switch is on by default and every threshold is a floor a person may only RAISE (`max` narrowing): a
+// project can make improvement stricter than the machine, never looser.
+const improvementRow = (name, row) => ({ path: ["improvement", name], readBy: "src/improvement/policy.mjs", ...row });
+
+const IMPROVEMENT_FIELDS = [
+  improvementRow("detect", { type: "boolean", default: true, narrow: "and", say: "look for improvement opportunities in what this project's reusable playbooks and Satellite definitions did" }),
+  improvementRow("generate", { type: "boolean", default: true, narrow: "and", say: "draft a successor of a playbook or definition an opportunity is about (the host writes it, the owner's contract holds it)" }),
+  improvementRow("evaluate", { type: "boolean", default: true, narrow: "and", say: "evaluate a candidate against the version it succeeds, on the same inputs, through the owners' own gates" }),
+  improvementRow("promote", { type: "boolean", default: true, narrow: "and", say: "let the engine choose a candidate that evaluated better (and put the version back when it regresses); off, a person promotes in Orbit Control" }),
+  improvementRow("minSessions", { type: "integer", min: 2, max: 10, default: 2, narrow: "max", say: "independent sessions the evidence must come from — for an opportunity, for a verdict and for a regression" }),
+  improvementRow("minRuns", { type: "integer", min: 2, max: 20, default: 3, narrow: "max", say: "runs an opportunity rests on, and runs of each version one evaluation makes" }),
+  improvementRow("maxCandidatesPerSubject", { type: "integer", min: 1, max: 10, default: 2, narrow: "min", say: "candidates one playbook or definition may have generated within the retention window" }),
+  improvementRow("maxEvaluationAttempts", { type: "integer", min: 1, max: 10, default: 3, narrow: "min", say: "evaluations one campaign may make before it ends as insufficient evidence" }),
+  improvementRow("maxEvaluationMinutes", { type: "integer", min: 1, max: 1440, default: 30, narrow: "min", say: "minutes one evaluation may run before it stops and resumes later" }),
+  improvementRow("maxConcurrentEvaluations", { type: "integer", min: 1, max: 10, default: 1, narrow: "min", say: "evaluations this project may have open at once" }),
+  improvementRow("isolation", { type: "enum", values: ISOLATIONS, default: "gated", narrow: "order", say: "sandbox (an evaluation runs only where a sandbox of its own is proven) · gated (read-only, through the owner gates every call passes)" }),
+  improvementRow("cooldownHours", { type: "integer", min: 1, max: 720, default: 24, narrow: "max", say: "hours after a campaign ends before the same playbook or definition is improved again — no version see-saws on a few runs" }),
+  improvementRow("retentionDays", { type: "integer", min: 7, max: 365, default: 90, narrow: "min", say: "days an opportunity nobody acted on, and its evidence window, are kept" }),
+];
 
 // One row per step kind, read by kind (`retries[kind]`), so its reader names the table rather than each kind.
 const retryRow = (kind) => ({ token: "retries", path: ["execution", "retries", kind], type: "integer", min: 0, max: 3, default: ["context", "runtime", "engineering", "qa"].includes(kind) ? 1 : 0, narrow: "min", say: `times a failed ${kind} step is planned again`, readBy: "src/automation/plan.mjs" });
@@ -41,10 +65,11 @@ export const FIELDS = [
   { path: ["live", "autoAttach"], type: "boolean", default: true, narrow: "and", say: "the coordinator says how to watch the task (`context.watch`)", readBy: "src/automation/loop.mjs" },
   { path: ["live", "open"], type: "boolean", default: true, narrow: "and", token: "live.open", say: "when a person invokes /orbit or /orbit-help, open this session's full-screen viewer beside it (a tmux pane, a Windows Terminal pane or a macOS Terminal window) and reuse it after -- only while a person is at the session, never headless; it grants nothing, and a viewer that cannot open never stops the work", readBy: "cli/live.mjs" },
   { path: ["live", "display"], type: "enum", values: DISPLAYS, default: "auto", narrow: "order", say: "what the coordinator tells a person they can open: auto (the host's status line when installed, else the full-screen viewer in a second terminal or one look) · compact (one look) · full (the full-screen viewer) · off (nothing, and no viewer opens by itself)", readBy: "src/automation/loop.mjs" },
+  ...IMPROVEMENT_FIELDS,
 ];
 
 // What a person may never set: shown fixed, refused if sent.
-export const FIXED = { "skillFactory.allowExecutableCode": false, "skillFactory.requireValidation": true };
+export const FIXED = { "skillFactory.allowExecutableCode": false, "skillFactory.requireValidation": true, "improvement.allowExecutableCandidates": false };
 
 const at = (doc, path) => path.reduce((v, k) => (v && typeof v === "object" ? v[k] : undefined), doc);
 const put = (doc, [head, ...rest], value) => ({ ...doc, [head]: rest.length ? put(doc?.[head] ?? {}, rest, value) : value });
@@ -132,6 +157,8 @@ export function writeAutomation(io, file, changes, writer) {
 const NARROWING = {
   and: (set) => set.find((s) => s.value === false) ?? set.at(-1),
   min: (set) => set.filter((s) => s.value !== null).reduce((best, s) => (best === null || s.value < best.value ? s : best), null) ?? set.at(-1),
+  // A FLOOR (0.3.0): how much evidence is required -- the document that asks for most of it wins.
+  max: (set) => set.filter((s) => s.value !== null).reduce((best, s) => (best === null || s.value > best.value ? s : best), null) ?? set.at(-1),
   order: (set, f) => set.reduce((best, s) => (best === null || f.values.indexOf(s.value) < f.values.indexOf(best.value) ? s : best), null),
 };
 
@@ -152,7 +179,7 @@ const lower = (asked, allowed) => (allowed === null || allowed === undefined ? a
 
 export const narrowedBudget = (values, asked = {}) => ({ attempts: lower(asked.attempts, values.execution.maxAttempts), actions: lower(asked.actions, values.execution.maxActions), minutes: lower(asked.minutes, values.execution.maxMinutes) });
 
-const mergeDefaults = (content) => ({ ...policyDefaults(), ...content, trigger: { ...policyDefaults().trigger, ...content.trigger }, skillFactory: { ...policyDefaults().skillFactory, ...content.skillFactory } });
+const mergeDefaults = (content) => ({ ...policyDefaults(), ...content, trigger: { ...policyDefaults().trigger, ...content.trigger }, skillFactory: { ...policyDefaults().skillFactory, ...content.skillFactory }, improvement: { ...policyDefaults().improvement, ...content.improvement } });
 
 function validContent(kept, file) {
   if (kept.unreadable) throw refused(AUTOMATION_SETTINGS_INVALID, `${file}: ${kept.unreadable} state; file unchanged`);

@@ -40,6 +40,10 @@ export const FIELDS = {
   evidence: { required: true, ok: (v) => EVIDENCE.includes(v), say: `evidence is one of ${EVIDENCE.join(", ")}: what a host following it can show` },
   restrictions: { required: true, ok: (v) => isText(v, 240), say: "restrictions is one sentence of at most 240 characters: what it never does" },
   runs: { required: false, ok: (v) => RUNS.includes(v), say: `runs is one of ${RUNS.join(", ")}: followed by a host, or its declared workflow.json run by the engine` },
+  // (0.3.0, ADR 0045) a SUCCESSOR's provenance, written by the engine's scaffold: the pinned version it succeeds and the
+  // improvement campaign that scaffolded it. A host can never put a manifest, so neither is ever a host's word.
+  successorOf: { required: false, ok: (v) => /^[a-z0-9][a-z0-9-]{1,47}:\d+\.\d+\.\d+:[0-9a-f]{8}$/.test(String(v)), say: "successorOf is the pin <id>:<version>:<digest8> of the version a successor succeeds" },
+  campaign: { required: false, ok: (v) => /^imp-[a-f0-9]{12}$/.test(String(v)), say: "campaign is the imp- id of the improvement campaign that scaffolded a successor" },
 };
 
 // What the lifecycle writes, and a draft may never bring.

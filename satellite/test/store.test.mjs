@@ -80,3 +80,47 @@ test("a person's policy is read with defaults, and a terminal can never write it
   assert.equal(w.limits.maxConcurrency, 1);
   assert.throws(() => writePolicy(io, ROOMS.policyFile, { limits: { maxConcurrency: 2 } }, { door: "control", revision: "stale" }), (e) => e.code === "STALE_REVISION");
 });
+
+// ---- 0.3.0 (Orbit ADR 0045): candidates and selections, owned by the registry -----------------------------------
+
+const improvementCandidate = (extra) => ({ ...role(extra), provenance: { by: "improvement", campaign: "imp-000000000001", successorOf: "rol-logs-analyst:1.0.0:x", candidate: true } });
+
+const offeredPin = (io, policy = { revoked: [] }) => indexOf(io, ROOMS, "role", policy).find((r) => r.eligibility.offered)?.pin ?? null;
+
+test("a candidate an improvement campaign published is offered to nobody: a mission that holds its pin reads it, and nothing reuses it", () => {
+  const io = fakeIo();
+  const first = writeDefinition(io, ROOMS, role());
+  const cand = writeDefinition(io, ROOMS, improvementCandidate({ purpose: "a sharper purpose" }));
+  assert.notEqual(cand.pin, first.pin);
+  assert.equal(offeredPin(io), first.pin, "the newer version is a candidate, so the one before it is still offered");
+  assert.equal(readDefinition(io, ROOMS, cand.pin).provenance.candidate, true);
+  assert.equal(indexOf(io, ROOMS, "role", { revoked: [] }).find((r) => r.pin === cand.pin).eligibility.candidate, true);
+});
+
+test("a selection chooses which kept version is offered: only through the engine's or a person's door, only on the version the caller read, never a revoked one", async () => {
+  const { selectDefinition } = await import("../src/store/registry.mjs");
+  const io = fakeIo();
+  const first = writeDefinition(io, ROOMS, role());
+  const cand = writeDefinition(io, ROOMS, improvementCandidate({ purpose: "a sharper purpose" }));
+  const none = { revoked: [] };
+  for (const door of [undefined, "terminal", "coordinator"]) assert.throws(() => selectDefinition(io, ROOMS, { pin: cand.pin, expect: first.pin, door }, none), (e) => e.code === "SELECT_DOOR");
+  assert.throws(() => selectDefinition(io, ROOMS, { pin: cand.pin, expect: "rol-logs-analyst:9.9.9:abcdef12", door: "improvement" }, none), (e) => e.code === "STALE_REVISION");
+  assert.throws(() => selectDefinition(io, ROOMS, { pin: cand.pin, expect: first.pin, door: "improvement" }, { revoked: [{ ref: cand.pin, because: "a person said no" }] }), (e) => e.code === "PIN_REVOKED");
+  const chosen = selectDefinition(io, ROOMS, { pin: cand.pin, expect: first.pin, door: "improvement", at: "2026-10-30T00:00:00.000Z", campaign: "imp-000000000001" }, none);
+  assert.deepEqual([chosen.from, chosen.pin, chosen.unchanged], [first.pin, cand.pin, false]);
+  assert.equal(offeredPin(io), cand.pin, "the chosen candidate is offered now");
+  assert.equal(selectDefinition(io, ROOMS, { pin: cand.pin, expect: cand.pin, door: "improvement" }, none).unchanged, true, "choosing it again moves nothing");
+  assert.equal(offeredPin(io, { revoked: [{ ref: cand.pin }] }), first.pin, "a revocation always wins: the selection is void, and the version before it is offered");
+  selectDefinition(io, ROOMS, { pin: first.pin, expect: cand.pin, door: "control" }, none);
+  assert.equal(offeredPin(io), first.pin, "put back by a person");
+});
+
+test("a factory's newer version is the definition's newer word: it outranks a selection made before it", async () => {
+  const { selectDefinition } = await import("../src/store/registry.mjs");
+  const io = fakeIo();
+  const first = writeDefinition(io, ROOMS, role());
+  const cand = writeDefinition(io, ROOMS, improvementCandidate({ purpose: "a sharper purpose" }));
+  selectDefinition(io, ROOMS, { pin: cand.pin, expect: first.pin, door: "improvement" }, { revoked: [] });
+  const later = writeDefinition(io, ROOMS, role({ responsibilities: [{ activity: "analyze", subject: "logs" }, { activity: "review", subject: "change" }] }));
+  assert.equal(offeredPin(io), later.pin);
+});

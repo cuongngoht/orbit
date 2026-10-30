@@ -1,6 +1,6 @@
 {
   "id": "orbit-backend-test",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "apiVersion": "orbit.extension/v2",
   "engine": ">=0.0.4",
   "status": "active",

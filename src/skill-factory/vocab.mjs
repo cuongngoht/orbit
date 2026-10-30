@@ -35,6 +35,9 @@ export const STATUSES = [
   { id: "disabled", offered: false, pinnable: true, say: "a person switched it off" },
   { id: "retired", offered: false, pinnable: true, say: "kept for the tasks that pinned it, offered to nobody" },
   { id: "broken", offered: false, pinnable: false, say: "its files no longer verify" },
+  // (0.3.0, ADR 0045) a SUCCESSOR an improvement campaign staged: kept in its own room, run only by the evaluation that
+  // holds its pin, and offered to nobody until it is SELECTED (selectVersion) on evaluated evidence.
+  { id: "candidate", offered: false, pinnable: true, say: "a successor being evaluated: offered to nobody, run only by its evaluation" },
 ];
 
 export const STATUS_IDS = STATUSES.map((s) => s.id);
@@ -48,6 +51,17 @@ export const MOVES = {
   disabled: ["verified", "active"],
   retired: ["verified", "active", "disabled"],
 };
+
+// Where a SUCCESSOR waits while it is evaluated (0.3.0): candidates/<id>/<version>-<digest8>/, never in place.
+export const CANDIDATES_DIR = "candidates";
+
+// Who may choose which kept version of a playbook runs (0.3.0, ADR 0045): the improvement engine, on evaluated
+// evidence and while a person's automation settings let it promote, or a person in Orbit Control. A terminal never.
+export const SELECT_DOORS = ["improvement", "control"];
+
+// What a successor's manifest carries beyond the contract (0.3.0): the version it succeeds and the campaign that
+// scaffolded it. Provenance, never content: neither is part of the digest (store.mjs).
+export const SUCCESSION = ["successorOf", "campaign"];
 
 // Which scopes a playbook may have, narrowest first: a task's own, or the project's.
 export const SCOPES = ["task", "project"];
@@ -73,7 +87,9 @@ export const DRAFTED_UNDER = "orbit-help";
 //   FAILED             held to the contract and refused (its findings say why), or its files no longer verify
 //   APPROVAL_REQUIRED  verified and registered, offered to nobody until a person activates it in Orbit Control
 //   ACTIVE             offered to the resolver for this project
+//   CANDIDATE          (0.3.0) a successor an improvement campaign staged: run only by its evaluation, offered to nobody
 //   ROLLED_BACK        active, and its files are an earlier version a person restored
+//   SELECTED           (0.3.0) active, a kept version chosen on evaluated evidence (improvement) or by a person (Control)
 //   DISABLED · RETIRED a person's move; kept for the tasks that pinned it
 //   QUARANTINED        its files changed after they were verified: listed, never offered
 //   ARCHIVED           moved out of the way by a person; still read by pin
@@ -84,7 +100,9 @@ export const PHASES = [
   { id: "VALIDATING", when: (r) => r.draft === true && r.written === true, say: "written, and waiting to be held to the contract" },
   { id: "DRAFT", when: (r) => r.draft === true, say: "scaffolded for a workflow gap; its text is not written yet" },
   { id: "APPROVAL_REQUIRED", when: (r) => r.status === "verified", say: "verified, offered to nobody until a person activates it in Orbit Control" },
+  { id: "CANDIDATE", when: (r) => r.status === "candidate", say: "a successor being evaluated — offered to nobody, run only by the evaluation that holds its pin" },
   { id: "ROLLED_BACK", when: (r) => r.status === "active" && Boolean(r.rolledBackTo), say: "active, restored from an earlier version by a person" },
+  { id: "SELECTED", when: (r) => r.status === "active" && Boolean(r.selectedFrom), say: "active, a kept version chosen on evaluated evidence — by the improvement engine or by a person in Orbit Control" },
   { id: "ACTIVE", when: (r) => r.status === "active", say: "offered to the resolver for this project" },
   { id: "DISABLED", when: (r) => r.status === "disabled", say: "a person switched it off" },
   { id: "RETIRED", when: () => true, say: "kept for the tasks that pinned it, offered to nobody" },

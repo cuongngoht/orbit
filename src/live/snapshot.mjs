@@ -41,5 +41,5 @@ export function snapshotOf(input) {
   const view = input.collected?.view ?? null;
   const qa = qaFold(events);
   const observations = input.activity ?? input.collected?.activity ?? {};
-  return { association: input.association, view, cursor: input.collected?.cursor ?? null, current: view ? currentOf(view, qa) : null, qa, failure: latestFailure(events), presentation: presentationOf(factsOf(input, events)), nowMs: input.nowMs, events, child: input.child ?? null, observations, activities: activitiesOf({ view, events, observations }), plan: input.plan ?? input.collected?.plan ?? null, skills: input.skills ?? input.collected?.skills ?? {} };
+  return { association: input.association, view, cursor: input.collected?.cursor ?? null, current: view ? currentOf(view, qa) : null, qa, failure: latestFailure(events), presentation: presentationOf(factsOf(input, events)), nowMs: input.nowMs, events, child: input.child ?? null, observations, activities: activitiesOf({ view, events, observations }), plan: input.plan ?? input.collected?.plan ?? null, skills: input.skills ?? input.collected?.skills ?? {}, improvement: input.improvement ?? input.collected?.improvement ?? {} };
 }

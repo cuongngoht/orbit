@@ -95,6 +95,7 @@ import { commandEnvironment } from "../skills/orbit-learn/hosts/settings.mjs";
 import { effectiveOf, readAutomation } from "../src/automation/settings.mjs";
 import { PLAN_SOURCE } from "../src/automation/source.mjs";
 import { SKILL_SOURCE } from "../src/skill-factory/source.mjs";
+import { IMPROVEMENT_SOURCE } from "../src/improvement/live.mjs";
 import { planViewOf } from "../src/live/plan.mjs";
 import { surfaceRows } from "../skills/orbit-learn/hosts/live-surfaces.mjs";
 import { Blocked, Refused } from "../src/errors.mjs";
@@ -320,7 +321,7 @@ const coverageJson = (c) => (c ? { host: c.host, namesAgents: c.namesAgents ?? n
 
 // ---- reading one task: the SAME feed Orbit Control streams ----------------------------------------
 
-const deps = (followers) => ({ io, followers, task: TASK_SOURCE, qa: QA_SOURCE, activity: ACTIVITY_SOURCE, plan: PLAN_SOURCE, skill: SKILL_SOURCE });
+const deps = (followers) => ({ io, followers, task: TASK_SOURCE, qa: QA_SOURCE, activity: ACTIVITY_SOURCE, plan: PLAN_SOURCE, skill: SKILL_SOURCE, improvement: IMPROVEMENT_SOURCE });
 
 // A task named on the line is read through `show` first -- the same door every reader uses, which refuses
 // another checkout's id. One chosen from this checkout's own first lines needs no second whole read.
@@ -328,7 +329,7 @@ const createdAtOf = (loc, task, known) => known ?? TASK_COMMANDS.show.run({ task
 
 function openedTask(loc, task, known = null) {
   const tasks = tasksOf(loc);
-  return { taskCtx: { tasks, checkoutSummary: checkoutSummary(loc), now: nowIso }, task, createdAt: createdAtOf(loc, task, known), qa: QA_SOURCE.open(loc.storeRoot, io), activity: ACTIVITY_SOURCE.open(loc.storeRoot), plans: PLAN_SOURCE.open(loc.storeRoot, io), skills: SKILL_SOURCE.open(loc.storeRoot, io) };
+  return { taskCtx: { tasks, checkoutSummary: checkoutSummary(loc), now: nowIso }, task, createdAt: createdAtOf(loc, task, known), qa: QA_SOURCE.open(loc.storeRoot, io), activity: ACTIVITY_SOURCE.open(loc.storeRoot), plans: PLAN_SOURCE.open(loc.storeRoot, io), skills: SKILL_SOURCE.open(loc.storeRoot, io), improvements: IMPROVEMENT_SOURCE.open(loc.storeRoot, io) };
 }
 
 const collected = (loc, task, known = null) => collectFeed(deps(createFollowers()), openedTask(loc, task, known), zeroCursor());
@@ -354,7 +355,7 @@ function status() {
   const loc = here();
   const settings = settingsNow(loc);
   const facts = statusFacts(loc, settings);
-  return printed(statusJson(facts.snap, facts.session, facts.work), () => statusText(facts.snap, settings, facts.session, facts.work));
+  return printed(statusJson(facts.snap, facts.session, facts.work, loc), () => statusText(facts.snap, settings, facts.session, facts.work));
 }
 
 function statusFacts(loc, settings) {
@@ -371,7 +372,13 @@ function statusFacts(loc, settings) {
 // playbook's run with its own steps (src/live/plan.mjs planViewOf) -- or null for a task that is no workflow.
 const planJson = (snap) => (snap.view?.task?.provider === "automation" ? planViewOf(snap.plan, snap.view, snap.events, snap.skills) : null);
 
-const statusJson = (snap, session, work) => ({ work, association: snap.association, presentation: snap.presentation, lifecycle: snap.view?.lifecycle ?? null, stage: snap.view?.stage ?? null, attempt: snap.view?.attempt ?? null, revision: snap.view?.revision ?? null, current: snap.current, activity: focusOf(snap.activities ?? []), failure: snap.failure, cursor: snap.cursor, plan: planJson(snap), session: sessionJson(session) });
+// `improvement` (0.3.0, ADR 0045): the self-improvement campaigns this task works for, as their one projection, and the
+// project's open campaigns in a line each -- read from the improvement room, never written.
+const improvementJson = (snap, loc) => ({ task: Object.values(snap.improvement ?? {}).map(campaignJson), project: (quietly(() => IMPROVEMENT_SOURCE.open(loc.storeRoot, io).list()) ?? []).filter((c) => !c.outcome).slice(-5) });
+
+const campaignJson = (v) => ({ id: v.id, phase: v.phase, mode: v.mode, carrier: v.carrier, subject: v.subject, pin: v.pin, candidate: v.candidate?.pin ?? null, evaluations: v.evaluations.map((e) => ({ evaluation: e.evaluation, verdict: e.verdict, recorded: e.recorded, planned: e.planned, attribution: e.attribution })), gates: v.gates, promotion: v.promotion, rollback: v.rollback, blocked: v.blocked, ended: v.ended, events: v.events?.slice(-8) ?? [] });
+
+const statusJson = (snap, session, work, loc) => ({ work, association: snap.association, presentation: snap.presentation, lifecycle: snap.view?.lifecycle ?? null, stage: snap.view?.stage ?? null, attempt: snap.view?.attempt ?? null, revision: snap.view?.revision ?? null, current: snap.current, activity: focusOf(snap.activities ?? []), failure: snap.failure, cursor: snap.cursor, plan: planJson(snap), improvement: improvementJson(snap, loc), session: sessionJson(session) });
 
 const sessionText = (a) => (a.running.length ? `this session is running ${a.running.at(-1).what} (observed)` : a.recent[0] ? `this session last ${a.recent[0].kind === "command" ? "ran" : a.recent[0].kind === "edit" ? "edited" : "used"} ${a.recent[0].what ?? "a tool"} (observed)` : null);
 
@@ -1012,7 +1019,7 @@ function paneRecord(current, p) {
 
 // ---- the pane's picture: the same state the full-screen viewer would hold, laid out for a column ------------------
 
-const framesOf = (c) => [...c.events.map((e) => ({ event: e.source === "task" ? "task-event" : "qa-event", id: c.cursor, data: e })), ...(c.view ? [{ event: "task-view", id: c.cursor, data: { view: c.view } }] : []), ...Object.entries(c.activity ?? {}).map(([action, view]) => ({ event: "activity-view", id: c.cursor, data: { action, revision: view.seq, view } })), ...(c.plan ? [{ event: "plan-view", id: c.cursor, data: { source: "plan", ref: c.plan.ref, revision: c.plan.n, view: c.plan } }] : []), ...Object.entries(c.skills ?? {}).map(([pin, view]) => ({ event: "skill-view", id: c.cursor, data: { source: "skill", pin, view } })), ...(c.terminal ? [{ event: "end", id: c.cursor, data: { reason: "terminal" } }] : [])];
+const framesOf = (c) => [...c.events.map((e) => ({ event: e.source === "task" ? "task-event" : "qa-event", id: c.cursor, data: e })), ...(c.view ? [{ event: "task-view", id: c.cursor, data: { view: c.view } }] : []), ...Object.entries(c.activity ?? {}).map(([action, view]) => ({ event: "activity-view", id: c.cursor, data: { action, revision: view.seq, view } })), ...(c.plan ? [{ event: "plan-view", id: c.cursor, data: { source: "plan", ref: c.plan.ref, revision: c.plan.n, view: c.plan } }] : []), ...Object.entries(c.skills ?? {}).map(([pin, view]) => ({ event: "skill-view", id: c.cursor, data: { source: "skill", pin, view } })), ...Object.entries(c.improvement ?? {}).map(([campaign, view]) => ({ event: "improvement-view", id: c.cursor, data: { source: "improvement", campaign, revision: view.revision, view } })), ...(c.terminal ? [{ event: "end", id: c.cursor, data: { reason: "terminal" } }] : [])];
 
 const fedWith = (state, loc, task, role, known) => ((c) => reduceTui(reduceTui(state, { type: "feed-opened", task, role }), { type: "frames", task, frames: framesOf(c) }))(collected(loc, task, known));
 

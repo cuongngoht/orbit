@@ -66,7 +66,9 @@ export const OUTCOMES = ["succeeded", "failed", "abandoned"];
 // catalogs it pinned and what each control came to -- linked by a standalone audit task, never read to move one.
 // `commit` and `push` (0.2.0) are an engineering task's delivery: a local commit in its own workspace (ref: the commit's
 // full id) and a push of exactly that commit, approved once at the GIT_PUSH protected boundary (src/protected/).
-export const RECEIPT_DOMAINS = ["runtime", "run", "investigation", "data", "browser", "work", "test", "check", "sandbox", "step", "plan", "task", "requirement", "skill", "impact", "learning", "goal", "skillrun", "skillstep", "invocation", "architecture", "assessment", "commit", "push"];
+// `improvement` (0.3.0, ADR 0045) is the self-improvement campaign an EVALUATION task runs for (`imp-…`): an evaluation
+// task names its campaign so Orbit Live can follow it, and its outcome is the verdict the evaluation came to.
+export const RECEIPT_DOMAINS = ["runtime", "run", "investigation", "data", "browser", "work", "test", "check", "sandbox", "step", "plan", "task", "requirement", "skill", "impact", "learning", "goal", "skillrun", "skillstep", "invocation", "architecture", "assessment", "commit", "push", "improvement"];
 
 // The receipt domains a COORDINATOR'S ENGINE writes and reads its own state back from (0.0.4): its steps, its plans,
 // the playbook versions it pinned, a declared playbook's runs, steps and calls, and the goal it serves. A line in one of
@@ -77,15 +79,18 @@ export const ENGINE_DOMAINS = ["step", "plan", "skill", "skillrun", "skillstep",
 
 // The doors a composition root may say it is: Orbit Control's (a person, behind its mutation token) and the
 // coordinator's (the engine itself). A terminal is no door at all (`null`).
-export const DOORS = { CONTROL: "control", COORDINATOR: "coordinator" };
+// (0.3.0) the improvement engine's door: the one an evaluation task is written through, running a declared playbook's
+// baseline and candidate with the coordinator's own skill runner. It proves no person either.
+export const DOORS = { CONTROL: "control", COORDINATOR: "coordinator", IMPROVEMENT: "improvement" };
 
-export const ENGINE_WRITERS = [DOORS.COORDINATOR, DOORS.CONTROL];
+export const ENGINE_WRITERS = [DOORS.COORDINATOR, DOORS.IMPROVEMENT, DOORS.CONTROL];
 
 // The tasks whose WHOLE journal is their engine's (0.0.4): a coordinated workflow (provider `automation`) reads every
 // line it holds -- the child task it started, the snapshot it read back, its actions, its stops, its ending -- as what
 // its engine did. So nothing but the coordinator's door (or Control's) records anything in one; from a terminal a
 // person only stops it (pause, cancel, reject), and nothing a host types can link a child, complete it or prove a step.
-export const ENGINE_OWNED = ["automation"];
+// (0.3.0) an improvement EVALUATION task (provider `improvement`) is its engine's whole, the same way.
+export const ENGINE_OWNED = ["automation", "improvement"];
 
 // What a requirement or an obligation came to, as evidence shows it. `satisfied` and `violated`
 // need a receipt; with none, it is `not-verified`, and nothing here may say otherwise.

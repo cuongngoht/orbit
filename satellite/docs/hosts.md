@@ -24,21 +24,21 @@ stale ([ADR 0002](adr/0002-a-host-adapter-says-only-what-is-verified.md)). A per
 | sessionAffinity | reported | reported | reported | reported |
 | liveIntegration | reported | reported | reported | reported |
 
-- **Claude Code, toolObservation.** The session's own tool calls, read from the working set Orbit's hooks keep and shown beside the mission; which agent run made a call is UNOBSERVED.
+- **Claude Code, toolObservation.** The session's own tool calls, read from the working set Orbit's hooks keep; a subagent's calls go to the agent run it carries through the host's own Agent call and agent ids, HOST_OBSERVED (0.2.2: proven by fixtures, a native capture is owed), and a call no payload names an agent for is UNATTRIBUTED.
 - **Claude Code, toolOutcomeReliability.** PostToolUseFailure names a failed call.
 - **Claude Code, filesystemIsolation.** An agent runs in the checkout; source changes are isolated by an engineering task's own workspace.
 - **Claude Code, permissionEnforcement.** A plugin agent's tools: allowlist is the host's; permissionMode is ignored.
 - **Claude Code, cancellation.** TaskStop.
 - **Claude Code, sessionAffinity.** ORBIT_SESSION through the session's environment file.
 - **Claude Code, liveIntegration.** Satellite Live in a terminal beside the session; no docked pane.
-- **Codex, toolObservation.** Bash and apply_patch only.
+- **Codex, toolObservation.** Bash and apply_patch only; the payload names no subagent, so every call is UNATTRIBUTED to a run.
 - **Codex, sessionAffinity.** An explicit binding on every command.
 - **Codex, liveIntegration.** Satellite Live in a terminal.
-- **Antigravity CLI, toolObservation.** PreToolUse and PostToolUse; no session end.
+- **Antigravity CLI, toolObservation.** PreToolUse and PostToolUse; no session end; the payload names no subagent, so every call is UNATTRIBUTED to a run.
 - **Antigravity CLI, sessionAffinity.** An explicit binding on every command.
 - **Antigravity CLI, liveIntegration.** Satellite Live in a terminal.
 - **Grok Build, nativeAgentDispatch.** The manifest declares no agents.
-- **Grok Build, toolObservation.** Five measured tools.
+- **Grok Build, toolObservation.** Five measured tools; nothing measured names which agent made a call, so every call is UNATTRIBUTED to a run.
 - **Grok Build, toolOutcomeReliability.** Exit codes.
 - **Grok Build, sessionAffinity.** GROK_SESSION_ID.
 - **Grok Build, liveIntegration.** Satellite Live in a terminal.

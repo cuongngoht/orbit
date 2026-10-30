@@ -103,3 +103,39 @@ test("a file already modified before a run and edited again during it still void
   const r = satellite(w, ["agent", "report", w.msn, "arn-1"], REPORT);
   assert.deepEqual([r.status, json(r).outcome], [0, "violated"]);
 });
+
+// ---- 0.2.2, ADR 0044: which host agent carries a run, through the real hooks and the real CLI ---------------------
+
+const LEARN = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "cli", "learn-hook.mjs");
+
+const hooked = (w, input) => spawnSync(process.execPath, [LEARN], { input: JSON.stringify({ session_id: "raw-session-1", cwd: w.repo, ...input }), encoding: "utf8", env: sealed({ ORBIT_STORE_DIR: w.store }) });
+
+const traced = (w, args, extra = {}) => spawnSync(process.execPath, [CLI, ...args], { cwd: w.repo, encoding: "utf8", env: sealed({ ORBIT_STORE_DIR: w.store, ORBIT_LIVE: "off", ORBIT_HOST: "claude", ...extra }) });
+
+const filesUnder = (dir) => spawnSync("find", [dir, "-type", "f"], { encoding: "utf8" }).stdout.split("\n").filter(Boolean).sort();
+
+const runOfView = (w, extra) => json(traced(w, ["live", "status", w.msn, "--json"], extra)).agents.find((a) => a.id === "arn-1");
+
+test("the hooks see which agent carries a run -- the envelope, the agent it launched, its calls -- and the dispatcher's word stands beside it", (t) => {
+  const w = mission(t);
+  const envelope = json(driven(w)).result.envelope;
+  const prompt = JSON.stringify(envelope, null, 2);
+  const agent = { agent_id: "agent-raw-1", agent_type: envelope.agent.subagentType };
+  hooked(w, { hook_event_name: "PreToolUse", tool_name: "Agent", tool_use_id: "toolu_A", tool_input: { subagent_type: envelope.agent.subagentType, prompt } });
+  hooked(w, { hook_event_name: "SubagentStart", ...agent });
+  hooked(w, { hook_event_name: "PostToolUse", ...agent, tool_name: "Read", tool_use_id: "toolu_R", tool_input: { file_path: join(w.repo, "src", "client.mjs") }, tool_response: { file: { content: "SECRET-SENTINEL" } } });
+  hooked(w, { hook_event_name: "PostToolUse", tool_name: "Agent", tool_use_id: "toolu_A", tool_input: { subagent_type: envelope.agent.subagentType, prompt }, tool_response: { status: "async_launched", agentId: "agent-raw-1" } });
+  const before = filesUnder(w.store);
+  assert.deepEqual(((r) => [r.attribution, r.counts.direct, r.ref, r.hostLifecycle.startedAt !== null])(runOfView(w)), ["HOST_OBSERVED", 1, `${w.msn}/arn-1`, true]);
+  assert.deepEqual(((r) => [r.attribution, r.hostAgent, json(traced(w, ["live", "status", w.msn, "--json"], { ORBIT_TRACE: "off" })).tools.coverage.trail])(runOfView(w, { ORBIT_TRACE: "off" })), ["UNATTRIBUTED", null, "off"], "a trail that is off observes nothing, and says so");
+  assert.deepEqual(filesUnder(w.store), before, "reading what carries a run writes nothing");
+  const hashed = runOfView(w).hostAgent;
+  assert.equal(json(traced(w, ["agent", "ack", w.msn, "arn-1", "--host-agent=agent-raw-1"])).bound, hashed, "the dispatcher's word, hashed as the hooks hash it");
+  assert.equal(runOfView(w).attribution, "HOST_OBSERVED", "two words that agree");
+  assert.equal(json(traced(w, ["agent", "ack", w.msn, "arn-1", "--host-agent=agent-raw-1"])).boundBefore, true, "the same word twice is one");
+  traced(w, ["agent", "ack", w.msn, "arn-1", "--host-agent=agent-raw-2"]);
+  assert.deepEqual(((r) => [r.attribution, r.hostAgent, r.named.length])(runOfView(w)), ["CONFLICTING", null, 2], "two agents named for one run: neither is chosen");
+  assert.equal(traced(w, ["agent", "ack", w.msn, "arn-1", "--host-agent=bad id!"]).status, 2);
+  const kept = filesUnder(w.store).map((f) => spawnSync("cat", [f], { encoding: "utf8" }).stdout).join("\n");
+  assert.doesNotMatch(kept, /agent-raw-1|agent-raw-2|toolu_|SECRET-SENTINEL|raw-session-1/, "no raw agent, call or session id, and nothing a subagent read");
+});

@@ -42,6 +42,15 @@ skills pin -- never the conversation, never a secret), `grants`, `drive` (for an
 commands that drive it), `report` (the command, the shape, an example), and `dispatch.mode` -- `native` (several runs
 may be in flight) or `serial` (no native agents here: one run at a time, never shown as parallel).
 
+## Which agent carries a run (0.2.2)
+
+The envelope also names `parentAgentRunId` and `attempt`. On Claude Code the hooks read `missionId` and `agentRunId`
+off an Agent call whose prompt holds the envelope's mark (`orbit.satellite.envelope/v1`), and the `agentId` the call
+answers with: the run is then HOST_OBSERVED to be carried by that agent, and its calls are the agent's. `agent ack <msn>
+<arn> --host-agent=<agentId>` adds the dispatcher's word (REPORTED, an `agentrun.bound` line, the id hashed as the hooks
+hash it). Two different agents named for one run, or one agent for two runs, is CONFLICTING. A serial run, and any run
+nothing observed, is UNATTRIBUTED. A word grants nothing: no gate, approval or boundary reads it.
+
 ## A report (`agent report <msn> <arn>`, on stdin)
 
 ```json

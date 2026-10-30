@@ -14,7 +14,7 @@ import { sha, shaBytes } from "../../src/hash.mjs";
 import { modelOf as investigationModel } from "../../src/investigation/model.mjs";
 import { createInvestigations } from "../../src/investigation/store.mjs";
 import { OUTCOMES } from "../../src/investigation/vocab.mjs";
-import { taskSessionMark } from "../../src/memory/session.mjs";
+import { hostSession, taskSessionMark } from "../../src/memory/session.mjs";
 import { createProcess } from "../../src/process/index.mjs";
 import { contained } from "../../src/project/boundary.mjs";
 import { storeBase } from "../../src/project/repository.mjs";
@@ -33,6 +33,9 @@ import { fingerprintOf as bindingFingerprint, resourceOf } from "../../src/work/
 import { invokeBound } from "../../src/work/invoke.mjs";
 import { CHECKS as CHECK_CLASSES } from "../../src/engineering/working-set/collect.mjs";
 import { SESSION_LIMITS, noSessionActivity, sessionActivityOf, sessionLinesOf } from "../../src/live/session.mjs";
+import { createFollower } from "../../src/store/follow.mjs";
+import { readable } from "../../src/trace/events.mjs";
+import { coverageOf } from "../../src/work/track/coverage.mjs";
 import { switchOf } from "../../src/project/env.mjs";
 import { loadProject } from "../../src/project/index.mjs";
 import { safeName } from "../../src/project/paths.mjs";
@@ -237,7 +240,7 @@ function sessionTail(b, file, nowMs) {
   const size = b.io.size(file);
   const got = size ? quietly(() => b.io.readFrom(file, Math.max(0, size - SESSION_LIMITS.TAIL_BYTES), SESSION_LIMITS.TAIL_BYTES)) : null;
   const lines = !size ? [] : got ? sessionLinesOf(got.buffer.toString("utf8"), size > SESSION_LIMITS.TAIL_BYTES) : null;
-  return lines ? sessionActivityOf(lines, { nowMs, checks: CHECK_CLASSES, partial: size > SESSION_LIMITS.TAIL_BYTES }) : noSessionActivity("unreadable");
+  return lines ? sessionActivityOf(lines, { nowMs, checks: CHECK_CLASSES, partial: size > SESSION_LIMITS.TAIL_BYTES, coverage: coverageOf(b.hostId) }) : noSessionActivity("unreadable");
 }
 
 const sessionFile = (b, project) => join(workingSetDir(project), `${b.session}.jsonl`);
@@ -255,10 +258,49 @@ export const sessionFileFor = (b) => ((project) => (project ? sessionFile(b, pro
 
 const sessionActivityFor = (b, nowMs) => ((project) => SESSION_SOURCES.find((r) => r.when(b, project)).then(b, project, nowMs))(b.session ? quietly(() => sessionProject(b)) : null);
 
+// ---- the session trail the hooks keep (src/trace/), for one join: which host agent carries which run (0.2.2) ---------
+//
+// Only the shards dated on or after the mission began, each followed by what was appended since the last look (one
+// follower per shard, for as long as this process lives -- a viewer that refreshes never reads a shard twice), and only
+// what a binding can use: an agent's own events and the calls a subagent made. Read through the machine's own io and
+// never written; the trace switched off, or a room that cannot be read, says so instead of an empty trail.
+const TRAIL_SHARD = /^(\d{4}-\d{2}-\d{2})-.+\.jsonl$/;
+
+const AGENT_EVENTS = new Set(["agent.invoked", "agent.launched", "agent.started", "agent.ended"]);
+
+const bindable = (e) => Boolean(e) && (AGENT_EVENTS.has(e.type) || ((e.type === "tool.used" || e.type === "command.ran") && Boolean(e.data?.agent)));
+
+const trailLine = (text) => quietly(() => ((e) => (bindable(e) ? e : null))(readable(JSON.parse(text)))) ?? null;
+
+const ordered = (a, b) => (a.at === b.at ? (a.id < b.id ? -1 : 1) : a.at < b.at ? -1 : 1);
+
+const dedupedTrail = (events) => [...new Map(events.map((e) => [e.id, e])).values()].sort(ordered);
+
+function pulledShard(io, room, followers, name) {
+  if (!followers.has(name)) followers.set(name, createFollower(io, join(room, name), { parse: trailLine, keep: true }));
+  quietly(() => followers.get(name).pull());
+  return followers.get(name).items.map((i) => i.record);
+}
+
+const shardsSince = (io, room, day) => (quietly(() => io.list(room)) ?? []).filter((n) => TRAIL_SHARD.test(n) && TRAIL_SHARD.exec(n)[1] >= day).sort();
+
+const TRAIL_SOURCES = [
+  { when: (b) => !switchOf(b.env, "TRACE", "trace", true), source: "off" },
+  { when: (b, io, room) => io.exists(room) && io.kind?.(room) === "file", source: "unreadable" },
+  { when: () => true, source: "ok" },
+];
+
+function trailPortOf(b) {
+  const io = realIo();
+  const room = stateRooms(storeBase(b.env)).trace;
+  const followers = new Map();
+  return (sinceIso) => ((source) => ({ source, events: source === "ok" ? dedupedTrail(shardsSince(io, room, String(sinceIso ?? "").slice(0, 10)).flatMap((n) => pulledShard(io, room, followers, n))) : [] }))(TRAIL_SOURCES.find((r) => r.when(b, io, room)).source);
+}
+
 // env: the command environment (commandEnvironment); cwd: where the command runs; opts: { pluginRoot, proc, node, input }
 export function bindPorts(env, cwd, opts = {}) {
   const found = runtimeProject(env, cwd);
   const machine = machineContext({ project: found.paths, config: found.config ?? {} }, env);
   const b = baseOf(env, found, machine.io, opts);
-  return { ...b, hostRow: hostRowOf(b.hostId, b.acceptance.passed), liveness: livenessOf(b), sessionActivity: (nowMs) => sessionActivityFor(b, nowMs), ...ownersOf(b), ...providersOf(b), ...resolverOf(b) };
+  return { ...b, hostRow: hostRowOf(b.hostId, b.acceptance.passed), liveness: livenessOf(b), sessionActivity: (nowMs) => sessionActivityFor(b, nowMs), hashAgent: (raw) => hostSession(b.hostId, raw), trail: trailPortOf(b), ...ownersOf(b), ...providersOf(b), ...resolverOf(b) };
 }

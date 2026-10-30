@@ -17,6 +17,7 @@ const SUMMARIES = {
   "unit.skipped": (r) => `${r.id} skipped: ${r.because ?? ""}`,
   "agentrun.created": (r) => `AGENT_SPAWNED ${r.id} for ${r.unit} as ${r.agent} (${r.dispatch}, ${r.profile})`,
   "agentrun.started": (r) => `${r.id} started (${r.by}${r.providerRef ? `, ${r.providerRef}` : ""})`,
+  "agentrun.bound": (r) => `${r.id} carried by host agent ${String(r.hostAgent ?? "").slice(-8)}, by the ${r.by}'s word (REPORTED)`,
   "agentrun.reported": (r) => `${r.id} reported ${r.executionState}: ${r.summary ?? ""}`,
   "agentrun.ended": (r) => `${r.id} ended ${r.outcome}`,
   "action.proposed": (r) => `${r.id} ${r.type} proposed`,

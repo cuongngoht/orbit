@@ -65,6 +65,19 @@ test("only the orchestrator's authorization -- the fingerprint of exactly the ap
   assert.throws(() => called(DEPLOY, run, { artifact: "orders:3" }), /protected boundary/, "the approval was for orders:2");
 });
 
+// 0.2.2, ADR 0044: an identity is never an authority. A run reference, a host agent, an agent run id, a mode, a role's
+// name or an attribution word -- on the structured action, on the run, or handed in as if it were an approval -- moves
+// no verdict and opens no door.
+test("a run's identity grants nothing: a forged run reference, host agent, mode or attribution word changes no verdict", () => {
+  const identity = { agentRunId: "arn-1", run: "msn-0123456789ab/arn-1", hostAgent: "claude:00000000000000aa", agent: "claude:00000000000000aa", attribution: "RUNTIME_BOUND", mode: "VERIFYING", role: "ReleaseApprover", by: "host" };
+  const action = capabilityAction(DEPLOY, { artifact: "orders:2" });
+  assert.deepEqual(authorize({ ...identity, ...action }), authorize(action), "the same verdict, whatever identity rides along");
+  assert.equal(authorize({ ...identity, ...action }).decision, "approve_once");
+  assert.throws(() => called(DEPLOY, { c: { id: "skill-run", ...identity }, ...identity }), (e) => e instanceof Refused && e.authorization === true, "a run that names itself is still a run with no approval");
+  assert.throws(() => called(DEPLOY, { c: { id: "autonomous-engineering", destructive: true }, authorized: { action: identity.run } }), /protected boundary/, "a run reference is no approval's fingerprint");
+  assert.throws(() => called(DEPLOY, { c: { id: "autonomous-engineering", destructive: true }, authorized: { action: identity.hostAgent } }), /protected boundary/, "nor is a host agent's id");
+});
+
 test("an ordinary production write that DECLARES what it is crosses no boundary: the pipeline holds it to its own mutation rule only", () => {
   assert.deepEqual(called(SEED, { c: { id: "autonomous-engineering", destructive: true } }), { ok: true });
   assert.throws(() => called(SEED, { c: { id: "case" } }), (e) => /declares that it can change external state, and nothing allows this run to/.test(e.message), "a case that writes still says so");

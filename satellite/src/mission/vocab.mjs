@@ -82,6 +82,9 @@ export const KINDS = Object.freeze({
   "workflow.registered": { material: false, fields: ["pin", "version", "action"] },
   "agentrun.created": { material: true, fields: ["id", "unit", "parentAgentRun", "templatePin", "rolePin", "skillPins", "actualHost", "actualProvider", "agent", "profile", "grants", "budget", "attempt", "mode", "action", "dispatch", "task", "depth", "tree"] },
   "agentrun.started": { material: true, fields: ["id", "action", "providerRef", "by"] },
+  // 0.2.2 (ADR 0044): the host's WORD that one of its agents carries the run -- hashed, REPORTED, and outranked by what
+  // the hooks observed of the launch (src/hosts/attribution.mjs); never a lifecycle, so a late one changes no state.
+  "agentrun.bound": { material: false, fields: ["id", "hostAgent", "by"] },
   "agentrun.reported": { material: false, fields: ["id", "executionState", "findings", "artifacts", "evidenceRefs", "unknowns", "proposes", "digest", "summary"] },
   "agentrun.ended": { material: true, fields: ["id", "outcome", "failureSignature", "because"] },
   "action.proposed": { material: true, fields: ["id", "type", "mode", "operationKind", "provider", "effect", "profile", "fingerprint", "asked", "unit", "agentRun", "parentAction", "parentAgentRun", "decision", "observed", "hypothesis", "reason", "evidence"] },

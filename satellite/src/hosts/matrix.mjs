@@ -18,7 +18,7 @@ export const HOSTS = Object.freeze({
   claude: {
     nativeAgentDispatch: claimed("claude:agent-dispatch", docs("https://code.claude.com/docs/en/sub-agents")),
     parallelism: claimed("claude:agent-parallel", docs("https://code.claude.com/docs/en/sub-agents"), { max: 20 }),
-    toolObservation: cell("reported", docs(`${HOSTS_MD}#claude-code`), { note: "the session's own tool calls, read from the working set Orbit's hooks keep and shown beside the mission; which agent run made a call is UNOBSERVED" }),
+    toolObservation: cell("reported", docs(`${HOSTS_MD}#claude-code`), { note: "the session's own tool calls, read from the working set Orbit's hooks keep; a subagent's calls go to the agent run it carries through the host's own Agent call and agent ids, HOST_OBSERVED (0.2.2: proven by fixtures, a native capture is owed), and a call no payload names an agent for is UNATTRIBUTED" }),
     toolOutcomeReliability: cell("reported", docs(`${HOSTS_MD}#claude-code`), { note: "PostToolUseFailure names a failed call" }),
     filesystemIsolation: cell("unavailable", docs(`${HOSTS_MD}#claude-code`), { note: "an agent runs in the checkout; source changes are isolated by an engineering task's own workspace" }),
     permissionEnforcement: cell("reported", docs("https://code.claude.com/docs/en/sub-agents"), { note: "a plugin agent's tools: allowlist is the host's; permissionMode is ignored" }),
@@ -30,7 +30,7 @@ export const HOSTS = Object.freeze({
   codex: {
     nativeAgentDispatch: cell("unavailable", docs(`${HOSTS_MD}#codex`)),
     parallelism: cell("unavailable", docs(`${HOSTS_MD}#codex`), { max: 1 }),
-    toolObservation: cell("reported", docs(`${HOSTS_MD}#codex`), { note: "Bash and apply_patch only" }),
+    toolObservation: cell("reported", docs(`${HOSTS_MD}#codex`), { note: "Bash and apply_patch only; the payload names no subagent, so every call is UNATTRIBUTED to a run" }),
     toolOutcomeReliability: cell("unknown", null),
     filesystemIsolation: cell("unavailable", docs(`${HOSTS_MD}#codex`)),
     permissionEnforcement: cell("unknown", null),
@@ -42,7 +42,7 @@ export const HOSTS = Object.freeze({
   antigravity: {
     nativeAgentDispatch: cell("unavailable", docs(`${HOSTS_MD}#antigravity-cli`)),
     parallelism: cell("unavailable", docs(`${HOSTS_MD}#antigravity-cli`), { max: 1 }),
-    toolObservation: cell("reported", docs(`${HOSTS_MD}#antigravity-cli`), { note: "PreToolUse and PostToolUse; no session end" }),
+    toolObservation: cell("reported", docs(`${HOSTS_MD}#antigravity-cli`), { note: "PreToolUse and PostToolUse; no session end; the payload names no subagent, so every call is UNATTRIBUTED to a run" }),
     toolOutcomeReliability: cell("unknown", null),
     filesystemIsolation: cell("unavailable", docs(`${HOSTS_MD}#antigravity-cli`)),
     permissionEnforcement: cell("unknown", null),
@@ -54,7 +54,7 @@ export const HOSTS = Object.freeze({
   grok: {
     nativeAgentDispatch: cell("unavailable", docs(`${HOSTS_MD}#grok-build`), { note: "the manifest declares no agents" }),
     parallelism: cell("unavailable", docs(`${HOSTS_MD}#grok-build`), { max: 1 }),
-    toolObservation: cell("reported", docs(`${HOSTS_MD}#grok-build`), { note: "five measured tools" }),
+    toolObservation: cell("reported", docs(`${HOSTS_MD}#grok-build`), { note: "five measured tools; nothing measured names which agent made a call, so every call is UNATTRIBUTED to a run" }),
     toolOutcomeReliability: cell("reported", docs(`${HOSTS_MD}#grok-build`), { note: "exit codes" }),
     filesystemIsolation: cell("unavailable", docs(`${HOSTS_MD}#grok-build`)),
     permissionEnforcement: cell("unknown", null),

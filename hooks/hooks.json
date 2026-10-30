@@ -96,6 +96,30 @@
         ]
       }
     ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "async": true,
+            "timeout": 10,
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/cli/learn-hook.mjs\""
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "async": true,
+            "timeout": 10,
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/cli/learn-hook.mjs\""
+          }
+        ]
+      }
+    ],
     "SessionEnd": [
       {
         "hooks": [

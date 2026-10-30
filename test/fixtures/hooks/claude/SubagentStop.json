@@ -1,0 +1,38 @@
+{
+  "input": {
+    "session_id": "fixture-session",
+    "transcript_path": "/fixture-host/transcript.jsonl",
+    "cwd": "/fixture",
+    "prompt_id": "fixture-prompt",
+    "permission_mode": "auto",
+    "hook_event_name": "SubagentStop",
+    "stop_hook_active": false,
+    "agent_id": "fixture-agent",
+    "agent_type": "orbit:satellite-reader",
+    "agent_transcript_path": "/fixture-host/fixture-session/subagents/agent-fixture-agent.jsonl",
+    "last_assistant_message": "SECRET-SENTINEL fixture report"
+  },
+  "argv": [],
+  "expected": {
+    "hostEvent": "SubagentStop",
+    "session": "claude:d6440983c454c2e5",
+    "cwd": "/fixture",
+    "prompt": null,
+    "tool": {
+      "name": null,
+      "kind": "other"
+    },
+    "paths": [],
+    "pattern": null,
+    "command": null,
+    "ok": true,
+    "background": false,
+    "invokes": null,
+    "agent": {
+      "id": "claude:e139fba95d43a8ac",
+      "type": "orbit:satellite-reader"
+    },
+    "event": "agent-end",
+    "host": "claude"
+  }
+}

@@ -19,7 +19,7 @@ export const sessionOf = (event, host, at) => event.session ?? sessionId({ host,
 
 export const workingSet = {
   name: "working-set",
-  on: ["pre-tool", "post-tool", "post-tool-failure", "turn-end", "session-end"],
+  on: ["pre-tool", "post-tool", "post-tool-failure", "turn-end", "session-end", "agent-start", "agent-end"],
   records: true,
   run: (event, world) => appended(event, world.workingSet?.()),
 };

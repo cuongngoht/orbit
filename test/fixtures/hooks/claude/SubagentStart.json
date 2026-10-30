@@ -1,0 +1,35 @@
+{
+  "input": {
+    "session_id": "fixture-session",
+    "transcript_path": "/fixture-host/transcript.jsonl",
+    "cwd": "/fixture",
+    "prompt_id": "fixture-prompt",
+    "permission_mode": "auto",
+    "hook_event_name": "SubagentStart",
+    "agent_id": "fixture-agent",
+    "agent_type": "orbit:satellite-reader"
+  },
+  "argv": [],
+  "expected": {
+    "hostEvent": "SubagentStart",
+    "session": "claude:d6440983c454c2e5",
+    "cwd": "/fixture",
+    "prompt": null,
+    "tool": {
+      "name": null,
+      "kind": "other"
+    },
+    "paths": [],
+    "pattern": null,
+    "command": null,
+    "ok": true,
+    "background": false,
+    "invokes": null,
+    "agent": {
+      "id": "claude:e139fba95d43a8ac",
+      "type": "orbit:satellite-reader"
+    },
+    "event": "agent-start",
+    "host": "claude"
+  }
+}

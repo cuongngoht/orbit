@@ -1,4 +1,5 @@
 // Claude Code host adapter for learning lifecycle hooks.
+import { envelopeRefOf } from "../../../src/attribution.mjs";
 import { discover, kept } from "../native.mjs";
 
 export const name = "claude";
@@ -49,13 +50,34 @@ const invokesOf = (input) => named(INVOKES[input.tool_name], input.tool_input);
 const named = (row, args) => (row && typeof args?.[row[1]] === "string" ? { kind: row[0], name: args[row[1]] } : null);
 
 // The lifecycle event, as src/lifecycle/event.mjs expects it. `session_id` is
-// handed over RAW and hashed there, never stored as it arrives; `tool_response`
-// is never read at all -- output is not something this engine keeps. `prompt`
-// is read off UserPromptSubmit alone, and only for the router to look at.
+// handed over RAW and hashed there, never stored as it arrives. `prompt` is read
+// off UserPromptSubmit alone, and only for the router to look at. Of a tool's
+// output exactly ONE field is read (0.2.2, ADR 0044), the way grok.mjs reads an
+// exit code: the `agentId` the Agent tool answers with -- an identifier, hashed
+// in event.mjs -- and nothing else of any `tool_response`.
 const deliveryOf = (input) => (typeof input.tool_use_id === "string" && input.tool_use_id ? { delivery: input.tool_use_id } : {});
 
 // 0.0.2: `tool_use_id` is the call's delivery key, as Codex's and Grok's are: a hook Claude delivers twice is one call.
-export const normalize = (input) => (input?.hook_event_name ? { hostEvent: input.hook_event_name, session: input.session_id ?? null, ...deliveryOf(input), cwd: input.cwd ?? process.cwd(), prompt: promptOf(input), ...toolOf(input) } : null);
+export const normalize = (input) => (input?.hook_event_name ? { hostEvent: input.hook_event_name, session: input.session_id ?? null, ...deliveryOf(input), cwd: input.cwd ?? process.cwd(), prompt: promptOf(input), ...toolOf(input), ...agentsOf(input) } : null);
+
+// WHICH AGENT a hook speaks for (0.2.2, ADR 0044). Claude Code puts `agent_id` and `agent_type` on every event a
+// subagent raises -- its tool calls, its start and its stop -- and on none of the main session's. The Agent call that
+// launched one answers with its `agentId`; and when the call hands one of this plugin's Satellite agents an envelope,
+// the two ids the envelope's mark names say which mission run it is (src/attribution.mjs) -- read, never kept as text.
+// `agent_transcript_path` and `last_assistant_message` (SubagentStop) are never read.
+const text = (v) => (typeof v === "string" && v ? v : null);
+
+const agentOf = (input) => (text(input.agent_id) ? { agent: { id: input.agent_id, type: text(input.agent_type) } } : {});
+
+const launches = (input) => INVOKES[input.tool_name]?.[0] === "agent";
+
+const launchedOf = (input) => (input.hook_event_name === "PostToolUse" && launches(input) && text(input.tool_response?.agentId) ? { launched: input.tool_response.agentId } : {});
+
+const SATELLITE_AGENT = /^orbit:satellite-[a-z]+$/;
+
+const dispatchedOf = (input) => ((ref) => (ref ? { dispatched: ref } : {}))(launches(input) && SATELLITE_AGENT.test(String(input.tool_input?.subagent_type ?? "")) ? envelopeRefOf(input.tool_input?.prompt) : null);
+
+const agentsOf = (input) => ({ ...agentOf(input), ...launchedOf(input), ...dispatchedOf(input) });
 
 const promptOf = (input) => (input.hook_event_name === "UserPromptSubmit" && typeof input.prompt === "string" ? input.prompt : null);
 

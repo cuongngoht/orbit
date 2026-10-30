@@ -28,6 +28,10 @@ export const EVENTS = {
   // The host finished answering one prompt -- the boundary the session trail
   // reads a turn up to (src/trace/projections/turns.mjs).
   Stop: "turn-end",
+  // A subagent began and ended (0.2.2, ADR 0044): what an agent run's own
+  // lifecycle looks like from the host's side, and nothing about what it did.
+  SubagentStart: "agent-start",
+  SubagentStop: "agent-end",
 };
 
 export const EVENT_NAMES = [...new Set(Object.values(EVENTS))];
@@ -36,8 +40,16 @@ export function lifecycleEvent(host, input, argv = []) {
   const seen = host.normalize?.(input, argv) ?? null;
   const event = EVENT_NAMES.includes(seen?.event) ? seen.event : EVENTS[seen?.hostEvent];
   if (!event) return null;
-  return { ...seen, event, host: host.name, session: hostSession(host.name, seen.session), paths: seen.paths ?? [], ok: okOf(seen), ...identities(host, seen) };
+  return { ...seen, event, host: host.name, session: hostSession(host.name, seen.session), paths: seen.paths ?? [], ok: okOf(seen), ...identities(host, seen), ...agents(host, seen) };
 }
+
+// The agent a hook speaks for and the one an Agent call launched (0.2.2, ADR 0044), hashed the way a session is: the
+// host's raw id never travels past this line. Present only when the host said one, so a main-session event is unchanged.
+const agentIdOf = (host, seen) => (seen.agent?.id ? { agent: { id: hostSession(host.name, seen.agent.id), type: seen.agent.type ?? null } } : {});
+
+const launchedIdOf = (host, seen) => (seen.launched ? { launched: hostSession(host.name, seen.launched) } : {});
+
+const agents = (host, seen) => ({ ...agentIdOf(host, seen), ...launchedIdOf(host, seen) });
 
 // A call's delivery key is hashed for every host that sends one (0.0.2: Claude's too); a turn is protocol 2's.
 const deliveryOf = (host, seen) => (seen.delivery ? { delivery: hostSession(host.name, seen.delivery) } : {});

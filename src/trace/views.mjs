@@ -93,6 +93,19 @@ function more(u) {
   listed("failures, and what came next", u.failures.map((f) => `${f.label}: ${f.failed} of ${f.of} · then ${f.followedBy.map((n) => `${n.label} ×${n.count}`).join(", ")}`));
   listed("least privilege — pre-approved, never run in this window", u.privilege.unused.map((p) => `${p.skill}: ${p.rule}`));
   listed("least privilege — run without pre-approval (a prompt each time)", u.privilege.unapproved.map((p) => `${p.skill}: ${p.command}`));
+  attributed(u.attribution);
+}
+
+// 0.2.2, ADR 0044: which agent made a call, as the hosts' own payloads say -- every count with what it counts.
+const agentWords = (a) => `${String(a.type ?? "an agent").padEnd(28)} ${a.agent.slice(-8)}${a.by ? ` · launched by ${a.by === "session" ? "the session" : a.by.slice(-8)}` : ""}${a.run ? ` · run ${a.run}` : ""}${a.ended ? " · ended" : a.started ? " · started" : ""}`;
+
+const countWords = (c) => `${c.events} tool event(s) · ${c.calls} call(s) · ${c.failed} failed · ${c.unknown} unknown`;
+
+function attributed(a) {
+  if (!a) return;
+  listed("agents — the host's own payload, never a guess (tool events · distinct calls · failed · result not reported)", a.byAgent.map((r) => `${agentWords(r)}   ${countWords(r)}${r.skills.length ? ` · skills ${r.skills.join(", ")}` : ""}`));
+  out(`  no agent named: ${countWords(a.session)} -- ${a.session.say}`);
+  out(`  coverage: ${a.coverage.withAgent} of ${a.coverage.of} ${a.coverage.unit} name an agent · ${a.coverage.withCall} name a call${a.coverage.hosts.length ? ` · ${a.coverage.hosts.map((h) => `${h.host} ${h.withAgent}/${h.events}`).join(", ")}` : ""}\n`);
 }
 
 function listed(title, lines) {

@@ -49,6 +49,10 @@
     "background": false,
     "invokes": null,
     "event": "post-tool",
-    "host": "claude"
+    "host": "claude",
+    "agent": {
+      "id": "claude:e139fba95d43a8ac",
+      "type": "orbit:satellite-reader"
+    }
   }
 }

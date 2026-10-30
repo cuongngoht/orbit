@@ -70,6 +70,16 @@ test("every host the coverage table has a row for is a host docs/hosts.md names,
   assert.deepEqual([hostFrom({ ORBIT_HOST: "codex" }), hostFrom({ ORBIT_HOST: "Bad Host" }), hostFrom({})], ["codex", "claude", "claude"]);
 });
 
+// 0.2.2, ADR 0044: whether a host's payload names WHICH subagent made a call is a column of the same table, true of the
+// payload docs/hosts.md records -- a host that shows none says so, and a host nobody measured is unknown, never "none".
+test("every host says whether its calls name an agent, and how one call is named", () => {
+  for (const row of [...Object.values(COVERAGE), UNKNOWN_HOST]) assert.ok(typeof row.agents === "string" && typeof row.calls === "string");
+  assert.deepEqual(Object.fromEntries(Object.entries(COVERAGE).map(([h, r]) => [h, r.agents.split(":")[0]])), { claude: "observed", codex: "none", antigravity: "none", grok: "unknown" });
+  assert.match(COVERAGE.claude.agents, /only its commands are seen starting/, "a subagent's running READ is never claimed");
+  assert.deepEqual(Object.fromEntries(Object.entries(COVERAGE).map(([h, r]) => [h, r.namesAgents])), { claude: true, codex: false, antigravity: false, grok: null }, "only a host that names every subagent's call lets a call with no agent be the session's own");
+  assert.equal(UNKNOWN_HOST.namesAgents, null);
+});
+
 test("the lifecycle words in the docs are the table's", () => {
   const readme = readFileSync(join(REPO, "README.md"), "utf8");
   for (const row of LIFECYCLE) assert.match(readme, new RegExp(`\`${row.state}\``), `README §4.18 names ${row.state}`);

@@ -147,6 +147,7 @@ import { readView } from "../src/work/track/read.mjs";
 import { currentOf, scanOf } from "../src/work/track/resolve.mjs";
 import { viewLines } from "../src/work/track/say.mjs";
 import { workingSetOf } from "../src/work/track/tail.mjs";
+import { coverageOf } from "../src/work/track/coverage.mjs";
 
 const ENV = commandEnvironment(process.env, process.argv);
 const [cmd, ...args] = process.argv.slice(2);
@@ -284,7 +285,7 @@ function sessionTail(file, nowMs, settings) {
   const size = io.size(file);
   const got = size ? quietly(() => io.readFrom(file, Math.max(0, size - SESSION_LIMITS.TAIL_BYTES), SESSION_LIMITS.TAIL_BYTES)) : null;
   const lines = !size ? [] : got ? sessionLinesOf(got.buffer.toString("utf8"), size > SESSION_LIMITS.TAIL_BYTES) : null;
-  return lines ? sessionActivityOf(lines, { nowMs, idleAfterMs: settings.idleAfterSec * 1000, checks: CHECK_CLASSES, partial: size > SESSION_LIMITS.TAIL_BYTES }) : noSessionActivity("unreadable");
+  return lines ? sessionActivityOf(lines, { nowMs, idleAfterMs: settings.idleAfterSec * 1000, checks: CHECK_CLASSES, partial: size > SESSION_LIMITS.TAIL_BYTES, coverage: coverageOf(hostId()) }) : noSessionActivity("unreadable");
 }
 
 // ---- the work this session tracks (1.8.8, src/work/track/) --------------------------------------------------------
@@ -308,7 +309,14 @@ function currentWork(ctx, mark, loc) {
 const workRead = (loc, mark, nowMs, settings) => (loc && mark ? quietly(() => currentWork(workContext(loc, nowMs, settings), mark, loc)) : null);
 
 // What `status --json` says of it: the counts and the newest few, never a path beyond the ones it changed.
-const sessionJson = (a) => ({ state: a.state, source: a.source, observed: a.observed, running: a.running, last: a.recent[0] ?? null, files: a.files.slice(0, 10), checks: a.checks.slice(0, 3) });
+const sessionJson = (a) => ({ state: a.state, source: a.source, observed: a.observed, running: a.running, last: a.recent[0] ?? null, files: a.files.slice(0, 10), checks: a.checks.slice(0, 3), agents: (a.agents ?? []).map(agentJson), agentsCut: a.agentsCut ?? 0, own: ownJson(a.own), invocations: (a.invocations ?? []).slice(0, 5), coverage: coverageJson(a.coverage) });
+
+// 0.2.2 (ADR 0044): which agent made what, as the host's own payload says -- the same fold every viewer draws.
+const agentJson = (g) => ({ agent: g.agent, type: g.type, lifecycle: g.lifecycle, startedAt: g.startedAt, endedAt: g.endedAt, observed: g.observed, running: g.running.length, last: g.recent[0] ?? null, by: g.by, run: g.run, attribution: "HOST_OBSERVED" });
+
+const ownJson = (o) => (o ? { observed: o.observed, running: o.running.length, last: o.recent[0] ?? null, attribution: o.attribution } : null);
+
+const coverageJson = (c) => (c ? { host: c.host, namesAgents: c.namesAgents ?? null, agents: c.agents ?? null, calls: c.calls ?? null } : null);
 
 // ---- reading one task: the SAME feed Orbit Control streams ----------------------------------------
 

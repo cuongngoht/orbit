@@ -10,6 +10,11 @@
 //   sessionViewRows(ctx, id) -> [row] | null  events · tests · changes, from this session; null for any other view
 //   sessionBarOf(ctx) -> row                  the counts, and the session's own indicator on the right
 //   sessionIndicator(activity) -> indicator   the shape indicator.mjs answers, of the TOOLS' state, never a task's
+//
+// WHICH AGENT (0.2.2, ADR 0044): where the host's payload names the subagent that made a call, NOW says how many agents
+// the hooks saw and what each is doing, and the events view draws one block per agent -- its own calls under it -- above
+// the session's own calls. A call no payload attributed to an agent is never drawn under one, and the coverage line says
+// what this host lets the hooks see.
 import { SESSION_KIND_WORDS, SESSION_SOURCE_WORDS, SESSION_WORDS, STATUS_WORDS } from "../words.mjs";
 import { clock, dim, joined, labelled, row, seg } from "./sections/parts.mjs";
 
@@ -45,6 +50,27 @@ const TASK_ROWS = [
   { when: () => true, segs: () => [dim("none — this is the session's tool activity, observed by the host's hooks")] },
 ];
 
+// One agent, said plainly: its type, the host's word for where it stands, what it was seen doing, and who launched it.
+const AGENT_WORDS = { STARTED: { word: "started", tone: "info" }, ENDED: { word: "ended", tone: "subtle" }, SEEN: { word: "seen", tone: "subtle" } };
+
+const shortId = (id) => String(id ?? "").slice(-8);
+
+const launcherWords = (g) => (g.by === "session" ? "launched by the session" : g.by ? `launched by ${shortId(g.by)}` : null);
+
+const agentSegs = (g) => joined([seg(g.type ?? "an agent", "label"), dim(shortId(g.agent)), seg(AGENT_WORDS[g.lifecycle]?.word ?? g.lifecycle, AGENT_WORDS[g.lifecycle]?.tone), dim(`${g.observed} call${g.observed === 1 ? "" : "s"}`), g.running.length ? seg(`${g.running.length} running`, "info") : null, launcherWords(g) ? dim(launcherWords(g)) : null, g.run ? dim(`run ${g.run}`) : null]);
+
+const agentsNow = (a) => (a?.agents?.length ? [seg(`${a.agents.length + (a.agentsCut ?? 0)} subagent${a.agents.length + (a.agentsCut ?? 0) === 1 ? "" : "s"}`), dim(" · "), ...agentSegs(a.agents.at(-1))] : null);
+
+// What this host lets the hooks see about WHICH agent made a call (src/work/track/coverage.mjs, handed in as data).
+const COVERAGE_ROWS = [
+  { when: (c) => !c, segs: () => null },
+  { when: (c) => c.namesAgents === true, segs: () => [dim("a subagent's calls are named by the host; the rest are the session's own")] },
+  { when: (c) => c.namesAgents === false, segs: () => [seg("this host names no subagent: a call cannot be attributed to one", "warning")] },
+  { when: () => true, segs: () => [seg("whether this host names a subagent's calls is not known: calls are unattributed", "warning")] },
+];
+
+const coverageSegs = (a) => COVERAGE_ROWS.find((r) => r.when(a?.coverage ?? null)).segs(a?.coverage ?? null);
+
 const NOW = [
   { label: "task", narrow: true, segs: (c) => TASK_ROWS.find((r) => r.when(c)).segs(c) },
   { label: "activity", narrow: true, segs: (c) => (has(c.a) ? null : [dim(SESSION_SOURCE_WORDS[c.a?.source ?? "ok"] ?? SESSION_SOURCE_WORDS.ok)]) },
@@ -53,6 +79,8 @@ const NOW = [
   { label: "files", narrow: false, segs: (c) => (c.a?.files.length ? [seg(listed(c.a.files, SESSION_NOW_ITEMS))] : null) },
   { label: "checks", narrow: false, segs: (c) => (c.a?.checks.length ? [seg(listed(c.a.checks.map(checkWords), SESSION_NOW_ITEMS))] : null) },
   { label: "observed", narrow: false, segs: (c) => (has(c.a) ? [dim(`${countWords(c.a)} · ${c.a.files.length} files changed · ${c.a.checks.length} checks · observed by the host's hooks`)] : null) },
+  { label: "agents", narrow: true, segs: (c) => agentsNow(c.a) },
+  { label: "coverage", narrow: false, segs: (c) => (has(c.a) ? coverageSegs(c.a) : null) },
 ];
 
 export function sessionNowRows(ctx, narrow = false) {
@@ -85,8 +113,21 @@ const empty = (a) => [row([dim(SESSION_SOURCE_WORDS[a?.source ?? "ok"] ?? SESSIO
 
 const CHECKS_SAY = "commands named like a build, test or lint, observed by the host's hooks: how each ended, never what a test proved";
 
+// An agent's block: its head, then its own calls -- running first, then the newest -- indented under it.
+const agentBlock = (g) => [row([seg("▸ "), ...agentSegs(g)], [dim("host-observed")]), ...g.running.map((e) => ({ ...runningRow(e), depth: 1 })), ...g.recent.map((e) => ({ ...eventRow(e), depth: 1 }))];
+
+const OWN_SAY = { HOST_OBSERVED: "THE SESSION'S OWN CALLS", UNATTRIBUTED: "UNATTRIBUTED · calls no payload named an agent for" };
+
+const ownBlock = (a) => [row([dim(OWN_SAY[a.own?.attribution] ?? OWN_SAY.UNATTRIBUTED)]), ...(a.own?.running ?? []).map(runningRow), ...(a.own?.recent ?? []).map(eventRow)];
+
+const agentsMore = (a) => (a.agentsCut ? [row([dim(`${a.agentsCut} earlier subagent(s) not shown: \`trace usage\` counts every one`)])] : []);
+
+const byAgentRows = (a) => [row([seg("AGENTS", "label"), dim(" · host-observed")]), ...agentsMore(a), ...a.agents.flatMap(agentBlock), ...ownBlock(a)];
+
+const eventsRows = (a) => (a.agents?.length ? byAgentRows(a) : [...a.running.map(runningRow), ...a.recent.map(eventRow)]);
+
 const VIEWS = {
-  events: (a) => (has(a) ? [...a.running.map(runningRow), ...a.recent.map(eventRow)] : empty(a)),
+  events: (a) => (has(a) ? eventsRows(a) : empty(a)),
   tests: (a) => (a?.checks.length || a?.running.length ? [row([dim(CHECKS_SAY)]), ...a.running.filter((e) => e.class !== "other").map(runningRow), ...a.checks.map(eventRow)] : [row([dim("no build, test or lint has run in this session yet")])]),
   changes: (a) => (a?.files.length ? a.files.map(fileRow) : [row([dim("no file changed in this session yet")])]),
 };

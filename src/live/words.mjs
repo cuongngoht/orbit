@@ -167,7 +167,7 @@ export const SESSION_SOURCE_WORDS = Object.freeze({
 });
 
 // What one observed tool call was, in a word: the working set's kinds (1.8.7).
-export const SESSION_KIND_WORDS = Object.freeze({ read: "read", edit: "edited", search: "searched", command: "ran", other: "used a tool" });
+export const SESSION_KIND_WORDS = Object.freeze({ read: "read", edit: "edited", search: "searched", command: "ran", skill: "started skill", agent: "launched agent", other: "used a tool" });
 
 // Where each piece of what a pane shows comes from (1.8.6): OBSERVED -- a trusted record or a check runner's own
 // output; REPORTED -- what a host or an agent said, a receipt that proves nothing; INFERRED -- what a viewer worked

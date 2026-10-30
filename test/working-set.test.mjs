@@ -47,6 +47,22 @@ test("a tool of no known kind that touched no path leaves nothing", () => {
   assert.equal(collect(ev({ tool: { kind: "other" } }), "/repo", AT), null);
 });
 
+// 0.2.2, ADR 0044: which agent a line is about, a subagent's start and stop, and a call that STARTED a skill or an agent
+// -- names and hashed ids only; an event a subagent raised never brings its prompt, its output or its last message.
+test("a line names the subagent that made it; a subagent's start and stop and a skill or agent started are kept, by name", () => {
+  const agent = { id: "claude:0123456789abcdef", type: "orbit:satellite-reader" };
+  assert.deepEqual(collect(ev({ tool: { kind: "read" }, paths: ["/repo/a.md"], agent }), "/repo", AT), { t: AT, ev: "post-tool", tool: "read", paths: ["a.md"], tokens: [], cmd: null, agent: agent.id, agentType: agent.type });
+  assert.deepEqual(collect({ event: "agent-start", agent }, "/repo", AT), { t: AT, ev: "agent-start", agent: agent.id, agentType: agent.type });
+  assert.deepEqual(collect({ event: "agent-end", agent }, "/repo", AT), { t: AT, ev: "agent-end", agent: agent.id, agentType: agent.type });
+  assert.equal(collect({ event: "agent-end" }, "/repo", AT), null, "a stop that names no agent is no line");
+  const launched = collect(ev({ tool: { name: "Agent", kind: "other" }, invokes: { kind: "agent", name: "orbit:satellite-reader" }, launched: "claude:fedcba9876543210", dispatched: "msn-0123456789ab/arn-2", prompt: "SECRET-SENTINEL" }), "/repo", AT);
+  assert.deepEqual([launched.invokes, launched.launched, launched.run, launched.cmd], [{ kind: "agent", name: "orbit:satellite-reader" }, "claude:fedcba9876543210", "msn-0123456789ab/arn-2", null]);
+  assert.deepEqual(collect(ev({ tool: { name: "Skill", kind: "other" }, invokes: { kind: "skill", name: "orbit:orbit-help" }, agent }), "/repo", AT).invokes, { kind: "skill", name: "orbit:orbit-help" });
+  assert.doesNotMatch(JSON.stringify(launched), /SECRET-SENTINEL/);
+  assert.equal(collect(ev({ event: "pre-tool", tool: { name: "Skill", kind: "other" }, invokes: { kind: "skill", name: "x" } }), "/repo", AT), null, "only a FINISHED call is kept: a skill has no end to pair a start with");
+  assert.equal(fold([collect({ event: "agent-start", agent }, "/repo", AT), launched]).events, 2, "the engineering fold counts them and learns nothing from them");
+});
+
 test("the fold knows what changed since the last observation, and whether a check passed AFTER the last edit", () => {
   const lines = [
     { ev: "post-tool", tool: "edit", paths: ["src/a/x.mjs"], tokens: [] },

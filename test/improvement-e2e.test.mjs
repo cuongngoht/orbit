@@ -90,6 +90,7 @@ test("a second independent session qualifies it; the gates hold; the factory's o
   const { v1, id } = await toEvaluating(w);
   const cand = modelOf(w.store.read(id)).candidate.pin;
   w.state.session = "sess-B";
+  w.w.tick(24 * 60);
   const steps = await advance(w.imp, id);
   const m = modelOf(w.store.read(id));
   assert.equal(m.evaluations.length, 2);
@@ -107,6 +108,7 @@ test("later runs that hold in two sessions verify the improvement, and the campa
   const w = improvementWorld(t);
   const { id } = await toEvaluating(w);
   w.state.session = "sess-B";
+  w.w.tick(24 * 60);
   await advance(w.imp, id);
   w.w.tick(24 * 60);
   for (const n of [1, 2]) await coordinated(w, `After the change (${n})`);

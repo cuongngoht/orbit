@@ -28,15 +28,15 @@ const satRun = (n, rolePin, outcome, { session = "s1", level = outcome === "succ
 function world(t, opts = {}) {
   const root = mkdtempSync(join(tmpdir(), "orbit-improve-satellite-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  const io = realIo({ host: "laptop-a" });
   const clock = { at: Date.parse("2026-10-29T00:00:00.000Z") };
   const now = () => new Date((clock.at += 1000)).toISOString();
+  const io = realIo({ host: "laptop-a", now });
   const sat = improvementPorts({ io, storeRoot: root, now });
   const parent = writeDefinition(io, roomsOf(root), ROLE);
   const state = { session: "sess-A", records: [satRun(1, parent.pin, "insufficient"), satRun(2, parent.pin, "insufficient"), satRun(3, parent.pin, "insufficient", { session: "s2" })], missions: {} };
   const store = createImprovement(root, io);
   const ports = { store, ctx: { store, door: "improvement", get session() { return state.session; }, host: "laptop-a", pid: 1, now }, values: () => effectiveOf([{ by: "machine", content: { improvement: opts.improvement ?? {} } }]).values, now, nowMs: () => clock.at, records: () => state.records, history: () => state.records, inputsOf: () => [], subjects: { satellite: sat.subject }, evaluation: null, missions: { read: (msn) => state.missions[msn] ?? null, runs: (msn) => state.missions[msn]?.runs ?? [] }, liveness: () => false, learn: () => ({ kept: false, because: "not under test" }), trace: () => null };
-  return { root, io, ports, state, parent, sat, store };
+  return { root, io, ports, state, parent, sat, store, clock };
 }
 
 const mission = (id, runs) => ({ goalDigest: "g1", runs: runs.map((r) => ({ ...r, mission: id })) });
@@ -59,6 +59,7 @@ test("a role whose runs keep ending without proof is ONE opportunity, a successo
   assert.match(open.at(-1).how, /improve\.mjs link/);
   for (const [session, [b, c]] of [["sess-A", ["msn-00000000000b", "msn-00000000000c"]], ["sess-B", ["msn-00000000000d", "msn-00000000000e"]]]) {
     w.state.session = session;
+    if (session === "sess-B") w.clock.at += 24 * 3600 * 1000;
     if (session === "sess-B") await advance(w.ports, id);
     w.state.missions[b] = mission(b, [satRun(4, w.parent.pin, "insufficient"), satRun(5, w.parent.pin, "insufficient")]);
     w.state.missions[c] = mission(c, [satRun(6, cand, "succeeded"), satRun(7, cand, "succeeded")]);

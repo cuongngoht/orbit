@@ -60,16 +60,22 @@ test("a verdict, a qualification or a promotion written on a terminal's own word
   assert.equal(w.factory.current(SKILL_ID).pin, v1.pin);
 });
 
-test("an evaluation asked again in the same session, or with no session on the same machine and day, is never a second vote", async (t) => {
+test("an evaluation asked again on the same machine and day is never a second vote, whatever session mark the shell sets -- another day is", async (t) => {
   const w = improvementWorld(t);
   const { v1, id } = await evaluatedOnce(w);
   assert.equal(modelIn(w, id).evaluations.length, 1);
   const again = await advance(w.imp, id);
   assert.deepEqual([modelIn(w, id).evaluations.length, again.at(-1).needs], [1, "session"], "the same session asked again starts nothing");
+  w.state.session = "sess-set-in-the-shell";
+  const forged = await advance(w.imp, id);
+  assert.deepEqual([modelIn(w, id).evaluations.length, forged.at(-1).needs], [1, "session"], "a session mark the asking shell chose is not a second session");
   w.state.session = null;
   const unnamed = await advance(w.imp, id);
-  assert.deepEqual([modelIn(w, id).evaluations.length, unnamed.at(-1).needs], [1, "session"], "no session on this machine today is the session that already evaluated");
+  assert.deepEqual([modelIn(w, id).evaluations.length, unnamed.at(-1).needs], [1, "session"], "nor is no session on this machine today");
   const m = modelIn(w, id);
   assert.deepEqual([phaseOf(m), m.qualified], ["EVALUATING", null], "one session's BETTER stays an observation");
   assert.equal(w.factory.current(SKILL_ID).pin, v1.pin);
+  w.w.tick(24 * 60);
+  await advance(w.imp, id);
+  assert.equal(modelIn(w, id).evaluations.length, 2, "another UTC day is another session, and only then does a second evaluation run");
 });

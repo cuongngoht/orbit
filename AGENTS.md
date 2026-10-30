@@ -365,7 +365,8 @@ place real adapters are bound to real config.
 - **A definition improves only on independent evidence, and only through its owner's doors (0.3.0, ADR 0045).**
   `src/improvement/` keeps a journal of DECISIONS per campaign and nothing an owner keeps. A signal is an owner's own
   word on a run (`RUN_SIGNALS`, `SATELLITE_SIGNALS`), only a `definition` category may lead to a candidate, and
-  independence is the session (`sessionKeys`), never the run. A successor is drafted by the skill factory
+  independence is one machine on one UTC day (learn's own rule, `src/memory/session.mjs`), never a session mark a
+  shell can set and never the run. A successor is drafted by the skill factory
   (`scaffoldSuccessor`) or proposed to Satellite, written by the host, and staged as a `candidate` nobody is offered;
   `SAFETY` refuses one that widens a tool, weakens an acceptance rule (`oracle.mjs`), changes what it provides or carries
   anything executable, before anything runs. An evaluation runs the version it would replace and the candidate on the

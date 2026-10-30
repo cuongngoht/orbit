@@ -177,14 +177,14 @@ const here = (ports) => ({ session: ports.ctx.session ?? null, host: ports.ctx.h
 
 const sessionOf = (e) => ({ session: e.session ?? null, host: e.host ?? null, at: e.at });
 
-// This session has evaluated already when one more evaluation from it would add no independent session to the ones kept:
-// the same host session, or no host session on a machine and day that one already counts for -- so asking again,
-// with or without a session, is never a second vote.
+// Here has evaluated already when one more evaluation from here would add no independent session to the ones kept --
+// the same machine on the same UTC day, whatever session mark the asking shell carries -- so asking again is never a
+// second vote.
 const evaluatedHere = (ports, c) => ((kept) => kept.length > 0 && independent([...kept, here(ports)]) === independent(kept))(validEvaluations(c.m).filter((e) => e.settled.verdict !== "BLOCKED").map(sessionOf));
 
 const openCount = (ports) => ports.store.list().map((id) => modelOf(ports.store.read(id) ?? [])).filter((m) => !m.ended && openEvaluation(m)).length;
 
-const HOW_EVALUATE = (c) => `from another session (another day or another host session): node <engine>/cli/improve.mjs evaluate ${c.id}`;
+const HOW_EVALUATE = (c) => `on another UTC day, or from another machine: node <engine>/cli/improve.mjs evaluate ${c.id}`;
 
 function anotherOrEnd(ports, c, a, outcome) {
   if (c.m.evaluations.length >= improvementOf(c.values).maxEvaluationAttempts) return ended(ports, c, outcome, `${c.m.evaluations.length} evaluation(s), the most a person allows — ${a.because}`);

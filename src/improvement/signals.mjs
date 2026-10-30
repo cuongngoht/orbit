@@ -8,7 +8,7 @@
 //
 //   signalOf(record) -> { signal, steps }    the first row of its table that holds
 //   groupsOf(records) -> [group]             one per (subject, pin, signal, steps)
-import { dayOf } from "../memory/session.mjs";
+import { sessionId } from "../memory/session.mjs";
 import { signalRow } from "./vocab.mjs";
 
 const required = (r) => (r.steps ?? []).filter((s) => s.required !== false);
@@ -54,17 +54,12 @@ export const signalOf = (r) => (r.kind === "satellite" ? satelliteSignal(r) : sk
 
 // ---- independence -----------------------------------------------------------------------------------------------
 
-// The ONE rule for how many INDEPENDENT sessions a set of runs came from (src/memory/session.mjs's): two real host
-// sessions are two; a run with no host session is its machine's UTC day, and the same session as a real one on that
-// machine and day. A retry inside one session is never a second confirmation.
-const dayKey = (r) => `${r.host ?? "?"}@${dayOf(r)}`;
-
-export function sessionKeys(runs) {
-  const real = runs.filter((r) => r.session);
-  const days = new Set(real.map(dayKey));
-  const synthetic = runs.filter((r) => !r.session).map(dayKey).filter((d) => !days.has(d));
-  return [...new Set([...real.map((r) => `r:${r.session}`), ...synthetic.map((d) => `s:${d}`)])];
-}
+// The ONE rule for how many INDEPENDENT sessions a set of runs came from, and it is learn's (src/memory/session.mjs
+// `sessionId`): one machine on one UTC day. A host's session MARK is never counted. It reaches a command as a variable
+// its shell can set, so two "sessions" could be cast in a minute, and a promotion would rest on a vote anybody can
+// repeat. The machine's name and the clock are not the agent's to choose. Two people on one machine on one day count
+// once, which errs toward asking again; a retry inside one sitting is never a second confirmation.
+export const sessionKeys = (runs) => [...new Set(runs.map(sessionId))];
 
 export const independent = (runs) => sessionKeys(runs).length;
 

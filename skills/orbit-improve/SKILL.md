@@ -84,8 +84,9 @@ It steps the campaign until it NEEDS somebody. What each NEEDS means:
   version, then link each: `node ${CLAUDE_PLUGIN_ROOT}/cli/improve.mjs link imp-… --mission=<msn-…> --side=baseline` (and
   `--side=candidate`). Each run is read back off its mission — never off a report.
 
-- **session — evaluate again, from another session.** One session's BETTER is an observation. From a later session
-  (another day, or another host session): `node ${CLAUDE_PLUGIN_ROOT}/cli/improve.mjs evaluate imp-…`.
+- **session — evaluate again, on another day or another machine.** One session's BETTER is an observation, and a
+  session is one machine on one UTC day: a new shell, a new session id or `evaluate` asked again the same day on the
+  same machine adds nothing. Later: `node ${CLAUDE_PLUGIN_ROOT}/cli/improve.mjs evaluate imp-…`.
 
 - **person — Orbit Control.** A qualified candidate waits there when a person turned automatic promotion off; a
   campaign blocked by a person's switch waits there too. Say so, with the campaign id, and stop.

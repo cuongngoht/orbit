@@ -25,6 +25,7 @@ async function detected(w, opts) {
 async function evaluatedTwice(w, id) {
   await advance(w.imp, id);
   w.state.session = "sess-B";
+  w.w.tick(24 * 60);
   return advance(w.imp, id);
 }
 
@@ -116,6 +117,7 @@ test("a person's switch always wins: a disabled playbook blocks promotion until 
   await advance(w.imp, id);
   w.factory.status(SKILL_ID, "disabled");
   w.state.session = "sess-B";
+  w.w.tick(24 * 60);
   await advance(w.imp, id);
   const blocked = modelIn(w, id);
   assert.equal(blocked.blocked?.stop, "SUBJECT_WITHHELD", "nothing is evaluated behind a person's switch");
@@ -159,6 +161,7 @@ test("an evaluation a gone process left open is closed as interrupted and resume
   assert.equal(ev.settled?.verdict, "BETTER");
   const recorded = ev.runs.length;
   w.state.session = "sess-B";
+  w.w.tick(24 * 60);
   w.state.pid = 777;
   const evTask = w.imp.evaluation.create({ objective: "a gone process's evaluation", actions: 50 });
   w.imp.evaluation.apply(evTask, "act-start", { type: "improvement.evaluate", tool: "skill-run", label: "left open", mutates: false });

@@ -50,9 +50,9 @@ decisions in the machine store; every truth stays with its owner. All contract c
   `improvement.promoted` and `improvement.rolled_back`.
 - **Shared binding.** `skills/orbit-help/invoke.mjs` is the one binding of a declared playbook's door, which
   `cli/automation.mjs` and `cli/improve.mjs` share.
-- **Asking again is never a second vote.** A session evaluates only when its evaluation would add an independent
-  session; the same session asked again, or a call with no session on a machine and day that already counts, starts
-  nothing. A successor whose text tells its reader to ignore its rules is refused by the factory's own injection rule,
+- **Independence is one machine on one UTC day,** learn's own rule (`src/memory/session.mjs`), never a session mark a
+  shell can set. Another evaluation runs only when it would add an independent session: asked again on the same
+  machine and day, under any session mark or none, it starts nothing. A successor whose text tells its reader to ignore its rules is refused by the factory's own injection rule,
   and no terminal writes a verdict, a qualification or a promotion (`test/improvement-manipulation.test.mjs`).
 - **Tests.** `test/learning-default.test.mjs` waits for the drained session's trail event as well as its facts: the
   drain keeps the facts first, so a busy machine could read the trail in between.

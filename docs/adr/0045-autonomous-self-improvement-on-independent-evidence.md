@@ -78,18 +78,19 @@ because an evaluation runs only from a session (`improve step`, `resume` or `eva
   - an environment that blocked a run is a confounder;
   - a person's approval or switch is a person's;
   - extra retries are a provider's cost.
-- **Independence is the session, not the run.** `sessionKeys` counts two host sessions as two. Retries inside one
-  session count as one. A run with no host session counts as its machine's UTC day, so it can never pass as a second
-  session beside a real one. Detection needs `minRuns` runs in `minSessions` independent sessions, and a problem that
-  more sessions contradict than show is not one.
+- **Independence is one machine on one UTC day, never a session mark.** This is learn's own definition
+  (`src/memory/session.mjs`), and `sessionKeys` uses it. A host's session mark reaches a command as a variable its
+  shell can set, so it is never counted: two marks on one machine and one day are one session. The machine's name and
+  the clock are not the agent's to choose. Retries inside one sitting count once. Detection needs `minRuns` runs in
+  `minSessions` independent sessions, and a problem that more sessions contradict than show is not one.
 - **Only the owners' records judge a run.** An evaluation run's outcome is read back off the evaluation task's own
   receipts, which the engine bound as it made each call (RUNTIME_BOUND). A role's run is read back off its mission's
   conclusion. A host or an agent that says "better" adds nothing.
 - **One evaluation is an observation.** `AGGREGATE` calls a candidate BETTER only when `minSessions` independent
   sessions found it better and no evaluation said otherwise. One WORSE is enough to reject it.
-- **Asking again is never a second vote.** A session evaluates only when its evaluation would add an independent
-  session to the ones kept. The same host session asked again, or a call with no session on a machine and day that
-  already counts, starts nothing (`evaluatedHere`).
+- **Asking again is never a second vote.** Another evaluation runs only when it would add an independent session to
+  the ones kept. Asked again on the same machine and day, under any session mark or none, it starts nothing
+  (`evaluatedHere`).
 
 ### Generation stays inside the existing factories, and stays instruction-only
 
@@ -313,6 +314,10 @@ names one, a selection outranks only versions published before it, and a revoked
 - **Cost.** Tokens and money are unknown, never estimated, because no owner records them.
 - **Isolation.** The only isolation proven is `gated`. A person who requires `sandbox` isolation blocks evaluations until
   an evaluator proves one.
+- **What independence trusts.** The machine's name and the clock. An agent that fakes its process's clock, or runs on a
+  second machine, can still produce a second session. A person who wants a person's word on every promotion turns
+  `improvement.promote` off, and a qualified candidate then waits in Orbit Control. Two people on one machine on one
+  day count as one session, which errs toward asking again.
 - **What protects a campaign's journal.** It is protected by its door, like every journal in the machine store, and not
   by a signature. The gates judge the runs each evaluation read off its owner when it ran. A line written into the file
   by hand is outside what any Orbit journal can tell apart from its own. A playbook or role changed by hand is different:

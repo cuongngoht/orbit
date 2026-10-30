@@ -699,7 +699,7 @@ src/improvement/  (0.3.0, ADR 0045) AUTONOMOUS SELF-IMPROVEMENT of a project's r
                <storeRoot>/improvement/: campaigns/<imp>/journal.jsonl, opportunities/<opp>.json, state/analysed.json;
                created on first write) · model.mjs (the ONE fold, PHASES derived, last row always matches) · policy.mjs
                (`improvement.*` read from the automation settings) · fingerprint.mjs · signals.mjs (owners' run records →
-               signals; independence is `sessionKeys`) · detect.mjs (ELIGIBILITY) · diagnose.mjs (DIAGNOSIS) · oracle.mjs
+               signals; independence is one machine on one UTC day, learn's own rule, never a session mark) · detect.mjs (ELIGIBILITY) · diagnose.mjs (DIAGNOSIS) · oracle.mjs
                (a workflow's or role's acceptance rules, and what WEAKENS them) · safety.mjs (SAFETY, before any
                evaluation) · evaluation.mjs (COMPARE one evaluation, AGGREGATE many, metrics with denominators, UNKNOWN) ·
                gates.mjs (PROMOTION_GATES, each with its `onFail`) · monitor.mjs (MONITOR after a promotion) ·

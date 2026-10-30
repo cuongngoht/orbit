@@ -73,7 +73,7 @@ export const AGGREGATE = [
   { verdict: "BETTER", when: (a) => a.sessions("BETTER") >= a.min && a.of("EQUIVALENT").length === 0, because: (a) => `better in ${a.sessions("BETTER")} independent session(s), and no evaluation said otherwise` },
   { verdict: "EQUIVALENT", when: (a) => a.sessions("EQUIVALENT") >= a.min && a.of("BETTER").length === 0, because: (a) => `no measurable difference in ${a.sessions("EQUIVALENT")} independent session(s)` },
   { verdict: "BLOCKED", when: (a) => a.all.length > 0 && a.all.every((e) => e.settled.verdict === "BLOCKED"), because: () => "every evaluation was stopped by the environment or a person" },
-  { verdict: "INCONCLUSIVE", when: () => true, because: (a) => `${a.sessions("BETTER")} independent session(s) found it better and ${a.min} are needed, with none saying otherwise — another session's evaluation decides` },
+  { verdict: "INCONCLUSIVE", when: () => true, because: (a) => `${a.sessions("BETTER")} independent session(s) found it better and ${a.min} are needed, with none saying otherwise — an evaluation on another UTC day or another machine decides` },
 ];
 
 export const aggregateOf = (evaluations, values) => ((a) => ((row) => ({ verdict: row.verdict, because: row.because(a), sessions: a.sessions(row.verdict === "INCONCLUSIVE" ? "BETTER" : row.verdict), evaluations: a.all.length }))(AGGREGATE.find((r) => r.when(a))))(aggregateFacts(evaluations, values));

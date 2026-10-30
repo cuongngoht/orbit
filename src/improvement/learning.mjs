@@ -10,7 +10,7 @@
 //              sessions its opportunity came from
 //
 //   findingOf(model) -> a learn finding | null      (a campaign that has not ended teaches nothing yet)
-import { independent } from "./signals.mjs";
+import { independent, sessionKeys } from "./signals.mjs";
 import { causeRow, outcomeRow } from "./vocab.mjs";
 
 const steps = (m) => (m.meta.signature?.length ? m.meta.signature.join(", ") : "its steps");
@@ -21,7 +21,7 @@ const regressionSessions = (m) => m.regression?.sessions ?? 0;
 
 const evaluated = (m) => m.evaluations.some((e) => e.settled && ["BETTER", "WORSE", "EQUIVALENT"].includes(e.settled.verdict));
 
-const rowsOf = (m) => m.evaluations.filter((e) => e.settled).map((e) => ({ session: e.session ?? `${e.host ?? "?"}@${String(e.at).slice(0, 10)}`, at: e.at, verdict: e.settled.verdict, fe_commit: null }));
+const rowsOf = (m) => m.evaluations.filter((e) => e.settled).map((e) => ({ session: sessionKeys([e])[0], at: e.at, verdict: e.settled.verdict, fe_commit: null }));
 
 const base = (m) => ({ kind: "saw", family: "improvement", topic: "orbit-improvement", about: m.meta.subjectId, notes: 0, evidenceNotes: [], hosts: new Set(m.evaluations.map((e) => e.host ?? "?")).size || 1, firstSeen: m.meta.at ?? null, confirmed: m.ended?.at ?? m.lastAt ?? null });
 

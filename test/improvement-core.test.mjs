@@ -54,12 +54,12 @@ test("a run's signal is its owner's word: a contract the definition declares is 
   assert.ok(SIGNALS.every((s) => s.healthy || s.category), "every problem signal has a category");
 });
 
-test("independence: retries in one session are one session; two host sessions are two; a run with no host session is its machine's UTC day", () => {
+test("independence is one machine on one UTC day, as learn counts it: a session mark a shell can set is never a second session", () => {
   assert.equal(independent([run(1), run(2), run(3)]), 1, "three runs one sitting");
-  assert.equal(independent([run(1), run(2, { day: 2 })]), 2);
-  assert.equal(independent([run(1, { session: "a" }), run(2, { session: "b" })]), 2);
-  assert.equal(independent([run(1, { session: "a" }), run(2)]), 1, "a real session and the synthetic one of its machine and day are the same sitting");
-  assert.equal(independent([run(1, { host: "laptop-a" }), run(2, { host: "laptop-b" })]), 2);
+  assert.equal(independent([run(1), run(2, { day: 2 })]), 2, "another UTC day");
+  assert.equal(independent([run(1, { host: "laptop-a" }), run(2, { host: "laptop-b" })]), 2, "another machine");
+  assert.equal(independent([run(1, { session: "a" }), run(2, { session: "b" })]), 1, "two session marks on one machine and day are one sitting: the asking shell chooses its mark");
+  assert.equal(independent([run(1, { session: "a" }), run(2)]), 1);
 });
 
 // ---- detection --------------------------------------------------------------------------------------------------
@@ -179,13 +179,14 @@ test("every ratio carries its numerator and denominator, and what is not observa
 });
 
 test("together: one WORSE rejects, BETTER needs independent sessions with none saying otherwise", () => {
-  const settled = (verdict, session) => ({ ...ev([], { session }), settled: { verdict } });
-  assert.equal(aggregateOf([settled("BETTER", "a")], values()).verdict, "INCONCLUSIVE");
-  assert.equal(aggregateOf([settled("BETTER", "a"), settled("BETTER", "a")], values()).verdict, "INCONCLUSIVE", "twice in one session is once");
-  assert.equal(aggregateOf([settled("BETTER", "a"), settled("BETTER", "b")], values()).verdict, "BETTER");
-  assert.equal(aggregateOf([settled("BETTER", "a"), settled("BETTER", "b"), settled("WORSE", "c")], values()).verdict, "WORSE");
-  assert.equal(aggregateOf([settled("BETTER", "a"), settled("EQUIVALENT", "b")], values()).verdict, "INCONCLUSIVE", "mixed evidence decides nothing");
-  assert.equal(aggregateOf([settled("BETTER", "a"), settled("BETTER", "b")], values({ minSessions: 3 })).verdict, "INCONCLUSIVE");
+  const settled = (verdict, day, session = "s") => ({ ...ev([], { session, at: `2026-10-1${day}T00:00:00.000Z` }), settled: { verdict } });
+  assert.equal(aggregateOf([settled("BETTER", 1)], values()).verdict, "INCONCLUSIVE");
+  assert.equal(aggregateOf([settled("BETTER", 1), settled("BETTER", 1)], values()).verdict, "INCONCLUSIVE", "twice in one session is once");
+  assert.equal(aggregateOf([settled("BETTER", 1, "a"), settled("BETTER", 1, "b")], values()).verdict, "INCONCLUSIVE", "two session marks one day are one vote");
+  assert.equal(aggregateOf([settled("BETTER", 1), settled("BETTER", 2)], values()).verdict, "BETTER");
+  assert.equal(aggregateOf([settled("BETTER", 1), settled("BETTER", 2), settled("WORSE", 3)], values()).verdict, "WORSE");
+  assert.equal(aggregateOf([settled("BETTER", 1), settled("EQUIVALENT", 2)], values()).verdict, "INCONCLUSIVE", "mixed evidence decides nothing");
+  assert.equal(aggregateOf([settled("BETTER", 1), settled("BETTER", 2)], values({ minSessions: 3 })).verdict, "INCONCLUSIVE");
 });
 
 // ---- the promotion gates ----------------------------------------------------------------------------------------

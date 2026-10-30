@@ -416,7 +416,8 @@ independent evidence ([ADR 0045](docs/adr/0045-autonomous-self-improvement-on-in
 3. **Validate.** A candidate that widens its tools, drops a required step, loosens a success rule or carries anything
    executable is refused before it runs.
 4. **Evaluate.** The candidate and the version it would replace run the same frozen inputs side by side, through the
-   same gates as ordinary work. It is better only when two independent sessions say so and none says otherwise.
+   same gates as ordinary work. It is better only when two independent sessions, meaning two UTC days or two
+   machines, say so and none says otherwise.
 5. **Promote.** Twelve gates, then the owner's own door chooses it for new work. A pin a task already holds never
    moves, and the replaced version is kept whole.
 6. **Monitor and roll back.** Later runs are watched. A regression in independent sessions puts the replaced version

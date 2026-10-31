@@ -22,6 +22,9 @@ import { apply } from "../src/task/ops.mjs";
 import { createTasks } from "../src/task/store.mjs";
 import { dockerDouble, harnessOf, inspectedAs, NEVER, ranAs, runOf, TASK, VIEW, worldOf } from "./benchmark-double.mjs";
 import { sealed } from "./home.mjs";
+import { takeTurn } from "./benchmark-turn.mjs";
+
+await takeTurn();
 
 const ROOT = join(import.meta.dirname, "..");
 

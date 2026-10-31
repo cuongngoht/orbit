@@ -25,6 +25,9 @@ import { casesOf, suitesIn } from "../benchmark/lib/core/suites.mjs";
 import { sha, shaBytes } from "../src/hash.mjs";
 import { closureOf, ownTest, probed, ROOT } from "./benchmark-double.mjs";
 import { sealed } from "./home.mjs";
+import { takeTurn } from "./benchmark-turn.mjs";
+
+await takeTurn();
 
 // Each suite loaded on its own: one that does not load is that suite's failing test, never every suite's.
 const loaded = (p) => {

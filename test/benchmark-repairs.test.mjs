@@ -22,6 +22,9 @@ import { SCOPE } from "../benchmark/lib/source/candidate.mjs";
 import { candidateOfDefinition, variantEntriesOf } from "../benchmark/lib/source/repairs.mjs";
 import { closureOf, dockerDouble, harnessOf, NEVER, ownTest, probed, ROOT, worldOf } from "./benchmark-double.mjs";
 import { sealed } from "./home.mjs";
+import { takeTurn } from "./benchmark-turn.mjs";
+
+await takeTurn();
 
 // ---- a repository of its own: the whole judge path, gates and all --------------------------------------------------------
 

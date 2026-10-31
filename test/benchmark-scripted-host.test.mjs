@@ -23,6 +23,9 @@ import { shaBytes } from "../src/hash.mjs";
 import { createProcess } from "../src/process/index.mjs";
 import { GIT_ENV, ROOT } from "./benchmark-double.mjs";
 import { sealed } from "./home.mjs";
+import { takeTurn } from "./benchmark-turn.mjs";
+
+await takeTurn();
 
 const npmHere = () => createProcess({ timeoutMs: 30000 }).run("npm", ["--version"], { env: sealed() }).ok;
 

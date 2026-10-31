@@ -27,7 +27,7 @@ const intervenedOf = (r, e) => (e?.class === "HUMAN_APPROVAL_REQUIRED" ? true : 
 export function runFacts({ manifest: m, ending: e, report: r }) {
   const outcome = e?.outcome ?? null;
   const kind = m.benchmark?.kind ?? "source";
-  return { run: m.run, at: m.at ?? null, kind, case: m.benchmark?.case ?? null, suite: m.benchmark?.suite ?? null, caseDigest: m.benchmark?.digest ?? null, variant: m.benchmark?.variant ?? null, subject: m.subject?.digest ?? null, commit: m.source?.commit ?? null, model: m.config?.model ?? null, basis: r?.hostBasis ?? basisOf(m), outcome, excluded: !outcome ? "unfinished" : EXCLUDED[outcome] ?? null, verified: (VERIFIED[kind] ?? []).includes(outcome), autonomousAxis: r?.axes?.autonomous?.value ?? null, rounds: (r?.rounds ?? []).length, regressedRounds: (r?.rounds ?? []).filter((x) => (x.decided?.regressed ?? []).length > 0).length, evaluatedRounds: (r?.rounds ?? []).filter((x) => x.decided).length, durationMs: durationOf(m, e), costUsd: typeof r?.totals?.costUsd === "number" ? r.totals.costUsd : null, intervened: intervenedOf(r, e), judged: r?.judged ?? null, task: kind === "qa" || m.config?.repair === true };
+  return { run: m.run, at: m.at ?? null, kind, case: m.benchmark?.case ?? null, suite: m.benchmark?.suite ?? null, caseDigest: m.benchmark?.digest ?? null, variant: m.benchmark?.variant ?? null, subject: m.subject?.digest ?? null, commit: m.source?.commit ?? null, model: m.config?.model ?? null, host: m.config?.host ?? null, basis: r?.hostBasis ?? basisOf(m), outcome, excluded: !outcome ? "unfinished" : EXCLUDED[outcome] ?? null, verified: (VERIFIED[kind] ?? []).includes(outcome), autonomousAxis: r?.axes?.autonomous?.value ?? null, rounds: (r?.rounds ?? []).length, regressedRounds: (r?.rounds ?? []).filter((x) => (x.decided?.regressed ?? []).length > 0).length, evaluatedRounds: (r?.rounds ?? []).filter((x) => x.decided).length, durationMs: durationOf(m, e), costUsd: typeof r?.totals?.costUsd === "number" ? r.totals.costUsd : null, intervened: intervenedOf(r, e), judged: r?.judged ?? null, task: kind === "qa" || m.config?.repair === true };
 }
 
 // ---- the rows -------------------------------------------------------------------------------------------------------------
@@ -70,14 +70,15 @@ const basisMetrics = (fs) => Object.fromEntries(METRICS.map((m) => [m.id, { ...v
 
 // ---- reproducibility, the verifier's own controls, and history by revision -------------------------------------------------
 
-const groupKey = (f) => [f.case, f.caseDigest, f.variant, f.subject, f.basis, f.model ?? "-"].join("\u0000");
+// Who carried a run is part of what it is: two scripted controls of one case are two hosts, as two models are.
+const groupKey = (f) => [f.case, f.caseDigest, f.variant, f.subject, f.basis, f.host ?? "-", f.model ?? "-"].join("\u0000");
 
 const groupsOf = (fs) => Object.values(counted(fs).reduce((m, f) => ({ ...m, [groupKey(f)]: [...(m[groupKey(f)] ?? []), f] }), {})).filter((g) => g.length > 1);
 
 export function reproducibilityOf(fs) {
   const groups = groupsOf(fs);
   const stable = groups.filter((g) => new Set(g.map((f) => f.outcome)).size === 1);
-  return { ...valued({ numerator: stable.length, denominator: groups.length }), says: "groups of runs on one case, digest, variant, subject, basis and model whose outcomes agree / groups with two valid runs or more", unstable: groups.filter((g) => !stable.includes(g)).map((g) => ({ case: g[0].case, variant: g[0].variant, basis: g[0].basis, outcomes: countBy(g.map((f) => f.outcome)), runs: g.map((f) => f.run) })) };
+  return { ...valued({ numerator: stable.length, denominator: groups.length }), says: "groups of runs on one case, digest, variant, subject, basis, host and model whose outcomes agree / groups with two valid runs or more", unstable: groups.filter((g) => !stable.includes(g)).map((g) => ({ case: g[0].case, variant: g[0].variant, basis: g[0].basis, outcomes: countBy(g.map((f) => f.outcome)), runs: g.map((f) => f.run) })) };
 }
 
 // The verifier's own controls, from every `controls` room: how many earned what they must.

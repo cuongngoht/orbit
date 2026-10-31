@@ -76,6 +76,12 @@ test("runs that should agree and do not are named as unstable, never averaged in
   assert.deepEqual(m.reproducibility.unstable.map((u) => [u.case, u.outcomes]), [["ORBIT-SRC-002", { REPAIRED_VERIFIED: 1, NO_PROGRESS: 1 }]]);
 });
 
+test("two scripted controls of one case are two hosts: an idle control's NO_PROGRESS never makes a reference control's PASS unstable", () => {
+  const ctl = (host, outcome) => run({ case: "ORBIT-E2E-001", kind: "engineering", host, basis: "scripted", outcome, rounds: [round()] });
+  const m = metricsOf([ctl("scripted:reference", "PASS"), ctl("scripted:reference", "PASS"), ctl("scripted:idle", "NO_PROGRESS"), ctl("scripted:idle", "NO_PROGRESS")]);
+  assert.deepEqual([m.reproducibility.numerator, m.reproducibility.denominator, m.reproducibility.unstable], [2, 2, []]);
+});
+
 test("the facts of a run are its kept records: an older report with no host basis is read off its manifest", () => {
   assert.equal(runFacts(run({ host: "scripted:x", basis: undefined, outcome: "REPAIRED_VERIFIED" })).basis, "scripted");
   assert.equal(runFacts(run({ kind: "qa", host: "reference", repair: false, basis: undefined })).basis, "scripted", "a QA control's scripted host");

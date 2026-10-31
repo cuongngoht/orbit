@@ -61,6 +61,38 @@ changing no engine contract, so no version moves.
     an idle host and a false-alarm host must FAIL.
   - A QA worker image, built from the official Playwright image pinned by digest, needs no OS package mirror or
     browser CDN. The sentinel also looks for the sandbox's per-run tokens.
+- **The self-healing loop, proved without a model, and goals measured end to end (ADR 0048).**
+  - **Repair controls.** A source case may declare `repairs[]`: candidate definitions (exact edits, files brought,
+    files deleted) carried straight to the judge, or through Orbit's engine by a scripted host that drives the round's
+    one engineering task with no model, no network and no credential. A reference repair must be verified; a test
+    deleted, weakened or skipped, the harness or a check touched, a process or a new import smuggled in, a path out of
+    scope, a missing or non-discriminating regression test, a partial fix, a candidate that hangs and a "success" that
+    only prints must each be refused by name; an idle host must make no progress.
+  - **Failure classes.** Every cause carries one class of a fixed taxonomy (ORBIT_SOURCE_DEFECT, BENCHMARK_DEFECT,
+    VERIFIER_DEFECT, ENVIRONMENT_BLOCKED, PROVIDER_FAILURE, INFRASTRUCTURE_FAILURE, NON_DETERMINISTIC,
+    INSUFFICIENT_EVIDENCE, BUDGET_EXHAUSTED, HUMAN_APPROVAL_REQUIRED, UNKNOWN). A candidate that runs out of time is
+    rejected as its own failure, never read as an environment that blocked; `controls` refuses a spec that fails its
+    own self-test.
+  - **NEXT** gains WAITING_FOR_PERSON (a benchmark never approves), REPEATED_CANDIDATE and CUT_SHORT. Each round keeps
+    what it regressed and improved and its cost with its basis; a verified candidate is kept in `verified.json` and
+    never applied to a checkout. A person's pause or cancel stops a running round's container.
+  - **Twenty-nine new source cases** in six suites -- `orbit-governance`, `orbit-memory`, `orbit-improvement`,
+    `orbit-orchestration`, `orbit-satellite`, `orbit-verdicts` -- each with a reference model written from its contract,
+    a planted fault and verifier controls. A case's `baseline` says what the source as it is comes to; two declare
+    known findings with a known-good control each.
+  - **Engineering cases.** `kind: "engineering"` hands a host a goal about a frozen fixture project
+    (`benchmark/fixtures/orders`) with Orbit beside it: the goal entry, the workflow it starts and the engineering task
+    that starts, judged by the verifier and by record checks on what Orbit's owners say. Suite `orbit-engineering`,
+    ORBIT-E2E-001 to 008: a bug fix, a feature, a change across five modules, a durable write, an idempotent consumer,
+    an escaped note, a session cut off mid-work and resumed on its own task, and a goal with no rule that must be
+    refused.
+  - **Metrics.** `node benchmark/run.mjs metrics` folds kept runs into numerators over denominators, apart by host basis,
+    with reproducibility, the verifier's own controls and history by revision; an estimated cost never counts.
+  - **CI tiers.** `.github/workflows/benchmark.yml`: conformance on a pull request that touches the benchmark (every
+    case's controls in containers, scripted hosts through both loops, no secret); a real coding host only when a person
+    dispatches it, inside the budget they give.
+  - **Generic proof.** `test/benchmark-cases.test.mjs` holds every source and engineering case of every suite to its
+    reference model, its baseline and its controls without Docker.
 - **Best-practice names.**
   - Benchmark "packs" are SUITES (`suites/<suite>/suite.json`), matching `--suite` and kept apart from Orbit's
     capability packs.

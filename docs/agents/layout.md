@@ -1037,6 +1037,29 @@ acceptance/    (0.1.0) NATIVE ACCEPTANCE, outside test/ because `node --test` ru
                security audit; held to the truth, to no leftover container, network, volume or secret, and to
                an unchanged checkout; Docker or the worker image missing is BLOCKED exit 3, never a skip;
                receipts written only by `--record` from a run that matched)
+benchmark/     (ADR 0046) THE DOCKER BENCHMARK of Orbit's own source: development tooling, export-ignored, imported by
+               nothing of the engine (test/benchmark-lint.test.mjs), not under acceptance/ because the backend
+               acceptance digest hashes that tree. run.mjs is its composition root (usage header = its contract;
+               README.md the guide). lib/: packs.mjs (CASE_FIELDS and SECTIONS, held by src/constraints.mjs; packs,
+               cases, a directory's digest) · source.mjs (the branch frozen through read-only git: head or worktree, a
+               committed credential-shaped file refused, digests) · git.mjs (gitRead for the developer's repository,
+               gitOwn for a repository the run made) · faults.mjs (a variant's exact mutations, FIXTURE_DRIFT) ·
+               checkout.mjs (the subject as one fixed commit) · context.mjs (frozenRun, resumedRun, the manifest, the
+               bench task) · record.mjs (the task's own door, cli/task.mjs, as a recorder) · flow.mjs (baseline,
+               diagnosis, rounds, ending, resume -- every place read off the task's journal) · docker.mjs (containers
+               through Orbit's Docker provider, attested to PROFILE plus RUNS_AS_DECLARED and IMAGE_PINNED, deadlines,
+               cleanup by label) · images.mjs (two images, tagged by their directory's digest, reused by id) ·
+               round.mjs (the runner on the run's internal network behind the egress proxy, the inspection, the
+               CANDIDATE read back and digest-checked) · candidate.mjs (SCOPE rows) · verify.mjs (probe, gates on the
+               restored tests, the candidate's own test proven before and after) · judge.mjs (the hidden checks
+               judged in the controller, never importing candidate code) · classify.mjs (CAUSES) · decide.mjs (NEXT,
+               the signature) · host.mjs (the host's stream as REPORTED facts) · brief.mjs (a round's brief: the
+               request and what the verifier saw, never a fix) · report.mjs (five things kept apart) · sentinel.mjs
+               (the credential's value looked for in a finished run's room and masked) · commands.mjs (the COMMANDS
+               table). images/runner/ (Claude Code pinned; entry.mjs starts or names the run's ONE
+               engineering task and runs the host; inspect.mjs reads a round back and executes nothing of it;
+               preflight.mjs) · images/verifier/ (egress.mjs, the CONNECT allow-list). packs/<pack>/<CASE>/ (case.json,
+               request.md, hidden/, faults/, controls/). A run's evidence: <store>/benchmark/<bnr-…>/
 integrations/  what ANOTHER program installs, never part of this plugin's archive. vscode-orbit-live/ (1.8.5, ADR 0021)
                is the Orbit Live companion for VS Code: plain CommonJS with no dependency and no build step, a
                person installs it; companion.js (what it does: a heartbeat in the store's live room, a request

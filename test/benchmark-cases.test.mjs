@@ -15,7 +15,7 @@
 // The same controls run in real containers, gates and all, with `node benchmark/run.mjs controls <case>`.
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { test } from "node:test";
 import { frozen, HARNESS, subjectOf } from "../benchmark/lib/core/freeze.mjs";
@@ -85,9 +85,10 @@ for (const c of sourceCases) {
 
 const engineeringCases = suites.flatMap((x) => x.cases ?? []).filter((c) => c.kind === "engineering");
 
-const fixtureBase = (c) => join("benchmark", "fixtures", c.fixture);
+// Paths as frozen entries carry them, with `/` on every OS -- as git names them, whatever the machine's separator.
+const fixtureBase = (c) => ["benchmark", "fixtures", c.fixture].join("/");
 
-const fixtureFiles = (c) => readdirSync(join(ROOT, fixtureBase(c)), { recursive: true }).filter((rel) => statSync(join(ROOT, fixtureBase(c), rel)).isFile()).sort();
+const fixtureFiles = (c) => readdirSync(join(ROOT, fixtureBase(c)), { recursive: true }).filter((rel) => statSync(join(ROOT, fixtureBase(c), rel)).isFile()).map((rel) => rel.split(sep).join("/")).sort();
 
 // The fixture as frozen entries carry it -- its files under benchmark/fixtures/<id>/ -- read from disk.
 const fixtureOnDisk = (c) => fixtureFiles(c).map((rel) => ((bytes) => ({ rel: `${fixtureBase(c)}/${rel}`, mode: "file", bytes, digest: shaBytes(bytes) }))(readFileSync(join(ROOT, fixtureBase(c), rel))));

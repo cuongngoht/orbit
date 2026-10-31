@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { test } from "node:test";
 import { compared, listed } from "../benchmark/images/runner/inspect.mjs";
 import { hostCommand, isScripted, isSession } from "../benchmark/images/runner/entry.mjs";
@@ -95,9 +95,10 @@ test("the runner runs a control's scripted host in place of Claude Code, on the 
 
 // ---- a GOAL through Orbit's goal entry, over an engineering case's own target -------------------------------------------
 
-const FIXTURE = join("benchmark", "fixtures", "orders");
+// Paths as frozen entries carry them, with `/` on every OS.
+const FIXTURE = "benchmark/fixtures/orders";
 
-const fixtureOnDisk = () => readdirSync(join(ROOT, FIXTURE), { recursive: true }).filter((rel) => statSync(join(ROOT, FIXTURE, rel)).isFile()).map((rel) => ((bytes) => ({ rel: `${FIXTURE}/${rel}`, mode: "file", bytes, digest: shaBytes(bytes) }))(readFileSync(join(ROOT, FIXTURE, rel))));
+const fixtureOnDisk = () => readdirSync(join(ROOT, FIXTURE), { recursive: true }).filter((rel) => statSync(join(ROOT, FIXTURE, rel)).isFile()).map((rel) => ((bytes) => ({ rel: `${FIXTURE}/${rel.split(sep).join("/")}`, mode: "file", bytes, digest: shaBytes(bytes) }))(readFileSync(join(ROOT, FIXTURE, rel))));
 
 // The target a run of the case hands a goal: the fixture with the case's real variant in it, as a one-commit checkout.
 function targetRepository(t, c) {
@@ -143,7 +144,7 @@ test("a blocked script records the rule the goal leaves out: the plan leaves the
   assert.deepEqual(goalPlanOf(at, s.goalId).units.map((u) => [u.kind, u.state, /^missing:/.test(u.because ?? "")]), [["change", "unresolved", true]]);
 });
 
-test("an interrupt script kills its own check mid-run; the next round reconciles the action the crash left open, takes it again as a new action, and completes the same task", { skip: !npmHere() && "npm is not runnable here", timeout: 300000 }, (t) => {
+test("an interrupt script kills its own check mid-run; the next round reconciles the action the crash left open, takes it again as a new action, and completes the same task", { skip: (process.platform === "win32" && "the kill takes the step's whole process group, which is POSIX: the scripted host runs only in the Linux runner") || (!npmHere() && "npm is not runnable here"), timeout: 300000 }, (t) => {
   const c = caseOf(ROOT, "ORBIT-E2E-007");
   const at = targetRepository(t, c);
   const first = goalHost(at, c, "interrupted", 1);

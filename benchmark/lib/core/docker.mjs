@@ -38,15 +38,16 @@ const LOCALE = { LANG: "C.UTF-8", LC_ALL: "C.UTF-8" };
 const envWith = (env) => ({ names: env?.names ?? [], values: { ...LOCALE, ...(env?.values ?? {}) } });
 
 // One container's spec: o = { n, image, user, argv, mounts, tmpfs, env, limits, cpuset, network, workdir, tmpMb,
-// attestRole, logs }.
-export const specFor = (role, run, o) => ({ name: containerName(run.id, role, o.n ?? 1), image: o.image, labels: labelsOf(run.id, role), ...HARDENED(o.tmpMb ?? 512), tmpfs: [...HARDENED(o.tmpMb ?? 512).tmpfs, ...(o.tmpfs ?? [])], network: o.network ?? null, mounts: o.mounts ?? [], env: envWith(o.env), limits: o.limits, cpuset: o.cpuset ?? null, workdir: o.workdir ?? null, argv: o.argv ?? [], stdin: true, user: o.user, role, attestRole: o.attestRole ?? "probe", logs: o.logs === true });
+// attestRole, logs, hostname }.
+export const specFor = (role, run, o) => ({ name: containerName(run.id, role, o.n ?? 1), image: o.image, labels: labelsOf(run.id, role), ...HARDENED(o.tmpMb ?? 512), tmpfs: [...HARDENED(o.tmpMb ?? 512).tmpfs, ...(o.tmpfs ?? [])], network: o.network ?? null, mounts: o.mounts ?? [], env: envWith(o.env), limits: o.limits, cpuset: o.cpuset ?? null, workdir: o.workdir ?? null, argv: o.argv ?? [], stdin: true, user: o.user, role, attestRole: o.attestRole ?? "probe", logs: o.logs === true, hostname: o.hostname ?? null });
 
 // The provider's own argument list, with what a benchmark container adds: the user it runs as, an init that reaps
-// and forwards signals, the cpus a test runner may size its workers by, and no log kept by the daemon unless the
-// container runs in the background (output is otherwise read while attached).
+// and forwards signals, the cpus a test runner may size its workers by, no log kept by the daemon unless the
+// container runs in the background (output is otherwise read while attached), and -- for the containers that share a
+// run's store -- one host name, so a later round can ask whether the process an earlier round recorded still runs.
 const logArgs = (spec) => (spec.logs ? ["--log-opt", "max-size=1m", "--log-opt", "max-file=1"] : ["--log-driver", "none"]);
 
-export const argvOf = (spec, file) => ["create", "--user", spec.user, "--init", ...(spec.cpuset ? ["--cpuset-cpus", spec.cpuset] : []), ...logArgs(spec), ...createArgv(spec, file).slice(1)];
+export const argvOf = (spec, file) => ["create", "--user", spec.user, "--init", ...(spec.hostname ? ["--hostname", spec.hostname] : []), ...(spec.cpuset ? ["--cpuset-cpus", spec.cpuset] : []), ...logArgs(spec), ...createArgv(spec, file).slice(1)];
 
 const clientEnvOf = (deps, spec) => childEnv(deps.env ?? {}, [...CLIENT_ENV, ...(spec.env?.names ?? [])]);
 

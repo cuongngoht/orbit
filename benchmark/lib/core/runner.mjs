@@ -39,7 +39,12 @@ const caEnv = (ctx) => (ctx.caFile ? { NODE_EXTRA_CA_CERTS: "/run/orbit-ca.pem" 
 
 // The runner as every round has it: the image, the user, the entry, the limits, the network and the credential by
 // name -- with the mounts and the values the round brings.
-export const runnerSpecOf = (ctx, net, k, mounts, values = {}, plugin = "/work/repo") => specFor("runner", ctx.run, { n: k, image: ctx.images.runner, user: ctx.user, argv: ["node", "/bench/entry.mjs"], mounts: [...mounts, ...caMount(ctx)], tmpfs: [`${plugin}/.claude-plugin/types:rw,nosuid,nodev,size=16m`], env: net ? { names: ctx.credentialNames, values: { ...RUNNER_ENV, ...caEnv(ctx), ...values } } : { names: [], values: { ...OFFLINE_ENV, ...values } }, limits: { cpus: ctx.case.limits.runner.cpus, memoryMb: ctx.case.limits.runner.memoryMb, pids: ctx.case.limits.runner.pids }, cpuset: ctx.runnerCpuset, network: net ? { mode: "network", name: net, alias: "runner" } : null, tmpMb: 2048 });
+// The host name every container that shares a run's runner store goes by: Orbit records which host ran an action, and
+// asks that host's processes about it -- with a host name of its own per container, a round could never tell an action
+// an earlier round's crash left open from one still running elsewhere.
+export const RUNNER_HOST = "orbit-benchmark-runner";
+
+export const runnerSpecOf = (ctx, net, k, mounts, values = {}, plugin = "/work/repo") => specFor("runner", ctx.run, { n: k, image: ctx.images.runner, user: ctx.user, hostname: RUNNER_HOST, argv: ["node", "/bench/entry.mjs"], mounts: [...mounts, ...caMount(ctx)], tmpfs: [`${plugin}/.claude-plugin/types:rw,nosuid,nodev,size=16m`], env: net ? { names: ctx.credentialNames, values: { ...RUNNER_ENV, ...caEnv(ctx), ...values } } : { names: [], values: { ...OFFLINE_ENV, ...values } }, limits: { cpus: ctx.case.limits.runner.cpus, memoryMb: ctx.case.limits.runner.memoryMb, pids: ctx.case.limits.runner.pids }, cpuset: ctx.runnerCpuset, network: net ? { mode: "network", name: net, alias: "runner" } : null, tmpMb: 2048 });
 
 export const attestOn = (ctx, net, image) => ({ network: net, forbidden: forbidden(ctx), pluginTarget: null, imageEnv: docker.imageEnv(image, ctx.deps) });
 

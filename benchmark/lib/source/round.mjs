@@ -15,7 +15,7 @@ import { docker } from "../../../src/runtime/isolation/docker.mjs";
 import { addedLines, agentTestsOf, overlaid, scopeFindings } from "./candidate.mjs";
 import { ranContainer, specFor } from "../core/docker.mjs";
 import { gitOwn } from "../core/git.mjs";
-import { forbidden, fresh, jsonAt, offlineRan, roundRan, runnerSpecOf } from "../core/runner.mjs";
+import { forbidden, fresh, jsonAt, offlineRan, roundRan, RUNNER_HOST, runnerSpecOf } from "../core/runner.mjs";
 import { briefOf } from "./brief.mjs";
 import { readRegular } from "../core/room.mjs";
 import { safeRel } from "../core/paths.mjs";
@@ -36,7 +36,7 @@ const pluginOf = (ctx) => (goalCase(ctx) ? PLUGIN_AT : "/work/repo");
 
 const runnerSpec = (ctx, net, k, d) => runnerSpecOf(ctx, net, k, [{ source: ctx.checkoutDir, target: "/work/repo", readOnly: true }, ...pluginMounts(ctx), { source: ctx.runnerStore, target: "/work/store", readOnly: false }, { source: d.out, target: "/work/out", readOnly: false }, { source: d.brief, target: "/run/brief", readOnly: true }], {}, pluginOf(ctx));
 
-const inspectSpec = (ctx, k, task, out) => specFor("inspect", ctx.run, { n: k, image: ctx.images.runner, user: ctx.user, argv: ["node", "/bench/inspect.mjs", task ?? "-", `--plugin=${pluginOf(ctx)}`], mounts: [{ source: ctx.checkoutDir, target: "/work/repo", readOnly: true }, ...pluginMounts(ctx), { source: ctx.runnerStore, target: "/work/store", readOnly: true }, { source: out, target: "/work/out", readOnly: false }], env: { names: [], values: { HOME: "/tmp", ORBIT_STORE_DIR: "/work/store" } }, limits: { cpus: 1, memoryMb: 1024, pids: 256 }, tmpMb: 256 });
+const inspectSpec = (ctx, k, task, out) => specFor("inspect", ctx.run, { n: k, image: ctx.images.runner, user: ctx.user, hostname: RUNNER_HOST, argv: ["node", "/bench/inspect.mjs", task ?? "-", `--plugin=${pluginOf(ctx)}`], mounts: [{ source: ctx.checkoutDir, target: "/work/repo", readOnly: true }, ...pluginMounts(ctx), { source: ctx.runnerStore, target: "/work/store", readOnly: true }, { source: out, target: "/work/out", readOnly: false }], env: { names: [], values: { HOME: "/tmp", ORBIT_STORE_DIR: "/work/store" } }, limits: { cpus: 1, memoryMb: 1024, pids: 256 }, tmpMb: 256 });
 
 function briefWritten(ctx, k, state) {
   const dir = fresh(ctx, "rounds", String(k), "brief");

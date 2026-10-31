@@ -38,7 +38,7 @@ export function worldOf(t, files) {
 
 // ---- the docker double ---------------------------------------------------------------------------------------------------
 
-const VALUED = new Set(["--user", "--cpuset-cpus", "--log-driver", "--log-opt", "--name", "--network", "--network-alias", "--label", "--tmpfs", "--cap-drop", "--security-opt", "--mount", "--cpus", "--memory", "--pids-limit", "-e", "--env-file", "-w"]);
+const VALUED = new Set(["--user", "--hostname", "--cpuset-cpus", "--log-driver", "--log-opt", "--name", "--network", "--network-alias", "--label", "--tmpfs", "--cap-drop", "--security-opt", "--mount", "--cpus", "--memory", "--pids-limit", "-e", "--env-file", "-w"]);
 
 function parsedCreate(args) {
   const c = { flags: {}, argv: [], mounts: [], labels: {}, envNames: [] };

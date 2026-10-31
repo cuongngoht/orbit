@@ -21,7 +21,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const PATHS = { brief: "/run/brief/brief.json", repo: "/work/repo" };
 
@@ -71,14 +71,6 @@ const SLEEP = new Int32Array(new SharedArrayBuffer(4));
 
 const pause = (ms) => Atomics.wait(SLEEP, 0, 0, ms);
 
-// Until `ok()` holds or `ms` pass, asked every `every` ms: what was seen, never asked again after the loop.
-function waited(ok, ms, every) {
-  const until = Date.now() + ms;
-  let seen = ok();
-  while (!seen && Date.now() < until) seen = (pause(every), ok());
-  return seen;
-}
-
 const jsonLines = (file) => (file && existsSync(file) ? readFileSync(file, "utf8").split("\n").map(jsonOf).filter(Boolean) : []);
 
 const journalOf = (s) => ((base) => (base && existsSync(base) ? readdirSync(base).map((d) => join(base, d, "tasks", s.task, "journal.jsonl")).find((p) => existsSync(p)) ?? null : null))((s.env ?? process.env).ORBIT_STORE_DIR);
@@ -88,15 +80,41 @@ const journalOf = (s) => ((base) => (base && existsSync(base) ? readdirSync(base
 const actionOpen = (file) => ((lines) => lines.some((l) => l.kind === "action-started" && lines.filter((x) => x.id === l.id).length === 1))(jsonLines(file));
 
 // The decision as a file the step reads as its input, so nothing of this process has to stay alive to hand it over.
-const decisionInput = (s, action) => ((file) => (writeFileSync(file, decisionOf(s, action)), openSync(file, "r")))(join(mkdtempSync(join(tmpdir(), "scripted-")), "decision.json"));
+const decisionFile = (s, action) => ((file) => (writeFileSync(file, decisionOf(s, action)), file))(join(mkdtempSync(join(tmpdir(), "scripted-")), "decision.json"));
 
-// ONE decided step started on its own and SIGKILLed the moment its action is open: left as a crash leaves it, recorded
-// and never settled, for the next round to reconcile.
+const SELF = fileURLToPath(import.meta.url);
+
+// ONE decided step, killed the moment its action is open -- by a helper process of its own that also waits the killed
+// step out, so nothing of it lingers to be taken for a step still running: left as a crash leaves it, recorded and never
+// settled, for the next round to reconcile.
 function killedMidStep(s, action) {
-  const step = spawn(process.execPath, [join(s.plugin, "cli", "autonomous-engineering.mjs"), "step", s.task, "--json"], { cwd: s.repo, env: s.env ?? process.env, stdio: [decisionInput(s, action), "ignore", "ignore"] });
-  const caught = waited(() => actionOpen(journalOf(s)), 60000, 20);
-  step.kill("SIGKILL");
+  const r = spawnSync(process.execPath, [SELF, "--kill-mid-step", s.plugin, s.repo, s.task, decisionFile(s, action)], { env: s.env ?? process.env, ...CALL, timeout: 180000 });
+  const caught = jsonOf(String(r.stdout ?? "").trim())?.caught === true;
   return told(s, `autonomous-engineering step ${action.kind} (killed mid-run)`, { status: null, json: { outcome: caught ? "interrupted" : "not-started" } }, action.kind).json.outcome;
+}
+
+// Whether the step's action opened within `ms`, looked for every 20 ms: what was seen, never looked at again.
+const opened = (s, ms) => new Promise((resolve) => ((until) => (function tick() {
+  const open = actionOpen(journalOf(s));
+  if (open || Date.now() > until) return resolve(open);
+  setTimeout(tick, 20);
+})())(Date.now() + ms));
+
+// The step's whole process group, killed -- a group already gone has nothing left to kill.
+const killedGroup = (pid) => {
+  try { process.kill(-pid, "SIGKILL"); }
+  catch { return false; }
+  return true;
+};
+
+// The helper: the step started in a process group of its own, the whole group SIGKILLed once its action is open (the
+// step and the check it runs), and the step waited out.
+async function killMidStep([plugin, repo, task, file]) {
+  const step = spawn(process.execPath, [join(plugin, "cli", "autonomous-engineering.mjs"), "step", task, "--json"], { cwd: repo, stdio: [openSync(file, "r"), "ignore", "ignore"], detached: true });
+  const caught = await opened({ task }, 60000);
+  const ended = new Promise((resolve) => (step.exitCode === null ? step.once("exit", resolve) : resolve()));
+  killedGroup(step.pid);
+  process.stdout.write(`${JSON.stringify({ caught: (await ended, caught) })}\n`);
 }
 
 const BUSY = /another session is taking a step/;
@@ -301,4 +319,6 @@ function main(task) {
   said({ type: "result", subtype: problems.length ? "error_during_execution" : "success", is_error: problems.length > 0, num_turns: s.steps.length, total_cost_usd: 0, duration_ms: Date.now() - s.startedAt, result: problems.join("; ").slice(0, 300) || "the script ran to its end", steps: s.steps });
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) main(process.argv[2]);
+const ENTRY = { "--kill-mid-step": (argv) => killMidStep(argv) };
+
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) (ENTRY[process.argv[2]] ?? (() => main(process.argv[2])))(process.argv.slice(3));

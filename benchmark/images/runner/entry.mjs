@@ -65,9 +65,13 @@ const resolved = (name) => lookup(name).then(() => "resolved", (e) => e.code ?? 
 // A control's scripted host, named by its brief: it needs and has no network.
 export const isScripted = (b) => String(b.host ?? "").startsWith("scripted:");
 
-const NO_NETWORK = { holds: true, none: true, says: "a scripted host runs with no network: there is nothing to reach and no egress to check" };
+// A session host: the operator's own session drives this round from outside the container (docker exec), so nothing in
+// it reasons and it needs no network either.
+export const isSession = (b) => String(b.host ?? "").startsWith("session:");
 
-const egressFor = (b, env) => (isScripted(b) ? NO_NETWORK : egressOf(env, b.allowedHost));
+const NO_NETWORK = { holds: true, none: true, says: "a scripted or session host runs with no network: nothing reasons in the container, so there is nothing to reach and no egress to check" };
+
+const egressFor = (b, env) => (isScripted(b) || isSession(b) ? NO_NETWORK : egressOf(env, b.allowedHost));
 
 // Positive evidence every way: nothing direct gets out, no outside name resolves (no channel through DNS either), the
 // model's API answers through the proxy, and a host nobody allowed does not. A round whose network does not hold to
@@ -122,7 +126,9 @@ function keptChunk(fd, s, chunk, cap) {
 }
 
 // What runs as the host: Claude Code with its flags -- or, for a control, the scripted host on the round's task.
-export const hostCommand = (b, task) => (isScripted(b) ? [process.execPath, ["/bench/scripted.mjs", task ?? "-"]] : ["claude", hostArgs(b)]);
+const HOST_PROGRAMS = [[isScripted, "/bench/scripted.mjs"], [isSession, "/bench/session.mjs"]];
+
+export const hostCommand = (b, task) => ((p) => (p ? [process.execPath, [p[1], task ?? "-"]] : ["claude", hostArgs(b)]))(HOST_PROGRAMS.find(([is]) => is(b)));
 
 const hosted = (b, env, sinks, task) => new Promise((resolve) => {
   const child = spawn(...hostCommand(b, task), { cwd: PATHS.repo, env, stdio: ["pipe", "pipe", "pipe"] });

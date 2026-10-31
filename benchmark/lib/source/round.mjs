@@ -51,11 +51,13 @@ function briefWritten(ctx, k, state) {
 export async function ranRound(ctx, k, state) {
   const d = { brief: briefWritten(ctx, k, state), out: fresh(ctx, "rounds", String(k), "out") };
   const o = { deadlineMs: state.deadlineMs, out: d.out, held: state.held, heldEveryMs: ctx.heldEveryMs };
-  return scriptedHost(ctx) ? offlineRan(ctx, k, runnerSpec(ctx, null, k, d), o) : roundRan(ctx, k, (net) => runnerSpec(ctx, net, k, d), o);
+  return offlineHost(ctx) ? offlineRan(ctx, k, runnerSpec(ctx, null, k, d), o) : roundRan(ctx, k, (net) => runnerSpec(ctx, net, k, d), o);
 }
 
 // A control's scripted host, never a model: its round runs with no network (core/runner.mjs offlineRan).
-export const scriptedHost = (ctx) => String(ctx.host ?? "").startsWith("scripted:");
+// A host that reasons nowhere in the runner -- a scripted control, or a session driving it from outside -- gets a runner
+// with no network at all and no credential.
+export const offlineHost = (ctx) => /^(scripted|session):/.test(String(ctx.host ?? ""));
 
 // ---- the inspection ------------------------------------------------------------------------------------------------------
 

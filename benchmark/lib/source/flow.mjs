@@ -164,11 +164,26 @@ function verificationRows(ctx, subject, v, evidence) {
 // Who carried a run's rounds: nobody (no repair was asked), a SCRIPTED host (a control: Orbit's own loop driven by a
 // script, no model) or a CODING HOST (a model). Every report and metric keeps the three apart: a scripted success is
 // conformance of the controller, never a measure of a model.
-export const hostBasisOf = (config) => (!config?.repair ? "none" : String(config.host ?? "").startsWith("scripted:") ? "scripted" : "coding-host");
+// Who carries a round, by the host a run names: a SCRIPTED control, the operator's own SESSION (an agent it spawned drives
+// Orbit inside the runner from outside it, with no network in the container), or a CODING HOST inside the runner.
+const HOST_FAMILIES = [["scripted:", "scripted"], ["session:", "session"]];
+
+export const hostBasisOf = (config) => (!config?.repair ? "none" : HOST_FAMILIES.find(([p]) => String(config.host ?? "").startsWith(p))?.[1] ?? "coding-host");
+
+// A host that needs no credential in the runner: a scripted one, or a session that reasons outside the container.
+const OFFLINE = ["scripted", "session"];
+
+const HOST_WORDS = { scripted: "scripted host", session: "session's agent", "coding-host": "coding host" };
+
+const HOST_TOOLS = { scripted: "scripted-host", session: "session-host", "coding-host": "coding-host" };
+
+const basisHere = (ctx) => hostBasisOf({ repair: true, host: ctx.host });
 
 const scripted = (ctx) => hostBasisOf({ repair: ctx.repair, host: ctx.host }) === "scripted";
 
-const credentialProblem = (ctx) => (scripted(ctx) || ctx.credentialNames.some((n) => n !== "ANTHROPIC_BASE_URL") ? null : "CREDENTIALS: no credential for the coding host is set here, by name (ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN; --credential=<NAME>) — the baseline is kept, and `resume` goes on once one is");
+const offline = (ctx) => OFFLINE.includes(basisHere(ctx));
+
+const credentialProblem = (ctx) => (offline(ctx) || ctx.credentialNames.some((n) => n !== "ANTHROPIC_BASE_URL") ? null : "CREDENTIALS: no credential for the coding host is set here, by name (ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN; --credential=<NAME>) — the baseline is kept, and `resume` goes on once one is");
 
 const minutesLeft = (view) => Math.floor((view.budget?.minutes?.limit ?? 0) - (view.budget?.minutes?.spent ?? 0));
 
@@ -207,7 +222,7 @@ const cutAt = (ctx, k, minutes) => (ctx.case.interrupt?.round === k && !scripted
 function roundState(ctx, view, k) {
   const left = leftOf(ctx, view);
   const runnerMinutes = cutAt(ctx, k, Math.max(1, Math.min(ctx.case.limits.runner.minutes, left.minutes - RESERVE_MINUTES)));
-  ctx.rec.stage(ctx.task, "FIXING", `round ${k} of ${ctx.limits.rounds}: the ${scripted(ctx) ? "scripted" : "coding"} host ${ROUND_WORK[ctx.case.kind] ?? ROUND_WORK.source} · ${runnerMinutes} min · $${left.usd} left (${left.usdBasis})`);
+  ctx.rec.stage(ctx.task, "FIXING", `round ${k} of ${ctx.limits.rounds}: the ${HOST_WORDS[basisHere(ctx)]} ${ROUND_WORK[ctx.case.kind] ?? ROUND_WORK.source} · ${runnerMinutes} min · $${left.usd} left (${left.usdBasis})`);
   return { left: { ...left, engineeringMinutes: runnerMinutes }, latest: latestVerification(ctx, view), engTask: engTaskOf(ctx, k - 1), deadlineMs: runnerMinutes * 60000, held: () => Boolean(HELD(show(ctx))) };
 }
 
@@ -215,7 +230,7 @@ const repairSummary = (r) => (r.error ? r.error.says : `the host made ${r.host?.
 
 const repairReceipt = (ctx, k, r) => ((t) => (t ? { domain: "task", ref: `runner.${t}`, outcome: "IN_RUNNER_STORE", summary: `the run's one engineering task, in its runner store; round ${k}` } : null))(r.start?.task ?? r.runner?.task ?? null);
 
-const repairAct = (ctx, k, state) => recorded(ctx, "benchmark.repair", `round ${k}: the ${scripted(ctx) ? "scripted" : "coding"} host on the engineering task`, async () => ((r) => ({ doc: r, outcome: r.error ? "failed" : "succeeded", receipt: repairReceipt(ctx, k, r), summary: repairSummary(r) }))(await ranRound(ctx, k, state)), { tool: scripted(ctx) ? "scripted-host" : "coding-host", mutates: true });
+const repairAct = (ctx, k, state) => recorded(ctx, "benchmark.repair", `round ${k}: the ${HOST_WORDS[basisHere(ctx)]} on the engineering task`, async () => ((r) => ({ doc: r, outcome: r.error ? "failed" : "succeeded", receipt: repairReceipt(ctx, k, r), summary: repairSummary(r) }))(await ranRound(ctx, k, state)), { tool: HOST_TOOLS[basisHere(ctx)], mutates: true });
 
 const inspectSummary = (ins) => (ins.inspect ? `${(ins.inspect.changes ?? []).length} change(s) in the workspace; the engineering task is ${ins.task?.json?.lifecycle ?? "unread"}` : `the inspection did not answer (${ins.end})`);
 

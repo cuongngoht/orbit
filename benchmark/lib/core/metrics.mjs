@@ -17,7 +17,7 @@ const EXCLUDED = { BLOCKED: "blocked", BENCHMARK_INVALID: "invalid", INCONCLUSIV
 // What counts as an autonomous outcome VERIFIED by the run's own independent verifier, by kind of case.
 const VERIFIED = { source: ["REPAIRED_VERIFIED"], engineering: ["PASS"], qa: ["PASS"] };
 
-const basisOf = (m) => (m.benchmark?.kind === "qa" ? (m.config?.host && m.config.host !== "coding-host" ? "scripted" : "coding-host") : !m.config?.repair ? "none" : String(m.config.host ?? "").startsWith("scripted:") ? "scripted" : "coding-host");
+const basisOf = (m) => (m.benchmark?.kind === "qa" ? (m.config?.host && m.config.host !== "coding-host" ? "scripted" : "coding-host") : !m.config?.repair ? "none" : String(m.config.host ?? "").startsWith("scripted:") ? "scripted" : String(m.config.host ?? "").startsWith("session:") ? "session" : "coding-host");
 
 const durationOf = (m, e) => ((a, b) => (Number.isFinite(a) && Number.isFinite(b) && b >= a ? b - a : null))(Date.parse(m.at ?? ""), Date.parse(e?.at ?? ""));
 
@@ -87,7 +87,7 @@ export const verifierOf = (rows) => ({ ...valued({ numerator: rows.filter((r) =>
 // Each case's outcomes by source revision, oldest first: what a change to the source did to it.
 export const historyOf = (fs) => Object.values(fs.reduce((m, f) => ((k) => ({ ...m, [k]: { case: f.case, variant: f.variant, basis: f.basis, commits: [...(m[k]?.commits ?? []), { commit: f.commit?.slice(0, 12) ?? null, at: f.at, outcome: f.outcome ?? "unfinished", run: f.run }] } }))(`${f.case}\u0000${f.variant}\u0000${f.basis}`), {})).map((h) => ({ ...h, commits: h.commits.sort((a, b) => String(a.at).localeCompare(String(b.at))) }));
 
-const BASES = ["none", "scripted", "coding-host"];
+const BASES = ["none", "scripted", "session", "coding-host"];
 
 export function metricsOf(runs, o = {}) {
   const fs = runs.map(runFacts);

@@ -13,7 +13,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { compared, listed } from "../benchmark/images/runner/inspect.mjs";
-import { hostCommand, isScripted } from "../benchmark/images/runner/entry.mjs";
+import { hostCommand, isScripted, isSession } from "../benchmark/images/runner/entry.mjs";
+import { hostBasisOf } from "../benchmark/lib/source/flow.mjs";
 import { edited, SCRIPTS, scopeOf, stateOf } from "../benchmark/images/runner/scripted.mjs";
 import { fixtureEntries, variantEntries } from "../benchmark/lib/core/context.mjs";
 import { candidateFile } from "../benchmark/lib/core/mutations.mjs";
@@ -159,4 +160,11 @@ test("an interrupt script kills its own check mid-run; the next round reconciles
   assert.deepEqual(interrupted[0].receipts, [], "no outcome was taken from it");
   assert.ok(view.actions.some((a) => a.tool === interrupted[0].tool && a.state === "succeeded" && Number(a.id.slice(4)) > Number(interrupted[0].id.slice(4))), "and it was taken again as a new action that settled");
   assert.ok(view.actions.every((a) => a.state !== "running"), "nothing is left running");
+});
+
+test("a session host waits in the runner while the operator's own session drives the round from outside: no model, no network and no credential in the container, and its runs kept apart", () => {
+  assert.equal(isSession({ host: "session:demo" }), true);
+  assert.deepEqual(hostCommand({ host: "session:demo" }, "tsk-0000000000a1"), [process.execPath, ["/bench/session.mjs", "tsk-0000000000a1"]]);
+  assert.deepEqual(["session:demo", "scripted:reference", null].map((host) => hostBasisOf({ repair: true, host })), ["session", "scripted", "coding-host"]);
+  assert.equal(hostBasisOf({ repair: false, host: "session:demo" }), "none");
 });

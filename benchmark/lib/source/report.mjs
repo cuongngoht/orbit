@@ -72,6 +72,7 @@ const intervened = (view, iv) => (view.approvals ?? []).length > 0 || ["PAUSED",
 const AUTONOMY = {
   none: () => ({ value: null, basis: "no repair was asked for" }),
   scripted: () => ({ value: null, basis: "a scripted host carried the rounds: conformance of the controller and the engine, never a measure of autonomy" }),
+  session: () => ({ value: null, basis: "the operator's own session carried the rounds through an agent it spawned, driving Orbit inside the runner from outside it: REPORTED, kept apart from a coding host's runs, and never counted as one" }),
   "coding-host": (x) => ({ value: x.ending?.outcome === "REPAIRED_VERIFIED" && x.eng?.lifecycle === "COMPLETED" && !intervened(x.view, x.iv), basis: "the engine completed its own task, the verifier passed the candidate, and no person approved, paused, resumed or cancelled" }),
 };
 

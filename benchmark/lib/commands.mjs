@@ -109,7 +109,11 @@ const sayList = (r) => r.suites.flatMap((p) => [`${p.id} ${p.version} — ${p.ti
 
 // ---- a run --------------------------------------------------------------------------------------------------------------------
 
-const optionsOf = (args) => ({ variant: flag(args, "variant"), repair: has(args, "repair"), source: flag(args, "source"), seed: int(flag(args, "seed")), model: flag(args, "model"), rounds: int(flag(args, "rounds")), minutes: int(flag(args, "minutes")), usd: num(flag(args, "usd")) });
+// The one host a person may name on the command line: their own session (`session:<label>`). A scripted host is a
+// control's, run by `controls`; a coding host is the default.
+const hostOption = (v) => (v === undefined || /^session:[a-z0-9-]{1,40}$/.test(v) ? v : refusedWith(`--host takes session:<label> (lower-case letters, digits, dashes), not ${v}`));
+
+const optionsOf = (args) => ({ host: hostOption(flag(args, "host")), variant: flag(args, "variant"), repair: has(args, "repair"), source: flag(args, "source"), seed: int(flag(args, "seed")), model: flag(args, "model"), rounds: int(flag(args, "rounds")), minutes: int(flag(args, "minutes")), usd: num(flag(args, "usd")) });
 
 const BOUNDS = [["seed", 0, 2 ** 31 - 1], ["rounds", 1, 5], ["minutes", 10, 600], ["usd", 0, 200]];
 
@@ -288,7 +292,7 @@ const basisLines = (r, basis) => (r.runs.byBasis[basis] ? [`${basis.toUpperCase(
 
 const historyLines = (r) => (r.history ? ["HISTORY BY REVISION", ...r.history.map((x) => `  ${x.case} ${x.variant} (${x.basis}): ${x.commits.map((c) => `${c.commit ?? "?"} ${c.outcome}`).join(" → ")}`)] : []);
 
-const sayMetrics = (r) => [`METRICS    ${r.scope} — ${r.runs.total} run(s) in ${r.store}`, ...["coding-host", "scripted", "none"].flatMap((b) => basisLines(r, b)), `REPRODUCIBILITY ${cell(r.reproducibility)}${r.reproducibility.unstable.length ? ` — unstable: ${r.reproducibility.unstable.map((u) => `${u.case} ${u.variant}`).join(", ")}` : ""}`, `VERIFIER CONTROLS ${cell(r.verifier)}${r.verifier.missed.length ? ` — missed: ${r.verifier.missed.join("; ")}` : ""}`, ...historyLines(r), "A scripted host's numbers are conformance, never autonomy; a value of unknown has nothing to stand on."].join("\n");
+const sayMetrics = (r) => [`METRICS    ${r.scope} — ${r.runs.total} run(s) in ${r.store}`, ...["coding-host", "session", "scripted", "none"].flatMap((b) => basisLines(r, b)), `REPRODUCIBILITY ${cell(r.reproducibility)}${r.reproducibility.unstable.length ? ` — unstable: ${r.reproducibility.unstable.map((u) => `${u.case} ${u.variant}`).join(", ")}` : ""}`, `VERIFIER CONTROLS ${cell(r.verifier)}${r.verifier.missed.length ? ` — missed: ${r.verifier.missed.join("; ")}` : ""}`, ...historyLines(r), "A scripted host's numbers are conformance, never autonomy; a value of unknown has nothing to stand on."].join("\n");
 
 // ---- the controls: does the verifier fail what it must and pass what it must, in its own containers -------------------------
 

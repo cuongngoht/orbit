@@ -155,7 +155,7 @@ export const IMAGES = { verifier: `sha256:${"a".repeat(64)}`, runner: `sha256:${
 
 export async function runOf(w, double, o) {
   const h = harnessOf(w, double);
-  const ctx = await withSpec(frozenRun(h, { caseId: o.caseId ?? "CALC-001", variant: o.variant ?? "real", repair: o.repair === true, host: o.host, rounds: o.rounds, seed: 3, images: IMAGES, dockerVersion: "double" }));
+  const ctx = { ...(await withSpec(frozenRun(h, { caseId: o.caseId ?? "CALC-001", variant: o.variant ?? "real", repair: o.repair === true, host: o.host, rounds: o.rounds, seed: 3, images: IMAGES, dockerVersion: "double" }))), heldEveryMs: o.heldEveryMs };
   return { h, ctx, result: await carried(ctx), view: ctx.rec.show(ctx.task) };
 }
 

@@ -40,7 +40,7 @@ function briefWritten(ctx, k, state) {
 // stopping the container, whatever the host inside it is doing.
 export async function ranRound(ctx, k, state) {
   const d = { brief: briefWritten(ctx, k, state), out: fresh(ctx, "rounds", String(k), "out") };
-  const o = { deadlineMs: state.deadlineMs, out: d.out, held: state.held };
+  const o = { deadlineMs: state.deadlineMs, out: d.out, held: state.held, heldEveryMs: ctx.heldEveryMs };
   return scriptedHost(ctx) ? offlineRan(ctx, k, runnerSpec(ctx, null, k, d), o) : roundRan(ctx, k, (net) => runnerSpec(ctx, net, k, d), o);
 }
 

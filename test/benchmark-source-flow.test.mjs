@@ -250,3 +250,49 @@ test("a scripted host's round runs with no network and no credential: no egress,
   assert.ok(!double.s.calls.some((a) => a[0] === "network" && a[1] === "create"), "no network is made");
   assert.equal(r.ctx.manifest.config.host, "scripted:reference");
 });
+
+test("every action says who carried it and whether it wrote: a verifier and an inspection only read; the host's round writes its own task's workspace", async (t) => {
+  const r = await runOf(world(t), dockerDouble({ runner: ranAs(FIXED), inspect: inspectedAs(VIEW("COMPLETED")) }), { variant: "controlled-fault", repair: true });
+  const by = (type) => r.view.actions.filter((a) => a.type === type).map((a) => [a.tool, a.mutates]);
+  assert.deepEqual([...new Set(by("benchmark.verify").map(String))], ["verifier,false"], "a verifier never reads as a developer");
+  assert.deepEqual(by("benchmark.inspect"), [["inspection", false]]);
+  assert.deepEqual(by("benchmark.repair"), [["coding-host", true]]);
+});
+
+test("a person's pause stops the running round's container there and then -- not at the round's deadline -- and the round is read back once they resume", async (t) => {
+  const w = world(t);
+  const slow = async (c, at) => {
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    return ranAs(FIXED)(c, at);
+  };
+  const double = dockerDouble({ runner: pausedDuring(w, slow), inspect: NEVER.inspect });
+  const r = await runOf(w, double, { variant: "controlled-fault", repair: true, heldEveryMs: 50 });
+  const runner = double.s.calls.find((a) => a[0] === "create" && a.includes("/bench/entry.mjs"));
+  const id = `c${double.s.calls.filter((a) => a[0] === "create").indexOf(runner) + 1}`;
+  const stopAt = double.s.calls.findIndex((a) => a[0] === "stop" && a.at(-1) === id);
+  const rmAt = double.s.calls.findIndex((a) => a[0] === "rm" && a.at(-1) === id);
+  assert.deepEqual([r.result.outcome, r.view.lifecycle], ["PAUSED", "PAUSED"]);
+  assert.ok(stopAt >= 0 && stopAt < rmAt, "the controller stopped the held round's container while it ran");
+  assert.equal(r.view.actions.find((a) => a.type === "benchmark.repair").state, "succeeded", "how the round ended is still recorded");
+});
+
+const reportFor = (r) => reportOf(r.ctx.room, r.ctx.manifest, r.view, Object.fromEntries(r.view.actions.map((a) => [a.id, docRead(r.ctx.room, `steps/${a.id}.json`)]).filter(([, d]) => d)), docRead(r.ctx.room, "ending.json"), null, r.ctx.rec.events(r.ctx.task).events).json;
+
+test("the report says who carried the rounds: a scripted host's verified repair is conformance, never autonomy; a coding host's is, when nobody stepped in", async (t) => {
+  const w = world(t);
+  const scripted = reportFor(await runOf(w, dockerDouble({ runner: ranAs(FIXED), inspect: inspectedAs(VIEW("COMPLETED")) }), { variant: "controlled-fault", repair: true, host: "scripted:reference" }));
+  assert.deepEqual([scripted.outcome, scripted.hostBasis, scripted.axes.autonomous.value], ["REPAIRED_VERIFIED", "scripted", null]);
+  assert.match(scripted.axes.autonomous.basis, /never a measure of autonomy/);
+  const coding = reportFor(await runOf(world(t), dockerDouble({ runner: ranAs(FIXED), inspect: inspectedAs(VIEW("COMPLETED")) }), { variant: "controlled-fault", repair: true }));
+  assert.deepEqual([coding.hostBasis, coding.axes.autonomous.value, coding.next, coding.interventions.paused], ["coding-host", true, "VERIFIED", 0]);
+  assert.deepEqual([coding.rounds[0].cost, coding.rounds[0].decided.next, coding.rounds[0].decided.regressed], [{ usd: 0.5, basis: "REPORTED" }, "VERIFIED", []]);
+  assert.match(coding.verified, /verified\.json$/);
+  const unreported = reportFor(await runOf(world(t), dockerDouble({ runner: ranAs(FIXED, { cost: null }), inspect: inspectedAs(VIEW("COMPLETED")) }), { variant: "controlled-fault", repair: true }));
+  assert.deepEqual([unreported.rounds[0].cost, unreported.totals.costUsd], [{ usd: null, basis: "unknown" }, null], "a cost nobody reported is unknown, never the budget's estimate");
+});
+
+test("a known finding that still fails is evidence kept, and the report says so; a regression would say REGRESSION", async (t) => {
+  const r = await runOf(world(t), dockerDouble(NEVER), { variant: "controlled-fault" });
+  const rep = reportFor(r);
+  assert.deepEqual([rep.outcome, rep.cause, rep.class, rep.known.regression], ["FAIL", "ORBIT_SOURCE_DEFECT", "ORBIT_SOURCE_DEFECT", false], "a planted fault is never a regression of the source");
+});

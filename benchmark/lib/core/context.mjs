@@ -141,7 +141,7 @@ function recordedRun(h, o, f) {
 
 function withTask(h, room, manifest, c) {
   const rec = recorderOf(h);
-  const task = rec.create(`Benchmark ${c.id} ${c.version} (${manifest.benchmark.variant}${manifest.config.repair ? ", repair" : ""}) on ${manifest.source.branch ?? "detached"}@${manifest.source.commit.slice(0, 10)}, subject ${manifest.subject.digest.slice(0, 10)}`, { attempts: KIND_RUN[c.kind].attempts(c, manifest.config), actions: 60, minutes: manifest.config.minutes });
+  const task = rec.create(`Benchmark ${c.suite.id}/${c.id} ${c.version} (${manifest.benchmark.variant}${manifest.config.repair ? ", repair" : ""}${manifest.config.host ? `, ${manifest.config.host}` : ""}) on ${manifest.source.branch ?? "detached"}@${manifest.source.commit.slice(0, 10)}, subject ${manifest.subject.digest.slice(0, 10)}`, { attempts: KIND_RUN[c.kind].attempts(c, manifest.config), actions: 60, minutes: manifest.config.minutes });
   docWritten(room, "manifest.json", { ...manifest, task });
   return contextOf(h, room, { ...manifest, task }, rec);
 }

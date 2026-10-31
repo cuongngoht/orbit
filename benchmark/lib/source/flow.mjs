@@ -42,8 +42,8 @@ const shortRun = (ctx) => ctx.run.id.slice(4);
 
 // ---- one recorded action: started, its evidence kept under its own id, ended with its receipt ----------------------------
 
-async function recorded(ctx, type, label, body) {
-  const act = ctx.rec.actStart(ctx.task, type, label);
+async function recorded(ctx, type, label, body, role) {
+  const act = ctx.rec.actStart(ctx.task, type, label, role);
   const result = await body(act);
   docWritten(ctx.room, `steps/${act}.json`, result.doc);
   return closed(ctx, act, result);
@@ -188,14 +188,14 @@ function roundState(ctx, view, k) {
   const left = leftOf(ctx, view);
   const runnerMinutes = Math.max(1, Math.min(ctx.case.limits.runner.minutes, left.minutes - RESERVE_MINUTES));
   ctx.rec.stage(ctx.task, "FIXING", `round ${k} of ${ctx.limits.rounds}: the ${scripted(ctx) ? "scripted" : "coding"} host repairs the source through Orbit's engineering loop · ${runnerMinutes} min · $${left.usd} left (${left.usdBasis})`);
-  return { left: { ...left, engineeringMinutes: runnerMinutes }, latest: latestVerification(ctx, view), engTask: engTaskOf(ctx, k - 1), deadlineMs: runnerMinutes * 60000 };
+  return { left: { ...left, engineeringMinutes: runnerMinutes }, latest: latestVerification(ctx, view), engTask: engTaskOf(ctx, k - 1), deadlineMs: runnerMinutes * 60000, held: () => Boolean(HELD(show(ctx))) };
 }
 
 const repairSummary = (r) => (r.error ? r.error.says : `the host made ${r.host?.toolCalls ?? "an unknown number of"} tool call(s) and ended ${r.container?.timedOut ? "at the round's deadline" : `with ${r.runner?.exit ?? "?"}${r.runner?.setup ? ` (${r.runner.setup})` : ""}`}`);
 
 const repairReceipt = (ctx, k, r) => ((t) => (t ? { domain: "task", ref: `runner.${t}`, outcome: "IN_RUNNER_STORE", summary: `the run's one engineering task, in its runner store; round ${k}` } : null))(r.start?.task ?? r.runner?.task ?? null);
 
-const repairAct = (ctx, k, state) => recorded(ctx, "benchmark.repair", `round ${k}: the coding host on the engineering task`, async () => ((r) => ({ doc: r, outcome: r.error ? "failed" : "succeeded", receipt: repairReceipt(ctx, k, r), summary: repairSummary(r) }))(await ranRound(ctx, k, state)));
+const repairAct = (ctx, k, state) => recorded(ctx, "benchmark.repair", `round ${k}: the ${scripted(ctx) ? "scripted" : "coding"} host on the engineering task`, async () => ((r) => ({ doc: r, outcome: r.error ? "failed" : "succeeded", receipt: repairReceipt(ctx, k, r), summary: repairSummary(r) }))(await ranRound(ctx, k, state)), { tool: scripted(ctx) ? "scripted-host" : "coding-host", mutates: true });
 
 const inspectSummary = (ins) => (ins.inspect ? `${(ins.inspect.changes ?? []).length} change(s) in the workspace; the engineering task is ${ins.task?.json?.lifecycle ?? "unread"}` : `the inspection did not answer (${ins.end})`);
 
@@ -250,7 +250,7 @@ export const isVerified = (r) => r.v.complete && r.v.failures.length === 0 && r.
 
 // What kept a round from being a round of repair -- the environment, the provider, the network -- and never a host that
 // stopped on its own budget (the budget rows decide that) or a candidate that failed (the verifier does).
-const hostError = (r) => ((e) => (e && e.cause !== "BUDGET_EXHAUSTED" ? e : null))(r.repair?.host ? hostEnd(r.repair.host, { timedOut: r.repair.container?.timedOut, exit: r.repair.runner?.exit }) : null);
+const hostError = (r) => ((e) => (e && e.cause !== "BUDGET_EXHAUSTED" ? e : null))(r.repair?.host ? hostEnd(r.repair.host, { timedOut: r.repair.container?.timedOut || r.repair.container?.held, exit: r.repair.runner?.exit }) : null);
 
 // A candidate's verification that did not run as declared: refused is the environment; anything else (a container
 // with no exit) is the infrastructure. A candidate's own time and memory are never here -- verify.mjs counts them as
@@ -262,7 +262,8 @@ const roundError = (r) => r.repair?.error ?? (r.repair?.runner?.setup === "EGRES
 // The candidates earlier rounds left, and how each failed: a round that leaves one of them again is no progress.
 const earlierOf = (ctx, k) => Array.from({ length: k - 1 }, (_, i) => docRead(ctx.room, `rounds/${i + 1}/outcome.json`)).filter(Boolean).map((o) => ({ patchDigest: o.patchDigest, signature: o.signature ?? undefined }));
 
-const cutShortOf = (r) => r.repair?.container?.timedOut === true && r.engineering?.terminal !== true;
+// Stopped at its deadline, not held by a person (a held run ends as the person held it) and not ended by its task.
+const cutShortOf = (r) => r.repair?.container?.timedOut === true && r.repair.container.held !== true && r.engineering?.terminal !== true;
 
 const roundFacts = (ctx, k, r, before) => ({ frozenIntact: frozenIntact(ctx), roundError: roundError(r), verified: isVerified(r), changed: r.cand.changes.length > 0, engineering: r.engineering, signature: before.signature, previous: before.previous, left: leftOf(ctx, show(ctx)), scope: [...r.cand.scope, ...(r.extraTasks ? [{ id: "EXTRA_TASK" }] : [])], cutShort: cutShortOf(r), patchDigest: r.cand.patchDigest, earlier: earlierOf(ctx, k) });
 

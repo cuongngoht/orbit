@@ -71,7 +71,7 @@ async function withEgress(ctx, net, k, fn) {
 
 // One round with no network: the runner alone, attested on no network at all, its outputs read back the same way.
 export async function offlineRan(ctx, k, spec, o) {
-  const container = await ranContainer(spec, ctx.deps, { input: "", timeoutMs: o.deadlineMs, outputBytes: 1024 * 1024, attest: attestOn(ctx, "none", ctx.images.runner), held: o.held });
+  const container = await ranContainer(spec, ctx.deps, { input: "", timeoutMs: o.deadlineMs, outputBytes: 1024 * 1024, attest: attestOn(ctx, "none", ctx.images.runner), held: o.held, heldEveryMs: o.heldEveryMs });
   return { container, egress: { none: true, holds: true, says: "a scripted host runs with no network" }, ...runnerOutputs(ctx, o.out) };
 }
 
@@ -79,6 +79,6 @@ export async function offlineRan(ctx, k, spec, o) {
 export async function roundRan(ctx, k, specOf, o) {
   const net = ensuredRunNetwork(ctx.run.id, ctx.deps);
   if (!net.ok) return { error: { cause: "ENVIRONMENT", says: net.why } };
-  const ran = await withEgress(ctx, net.name, k, async () => ({ container: await ranContainer(specOf(net.name), ctx.deps, { input: "", timeoutMs: o.deadlineMs, outputBytes: 1024 * 1024, attest: attestOn(ctx, net.name, ctx.images.runner) }) }));
+  const ran = await withEgress(ctx, net.name, k, async () => ({ container: await ranContainer(specOf(net.name), ctx.deps, { input: "", timeoutMs: o.deadlineMs, outputBytes: 1024 * 1024, attest: attestOn(ctx, net.name, ctx.images.runner), held: o.held, heldEveryMs: o.heldEveryMs }) }));
   return { ...ran, ...(ran.container ? runnerOutputs(ctx, o.out) : {}) };
 }

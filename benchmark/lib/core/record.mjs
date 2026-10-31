@@ -4,8 +4,13 @@
 // as they show any task, a person pauses or cancels it there, and its budget is held by the door that holds every
 // task's. Nothing here keeps a second state: where a run stands is read back from that journal every time.
 //
-//   recorder({ cli, cwd, env }) -> { create, stage, attempt, act, link, decide, end, show }
-//   text(s) -> one line of at most 240 characters, the task's own limit
+// Every action says WHO carries it and whether it writes (the task's own `tool` and `mutates`), so a viewer never shows
+// a verifier as a developer: a verifier and an inspection only read what they are handed; a host's round writes only
+// its own engineering task's workspace in the run's store, never the developer's checkout.
+//
+//   recorder({ cli, cwd, env }) -> { create, stage, attemptStart, attemptComplete, actStart, actComplete, actFail,
+//                                    receipt, file, verification, decide, complete, fail, block, unblock, show, events }
+//   ACTION_ROLES · text(s) -> one line of at most 240 characters, the task's own limit
 import { spawnSync } from "node:child_process";
 import { Blocked, Refused } from "../../../src/errors.mjs";
 import { printable } from "../../../src/printable.mjs";
@@ -15,6 +20,20 @@ export const PROVIDER = "benchmark";
 const LIMIT = 240;
 
 export const text = (s) => printable(String(s ?? "")).replace(/\s+/g, " ").trim().slice(0, LIMIT) || "-";
+
+// Who carries each kind of action, and whether it writes -- the default a caller may name more precisely (a round's
+// host is a coding host or a scripted one).
+export const ACTION_ROLES = {
+  "benchmark.verify": { tool: "verifier", mutates: false },
+  "benchmark.inspect": { tool: "inspection", mutates: false },
+  "benchmark.repair": { tool: "coding-host", mutates: true },
+  "benchmark.target": { tool: "engine", mutates: true },
+  "benchmark.qa": { tool: "coding-host", mutates: false },
+  "benchmark.readback": { tool: "inspection", mutates: false },
+  "benchmark.confirm": { tool: "verifier", mutates: false },
+};
+
+const roleOf = (type, role) => ({ ...(ACTION_ROLES[type] ?? { tool: "controller", mutates: false }), ...(role ?? {}) });
 
 const flags = (o) => Object.entries(o).filter(([, v]) => v !== undefined && v !== null && v !== "").map(([k, v]) => (v === true ? `--${k}` : `--${k}=${v}`));
 
@@ -41,7 +60,7 @@ export function recorder(p) {
     stage: (t, stage, because) => call(["stage", t, stage, ...flags({ because: because && text(because) })]),
     attemptStart: (t, cause) => call(["attempt", "start", t, ...flags({ cause })]),
     attemptComplete: (t, outcome, signature) => call(["attempt", "complete", t, ...flags({ outcome, signature })]),
-    actStart: (t, type, label) => call(["act", "start", t, ...flags({ type, label: text(label) })]).lines?.find((l) => l.kind === "action-started")?.id ?? null,
+    actStart: (t, type, label, role) => ((r) => call(["act", "start", t, ...flags({ type, label: text(label), tool: r.tool, mutates: r.mutates || undefined })]).lines?.find((l) => l.kind === "action-started")?.id ?? null)(roleOf(type, role)),
     actComplete: (t, act, outcome, receipt, summary) => call(["act", "complete", t, act, ...flags({ outcome, receipt, summary: summary && text(summary) })]),
     actFail: (t, act, reason, receipt) => call(["act", "fail", t, act, ...flags({ reason: text(reason), receipt })]),
     receipt: (t, r) => call(["link", "receipt", t, ...flags({ domain: r.domain, ref: r.ref, outcome: r.outcome, summary: r.summary && text(r.summary), action: r.action })]),
@@ -53,5 +72,6 @@ export function recorder(p) {
     block: (t, stop, needs, because) => call(["block", t, ...flags({ stop, needs, because: text(because) })]),
     unblock: (t, because) => call(["unblock", t, ...flags({ because: text(because) })]),
     show: (t) => call(["show", t]),
+    events: (t) => call(["events", t]),
   };
 }

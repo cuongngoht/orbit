@@ -23,6 +23,7 @@ import { docRead, docWritten, newRunId, readRegular, roomOf, RUN_ID } from "./co
 import { frozen, HARNESS, subjectOf, whereAt } from "./core/freeze.mjs";
 import { verified } from "./source/verify.mjs";
 import { judgedRepair } from "./source/repairs.mjs";
+import { metricsOf } from "./core/metrics.mjs";
 
 const int = (v) => (v === undefined ? undefined : /^\d+$/.test(v) ? Number(v) : Number.NaN);
 
@@ -170,7 +171,7 @@ const thrownTidied = (ctx, e) => {
 async function finished(ctx, kind) {
   const result = await kind.carried(ctx).catch((e) => thrownTidied(ctx, e));
   const left = tidied(ctx);
-  const rep = reportWritten(ctx.room, ctx.manifest, ctx.rec.show(ctx.task));
+  const rep = reportWritten(ctx.room, ctx.manifest, ctx.rec.show(ctx.task), eventsOf(ctx.rec, ctx.task));
   return { run: ctx.run.id, task: ctx.task, case: ctx.case.id, variant: ctx.manifest.benchmark.variant, ...result, report: ctx.room.at("report.md"), evidence: ctx.room.dir, axes: rep.json.axes, leaks: rep.json.leaks, leftBehind: left.clean ? null : left };
 }
 
@@ -204,8 +205,14 @@ const sayRun = (r) => (r.runs ? r.runs.map(sayOne).join("\n") : sayOne(r));
 
 const stepsFor = (room, view) => Object.fromEntries((view.actions ?? []).map((a) => [a.id, docRead(room, `steps/${a.id}.json`)]).filter(([, d]) => d));
 
-function reportWritten(room, manifest, view) {
-  const rep = kindOfRun(manifest).reportOf(room, manifest, view, stepsFor(room, view), docRead(room, "ending.json"), docRead(room, "leaks.json"));
+// The run task's own events, for what a person did to the run -- or nothing, when they cannot be read.
+const eventsOf = (rec, task) => {
+  try { return rec.events(task).events ?? null; }
+  catch { return null; }
+};
+
+function reportWritten(room, manifest, view, events = null) {
+  const rep = kindOfRun(manifest).reportOf(room, manifest, view, stepsFor(room, view), docRead(room, "ending.json"), docRead(room, "leaks.json"), events);
   docWritten(room, "report.json", rep.json);
   room.io.write(room.at("report.md"), rep.md);
   return rep;
@@ -215,7 +222,7 @@ const kept = (h, args) => ((ctx) => ({ ctx, view: ctx.rec.show(ctx.task) }))(res
 
 function report(h, args) {
   const { ctx, view } = kept(h, args);
-  return { ...reportWritten(ctx.room, ctx.manifest, view), path: ctx.room.at("report.md") };
+  return { ...reportWritten(ctx.room, ctx.manifest, view, eventsOf(ctx.rec, ctx.task)), path: ctx.room.at("report.md") };
 }
 
 function status(h, args) {
@@ -254,6 +261,33 @@ const runRow = (h, n) => ((m) => ({ run: n, case: m?.benchmark?.case ?? m?.kind 
 const where = (h) => ({ store: h.storeRoot, benchmark: join(h.storeRoot, "benchmark"), runs: safeList(join(h.storeRoot, "benchmark")).filter((n) => RUN_ID.test(n)).map((n) => runRow(h, n)) });
 
 const sayWhere = (r) => [`BENCHMARK  ${r.benchmark}`, ...r.runs.map((x) => `  ${x.run}  ${x.case} ${x.variant}  ${x.at ?? ""}`)].join("\n");
+
+// ---- metrics: what the runs kept, folded ------------------------------------------------------------------------------------
+
+// How many runs a fold reads, newest first: enough for a picture, bounded however many a machine keeps.
+export const MAX_RUNS = 500;
+
+const keptRun = (h, n) => ((room) => ({ manifest: docRead(room, "manifest.json"), ending: docRead(room, "ending.json"), report: docRead(room, "report.json"), controls: docRead(room, "controls.json") }))(roomOf(h.storeRoot, n));
+
+const inScope = (args) => (r) => (!flag(args, "suite") || r.manifest.benchmark?.suite === flag(args, "suite")) && (!flag(args, "case") || r.manifest.benchmark?.case === flag(args, "case")) && (!flag(args, "since") || String(r.manifest.at ?? "") >= flag(args, "since"));
+
+const scopeSaid = (args) => ["suite", "case", "since"].filter((k) => flag(args, k)).map((k) => `${k} ${flag(args, k)}`).join(", ") || "every run kept";
+
+const controlRows = (kept) => kept.filter((r) => r.manifest.kind === "controls" && r.controls).flatMap((r) => r.controls.rows.map((row) => ({ ...row, case: r.controls.case })));
+
+function metrics(h, args) {
+  const kept = safeList(join(h.storeRoot, "benchmark")).filter((n) => RUN_ID.test(n)).map((n) => keptRun(h, n)).filter((r) => r.manifest);
+  const scoped = kept.filter(inScope(args)).sort((a, b) => String(b.manifest.at ?? "").localeCompare(String(a.manifest.at ?? ""))).slice(0, MAX_RUNS);
+  return { store: join(h.storeRoot, "benchmark"), ...metricsOf(scoped.filter((r) => r.manifest.kind !== "controls"), { scope: scopeSaid(args), controls: controlRows(scoped), byRevision: flag(args, "by") === "revision" }) };
+}
+
+const cell = (m) => `${String(m.value).padEnd(8)} ${`${Math.round(m.numerator * 100) / 100}/${m.denominator}`.padEnd(12)}${Object.entries(m.excluded ?? {}).filter(([, n]) => n).map(([k, n]) => ` ${k} ${n}`).join("")}`;
+
+const basisLines = (r, basis) => (r.runs.byBasis[basis] ? [`${basis.toUpperCase()} (${r.runs.byBasis[basis]} run(s))`, ...Object.entries(r.bases[basis]).map(([id, m]) => `  ${id.padEnd(26)} ${cell(m)}`)] : []);
+
+const historyLines = (r) => (r.history ? ["HISTORY BY REVISION", ...r.history.map((x) => `  ${x.case} ${x.variant} (${x.basis}): ${x.commits.map((c) => `${c.commit ?? "?"} ${c.outcome}`).join(" → ")}`)] : []);
+
+const sayMetrics = (r) => [`METRICS    ${r.scope} — ${r.runs.total} run(s) in ${r.store}`, ...["coding-host", "scripted", "none"].flatMap((b) => basisLines(r, b)), `REPRODUCIBILITY ${cell(r.reproducibility)}${r.reproducibility.unstable.length ? ` — unstable: ${r.reproducibility.unstable.map((u) => `${u.case} ${u.variant}`).join(", ")}` : ""}`, `VERIFIER CONTROLS ${cell(r.verifier)}${r.verifier.missed.length ? ` — missed: ${r.verifier.missed.join("; ")}` : ""}`, ...historyLines(r), "A scripted host's numbers are conformance, never autonomy; a value of unknown has nothing to stand on."].join("\n");
 
 // ---- the controls: does the verifier fail what it must and pass what it must, in its own containers -------------------------
 
@@ -349,5 +383,6 @@ export const COMMANDS = {
   resume: { run: resume, say: sayRun, exit: (r) => r.exit ?? 4 },
   controls: { run: controls, say: sayControls, exit: (r) => r.exit },
   cleanup: { run: cleanup, say: sayCleanup },
+  metrics: { run: metrics, say: sayMetrics },
   where: { run: where, say: sayWhere },
 };

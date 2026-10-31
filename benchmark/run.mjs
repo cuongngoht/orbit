@@ -44,6 +44,12 @@
 //   node benchmark/run.mjs cleanup <bnr-…> [--scratch]
 //                                     the run's containers and networks, by its label only; --scratch its scratch trees
 //   node benchmark/run.mjs where      where the runs are kept, and which there are
+//   node benchmark/run.mjs metrics [--suite=<suite>] [--case=<case>] [--since=<iso date>] [--by=revision]
+//                                     what the kept runs show, each metric a numerator over a denominator: success,
+//                                     self-healing, detection, false alarms, regressions, interventions, rounds, time
+//                                     and REPORTED cost per verified outcome, reproducibility, the verifier's own
+//                                     controls -- apart by host basis (none, scripted, coding-host); --by=revision adds
+//                                     each case's outcome by source commit
 //
 // Every command takes --json. A run is recorded as an Orbit task (provider `benchmark`) in this checkout's project, so
 // Orbit Live and Mission Control show it, and a person pauses or cancels it there. Its evidence is kept in the machine

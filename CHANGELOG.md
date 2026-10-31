@@ -7,9 +7,9 @@ A Docker benchmark that holds Orbit's own source to independent checks, and repa
 changing no engine contract, so no version moves.
 
 - **Cases are data.**
-  - A pack under `benchmark/packs/` holds cases.
-  - Each case has a `case.json` held to declared fields, a public request, a hidden spec and probe that only the
-    verifier reads, variants that plant exact faults in the run's own copy (`FIXTURE_DRIFT` when one no longer
+  - A suite under `benchmark/suites/` holds cases.
+  - Each case has a `case.json` held to declared fields, a public request, a spec and probe under `verifier/` that only
+    the verifier reads, variants that plant exact faults in the run's own copy (`FIXTURE_DRIFT` when one no longer
     matches), and controls that prove the checks discriminate.
 - **Frozen inputs.**
   - The current branch is read through read-only git: HEAD, or HEAD plus the working tree when a person says so. A

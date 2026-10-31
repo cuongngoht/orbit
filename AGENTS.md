@@ -989,7 +989,7 @@ ORBIT_STORE_DIR=/tmp/l node cli/security-audit.mjs assess --investigation=<id>  
 node cli/qa-plan.mjs expects <openapi|asyncapi|schedule>.json [--operation=… --status=… | --channel=… --within=… | --at=…]   # candidate expectations
 node acceptance/run.mjs [--stack=…] [--variant=…] [--keep] [--record]   # native acceptance: two stacks, planted defects, a ground truth (Docker)
 node benchmark/run.mjs build [--verifier|--runner|--qa-worker] [--rebuild] [--ca-file=<pem>] | list | doctor [--preflight] | where   # the Docker benchmark (ADR 0046, 0047, benchmark/README.md)
-node benchmark/run.mjs run <case> [--variant=real|controlled-fault] [--repair] [--source=head|worktree] [--seed=…] | run --suite=<pack> | run --like=<bnr-…>
+node benchmark/run.mjs run <case> [--variant=real|controlled-fault] [--repair] [--source=head|worktree] [--seed=…] | run --suite=<suite> | run --like=<bnr-…>
 node benchmark/run.mjs status|report|resume|cleanup <bnr-…> | controls <case> [--only=<control>]   # a run read back, carried on, cleaned by its label; a case held to its controls (a QA case's: its scripted hosts)
 ORBIT_STORE_DIR=/tmp/l node cli/qc-tool.mjs where|list        # this project's own QC tools (README §7.2)
 ORBIT_STORE_DIR=/tmp/l node cli/qc-tool.mjs new <id> <scratch-dir> [--tool=psql] [--mutates]

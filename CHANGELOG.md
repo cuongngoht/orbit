@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.3.1
+
+A patch release: one behaviour fix in the goal orchestrator, and the Docker benchmark that found and verified it. No
+contract a consumer observes changes.
 
 - **Fixed: a goal moves on past a unit whose task ended.** Before, a goal stayed running and partial after its workflow
   completed, and stepping it found nothing ready. The change came from the benchmark's own repair path (ORBIT-GOAL-001
@@ -8,7 +11,7 @@
 
 A Docker benchmark that holds Orbit's own source to independent checks, and repairs a failure only through Orbit
 (ADR 0046). This is development tooling under `benchmark/`: export-ignored, imported by nothing of the engine, and
-changing no engine contract, so no version moves.
+changing no engine contract.
 
 - **Cases are data.**
   - A suite under `benchmark/suites/` holds cases.

@@ -10,7 +10,7 @@
     {
       "name": "orbit",
       "description": "Orbit Engineering for Claude Code, Codex and Antigravity: From Goal to Verified Outcome — context, requirements, sandboxes, runtime, UI tests, autonomous QA, Orbit Control, MCP and tools. Governed and local. No dependencies.",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "source": "./",
       "author": {
         "name": "Orbit Engineering",

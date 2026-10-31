@@ -31,8 +31,11 @@ export function linkTaskToUnit(model, unitId, taskId) {
   return { unit: unitId, state: "running", task: taskId };
 }
 
+// A task view spells its lifecycle in capitals (COMPLETED, FAILED, CANCELLED ...); a unit is settled on the word.
+const viewed = (t) => ({ ...t, lifecycle: String(t.lifecycle ?? "").toLowerCase() });
+
 export function reconcileUnits(model, taskViews) {
-  const byTask = new Map(taskViews.map((t) => [t.id, t]));
+  const byTask = new Map(taskViews.map((t) => [t.id, viewed(t)]));
   const lines = [];
   for (const u of model.units.values()) {
     if (!u.task) continue;

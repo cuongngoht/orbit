@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "The defect this case was written for, planted back in the run's own copy: a task's lifecycle is compared as task views never spell it, and resuming works out the settlements but never keeps them.",
+  "mutations": [
+    {
+      "id": "lifecycle-as-spelled",
+      "file": "src/goal/execute.mjs",
+      "find": "const byTask = new Map(taskViews.map((t) => [t.id, viewed(t)]));",
+      "replace": "const byTask = new Map(taskViews.map((t) => [t.id, t]));",
+      "count": 1
+    },
+    {
+      "id": "settlements-not-kept",
+      "file": "src/goal/commands.mjs",
+      "find": "const settled = ports.goals.transact(id, () => settleEnded(ports, id, tasks));",
+      "replace": "const settled = resumeView(ports.goals.read(id), tasks).pending;",
+      "count": 1
+    }
+  ]
+}

@@ -197,3 +197,56 @@ test("a fault that no longer matches the source refuses the run before anything 
   assert.equal(existsSync(join(w.storeRoot, "benchmark")), false, "no run room");
   assert.equal(benchTask(w), undefined, "no task");
 });
+
+// ---- the rows a round may now end on, and what a verified repair leaves --------------------------------------------------
+
+test("a repair the verifier passes leaves verified.json: what was repaired, on which source, by whom, and how to apply it -- never applied", async (t) => {
+  const w = world(t);
+  const r = await runOf(w, dockerDouble({ runner: ranAs(FIXED), inspect: inspectedAs(VIEW("COMPLETED")) }), { variant: "controlled-fault", repair: true });
+  const v = docRead(r.ctx.room, "verified.json");
+  assert.deepEqual([v.case.id, v.variant, v.engineering.task, v.host.basis, v.candidate.round], ["CALC-001", "controlled-fault", TASK, "coding-host", 1]);
+  assert.match(v.candidate.patchDigest, /^[a-f0-9]{64}$/);
+  assert.deepEqual(v.baseline.failingGroups, ["sums"]);
+  assert.ok(v.reproduce.some((l) => l.includes("git -C") && l.includes("apply")), "a person applies it, themselves");
+  assert.equal(readFileSync(join(w.repo, "src/calc.mjs"), "utf8"), FILES["src/calc.mjs"], "the developer's checkout is never written");
+  assert.deepEqual(docRead(r.ctx.room, "rounds/1/outcome.json").improved, ["sums", "gate:calc-suite"]);
+});
+
+test("an engineering task that waits for a person's approval stops the run on the person: a benchmark never approves anything", async (t) => {
+  const r = await runOf(world(t), dockerDouble({ runner: ranAs({}), inspect: inspectedAs(VIEW("EXECUTING", { approvals: [{ id: "apr-1", open: true }] })) }), { variant: "controlled-fault", repair: true });
+  assert.deepEqual([r.result.outcome, r.view.lifecycle], ["BLOCKED", "BLOCKED"]);
+  const ending = docRead(r.ctx.room, "ending.json");
+  assert.deepEqual([ending.next, ending.class, ending.needs], ["WAITING_FOR_PERSON", "HUMAN_APPROVAL_REQUIRED", "person"]);
+});
+
+test("a round stopped at its deadline before it changed anything is not a round that failed the same way: the next round goes on with the same task", async (t) => {
+  const plays = [ranAs({}, { timedOut: true }), ranAs(FIXED)];
+  let n = 0;
+  const r = await runOf(world(t), dockerDouble({ runner: (c, at) => plays[n++](c, at), inspect: inspectedAs(VIEW("EXECUTING")) }), { variant: "controlled-fault", repair: true });
+  assert.deepEqual([r.result.outcome, n], ["REPAIRED_VERIFIED", 2]);
+  assert.equal(docRead(r.ctx.room, "rounds/1/outcome.json").next, "CUT_SHORT");
+});
+
+test("a round that leaves exactly the candidate an earlier one left, failing the same way, ends the run as no progress -- even with another round between", async (t) => {
+  const wrong = { "src/calc.mjs": "export const add = (a, b) => a * b;\n" };
+  const plays = [ranAs(wrong), ranAs({ ...wrong, "test/calc.test.mjs": null }), ranAs({ ...wrong, "test/calc.test.mjs": FILES["test/calc.test.mjs"] })];
+  let n = 0;
+  const r = await runOf(world(t), dockerDouble({ runner: (c, at) => plays[n++](c, at), inspect: inspectedAs(VIEW("EXECUTING")) }), { variant: "controlled-fault", repair: true, rounds: 3 });
+  assert.deepEqual([r.result.outcome, n], ["NO_PROGRESS", 3]);
+  assert.equal(docRead(r.ctx.room, "ending.json").next, "REPEATED_CANDIDATE");
+  assert.equal(docRead(r.ctx.room, "rounds/3/outcome.json").patchDigest, docRead(r.ctx.room, "rounds/1/outcome.json").patchDigest);
+});
+
+test("a scripted host's round runs with no network and no credential: no egress, no internal network, nothing handed by name -- and no credential is needed to run it", async (t) => {
+  const w = world(t);
+  delete w.env.ANTHROPIC_API_KEY;
+  const double = dockerDouble({ runner: ranAs(FIXED), inspect: inspectedAs(VIEW("COMPLETED")) });
+  const r = await runOf(w, double, { variant: "controlled-fault", repair: true, host: "scripted:reference" });
+  const runner = double.s.calls.find((a) => a[0] === "create" && a.includes("/bench/entry.mjs"));
+  assert.equal(r.result.outcome, "REPAIRED_VERIFIED");
+  assert.equal(runner[runner.indexOf("--network") + 1], "none");
+  assert.ok(!runner.includes("-e"), "no credential is handed by name");
+  assert.ok(!double.s.calls.some((a) => a[0] === "create" && a.includes("/bench/egress.mjs")), "no egress proxy is started");
+  assert.ok(!double.s.calls.some((a) => a[0] === "network" && a[1] === "create"), "no network is made");
+  assert.equal(r.ctx.manifest.config.host, "scripted:reference");
+});

@@ -1,0 +1,106 @@
+#!/usr/bin/env node
+// THE INSPECTION after a repair round: what the round left, read back in a container of its own -- no network, no
+// credential, the subject and the runner's store mounted read-only -- so nothing a round wrote is ever read on the
+// developer's machine but these outputs. It asks Orbit's own read commands what became of the engineering task and
+// what the session trail attributed, walks the task's workspace and compares it with the subject file by file, and
+// copies out the regular files that were added or changed. It executes nothing of the candidate's: no git in the
+// workspace (whose configuration is the agent's to write), no test, no import.
+//
+//   node /bench/inspect.mjs <tsk-…|->     out: /work/out/inspect.json, task.json, tasks.json, trace.json, files/<rel>
+import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join, relative, sep } from "node:path";
+import { pathToFileURL } from "node:url";
+
+export const PATHS = { repo: "/work/repo", store: "/work/store", out: "/work/out" };
+
+export const LIMITS = { file: 2 * 1024 * 1024, read: 25 * 1024 * 1024, copied: 64 * 1024 * 1024, json: 8 * 1024 * 1024 };
+
+const SKIPPED = new Set([".git"]);
+
+const digestOf = (bytes) => createHash("sha256").update(bytes).digest("hex");
+
+const kindOf = (st) => (st.isSymbolicLink() ? "link" : st.isFile() ? ((st.mode & 0o111) !== 0 ? "exec" : "file") : "other");
+
+// Every entry under `root` but a `.git` and what `skip` names, as { rel, kind, size, digest } -- links never followed.
+export function listed(root, skip = []) {
+  const out = [];
+  const walk = (dir) => readdirSync(dir, { withFileTypes: true }).forEach((e) => entered(root, join(dir, e.name), e, skip, out, walk));
+  if (existsSync(root)) walk(root);
+  return out;
+}
+
+function entered(root, path, e, skip, out, walk) {
+  const rel = relative(root, path).split(sep).join("/");
+  if (SKIPPED.has(e.name) || skip.includes(rel)) return;
+  if (e.isDirectory() && !e.isSymbolicLink()) return walk(path);
+  out.push(entryAt(path, rel));
+}
+
+function entryAt(path, rel) {
+  const st = lstatSync(path);
+  const kind = kindOf(st);
+  const readable = (kind === "file" || kind === "exec") && st.size <= LIMITS.read;
+  return { rel, kind, size: st.size, digest: readable ? digestOf(readFileSync(path)) : `${kind}:${st.size}` };
+}
+
+const byRel = (list) => new Map(list.map((e) => [e.rel, e]));
+
+const changeOf = (b, w) => (!b ? "added" : !w ? "deleted" : b.digest !== w.digest || b.kind !== w.kind ? "modified" : null);
+
+export function compared(baseline, tree) {
+  const b = byRel(baseline);
+  const w = byRel(tree);
+  return [...new Set([...b.keys(), ...w.keys()])].sort().map((rel) => ({ rel, change: changeOf(b.get(rel), w.get(rel)), kind: (w.get(rel) ?? b.get(rel)).kind, size: w.get(rel)?.size ?? 0, digest: w.get(rel)?.digest ?? null })).filter((c) => c.change);
+}
+
+// Copied out: a regular file a change brought, small enough to be source, while the whole stays bounded.
+function copiedOut(tree, changes) {
+  let total = 0;
+  const copyable = (c) => c.change !== "deleted" && ["file", "exec"].includes(c.kind) && c.size <= LIMITS.file && (total += c.size) <= LIMITS.copied;
+  return changes.map((c) => ({ ...c, copied: copyable(c) ? copied(tree, c.rel) : false }));
+}
+
+function copied(tree, rel) {
+  const to = join(PATHS.out, "files", rel);
+  mkdirSync(dirname(to), { recursive: true });
+  writeFileSync(to, readFileSync(join(tree, rel)));
+  return true;
+}
+
+// ---- Orbit's own read commands, run from the subject ---------------------------------------------------------------------
+
+const orbit = (cli, args) => spawnSync(process.execPath, [`${PATHS.repo}/cli/${cli}`, ...args, "--json"], { cwd: PATHS.repo, env: process.env, encoding: "utf8", timeout: 120000, maxBuffer: LIMITS.json });
+
+const answered = (r) => ({ exit: r.status, json: ((t) => (t ? jsonOr(t) : null))(String(r.stdout ?? "").trim()), why: r.status === 0 ? null : String(r.stderr || r.stdout || r.error?.message || "").trim().split("\n").at(-1)?.slice(0, 300) ?? null });
+
+const jsonOr = (text) => {
+  try { return JSON.parse(text); }
+  catch { return null; }
+};
+
+// The task's workspace tree: <store>/<project>/workspaces/<task>/tree, the room the workspace owner keeps.
+const treeOf = (task) => (existsSync(PATHS.store) ? readdirSync(PATHS.store).map((d) => join(PATHS.store, d, "workspaces", task, "tree")).find((p) => existsSync(p) && !lstatSync(p).isSymbolicLink()) ?? null : null);
+
+const TASK = /^tsk-[a-f0-9]{12}$/;
+
+// The task a round's start file named -- or, when the controller never read one (a round interrupted before its runner
+// said), the ONE task the run's own runner store holds: only a round's runner starts one there, and it says which
+// before its host runs, so a store without a start file holds that one task or none. Two are not guessed between.
+export const taskFound = (asked, list) => asked ?? ((ids) => (ids.length === 1 ? ids[0] : null))((list?.json?.tasks ?? []).map((t) => t?.id).filter((id) => TASK.test(String(id))));
+
+function main(asked) {
+  const tasks = answered(orbit("task.mjs", ["list"]));
+  const task = taskFound(asked, tasks);
+  const shown = task ? answered(orbit("task.mjs", ["show", task])) : { exit: null, json: null, why: "no task was started" };
+  [["task.json", shown], ["tasks.json", tasks], ["trace.json", answered(orbit("trace.mjs", ["usage"]))]].forEach(([name, v]) => writeFileSync(join(PATHS.out, name), `${JSON.stringify(v)}\n`));
+  inspected(asked, task, task ? treeOf(task) : null);
+}
+
+function inspected(asked, task, tree) {
+  const changes = tree ? copiedOut(tree, compared(listed(PATHS.repo, [".claude-plugin/types"]), listed(tree))) : [];
+  writeFileSync(join(PATHS.out, "inspect.json"), `${JSON.stringify({ task, found: asked ? "start" : task ? "only-task" : null, workspace: Boolean(tree), changes, at: new Date().toISOString() }, null, 2)}\n`);
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) main(TASK.test(process.argv[2] ?? "") ? process.argv[2] : null);

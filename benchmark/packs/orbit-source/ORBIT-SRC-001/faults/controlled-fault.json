@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "Three planted defects in the oracle, applied only to the benchmark copy of the source: a lower bound compared the wrong way, an upper bound compared the wrong way, and a required step made optional going unnoticed.",
+  "mutations": [
+    {
+      "id": "min-threshold-reversed",
+      "file": "src/improvement/oracle.mjs",
+      "find": "gte: (a, b) => b < a, gt: (a, b) => b < a,",
+      "replace": "gte: (a, b) => b > a, gt: (a, b) => b > a,",
+      "count": 1
+    },
+    {
+      "id": "max-threshold-reversed",
+      "file": "src/improvement/oracle.mjs",
+      "find": "lte: (a, b) => b > a, lt: (a, b) => b > a,",
+      "replace": "lte: (a, b) => b < a, lt: (a, b) => b < a,",
+      "count": 1
+    },
+    {
+      "id": "optional-check-lost",
+      "file": "src/improvement/oracle.mjs",
+      "find": "fails: (p, c) => p.required && (!c || !c.required)",
+      "replace": "fails: (p, c) => p.required && !c",
+      "count": 1
+    }
+  ]
+}

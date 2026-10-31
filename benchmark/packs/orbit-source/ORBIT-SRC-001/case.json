@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "ORBIT-SRC-001",
+  "version": "1.0.0",
+  "title": "A candidate never weakens the acceptance oracle it is judged by",
+  "goal": "weakenings() and safetyOf() report every way a successor weakens the acceptance rules of the version it succeeds -- a lower bound lowered, an upper bound raised, a required step dropped or made optional, owner evidence turned into a report, a person's approval no longer asked, a rule removed, a ruled output retyped, a role's criteria, restrictions or contract lost -- and accept every change that keeps them, through the oracle and through the public safety API",
+  "measures": { "kind": "correctness", "capability": "improvement.oracle", "repairable": ["ORBIT_SOURCE_DEFECT"] },
+  "subject": {
+    "paths": ["src/improvement/oracle.mjs", "src/improvement/safety.mjs"],
+    "exports": { "src/improvement/oracle.mjs": ["oracleOf", "weakenings"], "src/improvement/safety.mjs": ["factsOf", "safetyOf"] }
+  },
+  "prepare": { "requires": ["node"] },
+  "request": "request.md",
+  "reproduce": "every failing check names the parent and candidate it compared, what the contract expects and what came back; the probe imports the subject's own modules and answers in its own process",
+  "acceptance": { "owner": "verifier", "spec": "hidden/spec.mjs", "probe": "hidden/probe.mjs", "samples": 48 },
+  "scope": { "allow": ["src/improvement/oracle.mjs", "src/improvement/safety.mjs", "test/*.test.mjs"], "deny": [] },
+  "checks": {
+    "gates": [
+      { "id": "improvement-suite", "argv": ["node", "--test", "--test-reporter=tap", "test/improvement-core.test.mjs", "test/improvement-regression.test.mjs", "test/improvement-satellite.test.mjs", "test/improvement-manipulation.test.mjs", "test/improvement-boundary.test.mjs", "test/skill-workflow.test.mjs"] },
+      { "id": "five-lines", "argv": ["node", "cli/check-five-lines.mjs", "src/improvement", "--strict"], "stdout": "^0 finding\\(s\\)" }
+    ],
+    "agentTests": { "required": true, "pattern": "^test/[^/]+\\.test\\.mjs$" }
+  },
+  "limits": {
+    "rounds": 2,
+    "minutes": 150,
+    "usd": 20,
+    "runner": { "cpus": 2, "memoryMb": 6144, "pids": 2048, "minutes": 120, "outputMb": 16 },
+    "verifier": { "cpus": 2, "memoryMb": 2048, "pids": 512, "seconds": 600 },
+    "engineering": { "attempts": 6, "actions": 160 }
+  },
+  "artifacts": ["manifest", "baseline", "candidate-patch", "verification", "host-result", "report"],
+  "cleanup": { "containers": "run-label", "networks": "run-label", "scratch": "after-run" },
+  "variants": {
+    "real": {},
+    "controlled-fault": { "faults": "faults/controlled-fault.json" }
+  },
+  "controls": [
+    { "id": "clean", "variant": "real", "expect": "PASS" },
+    { "id": "planted", "variant": "controlled-fault", "expect": "FAIL" },
+    { "id": "partial-fix", "variant": "controlled-fault", "file": "controls/partial-fix.json", "expect": "FAIL" },
+    { "id": "allow-all", "variant": "real", "file": "controls/allow-all.json", "expect": "FAIL" },
+    { "id": "reject-all", "variant": "real", "file": "controls/reject-all.json", "expect": "FAIL" }
+  ]
+}

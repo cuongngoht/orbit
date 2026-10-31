@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "known-good",
+  "about": "A reference repair, kept only to prove this verifier CAN pass the case. It is never handed to a runner: benchmark/ is not part of the subject.",
+  "mutations": [
+    {
+      "id": "approval-of-a-removed-step",
+      "file": "src/improvement/oracle.mjs",
+      "find": "fails: (p, c) => Boolean(c) && p.approval === \"owner\" && c.approval !== \"owner\"",
+      "replace": "fails: (p, c) => p.approval === \"owner\" && (!c || c.approval !== \"owner\")",
+      "count": 1
+    }
+  ]
+}

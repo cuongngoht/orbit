@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "reject-all",
+  "about": "An oracle that finds a weakening in everything: every check that must accept fails.",
+  "mutations": [
+    {
+      "id": "reject-all",
+      "file": "src/improvement/oracle.mjs",
+      "find": "export const weakenings = (parent, candidate) => (parent?.kind && parent.kind === candidate?.kind ? WEAKENINGS[parent.kind](parent, candidate) : [{ id: \"ORACLE_UNREADABLE\", says: \"the acceptance rules of one of the two versions could not be read\" }]);",
+      "replace": "export const weakenings = () => [{ id: \"APPROVAL_DROPPED\", says: \"every change is a weakening\" }];",
+      "count": 1
+    }
+  ]
+}

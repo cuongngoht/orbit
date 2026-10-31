@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "kind": "source",
+  "id": "ORBIT-MEM-006",
+  "version": "1.0.0",
+  "baseline": "PASS",
+  "title": "A journal survives a process killed mid-append",
+  "goal": "a task's, a goal's and a mission's append-only journal end a torn last line before they append the next record, so whatever a killed process left behind -- one fragment or several, first, last or after every few records -- every record appended through the journal's own door reads back, in the order it was written, and the fragment is never read as one",
+  "measures": { "kind": "correctness", "capability": "store.journal", "repairable": ["ORBIT_SOURCE_DEFECT"] },
+  "subject": {
+    "paths": ["src/task/store.mjs", "src/goal/store.mjs", "satellite/src/store/journal.mjs", "src/store/io.mjs"],
+    "exports": { "src/task/store.mjs": ["createTasks"], "src/goal/store.mjs": ["createGoals"], "satellite/src/store/journal.mjs": ["createJournal"], "src/store/io.mjs": ["realIo"] }
+  },
+  "prepare": { "requires": ["node"] },
+  "request": "request.md",
+  "reproduce": "every failing check names the journal and the plan of appends and tears it played, what the contract expects and what read back; the probe imports the subject's own journal stores and file io, and plays each plan in a fresh temporary directory in its own process",
+  "acceptance": { "owner": "verifier", "spec": "verifier/spec.mjs", "probe": "verifier/probe.mjs", "samples": 48 },
+  "scope": { "allow": ["src/task/*.mjs", "src/goal/*.mjs", "satellite/src/store/*.mjs", "test/*.test.mjs"], "deny": [] },
+  "checks": {
+    "gates": [
+      { "id": "journal-suite", "argv": ["node", "--test", "--test-reporter=tap", "test/task-store.test.mjs", "test/goal-intake.test.mjs", "satellite/test/store.test.mjs"] },
+      { "id": "five-lines", "argv": ["node", "cli/check-five-lines.mjs", "src/task", "src/goal", "satellite/src/store", "--strict"], "stdout": "^0 finding\\(s\\)" }
+    ],
+    "agentTests": { "required": true, "pattern": "^test/[^/]+\\.test\\.mjs$" }
+  },
+  "limits": {
+    "rounds": 2,
+    "minutes": 150,
+    "usd": 20,
+    "runner": { "cpus": 2, "memoryMb": 6144, "pids": 2048, "minutes": 120, "outputMb": 16 },
+    "verifier": { "cpus": 2, "memoryMb": 2048, "pids": 512, "seconds": 600 },
+    "engineering": { "attempts": 6, "actions": 160 }
+  },
+  "artifacts": ["manifest", "baseline", "candidate-patch", "verification", "host-result", "report"],
+  "cleanup": { "containers": "run-label", "networks": "run-label", "scratch": "after-run" },
+  "variants": {
+    "real": {},
+    "controlled-fault": { "mutations": "variants/controlled-fault.json" }
+  },
+  "controls": [
+    { "id": "clean", "variant": "real", "expect": "PASS" },
+    { "id": "planted", "variant": "controlled-fault", "expect": "FAIL" },
+    { "id": "partial-fix", "variant": "controlled-fault", "file": "controls/partial-fix.json", "expect": "FAIL" },
+    { "id": "allow-all", "variant": "real", "file": "controls/allow-all.json", "expect": "FAIL" },
+    { "id": "reject-all", "variant": "real", "file": "controls/reject-all.json", "expect": "FAIL" }
+  ]
+}

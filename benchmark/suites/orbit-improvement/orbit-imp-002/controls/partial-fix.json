@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "partial-fix",
+  "about": "The controlled fault with only the session count repaired: a single evaluation that found the candidate worse still does not reject it, so the verifier must still fail it.",
+  "mutations": [
+    {
+      "id": "sessions-counted-again",
+      "file": "src/improvement/evaluation.mjs",
+      "find": "when: (a) => a.of(\"BETTER\").length >= a.min && a.of(\"EQUIVALENT\").length === 0,",
+      "replace": "when: (a) => a.sessions(\"BETTER\") >= a.min && a.of(\"EQUIVALENT\").length === 0,",
+      "count": 1
+    }
+  ]
+}

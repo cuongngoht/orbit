@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "One planted defect in the comparison of one evaluation, applied only to the benchmark copy of the source: a step the candidate newly failed is forgiven when the candidate met more runs than the baseline.",
+  "mutations": [
+    {
+      "id": "regression-forgiven",
+      "file": "src/improvement/evaluation.mjs",
+      "find": "{ verdict: \"WORSE\", when: (c) => c.regressions.length > 0,",
+      "replace": "{ verdict: \"WORSE\", when: (c) => c.regressions.length > 0 && metCount(c.candidate) <= metCount(c.baseline),",
+      "count": 1
+    }
+  ]
+}

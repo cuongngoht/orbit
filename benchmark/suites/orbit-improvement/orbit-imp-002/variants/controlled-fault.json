@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "Two planted defects in how every evaluation of a campaign is read together, applied only to the benchmark copy of the source: evaluations that found the candidate better are counted instead of their independent sessions, and a single evaluation that found it worse no longer rejects it.",
+  "mutations": [
+    {
+      "id": "evaluations-counted-as-sessions",
+      "file": "src/improvement/evaluation.mjs",
+      "find": "when: (a) => a.sessions(\"BETTER\") >= a.min && a.of(\"EQUIVALENT\").length === 0,",
+      "replace": "when: (a) => a.of(\"BETTER\").length >= a.min && a.of(\"EQUIVALENT\").length === 0,",
+      "count": 1
+    },
+    {
+      "id": "one-worse-forgiven",
+      "file": "src/improvement/evaluation.mjs",
+      "find": "{ verdict: \"WORSE\", when: (a) => a.of(\"WORSE\").length > 0,",
+      "replace": "{ verdict: \"WORSE\", when: (a) => a.of(\"WORSE\").length > 1,",
+      "count": 1
+    }
+  ]
+}

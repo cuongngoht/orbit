@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "partial-fix",
+  "about": "The controlled fault with only the attribution defect repaired: a person's revocation still does not hold a promotion, so the verifier must still fail it.",
+  "mutations": [
+    {
+      "id": "reported-proves-nothing-again",
+      "file": "src/improvement/gates.mjs",
+      "find": "const PROVING = [\"RUNTIME_BOUND\", \"HOST_OBSERVED\", \"REPORTED\"];",
+      "replace": "const PROVING = [\"RUNTIME_BOUND\", \"HOST_OBSERVED\"];",
+      "count": 1
+    }
+  ]
+}

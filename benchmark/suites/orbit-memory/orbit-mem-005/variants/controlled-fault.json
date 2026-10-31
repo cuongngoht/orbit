@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "Two planted defects in freshness, applied only to the benchmark copy of the source: an uncommitted edit is called stale, and a scope a fact names that nobody measured is taken as fresh.",
+  "mutations": [
+    {
+      "id": "uncommitted-called-stale",
+      "file": "src/freshness.mjs",
+      "find": "if (now.dirty) return { state: UNKNOWN, hash: now.hash,",
+      "replace": "if (now.dirty) return { state: STALE, hash: now.hash,",
+      "count": 1
+    },
+    {
+      "id": "unmeasured-taken-as-fresh",
+      "file": "src/freshness.mjs",
+      "find": "const states = (fact.scope ?? []).map((s) => scopes[s]?.state ?? UNKNOWN);",
+      "replace": "const states = (fact.scope ?? []).map((s) => scopes[s]?.state ?? FRESH);",
+      "count": 1
+    }
+  ]
+}

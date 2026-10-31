@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "allow-all",
+  "about": "A freshness check that calls every fact fresh: every check that must owe a re-read fails.",
+  "mutations": [
+    {
+      "id": "allow-all",
+      "file": "src/freshness.mjs",
+      "find": "if (states.includes(STALE)) return STALE;",
+      "replace": "return FRESH;",
+      "count": 1
+    }
+  ]
+}

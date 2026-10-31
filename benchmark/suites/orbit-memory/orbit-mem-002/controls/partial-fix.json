@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "partial-fix",
+  "about": "The controlled fault with only the session set repaired: a contradiction still does not keep a record possible, so the verifier must still fail it.",
+  "mutations": [
+    {
+      "id": "every-mark-restored",
+      "file": "src/memory/support.mjs",
+      "find": "if (knownIn(support[list].slice(-1), seenBy)) return support;",
+      "replace": "if (knownIn(support[list], seenBy)) return support;",
+      "count": 1
+    }
+  ]
+}

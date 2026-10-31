@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "id": "orbit-memory",
+  "version": "1.0.0",
+  "title": "Orbit's memory, held to how sure it may be and what survives a crash",
+  "cases": ["ORBIT-MEM-001", "ORBIT-MEM-002", "ORBIT-MEM-003", "ORBIT-MEM-004", "ORBIT-MEM-005", "ORBIT-MEM-006"]
+}

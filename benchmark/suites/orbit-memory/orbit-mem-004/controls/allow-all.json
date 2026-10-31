@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "allow-all",
+  "about": "An authority ladder that makes every claim a rule: every check that must rely on a claim less fails.",
+  "mutations": [
+    {
+      "id": "allow-all",
+      "file": "src/knowledge/vocab.mjs",
+      "find": "export const authorityOf = (claim) => AUTHORITY.find((row) => row.when({ ...claim, measured: claim.measured ?? claim.status }));",
+      "replace": "export const authorityOf = () => AUTHORITY[0];",
+      "count": 1
+    }
+  ]
+}

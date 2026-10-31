@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "id": "orbit-improvement",
+  "version": "1.0.0",
+  "title": "Orbit's self-improvement, held to its promise of independent evidence",
+  "cases": ["ORBIT-IMP-001", "ORBIT-IMP-002", "ORBIT-IMP-003", "ORBIT-IMP-004"]
+}

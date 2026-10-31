@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "kind": "source",
+  "id": "ORBIT-IMP-004",
+  "version": "1.0.0",
+  "baseline": "PASS",
+  "title": "A regression and an opportunity need independent sessions, never session marks",
+  "goal": "independent() and sessionKeys() count one machine on one UTC day as one session and never a session mark a shell can set; observationOf() calls a promoted version REGRESSED only when the definition's own failure is back in minSessions independent sessions, and otherwise INSUFFICIENT, CONFOUNDED or STABLE by the contract's ordered table; and analyse() over groupsOf() holds each problem to minRuns runs in minSessions independent sessions, refuses what an environment or a provider caused, and calls a problem that held in as many sessions as showed it CONTRADICTED",
+  "measures": { "kind": "correctness", "capability": "improvement.independence", "repairable": ["ORBIT_SOURCE_DEFECT"] },
+  "subject": {
+    "paths": ["src/improvement/monitor.mjs", "src/improvement/signals.mjs", "src/improvement/detect.mjs"],
+    "exports": { "src/improvement/monitor.mjs": ["observationOf"], "src/improvement/signals.mjs": ["groupsOf", "independent", "sessionKeys"], "src/improvement/detect.mjs": ["analyse"] }
+  },
+  "prepare": { "requires": ["node"] },
+  "request": "request.md",
+  "reproduce": "every failing check names the runs it read -- each one's owner words, machine, UTC time and session mark -- and the settings, what the contract expects and what came back; the probe imports the subject's own modules and answers in its own process",
+  "acceptance": { "owner": "verifier", "spec": "verifier/spec.mjs", "probe": "verifier/probe.mjs", "samples": 48 },
+  "scope": { "allow": ["src/improvement/*.mjs", "test/*.test.mjs"], "deny": [] },
+  "checks": {
+    "gates": [
+      { "id": "improvement-suite", "argv": ["node", "--test", "--test-reporter=tap", "test/improvement-core.test.mjs", "test/improvement-regression.test.mjs", "test/improvement-satellite.test.mjs", "test/improvement-manipulation.test.mjs", "test/improvement-boundary.test.mjs", "test/skill-workflow.test.mjs"] },
+      { "id": "five-lines", "argv": ["node", "cli/check-five-lines.mjs", "src/improvement", "--strict"], "stdout": "^0 finding\\(s\\)" }
+    ],
+    "agentTests": { "required": true, "pattern": "^test/[^/]+\\.test\\.mjs$" }
+  },
+  "limits": {
+    "rounds": 2,
+    "minutes": 150,
+    "usd": 20,
+    "runner": { "cpus": 2, "memoryMb": 6144, "pids": 2048, "minutes": 120, "outputMb": 16 },
+    "verifier": { "cpus": 2, "memoryMb": 2048, "pids": 512, "seconds": 600 },
+    "engineering": { "attempts": 6, "actions": 160 }
+  },
+  "artifacts": ["manifest", "baseline", "candidate-patch", "verification", "host-result", "report"],
+  "cleanup": { "containers": "run-label", "networks": "run-label", "scratch": "after-run" },
+  "variants": {
+    "real": {},
+    "controlled-fault": { "mutations": "variants/controlled-fault.json" }
+  },
+  "controls": [
+    { "id": "clean", "variant": "real", "expect": "PASS" },
+    { "id": "planted", "variant": "controlled-fault", "expect": "FAIL" },
+    { "id": "partial-fix", "variant": "controlled-fault", "file": "controls/partial-fix.json", "expect": "FAIL" },
+    { "id": "allow-all", "variant": "real", "file": "controls/allow-all.json", "expect": "FAIL" },
+    { "id": "reject-all", "variant": "real", "file": "controls/reject-all.json", "expect": "FAIL" }
+  ]
+}

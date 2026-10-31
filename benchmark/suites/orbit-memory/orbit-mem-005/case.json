@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "kind": "source",
+  "id": "ORBIT-MEM-005",
+  "version": "1.0.0",
+  "baseline": "PASS",
+  "title": "Stale is not false, and an uncommitted edit is unknown",
+  "goal": "scopeState() calls a scope fresh only when it hashes to what was recorded, stale when it moved, and unknown when it is gone, was never recorded or has uncommitted edits -- never stale for an edit the index cannot see; factState() makes a fact as fresh as its least fresh scope, a scope nobody measured being unknown; and measure() asks the source port once for every scope the facts name and nothing else",
+  "measures": { "kind": "correctness", "capability": "memory.freshness", "repairable": ["ORBIT_SOURCE_DEFECT"] },
+  "subject": {
+    "paths": ["src/freshness.mjs"],
+    "exports": { "src/freshness.mjs": ["scopeState", "factState", "movedScopes", "measure"] }
+  },
+  "prepare": { "requires": ["node"] },
+  "request": "request.md",
+  "reproduce": "every failing check names the scopes, facts and recorded hashes it judged, what the contract expects and what came back; the probe imports the subject's own freshness module and answers in its own process",
+  "acceptance": { "owner": "verifier", "spec": "verifier/spec.mjs", "probe": "verifier/probe.mjs", "samples": 48 },
+  "scope": { "allow": ["src/freshness.mjs", "test/*.test.mjs"], "deny": [] },
+  "checks": {
+    "gates": [
+      { "id": "architecture-suite", "argv": ["node", "--test", "--test-reporter=tap", "test/architecture-record.test.mjs", "test/architecture-relations.test.mjs"] },
+      { "id": "five-lines", "argv": ["node", "cli/check-five-lines.mjs", "src/freshness.mjs", "--strict"], "stdout": "^0 finding\\(s\\)" }
+    ],
+    "agentTests": { "required": true, "pattern": "^test/[^/]+\\.test\\.mjs$" }
+  },
+  "limits": {
+    "rounds": 2,
+    "minutes": 150,
+    "usd": 20,
+    "runner": { "cpus": 2, "memoryMb": 6144, "pids": 2048, "minutes": 120, "outputMb": 16 },
+    "verifier": { "cpus": 2, "memoryMb": 2048, "pids": 512, "seconds": 600 },
+    "engineering": { "attempts": 6, "actions": 160 }
+  },
+  "artifacts": ["manifest", "baseline", "candidate-patch", "verification", "host-result", "report"],
+  "cleanup": { "containers": "run-label", "networks": "run-label", "scratch": "after-run" },
+  "variants": {
+    "real": {},
+    "controlled-fault": { "mutations": "variants/controlled-fault.json" }
+  },
+  "controls": [
+    { "id": "clean", "variant": "real", "expect": "PASS" },
+    { "id": "planted", "variant": "controlled-fault", "expect": "FAIL" },
+    { "id": "partial-fix", "variant": "controlled-fault", "file": "controls/partial-fix.json", "expect": "FAIL" },
+    { "id": "allow-all", "variant": "real", "file": "controls/allow-all.json", "expect": "FAIL" },
+    { "id": "reject-all", "variant": "real", "file": "controls/reject-all.json", "expect": "FAIL" }
+  ]
+}

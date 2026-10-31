@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "partial-fix",
+  "about": "The controlled fault with only current-source authority repaired: a certain host memory is still confirmed, so the verifier must still fail it.",
+  "mutations": [
+    {
+      "id": "measured-restored",
+      "file": "src/knowledge/vocab.mjs",
+      "find": "when: (c) => verifiedBy(c.source) && observes(c.strength),",
+      "replace": "when: (c) => verifiedBy(c.source) && counts(c.measured) && observes(c.strength),",
+      "count": 1
+    }
+  ]
+}

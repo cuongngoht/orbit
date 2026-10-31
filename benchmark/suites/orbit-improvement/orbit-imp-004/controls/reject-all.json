@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "reject-all",
+  "about": "A watch that finds every promoted version regressed: every check that must not see a regression fails.",
+  "mutations": [
+    {
+      "id": "reject-all",
+      "file": "src/improvement/monitor.mjs",
+      "find": "export const observationOf = (x) => ((f) => ((row) => ({ word: row.word, because: row.because(f), runs: f.runs.length, sessions: independent(f.runs), clean: f.clean.length, failing: f.failing.length, failingSessions: independent(f.failing), blocked: f.blocked.length, evidence: f.failing.map(refOf).slice(-12) }))(MONITOR.find((r) => r.when(f))))(factsOf(x));",
+      "replace": "export const observationOf = () => ({ word: \"REGRESSED\", because: \"every promoted version regressed\", runs: 0, sessions: 0, clean: 0, failing: 0, failingSessions: 0, blocked: 0, evidence: [] });",
+      "count": 1
+    }
+  ]
+}

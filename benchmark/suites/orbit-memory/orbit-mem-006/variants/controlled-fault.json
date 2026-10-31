@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "Two planted defects in the journals, applied only to the benchmark copy of the source: the task journal and the goal journal no longer end a torn last line before the next record.",
+  "mutations": [
+    {
+      "id": "task-tail-left-torn",
+      "file": "src/task/store.mjs",
+      "find": "return text && !text.endsWith(\"\\n\") ? \"\\n\" : \"\";",
+      "replace": "return \"\";",
+      "count": 1
+    },
+    {
+      "id": "goal-tail-left-torn",
+      "file": "src/goal/store.mjs",
+      "find": "return text && !text.endsWith(\"\\n\") ? \"\\n\" : \"\";",
+      "replace": "return \"\";",
+      "count": 1
+    }
+  ]
+}

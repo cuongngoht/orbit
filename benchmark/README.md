@@ -20,6 +20,13 @@ Every kind can be driven by a **scripted host** instead of a model (`images/runn
 same Orbit commands, the same verifier, and no credential. A scripted run proves the controller, the engine and the
 verifier -- never a model -- and every report and metric keeps it apart (host basis `scripted`).
 
+A **session host** (`run <case> --host=session:<label>`) lets the operator's own Claude Code session carry a round with
+no credential in the runner: the runner starts no model (`images/runner/session.mjs` only waits), and an agent the session
+spawns -- with none of the session's context -- drives Orbit inside the container with `docker exec`, then touches
+`/work/out/session-done`. The container keeps no network; the verdict is the verifier's as for any round. Its runs are
+reported and measured as host basis `session`, apart from `coding-host`: the agent runs beside the checkout, so what
+keeps it from the harness's files is its instructions, not the container.
+
 This is development tooling. It never ships (`.gitattributes` export-ignores `benchmark/`), and nothing in `src/`,
 `cli/` or `skills/` imports it (`test/benchmark-lint.test.mjs`). The design and its reasons are in
 [ADR 0046](../docs/adr/0046-a-docker-benchmark-holds-orbits-source-to-independent-checks.md) (the benchmark and its

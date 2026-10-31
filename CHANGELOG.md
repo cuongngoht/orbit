@@ -91,6 +91,9 @@ changing no engine contract, so no version moves.
   - **CI tiers.** `.github/workflows/benchmark.yml`: conformance on a pull request that touches the benchmark (every
     case's controls in containers, scripted hosts through both loops, no secret); a real coding host only when a person
     dispatches it, inside the budget they give.
+  - **Session host.** `run <case> --host=session:<label>`: the operator's own session carries a round through a fresh
+    agent that drives Orbit inside the runner with `docker exec`; no credential or network in the container, measured
+    apart as host basis `session`.
   - **Generic proof.** `test/benchmark-cases.test.mjs` holds every source and engineering case of every suite to its
     reference model, its baseline and its controls without Docker.
 - **Best-practice names.**

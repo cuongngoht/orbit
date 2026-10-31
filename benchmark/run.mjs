@@ -19,7 +19,7 @@
 //                                     declared checks (npm run lint, npm run test) in the runner container, no host
 //   node benchmark/run.mjs run <case> [--variant=real|controlled-fault] [--repair] [--source=head|worktree]
 //                                     [--seed=<n>] [--model=<id>] [--rounds=<n>] [--minutes=<n>] [--usd=<n>]
-//                                     [--credential=<NAME>] [--ca-file=<pem>]
+//                                     [--credential=<NAME>] [--ca-file=<pem>] [--host=session:<label>]
 //                                     one case on the source of this branch: a source case frozen, verified twice,
 //                                     diagnosed and -- with --repair -- repaired by Orbit and verified again; a QA case's
 //                                     application set up with its own variant planted and a coding host's investigation

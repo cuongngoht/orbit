@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "partial-fix",
+  "about": "The controlled fault with only the hexadecimal mask repaired: who was signed in still reaches the ledger unmasked, so the verifier must still fail it.",
+  "mutations": [
+    {
+      "id": "short-keys-masked",
+      "file": "src/scrub.mjs",
+      "find": "{ name: \"blob\", re: /\\b[A-Fa-f0-9]{40,}\\b/g, as: \"[hex]\" },",
+      "replace": "{ name: \"blob\", re: /\\b[A-Fa-f0-9]{32,}\\b/g, as: \"[hex]\" },",
+      "count": 1
+    }
+  ]
+}

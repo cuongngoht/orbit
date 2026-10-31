@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "id": "reject-all",
+  "about": "A scrubber that masks everything, calls every key a secret's name and scrubs a run record whole: every plain word and structural field is damaged, so every check that must keep fails.",
+  "mutations": [
+    {
+      "id": "scrub-everything",
+      "file": "src/scrub.mjs",
+      "find": "export const scrub = (text) => SECRETS.reduce((s, p) => s.replace(p.re, p.as), String(text ?? \"\"));",
+      "replace": "export const scrub = () => \"[redacted]\";",
+      "count": 1
+    },
+    {
+      "id": "every-key-secret",
+      "file": "src/scrub.mjs",
+      "find": "export const SECRET_NAME = new RegExp(`(^|[^a-z0-9])(${SECRET_WORDS})($|[^a-z0-9])`, \"i\");",
+      "replace": "export const SECRET_NAME = /(?:)/;",
+      "count": 1
+    },
+    {
+      "id": "record-scrubbed-whole",
+      "file": "src/scrub.mjs",
+      "find": "export const scrubRecord = (record) => scrubFields(record, FREE_TEXT);",
+      "replace": "export const scrubRecord = (record) => scrubbed(record);",
+      "count": 1
+    }
+  ]
+}

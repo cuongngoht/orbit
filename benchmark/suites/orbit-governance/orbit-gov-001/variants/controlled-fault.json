@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "One planted defect in the boundary rows, applied only to the benchmark copy of the source: a production write nobody declared the meaning of is no longer read as destructive production data.",
+  "mutations": [
+    {
+      "id": "undeclared-write-unheld",
+      "file": "src/protected/boundaries.mjs",
+      "find": "const operationOf = (a) => DESTRUCTIVE_OPERATIONS.find((op) => a.kind === destructiveKind(op)) ?? (a.kind === ACTION.DATA_MUTATE ? \"mutate\" : null);",
+      "replace": "const operationOf = (a) => DESTRUCTIVE_OPERATIONS.find((op) => a.kind === destructiveKind(op)) ?? null;",
+      "count": 1
+    }
+  ]
+}

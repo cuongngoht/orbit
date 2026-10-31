@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "kind": "source",
+  "id": "ORBIT-GOV-006",
+  "version": "1.0.0",
+  "baseline": "PASS",
+  "title": "A call is attributed only by evidence: two agents named for one run are CONFLICTING, and nothing is guessed",
+  "goal": "settle() comes to its word by the ordered table -- CONFLICTING whenever two different agents are named for one run, by any mix of what the hooks observed and what somebody reported, then HOST_OBSERVED, then REPORTED, then UNATTRIBUTED -- names every agent it was told and chooses none of them, counts an empty id as no id, and moves nothing onto a latest skill, a nearest run or a closest timestamp; and envelopeRefOf() reads the qualified run reference off a text only when it carries the envelope's mark and exactly one mission and one run, well-formed, within what it scans",
+  "measures": { "kind": "correctness", "capability": "attribution.settle", "repairable": ["ORBIT_SOURCE_DEFECT"] },
+  "subject": {
+    "paths": ["src/attribution.mjs"],
+    "exports": { "src/attribution.mjs": ["settle", "envelopeRefOf"] }
+  },
+  "prepare": { "requires": ["node"] },
+  "request": "request.md",
+  "reproduce": "every failing check names what was observed and reported, or the text it read, the word or reference the contract expects and what came back; the probe imports the subject's own attribution module and answers in its own process",
+  "acceptance": { "owner": "verifier", "spec": "verifier/spec.mjs", "probe": "verifier/probe.mjs", "samples": 48 },
+  "scope": { "allow": ["src/attribution.mjs", "test/*.test.mjs"], "deny": [] },
+  "checks": {
+    "gates": [
+      { "id": "attribution-suite", "argv": ["node", "--test", "--test-reporter=tap", "test/attribution.test.mjs"] },
+      { "id": "five-lines", "argv": ["node", "cli/check-five-lines.mjs", "src/attribution.mjs", "--strict"], "stdout": "^0 finding\\(s\\)" }
+    ],
+    "agentTests": { "required": true, "pattern": "^test/[^/]+\\.test\\.mjs$" }
+  },
+  "limits": {
+    "rounds": 2,
+    "minutes": 150,
+    "usd": 20,
+    "runner": { "cpus": 2, "memoryMb": 6144, "pids": 2048, "minutes": 120, "outputMb": 16 },
+    "verifier": { "cpus": 2, "memoryMb": 2048, "pids": 512, "seconds": 600 },
+    "engineering": { "attempts": 6, "actions": 160 }
+  },
+  "artifacts": ["manifest", "baseline", "candidate-patch", "verification", "host-result", "report"],
+  "cleanup": { "containers": "run-label", "networks": "run-label", "scratch": "after-run" },
+  "variants": {
+    "real": {},
+    "controlled-fault": { "mutations": "variants/controlled-fault.json" }
+  },
+  "controls": [
+    { "id": "clean", "variant": "real", "expect": "PASS" },
+    { "id": "planted", "variant": "controlled-fault", "expect": "FAIL" },
+    { "id": "allow-all", "variant": "real", "file": "controls/allow-all.json", "expect": "FAIL" },
+    { "id": "reject-all", "variant": "real", "file": "controls/reject-all.json", "expect": "FAIL" }
+  ]
+}

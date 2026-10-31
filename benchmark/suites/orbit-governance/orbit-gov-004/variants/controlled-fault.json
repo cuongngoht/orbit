@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "One planted defect in the policy leaf, applied only to the benchmark copy of the source: approval and deny trade places in the order of strictness.",
+  "mutations": [
+    {
+      "id": "approval-outranks-deny",
+      "file": "src/policy.mjs",
+      "find": "const RANK = { allow: 0, approval: 1, deny: 2 };",
+      "replace": "const RANK = { allow: 0, approval: 2, deny: 1 };",
+      "count": 1
+    }
+  ]
+}

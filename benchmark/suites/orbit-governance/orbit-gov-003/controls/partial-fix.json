@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "partial-fix",
+  "about": "The controlled fault with only the door repaired: a forced push still spends the approval of a plain one, so the verifier must still fail it.",
+  "mutations": [
+    {
+      "id": "door-restored",
+      "file": "src/protected/authorize.mjs",
+      "find": "return actor?.door === BOUNDARY_DOOR || actor?.tty === true ? { allowed: true, by: \"CONTROL\", says: \"a person, through Orbit Control\" } : deniedHere(verdict, w);",
+      "replace": "return actor?.door === BOUNDARY_DOOR ? { allowed: true, by: \"CONTROL\", says: \"a person, through Orbit Control\" } : deniedHere(verdict, w);",
+      "count": 1
+    }
+  ]
+}

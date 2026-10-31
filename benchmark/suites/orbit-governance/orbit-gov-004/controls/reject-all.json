@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "id": "reject-all",
+  "about": "A policy that denies everything and calls every tool a write: every check that must allow a call, ask for approval, or call a tool a read fails.",
+  "mutations": [
+    {
+      "id": "strictest-always-deny",
+      "file": "src/policy.mjs",
+      "find": "export const strictest = (verdicts) => verdicts.filter(isVerdict).reduce((a, b) => (RANK[b] > RANK[a] ? b : a), \"allow\");",
+      "replace": "export const strictest = () => \"deny\";",
+      "count": 1
+    },
+    {
+      "id": "capability-always-deny",
+      "file": "src/policy.mjs",
+      "find": "return [exception, policy?.capabilities?.[capability], policy?.default].find(isVerdict) ?? \"allow\";",
+      "replace": "return \"deny\";",
+      "count": 1
+    },
+    {
+      "id": "operation-always-deny",
+      "file": "src/policy.mjs",
+      "find": "export const operationVerdict = (policy, operation) => (isVerdict(policy?.operations?.[operation]) ? policy.operations[operation] : \"allow\");",
+      "replace": "export const operationVerdict = () => \"deny\";",
+      "count": 1
+    },
+    {
+      "id": "every-tool-writes",
+      "file": "src/policy.mjs",
+      "find": "export const operationOf = (tool) => (tool?.annotations?.readOnlyHint === true ? \"read\" : \"write\");",
+      "replace": "export const operationOf = () => \"write\";",
+      "count": 1
+    }
+  ]
+}

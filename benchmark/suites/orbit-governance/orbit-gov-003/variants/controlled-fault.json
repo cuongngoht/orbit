@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "Two planted defects, applied only to the benchmark copy of the source: an actor at a terminal crosses a person's DENY as if it were Orbit Control, and a forced push shares the fingerprint of the push it replaces.",
+  "mutations": [
+    {
+      "id": "terminal-crosses-deny",
+      "file": "src/protected/authorize.mjs",
+      "find": "return actor?.door === BOUNDARY_DOOR ? { allowed: true, by: \"CONTROL\", says: \"a person, through Orbit Control\" } : deniedHere(verdict, w);",
+      "replace": "return actor?.door === BOUNDARY_DOOR || actor?.tty === true ? { allowed: true, by: \"CONTROL\", says: \"a person, through Orbit Control\" } : deniedHere(verdict, w);",
+      "count": 1
+    },
+    {
+      "id": "force-left-unbound",
+      "file": "src/protected/boundaries.mjs",
+      "find": "fingerprint: [\"repository\", \"remote\", \"url\", \"ref\", \"commit\", \"force\"],",
+      "replace": "fingerprint: [\"repository\", \"remote\", \"url\", \"ref\", \"commit\"],",
+      "count": 1
+    }
+  ]
+}

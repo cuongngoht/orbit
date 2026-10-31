@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "kind": "source",
+  "id": "ORBIT-ORC-005",
+  "version": "1.0.0",
+  "baseline": "PASS",
+  "title": "A goal's intent is held as it was sent, and a missing prerequisite leaves its unit unresolved",
+  "goal": "rawFindings() refuses a goal's analysis as the host sent it -- every field neither declared nor stamped, every field the engine stamps, every field of the structured intent it does not know (an engine-owned one included), and every intent field that is not what it should be, all at once and never dropped -- and buildPlanUnits() plans one unit per work kind in the engine's own order, each waiting for the one before it, carrying the capabilities its kind takes, and UNRESOLVED -- never what may start next -- when a missing prerequisite blocks its kind or a procedure names no capability",
+  "measures": { "kind": "correctness", "capability": "goal.intent", "repairable": ["ORBIT_SOURCE_DEFECT"] },
+  "subject": {
+    "paths": ["src/goal/candidate.mjs", "src/goal/intent.mjs", "src/goal/plan-units.mjs", "src/goal/model.mjs"],
+    "exports": { "src/goal/candidate.mjs": ["rawFindings"], "src/goal/intent.mjs": ["intentFindings", "intentOf"], "src/goal/plan-units.mjs": ["buildPlanUnits"], "src/goal/model.mjs": ["modelOf", "frontierOf"] }
+  },
+  "prepare": { "requires": ["node"] },
+  "request": "request.md",
+  "reproduce": "every failing check names the analysis it sent and the units it named done, what the contract expects and what came back; the probe imports the subject's own modules and answers in its own process",
+  "acceptance": { "owner": "verifier", "spec": "verifier/spec.mjs", "probe": "verifier/probe.mjs", "samples": 48 },
+  "scope": { "allow": ["src/goal/*.mjs", "test/*.test.mjs"], "deny": [] },
+  "checks": {
+    "gates": [
+      { "id": "goal-suite", "argv": ["node", "--test", "--test-reporter=tap", "test/goal-intent.test.mjs", "test/goal-planning.test.mjs", "test/goal-capabilities.test.mjs", "test/goal-execution.test.mjs", "test/goal-imports.test.mjs"] },
+      { "id": "five-lines", "argv": ["node", "cli/check-five-lines.mjs", "src/goal", "--strict"], "stdout": "^0 finding\\(s\\)" }
+    ],
+    "agentTests": { "required": true, "pattern": "^test/[^/]+\\.test\\.mjs$" }
+  },
+  "limits": {
+    "rounds": 2,
+    "minutes": 150,
+    "usd": 20,
+    "runner": { "cpus": 2, "memoryMb": 6144, "pids": 2048, "minutes": 120, "outputMb": 16 },
+    "verifier": { "cpus": 2, "memoryMb": 2048, "pids": 512, "seconds": 600 },
+    "engineering": { "attempts": 6, "actions": 160 }
+  },
+  "artifacts": ["manifest", "baseline", "candidate-patch", "verification", "host-result", "report"],
+  "cleanup": { "containers": "run-label", "networks": "run-label", "scratch": "after-run" },
+  "variants": {
+    "real": {},
+    "controlled-fault": { "mutations": "variants/controlled-fault.json" }
+  },
+  "controls": [
+    { "id": "clean", "variant": "real", "expect": "PASS" },
+    { "id": "planted", "variant": "controlled-fault", "expect": "FAIL" },
+    { "id": "partial-fix", "variant": "controlled-fault", "file": "controls/partial-fix.json", "expect": "FAIL" },
+    { "id": "allow-all", "variant": "real", "file": "controls/allow-all.json", "expect": "FAIL" },
+    { "id": "reject-all", "variant": "real", "file": "controls/reject-all.json", "expect": "FAIL" }
+  ]
+}

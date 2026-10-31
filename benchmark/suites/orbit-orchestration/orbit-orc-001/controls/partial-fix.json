@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "partial-fix",
+  "about": "The controlled fault with only the directory defect repaired: dependents are still reached one step away, so the verifier must still fail it.",
+  "mutations": [
+    {
+      "id": "directory-restored",
+      "file": "src/orchestration/impact.mjs",
+      "find": "const encloses = (dir, path) => dir === \".\" || dir === \"\" || path === dir || path.startsWith(dir);",
+      "replace": "const encloses = (dir, path) => dir === \".\" || dir === \"\" || path === dir || path.startsWith(`${dir}/`);",
+      "count": 1
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "kind": "source",
+  "id": "ORBIT-GOAL-001",
+  "version": "1.0.0",
+  "baseline": "FAIL",
+  "title": "A goal moves on past a unit whose task ended",
+  "goal": "resumeGoal() settles every work unit whose child task has ended, as the task views spell its lifecycle (COMPLETED, FAILED, CANCELLED), and keeps the settlement in the goal's journal: a unit whose task completed is completed and the unit after it becomes what may start next; one whose task failed or was cancelled is no longer running and nothing after it starts; one whose task has not ended stays running; resuming again changes nothing more",
+  "measures": { "kind": "correctness", "capability": "goal.execution", "repairable": ["ORBIT_SOURCE_DEFECT"] },
+  "subject": {
+    "paths": ["src/goal/commands.mjs", "src/goal/execute.mjs", "src/goal/resume.mjs", "src/goal/model.mjs", "src/goal/store.mjs", "src/store/io.mjs"],
+    "exports": { "src/goal/commands.mjs": ["startGoal", "analyzeGoal", "planGoal", "stepGoal", "resumeGoal"], "src/goal/execute.mjs": ["reconcileUnits", "settleUnit"], "src/goal/resume.mjs": ["resumeView"], "src/goal/model.mjs": ["modelOf", "frontierOf", "lifecycleOf"], "src/goal/store.mjs": ["createGoals"], "src/store/io.mjs": ["realIo"] }
+  },
+  "prepare": { "requires": ["node"] },
+  "request": "request.md",
+  "reproduce": "every failing check names the work kinds and the script it played -- step, a task's ending, resume -- what the contract expects the goal's journal to say and what it said; the probe plays it through the subject's own commands over a goal store of its own, in its own process",
+  "acceptance": { "owner": "verifier", "spec": "verifier/spec.mjs", "probe": "verifier/probe.mjs", "samples": 48 },
+  "scope": { "allow": ["src/goal/*.mjs", "test/*.test.mjs"], "deny": [] },
+  "checks": {
+    "gates": [
+      { "id": "goal-suite", "argv": ["node", "--test", "--test-reporter=tap", "test/orbit-e2e.test.mjs", "test/goal-resume.test.mjs", "test/goal-execution.test.mjs", "test/goal-intent.test.mjs", "test/goal-planning.test.mjs", "test/goal-intake.test.mjs", "test/goal-verification.test.mjs", "test/goal-live.test.mjs", "test/goal-capabilities.test.mjs", "test/goal-imports.test.mjs"] },
+      { "id": "five-lines", "argv": ["node", "cli/check-five-lines.mjs", "src/goal", "--strict"], "stdout": "^0 finding\\(s\\)" }
+    ],
+    "agentTests": { "required": true, "pattern": "^test/[^/]+\\.test\\.mjs$" }
+  },
+  "limits": {
+    "rounds": 2,
+    "minutes": 150,
+    "usd": 20,
+    "runner": { "cpus": 2, "memoryMb": 6144, "pids": 2048, "minutes": 120, "outputMb": 16 },
+    "verifier": { "cpus": 2, "memoryMb": 2048, "pids": 512, "seconds": 600 },
+    "engineering": { "attempts": 6, "actions": 160 }
+  },
+  "artifacts": ["manifest", "baseline", "candidate-patch", "verification", "host-result", "report"],
+  "cleanup": { "containers": "run-label", "networks": "run-label", "scratch": "after-run" },
+  "variants": { "real": {} },
+  "controls": [
+    { "id": "known-good", "variant": "real", "file": "controls/known-good.json", "expect": "PASS" },
+    { "id": "allow-all", "variant": "real", "file": "controls/allow-all.json", "expect": "FAIL" },
+    { "id": "reject-all", "variant": "real", "file": "controls/reject-all.json", "expect": "FAIL" },
+    { "id": "half-fix-case", "variant": "real", "file": "controls/half-fix-case.json", "expect": "FAIL" },
+    { "id": "half-fix-append", "variant": "real", "file": "controls/half-fix-append.json", "expect": "FAIL" }
+  ]
+}

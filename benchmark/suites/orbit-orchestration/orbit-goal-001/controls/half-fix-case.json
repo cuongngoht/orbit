@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "half-fix-case",
+  "about": "Half of the reference repair: the lifecycle is read as the task views spell it, and the settlements are still never kept, so the verifier must still fail it.",
+  "mutations": [
+    {
+      "id": "lifecycle-completed-any-case",
+      "file": "src/goal/execute.mjs",
+      "find": "if (t.lifecycle === \"completed\" && u.state !== \"completed\")",
+      "replace": "if (String(t.lifecycle).toLowerCase() === \"completed\" && u.state !== \"completed\")",
+      "count": 1
+    },
+    {
+      "id": "lifecycle-ended-badly-any-case",
+      "file": "src/goal/execute.mjs",
+      "find": "[\"failed\", \"cancelled\"].includes(t.lifecycle)",
+      "replace": "[\"failed\", \"cancelled\"].includes(String(t.lifecycle).toLowerCase())",
+      "count": 1
+    }
+  ]
+}

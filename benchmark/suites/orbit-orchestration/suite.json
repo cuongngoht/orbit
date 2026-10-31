@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "id": "orbit-orchestration",
+  "version": "1.0.0",
+  "title": "Orbit's orchestration and goals, held to what they promise",
+  "cases": ["ORBIT-ORC-001", "ORBIT-ORC-002", "ORBIT-ORC-003", "ORBIT-ORC-004", "ORBIT-ORC-005", "ORBIT-ORC-006", "ORBIT-GOAL-001"]
+}

@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "reject-all",
+  "about": "A decision form that refuses everything: every check that must let a well-formed decision through fails.",
+  "mutations": [
+    {
+      "id": "reject-all",
+      "file": "src/orchestration/decision.mjs",
+      "find": "export const judgeForm = (d) => refusedBy(FORM, d, {});",
+      "replace": "export const judgeForm = (d) => refusedBy([{ id: \"FORBIDDEN\", fails: () => true, say: () => \"nothing may be decided\" }], d, {});",
+      "count": 1
+    }
+  ]
+}

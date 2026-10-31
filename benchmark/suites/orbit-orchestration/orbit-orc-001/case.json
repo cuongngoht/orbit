@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "kind": "source",
+  "id": "ORBIT-ORC-001",
+  "version": "1.0.0",
+  "baseline": "PASS",
+  "title": "A change is held to what it reaches",
+  "goal": "impactOf() reaches a component for the first reason that holds -- it holds a changed path (the deepest component whose directory holds it, never a sibling whose name only starts the same), it inherits a changed shared file, it depends on a reached component directly or through others, or it names a unit nothing resolves while anything is reached -- reports every changed path nothing holds as unowned, and dependentsOf() names every transitive dependent; planOf() holds a change to the declared checks of exactly what it reaches, and with no graph to every component that holds a check",
+  "measures": { "kind": "correctness", "capability": "orchestration.impact", "repairable": ["ORBIT_SOURCE_DEFECT"] },
+  "subject": {
+    "paths": ["src/orchestration/impact.mjs", "src/orchestration/obligations.mjs"],
+    "exports": { "src/orchestration/impact.mjs": ["impactOf", "dependentsOf"], "src/orchestration/obligations.mjs": ["planOf"] }
+  },
+  "prepare": { "requires": ["node"] },
+  "request": "request.md",
+  "reproduce": "every failing check names the changed paths, the component graph and the declared checks it asked about, what the contract expects and what came back; the probe imports the subject's own modules and answers in its own process",
+  "acceptance": { "owner": "verifier", "spec": "verifier/spec.mjs", "probe": "verifier/probe.mjs", "samples": 48 },
+  "scope": { "allow": ["src/orchestration/*.mjs", "test/*.test.mjs"], "deny": [] },
+  "checks": {
+    "gates": [
+      { "id": "orchestration-suite", "argv": ["node", "--test", "--test-reporter=tap", "test/orchestration-impact.test.mjs", "test/orchestration-tables.test.mjs"] },
+      { "id": "five-lines", "argv": ["node", "cli/check-five-lines.mjs", "src/orchestration", "--strict"], "stdout": "^0 finding\\(s\\)" }
+    ],
+    "agentTests": { "required": true, "pattern": "^test/[^/]+\\.test\\.mjs$" }
+  },
+  "limits": {
+    "rounds": 2,
+    "minutes": 150,
+    "usd": 20,
+    "runner": { "cpus": 2, "memoryMb": 6144, "pids": 2048, "minutes": 120, "outputMb": 16 },
+    "verifier": { "cpus": 2, "memoryMb": 2048, "pids": 512, "seconds": 600 },
+    "engineering": { "attempts": 6, "actions": 160 }
+  },
+  "artifacts": ["manifest", "baseline", "candidate-patch", "verification", "host-result", "report"],
+  "cleanup": { "containers": "run-label", "networks": "run-label", "scratch": "after-run" },
+  "variants": {
+    "real": {},
+    "controlled-fault": { "mutations": "variants/controlled-fault.json" }
+  },
+  "controls": [
+    { "id": "clean", "variant": "real", "expect": "PASS" },
+    { "id": "planted", "variant": "controlled-fault", "expect": "FAIL" },
+    { "id": "partial-fix", "variant": "controlled-fault", "file": "controls/partial-fix.json", "expect": "FAIL" },
+    { "id": "allow-all", "variant": "real", "file": "controls/allow-all.json", "expect": "FAIL" },
+    { "id": "reject-all", "variant": "real", "file": "controls/reject-all.json", "expect": "FAIL" }
+  ]
+}

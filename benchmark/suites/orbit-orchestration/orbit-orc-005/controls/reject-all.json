@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "reject-all",
+  "about": "An analysis judge that refuses every reading: every check that must accept one fails.",
+  "mutations": [
+    {
+      "id": "reject-all",
+      "file": "src/goal/candidate.mjs",
+      "find": "return [...unknownFields(raw), ...stampedFields(raw), ...intentFindings(raw.intent)];",
+      "replace": "return [\"analysis: unknown field \\\"everything\\\"\"];",
+      "count": 1
+    }
+  ]
+}

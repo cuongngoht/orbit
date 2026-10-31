@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "half-fix-append",
+  "about": "The other half of the reference repair: resuming appends the settlements it finds, and a lifecycle spelled as the task views spell it still matches nothing, so the verifier must still fail it.",
+  "mutations": [
+    {
+      "id": "resume-under-the-goal-lock",
+      "file": "src/goal/commands.mjs",
+      "find": "const view = resumeView(loaded.records, ports.taskSummaries?.() ?? []);",
+      "replace": "const view = ports.goals.transact(id, () => settledView(ports, id));",
+      "count": 1
+    },
+    {
+      "id": "resume-appends-the-settlements",
+      "file": "src/goal/commands.mjs",
+      "find": "export { stepGoal };",
+      "replace": "// What the goal comes to once every unit whose task ended is settled: each settlement appended under the goal's lock.\nfunction settledView(ports, id) {\n  const pending = resumeView(ports.goals.read(id), ports.taskSummaries?.() ?? []).pending;\n  for (const line of pending) ports.goals.append(id, \"unit\", line);\n  return resumeView(ports.goals.read(id), ports.taskSummaries?.() ?? []);\n}\n\nexport { stepGoal };",
+      "count": 1
+    }
+  ]
+}

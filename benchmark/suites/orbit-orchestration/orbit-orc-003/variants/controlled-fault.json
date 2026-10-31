@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "Two planted defects, applied only to the benchmark copy of the source: repeats counted wherever the last signature appears instead of in a row, and the numbers in a failing line left in its signature.",
+  "mutations": [
+    {
+      "id": "repeats-not-in-a-row",
+      "file": "src/task/model.mjs",
+      "find": "return signatures.length - 1 - signatures.findLastIndex((s) => s !== last);",
+      "replace": "return signatures.filter((s) => s === last).length;",
+      "count": 1
+    },
+    {
+      "id": "numbers-move-the-signature",
+      "file": "src/orchestration/failure.mjs",
+      "find": "(l) => l.replace(/\\d+/g, \"#\"),",
+      "replace": "(l) => l,",
+      "count": 1
+    }
+  ]
+}

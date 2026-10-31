@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "Two planted defects in the verification plan, applied only to the benchmark copy of the source: every failed check read as failed exactly as before, and a failure as before counted as the pass completion needs.",
+  "mutations": [
+    {
+      "id": "every-failure-as-before",
+      "file": "src/orchestration/obligations.mjs",
+      "find": "{ state: \"failed-as-before\", when: (r) => r.word === AS_BEFORE, settled: true },",
+      "replace": "{ state: \"failed-as-before\", when: (r) => r.state === \"failed\", settled: true },",
+      "count": 1
+    },
+    {
+      "id": "settled-counts-as-verified",
+      "file": "src/orchestration/obligations.mjs",
+      "find": "export const verifiedSome = (lw) => planOf(lw).required.some((c) => VERIFYING.includes(c.purpose) && c.state === \"passed\");",
+      "replace": "export const verifiedSome = (lw) => planOf(lw).required.some((c) => VERIFYING.includes(c.purpose) && c.settled);",
+      "count": 1
+    }
+  ]
+}

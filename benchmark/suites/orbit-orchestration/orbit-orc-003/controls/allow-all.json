@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "allow-all",
+  "about": "Progress rows that never conclude NO_PROGRESS: a loop going round on one failure is let go on, and every check that must stop it fails.",
+  "mutations": [
+    {
+      "id": "allow-all",
+      "file": "src/orchestration/progress.mjs",
+      "find": "holds: (lw) => (lw.view.repeats ?? 0) >= NO_PROGRESS_REPEATS,",
+      "replace": "holds: () => false,",
+      "count": 1
+    }
+  ]
+}

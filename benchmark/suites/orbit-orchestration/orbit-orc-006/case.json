@@ -1,0 +1,132 @@
+{
+  "schema": 1,
+  "kind": "source",
+  "id": "ORBIT-ORC-006",
+  "version": "1.0.0",
+  "baseline": "FAIL",
+  "title": "An id never moves a failure signature",
+  "goal": "signatureOf() signs two runs of one failure alike when their failing lines differ only in the UUIDs they print -- a request, an order, a tenant, a correlation, in either case, anywhere in a line, one or several -- so that repeats of one failure are counted and NO_PROGRESS can be concluded, while a different failing test, or the same test failing differently, still signs differently, and what moved no signature before still moves none",
+  "measures": {
+    "kind": "correctness",
+    "capability": "orchestration.progress",
+    "repairable": [
+      "ORBIT_SOURCE_DEFECT"
+    ]
+  },
+  "subject": {
+    "paths": [
+      "src/orchestration/failure.mjs"
+    ],
+    "exports": {
+      "src/orchestration/failure.mjs": [
+        "signatureOf"
+      ]
+    }
+  },
+  "prepare": {
+    "requires": [
+      "node"
+    ]
+  },
+  "request": "request.md",
+  "reproduce": "every failing check names the two runs it signed, what the contract expects and what came back; the probe imports the subject's own module and answers in its own process",
+  "acceptance": {
+    "owner": "verifier",
+    "spec": "verifier/spec.mjs",
+    "probe": "verifier/probe.mjs",
+    "samples": 48
+  },
+  "scope": {
+    "allow": [
+      "src/orchestration/*.mjs",
+      "test/*.test.mjs"
+    ],
+    "deny": []
+  },
+  "checks": {
+    "gates": [
+      {
+        "id": "failure-suite",
+        "argv": [
+          "node",
+          "--test",
+          "--test-reporter=tap",
+          "test/orchestration-failure.test.mjs",
+          "test/orchestration-impact.test.mjs"
+        ]
+      },
+      {
+        "id": "five-lines",
+        "argv": [
+          "node",
+          "cli/check-five-lines.mjs",
+          "src/orchestration",
+          "--strict"
+        ],
+        "stdout": "^0 finding\\(s\\)"
+      }
+    ],
+    "agentTests": {
+      "required": true,
+      "pattern": "^test/[^/]+\\.test\\.mjs$"
+    }
+  },
+  "limits": {
+    "rounds": 2,
+    "minutes": 150,
+    "usd": 20,
+    "runner": {
+      "cpus": 2,
+      "memoryMb": 6144,
+      "pids": 2048,
+      "minutes": 120,
+      "outputMb": 16
+    },
+    "verifier": {
+      "cpus": 2,
+      "memoryMb": 2048,
+      "pids": 512,
+      "seconds": 600
+    },
+    "engineering": {
+      "attempts": 6,
+      "actions": 160
+    }
+  },
+  "artifacts": [
+    "manifest",
+    "baseline",
+    "candidate-patch",
+    "verification",
+    "host-result",
+    "report"
+  ],
+  "cleanup": {
+    "containers": "run-label",
+    "networks": "run-label",
+    "scratch": "after-run"
+  },
+  "variants": {
+    "real": {}
+  },
+  "controls": [
+    {
+      "id": "known-good",
+      "variant": "real",
+      "file": "controls/known-good.json",
+      "expect": "PASS"
+    },
+    {
+      "id": "allow-all",
+      "variant": "real",
+      "file": "controls/allow-all.json",
+      "expect": "FAIL"
+    },
+    {
+      "id": "reject-all",
+      "variant": "real",
+      "file": "controls/reject-all.json",
+      "expect": "FAIL"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "partial-fix",
+  "about": "The controlled fault with only the repeats defect repaired: a timestamp or a duration still moves a signature, so the verifier must still fail it.",
+  "mutations": [
+    {
+      "id": "repeats-restored",
+      "file": "src/task/model.mjs",
+      "find": "return signatures.filter((s) => s === last).length;",
+      "replace": "return signatures.length - 1 - signatures.findLastIndex((s) => s !== last);",
+      "count": 1
+    }
+  ]
+}

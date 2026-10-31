@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "id": "reject-all",
+  "about": "The reference repair, except that every unit whose task ended is settled as failed: every check of a task that completed fails.",
+  "mutations": [
+    {
+      "id": "lifecycle-completed-any-case",
+      "file": "src/goal/execute.mjs",
+      "find": "if (t.lifecycle === \"completed\" && u.state !== \"completed\")",
+      "replace": "if (String(t.lifecycle).toLowerCase() === \"completed\" && u.state !== \"completed\")",
+      "count": 1
+    },
+    {
+      "id": "lifecycle-ended-badly-any-case",
+      "file": "src/goal/execute.mjs",
+      "find": "[\"failed\", \"cancelled\"].includes(t.lifecycle)",
+      "replace": "[\"failed\", \"cancelled\"].includes(String(t.lifecycle).toLowerCase())",
+      "count": 1
+    },
+    {
+      "id": "every-ending-a-failure",
+      "file": "src/goal/execute.mjs",
+      "find": "lines.push(settleUnit(model, u.id, \"completed\", u.task, \"child task completed\"));",
+      "replace": "lines.push(settleUnit(model, u.id, \"failed\", u.task, \"child task completed\"));",
+      "count": 1
+    },
+    {
+      "id": "resume-under-the-goal-lock",
+      "file": "src/goal/commands.mjs",
+      "find": "const view = resumeView(loaded.records, ports.taskSummaries?.() ?? []);",
+      "replace": "const view = ports.goals.transact(id, () => settledView(ports, id));",
+      "count": 1
+    },
+    {
+      "id": "resume-appends-the-settlements",
+      "file": "src/goal/commands.mjs",
+      "find": "export { stepGoal };",
+      "replace": "// What the goal comes to once every unit whose task ended is settled: each settlement appended under the goal's lock.\nfunction settledView(ports, id) {\n  const pending = resumeView(ports.goals.read(id), ports.taskSummaries?.() ?? []).pending;\n  for (const line of pending) ports.goals.append(id, \"unit\", line);\n  return resumeView(ports.goals.read(id), ports.taskSummaries?.() ?? []);\n}\n\nexport { stepGoal };",
+      "count": 1
+    }
+  ]
+}

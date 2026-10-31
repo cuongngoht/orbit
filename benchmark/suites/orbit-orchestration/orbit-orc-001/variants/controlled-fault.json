@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "Two planted defects in change impact, applied only to the benchmark copy of the source: a directory taken to hold every path that merely starts with its name, and dependents reached only one step away.",
+  "mutations": [
+    {
+      "id": "name-prefix-as-directory",
+      "file": "src/orchestration/impact.mjs",
+      "find": "const encloses = (dir, path) => dir === \".\" || dir === \"\" || path === dir || path.startsWith(`${dir}/`);",
+      "replace": "const encloses = (dir, path) => dir === \".\" || dir === \"\" || path === dir || path.startsWith(dir);",
+      "count": 1
+    },
+    {
+      "id": "dependents-one-step",
+      "file": "src/orchestration/impact.mjs",
+      "find": "return more.length ? reach(components, more, new Set([...seen, ...more])) : seen;",
+      "replace": "return new Set([...seen, ...more]);",
+      "count": 1
+    }
+  ]
+}

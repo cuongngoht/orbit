@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "reject-all",
+  "about": "A completion gate that refuses every task: every check that must let a task complete fails.",
+  "mutations": [
+    {
+      "id": "reject-all",
+      "file": "src/orchestration/verification.mjs",
+      "find": "export const unmet = (lw) => COMPLETION.filter((row) => !row.holds(lw)).map((row) => ({ id: row.id, say: row.say }));",
+      "replace": "export const unmet = () => COMPLETION.map((row) => ({ id: row.id, say: row.say }));",
+      "count": 1
+    }
+  ]
+}

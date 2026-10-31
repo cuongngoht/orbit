@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "reject-all",
+  "about": "A signature that is new for every run: every check of one failure run twice fails.",
+  "mutations": [
+    {
+      "id": "reject-all",
+      "file": "src/orchestration/failure.mjs",
+      "find": "return short([run.purpose, run.command, ...basis, ...(run.timedOut ? [\"timed-out\"] : [])].join(\"\\u0000\"), 12);",
+      "replace": "return short(String(Math.random()), 12);",
+      "count": 1
+    }
+  ]
+}

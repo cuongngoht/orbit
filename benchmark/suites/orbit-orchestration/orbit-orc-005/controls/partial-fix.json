@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "partial-fix",
+  "about": "The controlled fault with only the intent defect repaired: a missing prerequisite still blocks only the first kind it names, so the verifier must still fail it.",
+  "mutations": [
+    {
+      "id": "unknown-intent-field-restored",
+      "file": "src/goal/intent.mjs",
+      "find": "  (i) => [],\n",
+      "replace": "  (i) => Object.keys(i).filter((k) => !INTENT_FIELDS.includes(k)).map((k) => `intent: unknown field \"${k}\"`),\n",
+      "count": 1
+    }
+  ]
+}

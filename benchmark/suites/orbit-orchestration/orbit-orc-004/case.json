@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "kind": "source",
+  "id": "ORBIT-ORC-004",
+  "version": "1.0.0",
+  "baseline": "PASS",
+  "title": "A decision that asserts what the engine derives is refused by name",
+  "goal": "judgeForm() refuses, before anything is read of the task, a decision that carries any field the engine derives -- an outcome, a verdict, a status, a stage, a signature, a class, a confidence or an approval -- whatever value it holds, naming every such field; refuses an unknown field by name, an action that is not one of the action kinds, and anything that is not a decision of this schema; and lets every well-formed decision through",
+  "measures": { "kind": "correctness", "capability": "orchestration.decision", "repairable": ["ORBIT_SOURCE_DEFECT"] },
+  "subject": {
+    "paths": ["src/orchestration/decision.mjs"],
+    "exports": { "src/orchestration/decision.mjs": ["judgeForm", "judge"] }
+  },
+  "prepare": { "requires": ["node"] },
+  "request": "request.md",
+  "reproduce": "every failing check names the decision it sent, what the contract expects and what came back; the probe imports the subject's own module and answers in its own process",
+  "acceptance": { "owner": "verifier", "spec": "verifier/spec.mjs", "probe": "verifier/probe.mjs", "samples": 48 },
+  "scope": { "allow": ["src/orchestration/*.mjs", "test/*.test.mjs"], "deny": [] },
+  "checks": {
+    "gates": [
+      { "id": "decision-suite", "argv": ["node", "--test", "--test-reporter=tap", "test/orchestration-decision.test.mjs", "test/orchestration-tables.test.mjs"] },
+      { "id": "five-lines", "argv": ["node", "cli/check-five-lines.mjs", "src/orchestration", "--strict"], "stdout": "^0 finding\\(s\\)" }
+    ],
+    "agentTests": { "required": true, "pattern": "^test/[^/]+\\.test\\.mjs$" }
+  },
+  "limits": {
+    "rounds": 2,
+    "minutes": 150,
+    "usd": 20,
+    "runner": { "cpus": 2, "memoryMb": 6144, "pids": 2048, "minutes": 120, "outputMb": 16 },
+    "verifier": { "cpus": 2, "memoryMb": 2048, "pids": 512, "seconds": 600 },
+    "engineering": { "attempts": 6, "actions": 160 }
+  },
+  "artifacts": ["manifest", "baseline", "candidate-patch", "verification", "host-result", "report"],
+  "cleanup": { "containers": "run-label", "networks": "run-label", "scratch": "after-run" },
+  "variants": {
+    "real": {},
+    "controlled-fault": { "mutations": "variants/controlled-fault.json" }
+  },
+  "controls": [
+    { "id": "clean", "variant": "real", "expect": "PASS" },
+    { "id": "planted", "variant": "controlled-fault", "expect": "FAIL" },
+    { "id": "allow-all", "variant": "real", "file": "controls/allow-all.json", "expect": "FAIL" },
+    { "id": "reject-all", "variant": "real", "file": "controls/reject-all.json", "expect": "FAIL" }
+  ]
+}

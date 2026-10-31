@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "id": "invented",
+  "about": "What a host that invents the missing rule would deliver: ten per cent off for an order sent with `loyal: true`, with a test of its own. The goal names neither, so a verifier must refuse it.",
+  "mutations": [
+    {
+      "id": "loyal",
+      "file": "src/orders.mjs",
+      "find": "totalMinor: orderTotal(order.lines, order.percent)",
+      "replace": "totalMinor: orderTotal(order.lines, Math.min(100, order.percent + (input.loyal === true ? 10 : 0)))",
+      "count": 1
+    }
+  ],
+  "files": [
+    {
+      "rel": "test/loyalty.test.mjs",
+      "lines": [
+        "import assert from \"node:assert/strict\";",
+        "import { mkdtempSync, rmSync } from \"node:fs\";",
+        "import { tmpdir } from \"node:os\";",
+        "import { join } from \"node:path\";",
+        "import { test } from \"node:test\";",
+        "import { handle } from \"../src/api.mjs\";",
+        "import { openStore } from \"../src/store.mjs\";",
+        "",
+        "function fresh(t) {",
+        "  const dir = mkdtempSync(join(tmpdir(), \"orders-\"));",
+        "  t.after(() => rmSync(dir, { recursive: true, force: true }));",
+        "  return dir;",
+        "}",
+        "",
+        "test(\"a loyal customer's order is ten per cent off\", (t) => {",
+        "  const made = handle(openStore(fresh(t)), { method: \"POST\", path: \"/orders\", body: { lines: [{ qty: 1, unitMinor: 1000 }], loyal: true } });",
+        "  assert.equal(made.body.totalMinor, 900);",
+        "});"
+      ]
+    }
+  ],
+  "deletes": []
+}

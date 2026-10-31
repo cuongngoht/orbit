@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "id": "real",
+  "about": "The invoice is written behind the acknowledgement, on the next turn of the event loop: a process that stops right after the ack loses it. The public tests that would see it are gone.",
+  "mutations": [
+    {
+      "id": "header",
+      "file": "src/worker.mjs",
+      "find": "// The payments consumer: an `order.paid` message writes that order's invoice -- once per message, however many times\n// the message is delivered -- and the message is acknowledged only once the invoice is written.",
+      "replace": "// The payments consumer: an `order.paid` message writes that order's invoice -- once per message, however many times\n// the message is delivered.",
+      "count": 1
+    },
+    {
+      "id": "write-behind",
+      "file": "src/worker.mjs",
+      "find": "  store.put(\"invoices\", id, { id, orderId: order.id, amountMinor: order.totalMinor, currency: order.currency, messageId: message.id });",
+      "replace": "  setImmediate(() => store.put(\"invoices\", id, { id, orderId: order.id, amountMinor: order.totalMinor, currency: order.currency, messageId: message.id }));",
+      "count": 1
+    }
+  ],
+  "files": [],
+  "deletes": [
+    "test/invoice.test.mjs",
+    "test/dedupe.test.mjs"
+  ]
+}

@@ -9,9 +9,9 @@ import { Blocked, Refused } from "../../src/errors.mjs";
 import { flag, has, words } from "../../src/learn/args.mjs";
 import { docker } from "../../src/runtime/isolation/docker.mjs";
 import { madeCheckout } from "./core/checkout.mjs";
-import { contextOf, dockerDeps, engineOf, frozenRun, resumedRun, userOf, withSpec } from "./core/context.mjs";
+import { contextOf, dockerDeps, engineOf, fixtureEntries, frozenRun, resumedRun, userOf, variantEntries, withSpec } from "./core/context.mjs";
 import { cleaned, leftovers, ranContainer, specFor } from "./core/docker.mjs";
-import { mutatedEntries, mutationFile } from "./core/mutations.mjs";
+import { candidateEntries, candidateFile, mutatedEntries, mutationFile } from "./core/mutations.mjs";
 import { carried, EXIT, verificationSummary } from "./source/flow.mjs";
 import { builtImage, imageDefs, imageIdOf, resolvedImages, ROLES } from "./core/images.mjs";
 import { caseOf, casesOf, dirDigest, suitesIn } from "./core/suites.mjs";
@@ -99,13 +99,13 @@ function safeJson(buf) {
 // ---- suites -----------------------------------------------------------------------------------------------------------------
 
 // What a case is run on: a source case's variants, a QA case's application and the variant planted in it.
-const VARIANTS_OF = { source: (c) => Object.keys(c.variants), qa: (c) => [`${c.target.stack} ${c.target.variant}`] };
+const VARIANTS_OF = { source: (c) => Object.keys(c.variants), qa: (c) => [`${c.target.stack} ${c.target.variant}`], engineering: (c) => Object.keys(c.variants).map((v) => `${c.fixture}:${v}`) };
 
 const listed = (c) => ({ id: c.id, kind: c.kind, version: c.version, title: c.title, variants: VARIANTS_OF[c.kind](c), controls: [...c.controls.map((k) => `${k.id}:${k.expect}`), ...(c.repairs ?? []).map((r) => `${r.id}(${r.through}):${r.expect}`)], baseline: c.baseline ?? null });
 
 const list = (h) => ({ suites: suitesIn(h.root).map((p) => ({ id: p.id, version: p.version, title: p.title, cases: casesOf(h.root, p.id).map(listed) })) });
 
-const sayList = (r) => r.suites.flatMap((p) => [`${p.id} ${p.version} — ${p.title}`, ...p.cases.map((c) => `  ${c.id} ${c.version}  ${c.kind.padEnd(6)}  ${c.kind === "qa" ? "on" : "variants"} ${c.variants.join(", ")}  controls ${c.controls.join(", ")}\n    ${c.title}`)]).join("\n");
+const sayList = (r) => r.suites.flatMap((p) => [`${p.id} ${p.version} — ${p.title}`, ...p.cases.map((c) => `  ${c.id} ${c.version}  ${c.kind.padEnd(11)}  ${c.kind === "source" ? "variants" : "on"} ${c.variants.join(", ")}  controls ${c.controls.join(", ")}\n    ${c.title}`)]).join("\n");
 
 // ---- a run --------------------------------------------------------------------------------------------------------------------
 
@@ -132,6 +132,7 @@ function likeOf(h, id) {
 const KIND = {
   source: { need: (o) => ["verifier", ...(o.repair ? ["runner"] : [])], completed: (ctx) => withSpec(ctx), carried: (ctx) => carried(ctx), reportOf, host: (o) => o.host ?? null },
   qa: { need: (o) => ["qa-worker", ...(o.host === "coding-host" ? ["runner", "verifier"] : [])], completed: async (ctx) => withTruth(ctx), carried: (ctx) => carriedQa(ctx), reportOf: qaReportOf, host: (o) => o.host ?? "coding-host" },
+  engineering: { need: () => ["verifier", "runner"], completed: (ctx) => withSpec(ctx), carried: (ctx) => carried(ctx), reportOf, host: (o) => o.host ?? null, attempts: true },
 };
 
 const kindOfRun = (manifest) => KIND[manifest?.benchmark?.kind ?? "source"];
@@ -139,7 +140,7 @@ const kindOfRun = (manifest) => KIND[manifest?.benchmark?.kind ?? "source"];
 async function oneRun(h, o) {
   const { deps, version } = dockerUp(h, "a benchmark runs in containers");
   const kind = KIND[caseOf(h.root, o.caseId).kind];
-  const asked = { ...o, host: kind.host(o) };
+  const asked = { ...o, host: kind.host(o), repair: o.repair === true || kind.attempts === true };
   const images = resolvedImages(imageDefs(engineOf(h)), deps, { need: kind.need(asked), prefer: o.preferImages });
   return finished(await kind.completed(frozenRun(h, { ...asked, images, dockerVersion: version })), kind);
 }
@@ -183,7 +184,7 @@ function runCmd(h, args) {
 }
 
 // A suite's run of one case: the variant asked when the case has it, its real one otherwise -- and a QA case's own.
-const suiteVariant = (c, asked) => (c.kind === "qa" ? undefined : asked && Object.hasOwn(c.variants, asked) ? asked : "real");
+const suiteVariant = (c, asked) => (c.kind === "qa" ? undefined : c.kind === "source" && asked && Object.hasOwn(c.variants, asked) ? asked : "real");
 
 const suiteOptions = (args, c) => ((o) => ({ ...o, caseId: c.id, variant: suiteVariant(c, o.variant) }))(sourceChecked(checked(optionsOf(args))));
 
@@ -293,11 +294,15 @@ const sayMetrics = (r) => [`METRICS    ${r.scope} — ${r.runs.total} run(s) in 
 
 const NO_RECORD = { show: () => ({}) };
 
+// What a case's controls run over: Orbit's source for a source case, the CLEAN fixture for an engineering case -- every
+// control names the variant it lays over that.
+const CONTROL_BASE = { source: (c, fr) => subjectOf(fr.entries, HARNESS).entries, engineering: (c, fr) => fixtureEntries(c, fr.entries) };
+
 function controlsRoom(h, c, images) {
   const room = roomOf(h.storeRoot, newRunId(`${c.id}\u0000controls`));
   const where0 = whereAt(h.root, h.env);
   cpSync(c.dir, room.at("frozen", "case"), { recursive: true });
-  madeCheckout(room.at("checkout"), subjectOf(frozen(where0.root, "head", h.env).entries, HARNESS).entries, `${c.id} controls subject`, h.env);
+  madeCheckout(room.at("checkout"), CONTROL_BASE[c.kind](c, frozen(where0.root, "head", h.env)), `${c.id} controls subject`, h.env, { plugin: c.kind === "source" });
   return { room, manifest: { schema: 1, kind: "controls", run: room.id, task: null, at: new Date().toISOString(), source: { branch: where0.branch, commit: where0.commit, mode: "head" }, benchmark: { case: c.id, version: c.version, variant: "real", digest: dirDigest(room.at("frozen", "case")) }, subject: { digest: null }, images, config: { seed: 20240607, rounds: 1, usd: 0, model: null, repair: false, minutes: 60 } } };
 }
 
@@ -320,10 +325,15 @@ async function sourceControls(h, c, args) {
   return controlsRan(await withSpec(contextOf(h, made.room, made.manifest, NO_RECORD)), c, h, args);
 }
 
+// What a control's own file does to its variant: a source case's mutations, or an engineering case's definition (the
+// edits a candidate would make, files it brings and files it deletes).
+const CONTROL_FILES = { engineering: (dir, rel, entries) => candidateEntries(entries, candidateFile(dir, rel)) };
+
+const controlFiled = (ctx, c, k, entries) => (CONTROL_FILES[c.kind] ?? ((dir, rel, e) => mutatedEntries(e, mutationFile(dir, rel))))(ctx.frozenCase, k.file, entries);
+
 function entriesFor(ctx, c, k) {
-  const mutations = c.variants[k.variant]?.mutations;
-  const v = mutations ? mutatedEntries(ctx.baseline, mutationFile(ctx.frozenCase, mutations)) : { ok: true, entries: ctx.baseline };
-  const m = v.ok && k.file ? mutatedEntries(v.entries, mutationFile(ctx.frozenCase, k.file)) : v;
+  const v = variantEntries({ ...c, dir: ctx.frozenCase }, k.variant, ctx.baseline);
+  const m = v.ok && k.file ? controlFiled(ctx, c, k, v.entries) : v;
   return m.ok ? m.entries : refusedWith(`FIXTURE_DRIFT: control ${k.id} does not apply to this source (${m.drift.mutation} in ${m.drift.file})`);
 }
 

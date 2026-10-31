@@ -24,9 +24,19 @@ export { EGRESS_PORT } from "../core/runner.mjs";
 
 // ---- the containers of a repair round ------------------------------------------------------------------------------------
 
-const runnerSpec = (ctx, net, k, d) => runnerSpecOf(ctx, net, k, [{ source: ctx.checkoutDir, target: "/work/repo", readOnly: true }, { source: ctx.runnerStore, target: "/work/store", readOnly: false }, { source: d.out, target: "/work/out", readOnly: false }, { source: d.brief, target: "/run/brief", readOnly: true }]);
+// Where Orbit is in a round's containers: the subject itself for a source repair (Orbit repairs its own checkout), or the
+// frozen Orbit beside the target for an engineering goal -- read-only either way.
+const PLUGIN_AT = "/work/orbit";
 
-const inspectSpec = (ctx, k, task, out) => specFor("inspect", ctx.run, { n: k, image: ctx.images.runner, user: ctx.user, argv: ["node", "/bench/inspect.mjs", task ?? "-"], mounts: [{ source: ctx.checkoutDir, target: "/work/repo", readOnly: true }, { source: ctx.runnerStore, target: "/work/store", readOnly: true }, { source: out, target: "/work/out", readOnly: false }], env: { names: [], values: { HOME: "/tmp", ORBIT_STORE_DIR: "/work/store" } }, limits: { cpus: 1, memoryMb: 1024, pids: 256 }, tmpMb: 256 });
+const goalCase = (ctx) => ctx.case.kind === "engineering";
+
+const pluginMounts = (ctx) => (goalCase(ctx) ? [{ source: ctx.pluginDir, target: PLUGIN_AT, readOnly: true }] : []);
+
+const pluginOf = (ctx) => (goalCase(ctx) ? PLUGIN_AT : "/work/repo");
+
+const runnerSpec = (ctx, net, k, d) => runnerSpecOf(ctx, net, k, [{ source: ctx.checkoutDir, target: "/work/repo", readOnly: true }, ...pluginMounts(ctx), { source: ctx.runnerStore, target: "/work/store", readOnly: false }, { source: d.out, target: "/work/out", readOnly: false }, { source: d.brief, target: "/run/brief", readOnly: true }], {}, pluginOf(ctx));
+
+const inspectSpec = (ctx, k, task, out) => specFor("inspect", ctx.run, { n: k, image: ctx.images.runner, user: ctx.user, argv: ["node", "/bench/inspect.mjs", task ?? "-", `--plugin=${pluginOf(ctx)}`], mounts: [{ source: ctx.checkoutDir, target: "/work/repo", readOnly: true }, ...pluginMounts(ctx), { source: ctx.runnerStore, target: "/work/store", readOnly: true }, { source: out, target: "/work/out", readOnly: false }], env: { names: [], values: { HOME: "/tmp", ORBIT_STORE_DIR: "/work/store" } }, limits: { cpus: 1, memoryMb: 1024, pids: 256 }, tmpMb: 256 });
 
 function briefWritten(ctx, k, state) {
   const dir = fresh(ctx, "rounds", String(k), "brief");
@@ -52,7 +62,7 @@ export const scriptedHost = (ctx) => String(ctx.host ?? "").startsWith("scripted
 export async function inspectedRound(ctx, k, task) {
   const out = fresh(ctx, "rounds", String(k), "inspect");
   const r = await ranContainer(inspectSpec(ctx, k, task, out), ctx.deps, { input: "", timeoutMs: 300000, outputBytes: 1024 * 1024, attest: { network: "none", forbidden: forbidden(ctx), pluginTarget: null, imageEnv: docker.imageEnv(ctx.images.runner, ctx.deps) } });
-  return { end: r.refused ? "REFUSED" : r.timedOut ? "TIMEOUT" : `EXIT_${r.exit}`, refused: r.refused ?? null, attested: r.attested, dir: out, inspect: jsonAt(join(out, "inspect.json")), task: jsonAt(join(out, "task.json")), tasks: jsonAt(join(out, "tasks.json")), trace: jsonAt(join(out, "trace.json")) };
+  return { end: r.refused ? "REFUSED" : r.timedOut ? "TIMEOUT" : `EXIT_${r.exit}`, refused: r.refused ?? null, attested: r.attested, dir: out, inspect: jsonAt(join(out, "inspect.json")), task: jsonAt(join(out, "task.json")), tasks: jsonAt(join(out, "tasks.json")), trace: jsonAt(join(out, "trace.json")), goals: jsonAt(join(out, "goals.json")) };
 }
 
 // ---- the candidate ---------------------------------------------------------------------------------------------------------

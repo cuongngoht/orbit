@@ -10,7 +10,8 @@
 //   judgedRepair(ctx, c, r, cache) -> { id, kind, through, expect, got, matched, rejects, found, summary, digest }
 //   variantEntriesOf(ctx, c, variant) -> entries        candidateOfDefinition(ctx, base, doc) -> candidate
 import { Refused } from "../../../src/errors.mjs";
-import { candidateEntries, candidateFile, mutatedEntries, mutationFile } from "../core/mutations.mjs";
+import { candidateEntries, candidateFile } from "../core/mutations.mjs";
+import { variantEntries } from "../core/context.mjs";
 import { changesOf } from "./candidate.mjs";
 import { isVerified, verificationSummary } from "./flow.mjs";
 import { assembled } from "./round.mjs";
@@ -22,8 +23,7 @@ const drifted = (what, m) => {
 
 // The variant's tree, from the run's own frozen subject: the faults it plants applied to a copy, never to a checkout.
 export function variantEntriesOf(ctx, c, variant) {
-  const mutations = c.variants[variant]?.mutations;
-  const m = mutations ? mutatedEntries(ctx.baseline, mutationFile(ctx.frozenCase, mutations)) : { ok: true, entries: ctx.baseline };
+  const m = variantEntries({ ...c, dir: ctx.frozenCase }, variant, ctx.baseline);
   return m.ok ? m.entries : drifted(`the ${variant} variant`, m);
 }
 

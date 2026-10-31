@@ -84,6 +84,10 @@ export const fileText = (f) => f.lines.map((l) => `${l}\n`).join("");
 
 const broughtEntry = (f) => ((bytes) => ({ rel: f.rel, mode: "file", bytes, digest: shaBytes(bytes) }))(Buffer.from(fileText(f), "utf8"));
 
-const withFiles = (entries, doc) => [...entries.filter((e) => !doc.files.some((f) => f.rel === e.rel) && !doc.deletes.includes(e.rel)), ...doc.files.map(broughtEntry)];
+const withFiles = (entries, doc) => [...entries.filter((e) => !(doc.files ?? []).some((f) => f.rel === e.rel) && !(doc.deletes ?? []).includes(e.rel)), ...(doc.files ?? []).map(broughtEntry)];
 
-export const candidateEntries = (entries, doc) => ((m) => (m.ok ? { ...m, entries: withFiles(m.entries, doc) } : m))(mutatedEntries(entries, doc));
+// A file a definition deletes must be there to delete: one that is not is the same drift as a mutation that no longer
+// matches -- the tree moved under the definition.
+const goneDrift = (entries, doc) => ((rel) => (rel ? { ok: false, code: FIXTURE_DRIFT, drift: { mutation: `delete:${rel}`, file: rel, expected: 1, found: 0 }, applied: [] } : null))((doc.deletes ?? []).find((rel) => !entries.some((e) => e.rel === rel)));
+
+export const candidateEntries = (entries, doc) => goneDrift(entries, doc) ?? ((m) => (m.ok ? { ...m, entries: withFiles(m.entries, doc) } : m))(mutatedEntries(entries, doc));

@@ -1,0 +1,6 @@
+{
+  "schema": 1,
+  "id": "orders",
+  "about": "A small order service with no dependencies: money in minor units, a durable file store, an HTTP-shaped API as a pure function, a payments consumer that writes invoices, and an HTML view. It is the reference solution every engineering case starts from: each case's `real` variant takes one behaviour away. Its public tests are kept under checks/ and become test/<name>.test.mjs in the checkout a run makes, so nothing under benchmark/ is a test file.",
+  "tests": { "from": "checks/", "to": "test/", "suffix": ".test.mjs" }
+}

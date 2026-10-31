@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "id": "reference",
+  "about": "A reference solution of the goal with a regression test that fails before it and passes after, made by the scripted host in the engineering task's own workspace. Kept only to prove the verifier and Orbit's goal path CAN pass this case; it is never handed to a coding host.",
+  "mutations": [
+    {
+      "id": "round-half-up",
+      "file": "src/money.mjs",
+      "find": "Math.floor((minor * (100 - percent)) / 100)",
+      "replace": "Math.floor((minor * (100 - percent) + 50) / 100)",
+      "count": 1
+    }
+  ],
+  "files": [
+    {
+      "rel": "test/discount-rounding.test.mjs",
+      "lines": [
+        "import assert from \"node:assert/strict\";",
+        "import { test } from \"node:test\";",
+        "import { discounted } from \"../src/money.mjs\";",
+        "",
+        "test(\"a discount that leaves half a cent or more rounds up to the next cent\", () => {",
+        "  assert.equal(discounted(995, 10), 896);",
+        "});"
+      ]
+    }
+  ],
+  "deletes": []
+}

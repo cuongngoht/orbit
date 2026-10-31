@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "half",
+  "about": "Half of the change: currencies are kept, validated and carried to the invoice, but every total is still formatted in dollars by the API and the view.",
+  "mutations": [
+    {
+      "id": "currencies",
+      "file": "src/money.mjs",
+      "find": "export const lineTotal",
+      "replace": "export const CURRENCIES = { USD: { minor: 2, symbol: \"$\" }, EUR: { minor: 2, symbol: \"€\" }, JPY: { minor: 0, symbol: \"¥\" } };\n\nexport const lineTotal",
+      "count": 1
+    },
+    {
+      "id": "import",
+      "file": "src/orders.mjs",
+      "find": "import { orderTotal } from \"./money.mjs\";",
+      "replace": "import { CURRENCIES, orderTotal } from \"./money.mjs\";",
+      "count": 1
+    },
+    {
+      "id": "validate",
+      "file": "src/orders.mjs",
+      "find": "? \"percent\" : null);",
+      "replace": "? \"percent\" : !Object.hasOwn(CURRENCIES, input.currency ?? \"USD\") ? \"currency\" : null);",
+      "count": 1
+    },
+    {
+      "id": "keep",
+      "file": "src/orders.mjs",
+      "find": "percent: input.percent ?? 0, ",
+      "replace": "percent: input.percent ?? 0, currency: input.currency ?? \"USD\", ",
+      "count": 1
+    },
+    {
+      "id": "invoice",
+      "file": "src/worker.mjs",
+      "find": "amountMinor: order.totalMinor, ",
+      "replace": "amountMinor: order.totalMinor, currency: order.currency, ",
+      "count": 1
+    }
+  ],
+  "files": [],
+  "deletes": []
+}

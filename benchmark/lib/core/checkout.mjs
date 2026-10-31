@@ -29,10 +29,11 @@ function committed(dir, label, env) {
 
 const listed = (dir, env) => done(gitOwn(dir, ["ls-files", "-z"], env), "list its files").split("\0").filter(Boolean).length;
 
-export function madeCheckout(dir, entries, label, env) {
+// `o.plugin: false` for a checkout that is a target, never a plugin: it needs no mount point for the host's types.
+export function madeCheckout(dir, entries, label, env, o = { plugin: true }) {
   writtenTree(dir, entries);
   const commit = committed(dir, label, env);
   if (listed(dir, env) !== entries.length) throw new Blocked(`the subject's repository holds ${listed(dir, env)} files and the subject has ${entries.length}`);
-  mkdirSync(join(dir, PLUGIN_TYPES), { recursive: true });
+  if (o.plugin !== false) mkdirSync(join(dir, PLUGIN_TYPES), { recursive: true });
   return { dir, commit, files: entries.length };
 }

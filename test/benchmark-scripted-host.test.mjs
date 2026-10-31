@@ -1,17 +1,24 @@
-// The SCRIPTED HOST a repair control runs in the runner in place of a coding host, run here over a real repository and
-// Orbit's real engineering CLI -- no container, no model, no network: a task started the way the runner starts one,
-// driven one decided step at a time with the control's edits made in the task's own workspace, until the engine itself
-// completes it with a commit in its own delivery. What the round left is what the inspection reads back. An idle script
-// changes nothing; an edit that no longer matches is said and not made; a scripted host never needs a credential.
+// The SCRIPTED HOST a control runs in the runner in place of a coding host, run here over a real repository and Orbit's
+// real CLIs -- no container, no model, no network. A REPAIR script drives a task started the way the runner starts one,
+// one decided step at a time with the control's edits made in the task's own workspace, until the engine itself
+// completes it with a commit in its own delivery. A GOAL script starts where a person would, at Orbit's goal entry, and
+// drives the workflow the goal's step starts and the engineering task that workflow starts, to the same end; a BLOCKED
+// one records the rule the goal leaves out and starts nothing; an INTERRUPT one kills its own check mid-run, and its next
+// round reconciles the action the crash left open and goes on -- never sending it again. An idle script changes nothing;
+// an edit that no longer matches is said and not made; a scripted host never needs a credential.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { compared, listed } from "../benchmark/images/runner/inspect.mjs";
 import { hostCommand, isScripted } from "../benchmark/images/runner/entry.mjs";
-import { edited, SCRIPTS, scopeOf } from "../benchmark/images/runner/scripted.mjs";
+import { edited, SCRIPTS, scopeOf, stateOf } from "../benchmark/images/runner/scripted.mjs";
+import { fixtureEntries, variantEntries } from "../benchmark/lib/core/context.mjs";
+import { candidateFile } from "../benchmark/lib/core/mutations.mjs";
+import { caseOf } from "../benchmark/lib/core/suites.mjs";
+import { shaBytes } from "../src/hash.mjs";
 import { createProcess } from "../src/process/index.mjs";
 import { GIT_ENV, ROOT } from "./benchmark-double.mjs";
 import { sealed } from "./home.mjs";
@@ -83,4 +90,73 @@ test("the runner runs a control's scripted host in place of Claude Code, on the 
   assert.equal(isScripted({ host: null }), false);
   assert.deepEqual(hostCommand({ host: "scripted:reference" }, "tsk-0000000000a1"), [process.execPath, ["/bench/scripted.mjs", "tsk-0000000000a1"]]);
   assert.equal(hostCommand({ host: null, kind: "source" }, "tsk-0000000000a1")[0], "claude");
+});
+
+// ---- a GOAL through Orbit's goal entry, over an engineering case's own target -------------------------------------------
+
+const FIXTURE = join("benchmark", "fixtures", "orders");
+
+const fixtureOnDisk = () => readdirSync(join(ROOT, FIXTURE), { recursive: true }).filter((rel) => statSync(join(ROOT, FIXTURE, rel)).isFile()).map((rel) => ((bytes) => ({ rel: `${FIXTURE}/${rel}`, mode: "file", bytes, digest: shaBytes(bytes) }))(readFileSync(join(ROOT, FIXTURE, rel))));
+
+// The target a run of the case hands a goal: the fixture with the case's real variant in it, as a one-commit checkout.
+function targetRepository(t, c) {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), "orbit-bench-goal-")));
+  t.after(() => rmSync(base, { recursive: true, force: true }));
+  const repo = join(base, "repo");
+  for (const e of variantEntries(c, "real", fixtureEntries(c, fixtureOnDisk())).entries) (mkdirSync(dirname(join(repo, e.rel)), { recursive: true }), writeFileSync(join(repo, e.rel), e.bytes));
+  const env = sealed({ ...GIT_ENV, ORBIT_STORE_DIR: join(base, "store") });
+  for (const a of [["init", "-q", "."], ["add", "-A"], ["commit", "-qm", "target"]]) spawnSync("git", a, { cwd: repo, env });
+  return { repo, env };
+}
+
+const goalHost = (at, c, repairId, round = 1) => ((r) => ({ ...stateOf({ plugin: ROOT, goal: readFileSync(join(c.dir, c.request), "utf8"), round, script: { id: r.id, mode: r.script, intent: c.title, definition: candidateFile(c.dir, r.candidate) } }, "-"), repo: at.repo, env: at.env, say: () => {} }))(c.repairs.find((x) => x.id === repairId));
+
+const tasksOf = (at) => JSON.parse(spawnSync(process.execPath, [join(ROOT, "cli", "task.mjs"), "list", "--json"], { cwd: at.repo, env: at.env, encoding: "utf8" }).stdout).tasks;
+
+const goalPlanOf = (at, goal) => ((store) => JSON.parse(readFileSync(join(store, readdirSync(store).find((d) => readdirSync(join(store, d)).includes("goals")), "goals", goal, "plan-1.json"), "utf8")))(at.env.ORBIT_STORE_DIR);
+
+const stepsSaid = (s) => s.steps.map((x) => `${x.kind} ${x.status} ${x.why ?? ""}`).join("\n");
+
+test("a goal script takes a goal through Orbit's goal entry: the goal planned, the workflow its step starts, and the engineering task that workflow starts -- completed with a commit, the checkout never written", { skip: !npmHere() && "npm is not runnable here: the declared check is an npm script" }, (t) => {
+  const c = caseOf(ROOT, "ORBIT-E2E-001");
+  const at = targetRepository(t, c);
+  const before = readFileSync(join(at.repo, "src/money.mjs"), "utf8");
+  const s = goalHost(at, c, "reference");
+  assert.deepEqual(SCRIPTS.goal(s), [], stepsSaid(s));
+  const tasks = tasksOf(at);
+  const eng = tasks.find((x) => x.provider === "autonomous-engineering");
+  const auto = tasks.find((x) => x.provider === "automation");
+  assert.deepEqual([tasks.length, eng.lifecycle, auto.lifecycle, eng.parent], [2, "COMPLETED", "COMPLETED", auto.id], "one workflow, one engineering task it started, both completed");
+  assert.equal(s.auto, auto.id, "the workflow is the one the goal's step started");
+  assert.ok(shown(at, eng.id).receipts.some((r) => r.domain === "commit"), "the engine committed the verified change in its own delivery");
+  assert.deepEqual(s.steps.slice(0, 4).map((x) => x.kind), ["orbit goal start", "orbit goal analyze", "orbit goal plan", "orbit goal step"]);
+  assert.equal(readFileSync(join(at.repo, "src/money.mjs"), "utf8"), before, "the checkout itself is never written");
+});
+
+test("a blocked script records the rule the goal leaves out: the plan leaves the change unresolved, and no workflow or task is started", (t) => {
+  const c = caseOf(ROOT, "ORBIT-E2E-008");
+  const at = targetRepository(t, c);
+  const s = goalHost(at, c, "blocked");
+  assert.deepEqual(SCRIPTS.blocked(s), [], stepsSaid(s));
+  assert.deepEqual(tasksOf(at), [], "nothing was started on a guess");
+  assert.deepEqual(goalPlanOf(at, s.goalId).units.map((u) => [u.kind, u.state, /^missing:/.test(u.because ?? "")]), [["change", "unresolved", true]]);
+});
+
+test("an interrupt script kills its own check mid-run; the next round reconciles the action the crash left open, takes it again as a new action, and completes the same task", { skip: !npmHere() && "npm is not runnable here", timeout: 300000 }, (t) => {
+  const c = caseOf(ROOT, "ORBIT-E2E-007");
+  const at = targetRepository(t, c);
+  const first = goalHost(at, c, "interrupted", 1);
+  assert.match(SCRIPTS.interrupt(first).join(" "), /killed mid-run, as this control intends/, stepsSaid(first));
+  const cut = tasksOf(at).find((x) => x.provider === "autonomous-engineering");
+  assert.notEqual(cut.lifecycle, "COMPLETED", "the first round left the task open");
+  const second = goalHost(at, c, "interrupted", 2);
+  assert.deepEqual(SCRIPTS.interrupt(second), [], stepsSaid(second));
+  const tasks = tasksOf(at);
+  const view = shown(at, cut.id);
+  const interrupted = view.actions.filter((a) => /^interrupted/.test(a.reason ?? ""));
+  assert.deepEqual([tasks.filter((x) => x.provider === "autonomous-engineering").length, view.lifecycle], [1, "COMPLETED"], "one engineering task, carried across both rounds");
+  assert.equal(interrupted.length, 1, "the action the crash left open was closed as interrupted");
+  assert.deepEqual(interrupted[0].receipts, [], "no outcome was taken from it");
+  assert.ok(view.actions.some((a) => a.tool === interrupted[0].tool && a.state === "succeeded" && Number(a.id.slice(4)) > Number(interrupted[0].id.slice(4))), "and it was taken again as a new action that settled");
+  assert.ok(view.actions.every((a) => a.state !== "running"), "nothing is left running");
 });

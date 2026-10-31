@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "real",
+  "about": "Orders cannot be cancelled at all: the route, the function and its public test are gone.",
+  "mutations": [
+    {
+      "id": "import",
+      "file": "src/api.mjs",
+      "find": "import { cancelOrder, createOrder, getOrder, invalidOf, shipOrder } from \"./orders.mjs\";",
+      "replace": "import { createOrder, getOrder, invalidOf, shipOrder } from \"./orders.mjs\";",
+      "count": 1
+    },
+    {
+      "id": "route",
+      "file": "src/api.mjs",
+      "find": "\n  { method: \"POST\", path: new RegExp(`^/orders/${ORDER}/cancel$`), run: (store, m) => answered(cancelOrder(store, m[1])) },",
+      "replace": "",
+      "count": 1
+    },
+    {
+      "id": "header",
+      "file": "src/orders.mjs",
+      "find": "// Orders: created open with their total computed once, shipped once, and cancelled only while they are still open.",
+      "replace": "// Orders: created open with their total computed once, and shipped once.",
+      "count": 1
+    },
+    {
+      "id": "function",
+      "file": "src/orders.mjs",
+      "find": "\n\nexport const cancelOrder = (store, id) => moved(store, id, \"open\", \"cancelled\");",
+      "replace": "",
+      "count": 1
+    },
+    {
+      "id": "readme",
+      "file": "README.md",
+      "find": "- `src/orders.mjs` — creating, shipping and cancelling orders.",
+      "replace": "- `src/orders.mjs` — creating and shipping orders.",
+      "count": 1
+    }
+  ],
+  "files": [],
+  "deletes": [
+    "test/cancel.test.mjs"
+  ]
+}

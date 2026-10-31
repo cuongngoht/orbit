@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "reference",
+  "about": "A reference solution of the goal with a regression test that fails before it and passes after, made by the scripted host in the engineering task's own workspace. Kept only to prove the verifier and Orbit's goal path CAN pass this case; it is never handed to a coding host.",
+  "mutations": [
+    {
+      "id": "write-before-ack",
+      "file": "src/worker.mjs",
+      "find": "  setImmediate(() => store.put(\"invoices\", id, { id, orderId: order.id, amountMinor: order.totalMinor, currency: order.currency, messageId: message.id }));",
+      "replace": "  store.put(\"invoices\", id, { id, orderId: order.id, amountMinor: order.totalMinor, currency: order.currency, messageId: message.id });",
+      "count": 1
+    }
+  ],
+  "files": [
+    {
+      "rel": "test/invoice-durable.test.mjs",
+      "lines": [
+        "import assert from \"node:assert/strict\";",
+        "import { mkdtempSync, rmSync } from \"node:fs\";",
+        "import { tmpdir } from \"node:os\";",
+        "import { join } from \"node:path\";",
+        "import { test } from \"node:test\";",
+        "import { createOrder } from \"../src/orders.mjs\";",
+        "import { openStore } from \"../src/store.mjs\";",
+        "import { consume } from \"../src/worker.mjs\";",
+        "",
+        "function fresh(t) {",
+        "  const dir = mkdtempSync(join(tmpdir(), \"orders-\"));",
+        "  t.after(() => rmSync(dir, { recursive: true, force: true }));",
+        "  return dir;",
+        "}",
+        "",
+        "test(\"an acknowledged payment's invoice is found when the store is opened again right after the ack\", (t) => {",
+        "  const dir = fresh(t);",
+        "  const order = createOrder(openStore(dir), { lines: [{ qty: 2, unitMinor: 450 }] });",
+        "  assert.equal(consume(openStore(dir), { id: \"m-7\", type: \"order.paid\", orderId: order.id }).ack, true);",
+        "  assert.deepEqual(openStore(dir).list(\"invoices\").map((i) => [i.orderId, i.amountMinor]), [[order.id, 900]]);",
+        "});"
+      ]
+    }
+  ],
+  "deletes": []
+}

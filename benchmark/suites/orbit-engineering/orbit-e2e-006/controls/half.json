@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "id": "half",
+  "about": "Half of the change: the note is kept and read back, but the view never draws it.",
+  "mutations": [
+    {
+      "id": "keep",
+      "file": "src/orders.mjs",
+      "find": "currency: input.currency ?? \"USD\", ",
+      "replace": "currency: input.currency ?? \"USD\", note: String(input.note ?? \"\"), ",
+      "count": 1
+    }
+  ],
+  "files": [],
+  "deletes": []
+}

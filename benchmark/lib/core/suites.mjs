@@ -5,9 +5,13 @@
 // the controls that prove the verifier (controls/). Adding a case is adding a directory and one line in suite.json;
 // nothing here names a case, a module of the engine or a check.
 //
-// A case is one of two KINDS. A `source` case holds Orbit's own source to independent checks, and may hand a failure
+// A case is one of three KINDS. A `source` case holds Orbit's own source to independent checks, and may hand a failure
 // to Orbit to repair through its engineering loop. A `qa` case asks whether Orbit's autonomous QA finds the defect
-// planted in an application: the application, the variant that plants it and the ground truth are the case's.
+// planted in an application: the application, the variant that plants it and the ground truth are the case's. An
+// `engineering` case hands Orbit a GOAL over a frozen fixture repository (benchmark/fixtures/<fixture>/, its `real`
+// variant taking one behaviour away) and judges what the goal left with the same probe, spec, gates and own-test proof
+// a source case uses, plus record checks over what Orbit's owners recorded -- and whether the goal asks for a change or
+// must be refused for want of a rule (`measures.expects`).
 //
 //   suitesIn(root) -> [{ id, version, title, dir, cases }]         caseOf(root, id) -> case + { dir, suite }
 //   caseFindings(c, dir) -> [sentence]                             dirDigest(dir) -> sha256 of every file, by path
@@ -39,7 +43,7 @@ export const QA_HOSTS = ["reference", "idle", "false-alarm"];
 
 const COMMON_FIELDS = {
   schema: { type: "integer", enum: [1] },
-  kind: { type: "string", enum: ["source", "qa"] },
+  kind: { type: "string", enum: ["source", "qa", "engineering"] },
   id: { type: "string", pattern: "^[A-Z][A-Z0-9]*(-[A-Z0-9]+)+$", says: { pattern: "id is upper-case words joined by dashes, such as ORBIT-SRC-001" } },
   version: { type: "string", pattern: "^\\d+\\.\\d+\\.\\d+$" },
   title: TEXT,
@@ -71,11 +75,20 @@ export const REPAIR_SCRIPTS = ["apply", "idle"];
 const SOURCE_FIELDS = { ...COMMON_FIELDS, subject: { type: "object" }, prepare: { type: "object" }, reproduce: TEXT, scope: { type: "object" }, checks: { type: "object" }, variants: { type: "object", minProperties: 1 }, baseline: BASELINE, repairs: { type: "array" } };
 
 // Fields a case may leave out: older cases (and the frozen copies older runs keep) have none of them.
-const OPTIONAL = ["baseline", "repairs"];
+const OPTIONAL = ["baseline", "repairs", "interrupt"];
 
 const requiredOf = (fields) => Object.keys(fields).filter((k) => !OPTIONAL.includes(k));
 
 const QA_FIELDS = { ...COMMON_FIELDS, target: { type: "object" } };
+
+const ENGINEERING_FIELDS = { ...COMMON_FIELDS, baseline: BASELINE, fixture: { type: "string", pattern: "^[a-z][a-z0-9-]{0,39}$" }, subject: { type: "object" }, reproduce: TEXT, scope: { type: "object" }, checks: { type: "object" }, variants: { type: "object", minProperties: 1 }, repairs: { type: "array" }, interrupt: { type: "object" } };
+
+// What an engineering control must come to: the goal reached and verified, refused, no progress, or blocked.
+export const GOAL_OUTCOMES = ["PASS", "FAIL", "NO_PROGRESS", "BLOCKED"];
+
+// What an engineering control's scripted host does: drive the GOAL through Orbit's goal intake to a change, stop it as
+// BLOCKED for want of a rule, INTERRUPT its own first round mid-check (the next round reconciles and goes on), or sit IDLE.
+export const GOAL_SCRIPTS = ["goal", "blocked", "interrupt", "idle"];
 
 const BOX = { cpus: { type: "number", minimum: 0.5, maximum: 16 }, memoryMb: { type: "integer", minimum: 256, maximum: 65536 }, pids: { type: "integer", minimum: 64, maximum: 65536 }, minutes: { type: "integer", minimum: 1, maximum: 480 }, seconds: { type: "integer", minimum: 5, maximum: 7200 }, outputMb: { type: "integer", minimum: 1, maximum: 256 } };
 
@@ -102,6 +115,17 @@ const SOURCE_SECTIONS = [
   { at: "variants.*", of: (c) => Object.values(c.variants ?? {}), fields: { mutations: REL }, required: [] },
   { at: "controls[]", of: (c) => c.controls ?? [], fields: { id: NAME, variant: NAME, file: REL, expect: VERDICT }, required: ["id", "variant", "expect"] },
   { at: "repairs[]", of: (c) => c.repairs ?? [], fields: { id: NAME, variant: NAME, candidate: REL, through: { type: "string", enum: REPAIR_THROUGH }, expect: { type: "string", enum: REPAIR_OUTCOMES }, rejects: LIST, seconds: BOX.seconds, script: { type: "string", enum: REPAIR_SCRIPTS } }, required: ["id", "variant", "candidate", "through", "expect"] },
+];
+
+// An engineering case's sections: a source case's checks and limits, over a fixture's target instead of Orbit's source.
+const sharedWith = (ats) => SOURCE_SECTIONS.filter((x) => ats.includes(x.at));
+
+const ENGINEERING_SECTIONS = [
+  { at: "case", of: (c) => [c], fields: ENGINEERING_FIELDS, required: requiredOf(ENGINEERING_FIELDS).concat(["baseline"]) },
+  { at: "measures", of: (c) => [c.measures], fields: { kind: { type: "string", enum: ["engineering"] }, capability: TEXT, expects: { type: "string", enum: ["change", "blocked"] } }, required: ["kind", "capability", "expects"] },
+  ...sharedWith(["subject", "acceptance", "scope", "checks", "checks.gates[]", "checks.agentTests", "limits", "limits.runner", "limits.verifier", "limits.engineering", "cleanup", "variants.*", "controls[]"]),
+  { at: "repairs[]", of: (c) => c.repairs ?? [], fields: { id: NAME, variant: NAME, candidate: REL, through: { type: "string", enum: ["engine"] }, expect: { type: "string", enum: GOAL_OUTCOMES }, script: { type: "string", enum: GOAL_SCRIPTS } }, required: ["id", "variant", "candidate", "through", "expect", "script"] },
+  { at: "interrupt", of: (c) => (c.interrupt ? [c.interrupt] : []), fields: { round: { type: "integer", minimum: 1, maximum: 5 }, afterMinutes: { type: "integer", minimum: 1, maximum: 120 } }, required: ["round", "afterMinutes"] },
 ];
 
 const QA_SECTIONS = [
@@ -165,7 +189,18 @@ const QA_CROSS = [
   { fails: (c) => duplicates((c.controls ?? []).map((k) => k?.id)), say: (bad) => `control ids used twice: ${bad.join(", ")}` },
 ];
 
-export const KINDS = { source: { sections: SOURCE_SECTIONS, cross: SOURCE_CROSS }, qa: { sections: QA_SECTIONS, cross: QA_CROSS } };
+// Where a case's fixture lives, from the case's own directory: <root>/benchmark/suites/<suite>/<case>.
+export const fixtureDirOf = (caseDir, fixture) => join(caseDir, "..", "..", "..", "fixtures", fixture);
+
+// An engineering case beyond its fields: what a source case must be, and a fixture that is there, its target's variant
+// named `real`, and the goal it states one of the two it may be.
+const ENGINEERING_CROSS = [
+  ...SOURCE_CROSS.filter((r) => !/real/.test(r.say([]))),
+  { fails: (c) => (isObject(c.variants) && !Object.hasOwn(c.variants, "real") ? ["real"] : []), say: () => "has no `real` variant: the target the goal is handed must always be measurable" },
+  { fails: (c, dir) => (typeof c.fixture === "string" && !existsSync(join(fixtureDirOf(dir, c.fixture), "fixture.json")) ? [c.fixture] : []), say: (bad) => `names a fixture benchmark/fixtures/ does not hold: ${bad.join(", ")}` },
+];
+
+export const KINDS = { source: { sections: SOURCE_SECTIONS, cross: SOURCE_CROSS }, qa: { sections: QA_SECTIONS, cross: QA_CROSS }, engineering: { sections: ENGINEERING_SECTIONS, cross: ENGINEERING_CROSS } };
 
 const crossFindings = (kind, c, dir) => kind.cross.map((r) => [r, r.fails(c, dir)]).filter(([, bad]) => bad.length).map(([r, bad]) => `case: ${r.say(bad)}`);
 

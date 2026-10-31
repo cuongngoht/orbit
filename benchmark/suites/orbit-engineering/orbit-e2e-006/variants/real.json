@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "id": "real",
+  "about": "Orders keep no note and the view draws none; the public test that would see it is gone.",
+  "mutations": [
+    {
+      "id": "keep",
+      "file": "src/orders.mjs",
+      "find": "note: String(input.note ?? \"\"), ",
+      "replace": "",
+      "count": 1
+    },
+    {
+      "id": "note-of",
+      "file": "src/ui.mjs",
+      "find": "const noteOf = (order) => (order.note ? [`  <p class=\"note\">${escaped(order.note)}</p>`] : []);\n\n",
+      "replace": "",
+      "count": 1
+    },
+    {
+      "id": "draw",
+      "file": "src/ui.mjs",
+      "find": ", ...noteOf(order)",
+      "replace": "",
+      "count": 1
+    }
+  ],
+  "files": [],
+  "deletes": [
+    "test/note.test.mjs"
+  ]
+}

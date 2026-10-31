@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "id": "orbit-engineering",
+  "version": "1.0.0",
+  "title": "Goals taken end to end through Orbit -- goal entry, workflow, engineering task -- on a frozen fixture project, each judged by an independent verifier",
+  "cases": [
+    "ORBIT-E2E-001",
+    "ORBIT-E2E-002",
+    "ORBIT-E2E-003",
+    "ORBIT-E2E-004",
+    "ORBIT-E2E-005",
+    "ORBIT-E2E-006",
+    "ORBIT-E2E-007",
+    "ORBIT-E2E-008"
+  ]
+}

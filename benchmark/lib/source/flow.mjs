@@ -197,6 +197,9 @@ const engTaskOf = (ctx, upTo) => Array.from({ length: upTo }, (_, i) => [started
 
 const latestVerification = (ctx, view) => stepOf(ctx, (view.actions ?? []).filter((a) => a.type === "benchmark.verify" && a.state === "succeeded").at(-1));
 
+// What a round's host does, as the stage says it: a repair through the engineering loop, or a goal through the goal entry.
+const ROUND_WORK = { source: "repairs the source through Orbit's engineering loop", engineering: "takes the goal through Orbit's goal entry, its workflow and its engineering task" };
+
 // A case that declares an interruption cuts that round's runner at its minute -- a coding host is stopped wherever it
 // is, the way a crash stops it. A scripted host interrupts itself, at a moment it can name.
 const cutAt = (ctx, k, minutes) => (ctx.case.interrupt?.round === k && !scripted(ctx) ? Math.min(minutes, ctx.case.interrupt.afterMinutes) : minutes);
@@ -204,7 +207,7 @@ const cutAt = (ctx, k, minutes) => (ctx.case.interrupt?.round === k && !scripted
 function roundState(ctx, view, k) {
   const left = leftOf(ctx, view);
   const runnerMinutes = cutAt(ctx, k, Math.max(1, Math.min(ctx.case.limits.runner.minutes, left.minutes - RESERVE_MINUTES)));
-  ctx.rec.stage(ctx.task, "FIXING", `round ${k} of ${ctx.limits.rounds}: the ${scripted(ctx) ? "scripted" : "coding"} host repairs the source through Orbit's engineering loop · ${runnerMinutes} min · $${left.usd} left (${left.usdBasis})`);
+  ctx.rec.stage(ctx.task, "FIXING", `round ${k} of ${ctx.limits.rounds}: the ${scripted(ctx) ? "scripted" : "coding"} host ${ROUND_WORK[ctx.case.kind] ?? ROUND_WORK.source} · ${runnerMinutes} min · $${left.usd} left (${left.usdBasis})`);
   return { left: { ...left, engineeringMinutes: runnerMinutes }, latest: latestVerification(ctx, view), engTask: engTaskOf(ctx, k - 1), deadlineMs: runnerMinutes * 60000, held: () => Boolean(HELD(show(ctx))) };
 }
 
@@ -322,7 +325,7 @@ const earlierOf = (ctx, k) => Array.from({ length: k - 1 }, (_, i) => docRead(ct
 // Stopped at its deadline, not held by a person (a held run ends as the person held it) and not ended by its task.
 const cutShortOf = (r) => r.repair?.container?.timedOut === true && r.repair.container.held !== true && r.engineering?.terminal !== true;
 
-const roundFacts = (ctx, k, r, before) => ({ frozenIntact: frozenIntact(ctx), roundError: roundError(r), verified: isVerified(r), changed: r.cand.changes.length > 0, engineering: r.engineering, signature: before.signature, previous: before.previous, left: leftOf(ctx, show(ctx)), scope: [...r.cand.scope, ...(r.extraTasks ? [{ id: "EXTRA_TASK" }] : [])], cutShort: cutShortOf(r), patchDigest: r.cand.patchDigest, earlier: earlierOf(ctx, k), ...(ctx.case.kind === "engineering" ? { standing: null } : {}) });
+const roundFacts = (ctx, k, r, before) => ({ frozenIntact: frozenIntact(ctx), roundError: roundError(r), verified: isVerified(r), changed: r.cand.changes.length > 0, engineering: r.engineering, signature: before.signature, previous: before.previous, left: leftOf(ctx, show(ctx)), scope: [...r.cand.scope, ...(r.extraTasks ? [{ id: "EXTRA_TASK" }] : [])], cutShort: cutShortOf(r), patchDigest: r.cand.patchDigest, earlier: earlierOf(ctx, k), expects: r.expects ?? "change", ...(ctx.case.kind === "engineering" ? { standing: null } : {}) });
 
 const signatureOrNot = (failures) => (failures.length ? signatureOf(failures) : undefined);
 

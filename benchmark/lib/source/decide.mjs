@@ -27,13 +27,19 @@ const rejectedStop = (r) => (r.scope?.length ? "UNSAFE_CHANGE" : "VERIFICATION_F
 
 const repeated = (r) => Boolean(r.patchDigest) && (r.earlier ?? []).some((e) => e.patchDigest === r.patchDigest && e.signature === r.signature);
 
+// What a verified round says, by what its goal expects: a change that holds, or a refusal that changed nothing.
+const VERIFIED_SAYS = {
+  change: "the candidate holds every hidden check, every gate and its own regression test, inside its scope",
+  blocked: "the goal was refused as it must be: its plan left the change unresolved for the missing rule, nothing was delivered, and every hidden check and gate still holds",
+};
+
 // What still stands when a repair is refused or makes no progress: the source defect it was asked to repair -- or, for a
 // goal (`standing: null`), nothing of the taxonomy: a goal not met is the outcome itself, never a defect of the source.
 const STANDS = (r) => (r.standing === undefined ? "ORBIT_SOURCE_DEFECT" : r.standing);
 
 export const NEXT = [
   { id: "BENCHMARK_CHANGED", when: (r) => r.frozenIntact === false, end: "fail", stop: () => "REQUIREMENT_BLOCKED", outcome: "BENCHMARK_INVALID", class: () => "BENCHMARK_DEFECT", says: () => "the frozen benchmark changed during the run: nothing it judged after that can count" },
-  { id: "VERIFIED", when: (r) => r.verified === true, end: "complete", stop: () => null, outcome: "REPAIRED_VERIFIED", class: () => null, says: () => "the candidate holds every hidden check, every gate and its own regression test, inside its scope" },
+  { id: "VERIFIED", when: (r) => r.verified === true, end: "complete", stop: () => null, outcome: "REPAIRED_VERIFIED", class: () => null, says: (r) => VERIFIED_SAYS[r.expects ?? "change"] },
   { id: "BLOCKED", when: (r) => Boolean(r.roundError), end: "block", stop: () => "ENVIRONMENT_BLOCKED", outcome: "BLOCKED", class: (r) => classOfCause(r.roundError.cause), says: (r) => r.roundError.says },
   { id: "WAITING_FOR_PERSON", when: (r) => r.engineering?.waiting === true, end: "block", stop: () => "ENVIRONMENT_BLOCKED", needs: "person", outcome: "BLOCKED", class: () => "HUMAN_APPROVAL_REQUIRED", says: () => "the engineering task waits for a person's approval (HUMAN_APPROVAL_REQUIRED): a benchmark never approves anything, so the run stops here and a person decides" },
   { id: "ENGINE_ENDED", when: (r) => r.engineering?.terminal === true, end: "fail", stop: (r) => (r.engineering.lifecycle === "COMPLETED" ? rejectedStop(r) : engineStop(r)), outcome: "REPAIR_REJECTED", class: STANDS, says: (r) => `the engineering task ended ${r.engineering.lifecycle}${r.engineering.stopReason ? ` (${r.engineering.stopReason})` : ""} and the verifier does not pass what it left` },

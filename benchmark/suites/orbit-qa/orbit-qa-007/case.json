@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "kind": "qa",
+  "id": "ORBIT-QA-007",
+  "version": "1.0.0",
+  "title": "Nothing planted: every contradiction is a false alarm",
+  "goal": "Orbit's autonomous QA, driven by a real coding host on the invoice application's own isolated sandbox, tests the clean application and contradicts nothing it does right, testing at least half of what its accepted plan owes",
+  "measures": {"kind": "detection", "capability": "qa.autonomous"},
+  "target": {"app": "invoice", "stack": "invoice-a", "variant": "correct", "clean": "correct", "plan": "invoice", "mode": "fixture-write", "withheld": ["acceptance/**", "docs/backend-acceptance.json", "test/helpers.test.mjs"]},
+  "request": "request.md",
+  "acceptance": {"owner": "verifier", "truth": "verifier/truth.json", "minCoverage": 0.5},
+  "limits": {"rounds": 1, "minutes": 180, "usd": 25, "runner": {"cpus": 2, "memoryMb": 4096, "pids": 2048, "minutes": 120, "outputMb": 64}, "engine": {"stepSeconds": 900, "callSeconds": 180}},
+  "artifacts": ["manifest", "journal", "relay-log", "report"],
+  "cleanup": {"containers": "run-label", "networks": "run-label", "sandbox": "release", "scratch": "keep"},
+  "controls": [
+    {"id": "reference", "host": "reference", "expect": "PASS"},
+    {"id": "idle", "host": "idle", "expect": "FAIL"},
+    {"id": "false-alarm", "host": "false-alarm", "expect": "FAIL"}
+  ]
+}

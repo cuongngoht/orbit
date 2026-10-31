@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "id": "orbit-source",
+  "version": "1.0.0",
+  "title": "Orbit's own source, held to behaviour it promises",
+  "cases": ["ORBIT-SRC-001", "ORBIT-SRC-002"]
+}

@@ -510,6 +510,40 @@ Before changing code, read:
 Key rules in short: zero dependencies; every function body ≤ 5 statements with no `else`/`switch`; the DSL vocabulary
 is data (`src/dsl/`); no product, vendor or stack named in engine code.
 
+### The Docker benchmark
+
+`benchmark/` holds Orbit to cases written as data, on the branch you are on, in Docker. It is development tooling and
+never ships ([benchmark/README.md](benchmark/README.md), [ADR 0046](docs/adr/0046-a-docker-benchmark-holds-orbits-source-to-independent-checks.md),
+[ADR 0047](docs/adr/0047-a-qa-benchmark-asks-whether-autonomous-qa-finds-a-planted-defect.md)). It has two kinds of case.
+
+**Source cases** hold Orbit's own source to independent checks.
+
+- Each run freezes the source and verifies it twice, with no network, no credential and no model.
+- With `--repair`, a failure the case declares repairable goes to a real coding host. That host drives ONE Orbit
+  engineering task in a runner container whose only way out is the model's API.
+- The candidate is then judged by hidden checks the runner never sees, by the repository's own gates on its own tests,
+  and by its own regression test, which must fail before the change and pass after it.
+
+**QA cases** ask whether Orbit's autonomous QA *finds* a defect planted in an application.
+
+- The application runs on an isolated sandbox that Orbit's own engine sets up beside the controller.
+- A real coding host works one investigation over it through a relay. It is given the requirement and the contracts,
+  never the application's source.
+- A contradiction counts as a defect found only once the clean application passes the same test.
+- `controls` proves the verifier without a model: a reference host must pass, while an idle host and a false-alarm
+  host must fail.
+
+A run is an Orbit task, so Orbit Live shows it and a person can pause or cancel it.
+
+```bash
+node benchmark/run.mjs build                                 # three images, built once and reused by id
+node benchmark/run.mjs run ORBIT-SRC-001                     # a case on this branch's source: expected PASS, nothing changed
+node benchmark/run.mjs run ORBIT-SRC-001 --variant=controlled-fault --repair   # a planted failure, repaired through Orbit
+node benchmark/run.mjs controls ORBIT-QA-001                 # a QA case's verifier, proved with scripted hosts
+node benchmark/run.mjs run ORBIT-QA-001                      # a coding host's QA, judged against the ground truth
+node benchmark/run.mjs report <bnr-…>                        # the outcome, the checks that ran, the patch or the judged rows
+```
+
 ---
 
 ## Further reading

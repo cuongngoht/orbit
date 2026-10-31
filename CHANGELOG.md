@@ -1,5 +1,73 @@
 # Changelog
 
+## Unreleased
+
+A Docker benchmark that holds Orbit's own source to independent checks, and repairs a failure only through Orbit
+(ADR 0046). This is development tooling under `benchmark/`: export-ignored, imported by nothing of the engine, and
+changing no engine contract, so no version moves.
+
+- **Cases are data.**
+  - A suite under `benchmark/suites/` holds cases.
+  - Each case has a `case.json` held to declared fields, a public request, a spec and probe under `verifier/` that only
+    the verifier reads, variants that plant exact faults in the run's own copy (`FIXTURE_DRIFT` when one no longer
+    matches), and controls that prove the checks discriminate.
+- **Frozen inputs.**
+  - The current branch is read through read-only git: HEAD, or HEAD plus the working tree when a person says so. A
+    dirty tree with no choice is refused, and nothing in the checkout is reset, stashed or written.
+  - The subject becomes a checkout with one fixed commit. The manifest pins the commit, the digests, the case, the
+    image ids, the seed and the limits.
+- **A run is one Orbit task** (provider `benchmark`), written only through `cli/task.mjs`. Orbit Live and Mission
+  Control show its stages, the task's door holds its budget, and a person's pause or cancel stops it with nothing of
+  its own left running. `resume` carries it on from its journal: a repair round is read back and never sent again.
+- **Containers through Orbit's Docker provider.** Each one is attested to the isolation profile before it starts and
+  has:
+  - a read-only root, no capability, `no-new-privileges`, an init, and CPU, memory and PID limits;
+  - a deadline the controller enforces;
+  - cleanup by the run's label only.
+
+  No container gets the Docker socket, a home directory, the developer's store or checkout. The verifier has no
+  network, no credential and no model, and its judge never imports candidate code. The runner reaches only the
+  model's API, through an egress proxy it checks before the host runs. A credential is passed by name only. When a
+  run ends, a sentinel masks the credential's value wherever it appears in the run's room, and names those files.
+- **Repair through Orbit.**
+  - Claude Code, pinned in the runner image, drives ONE engineering task started with `autonomous-engineering.mjs
+    start`.
+  - The candidate is read back by an inspection container. `SCOPE` holds it to its scope, the harness, the checks and
+    the existing tests.
+  - It is verified on the hidden checks, on the repository's gates over the subject's own tests, and on its own
+    regression test, before and after the change.
+  - `CAUSES` and `NEXT` decide the rest: VERIFIED, NO_PROGRESS, BUDGET_EXHAUSTED, BLOCKED or BENCHMARK_INVALID.
+- **The report keeps apart** correct code, work that went through Orbit, autonomy end to end, a blocker and an invalid
+  benchmark. A host's numbers are REPORTED, and an unreported one is `unknown`.
+- **First suite, `orbit-source`.**
+  - **ORBIT-SRC-001** holds `src/improvement/oracle.mjs` and `safety.mjs` to the acceptance oracle's promises. It
+    passes on the current source and fails on its planted variant, a partial fix, allow-all and reject-all.
+  - **ORBIT-SRC-002** fails on the current source: a removed step that waited for a person goes unreported. It is a real
+    finding, kept as its own case.
+
+- **QA cases (ADR 0047): does Orbit's autonomous QA find a planted defect?**
+  - A second suite, `orbit-qa`, plants one defect per case in Orbit's own synthetic acceptance application, with that
+    application's own ground truth. One case plants nothing, so every contradiction there is a false alarm.
+  - Orbit's engine runs from the run's frozen checkout beside the controller. It sets the application up on an
+    isolated sandbox of its own and opens one investigation, doing once what a person does in Orbit Control.
+  - A real coding host works the investigation from the runner container through a relay of files: requests it
+    writes, answers it can only read. The relay admits the subcommands a host uses, about the run's own investigation;
+    it never passes a person's approval, a second investigation or a path. The host's plugin withholds the ground
+    truth, the reference designs and the application's source, and its `cli/autonomous-qa.mjs` is the relay's client.
+  - What the investigation came to is read off the engine's own journal. Each contradicted design is replayed on the
+    clean application, and counts as a defect found only when the clean application satisfies it. The verdict table
+    ends in BLOCKED, FAIL (a false alarm, a defect missed, too little covered), INCONCLUSIVE or PASS.
+  - `controls` proves the verifier live, with no model: a reference host using acceptance's designs must PASS, while
+    an idle host and a false-alarm host must FAIL.
+  - A QA worker image, built from the official Playwright image pinned by digest, needs no OS package mirror or
+    browser CDN. The sentinel also looks for the sandbox's per-run tokens.
+- **Best-practice names.**
+  - Benchmark "packs" are SUITES (`suites/<suite>/suite.json`), matching `--suite` and kept apart from Orbit's
+    capability packs.
+  - A case's directory is its id in lower case. `hidden/` is `verifier/`, and `faults/` is `variants/`.
+  - The modules are grouped as `lib/core/`, `lib/source/` and `lib/qa/`, and the tests as `test/benchmark-source-*`
+    and `test/benchmark-qa-*`.
+
 ## 0.3.0
 
 Autonomous self-improvement on independent evidence (ADR 0045): Orbit now notices when one of this project's reusable

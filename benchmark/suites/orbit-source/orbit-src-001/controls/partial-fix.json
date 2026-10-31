@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "partial-fix",
+  "about": "The controlled fault with only the lower-bound defect repaired: two defects remain, so the verifier must still fail it.",
+  "mutations": [
+    {
+      "id": "min-threshold-restored",
+      "file": "src/improvement/oracle.mjs",
+      "find": "gte: (a, b) => b > a, gt: (a, b) => b > a,",
+      "replace": "gte: (a, b) => b < a, gt: (a, b) => b < a,",
+      "count": 1
+    }
+  ]
+}

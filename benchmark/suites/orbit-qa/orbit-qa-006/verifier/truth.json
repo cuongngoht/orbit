@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "from": {
+    "file": "acceptance/truth.json",
+    "stack": "invoice-a",
+    "variant": "broken-auth"
+  },
+  "default": "SATISFIED",
+  "shapes": [
+    "response-conforms",
+    "permission-enforced",
+    "completes-by-deadline",
+    "occurrence-one-execution",
+    "effect-once-per-key",
+    "crash-before-effect",
+    "crash-after-effect-before-ack",
+    "screen-shows-result",
+    "persisted-after-write"
+  ],
+  "expect": {
+    "response-conforms": "CONTRADICTED",
+    "permission-enforced": "INCONCLUSIVE",
+    "screen-shows-result": "EXECUTION_ERROR",
+    "persisted-after-write": "EXECUTION_ERROR"
+  }
+}

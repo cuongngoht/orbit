@@ -8,19 +8,20 @@ import { join } from "node:path";
 import { Blocked, Refused } from "../../src/errors.mjs";
 import { flag, has, words } from "../../src/learn/args.mjs";
 import { docker } from "../../src/runtime/isolation/docker.mjs";
-import { HARNESS } from "./candidate.mjs";
-import { madeCheckout } from "./checkout.mjs";
-import { contextOf, dockerDeps, engineOf, frozenRun, resumedRun, userOf, withSpec } from "./context.mjs";
-import { cleaned, leftovers, ranContainer, specFor } from "./docker.mjs";
-import { mutatedEntries, mutationFile } from "./faults.mjs";
-import { carried, EXIT, verificationSummary } from "./flow.mjs";
-import { builtImage, imageDefs, imageIdOf, resolvedImages, ROLES } from "./images.mjs";
-import { caseOf, casesOf, dirDigest, packsIn } from "./packs.mjs";
-import { reportOf } from "./report.mjs";
-import { leaksMasked } from "./sentinel.mjs";
-import { docRead, docWritten, newRunId, readRegular, roomOf, RUN_ID } from "./room.mjs";
-import { frozen, subjectOf, whereAt } from "./source.mjs";
-import { verified } from "./verify.mjs";
+import { madeCheckout } from "./core/checkout.mjs";
+import { contextOf, dockerDeps, engineOf, frozenRun, resumedRun, userOf, withSpec } from "./core/context.mjs";
+import { cleaned, leftovers, ranContainer, specFor } from "./core/docker.mjs";
+import { mutatedEntries, mutationFile } from "./core/mutations.mjs";
+import { carried, EXIT, verificationSummary } from "./source/flow.mjs";
+import { builtImage, imageDefs, imageIdOf, resolvedImages, ROLES } from "./core/images.mjs";
+import { caseOf, casesOf, dirDigest, suitesIn } from "./core/suites.mjs";
+import { reportOf } from "./source/report.mjs";
+import { carriedQa, withTruth } from "./qa/flow.mjs";
+import { qaReportOf } from "./qa/report.mjs";
+import { leaksMasked } from "./core/sentinel.mjs";
+import { docRead, docWritten, newRunId, readRegular, roomOf, RUN_ID } from "./core/room.mjs";
+import { frozen, HARNESS, subjectOf, whereAt } from "./core/freeze.mjs";
+import { verified } from "./source/verify.mjs";
 
 const int = (v) => (v === undefined ? undefined : /^\d+$/.test(v) ? Number(v) : Number.NaN);
 
@@ -89,15 +90,20 @@ function safeJson(buf) {
   catch { return null; }
 }
 
-// ---- packs ------------------------------------------------------------------------------------------------------------------
+// ---- suites -----------------------------------------------------------------------------------------------------------------
 
-const list = (h) => ({ packs: packsIn(h.root).map((p) => ({ id: p.id, version: p.version, title: p.title, cases: casesOf(h.root, p.id).map((c) => ({ id: c.id, version: c.version, title: c.title, variants: Object.keys(c.variants), controls: c.controls.map((k) => `${k.id}:${k.expect}`) })) })) });
+// What a case is run on: a source case's variants, a QA case's application and the variant planted in it.
+const VARIANTS_OF = { source: (c) => Object.keys(c.variants), qa: (c) => [`${c.target.stack} ${c.target.variant}`] };
 
-const sayList = (r) => r.packs.flatMap((p) => [`${p.id} ${p.version} — ${p.title}`, ...p.cases.map((c) => `  ${c.id} ${c.version}  variants ${c.variants.join(", ")}  controls ${c.controls.join(", ")}\n    ${c.title}`)]).join("\n");
+const listed = (c) => ({ id: c.id, kind: c.kind, version: c.version, title: c.title, variants: VARIANTS_OF[c.kind](c), controls: c.controls.map((k) => `${k.id}:${k.expect}`) });
+
+const list = (h) => ({ suites: suitesIn(h.root).map((p) => ({ id: p.id, version: p.version, title: p.title, cases: casesOf(h.root, p.id).map(listed) })) });
+
+const sayList = (r) => r.suites.flatMap((p) => [`${p.id} ${p.version} — ${p.title}`, ...p.cases.map((c) => `  ${c.id} ${c.version}  ${c.kind.padEnd(6)}  ${c.kind === "qa" ? "on" : "variants"} ${c.variants.join(", ")}  controls ${c.controls.join(", ")}\n    ${c.title}`)]).join("\n");
 
 // ---- a run --------------------------------------------------------------------------------------------------------------------
 
-const optionsOf = (args) => ({ variant: flag(args, "variant") ?? "real", repair: has(args, "repair"), source: flag(args, "source"), seed: int(flag(args, "seed")), model: flag(args, "model"), rounds: int(flag(args, "rounds")), minutes: int(flag(args, "minutes")), usd: num(flag(args, "usd")) });
+const optionsOf = (args) => ({ variant: flag(args, "variant"), repair: has(args, "repair"), source: flag(args, "source"), seed: int(flag(args, "seed")), model: flag(args, "model"), rounds: int(flag(args, "rounds")), minutes: int(flag(args, "minutes")), usd: num(flag(args, "usd")) });
 
 const BOUNDS = [["seed", 0, 2 ** 31 - 1], ["rounds", 1, 5], ["minutes", 10, 600], ["usd", 0, 200]];
 
@@ -112,13 +118,24 @@ const sourceChecked = (o) => (SOURCE.includes(o.source) ? o : refusedWith("--sou
 function likeOf(h, id) {
   const m = docRead(roomOf(h.storeRoot, id), "manifest.json");
   if (!m?.benchmark?.variant) throw new Refused(`no benchmark run ${id} is kept here to run again`);
-  return { caseId: m.benchmark.case, variant: m.benchmark.variant, repair: m.config.repair, source: m.source.mode, seed: m.config.seed, model: m.config.model, rounds: m.config.rounds, minutes: m.config.minutes, usd: m.config.usd, preferImages: m.images, like: id };
+  return { caseId: m.benchmark.case, variant: m.benchmark.variant, repair: m.config.repair, host: m.config.host ?? undefined, source: m.source.mode, seed: m.config.seed, model: m.config.model, rounds: m.config.rounds, minutes: m.config.minutes, usd: m.config.usd, preferImages: m.images, like: id };
 }
 
+// What each kind of case runs with: the images it needs, how its context is completed, how it is carried to its end,
+// and how it is reported. A QA run's host is a coding host, unless a control names one of its scripted hosts.
+const KIND = {
+  source: { need: (o) => ["verifier", ...(o.repair ? ["runner"] : [])], completed: (ctx) => withSpec(ctx), carried: (ctx) => carried(ctx), reportOf, host: () => null },
+  qa: { need: (o) => ["qa-worker", ...(o.host === "coding-host" ? ["runner", "verifier"] : [])], completed: async (ctx) => withTruth(ctx), carried: (ctx) => carriedQa(ctx), reportOf: qaReportOf, host: (o) => o.host ?? "coding-host" },
+};
+
+const kindOfRun = (manifest) => KIND[manifest?.benchmark?.kind ?? "source"];
+
 async function oneRun(h, o) {
-  const { deps, version } = dockerUp(h, "a benchmark runs every verification in a container");
-  const images = resolvedImages(imageDefs(engineOf(h)), deps, { needRunner: o.repair, prefer: o.preferImages });
-  return finished(await withSpec(frozenRun(h, { ...o, images, dockerVersion: version })));
+  const { deps, version } = dockerUp(h, "a benchmark runs in containers");
+  const kind = KIND[caseOf(h.root, o.caseId).kind];
+  const asked = { ...o, host: kind.host(o) };
+  const images = resolvedImages(imageDefs(engineOf(h)), deps, { need: kind.need(asked), prefer: o.preferImages });
+  return finished(await kind.completed(frozenRun(h, { ...asked, images, dockerVersion: version })), kind);
 }
 
 // What a run leaves when it ends: its evidence, never its scratch trees when its case says so, never a container or a
@@ -129,7 +146,8 @@ function tidied(ctx) {
   return { ...left, leaks: leaksNamed(ctx) };
 }
 
-const handedValues = (ctx) => ctx.credentialNames.filter((n) => n !== "ANTHROPIC_BASE_URL").map((n) => ctx.env[n]);
+// The secrets a run handed out: the coding host's credential, and the tokens a QA run's application was given.
+const handedValues = (ctx) => [...ctx.credentialNames.filter((n) => n !== "ANTHROPIC_BASE_URL").map((n) => ctx.env[n]), ...(ctx.secretValues ?? [])];
 
 // Every file the sentinel ever masked in this run's room, a resumed run's beside the first's.
 function leaksNamed(ctx) {
@@ -144,8 +162,8 @@ const thrownTidied = (ctx, e) => {
   throw e;
 };
 
-async function finished(ctx) {
-  const result = await carried(ctx).catch((e) => thrownTidied(ctx, e));
+async function finished(ctx, kind) {
+  const result = await kind.carried(ctx).catch((e) => thrownTidied(ctx, e));
   const left = tidied(ctx);
   const rep = reportWritten(ctx.room, ctx.manifest, ctx.rec.show(ctx.task));
   return { run: ctx.run.id, task: ctx.task, case: ctx.case.id, variant: ctx.manifest.benchmark.variant, ...result, report: ctx.room.at("report.md"), evidence: ctx.room.dir, axes: rep.json.axes, leaks: rep.json.leaks, leftBehind: left.clean ? null : left };
@@ -154,17 +172,20 @@ async function finished(ctx) {
 function runCmd(h, args) {
   if (flag(args, "like")) return oneRun(h, likeOf(h, flag(args, "like")));
   if (flag(args, "suite")) return suiteRun(h, args);
-  const caseId = words(args)[0] ?? refusedWith("name the case to run (node benchmark/run.mjs list), or --suite=<pack>");
+  const caseId = words(args)[0] ?? refusedWith("name the case to run (node benchmark/run.mjs list), or --suite=<suite>");
   return oneRun(h, sourceChecked(checked({ ...optionsOf(args), caseId })));
 }
 
-const suiteOptions = (args, c) => ((o) => ({ ...o, caseId: c.id, variant: Object.hasOwn(c.variants, o.variant) ? o.variant : "real" }))(sourceChecked(checked(optionsOf(args))));
+// A suite's run of one case: the variant asked when the case has it, its real one otherwise -- and a QA case's own.
+const suiteVariant = (c, asked) => (c.kind === "qa" ? undefined : asked && Object.hasOwn(c.variants, asked) ? asked : "real");
+
+const suiteOptions = (args, c) => ((o) => ({ ...o, caseId: c.id, variant: suiteVariant(c, o.variant) }))(sourceChecked(checked(optionsOf(args))));
 
 const failedRun = (c) => (e) => ({ case: c.id, outcome: e instanceof Blocked ? "BLOCKED" : "REFUSED", exit: e instanceof Blocked ? 3 : 2, summary: e.message });
 
 async function suiteRun(h, args) {
   const cases = casesOf(h.root, flag(args, "suite"));
-  if (!cases.length) throw new Refused(`no pack ${flag(args, "suite")} holds a case`);
+  if (!cases.length) throw new Refused(`no suite ${flag(args, "suite")} holds a case`);
   const runs = [];
   for (const c of cases) runs.push(await oneRun(h, suiteOptions(args, c)).catch(failedRun(c)));
   return { suite: flag(args, "suite"), runs, exit: Math.max(...runs.map((r) => r.exit ?? 4)) };
@@ -179,7 +200,7 @@ const sayRun = (r) => (r.runs ? r.runs.map(sayOne).join("\n") : sayOne(r));
 const stepsFor = (room, view) => Object.fromEntries((view.actions ?? []).map((a) => [a.id, docRead(room, `steps/${a.id}.json`)]).filter(([, d]) => d));
 
 function reportWritten(room, manifest, view) {
-  const rep = reportOf(room, manifest, view, stepsFor(room, view), docRead(room, "ending.json"), docRead(room, "leaks.json"));
+  const rep = kindOfRun(manifest).reportOf(room, manifest, view, stepsFor(room, view), docRead(room, "ending.json"), docRead(room, "leaks.json"));
   docWritten(room, "report.json", rep.json);
   room.io.write(room.at("report.md"), rep.md);
   return rep;
@@ -200,10 +221,11 @@ function status(h, args) {
 const sayStatus = (r) => [`RUN        ${r.run} — ${r.case} (${r.variant}${r.repair ? ", repair" : ""})`, `TASK       ${r.task}: ${r.lifecycle} · ${r.stage ?? "no stage"}${r.stopReason ? ` · ${r.stopReason}` : ""}`, `ATTEMPTS   ${r.attempts.join("  ") || "none"}`, `BUDGET     attempts ${r.budget.attempts.spent}/${r.budget.attempts.limit} · actions ${r.budget.actions.spent}/${r.budget.actions.limit} · minutes ${r.budget.minutes.spent}/${r.budget.minutes.limit ?? "-"}`, ...(r.running.length ? [`RUNNING    ${r.running.join(", ")}`] : []), `OUTCOME    ${r.ending ? `${r.ending.outcome} — ${r.ending.summary}` : "not decided yet"}`, `EVIDENCE   ${r.evidence}`].join("\n");
 
 async function resume(h, args) {
-  const ctx = await withSpec(resumedRun(h, runIdOf(args)));
-  const { deps } = dockerUp(h, "a resumed run verifies in containers too");
-  resolvedImages(imageDefs(engineOf(h)), deps, { needRunner: ctx.repair, prefer: ctx.images });
-  return finished(ctx);
+  const first = resumedRun(h, runIdOf(args));
+  const kind = kindOfRun(first.manifest);
+  const { deps } = dockerUp(h, "a resumed run goes on in containers too");
+  resolvedImages(imageDefs(engineOf(h)), deps, { need: kind.need({ repair: first.repair, host: first.host }), prefer: first.images });
+  return finished(await kind.completed(first), kind);
 }
 
 const cleanedHere = (room, deps) => (docker.doctor(deps).ok ? { ...cleaned(room.id, deps), left: leftovers(room.id, deps) } : { containers: [], networks: [], clean: true, left: null, skipped: "Docker does not answer: nothing of this run can be running" });
@@ -242,15 +264,19 @@ function controlsRoom(h, c, images) {
 
 async function controls(h, args) {
   const c = caseOf(h.root, words(args)[0] ?? refusedWith("name the case whose controls to run"));
+  return c.kind === "qa" ? qaControls(h, c, args) : sourceControls(h, c);
+}
+
+async function sourceControls(h, c) {
   const { deps } = dockerUp(h, "the controls run the verifier's own containers");
-  const made = controlsRoom(h, c, resolvedImages(imageDefs(engineOf(h)), deps, {}));
+  const made = controlsRoom(h, c, resolvedImages(imageDefs(engineOf(h)), deps, { need: ["verifier"] }));
   docWritten(made.room, "manifest.json", made.manifest);
   return controlsRan(await withSpec(contextOf(h, made.room, made.manifest, NO_RECORD)), c);
 }
 
 function entriesFor(ctx, c, k) {
-  const faults = c.variants[k.variant]?.faults;
-  const v = faults ? mutatedEntries(ctx.baseline, mutationFile(ctx.frozenCase, faults)) : { ok: true, entries: ctx.baseline };
+  const mutations = c.variants[k.variant]?.mutations;
+  const v = mutations ? mutatedEntries(ctx.baseline, mutationFile(ctx.frozenCase, mutations)) : { ok: true, entries: ctx.baseline };
   const m = v.ok && k.file ? mutatedEntries(v.entries, mutationFile(ctx.frozenCase, k.file)) : v;
   return m.ok ? m.entries : refusedWith(`FIXTURE_DRIFT: control ${k.id} does not apply to this source (${m.drift.mutation} in ${m.drift.file})`);
 }
@@ -266,6 +292,18 @@ async function controlsRan(ctx, c) {
   for (const k of c.controls) rows.push(await oneControl(ctx, c, k));
   docWritten(ctx.room, "controls.json", { case: c.id, rows });
   return { case: c.id, run: ctx.run.id, rows, exit: rows.every((r) => r.matched) ? 0 : 1 };
+}
+
+// A QA case's controls: a whole run each, driven by one of its scripted hosts, its verdict held to what it must be.
+async function qaControl(h, c, k, args) {
+  const r = await oneRun(h, { caseId: c.id, host: k.host, source: flag(args, "source") ?? "head" });
+  return { id: k.id, host: k.host, expect: k.expect, got: r.outcome, matched: r.outcome === k.expect, summary: r.summary ?? "", run: r.run };
+}
+
+async function qaControls(h, c, args) {
+  const rows = [];
+  for (const k of c.controls.filter((x) => !flag(args, "only") || x.id === flag(args, "only"))) rows.push(await qaControl(h, c, k, args));
+  return { case: c.id, run: rows.map((r) => r.run).join(" "), rows, exit: rows.length && rows.every((r) => r.matched) ? 0 : 1 };
 }
 
 const sayControls = (r) => [`CONTROLS   ${r.case} (${r.run})`, ...r.rows.map((x) => `  ${x.matched ? "✓" : "✗"} ${x.id.padEnd(12)} expected ${x.expect.padEnd(5)} got ${x.got.padEnd(10)} ${x.summary}`)].join("\n");

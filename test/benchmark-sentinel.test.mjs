@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { leaksMasked } from "../benchmark/lib/sentinel.mjs";
+import { leaksMasked } from "../benchmark/lib/core/sentinel.mjs";
 
 const VALUE = "sentinel-value-0123456789";
 

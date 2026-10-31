@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "from": {
+    "file": "acceptance/truth.json",
+    "stack": "invoice-a",
+    "variant": "correct"
+  },
+  "default": "SATISFIED",
+  "shapes": [
+    "response-conforms",
+    "permission-enforced",
+    "completes-by-deadline",
+    "occurrence-one-execution",
+    "effect-once-per-key",
+    "crash-before-effect",
+    "crash-after-effect-before-ack",
+    "screen-shows-result",
+    "persisted-after-write"
+  ],
+  "expect": {}
+}

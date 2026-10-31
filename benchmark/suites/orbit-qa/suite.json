@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "id": "orbit-qa",
+  "version": "1.0.0",
+  "title": "Orbit's autonomous QA, held to the defects planted in an application",
+  "cases": [
+    "ORBIT-QA-001",
+    "ORBIT-QA-002",
+    "ORBIT-QA-003",
+    "ORBIT-QA-004",
+    "ORBIT-QA-005",
+    "ORBIT-QA-006",
+    "ORBIT-QA-007"
+  ]
+}

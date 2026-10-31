@@ -4,7 +4,7 @@
 // removes it whatever runs inside, and that cleanup removes only what carries the run's own label.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { argvOf, cleaned, labelsOf, ranContainer, specFor } from "../benchmark/lib/docker.mjs";
+import { argvOf, cleaned, labelsOf, ranContainer, specFor } from "../benchmark/lib/core/docker.mjs";
 
 const RUN = { id: "bnr-0123456789ab" };
 

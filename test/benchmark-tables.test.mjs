@@ -4,13 +4,13 @@
 // proxy lets through, and the judge.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { addedLines, agentTestsOf, changesOf, importsOf, onlyAdded, overlaid, scopeFindings } from "../benchmark/lib/candidate.mjs";
-import { CAUSES, causeOf } from "../benchmark/lib/classify.mjs";
-import { NEXT, nextOf, signatureOf } from "../benchmark/lib/decide.mjs";
-import { FIXTURE_DRIFT, mutatedEntries } from "../benchmark/lib/faults.mjs";
-import { hostEnd, hostOf } from "../benchmark/lib/host.mjs";
-import { answersOf, judgedAnswer, says } from "../benchmark/lib/judge.mjs";
-import { globRe, matchesAny, safeRel } from "../benchmark/lib/paths.mjs";
+import { addedLines, agentTestsOf, changesOf, importsOf, onlyAdded, overlaid, scopeFindings } from "../benchmark/lib/source/candidate.mjs";
+import { CAUSES, causeOf } from "../benchmark/lib/source/classify.mjs";
+import { NEXT, nextOf, signatureOf } from "../benchmark/lib/source/decide.mjs";
+import { FIXTURE_DRIFT, mutatedEntries } from "../benchmark/lib/core/mutations.mjs";
+import { hostEnd, hostOf } from "../benchmark/lib/core/host.mjs";
+import { answersOf, judgedAnswer, says } from "../benchmark/lib/source/judge.mjs";
+import { globRe, matchesAny, safeRel } from "../benchmark/lib/core/paths.mjs";
 import { allowedTarget } from "../benchmark/images/verifier/egress.mjs";
 
 // ---- scope: what a repair may change ---------------------------------------------------------------------------------
@@ -34,7 +34,7 @@ test("a repair in scope, with a test of its own, raises nothing", () => {
 
 test("each way a candidate makes its own grading easier is refused by name", () => {
   const cases = [
-    [[change("benchmark/packs/orbit-source/ORBIT-SRC-001/hidden/spec.mjs", "added")], { "after:benchmark/packs/orbit-source/ORBIT-SRC-001/hidden/spec.mjs": "x" }, "BENCHMARK_TOUCHED"],
+    [[change("benchmark/suites/orbit-source/orbit-src-001/verifier/spec.mjs", "added")], { "after:benchmark/suites/orbit-source/orbit-src-001/verifier/spec.mjs": "x" }, "BENCHMARK_TOUCHED"],
     [[change("package.json")], { "before:package.json": "{}", "after:package.json": '{"scripts":{"test":"true"}}' }, "CHECK_TAMPERED"],
     [[change("cli/check-five-lines.mjs")], { "before:cli/check-five-lines.mjs": "a", "after:cli/check-five-lines.mjs": "b" }, "CHECK_TAMPERED"],
     [[change("src/run/status.mjs")], { "before:src/run/status.mjs": "a", "after:src/run/status.mjs": "b" }, "OUT_OF_SCOPE"],
@@ -129,8 +129,8 @@ test("the egress proxy lets through only the hosts it was given, on 443, by name
 });
 
 test("a glob says what a path is, and a safe path stays inside", () => {
-  assert.ok(matchesAny(["benchmark/**"], "benchmark/packs/x/case.json"));
-  assert.ok(matchesAny(["test/benchmark-*.test.mjs"], "test/benchmark-cases.test.mjs"));
+  assert.ok(matchesAny(["benchmark/**"], "benchmark/suites/x/case.json"));
+  assert.ok(matchesAny(["test/benchmark-*.test.mjs"], "test/benchmark-source-cases.test.mjs"));
   assert.ok(!matchesAny(["test/benchmark-*.test.mjs"], "test/autonomous-qa-benchmark.test.mjs"));
   assert.ok(globRe("test/*.test.mjs").test("test/a.test.mjs") && !globRe("test/*.test.mjs").test("test/sub/a.test.mjs"));
   for (const bad of ["../x", "/abs", "a//b", "a\\b", "C:/x", "a\u0000b"]) assert.equal(safeRel(bad), false, bad);

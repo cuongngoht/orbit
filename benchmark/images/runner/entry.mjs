@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// THE RUNNER'S ENTRY: one repair round inside the runner container. It reads the round's brief (mounted read-only),
-// checks what the network lets it reach, makes sure the round's ONE engineering task exists -- started through Orbit's
-// own `autonomous-engineering.mjs start` on the first round, named by the brief on every later one, never a second --
-// and then runs the coding host on it: Claude Code, given the round's prompt on stdin and the subject loaded as its
-// plugin. Everything it writes goes to /work/out; what the host printed is kept as it came, bounded. It decides
-// nothing about the change: the controller reads the task and the workspace back afterwards, and a verifier that
-// shares nothing with this container judges them.
+// THE RUNNER'S ENTRY: one round inside the runner container. It reads the round's brief (mounted read-only), checks
+// what the network lets it reach, and runs the coding host: Claude Code, given the round's prompt on stdin and the
+// plugin it was handed. A REPAIR round first makes sure its ONE engineering task exists -- started through Orbit's own
+// `autonomous-engineering.mjs start` on the first round, named by the brief on every later one, never a second. A QA
+// round starts nothing: its investigation is already open beside the controller, and the plugin's autonomous-qa is the
+// relay's client. Everything it writes goes to /work/out; what the host printed is kept as it came, bounded. It decides
+// nothing: the controller reads back what the round left, and a verifier that shares nothing with this container judges.
 //
 //   node /bench/entry.mjs     brief: /run/brief/brief.json      out: /work/out/{egress,start,runner}.json, host.jsonl
 import { spawn, spawnSync } from "node:child_process";
@@ -15,9 +15,12 @@ import { request } from "node:http";
 import { connect } from "node:net";
 import { pathToFileURL } from "node:url";
 
-export const PATHS = { brief: "/run/brief/brief.json", out: "/work/out", repo: "/work/repo", store: "/work/store" };
+export const PATHS = { brief: "/run/brief/brief.json", out: "/work/out", repo: "/work/repo", store: "/work/store", target: "/work/target" };
 
 export const TOOLS = "Read,Edit,Write,Glob,Grep,Bash,Skill,Agent,TodoWrite";
+
+// A QA round's host edits nothing: it reads, decides, and may write a decision to a file of its own before sending it.
+export const QA_TOOLS = "Read,Write,Glob,Grep,Bash,Skill,TodoWrite";
 
 // What the host is told never to run, beside what the case already forbids: a second engineering task, and removing the
 // one it has. A deny rule outranks an allow rule a skill brings; it is a guard, and the controller still counts the
@@ -66,6 +69,7 @@ const jsonOf = (text) => {
 export const startArgs = (b) => ["start", b.objective, `--attempts=${b.attempts}`, `--actions=${b.actions}`, `--minutes=${b.minutes}`, "--json"];
 
 function taskOf(b, env) {
+  if (isQa(b)) return { task: null, started: false, investigation: b.investigation };
   if (b.task) return { task: b.task, started: false };
   const r = orbit("autonomous-engineering.mjs", startArgs(b), env);
   const j = jsonOf(r.stdout);
@@ -74,7 +78,10 @@ function taskOf(b, env) {
 
 // ---- the host ----------------------------------------------------------------------------------------------------------
 
-export const hostArgs = (b) => ["-p", "--output-format", "stream-json", "--verbose", "--plugin-dir", PATHS.repo, "--permission-mode", "dontAsk", "--allowedTools", TOOLS, "--disallowedTools", DENIED.join(","), "--setting-sources", "user", "--strict-mcp-config", "--no-session-persistence", "--add-dir", PATHS.store, ...(b.model ? ["--model", b.model] : []), ...(b.usd > 0 ? ["--max-budget-usd", String(b.usd)] : [])];
+// A QA round's host also reads the application's public material, and no engineering task is started for it.
+const isQa = (b) => b.kind === "qa";
+
+export const hostArgs = (b) => ["-p", "--output-format", "stream-json", "--verbose", "--plugin-dir", PATHS.repo, "--permission-mode", "dontAsk", "--allowedTools", isQa(b) ? QA_TOOLS : TOOLS, "--disallowedTools", DENIED.join(","), "--setting-sources", "user", "--strict-mcp-config", "--no-session-persistence", "--add-dir", PATHS.store, ...(isQa(b) ? ["--add-dir", PATHS.target] : []), ...(b.model ? ["--model", b.model] : []), ...(b.usd > 0 ? ["--max-budget-usd", String(b.usd)] : [])];
 
 // What the host printed, kept as it came up to `cap` bytes, and the last 64 KiB always -- where its result line is.
 export function cappedSink(file, cap) {
@@ -114,7 +121,7 @@ async function main() {
   const egress = await egressOf(process.env, b.allowedHost);
   const t = egress.holds ? taskOf(b, process.env) : { task: b.task ?? null, started: false };
   written("start.json", { ...t, egress, round: b.round, at: new Date().toISOString() });
-  written("runner.json", { round: b.round, task: t.task, egress, startedAt: new Date().toISOString(), ...(egress.holds && t.task ? await round(b, process.env) : notRun(egress, t)), endedAt: new Date().toISOString() });
+  written("runner.json", { round: b.round, task: t.task, egress, startedAt: new Date().toISOString(), ...(egress.holds && (t.task || isQa(b)) ? await round(b, process.env) : notRun(egress, t)), endedAt: new Date().toISOString() });
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) main().catch((e) => (process.stderr.write(`entry failed: ${e?.message ?? e}\n`), (process.exitCode = 3)));

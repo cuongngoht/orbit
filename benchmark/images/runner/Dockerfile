@@ -24,7 +24,7 @@ RUN --mount=type=secret,id=orbit-ca,required=false \
  && rm -rf /root/.npm /root/.cache /root/.claude /root/.claude.json
 
 COPY npmrc /usr/local/etc/npmrc
-COPY entry.mjs inspect.mjs preflight.mjs /bench/
+COPY entry.mjs inspect.mjs preflight.mjs scripted.mjs /bench/
 
 LABEL orbit.benchmark.image="runner" \
       orbit.benchmark.claude-code="${CLAUDE_CODE_VERSION}"

@@ -7,6 +7,10 @@
 // relay's client. Everything it writes goes to /work/out; what the host printed is kept as it came, bounded. It decides
 // nothing: the controller reads back what the round left, and a verifier that shares nothing with this container judges.
 //
+// A SCRIPTED host -- a control's, never a model's -- runs in this same container with no network at all: there is no
+// egress to check, and in place of Claude Code it runs /bench/scripted.mjs, which drives the same engineering task
+// through Orbit's own loop with the edits its control defines.
+//
 //   node /bench/entry.mjs     brief: /run/brief/brief.json      out: /work/out/{egress,start,runner}.json, host.jsonl
 import { spawn, spawnSync } from "node:child_process";
 import { closeSync, openSync, readFileSync, writeFileSync, writeSync } from "node:fs";
@@ -47,6 +51,13 @@ const viaProxy = (proxy, target, ms) => new Promise((resolve) => {
 const proxyOf = (env) => ((u) => (u ? { host: u.hostname, port: Number(u.port) || 3128 } : null))(env.HTTPS_PROXY ? new URL(env.HTTPS_PROXY) : null);
 
 const resolved = (name) => lookup(name).then(() => "resolved", (e) => e.code ?? "failed");
+
+// A control's scripted host, named by its brief: it needs and has no network.
+export const isScripted = (b) => String(b.host ?? "").startsWith("scripted:");
+
+const NO_NETWORK = { holds: true, none: true, says: "a scripted host runs with no network: there is nothing to reach and no egress to check" };
+
+const egressFor = (b, env) => (isScripted(b) ? NO_NETWORK : egressOf(env, b.allowedHost));
 
 // Positive evidence every way: nothing direct gets out, no outside name resolves (no channel through DNS either), the
 // model's API answers through the proxy, and a host nobody allowed does not. A round whose network does not hold to
@@ -97,17 +108,20 @@ function keptChunk(fd, s, chunk, cap) {
   s.tail = Buffer.concat([s.tail, chunk]).subarray(-65536);
 }
 
-const hosted = (b, env, sinks) => new Promise((resolve) => {
-  const child = spawn("claude", hostArgs(b), { cwd: PATHS.repo, env, stdio: ["pipe", "pipe", "pipe"] });
+// What runs as the host: Claude Code with its flags -- or, for a control, the scripted host on the round's task.
+export const hostCommand = (b, task) => (isScripted(b) ? [process.execPath, ["/bench/scripted.mjs", task ?? "-"]] : ["claude", hostArgs(b)]);
+
+const hosted = (b, env, sinks, task) => new Promise((resolve) => {
+  const child = spawn(...hostCommand(b, task), { cwd: PATHS.repo, env, stdio: ["pipe", "pipe", "pipe"] });
   child.stdout.on("data", sinks.out.write);
   child.stderr.on("data", sinks.err.write);
   child.on("error", (e) => resolve({ exit: null, signal: null, error: e.code ?? String(e.message) })).on("close", (exit, signal) => resolve({ exit, signal }));
   child.stdin.on("error", () => null).end(b.prompt);
 });
 
-async function round(b, env) {
+async function round(b, env, task) {
   const sinks = { out: cappedSink(`${PATHS.out}/host.jsonl`, b.outputBytes), err: cappedSink(`${PATHS.out}/host.err`, 1024 * 1024) };
-  const ran = await hosted(b, env, sinks);
+  const ran = await hosted(b, env, sinks, task);
   [sinks.out, sinks.err].forEach((x) => x.close());
   writeFileSync(`${PATHS.out}/host-tail.jsonl`, sinks.out.s.tail);
   return { ...ran, hostBytes: sinks.out.s.bytes, truncated: sinks.out.s.cut };
@@ -118,10 +132,10 @@ const notRun = (egress, t) => (!egress.holds ? { exit: null, setup: "EGRESS", wh
 
 async function main() {
   const b = JSON.parse(readFileSync(PATHS.brief, "utf8"));
-  const egress = await egressOf(process.env, b.allowedHost);
+  const egress = await egressFor(b, process.env);
   const t = egress.holds ? taskOf(b, process.env) : { task: b.task ?? null, started: false };
   written("start.json", { ...t, egress, round: b.round, at: new Date().toISOString() });
-  written("runner.json", { round: b.round, task: t.task, egress, startedAt: new Date().toISOString(), ...(egress.holds && (t.task || isQa(b)) ? await round(b, process.env) : notRun(egress, t)), endedAt: new Date().toISOString() });
+  written("runner.json", { round: b.round, task: t.task, egress, startedAt: new Date().toISOString(), ...(egress.holds && (t.task || isQa(b)) ? await round(b, process.env, t.task) : notRun(egress, t)), endedAt: new Date().toISOString() });
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) main().catch((e) => (process.stderr.write(`entry failed: ${e?.message ?? e}\n`), (process.exitCode = 3)));

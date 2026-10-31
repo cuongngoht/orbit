@@ -4,7 +4,11 @@
 // the subject and the runner's store; a QA round mounts the plugin, the application's public material and the relay's
 // mailbox. Its deadline is the round's, enforced by stopping the container, whatever the host inside it is doing.
 //
+// A SCRIPTED host's round (a control: Orbit's own loop driven by a script, no model) has no network at all: no
+// internal network, no egress proxy, no credential -- there is nothing for it to reach.
+//
 //   roundRan(ctx, k, specOf(net, d), o) -> { error, container, runner, start, host, egress }
+//   offlineRan(ctx, k, spec, o) -> the same, with no network
 //   runnerSpecOf(ctx, net, k, mounts, values) · fresh(ctx, ...parts) · forbidden(ctx) · RUNNER_ENV · EGRESS_PORT
 import { mkdirSync, realpathSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -25,6 +29,9 @@ const egressSpec = (ctx, net, k) => specFor("egress", ctx.run, { n: k, image: ct
 
 export const RUNNER_ENV = { HOME: "/tmp", ORBIT_STORE_DIR: "/work/store", HTTPS_PROXY: `http://egress:${EGRESS_PORT}`, HTTP_PROXY: `http://egress:${EGRESS_PORT}`, NO_PROXY: "localhost,127.0.0.1", BASH_DEFAULT_TIMEOUT_MS: "1800000", BASH_MAX_TIMEOUT_MS: "3600000" };
 
+// What a runner with no network is handed: the same, less every way out.
+export const OFFLINE_ENV = { HOME: "/tmp", ORBIT_STORE_DIR: "/work/store" };
+
 // A person's CA bundle, for a network that inspects TLS: mounted read-only and named to Node, and nothing else.
 const caMount = (ctx) => (ctx.caFile ? [{ source: ctx.caFile, target: "/run/orbit-ca.pem", readOnly: true }] : []);
 
@@ -32,7 +39,7 @@ const caEnv = (ctx) => (ctx.caFile ? { NODE_EXTRA_CA_CERTS: "/run/orbit-ca.pem" 
 
 // The runner as every round has it: the image, the user, the entry, the limits, the network and the credential by
 // name -- with the mounts and the values the round brings.
-export const runnerSpecOf = (ctx, net, k, mounts, values = {}) => specFor("runner", ctx.run, { n: k, image: ctx.images.runner, user: ctx.user, argv: ["node", "/bench/entry.mjs"], mounts: [...mounts, ...caMount(ctx)], tmpfs: ["/work/repo/.claude-plugin/types:rw,nosuid,nodev,size=16m"], env: { names: ctx.credentialNames, values: { ...RUNNER_ENV, ...caEnv(ctx), ...values } }, limits: { cpus: ctx.case.limits.runner.cpus, memoryMb: ctx.case.limits.runner.memoryMb, pids: ctx.case.limits.runner.pids }, cpuset: ctx.runnerCpuset, network: { mode: "network", name: net, alias: "runner" }, tmpMb: 2048 });
+export const runnerSpecOf = (ctx, net, k, mounts, values = {}, plugin = "/work/repo") => specFor("runner", ctx.run, { n: k, image: ctx.images.runner, user: ctx.user, argv: ["node", "/bench/entry.mjs"], mounts: [...mounts, ...caMount(ctx)], tmpfs: [`${plugin}/.claude-plugin/types:rw,nosuid,nodev,size=16m`], env: net ? { names: ctx.credentialNames, values: { ...RUNNER_ENV, ...caEnv(ctx), ...values } } : { names: [], values: { ...OFFLINE_ENV, ...values } }, limits: { cpus: ctx.case.limits.runner.cpus, memoryMb: ctx.case.limits.runner.memoryMb, pids: ctx.case.limits.runner.pids }, cpuset: ctx.runnerCpuset, network: net ? { mode: "network", name: net, alias: "runner" } : null, tmpMb: 2048 });
 
 export const attestOn = (ctx, net, image) => ({ network: net, forbidden: forbidden(ctx), pluginTarget: null, imageEnv: docker.imageEnv(image, ctx.deps) });
 
@@ -60,6 +67,12 @@ async function withEgress(ctx, net, k, fn) {
   const ran = await fn();
   const log = logsOf(ctx, egress.id);
   return { ...ran, egress: { attested: egress.attested, log, ...stoppedBackground(egress.id, ctx.deps) } };
+}
+
+// One round with no network: the runner alone, attested on no network at all, its outputs read back the same way.
+export async function offlineRan(ctx, k, spec, o) {
+  const container = await ranContainer(spec, ctx.deps, { input: "", timeoutMs: o.deadlineMs, outputBytes: 1024 * 1024, attest: attestOn(ctx, "none", ctx.images.runner), held: o.held });
+  return { container, egress: { none: true, holds: true, says: "a scripted host runs with no network" }, ...runnerOutputs(ctx, o.out) };
 }
 
 // One round's runner: the run's internal network, the egress proxy, the runner the round's spec makes, its outputs.

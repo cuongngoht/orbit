@@ -22,6 +22,7 @@ import { leaksMasked } from "./core/sentinel.mjs";
 import { docRead, docWritten, newRunId, readRegular, roomOf, RUN_ID } from "./core/room.mjs";
 import { frozen, HARNESS, subjectOf, whereAt } from "./core/freeze.mjs";
 import { verified } from "./source/verify.mjs";
+import { judgedRepair } from "./source/repairs.mjs";
 
 const int = (v) => (v === undefined ? undefined : /^\d+$/.test(v) ? Number(v) : Number.NaN);
 
@@ -33,8 +34,12 @@ function refusedWith(say) {
 
 const runIdOf = (args) => ((id) => (RUN_ID.test(String(id)) ? id : refusedWith("name the run: a bnr- id (node benchmark/run.mjs where lists them)")))(words(args)[0]);
 
+// Docker as this command reaches it: the harness's own deps when it was handed some (a test's double), the machine's
+// otherwise -- the same rule contextOf follows.
+const depsOf = (h) => (h.dockerDeps ? h.dockerDeps(null) : dockerDeps(h.env, null));
+
 function dockerUp(h, why) {
-  const deps = dockerDeps(h.env, null);
+  const deps = depsOf(h);
   const up = docker.doctor(deps);
   if (!up.ok) throw new Blocked(`Docker does not answer here (${String(up.why ?? "").slice(0, 200)}): ${why}`);
   return { deps, version: up.version };
@@ -95,7 +100,7 @@ function safeJson(buf) {
 // What a case is run on: a source case's variants, a QA case's application and the variant planted in it.
 const VARIANTS_OF = { source: (c) => Object.keys(c.variants), qa: (c) => [`${c.target.stack} ${c.target.variant}`] };
 
-const listed = (c) => ({ id: c.id, kind: c.kind, version: c.version, title: c.title, variants: VARIANTS_OF[c.kind](c), controls: c.controls.map((k) => `${k.id}:${k.expect}`) });
+const listed = (c) => ({ id: c.id, kind: c.kind, version: c.version, title: c.title, variants: VARIANTS_OF[c.kind](c), controls: [...c.controls.map((k) => `${k.id}:${k.expect}`), ...(c.repairs ?? []).map((r) => `${r.id}(${r.through}):${r.expect}`)], baseline: c.baseline ?? null });
 
 const list = (h) => ({ suites: suitesIn(h.root).map((p) => ({ id: p.id, version: p.version, title: p.title, cases: casesOf(h.root, p.id).map(listed) })) });
 
@@ -124,7 +129,7 @@ function likeOf(h, id) {
 // What each kind of case runs with: the images it needs, how its context is completed, how it is carried to its end,
 // and how it is reported. A QA run's host is a coding host, unless a control names one of its scripted hosts.
 const KIND = {
-  source: { need: (o) => ["verifier", ...(o.repair ? ["runner"] : [])], completed: (ctx) => withSpec(ctx), carried: (ctx) => carried(ctx), reportOf, host: () => null },
+  source: { need: (o) => ["verifier", ...(o.repair ? ["runner"] : [])], completed: (ctx) => withSpec(ctx), carried: (ctx) => carried(ctx), reportOf, host: (o) => o.host ?? null },
   qa: { need: (o) => ["qa-worker", ...(o.host === "coding-host" ? ["runner", "verifier"] : [])], completed: async (ctx) => withTruth(ctx), carried: (ctx) => carriedQa(ctx), reportOf: qaReportOf, host: (o) => o.host ?? "coding-host" },
 };
 
@@ -264,14 +269,21 @@ function controlsRoom(h, c, images) {
 
 async function controls(h, args) {
   const c = caseOf(h.root, words(args)[0] ?? refusedWith("name the case whose controls to run"));
-  return c.kind === "qa" ? qaControls(h, c, args) : sourceControls(h, c);
+  return c.kind === "qa" ? qaControls(h, c, args) : sourceControls(h, c, args);
 }
 
-async function sourceControls(h, c) {
+// The controls asked for: every one the case declares, or the one --only names.
+const only = (list, args) => list.filter((x) => !flag(args, "only") || x.id === flag(args, "only"));
+
+// The engine-carried controls run a whole repair round each (Orbit's own test suite, in the runner); --skip-engine
+// leaves them out, for the quick tier that proves the verifier and the judge alone.
+const engineRepairs = (c, args) => (has(args, "skip-engine") ? [] : only((c.repairs ?? []).filter((r) => r.through === "engine"), args));
+
+async function sourceControls(h, c, args) {
   const { deps } = dockerUp(h, "the controls run the verifier's own containers");
-  const made = controlsRoom(h, c, resolvedImages(imageDefs(engineOf(h)), deps, { need: ["verifier"] }));
+  const made = controlsRoom(h, c, resolvedImages(imageDefs(engineOf(h)), deps, { need: ["verifier", ...(engineRepairs(c, args).length ? ["runner"] : [])] }));
   docWritten(made.room, "manifest.json", made.manifest);
-  return controlsRan(await withSpec(contextOf(h, made.room, made.manifest, NO_RECORD)), c);
+  return controlsRan(await withSpec(contextOf(h, made.room, made.manifest, NO_RECORD)), c, h, args);
 }
 
 function entriesFor(ctx, c, k) {
@@ -284,14 +296,31 @@ function entriesFor(ctx, c, k) {
 async function oneControl(ctx, c, k) {
   const v = await verified(ctx, `control-${k.id}`, entriesFor(ctx, c, k), {});
   const got = !v.complete ? "INCOMPLETE" : v.failures.length ? "FAIL" : "PASS";
-  return { id: k.id, variant: k.variant, expect: k.expect, got, matched: got === k.expect, summary: verificationSummary(v), digest: v.digest, attested: v.hidden.attested.every((r) => r.ok) };
+  return { id: k.id, kind: "verifier", variant: k.variant, expect: k.expect, got, matched: got === k.expect, summary: verificationSummary(v), digest: v.digest, attested: v.hidden.attested.every((r) => r.ok) };
 }
 
-async function controlsRan(ctx, c) {
+// A repair control carried through Orbit's ENGINE: a whole run with --repair whose host is the scripted one, driving
+// Orbit's real engineering loop in the runner with the edits its definition names -- no model, no network.
+async function engineControl(h, c, r) {
+  const got = await oneRun(h, { caseId: c.id, variant: r.variant, repair: true, host: `scripted:${r.id}`, source: "head" }).catch((e) => ({ outcome: e instanceof Blocked ? "BLOCKED" : "REFUSED", summary: e.message }));
+  return { id: r.id, kind: "scripted-host", through: "engine", expect: r.expect, got: got.outcome, matched: got.outcome === r.expect, summary: got.summary ?? "", run: got.run ?? null };
+}
+
+async function rowsOf(list, one) {
   const rows = [];
-  for (const k of c.controls) rows.push(await oneControl(ctx, c, k));
+  for (const x of list) rows.push(await one(x));
+  return rows;
+}
+
+// Every control of a source case, in its own order: what the verifier must pass and fail, what the judge must pass and
+// refuse of a candidate, and what a scripted host carried through the engine must come to. A verifier whose own
+// reference model fails its self-test proves nothing, so none of its controls is run.
+async function controlsRan(ctx, c, h, args) {
+  if (ctx.invalid) return { case: c.id, run: ctx.run.id, rows: [], verifierDefect: ctx.invalid.says, exit: 2 };
+  const cache = {};
+  const rows = [...(await rowsOf(only(c.controls, args), (k) => oneControl(ctx, c, k))), ...(await rowsOf(only((c.repairs ?? []).filter((r) => r.through === "judge"), args), (r) => judgedRepair(ctx, c, r, cache))), ...(await rowsOf(engineRepairs(c, args), (r) => engineControl(h, c, r)))];
   docWritten(ctx.room, "controls.json", { case: c.id, rows });
-  return { case: c.id, run: ctx.run.id, rows, exit: rows.every((r) => r.matched) ? 0 : 1 };
+  return { case: c.id, run: ctx.run.id, rows, exit: rows.length && rows.every((r) => r.matched) ? 0 : 1 };
 }
 
 // A QA case's controls: a whole run each, driven by one of its scripted hosts, its verdict held to what it must be.
@@ -306,7 +335,9 @@ async function qaControls(h, c, args) {
   return { case: c.id, run: rows.map((r) => r.run).join(" "), rows, exit: rows.length && rows.every((r) => r.matched) ? 0 : 1 };
 }
 
-const sayControls = (r) => [`CONTROLS   ${r.case} (${r.run})`, ...r.rows.map((x) => `  ${x.matched ? "✓" : "✗"} ${x.id.padEnd(12)} expected ${x.expect.padEnd(5)} got ${x.got.padEnd(10)} ${x.summary}`)].join("\n");
+const rejectsSay = (x) => (x.missing?.length ? ` · NOT refused by ${x.missing.join(", ")}` : x.rejects?.length ? ` · refused by ${x.rejects.join(", ")}` : "");
+
+const sayControls = (r) => [`CONTROLS   ${r.case} (${r.run})`, ...(r.verifierDefect ? [`  VERIFIER_DEFECT — ${r.verifierDefect}: no control was run`] : []), ...r.rows.map((x) => `  ${x.matched ? "✓" : "✗"} ${x.id.padEnd(20)} ${String(x.kind ?? "host").padEnd(13)} expected ${x.expect.padEnd(17)} got ${String(x.got).padEnd(17)} ${x.summary}${rejectsSay(x)}`)].join("\n");
 
 export const COMMANDS = {
   build: { run: build, say: sayBuild },

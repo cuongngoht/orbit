@@ -9,11 +9,19 @@
 //            exit codes are read from docker, and a gate that ran fewer tests than the subject's did failed
 //   agent    a candidate's own regression tests: they must fail on the subject and pass on the candidate
 //
-//   verified(ctx, label, entries, o) -> { label, digest, hidden, gates, agent, failures, signature, complete, problem }
+// Time and memory are judged by whose tree it is. When the SUBJECT's containers run out of either, the verifier could
+// not run as declared (an infrastructure fact). When a CANDIDATE's do, that is the candidate's own failure: a candidate
+// that hangs or bloats is rejected by name (`hidden:probe:TIMEOUT`), never excused as the environment -- and once its
+// hidden checks did not answer, its gates and own tests are not run, because it is already rejected.
+//
+//   verified(ctx, label, entries, o) -> { label, digest, hidden, gates, agent, failures, signature, complete, problem,
+//                                         problemEnds, skipped }      o: { baseline, agentTests, beforeGates, between,
+//                                                                          candidate }
 //   tapCounts(text) -> { tests, pass, fail }      gateEntries(entries, baseline) -> entries
 import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { isTest } from "./candidate.mjs";
 import { judgedAll, probeInput } from "./judge.mjs";
 import { ranContainer, specFor } from "../core/docker.mjs";
 import { signatureOf } from "./decide.mjs";
@@ -24,7 +32,8 @@ const count = (re, text) => ((m) => (m ? Number(m[1]) : null))(re.exec(String(te
 
 export const tapCounts = (text) => ({ tests: count(/^# tests (\d+)/m, text), pass: count(/^# pass (\d+)/m, text), fail: count(/^# fail (\d+)/m, text) });
 
-const isTestRel = (rel) => rel.startsWith("test/");
+// A test, by the one rule SCOPE holds a candidate to (candidate.mjs TEST_PATH).
+const isTestRel = (rel) => isTest(rel);
 
 // The tree a gate runs on: the entries, with every test file the subject already had put back as the subject had it.
 export function gateEntries(entries, baseline) {
@@ -88,25 +97,40 @@ async function agentProven(ctx, label, entries, baseline, rels) {
 
 const PROBE_SOURCE = ["IMPORT", "PROBE_UNREADABLE"];
 
-const failuresOf = (v) => [...v.hidden.checks.filter((c) => !c.ok).map((c) => `hidden:${c.id}`), ...(v.hidden.error ? [`hidden:probe:${v.hidden.error.code}`] : []), ...v.gates.filter((g) => !g.ok).map((g) => `gate:${g.id}`), ...(v.agent && !v.agent.before.failed ? ["agent:passes-before"] : []), ...(v.agent && !v.agent.after.ok ? ["agent:fails-after"] : [])];
+// How a container ends when it ran out of time or memory -- the subject's environment, or a candidate's own failure.
+export const RESOURCE_ENDS = ["TIMEOUT", "OOM"];
+
+// The ends that keep a verification from being one, by whose tree it is.
+export const PROBLEM_ENDS = { subject: ["REFUSED", "TIMEOUT", "OOM", "NO_EXIT"], candidate: ["REFUSED", "NO_EXIT"] };
+
+const probeEnded = (v) => (RESOURCE_ENDS.includes(v.hidden.end) ? [`hidden:probe:${v.hidden.end}`] : []);
+
+const failuresOf = (v) => [...v.hidden.checks.filter((c) => !c.ok).map((c) => `hidden:${c.id}`), ...(v.hidden.error ? [`hidden:probe:${v.hidden.error.code}`] : []), ...probeEnded(v), ...v.gates.filter((g) => !g.ok).map((g) => `gate:${g.id}`), ...(v.agent && !v.agent.before.failed ? ["agent:passes-before"] : []), ...(v.agent && !v.agent.after.ok ? ["agent:fails-after"] : [])];
 
 const containersOf = (v) => [{ end: v.hidden.end }, ...v.gates, ...(v.agent ? [v.agent.before, v.agent.after] : [])];
 
-// What kept a verification from being one: a container refused or out of time or memory -- never a test that failed.
-const problemOf = (v) => ((bad) => (bad.length ? `the verifier could not run as declared (${[...new Set(bad.map((c) => c.end))].join(", ")})` : null))(containersOf(v).filter((c) => ["REFUSED", "TIMEOUT", "OOM", "NO_EXIT"].includes(c.end)));
+// What kept a verification from being one -- never a test that failed: the ends, by whose tree it was.
+const problemEndsOf = (v, side) => [...new Set(containersOf(v).map((c) => c.end).filter((end) => PROBLEM_ENDS[side].includes(end)))];
+
+const problemOf = (ends) => (ends.length ? `the verifier could not run as declared (${ends.join(", ")})` : null);
 
 // The three parts, in order: the hidden checks first (TESTING), then -- the caller told when -- the gates and the
-// candidate's own test (REGRESSION).
+// candidate's own test (REGRESSION). A candidate whose hidden checks did not answer in time goes no further.
 async function parts(ctx, label, entries, o) {
   const tree = realpathSync(madeDir(ctx.room, "scratch", label, "tree"));
   writtenTree(tree, entries);
   const hidden = await probed(ctx, tree, ctx.cases);
   if (o.between) o.between();
-  return { label, digest: treeDigestOf(entries), mounted: tree, hidden, gates: await gated(ctx, label, entries, o.baseline ?? entries, o.beforeGates ?? null), agent: o.agentTests?.length ? await agentProven(ctx, label, entries, o.baseline, o.agentTests) : null };
+  return (o.candidate && RESOURCE_ENDS.includes(hidden.end) ? unanswered : answered)(ctx, label, entries, o, { label, digest: treeDigestOf(entries), mounted: tree, hidden });
 }
+
+const unanswered = async (ctx, label, entries, o, base) => ({ ...base, gates: [], agent: null, skipped: `the hidden checks did not answer (${base.hidden.end}): the candidate is rejected, and its gates and its own tests are not run` });
+
+const answered = async (ctx, label, entries, o, base) => ({ ...base, gates: await gated(ctx, label, entries, o.baseline ?? entries, o.beforeGates ?? null), agent: o.agentTests?.length ? await agentProven(ctx, label, entries, o.baseline, o.agentTests) : null, skipped: null });
 
 export async function verified(ctx, label, entries, o = {}) {
   const v = await parts(ctx, label, entries, o);
   const failures = failuresOf(v);
-  return { ...v, failures, signature: signatureOf(failures), hiddenFailed: v.hidden.checks.filter((c) => !c.ok).length, gatesFailed: v.gates.filter((g) => !g.ok).length, missingExports: v.hidden.error?.code === "MISSING_EXPORT" ? v.hidden.error.names : [], probeBroken: PROBE_SOURCE.includes(v.hidden.error?.code), problem: problemOf(v), complete: !problemOf(v) && v.hidden.ran };
+  const ends = problemEndsOf(v, o.candidate ? "candidate" : "subject");
+  return { ...v, failures, signature: signatureOf(failures), hiddenFailed: v.hidden.checks.filter((c) => !c.ok).length, gatesFailed: v.gates.filter((g) => !g.ok).length, missingExports: v.hidden.error?.code === "MISSING_EXPORT" ? v.hidden.error.names : [], probeBroken: PROBE_SOURCE.includes(v.hidden.error?.code), problem: problemOf(ends), problemEnds: ends, complete: !ends.length && (v.hidden.ran || RESOURCE_ENDS.includes(v.hidden.end)) };
 }

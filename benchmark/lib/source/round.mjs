@@ -6,7 +6,8 @@
 // verifier does, in containers of its own.
 //
 //   ranRound(ctx, k, state) -> { error, runner, host, egress }        inspectedRound(ctx, k, task) -> inspection
-//   candidateOf(ctx, k, inspection) -> { changes, entries, ignored, scope, patch, agentTests }
+//   candidateOf(ctx, inspection) -> { changes, entries, ignored, scope, patch, patchDigest, agentTests }
+//   assembled(ctx, changes, textOf, ignored) -> the same, from changes and their text however they were read back
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { shaBytes, sha } from "../../../src/hash.mjs";
@@ -14,7 +15,7 @@ import { docker } from "../../../src/runtime/isolation/docker.mjs";
 import { addedLines, agentTestsOf, overlaid, scopeFindings } from "./candidate.mjs";
 import { ranContainer, specFor } from "../core/docker.mjs";
 import { gitOwn } from "../core/git.mjs";
-import { forbidden, fresh, jsonAt, roundRan, runnerSpecOf } from "../core/runner.mjs";
+import { forbidden, fresh, jsonAt, offlineRan, roundRan, runnerSpecOf } from "../core/runner.mjs";
 import { briefOf } from "./brief.mjs";
 import { readRegular } from "../core/room.mjs";
 import { safeRel } from "../core/paths.mjs";
@@ -39,8 +40,12 @@ function briefWritten(ctx, k, state) {
 // stopping the container, whatever the host inside it is doing.
 export async function ranRound(ctx, k, state) {
   const d = { brief: briefWritten(ctx, k, state), out: fresh(ctx, "rounds", String(k), "out") };
-  return roundRan(ctx, k, (net) => runnerSpec(ctx, net, k, d), { deadlineMs: state.deadlineMs, out: d.out });
+  const o = { deadlineMs: state.deadlineMs, out: d.out, held: state.held };
+  return scriptedHost(ctx) ? offlineRan(ctx, k, runnerSpec(ctx, null, k, d), o) : roundRan(ctx, k, (net) => runnerSpec(ctx, net, k, d), o);
 }
+
+// A control's scripted host, never a model: its round runs with no network (core/runner.mjs offlineRan).
+export const scriptedHost = (ctx) => String(ctx.host ?? "").startsWith("scripted:");
 
 // ---- the inspection ------------------------------------------------------------------------------------------------------
 
@@ -86,8 +91,8 @@ export function candidateOf(ctx, ins) {
   return assembled(ctx, changes, textOf, ignored);
 }
 
-function assembled(ctx, changes, textOf, ignored) {
-  const scope = scopeFindings(changes, { allow: ctx.case.scope.allow, deny: ctx.case.scope.deny, agentTests: ctx.case.checks.agentTests, textOf });
+export function assembled(ctx, changes, textOf, ignored) {
+  const scope = scopeFindings(changes, { allow: ctx.case.scope.allow, deny: ctx.case.scope.deny, imports: ctx.case.scope.imports ?? [], agentTests: ctx.case.checks.agentTests, textOf });
   const usable = changes.filter((c) => c.change === "deleted" || textOf(c.rel, "after") !== null);
   const entries = overlaid(ctx.baseline, usable.filter((c) => safeRel(c.rel)), (rel) => Buffer.from(textOf(rel, "after"), "utf8"));
   const patch = patchOf(ctx, usable.filter((c) => safeRel(c.rel)), textOf);

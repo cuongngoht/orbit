@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "id": "no-regression-test",
+  "about": "The reference repair with no test of its own: refused.",
+  "mutations": [
+    {
+      "id": "approval-of-a-removed-step",
+      "file": "src/improvement/oracle.mjs",
+      "find": "fails: (p, c) => Boolean(c) && p.approval === \"owner\" && c.approval !== \"owner\"",
+      "replace": "fails: (p, c) => p.approval === \"owner\" && (!c || c.approval !== \"owner\")",
+      "count": 1
+    }
+  ],
+  "files": [],
+  "deletes": []
+}

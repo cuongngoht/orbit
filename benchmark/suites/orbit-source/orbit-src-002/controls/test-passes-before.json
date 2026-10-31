@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "id": "test-passes-before",
+  "about": "The reference repair with a 'regression test' that passes before the change too: refused.",
+  "mutations": [
+    {
+      "id": "approval-of-a-removed-step",
+      "file": "src/improvement/oracle.mjs",
+      "find": "fails: (p, c) => Boolean(c) && p.approval === \"owner\" && c.approval !== \"owner\"",
+      "replace": "fails: (p, c) => p.approval === \"owner\" && (!c || c.approval !== \"owner\")",
+      "count": 1
+    }
+  ],
+  "files": [
+    {
+      "rel": "test/improvement-approval-proves-nothing.test.mjs",
+      "lines": [
+        "import assert from \"node:assert/strict\";",
+        "import { test } from \"node:test\";",
+        "test(\"always\", () => {",
+        "  assert.equal(1, 1);",
+        "});"
+      ]
+    }
+  ],
+  "deletes": []
+}

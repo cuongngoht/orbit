@@ -19,8 +19,9 @@ import { matchesAny, safeRel } from "./paths.mjs";
 
 export const SOURCE_MODES = ["head", "worktree"];
 
-// What the harness holds as its own: never part of what a run measures, and never a candidate's to change.
-export const HARNESS = ["benchmark/**", "test/benchmark-*.test.mjs"];
+// What the harness holds as its own: never part of what a run measures, and never a candidate's to change -- its
+// modules, its cases and fixtures, its tests and the helpers those tests share (test/benchmark-*.mjs).
+export const HARNESS = ["benchmark/**", "test/benchmark-*.mjs"];
 
 // Names that hold secrets far more often than code: never read, never measured, listed by path only.
 export const CREDENTIAL_SHAPED = /(^|\/)\.env(\.|$)|\.(pem|key|p12|pfx|jks|keystore)$|(^|\/)id_(rsa|dsa|ecdsa|ed25519)(\.|$)|(^|\/)\.(npmrc|netrc|pgpass)$|(^|\/)credentials?(\.[a-z]+)?$|(^|\/)secrets?\.(json|ya?ml|env)$/i;

@@ -9,7 +9,7 @@ import { cpSync, existsSync, readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Blocked, Refused } from "../../../src/errors.mjs";
-import { shaBytes } from "../../../src/hash.mjs";
+import { sha, shaBytes } from "../../../src/hash.mjs";
 import { createProcess } from "../../../src/process/index.mjs";
 import { docker } from "../../../src/runtime/isolation/docker.mjs";
 import { createScratch } from "../../../src/runtime/sandbox/scratch.mjs";
@@ -56,7 +56,7 @@ const hostsOf = (env) => [env.ANTHROPIC_BASE_URL ? new URL(env.ANTHROPIC_BASE_UR
 // Uncommitted changes to what is measured, and no word on which tree: refused, never silently narrowed. Changes only to
 // the harness itself leave the subject what it is.
 export function modeOf(where, asked) {
-  const dirty = where.dirty.filter((p) => !HARNESS.some((g) => p.startsWith(g.replace("/**", "/")) || p === g));
+  const dirty = where.dirty.filter((p) => !matchesAny(HARNESS, p));
   if (asked) return asked;
   if (dirty.length) throw new Refused(`the working tree has uncommitted changes to what a benchmark measures (${dirty.slice(0, 5).join(", ")}${dirty.length > 5 ? ", …" : ""}) — say which tree to measure: --source=head (HEAD, without them) or --source=worktree (HEAD and them)`);
   return "head";
@@ -105,7 +105,9 @@ const KIND_RUN = {
 
 const runningConfig = (o, c) => ({ seed: Number.isInteger(o.seed) ? o.seed : Math.floor(Math.random() * 2 ** 31), rounds: o.rounds ?? c.limits.rounds, minutes: o.minutes ?? c.limits.minutes, usd: o.usd ?? c.limits.usd, model: o.model ?? null, repair: o.repair === true, host: o.host ?? null });
 
-const harnessDigest = (engine) => dirDigest(join(engine, "benchmark", "lib"));
+// What the harness is: its modules, the scripts its images run and its command line -- one digest, so a run says which
+// harness judged it, and a change to any of them is a different harness.
+const harnessDigest = (engine) => sha([dirDigest(join(engine, "benchmark", "lib")), dirDigest(join(engine, "benchmark", "images")), shaBytes(readFileSync(join(engine, "benchmark", "run.mjs")))].join("\n"));
 
 function manifestOf(h, f) {
   return { schema: 1, run: f.runId, at: new Date().toISOString(), host: { node: process.version, platform: process.platform, docker: f.dockerVersion }, source: { repo: f.where.root, branch: f.where.branch, detached: f.where.detached, commit: f.where.commit, dirty: f.where.dirty, mode: f.mode, files: f.frozen.entries.length, digest: treeDigestOf(f.frozen.entries), skipped: f.frozen.skipped }, subject: { files: f.faulted.entries.length, digest: treeDigestOf(f.faulted.entries), clean: treeDigestOf(f.subject.entries), excluded: f.subject.skipped.map((s) => s.rel), faults: f.faulted.applied, commit: f.checkout.commit }, benchmark: { suite: f.c.suite.id, suiteVersion: f.c.suite.version, case: f.c.id, kind: f.c.kind, version: f.c.version, variant: f.variant, digest: f.caseDigest, harness: harnessDigest(engineOf(h)) }, ...(f.c.target ? { target: f.c.target, plugin: f.plugin } : {}), images: f.images, config: f.config, store: { base: h.storeBase, root: h.storeRoot } };

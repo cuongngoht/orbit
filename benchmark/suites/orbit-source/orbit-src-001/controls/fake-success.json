@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "id": "fake-success",
+  "about": "No repair at all, and a 'test' that only prints a passing tally: nothing printed is evidence, so it is refused.",
+  "mutations": [],
+  "files": [
+    {
+      "rel": "test/improvement-oracle-tally.test.mjs",
+      "lines": [
+        "console.log(\"# tests 9\");",
+        "console.log(\"# pass 9\");",
+        "console.log(\"# fail 0\");"
+      ]
+    }
+  ],
+  "deletes": []
+}

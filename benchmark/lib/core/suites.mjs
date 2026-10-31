@@ -53,7 +53,27 @@ const COMMON_FIELDS = {
   controls: { type: "array" },
 };
 
-const SOURCE_FIELDS = { ...COMMON_FIELDS, subject: { type: "object" }, prepare: { type: "object" }, reproduce: TEXT, scope: { type: "object" }, checks: { type: "object" }, variants: { type: "object", minProperties: 1 } };
+// What a source run of the case came to on the source as it is, when the case was written: a known finding says FAIL,
+// so a report tells an expected failure from a regression, and a metric never counts a known finding as news.
+const BASELINE = { type: "string", enum: ["PASS", "FAIL"] };
+
+// What a repair control must earn: a candidate the verifier passes, one it rejects, or one that makes no progress.
+export const REPAIR_OUTCOMES = ["REPAIRED_VERIFIED", "REPAIR_REJECTED", "NO_PROGRESS"];
+
+// How a repair control is carried: straight to the JUDGE (the candidate built from its definition, no runner) or through
+// Orbit's ENGINE (a scripted host drives the real engineering loop in the runner, no model).
+export const REPAIR_THROUGH = ["judge", "engine"];
+
+// What an engine-carried control's scripted host does (images/runner/scripted.mjs SCRIPTS): APPLY its definition
+// through every step of the loop, or sit IDLE -- start nothing, change nothing -- which a verifier must never pass.
+export const REPAIR_SCRIPTS = ["apply", "idle"];
+
+const SOURCE_FIELDS = { ...COMMON_FIELDS, subject: { type: "object" }, prepare: { type: "object" }, reproduce: TEXT, scope: { type: "object" }, checks: { type: "object" }, variants: { type: "object", minProperties: 1 }, baseline: BASELINE, repairs: { type: "array" } };
+
+// Fields a case may leave out: older cases (and the frozen copies older runs keep) have none of them.
+const OPTIONAL = ["baseline", "repairs"];
+
+const requiredOf = (fields) => Object.keys(fields).filter((k) => !OPTIONAL.includes(k));
 
 const QA_FIELDS = { ...COMMON_FIELDS, target: { type: "object" } };
 
@@ -65,12 +85,12 @@ const SCRATCH = { type: "string", enum: ["after-run", "keep"] };
 
 // Every object a case holds, as a section: where it is, the fields it may have and the ones it must.
 const SOURCE_SECTIONS = [
-  { at: "case", of: (c) => [c], fields: SOURCE_FIELDS, required: Object.keys(SOURCE_FIELDS) },
+  { at: "case", of: (c) => [c], fields: SOURCE_FIELDS, required: requiredOf(SOURCE_FIELDS) },
   { at: "measures", of: (c) => [c.measures], fields: { kind: { type: "string", enum: ["correctness", "capability", "robustness"] }, capability: TEXT, repairable: LIST }, required: ["kind", "capability", "repairable"] },
   { at: "subject", of: (c) => [c.subject], fields: { paths: { ...LIST, minItems: 1 }, exports: { type: "object" } }, required: ["paths", "exports"] },
   { at: "prepare", of: (c) => [c.prepare], fields: { requires: LIST }, required: ["requires"] },
   { at: "acceptance", of: (c) => [c.acceptance], fields: { owner: { type: "string", enum: ["verifier"] }, spec: REL, probe: REL, samples: { type: "integer", minimum: 1, maximum: 512 } }, required: ["owner", "spec", "probe", "samples"] },
-  { at: "scope", of: (c) => [c.scope], fields: { allow: { ...LIST, minItems: 1 }, deny: LIST }, required: ["allow", "deny"] },
+  { at: "scope", of: (c) => [c.scope], fields: { allow: { ...LIST, minItems: 1 }, deny: LIST, imports: LIST }, required: ["allow", "deny"] },
   { at: "checks", of: (c) => [c.checks], fields: { gates: { type: "array" }, agentTests: { type: "object" } }, required: ["gates", "agentTests"] },
   { at: "checks.gates[]", of: (c) => c.checks?.gates ?? [], fields: { id: NAME, argv: { ...LIST, minItems: 1 }, stdout: { type: "string" } }, required: ["id", "argv"] },
   { at: "checks.agentTests", of: (c) => [c.checks?.agentTests], fields: { required: { type: "boolean" }, pattern: { type: "string" } }, required: ["required", "pattern"] },
@@ -81,6 +101,7 @@ const SOURCE_SECTIONS = [
   { at: "cleanup", of: (c) => [c.cleanup], fields: { containers: LABELLED, networks: LABELLED, scratch: SCRATCH }, required: ["containers", "networks", "scratch"] },
   { at: "variants.*", of: (c) => Object.values(c.variants ?? {}), fields: { mutations: REL }, required: [] },
   { at: "controls[]", of: (c) => c.controls ?? [], fields: { id: NAME, variant: NAME, file: REL, expect: VERDICT }, required: ["id", "variant", "expect"] },
+  { at: "repairs[]", of: (c) => c.repairs ?? [], fields: { id: NAME, variant: NAME, candidate: REL, through: { type: "string", enum: REPAIR_THROUGH }, expect: { type: "string", enum: REPAIR_OUTCOMES }, rejects: LIST, seconds: BOX.seconds, script: { type: "string", enum: REPAIR_SCRIPTS } }, required: ["id", "variant", "candidate", "through", "expect"] },
 ];
 
 const QA_SECTIONS = [
@@ -105,7 +126,7 @@ const duplicates = (ids) => ids.filter((id, i) => ids.indexOf(id) !== i);
 
 const missingFiles = (dir, files) => files.filter((f) => typeof f === "string").filter((f) => !safeRel(f) || !existsSync(join(dir, f)));
 
-const sourceFiles = (c) => [c.request, c.acceptance?.spec, c.acceptance?.probe, ...Object.values(c.variants ?? {}).map((v) => v?.mutations), ...(c.controls ?? []).map((k) => k?.file)];
+const sourceFiles = (c) => [c.request, c.acceptance?.spec, c.acceptance?.probe, ...Object.values(c.variants ?? {}).map((v) => v?.mutations), ...(c.controls ?? []).map((k) => k?.file), ...(c.repairs ?? []).map((r) => r?.candidate)];
 
 const unsafeGlobs = (globs) => (globs ?? []).filter((g) => typeof g !== "string" || g.startsWith("/") || g.split("/").includes(".."));
 
@@ -114,8 +135,8 @@ const unsafeGlobs = (globs) => (globs ?? []).filter((g) => typeof g !== "string"
 const SOURCE_CROSS = [
   { fails: (c, dir) => missingFiles(dir, sourceFiles(c)), say: (bad) => `names files it does not hold: ${bad.join(", ")}` },
   { fails: (c) => (isObject(c.variants) && !Object.hasOwn(c.variants, "real") ? ["real"] : []), say: () => "has no `real` variant: the source as it is must always be measurable" },
-  { fails: (c) => (c.controls ?? []).filter((k) => isObject(c.variants) && !Object.hasOwn(c.variants, k?.variant)).map((k) => k?.id), say: (bad) => `controls on a variant it does not declare: ${bad.join(", ")}` },
-  { fails: (c) => duplicates([...(c.checks?.gates ?? []).map((g) => g?.id), ...(c.controls ?? []).map((k) => k?.id)]), say: (bad) => `ids used twice: ${bad.join(", ")}` },
+  { fails: (c) => [...(c.controls ?? []), ...(c.repairs ?? [])].filter((k) => isObject(c.variants) && !Object.hasOwn(c.variants, k?.variant)).map((k) => k?.id), say: (bad) => `controls on a variant it does not declare: ${bad.join(", ")}` },
+  { fails: (c) => duplicates([...(c.checks?.gates ?? []).map((g) => g?.id), ...(c.controls ?? []).map((k) => k?.id), ...(c.repairs ?? []).map((r) => r?.id)]), say: (bad) => `ids used twice: ${bad.join(", ")}` },
   { fails: (c) => unsafeGlobs(c.scope?.allow), say: (bad) => `scope globs reach outside the repository: ${bad.join(", ")}` },
 ];
 

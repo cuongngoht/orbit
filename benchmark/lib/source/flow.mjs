@@ -322,7 +322,7 @@ const earlierOf = (ctx, k) => Array.from({ length: k - 1 }, (_, i) => docRead(ct
 // Stopped at its deadline, not held by a person (a held run ends as the person held it) and not ended by its task.
 const cutShortOf = (r) => r.repair?.container?.timedOut === true && r.repair.container.held !== true && r.engineering?.terminal !== true;
 
-const roundFacts = (ctx, k, r, before) => ({ frozenIntact: frozenIntact(ctx), roundError: roundError(r), verified: isVerified(r), changed: r.cand.changes.length > 0, engineering: r.engineering, signature: before.signature, previous: before.previous, left: leftOf(ctx, show(ctx)), scope: [...r.cand.scope, ...(r.extraTasks ? [{ id: "EXTRA_TASK" }] : [])], cutShort: cutShortOf(r), patchDigest: r.cand.patchDigest, earlier: earlierOf(ctx, k) });
+const roundFacts = (ctx, k, r, before) => ({ frozenIntact: frozenIntact(ctx), roundError: roundError(r), verified: isVerified(r), changed: r.cand.changes.length > 0, engineering: r.engineering, signature: before.signature, previous: before.previous, left: leftOf(ctx, show(ctx)), scope: [...r.cand.scope, ...(r.extraTasks ? [{ id: "EXTRA_TASK" }] : [])], cutShort: cutShortOf(r), patchDigest: r.cand.patchDigest, earlier: earlierOf(ctx, k), ...(ctx.case.kind === "engineering" ? { standing: null } : {}) });
 
 const signatureOrNot = (failures) => (failures.length ? signatureOf(failures) : undefined);
 

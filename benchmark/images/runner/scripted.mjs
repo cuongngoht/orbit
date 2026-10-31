@@ -295,10 +295,10 @@ export const stateOf = (b, task) => ((round) => ({ task: /^tsk-[a-f0-9]{12}$/.te
 export const ranScript = (s) => (s.task && !contextOf(s) ? ["the engineering task could not be read"] : (SCRIPTS[s.script.mode] ?? SCRIPTS.apply)(s));
 
 function main(task) {
-  const s = stateOf(JSON.parse(readFileSync(PATHS.brief, "utf8")), task);
+  const s = { ...stateOf(JSON.parse(readFileSync(PATHS.brief, "utf8")), task), startedAt: Date.now() };
   said({ type: "system", subtype: "init", model: `scripted:${s.script.id ?? "unnamed"}`, session_id: `scripted-${s.task ?? "goal"}`, claude_code_version: null });
   const problems = ranScript(s);
-  said({ type: "result", subtype: problems.length ? "error_during_execution" : "success", is_error: problems.length > 0, num_turns: s.steps.length, total_cost_usd: 0, result: problems.join("; ").slice(0, 300) || "the script ran to its end", steps: s.steps });
+  said({ type: "result", subtype: problems.length ? "error_during_execution" : "success", is_error: problems.length > 0, num_turns: s.steps.length, total_cost_usd: 0, duration_ms: Date.now() - s.startedAt, result: problems.join("; ").slice(0, 300) || "the script ran to its end", steps: s.steps });
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) main(process.argv[2]);

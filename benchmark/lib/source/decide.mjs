@@ -27,7 +27,9 @@ const rejectedStop = (r) => (r.scope?.length ? "UNSAFE_CHANGE" : "VERIFICATION_F
 
 const repeated = (r) => Boolean(r.patchDigest) && (r.earlier ?? []).some((e) => e.patchDigest === r.patchDigest && e.signature === r.signature);
 
-const STANDS = () => "ORBIT_SOURCE_DEFECT";
+// What still stands when a repair is refused or makes no progress: the source defect it was asked to repair -- or, for a
+// goal (`standing: null`), nothing of the taxonomy: a goal not met is the outcome itself, never a defect of the source.
+const STANDS = (r) => (r.standing === undefined ? "ORBIT_SOURCE_DEFECT" : r.standing);
 
 export const NEXT = [
   { id: "BENCHMARK_CHANGED", when: (r) => r.frozenIntact === false, end: "fail", stop: () => "REQUIREMENT_BLOCKED", outcome: "BENCHMARK_INVALID", class: () => "BENCHMARK_DEFECT", says: () => "the frozen benchmark changed during the run: nothing it judged after that can count" },

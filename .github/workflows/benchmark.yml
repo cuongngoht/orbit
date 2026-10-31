@@ -1,0 +1,191 @@
+# The Docker benchmark's two expensive tiers (benchmark/README.md, ADR 0046, 0047, 0048). The fast tier -- every
+# test/benchmark-*.test.mjs: case schemas, reference models, verifier and candidate controls through a Docker double,
+# the scripted host over Orbit's real CLIs, the tables, the metrics -- already runs in ci.yml on every push, inside the
+# definition of done's `node --test`, with no Docker and no network.
+#
+#   conformance   every case's verifier and judge controls in real containers, then scripted hosts through Orbit's own
+#                 engineering loop and Orbit's own goal entry -- no model, no credential, no network for the host. On a
+#                 pull request that touches the benchmark, and when a person asks for it.
+#   autonomous    a REAL coding host: one case or one suite run with --repair against a model, inside the budget the
+#                 person gives (at most 50 USD and 5 rounds). Only when a person dispatches it, only from the `benchmark`
+#                 environment that holds the credential -- never on a push or a pull request. A scripted host's result is
+#                 conformance of the controller and is never reported as this tier's.
+#
+# Every run's evidence -- report.md and report.json, a control run's controls.json, the metrics -- is uploaded, PASS or
+# not: what a run did is read from its own records, never from this workflow's word.
+name: benchmark
+
+on:
+  pull_request:
+    paths:
+      - "benchmark/**"
+      - "test/benchmark-*"
+      - ".github/workflows/benchmark.yml"
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: "conformance (scripted hosts, no model) or autonomous (a real coding host, a credential, a budget)"
+        required: true
+        default: conformance
+        type: choice
+        options: [conformance, autonomous]
+      case:
+        description: "autonomous: one case id, such as ORBIT-SRC-002 -- or nothing, to run a suite"
+        required: false
+        default: ""
+      suite:
+        description: "autonomous: a suite id, such as orbit-engineering, when no case is given"
+        required: false
+        default: ""
+      usd:
+        description: "autonomous: the most the run may spend, in USD (more than 0, at most 50)"
+        required: false
+        default: "5"
+      rounds:
+        description: "autonomous: repair rounds (1 to 5)"
+        required: false
+        default: "2"
+      model:
+        description: "autonomous: a model id for the host, or nothing for the host's own default"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  ORBIT_STORE_DIR: ${{ github.workspace }}/../orbit-store
+
+jobs:
+  # Every case of a suite held to its own controls in the verifier's containers: a planted fault and the partial fixes
+  # FAIL, the clean source (or the solved fixture) PASSes, and every way of cheating the judge is refused by name.
+  controls:
+    if: github.event_name == 'pull_request' || inputs.tier == 'conformance'
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [orbit-source, orbit-governance, orbit-memory, orbit-improvement, orbit-orchestration, orbit-satellite, orbit-verdicts, orbit-engineering]
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: docker answers
+        run: docker version
+      - name: the verifier image
+        run: node benchmark/run.mjs build --verifier
+      - name: every case's verifier and judge controls
+        env:
+          SUITE: ${{ matrix.suite }}
+        run: |
+          status=0
+          for c in $(node -e "for (const id of JSON.parse(require('fs').readFileSync('benchmark/suites/' + process.env.SUITE + '/suite.json', 'utf8')).cases) console.log(id)"); do
+            node benchmark/run.mjs controls "$c" --skip-engine || status=1
+          done
+          exit $status
+      - name: the evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: controls-${{ matrix.suite }}
+          path: ${{ env.ORBIT_STORE_DIR }}/**/benchmark/**/controls.json
+          if-no-files-found: ignore
+
+  # Scripted hosts in the runner container, through Orbit's real loops and no model: a reference repair of a known finding
+  # through the engineering loop, a goal through the goal entry to a verified change, a goal with no rule refused, and an
+  # interrupted session carried on its own task. Each is held to the outcome it declares.
+  scripted:
+    if: github.event_name == 'pull_request' || inputs.tier == 'conformance'
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: docker answers
+        run: docker version
+      - name: the verifier and runner images
+        run: node benchmark/run.mjs build --verifier --runner
+      - name: a scripted repair through Orbit's engineering loop
+        run: node benchmark/run.mjs controls ORBIT-SRC-002 --only=reference-engine
+      - name: a scripted goal through Orbit's goal entry
+        run: node benchmark/run.mjs controls ORBIT-E2E-001 --only=reference
+      - name: a goal that leaves out its rule, refused and not invented
+        run: node benchmark/run.mjs controls ORBIT-E2E-008 --only=blocked
+      - name: an interrupted session, reconciled on its own task
+        run: node benchmark/run.mjs controls ORBIT-E2E-007 --only=interrupted
+      - name: the metrics, apart by host basis
+        if: always()
+        run: node benchmark/run.mjs metrics --json > "$RUNNER_TEMP/metrics.json" || true
+      - name: the evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scripted
+          path: |
+            ${{ env.ORBIT_STORE_DIR }}/**/benchmark/**/report.md
+            ${{ env.ORBIT_STORE_DIR }}/**/benchmark/**/report.json
+            ${{ env.ORBIT_STORE_DIR }}/**/benchmark/**/controls.json
+            ${{ env.ORBIT_STORE_DIR }}/**/benchmark/**/verified.json
+            ${{ runner.temp }}/metrics.json
+          if-no-files-found: ignore
+
+  # A real coding host, on a person's request only. The inputs reach the shell as environment, are checked as plain
+  # values, and are never spliced into the script; the credential is named to the runner, never printed.
+  autonomous:
+    if: github.event_name == 'workflow_dispatch' && inputs.tier == 'autonomous'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    environment: benchmark
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: docker answers
+        run: docker version
+      - name: the verifier and runner images
+        run: node benchmark/run.mjs build --verifier --runner
+      - name: the run, inside the budget given
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CASE_ID: ${{ inputs.case }}
+          SUITE: ${{ inputs.suite }}
+          USD: ${{ inputs.usd }}
+          ROUNDS: ${{ inputs.rounds }}
+          MODEL: ${{ inputs.model }}
+        run: |
+          case "$CASE_ID" in *[!A-Z0-9-]*) echo "a case id is upper-case words joined by dashes"; exit 2;; esac
+          case "$SUITE" in *[!a-z0-9-]*) echo "a suite id is a lower-case name"; exit 2;; esac
+          case "$USD" in ''|*[!0-9.]*) echo "usd is a number"; exit 2;; esac
+          case "$ROUNDS" in [1-5]) ;; *) echo "rounds is 1 to 5"; exit 2;; esac
+          case "$MODEL" in *[!A-Za-z0-9._-]*) echo "a model id is letters, digits, dots and dashes"; exit 2;; esac
+          node -e "const u = Number(process.env.USD); process.exit(u > 0 && u <= 50 ? 0 : 1)" || { echo "usd is more than 0 and at most 50"; exit 2; }
+          if [ -z "$ANTHROPIC_API_KEY" ]; then echo "the benchmark environment holds no ANTHROPIC_API_KEY: a real host cannot run, and nothing is reported as if it had"; exit 3; fi
+          args=(--repair "--usd=$USD" "--rounds=$ROUNDS" --credential=ANTHROPIC_API_KEY)
+          if [ -n "$MODEL" ]; then args+=("--model=$MODEL"); fi
+          if [ -n "$CASE_ID" ]; then
+            node benchmark/run.mjs run "$CASE_ID" "${args[@]}"
+          elif [ -n "$SUITE" ]; then
+            node benchmark/run.mjs run "--suite=$SUITE" "${args[@]}"
+          else
+            echo "name a case or a suite"; exit 2
+          fi
+      - name: the metrics, apart by host basis
+        if: always()
+        run: node benchmark/run.mjs metrics --json > "$RUNNER_TEMP/metrics.json" || true
+      - name: the evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: autonomous
+          path: |
+            ${{ env.ORBIT_STORE_DIR }}/**/benchmark/**/report.md
+            ${{ env.ORBIT_STORE_DIR }}/**/benchmark/**/report.json
+            ${{ env.ORBIT_STORE_DIR }}/**/benchmark/**/verified.json
+            ${{ env.ORBIT_STORE_DIR }}/**/benchmark/**/rounds/*/candidate.patch
+            ${{ runner.temp }}/metrics.json
+          if-no-files-found: ignore

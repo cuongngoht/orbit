@@ -53,9 +53,7 @@ on:
 permissions:
   contents: read
 
-env:
-  ORBIT_STORE_DIR: ${{ github.workspace }}/../orbit-store
-
+# Runs are kept in the default machine store, ~/.orbit/projects/ -- never inside the checkout.
 jobs:
   # Every case of a suite held to its own controls in the verifier's containers: a planted fault and the partial fixes
   # FAIL, the clean source (or the solved fixture) PASSes, and every way of cheating the judge is refused by name.
@@ -90,7 +88,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: controls-${{ matrix.suite }}
-          path: ${{ env.ORBIT_STORE_DIR }}/**/benchmark/**/controls.json
+          path: ~/.orbit/projects/**/benchmark/**/controls.json
           if-no-files-found: ignore
 
   # Scripted hosts in the runner container, through Orbit's real loops and no model: a reference repair of a known finding
@@ -126,10 +124,10 @@ jobs:
         with:
           name: scripted
           path: |
-            ${{ env.ORBIT_STORE_DIR }}/**/benchmark/**/report.md
-            ${{ env.ORBIT_STORE_DIR }}/**/benchmark/**/report.json
-            ${{ env.ORBIT_STORE_DIR }}/**/benchmark/**/controls.json
-            ${{ env.ORBIT_STORE_DIR }}/**/benchmark/**/verified.json
+            ~/.orbit/projects/**/benchmark/**/report.md
+            ~/.orbit/projects/**/benchmark/**/report.json
+            ~/.orbit/projects/**/benchmark/**/controls.json
+            ~/.orbit/projects/**/benchmark/**/verified.json
             ${{ runner.temp }}/metrics.json
           if-no-files-found: ignore
 
@@ -183,9 +181,9 @@ jobs:
         with:
           name: autonomous
           path: |
-            ${{ env.ORBIT_STORE_DIR }}/**/benchmark/**/report.md
-            ${{ env.ORBIT_STORE_DIR }}/**/benchmark/**/report.json
-            ${{ env.ORBIT_STORE_DIR }}/**/benchmark/**/verified.json
-            ${{ env.ORBIT_STORE_DIR }}/**/benchmark/**/rounds/*/candidate.patch
+            ~/.orbit/projects/**/benchmark/**/report.md
+            ~/.orbit/projects/**/benchmark/**/report.json
+            ~/.orbit/projects/**/benchmark/**/verified.json
+            ~/.orbit/projects/**/benchmark/**/rounds/*/candidate.patch
             ${{ runner.temp }}/metrics.json
           if-no-files-found: ignore

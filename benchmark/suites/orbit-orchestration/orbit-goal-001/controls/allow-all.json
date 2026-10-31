@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "allow-all",
+  "about": "Every unit with a task is settled as completed whatever its task did: every check of a task that has not ended, failed or was cancelled fails.",
+  "mutations": [
+    {
+      "id": "every-unit-completed",
+      "file": "src/goal/execute.mjs",
+      "find": "if (t.lifecycle === \"completed\" && u.state !== \"completed\")",
+      "replace": "if (u.state !== \"completed\")",
+      "count": 1
+    }
+  ]
+}

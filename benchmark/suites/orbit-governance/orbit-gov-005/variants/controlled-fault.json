@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "Two planted defects in the masks, applied only to the benchmark copy of the source: an opaque hexadecimal key shorter than a commit id goes unmasked, and who was signed in is no longer a free-text field of a run record.",
+  "mutations": [
+    {
+      "id": "short-keys-unmasked",
+      "file": "src/scrub.mjs",
+      "find": "{ name: \"blob\", re: /\\b[A-Fa-f0-9]{32,}\\b/g, as: \"[hex]\" },",
+      "replace": "{ name: \"blob\", re: /\\b[A-Fa-f0-9]{40,}\\b/g, as: \"[hex]\" },",
+      "count": 1
+    },
+    {
+      "id": "identity-not-free-text",
+      "file": "src/scrub.mjs",
+      "find": "export const FREE_TEXT = [\"params\", \"resolved\", \"captured\", \"report\", \"identity\", \"failure\"];",
+      "replace": "export const FREE_TEXT = [\"params\", \"resolved\", \"captured\", \"report\", \"failure\"];",
+      "count": 1
+    }
+  ]
+}

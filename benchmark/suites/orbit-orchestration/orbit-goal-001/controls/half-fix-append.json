@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "half-fix-append",
+  "about": "The other half planted back: resuming keeps the settlements it finds, but the lifecycle is compared as task views never spell it, so nothing is ever settled.",
+  "mutations": [
+    {
+      "id": "lifecycle-as-spelled",
+      "file": "src/goal/execute.mjs",
+      "find": "const byTask = new Map(taskViews.map((t) => [t.id, viewed(t)]));",
+      "replace": "const byTask = new Map(taskViews.map((t) => [t.id, t]));",
+      "count": 1
+    }
+  ]
+}

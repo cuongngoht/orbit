@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "Two planted defects in the session rule, applied only to the benchmark copy of the source: an unnamed observation no longer sees the mark a named one on the same machine and day left, and a day is cut at the hour.",
+  "mutations": [
+    {
+      "id": "unnamed-misses-named",
+      "file": "src/memory/session.mjs",
+      "find": "synthetic: (seen) => [`s:${dayKey(seen)}`, `h:${dayKey(seen)}`],",
+      "replace": "synthetic: (seen) => [`s:${dayKey(seen)}`],",
+      "count": 1
+    },
+    {
+      "id": "day-by-the-hour",
+      "file": "src/memory/session.mjs",
+      "find": "export const dayOf = (run) => String(run?.at ?? \"\").slice(0, 10);",
+      "replace": "export const dayOf = (run) => String(run?.at ?? \"\").slice(0, 13);",
+      "count": 1
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "reject-all",
+  "about": "A tier reader that calls every declaration production: everything lands on production, so every check that must run on its own, or name another tier, fails.",
+  "mutations": [
+    {
+      "id": "reject-all",
+      "file": "src/protected/environments.mjs",
+      "find": "export const tierOf = (word) => TIERS.find((t) => t.words.includes(wordOf(word)))?.tier ?? UNKNOWN;",
+      "replace": "export const tierOf = () => \"production\";",
+      "count": 1
+    }
+  ]
+}

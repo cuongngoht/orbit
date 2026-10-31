@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "partial-fix",
+  "about": "The controlled fault with only the task journal repaired: the goal journal still glues a record onto a torn line, so the verifier must still fail it.",
+  "mutations": [
+    {
+      "id": "task-tail-restored",
+      "file": "src/task/store.mjs",
+      "find": "return \"\";",
+      "replace": "return text && !text.endsWith(\"\\n\") ? \"\\n\" : \"\";",
+      "count": 1
+    }
+  ]
+}

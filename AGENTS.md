@@ -61,8 +61,8 @@ KNOWN to the machine because it was bound (`state/checkouts/<id>.json`); `state/
 keeps a one-line summary of each, as of a time, and nothing ever scans a directory for projects.
 
 One more room belongs to development tooling, not to the engine: `<store>/benchmark/<bnr-…>/` is one run of the Docker
-benchmark (`benchmark/`, ADR 0046, 0047) -- its manifest, the frozen case and subject, one evidence document per action,
-each round's brief, candidate and patch, a QA case's engine store and judged rows, its report. It is created on first write by `benchmark/run.mjs`, never on read and
+benchmark (`benchmark/`, ADR 0046, 0047, 0048) -- its manifest, the frozen case and subject, one evidence document per action,
+each round's brief, candidate, patch and outcome, a verified candidate's record, a QA case's engine store and judged rows, its report. It is created on first write by `benchmark/run.mjs`, never on read and
 never in a repository, and the run's own task stays in the project's task rooms like any other.
 
 ## Layout and dependency direction
@@ -654,7 +654,7 @@ place real adapters are bound to real config.
   loaded, so something generated and unproved is inert rather than quietly live, and
   `registerTool` refuses anything that did not verify. A capability's own crash is BLOCKED, never
   FAIL — a generated tool's bug must never ship as a defect in somebody's feature.
-- **A benchmark grades only what its verifier shows, and repairs only through Orbit (ADR 0046).** `benchmark/` is
+- **A benchmark grades only what its verifier shows, and repairs only through Orbit (ADR 0046, 0047, 0048).** `benchmark/` is
   development tooling: export-ignored, imported by nothing of the engine, held to Five Lines (`test/benchmark-lint.test.mjs`).
   A run is ONE task written through `cli/task.mjs`, so its budget is the door's and a person's pause or cancel stops it;
   a repair is ONE engineering task started through `cli/autonomous-engineering.mjs` in a runner container whose only way
@@ -664,10 +664,18 @@ place real adapters are bound to real config.
   REPORTED and never evidence. A QA case (ADR 0047) runs Orbit's own engine beside the controller, where the isolated
   sandbox is; its coding host reaches the investigation only through a relay of the subcommands `RELAY` allows, about
   the run's own investigation and never a path, from a plugin that withholds the ground truth; and a contradiction is a
-  defect found only when the clean application satisfies the same design (`test/benchmark-tables.test.mjs`,
+  defect found only when the clean application satisfies the same design. The repair loop is proved without a model
+  (ADR 0048): a case's repair controls are candidates carried to the judge or through Orbit's engine by a SCRIPTED host
+  that runs Orbit's own CLIs and nothing else, and every way of cheating a verifier must be refused by name; every
+  failure carries one class of `FAILURE_CLASSES`; a candidate's own timeout is its rejection, never a block; and a
+  verified candidate is kept in `verified.json`, never applied to a checkout. An ENGINEERING case hands a host a goal
+  about a frozen fixture with Orbit beside it, and adds record checks on what Orbit's owners say; a goal with no rule
+  must be refused, never invented. Metrics keep host basis `none`, `scripted` and `coding-host` apart -- a scripted
+  PASS is never autonomy -- and a real host runs in CI only when a person dispatches it (`test/benchmark-tables.test.mjs`,
   `test/benchmark-source-flow.test.mjs`, `test/benchmark-docker.test.mjs`, `test/benchmark-source-cases.test.mjs`,
-  `test/benchmark-sentinel.test.mjs`, `test/benchmark-qa-relay.test.mjs`, `test/benchmark-qa-judge.test.mjs`,
-  `test/benchmark-qa-flow.test.mjs`, `test/benchmark-qa-cases.test.mjs`).
+  `test/benchmark-cases.test.mjs`, `test/benchmark-repairs.test.mjs`, `test/benchmark-scripted-host.test.mjs`,
+  `test/benchmark-metrics.test.mjs`, `test/benchmark-sentinel.test.mjs`, `test/benchmark-qa-relay.test.mjs`,
+  `test/benchmark-qa-judge.test.mjs`, `test/benchmark-qa-flow.test.mjs`, `test/benchmark-qa-cases.test.mjs`).
 - **No speculative code.** A verb, field, flag or adapter needs a real case that needs it today.
 - **A concrete tool lives in `skills/`, never in `src/`.** When a real adapter is worth shipping
   (`skills/orbit-sql`: SQL Server via sqlcmd), it is a command a project opts into through
@@ -988,9 +996,10 @@ ORBIT_STORE_DIR=/tmp/l node cli/autonomous-qa.mjs derive|reconcile --investigati
 ORBIT_STORE_DIR=/tmp/l node cli/security-audit.mjs assess --investigation=<id>   # the controls in effect, from an investigation's own record
 node cli/qa-plan.mjs expects <openapi|asyncapi|schedule>.json [--operation=… --status=… | --channel=… --within=… | --at=…]   # candidate expectations
 node acceptance/run.mjs [--stack=…] [--variant=…] [--keep] [--record]   # native acceptance: two stacks, planted defects, a ground truth (Docker)
-node benchmark/run.mjs build [--verifier|--runner|--qa-worker] [--rebuild] [--ca-file=<pem>] | list | doctor [--preflight] | where   # the Docker benchmark (ADR 0046, 0047, benchmark/README.md)
+node benchmark/run.mjs build [--verifier|--runner|--qa-worker] [--rebuild] [--ca-file=<pem>] | list | doctor [--preflight] | where   # the Docker benchmark (ADR 0046, 0047, 0048, benchmark/README.md)
 node benchmark/run.mjs run <case> [--variant=real|controlled-fault] [--repair] [--source=head|worktree] [--seed=…] | run --suite=<suite> | run --like=<bnr-…>
-node benchmark/run.mjs status|report|resume|cleanup <bnr-…> | controls <case> [--only=<control>]   # a run read back, carried on, cleaned by its label; a case held to its controls (a QA case's: its scripted hosts)
+node benchmark/run.mjs status|report|resume|cleanup <bnr-…> | controls <case> [--only=<control>] [--skip-engine]   # a run read back, carried on, cleaned by its label; a case held to its controls (verifier, repair and scripted-host controls)
+node benchmark/run.mjs metrics [--suite=… --case=… --since=… --by=revision] [--json]   # what the kept runs show, apart by host basis
 ORBIT_STORE_DIR=/tmp/l node cli/qc-tool.mjs where|list        # this project's own QC tools (README §7.2)
 ORBIT_STORE_DIR=/tmp/l node cli/qc-tool.mjs new <id> <scratch-dir> [--tool=psql] [--mutates]
 ORBIT_STORE_DIR=/tmp/l node cli/qc-tool.mjs verify|register <dir>   # exit 2 if it would not load

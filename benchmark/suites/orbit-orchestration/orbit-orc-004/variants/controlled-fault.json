@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "One planted defect in the decision form, applied only to the benchmark copy of the source: a forbidden field counted only when it holds a true value, so one sent as false, null, zero or empty slips through.",
+  "mutations": [
+    {
+      "id": "falsy-forbidden-ignored",
+      "file": "src/orchestration/decision.mjs",
+      "find": "const forbidden = (d) => DECISION_FORBIDDEN.filter((k) => k in d);",
+      "replace": "const forbidden = (d) => DECISION_FORBIDDEN.filter((k) => Boolean(d[k]));",
+      "count": 1
+    }
+  ]
+}

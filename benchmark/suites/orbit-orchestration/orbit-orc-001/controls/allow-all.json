@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "allow-all",
+  "about": "An impact that reaches nothing: a change is held to no component's checks, and every check that must reach something fails.",
+  "mutations": [
+    {
+      "id": "allow-all",
+      "file": "src/orchestration/impact.mjs",
+      "find": "return { components: first([...reached, ...unresolved(components, reached)]), unowned: [...new Set(unownedOf(components, paths))].sort() };",
+      "replace": "return { components: [], unowned: [] };",
+      "count": 1
+    }
+  ]
+}

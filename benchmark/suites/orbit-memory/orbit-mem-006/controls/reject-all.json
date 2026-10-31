@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "reject-all",
+  "about": "A task journal reader that drops every line: every check that must read a record back fails.",
+  "mutations": [
+    {
+      "id": "reject-all",
+      "file": "src/task/store.mjs",
+      "find": "export const journalLine = (line) => ((r) => (r && typeof r === \"object\" && typeof r.kind === \"string\" ? r : null))(parsedLine(line));",
+      "replace": "export const journalLine = () => null;",
+      "count": 1
+    }
+  ]
+}

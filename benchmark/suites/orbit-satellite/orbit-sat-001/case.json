@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "kind": "source",
+  "id": "ORBIT-SAT-001",
+  "version": "1.0.0",
+  "baseline": "PASS",
+  "title": "A write rides only the owner it names, never a reading mode or a READ_ONLY profile",
+  "goal": "evaluate() judges an action's profile, operation kind, mode, provider and grants together in one ordered table and answers its first failing row: source.patch, check.run and sandbox.test.run are allowed only through an engineering task, a store or write kind never rides a reading mode or a READ_ONLY profile, an unknown word is refused by name, and an action every table carries and somebody granted is allowed",
+  "measures": { "kind": "correctness", "capability": "satellite.permissions", "repairable": ["ORBIT_SOURCE_DEFECT"] },
+  "subject": {
+    "paths": ["satellite/src/permissions/evaluate.mjs"],
+    "exports": { "satellite/src/permissions/evaluate.mjs": ["evaluate"] }
+  },
+  "prepare": { "requires": ["node"] },
+  "request": "request.md",
+  "reproduce": "every failing check names the profile, operation kind, mode, provider and grants it asked about, the verdict and rule the contract expects and what came back; the probe imports the subject's own policy module and answers in its own process",
+  "acceptance": { "owner": "verifier", "spec": "verifier/spec.mjs", "probe": "verifier/probe.mjs", "samples": 48 },
+  "scope": { "allow": ["satellite/src/**", "satellite/test/*.test.mjs"], "deny": [] },
+  "checks": {
+    "gates": [
+      { "id": "permissions-suite", "argv": ["node", "--test", "--test-reporter=tap", "satellite/test/permissions.test.mjs", "satellite/test/tables.test.mjs"] },
+      { "id": "five-lines", "argv": ["node", "cli/check-five-lines.mjs", "satellite/src", "--strict"], "stdout": "^0 finding\\(s\\)" }
+    ],
+    "agentTests": { "required": true, "pattern": "^satellite/test/[^/]+\\.test\\.mjs$" }
+  },
+  "limits": {
+    "rounds": 2,
+    "minutes": 150,
+    "usd": 20,
+    "runner": { "cpus": 2, "memoryMb": 6144, "pids": 2048, "minutes": 120, "outputMb": 16 },
+    "verifier": { "cpus": 2, "memoryMb": 2048, "pids": 512, "seconds": 600 },
+    "engineering": { "attempts": 6, "actions": 160 }
+  },
+  "artifacts": ["manifest", "baseline", "candidate-patch", "verification", "host-result", "report"],
+  "cleanup": { "containers": "run-label", "networks": "run-label", "scratch": "after-run" },
+  "variants": {
+    "real": {},
+    "controlled-fault": { "mutations": "variants/controlled-fault.json" }
+  },
+  "controls": [
+    { "id": "clean", "variant": "real", "expect": "PASS" },
+    { "id": "planted", "variant": "controlled-fault", "expect": "FAIL" },
+    { "id": "allow-all", "variant": "real", "file": "controls/allow-all.json", "expect": "FAIL" },
+    { "id": "reject-all", "variant": "real", "file": "controls/reject-all.json", "expect": "FAIL" }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "reject-all",
+  "about": "An authorize that holds everything at the first boundary: every action is a person's DENY, so every check that must run without anybody fails.",
+  "mutations": [
+    {
+      "id": "reject-all",
+      "file": "src/protected/authorize.mjs",
+      "find": "const row = BOUNDARIES.find((b) => b.when(a));",
+      "replace": "const row = BOUNDARIES[0];",
+      "count": 1
+    }
+  ]
+}

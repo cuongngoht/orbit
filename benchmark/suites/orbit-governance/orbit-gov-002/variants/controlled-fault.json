@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "Two planted defects in the tier reader, applied only to the benchmark copy of the source: a declaration is no longer read the way a person writes it, and of several declarations the least strict wins.",
+  "mutations": [
+    {
+      "id": "declaration-read-verbatim",
+      "file": "src/protected/environments.mjs",
+      "find": "const wordOf = (word) => String(word ?? \"\").trim().toLowerCase();",
+      "replace": "const wordOf = (word) => String(word ?? \"\");",
+      "count": 1
+    },
+    {
+      "id": "loosest-declaration-wins",
+      "file": "src/protected/environments.mjs",
+      "find": "TIERS.find((t) => tiers.includes(t.tier))?.tier ?? UNKNOWN",
+      "replace": "[...TIERS].reverse().find((t) => tiers.includes(t.tier))?.tier ?? UNKNOWN",
+      "count": 1
+    }
+  ]
+}

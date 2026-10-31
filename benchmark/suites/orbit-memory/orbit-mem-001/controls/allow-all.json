@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "allow-all",
+  "about": "A session rule that counts every observation as a new, independent session: every check that must find a session already counted fails.",
+  "mutations": [
+    {
+      "id": "allow-all",
+      "file": "src/memory/session.mjs",
+      "find": "export const knownIn = (list, seen) => MATCHES[seen?.session ? \"real\" : \"synthetic\"](seen ?? {}).some((m) => list.includes(m));",
+      "replace": "export const knownIn = () => false;",
+      "count": 1
+    }
+  ]
+}

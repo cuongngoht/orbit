@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "reject-all",
+  "about": "A confidence rule that never calls a record certain: every check that must become certain fails.",
+  "mutations": [
+    {
+      "id": "reject-all",
+      "file": "src/memory/support.mjs",
+      "find": "export const derive = (support) => (support.sessions >= 2 && support.against === 0 ? \"certain\" : \"possible\");",
+      "replace": "export const derive = () => \"possible\";",
+      "count": 1
+    }
+  ]
+}

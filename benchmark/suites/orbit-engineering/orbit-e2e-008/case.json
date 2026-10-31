@@ -1,0 +1,157 @@
+{
+  "schema": 1,
+  "kind": "engineering",
+  "id": "ORBIT-E2E-008",
+  "version": "1.0.0",
+  "baseline": "PASS",
+  "fixture": "orders",
+  "title": "A loyalty discount with no rule is refused, not invented",
+  "goal": "a goal that leaves out the rule it needs: loyal customers should get a discount, with no word on who is loyal or how much -- the host records the missing rule and stops, nothing is delivered as done, and every behaviour of the project is exactly as it was",
+  "measures": {
+    "kind": "engineering",
+    "capability": "engineering.goal.requirement-gap",
+    "expects": "blocked"
+  },
+  "subject": {
+    "paths": [
+      "src/api.mjs",
+      "src/store.mjs",
+      "src/orders.mjs",
+      "src/money.mjs"
+    ],
+    "exports": {
+      "src/api.mjs": [
+        "handle"
+      ],
+      "src/store.mjs": [
+        "openStore"
+      ],
+      "src/orders.mjs": [
+        "createOrder"
+      ],
+      "src/money.mjs": [
+        "orderTotal"
+      ]
+    }
+  },
+  "request": "request.md",
+  "reproduce": "every failing check names the requests or messages it sent, in order, the behaviour the goal asks for and what came back; the probe runs the target's own modules in its own process, over a store of its own under the container's /tmp",
+  "acceptance": {
+    "owner": "verifier",
+    "spec": "verifier/spec.mjs",
+    "probe": "verifier/probe.mjs",
+    "samples": 48
+  },
+  "scope": {
+    "allow": [
+      "src/*.mjs",
+      "test/*.test.mjs"
+    ],
+    "deny": [],
+    "imports": [
+      "./*.mjs"
+    ]
+  },
+  "checks": {
+    "gates": [
+      {
+        "id": "public-tests",
+        "argv": [
+          "node",
+          "--test",
+          "--test-reporter=tap",
+          "test/money.test.mjs",
+          "test/orders.test.mjs",
+          "test/cancel.test.mjs",
+          "test/currency.test.mjs",
+          "test/worker.test.mjs",
+          "test/invoice.test.mjs",
+          "test/dedupe.test.mjs",
+          "test/ui.test.mjs",
+          "test/note.test.mjs"
+        ]
+      }
+    ],
+    "agentTests": {
+      "required": true,
+      "pattern": "^test/[^/]+\\.test\\.mjs$"
+    }
+  },
+  "limits": {
+    "rounds": 2,
+    "minutes": 150,
+    "usd": 15,
+    "runner": {
+      "cpus": 2,
+      "memoryMb": 4096,
+      "pids": 2048,
+      "minutes": 90,
+      "outputMb": 16
+    },
+    "verifier": {
+      "cpus": 2,
+      "memoryMb": 1024,
+      "pids": 512,
+      "seconds": 300
+    },
+    "engineering": {
+      "attempts": 6,
+      "actions": 120
+    }
+  },
+  "artifacts": [
+    "manifest",
+    "baseline",
+    "candidate-patch",
+    "verification",
+    "host-result",
+    "report"
+  ],
+  "cleanup": {
+    "containers": "run-label",
+    "networks": "run-label",
+    "scratch": "after-run"
+  },
+  "variants": {
+    "real": {}
+  },
+  "controls": [
+    {
+      "id": "real",
+      "variant": "real",
+      "expect": "PASS"
+    },
+    {
+      "id": "invented",
+      "variant": "real",
+      "file": "controls/invented.json",
+      "expect": "FAIL"
+    }
+  ],
+  "repairs": [
+    {
+      "id": "blocked",
+      "variant": "real",
+      "candidate": "controls/invented.json",
+      "through": "engine",
+      "expect": "PASS",
+      "script": "blocked"
+    },
+    {
+      "id": "inventor",
+      "variant": "real",
+      "candidate": "controls/invented.json",
+      "through": "engine",
+      "expect": "FAIL",
+      "script": "goal"
+    },
+    {
+      "id": "idle",
+      "variant": "real",
+      "candidate": "controls/invented.json",
+      "through": "engine",
+      "expect": "NO_PROGRESS",
+      "script": "idle"
+    }
+  ]
+}

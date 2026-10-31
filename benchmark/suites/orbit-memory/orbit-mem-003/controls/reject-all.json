@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "reject-all",
+  "about": "A learner that keeps nothing: every check that must become a lesson fails.",
+  "mutations": [
+    {
+      "id": "reject-all",
+      "file": "src/learn/confidence.mjs",
+      "find": "export const worthKeeping = (finding, state) => state === \"rejected\" || finding.kind === \"said\" || finding.for >= 2;",
+      "replace": "export const worthKeeping = () => false;",
+      "count": 1
+    }
+  ]
+}

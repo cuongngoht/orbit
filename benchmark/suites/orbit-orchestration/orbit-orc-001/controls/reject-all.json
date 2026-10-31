@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "reject-all",
+  "about": "An impact that reaches everything: every component is held to its checks and every path is unowned, so every check that must leave something out fails.",
+  "mutations": [
+    {
+      "id": "reject-all",
+      "file": "src/orchestration/impact.mjs",
+      "find": "return { components: first([...reached, ...unresolved(components, reached)]), unowned: [...new Set(unownedOf(components, paths))].sort() };",
+      "replace": "return { components: components.map((c) => row(c.key, \"MODIFIED\", \"held to everything\")), unowned: [...new Set(paths.map(norm))].sort() };",
+      "count": 1
+    }
+  ]
+}

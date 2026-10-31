@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "id": "no-regression-test",
+  "about": "The reference repair with no test of its own: a repair proves itself with a regression test, so it is refused.",
+  "mutations": [
+    {
+      "id": "min-threshold-restored",
+      "file": "src/improvement/oracle.mjs",
+      "find": "gte: (a, b) => b > a, gt: (a, b) => b > a,",
+      "replace": "gte: (a, b) => b < a, gt: (a, b) => b < a,",
+      "count": 1
+    },
+    {
+      "id": "max-threshold-restored",
+      "file": "src/improvement/oracle.mjs",
+      "find": "lte: (a, b) => b < a, lt: (a, b) => b < a,",
+      "replace": "lte: (a, b) => b > a, lt: (a, b) => b > a,",
+      "count": 1
+    },
+    {
+      "id": "optional-check-restored",
+      "file": "src/improvement/oracle.mjs",
+      "find": "fails: (p, c) => p.required && !c",
+      "replace": "fails: (p, c) => p.required && (!c || !c.required)",
+      "count": 1
+    }
+  ],
+  "files": [],
+  "deletes": []
+}

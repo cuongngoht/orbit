@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "Two planted defects in the authority ladder, applied only to the benchmark copy of the source: a host's memory that says it is certain is confirmed like independent sessions, and a verified source keeps current-source authority after its scope moved.",
+  "mutations": [
+    {
+      "id": "host-memory-confirmed",
+      "file": "src/knowledge/vocab.mjs",
+      "find": "when: (c) => routes(c.confidence) && observes(c.strength) && !hostSource(c.source),",
+      "replace": "when: (c) => routes(c.confidence) && observes(c.strength),",
+      "count": 1
+    },
+    {
+      "id": "moved-scope-kept-at-source",
+      "file": "src/knowledge/vocab.mjs",
+      "find": "when: (c) => verifiedBy(c.source) && counts(c.measured) && observes(c.strength),",
+      "replace": "when: (c) => verifiedBy(c.source) && observes(c.strength),",
+      "count": 1
+    }
+  ]
+}

@@ -9,7 +9,9 @@
 // carries the run's labels; cleanup removes only what carries them.
 //
 //   labelsOf(runId, role)  specFor(role, run, o) -> spec   argvOf(spec, file) -> argv   attestRows(raw, spec, a)
-//   ranContainer(spec, deps, o) -> { exit, oom, timedOut, out, err, truncated, attested, refused? }
+//   ranContainer(spec, deps, o) -> { exit, oom, timedOut, held, out, err, truncated, attested, refused? }
+//     o.held() -- asked every o.heldEveryMs while the container runs: true (a person paused or cancelled the run) stops
+//     it there, so a held run leaves nothing of its own running until its deadline
 //   leftovers(runId, deps) -> { containers, networks }      cleaned(runId, deps) -> { removed, refused }
 import { createArgv, CLIENT_ENV, docker, envProblems, labelArgs } from "../../../src/runtime/isolation/docker.mjs";
 import { PROFILE } from "../../../src/runtime/sandbox/isolation.mjs";
@@ -36,15 +38,16 @@ const LOCALE = { LANG: "C.UTF-8", LC_ALL: "C.UTF-8" };
 const envWith = (env) => ({ names: env?.names ?? [], values: { ...LOCALE, ...(env?.values ?? {}) } });
 
 // One container's spec: o = { n, image, user, argv, mounts, tmpfs, env, limits, cpuset, network, workdir, tmpMb,
-// attestRole, logs }.
-export const specFor = (role, run, o) => ({ name: containerName(run.id, role, o.n ?? 1), image: o.image, labels: labelsOf(run.id, role), ...HARDENED(o.tmpMb ?? 512), tmpfs: [...HARDENED(o.tmpMb ?? 512).tmpfs, ...(o.tmpfs ?? [])], network: o.network ?? null, mounts: o.mounts ?? [], env: envWith(o.env), limits: o.limits, cpuset: o.cpuset ?? null, workdir: o.workdir ?? null, argv: o.argv ?? [], stdin: true, user: o.user, role, attestRole: o.attestRole ?? "probe", logs: o.logs === true });
+// attestRole, logs, hostname }.
+export const specFor = (role, run, o) => ({ name: containerName(run.id, role, o.n ?? 1), image: o.image, labels: labelsOf(run.id, role), ...HARDENED(o.tmpMb ?? 512), tmpfs: [...HARDENED(o.tmpMb ?? 512).tmpfs, ...(o.tmpfs ?? [])], network: o.network ?? null, mounts: o.mounts ?? [], env: envWith(o.env), limits: o.limits, cpuset: o.cpuset ?? null, workdir: o.workdir ?? null, argv: o.argv ?? [], stdin: true, user: o.user, role, attestRole: o.attestRole ?? "probe", logs: o.logs === true, hostname: o.hostname ?? null });
 
 // The provider's own argument list, with what a benchmark container adds: the user it runs as, an init that reaps
-// and forwards signals, the cpus a test runner may size its workers by, and no log kept by the daemon unless the
-// container runs in the background (output is otherwise read while attached).
+// and forwards signals, the cpus a test runner may size its workers by, no log kept by the daemon unless the
+// container runs in the background (output is otherwise read while attached), and -- for the containers that share a
+// run's store -- one host name, so a later round can ask whether the process an earlier round recorded still runs.
 const logArgs = (spec) => (spec.logs ? ["--log-opt", "max-size=1m", "--log-opt", "max-file=1"] : ["--log-driver", "none"]);
 
-export const argvOf = (spec, file) => ["create", "--user", spec.user, "--init", ...(spec.cpuset ? ["--cpuset-cpus", spec.cpuset] : []), ...logArgs(spec), ...createArgv(spec, file).slice(1)];
+export const argvOf = (spec, file) => ["create", "--user", spec.user, "--init", ...(spec.hostname ? ["--hostname", spec.hostname] : []), ...(spec.cpuset ? ["--cpuset-cpus", spec.cpuset] : []), ...logArgs(spec), ...createArgv(spec, file).slice(1)];
 
 const clientEnvOf = (deps, spec) => childEnv(deps.env ?? {}, [...CLIENT_ENV, ...(spec.env?.names ?? [])]);
 
@@ -93,11 +96,23 @@ const textOf = (chunks) => Buffer.concat(chunks).toString("utf8");
 
 const endOf = (raw) => ({ exit: Number.isInteger(raw?.State?.ExitCode) ? raw.State.ExitCode : null, oom: raw?.State?.OOMKilled === true, finishedAt: raw?.State?.FinishedAt ?? null });
 
+// How often a running container asks whether a person held its run.
+export const HELD_EVERY_MS = 15000;
+
+// A person's pause or cancel, noticed while a container runs: asked on a timer, and the container stopped the moment
+// it is held. Stopping it ends the attached run, whatever is running inside.
+function watched(id, deps, o) {
+  const state = { held: false };
+  const timer = o.held ? setInterval(() => (!state.held && o.held() ? ((state.held = true), docker.container.stop(id, deps, { graceSeconds: 5 })) : null), o.heldEveryMs ?? HELD_EVERY_MS) : null;
+  return { held: () => state.held, stop: () => (timer ? clearInterval(timer) : null) };
+}
+
 async function attached(id, spec, deps, o) {
   const b = bounded(o.outputBytes ?? 16 * 1024 * 1024);
-  const r = await docker.container.startAttached(id, { ...deps, env: deps.env }, { input: o.input ?? "", timeoutMs: o.timeoutMs, observe: b.observe, env: spec.env });
+  const watch = watched(id, deps, o);
+  const r = await docker.container.startAttached(id, { ...deps, env: deps.env }, { input: o.input ?? "", timeoutMs: o.timeoutMs, observe: b.observe, env: spec.env }).finally(watch.stop);
   const stopped = r.timedOut || r.overflow ? docker.container.stop(id, deps, { graceSeconds: 5 }) : null;
-  return { timedOut: Boolean(r.timedOut), overflow: Boolean(r.overflow), stopped: stopped?.ok ?? null, out: textOf(b.kept.out), err: textOf(b.kept.err), truncated: b.kept.cut, ...endOf(docker.container.inspect(id, deps)) };
+  return { timedOut: Boolean(r.timedOut), held: watch.held(), overflow: Boolean(r.overflow), stopped: stopped?.ok ?? null, out: textOf(b.kept.out), err: textOf(b.kept.err), truncated: b.kept.cut, ...endOf(docker.container.inspect(id, deps)) };
 }
 
 // Created, attested -- a container that does not hold to its rows is removed before it ever starts -- run, removed.

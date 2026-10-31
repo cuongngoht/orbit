@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "allow-all",
+  "about": "A policy that never finds a failing row: every action is allowed, and every check that must deny fails.",
+  "mutations": [
+    {
+      "id": "allow-all",
+      "file": "satellite/src/permissions/evaluate.mjs",
+      "find": "  const failed = EVALUATION.find((r) => r.fails(c));",
+      "replace": "  const failed = null;",
+      "count": 1
+    }
+  ]
+}

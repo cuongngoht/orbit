@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "Two planted defects in the promotion gates, applied only to the benchmark copy of the source: a run somebody only reported is taken as proving it, and a version in place that a person revoked no longer holds a promotion.",
+  "mutations": [
+    {
+      "id": "reported-proves",
+      "file": "src/improvement/gates.mjs",
+      "find": "const PROVING = [\"RUNTIME_BOUND\", \"HOST_OBSERVED\"];",
+      "replace": "const PROVING = [\"RUNTIME_BOUND\", \"HOST_OBSERVED\", \"REPORTED\"];",
+      "count": 1
+    },
+    {
+      "id": "revocation-ignored",
+      "file": "src/improvement/gates.mjs",
+      "find": "holds: (c) => c.current?.status === \"active\" && c.current.archived !== true && c.current.revoked !== true,",
+      "replace": "holds: (c) => c.current?.status === \"active\" && c.current.archived !== true,",
+      "count": 1
+    }
+  ]
+}

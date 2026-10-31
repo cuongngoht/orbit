@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { addedLines, agentTestsOf, changesOf, importsOf, onlyAdded, overlaid, scopeFindings } from "../benchmark/lib/source/candidate.mjs";
-import { CAUSES, causeOf } from "../benchmark/lib/source/classify.mjs";
+import { CAUSES, causeOf, FAILURE_CLASSES } from "../benchmark/lib/source/classify.mjs";
 import { NEXT, nextOf, signatureOf } from "../benchmark/lib/source/decide.mjs";
 import { FIXTURE_DRIFT, mutatedEntries } from "../benchmark/lib/core/mutations.mjs";
 import { hostEnd, hostOf } from "../benchmark/lib/core/host.mjs";
@@ -77,12 +77,28 @@ test("a cause is the first row its facts match, the last row always matches, and
   assert.equal(f({}).id, "PASS");
   assert.equal(f({ runs: [run({ hiddenFailed: 3, failures: ["x"] }), run({ hiddenFailed: 3, failures: ["x"] })] }).id, "ORBIT_SOURCE_DEFECT");
   assert.equal(f({ runs: [run({ hiddenFailed: 3, failures: ["x"] }), run({ hiddenFailed: 3, failures: ["x"] })] }).repairable, true);
-  assert.equal(f({ runs: [run({ signature: "a" }), run({ signature: "b" })] }).id, "INSUFFICIENT_EVIDENCE", "a baseline that disagrees with itself is not stable enough to repair on");
+  assert.deepEqual(((c) => [c.id, c.class, c.repairable])(f({ runs: [run({ signature: "a" }), run({ signature: "b" })] })), ["NON_DETERMINISTIC", "NON_DETERMINISTIC", false], "a baseline that disagrees with itself is not stable enough to repair on");
+  assert.equal(f({ runs: [run({ complete: false, signature: "a" }), run({ signature: "b" })] }).id, "INSUFFICIENT_EVIDENCE", "an unfinished verification is too little evidence, before any disagreement");
   assert.equal(f({ benchmark: { says: "drift" }, runs: [run({ hiddenFailed: 1 })] }).id, "BENCHMARK_INVALID");
   assert.equal(f({ environment: { says: "oom" } }).repairable, false);
   assert.equal(f({ runs: [run({ gatesFailed: 1, failures: ["gate:x"] }), run({ gatesFailed: 1, failures: ["gate:x"] })] }).id, "GATE_UNEXPLAINED");
   assert.equal(f({ runs: [run({ missingExports: ["a#b"], failures: ["x"] }), run({ missingExports: ["a#b"], failures: ["x"] })] }).id, "CAPABILITY_MISSING");
   assert.equal(CAUSES.at(-1).when({}), true);
+  assert.equal(CAUSES.at(-1).id, "UNKNOWN");
+});
+
+test("every cause says its class in one shared vocabulary: a verifier, the infrastructure and a missing capability are never a source defect by default", () => {
+  const f = (over) => causeOf({ benchmark: null, verifier: null, environment: null, infrastructure: null, credentials: null, provider: null, budget: null, runs: [run(), run()], repairable: ["ORBIT_SOURCE_DEFECT"], ...over });
+  assert.deepEqual(((c) => [c.id, c.class])(f({ verifier: { says: "self-test" }, runs: [run({ hiddenFailed: 2, failures: ["x"] })] })), ["VERIFIER_INVALID", "VERIFIER_DEFECT"], "a broken verifier is never read as a broken source");
+  assert.deepEqual(((c) => [c.id, c.class])(f({ benchmark: { says: "moved" } })), ["BENCHMARK_INVALID", "BENCHMARK_DEFECT"]);
+  assert.deepEqual(((c) => [c.id, c.class, c.repairable])(f({ infrastructure: { says: "TIMEOUT" } })), ["INFRASTRUCTURE", "INFRASTRUCTURE_FAILURE", false]);
+  assert.deepEqual(((c) => [c.id, c.class])(f({ provider: { says: "down" } })), ["PROVIDER", "PROVIDER_FAILURE"]);
+  const missing = [run({ missingExports: ["a#b"], failures: ["x"] }), run({ missingExports: ["a#b"], failures: ["x"] })];
+  assert.equal(f({ runs: missing }).class, "UNKNOWN", "an export gone is drift or regression, and nothing here tells which");
+  assert.equal(f({ runs: missing, repairable: ["CAPABILITY_MISSING"] }).class, "ORBIT_SOURCE_DEFECT", "unless the case declares the capability is the source's to build");
+  assert.equal(f({ runs: [run({ hiddenFailed: 1, failures: ["x"] }), run({ hiddenFailed: 1, failures: ["x"] })] }).class, "ORBIT_SOURCE_DEFECT");
+  assert.equal(f({}).class, null);
+  for (const row of CAUSES) assert.ok(row.class({ repairable: [] }) === null || FAILURE_CLASSES.includes(row.class({ repairable: [] })), row.id);
 });
 
 const round = (over = {}) => ({ frozenIntact: true, roundError: null, verified: false, changed: true, engineering: { lifecycle: "EXECUTING", terminal: false, stopReason: null }, signature: "bbbbbbbbbbbb", previous: ["aaaaaaaaaaaa"], left: { rounds: 1, minutes: 60, usd: 5 }, scope: [], ...over });
@@ -96,8 +112,21 @@ test("after a round: verified completes, a repeat is NO_PROGRESS, a spent budget
   assert.equal(nextOf(round({ engineering: { lifecycle: "COMPLETED", terminal: true }, scope: [{ id: "TEST_WEAKENED" }] })).stop, "UNSAFE_CHANGE");
   assert.equal(nextOf(round({ engineering: { lifecycle: "FAILED", terminal: true, stopReason: "NO_PROGRESS" } })).stop, "NO_PROGRESS");
   assert.equal(nextOf(round()).id, "CONTINUE");
-  assert.ok(NEXT.every((r) => !/start|second|raise/i.test(r.id)));
+  assert.ok(NEXT.every((r) => !/start|second|raise|approve/i.test(r.id)));
+  assert.ok(NEXT.every((r) => r.class(round({ roundError: { cause: "ENVIRONMENT" } })) === null || FAILURE_CLASSES.includes(r.class(round({ roundError: { cause: "ENVIRONMENT" } })))), "every row speaks the shared classes");
   assert.match(signatureOf(["b", "a", "a"]), /^[a-f0-9]{12}$/);
+});
+
+test("after a round: a task waiting for a person blocks on the person, a candidate an earlier round left is no progress, and a round cut short goes on only while the budget lasts", () => {
+  const waiting = nextOf(round({ engineering: { lifecycle: "EXECUTING", terminal: false, waiting: true } }));
+  assert.deepEqual([waiting.id, waiting.end, waiting.needs, waiting.outcome, waiting.class], ["WAITING_FOR_PERSON", "block", "person", "BLOCKED", "HUMAN_APPROVAL_REQUIRED"], "a benchmark never approves: it stops and a person decides");
+  const again = nextOf(round({ signature: "cccccccccccc", previous: ["aaaaaaaaaaaa", "cccccccccccc", "bbbbbbbbbbbb"], patchDigest: "p1", earlier: [{ patchDigest: "p1", signature: "cccccccccccc" }, { patchDigest: "p2", signature: "bbbbbbbbbbbb" }] }));
+  assert.deepEqual([again.id, again.stop, again.outcome], ["REPEATED_CANDIDATE", "NO_PROGRESS", "NO_PROGRESS"], "A, B, A is no progress although B came between");
+  assert.equal(nextOf(round({ patchDigest: "p1", earlier: [{ patchDigest: "p1", signature: "aaaaaaaaaaaa" }] })).id, "CONTINUE", "the same patch failing another way is still news");
+  assert.deepEqual([nextOf(round({ cutShort: true, signature: "aaaaaaaaaaaa" })).id, nextOf(round({ cutShort: true, signature: "aaaaaaaaaaaa" })).end], ["CUT_SHORT", null], "a round stopped at its deadline is not a round that failed the same way");
+  assert.equal(nextOf(round({ cutShort: true, left: { rounds: 0, minutes: 60, usd: 5 } })).id, "BUDGET", "and only while the budget lasts");
+  assert.equal(nextOf(round({ cutShort: true, verified: true })).id, "VERIFIED", "a deadline does not void what the round left");
+  assert.equal(nextOf(round({ roundError: { cause: "INFRASTRUCTURE", says: "no exit" } })).class, "INFRASTRUCTURE_FAILURE");
   assert.equal(signatureOf(["b", "a"]), signatureOf(["a", "b"]));
 });
 

@@ -7,13 +7,12 @@
 // a round past its deadline is stopped, and a run interrupted mid-round is read back on resume, never sent again.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
 import { carried } from "../benchmark/lib/source/flow.mjs";
-import { frozenRun, resumedRun, withSpec } from "../benchmark/lib/core/context.mjs";
-import { compared, listed, taskFound } from "../benchmark/images/runner/inspect.mjs";
+import { resumedRun, withSpec } from "../benchmark/lib/core/context.mjs";
+import { taskFound } from "../benchmark/images/runner/inspect.mjs";
 import { reportOf } from "../benchmark/lib/source/report.mjs";
 import { docRead } from "../benchmark/lib/core/room.mjs";
 import { projectStoreRoot } from "../src/project/repository.mjs";
@@ -21,7 +20,11 @@ import { guardedIo } from "../src/store/guard.mjs";
 import { realIo } from "../src/store/io.mjs";
 import { apply } from "../src/task/ops.mjs";
 import { createTasks } from "../src/task/store.mjs";
+import { dockerDouble, harnessOf, inspectedAs, NEVER, ranAs, runOf, TASK, VIEW, worldOf } from "./benchmark-double.mjs";
 import { sealed } from "./home.mjs";
+import { takeTurn } from "./benchmark-turn.mjs";
+
+await takeTurn();
 
 const ROOT = join(import.meta.dirname, "..");
 
@@ -57,137 +60,9 @@ const FILES = {
   "benchmark/suites/fixture/calc-001/variants/drifted.json": JSON.stringify({ schema: 1, id: "drifted", about: "a fault written for a source that moved", mutations: [{ id: "product-reversed", file: "src/calc.mjs", find: "a * b", replace: "a / b", count: 1 }] }),
 };
 
-const GIT_ENV = { GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@orbit.invalid", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@orbit.invalid" };
-
-function world(t) {
-  const base = mkdtempSync(join(tmpdir(), "orbit-bench-flow-"));
-  t.after(() => rmSync(base, { recursive: true, force: true }));
-  const repo = join(base, "calc");
-  for (const [rel, text] of Object.entries(FILES)) (mkdirSync(dirname(join(repo, rel)), { recursive: true }), writeFileSync(join(repo, rel), text));
-  for (const a of [["init", "-q"], ["add", "-A"], ["commit", "-qm", "calc"]]) spawnSync("git", a, { cwd: repo, env: sealed(GIT_ENV) });
-  const env = sealed({ ...GIT_ENV, ORBIT_STORE_DIR: join(base, "store"), ANTHROPIC_API_KEY: "test-only-not-a-key" });
-  const storeRoot = JSON.parse(spawnSync(process.execPath, [join(ROOT, "cli", "query.mjs"), "storage", "--json"], { cwd: repo, env, encoding: "utf8" }).stdout).storeRoot;
-  return { base, repo, env, storeRoot };
-}
-
-// ---- the docker double ---------------------------------------------------------------------------------------------------
-
-const VALUED = new Set(["--user", "--cpuset-cpus", "--log-driver", "--log-opt", "--name", "--network", "--network-alias", "--label", "--tmpfs", "--cap-drop", "--security-opt", "--mount", "--cpus", "--memory", "--pids-limit", "-e", "--env-file", "-w"]);
-
-function parsedCreate(args) {
-  const c = { flags: {}, argv: [], mounts: [], labels: {}, envNames: [] };
-  for (let i = 1; i < args.length; i++) i = argOf(c, args, i);
-  return c;
-}
-
-function argOf(c, args, i) {
-  const a = args[i];
-  if (c.image) return (c.argv.push(a), i);
-  if (!VALUED.has(a)) return a.startsWith("-") ? i : ((c.image = a), i);
-  const v = args[i + 1];
-  if (a === "--mount") c.mounts.push(Object.fromEntries(v.split(",").map((kv) => (kv === "readonly" ? ["readOnly", true] : kv.split("=")))));
-  if (a === "--label") c.labels[v.split("=")[0]] = v.split("=").slice(1).join("=");
-  if (a === "-e") c.envNames.push(v);
-  return (c.flags[a] = [...(c.flags[a] ?? []), v], i + 1);
-}
-
-const rawOf = (c) => ({ Id: c.id, Name: `/${c.flags["--name"][0]}`, Image: c.image, Config: { User: c.flags["--user"][0], Labels: c.labels, Env: ["PATH=/usr/bin", "LANG=C.UTF-8", "LC_ALL=C.UTF-8", ...c.envNames, ...c.envValues] }, HostConfig: { ReadonlyRootfs: true, CapDrop: c.flags["--cap-drop"] ?? [], CapAdd: [], SecurityOpt: c.flags["--security-opt"] ?? [], NanoCpus: 1e9, Memory: 1, PidsLimit: 1, Privileged: false, Devices: [], NetworkMode: c.flags["--network"][0] }, Mounts: c.mounts.map((m) => ({ Type: "bind", Source: m.source, Destination: m.target, RW: !m.readOnly })), NetworkSettings: { Networks: { [c.flags["--network"][0]]: {} } }, State: { ExitCode: c.exit ?? 0, OOMKilled: false } });
-
-const mapped = (c, p) => ((m) => (m ? join(m.source, p.slice(m.target.length)) : p))(c.mounts.filter((m) => p === m.target || p.startsWith(`${m.target}/`)).sort((a, b) => b.target.length - a.target.length)[0]);
-
-// What a container's process is started with: nothing of this test runner's -- a NODE_TEST_CONTEXT inherited from it
-// would make a gate's own `node --test` report to this runner instead of exiting with its result.
-const containerEnv = () => Object.fromEntries(Object.entries(sealed({ HOME: tmpdir() })).filter(([k]) => k !== "NODE_TEST_CONTEXT"));
-
-function localRun(c, opts) {
-  const argv = c.argv.slice(1).map((a) => mapped(c, a));
-  const r = spawnSync(process.execPath, argv, { cwd: c.flags["-w"] ? mapped(c, c.flags["-w"][0]) : tmpdir(), input: opts.input ?? "", env: containerEnv(), encoding: "utf8" });
-  c.exit = r.status;
-  opts.observe?.("out", Buffer.from(r.stdout ?? ""));
-  return { ok: r.status === 0, status: r.status, out: r.stdout };
-}
-
-function dockerDouble(play) {
-  const s = { containers: new Map(), networks: new Map(), calls: [], n: 0 };
-  const verbs = {
-    info: (a) => ({ ok: true, out: a.includes("{{.NCPU}}") ? "4" : "[]" }),
-    image: (a) => ({ ok: true, out: JSON.stringify([{ Id: a.at(-1), Config: { Env: ["PATH=/usr/bin"], Labels: {} } }]) }),
-    create: (a) => ((c) => ((c.id = `c${++s.n}`), (c.envValues = envValues(c)), s.containers.set(c.id, c), { ok: true, out: `${c.id}\n` }))(parsedCreate(a)),
-    inspect: (a) => (s.containers.get(a[1]) ? { ok: true, out: JSON.stringify([rawOf(s.containers.get(a[1]))]) } : { ok: false, out: "[]" }),
-    network: (a) => networkVerb(s, a),
-    rm: (a) => (s.containers.delete(a.at(-1)), { ok: true, out: "" }),
-    ps: (a) => ({ ok: true, out: [...s.containers.values()].filter((c) => labelled(c.labels, a)).map((c) => c.id).join("\n") }),
-  };
-  const process = { run: (file, a) => (s.calls.push(a), (verbs[a[0]] ?? (() => ({ ok: true, out: "" })))(a)), runObserved: async (file, a, opts) => (s.calls.push(a), attached(s.containers.get(a.at(-1)), opts, play)) };
-  return { s, deps: () => ({ process, env: {}, scratch: { write: (text) => ((f) => (writeFileSync(f, text), f))(join(mkdtempSync(join(tmpdir(), "orbit-env-")), "x.env")), remove: () => null } }) };
-}
-
-const envValues = (c) => (c.flags["--env-file"] ? readFileSync(c.flags["--env-file"][0], "utf8").split("\n").filter(Boolean).map((l) => l.split("=")[0]) : []);
-
-const networkVerb = (s, a) => ({ inspect: () => (s.networks.has(a[2]) ? { ok: true, out: JSON.stringify([{ Id: a[2], Internal: true, Labels: s.networks.get(a[2]), Containers: {} }]) } : { ok: false, out: "[]" }), create: () => (s.networks.set(a.at(-1), Object.fromEntries(a.filter((x, i) => a[i - 1] === "--label").map((l) => l.split("=")))), { ok: true, out: "n1" }), rm: () => (s.networks.delete(a.at(-1)), { ok: true, out: "" }), ls: () => ({ ok: true, out: [...s.networks].filter(([, labels]) => labelled(labels, a)).map(([name]) => name).join("\n") }), connect: () => ({ ok: true, out: "" }) })[a[1]]?.() ?? { ok: true, out: "" };
-
-// What `--filter label=<key>=<value>` keeps: what carries that label with that value.
-const labelled = (labels, a) => ((f) => !f || labels?.[f.slice(6).split("=")[0]] === f.slice(6).split("=").slice(1).join("="))(a.find((x, i) => a[i - 1] === "--filter" && x.startsWith("label=")));
-
-async function attached(c, opts, play) {
-  if (c.argv[1] === "/bench/entry.mjs") return played(c, await play.runner(c, (p) => mapped(c, p)));
-  if (c.argv[1] === "/bench/inspect.mjs") return played(c, play.inspect(c, (p) => mapped(c, p)));
-  if (c.argv[1] === "/bench/egress.mjs") return { ok: true, out: "" };
-  return localRun(c, opts);
-}
-
-const played = (c, r) => ((c.exit = r?.exit ?? 0), r?.timedOut ? { ok: false, out: "", timedOut: true } : { ok: true, out: "", status: c.exit });
-
-// ---- the runner and the inspection, played -------------------------------------------------------------------------------
-
-const TASK = "tsk-0000000000a1";
-
-const workspaceOf = (at) => join(at("/work/store"), "repo-calc", "workspaces", TASK, "tree");
-
-// A round as a runner plays it: the task started and said (start.json), the workspace made and edited, the host's
-// stream written. `o.dies` is the controller dying mid-round -- after what `o.dies` names, nothing more is written.
-function ranAs(edits, o = {}) {
-  return async (c, at) => {
-    const out = at("/work/out");
-    if (o.dies === "before-start") throw new Error("the controller died here");
-    writeFileSync(join(out, "start.json"), JSON.stringify({ task: TASK, started: true, egress: { holds: true } }));
-    const tree = workspaceOf(at);
-    if (!existsSync(tree)) cpSync(at("/work/repo"), tree, { recursive: true, filter: (p) => !p.includes(".git") });
-    for (const [rel, text] of Object.entries(edits)) writeFileSync(join(tree, rel), text);
-    if (o.dies === "after-edits") throw new Error("the controller died here");
-    writeFileSync(join(out, "runner.json"), JSON.stringify({ task: TASK, exit: 0, egress: { holds: true } }));
-    writeFileSync(join(out, "host.jsonl"), [{ type: "system", subtype: "init", model: "test-double" }, { type: "assistant", message: { content: [{ type: "tool_use", name: "Edit" }] } }, { type: "result", subtype: "success", is_error: false, num_turns: 2, total_cost_usd: 0.5 }].map((e) => JSON.stringify(e)).join("\n"));
-    return o.timedOut ? { timedOut: true } : { exit: 0 };
-  };
-}
-
-// The inspection as inspect.mjs makes it: the task it was named, else the one task the runner store holds (here: the
-// one whose workspace a runner made), else none -- and the workspace compared with the subject.
-function inspectedAs(view) {
-  return (c, at) => {
-    const out = at("/work/out");
-    const tree = workspaceOf(at);
-    const held = existsSync(tree) ? [{ id: TASK }] : [];
-    const task = c.argv[2] !== "-" ? c.argv[2] : (held[0]?.id ?? null);
-    const changes = task && existsSync(tree) ? compared(listed(at("/work/repo"), [".claude-plugin/types"]), listed(tree)) : [];
-    for (const ch of changes.filter((x) => x.change !== "deleted")) (mkdirSync(dirname(join(out, "files", ch.rel)), { recursive: true }), cpSync(join(tree, ch.rel), join(out, "files", ch.rel)));
-    writeFileSync(join(out, "inspect.json"), JSON.stringify({ task, found: c.argv[2] !== "-" ? "start" : task ? "only-task" : null, workspace: Boolean(task) && existsSync(tree), changes: changes.map((ch) => ({ ...ch, copied: ch.change !== "deleted" })) }));
-    for (const [name, v] of [["task.json", task ? { exit: 0, json: view } : { exit: null, json: null, why: "no task was started" }], ["tasks.json", { exit: 0, json: { tasks: held } }], ["trace.json", { exit: 0, json: {} }]]) writeFileSync(join(out, name), JSON.stringify(v));
-    return { exit: 0 };
-  };
-}
-
-const VIEW = (lifecycle) => ({ task: { id: TASK, provider: "autonomous-engineering" }, lifecycle, terminal: ["COMPLETED", "FAILED"].includes(lifecycle), stopReason: null, stage: "REVIEWING", attempts: [{ id: "att-1" }], receipts: [], changes: { files: 1 } });
+const world = (t) => worldOf(t, FILES);
 
 const FIXED = { "src/calc.mjs": "export const add = (a, b) => a + b;\n", "test/calc-regression.test.mjs": 'import assert from "node:assert/strict";\nimport { test } from "node:test";\nimport { add } from "../src/calc.mjs";\ntest("adds, again", () => {\n  assert.equal(add(2, 2), 4);\n});\n' };
-
-const NEVER = { runner: () => assert.fail("no runner was asked for"), inspect: () => assert.fail("no inspection was asked for") };
-
-async function runOf(w, double, o) {
-  const h = { root: w.repo, engine: ROOT, env: w.env, taskEnv: w.env, credential: null, caFile: null, storeRoot: w.storeRoot, storeBase: dirname(w.storeRoot), dockerDeps: double.deps };
-  const ctx = await withSpec(frozenRun(h, { caseId: "CALC-001", variant: o.variant ?? "real", repair: o.repair === true, seed: 3, images: { verifier: `sha256:${"a".repeat(64)}`, runner: `sha256:${"b".repeat(64)}`, claudeCode: "double" }, dockerVersion: "double" }));
-  return { h, ctx, result: await carried(ctx), view: ctx.rec.show(ctx.task) };
-}
 
 // ---- what the controller does ---------------------------------------------------------------------------------------------
 
@@ -244,7 +119,7 @@ async function resumedAfter(t, dies, edits) {
   await assert.rejects(runOf(w, dockerDouble({ runner: ranAs(edits, { dies }), inspect: NEVER.inspect }), { variant: "controlled-fault", repair: true }), /died here/);
   const runId = readdirSync(join(w.storeRoot, "benchmark")).find((n) => n.startsWith("bnr-"));
   const double = dockerDouble({ runner: () => assert.fail("a round that started is never sent again"), inspect: inspectedAs(VIEW("EXECUTING")) });
-  const ctx = await withSpec(resumedRun({ root: w.repo, engine: ROOT, env: w.env, taskEnv: w.env, credential: null, caFile: null, storeRoot: w.storeRoot, storeBase: dirname(w.storeRoot), dockerDeps: double.deps }, runId));
+  const ctx = await withSpec(resumedRun(harnessOf(w, double), runId));
   const result = await carried(ctx);
   return { result, view: ctx.rec.show(ctx.task), ctx };
 }
@@ -314,7 +189,7 @@ test("a person pauses the run mid-round: its next step is refused by the task's 
   assert.deepEqual([double.s.containers.size, double.s.networks.size], [0, 0], "nothing of the run is left running");
   resumedInControl(w);
   const again = dockerDouble({ runner: () => assert.fail("a round that ran is never sent again"), inspect: inspectedAs(VIEW("COMPLETED")) });
-  const ctx = await withSpec(resumedRun({ root: w.repo, engine: ROOT, env: w.env, taskEnv: w.env, credential: null, caFile: null, storeRoot: w.storeRoot, storeBase: dirname(w.storeRoot), dockerDeps: again.deps }, r.ctx.run.id));
+  const ctx = await withSpec(resumedRun(harnessOf(w, again), r.ctx.run.id));
   const after = await carried(ctx);
   assert.deepEqual([after.outcome, ctx.rec.show(ctx.task).lifecycle], ["REPAIRED_VERIFIED", "COMPLETED"]);
 });
@@ -324,4 +199,103 @@ test("a fault that no longer matches the source refuses the run before anything 
   await assert.rejects(runOf(w, dockerDouble(NEVER), { variant: "drifted" }), (e) => e.code === "FIXTURE_DRIFT" && /expects 1 occurrence\(s\) in src\/calc\.mjs and finds 0/.test(e.message));
   assert.equal(existsSync(join(w.storeRoot, "benchmark")), false, "no run room");
   assert.equal(benchTask(w), undefined, "no task");
+});
+
+// ---- the rows a round may now end on, and what a verified repair leaves --------------------------------------------------
+
+test("a repair the verifier passes leaves verified.json: what was repaired, on which source, by whom, and how to apply it -- never applied", async (t) => {
+  const w = world(t);
+  const r = await runOf(w, dockerDouble({ runner: ranAs(FIXED), inspect: inspectedAs(VIEW("COMPLETED")) }), { variant: "controlled-fault", repair: true });
+  const v = docRead(r.ctx.room, "verified.json");
+  assert.deepEqual([v.case.id, v.variant, v.engineering.task, v.host.basis, v.candidate.round], ["CALC-001", "controlled-fault", TASK, "coding-host", 1]);
+  assert.match(v.candidate.patchDigest, /^[a-f0-9]{64}$/);
+  assert.deepEqual(v.baseline.failingGroups, ["sums"]);
+  assert.ok(v.reproduce.some((l) => l.includes("git -C") && l.includes("apply")), "a person applies it, themselves");
+  assert.equal(readFileSync(join(w.repo, "src/calc.mjs"), "utf8"), FILES["src/calc.mjs"], "the developer's checkout is never written");
+  assert.deepEqual(docRead(r.ctx.room, "rounds/1/outcome.json").improved, ["sums", "gate:calc-suite"]);
+});
+
+test("an engineering task that waits for a person's approval stops the run on the person: a benchmark never approves anything", async (t) => {
+  const r = await runOf(world(t), dockerDouble({ runner: ranAs({}), inspect: inspectedAs(VIEW("EXECUTING", { approvals: [{ id: "apr-1", open: true }] })) }), { variant: "controlled-fault", repair: true });
+  assert.deepEqual([r.result.outcome, r.view.lifecycle], ["BLOCKED", "BLOCKED"]);
+  const ending = docRead(r.ctx.room, "ending.json");
+  assert.deepEqual([ending.next, ending.class, ending.needs], ["WAITING_FOR_PERSON", "HUMAN_APPROVAL_REQUIRED", "person"]);
+});
+
+test("a round stopped at its deadline before it changed anything is not a round that failed the same way: the next round goes on with the same task", async (t) => {
+  const plays = [ranAs({}, { timedOut: true }), ranAs(FIXED)];
+  let n = 0;
+  const r = await runOf(world(t), dockerDouble({ runner: (c, at) => plays[n++](c, at), inspect: inspectedAs(VIEW("EXECUTING")) }), { variant: "controlled-fault", repair: true });
+  assert.deepEqual([r.result.outcome, n], ["REPAIRED_VERIFIED", 2]);
+  assert.equal(docRead(r.ctx.room, "rounds/1/outcome.json").next, "CUT_SHORT");
+});
+
+test("a round that leaves exactly the candidate an earlier one left, failing the same way, ends the run as no progress -- even with another round between", async (t) => {
+  const wrong = { "src/calc.mjs": "export const add = (a, b) => a * b;\n" };
+  const plays = [ranAs(wrong), ranAs({ ...wrong, "test/calc.test.mjs": null }), ranAs({ ...wrong, "test/calc.test.mjs": FILES["test/calc.test.mjs"] })];
+  let n = 0;
+  const r = await runOf(world(t), dockerDouble({ runner: (c, at) => plays[n++](c, at), inspect: inspectedAs(VIEW("EXECUTING")) }), { variant: "controlled-fault", repair: true, rounds: 3 });
+  assert.deepEqual([r.result.outcome, n], ["NO_PROGRESS", 3]);
+  assert.equal(docRead(r.ctx.room, "ending.json").next, "REPEATED_CANDIDATE");
+  assert.equal(docRead(r.ctx.room, "rounds/3/outcome.json").patchDigest, docRead(r.ctx.room, "rounds/1/outcome.json").patchDigest);
+});
+
+test("a scripted host's round runs with no network and no credential: no egress, no internal network, nothing handed by name -- and no credential is needed to run it", async (t) => {
+  const w = world(t);
+  delete w.env.ANTHROPIC_API_KEY;
+  const double = dockerDouble({ runner: ranAs(FIXED), inspect: inspectedAs(VIEW("COMPLETED")) });
+  const r = await runOf(w, double, { variant: "controlled-fault", repair: true, host: "scripted:reference" });
+  const runner = double.s.calls.find((a) => a[0] === "create" && a.includes("/bench/entry.mjs"));
+  assert.equal(r.result.outcome, "REPAIRED_VERIFIED");
+  assert.equal(runner[runner.indexOf("--network") + 1], "none");
+  assert.ok(!runner.includes("-e"), "no credential is handed by name");
+  assert.ok(!double.s.calls.some((a) => a[0] === "create" && a.includes("/bench/egress.mjs")), "no egress proxy is started");
+  assert.ok(!double.s.calls.some((a) => a[0] === "network" && a[1] === "create"), "no network is made");
+  assert.equal(r.ctx.manifest.config.host, "scripted:reference");
+});
+
+test("every action says who carried it and whether it wrote: a verifier and an inspection only read; the host's round writes its own task's workspace", async (t) => {
+  const r = await runOf(world(t), dockerDouble({ runner: ranAs(FIXED), inspect: inspectedAs(VIEW("COMPLETED")) }), { variant: "controlled-fault", repair: true });
+  const by = (type) => r.view.actions.filter((a) => a.type === type).map((a) => [a.tool, a.mutates]);
+  assert.deepEqual([...new Set(by("benchmark.verify").map(String))], ["verifier,false"], "a verifier never reads as a developer");
+  assert.deepEqual(by("benchmark.inspect"), [["inspection", false]]);
+  assert.deepEqual(by("benchmark.repair"), [["coding-host", true]]);
+});
+
+test("a person's pause stops the running round's container there and then -- not at the round's deadline -- and the round is read back once they resume", async (t) => {
+  const w = world(t);
+  const slow = async (c, at) => {
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    return ranAs(FIXED)(c, at);
+  };
+  const double = dockerDouble({ runner: pausedDuring(w, slow), inspect: NEVER.inspect });
+  const r = await runOf(w, double, { variant: "controlled-fault", repair: true, heldEveryMs: 50 });
+  const runner = double.s.calls.find((a) => a[0] === "create" && a.includes("/bench/entry.mjs"));
+  const id = `c${double.s.calls.filter((a) => a[0] === "create").indexOf(runner) + 1}`;
+  const stopAt = double.s.calls.findIndex((a) => a[0] === "stop" && a.at(-1) === id);
+  const rmAt = double.s.calls.findIndex((a) => a[0] === "rm" && a.at(-1) === id);
+  assert.deepEqual([r.result.outcome, r.view.lifecycle], ["PAUSED", "PAUSED"]);
+  assert.ok(stopAt >= 0 && stopAt < rmAt, "the controller stopped the held round's container while it ran");
+  assert.equal(r.view.actions.find((a) => a.type === "benchmark.repair").state, "succeeded", "how the round ended is still recorded");
+});
+
+const reportFor = (r) => reportOf(r.ctx.room, r.ctx.manifest, r.view, Object.fromEntries(r.view.actions.map((a) => [a.id, docRead(r.ctx.room, `steps/${a.id}.json`)]).filter(([, d]) => d)), docRead(r.ctx.room, "ending.json"), null, r.ctx.rec.events(r.ctx.task).events).json;
+
+test("the report says who carried the rounds: a scripted host's verified repair is conformance, never autonomy; a coding host's is, when nobody stepped in", async (t) => {
+  const w = world(t);
+  const scripted = reportFor(await runOf(w, dockerDouble({ runner: ranAs(FIXED), inspect: inspectedAs(VIEW("COMPLETED")) }), { variant: "controlled-fault", repair: true, host: "scripted:reference" }));
+  assert.deepEqual([scripted.outcome, scripted.hostBasis, scripted.axes.autonomous.value], ["REPAIRED_VERIFIED", "scripted", null]);
+  assert.match(scripted.axes.autonomous.basis, /never a measure of autonomy/);
+  const coding = reportFor(await runOf(world(t), dockerDouble({ runner: ranAs(FIXED), inspect: inspectedAs(VIEW("COMPLETED")) }), { variant: "controlled-fault", repair: true }));
+  assert.deepEqual([coding.hostBasis, coding.axes.autonomous.value, coding.next, coding.interventions.paused], ["coding-host", true, "VERIFIED", 0]);
+  assert.deepEqual([coding.rounds[0].cost, coding.rounds[0].decided.next, coding.rounds[0].decided.regressed], [{ usd: 0.5, basis: "REPORTED" }, "VERIFIED", []]);
+  assert.match(coding.verified, /verified\.json$/);
+  const unreported = reportFor(await runOf(world(t), dockerDouble({ runner: ranAs(FIXED, { cost: null }), inspect: inspectedAs(VIEW("COMPLETED")) }), { variant: "controlled-fault", repair: true }));
+  assert.deepEqual([unreported.rounds[0].cost, unreported.totals.costUsd], [{ usd: null, basis: "unknown" }, null], "a cost nobody reported is unknown, never the budget's estimate");
+});
+
+test("a known finding that still fails is evidence kept, and the report says so; a regression would say REGRESSION", async (t) => {
+  const r = await runOf(world(t), dockerDouble(NEVER), { variant: "controlled-fault" });
+  const rep = reportFor(r);
+  assert.deepEqual([rep.outcome, rep.cause, rep.class, rep.known.regression], ["FAIL", "ORBIT_SOURCE_DEFECT", "ORBIT_SOURCE_DEFECT", false], "a planted fault is never a regression of the source");
 });

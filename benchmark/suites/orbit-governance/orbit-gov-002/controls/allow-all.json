@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "allow-all",
+  "about": "A tier reader that knows no declaration: nothing is ever production, so every check that must ask a person, or name a declared tier, fails.",
+  "mutations": [
+    {
+      "id": "allow-all",
+      "file": "src/protected/environments.mjs",
+      "find": "export const tierOf = (word) => TIERS.find((t) => t.words.includes(wordOf(word)))?.tier ?? UNKNOWN;",
+      "replace": "export const tierOf = () => UNKNOWN;",
+      "count": 1
+    }
+  ]
+}

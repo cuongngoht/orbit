@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "id": "new-import",
+  "about": "The reference repair, and a module the oracle never imported brought into it: refused by name.",
+  "mutations": [
+    {
+      "id": "min-threshold-restored",
+      "file": "src/improvement/oracle.mjs",
+      "find": "gte: (a, b) => b > a, gt: (a, b) => b > a,",
+      "replace": "gte: (a, b) => b < a, gt: (a, b) => b < a,",
+      "count": 1
+    },
+    {
+      "id": "max-threshold-restored",
+      "file": "src/improvement/oracle.mjs",
+      "find": "lte: (a, b) => b < a, lt: (a, b) => b < a,",
+      "replace": "lte: (a, b) => b > a, lt: (a, b) => b > a,",
+      "count": 1
+    },
+    {
+      "id": "optional-check-restored",
+      "file": "src/improvement/oracle.mjs",
+      "find": "fails: (p, c) => p.required && !c",
+      "replace": "fails: (p, c) => p.required && (!c || !c.required)",
+      "count": 1
+    },
+    {
+      "id": "fs-imported",
+      "file": "src/improvement/oracle.mjs",
+      "find": "export const weakenings = (parent, candidate) => (parent?.kind && parent.kind === candidate?.kind ? WEAKENINGS[parent.kind](parent, candidate) : [{ id: \"ORACLE_UNREADABLE\", says: \"the acceptance rules of one of the two versions could not be read\" }]);",
+      "replace": "import { readFileSync } from \"node:fs\";\nexport const weakenings = (parent, candidate) => (parent?.kind && parent.kind === candidate?.kind ? WEAKENINGS[parent.kind](parent, candidate) : [{ id: \"ORACLE_UNREADABLE\", says: \"the acceptance rules of one of the two versions could not be read\" }]);",
+      "count": 1
+    }
+  ],
+  "files": [
+    {
+      "rel": "test/improvement-oracle-bounds.test.mjs",
+      "lines": [
+        "// A lowered lower bound, a raised upper bound and a required step made optional are each a weakening of the oracle.",
+        "import assert from \"node:assert/strict\";",
+        "import { test } from \"node:test\";",
+        "import { oracleOf, weakenings } from \"../src/improvement/oracle.mjs\";",
+        "",
+        "const step = (id, over = {}) => ({ id, capability: `${id}.read`, required: true, evidence: \"report\", approval: \"none\", outputs: { hits: { type: \"count\", path: \"hits\" } }, success: [{ output: \"hits\", op: \"gte\", value: 2 }], ...over });",
+        "const wf = (...steps) => ({ api: \"orbit.skill-workflow/v1\", steps });",
+        "const ids = (parent, candidate) => weakenings(oracleOf(\"workflow\", parent), oracleOf(\"workflow\", candidate)).map((w) => w.id);",
+        "",
+        "test(\"a lower bound lowered is a loosened rule, and one raised is not\", () => {",
+        "  assert.ok(ids(wf(step(\"read\")), wf(step(\"read\", { success: [{ output: \"hits\", op: \"gte\", value: 1 }] }))).includes(\"RULE_LOOSENED\"));",
+        "  assert.deepEqual(ids(wf(step(\"read\")), wf(step(\"read\", { success: [{ output: \"hits\", op: \"gte\", value: 3 }] }))), []);",
+        "});",
+        "",
+        "test(\"an upper bound raised is a loosened rule\", () => {",
+        "  assert.ok(ids(wf(step(\"read\", { success: [{ output: \"hits\", op: \"lte\", value: 5 }] })), wf(step(\"read\", { success: [{ output: \"hits\", op: \"lte\", value: 9 }] }))).includes(\"RULE_LOOSENED\"));",
+        "});",
+        "",
+        "test(\"a required step made optional is a dropped requirement\", () => {",
+        "  assert.ok(ids(wf(step(\"read\")), wf(step(\"read\", { required: false }))).includes(\"REQUIRED_DROPPED\"));",
+        "});"
+      ]
+    }
+  ],
+  "deletes": []
+}

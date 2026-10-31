@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "reject-all",
+  "about": "No run ever passes: every check that must keep an earned PASS, a PARTIAL or a failure fails.",
+  "mutations": [
+    {
+      "id": "reject-all",
+      "file": "src/run/status.mjs",
+      "find": "  if (run.status !== \"PASS\") return run.status;",
+      "replace": "  return \"INCONCLUSIVE\";",
+      "count": 1
+    }
+  ]
+}

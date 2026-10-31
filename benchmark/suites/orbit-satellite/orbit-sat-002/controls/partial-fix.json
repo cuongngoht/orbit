@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "partial-fix",
+  "about": "The controlled fault with only the cycle defect repaired: delegation one deeper than the limit still goes through, so the verifier must still fail it.",
+  "mutations": [
+    {
+      "id": "cycle-restored",
+      "file": "satellite/src/planning/graph.mjs",
+      "find": "return order;",
+      "replace": "return order.length === nodes.length ? order : null;",
+      "count": 1
+    }
+  ]
+}

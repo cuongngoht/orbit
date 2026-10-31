@@ -6,15 +6,22 @@
 // of its own is refused by name -- every finding at once, and none of them can be argued with by a sentence.
 //
 //   changesOf(baseline, workspace) -> [{ rel, change, kind, digest, size }]
-//   scopeFindings(changes, ctx) -> [{ id, rel, says }]      ctx: { allow, deny, harness, tamper, agentTests, textOf }
+//   scopeFindings(changes, ctx) -> [{ id, rel, says }]      ctx: { allow, deny, imports, agentTests, textOf }
 //   agentTestsOf(changes, pattern) -> [rel]                 overlaid(baseline, changes, filesOf) -> entries
+//
+// `imports` is a case's own allow-list of module specifiers (globs) a change may newly import -- a feature in a small
+// project imports its sibling modules; with none, a source file may import nothing it did not import before.
 import { shaBytes } from "../../../src/hash.mjs";
 import { HARNESS } from "../core/freeze.mjs";
 import { matchesAny, safeRel } from "../core/paths.mjs";
 
 // What a check is: never a candidate's to change. What the harness holds as its own is the core's (HARNESS).
 export { HARNESS };
-export const TAMPER = ["package.json", "package-lock.json", "cli/check-five-lines.mjs", "src/lint/**", "test/lint.test.mjs", "test/home.mjs", "test/fakes/**", ".github/**", "skills/orbit-release/**", ".gitattributes", ".gitignore", "**/.npmrc", "**/node.config.json", "**/.node-version", "**/.nvmrc"];
+export const TAMPER = ["package.json", "package-lock.json", "cli/check-five-lines.mjs", "src/lint/**", "test/lint.test.mjs", "test/home.mjs", "test/fakes/**", "satellite/test/lint.test.mjs", "satellite/test/fakes/**", ".github/**", "skills/orbit-release/**", ".gitattributes", ".gitignore", "**/.npmrc", "**/node.config.json", "**/.node-version", "**/.nvmrc"];
+
+// What a TEST is, wherever the repository keeps one: the root's test/, or a package's own (Satellite keeps its tests in
+// satellite/test/). One rule for SCOPE and for the gates, so a test is never a test to one and source to the other.
+export const TEST_PATH = /^((satellite|control-server)\/)?test\//;
 
 export const MAX_FILE = 2 * 1024 * 1024;
 
@@ -22,7 +29,8 @@ export const MAX_FILE = 2 * 1024 * 1024;
 
 const byRel = (entries) => new Map(entries.map((e) => [e.rel, e]));
 
-const changeOf = (before, after) => (!before ? "added" : !after ? "deleted" : before.digest !== after.digest || before.mode !== after.mode ? "modified" : null);
+// A listing says `kind` where a frozen entry says `mode`; both name the same thing (file, exec, link).
+const changeOf = (before, after) => (!before ? "added" : !after ? "deleted" : before.digest !== after.digest || before.mode !== (after.mode ?? after.kind) ? "modified" : null);
 
 // `workspace` is what the inspect container listed: [{ rel, kind, digest, size }] for every file of the tree.
 export function changesOf(baseline, workspace) {
@@ -68,11 +76,11 @@ const IMPORT = /\b(?:import|export)\b[^"'`]*?\bfrom\s*["'`]([^"'`]+)["'`]|\bimpo
 
 export const importsOf = (text) => new Set([...String(text ?? "").matchAll(IMPORT)].map((m) => m[1] ?? m[2]));
 
-const newImports = (c, ctx) => ((before) => [...importsOf(ctx.textOf(c.rel, "after"))].filter((spec) => !before.has(spec)))(importsOf(c.change === "modified" ? ctx.textOf(c.rel, "before") : ""));
+const newImports = (c, ctx) => ((before) => [...importsOf(ctx.textOf(c.rel, "after"))].filter((spec) => !before.has(spec) && !matchesAny(ctx.imports, spec)))(importsOf(c.change === "modified" ? ctx.textOf(c.rel, "before") : ""));
 
 const TEXT_FILE = /\.(mjs|cjs|js|json|md|ts)$/;
 
-const isTest = (rel) => rel.startsWith("test/");
+export const isTest = (rel) => TEST_PATH.test(rel);
 
 const isSource = (rel) => !isTest(rel) && /\.(mjs|cjs|js)$/.test(rel);
 

@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "allow-all",
+  "about": "A confidence rule that calls every record certain: every check that must stay possible fails.",
+  "mutations": [
+    {
+      "id": "allow-all",
+      "file": "src/memory/support.mjs",
+      "find": "export const derive = (support) => (support.sessions >= 2 && support.against === 0 ? \"certain\" : \"possible\");",
+      "replace": "export const derive = () => \"certain\";",
+      "count": 1
+    }
+  ]
+}

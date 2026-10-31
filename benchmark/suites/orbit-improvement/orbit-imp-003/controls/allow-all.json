@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "allow-all",
+  "about": "Gates that all hold whatever they are asked about: every check that must refuse fails.",
+  "mutations": [
+    {
+      "id": "allow-all",
+      "file": "src/improvement/gates.mjs",
+      "find": "export const gatesOf = (c) => PROMOTION_GATES.map((g) => ({ id: g.id, holds: g.holds(c) === true, onFail: g.onFail, say: String(g.say(c)).slice(0, 240) }));",
+      "replace": "export const gatesOf = () => PROMOTION_GATES.map((g) => ({ id: g.id, holds: true, onFail: g.onFail, say: \"it holds\" }));",
+      "count": 1
+    }
+  ]
+}

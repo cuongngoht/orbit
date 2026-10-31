@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "reject-all",
+  "about": "Every unit whose task completed is settled as failed: every check of a task that completed fails.",
+  "mutations": [
+    {
+      "id": "every-ending-a-failure",
+      "file": "src/goal/execute.mjs",
+      "find": "lines.push(settleUnit(model, u.id, \"completed\", u.task, \"child task completed\"));",
+      "replace": "lines.push(settleUnit(model, u.id, \"failed\", u.task, \"child task completed\"));",
+      "count": 1
+    }
+  ]
+}

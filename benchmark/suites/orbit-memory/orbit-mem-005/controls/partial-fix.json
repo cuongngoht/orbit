@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "partial-fix",
+  "about": "The controlled fault with only the unmeasured scope repaired: an uncommitted edit is still called stale, so the verifier must still fail it.",
+  "mutations": [
+    {
+      "id": "unmeasured-restored",
+      "file": "src/freshness.mjs",
+      "find": "const states = (fact.scope ?? []).map((s) => scopes[s]?.state ?? FRESH);",
+      "replace": "const states = (fact.scope ?? []).map((s) => scopes[s]?.state ?? UNKNOWN);",
+      "count": 1
+    }
+  ]
+}

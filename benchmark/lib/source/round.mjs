@@ -6,7 +6,8 @@
 // verifier does, in containers of its own.
 //
 //   ranRound(ctx, k, state) -> { error, runner, host, egress }        inspectedRound(ctx, k, task) -> inspection
-//   candidateOf(ctx, k, inspection) -> { changes, entries, ignored, scope, patch, agentTests }
+//   candidateOf(ctx, inspection) -> { changes, entries, ignored, scope, patch, patchDigest, agentTests }
+//   assembled(ctx, changes, textOf, ignored) -> the same, from changes and their text however they were read back
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { shaBytes, sha } from "../../../src/hash.mjs";
@@ -14,7 +15,7 @@ import { docker } from "../../../src/runtime/isolation/docker.mjs";
 import { addedLines, agentTestsOf, overlaid, scopeFindings } from "./candidate.mjs";
 import { ranContainer, specFor } from "../core/docker.mjs";
 import { gitOwn } from "../core/git.mjs";
-import { forbidden, fresh, jsonAt, roundRan, runnerSpecOf } from "../core/runner.mjs";
+import { forbidden, fresh, jsonAt, offlineRan, roundRan, RUNNER_HOST, runnerSpecOf } from "../core/runner.mjs";
 import { briefOf } from "./brief.mjs";
 import { readRegular } from "../core/room.mjs";
 import { safeRel } from "../core/paths.mjs";
@@ -23,9 +24,19 @@ export { EGRESS_PORT } from "../core/runner.mjs";
 
 // ---- the containers of a repair round ------------------------------------------------------------------------------------
 
-const runnerSpec = (ctx, net, k, d) => runnerSpecOf(ctx, net, k, [{ source: ctx.checkoutDir, target: "/work/repo", readOnly: true }, { source: ctx.runnerStore, target: "/work/store", readOnly: false }, { source: d.out, target: "/work/out", readOnly: false }, { source: d.brief, target: "/run/brief", readOnly: true }]);
+// Where Orbit is in a round's containers: the subject itself for a source repair (Orbit repairs its own checkout), or the
+// frozen Orbit beside the target for an engineering goal -- read-only either way.
+const PLUGIN_AT = "/work/orbit";
 
-const inspectSpec = (ctx, k, task, out) => specFor("inspect", ctx.run, { n: k, image: ctx.images.runner, user: ctx.user, argv: ["node", "/bench/inspect.mjs", task ?? "-"], mounts: [{ source: ctx.checkoutDir, target: "/work/repo", readOnly: true }, { source: ctx.runnerStore, target: "/work/store", readOnly: true }, { source: out, target: "/work/out", readOnly: false }], env: { names: [], values: { HOME: "/tmp", ORBIT_STORE_DIR: "/work/store" } }, limits: { cpus: 1, memoryMb: 1024, pids: 256 }, tmpMb: 256 });
+const goalCase = (ctx) => ctx.case.kind === "engineering";
+
+const pluginMounts = (ctx) => (goalCase(ctx) ? [{ source: ctx.pluginDir, target: PLUGIN_AT, readOnly: true }] : []);
+
+const pluginOf = (ctx) => (goalCase(ctx) ? PLUGIN_AT : "/work/repo");
+
+const runnerSpec = (ctx, net, k, d) => runnerSpecOf(ctx, net, k, [{ source: ctx.checkoutDir, target: "/work/repo", readOnly: true }, ...pluginMounts(ctx), { source: ctx.runnerStore, target: "/work/store", readOnly: false }, { source: d.out, target: "/work/out", readOnly: false }, { source: d.brief, target: "/run/brief", readOnly: true }], {}, pluginOf(ctx));
+
+const inspectSpec = (ctx, k, task, out) => specFor("inspect", ctx.run, { n: k, image: ctx.images.runner, user: ctx.user, hostname: RUNNER_HOST, argv: ["node", "/bench/inspect.mjs", task ?? "-", `--plugin=${pluginOf(ctx)}`], mounts: [{ source: ctx.checkoutDir, target: "/work/repo", readOnly: true }, ...pluginMounts(ctx), { source: ctx.runnerStore, target: "/work/store", readOnly: true }, { source: out, target: "/work/out", readOnly: false }], env: { names: [], values: { HOME: "/tmp", ORBIT_STORE_DIR: "/work/store" } }, limits: { cpus: 1, memoryMb: 1024, pids: 256 }, tmpMb: 256 });
 
 function briefWritten(ctx, k, state) {
   const dir = fresh(ctx, "rounds", String(k), "brief");
@@ -39,15 +50,21 @@ function briefWritten(ctx, k, state) {
 // stopping the container, whatever the host inside it is doing.
 export async function ranRound(ctx, k, state) {
   const d = { brief: briefWritten(ctx, k, state), out: fresh(ctx, "rounds", String(k), "out") };
-  return roundRan(ctx, k, (net) => runnerSpec(ctx, net, k, d), { deadlineMs: state.deadlineMs, out: d.out });
+  const o = { deadlineMs: state.deadlineMs, out: d.out, held: state.held, heldEveryMs: ctx.heldEveryMs };
+  return offlineHost(ctx) ? offlineRan(ctx, k, runnerSpec(ctx, null, k, d), o) : roundRan(ctx, k, (net) => runnerSpec(ctx, net, k, d), o);
 }
+
+// A control's scripted host, never a model: its round runs with no network (core/runner.mjs offlineRan).
+// A host that reasons nowhere in the runner -- a scripted control, or a session driving it from outside -- gets a runner
+// with no network at all and no credential.
+export const offlineHost = (ctx) => /^(scripted|session):/.test(String(ctx.host ?? ""));
 
 // ---- the inspection ------------------------------------------------------------------------------------------------------
 
 export async function inspectedRound(ctx, k, task) {
   const out = fresh(ctx, "rounds", String(k), "inspect");
   const r = await ranContainer(inspectSpec(ctx, k, task, out), ctx.deps, { input: "", timeoutMs: 300000, outputBytes: 1024 * 1024, attest: { network: "none", forbidden: forbidden(ctx), pluginTarget: null, imageEnv: docker.imageEnv(ctx.images.runner, ctx.deps) } });
-  return { end: r.refused ? "REFUSED" : r.timedOut ? "TIMEOUT" : `EXIT_${r.exit}`, refused: r.refused ?? null, attested: r.attested, dir: out, inspect: jsonAt(join(out, "inspect.json")), task: jsonAt(join(out, "task.json")), tasks: jsonAt(join(out, "tasks.json")), trace: jsonAt(join(out, "trace.json")) };
+  return { end: r.refused ? "REFUSED" : r.timedOut ? "TIMEOUT" : `EXIT_${r.exit}`, refused: r.refused ?? null, attested: r.attested, dir: out, inspect: jsonAt(join(out, "inspect.json")), task: jsonAt(join(out, "task.json")), tasks: jsonAt(join(out, "tasks.json")), trace: jsonAt(join(out, "trace.json")), goals: jsonAt(join(out, "goals.json")) };
 }
 
 // ---- the candidate ---------------------------------------------------------------------------------------------------------
@@ -86,8 +103,8 @@ export function candidateOf(ctx, ins) {
   return assembled(ctx, changes, textOf, ignored);
 }
 
-function assembled(ctx, changes, textOf, ignored) {
-  const scope = scopeFindings(changes, { allow: ctx.case.scope.allow, deny: ctx.case.scope.deny, agentTests: ctx.case.checks.agentTests, textOf });
+export function assembled(ctx, changes, textOf, ignored) {
+  const scope = scopeFindings(changes, { allow: ctx.case.scope.allow, deny: ctx.case.scope.deny, imports: ctx.case.scope.imports ?? [], agentTests: ctx.case.checks.agentTests, textOf });
   const usable = changes.filter((c) => c.change === "deleted" || textOf(c.rel, "after") !== null);
   const entries = overlaid(ctx.baseline, usable.filter((c) => safeRel(c.rel)), (rel) => Buffer.from(textOf(rel, "after"), "utf8"));
   const patch = patchOf(ctx, usable.filter((c) => safeRel(c.rel)), textOf);

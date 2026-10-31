@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "kind": "source",
+  "id": "ORBIT-IMP-001",
+  "version": "1.0.0",
+  "baseline": "PASS",
+  "title": "A step newly failed makes a candidate worse, whatever else it improved",
+  "goal": "verdictOf() judges one evaluation by the contract's ordered table -- a blocked run compares nothing, unequal inputs decide nothing, a step the candidate newly failed on an input where the baseline met it makes the candidate WORSE whatever else it improved and is named as a regression, a baseline that met every run did not reproduce the failure, then more runs met is BETTER, fewer is WORSE and otherwise EQUIVALENT -- and what a run cost never buys a verdict",
+  "measures": { "kind": "correctness", "capability": "improvement.evaluation.verdict", "repairable": ["ORBIT_SOURCE_DEFECT"] },
+  "subject": {
+    "paths": ["src/improvement/evaluation.mjs"],
+    "exports": { "src/improvement/evaluation.mjs": ["verdictOf"] }
+  },
+  "prepare": { "requires": ["node"] },
+  "request": "request.md",
+  "reproduce": "every failing check names the baseline and candidate runs it compared input by input, what the contract expects and what came back; the probe imports the subject's own module and answers in its own process",
+  "acceptance": { "owner": "verifier", "spec": "verifier/spec.mjs", "probe": "verifier/probe.mjs", "samples": 48 },
+  "scope": { "allow": ["src/improvement/*.mjs", "test/*.test.mjs"], "deny": [] },
+  "checks": {
+    "gates": [
+      { "id": "improvement-suite", "argv": ["node", "--test", "--test-reporter=tap", "test/improvement-core.test.mjs", "test/improvement-regression.test.mjs", "test/improvement-satellite.test.mjs", "test/improvement-manipulation.test.mjs", "test/improvement-boundary.test.mjs", "test/skill-workflow.test.mjs"] },
+      { "id": "five-lines", "argv": ["node", "cli/check-five-lines.mjs", "src/improvement", "--strict"], "stdout": "^0 finding\\(s\\)" }
+    ],
+    "agentTests": { "required": true, "pattern": "^test/[^/]+\\.test\\.mjs$" }
+  },
+  "limits": {
+    "rounds": 2,
+    "minutes": 150,
+    "usd": 20,
+    "runner": { "cpus": 2, "memoryMb": 6144, "pids": 2048, "minutes": 120, "outputMb": 16 },
+    "verifier": { "cpus": 2, "memoryMb": 2048, "pids": 512, "seconds": 600 },
+    "engineering": { "attempts": 6, "actions": 160 }
+  },
+  "artifacts": ["manifest", "baseline", "candidate-patch", "verification", "host-result", "report"],
+  "cleanup": { "containers": "run-label", "networks": "run-label", "scratch": "after-run" },
+  "variants": {
+    "real": {},
+    "controlled-fault": { "mutations": "variants/controlled-fault.json" }
+  },
+  "controls": [
+    { "id": "clean", "variant": "real", "expect": "PASS" },
+    { "id": "planted", "variant": "controlled-fault", "expect": "FAIL" },
+    { "id": "allow-all", "variant": "real", "file": "controls/allow-all.json", "expect": "FAIL" },
+    { "id": "reject-all", "variant": "real", "file": "controls/reject-all.json", "expect": "FAIL" }
+  ]
+}

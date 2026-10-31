@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "One planted defect in the ordered table, applied only to the benchmark copy of the source: the host's word and a report naming different agents no longer conflict, so the host's word is quietly chosen.",
+  "mutations": [
+    {
+      "id": "sources-never-conflict",
+      "file": "src/attribution.mjs",
+      "find": "{ word: \"CONFLICTING\", when: (s) => s.agents.length > 1 },",
+      "replace": "{ word: \"CONFLICTING\", when: (s) => s.observed.length > 1 || s.reported.length > 1 },",
+      "count": 1
+    }
+  ]
+}

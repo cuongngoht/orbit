@@ -66,11 +66,20 @@ export function statusGoal(ports, id) {
   return { view: reportOf(loaded.model), projection: goalProjection(loaded.model) };
 }
 
+// Resuming settles every unit whose task ended, and KEEPS the settlement in the goal's journal, so every later look
+// reads it back; a second resume finds nothing left to settle.
 export function resumeGoal(ports, id) {
-  const loaded = loadGoal(ports.goals, ports.io, id);
-  if (!loaded) throw new Refused(`no goal ${id}`);
-  const view = resumeView(loaded.records, ports.taskSummaries?.() ?? []);
-  return { ...view, say: resumeSay(view), verify: verifyOnResume(view.model) };
+  if (!loadGoal(ports.goals, ports.io, id)) throw new Refused(`no goal ${id}`);
+  const tasks = ports.taskSummaries?.() ?? [];
+  const settled = ports.goals.transact(id, () => settleEnded(ports, id, tasks));
+  const view = resumeView(ports.goals.read(id), tasks);
+  return { ...view, settled, say: resumeSay(view), verify: verifyOnResume(view.model) };
+}
+
+function settleEnded(ports, id, tasks) {
+  const lines = resumeView(ports.goals.read(id), tasks).pending;
+  for (const line of lines) ports.goals.append(id, "unit", line);
+  return lines;
 }
 
 export { stepGoal };

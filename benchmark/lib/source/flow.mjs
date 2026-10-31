@@ -42,8 +42,8 @@ const shortRun = (ctx) => ctx.run.id.slice(4);
 
 // ---- one recorded action: started, its evidence kept under its own id, ended with its receipt ----------------------------
 
-async function recorded(ctx, type, label, body) {
-  const act = ctx.rec.actStart(ctx.task, type, label);
+async function recorded(ctx, type, label, body, role) {
+  const act = ctx.rec.actStart(ctx.task, type, label, role);
   const result = await body(act);
   docWritten(ctx.room, `steps/${act}.json`, result.doc);
   return closed(ctx, act, result);
@@ -83,30 +83,57 @@ async function baseline(ctx, view) {
 
 // ---- the diagnosis ------------------------------------------------------------------------------------------------------
 
-const problemOf = (runs) => runs.find((r) => r.problem)?.problem ?? null;
+// The containers of a verification that did not run as declared, by how they ended: refused (the environment: Docker,
+// an image, an attestation) or out of time or memory with nothing of a candidate's in them (the infrastructure). A run
+// recorded before the ends were kept says only that it had a problem, and that is read as the environment's.
+const endsOf = (r) => r.problemEnds ?? (r.problem ? ["REFUSED"] : []);
 
-const factsOf = (ctx, runs) => ({ benchmark: ctx.invalid ?? (frozenIntact(ctx) ? null : { says: "the frozen case or subject changed after the run began" }), environment: problemOf(runs) ? { says: problemOf(runs) } : null, credentials: null, provider: null, budget: null, runs, repairable: ctx.case.measures.repairable });
+const problemWith = (runs, ends) => ((r) => (r ? { says: r.problem } : null))(runs.find((r) => endsOf(r).some((e) => ends.includes(e))));
+
+// A probe that could not read the inputs the judge sent it is the verifier's own defect, never the subject's.
+const inputRefused = (runs) => (runs.some((r) => r.hidden?.error?.code === "INPUT") ? { says: "the probe could not read the inputs the judge sent it: the verifier is broken, not the source" } : null);
+
+const factsOf = (ctx, runs) => ({ benchmark: frozenIntact(ctx) ? null : { says: "the frozen case or subject changed after the run began" }, verifier: ctx.invalid ?? inputRefused(runs), environment: problemWith(runs, ["REFUSED"]), infrastructure: problemWith(runs, ["TIMEOUT", "OOM", "NO_EXIT"]), credentials: null, provider: null, budget: null, runs, repairable: ctx.case.measures.repairable });
 
 const variantSays = (ctx) => (ctx.manifest.benchmark.variant === "real" ? "on the source as it is" : `planted by the ${ctx.manifest.benchmark.variant} variant, not a defect found in the source`);
 
+// A known finding is a baseline the case says fails today (`baseline: "FAIL"`): its failure is the finding, not news.
+const knownSays = (ctx, outcome) => (ctx.case.baseline && ctx.case.baseline !== outcome ? `; the case expects the source as it is to ${ctx.case.baseline}` : ctx.case.baseline === "FAIL" && outcome === "FAIL" ? "; a known finding, kept as evidence until it is repaired" : "");
+
 const ENDINGS = {
-  PASS: (ctx, cause) => ({ end: "complete", outcome: "PASS", summary: `PASS — ${cause.says}` }),
-  FAIL: (ctx, cause) => ({ end: "complete", outcome: "FAIL", summary: `FAIL (${cause.id}, ${variantSays(ctx)}) — ${cause.says}` }),
-  BENCHMARK_INVALID: (ctx, cause) => ({ end: "fail", stop: "REQUIREMENT_BLOCKED", outcome: "BENCHMARK_INVALID", summary: `BENCHMARK_INVALID — ${cause.says}` }),
+  PASS: (ctx, cause) => ({ end: "complete", outcome: "PASS", summary: `PASS — ${cause.says}${knownSays(ctx, "PASS")}` }),
+  FAIL: (ctx, cause) => ({ end: "complete", outcome: "FAIL", summary: `FAIL (${cause.id}, ${variantSays(ctx)}) — ${cause.says}${knownSays(ctx, "FAIL")}` }),
+  BENCHMARK_INVALID: (ctx, cause) => ({ end: "fail", stop: "REQUIREMENT_BLOCKED", outcome: "BENCHMARK_INVALID", summary: `BENCHMARK_INVALID (${cause.id}) — ${cause.says}` }),
   BLOCKED: (ctx, cause) => ({ end: "block", stop: "ENVIRONMENT_BLOCKED", needs: "environment", outcome: "BLOCKED", summary: `BLOCKED (${cause.id}) — ${cause.says}` }),
   INCONCLUSIVE: (ctx, cause) => ({ end: "complete", outcome: "INCONCLUSIVE", summary: `INCONCLUSIVE (${cause.id}) — ${cause.says}` }),
 };
 
-const ENDING_OF = { PASS: "PASS", BENCHMARK_INVALID: "BENCHMARK_INVALID", ENVIRONMENT: "BLOCKED", CREDENTIALS: "BLOCKED", PROVIDER: "BLOCKED", BUDGET_EXHAUSTED: "BLOCKED", INSUFFICIENT_EVIDENCE: "INCONCLUSIVE", GATE_UNEXPLAINED: "INCONCLUSIVE" };
+const ENDING_OF = { PASS: "PASS", BENCHMARK_INVALID: "BENCHMARK_INVALID", VERIFIER_INVALID: "BENCHMARK_INVALID", ENVIRONMENT: "BLOCKED", CREDENTIALS: "BLOCKED", INFRASTRUCTURE: "BLOCKED", PROVIDER: "BLOCKED", BUDGET_EXHAUSTED: "BLOCKED", INSUFFICIENT_EVIDENCE: "INCONCLUSIVE", NON_DETERMINISTIC: "INCONCLUSIVE", GATE_UNEXPLAINED: "INCONCLUSIVE", UNKNOWN: "INCONCLUSIVE" };
+
+// An ending says the cause and the class it stands on, so a report and a metric never parse its summary.
+const endingFor0 = (ctx, cause) => ({ ...ENDINGS[ENDING_OF[cause.id] ?? (cause.repairable ? "FAIL" : "INCONCLUSIVE")](ctx, cause), cause: cause.id, class: cause.class });
 
 // What the baseline came to, as the next action: a repair only for a cause the case declares repairable, when a repair
 // was asked for; otherwise the run ends with the verdict it earned.
-const diagnosisOf = (ctx, cause) => (cause.repairable && ctx.repair ? { cause, next: "repair", ending: null } : { cause, next: "report", ending: ENDINGS[ENDING_OF[cause.id] ?? (cause.repairable ? "FAIL" : "INCONCLUSIVE")](ctx, cause) });
+const repairDiagnosis = (ctx, cause) => (cause.repairable && ctx.repair ? { cause, next: "repair", ending: null } : { cause, next: "report", ending: endingFor0(ctx, cause) });
+
+// An ENGINEERING case's baseline says whether the target is as the case declares it: a goal that asks for a change must
+// not be met yet, and a goal that must be refused leaves a target whose behaviour already holds. When it is, the round
+// runs -- the goal is the host's to attempt and the verifier's to judge; when it is not, the benchmark is wrong.
+const GOAL_READY = { change: ["ORBIT_SOURCE_DEFECT", "CAPABILITY_MISSING"], blocked: ["PASS"] };
+
+const notAsDeclared = (ctx, cause) => ({ end: "fail", stop: "REQUIREMENT_BLOCKED", outcome: "BENCHMARK_INVALID", cause: cause.id, class: "BENCHMARK_DEFECT", summary: `BENCHMARK_INVALID — the target is not as ${ctx.case.id} declares it: a goal that ${ctx.case.measures.expects === "change" ? "asks for a change found it already made" : "must be refused found the behaviour already broken"} (${cause.id})` });
+
+const goalSettled = (ctx, cause) => (["PASS", "ORBIT_SOURCE_DEFECT", "CAPABILITY_MISSING"].includes(cause.id) ? notAsDeclared(ctx, cause) : endingFor0(ctx, cause));
+
+const goalDiagnosis = (ctx, cause) => (GOAL_READY[ctx.case.measures.expects].includes(cause.id) ? { cause, next: "repair", ending: null } : { cause, next: "report", ending: goalSettled(ctx, cause) });
+
+const diagnosisOf = (ctx, cause) => (ctx.case.kind === "engineering" ? goalDiagnosis : repairDiagnosis)(ctx, cause);
 
 function diagnosed(ctx, runs) {
   ctx.rec.stage(ctx.task, "DIAGNOSING", "what the two verifications of the subject showed");
   const d = diagnosisOf(ctx, causeOf(factsOf(ctx, runs)));
-  ctx.rec.decide(ctx.task, { observed: `${runs[0].failures.length} failing check(s); verified twice, signatures ${runs.map((r) => r.signature).join(" and ")}`, hypothesis: `${d.cause.id}: ${d.cause.says}`, next: d.next, evidence: [show(ctx).attempts[0].id, `test:bv-${shortRun(ctx)}-1`] });
+  ctx.rec.decide(ctx.task, { observed: `${runs[0].failures.length} failing check(s); verified twice, signatures ${runs.map((r) => r.signature).join(" and ")}`, hypothesis: `${d.cause.id}${d.cause.class ? ` (${d.cause.class})` : ""}: ${d.cause.says}`, next: d.next, evidence: [show(ctx).attempts[0].id, `test:bv-${shortRun(ctx)}-1`] });
   return d;
 }
 
@@ -134,15 +161,39 @@ function verificationRows(ctx, subject, v, evidence) {
 
 // ---- a repair round, carried from wherever it stands ---------------------------------------------------------------------
 
-const credentialProblem = (ctx) => (ctx.credentialNames.some((n) => n !== "ANTHROPIC_BASE_URL") ? null : "CREDENTIALS: no credential for the coding host is set here, by name (ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN; --credential=<NAME>) — the baseline is kept, and `resume` goes on once one is");
+// Who carried a run's rounds: nobody (no repair was asked), a SCRIPTED host (a control: Orbit's own loop driven by a
+// script, no model) or a CODING HOST (a model). Every report and metric keeps the three apart: a scripted success is
+// conformance of the controller, never a measure of a model.
+// Who carries a round, by the host a run names: a SCRIPTED control, the operator's own SESSION (an agent it spawned drives
+// Orbit inside the runner from outside it, with no network in the container), or a CODING HOST inside the runner.
+const HOST_FAMILIES = [["scripted:", "scripted"], ["session:", "session"]];
+
+export const hostBasisOf = (config) => (!config?.repair ? "none" : HOST_FAMILIES.find(([p]) => String(config.host ?? "").startsWith(p))?.[1] ?? "coding-host");
+
+// A host that needs no credential in the runner: a scripted one, or a session that reasons outside the container.
+const OFFLINE = ["scripted", "session"];
+
+const HOST_WORDS = { scripted: "scripted host", session: "session's agent", "coding-host": "coding host" };
+
+const HOST_TOOLS = { scripted: "scripted-host", session: "session-host", "coding-host": "coding-host" };
+
+const basisHere = (ctx) => hostBasisOf({ repair: true, host: ctx.host });
+
+const scripted = (ctx) => hostBasisOf({ repair: ctx.repair, host: ctx.host }) === "scripted";
+
+const offline = (ctx) => OFFLINE.includes(basisHere(ctx));
+
+const credentialProblem = (ctx) => (offline(ctx) || ctx.credentialNames.some((n) => n !== "ANTHROPIC_BASE_URL") ? null : "CREDENTIALS: no credential for the coding host is set here, by name (ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN; --credential=<NAME>) — the baseline is kept, and `resume` goes on once one is");
 
 const minutesLeft = (view) => Math.floor((view.budget?.minutes?.limit ?? 0) - (view.budget?.minutes?.spent ?? 0));
 
-const roundCost = (ctx, view, a) => stepOf(ctx, lastEnded(actsOf(view, a.id), "benchmark.repair"))?.host?.costUsd ?? ctx.limits.usd / Math.max(1, ctx.limits.rounds);
+// What a round cost: what its host REPORTED, or -- only to keep the budget from being overrun, never as a cost anyone
+// reads -- an ESTIMATE of an even share of the budget, said as such.
+const roundCost = (ctx, view, a) => ((usd) => (typeof usd === "number" ? { usd, basis: "REPORTED" } : { usd: ctx.limits.usd / Math.max(1, ctx.limits.rounds), basis: "ESTIMATED" }))(stepOf(ctx, lastEnded(actsOf(view, a.id), "benchmark.repair"))?.host?.costUsd);
 
-const spentUsd = (ctx, view) => (view.attempts ?? []).slice(1).filter((a) => a.outcome).reduce((n, a) => n + roundCost(ctx, view, a), 0);
+const costsOf = (ctx, view) => (view.attempts ?? []).slice(1).filter((a) => a.outcome).map((a) => roundCost(ctx, view, a));
 
-const leftOf = (ctx, view) => ({ rounds: ctx.limits.rounds - Math.max(0, (view.attempts?.length ?? 1) - 1), minutes: minutesLeft(view), usd: Math.max(0, Math.round((ctx.limits.usd - spentUsd(ctx, view)) * 100) / 100) });
+const leftOf = (ctx, view) => ((costs) => ({ rounds: ctx.limits.rounds - Math.max(0, (view.attempts?.length ?? 1) - 1), minutes: minutesLeft(view), usd: Math.max(0, Math.round((ctx.limits.usd - costs.reduce((n, c) => n + c.usd, 0)) * 100) / 100), usdBasis: costs.some((c) => c.basis === "ESTIMATED") ? "ESTIMATED" : "REPORTED" }))(costsOf(ctx, view));
 
 const startedTask = (ctx, k) => ((buf) => (buf ? safeJson(buf.toString("utf8"))?.task ?? null : null))(readRegular(ctx.room.at("rounds", String(k), "out", "start.json"), 64 * 1024));
 
@@ -161,18 +212,25 @@ const engTaskOf = (ctx, upTo) => Array.from({ length: upTo }, (_, i) => [started
 
 const latestVerification = (ctx, view) => stepOf(ctx, (view.actions ?? []).filter((a) => a.type === "benchmark.verify" && a.state === "succeeded").at(-1));
 
+// What a round's host does, as the stage says it: a repair through the engineering loop, or a goal through the goal entry.
+const ROUND_WORK = { source: "repairs the source through Orbit's engineering loop", engineering: "takes the goal through Orbit's goal entry, its workflow and its engineering task" };
+
+// A case that declares an interruption cuts that round's runner at its minute -- a coding host is stopped wherever it
+// is, the way a crash stops it. A scripted host interrupts itself, at a moment it can name.
+const cutAt = (ctx, k, minutes) => (ctx.case.interrupt?.round === k && !scripted(ctx) ? Math.min(minutes, ctx.case.interrupt.afterMinutes) : minutes);
+
 function roundState(ctx, view, k) {
   const left = leftOf(ctx, view);
-  const runnerMinutes = Math.max(1, Math.min(ctx.case.limits.runner.minutes, left.minutes - RESERVE_MINUTES));
-  ctx.rec.stage(ctx.task, "FIXING", `round ${k}: the coding host repairs the source through Orbit's engineering loop`);
-  return { left: { ...left, engineeringMinutes: runnerMinutes }, latest: latestVerification(ctx, view), engTask: engTaskOf(ctx, k - 1), deadlineMs: runnerMinutes * 60000 };
+  const runnerMinutes = cutAt(ctx, k, Math.max(1, Math.min(ctx.case.limits.runner.minutes, left.minutes - RESERVE_MINUTES)));
+  ctx.rec.stage(ctx.task, "FIXING", `round ${k} of ${ctx.limits.rounds}: the ${HOST_WORDS[basisHere(ctx)]} ${ROUND_WORK[ctx.case.kind] ?? ROUND_WORK.source} · ${runnerMinutes} min · $${left.usd} left (${left.usdBasis})`);
+  return { left: { ...left, engineeringMinutes: runnerMinutes }, latest: latestVerification(ctx, view), engTask: engTaskOf(ctx, k - 1), deadlineMs: runnerMinutes * 60000, held: () => Boolean(HELD(show(ctx))) };
 }
 
 const repairSummary = (r) => (r.error ? r.error.says : `the host made ${r.host?.toolCalls ?? "an unknown number of"} tool call(s) and ended ${r.container?.timedOut ? "at the round's deadline" : `with ${r.runner?.exit ?? "?"}${r.runner?.setup ? ` (${r.runner.setup})` : ""}`}`);
 
 const repairReceipt = (ctx, k, r) => ((t) => (t ? { domain: "task", ref: `runner.${t}`, outcome: "IN_RUNNER_STORE", summary: `the run's one engineering task, in its runner store; round ${k}` } : null))(r.start?.task ?? r.runner?.task ?? null);
 
-const repairAct = (ctx, k, state) => recorded(ctx, "benchmark.repair", `round ${k}: the coding host on the engineering task`, async () => ((r) => ({ doc: r, outcome: r.error ? "failed" : "succeeded", receipt: repairReceipt(ctx, k, r), summary: repairSummary(r) }))(await ranRound(ctx, k, state)));
+const repairAct = (ctx, k, state) => recorded(ctx, "benchmark.repair", `round ${k}: the ${HOST_WORDS[basisHere(ctx)]} on the engineering task`, async () => ((r) => ({ doc: r, outcome: r.error ? "failed" : "succeeded", receipt: repairReceipt(ctx, k, r), summary: repairSummary(r) }))(await ranRound(ctx, k, state)), { tool: HOST_TOOLS[basisHere(ctx)], mutates: true });
 
 const inspectSummary = (ins) => (ins.inspect ? `${(ins.inspect.changes ?? []).length} change(s) in the workspace; the engineering task is ${ins.task?.json?.lifecycle ?? "unread"}` : `the inspection did not answer (${ins.end})`);
 
@@ -194,43 +252,112 @@ async function roundCarried(ctx, view, k) {
 
 const NO_CANDIDATE = (ctx) => ({ changes: [], entries: ctx.baseline, scope: [], patch: "", patchDigest: null, agentTests: [], ignored: [] });
 
-const engineeringOf = (ins) => ((v) => (v ? { id: v.task?.id ?? null, lifecycle: v.lifecycle, terminal: v.terminal === true, stopReason: v.stopReason ?? null, stage: v.stage, attempts: (v.attempts ?? []).length, revision: v.revision, commit: (v.receipts ?? []).find((r) => r.domain === "commit")?.ref ?? null, changes: v.changes?.files ?? 0, provider: v.task?.provider ?? null } : null))(ins?.task?.json);
+// Whether the engineering task waits for a person: an approval asked and not decided, or the stop that means it.
+const waitingOf = (v) => (v.approvals ?? []).some((a) => a.open === true) || v.stopReason === "HUMAN_APPROVAL_REQUIRED";
 
-const extraTasks = (ctx, ins, k) => (ins?.tasks?.json?.tasks ?? []).map((t) => t.id).filter((t) => t !== engTaskOf(ctx, k)).length;
+const engineeringOf = (ins) => ((v) => (v ? { id: v.task?.id ?? null, lifecycle: v.lifecycle, terminal: v.terminal === true, stopReason: v.stopReason ?? null, waiting: waitingOf(v), stage: v.stage, attempts: (v.attempts ?? []).length, revision: v.revision, commit: (v.receipts ?? []).find((r) => r.domain === "commit")?.ref ?? null, changes: v.changes?.files ?? 0, provider: v.task?.provider ?? null } : null))(ins?.task?.json);
+
+// Tasks a round left beside its ONE engineering task. A source repair starts nothing else, so any other task counts; a
+// goal starts a workflow of its own, so only a second ENGINEERING task counts there.
+const ENGINEERING_PROVIDER = "autonomous-engineering";
+
+const countedTasks = (ctx, ins) => (ins?.tasks?.json?.tasks ?? []).filter((t) => ctx.case.kind !== "engineering" || t.provider === ENGINEERING_PROVIDER);
+
+const extraTasks = (ctx, ins, k) => countedTasks(ctx, ins).map((t) => t.id).filter((t) => t !== (engTaskOf(ctx, k) ?? ins?.inspect?.task)).length;
+
+// The owners' records a round left, read back by the inspection: the engineering task and its actions, every task, the
+// goals and their plans -- each as its owner said it, through Orbit's own read commands.
+const actionsOf = (ins) => (ins?.task?.json?.actions ?? []).map((a) => ({ id: a.id, type: a.type, tool: a.tool ?? null, state: a.state, receipts: a.receipts ?? [], why: String(a.reason ?? "").slice(0, 160) }));
+
+const readBackOf = (ins, engineering) => ({ engineering, actions: actionsOf(ins), tasks: ins?.tasks?.json?.tasks ?? [], goals: ins?.goals?.json?.goals ?? [] });
+
+const deliveredBy = (rb) => rb.engineering?.lifecycle === "COMPLETED" && (rb.engineering.changes ?? 0) > 0;
+
+// What EVERY engineering case asks of those records, by what its goal expects -- before anything its own spec adds. A
+// record check reads an owner's word about its own state and never judges code: the hidden checks do that.
+export const GOAL_RECORDS = {
+  change: [{ id: "engineering-completed", says: "the change was delivered by an Orbit engineering task that completed on its own journal's proof", ok: (rb) => rb.engineering?.lifecycle === "COMPLETED" }],
+  blocked: [
+    { id: "unit-unresolved", says: "the goal planned the change and left it unresolved for a rule nobody gave", ok: (rb) => rb.goals.some((g) => (g.units ?? []).some((u) => u.state === "unresolved" && u.missing === true)) },
+    { id: "nothing-delivered", says: "no engineering task completed a change the goal gives no rule for", ok: (rb) => !deliveredBy(rb) },
+  ],
+};
+
+const recordRow = (rb) => (row) => ({ id: row.id, ok: row.ok(rb) === true, says: row.says });
+
+const specRecords = (ctx, rb) => (typeof ctx.spec?.records === "function" ? ctx.spec.records(rb).map((x) => ({ id: x.id, ok: x.ok === true, says: x.says ?? x.id })) : []);
+
+const recordsOf = (ctx, ins, engineering) => (ctx.case.kind !== "engineering" ? [] : ((rb) => [...(GOAL_RECORDS[ctx.case.measures?.expects ?? "change"] ?? []).map(recordRow(rb)), ...specRecords(ctx, rb)])(readBackOf(ins, engineering)));
 
 async function judgedRound(ctx, k, repair, ins) {
   const cand = ins?.inspect ? candidateOf(ctx, ins) : NO_CANDIDATE(ctx);
   docWritten(ctx.room, `rounds/${k}/candidate.json`, { ...cand, entries: undefined, patch: undefined });
   ctx.room.io.write(ctx.room.at("rounds", String(k), "candidate.patch"), cand.patch);
   const v = await verifiedCandidate(ctx, k, cand);
-  return { repair, ins, cand, v, engineering: engineeringOf(ins), extraTasks: extraTasks(ctx, ins, k) };
+  return { repair, ins, cand, v, engineering: engineeringOf(ins), extraTasks: extraTasks(ctx, ins, k), expects: ctx.case.measures?.expects ?? "change", records: recordsOf(ctx, ins, engineeringOf(ins)), ...deltaOf(baselineDocs(ctx, show(ctx))[0], v) };
 }
 
 async function verifiedCandidate(ctx, k, cand) {
   ctx.rec.stage(ctx.task, "TESTING", `round ${k}: the candidate, held to the hidden checks`);
   const before = Object.fromEntries((baselineDocs(ctx, show(ctx))[0]?.gates ?? []).map((g) => [g.id, g]));
-  return verifyAct(ctx, `cv-${shortRun(ctx)}-${k}`, `round ${k}: the candidate, verified`, cand.entries, { baseline: ctx.baseline, agentTests: cand.agentTests, beforeGates: before, between: () => ctx.rec.stage(ctx.task, "REGRESSION", `round ${k}: the gates and the candidate's own test`) });
+  return verifyAct(ctx, `cv-${shortRun(ctx)}-${k}`, `round ${k}: the candidate, verified`, cand.entries, { baseline: ctx.baseline, agentTests: cand.agentTests, beforeGates: before, candidate: true, between: () => ctx.rec.stage(ctx.task, "REGRESSION", `round ${k}: the gates and the candidate's own test`) });
 }
 
-const roundFailures = (r) => [...r.v.failures, ...r.cand.scope.map((f) => `scope:${f.id}:${f.rel ?? "-"}`), ...(r.extraTasks ? ["scope:EXTRA_TASK"] : [])];
+// What a candidate did to what held before it: the hidden groups and gates that held on the subject and fail on the
+// candidate (a REGRESSION, whatever else it fixed), and those that failed on the subject and hold now.
+const heldOf = (v) => new Map(v ? [...groupsOf(v), ...v.gates.map((g) => [`gate:${g.id}`, g.ok])] : []);
 
-export const isVerified = (r) => r.v.complete && r.v.failures.length === 0 && r.cand.scope.length === 0 && r.extraTasks === 0 && r.cand.changes.length > 0;
+export const deltaOf = (base, v) => ((was, now) => ({ regressed: [...was].filter(([k, ok]) => ok && now.get(k) === false).map(([k]) => k), improved: [...was].filter(([k, ok]) => !ok && now.get(k) === true).map(([k]) => k) }))(heldOf(base), heldOf(v));
+
+const roundFailures = (r) => [...r.v.failures, ...r.cand.scope.map((f) => `scope:${f.id}:${f.rel ?? "-"}`), ...(r.extraTasks ? ["scope:EXTRA_TASK"] : []), ...(r.records ?? []).filter((x) => !x.ok).map((x) => `record:${x.id}`)];
+
+const heldUp = (r) => r.v.complete && r.v.failures.length === 0 && r.cand.scope.length === 0 && r.extraTasks === 0 && (r.records ?? []).every((x) => x.ok);
+
+// Verified, by what the case asks: a CHANGE made, inside its scope, holding every hidden check, gate, regression test
+// and record check -- or, for a goal that must be refused, NOTHING delivered as done, every behaviour as it was, and
+// the refusal on the owners' records.
+const VERIFIED_BY = {
+  change: (r) => heldUp(r) && r.cand.changes.length > 0,
+  blocked: (r) => heldUp(r) && !(r.engineering?.lifecycle === "COMPLETED" && r.cand.changes.length > 0),
+};
+
+export const isVerified = (r) => VERIFIED_BY[r.expects ?? "change"](r);
 
 // What kept a round from being a round of repair -- the environment, the provider, the network -- and never a host that
 // stopped on its own budget (the budget rows decide that) or a candidate that failed (the verifier does).
-const hostError = (r) => ((e) => (e && e.cause !== "BUDGET_EXHAUSTED" ? e : null))(r.repair?.host ? hostEnd(r.repair.host, { timedOut: r.repair.container?.timedOut, exit: r.repair.runner?.exit }) : null);
+const hostError = (r) => ((e) => (e && e.cause !== "BUDGET_EXHAUSTED" ? e : null))(r.repair?.host ? hostEnd(r.repair.host, { timedOut: r.repair.container?.timedOut || r.repair.container?.held, exit: r.repair.runner?.exit }) : null);
 
-const roundError = (r) => r.repair?.error ?? (r.repair?.runner?.setup === "EGRESS" ? { cause: "ENVIRONMENT", says: r.repair.runner.why } : null) ?? hostError(r) ?? (r.v.problem ? { cause: "ENVIRONMENT", says: r.v.problem } : null);
+// A candidate's verification that did not run as declared: refused is the environment; anything else (a container
+// with no exit) is the infrastructure. A candidate's own time and memory are never here -- verify.mjs counts them as
+// its failures.
+const verifyError = (v) => (v.problem ? { cause: (v.problemEnds ?? ["REFUSED"]).includes("REFUSED") ? "ENVIRONMENT" : "INFRASTRUCTURE", says: v.problem } : null);
+
+const roundError = (r) => r.repair?.error ?? (r.repair?.runner?.setup === "EGRESS" ? { cause: "ENVIRONMENT", says: r.repair.runner.why } : null) ?? hostError(r) ?? verifyError(r.v);
+
+// The candidates earlier rounds left, and how each failed: a round that leaves one of them again is no progress.
+const earlierOf = (ctx, k) => Array.from({ length: k - 1 }, (_, i) => docRead(ctx.room, `rounds/${i + 1}/outcome.json`)).filter(Boolean).map((o) => ({ patchDigest: o.patchDigest, signature: o.signature ?? undefined }));
+
+// Stopped at its deadline, not held by a person (a held run ends as the person held it) and not ended by its task.
+const cutShortOf = (r) => r.repair?.container?.timedOut === true && r.repair.container.held !== true && r.engineering?.terminal !== true;
+
+const roundFacts = (ctx, k, r, before) => ({ frozenIntact: frozenIntact(ctx), roundError: roundError(r), verified: isVerified(r), changed: r.cand.changes.length > 0, engineering: r.engineering, signature: before.signature, previous: before.previous, left: leftOf(ctx, show(ctx)), scope: [...r.cand.scope, ...(r.extraTasks ? [{ id: "EXTRA_TASK" }] : [])], cutShort: cutShortOf(r), patchDigest: r.cand.patchDigest, earlier: earlierOf(ctx, k), expects: r.expects ?? "change", ...(ctx.case.kind === "engineering" ? { standing: null } : {}) });
+
+const signatureOrNot = (failures) => (failures.length ? signatureOf(failures) : undefined);
 
 function concluded(ctx, k, r) {
-  const previous = show(ctx).attempts.map((a) => a.failureSignature).filter(Boolean);
-  const failures = roundFailures(r);
-  const signature = failures.length ? signatureOf(failures) : undefined;
-  ctx.rec.attemptComplete(ctx.task, isVerified(r) ? "succeeded" : "failed", signature);
-  return nextOf({ frozenIntact: frozenIntact(ctx), roundError: roundError(r), verified: isVerified(r), changed: r.cand.changes.length > 0, engineering: r.engineering, signature, previous, left: leftOf(ctx, show(ctx)), scope: [...r.cand.scope, ...(r.extraTasks ? [{ id: "EXTRA_TASK" }] : [])] });
+  const before = { previous: show(ctx).attempts.map((a) => a.failureSignature).filter(Boolean), signature: signatureOrNot(roundFailures(r)) };
+  ctx.rec.attemptComplete(ctx.task, isVerified(r) ? "succeeded" : "failed", before.signature);
+  const facts = roundFacts(ctx, k, r, before);
+  const next = nextOf(facts);
+  return (docWritten(ctx.room, `rounds/${k}/outcome.json`, { round: k, signature: facts.signature ?? null, patchDigest: facts.patchDigest, regressed: r.regressed, improved: r.improved, records: r.records ?? [], cutShort: facts.cutShort, next: next.id, outcome: next.outcome, class: next.class }), next);
 }
 
-const endingFor = (next, r) => ({ end: next.end, stop: next.stop, needs: "environment", outcome: next.outcome, summary: `${next.outcome}: ${next.says}${r.cand.patch ? ` · patch ${r.cand.patchDigest.slice(0, 12)}` : ""}` });
+// An engineering case's outcome in its own words: the goal reached and verified is PASS, and refused is FAIL.
+const GOAL_WORDS = { REPAIRED_VERIFIED: "PASS", REPAIR_REJECTED: "FAIL" };
+
+const wordOf = (ctx, outcome) => (ctx.case.kind === "engineering" ? GOAL_WORDS[outcome] ?? outcome : outcome);
+
+const endingFor = (ctx, next, r) => ((outcome) => ({ end: next.end, stop: next.stop, needs: next.needs ?? "environment", outcome, next: next.id, class: next.class, summary: `${outcome}: ${next.says}${r.cand.patch ? ` · patch ${r.cand.patchDigest.slice(0, 12)}` : ""}` }))(wordOf(ctx, next.outcome));
 
 function linkedFiles(ctx, r) {
   for (const c of r.cand.changes.filter((x) => safeRel(x.rel))) ctx.rec.file(ctx.task, { path: c.rel, change: c.change, added: c.added, removed: c.removed });
@@ -240,7 +367,17 @@ function linkedFiles(ctx, r) {
 function roundEnded(ctx, k, r, next) {
   verificationRows(ctx, `round-${k}`, r.v, `test:cv-${shortRun(ctx)}-${k}`);
   linkedFiles(ctx, r);
-  return ended(ctx, endingFor(next, r));
+  if (next.id === "VERIFIED") docWritten(ctx.room, "verified.json", verifiedDoc(ctx, k, r));
+  return ended(ctx, endingFor(ctx, next, r));
+}
+
+// THE VERIFIED CANDIDATE: everything a person needs to read what was repaired and to apply it themselves -- never
+// applied here. It stays in the run's room; the developer's checkout is a person's to write (PRIMARY_CHECKOUT_WRITE).
+function verifiedDoc(ctx, k, r) {
+  const base = baselineDocs(ctx, show(ctx))[0] ?? null;
+  const host = r.repair?.host ?? null;
+  const patch = ctx.room.at("rounds", String(k), "candidate.patch");
+  return { schema: 1, run: ctx.run.id, task: ctx.task, at: new Date().toISOString(), case: { id: ctx.case.id, version: ctx.case.version, suite: ctx.manifest.benchmark.suite, digest: ctx.manifest.benchmark.digest }, variant: ctx.manifest.benchmark.variant, source: { branch: ctx.manifest.source.branch, commit: ctx.manifest.source.commit, digest: ctx.manifest.source.digest }, subject: { digest: ctx.manifest.subject.digest, commit: ctx.manifest.subject.commit }, baseline: { signature: base?.signature ?? null, failingGroups: [...new Set((base?.hidden.checks ?? []).filter((c) => !c.ok).map((c) => c.group))] }, engineering: { task: r.engineering?.id ?? null, lifecycle: r.engineering?.lifecycle ?? null, commit: r.engineering?.commit ?? null, where: "the run's runner store" }, host: { basis: hostBasisOf(ctx.manifest.config), model: host?.model ?? null, session: host?.session ?? null, costUsd: host?.costUsd ?? null, numbers: "REPORTED by the host, never verified" }, candidate: { round: k, patch, patchDigest: r.cand.patchDigest, files: r.cand.changes, agentTests: r.cand.agentTests }, verification: { digest: r.v.digest, hidden: `${r.v.hidden.checks.filter((c) => c.ok).length}/${r.v.hidden.checks.length}`, gates: r.v.gates.map((g) => ({ id: g.id, ok: g.ok, tests: g.tap?.tests ?? null })), agent: r.v.agent ? { tests: r.v.agent.rels, failsBefore: r.v.agent.before.failed, passesAfter: r.v.agent.after.ok } : null, regressed: r.regressed, improved: r.improved }, reproduce: [`git clone ${ctx.checkoutDir} <scratch> && git -C <scratch> apply ${patch}`, `node benchmark/run.mjs run --like=${ctx.run.id}`, `node benchmark/run.mjs report ${ctx.run.id}`] };
 }
 
 const BUDGET_DOOR = /BUDGET_(ATTEMPTS|MINUTES|ACTIONS)|budget/i;

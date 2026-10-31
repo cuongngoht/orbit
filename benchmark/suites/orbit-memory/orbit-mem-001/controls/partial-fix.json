@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "partial-fix",
+  "about": "The controlled fault with only the day repaired: an unnamed observation still misses a named one on the same machine and day, so the verifier must still fail it.",
+  "mutations": [
+    {
+      "id": "day-restored",
+      "file": "src/memory/session.mjs",
+      "find": "export const dayOf = (run) => String(run?.at ?? \"\").slice(0, 13);",
+      "replace": "export const dayOf = (run) => String(run?.at ?? \"\").slice(0, 10);",
+      "count": 1
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "allow-all",
+  "about": "A comparison that finds every candidate better: every check that must refuse fails.",
+  "mutations": [
+    {
+      "id": "allow-all",
+      "file": "src/improvement/evaluation.mjs",
+      "find": "export const verdictOf = (e) => ((c) => ((row) => ({ verdict: row.verdict, because: row.because(c), regressions: c.regressions }))(COMPARE.find((r) => r.when(c))))(factsOf(e));",
+      "replace": "export const verdictOf = () => ({ verdict: \"BETTER\", because: \"every candidate is better\", regressions: [] });",
+      "count": 1
+    }
+  ]
+}

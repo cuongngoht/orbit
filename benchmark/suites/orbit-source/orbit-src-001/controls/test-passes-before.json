@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "id": "test-passes-before",
+  "about": "The reference repair with a 'regression test' that passes before the change as well as after: it proves nothing, so the candidate is refused.",
+  "mutations": [
+    {
+      "id": "min-threshold-restored",
+      "file": "src/improvement/oracle.mjs",
+      "find": "gte: (a, b) => b > a, gt: (a, b) => b > a,",
+      "replace": "gte: (a, b) => b < a, gt: (a, b) => b < a,",
+      "count": 1
+    },
+    {
+      "id": "max-threshold-restored",
+      "file": "src/improvement/oracle.mjs",
+      "find": "lte: (a, b) => b < a, lt: (a, b) => b < a,",
+      "replace": "lte: (a, b) => b > a, lt: (a, b) => b > a,",
+      "count": 1
+    },
+    {
+      "id": "optional-check-restored",
+      "file": "src/improvement/oracle.mjs",
+      "find": "fails: (p, c) => p.required && !c",
+      "replace": "fails: (p, c) => p.required && (!c || !c.required)",
+      "count": 1
+    }
+  ],
+  "files": [
+    {
+      "rel": "test/improvement-oracle-proves-nothing.test.mjs",
+      "lines": [
+        "import assert from \"node:assert/strict\";",
+        "import { test } from \"node:test\";",
+        "test(\"always\", () => {",
+        "  assert.equal(1, 1);",
+        "});"
+      ]
+    }
+  ],
+  "deletes": []
+}

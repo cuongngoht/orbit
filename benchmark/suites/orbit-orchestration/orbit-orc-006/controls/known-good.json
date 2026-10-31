@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "known-good",
+  "about": "A reference repair, kept only to prove this verifier CAN pass the case. It is never handed to a runner: benchmark/ is not part of the subject. A whole UUID is read as one id, in the line that already reads a long hash as one.",
+  "mutations": [
+    {
+      "id": "uuid-read-as-an-id",
+      "file": "src/orchestration/failure.mjs",
+      "find": "(l) => l.replace(/\\b[0-9a-f]{8,}\\b/gi, \"[h]\"),",
+      "replace": "(l) => l.replace(/\\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\\b/gi, \"[h]\").replace(/\\b[0-9a-f]{8,}\\b/gi, \"[h]\"),",
+      "count": 1
+    }
+  ]
+}

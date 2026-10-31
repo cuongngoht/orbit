@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "allow-all",
+  "about": "A task journal reader that takes every line for a record, torn or not: every check that must leave the fragment unread fails.",
+  "mutations": [
+    {
+      "id": "allow-all",
+      "file": "src/task/store.mjs",
+      "find": "export const journalLine = (line) => ((r) => (r && typeof r === \"object\" && typeof r.kind === \"string\" ? r : null))(parsedLine(line));",
+      "replace": "export const journalLine = (line) => parsedLine(line) ?? { kind: \"torn\", line };",
+      "count": 1
+    }
+  ]
+}

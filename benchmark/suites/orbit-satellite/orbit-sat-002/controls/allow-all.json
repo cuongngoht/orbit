@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "allow-all",
+  "about": "A judge that accepts every graph: every check that must refuse fails.",
+  "mutations": [
+    {
+      "id": "allow-all",
+      "file": "satellite/src/planning/graph.mjs",
+      "find": "export const graphFinding = (c) => ((r) => (r ? { rule: r.rule, say: r.say(c) } : null))(GRAPH_RULES.find((x) => x.fails(c)));",
+      "replace": "export const graphFinding = () => null;",
+      "count": 1
+    }
+  ]
+}

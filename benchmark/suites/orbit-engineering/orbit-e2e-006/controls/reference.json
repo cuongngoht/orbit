@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "id": "reference",
+  "about": "A reference solution of the goal with a regression test that fails before it and passes after, made by the scripted host in the engineering task's own workspace. Kept only to prove the verifier and Orbit's goal path CAN pass this case; it is never handed to a coding host.",
+  "mutations": [
+    {
+      "id": "keep",
+      "file": "src/orders.mjs",
+      "find": "currency: input.currency ?? \"USD\", ",
+      "replace": "currency: input.currency ?? \"USD\", note: String(input.note ?? \"\"), ",
+      "count": 1
+    },
+    {
+      "id": "note-of",
+      "file": "src/ui.mjs",
+      "find": "export const renderOrder",
+      "replace": "const noteOf = (order) => (order.note ? [`  <p class=\"note\">${escaped(order.note)}</p>`] : []);\n\nexport const renderOrder",
+      "count": 1
+    },
+    {
+      "id": "draw",
+      "file": "src/ui.mjs",
+      "find": "`  <p class=\"state\">${escaped(order.state)}</p>`, ",
+      "replace": "`  <p class=\"state\">${escaped(order.state)}</p>`, ...noteOf(order), ",
+      "count": 1
+    }
+  ],
+  "files": [
+    {
+      "rel": "test/order-note.test.mjs",
+      "lines": [
+        "import assert from \"node:assert/strict\";",
+        "import { mkdtempSync, rmSync } from \"node:fs\";",
+        "import { tmpdir } from \"node:os\";",
+        "import { join } from \"node:path\";",
+        "import { test } from \"node:test\";",
+        "import { handle } from \"../src/api.mjs\";",
+        "import { openStore } from \"../src/store.mjs\";",
+        "import { renderOrder } from \"../src/ui.mjs\";",
+        "",
+        "function fresh(t) {",
+        "  const dir = mkdtempSync(join(tmpdir(), \"orders-\"));",
+        "  t.after(() => rmSync(dir, { recursive: true, force: true }));",
+        "  return dir;",
+        "}",
+        "",
+        "test(\"an order keeps its note across a restart and the view draws it escaped\", (t) => {",
+        "  const dir = fresh(t);",
+        "  const id = handle(openStore(dir), { method: \"POST\", path: \"/orders\", body: { lines: [{ qty: 1, unitMinor: 100 }], note: \"ring twice & wait\" } }).body.id;",
+        "  const order = handle(openStore(dir), { method: \"GET\", path: `/orders/${id}` }).body;",
+        "  assert.equal(order.note, \"ring twice & wait\");",
+        "  assert.match(renderOrder(order), /<p class=\"note\">ring twice &amp; wait<\\/p>/);",
+        "});"
+      ]
+    }
+  ],
+  "deletes": []
+}

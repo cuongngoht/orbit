@@ -19,7 +19,7 @@
 //                                     declared checks (npm run lint, npm run test) in the runner container, no host
 //   node benchmark/run.mjs run <case> [--variant=real|controlled-fault] [--repair] [--source=head|worktree]
 //                                     [--seed=<n>] [--model=<id>] [--rounds=<n>] [--minutes=<n>] [--usd=<n>]
-//                                     [--credential=<NAME>] [--ca-file=<pem>]
+//                                     [--credential=<NAME>] [--ca-file=<pem>] [--host=session:<label>]
 //                                     one case on the source of this branch: a source case frozen, verified twice,
 //                                     diagnosed and -- with --repair -- repaired by Orbit and verified again; a QA case's
 //                                     application set up with its own variant planted and a coding host's investigation
@@ -34,13 +34,22 @@
 //   node benchmark/run.mjs resume <bnr-…>
 //                                     a run carried on from where its task's journal says it stands: a verification or a
 //                                     setup is done again; a repair round or a QA host's round is read back, never sent again
-//   node benchmark/run.mjs controls <case> [--only=<control>] [--source=head|worktree]
+//   node benchmark/run.mjs controls <case> [--only=<control>] [--skip-engine] [--source=head|worktree]
 //                                     what the verifier must pass and must fail: for a source case, a planted fault, a
-//                                     partial fix, allow-all and reject-all in the verifier's own containers; for a QA
-//                                     case, a whole run with each scripted host -- reference, idle, false-alarm
+//                                     partial fix, allow-all and reject-all in the verifier's own containers; its repair
+//                                     controls -- a reference candidate the judge must pass and every way of cheating it
+//                                     must refuse by name, and (unless --skip-engine) a scripted host driving Orbit's own
+//                                     engineering loop with no model; for a QA case, a whole run with each scripted
+//                                     host -- reference, idle, false-alarm
 //   node benchmark/run.mjs cleanup <bnr-…> [--scratch]
 //                                     the run's containers and networks, by its label only; --scratch its scratch trees
 //   node benchmark/run.mjs where      where the runs are kept, and which there are
+//   node benchmark/run.mjs metrics [--suite=<suite>] [--case=<case>] [--since=<iso date>] [--by=revision]
+//                                     what the kept runs show, each metric a numerator over a denominator: success,
+//                                     self-healing, detection, false alarms, regressions, interventions, rounds, time
+//                                     and REPORTED cost per verified outcome, reproducibility, the verifier's own
+//                                     controls -- apart by host basis (none, scripted, coding-host); --by=revision adds
+//                                     each case's outcome by source commit
 //
 // Every command takes --json. A run is recorded as an Orbit task (provider `benchmark`) in this checkout's project, so
 // Orbit Live and Mission Control show it, and a person pauses or cancels it there. Its evidence is kept in the machine

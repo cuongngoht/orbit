@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "allow-all",
+  "about": "A learner that keeps every finding as a lesson: every check that must stay an observation fails.",
+  "mutations": [
+    {
+      "id": "allow-all",
+      "file": "src/learn/confidence.mjs",
+      "find": "export const worthKeeping = (finding, state) => state === \"rejected\" || finding.kind === \"said\" || finding.for >= 2;",
+      "replace": "export const worthKeeping = () => true;",
+      "count": 1
+    }
+  ]
+}

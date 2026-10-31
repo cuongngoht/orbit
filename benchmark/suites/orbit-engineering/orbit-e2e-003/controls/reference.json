@@ -1,0 +1,102 @@
+{
+  "schema": 1,
+  "id": "reference",
+  "about": "A reference solution of the goal with a regression test that fails before it and passes after, made by the scripted host in the engineering task's own workspace. Kept only to prove the verifier and Orbit's goal path CAN pass this case; it is never handed to a coding host.",
+  "mutations": [
+    {
+      "id": "header",
+      "file": "src/money.mjs",
+      "find": "// Money in minor units (cents): a line's total, an order's total after a whole-percentage discount, and a total\n// formatted in dollars.",
+      "replace": "// Money in minor units (cents for USD and EUR, yen for JPY): a line's total, an order's total after a whole-percentage\n// discount, and a total formatted for its currency.",
+      "count": 1
+    },
+    {
+      "id": "format",
+      "file": "src/money.mjs",
+      "find": "export const formatted = (minor) => `$${(minor / 100).toFixed(2)}`;",
+      "replace": "const currencyOf = (code) => CURRENCIES[code] ?? CURRENCIES.USD;\n\nexport const formatted = (minor, code = \"USD\") => ((c) => `${c.symbol}${(minor / 10 ** c.minor).toFixed(c.minor)}`)(currencyOf(code));",
+      "count": 1
+    },
+    {
+      "id": "import",
+      "file": "src/orders.mjs",
+      "find": "import { orderTotal } from \"./money.mjs\";",
+      "replace": "import { CURRENCIES, orderTotal } from \"./money.mjs\";",
+      "count": 1
+    },
+    {
+      "id": "api",
+      "file": "src/api.mjs",
+      "find": "formatted(order.totalMinor)",
+      "replace": "formatted(order.totalMinor, order.currency)",
+      "count": 1
+    },
+    {
+      "id": "view",
+      "file": "src/ui.mjs",
+      "find": "formatted(order.totalMinor)",
+      "replace": "formatted(order.totalMinor, order.currency)",
+      "count": 1
+    },
+    {
+      "id": "currencies",
+      "file": "src/money.mjs",
+      "find": "export const lineTotal",
+      "replace": "export const CURRENCIES = { USD: { minor: 2, symbol: \"$\" }, EUR: { minor: 2, symbol: \"€\" }, JPY: { minor: 0, symbol: \"¥\" } };\n\nexport const lineTotal",
+      "count": 1
+    },
+    {
+      "id": "validate",
+      "file": "src/orders.mjs",
+      "find": "? \"percent\" : null);",
+      "replace": "? \"percent\" : !Object.hasOwn(CURRENCIES, input.currency ?? \"USD\") ? \"currency\" : null);",
+      "count": 1
+    },
+    {
+      "id": "keep",
+      "file": "src/orders.mjs",
+      "find": "percent: input.percent ?? 0, ",
+      "replace": "percent: input.percent ?? 0, currency: input.currency ?? \"USD\", ",
+      "count": 1
+    },
+    {
+      "id": "invoice",
+      "file": "src/worker.mjs",
+      "find": "amountMinor: order.totalMinor, ",
+      "replace": "amountMinor: order.totalMinor, currency: order.currency, ",
+      "count": 1
+    }
+  ],
+  "files": [
+    {
+      "rel": "test/currency-orders.test.mjs",
+      "lines": [
+        "import assert from \"node:assert/strict\";",
+        "import { mkdtempSync, rmSync } from \"node:fs\";",
+        "import { tmpdir } from \"node:os\";",
+        "import { join } from \"node:path\";",
+        "import { test } from \"node:test\";",
+        "import { handle } from \"../src/api.mjs\";",
+        "import { openStore } from \"../src/store.mjs\";",
+        "import { renderOrder } from \"../src/ui.mjs\";",
+        "",
+        "function fresh(t) {",
+        "  const dir = mkdtempSync(join(tmpdir(), \"orders-\"));",
+        "  t.after(() => rmSync(dir, { recursive: true, force: true }));",
+        "  return dir;",
+        "}",
+        "",
+        "test(\"an order keeps its currency, shows its total in it, and a currency nobody keeps is refused\", (t) => {",
+        "  const store = openStore(fresh(t));",
+        "  const made = (currency) => handle(store, { method: \"POST\", path: \"/orders\", body: { lines: [{ qty: 2, unitMinor: 1050 }], currency } });",
+        "  const eur = made(\"EUR\").body;",
+        "  assert.deepEqual([eur.currency, eur.total], [\"EUR\", \"€21.00\"]);",
+        "  assert.equal(made(\"JPY\").body.total, \"¥2100\");",
+        "  assert.match(renderOrder(eur), /<p class=\"total\">€21\\.00<\\/p>/);",
+        "  assert.equal(made(\"GBP\").status, 400);",
+        "});"
+      ]
+    }
+  ],
+  "deletes": []
+}

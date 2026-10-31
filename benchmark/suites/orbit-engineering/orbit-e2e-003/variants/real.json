@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "id": "real",
+  "about": "Every order is in dollars: no currency is kept, validated, formatted or carried to an invoice, and its public test is gone.",
+  "mutations": [
+    {
+      "id": "header",
+      "file": "src/money.mjs",
+      "find": "// Money in minor units (cents for USD and EUR, yen for JPY): a line's total, an order's total after a whole-percentage\n// discount, and a total formatted for its currency.",
+      "replace": "// Money in minor units (cents): a line's total, an order's total after a whole-percentage discount, and a total\n// formatted in dollars.",
+      "count": 1
+    },
+    {
+      "id": "currencies",
+      "file": "src/money.mjs",
+      "find": "export const CURRENCIES = { USD: { minor: 2, symbol: \"$\" }, EUR: { minor: 2, symbol: \"€\" }, JPY: { minor: 0, symbol: \"¥\" } };\n\n",
+      "replace": "",
+      "count": 1
+    },
+    {
+      "id": "format",
+      "file": "src/money.mjs",
+      "find": "const currencyOf = (code) => CURRENCIES[code] ?? CURRENCIES.USD;\n\nexport const formatted = (minor, code = \"USD\") => ((c) => `${c.symbol}${(minor / 10 ** c.minor).toFixed(c.minor)}`)(currencyOf(code));",
+      "replace": "export const formatted = (minor) => `$${(minor / 100).toFixed(2)}`;",
+      "count": 1
+    },
+    {
+      "id": "import",
+      "file": "src/orders.mjs",
+      "find": "import { CURRENCIES, orderTotal } from \"./money.mjs\";",
+      "replace": "import { orderTotal } from \"./money.mjs\";",
+      "count": 1
+    },
+    {
+      "id": "validate",
+      "file": "src/orders.mjs",
+      "find": " : !Object.hasOwn(CURRENCIES, input.currency ?? \"USD\") ? \"currency\"",
+      "replace": "",
+      "count": 1
+    },
+    {
+      "id": "keep",
+      "file": "src/orders.mjs",
+      "find": "currency: input.currency ?? \"USD\", ",
+      "replace": "",
+      "count": 1
+    },
+    {
+      "id": "api",
+      "file": "src/api.mjs",
+      "find": "formatted(order.totalMinor, order.currency)",
+      "replace": "formatted(order.totalMinor)",
+      "count": 1
+    },
+    {
+      "id": "view",
+      "file": "src/ui.mjs",
+      "find": "formatted(order.totalMinor, order.currency)",
+      "replace": "formatted(order.totalMinor)",
+      "count": 1
+    },
+    {
+      "id": "invoice",
+      "file": "src/worker.mjs",
+      "find": "currency: order.currency, ",
+      "replace": "",
+      "count": 1
+    },
+    {
+      "id": "readme",
+      "file": "README.md",
+      "find": "- `src/money.mjs` — line and order totals, currencies, formatting.",
+      "replace": "- `src/money.mjs` — line and order totals, formatting.",
+      "count": 1
+    }
+  ],
+  "files": [],
+  "deletes": [
+    "test/currency.test.mjs"
+  ]
+}

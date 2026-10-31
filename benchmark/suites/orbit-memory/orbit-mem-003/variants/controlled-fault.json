@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "Two planted defects in learning, applied only to the benchmark copy of the source: the shared tally counts runs where it should count sessions, and the ladder validates a finding one session supports.",
+  "mutations": [
+    {
+      "id": "runs-for-sessions",
+      "file": "src/learn/families/shared.mjs",
+      "find": "return { for: sessions.length, hosts: hostNames.length,",
+      "replace": "return { for: runs.length, hosts: hostNames.length,",
+      "count": 1
+    },
+    {
+      "id": "one-session-validated",
+      "file": "src/learn/confidence.mjs",
+      "find": "when: (f) => f.for >= 2 && f.against === 0,",
+      "replace": "when: (f) => f.for >= 1 && f.against === 0,",
+      "count": 1
+    }
+  ]
+}

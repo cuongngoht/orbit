@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "allow-all",
+  "about": "An authorize that never meets a boundary: every action is AUTO, so every check that must stop for a person fails.",
+  "mutations": [
+    {
+      "id": "allow-all",
+      "file": "src/protected/authorize.mjs",
+      "find": "const row = BOUNDARIES.find((b) => b.when(a));",
+      "replace": "const row = null;",
+      "count": 1
+    }
+  ]
+}

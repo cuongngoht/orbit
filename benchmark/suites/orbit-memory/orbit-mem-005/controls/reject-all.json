@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "reject-all",
+  "about": "A freshness check that calls every fact stale: every check that must keep a fact fresh, or say it cannot tell, fails.",
+  "mutations": [
+    {
+      "id": "reject-all",
+      "file": "src/freshness.mjs",
+      "find": "if (states.includes(STALE)) return STALE;",
+      "replace": "return STALE;",
+      "count": 1
+    }
+  ]
+}

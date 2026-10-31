@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "partial-fix",
+  "about": "The controlled fault with only the state defect repaired: a failure as before still counts as the pass completion needs, so the verifier must still fail it.",
+  "mutations": [
+    {
+      "id": "as-before-restored",
+      "file": "src/orchestration/obligations.mjs",
+      "find": "{ state: \"failed-as-before\", when: (r) => r.state === \"failed\", settled: true },",
+      "replace": "{ state: \"failed-as-before\", when: (r) => r.word === AS_BEFORE, settled: true },",
+      "count": 1
+    }
+  ]
+}

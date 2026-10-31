@@ -1,0 +1,152 @@
+{
+  "schema": 1,
+  "kind": "engineering",
+  "id": "ORBIT-E2E-006",
+  "version": "1.0.0",
+  "baseline": "FAIL",
+  "fixture": "orders",
+  "title": "An order keeps a note, and the view draws it escaped",
+  "goal": "a feature across the API, the durable store and the HTML view taken to a verified change through Orbit's goal entry: an order created with a note keeps it -- read back, and after the store is opened again -- and the view draws it escaped in its own paragraph, and none for an order without one",
+  "measures": {
+    "kind": "engineering",
+    "capability": "engineering.goal.feature",
+    "expects": "change"
+  },
+  "subject": {
+    "paths": [
+      "src/api.mjs",
+      "src/store.mjs",
+      "src/ui.mjs"
+    ],
+    "exports": {
+      "src/api.mjs": [
+        "handle"
+      ],
+      "src/store.mjs": [
+        "openStore"
+      ],
+      "src/ui.mjs": [
+        "renderOrder"
+      ]
+    }
+  },
+  "request": "request.md",
+  "reproduce": "every failing check names the requests or messages it sent, in order, the behaviour the goal asks for and what came back; the probe runs the target's own modules in its own process, over a store of its own under the container's /tmp",
+  "acceptance": {
+    "owner": "verifier",
+    "spec": "verifier/spec.mjs",
+    "probe": "verifier/probe.mjs",
+    "samples": 48
+  },
+  "scope": {
+    "allow": [
+      "src/*.mjs",
+      "test/*.test.mjs"
+    ],
+    "deny": [],
+    "imports": [
+      "./*.mjs"
+    ]
+  },
+  "checks": {
+    "gates": [
+      {
+        "id": "public-tests",
+        "argv": [
+          "node",
+          "--test",
+          "--test-reporter=tap",
+          "test/money.test.mjs",
+          "test/orders.test.mjs",
+          "test/cancel.test.mjs",
+          "test/currency.test.mjs",
+          "test/worker.test.mjs",
+          "test/invoice.test.mjs",
+          "test/dedupe.test.mjs",
+          "test/ui.test.mjs"
+        ]
+      }
+    ],
+    "agentTests": {
+      "required": true,
+      "pattern": "^test/[^/]+\\.test\\.mjs$"
+    }
+  },
+  "limits": {
+    "rounds": 2,
+    "minutes": 150,
+    "usd": 15,
+    "runner": {
+      "cpus": 2,
+      "memoryMb": 4096,
+      "pids": 2048,
+      "minutes": 90,
+      "outputMb": 16
+    },
+    "verifier": {
+      "cpus": 2,
+      "memoryMb": 1024,
+      "pids": 512,
+      "seconds": 300
+    },
+    "engineering": {
+      "attempts": 6,
+      "actions": 120
+    }
+  },
+  "artifacts": [
+    "manifest",
+    "baseline",
+    "candidate-patch",
+    "verification",
+    "host-result",
+    "report"
+  ],
+  "cleanup": {
+    "containers": "run-label",
+    "networks": "run-label",
+    "scratch": "after-run"
+  },
+  "variants": {
+    "real": {
+      "mutations": "variants/real.json"
+    },
+    "solved": {}
+  },
+  "controls": [
+    {
+      "id": "solved",
+      "variant": "solved",
+      "expect": "PASS"
+    },
+    {
+      "id": "real",
+      "variant": "real",
+      "expect": "FAIL"
+    },
+    {
+      "id": "half",
+      "variant": "real",
+      "file": "controls/half.json",
+      "expect": "FAIL"
+    }
+  ],
+  "repairs": [
+    {
+      "id": "reference",
+      "variant": "real",
+      "candidate": "controls/reference.json",
+      "through": "engine",
+      "expect": "PASS",
+      "script": "goal"
+    },
+    {
+      "id": "idle",
+      "variant": "real",
+      "candidate": "controls/reference.json",
+      "through": "engine",
+      "expect": "NO_PROGRESS",
+      "script": "idle"
+    }
+  ]
+}

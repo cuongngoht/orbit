@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "allow-all",
+  "about": "A completion gate that holds whatever the journal shows: every check that must refuse completion fails.",
+  "mutations": [
+    {
+      "id": "allow-all",
+      "file": "src/orchestration/verification.mjs",
+      "find": "export const unmet = (lw) => COMPLETION.filter((row) => !row.holds(lw)).map((row) => ({ id: row.id, say: row.say }));",
+      "replace": "export const unmet = () => [];",
+      "count": 1
+    }
+  ]
+}

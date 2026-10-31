@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "Two planted defects in how independent sessions are counted, applied only to the benchmark copy of the source: a regression counts failing runs instead of the independent sessions they came from, and a session mark a shell can set is counted as a session of its own.",
+  "mutations": [
+    {
+      "id": "regression-counts-runs",
+      "file": "src/improvement/monitor.mjs",
+      "find": "{ word: \"REGRESSED\", when: (f) => independent(f.failing) >= f.min,",
+      "replace": "{ word: \"REGRESSED\", when: (f) => f.failing.length >= f.min,",
+      "count": 1
+    },
+    {
+      "id": "session-mark-counted",
+      "file": "src/improvement/signals.mjs",
+      "find": "export const sessionKeys = (runs) => [...new Set(runs.map(sessionId))];",
+      "replace": "export const sessionKeys = (runs) => [...new Set(runs.map((r) => r.session ?? sessionId(r)))];",
+      "count": 1
+    }
+  ]
+}

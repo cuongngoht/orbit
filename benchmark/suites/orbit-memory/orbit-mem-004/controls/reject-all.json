@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "reject-all",
+  "about": "An authority ladder that makes every claim an inference: every check that must rely on a claim more fails.",
+  "mutations": [
+    {
+      "id": "reject-all",
+      "file": "src/knowledge/vocab.mjs",
+      "find": "export const authorityOf = (claim) => AUTHORITY.find((row) => row.when({ ...claim, measured: claim.measured ?? claim.status }));",
+      "replace": "export const authorityOf = () => AUTHORITY[AUTHORITY.length - 1];",
+      "count": 1
+    }
+  ]
+}

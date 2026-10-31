@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "reject-all",
+  "about": "An attribution that leaves every call unattributed and reads no run reference off anything: every check that must name a word the evidence earned, or read an envelope, fails.",
+  "mutations": [
+    {
+      "id": "every-call-unattributed",
+      "file": "src/attribution.mjs",
+      "find": "{ word: \"CONFLICTING\", when: (s) => s.agents.length > 1 },",
+      "replace": "{ word: \"UNATTRIBUTED\", when: () => true },",
+      "count": 1
+    },
+    {
+      "id": "no-reference-read",
+      "file": "src/attribution.mjs",
+      "find": "return runRefOf(onlyOne(t, MISSION_FIELD), onlyOne(t, RUN_FIELD));",
+      "replace": "return null;",
+      "count": 1
+    }
+  ]
+}

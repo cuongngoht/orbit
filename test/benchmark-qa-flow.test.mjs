@@ -14,6 +14,9 @@ import { test } from "node:test";
 import { frozenRun, resumedRun } from "../benchmark/lib/core/context.mjs";
 import { carriedQa, withTruth } from "../benchmark/lib/qa/flow.mjs";
 import { sealed } from "./home.mjs";
+import { takeTurn } from "./benchmark-turn.mjs";
+
+await takeTurn();
 
 const ROOT = join(import.meta.dirname, "..");
 

@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "id": "reject-all",
+  "about": "A crossing that refuses everybody, and a fingerprint no two asks ever share: every check that must let an action through, or know it again, fails.",
+  "mutations": [
+    {
+      "id": "every-crossing-refused",
+      "file": "src/protected/authorize.mjs",
+      "find": "if (isAuto(verdict)) return { allowed: true, by: \"AUTO\", says: \"autonomous\" };",
+      "replace": "return { allowed: false, by: \"DENIED\", says: \"refused\" };",
+      "count": 1
+    },
+    {
+      "id": "request-fingerprint-never-again",
+      "file": "src/protected/authorize.mjs",
+      "find": "export const fingerprintOf = ({ type, tool, environment, params }) => short(canonicalJson({ type: type ?? null, tool: tool ?? null, environment: environment ?? null, params: params ?? null }), 16);",
+      "replace": "let issued = 0;\nexport const fingerprintOf = () => String((issued += 1)).padStart(16, \"0\");",
+      "count": 1
+    },
+    {
+      "id": "action-fingerprint-never-again",
+      "file": "src/protected/authorize.mjs",
+      "find": "export const actionFingerprint = (verdict) => short(canonicalJson({ kind: verdict.kind ?? null, environment: verdict.environment ?? null, params: verdict.params ?? null }), 16);",
+      "replace": "export const actionFingerprint = () => String((issued += 1)).padStart(16, \"0\");",
+      "count": 1
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "id": "reference",
+  "about": "A reference solution of the goal with a regression test that fails before it and passes after, made by the scripted host in the engineering task's own workspace. Kept only to prove the verifier and Orbit's goal path CAN pass this case; it is never handed to a coding host.",
+  "mutations": [
+    {
+      "id": "marker",
+      "file": "src/worker.mjs",
+      "find": "  return { ack: true, invoice: id };",
+      "replace": "  store.put(\"processed\", message.id, { messageId: message.id, invoice: id });\n  return { ack: true, invoice: id };",
+      "count": 1
+    },
+    {
+      "id": "dedupe",
+      "file": "src/worker.mjs",
+      "find": "  if (message?.type !== \"order.paid\") return { ack: true, skipped: \"not a payment\" };\n",
+      "replace": "  if (message?.type !== \"order.paid\") return { ack: true, skipped: \"not a payment\" };\n  if (store.get(\"processed\", message.id)) return { ack: true, duplicate: true };\n",
+      "count": 1
+    }
+  ],
+  "files": [
+    {
+      "rel": "test/redelivery.test.mjs",
+      "lines": [
+        "import assert from \"node:assert/strict\";",
+        "import { mkdtempSync, rmSync } from \"node:fs\";",
+        "import { tmpdir } from \"node:os\";",
+        "import { join } from \"node:path\";",
+        "import { test } from \"node:test\";",
+        "import { createOrder } from \"../src/orders.mjs\";",
+        "import { openStore } from \"../src/store.mjs\";",
+        "import { consume } from \"../src/worker.mjs\";",
+        "",
+        "function fresh(t) {",
+        "  const dir = mkdtempSync(join(tmpdir(), \"orders-\"));",
+        "  t.after(() => rmSync(dir, { recursive: true, force: true }));",
+        "  return dir;",
+        "}",
+        "",
+        "test(\"a payment delivered again, even after the store is opened again, writes one invoice\", (t) => {",
+        "  const dir = fresh(t);",
+        "  const message = { id: \"m-3\", type: \"order.paid\", orderId: createOrder(openStore(dir), { lines: [{ qty: 1, unitMinor: 250 }] }).id };",
+        "  assert.equal(consume(openStore(dir), message).ack, true);",
+        "  assert.equal(consume(openStore(dir), message).ack, true);",
+        "  assert.equal(openStore(dir).list(\"invoices\").length, 1);",
+        "});"
+      ]
+    }
+  ],
+  "deletes": []
+}

@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "partial-fix",
+  "about": "The controlled fault with only the regression count repaired: a session mark is still counted as a session of its own, so the verifier must still fail it.",
+  "mutations": [
+    {
+      "id": "regression-counts-sessions-again",
+      "file": "src/improvement/monitor.mjs",
+      "find": "{ word: \"REGRESSED\", when: (f) => f.failing.length >= f.min,",
+      "replace": "{ word: \"REGRESSED\", when: (f) => independent(f.failing) >= f.min,",
+      "count": 1
+    }
+  ]
+}

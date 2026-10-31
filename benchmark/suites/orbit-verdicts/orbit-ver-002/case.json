@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "kind": "source",
+  "id": "ORBIT-VER-002",
+  "version": "1.0.0",
+  "baseline": "PASS",
+  "title": "A cause is never guessed: a failure that recorded no phase is not a failed browser command",
+  "goal": "classify() reads a run that did not pass through one ordered table over facts a caller can demonstrate, first match wins and the last row always matches: the step's recorded phase (bind, act, wait) tells the data from the locator from a product reaching a state, a failure that recorded no phase is never read as a failed browser command, confidence is high or low, and only a high classification hands the next move to a specialist",
+  "measures": { "kind": "correctness", "capability": "query.classify", "repairable": ["ORBIT_SOURCE_DEFECT"] },
+  "subject": {
+    "paths": ["src/query/classify.mjs"],
+    "exports": { "src/query/classify.mjs": ["classify"] }
+  },
+  "prepare": { "requires": ["node"] },
+  "request": "request.md",
+  "reproduce": "every failing check names the facts it classified -- the status, the stopped step and its phase, whether it ruled, the edge and the locator, the calls outside 2xx and the rest -- the cause, confidence and specialist the contract expects and what came back; the probe imports the subject's own classifier and answers in its own process",
+  "acceptance": { "owner": "verifier", "spec": "verifier/spec.mjs", "probe": "verifier/probe.mjs", "samples": 48 },
+  "scope": { "allow": ["src/query/**", "test/*.test.mjs"], "deny": [] },
+  "checks": {
+    "gates": [
+      { "id": "classify-suite", "argv": ["node", "--test", "--test-reporter=tap", "test/classify.test.mjs"] },
+      { "id": "five-lines", "argv": ["node", "cli/check-five-lines.mjs", "src/query", "--strict"], "stdout": "^0 finding\\(s\\)" }
+    ],
+    "agentTests": { "required": true, "pattern": "^test/[^/]+\\.test\\.mjs$" }
+  },
+  "limits": {
+    "rounds": 2,
+    "minutes": 150,
+    "usd": 20,
+    "runner": { "cpus": 2, "memoryMb": 6144, "pids": 2048, "minutes": 120, "outputMb": 16 },
+    "verifier": { "cpus": 2, "memoryMb": 2048, "pids": 512, "seconds": 600 },
+    "engineering": { "attempts": 6, "actions": 160 }
+  },
+  "artifacts": ["manifest", "baseline", "candidate-patch", "verification", "host-result", "report"],
+  "cleanup": { "containers": "run-label", "networks": "run-label", "scratch": "after-run" },
+  "variants": {
+    "real": {},
+    "controlled-fault": { "mutations": "variants/controlled-fault.json" }
+  },
+  "controls": [
+    { "id": "clean", "variant": "real", "expect": "PASS" },
+    { "id": "planted", "variant": "controlled-fault", "expect": "FAIL" },
+    { "id": "allow-all", "variant": "real", "file": "controls/allow-all.json", "expect": "FAIL" },
+    { "id": "reject-all", "variant": "real", "file": "controls/reject-all.json", "expect": "FAIL" }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "half-fix-case",
+  "about": "Half of the defect planted back: the lifecycle is read as task views spell it, but resuming never keeps what it settles, so the verifier must still fail it.",
+  "mutations": [
+    {
+      "id": "settlements-not-kept",
+      "file": "src/goal/commands.mjs",
+      "find": "const settled = ports.goals.transact(id, () => settleEnded(ports, id, tasks));",
+      "replace": "const settled = resumeView(ports.goals.read(id), tasks).pending;",
+      "count": 1
+    }
+  ]
+}

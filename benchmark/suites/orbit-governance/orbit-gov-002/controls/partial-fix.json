@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "partial-fix",
+  "about": "The controlled fault with only the verbatim reading repaired: the least strict declaration still wins, so the verifier must still fail it.",
+  "mutations": [
+    {
+      "id": "declaration-read-as-written",
+      "file": "src/protected/environments.mjs",
+      "find": "const wordOf = (word) => String(word ?? \"\");",
+      "replace": "const wordOf = (word) => String(word ?? \"\").trim().toLowerCase();",
+      "count": 1
+    }
+  ]
+}

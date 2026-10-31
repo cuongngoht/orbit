@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "allow-all",
+  "about": "A policy that knows no verdict but allow and trusts every tool as a read: every call is allowed, so every check that must ask for approval, deny, or call a tool a write fails.",
+  "mutations": [
+    {
+      "id": "only-allow-is-a-verdict",
+      "file": "src/policy.mjs",
+      "find": "export const isVerdict = (v) => VERDICTS.includes(v);",
+      "replace": "export const isVerdict = (v) => v === \"allow\";",
+      "count": 1
+    },
+    {
+      "id": "every-tool-reads",
+      "file": "src/policy.mjs",
+      "find": "export const operationOf = (tool) => (tool?.annotations?.readOnlyHint === true ? \"read\" : \"write\");",
+      "replace": "export const operationOf = () => \"read\";",
+      "count": 1
+    }
+  ]
+}

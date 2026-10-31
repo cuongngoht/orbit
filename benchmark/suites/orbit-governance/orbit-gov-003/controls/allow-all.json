@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "id": "allow-all",
+  "about": "A crossing that lets every actor through as if it were Orbit Control, and one fingerprint every action shares: every check that must refuse, or tell two actions apart, fails.",
+  "mutations": [
+    {
+      "id": "every-crossing-allowed",
+      "file": "src/protected/authorize.mjs",
+      "find": "if (isAuto(verdict)) return { allowed: true, by: \"AUTO\", says: \"autonomous\" };",
+      "replace": "return { allowed: true, by: \"CONTROL\", says: \"a person, through Orbit Control\" };",
+      "count": 1
+    },
+    {
+      "id": "one-request-fingerprint",
+      "file": "src/protected/authorize.mjs",
+      "find": "export const fingerprintOf = ({ type, tool, environment, params }) => short(canonicalJson({ type: type ?? null, tool: tool ?? null, environment: environment ?? null, params: params ?? null }), 16);",
+      "replace": "export const fingerprintOf = () => \"0000000000000000\";",
+      "count": 1
+    },
+    {
+      "id": "one-action-fingerprint",
+      "file": "src/protected/authorize.mjs",
+      "find": "export const actionFingerprint = (verdict) => short(canonicalJson({ kind: verdict.kind ?? null, environment: verdict.environment ?? null, params: verdict.params ?? null }), 16);",
+      "replace": "export const actionFingerprint = () => \"0000000000000000\";",
+      "count": 1
+    }
+  ]
+}

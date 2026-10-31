@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "Two planted defects in the support rule, applied only to the benchmark copy of the source: an observation is held only against the last mark its list keeps, and a contradiction no longer keeps a record possible.",
+  "mutations": [
+    {
+      "id": "only-the-last-mark",
+      "file": "src/memory/support.mjs",
+      "find": "if (knownIn(support[list], seenBy)) return support;",
+      "replace": "if (knownIn(support[list].slice(-1), seenBy)) return support;",
+      "count": 1
+    },
+    {
+      "id": "contradiction-ignored",
+      "file": "src/memory/support.mjs",
+      "find": "export const derive = (support) => (support.sessions >= 2 && support.against === 0 ? \"certain\" : \"possible\");",
+      "replace": "export const derive = (support) => (support.sessions >= 2 ? \"certain\" : \"possible\");",
+      "count": 1
+    }
+  ]
+}

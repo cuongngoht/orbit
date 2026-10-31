@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "partial-fix",
+  "about": "The controlled fault with only the ladder repaired: the tally still counts runs as sessions, so the verifier must still fail it.",
+  "mutations": [
+    {
+      "id": "ladder-restored",
+      "file": "src/learn/confidence.mjs",
+      "find": "when: (f) => f.for >= 1 && f.against === 0,",
+      "replace": "when: (f) => f.for >= 2 && f.against === 0,",
+      "count": 1
+    }
+  ]
+}

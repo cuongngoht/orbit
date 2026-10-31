@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "id": "orbit-satellite",
+  "version": "1.0.0",
+  "title": "Orbit Satellite's own source, held to the governance it promises",
+  "cases": ["ORBIT-SAT-001", "ORBIT-SAT-002", "ORBIT-SAT-003", "ORBIT-SAT-004"]
+}

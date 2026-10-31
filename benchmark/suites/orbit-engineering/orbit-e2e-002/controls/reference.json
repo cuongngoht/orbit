@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "id": "reference",
+  "about": "A reference solution of the goal with a regression test that fails before it and passes after, made by the scripted host in the engineering task's own workspace. Kept only to prove the verifier and Orbit's goal path CAN pass this case; it is never handed to a coding host.",
+  "mutations": [
+    {
+      "id": "function",
+      "file": "src/orders.mjs",
+      "find": "export const shipOrder = (store, id) => moved(store, id, \"open\", \"shipped\");",
+      "replace": "export const shipOrder = (store, id) => moved(store, id, \"open\", \"shipped\");\n\nexport const cancelOrder = (store, id) => moved(store, id, \"open\", \"cancelled\");",
+      "count": 1
+    },
+    {
+      "id": "import",
+      "file": "src/api.mjs",
+      "find": "import { createOrder, getOrder, invalidOf, shipOrder } from \"./orders.mjs\";",
+      "replace": "import { cancelOrder, createOrder, getOrder, invalidOf, shipOrder } from \"./orders.mjs\";",
+      "count": 1
+    },
+    {
+      "id": "route",
+      "file": "src/api.mjs",
+      "find": "  { method: \"POST\", path: new RegExp(`^/orders/${ORDER}/ship$`), run: (store, m) => answered(shipOrder(store, m[1])) },",
+      "replace": "  { method: \"POST\", path: new RegExp(`^/orders/${ORDER}/ship$`), run: (store, m) => answered(shipOrder(store, m[1])) },\n  { method: \"POST\", path: new RegExp(`^/orders/${ORDER}/cancel$`), run: (store, m) => answered(cancelOrder(store, m[1])) },",
+      "count": 1
+    }
+  ],
+  "files": [
+    {
+      "rel": "test/cancel-order.test.mjs",
+      "lines": [
+        "import assert from \"node:assert/strict\";",
+        "import { mkdtempSync, rmSync } from \"node:fs\";",
+        "import { tmpdir } from \"node:os\";",
+        "import { join } from \"node:path\";",
+        "import { test } from \"node:test\";",
+        "import { handle } from \"../src/api.mjs\";",
+        "import { openStore } from \"../src/store.mjs\";",
+        "",
+        "function fresh(t) {",
+        "  const dir = mkdtempSync(join(tmpdir(), \"orders-\"));",
+        "  t.after(() => rmSync(dir, { recursive: true, force: true }));",
+        "  return dir;",
+        "}",
+        "",
+        "test(\"an open order is cancelled, a cancelled one is never shipped, and a shipped one cannot be cancelled\", (t) => {",
+        "  const store = openStore(fresh(t));",
+        "  const made = () => handle(store, { method: \"POST\", path: \"/orders\", body: { lines: [{ qty: 1, unitMinor: 300 }] } }).body.id;",
+        "  const a = made();",
+        "  const b = made();",
+        "  assert.equal(handle(store, { method: \"POST\", path: `/orders/${a}/cancel` }).body.state, \"cancelled\");",
+        "  assert.equal(handle(store, { method: \"POST\", path: `/orders/${a}/ship` }).status, 409);",
+        "  handle(store, { method: \"POST\", path: `/orders/${b}/ship` });",
+        "  assert.equal(handle(store, { method: \"POST\", path: `/orders/${b}/cancel` }).status, 409);",
+        "  assert.equal(handle(store, { method: \"POST\", path: \"/orders/ord-0042/cancel\" }).status, 404);",
+        "});"
+      ]
+    }
+  ],
+  "deletes": []
+}

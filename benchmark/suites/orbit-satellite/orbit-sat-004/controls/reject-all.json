@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "reject-all",
+  "about": "No run ever succeeds and no mission is ever verified: every check that must credit evidence fails.",
+  "mutations": [
+    {
+      "id": "reject-all-outcome",
+      "file": "satellite/src/mission/conclude.mjs",
+      "find": "export const outcomeOf = (c) => OUTCOMES.find((o) => o.when(c)).outcome;",
+      "replace": "export const outcomeOf = () => \"insufficient\";",
+      "count": 1
+    },
+    {
+      "id": "reject-all-verdict",
+      "file": "satellite/src/evidence/verdict.mjs",
+      "find": "const verified = acceptance.length > 0 && owed.length === 0 && openActions(m).length === 0;",
+      "replace": "const verified = false;",
+      "count": 1
+    }
+  ]
+}

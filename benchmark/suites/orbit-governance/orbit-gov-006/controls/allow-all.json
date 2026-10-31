@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "allow-all",
+  "about": "An attribution that credits every call to the host's own observation and reads a run reference off any text: every check that must report, conflict, leave a call unattributed or refuse a text fails.",
+  "mutations": [
+    {
+      "id": "every-call-observed",
+      "file": "src/attribution.mjs",
+      "find": "{ word: \"CONFLICTING\", when: (s) => s.agents.length > 1 },",
+      "replace": "{ word: \"HOST_OBSERVED\", when: () => true },",
+      "count": 1
+    },
+    {
+      "id": "no-mark-needed",
+      "file": "src/attribution.mjs",
+      "find": "if (!t.includes(`\"${ENVELOPE_MARK}\"`)) return null;",
+      "replace": "// (the mark is not asked for)",
+      "count": 1
+    }
+  ]
+}

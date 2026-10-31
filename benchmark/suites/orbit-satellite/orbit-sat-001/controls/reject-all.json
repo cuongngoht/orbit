@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "reject-all",
+  "about": "A policy that denies every action as not granted: every check that must allow, and every one that must name another row, fails.",
+  "mutations": [
+    {
+      "id": "reject-all",
+      "file": "satellite/src/permissions/evaluate.mjs",
+      "find": "  const failed = EVALUATION.find((r) => r.fails(c));",
+      "replace": "  const failed = EVALUATION.at(-1);",
+      "count": 1
+    }
+  ]
+}

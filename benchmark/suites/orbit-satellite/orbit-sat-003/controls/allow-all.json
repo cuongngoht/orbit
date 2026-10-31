@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "allow-all",
+  "about": "A consumer that relies on every handoff: every check that must refuse fails.",
+  "mutations": [
+    {
+      "id": "allow-all",
+      "file": "satellite/src/handoff/handoff.mjs",
+      "find": "export const consumeFinding = (c) => ((r) => (r ? { rule: r.rule, say: r.say(c) } : null))(CONSUME_RULES.find((x) => x.fails(c)));",
+      "replace": "export const consumeFinding = () => null;",
+      "count": 1
+    }
+  ]
+}

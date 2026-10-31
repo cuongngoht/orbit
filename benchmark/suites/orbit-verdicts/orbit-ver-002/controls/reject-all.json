@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "reject-all",
+  "about": "A classifier that settles nothing: every failure is UNKNOWN at low confidence, and every check that must name a cause fails.",
+  "mutations": [
+    {
+      "id": "reject-all",
+      "file": "src/query/classify.mjs",
+      "find": "  const row = CLASSES.find((c) => c.when(facts));",
+      "replace": "  const row = CLASSES.at(-1);",
+      "count": 1
+    }
+  ]
+}

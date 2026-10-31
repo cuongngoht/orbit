@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "partial-fix",
+  "about": "The controlled fault with only the verdict-count defect repaired: a slice one step short still counts as the whole case, so the verifier must still fail it.",
+  "mutations": [
+    {
+      "id": "zero-verdicts-restored",
+      "file": "src/run/status.mjs",
+      "find": "if (run.verdicts === undefined) return \"INCONCLUSIVE\";",
+      "replace": "if (!run.verdicts) return \"INCONCLUSIVE\";",
+      "count": 1
+    }
+  ]
+}

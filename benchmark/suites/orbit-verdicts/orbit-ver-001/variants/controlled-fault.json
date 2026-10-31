@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "Two planted defects in the final status, applied only to the benchmark copy of the source: a run that counted no verdict passes, because only a missing count is taken as none; and a slice that stops one step before the last is taken as the whole case.",
+  "mutations": [
+    {
+      "id": "zero-verdicts-pass",
+      "file": "src/run/status.mjs",
+      "find": "if (!run.verdicts) return \"INCONCLUSIVE\";",
+      "replace": "if (run.verdicts === undefined) return \"INCONCLUSIVE\";",
+      "count": 1
+    },
+    {
+      "id": "whole-one-short",
+      "file": "src/run/status.mjs",
+      "find": "export const whole = (run) => run.from === 1 && run.to >= (run.c.steps?.length ?? 0);",
+      "replace": "export const whole = (run) => run.from === 1 && run.to >= (run.c.steps?.length ?? 0) - 1;",
+      "count": 1
+    }
+  ]
+}

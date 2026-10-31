@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "kind": "source",
+  "id": "ORBIT-SAT-003",
+  "version": "1.0.0",
+  "baseline": "PASS",
+  "title": "Every consumer holds a handoff to what was published before it relies on it",
+  "goal": "consumeFinding() holds a handoff a consumer read back to an ordered table and answers its first failing rule: read back at all, the very handoff that was published (its digest matches itself AND the one its journal line names, so a change made after publishing is refused whether or not it was digested again), handed to this consumer, every consumer path inside the paths it covers (a shared prefix is not inside), compatible, fresh and true to its own output contract -- and relies on a handoff that holds them all",
+  "measures": { "kind": "correctness", "capability": "satellite.handoff", "repairable": ["ORBIT_SOURCE_DEFECT"] },
+  "subject": {
+    "paths": ["satellite/src/handoff/handoff.mjs"],
+    "exports": { "satellite/src/handoff/handoff.mjs": ["consumeFinding", "handoffDigest"] }
+  },
+  "prepare": { "requires": ["node"] },
+  "request": "request.md",
+  "reproduce": "every failing check names the handoff and how it stands against what was published, the consumer, the source unit's last reset and the checkout head, the rule the contract expects and what came back; the probe seals each record with the subject's own digest, calls the subject's own consumer check and answers in its own process",
+  "acceptance": { "owner": "verifier", "spec": "verifier/spec.mjs", "probe": "verifier/probe.mjs", "samples": 48 },
+  "scope": { "allow": ["satellite/src/**", "satellite/test/*.test.mjs"], "deny": [] },
+  "checks": {
+    "gates": [
+      { "id": "handoff-suite", "argv": ["node", "--test", "--test-reporter=tap", "satellite/test/engineering.test.mjs", "satellite/test/mission-slice.test.mjs"] },
+      { "id": "five-lines", "argv": ["node", "cli/check-five-lines.mjs", "satellite/src", "--strict"], "stdout": "^0 finding\\(s\\)" }
+    ],
+    "agentTests": { "required": true, "pattern": "^satellite/test/[^/]+\\.test\\.mjs$" }
+  },
+  "limits": {
+    "rounds": 2,
+    "minutes": 150,
+    "usd": 20,
+    "runner": { "cpus": 2, "memoryMb": 6144, "pids": 2048, "minutes": 120, "outputMb": 16 },
+    "verifier": { "cpus": 2, "memoryMb": 2048, "pids": 512, "seconds": 600 },
+    "engineering": { "attempts": 6, "actions": 160 }
+  },
+  "artifacts": ["manifest", "baseline", "candidate-patch", "verification", "host-result", "report"],
+  "cleanup": { "containers": "run-label", "networks": "run-label", "scratch": "after-run" },
+  "variants": {
+    "real": {},
+    "controlled-fault": { "mutations": "variants/controlled-fault.json" }
+  },
+  "controls": [
+    { "id": "clean", "variant": "real", "expect": "PASS" },
+    { "id": "planted", "variant": "controlled-fault", "expect": "FAIL" },
+    { "id": "partial-fix", "variant": "controlled-fault", "file": "controls/partial-fix.json", "expect": "FAIL" },
+    { "id": "allow-all", "variant": "real", "file": "controls/allow-all.json", "expect": "FAIL" },
+    { "id": "reject-all", "variant": "real", "file": "controls/reject-all.json", "expect": "FAIL" }
+  ]
+}

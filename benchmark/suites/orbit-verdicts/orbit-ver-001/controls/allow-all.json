@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "allow-all",
+  "about": "Every run passes: every check that must keep a FAIL, refuse a PASS nothing earned or say PARTIAL fails.",
+  "mutations": [
+    {
+      "id": "allow-all",
+      "file": "src/run/status.mjs",
+      "find": "  if (run.status !== \"PASS\") return run.status;",
+      "replace": "  return \"PASS\";",
+      "count": 1
+    }
+  ]
+}

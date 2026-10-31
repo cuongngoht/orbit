@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "id": "orbit-verdicts",
+  "version": "1.0.0",
+  "title": "Orbit's own verdicts and diagnoses, held to the words they promise",
+  "cases": ["ORBIT-VER-001", "ORBIT-VER-002"]
+}

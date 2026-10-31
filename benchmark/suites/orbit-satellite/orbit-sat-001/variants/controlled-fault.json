@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "One planted defect, applied only to the benchmark copy of the source: a write kind no longer asks for the one owner it names, so a source patch, a check run or a sandbox test goes through any provider.",
+  "mutations": [
+    {
+      "id": "owner-not-asked",
+      "file": "satellite/src/permissions/evaluate.mjs",
+      "find": "const ownersOf = (c) => OPERATION_KINDS[c.operationKind].owners ?? null;",
+      "replace": "const ownersOf = () => null;",
+      "count": 1
+    }
+  ]
+}

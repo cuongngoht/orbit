@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "reject-all",
+  "about": "A consumer that refuses every handoff as edited: every check that must accept, and every one that must name another rule, fails.",
+  "mutations": [
+    {
+      "id": "reject-all",
+      "file": "satellite/src/handoff/handoff.mjs",
+      "find": "export const consumeFinding = (c) => ((r) => (r ? { rule: r.rule, say: r.say(c) } : null))(CONSUME_RULES.find((x) => x.fails(c)));",
+      "replace": "export const consumeFinding = () => ({ rule: \"HOF_DIGEST\", say: \"every handoff is refused\" });",
+      "count": 1
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "allow-all",
+  "about": "Every run succeeds and every mission is verified: every check that must withhold either fails.",
+  "mutations": [
+    {
+      "id": "allow-all-outcome",
+      "file": "satellite/src/mission/conclude.mjs",
+      "find": "export const outcomeOf = (c) => OUTCOMES.find((o) => o.when(c)).outcome;",
+      "replace": "export const outcomeOf = () => \"succeeded\";",
+      "count": 1
+    },
+    {
+      "id": "allow-all-verdict",
+      "file": "satellite/src/evidence/verdict.mjs",
+      "find": "const verified = acceptance.length > 0 && owed.length === 0 && openActions(m).length === 0;",
+      "replace": "const verified = true;",
+      "count": 1
+    }
+  ]
+}

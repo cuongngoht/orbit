@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "Two planted defects in the consumer's checks, applied only to the benchmark copy of the source: a handoff's digest is checked against itself and never against what was published; and a consumer path that only shares a prefix with a scope root is taken as inside it.",
+  "mutations": [
+    {
+      "id": "published-digest-unchecked",
+      "file": "satellite/src/handoff/handoff.mjs",
+      "find": "fails: (c) => c.record.digest !== handoffDigest(c.record) || c.record.digest !== c.published.digest,",
+      "replace": "fails: (c) => c.record.digest !== handoffDigest(c.record),",
+      "count": 1
+    },
+    {
+      "id": "scope-prefix",
+      "file": "satellite/src/handoff/handoff.mjs",
+      "find": "const within = (path, roots) => roots.some((r) => path === r || path.startsWith(`${r.replace(/\\/+$/, \"\")}/`));",
+      "replace": "const within = (path, roots) => roots.some((r) => path === r || path.startsWith(r));",
+      "count": 1
+    }
+  ]
+}

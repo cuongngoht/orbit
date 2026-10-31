@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "partial-fix",
+  "about": "The controlled fault with only the run-outcome defect repaired: a mission with no acceptance criterion still counts as verified, so the verifier must still fail it.",
+  "mutations": [
+    {
+      "id": "independence-restored",
+      "file": "satellite/src/mission/conclude.mjs",
+      "find": "const reached = (c) => c.rows.some((r) => atLeast(r.level, c.unit.verificationContract.min));",
+      "replace": "const reached = (c) => c.rows.some((r) => atLeast(r.level, c.unit.verificationContract.min) && (c.unit.verificationContract.owner !== \"independent\" || r.independent));",
+      "count": 1
+    }
+  ]
+}

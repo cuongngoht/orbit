@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "Two planted defects in the graph rules, applied only to the benchmark copy of the source: the order of a graph that holds a cycle is taken as it was left, so a cycle is never refused; and delegation one deeper than the limit goes through.",
+  "mutations": [
+    {
+      "id": "cycle-accepted",
+      "file": "satellite/src/planning/graph.mjs",
+      "find": "return order.length === nodes.length ? order : null;",
+      "replace": "return order;",
+      "count": 1
+    },
+    {
+      "id": "depth-off-by-one",
+      "file": "satellite/src/planning/graph.mjs",
+      "find": "fails: (c) => c.units.some((u) => depthOf(c, u.id) > c.limits.maxDepth),",
+      "replace": "fails: (c) => c.units.some((u) => depthOf(c, u.id) > c.limits.maxDepth + 1),",
+      "count": 1
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "kind": "source",
+  "id": "ORBIT-SAT-004",
+  "version": "1.0.0",
+  "baseline": "PASS",
+  "title": "A mission completes only when every criterion is verified by an independent owner",
+  "goal": "outcomeOf() ends an agent run by an ordered table over the evidence its owners hold -- blocked by its own word, violated by a checkout that moved, succeeded only on evidence that reaches its unit's verification contract and, when the contract asks for one, comes from an independent owner, blocked on an owner's BLOCKED record, insufficient otherwise -- and verdictOf() calls a mission VERIFIED only when it recorded criteria, every one has a row VERIFIED by an independent owner from a run that succeeded after its unit's last reset, and nothing is open, naming every criterion still owed",
+  "measures": { "kind": "correctness", "capability": "satellite.evidence", "repairable": ["ORBIT_SOURCE_DEFECT"] },
+  "subject": {
+    "paths": ["satellite/src/mission/conclude.mjs", "satellite/src/evidence/verdict.mjs"],
+    "exports": { "satellite/src/mission/conclude.mjs": ["outcomeOf"], "satellite/src/evidence/verdict.mjs": ["verdictOf"] }
+  },
+  "prepare": { "requires": ["node"] },
+  "request": "request.md",
+  "reproduce": "every failing check names the unit's verification contract, the run's state and the evidence rows it judged -- or the mission's criteria, units, runs, evidence and actions -- what the contract expects and what came back; the probe imports the subject's own conclusion and verdict modules and answers in its own process",
+  "acceptance": { "owner": "verifier", "spec": "verifier/spec.mjs", "probe": "verifier/probe.mjs", "samples": 48 },
+  "scope": { "allow": ["satellite/src/**", "satellite/test/*.test.mjs"], "deny": [] },
+  "checks": {
+    "gates": [
+      { "id": "evidence-suite", "argv": ["node", "--test", "--test-reporter=tap", "satellite/test/integrity.test.mjs", "satellite/test/owners.test.mjs"] },
+      { "id": "five-lines", "argv": ["node", "cli/check-five-lines.mjs", "satellite/src", "--strict"], "stdout": "^0 finding\\(s\\)" }
+    ],
+    "agentTests": { "required": true, "pattern": "^satellite/test/[^/]+\\.test\\.mjs$" }
+  },
+  "limits": {
+    "rounds": 2,
+    "minutes": 150,
+    "usd": 20,
+    "runner": { "cpus": 2, "memoryMb": 6144, "pids": 2048, "minutes": 120, "outputMb": 16 },
+    "verifier": { "cpus": 2, "memoryMb": 2048, "pids": 512, "seconds": 600 },
+    "engineering": { "attempts": 6, "actions": 160 }
+  },
+  "artifacts": ["manifest", "baseline", "candidate-patch", "verification", "host-result", "report"],
+  "cleanup": { "containers": "run-label", "networks": "run-label", "scratch": "after-run" },
+  "variants": {
+    "real": {},
+    "controlled-fault": { "mutations": "variants/controlled-fault.json" }
+  },
+  "controls": [
+    { "id": "clean", "variant": "real", "expect": "PASS" },
+    { "id": "planted", "variant": "controlled-fault", "expect": "FAIL" },
+    { "id": "partial-fix", "variant": "controlled-fault", "file": "controls/partial-fix.json", "expect": "FAIL" },
+    { "id": "allow-all", "variant": "real", "file": "controls/allow-all.json", "expect": "FAIL" },
+    { "id": "reject-all", "variant": "real", "file": "controls/reject-all.json", "expect": "FAIL" }
+  ]
+}

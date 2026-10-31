@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "partial-fix",
+  "about": "The controlled fault with only the digest defect repaired: a path that only shares a prefix with a scope root still passes, so the verifier must still fail it.",
+  "mutations": [
+    {
+      "id": "published-digest-restored",
+      "file": "satellite/src/handoff/handoff.mjs",
+      "find": "fails: (c) => c.record.digest !== handoffDigest(c.record),",
+      "replace": "fails: (c) => c.record.digest !== handoffDigest(c.record) || c.record.digest !== c.published.digest,",
+      "count": 1
+    }
+  ]
+}

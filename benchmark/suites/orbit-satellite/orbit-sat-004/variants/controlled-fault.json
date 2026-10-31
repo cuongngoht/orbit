@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "Two planted defects, applied only to the benchmark copy of the source: a run reaches a contract that asks for an independent owner on evidence nobody independent holds; and a mission with no acceptance criterion counts as verified.",
+  "mutations": [
+    {
+      "id": "independence-ignored",
+      "file": "satellite/src/mission/conclude.mjs",
+      "find": "const reached = (c) => c.rows.some((r) => atLeast(r.level, c.unit.verificationContract.min) && (c.unit.verificationContract.owner !== \"independent\" || r.independent));",
+      "replace": "const reached = (c) => c.rows.some((r) => atLeast(r.level, c.unit.verificationContract.min));",
+      "count": 1
+    },
+    {
+      "id": "vacuous-verdict",
+      "file": "satellite/src/evidence/verdict.mjs",
+      "find": "const verified = acceptance.length > 0 && owed.length === 0 && openActions(m).length === 0;",
+      "replace": "const verified = owed.length === 0 && openActions(m).length === 0;",
+      "count": 1
+    }
+  ]
+}

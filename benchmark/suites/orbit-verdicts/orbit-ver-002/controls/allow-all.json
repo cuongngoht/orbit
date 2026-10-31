@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "allow-all",
+  "about": "A classifier that hands every failure to the map healer as certain drift: every check that must say anything else fails.",
+  "mutations": [
+    {
+      "id": "allow-all",
+      "file": "src/query/classify.mjs",
+      "find": "  const row = CLASSES.find((c) => c.when(facts));",
+      "replace": "  const row = { ...CLASSES.find((c) => c.handoff === MAP_HEALER), because: () => \"every failure is a drifted record\" };",
+      "count": 1
+    }
+  ]
+}

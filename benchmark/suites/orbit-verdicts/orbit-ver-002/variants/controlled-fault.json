@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "One planted defect in the classifier, applied only to the benchmark copy of the source: a failure whose phase is anything but a wait -- one that recorded no phase at all included -- is read as a browser command that failed.",
+  "mutations": [
+    {
+      "id": "phase-guessed",
+      "file": "src/query/classify.mjs",
+      "find": "const acted = (f) => f.failure?.phase === \"act\";",
+      "replace": "const acted = (f) => f.failure?.phase !== \"wait\";",
+      "count": 1
+    }
+  ]
+}

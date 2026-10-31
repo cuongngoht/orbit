@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "reject-all",
+  "about": "A judge that refuses every graph as cyclic: every check that must accept, and every one that must name another rule, fails.",
+  "mutations": [
+    {
+      "id": "reject-all",
+      "file": "satellite/src/planning/graph.mjs",
+      "find": "export const graphFinding = (c) => ((r) => (r ? { rule: r.rule, say: r.say(c) } : null))(GRAPH_RULES.find((x) => x.fails(c)));",
+      "replace": "export const graphFinding = () => ({ rule: \"PLAN_CYCLE\", say: \"every graph is refused\" });",
+      "count": 1
+    }
+  ]
+}

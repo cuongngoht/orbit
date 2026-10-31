@@ -65,7 +65,7 @@ Nine suites ship:
 | `orbit-governance` | `ORBIT-GOV-001` … `006` | Protected boundaries, production as a declaration, the DENY door and approval fingerprints, a policy's strictest verdict, masking by shape, attribution by evidence. |
 | `orbit-memory` | `ORBIT-MEM-001` … `006` | Session independence, support across sessions, failure lessons by session, authority derived, freshness, a journal that survives a crash mid-append. |
 | `orbit-improvement` | `ORBIT-IMP-001` … `004` | A regression makes a candidate worse, BETTER needs independent sessions, the promotion gates in order, a regression watched by session. |
-| `orbit-orchestration` | `ORBIT-ORC-001` … `006`, `ORBIT-GOAL-001` | Impact by reach, completion rows, no progress, decisions refused by name, intent as sent, signatures; two of them are known findings (`baseline: "FAIL"`). |
+| `orbit-orchestration` | `ORBIT-ORC-001` … `006`, `ORBIT-GOAL-001` | Impact by reach, completion rows, no progress, decisions refused by name, intent as sent, signatures; one of them a known finding still open (`ORC-006`, `baseline: "FAIL"`); `GOAL-001` was one until the benchmark's own repair path fixed it. |
 | `orbit-satellite` | `ORBIT-SAT-001` … `004` | Write permissions, the planning graph, handoffs every consumer validates, a mission concluded on independent evidence. |
 | `orbit-verdicts` | `ORBIT-VER-001`, `ORBIT-VER-002` | PASS earned, and a failure classified by an ordered table over demonstrated facts. |
 | `orbit-qa` | `ORBIT-QA-001` … `ORBIT-QA-007` | Does Orbit's autonomous QA find the defect planted in the invoice application, without false alarms? |

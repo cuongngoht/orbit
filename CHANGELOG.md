@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Fixed: a goal moves on past a unit whose task ended.** Before, a goal stayed running and partial after its workflow
+  completed, and stepping it found nothing ready. The change came from the benchmark's own repair path (ORBIT-GOAL-001
+  with `--repair`, verified independently) and was applied at a person's request.
+
 A Docker benchmark that holds Orbit's own source to independent checks, and repairs a failure only through Orbit
 (ADR 0046). This is development tooling under `benchmark/`: export-ignored, imported by nothing of the engine, and
 changing no engine contract, so no version moves.
@@ -78,8 +82,8 @@ changing no engine contract, so no version moves.
     never applied to a checkout. A person's pause or cancel stops a running round's container.
   - **Twenty-nine new source cases** in six suites -- `orbit-governance`, `orbit-memory`, `orbit-improvement`,
     `orbit-orchestration`, `orbit-satellite`, `orbit-verdicts` -- each with a reference model written from its contract,
-    a planted fault and verifier controls. A case's `baseline` says what the source as it is comes to; two declare
-    known findings with a known-good control each.
+    a planted fault and verifier controls. A case's `baseline` says what the source as it is comes to; a known finding
+    declares `FAIL` with a known-good control.
   - **Engineering cases.** `kind: "engineering"` hands a host a goal about a frozen fixture project
     (`benchmark/fixtures/orders`) with Orbit beside it: the goal entry, the workflow it starts and the engineering task
     that starts, judged by the verifier and by record checks on what Orbit's owners say. Suite `orbit-engineering`,

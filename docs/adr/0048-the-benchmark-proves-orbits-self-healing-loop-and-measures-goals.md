@@ -87,8 +87,10 @@ when a person dispatches it, from an environment that holds the credential, insi
 
 ## Consequences
 
-- Thirty-one source cases across seven suites and eight engineering cases hold the engine to what it promises. Two
-  source cases declare known findings, each with a known-good control, kept until a repair passes them.
+- Thirty-one source cases across seven suites and eight engineering cases hold the engine to what it promises. Known
+  findings are declared as a `FAIL` baseline with a known-good control and kept until a repair passes them; the first
+  repaired this way -- a goal that did not move past a unit whose task ended -- was fixed by a `--repair` run whose
+  candidate the verifier passed, applied at a person's request, and its case now plants the defect back as a variant.
 - The whole repair loop -- the judge, the engine's loop, the scripted host, `NEXT`, `verified.json` -- is proved in
   every pull request that touches it, with no model and no secret.
 - A real host's run is the only evidence of autonomy, and needs a credential; without one it ends BLOCKED, and the

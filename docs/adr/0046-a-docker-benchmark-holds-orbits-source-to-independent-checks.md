@@ -29,14 +29,14 @@ would void a recorded acceptance.
 
 ### Cases are data
 
-A case is a directory of a pack. Its `case.json` is held to fields declared once (`CASE_FIELDS`, `SECTIONS`) by the
+A case is a directory of a suite (`benchmark/suites/<suite>/<case-id>/`, the id in lower case). Its `case.json` is held to fields declared once per kind (`KINDS`) by the
 constraint enforcement every Orbit table uses. It declares:
 
 - what the case measures, and which causes are repairable;
 - its subject and its public request;
-- its hidden spec and its probe, which the verifier owns;
+- its spec and its probe (`verifier/`), which only the verifier reads;
 - its scope, gates and limits;
-- variants with planted faults, and controls with the outcome each must earn.
+- variants that plant mutations (`variants/`), and controls (`controls/`) with the outcome each must earn.
 
 A fault is an exact mutation, and one that no longer matches is `FIXTURE_DRIFT`, refused before anything runs. Adding a
 case adds a directory; nothing in `benchmark/lib/` names one.
@@ -164,9 +164,11 @@ runner store, so it is never an independent session for learning or self-improve
 
 ## Consequences
 
-- `node benchmark/run.mjs` builds, lists, runs a case or a pack, repairs, reports, resumes and cleans up
+- A benchmark "pack" was renamed a SUITE (`suites/<suite>/suite.json`), matching the command line's `--suite` and kept apart from Orbit's own capability packs. Case directories are the case id in lower case, so no two differ only by case. The modules are grouped by what they serve: `lib/core/` (every run), `lib/source/` (source cases), `lib/qa/` (QA cases, ADR 0047).
+
+- `node benchmark/run.mjs` builds, lists, runs a case or a suite, repairs, reports, resumes and cleans up
   (`benchmark/README.md`).
-- The first pack, `orbit-source`, holds `src/improvement/oracle.mjs` and `safety.mjs` to the acceptance oracle's
+- The first suite, `orbit-source`, holds `src/improvement/oracle.mjs` and `safety.mjs` to the acceptance oracle's
   promises:
   - **ORBIT-SRC-001** passes on the current source, and fails on its planted variant, a partial fix, an oracle that
     allows everything and one that refuses everything.

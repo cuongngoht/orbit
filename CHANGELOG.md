@@ -39,11 +39,34 @@ changing no engine contract, so no version moves.
   - `CAUSES` and `NEXT` decide the rest: VERIFIED, NO_PROGRESS, BUDGET_EXHAUSTED, BLOCKED or BENCHMARK_INVALID.
 - **The report keeps apart** correct code, work that went through Orbit, autonomy end to end, a blocker and an invalid
   benchmark. A host's numbers are REPORTED, and an unreported one is `unknown`.
-- **First pack, `orbit-source`.**
+- **First suite, `orbit-source`.**
   - **ORBIT-SRC-001** holds `src/improvement/oracle.mjs` and `safety.mjs` to the acceptance oracle's promises. It
     passes on the current source and fails on its planted variant, a partial fix, allow-all and reject-all.
   - **ORBIT-SRC-002** fails on the current source: a removed step that waited for a person goes unreported. It is a real
     finding, kept as its own case.
+
+- **QA cases (ADR 0047): does Orbit's autonomous QA find a planted defect?**
+  - A second suite, `orbit-qa`, plants one defect per case in Orbit's own synthetic acceptance application, with that
+    application's own ground truth. One case plants nothing, so every contradiction there is a false alarm.
+  - Orbit's engine runs from the run's frozen checkout beside the controller. It sets the application up on an
+    isolated sandbox of its own and opens one investigation, doing once what a person does in Orbit Control.
+  - A real coding host works the investigation from the runner container through a relay of files: requests it
+    writes, answers it can only read. The relay admits the subcommands a host uses, about the run's own investigation;
+    it never passes a person's approval, a second investigation or a path. The host's plugin withholds the ground
+    truth, the reference designs and the application's source, and its `cli/autonomous-qa.mjs` is the relay's client.
+  - What the investigation came to is read off the engine's own journal. Each contradicted design is replayed on the
+    clean application, and counts as a defect found only when the clean application satisfies it. The verdict table
+    ends in BLOCKED, FAIL (a false alarm, a defect missed, too little covered), INCONCLUSIVE or PASS.
+  - `controls` proves the verifier live, with no model: a reference host using acceptance's designs must PASS, while
+    an idle host and a false-alarm host must FAIL.
+  - A QA worker image, built from the official Playwright image pinned by digest, needs no OS package mirror or
+    browser CDN. The sentinel also looks for the sandbox's per-run tokens.
+- **Best-practice names.**
+  - Benchmark "packs" are SUITES (`suites/<suite>/suite.json`), matching `--suite` and kept apart from Orbit's
+    capability packs.
+  - A case's directory is its id in lower case. `hidden/` is `verifier/`, and `faults/` is `variants/`.
+  - The modules are grouped as `lib/core/`, `lib/source/` and `lib/qa/`, and the tests as `test/benchmark-source-*`
+    and `test/benchmark-qa-*`.
 
 ## 0.3.0
 

@@ -138,7 +138,8 @@ function sidesDiff(dir, tree, rel, text) {
   if (before !== null) (mkdirSync(dirname(join(dir, "a", rel)), { recursive: true }), writeFileSync(join(dir, "a", rel), before));
   mkdirSync(dirname(join(dir, "b", rel)), { recursive: true });
   writeFileSync(join(dir, "b", rel), text);
-  return spawnSync("git", ["diff", "--no-index", "--no-color", "--no-prefix", before === null ? "/dev/null" : join("a", rel), join("b", rel)], { cwd: dir, encoding: "utf8" }).stdout;
+  // Forward slashes on every platform: a backslash in a path git prints would be part of the file's name to `git apply`.
+  return spawnSync("git", ["diff", "--no-index", "--no-color", "--no-prefix", before === null ? "/dev/null" : `a/${rel}`, `b/${rel}`], { cwd: dir, encoding: "utf8" }).stdout;
 }
 
 const ROW_KIND = (args) => (args.includes("--repair") ? (flagOf(args, "variant") === "controlled-fault" ? "selfHealing" : "repair") : null);

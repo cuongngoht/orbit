@@ -103,12 +103,16 @@ function chosen(world, id, headTree) {
 
 const catalogOf = async (world) => ((r) => (r.json ? rowsOf(world.policy, r.json) : []))(await world.bench(["list"], {}));
 
+// What the ship does next: one still running goes on where its journal stands; any other is carried on by a resume,
+// and a resume asks its preflight again before anything else (contextOf), so that is what it does first.
+const nextAsked = (f, ctx) => (f.ended ? null : nextOf(f, { ...ctx, preflighted: f.view.lifecycle === "RUNNING" }).id);
+
 export async function statusOf(world, id) {
   const ship = chosen(world, id, gitSays(world, ["rev-parse", "HEAD^{tree}"]));
   if (!ship) return { found: false, says: "no ship has run on this checkout: node skills/orbit-release/ship.mjs" };
   const ctx = { ...contextOf(world, shipRoomOf(world.storeRoot, ship.id), ship.manifest, {}), rows: await catalogOf(world), preflighted: true };
   const f = factsOf(ctx, world.door.show(ctx.task));
-  return { found: true, ship: ship.id, task: ctx.task, lifecycle: f.view.lifecycle, stage: f.view.stage ?? null, mode: ship.manifest.mode, start: ship.manifest.start, commit: f.current.commit, cycle: f.attempts, rows: { total: ctx.rows.length, held: [...f.rows.values()].filter((r) => r.v.state === "HELD").length, failed: [...f.rows.values()].filter((r) => r.v.state !== "HELD").map((r) => `${r.row.id} ${r.v.state}`) }, repairs: f.repairs.map((r) => `${r.case} ${r.state}`), spent: f.spent, limits: f.limits, next: f.ended ? null : nextOf(f, ctx).id, ending: docRead(ctx.room, "ending.json"), evidence: existsSync(ctx.room.at("evidence.json")) ? ctx.room.at("evidence.json") : null, room: ctx.room.dir };
+  return { found: true, ship: ship.id, task: ctx.task, lifecycle: f.view.lifecycle, stage: f.view.stage ?? null, mode: ship.manifest.mode, start: ship.manifest.start, commit: f.current.commit, cycle: f.attempts, rows: { total: ctx.rows.length, held: [...f.rows.values()].filter((r) => r.v.state === "HELD").length, failed: [...f.rows.values()].filter((r) => r.v.state !== "HELD").map((r) => `${r.row.id} ${r.v.state}`) }, repairs: f.repairs.map((r) => `${r.case} ${r.state}`), spent: f.spent, limits: f.limits, next: nextAsked(f, ctx), ending: docRead(ctx.room, "ending.json"), evidence: existsSync(ctx.room.at("evidence.json")) ? ctx.room.at("evidence.json") : null, room: ctx.room.dir };
 }
 
 // The artifact as the evidence names it -- its file, digested again -- or a person's own archive of the same tree, by

@@ -91,8 +91,10 @@ jobs:
           path: |
             ~/.orbit/projects/**/release/**/manifest.json
             ~/.orbit/projects/**/release/**/ending.json
+            ~/.orbit/projects/**/release/**/endings/*.json
             ~/.orbit/projects/**/release/**/evidence.json
             ~/.orbit/projects/**/release/**/steps/*.json
+            ~/.orbit/projects/**/release/**/repairs/*.patch
             ~/.orbit/projects/**/release/**/release.patch
             ~/.orbit/projects/**/release/**/release.bundle
             ~/.orbit/projects/**/release/**/artifacts/*.zip

@@ -96,6 +96,7 @@ test("4. no credential by name -> BLOCKED at preflight before anything is built;
   const a = await shipped(none);
   assert.deepEqual([a.result.outcome, a.result.code, a.result.exit], ["BLOCKED", "AUTH_MISSING", 3]);
   assert.equal(none.door.show(a.ctx.task).actions.filter((x) => x.type === "release.build").length, 0, "nothing was built");
+  assert.equal((await statusOf(none.world, a.ctx.ship.id)).next, "PREFLIGHT", "a blocked ship's resume asks its preflight again first");
   const refused = shipWorldOf(t, { play: { host: { ok: false, code: "AUTH_REFUSED", says: "Invalid API key" } } });
   const b = await shipped(refused);
   assert.deepEqual([b.result.outcome, b.result.exit], ["BLOCKED", 3]);

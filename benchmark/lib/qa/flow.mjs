@@ -254,7 +254,7 @@ async function fromHere(ctx) {
   const pending = docRead(ctx.room, "ending.json");
   if (pending) return ended(ctx, pending);
   if (!frozenIntact(ctx)) return ended(ctx, { end: "fail", stop: "REQUIREMENT_BLOCKED", outcome: "BENCHMARK_INVALID", summary: "BENCHMARK_INVALID — the frozen case or subject changed after the run began" });
-  if (credentialProblem(ctx)) return ended(ctx, blocked(credentialProblem(ctx)));
+  if (credentialProblem(ctx)) return ended(ctx, { ...blocked(credentialProblem(ctx)), cause: "CREDENTIALS", class: "ENVIRONMENT_BLOCKED" });
   return (opened(ctx), rounds(ctx));
 }
 

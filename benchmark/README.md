@@ -32,7 +32,9 @@ This is development tooling. It never ships (`.gitattributes` export-ignores `be
 [ADR 0046](../docs/adr/0046-a-docker-benchmark-holds-orbits-source-to-independent-checks.md) (the benchmark and its
 source cases), [ADR 0047](../docs/adr/0047-a-qa-benchmark-asks-whether-autonomous-qa-finds-a-planted-defect.md)
 (its QA cases) and [ADR 0048](../docs/adr/0048-the-benchmark-proves-orbits-self-healing-loop-and-measures-goals.md)
-(repair controls, failure classes, engineering cases, metrics and CI tiers).
+(repair controls, failure classes, engineering cases, metrics and CI tiers). A release is qualified by driving it end
+to end ([ADR 0049](../docs/adr/0049-a-release-qualifies-on-docker-benchmark-evidence-carried-by-claude-code.md),
+[below](#driven-by-a-release-ship)).
 
 ## Layout
 
@@ -100,7 +102,10 @@ The QA cases plant one defect each in Orbit's own synthetic invoice application 
    - Behind a network that inspects TLS, give the proxy's CA bundle with `--ca-file=<pem>` (or
      `ORBIT_BENCHMARK_CA_FILE`).
    - Run `node benchmark/run.mjs doctor` to see what is missing. `doctor --preflight` also runs the subject's own
-     declared checks (`npm run lint`, `npm run test`) in the runner container, with no host.
+     declared checks (`npm run lint`, `npm run test`) in the runner container, with no host. `doctor --host` asks the
+     runner image's Claude Code ONE question through the egress proxy -- no tool, no plugin, a budget of a few cents --
+     and says whether it starts, which version and model it reports, and whether the credential is accepted, or a code
+     when not (`CLI_UNAVAILABLE`, `CLI_MISMATCH`, `AUTH_MISSING`, `AUTH_REFUSED`, `EGRESS`, `PROVIDER`).
 2. **Build once.**
    - `node benchmark/run.mjs build` builds three images:
      - `verifier`, built with no network;
@@ -514,9 +519,32 @@ from every kept `controls.json`, and with `--by=revision` each case's outcomes b
 |---|---|---|
 | fast | `ci.yml`, every push and pull request | every `test/benchmark-*.test.mjs` inside the definition of done's `node --test`: no Docker, no network |
 | conformance | `benchmark.yml`, a pull request that touches the benchmark, or on request | every case's verifier and judge controls in real containers, by suite; scripted hosts through Orbit's engineering loop and goal entry; no model, no secret |
-| autonomous | `benchmark.yml`, only when a person dispatches it | a real coding host on one case or one suite with `--repair`, from the `benchmark` environment that holds the credential, inside a budget the person gives (at most 50 USD and 5 rounds); a missing credential ends it BLOCKED |
+| autonomous | `benchmark.yml`, only when a person dispatches it | a real coding host on one case or one suite with `--repair`, from the `benchmark` environment that holds the credential (`ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`, by name), inside a budget the person gives (at most 50 USD and 5 rounds); a missing credential ends it BLOCKED |
+| release | `release.yml`, only when a person dispatches it | the autonomous ship (`skills/orbit-release/ship.mjs`, ADR 0049): every case of every suite, the model-carried rows by the real Claude Code, repairs, a full retest, and the publish gate -- never a tag, a push or a publication |
 
 Every tier uploads what its runs kept, PASS or not. Nothing model-backed runs on a push.
+
+## Driven by a release ship
+
+A release of Orbit is qualified by `node skills/orbit-release/ship.mjs` (ADR 0049), which drives this benchmark as a
+command -- it imports nothing of it -- and holds every run to its own room. What it asks of a run, the benchmark offers to
+anyone:
+
+- `--tree=<dir>` on `run` and `controls` measures ANOTHER checkout of this repository: the ship's pristine checkout of a
+  release commit. Only the freeze reads it; the cases, the harness, the task door, the store and the images stay this
+  checkout's, so the controller that judges is never what it judges. A directory inside a checkout is refused.
+- `--run-id=<bnr-…>` names a run's room before it starts (refused when it is kept already), so a caller that dies mid-run
+  knows which room to read back; `--parent=<tsk-…>` makes the run's task part of the caller's (Mission Control shows it).
+- A control that no longer applies to the source is its own row, `DRIFTED`, with what moved: the other controls still
+  run, and the command exits 2.
+- A credential block says its cause and class (`CREDENTIALS`, `ENVIRONMENT_BLOCKED`) in its ending, and a QA run's
+  report says its `hostBasis`, as a source run's does.
+
+The ship's catalog is `skills/orbit-release/ship/policy.json`: every case of every suite, by name. A source case must
+hold its controls and PASS its real source; a QA or engineering case must hold its controls and PASS with the coding host;
+ORBIT-SRC-001's planted fault must be REPAIRED_VERIFIED by the coding host. A source case failing on a cause it declares
+repairable is repaired with `run <case> --repair`, its `verified.json` checked again by the ship, and the patch integrated
+only in the ship's own workspace -- never here, which stays a person's to write.
 
 ## Adding a case
 

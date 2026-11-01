@@ -1,5 +1,47 @@
 # Changelog
 
+## Unreleased
+
+**The autonomous ship (ADR 0049): a release qualifies only on Docker benchmark evidence carried by the real Claude Code
+CLI, for the exact source.** `node skills/orbit-release/ship.mjs` is no longer ten gates and two records: it is one
+resumable Orbit task (provider `release`) that takes this checkout's HEAD through PREFLIGHT → BUILD → BENCHMARK →
+DIAGNOSE → REPAIR → REBUILD → FULL_RETEST → SHIPPABLE. One additive engine contract: `cli/task.mjs create --parent`.
+
+- **The whole catalog, every time.** `skills/orbit-release/ship/policy.json` names all 46 cases of the nine suites, case
+  by case (a case that leaves a suite, or joins one unnamed, is `CATALOG_DRIFT`). Every source case must hold its
+  controls and PASS its real source -- the two known findings, ORBIT-SRC-002 and ORBIT-ORC-006, no longer pass by their
+  baseline. Every QA and engineering case must hold its controls and PASS with the coding host, and ORBIT-SRC-001's
+  planted fault must be repaired by it: sixteen rows a cycle the real Claude Code carries.
+- **Claude Code is the one coding host a release needs.** A model-carried row counts only when its run says basis
+  `coding-host`, reports the Claude Code version the runner image pins, and names its model; a scripted or session
+  host, another host or an endpoint the policy does not name never satisfies it. `doctor --host` asks the runner image's
+  Claude Code one question first; no image, no version, no credential or a refused one BLOCKS the ship -- it never falls
+  back. Native host acceptance (Grok Build, Antigravity, Codex, Claude Code) and native backend acceptance are now
+  optional rows that never block a release.
+- **Fresh artifacts.** Each cycle builds the release archive with `git archive` from a pristine checkout of the release
+  commit, holds the ARCHIVE itself to what a host refuses, digests it by bytes and by content, and rebuilds every
+  benchmark image (`build --rebuild`).
+- **Repairs through the benchmark, integrated only in the ship's own workspace.** A source case failing its real
+  variant on a cause it declares repairable is repaired with `run.mjs run <case> --repair` -- Claude Code in the runner
+  driving one Orbit engineering task, judged by the benchmark's independent verifier. The ship holds a verified candidate
+  again (its record, its patch digest, what git says it touches, the scope, the protected paths, no test losing a line),
+  applies it AUTO in the ship task's own workspace and commits it there, then runs the whole catalog again on the new
+  commit. A QA or engineering failure is never repaired against its hidden truth. A known finding's controls that
+  presuppose its defect are reported SUPERSEDED once its real source passes.
+- **Evidence, and a publish gate.** SHIPPABLE writes `evidence.json`, bound to the release commit, its tree, the content
+  digest every run froze, the protected and policy digests and the artifact. Integrated repairs reach a branch only as
+  `release.patch` and `release.bundle` a person applies -- nothing is pushed, tagged or published. `ship.mjs --evidence`
+  re-derives everything and exits 0 only for PUBLISHABLE.
+- **Resumable, visible, bounded.** `--resume`, `--status`, `--no-repair`, `--usd`, `--minutes`, `--cycles`,
+  `--attempts`, `--json`. A run is read back from its room, never sent twice; a person's pause or cancel stops the child
+  run and removes its containers. Orbit Live shows a session's ship before the runs it starts, and names a benchmark
+  child as one; Mission Control shows each run as part of the ship.
+- **The benchmark, for any caller:** `--tree`, `--run-id`, `--parent`, a drifted control as its own row (exit 2), a
+  credential block that says its cause, a QA report that says its host basis, and `doctor --host`.
+- **CI.** `ci.yml` keeps the fast tier (`ship.mjs --ci`), which now prints the autonomous ship as `wait` -- a green fast
+  CI is never qualification. `release.yml` (dispatched, from the `benchmark` environment) runs the autonomous ship and
+  the publish gate, and uploads every room. `benchmark.yml` takes `CLAUDE_CODE_OAUTH_TOKEN` by name too.
+
 ## 0.3.1
 
 A patch release: one behaviour fix in the goal orchestrator, and the Docker benchmark that found and verified it. No

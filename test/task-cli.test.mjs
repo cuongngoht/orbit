@@ -151,6 +151,16 @@ test("a checkout is named from anywhere with --project and --checkout; unknown o
   assert.equal(elsewhere("frobnicate").status, 0, "an unknown command prints the usage");
 });
 
+test("a task may name the task that started it (--parent): a link that shows on both views and decides nothing", (t) => {
+  const at = checkout(t);
+  const task = cli(at, at.repo);
+  const parent = ok(task("create", "a release ship", "--provider=release", "--json")).json.task;
+  const child = ok(task("create", "a benchmark run it started", "--provider=benchmark", `--parent=${parent}`, "--json")).json.task;
+  assert.equal(ok(task("show", child, "--json")).json.task.parent, parent);
+  assert.equal(ok(task("machine", "--json")).json.tasks.find((r) => r.id === child).parent, parent);
+  assert.equal(task("create", "a bad parent", "--parent=not-a-task").status, 2, "a parent is a task's id or nothing");
+});
+
 test("the session trail gets ids and counts of four moments, never a sentence -- and a task reads the same with no trail at all", (t) => {
   const at = checkout(t);
   const task = cli(at, at.repo);

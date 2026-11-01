@@ -14,18 +14,26 @@
 //                                     the images, built once from benchmark/images/ and reused by id; a CA bundle for a
 //                                     network that inspects TLS is a build secret, never written into the image
 //   node benchmark/run.mjs list       the suites, their cases, what each runs on, and their controls
-//   node benchmark/run.mjs doctor [--preflight]
+//   node benchmark/run.mjs doctor [--preflight] [--host [--model=<id>] [--credential=<NAME>]]
 //                                     Docker, the images, a credential by name; --preflight runs the subject's own
-//                                     declared checks (npm run lint, npm run test) in the runner container, no host
+//                                     declared checks (npm run lint, npm run test) in the runner container, no host;
+//                                     --host asks the runner image's Claude Code one question through the egress proxy
+//                                     (no tool, no plugin, a budget of a few cents): whether it starts, which version and
+//                                     model it says it is, whether the credential is accepted -- a code when not
 //   node benchmark/run.mjs run <case> [--variant=real|controlled-fault] [--repair] [--source=head|worktree]
 //                                     [--seed=<n>] [--model=<id>] [--rounds=<n>] [--minutes=<n>] [--usd=<n>]
 //                                     [--credential=<NAME>] [--ca-file=<pem>] [--host=session:<label>]
+//                                     [--tree=<dir>] [--run-id=<bnr-…>] [--parent=<tsk-…>]
 //                                     one case on the source of this branch: a source case frozen, verified twice,
 //                                     diagnosed and -- with --repair -- repaired by Orbit and verified again; a QA case's
 //                                     application set up with its own variant planted and a coding host's investigation
 //                                     over it judged against the case's ground truth
-//   node benchmark/run.mjs run --suite=<suite> [the same flags]
+//   node benchmark/run.mjs run --suite=<suite> [the same flags, but --run-id]
 //                                     every case of a suite, one run each
+//                                     --tree measures another checkout of this repository (its HEAD, or with
+//                                     --source=worktree its tree) -- the cases, the harness, the store and the task stay
+//                                     this checkout's; --run-id names the run's room before it starts (refused when it is
+//                                     kept already); --parent names the task that started the run (a release ship)
 //   node benchmark/run.mjs run --like=<bnr-…>
 //                                     again: the same case, variant, host, source mode, seed, limits and images, a new run
 //   node benchmark/run.mjs status <bnr-…>
@@ -35,12 +43,14 @@
 //                                     a run carried on from where its task's journal says it stands: a verification or a
 //                                     setup is done again; a repair round or a QA host's round is read back, never sent again
 //   node benchmark/run.mjs controls <case> [--only=<control>] [--skip-engine] [--source=head|worktree]
+//                                     [--tree=<dir>] [--parent=<tsk-…>]
 //                                     what the verifier must pass and must fail: for a source case, a planted fault, a
 //                                     partial fix, allow-all and reject-all in the verifier's own containers; its repair
 //                                     controls -- a reference candidate the judge must pass and every way of cheating it
 //                                     must refuse by name, and (unless --skip-engine) a scripted host driving Orbit's own
 //                                     engineering loop with no model; for a QA case, a whole run with each scripted
-//                                     host -- reference, idle, false-alarm
+//                                     host -- reference, idle, false-alarm. A control that no longer applies to the
+//                                     source is its own row, DRIFTED, and the command then exits 2
 //   node benchmark/run.mjs cleanup <bnr-…> [--scratch]
 //                                     the run's containers and networks, by its label only; --scratch its scratch trees
 //   node benchmark/run.mjs where      where the runs are kept, and which there are
@@ -84,7 +94,11 @@ function storeOf() {
   return { storeRoot: root, storeBase: dirname(root) };
 }
 
-const harness = () => ({ root: ROOT, env: process.env, taskEnv: taskEnv(), credential: flag(args, "credential") ?? null, caFile: flag(args, "ca-file") ?? process.env.ORBIT_BENCHMARK_CA_FILE ?? null, ...storeOf() });
+// The checkout a run measures, when it is not this one (`--tree`): resolved here, held to a checkout's top directory by
+// the freeze.
+const treeOf = () => ((t) => (t ? resolve(t) : null))(flag(args, "tree"));
+
+const harness = () => ({ root: ROOT, tree: treeOf(), env: process.env, taskEnv: taskEnv(), credential: flag(args, "credential") ?? null, caFile: flag(args, "ca-file") ?? process.env.ORBIT_BENCHMARK_CA_FILE ?? null, ...storeOf() });
 
 function help() {
   const lines = readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(1);

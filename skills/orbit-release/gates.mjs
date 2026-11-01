@@ -150,7 +150,8 @@ function verdict(g, run) {
   }
 }
 
-export const shippable = (rows) => rows.every((r) => r.ok);
+// A row a release only REPORTS (`required: false`: native host and backend acceptance, ADR 0049) never stops it.
+export const shippable = (rows) => rows.every((r) => r.ok || r.required === false);
 
 // `node --test` exits 0 with "fail 0"; the count is what the DoD asks to be
 // reported, so it is pulled out rather than left for someone to read.

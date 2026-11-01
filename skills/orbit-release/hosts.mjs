@@ -1,5 +1,7 @@
 // Native acceptance is recorded after live host dispatch, never inferred from
 // adapter unit tests, binary presence, package validation or a green UI build.
+// Since ADR 0049 it is OPTIONAL for a release: Claude Code, in the Docker benchmark's runner, is the one coding host a
+// release needs (skills/orbit-release/ship.mjs), and these records are reported beside it -- `optional` -- never a gate.
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
@@ -26,8 +28,11 @@ export function nativeAcceptance(root) {
 export function acceptanceOf(record, digest) {
   const missing = TARGETS.filter((id) => !record?.hosts?.some((h) => h.id === id && typeof h.version === 'string' && h.version && h.nativeDispatch === true && h.controlStopped === true && h.uninstallPreservedStore === true && h.sanitizedFixtures === true));
   const ok = record?.schema === 1 && record.sourceDigest === digest && missing.length === 0;
-  return { name: 'native host acceptance', ok, detail: ok ? `${TARGETS.length} live host integrations accepted for this source digest` : `native evidence absent/stale (${missing.join(', ') || 'source digest changed'}); do not release`, sourceDigest: digest };
+  return { name: 'native host acceptance', ok, detail: ok ? `${TARGETS.length} live host integrations accepted for this source digest` : `native evidence absent/stale (${missing.join(', ') || 'source digest changed'}); record it after a live run on each host -- optional for a release`, sourceDigest: digest };
 }
 // In a pipeline (ship.mjs --ci, 0.0.2) the record is AWAITED, never failed: only live runs on every host make it, and
 // a pipeline makes none. A release runs without --ci, where a missing or stale record still refuses it.
 export const awaited = (row, ci) => (ci && !row.ok ? { ...row, ok: true, pending: true } : row);
+
+// A row a release REPORTS and never requires (ADR 0049): it says what it says, and `shippable` passes over it.
+export const optional = (row) => ({ ...row, required: false });

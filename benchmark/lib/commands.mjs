@@ -9,7 +9,8 @@ import { Blocked, Refused } from "../../src/errors.mjs";
 import { flag, has, words } from "../../src/learn/args.mjs";
 import { docker } from "../../src/runtime/isolation/docker.mjs";
 import { madeCheckout } from "./core/checkout.mjs";
-import { contextOf, dockerDeps, engineOf, fixtureEntries, frozenRun, resumedRun, userOf, variantEntries, withSpec } from "./core/context.mjs";
+import { contextOf, dockerDeps, engineOf, fixtureEntries, frozenRun, resumedRun, treeOf, userOf, variantEntries, withSpec } from "./core/context.mjs";
+import { probedHost } from "./core/probe.mjs";
 import { cleaned, leftovers, ranContainer, specFor } from "./core/docker.mjs";
 import { candidateEntries, candidateFile, mutatedEntries, mutationFile } from "./core/mutations.mjs";
 import { carried, EXIT, verificationSummary } from "./source/flow.mjs";
@@ -64,22 +65,28 @@ const sayBuild = (r) => r.images.map((i) => `${i.role.padEnd(9)} ${i.reused ? "r
 const credentialsHere = (env) => ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN"].filter((n) => env[n]);
 
 async function doctor(h, args) {
-  const deps = dockerDeps(h.env, null);
+  const deps = depsOf(h);
   const up = docker.doctor(deps);
   const images = Object.fromEntries(ROLES.map((r) => [r, up.ok ? imageIdOf(imageDefs(engineOf(h))[r].tag, deps) : null]));
-  return { docker: up.ok ? { version: up.version } : { missing: String(up.why ?? "") }, user: up.ok ? userOf(deps) : null, images, tags: Object.fromEntries(ROLES.map((r) => [r, imageDefs(engineOf(h))[r].tag])), credentials: credentialsHere(h.env), preflight: has(args, "preflight") ? await preflight(h, up, images) : null };
+  return { docker: up.ok ? { version: up.version } : { missing: String(up.why ?? "") }, user: up.ok ? userOf(deps) : null, images, tags: Object.fromEntries(ROLES.map((r) => [r, imageDefs(engineOf(h))[r].tag])), credentials: credentialsHere(h.env), preflight: has(args, "preflight") ? await preflight(h, up, images) : null, host: has(args, "host") ? await hostChecked(h, deps, up, args) : null };
 }
+
+// `--host`: the runner image's Claude Code asked one question through the egress proxy (core/probe.mjs) -- only where
+// Docker answers; a few cents of a credential's budget, said as the host reported it.
+const hostChecked = (h, deps, up, args) => (up.ok ? probedHost(h, deps, flag(args, "model") ?? null) : { ok: false, code: "DOCKER", says: `Docker does not answer here: ${String(up.why ?? "").slice(0, 200)}` });
 
 const sayPreflight = (p) => (!p ? [] : p.blocked ? [`preflight   BLOCKED — ${p.blocked}`] : [`preflight   ${p.holds ? "HOLDS" : "DOES NOT HOLD"} — clone ${p.clone?.exit === 0 ? "ok" : "failed"}; ${(p.checks ?? []).map((c) => `${c.argv} exit ${c.exit} in ${c.seconds}s`).join("; ")}; tree ${p.clean ? "left clean" : `left ${p.left?.length} path(s)`}`]);
 
-const sayDoctor = (r) => [`docker      ${r.docker.version ?? `BLOCKED — ${r.docker.missing}`}`, `user        ${r.user ?? "-"}`, ...ROLES.map((role) => `${role.padEnd(11)} ${r.images[role] ?? `not built (${r.tags[role]}) — node benchmark/run.mjs build`}`), `credential  ${r.credentials.length ? r.credentials.join(", ") : "none set (a repair round needs one, by name)"}`, ...sayPreflight(r.preflight)].join("\n");
+const sayHost = (x) => (!x ? [] : [`host        ${x.ok ? "OK" : `BLOCKED ${x.code}`} — ${x.says}${x.costUsd !== null && x.costUsd !== undefined ? ` (reported ${x.costUsd} USD)` : ""}`]);
+
+const sayDoctor = (r) => [`docker      ${r.docker.version ?? `BLOCKED — ${r.docker.missing}`}`, `user        ${r.user ?? "-"}`, ...ROLES.map((role) => `${role.padEnd(11)} ${r.images[role] ?? `not built (${r.tags[role]}) — node benchmark/run.mjs build`}`), `credential  ${r.credentials.length ? r.credentials.join(", ") : "none set (a repair round needs one, by name)"}`, ...sayPreflight(r.preflight), ...sayHost(r.host)].join("\n");
 
 // Whether the subject's own declared checks can be held in the runner container at all: what a round's engineering
 // task is held to, run here with no host, no network and no credential.
 async function preflight(h, up, images) {
   if (!up.ok || !images.runner) return { blocked: !up.ok ? "Docker does not answer" : "the runner image is not built" };
   const room = roomOf(h.storeRoot, newRunId("preflight"));
-  madeCheckout(room.at("checkout"), subjectOf(frozen(whereAt(h.root, h.env).root, "head", h.env).entries, HARNESS).entries, "preflight subject", h.env);
+  madeCheckout(room.at("checkout"), subjectOf(frozen(whereAt(treeOf(h), h.env).root, "head", h.env).entries, HARNESS).entries, "preflight subject", h.env);
   return preflightRan(h, room, images.runner);
 }
 
@@ -113,7 +120,17 @@ const sayList = (r) => r.suites.flatMap((p) => [`${p.id} ${p.version} — ${p.ti
 // control's, run by `controls`; a coding host is the default.
 const hostOption = (v) => (v === undefined || /^session:[a-z0-9-]{1,40}$/.test(v) ? v : refusedWith(`--host takes session:<label> (lower-case letters, digits, dashes), not ${v}`));
 
-const optionsOf = (args) => ({ host: hostOption(flag(args, "host")), variant: flag(args, "variant"), repair: has(args, "repair"), source: flag(args, "source"), seed: int(flag(args, "seed")), model: flag(args, "model"), rounds: int(flag(args, "rounds")), minutes: int(flag(args, "minutes")), usd: num(flag(args, "usd")) });
+// A caller's own names for what it starts: the run's id (a release ship names the room before it dispatches, so it can
+// read the run back however it ends) and the task that started it (`parent`, shown by Orbit Live and Mission Control).
+const TASK_ID = /^tsk-[a-f0-9]{12}$/;
+
+const shaped = (name, re, says) => (v) => (v === undefined || re.test(v) ? v : refusedWith(`--${name} is ${says}, not ${v}`));
+
+const runIdOption = shaped("run-id", RUN_ID, "bnr- and 12 hex characters");
+
+export const parentOption = shaped("parent", TASK_ID, "a task's id: tsk- and 12 hex characters");
+
+const optionsOf = (args) => ({ host: hostOption(flag(args, "host")), variant: flag(args, "variant"), repair: has(args, "repair"), source: flag(args, "source"), seed: int(flag(args, "seed")), model: flag(args, "model"), rounds: int(flag(args, "rounds")), minutes: int(flag(args, "minutes")), usd: num(flag(args, "usd")), runId: runIdOption(flag(args, "run-id")), parent: parentOption(flag(args, "parent")) });
 
 const BOUNDS = [["seed", 0, 2 ** 31 - 1], ["rounds", 1, 5], ["minutes", 10, 600], ["usd", 0, 200]];
 
@@ -182,6 +199,7 @@ async function finished(ctx, kind) {
 
 function runCmd(h, args) {
   if (flag(args, "like")) return oneRun(h, likeOf(h, flag(args, "like")));
+  if (flag(args, "suite") && flag(args, "run-id")) refusedWith("--run-id names one run, and --suite starts one run per case");
   if (flag(args, "suite")) return suiteRun(h, args);
   const caseId = words(args)[0] ?? refusedWith("name the case to run (node benchmark/run.mjs list), or --suite=<suite>");
   return oneRun(h, sourceChecked(checked({ ...optionsOf(args), caseId })));
@@ -278,12 +296,15 @@ const inScope = (args) => (r) => (!flag(args, "suite") || r.manifest.benchmark?.
 
 const scopeSaid = (args) => ["suite", "case", "since"].filter((k) => flag(args, k)).map((k) => `${k} ${flag(args, k)}`).join(", ") || "every run kept";
 
+// Rooms that hold no run of a case: a control set's (its rows are the verifier's own metric) and a host probe's.
+const NOT_RUNS = ["controls", "probe"];
+
 const controlRows = (kept) => kept.filter((r) => r.manifest.kind === "controls" && r.controls).flatMap((r) => r.controls.rows.map((row) => ({ ...row, case: r.controls.case })));
 
 function metrics(h, args) {
   const kept = safeList(join(h.storeRoot, "benchmark")).filter((n) => RUN_ID.test(n)).map((n) => keptRun(h, n)).filter((r) => r.manifest);
   const scoped = kept.filter(inScope(args)).sort((a, b) => String(b.manifest.at ?? "").localeCompare(String(a.manifest.at ?? ""))).slice(0, MAX_RUNS);
-  return { store: join(h.storeRoot, "benchmark"), ...metricsOf(scoped.filter((r) => r.manifest.kind !== "controls"), { scope: scopeSaid(args), controls: controlRows(scoped), byRevision: flag(args, "by") === "revision" }) };
+  return { store: join(h.storeRoot, "benchmark"), ...metricsOf(scoped.filter((r) => !NOT_RUNS.includes(r.manifest.kind)), { scope: scopeSaid(args), controls: controlRows(scoped), byRevision: flag(args, "by") === "revision" }) };
 }
 
 const cell = (m) => `${String(m.value).padEnd(8)} ${`${Math.round(m.numerator * 100) / 100}/${m.denominator}`.padEnd(12)}${Object.entries(m.excluded ?? {}).filter(([, n]) => n).map(([k, n]) => ` ${k} ${n}`).join("")}`;
@@ -304,7 +325,7 @@ const CONTROL_BASE = { source: (c, fr) => subjectOf(fr.entries, HARNESS).entries
 
 function controlsRoom(h, c, images) {
   const room = roomOf(h.storeRoot, newRunId(`${c.id}\u0000controls`));
-  const where0 = whereAt(h.root, h.env);
+  const where0 = whereAt(treeOf(h), h.env);
   cpSync(c.dir, room.at("frozen", "case"), { recursive: true });
   madeCheckout(room.at("checkout"), CONTROL_BASE[c.kind](c, frozen(where0.root, "head", h.env)), `${c.id} controls subject`, h.env, { plugin: c.kind === "source" });
   return { room, manifest: { schema: 1, kind: "controls", run: room.id, task: null, at: new Date().toISOString(), source: { branch: where0.branch, commit: where0.commit, mode: "head" }, benchmark: { case: c.id, version: c.version, variant: "real", digest: dirDigest(room.at("frozen", "case")) }, subject: { digest: null }, images, config: { seed: 20240607, rounds: 1, usd: 0, model: null, repair: false, minutes: 60 } } };
@@ -335,22 +356,35 @@ const CONTROL_FILES = { engineering: (dir, rel, entries) => candidateEntries(ent
 
 const controlFiled = (ctx, c, k, entries) => (CONTROL_FILES[c.kind] ?? ((dir, rel, e) => mutatedEntries(e, mutationFile(dir, rel))))(ctx.frozenCase, k.file, entries);
 
+// A control that no longer applies to this source is THAT control's row -- DRIFTED, saying what moved -- never an
+// aborted command: the controls that do apply still run, and the command says REFUSED (exit 2) when any drifted.
 function entriesFor(ctx, c, k) {
   const v = variantEntries({ ...c, dir: ctx.frozenCase }, k.variant, ctx.baseline);
   const m = v.ok && k.file ? controlFiled(ctx, c, k, v.entries) : v;
-  return m.ok ? m.entries : refusedWith(`FIXTURE_DRIFT: control ${k.id} does not apply to this source (${m.drift.mutation} in ${m.drift.file})`);
+  return m.ok ? { entries: m.entries } : { drift: `FIXTURE_DRIFT: control ${k.id} does not apply to this source (${m.drift.mutation} in ${m.drift.file})` };
 }
 
+const driftedRow = (k, says, more = {}) => ({ id: k.id, kind: "verifier", variant: k.variant, expect: k.expect, got: "DRIFTED", matched: false, summary: says, ...more });
+
 async function oneControl(ctx, c, k) {
-  const v = await verified(ctx, `control-${k.id}`, entriesFor(ctx, c, k), {});
+  const e = entriesFor(ctx, c, k);
+  if (e.drift) return driftedRow(k, e.drift);
+  const v = await verified(ctx, `control-${k.id}`, e.entries, {});
   const got = !v.complete ? "INCOMPLETE" : v.failures.length ? "FAIL" : "PASS";
   return { id: k.id, kind: "verifier", variant: k.variant, expect: k.expect, got, matched: got === k.expect, summary: verificationSummary(v), digest: v.digest, attested: v.hidden.attested.every((r) => r.ok) };
 }
 
+// A judge control whose candidate or variant no longer applies is its own DRIFTED row too.
+const judgedOrDrifted = (ctx, c, r, cache) => judgedRepair(ctx, c, r, cache).catch((e) => (e.code === "FIXTURE_DRIFT" ? driftedRow(r, e.message, { kind: "candidate", through: "judge" }) : rethrownError(e)));
+
+function rethrownError(e) {
+  throw e;
+}
+
 // A repair control carried through Orbit's ENGINE: a whole run with --repair whose host is the scripted one, driving
 // Orbit's real engineering loop in the runner with the edits its definition names -- no model, no network.
-async function engineControl(h, c, r) {
-  const got = await oneRun(h, { caseId: c.id, variant: r.variant, repair: true, host: `scripted:${r.id}`, source: "head" }).catch((e) => ({ outcome: e instanceof Blocked ? "BLOCKED" : "REFUSED", summary: e.message }));
+async function engineControl(h, c, r, args) {
+  const got = await oneRun(h, { caseId: c.id, variant: r.variant, repair: true, host: `scripted:${r.id}`, source: "head", parent: parentOption(flag(args, "parent")) }).catch((e) => ({ outcome: e instanceof Blocked ? "BLOCKED" : "REFUSED", summary: e.message }));
   return { id: r.id, kind: "scripted-host", through: "engine", expect: r.expect, got: got.outcome, matched: got.outcome === r.expect, summary: got.summary ?? "", run: got.run ?? null };
 }
 
@@ -366,21 +400,24 @@ async function rowsOf(list, one) {
 async function controlsRan(ctx, c, h, args) {
   if (ctx.invalid) return { case: c.id, run: ctx.run.id, rows: [], verifierDefect: ctx.invalid.says, exit: 2 };
   const cache = {};
-  const rows = [...(await rowsOf(only(c.controls, args), (k) => oneControl(ctx, c, k))), ...(await rowsOf(only((c.repairs ?? []).filter((r) => r.through === "judge"), args), (r) => judgedRepair(ctx, c, r, cache))), ...(await rowsOf(engineRepairs(c, args), (r) => engineControl(h, c, r)))];
+  const rows = [...(await rowsOf(only(c.controls, args), (k) => oneControl(ctx, c, k))), ...(await rowsOf(only((c.repairs ?? []).filter((r) => r.through === "judge"), args), (r) => judgedOrDrifted(ctx, c, r, cache))), ...(await rowsOf(engineRepairs(c, args), (r) => engineControl(h, c, r, args)))];
   docWritten(ctx.room, "controls.json", { case: c.id, rows });
-  return { case: c.id, run: ctx.run.id, rows, exit: rows.length && rows.every((r) => r.matched) ? 0 : 1 };
+  return { case: c.id, run: ctx.run.id, rows, exit: controlsExit(rows) };
 }
+
+// REFUSED when any control no longer applies to this source (FIXTURE_DRIFT); otherwise every row matched, or not.
+const controlsExit = (rows) => (rows.some((r) => r.got === "DRIFTED") ? 2 : rows.length && rows.every((r) => r.matched) ? 0 : 1);
 
 // A QA case's controls: a whole run each, driven by one of its scripted hosts, its verdict held to what it must be.
 async function qaControl(h, c, k, args) {
-  const r = await oneRun(h, { caseId: c.id, host: k.host, source: flag(args, "source") ?? "head" });
+  const r = await oneRun(h, { caseId: c.id, host: k.host, source: flag(args, "source") ?? "head", parent: parentOption(flag(args, "parent")) });
   return { id: k.id, host: k.host, expect: k.expect, got: r.outcome, matched: r.outcome === k.expect, summary: r.summary ?? "", run: r.run };
 }
 
 async function qaControls(h, c, args) {
   const rows = [];
   for (const k of c.controls.filter((x) => !flag(args, "only") || x.id === flag(args, "only"))) rows.push(await qaControl(h, c, k, args));
-  return { case: c.id, run: rows.map((r) => r.run).join(" "), rows, exit: rows.length && rows.every((r) => r.matched) ? 0 : 1 };
+  return { case: c.id, run: rows.map((r) => r.run).join(" "), rows, exit: controlsExit(rows) };
 }
 
 const rejectsSay = (x) => (x.missing?.length ? ` · NOT refused by ${x.missing.join(", ")}` : x.rejects?.length ? ` · refused by ${x.rejects.join(", ")}` : "");

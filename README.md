@@ -498,7 +498,9 @@ npm test                                                     # node --test: no b
 npm run lint                                                 # Five Lines check, must print 0 finding(s)
 ORBIT_UI_TESTS=test/fixtures/ui-tests node cli/query.mjs check
 ORBIT_UI_TESTS=test/fixtures/ui-tests node cli/plan-check.mjs
-node skills/orbit-release/ship.mjs                           # the whole definition of done, one command
+node skills/orbit-release/ship.mjs --ci                      # the whole definition of done, one command (the fast tier)
+node skills/orbit-release/ship.mjs                           # a release: the autonomous ship, Docker + Claude Code (ADR 0049)
+node skills/orbit-release/ship.mjs --evidence                # the publish gate: evidence for this very tree, or not
 ```
 
 Before changing code, read:

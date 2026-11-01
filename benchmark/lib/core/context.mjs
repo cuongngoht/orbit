@@ -34,6 +34,11 @@ export const DEFAULT_HOST = "api.anthropic.com";
 // runs the benchmark, and kept apart so a harness test can measure a small repository of its own.
 export const engineOf = (h) => h.engine ?? h.root;
 
+// Which checkout is MEASURED: another clone of the same repository when a caller names one (`--tree` -- a release ship's
+// pristine checkout of its release commit), this one otherwise. Only the freeze reads it; the cases, the task door, the
+// store, the images and the harness stay the engine checkout's, so the controller that judges is never what it judges.
+export const treeOf = (h) => h.tree ?? h.root;
+
 // The task door, run from the measured repository's checkout -- the project its task belongs to.
 const recorderOf = (h) => recorder({ cli: join(engineOf(h), "cli", "task.mjs"), cwd: h.root, env: h.taskEnv });
 
@@ -47,9 +52,9 @@ export const userOf = (deps) => (/rootless/.test(dockerInfo(deps, "{{json .Secur
 
 export const cpusetOf = (deps, cpus) => ((n) => `0-${Math.max(0, Math.min(Math.ceil(cpus), n || 1) - 1)}`)(Number(dockerInfo(deps, "{{.NCPU}}")));
 
-const credentialNames = (env, asked) => (asked ? (CREDENTIALS.includes(asked) && env[asked] ? [asked] : []) : CREDENTIALS.filter((n) => env[n]).slice(0, 1)).concat(env.ANTHROPIC_BASE_URL ? ["ANTHROPIC_BASE_URL"] : []);
+export const credentialNames = (env, asked) => (asked ? (CREDENTIALS.includes(asked) && env[asked] ? [asked] : []) : CREDENTIALS.filter((n) => env[n]).slice(0, 1)).concat(env.ANTHROPIC_BASE_URL ? ["ANTHROPIC_BASE_URL"] : []);
 
-const hostsOf = (env) => [env.ANTHROPIC_BASE_URL ? new URL(env.ANTHROPIC_BASE_URL).hostname.toLowerCase() : DEFAULT_HOST];
+export const hostsOf = (env) => [env.ANTHROPIC_BASE_URL ? new URL(env.ANTHROPIC_BASE_URL).hostname.toLowerCase() : DEFAULT_HOST];
 
 // ---- the source, frozen -------------------------------------------------------------------------------------------------
 
@@ -140,7 +145,7 @@ const KIND_RUN = {
   engineering: { variant: sourceVariant, subject: (c, variant, entries, frozenEntries) => targetFor(c, variant, frozenEntries), extra: orbitPlugin, attempts: (c, config) => config.rounds + 1, measured: (c) => [`benchmark/fixtures/${c.fixture}/**`], target: true },
 };
 
-const runningConfig = (o, c) => ({ seed: Number.isInteger(o.seed) ? o.seed : Math.floor(Math.random() * 2 ** 31), rounds: o.rounds ?? c.limits.rounds, minutes: o.minutes ?? c.limits.minutes, usd: o.usd ?? c.limits.usd, model: o.model ?? null, repair: o.repair === true, host: o.host ?? null });
+const runningConfig = (o, c) => ({ seed: Number.isInteger(o.seed) ? o.seed : Math.floor(Math.random() * 2 ** 31), rounds: o.rounds ?? c.limits.rounds, minutes: o.minutes ?? c.limits.minutes, usd: o.usd ?? c.limits.usd, model: o.model ?? null, repair: o.repair === true, host: o.host ?? null, parent: o.parent ?? null });
 
 // What the harness is: its modules, the scripts its images run and its command line -- one digest, so a run says which
 // harness judged it, and a change to any of them is a different harness.
@@ -155,17 +160,32 @@ function manifestOf(h, f) {
 export function frozenRun(h, o) {
   const c = caseOf(h.root, o.caseId);
   const variant = KIND_RUN[c.kind].variant(c, o);
-  const where = whereAt(h.root, h.env);
+  const where = treeChecked(h, whereAt(treeOf(h), h.env));
   const fr = frozen(where.root, modeOf(where, o.source, KIND_RUN[c.kind].measured(c)), h.env);
   return made(h, { ...o, variant }, { c, where, mode: fr.mode, frozen: fr });
+}
+
+// A tree named by a caller is a checkout's TOP directory -- never a directory somewhere inside one, which would freeze
+// the whole checkout around it under the name of the part.
+function treeChecked(h, where) {
+  if (h.tree && realpathSync(where.root) !== realpathSync(h.tree)) throw new Refused(`--tree names a checkout's top directory, and ${h.tree} is inside ${where.root}`);
+  return where;
 }
 
 function made(h, o, f) {
   const subject = subjectOf(f.frozen.entries, HARNESS);
   const faulted = KIND_RUN[f.c.kind].subject(f.c, o.variant, subject.entries, f.frozen.entries);
-  const runId = newRunId(`${f.c.id}\u0000${o.variant}\u0000${treeDigestOf(faulted.entries)}`);
-  const room = roomOf(h.storeRoot, runId);
+  const runId = o.runId ?? newRunId(`${f.c.id}\u0000${o.variant}\u0000${treeDigestOf(faulted.entries)}`);
+  const room = freshRoom(h, runId);
   return recordedRun(h, o, { ...f, subject, faulted, runId, room });
+}
+
+// A run id a caller chose (`--run-id`: a release ship names the room before it dispatches, so it can read the run back
+// however the run ends) names a room nobody keeps yet -- one id, one run.
+function freshRoom(h, runId) {
+  const room = roomOf(h.storeRoot, runId);
+  if (existsSync(room.dir)) throw new Refused(`a run ${runId} is already kept in ${room.dir}: a run id names one run, and --like or resume carry an earlier one`);
+  return room;
 }
 
 function recordedRun(h, o, f) {
@@ -178,7 +198,7 @@ function recordedRun(h, o, f) {
 
 function withTask(h, room, manifest, c) {
   const rec = recorderOf(h);
-  const task = rec.create(`Benchmark ${c.suite.id}/${c.id} ${c.version} (${manifest.benchmark.variant}${manifest.config.repair ? ", repair" : ""}${manifest.config.host ? `, ${manifest.config.host}` : ""}) on ${manifest.source.branch ?? "detached"}@${manifest.source.commit.slice(0, 10)}, subject ${manifest.subject.digest.slice(0, 10)}`, { attempts: KIND_RUN[c.kind].attempts(c, manifest.config), actions: 60, minutes: manifest.config.minutes });
+  const task = rec.create(`Benchmark ${c.suite.id}/${c.id} ${c.version} (${manifest.benchmark.variant}${manifest.config.repair ? ", repair" : ""}${manifest.config.host ? `, ${manifest.config.host}` : ""}) on ${manifest.source.branch ?? "detached"}@${manifest.source.commit.slice(0, 10)}, subject ${manifest.subject.digest.slice(0, 10)}`, { attempts: KIND_RUN[c.kind].attempts(c, manifest.config), actions: 60, minutes: manifest.config.minutes, parent: manifest.config.parent ?? undefined });
   docWritten(room, "manifest.json", { ...manifest, task });
   return contextOf(h, room, { ...manifest, task }, rec);
 }

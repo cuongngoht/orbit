@@ -56,7 +56,7 @@ function called(p, args) {
 export function recorder(p) {
   const call = (args) => called(p, args);
   return {
-    create: (objective, budget) => call(["create", text(objective), ...flags({ provider: PROVIDER, actor: "orbit-benchmark", attempts: budget.attempts, actions: budget.actions, minutes: budget.minutes })]).task,
+    create: (objective, budget) => call(["create", text(objective), ...flags({ provider: PROVIDER, actor: "orbit-benchmark", attempts: budget.attempts, actions: budget.actions, minutes: budget.minutes, parent: budget.parent })]).task,
     stage: (t, stage, because) => call(["stage", t, stage, ...flags({ because: because && text(because) })]),
     attemptStart: (t, cause) => call(["attempt", "start", t, ...flags({ cause })]),
     attemptComplete: (t, outcome, signature) => call(["attempt", "complete", t, ...flags({ outcome, signature })]),

@@ -405,7 +405,7 @@ async function oneRound(ctx, view) {
 
 async function rounds(ctx) {
   const stop = credentialProblem(ctx);
-  if (stop) return ended(ctx, { end: "block", stop: "ENVIRONMENT_BLOCKED", needs: "environment", outcome: "BLOCKED", summary: stop });
+  if (stop) return ended(ctx, { end: "block", stop: "ENVIRONMENT_BLOCKED", needs: "environment", outcome: "BLOCKED", cause: "CREDENTIALS", class: "ENVIRONMENT_BLOCKED", summary: stop });
   for (let done = null; ; ) if ((done = await oneRound(ctx, show(ctx)))) return done;
 }
 

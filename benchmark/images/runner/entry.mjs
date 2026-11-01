@@ -14,6 +14,10 @@
 // A GOAL round (an engineering case) starts no task either: the goal is handed to Orbit's own goal entry, which starts
 // the workflow and the engineering task it needs. Orbit is the plugin at /work/orbit; /work/repo is the target.
 //
+// A PROBE (`doctor --host`) is no round of work: after the same egress checks, Claude Code is asked one fixed question
+// with no plugin, no tool it may use and a budget of a few cents -- whether the host starts here, which version and model
+// it says it is, and whether the credential is accepted. It starts no task and reads nothing.
+//
 //   node /bench/entry.mjs     brief: /run/brief/brief.json      out: /work/out/{egress,start,runner}.json, host.jsonl
 import { spawn, spawnSync } from "node:child_process";
 import { closeSync, openSync, readFileSync, writeFileSync, writeSync } from "node:fs";
@@ -38,6 +42,8 @@ export const DENIED = ["WebFetch", "WebSearch", ...["start", "cleanup", "remove-
 export const GOAL_DENIED = ["WebFetch", "WebSearch", ...["cleanup", "remove-workspace"].map((cmd) => `Bash(node /work/orbit/cli/autonomous-engineering.mjs ${cmd}:*)`)];
 
 const isGoal = (b) => b.kind === "engineering";
+
+export const isProbe = (b) => b.kind === "probe";
 
 const pluginOf = (b) => b.plugin ?? PATHS.repo;
 
@@ -95,7 +101,7 @@ export const startArgs = (b) => ["start", b.objective, `--attempts=${b.attempts}
 
 // A round that starts no task of its own: a QA round (its investigation is open beside the controller), a goal round
 // (its goal starts what it needs), or a later round (its task already exists).
-const noStart = (b) => (isQa(b) ? { task: null, started: false, investigation: b.investigation } : isGoal(b) ? { task: null, started: false, goal: true } : b.task ? { task: b.task, started: false } : null);
+const noStart = (b) => (isProbe(b) ? { task: null, started: false, probe: true } : isQa(b) ? { task: null, started: false, investigation: b.investigation } : isGoal(b) ? { task: null, started: false, goal: true } : b.task ? { task: b.task, started: false } : null);
 
 function taskOf(b, env) {
   if (noStart(b)) return noStart(b);
@@ -110,6 +116,12 @@ function taskOf(b, env) {
 const isQa = (b) => b.kind === "qa";
 
 export const hostArgs = (b) => ["-p", "--output-format", "stream-json", "--verbose", "--plugin-dir", pluginOf(b), "--permission-mode", "dontAsk", "--allowedTools", isQa(b) ? QA_TOOLS : TOOLS, "--disallowedTools", (isGoal(b) ? GOAL_DENIED : DENIED).join(","), "--setting-sources", "user", "--strict-mcp-config", "--no-session-persistence", "--add-dir", PATHS.store, ...(isQa(b) ? ["--add-dir", PATHS.target] : []), ...(b.model ? ["--model", b.model] : []), ...(b.usd > 0 ? ["--max-budget-usd", String(b.usd)] : [])];
+
+// What a probe's host may do: nothing but answer. Every tool is denied by name and none is allowed, so `dontAsk` refuses
+// whatever else it reaches for; it loads no plugin, no MCP server and no session it could resume.
+export const PROBE_DENIED = ["Bash", "Edit", "Write", "Read", "Glob", "Grep", "WebFetch", "WebSearch", "Agent", "Skill", "TodoWrite", "NotebookEdit"];
+
+export const probeArgs = (b) => ["-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "dontAsk", "--disallowedTools", PROBE_DENIED.join(","), "--setting-sources", "user", "--strict-mcp-config", "--no-session-persistence", ...(b.model ? ["--model", b.model] : []), "--max-budget-usd", String(b.usd > 0 ? b.usd : 0.05)];
 
 // What the host printed, kept as it came up to `cap` bytes, and the last 64 KiB always -- where its result line is.
 export function cappedSink(file, cap) {
@@ -128,7 +140,7 @@ function keptChunk(fd, s, chunk, cap) {
 // What runs as the host: Claude Code with its flags -- or, for a control, the scripted host on the round's task.
 const HOST_PROGRAMS = [[isScripted, "/bench/scripted.mjs"], [isSession, "/bench/session.mjs"]];
 
-export const hostCommand = (b, task) => ((p) => (p ? [process.execPath, [p[1], task ?? "-"]] : ["claude", hostArgs(b)]))(HOST_PROGRAMS.find(([is]) => is(b)));
+export const hostCommand = (b, task) => ((p) => (p ? [process.execPath, [p[1], task ?? "-"]] : ["claude", isProbe(b) ? probeArgs(b) : hostArgs(b)]))(HOST_PROGRAMS.find(([is]) => is(b)));
 
 const hosted = (b, env, sinks, task) => new Promise((resolve) => {
   const child = spawn(...hostCommand(b, task), { cwd: PATHS.repo, env, stdio: ["pipe", "pipe", "pipe"] });
@@ -154,7 +166,7 @@ async function main() {
   const egress = await egressFor(b, process.env);
   const t = egress.holds ? taskOf(b, process.env) : { task: b.task ?? null, started: false };
   written("start.json", { ...t, egress, round: b.round, at: new Date().toISOString() });
-  written("runner.json", { round: b.round, task: t.task, egress, startedAt: new Date().toISOString(), ...(egress.holds && (t.task || isQa(b) || isGoal(b)) ? await round(b, process.env, t.task) : notRun(egress, t)), endedAt: new Date().toISOString() });
+  written("runner.json", { round: b.round, task: t.task, egress, startedAt: new Date().toISOString(), ...(egress.holds && (t.task || isQa(b) || isGoal(b) || isProbe(b)) ? await round(b, process.env, t.task) : notRun(egress, t)), endedAt: new Date().toISOString() });
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) main().catch((e) => (process.stderr.write(`entry failed: ${e?.message ?? e}\n`), (process.exitCode = 3)));

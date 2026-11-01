@@ -236,9 +236,12 @@ function endOf(file) {
   return lines.map((l) => journalLine(l.replace(/\r$/, ""))).find((r) => r && TASK_SOURCE.ends.includes(r.kind)) ?? null;
 }
 
-// `coordinates`: a coordinated workflow's own task (src/automation/), which a session's viewer shows before the
-// engineering task the workflow started -- a word the first line says, read here so the core names no provider.
-const rowOf = ({ file, head }) => ((end) => ({ id: head.id, checkout: head.checkout, session: head.session ?? null, terminal: end !== null, createdAt: head.at ?? "", endedAt: end?.at ?? null, coordinates: head.provider === "automation" }))(endOf(file));
+// `coordinates`: a task that starts others and is shown before them -- a coordinated workflow's own task
+// (src/automation/) before the engineering task it started, and a release ship's (skills/orbit-release/ship.mjs) before
+// the benchmark runs it starts -- a word the first line says, read here so the core names no provider.
+const COORDINATING = ["automation", "release"];
+
+const rowOf = ({ file, head }) => ((end) => ({ id: head.id, checkout: head.checkout, session: head.session ?? null, terminal: end !== null, createdAt: head.at ?? "", endedAt: end?.at ?? null, coordinates: COORDINATING.includes(head.provider) }))(endOf(file));
 
 // Each journal's path is resolved (and held inside the store) once per look, not once per question asked of it.
 function rowsOf(loc, nowMs) {

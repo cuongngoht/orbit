@@ -4,7 +4,7 @@
 // exit code, a timeout -- and whether a receipt backs it or it was only reported.
 import { bar, counted } from "../bars.mjs";
 import { progressWords } from "../../activity.mjs";
-import { DISPATCH_WORDS, STAGE_STRIP, WORKFLOW_GLYPHS } from "../../words.mjs";
+import { DISPATCH_WORDS, PROVIDER_WORDS, STAGE_STRIP, WORKFLOW_GLYPHS } from "../../words.mjs";
 import { isCoordinator } from "../model.mjs";
 import { ABSENT, between, dim, joined, num, packed, pulseOf, row, seg, str } from "./parts.mjs";
 
@@ -76,11 +76,17 @@ const stagesSeen = (snap) => ((seen) => STAGE_STRIP.filter(([stage]) => seen.has
 // What a budget has spent, of its limit when the task has one.
 const spent = (b, unit) => (num(b?.spent) === null ? null : dim(num(b.limit) === null ? `${b.spent} ${unit}` : counted(b.spent, b.limit, unit)));
 
+// A child that is not an engineering task -- a benchmark run a release ship started -- says what it is and which one,
+// so the section never shows a benchmark run as an engineering task.
+const ENGINEERING = "autonomous-engineering";
+
+const kindOf = (v) => ((p) => (p && p !== ENGINEERING ? seg(`${PROVIDER_WORDS[p] ?? p} ${v.task.id}`, "info") : null))(v.task?.provider);
+
 function engineerHead(snap) {
   const v = snap.view;
   const seen = stagesSeen(snap);
   const files = v.changes?.files ? dim(`${v.changes.files} file(s) +${v.changes.added ?? 0} −${v.changes.removed ?? 0}`) : dim("no file changed yet");
-  return row(joined([seg(bar(seen, STAGE_STRIP.length, BAR), "info"), seg(counted(seen, STAGE_STRIP.length, "stages")), files, dim(`${v.actions.length} action(s)`), spent(v.budget?.attempts, "attempts"), spent(v.budget?.minutes, "min")], "  "));
+  return row(joined([kindOf(v), seg(bar(seen, STAGE_STRIP.length, BAR), "info"), seg(counted(seen, STAGE_STRIP.length, "stages")), files, dim(`${v.actions.length} action(s)`), spent(v.budget?.attempts, "attempts"), spent(v.budget?.minutes, "min")], "  "));
 }
 
 const CHECK_MARK = { succeeded: ["✓", "success", "passed"], failed: ["✗", "danger", "failed"], error: ["✗", "danger", "error"], ended: ["·", "subtle", "ended"] };

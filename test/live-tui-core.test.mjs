@@ -202,6 +202,18 @@ test("the engineering task: its stage, its checks with what backs each, the test
   assert.match(screen, /NOTICES +\[11:36:54\] ✗ TEST failed · 3 of 12 failing \(act-5\)/);
 });
 
+test("a release ship's benchmark run is shown as a benchmark run, never as an engineering task", async () => {
+  const { wfView } = await import("./live-tui.fixture.mjs");
+  const ship = wfView({ task: { id: WF, provider: "release", host: "mbp", createdAt: ago(400), updatedAt: ago(5) }, receipts: [{ key: `task:${ENG}`, domain: "task", ref: ENG, outcome: "STARTED", at: ago(300) }] });
+  const run = engView({ task: { id: ENG, provider: "benchmark", host: "mbp", createdAt: ago(300), updatedAt: ago(3) } });
+  const state = fed(fed(stateOf({ root: WF }), WF, ship, []), ENG, run, [], "child");
+  assert.equal(engineeringId(state), ENG, "the ship's newest child is the run its section follows");
+  const screen = text(state);
+  assert.match(screen, new RegExp(`ENGINEER +benchmark ${ENG} +▓`));
+  assert.doesNotMatch(screen, /WORKFLOW/, "a release ship is no workflow: no plan is drawn");
+  assert.doesNotMatch(text(engineering()), /ENGINEER +autonomous-engineering|ENGINEER +engineering tsk/, "an engineering task is not named twice");
+});
+
 test("a workflow: its steps over the plan's own count, its engineering task's checks, and a reported step said as reported", () => {
   const screen = text(workflow());
   assert.match(screen, new RegExp(`WORKFLOW +▓+░+ +1/4 steps +engineering ${ENG} EXECUTING · TESTING +1/2 verified`));

@@ -241,6 +241,16 @@ test("a workflow whose step the host works itself: the task stays shown, and NOW
   assert.match(textOf(got.statusBar.right), /ORBITING|IDLE/, "the task's indicator is the task's, never the session's");
 });
 
+test("a release ship is shown before the benchmark run it started, though the run is newer", (t) => {
+  const p = project(t);
+  const mark = hostSession("claude", "s-a");
+  const make = (...args) => JSON.parse(execFileSync(process.execPath, [TASK, "create", ...args, "--json"], { cwd: p.repo, env: p.env({ ORBIT_SESSION: mark }), encoding: "utf8" })).task;
+  const ship = make("ship from main", "--provider=release");
+  const run = make("Benchmark orbit-qa/ORBIT-QA-001", "--provider=benchmark", `--parent=${ship}`);
+  execFileSync(process.execPath, [TASK, "link", "receipt", ship, "--domain=task", `--ref=${run}`, "--outcome=STARTED"], { cwd: p.repo, env: p.env({ ORBIT_SESSION: mark }), stdio: "ignore" });
+  assert.equal(pane(p, "s-a").task, ship, "the ship is what the session's viewer follows");
+});
+
 test("two tasks no session claims are AMBIGUOUS: NOW names them and how to choose, and a pin chooses", (t) => {
   const p = project(t);
   const make = (o) => JSON.parse(execFileSync(process.execPath, [TASK, "create", o, "--json"], { cwd: p.repo, env: p.env({ ORBIT_SESSION: hostSession("claude", `other-${o}`) }), encoding: "utf8" })).task;

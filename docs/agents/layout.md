@@ -1008,7 +1008,18 @@ skills/orbit-security-audit/  (0.1.0) the SECURITY AUDIT playbook + catalogs/ (t
                           investigation's generated tests READ BACK as the auditor's results, one per control role,
                           each role earning a word only from the steps of the frozen case that show it)
 skills/orbit-browser/ OPTIONAL adapter: pick a local browser+profile, opted into by launcher
-skills/orbit-release/  release + adoption: the DoD as gates, the version rule, the install routes;
+skills/orbit-release/  release + adoption: the DoD as gates, the version rule, the install routes; ship.mjs the
+                          AUTONOMOUS SHIP (ADR 0049) and its ship/ modules -- policy.json + policy.mjs (the catalog,
+                          the host, the limits, the protected paths, as data) · machine.mjs (facts folded from the
+                          ship task's journal, NEXT) · steps.mjs (STEPS and the loop) · dispatch.mjs (one benchmark run:
+                          its room named first, watched, judged from its room, carried on) · rows.mjs (ARGV,
+                          ROW_VERDICT, CONTROL_RULES, REPAIR_CHECK) · diagnose.mjs (DIAGNOSE) · preflight.mjs ·
+                          workspace.mjs (the ship task's own workspace, a verified patch applied AUTO, pristine
+                          checkouts, the release patch and bundle) · artifact.mjs (git archive, ARCHIVE_RULES, byte
+                          and content digests) · evidence.mjs (evidence.json, PUBLISH) · session.mjs (a ship begun,
+                          resumed, read) · door.mjs (the journal through cli/task.mjs) · ports.mjs (the real
+                          processes, bound only by ship.mjs) · ci.mjs (the fast tier) · report.mjs; hosts.mjs and
+                          backend.mjs read the native acceptance records, OPTIONAL rows since ADR 0049;
                           frontmatter.mjs (1.8.9) holds every SKILL.md and agent to the frontmatter shape a
                           host parses, by line -- a gate, and a suite test; pin-python-lock.mjs (0.2.1) writes
                           the lock of a python-lock tool for each platform (pip for the host, uv for the others,

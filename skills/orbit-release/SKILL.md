@@ -2,7 +2,9 @@
 name: orbit-release
 description: >
   Release the orbit engine and get it into another repository. Use when asked to ship,
-  tag or publish a new version of this plugin, to decide whether a change is major or minor, to
+  tag or publish a new version of this plugin, to qualify a release on the Docker benchmark with
+  Claude Code (the autonomous ship, its repairs, its evidence and the publish gate), to resume or
+  read a ship, to decide whether a change is major or minor, to
   install the engine in a product repo, to copy it onto a machine with no network, or when a
   consuming repo is on an old version and `query check` complains about a vocabulary it does not
   recognise. Covers the definition of done, the five version fields that must agree, the three
@@ -34,13 +36,75 @@ design, and both halves below exist to keep it.
 ## 1. Ship it
 
 ```bash
-node skills/orbit-release/ship.mjs                 # every gate, one command
-node skills/orbit-release/ship.mjs --bump=added    # …and what the next version would be
-node skills/orbit-release/ship.mjs --ci            # CI's run: host acceptance is awaited (`wait`), never failed
+node skills/orbit-release/ship.mjs                  # the autonomous ship: every case in Docker, Claude Code carrying the rest
+node skills/orbit-release/ship.mjs --no-repair      # verify only: a failure stands, nothing is repaired
+node skills/orbit-release/ship.mjs --resume=shp-…   # carry an interrupted, blocked or held ship on, from its journal
+node skills/orbit-release/ship.mjs --status         # where this checkout's newest ship stands (writes nothing)
+node skills/orbit-release/ship.mjs --evidence       # THE PUBLISH GATE: exit 0 only on evidence for this very tree
+node skills/orbit-release/ship.mjs --ci             # the fast tier a pipeline holds -- never release qualification
+node skills/orbit-release/ship.mjs --bump=added     # …and what the next version would be
 ```
 
-It runs the repo's definition of done and exits 2 if any gate fails. Eleven gates in one command,
-because eleven separate commands is how a release goes out with ten of them run:
+A ship (ADR 0049) is one Orbit task (provider `release`) and a room in the machine store (`<store>/release/<shp-…>/`).
+Orbit Live shows a session's ship before the benchmark runs it starts, Mission Control shows it and each run beside it,
+and a person pauses or cancels it there. Where it stands is read from its journal every time, so `--resume` carries it
+on: a run that ended is read back from its room, one still open is carried on with `benchmark/run.mjs resume`, and
+nothing is ever sent twice.
+
+**What it needs.** Orbit's own clone (not an installed plugin: `benchmark/` is export-ignored), with nothing uncommitted
+under the paths it judges with (the benchmark, its tests, this skill, `.github/`); Docker; and a credential for the
+coding host, exported by NAME -- `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` (`--credential=<NAME>` to choose). It is
+handed to the runner by name only, never written into an image, a file or a log. `ANTHROPIC_BASE_URL` is followed only to
+an endpoint the release policy names; behind a network that inspects TLS, give `--ca-file=<pem>`.
+
+| State | What happens | Stage |
+|---|---|---|
+| PREFLIGHT | the harness and its catalog (`ship/policy.json` against `run.mjs list`), Docker, the credential by name, the endpoint | ENVIRONMENT |
+| BUILD | a pristine checkout of the release commit; the archive (`git archive`, held to what a host refuses on the archive itself, digested by its bytes and its content); every benchmark image with `build --rebuild`; then the HOST CHECK: the runner image's Claude Code asked one question through the egress proxy (`doctor --host`) | BUILDING |
+| BENCHMARK | the definition of done on that checkout, then every row: each case's real variant, its controls, then the rows the coding host carries | TESTING |
+| DIAGNOSE | each failed row, by its run's own ending: blocked (environment, credential, provider), retried once (no verdict to stand on), repairable, or a stop | DIAGNOSING |
+| REPAIR | `run.mjs run <case> --repair`: Claude Code in the runner drives one Orbit engineering task; the benchmark's verifier judges it | FIXING |
+| INTEGRATE | the verified patch held again, then applied in the ship's OWN workspace and committed there -- never your checkout | REVIEWING |
+| REBUILD · FULL_RETEST | a new release commit is a new cycle: everything again, model-carried rows included | BUILDING · REGRESSION |
+| SHIPPABLE | `evidence.json`, and -- when repairs were integrated -- `release.patch` and `release.bundle` for you to apply | -- |
+
+**The catalog** (`ship/policy.json`) names all 46 cases of the nine suites. A source case must hold its controls and
+PASS its real source -- a known finding (`baseline: "FAIL"`) earns nothing for it. A QA or engineering case must hold its
+controls and PASS with the coding host. ORBIT-SRC-001's planted fault must be REPAIRED_VERIFIED by the coding host on the
+final source. That is sixteen rows a cycle the real Claude Code CLI carries. A model-carried row counts only when its run
+says basis `coding-host`, reported the Claude Code version the runner image pins, and named its model: a scripted host's
+PASS is conformance of the controller and is never evidence here.
+
+**Repairs.** Only a source case's real variant failing on a cause the case declares repairable is repaired. A QA or
+engineering failure stops the release with its evidence: a fix told what a QA case plants would be fitted to the test, so
+capture what Orbit missed as a source case, and a ship repairs that. A verified candidate is held again before anything
+is applied -- its `verified.json`, its patch digest, what `git apply --numstat` says it touches (inside the case's scope,
+outside the protected paths), no existing test losing a line -- and a refusal is a spent attempt, never an integration.
+A known finding repaired this way leaves controls written against its old source; once its real source passes the same
+verifier on the same digest, those that presuppose the defect are SUPERSEDED (reported, never counted as held), and the
+case is yours to bring up to date: baseline PASS, a controlled-fault variant planting the old defect.
+
+**Publishing.** The ship never pushes, tags or publishes. When repairs were integrated, the qualified source is a commit
+in the ship's workspace: apply it with `git am <room>/release.patch` (or `git fetch <room>/release.bundle HEAD`), commit,
+and ask `ship.mjs --evidence` -- it says PUBLISHABLE only when your HEAD's tree is the qualified tree, nothing is dirty,
+the protected paths and the policy are as they were, every required row has held evidence whose run's room still agrees,
+and the artifact is the one (`--artifact=<zip>` checks an archive you built again, by its content). Tag only then.
+
+**Limits and exits.** `--usd`, `--minutes`, `--cycles` and `--attempts` (repair attempts per case) narrow the policy's
+limits, within its bounds; on `--resume` a person may raise them. A spent limit BLOCKS the ship with its evidence kept.
+Exit 0 SHIPPABLE · 2 NOT SHIPPABLE or NO PROGRESS (or refused) · 3 BLOCKED (Docker, the host, its credential, a limit --
+fix it and `--resume`) · 4 a person paused or cancelled it. The ship never falls back to another host, a scripted host or
+a model mock.
+
+**Optional.** Native host acceptance (`docs/host-acceptance.json`: Claude Code, Codex, Antigravity, Grok Build) and native
+backend acceptance (`acceptance/run.mjs --record`) are reported beside every ship as `opt` rows and never block it. Record
+them as before when a host integration or the backend loop changes.
+
+**The fast tier.** `--ci` is what a pipeline can hold: the definition of done, the optional rows, and the autonomous ship
+`wait`ing. A green fast CI is never release qualification; `.github/workflows/release.yml` (dispatched, from the
+`benchmark` environment) runs the autonomous ship and the publish gate, and never publishes.
+
+The definition of done is ten gates, run first in every cycle on the release commit's own checkout (and alone by `--ci`):
 
 | gate | what a failure means |
 |---|---|
@@ -53,9 +117,8 @@ because eleven separate commands is how a release goes out with ten of them run:
 | the layout, the manifest and the descriptions a host reads | a host **rejects the archive**: a top-level `bin/` goes on PATH without appearing on the surface an admin approves (so the entry points stay in `cli/`), and a `SKILL.md` or agent **description** containing `<angle brackets>` reads as XML and is refused — a placeholder belongs in `argument-hint` |
 | every `SKILL.md` and agent has frontmatter a host parses | a host drops the skill silently |
 | `test/no-compat-layer.test.mjs` passes | an alias, adapter or schema upgrade crept back in |
-| native host acceptance (`docs/host-acceptance.json`) matches `hostSourceDigest` | a host was never smoke-tested on this source; recorded only from real runs |
 
-Never edit a generated `schema.json` to make the fourth gate pass. Run
+Never edit a generated `schema.json` to make a gate pass. Run
 `node cli/schema.mjs --write` and commit what it produces.
 
 ### The version number is a promise

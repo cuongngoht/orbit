@@ -65,6 +65,13 @@ benchmark (`benchmark/`, ADR 0046, 0047, 0048) -- its manifest, the frozen case 
 each round's brief, candidate, patch and outcome, a verified candidate's record, a QA case's engine store and judged rows, its report. It is created on first write by `benchmark/run.mjs`, never on read and
 never in a repository, and the run's own task stays in the project's task rooms like any other.
 
+One more belongs to release tooling: `<store>/release/<shp-…>/` is one autonomous SHIP (`skills/orbit-release/ship.mjs`,
+ADR 0049) -- its manifest frozen at its start, one document per action keyed by its task's own action id, the release
+artifact, each verified patch it integrated, the release patch and bundle a person applies, a pristine checkout of each
+release commit it judged (`trees/`), its ending and its `evidence.json`. It is created on first write, never on read and
+never in a repository; the ship's own task stays in the project's task rooms, and the workspace its repairs are
+integrated in is that task's own (`<store>/workspaces/<tsk>/`).
+
 ## Layout and dependency direction
 
 The module map -- what each directory and module under `cli/`, `src/`, `skills/`, `agents/`, `catalog/`,
@@ -654,6 +661,25 @@ place real adapters are bound to real config.
   loaded, so something generated and unproved is inert rather than quietly live, and
   `registerTool` refuses anything that did not verify. A capability's own crash is BLOCKED, never
   FAIL — a generated tool's bug must never ship as a defect in somebody's feature.
+- **A release qualifies only on Docker benchmark evidence carried by Claude Code, for the exact source (ADR 0049).** A
+  release is `node skills/orbit-release/ship.mjs`: ONE task (provider `release`) driving PREFLIGHT → BUILD → BENCHMARK →
+  DIAGNOSE → REPAIR → REBUILD → FULL_RETEST → SHIPPABLE as an ordered table over its own journal (`ship/machine.mjs`
+  NEXT), the benchmark asked as a command and never imported. Every case `ship/policy.json` names (all of them: a case
+  that leaves or joins a suite unnamed is CATALOG_DRIFT) must hold on the release commit: a source case its controls and
+  a PASS of its real source (a known finding's baseline earns nothing), a QA or engineering case its controls and a PASS
+  carried by the coding host, ORBIT-SRC-001's planted fault REPAIRED_VERIFIED by it. A model-carried row is evidence only
+  when its run says basis `coding-host`, the Claude Code version the runner image pins, and a model -- never a scripted or
+  session host, another host or a mock (an `ANTHROPIC_BASE_URL` the policy does not name blocks). Every row is held to
+  its run's own room (`ROW_VERDICT`, `CONTROL_RULES`: a known finding's control that presupposes its defect is
+  SUPERSEDED, never held, once its real source passes). Only a source case's real variant failing on a cause the case
+  declares repairable is repaired -- through `run.mjs --repair`, never against a QA case's hidden truth -- and a verified
+  candidate is held again (`REPAIR_CHECK`: its record, its patch digest, what git says it touches, the scope, the
+  protected paths, no test losing a line) before it is applied, AUTO, in the ship task's own workspace; a new release
+  commit invalidates every earlier row and the whole catalog runs again. SHIPPABLE writes `evidence.json` bound to the
+  commit, tree, content, protected and policy digests and the artifact; `ship.mjs --evidence` re-derives all of it and
+  is the only door to publishing. The ship never writes the checkout, pushes, tags or publishes; native host and backend
+  acceptance are optional rows (`test/release-ship.test.mjs`, `test/release-ship-tables.test.mjs`,
+  `test/release-ship-policy.test.mjs`, `test/release-ship-door.test.mjs`, `test/benchmark-release-hooks.test.mjs`).
 - **A benchmark grades only what its verifier shows, and repairs only through Orbit (ADR 0046, 0047, 0048).** `benchmark/` is
   development tooling: export-ignored, imported by nothing of the engine, held to Five Lines (`test/benchmark-lint.test.mjs`).
   A run is ONE task written through `cli/task.mjs`, so its budget is the door's and a person's pause or cancel stops it;
@@ -1053,16 +1079,21 @@ ORBIT_STORE_DIR=/tmp/l node cli/project-report.mjs sign-in <id> [--tenant=<id>] 
 ORBIT_STORE_DIR=/tmp/l node cli/qc-tool.mjs new <id> --report=<kind> --for="…" | put <id> <file> | rollback <id>
 node skills/orbit-sql/sqlcmd.mjs preflight            # can this machine read the database?
 node cli/schema.mjs [--plan]                                 # print the generated case (or plan) schema
-node skills/orbit-release/ship.mjs                        # the whole definition of done, one command
+node skills/orbit-release/ship.mjs --ci                   # the whole definition of done, one command (the fast tier CI runs)
+node skills/orbit-release/ship.mjs [--no-repair] [--resume=shp-…] [--usd= --minutes= --cycles= --attempts=]   # the autonomous ship: Docker + Claude Code (ADR 0049)
+node skills/orbit-release/ship.mjs --status[=shp-…] | --evidence[=shp-…] [--artifact=<zip>]   # where a ship stands; the publish gate
 node skills/orbit-release/pin-python-lock.mjs --python=<Orbit's own Python> --package=azure-cli==<v> [--platform=…]   # re-pin a python-lock tool's locks (network; uv for the other platforms)
 agy                                                          # run antigravity with skills/hooks discovered
 ```
 
 ## Definition of done
 
-All of 1-4 are one command — `node skills/orbit-release/ship.mjs`, which CI runs too (`--ci`), so the
-gate and the pipeline cannot disagree about what done means. The one gate a pipeline cannot hold -- native host
-acceptance, recorded from live runs on every host -- is `wait` under `--ci` and still refuses a release without it.
+All of 1-4 are one command — `node skills/orbit-release/ship.mjs --ci`, which CI runs, so the gate and the pipeline
+cannot disagree about what done means. A RELEASE is `node skills/orbit-release/ship.mjs` (ADR 0049): the same gates on
+the release commit, then every case of the Docker benchmark with the real Claude Code CLI carrying the model rows,
+repairs through the benchmark and a full retest -- what a pipeline cannot hold, so `--ci` prints it as `wait` and a green
+fast CI never qualifies a release. A tag waits for `ship.mjs --evidence` to say PUBLISHABLE. Native host acceptance and
+native backend acceptance are optional rows: recorded as before, never a gate.
 
 1. `node --test` passes, and the gate prints the test count.
 2. The strict lint prints `0 finding(s)`.

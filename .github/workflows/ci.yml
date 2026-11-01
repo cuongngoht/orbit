@@ -39,9 +39,12 @@ jobs:
       # five steps here, three of which existed only as an inline node -e -- so
       # the release gate and CI could disagree about what "done" meant, and one
       # of those copies compared file bytes and failed on every CRLF checkout.
-      # --ci (0.0.2): native host acceptance is recorded from live host runs a
-      # pipeline cannot make, so here it is awaited, never failed; tagging runs
-      # ship.mjs without --ci and is still refused until the record exists.
+      # --ci is the FAST tier (ADR 0049): every gate a pipeline can hold, native
+      # host and backend acceptance reported as optional rows, and the autonomous
+      # ship (every benchmark case in Docker, model-carried rows by the real
+      # Claude Code CLI) AWAITED -- never run here and never passed. A green run
+      # here is not release qualification: release.yml, or ship.mjs on a machine
+      # with Docker and a credential, is.
       - name: the definition of done
         run: node skills/orbit-release/ship.mjs --ci
         env:

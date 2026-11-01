@@ -150,6 +150,7 @@ jobs:
       - name: the run, inside the budget given
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           CASE_ID: ${{ inputs.case }}
           SUITE: ${{ inputs.suite }}
           USD: ${{ inputs.usd }}
@@ -162,8 +163,10 @@ jobs:
           case "$ROUNDS" in [1-5]) ;; *) echo "rounds is 1 to 5"; exit 2;; esac
           case "$MODEL" in *[!A-Za-z0-9._-]*) echo "a model id is letters, digits, dots and dashes"; exit 2;; esac
           node -e "const u = Number(process.env.USD); process.exit(u > 0 && u <= 50 ? 0 : 1)" || { echo "usd is more than 0 and at most 50"; exit 2; }
-          if [ -z "$ANTHROPIC_API_KEY" ]; then echo "the benchmark environment holds no ANTHROPIC_API_KEY: a real host cannot run, and nothing is reported as if it had"; exit 3; fi
-          args=(--repair "--usd=$USD" "--rounds=$ROUNDS" --credential=ANTHROPIC_API_KEY)
+          credential=""
+          if [ -n "$ANTHROPIC_API_KEY" ]; then credential=ANTHROPIC_API_KEY; elif [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then credential=CLAUDE_CODE_OAUTH_TOKEN; fi
+          if [ -z "$credential" ]; then echo "the benchmark environment holds neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN: a real host cannot run, and nothing is reported as if it had"; exit 3; fi
+          args=(--repair "--usd=$USD" "--rounds=$ROUNDS" "--credential=$credential")
           if [ -n "$MODEL" ]; then args+=("--model=$MODEL"); fi
           if [ -n "$CASE_ID" ]; then
             node benchmark/run.mjs run "$CASE_ID" "${args[@]}"

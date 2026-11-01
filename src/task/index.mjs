@@ -52,7 +52,7 @@ const sub = (table, usage) => (ctx, args) => {
 
 function create(ctx, args) {
   const objective = words(args).join(" ") || undefined;
-  return createTask(ctx, { project: ctx.project, checkout: ctx.checkout, objective, work: flag(args, "work"), root: flag(args, "root"), snapshot: flag(args, "snapshot"), snapshotDigest: flag(args, "digest"), baseRevision: flag(args, "base"), workspace: flag(args, "workspace"), provider: flag(args, "provider"), actor: flag(args, "actor"), attempts: int(flag(args, "attempts")), actions: int(flag(args, "actions")), minutes: int(flag(args, "minutes")) });
+  return createTask(ctx, { project: ctx.project, checkout: ctx.checkout, objective, work: flag(args, "work"), parent: flag(args, "parent"), root: flag(args, "root"), snapshot: flag(args, "snapshot"), snapshotDigest: flag(args, "digest"), baseRevision: flag(args, "base"), workspace: flag(args, "workspace"), provider: flag(args, "provider"), actor: flag(args, "actor"), attempts: int(flag(args, "attempts")), actions: int(flag(args, "actions")), minutes: int(flag(args, "minutes")) });
 }
 
 const ATTEMPT = {

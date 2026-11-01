@@ -6,8 +6,10 @@
 //
 //   node task.mjs create "<objective>" [--work=w-… --root=req-… --snapshot=rs-… --digest=<hex>
 //                        --base=<commit> --workspace=<id> --provider=<id> --actor=<label>
-//                        --attempts=8 --actions=100 --minutes=<n>]
-//                                          start a task in this checkout; one at a time per work
+//                        --attempts=8 --actions=100 --minutes=<n> --parent=<tsk-…>]
+//                                          start a task in this checkout; one at a time per work;
+//                                          --parent names the task that started this one (a
+//                                          workflow, a release ship), a link that decides nothing
 //   node task.mjs stage <task> <STAGE> [--because="…"]
 //                                          REQUIREMENT CONTEXT ENVIRONMENT WORKSPACE PLANNING
 //                                          IMPLEMENTING BUILDING TESTING DIAGNOSING FIXING

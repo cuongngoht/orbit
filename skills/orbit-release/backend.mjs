@@ -1,8 +1,8 @@
 // Native BACKEND acceptance (doc §15; PBI 21): the example project taken through the whole loop on every stack and in
 // every planted variant by acceptance/run.mjs -- recorded only by its `--record`, from a run that matched -- and keyed
 // to the SOURCE it ran on: the engine and the acceptance definition alike, so a change to either is a change the
-// acceptance must see again. In a pipeline it is awaited, as native host acceptance is: only a machine with Docker
-// and the time for a whole run makes it, and a release (ship.mjs without --ci) is refused until it names this source.
+// acceptance must see again. Since ADR 0049 a release REPORTS it and never requires it (`optional`, hosts.mjs): the
+// Docker benchmark carried by Claude Code is what qualifies a release; this stays as optional extended validation.
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";

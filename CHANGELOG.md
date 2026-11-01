@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
+
+A minor release: a release now qualifies only on Docker benchmark evidence carried by the real Claude Code CLI, for
+the exact source. One contract a consumer observes is added -- `cli/task.mjs create --parent` -- and none changes.
 
 **The autonomous ship (ADR 0049): a release qualifies only on Docker benchmark evidence carried by the real Claude Code
 CLI, for the exact source.** `node skills/orbit-release/ship.mjs` is no longer ten gates and two records: it is one

@@ -2,6 +2,7 @@
 // the rows that could both match: NEXT (the state machine), DIAGNOSE (what a failed row leads to), ROW_VERDICT,
 // CONTROL_RULES and REPAIR_CHECK (what a run's own room proves), PUBLISH (the publish gate) and PREFLIGHT.
 import assert from "node:assert/strict";
+import { realpathSync } from "node:fs";
 import { test } from "node:test";
 import { DIAGNOSE, diagnosed } from "../skills/orbit-release/ship/diagnose.mjs";
 import { PUBLISH, publishableOf } from "../skills/orbit-release/ship/evidence.mjs";
@@ -99,6 +100,19 @@ test("ROW_VERDICT: every row is reached -- a run is held only on the tree, harne
   assert.equal(V({ report: { rounds: [{ host: { started: true, version: "2.1.314", model: null } }] } }, AUTO).code, "WRONG_HOST", "a model the host never named is no evidence");
   assert.equal(V({ report: { hostBasis: "none" } }).code, "HELD", "a verification needs no host at all");
   assert.equal(V({ ending: { outcome: "FAIL" }, report: { hostBasis: "scripted" } }, AUTO).code, "UNEXPECTED", "a failure is a failure, whoever carried it");
+});
+
+// Windows, as the file system answers there: the JavaScript realpath keeps a temporary path's 8.3 short name, while git
+// and the native call name the long one (test/checkout-identity.test.mjs). A ship's tree and the tree its run recorded
+// are one tree however each is spelled -- and another tree stays another tree.
+test("ROW_VERDICT: a run is never WRONG_TREE for how its tree is spelled -- a short name (RUNNER~1) and the long one git answers are one tree", (t) => {
+  const native = realpathSync.native;
+  t.after(() => (realpathSync.native = native));
+  realpathSync.native = (p) => p.replace("RUNNER~1", "runneradmin");
+  const at = (repo) => rowVerdict({ row: ROW, answer: { code: 0, json: {} }, room: roomOf({ manifest: { source: { commit: "c1", repo, digest: "d1" } } }), cycle: { ...CYCLE, tree: "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\o\\release\\trees\\c1" }, ship: SHIP }).code;
+  assert.equal(at("C:\\Users\\runneradmin\\AppData\\Local\\Temp\\o\\release\\trees\\c1"), "HELD");
+  assert.equal(at("C:\\Users\\runneradmin\\AppData\\Local\\Temp\\o\\elsewhere"), "WRONG_TREE");
+  assert.equal(at(undefined), "WRONG_TREE", "a run that names no tree is never this cycle's");
 });
 
 // ---- CONTROL_RULES -------------------------------------------------------------------------------------------------------

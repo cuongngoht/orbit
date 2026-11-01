@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { COMMANDS } from "../benchmark/lib/commands.mjs";
+import { samePath } from "../src/frontend/local-clones.mjs";
 import { frozenRun, withSpec } from "../benchmark/lib/core/context.mjs";
 import { PROBE_PROMPT } from "../benchmark/lib/core/probe.mjs";
 import { docRead, roomOf } from "../benchmark/lib/core/room.mjs";
@@ -71,7 +72,8 @@ test("--tree: the run measures the named checkout's HEAD, while its case, task a
   const tree = cloneWith(w, "src/calc.mjs", "export const add = (a, b) => a - b;\n");
   const h = { ...harnessOf(w, dockerDouble(NEVER)), tree };
   const { ctx, result } = await runIn(h, {});
-  assert.deepEqual([(await result).outcome, ctx.manifest.source.repo, ctx.manifest.source.commit], ["FAIL", tree, git(tree, "rev-parse", "HEAD")]);
+  // One directory however it is spelled: git names the top directory long on Windows, where the temporary path is short.
+  assert.deepEqual([(await result).outcome, samePath(ctx.manifest.source.repo, tree), ctx.manifest.source.commit], ["FAIL", true, git(tree, "rev-parse", "HEAD")]);
   assert.ok(ctx.room.dir.startsWith(w.storeRoot), "the room is in the engine checkout's store");
   assert.equal(readFileSync(join(w.repo, "src/calc.mjs"), "utf8"), FILES["src/calc.mjs"], "neither checkout is written");
   mkdirSync(join(tree, "src", "deeper"), { recursive: true });

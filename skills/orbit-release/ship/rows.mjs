@@ -8,7 +8,7 @@
 //   argvOf(row, at) -> [args]          rowVerdict(f) -> verdict          controlVerdict(f) -> verdict
 //   repairVerdict(f) -> verdict        identityOf(room) -> { basis, cli, model, costUsd, rounds, seconds, signature }
 //   verdict: { state, code, says, outcome, cause, class, run, task, basis, cli, model, costUsd, costBasis, ... }
-import { realpathSync } from "node:fs";
+import { samePath } from "../../../src/frontend/local-clones.mjs";
 import { matchesAny } from "./policy.mjs";
 
 // ---- the argument lists -------------------------------------------------------------------------------------------------
@@ -53,10 +53,9 @@ const realHost = (id) => id.basis === "coding-host" && Boolean(id.model) && Bool
 
 // ---- ROW_VERDICT ----------------------------------------------------------------------------------------------------------
 
-const same = (a, b) => {
-  try { return realpathSync(a) === realpathSync(b); }
-  catch { return false; }
-};
+// One directory however it is spelled: on Windows a short name (RUNNER~1) and the long one git answers are one
+// directory (samePath); a run whose manifest names no tree is never this cycle's.
+const same = (a, b) => Boolean(a && b) && samePath(a, b);
 
 const outcomeOf = (f) => f.room?.ending?.outcome ?? f.answer?.json?.outcome ?? null;
 

@@ -13,6 +13,7 @@ import { sha, shaBytes } from "../../../src/hash.mjs";
 import { createProcess } from "../../../src/process/index.mjs";
 import { docker } from "../../../src/runtime/isolation/docker.mjs";
 import { createScratch } from "../../../src/runtime/sandbox/scratch.mjs";
+import { samePath } from "../../../src/frontend/local-clones.mjs";
 import { realIo } from "../../../src/store/io.mjs";
 import { madeCheckout } from "./checkout.mjs";
 import { dockerClientEnv } from "./docker.mjs";
@@ -166,9 +167,10 @@ export function frozenRun(h, o) {
 }
 
 // A tree named by a caller is a checkout's TOP directory -- never a directory somewhere inside one, which would freeze
-// the whole checkout around it under the name of the part.
+// the whole checkout around it under the name of the part. Two spellings of one directory are one directory: on Windows
+// a temporary path keeps its 8.3 short name (C:\Users\RUNNER~1) where git answers the long one (samePath).
 function treeChecked(h, where) {
-  if (h.tree && realpathSync(where.root) !== realpathSync(h.tree)) throw new Refused(`--tree names a checkout's top directory, and ${h.tree} is inside ${where.root}`);
+  if (h.tree && !samePath(where.root, h.tree)) throw new Refused(`--tree names a checkout's top directory, and ${h.tree} is inside ${where.root}`);
   return where;
 }
 

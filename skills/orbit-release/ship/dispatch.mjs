@@ -8,9 +8,10 @@
 //   dispatched(ctx, f, row, kind) -> verdict-bearing result     carriedOn(ctx, x) -> result   (an action left running)
 //   runRoomOf(storeRoot, run) -> { dir, manifest, ending, report, verified }
 import { randomBytes } from "node:crypto";
-import { copyFileSync, readFileSync, realpathSync } from "node:fs";
-import { join, sep } from "node:path";
+import { copyFileSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { sha } from "../../../src/hash.mjs";
+import { physical, within } from "../../../src/project/boundary.mjs";
 import { argvOf, controlRuns, controlVerdict, repairVerdict, rowVerdict } from "./rows.mjs";
 import { docWritten, jsonAtFile } from "./room.mjs";
 import { touchedBy } from "./workspace.mjs";
@@ -110,8 +111,10 @@ function repairFacts(ctx, doc, room) {
   return { verified, case: ctx.cases.get(doc.rowDef.case), policy: ctx.policy, patch: file ? { file, digest: sha(readFileSync(file, "utf8")), touched: touchedBy(ctx.world, doc.workspace, file) } : null };
 }
 
+// Inside the run's room by the real path of each -- the native one on Windows, where a short name (RUNNER~1) and the
+// long one are one directory -- and never the room itself.
 function inside(file, dir) {
-  try { return Boolean(file && dir) && realpathSync(file).startsWith(`${realpathSync(dir)}${sep}`); }
+  try { return Boolean(file && dir) && physical(file) !== physical(dir) && within(physical(dir), physical(file)); }
   catch { return false; }
 }
 

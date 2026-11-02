@@ -10,7 +10,7 @@
 //   HOST_CHECK -- ordered, first match wins, the last always matching      PROBE_PROMPT · PROBE_USD
 import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { credentialNames, cpusetOf, engineOf, hostsOf, userOf } from "./context.mjs";
+import { credentialNames, cpusetOf, dockerDeps, engineOf, hostsOf, userOf } from "./context.mjs";
 import { cleaned, dockerClientEnv } from "./docker.mjs";
 import { imageDefs, resolvedImages } from "./images.mjs";
 import { docWritten, newRunId, roomOf } from "./room.mjs";
@@ -83,10 +83,14 @@ function kept(h, f) {
   return verdictOf(f);
 }
 
+// The probe's context, its Docker client bound to the probe's own scratch room: a container's environment rides a
+// private file there, as every run's does (context.mjs) -- a client with no room could write no such file at all.
+const probeCtxIn = (h, images, room) => probeCtx(h, h.dockerDeps ? h.dockerDeps(room) : dockerDeps(h.env, room), images, room);
+
 // Nothing is started for a probe that cannot be one: no image, no version pinned in it, or no credential to hand it.
 export async function probedHost(h, deps, model = null) {
   const images = imagesOrNull(h, deps);
-  const ctx = images?.claudeCode ? probeCtx(h, deps, images, roomOf(h.storeRoot, newRunId("probe"))) : null;
+  const ctx = images?.claudeCode ? probeCtxIn(h, images, roomOf(h.storeRoot, newRunId("probe"))) : null;
   const f = { images, ctx, room: ctx?.room ?? null, credentialed: Boolean(ctx) && credentialed(ctx) };
   return f.credentialed ? kept(h, { ...f, ran: await probeRan(ctx, model) }) : verdictOf(f);
 }

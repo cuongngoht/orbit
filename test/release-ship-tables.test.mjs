@@ -7,6 +7,7 @@ import { test } from "node:test";
 import { DIAGNOSE, diagnosed } from "../skills/orbit-release/ship/diagnose.mjs";
 import { PUBLISH, publishableOf } from "../skills/orbit-release/ship/evidence.mjs";
 import { NEXT, nextOf } from "../skills/orbit-release/ship/machine.mjs";
+import { gateEnvOf } from "../skills/orbit-release/ship/ports.mjs";
 import { PREFLIGHT, preflightOf } from "../skills/orbit-release/ship/preflight.mjs";
 import { CONTROL_RULES, CONTROL_VERDICT, REPAIR_CHECK, ROW_VERDICT, controlVerdict, repairVerdict, rowVerdict } from "../skills/orbit-release/ship/rows.mjs";
 import { POLICY } from "./fakes/ship-world.mjs";
@@ -113,6 +114,11 @@ test("ROW_VERDICT: a run is never WRONG_TREE for how its tree is spelled -- a sh
   assert.equal(at("C:\\Users\\runneradmin\\AppData\\Local\\Temp\\o\\release\\trees\\c1"), "HELD");
   assert.equal(at("C:\\Users\\runneradmin\\AppData\\Local\\Temp\\o\\elsewhere"), "WRONG_TREE");
   assert.equal(at(undefined), "WRONG_TREE", "a run that names no tree is never this cycle's");
+});
+
+test("the definition of done runs without the coding host's credential or endpoint -- it needs neither, and a suite could print one", () => {
+  const env = { PATH: "/bin", HOME: "/h", ANTHROPIC_API_KEY: "k", CLAUDE_CODE_OAUTH_TOKEN: "t", ANTHROPIC_AUTH_TOKEN: "a", ANTHROPIC_BASE_URL: "https://api.anthropic.com" };
+  assert.deepEqual(gateEnvOf(env), { PATH: "/bin", HOME: "/h" });
 });
 
 // ---- CONTROL_RULES -------------------------------------------------------------------------------------------------------

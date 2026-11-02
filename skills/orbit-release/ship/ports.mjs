@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { createLocalClones } from "../../../src/frontend/local-clones.mjs";
 import { createWorkspaces } from "../../../src/orchestration/workspace.mjs";
 import { createProcess } from "../../../src/process/index.mjs";
+import { CREDENTIAL_NAMES } from "./preflight.mjs";
 import { guardedIo } from "../../../src/store/guard.mjs";
 import { realIo } from "../../../src/store/io.mjs";
 
@@ -65,7 +66,12 @@ export const gitPort = (noHooks, env) => (cwd, args) => ((r) => ({ ok: r.status 
 // ---- the gates, in a checkout of their own -----------------------------------------------------------------------------
 
 // Every gate is `node <args>` run in the cycle's checkout, which hands it nothing about where the ship was started.
-export const gatesAt = (env) => (cwd) => (args, extra = {}) => ((r) => ({ out: (r.stdout ?? "") + (r.stderr ?? ""), code: r.status, read: (file) => (existsSync(join(cwd, file)) ? readFileSync(join(cwd, file), "utf8") : null) }))(spawnSync(process.execPath, args, { cwd, encoding: "utf8", env: { ...env, ...extra }, timeout: GATE_MS, maxBuffer: MAX_OUT }));
+// The gates' own environment: the ship's, without the coding host's credential or endpoint -- the definition of done
+// needs neither, and a credential handed to a test suite is one a test could print into a log.
+const WITHHELD = new Set([...CREDENTIAL_NAMES, "ANTHROPIC_BASE_URL"]);
+export const gateEnvOf = (env) => Object.fromEntries(Object.entries(env).filter(([k]) => !WITHHELD.has(k)));
+
+export const gatesAt = (env) => (cwd) => (args, extra = {}) => ((r) => ({ out: (r.stdout ?? "") + (r.stderr ?? ""), code: r.status, read: (file) => (existsSync(join(cwd, file)) ? readFileSync(join(cwd, file), "utf8") : null) }))(spawnSync(process.execPath, args, { cwd, encoding: "utf8", env: { ...gateEnvOf(env), ...extra }, timeout: GATE_MS, maxBuffer: MAX_OUT }));
 
 // ---- the release workspace ---------------------------------------------------------------------------------------------
 

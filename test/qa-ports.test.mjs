@@ -104,6 +104,18 @@ test("a generated HTTP case is drafted through the port, validated by the real g
   rmSync(store, { recursive: true, force: true });
 });
 
+test("a path that repeats its endpoint's own base path is refused before a draft exists, and named as it should be", async () => {
+  const { ctx, store } = await packed();
+  const j = journal();
+  const p = ports(ctx, j);
+  const design = { obligation: "tob-000000000002", skeleton: { steps: [call("orbit.http.read", { endpointRef: "invoice-read", identityRef: "tenant-b-reader", method: "GET", path: "/api/invoices/inv-a" })] }, assertions: [{ criterionRef: "API-AC-2/E1", template: "value-eq", step: 1 }], controls: [{ role: "positive" }, { role: "negative" }] };
+  const out = generated({ id: ID, store: j.store, io: j.io, generation: p.generation }, { obligation: "tob-000000000002", design });
+  assert.notEqual(out.outcome, "DRAFT_CREATED", "a path that asks for /api/api/... would contradict the clean application too");
+  assert.match(JSON.stringify(out.findings), /repeats invoice-read's own base path \/api: a path is relative to the bound endpoint -- \\"\/invoices\/inv-a\\"/);
+  assert.equal(p.drafts.length, 0);
+  rmSync(store, { recursive: true, force: true });
+});
+
 test("a version is prepared with every ref sealed by the host and a grant for every effect it would have", async () => {
   const { ctx, store } = await packed();
   const j = journal();

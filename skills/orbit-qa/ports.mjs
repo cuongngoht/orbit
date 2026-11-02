@@ -90,8 +90,20 @@ export function generationPort(b) {
 function generationContext(b, obligation, a) {
   const r = resolver({ ...b, graph: b.graph(), topology: quietly(() => b.topology?.()), design: a.design });
   const steps = a.design?.skeleton?.steps ?? [];
-  return { expectations: expectationsOf(b, obligation), expected: obligation.expected ?? [], outputsOf: (i) => outputsOf(r, steps[i - 1]), semanticsOf: (i) => semanticsOf(r, steps[i - 1]), observerSemantics: (ref) => observerSemantics(r, ref), shape: shapeOf(obligation.shape), caseId: caseIdOf(obligation, a.design), title: titleOf(obligation), validate: (c) => validate(c, b.ctx.graph, b.ctx.dsl, b.ctx.validators, r.lookup), inputFindings: (s) => inputFindings(r.lookup(s.capability), s.input), dsl: b.ctx.dsl, pageOf: (id) => r.lookup(id)?.page };
+  return { expectations: expectationsOf(b, obligation), expected: obligation.expected ?? [], outputsOf: (i) => outputsOf(r, steps[i - 1]), semanticsOf: (i) => semanticsOf(r, steps[i - 1]), observerSemantics: (ref) => observerSemantics(r, ref), shape: shapeOf(obligation.shape), caseId: caseIdOf(obligation, a.design), title: titleOf(obligation), validate: (c) => validate(c, b.ctx.graph, b.ctx.dsl, b.ctx.validators, r.lookup), inputFindings: (s) => [...inputFindings(r.lookup(s.capability), s.input), ...basePathFindings(r, r.lookup(s.capability), s.input ?? {})], dsl: b.ctx.dsl, pageOf: (id) => r.lookup(id)?.page };
 }
+
+// A path is relative to the endpoint it is sent to, and the endpoint's own base path (the graph declares it, `/api`)
+// is already part of what binds -- so a path that starts with that base again asks for `/api/api/…`, a 404 the clean
+// application gives too: a false alarm before anything ran. Said with the path it should have been.
+function basePathFindings(r, cap, input) {
+  const bases = Object.entries(cap?.inputSchema ?? {}).filter(([k, row]) => row?.bind === "endpoint" && typeof input[k] === "string").map(([k]) => [input[k], trimmed(r.declarationOf("endpoint", input[k])?.path)]);
+  return bases.filter(([, base]) => base && repeats(input.path, base)).map(([alias, base]) => `path "${input.path}" repeats ${alias}'s own base path ${base}: a path is relative to the bound endpoint -- "${input.path.slice(base.length) || "/"}"`);
+}
+
+const trimmed = (base) => (typeof base === "string" ? base.replace(/\/+$/, "") : "");
+
+const repeats = (path, base) => typeof path === "string" && (path === base || path.startsWith(`${base}/`));
 
 // A topology that cannot be composed is no topology: what it would have said is then unknown.
 const quietly = (fn) => ((t) => (t?.nodes ? t : null))(topologyNow(fn));

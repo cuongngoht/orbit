@@ -19,6 +19,11 @@ each case's baseline is PASS, and a controlled-fault variant plants the old defe
   action's owner gave (`GENERATION_FAILED`, `ENVIRONMENT_BLOCKED`, `SATISFIED` …), the stage or rule and why, by
   allow-list. A `run-version` the sandbox could not bind used to answer `done` with nothing else, and a host could not
   tell it had run nothing. A decision may cite a design or a version (`dsg-…`, `ver-…`) as evidence.
+- **A generated request never repeats its endpoint's base path.** A path is relative to the endpoint it is sent to, and
+  an endpoint the system graph declares under a base path (`/api`) already carries it; a generated `orbit.http.*` step
+  whose path starts with that base again (`/api/invoices/…` against `invoice-read` at `/api`) is now refused before a
+  draft exists, with the path it should have been. It asked for `/api/api/…`, and the 404 the clean application gave
+  too was a false alarm -- three of the real Claude Code QA rows ended that way.
 - **`goal resume` and `goal status` read every task again.** Their task summaries handed a raw journal to the task view,
   which threw, so every task read as `unknown` and a goal whose analysis had completed never moved on.
 - **One failure is one signature (ORBIT-ORC-006).** A failure's signature masks a UUID whole, wherever it appears, so two

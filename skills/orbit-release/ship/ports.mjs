@@ -19,8 +19,9 @@ import { realIo } from "../../../src/store/io.mjs";
 
 const MAX_OUT = 64 * 1024 * 1024;
 
-// A gate's deadline only stops a hang: a Windows runner takes eight to ten minutes over the suite.
-const GATE_MS = 20 * 60000;
+// A gate's deadline only stops a hang. A Windows runner on Node 20 now takes about twenty minutes over the suite, and a
+// deadline at twenty killed it before it printed its count -- a hang it was not.
+const GATE_MS = 45 * 60000;
 
 const parsed = (text) => {
   try { return JSON.parse(text); }
@@ -71,7 +72,7 @@ export const gitPort = (noHooks, env) => (cwd, args) => ((r) => ({ ok: r.status 
 const WITHHELD = new Set([...CREDENTIAL_NAMES, "ANTHROPIC_BASE_URL"]);
 export const gateEnvOf = (env) => Object.fromEntries(Object.entries(env).filter(([k]) => !WITHHELD.has(k)));
 
-export const gatesAt = (env) => (cwd) => (args, extra = {}) => ((r) => ({ out: (r.stdout ?? "") + (r.stderr ?? ""), code: r.status, read: (file) => (existsSync(join(cwd, file)) ? readFileSync(join(cwd, file), "utf8") : null) }))(spawnSync(process.execPath, args, { cwd, encoding: "utf8", env: { ...gateEnvOf(env), ...extra }, timeout: GATE_MS, maxBuffer: MAX_OUT }));
+export const gatesAt = (env) => (cwd) => (args, extra = {}) => ((r) => ({ out: (r.stdout ?? "") + (r.stderr ?? ""), code: r.status, timedOut: r.error?.code === "ETIMEDOUT" ? GATE_MS / 60000 : null, read: (file) => (existsSync(join(cwd, file)) ? readFileSync(join(cwd, file), "utf8") : null) }))(spawnSync(process.execPath, args, { cwd, encoding: "utf8", env: { ...gateEnvOf(env), ...extra }, timeout: GATE_MS, maxBuffer: MAX_OUT }));
 
 // ---- the release workspace ---------------------------------------------------------------------------------------------
 

@@ -167,6 +167,7 @@ const count = (out, name) => new RegExp(`^[#ℹ] ${name} (\\d+)$`, "m").exec(out
 // interpreter the report parts need skips those tests, and a green gate must
 // say how much of the suite it did not run (CI, which requires them, runs all).
 function counted(r) {
+  if (r.timedOut) return { ok: false, detail: `node --test did not finish within the gate's ${r.timedOut} minutes` };
   const tests = count(r.out, "tests");
   const failed = count(r.out, "fail");
   if (tests === null || failed === null) return { ok: false, detail: "node --test printed no count" };

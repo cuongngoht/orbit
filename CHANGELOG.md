@@ -15,6 +15,12 @@ each case's baseline is PASS, and a controlled-fault variant plants the old defe
   `<case>@<digest16>` id `run-version` takes. Before, only the journal held it, so a host behind a relay (the
   benchmark's runner) froze a test and could never run it; the first ship's real Claude Code QA row found this. The
   benchmark's scripted host now reads the id the same way.
+- **A step says what its action came to.** Every autonomous QA `step` answer now carries `result` -- the word its
+  action's owner gave (`GENERATION_FAILED`, `ENVIRONMENT_BLOCKED`, `SATISFIED` …), the stage or rule and why, by
+  allow-list. A `run-version` the sandbox could not bind used to answer `done` with nothing else, and a host could not
+  tell it had run nothing. A decision may cite a design or a version (`dsg-…`, `ver-…`) as evidence.
+- **`goal resume` and `goal status` read every task again.** Their task summaries handed a raw journal to the task view,
+  which threw, so every task read as `unknown` and a goal whose analysis had completed never moved on.
 - **One failure is one signature (ORBIT-ORC-006).** A failure's signature masks a UUID whole, wherever it appears, so two
   runs of the same failure no longer read as two failures and `NO_PROGRESS` is reached when it should be.
 

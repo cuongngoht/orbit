@@ -140,6 +140,10 @@ isolated sandbox: its writes need fixture-write and run under grants minted for 
 are bound by the engine, and what it came to (`SATISFIED`, `CONTRADICTED`, `INCONCLUSIVE`,
 `ENVIRONMENT_BLOCKED`, …) is decided from the host's own check of the worker's envelope — never from
 what the worker says. A run that did not settle is read back, never sent again: `reconcile` (below).
+Every step's answer carries `result`: what its action came to in its owner's word (`DRAFT_CREATED`,
+`GENERATION_FAILED`, `ENVIRONMENT_BLOCKED`, `SATISFIED` …), the stage or rule behind it and why -- read it
+before the next decision: a blocked run names the binding or grant it lacked, a failed design the finding
+that stopped it. A design or a version you cite as evidence is cited by its record id (`dsg-…`, `ver-…`).
 
 A design that drives a PAGE names the screen and who its browser acts as — `page: { endpointRef,
 identityRef }`, both aliases — and its steps say WHAT, never how: `until: { selector, attribute?,

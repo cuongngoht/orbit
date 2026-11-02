@@ -3,7 +3,9 @@
 // journal, which a host in a benchmark's runner (or anywhere a relay stands between them) cannot read.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { contextFor } from "../src/investigation/index.mjs";
+import { judgeDecision } from "../src/investigation/decision.mjs";
+import { contextFor, loopWorld } from "../src/investigation/index.mjs";
+import { resultView } from "../src/investigation/loop.mjs";
 import { eventIdOf } from "../src/investigation/store.mjs";
 import { started } from "./autonomous-qa.harness.mjs";
 
@@ -17,4 +19,27 @@ test("context names every frozen version by the id run-version takes, and the ob
   const [v] = contextFor(t.w).versions;
   assert.deepEqual(v, { id: "ver-1", version: VERSION, obligation: "tob-abc", design: "tds-1", case: "gen-billing-once" });
   assert.match(v.version, /^[A-Za-z0-9][A-Za-z0-9._-]{0,120}@[0-9a-f]{16}$/, "the very form run-version's check accepts");
+});
+
+test("a design and a version are records a decision may cite, as the step that made them named them", () => {
+  const t = started();
+  t.w.store.appendOnce(t.id, "designed", { id: "dsg-1", eventId: eventIdOf("designed", "tob-abc", 0, "d1"), obligation: "tob-abc", design: "tds-1", digest: "d1", state: "designed" });
+  t.w.store.appendOnce(t.id, "version", { id: "ver-1", eventId: eventIdOf("version", "tds-1", 0, "c1"), design: "tds-1", case: "gen-billing-once", version: VERSION, digest: "c1" });
+  const lw = loopWorld(t.w);
+  const raw = { schemaVersion: 1, decisionId: "d-refs", expectedRevision: lw.model.position, target: lw.frontier[0]?.id, action: { kind: "run-version", version: VERSION }, evidenceRefs: ["ver-1", "dsg-1"], reason: "run what was frozen" };
+  const said = (() => { try { judgeDecision(raw, lw); return ""; } catch (e) { return e.message; } })();
+  assert.doesNotMatch(said, /^REFS:/, said);
+  const unknown = (() => { try { judgeDecision({ ...raw, decisionId: "d-refs-2", evidenceRefs: ["ver-9"] }, lw); return ""; } catch (e) { return e.message; } })();
+  assert.match(unknown, /^REFS: evidenceRefs ver-9 name no record/, "an id nothing recorded is still refused");
+});
+
+test("a step's answer says what its action came to: the owner's word, its stage or rule and why -- never the values", () => {
+  assert.equal(resultView(undefined), null);
+  const blocked = resultView({ outcome: "ENVIRONMENT_BLOCKED", why: "schedule billing-daily: this sandbox minted no hooks token" });
+  assert.deepEqual([blocked.outcome, blocked.why], ["ENVIRONMENT_BLOCKED", "schedule billing-daily: this sandbox minted no hooks token"]);
+  const failed = resultView({ outcome: "GENERATION_FAILED", stage: "validate", findings: [{ rule: "UNKNOWN_FIELD", say: "step 2 has a field nobody declared" }] });
+  assert.deepEqual([failed.outcome, failed.stage, failed.findings], ["GENERATION_FAILED", "validate", ["UNKNOWN_FIELD: step 2 has a field nobody declared"]]);
+  const made = resultView({ outcome: "DRAFT_CREATED", version: VERSION, design: "tds-1", case: "gen-billing-once", digests: { case: "x" } });
+  assert.deepEqual(Object.keys(made).sort(), ["execution", "findings", "outcome", "rule", "stage", "version", "why"], "an allow-list: nothing else of the result reaches the host");
+  assert.equal(made.version, VERSION);
 });

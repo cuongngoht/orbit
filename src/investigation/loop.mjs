@@ -88,8 +88,15 @@ export function step(w, raw) {
   if (taken.replay) return { ...responseOf(w, taken.replay, taken.before), replayed: true };
   const outcome = attempted(w, taken.decision);
   refreshed(w);
-  return responseOf(w, withJournal(w, () => settle(w, taken, outcome)), taken.before);
+  return { ...responseOf(w, withJournal(w, () => settle(w, taken, outcome)), taken.before), result: resultView(outcome.result) };
 }
+
+// What the action itself came to, as its owner said it -- the word a generate or a run-version gives (DRAFT_CREATED,
+// GENERATION_FAILED, ENVIRONMENT_BLOCKED, SATISFIED ...), the stage or rule behind it, and why -- by allow-list, so a
+// host that sent a step learns what it did without reading the journal. Never the observed values themselves.
+export const resultView = (r) => (r && typeof r === "object" ? { outcome: r.outcome ?? null, stage: r.stage ?? null, rule: r.rule ?? null, why: r.why ? scrub(String(r.why)).slice(0, 600) : null, version: typeof r.version === "string" ? r.version : null, execution: r.execution ?? null, findings: (r.findings ?? []).slice(0, 8).map(findingLine) } : null);
+
+const findingLine = (f) => scrub(typeof f === "string" ? f : [f.rule ?? f.id ?? f.code, f.say ?? f.why ?? f.message].filter(Boolean).join(": ")).slice(0, 240);
 
 // Judged against the journal as it is UNDER the lock, and written down before
 // the step runs: the record is what makes a crash mid-step visible afterwards.

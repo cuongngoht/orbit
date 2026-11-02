@@ -38,7 +38,7 @@ const TRANSFORMS = [
   (l) => l.replace(/\u001b\[[0-9;]*[A-Za-z]/g, ""),
   (l, root) => withoutRoot(l, root),
   (l) => l.replace(ABSOLUTE, "$1$3"),
-  (l) => l.replace(/\b[0-9a-f]{8,}\b/gi, "[h]"),
+  (l) => l.replace(/\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b/gi, "[h]").replace(/\b[0-9a-f]{8,}\b/gi, "[h]"),
   (l) => l.replace(/\d+/g, "#"),
   (l) => l.replace(/\s+/g, " ").trim(),
 ];

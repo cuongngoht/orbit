@@ -2,7 +2,7 @@
 // child over a tree of the subject's files, its raw answers judged by the frozen spec and the harness judge -- with no
 // container: what this file proves is that the CHECKS discriminate. The source as it is passes ORBIT-SRC-001; a planted
 // fault, a partial fix, an oracle that allows everything and one that refuses everything all fail it; ORBIT-SRC-002
-// fails on the source as it is (a real finding) and passes a reference repair, which still passes ORBIT-SRC-001.
+// passes the source as it is (the finding it was written for is repaired) and fails its controlled fault, which plants that finding again.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -72,12 +72,11 @@ test("an oracle that allows everything and one that refuses everything both fail
   assert.ok(reject.includes("lower-bound-raised") && reject.includes("bound-unchanged") && reject.includes("output-moved"), reject.join(","));
 });
 
-test("ORBIT-SRC-002 fails on the source as it is -- a removed step a person approved goes unnoticed -- and a reference repair passes it and ORBIT-SRC-001 alike", (t) => {
-  const main = judged(t, CASE2, spec2, subject());
-  assert.deepEqual(failingGroups(main).filter((g) => g !== "seeded-workflow"), ["optional-approval-removed", "optional-approval-renamed", "safety-approval-removed"]);
-  const fixed = mutated(subject(), CASE2, "controls/known-good.json");
-  assert.deepEqual(judged(t, CASE2, spec2, fixed).checks.filter((c) => !c.ok), []);
-  assert.deepEqual(judged(t, CASE1, spec1, fixed).checks.filter((c) => !c.ok), [], "the repair weakens nothing ORBIT-SRC-001 holds");
+test("ORBIT-SRC-002 holds on the source as it is, its controlled fault -- a removed step a person approved goes unnoticed -- fails it, and the reference repair of that fault passes it and ORBIT-SRC-001 alike", (t) => {
+  assert.deepEqual(judged(t, CASE2, spec2, subject()).checks.filter((c) => !c.ok), []);
+  const fault = mutated(subject(), CASE2, "variants/controlled-fault.json");
+  assert.deepEqual(failingGroups(judged(t, CASE2, spec2, fault)).filter((g) => g !== "seeded-workflow"), ["optional-approval-removed", "optional-approval-renamed", "safety-approval-removed"]);
+  assert.deepEqual(judged(t, CASE1, spec1, subject()).checks.filter((c) => !c.ok), [], "the repaired source weakens nothing ORBIT-SRC-001 holds");
   assert.deepEqual(spec2.selfTest(), []);
 });
 

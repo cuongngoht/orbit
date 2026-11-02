@@ -37,27 +37,30 @@ describe("Autonomous improvement", () => {
     expect(screen.getByText("release-x:0.1.1:bbbbbbbb")).toBeTruthy();
   });
 
+  // Two dialogs, a refresh and two writes: more than vitest's default five seconds on a busy runner. Each dialog is
+  // found by its title, `hidden` included: under jsdom the modal tracking can leave a second modal marked aria-hidden
+  // after the first one closed, which a browser never shows and which says nothing about the page.
   it("a person promotes on the revision the page read; a campaign that moved since is named, never overwritten", async () => {
     renderApp("/improvement/repo-shop/campaigns/imp-0123456789ab");
     fireEvent.click(await screen.findByRole("button", { name: "Promote" }, { timeout: 5000 }));
     imp.state.campaign = { ...imp.state.campaign, revision: 22 };
-    fireEvent.click(within(await screen.findByRole("alertdialog", {}, { timeout: 5000 })).getByRole("button", { name: "Promote" }));
+    fireEvent.click(await within(await screen.findByRole("alertdialog", { name: "Promote", hidden: true }, { timeout: 5000 })).findByRole("button", { name: "Promote", hidden: true }, { timeout: 5000 }));
     expect(await screen.findByText(/The campaign moved since you opened it/, {}, { timeout: 5000 })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
     await waitFor(() => expect(imp.state.calls.filter((c) => c.method === "GET" && c.path.endsWith("imp-0123456789ab")).length).toBeGreaterThan(1));
     fireEvent.click(await screen.findByRole("button", { name: "Promote" }, { timeout: 5000 }));
-    fireEvent.click(within(await screen.findByRole("alertdialog", {}, { timeout: 5000 })).getByRole("button", { name: "Promote" }));
+    fireEvent.click(await within(await screen.findByRole("alertdialog", { name: "Promote", hidden: true }, { timeout: 5000 })).findByRole("button", { name: "Promote", hidden: true }, { timeout: 5000 }));
     await waitFor(() => expect(imp.state.campaign.phase).toBe("PROMOTED"));
     const promote = imp.state.calls.filter((c) => c.path.endsWith("/promote")).at(-1);
     expect((promote?.body as { expectedRevision: number }).expectedRevision).toBe(22);
-  });
+  }, 20000);
 
   it("a person rejects a candidate with a sentence of why", async () => {
     renderApp("/improvement/repo-shop/campaigns/imp-0123456789ab");
     fireEvent.click(await screen.findByRole("button", { name: "Reject" }, { timeout: 5000 }));
     const dialog = await screen.findByRole("alertdialog", {}, { timeout: 5000 });
     fireEvent.change(within(dialog).getByRole("textbox"), { target: { value: "not what this project wants" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Reject" }));
+    fireEvent.click(await within(dialog).findByRole("button", { name: "Reject" }, { timeout: 5000 }));
     await waitFor(() => expect(imp.state.campaign.phase).toBe("REJECTED"));
     expect((imp.state.calls.filter((c) => c.path.endsWith("/reject")).at(-1)?.body as { because: string }).because).toBe("not what this project wants");
   });

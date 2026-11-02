@@ -116,6 +116,15 @@ test("a path that repeats its endpoint's own base path is refused before a draft
   rmSync(store, { recursive: true, force: true });
 });
 
+test("the generation port lists the names this sandbox binds, off the frozen graph -- what a host reads instead of guessing", async () => {
+  const { ctx, store } = await packed();
+  const listed = ports(ctx, journal()).generation.bindable();
+  assert.deepEqual(listed.endpoint.map((e) => [e.alias, e.path ?? null]), [["invoice-read", "/api"], ["invoices", null]]);
+  assert.deepEqual(listed.channel.map((c) => c.alias), ["reminders"]);
+  assert.deepEqual(listed.schedule.map((x) => x.alias), ["billing-daily"]);
+  rmSync(store, { recursive: true, force: true });
+});
+
 test("a version is prepared with every ref sealed by the host and a grant for every effect it would have", async () => {
   const { ctx, store } = await packed();
   const j = journal();

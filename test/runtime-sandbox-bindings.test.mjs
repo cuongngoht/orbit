@@ -89,7 +89,7 @@ test("the worker hands a helper every secret its bound value names, and no other
 });
 
 // What a ref IS comes from the system graph and the design's own plan -- never from a case.
-import { aliasOf, declarationsFrom } from "../src/runtime/sandbox/declarations.mjs";
+import { aliasOf, bindableFrom, declarationsFrom } from "../src/runtime/sandbox/declarations.mjs";
 
 const GRAPH = { nodes: [
   { key: "component:broker", role: "component", name: "broker", attributes: {} },
@@ -170,4 +170,15 @@ test("the worker's binder issues a sealed identity ONCE for the run, hands its t
   const refused = sealedBinder({ bindings: { identity: { "tenant-b-reader": value } }, secrets: {} }, { issue: () => ({ why: "the hooks refused" }) });
   assert.deepEqual(refused.resolve("identity", "tenant-b-reader"), { ok: false, why: "the hooks refused" });
   assert.match(sealedBinder({ bindings: { identity: { "tenant-b-reader": value } } }).resolve("identity", "tenant-b-reader").why, /nothing here can issue it/);
+});
+
+test("what a host may name is listed by kind, exactly as the binder resolves it -- never guessed from a key", () => {
+  const listed = bindableFrom({ graph: GRAPH, tenancy: null });
+  assert.deepEqual(listed.endpoint.map((e) => [e.alias, e.of, e.path]), [["invoices-api", "invoice-app", "/api"]]);
+  assert.deepEqual(listed.channel.map((c) => c.alias), ["billing-reminder-requested"], "a channel by its alias, not its dotted name");
+  assert.deepEqual(listed.schedule.map((x) => x.alias), ["billing-daily"]);
+  assert.deepEqual(listed.workload.map((x) => x.alias), ["worker"], "the node's name, never the key's (worker:reminder-worker)");
+  assert.deepEqual(listed.clock.map((x) => x.alias), ["invoice-app"], "only a component whose hooks inject a clock");
+  assert.deepEqual(listed.identity, [], "no identity binds before a person's tenancy contract says which tenant it acts in");
+  for (const [kind, rows] of Object.entries(listed)) for (const r of rows) assert.ok(declarationsFrom({ graph: GRAPH, tenancy: null })(kind, r.alias), `${kind} ${r.alias} binds`);
 });

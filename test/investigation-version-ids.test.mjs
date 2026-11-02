@@ -43,3 +43,11 @@ test("a step's answer says what its action came to: the owner's word, its stage 
   assert.deepEqual(Object.keys(made).sort(), ["execution", "findings", "outcome", "rule", "stage", "version", "why"], "an allow-list: nothing else of the result reaches the host");
   assert.equal(made.version, VERSION);
 });
+
+test("context lists the names a design's refs may take here, from the generation port -- and nothing when none is bound", () => {
+  const t = started();
+  assert.equal(contextFor(t.w).bindings, null, "no generation port, no list");
+  const listed = { endpoint: [{ alias: "invoice-read", of: "invoice-app", path: "/api", says: "reads one invoice" }], workload: [{ alias: "worker", of: "invoice-app", says: "" }] };
+  assert.deepEqual(contextFor({ ...t.w, generation: { bindable: () => listed } }).bindings, listed);
+  assert.equal(contextFor({ ...t.w, generation: { bindable: () => { throw new Error("graph unreadable"); } } }).bindings, null, "a graph that cannot be read lists nothing, never fails the context");
+});

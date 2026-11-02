@@ -24,6 +24,11 @@ each case's baseline is PASS, and a controlled-fault variant plants the old defe
   whose path starts with that base again (`/api/invoices/…` against `invoice-read` at `/api`) is now refused before a
   draft exists, with the path it should have been. It asked for `/api/api/…`, and the 404 the clean application gave
   too was a false alarm -- three of the real Claude Code QA rows ended that way.
+- **A host reads the names it may bind instead of guessing them.** An autonomous QA `context` now lists, by kind
+  (endpoint, channel, state, schedule, workload, identity, clock), every alias the task's sandbox binds -- read off the
+  frozen system graph by the binder's own rows (`bindableFrom`), with the owning component and an endpoint's base path.
+  A real Claude Code QA row spent its design repairs on aliases it guessed from keys (`reminder-worker` for the
+  workload `worker`) and never reached the shapes the planted defect was in.
 - **`goal resume` and `goal status` read every task again.** Their task summaries handed a raw journal to the task view,
   which threw, so every task read as `unknown` and a goal whose analysis had completed never moved on.
 - **One failure is one signature (ORBIT-ORC-006).** A failure's signature masks a UUID whole, wherever it appears, so two

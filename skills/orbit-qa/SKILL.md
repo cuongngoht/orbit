@@ -144,6 +144,10 @@ Every step's answer carries `result`: what its action came to in its owner's wor
 `GENERATION_FAILED`, `ENVIRONMENT_BLOCKED`, `SATISFIED` …), the stage or rule behind it and why -- read it
 before the next decision: a blocked run names the binding or grant it lacked, a failed design the finding
 that stopped it. A design or a version you cite as evidence is cited by its record id (`dsg-…`, `ver-…`).
+Every ref a design names (`endpointRef`, `channelRef`, `stateRef`, `scheduleRef`, `workloadRef`, `identityRef`,
+`clockRef`) takes one of the aliases `context` lists under `bindings`, by kind, exactly as this sandbox binds them --
+read them there, never guess one from a key, a dotted name or a statement: an alias nothing lists is a binding
+gap, and a design that names one is blocked before it runs.
 
 A design that drives a PAGE names the screen and who its browser acts as — `page: { endpointRef,
 identityRef }`, both aliases — and its steps say WHAT, never how: `until: { selector, attribute?,

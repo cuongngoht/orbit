@@ -81,3 +81,18 @@ function identity(nodes, alias, design, tenancy) {
 const tenantOf = (tenancy, alias) => ((logical) => (logical ? tenancy?.tenants?.[logical] ?? null : null))(tenancy?.identities?.[alias]?.[0]);
 
 const DECLARE = { channel, queue: channel, state: held(["data-resource"]), endpoint, schedule: hooked(["schedule"], "schedule"), workload: hooked(["workload"], "workload"), clock, observer, fixture, identity };
+
+// Which graph role each ref kind a host may NAME is read from: the same rows the binder resolves through, so what is
+// listed binds. An observer and a fixture are the design's own words, never the graph's, and are not listed.
+const NAMED = { endpoint: ["interface"], channel: ["channel"], state: ["data-resource"], schedule: ["schedule"], workload: ["workload"], identity: ["principal"], clock: ["component"] };
+
+// in: { graph, tenancy } -> { [kind]: [{ alias, of, path?, says }] } -- every alias a ref of that kind may name here, the
+// way the binder would find it, so a host proposing a design reads the names and never guesses them.
+export function bindableFrom({ graph, tenancy }) {
+  const nodes = graph?.nodes ?? [];
+  return Object.fromEntries(Object.entries(NAMED).map(([kind, roles]) => [kind, namedOf(nodes, kind, roles, tenancy)]));
+}
+
+const namedOf = (nodes, kind, roles, tenancy) => nodes.filter((n) => roles.includes(n.role)).map((n) => [n, DECLARE[kind](nodes, aliasOf(n.name), {}, tenancy)]).filter(([, d]) => d).map(([n, d]) => listed(n, d)).slice(0, 24);
+
+const listed = (n, d) => ({ alias: aliasOf(n.name), of: ownerOf(n), ...(d.path ? { path: d.path } : {}), says: String(n.statement ?? "").slice(0, 160) });

@@ -31,7 +31,7 @@ import { pageOutputsOf } from "../../src/qa/generation/page.mjs";
 import { shapeOf } from "../../src/qa/obligations/shapes.mjs";
 import { capabilityLookup } from "../../src/run/run-case.mjs";
 import { HOOK_PROTOCOLS, sealedBindings } from "../../src/runtime/sandbox/bindings.mjs";
-import { declarationsFrom } from "../../src/runtime/sandbox/declarations.mjs";
+import { bindableFrom, declarationsFrom } from "../../src/runtime/sandbox/declarations.mjs";
 import { mintGrant } from "../../src/runtime/sandbox/test-grants.mjs";
 import { mutatingEffect } from "../../src/topology/vocab.mjs";
 import { engineVersion } from "../../src/version.mjs";
@@ -84,7 +84,7 @@ function effectsOf(r, step) {
 
 // in: { ctx, model(), planOf(ref), graph(), topology()?, services, drafts }
 export function generationPort(b) {
-  return { contextFor: (obligation, a) => generationContext(b, obligation, a), saveDraft: (c) => b.drafts.save(c), versions: versionsOf(b.ctx) };
+  return { contextFor: (obligation, a) => generationContext(b, obligation, a), saveDraft: (c) => b.drafts.save(c), versions: versionsOf(b.ctx), bindable: () => bindableFrom({ graph: b.graph(), tenancy: b.tenancy }) };
 }
 
 function generationContext(b, obligation, a) {

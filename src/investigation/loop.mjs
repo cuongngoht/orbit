@@ -61,10 +61,18 @@ function readersOf(w) {
 // ------------------------------------------------------------------ context
 export function contextOf(w, history = []) {
   const lw = loopWorld(w);
-  return { investigation: w.id, position: lw.model.position, lifecycle: lw.model.lifecycle, inputMode: lw.inputMode, inputs: lw.model.inputs, unsettled: unsettled(lw.model).map(unsettledView), stop: stopOf(lw), budget: budgetOf(lw), obligations: countsOf(lw.obligations), frontier: lw.frontier.slice(0, 12).map(frontierView), findings: lw.model.findings.map(findingView), recall: { history, questions: lw.model.questions.filter((q) => !lw.model.answers.some((a) => a.question === q.id)) }, versions: lw.model.versions.slice(-12).map(versionView(lw.model)), protocol: { schemaVersion: DECISION_SCHEMA, actions: ACTION_KINDS } };
+  return { investigation: w.id, position: lw.model.position, lifecycle: lw.model.lifecycle, inputMode: lw.inputMode, inputs: lw.model.inputs, unsettled: unsettled(lw.model).map(unsettledView), stop: stopOf(lw), budget: budgetOf(lw), obligations: countsOf(lw.obligations), frontier: lw.frontier.slice(0, 12).map(frontierView), findings: lw.model.findings.map(findingView), recall: { history, questions: lw.model.questions.filter((q) => !lw.model.answers.some((a) => a.question === q.id)) }, versions: lw.model.versions.slice(-12).map(versionView(lw.model)), bindings: bindingsOf(w), protocol: { schemaVersion: DECISION_SCHEMA, actions: ACTION_KINDS } };
 }
 
 const frontierView = (o) => ({ id: o.id, kind: o.kind, subject: o.subject, layer: o.layer, title: o.title, why: o.why, oracle: o.oracle, can: o.can, template: o.template });
+// The names a design's refs may take here -- an endpoint, a channel, a state, a schedule, a workload, an identity, a
+// clock -- as the sandbox's binder resolves them (src/runtime/sandbox/declarations.mjs bindableFrom). None when no
+// generation port is bound; a graph that cannot be read lists nothing rather than failing the context.
+const bindingsOf = (w) => {
+  try { return w.generation?.bindable?.() ?? null; }
+  catch { return null; }
+};
+
 // A frozen version as a host names it: `version` is the id a run-version step sends (<case>@<digest16>), and the
 // obligation it was designed for -- so a host never has to read the journal to run what it generated.
 const versionView = (model) => (v) => ({ id: v.id, version: v.version, obligation: model.designs.findLast((d) => d.design === v.design)?.obligation ?? null, design: v.design, case: v.case });

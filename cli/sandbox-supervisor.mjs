@@ -44,7 +44,10 @@ function alive(pid) {
 }
 
 // The one supervisor of a sandbox: whoever creates the owner file holds it; a stale one (its pid gone) is taken over.
-function held(file) {
+// Two started together (a resumed dispatch, a restarted machine) race for it, and a teardown can remove the room under
+// one that is starting: the one whose exclusive create loses yields and exits as a second supervisor does, never
+// crashes the run that started it.
+export function held(file) {
   mkdirSync(dirname(file), { recursive: true });
   const other = Number(String(safeRead(file)).trim());
   if (other && other !== process.pid && alive(other)) return false;
@@ -53,8 +56,21 @@ function held(file) {
 
 function written(file) {
   rmSync(file, { force: true });
-  const fd = openSync(file, "wx", 0o600);
-  return (writeSync(fd, String(process.pid)), closeSync(fd), true);
+  return claimed(file);
+}
+
+export function claimed(file) {
+  try { return ((fd) => (writeSync(fd, String(process.pid)), closeSync(fd), true))(openSync(file, "wx", 0o600)); }
+  catch (e) { return yielded(e); }
+}
+
+// Another supervisor made the file first (EEXIST), or the sandbox's teardown removed its room meanwhile (ENOENT): either
+// way there is nothing for this one to hold.
+const YIELDS = new Set(["EEXIST", "ENOENT"]);
+
+function yielded(e) {
+  if (YIELDS.has(e?.code)) return false;
+  throw e;
 }
 
 function safeRead(file) {

@@ -3,12 +3,14 @@
 // worker past its deadline by its receipt, and on a cancel or a spent lifetime tears the sandbox down in order.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Refused } from "../src/errors.mjs";
 import { deps } from "../src/runtime/lifecycle/deps.mjs";
 import { specOf, startedNode } from "../src/runtime/sandbox/network.mjs";
 import { HEARTBEAT_FIELDS, SIGNAL_FIELDS, SUPERVISE, decided, heartbeatLine, heartbeats, signalled, supervisionNow, supervisionRoom } from "../src/runtime/sandbox/supervise.mjs";
-import { HARD_LIFETIME_MS, tick } from "../cli/sandbox-supervisor.mjs";
+import { HARD_LIFETIME_MS, claimed, held, tick } from "../cli/sandbox-supervisor.mjs";
 import { fakeIo } from "./fakes/io.mjs";
 import { WORKER, readyWorld } from "./isolated.harness.mjs";
 
@@ -92,4 +94,16 @@ test("a worker past its deadline is stopped by its receipt at the next tick, and
   assert.equal(await tick(ctx, d, { seq: 0, gen: "g", since: Date.now(), once: true }), false);
   assert.deepEqual(w.iso.state.stopped.slice(stoppedBefore), [up.session.container.id]);
   assert.equal(ctx.sessions.read(up.session.id).state, "STOPPED");
+});
+
+test("two supervisors racing for one sandbox: the one whose exclusive create loses yields, never crashes", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "orbit-owner-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const file = join(dir, "supervision", "supervisor.owner");
+  assert.equal(held(file), true, "the first holds it");
+  assert.equal(readFileSync(file, "utf8"), String(process.pid));
+  assert.equal(claimed(file), false, "a create that finds the file already made by the other yields -- EEXIST is not a crash");
+  assert.equal(claimed(join(dir, "released", "supervision", "supervisor.owner")), false, "a room the teardown removed meanwhile (ENOENT) yields too");
+  writeFileSync(file, "999999999");
+  assert.equal(held(file), true, "a stale owner (its pid gone) is taken over");
 });

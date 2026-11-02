@@ -113,7 +113,9 @@ the publish gate and uploads every room; it never tags, pushes or publishes.
   real Claude Code CLI in the benchmark's runner, and every repair verified independently and retested in full.
 - The two known findings block a release until they are repaired: the first autonomous ship repairs them through the
   benchmark, integrates them in its own workspace and hands a person a patch to apply; their stale controls are reported
-  for a person to bring the cases up to date.
+  for a person to bring the cases up to date. Until a person does, the repository's own case tests fail on the repaired
+  source (a repair may not touch them), so the ship that repaired a known finding ends NOT SHIPPABLE at its next gates;
+  0.4.0 took the verified repairs, rebaselined both cases in the same commit, and qualified on a second ship.
 - A full ship takes hours and a model budget; a GitHub-hosted runner cannot hold one, so `release.yml` takes a
   self-hosted label, and a workstation resumes a ship where it stopped. Each benchmark run keeps its own checkout: a full
   ship keeps a few gigabytes in the machine store.

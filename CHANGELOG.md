@@ -5,6 +5,14 @@
 A minor release: a release now qualifies only on Docker benchmark evidence carried by the real Claude Code CLI, for
 the exact source. One contract a consumer observes is added -- `cli/task.mjs create --parent` -- and none changes.
 
+**Fixes: the two known findings, repaired.** Both were found by the benchmark and are now held by it the other way round:
+each case's baseline is PASS, and a controlled-fault variant plants the old defect again.
+
+- **An approval a person gave is not dropped silently (ORBIT-SRC-002).** A successor that removes a step a person had
+  approved is now a weakening (`APPROVAL_DROPPED`), like one that renames it or drops its approval.
+- **One failure is one signature (ORBIT-ORC-006).** A failure's signature masks a UUID whole, wherever it appears, so two
+  runs of the same failure no longer read as two failures and `NO_PROGRESS` is reached when it should be.
+
 **The autonomous ship (ADR 0049): a release qualifies only on Docker benchmark evidence carried by the real Claude Code
 CLI, for the exact source.** `node skills/orbit-release/ship.mjs` is no longer ten gates and two records: it is one
 resumable Orbit task (provider `release`) that takes this checkout's HEAD through PREFLIGHT → BUILD → BENCHMARK →

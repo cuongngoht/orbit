@@ -82,7 +82,10 @@ is applied -- its `verified.json`, its patch digest, what `git apply --numstat` 
 outside the protected paths), no existing test losing a line -- and a refusal is a spent attempt, never an integration.
 A known finding repaired this way leaves controls written against its old source; once its real source passes the same
 verifier on the same digest, those that presuppose the defect are SUPERSEDED (reported, never counted as held), and the
-case is yours to bring up to date: baseline PASS, a controlled-fault variant planting the old defect.
+case is yours to bring up to date: baseline PASS, a controlled-fault variant planting the old defect. Until it is, the
+repository's own case tests (`test/benchmark-cases`, `-source-cases`, `-repairs`) fail on the repaired source, which
+the repair may not touch, so the cycle after the repair ends NOT SHIPPABLE at its gates: take the verified repair, bring
+the case up to date in the same commit (as 0.4.0 did for ORBIT-SRC-002 and ORBIT-ORC-006), and ship again.
 
 **Publishing.** The ship never pushes, tags or publishes. When repairs were integrated, the qualified source is a commit
 in the ship's workspace: apply it with `git am <room>/release.patch` (or `git fetch <room>/release.bundle HEAD`), commit,

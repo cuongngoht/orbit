@@ -10,6 +10,11 @@ each case's baseline is PASS, and a controlled-fault variant plants the old defe
 
 - **An approval a person gave is not dropped silently (ORBIT-SRC-002).** A successor that removes a step a person had
   approved is now a weakening (`APPROVAL_DROPPED`), like one that renames it or drops its approval.
+- **A host can run what it generated.** A `generate` step's answer now names the version it froze (`frozen`), and
+  `context` lists the latest frozen versions (`versions`) with the obligation each was designed for -- the
+  `<case>@<digest16>` id `run-version` takes. Before, only the journal held it, so a host behind a relay (the
+  benchmark's runner) froze a test and could never run it; the first ship's real Claude Code QA row found this. The
+  benchmark's scripted host now reads the id the same way.
 - **One failure is one signature (ORBIT-ORC-006).** A failure's signature masks a UUID whole, wherever it appears, so two
   runs of the same failure no longer read as two failures and `NO_PROGRESS` is reached when it should be.
 

@@ -63,7 +63,10 @@ const json = (v) => ({ ok: true, status: 0, out: `${JSON.stringify(v)}\n`, err: 
 
 const evaluatedShapes = (lines) => new Set(lines.filter((l) => l.kind === "evaluated").map((l) => l.obligation.slice(4)));
 
-const contextOf = (lines) => json({ position: lines.length, frontier: SHAPES.filter((s) => !evaluatedShapes(lines).has(s)).map((s) => ({ id: `obl-${s}`, kind: "test-obligation", template: { shape: s, obligation: `tob-${s}` } })) });
+// The versions a host is shown, as the engine's context names them: each with the obligation its design was for.
+const versionsOf = (lines) => lines.filter((l) => l.kind === "version").map((v) => ({ version: v.version, design: v.design, obligation: lines.find((l) => l.kind === "designed" && l.design === v.design)?.obligation ?? null }));
+
+const contextOf = (lines) => json({ position: lines.length, versions: versionsOf(lines), frontier: SHAPES.filter((s) => !evaluatedShapes(lines).has(s)).map((s) => ({ id: `obl-${s}`, kind: "test-obligation", template: { shape: s, obligation: `tob-${s}` } })) });
 
 function generated(lines, d) {
   const n = lines.length;

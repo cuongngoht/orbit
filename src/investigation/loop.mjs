@@ -61,10 +61,13 @@ function readersOf(w) {
 // ------------------------------------------------------------------ context
 export function contextOf(w, history = []) {
   const lw = loopWorld(w);
-  return { investigation: w.id, position: lw.model.position, lifecycle: lw.model.lifecycle, inputMode: lw.inputMode, inputs: lw.model.inputs, unsettled: unsettled(lw.model).map(unsettledView), stop: stopOf(lw), budget: budgetOf(lw), obligations: countsOf(lw.obligations), frontier: lw.frontier.slice(0, 12).map(frontierView), findings: lw.model.findings.map(findingView), recall: { history, questions: lw.model.questions.filter((q) => !lw.model.answers.some((a) => a.question === q.id)) }, protocol: { schemaVersion: DECISION_SCHEMA, actions: ACTION_KINDS } };
+  return { investigation: w.id, position: lw.model.position, lifecycle: lw.model.lifecycle, inputMode: lw.inputMode, inputs: lw.model.inputs, unsettled: unsettled(lw.model).map(unsettledView), stop: stopOf(lw), budget: budgetOf(lw), obligations: countsOf(lw.obligations), frontier: lw.frontier.slice(0, 12).map(frontierView), findings: lw.model.findings.map(findingView), recall: { history, questions: lw.model.questions.filter((q) => !lw.model.answers.some((a) => a.question === q.id)) }, versions: lw.model.versions.slice(-12).map(versionView(lw.model)), protocol: { schemaVersion: DECISION_SCHEMA, actions: ACTION_KINDS } };
 }
 
 const frontierView = (o) => ({ id: o.id, kind: o.kind, subject: o.subject, layer: o.layer, title: o.title, why: o.why, oracle: o.oracle, can: o.can, template: o.template });
+// A frozen version as a host names it: `version` is the id a run-version step sends (<case>@<digest16>), and the
+// obligation it was designed for -- so a host never has to read the journal to run what it generated.
+const versionView = (model) => (v) => ({ id: v.id, version: v.version, obligation: model.designs.findLast((d) => d.design === v.design)?.obligation ?? null, design: v.design, case: v.case });
 const findingView = (f) => ({ id: f.id, key: f.key, family: f.family, outcome: f.outcome, confidence: f.confidence, say: f.say, pattern: f.pattern ?? "consistent", reproduced: f.reproduced });
 const unsettledView = (d) => ({ id: d.id, target: d.target, action: d.action?.kind, mutates: Boolean(d.mutates), say: d.mutates ? "it may have written: read back what it did, and never send it again" : "safe to try again, with a new decisionId" });
 
@@ -152,7 +155,7 @@ const moved = (before, after) => after.filter((o) => before.find((b) => b.id ===
 
 function responseOf(w, settled, before) {
   const lw = loopWorld(w);
-  return { decision: settled.decision, state: settled.state, why: settled.why, refs: settled.refs ?? [], progress: settled.progress, position: lw.model.position, changed: moved(before ?? [], lw.obligations).map((o) => ({ id: o.id, kind: o.kind, subject: o.subject, layer: o.layer, status: o.status, why: o.why })), findings: lw.model.findings.map(findingView), budget: budgetOf(lw), next: lw.frontier.slice(0, 3).map(frontierView), stop: stopOf(lw) };
+  return { decision: settled.decision, state: settled.state, why: settled.why, refs: settled.refs ?? [], progress: settled.progress, position: lw.model.position, frozen: lw.model.versions.filter((v) => (settled.refs ?? []).includes(v.id)).map(versionView(lw.model)), changed: moved(before ?? [], lw.obligations).map((o) => ({ id: o.id, kind: o.kind, subject: o.subject, layer: o.layer, status: o.status, why: o.why })), findings: lw.model.findings.map(findingView), budget: budgetOf(lw), next: lw.frontier.slice(0, 3).map(frontierView), stop: stopOf(lw) };
 }
 
 // ------------------------------------------------------- finish · resume · answer

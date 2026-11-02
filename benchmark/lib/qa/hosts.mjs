@@ -25,14 +25,12 @@ const decision = (context, target, action) => ({ schemaVersion: 1, decisionId: `
 
 const stepped = async (h, target, action) => h.ask(["step"], JSON.stringify(decision(await contextOf(h), target, action)));
 
-// The version a design froze for an obligation, as the journal says: the latest design that held, and its version.
-function versionOf(lines, obligation) {
-  const designed = lines.filter((l) => l.kind === "designed" && l.obligation === obligation && l.state === "designed").at(-1);
-  return designed ? (lines.filter((l) => l.kind === "version" && l.design === designed.design).at(-1)?.version ?? null) : null;
-}
+// The version a design froze for an obligation, as a host sees it -- the run-version id `context` names for that
+// obligation, never the journal a coding host cannot read -- so the controls prove the path a real host takes.
+const versionOf = (context, obligation) => (context.versions ?? []).filter((v) => v.obligation === obligation).at(-1)?.version ?? null;
 
 async function ranVersion(h, owed, shape) {
-  const version = versionOf(h.journal(), owed.template.obligation);
+  const version = versionOf(await contextOf(h), owed.template.obligation);
   if (!version) return { shape, outcome: "GENERATION_FAILED" };
   await stepped(h, owed.id, { kind: "run-version", version });
   return { shape, version };

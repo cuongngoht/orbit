@@ -43,11 +43,16 @@ async function assembled(ctx, e) {
   return gitOwn(e.dir, ["rev-parse", "HEAD"], ctx.env).out.trim();
 }
 
-const settingsOf = (target) => [["enabled", "true"], ["tenancy", JSON.stringify(target.tenancy)], ["limits.caseSeconds", "300"]];
+// The investigation's own minutes are the case's runner minutes -- the time the brief tells the host it has
+// (round.mjs, flow.mjs roundMs) -- within the setting's own bound; left unset, its 20-minute default stopped a host that
+// had been told it had two hours.
+const minutesOf = (limits) => (Number.isInteger(limits?.runner?.minutes) ? [["limits.minutes", String(Math.min(240, limits.runner.minutes))]] : []);
+
+export const settingsOf = (target, limits) => [["enabled", "true"], ["tenancy", JSON.stringify(target.tenancy)], ["limits.caseSeconds", "300"], ...minutesOf(limits)];
 
 async function seated(ctx, e) {
   for (const [name, argv] of [["init.mjs", [e.dir]], ["storage.mjs", ["import", "--apply", "--replace"]], ["architecture.mjs", ["record", e.target.graph(ctx.engineDir, ctx.case.target.stack)]]]) await said(e.cli(name, argv), `${name} ${argv[0]}`);
-  for (const [k, v] of settingsOf(e.target)) await said(e.cli("autonomous-qa.mjs", ["settings", "set", `${k}=${v}`, "--human"]), `settings ${k}`);
+  for (const [k, v] of settingsOf(e.target, ctx.case.limits)) await said(e.cli("autonomous-qa.mjs", ["settings", "set", `${k}=${v}`, "--human"]), `settings ${k}`);
   return e;
 }
 

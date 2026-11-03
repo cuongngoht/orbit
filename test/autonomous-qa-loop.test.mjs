@@ -248,3 +248,17 @@ test("the protocol is printed from its tables", () => {
   assert.ok(p.forbidden.includes("verdict") && p.forbidden.includes("approved"));
   assert.ok(p.stops.some((s) => s.id === "completed-scope" && s.lifecycle === "completed"));
 });
+
+// What the real Claude Code QA rows taught (0.4.0): every design they proposed was first refused for what the contract
+// says and nothing showed them -- an effectScope that is not fixture, a trigger kind, `eq` for value-eq, a step on a
+// state control. The protocol carries what a design may hold, from the very definitions the validator holds it to.
+test("the protocol says what a design may carry, from the definitions a proposal is held to, and the template each criterion op takes", async () => {
+  const { CONTROL_ROLES, DEFINITIONS } = await import("../src/qa/obligations/contract.mjs");
+  const { TRIGGER_KINDS } = await import("../src/qa/backend/bindings.mjs");
+  const d = protocolOf().design;
+  assert.deepEqual(Object.keys(d.definitions), ["design", "assertion", "control", "trigger", "observation-plan", "page"]);
+  assert.deepEqual([d.definitions.design.fields.effectScope.enum, d.definitions.design.stamped, d.definitions.design.required], [["fixture"], DEFINITIONS.design.stamped, ["obligation"]]);
+  assert.deepEqual([d.definitions.trigger.fields.kind.enum, d.definitions.control.fields.role.enum], [TRIGGER_KINDS, CONTROL_ROLES]);
+  assert.match(d.definitions.control.fields.step.doc, /WITNESSES/, "which control names a step, in the contract's own words");
+  assert.deepEqual(d.templates.filter((t) => ["eq", "excludes", "absent-within"].includes(t.op)).map((t) => [t.op, t.template, t.window]), [["eq", "value-eq", false], ["excludes", "value-excludes", false], ["absent-within", "absent-within", true]]);
+});

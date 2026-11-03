@@ -206,3 +206,17 @@ test("a workload's declared fault points are listed beside its alias, as plain n
   const sealed = sealedBindings(input({ refs: [{ kind: "workload", alias: "worker" }], declarationOf: decl }));
   assert.deepEqual([sealed.gaps, Object.hasOwn(sealed.bindings.workload.worker, "points")], [[], false], "what a workload declares it can inject is never part of what a run is bound to");
 });
+
+// What a real Claude Code QA row taught (0.4.0): a state read names what it reads by the key column its node declares,
+// and nothing listed one -- a host guessed `businessKey` for `business_key`, and the database refused the column. A
+// state's listing carries its address, the names the binder seals for it, and never where to connect or as whom.
+test("a state is listed with the address its node declares -- its table and key column -- and nothing that says where to connect", () => {
+  const graph = { nodes: [...GRAPH.nodes, { key: "component:db", role: "component", name: "db", attributes: {} },
+    { key: "table:reminders", role: "data-resource", name: "reminders", of: "component:db", attributes: { table: "reminders", key: "business_key", host: "evil.example", port: 5432 } },
+    { key: "table:bare", role: "data-resource", name: "bare", of: "component:db" }] };
+  const listed = bindableFrom({ graph, tenancy: null });
+  assert.deepEqual(listed.state.find((s) => s.alias === "reminders"), { alias: "reminders", of: "db", address: { table: "reminders", key: "business_key" }, says: "" });
+  assert.equal(Object.hasOwn(listed.state.find((s) => s.alias === "bare"), "address"), false, "a node that declares nothing lists nothing");
+  assert.equal(Object.hasOwn(listed.channel[0], "address"), false, "a channel's own names stay the binder's");
+  assert.deepEqual(declarationsFrom({ graph })("state", "reminders").address, { table: "reminders", key: "business_key" }, "the very names the binder seals");
+});

@@ -25,6 +25,18 @@ test("derived and not yet designed, it is owed -- and a generate or a run-versio
   assert.deepEqual([o.status, o.subject, o.can], ["pending", "tob-aaaaaaaaaaaa", ["generate", "run-version", "ask"]]);
 });
 
+// What the real Claude Code QA rows taught (0.4.0): a design's controls and its assertion templates were learned only
+// from refusals (`eq` for value-eq, a permission design with no negative control), each one a repair spent. What the
+// shape's own row says a design is held to travels with the obligation.
+test("what a design for it is held to travels with it: the controls its shape needs and the templates its slots take", () => {
+  const conforms = world().template;
+  assert.deepEqual([conforms.controls, conforms.templates], [["positive"], ["value-eq", "value-in", "schema-valid"]]);
+  const permission = world([], { shape: "permission-enforced" }).template;
+  assert.deepEqual([permission.controls, permission.templates], [["positive", "negative"], ["value-eq", "value-excludes"]]);
+  const unknown = world([], { shape: "no-such-shape" }).template;
+  assert.deepEqual([unknown.controls, unknown.templates], [undefined, undefined], "a shape nobody declared says nothing");
+});
+
 test("its latest execution's word settles it through that word's own row", () => {
   const status = (words) => world(words).status;
   assert.equal(status(["SATISFIED"]), "satisfied");

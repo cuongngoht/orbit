@@ -31,6 +31,7 @@
 import { short } from "../hash.mjs";
 import { writes } from "../network/observe.mjs";
 import { commitments, gaps } from "../qa/commit.mjs";
+import { shapeOf } from "../qa/obligations/shapes.mjs";
 import { READINESS } from "../qa/vocab.mjs";
 import { destructiveReasons } from "../run/gates/destructive.mjs";
 import { recordedCallIn } from "./findings.mjs";
@@ -319,8 +320,12 @@ function surfaceState(o, lw) {
 const latestObligations = (model) => [...new Map((model.obligations ?? []).map((o) => [o.obligation, o])).values()];
 
 function testObligations(lw) {
-  return latestObligations(lw.model).map((o) => ({ subject: o.obligation, layer: o.shape, title: `${o.shape} — ${o.target ?? "a node the graph does not hold"}`, sources: (o.bindings ?? []).map((ref) => ({ from: "binding", ref })), oracle: { kind: "plan", ref: o.bindings?.[0] ?? null, authority: o.authority ?? "draft" }, can: ["generate", "run-version", "ask"], template: { kind: "generate", obligation: o.obligation, shape: o.shape, expected: o.expected ?? [], method: o.method ?? null } }));
+  return latestObligations(lw.model).map((o) => ({ subject: o.obligation, layer: o.shape, title: `${o.shape} — ${o.target ?? "a node the graph does not hold"}`, sources: (o.bindings ?? []).map((ref) => ({ from: "binding", ref })), oracle: { kind: "plan", ref: o.bindings?.[0] ?? null, authority: o.authority ?? "draft" }, can: ["generate", "run-version", "ask"], template: { kind: "generate", obligation: o.obligation, shape: o.shape, expected: o.expected ?? [], method: o.method ?? null, ...designedBy(o.shape) } }));
 }
+
+// What a design for this shape is held to, as its row says it (src/qa/obligations/shapes.mjs): the controls it must name
+// and the assertion templates its own slots may be ruled with -- read here, so a host never learns them by a refusal.
+const designedBy = (shape) => ((s) => (s ? { controls: s.controls, templates: s.templates } : {}))(shapeOf(shape));
 
 const TEST_STATES = [
   { when: (e) => e.outcome === "SATISFIED", as: (e) => satisfied(`${e.execution} was SATISFIED against its accepted criterion`, [e.id]) },

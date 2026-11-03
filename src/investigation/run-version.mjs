@@ -144,8 +144,10 @@ function evaluatedRun(w, d, v, attempt, execution, request, r, p) {
 // request.match", "answered 400 unknown-point"), never a bare TEST_WRONG. So the run says the step it stopped at, that
 // step's verb and capability as the FROZEN case has them (never a field the worker added), and what its typed stop said.
 // By allow-list: a refusal or a block only -- never a failure's message, which quotes what the product answered --
-// scrubbed by shape and by the value of every secret this dispatch sealed, and bounded. A run its runner stopped before
-// any step (a case refused, a precondition blocked: cli/run-case.mjs stopOf) said it in its envelope, and nowhere else.
+// scrubbed by shape and by the value of every secret this dispatch sealed, and bounded. A FAILED step is named and says
+// nothing (`failed`, says null): which step a test failed at -- its witness, or the read after it -- is what a repair
+// needs, and how it failed stays in the run's evidence. A run its runner stopped before any step (a case refused, a
+// precondition blocked: cli/run-case.mjs stopOf) said it in its envelope, and nowhere else.
 const STOPS = ["refused", "blocked"];
 const UNSTARTED = ["REFUSED", "BLOCKED"];
 const STOP_TEXT = 600;
@@ -154,8 +156,11 @@ function stoppedOf(v, r, request) {
   const last = (r.records ?? []).filter((x) => x.kind === "step").at(-1);
   const as = STOPS.find((k) => last?.ok === false && typeof last[k] === "string");
   if (as) return stopOf(v.frozen.case.steps?.[last.i - 1], last.i, as, last[as], request);
+  if (last?.ok === false && typeof last.error === "string") return failedAt(v.frozen.case.steps?.[last.i - 1], last.i);
   return r.envelope.result ? null : unstartedOf(r.envelope, request);
 }
+
+const failedAt = (step, i) => ({ step: i, do: step?.do ?? null, capability: step?.capability ?? null, as: "failed", says: null });
 
 const unstartedOf = (e, request) => (UNSTARTED.includes(e.status) && typeof e.why === "string" ? stopOf(null, null, e.status.toLowerCase(), e.why, request) : null);
 

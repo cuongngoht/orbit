@@ -34,6 +34,17 @@ each case's baseline is PASS, and a controlled-fault variant plants the old defe
   today's behaviour: unknown is never a refusal. The acceptance system graphs now record the points the invoice
   application declares for `worker` and `relay`. A real Claude Code QA row (ORBIT-QA-003) guessed
   `after-effect-before-ack` for the worker's `after-commit-before-ack`, and the hooks refused every run that named it.
+- **A design is read before it is written.** An autonomous QA `protocol` now carries what a `generate` design may
+  hold -- each part's fields with their enums (`effectScope`, a trigger's `kind`, a control's `role`), what is required
+  and what only the engine stamps, from the very definitions a proposal is held to -- and the assertion template each
+  criterion op compiles to (`eq` is `value-eq`). A test obligation's frontier `template` names the controls its shape
+  needs and the templates its slots take, and `bindings` lists a state's `address` (its declared table and key
+  column). Every design the real Claude Code QA rows proposed was first refused for one of these, each refusal a repair
+  spent, and one row guessed `businessKey` for the key column `business_key`.
+- **A failed run names the step it failed at.** `result.stopped` now names a FAILED step too (`as: failed`), and says
+  nothing: what it read is the product's. A host could not tell a fault's witness failing from the read after it. An
+  assertion on a step whose answer declares nothing is refused as that step, no longer as "its declared outputs are
+  none" -- which read as if `orbit.http.read` could not be ruled on, and a row gave its obligation up.
 - **A generated request never repeats its endpoint's base path.** A path is relative to the endpoint it is sent to, and
   an endpoint the system graph declares under a base path (`/api`) already carries it; a generated `orbit.http.*` step
   whose path starts with that base again (`/api/invoices/…` against `invoice-read` at `/api`) is now refused before a
@@ -50,6 +61,9 @@ each case's baseline is PASS, and a controlled-fault variant plants the old defe
 - **A sandbox supervisor that loses the race for its owner file yields.** Two supervisors started together, or a
   teardown removing the room under one still starting, crashed the run that started it (EEXIST, ENOENT).
 - **The release suite gate waits 45 minutes**, and says a suite it stopped was late, not that it printed no count.
+- **A benchmark QA case's investigation gets the minutes its brief promises.** The engine was seated with the
+  investigation's 20-minute default while the host was told it had the case's runner minutes (120); real hosts stopped
+  with most obligations open. The setup now sets `limits.minutes` to the runner minutes, within the setting's bound.
 - **`goal resume` and `goal status` read every task again.** Their task summaries handed a raw journal to the task view,
   which threw, so every task read as `unknown` and a goal whose analysis had completed never moved on.
 - **One failure is one signature (ORBIT-ORC-006).** A failure's signature masks a UUID whole, wherever it appears, so two

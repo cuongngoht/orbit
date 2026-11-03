@@ -52,6 +52,7 @@ test("a run that stopped short says where, and what its stop said -- five fields
   assert.deepEqual([long.stopped.step, long.stopped.do, long.stopped.says.length], [null, null, 600]);
   assert.match(long.stopped.says, /^token \[redacted\]/);
   assert.equal(resultView({ outcome: "SATISFIED" }).stopped, null, "a run that held stopped nowhere");
+  assert.deepEqual(resultView({ outcome: "CONTRADICTED", stopped: { step: 3, do: "call", capability: "orbit.worker.observe", as: "failed", says: null } }).stopped, { step: 3, do: "call", capability: "orbit.worker.observe", as: "failed", says: null }, "a failure is named and says nothing");
 });
 
 test("context lists the names a design's refs may take here, from the generation port -- and nothing when none is bound", () => {

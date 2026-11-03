@@ -184,10 +184,12 @@ test("a run blocked at a step says so in words scrubbed of every secret: by shap
   assert.equal(out.stopped.says.length, 600, "bounded");
 });
 
-test("a failure's message is never carried -- it quotes what the product answered -- nor a word of a run the host did not believe", () => {
+// A failed step is NAMED, so a repair knows which one it was (a fault's witness, or the read after it) -- and says
+// nothing: its message quotes what the product answered.
+test("a failure names the step it failed at and never its message -- it quotes what the product answered -- nor a word of a run the host did not believe", () => {
   const failed = world((x) => envelopeFor(x, "FAIL", [{ kind: "step", i: 1, ok: true }, { kind: "step", i: 2, ok: false, error: 'EXPECT FAILED: count-eq 1\n     reported: {"count":0,"rows":[{"business_key":"tenant-a|inv-a"}]}', contradiction: true }], { failure: { contradiction: true } }));
   const a = ranVersion(failed.w, { version: failed.version });
-  assert.deepEqual([a.outcome, a.stopped], ["CONTRADICTED", null]);
+  assert.deepEqual([a.outcome, a.stopped], ["CONTRADICTED", { step: 2, do: "call", capability: "orbit.state.read", as: "failed", says: null }]);
   const liar = world((x) => ({ ...envelopeFor(x, "REFUSED", [{ kind: "step", i: 1, ok: false, refused: REFUSAL }]), records: [{ kind: "run", case_digest: x.request.case.digest }, { kind: "step", i: 1, ok: true }] }));
   const b = ranVersion(liar.w, { version: liar.version });
   assert.deepEqual([b.outcome, b.stopped], ["EXECUTION_ERROR", null]);

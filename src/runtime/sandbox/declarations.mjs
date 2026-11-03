@@ -101,14 +101,19 @@ const DECLARE = { channel, queue: channel, state: held(["data-resource"]), endpo
 // listed binds. An observer and a fixture are the design's own words, never the graph's, and are not listed.
 const NAMED = { endpoint: ["interface"], channel: ["channel"], state: ["data-resource"], schedule: ["schedule"], workload: ["workload"], identity: ["principal"], clock: ["component"] };
 
-// in: { graph, tenancy } -> { [kind]: [{ alias, of, path?, points?, says }] } -- every alias a ref of that kind may name
-// here, the way the binder would find it, and a workload's declared fault points, so a host proposing a design reads the
-// names and never guesses them.
+// in: { graph, tenancy } -> { [kind]: [{ alias, of, path?, points?, address?, says }] } -- every alias a ref of that kind
+// may name here, the way the binder would find it, a workload's declared fault points and a state's address, so a host
+// proposing a design reads the names and never guesses them.
 export function bindableFrom({ graph, tenancy }) {
   const nodes = graph?.nodes ?? [];
   return Object.fromEntries(Object.entries(NAMED).map(([kind, roles]) => [kind, namedOf(nodes, kind, roles, tenancy)]));
 }
 
-const namedOf = (nodes, kind, roles, tenancy) => nodes.filter((n) => roles.includes(n.role)).map((n) => [n, DECLARE[kind](nodes, aliasOf(n.name), {}, tenancy)]).filter(([, d]) => d).map(([n, d]) => listed(n, d)).slice(0, 24);
+const namedOf = (nodes, kind, roles, tenancy) => nodes.filter((n) => roles.includes(n.role)).map((n) => [n, DECLARE[kind](nodes, aliasOf(n.name), {}, tenancy)]).filter(([, d]) => d).map(([n, d]) => listed(n, d, kind)).slice(0, 24);
 
-const listed = (n, d) => ({ alias: aliasOf(n.name), of: ownerOf(n), ...(d.path ? { path: d.path } : {}), ...(d.points ? { points: d.points } : {}), says: String(n.statement ?? "").slice(0, 160) });
+// A STATE is read below the interface by what its node declares it is named as there -- a table and its key column, say:
+// the names the binder seals into its binding (`address`, `namesOf` above) -- so a read names its key and never a guessed
+// column. Only a state's: what any other kind declares stays the binder's.
+const ADDRESSED = new Set(["state"]);
+
+const listed = (n, d, kind) => ({ alias: aliasOf(n.name), of: ownerOf(n), ...(d.path ? { path: d.path } : {}), ...(d.points ? { points: d.points } : {}), ...(ADDRESSED.has(kind) && Object.keys(d.address ?? {}).length ? { address: d.address } : {}), says: String(n.statement ?? "").slice(0, 160) });

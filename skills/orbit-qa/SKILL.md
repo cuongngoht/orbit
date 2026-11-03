@@ -130,8 +130,12 @@ synthetic `TC-` params) · `reproduce` replays a finding's chain · `security` r
 `generate` proposes ONE design for an obligation (`obligation`, `design`: the skeleton's steps with no
 `expect`, `js` or window, the assertions as accepted criterion slots — `<criterion>/<expectation>`,
 a template, a step — the controls its shape needs, the fixture and observation plan, the trigger
-step). The engine compiles every verdict from the accepted criterion, validates the case with the
-real grammar, saves it as a DRAFT and freezes its version; a design that does not hold comes back
+step). Read what a design may hold before you write one: `protocol`'s `design` gives each part's fields
+(their enums -- `effectScope`, a trigger's `kind`, a control's `role` -- what is required and what only the
+engine stamps) and the template each criterion op compiles to (`eq` is `value-eq`); the obligation's own
+`template` names the controls its shape needs and the templates its slots take. The engine compiles every
+verdict from the accepted criterion, validates the case with the real grammar, saves it as a DRAFT and
+freezes its version; a design that does not hold comes back
 with its word (`GENERATION_FAILED`, `REQUIRES_REQUIREMENT`, `INVALID_TEST`) and the stage that
 stopped it. You never write a predicate, a value or a window, and a repair may change only how a
 step is written · `run-version` runs ONE frozen version (`version`: `<case>@<digest16>`, the id the generate
@@ -145,7 +149,8 @@ Every step's answer carries `result`: what its action came to in its owner's wor
 before the next decision: a blocked run names the binding or grant it lacked, a failed design the finding
 that stopped it. A version refused or blocked at a step says where in `result.stopped` -- the step, its verb
 and capability, `refused` or `blocked`, and what that step's own stop said (`says`: `request.key … or
-request.match`, `request.action is one of …`, `answered 400 unknown-point`), scrubbed. A refusal is the
+request.match`, `request.action is one of …`, `answered 400 unknown-point`), scrubbed; a version that FAILED
+names the step it failed at (`failed`) and says nothing, since what it read is the product's. A refusal is the
 test's mistake, not the product's: repair the design to what `says` asks for and generate again -- never
 guess a request's shape, and never resend one it refused. A fault control's `point` is one its workload
 declares: `context` lists a workload's declared points beside its alias under `bindings` (`points`), and a
@@ -156,7 +161,8 @@ is cited by its record id (`dsg-…`, `ver-…`).
 Every ref a design names (`endpointRef`, `channelRef`, `stateRef`, `scheduleRef`, `workloadRef`, `identityRef`,
 `clockRef`) takes one of the aliases `context` lists under `bindings`, by kind, exactly as this sandbox binds them --
 read them there, never guess one from a key, a dotted name or a statement: an alias nothing lists is a binding
-gap, and a design that names one is blocked before it runs.
+gap, and a design that names one is blocked before it runs. A state is listed with the `address` its node
+declares (its table and key column, say): a read of it names that key's value, never a guessed column.
 
 A design that drives a PAGE names the screen and who its browser acts as — `page: { endpointRef,
 identityRef }`, both aliases — and its steps say WHAT, never how: `until: { selector, attribute?,

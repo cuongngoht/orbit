@@ -21,6 +21,8 @@
 // read back first. That is the whole reason the decision is recorded before
 // the step, rather than after it.
 import { Blocked, Refused } from "../errors.mjs";
+import { proposableOf } from "../qa/obligations/contract.mjs";
+import { EXPECT_OPS } from "../qa/vocab.mjs";
 import { scrub } from "../scrub.mjs";
 import { current, withJournal } from "./act.mjs";
 import { judgeDecision, keptAction } from "./decision.mjs";
@@ -101,15 +103,16 @@ export function step(w, raw) {
 
 // What the action itself came to, as its owner said it -- the word a generate or a run-version gives (DRAFT_CREATED,
 // GENERATION_FAILED, ENVIRONMENT_BLOCKED, SATISFIED ...), the stage or rule behind it, and why; and of a run refused or
-// blocked at a step, where it stopped and what that step's own stop said (`stopped`) -- by allow-list, so a host that
-// sent a step learns what it did without reading the journal. Never the observed values themselves.
+// blocked at a step, where it stopped and what that step's own stop said, of one that failed only where (`stopped`) -- by
+// allow-list, so a host that sent a step learns what it did without reading the journal. Never the observed values.
 export const resultView = (r) => (r && typeof r === "object" ? { outcome: r.outcome ?? null, stage: r.stage ?? null, rule: r.rule ?? null, why: r.why ? scrub(String(r.why)).slice(0, 600) : null, version: typeof r.version === "string" ? r.version : null, execution: r.execution ?? null, findings: (r.findings ?? []).slice(0, 8).map(findingLine), stopped: stoppedView(r.stopped) } : null);
 
 const findingLine = (f) => scrub(typeof f === "string" ? f : [f.rule ?? f.id ?? f.code, f.say ?? f.why ?? f.message].filter(Boolean).join(": ")).slice(0, 240);
 
-// Where a run stopped short (src/investigation/run-version.mjs stoppedOf): the step, its verb and capability, refused or
-// blocked, and what it said there -- these five and nothing else, its words scrubbed and bounded at this door again.
-const stoppedView = (s) => (s && typeof s === "object" ? { step: Number.isInteger(s.step) ? s.step : null, do: typeof s.do === "string" ? s.do : null, capability: typeof s.capability === "string" ? s.capability : null, as: typeof s.as === "string" ? s.as : null, says: scrub(String(s.says ?? "")).slice(0, 600) } : null);
+// Where a run stopped short (src/investigation/run-version.mjs stoppedOf): the step, its verb and capability, refused,
+// blocked or failed, and what a refusal or a block said there -- these five and nothing else, its words scrubbed and
+// bounded at this door again; a failure says nothing.
+const stoppedView = (s) => (s && typeof s === "object" ? { step: Number.isInteger(s.step) ? s.step : null, do: typeof s.do === "string" ? s.do : null, capability: typeof s.capability === "string" ? s.capability : null, as: typeof s.as === "string" ? s.as : null, says: typeof s.says === "string" ? scrub(s.says).slice(0, 600) : null } : null);
 
 // Judged against the journal as it is UNDER the lock, and written down before
 // the step runs: the record is what makes a crash mid-step visible afterwards.
@@ -262,5 +265,11 @@ function checkpointed(w, receipts, memory) {
 }
 
 // ----------------------------------------------------------------- protocol
-// The protocol as the tables say it, so no playbook carries a copy of it.
-export const protocolOf = () => ({ schemaVersion: DECISION_SCHEMA, fields: DECISION_FIELDS, forbidden: DECISION_FORBIDDEN, textLimit: TEXT_LIMIT, actions: ACTION_KINDS.map((kind) => ({ kind, fields: ACTIONS[kind].fields, required: ACTIONS[kind].required, modes: ACTIONS[kind].modes })), obligations: OBLIGATION_KINDS, states: OBLIGATION_STATES, stops: STOP_REASONS, lifecycle: LIFECYCLE });
+// The protocol as the tables say it, so no playbook carries a copy of it -- a generate step's DESIGN included: what each
+// part of one may carry (src/qa/obligations/contract.mjs DEFINITIONS) and the assertion template each criterion op
+// compiles to (src/qa/vocab.mjs EXPECT_OPS), so a host reads them before it designs instead of learning them by refusal.
+export const protocolOf = () => ({ schemaVersion: DECISION_SCHEMA, fields: DECISION_FIELDS, forbidden: DECISION_FORBIDDEN, textLimit: TEXT_LIMIT, actions: ACTION_KINDS.map((kind) => ({ kind, fields: ACTIONS[kind].fields, required: ACTIONS[kind].required, modes: ACTIONS[kind].modes })), obligations: OBLIGATION_KINDS, states: OBLIGATION_STATES, stops: STOP_REASONS, lifecycle: LIFECYCLE, design: designProtocol() });
+
+const DESIGN_PARTS = ["design", "assertion", "control", "trigger", "observation-plan", "page"];
+
+const designProtocol = () => ({ definitions: proposableOf(DESIGN_PARTS), templates: EXPECT_OPS.map((o) => ({ op: o.name, template: o.template, window: o.window === true, doc: o.doc })) });

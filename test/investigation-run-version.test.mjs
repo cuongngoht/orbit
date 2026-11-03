@@ -158,3 +158,44 @@ test("a fault the run never saw happen makes what failed after it INCONCLUSIVE, 
   const b = ranVersion(seen.w, { version: seen.version });
   assert.deepEqual([a.outcome, a.rule, b.outcome, b.rule], ["INCONCLUSIVE", "FAULT_NOT_SEEN", "CONTRADICTED", "CONTRADICTED"], JSON.stringify([a.findings, b.findings]));
 });
+
+// What the first real Claude Code rows taught (0.4.0): a version refused at a step said why only in the worker's run
+// log, and the host saw a bare INVALID_TEST / TEST_WRONG -- so it guessed at the request it should have sent. The run now
+// says where it stopped and what that step's own stop said; never a failure's message, which quotes the product.
+const REFUSAL = "postgres.reference read: a read below the interface names what it reads: request.key (the bound key column's value) or request.match, 4 columns at most — never a whole table — the request was not one it can make as asked — the case's mistake, not the product's";
+
+test("a run refused at a step says where it stopped and what that step's own refusal said: the request it must send", () => {
+  const t = world((x) => envelopeFor(x, "REFUSED", [{ kind: "step", i: 1, ok: true }, { kind: "step", i: 2, ok: false, refused: REFUSAL, phase: "act", helperClass: "refused" }], { failure: { kind: "refused", helperClass: "refused" } }));
+  const out = ranVersion(t.w, { version: t.version });
+  assert.deepEqual([out.outcome, out.rule], ["INVALID_TEST", "TEST_WRONG"], JSON.stringify(out.findings));
+  assert.deepEqual(out.stopped, { step: 2, do: "call", capability: "orbit.state.read", as: "refused", says: REFUSAL });
+});
+
+test("a run blocked at a step says so in words scrubbed of every secret: by shape, and by the value its dispatch sealed", () => {
+  const sealed = "hooks-token-0123456789";
+  const said = `workload.hooks control: POST /orbit/workload/v1/control could not reach the hooks — ${sealed} authorization: Bearer abc.def.ghi — the system behind it could not be reached`;
+  const t = world((x) => envelopeFor(x, "BLOCKED", [{ kind: "step", i: 1, ok: false, blocked: `${said} ${"z".repeat(900)}`, helperClass: "transport" }], { failure: { kind: "blocked", helperClass: "transport" } }));
+  const prepare = t.w.dispatch.prepare;
+  t.w.dispatch.prepare = (x) => ({ ...prepare(x), secrets: { ORBIT_BIND_HOOKS_TOKEN: sealed } });
+  const out = ranVersion(t.w, { version: t.version });
+  assert.deepEqual([out.outcome, out.stopped.step, out.stopped.capability, out.stopped.as], ["ENVIRONMENT_BLOCKED", 1, "orbit.scheduler.trigger", "blocked"], JSON.stringify(out.findings));
+  assert.equal(out.stopped.says.includes(sealed) || out.stopped.says.includes("abc.def.ghi"), false, out.stopped.says);
+  assert.match(out.stopped.says, /^workload\.hooks control: POST \/orbit\/workload\/v1\/control could not reach the hooks — \[redacted\]/);
+  assert.equal(out.stopped.says.length, 600, "bounded");
+});
+
+test("a failure's message is never carried -- it quotes what the product answered -- nor a word of a run the host did not believe", () => {
+  const failed = world((x) => envelopeFor(x, "FAIL", [{ kind: "step", i: 1, ok: true }, { kind: "step", i: 2, ok: false, error: 'EXPECT FAILED: count-eq 1\n     reported: {"count":0,"rows":[{"business_key":"tenant-a|inv-a"}]}', contradiction: true }], { failure: { contradiction: true } }));
+  const a = ranVersion(failed.w, { version: failed.version });
+  assert.deepEqual([a.outcome, a.stopped], ["CONTRADICTED", null]);
+  const liar = world((x) => ({ ...envelopeFor(x, "REFUSED", [{ kind: "step", i: 1, ok: false, refused: REFUSAL }]), records: [{ kind: "run", case_digest: x.request.case.digest }, { kind: "step", i: 1, ok: true }] }));
+  const b = ranVersion(liar.w, { version: liar.version });
+  assert.deepEqual([b.outcome, b.stopped], ["EXECUTION_ERROR", null]);
+});
+
+test("a run refused before any step says why its envelope gave, and names no step", () => {
+  const why = 'case is invalid — fix it before running:\n  step 2: orbit.state.read input: unknown key "businessKey"';
+  const t = world((x) => ({ envelope: { v: WORKER_API, runId: x.request.runId, nonce: x.request.nonce, caseDigest: x.request.case.digest, status: "REFUSED", why, result: null, evidence: null, files: [] }, records: [], listed: new Map() }));
+  const out = ranVersion(t.w, { version: t.version });
+  assert.deepEqual([out.outcome, out.stopped], ["INVALID_TEST", { step: null, do: null, capability: null, as: "refused", says: why }], JSON.stringify(out.findings));
+});

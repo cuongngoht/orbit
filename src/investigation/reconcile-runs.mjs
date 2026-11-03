@@ -72,7 +72,7 @@ const open = (x, rule, why) => ({ execution: x.start.execution, rule, outcome: n
 // here can hold it to what was dispatched, and it is never taken as it is.
 function late(w, x) {
   const judged = x.request ? lateEvaluated(w, x.start, x.back, x.request) : null;
-  return judged ? { execution: x.start.execution, rule: "LATE", outcome: judged.outcome, why: judged.why, cause: judged.rule } : settled(w, x, "EXECUTION_ERROR", "LATE_UNJUDGED", "its worker left an envelope, and the request it was dispatched with is not kept — it is never taken as it is");
+  return judged ? { execution: x.start.execution, rule: "LATE", outcome: judged.outcome, why: judged.why, cause: judged.rule, stopped: judged.stopped } : settled(w, x, "EXECUTION_ERROR", "LATE_UNJUDGED", "its worker left an envelope, and the request it was dispatched with is not kept — it is never taken as it is");
 }
 
 function settled(w, x, outcome, rule, why) {

@@ -100,11 +100,16 @@ export function step(w, raw) {
 }
 
 // What the action itself came to, as its owner said it -- the word a generate or a run-version gives (DRAFT_CREATED,
-// GENERATION_FAILED, ENVIRONMENT_BLOCKED, SATISFIED ...), the stage or rule behind it, and why -- by allow-list, so a
-// host that sent a step learns what it did without reading the journal. Never the observed values themselves.
-export const resultView = (r) => (r && typeof r === "object" ? { outcome: r.outcome ?? null, stage: r.stage ?? null, rule: r.rule ?? null, why: r.why ? scrub(String(r.why)).slice(0, 600) : null, version: typeof r.version === "string" ? r.version : null, execution: r.execution ?? null, findings: (r.findings ?? []).slice(0, 8).map(findingLine) } : null);
+// GENERATION_FAILED, ENVIRONMENT_BLOCKED, SATISFIED ...), the stage or rule behind it, and why; and of a run refused or
+// blocked at a step, where it stopped and what that step's own stop said (`stopped`) -- by allow-list, so a host that
+// sent a step learns what it did without reading the journal. Never the observed values themselves.
+export const resultView = (r) => (r && typeof r === "object" ? { outcome: r.outcome ?? null, stage: r.stage ?? null, rule: r.rule ?? null, why: r.why ? scrub(String(r.why)).slice(0, 600) : null, version: typeof r.version === "string" ? r.version : null, execution: r.execution ?? null, findings: (r.findings ?? []).slice(0, 8).map(findingLine), stopped: stoppedView(r.stopped) } : null);
 
 const findingLine = (f) => scrub(typeof f === "string" ? f : [f.rule ?? f.id ?? f.code, f.say ?? f.why ?? f.message].filter(Boolean).join(": ")).slice(0, 240);
+
+// Where a run stopped short (src/investigation/run-version.mjs stoppedOf): the step, its verb and capability, refused or
+// blocked, and what it said there -- these five and nothing else, its words scrubbed and bounded at this door again.
+const stoppedView = (s) => (s && typeof s === "object" ? { step: Number.isInteger(s.step) ? s.step : null, do: typeof s.do === "string" ? s.do : null, capability: typeof s.capability === "string" ? s.capability : null, as: typeof s.as === "string" ? s.as : null, says: scrub(String(s.says ?? "")).slice(0, 600) } : null);
 
 // Judged against the journal as it is UNDER the lock, and written down before
 // the step runs: the record is what makes a crash mid-step visible afterwards.

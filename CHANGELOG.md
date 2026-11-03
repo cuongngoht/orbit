@@ -19,6 +19,13 @@ each case's baseline is PASS, and a controlled-fault variant plants the old defe
   action's owner gave (`GENERATION_FAILED`, `ENVIRONMENT_BLOCKED`, `SATISFIED` …), the stage or rule and why, by
   allow-list. A `run-version` the sandbox could not bind used to answer `done` with nothing else, and a host could not
   tell it had run nothing. A decision may cite a design or a version (`dsg-…`, `ver-…`) as evidence.
+- **A refused run says why.** A `run-version` refused or blocked at a step now says where in `result.stopped`: the
+  step, its verb and capability as the frozen case has them, and what that step's own stop said (`request.key … or
+  request.match`, `request.action is one of …`, `answered 400 unknown-point`) -- by allow-list, never a failure's
+  message (which quotes the product's answer), scrubbed by shape and by the value of every secret the dispatch sealed,
+  and bounded. A run refused before any step says what its envelope gave, and `reconcile` says the same of a late one.
+  The capability's words lived only in the worker's run log, so a real Claude Code QA row (ORBIT-QA-003) saw a bare
+  `INVALID_TEST` / `TEST_WRONG` and spent its design budget guessing request shapes and fault points.
 - **A generated request never repeats its endpoint's base path.** A path is relative to the endpoint it is sent to, and
   an endpoint the system graph declares under a base path (`/api`) already carries it; a generated `orbit.http.*` step
   whose path starts with that base again (`/api/invoices/…` against `invoice-read` at `/api`) is now refused before a

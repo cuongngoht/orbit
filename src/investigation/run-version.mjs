@@ -18,6 +18,7 @@ import { Refused } from "../errors.mjs";
 import { canonicalJson, sha } from "../hash.mjs";
 import { workerFindings } from "../run/envelope.mjs";
 import { WORKER_API } from "../run/worker.mjs";
+import { maskValues, scrub } from "../scrub.mjs";
 import { current, withJournal } from "./act.mjs";
 import { nextId } from "./model.mjs";
 import { eventIdOf } from "./store.mjs";
@@ -127,13 +128,41 @@ export function lateEvaluated(w, start, back, request) {
   return evaluatedRun(w, dispatchOf(w), v, start.attempt, start.execution, request, back, { grants: request.grants ?? [] });
 }
 
-// The host's own check, then the word RESULT gives it -- recorded as the run and its evaluation.
+// The host's own check, then the word RESULT gives it -- recorded as the run and its evaluation -- and, of a run the host
+// believed, where it stopped short and what it said there (`stopped`).
 function evaluatedRun(w, d, v, attempt, execution, request, r, p) {
   const findings = hostFindings(d, v, execution, request, r, p);
   const result = resultOf({ status: r.envelope?.status ?? "BLOCKED", failure: r.envelope?.result?.failure ?? {}, envelope: findings, authority: v.obligation?.authority ?? "accepted", positiveFailed: positiveFailed(v, r), faultMissed: faultMissed(v, r) });
   recorded(w, d, { v, attempt, execution }, r, result, findings);
-  return { outcome: result.outcome, rule: result.rule, why: result.why, execution, findings };
+  return { outcome: result.outcome, rule: result.rule, why: result.why, execution, findings, stopped: findings.length ? null : stoppedOf(v, r, request) };
 }
+
+// ── where a run that stopped short stopped ─────────────────────────────────
+//
+// A run refused or blocked at a step says WHY in its own run log -- the record the host held the worker's claim to --
+// and that is what a host repairs a design from: a gate's or a capability's own words ("request.key … or
+// request.match", "answered 400 unknown-point"), never a bare TEST_WRONG. So the run says the step it stopped at, that
+// step's verb and capability as the FROZEN case has them (never a field the worker added), and what its typed stop said.
+// By allow-list: a refusal or a block only -- never a failure's message, which quotes what the product answered --
+// scrubbed by shape and by the value of every secret this dispatch sealed, and bounded. A run its runner stopped before
+// any step (a case refused, a precondition blocked: cli/run-case.mjs stopOf) said it in its envelope, and nowhere else.
+const STOPS = ["refused", "blocked"];
+const UNSTARTED = ["REFUSED", "BLOCKED"];
+const STOP_TEXT = 600;
+
+function stoppedOf(v, r, request) {
+  const last = (r.records ?? []).filter((x) => x.kind === "step").at(-1);
+  const as = STOPS.find((k) => last?.ok === false && typeof last[k] === "string");
+  if (as) return stopOf(v.frozen.case.steps?.[last.i - 1], last.i, as, last[as], request);
+  return r.envelope.result ? null : unstartedOf(r.envelope, request);
+}
+
+const unstartedOf = (e, request) => (UNSTARTED.includes(e.status) && typeof e.why === "string" ? stopOf(null, null, e.status.toLowerCase(), e.why, request) : null);
+
+const stopOf = (step, i, as, text, request) => ({ step: i, do: step?.do ?? null, capability: step?.capability ?? null, as, says: scrub(maskValues(text, sealedValues(request))).slice(0, STOP_TEXT) });
+
+// The secrets this dispatch sealed, by value: a live request holds them; a kept one (a late envelope's) only their names.
+const sealedValues = (request) => (request?.secrets && !Array.isArray(request.secrets) ? Object.values(request.secrets).filter((s) => typeof s === "string") : []);
 
 // Whether the step that failed is a POSITIVE control a negative one rests on: a step that acts as the identity a
 // positive control names, in a design that also names a negative control -- a design with no negative is about its

@@ -40,8 +40,18 @@ test("a step's answer says what its action came to: the owner's word, its stage 
   const failed = resultView({ outcome: "GENERATION_FAILED", stage: "validate", findings: [{ rule: "UNKNOWN_FIELD", say: "step 2 has a field nobody declared" }] });
   assert.deepEqual([failed.outcome, failed.stage, failed.findings], ["GENERATION_FAILED", "validate", ["UNKNOWN_FIELD: step 2 has a field nobody declared"]]);
   const made = resultView({ outcome: "DRAFT_CREATED", version: VERSION, design: "tds-1", case: "gen-billing-once", digests: { case: "x" } });
-  assert.deepEqual(Object.keys(made).sort(), ["execution", "findings", "outcome", "rule", "stage", "version", "why"], "an allow-list: nothing else of the result reaches the host");
+  assert.deepEqual(Object.keys(made).sort(), ["execution", "findings", "outcome", "rule", "stage", "stopped", "version", "why"], "an allow-list: nothing else of the result reaches the host");
   assert.equal(made.version, VERSION);
+});
+
+test("a run that stopped short says where, and what its stop said -- five fields by allow-list, scrubbed and bounded at the door", () => {
+  const says = "postgres.reference read: a read below the interface names what it reads: request.key (the bound key column's value) or request.match, 4 columns at most — never a whole table";
+  const refused = resultView({ outcome: "INVALID_TEST", rule: "TEST_WRONG", why: "the test itself was refused before it could rule on anything", stopped: { step: 6, do: "call", capability: "orbit.state.read", as: "refused", says, request: { businessKey: "k" }, observed: { count: 0 } } });
+  assert.deepEqual(refused.stopped, { step: 6, do: "call", capability: "orbit.state.read", as: "refused", says });
+  const long = resultView({ outcome: "ENVIRONMENT_BLOCKED", stopped: { step: "2", as: "blocked", says: `token: abcdefghijklmnop ${"x".repeat(900)}` } });
+  assert.deepEqual([long.stopped.step, long.stopped.do, long.stopped.says.length], [null, null, 600]);
+  assert.match(long.stopped.says, /^token \[redacted\]/);
+  assert.equal(resultView({ outcome: "SATISFIED" }).stopped, null, "a run that held stopped nowhere");
 });
 
 test("context lists the names a design's refs may take here, from the generation port -- and nothing when none is bound", () => {

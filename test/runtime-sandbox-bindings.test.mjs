@@ -182,3 +182,27 @@ test("what a host may name is listed by kind, exactly as the binder resolves it 
   assert.deepEqual(listed.identity, [], "no identity binds before a person's tenancy contract says which tenant it acts in");
   for (const [kind, rows] of Object.entries(listed)) for (const r of rows) assert.ok(declarationsFrom({ graph: GRAPH, tenancy: null })(kind, r.alias), `${kind} ${r.alias} binds`);
 });
+
+// What a real Claude Code QA row taught (0.4.0): a crash obligation needs a fault point the project's own test hooks
+// declare, and nothing listed one, so a host guessed (`after-effect-before-ack` for `after-commit-before-ack`) and the
+// hooks refused the run. A workload node declares its points (`faultPoints`, one flat line), and they are listed beside
+// its alias -- plain identifiers only, each once, bounded -- and nothing else of what the node's attributes say.
+test("a workload's declared fault points are listed beside its alias, as plain names, and nothing else of its attributes", () => {
+  const many = Array.from({ length: 20 }, (_, n) => `p${n}`).join(" ");
+  const graph = { nodes: [...GRAPH.nodes.filter((n) => n.role !== "workload"),
+    { key: "worker:worker", role: "workload", name: "worker", of: "component:invoice-app", attributes: { faultPoints: "before-effect after-commit-before-ack, before-effect ../etc/x a;b", queue: "billing.reminders" } },
+    { key: "outbox-relay:relay", role: "workload", name: "relay", of: "component:invoice-app", attributes: { faultPoints: many } },
+    { key: "worker:quiet", role: "workload", name: "quiet", of: "component:invoice-app", attributes: { faultPoints: "?? //" } },
+    { key: "worker:plain", role: "workload", name: "plain", of: "component:invoice-app", attributes: {} },
+    { key: "schedule:billing-daily", role: "schedule", name: "billing-daily", of: "component:invoice-app", attributes: { faultPoints: "before-effect" } }] };
+  const listed = bindableFrom({ graph, tenancy: null });
+  const worker = listed.workload.find((w) => w.alias === "worker");
+  assert.deepEqual(worker, { alias: "worker", of: "invoice-app", points: ["before-effect", "after-commit-before-ack"], says: "" }, "plain names, each once -- never a path, never anything else the node says");
+  assert.equal(listed.workload.find((w) => w.alias === "relay").points.length, 16, "bounded");
+  assert.deepEqual(listed.workload.filter((w) => w.points === undefined).map((w) => w.alias).sort(), ["plain", "quiet"], "a node that declares no plain name lists none -- unknown, never an empty list");
+  assert.equal(listed.schedule.find((s) => s.alias === "billing-daily").points, undefined, "only a workload declares fault points");
+  const decl = declarationsFrom({ graph });
+  assert.deepEqual(decl("workload", "worker"), { node: "invoice-app", port: 9090, address: { workload: "worker" }, points: ["before-effect", "after-commit-before-ack"] });
+  const sealed = sealedBindings(input({ refs: [{ kind: "workload", alias: "worker" }], declarationOf: decl }));
+  assert.deepEqual([sealed.gaps, Object.hasOwn(sealed.bindings.workload.worker, "points")], [[], false], "what a workload declares it can inject is never part of what a run is bound to");
+});

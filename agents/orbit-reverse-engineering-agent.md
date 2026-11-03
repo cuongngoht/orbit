@@ -65,7 +65,8 @@ prints them:
   `from`, its `relation` and its `to`, separated by one space. The engine refuses any other key:
   one edge recorded twice must be one fact.
 - `of`, `transport` and `attributes` only when a file states them. An attribute is a flat value a
-  file declares (a routing key, a method and path, a cron expression, a timezone) — **never a
+  file declares (a routing key, a method and path, a cron expression, a timezone, the fault points
+  a workload's test hooks declare as `faultPoints`: the names on one line) — **never a
   secret**, never a connection string, never an address a sandbox would give. A secret-named
   attribute is refused.
 - **A target the source does not fix is `unknown`.** A queue name built at run time, a topic read

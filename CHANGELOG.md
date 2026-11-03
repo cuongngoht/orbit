@@ -26,6 +26,14 @@ each case's baseline is PASS, and a controlled-fault variant plants the old defe
   and bounded. A run refused before any step says what its envelope gave, and `reconcile` says the same of a late one.
   The capability's words lived only in the worker's run log, so a real Claude Code QA row (ORBIT-QA-003) saw a bare
   `INVALID_TEST` / `TEST_WRONG` and spent its design budget guessing request shapes and fault points.
+- **A fault point is read, never guessed.** A workload node of the system graph may declare the fault points its test
+  hooks inject (`attributes.faultPoints`: the names on one line, the flat value a graph fact keeps). An autonomous QA
+  `context` lists them beside the workload's alias under `bindings` (`points`: plain names only, each once, at most
+  16), and a design whose fault control names a point that the workloads it binds declare and do not include is
+  refused before a draft exists (`DECLARED_POINT`, naming the declared points). A workload that declares none keeps
+  today's behaviour: unknown is never a refusal. The acceptance system graphs now record the points the invoice
+  application declares for `worker` and `relay`. A real Claude Code QA row (ORBIT-QA-003) guessed
+  `after-effect-before-ack` for the worker's `after-commit-before-ack`, and the hooks refused every run that named it.
 - **A generated request never repeats its endpoint's base path.** A path is relative to the endpoint it is sent to, and
   an endpoint the system graph declares under a base path (`/api`) already carries it; a generated `orbit.http.*` step
   whose path starts with that base again (`/api/invoices/…` against `invoice-read` at `/api`) is now refused before a

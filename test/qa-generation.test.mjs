@@ -100,6 +100,25 @@ test("a control is held to what the test can show of it: it acts in a step, a re
   holds(stopped([{ role: "positive" }, { role: "state" }, { role: "fault", step: 2 }]), /and no point/, "a witness names the point it witnesses");
 });
 
+// What a real Claude Code QA row taught (0.4.0): a fault point the workload's own test hooks do not declare is refused
+// only when the run asks for it -- a design, a version and a dispatch spent on a guessed name. Where the system graph
+// declares a workload's points, a fault control that names another is refused before a draft exists, naming them.
+test("a fault control's point is one the workload it faults declares -- refused at the controls stage, naming them; unknown never refuses", () => {
+  const fault = (alias, point) => call("orbit.workload.control", { workloadRef: alias, request: { action: "fault", point } });
+  const watch = (alias) => call("orbit.worker.observe", { workloadRef: alias, request: { count: 1 } });
+  const DECLARED = { worker: ["before-effect", "after-commit-before-ack"], relay: ["after-confirm-before-mark"] };
+  const stopped = (point, steps, declared = DECLARED) => ((r) => [r.stage, r.outcome, (r.findings ?? []).join(" | ")])(generatedCase(proposal({ skeleton: skeleton([...STEPS, ...steps]), controls: [{ role: "positive" }, { role: "state" }, { role: "fault", point, why: "the worker stops after its effect" }] }), context(declared ? { faultPointsOf: (alias) => declared[alias] ?? null } : {})));
+  const [stage, outcome, said] = stopped("after-effect-before-ack", [fault("worker", "after-effect-before-ack"), watch("worker")]);
+  assert.deepEqual([stage, outcome], ["controls", "GENERATION_FAILED"], said);
+  assert.match(said, /^DECLARED_POINT: the fault control names point "after-effect-before-ack", which no workload this design binds declares — worker declares before-effect, after-commit-before-ack$/);
+  assert.notEqual(stopped("after-commit-before-ack", [fault("worker", "after-commit-before-ack"), watch("worker")])[0], "controls", "a declared point holds");
+  assert.match(stopped("x", [fault("worker", "x"), watch("relay")])[2], /worker declares before-effect, after-commit-before-ack; relay declares after-confirm-before-mark/, "every workload it binds, each with what it declares");
+  assert.notEqual(stopped("after-confirm-before-mark", [fault("worker", "y"), watch("relay")])[0], "controls", "a point one of them declares");
+  assert.notEqual(stopped("x", [fault("worker", "x"), watch("api")])[0], "controls", "a workload that declares no points is unknown -- and unknown is never a refusal");
+  assert.notEqual(stopped("x", [fault("worker", "x")], null)[0], "controls", "where nothing answers what a workload declares, today's behaviour");
+  assert.notEqual(stopped("x", [])[0], "controls", "a design that binds no workload has none to hold its point to");
+});
+
 test("a repair may change how a step is written, never what the test rules on", () => {
   const before = proposal();
   const relocated = proposal({ skeleton: skeleton(STEPS.map((s, i) => (i === 1 ? call("orbit.observe.await", { observerRef: "obs-1", request: { match: { messageId: "rem-1" } } }) : s))) });

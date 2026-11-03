@@ -147,9 +147,12 @@ that stopped it. A version refused or blocked at a step says where in `result.st
 and capability, `refused` or `blocked`, and what that step's own stop said (`says`: `request.key … or
 request.match`, `request.action is one of …`, `answered 400 unknown-point`), scrubbed. A refusal is the
 test's mistake, not the product's: repair the design to what `says` asks for and generate again -- never
-guess a request's shape, and never resend one it refused. A fault control's `point` must be one the project's
-own test hooks declare; `context` lists none, and a point the hooks do not know refuses the run (`stopped` says
-`unknown-point`). A design or a version you cite as evidence is cited by its record id (`dsg-…`, `ver-…`).
+guess a request's shape, and never resend one it refused. A fault control's `point` is one its workload
+declares: `context` lists a workload's declared points beside its alias under `bindings` (`points`), and a
+design that names another is refused before a draft exists (`DECLARED_POINT`, naming them) -- take the point
+from there, never from an obligation's name. A workload that lists none declares none here: a point its hooks
+do not know then refuses the run (`stopped` says `unknown-point`). A design or a version you cite as evidence
+is cited by its record id (`dsg-…`, `ver-…`).
 Every ref a design names (`endpointRef`, `channelRef`, `stateRef`, `scheduleRef`, `workloadRef`, `identityRef`,
 `clockRef`) takes one of the aliases `context` lists under `bindings`, by kind, exactly as this sandbox binds them --
 read them there, never guess one from a key, a dotted name or a statement: an alias nothing lists is a binding

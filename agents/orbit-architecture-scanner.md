@@ -100,6 +100,7 @@ the same rule that a target the source does not fix is `unknown`, never guessed.
 | a consumer | the registration that binds a handler to a channel or subscription | a `consumes-from` relation, and the `consumer` or `worker` workload `of` its component |
 | a queue binding | the declaration that binds a queue to an exchange or topic, with its key | a `routes-to` relation from the exchange to the queue, its key as an attribute |
 | a worker | the hosted service or worker registration | a `worker` workload node `of` its component |
+| a workload's fault points | what its own test hooks declare they can inject, by name | `faultPoints` on the workload node: the names on one line, as the file spells them |
 | a checkpoint | where a processor stores how far it got | a `checkpoint` node and a `checkpoints-at` relation |
 
 A channel name read from configuration nobody tracks, or built at run time, is an `unknown` end

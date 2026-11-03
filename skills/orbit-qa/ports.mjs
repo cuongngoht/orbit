@@ -4,8 +4,8 @@
 //   generation  what a design is held to while it becomes a case -- the ACCEPTED expectations its
 //               obligation may rule on, what each step's answer carries by meaning (the adapter the
 //               step will be answered by, or the capability's own outputs), the semantics an adapter
-//               declared, the real validator with the project's own extensions -- and where its draft
-//               is saved (src/investigation/generate.mjs)
+//               declared, the fault points a workload declares, the real validator with the project's
+//               own extensions -- and where its draft is saved (src/investigation/generate.mjs)
 //   dispatch    a frozen version made runnable in the task's ISOLATED sandbox: every logical ref
 //               sealed by the host (src/runtime/sandbox/bindings.mjs), a grant minted for every effect
 //               it would have (src/runtime/sandbox/test-grants.mjs), the run's inputs laid where the
@@ -90,7 +90,7 @@ export function generationPort(b) {
 function generationContext(b, obligation, a) {
   const r = resolver({ ...b, graph: b.graph(), topology: quietly(() => b.topology?.()), design: a.design });
   const steps = a.design?.skeleton?.steps ?? [];
-  return { expectations: expectationsOf(b, obligation), expected: obligation.expected ?? [], outputsOf: (i) => outputsOf(r, steps[i - 1]), semanticsOf: (i) => semanticsOf(r, steps[i - 1]), observerSemantics: (ref) => observerSemantics(r, ref), shape: shapeOf(obligation.shape), caseId: caseIdOf(obligation, a.design), title: titleOf(obligation), validate: (c) => validate(c, b.ctx.graph, b.ctx.dsl, b.ctx.validators, r.lookup), inputFindings: (s) => [...inputFindings(r.lookup(s.capability), s.input), ...basePathFindings(r, r.lookup(s.capability), s.input ?? {})], dsl: b.ctx.dsl, pageOf: (id) => r.lookup(id)?.page };
+  return { expectations: expectationsOf(b, obligation), expected: obligation.expected ?? [], outputsOf: (i) => outputsOf(r, steps[i - 1]), semanticsOf: (i) => semanticsOf(r, steps[i - 1]), observerSemantics: (ref) => observerSemantics(r, ref), shape: shapeOf(obligation.shape), caseId: caseIdOf(obligation, a.design), title: titleOf(obligation), validate: (c) => validate(c, b.ctx.graph, b.ctx.dsl, b.ctx.validators, r.lookup), inputFindings: (s) => [...inputFindings(r.lookup(s.capability), s.input), ...basePathFindings(r, r.lookup(s.capability), s.input ?? {})], faultPointsOf: (alias) => r.declarationOf("workload", alias)?.points ?? null, dsl: b.ctx.dsl, pageOf: (id) => r.lookup(id)?.page };
 }
 
 // A path is relative to the endpoint it is sent to, and the endpoint's own base path (the graph declares it, `/api`)

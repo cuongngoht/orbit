@@ -30,7 +30,7 @@ const RULING = ["call", "sql", "report"];
 
 const STAGES = [
   { id: "contract", outcome: "GENERATION_FAILED", findings: (p) => proposalFindings("design", p.proposal) },
-  { id: "controls", outcome: "GENERATION_FAILED", findings: (p, cx) => said(controlFindings(p.proposal, cx.shape)) },
+  { id: "controls", outcome: "GENERATION_FAILED", findings: (p, cx) => said(controlFindings(p.proposal, cx.shape, cx)) },
   { id: "rules", outcome: "GENERATION_FAILED", findings: (p, cx) => said([...observationFindings(p.proposal, cx), ...correlationFindings(p.proposal), ...temporalFindings(p.proposal, cx), ...pageFindings(p.proposal)]) },
   { id: "mapping", outcome: (p) => (p.compiled.mapping.some((m) => /ACCEPTED criterion/.test(m.why ?? "")) ? "REQUIRES_REQUIREMENT" : "GENERATION_FAILED"), findings: (p) => p.compiled.mapping.filter((m) => m.verdict === "refused").map((m) => `step ${m.step} (${m.criterionRef ?? m.structural}): ${m.why}`) },
   { id: "coverage", outcome: "GENERATION_FAILED", findings: (p, cx) => (cx.expected ?? []).filter((slot) => !(p.proposal.assertions ?? []).some((a) => a.criterionRef === slot)).map((slot) => `${slot} is a slot of this obligation's own criterion, and nothing in the design rules on it — a design that rules only on other criteria tests something else`) },

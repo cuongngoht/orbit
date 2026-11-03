@@ -31,6 +31,7 @@
 import { short } from "../hash.mjs";
 import { writes } from "../network/observe.mjs";
 import { commitments, gaps } from "../qa/commit.mjs";
+import { controlRulesFor } from "../qa/generation/controls.mjs";
 import { shapeOf } from "../qa/obligations/shapes.mjs";
 import { READINESS } from "../qa/vocab.mjs";
 import { destructiveReasons } from "../run/gates/destructive.mjs";
@@ -324,8 +325,12 @@ function testObligations(lw) {
 }
 
 // What a design for this shape is held to, as its row says it (src/qa/obligations/shapes.mjs): the controls it must name
-// and the assertion templates its own slots may be ruled with -- read here, so a host never learns them by a refusal.
-const designedBy = (shape) => ((s) => (s ? { controls: s.controls, templates: s.templates } : {}))(shapeOf(shape));
+// and the assertion templates its own slots may be ruled with -- and what a rule over a control of one of those roles
+// says a design must do (src/qa/generation/controls.mjs `says`: a fault's workload brought back) -- read here, so a host
+// never learns them by a refusal.
+const designedBy = (shape) => ((s) => (s ? { controls: s.controls, templates: s.templates, ...ruledBy(s.controls) } : {}))(shapeOf(shape));
+
+const ruledBy = (roles) => ((rules) => (rules.length ? { rules } : {}))(controlRulesFor(roles));
 
 const TEST_STATES = [
   { when: (e) => e.outcome === "SATISFIED", as: (e) => satisfied(`${e.execution} was SATISFIED against its accepted criterion`, [e.id]) },

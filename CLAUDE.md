@@ -55,7 +55,10 @@ node skills/orbit-release/ship.mjs --status --json          # where it stands
   result dropped, design/version refs refused, bindings it had to guess, an endpoint base path repeated, `goal resume`
   reading raw journals, a sandbox supervisor race, a retry that could never run, a 20-minute gate deadline, a refused
   run's reason kept in the worker's log, fault points and a state's key column nobody listed, a design contract the host
-  could not read before proposing, and an investigation held to 20 minutes while its brief promised 120.
+  could not read before proposing, an investigation held to 20 minutes while its brief promised 120, and a fault that
+  left its workload down with nothing telling the host to bring it back (ship 12: ORBIT-QA-001's two crash shapes were
+  false alarms on the clean app in 3 of 3 runs -- a fix that unlocks a new path, here naming fault points, can expose
+  the next gap on a row that used to pass, so pre-check every model row again after one).
 - **Fix an Orbit defect a row exposes with Opus at max effort** (an Agent, `model: opus`, `effort: max`): a regression
   test that fails before the fix, the full suite, the strict Five Lines lint. Never loosen an acceptance rule, a case's
   ground truth, the verifier or `ship/policy.json` to get a PASS.

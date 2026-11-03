@@ -21,6 +21,7 @@
 // read back first. That is the whole reason the decision is recorded before
 // the step, rather than after it.
 import { Blocked, Refused } from "../errors.mjs";
+import { controlRulesFor } from "../qa/generation/controls.mjs";
 import { proposableOf } from "../qa/obligations/contract.mjs";
 import { EXPECT_OPS } from "../qa/vocab.mjs";
 import { scrub } from "../scrub.mjs";
@@ -266,10 +267,12 @@ function checkpointed(w, receipts, memory) {
 
 // ----------------------------------------------------------------- protocol
 // The protocol as the tables say it, so no playbook carries a copy of it -- a generate step's DESIGN included: what each
-// part of one may carry (src/qa/obligations/contract.mjs DEFINITIONS) and the assertion template each criterion op
-// compiles to (src/qa/vocab.mjs EXPECT_OPS), so a host reads them before it designs instead of learning them by refusal.
+// part of one may carry (src/qa/obligations/contract.mjs DEFINITIONS), the assertion template each criterion op
+// compiles to (src/qa/vocab.mjs EXPECT_OPS) and what a rule over its controls says a design must do that their contract
+// does not show (src/qa/generation/controls.mjs `says`), so a host reads them before it designs instead of learning them
+// by refusal.
 export const protocolOf = () => ({ schemaVersion: DECISION_SCHEMA, fields: DECISION_FIELDS, forbidden: DECISION_FORBIDDEN, textLimit: TEXT_LIMIT, actions: ACTION_KINDS.map((kind) => ({ kind, fields: ACTIONS[kind].fields, required: ACTIONS[kind].required, modes: ACTIONS[kind].modes })), obligations: OBLIGATION_KINDS, states: OBLIGATION_STATES, stops: STOP_REASONS, lifecycle: LIFECYCLE, design: designProtocol() });
 
 const DESIGN_PARTS = ["design", "assertion", "control", "trigger", "observation-plan", "page"];
 
-const designProtocol = () => ({ definitions: proposableOf(DESIGN_PARTS), templates: EXPECT_OPS.map((o) => ({ op: o.name, template: o.template, window: o.window === true, doc: o.doc })) });
+const designProtocol = () => ({ definitions: proposableOf(DESIGN_PARTS), templates: EXPECT_OPS.map((o) => ({ op: o.name, template: o.template, window: o.window === true, doc: o.doc })), rules: controlRulesFor() });

@@ -45,6 +45,17 @@ each case's baseline is PASS, and a controlled-fault variant plants the old defe
   nothing: what it read is the product's. A host could not tell a fault's witness failing from the read after it. An
   assertion on a step whose answer declares nothing is refused as that step, no longer as "its declared outputs are
   none" -- which read as if `orbit.http.read` could not be ruled on, and a row gave its obligation up.
+- **A design brings back the workload its fault stopped.** A fault stops the workload it is armed in, and nothing a
+  workload, an adapter or a family operation declares says that workload comes back by itself (the acceptance
+  application keeps it down until a test starts it, so what the fault left can be read first). A design whose fault
+  control's witness is followed by a step that asks the faulted workload for more -- an `orbit.worker.observe` of it --
+  with no `orbit.workload.control` `start` or `restart` of it in between, or that never brings it back before the test
+  ends, is now refused before a draft exists (`RESTORED_AFTER_FAULT`, naming the step to add and the steps it goes
+  between). A start of a workload already back changes nothing, so the rule reads no declaration and holds everywhere.
+  What it says is shown before a host designs: `protocol`'s `design.rules`, the frontier `template` of an obligation
+  whose shape needs a fault control (`rules`), and the control's `point`. A real Claude Code QA row (ORBIT-QA-001 on
+  Opus) missed three times: its crash test waited for a redelivery from a worker nothing restarted, the clean
+  application contradicted it as well, and the next crash test found the worker still down and never saw its fault.
 - **A generated request never repeats its endpoint's base path.** A path is relative to the endpoint it is sent to, and
   an endpoint the system graph declares under a base path (`/api`) already carries it; a generated `orbit.http.*` step
   whose path starts with that base again (`/api/invoices/…` against `invoice-read` at `/api`) is now refused before a

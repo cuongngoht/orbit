@@ -132,8 +132,9 @@ synthetic `TC-` params) · `reproduce` replays a finding's chain · `security` r
 a template, a step — the controls its shape needs, the fixture and observation plan, the trigger
 step). Read what a design may hold before you write one: `protocol`'s `design` gives each part's fields
 (their enums -- `effectScope`, a trigger's `kind`, a control's `role` -- what is required and what only the
-engine stamps) and the template each criterion op compiles to (`eq` is `value-eq`); the obligation's own
-`template` names the controls its shape needs and the templates its slots take. The engine compiles every
+engine stamps), the template each criterion op compiles to (`eq` is `value-eq`) and the rules over a design's
+controls that their fields do not show (`rules`); the obligation's own `template` names the controls its shape needs,
+the templates its slots take and the rules over those controls (`rules`). The engine compiles every
 verdict from the accepted criterion, validates the case with the real grammar, saves it as a DRAFT and
 freezes its version; a design that does not hold comes back
 with its word (`GENERATION_FAILED`, `REQUIRES_REQUIREMENT`, `INVALID_TEST`) and the stage that
@@ -156,8 +157,13 @@ guess a request's shape, and never resend one it refused. A fault control's `poi
 declares: `context` lists a workload's declared points beside its alias under `bindings` (`points`), and a
 design that names another is refused before a draft exists (`DECLARED_POINT`, naming them) -- take the point
 from there, never from an obligation's name. A workload that lists none declares none here: a point its hooks
-do not know then refuses the run (`stopped` says `unknown-point`). A design or a version you cite as evidence
-is cited by its record id (`dsg-…`, `ver-…`).
+do not know then refuses the run (`stopped` says `unknown-point`). A fault stops the workload it is armed in,
+and nothing says that workload comes back by itself: bring it back with a step of the design's own
+(`orbit.workload.control` on it, `request.action` `start` or `restart`) after the fault's witness and before
+anything asks that workload for more, reads its effect, or the test ends -- the next test in the sandbox finds
+it as this one left it. A design that does not is refused before a draft exists (`RESTORED_AFTER_FAULT`, naming
+the step to add and where). A design or a version you cite as evidence is cited by its record id (`dsg-…`,
+`ver-…`).
 Every ref a design names (`endpointRef`, `channelRef`, `stateRef`, `scheduleRef`, `workloadRef`, `identityRef`,
 `clockRef`) takes one of the aliases `context` lists under `bindings`, by kind, exactly as this sandbox binds them --
 read them there, never guess one from a key, a dotted name or a statement: an alias nothing lists is a binding

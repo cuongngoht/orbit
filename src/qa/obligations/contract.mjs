@@ -83,7 +83,7 @@ export const CONTROL_FIELDS = {
   role: { enum: CONTROL_ROLES, doc: "positive (the allowed case works), negative (the refused case is refused), state (nothing else changed), duplicate (a second attempt on purpose), fault (a declared fault point)." },
   identityRef: alias("The approved identity it runs as."),
   resourceRef: alias("The fixture resource it acts on."),
-  point: text("For a fault control: the fault point the project declared. A run whose own observations never show it happened (a terminal reason fault:<point>) proved nothing about the fault."),
+  point: text("For a fault control: the fault point the project declared, where the workload it is armed in stops -- and nothing says that workload comes back by itself, so the design brings it back (RESTORED_AFTER_FAULT). A run whose own observations never show it happened (a terminal reason fault:<point>) proved nothing about the fault."),
   step: { type: "integer", minimum: 1, doc: "Only a fault control names one: the skeleton step that WITNESSES the fault happened, an observation that shows the delivery it ended. Its verdict is compiled from the control, and it may wait within its own bound -- what it cannot see makes the run INCONCLUSIVE, never a contradiction." },
   why: text("Why this control is the one worth running."),
 };

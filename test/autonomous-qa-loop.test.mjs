@@ -262,3 +262,18 @@ test("the protocol says what a design may carry, from the definitions a proposal
   assert.match(d.definitions.control.fields.step.doc, /WITNESSES/, "which control names a step, in the contract's own words");
   assert.deepEqual(d.templates.filter((t) => ["eq", "excludes", "absent-within"].includes(t.op)).map((t) => [t.op, t.template, t.window]), [["eq", "value-eq", false], ["excludes", "value-excludes", false], ["absent-within", "absent-within", true]]);
 });
+
+// What a real Claude Code QA row taught (0.4.0, ORBIT-QA-001 on Opus): a crash test that waited for the redelivery with
+// nothing bringing the faulted worker back raised a false alarm on the clean application -- which keeps a workload that
+// stopped at a fault point down until a test starts it -- and nothing a host read said so. The protocol now says it, in
+// the words of the rule that refuses such a design.
+test("the protocol says a fault's workload is brought back, in the words of the rule that holds it, and the control's point says where to read it", async () => {
+  const { CONTROL_RULES } = await import("../src/qa/generation/controls.mjs");
+  const d = protocolOf().design;
+  const held = d.rules.find((r) => r.rule === "RESTORED_AFTER_FAULT");
+  assert.deepEqual([held?.role, held?.says], ["fault", CONTROL_RULES.find((r) => r.id === "RESTORED_AFTER_FAULT").says], "printed from the rule's own row");
+  assert.match(held.says, /orbit\.workload\.control on that workload with request\.action start or restart/, "what to add");
+  assert.match(held.says, /after the step that witnesses the fault, before any later step asks that workload for more or reads what it did after the fault, and before the test ends/, "and where");
+  assert.deepEqual(d.rules.map((r) => r.rule), CONTROL_RULES.filter((r) => r.says).map((r) => r.id), "every rule that says something, and only those");
+  assert.match(d.definitions.control.fields.point.doc, /where the workload it is armed in stops .*RESTORED_AFTER_FAULT/, "the field a host fills says where the rest is");
+});

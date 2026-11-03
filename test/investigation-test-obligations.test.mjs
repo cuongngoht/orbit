@@ -3,22 +3,24 @@
 // or a person's decision is waited for, and anything that may safely be tried again is still owed.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { loopWorld } from "../src/investigation/loop.mjs";
+import { contextOf, loopWorld } from "../src/investigation/loop.mjs";
 import { createInvestigations, eventIdOf } from "../src/investigation/store.mjs";
 import { fakeContext } from "./fakes/context.mjs";
 import { fakeIo } from "./fakes/io.mjs";
 
 const ID = "inv-20261022-140000-abcd";
 
-function world(evaluations = [], obligation = {}) {
+// The investigation world one derived obligation is owed in, with what its executions came to.
+function worldOf(obligation = {}, evaluations = []) {
   const io = fakeIo();
   const store = createInvestigations("/store/repo-1", io);
   store.create({ id: ID, objective: "owed" });
   store.appendOnce(ID, "obligation", { id: "obr-1", eventId: eventIdOf("obligation", "tob-aaaaaaaaaaaa", 0, "r1"), obligation: "tob-aaaaaaaaaaaa", revision: "r1", shape: "response-conforms", target: "endpoint:x", bindings: ["bnd-1"], expected: ["AC/E1"], authority: "accepted", method: "runtime-test", ...obligation });
   evaluations.forEach((outcome, n) => store.appendOnce(ID, "evaluated", { id: `evl-${n + 1}`, eventId: `e-${n}`, attempt: n + 1, execution: `exe-0000000000000000-${n + 1}`, obligation: "tob-aaaaaaaaaaaa", outcome }));
-  const lw = loopWorld({ id: ID, store, io, settings: { limits: { decisions: 50 } }, mode: "fixture-write", ctx: { ...fakeContext(), now: () => 0 } });
-  return lw.obligations.find((o) => o.kind === "test-obligation");
+  return { id: ID, store, io, settings: { limits: { decisions: 50, actions: 50, minutes: 20 } }, mode: "fixture-write", ctx: { ...fakeContext(), now: () => 0 } };
 }
+
+const world = (evaluations = [], obligation = {}) => loopWorld(worldOf(obligation, evaluations)).obligations.find((o) => o.kind === "test-obligation");
 
 test("derived and not yet designed, it is owed -- and a generate or a run-version is what may target it", () => {
   const o = world();
@@ -35,6 +37,21 @@ test("what a design for it is held to travels with it: the controls its shape ne
   assert.deepEqual([permission.controls, permission.templates], [["positive", "negative"], ["value-eq", "value-excludes"]]);
   const unknown = world([], { shape: "no-such-shape" }).template;
   assert.deepEqual([unknown.controls, unknown.templates], [undefined, undefined], "a shape nobody declared says nothing");
+});
+
+// What a real Claude Code QA row taught (0.4.0, ORBIT-QA-001 on Opus): a crash test that never brought the faulted
+// worker back was a false alarm on the clean application, and nothing on the frontier said a fault leaves its workload
+// down. An obligation whose shape needs a fault control carries what the rule over that control says, by its id.
+test("an obligation whose shape needs a fault control carries what a design must do about the workload the fault stops -- in context, as the host reads it", () => {
+  for (const shape of ["crash-before-effect", "crash-after-effect-before-ack"]) {
+    const { rules } = world([], { shape }).template;
+    assert.deepEqual(rules?.map((r) => [r.rule, r.role]), [["RESTORED_AFTER_FAULT", "fault"]], shape);
+    assert.match(rules[0].says, /brings it back — a step orbit\.workload\.control on that workload with request\.action start or restart — after the step that witnesses the fault/);
+  }
+  assert.equal(world().template.rules, undefined, "a shape with no fault control carries no such rule");
+  assert.equal(world([], { shape: "permission-enforced" }).template.rules, undefined, "nor does one whose controls no rule says anything about");
+  const ctx = contextOf(worldOf({ shape: "crash-before-effect" }));
+  assert.deepEqual(ctx.frontier.find((o) => o.kind === "test-obligation")?.template.rules?.map((r) => r.rule), ["RESTORED_AFTER_FAULT"], "the frontier a host reads before it designs");
 });
 
 test("its latest execution's word settles it through that word's own row", () => {

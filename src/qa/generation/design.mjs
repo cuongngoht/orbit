@@ -24,6 +24,12 @@ import { pageFindings, pageStepOf } from "./page.mjs";
 
 const said = (findings) => findings.map((f) => (typeof f === "string" ? f : `${f.rule}: ${f.say}`));
 
+// What rules an obligation's test, said where a host reads it before it designs (the obligation's template,
+// src/investigation/obligations.mjs, and protocol.design): its own expected slots, which the coverage stage below holds a
+// design to -- and what a slot of another criterion asserted beside them does, since a run stops at the first verdict
+// that fails and what it came to is this obligation's.
+export const OWN_SLOTS = "the obligation's own expected slots rule it: a design asserts each of them, on the step whose answer carries it. Any other slot it asserts is held too, and a run stops at the first assertion that fails — one that fails on a step before them ends the test there: its contradiction is this obligation's, and its own slots are never read";
+
 // The verbs that rule on their own answer: a generated one carries a compiled verdict or is not made. A report reads a
 // page for nothing else.
 const RULING = ["call", "sql", "report"];

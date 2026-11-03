@@ -58,7 +58,9 @@ node skills/orbit-release/ship.mjs --status --json          # where it stands
   could not read before proposing, an investigation held to 20 minutes while its brief promised 120, and a fault that
   left its workload down with nothing telling the host to bring it back (ship 12: ORBIT-QA-001's two crash shapes were
   false alarms on the clean app in 3 of 3 runs -- a fix that unlocks a new path, here naming fault points, can expose
-  the next gap on a row that used to pass, so pre-check every model row again after one).
+  the next gap on a row that used to pass, so pre-check every model row again after one), and an observation whose match
+  (`outcome: processed`) hid the redelivery that settled as `duplicate`, answering "none, complete" (ship 13: the
+  crash-after-effect false alarm in 3 of 3 runs -- the host now sees what its match left out, beside where it stopped).
 - **Fix an Orbit defect a row exposes with Opus at max effort** (an Agent, `model: opus`, `effort: max`): a regression
   test that fails before the fix, the full suite, the strict Five Lines lint. Never loosen an acceptance rule, a case's
   ground truth, the verifier or `ship/policy.json` to get a PASS.

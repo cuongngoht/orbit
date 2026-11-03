@@ -15,8 +15,17 @@
 // never a default; a shape whose semantics are UNKNOWN on the bound adapter is a gap that
 // says what would settle it. `contractOnly` shapes are represented from 0.1.0 and counted in
 // the denominator; they stay gaps until an adapter and an oracle exist (doc §5.6).
+//
+// A shape may also say, in `says`, what a design for it must know that its other columns do not
+// show -- in the words its own sentence uses, never a product's: a host reads it before it designs
+// (the obligation's template, src/investigation/obligations.mjs, and protocol.design).
 
 const shape = (id, boundary, relations, contract, controls, templates, doc, extra = {}) => ({ id, boundary, relations, contract, controls, templates, semantics: {}, doc, ...extra });
+
+// What comes back after an effect committed is the same work arriving again, and the system's own
+// settlement of it is no second success to wait for (0.4.0: a real host waited for one and called the
+// clean application's silence a defect).
+const ONCE_AFTER_EFFECT = "the delivery that comes back after the effect committed is not a second effect: how it settles is the system's own word, never a second success to wait for — observe it by its delivery attempt or by the message alone, and rule this obligation on its own expected slots (the effect count)";
 
 export const OBLIGATION_SHAPES = [
   shape("response-conforms", "synchronous", ["invocation"], ["response"], ["positive"], ["value-eq", "value-in", "schema-valid"], "an interface answers what its accepted contract says: status, body, schema and error semantics"),
@@ -29,7 +38,7 @@ export const OBLIGATION_SHAPES = [
   shape("publication-routed", "publication", ["publish", "route"], ["message-contract"], ["positive"], ["value-eq", "complete"], "a publication reaches the channels its contract routes it to, with its identity and schema", { semantics: { observation: ["shadow-subscription", "independent-cursor", "peek-cursor", "read-only-query", "tap"] } }),
   shape("effect-once-per-key", "state", ["consume", "data-write"], ["unique-by"], ["duplicate", "state"], ["count-eq"], "a redelivered or duplicated message leaves exactly one durable effect per business key", { semantics: { delivery: ["at-least-once", "effectively-once-within-window"] } }),
   shape("crash-before-effect", "state", ["consume", "data-write"], ["effect"], ["fault", "state"], ["count-eq"], "a consumer that stops before its effect loses nothing: the message comes back and the effect happens once", { semantics: { redeliveryTriggers: ["crash-before-settle", "connection-loss", "lock-expiry", "visibility-timeout", "ack-wait"] } }),
-  shape("crash-after-effect-before-ack", "state", ["consume", "data-write"], ["unique-by"], ["fault", "state"], ["count-eq"], "a consumer that stops after its effect and before it settled does not do it twice", { semantics: { redeliveryTriggers: ["crash-before-settle", "connection-loss", "lock-expiry", "visibility-timeout", "ack-wait"] } }),
+  shape("crash-after-effect-before-ack", "state", ["consume", "data-write"], ["unique-by"], ["fault", "state"], ["count-eq"], "a consumer that stops after its effect and before it settled does not do it twice", { semantics: { redeliveryTriggers: ["crash-before-settle", "connection-loss", "lock-expiry", "visibility-timeout", "ack-wait"] }, says: ONCE_AFTER_EFFECT }),
   shape("competing-workers", "state", ["consume"], ["unique-by"], ["duplicate", "state"], ["count-eq"], "two workers that receive one job leave one effect"),
   shape("lease-expiry-fencing", "state", ["consume"], ["unique-by"], ["fault", "state"], ["count-eq", "count-at-most"], "a worker whose lease expired cannot leave an effect the contract forbids", { semantics: { redeliveryTriggers: ["lock-expiry", "visibility-timeout", "ack-wait"] } }),
   shape("terminal-after-retries", "processing", ["consume", "retry", "terminal"], ["retry-policy"], ["fault"], ["count-eq", "value-eq"], "a message that cannot succeed is retried as the policy says and ends where it says, linked to the original", { semantics: { deadLetter: ["broker-routed", "broker-subqueue", "advisory", "app-managed"] } }),

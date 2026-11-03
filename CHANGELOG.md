@@ -56,6 +56,30 @@ each case's baseline is PASS, and a controlled-fault variant plants the old defe
   whose shape needs a fault control (`rules`), and the control's `point`. A real Claude Code QA row (ORBIT-QA-001 on
   Opus) missed three times: its crash test waited for a redelivery from a worker nothing restarted, the clean
   application contradicted it as well, and the next crash test found the worker still down and never saw its fault.
+- **A failed observation says what its match left out of the very thing it observes.** An observation whose `match`
+  names WHAT it observes and how it went (`orbit.worker.observe` with `{ messageId, outcome }`) is answered only what
+  matched all of it, and an answer of none, complete, read exactly as "it never happened". Which fields of a match name
+  the thing is now the declaration's word: a meaning may say it is an `identity` (`message.id`, `message.key`,
+  `message.correlation`, `occurrence.id`, `execution.ref`), the adapter facade tells the helper which match fields carry
+  one (`subject`, an optional field of the helper request), and the reference hooks helper says what it read of that
+  thing and left out. The engine keeps it beside the answer under a field of its own (`excluded`: the list, how many,
+  the newest three held to the list's declared item fields), which no output declares -- so no verdict is compiled from
+  it and `FAULT_NOT_SEEN` never reads it. A run that stopped at that step says it in `result.stopped.excluded`: the
+  match's fields that left them out, the items, and one sentence ("2 of the attempts this step read have the messageId
+  its match names and were left out by the rest of it — outcome fault, duplicate where the match asks processed …"),
+  scrubbed and bounded. Every verdict is the one it was. What a host reads before it designs says the rest: a test
+  obligation's `template` names what its own `expected` slots are to its verdict (`slots`: a run stops at the first
+  assertion that fails, so another criterion's slot failing on an earlier step ends the test before the obligation's
+  own is read, and its contradiction is the obligation's), and `crash-after-effect-before-ack` says that the delivery
+  that comes back after the effect committed is not a second effect -- how it settles is the system's own word, never a
+  second success to wait for: observe it by its delivery attempt or by the message alone, and rule the obligation on its
+  own slots, the effect count (`says`; `protocol`'s `design.slots` and `design.shapes`). A real Claude Code QA row
+  (ORBIT-QA-001 on Opus) raised `crash-after-effect-before-ack` as a false alarm in 3 of 3 runs: it awaited the
+  redelivery with `outcome: processed` and ruled the completion criterion's slot on it, and the clean application's
+  redelivery -- recorded as a duplicate, its effect already there -- was filtered out of an answer that then read as
+  "never redelivered", before the effect count was ever read. Generation still accepts an assertion on a slot its
+  criterion states for another shape: four of the nine acceptance reference designs rule one on purpose, a completion
+  barrier before the effect count.
 - **A generated request never repeats its endpoint's base path.** A path is relative to the endpoint it is sent to, and
   an endpoint the system graph declares under a base path (`/api`) already carries it; a generated `orbit.http.*` step
   whose path starts with that base again (`/api/invoices/…` against `invoice-read` at `/api`) is now refused before a

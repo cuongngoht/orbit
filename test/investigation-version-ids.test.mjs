@@ -55,6 +55,25 @@ test("a run that stopped short says where, and what its stop said -- five fields
   assert.deepEqual(resultView({ outcome: "CONTRADICTED", stopped: { step: 3, do: "call", capability: "orbit.worker.observe", as: "failed", says: null } }).stopped, { step: 3, do: "call", capability: "orbit.worker.observe", as: "failed", says: null }, "a failure is named and says nothing");
 });
 
+// What a real Claude Code QA row taught (0.4.0, ORBIT-QA-001 on Opus): a failed observation whose match left out the
+// redelivery of its own message was a false alarm nobody could see through. What the stopped step's match left out
+// reaches the host -- by allow-list at this door again: names for fields, a scalar or a short text for each value, the
+// newest three, every word scrubbed and bounded -- and only when there is something.
+test("what the stopped step's own match left out reaches the host by allow-list, scrubbed and bounded -- and only when it left something out", () => {
+  const excluded = { field: "attempts", count: 5, by: ["outcome", "not a name!"], subject: ["messageId"], items: [{ messageId: "m-0" }, { messageId: "m-1", outcome: "fault", deliveryAttempt: 1, "bad key": "x", nested: { token: "abcdefghijklmnop" } }, { messageId: "m-1", outcome: "duplicate", deliveryAttempt: 2, terminalReason: null }, { messageId: "m-1", outcome: `${"y".repeat(300)}` }], say: `5 of the attempts … authorization: Bearer abc.def.ghi ${"z".repeat(900)}`, extra: "dropped" };
+  const out = resultView({ outcome: "CONTRADICTED", stopped: { step: 5, do: "call", capability: "orbit.worker.observe", as: "failed", says: null, excluded } }).stopped;
+  assert.deepEqual(Object.keys(out.excluded), ["field", "count", "by", "items", "say"], "the five it carries, and nothing else");
+  assert.deepEqual([out.excluded.field, out.excluded.count, out.excluded.by], ["attempts", 5, ["outcome"]]);
+  assert.deepEqual(out.excluded.items.map((i) => i.messageId), ["m-1", "m-1", "m-1"], "the newest three");
+  assert.deepEqual(out.excluded.items[0], { messageId: "m-1", outcome: "fault", deliveryAttempt: 1, nested: '{"token [redacted]}' }, "a field that is not a name is dropped; a value that is not a scalar is a short scrubbed text");
+  assert.equal(out.excluded.items[1].terminalReason, null);
+  assert.equal(out.excluded.items[2].outcome.length, 120, "bounded");
+  assert.equal(out.excluded.say.length, 600, "bounded");
+  assert.equal(out.excluded.say.includes("abc.def.ghi"), false, out.excluded.say);
+  assert.equal("excluded" in resultView({ outcome: "CONTRADICTED", stopped: { step: 5, as: "failed", says: null } }).stopped, false, "nothing left out, nothing said");
+  assert.equal("excluded" in resultView({ outcome: "CONTRADICTED", stopped: { step: 5, as: "failed", excluded: { count: 0, items: [] } } }).stopped, false);
+});
+
 test("context lists the names a design's refs may take here, from the generation port -- and nothing when none is bound", () => {
   const t = started();
   assert.equal(contextFor(t.w).bindings, null, "no generation port, no list");

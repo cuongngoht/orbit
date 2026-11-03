@@ -134,9 +134,15 @@ step). Read what a design may hold before you write one: `protocol`'s `design` g
 (their enums -- `effectScope`, a trigger's `kind`, a control's `role` -- what is required and what only the
 engine stamps), the template each criterion op compiles to (`eq` is `value-eq`) and the rules over a design's
 controls that their fields do not show (`rules`); the obligation's own `template` names the controls its shape needs,
-the templates its slots take and the rules over those controls (`rules`). The engine compiles every
-verdict from the accepted criterion, validates the case with the real grammar, saves it as a DRAFT and
-freezes its version; a design that does not hold comes back
+the templates its slots take and the rules over those controls (`rules`). Its own `expected` slots are what rule it
+(`slots`): assert each on the step whose answer carries it. A slot of another criterion you assert is held too, and a
+run stops at the first assertion that fails -- one that fails on a step before the obligation's own ends the test
+there, its contradiction is the obligation's, and its own slots are never read. A shape that says more says it in the
+template (`says`; `protocol`'s `design.shapes` lists them): the delivery that comes back after an effect committed is
+not a second effect, so how it settles is the system's own word and never a second success to wait for -- observe it by
+its delivery attempt or by the message alone, and rule crash-after-effect-before-ack on its own slot, the effect count.
+The engine compiles every verdict from the accepted criterion, validates the case with the real grammar, saves it as
+a DRAFT and freezes its version; a design that does not hold comes back
 with its word (`GENERATION_FAILED`, `REQUIRES_REQUIREMENT`, `INVALID_TEST`) and the stage that
 stopped it. You never write a predicate, a value or a window, and a repair may change only how a
 step is written · `run-version` runs ONE frozen version (`version`: `<case>@<digest16>`, the id the generate
@@ -151,8 +157,13 @@ before the next decision: a blocked run names the binding or grant it lacked, a 
 that stopped it. A version refused or blocked at a step says where in `result.stopped` -- the step, its verb
 and capability, `refused` or `blocked`, and what that step's own stop said (`says`: `request.key … or
 request.match`, `request.action is one of …`, `answered 400 unknown-point`), scrubbed; a version that FAILED
-names the step it failed at (`failed`) and says nothing, since what it read is the product's. A refusal is the
-test's mistake, not the product's: repair the design to what `says` asks for and generate again -- never
+names the step it failed at (`failed`) and says nothing, since what it read is the product's. When that step's
+observation matched what it observes AND how it went (`match: { messageId, outcome }`), what it read of that very
+thing and its match left out is said beside it (`stopped.excluded`: the list, how many, the match's fields that left
+them out, the newest three by the fields the adapter declares, and a sentence) -- read it before you call the failure a
+defect: an answer of none, complete, is not "it never happened" when the thing was there and settled another way. A
+match on the message alone hides nothing. A refusal is the test's mistake, not the product's: repair the design to
+what `says` asks for and generate again -- never
 guess a request's shape, and never resend one it refused. A fault control's `point` is one its workload
 declares: `context` lists a workload's declared points beside its alias under `bindings` (`points`), and a
 design that names another is refused before a draft exists (`DECLARED_POINT`, naming them) -- take the point

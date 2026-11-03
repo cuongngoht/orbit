@@ -54,6 +54,24 @@ test("an obligation whose shape needs a fault control carries what a design must
   assert.deepEqual(ctx.frontier.find((o) => o.kind === "test-obligation")?.template.rules?.map((r) => r.rule), ["RESTORED_AFTER_FAULT"], "the frontier a host reads before it designs");
 });
 
+// What a real Claude Code QA row taught (0.4.0, ORBIT-QA-001 on Opus, three runs of three): its crash-after-effect test
+// waited for the redelivery to settle as a success and asserted another criterion's slot on it -- which failed on the
+// clean application, ended the test before the obligation's own slot (the effect count) was read, and contradicted the
+// obligation. What its own slots are to its verdict, and what the shape says about the delivery that comes back after
+// the effect, travel with the obligation.
+test("an obligation's template says what its own expected slots are to its verdict, and what its shape says a design must know", async () => {
+  const { OWN_SLOTS } = await import("../src/qa/generation/design.mjs");
+  const crash = world([], { shape: "crash-after-effect-before-ack", expected: ["FIX-1/E2"] }).template;
+  assert.deepEqual([crash.expected, crash.slots], [["FIX-1/E2"], OWN_SLOTS], "its own slots, listed, and what they are to its verdict");
+  assert.match(crash.slots, /a run stops at the first assertion that fails — one that fails on a step before them ends the test there: its contradiction is this obligation's, and its own slots are never read/);
+  assert.match(crash.says, /the delivery that comes back after the effect committed is not a second effect: how it settles is the system's own word, never a second success to wait for/);
+  assert.match(crash.says, /observe it by its delivery attempt or by the message alone, and rule this obligation on its own expected slots \(the effect count\)/);
+  assert.deepEqual([world().template.slots, world().template.says], [OWN_SLOTS, undefined], "every shape's template names its own slots; only a shape that says something more says it");
+  assert.equal(world([], { shape: "no-such-shape" }).template.slots, undefined, "a shape nobody declared says nothing");
+  const ctx = contextOf(worldOf({ shape: "crash-after-effect-before-ack" }));
+  assert.match(ctx.frontier.find((o) => o.kind === "test-obligation")?.template.says ?? "", /not a second effect/, "the frontier a host reads before it designs");
+});
+
 test("its latest execution's word settles it through that word's own row", () => {
   const status = (words) => world(words).status;
   assert.equal(status(["SATISFIED"]), "satisfied");

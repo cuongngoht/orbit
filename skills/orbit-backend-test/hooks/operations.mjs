@@ -153,22 +153,24 @@ async function decisions(asked, deps) {
   const schedule = asked.bound.scheduleRef ?? {};
   const page = (since) => called(asked, deps, { origin: originOf(schedule), auth: authOf(schedule, deps), method: "GET", path: `/orbit/scheduler/v1/decisions?since=${since}&limit=${LIMIT}${schedule.schedule ? `&schedule=${encodeURIComponent(schedule.schedule)}` : ""}` });
   const seen = await watched(asked, deps, (since) => page(since).then((b) => ({ items: b.decisions ?? [], through: b.through })), { occurrenceId: (d) => d.occurrenceId, decision: (d) => d.decision });
-  return seen.failure ? seen : { value: { decisions: seen.answered, through: seen.through, completeness: seen.completeness, gaps: seen.gaps } };
+  return seen.failure ? seen : { value: { decisions: seen.answered, through: seen.through, completeness: seen.completeness, gaps: seen.gaps, ...leftOutAs("decisions", seen) } };
 }
 
 async function attempts(asked, deps) {
   const workload = asked.bound.workloadRef ?? {};
   const page = (since) => called(asked, deps, { origin: originOf(workload), auth: authOf(workload, deps), method: "GET", path: `/orbit/workload/v1/attempts?since=${since}&limit=${LIMIT}${workload.workload ? `&workload=${encodeURIComponent(workload.workload)}` : ""}` });
   const seen = await watched(asked, deps, (since) => page(since).then((b) => ({ items: b.attempts ?? [], through: b.through })), { messageId: (a) => a.messageId, outcome: (a) => a.outcome, executionRef: (a) => a.executionRef });
-  return seen.failure ? seen : { value: { attempts: seen.answered, through: seen.through, completeness: seen.completeness, gaps: seen.gaps } };
+  return seen.failure ? seen : { value: { attempts: seen.answered, through: seen.through, completeness: seen.completeness, gaps: seen.gaps, ...leftOutAs("attempts", seen) } };
 }
 
 // Pages from `since` until the window closes or `count` matching items were read and the cursor
 // caught up. Complete only when the last page said there was nothing more to read. What it ANSWERS
 // is what the request asked about: the items its `match` names when it names one, every item read
-// otherwise -- so an outcome another message had is never this message's.
+// otherwise -- so an outcome another message had is never this message's. What its match read of
+// the very thing it asked about and left out -- another outcome of the same message -- is said
+// beside it (`excluded`), and never answered.
 async function watched(asked, deps, page, fields) {
-  const until = untilOf(asked.request, fields);
+  const until = untilOf(asked.request, fields, asked.subject);
   if (until.refused) return refusal(until.refused);
   const state = waiting(until, asked, deps);
   while (!finished(state, until, deps)) await paged(state, page, until, deps);
@@ -178,20 +180,39 @@ async function watched(asked, deps, page, fields) {
 // A wait begun: nothing read yet, and the window it may watch (../window.mjs).
 const waiting = (until, asked, deps) => ((window) => ({ items: [], through: until.since, caughtUp: false, matched: 0, endsAt: window.endsAt, window }))(windowOf(until.waitMs, remaining(asked, deps), deps.now()));
 
-// What the wait came to: the items it was asked about, and -- only when it caught up and its window was not cut
-// short of what it waited for -- complete.
+// What the wait came to: the items it was asked about, what its match left out of that thing, and -- only when it caught
+// up and its window was not cut short of what it waited for -- complete.
 function closed(state, until) {
   const gaps = [...(state.caughtUp ? [] : [`more than ${until.max} items were waiting — one answer holds at most that many; read on from through`]), ...cutGaps(state.window, state.matched >= until.count)];
-  return { ...state, answered: Object.keys(until.match).length ? state.items.filter((i) => matches(i, until)) : state.items, completeness: gaps.length ? "partial" : "complete", gaps };
+  return { ...state, answered: Object.keys(until.match).length ? state.items.filter((i) => matches(i, until)) : state.items, left: leftOutOf(state.items, until), completeness: gaps.length ? "partial" : "complete", gaps };
 }
 
-function untilOf(r, fields) {
+function untilOf(r, fields, subject) {
   const since = r.since ?? 0;
   if (!(Number.isInteger(since) && since >= 0)) return { refused: "request.since is the cursor a previous answer's through gave, a whole number" };
   if (r.count !== undefined && !(Number.isInteger(r.count) && r.count >= 1)) return { refused: "request.count is a whole number, 1 or more" };
   const match = Object.fromEntries(Object.entries(r.match ?? {}).filter(([k, v]) => fields[k] && typeof v === "string"));
-  return { since, count: r.count ?? Infinity, waitMs: Number.isInteger(r.waitMs) && r.waitMs >= 0 ? r.waitMs : 0, match, fields, max: Math.min(Number.isInteger(r.maxItems) && r.maxItems > 0 ? r.maxItems : DEFAULT_MAX, DEFAULT_MAX) };
+  return { since, count: r.count ?? Infinity, waitMs: Number.isInteger(r.waitMs) && r.waitMs >= 0 ? r.waitMs : 0, match, fields, subject: (Array.isArray(subject) ? subject : []).filter((k) => Object.hasOwn(match, k)), max: Math.min(Number.isInteger(r.maxItems) && r.maxItems > 0 ? r.maxItems : DEFAULT_MAX, DEFAULT_MAX) };
 }
+
+// ── what a match left out of what it asked about ───────────────────────────
+//
+// The engine names which fields of the match say WHAT is observed (`subject`: the message, the occurrence, by the
+// meanings the adapter declares -- src/adapters/dispatch.mjs); the rest of the match says how it went. An item every
+// subject field agrees with and the rest of the match does not is that very thing, left out: how many, and the newest
+// few, raw -- the engine holds them to the item fields this adapter declares. A match that names no subject, or nothing
+// else, leaves nothing of it out.
+const LEFT_ITEMS = 3;
+
+function leftOutOf(items, until) {
+  const left = until.subject.length ? items.filter((i) => sameSubject(i, until) && !matches(i, until)) : [];
+  return left.length ? { count: left.length, items: left.slice(-LEFT_ITEMS) } : null;
+}
+
+const sameSubject = (item, until) => until.subject.every((k) => until.fields[k](item) === until.match[k]);
+
+// Said under the list it was read from, so the engine knows which declared item fields hold it.
+const leftOutAs = (field, seen) => (seen.left ? { excluded: { [field]: seen.left } } : {});
 
 const finished = (state, until, deps) => state.items.length >= until.max || (state.caughtUp && (state.matched >= until.count || deps.now() >= state.endsAt));
 

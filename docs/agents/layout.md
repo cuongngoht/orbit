@@ -71,7 +71,8 @@ src/adapters/  (0.1.0, ADR 0035) the ORBIT ADAPTER PROTOCOL, product-free: famil
                (`orbit.adapter/v1`, validated before anything registers) · registry.mjs ·
                core.mjs (registers `orbit.<family>.<op>`) · select.mjs (ordered rows over discovered
                transports and DECLARED semantics; the last answers a boundary-scoped gap, never a fallback) ·
-               dispatch.mjs (binding → select → helper → allow-list → stamp) · matrix.mjs (support COMPUTED
+               dispatch.mjs (binding → select → helper → allow-list → stamp; beside the answer, what a match on
+               the thing it observes and on how it went left out of that thing, `excluded`) · matrix.mjs (support COMPUTED
                from declarations and conformance-kit receipts, never written)
 src/browser/ database/ identity/ frontend/ process/ memory/   PORTS with one real adapter each; fakes in test/fakes/
                process/ is the one door to a child process for generated code: argv only, never

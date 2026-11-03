@@ -277,3 +277,16 @@ test("the protocol says a fault's workload is brought back, in the words of the 
   assert.deepEqual(d.rules.map((r) => r.rule), CONTROL_RULES.filter((r) => r.says).map((r) => r.id), "every rule that says something, and only those");
   assert.match(d.definitions.control.fields.point.doc, /where the workload it is armed in stops .*RESTORED_AFTER_FAULT/, "the field a host fills says where the rest is");
 });
+
+// What a real Claude Code QA row taught (0.4.0, ORBIT-QA-001 on Opus, three runs of three): a crash-after-effect test
+// waited for the redelivery to settle as a success, asserted another criterion's slot on it, and ended before its own
+// slot was read -- a false alarm on the clean application. The protocol says what an obligation's own slots are to its
+// verdict, and what each shape that has something to say says, from the shapes' own rows.
+test("the protocol says what an obligation's own slots are to its verdict, and what a shape says a design for it must know", async () => {
+  const { OWN_SLOTS } = await import("../src/qa/generation/design.mjs");
+  const { OBLIGATION_SHAPES } = await import("../src/qa/obligations/shapes.mjs");
+  const d = protocolOf().design;
+  assert.equal(d.slots, OWN_SLOTS);
+  assert.deepEqual(d.shapes, OBLIGATION_SHAPES.filter((s) => s.says).map((s) => ({ shape: s.id, says: s.says })), "printed from the rows, and only the rows that say something");
+  assert.match(d.shapes.find((s) => s.shape === "crash-after-effect-before-ack")?.says ?? "", /^the delivery that comes back after the effect committed is not a second effect/);
+});

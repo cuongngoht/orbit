@@ -217,6 +217,22 @@ test("10a. a spent budget blocks with the evidence kept; resumed with a higher l
   assert.ok(existsSync(ctx.room.at("endings")), "the block it ended with is kept as history");
 });
 
+test("10d. a model-carried row a person allowed one more run is run again -- the row waiting for it never blocks its own retry", async (t) => {
+  let runs = 0;
+  const autonomous = () => (++runs === 1 ? { outcome: "FAIL", summary: "FAIL — a planted defect was not found", host: { version: "2.1.314", model: "claude-test", costUsd: 1 } } : { outcome: "PASS", summary: "PASS — the investigation found what was planted", host: { version: "2.1.314", model: "claude-test", costUsd: 1 } });
+  const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, autonomous } });
+  const { result } = await shipped(w, { limits: { autonomousRetries: 1 } });
+  assert.deepEqual([result.outcome, result.exit], ["SHIPPABLE", 0]);
+  assert.equal(runs, 2, "the missed row ran once more, and its PASS is what holds");
+});
+
+test("10e. with no retry allowed a model-carried miss still ends the ship NOT SHIPPABLE", async (t) => {
+  const autonomous = () => ({ outcome: "FAIL", summary: "FAIL — a planted defect was not found", host: { version: "2.1.314", model: "claude-test", costUsd: 1 } });
+  const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, autonomous } });
+  const { result } = await shipped(w, {});
+  assert.deepEqual([result.outcome, result.exit], ["NOT_SHIPPABLE", 2]);
+});
+
 test("10b. two repairs of one case that fail with one signature are NO_PROGRESS, never a third try", async (t) => {
   const w = shipWorldOf(t, { policy: undefined, play: { repair: () => ({ outcome: "REPAIR_REJECTED", summary: "REPAIR_REJECTED: hidden checks still fail", signature: "bbbbbbbbbbbb", host: { version: "2.1.314", model: "claude-test", costUsd: 1 } }) } });
   const { result } = await shipped(w, { limits: { repairAttempts: 3 } });

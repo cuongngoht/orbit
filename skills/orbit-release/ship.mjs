@@ -11,8 +11,9 @@
 //                                                   FULL_RETEST → SHIPPABLE, from this checkout's HEAD
 //        [--no-repair]                              verify only: a failure stands, nothing is repaired
 //        [--resume=<shp-…>]                         carry an interrupted, blocked or held ship on, from its journal
-//        [--usd=<n> --minutes=<n> --cycles=<n> --attempts=<n>]
-//                                                   limits, within the release policy's bounds (raised on --resume)
+//        [--usd=<n> --minutes=<n> --cycles=<n> --attempts=<n> --retries=<n>]
+//                                                   limits, within the release policy's bounds (raised on --resume);
+//                                                   --retries: more runs a missed model-carried row may have
 //        [--model=<id> --credential=<NAME> --ca-file=<pem> --no-fail-fast --json --bump=changed|added|fixed|release]
 //   node skills/orbit-release/ship.mjs --status[=<shp-…>]
 //                                                   where this checkout's newest ship (or the one named) stands
@@ -98,7 +99,7 @@ function refused(says) {
   throw new Refused(says);
 }
 
-const optionsAsked = () => ({ model: flag(args, "model") ?? null, credential: credentialAsked(flag(args, "credential")), caFile: flag(args, "ca-file") ?? env.ORBIT_BENCHMARK_CA_FILE ?? null, limits: { minutes: int(flag(args, "minutes")), usd: num(flag(args, "usd")), cycles: int(flag(args, "cycles")), repairAttempts: int(flag(args, "attempts")) }, repair: !has(args, "no-repair"), failFast: !has(args, "no-fail-fast"), version: versionOf() });
+const optionsAsked = () => ({ model: flag(args, "model") ?? null, credential: credentialAsked(flag(args, "credential")), caFile: flag(args, "ca-file") ?? env.ORBIT_BENCHMARK_CA_FILE ?? null, limits: { minutes: int(flag(args, "minutes")), usd: num(flag(args, "usd")), cycles: int(flag(args, "cycles")), repairAttempts: int(flag(args, "attempts")), autonomousRetries: int(flag(args, "retries")) }, repair: !has(args, "no-repair"), failFast: !has(args, "no-fail-fast"), version: versionOf() });
 
 // ---- the autonomous ship -------------------------------------------------------------------------------------------------
 

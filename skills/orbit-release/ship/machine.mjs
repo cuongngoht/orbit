@@ -56,6 +56,10 @@ const rowsOf = (ctx, f, xs) => ((by) => new Map(ctx.rows.filter((r) => by.has(r.
 // nothing else of the cycle failed, unless a person asked for every row (--no-fail-fast).
 const pendingRow = (ctx, f) => ctx.rows.find((r) => (!f.rows.has(r.id) || f.rows.get(r.id).diag?.then === "RETRY") && (!r.autonomous || !f.anyFailed || !ctx.options.failFast)) ?? null;
 
+// A row failed for good: not held, and not about to run again. A row its diagnosis runs again (a retry a person allowed)
+// is still open -- counted as failed, it would keep a model-carried row from its own retry.
+const failedForGood = (r) => r.v.state !== "HELD" && r.diag?.then !== "RETRY";
+
 const diags = (f, then) => [...f.rows.values()].filter((r) => r.diag?.then === then);
 
 // ---- repairs ------------------------------------------------------------------------------------------------------------
@@ -93,7 +97,7 @@ function repairOf(acts, f, r) {
 function cycleFacts(ctx, acts, f) {
   const cycle = f.open ? lastDoc(inAttempt(settledOf(acts, "release.build"), f.open.id)) : null;
   const rows = cycle ? rowsOf(ctx, f, inAttempt(settledOf(acts, "release.row"), f.open.id)) : new Map();
-  const g = { ...f, cycle: cycle?.settled ?? null, host: cycle ? lastDoc(inAttempt(settledOf(acts, "release.host"), f.open.id))?.settled ?? null : null, gates: cycle ? lastDoc(inAttempt(settledOf(acts, "release.gates"), f.open.id))?.settled ?? null : null, rows, anyFailed: [...rows.values()].some((r) => r.v.state !== "HELD") };
+  const g = { ...f, cycle: cycle?.settled ?? null, host: cycle ? lastDoc(inAttempt(settledOf(acts, "release.host"), f.open.id))?.settled ?? null : null, gates: cycle ? lastDoc(inAttempt(settledOf(acts, "release.gates"), f.open.id))?.settled ?? null : null, rows, anyFailed: [...rows.values()].some(failedForGood) };
   return { ...g, pending: pendingRow(ctx, g), repairs: diags(g, "REPAIR").map((r) => repairOf(acts, g, r)), firstDigest: [...rows.values()].map((r) => r.v.digest).find(Boolean) ?? null };
 }
 

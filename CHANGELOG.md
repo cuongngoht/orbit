@@ -29,6 +29,12 @@ each case's baseline is PASS, and a controlled-fault variant plants the old defe
   frozen system graph by the binder's own rows (`bindableFrom`), with the owning component and an endpoint's base path.
   A real Claude Code QA row spent its design repairs on aliases it guessed from keys (`reminder-worker` for the
   workload `worker`) and never reached the shapes the planted defect was in.
+- **A missed model-carried row may run again, when a person allows it.** `ship.mjs --retries=<n>` sets the policy's
+  `autonomousRetries` (0 by default, at most 3). A row waiting for that retry no longer counts as failed for good, which
+  had kept every model-carried row -- itself included -- from running again.
+- **A sandbox supervisor that loses the race for its owner file yields.** Two supervisors started together, or a
+  teardown removing the room under one still starting, crashed the run that started it (EEXIST, ENOENT).
+- **The release suite gate waits 45 minutes**, and says a suite it stopped was late, not that it printed no count.
 - **`goal resume` and `goal status` read every task again.** Their task summaries handed a raw journal to the task view,
   which threw, so every task read as `unknown` and a goal whose analysis had completed never moved on.
 - **One failure is one signature (ORBIT-ORC-006).** A failure's signature masks a UUID whole, wherever it appears, so two

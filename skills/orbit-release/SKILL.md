@@ -93,8 +93,10 @@ and ask `ship.mjs --evidence` -- it says PUBLISHABLE only when your HEAD's tree 
 the protected paths and the policy are as they were, every required row has held evidence whose run's room still agrees,
 and the artifact is the one (`--artifact=<zip>` checks an archive you built again, by its content). Tag only then.
 
-**Limits and exits.** `--usd`, `--minutes`, `--cycles` and `--attempts` (repair attempts per case) narrow the policy's
-limits, within its bounds; on `--resume` a person may raise them. A spent limit BLOCKS the ship with its evidence kept.
+**Limits and exits.** `--usd`, `--minutes`, `--cycles`, `--attempts` (repair attempts per case) and `--retries` (more
+runs a model-carried row that missed may have, 0 by default, at most 3) narrow or set the policy's limits, within its
+bounds; on `--resume` a person may raise them. A retried row holds only on a PASS of its own run -- the miss is kept in
+the ship's journal beside it. A spent limit BLOCKS the ship with its evidence kept.
 Exit 0 SHIPPABLE · 2 NOT SHIPPABLE or NO PROGRESS (or refused) · 3 BLOCKED (Docker, the host, its credential, a limit --
 fix it and `--resume`) · 4 a person paused or cancelled it. The ship never falls back to another host, a scripted host or
 a model mock.

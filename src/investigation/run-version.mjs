@@ -14,10 +14,12 @@
 // was dispatched, and writes the lifecycle. A version is judged only by the predicates its design
 // compiled (`evaluation`), and a worker's claimed PASS is never taken over the host's check.
 import { randomBytes } from "node:crypto";
+import { EXCLUDED } from "../adapters/dispatch.mjs";
 import { Refused } from "../errors.mjs";
 import { canonicalJson, sha } from "../hash.mjs";
 import { workerFindings } from "../run/envelope.mjs";
 import { WORKER_API } from "../run/worker.mjs";
+import { maskValues, scrub } from "../scrub.mjs";
 import { current, withJournal } from "./act.mjs";
 import { nextId } from "./model.mjs";
 import { eventIdOf } from "./store.mjs";
@@ -127,13 +129,94 @@ export function lateEvaluated(w, start, back, request) {
   return evaluatedRun(w, dispatchOf(w), v, start.attempt, start.execution, request, back, { grants: request.grants ?? [] });
 }
 
-// The host's own check, then the word RESULT gives it -- recorded as the run and its evaluation.
+// The host's own check, then the word RESULT gives it -- recorded as the run and its evaluation -- and, of a run the host
+// believed, where it stopped short and what it said there (`stopped`), with what that step's own match left out.
 function evaluatedRun(w, d, v, attempt, execution, request, r, p) {
   const findings = hostFindings(d, v, execution, request, r, p);
   const result = resultOf({ status: r.envelope?.status ?? "BLOCKED", failure: r.envelope?.result?.failure ?? {}, envelope: findings, authority: v.obligation?.authority ?? "accepted", positiveFailed: positiveFailed(v, r), faultMissed: faultMissed(v, r) });
   recorded(w, d, { v, attempt, execution }, r, result, findings);
-  return { outcome: result.outcome, rule: result.rule, why: result.why, execution, findings };
+  return { outcome: result.outcome, rule: result.rule, why: result.why, execution, findings, stopped: findings.length ? null : withExcluded(stoppedOf(v, r, request), v, r, request) };
 }
+
+// ── where a run that stopped short stopped ─────────────────────────────────
+//
+// A run refused or blocked at a step says WHY in its own run log -- the record the host held the worker's claim to --
+// and that is what a host repairs a design from: a gate's or a capability's own words ("request.key … or
+// request.match", "answered 400 unknown-point"), never a bare TEST_WRONG. So the run says the step it stopped at, that
+// step's verb and capability as the FROZEN case has them (never a field the worker added), and what its typed stop said.
+// By allow-list: a refusal or a block only -- never a failure's message, which quotes what the product answered --
+// scrubbed by shape and by the value of every secret this dispatch sealed, and bounded. A FAILED step is named and says
+// nothing (`failed`, says null): which step a test failed at -- its witness, or the read after it -- is what a repair
+// needs, and how it failed stays in the run's evidence. A run its runner stopped before any step (a case refused, a
+// precondition blocked: cli/run-case.mjs stopOf) said it in its envelope, and nowhere else.
+const STOPS = ["refused", "blocked"];
+const UNSTARTED = ["REFUSED", "BLOCKED"];
+const STOP_TEXT = 600;
+
+function stoppedOf(v, r, request) {
+  const last = (r.records ?? []).filter((x) => x.kind === "step").at(-1);
+  const as = STOPS.find((k) => last?.ok === false && typeof last[k] === "string");
+  if (as) return stopOf(v.frozen.case.steps?.[last.i - 1], last.i, as, last[as], request);
+  if (last?.ok === false && typeof last.error === "string") return failedAt(v.frozen.case.steps?.[last.i - 1], last.i);
+  return r.envelope.result ? null : unstartedOf(r.envelope, request);
+}
+
+const failedAt = (step, i) => ({ step: i, do: step?.do ?? null, capability: step?.capability ?? null, as: "failed", says: null });
+
+const unstartedOf = (e, request) => (UNSTARTED.includes(e.status) && typeof e.why === "string" ? stopOf(null, null, e.status.toLowerCase(), e.why, request) : null);
+
+const stopOf = (step, i, as, text, request) => ({ step: i, do: step?.do ?? null, capability: step?.capability ?? null, as, says: scrub(maskValues(text, sealedValues(request))).slice(0, STOP_TEXT) });
+
+// The secrets this dispatch sealed, by value: a live request holds them; a kept one (a late envelope's) only their names.
+const sealedValues = (request) => (request?.secrets && !Array.isArray(request.secrets) ? Object.values(request.secrets).filter((s) => typeof s === "string") : []);
+
+// ── what the stopped step's own match left out ─────────────────────────────
+//
+// An observation whose match names WHAT it observes and how it went (`match: { messageId, outcome }`) is answered only
+// what matched all of it -- and an answer of none, complete, reads exactly like "it never happened". What it read of that
+// very thing and left out (src/adapters/dispatch.mjs EXCLUDED: the list, how many, the newest few by the item fields its
+// adapter declares) is said beside where the run stopped, with the fields of the step's own match that left them out and
+// one sentence of what that means: so a host whose test failed sees the evidence its match hid -- a delivery of the
+// message that settled another way -- before it calls what failed a defect. Read off the stopped step's own record in
+// the run log, the very answer it ruled on, masked like a stop's words; never by a verdict (faultMissed reads what the
+// run observed without it).
+const EXCLUDED_ITEMS = 3;
+
+function withExcluded(stopped, v, r, request) {
+  const x = Number.isInteger(stopped?.step) ? answerOfStep(r.records ?? [], stopped.step)?.[EXCLUDED] : null;
+  return isObject(x) && Number.isInteger(x.count) && x.count > 0 ? { ...stopped, excluded: masked(excludedSaid(x, matchOf(v.frozen.case.steps?.[stopped.step - 1])), sealedValues(request)) } : stopped;
+}
+
+const isObject = (x) => typeof x === "object" && x !== null && !Array.isArray(x);
+
+// The answer a step's own call gave, as the run log kept it: the last capability record after the step before it.
+function answerOfStep(records, i) {
+  const at = records.findIndex((x) => x.kind === "step" && x.i === i);
+  const from = records.findLastIndex((x, n) => n < at && x.kind === "step");
+  const own = at < 0 ? [] : records.slice(from + 1, at).filter((x) => x.kind === "capability" && isObject(x.result));
+  return own.at(-1)?.result ?? null;
+}
+
+const matchOf = (step) => (isObject(step?.input?.request?.match) ? step.input.request.match : {});
+
+// The list, how many, the match's own fields beyond what names the thing (`by`, what left them out), the newest few --
+// and the sentence a host reads first.
+function excludedSaid(x, match) {
+  const subject = (Array.isArray(x.subject) ? x.subject : []).filter((k) => typeof k === "string");
+  const by = Object.keys(match).filter((k) => typeof match[k] === "string" && !subject.includes(k));
+  const items = (Array.isArray(x.items) ? x.items : []).filter(isObject).slice(-EXCLUDED_ITEMS);
+  return { field: String(x.field ?? ""), count: x.count, by, items, say: excludedSentence({ ...x, subject }, by, match, items) };
+}
+
+const plural = (n, one, many) => (n === 1 ? one : many);
+
+const excludedSentence = (x, by, match, items) => `${x.count} of the ${x.field} this step read ${plural(x.count, "has", "have")} the ${x.subject.join(" and ") || "thing"} its match names and ${plural(x.count, "was", "were")} left out by the rest of it${by.length ? ` — ${by.map((k) => `${k} ${valuesAt(items, k)} where the match asks ${match[k]}`).join("; ")}` : ""}: what this step ruled on never saw ${plural(x.count, "it", "them")}`;
+
+const valuesAt = (items, k) => [...new Set(items.map((i) => (i[k] === undefined || i[k] === null ? "none" : typeof i[k] === "object" ? JSON.stringify(i[k]) : String(i[k]))))].join(", ");
+
+// Every string in it masked by the secrets this dispatch sealed and scrubbed by shape -- the doors a stop's words pass;
+// bounded where a host reads it (src/investigation/loop.mjs resultView).
+const masked = (value, sealed) => (typeof value === "string" ? scrub(maskValues(value, sealed)) : Array.isArray(value) ? value.map((x) => masked(x, sealed)) : isObject(value) ? Object.fromEntries(Object.entries(value).map(([k, x]) => [k, masked(x, sealed)])) : value);
 
 // Whether the step that failed is a POSITIVE control a negative one rests on: a step that acts as the identity a
 // positive control names, in a design that also names a negative control -- a design with no negative is about its
@@ -148,12 +231,15 @@ function positiveFailed(v, r) {
 
 // Whether a FAULT control's point never showed in what the run observed: the open workload protocol says a delivery
 // an injected fault ended carries the terminal reason `fault:<point>`, so a run whose observations hold none for the
-// point its design declared never had the fault it was about.
+// point its design declared never had the fault it was about. What a step's match left out (EXCLUDED) is no
+// observation of the step: it is said to a host, and never read here.
 function faultMissed(v, r) {
   const points = (v.design.controls ?? []).filter((c) => c.role === "fault" && c.point).map((c) => `fault:${c.point}`);
-  const seen = (r.records ?? []).filter((x) => x.kind === "capability").flatMap((x) => stringsIn(x.result));
+  const seen = (r.records ?? []).filter((x) => x.kind === "capability").flatMap((x) => stringsIn(observedOf(x.result)));
   return points.length > 0 && !points.every((p) => seen.includes(p));
 }
+
+const observedOf = (result) => (isObject(result) ? Object.fromEntries(Object.entries(result).filter(([k]) => k !== EXCLUDED)) : result);
 
 const stringsIn = (v) => (typeof v === "string" ? [v] : v && typeof v === "object" ? Object.values(v).flatMap(stringsIn) : []);
 

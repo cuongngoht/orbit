@@ -58,6 +58,21 @@ function hooked(roles, field) {
   };
 }
 
+// A workload also says which FAULT POINTS its test hooks may inject, as its node declares them (`faultPoints`: the names
+// on one line, the flat value a graph fact keeps) -- the points a fault control may name (src/qa/generation/controls.mjs).
+function workload(nodes, alias) {
+  const declared = hooked(["workload"], "workload")(nodes, alias);
+  const points = declared ? pointsOf(named(nodes, ["workload"], alias)) : null;
+  return points ? { ...declared, points } : declared;
+}
+
+// Only names that are plain identifiers, each once, at most MAX_POINTS of them. A node that declares none is null:
+// unknown, never "it has no point".
+const POINT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const MAX_POINTS = 16;
+
+const pointsOf = (node) => ((names) => (names.length ? names : null))(typeof node?.attributes?.faultPoints === "string" ? [...new Set(node.attributes.faultPoints.split(/[\s,]+/).filter((p) => POINT.test(p)))].slice(0, MAX_POINTS) : []);
+
 // A clock is a component's own -- the one whose hooks inject it -- named by the component.
 function clock(nodes, alias) {
   const component = nodes.find((n) => n.role === "component" && aliasOf(n.name) === alias && Number(n.attributes?.hooksPort));
@@ -80,4 +95,25 @@ function identity(nodes, alias, design, tenancy) {
 // The claim value of the first tenant the contract says this identity may act in.
 const tenantOf = (tenancy, alias) => ((logical) => (logical ? tenancy?.tenants?.[logical] ?? null : null))(tenancy?.identities?.[alias]?.[0]);
 
-const DECLARE = { channel, queue: channel, state: held(["data-resource"]), endpoint, schedule: hooked(["schedule"], "schedule"), workload: hooked(["workload"], "workload"), clock, observer, fixture, identity };
+const DECLARE = { channel, queue: channel, state: held(["data-resource"]), endpoint, schedule: hooked(["schedule"], "schedule"), workload, clock, observer, fixture, identity };
+
+// Which graph role each ref kind a host may NAME is read from: the same rows the binder resolves through, so what is
+// listed binds. An observer and a fixture are the design's own words, never the graph's, and are not listed.
+const NAMED = { endpoint: ["interface"], channel: ["channel"], state: ["data-resource"], schedule: ["schedule"], workload: ["workload"], identity: ["principal"], clock: ["component"] };
+
+// in: { graph, tenancy } -> { [kind]: [{ alias, of, path?, points?, address?, says }] } -- every alias a ref of that kind
+// may name here, the way the binder would find it, a workload's declared fault points and a state's address, so a host
+// proposing a design reads the names and never guesses them.
+export function bindableFrom({ graph, tenancy }) {
+  const nodes = graph?.nodes ?? [];
+  return Object.fromEntries(Object.entries(NAMED).map(([kind, roles]) => [kind, namedOf(nodes, kind, roles, tenancy)]));
+}
+
+const namedOf = (nodes, kind, roles, tenancy) => nodes.filter((n) => roles.includes(n.role)).map((n) => [n, DECLARE[kind](nodes, aliasOf(n.name), {}, tenancy)]).filter(([, d]) => d).map(([n, d]) => listed(n, d, kind)).slice(0, 24);
+
+// A STATE is read below the interface by what its node declares it is named as there -- a table and its key column, say:
+// the names the binder seals into its binding (`address`, `namesOf` above) -- so a read names its key and never a guessed
+// column. Only a state's: what any other kind declares stays the binder's.
+const ADDRESSED = new Set(["state"]);
+
+const listed = (n, d, kind) => ({ alias: aliasOf(n.name), of: ownerOf(n), ...(d.path ? { path: d.path } : {}), ...(d.points ? { points: d.points } : {}), ...(ADDRESSED.has(kind) && Object.keys(d.address ?? {}).length ? { address: d.address } : {}), says: String(n.statement ?? "").slice(0, 160) });

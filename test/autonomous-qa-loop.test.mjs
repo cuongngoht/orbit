@@ -248,3 +248,45 @@ test("the protocol is printed from its tables", () => {
   assert.ok(p.forbidden.includes("verdict") && p.forbidden.includes("approved"));
   assert.ok(p.stops.some((s) => s.id === "completed-scope" && s.lifecycle === "completed"));
 });
+
+// What the real Claude Code QA rows taught (0.4.0): every design they proposed was first refused for what the contract
+// says and nothing showed them -- an effectScope that is not fixture, a trigger kind, `eq` for value-eq, a step on a
+// state control. The protocol carries what a design may hold, from the very definitions the validator holds it to.
+test("the protocol says what a design may carry, from the definitions a proposal is held to, and the template each criterion op takes", async () => {
+  const { CONTROL_ROLES, DEFINITIONS } = await import("../src/qa/obligations/contract.mjs");
+  const { TRIGGER_KINDS } = await import("../src/qa/backend/bindings.mjs");
+  const d = protocolOf().design;
+  assert.deepEqual(Object.keys(d.definitions), ["design", "assertion", "control", "trigger", "observation-plan", "page"]);
+  assert.deepEqual([d.definitions.design.fields.effectScope.enum, d.definitions.design.stamped, d.definitions.design.required], [["fixture"], DEFINITIONS.design.stamped, ["obligation"]]);
+  assert.deepEqual([d.definitions.trigger.fields.kind.enum, d.definitions.control.fields.role.enum], [TRIGGER_KINDS, CONTROL_ROLES]);
+  assert.match(d.definitions.control.fields.step.doc, /WITNESSES/, "which control names a step, in the contract's own words");
+  assert.deepEqual(d.templates.filter((t) => ["eq", "excludes", "absent-within"].includes(t.op)).map((t) => [t.op, t.template, t.window]), [["eq", "value-eq", false], ["excludes", "value-excludes", false], ["absent-within", "absent-within", true]]);
+});
+
+// What a real Claude Code QA row taught (0.4.0, ORBIT-QA-001 on Opus): a crash test that waited for the redelivery with
+// nothing bringing the faulted worker back raised a false alarm on the clean application -- which keeps a workload that
+// stopped at a fault point down until a test starts it -- and nothing a host read said so. The protocol now says it, in
+// the words of the rule that refuses such a design.
+test("the protocol says a fault's workload is brought back, in the words of the rule that holds it, and the control's point says where to read it", async () => {
+  const { CONTROL_RULES } = await import("../src/qa/generation/controls.mjs");
+  const d = protocolOf().design;
+  const held = d.rules.find((r) => r.rule === "RESTORED_AFTER_FAULT");
+  assert.deepEqual([held?.role, held?.says], ["fault", CONTROL_RULES.find((r) => r.id === "RESTORED_AFTER_FAULT").says], "printed from the rule's own row");
+  assert.match(held.says, /orbit\.workload\.control on that workload with request\.action start or restart/, "what to add");
+  assert.match(held.says, /after the step that witnesses the fault, before any later step asks that workload for more or reads what it did after the fault, and before the test ends/, "and where");
+  assert.deepEqual(d.rules.map((r) => r.rule), CONTROL_RULES.filter((r) => r.says).map((r) => r.id), "every rule that says something, and only those");
+  assert.match(d.definitions.control.fields.point.doc, /where the workload it is armed in stops .*RESTORED_AFTER_FAULT/, "the field a host fills says where the rest is");
+});
+
+// What a real Claude Code QA row taught (0.4.0, ORBIT-QA-001 on Opus, three runs of three): a crash-after-effect test
+// waited for the redelivery to settle as a success, asserted another criterion's slot on it, and ended before its own
+// slot was read -- a false alarm on the clean application. The protocol says what an obligation's own slots are to its
+// verdict, and what each shape that has something to say says, from the shapes' own rows.
+test("the protocol says what an obligation's own slots are to its verdict, and what a shape says a design for it must know", async () => {
+  const { OWN_SLOTS } = await import("../src/qa/generation/design.mjs");
+  const { OBLIGATION_SHAPES } = await import("../src/qa/obligations/shapes.mjs");
+  const d = protocolOf().design;
+  assert.equal(d.slots, OWN_SLOTS);
+  assert.deepEqual(d.shapes, OBLIGATION_SHAPES.filter((s) => s.says).map((s) => ({ shape: s.id, says: s.says })), "printed from the rows, and only the rows that say something");
+  assert.match(d.shapes.find((s) => s.shape === "crash-after-effect-before-ack")?.says ?? "", /^the delivery that comes back after the effect committed is not a second effect/);
+});

@@ -41,7 +41,7 @@ const ruleFindings = (p, c) => p.success.flatMap((r) => ((cr) => (!cr ? [{ id: "
 const STEP_WEAKENINGS = [
   { id: "REQUIRED_DROPPED", fails: (p, c) => p.required && (!c || !c.required), says: (p) => `${p.id} is required by the version it succeeds and is optional or gone in the candidate` },
   { id: "EVIDENCE_WEAKENED", fails: (p, c) => Boolean(c) && p.evidence === "owner-record" && c.evidence !== "owner-record", says: (p) => `${p.id} must be proven by an owner's record, and the candidate settles for a report` },
-  { id: "APPROVAL_DROPPED", fails: (p, c) => Boolean(c) && p.approval === "owner" && c.approval !== "owner", says: (p) => `${p.id} waits for a person, and the candidate stops asking` },
+  { id: "APPROVAL_DROPPED", fails: (p, c) => p.approval === "owner" && (!c || c.approval !== "owner"), says: (p) => `${p.id} waits for a person, and the candidate stops asking` },
 ];
 
 const retyped = (p, c) => Object.entries(p.outputs ?? {}).filter(([name, type]) => (c.outputs ?? {})[name] !== undefined && c.outputs[name] !== type).map(([name]) => ({ id: "OUTPUT_RETYPED", says: `${p.id}: the output ${name} a rule is held against changed its type` }));

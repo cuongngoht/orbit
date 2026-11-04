@@ -56,6 +56,17 @@ test("what does not map is refused with its reason, never guessed", () => {
   assert.match(one({ criterionRef: "API-AC-2/E1", template: "value-eq", step: 2 }, { outputsOf: () => ({ a: "response.status", b: "response.status" }) }).refused, /2 fields that mean response.status/);
 });
 
+// What a real Claude Code QA row taught (0.4.0): an assertion on a step whose answer declares nothing -- past the
+// skeleton's end, not a call -- was refused as "its declared outputs are none", which read as if orbit.http.read could
+// not be ruled on at all, and the host gave the obligation up. It is said as what it is: the wrong step.
+test("an assertion on a step whose answer declares nothing names that step, never 'outputs are none'", () => {
+  for (const over of [{}, { outputsOf: () => ({}) }, { outputsOf: () => null }]) {
+    const said = one({ criterionRef: "API-AC-2/E1", template: "value-eq", step: 9 }, over).refused;
+    assert.match(said, /^step 9 has no answer a verdict can read here — check that the assertion names the step it rules on, counted from 1/);
+    assert.doesNotMatch(said, /outputs are none/);
+  }
+});
+
 const design = { assertions: [{ criterionRef: "API-AC-2/E1", template: "value-eq", step: 2 }, { criterionRef: "API-AC-2/E3", template: "value-excludes", step: 2 }, { criterionRef: "FIX-ASYNC-1/E1", template: "absent-within", step: 3 }, { criterionRef: "DRAFT-9/E1", template: "count-eq", step: 4 }] };
 
 test("a design compiles each step's predicate whole, renders and digests it, and keeps the mapping verdict of every assertion", () => {

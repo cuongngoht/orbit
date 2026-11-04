@@ -149,6 +149,15 @@ test("doctor --host: the runner image's Claude Code answers one question through
   assert.equal(docRead(roomOf(w.storeRoot, r.evidence.split(/[\\/]/).at(-1)), "manifest.json").kind, "probe");
 });
 
+test("doctor --host hands the probe's containers a Docker client bound to the probe's own scratch room", async (t) => {
+  const w = worldOf(t, FILES);
+  const rooms = [];
+  const d = labelled(dockerDouble(probing([])), "2.1.314");
+  const r = (await doctorHost(w, { ...d, deps: (room) => (rooms.push(room ?? null), d.deps(room)) })).host;
+  assert.equal(r.code, "OK");
+  assert.ok(rooms.some((room) => room?.dir?.startsWith(w.storeRoot)), "the environment file each container is handed needs a room to be written in -- with none, the real client throws and the ship reads CLI_UNAVAILABLE");
+});
+
 test("doctor --host says why when no real host can answer, and starts nothing it cannot use", async (t) => {
   const w = worldOf(t, FILES);
   const ask = async (double, env) => (await doctorHost(w, double, env)).host;

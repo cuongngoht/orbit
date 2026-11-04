@@ -10,7 +10,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { familyCapabilities } from "../src/adapters/core.mjs";
-import { fingerprintOf } from "../src/adapters/dispatch.mjs";
+import { EXCLUDED, fingerprintOf } from "../src/adapters/dispatch.mjs";
 import { OPERATIONS } from "../src/adapters/families.mjs";
 import { createAdapterRegistry } from "../src/adapters/registry.mjs";
 import { SELECT, opKeyOf, selectAdapter } from "../src/adapters/select.mjs";
@@ -22,7 +22,7 @@ import { Blocked } from "../src/errors.mjs";
 import { extensionContextV1 } from "../src/extensions/context-v1.mjs";
 import { loadExtensions } from "../src/extensions/index.mjs";
 import { qcToolPaths } from "../src/extensions/store.mjs";
-import { mutatingEffect } from "../src/topology/vocab.mjs";
+import { meaningEntries, mutatingEffect } from "../src/topology/vocab.mjs";
 import { fakeContext } from "./fakes/context.mjs";
 import { fakeProcess } from "./fakes/process.mjs";
 import { fakeTools } from "./fakes/tools.mjs";
@@ -153,6 +153,40 @@ test("the answer is held to what the adapter declared -- inside a list too -- an
   assert.equal(seen.depth, undefined, "a depth nobody declared is never a meaning");
   assert.equal(awaited.launched[0].id, "example.beta", "the observer is awaited through the adapter that armed it");
   assert.equal(awaited.launched[0].op, "observe.await");
+});
+
+// What a real Claude Code QA row taught (0.4.0, ORBIT-QA-001 on Opus): an observation that matched the message AND an
+// outcome answered none, complete, and hid the redelivery that settled another way -- a false alarm. Which fields of a
+// match name WHAT is observed is the engine's to say, from the meanings the adapter declares (an identity meaning:
+// src/topology/vocab.mjs), never the helper's guess or a product's word; what the helper left out of that thing comes back
+// held to the declared item fields of the list it was read from, under a field no output declares.
+const WORKER = JSON.parse(readFileSync(join(ROOT, "skills", "orbit-backend-test", "adapters.json"), "utf8")).adapters.find((a) => a.id === "worker.hooks");
+const observe = (match) => ({ do: "call", capability: "orbit.worker.observe", input: { workloadRef: "worker", request: { match, count: 1 } } });
+const LEFT = { attempts: { count: 4, items: [{ seq: 1, messageId: "m-1", outcome: "retry" }, { seq: 2, messageId: "m-1", outcome: "fault", terminalReason: "fault:p" }, { seq: 3, messageId: "m-1", deliveryAttempt: 3, outcome: "duplicate", brokerSaid: "anything" }, { seq: 4, messageId: "m-1", outcome: "dead-lettered" }] } };
+
+function observing(match, value = { attempts: [], through: 4, completeness: "complete", gaps: [], excluded: LEFT }) {
+  const w = world({ answer: said(value), adapters: registry(WORKER), bound: { ...BOUND, workload: { alias: "worker", transport: "orbit-workload-v1", origin: "http://hooks:8081", workload: "worker" } } });
+  const out = invokeCapability(w.ctx, w.run, observe(match));
+  return { out, sent: JSON.parse(w.process.calls[0].opts.input) };
+}
+
+test("a match that names what it observes and how it went: the helper is told which fields name the thing, and what it left out of it comes back held to the declared item fields -- never as an answer", () => {
+  const { out, sent } = observing({ messageId: "m-1", outcome: "processed" });
+  assert.deepEqual(sent.subject, ["messageId"], "messageId carries message.id, an identity meaning; outcome carries settlement.outcome, how it went");
+  assert.deepEqual(out.attempts, [], "the answer a verdict reads is what matched all of it, as before");
+  assert.deepEqual(Object.keys(out), ["attempts", "through", "completeness", "gaps", EXCLUDED, "adapter"]);
+  assert.deepEqual(out[EXCLUDED], { field: "attempts", subject: ["messageId"], count: 4, items: [{ messageId: "m-1", outcome: "fault", terminalReason: "fault:p" }, { messageId: "m-1", deliveryAttempt: 3, outcome: "duplicate" }, { messageId: "m-1", outcome: "dead-lettered" }] }, "the newest three, each held to the item fields worker.hooks declares");
+  assert.equal(meaningEntries(WORKER.operations.observe.outputs).some(([field]) => field.startsWith(EXCLUDED)), false, "no output declares it, so no verdict is ever compiled from it");
+});
+
+test("nothing is said of what a match left out unless it names the thing AND something else -- and what a helper says unasked is dropped", () => {
+  const cases = [{ messageId: "m-1" }, { outcome: "processed" }, { messageId: "m-1", executionRef: "exe-1" }, { messageId: "m-1", outcome: 2 }, undefined];
+  for (const match of cases) {
+    const { out, sent } = observing(match);
+    assert.deepEqual([sent.subject, out[EXCLUDED]], [undefined, undefined], JSON.stringify(match ?? null));
+  }
+  const elsewhere = observing({ messageId: "m-1", outcome: "processed" }, { attempts: [], completeness: "complete", excluded: { messages: LEFT.attempts, attempts: { count: "4", items: [] } } }).out;
+  assert.equal(elsewhere[EXCLUDED], undefined, "a list the operation never declared, or a count that is not one, is dropped");
 });
 
 test("a gap is BLOCKED before anything starts, and names the capability and the transport", () => {

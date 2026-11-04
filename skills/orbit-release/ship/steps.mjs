@@ -100,11 +100,14 @@ export async function preflightFacts(ctx) {
   return { harness: existsSync(join(ctx.root, "benchmark", "run.mjs")), node: Number(process.versions.node.split(".")[0]), protectedDirty: dirty.filter((p) => matchesAny(ctx.policy.protected, p)), listed: listed.json ?? null, listErr: listed.err, drift: listed.json ? catalogDrift(ctx.policy, listed.json) : [], doctor: doctor.json, env: ctx.env, policy: ctx.policy };
 }
 
-// The catalog a held preflight read, as the rows every cycle runs and each case's own declaration (its limits, its
-// baseline, what it calls repairable, its scope) -- read from the case's file, never imported.
+// Each case's own declaration (its limits, its baseline, what it calls repairable, its scope), by its id -- read from
+// the case's file in the checkout the ship runs from, never imported.
+export const casesIn = (root, listed) => new Map((listed?.suites ?? []).flatMap((s) => s.cases.map((c) => [c.id, jsonAtFile(join(root, "benchmark", "suites", s.id, c.id.toLowerCase(), "case.json"))])));
+
+// The catalog a held preflight read, as the rows every cycle runs and each case's own declaration.
 function catalogued(ctx, facts) {
   ctx.rows = rowsOf(ctx.policy, facts.listed);
-  ctx.cases = new Map((facts.listed?.suites ?? []).flatMap((s) => s.cases.map((c) => [c.id, jsonAtFile(join(ctx.root, "benchmark", "suites", s.id, c.id.toLowerCase(), "case.json"))])));
+  ctx.cases = casesIn(ctx.root, facts.listed);
   ctx.preflighted = true;
   return null;
 }

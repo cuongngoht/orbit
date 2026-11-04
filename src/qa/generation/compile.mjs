@@ -29,8 +29,13 @@ export function compiledAssertion(assertion, { expectations, outputsOf, shape, e
   const expectation = expectations.get(assertion.criterionRef);
   const refused = mappingProblem(assertion, expectation, (expected ?? [assertion.criterionRef]).includes(assertion.criterionRef) ? shape : null);
   if (refused) return { refused };
-  return treeFor(assertion, expectation, outputsOf(assertion.step) ?? {});
+  return answerless(assertion.step, outputsOf(assertion.step)) ?? treeFor(assertion, expectation, outputsOf(assertion.step) ?? {});
 }
+
+// A step whose answer declares no meaning at all -- one past the skeleton's end, one that is not a call or a page step, a
+// call nothing here registers, or one whose resource no adapter here answers -- is said as that, with what to check:
+// "its declared outputs are none" read as if the capability could not be ruled on at all.
+const answerless = (step, outputs) => (meaningEntries(outputs ?? {}).length ? null : { refused: `step ${step} has no answer a verdict can read here — check that the assertion names the step it rules on, counted from 1 as a run counts them, and that the step is a call (or a page's report or api witness) whose capability this project registers and whose resource an adapter here answers` });
 
 function mappingProblem(a, e, shape) {
   const op = e ? EXPECT_OP.get(e.op) : null;

@@ -49,6 +49,11 @@ export const RELATION_ROLES = [
 // field. `layer` is the DSL layer a call observing it proves (src/dsl/registry.mjs LAYERS):
 // the interface it was read at, or the data below it. A meaning with no layer is ABOUT the
 // observation (its completeness, its cursor) and proves nothing by itself.
+//
+// `identity` marks a meaning that names WHICH thing an observation is about -- the same across its
+// deliveries, attempts and decisions -- never how that thing went. A request's match that names one
+// of them and something else besides asks how THAT thing went, and what it read of that thing and
+// its match left out is said beside its answer (src/adapters/dispatch.mjs EXCLUDED).
 export const MEANINGS = [
   { id: "response.status", layer: "api", doc: "the status a synchronous interface answered" },
   { id: "ui.text", layer: "ui", doc: "the text an element of a screen shows a person, read off the page" },
@@ -57,17 +62,17 @@ export const MEANINGS = [
   { id: "response.body", layer: "api", doc: "the projected body it answered with" },
   { id: "schema.valid", layer: "api", doc: "whether a body conforms to a pinned schema" },
   { id: "principal.claims", layer: "api", doc: "the claims of the identity an interface saw" },
-  { id: "message.id", layer: "api", doc: "the logical identity of a message, stable across deliveries" },
-  { id: "message.key", layer: "api", doc: "the routing or partition key a message carried" },
-  { id: "message.correlation", layer: "api", doc: "the correlation and causation a message carried, as { correlationId, causationId } -- a criterion about one names it (message.correlation.correlationId)" },
+  { id: "message.id", layer: "api", identity: true, doc: "the logical identity of a message, stable across deliveries" },
+  { id: "message.key", layer: "api", identity: true, doc: "the routing or partition key a message carried" },
+  { id: "message.correlation", layer: "api", identity: true, doc: "the correlation and causation a message carried, as { correlationId, causationId } -- a criterion about one names it (message.correlation.correlationId)" },
   { id: "message.payload", layer: "api", doc: "the projected payload of a message" },
   { id: "delivery.attempt", layer: "api", doc: "which delivery of a message this was" },
   { id: "settlement.outcome", layer: "api", doc: "how a publication or a delivery was settled: confirmed, rejected, acknowledged, dead-lettered" },
   { id: "terminal.reason", layer: "api", doc: "why a delivery ended where it did" },
-  { id: "occurrence.id", layer: "api", doc: "the planned period a schedule decided, with its revision" },
+  { id: "occurrence.id", layer: "api", identity: true, doc: "the planned period a schedule decided, with its revision" },
   { id: "occurrence.scheduledFor", layer: "api", doc: "the business time an occurrence was planned for" },
   { id: "occurrence.decision", layer: "api", doc: "what a schedule decided at an evaluation: due, not due, missed, skipped" },
-  { id: "execution.ref", layer: "api", doc: "a job, workflow or consumer execution a workload reported" },
+  { id: "execution.ref", layer: "api", identity: true, doc: "a job, workflow or consumer execution a workload reported" },
   { id: "execution.status", layer: "api", doc: "how that execution stands" },
   { id: "execution.attempt", layer: "api", doc: "which attempt of that execution" },
   { id: "effect.count", layer: "sql", countOf: "effect.value", doc: "how many durable effects a read-back found -- or, where only the effects are answered, how many of them there are" },
@@ -160,6 +165,9 @@ export const relationRoleOf = (id) => RELATION_ROLES.find((r) => r.id === id) ??
 // A meaning may be named with a sub-path -- `response.body.id` is the `id` field of the
 // response body -- so the meaning is its longest known prefix.
 export const meaningAt = (path) => MEANINGS.filter((m) => path === m.id || String(path).startsWith(`${m.id}.`)).sort((a, b) => b.id.length - a.id.length)[0] ?? null;
+
+// Whether a meaning -- or a sub-path of one -- names which thing an observation is about (`identity`).
+export const identityMeaning = (path) => meaningAt(String(path ?? ""))?.identity === true;
 
 // What an OUTPUTS map declares, flat: each field and the meaning it carries, or -- for a list --
 // each item's fields, as `field[].item` (`{ messages: { each: { id: "message.id" } } }`). A

@@ -51,6 +51,8 @@ test("each gate fails on its own kind of trouble, and one failure does not hide 
 
   assert.deepEqual(failing({ "--test": "# tests 124\n# fail 3" }).map((r) => r.detail), ["3 of 124 failing"]);
   assert.deepEqual(failing({ "--test": "ran some tests" }).map((r) => r.detail), ["node --test printed no count"]);
+  const late = report((args) => ({ ...runner()(args), ...(asked(args) === "--test" ? { out: "ok 1 - a test\n", timedOut: 45 } : {}) }), GATES).filter((r) => !r.ok);
+  assert.deepEqual(late.map((r) => r.detail), ["node --test did not finish within the gate's 45 minutes"], "a suite the deadline stopped is said to be late, never to have printed no count");
   assert.match(failing({ "cli/check-five-lines.mjs": "warn x: 6 statements\n1 finding(s)" })[0].detail, /the lint reported findings/);
   assert.match(failing({ "cli/query.mjs": "dangling from: nowhere\n3 screens, 2 hard finding(s)" })[0].detail, /2 hard finding\(s\) — run query check/);
   assert.match(failing({ "cli/plan-check.mjs": "1 plan(s), 4 error(s), 0 advisory" })[0].detail, /4 error\(s\) — run node cli\/plan-check.mjs/);

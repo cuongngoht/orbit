@@ -86,7 +86,7 @@ function targetWhy(d, lw) {
 }
 
 // Every id the journal holds, so a decision can cite only what exists.
-const RECORDED = ["actions", "observations", "checks", "security", "history", "reproductions", "runs", "inputs", "questions", "answers"];
+const RECORDED = ["actions", "observations", "checks", "security", "history", "reproductions", "runs", "inputs", "questions", "answers", "designs", "versions"];
 
 function unresolved(d, lw) {
   const ids = new Set(RECORDED.flatMap((k) => (lw.model[k] ?? []).map((r) => r.id)));

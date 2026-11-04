@@ -21,6 +21,11 @@
 // read back first. That is the whole reason the decision is recorded before
 // the step, rather than after it.
 import { Blocked, Refused } from "../errors.mjs";
+import { controlRulesFor } from "../qa/generation/controls.mjs";
+import { OWN_SLOTS } from "../qa/generation/design.mjs";
+import { proposableOf } from "../qa/obligations/contract.mjs";
+import { OBLIGATION_SHAPES } from "../qa/obligations/shapes.mjs";
+import { EXPECT_OPS } from "../qa/vocab.mjs";
 import { scrub } from "../scrub.mjs";
 import { current, withJournal } from "./act.mjs";
 import { judgeDecision, keptAction } from "./decision.mjs";
@@ -61,10 +66,21 @@ function readersOf(w) {
 // ------------------------------------------------------------------ context
 export function contextOf(w, history = []) {
   const lw = loopWorld(w);
-  return { investigation: w.id, position: lw.model.position, lifecycle: lw.model.lifecycle, inputMode: lw.inputMode, inputs: lw.model.inputs, unsettled: unsettled(lw.model).map(unsettledView), stop: stopOf(lw), budget: budgetOf(lw), obligations: countsOf(lw.obligations), frontier: lw.frontier.slice(0, 12).map(frontierView), findings: lw.model.findings.map(findingView), recall: { history, questions: lw.model.questions.filter((q) => !lw.model.answers.some((a) => a.question === q.id)) }, protocol: { schemaVersion: DECISION_SCHEMA, actions: ACTION_KINDS } };
+  return { investigation: w.id, position: lw.model.position, lifecycle: lw.model.lifecycle, inputMode: lw.inputMode, inputs: lw.model.inputs, unsettled: unsettled(lw.model).map(unsettledView), stop: stopOf(lw), budget: budgetOf(lw), obligations: countsOf(lw.obligations), frontier: lw.frontier.slice(0, 12).map(frontierView), findings: lw.model.findings.map(findingView), recall: { history, questions: lw.model.questions.filter((q) => !lw.model.answers.some((a) => a.question === q.id)) }, versions: lw.model.versions.slice(-12).map(versionView(lw.model)), bindings: bindingsOf(w), protocol: { schemaVersion: DECISION_SCHEMA, actions: ACTION_KINDS } };
 }
 
 const frontierView = (o) => ({ id: o.id, kind: o.kind, subject: o.subject, layer: o.layer, title: o.title, why: o.why, oracle: o.oracle, can: o.can, template: o.template });
+// The names a design's refs may take here -- an endpoint, a channel, a state, a schedule, a workload, an identity, a
+// clock -- as the sandbox's binder resolves them (src/runtime/sandbox/declarations.mjs bindableFrom). None when no
+// generation port is bound; a graph that cannot be read lists nothing rather than failing the context.
+const bindingsOf = (w) => {
+  try { return w.generation?.bindable?.() ?? null; }
+  catch { return null; }
+};
+
+// A frozen version as a host names it: `version` is the id a run-version step sends (<case>@<digest16>), and the
+// obligation it was designed for -- so a host never has to read the journal to run what it generated.
+const versionView = (model) => (v) => ({ id: v.id, version: v.version, obligation: model.designs.findLast((d) => d.design === v.design)?.obligation ?? null, design: v.design, case: v.case });
 const findingView = (f) => ({ id: f.id, key: f.key, family: f.family, outcome: f.outcome, confidence: f.confidence, say: f.say, pattern: f.pattern ?? "consistent", reproduced: f.reproduced });
 const unsettledView = (d) => ({ id: d.id, target: d.target, action: d.action?.kind, mutates: Boolean(d.mutates), say: d.mutates ? "it may have written: read back what it did, and never send it again" : "safe to try again, with a new decisionId" });
 
@@ -85,8 +101,36 @@ export function step(w, raw) {
   if (taken.replay) return { ...responseOf(w, taken.replay, taken.before), replayed: true };
   const outcome = attempted(w, taken.decision);
   refreshed(w);
-  return responseOf(w, withJournal(w, () => settle(w, taken, outcome)), taken.before);
+  return { ...responseOf(w, withJournal(w, () => settle(w, taken, outcome)), taken.before), result: resultView(outcome.result) };
 }
+
+// What the action itself came to, as its owner said it -- the word a generate or a run-version gives (DRAFT_CREATED,
+// GENERATION_FAILED, ENVIRONMENT_BLOCKED, SATISFIED ...), the stage or rule behind it, and why; and of a run refused or
+// blocked at a step, where it stopped and what that step's own stop said, of one that failed only where (`stopped`) -- by
+// allow-list, so a host that sent a step learns what it did without reading the journal. Never the observed values.
+export const resultView = (r) => (r && typeof r === "object" ? { outcome: r.outcome ?? null, stage: r.stage ?? null, rule: r.rule ?? null, why: r.why ? scrub(String(r.why)).slice(0, 600) : null, version: typeof r.version === "string" ? r.version : null, execution: r.execution ?? null, findings: (r.findings ?? []).slice(0, 8).map(findingLine), stopped: stoppedView(r.stopped) } : null);
+
+const findingLine = (f) => scrub(typeof f === "string" ? f : [f.rule ?? f.id ?? f.code, f.say ?? f.why ?? f.message].filter(Boolean).join(": ")).slice(0, 240);
+
+// Where a run stopped short (src/investigation/run-version.mjs stoppedOf): the step, its verb and capability, refused,
+// blocked or failed, and what a refusal or a block said there -- these five and nothing else, its words scrubbed and
+// bounded at this door again; a failure says nothing. Beside them, only when the step's own match left something out of
+// what it observed, `excluded`.
+const stoppedView = (s) => (s && typeof s === "object" ? { step: Number.isInteger(s.step) ? s.step : null, do: typeof s.do === "string" ? s.do : null, capability: typeof s.capability === "string" ? s.capability : null, as: typeof s.as === "string" ? s.as : null, says: typeof s.says === "string" ? scrub(s.says).slice(0, 600) : null, ...excludedView(s.excluded) } : null);
+
+// What the stopped step's own match read of the thing it observes and left out (run-version.mjs withExcluded): the list it
+// was read from, how many, the match's fields that left them out, the newest three -- each field a name, each value a
+// scalar or a short text -- and the sentence that says what it means; every word scrubbed and bounded at this door.
+const EXCLUDED_ITEMS = 3;
+const NAME = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
+
+const excludedView = (x) => (x && typeof x === "object" && Number.isInteger(x.count) && x.count > 0 ? { excluded: { field: named(x.field) ? x.field : null, count: x.count, by: (Array.isArray(x.by) ? x.by : []).filter(named).slice(0, 8), items: (Array.isArray(x.items) ? x.items : []).slice(-EXCLUDED_ITEMS).map(itemView), say: typeof x.say === "string" ? scrub(x.say).slice(0, 600) : null } } : {});
+
+const named = (k) => typeof k === "string" && NAME.test(k);
+
+const itemView = (i) => Object.fromEntries(Object.entries(i && typeof i === "object" ? i : {}).filter(([k]) => named(k)).slice(0, 8).map(([k, v]) => [k, scalarOf(v)]));
+
+const scalarOf = (v) => (v === null || typeof v === "number" || typeof v === "boolean" ? v : scrub(typeof v === "string" ? v : JSON.stringify(v) ?? "").slice(0, 120));
 
 // Judged against the journal as it is UNDER the lock, and written down before
 // the step runs: the record is what makes a crash mid-step visible afterwards.
@@ -152,7 +196,7 @@ const moved = (before, after) => after.filter((o) => before.find((b) => b.id ===
 
 function responseOf(w, settled, before) {
   const lw = loopWorld(w);
-  return { decision: settled.decision, state: settled.state, why: settled.why, refs: settled.refs ?? [], progress: settled.progress, position: lw.model.position, changed: moved(before ?? [], lw.obligations).map((o) => ({ id: o.id, kind: o.kind, subject: o.subject, layer: o.layer, status: o.status, why: o.why })), findings: lw.model.findings.map(findingView), budget: budgetOf(lw), next: lw.frontier.slice(0, 3).map(frontierView), stop: stopOf(lw) };
+  return { decision: settled.decision, state: settled.state, why: settled.why, refs: settled.refs ?? [], progress: settled.progress, position: lw.model.position, frozen: lw.model.versions.filter((v) => (settled.refs ?? []).includes(v.id)).map(versionView(lw.model)), changed: moved(before ?? [], lw.obligations).map((o) => ({ id: o.id, kind: o.kind, subject: o.subject, layer: o.layer, status: o.status, why: o.why })), findings: lw.model.findings.map(findingView), budget: budgetOf(lw), next: lw.frontier.slice(0, 3).map(frontierView), stop: stopOf(lw) };
 }
 
 // ------------------------------------------------------- finish · resume · answer
@@ -239,5 +283,15 @@ function checkpointed(w, receipts, memory) {
 }
 
 // ----------------------------------------------------------------- protocol
-// The protocol as the tables say it, so no playbook carries a copy of it.
-export const protocolOf = () => ({ schemaVersion: DECISION_SCHEMA, fields: DECISION_FIELDS, forbidden: DECISION_FORBIDDEN, textLimit: TEXT_LIMIT, actions: ACTION_KINDS.map((kind) => ({ kind, fields: ACTIONS[kind].fields, required: ACTIONS[kind].required, modes: ACTIONS[kind].modes })), obligations: OBLIGATION_KINDS, states: OBLIGATION_STATES, stops: STOP_REASONS, lifecycle: LIFECYCLE });
+// The protocol as the tables say it, so no playbook carries a copy of it -- a generate step's DESIGN included: what each
+// part of one may carry (src/qa/obligations/contract.mjs DEFINITIONS), the assertion template each criterion op
+// compiles to (src/qa/vocab.mjs EXPECT_OPS), what a rule over its controls says a design must do that their contract
+// does not show (src/qa/generation/controls.mjs `says`), what an obligation's own slots are to its verdict (`slots`,
+// src/qa/generation/design.mjs OWN_SLOTS) and what a shape says a design for it must know (`shapes`,
+// src/qa/obligations/shapes.mjs `says`), so a host reads them before it designs instead of learning them by refusal --
+// or by a false alarm.
+export const protocolOf = () => ({ schemaVersion: DECISION_SCHEMA, fields: DECISION_FIELDS, forbidden: DECISION_FORBIDDEN, textLimit: TEXT_LIMIT, actions: ACTION_KINDS.map((kind) => ({ kind, fields: ACTIONS[kind].fields, required: ACTIONS[kind].required, modes: ACTIONS[kind].modes })), obligations: OBLIGATION_KINDS, states: OBLIGATION_STATES, stops: STOP_REASONS, lifecycle: LIFECYCLE, design: designProtocol() });
+
+const DESIGN_PARTS = ["design", "assertion", "control", "trigger", "observation-plan", "page"];
+
+const designProtocol = () => ({ definitions: proposableOf(DESIGN_PARTS), templates: EXPECT_OPS.map((o) => ({ op: o.name, template: o.template, window: o.window === true, doc: o.doc })), rules: controlRulesFor(), slots: OWN_SLOTS, shapes: OBLIGATION_SHAPES.filter((s) => s.says).map((s) => ({ shape: s.id, says: s.says })) });

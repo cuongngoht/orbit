@@ -6,7 +6,7 @@
 // confirm, an observation for its deadline. So the asynchronous part runs in a separate
 // process the engine starts, asks ONCE and waits for, bounded:
 //
-//   request  one JSON document on stdin  {v, op, request, bound, limits, deadlineMs}
+//   request  one JSON document on stdin  {v, op, request, bound, limits, deadlineMs, subject?}
 //   answer   exactly one JSON line       {v, ok: true, value}
 //                                        {v, ok: false, class, message, gap?, operationKey?}
 //
@@ -16,7 +16,10 @@
 // binding gate resolved from logical refs travel in `bound`; a secret travels only in the
 // child's environment -- never in the request, an argument, the log or the answer. The timeout
 // is the narrowest of the capability's own, the adapter's, the policy's and what is left of the
-// run, and when nothing is left nothing is started.
+// run, and when nothing is left nothing is started. `subject` is an adapter facade's alone
+// (src/adapters/dispatch.mjs): the fields of the request's `match` that name WHAT it observes, by
+// the meanings the adapter declares -- so a helper whose match also names something else can say,
+// in its answer's `excluded`, what it read of that very thing and left out.
 import { Blocked, Refused } from "../errors.mjs";
 import { scrub } from "../scrub.mjs";
 import { CAPABILITY_ID } from "./contract-v1.mjs";
@@ -73,7 +76,7 @@ export const helperFacade = (ctx, run, cap, invocation = {}) => ({ run: (op, req
 function asked(ctx, run, cap, inv, op, request) {
   const launch = launchOf(ctx, cap, op);
   const timeoutMs = boundedMs(ctx, run, cap, inv);
-  const sent = JSON.stringify({ v: HELPER_API, op, request, bound: inv.bound ?? {}, limits: inv.limits ?? {}, deadlineMs: helperDeadlineMs(timeoutMs) });
+  const sent = JSON.stringify({ v: HELPER_API, op, request, bound: inv.bound ?? {}, limits: inv.limits ?? {}, deadlineMs: helperDeadlineMs(timeoutMs), ...(inv.subject?.length ? { subject: inv.subject } : {}) });
   const out = ctx.process.run(launch.file, launch.args ?? [], { input: sent, timeoutMs, maxBuffer: inv.limits?.answerBytes ?? DEFAULT_ANSWER_BYTES, env: { ...(launch.env ?? {}), ...(inv.env ?? {}) }, ...(launch.cwd ? { cwd: launch.cwd } : {}) });
   return answerOf(cap, op, out);
 }

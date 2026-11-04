@@ -83,8 +83,8 @@ export const CONTROL_FIELDS = {
   role: { enum: CONTROL_ROLES, doc: "positive (the allowed case works), negative (the refused case is refused), state (nothing else changed), duplicate (a second attempt on purpose), fault (a declared fault point)." },
   identityRef: alias("The approved identity it runs as."),
   resourceRef: alias("The fixture resource it acts on."),
-  point: text("For a fault control: the fault point the project declared. A run whose own observations never show it happened (a terminal reason fault:<point>) proved nothing about the fault."),
-  step: { type: "integer", minimum: 1, doc: "The skeleton step that WITNESSES this control happened: for a fault, an observation that shows the delivery it ended. Its verdict is compiled from the control, and it may wait within its own bound -- what it cannot see makes the run INCONCLUSIVE, never a contradiction." },
+  point: text("For a fault control: the fault point the project declared, where the workload it is armed in stops -- and nothing says that workload comes back by itself, so the design brings it back (RESTORED_AFTER_FAULT). A run whose own observations never show it happened (a terminal reason fault:<point>) proved nothing about the fault."),
+  step: { type: "integer", minimum: 1, doc: "Only a fault control names one: the skeleton step that WITNESSES the fault happened, an observation that shows the delivery it ended. Its verdict is compiled from the control, and it may wait within its own bound -- what it cannot see makes the run INCONCLUSIVE, never a contradiction." },
   why: text("Why this control is the one worth running."),
 };
 
@@ -105,7 +105,7 @@ export const DESIGN_FIELDS = {
   id: idOf("tds", "The design's id, stamped."),
   obligation: text("The obligation it serves."),
   digest: digest("The digest of the design."),
-  skeleton: { type: "object", doc: "The steps the host proposes, with no expect, js or wait text: the engine compiles those from templates." },
+  skeleton: { type: "object", doc: "The steps the host proposes, with no expect, js or wait text: the engine compiles those from templates. Every call, sql and report step is ruled on: one that acts (a trigger, a publication, a control) by what its own operation's answer shows when it was accepted, where the operation declares that; any other by an assertion mapped to one of its slots, or as a fault control's witness -- one nothing rules on is refused." },
   assertions: list("assertion", "Each assertion slot mapped to an accepted criterion slot and an approved template."),
   controls: list("control", "The controls the obligation's shape asks for."),
   fixtureRefs: texts("The fixture resources it needs, by alias."),
@@ -197,3 +197,8 @@ export const DEFINITIONS = {
 };
 
 export const SIDECAR_KINDS = Object.keys(DEFINITIONS);
+
+// What a host may PROPOSE of these kinds, as their definitions say it: each one's fields -- type, enum, pattern and doc --
+// which it must name, and which only the engine stamps. Handed to a host before it designs (src/investigation/loop.mjs
+// protocolOf), so no playbook keeps a copy that drifts from what the validator holds a proposal to.
+export const proposableOf = (kinds) => Object.fromEntries(kinds.filter((k) => DEFINITIONS[k]?.proposable !== false).map((k) => [k, { required: DEFINITIONS[k].required, stamped: DEFINITIONS[k].stamped, fields: DEFINITIONS[k].table }]));

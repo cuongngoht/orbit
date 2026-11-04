@@ -85,6 +85,17 @@ test("a late envelope is judged now by the host's own check, against the request
   assert.equal(reconciledRuns(forged.w)[0].outcome, "EXECUTION_ERROR", "an envelope that answers another dispatch is never taken");
 });
 
+test("a late envelope refused at a step says where it stopped and what that step's refusal said, as a live one does", () => {
+  const t = died();
+  past(t);
+  const said = "orbit.scheduler.trigger was asked for something it cannot accept:\n  orbit.scheduler.trigger input: unknown key \"occurrence\" — it accepts scheduleRef, occurrenceRef, fixtureRef, request";
+  const digest = t.sent().request.case.digest;
+  t.seen.back = { envelope: { v: WORKER_API, runId: t.sent().request.runId, nonce: t.sent().request.nonce, caseDigest: digest, status: "REFUSED", result: { status: "REFUSED", case_digest: digest, proved: {}, verdicts: 0, done: 0, failure: { kind: "refused" } }, evidence: null, files: [] }, records: [{ kind: "run", case_digest: digest }, { kind: "step", i: 1, ok: false, refused: said }], listed: new Map(), worker: "gone" };
+  const [r] = reconciledRuns(t.w);
+  assert.deepEqual([r.rule, r.outcome, r.cause, r.settled], ["LATE", "INVALID_TEST", "TEST_WRONG", "dec-1"]);
+  assert.deepEqual(r.stopped, { step: 1, do: "call", capability: "orbit.scheduler.trigger", as: "refused", says: said });
+});
+
 test("a worker that never ran proved and spent nothing: its attempt is an execution error, and the next attempt may run", () => {
   const t = died();
   past(t);

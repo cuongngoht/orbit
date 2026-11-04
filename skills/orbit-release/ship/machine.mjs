@@ -9,7 +9,7 @@
 //   the catalog. Its rows run in the policy's order -- verifications, controls, then the model-carried rows, which wait
 //   (fail fast) until nothing else failed. A cycle whose only failures are repairable repairs them, one case after
 //   another on the newest release commit, then closes; the next cycle is a full retest of that commit.
-import { diagnosed } from "./diagnose.mjs";
+import { diagnosed, INTERRUPTED_RUNS } from "./diagnose.mjs";
 import { docRead } from "./room.mjs";
 
 const HELD_LIFECYCLES = ["PAUSED", "CANCELLED"];
@@ -36,15 +36,24 @@ const currentOf = (ctx, acts) => ((d) => (d ? { commit: d.settled.commit, tree: 
 
 // ---- the rows of the open cycle --------------------------------------------------------------------------------------
 
-const usedRetries = (docs, v) => Math.max(0, docs.length - 1);
+// A run of a row a restart interrupted (ROW_VERDICT INTERRUPTED): never the model's miss, so it is counted apart from the
+// runs that came to something -- it spends only its own bound (INTERRUPTED_RUNS), never --retries or the flaky retry.
+const interruptedRun = (d) => d.settled.verdict.code === "INTERRUPTED";
+
+const earlier = (docs, which) => docs.slice(0, -1).filter(which).length;
+
+const leftOf = (limits, docs) => ((judged) => ({ flakyLeft: limits.flakyRetries - judged, autonomousLeft: limits.autonomousRetries - judged, interruptedLeft: INTERRUPTED_RUNS - earlier(docs, interruptedRun) }))(earlier(docs, (d) => !interruptedRun(d)));
+
+// Whether a person resumed the blocked ship after this run (`release.resume`, journaled by the resume itself): in the
+// journal's own order, never by a clock.
+const resumedAfter = (f, act) => f.acts.findIndex((x) => x.a.id === act) < f.acts.findLastIndex((x) => x.a.type === "release.resume" && x.d.settled);
 
 const caseData = (ctx, id) => ctx.cases.get(id) ?? null;
 
 // A row's latest verdict in this cycle, with what DIAGNOSE makes of it given the retries it has used.
 function rowState(ctx, f, row, docs) {
   const v = docs.at(-1).settled.verdict;
-  const used = usedRetries(docs, v);
-  const diag = v.state === "HELD" ? null : diagnosed({ row, v, case: caseData(ctx, row.case), repair: ctx.options.repair, flakyLeft: f.limits.flakyRetries - used, autonomousLeft: f.limits.autonomousRetries - used });
+  const diag = v.state === "HELD" ? null : diagnosed({ row, v, case: caseData(ctx, row.case), repair: ctx.options.repair, ...leftOf(f.limits, docs), resumed: resumedAfter(f, docs.at(-1).act) });
   return { row, v, diag, runs: docs.length };
 }
 
@@ -55,6 +64,10 @@ const rowsOf = (ctx, f, xs) => ((by) => new Map(ctx.rows.filter((r) => by.has(r.
 // The next row to run: one never run in this cycle, or one its diagnosis runs again -- a model-carried row only when
 // nothing else of the cycle failed, unless a person asked for every row (--no-fail-fast).
 const pendingRow = (ctx, f) => ctx.rows.find((r) => (!f.rows.has(r.id) || f.rows.get(r.id).diag?.then === "RETRY") && (!r.autonomous || !f.anyFailed || !ctx.options.failFast)) ?? null;
+
+// A row failed for good: not held, and not about to run again. A row its diagnosis runs again (a retry a person allowed)
+// is still open -- counted as failed, it would keep a model-carried row from its own retry.
+const failedForGood = (r) => r.v.state !== "HELD" && r.diag?.then !== "RETRY";
 
 const diags = (f, then) => [...f.rows.values()].filter((r) => r.diag?.then === then);
 
@@ -93,7 +106,7 @@ function repairOf(acts, f, r) {
 function cycleFacts(ctx, acts, f) {
   const cycle = f.open ? lastDoc(inAttempt(settledOf(acts, "release.build"), f.open.id)) : null;
   const rows = cycle ? rowsOf(ctx, f, inAttempt(settledOf(acts, "release.row"), f.open.id)) : new Map();
-  const g = { ...f, cycle: cycle?.settled ?? null, host: cycle ? lastDoc(inAttempt(settledOf(acts, "release.host"), f.open.id))?.settled ?? null : null, gates: cycle ? lastDoc(inAttempt(settledOf(acts, "release.gates"), f.open.id))?.settled ?? null : null, rows, anyFailed: [...rows.values()].some((r) => r.v.state !== "HELD") };
+  const g = { ...f, cycle: cycle?.settled ?? null, host: cycle ? lastDoc(inAttempt(settledOf(acts, "release.host"), f.open.id))?.settled ?? null : null, gates: cycle ? lastDoc(inAttempt(settledOf(acts, "release.gates"), f.open.id))?.settled ?? null : null, rows, anyFailed: [...rows.values()].some(failedForGood) };
   return { ...g, pending: pendingRow(ctx, g), repairs: diags(g, "REPAIR").map((r) => repairOf(acts, g, r)), firstDigest: [...rows.values()].map((r) => r.v.digest).find(Boolean) ?? null };
 }
 
@@ -103,6 +116,10 @@ export function factsOf(ctx, view) {
   const f = { view, acts, limits, spent: spentOf(ctx, acts), held: HELD_LIFECYCLES.includes(view.lifecycle), ended: view.terminal === true, running: acts.filter((x) => x.a.state === "running"), workspace: lastDoc(settledOf(acts, "release.workspace"))?.settled ?? null, current: currentOf(ctx, acts), attempts: (view.attempts ?? []).length, open: openOf(view) };
   return cycleFacts(ctx, acts, f);
 }
+
+// The newest cycle's rows and repairs, open or closed -- what `--status` says of a ship. The facts NEXT reads hold an
+// OPEN cycle alone, so a ship whose cycle closed (it shipped, it stopped, its repairs were integrated) would say none.
+export const lastCycleOf = (ctx, f) => ((last) => (last ? cycleFacts(ctx, f.acts, { ...f, open: last }) : { rows: new Map(), repairs: [] }))((f.view.attempts ?? []).at(-1) ?? null);
 
 // ---- NEXT --------------------------------------------------------------------------------------------------------------
 

@@ -29,10 +29,11 @@ host acceptance (Grok Build, Antigravity, Codex, Claude Code) and native backend
 → SHIPPABLE, an ordered table (`NEXT`, `skills/orbit-release/ship/machine.mjs`) over facts folded every time from ONE
 Orbit task (provider `release`, written only through `cli/task.mjs`) and the documents its actions leave in
 `<store>/release/<shp-…>/`. Nothing about where a ship stands is kept beside the journal, so `--resume` is safe: an
-action that never settled is read back -- a benchmark run that ended is settled from its room, one that did not is
-carried on with `run.mjs resume`, never sent again. Orbit Live shows a session's ship before the benchmark runs it starts;
-Mission Control shows it and each run (created with `--parent`) beside it; a person pauses or cancels it there, and the
-ship stops its child and removes the child's containers by their label.
+action that never settled is read back -- a benchmark run that ended is settled from its room, one that did not (or whose
+report, written last, does not agree with its ending) is carried on with `run.mjs resume`, never sent again. Orbit Live
+shows a session's ship before the benchmark runs it starts; Mission Control shows it and each run (created with
+`--parent`) beside it; a person pauses or cancels it there, and the ship stops its child and removes the child's
+containers by their label.
 
 ### The benchmark is a black box the ship drives as a command
 
@@ -59,7 +60,11 @@ backend acceptance -- are reported as optional rows that never block.
 
 `ROW_VERDICT` (`ship/rows.mjs`) reads the run's manifest, ending and report: the commit, tree and content digest it froze
 must be this cycle's, the harness and case digests the ones the ship first saw, no credential in its room, the outcome
-one the row requires, and -- for a model-carried row -- the real host. `CONTROL_RULES` hold each control, with one narrow
+one the row requires, and -- for a model-carried row -- the real host. A model-carried run whose report says a round was
+interrupted (closed as interrupted when the run was resumed after a restart, its leftovers read back) keeps no identity
+of its own: it is `INTERRUPTED`, never evidence, and -- not being the model's miss either -- the row runs again as a new
+run, outside `--retries`, at most `INTERRUPTED_RUNS` times a cycle before the ship blocks on the environment; one that
+says another host stays `WRONG_HOST`. `CONTROL_RULES` hold each control, with one narrow
 rule: a control on a known finding's `real` variant that presupposes the defect (a known-good mutation, a repair control)
 is SUPERSEDED, never held, once the case's real source passes the same verifier on the same digest; a FAIL-expected
 control (allow-all, reject-all, a planted fault) must still hold, and the case is reported as a person's to bring up to
@@ -99,7 +104,8 @@ Wall time, USD (REPORTED costs; an unreported one counts at the run's cap and on
 attempts per case come from the policy, within its bounds; a person raises them on `--resume`, journaled as their own
 action. A spent limit blocks the ship (resumable, the evidence kept); the same case failing with one signature, or one
 patch, twice is NO_PROGRESS; the environment, the host or its credential is BLOCKED; everything else that fails is NOT
-SHIPPABLE. The ship never falls back to another host, a scripted host or a model mock.
+SHIPPABLE. A resume of a blocked ship is journaled as its own action (`release.resume`), and a row blocked before it runs
+again as a new run -- once per resume. The ship never falls back to another host, a scripted host or a model mock.
 
 ### CI
 
@@ -113,7 +119,9 @@ the publish gate and uploads every room; it never tags, pushes or publishes.
   real Claude Code CLI in the benchmark's runner, and every repair verified independently and retested in full.
 - The two known findings block a release until they are repaired: the first autonomous ship repairs them through the
   benchmark, integrates them in its own workspace and hands a person a patch to apply; their stale controls are reported
-  for a person to bring the cases up to date.
+  for a person to bring the cases up to date. Until a person does, the repository's own case tests fail on the repaired
+  source (a repair may not touch them), so the ship that repaired a known finding ends NOT SHIPPABLE at its next gates;
+  0.4.0 took the verified repairs, rebaselined both cases in the same commit, and qualified on a second ship.
 - A full ship takes hours and a model budget; a GitHub-hosted runner cannot hold one, so `release.yml` takes a
   self-hosted label, and a workstation resumes a ship where it stopped. Each benchmark run keeps its own checkout: a full
   ship keeps a few gigabytes in the machine store.

@@ -70,7 +70,7 @@ function journal(planAuthority = "accepted", plan = PLAN) {
 
 function ports(ctx, j, over = {}) {
   const drafts = [];
-  const b = { ctx, model: j.model, planOf: () => over.plan ?? PLAN, graph: () => GRAPH, topology: () => over.topology ?? TOPOLOGY, services: SERVICES, drafts: { save: (c) => drafts.push(c) }, settings: { limits: { writes: 10, caseSeconds: 120 } }, mode: over.mode ?? "fixture-write", now: () => 1_700_000_000_000, sandbox: { id: "env-1", task: "tsk-1", tree: "tree-a", currentTree: over.currentTree ?? "tree-a", isolated: true }, policy: { revision: "rev-1", writes: over.writes ?? ["trigger", "create-resource", "consume"] }, place: { in: "/work/in", out: "/work/out" }, hooksToken: () => ("hooksToken" in over ? over.hooksToken : "hooks-token-0123456789"), runtime: over.runtime, project: { name: "invoice", packs: ["orbit-backend-test"], graphDir: over.graphDir ?? null }, keep: over.keep ?? (() => "kept") };
+  const b = { ctx, model: j.model, planOf: () => over.plan ?? PLAN, graph: () => over.graph ?? GRAPH, topology: () => over.topology ?? TOPOLOGY, services: SERVICES, drafts: { save: (c) => drafts.push(c) }, settings: { limits: { writes: 10, caseSeconds: 120 } }, mode: over.mode ?? "fixture-write", now: () => 1_700_000_000_000, sandbox: { id: "env-1", task: "tsk-1", tree: "tree-a", currentTree: over.currentTree ?? "tree-a", isolated: true }, policy: { revision: "rev-1", writes: over.writes ?? ["trigger", "create-resource", "consume"] }, place: { in: "/work/in", out: "/work/out" }, hooksToken: () => ("hooksToken" in over ? over.hooksToken : "hooks-token-0123456789"), runtime: over.runtime, project: { name: "invoice", packs: ["orbit-backend-test"], graphDir: over.graphDir ?? null }, keep: over.keep ?? (() => "kept") };
   return { generation: generationPort(b), dispatch: dispatchPort(b), drafts };
 }
 
@@ -101,6 +101,45 @@ test("a generated HTTP case is drafted through the port, validated by the real g
   assert.equal(out.outcome, "DRAFT_CREATED", JSON.stringify(out));
   assert.equal(p.drafts.length, 1);
   assert.match(p.drafts[0].steps[0].expect, /^compiled:/);
+  rmSync(store, { recursive: true, force: true });
+});
+
+// A workload's node declares the fault points its test hooks may inject (0.4.0): the port lists them beside its alias and
+// answers them to the controls stage, so a design that names another point is refused before a draft exists.
+test("a fault point the workload's node does not declare is refused through the port, naming those it does -- and listed beside its alias", async () => {
+  const { ctx, store } = await packed();
+  const j = journal();
+  const graph = { ...BARE, nodes: [...BARE.nodes, { key: "worker:worker", name: "worker", role: "workload", of: "component:invoice-app", attributes: { faultPoints: "before-effect after-commit-before-ack" } }, { key: "worker:quiet", name: "quiet", role: "workload", of: "component:invoice-app" }] };
+  const p = ports(ctx, j, { graph });
+  assert.deepEqual(p.generation.bindable().workload.map((w) => [w.alias, w.points ?? null]), [["worker", ["before-effect", "after-commit-before-ack"]], ["quiet", null]]);
+  const faulted = (point) => ({ ...ASYNC, skeleton: { steps: [...ASYNC.skeleton.steps, call("orbit.workload.control", { workloadRef: "worker", fixtureRef: "fx", request: { action: "fault", point } })] }, controls: [{ role: "positive" }, { role: "fault", point }] });
+  const cx = p.generation.contextFor(j.model().obligations[0], { design: faulted("before-effect") });
+  assert.deepEqual([cx.faultPointsOf("worker"), cx.faultPointsOf("quiet"), cx.faultPointsOf("nowhere")], [["before-effect", "after-commit-before-ack"], null, null]);
+  const out = generated({ id: ID, store: j.store, io: j.io, generation: p.generation }, { obligation: "tob-000000000001", design: faulted("after-effect-before-ack") });
+  assert.deepEqual([out.outcome, out.stage], ["GENERATION_FAILED", "controls"], JSON.stringify(out));
+  assert.match(JSON.stringify(out.findings), /DECLARED_POINT: the fault control names point \\"after-effect-before-ack\\", which no workload this design binds declares — worker declares before-effect, after-commit-before-ack/);
+  assert.equal(p.drafts.length, 0);
+  rmSync(store, { recursive: true, force: true });
+});
+
+test("a path that repeats its endpoint's own base path is refused before a draft exists, and named as it should be", async () => {
+  const { ctx, store } = await packed();
+  const j = journal();
+  const p = ports(ctx, j);
+  const design = { obligation: "tob-000000000002", skeleton: { steps: [call("orbit.http.read", { endpointRef: "invoice-read", identityRef: "tenant-b-reader", method: "GET", path: "/api/invoices/inv-a" })] }, assertions: [{ criterionRef: "API-AC-2/E1", template: "value-eq", step: 1 }], controls: [{ role: "positive" }, { role: "negative" }] };
+  const out = generated({ id: ID, store: j.store, io: j.io, generation: p.generation }, { obligation: "tob-000000000002", design });
+  assert.notEqual(out.outcome, "DRAFT_CREATED", "a path that asks for /api/api/... would contradict the clean application too");
+  assert.match(JSON.stringify(out.findings), /repeats invoice-read's own base path \/api: a path is relative to the bound endpoint -- \\"\/invoices\/inv-a\\"/);
+  assert.equal(p.drafts.length, 0);
+  rmSync(store, { recursive: true, force: true });
+});
+
+test("the generation port lists the names this sandbox binds, off the frozen graph -- what a host reads instead of guessing", async () => {
+  const { ctx, store } = await packed();
+  const listed = ports(ctx, journal()).generation.bindable();
+  assert.deepEqual(listed.endpoint.map((e) => [e.alias, e.path ?? null]), [["invoice-read", "/api"], ["invoices", null]]);
+  assert.deepEqual(listed.channel.map((c) => c.alias), ["reminders"]);
+  assert.deepEqual(listed.schedule.map((x) => x.alias), ["billing-daily"]);
   rmSync(store, { recursive: true, force: true });
 });
 

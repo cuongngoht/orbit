@@ -3,14 +3,22 @@
 // dispatch; and what it came to is decided by the HOST -- its own check of the envelope, then
 // RESULT -- never by the worker. A version that writes runs only in a mode that may write.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
+import { run as hooks } from "../skills/orbit-backend-test/hooks/operations.mjs";
 import { familyCapabilities } from "../src/adapters/core.mjs";
-import { inputFindings } from "../src/capability/invoke.mjs";
+import { createAdapterRegistry } from "../src/adapters/registry.mjs";
+import { mergeSemantics } from "../src/adapters/semantics.mjs";
+import { HELPER_API } from "../src/capability/helper.mjs";
+import { inputFindings, invokeCapability } from "../src/capability/invoke.mjs";
+import { createCapabilityRegistry } from "../src/capability/registry.mjs";
 import { CORE } from "../src/dsl/registry.mjs";
 import { validate } from "../src/dsl/validate.mjs";
 import { ACTIONS } from "../src/investigation/dispatch.mjs";
 import { generated } from "../src/investigation/generate.mjs";
-import { loopWorld } from "../src/investigation/loop.mjs";
+import { loopWorld, resultView } from "../src/investigation/loop.mjs";
 import { modelOf } from "../src/investigation/model.mjs";
 import { ranVersion } from "../src/investigation/run-version.mjs";
 import { createInvestigations, eventIdOf } from "../src/investigation/store.mjs";
@@ -19,6 +27,8 @@ import { freezeVersion } from "../src/qa/generation/version.mjs";
 import { shapeOf } from "../src/qa/obligations/shapes.mjs";
 import { fakeContext } from "./fakes/context.mjs";
 import { fakeIo } from "./fakes/io.mjs";
+import { fakeProcess } from "./fakes/process.mjs";
+import { fakeTools } from "./fakes/tools.mjs";
 
 const ID = "inv-20261022-110000-abcd";
 const caps = new Map(familyCapabilities().map((c) => [c.id, { ...c, from: "pack:orbit-backend-test" }]));
@@ -116,12 +126,13 @@ test("a version step nothing can vouch for is taken to write", () => {
 
 // What the first real runs taught (0.1.0): a control that did not hold makes its obligation INCONCLUSIVE, never a
 // contradiction -- a positive one a negative rests on, and a fault the run never saw happen.
-function controlled(controls, records) {
+const READS = ["owner", "other"].map((who) => ({ do: "call", capability: "orbit.http.read", input: { endpointRef: "api", identityRef: who, method: "GET", path: "/x" }, expect: "compiled:{}", proves: "api" }));
+
+function controlled(controls, records, steps = READS) {
   const io = fakeIo();
   const store = createInvestigations("/store/repo-1", io);
   store.create({ id: ID, objective: "controls" });
   store.appendOnce(ID, "obligation", { id: "obr-1", eventId: eventIdOf("obligation", "tob-abc123", 0, "r1"), obligation: "tob-abc123", revision: "r1", shape: "permission-enforced", authority: "accepted" });
-  const steps = ["owner", "other"].map((who) => ({ do: "call", capability: "orbit.http.read", input: { endpointRef: "api", identityRef: who, method: "GET", path: "/x" }, expect: "compiled:{}", proves: "api" }));
   const frozen = freezeVersion({ case: { id: "gen-ctl", name: "controls", seen: "src", steps }, design: "tds-ctl", versionNumber: 1, engineVersion: "0.1.0", validatorVersion: "core", dslDigest: "d".repeat(64), extensionsDigest: "e".repeat(64) });
   const kept = store.putArtifact(ID, "designs", { id: "tds-ctl", controls, compiled: [] });
   store.appendOnce(ID, "designed", { id: "dsg-1", eventId: "e-dsg", obligation: "tob-abc123", design: "tds-ctl", digest: kept.digest, state: "designed" });
@@ -157,4 +168,128 @@ test("a fault the run never saw happen makes what failed after it INCONCLUSIVE, 
   const seen = controlled(fault, failedAt(2, seenAs("fault:after-commit-before-ack")));
   const b = ranVersion(seen.w, { version: seen.version });
   assert.deepEqual([a.outcome, a.rule, b.outcome, b.rule], ["INCONCLUSIVE", "FAULT_NOT_SEEN", "CONTRADICTED", "CONTRADICTED"], JSON.stringify([a.findings, b.findings]));
+});
+
+// What the first real Claude Code rows taught (0.4.0): a version refused at a step said why only in the worker's run
+// log, and the host saw a bare INVALID_TEST / TEST_WRONG -- so it guessed at the request it should have sent. The run now
+// says where it stopped and what that step's own stop said; never a failure's message, which quotes the product.
+const REFUSAL = "postgres.reference read: a read below the interface names what it reads: request.key (the bound key column's value) or request.match, 4 columns at most — never a whole table — the request was not one it can make as asked — the case's mistake, not the product's";
+
+test("a run refused at a step says where it stopped and what that step's own refusal said: the request it must send", () => {
+  const t = world((x) => envelopeFor(x, "REFUSED", [{ kind: "step", i: 1, ok: true }, { kind: "step", i: 2, ok: false, refused: REFUSAL, phase: "act", helperClass: "refused" }], { failure: { kind: "refused", helperClass: "refused" } }));
+  const out = ranVersion(t.w, { version: t.version });
+  assert.deepEqual([out.outcome, out.rule], ["INVALID_TEST", "TEST_WRONG"], JSON.stringify(out.findings));
+  assert.deepEqual(out.stopped, { step: 2, do: "call", capability: "orbit.state.read", as: "refused", says: REFUSAL });
+});
+
+test("a run blocked at a step says so in words scrubbed of every secret: by shape, and by the value its dispatch sealed", () => {
+  const sealed = "hooks-token-0123456789";
+  const said = `workload.hooks control: POST /orbit/workload/v1/control could not reach the hooks — ${sealed} authorization: Bearer abc.def.ghi — the system behind it could not be reached`;
+  const t = world((x) => envelopeFor(x, "BLOCKED", [{ kind: "step", i: 1, ok: false, blocked: `${said} ${"z".repeat(900)}`, helperClass: "transport" }], { failure: { kind: "blocked", helperClass: "transport" } }));
+  const prepare = t.w.dispatch.prepare;
+  t.w.dispatch.prepare = (x) => ({ ...prepare(x), secrets: { ORBIT_BIND_HOOKS_TOKEN: sealed } });
+  const out = ranVersion(t.w, { version: t.version });
+  assert.deepEqual([out.outcome, out.stopped.step, out.stopped.capability, out.stopped.as], ["ENVIRONMENT_BLOCKED", 1, "orbit.scheduler.trigger", "blocked"], JSON.stringify(out.findings));
+  assert.equal(out.stopped.says.includes(sealed) || out.stopped.says.includes("abc.def.ghi"), false, out.stopped.says);
+  assert.match(out.stopped.says, /^workload\.hooks control: POST \/orbit\/workload\/v1\/control could not reach the hooks — \[redacted\]/);
+  assert.equal(out.stopped.says.length, 600, "bounded");
+});
+
+// A failed step is NAMED, so a repair knows which one it was (a fault's witness, or the read after it) -- and says
+// nothing: its message quotes what the product answered.
+test("a failure names the step it failed at and never its message -- it quotes what the product answered -- nor a word of a run the host did not believe", () => {
+  const failed = world((x) => envelopeFor(x, "FAIL", [{ kind: "step", i: 1, ok: true }, { kind: "step", i: 2, ok: false, error: 'EXPECT FAILED: count-eq 1\n     reported: {"count":0,"rows":[{"business_key":"tenant-a|inv-a"}]}', contradiction: true }], { failure: { contradiction: true } }));
+  const a = ranVersion(failed.w, { version: failed.version });
+  assert.deepEqual([a.outcome, a.stopped], ["CONTRADICTED", { step: 2, do: "call", capability: "orbit.state.read", as: "failed", says: null }]);
+  const liar = world((x) => ({ ...envelopeFor(x, "REFUSED", [{ kind: "step", i: 1, ok: false, refused: REFUSAL }]), records: [{ kind: "run", case_digest: x.request.case.digest }, { kind: "step", i: 1, ok: true }] }));
+  const b = ranVersion(liar.w, { version: liar.version });
+  assert.deepEqual([b.outcome, b.stopped], ["EXECUTION_ERROR", null]);
+});
+
+// What a real Claude Code QA row taught (0.4.0, ORBIT-QA-001 on Opus, three runs of three): its crash test faulted the
+// worker after its effect, restarted it, then awaited the redelivery with a match on the message AND outcome
+// `processed`. The clean application's redelivery settled as its own word for "no second effect"; the match left it
+// out, the answer read none, complete, and the run CONTRADICTED its criterion -- on the clean application too, a false
+// alarm a host could not see through, since a failed run says nothing of what it read. What the failed step's own
+// match read of that very message and left out is said beside where the run stopped. The verdict is the one it was.
+//
+// Each observation goes through what a worker runs: the family capability, the adapter facade over the REAL worker.hooks
+// declaration, and the REAL hooks helper's answer to exactly what the facade sent it -- the record the pipeline keeps.
+const PACK = join(dirname(fileURLToPath(import.meta.url)), "..", "skills", "orbit-backend-test");
+const SEMANTICS = mergeSemantics([{ layer: "orbit", from: "catalog/semantics.json", doc: JSON.parse(readFileSync(join(PACK, "..", "..", "catalog", "semantics.json"), "utf8")) }]);
+const WORKER = JSON.parse(readFileSync(join(PACK, "adapters.json"), "utf8")).adapters.find((a) => a.id === "worker.hooks");
+const MSG = "msg-0e1f0000000000c1";
+const KEY = "acct-1|item-1|2026-10-25";
+const helperSaid = (value) => ({ ok: true, out: `${JSON.stringify({ v: HELPER_API, ok: true, value })}\n`, err: "", status: 0 });
+
+function pipeline(answer, records) {
+  const capabilities = createCapabilityRegistry();
+  for (const cap of familyCapabilities()) capabilities.register(cap, "pack:orbit-backend-test");
+  const adapters = createAdapterRegistry(SEMANTICS);
+  assert.deepEqual(adapters.register(WORKER, "pack:orbit-backend-test").problems, []);
+  return { ctx: { capabilities, adapters, process: fakeProcess({ node: answer }), helpers: { launch: () => ({ file: "node", args: ["hooks/helper.mjs"], env: {} }) }, binder: { resolve: (kind, ref) => ({ ok: true, value: { alias: ref, transport: "orbit-workload-v1", origin: "http://hooks:8081", workload: ref }, env: {} }) }, tools: fakeTools({}), now: () => 1_000, grants: { check: () => null, spend: () => null } }, run: { c: { id: "gen-crash" }, log: { record: (r) => records.push(r) }, budget: { endsAt: 61_000 } } };
+}
+
+const observeStep = (request) => ({ do: "call", capability: "orbit.worker.observe", input: { workloadRef: "worker", request } });
+
+async function observed(attempts, request) {
+  const asked = pipeline(helperSaid({}), []);
+  invokeCapability(asked.ctx, asked.run, observeStep(request));
+  const deps = { fetch: async () => ({ status: 200, json: async () => ({ attempts, through: attempts.length }) }), env: {}, now: () => performance.now(), timers: { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t) }, pollMs: 5 };
+  const value = (await hooks(JSON.parse(asked.ctx.process.calls[0].opts.input), deps)).value;
+  const kept = [];
+  const answered = pipeline(helperSaid(value), kept);
+  invokeCapability(answered.ctx, answered.run, observeStep(request));
+  return kept.at(-1);
+}
+
+const CRASH = [
+  call("orbit.workload.control", { workloadRef: "worker", request: { action: "fault", point: "after-commit-before-ack" } }),
+  call("orbit.messaging.publish", { channelRef: "requested", request: { messageId: MSG, correlationId: KEY, payload: { businessKey: KEY } } }),
+  observeStep({ match: { messageId: MSG }, count: 1 }),
+  call("orbit.workload.control", { workloadRef: "worker", request: { action: "restart" } }),
+  observeStep({ match: { messageId: MSG, outcome: "processed" }, count: 1 }),
+  call("orbit.state.read", { stateRef: "reminders", request: { key: KEY } }),
+].map((s) => ({ ...s, expect: "compiled:{}", proves: "api" }));
+const FAULTED = [{ seq: 1, messageId: "msg-earlier", deliveryAttempt: 1, outcome: "processed", executionRef: "exe-0" }, { seq: 2, messageId: MSG, deliveryAttempt: 1, outcome: "fault", terminalReason: "fault:after-commit-before-ack", executionRef: "exe-1" }];
+const REDELIVERED = [...FAULTED, { seq: 3, messageId: MSG, deliveryAttempt: 2, outcome: "duplicate", executionRef: "exe-1", workload: "worker" }];
+const CRASH_CONTROLS = [{ role: "fault", point: "after-commit-before-ack", step: 3 }, { role: "state" }];
+const crashRun = (witness, awaited) => (digest) => [{ kind: "run", case_digest: digest }, { kind: "step", i: 1, ok: true }, { kind: "step", i: 2, ok: true }, witness, { kind: "step", i: 3, ok: true }, { kind: "step", i: 4, ok: true }, awaited, { kind: "step", i: 5, ok: false, error: "EXPECT FAILED: complete on attempts[].outcome", phase: "act", contradiction: true }];
+const unexcluded = (record) => ({ ...record, result: Object.fromEntries(Object.entries(record.result).filter(([k]) => k !== "excluded")) });
+
+test("a run that failed on an observation whose match left out the very message it names says what it left out, where it stopped -- and its verdict is the one it was", async () => {
+  const witness = await observed(FAULTED, { match: { messageId: MSG }, count: 1 });
+  const awaited = await observed(REDELIVERED, { match: { messageId: MSG, outcome: "processed" }, count: 1 });
+  const t = controlled(CRASH_CONTROLS, crashRun(witness, awaited), CRASH);
+  const out = ranVersion(t.w, { version: t.version });
+  assert.deepEqual([out.outcome, out.rule], ["CONTRADICTED", "CONTRADICTED"], JSON.stringify(out.findings));
+  const host = resultView(out).stopped;
+  assert.deepEqual([host.step, host.capability, host.as, host.says], [5, "orbit.worker.observe", "failed", null], "the failure itself still says nothing of what it read");
+  assert.deepEqual(host.excluded, {
+    field: "attempts",
+    count: 2,
+    by: ["outcome"],
+    items: [{ messageId: MSG, deliveryAttempt: 1, outcome: "fault", terminalReason: "fault:after-commit-before-ack", executionRef: "exe-1" }, { messageId: MSG, deliveryAttempt: 2, outcome: "duplicate", executionRef: "exe-1" }],
+    say: "2 of the attempts this step read have the messageId its match names and were left out by the rest of it — outcome fault, duplicate where the match asks processed: what this step ruled on never saw them",
+  }, "the redelivery that settled another way, which an answer of none, complete, had hidden -- and no field the adapter does not declare");
+  const before = controlled(CRASH_CONTROLS, crashRun(witness, unexcluded(awaited)), CRASH);
+  const was = ranVersion(before.w, { version: before.version });
+  assert.deepEqual([was.outcome, was.rule, was.stopped.excluded], ["CONTRADICTED", "CONTRADICTED", undefined], "the verdict of the same run with nothing said beside it");
+});
+
+test("a fault that shows only in what a match left out was never observed: FAULT_NOT_SEEN stands, exactly as before", async () => {
+  const nothing = await observed([FAULTED[0]], { match: { messageId: MSG }, count: 1 });
+  const awaited = await observed(REDELIVERED, { match: { messageId: MSG, outcome: "processed" }, count: 1 });
+  assert.match(JSON.stringify(awaited.result.excluded), /fault:after-commit-before-ack/, "the fault's reason is there -- in what the match left out");
+  const t = controlled(CRASH_CONTROLS, crashRun(nothing, awaited), CRASH);
+  const out = ranVersion(t.w, { version: t.version });
+  assert.deepEqual([out.outcome, out.rule], ["INCONCLUSIVE", "FAULT_NOT_SEEN"], JSON.stringify(out.findings));
+  assert.equal(out.stopped.excluded.count, 2, "and it is still said to the host");
+});
+
+test("a run refused before any step says why its envelope gave, and names no step", () => {
+  const why = 'case is invalid — fix it before running:\n  step 2: orbit.state.read input: unknown key "businessKey"';
+  const t = world((x) => ({ envelope: { v: WORKER_API, runId: x.request.runId, nonce: x.request.nonce, caseDigest: x.request.case.digest, status: "REFUSED", why, result: null, evidence: null, files: [] }, records: [], listed: new Map() }));
+  const out = ranVersion(t.w, { version: t.version });
+  assert.deepEqual([out.outcome, out.stopped], ["INVALID_TEST", { step: null, do: null, capability: null, as: "refused", says: why }], JSON.stringify(out.findings));
 });

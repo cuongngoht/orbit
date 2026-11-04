@@ -89,7 +89,7 @@ test("the worker hands a helper every secret its bound value names, and no other
 });
 
 // What a ref IS comes from the system graph and the design's own plan -- never from a case.
-import { aliasOf, declarationsFrom } from "../src/runtime/sandbox/declarations.mjs";
+import { aliasOf, bindableFrom, declarationsFrom } from "../src/runtime/sandbox/declarations.mjs";
 
 const GRAPH = { nodes: [
   { key: "component:broker", role: "component", name: "broker", attributes: {} },
@@ -170,4 +170,53 @@ test("the worker's binder issues a sealed identity ONCE for the run, hands its t
   const refused = sealedBinder({ bindings: { identity: { "tenant-b-reader": value } }, secrets: {} }, { issue: () => ({ why: "the hooks refused" }) });
   assert.deepEqual(refused.resolve("identity", "tenant-b-reader"), { ok: false, why: "the hooks refused" });
   assert.match(sealedBinder({ bindings: { identity: { "tenant-b-reader": value } } }).resolve("identity", "tenant-b-reader").why, /nothing here can issue it/);
+});
+
+test("what a host may name is listed by kind, exactly as the binder resolves it -- never guessed from a key", () => {
+  const listed = bindableFrom({ graph: GRAPH, tenancy: null });
+  assert.deepEqual(listed.endpoint.map((e) => [e.alias, e.of, e.path]), [["invoices-api", "invoice-app", "/api"]]);
+  assert.deepEqual(listed.channel.map((c) => c.alias), ["billing-reminder-requested"], "a channel by its alias, not its dotted name");
+  assert.deepEqual(listed.schedule.map((x) => x.alias), ["billing-daily"]);
+  assert.deepEqual(listed.workload.map((x) => x.alias), ["worker"], "the node's name, never the key's (worker:reminder-worker)");
+  assert.deepEqual(listed.clock.map((x) => x.alias), ["invoice-app"], "only a component whose hooks inject a clock");
+  assert.deepEqual(listed.identity, [], "no identity binds before a person's tenancy contract says which tenant it acts in");
+  for (const [kind, rows] of Object.entries(listed)) for (const r of rows) assert.ok(declarationsFrom({ graph: GRAPH, tenancy: null })(kind, r.alias), `${kind} ${r.alias} binds`);
+});
+
+// What a real Claude Code QA row taught (0.4.0): a crash obligation needs a fault point the project's own test hooks
+// declare, and nothing listed one, so a host guessed (`after-effect-before-ack` for `after-commit-before-ack`) and the
+// hooks refused the run. A workload node declares its points (`faultPoints`, one flat line), and they are listed beside
+// its alias -- plain identifiers only, each once, bounded -- and nothing else of what the node's attributes say.
+test("a workload's declared fault points are listed beside its alias, as plain names, and nothing else of its attributes", () => {
+  const many = Array.from({ length: 20 }, (_, n) => `p${n}`).join(" ");
+  const graph = { nodes: [...GRAPH.nodes.filter((n) => n.role !== "workload"),
+    { key: "worker:worker", role: "workload", name: "worker", of: "component:invoice-app", attributes: { faultPoints: "before-effect after-commit-before-ack, before-effect ../etc/x a;b", queue: "billing.reminders" } },
+    { key: "outbox-relay:relay", role: "workload", name: "relay", of: "component:invoice-app", attributes: { faultPoints: many } },
+    { key: "worker:quiet", role: "workload", name: "quiet", of: "component:invoice-app", attributes: { faultPoints: "?? //" } },
+    { key: "worker:plain", role: "workload", name: "plain", of: "component:invoice-app", attributes: {} },
+    { key: "schedule:billing-daily", role: "schedule", name: "billing-daily", of: "component:invoice-app", attributes: { faultPoints: "before-effect" } }] };
+  const listed = bindableFrom({ graph, tenancy: null });
+  const worker = listed.workload.find((w) => w.alias === "worker");
+  assert.deepEqual(worker, { alias: "worker", of: "invoice-app", points: ["before-effect", "after-commit-before-ack"], says: "" }, "plain names, each once -- never a path, never anything else the node says");
+  assert.equal(listed.workload.find((w) => w.alias === "relay").points.length, 16, "bounded");
+  assert.deepEqual(listed.workload.filter((w) => w.points === undefined).map((w) => w.alias).sort(), ["plain", "quiet"], "a node that declares no plain name lists none -- unknown, never an empty list");
+  assert.equal(listed.schedule.find((s) => s.alias === "billing-daily").points, undefined, "only a workload declares fault points");
+  const decl = declarationsFrom({ graph });
+  assert.deepEqual(decl("workload", "worker"), { node: "invoice-app", port: 9090, address: { workload: "worker" }, points: ["before-effect", "after-commit-before-ack"] });
+  const sealed = sealedBindings(input({ refs: [{ kind: "workload", alias: "worker" }], declarationOf: decl }));
+  assert.deepEqual([sealed.gaps, Object.hasOwn(sealed.bindings.workload.worker, "points")], [[], false], "what a workload declares it can inject is never part of what a run is bound to");
+});
+
+// What a real Claude Code QA row taught (0.4.0): a state read names what it reads by the key column its node declares,
+// and nothing listed one -- a host guessed `businessKey` for `business_key`, and the database refused the column. A
+// state's listing carries its address, the names the binder seals for it, and never where to connect or as whom.
+test("a state is listed with the address its node declares -- its table and key column -- and nothing that says where to connect", () => {
+  const graph = { nodes: [...GRAPH.nodes, { key: "component:db", role: "component", name: "db", attributes: {} },
+    { key: "table:reminders", role: "data-resource", name: "reminders", of: "component:db", attributes: { table: "reminders", key: "business_key", host: "evil.example", port: 5432 } },
+    { key: "table:bare", role: "data-resource", name: "bare", of: "component:db" }] };
+  const listed = bindableFrom({ graph, tenancy: null });
+  assert.deepEqual(listed.state.find((s) => s.alias === "reminders"), { alias: "reminders", of: "db", address: { table: "reminders", key: "business_key" }, says: "" });
+  assert.equal(Object.hasOwn(listed.state.find((s) => s.alias === "bare"), "address"), false, "a node that declares nothing lists nothing");
+  assert.equal(Object.hasOwn(listed.channel[0], "address"), false, "a channel's own names stay the binder's");
+  assert.deepEqual(declarationsFrom({ graph })("state", "reminders").address, { table: "reminders", key: "business_key" }, "the very names the binder seals");
 });

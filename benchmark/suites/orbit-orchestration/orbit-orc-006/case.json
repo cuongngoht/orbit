@@ -3,7 +3,7 @@
   "kind": "source",
   "id": "ORBIT-ORC-006",
   "version": "1.0.0",
-  "baseline": "FAIL",
+  "baseline": "PASS",
   "title": "An id never moves a failure signature",
   "goal": "signatureOf() signs two runs of one failure alike when their failing lines differ only in the UUIDs they print -- a request, an order, a tenant, a correlation, in either case, anywhere in a line, one or several -- so that repeats of one failure are counted and NO_PROGRESS can be concluded, while a different failing test, or the same test failing differently, still signs differently, and what moved no signature before still moves none",
   "measures": {
@@ -107,14 +107,21 @@
     "scratch": "after-run"
   },
   "variants": {
-    "real": {}
+    "real": {},
+    "controlled-fault": {
+      "mutations": "variants/controlled-fault.json"
+    }
   },
   "controls": [
     {
-      "id": "known-good",
+      "id": "clean",
       "variant": "real",
-      "file": "controls/known-good.json",
       "expect": "PASS"
+    },
+    {
+      "id": "planted",
+      "variant": "controlled-fault",
+      "expect": "FAIL"
     },
     {
       "id": "allow-all",

@@ -4,11 +4,12 @@
 import assert from "node:assert/strict";
 import { realpathSync } from "node:fs";
 import { test } from "node:test";
-import { DIAGNOSE, diagnosed } from "../skills/orbit-release/ship/diagnose.mjs";
+import { DIAGNOSE, diagnosed, INTERRUPTED_RUNS } from "../skills/orbit-release/ship/diagnose.mjs";
 import { PUBLISH, publishableOf } from "../skills/orbit-release/ship/evidence.mjs";
 import { NEXT, nextOf } from "../skills/orbit-release/ship/machine.mjs";
+import { gateEnvOf } from "../skills/orbit-release/ship/ports.mjs";
 import { PREFLIGHT, preflightOf } from "../skills/orbit-release/ship/preflight.mjs";
-import { CONTROL_RULES, CONTROL_VERDICT, REPAIR_CHECK, ROW_VERDICT, controlVerdict, repairVerdict, rowVerdict } from "../skills/orbit-release/ship/rows.mjs";
+import { CONTROL_RULES, CONTROL_VERDICT, REPAIR_CHECK, ROW_VERDICT, controlVerdict, interruptedOf, repairVerdict, rowVerdict } from "../skills/orbit-release/ship/rows.mjs";
 import { POLICY } from "./fakes/ship-world.mjs";
 
 // ---- NEXT ---------------------------------------------------------------------------------------------------------------
@@ -70,18 +71,39 @@ test("NEXT: a person's hold outranks everything a ship would do, and a model-car
 
 const SRC = { measures: { repairable: ["ORBIT_SOURCE_DEFECT"] } };
 
-const D = (v, over = {}) => diagnosed({ row: ROW, v: { state: "FAILED", says: "it failed", ...v }, case: SRC, repair: true, flakyLeft: 1, autonomousLeft: 0, ...over });
+const D = (v, over = {}) => diagnosed({ row: ROW, v: { state: "FAILED", says: "it failed", ...v }, case: SRC, repair: true, flakyLeft: 1, autonomousLeft: 0, interruptedLeft: 1, ...over });
+
+const AUTO_ROW = { ...ROW, id: "Q:autonomous", run: "autonomous", kind: "qa", autonomous: true };
+
+const CUT = { state: "INTERRUPTED", code: "INTERRUPTED", outcome: "PASS", says: "a round of its run was interrupted" };
 
 test("DIAGNOSE: every row is reached, and a repair is only what a source case declares repairable on its real source", () => {
-  const AUTO = { ...ROW, id: "Q:autonomous", run: "autonomous", kind: "qa", autonomous: true };
-  const got = [D({ state: "HELD_BY_PERSON" }), D({ cause: "CREDENTIALS", state: "BLOCKED" }), D({ state: "BLOCKED" }), D({ class: "PROVIDER_FAILURE" }), D({ class: "NON_DETERMINISTIC" }), D({ state: "REFUSED" }), D({ state: "UNTRUSTED" }), D({ class: "HUMAN_APPROVAL_REQUIRED" }), D({ class: "ORBIT_SOURCE_DEFECT", cause: "ORBIT_SOURCE_DEFECT" }), diagnosed({ row: AUTO, v: { state: "FAILED", outcome: "FAIL", says: "missed" }, case: {}, repair: true, flakyLeft: 1, autonomousLeft: 0 }), D({ class: "UNKNOWN" })];
+  const got = [D({ state: "HELD_BY_PERSON" }), diagnosed({ row: AUTO_ROW, v: CUT, case: {}, repair: true, flakyLeft: 1, autonomousLeft: 0, interruptedLeft: 1 }), D({ cause: "CREDENTIALS", state: "BLOCKED" }), D({ state: "BLOCKED" }), D({ class: "PROVIDER_FAILURE" }), D({ class: "NON_DETERMINISTIC" }), D({ state: "REFUSED" }), D({ state: "UNTRUSTED" }), D({ class: "HUMAN_APPROVAL_REQUIRED" }), D({ class: "ORBIT_SOURCE_DEFECT", cause: "ORBIT_SOURCE_DEFECT" }), diagnosed({ row: AUTO_ROW, v: { state: "FAILED", outcome: "FAIL", says: "missed" }, case: {}, repair: true, flakyLeft: 1, autonomousLeft: 0 }), D({ class: "UNKNOWN" })];
   assert.deepEqual(got.map((d) => d.id), DIAGNOSE.map((r) => r.id));
-  assert.deepEqual(got.map((d) => d.then), ["HELD", "BLOCK", "BLOCK", "BLOCK", "RETRY", "STOP", "STOP", "STOP", "REPAIR", "STOP", "STOP"]);
+  assert.deepEqual(got.map((d) => d.then), ["HELD", "RETRY", "BLOCK", "BLOCK", "BLOCK", "RETRY", "STOP", "STOP", "STOP", "REPAIR", "STOP", "STOP"]);
   assert.equal(D({ class: "ORBIT_SOURCE_DEFECT", cause: "ORBIT_SOURCE_DEFECT" }, { repair: false }).then, "STOP", "--no-repair: a repairable failure stands");
   assert.equal(D({ class: "ORBIT_SOURCE_DEFECT", cause: "CAPABILITY_MISSING" }).then, "STOP", "a cause the case does not declare repairable is not repaired");
   assert.equal(diagnosed({ row: { ...ROW, kind: "qa" }, v: { state: "FAILED", class: "ORBIT_SOURCE_DEFECT", cause: "ORBIT_SOURCE_DEFECT", says: "x" }, case: SRC, repair: true }).then, "STOP", "a QA case is never repaired against its hidden truth");
   assert.equal(D({ class: "NON_DETERMINISTIC" }, { flakyLeft: 0 }).then, "STOP", "a retry spent is a stop");
-  assert.equal(diagnosed({ row: AUTO, v: { state: "FAILED", outcome: "FAIL", says: "m" }, case: {}, repair: true, autonomousLeft: 1 }).then, "RETRY", "a person may allow a model-carried row another run");
+  assert.equal(diagnosed({ row: AUTO_ROW, v: { state: "FAILED", outcome: "FAIL", says: "m" }, case: {}, repair: true, autonomousLeft: 1 }).then, "RETRY", "a person may allow a model-carried row another run");
+});
+
+test("DIAGNOSE: a run a restart interrupted runs again on its own bound -- never --retries -- and a spent bound BLOCKS the ship, never fails the release", () => {
+  const cut = (over) => diagnosed({ row: AUTO_ROW, v: CUT, case: {}, repair: true, flakyLeft: 0, autonomousLeft: 0, ...over });
+  assert.equal(cut({ interruptedLeft: 1 }).then, "RETRY", "with no retry a person allowed the model, an interrupted run still runs again: it was never the model's miss");
+  assert.match(cut({ interruptedLeft: 1 }).says, /spending none of --retries/);
+  assert.deepEqual(((d) => [d.then, d.needs, d.stop])(cut({ interruptedLeft: 0, autonomousLeft: 3 })), ["BLOCK", "environment", "ENVIRONMENT_BLOCKED"], "spent: the environment cannot hold a run to its end -- a block, resumable, whatever --retries allows");
+  assert.match(cut({ interruptedLeft: 0 }).says, new RegExp(`interrupted ${INTERRUPTED_RUNS + 1} runs of it`));
+  assert.equal(diagnosed({ row: AUTO_ROW, v: { ...CUT, state: "UNTRUSTED", code: "WRONG_HOST" }, case: {}, repair: true, autonomousLeft: 3, interruptedLeft: 2 }).then, "STOP", "a run on another host is never run again into evidence");
+});
+
+test("DIAGNOSE: a row its environment blocked runs again once a person resumed the blocked ship after its run -- nothing else is lifted", () => {
+  const blocked = (over) => D({ state: "BLOCKED", says: "Docker did not answer" }, over);
+  assert.equal(blocked({}).then, "BLOCK");
+  assert.deepEqual(((d) => [d.then, d.needs, d.stop])(blocked({ resumed: true })), ["RETRY", null, null], "fix it and --resume: the row is asked again, as a new run");
+  assert.equal(diagnosed({ row: AUTO_ROW, v: CUT, case: {}, repair: true, interruptedLeft: 0, resumed: true }).then, "RETRY", "an interruption bound spent, then resumed by a person: one more run");
+  assert.equal(D({ state: "UNTRUSTED" }, { resumed: true }).then, "STOP", "a stop stays a stop: a resume lifts what blocked, never what failed");
+  assert.equal(D({ state: "HELD_BY_PERSON" }, { resumed: true }).then, "HELD");
 });
 
 // ---- ROW_VERDICT ---------------------------------------------------------------------------------------------------------
@@ -93,13 +115,32 @@ const V = (over = {}, row = ROW) => rowVerdict({ row, answer: { code: 0, json: {
 const AUTO = { ...ROW, run: "autonomous", autonomous: true, expect: ["PASS"] };
 
 test("ROW_VERDICT: every row is reached -- a run is held only on the tree, harness, case and host it must have had", () => {
-  const got = [rowVerdict({ row: ROW, answer: { code: null, json: null }, room: { manifest: { source: {} } }, cycle: CYCLE, ship: SHIP }), rowVerdict({ row: ROW, answer: { code: 2, json: null, err: "FIXTURE_DRIFT" }, room: {}, cycle: CYCLE, ship: SHIP }), V({ ending: { outcome: "BLOCKED" } }), V({ ending: { outcome: "PAUSED" } }), V({ manifest: { source: { commit: "c0", repo: "/", digest: "d1" } } }), V({ manifest: { benchmark: { harness: "h2", digest: "k1" } } }), V({ manifest: { benchmark: { harness: "h1", digest: "k2" } } }), V({ report: { leaks: ["out/host.jsonl"] } }), V({ ending: { outcome: "FAIL" } }), V({ report: { hostBasis: "scripted" } }, AUTO), V()];
+  const got = [rowVerdict({ row: ROW, answer: { code: null, json: null }, room: { manifest: { source: {} } }, cycle: CYCLE, ship: SHIP }), rowVerdict({ row: ROW, answer: { code: 2, json: null, err: "FIXTURE_DRIFT" }, room: {}, cycle: CYCLE, ship: SHIP }), V({ ending: { outcome: "BLOCKED" } }), V({ ending: { outcome: "PAUSED" } }), V({ manifest: { source: { commit: "c0", repo: "/", digest: "d1" } } }), V({ manifest: { benchmark: { harness: "h2", digest: "k1" } } }), V({ manifest: { benchmark: { harness: "h1", digest: "k2" } } }), V({ report: { leaks: ["out/host.jsonl"] } }), V({ report: { rounds: [{ interrupted: true, host: null }] } }, AUTO), V({ ending: { outcome: "FAIL" } }), V({ report: { hostBasis: "scripted" } }, AUTO), V()];
   assert.deepEqual(got.map((v) => v.code), ROW_VERDICT.map((r) => r.code));
   assert.equal(V({ manifest: { source: { commit: "c1", repo: "/", digest: "d2" } } }).code, "WRONG_TREE", "one cycle, one content digest");
   assert.equal(V({ report: { rounds: [{ host: { started: true, version: "2.1.300", model: "m" } }] } }, AUTO).code, "WRONG_HOST", "the Claude Code the image pins, and no other");
   assert.equal(V({ report: { rounds: [{ host: { started: true, version: "2.1.314", model: null } }] } }, AUTO).code, "WRONG_HOST", "a model the host never named is no evidence");
   assert.equal(V({ report: { hostBasis: "none" } }).code, "HELD", "a verification needs no host at all");
   assert.equal(V({ ending: { outcome: "FAIL" }, report: { hostBasis: "scripted" } }, AUTO).code, "UNEXPECTED", "a failure is a failure, whoever carried it");
+});
+
+// A QA run's report names its one round; a run a restart interrupted says it of that round, with no host.
+const QA_CUT = { rounds: undefined, round: { driver: null, interrupted: true } };
+
+test("ROW_VERDICT: a model-carried run a restart interrupted is INTERRUPTED -- never held, never the model's FAIL -- and one that says another host stays WRONG_HOST", () => {
+  const cut = V({ report: QA_CUT }, AUTO);
+  assert.deepEqual([cut.code, cut.state, cut.outcome, cut.basis, cut.cli, cut.model], ["INTERRUPTED", "INTERRUPTED", "PASS", "coding-host", null, null], "the incident: PASS read back, basis coding-host, no Claude Code and no model");
+  assert.match(cut.says, /interrupted before the controller saw it end/);
+  assert.equal(V({ ending: { outcome: "FAIL" }, report: QA_CUT }, AUTO).code, "INTERRUPTED", "a run cut short is not the model's miss either");
+  assert.equal(V({ report: { rounds: [{ interrupted: true, host: null }, { host: { started: true, version: "2.1.314", model: "m" } }] } }, AUTO).code, "INTERRUPTED", "a later round's identity does not make a run with an interrupted round evidence: what that round did is nobody's to show");
+  assert.equal(V({ report: { ...QA_CUT, hostBasis: "scripted" } }, AUTO).code, "WRONG_HOST", "a scripted run is never run again into evidence");
+  assert.equal(V({ report: { ...QA_CUT, hostBasis: "session" } }, AUTO).code, "WRONG_HOST");
+  assert.equal(V({ report: { rounds: [{ interrupted: true, host: null }, { host: { started: true, version: "2.1.300", model: "m" } }] } }, AUTO).code, "WRONG_HOST", "a round that says another Claude Code than the image pins");
+  assert.equal(V({ report: { ...QA_CUT, leaks: ["out/host.jsonl"] } }, AUTO).code, "LEAK", "a credential in the room is a person's to look at first");
+  assert.equal(V({ ending: { outcome: "BLOCKED" }, report: QA_CUT }, AUTO).code, "BLOCKED");
+  assert.equal(V({ report: { ...QA_CUT, round: { driver: null, interrupted: false } } }, AUTO).code, "WRONG_HOST", "no interruption on record: an anonymous PASS stays no evidence of the coding host");
+  assert.equal(V({ report: { hostBasis: "none", rounds: [{ interrupted: true }] } }).code, "HELD", "only a model-carried row is held to a host");
+  assert.equal(interruptedOf({ round: { interrupted: true } }) && interruptedOf({ rounds: [{}, { interrupted: true }] }) && !interruptedOf({ rounds: [{ interrupted: false }] }) && !interruptedOf(null), true);
 });
 
 // Windows, as the file system answers there: the JavaScript realpath keeps a temporary path's 8.3 short name, while git
@@ -113,6 +154,11 @@ test("ROW_VERDICT: a run is never WRONG_TREE for how its tree is spelled -- a sh
   assert.equal(at("C:\\Users\\runneradmin\\AppData\\Local\\Temp\\o\\release\\trees\\c1"), "HELD");
   assert.equal(at("C:\\Users\\runneradmin\\AppData\\Local\\Temp\\o\\elsewhere"), "WRONG_TREE");
   assert.equal(at(undefined), "WRONG_TREE", "a run that names no tree is never this cycle's");
+});
+
+test("the definition of done runs without the coding host's credential or endpoint -- it needs neither, and a suite could print one", () => {
+  const env = { PATH: "/bin", HOME: "/h", ANTHROPIC_API_KEY: "k", CLAUDE_CODE_OAUTH_TOKEN: "t", ANTHROPIC_AUTH_TOKEN: "a", ANTHROPIC_BASE_URL: "https://api.anthropic.com" };
+  assert.deepEqual(gateEnvOf(env), { PATH: "/bin", HOME: "/h" });
 });
 
 // ---- CONTROL_RULES -------------------------------------------------------------------------------------------------------

@@ -1,6 +1,130 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
+
+A minor release: a release now qualifies only on Docker benchmark evidence carried by the real Claude Code CLI, for
+the exact source. One contract a consumer observes is added -- `cli/task.mjs create --parent` -- and none changes.
+
+**Fixes: the two known findings, repaired.** Both were found by the benchmark and are now held by it the other way round:
+each case's baseline is PASS, and a controlled-fault variant plants the old defect again.
+
+- **An approval a person gave is not dropped silently (ORBIT-SRC-002).** A successor that removes a step a person had
+  approved is now a weakening (`APPROVAL_DROPPED`), like one that renames it or drops its approval.
+- **A host can run what it generated.** A `generate` step's answer now names the version it froze (`frozen`), and
+  `context` lists the latest frozen versions (`versions`) with the obligation each was designed for -- the
+  `<case>@<digest16>` id `run-version` takes. Before, only the journal held it, so a host behind a relay (the
+  benchmark's runner) froze a test and could never run it; the first ship's real Claude Code QA row found this. The
+  benchmark's scripted host now reads the id the same way.
+- **A step says what its action came to.** Every autonomous QA `step` answer now carries `result` -- the word its
+  action's owner gave (`GENERATION_FAILED`, `ENVIRONMENT_BLOCKED`, `SATISFIED` …), the stage or rule and why, by
+  allow-list. A `run-version` the sandbox could not bind used to answer `done` with nothing else, and a host could not
+  tell it had run nothing. A decision may cite a design or a version (`dsg-…`, `ver-…`) as evidence.
+- **A refused run says why.** A `run-version` refused or blocked at a step now says where in `result.stopped`: the
+  step, its verb and capability as the frozen case has them, and what that step's own stop said (`request.key … or
+  request.match`, `request.action is one of …`, `answered 400 unknown-point`) -- by allow-list, never a failure's
+  message (which quotes the product's answer), scrubbed by shape and by the value of every secret the dispatch sealed,
+  and bounded. A run refused before any step says what its envelope gave, and `reconcile` says the same of a late one.
+  The capability's words lived only in the worker's run log, so a real Claude Code QA row (ORBIT-QA-003) saw a bare
+  `INVALID_TEST` / `TEST_WRONG` and spent its design budget guessing request shapes and fault points.
+- **A fault point is read, never guessed.** A workload node of the system graph may declare the fault points its test
+  hooks inject (`attributes.faultPoints`: the names on one line, the flat value a graph fact keeps). An autonomous QA
+  `context` lists them beside the workload's alias under `bindings` (`points`: plain names only, each once, at most
+  16), and a design whose fault control names a point that the workloads it binds declare and do not include is
+  refused before a draft exists (`DECLARED_POINT`, naming the declared points). A workload that declares none keeps
+  today's behaviour: unknown is never a refusal. The acceptance system graphs now record the points the invoice
+  application declares for `worker` and `relay`. A real Claude Code QA row (ORBIT-QA-003) guessed
+  `after-effect-before-ack` for the worker's `after-commit-before-ack`, and the hooks refused every run that named it.
+- **A design is read before it is written.** An autonomous QA `protocol` now carries what a `generate` design may
+  hold -- each part's fields with their enums (`effectScope`, a trigger's `kind`, a control's `role`), what is required
+  and what only the engine stamps, from the very definitions a proposal is held to -- and the assertion template each
+  criterion op compiles to (`eq` is `value-eq`). A test obligation's frontier `template` names the controls its shape
+  needs and the templates its slots take, and `bindings` lists a state's `address` (its declared table and key
+  column). Every design the real Claude Code QA rows proposed was first refused for one of these, each refusal a repair
+  spent, and one row guessed `businessKey` for the key column `business_key`.
+- **A failed run names the step it failed at.** `result.stopped` now names a FAILED step too (`as: failed`), and says
+  nothing: what it read is the product's. A host could not tell a fault's witness failing from the read after it. An
+  assertion on a step whose answer declares nothing is refused as that step, no longer as "its declared outputs are
+  none" -- which read as if `orbit.http.read` could not be ruled on, and a row gave its obligation up.
+- **A design brings back the workload its fault stopped.** A fault stops the workload it is armed in, and nothing a
+  workload, an adapter or a family operation declares says that workload comes back by itself (the acceptance
+  application keeps it down until a test starts it, so what the fault left can be read first). A design whose fault
+  control's witness is followed by a step that asks the faulted workload for more -- an `orbit.worker.observe` of it --
+  with no `orbit.workload.control` `start` or `restart` of it in between, or that never brings it back before the test
+  ends, is now refused before a draft exists (`RESTORED_AFTER_FAULT`, naming the step to add and the steps it goes
+  between). A start of a workload already back changes nothing, so the rule reads no declaration and holds everywhere.
+  What it says is shown before a host designs: `protocol`'s `design.rules`, the frontier `template` of an obligation
+  whose shape needs a fault control (`rules`), and the control's `point`. A real Claude Code QA row (ORBIT-QA-001 on
+  Opus) missed three times: its crash test waited for a redelivery from a worker nothing restarted, the clean
+  application contradicted it as well, and the next crash test found the worker still down and never saw its fault.
+- **A failed observation says what its match left out of the very thing it observes.** An observation whose `match`
+  names WHAT it observes and how it went (`orbit.worker.observe` with `{ messageId, outcome }`) is answered only what
+  matched all of it, and an answer of none, complete, read exactly as "it never happened". Which fields of a match name
+  the thing is now the declaration's word: a meaning may say it is an `identity` (`message.id`, `message.key`,
+  `message.correlation`, `occurrence.id`, `execution.ref`), the adapter facade tells the helper which match fields carry
+  one (`subject`, an optional field of the helper request), and the reference hooks helper says what it read of that
+  thing and left out. The engine keeps it beside the answer under a field of its own (`excluded`: the list, how many,
+  the newest three held to the list's declared item fields), which no output declares -- so no verdict is compiled from
+  it and `FAULT_NOT_SEEN` never reads it. A run that stopped at that step says it in `result.stopped.excluded`: the
+  match's fields that left them out, the items, and one sentence ("2 of the attempts this step read have the messageId
+  its match names and were left out by the rest of it — outcome fault, duplicate where the match asks processed …"),
+  scrubbed and bounded. Every verdict is the one it was. What a host reads before it designs says the rest: a test
+  obligation's `template` names what its own `expected` slots are to its verdict (`slots`: a run stops at the first
+  assertion that fails, so another criterion's slot failing on an earlier step ends the test before the obligation's
+  own is read, and its contradiction is the obligation's), and `crash-after-effect-before-ack` says that the delivery
+  that comes back after the effect committed is not a second effect -- how it settles is the system's own word, never a
+  second success to wait for: observe it by its delivery attempt or by the message alone, and rule the obligation on its
+  own slots, the effect count (`says`; `protocol`'s `design.slots` and `design.shapes`). A real Claude Code QA row
+  (ORBIT-QA-001 on Opus) raised `crash-after-effect-before-ack` as a false alarm in 3 of 3 runs: it awaited the
+  redelivery with `outcome: processed` and ruled the completion criterion's slot on it, and the clean application's
+  redelivery -- recorded as a duplicate, its effect already there -- was filtered out of an answer that then read as
+  "never redelivered", before the effect count was ever read. Generation still accepts an assertion on a slot its
+  criterion states for another shape: four of the nine acceptance reference designs rule one on purpose, a completion
+  barrier before the effect count.
+- **A model-carried run a restart interrupted is run again -- never evidence, never the model's miss, never the end of
+  the release.** A cloud worker restart killed ORBIT-QA-001's run mid-round; resumed, the run read back what the round
+  left and came to PASS, but a round's host identity (its Claude Code version and model) is kept only when the
+  controller sees the round end, so the ship held the run UNTRUSTED (`WRONG_HOST`) and ended NOT SHIPPABLE after 77 of
+  93 rows had held, its `--retries=2` unused. Such a run is now `INTERRUPTED`, read off the run's own report (a round
+  whose action closed as interrupted, with no evidence of its own -- never a timestamp): still never evidence, it is run
+  again as a new run and holds only on that run's own PASS with its identity. It spends none of `--retries`, and at most
+  `INTERRUPTED_RUNS` (2, declared in `ship/diagnose.mjs`) such runs a row a cycle; then the ship BLOCKS on the
+  environment with every run kept. A run that says another host -- another basis, or a round reporting another Claude
+  Code than the image pins -- stays `WRONG_HOST`, interrupted or not, and is never run again into evidence. A QA run's
+  report now says `interrupted` only of a round that began; one whose application never came up had none.
+- **`--resume` asks a blocked row again.** A ship blocked on a row (the environment, a credential, the provider, a spent
+  interruption bound) blocked again at once on `--resume` and never ran it. The resume is now an action of the ship's
+  journal (`release.resume`), and a row blocked before it runs again as a new run -- once per resume, never a loop.
+- **A run's room is judged only with its report.** A run writes its ending, tidies (its leak scan among it), and writes
+  its report last; a restart between the two left a room the ship judged as it stood -- no host (`WRONG_HOST` for a
+  model-carried row) and no leak looked for. Such a room is now carried on by `run.mjs resume`, which does that tail
+  again; the run itself is never sent again.
+- **`--status` says what the newest cycle held.** It said `0/N held` and nothing failed for every ship whose cycle had
+  closed -- one that shipped, stopped on a row or integrated its repairs -- because it folded an open cycle only. It now
+  folds the newest cycle, open or closed (`cycleOpen`), lists the rows held (`heldRows`), marks a row that runs again,
+  and diagnoses each from its case's own declaration as the ship does, so a repair in flight is named.
+- **A generated request never repeats its endpoint's base path.** A path is relative to the endpoint it is sent to, and
+  an endpoint the system graph declares under a base path (`/api`) already carries it; a generated `orbit.http.*` step
+  whose path starts with that base again (`/api/invoices/…` against `invoice-read` at `/api`) is now refused before a
+  draft exists, with the path it should have been. It asked for `/api/api/…`, and the 404 the clean application gave
+  too was a false alarm -- three of the real Claude Code QA rows ended that way.
+- **A host reads the names it may bind instead of guessing them.** An autonomous QA `context` now lists, by kind
+  (endpoint, channel, state, schedule, workload, identity, clock), every alias the task's sandbox binds -- read off the
+  frozen system graph by the binder's own rows (`bindableFrom`), with the owning component and an endpoint's base path.
+  A real Claude Code QA row spent its design repairs on aliases it guessed from keys (`reminder-worker` for the
+  workload `worker`) and never reached the shapes the planted defect was in.
+- **A missed model-carried row may run again, when a person allows it.** `ship.mjs --retries=<n>` sets the policy's
+  `autonomousRetries` (0 by default, at most 3). A row waiting for that retry no longer counts as failed for good, which
+  had kept every model-carried row -- itself included -- from running again.
+- **A sandbox supervisor that loses the race for its owner file yields.** Two supervisors started together, or a
+  teardown removing the room under one still starting, crashed the run that started it (EEXIST, ENOENT).
+- **The release suite gate waits 45 minutes**, and says a suite it stopped was late, not that it printed no count.
+- **A benchmark QA case's investigation gets the minutes its brief promises.** The engine was seated with the
+  investigation's 20-minute default while the host was told it had the case's runner minutes (120); real hosts stopped
+  with most obligations open. The setup now sets `limits.minutes` to the runner minutes, within the setting's bound.
+- **`goal resume` and `goal status` read every task again.** Their task summaries handed a raw journal to the task view,
+  which threw, so every task read as `unknown` and a goal whose analysis had completed never moved on.
+- **One failure is one signature (ORBIT-ORC-006).** A failure's signature masks a UUID whole, wherever it appears, so two
+  runs of the same failure no longer read as two failures and `NO_PROGRESS` is reached when it should be.
 
 **The autonomous ship (ADR 0049): a release qualifies only on Docker benchmark evidence carried by the real Claude Code
 CLI, for the exact source.** `node skills/orbit-release/ship.mjs` is no longer ten gates and two records: it is one

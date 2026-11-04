@@ -20,7 +20,10 @@ export const EMPTY_TMP = mkdtempSync(join(tmpdir(), "orbit-tmp-"));
 // from inside a hooked session must not inherit somebody's toggles either --
 // nor, run by Grok Build's agent, its session (GROK_SESSION_ID binds a Orbit
 // command to Grok since 1.8.9).
-const withoutInheritedOrbit = (env) => Object.fromEntries(Object.entries(env).filter(([k]) => !k.startsWith("ORBIT_") && !k.startsWith("CLAUDE_PLUGIN_OPTION_") && !k.startsWith("GROK_")));
+// Nor a coding host's credential or endpoint: a test that wants one says so, and a suite run where one is exported
+// (a developer's shell, a release ship) must not turn every "no credential" test into a test of somebody's key.
+const CODING_HOST = new Set(["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"]);
+const withoutInheritedOrbit = (env) => Object.fromEntries(Object.entries(env).filter(([k]) => !k.startsWith("ORBIT_") && !k.startsWith("CLAUDE_PLUGIN_OPTION_") && !k.startsWith("GROK_") && !CODING_HOST.has(k)));
 
 // USERPROFILE is what os.homedir() reads on Windows, HOME everywhere else. An
 // exported ORBIT_* a shell would smuggle in goes too: a test says what it

@@ -4,16 +4,24 @@
 // validated with the real grammar and every call's input against its capability. A repair may
 // change how a test is written, never what it rules on.
 import assert from "node:assert/strict";
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { familyCapabilities } from "../src/adapters/core.mjs";
+import { graphOf } from "../src/architecture/graph-view.mjs";
 import { inputFindings } from "../src/capability/invoke.mjs";
 import { CORE } from "../src/dsl/registry.mjs";
 import { validate } from "../src/dsl/validate.mjs";
 import { compileDesign } from "../src/qa/generation/compile.mjs";
+import { CONTROL_RULES, controlFindings } from "../src/qa/generation/controls.mjs";
 import { generatedCase } from "../src/qa/generation/design.mjs";
 import { repairFindings } from "../src/qa/generation/repair.mjs";
 import { shapeOf } from "../src/qa/obligations/shapes.mjs";
 import { VERIFICATION_OUTCOME_IDS } from "../src/investigation/verification.mjs";
+import { bindableFrom } from "../src/runtime/sandbox/declarations.mjs";
+import { realIo } from "../src/store/io.mjs";
+import { catalogLayer, mergeVocabulary } from "../src/topology/vocabulary.mjs";
 import { fakeContext } from "./fakes/context.mjs";
 
 const caps = new Map(familyCapabilities().map((c) => [c.id, { ...c, from: "pack:orbit-backend-test" }]));
@@ -98,6 +106,110 @@ test("a control is held to what the test can show of it: it acts in a step, a re
   holds(stopped([{ role: "positive", step: 2 }, { role: "state" }]), /only a fault control names a point/, "a step a positive control names would escape the rules a step is held to");
   holds(stopped([{ role: "positive" }, { role: "state" }, { role: "fault", point: "p", step: 9 }]), /witness is a step of the test \(1–3\)/, "a witness past the last step");
   holds(stopped([{ role: "positive" }, { role: "state" }, { role: "fault", step: 2 }]), /and no point/, "a witness names the point it witnesses");
+});
+
+// What a real Claude Code QA row taught (0.4.0): a fault point the workload's own test hooks do not declare is refused
+// only when the run asks for it -- a design, a version and a dispatch spent on a guessed name. Where the system graph
+// declares a workload's points, a fault control that names another is refused before a draft exists, naming them.
+test("a fault control's point is one the workload it faults declares -- refused at the controls stage, naming them; unknown never refuses", () => {
+  const fault = (alias, point) => call("orbit.workload.control", { workloadRef: alias, request: { action: "fault", point } });
+  const watch = (alias) => call("orbit.worker.observe", { workloadRef: alias, request: { count: 1 } });
+  const back = (alias) => call("orbit.workload.control", { workloadRef: alias, request: { action: "restart" } });
+  const DECLARED = { worker: ["before-effect", "after-commit-before-ack"], relay: ["after-confirm-before-mark"] };
+  const stopped = (point, steps, declared = DECLARED) => ((r) => [r.stage, r.outcome, (r.findings ?? []).join(" | ")])(generatedCase(proposal({ skeleton: skeleton([...STEPS, ...steps]), controls: [{ role: "positive" }, { role: "state" }, { role: "fault", point, why: "the worker stops after its effect" }] }), context(declared ? { faultPointsOf: (alias) => declared[alias] ?? null } : {})));
+  const [stage, outcome, said] = stopped("after-effect-before-ack", [fault("worker", "after-effect-before-ack"), watch("worker"), back("worker")]);
+  assert.deepEqual([stage, outcome], ["controls", "GENERATION_FAILED"], said);
+  assert.match(said, /^DECLARED_POINT: the fault control names point "after-effect-before-ack", which no workload this design binds declares — worker declares before-effect, after-commit-before-ack$/);
+  assert.notEqual(stopped("after-commit-before-ack", [fault("worker", "after-commit-before-ack"), watch("worker"), back("worker")])[0], "controls", "a declared point holds");
+  assert.match(stopped("x", [fault("worker", "x"), watch("relay"), back("worker")])[2], /worker declares before-effect, after-commit-before-ack; relay declares after-confirm-before-mark/, "every workload it binds, each with what it declares");
+  assert.notEqual(stopped("after-confirm-before-mark", [fault("worker", "y"), watch("relay"), back("worker")])[0], "controls", "a point one of them declares");
+  assert.notEqual(stopped("x", [fault("worker", "x"), watch("api"), back("worker")])[0], "controls", "a workload that declares no points is unknown -- and unknown is never a refusal");
+  assert.notEqual(stopped("x", [fault("worker", "x"), back("worker")], null)[0], "controls", "where nothing answers what a workload declares, today's behaviour");
+  assert.notEqual(stopped("x", [])[0], "controls", "a design that binds no workload has none to hold its point to");
+});
+
+// What a real Claude Code QA row taught (0.4.0, ORBIT-QA-001 on Opus, three runs of three): its crash test faulted the
+// worker, saw the fault, then waited for the redelivery -- and nothing brought the worker back. The acceptance
+// application keeps a workload that stopped at a fault point down until a test starts it, so the CLEAN application
+// contradicted the test too, a false alarm; and the next crash test found the worker still down and never saw its own
+// fault. Nothing a host could read said it. The acceptance designs restart the worker between the witness and the
+// observation after it; a design is now held to that before a draft exists.
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const ACCEPTANCE = join(ROOT, "acceptance");
+const ADAPTERS = JSON.parse(readFileSync(join(ROOT, "skills", "orbit-backend-test", "adapters.json"), "utf8")).adapters;
+const answerOf = (adapter, op) => ADAPTERS.find((a) => a.id === adapter).operations[op].outputs;
+// What each step's answer carries, as the adapters the acceptance stack binds declare it.
+const ANSWERS = { "orbit.workload.control": answerOf("workload.hooks", "control"), "orbit.worker.observe": answerOf("worker.hooks", "observe"), "orbit.messaging.publish": answerOf("amqp.reference", "publish"), "orbit.state.read": answerOf("postgres.reference", "read") };
+// The accepted criterion the crash obligations rest on, as the acceptance plan states it.
+const PLAN = JSON.parse(readFileSync(join(ACCEPTANCE, "projects", "_shared", "ui-tests", "screens", "_no-screen", "invoice.plan.json"), "utf8"));
+const ACCEPTED = new Map(PLAN.criteria.flatMap((c) => (c.expects ?? []).map((e) => [`${c.id}/${e.id}`, e])));
+// The fault points each acceptance stack's system graph declares, read off it the way the binder reads them.
+const STACKS = ["invoice-a", "invoice-b"];
+const factsOf = (stack) => readFileSync(join(ACCEPTANCE, "graph", `${stack}.jsonl`), "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+const pointsOf = (stack) => Object.fromEntries(bindableFrom({ graph: graphOf(factsOf(stack), mergeVocabulary([catalogLayer(ROOT, realIo())])) }).workload.map((w) => [w.alias, w.points ?? null]));
+const POINTS = Object.fromEntries(STACKS.map((stack) => [stack, pointsOf(stack)]));
+const crashContext = (design, shape) => context({ expectations: ACCEPTED, expected: ["FIX-ASYNC-1/E2"], outputsOf: (i) => ANSWERS[design.skeleton.steps[i - 1]?.capability], shape: shapeOf(shape), faultPointsOf: (alias) => POINTS["invoice-a"][alias] ?? null });
+
+const KEY = "tenant-a|inv-a|billing-daily:2026-10-24T09:00:00+07:00";
+const workload = (request, alias = "worker") => call("orbit.workload.control", { workloadRef: alias, request });
+const attempts = (request, alias = "worker") => call("orbit.worker.observe", { workloadRef: alias, request });
+// The crash-before-effect design the host proposed, as the run's own journal kept it: the fault armed, the message
+// published, the fault's witness, the redelivery awaited and the effect read -- with no step that brings the worker back.
+const HOST_CRASH = {
+  obligation: "tob-crash00000001",
+  skeleton: skeleton([
+    workload({ action: "fault", point: "before-effect" }),
+    call("orbit.messaging.publish", { channelRef: "billing-reminder-requested", request: { messageId: "msg-host-0001", correlationId: KEY, payload: { messageId: "msg-host-0001", businessKey: KEY } } }),
+    attempts({ match: { messageId: "msg-host-0001" }, count: 1, waitMs: 60_000 }),
+    attempts({ match: { messageId: "msg-host-0001" }, count: 2 }),
+    call("orbit.state.read", { stateRef: "reminders", request: { key: KEY } }),
+  ]),
+  assertions: [{ criterionRef: "FIX-ASYNC-1/E3", template: "complete", step: 4 }, { criterionRef: "FIX-ASYNC-1/E2", template: "count-eq", step: 5 }],
+  controls: [{ role: "fault", point: "before-effect", step: 3, why: "the worker stops before its effect" }, { role: "state", why: "the effect happens once" }],
+  trigger: { kind: "message", ref: "billing-reminder-requested", step: 2 },
+  effectScope: "fixture",
+};
+
+// Each acceptance design, as the reference host sends it on a stack: for its shape, with the skeleton each clock allows.
+const designsOn = (stack) => readdirSync(join(ACCEPTANCE, "designs")).filter((f) => f.endsWith(".json")).flatMap((f) => ((d) => Object.entries(d["by-clock"] ?? { none: {} }).map(([clock, over]) => ({ stack, shape: f.slice(0, -5), clock, design: JSON.parse(JSON.stringify({ ...d.design, obligation: "tob-acceptance01", ...over }).replaceAll("{{component}}", stack)) })))(JSON.parse(readFileSync(join(ACCEPTANCE, "designs", f), "utf8"))));
+const ACCEPTANCE_DESIGNS = designsOn("invoice-a");
+
+test("a workload stopped at its fault point is brought back before a step asks it for more -- the design a real host proposed is refused, naming the step to add and where; the acceptance design is made", () => {
+  const out = generatedCase(HOST_CRASH, crashContext(HOST_CRASH, "crash-before-effect"));
+  assert.deepEqual([out.ok, out.stage, out.outcome], [false, "controls", "GENERATION_FAILED"], `the design that ran to a false alarm never becomes a draft: ${JSON.stringify(out.findings)}`);
+  assert.deepEqual(out.findings, ["RESTORED_AFTER_FAULT: add orbit.workload.control (request.action start or restart) on worker after step 3 and before step 4: step 4 asks it for more after its fault (witnessed at step 3), and nothing brought it back"]);
+  assert.ok(out.findings[0].length <= 240, "said whole within what a host sees of a refusal");
+  for (const shape of ["crash-before-effect", "crash-after-effect-before-ack"]) {
+    const { design } = ACCEPTANCE_DESIGNS.find((d) => d.shape === shape);
+    const made = generatedCase(design, crashContext(design, shape));
+    assert.equal(made.ok, true, `${shape}: ${JSON.stringify(made.findings)}`);
+  }
+  const repaired = { ...HOST_CRASH, skeleton: skeleton([...HOST_CRASH.skeleton.steps.slice(0, 3), workload({ action: "start" }), ...HOST_CRASH.skeleton.steps.slice(3)]), assertions: HOST_CRASH.assertions.map((a) => ({ ...a, step: a.step + 1 })) };
+  assert.equal(generatedCase(repaired, crashContext(repaired, "crash-before-effect")).ok, true, "the host's own design, with the step the refusal named, is made -- a start brings it back as a restart does");
+});
+
+test("a fault's workload is brought back after its witness, before any later step asks it for more, and before the test ends -- held from the design alone, and never by another workload or a stop", () => {
+  const said = (steps, controls = HOST_CRASH.controls) => controlFindings({ ...HOST_CRASH, skeleton: skeleton(steps), controls }, shapeOf("crash-before-effect"), {}).filter((f) => f.rule === "RESTORED_AFTER_FAULT").map((f) => f.say);
+  const [arm, publish, witness, again, read] = HOST_CRASH.skeleton.steps;
+  assert.deepEqual(said([arm, publish, witness, workload({ action: "restart" }), again, read]), [], "brought back between the witness and the step that asks again");
+  assert.deepEqual(said([arm, publish, witness, read, workload({ action: "restart" }), again]), [], "what the fault left may be read first, while the workload is down");
+  assert.match(said([arm, publish, witness, again, workload({ action: "restart" }), read])[0] ?? "", /after step 3 and before step 4: step 4 asks it for more/, "a restart after the step that waited for it is too late");
+  assert.match(said([arm, publish, witness, workload({ action: "restart" }, "relay"), again, read])[0] ?? "", /on worker after step 3 and before step 5/, "another workload's restart brings back nothing of this one");
+  assert.match(said([arm, publish, witness, workload({ action: "stop" }), again, read])[0] ?? "", /before step 5/, "a stop brings nothing back");
+  assert.deepEqual(said([arm, publish, witness, read]), ["add orbit.workload.control (request.action start or restart) on worker after step 3 and before reading its effect: its fault (witnessed at step 3) leaves it stopped for the next test"], "nothing asks it again here, and the next test in this sandbox would");
+  const unwitnessed = [{ role: "fault", point: "before-effect" }, { role: "state" }];
+  assert.deepEqual(said([arm, publish, read], unwitnessed), ["add orbit.workload.control (request.action start or restart) on worker after the step that sees its fault and before reading its effect: its fault (armed at step 1) leaves it stopped for the next test"], "with no witness, at least one brings it back after the step that armed it");
+  assert.deepEqual(said([arm, publish, again, workload({ action: "restart" }), read], unwitnessed), [], "and with no witness, the design never says when the fault happened -- nothing more is demonstrable");
+  assert.deepEqual(said([workload({ action: "fault", point: "after-commit-before-ack" }), publish, witness, again, read]), [], "a point no step arms leaves no workload stopped for this rule to hold");
+});
+
+// The reference host's designs (acceptance/designs/) are what the benchmark's controls and the native acceptance send:
+// every rule a design's controls are held to must make them, or the controls would fail for the rule, not the product.
+test("every acceptance design holds every rule a design's controls are held to, on each stack, with the fault points its graph declares", () => {
+  assert.ok(ACCEPTANCE_DESIGNS.some((d) => d.design.controls.some((c) => c.role === "fault")), "the crash designs are among them");
+  for (const stack of STACKS) assert.deepEqual(POINTS[stack].worker, ["before-effect", "after-commit-before-ack", "after-sink-before-ack", "after-ack-before-effect"], `${stack}: read off the graph the way the binder reads it`);
+  const findings = STACKS.flatMap((stack) => designsOn(stack).flatMap(({ shape, clock, design }) => controlFindings(design, shapeOf(shape), { faultPointsOf: (alias) => POINTS[stack][alias] ?? null }).map((f) => `${stack} ${shape} (${clock}) ${f.rule}: ${f.say}`)));
+  assert.deepEqual(findings, [], `held to ${CONTROL_RULES.map((r) => r.id).join(", ")}`);
 });
 
 test("a repair may change how a step is written, never what the test rules on", () => {

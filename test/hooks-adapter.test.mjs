@@ -25,7 +25,7 @@ function hooks(routes) {
     return typeof route === "function" ? route(new URL(url), opts, calls) : route;
   };
   const deps = { fetch, env: { ORBIT_HOOKS_TOKEN: "s3cr3t-hooks" }, now: () => performance.now(), timers: { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t) }, pollMs: 5 };
-  return { calls, ask: (op, request = {}, bound = {}, deadlineMs = 2_000) => run({ v: "orbit.helper/v1", op, request, bound, deadlineMs }, deps) };
+  return { calls, ask: (op, request = {}, bound = {}, deadlineMs = 2_000, envelope = {}) => run({ v: "orbit.helper/v1", op, request, bound, deadlineMs, ...envelope }, deps) };
 }
 
 test("it answers the six hook operations, and nothing else", async () => {
@@ -96,6 +96,37 @@ test("what a watched read answers is what its match asked about -- another messa
   assert.deepEqual([out.value.through, out.value.completeness], [2, "complete"], "while the cursor still covers everything read");
   const all = await h.ask("attempts", {}, { workloadRef: workload });
   assert.equal(all.value.attempts.length, 2, "no match asks about everything");
+});
+
+// What a real Claude Code QA row taught (0.4.0, ORBIT-QA-001 on Opus, three runs of three): its crash test awaited the
+// redelivery with a match on the message AND an outcome, the clean application's redelivery settled as its own word for
+// "no second effect", and the answer -- none, complete -- read exactly as "it never came back": a false alarm. The engine
+// says which fields of the match name WHAT is observed (`subject`); what the match read of that very message and left
+// out is said beside the answer, and never answered.
+const MINE = [
+  { seq: 1, messageId: "msg-other", deliveryAttempt: 1, outcome: "processed" },
+  { seq: 2, messageId: "msg-mine", deliveryAttempt: 1, outcome: "fault", terminalReason: "fault:after-commit-before-ack" },
+  { seq: 3, messageId: "msg-mine", deliveryAttempt: 2, outcome: "duplicate" },
+];
+
+test("what a match read of the very message it names and left out is said beside the answer -- never answered, never another message's", async () => {
+  const h = hooks({ "GET /orbit/workload/v1/attempts": answer(200, { attempts: MINE, through: 3 }) });
+  const asked = (match, envelope) => h.ask("attempts", { count: 1, match }, { workloadRef: workload }, 2_000, envelope);
+  const out = await asked({ messageId: "msg-mine", outcome: "processed" }, { subject: ["messageId"] });
+  assert.deepEqual([out.value.attempts, out.value.through, out.value.completeness], [[], 3, "complete"], "the answer is what matched all of it, as before");
+  assert.deepEqual(out.value.excluded, { attempts: { count: 2, items: [MINE[1], MINE[2]] } }, "the fault and the redelivery that settled another way -- and nothing of msg-other");
+  assert.equal("excluded" in (await asked({ messageId: "msg-mine", outcome: "processed" })).value, false, "told no subject, the helper never decides by itself what names the thing");
+  assert.equal("excluded" in (await asked({ messageId: "msg-mine" }, { subject: ["messageId"] })).value, false, "a match on the message alone left nothing of it out");
+  assert.equal("excluded" in (await asked({ messageId: "msg-gone", outcome: "processed" }, { subject: ["messageId"] })).value, false, "nothing of a message it never read");
+  const many = hooks({ "GET /orbit/workload/v1/attempts": answer(200, { attempts: Array.from({ length: 5 }, (_, i) => ({ seq: i + 1, messageId: "msg-mine", deliveryAttempt: i + 1, outcome: "retry" })), through: 5 }) });
+  const bounded = await many.ask("attempts", { match: { messageId: "msg-mine", outcome: "processed" } }, { workloadRef: workload }, 2_000, { subject: ["messageId"] });
+  assert.deepEqual([bounded.value.excluded.attempts.count, bounded.value.excluded.attempts.items.map((a) => a.seq)], [5, [3, 4, 5]], "how many, and the newest three");
+});
+
+test("a schedule's decision of the occurrence a match names, that the rest of the match left out, is said the same way", async () => {
+  const h = hooks({ "GET /orbit/scheduler/v1/decisions": answer(200, { decisions: [{ seq: 1, occurrenceId: "o-due", decision: "missed" }, { seq: 2, occurrenceId: "o-other", decision: "dispatched" }], through: 2 }) });
+  const out = await h.ask("decisions", { match: { occurrenceId: "o-due", decision: "dispatched" } }, { scheduleRef: schedule }, 2_000, { subject: ["occurrenceId", "unknown-field"] });
+  assert.deepEqual([out.value.decisions, out.value.excluded], [[], { decisions: { count: 1, items: [{ seq: 1, occurrenceId: "o-due", decision: "missed" }] } }]);
 });
 
 test("a wait the call's own deadline cuts short of what it waited for is PARTIAL -- a window it did not watch is never claimed", async () => {

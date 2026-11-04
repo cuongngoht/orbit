@@ -13,6 +13,8 @@ import { shippable } from "../skills/orbit-release/gates.mjs";
 import { acceptanceOf as backendAcceptanceOf } from "../skills/orbit-release/backend.mjs";
 import { acceptanceOf as hostAcceptanceOf, optional } from "../skills/orbit-release/hosts.mjs";
 import { AWAITED, ciVerdict, markOf } from "../skills/orbit-release/ship/ci.mjs";
+import { INTERRUPTED_RUNS } from "../skills/orbit-release/ship/diagnose.mjs";
+import { saidStatus } from "../skills/orbit-release/ship/report.mjs";
 import { begunShip, evidenceAsked, resumedShip, statusOf } from "../skills/orbit-release/ship/session.mjs";
 import { driven } from "../skills/orbit-release/ship/steps.mjs";
 import { authorize, isAuto } from "../src/protected/authorize.mjs";
@@ -217,6 +219,22 @@ test("10a. a spent budget blocks with the evidence kept; resumed with a higher l
   assert.ok(existsSync(ctx.room.at("endings")), "the block it ended with is kept as history");
 });
 
+test("10d. a model-carried row a person allowed one more run is run again -- the row waiting for it never blocks its own retry", async (t) => {
+  let runs = 0;
+  const autonomous = () => (++runs === 1 ? { outcome: "FAIL", summary: "FAIL — a planted defect was not found", host: { version: "2.1.314", model: "claude-test", costUsd: 1 } } : { outcome: "PASS", summary: "PASS — the investigation found what was planted", host: { version: "2.1.314", model: "claude-test", costUsd: 1 } });
+  const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, autonomous } });
+  const { result } = await shipped(w, { limits: { autonomousRetries: 1 } });
+  assert.deepEqual([result.outcome, result.exit], ["SHIPPABLE", 0]);
+  assert.equal(runs, 2, "the missed row ran once more, and its PASS is what holds");
+});
+
+test("10e. with no retry allowed a model-carried miss still ends the ship NOT SHIPPABLE", async (t) => {
+  const autonomous = () => ({ outcome: "FAIL", summary: "FAIL — a planted defect was not found", host: { version: "2.1.314", model: "claude-test", costUsd: 1 } });
+  const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, autonomous } });
+  const { result } = await shipped(w, {});
+  assert.deepEqual([result.outcome, result.exit], ["NOT_SHIPPABLE", 2]);
+});
+
 test("10b. two repairs of one case that fail with one signature are NO_PROGRESS, never a third try", async (t) => {
   const w = shipWorldOf(t, { policy: undefined, play: { repair: () => ({ outcome: "REPAIR_REJECTED", summary: "REPAIR_REJECTED: hidden checks still fail", signature: "bbbbbbbbbbbb", host: { version: "2.1.314", model: "claude-test", costUsd: 1 } }) } });
   const { result } = await shipped(w, { limits: { repairAttempts: 3 } });
@@ -256,6 +274,89 @@ test("10e. a ship whose process died mid-run is carried on from its journal: the
   assert.equal(w.calls.filter((c) => c.verb === "resume").length, 1);
 });
 
+// ---- 13: a restart interrupts a model-carried run -------------------------------------------------------------------------
+
+const HOST = { version: "2.1.314", model: "claude-test", costUsd: 1.25 };
+
+// What a run's resume reads back of a round a restart killed: what the investigation came to, and no host at all.
+const READ_BACK = { outcome: "PASS", summary: "PASS — found 1/1 · false alarms 0 · coverage 78%", interrupted: true };
+
+const rowDocs = (w, ctx, id) => w.door.show(ctx.task).actions.filter((a) => a.type === "release.row").map((a) => JSON.parse(readFileSync(ctx.room.at("steps", `${a.id}.json`), "utf8"))).filter((d) => d.row === id);
+
+test("13. a worker restart interrupts a model-carried run: read back with no identity it is never evidence and never the model's miss -- the row runs again, fresh, and holds on that run's own PASS", async (t) => {
+  let n = 0;
+  // 1: the run the restart killed mid-round · 2: its read-back on resume (run.mjs resume) · 3: the row's fresh run.
+  const autonomous = () => [{ outcome: "PASS", summary: "PASS", dies: true }, READ_BACK, { outcome: "PASS", summary: "PASS — the investigation found what was planted", host: HOST }][n++];
+  const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, autonomous } });
+  const ctx = begunShip(w.world, OPTS);
+  await assert.rejects(driven(ctx), /died/, "the worker restarted: every process is gone, the files survive");
+  const result = await driven(resumedShip(w.world, ctx.ship.id, {}));
+  assert.deepEqual([result.outcome, result.exit], ["SHIPPABLE", 0], result.summary);
+  assert.equal(w.calls.filter((c) => c.verb === "resume").length, 1, "the interrupted run was read back once, never sent again");
+  const docs = rowDocs(w, ctx, "QA-001:autonomous");
+  assert.deepEqual(docs.map((d) => d.settled.verdict.code), ["INTERRUPTED", "HELD"], "INTERRUPTED -- never UNTRUSTED/WRONG_HOST ending the release -- then a fresh run");
+  assert.notEqual(docs[0].planned.run, docs[1].planned.run, "a new run, never the interrupted one again");
+  assert.equal(w.door.show(ctx.task).verification.find((v) => v.subject === "QA-001:autonomous").state, "not-verified", "an interrupted run proved nothing either way: not verified, never violated");
+  const row = evidenceOf(ctx).rows.find((r) => r.id === "QA-001:autonomous");
+  assert.deepEqual([row.run, row.basis, row.cli, row.model, row.runs], [docs[1].planned.run, "coding-host", "2.1.314", "claude-test", 2], "what holds the row is the fresh run's own PASS, with its identity proven");
+  assert.equal(ran(w, (c) => c.kind === "autonomous").length, 2, "with --retries 0: the interruption spent none of the model's retries");
+});
+
+test("14. an interrupted run that says another host stays WRONG_HOST: never run again into evidence, and the release stops", async (t) => {
+  const scripted = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, autonomous: () => READ_BACK, basis: (c, kind) => (kind === "autonomous" ? "scripted" : "coding-host") } });
+  const a = await shipped(scripted, { limits: { autonomousRetries: 3 } });
+  assert.deepEqual([a.result.outcome, a.result.exit], ["NOT_SHIPPABLE", 2]);
+  assert.match(a.result.summary, /QA-001:autonomous cannot be evidence: .*basis scripted/);
+  assert.equal(ran(scripted, (c) => c.kind === "autonomous").length, 1, "never run again, whatever --retries allows");
+  const otherCli = { outcome: "REPAIRED_VERIFIED", summary: "REPAIRED_VERIFIED", rounds: [{ interrupted: true, host: null }, { host: { started: true, version: "2.1.300", model: "claude-test", costUsd: 1 } }] };
+  const mixed = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, selfHealing: () => otherCli } });
+  const b = await shipped(mixed, { limits: { autonomousRetries: 3 } });
+  assert.deepEqual([b.result.outcome, b.result.exit], ["NOT_SHIPPABLE", 2]);
+  assert.deepEqual(rowDocs(mixed, b.ctx, "CALC-001:self-healing").map((d) => d.settled.verdict.code), ["WRONG_HOST"], "a round that says another Claude Code is another host, interrupted round or not");
+});
+
+test("15. a row a restart interrupts every time runs again INTERRUPTED_RUNS times, then BLOCKS the ship with every run kept; a person's resume runs it once more", async (t) => {
+  let n = 0;
+  const autonomous = () => (++n <= INTERRUPTED_RUNS + 1 ? READ_BACK : { outcome: "PASS", summary: "PASS", host: HOST });
+  const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, autonomous } });
+  const { ctx, result } = await shipped(w, { limits: { autonomousRetries: 3 } });
+  assert.deepEqual([result.outcome, result.exit], ["BLOCKED", 3], result.summary);
+  assert.match(result.summary, new RegExp(`QA-001:autonomous: a restart interrupted ${INTERRUPTED_RUNS + 1} runs of it`));
+  assert.equal(ran(w, (c) => c.kind === "autonomous").length, INTERRUPTED_RUNS + 1, "bounded by its own constant, never by --retries: no loop");
+  assert.deepEqual([w.door.show(ctx.task).lifecycle, w.door.show(ctx.task).stopReason], ["BLOCKED", "ENVIRONMENT_BLOCKED"], "the environment, never the release, is what failed");
+  assert.equal((await statusOf(w.world, ctx.ship.id)).rows.failed[0], "QA-001:autonomous INTERRUPTED");
+  const again = await driven(resumedShip(w.world, ctx.ship.id, {}));
+  assert.deepEqual([again.outcome, again.exit], ["SHIPPABLE", 0], again.summary);
+  assert.equal(ran(w, (c) => c.kind === "autonomous").length, INTERRUPTED_RUNS + 2, "one more run for the person's resume, and it held on its own PASS");
+});
+
+test("16. a row its environment blocked runs again when a person resumes the ship -- 'fix it and --resume' -- as a new run", async (t) => {
+  let n = 0;
+  const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, verify: (c) => (c === "CALC-001" && ++n === 1 ? { outcome: "BLOCKED", summary: "BLOCKED — Docker did not answer", class: "ENVIRONMENT_BLOCKED" } : { outcome: "PASS", summary: "PASS" }) } });
+  const { ctx, result } = await shipped(w);
+  assert.deepEqual([result.outcome, result.exit], ["BLOCKED", 3]);
+  const again = await driven(resumedShip(w.world, ctx.ship.id, {}));
+  assert.deepEqual([again.outcome, again.exit], ["SHIPPABLE", 0], again.summary);
+  assert.equal(ran(w, (c) => c.case === "CALC-001" && c.kind === "verify").length, 2, "the blocked row was asked again, once");
+  assert.equal(w.door.show(ctx.task).actions.filter((a) => a.type === "release.resume").length, 1, "the resume is in the ship's journal, where the fold reads it");
+});
+
+test("17. a restart between a run's ending and its report: the room is carried on by resume -- never judged without the report that says its host and its leaks", async (t) => {
+  let n = 0;
+  const autonomous = (leaks) => () => (n++ === 0 ? { outcome: "PASS", summary: "PASS", host: HOST, diesAfterEnding: true } : { outcome: "PASS", summary: "PASS", host: HOST, leaks });
+  const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, autonomous: autonomous([]) } });
+  const ctx = begunShip(w.world, OPTS);
+  await assert.rejects(driven(ctx), /died/);
+  const result = await driven(resumedShip(w.world, ctx.ship.id, {}));
+  assert.deepEqual([result.outcome, result.exit], ["SHIPPABLE", 0], result.summary);
+  assert.deepEqual([w.calls.filter((c) => c.verb === "resume").length, ran(w, (c) => c.kind === "autonomous").length], [1, 1], "its tail done again by resume, the run itself never sent again");
+  n = 0;
+  const leaked = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, autonomous: autonomous(["rounds/1/out/host.jsonl (masked)"]) } });
+  const c2 = begunShip(leaked.world, OPTS);
+  await assert.rejects(driven(c2), /died/);
+  assert.match((await driven(resumedShip(leaked.world, c2.ship.id, {}))).summary, /credential was found in 1 file/, "a leak the tail's scan finds is still a person's to look at");
+});
+
 // ---- the boundaries, and what a person reads ------------------------------------------------------------------------------
 
 test("integrating is a write to the ship's own workspace -- AUTO -- and a ship never constructs a write to the person's checkout", () => {
@@ -269,5 +370,25 @@ test("--status says where a ship stands, read from its journal, and writes nothi
   const s = await statusOf(w.world, null);
   assert.deepEqual([s.found, s.ship, s.lifecycle, s.cycle, s.repairs], [true, ctx.ship.id, "COMPLETED", 2, []]);
   assert.equal(s.ending.outcome, "SHIPPABLE");
+  assert.deepEqual([s.cycleOpen, s.rows.held, s.rows.total, s.rows.failed], [false, 7, 7, []], "a ship that shipped says every row it held in the cycle it shipped from");
   assert.equal((await statusOf(shipWorldOf(t).world, null)).found, false);
+});
+
+test("--status of a ship that ended on a failed row says which rows held and which did not, in the cycle it ended in", async (t) => {
+  const autonomous = () => ({ outcome: "FAIL", summary: "FAIL — a planted defect was not found", host: HOST });
+  const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, autonomous } });
+  const { ctx } = await shipped(w);
+  const s = await statusOf(w.world, ctx.ship.id);
+  assert.deepEqual([s.lifecycle, s.cycle, s.cycleOpen], ["FAILED", 1, false]);
+  assert.deepEqual([s.rows.held, s.rows.total, s.rows.failed], [5, 7, ["QA-001:autonomous FAILED"]], "never 0 held and nothing failed");
+  assert.deepEqual(s.rows.heldRows.sort(), ["CALC-001:controls", "CALC-001:real", "CALC-002:controls", "CALC-002:real", "QA-001:controls"]);
+  assert.match(saidStatus(s), /rows {6}5\/7 held in cycle 1, which closed; not held: QA-001:autonomous FAILED/);
+});
+
+test("--status names a repair the ship is making, diagnosed from each case's own declaration as the ship diagnoses it", async (t) => {
+  const w = shipWorldOf(t, { play: { repair: (c, tree) => (adds(tree) ? { outcome: "PASS", summary: "PASS" } : { outcome: "BLOCKED", summary: "BLOCKED — the runner could not start", class: "ENVIRONMENT_BLOCKED" }) } });
+  const { ctx, result } = await shipped(w);
+  assert.equal(result.outcome, "BLOCKED");
+  const s = await statusOf(w.world, ctx.ship.id);
+  assert.deepEqual([s.cycleOpen, s.repairs], [true, ["CALC-002 BLOCKED"]], "the repair a case declares is read from its case, as the ship reads it");
 });

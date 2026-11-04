@@ -1,5 +1,40 @@
 # Changelog
 
+## Unreleased
+
+- **A second message under a business key is not a second effect, and the tests of one investigation share its
+  sandbox.** A real Claude Code QA row (ORBIT-QA-006 on Opus) found its planted defect and raised two false alarms that
+  the clean application contradicted too. Its `effect-once-per-key` test published a second message under the first
+  one's business key and waited for that message to be `processed`; a correct system settles it in its own word -- the
+  clean application recorded the duplicate it was -- and never as a second success. Its `completes-by-deadline` test
+  then made the schedule reach the very period whose business key that earlier test had used, in the same sandbox, and
+  waited for the period's message to be processed: the clean application settled that one as a duplicate too.
+  `effect-once-per-key` now says what `crash-after-effect-before-ack` says, in its own words (`says`, one sentence
+  builder for both): a second delivery or publication under the same business key is not a second effect -- observe it
+  by the message alone or by its delivery attempt, and rule the obligation on its own slot, the effect count; and
+  `competing-workers` says it of the same job received by a second worker. The other shapes with a duplicate control say
+  nothing of the kind, each by its own statement: `idempotent-under-repeat`'s repeated request is answered at once and
+  its contract may replay the first answer, `overlap-policy`'s policy may let the overlapping occurrence run, and
+  `webhook-authenticity` is contract-only. Every test obligation's `template` and `protocol`'s `design` now say that the
+  tests of one investigation run one after another in the same sandbox and share its state (`sandbox`): an effect, a key
+  or a scheduled occurrence a test used stays there for the next, so a design uses keys, message ids and occurrences no
+  earlier test used, none an accepted criterion states for another test, and none its schedule produces on its own once
+  the clock reaches them, unless that is what the test observes. And a `generate` step whose design names a literal
+  under a word of the backend vocabulary that says which business operation, message or period it is (`businessKey`,
+  `correlationId`, `messageId`, `occurrenceId`, anywhere in a step's request) that an earlier frozen version of the same
+  investigation named too says so in `result.shared` -- that version, its obligation and shape, the values and the
+  words they were named under, and a sentence. It is advice: nothing is written, refused or decided by it, and every
+  verdict is the one it was, because a test may observe on purpose what an earlier one left -- of the nine acceptance
+  reference designs, sent in order, only the occurrence test on the stack whose clock cannot move is told so, since the
+  deadline test before it triggered that period by hand. A version of the same obligation that never started left
+  nothing there and is not counted; a value a binding fills (`${…}`) is no literal.
+- **The QA relay's log says why the engine stopped a request.** A host's request that the engine refused or blocked
+  was logged with its exit code and the relay's own `refused`, which is null for it, so in `relay.jsonl` an engine
+  refusal read as one with no reason. A real row's second `finish --why=x` exited 2 there with nothing beside it,
+  while the engine had answered the host why (`finish` refuses an investigation that is no longer active -- `inv-… is
+  already paused` once an earlier `finish` stopped it). The log line now keeps the engine's first line (`why`) --
+  printable, scrubbed and bounded -- for every request the relay passed on that did not exit 0.
+
 ## 0.4.0
 
 A minor release: a release now qualifies only on Docker benchmark evidence carried by the real Claude Code CLI, for
@@ -102,38 +137,6 @@ each case's baseline is PASS, and a controlled-fault variant plants the old defe
   closed -- one that shipped, stopped on a row or integrated its repairs -- because it folded an open cycle only. It now
   folds the newest cycle, open or closed (`cycleOpen`), lists the rows held (`heldRows`), marks a row that runs again,
   and diagnoses each from its case's own declaration as the ship does, so a repair in flight is named.
-- **A second message under a business key is not a second effect, and the tests of one investigation share its
-  sandbox.** A real Claude Code QA row (ORBIT-QA-006 on Opus) found its planted defect and raised two false alarms that
-  the clean application contradicted too. Its `effect-once-per-key` test published a second message under the first
-  one's business key and waited for that message to be `processed`; a correct system settles it in its own word -- the
-  clean application recorded the duplicate it was -- and never as a second success. Its `completes-by-deadline` test
-  then made the schedule reach the very period whose business key that earlier test had used, in the same sandbox, and
-  waited for the period's message to be processed: the clean application settled that one as a duplicate too.
-  `effect-once-per-key` now says what `crash-after-effect-before-ack` says, in its own words (`says`, one sentence
-  builder for both): a second delivery or publication under the same business key is not a second effect -- observe it
-  by the message alone or by its delivery attempt, and rule the obligation on its own slot, the effect count; and
-  `competing-workers` says it of the same job received by a second worker. The other shapes with a duplicate control say
-  nothing of the kind, each by its own statement: `idempotent-under-repeat`'s repeated request is answered at once and
-  its contract may replay the first answer, `overlap-policy`'s policy may let the overlapping occurrence run, and
-  `webhook-authenticity` is contract-only. Every test obligation's `template` and `protocol`'s `design` now say that the
-  tests of one investigation run one after another in the same sandbox and share its state (`sandbox`): an effect, a key
-  or a scheduled occurrence a test used stays there for the next, so a design uses keys, message ids and occurrences no
-  earlier test used, none an accepted criterion states for another test, and none its schedule produces on its own once
-  the clock reaches them, unless that is what the test observes. And a `generate` step whose design names a literal
-  under a word of the backend vocabulary that says which business operation, message or period it is (`businessKey`,
-  `correlationId`, `messageId`, `occurrenceId`, anywhere in a step's request) that an earlier frozen version of the same
-  investigation named too says so in `result.shared` -- that version, its obligation and shape, the values and the
-  words they were named under, and a sentence. It is advice: nothing is written, refused or decided by it, and every
-  verdict is the one it was, because a test may observe on purpose what an earlier one left -- of the nine acceptance
-  reference designs, sent in order, only the occurrence test on the stack whose clock cannot move is told so, since the
-  deadline test before it triggered that period by hand. A version of the same obligation that never started left
-  nothing there and is not counted; a value a binding fills (`${…}`) is no literal.
-- **The QA relay's log says why the engine stopped a request.** A host's request that the engine refused or blocked
-  was logged with its exit code and the relay's own `refused`, which is null for it, so in `relay.jsonl` an engine
-  refusal read as one with no reason. A real row's second `finish --why=x` exited 2 there with nothing beside it,
-  while the engine had answered the host why (`finish` refuses an investigation that is no longer active -- `inv-… is
-  already paused` once an earlier `finish` stopped it). The log line now keeps the engine's first line (`why`) --
-  printable, scrubbed and bounded -- for every request the relay passed on that did not exit 0.
 - **A generated request never repeats its endpoint's base path.** A path is relative to the endpoint it is sent to, and
   an endpoint the system graph declares under a base path (`/api`) already carries it; a generated `orbit.http.*` step
   whose path starts with that base again (`/api/invoices/…` against `invoice-read` at `/api`) is now refused before a

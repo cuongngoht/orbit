@@ -121,6 +121,29 @@ test("what the runner plants in its mailbox is removed unread, and the log keeps
   assert.ok(!log.includes("a sentence the log never keeps") && /"digest":"[0-9a-f]{16}"/.test(log));
 });
 
+// What a real Claude Code QA row's room showed (0.4.0, ORBIT-QA-006): the host's second `finish --why=x` exited 2 and the
+// relay's log said nothing more -- `refused` is the relay's own, null for a request the ENGINE refused -- while the engine
+// had answered the host why (`finish` refuses an investigation no longer active: `inv-… is already paused`). The log keeps
+// that line.
+test("a request the engine stopped is logged with the engine's own first line -- printable, scrubbed and bounded -- and an answer of 0 with nothing it said", async (t) => {
+  const box = mailbox(t);
+  const said = { finish: { exit: 2, stderr: `\n${INV} is already paused\n  node cli/autonomous-qa.mjs --help for the usage\n` }, reconcile: { exit: 3, stderr: `\u001b[31mBLOCKED\u001b[0m authorization: Bearer abc.def.ghi ${"x".repeat(400)}\n` }, checkpoint: { exit: 2, stderr: "" }, context: { exit: 0, stderr: "a warning nobody asked for\n" } };
+  const serve = { admit: (req) => admitted(req, INV), run: async (a) => ({ stdout: "{}\n", ...said[a.argv[0]] }) };
+  const server = relayServer(box.dirs, serve, { everyMs: 20 });
+  const answered = [];
+  for (const argv of [["finish", "--why=x"], ["reconcile"], ["checkpoint"], ["context"], ["settings", "set", "enabled=true", "--human"]]) answered.push(await client(box, argv));
+  await server.stop();
+  assert.deepEqual(answered.map((r) => r.code), [2, 3, 2, 0, 2]);
+  assert.match(answered[0].stderr, /is already paused/, "the host was answered the engine's words");
+  const lines = readFileSync(box.dirs.log, "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  assert.deepEqual(lines.map((l) => [l.sub, l.exit, "why" in l]), [["finish", 2, true], ["reconcile", 3, true], ["checkpoint", 2, true], ["context", 0, false], ["settings", 2, false]]);
+  assert.deepEqual([lines[0].why, lines[2].why], [`${INV} is already paused`, null], "its first line said, or null when it said nothing");
+  assert.match(lines[1].why, /^\[31mBLOCKED\[0m authorization/, "printable: no escape reaches the log");
+  assert.equal(lines[1].why.includes("abc.def.ghi"), false, "scrubbed");
+  assert.equal(lines[1].why.length, 240, "bounded");
+  assert.match(lines[4].refused, /a person's approval/, "a request the relay refused says why in its own field, as before");
+});
+
 test("with no mailbox the client says BLOCKED, and runs nothing", async (t) => {
   const r = await client({ dir: join(tmpdir(), "orbit-bench-no-mailbox-here") }, ["context"]);
   assert.deepEqual([r.code, /BLOCKED .*relay/.test(r.stderr)], [3, true]);

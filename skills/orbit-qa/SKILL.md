@@ -138,9 +138,21 @@ the templates its slots take and the rules over those controls (`rules`). Its ow
 (`slots`): assert each on the step whose answer carries it. A slot of another criterion you assert is held too, and a
 run stops at the first assertion that fails -- one that fails on a step before the obligation's own ends the test
 there, its contradiction is the obligation's, and its own slots are never read. A shape that says more says it in the
-template (`says`; `protocol`'s `design.shapes` lists them): the delivery that comes back after an effect committed is
-not a second effect, so how it settles is the system's own word and never a second success to wait for -- observe it by
-its delivery attempt or by the message alone, and rule crash-after-effect-before-ack on its own slot, the effect count.
+template (`says`; `protocol`'s `design.shapes` lists them): what comes again of work already done is not a second
+effect -- the delivery that comes back after an effect committed (crash-after-effect-before-ack), a second delivery or
+publication under the same business key (effect-once-per-key), the same job received by a second worker
+(competing-workers) -- so how it settles is the system's own word and never a second success to wait for: observe it by
+its attempt or by the message (or the job) alone, and rule the obligation on its own slot, the effect count.
+The tests of one investigation run one after another in ONE sandbox and share its state (`sandbox`, in every test
+obligation's template and in `protocol`'s `design`): an effect, a key or a scheduled occurrence an earlier test used is
+still there for the next. Give each test business keys, message ids and occurrences no earlier test of the
+investigation used, none an accepted criterion states for another test (a value an expectation states `for` another
+shape is that shape's test's), and none its schedule will produce on its own once the clock reaches them -- a period
+any test's clock advance passes is the schedule's -- unless that is what the test observes. A `generate` whose design
+names one that an earlier frozen version of the investigation named too says so beside its answer (`result.shared`:
+that version, its obligation and shape, each value and the word it was named under -- `businessKey`,
+`correlationId`, `messageId` or `occurrenceId`): it is advice, it changes nothing, and it comes before you run --
+choose another key unless what the earlier test left is what this one observes.
 The engine compiles every verdict from the accepted criterion, validates the case with the real grammar, saves it as
 a DRAFT and freezes its version; a design that does not hold comes back
 with its word (`GENERATION_FAILED`, `REQUIRES_REQUIREMENT`, `INVALID_TEST`) and the stage that

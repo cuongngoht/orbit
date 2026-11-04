@@ -12,6 +12,8 @@
 import { lstatSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { sha } from "../../../src/hash.mjs";
+import { printable } from "../../../src/printable.mjs";
+import { scrub } from "../../../src/scrub.mjs";
 
 export const MAX_REQUEST = 512 * 1024;
 
@@ -121,6 +123,15 @@ const answered = (dirs, name, answer) => (writeFileSync(join(dirs.responses, `.$
 // the decision itself, which the engine's own journal keeps -- how it ended and how long it took.
 const logged = (dirs, line) => writeFileSync(dirs.log, `${JSON.stringify({ at: new Date().toISOString(), ...line })}\n`, { flag: "a" });
 
+// How a request the engine stopped ended, in the engine's own words: the first line it said when it refused or blocked
+// one (`inv-… is already paused`), which its answer carried to the host -- kept beside the exit code, since the relay's
+// own `refused` is null for it, printable, scrubbed and bounded. Nothing an answer of 0 said, and nothing of stdout.
+const STOP_LINE = 240;
+
+const whyOf = (a, answer) => (!a.refused && answer.exit !== 0 ? { why: firstLine(answer.stderr) } : {});
+
+const firstLine = (text) => scrub(printable(String(text ?? "").split("\n").find((l) => l.trim()) ?? "").trim()).slice(0, STOP_LINE) || null;
+
 async function servedOne(dirs, serve, name) {
   const req = requestAt(dirs.requests, name);
   const a = req ? serve.admit(req) : { refused: "is not a regular file a request is" };
@@ -131,7 +142,7 @@ async function servedOne(dirs, serve, name) {
 
 function finishedOne(dirs, name, req, a, answer) {
   answered(dirs, name, answer);
-  logged(dirs, { request: name, sub: req?.argv?.[0] ?? null, argv: a.argv ?? null, stdin: req?.stdin ? { bytes: Buffer.byteLength(req.stdin), digest: sha(req.stdin).slice(0, 16) } : null, refused: a.refused ?? null, exit: answer.exit, ms: answer.ms });
+  logged(dirs, { request: name, sub: req?.argv?.[0] ?? null, argv: a.argv ?? null, stdin: req?.stdin ? { bytes: Buffer.byteLength(req.stdin), digest: sha(req.stdin).slice(0, 16) } : null, refused: a.refused ?? null, exit: answer.exit, ...whyOf(a, answer), ms: answer.ms });
   return answer;
 }
 

@@ -74,6 +74,23 @@ test("what the stopped step's own match left out reaches the host by allow-list,
   assert.equal("excluded" in resultView({ outcome: "CONTRADICTED", stopped: { step: 5, as: "failed", excluded: { count: 0, items: [] } } }).stopped, false);
 });
 
+// What a real Claude Code QA row taught (0.4.0, ORBIT-QA-006 on Opus): a test of one investigation made the schedule reach a
+// period whose business key an earlier test of the same investigation had used, and the duplicate the clean application
+// settled it as read as a defect. What a design names that an earlier version named too reaches the host beside the
+// answer -- by allow-list at this door again: the version, its obligation and shape, each value and the words it was named
+// under, the sentence; every word scrubbed and bounded, the newest four -- and only when there is something.
+test("what a frozen design shares with an earlier version reaches the host by allow-list, scrubbed and bounded -- and only when it shares something", () => {
+  const line = (n, over = {}) => ({ version: `gen-${n}@${"b2".repeat(8)}`, obligation: `tob-${n}`, shape: "effect-once-per-key", keys: [{ value: "tenant-a|inv-a|period", as: ["correlationId", "not a word!"], extra: 1 }], say: "correlationId tenant-a|inv-a|period — named by …", design: { skeleton: {} }, ...over });
+  const made = resultView({ outcome: "DRAFT_CREATED", version: VERSION, shared: [line(1), line(2), line(3), line(4), line(5, { keys: [1, 2, 3, 4, 5].map((k) => ({ value: `a@b.test ${k} ${"k".repeat(200)}`, as: ["businessKey"] })), say: "z".repeat(900) })] });
+  assert.equal(made.outcome, "DRAFT_CREATED", "the outcome is the one it earned");
+  assert.deepEqual(made.shared.map((s) => s.obligation), ["tob-2", "tob-3", "tob-4", "tob-5"], "the newest four");
+  assert.deepEqual(made.shared[0], { version: `gen-2@${"b2".repeat(8)}`, obligation: "tob-2", shape: "effect-once-per-key", keys: [{ value: "tenant-a|inv-a|period", as: ["correlationId"] }], say: "correlationId tenant-a|inv-a|period — named by …" }, "what it carries and nothing else: never the earlier design");
+  assert.deepEqual([made.shared[3].keys.length, made.shared[3].keys[0].value.length, made.shared[3].say.length], [4, 120, 600], "bounded");
+  assert.match(made.shared[3].keys[0].value, /^\[upn\] 1 /, "scrubbed by shape");
+  assert.equal("shared" in resultView({ outcome: "DRAFT_CREATED", version: VERSION, shared: [] }), false, "nothing shared, nothing said");
+  assert.deepEqual(resultView({ outcome: "DRAFT_CREATED", shared: [{ version: 7, keys: "x" }] }).shared, [{ version: null, obligation: null, shape: null, keys: [], say: null }], "a field of another kind is null, never echoed");
+});
+
 test("context lists the names a design's refs may take here, from the generation port -- and nothing when none is bound", () => {
   const t = started();
   assert.equal(contextFor(t.w).bindings, null, "no generation port, no list");

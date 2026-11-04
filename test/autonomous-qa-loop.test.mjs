@@ -290,3 +290,17 @@ test("the protocol says what an obligation's own slots are to its verdict, and w
   assert.deepEqual(d.shapes, OBLIGATION_SHAPES.filter((s) => s.says).map((s) => ({ shape: s.id, says: s.says })), "printed from the rows, and only the rows that say something");
   assert.match(d.shapes.find((s) => s.shape === "crash-after-effect-before-ack")?.says ?? "", /^the delivery that comes back after the effect committed is not a second effect/);
 });
+
+// What a real Claude Code QA row taught (0.4.0, ORBIT-QA-006 on Opus): its effect-once test waited for a second message
+// under one business key to be processed, and its deadline test made the schedule reach a period whose business key an
+// earlier test of the same investigation had used -- two false alarms on the clean application. The protocol says that
+// the tests of one investigation share its sandbox, and every shape whose second one is no second effect says so.
+test("the protocol says the tests of one investigation share its sandbox, and lists every shape whose second one is not a second effect", async () => {
+  const { ONE_SANDBOX } = await import("../src/qa/backend/shared.mjs");
+  const d = protocolOf().design;
+  assert.equal(d.sandbox, ONE_SANDBOX);
+  assert.match(d.sandbox, /an effect, a key or a scheduled occurrence a test used stays there for the next test/);
+  assert.match(d.sandbox, /no earlier test of this investigation used, none an accepted criterion states for another test, and none a schedule will produce on its own once its clock reaches them, unless that is what the test observes$/);
+  assert.deepEqual(d.shapes.map((s) => s.shape), ["effect-once-per-key", "crash-after-effect-before-ack", "competing-workers"]);
+  assert.ok(d.shapes.every((s) => /is not a second effect: how it settles is the system's own word, never a second success to wait for — observe it by .*, and rule this obligation on its own expected slots \(the effect count\)$/.test(s.says)), "one sentence, in each shape's own words");
+});

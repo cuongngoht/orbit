@@ -9,10 +9,12 @@
 //
 // Each record is written once, by an eventId made from what it was made of (store.mjs eventIdOf),
 // so the same proposal sent twice is the same design. It runs nothing, and a generated test stays
-// a draft until a person promotes it.
+// a draft until a person promotes it. Beside a frozen version it says what its design names that an
+// earlier version of the investigation named too (`shared`) -- advice, never a record or a refusal.
 import { caseDigest } from "../dsl/digest.mjs";
 import { Refused } from "../errors.mjs";
 import { canonicalJson, sha } from "../hash.mjs";
+import { sharedWith } from "../qa/backend/shared.mjs";
 import { generatedCase } from "../qa/generation/design.mjs";
 import { freezeVersion } from "../qa/generation/version.mjs";
 import { current, withJournal } from "./act.mjs";
@@ -64,7 +66,25 @@ function keptVersion(w, g, obligation, out) {
   designKept(w, obligation, out.design);
   const there = current(w).versions.find((v) => v.design === out.design.id && v.digest === caseDigest(out.case));
   const version = there?.version ?? frozenVersion(w, g, out);
-  return { outcome: "DRAFT_CREATED", version, design: out.design.id, case: out.case.id, channel: out.channel, digests: out.digests };
+  return { outcome: "DRAFT_CREATED", version, design: out.design.id, case: out.case.id, channel: out.channel, digests: out.digests, ...sharedOf(w, obligation, out.design) };
+}
+
+// What this design names -- a business key, a message, an occurrence -- that an earlier frozen version of this
+// investigation named too (src/qa/backend/shared.mjs): the tests of one investigation share its sandbox, so whichever runs
+// later finds what the other left. Said beside the answer and kept nowhere; it decides, refuses and records nothing. A
+// version of this very design is the same test, and one of this obligation's own that never started left nothing there.
+const sharedOf = (w, obligation, design) => ((shared) => (shared.length ? { shared } : {}))(sharedWith(design, earlierOf(w, current(w), obligation.obligation, design.id)));
+
+const earlierOf = (w, model, obligation, design) => model.versions.filter((v) => v.design !== design).map((v) => [v, designedOf(model, v.design)]).filter(([v, d]) => d && (d.obligation !== obligation || startedOnce(model, v))).map(([v, d]) => ({ version: v.version, obligation: d.obligation, shape: model.obligations.findLast((o) => o.obligation === d.obligation)?.shape ?? null, design: keptDesign(w, d) })).filter((e) => e.design);
+
+const designedOf = (model, design) => model.designs.findLast((x) => x.design === design && x.state === "designed") ?? null;
+
+const startedOnce = (model, v) => model.starts.some((s) => s.version === v.version);
+
+// A design read back as it was kept; one that cannot be read shows nothing shared.
+function keptDesign(w, d) {
+  try { return w.store.readArtifact(w.id, "designs", d.digest); }
+  catch { return null; }
 }
 
 function frozenVersion(w, g, out) {

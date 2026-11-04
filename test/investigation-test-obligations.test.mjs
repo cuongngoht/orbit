@@ -72,6 +72,24 @@ test("an obligation's template says what its own expected slots are to its verdi
   assert.match(ctx.frontier.find((o) => o.kind === "test-obligation")?.template.says ?? "", /not a second effect/, "the frontier a host reads before it designs");
 });
 
+// What a real Claude Code QA row taught (0.4.0, ORBIT-QA-006 on Opus): its effect-once test published a second message
+// under the first one's business key and waited for that one to be processed -- the clean application settled it as the
+// duplicate it was, a false alarm -- and its deadline test made the schedule reach the very period whose business key that
+// earlier test had used in the same sandbox. The effect-once shape now says what the crash-after-effect shape says, in its
+// own words, and every test obligation says that the tests of one investigation share its sandbox.
+test("an effect-once obligation says a second delivery or publication under its key is not a second effect, and every test obligation says its sandbox is shared", async () => {
+  const { ONE_SANDBOX } = await import("../src/qa/backend/shared.mjs");
+  const once = world([], { shape: "effect-once-per-key", expected: ["FIX-1/E2"] }).template;
+  assert.match(once.says ?? "", /^a second delivery or publication under the same business key is not a second effect: how it settles is the system's own word, never a second success to wait for/);
+  assert.match(once.says, /observe it by the message alone or by its delivery attempt, and rule this obligation on its own expected slots \(the effect count\)$/);
+  assert.match(world([], { shape: "competing-workers" }).template.says ?? "", /^the same job received by a second worker is not a second effect: how it settles is the system's own word/);
+  for (const shape of ["idempotent-under-repeat", "overlap-policy", "crash-before-effect", "response-conforms"]) assert.equal(world([], { shape }).template.says, undefined, `${shape}: a second one may succeed, or there is none`);
+  for (const shape of ["response-conforms", "effect-once-per-key", "completes-by-deadline", "persisted-after-write"]) assert.equal(world([], { shape }).template.sandbox, ONE_SANDBOX, shape);
+  assert.equal(world([], { shape: "no-such-shape" }).template.sandbox, undefined, "a shape nobody declared says nothing");
+  const template = contextOf(worldOf({ shape: "effect-once-per-key" })).frontier.find((o) => o.kind === "test-obligation")?.template ?? {};
+  assert.deepEqual([template.sandbox, /not a second effect/.test(template.says ?? "")], [ONE_SANDBOX, true], "the frontier a host reads before it designs");
+});
+
 test("its latest execution's word settles it through that word's own row", () => {
   const status = (words) => world(words).status;
   assert.equal(status(["SATISFIED"]), "satisfied");

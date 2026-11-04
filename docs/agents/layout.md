@@ -388,7 +388,8 @@ src/investigation/verification.mjs · assessments.mjs  (0.1.0, ADR 0032) what a 
                one for the graph, an obligation per kind each criterion names with the slots it may be ruled on
                by, within limits.obligations; a plan that moved since it was read derives nothing) ·
                generate.mjs (the generate action: a design held whole by src/qa/generation/, then a draft, a
-               frozen version and its validation, within limits.designs and limits.repairs) · run-version.mjs
+               frozen version and its validation, within limits.designs and limits.repairs; beside the answer, the
+               keys its design names that an earlier version named too, `shared`) · run-version.mjs
                (the run-version action: authorized, prepared and started BEFORE the dispatch, the execution
                named first, the worker's envelope held by the host, its evidence kept only when believed,
                within limits.attempts; the request kept as a `dispatches` artifact under the digest its start
@@ -798,7 +799,9 @@ src/qa/walk.mjs · obligations/ · backend/ · generation/ · security/  (0.1.0,
                authority.mjs the ordered AUTHORITY rows over owners' answers HANDED IN · validate.mjs ·
                shapes.mjs OBLIGATION_SHAPES · derive.mjs) · backend/ (workloads, bindings, semantics,
                skeleton.mjs, observations, temporal, correlation: armed before the trigger, non-stealing,
-               matched by identity, a window only from an accepted `within`) · generation/ (design.mjs the
+               matched by identity, a window only from an accepted `within`; shared.mjs (0.4.0) what the tests of
+               one investigation share -- ONE_SANDBOX said before a host designs, and the keys a design names that an
+               earlier version named, said after, never refused) · generation/ (design.mjs the
                ordered STAGES a proposal is held to, ending in the REAL validator; controls; compile.mjs the
                deterministic mapping from an accepted expectation to a predicate; repair keeps the oracle;
                version freezes the case; page.mjs (0.1.0, group 1) the ONE place a generated test's page script

@@ -401,7 +401,9 @@ only for the run's own investigation, as the `RELAY` table allows (`lib/qa/relay
 - never a path. A `--decision` or `--file` is read on the client's side and sent as stdin.
 
 A request that is not a regular file of a request's size is removed unread. The log keeps each request's subcommand,
-flags, and the size and digest of its decision, never the decision itself: the engine's own journal keeps that.
+flags, and the size and digest of its decision, never the decision itself: the engine's own journal keeps that. It
+keeps how each ended too: its exit code, why the relay refused it (`refused`), and for one the engine refused or
+blocked, the first line the engine said (`why`), printable, scrubbed and bounded.
 
 The host is handed:
 

@@ -65,6 +65,11 @@ node skills/orbit-release/ship.mjs --status --json          # where it stands
   cut it, the read-back run had no host identity, and the ship ended UNTRUSTED/WRONG_HOST). An interrupted model-carried
   run is never evidence; the row now runs again as a new run outside `--retries`, at most `INTERRUPTED_RUNS` (2) per
   cycle, then BLOCKS for a `--resume`. `--status` reports the newest cycle's held rows, closed or open.
+- **One investigation's tests share one sandbox** (pre-check QA-006: two false alarms on the clean app -- a host waited
+  for `processed` on a second message the system deduped as `duplicate`, and reused a business key an earlier test had
+  used). Effect-once and competing-workers now say a second one is not a second effect, every template says the sandbox
+  is shared, and a design naming an earlier test's key is told which (advisory). Pre-check rows in parallel with a ship
+  -- a separate session -- found this hours before the ship reached it.
 - **Fix an Orbit defect a row exposes with Opus at max effort** (an Agent, `model: opus`, `effort: max`): a regression
   test that fails before the fix, the full suite, the strict Five Lines lint. Never loosen an acceptance rule, a case's
   ground truth, the verifier or `ship/policy.json` to get a PASS.

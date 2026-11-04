@@ -29,6 +29,7 @@ export const ACTION_ROLES = {
   "release.repair": { tool: "coding-host", mutates: false },
   "release.integrate": { tool: "release", mutates: true },
   "release.limits": { tool: "person", mutates: false },
+  "release.resume": { tool: "person", mutates: false },
   "release.evidence": { tool: "release", mutates: true },
 };
 

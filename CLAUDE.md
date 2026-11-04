@@ -61,6 +61,10 @@ node skills/orbit-release/ship.mjs --status --json          # where it stands
   the next gap on a row that used to pass, so pre-check every model row again after one), and an observation whose match
   (`outcome: processed`) hid the redelivery that settled as `duplicate`, answering "none, complete" (ship 13: the
   crash-after-effect false alarm in 3 of 3 runs -- the host now sees what its match left out, beside where it stopped).
+- **A restart mid-row is INTERRUPTED, not the model's miss** (ship 14: ORBIT-QA-001's run said PASS, but a worker restart
+  cut it, the read-back run had no host identity, and the ship ended UNTRUSTED/WRONG_HOST). An interrupted model-carried
+  run is never evidence; the row now runs again as a new run outside `--retries`, at most `INTERRUPTED_RUNS` (2) per
+  cycle, then BLOCKS for a `--resume`. `--status` reports the newest cycle's held rows, closed or open.
 - **Fix an Orbit defect a row exposes with Opus at max effort** (an Agent, `model: opus`, `effort: max`): a regression
   test that fails before the fix, the full suite, the strict Five Lines lint. Never loosen an acceptance rule, a case's
   ground truth, the verifier or `ship/policy.json` to get a PASS.

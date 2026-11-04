@@ -80,6 +80,28 @@ each case's baseline is PASS, and a controlled-fault variant plants the old defe
   "never redelivered", before the effect count was ever read. Generation still accepts an assertion on a slot its
   criterion states for another shape: four of the nine acceptance reference designs rule one on purpose, a completion
   barrier before the effect count.
+- **A model-carried run a restart interrupted is run again -- never evidence, never the model's miss, never the end of
+  the release.** A cloud worker restart killed ORBIT-QA-001's run mid-round; resumed, the run read back what the round
+  left and came to PASS, but a round's host identity (its Claude Code version and model) is kept only when the
+  controller sees the round end, so the ship held the run UNTRUSTED (`WRONG_HOST`) and ended NOT SHIPPABLE after 77 of
+  93 rows had held, its `--retries=2` unused. Such a run is now `INTERRUPTED`, read off the run's own report (a round
+  whose action closed as interrupted, with no evidence of its own -- never a timestamp): still never evidence, it is run
+  again as a new run and holds only on that run's own PASS with its identity. It spends none of `--retries`, and at most
+  `INTERRUPTED_RUNS` (2, declared in `ship/diagnose.mjs`) such runs a row a cycle; then the ship BLOCKS on the
+  environment with every run kept. A run that says another host -- another basis, or a round reporting another Claude
+  Code than the image pins -- stays `WRONG_HOST`, interrupted or not, and is never run again into evidence. A QA run's
+  report now says `interrupted` only of a round that began; one whose application never came up had none.
+- **`--resume` asks a blocked row again.** A ship blocked on a row (the environment, a credential, the provider, a spent
+  interruption bound) blocked again at once on `--resume` and never ran it. The resume is now an action of the ship's
+  journal (`release.resume`), and a row blocked before it runs again as a new run -- once per resume, never a loop.
+- **A run's room is judged only with its report.** A run writes its ending, tidies (its leak scan among it), and writes
+  its report last; a restart between the two left a room the ship judged as it stood -- no host (`WRONG_HOST` for a
+  model-carried row) and no leak looked for. Such a room is now carried on by `run.mjs resume`, which does that tail
+  again; the run itself is never sent again.
+- **`--status` says what the newest cycle held.** It said `0/N held` and nothing failed for every ship whose cycle had
+  closed -- one that shipped, stopped on a row or integrated its repairs -- because it folded an open cycle only. It now
+  folds the newest cycle, open or closed (`cycleOpen`), lists the rows held (`heldRows`), marks a row that runs again,
+  and diagnoses each from its case's own declaration as the ship does, so a repair in flight is named.
 - **A generated request never repeats its endpoint's base path.** A path is relative to the endpoint it is sent to, and
   an endpoint the system graph declares under a base path (`/api`) already carries it; a generated `orbit.http.*` step
   whose path starts with that base again (`/api/invoices/…` against `invoice-read` at `/api`) is now refused before a

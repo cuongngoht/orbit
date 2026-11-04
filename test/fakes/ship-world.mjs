@@ -163,9 +163,16 @@ function ranRoom(w, args, kind) {
   return { c, run, tree, said, dir, kind };
 }
 
+// The rounds a run's report says, as the benchmark's reports say them: a round its host ended, with what the host
+// reported -- or, for a round a restart interrupted and the run's resume read back (`interrupted`), no host at all.
+const roundsSaid = (said) => said.rounds ?? (said.interrupted ? [{ interrupted: true, host: null }] : said.host ? [{ host: { started: true, ...said.host } }] : []);
+
+// A QA run's report names its ONE round (`round`); a source or engineering run's, every round (`rounds`).
+const roundsOf = (c, said) => (CASES[c]?.kind === "qa" ? { round: roundsSaid(said)[0] ?? null } : { rounds: roundsSaid(said) });
+
 function ended(w, r) {
   const basis = r.kind === "verify" ? "none" : w.play.basis(r.c, r.kind);
-  docAt(r.dir, "report.json", { schema: 1, run: r.run, hostBasis: basis, rounds: r.said.host ? [{ host: { started: true, ...r.said.host } }] : [], totals: { costUsd: r.said.host?.costUsd ?? null }, attempts: [{ signature: r.said.signature ?? (["PASS", "REPAIRED_VERIFIED"].includes(r.said.outcome) ? null : "aaaaaaaaaaaa") }], leaks: r.said.leaks ?? [] });
+  docAt(r.dir, "report.json", { schema: 1, run: r.run, hostBasis: basis, ...roundsOf(r.c, r.said), totals: { costUsd: r.said.host?.costUsd ?? null }, attempts: [{ signature: r.said.signature ?? (["PASS", "REPAIRED_VERIFIED"].includes(r.said.outcome) ? null : "aaaaaaaaaaaa") }], leaks: r.said.leaks ?? [] });
   if (r.said.patch) verifiedWritten(w, r);
   docAt(r.dir, "ending.json", { end: "complete", outcome: r.said.outcome, cause: r.said.cause ?? null, class: r.said.class ?? null, summary: r.said.summary, at: new Date(w.clock.now).toISOString() });
   return { code: { PASS: 0, REPAIRED_VERIFIED: 0, BLOCKED: 3, BENCHMARK_INVALID: 2 }[r.said.outcome] ?? 1, json: { run: r.run, case: r.c, outcome: r.said.outcome, exit: 0, summary: r.said.summary }, err: null, stopped: false };
@@ -184,11 +191,18 @@ async function run(w, args, o) {
   w.calls.push({ verb: "run", case: r.c, kind: r.kind, run: r.run, tree: r.tree, commit: git(r.tree, "rev-parse", "HEAD") });
   if (w.play.during) await w.play.during(w, r, o);
   if (o.watch && o.watch() === "stop") return { code: null, json: null, err: null, stopped: true };
-  return r.said.dies ? crashed(r) : ended(w, r);
+  return r.said.dies ? crashed(r) : r.said.diesAfterEnding ? endedThenCrashed(w, r) : ended(w, r);
 }
 
 function crashed() {
   throw new Error("the ship's process died here, mid-run");
+}
+
+// A restart after a run's ending and before its report: the benchmark writes its ending, then tidies (the leak scan of
+// the room among it), and writes its report last.
+function endedThenCrashed(w, r) {
+  docAt(r.dir, "ending.json", { end: "complete", outcome: r.said.outcome, cause: null, class: null, summary: r.said.summary, at: new Date(w.clock.now).toISOString() });
+  return crashed(r);
 }
 
 function controls(w, args) {
@@ -206,7 +220,7 @@ function resumed(w, args) {
   const m = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8"));
   w.calls.push({ verb: "resume", run: args[1] });
   const kind = m.config.repair && m.benchmark.kind === "source" ? (m.benchmark.variant === "controlled-fault" ? "selfHealing" : "repair") : CASES[m.benchmark.case].kind === "source" ? "verify" : "autonomous";
-  return ended(w, { c: m.benchmark.case, run: args[1], tree: m.source.repo, said: { ...w.play[kind](m.benchmark.case, m.source.repo), dies: false }, dir, kind });
+  return ended(w, { c: m.benchmark.case, run: args[1], tree: m.source.repo, said: { ...w.play[kind](m.benchmark.case, m.source.repo), dies: false, diesAfterEnding: false }, dir, kind });
 }
 
 const VERBS = {

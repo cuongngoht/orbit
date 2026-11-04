@@ -6,7 +6,8 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { test } from "node:test";
-import { begunShip } from "../skills/orbit-release/ship/session.mjs";
+import { INTERRUPTED_RUNS } from "../skills/orbit-release/ship/diagnose.mjs";
+import { begunShip, resumedShip } from "../skills/orbit-release/ship/session.mjs";
 import { driven } from "../skills/orbit-release/ship/steps.mjs";
 import { GIT_ENV, headOf, shipWorldOf } from "./fakes/ship-world.mjs";
 import { sealed } from "./home.mjs";
@@ -31,4 +32,19 @@ test("a ship's whole journal, repair and retest included, goes through the real 
   const machine = JSON.parse(spawnSync(process.execPath, [join(ROOT, "cli", "task.mjs"), "machine", "--json"], { cwd: w.repo, env: sealed({ ...GIT_ENV, ORBIT_STORE_DIR: join(w.base, "store") }), encoding: "utf8" }).stdout);
   assert.ok(machine.tasks.some((r) => r.id === ctx.task && r.provider === "release" && r.lifecycle === "COMPLETED"), "Mission Control's machine view lists the ship");
   assert.equal(headOf(w.repo), start, "the person's checkout never moved");
+});
+
+test("a row a restart keeps interrupting, through the real task door: never verified, a block a person's resume lifts, then held on a run of its own", async (t) => {
+  let n = 0;
+  const autonomous = () => (++n <= INTERRUPTED_RUNS + 1 ? { outcome: "PASS", summary: "PASS — read back", interrupted: true } : { outcome: "PASS", summary: "PASS", host: { version: "2.1.314", model: "claude-test", costUsd: 1 } });
+  const w = shipWorldOf(t, { realDoor: true, files: { "src/calc.mjs": "export const add = (a, b) => a + b;\n" }, play: { autonomous, controls: () => [{ id: "planted", variant: "controlled-fault", expect: "FAIL", got: "FAIL", matched: true }] } });
+  const ctx = begunShip(w.world, { repair: true, failFast: true, limits: {}, version: "9.9.9" });
+  const first = await driven(ctx);
+  assert.deepEqual([first.outcome, first.exit, w.world.door.show(ctx.task).lifecycle], ["BLOCKED", 3, "BLOCKED"], first.summary);
+  assert.ok(w.world.door.show(ctx.task).verification.filter((v) => v.subject === "QA-001:autonomous").every((v) => v.state === "not-verified"), "an interrupted run is never violated and never satisfied");
+  const again = await driven(resumedShip(w.world, ctx.ship.id, {}));
+  assert.deepEqual([again.outcome, again.exit], ["SHIPPABLE", 0], again.summary);
+  const view = w.world.door.show(ctx.task);
+  assert.deepEqual([view.lifecycle, view.actions.filter((a) => a.type === "release.resume").map((a) => a.state)], ["COMPLETED", ["succeeded"]]);
+  assert.ok(view.actions.every((a) => a.state !== "running"), "no action is left open");
 });

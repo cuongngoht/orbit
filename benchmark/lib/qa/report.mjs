@@ -14,7 +14,12 @@ const val = (v) => (v === null || v === undefined || v === "" ? UNKNOWN : v);
 
 const stepOfType = (view, steps, type) => ((a) => (a ? { act: a, doc: steps[a.id] } : null))((view.actions ?? []).filter((x) => x.type === type && steps[x.id]).at(-1));
 
-const roundOf = (qa) => (qa ? { driver: qa.doc.driver ?? null, interrupted: false, error: qa.doc.error?.says ?? null, host: qa.doc.host ?? null, relay: qa.doc.relay ? { served: qa.doc.relay.served } : null, egress: qa.doc.start?.egress ?? qa.doc.runner?.egress ?? null, timedOut: qa.doc.container?.timedOut ?? null, tested: qa.doc.tested ?? null } : { driver: null, interrupted: true });
+// The host's round as its evidence says -- or, for one that began and left none (its action closed as interrupted: the
+// controller never saw it end), only that it was interrupted. A run that never began a round (its application never came
+// up, no credential) had no round to interrupt, and says so.
+const roundOf = (qa, tried) => (qa ? { driver: qa.doc.driver ?? null, interrupted: false, error: qa.doc.error?.says ?? null, host: qa.doc.host ?? null, relay: qa.doc.relay ? { served: qa.doc.relay.served } : null, egress: qa.doc.start?.egress ?? qa.doc.runner?.egress ?? null, timedOut: qa.doc.container?.timedOut ?? null, tested: qa.doc.tested ?? null } : { driver: null, interrupted: tried });
+
+const triedOf = (view) => (view.actions ?? []).some((a) => a.type === "benchmark.qa");
 
 // Who carried the run, in the words every report and metric uses: a coding host (a model, in the runner), the operator's
 // own session, or one of the case's scripted hosts -- a control of the verifier, never a measure of a model.
@@ -44,7 +49,7 @@ const unverifiedOf = (round) => [
 export function qaReportOf(room, manifest, view, steps, ending, leaks = null) {
   const qa = stepOfType(view, steps, "benchmark.qa");
   const judged = docRead(room, "judged.json");
-  const round = roundOf(qa);
+  const round = roundOf(qa, triedOf(view));
   const json = { schema: 1, kind: "qa", run: manifest.run, task: manifest.task, outcome: ending?.outcome ?? view.lifecycle, summary: ending?.summary ?? null, cause: ending?.cause ?? null, class: ending?.class ?? null, hostBasis: qaBasisOf(manifest.config), label: manifest.target?.variant === manifest.target?.clean ? "the clean application: every contradiction is a false alarm" : `a defect planted in the application (${manifest.target?.variant})`, lifecycle: view.lifecycle, stopReason: view.stopReason, source: manifest.source, subject: manifest.subject, plugin: manifest.plugin, benchmark: manifest.benchmark, target: manifest.target, images: manifest.images, host: manifest.host, config: manifest.config, investigation: stepOfType(view, steps, "benchmark.readback")?.doc ?? null, confirmation: stepOfType(view, steps, "benchmark.confirm")?.doc ?? null, round, judged, axes: axesOf(manifest, view, ending, judged, round), unverified: unverifiedOf(round), leaks: (leaks?.files ?? []).map((f) => `${f.rel} (${f.done})`), evidence: room.dir };
   return { json, md: markdownOf(json) };
 }

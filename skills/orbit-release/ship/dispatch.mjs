@@ -65,7 +65,8 @@ function childLinked(ctx, act, run) {
 
 const outcomeWord = (v) => (/^[A-Za-z][A-Za-z0-9_-]{0,39}$/.test(String(v.outcome ?? "")) ? v.outcome : v.state);
 
-const STATE_OF = { HELD: "satisfied", VERIFIED: "satisfied", BLOCKED: "blocked", UNSETTLED: "not-verified", HELD_BY_PERSON: "not-verified" };
+// A run a restart interrupted proved nothing either way: not verified, never violated.
+const STATE_OF = { HELD: "satisfied", VERIFIED: "satisfied", BLOCKED: "blocked", UNSETTLED: "not-verified", HELD_BY_PERSON: "not-verified", INTERRUPTED: "not-verified" };
 
 // The row's word in the ship's journal: its receipt (the run, by the benchmark's id), a verification row naming what
 // it had to come to -- satisfied or violated only on that receipt, otherwise blocked or not verified -- and the action
@@ -154,12 +155,17 @@ async function ranAs(ctx, f, doc) {
   return answer.stopped ? heldWhileRunning(ctx, doc) : settledRun(ctx, f, doc, answer);
 }
 
+// A run's room as its end leaves it: its ending, then -- after its tidying, the leak scan of the room among it -- its
+// report, which says the host and the leaks a verdict reads. A restart between the two leaves an ending with no report
+// that agrees with it: such a room is never judged as it stands, but carried on by `resume`, which does that tail again.
+const complete = (room) => Boolean(room.ending) && room.report?.outcome === room.ending.outcome;
+
 // An action a ship left running when it stopped: settled from what it already wrote, from the run's own ending, or by
 // carrying the run on (`resume`) -- never by starting it again. One that never reached its run is closed, to be run anew.
 const LEFT = [
   { when: (x) => Boolean(x.d.settled?.verdict) && Boolean(x.d.rowDef), then: (ctx, f, x) => settledAct(ctx, x.a.id, x.d, x.d.settled, closeOf(x.d.rowDef, x.d.settled.verdict, "as it settled before the ship stopped")) },
   { when: (x) => Boolean(x.d.settled), then: (ctx, f, x) => ctx.door.actComplete(ctx.task, x.a.id, x.d.settled.ok === false ? "failed" : "succeeded", undefined, "completed from what it settled before the ship stopped") },
-  { when: (x) => Boolean(x.d.planned?.run) && Boolean(runRoomOf(x.storeRoot, x.d.planned.run).ending), then: (ctx, f, x) => settledRun(ctx, f, { ...x.d, act: x.a.id }, { code: null, json: null }) },
+  { when: (x) => Boolean(x.d.planned?.run) && complete(runRoomOf(x.storeRoot, x.d.planned.run)), then: (ctx, f, x) => settledRun(ctx, f, { ...x.d, act: x.a.id }, { code: null, json: null }) },
   { when: (x) => Boolean(x.d.planned?.run) && Boolean(runRoomOf(x.storeRoot, x.d.planned.run).manifest), then: async (ctx, f, x) => settledRun(ctx, f, { ...x.d, act: x.a.id }, await ctx.world.bench(["resume", x.d.planned.run], {})) },
   { when: () => true, then: (ctx, f, x) => ctx.door.actFail(ctx.task, x.a.id, "interrupted before it settled: done again as a new action") },
 ];

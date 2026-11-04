@@ -7,6 +7,7 @@
 //
 //   argvOf(row, at) -> [args]          rowVerdict(f) -> verdict          controlVerdict(f) -> verdict
 //   repairVerdict(f) -> verdict        identityOf(room) -> { basis, cli, model, costUsd, rounds, seconds, signature }
+//   interruptedOf(report) -> boolean   (a round the controller never saw end, read back)
 //   verdict: { state, code, says, outcome, cause, class, run, task, basis, cli, model, costUsd, costBasis, ... }
 import { samePath } from "../../../src/frontend/local-clones.mjs";
 import { matchesAny } from "./policy.mjs";
@@ -51,6 +52,15 @@ export function identityOf(room) {
 // and which model.
 const realHost = (id) => id.basis === "coding-host" && Boolean(id.model) && Boolean(id.cli) && id.cli === id.image;
 
+// A round the controller never saw end -- a restart killed it, and what it left was read back -- as the run's own report
+// says it of each round (`interrupted`: the round's action closed as interrupted, with no evidence of its own). Read off
+// that record alone: never a timestamp, never a guess from what a round is missing.
+export const interruptedOf = (report) => roundsOf(report).some((r) => r?.interrupted === true);
+
+// What a run says of a host other than the one a release accepts: another basis, or a Claude Code version beside the one
+// the image pins. A round nobody saw end says nothing at all -- no host, never another one.
+const anotherHost = (room) => ((id) => id.basis !== "coding-host" || hostsOf(room.report).some((h) => h.version && h.version !== id.image))(identityOf(room));
+
 // ---- ROW_VERDICT ----------------------------------------------------------------------------------------------------------
 
 // One directory however it is spelled: on Windows a short name (RUNNER~1) and the long one git answers are one
@@ -72,6 +82,10 @@ export const ROW_VERDICT = [
   { code: "HARNESS_MOVED", state: "UNTRUSTED", when: (f) => f.ship.harness !== null && f.room?.manifest?.benchmark?.harness !== f.ship.harness, says: () => "another harness judged this run than the one this ship began with" },
   { code: "CASE_MOVED", state: "UNTRUSTED", when: (f) => f.ship.caseDigest !== null && f.room?.manifest?.benchmark?.digest !== f.ship.caseDigest, says: () => "the case this run froze is not the case this ship first ran" },
   { code: "LEAK", state: "UNTRUSTED", when: (f) => (f.room?.report?.leaks ?? []).length > 0, says: (f) => `the credential was found in ${f.room.report.leaks.length} file(s) of the run's room, and masked: a person looks before a release` },
+  // A model-carried run a restart interrupted lost its own evidence: what its host was is unknown, so whatever it came
+  // to is never evidence -- and never the model's miss either, so it is run again, fresh (DIAGNOSE). A run that says
+  // another host is WRONG_HOST below, interrupted or not.
+  { code: "INTERRUPTED", state: "INTERRUPTED", when: (f) => f.row.autonomous && interruptedOf(f.room?.report) && !anotherHost(f.room), says: (f) => `a round of its run was interrupted before the controller saw it end, and was read back (${outcomeOf(f) ?? "no outcome"}): no host identity of its own survives it, so it is never evidence` },
   { code: "UNEXPECTED", state: "FAILED", when: (f) => !(f.row.expect ?? []).includes(outcomeOf(f)), says: (f) => f.room?.ending?.summary ?? `${outcomeOf(f)}, where ${(f.row.expect ?? []).join(" or ")} is required` },
   { code: "WRONG_HOST", state: "UNTRUSTED", when: (f) => f.row.autonomous && !realHost(identityOf(f.room)), says: (f) => ((id) => `a model-carried row needs the coding host with its Claude Code identity; this run says basis ${id.basis ?? "unknown"}, Claude Code ${id.cli ?? "unknown"} (image ${id.image ?? "unknown"}), model ${id.model ?? "unknown"}`)(identityOf(f.room)) },
   { code: "HELD", state: "HELD", when: () => true, says: (f) => `${outcomeOf(f)} on ${f.cycle.commit.slice(0, 12)}` },

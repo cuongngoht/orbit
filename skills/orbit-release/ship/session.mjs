@@ -13,10 +13,10 @@ import { sha, shaBytes } from "../../../src/hash.mjs";
 import { contentDigest } from "./artifact.mjs";
 import { begun, iso, runRoomOf, settledAct } from "./dispatch.mjs";
 import { publishableOf } from "./evidence.mjs";
-import { factsOf, nextOf } from "./machine.mjs";
+import { factsOf, lastCycleOf, nextOf } from "./machine.mjs";
 import { limitsOf, matchesAny, policyDigest, rowsOf } from "./policy.mjs";
 import { docRead, docWritten, jsonAtFile, newShipId, shipRoomOf, shipsIn } from "./room.mjs";
-import { preflightFacts } from "./steps.mjs";
+import { casesIn, preflightFacts } from "./steps.mjs";
 
 const said = (r) => String(r.out ?? "").trim();
 
@@ -62,6 +62,14 @@ function unblocked(ctx) {
   const was = docRead(ctx.room, "ending.json");
   if (was) (ctx.room.io.ensureDir(ctx.room.at("endings")), renameSync(ctx.room.at("ending.json"), ctx.room.at("endings", `${String(was.at ?? Date.now()).replace(/[^0-9A-Za-z]/g, "")}.json`)));
   ctx.door.unblock(ctx.task, "resumed: what blocked it is asked again");
+  return resumeJournaled(ctx);
+}
+
+// The resume, as an action of its own in the ship's journal: a row its environment blocked before it is run again from
+// here (DIAGNOSE), the fold reading where the resume stands among the actions -- never when it happened.
+function resumeJournaled(ctx) {
+  const act = begun(ctx, "release.resume", "a person resumed the blocked ship: what blocked it is asked again", {});
+  settledAct(ctx, act, {}, { resumed: true }, { outcome: "succeeded", summary: "what blocked the ship is asked again" });
   return ctx;
 }
 
@@ -101,18 +109,33 @@ function chosen(world, id, headTree) {
   return mine.find((s) => evidenceOfShip(world, s)?.source?.tree === headTree) ?? mine[0] ?? null;
 }
 
-const catalogOf = async (world) => ((r) => (r.json ? rowsOf(world.policy, r.json) : []))(await world.bench(["list"], {}));
+const listedOf = async (world) => (await world.bench(["list"], {})).json ?? null;
+
+const catalogOf = async (world) => ((listed) => (listed ? rowsOf(world.policy, listed) : []))(await listedOf(world));
 
 // What the ship does next: one still running goes on where its journal stands; any other is carried on by a resume,
 // and a resume asks its preflight again before anything else (contextOf), so that is what it does first.
 const nextAsked = (f, ctx) => (f.ended ? null : nextOf(f, { ...ctx, preflighted: f.view.lifecycle === "RUNNING" }).id);
 
+const isHeld = (r) => r.v.state === "HELD";
+
+// The rows of the newest cycle, by what each came to: held, and not held -- with the ones its diagnosis runs again.
+const rowsSaid = (ctx, rows) => ({ total: ctx.rows.length, held: rows.filter(isHeld).length, heldRows: rows.filter(isHeld).map((r) => r.row.id), failed: rows.filter((r) => !isHeld(r)).map((r) => `${r.row.id} ${r.v.state}${r.diag?.then === "RETRY" ? " (runs again)" : ""}`) });
+
+// A context to read a ship with: the catalog and each case's declaration as the checkout says them now.
+async function readingOf(world, ship) {
+  const listed = await listedOf(world);
+  return { ...contextOf(world, shipRoomOf(world.storeRoot, ship.id), ship.manifest, {}), rows: listed ? rowsOf(world.policy, listed) : [], cases: casesIn(world.root, listed), preflighted: true };
+}
+
+// Where a ship stands. Its rows and repairs are the newest cycle's, open or closed: a ship that shipped, stopped or ended
+// on a failed row says what it held and what it did not in the cycle it ended in.
 export async function statusOf(world, id) {
   const ship = chosen(world, id, gitSays(world, ["rev-parse", "HEAD^{tree}"]));
   if (!ship) return { found: false, says: "no ship has run on this checkout: node skills/orbit-release/ship.mjs" };
-  const ctx = { ...contextOf(world, shipRoomOf(world.storeRoot, ship.id), ship.manifest, {}), rows: await catalogOf(world), preflighted: true };
+  const ctx = await readingOf(world, ship);
   const f = factsOf(ctx, world.door.show(ctx.task));
-  return { found: true, ship: ship.id, task: ctx.task, lifecycle: f.view.lifecycle, stage: f.view.stage ?? null, mode: ship.manifest.mode, start: ship.manifest.start, commit: f.current.commit, cycle: f.attempts, rows: { total: ctx.rows.length, held: [...f.rows.values()].filter((r) => r.v.state === "HELD").length, failed: [...f.rows.values()].filter((r) => r.v.state !== "HELD").map((r) => `${r.row.id} ${r.v.state}`) }, repairs: f.repairs.map((r) => `${r.case} ${r.state}`), spent: f.spent, limits: f.limits, next: nextAsked(f, ctx), ending: docRead(ctx.room, "ending.json"), evidence: existsSync(ctx.room.at("evidence.json")) ? ctx.room.at("evidence.json") : null, room: ctx.room.dir };
+  return ((c) => ({ found: true, ship: ship.id, task: ctx.task, lifecycle: f.view.lifecycle, stage: f.view.stage ?? null, mode: ship.manifest.mode, start: ship.manifest.start, commit: f.current.commit, cycle: f.attempts, cycleOpen: Boolean(f.open), rows: rowsSaid(ctx, [...c.rows.values()]), repairs: c.repairs.map((r) => `${r.case} ${r.state}`), spent: f.spent, limits: f.limits, next: nextAsked(f, ctx), ending: docRead(ctx.room, "ending.json"), evidence: existsSync(ctx.room.at("evidence.json")) ? ctx.room.at("evidence.json") : null, room: ctx.room.dir }))(lastCycleOf(ctx, f));
 }
 
 // The artifact as the evidence names it -- its file, digested again -- or a person's own archive of the same tree, by

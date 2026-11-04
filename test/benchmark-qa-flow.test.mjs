@@ -12,7 +12,9 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { frozenRun, resumedRun } from "../benchmark/lib/core/context.mjs";
+import { docRead } from "../benchmark/lib/core/room.mjs";
 import { carriedQa, withTruth } from "../benchmark/lib/qa/flow.mjs";
+import { qaReportOf } from "../benchmark/lib/qa/report.mjs";
 import { sealed } from "./home.mjs";
 import { takeTurn } from "./benchmark-turn.mjs";
 
@@ -113,6 +115,9 @@ async function runOf(w, host) {
 
 const types = (view) => view.actions.map((a) => `${a.type}:${a.state}`);
 
+// The run's report, as `run.mjs report` writes it: read off its manifest, its journal and the evidence kept by phase.
+const reportAt = (ctx, view) => qaReportOf(ctx.room, ctx.manifest, view, Object.fromEntries(view.actions.map((a) => [a.id, docRead(ctx.room, `steps/${a.id}.json`)]).filter(([, d]) => d)), docRead(ctx.room, "ending.json"));
+
 // ---- what the flow does ----------------------------------------------------------------------------------------------
 
 test("a reference host passes: its contradiction confirmed on the clean application, both sandboxes released", async (t) => {
@@ -154,6 +159,9 @@ test("a host's round interrupted after its work is read back and judged, never s
   assert.ok(view.actions.some((a) => a.type === "benchmark.qa" && a.state === "error" && /never sent again/.test(a.reason ?? "")));
   assert.deepEqual(w.steps.slice(before).filter((s) => s.variant === CASE.target.variant), [], "the planted investigation is never asked for a step again");
   assert.equal(result.outcome, "PASS", "what the round left is the verdict's to judge");
+  const report = reportAt(ctx, view);
+  assert.deepEqual([report.json.round.interrupted, report.json.round.driver, report.json.round.host ?? null], [true, null, null], "the report says the round was interrupted, and no host: what a release reads to never count it");
+  assert.match(report.md, /driven by: unknown \(interrupted, read back\)/);
 });
 
 test("a sandbox that never comes up blocks the run, and what it started is released", async (t) => {
@@ -164,6 +172,7 @@ test("a sandbox that never comes up blocks the run, and what it started is relea
   assert.match(r.result.summary, /never answered its health check/);
   assert.ok(w.down.includes(CASE.target.variant));
   assert.ok(!types(r.view).some((x) => x.startsWith("benchmark.qa")));
+  assert.equal(reportAt(r.ctx, r.view).json.round.interrupted, false, "a round that never began was never interrupted");
 });
 
 test("a coding host with no credential sets nothing up: the run is blocked before an application is assembled", async (t) => {

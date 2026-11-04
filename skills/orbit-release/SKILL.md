@@ -48,8 +48,8 @@ node skills/orbit-release/ship.mjs --bump=added     # …and what the next versi
 A ship (ADR 0049) is one Orbit task (provider `release`) and a room in the machine store (`<store>/release/<shp-…>/`).
 Orbit Live shows a session's ship before the benchmark runs it starts, Mission Control shows it and each run beside it,
 and a person pauses or cancels it there. Where it stands is read from its journal every time, so `--resume` carries it
-on: a run that ended is read back from its room, one still open is carried on with `benchmark/run.mjs resume`, and
-nothing is ever sent twice.
+on: a run that ended is read back from its room, one still open -- or one whose end never wrote the report that agrees
+with its ending -- is carried on with `benchmark/run.mjs resume`, and nothing is ever sent twice.
 
 **What it needs.** Orbit's own clone (not an installed plugin: `benchmark/` is export-ignored), with nothing uncommitted
 under the paths it judges with (the benchmark, its tests, this skill, `.github/`); Docker; and a credential for the
@@ -62,7 +62,7 @@ an endpoint the release policy names; behind a network that inspects TLS, give `
 | PREFLIGHT | the harness and its catalog (`ship/policy.json` against `run.mjs list`), Docker, the credential by name, the endpoint | ENVIRONMENT |
 | BUILD | a pristine checkout of the release commit; the archive (`git archive`, held to what a host refuses on the archive itself, digested by its bytes and its content); every benchmark image with `build --rebuild`; then the HOST CHECK: the runner image's Claude Code asked one question through the egress proxy (`doctor --host`) | BUILDING |
 | BENCHMARK | the definition of done on that checkout, then every row: each case's real variant, its controls, then the rows the coding host carries | TESTING |
-| DIAGNOSE | each failed row, by its run's own ending: blocked (environment, credential, provider), retried once (no verdict to stand on), repairable, or a stop | DIAGNOSING |
+| DIAGNOSE | each failed row, by its run's own ending: blocked (environment, credential, provider), run again (a restart interrupted it, or no verdict to stand on), repairable, or a stop | DIAGNOSING |
 | REPAIR | `run.mjs run <case> --repair`: Claude Code in the runner drives one Orbit engineering task; the benchmark's verifier judges it | FIXING |
 | INTEGRATE | the verified patch held again, then applied in the ship's OWN workspace and committed there -- never your checkout | REVIEWING |
 | REBUILD · FULL_RETEST | a new release commit is a new cycle: everything again, model-carried rows included | BUILDING · REGRESSION |
@@ -73,7 +73,10 @@ PASS its real source -- a known finding (`baseline: "FAIL"`) earns nothing for i
 controls and PASS with the coding host. ORBIT-SRC-001's planted fault must be REPAIRED_VERIFIED by the coding host on the
 final source. That is sixteen rows a cycle the real Claude Code CLI carries. A model-carried row counts only when its run
 says basis `coding-host`, reported the Claude Code version the runner image pins, and named its model: a scripted host's
-PASS is conformance of the controller and is never evidence here.
+PASS is conformance of the controller and is never evidence here. A run a restart interrupted -- a round the controller
+never saw end, read back by `run.mjs resume` and said so by the run's own report -- keeps no identity of its own, so it
+is never evidence either, whatever it came to; it is not the model's miss, so the row is `INTERRUPTED` and runs again as
+a new run (below). A run that says another host stays `WRONG_HOST`, interrupted or not, and is never run again.
 
 **Repairs.** Only a source case's real variant failing on a cause the case declares repairable is repaired. A QA or
 engineering failure stops the release with its evidence: a fix told what a QA case plants would be fitted to the test, so
@@ -96,10 +99,14 @@ and the artifact is the one (`--artifact=<zip>` checks an archive you built agai
 **Limits and exits.** `--usd`, `--minutes`, `--cycles`, `--attempts` (repair attempts per case) and `--retries` (more
 runs a model-carried row that missed may have, 0 by default, at most 3) narrow or set the policy's limits, within its
 bounds; on `--resume` a person may raise them. A retried row holds only on a PASS of its own run -- the miss is kept in
-the ship's journal beside it. A spent limit BLOCKS the ship with its evidence kept.
-Exit 0 SHIPPABLE · 2 NOT SHIPPABLE or NO PROGRESS (or refused) · 3 BLOCKED (Docker, the host, its credential, a limit --
-fix it and `--resume`) · 4 a person paused or cancelled it. The ship never falls back to another host, a scripted host or
-a model mock.
+the ship's journal beside it. An `INTERRUPTED` run spends none of `--retries`: the row runs again at most
+`INTERRUPTED_RUNS` times a cycle (2, declared in `ship/diagnose.mjs`, not a policy limit), and then the ship BLOCKS on
+the environment, every interrupted run kept. A spent limit BLOCKS the ship with its evidence kept.
+Exit 0 SHIPPABLE · 2 NOT SHIPPABLE or NO PROGRESS (or refused) · 3 BLOCKED (Docker, the host, its credential, a limit, a
+row the environment kept from an ending -- fix it and `--resume`: the resume is journaled, and a row blocked before it
+runs again as a new run, once per resume) · 4 a person paused or cancelled it. The ship never falls back to another
+host, a scripted host or a model mock. `--status` says the newest cycle, open or closed: the rows it held (`heldRows`),
+those it did not (a row that runs again says so), and its repairs.
 
 **Optional.** Native host acceptance (`docs/host-acceptance.json`: Claude Code, Codex, Antigravity, Grok Build) and native
 backend acceptance (`acceptance/run.mjs --record`) are reported beside every ship as `opt` rows and never block it. Record

@@ -287,3 +287,72 @@ const sandboxLines = (t) => (t.sandbox ? [...Object.entries(t.sandbox.steps).map
 
 // The report's "Tool calls" section: counts and words of Orbit's, never a command, a prompt or an output.
 export const toolsMarkdown = (t) => ["## Tool calls", "", ...callsLines(t), ...relayLinesOf(t), ...sandboxLines(t), ""];
+
+// ---- many runs: the fold a metric reads (`metrics`, `reliability`) ------------------------------------------------------
+//
+// Over runs (metrics.mjs facts, each with the `tools` its report kept), kept apart by host basis and then grouped per
+// suite and per model: every count a numerator over a denominator, `unknown` with nothing under it, and the runs whose
+// report kept no tool facts (one from before 0.5.0 -- `report <bnr-…>` writes them) counted as `unread`, never as zero.
+//
+//   toolsFoldOf(fs) -> { [basis]: { runs, unread, suites: { [suite]: fold }, models: { [model]: fold } } }
+const UNKNOWN = "unknown";
+
+const PASSES = ["PASS", "REPAIRED_VERIFIED"];
+
+const ratio = (numerator, denominator) => ({ numerator, denominator, value: denominator > 0 ? Math.round((numerator / denominator) * 10000) / 10000 : UNKNOWN });
+
+const groupedBy = (xs, keyOf) => [...xs.reduce((m, x) => m.set(keyOf(x), [...(m.get(keyOf(x)) ?? []), x]), new Map()).entries()];
+
+const sumOf = (xs) => xs.reduce((a, b) => a + (typeof b === "number" ? b : 0), 0);
+
+// Counts by key, summed over rows that each count by key (refusals by reason, failures by class).
+const added = (rows) => Object.fromEntries([...new Set(rows.flatMap((r) => Object.keys(r ?? {})))].sort().map((k) => [k, sumOf(rows.map((r) => r?.[k]))]));
+
+const toolSum = (rows) => ((calls, failed) => ({ calls, failed, rate: ratio(failed, calls).value }))(sumOf(rows.map((r) => r.calls)), sumOf(rows.map((r) => r.failed)));
+
+const toolsFolded = (byTools) => Object.fromEntries([...new Set(byTools.flatMap((b) => Object.keys(b)))].sort().map((name) => [name, toolSum(byTools.map((b) => b[name]).filter(Boolean))]));
+
+function callsFold(t) {
+  const known = t.filter((f) => f.tools.calls).map((f) => f.tools.calls);
+  const failed = sumOf(known.map((c) => c.failed));
+  return { runs: known.length, unknown: t.length - known.length, calls: sumOf(known.map((c) => c.calls)), failed, unanswered: sumOf(known.map((c) => c.unanswered)), rate: ratio(failed, sumOf(known.map((c) => c.calls))).value, byTool: toolsFolded(known.map((c) => c.byTool)) };
+}
+
+const relayRow = (rows) => ({ requests: sumOf(rows.map((r) => r.requests)), refused: added(rows.map((r) => r.refused)), nonZero: sumOf(rows.map((r) => r.nonZero)), errors: sumOf(rows.map((r) => r.errors)) });
+
+const relayFold = (t) => Object.fromEntries([...new Set(t.flatMap((f) => Object.keys(f.tools.relay ?? {})))].sort().map((sub) => [sub, relayRow(t.map((f) => f.tools.relay?.[sub]).filter(Boolean))]));
+
+// Failed calls per PASS: the failed calls of the runs that passed, over those runs.
+const perPass = (t) => ((p) => ratio(sumOf(p.map((f) => f.tools.calls.failed)), p.length))(t.filter((f) => f.tools.calls && PASSES.includes(f.outcome)));
+
+// What getting past failed calls took, per episode; and of the runs that hit a failed call, how many still passed.
+function recoveryFold(t) {
+  const known = t.filter((f) => f.tools.recovery);
+  const episodes = sumOf(known.map((f) => f.tools.recovery.episodes));
+  const hit = known.filter((f) => f.tools.recovery.failed > 0);
+  return { episodes, recovered: ratio(sumOf(known.map((f) => f.tools.recovery.recovered)), episodes), turnsPerEpisode: ratio(sumOf(known.map((f) => f.tools.recovery.turns)), episodes), costUsd: costFold(known), runsRecovered: ratio(hit.filter((f) => PASSES.includes(f.outcome)).length, hit.length) };
+}
+
+// The apportioned cost of getting past failed calls, per run where it was known.
+const costFold = (known) => ((c) => ({ ...ratio(sumOf(c.map((f) => f.tools.recovery.costUsd)), c.length), unknown: known.length - c.length, basis: "APPORTIONED" }))(known.filter((f) => typeof f.tools.recovery.costUsd === "number"));
+
+// One sandbox step over many runs: its failure rate, the classes of its failures, the host calls a failure cost on
+// average where they could be placed, and of the failures nothing got past, how many ended BLOCKED with a reason.
+const stepFold = (rows) => ({ runs: rows.length, attempts: sumOf(rows.map((r) => r.attempts)), failures: sumOf(rows.map((r) => r.failures)), rate: ratio(sumOf(rows.map((r) => r.failures)), sumOf(rows.map((r) => r.attempts))).value, classes: added(rows.map((r) => r.classes)), callsAfter: ratio(sumOf(rows.map((r) => r.calls?.total)), sumOf(rows.map((r) => r.calls?.counted))), callsUnknown: sumOf(rows.map((r) => r.calls?.unknown)), stopped: sumOf(rows.map((r) => r.stopped)), endedBlocked: ratio(sumOf(rows.map((r) => r.endedBlocked)), sumOf(rows.map((r) => r.stopped))) });
+
+function sandboxFold(t) {
+  const steps = SANDBOX_STEPS.map((s) => [s, t.map((f) => f.tools.sandbox?.steps?.[s]).filter(Boolean)]);
+  const unknown = Object.fromEntries(SANDBOX_STEPS.map((s) => [s, t.filter((f) => f.tools.unknown?.[s] || f.tools.unknown?.sandbox).length]));
+  return { steps: Object.fromEntries(steps.filter(([, rows]) => rows.length).map(([s, rows]) => [s, stepFold(rows)])), unknown };
+}
+
+function foldOf(g) {
+  const t = g.filter((f) => f.tools);
+  return { runs: t.length, unread: g.length - t.length, calls: callsFold(t), relay: relayFold(t), failedPerPass: perPass(t), recovery: recoveryFold(t), sandbox: sandboxFold(t) };
+}
+
+const foldsBy = (fs, keyOf) => Object.fromEntries(groupedBy(fs, keyOf).sort(([a], [b]) => String(a).localeCompare(String(b))).map(([k, g]) => [k, foldOf(g)]));
+
+const basisFold = (fs) => ({ runs: fs.filter((f) => f.tools).length, unread: fs.filter((f) => !f.tools).length, suites: foldsBy(fs, (f) => f.suite ?? "-"), models: foldsBy(fs, (f) => f.modelSaid ?? "unknown") });
+
+export const toolsFoldOf = (fs) => Object.fromEntries(groupedBy(fs, (f) => f.basis).sort(([a], [b]) => a.localeCompare(b)).map(([b, g]) => [b, basisFold(g)]));

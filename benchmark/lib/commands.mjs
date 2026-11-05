@@ -26,7 +26,9 @@ import { docRead, docWritten, newRunId, readRegular, roomOf, RUN_ID } from "./co
 import { frozen, HARNESS, subjectOf, whereAt } from "./core/freeze.mjs";
 import { verified } from "./source/verify.mjs";
 import { judgedRepair } from "./source/repairs.mjs";
-import { metricsOf } from "./core/metrics.mjs";
+import { BY_NAMES, metricsOf } from "./core/metrics.mjs";
+import { DEFAULT_K } from "./core/rates.mjs";
+import { overheadLines, ratesLines, reliabilityOf, sayReliability, toolsLines } from "./core/reliability.mjs";
 
 const int = (v) => (v === undefined ? undefined : /^\d+$/.test(v) ? Number(v) : Number.NaN);
 
@@ -141,7 +143,7 @@ const optionsOf = (args) => ({ host: hostOption(flag(args, "host")), variant: fl
 
 // What a command may ask, as data: each option's lowest and highest value. `repeat` (0.5.0) is how many runs of one case
 // one command starts -- enough for a rate over five runs and some to spare, never an open-ended loop of paid rounds.
-export const BOUNDS = [["seed", 0, 2 ** 31 - 1], ["rounds", 1, 5], ["minutes", 10, 600], ["usd", 0, 200], ["repeat", 1, 10]];
+export const BOUNDS = [["seed", 0, 2 ** 31 - 1], ["rounds", 1, 5], ["minutes", 10, 600], ["usd", 0, 200], ["repeat", 1, 10], ["k", 1, 10]];
 
 const checked = (o) => ((bad) => (bad.length ? refusedWith(`out of bounds: ${bad.map(([k, lo, hi]) => `--${k} is ${lo}..${hi}`).join(", ")}`) : o))(BOUNDS.filter(([k, lo, hi]) => o[k] !== undefined && !(o[k] >= lo && o[k] <= hi)));
 
@@ -337,20 +339,38 @@ export const MAX_RUNS = 500;
 
 const keptRun = (h, n) => ((room) => ({ manifest: docRead(room, "manifest.json"), ending: docRead(room, "ending.json"), report: docRead(room, "report.json"), controls: docRead(room, "controls.json") }))(roomOf(h.storeRoot, n));
 
-const inScope = (args) => (r) => (!flag(args, "suite") || r.manifest.benchmark?.suite === flag(args, "suite")) && (!flag(args, "case") || r.manifest.benchmark?.case === flag(args, "case")) && (!flag(args, "since") || String(r.manifest.at ?? "") >= flag(args, "since"));
+// A source revision named by its commit, or the start of one (`--revision`, 0.5.0): the runs that froze it.
+const revisionOf = (args) => ((v) => (v === undefined || /^[0-9a-f]{4,64}$/.test(v) ? v : refusedWith(`--revision is a commit id, or the start of one, not ${v}`)))(flag(args, "revision"));
 
-const scopeSaid = (args) => ["suite", "case", "since"].filter((k) => flag(args, k)).map((k) => `${k} ${flag(args, k)}`).join(", ") || "every run kept";
+const inScope = (args) => (r) => (!flag(args, "suite") || r.manifest.benchmark?.suite === flag(args, "suite")) && (!flag(args, "case") || r.manifest.benchmark?.case === flag(args, "case")) && (!flag(args, "since") || String(r.manifest.at ?? "") >= flag(args, "since")) && (!revisionOf(args) || String(r.manifest.source?.commit ?? "").startsWith(revisionOf(args)));
+
+const SCOPES = ["revision", "suite", "case", "since"];
+
+const scopeSaid = (args) => SCOPES.filter((k) => flag(args, k)).map((k) => `${k} ${flag(args, k)}`).join(", ") || "every run kept";
 
 // Rooms that hold no run of a case: a control set's (its rows are the verifier's own metric) and a host probe's.
 const NOT_RUNS = ["controls", "probe"];
 
 const controlRows = (kept) => kept.filter((r) => r.manifest.kind === "controls" && r.controls).flatMap((r) => r.controls.rows.map((row) => ({ ...row, case: r.controls.case })));
 
+// The kept rooms in scope, newest first, bounded: what `metrics` and `reliability` both fold.
+const scopedRuns = (h, args) => (revisionOf(args), safeList(join(h.storeRoot, "benchmark"))).filter((n) => RUN_ID.test(n)).map((n) => keptRun(h, n)).filter((r) => r.manifest).filter(inScope(args)).sort((a, b) => String(b.manifest.at ?? "").localeCompare(String(a.manifest.at ?? ""))).slice(0, MAX_RUNS);
+
+const casesOnly = (scoped) => scoped.filter((r) => !NOT_RUNS.includes(r.manifest.kind));
+
+// What `--by` breaks the runs down by -- revision, model, arm, comma-separated -- and k of pass@k (bounded in BOUNDS).
+const byOption = (v) => ((names) => (names.every((n) => BY_NAMES.includes(n)) ? names : refusedWith(`--by is any of ${BY_NAMES.join(", ")}, comma-separated, not ${v}`)))(v === undefined ? [] : String(v).split(","));
+
+const kOf = (args) => checked({ k: int(flag(args, "k")) }).k;
+
 function metrics(h, args) {
-  const kept = safeList(join(h.storeRoot, "benchmark")).filter((n) => RUN_ID.test(n)).map((n) => keptRun(h, n)).filter((r) => r.manifest);
-  const scoped = kept.filter(inScope(args)).sort((a, b) => String(b.manifest.at ?? "").localeCompare(String(a.manifest.at ?? ""))).slice(0, MAX_RUNS);
-  return { store: join(h.storeRoot, "benchmark"), ...metricsOf(scoped.filter((r) => !NOT_RUNS.includes(r.manifest.kind)), { scope: scopeSaid(args), controls: controlRows(scoped), byRevision: flag(args, "by") === "revision" }) };
+  const scoped = scopedRuns(h, args);
+  return { store: join(h.storeRoot, "benchmark"), ...metricsOf(casesOnly(scoped), { scope: scopeSaid(args), controls: controlRows(scoped), by: byOption(flag(args, "by")), k: kOf(args) }) };
 }
+
+// THE RELIABILITY REPORT (0.5.0): rates, tool-call failures and arms, from the kept rooms in scope -- printed, never
+// written: a release ship writes it next to its evidence.json.
+const reliability = (h, args) => reliabilityOf(casesOnly(scopedRuns(h, args)), { scope: Object.fromEntries(SCOPES.map((k) => [k, flag(args, k) ?? null]).concat([["k", kOf(args) ?? DEFAULT_K]])), store: join(h.storeRoot, "benchmark"), at: new Date().toISOString(), k: kOf(args) });
 
 const cell = (m) => `${String(m.value).padEnd(8)} ${`${Math.round(m.numerator * 100) / 100}/${m.denominator}`.padEnd(12)}${Object.entries(m.excluded ?? {}).filter(([, n]) => n).map(([k, n]) => ` ${k} ${n}`).join("")}`;
 
@@ -358,7 +378,10 @@ const basisLines = (r, basis) => (r.runs.byBasis[basis] ? [`${basis.toUpperCase(
 
 const historyLines = (r) => (r.history ? ["HISTORY BY REVISION", ...r.history.map((x) => `  ${x.case} ${x.variant} (${x.basis}): ${x.commits.map((c) => `${c.commit ?? "?"} ${c.outcome}`).join(" → ")}`)] : []);
 
-const sayMetrics = (r) => [`METRICS    ${r.scope} — ${r.runs.total} run(s) in ${r.store}`, ...["coding-host", "session", "scripted", "none"].flatMap((b) => basisLines(r, b)), `REPRODUCIBILITY ${cell(r.reproducibility)}${r.reproducibility.unstable.length ? ` — unstable: ${r.reproducibility.unstable.map((u) => `${u.case} ${u.variant}`).join(", ")}` : ""}`, `VERIFIER CONTROLS ${cell(r.verifier)}${r.verifier.missed.length ? ` — missed: ${r.verifier.missed.join("; ")}` : ""}`, ...historyLines(r), "A scripted host's numbers are conformance, never autonomy; a value of unknown has nothing to stand on."].join("\n");
+// A breakdown `--by` asked for: every metric again per model or per arm, each basis still apart.
+const splitLines = (title, name, groups) => (groups ? [title, ...groups.flatMap((g) => [`  ${g[name]} (${g.runs} run(s))`, ...Object.entries(g.bases).filter(([, ms]) => Object.values(ms).some((m) => m.runs)).flatMap(([b, ms]) => Object.entries(ms).filter(([, m]) => m.value !== "unknown").map(([id, m]) => `    ${b.padEnd(12)} ${id.padEnd(26)} ${cell(m)}`))])] : []);
+
+const sayMetrics = (r) => [`METRICS    ${r.scope} — ${r.runs.total} run(s) in ${r.store}`, ...["coding-host", "session", "scripted", "none"].flatMap((b) => basisLines(r, b)), `REPRODUCIBILITY ${cell(r.reproducibility)}${r.reproducibility.unstable.length ? ` — unstable: ${r.reproducibility.unstable.map((u) => `${u.case} ${u.variant}`).join(", ")}` : ""}`, `VERIFIER CONTROLS ${cell(r.verifier)}${r.verifier.missed.length ? ` — missed: ${r.verifier.missed.join("; ")}` : ""}`, ...ratesLines(r.reliability), ...toolsLines(r.tools), ...overheadLines(r.overhead), ...historyLines(r), ...splitLines("BY MODEL", "model", r.byModel), ...splitLines("BY ARM", "arm", r.byArm), "A scripted host's numbers are conformance, never autonomy; a value of unknown has nothing to stand on."].join("\n");
 
 // ---- the controls: does the verifier fail what it must and pass what it must, in its own containers -------------------------
 
@@ -480,5 +503,6 @@ export const COMMANDS = {
   controls: { run: controls, say: sayControls, exit: (r) => r.exit },
   cleanup: { run: cleanup, say: sayCleanup },
   metrics: { run: metrics, say: sayMetrics },
+  reliability: { run: reliability, say: sayReliability },
   where: { run: where, say: sayWhere },
 };

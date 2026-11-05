@@ -4,7 +4,10 @@
 // is handed; the images are pinned by the ids the run resolved; the bench task is created through the task door. A
 // resumed run is refused when what it froze no longer is what it froze.
 //
-//   frozenRun(h, o) -> ctx        resumedRun(h, runId) -> ctx        frozenIntact(ctx) -> boolean
+// 0.5.0: a run is on one ARM of its case (`o.arm`, armOf) -- the plugin its host is handed, made per arm by PLUGIN_TREES
+// -- and may be one of a REPEAT group (`o.group`); the manifest's config keeps both.
+//
+//   frozenRun(h, o) -> ctx        resumedRun(h, runId) -> ctx        frozenIntact(ctx) -> boolean      armOf(c, o) -> arm
 import { cpSync, existsSync, readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";

@@ -12,9 +12,9 @@
 //   sandbox   per sandbox step: attempts, failures, the class of each failure (SANDBOX_FAILURES), how many host calls
 //             came after it before the host got past it (the task's next action that succeeded) or stopped, and
 //             whether one never got past ended BLOCKED with its reason. A source or engineering run reads its
-//             engineering task as the inspection read it back (task.json) and the runner store's sandboxes
-//             (sandbox.json); a QA run reads its engine store, whose sandbox the CONTROLLER set up -- no host call drove
-//             it, so no call is counted against it.
+//             engineering task as the inspection read it back (task.json: its sandbox actions, and the receipt of its
+//             release) and the runner store's sandboxes (sandbox.json: restore and the containers); a QA run reads its
+//             engine store, whose sandbox the CONTROLLER set up -- no host call drove it, so none is counted against it.
 //
 //   runToolsOf(room, manifest, ending) -> { schema, rounds, basis, calls, recovery, relay, sandbox, unknown }
 //   toolsMarkdown(facts) -> lines      SANDBOX_STEPS · OP_STEPS · SANDBOX_FAILURES · RELAY_REASONS · classOf(failure)
@@ -171,7 +171,13 @@ const NOT_READY = /not answering yet|not ready on the task's network/;
 
 const readinessEvents = (actions) => actions.filter((a) => (a.type === "start-sandbox" && a.state === "succeeded") || NOT_READY.test(String(a.reason ?? ""))).map((a) => ({ ...actionEvent(a, "readiness"), ok: !NOT_READY.test(`${a.summary ?? ""} ${a.reason ?? ""}`) }));
 
-const taskEvents = (actions) => [...actions.filter((a) => ACTION_STEPS[a.type]).map((a) => actionEvent(a, ACTION_STEPS[a.type])), ...readinessEvents(actions)];
+// The release of a task's sandbox, as the task's own receipt says it when the task ended (src/orchestration/loop.mjs):
+// RELEASED, or REFUSED -- what it held could not be proven its own, so it was not let go.
+const RELEASE_WORDS = { RELEASED: true, REFUSED: false };
+
+const releaseEvents = (receipts) => receipts.filter((r) => r.domain === "sandbox" && Object.hasOwn(RELEASE_WORDS, r.outcome)).map((r) => ({ step: "sandbox-release", ok: RELEASE_WORDS[r.outcome], endedAt: r.at, because: r.summary }));
+
+const taskEvents = (task) => [...(task.actions ?? []).filter((a) => ACTION_STEPS[a.type]).map((a) => actionEvent(a, ACTION_STEPS[a.type])), ...readinessEvents(task.actions ?? []), ...releaseEvents(task.receipts ?? [])];
 
 // ---- what a sandbox failure cost the host ----------------------------------------------------------------------------
 
@@ -213,8 +219,8 @@ function stepsOf(events, w, known) {
   return { by: w.by, steps: rows, failures };
 }
 
-// What each kind of run read its sandbox from, and which steps that record can speak of.
-const OPS_STEPS = ["restore", "container-build", "sandbox-release"];
+// What a host's run reads off runtime's own operations, beside its task's record: the steps inside a preparation.
+const RUNTIME_STEPS = ["restore", "container-build"];
 
 const UNSEEN_OPS = "the inspection did not read the runner store's sandboxes back (a room from before 0.5.0)";
 
@@ -222,14 +228,15 @@ const latestInspection = (room) => roundsIn(room).reverse().map((k) => ({ task: 
 
 // A source or engineering run: its host drove the engineering task's sandbox, so each failure is placed in the host's
 // calls. Preparing and starting are the task's own actions -- one per decision, though runtime prepares again inside a
-// start -- and restore, the containers and the release are runtime's operations, read back by the inspection.
-const runtimeEvents = (ins) => opEvents(ins.sandbox?.sandboxes ?? []).filter((e) => OPS_STEPS.includes(e.step));
+// start -- and the release its own receipt; restore and the containers are runtime's operations, which the inspection
+// read back.
+const runtimeEvents = (ins) => opEvents(ins.sandbox?.sandboxes ?? []).filter((e) => RUNTIME_STEPS.includes(e.step));
 
 function hostSandbox(ins, streams) {
   const actions = ins.task.actions ?? [];
   const w = { by: "host", actions, timeline: timelineOf(streams), blocked: ins.task.lifecycle === "BLOCKED" ? ins.task.blocked : null };
-  const known = ["sandbox-prepare", "sandbox-start", "readiness", ...(ins.sandbox ? OPS_STEPS : [])];
-  return { ...stepsOf([...taskEvents(actions), ...runtimeEvents(ins)], w, known), unknown: ins.sandbox ? {} : Object.fromEntries(OPS_STEPS.map((s) => [s, UNSEEN_OPS])) };
+  const known = ["sandbox-prepare", "sandbox-start", "readiness", "sandbox-release", ...(ins.sandbox ? RUNTIME_STEPS : [])];
+  return { ...stepsOf([...taskEvents(ins.task), ...runtimeEvents(ins)], w, known), unknown: ins.sandbox ? {} : Object.fromEntries(RUNTIME_STEPS.map((s) => [s, UNSEEN_OPS])) };
 }
 
 // A QA run: the controller set the sandbox up and released it through Orbit's own engine; only runtime's operations say

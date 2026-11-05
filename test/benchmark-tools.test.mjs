@@ -101,9 +101,12 @@ const act = (id, type, state, startS, endS, o = {}) => ({ id, type, state, start
 const op = (kind, state, s, because = null) => ({ kind, state, at: at(s), settledAt: at(s + 1), because });
 
 // The engineering task as the inspection read it back: a preparation that failed on a restore, the host's flailing,
-// a preparation that came through, a start whose application never answered, a release that could not be proven.
-const TASK = (o = {}) => ({ exit: 0, json: { lifecycle: o.lifecycle ?? "EXECUTING", blocked: o.blocked ?? null, actions: [act("act-1", "prepare-sandbox", "error", 1, 10, { reason: "restoring node:. (npm ci) failed with exit 1" }), act("act-2", "check", "failed", 20, 25), act("act-3", "prepare-sandbox", "succeeded", 30, 35), act("act-4", "start-sandbox", "succeeded", 40, 45, { summary: "1 started, 0 already running, 0 replaced, 1 not answering yet" })] } });
+// a preparation that came through, a start whose application never answered, and -- its own receipt when it ended -- a
+// release that could not be proven.
+const TASK = (o = {}) => ({ exit: 0, json: { lifecycle: o.lifecycle ?? "EXECUTING", blocked: o.blocked ?? null, actions: [act("act-1", "prepare-sandbox", "error", 1, 10, { reason: "restoring node:. (npm ci) failed with exit 1" }), act("act-2", "check", "failed", 20, 25), act("act-3", "prepare-sandbox", "succeeded", 30, 35), act("act-4", "start-sandbox", "succeeded", 40, 45, { summary: "1 started, 0 already running, 0 replaced, 1 not answering yet" })], receipts: [{ key: "sandbox:env-1", domain: "sandbox", ref: "env-1", outcome: "REFUSED", summary: "not released: runtime could not prove it all the task's own", at: at(51) }, { key: "check:x", domain: "check", ref: "x", outcome: "failed", at: at(25) }] } });
 
+// Runtime's operations: a restore that failed then came through, a container brought up, and -- counted from the task's
+// receipt instead, never twice -- the teardown; a test's dispatch is no step of the sandbox.
 const SANDBOX = { exit: 0, json: { sandboxes: [{ id: "env-1", state: "QUARANTINED", operations: [op("prepare", "FAILED", 2, "restoring node:. (npm ci) failed with exit 1"), op("restore", "FAILED", 3, "restoring node:. (npm ci) failed with exit 1"), op("prepare", "DONE", 31), op("restore", "DONE", 32), op("up", "DONE", 33), op("teardown", "FAILED", 50, "network: 1 container(s) are still attached"), op("dispatch", "FAILED", 51)] }] } };
 
 // Five host calls, each arriving at a moment the capture's index keeps: two before the failure ends, two while the host
@@ -154,8 +157,9 @@ test("a failure the host never got past ended BLOCKED with its reason -- or it d
 
 test("an older room whose inspection never read the sandboxes back: the task's own steps are known, runtime's are unknown and say why", (t) => {
   const f = runToolsOf(engineeringRoom(t, { sandbox: false }), manifest());
-  assert.deepEqual(Object.keys(f.sandbox.steps), ["sandbox-prepare", "sandbox-start", "readiness"]);
+  assert.deepEqual(Object.keys(f.sandbox.steps), ["sandbox-prepare", "sandbox-start", "readiness", "sandbox-release"], "the release is the task's own receipt");
   assert.match(f.unknown.restore, /did not read the runner store's sandboxes back/);
+  assert.match(f.unknown["container-build"], /did not read the runner store's sandboxes back/);
 });
 
 test("a QA run's sandbox was the controller's: its steps come from the engine store's operations, no host call is counted against them, and a start nobody journals is unknown", (t) => {

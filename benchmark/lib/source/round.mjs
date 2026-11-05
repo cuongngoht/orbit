@@ -15,7 +15,7 @@ import { docker } from "../../../src/runtime/isolation/docker.mjs";
 import { addedLines, agentTestsOf, overlaid, scopeFindings } from "./candidate.mjs";
 import { ranContainer, specFor } from "../core/docker.mjs";
 import { gitOwn } from "../core/git.mjs";
-import { forbidden, fresh, jsonAt, offlineRan, roundRan, RUNNER_HOST, runnerSpecOf } from "../core/runner.mjs";
+import { forbidden, fresh, jsonAt, offlineRan, roundRan, RUNNER_HOST, runnerSpecOf, streamFileOf } from "../core/runner.mjs";
 import { briefOf } from "./brief.mjs";
 import { readRegular } from "../core/room.mjs";
 import { safeRel } from "../core/paths.mjs";
@@ -34,9 +34,20 @@ const pluginMounts = (ctx) => (goalCase(ctx) ? [{ source: ctx.pluginDir, target:
 
 const pluginOf = (ctx) => (goalCase(ctx) ? PLUGIN_AT : "/work/repo");
 
-const runnerSpec = (ctx, net, k, d) => runnerSpecOf(ctx, net, k, [{ source: ctx.checkoutDir, target: "/work/repo", readOnly: true }, ...pluginMounts(ctx), { source: ctx.runnerStore, target: "/work/store", readOnly: false }, { source: d.out, target: "/work/out", readOnly: false }, { source: d.brief, target: "/run/brief", readOnly: true }], {}, pluginOf(ctx));
+// An arm with no Orbit (0.5.0, B23) is handed none: no plugin is mounted where its host runs, so no Orbit hook can fire
+// and no trail is written -- and, with no task workspace to change, the target is a writable copy of its own (`worktree`,
+// beside the run's checkout, which stays the frozen subject). The inspection still reads with the release plugin.
+const handed = (ctx) => ctx.arm !== "none";
 
-const inspectSpec = (ctx, k, task, out) => specFor("inspect", ctx.run, { n: k, image: ctx.images.runner, user: ctx.user, hostname: RUNNER_HOST, argv: ["node", "/bench/inspect.mjs", task ?? "-", `--plugin=${pluginOf(ctx)}`], mounts: [{ source: ctx.checkoutDir, target: "/work/repo", readOnly: true }, ...pluginMounts(ctx), { source: ctx.runnerStore, target: "/work/store", readOnly: true }, { source: out, target: "/work/out", readOnly: false }], env: { names: [], values: { HOME: "/tmp", ORBIT_STORE_DIR: "/work/store" } }, limits: { cpus: 1, memoryMb: 1024, pids: 256 }, tmpMb: 256 });
+const WORKTREE_AT = "/work/worktree";
+
+const repoMount = (ctx) => (handed(ctx) ? { source: ctx.checkoutDir, target: "/work/repo", readOnly: true } : { source: ctx.worktreeDir, target: "/work/repo", readOnly: false });
+
+const runnerSpec = (ctx, net, k, d) => runnerSpecOf(ctx, net, k, [repoMount(ctx), ...(handed(ctx) ? pluginMounts(ctx) : []), { source: ctx.runnerStore, target: "/work/store", readOnly: false }, { source: d.out, target: "/work/out", readOnly: false }, { source: d.brief, target: "/run/brief", readOnly: true }], {}, handed(ctx) ? pluginOf(ctx) : null);
+
+const worktreeRead = (ctx) => (handed(ctx) ? { mounts: [], argv: [] } : { mounts: [{ source: ctx.worktreeDir, target: WORKTREE_AT, readOnly: true }], argv: [`--tree=${WORKTREE_AT}`] });
+
+const inspectSpec = (ctx, k, task, out) => specFor("inspect", ctx.run, { n: k, image: ctx.images.runner, user: ctx.user, hostname: RUNNER_HOST, argv: ["node", "/bench/inspect.mjs", task ?? "-", `--plugin=${pluginOf(ctx)}`, ...worktreeRead(ctx).argv], mounts: [{ source: ctx.checkoutDir, target: "/work/repo", readOnly: true }, ...pluginMounts(ctx), ...worktreeRead(ctx).mounts, { source: ctx.runnerStore, target: "/work/store", readOnly: true }, { source: out, target: "/work/out", readOnly: false }], env: { names: [], values: { HOME: "/tmp", ORBIT_STORE_DIR: "/work/store" } }, limits: { cpus: 1, memoryMb: 1024, pids: 256 }, tmpMb: 256 });
 
 function briefWritten(ctx, k, state) {
   const dir = fresh(ctx, "rounds", String(k), "brief");
@@ -50,7 +61,7 @@ function briefWritten(ctx, k, state) {
 // stopping the container, whatever the host inside it is doing.
 export async function ranRound(ctx, k, state) {
   const d = { brief: briefWritten(ctx, k, state), out: fresh(ctx, "rounds", String(k), "out") };
-  const o = { deadlineMs: state.deadlineMs, out: d.out, held: state.held, heldEveryMs: ctx.heldEveryMs };
+  const o = { deadlineMs: state.deadlineMs, out: d.out, held: state.held, heldEveryMs: ctx.heldEveryMs, capture: streamFileOf(ctx, k) };
   return offlineHost(ctx) ? offlineRan(ctx, k, runnerSpec(ctx, null, k, d), o) : roundRan(ctx, k, (net) => runnerSpec(ctx, net, k, d), o);
 }
 
@@ -64,7 +75,7 @@ export const offlineHost = (ctx) => /^(scripted|session):/.test(String(ctx.host 
 export async function inspectedRound(ctx, k, task) {
   const out = fresh(ctx, "rounds", String(k), "inspect");
   const r = await ranContainer(inspectSpec(ctx, k, task, out), ctx.deps, { input: "", timeoutMs: 300000, outputBytes: 1024 * 1024, attest: { network: "none", forbidden: forbidden(ctx), pluginTarget: null, imageEnv: docker.imageEnv(ctx.images.runner, ctx.deps) } });
-  return { end: r.refused ? "REFUSED" : r.timedOut ? "TIMEOUT" : `EXIT_${r.exit}`, refused: r.refused ?? null, attested: r.attested, dir: out, inspect: jsonAt(join(out, "inspect.json")), task: jsonAt(join(out, "task.json")), tasks: jsonAt(join(out, "tasks.json")), trace: jsonAt(join(out, "trace.json")), goals: jsonAt(join(out, "goals.json")) };
+  return { end: r.refused ? "REFUSED" : r.timedOut ? "TIMEOUT" : `EXIT_${r.exit}`, refused: r.refused ?? null, attested: r.attested, dir: out, inspect: jsonAt(join(out, "inspect.json")), task: jsonAt(join(out, "task.json")), tasks: jsonAt(join(out, "tasks.json")), trace: jsonAt(join(out, "trace.json")), turns: jsonAt(join(out, "turns.json")), goals: jsonAt(join(out, "goals.json")), sandbox: jsonAt(join(out, "sandbox.json")) };
 }
 
 // ---- the candidate ---------------------------------------------------------------------------------------------------------

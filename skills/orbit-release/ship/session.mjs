@@ -16,6 +16,7 @@ import { publishableOf } from "./evidence.mjs";
 import { factsOf, lastCycleOf, limitsNow, modeOf, nextOf, shipRows } from "./machine.mjs";
 import { LIMIT_FLAGS, limitsOf, matchesAny, policyDigest, rowsOf } from "./policy.mjs";
 import { docRead, docWritten, jsonAtFile, newShipId, shipRoomOf, shipsIn } from "./room.mjs";
+import { EFFORTS } from "./preflight.mjs";
 import { casesIn, preflightFacts } from "./steps.mjs";
 
 const said = (r) => String(r.out ?? "").trim();
@@ -47,7 +48,9 @@ const OBJECTIVES = { autonomous: ", repairing what a case declares repairable", 
 
 const objectiveOf = (start, o) => `Ship ${o.version ?? ""} from ${start.branch ?? "detached"}@${start.commit.slice(0, 10)}: the Docker benchmark carried by Claude Code${OBJECTIVES[o.mode]}`;
 
-const manifestOf = (world, room, task, start, o) => ({ schema: 1, kind: "ship", ship: room.id, task, at: iso(world), mode: o.mode, start, checkout: { root: world.root, project: world.project.key, checkoutId: world.project.checkoutId }, policy: { digest: policyDigest(world.policy) }, protected: { digest: protectedDigestOf(world, start.commit) }, limits: o.limitsHeld, options: { repair: o.repair === true, failFast: o.failFast !== false, model: o.model ?? null, credential: o.credential ?? null, caFile: o.caFile ?? null }, host: { node: process.version, platform: process.platform } });
+// The effort the ship asks every model-carried row's host to run at is frozen here, beside its mode: a resume never
+// moves it (effortHeld), so every row of a ship is held to one effort (ROW_VERDICT WRONG_EFFORT).
+const manifestOf = (world, room, task, start, o) => ({ schema: 1, kind: "ship", ship: room.id, task, at: iso(world), mode: o.mode, start, checkout: { root: world.root, project: world.project.key, checkoutId: world.project.checkoutId }, policy: { digest: policyDigest(world.policy) }, protected: { digest: protectedDigestOf(world, start.commit) }, limits: o.limitsHeld, options: { repair: o.repair === true, failFast: o.failFast !== false, model: o.model ?? null, effort: o.effort ?? null, credential: o.credential ?? null, caFile: o.caFile ?? null }, host: { node: process.version, platform: process.platform } });
 
 // A PRECHECK (0.5.0, B6) runs every model-carried row once, in one cycle, repairs nothing and stops at no failure: the
 // limits that would let it do more are a ship's, refused when a person asks them.
@@ -67,9 +70,13 @@ const precheckAsked = (world, o) => ({ ...o, mode: "precheck", repair: false, fa
 
 const shipAsked = (world, o) => (o.precheck ? precheckAsked(world, o) : { ...o, mode: o.repair ? "autonomous" : "verify-only", limitsHeld: limitsOf(world.policy, o.limits ?? {}) });
 
-// What a person asked is held FIRST -- the limits to the policy's bounds, a precheck to what a precheck does: a ship
-// refused for either starts no task and keeps no room.
-export const begunShip = (world, o) => begunAt(world, shipAsked(world, o), startOf(world));
+// The effort a ship asks every model-carried row's host to run at (0.5.0): one of the levels the benchmark takes, or
+// none (the host's own default) -- refused here, never by its first model-carried row hours later.
+const effortChecked = (o) => (!o.effort || EFFORTS.includes(o.effort) ? o : shipRefused(`--effort is one of ${EFFORTS.join(", ")}, not ${o.effort}`));
+
+// What a person asked is held FIRST -- the limits to the policy's bounds, a precheck to what a precheck does, the effort
+// to the levels there are: a ship refused for any of them starts no task and keeps no room.
+export const begunShip = (world, o) => begunAt(world, shipAsked(world, effortChecked(o)), startOf(world));
 
 function begunAt(world, o, start) {
   const room = shipRoomOf(world.storeRoot, newShipId(`${world.root}\u0000${start.commit}`));
@@ -115,6 +122,10 @@ const limitsAskedAgain = (ctx, view, asked) => limitsOf({ ...ctx.policy, limits:
 // retries, repairs, the evidence -- so the mismatch is refused before anything is written.
 const modeHeld = (ctx, o) => (o.precheck && !modeOf(ctx).precheck ? shipRefused(`--precheck: ${ctx.ship.id} is a ship (${ctx.manifest.mode}), not a precheck -- resume it without --precheck`) : ctx);
 
+// A ship's effort is the one it began with: a resume naming another is refused before anything is written -- rows run
+// at two efforts would be one ship's evidence about two hosts.
+const effortHeld = (ctx, o) => (o.effort && o.effort !== (ctx.manifest.options?.effort ?? null) ? shipRefused(`--effort: ${ctx.ship.id} began at effort ${ctx.manifest.options?.effort ?? "the host's default"}, and every row it holds ran there -- resume it without --effort, or begin a new ship`) : ctx);
+
 // The resume, once what was asked held: a blocked ship unblocked (the resume journaled), then the limits journaled --
 // never for a ship that ended or one a person paused.
 const resumedWith = (ctx, view, limits, asked) => ((c) => (limits && !view.terminal && view.lifecycle !== "PAUSED" ? relimited(c, limits, asked) : c))(view.lifecycle === "BLOCKED" ? unblocked(ctx) : ctx);
@@ -122,7 +133,7 @@ const resumedWith = (ctx, view, limits, asked) => ((c) => (limits && !view.termi
 export function resumedShip(world, id, o) {
   const room = shipRoomOf(world.storeRoot, id);
   const manifest = docRead(room, "manifest.json") ?? missing(id, room);
-  const ctx = modeHeld(contextOf(world, room, manifest, o), o);
+  const ctx = effortHeld(modeHeld(contextOf(world, room, manifest, o), o), o);
   const view = world.door.show(ctx.task);
   return resumedWith(ctx, view, askedAny(o.limits) ? limitsAskedAgain(ctx, view, o.limits) : null, o.limits);
 }
@@ -173,6 +184,10 @@ async function readingOf(world, ship) {
   return { ...ctx, rows: listed ? shipRows(ctx, listed) : [], cases: casesIn(world.root, listed), preflighted: true };
 }
 
+// The reliability report a SHIPPABLE ship kept beside its evidence (0.5.0): its file -- or, when the benchmark could not
+// give one, what its ending said. Never a gate, and never read to decide anything.
+const reliabilityOf = (ctx) => (existsSync(ctx.room.at("reliability.json")) ? { file: ctx.room.at("reliability.json"), says: "the benchmark's reliability of the release commit's kept runs -- quoted, never a gate" } : docRead(ctx.room, "ending.json")?.reliability ?? null);
+
 // Where a ship stands. Its rows and repairs are the newest cycle's, open or closed: a ship that shipped, stopped or ended
 // on a failed row says what it held and what it did not in the cycle it ended in.
 export async function statusOf(world, id) {
@@ -180,7 +195,7 @@ export async function statusOf(world, id) {
   if (!ship) return { found: false, says: "no ship has run on this checkout: node skills/orbit-release/ship.mjs" };
   const ctx = await readingOf(world, ship);
   const f = factsOf(ctx, world.door.show(ctx.task));
-  return ((c) => ({ found: true, ship: ship.id, task: ctx.task, lifecycle: f.view.lifecycle, stage: f.view.stage ?? null, mode: ship.manifest.mode, start: ship.manifest.start, commit: f.current.commit, cycle: f.attempts, cycleOpen: Boolean(f.open), rows: rowsSaid(ctx, [...c.rows.values()]), diagnoses: diagnosesOf(ctx, [...c.rows.values()]), repairs: c.repairs.map((r) => `${r.case} ${r.state}`), spent: f.spent, limits: f.limits, next: nextAsked(f, ctx), ending: docRead(ctx.room, "ending.json"), evidence: existsSync(ctx.room.at("evidence.json")) ? ctx.room.at("evidence.json") : null, room: ctx.room.dir }))(lastCycleOf(ctx, f));
+  return ((c) => ({ found: true, ship: ship.id, task: ctx.task, lifecycle: f.view.lifecycle, stage: f.view.stage ?? null, mode: ship.manifest.mode, start: ship.manifest.start, host: { model: ctx.options.model ?? null, effort: ctx.options.effort ?? null }, reliability: reliabilityOf(ctx), commit: f.current.commit, cycle: f.attempts, cycleOpen: Boolean(f.open), rows: rowsSaid(ctx, [...c.rows.values()]), diagnoses: diagnosesOf(ctx, [...c.rows.values()]), repairs: c.repairs.map((r) => `${r.case} ${r.state}`), spent: f.spent, limits: f.limits, next: nextAsked(f, ctx), ending: docRead(ctx.room, "ending.json"), evidence: existsSync(ctx.room.at("evidence.json")) ? ctx.room.at("evidence.json") : null, room: ctx.room.dir }))(lastCycleOf(ctx, f));
 }
 
 // The artifact as the evidence names it -- its file, digested again -- or a person's own archive of the same tree, by

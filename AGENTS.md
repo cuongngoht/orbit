@@ -68,7 +68,8 @@ never in a repository, and the run's own task stays in the project's task rooms 
 One more belongs to release tooling: `<store>/release/<shp-…>/` is one autonomous SHIP (`skills/orbit-release/ship.mjs`,
 ADR 0049), or a precheck (a ship of mode `precheck`, ADR 0051) -- its manifest frozen at its start, one document per action keyed by its task's own action id, the release
 artifact, each verified patch it integrated, the release patch and bundle a person applies, a pristine checkout of each
-release commit it judged (`trees/`), its ending and its `evidence.json`. It is created on first write, never on read and
+release commit it judged (`trees/`), its ending and its `evidence.json` -- and beside it, once SHIPPABLE, the benchmark's
+`reliability.json` of the release commit (0.5.0: quoted, never a gate). It is created on first write, never on read and
 never in a repository; the ship's own task stays in the project's task rooms, and the workspace its repairs are
 integrated in is that task's own (`<store>/workspaces/<tsk>/`).
 
@@ -668,7 +669,8 @@ place real adapters are bound to real config.
   that leaves or joins a suite unnamed is CATALOG_DRIFT) must hold on the release commit: a source case its controls and
   a PASS of its real source (a known finding's baseline earns nothing), a QA or engineering case its controls and a PASS
   carried by the coding host, ORBIT-SRC-001's planted fault REPAIRED_VERIFIED by it. A model-carried row is evidence only
-  when its run says basis `coding-host`, the Claude Code version the runner image pins, and a model -- never a scripted or
+  when its run says basis `coding-host`, the Claude Code version the runner image pins, and a model -- at the effort the
+  ship asked and froze when it began (0.5.0: `--effort`, else none; `WRONG_EFFORT` otherwise) -- never a scripted or
   session host, another host or a mock (an `ANTHROPIC_BASE_URL` the policy does not name blocks). Every row is held to
   its run's own room (`ROW_VERDICT`, `CONTROL_RULES`: a known finding's control that presupposes its defect is
   SUPERSEDED, never held, once its real source passes). Only a source case's real variant failing on a cause the case

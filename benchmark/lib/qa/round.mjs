@@ -9,7 +9,7 @@
 //   s = { investigation, serve, deadlineMs }          serveOf(ctx, engine, investigation) -> serve
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { fresh, roundRan, runnerSpecOf } from "../core/runner.mjs";
+import { fresh, roundRan, runnerSpecOf, streamFileOf } from "../core/runner.mjs";
 import { admitted, relayServer } from "./relay.mjs";
 
 // What the coding host is told, beside the brief: the one thing to do, and that nobody will answer it.
@@ -25,7 +25,7 @@ const briefMd = (ctx, k, s) => [readFileSync(join(ctx.frozenCase, ctx.case.reque
 
 function qaBriefWritten(ctx, k, s) {
   const dir = fresh(ctx, "rounds", String(k), "brief");
-  writeFileSync(join(dir, "brief.json"), `${JSON.stringify({ kind: "qa", round: k, investigation: s.investigation, prompt: qaPromptOf(s.investigation), model: ctx.model ?? null, usd: ctx.limits.usd, allowedHost: ctx.allowedHosts[0], outputBytes: ctx.case.limits.runner.outputMb * 1024 * 1024 }, null, 2)}\n`);
+  writeFileSync(join(dir, "brief.json"), `${JSON.stringify({ kind: "qa", round: k, investigation: s.investigation, prompt: qaPromptOf(s.investigation), model: ctx.model ?? null, effort: ctx.effort ?? null, usd: ctx.limits.usd, allowedHost: ctx.allowedHosts[0], outputBytes: ctx.case.limits.runner.outputMb * 1024 * 1024 }, null, 2)}\n`);
   writeFileSync(join(dir, "brief.md"), briefMd(ctx, k, s));
   return dir;
 }
@@ -38,7 +38,7 @@ const qaRunnerSpec = (ctx, net, k, d) => runnerSpecOf(ctx, net, k, [{ source: ct
 export async function ranQaRound(ctx, k, s) {
   const d = { brief: qaBriefWritten(ctx, k, s), out: fresh(ctx, "rounds", String(k), "out"), relay: mailboxOf(ctx, k) };
   const server = relayServer(d.relay, s.serve);
-  const ran = await roundRan(ctx, k, (net) => qaRunnerSpec(ctx, net, k, d), { deadlineMs: s.deadlineMs, out: d.out }).finally(() => server.stop());
+  const ran = await roundRan(ctx, k, (net) => qaRunnerSpec(ctx, net, k, d), { deadlineMs: s.deadlineMs, out: d.out, capture: streamFileOf(ctx, k) }).finally(() => server.stop());
   return { ...ran, relay: { served: server.state.served, log: d.relay.log } };
 }
 

@@ -7,8 +7,18 @@
 // ever one a host REPORTED; the budget's estimate is never a cost. Speed and cost never outrank correctness: they are
 // measured over verified outcomes alone.
 //
-//   runFacts({ manifest, ending, report }) -> facts       metricsOf(runs, o) -> { runs, bases, verifier, history }
-//   METRICS -> rows { id, says, over(facts) -> { numerator, denominator, excluded } }
+// 0.5.0 adds, from the same facts: each row's and each model's reliability (pass@1, pass@k, median cost and minutes --
+// rates.mjs), the tool-call failures per suite and per model (tools.mjs), each Orbit arm's overhead over the `none` arm,
+// and `by` -- revision, model, arm -- each a breakdown of its own. A model is counted at the effort its host was asked to
+// run at (`config.effort`, null for the host's own default): two efforts of one model are two hosts, as two models are.
+//
+//   runFacts({ manifest, ending, report }) -> facts
+//   metricsOf(runs, o = { scope, controls, k, by: [revision|model|arm] }) -> { runs, bases, reproducibility, verifier,
+//                                                    reliability, tools, overhead, history?, revisions?, byModel?, byArm? }
+//   METRICS -> rows { id, says, over(facts) -> { numerator, denominator, excluded } }      BY_NAMES
+import { groupBy, hostOfRun, overheadOf, ratesOf, revisionsOf } from "./rates.mjs";
+import { toolsFoldOf } from "./tools.mjs";
+
 const UNKNOWN = "unknown";
 
 // Why a run is left out of a rate, by the word it ended on.
@@ -23,11 +33,24 @@ const durationOf = (m, e) => ((a, b) => (Number.isFinite(a) && Number.isFinite(b
 
 const intervenedOf = (r, e) => (e?.class === "HUMAN_APPROVAL_REQUIRED" ? true : r?.interventions ? Object.values(r.interventions).some((n) => n > 0) : null);
 
+// What a run's report says of its host (0.5.0): every round's host -- a source run's rounds, a QA run's one round.
+const roundsSaid = (r) => [...(r?.rounds ?? []), ...(r?.round ? [r.round] : [])];
+
+const hostsSaid = (r) => roundsSaid(r).map((x) => x.host).filter(Boolean);
+
+const knownSum = (xs) => (xs.length && xs.every((x) => typeof x === "number") ? xs.reduce((a, b) => a + b, 0) : null);
+
+const tokenSum = (t) => ((xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) : null))([t?.input, t?.output, t?.cacheRead, t?.cacheWrite].filter((x) => typeof x === "number"));
+
+// The model a run's row is counted under: the one asked for, else the one its host named, else unknown; what it REPORTED
+// spending -- cost, turns, tokens -- and whether a restart cut a round of it (nobody's miss, ADR 0049).
+const reportedOf = (m, r) => ((hosts) => ({ modelSaid: m.config?.model ?? hosts.find((h) => h.model)?.model ?? "unknown", interrupted: roundsSaid(r).some((x) => x.interrupted === true), turns: knownSum(hosts.map((h) => h.turns)), tokens: knownSum(hosts.map((h) => tokenSum(h.tokens))), costUsd: typeof r?.totals?.costUsd === "number" ? r.totals.costUsd : knownSum(hosts.map((h) => h.costUsd)) }))(hostsSaid(r));
+
 // One run, as the facts every metric reads.
 export function runFacts({ manifest: m, ending: e, report: r }) {
   const outcome = e?.outcome ?? null;
   const kind = m.benchmark?.kind ?? "source";
-  return { run: m.run, at: m.at ?? null, kind, case: m.benchmark?.case ?? null, suite: m.benchmark?.suite ?? null, caseDigest: m.benchmark?.digest ?? null, variant: m.benchmark?.variant ?? null, subject: m.subject?.digest ?? null, commit: m.source?.commit ?? null, model: m.config?.model ?? null, host: m.config?.host ?? null, basis: r?.hostBasis ?? basisOf(m), outcome, excluded: !outcome ? "unfinished" : EXCLUDED[outcome] ?? null, verified: (VERIFIED[kind] ?? []).includes(outcome), autonomousAxis: r?.axes?.autonomous?.value ?? null, rounds: (r?.rounds ?? []).length, regressedRounds: (r?.rounds ?? []).filter((x) => (x.decided?.regressed ?? []).length > 0).length, evaluatedRounds: (r?.rounds ?? []).filter((x) => x.decided).length, durationMs: durationOf(m, e), costUsd: typeof r?.totals?.costUsd === "number" ? r.totals.costUsd : null, intervened: intervenedOf(r, e), judged: r?.judged ?? null, task: kind === "qa" || m.config?.repair === true };
+  return { run: m.run, at: m.at ?? null, kind, case: m.benchmark?.case ?? null, suite: m.benchmark?.suite ?? null, caseDigest: m.benchmark?.digest ?? null, variant: m.benchmark?.variant ?? null, subject: m.subject?.digest ?? null, commit: m.source?.commit ?? null, model: m.config?.model ?? null, effort: m.config?.effort ?? null, host: m.config?.host ?? null, basis: r?.hostBasis ?? basisOf(m), outcome, excluded: !outcome ? "unfinished" : EXCLUDED[outcome] ?? null, verified: (VERIFIED[kind] ?? []).includes(outcome), autonomousAxis: r?.axes?.autonomous?.value ?? null, rounds: (r?.rounds ?? []).length, regressedRounds: (r?.rounds ?? []).filter((x) => (x.decided?.regressed ?? []).length > 0).length, evaluatedRounds: (r?.rounds ?? []).filter((x) => x.decided).length, durationMs: durationOf(m, e), intervened: intervenedOf(r, e), judged: r?.judged ?? null, task: kind === "qa" || m.config?.repair === true, arm: m.config?.arm ?? "release", repeat: m.config?.repeat?.id ?? null, tools: r?.tools ?? null, ...reportedOf(m, r) };
 }
 
 // ---- the rows -------------------------------------------------------------------------------------------------------------
@@ -70,8 +93,9 @@ const basisMetrics = (fs) => Object.fromEntries(METRICS.map((m) => [m.id, { ...v
 
 // ---- reproducibility, the verifier's own controls, and history by revision -------------------------------------------------
 
-// Who carried a run is part of what it is: two scripted controls of one case are two hosts, as two models are.
-const groupKey = (f) => [f.case, f.caseDigest, f.variant, f.subject, f.basis, f.host ?? "-", f.model ?? "-"].join("\u0000");
+// Who carried a run is part of what it is: two scripted controls of one case are two hosts, as two models are -- and two
+// efforts of one model.
+const groupKey = (f) => [f.case, f.caseDigest, f.variant, f.subject, f.basis, f.host ?? "-", f.model ?? "-", f.effort ?? "-"].join("\u0000");
 
 const groupsOf = (fs) => Object.values(counted(fs).reduce((m, f) => ({ ...m, [groupKey(f)]: [...(m[groupKey(f)] ?? []), f] }), {})).filter((g) => g.length > 1);
 
@@ -89,8 +113,26 @@ export const historyOf = (fs) => Object.values(fs.reduce((m, f) => ((k) => ({ ..
 
 const BASES = ["none", "scripted", "session", "coding-host"];
 
+const basesOf = (fs) => Object.fromEntries(BASES.map((b) => [b, basisMetrics(fs.filter((f) => f.basis === b))]));
+
+// Every metric again, one set per value of a dimension -- per model at its effort, per arm -- the bases still apart
+// within each, each set named by what it is (`namedOf`).
+const splitOf = (fs, keyOf, namedOf) => groupBy(fs, keyOf).sort((a, b) => String(keyOf(a[0])).localeCompare(String(keyOf(b[0])))).map((g) => ({ ...namedOf(g[0]), runs: g.length, bases: basesOf(g) }));
+
+// What `--by` may break the runs down by (0.5.0 adds model and arm): each a part of the answer of its own.
+const BY = {
+  revision: (fs, o) => ({ history: historyOf(fs), revisions: revisionsOf(fs, o) }),
+  model: (fs) => ({ byModel: splitOf(fs, hostOfRun, (f) => ({ model: f.modelSaid, effort: f.effort ?? null })) }),
+  arm: (fs) => ({ byArm: splitOf(fs, (f) => f.arm, (f) => ({ arm: f.arm })) }),
+};
+
+export const BY_NAMES = Object.keys(BY);
+
+const byOf = (fs, o) => Object.assign({}, ...(o.by ?? (o.byRevision ? ["revision"] : [])).map((k) => BY[k](fs, o)));
+
+// 0.5.0: the reliability of each row and model (pass@1, pass@k, medians -- rates.mjs), the tool-call failures of B9
+// (tools.mjs), and each Orbit arm's overhead over the `none` arm, beside the metrics every release had.
 export function metricsOf(runs, o = {}) {
   const fs = runs.map(runFacts);
-  const bases = Object.fromEntries(BASES.map((b) => [b, basisMetrics(fs.filter((f) => f.basis === b))]));
-  return { scope: o.scope ?? "every run kept", runs: { total: fs.length, byBasis: countBy(fs.map((f) => f.basis)), byOutcome: countBy(fs.map((f) => f.outcome ?? "unfinished")) }, bases, reproducibility: reproducibilityOf(fs), verifier: verifierOf(o.controls ?? []), ...(o.byRevision ? { history: historyOf(fs) } : {}) };
+  return { scope: o.scope ?? "every run kept", runs: { total: fs.length, byBasis: countBy(fs.map((f) => f.basis)), byOutcome: countBy(fs.map((f) => f.outcome ?? "unfinished")), byArm: countBy(fs.map((f) => f.arm)) }, bases: basesOf(fs), reproducibility: reproducibilityOf(fs), verifier: verifierOf(o.controls ?? []), reliability: ratesOf(fs, o), tools: toolsFoldOf(fs), overhead: overheadOf(fs), ...byOf(fs, o) };
 }

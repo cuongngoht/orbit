@@ -4,7 +4,10 @@
 // is handed; the images are pinned by the ids the run resolved; the bench task is created through the task door. A
 // resumed run is refused when what it froze no longer is what it froze.
 //
-//   frozenRun(h, o) -> ctx        resumedRun(h, runId) -> ctx        frozenIntact(ctx) -> boolean
+// 0.5.0: a run is on one ARM of its case (`o.arm`, armOf) -- the plugin its host is handed, made per arm by PLUGIN_TREES
+// -- and may be one of a REPEAT group (`o.group`); the manifest's config keeps both.
+//
+//   frozenRun(h, o) -> ctx        resumedRun(h, runId) -> ctx        frozenIntact(ctx) -> boolean      armOf(c, o) -> arm
 //   freshRoom(h, runId) -> room   (a run id names one run: refused when its room is kept already)
 import { cpSync, existsSync, readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
@@ -21,10 +24,10 @@ import { dockerClientEnv } from "./docker.mjs";
 import { candidateEntries, candidateFile, mutatedEntries, mutationFile } from "./mutations.mjs";
 import { gitOwn } from "./git.mjs";
 import { matchesAny } from "./paths.mjs";
-import { caseOf, dirDigest } from "./suites.mjs";
+import { armsOf, baselinePluginOf, caseOf, dirDigest } from "./suites.mjs";
 import { recorder } from "./record.mjs";
 import { docRead, docWritten, madeDir, newRunId, roomOf } from "./room.mjs";
-import { frozen, HARNESS, subjectOf, treeDigestOf, whereAt } from "./freeze.mjs";
+import { frozen, frozenAt, HARNESS, subjectOf, treeDigestOf, whereAt } from "./freeze.mjs";
 
 export const CREDENTIALS = ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN"];
 
@@ -118,10 +121,25 @@ function targetFor(c, variant, frozenEntries) {
   return r;
 }
 
-// The Orbit an engineering case's host is handed: the frozen source without the harness, as a plugin checkout.
+// The Orbit an engineering case's host is handed, by its ARM (0.5.0, B23): the frozen source without the harness
+// (`release`), the plugin frozen from the baseline's named revision by the same read-only git read, the harness removed
+// the same way (`baseline`), or no Orbit at all (`none`) -- whose release checkout is still made, for the inspection to
+// read the runner store with, and never mounted where the host runs.
+const PLUGIN_TREES = {
+  release: (h, f) => ({ entries: f.subject.entries, revision: { named: null, commit: f.where.commit, mode: f.mode } }),
+  none: (h, f) => ({ entries: f.subject.entries, revision: null }),
+  baseline: (h, f) => ((fr) => ({ entries: subjectOf(fr.entries, HARNESS).entries, revision: fr.revision }))(frozenAt(f.where.root, baselinePluginOf(f.c), h.env)),
+};
+
+// A host with no Orbit has no task workspace to make a change in: it is handed a writable copy of the target instead,
+// made beside the run's checkout (which stays the run's frozen subject, read-only).
+const worktreeFor = (h, f) => madeCheckout(f.room.at("worktree"), f.faulted.entries, `${f.c.id} ${f.variant} worktree`, h.env, { plugin: false });
+
 function orbitPlugin(h, f) {
-  const made = madeCheckout(f.room.at("plugin"), f.subject.entries, `${f.c.id} plugin`, h.env);
-  return { files: made.files, commit: made.commit, digest: treeDigestOf(f.subject.entries), withheld: [], relayed: null };
+  const tree = PLUGIN_TREES[f.arm](h, f);
+  const made = madeCheckout(f.room.at("plugin"), tree.entries, `${f.c.id} plugin (${f.arm})`, h.env);
+  if (f.arm === "none") worktreeFor(h, f);
+  return { files: made.files, commit: made.commit, digest: treeDigestOf(tree.entries), withheld: [], relayed: null, arm: f.arm, handed: f.arm !== "none", revision: tree.revision };
 }
 
 // The coding host of a QA run is handed a plugin without what its case withholds (the ground truth, the reference
@@ -147,7 +165,19 @@ const KIND_RUN = {
   engineering: { variant: sourceVariant, subject: (c, variant, entries, frozenEntries) => targetFor(c, variant, frozenEntries), extra: orbitPlugin, attempts: (c, config) => config.rounds + 1, measured: (c) => [`benchmark/fixtures/${c.fixture}/**`], target: true },
 };
 
-const runningConfig = (o, c) => ({ seed: Number.isInteger(o.seed) ? o.seed : Math.floor(Math.random() * 2 ** 31), rounds: o.rounds ?? c.limits.rounds, minutes: o.minutes ?? c.limits.minutes, usd: o.usd ?? c.limits.usd, model: o.model ?? null, repair: o.repair === true, host: o.host ?? null, parent: o.parent ?? null });
+// `repeat` (0.5.0): the group a run belongs to when one command asked for N runs of a case -- its id, which of them this
+// is, and how many were asked -- so a metric reads N runs as one row's repeats, never as N unrelated runs.
+// `arm` (0.5.0): which plugin the host was handed -- `release` for every run that names none.
+// `effort` (0.5.0): the effort the coding host was asked to run at, beside its model -- null when none was asked, and the
+// host ran at its own default for the model.
+const runningConfig = (o, c) => ({ seed: Number.isInteger(o.seed) ? o.seed : Math.floor(Math.random() * 2 ** 31), rounds: o.rounds ?? c.limits.rounds, minutes: o.minutes ?? c.limits.minutes, usd: o.usd ?? c.limits.usd, model: o.model ?? null, effort: o.effort ?? null, repair: o.repair === true, host: o.host ?? null, parent: o.parent ?? null, repeat: o.group ?? null, arm: o.arm ?? "release" });
+
+// The arm a run is on: the one asked, among those its case declares -- or `release`, what every run was before arms.
+export function armOf(c, o) {
+  const arm = o.arm ?? "release";
+  if (arm !== "release" && !armsOf(c).includes(arm)) throw new Refused(`${c.id} declares no ${arm} arm: it runs on ${armsOf(c).join(", ")}`);
+  return arm;
+}
 
 // What the harness is: its modules, the scripts its images run and its command line -- one digest, so a run says which
 // harness judged it, and a change to any of them is a different harness.
@@ -164,7 +194,7 @@ export function frozenRun(h, o) {
   const variant = KIND_RUN[c.kind].variant(c, o);
   const where = treeChecked(h, whereAt(treeOf(h), h.env));
   const fr = frozen(where.root, modeOf(where, o.source, KIND_RUN[c.kind].measured(c)), h.env);
-  return made(h, { ...o, variant }, { c, where, mode: fr.mode, frozen: fr });
+  return made(h, { ...o, variant, arm: armOf(c, o) }, { c, where, mode: fr.mode, frozen: fr, arm: armOf(c, o), variant });
 }
 
 // A tree named by a caller is a checkout's TOP directory -- never a directory somewhere inside one, which would freeze
@@ -201,7 +231,7 @@ function recordedRun(h, o, f) {
 
 function withTask(h, room, manifest, c) {
   const rec = recorderOf(h);
-  const task = rec.create(`Benchmark ${c.suite.id}/${c.id} ${c.version} (${manifest.benchmark.variant}${manifest.config.repair ? ", repair" : ""}${manifest.config.host ? `, ${manifest.config.host}` : ""}) on ${manifest.source.branch ?? "detached"}@${manifest.source.commit.slice(0, 10)}, subject ${manifest.subject.digest.slice(0, 10)}`, { attempts: KIND_RUN[c.kind].attempts(c, manifest.config), actions: 60, minutes: manifest.config.minutes, parent: manifest.config.parent ?? undefined });
+  const task = rec.create(`Benchmark ${c.suite.id}/${c.id} ${c.version} (${manifest.benchmark.variant}${manifest.config.repair ? ", repair" : ""}${manifest.config.host ? `, ${manifest.config.host}` : ""}${manifest.config.arm !== "release" ? `, arm ${manifest.config.arm}` : ""}${manifest.config.effort ? `, effort ${manifest.config.effort}` : ""}) on ${manifest.source.branch ?? "detached"}@${manifest.source.commit.slice(0, 10)}, subject ${manifest.subject.digest.slice(0, 10)}`, { attempts: KIND_RUN[c.kind].attempts(c, manifest.config), actions: 60, minutes: manifest.config.minutes, parent: manifest.config.parent ?? undefined });
   docWritten(room, "manifest.json", { ...manifest, task });
   return contextOf(h, room, { ...manifest, task }, rec);
 }
@@ -224,7 +254,7 @@ export function contextOf(h, room, manifest, rec) {
   const deps = h.dockerDeps ? h.dockerDeps(room) : dockerDeps(h.env, room);
   const baseline = baselineOf(room.at("checkout"), h.env);
   const texts = new Map(baseline.map((e) => [e.rel, e.bytes]));
-  return { run: { id: manifest.run }, room, manifest, case: c, frozenCase: c.dir, rec: rec ?? recorderOf(h), task: manifest.task, deps, dockerEnv: dockerClientEnv(h.env), env: h.env, storeBase: h.storeBase, repoRoot: h.root, images: manifest.images, user: userOf(deps), cpuset: cpusetOf(deps, c.limits.verifier?.cpus ?? 1), runnerCpuset: cpusetOf(deps, c.limits.runner.cpus), limits: { ...c.limits.verifier, rounds: manifest.config.rounds, usd: manifest.config.usd }, checkoutDir: room.at("checkout"), runnerStore: madeDir(room, "runner-store"), baseline, baselineDigest: treeDigestOf(baseline), baselineText: (rel) => texts.get(rel)?.toString("utf8") ?? null, probeFile: c.acceptance.probe ? join(c.dir, c.acceptance.probe) : null, engineDir: room.at("checkout"), pluginDir: room.at("plugin"), engineStore: room.at("engine"), allowedHosts: hostsOf(h.env), credentialNames: credentialNames(h.env, h.credential), caFile: h.caFile ? realpathSync(h.caFile) : null, model: manifest.config.model, repair: manifest.config.repair, host: manifest.config.host ?? null };
+  return { run: { id: manifest.run }, room, manifest, case: c, frozenCase: c.dir, rec: rec ?? recorderOf(h), task: manifest.task, deps, dockerEnv: dockerClientEnv(h.env), env: h.env, storeBase: h.storeBase, repoRoot: h.root, images: manifest.images, user: userOf(deps), cpuset: cpusetOf(deps, c.limits.verifier?.cpus ?? 1), runnerCpuset: cpusetOf(deps, c.limits.runner.cpus), limits: { ...c.limits.verifier, rounds: manifest.config.rounds, usd: manifest.config.usd }, checkoutDir: room.at("checkout"), runnerStore: madeDir(room, "runner-store"), baseline, baselineDigest: treeDigestOf(baseline), baselineText: (rel) => texts.get(rel)?.toString("utf8") ?? null, probeFile: c.acceptance.probe ? join(c.dir, c.acceptance.probe) : null, engineDir: room.at("checkout"), pluginDir: room.at("plugin"), engineStore: room.at("engine"), allowedHosts: hostsOf(h.env), credentialNames: credentialNames(h.env, h.credential), caFile: h.caFile ? realpathSync(h.caFile) : null, model: manifest.config.model, effort: manifest.config.effort ?? null, repair: manifest.config.repair, host: manifest.config.host ?? null, arm: manifest.config.arm ?? "release", worktreeDir: room.at("worktree") };
 }
 
 // The spec is imported from the run's FROZEN copy, and its cases made from the run's own seed.

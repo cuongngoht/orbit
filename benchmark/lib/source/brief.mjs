@@ -60,6 +60,18 @@ export const goalPromptOf = (k, dir = "test/") => [
   "When you stop, say in one line where the goal stands.",
 ].join("\n");
 
+// The same goal with no Orbit beside it (0.5.0, B23's `none` arm): what Claude Code does on its own, held to the same
+// verifier -- the goal in a person's words, and nothing about a plugin it was not handed. Its target is writable.
+export const plainPromptOf = (k, dir = "test/") => [
+  "You are working inside a benchmark container. Nobody can answer a question here: where you would ask a person, say what is missing and stop.",
+  "1. The repository at /work/repo is the project to change. Read /run/brief/brief.md: the goal, where a change may go, and the budget left.",
+  "2. If the goal leaves out a rule the change needs, never invent one: say what is missing, and stop without changing anything.",
+  `3. Make the change in /work/repo, and add a regression test under ${dir} that fails before your change and passes after it. Never change or delete an existing test.`,
+  "4. Run the project's own tests before you stop. Never push.",
+  ...(k > 1 ? ["This is a later round: the repository holds what the earlier round left; go on from there."] : []),
+  "When you stop, say in one line where the change stands.",
+].join("\n");
+
 // What differs between a repair's brief and a goal's: the words, the prompt, and where Orbit is (the plugin of a goal
 // is Orbit's frozen source beside the target; a repair's plugin is its own subject).
 const BRIEFS = {
@@ -69,9 +81,14 @@ const BRIEFS = {
 
 const briefKind = (ctx) => BRIEFS[ctx.case.kind === "engineering" ? "goal" : "repair"];
 
+// An arm with no Orbit is handed no plugin, and a prompt that names none.
+const noOrbit = (ctx) => ctx.arm === "none";
+
+const promptFor = (ctx, k, state, b) => (noOrbit(ctx) ? plainPromptOf(k, testDirOf(ctx.case)) : b.prompt(ctx, k, state));
+
 export function briefOf(ctx, k, state) {
   const b = briefKind(ctx);
-  return { md: b.md(ctx, k, state), json: { round: k, kind: ctx.case.kind, host: ctx.host ?? null, script: scriptOf(ctx), plugin: b.plugin, goal: ctx.case.kind === "engineering" ? requestOf(ctx) : null, task: state.engTask ?? null, objective: objectiveOf(ctx.case), prompt: b.prompt(ctx, k, state), model: ctx.model ?? null, usd: state.left.usd, minutes: state.left.engineeringMinutes, attempts: ctx.case.limits.engineering.attempts, actions: ctx.case.limits.engineering.actions, allowedHost: ctx.allowedHosts[0], outputBytes: ctx.case.limits.runner.outputMb * 1024 * 1024 } };
+  return { md: b.md(ctx, k, state), json: { round: k, kind: ctx.case.kind, host: ctx.host ?? null, arm: ctx.arm ?? "release", script: scriptOf(ctx), plugin: noOrbit(ctx) ? null : b.plugin, goal: ctx.case.kind === "engineering" ? requestOf(ctx) : null, task: state.engTask ?? null, objective: objectiveOf(ctx.case), prompt: promptFor(ctx, k, state, b), model: ctx.model ?? null, effort: ctx.effort ?? null, usd: state.left.usd, minutes: state.left.engineeringMinutes, attempts: ctx.case.limits.engineering.attempts, actions: ctx.case.limits.engineering.actions, allowedHost: ctx.allowedHosts[0], outputBytes: ctx.case.limits.runner.outputMb * 1024 * 1024 } };
 }
 
 function repairMd(ctx, k, state) {

@@ -11,8 +11,13 @@
 // goal's latest plan is read back too -- as data: which units it planned, and which a missing prerequisite left
 // unresolved.
 //
-//   node /bench/inspect.mjs <tsk-…|-> [--plugin=<dir>]
-//                                   out: /work/out/inspect.json, task.json, tasks.json, trace.json, goals.json, files/<rel>
+// It also reads back what the session trail says turn by turn (`trace.mjs turns`, what the agreement rule holds the
+// host's stream to) and every sandbox the runner store holds, with its operations journal (sandbox.json: what each
+// sandbox step came to, for the tool-call failure metrics).
+//
+//   node /bench/inspect.mjs <tsk-…|-> [--plugin=<dir>] [--tree=/work/worktree]
+//                                   out: /work/out/inspect.json, task.json, tasks.json, trace.json, turns.json, goals.json,
+//                                        sandbox.json, files/<rel>
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -81,6 +86,12 @@ const pluginArg = (argv) => (argv.find((a) => /^--plugin=\/work\/(repo|orbit)$/.
 
 const PLUGIN = pluginArg(process.argv.slice(2));
 
+// A round whose host was handed no Orbit (0.5.0, B23's `none` arm) changed a writable copy of the target, mounted here
+// read-only; the round's changes are read off it instead of a task's workspace. One fixed path, never a value.
+export const worktreeArg = (argv) => (argv.includes("--tree=/work/worktree") ? "/work/worktree" : null);
+
+const WORKTREE = worktreeArg(process.argv.slice(2));
+
 const orbit = (cli, args) => spawnSync(process.execPath, [`${PLUGIN}/cli/${cli}`, ...args, "--json"], { cwd: PATHS.repo, env: process.env, encoding: "utf8", timeout: 120000, maxBuffer: LIMITS.json });
 
 const answered = (r) => ({ exit: r.status, json: ((t) => (t ? jsonOr(t) : null))(String(r.stdout ?? "").trim()), why: r.status === 0 ? null : String(r.stderr || r.stdout || r.error?.message || "").trim().split("\n").at(-1)?.slice(0, 300) ?? null });
@@ -123,12 +134,52 @@ const goalOf = (id) => ((status, plan) => ({ id, lifecycle: status.json?.view?.l
 
 const goalsOf = () => ((r) => ({ exit: r.exit, json: { goals: (r.json?.goals ?? []).filter((id) => GOAL.test(String(id))).slice(0, 20).map(goalOf) } }))(answered(orbit("orbit.mjs", ["goal", "list"])));
 
+// ---- the sandboxes a round left, read back as data --------------------------------------------------------------------
+//
+// Each sandbox the runner store holds, as runtime keeps it (src/runtime/rooms.mjs): its document under
+// <store>/<project>/checkouts/<checkout>/sandboxes/<env>.json -- its state, its owner, why it was blocked -- and its
+// operations journal under <store>/<project>/runtime/<host>/checkouts/<checkout>/sandboxes/<env>/operations/, one
+// document per step it took (prepare, restore, a container up, a release ...), written BEFORE the step acted. Read as
+// data: each operation's kind, state, times and the sentence its writer already scrubbed; never a log, a path or a
+// command. A link is never followed, and what is read is bounded.
+export const SANDBOX_LIMITS = { sandboxes: 50, operations: 2000, bytes: 1024 * 1024 };
+
+const isDir = (p) => existsSync(p) && lstatSync(p).isDirectory();
+
+const dirsIn = (p) => (isDir(p) ? readdirSync(p, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => join(p, e.name)) : []);
+
+const docsIn = (p) => (isDir(p) ? readdirSync(p, { withFileTypes: true }).filter((e) => e.isFile() && e.name.endsWith(".json")).map((e) => join(p, e.name)) : []);
+
+const docAt = (file) => (lstatSync(file).size <= SANDBOX_LIMITS.bytes ? jsonOr(readFileSync(file, "utf8")) : null);
+
+const under = (roots, ...parts) => roots.flatMap((r) => dirsIn(join(r, ...parts)));
+
+// <store>/<project>/checkouts/<checkout>/sandboxes/<env>.json
+const sandboxDocs = (projects) => under(projects, "checkouts").flatMap((c) => docsIn(join(c, "sandboxes"))).map(docAt).filter((d) => d?.kind === "sandbox");
+
+// <store>/<project>/runtime/<host>/checkouts/<checkout>/sandboxes/<env>/ -> its operations, by the sandbox's id
+const opsRooms = (projects) => under(under(under(projects, "runtime"), "checkouts"), "sandboxes");
+
+const OPERATION = (o) => ({ kind: String(o.kind), state: String(o.state), at: o.at ?? null, settledAt: o.settledAt ?? null, because: typeof o.because === "string" ? o.because.slice(0, 300) : null });
+
+const opsOf = (room) => docsIn(join(room, "operations")).map(docAt).filter((o) => o?.kind && o?.state).map(OPERATION).sort((a, b) => String(a.at).localeCompare(String(b.at)));
+
+const sandboxRow = (id, doc, ops) => ({ id, task: doc?.owner?.id ?? null, state: doc?.state ?? null, blocked: doc?.blocked ? { needs: doc.blocked.needs ?? null, because: String(doc.blocked.because ?? "").slice(0, 300) } : null, operations: ops });
+
+export function sandboxesOf(store = PATHS.store) {
+  const projects = dirsIn(store);
+  const docs = new Map(sandboxDocs(projects).map((d) => [d.id, d]));
+  const rooms = new Map(opsRooms(projects).map((r) => [r.split(sep).at(-1), r]));
+  const ids = [...new Set([...docs.keys(), ...rooms.keys()])].sort().slice(0, SANDBOX_LIMITS.sandboxes);
+  return { exit: 0, json: { sandboxes: ids.map((id) => sandboxRow(id, docs.get(id), rooms.has(id) ? opsOf(rooms.get(id)).slice(0, SANDBOX_LIMITS.operations) : [])) } };
+}
+
 function main(asked) {
   const tasks = answered(orbit("task.mjs", ["list"]));
   const task = taskFound(asked, tasks);
   const shown = task ? answered(orbit("task.mjs", ["show", task])) : { exit: null, json: null, why: "no task was started" };
-  [["task.json", shown], ["tasks.json", tasks], ["trace.json", answered(orbit("trace.mjs", ["usage"]))], ["goals.json", goalsOf()]].forEach(([name, v]) => writeFileSync(join(PATHS.out, name), `${JSON.stringify(v)}\n`));
-  inspected(asked, task, task ? treeOf(task) : null);
+  [["task.json", shown], ["tasks.json", tasks], ["trace.json", answered(orbit("trace.mjs", ["usage"]))], ["turns.json", answered(orbit("trace.mjs", ["turns", "--days=30", "--limit=200"]))], ["goals.json", goalsOf()], ["sandbox.json", sandboxesOf()]].forEach(([name, v]) => writeFileSync(join(PATHS.out, name), `${JSON.stringify(v)}\n`));
+  inspected(asked, task, WORKTREE ?? (task ? treeOf(task) : null));
 }
 
 function inspected(asked, task, tree) {

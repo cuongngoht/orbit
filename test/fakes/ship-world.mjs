@@ -159,9 +159,13 @@ function ranRoom(w, args, kind) {
   const dir = join(w.store, "benchmark", run);
   const commit = git(tree, "rev-parse", "HEAD");
   const child = `tsk-${randomBytes(6).toString("hex")}`;
-  docAt(dir, "manifest.json", { schema: 1, run, task: child, at: new Date(w.clock.now - 60000).toISOString(), source: { repo: tree, commit, digest: `d-${git(tree, "rev-parse", "HEAD^{tree}")}` }, benchmark: { case: c, kind: CASES[c].kind, variant: flagOf(args, "variant") ?? "real", digest: `case-${c}`, harness: w.play.harness(c) }, images: { claudeCode: "2.1.314" }, config: { repair: args.includes("--repair") || CASES[c].kind !== "source", host: CASES[c].kind === "qa" ? "coding-host" : null } });
+  docAt(dir, "manifest.json", { schema: 1, run, task: child, at: new Date(w.clock.now - 60000).toISOString(), source: { repo: tree, commit, digest: `d-${git(tree, "rev-parse", "HEAD^{tree}")}` }, benchmark: { case: c, kind: CASES[c].kind, variant: flagOf(args, "variant") ?? "real", digest: `case-${c}`, harness: w.play.harness(c) }, images: { claudeCode: "2.1.314" }, config: { repair: args.includes("--repair") || CASES[c].kind !== "source", host: CASES[c].kind === "qa" ? "coding-host" : null, model: flagOf(args, "model") ?? null, effort: effortRan(w, c, args) } });
   return { c, run, tree, said, dir, kind };
 }
+
+// The effort a run's manifest says its host ran at: the one it was asked (`--effort`, as the benchmark records it) --
+// or, where a scenario says so (`play.effortOf`), another.
+const effortRan = (w, c, args) => (w.play.effortOf ? w.play.effortOf(c, args) : flagOf(args, "effort") ?? null);
 
 // The rounds a run's report says, as the benchmark's reports say them: a round its host ended, with what the host
 // reported -- or, for a round a restart interrupted and the run's resume read back (`interrupted`), no host at all.
@@ -188,7 +192,7 @@ const sha256Text = (text) => execFileSync(process.execPath, ["-e", "process.stdo
 
 async function run(w, args, o) {
   const r = ranRoom(w, args, runKind(w.play, args[1], args));
-  w.calls.push({ verb: "run", case: r.c, kind: r.kind, run: r.run, tree: r.tree, commit: git(r.tree, "rev-parse", "HEAD") });
+  w.calls.push({ verb: "run", case: r.c, kind: r.kind, run: r.run, tree: r.tree, commit: git(r.tree, "rev-parse", "HEAD"), args });
   if (w.play.during) await w.play.during(w, r, o);
   if (o.watch && o.watch() === "stop") return { code: null, json: null, err: null, stopped: true };
   return r.said.dies ? crashed(r) : r.said.diesAfterEnding ? endedThenCrashed(w, r) : ended(w, r);
@@ -242,7 +246,8 @@ async function resumed(w, args) {
 
 const VERBS = {
   list: () => ({ code: 0, json: LISTED, err: null }),
-  doctor: (w, args) => ({ code: 0, json: { docker: w.play.docker === false ? { missing: "no daemon" } : { version: "27.0.0" }, credentials: ["ANTHROPIC_API_KEY"], host: args.includes("--host") ? w.play.host ?? { ok: true, code: "OK", says: "Claude Code 2.1.314 answered", image: "2.1.314", reported: "2.1.314", model: "claude-test", costUsd: 0.01 } : null }, err: null }),
+  doctor: (w, args) => (w.calls.push({ verb: "doctor", args }), { code: 0, json: { docker: w.play.docker === false ? { missing: "no daemon" } : { version: "27.0.0" }, credentials: ["ANTHROPIC_API_KEY"], host: args.includes("--host") ? w.play.host ?? { ok: true, code: "OK", says: "Claude Code 2.1.314 answered", image: "2.1.314", reported: "2.1.314", model: "claude-test", costUsd: 0.01 } : null }, err: null }),
+  reliability: (w, args) => (w.calls.push({ verb: "reliability", args }), w.play.reliability ? w.play.reliability(args) : { code: 0, json: { schema: 1, kind: "orbit.benchmark.reliability/v1", scope: { revision: flagOf(args, "revision") ?? null }, runs: { total: 1 } }, err: null }),
   build: (w) => (w.play.images === false ? { code: 3, json: null, err: "the runner image could not be built" } : { code: 0, json: { images: [{ role: "verifier", id: "sha256:v" }, { role: "runner", id: "sha256:r" }, { role: "qa-worker", id: "sha256:q" }] }, err: null }),
   run: (w, args, o) => run(w, args, o),
   controls: (w, args) => controls(w, args),

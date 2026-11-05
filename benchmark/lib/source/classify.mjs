@@ -7,11 +7,15 @@
 // Every row also says its CLASS: the one word, from FAILURE_CLASSES, a report and a metric speak in whatever the kind of
 // case. Row ids stay what earlier reports used; the class is what a reader compares across them.
 //
+// HOST_DIVERGED (0.5.0, an addition to ADR 0048's table) is the one class that is the MODEL's behaviour: Orbit's
+// suggestion was right and the host chose otherwise. It repairs nothing in Orbit, and it is never a reason to loosen a
+// case. No row of CAUSES comes to it: a judge that holds a host's choices to a truth names it (the activation suite).
+//
 //   CAUSES -> rows        causeOf(f) -> { id, class, says, repairable: boolean }        classOfCause(id) -> class
 //   f: { benchmark, verifier, environment, infrastructure, credentials, provider, budget: null | { says },
 //        runs: [{ complete, signature, failures, hiddenFailed, gatesFailed, missingExports, probeBroken }],
 //        repairable: [cause ids the case declares] }
-export const FAILURE_CLASSES = ["ORBIT_SOURCE_DEFECT", "BENCHMARK_DEFECT", "VERIFIER_DEFECT", "ENVIRONMENT_BLOCKED", "PROVIDER_FAILURE", "INFRASTRUCTURE_FAILURE", "NON_DETERMINISTIC", "INSUFFICIENT_EVIDENCE", "BUDGET_EXHAUSTED", "HUMAN_APPROVAL_REQUIRED", "UNKNOWN"];
+export const FAILURE_CLASSES = ["ORBIT_SOURCE_DEFECT", "BENCHMARK_DEFECT", "VERIFIER_DEFECT", "ENVIRONMENT_BLOCKED", "PROVIDER_FAILURE", "INFRASTRUCTURE_FAILURE", "NON_DETERMINISTIC", "INSUFFICIENT_EVIDENCE", "BUDGET_EXHAUSTED", "HUMAN_APPROVAL_REQUIRED", "HOST_DIVERGED", "UNKNOWN"];
 
 const first = (f) => f.runs?.[0] ?? null;
 

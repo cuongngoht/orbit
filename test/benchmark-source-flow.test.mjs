@@ -7,12 +7,13 @@
 // a round past its deadline is stopped, and a run interrupted mid-round is read back on resume, never sent again.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { join, relative, isAbsolute } from "node:path";
 import { test } from "node:test";
 import { carried } from "../benchmark/lib/source/flow.mjs";
 import { resumedRun, withSpec } from "../benchmark/lib/core/context.mjs";
 import { taskFound } from "../benchmark/images/runner/inspect.mjs";
+import { hostCommand } from "../benchmark/images/runner/entry.mjs";
 import { reportOf } from "../benchmark/lib/source/report.mjs";
 import { docRead } from "../benchmark/lib/core/room.mjs";
 import { projectStoreRoot } from "../src/project/repository.mjs";
@@ -20,7 +21,7 @@ import { guardedIo } from "../src/store/guard.mjs";
 import { realIo } from "../src/store/io.mjs";
 import { apply } from "../src/task/ops.mjs";
 import { createTasks } from "../src/task/store.mjs";
-import { dockerDouble, harnessOf, inspectedAs, NEVER, ranAs, runOf, TASK, VIEW, worldOf } from "./benchmark-double.mjs";
+import { dockerDouble, harnessOf, inspectedAs, mountsOf, NEVER, ranAs, runOf, streamOf, TASK, VIEW, worldOf } from "./benchmark-double.mjs";
 import { sealed } from "./home.mjs";
 import { takeTurn } from "./benchmark-turn.mjs";
 
@@ -298,4 +299,73 @@ test("a known finding that still fails is evidence kept, and the report says so;
   const r = await runOf(world(t), dockerDouble(NEVER), { variant: "controlled-fault" });
   const rep = reportFor(r);
   assert.deepEqual([rep.outcome, rep.cause, rep.class, rep.known.regression], ["FAIL", "ORBIT_SOURCE_DEFECT", "ORBIT_SOURCE_DEFECT", false], "a planted fault is never a regression of the source");
+});
+
+// ---- the host's stream, as the controller captured it (0.5.0) ------------------------------------------------------------
+
+const repairDoc = (r) => docRead(r.ctx.room, `steps/${r.view.actions.find((a) => a.type === "benchmark.repair").id}.json`);
+
+test("the controller keeps a round's host stream as the container's stdout carried it -- in the round's own directory, with when each line came -- and says whether the runner's own copy agrees", async (t) => {
+  const r = await runOf(world(t), dockerDouble({ runner: ranAs(FIXED), inspect: inspectedAs(VIEW("COMPLETED")) }), { variant: "controlled-fault", repair: true });
+  assert.equal(readFileSync(r.ctx.room.at("rounds", "1", "host.stream.jsonl"), "utf8"), streamOf(), "outside every mount: the round's out directory is the runner's, this file is the controller's");
+  const at = JSON.parse(readFileSync(r.ctx.room.at("rounds", "1", "host.stream.at.json"), "utf8"));
+  assert.ok(at.lines.length >= 1 && at.lines.every(([n, ms]) => Number.isInteger(n) && ms >= Date.parse(r.ctx.manifest.at)), "each chunk's moment, by the controller's clock");
+  assert.deepEqual(((o) => [o.basis, o.bytes, o.agrees])(repairDoc(r).observed), ["HOST_OBSERVED", Buffer.byteLength(streamOf()), true]);
+  assert.equal(r.result.outcome, "REPAIRED_VERIFIED", "the verdict never rests on it");
+});
+
+// ---- the effort a host is asked to run at (0.5.0) ---------------------------------------------------------------------
+
+const reportMdFor = (r) => reportOf(r.ctx.room, r.ctx.manifest, r.view, Object.fromEntries(r.view.actions.map((a) => [a.id, docRead(r.ctx.room, `steps/${a.id}.json`)]).filter(([, d]) => d)), docRead(r.ctx.room, "ending.json"), null, r.ctx.rec.events(r.ctx.task).events).md;
+
+// The runner as ranAs plays it, keeping the brief each round was handed.
+const briefed = (briefs) => (c, at) => (briefs.push(JSON.parse(readFileSync(at("/run/brief/brief.json"), "utf8"))), ranAs(FIXED)(c, at));
+
+test("a round's host is asked to run at the effort its run names, beside its model -- and the manifest, the report and the verified candidate's host say it", async (t) => {
+  const briefs = [];
+  const r = await runOf(world(t), dockerDouble({ runner: briefed(briefs), inspect: inspectedAs(VIEW("COMPLETED")) }), { variant: "controlled-fault", repair: true, model: "claude-sonnet-5-5", effort: "medium" });
+  assert.deepEqual([r.result.outcome, briefs[0].model, briefs[0].effort], ["REPAIRED_VERIFIED", "claude-sonnet-5-5", "medium"]);
+  const argv = hostCommand(briefs[0])[1];
+  assert.deepEqual(argv.slice(argv.indexOf("--model"), argv.indexOf("--model") + 4), ["--model", "claude-sonnet-5-5", "--effort", "medium"], "beside --model on the host's own argv");
+  assert.deepEqual([r.ctx.manifest.config.effort, reportFor(r).config.effort, docRead(r.ctx.room, "verified.json").host.effort], ["medium", "medium", "medium"]);
+  assert.match(reportMdFor(r), /- config: seed 3, model claude-sonnet-5-5, effort medium,/);
+  assert.match(r.ctx.rec.show(r.ctx.task).task.objective, /, effort medium\)/, "the run's task names it, as Orbit Live shows it");
+});
+
+test("a run that asks no effort hands its host none: the host runs at its own default, and the run says so", async (t) => {
+  const briefs = [];
+  const r = await runOf(world(t), dockerDouble({ runner: briefed(briefs), inspect: inspectedAs(VIEW("COMPLETED")) }), { variant: "controlled-fault", repair: true });
+  assert.deepEqual([briefs[0].effort, r.ctx.manifest.config.effort, docRead(r.ctx.room, "verified.json").host.effort], [null, null, null]);
+  assert.ok(!hostCommand(briefs[0])[1].includes("--effort"));
+  assert.match(reportMdFor(r), /effort the host's default/);
+  assert.ok(!hostCommand({ ...briefs[0], effort: "--plugin-dir=/elsewhere" })[1].includes("--plugin-dir=/elsewhere"), "an effort is a level's word, never an option of its own");
+});
+
+// A path at or under a mount's source is a path that container could reach (a source a run removed since, as named).
+const real = (p) => (existsSync(p) ? realpathSync(p) : p);
+
+const under = (dir, path) => ((rel) => rel === "" || (!rel.startsWith("..") && !isAbsolute(rel)))(relative(real(dir), path));
+
+test("no container of a round is ever handed the capture: every mount any of them was created with lies outside the file the controller writes", async (t) => {
+  const double = dockerDouble({ runner: ranAs(FIXED), inspect: inspectedAs(VIEW("COMPLETED")) });
+  const r = await runOf(world(t), double, { variant: "controlled-fault", repair: true });
+  const capture = realpathSync(r.ctx.room.at("rounds", "1", "host.stream.jsonl"));
+  const mounts = mountsOf(double);
+  assert.ok(mounts.some((m) => m.target === "/work/out") && mounts.some((m) => m.target === "/work/store"), "the round's runner and its inspection were created");
+  assert.deepEqual(mounts.filter((m) => under(m.source, capture) || under(m.source, `${capture.replace(/\.jsonl$/, "")}.at.json`)).map((m) => m.target), [], "no mount reaches the capture or its index of moments");
+});
+
+test("a run's report carries its tool-call facts, read from the captured stream, and never a host's call one by one", async (t) => {
+  const events = [{ type: "system", subtype: "init", model: "m" }, { type: "assistant", message: { id: "m1", content: [{ type: "tool_use", id: "t1", name: "Bash", input: { command: "never in a report" } }] } }, { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t1", is_error: true }] } }, { type: "result", subtype: "success", is_error: false, num_turns: 1, total_cost_usd: 0.1 }];
+  const rep = reportFor(await runOf(world(t), dockerDouble({ runner: ranAs(FIXED, { events }), inspect: inspectedAs(VIEW("COMPLETED")) }), { variant: "controlled-fault", repair: true }));
+  assert.deepEqual([rep.tools.basis, rep.tools.calls.byTool.Bash], ["HOST_OBSERVED", { calls: 1, failed: 1, unanswered: 0 }]);
+  assert.equal(rep.rounds[0].host.uses, undefined, "the calls one by one stay in the round's own evidence");
+  assert.equal(rep.rounds[0].host.failedCalls, 1);
+  assert.ok(!JSON.stringify(rep).includes("never in a report"));
+});
+
+test("a runner that printed nothing on its stdout leaves an empty capture, and its own copy is never taken as observed", async (t) => {
+  const r = await runOf(world(t), dockerDouble({ runner: ranAs(FIXED, { silent: true }), inspect: inspectedAs(VIEW("COMPLETED")) }), { variant: "controlled-fault", repair: true });
+  assert.deepEqual(((o) => [o.bytes, o.agrees])(repairDoc(r).observed), [0, false]);
+  assert.equal(repairDoc(r).host.started, true, "what the runner wrote is still read, REPORTED, as before");
 });

@@ -9,10 +9,13 @@
 // carries the run's labels; cleanup removes only what carries them.
 //
 //   labelsOf(runId, role)  specFor(role, run, o) -> spec   argvOf(spec, file) -> argv   attestRows(raw, spec, a)
-//   ranContainer(spec, deps, o) -> { exit, oom, timedOut, held, out, err, truncated, attested, refused? }
+//   ranContainer(spec, deps, o) -> { exit, oom, timedOut, held, out, err, truncated, captured, attested, refused? }
 //     o.held() -- asked every o.heldEveryMs while the container runs: true (a person paused or cancelled the run) stops
 //     it there, so a held run leaves nothing of its own running until its deadline
+//     o.capture -- a file of the run's room: the container's stdout written there as it arrives (atFileOf: when)
 //   leftovers(runId, deps) -> { containers, networks }      cleaned(runId, deps) -> { removed, refused }
+import { closeSync, mkdirSync, openSync, writeFileSync, writeSync } from "node:fs";
+import { dirname } from "node:path";
 import { createArgv, CLIENT_ENV, docker, envProblems, labelArgs } from "../../../src/runtime/isolation/docker.mjs";
 import { PROFILE } from "../../../src/runtime/sandbox/isolation.mjs";
 import { removedNetwork } from "../../../src/runtime/sandbox/network.mjs";
@@ -107,12 +110,53 @@ function watched(id, deps, o) {
   return { held: () => state.held, stop: () => (timer ? clearInterval(timer) : null) };
 }
 
-async function attached(id, spec, deps, o) {
+// ---- a CAPTURE of a container's stdout ----------------------------------------------------------------------------------
+//
+// When a caller names a file (`o.capture`), every chunk the container prints on stdout is written there as it arrives --
+// a file of the run's room that no container mounts, so what lands in it is what the controller itself received -- and
+// beside it (`<file without .jsonl>.at.json`) when each line ended, by the controller's own clock: the moment a host's
+// call was seen, to set beside the times an engine's journal keeps. Bounded by what the process port reads of a stream.
+export const atFileOf = (file) => file.replace(/\.jsonl$/, "").concat(".at.json");
+
+const newlines = (bytes) => bytes.reduce((n, byte) => n + (byte === 10 ? 1 : 0), 0);
+
+// Each chunk's moment, after the lines it ended: line n ended at the first entry past it -- a last line with no newline
+// of its own, at the last entry.
+function capturedChunk(c, bytes) {
+  writeSync(c.fd, bytes);
+  const lines = c.lines + newlines(bytes);
+  c.at.push([lines, Date.now()]);
+  Object.assign(c, { bytes: c.bytes + bytes.length, lines });
+}
+
+// Closed once: the file, then the index of when each line ended. -> { file, bytes, lines } | null
+function closedCapture(c, file) {
+  if (c.closed) return c.closed;
+  closeSync(c.fd);
+  writeFileSync(atFileOf(file), `${JSON.stringify({ schema: 1, clock: "the controller's, in ms since the epoch", lines: c.at })}\n`);
+  return (c.closed = { file, bytes: c.bytes, lines: c.lines });
+}
+
+function capturing(file) {
+  if (!file) return { observe: () => null, close: () => null };
+  mkdirSync(dirname(file), { recursive: true });
+  const c = { fd: openSync(file, "w"), bytes: 0, lines: 0, at: [], closed: null };
+  return { observe: (stream, bytes) => (stream === "out" ? capturedChunk(c, bytes) : null), close: () => closedCapture(c, file) };
+}
+
+// What a container printed: kept in memory up to its bound, and captured as it arrives when the caller names a file.
+function printedBy(o) {
   const b = bounded(o.outputBytes ?? 16 * 1024 * 1024);
+  const c = capturing(o.capture ?? null);
+  return { kept: b.kept, observe: (stream, bytes) => (b.observe(stream, bytes), c.observe(stream, bytes)), close: c.close };
+}
+
+async function attached(id, spec, deps, o) {
+  const p = printedBy(o);
   const watch = watched(id, deps, o);
-  const r = await docker.container.startAttached(id, { ...deps, env: deps.env }, { input: o.input ?? "", timeoutMs: o.timeoutMs, observe: b.observe, env: spec.env }).finally(watch.stop);
+  const r = await docker.container.startAttached(id, { ...deps, env: deps.env }, { input: o.input ?? "", timeoutMs: o.timeoutMs, observe: p.observe, env: spec.env }).finally(() => (watch.stop(), p.close()));
   const stopped = r.timedOut || r.overflow ? docker.container.stop(id, deps, { graceSeconds: 5 }) : null;
-  return { timedOut: Boolean(r.timedOut), held: watch.held(), overflow: Boolean(r.overflow), stopped: stopped?.ok ?? null, out: textOf(b.kept.out), err: textOf(b.kept.err), truncated: b.kept.cut, ...endOf(docker.container.inspect(id, deps)) };
+  return { timedOut: Boolean(r.timedOut), held: watch.held(), overflow: Boolean(r.overflow), stopped: stopped?.ok ?? null, out: textOf(p.kept.out), err: textOf(p.kept.err), truncated: p.kept.cut, captured: p.close(), ...endOf(docker.container.inspect(id, deps)) };
 }
 
 // Created, attested -- a container that does not hold to its rows is removed before it ever starts -- run, removed.

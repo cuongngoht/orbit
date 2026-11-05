@@ -12,7 +12,10 @@ export const saidOptional = (rows) => rows.map((r) => `  optional  ${r.name}: ${
 // A recorded row (ADR 0051): held or not, with its run's room -- recorded by a release, never required by it.
 export const saidRecorded = (rows) => rows.map((r) => `  recorded  ${r.id}: ${r.held ? "held" : `not held (${r.state})`}${r.runsAgain ? ", runs again" : ""} -- ${r.room ?? "no run"} (recorded, not required)`);
 
-export const saidResult = (r) => [`RESULT    ${WORDS[r.outcome] ?? r.outcome} -- ${r.summary}`, `  ship      ${r.ship} (task ${r.task}: node cli/task.mjs show ${r.task}; Orbit Live and Mission Control show it)`, `  room      ${r.room}`, ...(r.evidence ? [`  evidence  ${r.evidence}`] : []), ...deliveryLines(r.delivery), ...(r.exit === 3 ? [`  resume    node skills/orbit-release/ship.mjs --resume=${r.ship} (once what blocked it is fixed)`] : []), ...(r.failures ?? []).flatMap(saidDiagnosis), ...saidRecorded(r.recorded ?? []), ...(r.optional ? saidOptional(r.optional) : [])].join("\n");
+// The reliability report a SHIPPABLE ship keeps beside its evidence (0.5.0): where it is, or why it is not -- never a gate.
+const saidReliability = (x) => (x ? [`  reliability ${x.file ?? "not written"} -- ${x.says}`] : []);
+
+export const saidResult = (r) => [`RESULT    ${WORDS[r.outcome] ?? r.outcome} -- ${r.summary}`, `  ship      ${r.ship} (task ${r.task}: node cli/task.mjs show ${r.task}; Orbit Live and Mission Control show it)`, `  room      ${r.room}`, ...(r.evidence ? [`  evidence  ${r.evidence}`] : []), ...saidReliability(r.reliability), ...deliveryLines(r.delivery), ...(r.exit === 3 ? [`  resume    node skills/orbit-release/ship.mjs --resume=${r.ship} (once what blocked it is fixed)`] : []), ...(r.failures ?? []).flatMap(saidDiagnosis), ...saidRecorded(r.recorded ?? []), ...(r.optional ? saidOptional(r.optional) : [])].join("\n");
 
 // ---- a failed model-carried row's diagnosis bundle, as its run's own report says it (0.5.0, B6) ----------------------
 
@@ -34,9 +37,12 @@ export const saidDiagnosis = (d) => [`  diagnose  ${d.row} ${d.state}${d.recorde
 // were allowed between them), never added into it.
 const unknownSaid = (spent) => (spent.unknownRuns ? `; and ${spent.unknownRuns} run(s) a restart interrupted, whose cost is unknown -- allowed ${spent.unknownAllowedUsd} USD between them, never added in` : "");
 
+// The model and the effort a ship asks its model-carried rows' host to run at, when it names them (0.5.0).
+const hostAsked = (h) => `${h?.model ? `; model ${h.model}` : ""}${h?.effort ? `, effort ${h.effort}` : ""}`;
+
 // Which cycle a ship's rows are said of: the open one, or -- for a ship whose cycle closed -- the newest it ran.
 const cycleSaid = (s) => (s.cycleOpen ? "this cycle" : s.cycle > 0 ? `in cycle ${s.cycle}, which closed` : "(no cycle has run)");
 
-export const saidStatus = (s) => (!s.found ? s.says : [`SHIP      ${s.ship} -- ${s.lifecycle}${s.stage ? ` · ${s.stage}` : ""} (${s.mode}), task ${s.task}`, `  from      ${s.start.branch ?? "detached"}@${s.start.commit.slice(0, 12)}; release commit now ${s.commit.slice(0, 12)}; cycle ${s.cycle}`, `  rows      ${s.rows.held}/${s.rows.total} held ${cycleSaid(s)}${s.rows.failed.length ? `; not held: ${s.rows.failed.slice(0, 6).join(", ")}${s.rows.failed.length > 6 ? ` and ${s.rows.failed.length - 6} more` : ""}` : ""}`, ...saidRecorded(s.rows.recorded ?? []), ...(s.diagnoses ?? []).flatMap(saidDiagnosis), ...(s.repairs.length ? [`  repairs   ${s.repairs.join(", ")}`] : []), `  spent     ${s.spent.usd} of ${s.limits.usd} USD, ${s.spent.minutes} of ${s.limits.minutes} minutes${unknownSaid(s.spent)}`, ...(s.next ? [`  next      ${s.next}`] : []), ...(s.ending ? [`  ended     ${s.ending.outcome}: ${s.ending.summary}`] : []), ...(s.evidence ? [`  evidence  ${s.evidence}`] : []), `  room      ${s.room}`].join("\n"));
+export const saidStatus = (s) => (!s.found ? s.says : [`SHIP      ${s.ship} -- ${s.lifecycle}${s.stage ? ` · ${s.stage}` : ""} (${s.mode}), task ${s.task}`, `  from      ${s.start.branch ?? "detached"}@${s.start.commit.slice(0, 12)}; release commit now ${s.commit.slice(0, 12)}; cycle ${s.cycle}${hostAsked(s.host)}`, `  rows      ${s.rows.held}/${s.rows.total} held ${cycleSaid(s)}${s.rows.failed.length ? `; not held: ${s.rows.failed.slice(0, 6).join(", ")}${s.rows.failed.length > 6 ? ` and ${s.rows.failed.length - 6} more` : ""}` : ""}`, ...saidRecorded(s.rows.recorded ?? []), ...(s.diagnoses ?? []).flatMap(saidDiagnosis), ...(s.repairs.length ? [`  repairs   ${s.repairs.join(", ")}`] : []), `  spent     ${s.spent.usd} of ${s.limits.usd} USD, ${s.spent.minutes} of ${s.limits.minutes} minutes${unknownSaid(s.spent)}`, ...(s.next ? [`  next      ${s.next}`] : []), ...(s.ending ? [`  ended     ${s.ending.outcome}: ${s.ending.summary}`] : []), ...(s.evidence ? [`  evidence  ${s.evidence}`] : []), ...saidReliability(s.reliability), `  room      ${s.room}`].join("\n"));
 
 export const saidEvidence = (e) => [`${e.publishable ? "PUBLISHABLE" : `NOT PUBLISHABLE (${e.code})`} -- ${e.says}`, ...saidRecorded(e.recorded ?? [])].join("\n");

@@ -105,14 +105,16 @@ const expectedSaid = (row) => (row.run === "controls" ? "holds its controls" : `
 
 const cycleOf = (f, doc) => ({ commit: doc.commit, tree: doc.tree, digest: doc.kind === "repair" ? null : f.firstDigest ?? null });
 
-const shipOf = (f, row) => ({ harness: firstSeen(f, "harness"), caseDigest: firstSeen(f, "caseDigest", row.case) });
+// What a run is held to by the ship that dispatched it: the harness and its case's digest as the ship first saw them, and
+// the effort the ship asks every model-carried row's host to run at -- frozen when it began (session.mjs).
+const shipOf = (ctx, f, row) => ({ harness: firstSeen(f, "harness"), caseDigest: firstSeen(f, "caseDigest", row.case), effort: ctx.options.effort ?? null });
 
 // The harness and each case's digest as the ship FIRST saw them, across every cycle: what every later run must match.
 const firstSeen = (f, key, c = null) => f.acts.map((x) => x.d.settled?.verdict).filter((v) => v && v[key] && (!c || v.case === c)).map((v) => v[key])[0] ?? null;
 
 function verdictOf(ctx, f, doc, answer) {
   const room = runRoomOf(ctx.storeRoot, doc.planned.run);
-  const base = { row: doc.rowDef, answer, room, cycle: cycleOf(f, doc), ship: shipOf(f, doc.rowDef) };
+  const base = { row: doc.rowDef, answer, room, cycle: cycleOf(f, doc), ship: shipOf(ctx, f, doc.rowDef) };
   if (doc.kind === "repair") return repairVerdict({ ...base, ...repairFacts(ctx, doc, room) });
   return doc.rowDef.run === "controls" ? controlVerdict({ ...base, rooms: controlRuns(answer?.json).map((r) => runRoomOf(ctx.storeRoot, r)), case: ctx.cases.get(doc.rowDef.case), realHeld: realHeld(f, doc.rowDef.case) }) : rowVerdict(base);
 }
@@ -161,7 +163,7 @@ async function heldWhileRunning(ctx, doc) {
 // is carried on from its room by `resume`, never started again (B6: a source case's controls take twenty minutes).
 export async function dispatched(ctx, f, rowDef, o) {
   const run = newRunIdOf();
-  const at = { tree: o.tree, parent: ctx.task, runId: run, usd: o.usd, model: ctx.options.model, credential: ctx.options.credential, caFile: ctx.options.caFile };
+  const at = { tree: o.tree, parent: ctx.task, runId: run, usd: o.usd, model: ctx.options.model, effort: ctx.options.effort ?? null, credential: ctx.options.credential, caFile: ctx.options.caFile };
   const argv = argvOf(o.kind === "repair" ? { ...rowDef, run: "repair" } : rowDef, at);
   const doc = { kind: o.kind, attempt: f.open.id, row: rowDef.id, case: rowDef.case, rowDef, commit: o.commit, tree: o.tree, workspace: o.workspace ?? null, usd: o.usd, planned: { run, argv } };
   return ranAs(ctx, f, { ...doc, act: begun(ctx, o.kind === "repair" ? "release.repair" : "release.row", o.label, doc) });

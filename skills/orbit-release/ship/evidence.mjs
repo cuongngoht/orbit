@@ -10,12 +10,15 @@
 //        artifact } -- `unseen`: the cases the policy names that the benchmark does not list now (all, unread)
 //   A RECORDED row (ADR 0051) is in the evidence held or not, with its run's room, and the gate holds it to that room as
 //   it holds every row -- only a required row must be HELD.
+//   The effort (0.5.0): the host block says the effort the ship asked (`host.effort`) beside the models the rows
+//   reported, and every row the effort its run's own manifest says it ran at; the gate reads each model-carried row's
+//   room again for it, and a row that held must have run at the ship's.
 import { runRoomOf } from "./dispatch.mjs";
-import { identityOf } from "./rows.mjs";
+import { effortOf, identityOf } from "./rows.mjs";
 
 const uniq = (xs) => [...new Set(xs.filter(Boolean))];
 
-const rowEvidence = (r) => ({ id: r.row.id, case: r.row.case, requirement: r.row.req, recorded: r.row.recorded === true, run: r.v.run, task: r.v.task ?? null, state: r.v.state, outcome: r.v.outcome, basis: r.v.basis ?? null, cli: r.v.cli ?? null, model: r.v.model ?? null, costUsd: r.v.costUsd ?? null, costBasis: r.v.costBasis ?? null, rounds: r.v.rounds ?? null, seconds: r.v.seconds ?? null, superseded: r.v.superseded ?? [], says: r.v.says, runs: r.runs });
+const rowEvidence = (r) => ({ id: r.row.id, case: r.row.case, requirement: r.row.req, recorded: r.row.recorded === true, run: r.v.run, task: r.v.task ?? null, state: r.v.state, outcome: r.v.outcome, basis: r.v.basis ?? null, cli: r.v.cli ?? null, model: r.v.model ?? null, effort: r.v.effort ?? null, costUsd: r.v.costUsd ?? null, costBasis: r.v.costBasis ?? null, rounds: r.v.rounds ?? null, seconds: r.v.seconds ?? null, superseded: r.v.superseded ?? [], says: r.v.says, runs: r.runs });
 
 const repairEvidence = (x) => ({ case: x.d.case, commit: x.d.settled.commit, tree: x.d.settled.tree, patchDigest: x.d.settled.patchDigest, run: x.d.settled.run ?? null, paths: x.d.settled.paths ?? [] });
 
@@ -27,16 +30,21 @@ export const recordedOf = (storeRoot, rows) => rows.filter((r) => r.recorded).ma
 export function evidenceOf(ctx, f, delivery) {
   const rows = [...f.rows.values()].map(rowEvidence);
   const auto = autonomousOf(f);
-  return { schema: 1, kind: "release-evidence", ship: ctx.ship.id, task: ctx.task, at: new Date(ctx.now()).toISOString(), verdict: "SHIPPABLE", mode: ctx.options.repair ? "autonomous" : "verify-only", policy: { digest: ctx.manifest.policy.digest }, start: ctx.manifest.start, source: { commit: f.cycle.commit, tree: f.cycle.treeId, digest: f.firstDigest, protected: ctx.manifest.protected.digest }, artifact: f.cycle.artifact, harness: { digest: rows.map((r) => r.run && f.rows.get(r.id)?.v.harness).find(Boolean) ?? null, images: f.cycle.images }, host: { cli: ctx.policy.host.cli, basis: ctx.policy.host.basis, image: f.host.probe?.image ?? null, reported: uniq(auto.map((r) => r.v.cli)), models: uniq(auto.map((r) => r.v.model)), endpoint: ctx.endpoint }, gates: f.gates.rows.map((g) => ({ name: g.name, ok: g.ok, detail: g.detail })), rows, repairs: f.acts.filter((x) => x.a.type === "release.integrate" && x.d.settled).map(repairEvidence), superseded: rows.filter((r) => r.superseded.length).map((r) => ({ case: r.case, controls: r.superseded })), recorded: recordedOf(ctx.storeRoot, rows), optional: ctx.optional ?? [], totals: { usd: f.spent.usd, unknownRuns: f.spent.unknownRuns, unknownAllowedUsd: f.spent.unknownAllowedUsd, minutes: f.spent.minutes, cycles: f.attempts, rows: rows.length }, delivery: { needed: f.cycle.commit !== ctx.manifest.start.commit, ...(delivery ?? {}) } };
+  return { schema: 1, kind: "release-evidence", ship: ctx.ship.id, task: ctx.task, at: new Date(ctx.now()).toISOString(), verdict: "SHIPPABLE", mode: ctx.options.repair ? "autonomous" : "verify-only", policy: { digest: ctx.manifest.policy.digest }, start: ctx.manifest.start, source: { commit: f.cycle.commit, tree: f.cycle.treeId, digest: f.firstDigest, protected: ctx.manifest.protected.digest }, artifact: f.cycle.artifact, harness: { digest: rows.map((r) => r.run && f.rows.get(r.id)?.v.harness).find(Boolean) ?? null, images: f.cycle.images }, host: { cli: ctx.policy.host.cli, basis: ctx.policy.host.basis, image: f.host.probe?.image ?? null, reported: uniq(auto.map((r) => r.v.cli)), models: uniq(auto.map((r) => r.v.model)), effort: ctx.options.effort ?? null, endpoint: ctx.endpoint }, gates: f.gates.rows.map((g) => ({ name: g.name, ok: g.ok, detail: g.detail })), rows, repairs: f.acts.filter((x) => x.a.type === "release.integrate" && x.d.settled).map(repairEvidence), superseded: rows.filter((r) => r.superseded.length).map((r) => ({ case: r.case, controls: r.superseded })), recorded: recordedOf(ctx.storeRoot, rows), optional: ctx.optional ?? [], totals: { usd: f.spent.usd, unknownRuns: f.spent.unknownRuns, unknownAllowedUsd: f.spent.unknownAllowedUsd, minutes: f.spent.minutes, cycles: f.attempts, rows: rows.length }, delivery: { needed: f.cycle.commit !== ctx.manifest.start.commit, ...(delivery ?? {}) } };
 }
 
 // ---- the publish gate --------------------------------------------------------------------------------------------------
 
 const IN_FLIGHT = ["QUEUED", "PREPARING", "EXECUTING", "VERIFYING", "WAITING_APPROVAL", "PAUSED"];
 
-// A run's room read again: it still names the commit, the outcome and -- for a model-carried row that held -- the coding
-// host. A recorded row that did not hold is held to its room as it is said, no host owed.
-const agrees = (g, r) => ((room) => Boolean(room?.manifest) && room.manifest.source?.commit === g.evidence.source.commit && (room.ending?.outcome ?? null) === (r.outcome ?? null) && (!g.now.autonomous.has(r.id) || r.state !== "HELD" || identityOf(room).basis === "coding-host"))(g.rooms(String(r.run ?? "").split(" ")[0]));
+// A run's room read again: it still names the commit, the outcome and -- for a model-carried row -- the effort the
+// evidence says it ran at; and for one that held, the coding host, at the effort the ship asked (an evidence from before
+// 0.5.0 names none, and its rooms none). A recorded row that did not hold is held to its room as it is said, no host owed.
+const hostAgrees = (g, r, room) => r.state !== "HELD" || (identityOf(room).basis === "coding-host" && effortOf(room) === (g.evidence.host?.effort ?? null));
+
+const modelAgrees = (g, r, room) => !g.now.autonomous.has(r.id) || (effortOf(room) === (r.effort ?? null) && hostAgrees(g, r, room));
+
+const agrees = (g, r) => ((room) => Boolean(room?.manifest) && room.manifest.source?.commit === g.evidence.source.commit && (room.ending?.outcome ?? null) === (r.outcome ?? null) && modelAgrees(g, r, room))(g.rooms(String(r.run ?? "").split(" ")[0]));
 
 const roomsAgree = (g) => g.evidence.rows.filter((r) => r.run && g.now.single.has(r.id)).every((r) => agrees(g, r));
 

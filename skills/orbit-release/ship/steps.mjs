@@ -3,7 +3,7 @@
 // step never decides what comes next; NEXT does, from the journal. Only the steps that END a ship return a result.
 //
 //   driven(ctx) -> result        STEPS        preflightFacts(ctx) -> facts
-//   result: { ship, task, outcome, exit, summary, evidence?, delivery? }
+//   result: { ship, task, outcome, exit, summary, evidence?, reliability?: { file, says }, delivery? }
 //   exit: 0 SHIPPABLE · 2 NOT_SHIPPABLE · 3 BLOCKED (resumable) · 4 a person held it
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -176,7 +176,7 @@ function builtImages(ctx, f, b) {
 
 async function host(ctx, f) {
   const act = begun(ctx, "release.host", "the coding host: the runner image's Claude Code, asked one question", { attempt: f.open.id });
-  const r = await ctx.world.bench(["doctor", "--host", ...(ctx.options.model ? [`--model=${ctx.options.model}`] : []), ...(ctx.options.credential ? [`--credential=${ctx.options.credential}`] : []), ...(ctx.options.caFile ? [`--ca-file=${ctx.options.caFile}`] : [])], {});
+  const r = await ctx.world.bench(["doctor", "--host", ...(ctx.options.model ? [`--model=${ctx.options.model}`] : []), ...(ctx.options.effort ? [`--effort=${ctx.options.effort}`] : []), ...(ctx.options.credential ? [`--credential=${ctx.options.credential}`] : []), ...(ctx.options.caFile ? [`--ca-file=${ctx.options.caFile}`] : [])], {});
   const h = hostOf(r.json?.host ?? null);
   settledAct(ctx, act, { attempt: f.open.id }, { attempt: f.open.id, ...h, probe: r.json?.host ?? null, cost: { usd: r.json?.host?.costUsd ?? 0, basis: "REPORTED" } }, { outcome: h.ok ? "succeeded" : "failed", summary: `${h.code}: ${h.says}` });
   return null;
@@ -272,20 +272,37 @@ function prechecked(ctx, f) {
 
 // ---- shippable ---------------------------------------------------------------------------------------------------------
 
-function ship(ctx, f) {
+async function ship(ctx, f) {
   const act = begun(ctx, "release.evidence", `SHIPPABLE: the evidence for ${short(f.cycle.commit)}`, { attempt: f.open.id });
   const delivery = f.cycle.commit !== ctx.manifest.start.commit ? delivered(ctx.world, ctx.room, f.cycle.tree, ctx.manifest.start.commit) : null;
   const ev = evidenceOf(ctx, f, delivery);
   docWritten(ctx.room, "evidence.json", ev);
-  return shipped(ctx, f, { act, ev, delivery });
+  return shipped(ctx, f, { act, ev, delivery, reliability: await reliabilityWritten(ctx, f.cycle.commit) });
+}
+
+// THE RELIABILITY REPORT (0.5.0, backlog B2): what the benchmark's kept runs of the release commit show -- how often each
+// row holds (pass@1, pass@k), what its tool calls cost, what each arm adds -- asked as a command like every other
+// (`run.mjs reliability --revision=<commit>`) and kept as the benchmark answered it next to evidence.json, for the
+// release notes to quote. NEVER a gate: nothing reads it to decide, the evidence names nothing of it, and a report the
+// benchmark could not give is said and the ship ships as its evidence says.
+const reliabilityAsked = async (ctx, commit) => {
+  try { return await ctx.world.bench(["reliability", `--revision=${commit}`], {}); }
+  catch (e) { return { code: null, json: null, err: String(e?.message ?? e).slice(0, 300) }; }
+};
+
+async function reliabilityWritten(ctx, commit) {
+  const r = await reliabilityAsked(ctx, commit);
+  if (!r?.json) return { file: null, says: `not written: the benchmark gave no reliability report (${r?.err ?? `exit ${r?.code ?? "unknown"}`}) -- node benchmark/run.mjs reliability --revision=${commit} gives it` };
+  docWritten(ctx.room, "reliability.json", r.json);
+  return { file: ctx.room.at("reliability.json"), says: `${r.json.runs?.total ?? 0} kept run(s) of ${short(commit)}, every one that froze it -- quoted, never a gate` };
 }
 
 function shipped(ctx, f, s) {
   ctx.door.receipt(ctx.task, { domain: "check", ref: `evidence-${sha(JSON.stringify(s.ev)).slice(0, 12)}`, outcome: "SHIPPABLE", summary: `${ctx.room.at("evidence.json")}`, action: s.act });
-  settledAct(ctx, s.act, { attempt: f.open.id }, { attempt: f.open.id, evidence: ctx.room.at("evidence.json"), ok: true }, { outcome: "succeeded", receipt: `check:evidence-${sha(JSON.stringify(s.ev)).slice(0, 12)}`, summary: `SHIPPABLE ${short(f.cycle.commit)}` });
+  settledAct(ctx, s.act, { attempt: f.open.id }, { attempt: f.open.id, evidence: ctx.room.at("evidence.json"), reliability: s.reliability, ok: true }, { outcome: "succeeded", receipt: `check:evidence-${sha(JSON.stringify(s.ev)).slice(0, 12)}`, summary: `SHIPPABLE ${short(f.cycle.commit)}` });
   closeAttempt(ctx, f, "succeeded");
   ctx.door.complete(ctx.task, `SHIPPABLE: ${short(f.cycle.commit)}, ${s.ev.rows.length} rows held, artifact ${s.ev.artifact.sha256.slice(0, 12)}${s.delivery ? ` -- repairs to apply: ${s.delivery.patch}` : ""}`);
-  return ended(ctx, { outcome: "SHIPPABLE", exit: 0, summary: `every row the catalog requires held on ${short(f.cycle.commit)}${s.ev.recorded.length ? `; ${s.ev.recorded.filter((r) => r.held).length} of ${s.ev.recorded.length} recorded row(s) held` : ""}${s.delivery ? ", with repairs this ship integrated -- apply them to your branch" : ""}`, evidence: ctx.room.at("evidence.json"), delivery: s.delivery, recorded: s.ev.recorded });
+  return ended(ctx, { outcome: "SHIPPABLE", exit: 0, summary: `every row the catalog requires held on ${short(f.cycle.commit)}${s.ev.recorded.length ? `; ${s.ev.recorded.filter((r) => r.held).length} of ${s.ev.recorded.length} recorded row(s) held` : ""}${s.delivery ? ", with repairs this ship integrated -- apply them to your branch" : ""}`, evidence: ctx.room.at("evidence.json"), reliability: s.reliability, delivery: s.delivery, recorded: s.ev.recorded });
 }
 
 // ---- reconcile ---------------------------------------------------------------------------------------------------------

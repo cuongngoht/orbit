@@ -4,10 +4,15 @@
 // catalog that drifted or no credential is a code and a sentence, and the ship stops there -- BLOCKED, resumable.
 // A credential's VALUE is never read: only whether a name is set.
 //
-//   preflightOf(f) -> { ok, state, code, says, failing: [{ code, says }] }      PREFLIGHT · CREDENTIAL_NAMES
+//   preflightOf(f) -> { ok, state, code, says, failing: [{ code, says }] }      PREFLIGHT · CREDENTIAL_NAMES · EFFORTS
 //   hostOf(probe) -> { ok, state, code, says }     the runner image's Claude Code, as `doctor --host` answered
 //   f: { harness, node, protectedDirty, listed, drift, doctor, env, policy }
 export const CREDENTIAL_NAMES = ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN"];
+
+// The efforts a ship may ask its coding host to run at (0.5.0, `--effort`): the benchmark's own EFFORTS
+// (benchmark/lib/commands.mjs), said again here because the ship never imports the benchmark -- a test holds the two
+// lists equal, so a level is refused before a ship starts a task, never by its first model-carried row hours later.
+export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 
 const endpointOf = (env) => {
   try { return env.ANTHROPIC_BASE_URL ? new URL(env.ANTHROPIC_BASE_URL).hostname.toLowerCase() : null; }

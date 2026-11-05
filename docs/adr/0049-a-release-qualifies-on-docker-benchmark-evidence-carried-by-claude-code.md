@@ -9,7 +9,9 @@ host acceptance (Grok Build, Antigravity, Codex, Claude Code) and native backend
 Extended by ADR 0051 (0.5.0): recorded rows a release runs and reports but never requires, the precheck, a failed
 row's diagnosis in `--status`, a resumable control set, and what a resumed ship asks again -- among them, a run a
 restart interrupted is never charged its whole allowance, which amends "an unreported one counts at the run's cap"
-below for that one case.
+below for that one case. ADR 0051's note of 2026-11-05 adds the effort a model-carried row's host runs at -- frozen per
+ship, recorded beside the model, and held by `WRONG_EFFORT` -- and the reliability report SHIPPABLE keeps beside the
+evidence, never a gate.
 
 ## Context
 

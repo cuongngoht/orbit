@@ -287,14 +287,15 @@ const recordRow = (rb) => (row) => ({ id: row.id, ok: row.ok(rb) === true, says:
 
 const specRecords = (ctx, rb) => (typeof ctx.spec?.records === "function" ? ctx.spec.records(rb).map((x) => ({ id: x.id, ok: x.ok === true, says: x.says ?? x.id })) : []);
 
-const recordsOf = (ctx, ins, engineering) => (ctx.case.kind !== "engineering" ? [] : ((rb) => [...(GOAL_RECORDS[ctx.case.measures?.expects ?? "change"] ?? []).map(recordRow(rb)), ...specRecords(ctx, rb)])(readBackOf(ins, engineering)));
+// An arm with no Orbit (0.5.0, B23) has no owner's record to read: only the verifier judges what its host left.
+const recordsOf = (ctx, ins, engineering) => (ctx.case.kind !== "engineering" || ctx.arm === "none" ? [] : ((rb) => [...(GOAL_RECORDS[ctx.case.measures?.expects ?? "change"] ?? []).map(recordRow(rb)), ...specRecords(ctx, rb)])(readBackOf(ins, engineering)));
 
 async function judgedRound(ctx, k, repair, ins) {
   const cand = ins?.inspect ? candidateOf(ctx, ins) : NO_CANDIDATE(ctx);
   docWritten(ctx.room, `rounds/${k}/candidate.json`, { ...cand, entries: undefined, patch: undefined });
   ctx.room.io.write(ctx.room.at("rounds", String(k), "candidate.patch"), cand.patch);
   const v = await verifiedCandidate(ctx, k, cand);
-  return { repair, ins, cand, v, engineering: engineeringOf(ins), extraTasks: extraTasks(ctx, ins, k), expects: ctx.case.measures?.expects ?? "change", records: recordsOf(ctx, ins, engineeringOf(ins)), ...deltaOf(baselineDocs(ctx, show(ctx))[0], v) };
+  return { repair, ins, cand, v, arm: ctx.arm ?? "release", engineering: engineeringOf(ins), extraTasks: extraTasks(ctx, ins, k), expects: ctx.case.measures?.expects ?? "change", records: recordsOf(ctx, ins, engineeringOf(ins)), ...deltaOf(baselineDocs(ctx, show(ctx))[0], v) };
 }
 
 async function verifiedCandidate(ctx, k, cand) {
@@ -313,12 +314,21 @@ const roundFailures = (r) => [...r.v.failures, ...r.cand.scope.map((f) => `scope
 
 const heldUp = (r) => r.v.complete && r.v.failures.length === 0 && r.cand.scope.length === 0 && r.extraTasks === 0 && (r.records ?? []).every((x) => x.ok);
 
+// What a round DELIVERED as done: a change an Orbit engineering task completed -- or, on an arm with no Orbit (0.5.0,
+// B23), any change its host left in its writable target. There no task holds a change back and no owner's record says
+// it was refused, so a goal that must be refused is never verified on the hidden checks alone.
+const DELIVERED = { none: (r) => r.cand.changes.length > 0 };
+
+const orbitDelivered = (r) => r.engineering?.lifecycle === "COMPLETED" && r.cand.changes.length > 0;
+
+const deliveredOf = (r) => (DELIVERED[r.arm] ?? orbitDelivered)(r);
+
 // Verified, by what the case asks: a CHANGE made, inside its scope, holding every hidden check, gate, regression test
 // and record check -- or, for a goal that must be refused, NOTHING delivered as done, every behaviour as it was, and
 // the refusal on the owners' records.
 const VERIFIED_BY = {
   change: (r) => heldUp(r) && r.cand.changes.length > 0,
-  blocked: (r) => heldUp(r) && !(r.engineering?.lifecycle === "COMPLETED" && r.cand.changes.length > 0),
+  blocked: (r) => heldUp(r) && !deliveredOf(r),
 };
 
 export const isVerified = (r) => VERIFIED_BY[r.expects ?? "change"](r);
@@ -377,7 +387,7 @@ function verifiedDoc(ctx, k, r) {
   const base = baselineDocs(ctx, show(ctx))[0] ?? null;
   const host = r.repair?.host ?? null;
   const patch = ctx.room.at("rounds", String(k), "candidate.patch");
-  return { schema: 1, run: ctx.run.id, task: ctx.task, at: new Date().toISOString(), case: { id: ctx.case.id, version: ctx.case.version, suite: ctx.manifest.benchmark.suite, digest: ctx.manifest.benchmark.digest }, variant: ctx.manifest.benchmark.variant, source: { branch: ctx.manifest.source.branch, commit: ctx.manifest.source.commit, digest: ctx.manifest.source.digest }, subject: { digest: ctx.manifest.subject.digest, commit: ctx.manifest.subject.commit }, baseline: { signature: base?.signature ?? null, failingGroups: [...new Set((base?.hidden.checks ?? []).filter((c) => !c.ok).map((c) => c.group))] }, engineering: { task: r.engineering?.id ?? null, lifecycle: r.engineering?.lifecycle ?? null, commit: r.engineering?.commit ?? null, where: "the run's runner store" }, host: { basis: hostBasisOf(ctx.manifest.config), model: host?.model ?? null, session: host?.session ?? null, costUsd: host?.costUsd ?? null, numbers: "REPORTED by the host, never verified" }, candidate: { round: k, patch, patchDigest: r.cand.patchDigest, files: r.cand.changes, agentTests: r.cand.agentTests }, verification: { digest: r.v.digest, hidden: `${r.v.hidden.checks.filter((c) => c.ok).length}/${r.v.hidden.checks.length}`, gates: r.v.gates.map((g) => ({ id: g.id, ok: g.ok, tests: g.tap?.tests ?? null })), agent: r.v.agent ? { tests: r.v.agent.rels, failsBefore: r.v.agent.before.failed, passesAfter: r.v.agent.after.ok } : null, regressed: r.regressed, improved: r.improved }, reproduce: [`git clone ${ctx.checkoutDir} <scratch> && git -C <scratch> apply ${patch}`, `node benchmark/run.mjs run --like=${ctx.run.id}`, `node benchmark/run.mjs report ${ctx.run.id}`] };
+  return { schema: 1, run: ctx.run.id, task: ctx.task, at: new Date().toISOString(), case: { id: ctx.case.id, version: ctx.case.version, suite: ctx.manifest.benchmark.suite, digest: ctx.manifest.benchmark.digest }, variant: ctx.manifest.benchmark.variant, source: { branch: ctx.manifest.source.branch, commit: ctx.manifest.source.commit, digest: ctx.manifest.source.digest }, subject: { digest: ctx.manifest.subject.digest, commit: ctx.manifest.subject.commit }, baseline: { signature: base?.signature ?? null, failingGroups: [...new Set((base?.hidden.checks ?? []).filter((c) => !c.ok).map((c) => c.group))] }, engineering: { task: r.engineering?.id ?? null, lifecycle: r.engineering?.lifecycle ?? null, commit: r.engineering?.commit ?? null, where: "the run's runner store" }, host: { basis: hostBasisOf(ctx.manifest.config), model: host?.model ?? null, effort: ctx.manifest.config.effort ?? null, session: host?.session ?? null, costUsd: host?.costUsd ?? null, numbers: "REPORTED by the host, never verified; the effort is what the run asked it" }, candidate: { round: k, patch, patchDigest: r.cand.patchDigest, files: r.cand.changes, agentTests: r.cand.agentTests }, verification: { digest: r.v.digest, hidden: `${r.v.hidden.checks.filter((c) => c.ok).length}/${r.v.hidden.checks.length}`, gates: r.v.gates.map((g) => ({ id: g.id, ok: g.ok, tests: g.tap?.tests ?? null })), agent: r.v.agent ? { tests: r.v.agent.rels, failsBefore: r.v.agent.before.failed, passesAfter: r.v.agent.after.ok } : null, regressed: r.regressed, improved: r.improved }, reproduce: [`git clone ${ctx.checkoutDir} <scratch> && git -C <scratch> apply ${patch}`, `node benchmark/run.mjs run --like=${ctx.run.id}`, `node benchmark/run.mjs report ${ctx.run.id}`] };
 }
 
 const BUDGET_DOOR = /BUDGET_(ATTEMPTS|MINUTES|ACTIONS)|budget/i;

@@ -54,11 +54,16 @@ export const accusesProduct = (id) => verificationOutcomeOf(id)?.defect === true
 // contradicted, a gate that refused for want of permission), and the authority of the oracle --
 // never the text of a message. The first row that holds wins and the last always answers, and no
 // row can make a word stronger than its evidence: a draft oracle never confirms anything, an
-// observation that could not see everything never passes.
+// observation that could not see everything never passes, and neither does a run whose fault was never seen.
 //
 // facts: { status, failure: { helperClass, gap, ambiguous, contradiction, authorization },
 //          envelope: [findings], stale, authority, positiveFailed, faultMissed }
 const failure = (f) => f.failure ?? {};
+
+// A run that ruled: every verdict held, or one did not. A FAULT control's run is about surviving the fault, so a run
+// whose observations never carried its point proved nothing of it either way -- a pass after a fault that never fired
+// is never earned (a control with no witness compiles no verdict that would have failed it).
+const RAN_TO_A_VERDICT = ["PASS", "FAIL"];
 
 export const RESULT = [
   { id: "ENVELOPE", when: (f) => (f.envelope ?? []).length > 0, word: "EXECUTION_ERROR", why: "the worker's envelope did not hold — nothing it claimed is taken" },
@@ -72,7 +77,7 @@ export const RESULT = [
   { id: "NOT_READY", when: (f) => f.status === "BLOCKED", word: "ENVIRONMENT_BLOCKED", why: "the sandbox or a dependency was not ready, or a budget was spent" },
   { id: "NO_ORACLE", when: (f) => f.authority !== "accepted", word: "REQUIRES_REQUIREMENT", why: "no accepted oracle stands behind it — a draft prepares a test and never rules on one" },
   { id: "POSITIVE_CONTROL", when: (f) => f.status === "FAIL" && f.positiveFailed === true, word: "INCONCLUSIVE", why: "the positive control did not hold, so the refusal this obligation is about proves nothing — what it contradicted is its own criterion's finding" },
-  { id: "FAULT_NOT_SEEN", when: (f) => f.status === "FAIL" && f.faultMissed === true, word: "INCONCLUSIVE", why: "the fault the design injects never showed in what the run observed, so what failed after it says nothing about how the system survives that fault" },
+  { id: "FAULT_NOT_SEEN", when: (f) => RAN_TO_A_VERDICT.includes(f.status) && f.faultMissed === true, word: "INCONCLUSIVE", why: "the fault the design injects never showed in what the run observed, so what held or failed after it says nothing about how the system survives that fault" },
   { id: "CONTRADICTED", when: (f) => f.status === "FAIL" && failure(f).contradiction === true, word: "CONTRADICTED", why: "a verdict compiled from the accepted oracle was contradicted by what was observed" },
   { id: "STEP_FAILED", when: (f) => f.status === "FAIL", word: "EXECUTION_ERROR", why: "a step failed before any verdict could rule" },
   { id: "MET", when: (f) => f.status === "PASS", word: "SATISFIED", why: "every verdict held, against the accepted oracle" },

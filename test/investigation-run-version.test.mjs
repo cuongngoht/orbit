@@ -128,7 +128,7 @@ test("a version step nothing can vouch for is taken to write", () => {
 // contradiction -- a positive one a negative rests on, and a fault the run never saw happen.
 const READS = ["owner", "other"].map((who) => ({ do: "call", capability: "orbit.http.read", input: { endpointRef: "api", identityRef: who, method: "GET", path: "/x" }, expect: "compiled:{}", proves: "api" }));
 
-function controlled(controls, records, steps = READS) {
+function controlled(controls, records, steps = READS, answer = answered) {
   const io = fakeIo();
   const store = createInvestigations("/store/repo-1", io);
   store.create({ id: ID, objective: "controls" });
@@ -138,7 +138,7 @@ function controlled(controls, records, steps = READS) {
   store.appendOnce(ID, "designed", { id: "dsg-1", eventId: "e-dsg", obligation: "tob-abc123", design: "tds-ctl", digest: kept.digest, state: "designed" });
   store.putVersion(ID, frozen);
   store.appendOnce(ID, "version", { id: "ver-1", eventId: "e-ver", design: "tds-ctl", case: "gen-ctl", version: frozen.id, digest: frozen.version.caseDigest });
-  const dispatch = { prepare: () => ({ bindings: {}, secrets: {}, grants: [], gaps: [] }), run: ({ request }) => answered(request, records(request.case.digest)), provedBy: () => "api", canStop: () => false };
+  const dispatch = { prepare: () => ({ bindings: {}, secrets: {}, grants: [], gaps: [] }), run: ({ request }) => answer(request, records(request.case.digest)), provedBy: () => "api", canStop: () => false };
   return { w: { id: ID, store, io, dispatch }, version: frozen.id };
 }
 
@@ -146,6 +146,12 @@ function controlled(controls, records, steps = READS) {
 function answered(request, records) {
   const ok = records.filter((r) => r.kind === "step" && r.ok).length;
   return { envelope: { v: WORKER_API, runId: request.runId, nonce: request.nonce, caseDigest: request.case.digest, status: "FAIL", result: { status: "FAIL", case_digest: request.case.digest, proved: { ui: 0, api: ok, sql: 0 }, verdicts: ok, done: ok, failure: { contradiction: true } }, evidence: null, files: [] }, records, listed: new Map() };
+}
+
+// The same, of a run every step of which held.
+function passed(request, records) {
+  const ok = records.filter((r) => r.kind === "step" && r.ok).length;
+  return { envelope: { v: WORKER_API, runId: request.runId, nonce: request.nonce, caseDigest: request.case.digest, status: "PASS", result: { status: "PASS", case_digest: request.case.digest, proved: { ui: 0, api: ok, sql: 0 }, verdicts: ok, done: ok }, evidence: null, files: [] }, records, listed: new Map() };
 }
 
 const failedAt = (i, more = []) => (digest) => [{ kind: "run", case_digest: digest }, ...more, ...[1, 2].slice(0, i - 1).map((n) => ({ kind: "step", i: n, ok: true })), { kind: "step", i, ok: false, error: "EXPECT FAILED", contradiction: true }];
@@ -168,6 +174,24 @@ test("a fault the run never saw happen makes what failed after it INCONCLUSIVE, 
   const seen = controlled(fault, failedAt(2, seenAs("fault:after-commit-before-ack")));
   const b = ranVersion(seen.w, { version: seen.version });
   assert.deepEqual([a.outcome, a.rule, b.outcome, b.rule], ["INCONCLUSIVE", "FAULT_NOT_SEEN", "CONTRADICTED", "CONTRADICTED"], JSON.stringify([a.findings, b.findings]));
+});
+
+// What 0.4.0's diagnosis found (0.5.0 B7): a fault control with no witness compiles no verdict of its own, so a run
+// whose fault never fired held every step it had -- and was SATISFIED, a pass nothing earned: it never saw the system
+// survive the fault it was about. A run is ruled INCONCLUSIVE whenever no observation carried the point, passed or
+// failed; a design with no witness stays valid, and a run that saw its fault lets its pass stand.
+test("a fault the run never saw happen makes a run that held INCONCLUSIVE too -- a pass after it is never earned -- and one it saw lets the pass stand", () => {
+  const seenAs = (reason) => (reason ? [{ kind: "capability", result: { attempts: [{ outcome: "fault", terminalReason: reason }] } }] : []);
+  const held = (seen) => (digest) => [{ kind: "run", case_digest: digest }, ...seen, { kind: "step", i: 1, ok: true }, { kind: "step", i: 2, ok: true }];
+  const unwitnessed = [{ role: "fault", point: "after-commit-before-ack" }, { role: "state" }];
+  const never = controlled(unwitnessed, held(seenAs(null)), READS, passed);
+  const a = ranVersion(never.w, { version: never.version });
+  const fired = controlled(unwitnessed, held(seenAs("fault:after-commit-before-ack")), READS, passed);
+  const b = ranVersion(fired.w, { version: fired.version });
+  const other = controlled(unwitnessed, held(seenAs("fault:before-effect")), READS, passed);
+  const c = ranVersion(other.w, { version: other.version });
+  assert.deepEqual([a.outcome, a.rule, b.outcome, b.rule, c.outcome, c.rule], ["INCONCLUSIVE", "FAULT_NOT_SEEN", "SATISFIED", "MET", "INCONCLUSIVE", "FAULT_NOT_SEEN"], JSON.stringify([a.findings, b.findings, c.findings]));
+  assert.equal(never.w.store.read(ID).filter((l) => l.kind === "evaluated").at(-1).outcome, "INCONCLUSIVE", "and that is what the journal keeps");
 });
 
 // What the first real Claude Code rows taught (0.4.0): a version refused at a step said why only in the worker's run

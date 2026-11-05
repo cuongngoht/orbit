@@ -185,8 +185,11 @@ and nothing says that workload comes back by itself: bring it back with a step o
 (`orbit.workload.control` on it, `request.action` `start` or `restart`) after the fault's witness and before
 anything asks that workload for more, reads its effect, or the test ends -- the next test in the sandbox finds
 it as this one left it. A design that does not is refused before a draft exists (`RESTORED_AFTER_FAULT`, naming
-the step to add and where). A design or a version you cite as evidence is cited by its record id (`dsg-…`,
-`ver-…`).
+the step to add and where). A fault nobody saw proves nothing about surviving it: a run whose observations never
+carried the point's terminal reason (`fault:<point>`) is `INCONCLUSIVE` whether what followed held or failed
+(`FAULT_NOT_SEEN`) -- so observe the faulted workload's attempts in a step whose answer carries it, and name that step
+as the fault control's witness (`step`), whose verdict the engine compiles. A design or a version you cite as
+evidence is cited by its record id (`dsg-…`, `ver-…`).
 Every ref a design names (`endpointRef`, `channelRef`, `stateRef`, `scheduleRef`, `workloadRef`, `identityRef`,
 `clockRef`) takes one of the aliases `context` lists under `bindings`, by kind, exactly as this sandbox binds them --
 read them there, never guess one from a key, a dotted name or a statement: an alias nothing lists is a binding

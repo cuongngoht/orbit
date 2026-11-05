@@ -70,6 +70,16 @@
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/cli/learn-hook.mjs\""
           }
         ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 10,
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/cli/follow-hook.mjs\""
+          }
+        ]
       }
     ],
     "PostToolUseFailure": [
@@ -92,6 +102,15 @@
             "async": true,
             "timeout": 10,
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/cli/learn-hook.mjs\""
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 10,
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/cli/follow-hook.mjs\""
           }
         ]
       }

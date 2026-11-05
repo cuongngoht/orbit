@@ -8,7 +8,10 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { requestFindings } from "../src/adapters/contract-v1.mjs";
 import { familyCapabilities } from "../src/adapters/core.mjs";
+import { operationFor } from "../src/adapters/families.mjs";
+import { opKeyOf } from "../src/adapters/select.mjs";
 import { graphOf } from "../src/architecture/graph-view.mjs";
 import { inputFindings } from "../src/capability/invoke.mjs";
 import { CORE } from "../src/dsl/registry.mjs";
@@ -223,6 +226,23 @@ test("every acceptance design holds every rule a design's controls are held to, 
   for (const stack of STACKS) assert.deepEqual(POINTS[stack].worker, ["before-effect", "after-commit-before-ack", "after-sink-before-ack", "after-ack-before-effect"], `${stack}: read off the graph the way the binder reads it`);
   const findings = STACKS.flatMap((stack) => designsOn(stack).flatMap(({ shape, clock, design }) => controlFindings(design, shapeOf(shape), { faultPointsOf: (alias) => POINTS[stack][alias] ?? null }).map((f) => `${stack} ${shape} (${clock}) ${f.rule}: ${f.say}`)));
   assert.deepEqual(findings, [], `held to ${CONTROL_RULES.map((r) => r.id).join(", ")}`);
+});
+
+// The same holds for the request tables (0.5.0, ADR 0052). A design is held to the table of the adapter that answers each
+// of its steps, at the validate stage, before a draft exists. The reference host sends the acceptance designs on every
+// stack: the AMQP one and the JetStream one. So every request a design sends must fit the table of every shipped adapter
+// that answers its step, with the window the engine adds to a step a slot's `within` rules (`waitMs`,
+// src/qa/generation/design.mjs placed). Otherwise the benchmark's reference controls would fail for a table, not for the
+// product, and only in Docker.
+const answeredBy = (capability) => ((row) => (row ? ADAPTERS.filter((a) => a.operations[opKeyOf(a, row)]).map((a) => [a.id, a.operations[opKeyOf(a, row)]]) : []))(operationFor(capability));
+
+const windowed = (design) => design.skeleton.steps.map((s, n) => ((within) => (within ? { ...s, input: { ...s.input, request: { ...(s.input?.request ?? {}), waitMs: within * 1000 } } } : s))(design.assertions.map((a) => (a.step === n + 1 ? ACCEPTED.get(a.criterionRef)?.within : undefined)).find(Number.isInteger)));
+
+test("every request an acceptance design sends fits the request table of every shipped adapter that answers its step, on each stack", () => {
+  const held = STACKS.flatMap((stack) => designsOn(stack).flatMap(({ shape, clock, design }) => windowed(design).filter((s) => s.do === "call").flatMap((s) => answeredBy(s.capability).map(([id, op]) => ({ capability: s.capability, at: `${stack} ${shape} (${clock}) ${s.capability} (${id})`, table: op.request, request: s.input?.request })))));
+  assert.deepEqual([...new Set(held.map((h) => h.capability))].sort(), ["orbit.clock.advance", "orbit.messaging.observe", "orbit.messaging.publish", "orbit.observe.await", "orbit.scheduler.observe", "orbit.scheduler.trigger", "orbit.state.read", "orbit.worker.observe", "orbit.workload.control"], "every operation an adapter answers in them is held");
+  assert.ok(held.every((h) => h.table && typeof h.table === "object"), "each answering adapter declares what its request carries");
+  assert.deepEqual(held.flatMap((h) => requestFindings(h.table, h.request, h.at)), []);
 });
 
 test("a repair may change how a step is written, never what the test rules on", () => {

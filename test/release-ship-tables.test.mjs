@@ -29,8 +29,8 @@ const repairs = (state) => [{ case: "A", state }];
 const REACH = {
   ENDED: [settled({ ended: true })],
   HELD_BY_PERSON: [settled({ held: true })],
-  RECONCILE: [settled({ running: [{}] })],
   PREFLIGHT: [settled(), { ...CTX, preflighted: false }],
+  RECONCILE: [settled({ running: [{}] })],
   WORKSPACE: [settled({ workspace: null })],
   OVER_LIMIT: [settled({ spent: { minutes: 61, usd: 0 } })],
   CYCLE_DONE: [settled({ repairs: repairs("INTEGRATED") })],
@@ -65,6 +65,7 @@ test("NEXT: a person's hold outranks everything a ship would do, and a model-car
   assert.equal(nextOf(settled({ rows: new Map([[ROW.id, failed("BLOCK")]]), pending: ROW }), CTX).id, "ROW_BLOCKED", "a blocked row stops the cycle before another row is sent");
   assert.equal(nextOf(settled({ repairs: repairs("INTEGRATED"), pending: ROW }), CTX).id, "CYCLE_DONE", "a cycle whose repairs are all in is over: its rows are stale");
   assert.equal(nextOf(settled({ rows: new Map() }), { ...CTX, rows: [] }).id, "UNKNOWN", "an empty catalog is never SHIPPABLE");
+  assert.equal(nextOf(settled({ running: [{}] }), { ...CTX, preflighted: false }).id, "PREFLIGHT", "a resumed ship reads its catalog before it reads back what was running");
 });
 
 // ---- DIAGNOSE ------------------------------------------------------------------------------------------------------------

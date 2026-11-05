@@ -141,11 +141,13 @@ const repairIn = (f, state) => f.repairs.find((r) => r.state === state) ?? null;
 // The ship's own place in its order: a row that is HELD everywhere, every row of the catalog run in this cycle.
 const allHeld = (ctx, f) => ctx.rows.length > 0 && ctx.rows.every((r) => f.rows.get(r.id)?.v.state === "HELD");
 
+// PREFLIGHT before RECONCILE: a run read back on resume is judged like any other -- against the catalog and each case's
+// declaration the preflight reads, and the content digest the cycle's earlier rows froze -- never against an empty one.
 export const NEXT = [
   { id: "ENDED", when: (f) => f.ended, step: "END" },
   { id: "HELD_BY_PERSON", when: (f) => f.held, step: "HELD" },
-  { id: "RECONCILE", when: (f) => f.running.length > 0, step: "RECONCILE" },
   { id: "PREFLIGHT", when: (f, ctx) => !ctx.preflighted, step: "PREFLIGHT" },
+  { id: "RECONCILE", when: (f) => f.running.length > 0, step: "RECONCILE" },
   { id: "WORKSPACE", when: (f) => !f.workspace, step: "WORKSPACE" },
   { id: "OVER_LIMIT", when: overLimit, step: "BUDGET" },
   { id: "CYCLE_DONE", when: (f) => Boolean(f.open) && allIntegrated(f), step: "CLOSE" },

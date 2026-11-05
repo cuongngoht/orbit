@@ -384,6 +384,20 @@ test("B6-2. a ship blocked at the host check asks the host again when a person r
   assert.equal(actsOf(w, ctx, "release.host").length, 3);
 });
 
+test("B6-3. a run read back on resume is held to this cycle's content digest like any other -- the catalog is read before anything is reconciled", async (t) => {
+  let died = false;
+  const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, verify: (c) => (c === "CALC-002" && !died ? ((died = true), { outcome: "PASS", summary: "PASS", dies: true }) : { outcome: "PASS", summary: "PASS" }) } });
+  const ctx = begunShip(w.world, OPTS);
+  await assert.rejects(driven(ctx), /died/);
+  const cut = ran(w, (c) => c.case === "CALC-002")[0].run;
+  const manifest = join(w.store, "benchmark", cut, "manifest.json");
+  const m = JSON.parse(readFileSync(manifest, "utf8"));
+  writeFileSync(manifest, JSON.stringify({ ...m, source: { ...m.source, digest: "d-content-the-cycle-never-froze" } }));
+  const result = await driven(resumedShip(w.world, ctx.ship.id, {}));
+  assert.deepEqual([result.outcome, result.exit], ["NOT_SHIPPABLE", 2], result.summary);
+  assert.deepEqual(rowDocs(w, ctx, "CALC-002:real").map((d) => d.settled.verdict.code), ["WRONG_TREE"], "the content digest CALC-001:real froze is what the read-back run is held to");
+});
+
 // ---- the boundaries, and what a person reads ------------------------------------------------------------------------------
 
 test("integrating is a write to the ship's own workspace -- AUTO -- and a ship never constructs a write to the person's checkout", () => {

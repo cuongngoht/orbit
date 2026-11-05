@@ -421,9 +421,9 @@ test("B6-5. a run a restart interrupted is never charged its whole allowance: it
   const docs = rowDocs(w, ctx, "QA-001:autonomous");
   assert.deepEqual(docs.map((d) => [d.settled.verdict.code, d.settled.cost.basis]), [["INTERRUPTED", "UNKNOWN"], ["INTERRUPTED", "UNKNOWN"], ["HELD", "REPORTED"]]);
   const s = await statusOf(w.world, ctx.ship.id);
-  assert.deepEqual([s.spent.usd, s.spent.unknown], [2.01, 2], "what the hosts reported (the host check's cent among it), and how many runs' cost nobody could know");
-  assert.match(saidStatus(s), /2 run\(s\) a restart interrupted/);
-  assert.equal(evidenceOf(ctx).totals.unknownCost, 2, "the evidence says it too");
+  assert.deepEqual([s.spent.usd, s.spent.unknownRuns, s.spent.unknownAllowedUsd], [2.01, 2, 10], "what the hosts reported (the host check's cent among it), and how many runs' cost nobody could know -- with what they were allowed between them, the case's 5 USD each");
+  assert.match(saidStatus(s), /2 run\(s\) a restart interrupted, whose cost is unknown -- allowed 10 USD between them, never added in/);
+  assert.deepEqual([evidenceOf(ctx).totals.unknownRuns, evidenceOf(ctx).totals.unknownAllowedUsd], [2, 10], "the evidence says it too, as a count and in dollars -- never a count a reader could take for a cost");
 });
 
 // A repair a restart interrupted, as `run.mjs resume` reads it back: a candidate the verifier passed, and no host at all.

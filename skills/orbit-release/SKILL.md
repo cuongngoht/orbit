@@ -119,9 +119,11 @@ limit you do not give again keeps the value it had. A retried row holds only on 
 kept in the ship's journal beside it. An `INTERRUPTED` run (or repair) spends none of `--retries` (or `--attempts`): it
 runs again at most `INTERRUPTED_RUNS` times a cycle (2, declared in `ship/diagnose.mjs`, not a policy limit), and then
 the ship BLOCKS on the environment, every interrupted run kept. A repair the environment BLOCKED spends no attempt
-either, and runs again once you resume. Its cost is UNKNOWN -- what its ended rounds reported, never its whole allowance -- and is said
-beside what was spent (`--status`, `evidence.json` `totals.unknownCost`), never added into `--usd`. A spent limit BLOCKS
-the ship with its evidence kept.
+either, and runs again once you resume. An interrupted run's cost is UNKNOWN -- what its ended rounds reported, never
+its whole allowance -- and is said beside what was spent, as a count and as what those runs were allowed between them
+(`--status`; `evidence.json` `totals.unknownRuns`, `totals.unknownAllowedUsd`), never added into `--usd`: interruptions
+are bounded by `INTERRUPTED_RUNS` and the resume each one takes, not by `--usd`. A spent limit BLOCKS the ship with its
+evidence kept.
 Exit 0 SHIPPABLE · 2 NOT SHIPPABLE or NO PROGRESS (or refused) · 3 BLOCKED (Docker, the host, its credential, a limit, a
 row the environment kept from an ending -- fix it and `--resume`: the resume is journaled, and a row blocked before it
 runs again as a new run, once per resume) · 4 a person paused or cancelled it. The ship never falls back to another

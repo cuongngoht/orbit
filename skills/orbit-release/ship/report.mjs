@@ -30,8 +30,9 @@ const bundleSaid = (d) => (d ? [...d.finish.map(finishSaid), budgetSaid(d.budget
 
 export const saidDiagnosis = (d) => [`  diagnose  ${d.row} ${d.state} -- ${d.says}`, `    room    ${d.room ?? "none: the run never began"}`, ...bundleSaid(d.diagnosis)];
 
-// Runs whose cost nobody can know -- a restart interrupted them -- said beside what was spent, never added into it.
-const unknownSaid = (spent) => (spent.unknown ? `; and ${spent.unknown} run(s) a restart interrupted, whose cost is unknown (never charged at their cap)` : "");
+// Runs whose cost nobody can know -- a restart interrupted them -- said beside what was spent, in dollars too (what they
+// were allowed between them), never added into it.
+const unknownSaid = (spent) => (spent.unknownRuns ? `; and ${spent.unknownRuns} run(s) a restart interrupted, whose cost is unknown -- allowed ${spent.unknownAllowedUsd} USD between them, never added in` : "");
 
 // Which cycle a ship's rows are said of: the open one, or -- for a ship whose cycle closed -- the newest it ran.
 const cycleSaid = (s) => (s.cycleOpen ? "this cycle" : s.cycle > 0 ? `in cycle ${s.cycle}, which closed` : "(no cycle has run)");

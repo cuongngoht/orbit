@@ -90,8 +90,11 @@ that did not hold. Every number in it is REPORTED, and what nobody said is `unkn
   read back on resume is held to the cycle's content digest and its case's scope.
 - **Stage.** A row, and a reconcile that carries one on, restages the cycle's testing stage.
 - **Cost.** A run a restart interrupted is never charged its whole allowance. Its cost is UNKNOWN: what its ended rounds
-  reported, if anything. It is said beside what was spent, never added into it, and is bounded by `INTERRUPTED_RUNS`,
-  not by the budget. This amends ADR 0049's "an unreported one counts at the run's cap" for that one case only.
+  reported, if anything. It is said beside what was spent, never added into it -- how many such runs there were, and
+  what they were allowed between them in dollars (`unknownRuns`, `unknownAllowedUsd` in `--status` and the evidence's
+  `totals`), so the spend `--usd` does not count is never unnoticed. It is bounded by `INTERRUPTED_RUNS` (and by the
+  resume every interruption takes), not by the budget. This amends ADR 0049's "an unreported one counts at the run's
+  cap" for that one case only.
 - **Repairs.** A repair whose round a restart cut short is `INTERRUPTED` in `REPAIR_CHECK`: never integrated, it spends
   no repair attempt and is never a repeat. A new repair runs, at most `INTERRUPTED_RUNS` more a cycle, then the ship
   blocks on the environment. A repair the environment blocked, or that bound, is asked again once a person resumes --
@@ -118,7 +121,9 @@ again keeps its value (one set when the ship began, a precheck's own), never the
   and it is resumable like a ship. It spends a model budget of its own and qualifies nothing.
 - A failed row is diagnosed from `--status`. The room stays the evidence, and the bundle only reads it.
 - A worker restart no longer costs a source case's control set, a repair attempt or the budget of a run nobody saw end.
-  An interrupted run's real cost is unknown and is said so. The budget a person sets bounds what the hosts reported,
-  and `INTERRUPTED_RUNS` bounds the rest.
+  An interrupted run's real cost is unknown and is said so, with what such runs were allowed. The budget a person sets
+  bounds what the hosts reported, and `INTERRUPTED_RUNS` bounds the rest -- which can therefore go past `--usd`, and
+  `unknownAllowedUsd` says by about how much: each round's host is held near its allowance by its own budget flag, a
+  bound it reports and the ship never verifies.
 - A recorded row that never holds still gates nothing. Moving it to required is a person's change to the policy, read
   in review, never the ship's.

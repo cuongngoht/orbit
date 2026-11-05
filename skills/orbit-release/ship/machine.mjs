@@ -48,9 +48,16 @@ export const limitsNow = (ctx, view) => limitsOf(ctx, docsOf(ctx, view));
 
 const costOf = (x) => (typeof x.d.settled?.cost?.usd === "number" ? x.d.settled.cost.usd : 0);
 
-// What the ship spent: the costs its runs reported (or estimated), its minutes, and how many runs' cost nobody can know --
-// a run a restart interrupted (dispatch.mjs COSTS), said beside the sum and never added into it.
-const spentOf = (ctx, acts) => ({ usd: Math.round(acts.reduce((n, x) => n + costOf(x), 0) * 100) / 100, minutes: Math.floor((ctx.now() - Date.parse(ctx.manifest.at)) / 60000), unknown: acts.filter((x) => x.d.settled?.cost?.basis === "UNKNOWN").length });
+const cents = (n) => Math.round(n * 100) / 100;
+
+const unknownCost = (x) => x.d.settled?.cost?.basis === "UNKNOWN";
+
+const allowedOf = (x) => (typeof x.d.usd === "number" ? x.d.usd : 0);
+
+// What the ship spent: the costs its runs reported (or estimated) and its minutes -- and, said beside them and never
+// added in, the runs whose cost nobody can know (a restart interrupted them, dispatch.mjs COSTS): how many, and what
+// they were allowed between them, so a person sees in dollars what --usd does not count.
+const spentOf = (ctx, acts) => ((cut) => ({ usd: cents(acts.reduce((n, x) => n + costOf(x), 0)), minutes: Math.floor((ctx.now() - Date.parse(ctx.manifest.at)) / 60000), unknownRuns: cut.length, unknownAllowedUsd: cents(cut.reduce((n, x) => n + allowedOf(x), 0)) }))(acts.filter(unknownCost));
 
 // The release commit as it stands: the newest one an integration made, else the commit the ship began from.
 const currentOf = (ctx, acts) => ((d) => (d ? { commit: d.settled.commit, tree: d.settled.tree } : { commit: ctx.manifest.start.commit, tree: null }))(lastDoc(settledOf(acts, "release.integrate")));

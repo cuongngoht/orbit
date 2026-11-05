@@ -103,3 +103,15 @@ const REFERENCE = readdirSync(join(ROOT, "acceptance", "designs")).flatMap((f) =
 test("no worked design is a reference design: the benchmark's hidden designs are never what the playbook shows", () => {
   for (const w of WORKED) assert.equal(REFERENCE.some((r) => shapeOfSteps(r) === shapeOfSteps(w.design)), false, `${w.shape} has the steps of a reference design`);
 });
+
+// Nor with an optional bound added: a `maxItems` on an observation or a `limit` on a read changes no step's job, so the
+// steps above were the reference design all the same (0.5.0 review: the crash-after-effect-before-ack design was its own
+// reference's, names changed and two such bounds added, and competing-workers was effect-once-per-key's). What a design
+// DOES is held apart as well, whatever its names, ids and bounds: each step's verb and capability in order, what rules
+// it (each assertion's template and step), its controls (each role and the step that witnesses one) and its trigger.
+const doneBy = (d) => canonicalJson({ steps: (d?.skeleton?.steps ?? []).map((s) => [s.do, s.capability ?? null]), rulings: (d?.assertions ?? []).map((a) => [a.template, a.step]), controls: (d?.controls ?? []).map((c) => [c.role, c.step ?? null]), trigger: [d?.trigger?.kind ?? null, d?.trigger?.step ?? null] });
+
+test("no worked design does what a reference design does -- the same steps, ruled and controlled the same way -- whatever its names or optional bounds", () => {
+  const copies = WORKED.filter((w) => REFERENCE.some((r) => doneBy(r) === doneBy(w.design))).map((w) => w.shape);
+  assert.deepEqual(copies, [], "a worked design that does what a reference design does is that reference design, renamed");
+});

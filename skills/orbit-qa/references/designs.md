@@ -358,9 +358,10 @@ the redelivery's effect is awaited -- here on the channel the worker announces i
 
 ### crash-after-effect-before-ack
 
-A fault control and a state control. The delivery that comes back after the effect committed is not a second effect, so
-it is observed by its delivery attempt -- the second one came back -- never by a second success, and the obligation is
-ruled on the effect count.
+A fault control and a state control. What the fault left is read while the worker is still down -- the effect is there
+once, so it did commit before the crash -- and read again after the delivery came back. That delivery is not a second
+effect, so it is observed by its delivery attempt -- the second one came back -- never by a second success, and the
+obligation is ruled on the effect count, before the delivery came back and after.
 
 ```json
 {
@@ -376,17 +377,19 @@ ruled on the effect count.
       { "do": "call", "capability": "orbit.workload.control", "input": { "workloadRef": "fulfilment", "request": { "action": "fault", "point": "after-effect-before-ack" } } },
       { "do": "call", "capability": "orbit.messaging.publish", "input": { "channelRef": "order-events", "request": { "messageId": "msg-1111", "correlationId": "ord-1111", "payload": { "orderKey": "ord-1111" } } } },
       { "do": "call", "capability": "orbit.worker.observe", "input": { "workloadRef": "fulfilment", "request": { "match": { "messageId": "msg-1111" }, "count": 1, "waitMs": 30000 } } },
+      { "do": "call", "capability": "orbit.state.read", "input": { "stateRef": "orders-table", "request": { "key": "ord-1111", "limit": 2 } } },
       { "do": "call", "capability": "orbit.workload.control", "input": { "workloadRef": "fulfilment", "request": { "action": "start" } } },
       { "do": "call", "capability": "orbit.worker.observe", "input": { "workloadRef": "fulfilment", "request": { "match": { "messageId": "msg-1111" }, "count": 2, "maxItems": 10 } } },
       { "do": "call", "capability": "orbit.state.read", "input": { "stateRef": "orders-table", "request": { "key": "ord-1111", "limit": 2 } } }
     ] },
     "assertions": [
-      { "criterionRef": "CRASH-11/E2", "template": "complete", "step": 5 },
-      { "criterionRef": "CRASH-11/E1", "template": "count-eq", "step": 6 }
+      { "criterionRef": "CRASH-11/E1", "template": "count-eq", "step": 4 },
+      { "criterionRef": "CRASH-11/E2", "template": "complete", "step": 6 },
+      { "criterionRef": "CRASH-11/E1", "template": "count-eq", "step": 7 }
     ],
     "controls": [
       { "role": "fault", "point": "after-effect-before-ack", "step": 3, "why": "the worker stops after its effect and before it acknowledged" },
-      { "role": "state", "why": "the redelivery does not do it twice" }
+      { "role": "state", "why": "the effect committed before the crash, and the redelivery does not do it twice" }
     ],
     "trigger": { "kind": "message", "ref": "order-events", "step": 2 },
     "effectScope": "fixture"
@@ -396,8 +399,9 @@ ruled on the effect count.
 
 ### competing-workers
 
-A duplicate control and a state control. The same job delivered twice, so two workers may each receive it; the job is
-observed by its own id until both deliveries were attempted, and the effect read after.
+A duplicate control and a state control. The job's effect is read before the job is sent -- none: its key is this
+test's own, in a sandbox every test of the investigation shares -- then the same job is delivered twice, so two workers
+may each receive it; the job is observed by its own id until both deliveries were attempted, and the effect read after.
 
 ```json
 {
@@ -405,25 +409,28 @@ observed by its own id until both deliveries were attempted, and the effect read
   "criterion": "JOB-12",
   "accepted": {
     "JOB-12/E1": { "property": "effect.count", "op": "count-eq", "value": 1 },
-    "JOB-12/E2": { "property": "delivery.attempt", "op": "complete-within", "value": 1, "within": 60, "for": [] }
+    "JOB-12/E2": { "property": "delivery.attempt", "op": "complete-within", "value": 1, "within": 60, "for": [] },
+    "JOB-12/E3": { "property": "effect.count", "op": "count-eq", "value": 0, "for": [] }
   },
   "design": {
     "obligation": "tob-000000000000",
     "skeleton": { "steps": [
+      { "do": "call", "capability": "orbit.state.read", "input": { "stateRef": "orders-table", "request": { "match": { "order_key": "ord-1212" }, "limit": 5 } } },
       { "do": "call", "capability": "orbit.messaging.publish", "input": { "channelRef": "order-events", "request": { "messageId": "job-1212", "correlationId": "ord-1212", "payload": { "orderKey": "ord-1212" } } } },
       { "do": "call", "capability": "orbit.messaging.publish", "input": { "channelRef": "order-events", "request": { "messageId": "job-1212", "correlationId": "ord-1212", "payload": { "orderKey": "ord-1212" } } } },
       { "do": "call", "capability": "orbit.worker.observe", "input": { "workloadRef": "fulfilment", "request": { "match": { "messageId": "job-1212" }, "count": 2, "maxItems": 10 } } },
       { "do": "call", "capability": "orbit.state.read", "input": { "stateRef": "orders-table", "request": { "match": { "order_key": "ord-1212" }, "limit": 5 } } }
     ] },
     "assertions": [
-      { "criterionRef": "JOB-12/E2", "template": "complete", "step": 3 },
-      { "criterionRef": "JOB-12/E1", "template": "count-eq", "step": 4 }
+      { "criterionRef": "JOB-12/E3", "template": "count-eq", "step": 1 },
+      { "criterionRef": "JOB-12/E2", "template": "complete", "step": 4 },
+      { "criterionRef": "JOB-12/E1", "template": "count-eq", "step": 5 }
     ],
     "controls": [
       { "role": "duplicate", "why": "the same job delivered twice on purpose, so a second worker may receive it" },
-      { "role": "state", "why": "one effect for the job" }
+      { "role": "state", "why": "no effect for the job before it was sent, and one after" }
     ],
-    "trigger": { "kind": "message", "ref": "order-events", "step": 1 },
+    "trigger": { "kind": "message", "ref": "order-events", "step": 2 },
     "effectScope": "fixture"
   }
 }

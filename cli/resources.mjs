@@ -11,6 +11,14 @@
 // reads the host's payload for the project directory, does nothing when the
 // prompt router is switched off, prints nothing and always exits 0.
 //
+// `route` (0.5.0, B22 M3) answers what the prompt hook would: RouteDecision v3 --
+// `decide()`, over the same facts the hook binds (cli/resources-here.mjs: automation's
+// workflowOf, the host's row, the settings, the open work the prompt names or this
+// session continues) -- so a host with no prompt event (Antigravity's explicit routing,
+// docs/hosts.md) sees the strategy and the activation too. `--json` prints the decision;
+// the text is the context the hook would add, or why it would add nothing. The
+// planner's own v2 answer (`route()`) stays what Orbit Control's Router Inspector reads.
+//
 // Nothing here installs, adds or removes anything; that is Orbit Control's, and
 // only on an explicit click. `route` keeps no trace of the prompt it is given.
 // Exit 0; 2 on bad usage.
@@ -25,9 +33,15 @@ import { effectiveResourcesOf } from "../src/resources/compose.mjs";
 import { FAMILIES } from "../src/resources/model.mjs";
 import { observeResources } from "../src/resources/observe.mjs";
 import { summarize } from "../src/resources/registry.mjs";
+import { classify } from "../src/routing/classify.mjs";
 import { dispatchedBy } from "../src/routing/explain.mjs";
 import { formatDecision } from "../src/routing/format.mjs";
-import { route } from "../src/routing/resolve.mjs";
+import { decide } from "../src/routing/resolve.mjs";
+import { refsOf } from "../src/routing/terms.mjs";
+import { repositoryPaths, storeBase } from "../src/project/repository.mjs";
+import { stateRooms } from "../src/store/control.mjs";
+import { automationValues, hostRowOf, openWorkHere, workflowOf } from "./resources-here.mjs";
+import { engineName } from "../src/version.mjs";
 
 import { commandEnvironment } from "../skills/orbit-learn/hosts/settings.mjs";
 const ENV = commandEnvironment(process.env, process.argv);
@@ -85,10 +99,23 @@ function hooked() {
   quietly(() => observeResources(world(cwd)));
 }
 
+// RouteDecision v3, decided as the prompt hook decides it (src/lifecycle/subscribers/router.mjs `factsOf`), over the facts
+// cli/resources-here.mjs reads for the hook too.
 function routed(prompt, effective) {
-  const decision = route(prompt, effective);
+  const asked = classify(prompt);
+  const decision = decide(asked, effective, strategyFactsOf(asked, prompt));
   if (JSON_OUT) return console.log(JSON.stringify(decision, null, 2));
-  console.log(formatDecision(decision, { dispatches: dispatchedBy(effective) }) ?? "(the router would add nothing to this prompt)");
+  console.log(formatDecision(decision, { dispatches: dispatchedBy(effective), engine: PLUGIN_ROOT, callVia: `node ${resolve(PLUGIN_ROOT, "cli", "mcp.mjs")} call` }) ?? `(the router would add nothing to this prompt -- strategy ${decision.strategy.word}: ${decision.strategy.because})`);
+}
+
+// The checkout this runs in and its store, when there is one: what the open-work lookup and the project's settings ask.
+const placeHere = () => quietly(() => repositoryPaths(process.cwd(), ENV)) ?? {};
+
+function strategyFactsOf(asked, prompt) {
+  const place = placeHere();
+  const settings = quietly(() => automationValues(stateRooms(storeBase(ENV)), place.storeRoot ?? null));
+  const host = quietly(() => hostRowOf(PLUGIN_ROOT, ENV.ORBIT_HOST ?? "claude"));
+  return { synthetic: false, plugin: engineName(), workflow: quietly(() => workflowOf({ intent: asked.intent.id, matched: asked.matched, requirements: asked.requirements })), host, settings, work: quietly(() => openWorkHere({ storeRoot: place.storeRoot ?? null, checkout: place.checkoutId ?? null, session: ENV.ORBIT_SESSION ?? null }, { refs: refsOf(prompt), continued: asked.marks.includes("continue") })) };
 }
 
 function quietly(fn) {

@@ -540,6 +540,12 @@ anyone:
   checkout's, so the controller that judges is never what it judges. A directory inside a checkout is refused.
 - `--run-id=<bnr-…>` names a run's room before it starts (refused when it is kept already), so a caller that dies mid-run
   knows which room to read back; `--parent=<tsk-…>` makes the run's task part of the caller's (Mission Control shows it).
+- A control set keeps a room of its own too (`controls <case> --run-id=<bnr-…>`, 0.5.0): its manifest says what it was
+  asked and which tree it measured, each control's row is kept as the control ends, and a control carried by a whole
+  run of its own (an engine repair control, a QA control) has that run's id kept before it starts. So `resume <bnr-…>`
+  carries a set a restart cut short on -- what it kept stands, the rest runs, a control's own run is read back or
+  carried on, never started twice -- and a release ship loses no twenty-minute set to a worker restart. A set whose case
+  moved since it began is refused. `cleanup` of a set reaches every run it planned.
 - A control that no longer applies to the source is its own row, `DRIFTED`, with what moved: the other controls still
   run, and the command exits 2.
 - A credential block says its cause and class (`CREDENTIALS`, `ENVIRONMENT_BLOCKED`) in its ending, and a QA run's

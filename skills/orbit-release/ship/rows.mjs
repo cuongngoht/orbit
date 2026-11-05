@@ -23,7 +23,7 @@ const variantFlag = (row) => (row.variant && row.kind !== "qa" ? [`--variant=${r
 
 export const ARGV = {
   verify: (row, at) => ["run", row.case, ...variantFlag(row), `--run-id=${at.runId}`, ...common(at)],
-  controls: (row, at) => ["controls", row.case, ...common(at)],
+  controls: (row, at) => ["controls", row.case, `--run-id=${at.runId}`, ...common(at)],
   autonomous: (row, at) => ["run", row.case, ...variantFlag(row), ...(row.repair ? ["--repair"] : []), ...hostFlags(at), `--run-id=${at.runId}`, ...common(at)],
   repair: (row, at) => ["run", row.case, "--variant=real", "--repair", ...hostFlags(at), `--run-id=${at.runId}`, ...common(at)],
 };

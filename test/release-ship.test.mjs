@@ -463,6 +463,19 @@ test("a repair the environment blocked runs again when a person resumes the ship
   assert.deepEqual(repairDocsOf(w, ctx).map((v) => v.code), ["BLOCKED", "VERIFIED"]);
 });
 
+test("B6. a controls row a restart cut short is carried on from its own room -- its set named before it started -- never run again from the start", async (t) => {
+  let cut = false;
+  const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, controlsDie: (c) => c === "CALC-002" && !cut && (cut = true) } });
+  const ctx = begunShip(w.world, OPTS);
+  await assert.rejects(driven(ctx), /died/, "the worker restarted twenty minutes into CALC-002's controls");
+  const result = await driven(resumedShip(w.world, ctx.ship.id, {}));
+  assert.deepEqual([result.outcome, result.exit], ["SHIPPABLE", 0], result.summary);
+  const sets = w.calls.filter((c) => c.verb === "controls" && c.case === "CALC-002");
+  assert.equal(sets.length, 1, "the set was started once");
+  assert.ok(w.calls.some((c) => c.verb === "resume" && c.run === sets[0].run), "and carried on by resume, from the room the ship named before it started");
+  assert.deepEqual(rowDocs(w, ctx, "CALC-002:controls").map((d) => [d.planned.run, d.settled.verdict.state]), [[sets[0].run, "HELD"]]);
+});
+
 // ---- the boundaries, and what a person reads ------------------------------------------------------------------------------
 
 test("integrating is a write to the ship's own workspace -- AUTO -- and a ship never constructs a write to the person's checkout", () => {

@@ -6,14 +6,16 @@
 // one question, BLOCKED by name when it cannot be asked or does not answer -- never a fallback.
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { COMMANDS } from "../benchmark/lib/commands.mjs";
 import { samePath } from "../src/frontend/local-clones.mjs";
 import { frozenRun, withSpec } from "../benchmark/lib/core/context.mjs";
 import { PROBE_PROMPT } from "../benchmark/lib/core/probe.mjs";
-import { docRead, roomOf } from "../benchmark/lib/core/room.mjs";
+import { docRead, docWritten, roomOf } from "../benchmark/lib/core/room.mjs";
+import { plannedRuns, recordOf, RUN_OF, runOfControl } from "../benchmark/lib/core/controlset.mjs";
 import { carried } from "../benchmark/lib/source/flow.mjs";
 import { qaBasisOf } from "../benchmark/lib/qa/report.mjs";
 import { hostCommand } from "../benchmark/images/runner/entry.mjs";
@@ -100,6 +102,56 @@ test("a control that no longer applies is its own DRIFTED row: the others still 
   assert.match(r.rows[2].summary, /FIXTURE_DRIFT: control stale does not apply/);
   assert.equal(r.exit, 2);
   assert.equal((await COMMANDS.controls.run(harnessOf(w, dockerDouble(NEVER)), ["CALC-001", "--only=planted"])).exit, 0);
+});
+
+// ---- a control set, resumed from its own room (0.5.0 backlog B6) ---------------------------------------------------------
+
+const SET = "bnr-00000000c0a1";
+
+test("controls --run-id names the set's room before it starts, and keeps each control's row in it as the control ends", async (t) => {
+  const w = worldOf(t, FILES);
+  const h = harnessOf(w, dockerDouble(NEVER));
+  const r = await COMMANDS.controls.run(h, ["CALC-001", `--run-id=${SET}`]);
+  assert.deepEqual([r.run, r.rows.map((x) => x.id)], [SET, ["clean", "planted", "stale"]]);
+  const room = roomOf(w.storeRoot, SET);
+  assert.deepEqual(["clean", "planted", "stale"].map((id) => recordOf(room, id)?.row?.got), ["PASS", "FAIL", "DRIFTED"]);
+  assert.deepEqual([docRead(room, "manifest.json").kind, docRead(room, "manifest.json").config.asked.runId], ["controls", SET], "what the set was asked, kept for a resume");
+  await assert.rejects(async () => COMMANDS.controls.run(h, ["CALC-001", `--run-id=${SET}`]), /already kept/, "one id, one set");
+});
+
+test("resume carries a control set a restart cut short on from its room: what it kept stands, only the rest runs", async (t) => {
+  const w = worldOf(t, FILES);
+  const h = harnessOf(w, dockerDouble(NEVER));
+  await COMMANDS.controls.run(h, ["CALC-001", `--run-id=${SET}`]);
+  const room = roomOf(w.storeRoot, SET);
+  for (const rel of ["controls/planted.json", "controls/stale.json", "controls.json"]) rmSync(room.at(rel));
+  docWritten(room, "controls/clean.json", { id: "clean", row: { ...recordOf(room, "clean").row, summary: "kept before the restart" } });
+  const again = await COMMANDS.resume.run(h, [SET]);
+  assert.deepEqual(again.rows.map((x) => [x.id, x.got]), [["clean", "PASS"], ["planted", "FAIL"], ["stale", "DRIFTED"]]);
+  assert.equal(again.rows[0].summary, "kept before the restart", "a control the set kept is never decided again");
+  assert.deepEqual([again.run, docRead(room, "controls.json").rows.length, again.exit], [SET, 3, 2], "the set whole again, as the command would have said it");
+  writeFileSync(room.at("frozen", "case", "request.md"), "another request\n");
+  rmSync(room.at("controls.json"));
+  await assert.rejects(async () => COMMANDS.resume.run(h, [SET]), /froze a case that changed since it began/, "a set whose frozen case moved is never carried on");
+});
+
+test("a control carried by a whole run: its run read back when it ended, carried on when its room was kept, started under an id kept first otherwise", async (t) => {
+  const store = mkdtempSync(join(tmpdir(), "orbit-controlset-"));
+  t.after(() => rmSync(store, { recursive: true, force: true }));
+  const set = roomOf(store, "bnr-00000000c0a2");
+  const calls = [];
+  const asked = (id) => ({ set, id, storeRoot: store, newRun: () => "bnr-00000000c0b1", resume: async (run) => (calls.push(["resume", run]), { run, outcome: "PASS", summary: "carried on" }), start: async (run) => (calls.push(["start", run, recordOf(set, id)?.planned?.run]), { run, outcome: "PASS", summary: "started" }) });
+  assert.deepEqual(RUN_OF.map((r) => r.id), ["ENDED", "KEPT", "NEW"]);
+  assert.deepEqual(await runOfControl(asked("reference")), { run: "bnr-00000000c0b1", outcome: "PASS", summary: "started" });
+  assert.deepEqual(calls.at(-1), ["start", "bnr-00000000c0b1", "bnr-00000000c0b1"], "the run's id is kept in the set's room BEFORE the run starts");
+  const run = roomOf(store, "bnr-00000000c0b1");
+  docWritten(run, "manifest.json", { run: run.id, task: "tsk-000000000001" });
+  assert.equal((await runOfControl(asked("reference"))).summary, "carried on");
+  assert.deepEqual(calls.at(-1), ["resume", "bnr-00000000c0b1"], "a run whose room was kept is carried on, never started again");
+  docWritten(run, "ending.json", { outcome: "FAIL", summary: "FAIL — read back" });
+  docWritten(run, "report.json", { outcome: "FAIL" });
+  assert.deepEqual([await runOfControl(asked("reference")), calls.length], [{ run: "bnr-00000000c0b1", outcome: "FAIL", summary: "FAIL — read back" }, 2], "a run that ended is read back and nothing is asked of it");
+  assert.deepEqual(plannedRuns(set), ["bnr-00000000c0b1"], "what cleanup reaches beside the set's own label");
 });
 
 test("a repair with no credential ends BLOCKED and says its cause and class -- a release reads them, never the sentence", async (t) => {

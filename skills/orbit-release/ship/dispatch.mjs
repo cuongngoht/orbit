@@ -151,8 +151,10 @@ async function heldWhileRunning(ctx, doc) {
 // ---- dispatching -----------------------------------------------------------------------------------------------------
 
 // One row (kind "row") or one repair (kind "repair"), on the tree and commit named: planned, journaled, run, judged.
+// Every row's room is named before it starts -- a control set's too (`controls --run-id`), so a set a restart cut short
+// is carried on from its room by `resume`, never started again (B6: a source case's controls take twenty minutes).
 export async function dispatched(ctx, f, rowDef, o) {
-  const run = rowDef.run === "controls" ? null : newRunIdOf();
+  const run = newRunIdOf();
   const at = { tree: o.tree, parent: ctx.task, runId: run, usd: o.usd, model: ctx.options.model, credential: ctx.options.credential, caFile: ctx.options.caFile };
   const argv = argvOf(o.kind === "repair" ? { ...rowDef, run: "repair" } : rowDef, at);
   const doc = { kind: o.kind, attempt: f.open.id, row: rowDef.id, case: rowDef.case, rowDef, commit: o.commit, tree: o.tree, workspace: o.workspace ?? null, usd: o.usd, planned: { run, argv } };

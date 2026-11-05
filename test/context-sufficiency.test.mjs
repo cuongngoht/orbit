@@ -4,6 +4,7 @@
 // always names the targeted reads that would fill the gap, never a full scan. The composition over a real checkout,
 // with a goal's missing prerequisite and a requirement's blocking question, is test/context-grounding.test.mjs.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { SUFFICIENCY, SUFFICIENCY_WORDS, TARGET_LIMIT, ownWork, sufficiencyLines, sufficiencyOf } from "../src/context/sufficiency.mjs";
 
@@ -89,6 +90,31 @@ test("the component graph is DISCOVERed only while runtime understanding can sti
   assert.equal(unreached("STALE"), "unreached", "what it read moved: reading it again may find a graph");
   for (const read of ["CURRENT", "PARTIAL", "UNKNOWN", null, undefined]) assert.equal(unreached(read), "grounded", `${read}: a read already made, or one that cannot be made here, finds no graph by being made again`);
   assert.match(sufficiencyOf(grounded({ graph: false, classes: classes({ verification: 0 }), understood: "NOT_DISCOVERED" })).because, /runtime understanding has not read this checkout/);
+});
+
+// The three playbooks that read SUFFICIENCY act on it: every read a DISCOVER can name is a command each may run without
+// a prompt, and each says how a target's `run` becomes that command. A target a playbook cannot run is a host that
+// guesses, or waits on a permission nobody is there to give (0.5.0 review).
+const PLAYBOOKS = ["orbit-develop", "orbit-engineer", "orbit-help"];
+
+const everyRun = () => {
+  const stale = ["architecture", "intelligence", "engineering", "knowledge", "plan"].map((owner) => ({ ref: `src/${owner}`, owner, id: `${owner}-1` }));
+  const said = [grounded({ classes: classes({ direct: 0 }), unanswered: ["vault"] }), grounded({ stale }), grounded({ graph: false, classes: classes({ verification: 0 }), understood: "NOT_DISCOVERED" })];
+  return [...new Set(said.flatMap((f) => sufficiencyOf(f).targets.map((t) => t.run)).filter(Boolean))];
+};
+
+const grantsOf = (skill) => [...readFileSync(new URL(`../skills/${skill}/SKILL.md`, import.meta.url), "utf8").matchAll(/^\s+- Bash\((.+)\*\)$/gm)].map((m) => m[1]);
+
+const commandOf = (run) => ((words) => `node \${CLAUDE_PLUGIN_ROOT}/cli/${words[0]}.mjs ${words.slice(1).join(" ")}`)(run.split(" "));
+
+test("every read a DISCOVER can name is one each playbook that reads SUFFICIENCY may run, and each says how a target becomes that command", () => {
+  const runs = everyRun();
+  assert.deepEqual(runs.map((r) => r.split(" ").slice(0, 2).join(" ")).sort(), ["architecture ensure", "architecture ensure", "context --with-refs", "engineering why", "intelligence ensure", "knowledge why", "runtime discover"], "the targets this test holds the playbooks to");
+  for (const skill of PLAYBOOKS) {
+    const grants = grantsOf(skill);
+    for (const run of runs) assert.ok(grants.some((g) => commandOf(run).startsWith(g)), `${skill} may not run \`${commandOf(run)}\` that a DISCOVER can name`);
+    assert.match(readFileSync(new URL(`../skills/${skill}/SKILL.md`, import.meta.url), "utf8"), /`node \$\{CLAUDE_PLUGIN_ROOT\}\/cli\/<first word>\.mjs <the rest>`/, `${skill} says how a target's run becomes a command`);
+  }
 });
 
 test("an edit the index cannot see is not a move: only a stale record sends anything to be read again", () => {

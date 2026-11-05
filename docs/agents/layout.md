@@ -316,11 +316,14 @@ src/context/   PROJECT CONTEXT as a table of what composes it (architecture ensu
                dependency · downstream · verification · unknown), evidence, freshness (`freshened`, each record
                against its owner's scope fingerprint) and finder; at most 40, the rest counted, and no path the
                tracked tree does not hold · refs.mjs: the envelope `--with-refs` reads, and each reference HELD
-               (the tracked listing; one whole-word search per symbol) or refused by name · sufficiency.mjs:
-               ENOUGH · DISCOVER(targets) · ASK(question), an ordered table whose last row always holds -- ASK
-               only for a question already open about the task's own work, never one made up
+               (the tracked listing; ONE whole-word search of the index for every symbol, `symbolHits`, one
+               symbol at a time within a budget only when that search cannot run) or refused by name ·
+               sufficiency.mjs: ENOUGH · DISCOVER(targets) · ASK(question), an ordered table whose last row
+               always holds -- ASK only for a question already open about the task's OWN work (`ownWork`: named
+               by id, or mostly the task's own words), never one made up; DISCOVER only for a read that can
+               still fill the gap
 cli/context-grounding.mjs  (0.5.0) the composition root of `relevant` and `sufficiency`: binds the tree (one listing,
-               one search per symbol, one fingerprint call), the architecture, intelligence, engineering and
+               one search for every proposed symbol, one fingerprint call), the architecture, intelligence, engineering and
                knowledge rooms (knowledge through `claims --json`, asked only when it holds a claim), the working
                set, runtime understanding's graph and checks through obligations.mjs `planOf`, and the open
                questions of the task's own work and goal; it decides nothing and writes nothing

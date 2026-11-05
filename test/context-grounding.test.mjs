@@ -42,9 +42,9 @@ const git = (root, ...args) => execFileSync("git", ["-C", root, "-c", "user.name
 
 const envOf = (name) => Object.fromEntries(Object.entries(sealed({ ORBIT_STORE_DIR: join(TEMP, `${name}-store`) })).filter(([k]) => k !== "CLAUDE_PROJECT_DIR"));
 
-function checkout(name) {
+function checkout(name, extra = {}) {
   const root = join(TEMP, name);
-  for (const [path, text] of Object.entries(FILES)) {
+  for (const [path, text] of Object.entries({ ...FILES, ...extra })) {
     mkdirSync(dirname(join(root, path)), { recursive: true });
     writeFileSync(join(root, path), text);
   }
@@ -127,6 +127,21 @@ test("freshness is each record's own: HEAD moving elsewhere moves nothing, and a
   assert.deepEqual(moved.sufficiency.targets, [{ source: "engineering", target: "src/orders/createOrder.mjs", run: `engineering why ${items["file:src/orders/createOrder.mjs"].evidence[2].id}` }]);
   writeFileSync(join(shop.root, "src/orders/listOrders.mjs"), "export const listOrders = () => [1];\n");
   assert.equal(at(context(shop))["component:src/orders"].freshness, "unknown", "an edit the index cannot see settles nothing either way");
+});
+
+test("once paths are known, what the change reaches and the declared checks that hold it come from runtime understanding, as impact.mjs and obligations.mjs read them", () => {
+  const shop = checkout("reach", { "package-lock.json": '{ "name": "shop", "lockfileVersion": 3, "requires": true, "packages": { "": { "name": "shop" } } }\n' });
+  const before = context(shop);
+  assert.deepEqual([before.sufficiency.word, at(before)["check:package.json#test"]?.class], ["ENOUGH", "verification"], "with nothing understood, the manifest's own gate holds the unit");
+  json(shop, "runtime", ["discover", "--json"]);
+  const pkg = context(shop);
+  const component = pkg.relevant.find((i) => i.kind === "component" && i.evidence.some((e) => e.source === "impact"));
+  assert.deepEqual([component.class, component.evidence[0].id, component.freshness], ["direct", "MODIFIED", "current"], "the component a direct path lies in");
+  const check = pkg.relevant.find((i) => i.kind === "check" && i.evidence.some((e) => e.source === "obligations"));
+  assert.deepEqual([check.class, check.evidence.map((e) => e.source), check.freshness], ["verification", ["obligations", "runtime"], "current"]);
+  assert.deepEqual(check.evidence, [{ source: "obligations", id: component.ref }, { source: "runtime", id: "test" }], "the component it holds, and the name the checkout declared it by");
+  assert.equal(at(pkg)["check:package.json#test"], undefined, "the change's own required check, never a gate beside it");
+  assert.equal(pkg.sufficiency.word, "ENOUGH");
 });
 
 const snapshot = (dir) => (statSync(dir, { throwIfNoEntry: false }) ? readdirSync(dir, { recursive: true }).map(String).sort().filter((p) => statSync(join(dir, p)).isFile()).map((p) => `${p} ${createHash("sha256").update(readFileSync(join(dir, p))).digest("hex")}`) : []);

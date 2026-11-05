@@ -103,7 +103,7 @@ function reached(seen, paths) {
   const components = seen.view?.components ?? [];
   if (!components.length) return { graph: false, state: seen.state, plan: null };
   const plan = planOf(lookAt(paths, components));
-  return { graph: true, state: seen.state, plan: { components: plan.impact.components, checks: plan.required.map((c) => ({ id: c.id, component: c.component })) } };
+  return { graph: true, state: seen.state, plan: { components: plan.impact.components, checks: plan.required.map((c) => ({ id: c.id, component: c.component, declaredAs: c.declaredAs })) } };
 }
 
 function impactFor(b, paths) {

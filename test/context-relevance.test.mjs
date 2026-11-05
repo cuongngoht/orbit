@@ -117,7 +117,7 @@ test("each class comes from its own evidence: named, depended on, depending, hol
   const integration = { id: "intel-integration-ledger-store", kind: "integration", key: "ledger-store:write", integration: "ledger-store", operation: "write", evidence: ["src/orders/createOrder.mjs"], scope: ["src/orders"] };
   const engineering = [{ id: "eng-convention-handlers", kind: "convention", key: "handler-shape", examples: [{ path: "src/report/summary.mjs", role: "example" }], evidence: ["src/report/summary.mjs"], scope: ["src/report"] }];
   const knowledge = [{ id: "k-000000000001", subject: "billing.invoice", object: "billing.ledger", paths: ["worker/consume.mjs"] }];
-  const plan = { components: [{ key: ".", reason: "MODIFIED" }, { key: "web", reason: "DEPENDENT" }, { key: "tools", reason: "UNRESOLVED" }], checks: [{ id: "cmd-test", component: "." }] };
+  const plan = { components: [{ key: ".", reason: "MODIFIED" }, { key: "web", reason: "DEPENDENT" }, { key: "tools", reason: "UNRESOLVED" }], checks: [{ id: "cmd-test", component: ".", declaredAs: "test" }] };
   const listing = relevanceOf({ task: `${TASK} in src/report/summary.mjs`, tree, refs: [{ kind: "symbol", ref: "createOrder", where: [{ path: "src/orders/createOrder.mjs", line: 3 }] }], architecture: [...ARCHITECTURE, ...nodes, ...relations], intelligence: [integration], engineering, knowledge, workingSet: { changed: ["src/api/auth.mjs", "src/gone.mjs"], read: [] }, plan });
   const at = byRef(listing);
   const said = (key) => [at[key]?.class, sources(at[key] ?? { evidence: [] })];
@@ -133,7 +133,8 @@ test("each class comes from its own evidence: named, depended on, depending, hol
   assert.deepEqual(said("component:component:shipping"), ["downstream", ["graph"]], "it has an edge to a direct node");
   assert.deepEqual(said("component:web"), ["downstream", ["impact"]], "impact.mjs says the change reaches it");
   assert.deepEqual(said("component:."), ["direct", ["impact"]], "a direct path lies in it");
-  assert.deepEqual(said("check:cmd-test"), ["verification", ["obligations"]], "obligations.mjs requires it of what the change reaches");
+  assert.deepEqual(said("check:cmd-test"), ["verification", ["obligations", "runtime"]], "obligations.mjs requires it of what the change reaches");
+  assert.deepEqual(at["check:cmd-test"].evidence, [{ source: "obligations", id: "." }, { source: "runtime", id: "test" }], "the component it holds, and the name the checkout declared it by");
   assert.deepEqual(said("file:worker/consume.mjs"), ["unknown", ["knowledge"]], "knowledge recalled it, and the task names neither end of the claim");
   assert.deepEqual(said("file:src/api/auth.mjs"), ["unknown", ["working-set"]], "the latest session changed it");
   assert.deepEqual(said("component:tools"), ["unknown", ["impact"]], "what it depends on nothing resolves");

@@ -144,7 +144,10 @@ const IMPACT_CLASS = { MODIFIED: "direct", SHARED: "direct", DEPENDENT: "downstr
 
 const fromImpact = (w) => (w.plan?.components ?? []).map((c) => atRef("component", c.key, IMPACT_CLASS[c.reason] ?? "unknown", PLAN("impact", c.reason)));
 
-const fromChecks = (w) => (w.plan?.checks ?? []).map((c) => atRef("check", c.id, "verification", PLAN("obligations", c.component)));
+// A check is listed by the id a step runs it by, with the component it holds and the name the checkout declared it by.
+const checkSupport = (c) => ({ evidence: [{ source: "obligations", id: c.component }, ...(c.declaredAs ? [{ source: "runtime", id: c.declaredAs }] : [])], basis: [{ owner: "plan", id: "runtime" }] });
+
+const fromChecks = (w) => (w.plan?.checks ?? []).map((c) => atRef("check", c.id, "verification", checkSupport(c)));
 
 const OWN = [fromHost, written, namedInTree, namedModules, namedCapabilities, namedNodes, namedIntegrations, fromEngineering, fromKnowledge, fromWorkingSet, fromImpact, fromChecks];
 

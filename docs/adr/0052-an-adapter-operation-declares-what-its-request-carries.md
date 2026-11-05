@@ -52,3 +52,32 @@ tests run only in a proven isolation worker).
   reads a support level, so no run is affected.
 - A project's own adapter gains the check when it declares a table; one that declares none is held to nothing here.
 - `docs/agents/extend.md` has the row: what an adapter operation's REQUEST may carry.
+
+## Amendment, 2026-11-05 (0.5.0) — what a match compares, and what a correct application can be held to
+
+The release pre-check (Sonnet 5.5, the real Claude Code host) ended six ORBIT-QA rows of seven FALSE_ALARM: each a
+generated test the engine validated and froze that contradicted the CLEAN application too. Two of them were provable from
+the design and its declarations, if the declarations said one more thing each:
+
+- **A request row may say `means`** -- for a field a match compares, the meaning (`src/topology/vocab.mjs`) of the
+  answered item's field it is compared with -- **and a match row `selects`**: `answer` (only the items that carry every
+  one of its fields are answered) or `count` (every item read is answered, and those that carry every one are what the
+  request's `count` counts before the wait ends). Absent, either is unknown, and nothing is concluded from it. A `means`
+  that is not a meaning is refused with the declaration. The shipped adapters declare both for every match they read:
+  the brokers' `observe.await` (`count`) and the hooks' scheduler and worker observations (`answer`).
+- **A design is held to them where it is made** (`src/qa/backend/contradictions.mjs`, the `contradiction` stage of
+  `src/qa/generation/design.mjs`, GENERATION_FAILED before a draft exists): an assertion that waits for one value of a
+  field on a step whose own match names that field with another (`MATCH_PINS`) -- an answer of only the other value
+  never holds it, and a wait a count of the other value ends cuts short the window the criterion gives its own -- and,
+  naming its own subject, an effect-once-per-key design that holds a second message under a business key to the
+  settlement it holds the first to (`SECOND_SETTLED`; the business key is the backend vocabulary's `businessKey`).
+- **What a made design rests on and never causes is said, never refused** (`advice`, beside the generate answer): a
+  later delivery with no step that faults, stops or restarts a workload, a schedule's decision with no step that moves
+  the clock, a second message held alone to a settlement. A correct application need do none of them, and may yet --
+  so the engine cannot show the contradiction, and says what it rests on.
+
+Consequences: the four adapters whose declarations gained `means` and `selects` have new fingerprints, so their
+conformance receipts are recorded again on the real systems (`acceptance/kits/messaging.mjs`, `acceptance/kits/hooks.mjs`).
+A project adapter that declares neither is held by none of this. The playbook's worked designs for occurrence-one-execution
+and overlap-policy, which read a schedule's `due` after manual triggers alone, now move the clock first: a trigger
+proves the handler, never the schedule.

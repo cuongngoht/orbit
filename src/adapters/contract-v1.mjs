@@ -54,6 +54,12 @@ export const OPERATION_FIELDS = {
 // default, no example, no value. An object's own keys are rows of their own; with none declared, any key.
 export const REQUEST_TYPES = ["string", "integer", "number", "boolean", "object", "array"];
 
+// What a MATCH picks of what an operation reads (0.5.0): `answer` -- only the items that carry every one of its fields
+// are answered; `count` -- every item read is answered, and the ones that carry every one of its fields are what the
+// request's `count` counts before the wait ends. With `means` on each of its fields, this is what a design is held to
+// when an assertion rules on the very field its own match names (src/qa/backend/contradictions.mjs).
+export const MATCH_SELECTS = ["answer", "count"];
+
 export const REQUEST_FIELD_FIELDS = {
   doc: { type: "string", doc: "What the field tells the helper, in one line." },
   type: { type: "string", enum: REQUEST_TYPES, doc: "Its JSON type. Absent: any value -- what `doc` says it is (a body, a text or a number)." },
@@ -63,6 +69,8 @@ export const REQUEST_FIELD_FIELDS = {
   maximum: { type: "number", doc: "The most a number may be." },
   required: { type: "boolean", doc: "The operation is never asked without it." },
   fields: { type: "object", additionalProperties: { $ref: "#/definitions/requestField" }, doc: "An object's own keys, each a row of its own. Absent: any key." },
+  means: { type: "string", doc: "For a field a match compares: the meaning (src/topology/vocab.mjs MEANINGS, or a sub-path of one) of the answered item's field it is compared with. Absent: unknown, and nothing is concluded from it." },
+  selects: { type: "string", enum: MATCH_SELECTS, doc: "For a match: answer -- only the items that carry every one of its fields are answered; count -- every item read is answered, and those that carry every one are what count counts before the wait ends. Absent: unknown." },
 };
 
 export const LIMIT_FIELDS = {
@@ -103,6 +111,7 @@ const CROSS = [
   (d, at) => operationEntries(d).flatMap(([name, o]) => effectFindings(d, name, o, at)),
   (d, at) => operationEntries(d).flatMap(([name, o]) => outputFindings(name, o, at)),
   (d, at) => operationEntries(d).flatMap(([name, o]) => patternFindings(o?.request, `${at}: ${name} request`)),
+  (d, at) => operationEntries(d).flatMap(([name, o]) => requestMeaningFindings(o?.request, `${at}: ${name} request`)),
   (d, at) => helperFindings(d.helper, at),
 ];
 
@@ -138,6 +147,9 @@ const rowsOf = (table, at) => Object.entries(isTable(table) ? table : {}).flatMa
 
 // A pattern is compiled when a request is held to it, so one that does not compile is refused before anything registers.
 const patternFindings = (table, at) => rowsOf(table, at).filter(([, row]) => typeof row?.pattern === "string" && !compiles(row.pattern)).map(([where, row]) => `${where}: pattern ${String(row.pattern).slice(0, 60)} is not one a request can be held to`);
+
+// What a match field is compared with is a meaning, as an output's is, so a rule that reads it reasons over the vocabulary.
+const requestMeaningFindings = (table, at) => rowsOf(table, at).filter(([, row]) => row?.means !== undefined && !meaningAt(String(row.means))).map(([where, row]) => `${where} means "${String(row.means).slice(0, 60)}", which is not a meaning (src/topology/vocab.mjs)`);
 
 function compiles(pattern) {
   try { return new RegExp(pattern) instanceof RegExp; }

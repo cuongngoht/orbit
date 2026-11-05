@@ -76,7 +76,8 @@ src/adapters/  (0.1.0, ADR 0035) the ORBIT ADAPTER PROTOCOL, product-free: famil
                each family's operations: ref kinds, effect, output allow-list with `means`, the semantics they
                need) · semantics.mjs (the layered semantics vocabulary, `unknown` legal) · contract-v1.mjs
                (`orbit.adapter/v1`, validated before anything registers; 0.5.0, ADR 0052: an operation's optional
-               `request` table, and `requestFindings`, which the QA generation port holds a design's request to) ·
+               `request` table, and `requestFindings`, which the QA generation port holds a design's request to; a
+               match row's `selects` and its fields' `means`, what src/qa/backend/contradictions.mjs reads) ·
                registry.mjs ·
                core.mjs (registers `orbit.<family>.<op>`) · select.mjs (ordered rows over discovered
                transports and DECLARED semantics; the last answers a boundary-scoped gap, never a fallback) ·
@@ -868,7 +869,10 @@ src/qa/walk.mjs · obligations/ · backend/ · generation/ · security/  (0.1.0,
                skeleton.mjs, observations, temporal, correlation: armed before the trigger, non-stealing,
                matched by identity, a window only from an accepted `within`; shared.mjs (0.4.0) what the tests of
                one investigation share -- ONE_SANDBOX said before a host designs, and the keys a design names that an
-               earlier version named, said after, never refused) · generation/ (design.mjs the
+               earlier version named, said after, never refused; contradictions.mjs (0.5.0) what a correct application
+               can be held to -- refused where the design and its adapters' declarations prove a contradiction
+               (MATCH_PINS, SECOND_SETTLED), said beside the answer where it rests on what the design never causes) ·
+               generation/ (design.mjs the
                ordered STAGES a proposal is held to, ending in the REAL validator; controls; compile.mjs the
                deterministic mapping from an accepted expectation to a predicate; repair keeps the oracle;
                version freezes the case; page.mjs (0.1.0, group 1) the ONE place a generated test's page script

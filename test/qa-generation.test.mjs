@@ -97,6 +97,8 @@ test("each stage stops a design with its own word, before the next is asked", ()
   assert.deepEqual(stop(proposal({ assertions: [{ criterionRef: "FIX-ASYNC-1/E1", template: "absent-within", step: 2 }] })), ["verdicts", "GENERATION_FAILED"], "a read-back nothing accepted rules on");
   assert.deepEqual(stop(proposal({ skeleton: skeleton([...STEPS.slice(0, 2), call("orbit.state.read", { stateRef: "reminders", url: "http://x" })]) })), ["validate", "INVALID_TEST"], "an input the capability does not accept");
   assert.deepEqual(stop(proposal({ assertions: [{ criterionRef: "FIX-ASYNC-1/E2", template: "count-eq", step: 3 }] }), context({ expected: ["FIX-ASYNC-1/E1", "FIX-ASYNC-1/E2"] })), ["coverage", "GENERATION_FAILED"], "a design that leaves a slot of its own criterion unruled tests something else");
+  const pinned = context({ expected: ["FIX-ASYNC-1/E2"], expectations: new Map([...expectations, ["FIX-ASYNC-1/E3", { id: "E3", property: "message.correlation.correlationId", op: "complete-within", value: "inv-b-1", within: 20 }]]), requestTableOf: (i) => (i === 2 ? { match: { type: "object", selects: "answer", fields: { correlationId: { type: "string", means: "message.correlation.correlationId", doc: "x" } }, doc: "x" } } : null) });
+  assert.deepEqual(stop(proposal({ assertions: [{ criterionRef: "FIX-ASYNC-1/E3", template: "complete", step: 2 }, { criterionRef: "FIX-ASYNC-1/E2", template: "count-eq", step: 3 }] }), pinned), ["contradiction", "GENERATION_FAILED"], "an assertion the step's own match rules out, once the design is otherwise whole");
   for (const word of ["GENERATION_FAILED", "REQUIRES_REQUIREMENT", "INVALID_TEST"]) assert.ok(VERIFICATION_OUTCOME_IDS.includes(word), word);
 });
 

@@ -612,7 +612,9 @@ is back, the message is out and the business write is there, once.
 
 ### occurrence-one-execution
 
-A positive control: one due occurrence, dispatched by its own id, decided once and executed once.
+A positive control: nothing of the occurrence has run, the clock is moved to it, and the schedule's own loop decides it
+due and runs it once. A decision is the loop's when its clock reaches the occurrence: a manual trigger proves the
+handler, never the schedule, and a design that waits for a decision with no step that moves the clock is told so.
 
 ```json
 {
@@ -620,21 +622,24 @@ A positive control: one due occurrence, dispatched by its own id, decided once a
   "criterion": "SCHED-18",
   "accepted": {
     "SCHED-18/E1": { "property": "effect.count", "op": "count-eq", "value": 1 },
-    "SCHED-18/E2": { "property": "occurrence.decision", "op": "complete-within", "value": "due", "within": 60, "for": [] }
+    "SCHED-18/E2": { "property": "occurrence.decision", "op": "complete-within", "value": "due", "within": 60, "for": [] },
+    "SCHED-18/E3": { "property": "effect.count", "op": "count-eq", "value": 0, "for": [] }
   },
   "design": {
     "obligation": "tob-000000000000",
     "skeleton": { "steps": [
-      { "do": "call", "capability": "orbit.scheduler.trigger", "input": { "scheduleRef": "nightly-settle", "request": { "occurrenceId": "nightly-settle:2027-02-01T02:00:00Z" } } },
+      { "do": "call", "capability": "orbit.state.read", "input": { "stateRef": "settlements-table", "request": { "key": "nightly-settle:2027-02-01T02:00:00Z" } } },
+      { "do": "call", "capability": "orbit.clock.advance", "input": { "clockRef": "shop", "request": { "to": "2027-02-01T02:00:00Z" } } },
       { "do": "call", "capability": "orbit.scheduler.observe", "input": { "scheduleRef": "nightly-settle", "request": { "match": { "occurrenceId": "nightly-settle:2027-02-01T02:00:00Z" }, "count": 1 } } },
       { "do": "call", "capability": "orbit.state.read", "input": { "stateRef": "settlements-table", "request": { "key": "nightly-settle:2027-02-01T02:00:00Z" } } }
     ] },
     "assertions": [
-      { "criterionRef": "SCHED-18/E2", "template": "complete", "step": 2 },
-      { "criterionRef": "SCHED-18/E1", "template": "count-eq", "step": 3 }
+      { "criterionRef": "SCHED-18/E3", "template": "count-eq", "step": 1 },
+      { "criterionRef": "SCHED-18/E2", "template": "complete", "step": 3 },
+      { "criterionRef": "SCHED-18/E1", "template": "count-eq", "step": 4 }
     ],
-    "controls": [{ "role": "positive", "why": "the due night settles once" }],
-    "trigger": { "kind": "schedule", "ref": "nightly-settle", "step": 1 },
+    "controls": [{ "role": "positive", "why": "the night nothing had settled settles once when its loop reaches it" }],
+    "trigger": { "kind": "schedule", "ref": "nightly-settle", "step": 2 },
     "effectScope": "fixture"
   }
 }
@@ -711,8 +716,9 @@ back, the occurrence is handled as the policy says.
 
 ### overlap-policy
 
-A duplicate control: the same occurrence is dispatched again while the first still runs, on purpose; the policy says how
-many executions it may leave.
+A duplicate control: the clock brings the occurrence due, and it is dispatched again by hand while that run still goes,
+on purpose; the policy says how many executions it may leave. The decision read is the loop's, after the clock moved:
+the trigger is the duplicate, and it proves the handler, never the schedule.
 
 ```json
 {
@@ -725,7 +731,7 @@ many executions it may leave.
   "design": {
     "obligation": "tob-000000000000",
     "skeleton": { "steps": [
-      { "do": "call", "capability": "orbit.scheduler.trigger", "input": { "scheduleRef": "nightly-settle", "request": { "occurrenceId": "nightly-settle:2027-02-04T02:00:00Z" } } },
+      { "do": "call", "capability": "orbit.clock.advance", "input": { "clockRef": "shop", "request": { "to": "2027-02-04T02:00:00Z" } } },
       { "do": "call", "capability": "orbit.scheduler.trigger", "input": { "scheduleRef": "nightly-settle", "request": { "occurrenceId": "nightly-settle:2027-02-04T02:00:00Z" } } },
       { "do": "call", "capability": "orbit.scheduler.observe", "input": { "scheduleRef": "nightly-settle", "request": { "match": { "occurrenceId": "nightly-settle:2027-02-04T02:00:00Z" }, "count": 2 } } },
       { "do": "call", "capability": "orbit.state.read", "input": { "stateRef": "settlements-table", "request": { "key": "nightly-settle:2027-02-04T02:00:00Z" } } }

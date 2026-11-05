@@ -101,18 +101,22 @@
             },
             "match": {
               "type": "object",
+              "selects": "count",
               "fields": {
                 "messageId": {
                   "type": "string",
-                  "doc": "the logical message id"
+                  "doc": "the logical message id",
+                  "means": "message.id"
                 },
                 "correlationId": {
                   "type": "string",
-                  "doc": "the correlation it travels in"
+                  "doc": "the correlation it travels in",
+                  "means": "message.correlation.correlationId"
                 },
                 "routingKey": {
                   "type": "string",
-                  "doc": "the routing key it was published under"
+                  "doc": "the routing key it was published under",
+                  "means": "message.key"
                 }
               },
               "doc": "what a message must carry to count toward `count` -- every message read is answered"
@@ -314,18 +318,22 @@
             },
             "match": {
               "type": "object",
+              "selects": "count",
               "fields": {
                 "messageId": {
                   "type": "string",
-                  "doc": "the logical message id"
+                  "doc": "the logical message id",
+                  "means": "message.id"
                 },
                 "correlationId": {
                   "type": "string",
-                  "doc": "the correlation it travels in"
+                  "doc": "the correlation it travels in",
+                  "means": "message.correlation.correlationId"
                 },
                 "subject": {
                   "type": "string",
-                  "doc": "the subject it was published to"
+                  "doc": "the subject it was published to",
+                  "means": "message.key"
                 }
               },
               "doc": "what a message must carry to count toward `count` -- every message read is answered"
@@ -506,14 +514,17 @@
             },
             "match": {
               "type": "object",
+              "selects": "answer",
               "fields": {
                 "occurrenceId": {
                   "type": "string",
-                  "doc": "the occurrence"
+                  "doc": "the occurrence",
+                  "means": "occurrence.id"
                 },
                 "decision": {
                   "type": "string",
-                  "doc": "what the scheduler decided of it"
+                  "doc": "what the scheduler decided of it",
+                  "means": "occurrence.decision"
                 }
               },
               "doc": "the decisions answered: only those that carry every one of these"
@@ -693,18 +704,22 @@
             },
             "match": {
               "type": "object",
+              "selects": "answer",
               "fields": {
                 "messageId": {
                   "type": "string",
-                  "doc": "the logical message id"
+                  "doc": "the logical message id",
+                  "means": "message.id"
                 },
                 "outcome": {
                   "type": "string",
-                  "doc": "how the worker settled the attempt"
+                  "doc": "how the worker settled the attempt",
+                  "means": "settlement.outcome"
                 },
                 "executionRef": {
                   "type": "string",
-                  "doc": "the execution the attempt belongs to"
+                  "doc": "the execution the attempt belongs to",
+                  "means": "execution.ref"
                 }
               },
               "doc": "the attempts answered: only those that carry every one of these"

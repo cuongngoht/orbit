@@ -6,6 +6,10 @@ Accepted (release tooling; no engine contract changes, one additive CLI flag: `c
 ADR 0046 (the Docker benchmark), ADR 0047 (its QA cases), ADR 0048 (repair controls, failure classes, engineering
 cases), ADR 0042 (protected boundaries) and ADR 0016 (one viewer, the journals). Changes what `ship.mjs` requires: native
 host acceptance (Grok Build, Antigravity, Codex, Claude Code) and native backend acceptance become optional.
+Extended by ADR 0051 (0.5.0): recorded rows a release runs and reports but never requires, the precheck, a failed
+row's diagnosis in `--status`, a resumable control set, and what a resumed ship asks again -- among them, a run a
+restart interrupted is never charged its whole allowance, which amends "an unreported one counts at the run's cap"
+below for that one case.
 
 ## Context
 
@@ -47,7 +51,10 @@ egress proxy, on a budget of cents).
 ### The catalog and the host are policy, as data
 
 `skills/orbit-release/ship/policy.json` names all forty-six cases of the nine suites, case by case -- a case that leaves
-a suite, or joins one unnamed, is `CATALOG_DRIFT`. Every source case must hold its controls and PASS its real source
+a suite, or joins one unnamed, is `CATALOG_DRIFT` (held both ways by `test/benchmark-release-policy.test.mjs`, under
+the harness's name since 0.5.0, because it reads `benchmark/suites/`: the subject `doctor --preflight` runs the suite on
+is Orbit's source without the harness, and a test that read what it does not hold failed there). Every source case
+must hold its controls and PASS its real source
 (its `baseline` earns it nothing); every QA and engineering case must hold its controls and PASS when the coding host
 carries it; and ORBIT-SRC-001's planted fault must be REPAIRED_VERIFIED by the coding host on the final source: sixteen
 model-carried rows a cycle. A row a model carries holds only when its run says basis `coding-host`, the Claude Code
@@ -95,8 +102,9 @@ and models reported), every gate, row and repair, and the optional rows. When re
 source is not the person's HEAD: the ship writes `release.patch` and `release.bundle` and says how to apply them; nothing
 is pushed. `ship.mjs --evidence` is the publish gate: `PUBLISH` (`ship/evidence.mjs`) refuses while a ship is pending,
 blocked or failed, when the checkout's HEAD tree is not the qualified tree or is dirty, when the protected paths or the
-policy moved, when a row the policy requires has no held evidence, when a run's own room no longer agrees, or when the
-artifact is not the one. Only PUBLISHABLE exits 0.
+policy moved, when the benchmark does not list a case the policy names (or cannot be read: a row the gate cannot see is
+never one it passes -- ADR 0051), when a row the policy requires has no held evidence, when a run's own room no longer
+agrees, or when the artifact is not the one. Only PUBLISHABLE exits 0.
 
 ### Limits, and what stops a ship
 
@@ -110,8 +118,12 @@ again as a new run -- once per resume. The ship never falls back to another host
 ### CI
 
 `ci.yml` keeps `ship.mjs --ci`: the definition of done, the optional rows, and the autonomous ship AWAITED -- a green fast
-CI is never qualification. `release.yml` (dispatch only, from the `benchmark` environment) runs the autonomous ship and
-the publish gate and uploads every room; it never tags, pushes or publishes.
+CI is never qualification. No workflow runs the autonomous ship or a real coding host (0.5.0, backlog B8): a
+model-carried run happens only in a Claude Code cloud session a person starts, where the coding host's credential is an
+environment variable of that session, never a repository secret (CLAUDE.md, "Shipping a release from Claude Code
+cloud"). The `release.yml` workflow that once ran the ship from GitHub Actions, and the benchmark workflow's
+`autonomous` job, are gone; the benchmark workflow keeps its conformance tier (`controls`, `scripted`), which needs no
+credential.
 
 ## Consequences
 
@@ -122,8 +134,8 @@ the publish gate and uploads every room; it never tags, pushes or publishes.
   for a person to bring the cases up to date. Until a person does, the repository's own case tests fail on the repaired
   source (a repair may not touch them), so the ship that repaired a known finding ends NOT SHIPPABLE at its next gates;
   0.4.0 took the verified repairs, rebaselined both cases in the same commit, and qualified on a second ship.
-- A full ship takes hours and a model budget; a GitHub-hosted runner cannot hold one, so `release.yml` takes a
-  self-hosted label, and a workstation resumes a ship where it stopped. Each benchmark run keeps its own checkout: a full
+- A full ship takes hours and a model budget, more than a GitHub-hosted runner holds: it runs in a Claude Code cloud
+  session, whose worker restarts every hour or two, and `--resume` carries it on from its journal each time. Each benchmark run keeps its own checkout: a full
   ship keeps a few gigabytes in the machine store.
 - A host's model, version and cost are REPORTED and never verified; the verdict never rests on them, and a row with no
   Claude Code identity is never evidence.

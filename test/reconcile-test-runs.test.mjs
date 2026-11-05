@@ -96,6 +96,20 @@ test("a late envelope refused at a step says where it stopped and what that step
   assert.deepEqual(r.stopped, { step: 1, do: "call", capability: "orbit.scheduler.trigger", as: "refused", says: said });
 });
 
+// A worker its deadline or supervisor stopped left the envelope its wrapper writes (cli/sandbox-worker.mjs): judged late
+// on the path a live one is, it is never another case -- and a run that had grants to write is AMBIGUOUS, its step left
+// for a person, its version never sent again (0.5.0 B7).
+test("a late envelope of an interrupted worker with grants is AMBIGUOUS: its step stays for a person, and it is never sent again", () => {
+  const t = died();
+  past(t);
+  t.seen.back = { envelope: { v: WORKER_API, runId: t.sent().request.runId, nonce: t.sent().request.nonce, status: "INTERRUPTED", why: "it was stopped by its supervisor or its dispatch before the runner finished" }, records: [], listed: new Map(), worker: "ended" };
+  const [r] = reconciledRuns(t.w);
+  assert.deepEqual([r.rule, r.outcome, r.cause, r.settled], ["LATE", "AMBIGUOUS", "INTERRUPTED_WRITE", undefined]);
+  assert.deepEqual([t.model().runs.at(-1).status, t.model().runs.at(-1).cause, unsettled(t.model()).map((d) => d.id)], ["BLOCKED", "interrupted", ["dec-1"]]);
+  const prepared = t.seen.prepared;
+  assert.deepEqual([ranVersion(t.w, { version: t.version }).outcome, t.seen.prepared], ["AMBIGUOUS", prepared], "nothing was even prepared");
+});
+
 test("a worker that never ran proved and spent nothing: its attempt is an execution error, and the next attempt may run", () => {
   const t = died();
   past(t);

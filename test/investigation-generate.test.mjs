@@ -95,6 +95,19 @@ test("a design that names a key an earlier version of the investigation named is
   assert.equal("shared" in generated(t.w, { obligation: OTHER, design: keyed(OTHER, "billing-daily:2026-10-24T09:00:00+07:00", "${FIXTURE} inv-a-1") }), false, "keys no earlier test named, and a value a binding fills, share nothing");
 });
 
+// What 0.4.0's last fixes left open (0.5.0 B7): a key an accepted criterion states FOR another shape was said only once a
+// second design named it again. The first design that names it is told, before the other test has any version.
+test("a design that names a key an accepted criterion states for another shape is told so at the first design -- and earns what it earns without it", () => {
+  const t = world();
+  const contextFor = t.w.generation.contextFor;
+  const deadline = { id: "E1", property: "message.correlation.correlationId", op: "complete-within", value: "inv-a-1", for: ["completes-by-deadline"], within: 120 };
+  t.w.generation.contextFor = (o, a) => ((cx) => ({ ...cx, expectations: new Map([...cx.expectations, ["SLA-1/E1", deadline]]) }))(contextFor(o, a));
+  const out = generated(t.w, { obligation: "tob-abc123", design: design() });
+  assert.deepEqual(out.shared, [{ criterion: "SLA-1/E1", shape: "completes-by-deadline", keys: [{ value: "inv-a-1", as: ["businessKey"] }], say: "businessKey inv-a-1 — an accepted criterion (SLA-1/E1) states it for completes-by-deadline: that test observes it, and every test of this investigation runs in its one sandbox — use one no accepted criterion states for another test, unless what that test leaves is what this one observes" }]);
+  const alone = generated(world().w, { obligation: "tob-abc123", design: design() });
+  assert.deepEqual([out.outcome, out.version, "shared" in alone], [alone.outcome, alone.version, false], "the same outcome and frozen version as with no such criterion");
+});
+
 test("an earlier version of the same obligation is another test once it started -- one that never ran left nothing in the sandbox", () => {
   const t = world();
   const first = generated(t.w, { obligation: "tob-abc123", design: design() });

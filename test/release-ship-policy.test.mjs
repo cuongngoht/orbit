@@ -1,43 +1,21 @@
-// The release policy as shipped (skills/orbit-release/ship/policy.json, ADR 0049) held to the benchmark's own suites,
-// both ways; the one host it names; the paths it protects; and the release artifact read from a real `git archive` --
-// what a host refuses, asked of the archive itself, and a content digest that two archives of one tree share.
+// The release policy as shipped (skills/orbit-release/ship/policy.json, ADR 0049) on its own: the one host it names; the
+// paths it protects; its limits; and the release artifact read from a real `git archive` -- what a host refuses, asked
+// of the archive itself, and a content digest that two archives of one tree share. The policy held to the benchmark's
+// own suites, both ways, reads benchmark/suites/ and is test/benchmark-release-policy.test.mjs: a subject the benchmark
+// freezes without its harness (`doctor --preflight`) carries none of it, and nothing here reads benchmark/.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { ARCHIVE_RULES, contentDigest, entriesOf } from "../skills/orbit-release/ship/artifact.mjs";
-import { catalogDrift, limitsOf, matchesAny, policyOf, rowsOf } from "../skills/orbit-release/ship/policy.mjs";
+import { limitsOf, matchesAny, policyOf } from "../skills/orbit-release/ship/policy.mjs";
 import { GIT_ENV } from "./fakes/ship-world.mjs";
 import { sealed } from "./home.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const POLICY = policyOf(readFileSync(join(ROOT, "skills", "orbit-release", "ship", "policy.json"), "utf8"));
-const SUITES = join(ROOT, "benchmark", "suites");
-
-// The suites as `run.mjs list --json` says them, read from their own files here.
-const listed = () => ({ suites: readdirSync(SUITES).map((s) => JSON.parse(readFileSync(join(SUITES, s, "suite.json"), "utf8"))).map((s) => ({ id: s.id, cases: s.cases.map((id) => ({ id, kind: JSON.parse(readFileSync(join(SUITES, s.id, id.toLowerCase(), "case.json"), "utf8")).kind })) })) });
-
-test("the policy names every case of every suite, and nothing else -- the catalog cannot shrink unseen", () => {
-  assert.deepEqual(catalogDrift(POLICY, listed()), []);
-  assert.equal(Object.keys(POLICY.catalog).length, 9, "nine suites");
-  assert.equal(Object.values(POLICY.catalog).flat().length, 46, "every case they hold");
-  const less = { suites: listed().suites.map((s) => ({ ...s, cases: s.cases.filter((c) => c.id !== "ORBIT-SRC-002") })) };
-  assert.deepEqual(catalogDrift(POLICY, less), ["ORBIT-SRC-002 is in the release policy and no suite holds it"]);
-  const more = { suites: [...listed().suites, { id: "orbit-new", cases: [{ id: "ORBIT-NEW-001", kind: "source" }] }] };
-  assert.deepEqual(catalogDrift(POLICY, more), ["ORBIT-NEW-001 is in suite orbit-new and the release policy does not name it"]);
-});
-
-test("a cycle runs every verification, then every control, then 16 rows the real Claude Code carries", () => {
-  const rows = rowsOf(POLICY, listed());
-  const auto = rows.filter((r) => r.autonomous);
-  assert.equal(rows.length, 31 * 2 + 7 * 2 + 8 * 2 + 1);
-  assert.equal(auto.length, 16, "seven QA cases, eight engineering cases, and ORBIT-SRC-001's planted fault repaired");
-  assert.deepEqual([...new Set(rows.map((r) => r.run))], ["verify", "controls", "autonomous"], "in that order, so no model is spent on a cycle that will be repaired");
-  assert.deepEqual(auto.find((r) => r.case === "ORBIT-SRC-001"), { ...auto.find((r) => r.case === "ORBIT-SRC-001"), variant: "controlled-fault", repair: true, expect: ["REPAIRED_VERIFIED"] });
-  assert.ok(rows.filter((r) => r.case === "ORBIT-SRC-002" || r.case === "ORBIT-ORC-006").some((r) => r.req === "real" && r.expect.includes("PASS")), "a known finding must PASS its real source: its baseline earns it nothing");
-});
 
 test("Claude Code is the one coding host a release needs; no other host is named", () => {
   assert.deepEqual([POLICY.host.cli, POLICY.host.basis, POLICY.host.endpoints], ["claude-code", "coding-host", ["api.anthropic.com"]]);
@@ -46,7 +24,7 @@ test("Claude Code is the one coding host a release needs; no other host is named
 });
 
 test("no repair may touch what judges it: the harness, the checks, the release itself, the pipelines", () => {
-  for (const p of ["benchmark/lib/source/judge.mjs", "benchmark/suites/orbit-source/orbit-src-002/verifier/spec.mjs", "test/benchmark-cases.test.mjs", "skills/orbit-release/ship/policy.json", "skills/orbit-release/gates.mjs", ".github/workflows/release.yml", "acceptance/truth.json", "docs/host-acceptance.json", "test/fakes/ship-world.mjs", "src/lint/five-lines.mjs", "cli/check-five-lines.mjs", "package.json"]) assert.ok(matchesAny(POLICY.protected, p), p);
+  for (const p of ["benchmark/lib/source/judge.mjs", "benchmark/suites/orbit-source/orbit-src-002/verifier/spec.mjs", "test/benchmark-cases.test.mjs", "skills/orbit-release/ship/policy.json", "skills/orbit-release/gates.mjs", ".github/workflows/ci.yml", "acceptance/truth.json", "docs/host-acceptance.json", "test/fakes/ship-world.mjs", "src/lint/five-lines.mjs", "cli/check-five-lines.mjs", "package.json"]) assert.ok(matchesAny(POLICY.protected, p), p);
   for (const p of ["src/improvement/oracle.mjs", "src/orchestration/failure.mjs", "test/improvement-core.test.mjs"]) assert.ok(!matchesAny(POLICY.protected, p), `${p} is a repair's to change`);
 });
 
@@ -56,6 +34,12 @@ test("limits are the policy's, or a person's within its bounds -- never past the
   assert.throws(() => limitsOf(POLICY, { cycles: 99 }), /--cycles is 1\.\.6/);
   assert.throws(() => limitsOf(POLICY, { usd: Number.NaN }), /out of bounds/);
   assert.throws(() => policyOf(JSON.stringify({ ...POLICY, host: { cli: "grok", basis: "coding-host", endpoints: ["x"] } })), /claude-code/);
+});
+
+test("a limit out of bounds is refused by the flag a person typed, never by the policy's own key", () => {
+  assert.throws(() => limitsOf(POLICY, { autonomousRetries: 9 }), (e) => /--retries is 0\.\.3/.test(e.message) && !/autonomousRetries/.test(e.message));
+  assert.throws(() => limitsOf(POLICY, { repairAttempts: 9 }), (e) => /--attempts is 1\.\.5/.test(e.message) && !/repairAttempts/.test(e.message));
+  assert.throws(() => limitsOf(POLICY, { minutes: 1, usd: 9999 }), /--minutes is 10\.\.10080, --usd is 0\.\.2000/);
 });
 
 // ---- the artifact ----------------------------------------------------------------------------------------------------------

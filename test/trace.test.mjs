@@ -56,6 +56,31 @@ test("the log: one shard per day and host, capped ONCE, pruned past its retentio
   assert.deepEqual(read.map((e) => e.type), ["turn.ended", "trace.dropped"], "torn lines dropped; the cap said once");
 });
 
+// Why three hook processes racing for one trail could never be a deterministic test (test/multi-host-runtime.test.mjs):
+// the writer is FAIL-OPEN, so a line whose writer cannot take the trail's lock costs that line and nothing else --
+// whether another writer held the lock past this writer's bounded backoff, or the disk refused the lock directory for a
+// moment (Windows answers EPERM to a mkdir that races another process removing the same directory). Once the lock is
+// free, the next line lands.
+test("a line whose writer cannot take the trail's lock is dropped, never thrown -- and the next one lands", () => {
+  const io = fakeIo();
+  const log = traceLog(rooms, io);
+  const lock = join(rooms.trace, ".lock");
+  io.dirs.add(lock);
+  io.write(join(lock, "owner.json"), JSON.stringify({ host: "another", pid: 2, token: "live" }));
+  assert.doesNotThrow(() => log.append(ev("turn.ended")));
+  assert.deepEqual(log.read({}), [], "held past the writer's backoff: the line is lost, the moment it describes is not");
+  io.remove(lock);
+  const mkdir = io.mkdir;
+  io.mkdir = () => {
+    io.mkdir = mkdir;
+    throw Object.assign(new Error("EPERM"), { code: "EPERM" });
+  };
+  assert.doesNotThrow(() => log.append(ev("turn.ended")));
+  assert.deepEqual(log.read({}), [], "a lock directory the disk refused for a moment: the same");
+  log.append(ev("turn.ended"));
+  assert.equal(log.read({}).length, 1, "the next line, with the lock free, lands");
+});
+
 test("the emitter stamps what a producer never supplies, is a no-op when off, and a listener cannot stop an append", () => {
   const io = fakeIo();
   const log = traceLog(rooms, io);
@@ -267,4 +292,19 @@ test("an agent launched by an agent names its parent; two starts of one skill ar
   assert.deepEqual(u.attribution.byAgent.find((r) => r.agent === "claude:y").skills, ["orbit-develop"]);
   assert.deepEqual(u.skills.map((s) => [s.id, s.invoked, s.runs]), [["orbit-develop", 3, 2]], "three starts, one delivered twice: two runs");
   assert.deepEqual([u.attribution.session.unknown, u.attribution.session.failed], [1, 0]);
+});
+
+// 0.5.0 (B22, ADR 0050): RouteDecision v3 reaches the trail as table words and ids -- the strategy's word and row, the
+// activation's path and id, the synthetic flag -- and never its reason or its command, which carry the engine's path.
+test("a v3 decision tells the trail its strategy, the path and id it named, and whether the host wrote the prompt -- nothing more", () => {
+  const decision = { version: 3, intent: { id: "development", confidence: "high" }, cues: ["implement"], requirements: [], graph: { nodes: [] }, selected: [], approval: [], blocked: [], missing: [], strategy: { word: "COORDINATED", row: "several-owners", because: "free text of a reason", shown: true }, activation: { path: "workflow", id: "orbit-help", how: "automation", invoke: "node /home/someone/plugin/cli/automation.mjs start" }, synthetic: false };
+  const facts = decisionFacts(decision, true);
+  assert.deepEqual([facts.strategy, facts.activation, facts.synthetic], [{ word: "COORDINATED", row: "several-owners" }, { path: "workflow", id: "orbit-help" }, false]);
+  assert.equal(/free text|someone|automation\.mjs/.test(JSON.stringify(facts)), false, "neither the reason nor the command");
+  const e = eventOf("prompt.submitted", { prompt: { chars: 9 }, ...facts, because: "sneaked" }, { id: "e-v3", at: "2026-11-05T00:00:00.000Z" });
+  assert.deepEqual(["strategy", "activation", "synthetic"].map((k) => k in e.data), [true, true, true]);
+  assert.equal("because" in e.data, false, "the allow-list keeps what it declares and nothing else");
+  assert.deepEqual(decisionFacts(null, false, true), { routing: "off", synthetic: true }, "with routing off, a host's own prompt is still said to be one");
+  assert.deepEqual(decisionFacts(null, false), { routing: "off" }, "and a person's is what it always was");
+  assert.equal("strategy" in decisionFacts({ ...decision, strategy: undefined, activation: undefined }, false), false, "a v2 decision carries no strategy");
 });

@@ -132,6 +132,23 @@ A few ideas run through everything:
 
 ## Skills you can call
 
+You can name any of these yourself, and Claude Code also picks them by itself: it reads each skill's description, so
+every description says *when* to use it in its first sentence and stays within the host's listing budget (at most 300
+characters, 7,500 for all 25). `test/activation-catalog.test.mjs` holds that, and that each first sentence carries a
+word that brings a prompt to the skill.
+
+Beside every prompt, Orbit's prompt router says how much Orbit the request needs, in one line, or nothing at all
+(RouteDecision v3, ADR 0050). **NONE** adds no text: a greeting, a status question that asks for nothing else ("how
+far along are we?", "tới đâu rồi"), a background task's notification the host delivers as if it were a prompt, an
+opt-out ("without Orbit", "không dùng orbit"), or anything the session already does itself. **DIRECT** names the one
+skill or agent that fits. **COORDINATED** gives the one command for a change you ask for that several owners take in
+turn -- a work item to settle, or an investigation or a security check to prove it (`/orbit-help`'s workflow) -- or for
+a whole specification (`/orbit`'s goal); a question that only names code ("is the orders endpoint protected?") asks for
+no change. **SATELLITE** is only ever a mission you asked for, and **RESUME** picks up an open work of this checkout
+through its owner. English and Vietnamese are read alike, words past the first 2,000 characters -- a pasted log or file
+-- never decide what a prompt is about, and a one-word match is said only when it is a skill's own word. The router
+suggests; Claude decides. `test/fixtures/routing/corpus.jsonl` holds it to realistic prompts in both languages.
+
 ### Entry points
 
 | Skill | Use it for |
@@ -177,8 +194,13 @@ A few ideas run through everything:
 | `orbit-report` | A product owner's project report from GitHub or Azure DevOps, computed from a frozen snapshot. Azure DevOps signs in with your Microsoft account by default ([how](#microsoft-sign-in-for-azure-devops)); GitHub reads with a token. |
 | `orbit-release` | Ship a new version of Orbit, or install it in another repository. |
 
-Role agents (`orbit-engineering-agent`, `orbit-qa-agent`, `orbit-qa-case-writer`, `orbit-failure-analyst`,
-`orbit-map-healer`, …) each do one bounded job for a parent skill.
+Role agents each do one bounded job in a context of their own. Five may be dispatched by the session directly when that
+job is the whole request: `orbit-engineering-agent`, `orbit-qa-agent`, `orbit-failure-analyst`, `orbit-dsl-doctor` and
+`orbit-engineering-observer`. The other fifteen -- the architecture scanner, the reverse-engineering agent, the security
+auditor, the map healer and recorder, the QA case writer, the five requirement roundtable agents and Satellite's four --
+are dispatched only from their parent skill's playbook, because each needs that skill's step before it: their catalog
+row names the parent (`via` in `catalog/components.json`), the router never offers one on its own, and the parent's line
+in the routing context names the agents it dispatches.
 
 ---
 
@@ -354,7 +376,9 @@ From an accepted requirement to a verified outcome:
 4. The host validates what the worker left before anything is recorded; ordered result rows give the outcome.
 
 Backends are reached through adapters (`orbit.adapter/v1`) shipped as packs a project opts into; what each adapter is
-proven to support is computed from conformance receipts.
+proven to support is computed from conformance receipts. An adapter's operation may declare what its request carries
+([ADR 0052](docs/adr/0052-an-adapter-operation-declares-what-its-request-carries.md)), and a design is held to it before
+a draft exists.
 
 ```bash
 node cli/autonomous-qa.mjs plan --plan=<id> --sandbox=<env-id> --mode=fixture-write
@@ -499,7 +523,10 @@ npm run lint                                                 # Five Lines check,
 ORBIT_UI_TESTS=test/fixtures/ui-tests node cli/query.mjs check
 ORBIT_UI_TESTS=test/fixtures/ui-tests node cli/plan-check.mjs
 node skills/orbit-release/ship.mjs --ci                      # the whole definition of done, one command (the fast tier)
-node skills/orbit-release/ship.mjs                           # a release: the autonomous ship, Docker + Claude Code (ADR 0049)
+node skills/orbit-release/ship.mjs                           # a release: the autonomous ship, Docker + Claude Code (ADR 0049),
+                                                             #   run in a Claude Code cloud session -- no workflow runs a model
+node skills/orbit-release/ship.mjs --precheck                # before a ship: the model-carried rows only, each once (ADR 0051)
+node skills/orbit-release/ship.mjs --status                  # where a ship stands; a failed model row's diagnosis bundle
 node skills/orbit-release/ship.mjs --evidence                # the publish gate: evidence for this very tree, or not
 ```
 

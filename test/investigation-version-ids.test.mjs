@@ -89,6 +89,8 @@ test("what a frozen design shares with an earlier version reaches the host by al
   assert.match(made.shared[3].keys[0].value, /^\[upn\] 1 /, "scrubbed by shape");
   assert.equal("shared" in resultView({ outcome: "DRAFT_CREATED", version: VERSION, shared: [] }), false, "nothing shared, nothing said");
   assert.deepEqual(resultView({ outcome: "DRAFT_CREATED", shared: [{ version: 7, keys: "x" }] }).shared, [{ version: null, obligation: null, shape: null, keys: [], say: null }], "a field of another kind is null, never echoed");
+  const stated = resultView({ outcome: "DRAFT_CREATED", shared: [{ criterion: `SLA-1/E1 ${"z".repeat(200)}`, shape: "completes-by-deadline", keys: [{ value: "k-1", as: ["correlationId"] }], say: "correlationId k-1 — an accepted criterion …", design: { secret: true } }] }).shared[0];
+  assert.deepEqual(stated, { version: null, obligation: null, shape: "completes-by-deadline", criterion: `SLA-1/E1 ${"z".repeat(71)}`, keys: [{ value: "k-1", as: ["correlationId"] }], say: "correlationId k-1 — an accepted criterion …" }, "a key a criterion states for another shape says which criterion, bounded, and nothing else");
 });
 
 test("context lists the names a design's refs may take here, from the generation port -- and nothing when none is bound", () => {

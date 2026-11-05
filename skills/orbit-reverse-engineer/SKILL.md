@@ -1,13 +1,9 @@
 ---
 name: orbit-reverse-engineer
 description: >
-  Map a system's running parts and how they talk -- components, workloads, interfaces, channels,
-  schedules, stores and the edges between them -- from what its own files declare, as an
-  evidence-backed system graph kept outside the repository. Use when asked to reverse engineer a
-  system, what talks to what, which workers consume a queue, what a schedule starts, or to give QA
-  and security the graph their obligations are derived from. It runs standalone as its own task and
-  needs no goal; it reads source and never writes to it, never runs the product, never sets an
-  acceptance criterion, and never calls what the code does what it should do.
+  Maps the running system -- components, workloads, interfaces, queues, schedules, stores, and what
+  talks to what -- from its own files, as a kept system graph. Use for reverse engineering, or which
+  workers consume a queue. Never edits source. For where a change belongs, use orbit-architecture.
 argument-hint: map the whole system | what talks to what | which workers consume a queue | refresh the system graph
 allowed-tools:
   - Read
@@ -29,6 +25,14 @@ and run `query storage --json` before working with project files. `$DATA`, `$SCR
 `$REPORTS`, `$RUNTIME` and `$EVIDENCE` below are the resolved paths from that command.
 
 # Map the running system from what its files declare
+
+**In short.** Map a system's running parts and how they talk -- components, workloads, interfaces,
+channels, schedules, stores and the edges between them -- from what its own files declare, as an
+evidence-backed system graph kept outside the repository. Use when asked to reverse engineer a
+system, what talks to what, which workers consume a queue, what a schedule starts, or to give QA and
+security the graph their obligations are derived from. It runs standalone as its own task and needs
+no goal; it reads source and never writes to it, never runs the product, never sets an acceptance
+criterion, and never calls what the code does what it should do.
 
 **Shared references, the same for every `orbit-*` playbook.** Read the one you need; do not
 re-derive what is in them:

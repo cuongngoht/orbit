@@ -50,6 +50,13 @@ test("nothing makes a word stronger than its evidence", () => {
   assert.equal(word(accepted({ status: "PASS", stale: true })), "STALE", "a PASS on a moved tree raises nothing");
 });
 
+test("a fault the run never observed leaves it INCONCLUSIVE whether what followed held or failed -- a PASS is never earned without it", () => {
+  assert.deepEqual(resultOf(accepted({ envelope: [], faultMissed: true })), { outcome: "INCONCLUSIVE", rule: "FAULT_NOT_SEEN", why: RESULT.find((r) => r.id === "FAULT_NOT_SEEN").why });
+  assert.equal(word(accepted({ status: "FAIL", failure: { contradiction: true }, faultMissed: true })), "INCONCLUSIVE");
+  assert.equal(word(accepted({ faultMissed: false })), "SATISFIED", "a fault it saw lets the pass stand");
+  assert.equal(word(accepted({ status: "PASS", authority: "draft", faultMissed: true })), "REQUIRES_REQUIREMENT", "a draft oracle still confirms nothing first");
+});
+
 test("a negative proves nothing without its positive; a contradiction anywhere stands; only all met satisfies", () => {
   assert.equal(obligationOutcome({ positive: "ENVIRONMENT_BLOCKED", negative: "SATISFIED" }).outcome, "INCONCLUSIVE");
   assert.equal(obligationOutcome({ positive: "CONTRADICTED", negative: "SATISFIED" }).outcome, "INCONCLUSIVE", "a refusal of everybody proves nothing about permission -- the allowed actor's refusal is its own criterion's finding");

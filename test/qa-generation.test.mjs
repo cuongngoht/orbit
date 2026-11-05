@@ -8,7 +8,10 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { requestFindings } from "../src/adapters/contract-v1.mjs";
 import { familyCapabilities } from "../src/adapters/core.mjs";
+import { operationFor } from "../src/adapters/families.mjs";
+import { opKeyOf } from "../src/adapters/select.mjs";
 import { graphOf } from "../src/architecture/graph-view.mjs";
 import { inputFindings } from "../src/capability/invoke.mjs";
 import { CORE } from "../src/dsl/registry.mjs";
@@ -95,6 +98,19 @@ test("each stage stops a design with its own word, before the next is asked", ()
   assert.deepEqual(stop(proposal({ skeleton: skeleton([...STEPS.slice(0, 2), call("orbit.state.read", { stateRef: "reminders", url: "http://x" })]) })), ["validate", "INVALID_TEST"], "an input the capability does not accept");
   assert.deepEqual(stop(proposal({ assertions: [{ criterionRef: "FIX-ASYNC-1/E2", template: "count-eq", step: 3 }] }), context({ expected: ["FIX-ASYNC-1/E1", "FIX-ASYNC-1/E2"] })), ["coverage", "GENERATION_FAILED"], "a design that leaves a slot of its own criterion unruled tests something else");
   for (const word of ["GENERATION_FAILED", "REQUIRES_REQUIREMENT", "INVALID_TEST"]) assert.ok(VERIFICATION_OUTCOME_IDS.includes(word), word);
+});
+
+// What 0.4.0's diagnosis found (0.5.0 B7): a design whose scheduler or worker observation named an observer was made
+// into a draft, and the sandbox's binder -- which binds an observer only to a channel it is armed on -- blocked the run.
+// Those operations read by a cursor and bind no observer, so naming one is refused where the design is made.
+test("a scheduler's or a worker's observation that names an observer is refused at generation, as preparation would have blocked it", () => {
+  for (const [capability, input] of [["orbit.worker.observe", { workloadRef: "worker" }], ["orbit.scheduler.observe", { scheduleRef: "billing-daily" }]]) {
+    assert.match(inputFindings(caps.get(capability), { ...input, observerRef: "obs-1", request: {} }).join(), /unknown key "observerRef"/, capability);
+    const steps = STEPS.map((s, i) => (i === 1 ? call(capability, { ...input, observerRef: "obs-1", request: { match: { messageId: "rem-1" } } }) : s));
+    const out = generatedCase(proposal({ skeleton: skeleton(steps), observationPlan: [] }), context());
+    assert.deepEqual([out.ok, out.stage, out.outcome], [false, "validate", "INVALID_TEST"], `${capability}: ${JSON.stringify(out.findings)}`);
+    assert.match(out.findings.join(), /step 2: .*unknown key "observerRef"/);
+  }
 });
 
 test("a control is held to what the test can show of it: it acts in a step, a refusal is of somebody else, and only a fault names a witness", () => {
@@ -210,6 +226,23 @@ test("every acceptance design holds every rule a design's controls are held to, 
   for (const stack of STACKS) assert.deepEqual(POINTS[stack].worker, ["before-effect", "after-commit-before-ack", "after-sink-before-ack", "after-ack-before-effect"], `${stack}: read off the graph the way the binder reads it`);
   const findings = STACKS.flatMap((stack) => designsOn(stack).flatMap(({ shape, clock, design }) => controlFindings(design, shapeOf(shape), { faultPointsOf: (alias) => POINTS[stack][alias] ?? null }).map((f) => `${stack} ${shape} (${clock}) ${f.rule}: ${f.say}`)));
   assert.deepEqual(findings, [], `held to ${CONTROL_RULES.map((r) => r.id).join(", ")}`);
+});
+
+// The same holds for the request tables (0.5.0, ADR 0052). A design is held to the table of the adapter that answers each
+// of its steps, at the validate stage, before a draft exists. The reference host sends the acceptance designs on every
+// stack: the AMQP one and the JetStream one. So every request a design sends must fit the table of every shipped adapter
+// that answers its step, with the window the engine adds to a step a slot's `within` rules (`waitMs`,
+// src/qa/generation/design.mjs placed). Otherwise the benchmark's reference controls would fail for a table, not for the
+// product, and only in Docker.
+const answeredBy = (capability) => ((row) => (row ? ADAPTERS.filter((a) => a.operations[opKeyOf(a, row)]).map((a) => [a.id, a.operations[opKeyOf(a, row)]]) : []))(operationFor(capability));
+
+const windowed = (design) => design.skeleton.steps.map((s, n) => ((within) => (within ? { ...s, input: { ...s.input, request: { ...(s.input?.request ?? {}), waitMs: within * 1000 } } } : s))(design.assertions.map((a) => (a.step === n + 1 ? ACCEPTED.get(a.criterionRef)?.within : undefined)).find(Number.isInteger)));
+
+test("every request an acceptance design sends fits the request table of every shipped adapter that answers its step, on each stack", () => {
+  const held = STACKS.flatMap((stack) => designsOn(stack).flatMap(({ shape, clock, design }) => windowed(design).filter((s) => s.do === "call").flatMap((s) => answeredBy(s.capability).map(([id, op]) => ({ capability: s.capability, at: `${stack} ${shape} (${clock}) ${s.capability} (${id})`, table: op.request, request: s.input?.request })))));
+  assert.deepEqual([...new Set(held.map((h) => h.capability))].sort(), ["orbit.clock.advance", "orbit.messaging.observe", "orbit.messaging.publish", "orbit.observe.await", "orbit.scheduler.observe", "orbit.scheduler.trigger", "orbit.state.read", "orbit.worker.observe", "orbit.workload.control"], "every operation an adapter answers in them is held");
+  assert.ok(held.every((h) => h.table && typeof h.table === "object"), "each answering adapter declares what its request carries");
+  assert.deepEqual(held.flatMap((h) => requestFindings(h.table, h.request, h.at)), []);
 });
 
 test("a repair may change how a step is written, never what the test rules on", () => {

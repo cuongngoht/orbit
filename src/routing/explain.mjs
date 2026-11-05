@@ -8,6 +8,12 @@
 //                         had named every provider, since there is no task here
 //   consumersOf(target)   for a resource, every skill or agent whose needs name
 //                         a capability it provides -- its POTENTIAL consumers
+//   dispatchedBy(...)     (0.5.0) for each skill, the usable agents whose catalog
+//                         row says they are dispatched `via` it -- what a parent's
+//                         line in the routing context names
+//
+// An owner's own needs are pulled in BY that owner, so an agent dispatched via it
+// is a candidate for them (src/routing/select.mjs), as it is in a prompt's graph.
 //
 // Pure, like the router: nothing here connects, starts or writes anything.
 import { everyResource } from "../resources/registry.mjs";
@@ -18,12 +24,17 @@ export function explainNeeds(owner, effective) {
   const resources = everyResource(effective);
   const grams = new Set(resources.flatMap((r) => r.routing.signals.map(keyOf)));
   const needs = [...owner.routing.needs.map((n) => [n, "required"]), ...owner.routing.optional.map((n) => [n, "optional"])];
-  return needs.map(([requirement, level]) => explained(requirement, level, resolveRequirement({ requirement, level }, { resources, grams, asked: new Set([requirement]), workflow: owner.kind === "skill" ? owner.id : null })));
+  return needs.map(([requirement, level]) => explained(requirement, level, resolveRequirement({ requirement, level, transitive: true, viaId: owner.id }, { resources, grams, asked: new Set([requirement]), workflow: owner.kind === "skill" ? owner.id : null })));
 }
 
 // An optional need is only ever used when a task names its provider, and the
 // view says so rather than calling it selected.
 const explained = (requirement, level, r) => ({ requirement, level, status: r.status === "selected" && level === "optional" ? "when-named" : r.status, provider: r.provider ? { kind: r.provider.kind, key: r.provider.key, id: r.provider.id, ownership: r.provider.ownership } : null, why: r.why, candidates: r.candidates });
+
+// skill id -> the ids of the usable agents dispatched via it, in the registry's order.
+export const dispatchedBy = (effective) => (effective?.agents ?? []).filter((a) => a.available).reduce(viaEach, {});
+
+const viaEach = (map, agent) => (agent.routing.via ?? []).reduce((m, skill) => ({ ...m, [skill]: [...(m[skill] ?? []), agent.id] }), map);
 
 export function consumersOf(target, effective) {
   const provided = new Set(target.routing.provides);

@@ -1,16 +1,9 @@
 ---
 name: orbit-report
 description: >
-  Produce the product owner's project report for this checkout: pull requests, reviews, work
-  items, pipelines and planning documents read ONCE from the project's GitHub or Azure DevOps
-  source (full pagination), frozen as a snapshot, computed by the standard parts and any the
-  project added, and rendered as one offline HTML page. Use when asked for a PO report, a
-  project, sprint or status report, delivery or flow numbers, a forecast, or a section the
-  report does not have yet (it then builds, verifies and activates the smallest report
-  extension for this project, without asking). Default window: the last two complete calendar
-  months. Azure DevOps is read through a Microsoft sign-in by default, a personal access token
-  being the alternative. It never asks for a token in chat, never reads another tool's stored
-  token or login, never commits or pushes, and never invents a number the source did not give.
+  Produces the product owner's project report from GitHub or Azure DevOps -- pull requests, reviews,
+  work items, pipelines -- read once, frozen, rendered as one offline HTML page. Use for a PO,
+  sprint, status or delivery report, flow numbers or a forecast.
 argument-hint: the PO report for July and August, with how long open pull requests have waited
 allowed-tools:
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/project-report.mjs*)
@@ -24,6 +17,17 @@ user-invocable: true
 **Host binding:** On protocol v2, resolve the plugin root from this SKILL.md’s actual location and bind the host/protocol/hashed session supplied at startup on every Orbit shell invocation. Resolve command examples against that root; do not assume hook exports persist. Follow [the shared host contract](../../docs/hosts.md) for task stdin, runtime isolation and unavailable native capabilities. Use the supported native protocol for the selected host.
 
 # The product owner's project report
+
+**In short.** Produce the product owner's project report for this checkout: pull requests, reviews,
+work items, pipelines and planning documents read ONCE from the project's GitHub or Azure DevOps
+source (full pagination), frozen as a snapshot, computed by the standard parts and any the project
+added, and rendered as one offline HTML page. Use when asked for a PO report, a project, sprint or
+status report, delivery or flow numbers, a forecast, or a section the report does not have yet (it
+then builds, verifies and activates the smallest report extension for this project, without asking).
+Default window: the last two complete calendar months. Azure DevOps is read through a Microsoft
+sign-in by default, a personal access token being the alternative. It never asks for a token in
+chat, never reads another tool's stored token or login, never commits or pushes, and never invents a
+number the source did not give.
 
 One run is: **which project and scope → connection, runtime and parts → collect once → freeze
 → compute → render.** Everything but the page lives in this project's machine store; the page

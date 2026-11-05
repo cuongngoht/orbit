@@ -1,13 +1,9 @@
 ---
 name: orbit-test-suite
 description: >
-  Run an agreed set of JSON cases the way a tester does: pick the browser and the signed-in
-  profile on this machine, drive the cases one at a time with evidence, then write ONE review
-  page for the whole session and hand over the checks a browser cannot make. Use when asked to
-  run the tests, to test a build or a release, to execute a plan that is already written, or
-  when someone wants a report over a set of cases rather than over a single run. Deciding what
-  to test and writing the cases are different jobs: asked to WRITE a plan or design scenarios,
-  use orbit-test-plan instead and run nothing.
+  Runs an agreed set of JSON UI test cases the way a tester does -- picks the browser profile,
+  drives each case with evidence -- and writes one review page. Use to run the UI tests, a
+  regression or a release's cases. For one case, use orbit-ui-test; to plan, orbit-test-plan.
 argument-hint: <case ids to run | plan file | "run the suite on this build">
 allowed-tools:
   - Read
@@ -21,6 +17,14 @@ user-invocable: true
 **Host binding:** On protocol v2, resolve the plugin root from this SKILL.md’s actual location and bind the host/protocol/hashed session supplied at startup on every Orbit shell invocation. Resolve command examples against that root; do not assume hook exports persist. Follow [the shared host contract](../../docs/hosts.md) for task stdin, runtime isolation and unavailable native capabilities. Use the supported native protocol for the selected host.
 
 # Run the cases, then say what a person still has to check
+
+**In short.** Run an agreed set of JSON cases the way a tester does: pick the browser and the
+signed-in profile on this machine, drive the cases one at a time with evidence, then write ONE
+review page for the whole session and hand over the checks a browser cannot make. Use when asked to
+run the tests, to test a build or a release, to execute a plan that is already written, or when
+someone wants a report over a set of cases rather than over a single run. Deciding what to test and
+writing the cases are different jobs: asked to WRITE a plan or design scenarios, use orbit-test-plan
+instead and run nothing.
 
 Everything below runs from inside the consuming project.
 

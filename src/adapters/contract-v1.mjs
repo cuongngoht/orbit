@@ -11,6 +11,7 @@
 // proves it. A support level is never declared: it is computed from the kit's receipts
 // (src/adapters/matrix.mjs).
 import { HELPER_FIELDS, helperFindings } from "../capability/helper.mjs";
+import { constraintFindings, missingFindings } from "../constraints.mjs";
 import { meaningAt, meaningEntries } from "../topology/vocab.mjs";
 import { walkFindings } from "../walk.mjs";
 import { EFFECT_IDS, FAMILY_IDS, familyOf, operationOf } from "./families.mjs";
@@ -46,6 +47,22 @@ export const OPERATION_FIELDS = {
   op: { type: "string", pattern: "^[a-z][a-z0-9.-]{0,47}$", doc: "The operation name the helper is asked, when it differs from the family's." },
   limits: { $ref: "#/definitions/limits", doc: "Ceilings for this operation alone." },
   doc: { type: "string", doc: "What this operation does on this system, in one line." },
+  request: { type: "object", additionalProperties: { $ref: "#/definitions/requestField" }, doc: "What its request may carry: one row per field its helper reads (ADR 0052). Optional -- absent, a request is held to nothing until its helper reads it; declared, one that names a field it does not is refused where a design is made." },
+};
+
+// What one field of a request may be (0.5.0, ADR 0052): what a table says may be SENT, never what to send -- so no
+// default, no example, no value. An object's own keys are rows of their own; with none declared, any key.
+export const REQUEST_TYPES = ["string", "integer", "number", "boolean", "object", "array"];
+
+export const REQUEST_FIELD_FIELDS = {
+  doc: { type: "string", doc: "What the field tells the helper, in one line." },
+  type: { type: "string", enum: REQUEST_TYPES, doc: "Its JSON type. Absent: any value -- what `doc` says it is (a body, a text or a number)." },
+  enum: { type: "array", minItems: 1, doc: "The only values it takes." },
+  pattern: { type: "string", doc: "A pattern a text value matches." },
+  minimum: { type: "number", doc: "The least a number may be." },
+  maximum: { type: "number", doc: "The most a number may be." },
+  required: { type: "boolean", doc: "The operation is never asked without it." },
+  fields: { type: "object", additionalProperties: { $ref: "#/definitions/requestField" }, doc: "An object's own keys, each a row of its own. Absent: any key." },
 };
 
 export const LIMIT_FIELDS = {
@@ -66,6 +83,7 @@ export const DEFINITIONS = {
   limits: { table: LIMIT_FIELDS, required: [] },
   helper: { table: HELPER_FIELDS, required: ["argv"] },
   conformance: { table: CONFORMANCE_FIELDS, required: ["kit"] },
+  requestField: { table: REQUEST_FIELD_FIELDS, required: ["doc"] },
 };
 
 // The whole declaration, judged before anything registers: the table's own rules, then the
@@ -84,6 +102,7 @@ const CROSS = [
   (d, at) => Object.keys(isTable(d.operations) ? d.operations : {}).filter((name) => familyOf(d.family) && !rowOf(d, name)).map((name) => `${at}: ${name} is not an operation of the ${d.family} family, nor ${SHARED.join(".<op> or ")}.<op> for a resource it owns`),
   (d, at) => operationEntries(d).flatMap(([name, o]) => effectFindings(d, name, o, at)),
   (d, at) => operationEntries(d).flatMap(([name, o]) => outputFindings(name, o, at)),
+  (d, at) => operationEntries(d).flatMap(([name, o]) => patternFindings(o?.request, `${at}: ${name} request`)),
   (d, at) => helperFindings(d.helper, at),
 ];
 
@@ -111,4 +130,34 @@ function effectFindings(d, name, o, at) {
 
 // An output field carries a meaning, or -- for a list -- each item's fields do: `{ each: {...} }`.
 const outputFindings = (name, o, at) => meaningEntries(o?.outputs).filter(([, means]) => !meaningAt(String(means))).map(([field, means]) => `${at}: ${name} output ${field} means "${means}", which is not a meaning (src/topology/vocab.mjs)`);
+
+// ── what a request may carry (0.5.0, ADR 0052) ─────────────────────────────
+
+// Every row of a request table, an object's own keys included, by where it is.
+const rowsOf = (table, at) => Object.entries(isTable(table) ? table : {}).flatMap(([k, row]) => [[`${at}.${k}`, row], ...rowsOf(row?.fields, `${at}.${k}`)]);
+
+// A pattern is compiled when a request is held to it, so one that does not compile is refused before anything registers.
+const patternFindings = (table, at) => rowsOf(table, at).filter(([, row]) => typeof row?.pattern === "string" && !compiles(row.pattern)).map(([where, row]) => `${where}: pattern ${String(row.pattern).slice(0, 60)} is not one a request can be held to`);
+
+function compiles(pattern) {
+  try { return new RegExp(pattern) instanceof RegExp; }
+  catch { return false; }
+}
+
+// A request held to the table its operation declares: a field the table does not name is refused, saying the ones it
+// reads; a required one missing is named; each one it names is held to its own row (src/constraints.mjs, the one leaf
+// every table's constraints are enforced by); an object's own keys to its `fields`, when its row declares them. An
+// operation that declares no table is held to nothing here -- its helper still refuses, at run time, what it cannot do.
+// The QA generation port asks it of every step a design makes (skills/orbit-qa/ports.mjs).
+export function requestFindings(table, request, at) {
+  if (!isTable(table)) return [];
+  const r = isTable(request) ? request : {};
+  return [...unknownIn(table, r, at), ...missingFindings(requiredIn(table), r, at), ...constraintFindings(table, r, at), ...Object.entries(table).flatMap(([k, row]) => nestedIn(row, r[k], `${at} ${k}`))];
+}
+
+const unknownIn = (table, r, at) => Object.keys(r).filter((k) => !Object.hasOwn(table, k)).map((k) => `${at}: unknown field "${k}" — it reads ${Object.keys(table).join(", ") || "nothing"}`);
+
+const requiredIn = (table) => Object.keys(table).filter((k) => table[k]?.required === true);
+
+const nestedIn = (row, value, at) => (isTable(row?.fields) && isTable(value) ? requestFindings(row.fields, value, at) : []);
 

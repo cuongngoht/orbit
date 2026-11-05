@@ -1,17 +1,9 @@
 ---
 name: orbit-runtime
 description: >
-  Find out what a checkout needs in order to run, whether this machine can run it, and how, for any
-  stack and any number of projects. It reads the evidence a project already keeps (manifests, tool
-  version files, container and dev container files, pipelines, build files), remembers it per
-  checkout so a second look costs almost nothing, and says which components can start here, which
-  are blocked and why, what is running, whether it answers, and whether a server it needs is
-  reachable from here and from the dev container. When asked,
-  it proposes a development environment as a reviewable proposal that a person adopts in Orbit Control. Use when asked
-  what a project needs to run, whether it can run on this machine, why it will not start, to start or
-  stop the app, whether a database is reachable, or to design a dev container. It never installs a
-  tool, never edits the repository except an adopted proposal, never stops what it did not start,
-  never touches a VPN, never runs a test, and never decides a test verdict.
+  Works out what this checkout needs to run, whether this machine can run it, starts or stops what
+  its files declare, and checks a server is reachable. Use for how to run the app, why it will not
+  start, a port conflict, an unreachable database, or a dev container.
 argument-hint: what does this project need to run | can I run a component here | start the app | design a dev container
 allowed-tools:
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/runtime.mjs status*)
@@ -34,6 +26,18 @@ user-invocable: true
 **Host binding:** On protocol v2, resolve the plugin root from this SKILL.md’s actual location and bind the host/protocol/hashed session supplied at startup on every Orbit shell invocation. Resolve command examples against that root; do not assume hook exports persist. Follow [the shared host contract](../../docs/hosts.md) for task stdin, runtime isolation and unavailable native capabilities. Use the supported native protocol for the selected host.
 
 # Know how a checkout runs, once, and say so plainly
+
+**In short.** Find out what a checkout needs in order to run, whether this machine can run it, and
+how, for any stack and any number of projects. It reads the evidence a project already keeps
+(manifests, tool version files, container and dev container files, pipelines, build files),
+remembers it per checkout so a second look costs almost nothing, and says which components can start
+here, which are blocked and why, what is running, whether it answers, and whether a server it needs
+is reachable from here and from the dev container. When asked, it proposes a development environment
+as a reviewable proposal that a person adopts in Orbit Control. Use when asked what a project needs
+to run, whether it can run on this machine, why it will not start, to start or stop the app, whether
+a database is reachable, or to design a dev container. It never installs a tool, never edits the
+repository except an adopted proposal, never stops what it did not start, never touches a VPN, never
+runs a test, and never decides a test verdict.
 
 This workflow provides **`runtime.discovery`**. It needs **`project.context`** and **`repository.read`**,
 and nothing else: no server, no tool, no account. Tool guidance for the host:

@@ -54,13 +54,24 @@ function hook(args, input, env) {
   });
 }
 const contents = (root) => readdirSync(root, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? contents(join(root, e.name)) : [readFileSync(join(root, e.name), 'utf8')]).join('\n');
+// The three hosts' deliveries reach the store one after another. The trail's writer is FAIL-OPEN (src/trace/log.mjs):
+// a writer that cannot take the store's lock within its bounded backoff costs its line, never the moment it describes.
+// So three processes racing for that one lock may each lose a line BY DESIGN -- under load, on Windows, it did once
+// (8a1166c) -- and a test that raced them held the writer to what it never promises. What this test is about holds
+// one at a time, every time: three hosts' hooks share one store, a delivery that comes again adds nothing, and no
+// raw payload is kept.
+async function deliveredInTurn(deliveries, env) {
+  const done = [];
+  for (const [args, input] of deliveries) done.push(await hook(args, input, env));
+  return done;
+}
 test('three real hook processes share a trace store, dedupe new delivery and retain no raw payload', async (t) => {
   const store = mkdtempSync(join(tmpdir(), 'orbit-three-host-'));
   t.after(() => rmSync(store, { recursive: true, force: true }));
   const env = sealed({ ORBIT_STORE_DIR: store, ORBIT_WORKING_SET: 'off' });
   const common = { hook_event_name: 'PostToolUse', cwd: repo, session_id: 'native-private-session', tool_name: 'Bash', tool_use_id: 'delivery-private', turn_id: 'turn-private', tool_input: { command: 'node --test SECRET-SENTINEL' } };
-  const jobs = [hook([], common, env), hook(['--host=codex', '--protocol=2'], common, env), hook(['--host=antigravity', '--protocol=2', '--event=PostToolUse'], { conversationId: 'native-private-session', workspacePaths: [repo], executionNum: 1, toolCall: { name: 'run_command', args: { CommandLine: 'node --test SECRET-SENTINEL' } } }, env)];
-  assert.ok((await Promise.all(jobs)).every((r) => r.code === 0));
+  const deliveries = [[[], common], [['--host=codex', '--protocol=2'], common], [['--host=antigravity', '--protocol=2', '--event=PostToolUse'], { conversationId: 'native-private-session', workspacePaths: [repo], executionNum: 1, toolCall: { name: 'run_command', args: { CommandLine: 'node --test SECRET-SENTINEL' } } }]];
+  assert.ok((await deliveredInTurn(deliveries, env)).every((r) => r.code === 0));
   const before = traceLog(stateRooms(store), realIo()).read();
   await hook(['--host=codex', '--protocol=2'], common, env);
   const after = traceLog(stateRooms(store), realIo()).read();

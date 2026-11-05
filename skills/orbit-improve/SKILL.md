@@ -1,14 +1,9 @@
 ---
 name: orbit-improve
 description: >
-  Improve this project's reusable playbooks and Satellite roles from what they actually did: the engine finds a
-  problem that recurs in independent sessions, drafts the smallest successor through the skill factory, and -- once
-  the host writes what changes -- compares it with the version it would replace on the same frozen inputs in two
-  independent sessions, lets it run for new work only when every promotion gate holds, watches later runs, and puts
-  the replaced version back when it regresses. Use when asked to improve a generated playbook or a Satellite role,
-  when improve status or Orbit Live shows a campaign waiting for the host, or to evaluate a candidate from a new
-  session. It never promotes, reverts or rejects a candidate (a person does, in Orbit Control), never weakens an
-  acceptance rule, never writes a script, and never edits the developer's checkout.
+  Improves this project's generated playbooks and Satellite roles from evidence: drafts the smallest
+  successor and evaluates it against the current version on frozen inputs. Use when asked to improve
+  a playbook or a role, or when improve status shows a campaign waiting.
 argument-hint: <imp-… | cand-… | "what can improve here" | evaluate imp-…>
 allowed-tools:
   - Read
@@ -26,6 +21,16 @@ and run `query storage --json` before writing anything. `$SCRATCH` below is the 
 command: the only place this playbook writes a file.
 
 # Improve a reusable definition, on independent evidence
+
+**In short.** Improve this project's reusable playbooks and Satellite roles from what they actually
+did: the engine finds a problem that recurs in independent sessions, drafts the smallest successor
+through the skill factory, and -- once the host writes what changes -- compares it with the version
+it would replace on the same frozen inputs in two independent sessions, lets it run for new work
+only when every promotion gate holds, watches later runs, and puts the replaced version back when it
+regresses. Use when asked to improve a generated playbook or a Satellite role, when improve status
+or Orbit Live shows a campaign waiting for the host, or to evaluate a candidate from a new session.
+It never promotes, reverts or rejects a candidate (a person does, in Orbit Control), never weakens
+an acceptance rule, never writes a script, and never edits the developer's checkout.
 
 The ENGINE decides everything here; the host does three things only: it writes a successor's text when a campaign
 asks for it, it evaluates from a new session when a campaign asks for that, and it runs a Satellite mission when a

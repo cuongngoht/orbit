@@ -68,7 +68,9 @@ src/capability/helper.mjs  (0.1.0, ADR 0036) the ONE way out of the process for 
 src/adapters/  (0.1.0, ADR 0035) the ORBIT ADAPTER PROTOCOL, product-free: families.mjs (EFFECTS, BIND_KINDS and
                each family's operations: ref kinds, effect, output allow-list with `means`, the semantics they
                need) · semantics.mjs (the layered semantics vocabulary, `unknown` legal) · contract-v1.mjs
-               (`orbit.adapter/v1`, validated before anything registers) · registry.mjs ·
+               (`orbit.adapter/v1`, validated before anything registers; 0.5.0, ADR 0052: an operation's optional
+               `request` table, and `requestFindings`, which the QA generation port holds a design's request to) ·
+               registry.mjs ·
                core.mjs (registers `orbit.<family>.<op>`) · select.mjs (ordered rows over discovered
                transports and DECLARED semantics; the last answers a boundary-scoped gap, never a fallback) ·
                dispatch.mjs (binding → select → helper → allow-list → stamp; beside the answer, what a match on
@@ -231,16 +233,24 @@ src/resources/ the EFFECTIVE RESOURCE REGISTRY: what Orbit can use HERE, one pro
                catalog/components.json + the project's registry) · plugin.mjs (what ships, read
                off the tree) · compose.mjs the ONE recipe the prompt router's hook, Orbit Control
                and cli/mcp.mjs build it (and the MCP invocation context) with · observe.mjs
-src/routing/   the PROMPT ROUTER, a PLANNER: intents.mjs (twelve broad intents as a table, generic
-               words only) · classify.mjs (each requirement with its level) · graph.mjs (the
+src/routing/   the PROMPT ROUTER, a PLANNER: intents.mjs (sixteen broad intents as a table, generic
+               words in English and Vietnamese, at most three terms each; the REFINEMENTS that narrow
+               them; MARKS -- opt-out · continue · halt · status · change -- as data) · terms.mjs (terms and grams;
+               the head that outranks a pasted tail, WEIGHTS; shape counts; the references a head names)
+               · classify.mjs (each requirement with its level; marks, shape and focus; `heard`: a
+               one-cue intent is said only on a signal-gated provider's own word) · graph.mjs (the
                REQUIREMENT GRAPH: required · conditional · optional · transitive, expanded through
                chosen providers' needs/optional, bounded, cycles recorded) · select.mjs (ONE
                provider per requirement: an ordered table of comparisons, deterministic; an
                optional need resolved only when the task names its provider) · resolve.mjs
-               (RouteDecision v2: graph, selected, approval, blocked, missing, plan) · explain.mjs
+               (`route`: RouteDecision v2 -- graph, selected, approval, blocked, missing, plan;
+               `decide`: v3, the same and strategy, activation, synthetic) · strategy.mjs (0.5.0, a
+               LEAF: how much Orbit -- NONE · DIRECT · COORDINATED · SATELLITE · RESUME -- one ordered
+               table over facts the hook binds, the last row always matching) · explain.mjs
                (DERIVED views for Control: a skill's resolved needs, a resource's potential
-               consumers) · format.mjs (≤ 2 KB, or nothing). It connects, starts, installs and
-               writes nothing, and the prompt never leaves its memory
+               consumers, the agents a skill dispatches) · format.mjs (≤ 2 KB: nothing for NONE, one
+               strategy line, then the v2 lines). It connects, starts, installs and writes nothing,
+               and the prompt never leaves its memory
 src/mcp/       MCP as a MANAGED RESOURCE, not a feature of the host. identity.mjs (owners and the
                compound key: orbit-managed · external · catalog) · managed.mjs (what a
                managed definition may say: secrets NAMED by the variable that supplies them,
@@ -459,7 +469,11 @@ src/work/track/  UNIFIED WORK TRACKING (1.8.8, README §4.18): identity, links a
                coverage.mjs (what each host lets tracking see, as data) · view.mjs (`workViewOf`, the one
                view Live, the terminal and Control serve) · read.mjs (assembles it over ports the roots hand
                in) · tail.mjs (the working-set port; `workingSetRoom`) · auto.mjs (a task that starts beside
-               a tracked work joins it; nothing is created) · say.mjs · index.mjs the COMMANDS table.
+               a tracked work joins it; nothing is created) · open.mjs (0.5.0: the OPEN work a prompt could
+               mean -- by the deterministic id of a reference it names or the reference a tracked work
+               recorded (a requirement kept for the item roots its work), or this session's current work when
+               it says continue -- and the owner that governs it; read only) · say.mjs · index.mjs the
+               COMMANDS table.
                cli/track.mjs is the composition root. It imports no task, no live core and no host
 src/task/      TASK EXECUTION: what happened while something autonomous tried to do a work -- never what the
                work needs (that is src/work/), and never the doing (nothing here runs, stops or writes
@@ -532,9 +546,12 @@ src/runtime/   RUNTIME UNDERSTANDING: what a CHECKOUT needs to run, whether this
                world, answers one candidate per way it could place a component, and adds no way to run a process) ·
                sandbox/ (a TASK-OWNED environment: context.mjs derives it from a person's context, re-rooted on the
                workspace; model.mjs STALE derived on every read; prepare.mjs the ordered steps, each a row naming who
-               must act; restore.mjs + trust.mjs what a person trusted BY FINGERPRINT; ports.mjs MACHINE-GLOBAL leases;
+               must act; restore.mjs + trust.mjs what a person trusted BY FINGERPRINT; policy.mjs what a person decided
+               about this checkout's sandboxes -- a review mark is evidence, never a gate, and `qa.modes` / `qa.writes`
+               only narrow; ports.mjs MACHINE-GLOBAL leases, held.mjs the lease room as this context sees it;
                binding.mjs how a component is told a port, as data; launch.mjs · release.mjs · reconcile.mjs ·
-               operations.mjs the journal written BEFORE each step; view.mjs the one read; commands.mjs the table) · lifecycle/ (start writes the receipt FIRST; stop only
+               operations.mjs the journal written BEFORE each step; view.mjs the one read, views.mjs its words,
+               vocab.mjs the codes and who must act; commands.mjs the table) · lifecycle/ (start writes the receipt FIRST; stop only
                what ownership.mjs proves; status; prepare) · sessions.mjs + ownership.mjs (OWNERSHIP, ordered) ·
                readiness.mjs (a port or a URL on this machine, both loopbacks; never a command) + ports.mjs · exclusive.mjs (one start at a time per checkout) · design/ (gap · create · patch · designer) + jsonc.mjs · proposal.mjs +
                writer.mjs (the ONLY module that writes the repository, grep-tested) · validate.mjs + instances.mjs ·
@@ -552,13 +569,20 @@ src/runtime/isolation/  (0.1.0, ADR 0038) the ISOLATION PROVIDER contract (`orbi
                · docker.mjs the first provider, argv through the Process port · index.mjs the list. A host with
                none is a capability gap, never an isolated run pretended
 src/runtime/sandbox/ (0.1.0 additions) topology.mjs (IMAGE_SOURCES · NETWORK_MODES · READINESS over discovery; a
-               compose file read, never run, ADR 0039) · network.mjs (the task's own INTERNAL network, labelled,
-               receipted) · isolation.mjs (PROFILE, attested at prepare and at every dispatch) · fixtures.mjs +
-               bindings.mjs (a namespace per run, receipts first; logical refs sealed into a binding table) ·
-               test-grants.mjs + fixture-policy.mjs (MINT, one use spent before the effect, ADR 0037) ·
-               supervise.mjs + observers.mjs (SUPERVISE and TEARDOWN: heartbeats, signals, deadlines; launches
-               nothing, ADR 0036) · test-faults.mjs + replay-policy.mjs (a designed fault or a replay, each its
-               own grant) · dispatch.mjs (one generated test to the worker; `dispatchedNow`, WORKER_NOW -- none ·
+               compose file read, never run, ADR 0039) · isolated-prepare.mjs + isolated-launch.mjs (preparing and
+               starting an ISOLATED sandbox: every component in a container of its own on the task's network, behind a
+               receipt, from the topology it was prepared with) · network.mjs (the task's own INTERNAL network,
+               labelled, receipted) · isolation.mjs (PROFILE, attested at prepare and at every dispatch) · scratch.mjs
+               (a file only a container client reads, made for ONE call and removed when it ends) · declarations.mjs +
+               bindings.mjs (what a logical ref IS, read off the system graph and the design's own observation plan --
+               `bindableFrom` lists the names a design's refs may take and a workload's declared fault points -- sealed
+               ONCE into the binding table a run is handed; what a run OWNS, an observer or a fixture, is named inside
+               its namespace by its adapter's `bind` templates, the namespace the composition root names per run,
+               skills/orbit-qa/ports.mjs) · test-grants.mjs (MINT, one use spent before the effect, ADR 0037: a
+               person's narrowing is policy.mjs `qa.writes`; a duplicate or a replay on purpose is a grant of its own,
+               `duplicateOf` / `replayOf`, and a designed fault is the workload control's effect, minted like any
+               other) · supervise.mjs + observers.mjs (SUPERVISE and TEARDOWN: heartbeats, signals, deadlines;
+               launches nothing, ADR 0036) · dispatch.mjs (one generated test to the worker; `dispatchedNow`, WORKER_NOW -- none ·
                lost · unstarted · ended · running · gone -- what became of a dispatch whose caller never saw its
                end, read off the worker's receipt and container, for `sandbox-dispatched`). QUARANTINED joins the
                instance states: released from Control only. A container is removed with the anonymous volumes it
@@ -855,7 +879,10 @@ skills/orbit-qa/  the INVESTIGATION playbook: context first, a bounded plan, act
                           generation and dispatch PORTS a generated test's lifecycle asks -- refs read the
                           way the binder reads them, only accepted expectations at their digest, every ref
                           sealed and every effect granted before a dispatch, what a worker left read back
-                          only inside its own output
+                          only inside its own output (0.5.0: and every request held to the request table its
+                          answering adapter declares). references/designs.md (0.5.0): one generic WORKED DESIGN
+                          per shape the engine designs, each made a draft through that port by
+                          test/qa-worked-designs.test.mjs -- never an acceptance design
 skills/orbit-engineer/  the AUTONOMOUS ENGINEERING playbook + protocol.md: a requirement (or an
                           objective) to a verified change, one decided step at a time -- the requirement
                           read back, context, environment, the task's own workspace, a plan, the change,
@@ -887,7 +914,9 @@ hooks/hooks.json          SessionStart (direct Orbit recall, and ONE line when n
                           prompt router is on; plus an ASYNC `knowledge locate --hook` that notes
                           where the host keeps its memory for this checkout), UserPromptSubmit
                           (cli/router-hook.mjs: at most 2 KB of routing context, fail-open, prompt
-                          never stored -- its one write is the trail's `prompt.submitted`),
+                          never stored -- its one write is the trail's `prompt.submitted`; 0.5.0: it
+                          binds the strategy's facts -- automation's workflowOf, the host's row, the
+                          settings, this checkout's open work -- and a host's own envelope gets nothing),
                           PreToolUse (Skill|Agent: refused when its `skill_*`/`agent_*` switch in
                           userConfig is off; unset is on; the trail records started or refused),
                           PostToolUse, EVERY tool, async (fold in after a run; one working-set
@@ -1015,8 +1044,10 @@ skills/orbit-browser/ OPTIONAL adapter: pick a local browser+profile, opted into
 skills/orbit-release/  release + adoption: the DoD as gates, the version rule, the install routes; ship.mjs the
                           AUTONOMOUS SHIP (ADR 0049) and its ship/ modules -- policy.json + policy.mjs (the catalog,
                           the host, the limits, the protected paths, as data) · machine.mjs (facts folded from the
-                          ship task's journal, NEXT) · steps.mjs (STEPS and the loop) · dispatch.mjs (one benchmark run:
-                          its room named first, watched, judged from its room, carried on) · rows.mjs (ARGV,
+                          ship task's journal, NEXT, SHIP_MODES: a ship, verify-only, or a precheck (ADR 0051), recorded
+                          rows) · steps.mjs (STEPS and the loop) · dispatch.mjs (one benchmark run: its room named first,
+                          a control set's too, watched, judged from its room, carried on; COSTS; a failed row's
+                          diagnosis bundle read off its run's report) · rows.mjs (ARGV,
                           ROW_VERDICT, CONTROL_RULES, REPAIR_CHECK) · diagnose.mjs (DIAGNOSE) · preflight.mjs ·
                           workspace.mjs (the ship task's own workspace, a verified patch applied AUTO, pristine
                           checkouts, the release patch and bundle) · artifact.mjs (git archive, ARCHIVE_RULES, byte
@@ -1068,7 +1099,10 @@ benchmark/     (ADR 0046, 0047, 0048) THE DOCKER BENCHMARK of Orbit: development
                secret a run handed out, looked for and masked) · tools.mjs (0.5.0, B9: a run's tool-call failures per
                tool, per relay subcommand and per sandbox step, SANDBOX_FAILURES, and their fold) · rates.mjs (pass@1,
                pass@k and medians per row and model, the arms' overhead) · metrics.mjs (a fold over the kept runs, apart
-               by host basis) · reliability.mjs (the reliability report a release quotes).
+               by host basis) · reliability.mjs (the reliability report a release quotes) · controlset.mjs (0.5.0: a
+               control set kept in a room of its own -- each control's record, RUN_OF for a control carried by a whole
+               run -- so `resume` carries a set on) · diagnosis.mjs (0.5.0: a run's diagnosis bundle, FINISH, read off its
+               own records into its report).
                lib/source/ -- a source or engineering case: verify.mjs, judge.mjs, candidate.mjs (SCOPE), classify.mjs
                (CAUSES and FAILURE_CLASSES), decide.mjs (NEXT), brief.mjs (a repair's brief, or a goal's), round.mjs (a
                round and its read-back), repairs.mjs (candidate controls straight to the judge), flow.mjs (with

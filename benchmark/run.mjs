@@ -49,18 +49,22 @@
 //                                     where a run stands; its report (written into its room as report.md and .json)
 //   node benchmark/run.mjs resume <bnr-…>
 //                                     a run carried on from where its task's journal says it stands: a verification or a
-//                                     setup is done again; a repair round or a QA host's round is read back, never sent again
+//                                     setup is done again; a repair round or a QA host's round is read back, never sent
+//                                     again -- or a control set carried on from its room: every control it kept stands,
+//                                     the rest run, and a control's own run (engine, QA) is read back or carried on
 //   node benchmark/run.mjs controls <case> [--only=<control>] [--skip-engine] [--source=head|worktree]
-//                                     [--tree=<dir>] [--parent=<tsk-…>]
+//                                     [--tree=<dir>] [--parent=<tsk-…>] [--run-id=<bnr-…>]
 //                                     what the verifier must pass and must fail: for a source case, a planted fault, a
 //                                     partial fix, allow-all and reject-all in the verifier's own containers; its repair
 //                                     controls -- a reference candidate the judge must pass and every way of cheating it
 //                                     must refuse by name, and (unless --skip-engine) a scripted host driving Orbit's own
 //                                     engineering loop with no model; for a QA case, a whole run with each scripted
 //                                     host -- reference, idle, false-alarm. A control that no longer applies to the
-//                                     source is its own row, DRIFTED, and the command then exits 2
+//                                     source is its own row, DRIFTED, and the command then exits 2. The set keeps a room
+//                                     of its own (--run-id names it before it starts), each control's row as it ends
 //   node benchmark/run.mjs cleanup <bnr-…> [--scratch]
-//                                     the run's containers and networks, by its label only; --scratch its scratch trees
+//                                     the run's containers and networks, by its label only (a control set's, and every
+//                                     run it planned for a control); --scratch its scratch trees
 //   node benchmark/run.mjs where      where the runs are kept, and which there are
 //   node benchmark/run.mjs metrics [--suite=<suite>] [--case=<case>] [--since=<iso date>] [--revision=<commit>]
 //                                  [--by=revision,model,arm] [--k=<n>]

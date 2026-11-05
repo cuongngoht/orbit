@@ -26,19 +26,63 @@
 // Every reason is built from table words, requirement names and resource ids,
 // never from the prompt, so a decision can be shown to anybody without showing
 // what was typed.
+//
+// RouteDecision v3 (0.5.0, B22, ADR 0050) is v2 and three more answers, made by
+// `decide`: the STRATEGY -- how much Orbit the request needs, one word of
+// src/routing/strategy.mjs with its row, its reason and whether it is said at all
+// -- the ACTIVATION it names, and whether the host wrote the prompt itself
+// (`synthetic`). `route` stays the planner's v2 answer, which Orbit Control's Router
+// Inspector and `resources.mjs route` show; the prompt hook asks `decide`.
 import { everyResource } from "../resources/registry.mjs";
-import { classify } from "./classify.mjs";
+import { classify, heard } from "./classify.mjs";
 import { expandGraph } from "./graph.mjs";
+import { DOORS, strategyOf } from "./strategy.mjs";
 
 export const ROUTE_DECISION_VERSION = 2;
+export const ROUTE_DECISION_V3 = 3;
 export const MAX_SELECTED = 6;
 export const MAX_MISSING = 3;
 
 export function route(prompt, effective, classifier = classify) {
-  const asked = classifier(prompt);
-  const graph = expandGraph(asked.asked ?? asked.requirements.map((requirement) => ({ requirement, level: "required", because: `intent ${asked.intent.id}` })), { resources: everyResource(effective), grams: asked.grams });
-  return decided(asked, graph);
+  return planned(classifier(prompt), effective).decision;
 }
+
+// asked: classify()'s answer   facts: what the composition root bound (src/routing/strategy.mjs names them)
+export function decide(asked, effective, facts = {}) {
+  const plan = planned(asked, effective);
+  const chosen = chosenOf(plan.nodes, asked);
+  const answer = strategyOf({ ...facts, asked: said(asked), chosen, doors: doorsOf(effective) });
+  return { ...plan.decision, version: ROUTE_DECISION_V3, strategy: { ...answer.strategy, shown: shownOf(answer, asked, chosen) }, activation: answer.activation, synthetic: facts.synthetic === true };
+}
+
+function planned(asked, effective) {
+  const graph = expandGraph(asked.asked ?? asked.requirements.map((requirement) => ({ requirement, level: "required", because: `intent ${asked.intent.id}` })), { resources: everyResource(effective), grams: asked.grams });
+  return { decision: decided(asked, graph), nodes: graph.nodes };
+}
+
+// The classification as the strategy reads it: table words and counts, never the prompt's grams.
+const said = (asked) => ({ intent: asked.intent, matched: asked.matched ?? [], marks: asked.marks ?? [], shape: asked.shape ?? null, requirements: asked.requirements ?? [] });
+
+// What was CHOSEN (selected, or waiting for a person's approval) that the session does not already have -- never an
+// implicit provider or one of the engine's built-ins -- in the order the request is about it (classify.mjs `focus`);
+// what a provider pulled in comes after everything the prompt asked for.
+const chosenOf = (nodes, asked) => nodes.filter(counted).map(chosenEntry).sort(byFocus(asked.focus ?? asked.requirements ?? []));
+
+const counted = (n) => ["selected", "approval"].includes(n.status) && !n.provider.detail?.implicit && !n.provider.detail?.builtin;
+
+const chosenEntry = (n) => ({ kind: n.provider.kind, id: n.provider.id, key: n.provider.key, ownership: n.provider.ownership, requirement: n.requirement, transitive: n.transitive, via: n.provider.routing.via ?? [], gated: n.provider.routing.requiresSignal === true && n.sigHits.length > 0 });
+
+const byFocus = (focus) => (a, b) => rankIn(focus, a) - rankIn(focus, b);
+
+const rankIn = (focus, c) => (c.transitive || !focus.includes(c.requirement) ? focus.length : focus.indexOf(c.requirement));
+
+// Who opens each coordinated path here: the first usable skill that provides its capability (strategy.mjs DOORS).
+const doorsOf = (effective) => Object.fromEntries(Object.entries(DOORS).map(([how, capability]) => [how, openerOf(effective, capability)]));
+
+const openerOf = (effective, capability) => everyResource(effective).find((r) => r.kind === "skill" && r.eligible && r.routing.provides.includes(capability))?.id ?? null;
+
+// Said unless it is NONE, or a DIRECT whose one-cue intent no signal-gated provider's own word confirmed (B5).
+const shownOf = (answer, asked, chosen) => answer.strategy.word !== "NONE" && (answer.strategy.word !== "DIRECT" || heard(asked.intent, chosen));
 
 function decided(asked, graph) {
   const lists = Object.fromEntries(Object.entries(LISTS).map(([name, statuses]) => [name, distinct(graph.nodes.filter((n) => statuses.includes(n.status) && reportable(n)).map(entryOf))]));

@@ -1,12 +1,9 @@
 ---
 name: orbit-dsl-doctor
 description: >
-  Repair ONE JSON test case that the engine refuses because the case violates the DSL contract.
-  Use when query check reports findings against a case, or run-case exits REFUSED with "case is
-  invalid". It learns the current vocabulary by asking the engine, never from memory. It repairs
-  how a test is WRITTEN and never what a test MEANS: it will not flip an expect, relax a status,
-  drop a verdict, remove a guard or weaken an assertion to make anything pass. A case that is
-  already valid comes back as NOT_DSL_ERROR.
+  Use proactively when query check reports a JSON test case or run-case refuses one as invalid:
+  repairs how ONE case is written so the engine accepts it, never what it means -- no flipped
+  expect, weaker assertion or removed guard.
 tools:
   - Read
   - Write
@@ -22,6 +19,13 @@ and run `query storage --json` before working with project files. `$DATA`, `$SCR
 
 
 # Repair one invalid case, and nothing else
+
+**In short.** Repair ONE JSON test case that the engine refuses because the case violates the DSL
+contract. Use when query check reports findings against a case, or run-case exits REFUSED with "case
+is invalid". It learns the current vocabulary by asking the engine, never from memory. It repairs
+how a test is WRITTEN and never what a test MEANS: it will not flip an expect, relax a status, drop
+a verdict, remove a guard or weaken an assertion to make anything pass. A case that is already valid
+comes back as NOT_DSL_ERROR.
 
 You are given **one case id**, the validation findings against it, and optionally the step a run
 stopped on. Produce the smallest change that makes the case valid, prove it, and report.

@@ -1,17 +1,10 @@
 ---
 name: orbit-engineer
 description: >
-  Take a requirement or an engineering objective to a VERIFIED change, autonomously and inside
-  Orbit's governance: the requirement and its frozen snapshot first, then the project's context,
-  whether the project's declared checks can run here, a task-owned isolated workspace, the smallest
-  planned change, the builds and tests of what the change reaches, a diagnosis and a fix when
-  something fails, regression, a review against the plan, and completion only when the task's
-  journal proves it. Every step is one decision the engine judges, records and settles with
-  receipts. Use when asked to implement, fix or finish a PBI, work item or change autonomously, to
-  continue one ("continue PBI-482"), or to drive a change through build and test until it is
-  verified. It commits the verified change by itself; only a push of that exact commit waits, for
-  one approval in Orbit Control. It never merges, writes the developer's checkout, runs a shell
-  line, grants an approval or resumes a paused task.
+  Takes a requirement or objective autonomously to a VERIFIED change in a task-owned workspace:
+  plan, build, test, diagnose, fix, regression, review; commits; a push waits for approval. Use for
+  work done on its own or until verified, or to continue it (PBI-482). For a direct change, use
+  orbit-develop.
 argument-hint: '"PBI-482" | "continue PBI-482" | "<one sentence: the change to make>"'
 allowed-tools:
   - Read
@@ -38,6 +31,18 @@ user-invocable: true
 **Host binding:** On protocol v2, resolve the plugin root from this SKILL.md’s actual location and bind the host/protocol/hashed session supplied at startup on every Orbit shell invocation. Resolve command examples against that root; do not assume hook exports persist. Follow [the shared host contract](../../docs/hosts.md) for task stdin, runtime isolation and unavailable native capabilities. Use the supported native protocol for the selected host. On Codex and Antigravity there is no native subagent: run this loop in the main session.
 
 # Take a change to verified, one decided step at a time
+
+**In short.** Take a requirement or an engineering objective to a VERIFIED change, autonomously and
+inside Orbit's governance: the requirement and its frozen snapshot first, then the project's
+context, whether the project's declared checks can run here, a task-owned isolated workspace, the
+smallest planned change, the builds and tests of what the change reaches, a diagnosis and a fix when
+something fails, regression, a review against the plan, and completion only when the task's journal
+proves it. Every step is one decision the engine judges, records and settles with receipts. Use when
+asked to implement, fix or finish a PBI, work item or change autonomously, to continue one
+("continue PBI-482"), or to drive a change through build and test until it is verified. It commits
+the verified change by itself; only a push of that exact commit waits, for one approval in Orbit
+Control. It never merges, writes the developer's checkout, runs a shell line, grants an approval or
+resumes a paused task.
 
 **Shared references, the same for every `orbit-*` playbook.** Read the one you need; do not
 re-derive what is in them:

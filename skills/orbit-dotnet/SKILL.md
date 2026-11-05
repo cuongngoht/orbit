@@ -1,15 +1,9 @@
 ---
 name: orbit-dotnet
 description: >
-  Know which technologies a .NET solution declares, what its code actually uses each one FOR,
-  and how the composition root wires it — Microsoft Graph, SharePoint CSOM, EF Core, Dapper,
-  SQL Server, PostgreSQL, Redis, Service Bus, Kafka, RabbitMQ, MassTransit and the standard DI
-  container — and decide whether a capability a task needs should be reused or built. Use when
-  asked which client a project uses for some system, whether a package is actually used, how a
-  service is registered, what a new integration should be built on, or before building a
-  project-local QC tool. Memory first: it re-reads only manifests or directories that moved.
-  It reads tracked source through the engine and writes nothing into the repository, it never
-  stores a literal from the code, and a declared package is never reported as a used one.
+  Tells which technologies a .NET solution declares, what its code really uses each for and how it
+  is wired, and whether to reuse or build. Use for which client a .NET project uses for a system,
+  whether a package is used, or what a new .NET integration should build on.
 argument-hint: which client does this project use for X | is package Y used | what should Z be built on
 allowed-tools:
   - Read
@@ -26,6 +20,16 @@ and run `query storage --json` before working with project files. `$DATA`, `$SCR
 
 
 # Know a .NET project's technologies — and what each is used for
+
+**In short.** Know which technologies a .NET solution declares, what its code actually uses each one
+FOR, and how the composition root wires it — Microsoft Graph, SharePoint CSOM, EF Core, Dapper, SQL
+Server, PostgreSQL, Redis, Service Bus, Kafka, RabbitMQ, MassTransit and the standard DI container —
+and decide whether a capability a task needs should be reused or built. Use when asked which client
+a project uses for some system, whether a package is actually used, how a service is registered,
+what a new integration should be built on, or before building a project-local QC tool. Memory first:
+it re-reads only manifests or directories that moved. It reads tracked source through the engine and
+writes nothing into the repository, it never stores a literal from the code, and a declared package
+is never reported as a used one.
 
 This is the **.NET pack** behind `cli/intelligence.mjs`. The engine's project-intelligence core
 knows no ecosystem and no product: it runs whatever adapters, descriptors and analysers are

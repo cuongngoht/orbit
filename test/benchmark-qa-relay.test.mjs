@@ -144,6 +144,27 @@ test("a request the engine stopped is logged with the engine's own first line --
   assert.match(lines[4].refused, /a person's approval/, "a request the relay refused says why in its own field, as before");
 });
 
+// What a person diagnosing a failed QA row read first in the 0.4.0 ships, and found only by reading the host's whole
+// stream (0.5.0 backlog B6): where a run the host's `step` dispatched stopped short. The log keeps that one thing of an
+// answer of 0 -- `result.stopped`, as the engine's own allow-listed view says it -- and nothing else the answer said.
+test("of an answer of 0 the log keeps one thing: where a run the step dispatched stopped short (result.stopped), as the engine said it", async (t) => {
+  const box = mailbox(t);
+  const stopped = { step: 2, do: "call", capability: "orbit.state.read", as: "refused", says: `request.key … or request.match \u001b[31m${"y".repeat(800)}` };
+  const outs = { step: { result: { outcome: "INVALID_TEST", rule: "TEST_WRONG", why: "a word the log never keeps", stopped } }, context: { result: { outcome: "SATISFIED", stopped: null }, note: "never kept either" } };
+  const serve = { admit: (req) => admitted(req, INV), run: async (a) => ({ exit: 0, stdout: `${JSON.stringify(outs[a.argv[0]])}\n`, stderr: "" }) };
+  const server = relayServer(box.dirs, serve, { everyMs: 20 });
+  await client(box, ["step"], { stdin: '{"decisionId":"q-3"}' });
+  await client(box, ["context"]);
+  await server.stop();
+  const lines = readFileSync(box.dirs.log, "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  assert.deepEqual(Object.keys(lines[0].stopped), ["outcome", "rule", "step", "do", "capability", "as", "says"]);
+  assert.deepEqual([lines[0].stopped.outcome, lines[0].stopped.step, lines[0].stopped.capability, lines[0].stopped.as], ["INVALID_TEST", 2, "orbit.state.read", "refused"]);
+  assert.match(lines[0].stopped.says, /^request\.key … or request\.match \[31my/, "printable");
+  assert.equal(lines[0].stopped.says.length, 600, "bounded as the engine bounds it");
+  assert.equal("stopped" in lines[1], false, "an answer with nothing stopped keeps nothing");
+  assert.equal(readFileSync(box.dirs.log, "utf8").includes("never keeps") || readFileSync(box.dirs.log, "utf8").includes("never kept"), false, "nothing else of what an answer said");
+});
+
 test("with no mailbox the client says BLOCKED, and runs nothing", async (t) => {
   const r = await client({ dir: join(tmpdir(), "orbit-bench-no-mailbox-here") }, ["context"]);
   assert.deepEqual([r.code, /BLOCKED .*relay/.test(r.stderr)], [3, true]);

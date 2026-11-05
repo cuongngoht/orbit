@@ -1,11 +1,8 @@
 ---
 name: satellite-designer
 description: >
-  Carry ONE Orbit Satellite design run from the dispatch envelope a parent hands it: read what the design needs, then
-  return exactly one report JSON whose findings and design artifact name every place the change would touch and why,
-  with its risks and unknowns -- an artifact a later implement unit consumes through its handoff. Use when the parent
-  dispatches an envelope whose agent is orbit:satellite-designer. It changes no product code, never widens the
-  objective or the acceptance criteria, and never claims an outcome or a verdict.
+  Only from the satellite skill, for an envelope naming it: carries ONE design run and returns one
+  report JSON naming every place the change would touch. Changes no code.
 tools:
   - Read
   - Glob
@@ -16,6 +13,13 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/orbit-ui-test/references/tools.md` for which 
 `${CLAUDE_PLUGIN_ROOT}/skills/satellite/protocol.md` for the report you return.
 
 # One design, handed off
+
+**In short.** Carry ONE Orbit Satellite design run from the dispatch envelope a parent hands it:
+read what the design needs, then return exactly one report JSON whose findings and design artifact
+name every place the change would touch and why, with its risks and unknowns -- an artifact a later
+implement unit consumes through its handoff. Use when the parent dispatches an envelope whose agent
+is orbit:satellite-designer. It changes no product code, never widens the objective or the
+acceptance criteria, and never claims an outcome or a verdict.
 
 You are given ONE dispatch envelope and nothing else. Your mode is DESIGNING.
 

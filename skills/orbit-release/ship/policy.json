@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "about": "What a release of Orbit must hold, as data (ADR 0049): every case of every suite named, what each kind of case must come to, the one coding host a model-carried row may have, the limits a ship runs within, and the paths no repair may touch. skills/orbit-release/ship.mjs reads it; test/release-ship-policy.test.mjs holds the catalog to benchmark/suites both ways.",
+  "about": "What a release of Orbit must hold, as data (ADR 0049): every case of every suite named, what each kind of case must come to, the one coding host a model-carried row may have, the limits a ship runs within, and the paths no repair may touch. skills/orbit-release/ship.mjs reads it; test/benchmark-release-policy.test.mjs holds the catalog to benchmark/suites both ways.",
   "host": {
     "cli": "claude-code",
     "basis": "coding-host",
@@ -128,6 +128,11 @@
       "ORBIT-E2E-007",
       "ORBIT-E2E-008"
     ]
+  },
+  "recorded": {
+    "about": "Model-carried rows a release RECORDS and never requires (ADR 0051): every autonomous row of a suite or a case named here runs once, under the ship's retries, and is reported held or not, with its run's room, in the ship's result, --status and evidence.json -- it never blocks SHIPPABLE. The controls of a recorded suite or case stay required. A new benchmark suite's model-carried rows start here, and leave only by the promotion rule (docs/backlog/0.5.0.md, Release criteria).",
+    "suites": [],
+    "cases": []
   },
   "limits": {
     "minutes": 2880,

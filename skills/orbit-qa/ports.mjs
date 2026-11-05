@@ -20,6 +20,7 @@
 // receipts'. What cannot be read is null, and the engine says what it then cannot do.
 import { copyFileSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
+import { requestFindings } from "../../src/adapters/contract-v1.mjs";
 import { operationFor } from "../../src/adapters/families.mjs";
 import { opKeyOf, selectAdapter } from "../../src/adapters/select.mjs";
 import { inputFindings } from "../../src/capability/invoke.mjs";
@@ -90,7 +91,16 @@ export function generationPort(b) {
 function generationContext(b, obligation, a) {
   const r = resolver({ ...b, graph: b.graph(), topology: quietly(() => b.topology?.()), design: a.design });
   const steps = a.design?.skeleton?.steps ?? [];
-  return { expectations: expectationsOf(b, obligation), expected: obligation.expected ?? [], outputsOf: (i) => outputsOf(r, steps[i - 1]), semanticsOf: (i) => semanticsOf(r, steps[i - 1]), observerSemantics: (ref) => observerSemantics(r, ref), shape: shapeOf(obligation.shape), caseId: caseIdOf(obligation, a.design), title: titleOf(obligation), validate: (c) => validate(c, b.ctx.graph, b.ctx.dsl, b.ctx.validators, r.lookup), inputFindings: (s) => [...inputFindings(r.lookup(s.capability), s.input), ...basePathFindings(r, r.lookup(s.capability), s.input ?? {})], faultPointsOf: (alias) => r.declarationOf("workload", alias)?.points ?? null, dsl: b.ctx.dsl, pageOf: (id) => r.lookup(id)?.page };
+  return { expectations: expectationsOf(b, obligation), expected: obligation.expected ?? [], outputsOf: (i) => outputsOf(r, steps[i - 1]), semanticsOf: (i) => semanticsOf(r, steps[i - 1]), observerSemantics: (ref) => observerSemantics(r, ref), shape: shapeOf(obligation.shape), caseId: caseIdOf(obligation, a.design), title: titleOf(obligation), validate: (c) => validate(c, b.ctx.graph, b.ctx.dsl, b.ctx.validators, r.lookup), inputFindings: (s) => [...inputFindings(r.lookup(s.capability), s.input), ...basePathFindings(r, r.lookup(s.capability), s.input ?? {}), ...requestShapeFindings(r, s)], faultPointsOf: (alias) => r.declarationOf("workload", alias)?.points ?? null, dsl: b.ctx.dsl, pageOf: (id) => r.lookup(id)?.page };
+}
+
+// What a step's request may carry, as the adapter that will answer it declares (orbit.adapter/v1 `request`, ADR 0052): a
+// field it does not read is refused before a draft exists -- never by its helper, once a version was frozen and a run
+// spent on it. An adapter that declares no table holds the request to nothing here.
+function requestShapeFindings(r, step) {
+  const adapter = adapterOf(r, step);
+  const declared = adapter ? declaredOp(adapter, step) : null;
+  return declared?.request ? requestFindings(declared.request, step.input?.request, `${step.capability} request (${adapter.id})`) : [];
 }
 
 // A path is relative to the endpoint it is sent to, and the endpoint's own base path (the graph declares it, `/api`)

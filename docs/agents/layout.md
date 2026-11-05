@@ -68,7 +68,9 @@ src/capability/helper.mjs  (0.1.0, ADR 0036) the ONE way out of the process for 
 src/adapters/  (0.1.0, ADR 0035) the ORBIT ADAPTER PROTOCOL, product-free: families.mjs (EFFECTS, BIND_KINDS and
                each family's operations: ref kinds, effect, output allow-list with `means`, the semantics they
                need) · semantics.mjs (the layered semantics vocabulary, `unknown` legal) · contract-v1.mjs
-               (`orbit.adapter/v1`, validated before anything registers) · registry.mjs ·
+               (`orbit.adapter/v1`, validated before anything registers; 0.5.0, ADR 0052: an operation's optional
+               `request` table, and `requestFindings`, which the QA generation port holds a design's request to) ·
+               registry.mjs ·
                core.mjs (registers `orbit.<family>.<op>`) · select.mjs (ordered rows over discovered
                transports and DECLARED semantics; the last answers a boundary-scoped gap, never a fallback) ·
                dispatch.mjs (binding → select → helper → allow-list → stamp; beside the answer, what a match on

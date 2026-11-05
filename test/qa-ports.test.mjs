@@ -70,7 +70,7 @@ function journal(planAuthority = "accepted", plan = PLAN) {
 
 function ports(ctx, j, over = {}) {
   const drafts = [];
-  const b = { ctx, model: j.model, planOf: () => over.plan ?? PLAN, graph: () => over.graph ?? GRAPH, topology: () => over.topology ?? TOPOLOGY, services: SERVICES, drafts: { save: (c) => drafts.push(c) }, settings: { limits: { writes: 10, caseSeconds: 120 } }, mode: over.mode ?? "fixture-write", now: () => 1_700_000_000_000, sandbox: { id: "env-1", task: "tsk-1", tree: "tree-a", currentTree: over.currentTree ?? "tree-a", isolated: true }, policy: { revision: "rev-1", writes: over.writes ?? ["trigger", "create-resource", "consume"] }, place: { in: "/work/in", out: "/work/out" }, hooksToken: () => ("hooksToken" in over ? over.hooksToken : "hooks-token-0123456789"), runtime: over.runtime, project: { name: "invoice", packs: ["orbit-backend-test"], graphDir: over.graphDir ?? null }, keep: over.keep ?? (() => "kept") };
+  const b = { ctx, model: j.model, planOf: () => over.plan ?? PLAN, graph: () => over.graph ?? GRAPH, topology: () => over.topology ?? TOPOLOGY, services: over.services ?? SERVICES, drafts: { save: (c) => drafts.push(c) }, settings: { limits: { writes: 10, caseSeconds: 120 } }, mode: over.mode ?? "fixture-write", now: () => 1_700_000_000_000, sandbox: { id: "env-1", task: "tsk-1", tree: "tree-a", currentTree: over.currentTree ?? "tree-a", isolated: true }, policy: { revision: "rev-1", writes: over.writes ?? ["trigger", "create-resource", "consume"] }, place: { in: "/work/in", out: "/work/out" }, hooksToken: () => ("hooksToken" in over ? over.hooksToken : "hooks-token-0123456789"), runtime: over.runtime, project: { name: "invoice", packs: ["orbit-backend-test"], graphDir: over.graphDir ?? null }, keep: over.keep ?? (() => "kept") };
   return { generation: generationPort(b), dispatch: dispatchPort(b), drafts };
 }
 
@@ -131,6 +131,27 @@ test("a path that repeats its endpoint's own base path is refused before a draft
   assert.notEqual(out.outcome, "DRAFT_CREATED", "a path that asks for /api/api/... would contradict the clean application too");
   assert.match(JSON.stringify(out.findings), /repeats invoice-read's own base path \/api: a path is relative to the bound endpoint -- \\"\/invoices\/inv-a\\"/);
   assert.equal(p.drafts.length, 0);
+  rmSync(store, { recursive: true, force: true });
+});
+
+// What 0.4.0's diagnosis found (0.5.0 B7, ADR 0052): a real host's design read state with `request.businessKey`, a
+// field the adapter answering it never reads -- the draft was made, a version frozen, and the helper refused it only at
+// run time. The answering adapter's own request table now holds the request where the design is made: the validate
+// stage asks this port's input check of every call step (src/qa/generation/design.mjs stepInputs), and it says what the
+// adapter does read.
+test("a request the answering adapter does not read is refused by the port's input check, naming what it does read", async () => {
+  const { ctx, store } = await packed();
+  const graph = { ...BARE, nodes: [...BARE.nodes, { key: "data-resource:reminder-rows", name: "reminder-rows", role: "data-resource", of: "server:db", attributes: { table: "billing.reminders", key: "business_key" } }, { key: "worker:worker", name: "worker", role: "workload", of: "component:invoice-app" }] };
+  const topology = { ...TOPOLOGY, nodes: [...TOPOLOGY.nodes, { key: "server:db", role: "server", name: "db", alias: "db", service: "postgres", ports: [5432], argv: [], compose: { env: [] }, env: { names: [], values: {} } }] };
+  const j = journal();
+  const p = ports(ctx, j, { graph, topology, services: { ...SERVICES, postgres: { id: "postgres", transports: [{ id: "postgres-wire", port: 5432 }] } } });
+  const cx = p.generation.contextFor(j.model().obligations[0], { design: ASYNC });
+  const said = (capability, input) => cx.inputFindings(call(capability, input)).join("\n");
+  assert.match(said("orbit.state.read", { stateRef: "reminder-rows", request: { businessKey: "k-1" } }), /^orbit\.state\.read request \(postgres\.reference\): unknown field "businessKey" — it reads key, match, limit$/);
+  assert.equal(said("orbit.state.read", { stateRef: "reminder-rows", request: { key: "k-1" } }), "", "the key it does read");
+  assert.match(said("orbit.worker.observe", { workloadRef: "worker", request: { match: { businessKey: "k-1" } } }), /\(worker\.hooks\) match: unknown field "businessKey" — it reads messageId, outcome, executionRef/, "a match on a field its hooks never answer by, which they drop without a word");
+  assert.match(said("orbit.workload.control", { workloadRef: "worker", request: { action: "crash" } }), /action must be stop, start, restart or fault/);
+  assert.equal(said("orbit.workload.control", { workloadRef: "worker", request: { action: "fault", point: "before-effect" } }), "");
   rmSync(store, { recursive: true, force: true });
 });
 

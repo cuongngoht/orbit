@@ -186,7 +186,10 @@ them out, the newest three by the fields the adapter declares, and a sentence) -
 defect: an answer of none, complete, is not "it never happened" when the thing was there and settled another way. A
 match on the message alone hides nothing. A refusal is the test's mistake, not the product's: repair the design to
 what `says` asks for and generate again -- never
-guess a request's shape, and never resend one it refused. A fault control's `point` is one its workload
+guess a request's shape, and never resend one it refused. An adapter that declares what its request carries holds
+your design to it before a draft exists: a field it does not read -- `request.businessKey` on a state read that takes
+`key`, a `match` on a field its hooks never answer by -- is `INVALID_TEST` at `validate`, naming the fields it does
+read. A fault control's `point` is one its workload
 declares: `context` lists a workload's declared points beside its alias under `bindings` (`points`), and a
 design that names another is refused before a draft exists (`DECLARED_POINT`, naming them) -- take the point
 from there, never from an obligation's name. A workload that lists none declares none here: a point its hooks

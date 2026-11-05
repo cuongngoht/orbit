@@ -137,8 +137,12 @@ const TEST_PATH = /^((satellite|control-server)\/)?test\//;
 
 // f: { row, answer, room, verified, patch: { digest, touched: [{ path, added, removed, existed }] }, cycle, ship, policy,
 // case }
+// A repair run a restart interrupted (its round read back by `resume`, no host identity of its own) is INTERRUPTED before
+// anything is said of its candidate -- whatever the verifier made of it: never integrated, since only the coding host's
+// own repair is; never the model's miss, so it spends no repair attempt and runs again as a new repair (machine.mjs).
 export const REPAIR_CHECK = [
   ...ROW_VERDICT.slice(0, 7),
+  { code: "INTERRUPTED", state: "INTERRUPTED", when: (f) => interruptedOf(f.room?.report) && !anotherHost(f.room), says: (f) => `a round of the repair was interrupted before the controller saw it end, and was read back (${outcomeOf(f) ?? "no outcome"}): no host identity of its own survives it, so its candidate is never integrated -- a new repair runs, spending no attempt` },
   { code: "NOT_VERIFIED", state: "REJECTED", when: (f) => outcomeOf(f) !== "REPAIRED_VERIFIED", says: (f) => f.room?.ending?.summary ?? `${outcomeOf(f)}: the verifier did not pass a candidate` },
   { code: "NO_VERIFIED_RECORD", state: "REFUSED_BY_SHIP", when: (f) => !f.verified || f.verified.run !== f.room.manifest.run || f.verified.case?.id !== f.row.case || f.verified.variant !== "real" || f.verified.source?.commit !== f.cycle.commit, says: () => "verified.json is missing, or names another run, case, variant or source than this repair" },
   { code: "PATCH_DIGEST", state: "REFUSED_BY_SHIP", when: (f) => !f.patch || f.patch.digest !== f.verified.candidate?.patchDigest, says: () => "the candidate patch is not the one the verifier passed (its digest differs)" },

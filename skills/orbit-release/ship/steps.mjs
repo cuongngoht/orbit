@@ -61,7 +61,7 @@ const BLOCK_REASONS = [
   { when: (f) => f.host && !f.host.ok, says: (f) => `${f.host.code}: ${f.host.says}`, needs: () => "environment" },
   { when: (f) => diags(f, "HELD").length > 0, says: (f) => `${diags(f, "HELD").map((r) => r.row.id).join(", ")}: a person holds the benchmark run in Orbit Control -- resume it there, then resume the ship`, needs: () => "person" },
   { when: (f) => diags(f, "BLOCK").length > 0, says: (f) => diags(f, "BLOCK").map((r) => r.diag.says).join(" · "), needs: () => "environment" },
-  { when: (f) => Boolean(repairIn(f, "BLOCKED")), says: (f) => `${repairIn(f, "BLOCKED").case}: the repair could not run -- ${repairIn(f, "BLOCKED").last.settled.verdict.says}`, needs: () => "environment" },
+  { when: (f) => Boolean(repairIn(f, "BLOCKED")), says: (f) => `${repairIn(f, "BLOCKED").case}: the repair could not run -- ${repairIn(f, "BLOCKED").says ?? repairIn(f, "BLOCKED").last.settled.verdict.says}`, needs: () => "environment" },
   { when: () => true, says: (f, ctx) => ctx.blockedBy ?? "the environment", needs: () => "environment" },
 ];
 

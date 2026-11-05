@@ -19,7 +19,7 @@ import { begunShip, evidenceAsked, resumedShip, statusOf } from "../skills/orbit
 import { driven } from "../skills/orbit-release/ship/steps.mjs";
 import { authorize, isAuto } from "../src/protected/authorize.mjs";
 import { INTEGRATION } from "../skills/orbit-release/ship/workspace.mjs";
-import { adds, GIT_ENV, headOf, refsOf, shipWorldOf, statusOf as gitStatus } from "./fakes/ship-world.mjs";
+import { adds, DEFAULT_PLAY, GIT_ENV, headOf, refsOf, shipWorldOf, statusOf as gitStatus } from "./fakes/ship-world.mjs";
 import { sealed } from "./home.mjs";
 
 const OPTS = { repair: true, failFast: true, limits: {}, version: "9.9.9" };
@@ -424,6 +424,43 @@ test("B6-5. a run a restart interrupted is never charged its whole allowance: it
   assert.deepEqual([s.spent.usd, s.spent.unknown], [2.01, 2], "what the hosts reported (the host check's cent among it), and how many runs' cost nobody could know");
   assert.match(saidStatus(s), /2 run\(s\) a restart interrupted/);
   assert.equal(evidenceOf(ctx).totals.unknownCost, 2, "the evidence says it too");
+});
+
+// A repair a restart interrupted, as `run.mjs resume` reads it back: a candidate the verifier passed, and no host at all.
+const cutRepair = (k) => {
+  let n = 0;
+  return (c, tree) => (adds(tree) || ++n > k ? DEFAULT_PLAY.repair(c, tree) : { ...DEFAULT_PLAY.repair(c, tree), host: undefined, interrupted: true });
+};
+
+const repairDocsOf = (w, ctx) => actsOf(w, ctx, "release.repair").map((a) => JSON.parse(readFileSync(ctx.room.at("steps", `${a.id}.json`), "utf8")).settled.verdict);
+
+test("B6-6. a repair a restart interrupted is never integrated and spends no repair attempt: it runs again as a new repair", async (t) => {
+  const w = shipWorldOf(t, { play: { repair: cutRepair(2) } });
+  const { ctx, result } = await shipped(w, { limits: { repairAttempts: 1 } });
+  assert.deepEqual([result.outcome, result.exit], ["SHIPPABLE", 0], result.summary);
+  assert.deepEqual(repairDocsOf(w, ctx).map((v) => v.code), ["INTERRUPTED", "INTERRUPTED", "VERIFIED"], "never UNTRUSTED, never the one attempt --attempts=1 allows");
+  assert.deepEqual(evidenceOf(ctx).repairs.map((r) => r.run), [repairDocsOf(w, ctx)[2].run], "what was integrated is the repair whose host is known");
+});
+
+test("B6-6. a repair a restart interrupts every time blocks the ship after INTERRUPTED_RUNS more runs; a person's resume runs it once more", async (t) => {
+  const w = shipWorldOf(t, { play: { repair: cutRepair(INTERRUPTED_RUNS + 1) } });
+  const { ctx, result } = await shipped(w);
+  assert.deepEqual([result.outcome, result.exit], ["BLOCKED", 3], result.summary);
+  assert.match(result.summary, new RegExp(`CALC-002: the repair could not run -- a restart interrupted ${INTERRUPTED_RUNS + 1} repairs of it`));
+  assert.equal(actsOf(w, ctx, "release.repair").length, INTERRUPTED_RUNS + 1, "bounded, never a loop");
+  const again = await driven(resumedShip(w.world, ctx.ship.id, {}));
+  assert.deepEqual([again.outcome, again.exit], ["SHIPPABLE", 0], again.summary);
+  assert.deepEqual(repairDocsOf(w, ctx).map((v) => v.code), [...Array(INTERRUPTED_RUNS + 1).fill("INTERRUPTED"), "VERIFIED"]);
+});
+
+test("a repair the environment blocked runs again when a person resumes the ship -- as a blocked row does", async (t) => {
+  let n = 0;
+  const w = shipWorldOf(t, { play: { repair: (c, tree) => (adds(tree) || ++n > 1 ? DEFAULT_PLAY.repair(c, tree) : { outcome: "BLOCKED", summary: "BLOCKED — the runner could not start", class: "ENVIRONMENT_BLOCKED" }) } });
+  const { ctx, result } = await shipped(w);
+  assert.deepEqual([result.outcome, result.exit], ["BLOCKED", 3], result.summary);
+  const again = await driven(resumedShip(w.world, ctx.ship.id, {}));
+  assert.deepEqual([again.outcome, again.exit], ["SHIPPABLE", 0], again.summary);
+  assert.deepEqual(repairDocsOf(w, ctx).map((v) => v.code), ["BLOCKED", "VERIFIED"]);
 });
 
 // ---- the boundaries, and what a person reads ------------------------------------------------------------------------------

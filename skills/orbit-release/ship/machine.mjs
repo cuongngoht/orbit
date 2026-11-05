@@ -88,19 +88,30 @@ const repeated = (docs) => twice(docs.map((d) => d.settled.verdict.signature).fi
 // A case repaired in an earlier cycle that fails again exactly as it failed before its repair: the repair moved nothing.
 const regressedAsBefore = (acts, f, r) => settledOf(acts, "release.row").some((x) => x.d.row === r.row.id && x.d.attempt !== f.open.id && x.d.settled.verdict.signature && x.d.settled.verdict.signature === r.v.signature) && settledOf(acts, "release.integrate").some((x) => x.d.case === r.row.case);
 
+const lastState = (g) => g.last?.settled.verdict.state ?? null;
+
+// A repair a restart interrupted spends no attempt (`counted` leaves it out) and is never a repeat; it runs again, at
+// most INTERRUPTED_RUNS times a cycle, then blocks the ship on the environment. What blocked a repair (the environment,
+// or that bound) is asked again once a person resumed the ship after it (`lifted`) -- never what a person holds.
 const REPAIR_STATES = [
   { state: "INTEGRATED", when: (g) => g.integrated },
-  { state: "VERIFIED", when: (g) => g.last?.settled.verdict.state === "VERIFIED" },
-  { state: "BLOCKED", when: (g) => ["BLOCKED", "HELD_BY_PERSON"].includes(g.last?.settled.verdict.state) },
-  { state: "NO_PROGRESS", when: (g) => g.regressed || repeated(g.docs) },
-  { state: "SPENT", when: (g) => g.docs.length >= g.limit },
+  { state: "VERIFIED", when: (g) => lastState(g) === "VERIFIED" },
+  { state: "BLOCKED", when: (g) => lastState(g) === "HELD_BY_PERSON" || (lastState(g) === "BLOCKED" && !g.lifted) },
+  { state: "BLOCKED", when: (g) => lastState(g) === "INTERRUPTED" && g.cut > INTERRUPTED_RUNS && !g.lifted, says: (g) => `a restart interrupted ${g.cut} repairs of it in this cycle before one could end -- none is evidence and none spent an attempt; the environment cannot hold a repair to its end: resume the ship where one can` },
+  { state: "NO_PROGRESS", when: (g) => g.regressed || repeated(g.counted) },
+  { state: "SPENT", when: (g) => g.counted.length >= g.limit },
   { state: "TO_REPAIR", when: () => true },
 ];
 
+const cutRepair = (d) => d.settled.verdict.state === "INTERRUPTED";
+
+const repairFacts = (acts, f, r, docs) => ({ counted: docs.filter((d) => !cutRepair(d)), cut: docs.filter(cutRepair).length, last: docs.at(-1) ? { settled: docs.at(-1).settled, act: docs.at(-1).act } : null, lifted: Boolean(docs.at(-1)) && resumedAfter(f, docs.at(-1).act), integrated: integrated(acts, f.open.id, r.row.case), regressed: regressedAsBefore(acts, f, r), limit: f.limits.repairAttempts });
+
 function repairOf(acts, f, r) {
   const docs = repairDocs(acts, f.open.id, r.row.case);
-  const g = { docs, last: docs.at(-1) ? { settled: docs.at(-1).settled, act: docs.at(-1).act } : null, integrated: integrated(acts, f.open.id, r.row.case), regressed: regressedAsBefore(acts, f, r), limit: f.limits.repairAttempts };
-  return { case: r.row.case, row: r.row, state: REPAIR_STATES.find((s) => s.when(g)).state, last: docs.at(-1) ?? null, attempts: docs.length };
+  const g = repairFacts(acts, f, r, docs);
+  const row = REPAIR_STATES.find((s) => s.when(g));
+  return { case: r.row.case, row: r.row, state: row.state, says: row.says?.(g) ?? null, last: docs.at(-1) ?? null, attempts: g.counted.length, interrupted: g.cut };
 }
 
 // ---- the facts ----------------------------------------------------------------------------------------------------------

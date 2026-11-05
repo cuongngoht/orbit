@@ -110,8 +110,12 @@ again as a new run -- once per resume. The ship never falls back to another host
 ### CI
 
 `ci.yml` keeps `ship.mjs --ci`: the definition of done, the optional rows, and the autonomous ship AWAITED -- a green fast
-CI is never qualification. `release.yml` (dispatch only, from the `benchmark` environment) runs the autonomous ship and
-the publish gate and uploads every room; it never tags, pushes or publishes.
+CI is never qualification. No workflow runs the autonomous ship or a real coding host (0.5.0, backlog B8): a
+model-carried run happens only in a Claude Code cloud session a person starts, where the coding host's credential is an
+environment variable of that session, never a repository secret (CLAUDE.md, "Shipping a release from Claude Code
+cloud"). The `release.yml` workflow that once ran the ship from GitHub Actions, and the benchmark workflow's
+`autonomous` job, are gone; the benchmark workflow keeps its conformance tier (`controls`, `scripted`), which needs no
+credential.
 
 ## Consequences
 
@@ -122,8 +126,8 @@ the publish gate and uploads every room; it never tags, pushes or publishes.
   for a person to bring the cases up to date. Until a person does, the repository's own case tests fail on the repaired
   source (a repair may not touch them), so the ship that repaired a known finding ends NOT SHIPPABLE at its next gates;
   0.4.0 took the verified repairs, rebaselined both cases in the same commit, and qualified on a second ship.
-- A full ship takes hours and a model budget; a GitHub-hosted runner cannot hold one, so `release.yml` takes a
-  self-hosted label, and a workstation resumes a ship where it stopped. Each benchmark run keeps its own checkout: a full
+- A full ship takes hours and a model budget, more than a GitHub-hosted runner holds: it runs in a Claude Code cloud
+  session, whose worker restarts every hour or two, and `--resume` carries it on from its journal each time. Each benchmark run keeps its own checkout: a full
   ship keeps a few gigabytes in the machine store.
 - A host's model, version and cost are REPORTED and never verified; the verdict never rests on them, and a row with no
   Claude Code identity is never evidence.

@@ -113,8 +113,10 @@ backend acceptance (`acceptance/run.mjs --record`) are reported beside every shi
 them as before when a host integration or the backend loop changes.
 
 **The fast tier.** `--ci` is what a pipeline can hold: the definition of done, the optional rows, and the autonomous ship
-`wait`ing. A green fast CI is never release qualification; `.github/workflows/release.yml` (dispatched, from the
-`benchmark` environment) runs the autonomous ship and the publish gate, and never publishes.
+`wait`ing. A green fast CI is never release qualification, and no workflow runs a model: the ship, and every
+model-carried benchmark run, runs in a Claude Code cloud session a person starts, the coding host's credential an
+environment variable of that session -- how, detached and resumed after each worker restart, is in `CLAUDE.md`
+("Shipping a release from Claude Code cloud").
 
 The definition of done is ten gates, run first in every cycle on the release commit's own checkout (and alone by `--ci`):
 

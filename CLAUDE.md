@@ -21,7 +21,9 @@ Host session hints (untrusted): plugin option `host_memory`, or `ORBIT_HOST_MEMO
 
 The release is `node skills/orbit-release/ship.mjs` (ADR 0049; the whole contract is in
 [skills/orbit-release/SKILL.md](skills/orbit-release/SKILL.md)). What follows is how it is actually run in a cloud
-session, and what the 0.4.0 ships taught.
+session, and what the 0.4.0 ships taught. A cloud session is the ONLY place a model-carried run happens: no GitHub
+workflow runs the ship or a real coding host (0.5.0, backlog B8); CI holds the fast tier (`ship.mjs --ci`) and the
+benchmark's conformance tier, which need no credential.
 
 **Run it in its own session, detached.** The coding host's token is an environment variable of the cloud environment,
 but `CLAUDE_CODE_*` names are filtered there, so it is kept as `ORBIT_CLAUDE_OAUTH_TOKEN` and mapped for the one

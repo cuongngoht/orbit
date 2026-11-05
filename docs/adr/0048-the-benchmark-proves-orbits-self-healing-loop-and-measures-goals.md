@@ -83,7 +83,9 @@ the engine, never autonomy. A known finding (`baseline: "FAIL"`) that still fail
 
 The fast tier is `node --test` (no Docker). Conformance -- every case's verifier and judge controls in containers, and
 scripted hosts through both loops -- runs on a pull request that touches the benchmark. A real coding host runs only
-when a person dispatches it, from an environment that holds the credential, inside a budget they give.
+when a person dispatches it, from an environment that holds the credential, inside a budget they give. (Amended in
+0.5.0, backlog B8: no workflow runs a real coding host any more -- a model-carried run happens only in a Claude Code
+cloud session a person starts; ADR 0049, "CI".)
 
 ## Consequences
 

@@ -499,7 +499,8 @@ npm run lint                                                 # Five Lines check,
 ORBIT_UI_TESTS=test/fixtures/ui-tests node cli/query.mjs check
 ORBIT_UI_TESTS=test/fixtures/ui-tests node cli/plan-check.mjs
 node skills/orbit-release/ship.mjs --ci                      # the whole definition of done, one command (the fast tier)
-node skills/orbit-release/ship.mjs                           # a release: the autonomous ship, Docker + Claude Code (ADR 0049)
+node skills/orbit-release/ship.mjs                           # a release: the autonomous ship, Docker + Claude Code (ADR 0049),
+                                                             #   run in a Claude Code cloud session -- no workflow runs a model
 node skills/orbit-release/ship.mjs --evidence                # the publish gate: evidence for this very tree, or not
 ```
 

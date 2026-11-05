@@ -697,7 +697,8 @@ place real adapters are bound to real config.
   verified candidate is kept in `verified.json`, never applied to a checkout. An ENGINEERING case hands a host a goal
   about a frozen fixture with Orbit beside it, and adds record checks on what Orbit's owners say; a goal with no rule
   must be refused, never invented. Metrics keep host basis `none`, `scripted` and `coding-host` apart -- a scripted
-  PASS is never autonomy -- and a real host runs in CI only when a person dispatches it (`test/benchmark-tables.test.mjs`,
+  PASS is never autonomy -- and a real host never runs in CI, only in a Claude Code cloud session a person starts
+  (`test/release-workflows.test.mjs`, `test/benchmark-tables.test.mjs`,
   `test/benchmark-source-flow.test.mjs`, `test/benchmark-docker.test.mjs`, `test/benchmark-source-cases.test.mjs`,
   `test/benchmark-cases.test.mjs`, `test/benchmark-repairs.test.mjs`, `test/benchmark-scripted-host.test.mjs`,
   `test/benchmark-metrics.test.mjs`, `test/benchmark-sentinel.test.mjs`, `test/benchmark-qa-relay.test.mjs`,

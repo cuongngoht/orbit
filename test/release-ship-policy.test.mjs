@@ -46,7 +46,7 @@ test("Claude Code is the one coding host a release needs; no other host is named
 });
 
 test("no repair may touch what judges it: the harness, the checks, the release itself, the pipelines", () => {
-  for (const p of ["benchmark/lib/source/judge.mjs", "benchmark/suites/orbit-source/orbit-src-002/verifier/spec.mjs", "test/benchmark-cases.test.mjs", "skills/orbit-release/ship/policy.json", "skills/orbit-release/gates.mjs", ".github/workflows/release.yml", "acceptance/truth.json", "docs/host-acceptance.json", "test/fakes/ship-world.mjs", "src/lint/five-lines.mjs", "cli/check-five-lines.mjs", "package.json"]) assert.ok(matchesAny(POLICY.protected, p), p);
+  for (const p of ["benchmark/lib/source/judge.mjs", "benchmark/suites/orbit-source/orbit-src-002/verifier/spec.mjs", "test/benchmark-cases.test.mjs", "skills/orbit-release/ship/policy.json", "skills/orbit-release/gates.mjs", ".github/workflows/ci.yml", "acceptance/truth.json", "docs/host-acceptance.json", "test/fakes/ship-world.mjs", "src/lint/five-lines.mjs", "cli/check-five-lines.mjs", "package.json"]) assert.ok(matchesAny(POLICY.protected, p), p);
   for (const p of ["src/improvement/oracle.mjs", "src/orchestration/failure.mjs", "test/improvement-core.test.mjs"]) assert.ok(!matchesAny(POLICY.protected, p), `${p} is a repair's to change`);
 });
 

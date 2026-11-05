@@ -521,10 +521,13 @@ from every kept `controls.json`, and with `--by=revision` each case's outcomes b
 |---|---|---|
 | fast | `ci.yml`, every push and pull request | every `test/benchmark-*.test.mjs` inside the definition of done's `node --test`: no Docker, no network |
 | conformance | `benchmark.yml`, a pull request that touches the benchmark, or on request | every case's verifier and judge controls in real containers, by suite; scripted hosts through Orbit's engineering loop and goal entry; no model, no secret |
-| autonomous | `benchmark.yml`, only when a person dispatches it | a real coding host on one case or one suite with `--repair`, from the `benchmark` environment that holds the credential (`ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`, by name), inside a budget the person gives (at most 50 USD and 5 rounds); a missing credential ends it BLOCKED |
-| release | `release.yml`, only when a person dispatches it | the autonomous ship (`skills/orbit-release/ship.mjs`, ADR 0049): every case of every suite, the model-carried rows by the real Claude Code, repairs, a full retest, and the publish gate -- never a tag, a push or a publication |
 
-Every tier uploads what its runs kept, PASS or not. Nothing model-backed runs on a push.
+The conformance tier uploads what its runs kept, PASS or not. **No workflow runs a real coding host** (0.5.0): a model-carried run
+-- one case with `--repair`, a QA or engineering case, a suite, or the autonomous ship (`skills/orbit-release/ship.mjs`,
+ADR 0049) -- runs in a Claude Code cloud session a person starts, its credential (`ANTHROPIC_API_KEY`, or
+`CLAUDE_CODE_OAUTH_TOKEN` kept under another name there) an environment variable of that session and handed on by name;
+a missing credential ends a run BLOCKED. How a ship is run there, detached and resumed after each worker restart, is in
+`CLAUDE.md` ("Shipping a release from Claude Code cloud").
 
 ## Driven by a release ship
 

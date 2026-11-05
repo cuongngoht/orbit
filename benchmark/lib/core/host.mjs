@@ -6,14 +6,16 @@
 //
 // hostOf v2 (0.5.0) keeps one row per tool call besides (`uses`): its name, the component a Skill or Agent call starts
 // (`skill`, `agent`), the Agent call a subagent's call answers to (`parent`), the path a file tool names, the turn it
-// was made in, and whether its result came back marked as an error (`failed`: null when no result was seen). Never a
-// prompt, never an input beyond those names, never an output. A Bash command is kept only by `commandsOf`, for a
-// judge's patterns in the run's own room -- never in a metric, a report or anything `hostOf` returns.
+// was made in and the stream line it was read from, and whether its result came back marked as an error (`failed`:
+// null when no result was seen). Never a prompt, never an input beyond those names, never an output. A Bash command is
+// kept only by `commandsOf`, for a judge's patterns in the run's own room -- never in a metric, a report or anything
+// `hostOf` returns.
 //
 //   hostOf(text) -> { started, model, version, session, turns, durationMs, apiMs, costUsd, tokens, toolCalls,
 //                     tools, failedCalls, uses, denials, isError, subtype, basis: "REPORTED" }
 //   streamOf(text) -> { init, result, uses, turns: [{ turn, thread, tokens }] }
 //   commandsOf(text) -> [{ id, parent, turn, command }]        hostEnd(h, ran) -> null | { cause, says }
+//   hostSummary(h) -> h without its calls one by one
 import { printable } from "../../../src/printable.mjs";
 import { scrub } from "../../../src/scrub.mjs";
 
@@ -22,7 +24,13 @@ const parsed = (line) => {
   catch { return null; }
 };
 
-const events = (text) => String(text ?? "").split("\n").map(parsed).filter((e) => e && typeof e === "object");
+// The line of the stream an event was read from, kept beside it (never printed with it): where a call sits, so the
+// moment the controller saw that line arrive can be read off its capture's index.
+const LINE = Symbol("line");
+
+const lined = (e, i) => (e && typeof e === "object" ? Object.assign(e, { [LINE]: i }) : null);
+
+const events = (text) => String(text ?? "").split("\n").map((l, i) => lined(parsed(l), i)).filter(Boolean);
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
@@ -69,7 +77,7 @@ const invokedOf = (b) => ((row) => (row && str(b.input?.[row[1]]) ? { [row[0]]: 
 
 const pathOf = (b) => ((key) => (key && bounded(b.input?.[key], 1024) ? { path: bounded(b.input[key], 1024) } : {}))(FILE_TOOLS[b.name]);
 
-const useOf = (x, b, results) => ({ id: str(b.id), name: str(b.name) ?? "unknown", parent: str(x.e.parent_tool_use_id), turn: x.turn, failed: failedOf(results, b.id), ...invokedOf(b), ...pathOf(b) });
+const useOf = (x, b, results) => ({ id: str(b.id), name: str(b.name) ?? "unknown", parent: str(x.e.parent_tool_use_id), turn: x.turn, line: x.e[LINE], failed: failedOf(results, b.id), ...invokedOf(b), ...pathOf(b) });
 
 // Each call once, however often the stream (or a head and a tail read together) carried the event that holds it.
 const once = (rows) => [...new Map(rows.map((r, i) => [r.id ?? `#${i}`, r])).values()];
@@ -105,6 +113,10 @@ const errorText = (result) => (result?.is_error === true && typeof result.result
 const callsOf = (uses) => ({ toolCalls: uses.length, tools: counted(uses.map((u) => u.name)), failedCalls: uses.filter((u) => u.failed === true).length, uses });
 
 const endOf = (result) => ({ turns: num(result?.num_turns), durationMs: num(result?.duration_ms), apiMs: num(result?.duration_api_ms), costUsd: num(result?.total_cost_usd), tokens: tokensOf(result?.usage), denials: Array.isArray(result?.permission_denials) ? result.permission_denials.length : null, isError: typeof result?.is_error === "boolean" ? result.is_error : null, subtype: str(result?.subtype), errorText: errorText(result) });
+
+// What a report keeps of a host's session: everything hostOf says but its calls one by one, which stay in the round's own
+// evidence and in the run's tool-call facts.
+export const hostSummary = (h) => (h ? Object.fromEntries(Object.entries(h).filter(([k]) => k !== "uses")) : null);
 
 export function hostOf(text) {
   const s = streamOf(text);

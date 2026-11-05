@@ -313,6 +313,15 @@ test("the controller keeps a round's host stream as the container's stdout carri
   assert.equal(r.result.outcome, "REPAIRED_VERIFIED", "the verdict never rests on it");
 });
 
+test("a run's report carries its tool-call facts, read from the captured stream, and never a host's call one by one", async (t) => {
+  const events = [{ type: "system", subtype: "init", model: "m" }, { type: "assistant", message: { id: "m1", content: [{ type: "tool_use", id: "t1", name: "Bash", input: { command: "never in a report" } }] } }, { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t1", is_error: true }] } }, { type: "result", subtype: "success", is_error: false, num_turns: 1, total_cost_usd: 0.1 }];
+  const rep = reportFor(await runOf(world(t), dockerDouble({ runner: ranAs(FIXED, { events }), inspect: inspectedAs(VIEW("COMPLETED")) }), { variant: "controlled-fault", repair: true }));
+  assert.deepEqual([rep.tools.basis, rep.tools.calls.byTool.Bash], ["HOST_OBSERVED", { calls: 1, failed: 1, unanswered: 0 }]);
+  assert.equal(rep.rounds[0].host.uses, undefined, "the calls one by one stay in the round's own evidence");
+  assert.equal(rep.rounds[0].host.failedCalls, 1);
+  assert.ok(!JSON.stringify(rep).includes("never in a report"));
+});
+
 test("a runner that printed nothing on its stdout leaves an empty capture, and its own copy is never taken as observed", async (t) => {
   const r = await runOf(world(t), dockerDouble({ runner: ranAs(FIXED, { silent: true }), inspect: inspectedAs(VIEW("COMPLETED")) }), { variant: "controlled-fault", repair: true });
   assert.deepEqual(((o) => [o.bytes, o.agrees])(repairDoc(r).observed), [0, false]);

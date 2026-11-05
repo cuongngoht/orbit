@@ -29,7 +29,9 @@ const limitsOf = (ctx, acts) => ({ ...ctx.manifest.limits, ...(lastDoc(settledOf
 
 const costOf = (x) => (typeof x.d.settled?.cost?.usd === "number" ? x.d.settled.cost.usd : 0);
 
-const spentOf = (ctx, acts) => ({ usd: Math.round(acts.reduce((n, x) => n + costOf(x), 0) * 100) / 100, minutes: Math.floor((ctx.now() - Date.parse(ctx.manifest.at)) / 60000) });
+// What the ship spent: the costs its runs reported (or estimated), its minutes, and how many runs' cost nobody can know --
+// a run a restart interrupted (dispatch.mjs COSTS), said beside the sum and never added into it.
+const spentOf = (ctx, acts) => ({ usd: Math.round(acts.reduce((n, x) => n + costOf(x), 0) * 100) / 100, minutes: Math.floor((ctx.now() - Date.parse(ctx.manifest.at)) / 60000), unknown: acts.filter((x) => x.d.settled?.cost?.basis === "UNKNOWN").length });
 
 // The release commit as it stands: the newest one an integration made, else the commit the ship began from.
 const currentOf = (ctx, acts) => ((d) => (d ? { commit: d.settled.commit, tree: d.settled.tree } : { commit: ctx.manifest.start.commit, tree: null }))(lastDoc(settledOf(acts, "release.integrate")));

@@ -412,6 +412,20 @@ test("B6-4. after a resume the rows run in the cycle's testing stage, never in t
   assert.deepEqual(stages, [["verify", "TESTING"], ["autonomous", "TESTING"], ["selfHealing", "TESTING"]], "Orbit Live shows the rows a resumed ship runs -- the one it reads back first among them -- as testing");
 });
 
+test("B6-5. a run a restart interrupted is never charged its whole allowance: its cost is said as unknown, and interruptions do not spend --usd", async (t) => {
+  let n = 0;
+  const autonomous = () => (++n <= 2 ? READ_BACK : { outcome: "PASS", summary: "PASS", host: HOST });
+  const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, autonomous } });
+  const { ctx, result } = await shipped(w, { limits: { usd: 12 } });
+  assert.deepEqual([result.outcome, result.exit], ["SHIPPABLE", 0], result.summary);
+  const docs = rowDocs(w, ctx, "QA-001:autonomous");
+  assert.deepEqual(docs.map((d) => [d.settled.verdict.code, d.settled.cost.basis]), [["INTERRUPTED", "UNKNOWN"], ["INTERRUPTED", "UNKNOWN"], ["HELD", "REPORTED"]]);
+  const s = await statusOf(w.world, ctx.ship.id);
+  assert.deepEqual([s.spent.usd, s.spent.unknown], [2.01, 2], "what the hosts reported (the host check's cent among it), and how many runs' cost nobody could know");
+  assert.match(saidStatus(s), /2 run\(s\) a restart interrupted/);
+  assert.equal(evidenceOf(ctx).totals.unknownCost, 2, "the evidence says it too");
+});
+
 // ---- the boundaries, and what a person reads ------------------------------------------------------------------------------
 
 test("integrating is a write to the ship's own workspace -- AUTO -- and a ship never constructs a write to the person's checkout", () => {

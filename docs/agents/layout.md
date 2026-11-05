@@ -233,7 +233,7 @@ src/resources/ the EFFECTIVE RESOURCE REGISTRY: what Orbit can use HERE, one pro
                and cli/mcp.mjs build it (and the MCP invocation context) with · observe.mjs
 src/routing/   the PROMPT ROUTER, a PLANNER: intents.mjs (sixteen broad intents as a table, generic
                words in English and Vietnamese, at most three terms each; the REFINEMENTS that narrow
-               them; MARKS -- opt-out · continue · halt · status -- as data) · terms.mjs (terms and grams;
+               them; MARKS -- opt-out · continue · halt · status · change -- as data) · terms.mjs (terms and grams;
                the head that outranks a pasted tail, WEIGHTS; shape counts; the references a head names)
                · classify.mjs (each requirement with its level; marks, shape and focus; `heard`: a
                one-cue intent is said only on a signal-gated provider's own word) · graph.mjs (the
@@ -468,7 +468,8 @@ src/work/track/  UNIFIED WORK TRACKING (1.8.8, README §4.18): identity, links a
                view Live, the terminal and Control serve) · read.mjs (assembles it over ports the roots hand
                in) · tail.mjs (the working-set port; `workingSetRoom`) · auto.mjs (a task that starts beside
                a tracked work joins it; nothing is created) · open.mjs (0.5.0: the OPEN work a prompt could
-               mean -- by the deterministic id of a reference it names, or this session's current work when
+               mean -- by the deterministic id of a reference it names or the reference a tracked work
+               recorded (a requirement kept for the item roots its work), or this session's current work when
                it says continue -- and the owner that governs it; read only) · say.mjs · index.mjs the
                COMMANDS table.
                cli/track.mjs is the composition root. It imports no task, no live core and no host

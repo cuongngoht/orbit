@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { envelopeOf as workerEnvelopeOf } from "../cli/sandbox-worker.mjs";
 import { run as hooks } from "../skills/orbit-backend-test/hooks/operations.mjs";
 import { familyCapabilities } from "../src/adapters/core.mjs";
 import { createAdapterRegistry } from "../src/adapters/registry.mjs";
@@ -80,6 +81,31 @@ test("a contradiction of the compiled verdict is CONTRADICTED; a claimed PASS ov
   assert.equal(ranVersion(silent.w, { version: silent.version }).outcome, "EXECUTION_ERROR");
 });
 
+// What 0.4.0's diagnosis found (0.5.0 B7): a worker interrupted before its runner finished -- its deadline, its
+// supervisor, a runner that ended without a word -- left the envelope its wrapper writes (cli/sandbox-worker.mjs), and
+// the host judged it EXECUTION_ERROR, "ran another case", which a host may try again. It is its own outcome: INTERRUPTED,
+// a new attempt that may run, when the run could write nothing; AMBIGUOUS when it had grants to write, which is read back
+// and never sent again -- a run that may have written is never free to retry.
+const INTERRUPTION = "its deadline passed before the runner finished";
+const interruptedRun = (x) => ({ envelope: workerEnvelopeOf(x.request, "INTERRUPTED", INTERRUPTION), records: [], listed: new Map() });
+
+test("an interrupted worker is its own outcome: INTERRUPTED when it could write nothing, AMBIGUOUS -- never sent again -- when it had grants", () => {
+  const writing = world(interruptedRun);
+  const a = ranVersion(writing.w, { version: writing.version });
+  assert.deepEqual([a.outcome, a.rule, a.findings], ["AMBIGUOUS", "INTERRUPTED_WRITE", []], a.why);
+  assert.deepEqual([ranVersion(writing.w, { version: writing.version }).outcome, writing.calls.run.length], ["AMBIGUOUS", 1], "what it did is unknown: held back, never dispatched again");
+  const reading = world(interruptedRun);
+  const prepare = reading.w.dispatch.prepare;
+  reading.w.dispatch.prepare = (x) => ({ ...prepare(x), grants: [] });
+  const b = ranVersion(reading.w, { version: reading.version });
+  assert.deepEqual([b.outcome, b.rule, b.findings], ["INTERRUPTED", "INTERRUPTED", []], b.why);
+  assert.deepEqual(b.stopped, { step: null, do: null, capability: null, as: "interrupted", says: INTERRUPTION }, "it says why its worker said it stopped");
+  const run = reading.model().runs.at(-1);
+  assert.deepEqual([run.status, run.cause, run.proved, reading.model().evaluations.at(-1).outcome], ["BLOCKED", "interrupted", null, "INTERRUPTED"], "the run never reached a verdict, and proved nothing");
+  ranVersion(reading.w, { version: reading.version });
+  assert.equal(reading.calls.run.length, 2, "it could write nothing, so a new attempt runs");
+});
+
 test("what cannot be bound is BLOCKED before anything starts, and nothing is dispatched", () => {
   const t = world(() => assert.fail("nothing is dispatched"));
   t.w.dispatch.prepare = () => ({ gaps: [{ kind: "schedule", alias: "billing-daily", why: "this sandbox minted no hooks token" }] });
@@ -128,7 +154,7 @@ test("a version step nothing can vouch for is taken to write", () => {
 // contradiction -- a positive one a negative rests on, and a fault the run never saw happen.
 const READS = ["owner", "other"].map((who) => ({ do: "call", capability: "orbit.http.read", input: { endpointRef: "api", identityRef: who, method: "GET", path: "/x" }, expect: "compiled:{}", proves: "api" }));
 
-function controlled(controls, records, steps = READS) {
+function controlled(controls, records, steps = READS, answer = answered) {
   const io = fakeIo();
   const store = createInvestigations("/store/repo-1", io);
   store.create({ id: ID, objective: "controls" });
@@ -138,7 +164,7 @@ function controlled(controls, records, steps = READS) {
   store.appendOnce(ID, "designed", { id: "dsg-1", eventId: "e-dsg", obligation: "tob-abc123", design: "tds-ctl", digest: kept.digest, state: "designed" });
   store.putVersion(ID, frozen);
   store.appendOnce(ID, "version", { id: "ver-1", eventId: "e-ver", design: "tds-ctl", case: "gen-ctl", version: frozen.id, digest: frozen.version.caseDigest });
-  const dispatch = { prepare: () => ({ bindings: {}, secrets: {}, grants: [], gaps: [] }), run: ({ request }) => answered(request, records(request.case.digest)), provedBy: () => "api", canStop: () => false };
+  const dispatch = { prepare: () => ({ bindings: {}, secrets: {}, grants: [], gaps: [] }), run: ({ request }) => answer(request, records(request.case.digest)), provedBy: () => "api", canStop: () => false };
   return { w: { id: ID, store, io, dispatch }, version: frozen.id };
 }
 
@@ -146,6 +172,12 @@ function controlled(controls, records, steps = READS) {
 function answered(request, records) {
   const ok = records.filter((r) => r.kind === "step" && r.ok).length;
   return { envelope: { v: WORKER_API, runId: request.runId, nonce: request.nonce, caseDigest: request.case.digest, status: "FAIL", result: { status: "FAIL", case_digest: request.case.digest, proved: { ui: 0, api: ok, sql: 0 }, verdicts: ok, done: ok, failure: { contradiction: true } }, evidence: null, files: [] }, records, listed: new Map() };
+}
+
+// The same, of a run every step of which held.
+function passed(request, records) {
+  const ok = records.filter((r) => r.kind === "step" && r.ok).length;
+  return { envelope: { v: WORKER_API, runId: request.runId, nonce: request.nonce, caseDigest: request.case.digest, status: "PASS", result: { status: "PASS", case_digest: request.case.digest, proved: { ui: 0, api: ok, sql: 0 }, verdicts: ok, done: ok }, evidence: null, files: [] }, records, listed: new Map() };
 }
 
 const failedAt = (i, more = []) => (digest) => [{ kind: "run", case_digest: digest }, ...more, ...[1, 2].slice(0, i - 1).map((n) => ({ kind: "step", i: n, ok: true })), { kind: "step", i, ok: false, error: "EXPECT FAILED", contradiction: true }];
@@ -168,6 +200,24 @@ test("a fault the run never saw happen makes what failed after it INCONCLUSIVE, 
   const seen = controlled(fault, failedAt(2, seenAs("fault:after-commit-before-ack")));
   const b = ranVersion(seen.w, { version: seen.version });
   assert.deepEqual([a.outcome, a.rule, b.outcome, b.rule], ["INCONCLUSIVE", "FAULT_NOT_SEEN", "CONTRADICTED", "CONTRADICTED"], JSON.stringify([a.findings, b.findings]));
+});
+
+// What 0.4.0's diagnosis found (0.5.0 B7): a fault control with no witness compiles no verdict of its own, so a run
+// whose fault never fired held every step it had -- and was SATISFIED, a pass nothing earned: it never saw the system
+// survive the fault it was about. A run is ruled INCONCLUSIVE whenever no observation carried the point, passed or
+// failed; a design with no witness stays valid, and a run that saw its fault lets its pass stand.
+test("a fault the run never saw happen makes a run that held INCONCLUSIVE too -- a pass after it is never earned -- and one it saw lets the pass stand", () => {
+  const seenAs = (reason) => (reason ? [{ kind: "capability", result: { attempts: [{ outcome: "fault", terminalReason: reason }] } }] : []);
+  const held = (seen) => (digest) => [{ kind: "run", case_digest: digest }, ...seen, { kind: "step", i: 1, ok: true }, { kind: "step", i: 2, ok: true }];
+  const unwitnessed = [{ role: "fault", point: "after-commit-before-ack" }, { role: "state" }];
+  const never = controlled(unwitnessed, held(seenAs(null)), READS, passed);
+  const a = ranVersion(never.w, { version: never.version });
+  const fired = controlled(unwitnessed, held(seenAs("fault:after-commit-before-ack")), READS, passed);
+  const b = ranVersion(fired.w, { version: fired.version });
+  const other = controlled(unwitnessed, held(seenAs("fault:before-effect")), READS, passed);
+  const c = ranVersion(other.w, { version: other.version });
+  assert.deepEqual([a.outcome, a.rule, b.outcome, b.rule, c.outcome, c.rule], ["INCONCLUSIVE", "FAULT_NOT_SEEN", "SATISFIED", "MET", "INCONCLUSIVE", "FAULT_NOT_SEEN"], JSON.stringify([a.findings, b.findings, c.findings]));
+  assert.equal(never.w.store.read(ID).filter((l) => l.kind === "evaluated").at(-1).outcome, "INCONCLUSIVE", "and that is what the journal keeps");
 });
 
 // What the first real Claude Code rows taught (0.4.0): a version refused at a step said why only in the worker's run

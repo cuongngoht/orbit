@@ -127,7 +127,7 @@ async function followed(event) {
 }
 
 async function startExtras(event) {
-  const project = located(event?.cwd);
+  const project = seated(event?.cwd);
   if (!project) return null;
   const [here, governed, capabilities] = await Promise.all([import("./resources-here.mjs"), import("./governed.mjs"), import("../src/extensions/capabilities.mjs")]);
   return { here, governed, project, caps: routing() ? await capabilities.projectCapabilities(project, ENV) : [] };
@@ -137,6 +137,10 @@ async function failureExtras(event) {
   if (!orbitRan(event)) return null;
   return { governed: await import("./governed.mjs") };
 }
+
+// A known checkout whose test data is in place -- a seat, a committed ui-tests/, a directory named on purpose that
+// exists. A repository with no ui-tests gets nothing at all at its start, the digest included, as the recall never did.
+const seated = (cwd) => ((project) => (project && existsSync(project.dataRoot) ? project : null))(located(cwd));
 
 const routing = () => switchOf(ENV, "PROMPT_ROUTER", "prompt_router", true);
 

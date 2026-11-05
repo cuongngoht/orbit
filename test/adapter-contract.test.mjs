@@ -46,6 +46,21 @@ test("every family operation is a capability id a case can name, binding only kn
   assert.equal(new Set(OPERATIONS.map((o) => o.capability)).size, OPERATIONS.length, "one family operation per capability id");
 });
 
+// What 0.4.0's diagnosis found (0.5.0 B7): orbit.scheduler.observe and orbit.worker.observe accepted an observerRef a
+// design could name, and the sandbox's binder -- which binds an observer only to the channel it is armed on
+// (src/runtime/sandbox/bindings.mjs, declarations.mjs) -- then blocked the run on it: generation took what preparation
+// refuses. A scheduler's decisions and a worker's attempts are read by a cursor through the component's own test hooks,
+// which own no observer; so an operation names an observer only beside what one is armed on, or awaits one.
+const ARMED_ON = ["channel", "queue"];
+const AWAITS_ONE = ["orbit.observe.await"];
+
+test("an operation binds an observer only beside the channel or queue one is armed on, or to await one another step armed", () => {
+  const stray = OPERATIONS.filter((o) => o.refs.includes("observer") && !o.refs.some((r) => ARMED_ON.includes(r)) && !AWAITS_ONE.includes(o.capability)).map((o) => o.capability);
+  assert.deepEqual(stray, [], "generation would accept a ref preparation can never bind");
+  for (const id of ["orbit.scheduler.observe", "orbit.worker.observe"]) assert.equal(operationFor(id).refs.includes("observer"), false, `${id} reads by a cursor, through its component's own hooks`);
+  assert.ok(operationFor("orbit.messaging.observe").refs.includes("observer"), "the messaging family still arms its own");
+});
+
 test("the document's capability names are the family operations, exactly", () => {
   for (const id of ["orbit.messaging.publish", "orbit.messaging.observe", "orbit.job.enqueue", "orbit.job.observe", "orbit.scheduler.trigger", "orbit.scheduler.observe", "orbit.clock.advance", "orbit.observe.await", "orbit.workload.control", "orbit.worker.observe", "orbit.state.read", "orbit.fixture.prepare", "orbit.fixture.cleanup", "orbit.http.read", "orbit.http.write"]) assert.ok(operationFor(id), id);
 });

@@ -97,6 +97,19 @@ test("each stage stops a design with its own word, before the next is asked", ()
   for (const word of ["GENERATION_FAILED", "REQUIRES_REQUIREMENT", "INVALID_TEST"]) assert.ok(VERIFICATION_OUTCOME_IDS.includes(word), word);
 });
 
+// What 0.4.0's diagnosis found (0.5.0 B7): a design whose scheduler or worker observation named an observer was made
+// into a draft, and the sandbox's binder -- which binds an observer only to a channel it is armed on -- blocked the run.
+// Those operations read by a cursor and bind no observer, so naming one is refused where the design is made.
+test("a scheduler's or a worker's observation that names an observer is refused at generation, as preparation would have blocked it", () => {
+  for (const [capability, input] of [["orbit.worker.observe", { workloadRef: "worker" }], ["orbit.scheduler.observe", { scheduleRef: "billing-daily" }]]) {
+    assert.match(inputFindings(caps.get(capability), { ...input, observerRef: "obs-1", request: {} }).join(), /unknown key "observerRef"/, capability);
+    const steps = STEPS.map((s, i) => (i === 1 ? call(capability, { ...input, observerRef: "obs-1", request: { match: { messageId: "rem-1" } } }) : s));
+    const out = generatedCase(proposal({ skeleton: skeleton(steps), observationPlan: [] }), context());
+    assert.deepEqual([out.ok, out.stage, out.outcome], [false, "validate", "INVALID_TEST"], `${capability}: ${JSON.stringify(out.findings)}`);
+    assert.match(out.findings.join(), /step 2: .*unknown key "observerRef"/);
+  }
+});
+
 test("a control is held to what the test can show of it: it acts in a step, a refusal is of somebody else, and only a fault names a witness", () => {
   const stopped = (controls, steps = STEPS) => ((r) => [r.stage, (r.findings ?? []).join(" | ")])(generatedCase(proposal({ controls, skeleton: skeleton(steps) }), context()));
   const as = (identityRef) => STEPS.map((s, i) => (i === 2 ? { ...s, input: { ...s.input, identityRef } } : s));

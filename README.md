@@ -132,6 +132,11 @@ A few ideas run through everything:
 
 ## Skills you can call
 
+You can name any of these yourself, and Claude Code also picks them by itself: it reads each skill's description, so
+every description says *when* to use it in its first sentence and stays within the host's listing budget (at most 300
+characters, 7,500 for all 25). `test/activation-catalog.test.mjs` holds that, and that each first sentence carries a
+word that brings a prompt to the skill.
+
 ### Entry points
 
 | Skill | Use it for |
@@ -177,8 +182,13 @@ A few ideas run through everything:
 | `orbit-report` | A product owner's project report from GitHub or Azure DevOps, computed from a frozen snapshot. Azure DevOps signs in with your Microsoft account by default ([how](#microsoft-sign-in-for-azure-devops)); GitHub reads with a token. |
 | `orbit-release` | Ship a new version of Orbit, or install it in another repository. |
 
-Role agents (`orbit-engineering-agent`, `orbit-qa-agent`, `orbit-qa-case-writer`, `orbit-failure-analyst`,
-`orbit-map-healer`, …) each do one bounded job for a parent skill.
+Role agents each do one bounded job in a context of their own. Five may be dispatched by the session directly when that
+job is the whole request: `orbit-engineering-agent`, `orbit-qa-agent`, `orbit-failure-analyst`, `orbit-dsl-doctor` and
+`orbit-engineering-observer`. The other fifteen -- the architecture scanner, the reverse-engineering agent, the security
+auditor, the map healer and recorder, the QA case writer, the five requirement roundtable agents and Satellite's four --
+are dispatched only from their parent skill's playbook, because each needs that skill's step before it: their catalog
+row names the parent (`via` in `catalog/components.json`), the router never offers one on its own, and the parent's line
+in the routing context names the agents it dispatches.
 
 ---
 

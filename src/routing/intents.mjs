@@ -3,7 +3,7 @@
 // host has answered anything, so it is a table and a Set lookup.
 //
 // Broad on purpose. An intent is the question "which kind of help is this",
-// and there are fifteen; which RESOURCE helps is decided downstream by what each
+// and there are sixteen; which RESOURCE helps is decided downstream by what each
 // resource says it provides (src/routing/select.mjs), never here. So a cue is a
 // generic English word, and never a product, a vendor or a
 // resource's name: those arrive as a resource's own `signals`, from the
@@ -49,6 +49,15 @@
 // inside another intent's longer cue counts for that intent alone (src/routing/classify.mjs, 1.8.7). `reporting` sits right after `qa`, so a
 // "test report" stays a test question on the tie, while "the PO report on PR
 // review time" has more of its own words than code review has.
+//
+// `security` (0.5.0) sits after `development` and before `documentation`: "add authorization to the endpoint" is a
+// change on the tie, and "is our API protected against OWASP" a security question. Its cues are the words of an
+// assessment and of a control, never a standard's catalog: which catalog is in effect is a person's, in Orbit Control.
+// It is also one of the verification owners a change can span (src/routing/strategy.mjs, `several-owners`).
+//
+// REFINEMENTS within `*` reach what no broad intent asks for (0.5.0): a system graph, a playbook's improvement, a
+// specification's acceptance criteria and a mission. Each requirement is one a resource's own signals still gate, so
+// the refinement asks and the resource's own words decide -- "our mission statement" asks for no mission.
 
 export const GENERAL = "general";
 
@@ -67,6 +76,7 @@ export const INTENTS = [
   { id: "mcp-tooling", cues: ["mcp", "mcp server", "mcp servers", "cli tool", "install tool", "runtime", "control panel", "Orbit Control"], requires: ["mcp.management", "tool.management", "control.panel"] },
   { id: "requirements", cues: ["requirement", "requirements", "pbi", "work item", "user story", "backlog item", "ticket", "issue number", "issue id"], requires: ["requirement.snapshot"] },
   { id: "development", cues: ["implement", "implementation", "implementing", "feature", "new feature", "refactor", "refactoring", "rename", "method", "function", "class", "endpoint", "handler", "backend", "frontend", "bug", "bugs", "bug fix", "bugfix", "fix", "fixes", "fixing", "write code", "code change", "develop", "webhook"], requires: ["development.implementation"] },
+  { id: "security", cues: ["security", "security audit", "security assessment", "security controls", "access control", "authorization", "owasp", "asvs"], requires: ["security.assessment"] },
   { id: "documentation", cues: ["how does", "how do", "how to", "what is", "what are", "difference between", "documentation", "docs", "explain", "api reference"], requires: ["documentation.search", "technology.context"] },
 ];
 
@@ -80,8 +90,14 @@ export const REFINEMENTS = [
   { within: ["qa", "browser"], cues: ["map", "locator", "selector", "drift", "drifted"], requires: ["ui.mapping", "ui.map-repair"] },
   { within: ["qa", "browser", "investigation"], cues: ["explore", "exploratory"], requires: ["ui.exploration"] },
   { within: ["qa"], cues: ["lesson", "lessons", "learned"], requires: ["qa.lessons"] },
+  { within: ["qa"], cues: ["invalid", "invalid case", "query check", "dsl"], requires: ["qa.case-repair"] },
+  { within: ["engineering"], cues: ["taught", "teach", "this session"], requires: ["engineering.observation"] },
   { within: ["development", "qa", "investigation"], cues: ["pbi", "work item", "user story", "backlog item", "ticket", "issue number", "issue id"], requires: ["requirement.snapshot"] },
   { within: ["development"], cues: ["docs", "documentation", "api reference", "sample", "samples"], requires: ["documentation.search"] },
   { within: ["development", "requirements"], cues: ["autonomously", "autonomous engineering", "until verified"], requires: ["engineering.execution"] },
   { within: ["*"], cues: ["where to start", "where do i", "what next"], requires: ["workflow.navigation"] },
+  { within: ["*"], cues: ["reverse engineer", "reverse engineering", "talks to what", "system graph", "topology"], requires: ["architecture.reverse"] },
+  { within: ["*"], cues: ["playbook", "playbooks", "self-improvement", "improvement campaign"], requires: ["improvement.campaign"] },
+  { within: ["*"], cues: ["acceptance criteria", "acceptance criterion"], requires: ["goal.orchestration"] },
+  { within: ["*"], cues: ["multi-agent", "multi agent", "orbit satellite", "satellite mission", "use satellite", "with satellite", "as a mission", "run a mission", "start a mission"], requires: ["mission.orchestration"] },
 ];

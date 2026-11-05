@@ -100,8 +100,8 @@ test("a pack that cannot answer lists nothing of its own and takes nobody else's
   const caps = capsWith({ id: "tracker.item", provides: ["workitem.read"] });
   const effective = registry({ caps, pack: () => { throw new Error("connection store unreadable"); } });
   assert.deepEqual(effective.problems, []);
-  assert.deepEqual(effective.capabilities.map((c) => c.key), ["orbit:project-context", "orbit:local-checkout", "tracker.item"]);
-  assert.deepEqual(capabilityProvider.list({ builtins: () => pluginBuiltins(REPO, io), capabilities: () => [], packCapabilities: () => { throw new Error("x"); } }).map((c) => c.id), ["project-context", "local-checkout"]);
+  assert.deepEqual(effective.capabilities.map((c) => c.key), ["orbit:project-context", "orbit:engineering-memory", "orbit:local-checkout", "tracker.item"]);
+  assert.deepEqual(capabilityProvider.list({ builtins: () => pluginBuiltins(REPO, io), capabilities: () => [], packCapabilities: () => { throw new Error("x"); } }).map((c) => c.id), ["project-context", "engineering-memory", "local-checkout"]);
 });
 
 test("the two command line tools are catalog rows the registry lists as providing their command", () => {

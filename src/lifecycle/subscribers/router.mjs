@@ -21,6 +21,7 @@
 // A toggle in the plugin's settings (`prompt_router`, on by default), or
 // ORBIT_PROMPT_ROUTER=off on one machine. Off, it adds nothing to the prompt, and
 // the trail still records that a prompt arrived with routing off.
+import { dispatchedBy } from "../../routing/explain.mjs";
 import { BUDGET_BYTES, formatDecision } from "../../routing/format.mjs";
 import { route } from "../../routing/resolve.mjs";
 import { promptFacts } from "../../trace/prompt.mjs";
@@ -29,8 +30,11 @@ export const router = {
   name: "router",
   on: ["user-prompt"],
   records: false,
-  run: (event, world) => answered(event, world, world.routing() ? route(event.prompt ?? "", world.resources()) : null),
+  run: (event, world) => answered(event, world, world.routing() ? routed(event, world.resources()) : null),
 };
+
+// The decision, and the registry it was made over: a parent's line names its agents from the same read.
+const routed = (event, effective) => ({ decision: route(event.prompt ?? "", effective), dispatches: dispatchedBy(effective) });
 
 // ONE advisory line, unless a person switched `trigger.arbitraryPrompt` off or kept a restriction: the
 // router SAYS a coordinated workflow could take this prompt. It starts nothing -- this hook plans and never
@@ -41,8 +45,8 @@ const advised = (v) => Boolean(v?.trigger?.arbitraryPrompt);
 
 const withAdvice = (text, world) => (text && advised(world.automation?.()) && Buffer.byteLength(`${text}\n${ADVICE}`) <= BUDGET_BYTES ? `${text}\n${ADVICE}` : text);
 
-function answered(event, world, decision) {
-  const text = withAdvice(decision ? formatDecision(decision, { callVia: world.callVia }) : null, world);
-  world.traced?.(decision, promptFacts(event.prompt, world.salt?.()), Boolean(text));
+function answered(event, world, r) {
+  const text = withAdvice(r ? formatDecision(r.decision, { callVia: world.callVia, dispatches: r.dispatches }) : null, world);
+  world.traced?.(r?.decision ?? null, promptFacts(event.prompt, world.salt?.()), Boolean(text));
   return text ? world.host.formatPromptContext?.(text, world.input) ?? null : null;
 }

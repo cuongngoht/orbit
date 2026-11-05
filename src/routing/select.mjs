@@ -3,7 +3,10 @@
 // the same provider, and nothing here connects, starts or installs anything.
 //
 // CANDIDATES are the resources that PROVIDE the requirement and, if they say
-// `requiresSignal`, are named by one of their own signals in the prompt. Each is
+// `requiresSignal`, are named by one of their own signals in the prompt. An agent
+// whose row names the skills it is dispatched `via` (0.5.0, catalog/components.json)
+// is a candidate only for a requirement one of those skills pulled in: it needs its
+// parent's step before it, so a prompt's words never reach it on their own. Each is
 // then judged for THIS requirement:
 //
 //   eligible     the registry says the resolver may consider it at all -- Orbit
@@ -47,12 +50,16 @@ export function resolveRequirement(node, ctx) {
 }
 
 function judged(resource, node, ctx) {
-  if (!resource.routing.provides.includes(node.requirement)) return null;
+  if (!resource.routing.provides.includes(node.requirement) || !reached(resource, node)) return null;
   const sigHits = resource.routing.signals.filter((s) => ctx.grams.has(keyOf(s)));
   if (resource.routing.requiresSignal && !sigHits.length) return null;
   const verdict = resource.kind === "mcp" ? capabilityVerdict(resource.policy, node.requirement, ctx.workflow) : "allow";
   return { resource, sigHits, verdict: resource.selection === "approval" && verdict === "allow" ? "approval" : verdict, coverage: resource.routing.provides.filter((p) => ctx.asked.has(p)).length, selectable: resource.eligible && verdict !== "deny" && (node.level !== "optional" || sigHits.length > 0) };
 }
+
+// With no `via`, anybody may reach it; with one, only the parent that pulled this requirement in
+// (graph.mjs `viaId`: the provider whose needs or optional needs asked for it).
+const reached = (resource, node) => !(resource.routing.via ?? []).length || (node.transitive === true && resource.routing.via.includes(node.viaId));
 
 const compare = (a, b) => ORDER.reduce((d, by) => d || by(a, b), 0);
 

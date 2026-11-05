@@ -25,6 +25,7 @@ import { effectiveResourcesOf } from "../src/resources/compose.mjs";
 import { FAMILIES } from "../src/resources/model.mjs";
 import { observeResources } from "../src/resources/observe.mjs";
 import { summarize } from "../src/resources/registry.mjs";
+import { dispatchedBy } from "../src/routing/explain.mjs";
 import { formatDecision } from "../src/routing/format.mjs";
 import { route } from "../src/routing/resolve.mjs";
 
@@ -87,7 +88,7 @@ function hooked() {
 function routed(prompt, effective) {
   const decision = route(prompt, effective);
   if (JSON_OUT) return console.log(JSON.stringify(decision, null, 2));
-  console.log(formatDecision(decision) ?? "(the router would add nothing to this prompt)");
+  console.log(formatDecision(decision, { dispatches: dispatchedBy(effective) }) ?? "(the router would add nothing to this prompt)");
 }
 
 function quietly(fn) {

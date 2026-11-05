@@ -51,7 +51,10 @@ egress proxy, on a budget of cents).
 ### The catalog and the host are policy, as data
 
 `skills/orbit-release/ship/policy.json` names all forty-six cases of the nine suites, case by case -- a case that leaves
-a suite, or joins one unnamed, is `CATALOG_DRIFT`. Every source case must hold its controls and PASS its real source
+a suite, or joins one unnamed, is `CATALOG_DRIFT` (held both ways by `test/benchmark-release-policy.test.mjs`, under
+the harness's name since 0.5.0, because it reads `benchmark/suites/`: the subject `doctor --preflight` runs the suite on
+is Orbit's source without the harness, and a test that read what it does not hold failed there). Every source case
+must hold its controls and PASS its real source
 (its `baseline` earns it nothing); every QA and engineering case must hold its controls and PASS when the coding host
 carries it; and ORBIT-SRC-001's planted fault must be REPAIRED_VERIFIED by the coding host on the final source: sixteen
 model-carried rows a cycle. A row a model carries holds only when its run says basis `coding-host`, the Claude Code

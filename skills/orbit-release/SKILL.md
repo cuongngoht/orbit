@@ -73,7 +73,9 @@ an endpoint the release policy names; behind a network that inspects TLS, give `
 | REBUILD · FULL_RETEST | a new release commit is a new cycle: everything again, model-carried rows included | BUILDING · REGRESSION |
 | SHIPPABLE | `evidence.json`, and -- when repairs were integrated -- `release.patch` and `release.bundle` for you to apply | -- |
 
-**The catalog** (`ship/policy.json`) names all 46 cases of the nine suites. A source case must hold its controls and
+**The catalog** (`ship/policy.json`) names all 46 cases of the nine suites, held to `benchmark/suites/` both ways by
+`test/benchmark-release-policy.test.mjs` -- which carries the harness's name because it reads the harness, so the
+harness-stripped subject `doctor --preflight` runs the suite on never holds it. A source case must hold its controls and
 PASS its real source -- a known finding (`baseline: "FAIL"`) earns nothing for it. A QA or engineering case must hold its
 controls and PASS with the coding host. ORBIT-SRC-001's planted fault must be REPAIRED_VERIFIED by the coding host on the
 final source. That is sixteen rows a cycle the real Claude Code CLI carries. A model-carried row counts only when its run

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "about": "What a release of Orbit must hold, as data (ADR 0049): every case of every suite named, what each kind of case must come to, the one coding host a model-carried row may have, the limits a ship runs within, and the paths no repair may touch. skills/orbit-release/ship.mjs reads it; test/release-ship-policy.test.mjs holds the catalog to benchmark/suites both ways.",
+  "about": "What a release of Orbit must hold, as data (ADR 0049): every case of every suite named, what each kind of case must come to, the one coding host a model-carried row may have, the limits a ship runs within, and the paths no repair may touch. skills/orbit-release/ship.mjs reads it; test/benchmark-release-policy.test.mjs holds the catalog to benchmark/suites both ways.",
   "host": {
     "cli": "claude-code",
     "basis": "coding-host",

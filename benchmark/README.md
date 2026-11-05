@@ -102,7 +102,11 @@ The QA cases plant one defect each in Orbit's own synthetic invoice application 
    - Behind a network that inspects TLS, give the proxy's CA bundle with `--ca-file=<pem>` (or
      `ORBIT_BENCHMARK_CA_FILE`).
    - Run `node benchmark/run.mjs doctor` to see what is missing. `doctor --preflight` also runs the subject's own
-     declared checks (`npm run lint`, `npm run test`) in the runner container, with no host. `doctor --host` asks the
+     declared checks (`npm run lint`, `npm run test`) in the runner container, with no host -- on the subject a round
+     gets, Orbit's source without the harness (`HARNESS`: `benchmark/**`, `test/benchmark-*.mjs`). So a test that reads
+     `benchmark/` carries the harness's name (`test/benchmark-*.mjs`, such as `test/benchmark-release-policy.test.mjs`,
+     the release policy held to `suites/`): it runs in full in this repository and is never in a subject that does not
+     hold what it reads. A test outside that name that reads `benchmark/` fails the preflight. `doctor --host` asks the
      runner image's Claude Code ONE question through the egress proxy -- no tool, no plugin, a budget of a few cents --
      and says whether it starts, which version and model it reports, and whether the credential is accepted, or a code
      when not (`CLI_UNAVAILABLE`, `CLI_MISMATCH`, `AUTH_MISSING`, `AUTH_REFUSED`, `EGRESS`, `PROVIDER`).
@@ -556,7 +560,8 @@ anyone:
   `step` dispatched stopped short -- the relay's log keeps that `result.stopped`, the engine's own allow-listed view,
   and nothing else of an answer of 0. A ship's `--status` prints it for every model-carried row that did not hold.
 
-The ship's catalog is `skills/orbit-release/ship/policy.json`: every case of every suite, by name. A source case must
+The ship's catalog is `skills/orbit-release/ship/policy.json`: every case of every suite, by name, held to `suites/`
+both ways by `test/benchmark-release-policy.test.mjs` (a case added here and not named there fails it). A source case must
 hold its controls and PASS its real source; a QA or engineering case must hold its controls and PASS with the coding host;
 ORBIT-SRC-001's planted fault must be REPAIRED_VERIFIED by the coding host. A suite or case the policy RECORDS (ADR 0051:
 where a new suite's model rows start) has its model-carried rows run and reported, held or not, and never required --

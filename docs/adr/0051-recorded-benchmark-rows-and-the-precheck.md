@@ -39,7 +39,9 @@ The policy says which model-carried rows a release records: `recorded: { suites:
 RECORDED when it is a model-carried row (`run: autonomous`) of a suite or a case named there. A control or a
 verification is never recorded: a recorded suite's controls stay required, because a case whose checks do not
 discriminate cannot even be recorded honestly. `policyOf` refuses a `recorded` name the catalog does not hold, and the
-shipped policy records nothing yet, so every one of the 46 current cases keeps exactly what it requires.
+shipped policy records nothing yet, so every one of the 46 current cases keeps exactly what it requires
+(`test/benchmark-release-policy.test.mjs`, beside the catalog held to `benchmark/suites/` both ways: moving a case into
+`recorded` fails it, and an earlier ship's evidence no longer publishes, `POLICY_MOVED`).
 
 The ship runs a recorded row like any model-carried row: once, under the normal retries policy (a restart's
 interruption runs it again on its own bound, and `--retries` gives a miss another run). What its diagnosis would do --

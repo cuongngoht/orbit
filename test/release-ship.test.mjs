@@ -605,6 +605,17 @@ test("a recorded row runs under the ship's retries like any model-carried row, a
   assert.deepEqual(evidenceOf(ctx).recorded.map((r) => [r.id, r.held, r.state]), [["QA-001:autonomous", true, "HELD"]]);
 });
 
+test("a credential found in a recorded row's room is never recorded away: it stops the release, for a person to look, as for any row", async (t) => {
+  const leaked = () => ({ outcome: "PASS", summary: "PASS", host: HOST, leaks: [{ rel: "rounds/1/host.jsonl", done: "masked" }] });
+  const w = shipWorldOf(t, { files: { ...ADDING }, policy: RECORDING, play: { controls: allMatched, autonomous: leaked } });
+  const { ctx, result } = await shipped(w);
+  assert.deepEqual([result.outcome, result.exit], ["NOT_SHIPPABLE", 2], result.summary);
+  assert.match(result.summary, /the credential was found in 1 file\(s\) of the run's room/);
+  assert.equal(existsSync(ctx.room.at("evidence.json")), false, "no evidence for a release a person has not looked at");
+  const p = await shipped(shipWorldOf(t, { files: { ...ADDING }, policy: RECORDING, play: { controls: allMatched, autonomous: leaked } }), { precheck: true, limits: {} });
+  assert.deepEqual([p.result.outcome, p.result.failures.map((x) => [x.row, x.code])], ["PRECHECK_FAILED", [["QA-001:autonomous", "LEAK"]]], "a precheck says it too");
+});
+
 test("a recorded case's controls stay required: a control that does not hold still ends the release NOT SHIPPABLE", async (t) => {
   const controls = (c) => (c === "QA-001" ? [{ id: "idle", variant: "real", expect: "FAIL", got: "PASS", matched: false }] : allMatched());
   const w = shipWorldOf(t, { files: { ...ADDING }, policy: RECORDING, play: { controls } });

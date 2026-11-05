@@ -45,7 +45,9 @@ The ship runs a recorded row like any model-carried row: once, under the normal 
 interruption runs it again on its own bound, and `--retries` gives a miss another run). What its diagnosis would do --
 stop the release, block it, wait for a person -- it is RECORDED as not held instead (`recordedDiag`,
 `ship/machine.mjs`): it never fails a cycle, never keeps another model-carried row from running under fail fast, and
-never blocks SHIPPABLE, which needs a recorded row only run to an end, held or not. The ship's result, `--status` and
+never blocks SHIPPABLE, which needs a recorded row only run to an end, held or not. One thing is never recorded away
+(`UNEXCUSED`): the credential found in a recorded row's room (`LEAK`) stops the release as it would for a required row,
+because a person looks before any release, whichever row's room it was in. The ship's result, `--status` and
 `evidence.json` say each recorded row held or not, with its run's room.
 
 `ship.mjs --evidence` re-derives recorded rows like every other row: a required row must be HELD (`INCOMPLETE`), a

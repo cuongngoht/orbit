@@ -678,8 +678,9 @@ place real adapters are bound to real config.
   commit invalidates every earlier row and the whole catalog runs again. SHIPPABLE writes `evidence.json` bound to the
   commit, tree, content, protected and policy digests and the artifact; `ship.mjs --evidence` re-derives all of it and
   is the only door to publishing. A model-carried row of a suite or case the policy RECORDS (ADR 0051) runs once under
-  the ship's retries and is reported held or not, with its run's room -- it never blocks SHIPPABLE, and its controls stay
-  required; `--precheck` runs only the model-carried rows, each once, and qualifies nothing. The ship never writes the
+  the ship's retries and is reported held or not, with its run's room -- it never blocks SHIPPABLE (but a credential found
+  in its room stops the release, as in any row's), and its controls stay required; `--precheck` runs only the
+  model-carried rows, each once, and qualifies nothing. The ship never writes the
   checkout, pushes, tags or publishes; native host and backend acceptance are optional rows
   (`test/release-ship.test.mjs`, `test/release-ship-tables.test.mjs`, `test/release-ship-policy.test.mjs`,
   `test/release-ship-door.test.mjs`, `test/benchmark-release-hooks.test.mjs`).

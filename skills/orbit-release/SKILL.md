@@ -88,7 +88,8 @@ same holds for a repair a restart cut short: `INTERRUPTED`, never integrated, an
 and never requires -- where a new suite's model rows start, until the promotion rule moves them (empty today: every one
 of the 46 cases keeps what it requires). A recorded row runs once, under `--retries` like any model-carried row, and is
 said held or not, with its run's room, in the result, `--status` and `evidence.json`; it never stops a release, never
-stops another row under fail fast, and never blocks SHIPPABLE. Its suite's controls stay required. `--evidence` holds a
+stops another row under fail fast, and never blocks SHIPPABLE -- except the credential found in its room (`LEAK`), which
+stops the release as for any row, for you to look. Its suite's controls stay required. `--evidence` holds a
 recorded row to its room like every other (`UNRECORDED` when the evidence has no record of one the policy records).
 
 **Repairs.** Only a source case's real variant failing on a cause the case declares repairable is repaired. A QA or

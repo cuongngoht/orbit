@@ -71,14 +71,19 @@ const resumedAfter = (f, act) => f.acts.findIndex((x) => x.a.id === act) < f.act
 
 const caseData = (ctx, id) => ctx.cases.get(id) ?? null;
 
+// What no row's being recorded excuses: the credential found in its run's room (ROW_VERDICT LEAK). A person looks before
+// ANY release, so it stops the ship as it would for a required row.
+const UNEXCUSED = ["LEAK"];
+
 // A RECORDED row (ADR 0051) never stops or blocks a ship: what its diagnosis would do -- stop, block, wait for a person --
-// it is RECORDED, not held, instead. A run again (a restart's interruption, a retry --retries allows) it still gets.
-const recordedDiag = (row, diag) => (row.recorded && diag.then !== "RETRY" ? { ...diag, then: "RECORDED", needs: null, stop: null } : diag);
+// it is RECORDED, not held, instead -- but what UNEXCUSED names. A run again (a restart's interruption, a retry --retries
+// allows) it still gets.
+const recordedDiag = (row, v, diag) => (row.recorded && diag.then !== "RETRY" && !UNEXCUSED.includes(v.code) ? { ...diag, then: "RECORDED", needs: null, stop: null } : diag);
 
 // A row's latest verdict in this cycle, with what DIAGNOSE makes of it given the retries it has used.
 function rowState(ctx, f, row, docs) {
   const v = docs.at(-1).settled.verdict;
-  const diag = v.state === "HELD" ? null : recordedDiag(row, diagnosed({ row, v, case: caseData(ctx, row.case), repair: ctx.options.repair, ...leftOf(f.limits, docs), resumed: resumedAfter(f, docs.at(-1).act) }));
+  const diag = v.state === "HELD" ? null : recordedDiag(row, v, diagnosed({ row, v, case: caseData(ctx, row.case), repair: ctx.options.repair, ...leftOf(f.limits, docs), resumed: resumedAfter(f, docs.at(-1).act) }));
   return { row, v, diag, runs: docs.length };
 }
 

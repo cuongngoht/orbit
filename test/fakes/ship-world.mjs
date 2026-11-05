@@ -215,12 +215,16 @@ function controls(w, args) {
   return { code: rows.some((k) => k.got === "DRIFTED") ? 2 : rows.every((k) => k.matched) ? 0 : 1, json: { case: c, run, rows, exit: 0 }, err: null, stopped: false };
 }
 
-function resumed(w, args) {
+// A run carried on by `resume` -- `during` sees it as it sees a run (`resumed: true`), so a scenario can look at the
+// ship while a run is read back.
+async function resumed(w, args) {
   const dir = join(w.store, "benchmark", args[1]);
   const m = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8"));
   w.calls.push({ verb: "resume", run: args[1] });
   const kind = m.config.repair && m.benchmark.kind === "source" ? (m.benchmark.variant === "controlled-fault" ? "selfHealing" : "repair") : CASES[m.benchmark.case].kind === "source" ? "verify" : "autonomous";
-  return ended(w, { c: m.benchmark.case, run: args[1], tree: m.source.repo, said: { ...w.play[kind](m.benchmark.case, m.source.repo), dies: false, diesAfterEnding: false }, dir, kind });
+  const r = { c: m.benchmark.case, run: args[1], tree: m.source.repo, said: { ...w.play[kind](m.benchmark.case, m.source.repo), dies: false, diesAfterEnding: false }, dir, kind, resumed: true };
+  if (w.play.during) await w.play.during(w, r, {});
+  return ended(w, r);
 }
 
 const VERBS = {

@@ -25,6 +25,14 @@ function staged(ctx, f, stage, because) {
   ctx.print?.(`${because}`);
 }
 
+// A stage set again only when the journal says another -- a resume's preflight staged ENVIRONMENT -- and said only then.
+function restaged(ctx, f, stage, because) {
+  if (f.view.stage !== stage) staged(ctx, f, stage, because);
+}
+
+// The stage a cycle's rows run in: TESTING the first time, REGRESSION on a full retest.
+const testingStage = (f) => (f.attempts > 1 ? "REGRESSION" : "TESTING");
+
 // ---- how a ship ends ----------------------------------------------------------------------------------------------------
 
 // The ending is written into the room before the journal is told, as a run's is: a person reads it, and `--status` and
@@ -175,7 +183,7 @@ async function host(ctx, f) {
 }
 
 function gates(ctx, f) {
-  staged(ctx, f, f.attempts > 1 ? "REGRESSION" : "TESTING", `${f.attempts > 1 ? "FULL_RETEST" : "BENCHMARK"}  cycle ${f.attempts} on ${short(f.cycle.commit)}: the definition of done, then every row of the catalog`);
+  staged(ctx, f, testingStage(f), `${f.attempts > 1 ? "FULL_RETEST" : "BENCHMARK"}  cycle ${f.attempts} on ${short(f.cycle.commit)}: the definition of done, then every row of the catalog`);
   const act = begun(ctx, "release.gates", `the definition of done on ${short(f.cycle.commit)}`, { attempt: f.open.id });
   const rows = report(ctx.world.gatesAt(f.cycle.tree), GATES);
   settledAct(ctx, act, { attempt: f.open.id }, { attempt: f.open.id, ok: shippable(rows), rows }, { outcome: shippable(rows) ? "succeeded" : "failed", summary: `${rows.filter((r) => r.ok).length}/${rows.length} gates held` });
@@ -185,9 +193,15 @@ function gates(ctx, f) {
 // What a model-carried row may spend: the case's own cap, never more than the ship has left.
 const usdFor = (ctx, f, row) => (row.run === "verify" || row.run === "controls" ? 0 : Math.min(ctx.cases.get(row.case)?.limits?.usd ?? 20, Math.max(1, Math.floor((f.limits.usd - f.spent.usd) * 100) / 100)));
 
+// A row starts in its cycle's testing stage, whatever a resume's preflight left the journal saying.
+function rowStarted(ctx, f, r) {
+  restaged(ctx, f, testingStage(f), `${f.attempts > 1 ? "FULL_RETEST" : "BENCHMARK"}  cycle ${f.attempts} on ${short(f.cycle.commit)}: the rows of the catalog, carried on`);
+  ctx.print?.(`  ${r.id.padEnd(30)} ${r.run}${r.autonomous ? " (Claude Code)" : ""} on ${short(f.cycle.commit)} …`);
+}
+
 async function row(ctx, f) {
   const r = f.pending;
-  ctx.print?.(`  ${r.id.padEnd(30)} ${r.run}${r.autonomous ? " (Claude Code)" : ""} on ${short(f.cycle.commit)} …`);
+  rowStarted(ctx, f, r);
   const done = await dispatched(ctx, f, r, { kind: "row", tree: f.cycle.tree, commit: f.cycle.commit, usd: usdFor(ctx, f, r), label: `${r.id} on ${short(f.cycle.commit)}` });
   ctx.print?.(done.settled ? `  ${r.id.padEnd(30)} ${done.verdict.state} — ${done.verdict.says}` : `  ${r.id.padEnd(30)} held by a person: carried on by resume`);
   return null;
@@ -253,7 +267,12 @@ function shipped(ctx, f, s) {
 
 // ---- reconcile ---------------------------------------------------------------------------------------------------------
 
+// What a resume carries on is in the stage it was in: a row read back is testing, a repair read back is fixing.
+const LEFT_STAGE = { "release.row": testingStage, "release.repair": () => "FIXING" };
+
 async function reconcile(ctx, f) {
+  const stage = f.running.map((x) => LEFT_STAGE[x.a.type]?.(f)).find(Boolean);
+  if (stage) restaged(ctx, f, stage, "RECONCILE  what the ship left running is read back from its room, never sent again");
   for (const x of f.running) await carriedOn(ctx, f, x);
   return null;
 }

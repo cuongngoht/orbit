@@ -398,6 +398,20 @@ test("B6-3. a run read back on resume is held to this cycle's content digest lik
   assert.deepEqual(rowDocs(w, ctx, "CALC-002:real").map((d) => d.settled.verdict.code), ["WRONG_TREE"], "the content digest CALC-001:real froze is what the read-back run is held to");
 });
 
+test("B6-4. after a resume the rows run in the cycle's testing stage, never in the ENVIRONMENT stage the preflight set", async (t) => {
+  let died = false;
+  const stages = [];
+  const during = (world, r) => stages.push([r.kind, world.door.show(world.calls.ship).stage]);
+  const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, during, verify: (c) => (c === "CALC-002" && !died ? ((died = true), { outcome: "PASS", summary: "PASS", dies: true }) : { outcome: "PASS", summary: "PASS" }) } });
+  const ctx = begunShip(w.world, OPTS);
+  w.calls.ship = ctx.task;
+  await assert.rejects(driven(ctx), /died/);
+  stages.length = 0;
+  const result = await driven(resumedShip(w.world, ctx.ship.id, {}));
+  assert.deepEqual([result.outcome, result.exit], ["SHIPPABLE", 0], result.summary);
+  assert.deepEqual(stages, [["verify", "TESTING"], ["autonomous", "TESTING"], ["selfHealing", "TESTING"]], "Orbit Live shows the rows a resumed ship runs -- the one it reads back first among them -- as testing");
+});
+
 // ---- the boundaries, and what a person reads ------------------------------------------------------------------------------
 
 test("integrating is a write to the ship's own workspace -- AUTO -- and a ship never constructs a write to the person's checkout", () => {

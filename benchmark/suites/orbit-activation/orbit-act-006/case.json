@@ -1,0 +1,141 @@
+{
+  "schema": 1,
+  "kind": "activation",
+  "id": "ORBIT-ACT-006",
+  "version": "1.0.0",
+  "title": "A change that needs several owners is coordinated, asked in Vietnamese",
+  "goal": "a change that needs several owners -- implement a rule, verify who may do what, update the tests, check for regression -- is coordinated through Orbit's workflow: its plan holds the engineering and regression steps, its engineering task completes the change on its own journal's proof, and the change holds the hidden checks of the rule docs/refunds.md states",
+  "measures": {
+    "kind": "activation",
+    "capability": "coordination",
+    "tier": "outcome"
+  },
+  "request": "request.md",
+  "language": "vi",
+  "fixture": {
+    "id": "orders"
+  },
+  "withheld": [
+    "docs/backlog/0.5.0-activation-benchmark.md"
+  ],
+  "arms": [
+    "none",
+    "baseline",
+    "release"
+  ],
+  "acceptance": {
+    "owner": "verifier",
+    "truth": "verifier/truth.json",
+    "spec": "verifier/spec.mjs",
+    "probe": "verifier/probe.mjs",
+    "samples": 24
+  },
+  "scope": {
+    "allow": [
+      "src/*.mjs",
+      "test/*.test.mjs",
+      "docs/*.md",
+      "README.md"
+    ],
+    "deny": [],
+    "imports": [
+      "./*.mjs"
+    ]
+  },
+  "checks": {
+    "gates": [
+      {
+        "id": "public-tests",
+        "argv": [
+          "node",
+          "--test",
+          "--test-reporter=tap",
+          "test/money.test.mjs",
+          "test/orders.test.mjs",
+          "test/cancel.test.mjs",
+          "test/currency.test.mjs",
+          "test/worker.test.mjs",
+          "test/invoice.test.mjs",
+          "test/dedupe.test.mjs",
+          "test/ui.test.mjs",
+          "test/note.test.mjs"
+        ]
+      }
+    ],
+    "agentTests": {
+      "required": true,
+      "pattern": "^test/[^/]+\\.test\\.mjs$"
+    }
+  },
+  "limits": {
+    "rounds": 1,
+    "minutes": 150,
+    "usd": 15,
+    "maxTurns": 80,
+    "runner": {
+      "cpus": 2,
+      "memoryMb": 4096,
+      "pids": 2048,
+      "minutes": 90,
+      "outputMb": 16
+    },
+    "verifier": {
+      "cpus": 2,
+      "memoryMb": 1024,
+      "pids": 512,
+      "seconds": 300
+    }
+  },
+  "artifacts": [
+    "manifest",
+    "seed",
+    "host-stream",
+    "inspection",
+    "judged",
+    "report"
+  ],
+  "cleanup": {
+    "containers": "run-label",
+    "networks": "run-label",
+    "scratch": "after-run"
+  },
+  "variants": {
+    "real": {
+      "mutations": "variants/real.json"
+    }
+  },
+  "controls": [
+    {
+      "id": "reference",
+      "host": "reference",
+      "expect": "PASS",
+      "file": "controls/reference.json"
+    },
+    {
+      "id": "idle",
+      "host": "idle",
+      "expect": "FAIL",
+      "class": "HOST_DIVERGED"
+    },
+    {
+      "id": "forging",
+      "host": "forging",
+      "expect": "FAIL",
+      "class": "INSUFFICIENT_EVIDENCE"
+    },
+    {
+      "id": "half",
+      "host": "half",
+      "expect": "FAIL",
+      "class": "ORBIT_SOURCE_DEFECT",
+      "file": "controls/half.json"
+    },
+    {
+      "id": "escalating",
+      "host": "escalating",
+      "expect": "FAIL",
+      "class": "HOST_DIVERGED",
+      "file": "controls/escalating.json"
+    }
+  ]
+}

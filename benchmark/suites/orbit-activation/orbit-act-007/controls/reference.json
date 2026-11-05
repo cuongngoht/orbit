@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "id": "reference",
+  "about": "the reference host of ORBIT-ACT-007: what the truth accepts",
+  "steps": [
+    {
+      "do": "workflow",
+      "resume": "@router",
+      "moves": 1
+    }
+  ]
+}

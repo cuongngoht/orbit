@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { COMMANDS } from "../benchmark/lib/commands.mjs";
-import { BY_NAMES, metricsOf, METRICS, runFacts } from "../benchmark/lib/core/metrics.mjs";
+import { ACTIVATION_METRICS, BY_NAMES, metricsOf, METRICS, runFacts } from "../benchmark/lib/core/metrics.mjs";
 import { reliabilityOf } from "../benchmark/lib/core/reliability.mjs";
 import { docWritten, newRunId, roomOf } from "../benchmark/lib/core/room.mjs";
 
@@ -148,7 +148,55 @@ test("--by=model and --by=arm break every metric down, the bases still apart; --
   assert.deepEqual(m.byModel.map((g) => [g.model, g.runs]), [["claude-opus-5-5", 2], ["claude-sonnet-5", 1]]);
   assert.deepEqual(m.byArm.map((g) => [g.arm, g.runs, g.bases["coding-host"].autonomous_task_success.denominator]), [["none", 1, 1], ["release", 2, 2]]);
   assert.deepEqual(m.revisions.map((x) => [x.commit, x.rows.length]), [["111111111111", 2], ["222222222222", 1]]);
-  assert.deepEqual([m.runs.byArm, BY_NAMES], [{ release: 2, none: 1 }, ["revision", "model", "arm"]]);
+  assert.deepEqual([m.runs.byArm, BY_NAMES], [{ release: 2, none: 1 }, ["revision", "model", "arm", "language"]]);
+});
+
+// ---- the activation rows (0.5.0, B22 M4: the activation benchmark §8) ---------------------------------------------------
+
+// An activation run as its room keeps it: the judge's own facts in its report, its arm and its language in its manifest.
+const actRun = (o = {}) => {
+  const r = run({ kind: "activation", suite: "orbit-activation", case: o.case ?? "ORBIT-ACT-001", repair: false, host: o.host ?? null, outcome: o.outcome ?? "PASS", basis: o.basis ?? "coding-host" });
+  const arm = o.arm ?? "release";
+  const facts = { applies: arm !== "none", activate: true, activated: true, strategyNamed: true, strategyRight: true, skillProfile: true, skillsRight: true, agentProfile: true, agentsRight: true, agentCalls: 0, router: { judged: arm !== "none", right: true }, recordsHeld: true, outcome: null, grounding: null, arm, tier: "selection", language: o.language ?? "en", capability: o.capability ?? "architecture", row: "PASS", verdict: o.outcome ?? "PASS", ...o.facts };
+  return { ...r, manifest: { ...r.manifest, config: { ...r.manifest.config, arm }, activation: { language: facts.language, tier: facts.tier, capability: facts.capability, switches: {} } }, report: { ...r.report, kind: "activation", activation: facts } };
+};
+
+test("the activation rows: precision and recall of activating, strategy and selection, needless delegation and the router -- over the Orbit arms alone, each a numerator over a denominator", () => {
+  const runs = [
+    actRun(),
+    actRun({ outcome: "FAIL", facts: { activated: false, strategyRight: false, skillsRight: false, router: { judged: true, right: false } } }),
+    actRun({ outcome: "FAIL", case: "ORBIT-NEG-002", capability: "abstention", facts: { activate: false, activated: true, strategyRight: false, skillProfile: false, agentProfile: false } }),
+    actRun({ outcome: "FAIL", capability: "qa-case-repair", facts: { agentCalls: 2, agentsRight: false } }),
+    actRun({ case: "ORBIT-ACT-008", capability: "switches", facts: { activate: null, activated: false, strategyNamed: false } }),
+    actRun({ arm: "none", outcome: "PASS", facts: { activated: false } }),
+  ];
+  const b = metricsOf(runs).bases["coding-host"];
+  const at = (id) => [b[id].numerator, b[id].denominator];
+  assert.deepEqual(at("activation_precision"), [2, 3], "of the runs that activated where the truth says either way, those it said to");
+  assert.deepEqual(at("activation_recall"), [2, 3], "of the runs the truth says to activate, those that did -- the none arm's not among them");
+  assert.deepEqual(at("strategy_accuracy"), [2, 4]);
+  assert.deepEqual(at("skill_selection_accuracy"), [3, 4]);
+  assert.deepEqual(at("agent_selection_accuracy"), [3, 4]);
+  assert.deepEqual(at("unnecessary_delegation"), [1, 1], "a dispatch no profile accepts, over the runs that dispatched any agent");
+  assert.deepEqual(at("router_accuracy"), [4, 5], "the router's own decision, judged apart from what the host did with it");
+  assert.deepEqual(at("capability_coverage"), [2, 4], "families with a passing case: architecture and switches, of four");
+  assert.deepEqual(at("work_completion"), [0, 0]);
+  assert.equal(b.work_completion.value, "unknown", "no outcome case ran");
+  assert.deepEqual(ACTIVATION_METRICS.map((m) => m.id), ["activation_precision", "activation_recall", "strategy_accuracy", "skill_selection_accuracy", "agent_selection_accuracy", "unnecessary_delegation", "router_accuracy", "capability_coverage", "work_completion"]);
+  assert.ok(ACTIVATION_METRICS.every((m) => METRICS.includes(m)), "every row is a metric of the fold");
+});
+
+test("the activation rows by arm and by language, a scripted control's runs apart -- and an outcome run completes only when its checks and its records hold", () => {
+  const out = (held, recordsHeld = true) => ({ tier: "outcome", outcome: { held }, recordsHeld });
+  const runs = [actRun({ language: "vi" }), actRun({ arm: "baseline", outcome: "FAIL", facts: { activated: false, router: { judged: true, right: false } } }), actRun({ arm: "none" }), actRun({ facts: out(true) }), actRun({ outcome: "FAIL", facts: out(true, false) }), actRun({ outcome: "FAIL", facts: out(false) }), actRun({ host: "scripted:reference", basis: "scripted" })];
+  const m = metricsOf(runs, { by: ["arm", "language"] });
+  const recall = (g) => [g.bases["coding-host"].activation_recall.numerator, g.bases["coding-host"].activation_recall.denominator];
+  assert.deepEqual(m.byArm.map((g) => [g.arm, ...recall(g)]), [["baseline", 0, 1], ["none", 0, 0], ["release", 4, 4]]);
+  assert.deepEqual(m.byArm.find((g) => g.arm === "baseline").bases["coding-host"].router_accuracy.value, 0, "the previous release's router, on its own");
+  assert.deepEqual(m.byLanguage.map((g) => [g.language, g.runs]), [["en", 6], ["vi", 1]]);
+  const b = m.bases["coding-host"];
+  assert.deepEqual([b.work_completion.numerator, b.work_completion.denominator], [1, 3], "a change that holds its checks with a record that does not is not work completed");
+  assert.deepEqual([m.runs.byBasis.scripted, m.bases.scripted.activation_recall.denominator], [1, 1], "a scripted control is conformance, never autonomy");
 });
 
 // 0.5.0: the owner's decision runs model-carried rows at an effort (`--effort`); a model at two efforts is two hosts.

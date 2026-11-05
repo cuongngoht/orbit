@@ -21,28 +21,37 @@ const listed = () => ({ suites: readdirSync(SUITES).map((s) => JSON.parse(readFi
 
 test("the policy names every case of every suite, and nothing else -- the catalog cannot shrink unseen", () => {
   assert.deepEqual(catalogDrift(POLICY, listed()), []);
-  assert.equal(Object.keys(POLICY.catalog).length, 9, "nine suites");
-  assert.equal(Object.values(POLICY.catalog).flat().length, 46, "every case they hold");
+  assert.equal(Object.keys(POLICY.catalog).length, 10, "ten suites");
+  assert.equal(Object.values(POLICY.catalog).flat().length, 64, "every case they hold");
   const less = { suites: listed().suites.map((s) => ({ ...s, cases: s.cases.filter((c) => c.id !== "ORBIT-SRC-002") })) };
   assert.deepEqual(catalogDrift(POLICY, less), ["ORBIT-SRC-002 is in the release policy and no suite holds it"]);
   const more = { suites: [...listed().suites, { id: "orbit-new", cases: [{ id: "ORBIT-NEW-001", kind: "source" }] }] };
   assert.deepEqual(catalogDrift(POLICY, more), ["ORBIT-NEW-001 is in suite orbit-new and the release policy does not name it"]);
 });
 
-test("a cycle runs every verification, then every control, then 16 rows the real Claude Code carries", () => {
+test("a cycle runs every verification, then every control, then 34 rows the real Claude Code carries", () => {
   const rows = rowsOf(POLICY, listed());
   const auto = rows.filter((r) => r.autonomous);
-  assert.equal(rows.length, 31 * 2 + 7 * 2 + 8 * 2 + 1);
-  assert.equal(auto.length, 16, "seven QA cases, eight engineering cases, and ORBIT-SRC-001's planted fault repaired");
+  assert.equal(rows.length, 31 * 2 + 7 * 2 + 8 * 2 + 18 * 2 + 1);
+  assert.equal(auto.length, 34, "seven QA cases, eight engineering cases, eighteen activation cases, and ORBIT-SRC-001's planted fault repaired");
   assert.deepEqual([...new Set(rows.map((r) => r.run))], ["verify", "controls", "autonomous"], "in that order, so no model is spent on a cycle that will be repaired");
   assert.deepEqual(auto.find((r) => r.case === "ORBIT-SRC-001"), { ...auto.find((r) => r.case === "ORBIT-SRC-001"), variant: "controlled-fault", repair: true, expect: ["REPAIRED_VERIFIED"] });
   assert.ok(rows.filter((r) => r.case === "ORBIT-SRC-002" || r.case === "ORBIT-ORC-006").some((r) => r.req === "real" && r.expect.includes("PASS")), "a known finding must PASS its real source: its baseline earns it nothing");
 });
 
-test("the shipped policy records no row yet: every one of the 46 cases keeps what it requires (ADR 0051)", () => {
+test("the shipped policy records the activation suite's model-carried rows and nothing else: its controls, and every other case, keep what they require (ADR 0051)", () => {
   const rows = rowsOf(POLICY, listed());
-  assert.deepEqual([POLICY.recorded.suites, POLICY.recorded.cases, rows.filter((r) => r.recorded).map((r) => r.id)], [[], [], []]);
-  assert.ok(rows.every((r) => r.recorded === false), "every row says it is required");
+  const activation = POLICY.catalog["orbit-activation"];
+  assert.deepEqual([POLICY.recorded.suites, POLICY.recorded.cases], [["orbit-activation"], []]);
+  assert.deepEqual(rows.filter((r) => r.recorded).map((r) => r.id), activation.map((c) => `${c}:autonomous`), "a new suite's model-carried rows start recorded");
+  assert.ok(rows.filter((r) => r.suite === "orbit-activation" && r.run === "controls").every((r) => r.recorded === false), "its controls stay required");
+  assert.ok(rows.filter((r) => r.suite !== "orbit-activation").every((r) => r.recorded === false), "every row of the 46 cases before it says it is required");
+});
+
+test("an activation case must hold its controls, and its model-carried row PASS on its real target, on the release arm", () => {
+  const rows = rowsOf(POLICY, listed()).filter((r) => r.kind === "activation");
+  assert.equal(rows.length, 36);
+  assert.deepEqual([...new Set(rows.map((r) => `${r.req}:${r.run}:${r.variant}:${JSON.stringify(r.expect)}`))].sort(), ['autonomous:autonomous:real:["PASS"]', "controls:controls:null:null"]);
 });
 
 test("`recorded` marks a suite's or a case's model-carried rows, never its controls; a name the catalog does not hold is refused", () => {

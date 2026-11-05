@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "id": "half",
+  "about": "the half host of ORBIT-NEG-004: a control that must FAIL as HOST_DIVERGED",
+  "steps": [
+    {
+      "do": "edit"
+    }
+  ],
+  "edits": {
+    "mutations": [
+      {
+        "id": "rename-src-money",
+        "file": "src/money.mjs",
+        "find": "qty",
+        "replace": "quantity",
+        "count": 1
+      },
+      {
+        "id": "rename-src-orders",
+        "file": "src/orders.mjs",
+        "find": "qty",
+        "replace": "quantity",
+        "count": 2
+      }
+    ],
+    "files": [],
+    "deletes": []
+  }
+}

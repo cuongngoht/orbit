@@ -1,0 +1,83 @@
+{
+  "schema": 1,
+  "id": "reference",
+  "about": "the reference host of ORBIT-ACT-002: what the truth accepts",
+  "steps": [
+    {
+      "do": "skill",
+      "name": "orbit:orbit-develop"
+    },
+    {
+      "do": "orbit",
+      "argv": [
+        "context.mjs",
+        "--for=@prompt"
+      ]
+    },
+    {
+      "do": "read",
+      "path": "docs/approvals.md"
+    },
+    {
+      "do": "edit"
+    }
+  ],
+  "edits": {
+    "mutations": [
+      {
+        "id": "approve-and-hold",
+        "file": "src/orders.mjs",
+        "find": "export const confirmOrder = (store, id) => moved(store, id, \"open\", \"confirmed\");",
+        "replace": "export const LIMIT_MINOR = 1000000;\n\nexport function approveOrder(store, id, by) {\n  const order = getOrder(store, id);\n  if (!order) return { error: \"NOT_FOUND\" };\n  if (by?.role !== \"manager\") return { error: \"FORBIDDEN\" };\n  return store.put(\"orders\", id, { ...order, approved: true });\n}\n\nconst held = (order) => Boolean(order) && order.state === \"open\" && order.totalMinor > LIMIT_MINOR && order.approved !== true;\n\nexport const confirmOrder = (store, id) => (held(getOrder(store, id)) ? { error: \"FORBIDDEN\" } : moved(store, id, \"open\", \"confirmed\"));",
+        "count": 1
+      },
+      {
+        "id": "approve-import",
+        "file": "src/api.mjs",
+        "find": "import { cancelOrder, confirmOrder, createOrder, getOrder, invalidOf, shipOrder } from \"./orders.mjs\";",
+        "replace": "import { approveOrder, cancelOrder, confirmOrder, createOrder, getOrder, invalidOf, shipOrder } from \"./orders.mjs\";",
+        "count": 1
+      },
+      {
+        "id": "forbidden-answer",
+        "file": "src/api.mjs",
+        "find": "  { when: (r) => r.error === \"CONFLICT\", answer: (r) => ({ status: 409, body: { error: `the order is ${r.state}` } }) },",
+        "replace": "  { when: (r) => r.error === \"FORBIDDEN\", answer: () => ({ status: 403, body: { error: \"a manager's approval is required\" } }) },\n  { when: (r) => r.error === \"CONFLICT\", answer: (r) => ({ status: 409, body: { error: `the order is ${r.state}` } }) },",
+        "count": 1
+      },
+      {
+        "id": "approve-route",
+        "file": "src/api.mjs",
+        "find": "  { method: \"POST\", path: new RegExp(`^/orders/${ORDER}/confirm$`), run: (store, m) => answered(confirmOrder(store, m[1])) },",
+        "replace": "  { method: \"POST\", path: new RegExp(`^/orders/${ORDER}/confirm$`), run: (store, m) => answered(confirmOrder(store, m[1])) },\n  { method: \"POST\", path: new RegExp(`^/orders/${ORDER}/approve$`), run: (store, m, body) => answered(approveOrder(store, m[1], body?.by)) },",
+        "count": 1
+      }
+    ],
+    "files": [
+      {
+        "rel": "test/approvals.test.mjs",
+        "lines": [
+          "import assert from \"node:assert/strict\";",
+          "import { mkdtempSync, rmSync } from \"node:fs\";",
+          "import { tmpdir } from \"node:os\";",
+          "import { join } from \"node:path\";",
+          "import { test } from \"node:test\";",
+          "import { handle } from \"../src/api.mjs\";",
+          "import { openStore } from \"../src/store.mjs\";",
+          "",
+          "test(\"an order over 10,000 is confirmed only once a manager has approved it\", (t) => {",
+          "  const dir = mkdtempSync(join(tmpdir(), \"orders-\"));",
+          "  t.after(() => rmSync(dir, { recursive: true, force: true }));",
+          "  const store = openStore(dir);",
+          "  const id = handle(store, { method: \"POST\", path: \"/orders\", body: { lines: [{ qty: 1, unitMinor: 2000000 }] } }).body.id;",
+          "  assert.equal(handle(store, { method: \"POST\", path: `/orders/${id}/confirm` }).status, 403);",
+          "  assert.equal(handle(store, { method: \"POST\", path: `/orders/${id}/approve`, body: { by: { role: \"clerk\" } } }).status, 403);",
+          "  assert.equal(handle(store, { method: \"POST\", path: `/orders/${id}/approve`, body: { by: { role: \"manager\" } } }).status, 200);",
+          "  assert.equal(handle(store, { method: \"POST\", path: `/orders/${id}/confirm` }).body.state, \"confirmed\");",
+          "});"
+        ]
+      }
+    ],
+    "deletes": []
+  }
+}

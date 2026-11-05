@@ -49,6 +49,20 @@
           "PASS"
         ]
       }
+    ],
+    "activation": [
+      {
+        "id": "controls",
+        "kind": "controls"
+      },
+      {
+        "id": "autonomous",
+        "kind": "autonomous",
+        "variant": "real",
+        "expect": [
+          "PASS"
+        ]
+      }
     ]
   },
   "extra": [
@@ -127,11 +141,33 @@
       "ORBIT-E2E-006",
       "ORBIT-E2E-007",
       "ORBIT-E2E-008"
+    ],
+    "orbit-activation": [
+      "ORBIT-ACT-001",
+      "ORBIT-ACT-002",
+      "ORBIT-ACT-003",
+      "ORBIT-ACT-004",
+      "ORBIT-ACT-005",
+      "ORBIT-ACT-006",
+      "ORBIT-ACT-007",
+      "ORBIT-ACT-008",
+      "ORBIT-ACT-009",
+      "ORBIT-ACT-010",
+      "ORBIT-ACT-011",
+      "ORBIT-NEG-001",
+      "ORBIT-NEG-002",
+      "ORBIT-NEG-003",
+      "ORBIT-NEG-004",
+      "ORBIT-CTX-001",
+      "ORBIT-CTX-002",
+      "ORBIT-CTX-003"
     ]
   },
   "recorded": {
     "about": "Model-carried rows a release RECORDS and never requires (ADR 0051): every autonomous row of a suite or a case named here runs once, under the ship's retries, and is reported held or not, with its run's room, in the ship's result, --status and evidence.json -- it never blocks SHIPPABLE. The controls of a recorded suite or case stay required. A new benchmark suite's model-carried rows start here, and leave only by the promotion rule (docs/backlog/0.5.0.md, Release criteria).",
-    "suites": [],
+    "suites": [
+      "orbit-activation"
+    ],
     "cases": []
   },
   "limits": {

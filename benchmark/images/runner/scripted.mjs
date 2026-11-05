@@ -11,17 +11,20 @@
 // settle), whose engineering step's task it drives the same way -- or, for a goal that leaves out a rule the change
 // needs, it records that rule as missing and stops, as nobody here can say it. An INTERRUPT script is a goal script
 // whose first round kills its own check mid-run, the way a host that crashed leaves it; its next round reconciles what
-// did not settle and goes on, never sending anything again.
+// did not settle and goes on, never sending anything again. An ACTIVATION script (0.5.0) is a session as Claude Code has
+// it, every hook delivered to Orbit's own entry points, its steps a control's data; a SEED script lays an activation
+// case's seed into the runner's store with Orbit's own commands before the host's round.
 //
 // What it prints is stream-json, the shape the controller reads a host's session in: an init line naming its model
 // `scripted:<control>`, one tool call per Orbit command it ran, and a result line -- its cost is 0, because no model ran.
 //
 //   node /bench/scripted.mjs <tsk-…|->   brief: /run/brief/brief.json (its `script`, `plugin`, `goal`, `round`)
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { uitestsOf } from "./inspect.mjs";
 
 export const PATHS = { brief: "/run/brief/brief.json", repo: "/work/repo" };
 
@@ -38,13 +41,22 @@ const CALL = { encoding: "utf8", timeout: 3600000, maxBuffer: 64 * 1024 * 1024 }
 
 // One command of an Orbit CLI, run as a host runs it: from the checkout, the plugin's own CLI. (`s.env` and `s.say`
 // exist so a test can run this outside the container; in it, the process's own are used.)
-export const cliCall = (s, tool, args, input) => ((r) => ({ status: r.status, json: jsonOf(r.stdout), why: lastLine(r) }))(spawnSync(process.execPath, [join(s.plugin, "cli", tool), ...args, "--json"], { cwd: s.repo, env: s.env ?? process.env, input, ...CALL }));
+export const cliCall = (s, tool, args, input) => ((r) => ({ status: r.status, json: jsonOf(r.stdout), why: lastLine(r), line: commandLine(s, tool, [...args, "--json"]) }))(spawnSync(process.execPath, [join(s.plugin, "cli", tool), ...args, "--json"], { cwd: s.repo, env: s.env ?? process.env, input, ...CALL }));
+
+// The command line a host would have typed for a call: what a judge's patterns read in an activation session's stream.
+const quoted = (a) => (/[\s"'$`\\]/.test(a) ? JSON.stringify(a) : a);
+
+export const commandLine = (s, tool, args) => ["node", join(s.plugin, "cli", tool), ...args].map((a) => quoted(String(a))).join(" ");
 
 export const orbitCall = (s, args, input) => cliCall(s, "autonomous-engineering.mjs", args, input);
 
+// How a session says a command it ran: in a line of its own -- or, in an activation session (`s.tell`, bashTold), as
+// Claude Code says a Bash call, with its command line, its result and its hooks.
+const plainTold = (s, what) => (s.say ?? said)({ type: "assistant", message: { content: [{ type: "tool_use", name: "Bash", input: { orbit: what } }] } });
+
 // A command the session ran, said as one tool call of the session and kept among the result's steps.
 function told(s, what, r, kind = what) {
-  (s.say ?? said)({ type: "assistant", message: { content: [{ type: "tool_use", name: "Bash", input: { orbit: what } }] } });
+  (s.tell ?? plainTold)(s, what, r);
   s.steps.push({ kind, status: r.status, outcome: r.json?.outcome ?? r.json?.stepState ?? null, stage: r.json?.stage ?? null, lifecycle: r.json?.lifecycle ?? null, why: r.status ? r.why : null });
   return r;
 }
@@ -303,18 +315,218 @@ function goalRan(s, missing) {
   return goalAsked(s, workflowRan(s));
 }
 
-// What a script does: APPLY its definition through a repair's loop, take a GOAL through Orbit's goal entry, stop on a
-// goal that is BLOCKED by a missing rule, INTERRUPT its own first round, or sit IDLE -- change nothing at all.
-export const SCRIPTS = { apply: applied, goal: (s) => goalRan(s, []), blocked: (s) => goalRan(s, MISSING), interrupt: (s) => goalRan(s, []), idle: () => [] };
+// ---- an ACTIVATION session (0.5.0, B22 M4): a session as Claude Code has it, every hook delivered to Orbit's own -------
+//
+// A control's host for an activation case prints the stream Claude Code prints -- one tool call per step, each with an
+// id of its own and its result -- and delivers every hook a real host would, with the payload a real host sends (the
+// shapes test/fixtures/hooks/claude/ keeps), to Orbit's own entry points: cli/learn-hook.mjs, cli/router-hook.mjs and
+// cli/follow-hook.mjs. What the trail says is Orbit's own code's word, and the agreement rule holds the two sources
+// apart as it holds a model's. Its steps are DATA (a control's file): call a skill or an agent, run one of Orbit's own
+// commands, show a command it never runs, make the edits its definition names, drive an engineering task, a workflow or
+// a goal -- or forge one source without the other. It runs nothing but Orbit's own CLIs, and needs no network.
 
-export const stateOf = (b, task) => ((round) => ({ task: /^tsk-[a-f0-9]{12}$/.test(task ?? "") ? task : null, repo: PATHS.repo, plugin: b.plugin ?? PATHS.repo, script: b.script ?? {}, goal: b.goal ?? null, round, interrupt: b.script?.mode === "interrupt" && round === 1, revision: null, steps: [] }))(b.round ?? 1);
+const hookedEnv = (s) => ({ ...(s.env ?? process.env), CLAUDE_PLUGIN_ROOT: s.plugin, CLAUDE_PROJECT_DIR: s.repo });
+
+const hookAnswer = (s, file, payload) => jsonOf(String(spawnSync(process.execPath, [join(s.plugin, "cli", file)], { cwd: s.repo, env: hookedEnv(s), input: JSON.stringify(payload), encoding: "utf8", timeout: 60000 }).stdout ?? "").trim());
+
+// A subagent's own hooks carry its id and type, as Claude Code's do; the main session's carry neither.
+const payloadOf = (s, event, more) => ({ session_id: s.session, transcript_path: "/tmp/scripted-transcript.jsonl", cwd: s.repo, permission_mode: "dontAsk", hook_event_name: event, ...(s.agent ? { agent_id: s.agent.id, agent_type: s.agent.type } : {}), ...more });
+
+export const hooked = (s, event, more = {}, files = ["learn-hook.mjs"]) => (s.plugin && s.hooks !== false ? files.map((f) => hookAnswer(s, f, payloadOf(s, event, more))) : []);
+
+const nextId = (s, prefix) => `${prefix}_scripted_${String((s.ids.n += 1)).padStart(4, "0")}`;
+
+const shown = (s, event) => (s.say ?? said)(s.parent ? { ...event, parent_tool_use_id: s.parent } : event);
+
+const callShown = (s, id, name, input) => shown(s, { type: "assistant", message: { id: nextId(s, "msg"), content: [{ type: "tool_use", id, name, input }] } });
+
+const resultShown = (s, id, isError) => shown(s, { type: "user", message: { content: [{ type: "tool_result", tool_use_id: id, is_error: isError, content: isError ? "the call did not succeed" : "done" }] } });
+
+const deniedBy = (answers) => answers.some((a) => a?.hookSpecificOutput?.permissionDecision === "deny");
+
+const ended = (s, input, failed, response) => hooked(s, failed ? "PostToolUseFailure" : "PostToolUse", failed ? { ...input, error: "the call did not succeed" } : { ...input, tool_response: response });
+
+// One of Orbit's commands, said as Claude Code says a Bash call: its command line, its result, its hooks.
+function bashTold(s, what, r) {
+  const id = nextId(s, "toolu");
+  const input = { tool_name: "Bash", tool_input: { command: r.line, description: what }, tool_use_id: id };
+  hooked(s, "PreToolUse", input);
+  callShown(s, id, "Bash", input.tool_input);
+  return (resultShown(s, id, r.status !== 0), ended(s, input, r.status !== 0, { stdout: "", stderr: "" }));
+}
+
+// A placeholder a step names: `{kept}` a value an earlier step kept, `@prompt` the prompt's first line.
+const filled = (s, a) => String(a).replace(/\{([a-z][a-zA-Z]*)\}/g, (m, k) => String(s.kept[k] ?? m)).replace("@prompt", String(s.prompt ?? "").split("\n")[0].trim().slice(0, 240));
+
+const valueAt = (json, path) => String(path).split(".").reduce((v, k) => v?.[k], json);
+
+const keptFrom = (s, keep, json) => Object.entries(keep ?? {}).forEach(([name, path]) => (s.kept[name] = valueAt(json, path) ?? s.kept[name] ?? null));
+
+function skillCalled(s, st) {
+  const id = nextId(s, "toolu");
+  const input = { tool_name: "Skill", tool_input: { skill: st.name }, tool_use_id: id };
+  const refused = st.hooked !== false && deniedBy(hooked(s, "PreToolUse", input)) && st.ignoreDeny !== true;
+  callShown(s, id, "Skill", { skill: st.name });
+  return (resultShown(s, id, refused), st.hooked === false ? null : ended(s, input, refused, { success: true, commandName: st.name }), []);
+}
+
+function agentRan(s, st, id, input) {
+  const agent = { id: `agent-${id}`, type: st.name };
+  hooked({ ...s, agent }, "SubagentStart");
+  const problems = stepsRan({ ...s, parent: id, agent }, st.steps ?? []);
+  hooked({ ...s, agent }, "SubagentStop", { stop_hook_active: false });
+  return (resultShown(s, id, false), ended(s, input, false, { status: "completed", agentId: agent.id }), hooked(s, "PostToolUse", { ...input, tool_response: { status: "completed", agentId: agent.id } }, ["follow-hook.mjs"]), problems);
+}
+
+function agentCalled(s, st) {
+  const id = nextId(s, "toolu");
+  const input = { tool_name: "Agent", tool_input: { description: "one bounded job", prompt: "the job, in the host's own words", subagent_type: st.name }, tool_use_id: id };
+  const refused = deniedBy(hooked(s, "PreToolUse", input)) && st.ignoreDeny !== true;
+  callShown(s, id, "Agent", { description: input.tool_input.description, subagent_type: st.name });
+  return refused ? (resultShown(s, id, true), ended(s, input, true), []) : agentRan(s, st, id, input);
+}
+
+const stdinOf = (s, st) => (st.stdin === undefined ? undefined : st.stdin === "@prompt" ? s.prompt : filled(s, st.stdin));
+
+function orbitRan(s, st) {
+  const r = cliCall(s, st.argv[0], st.argv.slice(1).map((a) => filled(s, a)), stdinOf(s, st));
+  told(s, `${st.argv[0]} ${st.argv[1] ?? ""}`.trim(), r);
+  keptFrom(s, st.keep, r.json);
+  return r.status === 0 || st.mayFail === true ? [] : [`${st.argv.slice(0, 2).join(" ")}: ${r.why}`];
+}
+
+// A command this host SHOWS and never runs (a push, a write under a read-only agent): a scripted host runs nothing but
+// Orbit's own commands, and a judge reads what the host tried.
+function bashShown(s, st) {
+  const id = nextId(s, "toolu");
+  const input = { tool_name: "Bash", tool_input: { command: st.command, description: "a command this host shows and never runs" }, tool_use_id: id };
+  hooked(s, "PreToolUse", input);
+  callShown(s, id, "Bash", input.tool_input);
+  return (resultShown(s, id, true), ended(s, input, true), []);
+}
+
+const editShown = (s, path) => ((id) => (callShown(s, id, "Edit", { file_path: path, old_string: "-", new_string: "-" }), resultShown(s, id, false), ended(s, { tool_name: "Edit", tool_input: { file_path: path }, tool_use_id: id }, false, { filePath: path })))(nextId(s, "toolu"));
+
+const dataRootOf = (s) => cliCall(s, "query.mjs", ["storage"]).json?.dataRoot ?? null;
+
+// The edits a control's definition names, made where the step says: the checkout the host was handed, or the project's
+// test data in the store.
+function editsMade(s, st) {
+  const dir = st.root === "data" ? dataRootOf(s) : s.repo;
+  if (!dir) return ["no data root to edit in"];
+  const problems = edited(dir, s.edits ?? {});
+  return (scopeOf(s.edits ?? {}).forEach((rel) => editShown(s, join(dir, rel))), problems);
+}
+
+// An engineering task that commits, then asks to push that commit: the push waits for a person (GIT_PUSH).
+function pushedFrom(t) {
+  const problems = implemented(t, prepared(t));
+  const failed = problems.length ? problems : checked(t);
+  if (failed.length) return failed;
+  if ((contextOf(t)?.allowed ?? []).includes("commit")) stepped(t, { kind: "commit", message: String(t.script.intent).slice(0, 200) });
+  return (stepped(t, { kind: "push" }), []);
+}
+
+function engineerRan(s, st) {
+  const task = told(s, "autonomous-engineering start", cliCall(s, "autonomous-engineering.mjs", ["start", filled(s, st.objective)])).json?.task ?? null;
+  if (!task) return ["the engineering task could not be started"];
+  const t = { ...s, task, revision: null, script: { ...s.script, intent: filled(s, st.objective), definition: s.edits ?? {} } };
+  return st.push ? pushedFrom(t) : applied(t);
+}
+
+const routedTask = (s) => /automation\.mjs"?\s+resume\s+(tsk-[a-f0-9]{12})/.exec(s.routed ?? "")?.[1] ?? "-";
+
+const resumedWorkflow = (s, ref) => told(s, "automation resume", cliCall(s, "automation.mjs", ["resume", ref === "@router" ? routedTask(s) : filled(s, ref)])).json?.task ?? null;
+
+const workflowFound = (s, st) => (st.resume ? resumedWorkflow(s, st.resume) : told(s, "automation start", cliCall(s, "automation.mjs", ["start", ...st.start.map((a) => filled(s, a))])).json?.task ?? null);
+
+// A coordinated workflow started (or resumed) and driven step by step, its engineering step's task carried with the
+// control's edits -- the goal script's own loop.
+function coordinated(s, st) {
+  s.auto = workflowFound(s, st);
+  s.script = { ...s.script, intent: filled(s, st.intent ?? "@prompt"), definition: s.edits ?? {} };
+  return s.auto ? workflowRan(s, st.moves ?? MAX_MOVES) : ["no coordinated workflow to drive"];
+}
+
+const cited = (digest, rows) => rows.map(({ line, ...r }) => ({ ...r, sourceRef: `spec@${digest}#L${line}` }));
+
+const readingOf = (s, st, digest) => JSON.stringify({ objective: filled(s, "@prompt"), intent: { category: "change", workKinds: ["change"], verification: ["the project's own declared tests pass"], missing: [] }, requirements: cited(digest, st.requirements ?? []), acceptance: cited(digest, st.acceptance ?? []) });
+
+// A specification read into a goal, its rows citing the lines they come from: what the grounding cases hold.
+function goalRead(s, st) {
+  const start = told(s, "orbit goal start", cliCall(s, "orbit.mjs", ["goal", "start", "--stdin"], s.prompt));
+  if (!start.json?.id) return [`goal start: ${start.why}`];
+  const r = told(s, "orbit goal analyze", cliCall(s, "orbit.mjs", ["goal", "analyze", start.json.id, "--stdin"], readingOf(s, st, start.json.specDigest)));
+  return r.status === 0 ? [] : [`goal analyze: ${r.why}`];
+}
+
+// A file the host reads with its own Read tool: a path inside the checkout, answered as an error when it is not there.
+const readShown = (s, st) => ((id, path) => (callShown(s, id, "Read", { file_path: path }), resultShown(s, id, !existsSync(path)), ended(s, { tool_name: "Read", tool_input: { file_path: path }, tool_use_id: id }, !existsSync(path), { type: "text" }), []))(nextId(s, "toolu"), join(s.repo, st.path));
+
+// Forging: a trail line with no call in the stream -- the hook told of a skill nobody called.
+const trailForged = (s, st) => (hooked(s, "PreToolUse", { tool_name: "Skill", tool_input: { skill: st.name }, tool_use_id: nextId(s, "toolu") }), []);
+
+// The seed's own: a directory of the case's seed laid into the project's test data or its store, as Orbit locates them.
+function copied(s, st) {
+  const paths = cliCall(s, "query.mjs", ["storage"]).json;
+  const to = { data: paths?.dataRoot, store: paths?.storeRoot }[st.to];
+  if (!to || !existsSync(join(s.seed ?? "/run/seed", st.from))) return st.optional === true && to ? [] : [`nothing to copy ${st.from} into ${st.to}`];
+  return (cpSync(join(s.seed ?? "/run/seed", st.from), to, { recursive: true }), []);
+}
+
+const unknownAct = (s, st) => [`a step this host does not know: ${st.do}`];
+
+export const ACTS = { skill: skillCalled, agent: agentCalled, orbit: orbitRan, bash: bashShown, read: readShown, edit: editsMade, engineer: engineerRan, workflow: coordinated, goal: goalRead, trail: trailForged, copy: copied };
+
+const stepsRan = (s, steps) => steps.reduce((problems, st) => (problems.length ? problems : (ACTS[st.do] ?? unknownAct)(s, st)), []);
+
+// What each kind of control does when its file names no steps.
+export const DEFAULT_STEPS = { idle: [], "over-eager": [{ do: "skill", name: "orbit:orbit-help" }, { do: "orbit", argv: ["automation.mjs", "start", "--for=@prompt"], mayFail: true }], forging: [{ do: "skill", name: "orbit:orbit-help", hooked: false }] };
+
+const routedText = (answers) => String(answers[0]?.hookSpecificOutput?.additionalContext ?? "");
+
+function stopped(s) {
+  const held = hooked(s, "Stop", { stop_hook_active: false }, ["learn-hook.mjs", "follow-hook.mjs"]).some((a) => a?.decision === "block");
+  if (held) hooked(s, "Stop", { stop_hook_active: true }, ["learn-hook.mjs", "follow-hook.mjs"]);
+  return hooked(s, "SessionEnd", { reason: "other" });
+}
+
+// The session: its start, the person's prompt (the router's hook answers it), the control's steps, its stop and end.
+function activationRan(s) {
+  hooked(s, "SessionStart", { source: "startup" });
+  s.routed = routedText(hooked(s, "UserPromptSubmit", { prompt: s.prompt }, ["router-hook.mjs"]));
+  const problems = stepsRan(s, s.script.steps ?? DEFAULT_STEPS[s.script.kind] ?? []);
+  return (stopped(s), problems);
+}
+
+// A SEEDING round: the case's seed steps (Orbit's own commands, and its files laid into place), then what the store holds
+// once seeded -- the values the steps kept, and the test data's digests and what each case's steps say.
+function seeded(s) {
+  const problems = stepsRan({ ...s, hooks: false }, s.script.steps ?? []);
+  const paths = cliCall(s, "query.mjs", ["storage"]).json;
+  writeFileSync(join(s.out ?? "/work/out", "seed.json"), `${JSON.stringify({ kept: s.kept, problems, ...uitestsOf(paths?.dataRoot ?? null) }, null, 2)}\n`);
+  return problems;
+}
+
+// What a script does: APPLY its definition through a repair's loop, take a GOAL through Orbit's goal entry, stop on a
+// goal that is BLOCKED by a missing rule, INTERRUPT its own first round, or sit IDLE -- change nothing at all; an
+// ACTIVATION session, or the SEED of one.
+export const SCRIPTS = { apply: applied, goal: (s) => goalRan(s, []), blocked: (s) => goalRan(s, MISSING), interrupt: (s) => goalRan(s, []), idle: () => [], activation: activationRan, seed: seeded };
+
+// Where Orbit would be in an activation round's container. On the arm with no Orbit nothing is there: no hook is
+// delivered, and every command of Orbit's a host types fails as it would.
+const PLUGIN_AT = "/work/orbit";
+
+const activationOf = (b) => (b.script?.mode === "activation" ? { session: b.script.session ?? `scripted-${b.script.id ?? "session"}`, prompt: b.prompt ?? "", tell: bashTold, plugin: b.plugin ?? PLUGIN_AT, hooks: b.plugin ? undefined : false } : { prompt: b.prompt ?? "" });
+
+export const stateOf = (b, task) => ((round) => ({ task: /^tsk-[a-f0-9]{12}$/.test(task ?? "") ? task : null, repo: PATHS.repo, plugin: b.plugin ?? PATHS.repo, script: b.script ?? {}, goal: b.goal ?? null, round, interrupt: b.script?.mode === "interrupt" && round === 1, revision: null, steps: [], ids: { n: 0 }, kept: {}, parent: null, agent: null, edits: b.script?.edits ?? null, ...activationOf(b) }))(b.round ?? 1);
 
 // A repair script needs its task readable first; a goal script starts from the goal itself.
 export const ranScript = (s) => (s.task && !contextOf(s) ? ["the engineering task could not be read"] : (SCRIPTS[s.script.mode] ?? SCRIPTS.apply)(s));
 
 function main(task) {
   const s = { ...stateOf(JSON.parse(readFileSync(PATHS.brief, "utf8")), task), startedAt: Date.now() };
-  said({ type: "system", subtype: "init", model: `scripted:${s.script.id ?? "unnamed"}`, session_id: `scripted-${s.task ?? "goal"}`, claude_code_version: null });
+  said({ type: "system", subtype: "init", model: `scripted:${s.script.id ?? "unnamed"}`, session_id: s.session ?? `scripted-${s.task ?? "goal"}`, claude_code_version: null });
   const problems = ranScript(s);
   said({ type: "result", subtype: problems.length ? "error_during_execution" : "success", is_error: problems.length > 0, num_turns: s.steps.length, total_cost_usd: 0, duration_ms: Date.now() - s.startedAt, result: problems.join("; ").slice(0, 300) || "the script ran to its end", steps: s.steps });
 }

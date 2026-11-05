@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "id": "half",
+  "about": "the half host of ORBIT-ACT-005: a control that must FAIL as ORBIT_SOURCE_DEFECT",
+  "steps": [
+    {
+      "do": "skill",
+      "name": "orbit:orbit-help"
+    },
+    {
+      "do": "workflow",
+      "start": [
+        "--for=@prompt",
+        "--intent=development"
+      ],
+      "moves": 0
+    }
+  ]
+}

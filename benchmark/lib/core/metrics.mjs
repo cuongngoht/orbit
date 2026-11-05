@@ -13,9 +13,13 @@
 // run at (`config.effort`, null for the host's own default): two efforts of one model are two hosts, as two models are.
 //
 //   runFacts({ manifest, ending, report }) -> facts
-//   metricsOf(runs, o = { scope, controls, k, by: [revision|model|arm] }) -> { runs, bases, reproducibility, verifier,
-//                                                    reliability, tools, overhead, history?, revisions?, byModel?, byArm? }
-//   METRICS -> rows { id, says, over(facts) -> { numerator, denominator, excluded } }      BY_NAMES
+//   metricsOf(runs, o = { scope, controls, k, by: [revision|model|arm|language] }) -> { runs, bases, reproducibility,
+//                     verifier, reliability, tools, overhead, history?, revisions?, byModel?, byArm?, byLanguage? }
+//   METRICS -> rows { id, says, over(facts) -> { numerator, denominator, excluded } }      BY_NAMES · ACTIVATION_METRICS
+//
+// 0.5.0 (B22 M4) adds the activation rows (ACTIVATION_METRICS): activation precision and recall, strategy, skill and agent
+// selection, unnecessary delegation and the router's own accuracy over the Orbit arms; the capability families a passing
+// case covers; and the outcome runs that held -- each from the judge's own facts a run's report keeps.
 import { groupBy, hostOfRun, overheadOf, ratesOf, revisionsOf } from "./rates.mjs";
 import { toolsFoldOf } from "./tools.mjs";
 
@@ -25,9 +29,12 @@ const UNKNOWN = "unknown";
 const EXCLUDED = { BLOCKED: "blocked", BENCHMARK_INVALID: "invalid", INCONCLUSIVE: "inconclusive", PAUSED: "held", CANCELLED: "held" };
 
 // What counts as an autonomous outcome VERIFIED by the run's own independent verifier, by kind of case.
-const VERIFIED = { source: ["REPAIRED_VERIFIED"], engineering: ["PASS"], qa: ["PASS"] };
+const VERIFIED = { source: ["REPAIRED_VERIFIED"], engineering: ["PASS"], qa: ["PASS"], activation: ["PASS"] };
 
-const basisOf = (m) => (m.benchmark?.kind === "qa" ? (m.config?.host && m.config.host !== "coding-host" ? "scripted" : "coding-host") : !m.config?.repair ? "none" : String(m.config.host ?? "").startsWith("scripted:") ? "scripted" : String(m.config.host ?? "").startsWith("session:") ? "session" : "coding-host");
+// Who carried a run, by the host its config names: an activation run (0.5.0) is always carried by a host, whatever names it.
+const hostFamily = (host) => (String(host ?? "").startsWith("scripted:") ? "scripted" : String(host ?? "").startsWith("session:") ? "session" : "coding-host");
+
+const basisOf = (m) => (m.benchmark?.kind === "qa" ? (m.config?.host && m.config.host !== "coding-host" ? "scripted" : "coding-host") : m.benchmark?.kind === "activation" ? hostFamily(m.config?.host) : !m.config?.repair ? "none" : hostFamily(m.config.host));
 
 const durationOf = (m, e) => ((a, b) => (Number.isFinite(a) && Number.isFinite(b) && b >= a ? b - a : null))(Date.parse(m.at ?? ""), Date.parse(e?.at ?? ""));
 
@@ -50,7 +57,7 @@ const reportedOf = (m, r) => ((hosts) => ({ modelSaid: m.config?.model ?? hosts.
 export function runFacts({ manifest: m, ending: e, report: r }) {
   const outcome = e?.outcome ?? null;
   const kind = m.benchmark?.kind ?? "source";
-  return { run: m.run, at: m.at ?? null, kind, case: m.benchmark?.case ?? null, suite: m.benchmark?.suite ?? null, caseDigest: m.benchmark?.digest ?? null, variant: m.benchmark?.variant ?? null, subject: m.subject?.digest ?? null, commit: m.source?.commit ?? null, model: m.config?.model ?? null, effort: m.config?.effort ?? null, host: m.config?.host ?? null, basis: r?.hostBasis ?? basisOf(m), outcome, excluded: !outcome ? "unfinished" : EXCLUDED[outcome] ?? null, verified: (VERIFIED[kind] ?? []).includes(outcome), autonomousAxis: r?.axes?.autonomous?.value ?? null, rounds: (r?.rounds ?? []).length, regressedRounds: (r?.rounds ?? []).filter((x) => (x.decided?.regressed ?? []).length > 0).length, evaluatedRounds: (r?.rounds ?? []).filter((x) => x.decided).length, durationMs: durationOf(m, e), intervened: intervenedOf(r, e), judged: r?.judged ?? null, task: kind === "qa" || m.config?.repair === true, arm: m.config?.arm ?? "release", repeat: m.config?.repeat?.id ?? null, tools: r?.tools ?? null, ...reportedOf(m, r) };
+  return { run: m.run, at: m.at ?? null, kind, case: m.benchmark?.case ?? null, suite: m.benchmark?.suite ?? null, caseDigest: m.benchmark?.digest ?? null, variant: m.benchmark?.variant ?? null, subject: m.subject?.digest ?? null, commit: m.source?.commit ?? null, model: m.config?.model ?? null, effort: m.config?.effort ?? null, host: m.config?.host ?? null, basis: r?.hostBasis ?? basisOf(m), outcome, excluded: !outcome ? "unfinished" : EXCLUDED[outcome] ?? null, verified: (VERIFIED[kind] ?? []).includes(outcome), autonomousAxis: r?.axes?.autonomous?.value ?? null, rounds: (r?.rounds ?? []).length, regressedRounds: (r?.rounds ?? []).filter((x) => (x.decided?.regressed ?? []).length > 0).length, evaluatedRounds: (r?.rounds ?? []).filter((x) => x.decided).length, durationMs: durationOf(m, e), intervened: intervenedOf(r, e), judged: r?.judged ?? null, task: kind === "qa" || kind === "activation" || m.config?.repair === true, arm: m.config?.arm ?? "release", repeat: m.config?.repeat?.id ?? null, tools: r?.tools ?? null, language: m.activation?.language ?? null, activation: kind === "activation" ? r?.activation ?? null : null, ...reportedOf(m, r) };
 }
 
 // ---- the rows -------------------------------------------------------------------------------------------------------------
@@ -75,6 +82,36 @@ const qa = (fs) => counted(fs).filter((f) => f.kind === "qa" && f.judged);
 
 const planted = (fs) => counted(fs).filter((f) => f.kind === "source" && f.variant && f.variant !== "real");
 
+// ---- the activation rows (0.5.0, B22 M4: the activation benchmark §8) -----------------------------------------------------
+//
+// Each over the activation runs that came to an ending a rate may count -- and the selection rows over the two Orbit arms
+// alone (`applies`): with no plugin there is nothing to select. What each reads is the judge's own facts on the run, kept
+// in its report (`activation`); a run judged before they were kept is counted nowhere.
+
+const acts = (fs) => counted(fs).filter((f) => f.kind === "activation" && f.activation);
+
+const orbitArms = (fs) => acts(fs).filter((f) => f.activation.applies === true);
+
+const leftActs = (fs) => left(fs.filter((f) => f.kind === "activation"));
+
+const actRate = (included, hit, fs) => rate(included, hit, leftActs(fs));
+
+const families = (fs) => new Set(fs.map((f) => f.activation.capability).filter(Boolean));
+
+const coverageOf = (fs) => ((all, passed) => ({ numerator: [...all].filter((c) => passed.has(c)).length, denominator: all.size, excluded: {} }))(families(acts(fs)), families(acts(fs).filter((f) => f.outcome === "PASS")));
+
+export const ACTIVATION_METRICS = [
+  { id: "activation_precision", says: "runs that activated Orbit where the truth says to / runs that activated it where the truth says either way (Orbit arms)", over: (fs) => actRate(orbitArms(fs).filter((f) => f.activation.activated && f.activation.activate !== null), (f) => f.activation.activate === true, fs) },
+  { id: "activation_recall", says: "runs that activated Orbit where the truth says to / runs whose truth says to activate (Orbit arms)", over: (fs) => actRate(orbitArms(fs).filter((f) => f.activation.activate === true), (f) => f.activation.activated === true, fs) },
+  { id: "strategy_accuracy", says: "runs whose observed strategy the truth accepts / runs whose truth names a strategy (Orbit arms)", over: (fs) => actRate(orbitArms(fs).filter((f) => f.activation.strategyNamed), (f) => f.activation.strategyRight === true, fs) },
+  { id: "skill_selection_accuracy", says: "runs whose skills a selection profile accepts / runs whose truth has a skill profile (Orbit arms)", over: (fs) => actRate(orbitArms(fs).filter((f) => f.activation.skillProfile), (f) => f.activation.skillsRight === true, fs) },
+  { id: "agent_selection_accuracy", says: "runs whose agents a selection profile accepts / runs whose truth has an agent profile (Orbit arms)", over: (fs) => actRate(orbitArms(fs).filter((f) => f.activation.agentProfile), (f) => f.activation.agentsRight === true, fs) },
+  { id: "unnecessary_delegation", says: "runs that dispatched an agent no profile accepts, or more than its max / runs that dispatched any of Orbit's agents (Orbit arms)", over: (fs) => actRate(orbitArms(fs).filter((f) => f.activation.agentCalls > 0), (f) => f.activation.agentsRight !== true, fs) },
+  { id: "router_accuracy", says: "turns whose router strategy and top selection the truth accepts / turns the router decided (release and baseline arms)", over: (fs) => actRate(orbitArms(fs).filter((f) => f.activation.router?.judged === true), (f) => f.activation.router.right === true, fs) },
+  { id: "capability_coverage", says: "capability families with a passing case / the families the runs cover (model-carried; the deterministic coverage is the routing corpus's)", over: coverageOf },
+  { id: "work_completion", says: "outcome runs whose hidden checks and records hold / outcome runs", over: (fs) => actRate(acts(fs).filter((f) => f.activation.outcome), (f) => f.activation.outcome.held === true && f.activation.recordsHeld !== false, fs) },
+];
+
 export const METRICS = [
   { id: "autonomous_task_success", says: "verified autonomous completions / task attempts that came to an ending a rate may count", over: (fs) => rate(counted(tasks(fs)), (f) => f.verified && f.autonomousAxis !== false && f.intervened !== true, left(tasks(fs))) },
   { id: "self_healing_success", says: "verified repairs / repairs that ran at least one round on a repairable source failure", over: (fs) => rate(counted(fs).filter((f) => f.kind === "source" && f.rounds > 0), (f) => f.verified, left(fs.filter((f) => f.kind === "source" && f.task))) },
@@ -85,6 +122,7 @@ export const METRICS = [
   { id: "avg_repair_rounds", says: "repair rounds / repairs that ran at least one round", over: (fs) => ({ ...mean(fs.filter((f) => f.rounds > 0).map((f) => f.rounds)), excluded: {} }) },
   { id: "avg_time_to_verified_ms", says: "milliseconds from a run's freeze to its ending / verified outcomes", over: (fs) => ({ ...mean(fs.filter((f) => f.verified && f.durationMs !== null).map((f) => f.durationMs)), excluded: {} }) },
   { id: "cost_per_verified_usd", says: "REPORTED cost of verified outcomes / verified outcomes whose cost was reported (an estimate is never a cost)", over: (fs) => ((v) => ({ ...mean(v.filter((f) => f.costUsd !== null).map((f) => f.costUsd)), excluded: { "cost not reported": v.filter((f) => f.costUsd === null).length } }))(fs.filter((f) => f.verified)) },
+  ...ACTIVATION_METRICS,
 ];
 
 const valued = (r) => ({ ...r, value: r.denominator > 0 ? Math.round((r.numerator / r.denominator) * 10000) / 10000 : UNKNOWN });
@@ -124,6 +162,8 @@ const BY = {
   revision: (fs, o) => ({ history: historyOf(fs), revisions: revisionsOf(fs, o) }),
   model: (fs) => ({ byModel: splitOf(fs, hostOfRun, (f) => ({ model: f.modelSaid, effort: f.effort ?? null })) }),
   arm: (fs) => ({ byArm: splitOf(fs, (f) => f.arm, (f) => ({ arm: f.arm })) }),
+  // 0.5.0 (B22 M4): an activation case's prompt is English or Vietnamese, and each is read on its own.
+  language: (fs) => ({ byLanguage: splitOf(fs, (f) => f.language ?? "-", (f) => ({ language: f.language ?? null })) }),
 };
 
 export const BY_NAMES = Object.keys(BY);

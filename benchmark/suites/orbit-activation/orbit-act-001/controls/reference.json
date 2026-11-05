@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "id": "reference",
+  "about": "the reference host of ORBIT-ACT-001: what the truth accepts",
+  "steps": [
+    {
+      "do": "skill",
+      "name": "orbit:orbit-architecture"
+    },
+    {
+      "do": "orbit",
+      "argv": [
+        "architecture.mjs",
+        "ensure",
+        "--for=a payment-provider integration, and what already handles payments"
+      ]
+    }
+  ]
+}

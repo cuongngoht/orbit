@@ -1,12 +1,18 @@
 #!/usr/bin/env node
 // THE ORBIT BENCHMARK: cases that say what Orbit must do, run against the branch this checkout is on, in Docker, and
-// judged by a verifier that shares nothing with what it judges. Two kinds of case:
+// judged by a verifier that shares nothing with what it judges. Four kinds of case:
 //
-//   source   Orbit's own source held to independent checks -- and, with --repair, a failure the case declares
-//            repairable handed to Orbit to repair through its own autonomous engineering loop, with a real coding host
-//   qa       whether Orbit's autonomous QA FINDS the defect planted in an application: the application set up on its
-//            own isolated sandbox by Orbit's engine beside the controller, a real coding host working one investigation
-//            over it through the relay, and every contradiction confirmed on the clean application before it counts
+//   source       Orbit's own source held to independent checks -- and, with --repair, a failure the case declares
+//                repairable handed to Orbit to repair through its own autonomous engineering loop, with a real coding
+//                host
+//   qa           whether Orbit's autonomous QA FINDS the defect planted in an application: the application set up on
+//                its own isolated sandbox by Orbit's engine beside the controller, a real coding host working one
+//                investigation over it through the relay, and every contradiction confirmed on the clean application
+//   engineering  a goal about a frozen fixture project, taken through Orbit's goal entry to a verified change, or
+//                refused
+//   activation   (0.5.0) a prompt that names no skill, handed to the coding host with Orbit -- or without it -- over a
+//                fixture project: whether it uses Orbit by itself and only where it helps, held to a hidden truth, the
+//                owners' records and, for an outcome case, the hidden checks of what it delivered
 //
 // Development tooling: it never ships (export-ignored), and nothing of the engine imports it.
 //
@@ -64,7 +70,9 @@
 //                                     controls -- a reference candidate the judge must pass and every way of cheating it
 //                                     must refuse by name, and (unless --skip-engine) a scripted host driving Orbit's own
 //                                     engineering loop with no model; for a QA case, a whole run with each scripted
-//                                     host -- reference, idle, false-alarm. A control that no longer applies to the
+//                                     host -- reference, idle, false-alarm; for an activation case, a whole run with
+//                                     each of its scripted hosts, held to its verdict and its class. A control that no
+//                                     longer applies to the
 //                                     source is its own row, DRIFTED, and the command then exits 2. The set keeps a room
 //                                     of its own (--run-id names it before it starts), each control's row as it ends
 //   node benchmark/run.mjs cleanup <bnr-…> [--scratch]
@@ -72,7 +80,7 @@
 //                                     run it planned for a control); --scratch its scratch trees
 //   node benchmark/run.mjs where      where the runs are kept, and which there are
 //   node benchmark/run.mjs metrics [--suite=<suite>] [--case=<case>] [--since=<iso date>] [--revision=<commit>]
-//                                  [--by=revision,model,arm] [--k=<n>]
+//                                  [--by=revision,model,arm,language] [--k=<n>]
 //                                     what the kept runs show, each metric a numerator over a denominator: success,
 //                                     self-healing, detection, false alarms, regressions, interventions, rounds, time
 //                                     and REPORTED cost per verified outcome, reproducibility, the verifier's own
@@ -81,8 +89,11 @@
 //                                     (k 1..10, default 3), the median cost and minutes; tool-call failures per suite and
 //                                     per model at its effort (per tool, per relay subcommand, per PASS, per sandbox
 //                                     step); each Orbit arm's overhead over the none arm. --by=revision adds each case's
-//                                     outcome and rates by source commit, --by=model and --by=arm every metric again per
-//                                     model at its effort or per arm
+//                                     outcome and rates by source commit, --by=model, --by=arm and --by=language every
+//                                     metric again per model at its effort, per arm or per prompt's language; the
+//                                     activation rows (activation precision and recall, strategy, skill and agent
+//                                     selection, unnecessary delegation, the router, capability coverage, work
+//                                     completed)
 //   node benchmark/run.mjs reliability [--revision=<commit>] [--suite=<suite>] [--case=<case>] [--since=<iso date>]
 //                                      [--k=<n>]
 //                                     the reliability report a release quotes, folded from the kept runs like metrics:

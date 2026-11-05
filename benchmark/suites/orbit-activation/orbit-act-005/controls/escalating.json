@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "id": "escalating",
+  "about": "the escalating host of ORBIT-ACT-005: a control that must FAIL as HOST_DIVERGED",
+  "steps": [
+    {
+      "do": "skill",
+      "name": "orbit:orbit-help"
+    },
+    {
+      "do": "agent",
+      "name": "orbit:satellite-engineer"
+    }
+  ]
+}

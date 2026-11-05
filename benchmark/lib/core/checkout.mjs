@@ -4,7 +4,7 @@
 // same commit. Orbit, inside the runner, treats it as the developer's checkout: it clones it and never writes it (it is
 // mounted read-only), so the developer's own checkout is never mounted anywhere.
 //
-//   madeCheckout(dir, entries, label, env) -> { dir, commit, files }
+//   madeCheckout(dir, entries, label, env, o = { plugin, origin }) -> { dir, commit, files }
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { Blocked } from "../../../src/errors.mjs";
@@ -29,11 +29,15 @@ function committed(dir, label, env) {
 
 const listed = (dir, env) => done(gitOwn(dir, ["ls-files", "-z"], env), "list its files").split("\0").filter(Boolean).length;
 
+// A remote the checkout names (0.5.0, an activation case's target): a URL that answers nothing, so a push has somewhere
+// to wait for its approval -- and the store keys the project by it, wherever the checkout is mounted.
+const named = (dir, origin, env) => (origin ? done(gitOwn(dir, ["remote", "add", "origin", origin], env), "name its remote") : null);
+
 // `o.plugin: false` for a checkout that is a target, never a plugin: it needs no mount point for the host's types.
 export function madeCheckout(dir, entries, label, env, o = { plugin: true }) {
   writtenTree(dir, entries);
   const commit = committed(dir, label, env);
   if (listed(dir, env) !== entries.length) throw new Blocked(`the subject's repository holds ${listed(dir, env)} files and the subject has ${entries.length}`);
   if (o.plugin !== false) mkdirSync(join(dir, PLUGIN_TYPES), { recursive: true });
-  return { dir, commit, files: entries.length };
+  return (named(dir, o.origin, env), { dir, commit, files: entries.length });
 }

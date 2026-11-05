@@ -28,6 +28,8 @@ import { frozen, HARNESS, subjectOf, whereAt } from "./core/freeze.mjs";
 import { verified } from "./source/verify.mjs";
 import { judgedRepair } from "./source/repairs.mjs";
 import { BY_NAMES, metricsOf } from "./core/metrics.mjs";
+import { carriedActivation, withActivation } from "./activation/flow.mjs";
+import { activationReportOf } from "./activation/report.mjs";
 import { DEFAULT_K } from "./core/rates.mjs";
 import { overheadLines, ratesLines, reliabilityOf, sayReliability, toolsLines } from "./core/reliability.mjs";
 
@@ -112,7 +114,7 @@ function safeJson(buf) {
 // ---- suites -----------------------------------------------------------------------------------------------------------------
 
 // What a case is run on: a source case's variants, a QA case's application and the variant planted in it.
-const VARIANTS_OF = { source: (c) => Object.keys(c.variants), qa: (c) => [`${c.target.stack} ${c.target.variant}`], engineering: (c) => Object.keys(c.variants).map((v) => `${c.fixture}:${v}`) };
+const VARIANTS_OF = { source: (c) => Object.keys(c.variants), qa: (c) => [`${c.target.stack} ${c.target.variant}`], engineering: (c) => Object.keys(c.variants).map((v) => `${c.fixture}:${v}`), activation: (c) => Object.keys(c.variants).map((v) => `${c.fixture.id}:${v}`) };
 
 const listed = (c) => ({ id: c.id, kind: c.kind, version: c.version, title: c.title, variants: VARIANTS_OF[c.kind](c), controls: [...c.controls.map((k) => `${k.id}:${k.expect}`), ...(c.repairs ?? []).map((r) => `${r.id}(${r.through}):${r.expect}`)], baseline: c.baseline ?? null, arms: armsOf(c), ...(armsOf(c).includes("baseline") ? { baselinePlugin: baselinePluginOf(c) } : {}) });
 
@@ -173,6 +175,8 @@ const KIND = {
   source: { need: (o) => ["verifier", ...(o.repair ? ["runner"] : [])], completed: (ctx) => withSpec(ctx), carried: (ctx) => carried(ctx), reportOf, host: (o) => o.host ?? null },
   qa: { need: (o) => ["qa-worker", ...(o.host === "coding-host" ? ["runner", "verifier"] : [])], completed: async (ctx) => withTruth(ctx), carried: (ctx) => carriedQa(ctx), reportOf: qaReportOf, host: (o) => o.host ?? "coding-host" },
   engineering: { need: () => ["verifier", "runner"], completed: (ctx) => withSpec(ctx), carried: (ctx) => carried(ctx), reportOf, host: (o) => o.host ?? null, attempts: true },
+  // 0.5.0 (B22 M4): a prompt that names no skill, to a coding host -- or a control's scripted host -- on an arm.
+  activation: { need: () => ["verifier", "runner"], completed: (ctx) => withActivation(ctx), carried: (ctx) => carriedActivation(ctx), reportOf: activationReportOf, host: (o) => o.host ?? null },
 };
 
 const kindOfRun = (manifest) => KIND[manifest?.benchmark?.kind ?? "source"];
@@ -415,11 +419,11 @@ const basisLines = (r, basis) => (r.runs.byBasis[basis] ? [`${basis.toUpperCase(
 const historyLines = (r) => (r.history ? ["HISTORY BY REVISION", ...r.history.map((x) => `  ${x.case} ${x.variant} (${x.basis}): ${x.commits.map((c) => `${c.commit ?? "?"} ${c.outcome}`).join(" → ")}`)] : []);
 
 // A breakdown `--by` asked for: every metric again per model (at its effort) or per arm, each basis still apart.
-const SPLIT_SAID = { model: (g) => (g.effort ? `${g.model}@${g.effort}` : g.model), arm: (g) => g.arm };
+const SPLIT_SAID = { model: (g) => (g.effort ? `${g.model}@${g.effort}` : g.model), arm: (g) => g.arm, language: (g) => g.language ?? "no language" };
 
 const splitLines = (title, name, groups) => (groups ? [title, ...groups.flatMap((g) => [`  ${SPLIT_SAID[name](g)} (${g.runs} run(s))`, ...Object.entries(g.bases).filter(([, ms]) => Object.values(ms).some((m) => m.runs)).flatMap(([b, ms]) => Object.entries(ms).filter(([, m]) => m.value !== "unknown").map(([id, m]) => `    ${b.padEnd(12)} ${id.padEnd(26)} ${cell(m)}`))])] : []);
 
-const sayMetrics = (r) => [`METRICS    ${r.scope} — ${r.runs.total} run(s) in ${r.store}`, ...["coding-host", "session", "scripted", "none"].flatMap((b) => basisLines(r, b)), `REPRODUCIBILITY ${cell(r.reproducibility)}${r.reproducibility.unstable.length ? ` — unstable: ${r.reproducibility.unstable.map((u) => `${u.case} ${u.variant}`).join(", ")}` : ""}`, `VERIFIER CONTROLS ${cell(r.verifier)}${r.verifier.missed.length ? ` — missed: ${r.verifier.missed.join("; ")}` : ""}`, ...ratesLines(r.reliability), ...toolsLines(r.tools), ...overheadLines(r.overhead), ...historyLines(r), ...splitLines("BY MODEL", "model", r.byModel), ...splitLines("BY ARM", "arm", r.byArm), "A scripted host's numbers are conformance, never autonomy; a value of unknown has nothing to stand on."].join("\n");
+const sayMetrics = (r) => [`METRICS    ${r.scope} — ${r.runs.total} run(s) in ${r.store}`, ...["coding-host", "session", "scripted", "none"].flatMap((b) => basisLines(r, b)), `REPRODUCIBILITY ${cell(r.reproducibility)}${r.reproducibility.unstable.length ? ` — unstable: ${r.reproducibility.unstable.map((u) => `${u.case} ${u.variant}`).join(", ")}` : ""}`, `VERIFIER CONTROLS ${cell(r.verifier)}${r.verifier.missed.length ? ` — missed: ${r.verifier.missed.join("; ")}` : ""}`, ...ratesLines(r.reliability), ...toolsLines(r.tools), ...overheadLines(r.overhead), ...historyLines(r), ...splitLines("BY MODEL", "model", r.byModel), ...splitLines("BY ARM", "arm", r.byArm), ...splitLines("BY LANGUAGE", "language", r.byLanguage), "A scripted host's numbers are conformance, never autonomy; a value of unknown has nothing to stand on."].join("\n");
 
 // ---- the controls: does the verifier fail what it must and pass what it must, in its own containers -------------------------
 
@@ -449,9 +453,13 @@ function controlsRoom(h, c, images, o) {
   return { room, manifest: setManifest(room, c, where0, o, { mode: "head", digest: dirDigest(room.at("frozen", "case")), images }) };
 }
 
+// A case's controls by its kind: a source or engineering case's verifier, judge and engine controls; a QA or activation
+// case's whole runs, each carried by one of its scripted hosts.
+const CONTROLS_OF = { qa: (h, c, o) => qaControls(h, c, o), activation: (h, c, o) => qaControls(h, c, o) };
+
 async function controls(h, args) {
   const c = caseOf(h.root, words(args)[0] ?? refusedWith("name the case whose controls to run"));
-  return (c.kind === "qa" ? qaControls : sourceControls)(h, c, controlOptions(args));
+  return (CONTROLS_OF[c.kind] ?? sourceControls)(h, c, controlOptions(args));
 }
 
 // The controls asked for: every one the case declares, or the one --only names.
@@ -548,9 +556,19 @@ function qaControlsRoom(h, c, o) {
 
 const qaControls = (h, c, o) => qaControlsRan(h, c, qaControlsRoom(h, c, o), o);
 
+// The host a control's run is carried by: a QA case's scripted host by its name; an activation case's control by its own
+// id, whose host kind and steps the case declares.
+const controlHost = (c, k) => (c.kind === "activation" ? `scripted:${k.id}` : k.host);
+
+// The class a control's run ended in, as its own ending says it -- what an activation control may name beside its verdict.
+const classOfRun = (h, run) => (RUN_ID.test(String(run)) ? docRead(roomOf(h.storeRoot, run), "ending.json")?.class ?? null : null);
+
+const controlMatched = (k, got, cls) => got === k.expect && (!k.class || k.class === cls);
+
 async function qaControl(h, set, c, k, o) {
-  const r = await controlRun(h, set, k.id, (runId) => oneRun(h, { caseId: c.id, host: k.host, source: o.source ?? "head", parent: o.parent ?? undefined, runId }));
-  return { id: k.id, host: k.host, expect: k.expect, got: r.outcome, matched: r.outcome === k.expect, summary: r.summary ?? "", run: r.run };
+  const r = await controlRun(h, set, k.id, (runId) => oneRun(h, { caseId: c.id, host: controlHost(c, k), source: o.source ?? "head", parent: o.parent ?? undefined, runId }));
+  const cls = classOfRun(h, r.run);
+  return { id: k.id, host: k.host, expect: k.expect, ...(k.class ? { expectClass: k.class } : {}), got: r.outcome, class: cls, matched: controlMatched(k, r.outcome, cls), summary: r.summary ?? "", run: r.run };
 }
 
 async function qaControlsRan(h, c, room, o) {
@@ -566,7 +584,10 @@ async function qaControlsRan(h, c, room, o) {
 // case moved since it began is refused: what it kept was about another case.
 const unkept = (room) => refusedWith(`the control set ${room.id} keeps no options to be carried on with: run its controls again`);
 
-const controlsResumed = (h, room, m) => (m.config?.asked ? (m.benchmark?.kind === "qa" ? qaResumed : sourceResumed)({ ...h, tree: m.source?.repo ?? h.tree }, room, m) : unkept(room));
+// A set whose controls are whole runs (a QA or an activation case's) is carried on as such; any other, in the verifier's.
+const WHOLE_RUNS = ["qa", "activation"];
+
+const controlsResumed = (h, room, m) => (m.config?.asked ? (WHOLE_RUNS.includes(m.benchmark?.kind) ? qaResumed : sourceResumed)({ ...h, tree: m.source?.repo ?? h.tree }, room, m) : unkept(room));
 
 const intactSet = (ctx) => (dirDigest(ctx.frozenCase) === ctx.manifest.benchmark.digest ? ctx : refusedWith(`the control set ${ctx.run.id} froze a case that changed since it began: run its controls again`));
 
@@ -581,7 +602,10 @@ const qaResumed = (h, room, m) => ((c) => (dirDigest(c.dir) === m.benchmark.dige
 
 const rejectsSay = (x) => (x.missing?.length ? ` · NOT refused by ${x.missing.join(", ")}` : x.rejects?.length ? ` · refused by ${x.rejects.join(", ")}` : "");
 
-const sayControls = (r) => [`CONTROLS   ${r.case} (${r.run})`, ...(r.verifierDefect ? [`  VERIFIER_DEFECT — ${r.verifierDefect}: no control was run`] : []), ...r.rows.map((x) => `  ${x.matched ? "✓" : "✗"} ${x.id.padEnd(20)} ${String(x.kind ?? "host").padEnd(13)} expected ${x.expect.padEnd(17)} got ${String(x.got).padEnd(17)} ${x.summary}${rejectsSay(x)}`)].join("\n");
+// An activation control may name the class its FAIL must carry beside the verdict.
+const classSaid = (x) => (x.expectClass ? ` (${x.expectClass}; got ${x.class ?? "none"})` : "");
+
+const sayControls = (r) => [`CONTROLS   ${r.case} (${r.run})`, ...(r.verifierDefect ? [`  VERIFIER_DEFECT — ${r.verifierDefect}: no control was run`] : []), ...r.rows.map((x) => `  ${x.matched ? "✓" : "✗"} ${x.id.padEnd(20)} ${String(x.kind ?? "host").padEnd(13)} expected ${x.expect.padEnd(17)} got ${String(x.got).padEnd(17)} ${x.summary}${rejectsSay(x)}${classSaid(x)}`)].join("\n");
 
 export const COMMANDS = {
   build: { run: build, say: sayBuild },

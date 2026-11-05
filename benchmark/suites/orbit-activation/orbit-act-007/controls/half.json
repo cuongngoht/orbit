@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "id": "half",
+  "about": "the half host of ORBIT-ACT-007: a control that must FAIL as ORBIT_SOURCE_DEFECT",
+  "steps": [
+    {
+      "do": "workflow",
+      "resume": "@router",
+      "moves": 0
+    }
+  ]
+}

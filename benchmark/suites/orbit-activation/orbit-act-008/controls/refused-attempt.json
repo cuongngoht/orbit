@@ -1,0 +1,116 @@
+{
+  "schema": 1,
+  "id": "refused-attempt",
+  "about": "the reference host of ORBIT-ACT-008: what the truth accepts",
+  "steps": [
+    {
+      "do": "skill",
+      "name": "orbit:orbit-engineer"
+    },
+    {
+      "do": "agent",
+      "name": "orbit:orbit-engineering-agent"
+    },
+    {
+      "do": "skill",
+      "name": "orbit:orbit-develop"
+    },
+    {
+      "do": "edit"
+    }
+  ],
+  "edits": {
+    "mutations": [
+      {
+        "id": "refunds-import",
+        "file": "src/api.mjs",
+        "find": "import { cancelOrder, createOrder, getOrder, invalidOf, shipOrder } from \"./orders.mjs\";",
+        "replace": "import { cancelOrder, createOrder, getOrder, invalidOf, shipOrder } from \"./orders.mjs\";\nimport { approveRefund, askRefund } from \"./refunds.mjs\";",
+        "count": 1
+      },
+      {
+        "id": "refunds-answer",
+        "file": "src/api.mjs",
+        "find": "const ORDER = \"(ord-\\\\d{4})\";",
+        "replace": "const ORDER = \"(ord-\\\\d{4})\";\n\nconst REFUND = \"(rfd-\\\\d{4})\";\n\nconst REFUSALS = { NOT_FOUND: 404, FORBIDDEN: 403, CONFLICT: 409, INVALID: 400 };\n\nconst refundAnswered = (r, ok = 200) => (r?.error ? { status: REFUSALS[r.error], body: { error: r.error } } : { status: ok, body: r });",
+        "count": 1
+      },
+      {
+        "id": "refunds-routes",
+        "file": "src/api.mjs",
+        "find": "  { method: \"POST\", path: new RegExp(`^/orders/${ORDER}/cancel$`), run: (store, m) => answered(cancelOrder(store, m[1])) },",
+        "replace": "  { method: \"POST\", path: new RegExp(`^/orders/${ORDER}/cancel$`), run: (store, m) => answered(cancelOrder(store, m[1])) },\n  { method: \"POST\", path: new RegExp(`^/orders/${ORDER}/refunds$`), run: (store, m, body) => refundAnswered(askRefund(store, m[1], body ?? {}), 201) },\n  { method: \"POST\", path: new RegExp(`^/orders/${ORDER}/refunds/${REFUND}/approve$`), run: (store, m, body) => refundAnswered(approveRefund(store, m[1], m[2], body?.by)) },",
+        "count": 1
+      }
+    ],
+    "files": [
+      {
+        "rel": "src/refunds.mjs",
+        "lines": [
+          "// Refunds on a shipped order: small ones approved at once, larger ones waiting for a manager (docs/refunds.md).",
+          "import { getOrder } from \"./orders.mjs\";",
+          "",
+          "export const AT_ONCE_MINOR = 5000;",
+          "",
+          "const ASKERS = [\"clerk\", \"manager\"];",
+          "",
+          "const refundsOf = (store, orderId) => store.list(\"refunds\").filter((r) => r.orderId === orderId);",
+          "",
+          "const leftOf = (store, order) => order.totalMinor - refundsOf(store, order.id).reduce((n, r) => n + r.amountMinor, 0);",
+          "",
+          "const nextId = (store) => `rfd-${String(store.list(\"refunds\").length + 1).padStart(4, \"0\")}`;",
+          "",
+          "const fits = (store, order, amount) => Number.isInteger(amount) && amount > 0 && amount <= leftOf(store, order);",
+          "",
+          "function refused(store, order, input) {",
+          "  if (!order) return { error: \"NOT_FOUND\" };",
+          "  if (!ASKERS.includes(input?.by?.role)) return { error: \"FORBIDDEN\" };",
+          "  if (order.state !== \"shipped\") return { error: \"CONFLICT\", state: order.state };",
+          "  return fits(store, order, input?.amountMinor) ? null : { error: \"INVALID\" };",
+          "}",
+          "",
+          "export function askRefund(store, orderId, input) {",
+          "  const why = refused(store, getOrder(store, orderId), input);",
+          "  if (why) return why;",
+          "  const refund = { id: nextId(store), orderId, amountMinor: input.amountMinor, state: input.amountMinor <= AT_ONCE_MINOR ? \"approved\" : \"pending\" };",
+          "  return store.put(\"refunds\", refund.id, refund);",
+          "}",
+          "",
+          "export function approveRefund(store, orderId, refundId, by) {",
+          "  const refund = store.get(\"refunds\", refundId);",
+          "  if (!getOrder(store, orderId) || !refund || refund.orderId !== orderId) return { error: \"NOT_FOUND\" };",
+          "  if (by?.role !== \"manager\") return { error: \"FORBIDDEN\" };",
+          "  if (refund.state !== \"pending\") return { error: \"CONFLICT\", state: refund.state };",
+          "  return store.put(\"refunds\", refundId, { ...refund, state: \"approved\" });",
+          "}"
+        ]
+      },
+      {
+        "rel": "test/refunds.test.mjs",
+        "lines": [
+          "import assert from \"node:assert/strict\";",
+          "import { mkdtempSync, rmSync } from \"node:fs\";",
+          "import { tmpdir } from \"node:os\";",
+          "import { join } from \"node:path\";",
+          "import { test } from \"node:test\";",
+          "import { handle } from \"../src/api.mjs\";",
+          "import { openStore } from \"../src/store.mjs\";",
+          "",
+          "test(\"a small refund is approved at once, and a large one waits for a manager's approval\", (t) => {",
+          "  const dir = mkdtempSync(join(tmpdir(), \"orders-\"));",
+          "  t.after(() => rmSync(dir, { recursive: true, force: true }));",
+          "  const store = openStore(dir);",
+          "  const id = handle(store, { method: \"POST\", path: \"/orders\", body: { lines: [{ qty: 1, unitMinor: 20000 }] } }).body.id;",
+          "  handle(store, { method: \"POST\", path: `/orders/${id}/ship` });",
+          "  assert.equal(handle(store, { method: \"POST\", path: `/orders/${id}/refunds`, body: { amountMinor: 1000, by: { role: \"clerk\" } } }).body.state, \"approved\");",
+          "  const large = handle(store, { method: \"POST\", path: `/orders/${id}/refunds`, body: { amountMinor: 8000, by: { role: \"clerk\" } } }).body;",
+          "  assert.equal(large.state, \"pending\");",
+          "  assert.equal(handle(store, { method: \"POST\", path: `/orders/${id}/refunds/${large.id}/approve`, body: { by: { role: \"clerk\" } } }).status, 403);",
+          "  assert.equal(handle(store, { method: \"POST\", path: `/orders/${id}/refunds/${large.id}/approve`, body: { by: { role: \"manager\" } } }).body.state, \"approved\");",
+          "});"
+        ]
+      }
+    ],
+    "deletes": []
+  }
+}

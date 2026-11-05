@@ -114,10 +114,11 @@ its content). Tag only then.
 runs a model-carried row that missed may have, 0 by default, at most 3) narrow or set the policy's limits, within its
 bounds -- a value out of bounds is refused by the flag you typed, before anything starts (on `--resume` too, before the
 resume is journaled). On `--resume` a person may raise them: what you give is laid over the ship's own limits, and a
-limit you do not give again keeps the value it had. A retried row holds only on a PASS of its own run -- the miss is kept in the ship's journal beside it. An
-`INTERRUPTED` run (or repair) spends none of `--retries` (or `--attempts`): it runs again at most `INTERRUPTED_RUNS` times
-a cycle (2, declared in `ship/diagnose.mjs`, not a policy limit), and then the ship BLOCKS on the environment, every
-interrupted run kept. Its cost is UNKNOWN -- what its ended rounds reported, never its whole allowance -- and is said
+limit you do not give again keeps the value it had. A retried row holds only on a PASS of its own run -- the miss is
+kept in the ship's journal beside it. An `INTERRUPTED` run (or repair) spends none of `--retries` (or `--attempts`): it
+runs again at most `INTERRUPTED_RUNS` times a cycle (2, declared in `ship/diagnose.mjs`, not a policy limit), and then
+the ship BLOCKS on the environment, every interrupted run kept. A repair the environment BLOCKED spends no attempt
+either, and runs again once you resume. Its cost is UNKNOWN -- what its ended rounds reported, never its whole allowance -- and is said
 beside what was spent (`--status`, `evidence.json` `totals.unknownCost`), never added into `--usd`. A spent limit BLOCKS
 the ship with its evidence kept.
 Exit 0 SHIPPABLE · 2 NOT SHIPPABLE or NO PROGRESS (or refused) · 3 BLOCKED (Docker, the host, its credential, a limit, a

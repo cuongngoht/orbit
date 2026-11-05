@@ -92,7 +92,9 @@ that did not hold. Every number in it is REPORTED, and what nobody said is `unkn
   not by the budget. This amends ADR 0049's "an unreported one counts at the run's cap" for that one case only.
 - **Repairs.** A repair whose round a restart cut short is `INTERRUPTED` in `REPAIR_CHECK`: never integrated, it spends
   no repair attempt and is never a repeat. A new repair runs, at most `INTERRUPTED_RUNS` more a cycle, then the ship
-  blocks on the environment. A repair the environment blocked, or that bound, is asked again once a person resumes.
+  blocks on the environment. A repair the environment blocked, or that bound, is asked again once a person resumes --
+  and a repair the environment blocked is no attempt either: it never came to a candidate, so it neither spends one of
+  `--attempts` (the last one included) nor makes two blocked runs with one signature a repeat.
 - **Controls.** A control set keeps a room of its own (`controls <case> --run-id=<bnr-…>`). The ship names it before
   the set starts, as it does every row's room. A control's row is kept as it ends, and a control carried by a whole run
   has that run's id kept before the run starts. `resume <bnr-…>` carries a cut-short set on: what it kept stands, the

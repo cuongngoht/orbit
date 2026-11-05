@@ -463,6 +463,28 @@ test("a repair the environment blocked runs again when a person resumes the ship
   assert.deepEqual(repairDocsOf(w, ctx).map((v) => v.code), ["BLOCKED", "VERIFIED"]);
 });
 
+test("a repair the environment blocked spends no repair attempt: resumed, it runs even when --attempts allowed only one", async (t) => {
+  let n = 0;
+  const blockedFirst = (c, tree) => (adds(tree) || ++n > 1 ? DEFAULT_PLAY.repair(c, tree) : { outcome: "BLOCKED", summary: "BLOCKED — the runner could not start", class: "ENVIRONMENT_BLOCKED" });
+  const w = shipWorldOf(t, { play: { repair: blockedFirst } });
+  const { ctx, result } = await shipped(w, { limits: { repairAttempts: 1 } });
+  assert.deepEqual([result.outcome, result.exit], ["BLOCKED", 3], result.summary);
+  const again = await driven(resumedShip(w.world, ctx.ship.id, {}));
+  assert.deepEqual([again.outcome, again.exit], ["SHIPPABLE", 0], again.summary);
+  assert.deepEqual(repairDocsOf(w, ctx).map((v) => v.code), ["BLOCKED", "VERIFIED"], "the one attempt --attempts=1 allows went to the repair that ran, never to the one that could not");
+});
+
+test("two repairs the environment blocked are no repeat: blocked twice with one signature, the third runs -- never NO_PROGRESS", async (t) => {
+  let n = 0;
+  const blockedTwice = (c, tree) => (adds(tree) || ++n > 2 ? DEFAULT_PLAY.repair(c, tree) : { outcome: "BLOCKED", summary: "BLOCKED — the runner could not start", class: "ENVIRONMENT_BLOCKED", signature: "bbbbbbbbbbbb" });
+  const w = shipWorldOf(t, { play: { repair: blockedTwice } });
+  const { ctx } = await shipped(w);
+  assert.equal((await driven(resumedShip(w.world, ctx.ship.id, {}))).outcome, "BLOCKED", "blocked again: a person resumes again");
+  const again = await driven(resumedShip(w.world, ctx.ship.id, {}));
+  assert.deepEqual([again.outcome, again.exit], ["SHIPPABLE", 0], again.summary);
+  assert.deepEqual(repairDocsOf(w, ctx).map((v) => v.code), ["BLOCKED", "BLOCKED", "VERIFIED"]);
+});
+
 test("B6. a controls row a restart cut short is carried on from its own room -- its set named before it started -- never run again from the start", async (t) => {
   let cut = false;
   const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, controlsDie: (c) => c === "CALC-002" && !cut && (cut = true) } });

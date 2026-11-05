@@ -114,9 +114,11 @@ const regressedAsBefore = (acts, f, r) => settledOf(acts, "release.row").some((x
 
 const lastState = (g) => g.last?.settled.verdict.state ?? null;
 
-// A repair a restart interrupted spends no attempt (`counted` leaves it out) and is never a repeat; it runs again, at
-// most INTERRUPTED_RUNS times a cycle, then blocks the ship on the environment. What blocked a repair (the environment,
-// or that bound) is asked again once a person resumed the ship after it (`lifted`) -- never what a person holds.
+// A repair that never came to a candidate the host carried to an end -- a restart cut it short, or the environment kept
+// it from running -- is no attempt: it spends none of --attempts (`counted` leaves it out) and is never a repeat. One a
+// restart interrupted runs again, at most INTERRUPTED_RUNS times a cycle, then blocks the ship on the environment. What
+// blocked a repair (the environment, or that bound) is asked again once a person resumed the ship after it (`lifted`) --
+// never what a person holds.
 const REPAIR_STATES = [
   { state: "INTEGRATED", when: (g) => g.integrated },
   { state: "VERIFIED", when: (g) => lastState(g) === "VERIFIED" },
@@ -129,7 +131,11 @@ const REPAIR_STATES = [
 
 const cutRepair = (d) => d.settled.verdict.state === "INTERRUPTED";
 
-const repairFacts = (acts, f, r, docs) => ({ counted: docs.filter((d) => !cutRepair(d)), cut: docs.filter(cutRepair).length, last: docs.at(-1) ? { settled: docs.at(-1).settled, act: docs.at(-1).act } : null, lifted: Boolean(docs.at(-1)) && resumedAfter(f, docs.at(-1).act), integrated: integrated(acts, f.open.id, r.row.case), regressed: regressedAsBefore(acts, f, r), limit: f.limits.repairAttempts });
+const NO_ATTEMPT = ["INTERRUPTED", "BLOCKED"];
+
+const attempted = (d) => !NO_ATTEMPT.includes(d.settled.verdict.state);
+
+const repairFacts = (acts, f, r, docs) => ({ counted: docs.filter(attempted), cut: docs.filter(cutRepair).length, last: docs.at(-1) ? { settled: docs.at(-1).settled, act: docs.at(-1).act } : null, lifted: Boolean(docs.at(-1)) && resumedAfter(f, docs.at(-1).act), integrated: integrated(acts, f.open.id, r.row.case), regressed: regressedAsBefore(acts, f, r), limit: f.limits.repairAttempts });
 
 function repairOf(acts, f, r) {
   const docs = repairDocs(acts, f.open.id, r.row.case);

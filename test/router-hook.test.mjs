@@ -237,3 +237,15 @@ test("an open work this checkout tracked under the reference the prompt names is
   tracking(p, ["state", work, "--state=cancelled"]);
   assert.equal(hook(payload("Continue ORD-12.", p.checkout), { ORBIT_STORE_DIR: p.store }).out, "", "a cancelled work is not picked up again");
 });
+
+// The lookup reads journals in the hot path, and must leave the store and the checkout exactly as it found them.
+const contents = (roots) => Object.fromEntries(files(roots).filter((f) => !/[\\/]\.git[\\/]/.test(f)).map((f) => [f, readFileSync(f, "utf8")]));
+
+test("looking for the open work a prompt names or continues reads the journals and writes nothing", (t) => {
+  const p = trackedRepo(t);
+  const work = tracking(p, ["track", "the refund approval rule", "--ref=ORD-12"]).work;
+  tracking(p, ["link", work, "--workflow=tsk-0123456789ab"]);
+  const before = contents([p.store, p.checkout]);
+  for (const prompt of ["Continue ORD-12.", "continue", "fix bug ORD-77 in the invoice export", "continue PBI-482"]) assert.equal(hook(payload(prompt, p.checkout), { ORBIT_STORE_DIR: p.store, ORBIT_TRACE: "off" }).code, 0, prompt);
+  assert.deepEqual(contents([p.store, p.checkout]), before, "no file created, removed or changed");
+});

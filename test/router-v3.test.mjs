@@ -150,6 +150,22 @@ test("the work a reference names is found by that reference's own id, in this ch
   assert.equal(openWorkOf(w.works, { refs: ["ORD-12"], checkout: CHECKOUT }).named[0].open, false);
 });
 
+// A reference whose requirement is kept is tracked under the REQUIREMENT's work (src/work/track/ids.mjs `itemWork`), the
+// one an engineering task or a workflow started on that item writes to -- never under the reference's own id.
+test("the work a reference names is found when it was tracked under the requirement kept for that item, too", (t) => {
+  const w = trackWorld(t);
+  const kept = { root: "req-0123456789ab", identity: { provider: "tracker", id: "PBI-482" } };
+  const ctx = w.ctx("sess-a", { requirementOf: (ref) => (ref.toLowerCase() === "pbi-482" ? kept : null) });
+  const work = COMMANDS.track.run(ctx, ["the refund approval rule", "--ref=PBI-482"]).work;
+  assert.equal(work, "w-0123456789ab", "the requirement's own work");
+  COMMANDS.link.run(ctx, [work, "--workflow=tsk-bbbbbbbbbbbb"]);
+  const asked = (refs, checkout = CHECKOUT) => openWorkOf(w.works, { refs, continued: false, checkout, session: null }).named;
+  assert.deepEqual(asked(["PBI-482"]), [{ id: work, open: true, owner: { what: "workflow", id: "tsk-bbbbbbbbbbbb" } }], "continue PBI-482, on any day and from any session");
+  assert.deepEqual(asked(["pbi-482"]).map((x) => x.id), [work], "however it is spelled");
+  assert.deepEqual(asked(["PBI-483"]), [], "another item names nothing");
+  assert.deepEqual(asked(["PBI-482"], OTHER_CHECKOUT), [], "and another checkout's work is not this one's");
+});
+
 test("this session's current work is looked for only when the prompt says to continue, and never another session's", (t) => {
   const w = trackWorld(t);
   const work = COMMANDS.track.run(w.ctx("sess-a"), ["the refund approval rule"]).work;

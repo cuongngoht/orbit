@@ -99,8 +99,9 @@ and models reported), every gate, row and repair, and the optional rows. When re
 source is not the person's HEAD: the ship writes `release.patch` and `release.bundle` and says how to apply them; nothing
 is pushed. `ship.mjs --evidence` is the publish gate: `PUBLISH` (`ship/evidence.mjs`) refuses while a ship is pending,
 blocked or failed, when the checkout's HEAD tree is not the qualified tree or is dirty, when the protected paths or the
-policy moved, when a row the policy requires has no held evidence, when a run's own room no longer agrees, or when the
-artifact is not the one. Only PUBLISHABLE exits 0.
+policy moved, when the benchmark does not list a case the policy names (or cannot be read: a row the gate cannot see is
+never one it passes -- ADR 0051), when a row the policy requires has no held evidence, when a run's own room no longer
+agrees, or when the artifact is not the one. Only PUBLISHABLE exits 0.
 
 ### Limits, and what stops a ship
 

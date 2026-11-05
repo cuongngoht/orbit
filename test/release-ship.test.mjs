@@ -498,6 +498,21 @@ test("B6. a controls row a restart cut short is carried on from its own room -- 
   assert.deepEqual(rowDocs(w, ctx, "CALC-002:controls").map((d) => [d.planned.run, d.settled.verdict.state]), [[sets[0].run, "HELD"]]);
 });
 
+test("the publish gate never passes rows it cannot see: a catalog it cannot read, or one missing a case the policy names, is CATALOG_UNREAD", async (t) => {
+  const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched } });
+  await shipped(w);
+  assert.deepEqual(await publishable(w), [true, "PUBLISHABLE"]);
+  const bench = w.world.bench;
+  const listing = (said) => (w.world.bench = async (args, o) => (args[0] === "list" ? said : bench(args, o)));
+  listing({ code: 1, json: null, err: "the harness could not list its suites" });
+  assert.deepEqual(await publishable(w), [false, "CATALOG_UNREAD"], "nothing re-derived is never every row held");
+  listing({ code: 0, json: { suites: [] }, err: null });
+  assert.deepEqual(await publishable(w), [false, "CATALOG_UNREAD"], "an empty listing is not an empty catalog");
+  const listed = (await bench(["list"], {})).json;
+  listing({ code: 0, json: { suites: listed.suites.map((s) => ({ ...s, cases: s.cases.filter((c) => c.id !== "QA-001") })) }, err: null });
+  assert.match((await evidenceAsked(w.world, null)).says, /does not list 1 case\(s\) the policy names now \(QA-001\)/);
+});
+
 // ---- the boundaries, and what a person reads ------------------------------------------------------------------------------
 
 test("integrating is a write to the ship's own workspace -- AUTO -- and a ship never constructs a write to the person's checkout", () => {

@@ -6,7 +6,8 @@
 // checkout as it stands NOW, re-reads every run's own room, and digests the artifact again. Only PUBLISHABLE exits 0.
 //
 //   evidenceOf(ctx, f, delivery) -> evidence        publishableOf(g) -> { publishable, code, says, recorded }   PUBLISH
-//   g: { ship, view, evidence, head: { tree, dirty }, now: { protected, policy, rows, recorded }, rooms(run), artifact }
+//   g: { ship, view, evidence, head: { tree, dirty }, now: { protected, policy, unseen, rows, recorded }, rooms(run),
+//        artifact } -- `unseen`: the cases the policy names that the benchmark does not list now (all, unread)
 //   A RECORDED row (ADR 0051) is in the evidence held or not, with its run's room, and the gate holds it to that room as
 //   it holds every row -- only a required row must be HELD.
 import { runRoomOf } from "./dispatch.mjs";
@@ -48,6 +49,7 @@ export const PUBLISH = [
   { code: "DIRTY", when: (g) => g.head.dirty.length > 0, says: (g) => `uncommitted changes (${g.head.dirty.slice(0, 5).join(", ")}): the evidence is about the committed tree alone` },
   { code: "PROTECTED_MOVED", when: (g) => g.now.protected !== g.evidence.source.protected, says: () => "the harness, a check or the release itself moved since the ship ran" },
   { code: "POLICY_MOVED", when: (g) => g.now.policy !== g.evidence.policy.digest, says: () => "the release policy moved since the ship ran: what it requires is not what was held" },
+  { code: "CATALOG_UNREAD", when: (g) => g.now.unseen.length > 0, says: (g) => `the benchmark does not list ${g.now.unseen.length} case(s) the policy names now (${g.now.unseen.slice(0, 4).join(", ")}${g.now.unseen.length > 4 ? ", …" : ""}): no row of theirs can be held to its room, and a gate that cannot see a row never passes it -- node benchmark/run.mjs list says why` },
   { code: "INCOMPLETE", when: (g) => g.now.rows.some((id) => !g.evidence.rows.some((r) => r.id === id && r.state === "HELD")), says: (g) => `rows the policy requires with no held evidence: ${g.now.rows.filter((id) => !g.evidence.rows.some((r) => r.id === id && r.state === "HELD")).slice(0, 6).join(", ")}` },
   { code: "UNRECORDED", when: (g) => g.now.recorded.some((id) => !g.evidence.rows.some((r) => r.id === id)), says: (g) => `rows the policy records with no record in the evidence: ${g.now.recorded.filter((id) => !g.evidence.rows.some((r) => r.id === id)).slice(0, 6).join(", ")}` },
   { code: "UNTRUSTED", when: (g) => !roomsAgree(g), says: () => "a run's own room no longer says what the evidence says of it" },

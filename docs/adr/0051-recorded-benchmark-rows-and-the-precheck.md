@@ -53,7 +53,9 @@ because a person looks before any release, whichever row's room it was in. The s
 `ship.mjs --evidence` re-derives recorded rows like every other row: a required row must be HELD (`INCOMPLETE`), a
 recorded row must have a record in the evidence (`UNRECORDED`), and every row's room must still say what the evidence
 says of it -- its commit and its outcome, and the coding host for a model-carried row that held (`UNTRUSTED`). A
-recorded row that did not hold owes no host identity, and its room is held to what was said of it.
+recorded row that did not hold owes no host identity, and its room is held to what was said of it. The rows the gate
+re-derives are the policy's whole catalog as the benchmark lists it now: a case the policy names that the listing does
+not hold -- every case, when `run.mjs list` cannot be read -- is `CATALOG_UNREAD`, never a row fewer to hold.
 
 Promoting a row is removing its suite or case from `recorded`, a change to the policy like any other: its digest moves,
 and the evidence of an earlier ship no longer publishes.

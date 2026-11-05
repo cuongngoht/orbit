@@ -150,8 +150,6 @@ function chosen(world, id, headTree, which) {
 
 const listedOf = async (world) => (await world.bench(["list"], {})).json ?? null;
 
-const catalogOf = async (world) => ((listed) => (listed ? rowsOf(world.policy, listed) : []))(await listedOf(world));
-
 // What the ship does next: one still running goes on where its journal stands; any other is carried on by a resume,
 // and a resume asks its preflight again before anything else (contextOf), so that is what it does first.
 const nextAsked = (f, ctx) => (f.ended ? null : nextOf(f, { ...ctx, preflighted: f.view.lifecycle === "RUNNING" }).id);
@@ -192,15 +190,21 @@ function artifactOf(ev, file) {
   return ev?.artifact?.file && existsSync(ev.artifact.file) && shaBytes(readFileSync(ev.artifact.file)) === ev.artifact.sha256 ? { ok: true } : { ok: false, says: "the qualified artifact is gone or no longer the file the evidence names: build the archive again (--artifact=<zip> checks it by content)" };
 }
 
-// What the policy asks of the checkout NOW: the rows it requires, the ones it records, and how each is held to its room.
-const nowOf = (world, rows) => ({ protected: protectedDigestOf(world, "HEAD"), policy: policyDigest(world.policy), rows: rows.filter((r) => !r.recorded).map((r) => r.id), recorded: rows.filter((r) => r.recorded).map((r) => r.id), autonomous: new Set(rows.filter((r) => r.autonomous).map((r) => r.id)), single: new Set(rows.filter((r) => r.run !== "controls").map((r) => r.id)) });
+// The cases the policy names that the benchmark's listing does not hold now -- every one of them when the listing could
+// not be read. The gate re-derives every row the policy requires from what the benchmark lists, so a case it cannot see
+// is never one row fewer to hold: it is a gate that cannot answer (PUBLISH CATALOG_UNREAD).
+const unseenOf = (policy, listed) => ((ids) => Object.values(policy.catalog).flat().filter((id) => !ids.has(id)))(new Set((listed?.suites ?? []).flatMap((s) => s.cases.map((c) => c.id))));
+
+// What the policy asks of the checkout NOW: the rows it requires, the ones it records, how each is held to its room, and
+// the cases it names that the gate cannot see.
+const nowOf = (world, listed) => ((rows) => ({ protected: protectedDigestOf(world, "HEAD"), policy: policyDigest(world.policy), unseen: unseenOf(world.policy, listed), rows: rows.filter((r) => !r.recorded).map((r) => r.id), recorded: rows.filter((r) => r.recorded).map((r) => r.id), autonomous: new Set(rows.filter((r) => r.autonomous).map((r) => r.id)), single: new Set(rows.filter((r) => r.run !== "controls").map((r) => r.id)) }))(listed ? rowsOf(world.policy, listed) : []);
 
 export async function evidenceAsked(world, id, artifact = null) {
   const head = { tree: gitSays(world, ["rev-parse", "HEAD^{tree}"]), dirty: gitSays(world, ["status", "--porcelain=v1", "--untracked-files=no"]).split("\n").filter(Boolean) };
   const ship = chosen(world, id, head.tree, qualifying);
   const room = ship ? shipRoomOf(world.storeRoot, ship.id) : null;
   const ev = room ? docRead(room, "evidence.json") : null;
-  return publishableOf({ ship, view: ship ? world.door.show(ship.manifest.task) : null, evidence: ev, ending: room ? docRead(room, "ending.json") : null, head, now: nowOf(world, await catalogOf(world)), rooms: (run) => runRoomOf(world.storeRoot, run), artifact: artifactOf(ev, artifact) });
+  return publishableOf({ ship, view: ship ? world.door.show(ship.manifest.task) : null, evidence: ev, ending: room ? docRead(room, "ending.json") : null, head, now: nowOf(world, await listedOf(world)), rooms: (run) => runRoomOf(world.storeRoot, run), artifact: artifactOf(ev, artifact) });
 }
 
 export { jsonAtFile };

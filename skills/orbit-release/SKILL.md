@@ -107,9 +107,10 @@ the case up to date in the same commit (as 0.4.0 did for ORBIT-SRC-002 and ORBIT
 **Publishing.** The ship never pushes, tags or publishes. When repairs were integrated, the qualified source is a commit
 in the ship's workspace: apply it with `git am <room>/release.patch` (or `git fetch <room>/release.bundle HEAD`), commit,
 and ask `ship.mjs --evidence` -- it says PUBLISHABLE only when your HEAD's tree is the qualified tree, nothing is dirty,
-the protected paths and the policy are as they were, every required row has held evidence whose run's room still agrees,
-every recorded row has its record, and the artifact is the one (`--artifact=<zip>` checks an archive you built again, by
-its content). Tag only then.
+the protected paths and the policy are as they were, the benchmark lists every case the policy names (`CATALOG_UNREAD`
+when it cannot be read: a row the gate cannot see is never one it passes), every required row has held evidence whose
+run's room still agrees, every recorded row has its record, and the artifact is the one (`--artifact=<zip>` checks an
+archive you built again, by its content). Tag only then.
 
 **Limits and exits.** `--usd`, `--minutes`, `--cycles`, `--attempts` (repair attempts per case) and `--retries` (more
 runs a model-carried row that missed may have, 0 by default, at most 3) narrow or set the policy's limits, within its

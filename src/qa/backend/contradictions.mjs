@@ -48,8 +48,9 @@ const pinning = (s, p) => Object.hasOwn(PINNING, String(p.selects)) && PINNING[p
 // that picks the answer leaves only the other value there: the assertion never holds. A match whose count ends the wait
 // ends it when the other value came, so the window the criterion gives its own value is cut short by what the step waited
 // for -- and a window cut short is not the window a verdict rules on (skills/orbit-backend-test/window.mjs), while the
-// observation says it saw everything it was asked. Either way a correct application contradicts the test. A match its
-// request ends no wait on, or one whose adapter does not say what it picks, rules out nothing.
+// observation says it saw everything it was asked: a correct application whose own value comes after the other one, or
+// never in this test, is ruled against. Either way the verdict is not the criterion's. A match its request ends no wait
+// on, or one whose adapter does not say what it picks, rules out nothing.
 const matchPins = (d, cx) => waits(d, cx).filter((x) => literal(x.e.value)).flatMap((x) => pinsOf(x.s, cx).filter((p) => p.means === x.e.property && p.value !== x.e.value && pinning(x.s, p)).map((p) => pinSay(x, p)));
 
 const PINNED = { answer: "its answer holds only what its match names", count: "its wait ends once its match is met, so the window the slot is judged in is cut short of its own" };

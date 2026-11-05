@@ -39,8 +39,12 @@ const lastDoc = (xs) => xs.at(-1)?.d ?? null;
 
 const openOf = (view) => ((a) => (a && !a.outcome ? a : null))((view.attempts ?? []).at(-1));
 
-// What the ship may still spend: the limits it began with, raised only by a person's `--resume` (release.limits).
+// What the ship may still spend: the limits it began with, raised only by a person's `--resume` (release.limits, each
+// the whole set as it stood with what that person asked laid over it).
 const limitsOf = (ctx, acts) => ({ ...ctx.manifest.limits, ...(lastDoc(settledOf(acts, "release.limits"))?.settled?.limits ?? {}) });
+
+// The limits a ship has as it stands, read from its journal -- what a person's limits on resume are laid over.
+export const limitsNow = (ctx, view) => limitsOf(ctx, docsOf(ctx, view));
 
 const costOf = (x) => (typeof x.d.settled?.cost?.usd === "number" ? x.d.settled.cost.usd : 0);
 

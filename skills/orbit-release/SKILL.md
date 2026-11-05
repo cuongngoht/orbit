@@ -112,8 +112,9 @@ its content). Tag only then.
 
 **Limits and exits.** `--usd`, `--minutes`, `--cycles`, `--attempts` (repair attempts per case) and `--retries` (more
 runs a model-carried row that missed may have, 0 by default, at most 3) narrow or set the policy's limits, within its
-bounds -- a value out of bounds is refused by the flag you typed, before anything starts; on `--resume` a person may
-raise them. A retried row holds only on a PASS of its own run -- the miss is kept in the ship's journal beside it. An
+bounds -- a value out of bounds is refused by the flag you typed, before anything starts (on `--resume` too, before the
+resume is journaled). On `--resume` a person may raise them: what you give is laid over the ship's own limits, and a
+limit you do not give again keeps the value it had. A retried row holds only on a PASS of its own run -- the miss is kept in the ship's journal beside it. An
 `INTERRUPTED` run (or repair) spends none of `--retries` (or `--attempts`): it runs again at most `INTERRUPTED_RUNS` times
 a cycle (2, declared in `ship/diagnose.mjs`, not a policy limit), and then the ship BLOCKS on the environment, every
 interrupted run kept. Its cost is UNKNOWN -- what its ended rounds reported, never its whole allowance -- and is said
@@ -132,7 +133,8 @@ each once, stopping at no failure: what 0.4.0 did by hand before every ship, in 
 release tree and the images and asks the host first, as a ship does; it needs no workspace and holds no definition of
 done. It ends PRECHECK HELD (exit 0) or PRECHECK FAILED (exit 2), with every failure said with its run's room and its
 bundle. It writes no evidence and is never what `--evidence` reads; `--cycles`, `--attempts` and `--retries` are a
-ship's and are refused with it. `--usd`, `--minutes`, `--model`, `--credential` and `--ca-file` work as for a ship.
+ship's and are refused with it, on `--resume` too. `--usd`, `--minutes`, `--model`, `--credential` and `--ca-file` work
+as for a ship. `--precheck --resume=shp-…` resumes a precheck and refuses a ship's id.
 
 **Optional.** Native host acceptance (`docs/host-acceptance.json`: Claude Code, Codex, Antigravity, Grok Build) and native
 backend acceptance (`acceptance/run.mjs --record`) are reported beside every ship as `opt` rows and never block it. Record

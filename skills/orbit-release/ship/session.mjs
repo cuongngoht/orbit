@@ -13,7 +13,7 @@ import { sha, shaBytes } from "../../../src/hash.mjs";
 import { contentDigest } from "./artifact.mjs";
 import { begun, iso, runDiagnosis, runRoomOf, settledAct } from "./dispatch.mjs";
 import { publishableOf } from "./evidence.mjs";
-import { factsOf, lastCycleOf, nextOf, shipRows } from "./machine.mjs";
+import { factsOf, lastCycleOf, limitsNow, modeOf, nextOf, shipRows } from "./machine.mjs";
 import { LIMIT_FLAGS, limitsOf, matchesAny, policyDigest, rowsOf } from "./policy.mjs";
 import { docRead, docWritten, jsonAtFile, newShipId, shipRoomOf, shipsIn } from "./room.mjs";
 import { casesIn, preflightFacts } from "./steps.mjs";
@@ -59,7 +59,11 @@ function shipRefused(says) {
   throw new Refused(says);
 }
 
-const precheckAsked = (world, o) => ((bad) => (bad.length ? shipRefused(`--precheck runs every model-carried row once, in one cycle: ${bad.map((k) => `--${LIMIT_FLAGS[k]}`).join(", ")} are a ship's`) : { ...o, mode: "precheck", repair: false, failFast: false, limitsHeld: { ...limitsOf(world.policy, o.limits ?? {}), ...PRECHECK_LIMITS } }))(PRECHECK_REFUSES.filter((k) => o.limits?.[k] !== undefined));
+// What a precheck refuses of the limits a person asks -- the ones only a ship has -- when it begins, and when it is
+// resumed: a precheck's own limits never move.
+const precheckHeld = (asked) => ((bad) => (bad.length ? shipRefused(`--precheck runs every model-carried row once, in one cycle: ${bad.map((k) => `--${LIMIT_FLAGS[k]}`).join(", ")} are a ship's`) : asked))(PRECHECK_REFUSES.filter((k) => asked?.[k] !== undefined));
+
+const precheckAsked = (world, o) => ({ ...o, mode: "precheck", repair: false, failFast: false, limitsHeld: { ...limitsOf(world.policy, precheckHeld(o.limits ?? {})), ...PRECHECK_LIMITS } });
 
 const shipAsked = (world, o) => (o.precheck ? precheckAsked(world, o) : { ...o, mode: o.repair ? "autonomous" : "verify-only", limitsHeld: limitsOf(world.policy, o.limits ?? {}) });
 
@@ -92,22 +96,35 @@ function resumeJournaled(ctx) {
   return ctx;
 }
 
-// New limits a person gave on resume, within the policy's bounds: journaled as their own action, read by every fold.
-function relimited(ctx, asked) {
-  const limits = limitsOf(ctx.policy, asked);
-  const act = begun(ctx, "release.limits", `limits a person set on resume: ${Object.entries(asked).filter(([, v]) => v !== undefined).map(([k, v]) => `${k} ${v}`).join(", ")}`, {});
+// New limits a person gave on resume: journaled as their own action, read by every fold.
+function relimited(ctx, limits, asked) {
+  const act = begun(ctx, "release.limits", `limits a person set on resume: ${Object.entries(asked).filter(([, v]) => v !== undefined).map(([k, v]) => `--${LIMIT_FLAGS[k] ?? k} ${v}`).join(", ")}`, {});
   settledAct(ctx, act, {}, { limits }, { outcome: "succeeded", summary: "the ship goes on within these limits" });
   return ctx;
 }
 
 const askedAny = (asked) => Object.values(asked ?? {}).some((v) => v !== undefined);
 
+// The limits a person asks on resume, held BEFORE anything is written -- a refused resume journals nothing and leaves a
+// blocked ship blocked: within the policy's bounds, by the flag a person typed, and -- for a precheck -- never a limit
+// only a ship has. What they come to is the ship's own limits as they stand with what was asked laid over them, so a
+// limit nobody asked again keeps its value: one a person set when the ship began, and a precheck's own.
+const limitsAskedAgain = (ctx, view, asked) => limitsOf({ ...ctx.policy, limits: limitsNow(ctx, view) }, modeOf(ctx).precheck ? precheckHeld(asked) : asked);
+
+// --precheck names a precheck. Resuming a ship with it would run what a precheck never does -- the definition of done,
+// retries, repairs, the evidence -- so the mismatch is refused before anything is written.
+const modeHeld = (ctx, o) => (o.precheck && !modeOf(ctx).precheck ? shipRefused(`--precheck: ${ctx.ship.id} is a ship (${ctx.manifest.mode}), not a precheck -- resume it without --precheck`) : ctx);
+
+// The resume, once what was asked held: a blocked ship unblocked (the resume journaled), then the limits journaled --
+// never for a ship that ended or one a person paused.
+const resumedWith = (ctx, view, limits, asked) => ((c) => (limits && !view.terminal && view.lifecycle !== "PAUSED" ? relimited(c, limits, asked) : c))(view.lifecycle === "BLOCKED" ? unblocked(ctx) : ctx);
+
 export function resumedShip(world, id, o) {
   const room = shipRoomOf(world.storeRoot, id);
   const manifest = docRead(room, "manifest.json") ?? missing(id, room);
-  const ctx = contextOf(world, room, manifest, o);
+  const ctx = modeHeld(contextOf(world, room, manifest, o), o);
   const view = world.door.show(ctx.task);
-  return ((c) => (askedAny(o.limits) && !view.terminal && view.lifecycle !== "PAUSED" ? relimited(c, o.limits) : c))(view.lifecycle === "BLOCKED" ? unblocked(ctx) : ctx);
+  return resumedWith(ctx, view, askedAny(o.limits) ? limitsAskedAgain(ctx, view, o.limits) : null, o.limits);
 }
 
 function missing(id, room) {

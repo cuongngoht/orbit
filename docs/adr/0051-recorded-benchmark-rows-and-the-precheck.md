@@ -66,7 +66,8 @@ builds the release tree and the images and asks the host first, as a ship does, 
 credential shows there. Once every row ran, `PRECHECKED` ends it: `PRECHECK_HELD` (exit 0) or `PRECHECK_FAILED`
 (exit 2), every failure said with its run's room and its diagnosis bundle. A precheck never writes evidence, and
 `--evidence` never takes one for this checkout's newest ship. `--cycles`, `--attempts` and `--retries` are a ship's,
-refused before anything starts.
+refused before anything starts -- on a resume too, whose `--usd` or `--minutes` is laid over the precheck's own limits
+and never brings a ship's back. `--precheck` given with `--resume` of a ship is refused: it never resumes one.
 
 ### Diagnosis is read off the run's own records
 
@@ -100,7 +101,9 @@ that did not hold. Every number in it is REPORTED, and what nobody said is `unkn
 ### Flag names
 
 A limit out of bounds is refused by the flag a person typed (`--retries is 0..3`), from one table (`LIMIT_FLAGS`), and
-before the ship starts a task.
+before the ship starts a task -- or, on a resume, before anything is journaled: a refused resume leaves a blocked ship
+blocked. What a person asks on a resume is laid over the limits the ship has as it stands, so a limit nobody asked
+again keeps its value (one set when the ship began, a precheck's own), never the policy's default.
 
 ## Consequences
 

@@ -490,6 +490,25 @@ test("a ship refused for a limit out of bounds says the flag a person typed, and
   assert.equal(existsSync(join(w.store, "release")), false, "no room for it either");
 });
 
+test("a resume refused for a limit out of bounds journals nothing: the blocked ship stays blocked, its ending where it was", async (t) => {
+  const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, images: false } });
+  const { ctx, result } = await shipped(w);
+  assert.equal(result.outcome, "BLOCKED");
+  const before = w.door.show(ctx.task).actions.length;
+  assert.throws(() => resumedShip(w.world, ctx.ship.id, { limits: { autonomousRetries: 9 } }), /out of bounds: --retries is 0\.\.3/);
+  assert.deepEqual([w.door.show(ctx.task).actions.length, w.door.show(ctx.task).lifecycle, existsSync(ctx.room.at("ending.json"))], [before, "BLOCKED", true]);
+});
+
+test("limits a person raises on resume are laid over the ship's own: a limit nobody asked again keeps the value it began with", async (t) => {
+  const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, images: false } });
+  const { ctx } = await shipped(w, { limits: { autonomousRetries: 2, cycles: 2 } });
+  w.play.images = true;
+  const again = await driven(resumedShip(w.world, ctx.ship.id, { limits: { usd: 90 } }));
+  assert.deepEqual([again.outcome, again.exit], ["SHIPPABLE", 0], again.summary);
+  const s = await statusOf(w.world, ctx.ship.id);
+  assert.deepEqual([s.limits.usd, s.limits.autonomousRetries, s.limits.cycles], [90, 2, 2], "--usd raised; --retries and --cycles as the ship began with them, never the policy's");
+});
+
 test("--status says where a ship stands, read from its journal, and writes nothing", async (t) => {
   const w = shipWorldOf(t);
   const { ctx } = await shipped(w);
@@ -595,6 +614,37 @@ test("B6. --precheck runs only the model-carried rows, each once, stopping at no
   assert.match(saidResult(result), /PRECHECK FAILED[\s\S]*diagnose  QA-001:autonomous FAILED[\s\S]*room    .*bnr-[\s\S]*diagnose  CALC-001:self-healing FAILED/);
   assert.deepEqual([actsOf(w, ctx, "release.gates").length, actsOf(w, ctx, "release.workspace").length, existsSync(ctx.room.at("evidence.json"))], [0, 0, false], "no definition of done, no workspace, no evidence: those are a ship's");
   assert.deepEqual([(await statusOf(w.world, ctx.ship.id)).mode, await publishable(w)], ["precheck", [false, "NO_SHIP"]], "--evidence never takes a precheck for a ship");
+});
+
+// A precheck a restart cut short in its first row: the worker restarted, and a person resumes it.
+const cutPrecheck = async (t, play = {}) => {
+  let n = 0;
+  const autonomous = () => (++n === 1 ? { outcome: "PASS", summary: "PASS", host: HOST, dies: true } : { outcome: "PASS", summary: "PASS", host: HOST });
+  const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, autonomous, ...play } });
+  const ctx = begunShip(w.world, { ...OPTS, precheck: true, limits: {} });
+  await assert.rejects(driven(ctx), /died/);
+  return { w, ctx };
+};
+
+test("--precheck resumed keeps its own limits: what a person raises is laid over them -- still each row once, one cycle", async (t) => {
+  const selfHealing = () => ({ outcome: "INCONCLUSIVE", summary: "INCONCLUSIVE — no verdict it could stand on", host: HOST });
+  const { w, ctx } = await cutPrecheck(t, { selfHealing });
+  const result = await driven(resumedShip(w.world, ctx.ship.id, { precheck: true, limits: { usd: 50 } }));
+  assert.deepEqual([result.outcome, result.exit], ["PRECHECK_FAILED", 2], result.summary);
+  const s = await statusOf(w.world, ctx.ship.id);
+  assert.deepEqual([s.limits.usd, s.limits.cycles, s.limits.flakyRetries, s.limits.autonomousRetries], [50, 1, 0, 0], "the --usd a person raised, and the precheck's own limits as they were");
+  assert.equal(ran(w, (c) => c.kind === "selfHealing").length, 1, "a row with no verdict is said, never run again: no flaky retry for a precheck");
+});
+
+test("--precheck resumed: a limit only a ship has is refused before anything is written, and --precheck never resumes a ship", async (t) => {
+  const { w, ctx } = await cutPrecheck(t);
+  const before = w.door.show(ctx.task).actions.length;
+  assert.throws(() => resumedShip(w.world, ctx.ship.id, { limits: { autonomousRetries: 2, cycles: 2 } }), /--precheck runs every model-carried row once, in one cycle: --cycles, --retries are a ship's/);
+  assert.equal(w.door.show(ctx.task).actions.length, before, "nothing journaled for a resume refused");
+  const s = await shipped(shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, images: false } }));
+  assert.equal(s.result.outcome, "BLOCKED");
+  assert.throws(() => resumedShip(s.ctx.world, s.ctx.ship.id, { precheck: true }), /--precheck: shp-[0-9a-f]{12} is a ship \(autonomous\), not a precheck/);
+  assert.equal(s.ctx.world.door.show(s.ctx.task).lifecycle, "BLOCKED", "the ship it named is left as it was");
 });
 
 test("--precheck: every model-carried row held once is PRECHECK_HELD, exit 0; what only a ship may do is refused before anything starts", async (t) => {

@@ -140,9 +140,10 @@ each once, stopping at no failure: what 0.4.0 did by hand before every ship, in 
 release tree and the images and asks the host first, as a ship does; it needs no workspace and holds no definition of
 done. It ends PRECHECK HELD (exit 0) or PRECHECK FAILED (exit 2), with every row that did not hold said with its run's
 room and its bundle -- and it fails only as a ship would: a recorded row that did not hold is said, marked `(recorded,
-not required)`, and leaves it HELD (a leak in its room still fails it). It writes no evidence and is never what `--evidence` reads; `--cycles`, `--attempts` and `--retries` are a
-ship's and are refused with it, on `--resume` too. `--usd`, `--minutes`, `--model`, `--credential` and `--ca-file` work
-as for a ship. `--precheck --resume=shp-…` resumes a precheck and refuses a ship's id.
+not required)`, and leaves it HELD (a leak in its room still fails it). It writes no evidence and is never what
+`--evidence` reads; `--cycles`, `--attempts` and `--retries` are a ship's and are refused with it, on `--resume` too.
+`--usd`, `--minutes`, `--model`, `--credential` and `--ca-file` work as for a ship. `--precheck --resume=shp-…` resumes
+a precheck and refuses a ship's id.
 
 **Optional.** Native host acceptance (`docs/host-acceptance.json`: Claude Code, Codex, Antigravity, Grok Build) and native
 backend acceptance (`acceptance/run.mjs --record`) are reported beside every ship as `opt` rows and never block it. Record

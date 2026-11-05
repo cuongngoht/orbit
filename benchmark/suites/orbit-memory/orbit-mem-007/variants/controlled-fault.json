@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "Two planted defects in architecture memory, applied only to the benchmark copy of the source: a scan forgets where it left each scope, so the next look finds nothing recorded and re-reads everything; and a freshness check asks the index once per fact instead of once for all of them.",
+  "mutations": [
+    {
+      "id": "scan-forgets-its-scopes",
+      "file": "src/architecture/scan.mjs",
+      "find": "export const scopesInto = (was, scopes) => ({ ...was, ...Object.fromEntries(Object.entries(scopes).filter(([, v]) => v.hash).map(([k, v]) => [k, { hash: v.hash }])) });",
+      "replace": "export const scopesInto = (was) => ({ ...was });",
+      "count": 1
+    },
+    {
+      "id": "fingerprint-per-fact",
+      "file": "src/architecture/facts.mjs",
+      "find": "  const scopes = model ? measure(all, model, source) : {};",
+      "replace": "  const scopes = model ? Object.assign({}, ...all.map((f) => measure([f], model, source))) : {};",
+      "count": 1
+    }
+  ]
+}

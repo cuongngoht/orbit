@@ -1,7 +1,7 @@
 # The Orbit benchmark
 
 Benchmark cases that say what Orbit must do. Each case runs against the source of the branch you are on, in Docker,
-and is judged by a verifier that shares nothing with what it judges. There are four kinds of case:
+and is judged by a verifier that shares nothing with what it judges. There are five kinds of case:
 
 - **Source cases** hold Orbit's own source to independent checks. A case that fails on a cause it declares repairable
   can be handed to Orbit itself, with `--repair`: a real coding host (Claude Code, in a runner container) drives
@@ -15,6 +15,10 @@ and is judged by a verifier that shares nothing with what it judges. There are f
   plugin: the host takes the goal through Orbit's goal entry, the workflow it starts and the engineering task that
   workflow starts. The source cases' verifier judges what it left, plus record checks on what Orbit's owners say. A
   goal that leaves out the rule it needs must be refused, never invented.
+- **Sessions cases** (0.5.0) ask whether memory makes a second session better, and never worse. A sessions case is a
+  QA case worked in two sessions over one checkout of its application and the stores the first one left. The first
+  learns. The second is judged as a QA case's one round is, with Orbit's memory on or switched off, and a case may plant
+  a poison in the host's own memory before it.
 - **Activation cases** (0.5.0) hand a coding host a prompt that names no skill and no command, with Orbit -- or
   without it -- and ask whether it uses Orbit by itself, and only where it helps: what it did is read off the stream
   and the trail Orbit's hooks wrote, held to a hidden truth, the owners' records and, for an outcome case, the hidden
@@ -36,8 +40,10 @@ This is development tooling. It never ships (`.gitattributes` export-ignores `be
 [ADR 0046](../docs/adr/0046-a-docker-benchmark-holds-orbits-source-to-independent-checks.md) (the benchmark and its
 source cases), [ADR 0047](../docs/adr/0047-a-qa-benchmark-asks-whether-autonomous-qa-finds-a-planted-defect.md)
 (its QA cases) and [ADR 0048](../docs/adr/0048-the-benchmark-proves-orbits-self-healing-loop-and-measures-goals.md)
-(repair controls, failure classes, engineering cases, metrics and CI tiers). A release is qualified by driving it end
-to end ([ADR 0049](../docs/adr/0049-a-release-qualifies-on-docker-benchmark-evidence-carried-by-claude-code.md),
+(repair controls, failure classes, engineering cases, metrics and CI tiers). Its sessions cases are
+[ADR 0054](../docs/adr/0054-a-sessions-benchmark-measures-what-memory-buys-a-second-session.md). A release is qualified
+by driving it end to end
+([ADR 0049](../docs/adr/0049-a-release-qualifies-on-docker-benchmark-evidence-carried-by-claude-code.md),
 [below](#driven-by-a-release-ship)).
 
 ## Layout
@@ -53,7 +59,10 @@ benchmark/
   lib/source/                     a source or engineering case: verification, the judge, SCOPE, CAUSES, NEXT, repair
                                   rounds, repairs.mjs (candidate controls straight to the judge), the brief, report
   lib/qa/                         a QA case: the engine beside the controller, the relay and its client, the scripted
-                                  hosts, the judge, the flow, the report, and the applications a case may name
+                                  hosts, the judge, the flow (a QA run is one SESSION), the report, and the applications
+                                  a case may name
+  lib/sessions/                   a sessions case: the flow (the learning session, the carry phase, the measured session
+                                  on its memory arm) and its report
   lib/activation/                 an activation case: its seed round, the host's round and the inspection (round.mjs),
                                   the judge, the flow and the report
   lib/commands.mjs                the COMMANDS table, dispatching each kind of case
@@ -62,25 +71,27 @@ benchmark/
   images/verifier/                the source cases' probes and gates, and the egress proxy (egress.mjs)
   images/qa-worker/               the browser a QA case's generated page tests drive, in the engine's sandbox
   suites/<suite>/suite.json       a suite: { schema, id, version, title, cases: [<CASE-ID>, …] }
-  suites/<suite>/<case-id>/       one case, its directory the case id in lower case
-  fixtures/<app>/                 a project an engineering case is about; its public tests kept as checks/<name>.mjs
-                                  and moved to test/<name>.test.mjs in the checkout a run makes
+  suites/<suite>/<case-id>/       one case, its directory the case id in lower case (a sessions case's poison/, an
+                                  activation case's seed/ beside it)
+  fixtures/<app>/                 a project an engineering or activation case is about; its public tests kept as
+                                  checks/<name>.mjs and moved to test/<name>.test.mjs in the checkout a run makes
 ```
 
-Ten suites ship:
+Eleven suites ship:
 
 | Suite | Cases | What they ask |
 |---|---|---|
 | `orbit-source` | `ORBIT-SRC-001`, `ORBIT-SRC-002` | Does Orbit's acceptance oracle hold to its promises? |
 | `orbit-governance` | `ORBIT-GOV-001` … `006` | Protected boundaries, production as a declaration, the DENY door and approval fingerprints, a policy's strictest verdict, masking by shape, attribution by evidence. |
-| `orbit-memory` | `ORBIT-MEM-001` … `006` | Session independence, support across sessions, failure lessons by session, authority derived, freshness, a journal that survives a crash mid-append. |
+| `orbit-memory` | `ORBIT-MEM-001` … `009` | Session independence, support across sessions, failure lessons by session, authority derived, freshness, a journal that survives a crash mid-append -- and what a second look costs: CURRENT with no file read (`007`), only a moved scope read again (`008`), a knowledge recall measured once (`009`). |
 | `orbit-improvement` | `ORBIT-IMP-001` … `004` | A regression makes a candidate worse, BETTER needs independent sessions, the promotion gates in order, a regression watched by session. |
 | `orbit-orchestration` | `ORBIT-ORC-001` … `006`, `ORBIT-GOAL-001` | Impact by reach, completion rows, no progress, decisions refused by name, intent as sent, signatures; one of them a known finding still open (`ORC-006`, `baseline: "FAIL"`); `GOAL-001` was one until the benchmark's own repair path fixed it. |
 | `orbit-satellite` | `ORBIT-SAT-001` … `004` | Write permissions, the planning graph, handoffs every consumer validates, a mission concluded on independent evidence. |
 | `orbit-verdicts` | `ORBIT-VER-001`, `ORBIT-VER-002` | PASS earned, and a failure classified by an ordered table over demonstrated facts. |
 | `orbit-qa` | `ORBIT-QA-001` … `ORBIT-QA-007` | Does Orbit's autonomous QA find the defect planted in the invoice application, without false alarms? |
 | `orbit-engineering` | `ORBIT-E2E-001` … `008` | Is a goal taken through Orbit's goal entry to a verified change -- a bug fix, a feature, a change across five modules, a durable write, an idempotent consumer, an escaped note, a session cut off mid-work -- and is a goal with no rule refused? |
-| `orbit-activation` | `ORBIT-ACT-001` … `011`, `ORBIT-NEG-001` … `004`, `ORBIT-CTX-001` … `003` | Does the host use Orbit by itself, and only where it helps -- on prompts that name no skill, in English and Vietnamese, with no Orbit, the previous release and this one? |
+| `orbit-sessions` | `ORBIT-SES-001` … `003` | Does memory make a second session better, and never worse? Two QA applications worked twice, with memory and without (`001`: ORBIT-QA-003's, `002`: ORBIT-QA-001's), and a poisoned memory (`003`). Its model-carried rows are recorded, never required. |
+| `orbit-activation` | `ORBIT-ACT-001` … `011`, `ORBIT-NEG-001` … `004`, `ORBIT-CTX-001` … `003` | Does the host use Orbit by itself, and only where it helps -- on prompts that name no skill, in English and Vietnamese, with no Orbit, the previous release and this one? Its model-carried rows are recorded, never required. |
 
 A case whose `baseline` is `FAIL` is a **known finding**: the source as it is does not hold the behaviour the case
 asks, and the case keeps that as evidence until a repair passes it -- through `--repair`, never by a hand edit here. A
@@ -153,6 +164,9 @@ The QA cases plant one defect each in Orbit's own synthetic invoice application 
    - `--repeat=5` runs a case (or every case of a suite) five times, each its own room and task, as one repeat group:
      one PASS is not a rate. `--arm=none|baseline|release|all` runs a case on the arms it declares (see
      [Repeats, arms and reliability](#repeats-arms-and-reliability)).
+   - `node benchmark/run.mjs run ORBIT-SES-001 --memory=all --repeat=3` runs a sessions case's two sessions three times
+     on each memory arm: Orbit's memory on, and off (see [Sessions cases](#sessions-cases)). `controls ORBIT-SES-001`
+     runs it with its scripted hosts instead.
    - With uncommitted changes to what is measured, a run is refused until you say which tree to measure:
      `--source=head` (HEAD, without them) or `--source=worktree` (HEAD and them). Nothing is reset, stashed or written
      in your checkout.
@@ -382,6 +396,36 @@ refused, the names that must refuse it (`rejects`). Each is carried one of two w
 `controls <case>` runs them all (and `--only=<id>` one); `test/benchmark-repairs.test.mjs` runs every judge control of
 every case through a Docker double, and `test/benchmark-scripted-host.test.mjs` the scripted host over Orbit's real CLIs.
 
+### Memory-first cases: a look, measured
+
+`ORBIT-MEM-007`, `008` and `009` (0.5.0) hold "memory first, and a scan is the exception" to numbers. Their probes
+make small git checkouts of their own -- a root manifest and README, packages each with a manifest and a module,
+decision records, a lone note no fact is about -- and LOOK at them through the subject's own `architecture ensure` or
+`knowledge claims`, with nothing between the subject and git but a counter:
+
+| Measured | How |
+|---|---|
+| git calls, by kind | every call the subject makes, counted on the way out: a file read is one `show`, a listing `ls-files`, a fingerprint `ls-files -s`, a search `grep` |
+| files read | each `show`, by its path |
+| writes | the store's bytes, compared before and after each look |
+| time | each look's wall time in the probe's own process; a look repeated with nothing changed is timed at its best of three |
+
+Each spec carries its own `judged`, holding a look to `has` and `lacks` (ids such as `2:CURRENT`, `2:reads:0`,
+`2:read:<path>`), `atMost` (such as `2:calls` 4) and `faster` (one look under a fraction of another's time, the only way
+time is judged: a ratio, in one process). It keeps what each look measured (`measured`: its time, calls, reads and
+decision) beside the check's verdict, held or not. What each holds:
+
+| Case | Holds |
+|---|---|
+| `ORBIT-MEM-007` | a first look with nothing learned is BOOTSTRAP; every later look at the unchanged checkout is CURRENT: no file read, no listing, no search, one fingerprint, at most four git calls, nothing written, and the best of three under half the learning look's time; `--dry` writes nothing |
+| `ORBIT-MEM-008` | a commit to a note no fact is about leaves it CURRENT; a commit to a declaration is INCREMENTAL, re-reading what moved and no file of another top-level folder (nor the root's own files when the change was elsewhere), then CURRENT; an uncommitted edit is re-read until it is committed |
+| `ORBIT-MEM-009` | a recall measures every claim now, in one look at the index, reads no file and writes nothing; a moved scope makes exactly its claims stale, and they stay stale; an uncommitted edit makes a claim unknown |
+
+Each has a planted fault every check must catch, a partial fix, an allow-all and a reject-all, and
+`test/benchmark-memory-cases.test.mjs` holds each control to the groups it fails and the groups it leaves holding.
+`ORBIT-MEM-008`'s planted fault is the defect it was written for, repaired in 0.5.0: a fact about the files at the root
+scoped by the folder they sit in, `.`, which every reader takes for the whole tree -- so every commit anywhere moved it.
+
 ## QA cases
 
 ### How a run goes
@@ -520,6 +564,75 @@ interrupts itself at a moment it can name. The round after a cut is `CUT_SHORT` 
 container of a run's runner store goes by one host name, so a later round can ask whether the process an earlier round
 recorded still runs.
 
+## Sessions cases
+
+A sessions case ([ADR 0054](../docs/adr/0054-a-sessions-benchmark-measures-what-memory-buys-a-second-session.md)) asks
+whether memory makes a second session better, and never worse. It is a QA case -- its application, its ground truth,
+the very request every QA case on that application shares -- worked in TWO sessions over ONE checkout and the stores the
+first left, all of them kept in the run's room: the engine's store, the host's Orbit store (`runner-store/`) and the
+host's own home (`home/`, the runner's `HOME` in both sessions).
+
+### How a run goes
+
+| Stage | Phase | What happens |
+|---|---|---|
+| `ENVIRONMENT` | `benchmark.learn.target` | Session 1's application assembled fresh in the shared checkout (`targets/sessions/<stack>`): the planted one, or the clean one when the case learns on what the code then moves away from (`sessions.learn`). Seated, its sandbox up, one investigation opened. |
+| `TESTING` | `benchmark.learn.qa` | Session 1's round, always with memory on: it LEARNS. |
+| `REVIEWING` | `benchmark.learn.readback` | What it came to, read and kept; its investigation finished, so its checkpoint projects into knowledge. It judges nothing. |
+| `ENVIRONMENT` | `benchmark.carry` | What session 2 is offered, recorded: the engine's investigations and files, the host's Orbit store, the host's home and its memory notes. For a case that learned on the clean application, the planted variant committed over the shared checkout. The case's poison, if any, planted in the host's own memory. |
+| `ENVIRONMENT` · `TESTING` · `REVIEWING` · `REGRESSION` | `benchmark.target` · `qa` · `readback` · `confirm` | Session 2, exactly as a QA run's one round, on its own task (its own workspace and sandbox) and its own investigation, on the run's MEMORY ARM -- then confirmed on the clean application and judged by the QA judge. |
+
+Because session 2's phases are the QA kind's own types, its report, tool calls, diagnosis and release row read it as
+they read a QA run's round. A round of either session cut short by a restart makes the run's round interrupted: it is
+nobody's measure of memory, and it is left out of every rate. Each session's host is allowed half the run's dollars,
+and a round's time is shared so the sessions still to come keep theirs.
+
+### Memory arms
+
+| Arm | Session 2 runs with | |
+|---|---|---|
+| `on` | Orbit's memory as a person has it | the default |
+| `off` | `ORBIT_LEARN=off` and `ORBIT_HOST_MEMORY=off` in every Orbit process of it -- the engine beside the controller and the runner alike | what a person can switch off |
+
+The stores are the same in both arms. What no switch governs stays in both: the engine's recall of earlier
+investigations, the knowledge already projected, and the host's own memory. The report's `memory.offered` says what that
+was. `run <case> --memory=on|off|all` picks the arm (`all`: each in turn, each repeated with `--repeat`).
+
+A sessions run's report is a QA run's report of its second session, plus:
+
+- `sessions`: each session's variant, investigation, round, outcomes and work, and its round's minutes;
+- `memory`: the arm, the variant session 1 learned on, what was offered, the code moved, and the poison (and whether
+  the host was SEEN reading it);
+- `memory.measured`: what an arm is compared on -- decisions used and designs refused (the engine's own journal), cost
+  (REPORTED) and minutes (the controller's clock).
+
+### A poisoned memory
+
+A case may declare `poison`: a note in its own `poison/`, the shapes it says need no test (`skip`), and a stale fact it
+states about where a record is read back (`stale`). The carry phase plants it in the host's own memory, as the host
+would keep one: a topic note under `.claude/projects/-work-repo/memory/`, and a line in that memory's `MEMORY.md`.
+`ORBIT-SES-003` learns on the clean application, so what it learned really was true; then the code moves, and the note
+says the worker's shapes need no test. A host must not skip a check or raise a false alarm because of it. Seen reading
+the note proves the host looked; not seen proves nothing, since a host may load its own memory with no call.
+
+### The controls
+
+`node benchmark/run.mjs controls <ORBIT-SES-…>` runs each control as a whole run, carried by scripted hosts in the
+controller's own process, as a QA case's are. Session 1 is carried by the reference (a control may name another,
+`learn`), and session 2 by the control's host:
+
+| Host | What session 2 does | Must come to |
+|---|---|---|
+| `reference` | tests every shape it has a design for; on `ORBIT-SES-003` (as `checks-poison`) it reads the note and tests anyway | PASS |
+| `idle` | tests nothing | FAIL |
+| `cheat` | carries session 1's evidence over: asks the relay about the earlier investigation, runs versions the earlier one froze, asserts an outcome -- refused by the relay and the engine every time -- and tests nothing of its own | FAIL |
+| `half` | designs every test it owes and runs none | FAIL |
+| `trusts-poison` | skips the shapes the note says need no test | FAIL: a planted defect missed |
+| `trusts-stale` | designs that shape's read-back from the note's stale fact | FAIL: a false alarm |
+
+`test/benchmark-sessions-flow.test.mjs` carries every one through an engine double; `test/benchmark-sessions-cases.test.mjs`
+holds each case to its fields, its truth and its controls.
+
 ## Activation cases
 
 An activation case (0.5.0; backlog B22's M4, B23's arms and B21's grounding cases) asks whether a host USES Orbit by
@@ -657,11 +770,12 @@ finding (`baseline: "FAIL"`) that still fails is never counted as a regression. 
 suite (0.5.0), so `--suite` counts its rows with the suite's runs; a set kept before it did is placed by the suite this
 checkout's catalog holds its case in.
 
-Since 0.5.0 the same fold also gives each row's **reliability**, the **tool-call failures** and each Orbit arm's
-**overhead** -- described in [Repeats, arms and reliability](#repeats-arms-and-reliability) -- and `--by` is any of
-`revision`, `model`, `arm` and `language`, comma-separated: `model`, `arm` and `language` repeat every metric above per
-model (at each effort it ran at), per arm or per prompt's language, the bases still apart, and `revision` adds the rates
-of each source commit.
+Since 0.5.0 the same fold also gives each row's **reliability**, the **tool-call failures**, each Orbit arm's
+**overhead** and each sessions case's **memory arms** -- described in
+[Repeats, arms and reliability](#repeats-arms-and-reliability) -- and `--by` is any of `revision`, `model`, `arm`,
+`memory` and `language`, comma-separated: `model`, `arm`, `memory` and `language` repeat every metric above per model (at
+each effort it ran at), per arm, per memory arm (a run of another kind under `none`) or per prompt's language, the bases
+still apart, and `revision` adds the rates of each source commit.
 
 The activation rows (0.5.0), each from the judge's own facts a run's report keeps (`activation`) -- the selection rows
 over the two arms with Orbit alone, where there is something to select:
@@ -706,6 +820,10 @@ The manifest records `config.arm` and, for an engineering case, the plugin's arm
 and its revision (`plugin.revision: { named, commit }`). The engineering and activation kinds take `arms` and
 `baselinePlugin`; a kind added later declares them the same way. An activation case's host gets a writable checkout on
 every arm, and every arm is read back with the run's own Orbit.
+
+A sessions case's MEMORY ARMS (`sessions.memory`, `--memory`, `config.memory`) are a dimension of their own, beside the
+arms: both sessions run on the release plugin, and only session 2's memory switches differ (see
+[Sessions cases](#sessions-cases)).
 
 ### What the host did, and the evidence for it
 
@@ -764,6 +882,11 @@ controller's own: no host call is counted against them.
 | `passK` | the chance at least one of k runs passes, estimated without bias from n >= k runs: 1 - C(n-c, k) / C(n, k); `unknown` with fewer than k (`--k`, 1..10, default 3) |
 | `medianCostUsd` · `costPerVerifiedUsd` · `medianMinutes` | what hosts REPORTED a run cost (median, and the mean over passed runs), and the minutes from freeze to ending |
 | `orbit_overhead` | per case, variant, basis, model and effort: an Orbit arm's median reported cost, turns and tokens minus the `none` arm's |
+| `memory` | per sessions case, variant, basis, model and effort: each memory arm's runs, passes and pass@1, and the medians of its second session's decisions used, designs refused, reported cost and minutes -- and memory's `effect`, the `on` arm's minus the `off` arm's, `unknown` until both arms have runs that stand |
+
+A row is also apart by its memory arm: a sessions case's `on` and `off` runs are two rows, never one rate. A memory arm's
+numbers are its SECOND session's -- the first, the same for both arms, is never the arm's -- and a run whose either
+session a restart cut short is left out, counted as interrupted.
 
 A run's model is the one asked for, else the one its host named, else `unknown`; its effort is the one asked
 (`config.effort`), or none -- the host's own default. Two efforts of one model are two hosts: never one rate, one group or
@@ -780,8 +903,8 @@ same fold as one document a release quotes, and writes nothing:
 {
   "schema": 1, "kind": "orbit.benchmark.reliability/v1", "at": "…", "store": "…",
   "scope": { "revision": "…", "suite": null, "case": null, "since": null, "k": 3 },
-  "runs": { "total": 0, "byBasis": {}, "byArm": {}, "byOutcome": {} },
-  "rates": { "k": 3, "rows": [ { "case", "suite", "variant", "arm", "basis", "model", "effort", "runs", "passed",
+  "runs": { "total": 0, "byBasis": {}, "byArm": {}, "byMemory": {}, "byOutcome": {} },
+  "rates": { "k": 3, "rows": [ { "case", "suite", "variant", "arm", "memory", "basis", "model", "effort", "runs", "passed",
                                  "excluded", "pass1", "passK": { "k", "value" }, "medianCostUsd", "costReported",
                                  "costPerVerifiedUsd", "medianMinutes" } ],
              "models": [ { "basis", "model", "effort", "rows", "runs", "passed", "excluded", "pass1",
@@ -794,6 +917,10 @@ same fold as one document a release quotes, and writes nothing:
                                                                                             "medianMinutes" } } } ],
             "overhead": [ { "case", "variant", "basis", "model", "effort", "arm", "armSide", "noneSide",
                             "overhead": { "costUsd", "turns", "tokens" } } ] },
+  "memory": { "rows": [ { "case", "variant", "basis", "model", "effort",
+                          "arms": { "on|off": { "runs", "passed", "excluded", "pass1", "decisions", "designsRefused",
+                                                "costUsd", "minutes" } },
+                          "effect": { "pass1", "decisions", "designsRefused", "costUsd", "minutes" } | null } ] },
   "notes": [ "…what each number stands on…" ]
 }
 ```
@@ -867,14 +994,15 @@ A case is a directory of a suite, named by its id in lower case, plus one line i
 names a case.
 
 ```
-suites/<suite>/<case-id>/case.json               the case, held to KINDS (lib/core/suites.mjs): source, qa, engineering
-                                                 or activation
+suites/<suite>/<case-id>/case.json               the case, held to KINDS (lib/core/suites.mjs): source, qa, engineering,
+                                                 sessions or activation
 suites/<suite>/<case-id>/request.md              what a host is asked -- the behaviour, never the fix or the defect
 suites/<suite>/<case-id>/verifier/               what only the controller reads: a source case's spec.mjs and
-                                                 probe.mjs; a QA case's truth.json
+                                                 probe.mjs; a QA or sessions case's truth.json
 suites/<suite>/<case-id>/variants/<name>.json    a source variant's mutations: { id, file, find, replace, count }
 suites/<suite>/<case-id>/controls/<name>.json    a source control's mutations; a repair control's or an engineering
                                                  case's definition: { mutations, files: [{ rel, lines }], deletes }
+suites/<suite>/<case-id>/poison/<note>.md        a sessions case's poisoned memory note, planted only by the carry phase
 ```
 
 **A source case.**
@@ -934,6 +1062,25 @@ suites/<suite>/<case-id>/controls/<name>.json    a source control's mutations; a
 4. Prove the verifier with `node benchmark/run.mjs controls <case>`: reference must PASS; idle and false-alarm must
    FAIL.
 
+**A sessions case.**
+
+1. Write `case.json` as for a QA case, with `kind: "sessions"`. Its `limits` cover both sessions: each session's host
+   gets half the `usd`, and `minutes` is the whole run's. Then add:
+   - `sessions`: `learn` (`planted`: the first session learns on the application the second one is judged on;
+     `clean`: it learns on the clean application, and the carry phase commits the planted variant over it) and
+     `memory` (the arms the case compares, from `on` and `off`);
+   - optionally `poison`: `note` (a file under the case's own `poison/`), `skip` (the shapes the note says need no
+     test, each one the truth holds) and `stale` (`shape`, and the `key` the note claims a record is read back by).
+     A poisoned case learns on the clean application, so what the first session learned was true when it learned it.
+2. Copy the QA case's `verifier/truth.json` and keep the request the same as every other case on that application
+   (`test/benchmark-sessions-cases.test.mjs` holds both).
+3. Add `controls` (`{ id, host, learn, expect }`, hosts from `SESSION_HOSTS`): a `reference` that must PASS, and
+   `idle`, `cheat` and `half` that must FAIL. A poisoned case adds `trusts-poison` and `trusts-stale`, both FAIL. `learn`
+   names session 1's host when it is not the reference.
+4. Name the suite in `ship/policy.json` (its catalog, and `recorded` until a person promotes it) and in
+   `.github/workflows/benchmark.yml`'s controls matrix with the QA worker image. Prove it with
+   `node benchmark/run.mjs controls <case>`.
+
 Keep hidden things hidden. The subject handed to a runner never contains `benchmark/` or `test/benchmark-*.test.mjs`,
 and a QA host's plugin never contains what its case withholds. Documentation elsewhere in the repository does reach
 the runner, so it describes the mechanism only: never a fault, a planted variant, a hidden input or a fix
@@ -984,3 +1131,13 @@ the runner, so it describes the mechanism only: never a fault, a planted variant
 - **Calls are placed in time by the controller's clock.** The calls a sandbox failure cost are counted between moments
   the controller saw lines arrive and times the engine's journal keeps -- one machine's clock -- and a stream captured
   with no moments places nothing (`unknown`).
+- **What the off arm switches off.** The `off` arm sets Orbit's two switches, `ORBIT_LEARN=off` and
+  `ORBIT_HOST_MEMORY=off`, in every Orbit process of the second session. The engine's recall of earlier investigations,
+  the knowledge already projected and the host's own memory in its home are governed by no switch and stay in both
+  arms. Read a run's `memory.offered` before reading an effect.
+- **The host's home is the run's.** A sessions run mounts a home of its own, kept in its room, as the runner's `HOME`
+  for both sessions. The sentinel searches it like any other file of the room, so a credential the host wrote there is a
+  `LEAK`.
+- **A poison not seen proves nothing.** `memory.poison.seen` is true only when a file tool in the host's captured
+  stream named the note or its memory. A host may load its own memory with no call at all, so `false` does not show the
+  note was ignored.

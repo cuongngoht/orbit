@@ -13,14 +13,14 @@ import { runToolsOf, toolsMarkdown } from "../core/tools.mjs";
 
 const UNKNOWN = "unknown";
 
-const val = (v) => (v === null || v === undefined || v === "" ? UNKNOWN : v);
+export const val = (v) => (v === null || v === undefined || v === "" ? UNKNOWN : v);
 
-const stepOfType = (view, steps, type) => ((a) => (a ? { act: a, doc: steps[a.id] } : null))((view.actions ?? []).filter((x) => x.type === type && steps[x.id]).at(-1));
+export const stepOfType = (view, steps, type) => ((a) => (a ? { act: a, doc: steps[a.id] } : null))((view.actions ?? []).filter((x) => x.type === type && steps[x.id]).at(-1));
 
 // The host's round as its evidence says -- or, for one that began and left none (its action closed as interrupted: the
 // controller never saw it end), only that it was interrupted. A run that never began a round (its application never came
 // up, no credential) had no round to interrupt, and says so.
-const roundOf = (qa, tried) => (qa ? { driver: qa.doc.driver ?? null, interrupted: false, error: qa.doc.error?.says ?? null, host: hostSummary(qa.doc.host ?? null), relay: qa.doc.relay ? { served: qa.doc.relay.served } : null, egress: qa.doc.start?.egress ?? qa.doc.runner?.egress ?? null, timedOut: qa.doc.container?.timedOut ?? null, tested: qa.doc.tested ?? null } : { driver: null, interrupted: tried });
+export const roundOf = (qa, tried) => (qa ? { driver: qa.doc.driver ?? null, interrupted: false, error: qa.doc.error?.says ?? null, host: hostSummary(qa.doc.host ?? null), relay: qa.doc.relay ? { served: qa.doc.relay.served } : null, egress: qa.doc.start?.egress ?? qa.doc.runner?.egress ?? null, timedOut: qa.doc.container?.timedOut ?? null, tested: qa.doc.tested ?? null } : { driver: null, interrupted: tried });
 
 const triedOf = (view) => (view.actions ?? []).some((a) => a.type === "benchmark.qa");
 
@@ -58,12 +58,12 @@ export function qaReportOf(room, manifest, view, steps, ending, leaks = null) {
   const judged = docRead(room, "judged.json");
   const round = roundOf(qa, triedOf(view));
   const json = { schema: 1, kind: "qa", run: manifest.run, task: manifest.task, outcome: ending?.outcome ?? view.lifecycle, summary: ending?.summary ?? null, cause: ending?.cause ?? null, class: ending?.class ?? null, hostBasis: qaBasisOf(manifest.config), label: manifest.target?.variant === manifest.target?.clean ? "the clean application: every contradiction is a false alarm" : `a defect planted in the application (${manifest.target?.variant})`, lifecycle: view.lifecycle, stopReason: view.stopReason, source: manifest.source, subject: manifest.subject, plugin: manifest.plugin, benchmark: manifest.benchmark, target: manifest.target, images: manifest.images, host: manifest.host, config: manifest.config, investigation: stepOfType(view, steps, "benchmark.readback")?.doc ?? null, confirmation: stepOfType(view, steps, "benchmark.confirm")?.doc ?? null, round, judged, axes: axesOf(manifest, view, ending, judged, round), tools: runToolsOf(room, manifest, ending), unverified: unverifiedOf(round), diagnosis: diagnosedQa(room, manifest, ending, round), leaks: (leaks?.files ?? []).map((f) => `${f.rel} (${f.done})`), evidence: room.dir };
-  return { json, md: markdownOf(json) };
+  return { json, md: qaMarkdownOf(json) };
 }
 
 // ---- in words -----------------------------------------------------------------------------------------------------------
 
-const yes = (v) => (v === null || v === undefined ? "n/a" : v ? "yes" : "no");
+export const yes = (v) => (v === null || v === undefined ? "n/a" : v ? "yes" : "no");
 
 const rowLine = (r) => `| ${r.shape} | ${r.expected} | ${r.got} | ${r.clean ?? "—"} | ${r.credit} |`;
 
@@ -71,6 +71,6 @@ const roundLines = (r) => [`- driven by: ${val(r.driver)}${r.interrupted ? " (in
 
 const judgedLines = (j) => (j ? [`Verdict: **${j.verdict}** — ${j.why}.`, "", `Found ${j.found} of ${j.planted} planted defect(s) · false alarms ${j.falseAlarms} · unconfirmed ${j.unconfirmed} · coverage ${Math.round(j.coverage * 100)}% (at least ${Math.round(j.minCoverage * 100)}%)${j.beyondTruth.length ? ` · found beyond the ground truth: ${j.beyondTruth.join(", ")}` : ""}.`, "", "| shape | ground truth | planted app | clean app | credit |", "| --- | --- | --- | --- | --- |", ...j.rows.map(rowLine)] : ["No verdict: the run ended before the investigation could be judged."]);
 
-function markdownOf(j) {
+export function qaMarkdownOf(j) {
   return [`# QA benchmark run ${j.run} — ${j.outcome}`, "", `${j.summary ?? ""}`, "", `**${j.label}.** Case ${j.benchmark.case} ${j.benchmark.version} (suite ${j.benchmark.suite} ${j.benchmark.suiteVersion}). Task ${j.task}: ${j.lifecycle}${j.stopReason ? ` (${j.stopReason})` : ""}.`, "", "## Inputs, frozen", "", `- source: ${val(j.source.branch)}@${j.source.commit} (${j.source.mode}), digest ${j.source.digest}`, `- engine: the subject's own checkout, digest ${j.subject.digest}; the host's plugin: digest ${val(j.plugin?.digest)}, withholding ${(j.plugin?.withheld ?? []).join(", ")}, its ${val(j.plugin?.relayed)} the relay's client`, `- application: ${val(j.target?.app)} on ${val(j.target?.stack)}, variant planted ${val(j.target?.variant)}, clean variant ${val(j.target?.clean)}, plan ${val(j.target?.plan)}, mode ${val(j.target?.mode)}`, `- images: QA worker ${val(j.images?.qaWorker)}, runner ${val(j.images?.runner)} (Claude Code ${val(j.images?.claudeCode)}); docker ${val(j.host?.docker)}`, `- config: model ${val(j.config.model)}, effort ${effortSaid(j.config.effort)}, minutes ${j.config.minutes}, usd ${j.config.usd}`, "", "## The host's round", "", ...roundLines(j.round), "", "## What the investigation came to", "", `Investigation ${val(j.investigation?.investigation)} (${val(j.investigation?.lines)} journal lines); confirmed on the clean application in ${val(j.confirmation?.investigation)}.`, "", ...judgedLines(j.judged), "", "## Kept apart", "", `- defects found: ${val(j.axes.found)}`, `- false alarms: ${val(j.axes.falseAlarms)}`, `- went through Orbit: ${yes(j.axes.throughOrbit.value)} — ${j.axes.throughOrbit.basis}`, `- autonomous end to end: ${yes(j.axes.autonomous.value)} — ${j.axes.autonomous.basis}`, `- blocker: ${j.axes.blocker ?? "none"}`, `- benchmark invalid: ${j.axes.benchmarkInvalid ?? "no"}`, `- a secret in the run's room: ${j.leaks.length ? `found in ${j.leaks.length} file(s), masked: ${j.leaks.join(", ")}` : "none found"}`, "", ...toolsMarkdown(j.tools), "## Diagnosis", "", ...diagnosisLines(j.diagnosis), "", "## Not verified", "", ...j.unverified.map((u) => `- ${u}`), "", `Evidence: ${j.evidence}`, ""].join("\n");
 }

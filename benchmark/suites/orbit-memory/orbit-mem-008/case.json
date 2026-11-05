@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "kind": "source",
+  "id": "ORBIT-MEM-008",
+  "version": "1.0.0",
+  "baseline": "PASS",
+  "title": "After a scoped change, only that scope is read again",
+  "goal": "architecture ensure keys a snapshot to each fact's own scope and never to HEAD: a commit that only touches a note no fact is about leaves the next look CURRENT; a change to a declaration makes it INCREMENTAL, re-reading what moved and no file another folder holds -- nor the root's own files when the change was elsewhere -- listing the tree once and recording where the scope stands, so the next look is CURRENT; and an uncommitted edit is unknown, re-read on every look until it is committed",
+  "measures": { "kind": "capability", "capability": "memory.architecture-scoped", "repairable": ["ORBIT_SOURCE_DEFECT"] },
+  "subject": {
+    "paths": ["src/architecture/views/ensure.mjs", "src/architecture/store.mjs", "src/frontend/composite.mjs", "src/store/io.mjs"],
+    "exports": { "src/architecture/views/ensure.mjs": ["ensure"], "src/architecture/store.mjs": ["createArchitecture"], "src/frontend/composite.mjs": ["createSourceTree"], "src/store/io.mjs": ["realIo"] }
+  },
+  "prepare": { "requires": ["node", "git"] },
+  "request": "request.md",
+  "reproduce": "every failing check names the checkout and the plan of looks and changes it played, what the contract expects of each look and what came back; the probe imports the subject's own ensure view, architecture store, source tree and file io, names every file the subject reads, and keeps each look's time, calls and reads as the check's evidence",
+  "acceptance": { "owner": "verifier", "spec": "verifier/spec.mjs", "probe": "verifier/probe.mjs", "samples": 24 },
+  "scope": { "allow": ["src/architecture/*.mjs", "src/architecture/views/*.mjs", "src/architecture/analyzers/*.mjs", "src/freshness.mjs", "src/frontend/*.mjs", "test/*.test.mjs"], "deny": [] },
+  "checks": {
+    "gates": [
+      { "id": "architecture-suite", "argv": ["node", "--test", "--test-reporter=tap", "test/architecture-ensure.test.mjs", "test/architecture-store.test.mjs", "test/architecture-analyzers.test.mjs", "test/architecture-scope.test.mjs"] },
+      { "id": "five-lines", "argv": ["node", "cli/check-five-lines.mjs", "src/architecture", "src/freshness.mjs", "src/frontend", "--strict"], "stdout": "^0 finding\\(s\\)" }
+    ],
+    "agentTests": { "required": true, "pattern": "^test/[^/]+\\.test\\.mjs$" }
+  },
+  "limits": {
+    "rounds": 2,
+    "minutes": 150,
+    "usd": 20,
+    "runner": { "cpus": 2, "memoryMb": 6144, "pids": 2048, "minutes": 120, "outputMb": 16 },
+    "verifier": { "cpus": 2, "memoryMb": 2048, "pids": 512, "seconds": 600 },
+    "engineering": { "attempts": 6, "actions": 160 }
+  },
+  "artifacts": ["manifest", "baseline", "candidate-patch", "verification", "host-result", "report"],
+  "cleanup": { "containers": "run-label", "networks": "run-label", "scratch": "after-run" },
+  "variants": {
+    "real": {},
+    "controlled-fault": { "mutations": "variants/controlled-fault.json" }
+  },
+  "controls": [
+    { "id": "clean", "variant": "real", "expect": "PASS" },
+    { "id": "planted", "variant": "controlled-fault", "expect": "FAIL" },
+    { "id": "partial-fix", "variant": "controlled-fault", "file": "controls/partial-fix.json", "expect": "FAIL" },
+    { "id": "allow-all", "variant": "real", "file": "controls/allow-all.json", "expect": "FAIL" },
+    { "id": "reject-all", "variant": "real", "file": "controls/reject-all.json", "expect": "FAIL" }
+  ]
+}

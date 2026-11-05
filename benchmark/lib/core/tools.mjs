@@ -252,8 +252,12 @@ function controllerSandbox(room, ending) {
 
 const NO_SANDBOX = "no host round ran, so no sandbox of a task was asked for";
 
+// The kinds whose host reaches the engine only through the relay, and whose sandboxes the controller sets up: a QA run's
+// one session, and a sessions run's two (0.5.0, ADR 0054).
+const RELAYED = ["qa", "sessions"];
+
 function sandboxOf(room, manifest, streams, ending) {
-  if (manifest.benchmark?.kind === "qa") return { sandbox: controllerSandbox(room, ending), why: null };
+  if (RELAYED.includes(manifest.benchmark?.kind)) return { sandbox: controllerSandbox(room, ending), why: null };
   const ins = latestInspection(room);
   return ins ? { sandbox: hostSandbox(ins, streams), why: null } : { sandbox: null, why: roundsIn(room).length ? "no round's inspection read the engineering task back" : NO_SANDBOX };
 }
@@ -267,7 +271,7 @@ const relaySaid = (room) => roundsIn(room).flatMap((k) => relayLines(room, k));
 function hostFacts(room, manifest) {
   const streams = roundsIn(room).map((k) => streamIn(room, k)).filter(Boolean);
   const lines = relaySaid(room);
-  return { streams, lines, relay: lines.length ? relayOf(lines) : null, relayWhy: lines.length ? null : manifest.benchmark?.kind === "qa" ? "no relay request was logged (a scripted host asks in the controller's own process)" : "only a QA round's host reaches the engine through the relay" };
+  return { streams, lines, relay: lines.length ? relayOf(lines) : null, relayWhy: lines.length ? null : RELAYED.includes(manifest.benchmark?.kind) ? "no relay request was logged (a scripted host asks in the controller's own process)" : "only a QA round's host reaches the engine through the relay" };
 }
 
 export function runToolsOf(room, manifest, ending = null) {

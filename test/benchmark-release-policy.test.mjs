@@ -21,31 +21,39 @@ const listed = () => ({ suites: readdirSync(SUITES).map((s) => JSON.parse(readFi
 
 test("the policy names every case of every suite, and nothing else -- the catalog cannot shrink unseen", () => {
   assert.deepEqual(catalogDrift(POLICY, listed()), []);
-  assert.equal(Object.keys(POLICY.catalog).length, 10, "ten suites");
-  assert.equal(Object.values(POLICY.catalog).flat().length, 64, "every case they hold");
+  assert.equal(Object.keys(POLICY.catalog).length, 11, "eleven suites");
+  assert.equal(Object.values(POLICY.catalog).flat().length, 70, "every case they hold");
   const less = { suites: listed().suites.map((s) => ({ ...s, cases: s.cases.filter((c) => c.id !== "ORBIT-SRC-002") })) };
   assert.deepEqual(catalogDrift(POLICY, less), ["ORBIT-SRC-002 is in the release policy and no suite holds it"]);
   const more = { suites: [...listed().suites, { id: "orbit-new", cases: [{ id: "ORBIT-NEW-001", kind: "source" }] }] };
   assert.deepEqual(catalogDrift(POLICY, more), ["ORBIT-NEW-001 is in suite orbit-new and the release policy does not name it"]);
 });
 
-test("a cycle runs every verification, then every control, then 34 rows the real Claude Code carries", () => {
+test("a cycle runs every verification, then every control, then 37 rows the real Claude Code carries", () => {
   const rows = rowsOf(POLICY, listed());
   const auto = rows.filter((r) => r.autonomous);
-  assert.equal(rows.length, 31 * 2 + 7 * 2 + 8 * 2 + 18 * 2 + 1);
-  assert.equal(auto.length, 34, "seven QA cases, eight engineering cases, eighteen activation cases, and ORBIT-SRC-001's planted fault repaired");
+  assert.equal(rows.length, 34 * 2 + 7 * 2 + 8 * 2 + 3 * 2 + 18 * 2 + 1);
+  assert.equal(auto.length, 37, "seven QA cases, eight engineering cases, three sessions cases, eighteen activation cases, and ORBIT-SRC-001's planted fault repaired");
   assert.deepEqual([...new Set(rows.map((r) => r.run))], ["verify", "controls", "autonomous"], "in that order, so no model is spent on a cycle that will be repaired");
   assert.deepEqual(auto.find((r) => r.case === "ORBIT-SRC-001"), { ...auto.find((r) => r.case === "ORBIT-SRC-001"), variant: "controlled-fault", repair: true, expect: ["REPAIRED_VERIFIED"] });
   assert.ok(rows.filter((r) => r.case === "ORBIT-SRC-002" || r.case === "ORBIT-ORC-006").some((r) => r.req === "real" && r.expect.includes("PASS")), "a known finding must PASS its real source: its baseline earns it nothing");
 });
 
-test("the shipped policy records the activation suite's model-carried rows and nothing else: its controls, and every other case, keep what they require (ADR 0051)", () => {
+// 0.5.0 (backlog B3, ADR 0054; B22 M4): the sessions and the activation suites' model-carried rows start recorded, as
+// every new suite's do; their controls are required from the day they land, as every suite's are.
+test("the shipped policy records the sessions and the activation suites' model-carried rows and nothing else: every other row of the 70 cases is required (ADR 0051, 0054)", () => {
   const rows = rowsOf(POLICY, listed());
-  const activation = POLICY.catalog["orbit-activation"];
-  assert.deepEqual([POLICY.recorded.suites, POLICY.recorded.cases], [["orbit-activation"], []]);
-  assert.deepEqual(rows.filter((r) => r.recorded).map((r) => r.id), activation.map((c) => `${c}:autonomous`), "a new suite's model-carried rows start recorded");
-  assert.ok(rows.filter((r) => r.suite === "orbit-activation" && r.run === "controls").every((r) => r.recorded === false), "its controls stay required");
-  assert.ok(rows.filter((r) => r.suite !== "orbit-activation").every((r) => r.recorded === false), "every row of the 46 cases before it says it is required");
+  const NEW = ["orbit-sessions", "orbit-activation"];
+  assert.deepEqual([POLICY.recorded.suites, POLICY.recorded.cases], [NEW, []]);
+  assert.deepEqual(rows.filter((r) => r.recorded).map((r) => r.id), [...POLICY.catalog["orbit-sessions"], ...POLICY.catalog["orbit-activation"]].map((c) => `${c}:autonomous`), "a new suite's model-carried rows start recorded");
+  assert.ok(rows.filter((r) => NEW.includes(r.suite) && r.run === "controls").every((r) => r.recorded === false), "their controls are required");
+  assert.ok(rows.filter((r) => !NEW.includes(r.suite)).every((r) => r.recorded === false), "every other row says it is required");
+  assert.ok(rows.filter((r) => r.suite === "orbit-sessions" && r.autonomous).every((r) => r.variant === null && r.kind === "sessions" && r.expect.join() === "PASS"), "a sessions case plants its own variant, and its second session must PASS to be recorded held");
+});
+
+test("the memory-first source cases are required like every source case: their real source must PASS and their controls hold", () => {
+  const rows = rowsOf(POLICY, listed()).filter((r) => ["ORBIT-MEM-007", "ORBIT-MEM-008", "ORBIT-MEM-009"].includes(r.case));
+  assert.deepEqual(rows.map((r) => `${r.id}:${r.recorded}`).sort(), ["ORBIT-MEM-007:controls:false", "ORBIT-MEM-007:real:false", "ORBIT-MEM-008:controls:false", "ORBIT-MEM-008:real:false", "ORBIT-MEM-009:controls:false", "ORBIT-MEM-009:real:false"]);
 });
 
 test("an activation case must hold its controls, and its model-carried row PASS on its real target, on the release arm", () => {

@@ -148,7 +148,7 @@ test("--by=model and --by=arm break every metric down, the bases still apart; --
   assert.deepEqual(m.byModel.map((g) => [g.model, g.runs]), [["claude-opus-5-5", 2], ["claude-sonnet-5", 1]]);
   assert.deepEqual(m.byArm.map((g) => [g.arm, g.runs, g.bases["coding-host"].autonomous_task_success.denominator]), [["none", 1, 1], ["release", 2, 2]]);
   assert.deepEqual(m.revisions.map((x) => [x.commit, x.rows.length]), [["111111111111", 2], ["222222222222", 1]]);
-  assert.deepEqual([m.runs.byArm, BY_NAMES], [{ release: 2, none: 1 }, ["revision", "model", "arm", "language"]]);
+  assert.deepEqual([m.runs.byArm, BY_NAMES], [{ release: 2, none: 1 }, ["revision", "model", "arm", "memory", "language"]]);
 });
 
 // ---- the activation rows (0.5.0, B22 M4: the activation benchmark §8) ---------------------------------------------------
@@ -272,4 +272,42 @@ test("the reliability command folds the kept rooms of one revision into one docu
   assert.throws(() => COMMANDS.reliability.run({ storeRoot: store }, ["--revision=HEAD~1"]), /--revision is a commit id/);
   assert.throws(() => COMMANDS.metrics.run({ storeRoot: store }, ["--by=colour"]), /--by is any of revision, model, arm/);
   assert.throws(() => COMMANDS.metrics.run({ storeRoot: store }, ["--k=0"]), /--k is 1\.\.10/);
+});
+
+// ---- memory arms (0.5.0, backlog B3, ADR 0054) -------------------------------------------------------------------------
+
+// A sessions run as its room keeps it: its memory arm, and what its SECOND session's work came to.
+const sessionsRun = (o = {}) => ((r) => ({ ...r, manifest: { ...r.manifest, benchmark: { ...r.manifest.benchmark, suite: "orbit-sessions", case: o.case ?? "ORBIT-SES-001", kind: "sessions", variant: "no-db-write" }, config: { ...r.manifest.config, repair: false, host: "coding-host", model: "claude-sonnet-5-5", effort: "medium", memory: o.memory ?? "on" } }, report: { ...r.report, hostBasis: o.basis ?? "coding-host", round: hostRound({ model: "claude-sonnet-5-5", cost: o.total ?? 2, interrupted: o.interrupted }), memory: { arm: o.memory ?? "on", measured: { decisions: o.decisions ?? 10, designsRefused: o.refused ?? 1, costUsd: o.cost ?? 1, minutes: o.minutes ?? 20 } }, judged: { found: o.outcome === "PASS" ? 1 : 0, planted: 1, falseAlarms: 0, unconfirmed: 0 } } }))(run({ outcome: o.outcome ?? "PASS", repair: false, cost: o.total ?? 2 }));
+
+test("a sessions run's facts: its memory arm and its second session's work -- and a rate never pools the two arms", () => {
+  const f = runFacts(sessionsRun({ memory: "off", decisions: 7, refused: 2, cost: 1.5, minutes: 12 }));
+  assert.deepEqual([f.kind, f.memory, f.basis, f.task, f.verified, f.session], ["sessions", "off", "coding-host", true, true, { decisions: 7, designsRefused: 2, costUsd: 1.5, minutes: 12 }]);
+  assert.equal(f.costUsd, 2, "the run's whole cost is both sessions'; the arm's is its second session's alone");
+  const rows = metricsOf([sessionsRun({ memory: "on" }), sessionsRun({ memory: "off", outcome: "FAIL" })]).reliability.rows;
+  assert.deepEqual(rows.map((r) => [r.memory, r.runs, r.pass1]), [["off", 1, 0], ["on", 1, 1]]);
+  assert.equal(runFacts(goalRun({ outcome: "PASS" })).memory, null, "a run of another kind has no memory arm");
+});
+
+test("memory's effect is the on arm's medians minus the off arm's, over the runs a rate may count -- a restart's run left out and counted", () => {
+  const runs = [sessionsRun({ memory: "on", decisions: 8, refused: 0, cost: 2, minutes: 10 }), sessionsRun({ memory: "on", decisions: 10, refused: 1, cost: 3, minutes: 14 }), sessionsRun({ memory: "on", decisions: 99, interrupted: true }), sessionsRun({ memory: "off", decisions: 14, refused: 2, cost: 4, minutes: 20 }), sessionsRun({ memory: "off", outcome: "FAIL", decisions: 16, refused: 3, cost: 5, minutes: 25 })];
+  const [row] = metricsOf(runs).memory;
+  assert.deepEqual([row.case, row.model, row.effort], ["ORBIT-SES-001", "claude-sonnet-5-5", "medium"]);
+  assert.deepEqual(row.arms.on, { runs: 2, passed: 2, excluded: { interrupted: 1 }, pass1: 1, decisions: 9, designsRefused: 0.5, costUsd: 2.5, minutes: 12 });
+  assert.deepEqual(row.arms.off, { runs: 2, passed: 1, excluded: {}, pass1: 0.5, decisions: 15, designsRefused: 2.5, costUsd: 4.5, minutes: 22.5 });
+  assert.deepEqual(row.effect, { pass1: 0.5, decisions: -6, designsRefused: -2, costUsd: -2, minutes: -10.5 });
+  assert.equal(metricsOf([sessionsRun({ memory: "on" })]).memory[0].effect, null, "with one arm alone, memory's effect is unknown");
+  assert.deepEqual(metricsOf([sessionsRun({ memory: "on", basis: "scripted" }), sessionsRun({ memory: "off" })]).memory.map((m) => [m.basis, Object.keys(m.arms).join()]), [["coding-host", "off"], ["scripted", "on"]], "a scripted host's arm is never compared with a model's");
+});
+
+test("--by=memory breaks every metric down by memory arm, the runs of other kinds under none; reliability carries the arms and says them", () => {
+  const runs = [sessionsRun({ memory: "on" }), sessionsRun({ memory: "off", outcome: "FAIL" }), goalRun({ outcome: "PASS" })];
+  const m = metricsOf(runs, { by: ["memory"] });
+  assert.deepEqual(m.byMemory.map((g) => [g.memory, g.runs, g.bases["coding-host"].autonomous_task_success.value]), [["none", 1, 1], ["off", 1, 0], ["on", 1, 1]]);
+  assert.deepEqual(m.runs.byMemory, { on: 1, off: 1 });
+  const r = reliabilityOf(runs, { scope: {}, k: 1 });
+  assert.deepEqual([r.runs.byMemory, r.memory.rows.length, r.memory.rows[0].effect.pass1], [{ on: 1, off: 1 }, 1, 1]);
+  assert.match(COMMANDS.reliability.say(r), /MEMORY\n {2}ORBIT-SES-001 no-db-write \(coding-host, claude-sonnet-5-5@medium\): on: pass@1 1 over 1/);
+  assert.match(COMMANDS.reliability.say(r), /effect of memory \(on − off\): pass@1 \+1, decisions 0/);
+  assert.match(COMMANDS.metrics.say({ ...m, store: "/s" }), /MEMORY ARMS/);
+  assert.match(COMMANDS.metrics.say({ ...m, store: "/s" }), /BY MEMORY\n {2}memory none/);
 });

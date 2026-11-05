@@ -5,8 +5,14 @@
 // a time, for this run's investigation only. The host is told nothing of what was planted, and nothing it sends is
 // evidence: what the investigation came to is read off the engine's journal afterwards.
 //
+// A session of a sessions run (0.5.0, ADR 0054) is a round like any other, with three differences its `session` says:
+// the brief names which session of how many it is, its host is allowed its share of the run's dollars, and the runner
+// is handed what the session brings -- the host's own home, kept in the run's room across the run's sessions, and the
+// memory arm's switches.
+//
 //   ranQaRound(ctx, k, s) -> { error, container, runner, host, egress, relay: { served } }
-//   s = { investigation, serve, deadlineMs }          serveOf(ctx, engine, investigation) -> serve
+//   s = { investigation, serve, deadlineMs, session? }      session = { round, of, runner: { mounts, values } }
+//   serveOf(ctx, engine, investigation) -> serve
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fresh, roundRan, runnerSpecOf, streamFileOf } from "../core/runner.mjs";
@@ -21,11 +27,16 @@ export const qaPromptOf = (investigation) => [
   "Never pass --human, never change a setting, never answer, release or cancel anything: those are a person's.",
 ].join("\n");
 
-const briefMd = (ctx, k, s) => [readFileSync(join(ctx.frozenCase, ctx.case.request), "utf8").trim(), "", "## This round", "", `- The open investigation: \`${s.investigation}\`.`, "- Its commands: `node /work/repo/cli/autonomous-qa.mjs context|step|derive|checkpoint|reconcile|show|report|finish --investigation=" + s.investigation + "` (a decision on stdin for `step`).", "- The application's accepted requirement, contracts and plan: `/work/target/`.", `- Round ${k} of ${ctx.limits.rounds}; about ${Math.round(s.deadlineMs / 60000)} minute(s) and ${ctx.limits.usd} USD.`, ""].join("\n");
+// What one round's host may spend: the run's dollars, shared evenly by its sessions.
+const usdOf = (ctx, s) => Math.round((ctx.limits.usd / (s.session?.of ?? 1)) * 100) / 100;
+
+const roundLine = (ctx, k, s) => `- ${s.session ? `Session ${s.session.round} of ${s.session.of}` : `Round ${k} of ${ctx.limits.rounds}`}; about ${Math.round(s.deadlineMs / 60000)} minute(s) and ${usdOf(ctx, s)} USD.`;
+
+const briefMd = (ctx, k, s) => [readFileSync(join(ctx.frozenCase, ctx.case.request), "utf8").trim(), "", "## This round", "", `- The open investigation: \`${s.investigation}\`.`, "- Its commands: `node /work/repo/cli/autonomous-qa.mjs context|step|derive|checkpoint|reconcile|show|report|finish --investigation=" + s.investigation + "` (a decision on stdin for `step`).", "- The application's accepted requirement, contracts and plan: `/work/target/`.", roundLine(ctx, k, s), ""].join("\n");
 
 function qaBriefWritten(ctx, k, s) {
   const dir = fresh(ctx, "rounds", String(k), "brief");
-  writeFileSync(join(dir, "brief.json"), `${JSON.stringify({ kind: "qa", round: k, investigation: s.investigation, prompt: qaPromptOf(s.investigation), model: ctx.model ?? null, effort: ctx.effort ?? null, usd: ctx.limits.usd, allowedHost: ctx.allowedHosts[0], outputBytes: ctx.case.limits.runner.outputMb * 1024 * 1024 }, null, 2)}\n`);
+  writeFileSync(join(dir, "brief.json"), `${JSON.stringify({ kind: "qa", round: k, investigation: s.investigation, prompt: qaPromptOf(s.investigation), model: ctx.model ?? null, effort: ctx.effort ?? null, usd: usdOf(ctx, s), allowedHost: ctx.allowedHosts[0], outputBytes: ctx.case.limits.runner.outputMb * 1024 * 1024 }, null, 2)}\n`);
   writeFileSync(join(dir, "brief.md"), briefMd(ctx, k, s));
   return dir;
 }
@@ -33,12 +44,12 @@ function qaBriefWritten(ctx, k, s) {
 // The mailbox of a round, made new: requests the runner writes, answers it can only read, and the controller's log.
 const mailboxOf = (ctx, k) => ({ requests: fresh(ctx, "rounds", String(k), "relay", "requests"), responses: fresh(ctx, "rounds", String(k), "relay", "responses"), log: ctx.room.at("rounds", String(k), "relay", "relay.jsonl") });
 
-const qaRunnerSpec = (ctx, net, k, d) => runnerSpecOf(ctx, net, k, [{ source: ctx.pluginDir, target: "/work/repo", readOnly: true }, { source: ctx.runnerStore, target: "/work/store", readOnly: false }, { source: d.out, target: "/work/out", readOnly: false }, { source: d.brief, target: "/run/brief", readOnly: true }, { source: ctx.room.at("public"), target: "/work/target", readOnly: true }, { source: d.relay.requests, target: "/work/relay/requests", readOnly: false }, { source: d.relay.responses, target: "/work/relay/responses", readOnly: true }], { ORBIT_QA_RELAY: "/work/relay" });
+export const qaRunnerSpec = (ctx, net, k, d, session = null) => runnerSpecOf(ctx, net, k, [{ source: ctx.pluginDir, target: "/work/repo", readOnly: true }, { source: ctx.runnerStore, target: "/work/store", readOnly: false }, { source: d.out, target: "/work/out", readOnly: false }, { source: d.brief, target: "/run/brief", readOnly: true }, { source: ctx.room.at("public"), target: "/work/target", readOnly: true }, { source: d.relay.requests, target: "/work/relay/requests", readOnly: false }, { source: d.relay.responses, target: "/work/relay/responses", readOnly: true }, ...(session?.runner?.mounts ?? [])], { ORBIT_QA_RELAY: "/work/relay", ...(session?.runner?.values ?? {}) });
 
 export async function ranQaRound(ctx, k, s) {
   const d = { brief: qaBriefWritten(ctx, k, s), out: fresh(ctx, "rounds", String(k), "out"), relay: mailboxOf(ctx, k) };
   const server = relayServer(d.relay, s.serve);
-  const ran = await roundRan(ctx, k, (net) => qaRunnerSpec(ctx, net, k, d), { deadlineMs: s.deadlineMs, out: d.out, capture: streamFileOf(ctx, k) }).finally(() => server.stop());
+  const ran = await roundRan(ctx, k, (net) => qaRunnerSpec(ctx, net, k, d, s.session ?? null), { deadlineMs: s.deadlineMs, out: d.out, capture: streamFileOf(ctx, k) }).finally(() => server.stop());
   return { ...ran, relay: { served: server.state.served, log: d.relay.log } };
 }
 

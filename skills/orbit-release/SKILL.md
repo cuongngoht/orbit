@@ -78,12 +78,14 @@ an endpoint the release policy names; behind a network that inspects TLS, give `
 | REBUILD · FULL_RETEST | a new release commit is a new cycle: everything again, model-carried rows included | BUILDING · REGRESSION |
 | SHIPPABLE | `evidence.json` and, beside it, `reliability.json` (the benchmark's reliability report of the release commit -- quoted, never a gate); and -- when repairs were integrated -- `release.patch` and `release.bundle` for you to apply | -- |
 
-**The catalog** (`ship/policy.json`) names all 46 cases of the nine suites, held to `benchmark/suites/` both ways by
+**The catalog** (`ship/policy.json`) names all 70 cases of the eleven suites, held to `benchmark/suites/` both ways by
 `test/benchmark-release-policy.test.mjs` -- which carries the harness's name because it reads the harness, so the
 harness-stripped subject `doctor --preflight` runs the suite on never holds it. A source case must hold its controls and
-PASS its real source -- a known finding (`baseline: "FAIL"`) earns nothing for it. A QA or engineering case must hold its
-controls and PASS with the coding host. ORBIT-SRC-001's planted fault must be REPAIRED_VERIFIED by the coding host on the
-final source. That is sixteen rows a cycle the real Claude Code CLI carries. A model-carried row counts only when its run
+PASS its real source -- a known finding (`baseline: "FAIL"`) earns nothing for it. A QA, engineering, sessions or
+activation case must hold its controls and PASS with the coding host (a sessions case on its first memory arm, `on`:
+ADR 0054; an activation case on its real target, on the release arm). ORBIT-SRC-001's planted fault must be
+REPAIRED_VERIFIED by the coding host on the final source. That is thirty-seven rows a cycle the real Claude Code CLI
+carries, twenty-one of them recorded (below). A model-carried row counts only when its run
 says basis `coding-host`, reported the Claude Code version the runner image pins, and named its model: a scripted host's
 PASS is conformance of the controller and is never evidence here. A run a restart interrupted -- a round the controller
 never saw end, read back by `run.mjs resume` and said so by the run's own report -- keeps no identity of its own, so it
@@ -102,12 +104,13 @@ run's own manifest says it. A model-carried row (or a repair) whose run ran at a
 again for it. With no `--effort`, every host runs at its own default and every row must say none.
 
 **Recorded rows** (ADR 0051). `policy.json` `recorded` names suites and cases whose model-carried rows a release RECORDS
-and never requires -- where a new suite's model rows start, until the promotion rule moves them (empty today: every one
-of the 46 cases keeps what it requires). A recorded row runs once, under `--retries` like any model-carried row, and is
-said held or not, with its run's room, in the result, `--status` and `evidence.json`; it never stops a release, never
-stops another row under fail fast, and never blocks SHIPPABLE -- except the credential found in its room (`LEAK`), which
-stops the release as for any row, for you to look. Its suite's controls stay required. `--evidence` holds a
-recorded row to its room like every other (`UNRECORDED` when the evidence has no record of one the policy records).
+and never requires -- where a new suite's model rows start, until the promotion rule moves them (today the suites
+`orbit-sessions`, ADR 0054, and `orbit-activation`, B22; every other case keeps what it requires). A recorded row runs once, under `--retries` like
+any model-carried row, and is said held or not, with its run's room, in the result, `--status` and `evidence.json`; it
+never stops a release, never stops another row under fail fast, and never blocks SHIPPABLE -- except the credential
+found in its room (`LEAK`), which stops the release as for any row, for you to look. Its suite's controls stay
+required. `--evidence` holds a recorded row to its room like every other (`UNRECORDED` when the evidence has no record
+of one the policy records).
 
 **Repairs.** Only a source case's real variant failing on a cause the case declares repairable is repaired. A QA or
 engineering failure stops the release with its evidence: a fix told what a QA case plants would be fitted to the test, so

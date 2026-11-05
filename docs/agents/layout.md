@@ -231,16 +231,24 @@ src/resources/ the EFFECTIVE RESOURCE REGISTRY: what Orbit can use HERE, one pro
                catalog/components.json + the project's registry) · plugin.mjs (what ships, read
                off the tree) · compose.mjs the ONE recipe the prompt router's hook, Orbit Control
                and cli/mcp.mjs build it (and the MCP invocation context) with · observe.mjs
-src/routing/   the PROMPT ROUTER, a PLANNER: intents.mjs (twelve broad intents as a table, generic
-               words only) · classify.mjs (each requirement with its level) · graph.mjs (the
+src/routing/   the PROMPT ROUTER, a PLANNER: intents.mjs (sixteen broad intents as a table, generic
+               words in English and Vietnamese, at most three terms each; the REFINEMENTS that narrow
+               them; MARKS -- opt-out · continue · halt · status -- as data) · terms.mjs (terms and grams;
+               the head that outranks a pasted tail, WEIGHTS; shape counts; the references a head names)
+               · classify.mjs (each requirement with its level; marks, shape and focus; `heard`: a
+               one-cue intent is said only on a signal-gated provider's own word) · graph.mjs (the
                REQUIREMENT GRAPH: required · conditional · optional · transitive, expanded through
                chosen providers' needs/optional, bounded, cycles recorded) · select.mjs (ONE
                provider per requirement: an ordered table of comparisons, deterministic; an
                optional need resolved only when the task names its provider) · resolve.mjs
-               (RouteDecision v2: graph, selected, approval, blocked, missing, plan) · explain.mjs
+               (`route`: RouteDecision v2 -- graph, selected, approval, blocked, missing, plan;
+               `decide`: v3, the same and strategy, activation, synthetic) · strategy.mjs (0.5.0, a
+               LEAF: how much Orbit -- NONE · DIRECT · COORDINATED · SATELLITE · RESUME -- one ordered
+               table over facts the hook binds, the last row always matching) · explain.mjs
                (DERIVED views for Control: a skill's resolved needs, a resource's potential
-               consumers) · format.mjs (≤ 2 KB, or nothing). It connects, starts, installs and
-               writes nothing, and the prompt never leaves its memory
+               consumers, the agents a skill dispatches) · format.mjs (≤ 2 KB: nothing for NONE, one
+               strategy line, then the v2 lines). It connects, starts, installs and writes nothing,
+               and the prompt never leaves its memory
 src/mcp/       MCP as a MANAGED RESOURCE, not a feature of the host. identity.mjs (owners and the
                compound key: orbit-managed · external · catalog) · managed.mjs (what a
                managed definition may say: secrets NAMED by the variable that supplies them,
@@ -459,7 +467,10 @@ src/work/track/  UNIFIED WORK TRACKING (1.8.8, README §4.18): identity, links a
                coverage.mjs (what each host lets tracking see, as data) · view.mjs (`workViewOf`, the one
                view Live, the terminal and Control serve) · read.mjs (assembles it over ports the roots hand
                in) · tail.mjs (the working-set port; `workingSetRoom`) · auto.mjs (a task that starts beside
-               a tracked work joins it; nothing is created) · say.mjs · index.mjs the COMMANDS table.
+               a tracked work joins it; nothing is created) · open.mjs (0.5.0: the OPEN work a prompt could
+               mean -- by the deterministic id of a reference it names, or this session's current work when
+               it says continue -- and the owner that governs it; read only) · say.mjs · index.mjs the
+               COMMANDS table.
                cli/track.mjs is the composition root. It imports no task, no live core and no host
 src/task/      TASK EXECUTION: what happened while something autonomous tried to do a work -- never what the
                work needs (that is src/work/), and never the doing (nothing here runs, stops or writes
@@ -887,7 +898,9 @@ hooks/hooks.json          SessionStart (direct Orbit recall, and ONE line when n
                           prompt router is on; plus an ASYNC `knowledge locate --hook` that notes
                           where the host keeps its memory for this checkout), UserPromptSubmit
                           (cli/router-hook.mjs: at most 2 KB of routing context, fail-open, prompt
-                          never stored -- its one write is the trail's `prompt.submitted`),
+                          never stored -- its one write is the trail's `prompt.submitted`; 0.5.0: it
+                          binds the strategy's facts -- automation's workflowOf, the host's row, the
+                          settings, this checkout's open work -- and a host's own envelope gets nothing),
                           PreToolUse (Skill|Agent: refused when its `skill_*`/`agent_*` switch in
                           userConfig is off; unset is on; the trail records started or refused),
                           PostToolUse, EVERY tool, async (fold in after a run; one working-set

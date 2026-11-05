@@ -137,6 +137,16 @@ every description says *when* to use it in its first sentence and stays within t
 characters, 7,500 for all 25). `test/activation-catalog.test.mjs` holds that, and that each first sentence carries a
 word that brings a prompt to the skill.
 
+Beside every prompt, Orbit's prompt router says how much Orbit the request needs, in one line, or nothing at all
+(RouteDecision v3, ADR 0050). **NONE** adds no text: a greeting, a status question ("how far along are we?", "tới đâu
+rồi"), a background task's notification the host delivers as if it were a prompt, an opt-out ("without Orbit", "không
+dùng orbit"), or anything the session already does itself. **DIRECT** names the one skill or agent that fits.
+**COORDINATED** gives the one command for a change several owners take in turn (`/orbit-help`'s workflow) or for a
+whole specification (`/orbit`'s goal). **SATELLITE** is only ever a mission you asked for, and **RESUME** picks up an
+open work of this checkout through its owner. English and Vietnamese are read alike, a log pasted after your question
+never decides what it is about, and a one-word match is said only when it is a skill's own word. The router suggests;
+Claude decides. `test/fixtures/routing/corpus.jsonl` holds it to realistic prompts in both languages.
+
 ### Entry points
 
 | Skill | Use it for |

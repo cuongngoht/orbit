@@ -83,6 +83,16 @@ test("what the strategy names is what the corpus expects for most prompts, and i
   for (const r of RESULTS) assert.ok(ACTIVATION_PATHS.includes(r.decision.activation.path), r.row.prompt.slice(0, 60));
 });
 
+// The strategy WORD is what the accuracy above counts, and a DIRECT the router reads with one cue is said only on a
+// signal-gated provider's own word (B5): so a DIRECT counted right may still add no text. How many requests the person
+// actually sees something for is its own number, and a request read with high confidence -- what 0.4.0 already said,
+// and B5 keeps -- is never silenced, by a status phrase or anything else.
+test("a request read with high confidence is never silenced, and the share of requests that get text is measured", (t) => {
+  const asked = RESULTS.filter((r) => r.row.strategy !== "NONE");
+  t.diagnostic(`said: ${asked.filter((r) => r.text).length} of the ${asked.length} prompts that ask for Orbit -- the rest are one-cue DIRECTs or misses, and add nothing`);
+  for (const r of asked.filter((x) => x.decision.intent.confidence === "high")) assert.notEqual(r.text, null, `${r.row.lang} ${r.row.prompt.slice(0, 80)}`);
+});
+
 test("a greeting, chit-chat, a status question, a host's notification and an opt-out get no text at all", () => {
   for (const r of RESULTS.filter((x) => SILENT.includes(x.row.kind))) assert.equal(r.text, null, `${r.row.lang} ${r.row.prompt.slice(0, 80)}`);
   for (const r of RESULTS.filter((x) => x.row.kind === "notification")) assert.deepEqual([r.decision.synthetic, r.decision.strategy.row], [true, "envelope"], r.row.prompt.slice(0, 60));

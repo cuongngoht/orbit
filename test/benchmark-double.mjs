@@ -6,6 +6,7 @@
 // It is harness (test/benchmark-*.mjs): never part of a subject, and it runs nothing when a test runner loads it.
 //
 //   worldOf(t, files) -> { base, repo, env, storeRoot }      dockerDouble(play) -> { s, deps }
+//   mountsOf(double) -> [{ source, target, readOnly }]        (every bind mount any container was created with)
 //   ranAs(edits, o) · streamOf(o) · inspectedAs(view) · VIEW(lifecycle, over) · TASK · runOf(w, double, o) · harnessOf(w, double)
 //   closureOf(entries, roots) -> entries   treeOf(t, entries) -> dir   probed(caseDir, spec, entries, o) -> judged
 //   ownTest(t, entries, rels) -> { exit, timedOut }
@@ -90,6 +91,10 @@ export function dockerDouble(play) {
 }
 
 const envValues = (c) => (c.flags["--env-file"] ? readFileSync(c.flags["--env-file"][0], "utf8").split("\n").filter(Boolean).map((l) => l.split("=")[0]) : []);
+
+// Every bind mount any container of the double was created with -- read off the create calls, so a container already
+// removed still says what it could reach.
+export const mountsOf = (double) => double.s.calls.filter((a) => a[0] === "create").flatMap((a) => parsedCreate(a).mounts);
 
 const networkVerb = (s, a) => ({ inspect: () => (s.networks.has(a[2]) ? { ok: true, out: JSON.stringify([{ Id: a[2], Internal: true, Labels: s.networks.get(a[2]), Containers: {} }]) } : { ok: false, out: "[]" }), create: () => (s.networks.set(a.at(-1), Object.fromEntries(a.filter((x, i) => a[i - 1] === "--label").map((l) => l.split("=")))), { ok: true, out: "n1" }), rm: () => (s.networks.delete(a.at(-1)), { ok: true, out: "" }), ls: () => ({ ok: true, out: [...s.networks].filter(([, labels]) => labelled(labels, a)).map(([name]) => name).join("\n") }), connect: () => ({ ok: true, out: "" }) })[a[1]]?.() ?? { ok: true, out: "" };
 

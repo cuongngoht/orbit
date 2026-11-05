@@ -161,6 +161,13 @@ test("tool-call failures fold per host basis, per suite and per model: per tool,
   assert.deepEqual(Object.keys(f.models), ["claude-opus-5-5"]);
 });
 
+test("runs that hit a failed call and still passed are over the runs a rate may count: a blocked, unfinished or interrupted run is neither a recovery nor a miss", () => {
+  const runs = [goalRun({ outcome: "PASS", tools: TOOLS() }), goalRun({ outcome: "BLOCKED", tools: TOOLS() }), goalRun({ tools: TOOLS() }), goalRun({ outcome: "FAIL", tools: TOOLS(), hostRounds: [hostRound({ interrupted: true })] })];
+  const r = metricsOf(runs).tools["coding-host"].suites["orbit-engineering"].recovery;
+  assert.deepEqual(r.runsRecovered, { numerator: 1, denominator: 1, value: 1 }, "the one run that came to an ending, and passed");
+  assert.equal(r.episodes, 4, "the calls themselves still count, whoever's run they were in");
+});
+
 test("the reliability command folds the kept rooms of one revision into one document -- rates, tool calls, arms -- and writes nothing", (t) => {
   const store = mkdtempSync(join(tmpdir(), "orbit-bench-reliability-"));
   t.after(() => rmSync(store, { recursive: true, force: true }));

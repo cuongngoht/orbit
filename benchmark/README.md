@@ -558,7 +558,7 @@ inputs, the runner image and the limits are the same:
 
 | Arm | The host is handed | What it isolates |
 |---|---|---|
-| `none` | No Orbit: no plugin is mounted and Claude Code gets no `--plugin-dir`, so no Orbit hook fires and no trail is written. With no task workspace, the host changes a writable copy of the target (`worktree/`, beside the run's checkout, which stays the frozen subject); the inspection reads its changes there, and only the verifier judges it -- there is no owner's record to read. | What Claude Code does on its own |
+| `none` | No Orbit: no plugin is mounted and Claude Code gets no `--plugin-dir`, so no Orbit hook fires and no trail is written. With no task workspace, the host changes a writable copy of the target (`worktree/`, beside the run's checkout, which stays the frozen subject); the inspection reads its changes there, and only the verifier judges it -- there is no owner's record to read. A goal that must be refused (`expects: "blocked"`) is verified there only when the host left no change at all: with no task to hold a change back, whatever it left is what it delivered. | What Claude Code does on its own |
 | `baseline` | The plugin frozen from a named git revision -- the case's `baselinePlugin`, else its suite's, else `v0.4.0` -- by the same read-only git read as any source, the harness removed the same way. A repository that holds no such revision refuses the run. | The previous release |
 | `release` | The run's own source: what every run was before arms, and what a case that declares no arms runs. | This release |
 
@@ -576,12 +576,16 @@ a kind added later (activation, workflow) declares them the same way.
 - **`hostOf` v2** (`lib/core/host.mjs`) keeps one row per tool call: its name, the skill a Skill call starts, the agent
   an Agent call dispatches, the Agent call a subagent's call answers to, a file tool's path, its turn and stream line,
   and whether its result came back as an error. No prompt, no output. A Bash command is read only by `commandsOf`, for a
-  judge's patterns, and never reaches a metric or a report.
+  judge's patterns, and never reaches a metric or a report. A call is what the stream FIRST said it was: a container can
+  only add to what it prints, so a later line under a call's id never renames it.
 - **The agreement rule** (`lib/core/agreement.mjs`): the stream's Skill and Agent calls must match the trail Orbit's
   hooks wrote (`skill.invoked`, `agent.invoked`), which the inspection reads with `cli/trace.mjs turns --json` into
   `turns.json`. A call with no trail line, or a line with no call, is `CONFLICTING`; an arm with no Orbit expects no
-  trail at all. A turn past the view's 80-step cap is compared on the trail's uncapped usage totals, and with neither
-  readable the answer is `UNDETERMINED`, never `AGREES`.
+  trail at all. A turn past the view's 80-step cap is compared on the trail's uncapped usage (`trace.json`): its totals,
+  every skill it names by name (started or refused), and every line the capped view does show held to its call -- so
+  neither source rewritten alone, a call renamed keeping every count, ever `AGREES`. Usage names no agent, so past the
+  cap an agent is held by its count and the lines shown. With neither readable the answer is `UNDETERMINED`, never
+  `AGREES`.
 - **The inspection** also writes `sandbox.json`: every sandbox the runner store holds, with its document's state and
   block and its operations journal (kind, state, times, its writer's sentence) -- read as data, bounded.
 
@@ -622,8 +626,9 @@ model:
 
 A run's model is the one asked for, else the one its host named, else `unknown`. Tool-call failures fold per host
 basis, then per suite and per model: per tool, per relay subcommand, failed calls per PASS, recovery episodes and what
-they took, runs that hit a failed call and still passed, and per sandbox step. A report from before 0.5.0 kept no tool
-facts and counts as `unread`; `node benchmark/run.mjs report <bnr-…>` writes them.
+they took, runs that hit a failed call and still passed -- of the runs that came to an ending a rate may count: a
+blocked or interrupted run is neither a recovery nor a miss, though its calls still count -- and per sandbox step. A
+report from before 0.5.0 kept no tool facts and counts as `unread`; `node benchmark/run.mjs report <bnr-…>` writes them.
 
 `node benchmark/run.mjs reliability [--revision=<commit>] [--suite=…] [--case=…] [--since=…] [--k=…] [--json]` is the
 same fold as one document a release quotes, and writes nothing:

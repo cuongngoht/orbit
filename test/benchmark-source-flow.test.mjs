@@ -7,8 +7,8 @@
 // a round past its deadline is stopped, and a run interrupted mid-round is read back on resume, never sent again.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { join, relative, isAbsolute } from "node:path";
 import { test } from "node:test";
 import { carried } from "../benchmark/lib/source/flow.mjs";
 import { resumedRun, withSpec } from "../benchmark/lib/core/context.mjs";
@@ -20,7 +20,7 @@ import { guardedIo } from "../src/store/guard.mjs";
 import { realIo } from "../src/store/io.mjs";
 import { apply } from "../src/task/ops.mjs";
 import { createTasks } from "../src/task/store.mjs";
-import { dockerDouble, harnessOf, inspectedAs, NEVER, ranAs, runOf, streamOf, TASK, VIEW, worldOf } from "./benchmark-double.mjs";
+import { dockerDouble, harnessOf, inspectedAs, mountsOf, NEVER, ranAs, runOf, streamOf, TASK, VIEW, worldOf } from "./benchmark-double.mjs";
 import { sealed } from "./home.mjs";
 import { takeTurn } from "./benchmark-turn.mjs";
 
@@ -311,6 +311,20 @@ test("the controller keeps a round's host stream as the container's stdout carri
   assert.ok(at.lines.length >= 1 && at.lines.every(([n, ms]) => Number.isInteger(n) && ms >= Date.parse(r.ctx.manifest.at)), "each chunk's moment, by the controller's clock");
   assert.deepEqual(((o) => [o.basis, o.bytes, o.agrees])(repairDoc(r).observed), ["HOST_OBSERVED", Buffer.byteLength(streamOf()), true]);
   assert.equal(r.result.outcome, "REPAIRED_VERIFIED", "the verdict never rests on it");
+});
+
+// A path at or under a mount's source is a path that container could reach (a source a run removed since, as named).
+const real = (p) => (existsSync(p) ? realpathSync(p) : p);
+
+const under = (dir, path) => ((rel) => rel === "" || (!rel.startsWith("..") && !isAbsolute(rel)))(relative(real(dir), path));
+
+test("no container of a round is ever handed the capture: every mount any of them was created with lies outside the file the controller writes", async (t) => {
+  const double = dockerDouble({ runner: ranAs(FIXED), inspect: inspectedAs(VIEW("COMPLETED")) });
+  const r = await runOf(world(t), double, { variant: "controlled-fault", repair: true });
+  const capture = realpathSync(r.ctx.room.at("rounds", "1", "host.stream.jsonl"));
+  const mounts = mountsOf(double);
+  assert.ok(mounts.some((m) => m.target === "/work/out") && mounts.some((m) => m.target === "/work/store"), "the round's runner and its inspection were created");
+  assert.deepEqual(mounts.filter((m) => under(m.source, capture) || under(m.source, `${capture.replace(/\.jsonl$/, "")}.at.json`)).map((m) => m.target), [], "no mount reaches the capture or its index of moments");
 });
 
 test("a run's report carries its tool-call facts, read from the captured stream, and never a host's call one by one", async (t) => {

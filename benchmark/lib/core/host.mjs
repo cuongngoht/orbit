@@ -79,8 +79,10 @@ const pathOf = (b) => ((key) => (key && bounded(b.input?.[key], 1024) ? { path: 
 
 const useOf = (x, b, results) => ({ id: str(b.id), name: str(b.name) ?? "unknown", parent: str(x.e.parent_tool_use_id), turn: x.turn, line: x.e[LINE], failed: failedOf(results, b.id), ...invokedOf(b), ...pathOf(b) });
 
-// Each call once, however often the stream (or a head and a tail read together) carried the event that holds it.
-const once = (rows) => [...new Map(rows.map((r, i) => [r.id ?? `#${i}`, r])).values()];
+// Each call once, however often the stream (or a head and a tail read together) carried the event that holds it -- and
+// as the stream FIRST said it: what a container prints can only be added after a call, never cut from before it, so a
+// later line under a call's id never renames the call.
+const once = (rows) => [...rows.reduce((m, r, i) => (m.has(r.id ?? `#${i}`) ? m : m.set(r.id ?? `#${i}`, r)), new Map()).values()];
 
 const toolBlocks = (x) => blocksOf(x.e).filter((b) => b?.type === "tool_use");
 

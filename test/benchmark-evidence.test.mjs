@@ -97,6 +97,38 @@ test("past the turns view's cap the trail's uncapped counts decide, and with nei
   assert.equal(agreementOf(USES, { turns: { exit: 1, json: null } }).verdict, "UNDETERMINED", "a trail nobody could read settles nothing");
 });
 
+// Past the cap, counts alone would let either source be rewritten alone: a call renamed keeps every count. So the
+// trail's uncapped usage is held to the stream by NAME wherever it keeps names -- each skill it lists, started or
+// refused -- and every line the capped view does show must have its call.
+const usageNamed = (skills, agents, rows) => ({ exit: 0, json: { version: 1, totals: { skills, agents }, skills: rows } });
+
+const CAPPED = Array.from({ length: 80 }, () => step("tool", "Read"));
+
+test("past the cap, a skill renamed in the trail alone, or in the stream alone, is CONFLICTING -- never AGREES on counts", () => {
+  const help = [{ id: "orbit-help", invoked: 1, refused: 0 }];
+  assert.equal(agreementOf(USES, { turns: turnsDoc(CAPPED), usage: usageNamed(1, 1, help) }, { session: "sess-1" }).verdict, "AGREES", "the trail names the very skill the stream started");
+  const trailRenamed = agreementOf(USES, { turns: turnsDoc(CAPPED), usage: usageNamed(1, 1, [{ id: "orbit-engineer", invoked: 1, refused: 0 }]) }, { session: "sess-1" });
+  assert.deepEqual([trailRenamed.verdict, trailRenamed.by], ["CONFLICTING", "usage"], "a trail rewritten alone: one skill each, never the same one");
+  const streamRenamed = USES.map((u) => (u.skill ? { ...u, skill: "orbit:orbit-engineer" } : u));
+  assert.equal(agreementOf(streamRenamed, { turns: turnsDoc(CAPPED), usage: usageNamed(1, 1, help) }, { session: "sess-1" }).verdict, "CONFLICTING", "a stream rewritten alone");
+  assert.equal(agreementOf(USES, { turns: turnsDoc(CAPPED), usage: usageNamed(1, 1, [{ id: "orbit-help", invoked: 0, refused: 1 }]) }, { session: "sess-1" }).verdict, "AGREES", "a call its switch refused is still the call the trail names");
+});
+
+test("past the cap, a line the capped view does show must have its call: one with none is CONFLICTING whatever the counts say", () => {
+  const shown = [step("agent", "orbit:orbit-engineering-agent"), ...CAPPED];
+  const a = agreementOf(USES, { turns: turnsDoc(shown), usage: usageNamed(1, 1, [{ id: "orbit-help", invoked: 1, refused: 0 }]) }, { session: "sess-1" });
+  assert.deepEqual([a.verdict, a.missing.stream], ["CONFLICTING", ["agent orbit:orbit-engineering-agent"]]);
+});
+
+// The captured stream can only be added to by what a container prints -- never cut -- so the one way a line could
+// rewrite a call is to arrive LATER under the call's id. A call is what the stream first said it was.
+test("a later line under a call's id never renames the call: each call is what the stream first said it was", () => {
+  const appended = hostOf(jsonl([...SESSION, call("t1", "Skill", { skill: "orbit:orbit-engineer" }, { message: "m9" }), result("t1", true)]));
+  assert.deepEqual(appended.uses.filter((u) => u.id === "t1").map((u) => [u.skill, u.turn]), [["orbit:orbit-help", 0]]);
+  assert.equal(appended.toolCalls, 4, "still one call");
+  assert.deepEqual(commandsOf(jsonl([...SESSION, call("t2", "Bash", { command: "echo a later line" }, { message: "m9" })])).map((c) => c.command), ["node /work/orbit/cli/orbit.mjs goal start --stdin"]);
+});
+
 test("HOST_DIVERGED is one more failure class, and the README and ADR 0048 say what it means", () => {
   assert.ok(FAILURE_CLASSES.includes("HOST_DIVERGED"));
   assert.equal(FAILURE_CLASSES.at(-1), "UNKNOWN", "the catch-all stays last");

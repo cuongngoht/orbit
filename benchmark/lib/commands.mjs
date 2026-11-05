@@ -236,8 +236,10 @@ const repeatChecked = (o) => (checked({ repeat: o.repeat }), o);
 // ---- arms (0.5.0, B23): the same case, the same model and limits, a different plugin ----------------------------------
 
 // The one arm asked -- or, with --arm=all, every arm the case declares, one after another (each repeated, when asked).
+// --run-id names one run, so it never goes with --arm=all: refused before any arm runs, never after the first.
 async function armed(h, o) {
   if (o.arm !== "all") return repeated(h, o);
+  if (o.runId) refusedWith("--run-id names one run, and --arm=all starts one run per arm");
   const runs = [];
   for (const arm of armsOf(caseOf(h.root, o.caseId))) runs.push(...caseRows(await repeated(h, { ...o, arm }).catch(failedRun({ id: o.caseId }))));
   return { case: o.caseId, arms: armsOf(caseOf(h.root, o.caseId)), runs, exit: Math.max(...runs.map((r) => r.exit ?? 4)) };

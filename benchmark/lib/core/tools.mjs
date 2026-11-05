@@ -329,14 +329,20 @@ const relayRow = (rows) => ({ requests: sumOf(rows.map((r) => r.requests)), refu
 
 const relayFold = (t) => Object.fromEntries([...new Set(t.flatMap((f) => Object.keys(f.tools.relay ?? {})))].sort().map((sub) => [sub, relayRow(t.map((f) => f.tools.relay?.[sub]).filter(Boolean))]));
 
-// Failed calls per PASS: the failed calls of the runs that passed, over those runs.
-const perPass = (t) => ((p) => ratio(sumOf(p.map((f) => f.tools.calls.failed)), p.length))(t.filter((f) => f.tools.calls && PASSES.includes(f.outcome)));
+// A run whose outcome a rate may count: one that came to an ending -- never blocked, invalid, inconclusive, held or
+// unfinished (`excluded`), and never cut by a restart (`interrupted`, nobody's miss: ADR 0049) -- as rates.mjs counts it.
+// The calls of every run still count; only "did it pass" is asked of these alone.
+const countable = (f) => !f.excluded && !f.interrupted;
 
-// What getting past failed calls took, per episode; and of the runs that hit a failed call, how many still passed.
+// Failed calls per PASS: the failed calls of the runs that passed, over those runs.
+const perPass = (t) => ((p) => ratio(sumOf(p.map((f) => f.tools.calls.failed)), p.length))(t.filter((f) => f.tools.calls && countable(f) && PASSES.includes(f.outcome)));
+
+// What getting past failed calls took, per episode; and of the runs that hit a failed call and came to an ending a rate
+// may count, how many still passed.
 function recoveryFold(t) {
   const known = t.filter((f) => f.tools.recovery);
   const episodes = sumOf(known.map((f) => f.tools.recovery.episodes));
-  const hit = known.filter((f) => f.tools.recovery.failed > 0);
+  const hit = known.filter((f) => f.tools.recovery.failed > 0 && countable(f));
   return { episodes, recovered: ratio(sumOf(known.map((f) => f.tools.recovery.recovered)), episodes), turnsPerEpisode: ratio(sumOf(known.map((f) => f.tools.recovery.turns)), episodes), costUsd: costFold(known), runsRecovered: ratio(hit.filter((f) => PASSES.includes(f.outcome)).length, hit.length) };
 }
 

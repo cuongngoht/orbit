@@ -14,6 +14,7 @@ import { BOUNDS, COMMANDS } from "../benchmark/lib/commands.mjs";
 import { frozenRun } from "../benchmark/lib/core/context.mjs";
 import { docRead, roomOf } from "../benchmark/lib/core/room.mjs";
 import { caseFindings } from "../benchmark/lib/core/suites.mjs";
+import { isVerified } from "../benchmark/lib/source/flow.mjs";
 import { dockerDouble, GIT_ENV, harnessOf, IMAGES, inspectedAs, NEVER, ranAs, ROOT, streamOf, VIEW, worldOf } from "./benchmark-double.mjs";
 import { sealed } from "./home.mjs";
 import { takeTurn } from "./benchmark-turn.mjs";
@@ -170,6 +171,8 @@ test("an arm is one the case declares; a baseline no revision holds is refused, 
   const h = harnessOf(w, dockerDouble(NEVER));
   await assert.rejects(async () => COMMANDS.run.run(h, ["CALC-001", "--arm=none"]), /CALC-001 declares no none arm: it runs on release/);
   await assert.rejects(async () => COMMANDS.run.run(h, ["CALC-E2E-001", "--arm=nothing"]), /--arm is one of none, baseline, release, all/);
+  await assert.rejects(async () => COMMANDS.run.run(harnessOf(w, dockerDouble(NEVER)), ["CALC-E2E-001", "--arm=all", "--run-id=bnr-0123456789ab"]), /--run-id names one run, and --arm=all starts one run per arm/, "refused before any arm runs");
+  assert.equal(existsSync(roomOf(w.storeRoot, "bnr-0123456789ab").dir), false, "no room was made under the id");
   gitIn(w.repo, "tag", "-d", "v-base");
   assert.throws(() => frozenRun(h, { caseId: "CALC-E2E-001", arm: "baseline", images: IMAGES }), /names v-base, and .* holds no such revision/);
   const listedCase = COMMANDS.list.run({ root: w.repo }).suites.find((s) => s.id === "goals").cases[0];
@@ -193,4 +196,16 @@ test("--arm=all runs every arm the case declares, one after another, the same se
   assert.deepEqual(r.runs.map((x) => x.arm), ["none", "baseline", "release"]);
   assert.deepEqual(r.runs.map((x) => manifestOf(w, x.run).config.seed), [3, 3, 3]);
   assert.equal(r.runs[0].outcome, "PASS", "the none arm's host fixed it alone");
+});
+
+// A goal that leaves out its rule must be refused on every arm. With Orbit, "nothing delivered" is an engineering task
+// that did not complete a change; with no Orbit there is no task to hold a change back -- whatever the host left in its
+// writable target is what it delivered, so the none arm is held to having left nothing, never to the hidden checks alone.
+test("a goal that must be refused is never verified on the none arm when its host changed the target anyway", () => {
+  const round = (arm, changes, engineering = null) => ({ expects: "blocked", arm, cand: { changes, scope: [] }, v: { complete: true, failures: [] }, extraTasks: 0, records: [], engineering });
+  const invented = [{ rel: "src/rule.mjs", change: "added" }];
+  assert.equal(isVerified(round("none", invented)), false, "a rule the host invented is a change delivered, whatever the hidden checks say");
+  assert.equal(isVerified(round("none", [])), true, "said what is missing and stopped: refused as it must be");
+  assert.equal(isVerified(round("release", invented, { lifecycle: "EXECUTING" })), true, "with Orbit, an engineering task that never completed delivered nothing (unchanged)");
+  assert.equal(isVerified(round("release", invented, { lifecycle: "COMPLETED" })), false, "with Orbit, a completed task's change was delivered (unchanged)");
 });

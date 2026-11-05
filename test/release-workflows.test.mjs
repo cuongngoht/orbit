@@ -23,6 +23,19 @@ test("no workflow runs the autonomous ship or a real coding host: model-carried 
   }
 });
 
+// 0.5.0 (B6's review): orbit-qa's controls -- whole runs carried by its scripted hosts in the controller's own process,
+// no model and no credential -- were the one suite the conformance tier never ran. Every suite is in it now, and a suite
+// whose controls run the QA worker has its job build that image.
+test("the conformance tier's controls matrix holds every suite the benchmark has, and the QA suite's job builds the QA worker its controls run in", () => {
+  const yml = text("benchmark.yml");
+  const suites = readdirSync(join(WORKFLOWS, "..", "..", "benchmark", "suites"), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort();
+  const matrix = (/^\s+suite: \[([^\]]+)\]/m.exec(yml)?.[1] ?? "").split(",").map((s) => s.trim()).filter(Boolean).sort();
+  assert.deepEqual(matrix, suites, "a suite left out of the matrix is a suite whose controls no pull request runs");
+  assert.match(yml, /- suite: orbit-qa\n\s+images: --qa-worker/);
+  assert.match(yml, /node benchmark\/run\.mjs build --verifier \$\{\{ matrix\.images \}\}/);
+  assert.match(yml, /timeout-minutes: \$\{\{ matrix\.minutes \|\| 240 \}\}/);
+});
+
 test("the benchmark workflow keeps its conformance tier -- controls and scripted, no credential -- and nothing else", () => {
   const yml = text("benchmark.yml");
   assert.deepEqual(jobsOf(yml), ["controls", "scripted"]);

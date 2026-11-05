@@ -3,9 +3,10 @@
 # the scripted host over Orbit's real CLIs, the tables, the metrics -- already runs in ci.yml on every push, inside the
 # definition of done's `node --test`, with no Docker and no network.
 #
-#   conformance   every case's verifier and judge controls in real containers, then scripted hosts through Orbit's own
-#                 engineering loop and Orbit's own goal entry -- no model, no credential, no network for the host. On a
-#                 pull request that touches the benchmark, and when a person asks for it.
+#   conformance   every case's verifier and judge controls in real containers -- a QA case's as whole runs its scripted
+#                 hosts carry -- then scripted hosts through Orbit's own engineering loop and Orbit's own goal entry -- no
+#                 model, no credential, no network for the host. On a pull request that touches the benchmark, and when a
+#                 person asks for it.
 #
 # A REAL coding host never runs here: a model-carried run -- one case with --repair, a suite, or the autonomous ship
 # (skills/orbit-release/ship.mjs, ADR 0049) -- runs in a Claude Code cloud session a person starts, where its credential
@@ -31,13 +32,20 @@ permissions:
 jobs:
   # Every case of a suite held to its own controls in the verifier's containers: a planted fault and the partial fixes
   # FAIL, the clean source (or the solved fixture) PASSes, and every way of cheating the judge is refused by name.
+  # A QA case's controls are whole runs, each carried by one of its scripted hosts (reference, idle, false-alarm) in the
+  # controller's own process: the application on its isolated sandbox through Orbit's engine, its tests in the QA worker
+  # -- no model and no credential (the engine is handed none), only the QA worker image and the time those runs take.
   controls:
     strategy:
       fail-fast: false
       matrix:
-        suite: [orbit-source, orbit-governance, orbit-memory, orbit-improvement, orbit-orchestration, orbit-satellite, orbit-verdicts, orbit-engineering]
+        suite: [orbit-source, orbit-governance, orbit-memory, orbit-improvement, orbit-orchestration, orbit-satellite, orbit-verdicts, orbit-engineering, orbit-qa]
+        include:
+          - suite: orbit-qa
+            images: --qa-worker
+            minutes: 360
     runs-on: ubuntu-latest
-    timeout-minutes: 240
+    timeout-minutes: ${{ matrix.minutes || 240 }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -45,8 +53,8 @@ jobs:
           node-version: "22"
       - name: docker answers
         run: docker version
-      - name: the verifier image
-        run: node benchmark/run.mjs build --verifier
+      - name: the images its controls need
+        run: node benchmark/run.mjs build --verifier ${{ matrix.images }}
       - name: every case's verifier and judge controls
         env:
           SUITE: ${{ matrix.suite }}

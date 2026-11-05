@@ -45,6 +45,7 @@ const REACH = {
   ROW_BLOCKED: [settled({ rows: new Map([[ROW.id, failed("BLOCK")]]) })],
   FAIL_FAST: [settled({ rows: new Map([[ROW.id, failed("STOP")]]) })],
   ROW: [settled({ pending: ROW })],
+  PRECHECKED: [settled(), { ...CTX, manifest: { mode: "precheck" }, options: { failFast: false } }],
   ROW_STOPPED: [settled({ rows: new Map([[ROW.id, failed("STOP")]]) }), { ...CTX, options: { failFast: false } }],
   REPAIR_BLOCKED: [settled({ repairs: repairs("BLOCKED") })],
   NO_PROGRESS: [settled({ repairs: repairs("NO_PROGRESS") })],
@@ -66,6 +67,9 @@ test("NEXT: a person's hold outranks everything a ship would do, and a model-car
   assert.equal(nextOf(settled({ repairs: repairs("INTEGRATED"), pending: ROW }), CTX).id, "CYCLE_DONE", "a cycle whose repairs are all in is over: its rows are stale");
   assert.equal(nextOf(settled({ rows: new Map() }), { ...CTX, rows: [] }).id, "UNKNOWN", "an empty catalog is never SHIPPABLE");
   assert.equal(nextOf(settled({ running: [{}] }), { ...CTX, preflighted: false }).id, "PREFLIGHT", "a resumed ship reads its catalog before it reads back what was running");
+  const precheck = { ...CTX, manifest: { mode: "precheck" }, options: { failFast: false } };
+  assert.deepEqual([nextOf(settled({ workspace: null }), precheck).id, nextOf(settled({ gates: null }), precheck).id], ["PRECHECKED", "PRECHECKED"], "a precheck needs no workspace and holds no definition of done");
+  assert.equal(nextOf(settled({ pending: ROW }), precheck).id, "ROW", "a precheck ends only once every row ran");
 });
 
 // ---- DIAGNOSE ------------------------------------------------------------------------------------------------------------

@@ -10,10 +10,10 @@ import { join } from "node:path";
 import { sha } from "../../../src/hash.mjs";
 import { GATES, report, shippable } from "../gates.mjs";
 import { built } from "./artifact.mjs";
-import { begun, carriedOn, dispatched, iso, settledAct } from "./dispatch.mjs";
+import { begun, carriedOn, dispatched, iso, runDiagnosis, settledAct } from "./dispatch.mjs";
 import { evidenceOf } from "./evidence.mjs";
-import { diags, factsOf, nextOf, repairIn } from "./machine.mjs";
-import { catalogDrift, matchesAny, rowsOf } from "./policy.mjs";
+import { diags, factsOf, nextOf, repairIn, shipRows } from "./machine.mjs";
+import { catalogDrift, matchesAny } from "./policy.mjs";
 import { hostOf, preflightOf } from "./preflight.mjs";
 import { docRead, docWritten, jsonAtFile } from "./room.mjs";
 import { delivered, integrated, prepared, pristine } from "./workspace.mjs";
@@ -114,7 +114,7 @@ export const casesIn = (root, listed) => new Map((listed?.suites ?? []).flatMap(
 
 // The catalog a held preflight read, as the rows every cycle runs and each case's own declaration.
 function catalogued(ctx, facts) {
-  ctx.rows = rowsOf(ctx.policy, facts.listed);
+  ctx.rows = shipRows(ctx, facts.listed);
   ctx.cases = casesIn(ctx.root, facts.listed);
   ctx.preflighted = true;
   return null;
@@ -247,6 +247,25 @@ function close(ctx, f) {
   return null;
 }
 
+// ---- a precheck's ending (0.5.0, B6) ----------------------------------------------------------------------------------
+
+// Every model-carried row ran once: the precheck says each that did not hold, with its run's room and its diagnosis
+// bundle, and qualifies nothing -- the task completes when every row held, and fails when one did not.
+const PRECHECK_ENDS = [
+  { when: (failed) => failed.length > 0, outcome: "PRECHECK_FAILED", exit: 2, attempt: "failed", close: (ctx, says) => ctx.door.fail(ctx.task, "VERIFICATION_FAILED", `PRECHECK: ${says}`) },
+  { when: () => true, outcome: "PRECHECK_HELD", exit: 0, attempt: "succeeded", close: (ctx, says) => ctx.door.complete(ctx.task, `PRECHECK: ${says}`) },
+];
+
+const precheckSaid = (f, failed) => `${f.rows.size - failed.length} of ${f.rows.size} model-carried row(s) held on ${short(f.cycle.commit)}${failed.length ? `; not held: ${failed.map((r) => `${r.row.id} ${r.v.state}`).join(", ")}` : ""} -- a precheck qualifies nothing`;
+
+function prechecked(ctx, f) {
+  const failed = [...f.rows.values()].filter((r) => r.v.state !== "HELD");
+  const end = PRECHECK_ENDS.find((e) => e.when(failed));
+  closeAttempt(ctx, f, end.attempt);
+  end.close(ctx, precheckSaid(f, failed));
+  return ended(ctx, { outcome: end.outcome, exit: end.exit, summary: precheckSaid(f, failed), failures: failed.map((r) => runDiagnosis(ctx.storeRoot, r)) });
+}
+
 // ---- shippable ---------------------------------------------------------------------------------------------------------
 
 function ship(ctx, f) {
@@ -279,7 +298,7 @@ async function reconcile(ctx, f) {
 
 // ---- the table and the loop ----------------------------------------------------------------------------------------------
 
-export const STEPS = { END: endedAlready, HELD: held, RECONCILE: reconcile, PREFLIGHT: preflight, WORKSPACE: workspace, BUDGET: budget, CLOSE: close, CYCLE: cycle, BUILD: build, HOST: host, GATES: gates, ROW: row, REPAIR: repair, INTEGRATE: integrate, SHIP: ship, STOP: stopped, BLOCK: blocked, NO_PROGRESS: noProgress };
+export const STEPS = { END: endedAlready, HELD: held, RECONCILE: reconcile, PREFLIGHT: preflight, WORKSPACE: workspace, BUDGET: budget, CLOSE: close, CYCLE: cycle, BUILD: build, HOST: host, GATES: gates, ROW: row, PRECHECKED: prechecked, REPAIR: repair, INTEGRATE: integrate, SHIP: ship, STOP: stopped, BLOCK: blocked, NO_PROGRESS: noProgress };
 
 async function stepped(ctx) {
   const f = factsOf(ctx, ctx.door.show(ctx.task));

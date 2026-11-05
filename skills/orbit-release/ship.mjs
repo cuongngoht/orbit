@@ -15,6 +15,10 @@
 //                                                   limits, within the release policy's bounds (raised on --resume);
 //                                                   --retries: more runs a missed model-carried row may have
 //        [--model=<id> --credential=<NAME> --ca-file=<pem> --no-fail-fast --json --bump=changed|added|fixed|release]
+//   node skills/orbit-release/ship.mjs --precheck  [--usd=<n> --minutes=<n> --model=<id> --credential=<NAME> --ca-file=<pem>]
+//                                                   before a ship: only the model-carried rows, each once, stopping at
+//                                                   no failure -- every failure said with its run's room and its
+//                                                   diagnosis; a precheck qualifies nothing (--resume carries one on)
 //   node skills/orbit-release/ship.mjs --status[=<shp-…>]
 //                                                   where this checkout's newest ship (or the one named) stands
 //   node skills/orbit-release/ship.mjs --evidence[=<shp-…>] [--artifact=<zip>]
@@ -104,7 +108,7 @@ const READ = { usd: num };
 
 const limitsAsked = () => Object.fromEntries(Object.entries(LIMIT_FLAGS).map(([k, f]) => [k, (READ[k] ?? int)(flag(args, f))]));
 
-const optionsAsked = () => ({ model: flag(args, "model") ?? null, credential: credentialAsked(flag(args, "credential")), caFile: flag(args, "ca-file") ?? env.ORBIT_BENCHMARK_CA_FILE ?? null, limits: limitsAsked(), repair: !has(args, "no-repair"), failFast: !has(args, "no-fail-fast"), version: versionOf() });
+const optionsAsked = () => ({ model: flag(args, "model") ?? null, credential: credentialAsked(flag(args, "credential")), caFile: flag(args, "ca-file") ?? env.ORBIT_BENCHMARK_CA_FILE ?? null, limits: limitsAsked(), repair: !has(args, "no-repair"), failFast: !has(args, "no-fail-fast"), precheck: has(args, "precheck"), version: versionOf() });
 
 // ---- the autonomous ship -------------------------------------------------------------------------------------------------
 

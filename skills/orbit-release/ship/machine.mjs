@@ -10,7 +10,22 @@
 //   (fail fast) until nothing else failed. A cycle whose only failures are repairable repairs them, one case after
 //   another on the newest release commit, then closes; the next cycle is a full retest of that commit.
 import { diagnosed, INTERRUPTED_RUNS } from "./diagnose.mjs";
+import { rowsOf as catalogRowsOf } from "./policy.mjs";
 import { docRead } from "./room.mjs";
+
+// What each kind of ship runs (its manifest's `mode`): the whole catalog, its definition of done and a workspace to
+// integrate repairs in -- or, for a PRECHECK (0.5.0, B6), only the catalog's model-carried rows, each once, stopping at
+// no failure and ending once they all ran: never SHIPPABLE, never evidence.
+export const SHIP_MODES = {
+  autonomous: { rows: () => true, workspace: true, gates: true, precheck: false },
+  "verify-only": { rows: () => true, workspace: true, gates: true, precheck: false },
+  precheck: { rows: (r) => r.autonomous, workspace: false, gates: false, precheck: true },
+};
+
+export const modeOf = (ctx) => SHIP_MODES[ctx.manifest?.mode] ?? SHIP_MODES.autonomous;
+
+// The rows a ship runs, in the order a cycle runs them: the catalog's (policy.mjs), as its mode keeps them.
+export const shipRows = (ctx, listed) => catalogRowsOf(ctx.policy, listed).filter(modeOf(ctx).rows);
 
 const HELD_LIFECYCLES = ["PAUSED", "CANCELLED"];
 
@@ -161,7 +176,7 @@ export const NEXT = [
   { id: "HELD_BY_PERSON", when: (f) => f.held, step: "HELD" },
   { id: "PREFLIGHT", when: (f, ctx) => !ctx.preflighted, step: "PREFLIGHT" },
   { id: "RECONCILE", when: (f) => f.running.length > 0, step: "RECONCILE" },
-  { id: "WORKSPACE", when: (f) => !f.workspace, step: "WORKSPACE" },
+  { id: "WORKSPACE", when: (f, ctx) => !f.workspace && modeOf(ctx).workspace, step: "WORKSPACE" },
   { id: "OVER_LIMIT", when: overLimit, step: "BUDGET" },
   { id: "CYCLE_DONE", when: (f) => Boolean(f.open) && allIntegrated(f), step: "CLOSE" },
   { id: "CYCLES_SPENT", when: (f) => !f.open && f.attempts >= f.limits.cycles, step: "BUDGET" },
@@ -170,11 +185,12 @@ export const NEXT = [
   { id: "ARCHIVE_REFUSED", when: (f) => f.cycle.artifact.refused.length > 0, step: "STOP" },
   { id: "NO_HOST", when: (f) => !f.host, step: "HOST" },
   { id: "HOST_REFUSED", when: (f) => !f.host.ok, step: "BLOCK" },
-  { id: "NO_GATES", when: (f) => !f.gates, step: "GATES" },
-  { id: "GATES_FAILED", when: (f) => !f.gates.ok, step: "STOP" },
+  { id: "NO_GATES", when: (f, ctx) => !f.gates && modeOf(ctx).gates, step: "GATES" },
+  { id: "GATES_FAILED", when: (f) => Boolean(f.gates) && !f.gates.ok, step: "STOP" },
   { id: "ROW_BLOCKED", when: (f) => diags(f, "BLOCK").length > 0 || diags(f, "HELD").length > 0, step: "BLOCK" },
   { id: "FAIL_FAST", when: (f, ctx) => ctx.options.failFast && diags(f, "STOP").length > 0, step: "STOP" },
   { id: "ROW", when: (f) => Boolean(f.pending), step: "ROW" },
+  { id: "PRECHECKED", when: (f, ctx) => modeOf(ctx).precheck, step: "PRECHECKED" },
   { id: "ROW_STOPPED", when: (f) => diags(f, "STOP").length > 0, step: "STOP" },
   { id: "REPAIR_BLOCKED", when: (f) => Boolean(repairIn(f, "BLOCKED")), step: "BLOCK" },
   { id: "NO_PROGRESS", when: (f) => Boolean(repairIn(f, "NO_PROGRESS")), step: "NO_PROGRESS" },

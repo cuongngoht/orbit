@@ -172,7 +172,7 @@ const roundsOf = (c, said) => (CASES[c]?.kind === "qa" ? { round: roundsSaid(sai
 
 function ended(w, r) {
   const basis = r.kind === "verify" ? "none" : w.play.basis(r.c, r.kind);
-  docAt(r.dir, "report.json", { schema: 1, run: r.run, hostBasis: basis, ...roundsOf(r.c, r.said), totals: { costUsd: r.said.host?.costUsd ?? null }, attempts: [{ signature: r.said.signature ?? (["PASS", "REPAIRED_VERIFIED"].includes(r.said.outcome) ? null : "aaaaaaaaaaaa") }], leaks: r.said.leaks ?? [] });
+  docAt(r.dir, "report.json", { schema: 1, run: r.run, hostBasis: basis, ...roundsOf(r.c, r.said), totals: { costUsd: r.said.host?.costUsd ?? null }, attempts: [{ signature: r.said.signature ?? (["PASS", "REPAIRED_VERIFIED"].includes(r.said.outcome) ? null : "aaaaaaaaaaaa") }], leaks: r.said.leaks ?? [], diagnosis: r.said.diagnosis ?? null });
   if (r.said.patch) verifiedWritten(w, r);
   docAt(r.dir, "ending.json", { end: "complete", outcome: r.said.outcome, cause: r.said.cause ?? null, class: r.said.class ?? null, summary: r.said.summary, at: new Date(w.clock.now).toISOString() });
   return { code: { PASS: 0, REPAIRED_VERIFIED: 0, BLOCKED: 3, BENCHMARK_INVALID: 2 }[r.said.outcome] ?? 1, json: { run: r.run, case: r.c, outcome: r.said.outcome, exit: 0, summary: r.said.summary }, err: null, stopped: false };

@@ -11,10 +11,10 @@ import { join } from "node:path";
 import { Refused } from "../../../src/errors.mjs";
 import { sha, shaBytes } from "../../../src/hash.mjs";
 import { contentDigest } from "./artifact.mjs";
-import { begun, iso, runRoomOf, settledAct } from "./dispatch.mjs";
+import { begun, iso, runDiagnosis, runRoomOf, settledAct } from "./dispatch.mjs";
 import { publishableOf } from "./evidence.mjs";
-import { factsOf, lastCycleOf, nextOf } from "./machine.mjs";
-import { limitsOf, matchesAny, policyDigest, rowsOf } from "./policy.mjs";
+import { factsOf, lastCycleOf, nextOf, shipRows } from "./machine.mjs";
+import { LIMIT_FLAGS, limitsOf, matchesAny, policyDigest, rowsOf } from "./policy.mjs";
 import { docRead, docWritten, jsonAtFile, newShipId, shipRoomOf, shipsIn } from "./room.mjs";
 import { casesIn, preflightFacts } from "./steps.mjs";
 
@@ -43,12 +43,29 @@ function contextOf(world, room, manifest, o) {
   return { world, root: world.root, env: world.env, now: world.now, storeRoot: world.storeRoot, policy: world.policy, rows: [], cases: new Map(), door: world.door, task: manifest.task, room, manifest, ship, options: optionsOf(manifest, o), preflighted: false, deliveryDir: join(world.storeRoot, "workspaces", manifest.task, "delivery"), everyMs: world.everyMs, print: world.print, preflightFacts, endpoint: endpointOf(world), optional: world.optional ?? [], trail: [] };
 }
 
-const objectiveOf = (start, o) => `Ship ${o.version ?? ""} from ${start.branch ?? "detached"}@${start.commit.slice(0, 10)}: the Docker benchmark carried by Claude Code${o.repair ? ", repairing what a case declares repairable" : ", verify only"}`;
+const OBJECTIVES = { autonomous: ", repairing what a case declares repairable", "verify-only": ", verify only", precheck: ": a precheck, every model-carried row once, before a ship" };
 
-const manifestOf = (world, room, task, start, o) => ({ schema: 1, kind: "ship", ship: room.id, task, at: iso(world), mode: o.repair ? "autonomous" : "verify-only", start, checkout: { root: world.root, project: world.project.key, checkoutId: world.project.checkoutId }, policy: { digest: policyDigest(world.policy) }, protected: { digest: protectedDigestOf(world, start.commit) }, limits: o.limitsHeld, options: { repair: o.repair === true, failFast: o.failFast !== false, model: o.model ?? null, credential: o.credential ?? null, caFile: o.caFile ?? null }, host: { node: process.version, platform: process.platform } });
+const objectiveOf = (start, o) => `Ship ${o.version ?? ""} from ${start.branch ?? "detached"}@${start.commit.slice(0, 10)}: the Docker benchmark carried by Claude Code${OBJECTIVES[o.mode]}`;
 
-// The limits a person asked are held to the policy's bounds FIRST: a ship refused for one starts no task and keeps no room.
-export const begunShip = (world, o) => begunAt(world, { ...o, limitsHeld: limitsOf(world.policy, o.limits ?? {}) }, startOf(world));
+const manifestOf = (world, room, task, start, o) => ({ schema: 1, kind: "ship", ship: room.id, task, at: iso(world), mode: o.mode, start, checkout: { root: world.root, project: world.project.key, checkoutId: world.project.checkoutId }, policy: { digest: policyDigest(world.policy) }, protected: { digest: protectedDigestOf(world, start.commit) }, limits: o.limitsHeld, options: { repair: o.repair === true, failFast: o.failFast !== false, model: o.model ?? null, credential: o.credential ?? null, caFile: o.caFile ?? null }, host: { node: process.version, platform: process.platform } });
+
+// A PRECHECK (0.5.0, B6) runs every model-carried row once, in one cycle, repairs nothing and stops at no failure: the
+// limits that would let it do more are a ship's, refused when a person asks them.
+const PRECHECK_REFUSES = ["cycles", "repairAttempts", "autonomousRetries"];
+
+const PRECHECK_LIMITS = { cycles: 1, flakyRetries: 0, autonomousRetries: 0 };
+
+function shipRefused(says) {
+  throw new Refused(says);
+}
+
+const precheckAsked = (world, o) => ((bad) => (bad.length ? shipRefused(`--precheck runs every model-carried row once, in one cycle: ${bad.map((k) => `--${LIMIT_FLAGS[k]}`).join(", ")} are a ship's`) : { ...o, mode: "precheck", repair: false, failFast: false, limitsHeld: { ...limitsOf(world.policy, o.limits ?? {}), ...PRECHECK_LIMITS } }))(PRECHECK_REFUSES.filter((k) => o.limits?.[k] !== undefined));
+
+const shipAsked = (world, o) => (o.precheck ? precheckAsked(world, o) : { ...o, mode: o.repair ? "autonomous" : "verify-only", limitsHeld: limitsOf(world.policy, o.limits ?? {}) });
+
+// What a person asked is held FIRST -- the limits to the policy's bounds, a precheck to what a precheck does: a ship
+// refused for either starts no task and keeps no room.
+export const begunShip = (world, o) => begunAt(world, shipAsked(world, o), startOf(world));
 
 function begunAt(world, o, start) {
   const room = shipRoomOf(world.storeRoot, newShipId(`${world.root}\u0000${start.commit}`));
@@ -99,15 +116,18 @@ function missing(id, room) {
 
 // ---- read without moving it ---------------------------------------------------------------------------------------------
 
-const ofCheckout = (world) => shipsIn(world.storeRoot).filter((s) => s.manifest.checkout?.checkoutId === world.project.checkoutId);
+const ofCheckout = (world, which = () => true) => shipsIn(world.storeRoot).filter((s) => s.manifest.checkout?.checkoutId === world.project.checkoutId && which(s));
+
+// A precheck qualifies nothing, so --evidence never takes one for this checkout's newest ship.
+const qualifying = (s) => s.manifest.mode !== "precheck";
 
 const evidenceOfShip = (world, s) => docRead(shipRoomOf(world.storeRoot, s.id), "evidence.json");
 
 // Which ship a question is about: the one named; else this checkout's newest that qualified the tree at HEAD; else
 // this checkout's newest.
-function chosen(world, id, headTree) {
+function chosen(world, id, headTree, which) {
   if (id) return { id, manifest: docRead(shipRoomOf(world.storeRoot, id), "manifest.json") ?? missing(id, shipRoomOf(world.storeRoot, id)) };
-  const mine = ofCheckout(world);
+  const mine = ofCheckout(world, which);
   return mine.find((s) => evidenceOfShip(world, s)?.source?.tree === headTree) ?? mine[0] ?? null;
 }
 
@@ -121,13 +141,17 @@ const nextAsked = (f, ctx) => (f.ended ? null : nextOf(f, { ...ctx, preflighted:
 
 const isHeld = (r) => r.v.state === "HELD";
 
+// Every model-carried row that did not hold, with its diagnosis bundle and its run's room (dispatch.mjs runDiagnosis).
+const diagnosesOf = (ctx, rows) => rows.filter((r) => r.row.autonomous && r.v.state !== "HELD").map((r) => runDiagnosis(ctx.storeRoot, r));
+
 // The rows of the newest cycle, by what each came to: held, and not held -- with the ones its diagnosis runs again.
 const rowsSaid = (ctx, rows) => ({ total: ctx.rows.length, held: rows.filter(isHeld).length, heldRows: rows.filter(isHeld).map((r) => r.row.id), failed: rows.filter((r) => !isHeld(r)).map((r) => `${r.row.id} ${r.v.state}${r.diag?.then === "RETRY" ? " (runs again)" : ""}`) });
 
 // A context to read a ship with: the catalog and each case's declaration as the checkout says them now.
 async function readingOf(world, ship) {
   const listed = await listedOf(world);
-  return { ...contextOf(world, shipRoomOf(world.storeRoot, ship.id), ship.manifest, {}), rows: listed ? rowsOf(world.policy, listed) : [], cases: casesIn(world.root, listed), preflighted: true };
+  const ctx = contextOf(world, shipRoomOf(world.storeRoot, ship.id), ship.manifest, {});
+  return { ...ctx, rows: listed ? shipRows(ctx, listed) : [], cases: casesIn(world.root, listed), preflighted: true };
 }
 
 // Where a ship stands. Its rows and repairs are the newest cycle's, open or closed: a ship that shipped, stopped or ended
@@ -137,7 +161,7 @@ export async function statusOf(world, id) {
   if (!ship) return { found: false, says: "no ship has run on this checkout: node skills/orbit-release/ship.mjs" };
   const ctx = await readingOf(world, ship);
   const f = factsOf(ctx, world.door.show(ctx.task));
-  return ((c) => ({ found: true, ship: ship.id, task: ctx.task, lifecycle: f.view.lifecycle, stage: f.view.stage ?? null, mode: ship.manifest.mode, start: ship.manifest.start, commit: f.current.commit, cycle: f.attempts, cycleOpen: Boolean(f.open), rows: rowsSaid(ctx, [...c.rows.values()]), repairs: c.repairs.map((r) => `${r.case} ${r.state}`), spent: f.spent, limits: f.limits, next: nextAsked(f, ctx), ending: docRead(ctx.room, "ending.json"), evidence: existsSync(ctx.room.at("evidence.json")) ? ctx.room.at("evidence.json") : null, room: ctx.room.dir }))(lastCycleOf(ctx, f));
+  return ((c) => ({ found: true, ship: ship.id, task: ctx.task, lifecycle: f.view.lifecycle, stage: f.view.stage ?? null, mode: ship.manifest.mode, start: ship.manifest.start, commit: f.current.commit, cycle: f.attempts, cycleOpen: Boolean(f.open), rows: rowsSaid(ctx, [...c.rows.values()]), diagnoses: diagnosesOf(ctx, [...c.rows.values()]), repairs: c.repairs.map((r) => `${r.case} ${r.state}`), spent: f.spent, limits: f.limits, next: nextAsked(f, ctx), ending: docRead(ctx.room, "ending.json"), evidence: existsSync(ctx.room.at("evidence.json")) ? ctx.room.at("evidence.json") : null, room: ctx.room.dir }))(lastCycleOf(ctx, f));
 }
 
 // The artifact as the evidence names it -- its file, digested again -- or a person's own archive of the same tree, by
@@ -151,7 +175,7 @@ const nowOf = (world, rows) => ({ protected: protectedDigestOf(world, "HEAD"), p
 
 export async function evidenceAsked(world, id, artifact = null) {
   const head = { tree: gitSays(world, ["rev-parse", "HEAD^{tree}"]), dirty: gitSays(world, ["status", "--porcelain=v1", "--untracked-files=no"]).split("\n").filter(Boolean) };
-  const ship = chosen(world, id, head.tree);
+  const ship = chosen(world, id, head.tree, qualifying);
   const room = ship ? shipRoomOf(world.storeRoot, ship.id) : null;
   const ev = room ? docRead(room, "evidence.json") : null;
   return publishableOf({ ship, view: ship ? world.door.show(ship.manifest.task) : null, evidence: ev, ending: room ? docRead(room, "ending.json") : null, head, now: nowOf(world, await catalogOf(world)), rooms: (run) => runRoomOf(world.storeRoot, run), artifact: artifactOf(ev, artifact) });

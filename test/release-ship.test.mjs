@@ -14,7 +14,7 @@ import { acceptanceOf as backendAcceptanceOf } from "../skills/orbit-release/bac
 import { acceptanceOf as hostAcceptanceOf, optional } from "../skills/orbit-release/hosts.mjs";
 import { AWAITED, ciVerdict, markOf } from "../skills/orbit-release/ship/ci.mjs";
 import { INTERRUPTED_RUNS } from "../skills/orbit-release/ship/diagnose.mjs";
-import { saidStatus } from "../skills/orbit-release/ship/report.mjs";
+import { saidResult, saidStatus } from "../skills/orbit-release/ship/report.mjs";
 import { begunShip, evidenceAsked, resumedShip, statusOf } from "../skills/orbit-release/ship/session.mjs";
 import { driven } from "../skills/orbit-release/ship/steps.mjs";
 import { authorize, isAuto } from "../src/protected/authorize.mjs";
@@ -509,6 +509,51 @@ test("--status of a ship that ended on a failed row says which rows held and whi
   assert.deepEqual([s.rows.held, s.rows.total, s.rows.failed], [5, 7, ["QA-001:autonomous FAILED"]], "never 0 held and nothing failed");
   assert.deepEqual(s.rows.heldRows.sort(), ["CALC-001:controls", "CALC-001:real", "CALC-002:controls", "CALC-002:real", "QA-001:controls"]);
   assert.match(saidStatus(s), /rows {6}5\/7 held in cycle 1, which closed; not held: QA-001:autonomous FAILED/);
+});
+
+// What a run's report says of how it ended (benchmark/lib/core/diagnosis.mjs), as a real QA run's report says it.
+const DIAGNOSIS = { finish: [{ round: 1, reason: "success", turns: 42, toolCalls: 61, error: null }], budget: { usd: { used: 4.12, cap: 5 }, minutes: { used: 47, cap: 120 }, rounds: { used: 1, cap: 1 } }, relay: { requests: 31, refused: 2, stopped: 1, refusals: [{ sub: "--help", why: "the relay runs no `--help`" }], stops: [{ sub: "finish", exit: 2, why: "inv-1 is already paused" }] }, stopped: [{ outcome: "INVALID_TEST", rule: "TEST_WRONG", step: 2, do: "call", capability: "orbit.state.read", as: "refused", says: "request.key … or request.match" }] };
+
+test("B6. --status prints a failed model-carried row's diagnosis bundle -- relay refusals, where a run stopped, the host's finish, the budget -- with its room", async (t) => {
+  const autonomous = () => ({ outcome: "FAIL", summary: "FAIL — a planted defect was not found", host: HOST, diagnosis: DIAGNOSIS });
+  const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, autonomous } });
+  const { ctx } = await shipped(w);
+  const s = await statusOf(w.world, ctx.ship.id);
+  const row = rowDocs(w, ctx, "QA-001:autonomous")[0];
+  assert.deepEqual(s.diagnoses.map((d) => [d.row, d.state, d.run, d.room]), [["QA-001:autonomous", "FAILED", row.planned.run, join(w.store, "benchmark", row.planned.run)]], "only the model-carried row that did not hold, by its latest run");
+  assert.deepEqual(s.diagnoses[0].diagnosis, DIAGNOSIS, "read off the run's own report, as the benchmark wrote it");
+  const said = saidStatus(s);
+  for (const line of [/diagnose\s+QA-001:autonomous FAILED/, /room\s+.*bnr-/, /finish\s+round 1: success, 42 turns, 61 tool calls/, /budget\s+4\.12 of 5 USD \(reported\), 47 of 120 minutes, 1 of 1 round\(s\)/, /relay\s+31 request\(s\), 2 refused, 1 stopped by the engine/, /refused `--help`: the relay runs no `--help`/, /stopped `finish` \(exit 2\): inv-1 is already paused/, /stopped\s+step 2 call orbit\.state\.read refused \(INVALID_TEST TEST_WRONG\): request\.key … or request\.match/]) assert.match(said, line);
+  const held = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched } });
+  const h = await shipped(held);
+  assert.deepEqual((await statusOf(held.world, h.ctx.ship.id)).diagnoses, [], "a ship whose model-carried rows held has nothing to diagnose");
+});
+
+// ---- the precheck (0.5.0 backlog B6) ---------------------------------------------------------------------------------------
+
+test("B6. --precheck runs only the model-carried rows, each once, stopping at no failure -- and says every failure with its run's room; it qualifies nothing", async (t) => {
+  const autonomous = () => ({ outcome: "FAIL", summary: "FAIL — a planted defect was not found", host: HOST, diagnosis: DIAGNOSIS });
+  const selfHealing = () => ({ outcome: "REPAIR_REJECTED", summary: "REPAIR_REJECTED — the hidden checks still fail", host: HOST });
+  const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, autonomous, selfHealing } });
+  const { ctx, result } = await shipped(w, { precheck: true, limits: {} });
+  assert.deepEqual([result.outcome, result.exit], ["PRECHECK_FAILED", 2], result.summary);
+  assert.deepEqual(w.calls.filter((c) => c.verb === "run" || c.verb === "controls").map((c) => c.kind ?? c.verb), ["autonomous", "selfHealing"], "the model-carried rows alone, no verification and no control -- the second ran though the first failed");
+  const rooms = rowDocs(w, ctx, "QA-001:autonomous").map((d) => join(w.store, "benchmark", d.planned.run));
+  assert.deepEqual(result.failures.map((x) => [x.row, x.state]), [["QA-001:autonomous", "FAILED"], ["CALC-001:self-healing", "FAILED"]]);
+  assert.deepEqual([result.failures[0].room, result.failures[0].diagnosis], [rooms[0], DIAGNOSIS], "each failure with its run's room and its bundle");
+  assert.match(saidResult(result), /PRECHECK FAILED[\s\S]*diagnose  QA-001:autonomous FAILED[\s\S]*room    .*bnr-[\s\S]*diagnose  CALC-001:self-healing FAILED/);
+  assert.deepEqual([actsOf(w, ctx, "release.gates").length, actsOf(w, ctx, "release.workspace").length, existsSync(ctx.room.at("evidence.json"))], [0, 0, false], "no definition of done, no workspace, no evidence: those are a ship's");
+  assert.deepEqual([(await statusOf(w.world, ctx.ship.id)).mode, await publishable(w)], ["precheck", [false, "NO_SHIP"]], "--evidence never takes a precheck for a ship");
+});
+
+test("--precheck: every model-carried row held once is PRECHECK_HELD, exit 0; what only a ship may do is refused before anything starts", async (t) => {
+  const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched } });
+  const { ctx, result } = await shipped(w, { precheck: true, limits: {} });
+  assert.deepEqual([result.outcome, result.exit, result.failures], ["PRECHECK_HELD", 0, []]);
+  assert.equal(w.door.show(ctx.task).lifecycle, "COMPLETED");
+  const before = w.door.tasks.size;
+  assert.throws(() => begunShip(w.world, { ...OPTS, precheck: true, limits: { autonomousRetries: 1, cycles: 2 } }), /--precheck runs every model-carried row once, in one cycle: --cycles, --retries are a ship's/);
+  assert.equal(w.door.tasks.size, before, "refused before a task");
 });
 
 test("--status names a repair the ship is making, diagnosed from each case's own declaration as the ship diagnoses it", async (t) => {

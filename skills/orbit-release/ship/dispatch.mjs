@@ -28,6 +28,11 @@ export function runRoomOf(storeRoot, run) {
   return { dir, manifest: at("manifest.json"), ending: at("ending.json"), report: at("report.json"), verified: at("verified.json") };
 }
 
+// A row that did not hold, with its diagnosis bundle (0.5.0, B6): what its latest run's own report says of how it ended
+// -- the host's finish, the budget it used, what the relay refused, where a run stopped short -- beside the run's room,
+// so nobody has to read the room to diagnose it. A run that never began has no room and no bundle.
+export const runDiagnosis = (storeRoot, r) => ((room) => ({ row: r.row.id, state: r.v.state, code: r.v.code, says: r.v.says, run: room.dir ? r.v.run : null, room: room.dir, diagnosis: room.report?.diagnosis ?? null }))(runRoomOf(storeRoot, String(r.v.run ?? "").split(" ")[0]));
+
 // ---- an action, its document written first and replaced whole when it settles ------------------------------------------
 
 export function begun(ctx, type, label, doc) {

@@ -97,3 +97,10 @@ when a person dispatches it, from an environment that holds the credential, insi
   report names the command that would run it.
 - The benchmark never mutates the developer's checkout, `main`, or anything outside a run's room and its containers;
   a scripted host's commands are Orbit's own CLIs as a host runs them, through every gate Orbit already has.
+
+## Amendment, 2026-11-05 (0.5.0) — HOST_DIVERGED
+
+`FAILURE_CLASSES` gains one class, `HOST_DIVERGED`, an addition to the table above: Orbit's suggestion was right and the
+host chose otherwise. It is the model's behaviour, it repairs nothing in Orbit, and it is never a reason to loosen a
+case. No row of `CAUSES` or `NEXT` comes to it -- a judge that holds a host's choices to a truth names it (the activation
+suite, ADR 0050) -- and every class before it keeps its meaning.

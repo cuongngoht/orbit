@@ -1,0 +1,102 @@
+// The benchmark's EVIDENCE of what a host did (0.5.0, the activation benchmark §4): hostOf v2 keeps one row per tool
+// call -- its name, the skill or agent it starts, the Agent call it answers to, a file tool's path, whether its result
+// came back as an error -- and never a prompt or an output; a Bash command is kept only for a judge's patterns
+// (commandsOf), never in what hostOf returns; and the AGREEMENT RULE holds the stream's Skill and Agent calls to the
+// trail Orbit's hooks wrote: neither is believed alone, and a session longer than the turns view is counted, never
+// waved through. HOST_DIVERGED is one more failure class, the model's own.
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { test } from "node:test";
+import { agreementOf } from "../benchmark/lib/core/agreement.mjs";
+import { commandsOf, hostOf, streamOf } from "../benchmark/lib/core/host.mjs";
+import { FAILURE_CLASSES } from "../benchmark/lib/source/classify.mjs";
+import { hostSession } from "../src/memory/session.mjs";
+
+const ROOT = join(import.meta.dirname, "..");
+
+const jsonl = (events) => events.map((e) => JSON.stringify(e)).join("\n");
+
+const call = (id, name, input, o = {}) => ({ type: "assistant", ...(o.parent ? { parent_tool_use_id: o.parent } : {}), message: { id: o.message ?? `msg-${id}`, content: [{ type: "tool_use", id, name, input }], ...(o.usage ? { usage: o.usage } : {}) } });
+
+const result = (id, isError, o = {}) => ({ type: "user", ...(o.parent ? { parent_tool_use_id: o.parent } : {}), message: { content: [{ type: "tool_result", tool_use_id: id, is_error: isError, content: o.says ?? "the tool's own output" }] } });
+
+const SESSION = [
+  { type: "system", subtype: "init", model: "claude-test", session_id: "sess-1", claude_code_version: "2.1.314" },
+  call("t1", "Skill", { skill: "orbit:orbit-help", args: "the person's own words" }, { message: "m1", usage: { input_tokens: 100, output_tokens: 20 } }),
+  call("t2", "Bash", { command: "node /work/orbit/cli/orbit.mjs goal start --stdin", description: "start" }, { message: "m1", usage: { input_tokens: 100, output_tokens: 20 } }),
+  result("t1", false),
+  result("t2", true, { says: "Exit code 2\nREFUSED: secret-looking output" }),
+  call("t3", "Agent", { subagent_type: "orbit:orbit-failure-analyst", prompt: "a prompt nobody keeps" }, { message: "m2", usage: { input_tokens: 50, output_tokens: 10 } }),
+  call("t4", "Read", { file_path: "/work/repo/src/money.mjs" }, { message: "m3", parent: "t3" }),
+  result("t4", false, { parent: "t3" }),
+  result("t3", false),
+  { type: "result", subtype: "success", is_error: false, num_turns: 3, total_cost_usd: 0.42, result: "a final answer nobody keeps" },
+];
+
+test("hostOf v2 keeps one row per call: its name, the component it starts, its parent, a file's path, and how it came back", () => {
+  const h = hostOf(jsonl(SESSION));
+  assert.deepEqual([h.basis, h.model, h.toolCalls, h.failedCalls, h.costUsd], ["REPORTED", "claude-test", 4, 1, 0.42], "the existing fields stay what they were");
+  assert.deepEqual(h.uses.map((u) => [u.id, u.name, u.skill ?? u.agent ?? u.path ?? null, u.parent, u.failed, u.turn]), [["t1", "Skill", "orbit:orbit-help", null, false, 0], ["t2", "Bash", null, null, true, 0], ["t3", "Agent", "orbit:orbit-failure-analyst", null, false, 1], ["t4", "Read", "/work/repo/src/money.mjs", "t3", false, 2]]);
+  const kept = JSON.stringify(h);
+  for (const never of ["the person's own words", "a prompt nobody keeps", "secret-looking output", "a final answer nobody keeps", "goal start"]) assert.ok(!kept.includes(never), `never kept: ${never}`);
+});
+
+test("a call whose result never came back is unknown, never a success; a stream read twice counts each call once", () => {
+  const cut = hostOf(jsonl([...SESSION.slice(0, 3), SESSION[2]]));
+  assert.deepEqual(cut.uses.map((u) => [u.id, u.failed]), [["t1", null], ["t2", null]], "no result, no verdict on the call");
+  assert.equal(cut.toolCalls, 2, "the same call carried twice is one call");
+  assert.deepEqual(streamOf(jsonl(SESSION)).turns, [{ turn: 0, thread: "main", tokens: 120 }, { turn: 1, thread: "main", tokens: 60 }, { turn: 2, thread: "t3", tokens: null }], "a message streamed as two events is one turn, and a subagent's turn is its own thread");
+});
+
+test("a Bash command is kept only for a judge's patterns: commandsOf names it with its call, and hostOf never does", () => {
+  assert.deepEqual(commandsOf(jsonl(SESSION)), [{ id: "t2", parent: null, turn: 0, command: "node /work/orbit/cli/orbit.mjs goal start --stdin" }]);
+  assert.ok(!JSON.stringify(hostOf(jsonl(SESSION))).includes("cli/orbit.mjs"));
+});
+
+// ---- the agreement rule --------------------------------------------------------------------------------------------------
+
+const turnsDoc = (steps, o = {}) => ({ exit: 0, json: { version: 1, turns: [{ id: "trn-1", session: o.session ?? hostSession("claude", "sess-1"), steps }] } });
+
+const step = (kind, label, o = {}) => ({ at: "2026-11-05T00:00:00.000Z", kind, label, ok: !o.refused, refused: o.refused === true });
+
+const USES = hostOf(jsonl(SESSION)).uses;
+
+const MATCHING = [step("skill", "orbit:orbit-help"), step("tool", "Bash"), step("agent", "orbit:orbit-failure-analyst"), step("tool", "Read")];
+
+test("the stream and the trail agree when every Skill and Agent call has its trail line and every line its call", () => {
+  const a = agreementOf(USES, { turns: turnsDoc(MATCHING) }, { session: "sess-1" });
+  assert.deepEqual([a.verdict, a.by, a.stream, a.trail], ["AGREES", "turns", { skills: 1, agents: 1 }, { skills: 1, agents: 1 }]);
+  assert.equal(agreementOf(USES, { turns: turnsDoc([step("skill", "orbit:orbit-help", { refused: true }), MATCHING[2]]) }).verdict, "AGREES", "a call its switch refused is still the call the trail names");
+});
+
+test("neither source is believed alone: a call with no trail line, or a trail line with no call, is CONFLICTING", () => {
+  const unseen = agreementOf(USES, { turns: turnsDoc([MATCHING[0]]) }, { session: "sess-1" });
+  assert.deepEqual([unseen.verdict, unseen.missing.trail], ["CONFLICTING", ["agent orbit:orbit-failure-analyst"]]);
+  const forged = agreementOf(USES, { turns: turnsDoc([...MATCHING, step("skill", "orbit:orbit-engineer")]) }, { session: "sess-1" });
+  assert.deepEqual([forged.verdict, forged.missing.stream], ["CONFLICTING", ["skill orbit:orbit-engineer"]]);
+  assert.equal(agreementOf(USES, { turns: turnsDoc(MATCHING, { session: hostSession("claude", "another-session") }) }, { session: "sess-1" }).verdict, "CONFLICTING", "another session's trail is not this session's");
+});
+
+test("an arm with no Orbit has no trail and expects none: any trail line or orbit call there is CONFLICTING", () => {
+  const plain = hostOf(jsonl([SESSION[0], call("x1", "Agent", { subagent_type: "general-purpose" }), result("x1", false)])).uses;
+  assert.equal(agreementOf(plain, { turns: turnsDoc([]) }, { arm: "none" }).verdict, "AGREES");
+  assert.equal(agreementOf(USES, { turns: turnsDoc([]) }, { arm: "none" }).verdict, "CONFLICTING", "an orbit call where no Orbit was loaded");
+  assert.equal(agreementOf(plain, { turns: turnsDoc([step("skill", "orbit:orbit-help")]) }, { arm: "none" }).verdict, "CONFLICTING", "a trail where none can be");
+});
+
+test("past the turns view's cap the trail's uncapped counts decide, and with neither the answer is UNDETERMINED, never AGREES", () => {
+  const long = [...MATCHING.slice(0, 1), ...Array.from({ length: 80 }, () => step("tool", "Read"))];
+  const usage = (skills, agents) => ({ exit: 0, json: { version: 1, totals: { skills, agents } } });
+  assert.deepEqual(((a) => [a.verdict, a.by])(agreementOf(USES, { turns: turnsDoc(long), usage: usage(1, 1) }, { session: "sess-1" })), ["AGREES", "usage"]);
+  assert.equal(agreementOf(USES, { turns: turnsDoc(long), usage: usage(1, 0) }, { session: "sess-1" }).verdict, "CONFLICTING");
+  assert.equal(agreementOf(USES, { turns: turnsDoc(long), usage: { exit: 1, json: null } }, { session: "sess-1" }).verdict, "UNDETERMINED");
+  assert.equal(agreementOf(USES, { turns: { exit: 1, json: null } }).verdict, "UNDETERMINED", "a trail nobody could read settles nothing");
+});
+
+test("HOST_DIVERGED is one more failure class, and the README and ADR 0048 say what it means", () => {
+  assert.ok(FAILURE_CLASSES.includes("HOST_DIVERGED"));
+  assert.equal(FAILURE_CLASSES.at(-1), "UNKNOWN", "the catch-all stays last");
+  assert.match(readFileSync(join(ROOT, "benchmark", "README.md"), "utf8"), /`HOST_DIVERGED` \(0\.5\.0\) is the one class that is the model's behaviour/);
+  assert.match(readFileSync(join(ROOT, "docs", "adr", "0048-the-benchmark-proves-orbits-self-healing-loop-and-measures-goals.md"), "utf8"), /## Amendment, 2026-11-05 \(0\.5\.0\) — HOST_DIVERGED/);
+});

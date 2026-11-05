@@ -179,7 +179,12 @@ Every command takes `--json`. Runs are kept in the machine store under `<store>/
 Every outcome that is not a pass also carries a **failure class**, so a run says WHY in one of a fixed set of words
 (`FAILURE_CLASSES`, `lib/source/classify.mjs`): `ORBIT_SOURCE_DEFECT`, `BENCHMARK_DEFECT`, `VERIFIER_DEFECT`,
 `ENVIRONMENT_BLOCKED`, `PROVIDER_FAILURE`, `INFRASTRUCTURE_FAILURE`, `NON_DETERMINISTIC`, `INSUFFICIENT_EVIDENCE`,
-`BUDGET_EXHAUSTED`, `HUMAN_APPROVAL_REQUIRED` or `UNKNOWN`. A goal that is not met is an outcome, not a class.
+`BUDGET_EXHAUSTED`, `HUMAN_APPROVAL_REQUIRED`, `HOST_DIVERGED` or `UNKNOWN`. A goal that is not met is an outcome, not a
+class.
+
+`HOST_DIVERGED` (0.5.0) is the one class that is the model's behaviour, not Orbit's: Orbit's suggestion was right and
+the host chose otherwise. It repairs nothing in Orbit, and it is never a reason to loosen a case. No row of `CAUSES`
+comes to it; a judge that holds a host's choices to a truth names it (the activation suite).
 
 ## Source cases
 

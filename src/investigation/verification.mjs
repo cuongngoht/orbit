@@ -26,6 +26,7 @@ export const VERIFICATION_OUTCOMES = [
   { id: "AUTHORIZATION_BLOCKED", counts: false, defect: false, obligation: "needs-approval", retry: "never", recovery: "keep the exact permission that is missing — a person decides; no policy is edited", say: "the policy, the mode or an identity does not allow it" },
   { id: "ENVIRONMENT_BLOCKED", counts: false, defect: false, obligation: "blocked", retry: "safe", recovery: "the runtime's owner makes the sandbox, a dependency or an endpoint ready — never a product failure", say: "the sandbox or a dependency was not ready" },
   { id: "EXECUTION_ERROR", counts: false, defect: false, obligation: "pending", retry: "read-back", recovery: "keep the receipt; retry a bounded number of times only where it is safe", say: "a provider crashed or a protocol failed" },
+  { id: "INTERRUPTED", counts: false, defect: false, obligation: "pending", retry: "safe", recovery: "it could write nothing, so a new attempt may run within the budget — one its own deadline stopped needs a design that waits less, or a longer deadline", say: "its worker was stopped before the run finished, and it could write nothing" },
   { id: "INCONCLUSIVE", counts: false, defect: false, obligation: "pending", retry: "safe", recovery: "restore the observation, or run again with a scope that can conclude", say: "the evidence cannot decide it" },
   { id: "REQUIRES_REQUIREMENT", counts: false, defect: false, obligation: "needs-requirement", retry: "never", recovery: "find the accepted source, or a person settles the missing criterion", say: "the oracle is missing or in conflict" },
   { id: "CONTRADICTED", counts: false, defect: true, obligation: "violated", retry: "never", recovery: "keep the runner's verdict; the verification owner confirms the cause and the finding", say: "a valid run contradicted a qualified oracle" },
@@ -57,8 +58,13 @@ export const accusesProduct = (id) => verificationOutcomeOf(id)?.defect === true
 // observation that could not see everything never passes, and neither does a run whose fault was never seen.
 //
 // facts: { status, failure: { helperClass, gap, ambiguous, contradiction, authorization },
-//          envelope: [findings], stale, authority, positiveFailed, faultMissed }
+//          envelope: [findings], stale, authority, positiveFailed, faultMissed, wrote }
+// `wrote`: the attempt had grants to write with (src/runtime/sandbox/test-grants.mjs), so a write may have happened.
 const failure = (f) => f.failure ?? {};
+
+// A worker stopped before its runner finished says INTERRUPTED (cli/sandbox-worker.mjs, src/run/envelope.mjs): what it
+// ran up to is not known, so it ruled on nothing -- and a run that had grants may have written, which is never resent.
+const interrupted = (f) => f.status === "INTERRUPTED";
 
 // A run that ruled: every verdict held, or one did not. A FAULT control's run is about surviving the fault, so a run
 // whose observations never carried its point proved nothing of it either way -- a pass after a fault that never fired
@@ -67,8 +73,10 @@ const RAN_TO_A_VERDICT = ["PASS", "FAIL"];
 
 export const RESULT = [
   { id: "ENVELOPE", when: (f) => (f.envelope ?? []).length > 0, word: "EXECUTION_ERROR", why: "the worker's envelope did not hold — nothing it claimed is taken" },
+  { id: "INTERRUPTED_WRITE", when: (f) => interrupted(f) && f.wrote === true, word: "AMBIGUOUS", why: "its worker was stopped before the run finished, and it had grants to write — what it did is unknown: a person reads back and decides, and it is never sent again" },
   { id: "MOVED", when: (f) => f.stale === true, word: "STALE", why: "what this ran on moved since: the source, the case or the contract" },
   { id: "UNSETTLED_WRITE", when: (f) => Boolean(failure(f).ambiguous), word: "AMBIGUOUS", why: "a write was sent and how it ended is not known" },
+  { id: "INTERRUPTED", when: interrupted, word: "INTERRUPTED", why: "its worker was stopped before the run finished — its deadline passed, its supervisor stopped it, or its runner ended without a word — and it could write nothing: an attempt that proved nothing, and a new one may run" },
   { id: "NOTHING_SERVES", when: (f) => Boolean(failure(f).gap), word: "CAPABILITY_MISSING", why: "nothing here could perform or observe what the step needed" },
   { id: "NOT_ALLOWED", when: (f) => f.status === "REFUSED" && failure(f).authorization === true, word: "AUTHORIZATION_BLOCKED", why: "a gate refused it for want of permission" },
   { id: "TEST_WRONG", when: (f) => f.status === "REFUSED", word: "INVALID_TEST", why: "the test itself was refused before it could rule on anything" },

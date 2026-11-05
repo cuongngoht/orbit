@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { envelopeOf as workerEnvelopeOf } from "../cli/sandbox-worker.mjs";
 import { run as hooks } from "../skills/orbit-backend-test/hooks/operations.mjs";
 import { familyCapabilities } from "../src/adapters/core.mjs";
 import { createAdapterRegistry } from "../src/adapters/registry.mjs";
@@ -78,6 +79,31 @@ test("a contradiction of the compiled verdict is CONTRADICTED; a claimed PASS ov
   assert.ok(out.findings.length > 0);
   const silent = world(() => ({ why: "the worker was killed" }));
   assert.equal(ranVersion(silent.w, { version: silent.version }).outcome, "EXECUTION_ERROR");
+});
+
+// What 0.4.0's diagnosis found (0.5.0 B7): a worker interrupted before its runner finished -- its deadline, its
+// supervisor, a runner that ended without a word -- left the envelope its wrapper writes (cli/sandbox-worker.mjs), and
+// the host judged it EXECUTION_ERROR, "ran another case", which a host may try again. It is its own outcome: INTERRUPTED,
+// a new attempt that may run, when the run could write nothing; AMBIGUOUS when it had grants to write, which is read back
+// and never sent again -- a run that may have written is never free to retry.
+const INTERRUPTION = "its deadline passed before the runner finished";
+const interruptedRun = (x) => ({ envelope: workerEnvelopeOf(x.request, "INTERRUPTED", INTERRUPTION), records: [], listed: new Map() });
+
+test("an interrupted worker is its own outcome: INTERRUPTED when it could write nothing, AMBIGUOUS -- never sent again -- when it had grants", () => {
+  const writing = world(interruptedRun);
+  const a = ranVersion(writing.w, { version: writing.version });
+  assert.deepEqual([a.outcome, a.rule, a.findings], ["AMBIGUOUS", "INTERRUPTED_WRITE", []], a.why);
+  assert.deepEqual([ranVersion(writing.w, { version: writing.version }).outcome, writing.calls.run.length], ["AMBIGUOUS", 1], "what it did is unknown: held back, never dispatched again");
+  const reading = world(interruptedRun);
+  const prepare = reading.w.dispatch.prepare;
+  reading.w.dispatch.prepare = (x) => ({ ...prepare(x), grants: [] });
+  const b = ranVersion(reading.w, { version: reading.version });
+  assert.deepEqual([b.outcome, b.rule, b.findings], ["INTERRUPTED", "INTERRUPTED", []], b.why);
+  assert.deepEqual(b.stopped, { step: null, do: null, capability: null, as: "interrupted", says: INTERRUPTION }, "it says why its worker said it stopped");
+  const run = reading.model().runs.at(-1);
+  assert.deepEqual([run.status, run.cause, run.proved, reading.model().evaluations.at(-1).outcome], ["BLOCKED", "interrupted", null, "INTERRUPTED"], "the run never reached a verdict, and proved nothing");
+  ranVersion(reading.w, { version: reading.version });
+  assert.equal(reading.calls.run.length, 2, "it could write nothing, so a new attempt runs");
 });
 
 test("what cannot be bound is BLOCKED before anything starts, and nothing is dispatched", () => {

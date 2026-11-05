@@ -13,11 +13,18 @@ import { WORKER_API } from "./worker.mjs";
 
 const RELATIVE = (p) => typeof p === "string" && p.length > 0 && !/^([/\\]|[A-Za-z]:)/.test(p) && !p.split(/[/\\]/).includes("..");
 
+// What a worker whose runner never finished leaves (cli/sandbox-worker.mjs): this dispatch's run id and nonce,
+// INTERRUPTED and why -- and no case and no result, because it ran none to its end. It claims nothing else, so it is
+// held to nothing else; what it came to is the host's to decide (src/investigation/verification.mjs RESULT).
+export const INTERRUPTED = "INTERRUPTED";
+
+export const isInterruption = (e) => e?.status === INTERRUPTED && e.caseDigest === undefined && (e.result === null || e.result === undefined);
+
 const ENVELOPE_RULES = [
   (e) => (e?.v === WORKER_API ? [] : [`the envelope is not ${WORKER_API}`]),
   (e, x) => (e.runId === x.runId && e.nonce === x.nonce ? [] : ["the envelope answers another dispatch (run id or nonce)"]),
-  (e, x) => (e.caseDigest === x.caseDigest ? [] : ["the envelope ran another case than the frozen one dispatched"]),
-  (e) => (RUN_STATE_NAMES.includes(e.status) || e.status === "INTERRUPTED" ? [] : [`"${String(e.status).slice(0, 20)}" is no status a run can have`]),
+  (e, x) => (e.caseDigest === x.caseDigest || isInterruption(e) ? [] : ["the envelope ran another case than the frozen one dispatched"]),
+  (e) => (RUN_STATE_NAMES.includes(e.status) || e.status === INTERRUPTED ? [] : [`"${String(e.status).slice(0, 20)}" is no status a run can have`]),
   (e) => (e.result === null || e.result === undefined || e.result.status === e.status ? [] : ["the envelope's status is not its result's — one of them is not what ran"]),
   (e) => (e.evidence === null || e.evidence === undefined || RELATIVE(e.evidence) ? [] : [`the envelope names evidence outside its output: ${String(e.evidence).slice(0, 80)}`]),
   (e) => (Array.isArray(e.files) ? e.files : []).filter((f) => !RELATIVE(f?.path)).map((f) => `the envelope names a file outside its output: ${String(f?.path).slice(0, 80)}`),

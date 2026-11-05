@@ -162,7 +162,10 @@ step's `frozen` names and `context` lists under `versions` with its obligation) 
 isolated sandbox: its writes need fixture-write and run under grants minted for its fixture, its refs
 are bound by the engine, and what it came to (`SATISFIED`, `CONTRADICTED`, `INCONCLUSIVE`,
 `ENVIRONMENT_BLOCKED`, …) is decided from the host's own check of the worker's envelope — never from
-what the worker says. A run that did not settle is read back, never sent again: `reconcile` (below).
+what the worker says. A worker stopped before its run finished (its deadline, its supervisor) ruled on nothing:
+`INTERRUPTED` when the version could write nothing -- run it again, and if its own deadline stopped it, wait
+less -- and `AMBIGUOUS` when it had grants to write, which is never sent again (`result.stopped` says why it
+stopped). A run that did not settle is read back, never sent again: `reconcile` (below).
 Every step's answer carries `result`: what its action came to in its owner's word (`DRAFT_CREATED`,
 `GENERATION_FAILED`, `ENVIRONMENT_BLOCKED`, `SATISFIED` …), the stage or rule behind it and why -- read it
 before the next decision: a blocked run names the binding or grant it lacked, a failed design the finding

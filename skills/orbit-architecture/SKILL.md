@@ -3,7 +3,7 @@ name: orbit-architecture
 description: >
   Answers architecture questions -- what this project is made of, where a new integration belongs,
   whether a capability already exists -- from a kept, evidence-backed snapshot, re-reading only what
-  moved. Reads only and decides no verdict. To map what talks to what, use orbit-reverse-engineer.
+  moved. Never edits source or decides a verdict. To map what talks to what, use orbit-reverse-engineer.
 argument-hint: what the task needs verified | where does X belong | what can this project verify | refresh the snapshot
 allowed-tools:
   - Read

@@ -2,9 +2,8 @@
 name: orbit-reverse-engineer
 description: >
   Maps the running system -- components, workloads, interfaces, queues, schedules, stores, and what
-  talks to what -- from the repository's own files, as a kept system graph. Use for reverse
-  engineering, or which workers consume a queue. Reads only. For where a change belongs, use
-  orbit-architecture.
+  talks to what -- from its own files, as a kept system graph. Use for reverse engineering, or which
+  workers consume a queue. Never edits source. For where a change belongs, use orbit-architecture.
 argument-hint: map the whole system | what talks to what | which workers consume a queue | refresh the system graph
 allowed-tools:
   - Read

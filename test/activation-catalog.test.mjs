@@ -8,8 +8,11 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { catalogFile, readCatalog } from "../src/catalog.mjs";
-import { pluginComponents } from "../src/resources/plugin.mjs";
+import { pluginBuiltins, pluginComponents } from "../src/resources/plugin.mjs";
+import { PROVIDERS } from "../src/resources/providers/index.mjs";
+import { getEffectiveResources } from "../src/resources/registry.mjs";
 import { INTENTS, REFINEMENTS } from "../src/routing/intents.mjs";
+import { route } from "../src/routing/resolve.mjs";
 import { gramsOf, keyOf } from "../src/routing/terms.mjs";
 import { realIo } from "../src/store/io.mjs";
 
@@ -106,6 +109,51 @@ test("every component meant to be used proactively -- every skill, every direct 
   const asked = reachable();
   for (const [kind, name] of all.filter(([kind, name]) => kind === "skill" || !viaOf(name).length)) assert.ok(rowOf(kind, name).provides.some((p) => asked.has(p)), `${kind} ${name} provides ${rowOf(kind, name).provides.join(", ")}, which nothing asks for`);
   for (const name of AGENTS.filter((a) => viaOf(a).length)) assert.ok(viaOf(name).some((parent) => rowOf("skill", parent).provides.some((p) => asked.has(p))), `${name} is reached through no parent`);
+});
+
+// The rule above reads the catalog's lists and nothing else, so a row that says `requiresSignal` with no signal a
+// prompt could carry -- or a provider another always outranks -- would still pass it. This one asks the REAL router:
+// for every skill and direct agent there is a prompt, made only of the table's own words (two cues of what asks for
+// what it provides, a refinement's cue, its parent's own witness for a need, and one of its own signals where it is
+// gated), that the resolver SELECTS it for. A signal-gated component nothing can reach fails here by name.
+const REGISTRY = getEffectiveResources({ env: {}, plugin: "orbit", components: () => COMPONENTS, builtins: () => pluginBuiltins(REPO, io), capabilities: () => [], mcp: () => [], tools: () => [] }, PROVIDERS);
+const providesAny = (row, provided) => row.requires.some((q) => provided.includes(q));
+const firstWithin = (r) => INTENTS.find((i) => r.within.includes(i.id))?.cues.slice(0, 2) ?? [];
+const askingWords = (provided) => [...INTENTS.filter((r) => providesAny(r, provided)).map((r) => r.cues.slice(0, 2)), ...REFINEMENTS.filter((r) => providesAny(r, provided)).flatMap((r) => r.cues.map((c) => [...(r.within.includes("*") ? [] : firstWithin(r)), c]))];
+const parentsOf = (provided) => Object.entries(CATALOG.skills).filter(([, row]) => [...(row.needs ?? []), ...(row.optional ?? [])].some((n) => provided.includes(n))).map(([name]) => name);
+const selects = (prompt, kind, name) => [...route(prompt, REGISTRY).selected, ...route(prompt, REGISTRY).approval].some((e) => e.kind === kind && e.id === name);
+
+function witnessOf(kind, name, depth = 0) {
+  const row = rowOf(kind, name);
+  const bases = [...askingWords(row.provides), ...(depth < 2 ? parentsOf(row.provides).map((p) => [witnessOf("skill", p, depth + 1)]).filter(([w]) => w) : [])];
+  const signals = row.requiresSignal || parentsOf(row.provides).length ? [...(row.signals ?? []), ...(row.requiresSignal ? [] : [""])] : [""];
+  return bases.flatMap((words) => signals.map((s) => [...words, s].filter(Boolean).join(". "))).find((prompt) => selects(prompt, kind, name)) ?? null;
+}
+
+// Two direct agents carry exactly the capability a skill provides, and the resolver's family order puts the skill first:
+// a request asked directly is done in the session, where the person sees it, and the agent is the coordinator's and the
+// host's to dispatch (design §3.6, "shadowed"). They are the only components the router may never select.
+const SHADOWED = ["agent orbit-engineering-agent", "agent orbit-qa-agent"];
+
+test("every skill and direct agent is SELECTED by the real router for some prompt made of the table's own words", () => {
+  const unreached = all.filter(([kind, name]) => kind === "skill" || !viaOf(name).length).filter(([kind, name]) => !witnessOf(kind, name));
+  assert.deepEqual(unreached.map(([kind, name]) => `${kind} ${name}`), SHADOWED, "nothing the catalog, the intents and the refinements say can bring a prompt to these");
+  for (const shadowed of SHADOWED.map((s) => s.split(" ")[1])) assert.ok(SKILLS.some((skill) => rowOf("agent", shadowed).provides.every((p) => rowOf("skill", skill).provides.includes(p)) && witnessOf("skill", skill)), `${shadowed} is shadowed only by a skill the router does select`);
+  for (const name of AGENTS.filter((a) => viaOf(a).length)) assert.equal(selects([...askingWords(rowOf("agent", name).provides).flat(), ...(rowOf("agent", name).signals ?? [])].join(". "), "agent", name), false, `${name} is never selected straight from a prompt's words, its own signals included`);
+});
+
+// A description is a promise the host reads before it reads the body. "Reads only" promises that the playbook writes
+// nothing at all, which is false for one that records facts into Orbit's store or opens a task of its own: what such a
+// playbook keeps from is the SOURCE, and its description says that instead.
+const WRITES = /cli\/task\.mjs\s+create|cli\/(?:architecture|engineering|knowledge)\.mjs\s+record(?!\s+--dry)/;
+
+test("a playbook that records into Orbit's store or opens a task never describes itself as reading only", () => {
+  for (const name of SKILLS.filter((s) => WRITES.test(bodyOf("skill", s)))) assert.doesNotMatch(descriptionOf("skill", name), /\bReads only\b/i, `${name} records or opens a task, so it does not read only`);
+});
+
+test("the catalog's own doc says each thing once: no sentence of it is said again inside another", () => {
+  const sentences = CATALOG.doc.split(/(?<=\.)\s+/).map((s) => s.trim().replace(/\.$/, "")).filter(Boolean);
+  assert.deepEqual(sentences.filter((s, i) => sentences.some((other, j) => j !== i && other.includes(s))), []);
 });
 
 test("engineering.context has a provider: the engine's own engineering recall, never a skill's guess", () => {

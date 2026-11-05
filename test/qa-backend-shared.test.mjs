@@ -11,7 +11,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { MESSAGE_FIELDS, SCHEDULE_FIELDS } from "../src/qa/backend/bindings.mjs";
-import { KEY_WORDS, ONE_SANDBOX, keysOf, sharedWith } from "../src/qa/backend/shared.mjs";
+import { KEY_WORDS, ONE_SANDBOX, keysOf, sharedWith, statedFor } from "../src/qa/backend/shared.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const call = (capability, input) => ({ do: "call", capability, input });
@@ -59,6 +59,28 @@ test("a design that names a key an earlier version of its investigation named is
   const apart = skeleton([publish("msg-host-0009a")].map((s) => JSON.parse(JSON.stringify(s).replaceAll("2026-10-22", "2026-10-29"))));
   assert.deepEqual(sharedWith(apart, earlier), [], "keys no earlier test used share nothing");
   assert.match(sharedWith(HOST_DEADLINE, [{ ...earlier[0], shape: null }])[0].say, /named by gen-once@0123456789abcdef \(tob-once\)/, "an obligation whose shape is unknown is named by its id");
+});
+
+// What 0.4.0's last fixes left open (0.5.0 B7): a key an accepted criterion states FOR another shape -- the deadline
+// test's own correlation, say -- was said only when the second design named it again, after the first had used it. A
+// criterion that states a value for a shape gives that value to that shape's test: it is said at the FIRST design that
+// names it, before any version of the other test exists. Advice, never a refusal.
+const STATED = new Map([
+  ["SLA-1/E1", { id: "E1", property: "message.correlation.correlationId", op: "complete-within", value: KEY, for: ["completes-by-deadline"], within: 120 }],
+  ["SLA-1/E2", { id: "E2", property: "effect.count", op: "count-eq", value: 1 }],
+  ["SLA-1/E3", { id: "E3", property: "settlement.outcome", op: "complete-within", value: "processed", for: ["completes-by-deadline"], within: 120 }],
+]);
+
+test("a key an accepted criterion states for another shape is said at the first design that names it, under the words it was named by", () => {
+  const [stated, ...more] = statedFor(HOST_ONCE, "effect-once-per-key", STATED);
+  assert.equal(more.length, 0, "a value no key word names -- an outcome -- is no key");
+  assert.deepEqual([stated.criterion, stated.shape, stated.keys], ["SLA-1/E1", "completes-by-deadline", [{ value: KEY, as: ["correlationId", "businessKey"] }]]);
+  assert.equal(stated.say, `correlationId/businessKey ${KEY} — an accepted criterion (SLA-1/E1) states it for completes-by-deadline: that test observes it, and every test of this investigation runs in its one sandbox — use one no accepted criterion states for another test, unless what that test leaves is what this one observes`);
+  assert.deepEqual(statedFor(HOST_DEADLINE, "completes-by-deadline", STATED), [], "the test it is stated for is the one that uses it");
+  assert.deepEqual(statedFor(HOST_ONCE, "effect-once-per-key", new Map([["X/E1", { ...STATED.get("SLA-1/E1"), for: [] }]])), [], "stated for no obligation, it is given to none");
+  assert.deepEqual(statedFor(HOST_ONCE, "effect-once-per-key", new Map([["X/E1", { ...STATED.get("SLA-1/E1"), for: undefined }]])), [], "stated for every shape its op rules with, it is no one test's");
+  assert.deepEqual(statedFor(HOST_ONCE, "effect-once-per-key", new Map([["X/E1", { ...STATED.get("SLA-1/E1"), for: ["effect-once-per-key", "completes-by-deadline"] }]])), [], "stated for this shape too, it is this test's to use");
+  assert.deepEqual(statedFor(skeleton([publish("msg-host-0009a")].map((s) => JSON.parse(JSON.stringify(s).replaceAll("2026-10-22", "2026-10-29")))), "effect-once-per-key", STATED), [], "a key the criterion does not state is nobody else's");
 });
 
 // The reference designs (acceptance/designs/) are what the benchmark's scripted controls send, in their order, in ONE

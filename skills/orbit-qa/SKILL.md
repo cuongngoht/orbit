@@ -156,7 +156,10 @@ any test's clock advance passes is the schedule's -- unless that is what the tes
 names one that an earlier frozen version of the investigation named too says so beside its answer (`result.shared`:
 that version, its obligation and shape, each value and the word it was named under -- `businessKey`,
 `correlationId`, `messageId` or `occurrenceId`): it is advice, it changes nothing, and it comes before you run --
-choose another key unless what the earlier test left is what this one observes.
+choose another key unless what the earlier test left is what this one observes. A design that names a value an
+accepted criterion states `for` another shape is told so at the FIRST design that names it, before that other test
+has any version (`result.shared` then names the `criterion` and the shape it is stated for): that value is the other
+test's to observe.
 The engine compiles every verdict from the accepted criterion, validates the case with the real grammar, saves it as
 a DRAFT and freezes its version; a design that does not hold comes back
 with its word (`GENERATION_FAILED`, `REQUIRES_REQUIREMENT`, `INVALID_TEST`) and the stage that

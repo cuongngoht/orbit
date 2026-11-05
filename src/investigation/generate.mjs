@@ -14,7 +14,7 @@
 import { caseDigest } from "../dsl/digest.mjs";
 import { Refused } from "../errors.mjs";
 import { canonicalJson, sha } from "../hash.mjs";
-import { sharedWith } from "../qa/backend/shared.mjs";
+import { sharedWith, statedFor } from "../qa/backend/shared.mjs";
 import { generatedCase } from "../qa/generation/design.mjs";
 import { freezeVersion } from "../qa/generation/version.mjs";
 import { current, withJournal } from "./act.mjs";
@@ -24,8 +24,9 @@ import { eventIdOf } from "./store.mjs";
 export function generated(w, a) {
   const g = generationOf(w);
   const obligation = obligationWithin(w, a.obligation);
-  const out = generatedCase(a.design, g.contextFor(obligation, a));
-  return withJournal(w, () => (out.ok ? keptVersion(w, g, obligation, out) : keptFailure(w, obligation, a, out)));
+  const cx = g.contextFor(obligation, a);
+  const out = generatedCase(a.design, cx);
+  return withJournal(w, () => (out.ok ? keptVersion(w, g, obligation, { ...out, stated: statedFor(out.design, obligation.shape, cx.expectations) }) : keptFailure(w, obligation, a, out)));
 }
 
 // The obligation as the journal holds it now, while its budget lasts.
@@ -86,14 +87,15 @@ function keptVersion(w, g, obligation, out) {
   designKept(w, obligation, out.design);
   const there = current(w).versions.find((v) => v.design === out.design.id && v.digest === caseDigest(out.case));
   const version = there?.version ?? frozenVersion(w, g, out);
-  return { outcome: "DRAFT_CREATED", version, design: out.design.id, case: out.case.id, channel: out.channel, digests: out.digests, ...sharedOf(w, obligation, out.design) };
+  return { outcome: "DRAFT_CREATED", version, design: out.design.id, case: out.case.id, channel: out.channel, digests: out.digests, ...sharedOf(w, obligation, out.design, out.stated) };
 }
 
 // What this design names -- a business key, a message, an occurrence -- that an earlier frozen version of this
 // investigation named too (src/qa/backend/shared.mjs): the tests of one investigation share its sandbox, so whichever runs
 // later finds what the other left. Said beside the answer and kept nowhere; it decides, refuses and records nothing. A
 // version of this very design is the same test, and one of this obligation's own that never started left nothing there.
-const sharedOf = (w, obligation, design) => ((shared) => (shared.length ? { shared } : {}))(sharedWith(design, earlierOf(w, current(w), obligation.obligation, design.id)));
+// After them, what an accepted criterion states for another shape's test (`stated`): said at the first design.
+const sharedOf = (w, obligation, design, stated) => ((shared) => (shared.length ? { shared } : {}))([...sharedWith(design, earlierOf(w, current(w), obligation.obligation, design.id)), ...stated]);
 
 const earlierOf = (w, model, obligation, design) => model.versions.filter((v) => v.design !== design).map((v) => [v, designedOf(model, v.design)]).filter(([v, d]) => d && (d.obligation !== obligation || startedOnce(model, v))).map(([v, d]) => ({ version: v.version, obligation: d.obligation, shape: model.obligations.findLast((o) => o.obligation === d.obligation)?.shape ?? null, design: keptDesign(w, d) })).filter((e) => e.design);
 

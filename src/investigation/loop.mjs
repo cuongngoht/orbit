@@ -140,14 +140,17 @@ const itemView = (i) => Object.fromEntries(Object.entries(i && typeof i === "obj
 const scalarOf = (v) => (v === null || typeof v === "number" || typeof v === "boolean" ? v : scrub(typeof v === "string" ? v : JSON.stringify(v) ?? "").slice(0, 120));
 
 // What a generate step's design names -- a business key, a message, an occurrence -- that an earlier frozen version of
-// this investigation named too (generate.mjs, src/qa/backend/shared.mjs): advice beside the answer, never its outcome.
-// The newest four, each by its version, obligation and shape, the values both name and the words they were named under,
-// and the sentence; every word scrubbed and bounded at this door.
+// this investigation named too, or that an accepted criterion states for another shape's test (generate.mjs,
+// src/qa/backend/shared.mjs): advice beside the answer, never its outcome. The last four, each by its version,
+// obligation and shape -- or by the criterion that states it -- the values and the words they were named under, and the
+// sentence; every word scrubbed and bounded at this door.
 const SHARED = 4;
 
 const sharedView = (xs) => (Array.isArray(xs) && xs.length ? { shared: xs.slice(-SHARED).map(sharedLine) } : {});
 
-const sharedLine = (x) => ({ version: textOf(x?.version, 140), obligation: textOf(x?.obligation, 80), shape: textOf(x?.shape, 80), keys: (Array.isArray(x?.keys) ? x.keys : []).slice(0, SHARED).map(keyLine), say: textOf(x?.say, 600) });
+const sharedLine = (x) => ({ version: textOf(x?.version, 140), obligation: textOf(x?.obligation, 80), shape: textOf(x?.shape, 80), ...criterionOf(x), keys: (Array.isArray(x?.keys) ? x.keys : []).slice(0, SHARED).map(keyLine), say: textOf(x?.say, 600) });
+
+const criterionOf = (x) => (typeof x?.criterion === "string" ? { criterion: textOf(x.criterion, 80) } : {});
 
 const keyLine = (k) => ({ value: textOf(k?.value, 120), as: (Array.isArray(k?.as) ? k.as : []).filter(named).slice(0, 8) });
 

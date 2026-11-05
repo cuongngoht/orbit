@@ -28,6 +28,7 @@ test("every row is reached from the facts that mean it, and answers its own word
     [{ asked: asked({ marks: ["opt-out", "continue"] }), work: { named: [], current: open() } }, "opted-out", "NONE", "none"],
     [{ work: { named: [open()], current: null } }, "resume", "RESUME", "resume"],
     [{ chosen: [] }, "conversational", "NONE", "none"],
+    [{ asked: asked({ marks: ["status"] }) }, "conversational", "NONE", "none"],
     [{ chosen: [skill("satellite", "mission.orchestration", { gated: true }), skill("orbit-develop", "development.implementation")] }, "mission", "SATELLITE", "mission"],
     [{ asked: asked({ requirements: ["development.implementation", DOORS.goal] }) }, "specification", "COORDINATED", "goal"],
     [{ asked: asked({ matched: ["development", "security"] }) }, "several-owners", "COORDINATED", "workflow"],
@@ -67,6 +68,7 @@ test("RESUME needs an open work some owner governs: closed, ungoverned, or merel
   assert.equal(rowOf({ asked: asked({ marks: ["continue"] }), work: { named: [], current: open() } }), "resume", "this session's work, and continue");
   assert.equal(rowOf({ asked: asked({ marks: ["continue"] }), work: { named: [], current: null }, chosen: [] }), "conversational", "continue with nothing open is nothing to resume");
   assert.equal(rowOf({ asked: asked({ marks: ["continue"] }), work: null, chosen: [] }), "conversational", "no work could be read: nothing is invented");
+  assert.equal(rowOf({ asked: asked({ marks: ["status"] }), work: { named: [open()], current: null } }), "resume", "how an open work stands is its owner's read");
 });
 
 test("each owner is picked up through its own read: a workflow, an engineering task, an investigation", () => {

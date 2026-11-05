@@ -25,13 +25,21 @@
 // here, even a module that no longer loads (everything is imported INSIDE the
 // guard for that reason) -- the host gets no routing context and the prompt
 // goes through untouched. The prompt itself is never written anywhere.
+//
+// 0.5.0 (B22, ADR 0050): beside the registry it binds the facts the strategy table
+// reads (src/routing/strategy.mjs) -- automation's own `workflowOf` answer for the
+// classification, this host's row of catalog/hosts.json, the automation settings,
+// and this checkout's open work: the work each reference the prompt names was
+// tracked under, and this session's current work when the prompt says to continue
+// (src/work/track/open.mjs). Each only reads, each that fails is null, and a prompt
+// that names no reference and does not say continue reads no journal at all.
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 let ENV = process.env;
-const MODULES = { settings: "skills/orbit-learn/hosts/settings.mjs", hosts: "skills/orbit-learn/hosts/index.mjs", event: "src/lifecycle/event.mjs", dispatch: "src/lifecycle/dispatch.mjs", router: "src/lifecycle/subscribers/router.mjs", project: "src/project/index.mjs", env: "src/project/env.mjs", repository: "src/project/repository.mjs", compose: "src/resources/compose.mjs", control: "src/store/control.mjs", io: "src/store/io.mjs", version: "src/version.mjs", capabilities: "src/extensions/capabilities.mjs", pack: "skills/orbit-requirements/bind.mjs", emit: "src/trace/emit.mjs", log: "src/trace/log.mjs", prompt: "src/trace/prompt.mjs", hash: "src/hash.mjs", factory: "skills/orbit-help/factory.mjs", automation: "src/automation/settings.mjs" };
+const MODULES = { settings: "skills/orbit-learn/hosts/settings.mjs", hosts: "skills/orbit-learn/hosts/index.mjs", event: "src/lifecycle/event.mjs", dispatch: "src/lifecycle/dispatch.mjs", router: "src/lifecycle/subscribers/router.mjs", project: "src/project/index.mjs", env: "src/project/env.mjs", repository: "src/project/repository.mjs", compose: "src/resources/compose.mjs", control: "src/store/control.mjs", io: "src/store/io.mjs", version: "src/version.mjs", capabilities: "src/extensions/capabilities.mjs", pack: "skills/orbit-requirements/bind.mjs", emit: "src/trace/emit.mjs", log: "src/trace/log.mjs", prompt: "src/trace/prompt.mjs", hash: "src/hash.mjs", factory: "skills/orbit-help/factory.mjs", automation: "src/automation/settings.mjs", workflows: "src/automation/workflows.mjs", catalog: "src/catalog.mjs", works: "src/work/store.mjs", open: "src/work/track/open.mjs", session: "src/memory/session.mjs" };
 
 async function main() {
   const input = stdin();
@@ -58,8 +66,8 @@ async function answer(m, host, input, event) {
   const routing = () => m.env.switchOf(ENV, "PROMPT_ROUTER", "prompt_router", true);
   const project = event?.event === "user-prompt" && routing() ? quietly(() => m.project.loadProject(ENV, event.cwd)) : null;
   const caps = project ? await m.capabilities.projectCapabilities(project, ENV) : [];
-  const storeRoot = event?.event === "user-prompt" && routing() ? quietly(() => project?.storeRoot ?? m.repository.repositoryPaths(event.cwd, ENV)?.storeRoot) : null;
-  return quietly(() => m.dispatch.dispatch(event, world(m, { host, input, routing, caps, event, project, storeRoot }), [m.router.router]));
+  const paths = event?.event === "user-prompt" && routing() ? quietly(() => (project?.storeRoot ? project : m.repository.repositoryPaths(event.cwd, ENV))) : null;
+  return quietly(() => m.dispatch.dispatch(event, world(m, { host, input, routing, caps, event, project, storeRoot: paths?.storeRoot ?? null, checkout: paths?.checkoutId ?? null }), [m.router.router]));
 }
 
 // The automation settings a person set, machine then project, narrowed -- read, never written.
@@ -77,8 +85,16 @@ function world(m, b) {
   const rooms = quietly(() => m.control.stateRooms(m.repository.storeBase(ENV)));
   const trail = rooms ? quietly(() => trailOf(m, rooms, b)) : null;
   const automation = rooms ? quietly(() => automationValues(m, rooms, b.storeRoot)) : null;
-  return { automation: () => automation, host: b.host, input: b.input, env: ENV, plugin, routing: b.routing, callVia: `node ${resolve(PLUGIN_ROOT, "cli", "mcp.mjs")} call`, resources: () => m.compose.effectiveResourcesOf({ pluginRoot: PLUGIN_ROOT, rooms, io: m.io.realIo(), env: ENV, plugin, platform: process.platform, arch: process.arch, componentReady: b.event?.protocol === 2 ? (c) => c.kind === "skill" : undefined, capabilities: () => b.caps, projectSkills: () => playbooksOf(m, b.storeRoot, automation), packCapabilities: () => m.pack.readerResources(m.pack.connectionReader(rooms, m.io.realIo())) }), salt: () => trail?.salt() ?? null, traced: (decision, facts, injected) => quietly(() => trail?.emit("prompt.submitted", { prompt: facts, ...m.prompt.decisionFacts(decision, injected) })) };
+  return { automation: () => automation, host: b.host, input: b.input, env: ENV, plugin, routing: b.routing, callVia: `node ${resolve(PLUGIN_ROOT, "cli", "mcp.mjs")} call`, resources: () => m.compose.effectiveResourcesOf({ pluginRoot: PLUGIN_ROOT, rooms, io: m.io.realIo(), env: ENV, plugin, platform: process.platform, arch: process.arch, componentReady: b.event?.protocol === 2 ? (c) => c.kind === "skill" : undefined, capabilities: () => b.caps, projectSkills: () => playbooksOf(m, b.storeRoot, automation), packCapabilities: () => m.pack.readerResources(m.pack.connectionReader(rooms, m.io.realIo())) }), salt: () => trail?.salt() ?? null, traced: (decision, facts, injected, synthetic) => quietly(() => trail?.emit("prompt.submitted", { prompt: facts, ...m.prompt.decisionFacts(decision, injected, synthetic) })), ...strategyFacts(m, b) };
 }
+
+// What the strategy table reads beside the classification -- each asked with table words, each null when it cannot be read.
+const strategyFacts = (m, b) => ({ engine: PLUGIN_ROOT, workflowOf: (c) => quietly(() => m.workflows.routedWorkflow(c).id), hostRow: () => quietly(() => hostRowOf(m, b.event?.host)), openWork: (ask) => quietly(() => openWorkHere(m, b, ask)) });
+
+const hostRowOf = (m, id) => m.catalog.readCatalog(m.io.realIo(), m.catalog.catalogFile(PLUGIN_ROOT, "hosts")).hosts.find((h) => h.id === id) ?? null;
+
+// Only when the prompt names a reference or says to continue: an ordinary prompt reads no journal.
+const openWorkHere = (m, b, ask) => (b.checkout && b.storeRoot && (ask.refs.length || ask.continued) ? m.open.openWorkOf(m.works.createWorks(b.storeRoot, m.io.realIo()), { ...ask, session: m.session.taskSessionMark(b.event?.session), checkout: b.checkout }) : null);
 
 // The trail, bound for this one prompt: its session (hashed already) and a
 // short hash of the project's store key -- never a path.

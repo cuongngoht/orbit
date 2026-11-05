@@ -62,42 +62,54 @@
 export const GENERAL = "general";
 
 export const INTENTS = [
-  { id: "code-review", cues: ["review", "reviews", "pr", "pull request", "merge request", "diff", "code review", "review code"], requires: ["code.review", "repository.read"] },
-  { id: "architecture", cues: ["architecture", "architectural", "boundary", "boundaries", "layering", "dependency direction", "module structure"], requires: ["architecture.context", "technology.context"] },
-  { id: "engineering", cues: ["convention", "conventions", "coding style", "code style", "best practice", "best practices", "how we build"], requires: ["engineering.context"] },
-  { id: "autonomous-engineering", cues: ["autonomous engineering", "autonomously", "until verified", "implement autonomously", "fix autonomously"], requires: ["engineering.execution"] },
-  { id: "investigation", cues: ["investigate", "investigation", "find bugs", "find bug", "find a bug", "identify bugs", "hunt for bugs", "look for bugs", "bug hunt", "autonomous", "autonomous qa", "explore", "tenant", "tenants", "cross tenant", "tenant isolation", "duplicate request", "duplicate requests", "two requests", "two api requests", "requests twice", "ui to database", "database record"], requires: ["qa.investigation"] },
-  { id: "qa", cues: ["test", "tests", "testing", "regression", "test case", "test cases", "test plan", "qa", "qc", "e2e", "end to end"], requires: ["qa.execution"] },
-  { id: "reporting", cues: ["report", "reports", "reporting", "po", "po report", "product owner", "project report", "status report", "sprint report", "weekly report", "monthly report", "burndown", "velocity", "throughput", "cycle time", "lead time", "aging", "forecast"], requires: ["project.reporting"] },
-  { id: "environment", cues: ["dev container", "devcontainer", "dev environment", "development environment", "local environment", "runtime environment", "run locally", "start locally", "run the app", "start the app", "run this app", "start this app", "run the application", "start the application", "run the project", "start the project", "run this project", "start this project", "port conflict", "port in use", "get it running", "get this running", "running locally", "run it locally", "on my machine", "on this machine", "needs to run", "need to run", "how to run", "run here", "operating systems"], requires: ["runtime.discovery"] },
-  { id: "database", cues: ["sql", "database", "db", "query", "queries", "row", "rows", "stored procedure"], requires: ["database.query"] },
-  { id: "browser", cues: ["browser", "screenshot", "web page", "headless"], requires: ["browser.automation", "browser.session"] },
-  { id: "release", cues: ["release", "ship", "publish", "version bump", "bump the version", "changelog"], requires: ["release.gate"] },
-  { id: "mcp-tooling", cues: ["mcp", "mcp server", "mcp servers", "cli tool", "install tool", "runtime", "control panel", "Orbit Control"], requires: ["mcp.management", "tool.management", "control.panel"] },
-  { id: "requirements", cues: ["requirement", "requirements", "pbi", "work item", "user story", "backlog item", "ticket", "issue number", "issue id"], requires: ["requirement.snapshot"] },
-  { id: "development", cues: ["implement", "implementation", "implementing", "feature", "new feature", "refactor", "refactoring", "rename", "method", "function", "class", "endpoint", "handler", "backend", "frontend", "bug", "bugs", "bug fix", "bugfix", "fix", "fixes", "fixing", "write code", "code change", "develop", "webhook"], requires: ["development.implementation"] },
-  { id: "security", cues: ["security", "security audit", "security assessment", "security controls", "access control", "authorization", "owasp", "asvs"], requires: ["security.assessment"] },
-  { id: "documentation", cues: ["how does", "how do", "how to", "what is", "what are", "difference between", "documentation", "docs", "explain", "api reference"], requires: ["documentation.search", "technology.context"] },
+  { id: "code-review", cues: ["review", "reviews", "pr", "pull request", "merge request", "diff", "code review", "review code", "rà soát code", "rà soát mã", "xem lại code", "đánh giá code"], requires: ["code.review", "repository.read"] },
+  { id: "architecture", cues: ["architecture", "architectural", "boundary", "boundaries", "layering", "dependency direction", "module structure", "made of", "belong", "belongs", "already exists", "already exist", "already handle", "already handles", "kiến trúc", "ranh giới", "phân tầng", "đặt ở đâu", "thuộc về đâu", "cấu trúc module"], requires: ["architecture.context", "technology.context"] },
+  { id: "engineering", cues: ["convention", "conventions", "coding style", "code style", "best practice", "best practices", "how we build", "quy ước", "quy chuẩn", "phong cách code", "cách viết code"], requires: ["engineering.context"] },
+  { id: "autonomous-engineering", cues: ["autonomous engineering", "autonomously", "until verified", "implement autonomously", "fix autonomously", "on your own", "verified commit", "tự làm", "tự động làm", "tự xử lý"], requires: ["engineering.execution"] },
+  { id: "investigation", cues: ["investigate", "investigation", "find bugs", "find bug", "find a bug", "identify bugs", "hunt for bugs", "look for bugs", "bug hunt", "autonomous", "autonomous qa", "explore", "tenant", "tenants", "cross tenant", "tenant isolation", "duplicate request", "duplicate requests", "two requests", "two api requests", "requests twice", "ui to database", "database record", "điều tra", "tìm lỗi", "tìm bug", "săn lỗi", "khám phá"], requires: ["qa.investigation"] },
+  { id: "qa", cues: ["test", "tests", "testing", "regression", "test case", "test cases", "test plan", "qa", "qc", "e2e", "end to end", "ui map", "kiểm thử", "hồi quy", "ca kiểm thử", "kịch bản test", "viết test", "chạy test"], requires: ["qa.execution"] },
+  { id: "reporting", cues: ["report", "reports", "reporting", "po", "po report", "product owner", "project report", "status report", "sprint report", "weekly report", "monthly report", "burndown", "velocity", "throughput", "cycle time", "lead time", "aging", "forecast", "báo cáo", "báo cáo sprint", "dự báo"], requires: ["project.reporting"] },
+  { id: "environment", cues: ["dev container", "devcontainer", "dev environment", "development environment", "local environment", "runtime environment", "run locally", "start locally", "run the app", "start the app", "run this app", "start this app", "run the application", "start the application", "run the project", "start the project", "run this project", "start this project", "port conflict", "port in use", "get it running", "get this running", "running locally", "run it locally", "on my machine", "on this machine", "needs to run", "need to run", "how to run", "run here", "operating systems", "chạy ứng dụng", "chạy app", "chạy dự án", "chạy local", "môi trường dev", "xung đột cổng", "trên máy này", "chạy trên máy"], requires: ["runtime.discovery"] },
+  { id: "database", cues: ["sql", "database", "db", "query", "queries", "row", "rows", "stored procedure", "csdl", "truy vấn", "bản ghi", "câu truy vấn"], requires: ["database.query"] },
+  { id: "browser", cues: ["browser", "screenshot", "web page", "headless", "trình duyệt", "chụp màn hình"], requires: ["browser.automation", "browser.session"] },
+  { id: "release", cues: ["release", "ship", "publish", "version bump", "bump the version", "changelog", "phát hành", "xuất bản", "tăng phiên bản"], requires: ["release.gate"] },
+  { id: "mcp-tooling", cues: ["mcp", "mcp server", "mcp servers", "cli tool", "install tool", "runtime", "control panel", "Orbit Control", "cài công cụ", "bảng điều khiển"], requires: ["mcp.management", "tool.management", "control.panel"] },
+  { id: "requirements", cues: ["requirement", "requirements", "pbi", "work item", "user story", "backlog item", "ticket", "issue number", "issue id", "acceptance criteria", "acceptance criterion", "as a user", "đặc tả", "nghiệm thu"], requires: ["requirement.snapshot"] },
+  { id: "development", cues: ["implement", "implementation", "implementing", "feature", "new feature", "refactor", "refactoring", "rename", "method", "function", "class", "endpoint", "handler", "backend", "frontend", "bug", "bugs", "bug fix", "bugfix", "fix", "fixes", "fixing", "write code", "code change", "develop", "webhook", "add support", "add a rule", "add the rule", "add that rule", "add a field", "add validation", "rework", "sửa", "sửa lỗi", "sửa bug", "thêm tính năng", "tính năng", "đổi tên", "tái cấu trúc", "viết code", "triển khai", "thêm quy tắc", "cập nhật code"], requires: ["development.implementation"] },
+  { id: "security", cues: ["security", "security audit", "security assessment", "security controls", "access control", "authorization", "owasp", "asvs", "bảo mật", "phân quyền", "quyền truy cập", "lỗ hổng"], requires: ["security.assessment"] },
+  { id: "documentation", cues: ["how does", "how do", "how to", "what is", "what are", "difference between", "documentation", "docs", "explain", "api reference", "giải thích", "làm sao", "như thế nào", "là gì", "tài liệu", "khác nhau"], requires: ["documentation.search", "technology.context"] },
 ];
 
 // Narrower requirements a cue adds, but only inside the intents it names
 // (`*`: any intent, `general` included). "plan" means a test plan inside a QA
 // prompt; inside a release prompt it means nothing this table knows.
 export const REFINEMENTS = [
-  { within: ["qa"], cues: ["plan", "test plan", "scenario", "scenarios", "coverage", "acceptance criteria"], requires: ["qa.planning"] },
-  { within: ["qa"], cues: ["failed", "failing", "failure", "flaky", "why did"], requires: ["failure.classification"] },
-  { within: ["qa"], cues: ["write", "author", "new case", "add a case"], requires: ["qa.authoring"] },
+  { within: ["qa"], cues: ["plan", "test plan", "scenario", "scenarios", "coverage", "acceptance criteria", "what to test", "should test", "should we test", "kế hoạch", "kịch bản", "độ bao phủ"], requires: ["qa.planning"] },
+  { within: ["qa"], cues: ["failed", "failing", "failure", "flaky", "why did", "fail", "fails", "bị fail", "thất bại", "vì sao", "tại sao"], requires: ["failure.classification"] },
+  { within: ["qa"], cues: ["write", "author", "new case", "add a case", "viết", "thêm case"], requires: ["qa.authoring"] },
   { within: ["qa", "browser"], cues: ["map", "locator", "selector", "drift", "drifted"], requires: ["ui.mapping", "ui.map-repair"] },
-  { within: ["qa", "browser", "investigation"], cues: ["explore", "exploratory"], requires: ["ui.exploration"] },
-  { within: ["qa"], cues: ["lesson", "lessons", "learned"], requires: ["qa.lessons"] },
-  { within: ["qa"], cues: ["invalid", "invalid case", "query check", "dsl"], requires: ["qa.case-repair"] },
-  { within: ["engineering"], cues: ["taught", "teach", "this session"], requires: ["engineering.observation"] },
+  { within: ["qa", "browser", "investigation"], cues: ["explore", "exploratory", "khám phá"], requires: ["ui.exploration"] },
+  { within: ["qa"], cues: ["lesson", "lessons", "learned", "bài học", "rút ra"], requires: ["qa.lessons"] },
+  { within: ["qa"], cues: ["invalid", "invalid case", "query check", "dsl", "không hợp lệ"], requires: ["qa.case-repair"] },
+  { within: ["engineering"], cues: ["taught", "teach", "this session", "phiên này"], requires: ["engineering.observation"] },
   { within: ["development", "qa", "investigation"], cues: ["pbi", "work item", "user story", "backlog item", "ticket", "issue number", "issue id"], requires: ["requirement.snapshot"] },
-  { within: ["development"], cues: ["docs", "documentation", "api reference", "sample", "samples"], requires: ["documentation.search"] },
-  { within: ["development", "requirements"], cues: ["autonomously", "autonomous engineering", "until verified"], requires: ["engineering.execution"] },
-  { within: ["*"], cues: ["where to start", "where do i", "what next"], requires: ["workflow.navigation"] },
+  { within: ["development"], cues: ["docs", "documentation", "api reference", "sample", "samples", "tài liệu"], requires: ["documentation.search"] },
+  { within: ["development", "requirements"], cues: ["autonomously", "autonomous engineering", "until verified", "on your own", "tự làm"], requires: ["engineering.execution"] },
+  { within: ["*"], cues: ["where to start", "where do i", "what next", "should i start", "đầu từ đâu"], requires: ["workflow.navigation"] },
   { within: ["*"], cues: ["reverse engineer", "reverse engineering", "talks to what", "system graph", "topology"], requires: ["architecture.reverse"] },
   { within: ["*"], cues: ["playbook", "playbooks", "self-improvement", "improvement campaign"], requires: ["improvement.campaign"] },
-  { within: ["*"], cues: ["acceptance criteria", "acceptance criterion"], requires: ["goal.orchestration"] },
-  { within: ["*"], cues: ["multi-agent", "multi agent", "orbit satellite", "satellite mission", "use satellite", "with satellite", "as a mission", "run a mission", "start a mission"], requires: ["mission.orchestration"] },
+  { within: ["*"], cues: ["acceptance criteria", "acceptance criterion", "nghiệm thu"], requires: ["goal.orchestration"] },
+  { within: ["*"], cues: ["multi-agent", "multi agent", "orbit satellite", "satellite mission", "use satellite", "with satellite", "as a mission", "run a mission", "start a mission", "nhiều agent"], requires: ["mission.orchestration"] },
+];
+
+// What a prompt MARKS about Orbit itself (0.5.0, B22, B5), as data the strategy table reads (src/routing/strategy.mjs):
+// a person opting out of Orbit, asking to continue the work they have, halting it, or asking how something stands. A
+// mark is not an intent and asks for nothing. `at` is how far into the prompt its cue counts: `opening`, the first
+// words a person typed (src/routing/terms.mjs OPENING_LIMIT) -- "continue" that opens a prompt asks to go on, while one
+// in the middle of a request is part of the request -- or the whole `head`.
+export const MARKS = [
+  { id: "opt-out", at: "head", cues: ["without orbit", "without using orbit", "no orbit", "skip orbit", "not use orbit", "t use orbit", "không dùng orbit", "không cần orbit", "đừng dùng orbit", "khỏi dùng orbit", "khong dung orbit"] },
+  { id: "continue", at: "opening", cues: ["continue", "resume", "carry on", "keep going", "pick up where", "go on with", "tiếp tục", "làm tiếp", "tiếp đi", "chạy tiếp", "tiep tuc"] },
+  { id: "halt", at: "opening", cues: ["stop", "wait", "pause", "hold on", "halt", "dừng", "dừng lại", "tạm dừng", "chờ đã", "đợi đã", "khoan"] },
+  { id: "status", at: "head", cues: ["how far", "any progress", "done yet", "finished yet", "ready yet", "it going", "where are we", "s the status", "is the status", "tới đâu rồi", "đến đâu rồi", "xong chưa", "thế nào rồi", "sao rồi"] },
 ];

@@ -21,32 +21,49 @@
 // A toggle in the plugin's settings (`prompt_router`, on by default), or
 // ORBIT_PROMPT_ROUTER=off on one machine. Off, it adds nothing to the prompt, and
 // the trail still records that a prompt arrived with routing off.
+//
+// 0.5.0 (B22, ADR 0050): the decision is RouteDecision v3 -- how much Orbit the
+// request needs (src/routing/strategy.mjs) -- from the classification and the facts
+// the composition root binds beside it: automation's own `workflowOf` answer, the
+// host's row, this checkout's open work and the automation settings, each asked with
+// table words (the open-work lookup with the references the prompt names, in
+// memory). A prompt the HOST wrote (`synthetic`, a background task's notification)
+// is not classified and the registry is not read: the table answers NONE for it.
+import { classify } from "../../routing/classify.mjs";
 import { dispatchedBy } from "../../routing/explain.mjs";
 import { BUDGET_BYTES, formatDecision } from "../../routing/format.mjs";
-import { route } from "../../routing/resolve.mjs";
+import { decide } from "../../routing/resolve.mjs";
+import { refsOf } from "../../routing/terms.mjs";
 import { promptFacts } from "../../trace/prompt.mjs";
 
 export const router = {
   name: "router",
   on: ["user-prompt"],
   records: false,
-  run: (event, world) => answered(event, world, world.routing() ? routed(event, world.resources()) : null),
+  run: (event, world) => answered(event, world, world.routing() ? routed(event, world) : null),
 };
 
 // The decision, and the registry it was made over: a parent's line names its agents from the same read.
-const routed = (event, effective) => ({ decision: route(event.prompt ?? "", effective), dispatches: dispatchedBy(effective) });
+function routed(event, world) {
+  const prompt = event.synthetic === true ? "" : event.prompt ?? "";
+  const asked = classify(prompt);
+  const effective = event.synthetic === true ? {} : world.resources();
+  return { decision: decide(asked, effective, factsOf(event, world, asked, prompt)), dispatches: dispatchedBy(effective) };
+}
 
-// ONE advisory line, unless a person switched `trigger.arbitraryPrompt` off or kept a restriction: the
+const factsOf = (event, world, asked, prompt) => ({ synthetic: event.synthetic === true, plugin: world.plugin, workflow: world.workflowOf?.({ intent: asked.intent.id, matched: asked.matched, requirements: asked.requirements }) ?? null, host: world.hostRow?.() ?? null, settings: world.automation?.() ?? null, work: world.openWork?.({ refs: refsOf(prompt), continued: asked.marks.includes("continue") }) ?? null });
+
+// ONE advisory line, only when the strategy is COORDINATED and a person kept `trigger.arbitraryPrompt` on: the
 // router SAYS a coordinated workflow could take this prompt. It starts nothing -- this hook plans and never
 // acts -- and the line is dropped rather than letting the context pass its byte budget.
 const ADVICE = "Orbit coordinates a task by default: a workflow could take this — node <engine>/cli/automation.mjs plan --for=\"<the task>\" shows it; orbit-help starts it.";
 
-const advised = (v) => Boolean(v?.trigger?.arbitraryPrompt);
+const advised = (v, decision) => decision?.strategy?.word === "COORDINATED" && Boolean(v?.trigger?.arbitraryPrompt);
 
-const withAdvice = (text, world) => (text && advised(world.automation?.()) && Buffer.byteLength(`${text}\n${ADVICE}`) <= BUDGET_BYTES ? `${text}\n${ADVICE}` : text);
+const withAdvice = (text, world, decision) => (text && advised(world.automation?.(), decision) && Buffer.byteLength(`${text}\n${ADVICE}`) <= BUDGET_BYTES ? `${text}\n${ADVICE}` : text);
 
 function answered(event, world, r) {
-  const text = withAdvice(r ? formatDecision(r.decision, { callVia: world.callVia, dispatches: r.dispatches }) : null, world);
-  world.traced?.(r?.decision ?? null, promptFacts(event.prompt, world.salt?.()), Boolean(text));
+  const text = withAdvice(r ? formatDecision(r.decision, { callVia: world.callVia, dispatches: r.dispatches, engine: world.engine }) : null, world, r?.decision);
+  world.traced?.(r?.decision ?? null, promptFacts(event.prompt, world.salt?.()), Boolean(text), event.synthetic === true);
   return text ? world.host.formatPromptContext?.(text, world.input) ?? null : null;
 }

@@ -58,7 +58,17 @@ const named = (row, args) => (row && typeof args?.[row[1]] === "string" ? { kind
 const deliveryOf = (input) => (typeof input.tool_use_id === "string" && input.tool_use_id ? { delivery: input.tool_use_id } : {});
 
 // 0.0.2: `tool_use_id` is the call's delivery key, as Codex's and Grok's are: a hook Claude delivers twice is one call.
-export const normalize = (input) => (input?.hook_event_name ? { hostEvent: input.hook_event_name, session: input.session_id ?? null, ...deliveryOf(input), cwd: input.cwd ?? process.cwd(), prompt: promptOf(input), ...toolOf(input), ...agentsOf(input) } : null);
+export const normalize = (input) => (input?.hook_event_name ? { hostEvent: input.hook_event_name, session: input.session_id ?? null, ...deliveryOf(input), cwd: input.cwd ?? process.cwd(), prompt: promptOf(input), ...toolOf(input), ...agentsOf(input), ...syntheticOf(input) } : null);
+
+// A prompt the HOST wrote (0.5.0, B22): Claude Code hands a background task's notification to UserPromptSubmit as if a
+// person had typed it, opened by an envelope tag of its own. The tags are data, matched against the prompt's opening
+// alone, and a prompt one opens is `synthetic`: the router answers nothing for it (src/routing/strategy.mjs). A
+// prompt a person typed is never marked, so its event is what it always was.
+export const ENVELOPES = ["task-notification"];
+
+const opens = (prompt, tag) => prompt.trimStart().startsWith(`<${tag}>`);
+
+const syntheticOf = (input) => (typeof promptOf(input) === "string" && ENVELOPES.some((tag) => opens(promptOf(input), tag)) ? { synthetic: true } : {});
 
 // WHICH AGENT a hook speaks for (0.2.2, ADR 0044). Claude Code puts `agent_id` and `agent_type` on every event a
 // subagent raises -- its tool calls, its start and its stop -- and on none of the main session's. The Agent call that

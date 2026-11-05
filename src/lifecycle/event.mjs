@@ -14,6 +14,10 @@
 // A host event with no row is not an event: `null`, and the dispatcher does
 // nothing. That is the whole of "an unknown host is a safe no-op" -- the
 // fallback adapter has no `normalize`, so every one of its events lands here.
+//
+// `synthetic` (0.5.0): an adapter's word that the HOST wrote a user-prompt itself
+// (a background task's notification), carried as `true` on that event alone and
+// absent everywhere else -- the router answers nothing for it.
 import { hostSession } from "../memory/session.mjs";
 import { okOf } from "../outcome.mjs";
 
@@ -40,8 +44,12 @@ export function lifecycleEvent(host, input, argv = []) {
   const seen = host.normalize?.(input, argv) ?? null;
   const event = EVENT_NAMES.includes(seen?.event) ? seen.event : EVENTS[seen?.hostEvent];
   if (!event) return null;
-  return { ...seen, event, host: host.name, session: hostSession(host.name, seen.session), paths: seen.paths ?? [], ok: okOf(seen), ...identities(host, seen), ...agents(host, seen) };
+  return { ...unmarked(seen), event, host: host.name, session: hostSession(host.name, seen.session), paths: seen.paths ?? [], ok: okOf(seen), ...identities(host, seen), ...agents(host, seen), ...syntheticOf(event, seen) };
 }
+
+const unmarked = ({ synthetic: _s, ...seen }) => seen;
+
+const syntheticOf = (event, seen) => (event === "user-prompt" && seen.synthetic === true ? { synthetic: true } : {});
 
 // The agent a hook speaks for and the one an Agent call launched (0.2.2, ADR 0044), hashed the way a session is: the
 // host's raw id never travels past this line. Present only when the host said one, so a main-session event is unchanged.

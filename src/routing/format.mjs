@@ -17,6 +17,12 @@
 // A skill that may be used names the agents its playbook dispatches (0.5.0,
 // `opts.dispatches`: src/routing/explain.mjs `dispatchedBy`), because such an agent
 // is never a line of its own: it is reached through its parent's step.
+//
+// A RouteDecision v3 (0.5.0, B22) says how much Orbit the request needs. NONE --
+// and a DIRECT the strategy did not say (`strategy.shown`) -- adds NOTHING at all;
+// anything else opens with ONE line: the word, why, and the one way in (the skill
+// or agent to invoke, or for COORDINATED, RESUME and SATELLITE the one command,
+// `<engine>` read as `opts.engine`). The lines a v2 decision had follow, unchanged.
 import { labelOf } from "../resources/model.mjs";
 
 export const BUDGET_BYTES = 2048;
@@ -34,11 +40,21 @@ const SECTIONS = [
 ];
 
 export function formatDecision(decision, opts = {}) {
+  if (decision?.strategy && !decision.strategy.shown) return null;
   const shown = Object.fromEntries(SECTIONS.map(([name]) => [name, (decision?.[name] ?? []).filter((e) => !e.implicit)]));
-  if (!SECTIONS.some(([name]) => shown[name].length)) return null;
-  const body = SECTIONS.flatMap(([name, title, parents]) => section(title, shown[name], parents ? opts.dispatches : null));
-  return fitted([HEAD, `Intent: ${decision.intent.id} (${decision.intent.confidence} confidence)`, "", ...body, ...howToCall(shown, opts.callVia)], FOOT);
+  const lines = [...strategyLine(decision, opts.engine), ...listed(decision, shown, opts)];
+  return lines.length ? fitted(lines, FOOT) : null;
 }
+
+function listed(decision, shown, opts) {
+  if (!SECTIONS.some(([name]) => shown[name].length)) return [];
+  const body = SECTIONS.flatMap(([name, title, parents]) => section(title, shown[name], parents ? opts.dispatches : null));
+  return [HEAD, `Intent: ${decision.intent.id} (${decision.intent.confidence} confidence)`, "", ...body, ...howToCall(shown, opts.callVia)];
+}
+
+const strategyLine = (d, engine) => (d?.strategy ? [`Orbit strategy: ${d.strategy.word} -- ${d.strategy.because}${d.activation?.invoke ? `: ${engined(d.activation.invoke, engine)}` : ""}.`] : []);
+
+const engined = (text, engine) => (engine ? text.replaceAll("<engine>", engine) : text);
 
 const section = (title, entries, dispatches) => (entries.length ? [title, ...entries.map((e) => line(e, dispatches)), ""] : []);
 

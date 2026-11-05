@@ -1,0 +1,31 @@
+{
+  "input": {
+    "session_id": "fixture-session",
+    "transcript_path": "/fixture-host/transcript.jsonl",
+    "cwd": "/fixture",
+    "prompt_id": "fixture-prompt",
+    "permission_mode": "auto",
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "<task-notification>\n<task-id>fixture-task</task-id>\n<tool-use-id>fixture-tool-use</tool-use-id>\n<output-file>/fixture-host/tasks/fixture-task.output</output-file>\n<status>completed</status>\n<summary>Background command \"investigate and explore the checkout flow, then run the regression tests\" completed (exit code 0)</summary>\n</task-notification>"
+  },
+  "argv": [],
+  "expected": {
+    "hostEvent": "UserPromptSubmit",
+    "session": "claude:d6440983c454c2e5",
+    "cwd": "/fixture",
+    "prompt": "<task-notification>\n<task-id>fixture-task</task-id>\n<tool-use-id>fixture-tool-use</tool-use-id>\n<output-file>/fixture-host/tasks/fixture-task.output</output-file>\n<status>completed</status>\n<summary>Background command \"investigate and explore the checkout flow, then run the regression tests\" completed (exit code 0)</summary>\n</task-notification>",
+    "tool": {
+      "name": null,
+      "kind": "other"
+    },
+    "paths": [],
+    "pattern": null,
+    "command": null,
+    "ok": true,
+    "background": false,
+    "invokes": null,
+    "synthetic": true,
+    "event": "user-prompt",
+    "host": "claude"
+  }
+}

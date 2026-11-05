@@ -26,7 +26,7 @@ import { scrubbed } from "../scrub.mjs";
 export const TRACE_VERSION = 2;
 
 export const EVENT_TYPES = [
-  { type: "prompt.submitted", fields: ["prompt", "routing", "intent", "confidence", "cues", "requirements", "graph", "selected", "approval", "blocked", "missing", "injected"], doc: "a person submitted a prompt: a salted hash of it and its length, and what the prompt router decided — table words and resource ids, never the text" },
+  { type: "prompt.submitted", fields: ["prompt", "routing", "intent", "confidence", "cues", "requirements", "graph", "selected", "approval", "blocked", "missing", "injected", "strategy", "activation", "synthetic"], doc: "a person submitted a prompt: a salted hash of it and its length, and what the prompt router decided — table words and resource ids, never the text; since 0.5.0 also how much Orbit it needed (the strategy's word and row), the path and id it named, and whether the host wrote the prompt itself (synthetic)" },
   { type: "skill.invoked", fields: ["id", "ours", "outcome", "call", "agent"], doc: "the session started a skill, or its switch refused it: which call it was and, when a subagent made it, the agent's hashed id" },
   { type: "agent.invoked", fields: ["id", "ours", "outcome", "call", "agent", "run"], doc: "the session started a subagent, or its switch refused it: which call, the agent that made it when it was a subagent, and the qualified mission run an Orbit envelope named -- never the prompt" },
   { type: "agent.launched", fields: ["id", "call", "agent", "launched", "run"], doc: "an agent call answered with the hashed id of the agent it launched: which call, which agent made it, the one it launched, and the qualified mission run an Orbit envelope named" },

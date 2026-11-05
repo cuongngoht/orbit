@@ -9,8 +9,9 @@
 // (cli/router-hook.mjs) bound:
 //
 //   synthetic  the host adapter marked the prompt as the host's own envelope (a background task's notification)
-//   asked      the classification (src/routing/classify.mjs): intent, matched, marks (opt-out · continue · halt),
-//              shape counts, requirements
+//   asked      the classification (src/routing/classify.mjs): intent, matched, marks (opt-out · continue · halt ·
+//              status), shape counts, requirements -- a status question ("how far along", "tới đâu rồi") is the
+//              session's to answer, conversational like a greeting (B5), unless it names an open work to resume
 //   chosen     what the resolver chose that the session does not already have, in the order the request is about it:
 //              { kind, id, key, ownership, requirement, via, gated } -- never an implicit provider or a built-in
 //   doors      who opens a coordinated path here: { automation, goal } -> the usable skill that provides it, or null
@@ -119,7 +120,7 @@ export const STRATEGY = [
   { row: "envelope", word: "NONE", when: (f) => f.synthetic === true, because: () => "the host wrote this prompt itself, so nobody asked for anything" },
   { row: "opted-out", word: "NONE", when: (f) => marked(f, "opt-out"), because: () => "the prompt asks to work without Orbit" },
   { row: "resume", word: "RESUME", when: (f) => Boolean(resumable(f)), because: (f) => `open work ${resumable(f).id} is governed by ${resumable(f).owner.what} ${resumable(f).owner.id}`, activation: resumed },
-  { row: "conversational", word: "NONE", when: (f) => !chosen(f).length, because: () => "nothing here needs what the session does not already have" },
+  { row: "conversational", word: "NONE", when: (f) => !chosen(f).length || marked(f, "status"), because: (f) => (marked(f, "status") ? "the prompt asks how something stands, which the session answers" : "nothing here needs what the session does not already have") },
   { row: "mission", word: "SATELLITE", when: (f) => Boolean(mission(f)), because: () => "a mission was asked for, in Satellite's own words", activation: (f) => ({ path: "mission", id: mission(f).id, how: null, invoke: MISSION }) },
   { row: "specification", word: "COORDINATED", when: (f) => opens(f, "goal") && specified(f), because: (f) => `a specification of a change: ${f.doors.goal} keeps it and plans its units`, activation: coordinated("goal") },
   { row: "several-owners", word: "COORDINATED", when: (f) => opens(f, "automation") && spans(f), because: (f) => `a change several owners take in turn (${spanned(f)}): ${f.doors.automation} starts the workflow`, activation: coordinated("automation") },

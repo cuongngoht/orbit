@@ -22,7 +22,7 @@ const listed = () => ({ suites: readdirSync(SUITES).map((s) => JSON.parse(readFi
 test("the policy names every case of every suite, and nothing else -- the catalog cannot shrink unseen", () => {
   assert.deepEqual(catalogDrift(POLICY, listed()), []);
   assert.equal(Object.keys(POLICY.catalog).length, 9, "nine suites");
-  assert.equal(Object.values(POLICY.catalog).flat().length, 46, "every case they hold");
+  assert.equal(Object.values(POLICY.catalog).flat().length, 49, "every case they hold");
   const less = { suites: listed().suites.map((s) => ({ ...s, cases: s.cases.filter((c) => c.id !== "ORBIT-SRC-002") })) };
   assert.deepEqual(catalogDrift(POLICY, less), ["ORBIT-SRC-002 is in the release policy and no suite holds it"]);
   const more = { suites: [...listed().suites, { id: "orbit-new", cases: [{ id: "ORBIT-NEW-001", kind: "source" }] }] };
@@ -32,14 +32,14 @@ test("the policy names every case of every suite, and nothing else -- the catalo
 test("a cycle runs every verification, then every control, then 16 rows the real Claude Code carries", () => {
   const rows = rowsOf(POLICY, listed());
   const auto = rows.filter((r) => r.autonomous);
-  assert.equal(rows.length, 31 * 2 + 7 * 2 + 8 * 2 + 1);
+  assert.equal(rows.length, 34 * 2 + 7 * 2 + 8 * 2 + 1);
   assert.equal(auto.length, 16, "seven QA cases, eight engineering cases, and ORBIT-SRC-001's planted fault repaired");
   assert.deepEqual([...new Set(rows.map((r) => r.run))], ["verify", "controls", "autonomous"], "in that order, so no model is spent on a cycle that will be repaired");
   assert.deepEqual(auto.find((r) => r.case === "ORBIT-SRC-001"), { ...auto.find((r) => r.case === "ORBIT-SRC-001"), variant: "controlled-fault", repair: true, expect: ["REPAIRED_VERIFIED"] });
   assert.ok(rows.filter((r) => r.case === "ORBIT-SRC-002" || r.case === "ORBIT-ORC-006").some((r) => r.req === "real" && r.expect.includes("PASS")), "a known finding must PASS its real source: its baseline earns it nothing");
 });
 
-test("the shipped policy records no row yet: every one of the 46 cases keeps what it requires (ADR 0051)", () => {
+test("the shipped policy records no row yet: every one of the 49 cases keeps what it requires (ADR 0051)", () => {
   const rows = rowsOf(POLICY, listed());
   assert.deepEqual([POLICY.recorded.suites, POLICY.recorded.cases, rows.filter((r) => r.recorded).map((r) => r.id)], [[], [], []]);
   assert.ok(rows.every((r) => r.recorded === false), "every row says it is required");

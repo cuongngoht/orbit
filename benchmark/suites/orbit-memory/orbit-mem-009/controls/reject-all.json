@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "reject-all",
+  "about": "A recall that calls every claim stale: every check that must keep a claim fresh fails.",
+  "mutations": [
+    {
+      "id": "reject-all",
+      "file": "src/knowledge/query.mjs",
+      "find": "  return Object.fromEntries(claims.map((c) => [c.id, watched(c).length ? factState({ scope: watched(c) }, scopes) : \"unknown\"]));",
+      "replace": "  return Object.fromEntries(claims.map((c) => [c.id, \"stale\"]));",
+      "count": 1
+    }
+  ]
+}

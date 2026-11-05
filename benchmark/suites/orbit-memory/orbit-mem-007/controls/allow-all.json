@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "allow-all",
+  "about": "A snapshot that always answers: every look is CURRENT, even with nothing learned -- every check that must learn the checkout first fails.",
+  "mutations": [
+    {
+      "id": "allow-all",
+      "file": "src/architecture/ensure.mjs",
+      "find": "  const row = DECISIONS.find((d) => d.when(facts));",
+      "replace": "  const row = DECISIONS.at(-1);",
+      "count": 1
+    }
+  ]
+}

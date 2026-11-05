@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "allow-all",
+  "about": "A recall that calls every claim fresh: every check that must see a claim stale or unknown fails.",
+  "mutations": [
+    {
+      "id": "allow-all",
+      "file": "src/knowledge/query.mjs",
+      "find": "  return Object.fromEntries(claims.map((c) => [c.id, watched(c).length ? factState({ scope: watched(c) }, scopes) : \"unknown\"]));",
+      "replace": "  return Object.fromEntries(claims.map((c) => [c.id, \"fresh\"]));",
+      "count": 1
+    }
+  ]
+}

@@ -20,18 +20,21 @@
 //                                                   no failure -- every failure said with its run's room and its
 //                                                   diagnosis; a precheck qualifies nothing (--resume carries one on)
 //   node skills/orbit-release/ship.mjs --status[=<shp-…>]
-//                                                   where this checkout's newest ship (or the one named) stands
+//                                                   where this checkout's newest ship (or the one named) stands: its
+//                                                   rows, the recorded ones, and each model-carried row that did not
+//                                                   hold with its run's room and its diagnosis bundle
 //   node skills/orbit-release/ship.mjs --evidence[=<shp-…>] [--artifact=<zip>]
 //                                                   THE PUBLISH GATE: exit 0 only when a ship qualified this very tree,
 //                                                   its evidence holds as read again now, and the artifact is the one
+//                                                   (a precheck is never what it reads)
 //   node skills/orbit-release/ship.mjs --ci         the fast tier a pipeline can hold: the definition of done, the
 //                                                   optional rows, and the autonomous ship AWAITED (`wait`) -- a green
 //                                                   fast CI is never release qualification
 //
-// Exit 0 = SHIPPABLE, PUBLISHABLE, or every gate --ci holds held · 2 = NOT SHIPPABLE, refused, or a gate failed --
-// nothing is tagged · 3 = BLOCKED: Docker, the coding host, its credential, a limit (resumable) · 4 = a person paused or
-// cancelled it. Nothing here writes this checkout, pushes, tags or publishes: integrated repairs reach a branch only as
-// a patch and a bundle a person applies.
+// Exit 0 = SHIPPABLE, PUBLISHABLE, PRECHECK HELD, or every gate --ci holds held · 2 = NOT SHIPPABLE, PRECHECK FAILED,
+// refused, or a gate failed -- nothing is tagged · 3 = BLOCKED: Docker, the coding host, its credential, a limit
+// (resumable) · 4 = a person paused or cancelled it. Nothing here writes this checkout, pushes, tags or publishes:
+// integrated repairs reach a branch only as a patch and a bundle a person applies.
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

@@ -60,10 +60,15 @@ const requirementChecked = async (ports, lw) => (lw.requirement.ok ? ok(lw.requi
 // The context command's own word for what it gathered (src/context/status.mjs) is the summary, never a count of
 // sections taken for understanding. One that could not be gathered on this machine at all (BLOCKED) fails the action,
 // naming who must act; the task then stays where it is. A context command from before 1.8.9 says no word.
+//
+// What the task touches and whether that is enough to choose scope on (0.5.0: `relevant`, `sufficiency`) are carried
+// to the host as the context command said them: advice for the scope a plan names, never a stop and never a verdict.
+const grounding = (got) => (got.sufficiency ? { relevant: got.relevant ?? [], sufficiency: got.sufficiency } : {});
+
 async function contextGathered(ports, lw, a) {
   const got = await ports.context.gather(a.for ?? lw.view.task.objective);
   const summary = got.status?.summary ?? `${got.sections.length} section(s) of project context, ${got.sections.filter((s) => s.known).length} known`;
-  const data = { sections: got.sections, ...(got.status ? { status: got.status } : {}) };
+  const data = { sections: got.sections, ...(got.status ? { status: got.status } : {}), ...grounding(got) };
   return got.status?.word === "BLOCKED" ? failed(summary, { because: got.status.because, needs: "environment", data }) : ok(summary, { data });
 }
 

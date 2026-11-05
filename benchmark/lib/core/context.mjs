@@ -24,7 +24,7 @@ import { dockerClientEnv } from "./docker.mjs";
 import { candidateEntries, candidateFile, mutatedEntries, mutationFile } from "./mutations.mjs";
 import { gitOwn } from "./git.mjs";
 import { matchesAny } from "./paths.mjs";
-import { armsOf, baselinePluginOf, caseOf, dirDigest } from "./suites.mjs";
+import { armsOf, baselinePluginOf, caseOf, dirDigest, memoryArmsOf } from "./suites.mjs";
 import { recorder } from "./record.mjs";
 import { docRead, docWritten, madeDir, newRunId, roomOf } from "./room.mjs";
 import { frozen, frozenAt, HARNESS, subjectOf, treeDigestOf, whereAt } from "./freeze.mjs";
@@ -159,10 +159,14 @@ function pluginMade(h, f) {
 // What each kind of case does beyond freezing the source: a source case plants its variant's mutations in the subject
 // it measures; a QA case plants its variant in its APPLICATION later, through its engine, and makes the plugin its
 // coding host is handed. Each says how many attempts its task may make.
+const QA_RUN = { variant: qaVariant, subject: (c, variant, entries) => ({ ok: true, entries, applied: [] }), extra: pluginMade, attempts: (c, config) => config.rounds, measured: () => [], target: false };
+
+// A sessions case (0.5.0, ADR 0054) is frozen exactly as a QA case is: the same application, the same withheld plugin.
 const KIND_RUN = {
   source: { variant: sourceVariant, subject: (c, variant, entries) => subjectFor(c, variant, entries), extra: () => null, attempts: (c, config) => (config.repair ? config.rounds + 1 : 1), measured: () => [], target: false },
-  qa: { variant: qaVariant, subject: (c, variant, entries) => ({ ok: true, entries, applied: [] }), extra: pluginMade, attempts: (c, config) => config.rounds, measured: () => [], target: false },
+  qa: QA_RUN,
   engineering: { variant: sourceVariant, subject: (c, variant, entries, frozenEntries) => targetFor(c, variant, frozenEntries), extra: orbitPlugin, attempts: (c, config) => config.rounds + 1, measured: (c) => [`benchmark/fixtures/${c.fixture}/**`], target: true },
+  sessions: QA_RUN,
 };
 
 // `repeat` (0.5.0): the group a run belongs to when one command asked for N runs of a case -- its id, which of them this
@@ -170,13 +174,23 @@ const KIND_RUN = {
 // `arm` (0.5.0): which plugin the host was handed -- `release` for every run that names none.
 // `effort` (0.5.0): the effort the coding host was asked to run at, beside its model -- null when none was asked, and the
 // host ran at its own default for the model.
-const runningConfig = (o, c) => ({ seed: Number.isInteger(o.seed) ? o.seed : Math.floor(Math.random() * 2 ** 31), rounds: o.rounds ?? c.limits.rounds, minutes: o.minutes ?? c.limits.minutes, usd: o.usd ?? c.limits.usd, model: o.model ?? null, effort: o.effort ?? null, repair: o.repair === true, host: o.host ?? null, parent: o.parent ?? null, repeat: o.group ?? null, arm: o.arm ?? "release" });
+// `memory` and `learnHost` (0.5.0, ADR 0054): a sessions run's memory arm -- null for any other kind -- and the scripted
+// host a control's learning session is carried by (null: the run's own host carries both sessions).
+const runningConfig = (o, c) => ({ seed: Number.isInteger(o.seed) ? o.seed : Math.floor(Math.random() * 2 ** 31), rounds: o.rounds ?? c.limits.rounds, minutes: o.minutes ?? c.limits.minutes, usd: o.usd ?? c.limits.usd, model: o.model ?? null, effort: o.effort ?? null, repair: o.repair === true, host: o.host ?? null, parent: o.parent ?? null, repeat: o.group ?? null, arm: o.arm ?? "release", memory: o.memory ?? null, learnHost: o.learnHost ?? null });
 
 // The arm a run is on: the one asked, among those its case declares -- or `release`, what every run was before arms.
 export function armOf(c, o) {
   const arm = o.arm ?? "release";
   if (arm !== "release" && !armsOf(c).includes(arm)) throw new Refused(`${c.id} declares no ${arm} arm: it runs on ${armsOf(c).join(", ")}`);
   return arm;
+}
+
+// The memory arm a sessions run's second session is on: the one asked, among those its case declares, else its first --
+// and none for a case of another kind, which refuses one asked.
+export function memoryOf(c, o) {
+  const arms = memoryArmsOf(c);
+  if (o.memory !== undefined && o.memory !== null && !arms.includes(o.memory)) throw new Refused(`${c.id} ${arms.length ? `compares its second session on memory ${arms.join(", ")}` : "has no second session"}: --memory=${o.memory} names none of them`);
+  return arms.length ? o.memory ?? arms[0] : null;
 }
 
 // What the harness is: its modules, the scripts its images run and its command line -- one digest, so a run says which
@@ -194,7 +208,7 @@ export function frozenRun(h, o) {
   const variant = KIND_RUN[c.kind].variant(c, o);
   const where = treeChecked(h, whereAt(treeOf(h), h.env));
   const fr = frozen(where.root, modeOf(where, o.source, KIND_RUN[c.kind].measured(c)), h.env);
-  return made(h, { ...o, variant, arm: armOf(c, o) }, { c, where, mode: fr.mode, frozen: fr, arm: armOf(c, o), variant });
+  return made(h, { ...o, variant, arm: armOf(c, o), memory: memoryOf(c, o) }, { c, where, mode: fr.mode, frozen: fr, arm: armOf(c, o), variant });
 }
 
 // A tree named by a caller is a checkout's TOP directory -- never a directory somewhere inside one, which would freeze
@@ -231,7 +245,7 @@ function recordedRun(h, o, f) {
 
 function withTask(h, room, manifest, c) {
   const rec = recorderOf(h);
-  const task = rec.create(`Benchmark ${c.suite.id}/${c.id} ${c.version} (${manifest.benchmark.variant}${manifest.config.repair ? ", repair" : ""}${manifest.config.host ? `, ${manifest.config.host}` : ""}${manifest.config.arm !== "release" ? `, arm ${manifest.config.arm}` : ""}${manifest.config.effort ? `, effort ${manifest.config.effort}` : ""}) on ${manifest.source.branch ?? "detached"}@${manifest.source.commit.slice(0, 10)}, subject ${manifest.subject.digest.slice(0, 10)}`, { attempts: KIND_RUN[c.kind].attempts(c, manifest.config), actions: 60, minutes: manifest.config.minutes, parent: manifest.config.parent ?? undefined });
+  const task = rec.create(`Benchmark ${c.suite.id}/${c.id} ${c.version} (${manifest.benchmark.variant}${manifest.config.repair ? ", repair" : ""}${manifest.config.host ? `, ${manifest.config.host}` : ""}${manifest.config.arm !== "release" ? `, arm ${manifest.config.arm}` : ""}${manifest.config.memory ? `, memory ${manifest.config.memory}` : ""}${manifest.config.effort ? `, effort ${manifest.config.effort}` : ""}) on ${manifest.source.branch ?? "detached"}@${manifest.source.commit.slice(0, 10)}, subject ${manifest.subject.digest.slice(0, 10)}`, { attempts: KIND_RUN[c.kind].attempts(c, manifest.config), actions: 60, minutes: manifest.config.minutes, parent: manifest.config.parent ?? undefined });
   docWritten(room, "manifest.json", { ...manifest, task });
   return contextOf(h, room, { ...manifest, task }, rec);
 }
@@ -254,7 +268,7 @@ export function contextOf(h, room, manifest, rec) {
   const deps = h.dockerDeps ? h.dockerDeps(room) : dockerDeps(h.env, room);
   const baseline = baselineOf(room.at("checkout"), h.env);
   const texts = new Map(baseline.map((e) => [e.rel, e.bytes]));
-  return { run: { id: manifest.run }, room, manifest, case: c, frozenCase: c.dir, rec: rec ?? recorderOf(h), task: manifest.task, deps, dockerEnv: dockerClientEnv(h.env), env: h.env, storeBase: h.storeBase, repoRoot: h.root, images: manifest.images, user: userOf(deps), cpuset: cpusetOf(deps, c.limits.verifier?.cpus ?? 1), runnerCpuset: cpusetOf(deps, c.limits.runner.cpus), limits: { ...c.limits.verifier, rounds: manifest.config.rounds, usd: manifest.config.usd }, checkoutDir: room.at("checkout"), runnerStore: madeDir(room, "runner-store"), baseline, baselineDigest: treeDigestOf(baseline), baselineText: (rel) => texts.get(rel)?.toString("utf8") ?? null, probeFile: c.acceptance.probe ? join(c.dir, c.acceptance.probe) : null, engineDir: room.at("checkout"), pluginDir: room.at("plugin"), engineStore: room.at("engine"), allowedHosts: hostsOf(h.env), credentialNames: credentialNames(h.env, h.credential), caFile: h.caFile ? realpathSync(h.caFile) : null, model: manifest.config.model, effort: manifest.config.effort ?? null, repair: manifest.config.repair, host: manifest.config.host ?? null, arm: manifest.config.arm ?? "release", worktreeDir: room.at("worktree") };
+  return { run: { id: manifest.run }, room, manifest, case: c, frozenCase: c.dir, rec: rec ?? recorderOf(h), task: manifest.task, deps, dockerEnv: dockerClientEnv(h.env), env: h.env, storeBase: h.storeBase, repoRoot: h.root, images: manifest.images, user: userOf(deps), cpuset: cpusetOf(deps, c.limits.verifier?.cpus ?? 1), runnerCpuset: cpusetOf(deps, c.limits.runner.cpus), limits: { ...c.limits.verifier, rounds: manifest.config.rounds, usd: manifest.config.usd }, checkoutDir: room.at("checkout"), runnerStore: madeDir(room, "runner-store"), baseline, baselineDigest: treeDigestOf(baseline), baselineText: (rel) => texts.get(rel)?.toString("utf8") ?? null, probeFile: c.acceptance.probe ? join(c.dir, c.acceptance.probe) : null, engineDir: room.at("checkout"), pluginDir: room.at("plugin"), engineStore: room.at("engine"), allowedHosts: hostsOf(h.env), credentialNames: credentialNames(h.env, h.credential), caFile: h.caFile ? realpathSync(h.caFile) : null, model: manifest.config.model, effort: manifest.config.effort ?? null, repair: manifest.config.repair, host: manifest.config.host ?? null, arm: manifest.config.arm ?? "release", worktreeDir: room.at("worktree"), memory: manifest.config.memory ?? null, learnHost: manifest.config.learnHost ?? null };
 }
 
 // The spec is imported from the run's FROZEN copy, and its cases made from the run's own seed.

@@ -9,14 +9,16 @@
 //
 // 0.5.0 adds, from the same facts: each row's and each model's reliability (pass@1, pass@k, median cost and minutes --
 // rates.mjs), the tool-call failures per suite and per model (tools.mjs), each Orbit arm's overhead over the `none` arm,
-// and `by` -- revision, model, arm -- each a breakdown of its own. A model is counted at the effort its host was asked to
-// run at (`config.effort`, null for the host's own default): two efforts of one model are two hosts, as two models are.
+// each sessions case's MEMORY ARMS side by side and memory's effect (B3, ADR 0054: a sessions run's facts carry its arm
+// and what its second session's work came to), and `by` -- revision, model, arm, memory -- each a breakdown of its own.
+// A model is counted at the effort its host was asked to run at (`config.effort`, null for the host's own default): two
+// efforts of one model are two hosts, as two models are.
 //
 //   runFacts({ manifest, ending, report }) -> facts
-//   metricsOf(runs, o = { scope, controls, k, by: [revision|model|arm] }) -> { runs, bases, reproducibility, verifier,
-//                                                    reliability, tools, overhead, history?, revisions?, byModel?, byArm? }
+//   metricsOf(runs, o = { scope, controls, k, by: [revision|model|arm|memory] }) -> { runs, bases, reproducibility,
+//                     verifier, reliability, tools, overhead, memory, history?, revisions?, byModel?, byArm?, byMemory? }
 //   METRICS -> rows { id, says, over(facts) -> { numerator, denominator, excluded } }      BY_NAMES
-import { groupBy, hostOfRun, overheadOf, ratesOf, revisionsOf } from "./rates.mjs";
+import { groupBy, hostOfRun, memoryOf, overheadOf, ratesOf, revisionsOf } from "./rates.mjs";
 import { toolsFoldOf } from "./tools.mjs";
 
 const UNKNOWN = "unknown";
@@ -25,9 +27,17 @@ const UNKNOWN = "unknown";
 const EXCLUDED = { BLOCKED: "blocked", BENCHMARK_INVALID: "invalid", INCONCLUSIVE: "inconclusive", PAUSED: "held", CANCELLED: "held" };
 
 // What counts as an autonomous outcome VERIFIED by the run's own independent verifier, by kind of case.
-const VERIFIED = { source: ["REPAIRED_VERIFIED"], engineering: ["PASS"], qa: ["PASS"] };
+const VERIFIED = { source: ["REPAIRED_VERIFIED"], engineering: ["PASS"], qa: ["PASS"], sessions: ["PASS"] };
 
-const basisOf = (m) => (m.benchmark?.kind === "qa" ? (m.config?.host && m.config.host !== "coding-host" ? "scripted" : "coding-host") : !m.config?.repair ? "none" : String(m.config.host ?? "").startsWith("scripted:") ? "scripted" : String(m.config.host ?? "").startsWith("session:") ? "session" : "coding-host");
+// The kinds a run of which is a QA investigation judged against a ground truth: a QA run's one session, and a sessions
+// run's second (0.5.0, ADR 0054).
+const JUDGED_KINDS = ["qa", "sessions"];
+
+const basisOf = (m) => (JUDGED_KINDS.includes(m.benchmark?.kind) ? (m.config?.host && m.config.host !== "coding-host" ? "scripted" : "coding-host") : !m.config?.repair ? "none" : String(m.config.host ?? "").startsWith("scripted:") ? "scripted" : String(m.config.host ?? "").startsWith("session:") ? "session" : "coding-host");
+
+// A sessions run's second session, as its report says it (0.5.0): its memory arm, and what its work came to -- the
+// numbers a memory arm is compared on. Null for any other run.
+const sessionOf = (r) => (r?.memory?.measured ? { decisions: r.memory.measured.decisions ?? null, designsRefused: r.memory.measured.designsRefused ?? null, costUsd: r.memory.measured.costUsd ?? null, minutes: r.memory.measured.minutes ?? null } : null);
 
 const durationOf = (m, e) => ((a, b) => (Number.isFinite(a) && Number.isFinite(b) && b >= a ? b - a : null))(Date.parse(m.at ?? ""), Date.parse(e?.at ?? ""));
 
@@ -50,7 +60,7 @@ const reportedOf = (m, r) => ((hosts) => ({ modelSaid: m.config?.model ?? hosts.
 export function runFacts({ manifest: m, ending: e, report: r }) {
   const outcome = e?.outcome ?? null;
   const kind = m.benchmark?.kind ?? "source";
-  return { run: m.run, at: m.at ?? null, kind, case: m.benchmark?.case ?? null, suite: m.benchmark?.suite ?? null, caseDigest: m.benchmark?.digest ?? null, variant: m.benchmark?.variant ?? null, subject: m.subject?.digest ?? null, commit: m.source?.commit ?? null, model: m.config?.model ?? null, effort: m.config?.effort ?? null, host: m.config?.host ?? null, basis: r?.hostBasis ?? basisOf(m), outcome, excluded: !outcome ? "unfinished" : EXCLUDED[outcome] ?? null, verified: (VERIFIED[kind] ?? []).includes(outcome), autonomousAxis: r?.axes?.autonomous?.value ?? null, rounds: (r?.rounds ?? []).length, regressedRounds: (r?.rounds ?? []).filter((x) => (x.decided?.regressed ?? []).length > 0).length, evaluatedRounds: (r?.rounds ?? []).filter((x) => x.decided).length, durationMs: durationOf(m, e), intervened: intervenedOf(r, e), judged: r?.judged ?? null, task: kind === "qa" || m.config?.repair === true, arm: m.config?.arm ?? "release", repeat: m.config?.repeat?.id ?? null, tools: r?.tools ?? null, ...reportedOf(m, r) };
+  return { run: m.run, at: m.at ?? null, kind, case: m.benchmark?.case ?? null, suite: m.benchmark?.suite ?? null, caseDigest: m.benchmark?.digest ?? null, variant: m.benchmark?.variant ?? null, subject: m.subject?.digest ?? null, commit: m.source?.commit ?? null, model: m.config?.model ?? null, effort: m.config?.effort ?? null, host: m.config?.host ?? null, basis: r?.hostBasis ?? basisOf(m), outcome, excluded: !outcome ? "unfinished" : EXCLUDED[outcome] ?? null, verified: (VERIFIED[kind] ?? []).includes(outcome), autonomousAxis: r?.axes?.autonomous?.value ?? null, rounds: (r?.rounds ?? []).length, regressedRounds: (r?.rounds ?? []).filter((x) => (x.decided?.regressed ?? []).length > 0).length, evaluatedRounds: (r?.rounds ?? []).filter((x) => x.decided).length, durationMs: durationOf(m, e), intervened: intervenedOf(r, e), judged: r?.judged ?? null, task: JUDGED_KINDS.includes(kind) || m.config?.repair === true, arm: m.config?.arm ?? "release", memory: m.config?.memory ?? null, session: sessionOf(r), repeat: m.config?.repeat?.id ?? null, tools: r?.tools ?? null, ...reportedOf(m, r) };
 }
 
 // ---- the rows -------------------------------------------------------------------------------------------------------------
@@ -71,7 +81,7 @@ const sum = (xs) => xs.reduce((a, b) => a + b, 0);
 
 const mean = (xs) => (xs.length ? { numerator: sum(xs), denominator: xs.length } : { numerator: 0, denominator: 0 });
 
-const qa = (fs) => counted(fs).filter((f) => f.kind === "qa" && f.judged);
+const qa = (fs) => counted(fs).filter((f) => JUDGED_KINDS.includes(f.kind) && f.judged);
 
 const planted = (fs) => counted(fs).filter((f) => f.kind === "source" && f.variant && f.variant !== "real");
 
@@ -119,11 +129,13 @@ const basesOf = (fs) => Object.fromEntries(BASES.map((b) => [b, basisMetrics(fs.
 // within each, each set named by what it is (`namedOf`).
 const splitOf = (fs, keyOf, namedOf) => groupBy(fs, keyOf).sort((a, b) => String(keyOf(a[0])).localeCompare(String(keyOf(b[0])))).map((g) => ({ ...namedOf(g[0]), runs: g.length, bases: basesOf(g) }));
 
-// What `--by` may break the runs down by (0.5.0 adds model and arm): each a part of the answer of its own.
+// What `--by` may break the runs down by (0.5.0 adds model, arm and memory): each a part of the answer of its own. A run
+// with no memory arm -- one of a kind with no second session -- is counted under `none`.
 const BY = {
   revision: (fs, o) => ({ history: historyOf(fs), revisions: revisionsOf(fs, o) }),
   model: (fs) => ({ byModel: splitOf(fs, hostOfRun, (f) => ({ model: f.modelSaid, effort: f.effort ?? null })) }),
   arm: (fs) => ({ byArm: splitOf(fs, (f) => f.arm, (f) => ({ arm: f.arm })) }),
+  memory: (fs) => ({ byMemory: splitOf(fs, (f) => f.memory ?? "none", (f) => ({ memory: f.memory ?? "none" })) }),
 };
 
 export const BY_NAMES = Object.keys(BY);
@@ -134,5 +146,5 @@ const byOf = (fs, o) => Object.assign({}, ...(o.by ?? (o.byRevision ? ["revision
 // (tools.mjs), and each Orbit arm's overhead over the `none` arm, beside the metrics every release had.
 export function metricsOf(runs, o = {}) {
   const fs = runs.map(runFacts);
-  return { scope: o.scope ?? "every run kept", runs: { total: fs.length, byBasis: countBy(fs.map((f) => f.basis)), byOutcome: countBy(fs.map((f) => f.outcome ?? "unfinished")), byArm: countBy(fs.map((f) => f.arm)) }, bases: basesOf(fs), reproducibility: reproducibilityOf(fs), verifier: verifierOf(o.controls ?? []), reliability: ratesOf(fs, o), tools: toolsFoldOf(fs), overhead: overheadOf(fs), ...byOf(fs, o) };
+  return { scope: o.scope ?? "every run kept", runs: { total: fs.length, byBasis: countBy(fs.map((f) => f.basis)), byOutcome: countBy(fs.map((f) => f.outcome ?? "unfinished")), byArm: countBy(fs.map((f) => f.arm)), byMemory: countBy(fs.filter((f) => f.memory).map((f) => f.memory)) }, bases: basesOf(fs), reproducibility: reproducibilityOf(fs), verifier: verifierOf(o.controls ?? []), reliability: ratesOf(fs, o), tools: toolsFoldOf(fs), overhead: overheadOf(fs), memory: memoryOf(fs, o), ...byOf(fs, o) };
 }

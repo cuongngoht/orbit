@@ -43,7 +43,7 @@ const SNIFF = 8000;
 // evidence about. `dirty` means only what the index cannot see: an unstaged edit or an untracked file.
 export function createFrontend(roots, exec = execFileSync, { staged = false } = {}) {
   const root = roots.find((r) => existsSync(r)) ?? null;
-  const git = (args, max) => (root ? ran(root, args, exec, max) : null);
+  const git = (args, max, emptyOn) => (root ? ran(root, args, exec, max, emptyOn) : null);
   return { root, commit: () => trimmed(staged ? git(["write-tree"]) : git(["rev-parse", "--short", "HEAD"])), branch: () => trimmed(git(["rev-parse", "--abbrev-ref", "HEAD"])), ...tree(git, staged) };
 }
 

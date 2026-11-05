@@ -1,12 +1,13 @@
-import { TITLE_LIMIT } from "./vocab.mjs";
+import { REQ_KINDS, TITLE_LIMIT } from "./vocab.mjs";
 
 export const STAMPED = ["id", "digest", "state", "revision", "schema", "at"];
 
 export const SOURCE_REF = /^spec@[0-9a-f]{8,64}(#L[0-9]+(-[0-9]+)?)?$/;
 
+// A row's `kind` is the vocabulary itself (src/goal/vocab.mjs REQ_KINDS), never a second list of the same words.
 export const REQUIREMENT_ROW = {
   id: { type: "string", pattern: "^gr-[0-9a-f]{8}$" },
-  kind: { type: "string", enum: ["explicit", "derived", "assumption", "unknown", "conflict", "decision"] },
+  kind: { type: "string", enum: REQ_KINDS },
   statement: { type: "string", minLength: 1, maxLength: TITLE_LIMIT },
   sourceRef: { type: "string", pattern: SOURCE_REF.source },
 };

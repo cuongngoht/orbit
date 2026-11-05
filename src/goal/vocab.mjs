@@ -7,7 +7,20 @@ export const SPEC_MAX_BYTES = 512_000;
 export const TITLE_LIMIT = 240;
 
 export const AC_STATES = ["verified", "failed", "not-verified", "blocked", "not-applicable"];
-export const REQ_KINDS = ["explicit", "derived", "assumption", "unknown", "conflict", "decision"];
+
+// What a requirement row of the analysis IS, as the host read the specification -- each one citing it by line:
+//
+//   explicit     the specification says it
+//   derived      it follows from what the specification says
+//   assumption   taken as true without the specification saying so: never accepted, a person may say otherwise
+//   unknown      something the specification leaves open
+//   conflict     two things it says that cannot both hold
+//   decision     a choice somebody made and the specification records
+//   constraint   (0.5.0) something the change must NOT violate -- a public API kept, no new dependency -- kept apart
+//                from what it asks for, so scope is chosen inside it
+//
+// A guess is never `explicit`: what the specification does not say is an assumption or an unknown.
+export const REQ_KINDS = ["explicit", "derived", "assumption", "unknown", "conflict", "decision", "constraint"];
 
 export const LIFECYCLE = [
   { name: "created", doc: "accepted, not yet analyzed" },

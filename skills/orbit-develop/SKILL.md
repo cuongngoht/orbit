@@ -12,6 +12,10 @@ allowed-tools:
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/mcp.mjs tools*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/mcp.mjs call*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/engineering.mjs recall*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/engineering.mjs why*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/architecture.mjs ensure*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/intelligence.mjs ensure*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/runtime.mjs discover*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/knowledge.mjs claims*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/knowledge.mjs why*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/knowledge.mjs verify*)
@@ -116,6 +120,18 @@ its authority (**RULE** · **ADOPTED** · **SOURCE** · **CONFIRMED** · **HOST-
   guess what it means.
 
 `node ${CLAUDE_PLUGIN_ROOT}/cli/knowledge.mjs why <claim-id>` shows the evidence behind any line.
+
+**Read SUFFICIENCY before you choose the scope** — the line under STATUS. **RELEVANT** lists what the task touches
+(files, symbols, components and checks: `direct`, `dependency`, `downstream`, `verification` or `unknown`, each with
+its evidence and whether it is still current), from what the project already knows. **ENOUGH**: start the scope from
+those items, and confirm each in the code before you rely on it — a name one of the task's words matched is not proof
+the change needs it. **DISCOVER**: make the reads its targets name, once each, and nothing wider. A target's `run` is
+an Orbit command: `node ${CLAUDE_PLUGIN_ROOT}/cli/<first word>.mjs <the rest>`. For `context --with-refs`, search for
+what the task names, then send what you found back on stdin (`{ "task": "…", "refs": [{ "kind": "file|symbol", "ref":
+"…", "why": "…" }] }`); a reference the tracked tree does not hold comes back refused, so drop it and never reason from
+it. A record that moved stays named until its owner reads it again: once you have read what it cites, go on.
+**ASK**: relay the one question it quotes, in the flow it names, and wait for the person; never ask one of your own
+in its place.
 
 - A section that says **UNKNOWN** is a gap, not permission to guess. If architecture has never
   been scanned, run `orbit-architecture` (or `orbit-help`) before designing.

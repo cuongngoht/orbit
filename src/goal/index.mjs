@@ -4,6 +4,9 @@ import { sayReport } from "./report.mjs";
 
 export { startGoal, analyzeGoal, planGoal, statusGoal, resumeGoal, stepGoal, verifyGoal } from "./commands.mjs";
 
+// The requirements of each kind, as the analysis counted them: "(3 explicit · 1 constraint)".
+const kindsSaid = (kinds) => (Object.keys(kinds ?? {}).length ? ` (${Object.entries(kinds).map(([kind, n]) => `${n} ${kind}`).join(" · ")})` : "");
+
 const caps = (args) => {
   const t = flag(args, "capability");
   return t ? String(t).split(",").map((s) => s.trim()).filter(Boolean) : [];
@@ -24,7 +27,7 @@ export const OPS = {
 
 export const sayOps = {
   start: (r) => `GOAL       ${r.id} started\nTITLE      ${r.title}\nDIGEST     ${r.specDigest}`,
-  analyze: (r) => `GOAL       ${r.id} analyzed · ${r.requirements} requirements · ${r.acceptance} acceptance criteria`,
+  analyze: (r) => `GOAL       ${r.id} analyzed · ${r.requirements} requirements${kindsSaid(r.kinds)} · ${r.acceptance} acceptance criteria`,
   plan: (r) => `GOAL       ${r.id} · ${r.plan} · ${r.units} work unit(s)`,
   status: (r) => sayReport(r.view),
   resume: (r) => r.say,

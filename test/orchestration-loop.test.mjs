@@ -217,3 +217,20 @@ test("gather-context reports the context command's own word, never a count taken
   assert.match(out.summary, /^BLOCKED: architecture could not answer here/);
   assert.equal(blocked.w.view(b).stage, "CONTEXT", "nothing moves on a context nobody could gather");
 });
+
+// 0.5.0 (B21): what the task touches and whether that is enough to choose scope on are the context command's own
+// answers, carried to the host as it said them -- the host reads `sufficiency` before it plans a scope.
+test("gather-context carries the context command's sufficiency and relevant items as they were said, and moves on whatever the word", async (t) => {
+  const grounding = { relevant: [{ kind: "file", ref: "src/orders.mjs", class: "direct", evidence: [{ source: "tree", id: "tracked" }], freshness: "current", by: "host-verified" }], relevance: { total: 1, listed: 1, more: 0, byClass: { direct: 1, dependency: 0, downstream: 0, verification: 0, unknown: 0 }, refused: [] }, sufficiency: { word: "DISCOVER", row: "unreached", because: "nothing says what the direct paths reach", targets: [{ source: "runtime", target: "component graph", run: "runtime discover" }], question: null } };
+  const o = orchestrationWorld(t, { contextGrounding: grounding });
+  const id = (await start(o.ports, { ref: "PBI-482" })).task;
+  const out = await step(o.ports, id, decided(o.ports, id, { kind: "gather-context" }));
+  assert.equal(out.outcome, "succeeded");
+  assert.deepEqual(out.data.sufficiency, grounding.sufficiency);
+  assert.deepEqual(out.data.relevant, grounding.relevant);
+  assert.equal(o.w.view(id).stage, "ENVIRONMENT", "DISCOVER is advice for choosing scope, never a stop");
+  const old = orchestrationWorld(t, {});
+  const p = (await start(old.ports, { ref: "PBI-482" })).task;
+  const before = await step(old.ports, p, decided(old.ports, p, { kind: "gather-context" }));
+  assert.deepEqual(Object.keys(before.data), ["sections"], "a context command that says no word carries none");
+});

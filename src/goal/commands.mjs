@@ -12,6 +12,7 @@ import { orphanAcceptance, planArtifact, planUnits } from "./plan.mjs";
 import { loadGoal, resumeSay, resumeView, verifyOnResume } from "./resume.mjs";
 import { reportOf, sayReport } from "./report.mjs";
 import { completionGate } from "./verification.mjs";
+import { REQ_KINDS } from "./vocab.mjs";
 
 const GOAL = /^goal-[0-9a-f]{12}$/;
 
@@ -33,8 +34,11 @@ export function analyzeGoal(ports, id, raw) {
 function appendAnalyzed(ports, id, analysis) {
   const model = viewOf(ports.goals.read(id));
   ports.goals.append(id, "analyzed", { id: nextId(model, "analyzed"), ...analysis });
-  return { id, digest: analysis.digest, requirements: analysis.requirements.length, acceptance: analysis.acceptance.length };
+  return { id, digest: analysis.digest, requirements: analysis.requirements.length, kinds: kindsOf(analysis.requirements), acceptance: analysis.acceptance.length };
 }
+
+// How many requirements of each kind the analysis holds, in the vocabulary's order -- a constraint counted apart.
+const kindsOf = (requirements) => Object.fromEntries(REQ_KINDS.map((kind) => [kind, requirements.filter((r) => r.kind === kind).length]).filter(([, n]) => n > 0));
 
 export function planGoal(ports, id) {
   const loaded = loadGoal(ports.goals, ports.io, id);

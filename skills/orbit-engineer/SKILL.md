@@ -15,6 +15,10 @@ allowed-tools:
   - AskUserQuestion
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/autonomous-engineering.mjs *)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/context.mjs*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/architecture.mjs ensure*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/intelligence.mjs ensure*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/engineering.mjs why*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/knowledge.mjs why*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/task.mjs show*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/task.mjs events*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/requirements.mjs status*)
@@ -122,7 +126,19 @@ long timeout. If the host killed it, `reconcile` settles it once its process is 
 ## 3 · Stage by stage
 
 - **CONTEXT** — `gather-context`: the project's architecture, conventions and knowledge, memory
-  first. Read the sections it returns, and follow the engineering conventions they name.
+  first. Read the sections it returns, and follow the engineering conventions they name. Read its
+  `data.sufficiency` before you choose the scope you will `plan`, and `data.relevant` for what the task
+  touches (each item's class, evidence and freshness). It is advice: the stage moves on whatever the
+  word. ENOUGH: start the scope from those items, and confirm each in the workspace before it goes in
+  -- a name one of the task's words matched is not a file the change needs. DISCOVER: in PLANNING,
+  first make the reads its `targets` name, once each, and nothing wider than the task needs. A target's
+  `run` is an Orbit command: `node ${CLAUDE_PLUGIN_ROOT}/cli/<first word>.mjs <the rest>`, run from the
+  checkout. For `context --with-refs`, search the workspace for what the task names, then send what you
+  found on stdin -- `{ "task": "…", "refs": [{ "kind": "file|symbol", "ref": "…" }] }`; it refuses, by
+  name, any reference the tracked tree does not hold: never plan from one it refused. A record that moved
+  stays named until its owner reads it again, so once you have read what it cites, go on. ASK: a question about this task's work is already open: tell the person what it quotes
+  and how it is answered, and plan nothing it decides until it is; never put a question of your own in
+  its place.
 - **ENVIRONMENT** — `check-environment`. A block names who must act. If the checkout declares no
   test, or only one that needs a shell, nothing can verify a change: report it, and point at
   `orbit-qc-builder`. If you changed what the checkout declares, run `runtime discover --rescan`,

@@ -7,8 +7,13 @@ description: >
 argument-hint: where should I start | implement PBI-482 and test it until it passes
 allowed-tools:
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/help.mjs*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/context.mjs*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/architecture.mjs ensure*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/intelligence.mjs ensure*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/engineering.mjs recall*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/engineering.mjs why*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/knowledge.mjs why*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/runtime.mjs discover*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/automation.mjs*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/skill-factory.mjs*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/live.mjs status*)
@@ -152,6 +157,15 @@ workflow, invoke that skill with the SAME task; when it is a command, run it, th
 only when `BLOCKERS` says something the task needs is missing, or the workflow itself asks a
 person. This is the same on every host: on a host without a prompt router (Antigravity), this
 loop is what routes the task.
+
+**Before you choose how much to do, read SUFFICIENCY.** `node ${CLAUDE_PLUGIN_ROOT}/cli/context.mjs
+--for="<the task>" --json` answers `sufficiency` beside `relevant`, what the task touches. ENOUGH:
+carry on, starting from the scope those items show and confirming it in the code. DISCOVER: only the
+reads its `targets` name are owed first, once each, never a repository-wide search -- a target's `run`
+is an Orbit command, `node ${CLAUDE_PLUGIN_ROOT}/cli/<first word>.mjs <the rest>`, and what you find goes
+back with `--with-refs`, which refuses any reference the tracked tree does not hold. ASK: a question
+about this task's own work is already open; relay it as quoted, in the flow it names, and wait for the
+person. It never makes a question up, and neither do you.
 
 **`UNKNOWN` is not empty by accident.** The working set (what a session has already read,
 changed and run) is recorded by the plugin's hooks; until a session has been recorded in this

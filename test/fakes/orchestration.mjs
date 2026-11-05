@@ -231,7 +231,7 @@ export function orchestrationWorld(t, opts = {}) {
     workspace: ws,
     base: { head: () => BASE, dirty: () => false },
     checks: { declared: () => opts.declared ?? DECLARED, graph: () => (opts.graph === undefined ? graphOf(opts.declared ?? DECLARED, opts.dependsOn) : opts.graph), run: (command, at) => createCheckRunner({ process, env: { PATH: "/bin", HOME: "/home/x", API_TOKEN: "s3cr3t-value" }, envNamesOf: () => opts.envNames ?? [], clock: () => w.clock.at, keep: (where, text) => roomOf(where.task).keep(where.ref, text), observer: opts.observe ? observerOf(activity, w, opts) : undefined }).run(command, at) },
-    context: { gather: async (text) => (calls.context++, { sections: [{ id: "architecture", title: "ARCHITECTURE", known: true, lines: [`for: ${text.slice(0, 40)}`] }], ...(opts.contextStatus ? { status: opts.contextStatus } : {}) }) },
+    context: { gather: async (text) => (calls.context++, { sections: [{ id: "architecture", title: "ARCHITECTURE", known: true, lines: [`for: ${text.slice(0, 40)}`] }], ...(opts.contextStatus ? { status: opts.contextStatus } : {}), ...(opts.contextGrounding ?? {}) }) },
     capabilities: { describe: (id) => (capabilities[id] ? { id, ...capabilities[id] } : null), invoke: async (id, input, o) => (calls.invoked.push({ id, input, approved: o.approved, ...(o.authorized ? { authorized: o.authorized } : {}) }), { written: 1 }) },
     investigations: { outcome: (id) => investigations.get(id) ?? null },
     roomOf,

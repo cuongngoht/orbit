@@ -79,3 +79,14 @@ test("an unstaged edit or an untracked file is what a staged source says it cann
   writeFileSync(join(dir, "web/package.json"), '{"edited":true}');
   assert.equal(createFrontend([dir], undefined, { staged: true }).fingerprints(["web"]).web.dirty, 1);
 });
+
+// `git grep` exits 1 when nothing matched: an ANSWER, the empty one. Only a search that could not run at all is null,
+// so "nothing here uses it" and "this is not a checkout" stay two different things for every caller (0.5.0: what an
+// identifier search for a host's proposed symbol was refusing as "could not be searched").
+test("a search that matches nothing answers an empty list; only a search that could not run is null", (t) => {
+  const dir = repository(t, { "src/orders.mjs": "export function createOrder() {}\n" });
+  const source = createFrontend([dir]);
+  assert.deepEqual(source.search("createOrder").map((h) => [h.path, h.line]), [["src/orders.mjs", 1]]);
+  assert.deepEqual(source.search("notAnywhereInThisTree"), [], "nothing matched is an answer");
+  assert.equal(createFrontend([join(dir, "missing")]).search("createOrder"), null, "no checkout to ask is not one");
+});

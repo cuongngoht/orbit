@@ -10,8 +10,10 @@ import { lifecycleOf } from "../src/goal/lifecycle.mjs";
 import { frontierOf, modelOf } from "../src/goal/model.mjs";
 import { planUnits } from "../src/goal/plan.mjs";
 import { analyzeGoal, planGoal, startGoal } from "../src/goal/commands.mjs";
+import { REQUIREMENT_ROW } from "../src/goal/fields.mjs";
+import { sayOps } from "../src/goal/index.mjs";
 import { createGoals } from "../src/goal/store.mjs";
-import { WORK_KINDS } from "../src/goal/vocab.mjs";
+import { REQ_KINDS, WORK_KINDS } from "../src/goal/vocab.mjs";
 import { planFor, start } from "../src/automation/loop.mjs";
 import { INTENTS } from "../src/routing/intents.mjs";
 import { Refused } from "../src/errors.mjs";
@@ -128,4 +130,24 @@ test("a goal unit's workflow links the goal back, and only that unit's workflow 
   o.w.tick(1);
   const other = start(o.ports, { ...spec, goal: "goal-ba9876543210:gu-22222222" });
   assert.notEqual(other.task, first.task, "another goal's unit with the same title is never handed this one");
+});
+
+// 0.5.0 (B21): a CONSTRAINT -- something the change must not violate, such as a public API kept or no new dependency --
+// is a requirement kind of its own, kept apart from what the specification asks for, and the analysis says how many of
+// each kind it holds. It is additive: every kind a reading used before still reads the same.
+test("a constraint is a requirement kind of its own: accepted as sent, counted apart, and every earlier kind unchanged", () => {
+  const io = fakeIo();
+  const goals = createGoals("/store/acme", io);
+  const p = { ctx: { project: "acme", checkout: "co-111111111111", session: "s", host: "test" }, io, goals };
+  const g = startGoal(p, "Rename the order service.\nThe public API is kept as it is.\nAC1: every caller still compiles\n");
+  const ref = (n) => `spec@${g.specDigest}#L${n}`;
+  const requirements = [{ statement: "the order service is renamed", kind: "explicit", sourceRef: ref(1) }, { statement: "the public API is kept as it is", kind: "constraint", sourceRef: ref(2) }, { statement: "no caller outside the repository", kind: "assumption", sourceRef: ref(1) }];
+  const analyzed = analyzeGoal(p, g.id, { ...english, requirements, acceptance: [{ statement: "every caller still compiles", sourceRef: ref(3) }] });
+  assert.deepEqual(analyzed.kinds, { explicit: 1, assumption: 1, constraint: 1 }, "the answer counts each kind it holds, in the vocabulary's order");
+  assert.match(sayOps.analyze(analyzed), /3 requirements \(1 explicit · 1 assumption · 1 constraint\)/);
+  const kept = validateAnalysis({ ...english, requirements }, EN);
+  assert.deepEqual(kept.requirements.map((r) => r.kind), ["explicit", "constraint", "assumption"], "a constraint is kept as what it was sent as");
+  assert.deepEqual(REQ_KINDS, ["explicit", "derived", "assumption", "unknown", "conflict", "decision", "constraint"]);
+  assert.deepEqual(REQUIREMENT_ROW.kind.enum, REQ_KINDS, "the row's enum IS the vocabulary, never a second list");
+  assert.throws(() => validateAnalysis({ ...english, requirements: [{ statement: "x", kind: "rule", sourceRef: `spec@${EN}#L1` }] }, EN), (e) => e instanceof Refused && /kind must be one of .*constraint/.test(e.message));
 });

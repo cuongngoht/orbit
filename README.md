@@ -226,6 +226,8 @@ node cli/task.mjs list                                 # tasks on this machine
 # Project knowledge
 node cli/architecture.mjs ensure                       # is the architecture snapshot current?
 node cli/runtime.mjs discover                          # what this checkout needs to run
+node cli/context.mjs --for="<task>" [--json]           # what the task touches, and whether that is enough (0.5.0)
+node cli/context.mjs --with-refs --json < refs.json    # the same, with the files and symbols you propose, verified
 
 # Live view
 node cli/live.mjs status                               # Orbit Live in a terminal
@@ -335,6 +337,31 @@ command — and unknown is never production.
 ---
 
 ## Feature guides
+
+### Project context: what a task touches, and whether that is enough
+
+`context --for="<task>"` is what `orbit-develop`, `orbit-engineer` and `orbit-help` read before they choose a scope.
+Memory first, it composes the architecture, technology, engineering, knowledge, work and working-set sections, and
+since 0.5.0 two answers about the task itself:
+
+- **RELEVANT** lists what the task touches, from what the owners already hold: architecture's modules, boundaries,
+  system-graph nodes and gates, intelligence's integrations, what engineering and knowledge recall for the task, the
+  working set, and, once the paths are known, what the change reaches and which declared checks hold it. Each item is
+  a `file`, `symbol`, `component` or `check`; its class is `direct`, `dependency`, `downstream`, `verification` or
+  `unknown`; it names its evidence and its freshness, measured against each record's own scope (never HEAD); and it
+  says who found it, `engine` or `host-verified`. At most 40 are listed and the rest counted. Names are matched with
+  identifiers split (`createOrder` is "create order"), with no embeddings and no parsing of any language.
+- **SUFFICIENCY** is one word: `ENOUGH` (proceed, starting from those items), `DISCOVER` (with the targeted reads that
+  would fill the gap, never a full scan; each target's `run` is an Orbit command, `node <plugin-root>/cli/<first
+  word>.mjs <the rest>`, and a read already made that would find the same nothing is never named again) or `ASK` (a
+  question about the task's own work is already open: a requirement's blocking question, or a goal's missing
+  prerequisite, on a work or goal the task names by id or whose objective is mostly the task's own words). Orbit never
+  makes a question up, and only a person answers one.
+
+A host proposes what it found with `--with-refs`: `{ "task": "…", "refs": [{ "kind": "file|symbol", "ref": "…",
+"why": "…" }] }` on stdin. A file is checked against the tracked listing, and every proposed symbol by ONE whole-word
+search of the index; one the tree does not hold is refused by name and never listed. Composing RELEVANT and
+SUFFICIENCY writes nothing: only the sections' own memory-first commands refresh what they keep.
 
 ### Coordinated workflows and reusable playbooks
 

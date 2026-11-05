@@ -357,6 +357,21 @@ test("17. a restart between a run's ending and its report: the room is carried o
   assert.match((await driven(resumedShip(leaked.world, c2.ship.id, {}))).summary, /credential was found in 1 file/, "a leak the tail's scan finds is still a person's to look at");
 });
 
+// ---- the resume dead ends ship 14 found (0.5.0 backlog B6), each probed, then fixed -----------------------------------------
+
+const actsOf = (w, ctx, type) => w.door.show(ctx.task).actions.filter((a) => a.type === type);
+
+test("B6-1. images that could not be built are built again on resume -- a row never runs on images the cycle did not build", async (t) => {
+  const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, images: false } });
+  const { ctx, result } = await shipped(w);
+  assert.deepEqual([result.outcome, result.exit], ["BLOCKED", 3], result.summary);
+  w.play.images = true;
+  const again = await driven(resumedShip(w.world, ctx.ship.id, {}));
+  assert.deepEqual([again.outcome, again.exit], ["SHIPPABLE", 0], again.summary);
+  assert.equal(actsOf(w, ctx, "release.build").length, 2, "the resume asked for the images again, once");
+  assert.ok(evidenceOf(ctx).harness.images?.length > 0, "the evidence names the images the rows ran on");
+});
+
 // ---- the boundaries, and what a person reads ------------------------------------------------------------------------------
 
 test("integrating is a write to the ship's own workspace -- AUTO -- and a ship never constructs a write to the person's checkout", () => {

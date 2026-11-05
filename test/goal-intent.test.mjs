@@ -151,3 +151,31 @@ test("a constraint is a requirement kind of its own: accepted as sent, counted a
   assert.deepEqual(REQUIREMENT_ROW.kind.enum, REQ_KINDS, "the row's enum IS the vocabulary, never a second list");
   assert.throws(() => validateAnalysis({ ...english, requirements: [{ statement: "x", kind: "rule", sourceRef: `spec@${EN}#L1` }] }, EN), (e) => e instanceof Refused && /kind must be one of .*constraint/.test(e.message));
 });
+
+// 0.5.0 (B21's review): a requirement row the host sent with NO kind is a guess about what the specification says, so it
+// is read as an assumption -- never `explicit`, the one kind a guess must never get -- and it says so: the row keeps
+// `kindDefaulted` in the goal's journal, and `goal analyze` counts those rows apart. A row the host labelled, an
+// assumption included, keeps exactly the fields it always had. No rule that plans a goal reads a row's kind, so the
+// reading plans the same units whatever its rows were labelled, or defaulted, as.
+test("a requirement row sent with no kind is read as an assumption, never explicit: kept as defaulted, counted apart, planned the same", () => {
+  const io = fakeIo();
+  const goals = createGoals("/store/acme", io);
+  const p = { ctx: { project: "acme", checkout: "co-111111111111", session: "s", host: "test" }, io, goals };
+  const g = startGoal(p, "Rename the order service.\nThe public API is kept as it is.\nAC1: every caller still compiles\n");
+  const ref = (n) => `spec@${g.specDigest}#L${n}`;
+  const rows = [{ statement: "the order service is renamed", kind: "explicit", sourceRef: ref(1) }, { statement: "no caller outside the repository", sourceRef: ref(1) }, { statement: "the old name stays as an alias", kind: null, sourceRef: ref(2) }];
+  const labelledAs = (kind) => rows.map((r) => ({ ...r, kind: r.kind ?? kind }));
+  const acceptance = [{ statement: "every caller still compiles", sourceRef: ref(3) }];
+  const analyzed = analyzeGoal(p, g.id, { ...english, requirements: rows, acceptance });
+  assert.deepEqual([analyzed.kinds, analyzed.kindDefaulted], [{ explicit: 1, assumption: 2 }, 2], "a row with no kind counts as an assumption, and apart as one the engine filled in");
+  assert.match(sayOps.analyze(analyzed), /3 requirements \(1 explicit · 2 assumption\) · 2 sent with no kind, read as assumption · 1 acceptance criteria$/);
+  const kept = modelOf(goals.read(g.id)).analyzed.requirements;
+  assert.deepEqual(kept.map((r) => [r.kind, r.kindDefaulted ?? null]), [["explicit", null], ["assumption", true], ["assumption", true]], "the journal keeps which rows' kinds the engine filled in");
+  const labelled = analyzeGoal(p, g.id, { ...english, requirements: labelledAs("assumption"), acceptance });
+  assert.deepEqual([labelled.kinds, labelled.kindDefaulted], [{ explicit: 1, assumption: 2 }, 0], "an assumption the host labelled is its own reading, never counted as defaulted");
+  assert.doesNotMatch(sayOps.analyze(labelled), /no kind/);
+  assert.deepEqual(modelOf(goals.read(g.id)).analyzed.requirements.map((r) => Object.keys(r)), rows.map(() => ["id", "kind", "statement", "sourceRef"]), "a labelled row keeps exactly the fields it always had");
+  const planned = (requirements) => planUnits(validateAnalysis({ ...english, requirements }, EN), EN);
+  assert.deepEqual(planned(rows), planned(labelledAs("assumption")), "no rule of the plan reads a row's kind");
+  assert.deepEqual(planned(rows), planned(labelledAs("explicit")), "so reading a missing kind as an assumption, where it once was explicit, plans the same units");
+});

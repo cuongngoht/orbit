@@ -53,10 +53,11 @@ node ${CLAUDE_PLUGIN_ROOT}/cli/orbit.mjs goal resume <goal-id> --json
 
 Read the stored spec, produce JSON with `objective`, `intent`, `requirements[]`, `acceptance[]`, `unknowns[]`, `conflicts[]`. Every row needs `sourceRef` as `spec@<digest>#L<n>` from the start response.
 
-Each requirement row says what it is with `kind`: `explicit` (the spec says it), `derived` (it follows from what the
-spec says), `assumption`, `unknown`, `conflict`, `decision`, or `constraint` -- something the change must NOT violate,
-such as a public API kept or no new dependency. A guess is never `explicit`: what the spec does not say is an
-`assumption` or an `unknown`. The answer counts each kind it kept.
+Label EVERY requirement row with its `kind`: `explicit` only for what the spec states, `derived` (it follows from what
+the spec says), `assumption`, `unknown`, `conflict`, `decision`, or `constraint` -- something the change must NOT
+violate, such as a public API kept or no new dependency. A guess is never `explicit`: what the spec does not say is an
+`assumption` or an `unknown`. A row sent with no `kind` is read as `assumption`, never `explicit`, and the answer counts
+it apart (`kindDefaulted`) beside each kind it kept, so even a row the spec states is an assumption until you label it.
 
 `intent` is YOUR structured reading of the goal, and the plan is drawn from it alone — the engine never looks for words
 in the objective, so a goal in any language plans the same way:

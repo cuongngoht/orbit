@@ -199,10 +199,11 @@ design that names another is refused before a draft exists (`DECLARED_POINT`, na
 from there, never from an obligation's name. A workload that lists none declares none here: a point its hooks
 do not know then refuses the run (`stopped` says `unknown-point`). A fault stops the workload it is armed in,
 and nothing says that workload comes back by itself: bring it back with a step of the design's own
-(`orbit.workload.control` on it, `request.action` `start` or `restart`) after the fault's witness and before
-anything asks that workload for more, reads its effect, or the test ends -- the next test in the sandbox finds
-it as this one left it. A design that does not is refused before a draft exists (`RESTORED_AFTER_FAULT`, naming
-the step to add and where). A fault nobody saw proves nothing about surviving it: a run whose observations never
+(`orbit.workload.control` on it, `request.action` `start` or `restart`) after the fault's witness, before
+any later step asks that workload for more (what it did after the fault included), and before the test ends --
+the next test in the sandbox finds it as this one left it. What the fault left below it, a state read, may be
+read first, while it is still down. A design that does not bring it back is refused before a draft exists
+(`RESTORED_AFTER_FAULT`, naming the step to add and where). A fault nobody saw proves nothing about surviving it: a run whose observations never
 carried the point's terminal reason (`fault:<point>`) is `INCONCLUSIVE` whether what followed held or failed
 (`FAULT_NOT_SEEN`) -- so observe the faulted workload's attempts in a step whose answer carries it, and name that step
 as the fault control's witness (`step`), whose verdict the engine compiles. A design or a version you cite as

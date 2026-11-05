@@ -15,7 +15,7 @@
 // host's stream to) and every sandbox the runner store holds, with its operations journal (sandbox.json: what each
 // sandbox step came to, for the tool-call failure metrics).
 //
-//   node /bench/inspect.mjs <tsk-…|-> [--plugin=<dir>]
+//   node /bench/inspect.mjs <tsk-…|-> [--plugin=<dir>] [--tree=/work/worktree]
 //                                   out: /work/out/inspect.json, task.json, tasks.json, trace.json, turns.json, goals.json,
 //                                        sandbox.json, files/<rel>
 import { createHash } from "node:crypto";
@@ -85,6 +85,12 @@ function copied(tree, rel) {
 const pluginArg = (argv) => (argv.find((a) => /^--plugin=\/work\/(repo|orbit)$/.test(a)) ?? "--plugin=/work/repo").slice("--plugin=".length);
 
 const PLUGIN = pluginArg(process.argv.slice(2));
+
+// A round whose host was handed no Orbit (0.5.0, B23's `none` arm) changed a writable copy of the target, mounted here
+// read-only; the round's changes are read off it instead of a task's workspace. One fixed path, never a value.
+export const worktreeArg = (argv) => (argv.includes("--tree=/work/worktree") ? "/work/worktree" : null);
+
+const WORKTREE = worktreeArg(process.argv.slice(2));
 
 const orbit = (cli, args) => spawnSync(process.execPath, [`${PLUGIN}/cli/${cli}`, ...args, "--json"], { cwd: PATHS.repo, env: process.env, encoding: "utf8", timeout: 120000, maxBuffer: LIMITS.json });
 
@@ -173,7 +179,7 @@ function main(asked) {
   const task = taskFound(asked, tasks);
   const shown = task ? answered(orbit("task.mjs", ["show", task])) : { exit: null, json: null, why: "no task was started" };
   [["task.json", shown], ["tasks.json", tasks], ["trace.json", answered(orbit("trace.mjs", ["usage"]))], ["turns.json", answered(orbit("trace.mjs", ["turns", "--days=30", "--limit=200"]))], ["goals.json", goalsOf()], ["sandbox.json", sandboxesOf()]].forEach(([name, v]) => writeFileSync(join(PATHS.out, name), `${JSON.stringify(v)}\n`));
-  inspected(asked, task, task ? treeOf(task) : null);
+  inspected(asked, task, WORKTREE ?? (task ? treeOf(task) : null));
 }
 
 function inspected(asked, task, tree) {

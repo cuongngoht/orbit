@@ -287,7 +287,8 @@ const recordRow = (rb) => (row) => ({ id: row.id, ok: row.ok(rb) === true, says:
 
 const specRecords = (ctx, rb) => (typeof ctx.spec?.records === "function" ? ctx.spec.records(rb).map((x) => ({ id: x.id, ok: x.ok === true, says: x.says ?? x.id })) : []);
 
-const recordsOf = (ctx, ins, engineering) => (ctx.case.kind !== "engineering" ? [] : ((rb) => [...(GOAL_RECORDS[ctx.case.measures?.expects ?? "change"] ?? []).map(recordRow(rb)), ...specRecords(ctx, rb)])(readBackOf(ins, engineering)));
+// An arm with no Orbit (0.5.0, B23) has no owner's record to read: only the verifier judges what its host left.
+const recordsOf = (ctx, ins, engineering) => (ctx.case.kind !== "engineering" || ctx.arm === "none" ? [] : ((rb) => [...(GOAL_RECORDS[ctx.case.measures?.expects ?? "change"] ?? []).map(recordRow(rb)), ...specRecords(ctx, rb)])(readBackOf(ins, engineering)));
 
 async function judgedRound(ctx, k, repair, ins) {
   const cand = ins?.inspect ? candidateOf(ctx, ins) : NO_CANDIDATE(ctx);

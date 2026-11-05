@@ -119,7 +119,13 @@ function taskOf(b, env) {
 // A QA round's host also reads the application's public material, and no engineering task is started for it.
 const isQa = (b) => b.kind === "qa";
 
-export const hostArgs = (b) => ["-p", "--output-format", "stream-json", "--verbose", "--plugin-dir", pluginOf(b), "--permission-mode", "dontAsk", "--allowedTools", isQa(b) ? QA_TOOLS : TOOLS, "--disallowedTools", (isGoal(b) ? GOAL_DENIED : DENIED).join(","), "--setting-sources", "user", "--strict-mcp-config", "--no-session-persistence", "--add-dir", PATHS.store, ...(isQa(b) ? ["--add-dir", PATHS.target] : []), ...(b.model ? ["--model", b.model] : []), ...(b.usd > 0 ? ["--max-budget-usd", String(b.usd)] : [])];
+// The plugin the host loads -- none at all for an arm with no Orbit (0.5.0, B23), so no Orbit hook fires and no trail is
+// written -- and a cap on its turns when the brief names one.
+const pluginArgs = (b) => (b.arm === "none" ? [] : ["--plugin-dir", pluginOf(b)]);
+
+const turnArgs = (b) => (Number.isInteger(b.maxTurns) && b.maxTurns > 0 ? ["--max-turns", String(b.maxTurns)] : []);
+
+export const hostArgs = (b) => ["-p", "--output-format", "stream-json", "--verbose", ...pluginArgs(b), ...turnArgs(b), "--permission-mode", "dontAsk", "--allowedTools", isQa(b) ? QA_TOOLS : TOOLS, "--disallowedTools", (isGoal(b) ? GOAL_DENIED : DENIED).join(","), "--setting-sources", "user", "--strict-mcp-config", "--no-session-persistence", "--add-dir", PATHS.store, ...(isQa(b) ? ["--add-dir", PATHS.target] : []), ...(b.model ? ["--model", b.model] : []), ...(b.usd > 0 ? ["--max-budget-usd", String(b.usd)] : [])];
 
 // What a probe's host may do: nothing but answer. Every tool is denied by name and none is allowed, so `dontAsk` refuses
 // whatever else it reaches for; it loads no plugin, no MCP server and no session it could resume.

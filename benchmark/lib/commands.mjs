@@ -17,7 +17,7 @@ import { cleaned, leftovers, ranContainer, specFor } from "./core/docker.mjs";
 import { candidateEntries, candidateFile, mutatedEntries, mutationFile } from "./core/mutations.mjs";
 import { carried, EXIT, verificationSummary } from "./source/flow.mjs";
 import { builtImage, imageDefs, imageIdOf, resolvedImages, ROLES } from "./core/images.mjs";
-import { caseOf, casesOf, dirDigest, suitesIn } from "./core/suites.mjs";
+import { ARMS, armsOf, baselinePluginOf, caseOf, casesOf, dirDigest, suitesIn } from "./core/suites.mjs";
 import { reportOf } from "./source/report.mjs";
 import { carriedQa, withTruth } from "./qa/flow.mjs";
 import { qaReportOf } from "./qa/report.mjs";
@@ -110,11 +110,13 @@ function safeJson(buf) {
 // What a case is run on: a source case's variants, a QA case's application and the variant planted in it.
 const VARIANTS_OF = { source: (c) => Object.keys(c.variants), qa: (c) => [`${c.target.stack} ${c.target.variant}`], engineering: (c) => Object.keys(c.variants).map((v) => `${c.fixture}:${v}`) };
 
-const listed = (c) => ({ id: c.id, kind: c.kind, version: c.version, title: c.title, variants: VARIANTS_OF[c.kind](c), controls: [...c.controls.map((k) => `${k.id}:${k.expect}`), ...(c.repairs ?? []).map((r) => `${r.id}(${r.through}):${r.expect}`)], baseline: c.baseline ?? null });
+const listed = (c) => ({ id: c.id, kind: c.kind, version: c.version, title: c.title, variants: VARIANTS_OF[c.kind](c), controls: [...c.controls.map((k) => `${k.id}:${k.expect}`), ...(c.repairs ?? []).map((r) => `${r.id}(${r.through}):${r.expect}`)], baseline: c.baseline ?? null, arms: armsOf(c), ...(armsOf(c).includes("baseline") ? { baselinePlugin: baselinePluginOf(c) } : {}) });
 
 const list = (h) => ({ suites: suitesIn(h.root).map((p) => ({ id: p.id, version: p.version, title: p.title, cases: casesOf(h.root, p.id).map(listed) })) });
 
-const sayList = (r) => r.suites.flatMap((p) => [`${p.id} ${p.version} — ${p.title}`, ...p.cases.map((c) => `  ${c.id} ${c.version}  ${c.kind.padEnd(11)}  ${c.kind === "source" ? "variants" : "on"} ${c.variants.join(", ")}  controls ${c.controls.join(", ")}\n    ${c.title}`)]).join("\n");
+const armsSaid = (c) => (c.arms.length > 1 || c.arms[0] !== "release" ? `  arms ${c.arms.join(", ")}${c.baselinePlugin ? ` (baseline ${c.baselinePlugin})` : ""}` : "");
+
+const sayList = (r) => r.suites.flatMap((p) => [`${p.id} ${p.version} — ${p.title}`, ...p.cases.map((c) => `  ${c.id} ${c.version}  ${c.kind.padEnd(11)}  ${c.kind === "source" ? "variants" : "on"} ${c.variants.join(", ")}  controls ${c.controls.join(", ")}${armsSaid(c)}\n    ${c.title}`)]).join("\n");
 
 // ---- a run --------------------------------------------------------------------------------------------------------------------
 
@@ -132,7 +134,10 @@ const runIdOption = shaped("run-id", RUN_ID, "bnr- and 12 hex characters");
 
 export const parentOption = shaped("parent", TASK_ID, "a task's id: tsk- and 12 hex characters");
 
-const optionsOf = (args) => ({ host: hostOption(flag(args, "host")), variant: flag(args, "variant"), repair: has(args, "repair"), source: flag(args, "source"), seed: int(flag(args, "seed")), model: flag(args, "model"), rounds: int(flag(args, "rounds")), minutes: int(flag(args, "minutes")), usd: num(flag(args, "usd")), runId: runIdOption(flag(args, "run-id")), parent: parentOption(flag(args, "parent")), repeat: int(flag(args, "repeat")) });
+// Which arm a run hands its host (0.5.0, B23): one of ARMS, or `all` -- every arm the case declares, one after another.
+const armOption = (v) => (v === undefined || [...ARMS, "all"].includes(v) ? v : refusedWith(`--arm is one of ${[...ARMS, "all"].join(", ")}, not ${v}`));
+
+const optionsOf = (args) => ({ host: hostOption(flag(args, "host")), variant: flag(args, "variant"), repair: has(args, "repair"), source: flag(args, "source"), seed: int(flag(args, "seed")), model: flag(args, "model"), rounds: int(flag(args, "rounds")), minutes: int(flag(args, "minutes")), usd: num(flag(args, "usd")), runId: runIdOption(flag(args, "run-id")), parent: parentOption(flag(args, "parent")), repeat: int(flag(args, "repeat")), arm: armOption(flag(args, "arm")) });
 
 // What a command may ask, as data: each option's lowest and highest value. `repeat` (0.5.0) is how many runs of one case
 // one command starts -- enough for a rate over five runs and some to spare, never an open-ended loop of paid rounds.
@@ -149,7 +154,7 @@ const sourceChecked = (o) => (SOURCE.includes(o.source) ? o : refusedWith("--sou
 function likeOf(h, id) {
   const m = docRead(roomOf(h.storeRoot, id), "manifest.json");
   if (!m?.benchmark?.variant) throw new Refused(`no benchmark run ${id} is kept here to run again`);
-  return { caseId: m.benchmark.case, variant: m.benchmark.variant, repair: m.config.repair, host: m.config.host ?? undefined, source: m.source.mode, seed: m.config.seed, model: m.config.model, rounds: m.config.rounds, minutes: m.config.minutes, usd: m.config.usd, preferImages: m.images, like: id };
+  return { caseId: m.benchmark.case, variant: m.benchmark.variant, repair: m.config.repair, host: m.config.host ?? undefined, source: m.source.mode, seed: m.config.seed, model: m.config.model, rounds: m.config.rounds, minutes: m.config.minutes, usd: m.config.usd, arm: m.config.arm ?? undefined, preferImages: m.images, like: id };
 }
 
 // What each kind of case runs with: the images it needs, how its context is completed, how it is carried to its end,
@@ -198,7 +203,7 @@ async function finished(ctx, kind) {
   const result = await kind.carried(ctx).catch((e) => thrownTidied(ctx, e));
   const left = tidied(ctx);
   const rep = reportWritten(ctx.room, ctx.manifest, ctx.rec.show(ctx.task), eventsOf(ctx.rec, ctx.task));
-  return { run: ctx.run.id, task: ctx.task, case: ctx.case.id, variant: ctx.manifest.benchmark.variant, ...(ctx.manifest.config.repeat ? { repeat: ctx.manifest.config.repeat } : {}), ...result, report: ctx.room.at("report.md"), evidence: ctx.room.dir, axes: rep.json.axes, leaks: rep.json.leaks, leftBehind: left.clean ? null : left };
+  return { run: ctx.run.id, task: ctx.task, case: ctx.case.id, variant: ctx.manifest.benchmark.variant, arm: ctx.manifest.config.arm ?? "release", ...(ctx.manifest.config.repeat ? { repeat: ctx.manifest.config.repeat } : {}), ...result, report: ctx.room.at("report.md"), evidence: ctx.room.dir, axes: rep.json.axes, leaks: rep.json.leaks, leftBehind: left.clean ? null : left };
 }
 
 // ---- repeated runs (0.5.0, B2): one PASS is not a rate --------------------------------------------------------------------
@@ -220,17 +225,27 @@ async function repeatsOf(h, o, group) {
   return { case: o.caseId, repeat: { group, of: o.repeat }, runs, exit: Math.max(...runs.map((r) => r.exit ?? 4)) };
 }
 
-// The rows a suite's case adds: one run, or each of its repeats.
-const caseRows = (r) => (r.repeat && Array.isArray(r.runs) ? r.runs : [r]);
+// The rows a suite's case adds: one run, or each of its repeats and arms.
+const caseRows = (r) => (Array.isArray(r.runs) ? r.runs : [r]);
 
 const repeatChecked = (o) => (checked({ repeat: o.repeat }), o);
+
+// ---- arms (0.5.0, B23): the same case, the same model and limits, a different plugin ----------------------------------
+
+// The one arm asked -- or, with --arm=all, every arm the case declares, one after another (each repeated, when asked).
+async function armed(h, o) {
+  if (o.arm !== "all") return repeated(h, o);
+  const runs = [];
+  for (const arm of armsOf(caseOf(h.root, o.caseId))) runs.push(...caseRows(await repeated(h, { ...o, arm }).catch(failedRun({ id: o.caseId }))));
+  return { case: o.caseId, arms: armsOf(caseOf(h.root, o.caseId)), runs, exit: Math.max(...runs.map((r) => r.exit ?? 4)) };
+}
 
 function runCmd(h, args) {
   if (flag(args, "like")) return repeated(h, repeatChecked({ ...likeOf(h, flag(args, "like")), repeat: int(flag(args, "repeat")) }));
   if (flag(args, "suite") && flag(args, "run-id")) refusedWith("--run-id names one run, and --suite starts one run per case");
   if (flag(args, "suite")) return suiteRun(h, args);
   const caseId = words(args)[0] ?? refusedWith("name the case to run (node benchmark/run.mjs list), or --suite=<suite>");
-  return repeated(h, sourceChecked(checked({ ...optionsOf(args), caseId })));
+  return armed(h, sourceChecked(checked({ ...optionsOf(args), caseId })));
 }
 
 // A suite's run of one case: the variant asked when the case has it, its real one otherwise -- and a QA case's own.
@@ -244,11 +259,11 @@ async function suiteRun(h, args) {
   const cases = casesOf(h.root, flag(args, "suite"));
   if (!cases.length) throw new Refused(`no suite ${flag(args, "suite")} holds a case`);
   const runs = [];
-  for (const c of cases) runs.push(...caseRows(await repeated(h, suiteOptions(args, c)).catch(failedRun(c))));
+  for (const c of cases) runs.push(...caseRows(await armed(h, suiteOptions(args, c)).catch(failedRun(c))));
   return { suite: flag(args, "suite"), runs, exit: Math.max(...runs.map((r) => r.exit ?? 4)) };
 }
 
-const repeatSaid = (r) => (r.repeat?.id ? ` (repeat ${r.repeat.index}/${r.repeat.of}, ${r.repeat.id})` : "");
+const repeatSaid = (r) => `${r.arm && r.arm !== "release" ? ` (arm ${r.arm})` : ""}${r.repeat?.id ? ` (repeat ${r.repeat.index}/${r.repeat.of}, ${r.repeat.id})` : ""}`;
 
 const sayOne = (r) => [`${r.case ?? "?"} ${r.variant ?? ""} ${r.run ?? ""}${repeatSaid(r)}: ${r.outcome} (exit ${r.exit})`, `  ${r.summary ?? ""}`, ...(r.leaks?.length ? [`  LEAK      the credential was found in ${r.leaks.length} file(s) of the run's room, and masked (leaks.json)`] : []), ...(r.report ? [`  report    ${r.report}`, `  evidence  ${r.evidence}`, `  task      ${r.task} (node cli/task.mjs show ${r.task})`] : [])].join("\n");
 
@@ -280,10 +295,10 @@ function report(h, args) {
 
 function status(h, args) {
   const { ctx, view } = kept(h, args);
-  return { run: ctx.run.id, task: ctx.task, case: ctx.manifest.benchmark.case, variant: ctx.manifest.benchmark.variant, repair: ctx.manifest.config.repair, lifecycle: view.lifecycle, stage: view.stage, stopReason: view.stopReason, attempts: (view.attempts ?? []).map((a) => `${a.id}:${a.cause}:${a.outcome ?? "open"}${a.failureSignature ? `:${a.failureSignature}` : ""}`), budget: view.budget, running: (view.actions ?? []).filter((a) => a.state === "running").map((a) => `${a.id} ${a.type}`), ending: docRead(ctx.room, "ending.json"), evidence: ctx.room.dir };
+  return { run: ctx.run.id, task: ctx.task, case: ctx.manifest.benchmark.case, variant: ctx.manifest.benchmark.variant, repair: ctx.manifest.config.repair, arm: ctx.manifest.config.arm ?? "release", repeat: ctx.manifest.config.repeat ?? null, lifecycle: view.lifecycle, stage: view.stage, stopReason: view.stopReason, attempts: (view.attempts ?? []).map((a) => `${a.id}:${a.cause}:${a.outcome ?? "open"}${a.failureSignature ? `:${a.failureSignature}` : ""}`), budget: view.budget, running: (view.actions ?? []).filter((a) => a.state === "running").map((a) => `${a.id} ${a.type}`), ending: docRead(ctx.room, "ending.json"), evidence: ctx.room.dir };
 }
 
-const sayStatus = (r) => [`RUN        ${r.run} — ${r.case} (${r.variant}${r.repair ? ", repair" : ""})`, `TASK       ${r.task}: ${r.lifecycle} · ${r.stage ?? "no stage"}${r.stopReason ? ` · ${r.stopReason}` : ""}`, `ATTEMPTS   ${r.attempts.join("  ") || "none"}`, `BUDGET     attempts ${r.budget.attempts.spent}/${r.budget.attempts.limit} · actions ${r.budget.actions.spent}/${r.budget.actions.limit} · minutes ${r.budget.minutes.spent}/${r.budget.minutes.limit ?? "-"}`, ...(r.running.length ? [`RUNNING    ${r.running.join(", ")}`] : []), `OUTCOME    ${r.ending ? `${r.ending.outcome} — ${r.ending.summary}` : "not decided yet"}`, `EVIDENCE   ${r.evidence}`].join("\n");
+const sayStatus = (r) => [`RUN        ${r.run} — ${r.case} (${r.variant}${r.repair ? ", repair" : ""}${r.arm !== "release" ? `, arm ${r.arm}` : ""})${r.repeat ? ` · repeat ${r.repeat.index}/${r.repeat.of} of ${r.repeat.id}` : ""}`, `TASK       ${r.task}: ${r.lifecycle} · ${r.stage ?? "no stage"}${r.stopReason ? ` · ${r.stopReason}` : ""}`, `ATTEMPTS   ${r.attempts.join("  ") || "none"}`, `BUDGET     attempts ${r.budget.attempts.spent}/${r.budget.attempts.limit} · actions ${r.budget.actions.spent}/${r.budget.actions.limit} · minutes ${r.budget.minutes.spent}/${r.budget.minutes.limit ?? "-"}`, ...(r.running.length ? [`RUNNING    ${r.running.join(", ")}`] : []), `OUTCOME    ${r.ending ? `${r.ending.outcome} — ${r.ending.summary}` : "not decided yet"}`, `EVIDENCE   ${r.evidence}`].join("\n");
 
 async function resume(h, args) {
   const first = resumedRun(h, runIdOf(args));

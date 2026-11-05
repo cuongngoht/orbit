@@ -34,9 +34,20 @@ const pluginMounts = (ctx) => (goalCase(ctx) ? [{ source: ctx.pluginDir, target:
 
 const pluginOf = (ctx) => (goalCase(ctx) ? PLUGIN_AT : "/work/repo");
 
-const runnerSpec = (ctx, net, k, d) => runnerSpecOf(ctx, net, k, [{ source: ctx.checkoutDir, target: "/work/repo", readOnly: true }, ...pluginMounts(ctx), { source: ctx.runnerStore, target: "/work/store", readOnly: false }, { source: d.out, target: "/work/out", readOnly: false }, { source: d.brief, target: "/run/brief", readOnly: true }], {}, pluginOf(ctx));
+// An arm with no Orbit (0.5.0, B23) is handed none: no plugin is mounted where its host runs, so no Orbit hook can fire
+// and no trail is written -- and, with no task workspace to change, the target is a writable copy of its own (`worktree`,
+// beside the run's checkout, which stays the frozen subject). The inspection still reads with the release plugin.
+const handed = (ctx) => ctx.arm !== "none";
 
-const inspectSpec = (ctx, k, task, out) => specFor("inspect", ctx.run, { n: k, image: ctx.images.runner, user: ctx.user, hostname: RUNNER_HOST, argv: ["node", "/bench/inspect.mjs", task ?? "-", `--plugin=${pluginOf(ctx)}`], mounts: [{ source: ctx.checkoutDir, target: "/work/repo", readOnly: true }, ...pluginMounts(ctx), { source: ctx.runnerStore, target: "/work/store", readOnly: true }, { source: out, target: "/work/out", readOnly: false }], env: { names: [], values: { HOME: "/tmp", ORBIT_STORE_DIR: "/work/store" } }, limits: { cpus: 1, memoryMb: 1024, pids: 256 }, tmpMb: 256 });
+const WORKTREE_AT = "/work/worktree";
+
+const repoMount = (ctx) => (handed(ctx) ? { source: ctx.checkoutDir, target: "/work/repo", readOnly: true } : { source: ctx.worktreeDir, target: "/work/repo", readOnly: false });
+
+const runnerSpec = (ctx, net, k, d) => runnerSpecOf(ctx, net, k, [repoMount(ctx), ...(handed(ctx) ? pluginMounts(ctx) : []), { source: ctx.runnerStore, target: "/work/store", readOnly: false }, { source: d.out, target: "/work/out", readOnly: false }, { source: d.brief, target: "/run/brief", readOnly: true }], {}, handed(ctx) ? pluginOf(ctx) : null);
+
+const worktreeRead = (ctx) => (handed(ctx) ? { mounts: [], argv: [] } : { mounts: [{ source: ctx.worktreeDir, target: WORKTREE_AT, readOnly: true }], argv: [`--tree=${WORKTREE_AT}`] });
+
+const inspectSpec = (ctx, k, task, out) => specFor("inspect", ctx.run, { n: k, image: ctx.images.runner, user: ctx.user, hostname: RUNNER_HOST, argv: ["node", "/bench/inspect.mjs", task ?? "-", `--plugin=${pluginOf(ctx)}`, ...worktreeRead(ctx).argv], mounts: [{ source: ctx.checkoutDir, target: "/work/repo", readOnly: true }, ...pluginMounts(ctx), ...worktreeRead(ctx).mounts, { source: ctx.runnerStore, target: "/work/store", readOnly: true }, { source: out, target: "/work/out", readOnly: false }], env: { names: [], values: { HOME: "/tmp", ORBIT_STORE_DIR: "/work/store" } }, limits: { cpus: 1, memoryMb: 1024, pids: 256 }, tmpMb: 256 });
 
 function briefWritten(ctx, k, state) {
   const dir = fresh(ctx, "rounds", String(k), "brief");

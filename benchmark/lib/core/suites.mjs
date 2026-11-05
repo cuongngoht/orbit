@@ -15,7 +15,7 @@
 //
 //   suitesIn(root) -> [{ id, version, title, dir, cases }]         caseOf(root, id) -> case + { dir, suite }
 //   caseFindings(c, dir) -> [sentence]                             dirDigest(dir) -> sha256 of every file, by path
-//   KINDS · TRUTH_OUTCOMES · QA_HOSTS · caseDir(id)
+//   KINDS · TRUTH_OUTCOMES · QA_HOSTS · caseDir(id) · ARMS · DEFAULT_BASELINE · armsOf(c) · baselinePluginOf(c)
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { constraintFindings, missingFindings } from "../../../src/constraints.mjs";
@@ -75,13 +75,26 @@ export const REPAIR_SCRIPTS = ["apply", "idle"];
 const SOURCE_FIELDS = { ...COMMON_FIELDS, subject: { type: "object" }, prepare: { type: "object" }, reproduce: TEXT, scope: { type: "object" }, checks: { type: "object" }, variants: { type: "object", minProperties: 1 }, baseline: BASELINE, repairs: { type: "array" } };
 
 // Fields a case may leave out: older cases (and the frozen copies older runs keep) have none of them.
-const OPTIONAL = ["baseline", "repairs", "interrupt"];
+const OPTIONAL = ["baseline", "repairs", "interrupt", "arms", "baselinePlugin"];
+
+// THE ARMS a case may be compared on (0.5.0, B23), each handing the host a different plugin and nothing else different:
+// `none` hands it no Orbit at all (no plugin, so no hooks and no trail), `baseline` the plugin frozen from a named git
+// revision -- the previous release, `v0.4.0` unless the case or its suite names another (`baselinePlugin`) -- and
+// `release` the run's own source, which is what every run was before arms. A case that declares no arms runs `release`.
+export const ARMS = ["none", "baseline", "release"];
+
+export const DEFAULT_BASELINE = "v0.4.0";
+
+// A revision a baseline may be named by: a tag, a branch or a commit -- never an option, never a range.
+const REVISION = { type: "string", pattern: "^(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$", says: { pattern: "baselinePlugin names a git revision: a tag, a branch or a commit id, never an option or a range" } };
+
+const ARM_FIELDS = { arms: { type: "array", items: { type: "string", enum: ARMS }, minItems: 1 }, baselinePlugin: REVISION };
 
 const requiredOf = (fields) => Object.keys(fields).filter((k) => !OPTIONAL.includes(k));
 
 const QA_FIELDS = { ...COMMON_FIELDS, target: { type: "object" } };
 
-const ENGINEERING_FIELDS = { ...COMMON_FIELDS, baseline: BASELINE, fixture: { type: "string", pattern: "^[a-z][a-z0-9-]{0,39}$" }, subject: { type: "object" }, reproduce: TEXT, scope: { type: "object" }, checks: { type: "object" }, variants: { type: "object", minProperties: 1 }, repairs: { type: "array" }, interrupt: { type: "object" } };
+const ENGINEERING_FIELDS = { ...COMMON_FIELDS, baseline: BASELINE, fixture: { type: "string", pattern: "^[a-z][a-z0-9-]{0,39}$" }, subject: { type: "object" }, reproduce: TEXT, scope: { type: "object" }, checks: { type: "object" }, variants: { type: "object", minProperties: 1 }, repairs: { type: "array" }, interrupt: { type: "object" }, ...ARM_FIELDS };
 
 // What an engineering control must come to: the goal reached and verified, refused, no progress, or blocked.
 export const GOAL_OUTCOMES = ["PASS", "FAIL", "NO_PROGRESS", "BLOCKED"];
@@ -198,7 +211,15 @@ const ENGINEERING_CROSS = [
   ...SOURCE_CROSS.filter((r) => !/real/.test(r.say([]))),
   { fails: (c) => (isObject(c.variants) && !Object.hasOwn(c.variants, "real") ? ["real"] : []), say: () => "has no `real` variant: the target the goal is handed must always be measurable" },
   { fails: (c, dir) => (typeof c.fixture === "string" && !existsSync(join(fixtureDirOf(dir, c.fixture), "fixture.json")) ? [c.fixture] : []), say: (bad) => `names a fixture benchmark/fixtures/ does not hold: ${bad.join(", ")}` },
+  { fails: (c) => duplicates(Array.isArray(c.arms) ? c.arms : []), say: (bad) => `arms named twice: ${bad.join(", ")}` },
+  { fails: (c) => (Array.isArray(c.arms) ? c.arms.filter((a) => !ARMS.includes(a)) : []), say: (bad) => `an arm is one of ${ARMS.join(", ")}, never ${bad.join(", ")}` },
 ];
+
+// The arms a case runs on, and the revision its baseline arm is frozen from: the case's, else its suite's, else the
+// previous release.
+export const armsOf = (c) => c.arms ?? ["release"];
+
+export const baselinePluginOf = (c) => c.baselinePlugin ?? c.suite?.baselinePlugin ?? DEFAULT_BASELINE;
 
 export const KINDS = { source: { sections: SOURCE_SECTIONS, cross: SOURCE_CROSS }, qa: { sections: QA_SECTIONS, cross: QA_CROSS }, engineering: { sections: ENGINEERING_SECTIONS, cross: ENGINEERING_CROSS } };
 
@@ -213,9 +234,12 @@ function jsonAt(file) {
   catch (e) { throw new Refused(`${file} is not a JSON document this harness can read (${e.code ?? e.message})`); }
 }
 
-const SUITE_FIELDS = { schema: { type: "integer", enum: [1] }, id: NAME, version: COMMON_FIELDS.version, title: TEXT, cases: { ...LIST, minItems: 1 } };
+// A suite may name the revision its cases' baseline arm is frozen from (`baselinePlugin`); a case's own outranks it.
+const SUITE_FIELDS = { schema: { type: "integer", enum: [1] }, id: NAME, version: COMMON_FIELDS.version, title: TEXT, cases: { ...LIST, minItems: 1 }, baselinePlugin: REVISION };
 
-const suiteFindings = (p) => (isObject(p) ? [...unknownOf({ at: "suite", fields: SUITE_FIELDS }, p), ...missingFindings(Object.keys(SUITE_FIELDS), p, "suite"), ...constraintFindings(SUITE_FIELDS, p, "suite")] : ["suite: suite.json must hold one object"]);
+const SUITE_REQUIRED = Object.keys(SUITE_FIELDS).filter((k) => k !== "baselinePlugin");
+
+const suiteFindings = (p) => (isObject(p) ? [...unknownOf({ at: "suite", fields: SUITE_FIELDS }, p), ...missingFindings(SUITE_REQUIRED, p, "suite"), ...constraintFindings(SUITE_FIELDS, p, "suite")] : ["suite: suite.json must hold one object"]);
 
 function suiteAt(dir) {
   const p = jsonAt(join(dir, "suite.json"));
@@ -241,7 +265,7 @@ function loadedCase(suite, id) {
   const c = jsonAt(join(dir, "case.json"));
   const findings = [...caseFindings(c, dir), ...(c?.id === id ? [] : [`case: its id is ${c?.id}, and its suite names it ${id}`])];
   if (findings.length) throw new Refused(`${id} is not a benchmark case this harness can run: ${findings.join("; ")}`);
-  return { ...c, dir, suite: { id: suite.id, version: suite.version, dir: suite.dir } };
+  return { ...c, dir, suite: { id: suite.id, version: suite.version, dir: suite.dir, ...(suite.baselinePlugin ? { baselinePlugin: suite.baselinePlugin } : {}) } };
 }
 
 export const casesOf = (root, suiteId) => ((p) => (p ? p.cases.map((id) => loadedCase(p, id)) : []))(suitesIn(root).find((x) => x.id === suiteId));

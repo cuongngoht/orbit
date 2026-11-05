@@ -3,7 +3,7 @@
 // answer with (control-server/src/trace/read.mjs). Like fakeServer it replaces
 // fetch and nothing else. The trail holds metadata only, so neither does this:
 // there is no prompt text here for a page to show.
-import type { Recording, TurnDetail, TurnRow, UsageResponse } from "../features/trace/trace.types";
+import type { Activation, Recording, TurnDetail, TurnRow, UsageResponse } from "../features/trace/trace.types";
 import type { Call } from "./fakeServer";
 
 // fakeServer's own `reply`, restated: fakeServer answers an empty trail by
@@ -56,8 +56,10 @@ export function fakeTurn(over: Partial<TurnDetail> = {}): TurnDetail {
 }
 
 // A turn as the list shows it -- the server's own rowOf, restated: `suggested`
-// is the skills and agents the router selected or put up for approval.
-export const rowOf = (t: TurnDetail): TurnRow => ({
+// is the skills and agents the router selected or put up for approval, and
+// `activation` (0.5.0) the followed verdict unless a test seeded another.
+export const rowOf = (t: TurnDetail, activation?: Activation): TurnRow => ({
+  activation: activation ?? t.followed,
   id: t.id,
   session: t.session,
   project: t.project,
@@ -128,12 +130,12 @@ const TURN = /^\/api\/v1\/trace\/turns\/([^/?]+)$/;
 
 // The trail's three reads over what a test seeded; null for anything else, so
 // it composes as fakeServer's `extra`.
-export function fakeTrail(seed: { turns?: TurnDetail[]; usage?: (days: number) => UsageResponse } = {}) {
+export function fakeTrail(seed: { turns?: TurnDetail[]; activation?: Record<string, Activation>; usage?: (days: number) => UsageResponse } = {}) {
   const turns = seed.turns ?? [];
   return (call: Call): Response | null => {
     const one = TURN.exec(call.path);
     if (one) return turnReply(turns, decodeURIComponent(one[1]));
-    if (call.path.startsWith("/api/v1/trace/turns")) return reply(200, { version: 1, days: daysIn(call.path), recording: RECORDING, turns: turns.map(rowOf) });
+    if (call.path.startsWith("/api/v1/trace/turns")) return reply(200, { version: 1, days: daysIn(call.path), recording: RECORDING, turns: turns.map((t) => rowOf(t, seed.activation?.[t.id])) });
     if (call.path.startsWith("/api/v1/analytics/usage")) return reply(200, (seed.usage ?? emptyUsage)(daysIn(call.path)));
     return null;
   };

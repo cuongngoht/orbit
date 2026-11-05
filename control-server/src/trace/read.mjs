@@ -8,7 +8,13 @@
 // and nothing is stored beside the trail, so the page and `cli/trace.mjs` can
 // never disagree. What the trail holds is metadata only: no prompt's text, no
 // argument, no output, no path.
-import { suggestedEntries, traceLog, turnOf, turnsOf, usageOf } from "../core.mjs";
+//
+// 0.5.0 (B22 M3, ADR 0050): each row also carries the turn's ACTIVATION verdict
+// (src/trace/projections/activation.mjs) -- the `followed` verdict, or
+// over-delegated when the turn dispatched more of Orbit's agents than its strategy
+// accounted for -- judged against the agents' `via` as the registry's own rows say.
+// `cli/trace.mjs activation` prints the whole chain, owner-verified link included.
+import { activationOf, effectiveResourcesOf, suggestedEntries, traceLog, turnOf, turnsOf, usageOf } from "../core.mjs";
 import { invalid, missing } from "../errors.mjs";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -32,7 +38,15 @@ const rowOf = (t) => ({ id: t.id, session: t.session, project: t.project, at: t.
 
 export function traceTurns(ctx, query) {
   const days = daysOf(query, 1);
-  return { version: 1, days, recording: RECORDING, turns: turnsOf(eventsSince(ctx, days), { limit: MAX_TURNS }).map(rowOf) };
+  const events = eventsSince(ctx, days);
+  const verdicts = new Map(activationOf(events, { via: viaOf(ctx), limit: MAX_TURNS }).turns.map((t) => [t.id, t.verdict]));
+  return { version: 1, days, recording: RECORDING, turns: turnsOf(events, { limit: MAX_TURNS }).map((t) => ({ ...rowOf(t), activation: verdicts.get(t.id) ?? t.followed })) };
+}
+
+// The agents a parent skill alone dispatches, off the registry's own rows (`routing.via`); none when it cannot be read.
+function viaOf(ctx) {
+  try { return Object.fromEntries((effectiveResourcesOf({ ...ctx.world }).agents ?? []).filter((a) => a.routing.via.length).map((a) => [a.id, a.routing.via])); }
+  catch { return {}; }
 }
 
 export function traceTurn(ctx, id) {

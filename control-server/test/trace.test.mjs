@@ -53,6 +53,24 @@ test("the trace lists one turn per prompt -- the router's decision, the path, an
   assert.equal(list.text.includes(root.store), false, "no path of the machine reaches the page");
 });
 
+// 0.5.0 (B22 M3, ADR 0050): each row carries the turn's ACTIVATION verdict -- the followed verdict, or over-delegated
+// when the turn dispatched one of Orbit's agents its strategy did not account for -- from the same fold `trace.mjs
+// activation` prints (src/trace/projections/activation.mjs).
+test("each turn carries its activation verdict: the followed one, or over-delegated for an agent the strategy did not name", async (t) => {
+  const { root } = fixture(t);
+  const id = seeded(root);
+  const log = traceLog(stateRooms(root.store), realIo());
+  const over = ev("prompt.submitted", { prompt: { chars: 20 }, routing: "on", intent: "qa", confidence: "high", selected: [{ kind: "skill", id: "orbit-test-suite" }], strategy: { word: "DIRECT", row: "one-skill" }, activation: { path: "skill", id: "orbit-test-suite" } }, 10);
+  for (const e of [over, ev("agent.invoked", { id: "orbit:orbit-failure-analyst", ours: true, outcome: "started" }, 11), ev("turn.ended", {}, 12)]) log.append(e);
+  const api = await started(t, contextFor(root));
+  const turns = (await api.get("/api/v1/trace/turns")).json.turns;
+  const row = (tid) => turns.find((x) => x.id === tid);
+  assert.deepEqual(row(id).activation, row(id).followed, "a turn that dispatched nothing extra says what it followed");
+  assert.equal(row(over.id).activation.verdict, "over-delegated");
+  assert.match(row(over.id).activation.say, /orbit-failure-analyst was not what the strategy named/);
+  assert.equal(row(over.id).followed.verdict, "diverged", "the followed verdict is the one it always was");
+});
+
 test("a turn id is validated, an unknown one is a 404, and nothing here can be written", async (t) => {
   const { root } = fixture(t);
   seeded(root);

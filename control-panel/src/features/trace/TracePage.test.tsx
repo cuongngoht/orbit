@@ -47,6 +47,19 @@ describe("Trace", () => {
     expect(within(diverged.head).getByText("Went another way")).toBeTruthy();
   });
 
+  // 0.5.0 (B22 M3): the activation verdict beside the followed one -- said only when the turn dispatched more of Orbit's
+  // agents than its strategy accounted for, with the server's own sentence as its title.
+  it("marks a turn that dispatched more agents than its strategy accounted for, and no other", async () => {
+    const say = "dispatched more than the strategy accounted for: orbit-map-healer is dispatched only from its parent skill, which did not run in this turn";
+    vi.stubGlobal("fetch", fakeServer(undefined, fakeTrail({ turns: [fakeTurn(), DIVERGED], activation: { [DIVERGED.id]: { verdict: "over-delegated", say } } })).fetch);
+    renderApp("/trace");
+    const [followed, diverged] = await rowsOf();
+    expect(within(followed.head).queryByText("Over-delegated")).toBeNull();
+    const badge = within(diverged.head).getByText("Over-delegated");
+    expect(within(diverged.head).getByText("Went another way")).toBeTruthy();
+    expect(required(badge.closest("[title]"), "the badge's title").getAttribute("title")).toBe(say);
+  });
+
   it("keeps every column its width, and scrolls sideways under that instead of printing one over the next", async () => {
     renderApp("/trace");
     await rowsOf();

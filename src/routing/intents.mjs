@@ -102,14 +102,18 @@ export const REFINEMENTS = [
   { within: ["*"], cues: ["multi-agent", "multi agent", "orbit satellite", "satellite mission", "use satellite", "with satellite", "as a mission", "run a mission", "start a mission", "nhiều agent"], requires: ["mission.orchestration"] },
 ];
 
-// What a prompt MARKS about Orbit itself (0.5.0, B22, B5), as data the strategy table reads (src/routing/strategy.mjs):
-// a person opting out of Orbit, asking to continue the work they have, halting it, or asking how something stands. A
-// mark is not an intent and asks for nothing. `at` is how far into the prompt its cue counts: `opening`, the first
-// words a person typed (src/routing/terms.mjs OPENING_LIMIT) -- "continue" that opens a prompt asks to go on, while one
-// in the middle of a request is part of the request -- or the whole `head`.
+// What a prompt MARKS (0.5.0, B22, B5), as data the strategy table reads (src/routing/strategy.mjs): a person opting
+// out of Orbit, asking to continue the work they have, halting it, or asking how something stands -- and whether it
+// asks for a CHANGE at all: a verb that makes something different. That last one is what tells a request to change the
+// code from a question that only names code, because development's cues name code as well as ask for a change -- "is
+// the orders endpoint protected by access control?" names an endpoint and asks for no change, while "add the export
+// endpoint" does. A mark is not an intent and asks for nothing. `at` is how far into the prompt its cue counts:
+// `opening`, the first words a person typed (src/routing/terms.mjs OPENING_LIMIT) -- "continue" that opens a prompt
+// asks to go on, while one in the middle of a request is part of the request -- or the whole `head`.
 export const MARKS = [
   { id: "opt-out", at: "head", cues: ["without orbit", "without using orbit", "no orbit", "skip orbit", "not use orbit", "t use orbit", "không dùng orbit", "không cần orbit", "đừng dùng orbit", "khỏi dùng orbit", "khong dung orbit"] },
   { id: "continue", at: "opening", cues: ["continue", "resume", "carry on", "keep going", "pick up where", "go on with", "tiếp tục", "làm tiếp", "tiếp đi", "chạy tiếp", "tiep tuc"] },
   { id: "halt", at: "opening", cues: ["stop", "wait", "pause", "hold on", "halt", "dừng", "dừng lại", "tạm dừng", "chờ đã", "đợi đã", "khoan"] },
   { id: "status", at: "head", cues: ["how far", "any progress", "done yet", "finished yet", "ready yet", "it going", "where are we", "s the status", "is the status", "tới đâu rồi", "đến đâu rồi", "xong chưa", "thế nào rồi", "sao rồi"] },
+  { id: "change", at: "head", cues: ["implement", "implementing", "add", "adding", "fix", "fixing", "refactor", "refactoring", "rename", "renaming", "rework", "rewrite", "migrate", "extract", "modify", "create", "remove", "delete", "replace", "introduce", "write code", "change the", "change it", "update the", "update it", "make it", "thêm", "sửa", "đổi tên", "tái cấu trúc", "triển khai", "viết code", "cập nhật", "chỉnh sửa", "xóa", "tạo", "xây dựng"] },
 ];

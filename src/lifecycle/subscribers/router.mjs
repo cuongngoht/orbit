@@ -53,12 +53,14 @@ function routed(event, world) {
 
 const factsOf = (event, world, asked, prompt) => ({ synthetic: event.synthetic === true, plugin: world.plugin, workflow: world.workflowOf?.({ intent: asked.intent.id, matched: asked.matched, requirements: asked.requirements }) ?? null, host: world.hostRow?.() ?? null, settings: world.automation?.() ?? null, work: world.openWork?.({ refs: refsOf(prompt), continued: asked.marks.includes("continue") }) ?? null });
 
-// ONE advisory line, only when the strategy is COORDINATED and a person kept `trigger.arbitraryPrompt` on: the
-// router SAYS a coordinated workflow could take this prompt. It starts nothing -- this hook plans and never
-// acts -- and the line is dropped rather than letting the context pass its byte budget.
+// ONE advisory line, only when the strategy is a COORDINATED workflow (`how: automation`) and a person kept
+// `trigger.arbitraryPrompt` on: the router SAYS a coordinated workflow could take this prompt. A specification's goal
+// (`how: goal`) is started by its own one command, which the strategy line gives, so it is never also sent to the
+// workflow's door. It starts nothing -- this hook plans and never acts -- and the line is dropped rather than letting
+// the context pass its byte budget.
 const ADVICE = "Orbit coordinates a task by default: a workflow could take this — node <engine>/cli/automation.mjs plan --for=\"<the task>\" shows it; orbit-help starts it.";
 
-const advised = (v, decision) => decision?.strategy?.word === "COORDINATED" && Boolean(v?.trigger?.arbitraryPrompt);
+const advised = (v, decision) => decision?.strategy?.word === "COORDINATED" && decision.activation?.how === "automation" && Boolean(v?.trigger?.arbitraryPrompt);
 
 const withAdvice = (text, world, decision) => (text && advised(world.automation?.(), decision) && Buffer.byteLength(`${text}\n${ADVICE}`) <= BUDGET_BYTES ? `${text}\n${ADVICE}` : text);
 

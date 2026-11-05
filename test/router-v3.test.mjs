@@ -7,7 +7,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveHost } from "../skills/orbit-learn/hosts/index.mjs";
 import { routedWorkflow } from "../src/automation/workflows.mjs";
+import { lifecycleEvent } from "../src/lifecycle/event.mjs";
+import { router } from "../src/lifecycle/subscribers/router.mjs";
 import { pluginBuiltins, pluginComponents } from "../src/resources/plugin.mjs";
 import { PROVIDERS } from "../src/resources/providers/index.mjs";
 import { getEffectiveResources } from "../src/resources/registry.mjs";
@@ -47,21 +50,24 @@ test("a cue in the head outranks any pasted tail: the person's words decide, and
   assert.deepEqual(classify(short).intent, { id: "qa", confidence: "high" }, "a prompt no longer than the head is read as it always was");
 });
 
-test("a prompt's marks are table words: opting out anywhere in the head, continuing and halting only where it opens", () => {
+test("a prompt's marks are table words: opting out and asking for a change anywhere in the head, continuing and halting only where it opens", () => {
   const marks = (p) => classify(p).marks;
-  assert.deepEqual(marks("Without Orbit, rename qty to quantity"), ["opt-out"]);
-  assert.deepEqual(marks("please don't use Orbit for this one: fix the typo"), ["opt-out"]);
-  assert.deepEqual(marks("Không dùng Orbit, đổi tên helper"), ["opt-out"]);
+  assert.deepEqual(marks("Without Orbit, rename qty to quantity"), ["opt-out", "change"]);
+  assert.deepEqual(marks("please don't use Orbit for this one: fix the typo"), ["opt-out", "change"]);
+  assert.deepEqual(marks("Không dùng Orbit, đổi tên helper"), ["opt-out", "change"]);
   assert.deepEqual(marks("Continue ORD-12."), ["continue"]);
   assert.deepEqual(marks("tiếp tục đi"), ["continue"]);
-  assert.deepEqual(marks(`implement the export, ${filler(OPENING_LIMIT)} and continue with the import afterwards`), [], "continue inside a request is part of the request");
+  assert.deepEqual(marks(`implement the export, ${filler(OPENING_LIMIT)} and continue with the import afterwards`), ["change"], "continue inside a request is part of the request");
   assert.deepEqual(marks("stop, wait -- don't touch the tests"), ["halt"]);
   assert.deepEqual(marks("dừng lại đã"), ["halt"]);
   assert.deepEqual(marks("how far along are we?"), ["status"]);
   assert.deepEqual(marks("tới đâu rồi?"), ["status"]);
-  assert.deepEqual(marks("rename the helper"), []);
+  assert.deepEqual(marks("rename the helper"), ["change"]);
+  assert.deepEqual(marks("is the orders endpoint protected by proper access control?"), [], "a question that names code asks for no change");
+  assert.deepEqual(marks("kiểm tra phân quyền của endpoint đơn hàng"), []);
+  assert.deepEqual(marks("thêm endpoint xuất hóa đơn"), ["change"]);
   for (const m of MARKS) for (const cue of m.cues) assert.ok(termsOf(cue).length > 0 && termsOf(cue).length <= GRAM_LIMIT, cue);
-  assert.deepEqual(MARKS.map((m) => m.id), ["opt-out", "continue", "halt", "status"]);
+  assert.deepEqual(MARKS.map((m) => m.id), ["opt-out", "continue", "halt", "status", "change"]);
 });
 
 test("a prompt's shape is counts, never a word of it, and its references are the head's work items -- never a standard's name", () => {
@@ -88,6 +94,20 @@ test("Vietnamese is read as itself: each request lands on the intent its English
     ["explain what applyDiscount does", "giải thích applyDiscount làm gì", "documentation"],
   ];
   for (const [en, vi, intent] of twins) assert.deepEqual([classify(en).intent.id, classify(vi).intent.id], [intent, intent], vi);
+});
+
+// A provider recommended only on its own words (`requiresSignal`) is reached by an intent's cue only when that cue is
+// also its signal: a Vietnamese cue the intent gained, or an intent cue the provider's newly gated row left out, reaches
+// the intent and then nothing -- or the wrong component.
+test("a Vietnamese request reaches the component its English twin does, and a boundary question reaches orbit-architecture", () => {
+  const twins = [
+    ["implement the export autonomously", "tự động làm tính năng xuất hóa đơn", "orbit-engineer"],
+    ["fix the null reference in the checkout handler on your own", "tự xử lý lỗi null reference trong checkout handler", "orbit-engineer"],
+    ["check the test coverage of the refund screen", "kiểm tra độ bao phủ test của màn hình hoàn tiền", "orbit-test-plan"],
+    ["why do we believe the boundary between orders and billing holds?", "ranh giới giữa module đơn hàng và thanh toán có còn đúng không?", "orbit-architecture"],
+  ];
+  for (const [en, vi, top] of twins) assert.deepEqual([decided(en).activation.id, decided(vi).activation.id], [top, top], vi);
+  assert.equal(decided("what are the module boundaries in this repo?").activation.id, "orbit-architecture", "why a boundary is believed to hold is that playbook's own question");
 });
 
 test("RouteDecision v3 is v2 and three more answers; route() is still the planner's v2", () => {
@@ -173,4 +193,48 @@ test("this session's current work is looked for only when the prompt says to con
   assert.equal(ask("sess-a", false), null, "no continue cue: no journal is scanned");
   assert.deepEqual(ask("sess-a", true), { id: work, open: true, owner: null });
   assert.equal(ask("sess-b", true), null);
+});
+
+// ---- what a prompt ASKS, not only what it names (found reviewing B22 M2) -------------------------------------
+
+test("a question that names code asks for no change: an investigation or a security question is never a coordinated change", () => {
+  const direct = [
+    ["investigate why the frontend sends two requests when Save is clicked", "orbit-qa"],
+    ["investigate why the checkout endpoint returns 500 sometimes", "orbit-qa"],
+    ["find bugs in the invoice export feature", "orbit-qa"],
+    ["audit the backend's access control against OWASP", "orbit-security-audit"],
+    ["run a security assessment of the invoices endpoint", "orbit-security-audit"],
+    ["điều tra vì sao frontend gửi hai request khi bấm Lưu", "orbit-qa"],
+  ];
+  for (const [prompt, top] of direct) assert.deepEqual([decided(prompt).strategy.word, decided(prompt).activation.id], ["DIRECT", top], prompt);
+  for (const prompt of ["is the orders endpoint protected by proper access control?", "check whether the admin endpoint enforces authorization", "kiểm tra phân quyền của endpoint đơn hàng"]) assert.notEqual(decided(prompt).strategy.word, "COORDINATED", `${prompt}: a question, and no change asked for`);
+  const changes = ["Implement PBI 4312", "add the export endpoint and make sure tenant isolation still holds", "fix the tenant isolation bug in the orders endpoint and verify it holds", "thêm endpoint xuất hóa đơn và kiểm tra bảo mật của nó", "Take PBI-482 all the way to a verified commit on your own"];
+  for (const prompt of changes) assert.equal(decided(prompt).strategy.word, "COORDINATED", `${prompt}: a change asked for, and an owner to settle or prove it`);
+});
+
+test("a list that names code is a specification only when it asks for a change or states a work item", () => {
+  const notSpecs = ["What I see in the logs:\n- the orders endpoint returns 500\n- the handler logs nothing\n- the retry function loops forever\nAny idea why?", "Questions about the backend:\n1. which class owns the invoice totals?\n2. what does the export handler return?\n3. where is the session function called?"];
+  for (const prompt of notSpecs) assert.notEqual(decided(prompt).strategy.word, "COORDINATED", prompt.split("\n")[0]);
+  const specs = ["Goal: rework the refund flow.\n1. Refunds over 500 need a second approval\n2. Approvers cannot approve their own refunds\n3. Every approval is written to the audit log", "Requirements for the new export:\n1. users can export orders as CSV\n2. the export includes the totals\n3. only admins see the button", "Fix the double-save bug:\n1. open the orders page\n2. click Save twice\n3. two orders are created"];
+  for (const prompt of specs) assert.deepEqual([decided(prompt).strategy.row, decided(prompt).activation.how], ["specification", "goal"], prompt.split("\n")[0]);
+});
+
+test("a status phrase inside a request never silences the request; a status question alone still gets nothing", () => {
+  const requests = ["Where are we calling the payment API? Refactor that function to use the new client.", "Is it going to break the build if I rename qty? Rename it in orders.mjs and fix the callers.", "Run the regression tests and tell me how far the coverage goes", "Implement the export endpoint. Any progress indicator should show while it runs.", "sửa lỗi 500 của nút Lưu trong checkout handler, xong chưa thì báo mình"];
+  for (const prompt of requests) {
+    const d = decided(prompt);
+    assert.notEqual(d.strategy.word, "NONE", prompt);
+    assert.match(formatDecision(d) ?? "", /^Orbit strategy: DIRECT -- /, `${prompt}: a high-confidence request is said, as it was before 0.5.0`);
+  }
+  for (const prompt of ["how far along are we?", "where are we with the refund feature?", "any progress on PBI-482?", "tới đâu rồi, report sao rồi?", "test chạy tới đâu rồi?", "build chạy xong chưa?"]) assert.deepEqual([decided(prompt).strategy.word, decided(prompt).strategy.row, formatDecision(decided(prompt))], ["NONE", "conversational", null], prompt);
+});
+
+test("the coordination advice is said only beside a coordinated WORKFLOW: a specification's goal names its own one command", () => {
+  const said = (prompt) => router.run(lifecycleEvent(resolveHost({ hook_event_name: "UserPromptSubmit" }), { hook_event_name: "UserPromptSubmit", session_id: "s", cwd: REPO, prompt }), { routing: () => true, resources: () => REGISTRY, host: resolveHost({ hook_event_name: "UserPromptSubmit" }), input: {}, plugin: "orbit", engine: "/plugin", automation: () => SETTINGS, workflowOf: (c) => routedWorkflow(c).id, hostRow: () => CLAUDE, openWork: () => null })?.hookSpecificOutput?.additionalContext ?? "";
+  const workflow = said("Implement PBI 4312");
+  assert.match(workflow, /^Orbit strategy: COORDINATED -- .*automation\.mjs start/);
+  assert.match(workflow, /\nOrbit coordinates a task by default: a workflow could take this/, "a workflow: orbit-help starts it");
+  const goal = said("Goal: rework the refund flow.\n1. Refunds over 500 need a second approval\n2. Approvers cannot approve their own refunds\n3. Every approval is written to the audit log");
+  assert.match(goal, /^Orbit strategy: COORDINATED -- a specification of a change: orbit keeps it and plans its units: node \/plugin\/cli\/orbit\.mjs goal start --stdin\./);
+  assert.doesNotMatch(goal, /automation\.mjs|orbit-help starts it/, "a goal is started by its own one command, never sent to the workflow's door as well");
 });

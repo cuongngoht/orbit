@@ -13,7 +13,7 @@ const TASK = "tsk-0123456789ab";
 
 const skill = (id, requirement, over = {}) => ({ kind: "skill", id, key: id, ownership: "plugin", requirement, via: [], gated: false, ...over });
 const agent = (id, requirement, over = {}) => ({ kind: "agent", id, key: id, ownership: "plugin", requirement, via: [], gated: false, ...over });
-const asked = (over = {}) => ({ intent: { id: "development", confidence: "high" }, matched: ["development"], marks: [], shape: { chars: 40, items: 0, refs: 0 }, requirements: ["development.implementation"], ...over });
+const asked = (over = {}) => ({ intent: { id: "development", confidence: "high" }, matched: ["development"], marks: ["change"], shape: { chars: 40, items: 0, refs: 0 }, requirements: ["development.implementation"], ...over });
 const open = (what = "workflow", over = {}) => ({ id: WORK, open: true, owner: { what, id: TASK }, ...over });
 
 // One change asked for directly, on Claude Code, in a project whose coordinator and goal entry may be used.
@@ -28,7 +28,7 @@ test("every row is reached from the facts that mean it, and answers its own word
     [{ asked: asked({ marks: ["opt-out", "continue"] }), work: { named: [], current: open() } }, "opted-out", "NONE", "none"],
     [{ work: { named: [open()], current: null } }, "resume", "RESUME", "resume"],
     [{ chosen: [] }, "conversational", "NONE", "none"],
-    [{ asked: asked({ marks: ["status"] }) }, "conversational", "NONE", "none"],
+    [{ asked: asked({ intent: { id: "development", confidence: "low" }, marks: ["status"] }) }, "conversational", "NONE", "none"],
     [{ chosen: [skill("satellite", "mission.orchestration", { gated: true }), skill("orbit-develop", "development.implementation")] }, "mission", "SATELLITE", "mission"],
     [{ asked: asked({ requirements: ["development.implementation", DOORS.goal] }) }, "specification", "COORDINATED", "goal"],
     [{ asked: asked({ matched: ["development", "security"] }) }, "several-owners", "COORDINATED", "workflow"],
@@ -99,6 +99,32 @@ test("COORDINATED needs a workflow that fits, the skill that opens it usable her
   assert.equal(rowOf({ asked: asked({ matched: ["development"], shape: { chars: 40, items: 0, refs: 1 } }) }), "several-owners", "a change to a work item it names by reference");
   assert.equal(rowOf({ asked: asked({ matched: ["development", "qa"] }) }), "one-skill", "a change and its tests is one specialist's job");
   assert.equal(rowOf({ asked: asked({ matched: ["requirements", "investigation"] }) }), "one-skill", "nothing to change: no workflow of owners in turn");
+});
+
+// Development's cues name code as well as ask for a change (an endpoint, a handler, a feature), so a development intent
+// is a change only where the prompt asks for one: the `change` mark. Autonomous engineering's own words ask for one.
+test("a change counts toward several owners only where it is asked for: a verb of change, or autonomous engineering's own words", () => {
+  const ask = (over) => asked({ marks: [], ...over });
+  assert.equal(rowOf({ asked: ask({ intent: { id: "investigation", confidence: "high" }, matched: ["investigation", "development"] }) }), "one-skill", "an investigation that names code asks for no change");
+  assert.equal(rowOf({ asked: ask({ matched: ["development", "security"] }) }), "one-skill", "a security question that names an endpoint asks for no change");
+  assert.equal(rowOf({ asked: ask({ shape: { chars: 40, items: 0, refs: 1 } }) }), "one-skill", "a question about the code a work item names");
+  assert.equal(rowOf({ asked: ask({ matched: ["development", "security"], marks: ["change"] }) }), "several-owners", "a change asked for, and a verifier to prove it");
+  assert.equal(rowOf({ asked: ask({ intent: { id: "autonomous-engineering", confidence: "high" }, matched: ["autonomous-engineering", "requirements"] }) }), "several-owners", "autonomously IS a change asked for");
+});
+
+test("a list is a specification only when it asks for a change or states a work item; acceptance criteria are one by their words", () => {
+  const list = (over) => asked({ marks: [], shape: { chars: 600, items: SPEC_ITEMS, refs: 0 }, ...over });
+  assert.equal(rowOf({ asked: list() }), "one-skill", "observations or questions that name code are no specification");
+  assert.equal(rowOf({ asked: list({ marks: ["change"] }) }), "specification");
+  assert.equal(rowOf({ asked: list({ intent: { id: "requirements", confidence: "low" }, matched: ["requirements"] }) }), "specification", "a list of what a work item requires");
+  assert.equal(rowOf({ asked: asked({ marks: [], requirements: ["development.implementation", DOORS.goal] }) }), "specification", "acceptance criteria are a specification's own words");
+});
+
+test("a status question is the session's to answer only when it asks for nothing else", () => {
+  const status = (over) => asked({ intent: { id: "development", confidence: "low" }, marks: ["status"], ...over });
+  assert.equal(rowOf({ asked: status() }), "conversational");
+  assert.equal(rowOf({ asked: status({ intent: { id: "development", confidence: "high" } }) }), "one-skill", "two words of a request make it a request, whatever else it asks");
+  assert.equal(rowOf({ asked: status({ marks: ["status", "change"] }) }), "one-skill", "a change asked for beside it");
 });
 
 test("a specification goes to the goal domain only for a change or a work item, and a list counts from three items", () => {

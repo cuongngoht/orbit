@@ -10,8 +10,10 @@
 //
 //   synthetic  the host adapter marked the prompt as the host's own envelope (a background task's notification)
 //   asked      the classification (src/routing/classify.mjs): intent, matched, marks (opt-out · continue · halt ·
-//              status), shape counts, requirements -- a status question ("how far along", "tới đâu rồi") is the
-//              session's to answer, conversational like a greeting (B5), unless it names an open work to resume
+//              status · change), shape counts, requirements -- a status question ("how far along", "tới đâu rồi") is
+//              the session's to answer, conversational like a greeting (B5), unless it names an open work to resume
+//              or asks for something else too; and a development intent is a change only where `change` says one is
+//              asked for, since its cues name code as well
 //   chosen     what the resolver chose that the session does not already have, in the order the request is about it:
 //              { kind, id, key, ownership, requirement, via, gated } -- never an implicit provider or a built-in
 //   doors      who opens a coordinated path here: { automation, goal } -> the usable skill that provides it, or null
@@ -35,11 +37,16 @@ export const ACTIVATION_PATHS = ["skill", "agent", "workflow", "goal", "mission"
 // Who opens a coordinated path, by the capability the opening skill provides -- never by its name.
 export const DOORS = { automation: "workflow.navigation", goal: "goal.orchestration" };
 
-// A specification is a list this long, or carries the words of acceptance criteria (asked as goal.orchestration).
+// A specification is a list this long that asks for a change or states a work item, or carries the words of acceptance
+// criteria (asked as goal.orchestration).
 export const SPEC_ITEMS = 3;
 
-// What a change spans to need several owners: a change, and a work item to settle or a verifier to prove it.
+// What a change spans to need several owners: a change ASKED FOR, and a work item to settle or a verifier to prove it.
+// Development's cues name code as well as ask for a change -- "is the orders endpoint protected by access control?" is
+// a security question about an endpoint -- so a development intent is a change only where a verb asks for one (the
+// `change` mark, src/routing/intents.mjs MARKS); autonomous engineering's own words ask for one by themselves.
 const CHANGE = ["development", "autonomous-engineering"];
+const ASKED = ["autonomous-engineering"];
 const ITEM = ["requirements"];
 const VERIFIER = ["investigation", "security"];
 
@@ -82,9 +89,19 @@ const fits = (f) => Boolean(f.workflow) && f.workflow !== "none" && f.settings?.
 
 const opens = (f, how) => fits(f) && Boolean(f.doors?.[how]);
 
-const specified = (f) => ((f.asked?.requirements ?? []).includes(DOORS.goal) || (f.asked?.shape?.items ?? 0) >= SPEC_ITEMS) && SPECIFIES.includes(f.asked?.intent?.id);
+const asksChange = (f) => matched(f, ASKED) || (matched(f, CHANGE) && marked(f, "change"));
 
-const spans = (f) => matched(f, CHANGE) && (matched(f, ITEM) || (f.asked?.shape?.refs ?? 0) > 0 || matched(f, VERIFIER));
+// A list is a specification when it asks for a change or states what a work item requires: a list of what the logs show,
+// or of questions about the code, names code and asks for nothing. Acceptance criteria are one by their own words.
+const listed = (f) => (f.asked?.shape?.items ?? 0) >= SPEC_ITEMS && (asksChange(f) || matched(f, ITEM));
+
+const specified = (f) => ((f.asked?.requirements ?? []).includes(DOORS.goal) || listed(f)) && SPECIFIES.includes(f.asked?.intent?.id);
+
+const spans = (f) => asksChange(f) && (matched(f, ITEM) || (f.asked?.shape?.refs ?? 0) > 0 || matched(f, VERIFIER));
+
+// A status question is the session's to answer only when it asks for nothing else: no change, and not a request two of
+// whose own words make it high-confidence -- "Where are we calling the payment API? Refactor that function" is a change.
+const statusOnly = (f) => marked(f, "status") && !marked(f, "change") && f.asked?.intent?.confidence !== "high";
 
 const component = (c) => c.kind === "skill" || c.kind === "agent";
 
@@ -120,7 +137,7 @@ export const STRATEGY = [
   { row: "envelope", word: "NONE", when: (f) => f.synthetic === true, because: () => "the host wrote this prompt itself, so nobody asked for anything" },
   { row: "opted-out", word: "NONE", when: (f) => marked(f, "opt-out"), because: () => "the prompt asks to work without Orbit" },
   { row: "resume", word: "RESUME", when: (f) => Boolean(resumable(f)), because: (f) => `open work ${resumable(f).id} is governed by ${resumable(f).owner.what} ${resumable(f).owner.id}`, activation: resumed },
-  { row: "conversational", word: "NONE", when: (f) => !chosen(f).length || marked(f, "status"), because: (f) => (marked(f, "status") ? "the prompt asks how something stands, which the session answers" : "nothing here needs what the session does not already have") },
+  { row: "conversational", word: "NONE", when: (f) => !chosen(f).length || statusOnly(f), because: (f) => (statusOnly(f) ? "the prompt asks how something stands, which the session answers" : "nothing here needs what the session does not already have") },
   { row: "mission", word: "SATELLITE", when: (f) => Boolean(mission(f)), because: () => "a mission was asked for, in Satellite's own words", activation: (f) => ({ path: "mission", id: mission(f).id, how: null, invoke: MISSION }) },
   { row: "specification", word: "COORDINATED", when: (f) => opens(f, "goal") && specified(f), because: (f) => `a specification of a change: ${f.doors.goal} keeps it and plans its units`, activation: coordinated("goal") },
   { row: "several-owners", word: "COORDINATED", when: (f) => opens(f, "automation") && spans(f), because: (f) => `a change several owners take in turn (${spanned(f)}): ${f.doors.automation} starts the workflow`, activation: coordinated("automation") },

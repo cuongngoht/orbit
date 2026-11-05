@@ -1,16 +1,9 @@
 ---
 name: orbit-requirements
 description: >
-  Turn a work item, PBI, issue, ticket or user story into a durable, atomic requirement set and
-  ONE immutable Requirement Snapshot before anything is implemented, planned or tested. It finds
-  the work item without assuming a vendor and reuses what this machine already has (a managed MCP
-  server, a connection, a project adapter, a CLI), records what the item says as facts with their
-  source and revision, asks a person only the questions that block, keeps every answer, and starts
-  or resumes the Work that rests on the snapshot, so a later session, on another day or another
-  model, picks up exactly where this one stopped. Use when a task names a PBI, work item, issue,
-  ticket or user story, or says to continue one. It never reads the product's code, screen or data
-  to settle what a requirement should say, never decides a requirement itself, and never installs
-  or configures anything.
+  Turns a work item, PBI, issue, ticket or user story into atomic requirement facts and one frozen
+  snapshot before anything is built or tested, asking a person only what blocks. Use when a task
+  names a work item or says to continue one. Never decides a requirement itself.
 argument-hint: Implement PBI 4312 | continue PBI 4312 | what is still open on issue 88
 allowed-tools:
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/requirements.mjs*)
@@ -24,6 +17,17 @@ user-invocable: true
 **Host binding:** On protocol v2, resolve the plugin root from this SKILL.md’s actual location and bind the host/protocol/hashed session supplied at startup on every Orbit shell invocation. Resolve command examples against that root; do not assume hook exports persist. Follow [the shared host contract](../../docs/hosts.md) for task stdin, runtime isolation and unavailable native capabilities. Use the supported native protocol for the selected host.
 
 # Settle what a work item asks for, then keep the work
+
+**In short.** Turn a work item, PBI, issue, ticket or user story into a durable, atomic requirement
+set and ONE immutable Requirement Snapshot before anything is implemented, planned or tested. It
+finds the work item without assuming a vendor and reuses what this machine already has (a managed
+MCP server, a connection, a project adapter, a CLI), records what the item says as facts with their
+source and revision, asks a person only the questions that block, keeps every answer, and starts or
+resumes the Work that rests on the snapshot, so a later session, on another day or another model,
+picks up exactly where this one stopped. Use when a task names a PBI, work item, issue, ticket or
+user story, or says to continue one. It never reads the product's code, screen or data to settle
+what a requirement should say, never decides a requirement itself, and never installs or configures
+anything.
 
 This workflow provides **`requirement.snapshot`**. It needs **`workitem.read`** to read an item the
 first time, and nothing to continue one it has already read. It names capabilities, never a
@@ -158,7 +162,8 @@ What is retained is asked through the same door as `ask`: one question per set o
 one extended, an **answered one never asked again**, and a slot a person decided never asked about.
 
 - **On Claude**, delegate each perspective to its own agent, `orbit-requirement-<perspective>`
-  (`-product`, `-domain`, `-qa`, `-socrates`), one after another in the order the board prints:
+  (`orbit-requirement-product`, `orbit-requirement-domain`, `orbit-requirement-qa`,
+  `orbit-requirement-socrates`), one after another in the order the board prints:
   `clarify` hands out one envelope at a time, the one for whoever is at work. Each agent shows in
   its own colour; all four follow `orbit-requirement-reviewer`'s instructions, and that generic
   agent stands in for one that is switched off. Paste the `ENVELOPE` into its task and send what

@@ -1,15 +1,9 @@
 ---
 name: orbit-help
 description: >
-  The one entry point: describe a goal and Orbit takes it through, autonomously by default with
-  nothing to turn on. With a task a coordinated workflow fits (a change, a fix, a PBI, an
-  investigation), it plans the workflow the task needs -- requirement, context, runtime, an
-  engineering task in its own workspace, QA, regression, review, or a project playbook -- and
-  takes it one decided step at a time, each step settled only on evidence its owner keeps and
-  every action gated by its own class. Without a task, or for a read-only question, it is one
-  bounded look at what this project's architecture, UI map, QA plans and lessons already say,
-  and exactly one recommended `orbit-*` workflow with the reason. Use when it is unclear where
-  to start, or to take a task all the way through.
+  Orbit's coordinator and navigator, for when it is unclear where to start or a task needs several
+  owners in turn -- a work item, a code change, the running app, QA, regression, review. Starts or
+  resumes a coordinated workflow; for one specialist's job, use that skill.
 argument-hint: where should I start | implement PBI-482 and test it until it passes
 allowed-tools:
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/help.mjs*)
@@ -25,6 +19,16 @@ user-invocable: true
 ---
 
 **Host binding:** On protocol v2, resolve the plugin root from this SKILL.md’s actual location and bind the host/protocol/hashed session supplied at startup on every Orbit shell invocation. Resolve command examples against that root; do not assume hook exports persist. Follow [the shared host contract](../../docs/hosts.md) for task stdin, runtime isolation and unavailable native capabilities. Use the supported native protocol for the selected host.
+
+**In short.** The one entry point: describe a goal and Orbit takes it through, autonomously by
+default with nothing to turn on. With a task a coordinated workflow fits (a change, a fix, a PBI, an
+investigation), it plans the workflow the task needs -- requirement, context, runtime, an
+engineering task in its own workspace, QA, regression, review, or a project playbook -- and takes it
+one decided step at a time, each step settled only on evidence its owner keeps and every action
+gated by its own class. Without a task, or for a read-only question, it is one bounded look at what
+this project's architecture, UI map, QA plans and lessons already say, and exactly one recommended
+`orbit-*` workflow with the reason. Use when it is unclear where to start, or to take a task all the
+way through.
 
 # First, when a PERSON invoked /orbit-help: Orbit Live beside this session
 

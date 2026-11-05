@@ -1,16 +1,9 @@
 ---
 name: orbit-security-audit
 description: >
-  Assess a project against the security catalogs it is held to, from evidence and standalone: no
-  goal is needed. It opens a task, reads which catalogs are in effect (the ones a person enabled
-  in Orbit Control, or Orbit's default), works out where each control applies over the System
-  Graph, hands the security obligations to QA to test inside a sandbox, and keeps an assessment
-  snapshot that pins the catalogs it used, linked to the task as a receipt. Use when asked for a
-  security assessment, whether an application meets a security standard's controls, or to check
-  access control, tenant isolation or token handling against a catalog. It never fetches, adopts,
-  enables or edits a catalog and never marks a control not applicable (those are a person's, in
-  Orbit Control), never grants itself anything, never calls a proposal a vulnerability, never
-  gives a severity number and never says a system is compliant.
+  Assesses this project against the security catalogs it is held to, from evidence, and hands the
+  security obligations to QA. Use for a security assessment, OWASP or ASVS controls, access control,
+  tenant isolation or token handling. Never says compliant.
 argument-hint: "assess this project | assess the orders API against the enabled catalogs | resume tsk-…"
 allowed-tools:
   - Read
@@ -30,6 +23,17 @@ and run `query storage --json` before working with project files. `$DATA`, `$SCR
 `$REPORTS`, `$RUNTIME` and `$EVIDENCE` below are the resolved paths from that command.
 
 # Assess from evidence. A person chooses the standard.
+
+**In short.** Assess a project against the security catalogs it is held to, from evidence and
+standalone: no goal is needed. It opens a task, reads which catalogs are in effect (the ones a
+person enabled in Orbit Control, or Orbit's default), works out where each control applies over the
+System Graph, hands the security obligations to QA to test inside a sandbox, and keeps an assessment
+snapshot that pins the catalogs it used, linked to the task as a receipt. Use when asked for a
+security assessment, whether an application meets a security standard's controls, or to check access
+control, tenant isolation or token handling against a catalog. It never fetches, adopts, enables or
+edits a catalog and never marks a control not applicable (those are a person's, in Orbit Control),
+never grants itself anything, never calls a proposal a vulnerability, never gives a severity number
+and never says a system is compliant.
 
 **Two shared references, the same for every `orbit-*` playbook.** Read the one you need; do not
 re-derive what is in them:

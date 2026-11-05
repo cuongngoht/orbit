@@ -1,14 +1,9 @@
 ---
 name: orbit-qc-builder
 description: >
-  Build the smallest project-local QC tool needed to EXECUTE or VERIFY a test that has
-  already been agreed, when the engine and the project cannot perform it cleanly. Use when
-  a concrete verification is blocked on tooling — a second database the `sql` verb cannot
-  reach, a vendor SDK the browser never sees, a queue nothing can inspect. It recalls
-  architecture and lessons first, reuses anything that already exists, generates only into
-  scratch, verifies against the real contract, and registers into this project's own store
-  so a plugin upgrade cannot remove it. It never decides WHAT to test, never writes product
-  code, and never edits the engine.
+  Builds the smallest project-local QC tool a verification needs when nothing here can perform it --
+  a second database, a vendor SDK, a queue. Use when an agreed check is blocked on tooling. Never
+  decides what to test and never writes product code.
 argument-hint: QC needs to check the order row in Postgres and nothing here can read it
 allowed-tools:
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/qc-tool.mjs*)
@@ -29,6 +24,14 @@ user-invocable: true
 **Host binding:** On protocol v2, resolve the plugin root from this SKILL.md’s actual location and bind the host/protocol/hashed session supplied at startup on every Orbit shell invocation. Resolve command examples against that root; do not assume hook exports persist. Follow [the shared host contract](../../docs/hosts.md) for task stdin, runtime isolation and unavailable native capabilities. Use the supported native protocol for the selected host.
 
 # Build the smallest missing QC tool, and nothing more
+
+**In short.** Build the smallest project-local QC tool needed to EXECUTE or VERIFY a test that has
+already been agreed, when the engine and the project cannot perform it cleanly. Use when a concrete
+verification is blocked on tooling — a second database the `sql` verb cannot reach, a vendor SDK the
+browser never sees, a queue nothing can inspect. It recalls architecture and lessons first, reuses
+anything that already exists, generates only into scratch, verifies against the real contract, and
+registers into this project's own store so a plugin upgrade cannot remove it. It never decides WHAT
+to test, never writes product code, and never edits the engine.
 
 **QA decides what should be tested. QC decides how to execute it.** This skill is QC, and
 its scope is one sentence:

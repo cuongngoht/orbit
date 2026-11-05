@@ -1,16 +1,10 @@
 ---
 name: orbit-qa
 description: >
-  Investigate a live application the way a senior QA engineer would, autonomously and inside
-  approved limits, from a SCREEN, a PBI (a requirement and its acceptance criteria), or both: one
-  step at a time, each chosen from what the last one showed. Recall what the project already
-  knows, work through what the engine says is still owed — a read-back after every write, a
-  suspicion to settle, a scenario's layer to prove — watch the screen, the console, every request
-  and the data, verify tenant isolation when a person declared a contract, and stop for a reason
-  the engine can justify, with receipts kept and one evidence-backed report. Use when asked to
-  find bugs on a screen, to verify a PBI with or without a UI, to check a feature from UI to
-  database, or to resume an investigation. Not for designing a plan with a person
-  (orbit-test-plan) or running agreed cases (orbit-test-suite).
+  Runs an investigation of a live application like a senior QA engineer, one step at a time inside
+  approved limits, watching screen, network and data, and reports only what it proves. Use to find
+  bugs on a screen, verify a PBI end to end, or check tenant isolation. To plan tests, use
+  orbit-test-plan.
 argument-hint: <a screen, a PBI file, or both — e.g. "the orders screen" | "check PBI-7 refund rules" | "resume inv-…">
 allowed-tools:
   - Read
@@ -24,6 +18,17 @@ user-invocable: true
 **Host binding:** On protocol v2, resolve the plugin root from this SKILL.md’s actual location and bind the host/protocol/hashed session supplied at startup on every Orbit shell invocation. Resolve command examples against that root; do not assume hook exports persist. Follow [the shared host contract](../../docs/hosts.md) for task stdin, runtime isolation and unavailable native capabilities. Use the supported native protocol for the selected host. On Codex and Antigravity there is no native subagent: run this loop in the main session.
 
 # Investigate, one step at a time. Prove what you claim.
+
+**In short.** Investigate a live application the way a senior QA engineer would, autonomously and
+inside approved limits, from a SCREEN, a PBI (a requirement and its acceptance criteria), or both:
+one step at a time, each chosen from what the last one showed. Recall what the project already
+knows, work through what the engine says is still owed — a read-back after every write, a suspicion
+to settle, a scenario's layer to prove — watch the screen, the console, every request and the data,
+verify tenant isolation when a person declared a contract, and stop for a reason the engine can
+justify, with receipts kept and one evidence-backed report. Use when asked to find bugs on a screen,
+to verify a PBI with or without a UI, to check a feature from UI to database, or to resume an
+investigation. Not for designing a plan with a person (orbit-test-plan) or running agreed cases
+(orbit-test-suite).
 
 **Shared references, the same for every `orbit-*` playbook.** Read the one you need; do not
 re-derive what is in them:

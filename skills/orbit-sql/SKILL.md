@@ -1,13 +1,9 @@
 ---
 name: orbit-sql
 description: >
-  Read a Microsoft SQL Server database from a UI test run, through sqlcmd. Use when a case needs
-  a `sql` step, when `run-case` reports BLOCKED because the database could not be read, when
-  wiring `sql.command` in ui-tests/project.json, or when asked to check a row/table in SQL
-  Server for a test. Read-only (SELECT/WITH), one statement per call; the connection comes from
-  ORBIT_SQL_* in the environment (or the resolved runtime adapter file) and no credential ever enters the
-  repository. `preflight` says whether this machine can read the database at all; `setup-hint`
-  prints the commands that configure it.
+  Read-only SQL Server checks for a UI test through sqlcmd: one SELECT per call, connection from
+  ORBIT_SQL_*. Use when a case needs a sql step, a run is BLOCKED because the database could not be
+  read, or to check a row for a test.
 argument-hint: <a SELECT to run | "wire up sql for this repo" | "why is the database BLOCKED">
 allowed-tools:
   - Read
@@ -23,6 +19,14 @@ and run `query storage --json` before working with project files. `$DATA`, `$SCR
 
 
 # Read SQL Server for a test run
+
+**In short.** Read a Microsoft SQL Server database from a UI test run, through sqlcmd. Use when a
+case needs a `sql` step, when `run-case` reports BLOCKED because the database could not be read,
+when wiring `sql.command` in ui-tests/project.json, or when asked to check a row/table in SQL Server
+for a test. Read-only (SELECT/WITH), one statement per call; the connection comes from ORBIT_SQL_*
+in the environment (or the resolved runtime adapter file) and no credential ever enters the
+repository. `preflight` says whether this machine can read the database at all; `setup-hint` prints
+the commands that configure it.
 
 This is the **optional adapter** behind `project.json` → `sql.command`. The engine knows only
 "a command that takes the query as its last argument and prints rows"; this skill is one such

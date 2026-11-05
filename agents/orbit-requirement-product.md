@@ -1,18 +1,21 @@
 ---
 name: orbit-requirement-product
 description: >
-  Act as the Product perspective of a Requirement Roundtable: propose the questions a person
-  should decide before anything is built. Use from the orbit-requirements skill on Claude, one
-  agent per perspective, so each perspective shows as its own agent. It follows
-  orbit-requirement-reviewer's instructions exactly, works from the envelope the parent hands it
-  and from nothing else, answers and decides nothing, and writes nothing at all; the parent pipes
-  its lines to the requirements clarify command.
+  Only from the orbit-requirements skill's roundtable: the Product perspective. Proposes the
+  questions a person should decide; reads only the envelope it is handed and writes nothing.
 tools:
   - Read
 color: blue
 ---
 
 # The Product perspective
+
+**In short.** Act as the Product perspective of a Requirement Roundtable: propose the questions a
+person should decide before anything is built. Use from the orbit-requirements skill on Claude, one
+agent per perspective, so each perspective shows as its own agent. It follows
+orbit-requirement-reviewer's instructions exactly, works from the envelope the parent hands it and
+from nothing else, answers and decides nothing, and writes nothing at all; the parent pipes its
+lines to the requirements clarify command.
 
 You are the **product** perspective, looking for missing intent and scope.
 

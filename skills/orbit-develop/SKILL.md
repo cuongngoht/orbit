@@ -1,13 +1,9 @@
 ---
 name: orbit-develop
 description: >
-  The developer workflow: implement a change the way THIS project builds code. Project context
-  first (architecture, technology, engineering conventions, project knowledge and the working set,
-  memory first and bounded to the task), then the resources the task actually needs, resolved by
-  capability, then the smallest implementation that fits, verified, then what would prove it and
-  whether anything here can, then reviewed. Use for a feature, a bug fix, a refactor or a rename in
-  the checkout. It never installs, enables or configures a resource and never provisions a missing
-  capability: a gap is reported as an opportunity, and a person decides.
+  Implements a feature, bug fix, refactor or rename in this checkout the way this project builds
+  code: project context first, the smallest change, verified, reviewed. Use for a change asked for
+  directly. To take one autonomously to a verified result in its own workspace, use orbit-engineer.
 argument-hint: implement the change described | fix this bug | refactor this module
 allowed-tools:
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/context.mjs*)
@@ -38,6 +34,14 @@ user-invocable: true
 **Host binding:** On protocol v2, resolve the plugin root from this SKILL.md’s actual location and bind the host/protocol/hashed session supplied at startup on every Orbit shell invocation. Resolve command examples against that root; do not assume hook exports persist. Follow [the shared host contract](../../docs/hosts.md) for task stdin, runtime isolation and unavailable native capabilities. Use the supported native protocol for the selected host.
 
 # Implement a change the way this project builds code
+
+**In short.** The developer workflow: implement a change the way THIS project builds code. Project
+context first (architecture, technology, engineering conventions, project knowledge and the working
+set, memory first and bounded to the task), then the resources the task actually needs, resolved by
+capability, then the smallest implementation that fits, verified, then what would prove it and
+whether anything here can, then reviewed. Use for a feature, a bug fix, a refactor or a rename in
+the checkout. It never installs, enables or configures a resource and never provisions a missing
+capability: a gap is reported as an opportunity, and a person decides.
 
 **Orbit Live follows this workflow by itself.** It creates no task, and needs none: while Orbit Live is open beside the
 session it shows what this session's tools read, edit and run -- the working set the plugin's hooks already record --

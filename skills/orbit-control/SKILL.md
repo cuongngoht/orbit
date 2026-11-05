@@ -1,13 +1,9 @@
 ---
 name: orbit-control
 description: >
-  Start Orbit Control, the local control panel for this plugin (MCP servers, skills, tools, report
-  connections, PO reports, the router, activity), and hand back its one URL. Use when asked to
-  open the control panel, add, test, approve or police an MCP server, install a CLI tool or an MCP
-  runtime, set up a report connection, its credential or its Microsoft sign-in, or see what the
-  router would pick. It
-  starts the server on loopback only and never adds, enables or approves anything itself; the
-  person does.
+  Starts Orbit Control, the local control panel, and returns its URL. Use to add, test, approve or
+  police an MCP server, install a CLI tool, set up a report connection or sign-in, set Orbit's
+  limits and policies, or see what the router would pick.
 argument-hint: open the control panel | restart it on a fixed port
 allowed-tools:
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/orbit-control/*)
@@ -15,6 +11,13 @@ user-invocable: true
 ---
 
 # Start Orbit Control and hand over its URL
+
+**In short.** Start Orbit Control, the local control panel for this plugin (MCP servers, skills,
+tools, report connections, PO reports, the router, activity), and hand back its one URL. Use when
+asked to open the control panel, add, test, approve or police an MCP server, install a CLI tool or
+an MCP runtime, set up a report connection, its credential or its Microsoft sign-in, or see what the
+router would pick. It starts the server on loopback only and never adds, enables or approves
+anything itself; the person does.
 
 Orbit Control is a server that sits **beside** the engine (`control-server/`, README §8.1). It
 needs Node **>= 24.15**, while the engine and the shell running this session may be on 20 or 22.

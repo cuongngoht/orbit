@@ -1,13 +1,9 @@
 ---
 name: orbit-test-plan
 description: >
-  Decide WHAT to test before any test is written. Read the requirement and everything the
-  project already knows, separate what is known from what is assumed, ask only the questions
-  that change the design, then derive risk-ranked scenarios with acceptance criteria that carry
-  stable ids. The deliverable is one checkable plan per feature in its screen's folder that
-  plan-check holds to its own claims and that the case writer turns into JSON. Use when asked to
-  plan or design tests for a feature, screen, ticket or release, to review whether a suite is
-  complete, or when someone says "write tests for X" before any scenario has been agreed.
+  Decides what to test before any test is written: separates known from assumed, asks only what
+  changes the design, and writes one checkable, risk-ranked plan per feature. Use when asked to plan
+  or design tests, scenarios or coverage. To run agreed cases, use orbit-test-suite.
 argument-hint: <feature, screen or ticket to design tests for | "is our suite complete?">
 allowed-tools:
   - Read
@@ -23,6 +19,14 @@ user-invocable: true
 **Host binding:** On protocol v2, resolve the plugin root from this SKILL.md’s actual location and bind the host/protocol/hashed session supplied at startup on every Orbit shell invocation. Resolve command examples against that root; do not assume hook exports persist. Follow [the shared host contract](../../docs/hosts.md) for task stdin, runtime isolation and unavailable native capabilities. Use the supported native protocol for the selected host.
 
 # Design the tests before writing them
+
+**In short.** Decide WHAT to test before any test is written. Read the requirement and everything
+the project already knows, separate what is known from what is assumed, ask only the questions that
+change the design, then derive risk-ranked scenarios with acceptance criteria that carry stable ids.
+The deliverable is one checkable plan per feature in its screen's folder that plan-check holds to
+its own claims and that the case writer turns into JSON. Use when asked to plan or design tests for
+a feature, screen, ticket or release, to review whether a suite is complete, or when someone says
+"write tests for X" before any scenario has been agreed.
 
 Two jobs, kept apart on purpose:
 

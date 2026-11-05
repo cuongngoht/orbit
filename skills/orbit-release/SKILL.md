@@ -1,15 +1,9 @@
 ---
 name: orbit-release
 description: >
-  Release the orbit engine and get it into another repository. Use when asked to ship,
-  tag or publish a new version of this plugin, to qualify a release on the Docker benchmark with
-  Claude Code (the autonomous ship, its repairs, its evidence and the publish gate), to resume or
-  read a ship, to decide whether a change is major or minor, to
-  install the engine in a product repo, to copy it onto a machine with no network, or when a
-  consuming repo is on an old version and `query check` complains about a vocabulary it does not
-  recognise. Covers the definition of done, the five version fields that must agree, the three
-  install routes, how to re-pin a tool Orbit installs by itself (a python-lock or an archive pin)
-  and record its per-platform evidence, and what the consuming repo owns afterwards.
+  Ships the Orbit engine itself: the definition of done, the autonomous Docker-benchmark ship, its
+  evidence and publish gate, and installing or upgrading the engine in another repository. Use only
+  for releasing or installing Orbit.
 argument-hint: <"ship it" | "is this major or minor" | "install the engine in <repo>" | "why is my copy stale">
 allowed-tools:
   - Read
@@ -26,6 +20,16 @@ and run `query storage --json` before working with project files. `$DATA`, `$SCR
 
 
 # Ship the engine, and copy it into a repo
+
+**In short.** Release the orbit engine and get it into another repository. Use when asked to ship,
+tag or publish a new version of this plugin, to qualify a release on the Docker benchmark with
+Claude Code (the autonomous ship, its repairs, its evidence and the publish gate), to resume or read
+a ship, to decide whether a change is major or minor, to install the engine in a product repo, to
+copy it onto a machine with no network, or when a consuming repo is on an old version and `query
+check` complains about a vocabulary it does not recognise. Covers the definition of done, the five
+version fields that must agree, the three install routes, how to re-pin a tool Orbit installs by
+itself (a python-lock or an archive pin) and record its per-platform evidence, and what the
+consuming repo owns afterwards.
 
 Two jobs that are easy to confuse. **Shipping** is about this repository: prove the engine is
 sound and give the change an honest version number. **Copying** is about a product repository:

@@ -10,7 +10,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { compared, listed } from "../benchmark/images/runner/inspect.mjs";
 import { hostCommand } from "../benchmark/images/runner/entry.mjs";
-import { BOUNDS, COMMANDS } from "../benchmark/lib/commands.mjs";
+import { BOUNDS, COMMANDS, EFFORTS } from "../benchmark/lib/commands.mjs";
 import { frozenRun } from "../benchmark/lib/core/context.mjs";
 import { docRead, roomOf } from "../benchmark/lib/core/room.mjs";
 import { caseFindings } from "../benchmark/lib/core/suites.mjs";
@@ -72,6 +72,22 @@ test("--repeat is bounded as data, never names a single run, and a run with none
   await assert.rejects(async () => COMMANDS.run.run(h, ["CALC-001", "--repeat=2", "--run-id=bnr-0123456789ab"]), /--run-id names one run, and --repeat starts one run per repeat/);
   const one = await COMMANDS.run.run(h, ["CALC-001", "--seed=3"]);
   assert.deepEqual([one.outcome, one.runs, one.repeat, manifestOf(w, one.run).config.repeat], ["PASS", undefined, undefined, null], "no group, and the same answer as before");
+});
+
+// ---- the effort a host is asked to run at (0.5.0) ---------------------------------------------------------------------
+
+test("--effort is one of a bounded set of levels, as data; the manifest keeps it, status says it, and --like runs at it again", async (t) => {
+  const w = worldOf(t, FILES);
+  const h = harnessOf(w, dockerDouble(NEVER));
+  assert.deepEqual(EFFORTS, ["low", "medium", "high", "xhigh", "max"]);
+  await assert.rejects(async () => COMMANDS.run.run(h, ["CALC-001", "--effort=turbo"]), /--effort is one of low, medium, high, xhigh, max, not turbo/);
+  const one = await COMMANDS.run.run(h, ["CALC-001", "--seed=3", "--model=claude-sonnet-5-5", "--effort=medium"]);
+  assert.deepEqual([manifestOf(w, one.run).config.model, manifestOf(w, one.run).config.effort], ["claude-sonnet-5-5", "medium"]);
+  assert.match(COMMANDS.status.say(COMMANDS.status.run(h, [one.run])), /model claude-sonnet-5-5, effort medium/);
+  const again = await COMMANDS.run.run(h, [`--like=${one.run}`]);
+  assert.equal(manifestOf(w, again.run).config.effort, "medium", "the same effort, again");
+  const plain = await COMMANDS.run.run(h, ["CALC-001", "--seed=3"]);
+  assert.equal(manifestOf(w, plain.run).config.effort, null, "none asked: the host's own default");
 });
 
 test("--repeat with --suite repeats every case as a group of its own, and --like repeats an earlier run", async (t) => {

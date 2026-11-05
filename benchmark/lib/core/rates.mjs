@@ -2,19 +2,20 @@
 // (B23) -- folded from the facts metrics.mjs reads off kept rooms, never from what a host said, and `unknown` wherever
 // nothing stands under a number.
 //
-//   A ROW is one case and variant, on one arm, carried by one host basis and one model. Its runs are those that came to
-//   an ending a rate may count -- not blocked, invalid, inconclusive, held or unfinished, and not cut by a restart (a
-//   round closed as interrupted is nobody's miss, ADR 0049) -- each left out counted by why.
+//   A ROW is one case and variant, on one arm, carried by one host basis and one model at one effort (0.5.0: the effort
+//   the host was asked to run at, `null` when none was -- its own default). Its runs are those that came to an ending a
+//   rate may count -- not blocked, invalid, inconclusive, held or unfinished, and not cut by a restart (a round closed as
+//   interrupted is nobody's miss, ADR 0049) -- each left out counted by why.
 //   pass@1    passes / runs
 //   pass@k    the chance at least one of k runs passes, estimated without bias from n >= k runs with c passes:
 //             1 - C(n-c, k) / C(n, k) -- fewer runs than k say nothing about k (unknown)
 //   cost      the median of what a host REPORTED a run cost, and the mean over passed runs (cost per verified);
 //             minutes, the median from a run's freeze to its ending
-//   OVERHEAD  per case, variant, basis and model: an Orbit arm's median REPORTED cost, turns and tokens minus the
+//   OVERHEAD  per case, variant, basis, model and effort: an Orbit arm's median REPORTED cost, turns and tokens minus the
 //             `none` arm's -- unknown where either side reported none
 //
 //   ratesOf(fs, { k }) -> { k, rows, models }      revisionsOf(fs, { k }) -> [{ commit, at, runs, rows }]
-//   overheadOf(fs) -> rows      passAtK(n, c, k) · median(xs) · groupBy(xs, keyOf) · PASSED · DEFAULT_K
+//   overheadOf(fs) -> rows      passAtK(n, c, k) · median(xs) · groupBy(xs, keyOf) · hostOfRun(f) · PASSED · DEFAULT_K
 const UNKNOWN = "unknown";
 
 // The outcomes a run PASSED on, by kind of case: a verdict that held, or a repair the verifier passed.
@@ -55,28 +56,38 @@ const minutes = (ms) => (ms === null ? UNKNOWN : round4(ms / 60000));
 
 // ---- rows and models -----------------------------------------------------------------------------------------------------
 
-const rowKey = (f) => [f.case, f.variant, f.arm, f.basis, f.modelSaid].join("\u0000");
+// The host a run's row is counted under (0.5.0): its model and the effort it was asked to run at -- two efforts of one
+// model are two hosts, as two models are -- in one word a fold keys by and a line says: `<model>` when no effort was
+// asked (the host's own default), `<model>@<effort>` otherwise.
+export const hostOfRun = (f) => (f.effort ? `${f.modelSaid}@${f.effort}` : f.modelSaid);
+
+const rowKey = (f) => [f.case, f.variant, f.arm, f.basis, hostOfRun(f)].join("\u0000");
 
 const spendOf = (s) => ({ medianCostUsd: valued(median(s.map((f) => f.costUsd))), costReported: s.filter((f) => typeof f.costUsd === "number").length, costPerVerifiedUsd: valued(mean(s.filter(passed).map((f) => f.costUsd))), medianMinutes: minutes(median(s.map((f) => f.durationMs))) });
 
 function rowOf(group, k) {
   const s = standing(group);
   const c = s.filter(passed).length;
-  return { case: group[0].case, suite: group[0].suite, variant: group[0].variant, arm: group[0].arm, basis: group[0].basis, model: group[0].modelSaid, runs: s.length, passed: c, excluded: leftOut(group), pass1: valued(s.length ? c / s.length : null), passK: { k, value: valued(passAtK(s.length, c, k)) }, ...spendOf(s) };
+  return { case: group[0].case, suite: group[0].suite, variant: group[0].variant, arm: group[0].arm, basis: group[0].basis, model: group[0].modelSaid, effort: group[0].effort ?? null, runs: s.length, passed: c, excluded: leftOut(group), pass1: valued(s.length ? c / s.length : null), passK: { k, value: valued(passAtK(s.length, c, k)) }, ...spendOf(s) };
 }
 
-// One model on one basis, over every row it carried: pooled pass@1, the mean of its rows' pass@k, its medians.
+// One model at one effort on one basis, over every row it carried: pooled pass@1, the mean of its rows' pass@k, its
+// medians.
 function modelOf(group, k) {
   const rows = groupBy(group, rowKey).map((g) => rowOf(g, k));
   const s = standing(group);
-  return { basis: group[0].basis, model: group[0].modelSaid, rows: rows.length, runs: s.length, passed: s.filter(passed).length, excluded: leftOut(group), pass1: valued(s.length ? s.filter(passed).length / s.length : null), passK: { k, value: valued(mean(rows.map((r) => r.passK.value))), over: rows.filter((r) => r.passK.value !== UNKNOWN).length }, ...spendOf(s) };
+  return { basis: group[0].basis, model: group[0].modelSaid, effort: group[0].effort ?? null, rows: rows.length, runs: s.length, passed: s.filter(passed).length, excluded: leftOut(group), pass1: valued(s.length ? s.filter(passed).length / s.length : null), passK: { k, value: valued(mean(rows.map((r) => r.passK.value))), over: rows.filter((r) => r.passK.value !== UNKNOWN).length }, ...spendOf(s) };
 }
 
-const byRow = (a, b) => [a.case, a.variant, a.arm, a.basis, a.model].join(" ").localeCompare([b.case, b.variant, b.arm, b.basis, b.model].join(" "));
+const rowSaid = (r) => [r.case, r.variant, r.arm, r.basis, r.model, r.effort ?? ""].join(" ");
+
+const byRow = (a, b) => rowSaid(a).localeCompare(rowSaid(b));
+
+const modelSaid = (m) => `${m.basis} ${m.model} ${m.effort ?? ""}`;
 
 export function ratesOf(fs, o = {}) {
   const k = o.k ?? DEFAULT_K;
-  return { k, rows: groupBy(fs, rowKey).map((g) => rowOf(g, k)).sort(byRow), models: groupBy(fs, (f) => `${f.basis}\u0000${f.modelSaid}`).map((g) => modelOf(g, k)).sort((a, b) => `${a.basis} ${a.model}`.localeCompare(`${b.basis} ${b.model}`)) };
+  return { k, rows: groupBy(fs, rowKey).map((g) => rowOf(g, k)).sort(byRow), models: groupBy(fs, (f) => `${f.basis}\u0000${hostOfRun(f)}`).map((g) => modelOf(g, k)).sort((a, b) => modelSaid(a).localeCompare(modelSaid(b))) };
 }
 
 // The same rows, one set per source revision, oldest first: what a change to the source did to how often a row holds.
@@ -92,9 +103,9 @@ const minus = (a, b) => (a === null || b === null ? UNKNOWN : round4(a - b));
 
 const said = (side) => ({ runs: side.runs, costUsd: valued(side.costUsd), turns: valued(side.turns), tokens: valued(side.tokens) });
 
-const overheadRow = (g, arm) => ((a, n) => ({ case: g[0].case, variant: g[0].variant, basis: g[0].basis, model: g[0].modelSaid, arm, armSide: said(a), noneSide: said(n), overhead: { costUsd: minus(a.costUsd, n.costUsd), turns: minus(a.turns, n.turns), tokens: minus(a.tokens, n.tokens) } }))(sideOf(g.filter((f) => f.arm === arm)), sideOf(g.filter((f) => f.arm === "none")));
+const overheadRow = (g, arm) => ((a, n) => ({ case: g[0].case, variant: g[0].variant, basis: g[0].basis, model: g[0].modelSaid, effort: g[0].effort ?? null, arm, armSide: said(a), noneSide: said(n), overhead: { costUsd: minus(a.costUsd, n.costUsd), turns: minus(a.turns, n.turns), tokens: minus(a.tokens, n.tokens) } }))(sideOf(g.filter((f) => f.arm === arm)), sideOf(g.filter((f) => f.arm === "none")));
 
 const comparable = (g, arm) => g.some((f) => f.arm === arm) && g.some((f) => f.arm === "none");
 
-// orbit_overhead: per case, each Orbit arm beside the `none` arm on the same case, variant, basis and model.
-export const overheadOf = (fs) => groupBy(standing(fs), (f) => [f.case, f.variant, f.basis, f.modelSaid].join("\u0000")).flatMap((g) => ORBIT_ARMS.filter((arm) => comparable(g, arm)).map((arm) => overheadRow(g, arm)));
+// orbit_overhead: per case, each Orbit arm beside the `none` arm on the same case, variant, basis, model and effort.
+export const overheadOf = (fs) => groupBy(standing(fs), (f) => [f.case, f.variant, f.basis, hostOfRun(f)].join("\u0000")).flatMap((g) => ORBIT_ARMS.filter((arm) => comparable(g, arm)).map((arm) => overheadRow(g, arm)));

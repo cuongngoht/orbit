@@ -14,6 +14,7 @@
 // must be refused for want of a rule (`measures.expects`).
 //
 //   suitesIn(root) -> [{ id, version, title, dir, cases }]         caseOf(root, id) -> case + { dir, suite }
+//   suiteHolding(root, caseId) -> suite id | null
 //   caseFindings(c, dir) -> [sentence]                             dirDigest(dir) -> sha256 of every file, by path
 //   KINDS · TRUTH_OUTCOMES · QA_HOSTS · caseDir(id) · ARMS · DEFAULT_BASELINE · armsOf(c) · baselinePluginOf(c)
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -253,6 +254,9 @@ const suiteDirs = (root) => (existsSync(join(root, SUITES_DIR)) ? readdirSync(jo
 export const suitesIn = (root) => suiteDirs(root).map(suiteAt).sort((a, b) => a.id.localeCompare(b.id, "en"));
 
 const suiteOfCase = (root, id) => suitesIn(root).find((p) => p.cases.some((x) => caseDir(x) === caseDir(id))) ?? null;
+
+// The id of the suite the catalog holds a case in, or null -- for a kept room that names its case and not its suite.
+export const suiteHolding = (root, id) => (root && id ? suiteOfCase(root, id)?.id ?? null : null);
 
 export function caseOf(root, id) {
   const suite = suiteOfCase(root, id);

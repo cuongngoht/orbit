@@ -15,7 +15,7 @@
 //                     tools, failedCalls, uses, denials, isError, subtype, basis: "REPORTED" }
 //   streamOf(text) -> { init, result, uses, turns: [{ turn, thread, tokens }] }
 //   commandsOf(text) -> [{ id, parent, turn, command }]        hostEnd(h, ran) -> null | { cause, says }
-//   hostSummary(h) -> h without its calls one by one
+//   hostSummary(h) -> h without its calls one by one             effortSaid(effort) -> words
 import { printable } from "../../../src/printable.mjs";
 import { scrub } from "../../../src/scrub.mjs";
 
@@ -119,6 +119,10 @@ const endOf = (result) => ({ turns: num(result?.num_turns), durationMs: num(resu
 // What a report keeps of a host's session: everything hostOf says but its calls one by one, which stay in the round's own
 // evidence and in the run's tool-call facts.
 export const hostSummary = (h) => (h ? Object.fromEntries(Object.entries(h).filter(([k]) => k !== "uses")) : null);
+
+// The effort a host was asked to run at (0.5.0), in a report's words: the level asked, or -- when none was -- the host's
+// own default for its model, which no stream reports.
+export const effortSaid = (effort) => effort ?? "the host's default";
 
 export function hostOf(text) {
   const s = streamOf(text);

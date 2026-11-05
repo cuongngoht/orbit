@@ -2,12 +2,13 @@
 // when nothing stands under it, runs split by host basis so a scripted success is never autonomy, the blocked and the
 // invalid excluded and counted, a cost only ever one a host reported, instability found and said, history by revision.
 import assert from "node:assert/strict";
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { COMMANDS } from "../benchmark/lib/commands.mjs";
 import { BY_NAMES, metricsOf, METRICS, runFacts } from "../benchmark/lib/core/metrics.mjs";
+import { reliabilityOf } from "../benchmark/lib/core/reliability.mjs";
 import { docWritten, newRunId, roomOf } from "../benchmark/lib/core/room.mjs";
 
 let n = 0;
@@ -104,10 +105,24 @@ test("the metrics command folds the store's run rooms in scope, with the verifie
   assert.match(COMMANDS.metrics.say(r), /HISTORY BY REVISION/);
 });
 
+test("metrics --suite counts a control set kept before its manifest named a suite: the catalog places its case -- and another suite's case stays out", (t) => {
+  const store = mkdtempSync(join(tmpdir(), "orbit-bench-sets-"));
+  t.after(() => rmSync(store, { recursive: true, force: true }));
+  const root = join(store, "checkout");
+  mkdirSync(join(root, "benchmark", "suites", "orbit-source"), { recursive: true });
+  writeFileSync(join(root, "benchmark", "suites", "orbit-source", "suite.json"), JSON.stringify({ schema: 1, id: "orbit-source", version: "1.0.0", title: "the source", cases: ["ORBIT-SRC-002"] }));
+  const set = (benchmark) => ((room) => (docWritten(room, "manifest.json", { kind: "controls", run: room.id, at: new Date().toISOString(), benchmark }), docWritten(room, "controls.json", { case: benchmark.case, rows: [{ id: "known-good", expect: "PASS", got: "PASS", matched: true }] })))(roomOf(store, newRunId(benchmark.case)));
+  set({ suite: "orbit-source", case: "ORBIT-SRC-002" });
+  set({ case: "ORBIT-SRC-002" });
+  set({ case: "ORBIT-QA-001" });
+  assert.deepEqual(((r) => [r.verifier.numerator, r.verifier.denominator])(COMMANDS.metrics.run({ storeRoot: store, root }, ["--suite=orbit-source"])), [2, 2], "the set that names its suite, and the older one the catalog places");
+  assert.equal(COMMANDS.metrics.run({ storeRoot: store }, ["--suite=orbit-source"]).verifier.denominator, 1, "with no catalog to read, only the set that names its suite");
+});
+
 // ---- 0.5.0: reliability (B2), tool-call failures (B9), arms (B23) ------------------------------------------------------
 
 // A model-carried run: a goal on an arm, with what its host reported and the tool facts its report kept.
-const goalRun = (o = {}) => ((r) => ({ ...r, manifest: { ...r.manifest, config: { ...r.manifest.config, arm: o.arm ?? "release", repeat: o.group ? { id: o.group, index: 1, of: 5 } : null } }, report: { ...r.report, round: o.round ?? null, rounds: o.hostRounds ?? [], tools: o.tools ?? null } }))(run({ case: o.case ?? "ORBIT-E2E-001", suite: o.suite ?? "orbit-engineering", kind: "engineering", repair: true, model: o.model === undefined ? "claude-opus-5-5" : o.model, cost: o.cost ?? null, ms: o.ms, outcome: o.outcome, commit: o.commit, rounds: o.hostRounds }));
+const goalRun = (o = {}) => ((r) => ({ ...r, manifest: { ...r.manifest, config: { ...r.manifest.config, arm: o.arm ?? "release", repeat: o.group ? { id: o.group, index: 1, of: 5 } : null, ...(o.effort ? { effort: o.effort } : {}) } }, report: { ...r.report, round: o.round ?? null, rounds: o.hostRounds ?? [], tools: o.tools ?? null } }))(run({ case: o.case ?? "ORBIT-E2E-001", suite: o.suite ?? "orbit-engineering", kind: "engineering", repair: true, model: o.model === undefined ? "claude-opus-5-5" : o.model, cost: o.cost ?? null, ms: o.ms, outcome: o.outcome, commit: o.commit, rounds: o.hostRounds }));
 
 const hostRound = (o = {}) => ({ interrupted: o.interrupted === true, host: { model: o.model ?? null, turns: o.turns ?? null, costUsd: o.cost ?? null, tokens: { input: o.tokens ?? null, output: null, cacheRead: null, cacheWrite: null } } });
 
@@ -134,6 +149,31 @@ test("--by=model and --by=arm break every metric down, the bases still apart; --
   assert.deepEqual(m.byArm.map((g) => [g.arm, g.runs, g.bases["coding-host"].autonomous_task_success.denominator]), [["none", 1, 1], ["release", 2, 2]]);
   assert.deepEqual(m.revisions.map((x) => [x.commit, x.rows.length]), [["111111111111", 2], ["222222222222", 1]]);
   assert.deepEqual([m.runs.byArm, BY_NAMES], [{ release: 2, none: 1 }, ["revision", "model", "arm"]]);
+});
+
+// 0.5.0: the owner's decision runs model-carried rows at an effort (`--effort`); a model at two efforts is two hosts.
+test("a model at two efforts is two hosts: its rows, its model row, its tool calls, its arms, its overhead and its groups are kept apart", () => {
+  const sonnet = (effort, outcome, o = {}) => goalRun({ outcome, model: "claude-sonnet-5-5", effort, tools: TOOLS(), ...o });
+  const runs = [sonnet("medium", "PASS"), sonnet("medium", "FAIL"), sonnet("high", "PASS"), sonnet(undefined, "PASS"), sonnet("medium", "PASS", { arm: "none" })];
+  const m = metricsOf(runs, { by: ["model"] });
+  const releaseRows = m.reliability.rows.filter((r) => r.arm === "release");
+  assert.deepEqual(releaseRows.map((r) => [r.model, r.effort, r.runs, r.pass1]), [["claude-sonnet-5-5", null, 1, 1], ["claude-sonnet-5-5", "high", 1, 1], ["claude-sonnet-5-5", "medium", 2, 0.5]], "never one rate over two efforts");
+  assert.deepEqual(m.reliability.models.map((x) => [x.model, x.effort, x.runs]), [["claude-sonnet-5-5", null, 1], ["claude-sonnet-5-5", "high", 1], ["claude-sonnet-5-5", "medium", 3]]);
+  assert.deepEqual(m.byModel.map((g) => [g.model, g.effort, g.runs]), [["claude-sonnet-5-5", null, 1], ["claude-sonnet-5-5", "high", 1], ["claude-sonnet-5-5", "medium", 3]]);
+  assert.deepEqual(Object.keys(m.tools["coding-host"].models), ["claude-sonnet-5-5", "claude-sonnet-5-5@high", "claude-sonnet-5-5@medium"]);
+  assert.deepEqual(m.overhead.map((o) => [o.arm, o.effort]), [["release", "medium"]], "the none arm beside the release arm at the same effort only");
+  assert.match(COMMANDS.metrics.say({ ...m, store: "-" }), /claude-sonnet-5-5@medium \(3 run\(s\)\)/);
+  const groups = metricsOf([sonnet("medium", "PASS", { case: "ORBIT-E2E-002" }), sonnet("high", "FAIL", { case: "ORBIT-E2E-002" })]).reproducibility;
+  assert.deepEqual([groups.denominator, groups.unstable], [0, []], "two efforts are never one group whose outcomes disagree");
+});
+
+test("the reliability document keeps each row's and each model's effort, and compares arms only at one effort", () => {
+  const sonnet = (arm, effort, outcome) => goalRun({ arm, outcome, model: "claude-sonnet-5-5", effort, hostRounds: [hostRound({ cost: 1 })], cost: 1 });
+  const r = COMMANDS.reliability.say(reliabilityOf([sonnet("none", "medium", "PASS"), sonnet("release", "medium", "PASS"), sonnet("release", "high", "FAIL")]));
+  const doc = reliabilityOf([sonnet("none", "medium", "PASS"), sonnet("release", "medium", "PASS"), sonnet("release", "high", "FAIL")]);
+  assert.deepEqual(doc.arms.rows.map((x) => [x.effort, Object.keys(x.arms).sort()]), [["medium", ["none", "release"]]]);
+  assert.deepEqual(doc.rates.rows.map((x) => x.effort).sort(), ["high", "medium", "medium"]);
+  assert.match(r, /\(coding-host, claude-sonnet-5-5@medium\): none pass@1 1\/1/);
 });
 
 test("orbit_overhead: an Orbit arm's median REPORTED cost, turns and tokens minus the none arm's on the same case -- unknown where a side reported none", () => {

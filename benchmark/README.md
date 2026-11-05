@@ -111,7 +111,8 @@ The QA cases plant one defect each in Orbit's own synthetic invoice application 
      hold what it reads. A test outside that name that reads `benchmark/` fails the preflight. `doctor --host` asks the
      runner image's Claude Code ONE question through the egress proxy -- no tool, no plugin, a budget of a few cents --
      and says whether it starts, which version and model it reports, and whether the credential is accepted, or a code
-     when not (`CLI_UNAVAILABLE`, `CLI_MISMATCH`, `AUTH_MISSING`, `AUTH_REFUSED`, `EGRESS`, `PROVIDER`).
+     when not (`CLI_UNAVAILABLE`, `CLI_MISMATCH`, `AUTH_MISSING`, `AUTH_REFUSED`, `EGRESS`, `PROVIDER`). It asks with the
+     `--model` and `--effort` a run would hand the host, so a host that refuses either says so there.
 2. **Build once.**
    - `node benchmark/run.mjs build` builds three images:
      - `verifier`, built with no network;
@@ -138,6 +139,10 @@ The QA cases plant one defect each in Orbit's own synthetic invoice application 
      `controls ORBIT-E2E-001` runs it with scripted hosts instead: a reference goal through Orbit's goal entry must
      PASS, and an idle host must make NO_PROGRESS.
    - `node benchmark/run.mjs run --suite=orbit-qa` runs every case of a suite.
+   - `--model=<id>` and `--effort=low|medium|high|xhigh|max` (0.5.0) name the coding host: the effort goes to Claude
+     Code's own `--effort`, beside `--model`, and the manifest (`config.effort`), the report and a verified candidate's
+     `host` say it. With none, the host runs at its own default and the run says so. The levels are data (`EFFORTS`,
+     `lib/commands.mjs`); a level outside them is refused before anything starts.
    - `--repeat=5` runs a case (or every case of a suite) five times, each its own room and task, as one repeat group:
      one PASS is not a rate. `--arm=none|baseline|release|all` runs a case on the arms it declares (see
      [Repeats, arms and reliability](#repeats-arms-and-reliability)).
@@ -154,7 +159,8 @@ The QA cases plant one defect each in Orbit's own synthetic invoice application 
      door then refuses the run's next step, and the controller stops with nothing of its own left running. A paused
      run goes on with `resume` once the person resumes its task in Orbit Control.
 5. **Run it again.**
-   - `node benchmark/run.mjs run --like=<bnr-…>` uses the same case, variant, host, source mode, seed, limits and images.
+   - `node benchmark/run.mjs run --like=<bnr-…>` uses the same case, variant, host, model, effort, arm, source mode, seed,
+     limits and images.
    - A plain `run` on a newer commit reuses the images and freezes the new source.
    - `node benchmark/run.mjs resume <bnr-…>` carries an interrupted run on from where its journal says it stands.
 6. **Clean up.**
@@ -164,10 +170,10 @@ The QA cases plant one defect each in Orbit's own synthetic invoice application 
 7. **Measure.**
    - `node benchmark/run.mjs metrics` folds the kept runs into numerators over denominators, apart by host basis
      (`none`, `scripted`, `coding-host`). `--suite`, `--case`, `--since` and `--revision` narrow it; `--by=revision`
-     adds each case's outcome and rates by source commit, `--by=model` and `--by=arm` every metric again per model or
-     per arm (see [Metrics](#metrics)).
+     adds each case's outcome and rates by source commit, `--by=model` and `--by=arm` every metric again per model (at
+     its effort) or per arm (see [Metrics](#metrics)).
    - `node benchmark/run.mjs reliability --revision=<commit>` is the reliability report a release quotes: pass@1,
-     pass@k and medians per row and model, tool-call failures, and each case's arms side by side.
+     pass@k and medians per row and per model at its effort, tool-call failures, and each case's arms side by side.
 
 Every command takes `--json`. Runs are kept in the machine store under `<store>/benchmark/<bnr-…>/`, and
 `ORBIT_STORE_DIR` moves them as it moves the rest of the store. `node benchmark/run.mjs where` lists them.
@@ -527,15 +533,17 @@ CANCELLED), and `unknown` -- never 0 -- when nothing qualifies. Each is computed
 | `avg_time_to_verified_ms` | time from freeze to ending, over verified outcomes |
 | `cost_per_verified_usd` | REPORTED cost, over verified outcomes whose every round reported one (an ESTIMATED cost never counts) |
 
-Beside them: **reproducibility** (groups of runs with one case digest, variant, subject digest, host basis and model,
-two or more of them valid, that came to one outcome -- and the groups that did not), the **verifier's own controls**
-from every kept `controls.json`, and with `--by=revision` each case's outcomes by source commit. A known finding
-(`baseline: "FAIL"`) that still fails is never counted as a regression.
+Beside them: **reproducibility** (groups of runs with one case digest, variant, subject digest, host basis, model and
+effort, two or more of them valid, that came to one outcome -- and the groups that did not), the **verifier's own
+controls** from every kept `controls.json`, and with `--by=revision` each case's outcomes by source commit. A known
+finding (`baseline: "FAIL"`) that still fails is never counted as a regression. A control set's manifest names its
+suite (0.5.0), so `--suite` counts its rows with the suite's runs; a set kept before it did is placed by the suite this
+checkout's catalog holds its case in.
 
 Since 0.5.0 the same fold also gives each row's **reliability**, the **tool-call failures** and each Orbit arm's
 **overhead** -- described in [Repeats, arms and reliability](#repeats-arms-and-reliability) -- and `--by` is any of
-`revision`, `model` and `arm`, comma-separated: `model` and `arm` repeat every metric above per model or per arm, the
-bases still apart, and `revision` adds the rates of each source commit.
+`revision`, `model` and `arm`, comma-separated: `model` and `arm` repeat every metric above per model (at each effort it
+ran at) or per arm, the bases still apart, and `revision` adds the rates of each source commit.
 
 ## Repeats, arms and reliability
 
@@ -614,18 +622,20 @@ controller's own: no host call is counted against them.
 
 ### Reliability
 
-`metrics` folds each **row** -- one case and variant, on one arm, carried by one host basis and one model -- and each
-model:
+`metrics` folds each **row** -- one case and variant, on one arm, carried by one host basis and one model at one effort
+-- and each model at each effort:
 
 | Number | Over |
 |---|---|
 | `pass1` | passes / runs that came to an ending a rate may count -- blocked, invalid, inconclusive, held, unfinished and interrupted runs (a restart is nobody's miss) left out and counted by why |
 | `passK` | the chance at least one of k runs passes, estimated without bias from n >= k runs: 1 - C(n-c, k) / C(n, k); `unknown` with fewer than k (`--k`, 1..10, default 3) |
 | `medianCostUsd` · `costPerVerifiedUsd` · `medianMinutes` | what hosts REPORTED a run cost (median, and the mean over passed runs), and the minutes from freeze to ending |
-| `orbit_overhead` | per case, variant, basis and model: an Orbit arm's median reported cost, turns and tokens minus the `none` arm's |
+| `orbit_overhead` | per case, variant, basis, model and effort: an Orbit arm's median reported cost, turns and tokens minus the `none` arm's |
 
-A run's model is the one asked for, else the one its host named, else `unknown`. Tool-call failures fold per host
-basis, then per suite and per model: per tool, per relay subcommand, failed calls per PASS, recovery episodes and what
+A run's model is the one asked for, else the one its host named, else `unknown`; its effort is the one asked
+(`config.effort`), or none -- the host's own default. Two efforts of one model are two hosts: never one rate, one group or
+one fold, and a line says `<model>@<effort>` (the model alone at its default). Tool-call failures fold per host basis,
+then per suite and per model at its effort: per tool, per relay subcommand, failed calls per PASS, recovery episodes and what
 they took, runs that hit a failed call and still passed -- of the runs that came to an ending a rate may count: a
 blocked or interrupted run is neither a recovery nor a miss, though its calls still count -- and per sandbox step. A
 report from before 0.5.0 kept no tool facts and counts as `unread`; `node benchmark/run.mjs report <bnr-…>` writes them.
@@ -638,16 +648,18 @@ same fold as one document a release quotes, and writes nothing:
   "schema": 1, "kind": "orbit.benchmark.reliability/v1", "at": "…", "store": "…",
   "scope": { "revision": "…", "suite": null, "case": null, "since": null, "k": 3 },
   "runs": { "total": 0, "byBasis": {}, "byArm": {}, "byOutcome": {} },
-  "rates": { "k": 3, "rows": [ { "case", "suite", "variant", "arm", "basis", "model", "runs", "passed", "excluded",
-                                 "pass1", "passK": { "k", "value" }, "medianCostUsd", "costReported",
+  "rates": { "k": 3, "rows": [ { "case", "suite", "variant", "arm", "basis", "model", "effort", "runs", "passed",
+                                 "excluded", "pass1", "passK": { "k", "value" }, "medianCostUsd", "costReported",
                                  "costPerVerifiedUsd", "medianMinutes" } ],
-             "models": [ { "basis", "model", "rows", "runs", "passed", "excluded", "pass1",
+             "models": [ { "basis", "model", "effort", "rows", "runs", "passed", "excluded", "pass1",
                            "passK": { "k", "value", "over" }, "medianCostUsd", "costPerVerifiedUsd", "medianMinutes" } ] },
-  "tools": { "<basis>": { "runs", "unread", "suites": { "<suite>": "<fold>" }, "models": { "<model>": "<fold>" } } },
-  "arms": { "rows": [ { "case", "variant", "basis", "model", "arms": { "<arm>": { "runs", "passed", "pass1", "passK",
-                                                                                  "costPerVerifiedUsd", "medianCostUsd",
-                                                                                  "medianMinutes" } } } ],
-            "overhead": [ { "case", "variant", "basis", "model", "arm", "armSide", "noneSide",
+  "tools": { "<basis>": { "runs", "unread", "suites": { "<suite>": "<fold>" },
+                          "models": { "<model>|<model>@<effort>": "<fold>" } } },
+  "arms": { "rows": [ { "case", "variant", "basis", "model", "effort", "arms": { "<arm>": { "runs", "passed", "pass1",
+                                                                                            "passK", "costPerVerifiedUsd",
+                                                                                            "medianCostUsd",
+                                                                                            "medianMinutes" } } } ],
+            "overhead": [ { "case", "variant", "basis", "model", "effort", "arm", "armSide", "noneSide",
                             "overhead": { "costUsd", "turns", "tokens" } } ] },
   "notes": [ "…what each number stands on…" ]
 }
@@ -664,7 +676,7 @@ value with nothing under it is `unknown`.
 | Tier | Where | What |
 |---|---|---|
 | fast | `ci.yml`, every push and pull request | every `test/benchmark-*.test.mjs` inside the definition of done's `node --test`: no Docker, no network |
-| conformance | `benchmark.yml`, a pull request that touches the benchmark, or on request | every case's verifier and judge controls in real containers, by suite; scripted hosts through Orbit's engineering loop and goal entry; no model, no secret |
+| conformance | `benchmark.yml`, a pull request that touches the benchmark, or on request | every case's verifier and judge controls in real containers, by suite -- every suite, a QA case's as whole runs its scripted hosts carry in the controller's process (the job builds the QA worker), held to the catalog by `test/release-workflows.test.mjs`; scripted hosts through Orbit's engineering loop and goal entry; no model, no secret |
 
 The conformance tier uploads what its runs kept, PASS or not. **No workflow runs a real coding host** (0.5.0): a model-carried run
 -- one case with `--repair`, a QA or engineering case, a suite, or the autonomous ship (`skills/orbit-release/ship.mjs`,
@@ -699,6 +711,13 @@ anyone:
   it used against its allowance, and for a QA run what the relay refused, what the engine stopped, and where a run a
   `step` dispatched stopped short -- the relay's log keeps that `result.stopped`, the engine's own allow-listed view,
   and nothing else of an answer of 0. A ship's `--status` prints it for every model-carried row that did not hold.
+- `--model` and `--effort` (0.5.0) name the host a model-carried run hands its prompt to, and `doctor --host` asks with
+  both. A run's manifest keeps the effort (`config.effort`), so a ship holds every model-carried row to the effort it
+  asked (`WRONG_EFFORT`) and `--evidence` reads it again; the levels are `EFFORTS`, which the ship says again and a test
+  holds equal.
+- `reliability --revision=<commit>` (0.5.0) is the report a SHIPPABLE ship keeps beside its `evidence.json`
+  (`reliability.json`): every kept run of the release commit, folded as `metrics` folds them. It writes nothing, and it
+  is never a gate.
 
 The ship's catalog is `skills/orbit-release/ship/policy.json`: every case of every suite, by name, held to `suites/`
 both ways by `test/benchmark-release-policy.test.mjs` (a case added here and not named there fails it). A source case must

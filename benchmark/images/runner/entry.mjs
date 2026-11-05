@@ -125,13 +125,17 @@ const pluginArgs = (b) => (b.arm === "none" ? [] : ["--plugin-dir", pluginOf(b)]
 
 const turnArgs = (b) => (Number.isInteger(b.maxTurns) && b.maxTurns > 0 ? ["--max-turns", String(b.maxTurns)] : []);
 
-export const hostArgs = (b) => ["-p", "--output-format", "stream-json", "--verbose", ...pluginArgs(b), ...turnArgs(b), "--permission-mode", "dontAsk", "--allowedTools", isQa(b) ? QA_TOOLS : TOOLS, "--disallowedTools", (isGoal(b) ? GOAL_DENIED : DENIED).join(","), "--setting-sources", "user", "--strict-mcp-config", "--no-session-persistence", "--add-dir", PATHS.store, ...(isQa(b) ? ["--add-dir", PATHS.target] : []), ...(b.model ? ["--model", b.model] : []), ...(b.usd > 0 ? ["--max-budget-usd", String(b.usd)] : [])];
+// The model the host runs and -- beside it (0.5.0) -- the effort it runs at, as the controller asked them; an effort is a
+// level's word, never an option of its own.
+const modelArgs = (b) => [...(b.model ? ["--model", b.model] : []), ...(/^[a-z]{1,16}$/.test(String(b.effort ?? "")) ? ["--effort", b.effort] : [])];
+
+export const hostArgs = (b) => ["-p", "--output-format", "stream-json", "--verbose", ...pluginArgs(b), ...turnArgs(b), "--permission-mode", "dontAsk", "--allowedTools", isQa(b) ? QA_TOOLS : TOOLS, "--disallowedTools", (isGoal(b) ? GOAL_DENIED : DENIED).join(","), "--setting-sources", "user", "--strict-mcp-config", "--no-session-persistence", "--add-dir", PATHS.store, ...(isQa(b) ? ["--add-dir", PATHS.target] : []), ...modelArgs(b), ...(b.usd > 0 ? ["--max-budget-usd", String(b.usd)] : [])];
 
 // What a probe's host may do: nothing but answer. Every tool is denied by name and none is allowed, so `dontAsk` refuses
 // whatever else it reaches for; it loads no plugin, no MCP server and no session it could resume.
 export const PROBE_DENIED = ["Bash", "Edit", "Write", "Read", "Glob", "Grep", "WebFetch", "WebSearch", "Agent", "Skill", "TodoWrite", "NotebookEdit"];
 
-export const probeArgs = (b) => ["-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "dontAsk", "--disallowedTools", PROBE_DENIED.join(","), "--setting-sources", "user", "--strict-mcp-config", "--no-session-persistence", ...(b.model ? ["--model", b.model] : []), "--max-budget-usd", String(b.usd > 0 ? b.usd : 0.05)];
+export const probeArgs = (b) => ["-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "dontAsk", "--disallowedTools", PROBE_DENIED.join(","), "--setting-sources", "user", "--strict-mcp-config", "--no-session-persistence", ...modelArgs(b), "--max-budget-usd", String(b.usd > 0 ? b.usd : 0.05)];
 
 // What the host printed, kept as it came up to `cap` bytes, and the last 64 KiB always -- where its result line is.
 export function cappedSink(file, cap) {

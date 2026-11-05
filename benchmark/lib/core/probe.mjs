@@ -5,8 +5,10 @@
 // it answers is read back exactly as a round's stream is (`hostOf`): REPORTED, and used only to say whether the host ran,
 // which version and model it says it is, and whether the credential was accepted. Nothing here falls back to another
 // host, a scripted one or a mock: a host that does not answer is a code naming why, and a release reads it as BLOCKED.
+// It is asked with the model and the effort (0.5.0) a run would hand it, so a host that refuses either says so here.
 //
-//   probedHost(h, deps) -> { ok, code, says, image, reported, model, costUsd, egress, evidence }
+//   probedHost(h, deps, asked = { model, effort }) -> { ok, code, says, image, reported, model, effort, costUsd, egress,
+//                                                       evidence }
 //   HOST_CHECK -- ordered, first match wins, the last always matching      PROBE_PROMPT · PROBE_USD
 import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -39,17 +41,17 @@ const probeCtx = (h, deps, images, room) => ({ run: { id: room.id }, room, deps,
 
 // The brief a probe round reads, and an empty checkout for the runner's working directory (the place a plugin's types
 // are kept is made in it, as in a subject, so the probe's container is a round's container to the attestation).
-function probeDirs(ctx, model) {
+function probeDirs(ctx, asked) {
   const d = { brief: fresh(ctx, "probe", "brief"), out: fresh(ctx, "probe", "out"), repo: fresh(ctx, "probe", "repo") };
   mkdirSync(join(d.repo, ".claude-plugin", "types"), { recursive: true });
-  writeFileSync(join(d.brief, "brief.json"), `${JSON.stringify({ kind: "probe", round: 1, prompt: PROBE_PROMPT, usd: PROBE_USD, model: model ?? null, allowedHost: ctx.allowedHosts[0], outputBytes: PROBE_BOX.outputMb * 1024 * 1024 }, null, 2)}\n`);
+  writeFileSync(join(d.brief, "brief.json"), `${JSON.stringify({ kind: "probe", round: 1, prompt: PROBE_PROMPT, usd: PROBE_USD, model: asked.model ?? null, effort: asked.effort ?? null, allowedHost: ctx.allowedHosts[0], outputBytes: PROBE_BOX.outputMb * 1024 * 1024 }, null, 2)}\n`);
   return d;
 }
 
 const probeSpec = (ctx, net, d) => runnerSpecOf(ctx, net, 1, [{ source: d.repo, target: "/work/repo", readOnly: true }, { source: d.out, target: "/work/out", readOnly: false }, { source: d.brief, target: "/run/brief", readOnly: true }]);
 
-async function probeRan(ctx, model) {
-  const d = probeDirs(ctx, model);
+async function probeRan(ctx, asked) {
+  const d = probeDirs(ctx, asked);
   const ran = await roundRan(ctx, 1, (net) => probeSpec(ctx, net, d), { deadlineMs: PROBE_MS, out: d.out });
   cleaned(ctx.run.id, ctx.deps);
   return ran;
@@ -70,10 +72,10 @@ export const HOST_CHECK = [
   { code: "AUTH_REFUSED", when: (f) => f.ran.host?.isError === true && AUTH_WORDS.test(hostSays(f)), says: (f) => `the model's API refused the credential: "${hostSays(f)}"` },
   { code: "PROVIDER", when: (f) => !f.ran.host?.started || f.ran.host?.isError !== false, says: (f) => `the host did not answer one question (${f.ran.host?.started ? hostSays(f) || "an error" : `exit ${f.ran.runner?.exit ?? f.ran.container?.exit ?? "?"} before its session started`})` },
   { code: "CLI_MISMATCH", when: (f) => f.ran.host.version !== f.images.claudeCode, says: (f) => `the host says it is Claude Code ${f.ran.host.version ?? "unknown"}, and the runner image pins ${f.images.claudeCode}` },
-  { code: "OK", when: () => true, says: (f) => `Claude Code ${f.ran.host.version} answered as ${f.ran.host.model ?? "an unnamed model"} through the egress proxy` },
+  { code: "OK", when: () => true, says: (f) => `Claude Code ${f.ran.host.version} answered as ${f.ran.host.model ?? "an unnamed model"}${f.asked?.effort ? ` at effort ${f.asked.effort}` : ""} through the egress proxy` },
 ];
 
-const verdictOf = (f) => ((row) => ({ ok: row.code === "OK", code: row.code, says: row.says(f), image: f.images?.claudeCode ?? null, reported: f.ran?.host?.version ?? null, model: f.ran?.host?.model ?? null, costUsd: f.ran?.host?.costUsd ?? null, egress: f.ran?.start?.egress ?? null, evidence: f.ran ? f.room.dir : null }))(HOST_CHECK.find((r) => r.when(f)));
+const verdictOf = (f) => ((row) => ({ ok: row.code === "OK", code: row.code, says: row.says(f), image: f.images?.claudeCode ?? null, reported: f.ran?.host?.version ?? null, model: f.ran?.host?.model ?? null, effort: f.asked?.effort ?? null, costUsd: f.ran?.host?.costUsd ?? null, egress: f.ran?.start?.egress ?? null, evidence: f.ran ? f.room.dir : null }))(HOST_CHECK.find((r) => r.when(f)));
 
 // The probe's room keeps what it asked and what came back, and never the credential: the sentinel masks it wherever the
 // host's output carried it, as it does for every run.
@@ -88,9 +90,9 @@ function kept(h, f) {
 const probeCtxIn = (h, images, room) => probeCtx(h, h.dockerDeps ? h.dockerDeps(room) : dockerDeps(h.env, room), images, room);
 
 // Nothing is started for a probe that cannot be one: no image, no version pinned in it, or no credential to hand it.
-export async function probedHost(h, deps, model = null) {
+export async function probedHost(h, deps, asked = {}) {
   const images = imagesOrNull(h, deps);
   const ctx = images?.claudeCode ? probeCtxIn(h, images, roomOf(h.storeRoot, newRunId("probe"))) : null;
-  const f = { images, ctx, room: ctx?.room ?? null, credentialed: Boolean(ctx) && credentialed(ctx) };
-  return f.credentialed ? kept(h, { ...f, ran: await probeRan(ctx, model) }) : verdictOf(f);
+  const f = { images, ctx, asked, room: ctx?.room ?? null, credentialed: Boolean(ctx) && credentialed(ctx) };
+  return f.credentialed ? kept(h, { ...f, ran: await probeRan(ctx, asked) }) : verdictOf(f);
 }

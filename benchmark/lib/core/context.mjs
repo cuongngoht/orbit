@@ -168,7 +168,9 @@ const KIND_RUN = {
 // `repeat` (0.5.0): the group a run belongs to when one command asked for N runs of a case -- its id, which of them this
 // is, and how many were asked -- so a metric reads N runs as one row's repeats, never as N unrelated runs.
 // `arm` (0.5.0): which plugin the host was handed -- `release` for every run that names none.
-const runningConfig = (o, c) => ({ seed: Number.isInteger(o.seed) ? o.seed : Math.floor(Math.random() * 2 ** 31), rounds: o.rounds ?? c.limits.rounds, minutes: o.minutes ?? c.limits.minutes, usd: o.usd ?? c.limits.usd, model: o.model ?? null, repair: o.repair === true, host: o.host ?? null, parent: o.parent ?? null, repeat: o.group ?? null, arm: o.arm ?? "release" });
+// `effort` (0.5.0): the effort the coding host was asked to run at, beside its model -- null when none was asked, and the
+// host ran at its own default for the model.
+const runningConfig = (o, c) => ({ seed: Number.isInteger(o.seed) ? o.seed : Math.floor(Math.random() * 2 ** 31), rounds: o.rounds ?? c.limits.rounds, minutes: o.minutes ?? c.limits.minutes, usd: o.usd ?? c.limits.usd, model: o.model ?? null, effort: o.effort ?? null, repair: o.repair === true, host: o.host ?? null, parent: o.parent ?? null, repeat: o.group ?? null, arm: o.arm ?? "release" });
 
 // The arm a run is on: the one asked, among those its case declares -- or `release`, what every run was before arms.
 export function armOf(c, o) {
@@ -229,7 +231,7 @@ function recordedRun(h, o, f) {
 
 function withTask(h, room, manifest, c) {
   const rec = recorderOf(h);
-  const task = rec.create(`Benchmark ${c.suite.id}/${c.id} ${c.version} (${manifest.benchmark.variant}${manifest.config.repair ? ", repair" : ""}${manifest.config.host ? `, ${manifest.config.host}` : ""}${manifest.config.arm !== "release" ? `, arm ${manifest.config.arm}` : ""}) on ${manifest.source.branch ?? "detached"}@${manifest.source.commit.slice(0, 10)}, subject ${manifest.subject.digest.slice(0, 10)}`, { attempts: KIND_RUN[c.kind].attempts(c, manifest.config), actions: 60, minutes: manifest.config.minutes, parent: manifest.config.parent ?? undefined });
+  const task = rec.create(`Benchmark ${c.suite.id}/${c.id} ${c.version} (${manifest.benchmark.variant}${manifest.config.repair ? ", repair" : ""}${manifest.config.host ? `, ${manifest.config.host}` : ""}${manifest.config.arm !== "release" ? `, arm ${manifest.config.arm}` : ""}${manifest.config.effort ? `, effort ${manifest.config.effort}` : ""}) on ${manifest.source.branch ?? "detached"}@${manifest.source.commit.slice(0, 10)}, subject ${manifest.subject.digest.slice(0, 10)}`, { attempts: KIND_RUN[c.kind].attempts(c, manifest.config), actions: 60, minutes: manifest.config.minutes, parent: manifest.config.parent ?? undefined });
   docWritten(room, "manifest.json", { ...manifest, task });
   return contextOf(h, room, { ...manifest, task }, rec);
 }
@@ -252,7 +254,7 @@ export function contextOf(h, room, manifest, rec) {
   const deps = h.dockerDeps ? h.dockerDeps(room) : dockerDeps(h.env, room);
   const baseline = baselineOf(room.at("checkout"), h.env);
   const texts = new Map(baseline.map((e) => [e.rel, e.bytes]));
-  return { run: { id: manifest.run }, room, manifest, case: c, frozenCase: c.dir, rec: rec ?? recorderOf(h), task: manifest.task, deps, dockerEnv: dockerClientEnv(h.env), env: h.env, storeBase: h.storeBase, repoRoot: h.root, images: manifest.images, user: userOf(deps), cpuset: cpusetOf(deps, c.limits.verifier?.cpus ?? 1), runnerCpuset: cpusetOf(deps, c.limits.runner.cpus), limits: { ...c.limits.verifier, rounds: manifest.config.rounds, usd: manifest.config.usd }, checkoutDir: room.at("checkout"), runnerStore: madeDir(room, "runner-store"), baseline, baselineDigest: treeDigestOf(baseline), baselineText: (rel) => texts.get(rel)?.toString("utf8") ?? null, probeFile: c.acceptance.probe ? join(c.dir, c.acceptance.probe) : null, engineDir: room.at("checkout"), pluginDir: room.at("plugin"), engineStore: room.at("engine"), allowedHosts: hostsOf(h.env), credentialNames: credentialNames(h.env, h.credential), caFile: h.caFile ? realpathSync(h.caFile) : null, model: manifest.config.model, repair: manifest.config.repair, host: manifest.config.host ?? null, arm: manifest.config.arm ?? "release", worktreeDir: room.at("worktree") };
+  return { run: { id: manifest.run }, room, manifest, case: c, frozenCase: c.dir, rec: rec ?? recorderOf(h), task: manifest.task, deps, dockerEnv: dockerClientEnv(h.env), env: h.env, storeBase: h.storeBase, repoRoot: h.root, images: manifest.images, user: userOf(deps), cpuset: cpusetOf(deps, c.limits.verifier?.cpus ?? 1), runnerCpuset: cpusetOf(deps, c.limits.runner.cpus), limits: { ...c.limits.verifier, rounds: manifest.config.rounds, usd: manifest.config.usd }, checkoutDir: room.at("checkout"), runnerStore: madeDir(room, "runner-store"), baseline, baselineDigest: treeDigestOf(baseline), baselineText: (rel) => texts.get(rel)?.toString("utf8") ?? null, probeFile: c.acceptance.probe ? join(c.dir, c.acceptance.probe) : null, engineDir: room.at("checkout"), pluginDir: room.at("plugin"), engineStore: room.at("engine"), allowedHosts: hostsOf(h.env), credentialNames: credentialNames(h.env, h.credential), caFile: h.caFile ? realpathSync(h.caFile) : null, model: manifest.config.model, effort: manifest.config.effort ?? null, repair: manifest.config.repair, host: manifest.config.host ?? null, arm: manifest.config.arm ?? "release", worktreeDir: room.at("worktree") };
 }
 
 // The spec is imported from the run's FROZEN copy, and its cases made from the run's own seed.

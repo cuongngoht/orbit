@@ -18,7 +18,7 @@ import { cleaned, leftovers, ranContainer, specFor } from "./core/docker.mjs";
 import { candidateEntries, candidateFile, mutatedEntries, mutationFile } from "./core/mutations.mjs";
 import { carried, EXIT, verificationSummary } from "./source/flow.mjs";
 import { builtImage, imageDefs, imageIdOf, resolvedImages, ROLES } from "./core/images.mjs";
-import { ARMS, armsOf, baselinePluginOf, caseOf, casesOf, dirDigest, suitesIn } from "./core/suites.mjs";
+import { ARMS, armsOf, baselinePluginOf, caseOf, casesOf, dirDigest, suiteHolding, suitesIn } from "./core/suites.mjs";
 import { reportOf } from "./source/report.mjs";
 import { carriedQa, withTruth } from "./qa/flow.mjs";
 import { qaReportOf } from "./qa/report.mjs";
@@ -77,8 +77,9 @@ async function doctor(h, args) {
 }
 
 // `--host`: the runner image's Claude Code asked one question through the egress proxy (core/probe.mjs) -- only where
-// Docker answers; a few cents of a credential's budget, said as the host reported it.
-const hostChecked = (h, deps, up, args) => (up.ok ? probedHost(h, deps, flag(args, "model") ?? null) : { ok: false, code: "DOCKER", says: `Docker does not answer here: ${String(up.why ?? "").slice(0, 200)}` });
+// Docker answers; a few cents of a credential's budget, said as the host reported it. Asked with the model and the
+// effort a run would hand it, so a host that refuses either says so here, before a release spends hours.
+const hostChecked = (h, deps, up, args) => (up.ok ? probedHost(h, deps, { model: flag(args, "model") ?? null, effort: effortOption(flag(args, "effort")) ?? null }) : { ok: false, code: "DOCKER", says: `Docker does not answer here: ${String(up.why ?? "").slice(0, 200)}` });
 
 const sayPreflight = (p) => (!p ? [] : p.blocked ? [`preflight   BLOCKED — ${p.blocked}`] : [`preflight   ${p.holds ? "HOLDS" : "DOES NOT HOLD"} — clone ${p.clone?.exit === 0 ? "ok" : "failed"}; ${(p.checks ?? []).map((c) => `${c.argv} exit ${c.exit} in ${c.seconds}s`).join("; ")}; tree ${p.clean ? "left clean" : `left ${p.left?.length} path(s)`}`]);
 
@@ -140,7 +141,13 @@ export const parentOption = shaped("parent", TASK_ID, "a task's id: tsk- and 12 
 // Which arm a run hands its host (0.5.0, B23): one of ARMS, or `all` -- every arm the case declares, one after another.
 const armOption = (v) => (v === undefined || [...ARMS, "all"].includes(v) ? v : refusedWith(`--arm is one of ${[...ARMS, "all"].join(", ")}, not ${v}`));
 
-const optionsOf = (args) => ({ host: hostOption(flag(args, "host")), variant: flag(args, "variant"), repair: has(args, "repair"), source: flag(args, "source"), seed: int(flag(args, "seed")), model: flag(args, "model"), rounds: int(flag(args, "rounds")), minutes: int(flag(args, "minutes")), usd: num(flag(args, "usd")), runId: runIdOption(flag(args, "run-id")), parent: parentOption(flag(args, "parent")), repeat: int(flag(args, "repeat")), arm: armOption(flag(args, "arm")) });
+// The efforts a coding host may be asked to run at (0.5.0), as data: Claude Code's own `--effort <level>`, handed to it
+// beside `--model`. A run that asks none runs at the host's own default for its model, and says so (`effort: null`).
+export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+
+export const effortOption = (v) => (v === undefined || EFFORTS.includes(v) ? v : refusedWith(`--effort is one of ${EFFORTS.join(", ")}, not ${v}`));
+
+const optionsOf = (args) => ({ host: hostOption(flag(args, "host")), variant: flag(args, "variant"), repair: has(args, "repair"), source: flag(args, "source"), seed: int(flag(args, "seed")), model: flag(args, "model"), effort: effortOption(flag(args, "effort")), rounds: int(flag(args, "rounds")), minutes: int(flag(args, "minutes")), usd: num(flag(args, "usd")), runId: runIdOption(flag(args, "run-id")), parent: parentOption(flag(args, "parent")), repeat: int(flag(args, "repeat")), arm: armOption(flag(args, "arm")) });
 
 // What a command may ask, as data: each option's lowest and highest value. `repeat` (0.5.0) is how many runs of one case
 // one command starts -- enough for a rate over five runs and some to spare, never an open-ended loop of paid rounds.
@@ -152,12 +159,12 @@ const SOURCE = ["head", "worktree", undefined];
 
 const sourceChecked = (o) => (SOURCE.includes(o.source) ? o : refusedWith("--source is head or worktree"));
 
-// A run like an earlier one: its case, variant, repair, source mode, seed, model and limits -- and the image ids it used,
-// when they are still here. A new run, under a new id; the earlier one is never touched.
+// A run like an earlier one: its case, variant, repair, source mode, seed, model, effort and limits -- and the image ids
+// it used, when they are still here. A new run, under a new id; the earlier one is never touched.
 function likeOf(h, id) {
   const m = docRead(roomOf(h.storeRoot, id), "manifest.json");
   if (!m?.benchmark?.variant) throw new Refused(`no benchmark run ${id} is kept here to run again`);
-  return { caseId: m.benchmark.case, variant: m.benchmark.variant, repair: m.config.repair, host: m.config.host ?? undefined, source: m.source.mode, seed: m.config.seed, model: m.config.model, rounds: m.config.rounds, minutes: m.config.minutes, usd: m.config.usd, arm: m.config.arm ?? undefined, preferImages: m.images, like: id };
+  return { caseId: m.benchmark.case, variant: m.benchmark.variant, repair: m.config.repair, host: m.config.host ?? undefined, source: m.source.mode, seed: m.config.seed, model: m.config.model, effort: m.config.effort ?? undefined, rounds: m.config.rounds, minutes: m.config.minutes, usd: m.config.usd, arm: m.config.arm ?? undefined, preferImages: m.images, like: id };
 }
 
 // What each kind of case runs with: the images it needs, how its context is completed, how it is carried to its end,
@@ -300,10 +307,13 @@ function report(h, args) {
 
 function status(h, args) {
   const { ctx, view } = kept(h, args);
-  return { run: ctx.run.id, task: ctx.task, case: ctx.manifest.benchmark.case, variant: ctx.manifest.benchmark.variant, repair: ctx.manifest.config.repair, arm: ctx.manifest.config.arm ?? "release", repeat: ctx.manifest.config.repeat ?? null, lifecycle: view.lifecycle, stage: view.stage, stopReason: view.stopReason, attempts: (view.attempts ?? []).map((a) => `${a.id}:${a.cause}:${a.outcome ?? "open"}${a.failureSignature ? `:${a.failureSignature}` : ""}`), budget: view.budget, running: (view.actions ?? []).filter((a) => a.state === "running").map((a) => `${a.id} ${a.type}`), ending: docRead(ctx.room, "ending.json"), evidence: ctx.room.dir };
+  return { run: ctx.run.id, task: ctx.task, case: ctx.manifest.benchmark.case, variant: ctx.manifest.benchmark.variant, repair: ctx.manifest.config.repair, arm: ctx.manifest.config.arm ?? "release", repeat: ctx.manifest.config.repeat ?? null, model: ctx.manifest.config.model ?? null, effort: ctx.manifest.config.effort ?? null, lifecycle: view.lifecycle, stage: view.stage, stopReason: view.stopReason, attempts: (view.attempts ?? []).map((a) => `${a.id}:${a.cause}:${a.outcome ?? "open"}${a.failureSignature ? `:${a.failureSignature}` : ""}`), budget: view.budget, running: (view.actions ?? []).filter((a) => a.state === "running").map((a) => `${a.id} ${a.type}`), ending: docRead(ctx.room, "ending.json"), evidence: ctx.room.dir };
 }
 
-const sayStatus = (r) => [`RUN        ${r.run} — ${r.case} (${r.variant}${r.repair ? ", repair" : ""}${r.arm !== "release" ? `, arm ${r.arm}` : ""})${r.repeat ? ` · repeat ${r.repeat.index}/${r.repeat.of} of ${r.repeat.id}` : ""}`, `TASK       ${r.task}: ${r.lifecycle} · ${r.stage ?? "no stage"}${r.stopReason ? ` · ${r.stopReason}` : ""}`, `ATTEMPTS   ${r.attempts.join("  ") || "none"}`, `BUDGET     attempts ${r.budget.attempts.spent}/${r.budget.attempts.limit} · actions ${r.budget.actions.spent}/${r.budget.actions.limit} · minutes ${r.budget.minutes.spent}/${r.budget.minutes.limit ?? "-"}`, ...(r.running.length ? [`RUNNING    ${r.running.join(", ")}`] : []), `OUTCOME    ${r.ending ? `${r.ending.outcome} — ${r.ending.summary}` : "not decided yet"}`, `EVIDENCE   ${r.evidence}`].join("\n");
+// The model and the effort a run's host was asked to run at, when it was asked any.
+const hostAsked = (r) => `${r.model ? `, model ${r.model}` : ""}${r.effort ? `, effort ${r.effort}` : ""}`;
+
+const sayStatus = (r) => [`RUN        ${r.run} — ${r.case} (${r.variant}${r.repair ? ", repair" : ""}${r.arm !== "release" ? `, arm ${r.arm}` : ""}${hostAsked(r)})${r.repeat ? ` · repeat ${r.repeat.index}/${r.repeat.of} of ${r.repeat.id}` : ""}`, `TASK       ${r.task}: ${r.lifecycle} · ${r.stage ?? "no stage"}${r.stopReason ? ` · ${r.stopReason}` : ""}`, `ATTEMPTS   ${r.attempts.join("  ") || "none"}`, `BUDGET     attempts ${r.budget.attempts.spent}/${r.budget.attempts.limit} · actions ${r.budget.actions.spent}/${r.budget.actions.limit} · minutes ${r.budget.minutes.spent}/${r.budget.minutes.limit ?? "-"}`, ...(r.running.length ? [`RUNNING    ${r.running.join(", ")}`] : []), `OUTCOME    ${r.ending ? `${r.ending.outcome} — ${r.ending.summary}` : "not decided yet"}`, `EVIDENCE   ${r.evidence}`].join("\n");
 
 // A run carried on from its room -- or a control set from its own (core/controlset.mjs), whatever kind of case it holds.
 async function resume(h, args) {
@@ -359,7 +369,16 @@ const keptRun = (h, n) => ((room) => ({ manifest: docRead(room, "manifest.json")
 // A source revision named by its commit, or the start of one (`--revision`, 0.5.0): the runs that froze it.
 const revisionOf = (args) => ((v) => (v === undefined || /^[0-9a-f]{4,64}$/.test(v) ? v : refusedWith(`--revision is a commit id, or the start of one, not ${v}`)))(flag(args, "revision"));
 
-const inScope = (args) => (r) => (!flag(args, "suite") || r.manifest.benchmark?.suite === flag(args, "suite")) && (!flag(args, "case") || r.manifest.benchmark?.case === flag(args, "case")) && (!flag(args, "since") || String(r.manifest.at ?? "") >= flag(args, "since")) && (!revisionOf(args) || String(r.manifest.source?.commit ?? "").startsWith(revisionOf(args)));
+// The suite a kept room is about: its manifest's -- or, for a control set kept before its manifest recorded one (0.5.0),
+// the suite this checkout's catalog holds its case in. A catalog that cannot be read names none.
+function suiteHeld(root, caseId) {
+  try { return suiteHolding(root, caseId); }
+  catch { return null; }
+}
+
+const suiteOfRoom = (h, m) => m.benchmark?.suite ?? (m.kind === "controls" ? suiteHeld(h.root, m.benchmark?.case) : null);
+
+const inScope = (h, args) => (r) => (!flag(args, "suite") || suiteOfRoom(h, r.manifest) === flag(args, "suite")) && (!flag(args, "case") || r.manifest.benchmark?.case === flag(args, "case")) && (!flag(args, "since") || String(r.manifest.at ?? "") >= flag(args, "since")) && (!revisionOf(args) || String(r.manifest.source?.commit ?? "").startsWith(revisionOf(args)));
 
 const SCOPES = ["revision", "suite", "case", "since"];
 
@@ -371,7 +390,7 @@ const NOT_RUNS = ["controls", "probe"];
 const controlRows = (kept) => kept.filter((r) => r.manifest.kind === "controls" && r.controls).flatMap((r) => r.controls.rows.map((row) => ({ ...row, case: r.controls.case })));
 
 // The kept rooms in scope, newest first, bounded: what `metrics` and `reliability` both fold.
-const scopedRuns = (h, args) => (revisionOf(args), safeList(join(h.storeRoot, "benchmark"))).filter((n) => RUN_ID.test(n)).map((n) => keptRun(h, n)).filter((r) => r.manifest).filter(inScope(args)).sort((a, b) => String(b.manifest.at ?? "").localeCompare(String(a.manifest.at ?? ""))).slice(0, MAX_RUNS);
+const scopedRuns = (h, args) => (revisionOf(args), safeList(join(h.storeRoot, "benchmark"))).filter((n) => RUN_ID.test(n)).map((n) => keptRun(h, n)).filter((r) => r.manifest).filter(inScope(h, args)).sort((a, b) => String(b.manifest.at ?? "").localeCompare(String(a.manifest.at ?? ""))).slice(0, MAX_RUNS);
 
 const casesOnly = (scoped) => scoped.filter((r) => !NOT_RUNS.includes(r.manifest.kind));
 
@@ -395,8 +414,10 @@ const basisLines = (r, basis) => (r.runs.byBasis[basis] ? [`${basis.toUpperCase(
 
 const historyLines = (r) => (r.history ? ["HISTORY BY REVISION", ...r.history.map((x) => `  ${x.case} ${x.variant} (${x.basis}): ${x.commits.map((c) => `${c.commit ?? "?"} ${c.outcome}`).join(" → ")}`)] : []);
 
-// A breakdown `--by` asked for: every metric again per model or per arm, each basis still apart.
-const splitLines = (title, name, groups) => (groups ? [title, ...groups.flatMap((g) => [`  ${g[name]} (${g.runs} run(s))`, ...Object.entries(g.bases).filter(([, ms]) => Object.values(ms).some((m) => m.runs)).flatMap(([b, ms]) => Object.entries(ms).filter(([, m]) => m.value !== "unknown").map(([id, m]) => `    ${b.padEnd(12)} ${id.padEnd(26)} ${cell(m)}`))])] : []);
+// A breakdown `--by` asked for: every metric again per model (at its effort) or per arm, each basis still apart.
+const SPLIT_SAID = { model: (g) => (g.effort ? `${g.model}@${g.effort}` : g.model), arm: (g) => g.arm };
+
+const splitLines = (title, name, groups) => (groups ? [title, ...groups.flatMap((g) => [`  ${SPLIT_SAID[name](g)} (${g.runs} run(s))`, ...Object.entries(g.bases).filter(([, ms]) => Object.values(ms).some((m) => m.runs)).flatMap(([b, ms]) => Object.entries(ms).filter(([, m]) => m.value !== "unknown").map(([id, m]) => `    ${b.padEnd(12)} ${id.padEnd(26)} ${cell(m)}`))])] : []);
 
 const sayMetrics = (r) => [`METRICS    ${r.scope} — ${r.runs.total} run(s) in ${r.store}`, ...["coding-host", "session", "scripted", "none"].flatMap((b) => basisLines(r, b)), `REPRODUCIBILITY ${cell(r.reproducibility)}${r.reproducibility.unstable.length ? ` — unstable: ${r.reproducibility.unstable.map((u) => `${u.case} ${u.variant}`).join(", ")}` : ""}`, `VERIFIER CONTROLS ${cell(r.verifier)}${r.verifier.missed.length ? ` — missed: ${r.verifier.missed.join("; ")}` : ""}`, ...ratesLines(r.reliability), ...toolsLines(r.tools), ...overheadLines(r.overhead), ...historyLines(r), ...splitLines("BY MODEL", "model", r.byModel), ...splitLines("BY ARM", "arm", r.byArm), "A scripted host's numbers are conformance, never autonomy; a value of unknown has nothing to stand on."].join("\n");
 
@@ -416,9 +437,9 @@ const controlOptions = (args) => ({ runId: runIdOption(flag(args, "run-id")) ?? 
 
 const setRoom = (h, c, o) => freshRoom(h, o.runId ?? newRunId(`${c.id}\u0000controls`));
 
-// A control set's manifest: the tree it measured by its path (a resume measures that tree again), the case and its
-// digest, what it was asked.
-const setManifest = (room, c, where0, o, more) => ({ schema: 1, kind: "controls", run: room.id, task: null, at: new Date().toISOString(), source: { repo: where0.root, branch: where0.branch, commit: where0.commit, mode: more.mode }, benchmark: { case: c.id, kind: c.kind, version: c.version, variant: "real", digest: more.digest }, subject: { digest: null }, images: more.images ?? null, config: { seed: 20240607, rounds: 1, usd: 0, model: null, repair: false, minutes: 60, asked: o } });
+// A control set's manifest: the tree it measured by its path (a resume measures that tree again), the case, its suite
+// (0.5.0: so `metrics --suite=` counts the set's rows with the suite's runs) and its digest, what it was asked.
+const setManifest = (room, c, where0, o, more) => ({ schema: 1, kind: "controls", run: room.id, task: null, at: new Date().toISOString(), source: { repo: where0.root, branch: where0.branch, commit: where0.commit, mode: more.mode }, benchmark: { suite: c.suite?.id ?? null, suiteVersion: c.suite?.version ?? null, case: c.id, kind: c.kind, version: c.version, variant: "real", digest: more.digest }, subject: { digest: null }, images: more.images ?? null, config: { seed: 20240607, rounds: 1, usd: 0, model: null, repair: false, minutes: 60, asked: o } });
 
 function controlsRoom(h, c, images, o) {
   const room = setRoom(h, c, o);

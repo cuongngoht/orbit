@@ -22,6 +22,7 @@
 import { readdirSync } from "node:fs";
 import { sandboxesOf } from "../../images/runner/inspect.mjs";
 import { streamOf } from "./host.mjs";
+import { hostOfRun } from "./rates.mjs";
 import { docRead, readRegular } from "./room.mjs";
 
 const MAX_STREAM = 80 * 1024 * 1024;
@@ -298,10 +299,11 @@ export const toolsMarkdown = (t) => ["## Tool calls", "", ...callsLines(t), ...r
 // ---- many runs: the fold a metric reads (`metrics`, `reliability`) ------------------------------------------------------
 //
 // Over runs (metrics.mjs facts, each with the `tools` its report kept), kept apart by host basis and then grouped per
-// suite and per model: every count a numerator over a denominator, `unknown` with nothing under it, and the runs whose
-// report kept no tool facts (one from before 0.5.0 -- `report <bnr-…>` writes them) counted as `unread`, never as zero.
+// suite and per model at its effort (`<model>@<effort>`, or the model alone at its own default -- rates.mjs hostOfRun):
+// every count a numerator over a denominator, `unknown` with nothing under it, and the runs whose report kept no tool
+// facts (one from before 0.5.0 -- `report <bnr-…>` writes them) counted as `unread`, never as zero.
 //
-//   toolsFoldOf(fs) -> { [basis]: { runs, unread, suites: { [suite]: fold }, models: { [model]: fold } } }
+//   toolsFoldOf(fs) -> { [basis]: { runs, unread, suites: { [suite]: fold }, models: { [model@effort]: fold } } }
 const UNKNOWN = "unknown";
 
 const PASSES = ["PASS", "REPAIRED_VERIFIED"];
@@ -366,6 +368,6 @@ function foldOf(g) {
 
 const foldsBy = (fs, keyOf) => Object.fromEntries(groupedBy(fs, keyOf).sort(([a], [b]) => String(a).localeCompare(String(b))).map(([k, g]) => [k, foldOf(g)]));
 
-const basisFold = (fs) => ({ runs: fs.filter((f) => f.tools).length, unread: fs.filter((f) => !f.tools).length, suites: foldsBy(fs, (f) => f.suite ?? "-"), models: foldsBy(fs, (f) => f.modelSaid ?? "unknown") });
+const basisFold = (fs) => ({ runs: fs.filter((f) => f.tools).length, unread: fs.filter((f) => !f.tools).length, suites: foldsBy(fs, (f) => f.suite ?? "-"), models: foldsBy(fs, (f) => hostOfRun({ ...f, modelSaid: f.modelSaid ?? "unknown" })) });
 
 export const toolsFoldOf = (fs) => Object.fromEntries(groupedBy(fs, (f) => f.basis).sort(([a], [b]) => a.localeCompare(b)).map(([b, g]) => [b, basisFold(g)]));

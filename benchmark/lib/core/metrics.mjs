@@ -9,13 +9,14 @@
 //
 // 0.5.0 adds, from the same facts: each row's and each model's reliability (pass@1, pass@k, median cost and minutes --
 // rates.mjs), the tool-call failures per suite and per model (tools.mjs), each Orbit arm's overhead over the `none` arm,
-// and `by` -- revision, model, arm -- each a breakdown of its own.
+// and `by` -- revision, model, arm -- each a breakdown of its own. A model is counted at the effort its host was asked to
+// run at (`config.effort`, null for the host's own default): two efforts of one model are two hosts, as two models are.
 //
 //   runFacts({ manifest, ending, report }) -> facts
 //   metricsOf(runs, o = { scope, controls, k, by: [revision|model|arm] }) -> { runs, bases, reproducibility, verifier,
 //                                                    reliability, tools, overhead, history?, revisions?, byModel?, byArm? }
 //   METRICS -> rows { id, says, over(facts) -> { numerator, denominator, excluded } }      BY_NAMES
-import { groupBy, overheadOf, ratesOf, revisionsOf } from "./rates.mjs";
+import { groupBy, hostOfRun, overheadOf, ratesOf, revisionsOf } from "./rates.mjs";
 import { toolsFoldOf } from "./tools.mjs";
 
 const UNKNOWN = "unknown";
@@ -49,7 +50,7 @@ const reportedOf = (m, r) => ((hosts) => ({ modelSaid: m.config?.model ?? hosts.
 export function runFacts({ manifest: m, ending: e, report: r }) {
   const outcome = e?.outcome ?? null;
   const kind = m.benchmark?.kind ?? "source";
-  return { run: m.run, at: m.at ?? null, kind, case: m.benchmark?.case ?? null, suite: m.benchmark?.suite ?? null, caseDigest: m.benchmark?.digest ?? null, variant: m.benchmark?.variant ?? null, subject: m.subject?.digest ?? null, commit: m.source?.commit ?? null, model: m.config?.model ?? null, host: m.config?.host ?? null, basis: r?.hostBasis ?? basisOf(m), outcome, excluded: !outcome ? "unfinished" : EXCLUDED[outcome] ?? null, verified: (VERIFIED[kind] ?? []).includes(outcome), autonomousAxis: r?.axes?.autonomous?.value ?? null, rounds: (r?.rounds ?? []).length, regressedRounds: (r?.rounds ?? []).filter((x) => (x.decided?.regressed ?? []).length > 0).length, evaluatedRounds: (r?.rounds ?? []).filter((x) => x.decided).length, durationMs: durationOf(m, e), intervened: intervenedOf(r, e), judged: r?.judged ?? null, task: kind === "qa" || m.config?.repair === true, arm: m.config?.arm ?? "release", repeat: m.config?.repeat?.id ?? null, tools: r?.tools ?? null, ...reportedOf(m, r) };
+  return { run: m.run, at: m.at ?? null, kind, case: m.benchmark?.case ?? null, suite: m.benchmark?.suite ?? null, caseDigest: m.benchmark?.digest ?? null, variant: m.benchmark?.variant ?? null, subject: m.subject?.digest ?? null, commit: m.source?.commit ?? null, model: m.config?.model ?? null, effort: m.config?.effort ?? null, host: m.config?.host ?? null, basis: r?.hostBasis ?? basisOf(m), outcome, excluded: !outcome ? "unfinished" : EXCLUDED[outcome] ?? null, verified: (VERIFIED[kind] ?? []).includes(outcome), autonomousAxis: r?.axes?.autonomous?.value ?? null, rounds: (r?.rounds ?? []).length, regressedRounds: (r?.rounds ?? []).filter((x) => (x.decided?.regressed ?? []).length > 0).length, evaluatedRounds: (r?.rounds ?? []).filter((x) => x.decided).length, durationMs: durationOf(m, e), intervened: intervenedOf(r, e), judged: r?.judged ?? null, task: kind === "qa" || m.config?.repair === true, arm: m.config?.arm ?? "release", repeat: m.config?.repeat?.id ?? null, tools: r?.tools ?? null, ...reportedOf(m, r) };
 }
 
 // ---- the rows -------------------------------------------------------------------------------------------------------------
@@ -92,8 +93,9 @@ const basisMetrics = (fs) => Object.fromEntries(METRICS.map((m) => [m.id, { ...v
 
 // ---- reproducibility, the verifier's own controls, and history by revision -------------------------------------------------
 
-// Who carried a run is part of what it is: two scripted controls of one case are two hosts, as two models are.
-const groupKey = (f) => [f.case, f.caseDigest, f.variant, f.subject, f.basis, f.host ?? "-", f.model ?? "-"].join("\u0000");
+// Who carried a run is part of what it is: two scripted controls of one case are two hosts, as two models are -- and two
+// efforts of one model.
+const groupKey = (f) => [f.case, f.caseDigest, f.variant, f.subject, f.basis, f.host ?? "-", f.model ?? "-", f.effort ?? "-"].join("\u0000");
 
 const groupsOf = (fs) => Object.values(counted(fs).reduce((m, f) => ({ ...m, [groupKey(f)]: [...(m[groupKey(f)] ?? []), f] }), {})).filter((g) => g.length > 1);
 
@@ -113,14 +115,15 @@ const BASES = ["none", "scripted", "session", "coding-host"];
 
 const basesOf = (fs) => Object.fromEntries(BASES.map((b) => [b, basisMetrics(fs.filter((f) => f.basis === b))]));
 
-// Every metric again, one set per value of a dimension -- per model, per arm -- the bases still apart within each.
-const splitOf = (fs, keyOf, name) => groupBy(fs, keyOf).map((g) => ({ [name]: keyOf(g[0]), runs: g.length, bases: basesOf(g) })).sort((a, b) => String(a[name]).localeCompare(String(b[name])));
+// Every metric again, one set per value of a dimension -- per model at its effort, per arm -- the bases still apart
+// within each, each set named by what it is (`namedOf`).
+const splitOf = (fs, keyOf, namedOf) => groupBy(fs, keyOf).sort((a, b) => String(keyOf(a[0])).localeCompare(String(keyOf(b[0])))).map((g) => ({ ...namedOf(g[0]), runs: g.length, bases: basesOf(g) }));
 
 // What `--by` may break the runs down by (0.5.0 adds model and arm): each a part of the answer of its own.
 const BY = {
   revision: (fs, o) => ({ history: historyOf(fs), revisions: revisionsOf(fs, o) }),
-  model: (fs) => ({ byModel: splitOf(fs, (f) => f.modelSaid, "model") }),
-  arm: (fs) => ({ byArm: splitOf(fs, (f) => f.arm, "arm") }),
+  model: (fs) => ({ byModel: splitOf(fs, hostOfRun, (f) => ({ model: f.modelSaid, effort: f.effort ?? null })) }),
+  arm: (fs) => ({ byArm: splitOf(fs, (f) => f.arm, (f) => ({ arm: f.arm })) }),
 };
 
 export const BY_NAMES = Object.keys(BY);

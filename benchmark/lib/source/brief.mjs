@@ -88,7 +88,7 @@ const promptFor = (ctx, k, state, b) => (noOrbit(ctx) ? plainPromptOf(k, testDir
 
 export function briefOf(ctx, k, state) {
   const b = briefKind(ctx);
-  return { md: b.md(ctx, k, state), json: { round: k, kind: ctx.case.kind, host: ctx.host ?? null, arm: ctx.arm ?? "release", script: scriptOf(ctx), plugin: noOrbit(ctx) ? null : b.plugin, goal: ctx.case.kind === "engineering" ? requestOf(ctx) : null, task: state.engTask ?? null, objective: objectiveOf(ctx.case), prompt: promptFor(ctx, k, state, b), model: ctx.model ?? null, usd: state.left.usd, minutes: state.left.engineeringMinutes, attempts: ctx.case.limits.engineering.attempts, actions: ctx.case.limits.engineering.actions, allowedHost: ctx.allowedHosts[0], outputBytes: ctx.case.limits.runner.outputMb * 1024 * 1024 } };
+  return { md: b.md(ctx, k, state), json: { round: k, kind: ctx.case.kind, host: ctx.host ?? null, arm: ctx.arm ?? "release", script: scriptOf(ctx), plugin: noOrbit(ctx) ? null : b.plugin, goal: ctx.case.kind === "engineering" ? requestOf(ctx) : null, task: state.engTask ?? null, objective: objectiveOf(ctx.case), prompt: promptFor(ctx, k, state, b), model: ctx.model ?? null, effort: ctx.effort ?? null, usd: state.left.usd, minutes: state.left.engineeringMinutes, attempts: ctx.case.limits.engineering.attempts, actions: ctx.case.limits.engineering.actions, allowedHost: ctx.allowedHosts[0], outputBytes: ctx.case.limits.runner.outputMb * 1024 * 1024 } };
 }
 
 function repairMd(ctx, k, state) {

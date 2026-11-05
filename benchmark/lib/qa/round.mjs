@@ -25,7 +25,7 @@ const briefMd = (ctx, k, s) => [readFileSync(join(ctx.frozenCase, ctx.case.reque
 
 function qaBriefWritten(ctx, k, s) {
   const dir = fresh(ctx, "rounds", String(k), "brief");
-  writeFileSync(join(dir, "brief.json"), `${JSON.stringify({ kind: "qa", round: k, investigation: s.investigation, prompt: qaPromptOf(s.investigation), model: ctx.model ?? null, usd: ctx.limits.usd, allowedHost: ctx.allowedHosts[0], outputBytes: ctx.case.limits.runner.outputMb * 1024 * 1024 }, null, 2)}\n`);
+  writeFileSync(join(dir, "brief.json"), `${JSON.stringify({ kind: "qa", round: k, investigation: s.investigation, prompt: qaPromptOf(s.investigation), model: ctx.model ?? null, effort: ctx.effort ?? null, usd: ctx.limits.usd, allowedHost: ctx.allowedHosts[0], outputBytes: ctx.case.limits.runner.outputMb * 1024 * 1024 }, null, 2)}\n`);
   writeFileSync(join(dir, "brief.md"), briefMd(ctx, k, s));
   return dir;
 }

@@ -14,14 +14,16 @@
 //                                     the images, built once from benchmark/images/ and reused by id; a CA bundle for a
 //                                     network that inspects TLS is a build secret, never written into the image
 //   node benchmark/run.mjs list       the suites, their cases, what each runs on, and their controls
-//   node benchmark/run.mjs doctor [--preflight] [--host [--model=<id>] [--credential=<NAME>]]
+//   node benchmark/run.mjs doctor [--preflight] [--host [--model=<id>] [--effort=<level>] [--credential=<NAME>]]
 //                                     Docker, the images, a credential by name; --preflight runs the subject's own
 //                                     declared checks (npm run lint, npm run test) in the runner container, no host;
 //                                     --host asks the runner image's Claude Code one question through the egress proxy
-//                                     (no tool, no plugin, a budget of a few cents): whether it starts, which version and
-//                                     model it says it is, whether the credential is accepted -- a code when not
+//                                     (no tool, no plugin, a budget of a few cents), with the model and effort a run
+//                                     would hand it: whether it starts, which version and model it says it is, whether
+//                                     the credential is accepted -- a code when not
 //   node benchmark/run.mjs run <case> [--variant=real|controlled-fault] [--repair] [--source=head|worktree]
-//                                     [--seed=<n>] [--model=<id>] [--rounds=<n>] [--minutes=<n>] [--usd=<n>]
+//                                     [--seed=<n>] [--model=<id>] [--effort=low|medium|high|xhigh|max]
+//                                     [--rounds=<n>] [--minutes=<n>] [--usd=<n>]
 //                                     [--credential=<NAME>] [--ca-file=<pem>] [--host=session:<label>]
 //                                     [--tree=<dir>] [--run-id=<bnr-…>] [--parent=<tsk-…>]
 //                                     [--repeat=<n>] [--arm=none|baseline|release|all]
@@ -41,9 +43,12 @@
 //                                     trail; baseline: the plugin frozen from the case's or suite's baselinePlugin
 //                                     revision, v0.4.0 by default; release: the run's own source, the default), or with
 //                                     all on each in turn -- the same model, inputs, image and limits
+//                                     --effort hands the coding host Claude Code's --effort beside --model (EFFORTS);
+//                                     the manifest, the report and a verified candidate's host say it, and metrics
+//                                     count a model at each effort as a host of its own; with none, the host's default
 //   node benchmark/run.mjs run --like=<bnr-…> [--repeat=<n>]
-//                                     again: the same case, variant, host, arm, source mode, seed, limits and images, a
-//                                     new run (n new runs, one repeat group)
+//                                     again: the same case, variant, host, model, effort, arm, source mode, seed, limits
+//                                     and images, a new run (n new runs, one repeat group)
 //   node benchmark/run.mjs status <bnr-…>
 //   node benchmark/run.mjs report <bnr-…>
 //                                     where a run stands; its report (written into its room as report.md and .json)
@@ -72,11 +77,12 @@
 //                                     self-healing, detection, false alarms, regressions, interventions, rounds, time
 //                                     and REPORTED cost per verified outcome, reproducibility, the verifier's own
 //                                     controls -- apart by host basis (none, scripted, coding-host); per row (case,
-//                                     variant, arm, basis, model) and per model, pass@1, pass@k (k 1..10, default 3),
-//                                     the median cost and minutes; tool-call failures per suite and per model (per tool,
-//                                     per relay subcommand, per PASS, per sandbox step); each Orbit arm's overhead over
-//                                     the none arm. --by=revision adds each case's outcome and rates by source commit,
-//                                     --by=model and --by=arm every metric again per model or per arm
+//                                     variant, arm, basis, model and effort) and per model at its effort, pass@1, pass@k
+//                                     (k 1..10, default 3), the median cost and minutes; tool-call failures per suite and
+//                                     per model at its effort (per tool, per relay subcommand, per PASS, per sandbox
+//                                     step); each Orbit arm's overhead over the none arm. --by=revision adds each case's
+//                                     outcome and rates by source commit, --by=model and --by=arm every metric again per
+//                                     model at its effort or per arm
 //   node benchmark/run.mjs reliability [--revision=<commit>] [--suite=<suite>] [--case=<case>] [--since=<iso date>]
 //                                      [--k=<n>]
 //                                     the reliability report a release quotes, folded from the kept runs like metrics:

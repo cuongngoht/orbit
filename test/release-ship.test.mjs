@@ -716,6 +716,89 @@ test("--precheck: every model-carried row held once is PRECHECK_HELD, exit 0; wh
   assert.equal(w.door.tasks.size, before, "refused before a task");
 });
 
+// ---- the effort every model-carried row runs at (0.5.0: the owner's decision, --model=claude-sonnet-5-5 --effort=medium) --
+
+const effortFlag = (c) => c.args.find((a) => a.startsWith("--effort=")) ?? null;
+
+test("--effort: the host check and every model-carried row ask the host at the ship's effort -- evidence.json says it beside the model, and --evidence reads it again from every room", async (t) => {
+  const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched } });
+  const { ctx, result } = await shipped(w, { model: "claude-sonnet-5-5", effort: "medium" });
+  assert.deepEqual([result.outcome, result.exit], ["SHIPPABLE", 0], result.summary);
+  assert.deepEqual(ran(w, (c) => ["autonomous", "selfHealing"].includes(c.kind)).map(effortFlag), ["--effort=medium", "--effort=medium"]);
+  assert.deepEqual(ran(w, (c) => c.kind === "verify").map(effortFlag), [null, null], "a verification hands no host anything");
+  assert.ok(w.calls.find((c) => c.verb === "doctor" && c.args.includes("--host")).args.includes("--effort=medium"), "the host is asked at the very effort its rows run at");
+  const ev = evidenceOf(ctx);
+  assert.deepEqual([ev.host.effort, ev.host.models], ["medium", ["claude-test"]], "beside the model");
+  assert.match(saidStatus(await statusOf(w.world, ctx.ship.id)), /cycle 1; model claude-sonnet-5-5, effort medium/, "--status says what the ship asks its hosts");
+  assert.deepEqual(ev.rows.filter((r) => ["QA-001:autonomous", "CALC-001:self-healing"].includes(r.id)).map((r) => [r.id, r.effort]), [["QA-001:autonomous", "medium"], ["CALC-001:self-healing", "medium"]]);
+  assert.deepEqual(await publishable(w), [true, "PUBLISHABLE"]);
+  const manifest = join(w.store, "benchmark", ev.rows.find((r) => r.id === "QA-001:autonomous").run, "manifest.json");
+  const m = JSON.parse(readFileSync(manifest, "utf8"));
+  writeFileSync(manifest, JSON.stringify({ ...m, config: { ...m.config, effort: "high" } }));
+  assert.deepEqual(await publishable(w), [false, "UNTRUSTED"], "a room that no longer says the effort the evidence says");
+});
+
+test("--effort: a model-carried row whose run ran at another effort than the ship asked is never its evidence -- NOT SHIPPABLE", async (t) => {
+  const effortOf = (c, args) => (c === "QA-001" ? "high" : args.find((a) => a.startsWith("--effort="))?.slice("--effort=".length) ?? null);
+  const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, effortOf } });
+  const { ctx, result } = await shipped(w, { effort: "medium" });
+  assert.deepEqual([result.outcome, result.exit], ["NOT_SHIPPABLE", 2], result.summary);
+  assert.match(result.summary, /QA-001:autonomous cannot be evidence: the run's host ran at effort high, and this ship asked medium/);
+  assert.equal(existsSync(ctx.room.at("evidence.json")), false);
+});
+
+test("--effort is held before anything starts: a level there is not is refused with no task, and a resume never moves a ship's effort", async (t) => {
+  const w = shipWorldOf(t, { env: { ANTHROPIC_API_KEY: "" } });
+  assert.throws(() => begunShip(w.world, { ...OPTS, effort: "turbo" }), /--effort is one of low, medium, high, xhigh, max, not turbo/);
+  assert.equal(w.door.tasks.size, 0, "refused before a task");
+  const { ctx, result } = await shipped(w, { effort: "medium" });
+  assert.equal(result.outcome, "BLOCKED", "no credential: blocked at preflight");
+  const before = w.door.show(ctx.task).actions.length;
+  assert.throws(() => resumedShip(w.world, ctx.ship.id, { effort: "high", limits: {} }), /--effort: shp-[0-9a-f]+ began at effort medium, and every row it holds ran there/);
+  assert.deepEqual([w.door.show(ctx.task).actions.length, w.door.show(ctx.task).lifecycle], [before, "BLOCKED"], "nothing journaled: a refused resume leaves a blocked ship blocked");
+  assert.equal(resumedShip(w.world, ctx.ship.id, { limits: {} }).options.effort, "medium", "a resume naming none keeps the effort the ship began with");
+});
+
+test("--precheck runs every model-carried row at the effort it was asked, as the ship would", async (t) => {
+  const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched } });
+  const { result } = await shipped(w, { precheck: true, limits: {}, effort: "medium" });
+  assert.equal(result.outcome, "PRECHECK_HELD", result.summary);
+  assert.deepEqual(ran(w, () => true).map(effortFlag), ["--effort=medium", "--effort=medium"]);
+});
+
+// ---- the reliability report beside the evidence (0.5.0, backlog B2) ------------------------------------------------------
+
+test("SHIPPABLE keeps the benchmark's reliability report of the release commit next to evidence.json -- named by the result and --status, and never a gate", async (t) => {
+  const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched } });
+  const { ctx, result } = await shipped(w);
+  assert.deepEqual([result.outcome, result.exit], ["SHIPPABLE", 0], result.summary);
+  const asked = w.calls.filter((c) => c.verb === "reliability");
+  assert.deepEqual(asked.map((c) => c.args), [["reliability", `--revision=${evidenceOf(ctx).source.commit}`]], "asked once, as a command, for the release commit's revision");
+  const kept = JSON.parse(readFileSync(ctx.room.at("reliability.json"), "utf8"));
+  assert.deepEqual([kept.kind, kept.scope.revision], ["orbit.benchmark.reliability/v1", evidenceOf(ctx).source.commit], "as the benchmark answered it");
+  assert.equal(result.reliability.file, ctx.room.at("reliability.json"));
+  assert.match(saidResult(result), /reliability .*reliability\.json -- 1 kept run\(s\) of [0-9a-f]{12}, every one that froze it -- quoted, never a gate/);
+  const s = await statusOf(w.world, ctx.ship.id);
+  assert.equal(s.reliability.file, ctx.room.at("reliability.json"));
+  assert.match(saidStatus(s), /reliability .*reliability\.json/);
+  assert.ok(!JSON.stringify(evidenceOf(ctx)).includes("reliability"), "the evidence names nothing of it: the publish gate never reads it");
+  assert.deepEqual(await publishable(w), [true, "PUBLISHABLE"]);
+});
+
+test("a reliability report the benchmark could not give is said, and the ship ships as its evidence says; a precheck keeps none", async (t) => {
+  const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, reliability: () => ({ code: 2, json: null, err: "--revision is a commit id" }) } });
+  const { ctx, result } = await shipped(w);
+  assert.deepEqual([result.outcome, result.exit, existsSync(ctx.room.at("reliability.json"))], ["SHIPPABLE", 0, false], result.summary);
+  assert.match(result.reliability.says, /not written: the benchmark gave no reliability report \(--revision is a commit id\)/);
+  assert.match(saidStatus(await statusOf(w.world, ctx.ship.id)), /reliability not written -- not written: the benchmark gave no reliability report/);
+  assert.deepEqual(await publishable(w), [true, "PUBLISHABLE"], "never a gate");
+  const throwing = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, reliability: () => { throw new Error("the port fell over"); } } });
+  assert.equal((await shipped(throwing)).result.outcome, "SHIPPABLE", "not even a port that throws stops a ship over it");
+  const pre = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched } });
+  const p = await shipped(pre, { precheck: true, limits: {} });
+  assert.deepEqual([p.result.outcome, pre.calls.some((c) => c.verb === "reliability"), existsSync(p.ctx.room.at("reliability.json"))], ["PRECHECK_HELD", false, false], "a precheck qualifies nothing, and keeps no report of a release");
+});
+
 test("--status names a repair the ship is making, diagnosed from each case's own declaration as the ship diagnoses it", async (t) => {
   const w = shipWorldOf(t, { play: { repair: (c, tree) => (adds(tree) ? { outcome: "PASS", summary: "PASS" } : { outcome: "BLOCKED", summary: "BLOCKED — the runner could not start", class: "ENVIRONMENT_BLOCKED" }) } });
   const { ctx, result } = await shipped(w);

@@ -133,3 +133,20 @@ again keeps its value (one set when the ship began, a precheck's own), never the
   bound it reports and the ship never verifies.
 - A recorded row that never holds still gates nothing. Moving it to required is a person's change to the policy, read
   in review, never the ship's.
+
+## Note, 2026-11-05 (0.5.0) — the effort, and the reliability report beside the evidence
+
+- **The effort is part of the host.** The owner decided that 0.5.0's model-carried rows run on Sonnet 5.5 at medium
+  effort (backlog open question 3). `ship.mjs --effort=<level>` (the benchmark's own `EFFORTS`, held equal to the ship's
+  by a test, and refused before a ship starts a task) is handed to every model-carried row, every repair and the host
+  check, beside `--model`. It is frozen in the ship's manifest when the ship begins: a resume naming another is refused
+  before anything is written. A model-carried row, or a repair, whose run's own manifest says another effort is
+  `WRONG_EFFORT` (`ROW_VERDICT`, `REPAIR_CHECK`): never that ship's evidence, whatever it came to -- after `LEAK`, which
+  it never hides. `evidence.json` says the effort asked (`host.effort`, beside `host.models`) and each row's; `--evidence`
+  reads every model-carried row's room again for it, and a row that held must have run at the ship's. A ship that asks
+  none holds rows that asked none, as every ship before 0.5.0 did.
+- **The reliability report.** SHIPPABLE asks the benchmark for `reliability --revision=<release commit>` -- as a
+  command, like every other -- and keeps its answer as `reliability.json` beside `evidence.json`; the result and
+  `--status` name it, and the release notes quote it (backlog B2). It is never a gate: nothing reads it to decide, the
+  evidence names nothing of it, and a ship whose benchmark could not give one ships as its evidence says and says why. A
+  precheck keeps none.

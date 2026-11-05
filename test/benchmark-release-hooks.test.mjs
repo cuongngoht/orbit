@@ -10,7 +10,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { COMMANDS } from "../benchmark/lib/commands.mjs";
+import { COMMANDS, EFFORTS } from "../benchmark/lib/commands.mjs";
+import { EFFORTS as SHIP_EFFORTS } from "../skills/orbit-release/ship/preflight.mjs";
 import { samePath } from "../src/frontend/local-clones.mjs";
 import { frozenRun, withSpec } from "../benchmark/lib/core/context.mjs";
 import { PROBE_PROMPT } from "../benchmark/lib/core/probe.mjs";
@@ -119,6 +120,16 @@ test("controls --run-id names the set's room before it starts, and keeps each co
   await assert.rejects(async () => COMMANDS.controls.run(h, ["CALC-001", `--run-id=${SET}`]), /already kept/, "one id, one set");
 });
 
+test("a control set's manifest names its suite, so metrics --suite counts its rows with the suite's runs", async (t) => {
+  const w = worldOf(t, FILES);
+  const h = harnessOf(w, dockerDouble(NEVER));
+  await COMMANDS.controls.run(h, ["CALC-001", `--run-id=${SET}`]);
+  assert.deepEqual(((b) => [b.suite, b.suiteVersion, b.case])(docRead(roomOf(w.storeRoot, SET), "manifest.json").benchmark), ["fixture", "1.0.0", "CALC-001"]);
+  const m = COMMANDS.metrics.run(h, ["--suite=fixture"]);
+  assert.deepEqual([m.verifier.denominator, m.verifier.numerator], [3, 2], "clean and planted matched; stale drifted -- all three counted in the suite");
+  assert.equal(COMMANDS.metrics.run(h, ["--suite=another"]).verifier.denominator, 0);
+});
+
 test("resume carries a control set a restart cut short on from its room: what it kept stands, only the rest runs", async (t) => {
   const w = worldOf(t, FILES);
   const h = harnessOf(w, dockerDouble(NEVER));
@@ -199,6 +210,23 @@ test("doctor --host: the runner image's Claude Code answers one question through
   assert.ok(seen[0].env.includes("ANTHROPIC_API_KEY") && seen[0].network.startsWith("orbit-bench-"), "the credential by name, on the run's own network");
   assert.ok(!seen[0].mounts.includes("/work/store") && !seen[0].mounts.includes("/work/orbit"), "no store and no plugin");
   assert.equal(docRead(roomOf(w.storeRoot, r.evidence.split(/[\\/]/).at(-1)), "manifest.json").kind, "probe");
+});
+
+// The ship never imports the benchmark, so it says the levels again: one list, said twice, held equal here -- a level the
+// ship refuses is one the benchmark would refuse, and the ship lets through none the benchmark would.
+test("the efforts a ship lets through are exactly the benchmark's", () => {
+  assert.deepEqual(SHIP_EFFORTS, EFFORTS);
+});
+
+test("doctor --host asks the host with the model and the effort a run would hand it, and says the effort it asked", async (t) => {
+  const w = worldOf(t, FILES);
+  const seen = [];
+  const r = (await COMMANDS.doctor.run({ ...harnessOf(w, labelled(dockerDouble(probing(seen)), "2.1.314")), env: w.env, taskEnv: w.env }, ["--host", "--model=claude-sonnet-5-5", "--effort=medium"])).host;
+  assert.deepEqual([r.code, r.effort, seen[0].brief.model, seen[0].brief.effort], ["OK", "medium", "claude-sonnet-5-5", "medium"]);
+  assert.match(r.says, /at effort medium/);
+  const argv = hostCommand(seen[0].brief)[1];
+  assert.deepEqual(argv.slice(argv.indexOf("--model"), argv.indexOf("--model") + 4), ["--model", "claude-sonnet-5-5", "--effort", "medium"]);
+  await assert.rejects(async () => COMMANDS.doctor.run({ ...harnessOf(w, labelled(dockerDouble(probing(seen)), "2.1.314")), env: w.env, taskEnv: w.env }, ["--host", "--effort=turbo"]), /--effort is one of/);
 });
 
 test("doctor --host hands the probe's containers a Docker client bound to the probe's own scratch room", async (t) => {

@@ -6,9 +6,10 @@
 // matches.
 //
 //   argvOf(row, at) -> [args]          rowVerdict(f) -> verdict          controlVerdict(f) -> verdict
-//   repairVerdict(f) -> verdict        identityOf(room) -> { basis, cli, model, costUsd, rounds, seconds, signature }
+//   repairVerdict(f) -> verdict        identityOf(room) -> { basis, cli, model, effort, costUsd, rounds, seconds,
+//                                                            signature }
 //   interruptedOf(report) -> boolean   (a round the controller never saw end, read back)
-//   verdict: { state, code, says, outcome, cause, class, run, task, basis, cli, model, costUsd, costBasis, ... }
+//   verdict: { state, code, says, outcome, cause, class, run, task, basis, cli, model, effort, costUsd, costBasis, ... }
 import { samePath } from "../../../src/frontend/local-clones.mjs";
 import { matchesAny } from "./policy.mjs";
 
@@ -16,7 +17,7 @@ import { matchesAny } from "./policy.mjs";
 
 const common = (at) => ["--source=head", `--tree=${at.tree}`, `--parent=${at.parent}`];
 
-const hostFlags = (at) => [`--usd=${at.usd}`, ...(at.model ? [`--model=${at.model}`] : []), ...(at.credential ? [`--credential=${at.credential}`] : []), ...(at.caFile ? [`--ca-file=${at.caFile}`] : [])];
+const hostFlags = (at) => [`--usd=${at.usd}`, ...(at.model ? [`--model=${at.model}`] : []), ...(at.effort ? [`--effort=${at.effort}`] : []), ...(at.credential ? [`--credential=${at.credential}`] : []), ...(at.caFile ? [`--ca-file=${at.caFile}`] : [])];
 
 // A QA case plants its own variant; any other case is told which.
 const variantFlag = (row) => (row.variant && row.kind !== "qa" ? [`--variant=${row.variant}`] : []);
@@ -41,12 +42,22 @@ const reportedCost = (report) => (typeof report?.totals?.costUsd === "number" ? 
 
 const secondsOf = (m, e) => (m?.at && e?.at ? Math.round((Date.parse(e.at) - Date.parse(m.at)) / 1000) : null);
 
+// The effort a run's host was asked to run at (0.5.0), as its own manifest says the benchmark asked it -- no stream
+// reports one -- null when none was (the host's own default).
+export const effortOf = (room) => room?.manifest?.config?.effort ?? null;
+
 export function identityOf(room) {
   const hosts = hostsOf(room.report);
   const cost = reportedCost(room.report);
   const versions = [...new Set(hosts.map((h) => h.version).filter(Boolean))];
-  return { basis: room.report?.hostBasis ?? null, cli: versions.length ? versions.join(",") : null, image: room.manifest?.images?.claudeCode ?? null, model: hosts.map((h) => h.model).find(Boolean) ?? null, costUsd: cost, costBasis: cost === null ? null : "REPORTED", rounds: hosts.length, seconds: secondsOf(room.manifest, room.ending), signature: (room.report?.attempts ?? []).map((a) => a.signature).filter(Boolean).at(-1) ?? null };
+  return { basis: room.report?.hostBasis ?? null, cli: versions.length ? versions.join(",") : null, image: room.manifest?.images?.claudeCode ?? null, model: hosts.map((h) => h.model).find(Boolean) ?? null, effort: effortOf(room), costUsd: cost, costBasis: cost === null ? null : "REPORTED", rounds: hosts.length, seconds: secondsOf(room.manifest, room.ending), signature: (room.report?.attempts ?? []).map((a) => a.signature).filter(Boolean).at(-1) ?? null };
 }
+
+// A run of a model-carried row at another effort than the ship asked (`f.ship.effort`) is about another host: never
+// this ship's evidence, whatever it came to.
+const otherEffort = (f) => effortOf(f.room) !== (f.ship.effort ?? null);
+
+const effortSays = (f) => `the run's host ran at effort ${effortOf(f.room) ?? "its own default"}, and this ship asked ${f.ship.effort ?? "none (the host's own default)"}: a run at another effort is evidence about another host, never this ship's`;
 
 // A host the release accepts: the coding host, which said which Claude Code it ran -- the very one the image pins --
 // and which model.
@@ -72,7 +83,7 @@ const outcomeOf = (f) => f.room?.ending?.outcome ?? f.answer?.json?.outcome ?? n
 const PERSON_HELD = ["PAUSED", "CANCELLED"];
 
 // f: { row, answer: { code, json, err }, room: { manifest, ending, report }, cycle: { commit, tree, digest }, ship: {
-// harness, caseDigest } }
+// harness, caseDigest, effort } }
 export const ROW_VERDICT = [
   { code: "UNSETTLED", state: "UNSETTLED", when: (f) => !f.room?.ending && !f.answer?.json && f.answer?.code !== 2 && f.answer?.code !== 3, says: () => "the run did not end: it is read back, never sent again" },
   { code: "REFUSED", state: "REFUSED", when: (f) => (!f.room?.ending && f.answer?.code === 2) || ["BENCHMARK_INVALID", "REFUSED"].includes(outcomeOf(f)), says: (f) => f.room?.ending?.summary ?? f.answer?.err ?? "the benchmark refused the run" },
@@ -82,6 +93,8 @@ export const ROW_VERDICT = [
   { code: "HARNESS_MOVED", state: "UNTRUSTED", when: (f) => f.ship.harness !== null && f.room?.manifest?.benchmark?.harness !== f.ship.harness, says: () => "another harness judged this run than the one this ship began with" },
   { code: "CASE_MOVED", state: "UNTRUSTED", when: (f) => f.ship.caseDigest !== null && f.room?.manifest?.benchmark?.digest !== f.ship.caseDigest, says: () => "the case this run froze is not the case this ship first ran" },
   { code: "LEAK", state: "UNTRUSTED", when: (f) => (f.room?.report?.leaks ?? []).length > 0, says: (f) => `the credential was found in ${f.room.report.leaks.length} file(s) of the run's room, and masked: a person looks before a release` },
+  // 0.5.0: the effort is part of the host. After LEAK, which no row's being recorded or untrusted ever hides.
+  { code: "WRONG_EFFORT", state: "UNTRUSTED", when: (f) => f.row.autonomous && otherEffort(f), says: effortSays },
   // A model-carried run a restart interrupted lost its own evidence: what its host was is unknown, so whatever it came
   // to is never evidence -- and never the model's miss either, so it is run again, fresh (DIAGNOSE). A run that says
   // another host is WRONG_HOST below, interrupted or not.
@@ -142,6 +155,7 @@ const TEST_PATH = /^((satellite|control-server)\/)?test\//;
 // own repair is; never the model's miss, so it spends no repair attempt and runs again as a new repair (machine.mjs).
 export const REPAIR_CHECK = [
   ...ROW_VERDICT.slice(0, 7),
+  { code: "WRONG_EFFORT", state: "UNTRUSTED", when: otherEffort, says: effortSays },
   { code: "INTERRUPTED", state: "INTERRUPTED", when: (f) => interruptedOf(f.room?.report) && !anotherHost(f.room), says: (f) => `a round of the repair was interrupted before the controller saw it end, and was read back (${outcomeOf(f) ?? "no outcome"}): no host identity of its own survives it, so its candidate is never integrated -- a new repair runs, spending no attempt` },
   { code: "NOT_VERIFIED", state: "REJECTED", when: (f) => outcomeOf(f) !== "REPAIRED_VERIFIED", says: (f) => f.room?.ending?.summary ?? `${outcomeOf(f)}: the verifier did not pass a candidate` },
   { code: "NO_VERIFIED_RECORD", state: "REFUSED_BY_SHIP", when: (f) => !f.verified || f.verified.run !== f.room.manifest.run || f.verified.case?.id !== f.row.case || f.verified.variant !== "real" || f.verified.source?.commit !== f.cycle.commit, says: () => "verified.json is missing, or names another run, case, variant or source than this repair" },

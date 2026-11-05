@@ -41,6 +41,7 @@ design, and both halves below exist to keep it.
 
 ```bash
 node skills/orbit-release/ship.mjs                  # the autonomous ship: every case in Docker, Claude Code carrying the rest
+node skills/orbit-release/ship.mjs --model=claude-sonnet-5-5 --effort=medium   # 0.5.0: the host every model row runs on
 node skills/orbit-release/ship.mjs --no-repair      # verify only: a failure stands, nothing is repaired
 node skills/orbit-release/ship.mjs --precheck       # BEFORE a ship: only the model-carried rows, each once, no fail-fast
 node skills/orbit-release/ship.mjs --resume=shp-…   # carry an interrupted, blocked or held ship on, from its journal
@@ -75,7 +76,7 @@ an endpoint the release policy names; behind a network that inspects TLS, give `
 | REPAIR | `run.mjs run <case> --repair`: Claude Code in the runner drives one Orbit engineering task; the benchmark's verifier judges it | FIXING |
 | INTEGRATE | the verified patch held again, then applied in the ship's OWN workspace and committed there -- never your checkout | REVIEWING |
 | REBUILD · FULL_RETEST | a new release commit is a new cycle: everything again, model-carried rows included | BUILDING · REGRESSION |
-| SHIPPABLE | `evidence.json`, and -- when repairs were integrated -- `release.patch` and `release.bundle` for you to apply | -- |
+| SHIPPABLE | `evidence.json` and, beside it, `reliability.json` (the benchmark's reliability report of the release commit -- quoted, never a gate); and -- when repairs were integrated -- `release.patch` and `release.bundle` for you to apply | -- |
 
 **The catalog** (`ship/policy.json`) names all 46 cases of the nine suites, held to `benchmark/suites/` both ways by
 `test/benchmark-release-policy.test.mjs` -- which carries the harness's name because it reads the harness, so the
@@ -89,6 +90,16 @@ never saw end, read back by `run.mjs resume` and said so by the run's own report
 is never evidence either, whatever it came to; it is not the model's miss, so the row is `INTERRUPTED` and runs again as
 a new run (below). A run that says another host stays `WRONG_HOST`, interrupted or not, and is never run again. The
 same holds for a repair a restart cut short: `INTERRUPTED`, never integrated, and it spends no repair attempt.
+
+**The model and its effort** (0.5.0). `--model=<id>` and `--effort=low|medium|high|xhigh|max` name the host every
+model-carried row, every repair and the host check run on -- the owner's decision for 0.5.0 is `--model=claude-sonnet-5-5
+--effort=medium`, for the precheck and the ship alike. The effort goes to the runner's Claude Code as its own `--effort`,
+beside `--model`; it is checked against the levels the benchmark takes before a ship starts a task, frozen in the
+ship's manifest when it begins (a `--resume` naming another effort is refused before anything is written; one naming
+none keeps it), and recorded in `evidence.json` -- `host.effort` beside `host.models`, and each row's `effort` as its
+run's own manifest says it. A model-carried row (or a repair) whose run ran at another effort than the ship asked is
+`WRONG_EFFORT` and never that ship's evidence, whatever it came to; `--evidence` reads every model-carried row's room
+again for it. With no `--effort`, every host runs at its own default and every row must say none.
 
 **Recorded rows** (ADR 0051). `policy.json` `recorded` names suites and cases whose model-carried rows a release RECORDS
 and never requires -- where a new suite's model rows start, until the promotion rule moves them (empty today: every one
@@ -115,8 +126,17 @@ in the ship's workspace: apply it with `git am <room>/release.patch` (or `git fe
 and ask `ship.mjs --evidence` -- it says PUBLISHABLE only when your HEAD's tree is the qualified tree, nothing is dirty,
 the protected paths and the policy are as they were, the benchmark lists every case the policy names (`CATALOG_UNREAD`
 when it cannot be read: a row the gate cannot see is never one it passes), every required row has held evidence whose
-run's room still agrees, every recorded row has its record, and the artifact is the one (`--artifact=<zip>` checks an
-archive you built again, by its content). Tag only then.
+run's room still agrees (its commit, its outcome, and for a model-carried row its effort), every recorded row has its
+record, and the artifact is the one (`--artifact=<zip>` checks an archive you built again, by its content). Tag only
+then.
+
+**The reliability report** (0.5.0, backlog B2). A SHIPPABLE ship asks the benchmark for `reliability
+--revision=<release commit>` -- pass@1, pass@k, median cost and minutes per row and per model at its effort, the
+tool-call failures, the arms -- over every kept run of that commit (the ship's own rows, a precheck's, repeats), and keeps
+the answer as `reliability.json` beside `evidence.json`; the result and `--status` name it. The release notes quote it.
+It is never a gate: nothing reads it to decide, the evidence names nothing of it, and a ship whose benchmark could not
+give one ships as its evidence says and says why (`node benchmark/run.mjs reliability --revision=<commit>` gives it
+again). A precheck keeps none.
 
 **Limits and exits.** `--usd`, `--minutes`, `--cycles`, `--attempts` (repair attempts per case) and `--retries` (more
 runs a model-carried row that missed may have, 0 by default, at most 3) narrow or set the policy's limits, within its
@@ -146,8 +166,8 @@ done. It ends PRECHECK HELD (exit 0) or PRECHECK FAILED (exit 2), with every row
 room and its bundle -- and it fails only as a ship would: a recorded row that did not hold is said, marked `(recorded,
 not required)`, and leaves it HELD (a leak in its room still fails it). It writes no evidence and is never what
 `--evidence` reads; `--cycles`, `--attempts` and `--retries` are a ship's and are refused with it, on `--resume` too.
-`--usd`, `--minutes`, `--model`, `--credential` and `--ca-file` work as for a ship. `--precheck --resume=shp-…` resumes
-a precheck and refuses a ship's id.
+`--usd`, `--minutes`, `--model`, `--effort`, `--credential` and `--ca-file` work as for a ship. `--precheck
+--resume=shp-…` resumes a precheck and refuses a ship's id.
 
 **Optional.** Native host acceptance (`docs/host-acceptance.json`: Claude Code, Codex, Antigravity, Grok Build) and native
 backend acceptance (`acceptance/run.mjs --record`) are reported beside every ship as `opt` rows and never block it. Record

@@ -14,8 +14,13 @@
 //        [--usd=<n> --minutes=<n> --cycles=<n> --attempts=<n> --retries=<n>]
 //                                                   limits, within the release policy's bounds (raised on --resume);
 //                                                   --retries: more runs a missed model-carried row may have
-//        [--model=<id> --credential=<NAME> --ca-file=<pem> --no-fail-fast --json --bump=changed|added|fixed|release]
-//   node skills/orbit-release/ship.mjs --precheck  [--usd=<n> --minutes=<n> --model=<id> --credential=<NAME> --ca-file=<pem>]
+//        [--model=<id> --effort=low|medium|high|xhigh|max --credential=<NAME> --ca-file=<pem> --no-fail-fast --json
+//         --bump=changed|added|fixed|release]
+//                                                   --effort: the effort every model-carried row's coding host runs at,
+//                                                   beside --model, frozen when the ship begins (a resume never moves it);
+//                                                   a row's run at another effort is never this ship's evidence
+//   node skills/orbit-release/ship.mjs --precheck  [--usd=<n> --minutes=<n> --model=<id> --effort=<level>
+//                                                    --credential=<NAME> --ca-file=<pem>]
 //                                                   before a ship: only the model-carried rows, each once, stopping at
 //                                                   no failure -- every failure said with its run's room and its
 //                                                   diagnosis; a precheck qualifies nothing (--resume carries one on)
@@ -111,13 +116,16 @@ const READ = { usd: num };
 
 const limitsAsked = () => Object.fromEntries(Object.entries(LIMIT_FLAGS).map(([k, f]) => [k, (READ[k] ?? int)(flag(args, f))]));
 
-const optionsAsked = () => ({ model: flag(args, "model") ?? null, credential: credentialAsked(flag(args, "credential")), caFile: flag(args, "ca-file") ?? env.ORBIT_BENCHMARK_CA_FILE ?? null, limits: limitsAsked(), repair: !has(args, "no-repair"), failFast: !has(args, "no-fail-fast"), precheck: has(args, "precheck"), version: versionOf() });
+const optionsAsked = () => ({ model: flag(args, "model") ?? null, effort: flag(args, "effort") ?? null, credential: credentialAsked(flag(args, "credential")), caFile: flag(args, "ca-file") ?? env.ORBIT_BENCHMARK_CA_FILE ?? null, limits: limitsAsked(), repair: !has(args, "no-repair"), failFast: !has(args, "no-fail-fast"), precheck: has(args, "precheck"), version: versionOf() });
 
 // ---- the autonomous ship -------------------------------------------------------------------------------------------------
 
 const shipOf = (world) => (flag(args, "resume") ? resumedShip(world, flag(args, "resume"), optionsAsked()) : begunShip(world, optionsAsked()));
 
-const announced = (ctx) => (JSON_OUT ? ctx : (print(`SHIP  ${ctx.ship.id} · task ${ctx.task} · ${ctx.manifest.mode} · from ${ctx.manifest.start.branch ?? "detached"}@${ctx.manifest.start.commit.slice(0, 12)} · limits ${ctx.manifest.limits.minutes} min, ${ctx.manifest.limits.usd} USD, ${ctx.manifest.limits.cycles} cycle(s)`), ctx));
+// The host the model-carried rows are asked to run on: its model and effort, when the ship names them.
+const hostSaid = (o) => `${o.model ? ` · model ${o.model}` : ""}${o.effort ? ` · effort ${o.effort}` : ""}`;
+
+const announced = (ctx) => (JSON_OUT ? ctx : (print(`SHIP  ${ctx.ship.id} · task ${ctx.task} · ${ctx.manifest.mode} · from ${ctx.manifest.start.branch ?? "detached"}@${ctx.manifest.start.commit.slice(0, 12)} · limits ${ctx.manifest.limits.minutes} min, ${ctx.manifest.limits.usd} USD, ${ctx.manifest.limits.cycles} cycle(s)${hostSaid(ctx.options)}`), ctx));
 
 async function autonomousShip() {
   const world = worldOf();

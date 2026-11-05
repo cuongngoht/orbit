@@ -32,7 +32,7 @@ process. Check it by name only (`test -n "$ORBIT_CLAUDE_OAUTH_TOKEN"`); never pr
 ```bash
 rm -f /var/run/docker.pid; setsid nohup dockerd --registry-mirror=https://mirror.gcr.io > /tmp/dockerd.log 2>&1 &
 CLAUDE_CODE_OAUTH_TOKEN="$ORBIT_CLAUDE_OAUTH_TOKEN" setsid nohup node skills/orbit-release/ship.mjs \
-  --credential=CLAUDE_CODE_OAUTH_TOKEN --model=claude-opus-5-5 --ca-file=/root/.ccr/ca-bundle.crt \
+  --credential=CLAUDE_CODE_OAUTH_TOKEN --model=claude-sonnet-5-5 --effort=medium --ca-file=/root/.ccr/ca-bundle.crt \
   --usd=150 --retries=2 --json > /tmp/ship.log 2>&1 &
 node skills/orbit-release/ship.mjs --status --json          # where it stands; a failed model row's diagnosis bundle
 # after a worker restart (process gone, no ending): dockerd again, then the same command with --resume=<shp-…>
@@ -46,15 +46,22 @@ node skills/orbit-release/ship.mjs --status --json          # where it stands; a
   (ADR 0051) a resume also carries a control set on from the controls it kept, builds images a failed build left
   unbuilt, asks a refused host check again, and never charges a run it interrupted its whole `--usd` allowance (its
   cost is said as unknown) -- nor a cut-short repair one of its `--attempts`.
-- **Model: Opus** (`--model=claude-opus-5-5`). On Sonnet most autonomous QA rows missed their planted defects.
-  **`--retries=2`** lets a model-carried row that missed run again (policy bound 0..3); it holds only on its own PASS.
+- **Model: Sonnet 5.5 at medium effort** (`--model=claude-sonnet-5-5 --effort=medium`), the owner's decision for 0.5.0
+  (backlog open question 3), for the pre-check and the ship alike. The effort goes to every model-carried row's Claude
+  Code (`--effort`, beside `--model`) and to the host check, is frozen when the ship begins (a resume naming another is
+  refused), and is recorded in `evidence.json` beside the model; a row run at another effort is never that ship's
+  evidence (`WRONG_EFFORT`), and `--evidence` reads it again from every room. 0.4.0's lesson stands: on Sonnet most
+  autonomous QA rows missed their planted defects, so read a QA row's miss from its room (below) before calling it the
+  model's -- 0.5.0 gave the QA playbook a worked design per obligation shape for exactly that (B7), and B2 measures
+  Sonnet's QA pass@1. **`--retries=2`** lets a model-carried row that missed run again (policy bound 0..3); it holds
+  only on its own PASS.
 - **Never push to the branch while a ship runs**: `--evidence` is PUBLISHABLE only for the exact tree that qualified.
   Park a fix on a side branch and bring it in after the ship ends (or before the next one).
 - **Pre-check before a full ship.** A ship stops at its first failed row after ~90 minutes of controls; run the
   model-carried rows first, each once, so every failure shows in one pass: `ship.mjs --precheck` with the same
-  `--credential --model --ca-file --usd`, detached and resumed like a ship (it refuses `--retries`). It ends PRECHECK
-  HELD or PRECHECK FAILED with every failure's run room and diagnosis, and qualifies nothing. (0.4.0 did this by hand,
-  `node benchmark/run.mjs run <case>` row by row.)
+  `--credential --model --effort --ca-file --usd`, detached and resumed like a ship (it refuses `--retries`). It ends
+  PRECHECK HELD or PRECHECK FAILED with every failure's run room and diagnosis, and qualifies nothing. (0.4.0 did this by
+  hand, `node benchmark/run.mjs run <case>` row by row.)
 - **Diagnose a failed row from its room before calling it the model's fault.** Start from `ship.mjs --status`: for each
   model-carried row that did not hold it prints the bundle the run's report keeps -- the host's finish reason, the budget
   it used, what the relay refused, what the engine stopped, and where a run stopped short (`result.stopped`) -- beside
@@ -91,3 +98,7 @@ node skills/orbit-release/ship.mjs --status --json          # where it stands; a
   (baseline PASS, a `controlled-fault` variant planting the old defect) in the same commit, before the next ship.
 - **Publish only on** SHIPPABLE + `ship.mjs --evidence` PUBLISHABLE on the pushed head + green CI: merge the release
   PR, tag `v<version>` on the merge commit.
+- **The reliability report** (0.5.0, B2): a SHIPPABLE ship keeps `reliability.json` beside `evidence.json` -- the
+  benchmark's `reliability --revision=<release commit>` over every kept run of that commit (pre-checks, ship rows,
+  repeats) -- and its result and `--status` name it. The release notes quote it; it is never a gate. A ship that could not
+  get one says why; `node benchmark/run.mjs reliability --revision=<commit> --json` gives it again.

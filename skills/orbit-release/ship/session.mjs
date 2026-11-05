@@ -45,10 +45,12 @@ function contextOf(world, room, manifest, o) {
 
 const objectiveOf = (start, o) => `Ship ${o.version ?? ""} from ${start.branch ?? "detached"}@${start.commit.slice(0, 10)}: the Docker benchmark carried by Claude Code${o.repair ? ", repairing what a case declares repairable" : ", verify only"}`;
 
-const manifestOf = (world, room, task, start, o) => ({ schema: 1, kind: "ship", ship: room.id, task, at: iso(world), mode: o.repair ? "autonomous" : "verify-only", start, checkout: { root: world.root, project: world.project.key, checkoutId: world.project.checkoutId }, policy: { digest: policyDigest(world.policy) }, protected: { digest: protectedDigestOf(world, start.commit) }, limits: limitsOf(world.policy, o.limits ?? {}), options: { repair: o.repair === true, failFast: o.failFast !== false, model: o.model ?? null, credential: o.credential ?? null, caFile: o.caFile ?? null }, host: { node: process.version, platform: process.platform } });
+const manifestOf = (world, room, task, start, o) => ({ schema: 1, kind: "ship", ship: room.id, task, at: iso(world), mode: o.repair ? "autonomous" : "verify-only", start, checkout: { root: world.root, project: world.project.key, checkoutId: world.project.checkoutId }, policy: { digest: policyDigest(world.policy) }, protected: { digest: protectedDigestOf(world, start.commit) }, limits: o.limitsHeld, options: { repair: o.repair === true, failFast: o.failFast !== false, model: o.model ?? null, credential: o.credential ?? null, caFile: o.caFile ?? null }, host: { node: process.version, platform: process.platform } });
 
-export function begunShip(world, o) {
-  const start = startOf(world);
+// The limits a person asked are held to the policy's bounds FIRST: a ship refused for one starts no task and keeps no room.
+export const begunShip = (world, o) => begunAt(world, { ...o, limitsHeld: limitsOf(world.policy, o.limits ?? {}) }, startOf(world));
+
+function begunAt(world, o, start) {
   const room = shipRoomOf(world.storeRoot, newShipId(`${world.root}\u0000${start.commit}`));
   const task = world.door.create(objectiveOf(start, o), { attempts: world.policy.bounds.cycles[1], actions: 2000 });
   docWritten(room, "manifest.json", manifestOf(world, room, task, start, o));

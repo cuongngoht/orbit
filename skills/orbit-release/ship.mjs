@@ -41,7 +41,7 @@ import { GATES, bump, report, shippable } from "./gates.mjs";
 import { nativeAcceptance, optional } from "./hosts.mjs";
 import { AWAITED, ciVerdict, markOf } from "./ship/ci.mjs";
 import { doorOf } from "./ship/door.mjs";
-import { policyOf } from "./ship/policy.mjs";
+import { LIMIT_FLAGS, policyOf } from "./ship/policy.mjs";
 import { benchPort, gatesAt, gitPort, workspacesOf } from "./ship/ports.mjs";
 import { CREDENTIAL_NAMES } from "./ship/preflight.mjs";
 import { saidEvidence, saidOptional, saidResult, saidStatus } from "./ship/report.mjs";
@@ -99,7 +99,12 @@ function refused(says) {
   throw new Refused(says);
 }
 
-const optionsAsked = () => ({ model: flag(args, "model") ?? null, credential: credentialAsked(flag(args, "credential")), caFile: flag(args, "ca-file") ?? env.ORBIT_BENCHMARK_CA_FILE ?? null, limits: { minutes: int(flag(args, "minutes")), usd: num(flag(args, "usd")), cycles: int(flag(args, "cycles")), repairAttempts: int(flag(args, "attempts")), autonomousRetries: int(flag(args, "retries")) }, repair: !has(args, "no-repair"), failFast: !has(args, "no-fail-fast"), version: versionOf() });
+// Each limit as its flag says it: a whole number, but USD.
+const READ = { usd: num };
+
+const limitsAsked = () => Object.fromEntries(Object.entries(LIMIT_FLAGS).map(([k, f]) => [k, (READ[k] ?? int)(flag(args, f))]));
+
+const optionsAsked = () => ({ model: flag(args, "model") ?? null, credential: credentialAsked(flag(args, "credential")), caFile: flag(args, "ca-file") ?? env.ORBIT_BENCHMARK_CA_FILE ?? null, limits: limitsAsked(), repair: !has(args, "no-repair"), failFast: !has(args, "no-fail-fast"), version: versionOf() });
 
 // ---- the autonomous ship -------------------------------------------------------------------------------------------------
 

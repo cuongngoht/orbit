@@ -58,6 +58,12 @@ test("limits are the policy's, or a person's within its bounds -- never past the
   assert.throws(() => policyOf(JSON.stringify({ ...POLICY, host: { cli: "grok", basis: "coding-host", endpoints: ["x"] } })), /claude-code/);
 });
 
+test("a limit out of bounds is refused by the flag a person typed, never by the policy's own key", () => {
+  assert.throws(() => limitsOf(POLICY, { autonomousRetries: 9 }), (e) => /--retries is 0\.\.3/.test(e.message) && !/autonomousRetries/.test(e.message));
+  assert.throws(() => limitsOf(POLICY, { repairAttempts: 9 }), (e) => /--attempts is 1\.\.5/.test(e.message) && !/repairAttempts/.test(e.message));
+  assert.throws(() => limitsOf(POLICY, { minutes: 1, usd: 9999 }), /--minutes is 10\.\.10080, --usd is 0\.\.2000/);
+});
+
 // ---- the artifact ----------------------------------------------------------------------------------------------------------
 
 const git = (cwd, ...a) => execFileSync("git", a, { cwd, env: sealed(GIT_ENV), encoding: "utf8" });

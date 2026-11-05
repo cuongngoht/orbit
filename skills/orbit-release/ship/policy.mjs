@@ -5,6 +5,7 @@
 //
 //   policyOf(text) -> policy          rowsOf(policy, listed) -> [row]          catalogDrift(policy, listed) -> [says]
 //   limitsOf(policy, asked) -> limits   policyDigest(policy) -> hex          matchesAny(globs, rel) -> boolean
+//   LIMIT_FLAGS: each limit's flag, as a person types it
 //   row: { id, case, suite, kind, req, run: verify|controls|autonomous, variant, repair, expect, autonomous, rank }
 import { Refused } from "../../../src/errors.mjs";
 import { canonicalJson, sha } from "../../../src/hash.mjs";
@@ -68,11 +69,17 @@ export function catalogDrift(p, listed) {
 
 // ---- limits ------------------------------------------------------------------------------------------------------------
 
+// The flag a person sets each limit with (`ship.mjs --retries=2`): read by ship.mjs, and named back in a refusal -- a
+// person typed `--retries`, never the policy's own key. A limit with no flag here is the policy's alone.
+export const LIMIT_FLAGS = { minutes: "minutes", usd: "usd", cycles: "cycles", repairAttempts: "attempts", autonomousRetries: "retries" };
+
+const flagSaid = (k) => `--${LIMIT_FLAGS[k] ?? k}`;
+
 // The limits a ship runs within: the policy's, or what a person asked, inside the policy's bounds -- never past them.
 export function limitsOf(p, asked = {}) {
   const out = { ...p.limits };
   const bad = Object.entries(asked).filter(([k, v]) => v !== undefined && !within(p.bounds?.[k], v));
-  if (bad.length) throw new Refused(`out of bounds: ${bad.map(([k]) => `--${k} is ${p.bounds?.[k]?.join("..") ?? "not a limit"}`).join(", ")}`);
+  if (bad.length) throw new Refused(`out of bounds: ${bad.map(([k]) => `${flagSaid(k)} is ${p.bounds?.[k]?.join("..") ?? "not a limit"}`).join(", ")}`);
   return Object.assign(out, Object.fromEntries(Object.entries(asked).filter(([, v]) => v !== undefined)));
 }
 

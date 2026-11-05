@@ -364,6 +364,13 @@ test("integrating is a write to the ship's own workspace -- AUTO -- and a ship n
   assert.equal(authorize({ ...INTEGRATION, home: "primary-checkout" }).decision, "deny", "the one write a ship could be tempted to make is the one the boundaries deny");
 });
 
+test("a ship refused for a limit out of bounds says the flag a person typed, and starts no task and keeps no room", (t) => {
+  const w = shipWorldOf(t);
+  assert.throws(() => begunShip(w.world, { ...OPTS, limits: { autonomousRetries: 7 } }), /out of bounds: --retries is 0\.\.3/);
+  assert.equal(w.door.tasks.size, 0, "nothing journaled for a ship that never began");
+  assert.equal(existsSync(join(w.store, "release")), false, "no room for it either");
+});
+
 test("--status says where a ship stands, read from its journal, and writes nothing", async (t) => {
   const w = shipWorldOf(t);
   const { ctx } = await shipped(w);

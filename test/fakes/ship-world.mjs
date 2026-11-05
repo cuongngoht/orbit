@@ -172,7 +172,7 @@ const roundsOf = (c, said) => (CASES[c]?.kind === "qa" ? { round: roundsSaid(sai
 
 function ended(w, r) {
   const basis = r.kind === "verify" ? "none" : w.play.basis(r.c, r.kind);
-  docAt(r.dir, "report.json", { schema: 1, run: r.run, hostBasis: basis, ...roundsOf(r.c, r.said), totals: { costUsd: r.said.host?.costUsd ?? null }, attempts: [{ signature: r.said.signature ?? (["PASS", "REPAIRED_VERIFIED"].includes(r.said.outcome) ? null : "aaaaaaaaaaaa") }], leaks: r.said.leaks ?? [] });
+  docAt(r.dir, "report.json", { schema: 1, run: r.run, hostBasis: basis, ...roundsOf(r.c, r.said), totals: { costUsd: r.said.host?.costUsd ?? null }, attempts: [{ signature: r.said.signature ?? (["PASS", "REPAIRED_VERIFIED"].includes(r.said.outcome) ? null : "aaaaaaaaaaaa") }], leaks: r.said.leaks ?? [], diagnosis: r.said.diagnosis ?? null });
   if (r.said.patch) verifiedWritten(w, r);
   docAt(r.dir, "ending.json", { end: "complete", outcome: r.said.outcome, cause: r.said.cause ?? null, class: r.said.class ?? null, summary: r.said.summary, at: new Date(w.clock.now).toISOString() });
   return { code: { PASS: 0, REPAIRED_VERIFIED: 0, BLOCKED: 3, BENCHMARK_INVALID: 2 }[r.said.outcome] ?? 1, json: { run: r.run, case: r.c, outcome: r.said.outcome, exit: 0, summary: r.said.summary }, err: null, stopped: false };
@@ -205,22 +205,39 @@ function endedThenCrashed(w, r) {
   return crashed(r);
 }
 
+// A control set, as the benchmark keeps one: its room named by --run-id (refused when kept already) and its manifest
+// written before any control runs, so a set a restart cut short (`controlsDie`) is carried on by `resume`.
 function controls(w, args) {
   const c = args[1];
   const tree = flagOf(args, "tree");
-  const run = `bnr-${(w.n += 1).toString(16).padStart(12, "0")}`;
-  docAt(join(w.store, "benchmark", run), "manifest.json", { schema: 1, kind: "controls", run, source: { commit: git(tree, "rev-parse", "HEAD"), mode: "head" }, benchmark: { case: c, digest: `case-${c}` } });
+  const run = flagOf(args, "run-id") ?? `bnr-${(w.n += 1).toString(16).padStart(12, "0")}`;
+  if (existsSync(join(w.store, "benchmark", run))) return { code: 2, json: null, err: `a run ${run} is already kept`, stopped: false };
+  return controlsBegun(w, c, tree, run);
+}
+
+function controlsBegun(w, c, tree, run) {
+  docAt(join(w.store, "benchmark", run), "manifest.json", { schema: 1, kind: "controls", run, source: { repo: tree, commit: git(tree, "rev-parse", "HEAD"), mode: "head" }, benchmark: { case: c, kind: CASES[c].kind, digest: `case-${c}` }, config: { asked: { runId: run } } });
+  w.calls.push({ verb: "controls", case: c, commit: git(tree, "rev-parse", "HEAD"), run });
+  return w.play.controlsDie?.(c) ? crashed() : controlsAnswered(w, c, tree, run);
+}
+
+function controlsAnswered(w, c, tree, run) {
   const rows = w.play.controls(c, tree);
-  w.calls.push({ verb: "controls", case: c, commit: git(tree, "rev-parse", "HEAD") });
+  docAt(join(w.store, "benchmark", run), "controls.json", { case: c, rows });
   return { code: rows.some((k) => k.got === "DRIFTED") ? 2 : rows.every((k) => k.matched) ? 0 : 1, json: { case: c, run, rows, exit: 0 }, err: null, stopped: false };
 }
 
-function resumed(w, args) {
+// A run carried on by `resume` -- `during` sees it as it sees a run (`resumed: true`), so a scenario can look at the
+// ship while a run is read back.
+async function resumed(w, args) {
   const dir = join(w.store, "benchmark", args[1]);
   const m = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8"));
   w.calls.push({ verb: "resume", run: args[1] });
+  if (m.kind === "controls") return controlsAnswered(w, m.benchmark.case, m.source.repo, args[1]);
   const kind = m.config.repair && m.benchmark.kind === "source" ? (m.benchmark.variant === "controlled-fault" ? "selfHealing" : "repair") : CASES[m.benchmark.case].kind === "source" ? "verify" : "autonomous";
-  return ended(w, { c: m.benchmark.case, run: args[1], tree: m.source.repo, said: { ...w.play[kind](m.benchmark.case, m.source.repo), dies: false, diesAfterEnding: false }, dir, kind });
+  const r = { c: m.benchmark.case, run: args[1], tree: m.source.repo, said: { ...w.play[kind](m.benchmark.case, m.source.repo), dies: false, diesAfterEnding: false }, dir, kind, resumed: true };
+  if (w.play.during) await w.play.during(w, r, {});
+  return ended(w, r);
 }
 
 const VERBS = {

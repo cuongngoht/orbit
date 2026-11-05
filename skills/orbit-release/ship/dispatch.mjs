@@ -28,6 +28,12 @@ export function runRoomOf(storeRoot, run) {
   return { dir, manifest: at("manifest.json"), ending: at("ending.json"), report: at("report.json"), verified: at("verified.json") };
 }
 
+// A row that did not hold, with its diagnosis bundle (0.5.0, B6): what its latest run's own report says of how it ended
+// -- the host's finish, the budget it used, what the relay refused, where a run stopped short -- beside the run's room,
+// so nobody has to read the room to diagnose it, and whether it is a RECORDED row a release never requires (ADR 0051).
+// A run that never began has no room and no bundle.
+export const runDiagnosis = (storeRoot, r) => ((room) => ({ row: r.row.id, recorded: r.diag?.then === "RECORDED", state: r.v.state, code: r.v.code, says: r.v.says, run: room.dir ? r.v.run : null, room: room.dir, diagnosis: room.report?.diagnosis ?? null }))(runRoomOf(storeRoot, String(r.v.run ?? "").split(" ")[0]));
+
 // ---- an action, its document written first and replaced whole when it settles ------------------------------------------
 
 export function begun(ctx, type, label, doc) {
@@ -82,9 +88,18 @@ export function closeOf(row, v, label) {
   return { receipts: receipt ? [{ domain: "test", ref, outcome: outcomeWord(v), summary: `${row.id}: ${v.says}` }] : [], verification: { subject: row.id, obligation: `${row.id} ${label}`, state, evidence: PROVEN.includes(state) ? receipt : undefined }, outcome: state === "satisfied" ? "succeeded" : "failed", receipt, summary: `${row.id}: ${v.state} — ${v.says}` };
 }
 
-// What a model-carried run cost: what its host REPORTED, or -- only to keep the budget from being overrun, never as a
-// cost anyone reads -- the most it was allowed, said as ESTIMATED.
-const costOf = (kind, v, usd) => (kind === "verify" || kind === "controls" ? { usd: 0, basis: "NONE" } : typeof v.costUsd === "number" ? { usd: v.costUsd, basis: "REPORTED" } : { usd, basis: "ESTIMATED" });
+// What a run cost the ship's budget: nothing for a verification or a control set; what a model-carried run's host
+// REPORTED; for a run a restart interrupted, UNKNOWN -- what its ended rounds reported, and never the allowance of a round
+// nobody saw end, so interruptions (bounded by INTERRUPTED_RUNS) never spend --usd; otherwise -- only to keep the budget
+// from being overrun, never as a cost anyone reads -- the most it was allowed, said as ESTIMATED.
+const COSTS = [
+  { when: (kind) => kind === "verify" || kind === "controls", cost: () => ({ usd: 0, basis: "NONE" }) },
+  { when: (kind, v) => v.state === "INTERRUPTED", cost: (kind, v) => ({ usd: typeof v.costUsd === "number" ? v.costUsd : null, basis: "UNKNOWN" }) },
+  { when: (kind, v) => typeof v.costUsd === "number", cost: (kind, v) => ({ usd: v.costUsd, basis: "REPORTED" }) },
+  { when: () => true, cost: (kind, v, usd) => ({ usd, basis: "ESTIMATED" }) },
+];
+
+const costOf = (kind, v, usd) => COSTS.find((r) => r.when(kind, v)).cost(kind, v, usd);
 
 const expectedSaid = (row) => (row.run === "controls" ? "holds its controls" : `comes to ${(row.expect ?? ["REPAIRED_VERIFIED"]).join(" or ")}`);
 
@@ -142,8 +157,10 @@ async function heldWhileRunning(ctx, doc) {
 // ---- dispatching -----------------------------------------------------------------------------------------------------
 
 // One row (kind "row") or one repair (kind "repair"), on the tree and commit named: planned, journaled, run, judged.
+// Every row's room is named before it starts -- a control set's too (`controls --run-id`), so a set a restart cut short
+// is carried on from its room by `resume`, never started again (B6: a source case's controls take twenty minutes).
 export async function dispatched(ctx, f, rowDef, o) {
-  const run = rowDef.run === "controls" ? null : newRunIdOf();
+  const run = newRunIdOf();
   const at = { tree: o.tree, parent: ctx.task, runId: run, usd: o.usd, model: ctx.options.model, credential: ctx.options.credential, caFile: ctx.options.caFile };
   const argv = argvOf(o.kind === "repair" ? { ...rowDef, run: "repair" } : rowDef, at);
   const doc = { kind: o.kind, attempt: f.open.id, row: rowDef.id, case: rowDef.case, rowDef, commit: o.commit, tree: o.tree, workspace: o.workspace ?? null, usd: o.usd, planned: { run, argv } };

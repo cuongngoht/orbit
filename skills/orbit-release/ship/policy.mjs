@@ -5,7 +5,11 @@
 //
 //   policyOf(text) -> policy          rowsOf(policy, listed) -> [row]          catalogDrift(policy, listed) -> [says]
 //   limitsOf(policy, asked) -> limits   policyDigest(policy) -> hex          matchesAny(globs, rel) -> boolean
-//   row: { id, case, suite, kind, req, run: verify|controls|autonomous, variant, repair, expect, autonomous, rank }
+//   LIMIT_FLAGS: each limit's flag, as a person types it
+//   row: { id, case, suite, kind, req, run: verify|controls|autonomous, variant, repair, expect, autonomous, recorded,
+//          rank }
+//   A RECORDED row (ADR 0051) is a model-carried row of a suite or a case the policy's `recorded` names: the ship runs
+//   it once, under its retries, and reports it held or not -- it never blocks SHIPPABLE. Controls are never recorded.
 import { Refused } from "../../../src/errors.mjs";
 import { canonicalJson, sha } from "../../../src/hash.mjs";
 
@@ -21,7 +25,10 @@ const SHAPE = [
   { says: "a catalog of suites, each a list of case ids", holds: (p) => p.catalog && Object.values(p.catalog).every((ids) => Array.isArray(ids) && ids.length > 0) },
   { says: "limits within their bounds", holds: (p) => Object.entries(p.limits ?? {}).every(([k, v]) => within(p.bounds?.[k], v)) },
   { says: "protected paths", holds: (p) => Array.isArray(p.protected) && p.protected.length > 0 },
+  { says: "recorded rows naming only suites and cases the catalog holds", holds: (p) => p.recorded === undefined || recordedHolds(p) },
 ];
+
+const recordedHolds = (p) => Array.isArray(p.recorded.suites) && Array.isArray(p.recorded.cases) && p.recorded.suites.every((s) => Object.hasOwn(p.catalog, s)) && p.recorded.cases.every((c) => Object.values(p.catalog).flat().includes(c));
 
 const within = (b, v) => Array.isArray(b) && typeof v === "number" && v >= b[0] && v <= b[1];
 
@@ -44,11 +51,14 @@ export const policyDigest = (p) => sha(canonicalJson(p));
 // Every case the benchmark lists, by id: its kind and its suite (`run.mjs list --json`).
 const listedCases = (listed) => new Map((listed?.suites ?? []).flatMap((s) => s.cases.map((c) => [c.id, { ...c, suite: s.id }])));
 
-const rowOf = (caseId, suite, kind, req) => ({ id: `${caseId}:${req.id}`, case: caseId, suite, kind, req: req.id, run: req.kind, variant: req.variant ?? null, repair: req.repair === true, expect: req.expect ?? null, autonomous: req.kind === "autonomous", rank: RUNS.indexOf(req.kind) });
+// Whether a row is RECORDED and not required: a model-carried row whose suite or case the policy's `recorded` names.
+const recordedIn = (p, suite, id) => (p.recorded?.suites ?? []).includes(suite) || (p.recorded?.cases ?? []).includes(id);
 
-const caseRows = (p, cases) => ([suite, ids]) => ids.flatMap((id) => (p.requirements[cases.get(id)?.kind] ?? []).map((req) => rowOf(id, suite, cases.get(id).kind, req)));
+const rowOf = (p, caseId, suite, kind, req) => ({ id: `${caseId}:${req.id}`, case: caseId, suite, kind, req: req.id, run: req.kind, variant: req.variant ?? null, repair: req.repair === true, expect: req.expect ?? null, autonomous: req.kind === "autonomous", recorded: req.kind === "autonomous" && recordedIn(p, suite, caseId), rank: RUNS.indexOf(req.kind) });
 
-const extraRows = (p, cases) => (p.extra ?? []).filter((x) => cases.has(x.case)).map((x) => rowOf(x.case, cases.get(x.case).suite, cases.get(x.case).kind, x));
+const caseRows = (p, cases) => ([suite, ids]) => ids.flatMap((id) => (p.requirements[cases.get(id)?.kind] ?? []).map((req) => rowOf(p, id, suite, cases.get(id).kind, req)));
+
+const extraRows = (p, cases) => (p.extra ?? []).filter((x) => cases.has(x.case)).map((x) => rowOf(p, x.case, cases.get(x.case).suite, cases.get(x.case).kind, x));
 
 // The rows in the order a cycle runs them -- every verification, then every control, then every model-carried row --
 // so a cycle that will be repaired never spends a model's budget; the catalog's order within each.
@@ -68,11 +78,17 @@ export function catalogDrift(p, listed) {
 
 // ---- limits ------------------------------------------------------------------------------------------------------------
 
+// The flag a person sets each limit with (`ship.mjs --retries=2`): read by ship.mjs, and named back in a refusal -- a
+// person typed `--retries`, never the policy's own key. A limit with no flag here is the policy's alone.
+export const LIMIT_FLAGS = { minutes: "minutes", usd: "usd", cycles: "cycles", repairAttempts: "attempts", autonomousRetries: "retries" };
+
+const flagSaid = (k) => `--${LIMIT_FLAGS[k] ?? k}`;
+
 // The limits a ship runs within: the policy's, or what a person asked, inside the policy's bounds -- never past them.
 export function limitsOf(p, asked = {}) {
   const out = { ...p.limits };
   const bad = Object.entries(asked).filter(([k, v]) => v !== undefined && !within(p.bounds?.[k], v));
-  if (bad.length) throw new Refused(`out of bounds: ${bad.map(([k]) => `--${k} is ${p.bounds?.[k]?.join("..") ?? "not a limit"}`).join(", ")}`);
+  if (bad.length) throw new Refused(`out of bounds: ${bad.map(([k]) => `${flagSaid(k)} is ${p.bounds?.[k]?.join("..") ?? "not a limit"}`).join(", ")}`);
   return Object.assign(out, Object.fromEntries(Object.entries(asked).filter(([, v]) => v !== undefined)));
 }
 

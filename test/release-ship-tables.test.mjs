@@ -29,8 +29,8 @@ const repairs = (state) => [{ case: "A", state }];
 const REACH = {
   ENDED: [settled({ ended: true })],
   HELD_BY_PERSON: [settled({ held: true })],
-  RECONCILE: [settled({ running: [{}] })],
   PREFLIGHT: [settled(), { ...CTX, preflighted: false }],
+  RECONCILE: [settled({ running: [{}] })],
   WORKSPACE: [settled({ workspace: null })],
   OVER_LIMIT: [settled({ spent: { minutes: 61, usd: 0 } })],
   CYCLE_DONE: [settled({ repairs: repairs("INTEGRATED") })],
@@ -45,6 +45,7 @@ const REACH = {
   ROW_BLOCKED: [settled({ rows: new Map([[ROW.id, failed("BLOCK")]]) })],
   FAIL_FAST: [settled({ rows: new Map([[ROW.id, failed("STOP")]]) })],
   ROW: [settled({ pending: ROW })],
+  PRECHECKED: [settled(), { ...CTX, manifest: { mode: "precheck" }, options: { failFast: false } }],
   ROW_STOPPED: [settled({ rows: new Map([[ROW.id, failed("STOP")]]) }), { ...CTX, options: { failFast: false } }],
   REPAIR_BLOCKED: [settled({ repairs: repairs("BLOCKED") })],
   NO_PROGRESS: [settled({ repairs: repairs("NO_PROGRESS") })],
@@ -65,6 +66,10 @@ test("NEXT: a person's hold outranks everything a ship would do, and a model-car
   assert.equal(nextOf(settled({ rows: new Map([[ROW.id, failed("BLOCK")]]), pending: ROW }), CTX).id, "ROW_BLOCKED", "a blocked row stops the cycle before another row is sent");
   assert.equal(nextOf(settled({ repairs: repairs("INTEGRATED"), pending: ROW }), CTX).id, "CYCLE_DONE", "a cycle whose repairs are all in is over: its rows are stale");
   assert.equal(nextOf(settled({ rows: new Map() }), { ...CTX, rows: [] }).id, "UNKNOWN", "an empty catalog is never SHIPPABLE");
+  assert.equal(nextOf(settled({ running: [{}] }), { ...CTX, preflighted: false }).id, "PREFLIGHT", "a resumed ship reads its catalog before it reads back what was running");
+  const precheck = { ...CTX, manifest: { mode: "precheck" }, options: { failFast: false } };
+  assert.deepEqual([nextOf(settled({ workspace: null }), precheck).id, nextOf(settled({ gates: null }), precheck).id], ["PRECHECKED", "PRECHECKED"], "a precheck needs no workspace and holds no definition of done");
+  assert.equal(nextOf(settled({ pending: ROW }), precheck).id, "ROW", "a precheck ends only once every row ran");
 });
 
 // ---- DIAGNOSE ------------------------------------------------------------------------------------------------------------
@@ -187,9 +192,11 @@ const PATCH = { digest: "p1", touched: [{ path: "src/a.mjs", added: 1, removed: 
 const R = (over = {}) => repairVerdict({ row: { ...ROW, id: "A:real" }, answer: { code: 0, json: {} }, room: roomOf({ ...REPAIRED, ...over.room }), cycle: { ...CYCLE, digest: null }, ship: SHIP, verified: over.verified === undefined ? VERIFIED : over.verified, patch: over.patch === undefined ? PATCH : over.patch, policy: { protected: ["benchmark/**", "skills/orbit-release/**", "package.json"] }, case: { scope: { allow: over.allow ?? ["src/*.mjs", "test/*.test.mjs"] } } });
 
 test("REPAIR_CHECK: a verified candidate is held again by the ship before a byte of it is applied", () => {
-  const got = [R({ room: { ending: { outcome: "REPAIR_REJECTED" } } }), R({ verified: null }), R({ patch: { ...PATCH, digest: "p2" } }), R({ verified: { ...VERIFIED, host: { basis: "scripted" } } }), R({ patch: { digest: "p1", touched: [] } }), R({ patch: { digest: "p1", touched: [{ path: "src/deep/b.mjs", added: 1, removed: 0, existed: false }] } }), R({ allow: ["**"], patch: { digest: "p1", touched: [{ path: "benchmark/lib/x.mjs", added: 1, removed: 0, existed: true }] } }), R({ patch: { digest: "p1", touched: [{ path: "test/a.test.mjs", added: 0, removed: 2, existed: true }] } }), R()];
+  const got = [R({ room: { report: { rounds: [{ interrupted: true, host: null }] } } }), R({ room: { ending: { outcome: "REPAIR_REJECTED" } } }), R({ verified: null }), R({ patch: { ...PATCH, digest: "p2" } }), R({ verified: { ...VERIFIED, host: { basis: "scripted" } } }), R({ patch: { digest: "p1", touched: [] } }), R({ patch: { digest: "p1", touched: [{ path: "src/deep/b.mjs", added: 1, removed: 0, existed: false }] } }), R({ allow: ["**"], patch: { digest: "p1", touched: [{ path: "benchmark/lib/x.mjs", added: 1, removed: 0, existed: true }] } }), R({ patch: { digest: "p1", touched: [{ path: "test/a.test.mjs", added: 0, removed: 2, existed: true }] } }), R()];
   assert.deepEqual(got.map((v) => v.code), REPAIR_CHECK.slice(7).map((r) => r.code));
-  assert.deepEqual(got.map((v) => v.state), ["REJECTED", "REFUSED_BY_SHIP", "REFUSED_BY_SHIP", "UNTRUSTED", "REFUSED_BY_SHIP", "REFUSED_BY_SHIP", "REFUSED_BY_SHIP", "REFUSED_BY_SHIP", "VERIFIED"]);
+  assert.deepEqual(got.map((v) => v.state), ["INTERRUPTED", "REJECTED", "REFUSED_BY_SHIP", "REFUSED_BY_SHIP", "UNTRUSTED", "REFUSED_BY_SHIP", "REFUSED_BY_SHIP", "REFUSED_BY_SHIP", "REFUSED_BY_SHIP", "VERIFIED"]);
+  assert.equal(R({ room: { ending: { outcome: "REPAIR_REJECTED" }, report: { rounds: [{ interrupted: true, host: null }] } } }).code, "INTERRUPTED", "a repair cut short is not the model's rejected candidate either");
+  assert.equal(R({ room: { report: { hostBasis: "scripted", rounds: [{ interrupted: true, host: null }] } } }).code, "WRONG_HOST", "a repair whose run says another host stays WRONG_HOST, interrupted or not -- never run again into an integration");
   assert.equal(R({ verified: { ...VERIFIED, source: { commit: "c0" } } }).code, "NO_VERIFIED_RECORD", "a candidate verified against another source");
   assert.equal(R({ allow: ["**"], patch: { digest: "p1", touched: [{ path: "skills/orbit-release/ship/policy.json", added: 1, removed: 1, existed: true }] } }).code, "PROTECTED", "the release policy is never a candidate's to change");
   assert.equal(R({ patch: { digest: "p1", touched: [{ path: "test/a.test.mjs", added: 3, removed: 0, existed: true }] } }).code, "VERIFIED", "a test may gain lines");
@@ -198,13 +205,22 @@ test("REPAIR_CHECK: a verified candidate is held again by the ship before a byte
 // ---- PUBLISH ------------------------------------------------------------------------------------------------------------
 
 const EV = { source: { commit: "c1", tree: "t1", protected: "p", digest: "d1" }, policy: { digest: "y" }, rows: [{ id: "A:real", run: "bnr-000000000001", state: "HELD", outcome: "PASS" }], artifact: { sha256: "a".repeat(64) }, delivery: { needed: false } };
-const G = (over = {}) => ({ ship: { id: "shp-000000000001" }, view: { lifecycle: "COMPLETED" }, evidence: EV, ending: null, head: { tree: "t1", dirty: [] }, now: { protected: "p", policy: "y", rows: ["A:real"], autonomous: new Set(), single: new Set(["A:real"]) }, rooms: () => ({ manifest: { source: { commit: "c1" } }, ending: { outcome: "PASS" }, report: {} }), artifact: { ok: true }, ...over });
+const G = (over = {}) => ({ ship: { id: "shp-000000000001" }, view: { lifecycle: "COMPLETED" }, evidence: EV, ending: null, head: { tree: "t1", dirty: [] }, now: { protected: "p", policy: "y", unseen: [], rows: ["A:real"], recorded: [], autonomous: new Set(), single: new Set(["A:real"]) }, rooms: () => ({ manifest: { source: { commit: "c1" } }, ending: { outcome: "PASS" }, report: {} }), artifact: { ok: true }, ...over });
 
 test("PUBLISH: every row is reached, and only PUBLISHABLE lets a release be published", () => {
-  const got = [G({ ship: null }), G({ view: { lifecycle: "EXECUTING" } }), G({ view: { lifecycle: "BLOCKED" } }), G({ view: { lifecycle: "FAILED" } }), G({ head: { tree: "t2", dirty: [] } }), G({ head: { tree: "t1", dirty: ["src/a.mjs"] } }), G({ now: { ...G().now, protected: "q" } }), G({ now: { ...G().now, policy: "z" } }), G({ now: { ...G().now, rows: ["A:real", "B:real"] } }), G({ rooms: () => ({ manifest: { source: { commit: "c0" } }, ending: { outcome: "PASS" } }) }), G({ artifact: { ok: false, says: "gone" } }), G()].map(publishableOf);
+  const got = [G({ ship: null }), G({ view: { lifecycle: "EXECUTING" } }), G({ view: { lifecycle: "BLOCKED" } }), G({ view: { lifecycle: "FAILED" } }), G({ head: { tree: "t2", dirty: [] } }), G({ head: { tree: "t1", dirty: ["src/a.mjs"] } }), G({ now: { ...G().now, protected: "q" } }), G({ now: { ...G().now, policy: "z" } }), G({ now: { ...G().now, unseen: ["B"], rows: [] } }), G({ now: { ...G().now, rows: ["A:real", "B:real"] } }), G({ now: { ...G().now, recorded: ["Q:autonomous"] } }), G({ rooms: () => ({ manifest: { source: { commit: "c0" } }, ending: { outcome: "PASS" } }) }), G({ artifact: { ok: false, says: "gone" } }), G()].map(publishableOf);
   assert.deepEqual(got.map((x) => x.code), PUBLISH.map((r) => r.code));
   assert.deepEqual(got.map((x) => x.publishable), [...PUBLISH.slice(0, -1).map(() => false), true]);
   assert.equal(publishableOf(G({ view: { lifecycle: "PAUSED" } })).code, "PENDING", "a paused ship's verification is still pending");
+});
+
+test("PUBLISH: a recorded row is held to its room like any other, held or not -- only a required row must be HELD (ADR 0051)", () => {
+  const Q = { id: "Q:autonomous", run: "bnr-000000000002", state: "FAILED", outcome: "FAIL", recorded: true };
+  const recording = (rooms) => G({ evidence: { ...EV, rows: [...EV.rows, Q], recorded: [{ id: Q.id, held: false, state: "FAILED", run: Q.run }] }, now: { ...G().now, recorded: [Q.id], autonomous: new Set([Q.id]), single: new Set(["A:real", Q.id]) }, rooms });
+  const room = (outcome) => (run) => ({ dir: `/store/benchmark/${run}`, manifest: { source: { commit: "c1" } }, ending: { outcome: run === Q.run ? outcome : "PASS" }, report: { hostBasis: "scripted" } });
+  const ok = publishableOf(recording(room("FAIL")));
+  assert.deepEqual([ok.code, ok.recorded], ["PUBLISHABLE", [{ id: Q.id, held: false, state: "FAILED", run: Q.run, room: `/store/benchmark/${Q.run}` }]], "a recorded row that did not hold owes no host, and --evidence says it with its room");
+  assert.equal(publishableOf(recording(room("PASS"))).code, "UNTRUSTED", "its room no longer says what the evidence says of it");
 });
 
 // ---- PREFLIGHT -----------------------------------------------------------------------------------------------------------

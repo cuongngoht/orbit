@@ -102,7 +102,11 @@ The QA cases plant one defect each in Orbit's own synthetic invoice application 
    - Behind a network that inspects TLS, give the proxy's CA bundle with `--ca-file=<pem>` (or
      `ORBIT_BENCHMARK_CA_FILE`).
    - Run `node benchmark/run.mjs doctor` to see what is missing. `doctor --preflight` also runs the subject's own
-     declared checks (`npm run lint`, `npm run test`) in the runner container, with no host. `doctor --host` asks the
+     declared checks (`npm run lint`, `npm run test`) in the runner container, with no host -- on the subject a round
+     gets, Orbit's source without the harness (`HARNESS`: `benchmark/**`, `test/benchmark-*.mjs`). So a test that reads
+     `benchmark/` carries the harness's name (`test/benchmark-*.mjs`, such as `test/benchmark-release-policy.test.mjs`,
+     the release policy held to `suites/`): it runs in full in this repository and is never in a subject that does not
+     hold what it reads. A test outside that name that reads `benchmark/` fails the preflight. `doctor --host` asks the
      runner image's Claude Code ONE question through the egress proxy -- no tool, no plugin, a budget of a few cents --
      and says whether it starts, which version and model it reports, and whether the credential is accepted, or a code
      when not (`CLI_UNAVAILABLE`, `CLI_MISMATCH`, `AUTH_MISSING`, `AUTH_REFUSED`, `EGRESS`, `PROVIDER`).
@@ -521,10 +525,13 @@ from every kept `controls.json`, and with `--by=revision` each case's outcomes b
 |---|---|---|
 | fast | `ci.yml`, every push and pull request | every `test/benchmark-*.test.mjs` inside the definition of done's `node --test`: no Docker, no network |
 | conformance | `benchmark.yml`, a pull request that touches the benchmark, or on request | every case's verifier and judge controls in real containers, by suite; scripted hosts through Orbit's engineering loop and goal entry; no model, no secret |
-| autonomous | `benchmark.yml`, only when a person dispatches it | a real coding host on one case or one suite with `--repair`, from the `benchmark` environment that holds the credential (`ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`, by name), inside a budget the person gives (at most 50 USD and 5 rounds); a missing credential ends it BLOCKED |
-| release | `release.yml`, only when a person dispatches it | the autonomous ship (`skills/orbit-release/ship.mjs`, ADR 0049): every case of every suite, the model-carried rows by the real Claude Code, repairs, a full retest, and the publish gate -- never a tag, a push or a publication |
 
-Every tier uploads what its runs kept, PASS or not. Nothing model-backed runs on a push.
+The conformance tier uploads what its runs kept, PASS or not. **No workflow runs a real coding host** (0.5.0): a model-carried run
+-- one case with `--repair`, a QA or engineering case, a suite, or the autonomous ship (`skills/orbit-release/ship.mjs`,
+ADR 0049) -- runs in a Claude Code cloud session a person starts, its credential (`ANTHROPIC_API_KEY`, or
+`CLAUDE_CODE_OAUTH_TOKEN` kept under another name there) an environment variable of that session and handed on by name;
+a missing credential ends a run BLOCKED. How a ship is run there, detached and resumed after each worker restart, is in
+`CLAUDE.md` ("Shipping a release from Claude Code cloud").
 
 ## Driven by a release ship
 
@@ -537,14 +544,28 @@ anyone:
   checkout's, so the controller that judges is never what it judges. A directory inside a checkout is refused.
 - `--run-id=<bnr-…>` names a run's room before it starts (refused when it is kept already), so a caller that dies mid-run
   knows which room to read back; `--parent=<tsk-…>` makes the run's task part of the caller's (Mission Control shows it).
+- A control set keeps a room of its own too (`controls <case> --run-id=<bnr-…>`, 0.5.0): its manifest says what it was
+  asked and which tree it measured, each control's row is kept as the control ends, and a control carried by a whole
+  run of its own (an engine repair control, a QA control) has that run's id kept before it starts. So `resume <bnr-…>`
+  carries a set a restart cut short on -- what it kept stands, the rest runs, a control's own run is read back or
+  carried on, never started twice -- and a release ship loses no twenty-minute set to a worker restart. A set whose case
+  moved since it began is refused. `cleanup` of a set reaches every run it planned.
 - A control that no longer applies to the source is its own row, `DRIFTED`, with what moved: the other controls still
   run, and the command exits 2.
 - A credential block says its cause and class (`CREDENTIALS`, `ENVIRONMENT_BLOCKED`) in its ending, and a QA run's
   report says its `hostBasis`, as a source run's does.
+- A run's report carries its `diagnosis` (0.5.0, `lib/core/diagnosis.mjs`), read off its own records: how the host's
+  session ended round by round (interrupted, the deadline, no session, or the host's own result subtype), the budget
+  it used against its allowance, and for a QA run what the relay refused, what the engine stopped, and where a run a
+  `step` dispatched stopped short -- the relay's log keeps that `result.stopped`, the engine's own allow-listed view,
+  and nothing else of an answer of 0. A ship's `--status` prints it for every model-carried row that did not hold.
 
-The ship's catalog is `skills/orbit-release/ship/policy.json`: every case of every suite, by name. A source case must
+The ship's catalog is `skills/orbit-release/ship/policy.json`: every case of every suite, by name, held to `suites/`
+both ways by `test/benchmark-release-policy.test.mjs` (a case added here and not named there fails it). A source case must
 hold its controls and PASS its real source; a QA or engineering case must hold its controls and PASS with the coding host;
-ORBIT-SRC-001's planted fault must be REPAIRED_VERIFIED by the coding host. A source case failing on a cause it declares
+ORBIT-SRC-001's planted fault must be REPAIRED_VERIFIED by the coding host. A suite or case the policy RECORDS (ADR 0051:
+where a new suite's model rows start) has its model-carried rows run and reported, held or not, and never required --
+its controls still are. A source case failing on a cause it declares
 repairable is repaired with `run <case> --repair`, its `verified.json` checked again by the ship, and the patch integrated
 only in the ship's own workspace -- never here, which stays a person's to write.
 

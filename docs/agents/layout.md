@@ -1044,8 +1044,10 @@ skills/orbit-browser/ OPTIONAL adapter: pick a local browser+profile, opted into
 skills/orbit-release/  release + adoption: the DoD as gates, the version rule, the install routes; ship.mjs the
                           AUTONOMOUS SHIP (ADR 0049) and its ship/ modules -- policy.json + policy.mjs (the catalog,
                           the host, the limits, the protected paths, as data) · machine.mjs (facts folded from the
-                          ship task's journal, NEXT) · steps.mjs (STEPS and the loop) · dispatch.mjs (one benchmark run:
-                          its room named first, watched, judged from its room, carried on) · rows.mjs (ARGV,
+                          ship task's journal, NEXT, SHIP_MODES: a ship, verify-only, or a precheck (ADR 0051), recorded
+                          rows) · steps.mjs (STEPS and the loop) · dispatch.mjs (one benchmark run: its room named first,
+                          a control set's too, watched, judged from its room, carried on; COSTS; a failed row's
+                          diagnosis bundle read off its run's report) · rows.mjs (ARGV,
                           ROW_VERDICT, CONTROL_RULES, REPAIR_CHECK) · diagnose.mjs (DIAGNOSE) · preflight.mjs ·
                           workspace.mjs (the ship task's own workspace, a verified patch applied AUTO, pristine
                           checkouts, the release patch and bundle) · artifact.mjs (git archive, ARCHIVE_RULES, byte
@@ -1093,7 +1095,9 @@ benchmark/     (ADR 0046, 0047, 0048) THE DOCKER BENCHMARK of Orbit: development
                cleanup by label) · images.mjs (verifier, runner, qa-worker: tagged by their directory's digest, reused by
                id) · runner.mjs (the runner container of any round, behind the egress proxy) · host.mjs (the host's stream
                as REPORTED facts) · sentinel.mjs (every secret a run handed out, looked for and masked) · metrics.mjs (a
-               fold over the kept runs, apart by host basis).
+               fold over the kept runs, apart by host basis) · controlset.mjs (0.5.0: a control set kept in a room of its
+               own -- each control's record, RUN_OF for a control carried by a whole run -- so `resume` carries a set on)
+               · diagnosis.mjs (0.5.0: a run's diagnosis bundle, FINISH, read off its own records into its report).
                lib/source/ -- a source or engineering case: verify.mjs, judge.mjs, candidate.mjs (SCOPE), classify.mjs
                (CAUSES and FAILURE_CLASSES), decide.mjs (NEXT), brief.mjs (a repair's brief, or a goal's), round.mjs (a
                round and its read-back), repairs.mjs (candidate controls straight to the judge), flow.mjs (with

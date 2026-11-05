@@ -5,6 +5,7 @@
 // resumed run is refused when what it froze no longer is what it froze.
 //
 //   frozenRun(h, o) -> ctx        resumedRun(h, runId) -> ctx        frozenIntact(ctx) -> boolean
+//   freshRoom(h, runId) -> room   (a run id names one run: refused when its room is kept already)
 import { cpSync, existsSync, readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -184,7 +185,7 @@ function made(h, o, f) {
 
 // A run id a caller chose (`--run-id`: a release ship names the room before it dispatches, so it can read the run back
 // however the run ends) names a room nobody keeps yet -- one id, one run.
-function freshRoom(h, runId) {
+export function freshRoom(h, runId) {
   const room = roomOf(h.storeRoot, runId);
   if (existsSync(room.dir)) throw new Refused(`a run ${runId} is already kept in ${room.dir}: a run id names one run, and --like or resume carry an earlier one`);
   return room;

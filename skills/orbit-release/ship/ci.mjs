@@ -1,11 +1,12 @@
 // THE FAST TIER a pipeline can hold (`ship.mjs --ci`): the definition of done, the rows a release only reports, and the
-// autonomous ship AWAITED -- never run in a pipeline and never passed, because only a machine with Docker and a
-// credential (or the release workflow) makes it. A green fast tier is never release qualification, and says so.
+// autonomous ship AWAITED -- never run in a pipeline and never passed, because only a Claude Code cloud session (or a
+// machine) with Docker and a credential makes it: no workflow runs a model. A green fast tier is never release
+// qualification, and says so.
 //
 //   AWAITED · markOf(row) -> "ok  " | "FAIL" | "wait" | "opt "      ciVerdict(rows) -> sentence
 import { shippable } from "../gates.mjs";
 
-export const AWAITED = Object.freeze({ name: "the autonomous ship: every case in Docker, model-carried rows by Claude Code", ok: true, pending: true, detail: "not run in a pipeline -- node skills/orbit-release/ship.mjs on a machine with Docker and a credential, or the release workflow, qualifies a release; a green fast CI never does" });
+export const AWAITED = Object.freeze({ name: "the autonomous ship: every case in Docker, model-carried rows by Claude Code", ok: true, pending: true, detail: "not run in a pipeline -- node skills/orbit-release/ship.mjs in a Claude Code cloud session with Docker and a credential qualifies a release; a green fast CI never does" });
 
 export const markOf = (r) => (r.pending ? "wait" : r.required === false && !r.ok ? "opt " : r.ok ? "ok  " : "FAIL");
 

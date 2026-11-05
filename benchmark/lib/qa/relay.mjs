@@ -120,7 +120,8 @@ const pending = (dir) => readdirSync(dir).filter((n) => REQUEST_NAME.test(n)).so
 const answered = (dirs, name, answer) => (writeFileSync(join(dirs.responses, `.${name}.part`), `${JSON.stringify({ v: 1, ...answer, stdout: cut(answer.stdout), stderr: cut(answer.stderr) })}\n`), renameSync(join(dirs.responses, `.${name}.part`), join(dirs.responses, name)));
 
 // What the controller keeps of every request: which subcommand, its flags, the decision's size and digest -- never
-// the decision itself, which the engine's own journal keeps -- how it ended and how long it took.
+// the decision itself, which the engine's own journal keeps -- how it ended (and, of an answer of 0, where a run it
+// dispatched stopped short: `stopped`, below) and how long it took.
 const logged = (dirs, line) => writeFileSync(dirs.log, `${JSON.stringify({ at: new Date().toISOString(), ...line })}\n`, { flag: "a" });
 
 // How a request the engine stopped ended, in the engine's own words: the first line it said when it refused or blocked
@@ -132,6 +133,23 @@ const whyOf = (a, answer) => (!a.refused && answer.exit !== 0 ? { why: firstLine
 
 const firstLine = (text) => scrub(printable(String(text ?? "").split("\n").find((l) => l.trim()) ?? "").trim()).slice(0, STOP_LINE) || null;
 
+// Of an answer of 0, the log keeps ONE thing (0.5.0, backlog B6): where a run the request dispatched stopped short, as
+// the engine said it in its answer -- `result.stopped`, its own allow-listed, scrubbed and bounded view
+// (src/investigation/loop.mjs) -- with the outcome and rule it came to: what a person diagnosing a round reads first.
+// Printable and scrubbed again here, bounded as the engine bounds it; nothing else an answer said is kept.
+const STOPPED_TEXT = 600;
+
+const resultOf = (text) => {
+  try { return JSON.parse(String(text ?? "")).result ?? null; }
+  catch { return null; }
+};
+
+const word = (v) => (typeof v === "string" && v.length <= 80 ? printable(v) : null);
+
+const stoppedLine = (r) => ({ outcome: word(r.outcome), rule: word(r.rule), step: Number.isInteger(r.stopped.step) ? r.stopped.step : null, do: word(r.stopped.do), capability: word(r.stopped.capability), as: word(r.stopped.as), says: scrub(printable(String(r.stopped.says ?? ""))).slice(0, STOPPED_TEXT) || null });
+
+const stoppedOf = (a, answer) => ((r) => (r?.stopped && typeof r.stopped === "object" ? { stopped: stoppedLine(r) } : {}))(!a.refused && answer.exit === 0 ? resultOf(answer.stdout) : null);
+
 async function servedOne(dirs, serve, name) {
   const req = requestAt(dirs.requests, name);
   const a = req ? serve.admit(req) : { refused: "is not a regular file a request is" };
@@ -142,7 +160,7 @@ async function servedOne(dirs, serve, name) {
 
 function finishedOne(dirs, name, req, a, answer) {
   answered(dirs, name, answer);
-  logged(dirs, { request: name, sub: req?.argv?.[0] ?? null, argv: a.argv ?? null, stdin: req?.stdin ? { bytes: Buffer.byteLength(req.stdin), digest: sha(req.stdin).slice(0, 16) } : null, refused: a.refused ?? null, exit: answer.exit, ...whyOf(a, answer), ms: answer.ms });
+  logged(dirs, { request: name, sub: req?.argv?.[0] ?? null, argv: a.argv ?? null, stdin: req?.stdin ? { bytes: Buffer.byteLength(req.stdin), digest: sha(req.stdin).slice(0, 16) } : null, refused: a.refused ?? null, exit: answer.exit, ...whyOf(a, answer), ...stoppedOf(a, answer), ms: answer.ms });
   return answer;
 }
 

@@ -9,7 +9,8 @@ import { Blocked, Refused } from "../../src/errors.mjs";
 import { flag, has, words } from "../../src/learn/args.mjs";
 import { docker } from "../../src/runtime/isolation/docker.mjs";
 import { madeCheckout } from "./core/checkout.mjs";
-import { contextOf, dockerDeps, engineOf, fixtureEntries, frozenRun, resumedRun, treeOf, userOf, variantEntries, withSpec } from "./core/context.mjs";
+import { contextOf, dockerDeps, engineOf, fixtureEntries, freshRoom, frozenRun, resumedRun, treeOf, userOf, variantEntries, withSpec } from "./core/context.mjs";
+import { keptOr, plannedRuns, runOfControl } from "./core/controlset.mjs";
 import { probedHost } from "./core/probe.mjs";
 import { cleaned, leftovers, ranContainer, specFor } from "./core/docker.mjs";
 import { candidateEntries, candidateFile, mutatedEntries, mutationFile } from "./core/mutations.mjs";
@@ -255,7 +256,14 @@ function status(h, args) {
 
 const sayStatus = (r) => [`RUN        ${r.run} — ${r.case} (${r.variant}${r.repair ? ", repair" : ""})`, `TASK       ${r.task}: ${r.lifecycle} · ${r.stage ?? "no stage"}${r.stopReason ? ` · ${r.stopReason}` : ""}`, `ATTEMPTS   ${r.attempts.join("  ") || "none"}`, `BUDGET     attempts ${r.budget.attempts.spent}/${r.budget.attempts.limit} · actions ${r.budget.actions.spent}/${r.budget.actions.limit} · minutes ${r.budget.minutes.spent}/${r.budget.minutes.limit ?? "-"}`, ...(r.running.length ? [`RUNNING    ${r.running.join(", ")}`] : []), `OUTCOME    ${r.ending ? `${r.ending.outcome} — ${r.ending.summary}` : "not decided yet"}`, `EVIDENCE   ${r.evidence}`].join("\n");
 
+// A run carried on from its room -- or a control set from its own (core/controlset.mjs), whatever kind of case it holds.
 async function resume(h, args) {
+  const room = roomOf(h.storeRoot, runIdOf(args));
+  const m = docRead(room, "manifest.json");
+  return m?.kind === "controls" ? controlsResumed(h, room, m) : runResumed(h, args);
+}
+
+async function runResumed(h, args) {
   const first = resumedRun(h, runIdOf(args));
   const kind = kindOfRun(first.manifest);
   const { deps } = dockerUp(h, "a resumed run goes on in containers too");
@@ -265,9 +273,16 @@ async function resume(h, args) {
 
 const cleanedHere = (room, deps) => (docker.doctor(deps).ok ? { ...cleaned(room.id, deps), left: leftovers(room.id, deps) } : { containers: [], networks: [], clean: true, left: null, skipped: "Docker does not answer: nothing of this run can be running" });
 
+// What every room a cleanup reaches left, as one answer: a run's own, or a control set's and every run it planned.
+const mergedClean = (xs) => ({ containers: xs.flatMap((x) => x.containers), networks: xs.flatMap((x) => x.networks), clean: xs.every((x) => x.clean), left: xs.every((x) => x.left) ? { containers: xs.flatMap((x) => x.left.containers), networks: xs.flatMap((x) => x.left.networks) } : null, ...(xs.find((x) => x.skipped) ? { skipped: xs.find((x) => x.skipped).skipped } : {}) });
+
+// A control set is cleaned with every run it planned for a control (an engine repair control, a QA control), each by
+// its own label: a person who stopped the set mid-control leaves no container of that control running.
+const cleanedRooms = (h, room, deps) => mergedClean([room, ...plannedRuns(room).map((r) => roomOf(h.storeRoot, r))].map((x) => cleanedHere(x, deps)));
+
 function cleanup(h, args) {
   const room = roomOf(h.storeRoot, runIdOf(args));
-  const done = cleanedHere(room, dockerDeps(h.env, null));
+  const done = cleanedRooms(h, room, dockerDeps(h.env, null));
   if (has(args, "scratch")) rmSync(room.at("scratch"), { recursive: true, force: true });
   return { run: room.id, ...done, scratch: has(args, "scratch") ? "removed" : "kept" };
 }
@@ -323,31 +338,47 @@ const NO_RECORD = { show: () => ({}) };
 // control names the variant it lays over that.
 const CONTROL_BASE = { source: (c, fr) => subjectOf(fr.entries, HARNESS).entries, engineering: (c, fr) => fixtureEntries(c, fr.entries) };
 
-function controlsRoom(h, c, images) {
-  const room = roomOf(h.storeRoot, newRunId(`${c.id}\u0000controls`));
+// What a control set was asked with, kept in its room's manifest so a resume asks the very same controls of the very
+// same tree: which control (--only), whether the engine-carried ones run (--skip-engine), the task that started it
+// (--parent), which tree of the checkout a QA control freezes (--source), and the room's own name (--run-id: a release
+// ship names it before the set starts, so a restart never loses which room to carry on).
+const controlOptions = (args) => ({ runId: runIdOption(flag(args, "run-id")) ?? null, only: flag(args, "only") ?? null, skipEngine: has(args, "skip-engine"), parent: parentOption(flag(args, "parent")) ?? null, source: flag(args, "source") ?? null });
+
+const setRoom = (h, c, o) => freshRoom(h, o.runId ?? newRunId(`${c.id}\u0000controls`));
+
+// A control set's manifest: the tree it measured by its path (a resume measures that tree again), the case and its
+// digest, what it was asked.
+const setManifest = (room, c, where0, o, more) => ({ schema: 1, kind: "controls", run: room.id, task: null, at: new Date().toISOString(), source: { repo: where0.root, branch: where0.branch, commit: where0.commit, mode: more.mode }, benchmark: { case: c.id, kind: c.kind, version: c.version, variant: "real", digest: more.digest }, subject: { digest: null }, images: more.images ?? null, config: { seed: 20240607, rounds: 1, usd: 0, model: null, repair: false, minutes: 60, asked: o } });
+
+function controlsRoom(h, c, images, o) {
+  const room = setRoom(h, c, o);
   const where0 = whereAt(treeOf(h), h.env);
   cpSync(c.dir, room.at("frozen", "case"), { recursive: true });
   madeCheckout(room.at("checkout"), CONTROL_BASE[c.kind](c, frozen(where0.root, "head", h.env)), `${c.id} controls subject`, h.env, { plugin: c.kind === "source" });
-  return { room, manifest: { schema: 1, kind: "controls", run: room.id, task: null, at: new Date().toISOString(), source: { branch: where0.branch, commit: where0.commit, mode: "head" }, benchmark: { case: c.id, version: c.version, variant: "real", digest: dirDigest(room.at("frozen", "case")) }, subject: { digest: null }, images, config: { seed: 20240607, rounds: 1, usd: 0, model: null, repair: false, minutes: 60 } } };
+  return { room, manifest: setManifest(room, c, where0, o, { mode: "head", digest: dirDigest(room.at("frozen", "case")), images }) };
 }
 
 async function controls(h, args) {
   const c = caseOf(h.root, words(args)[0] ?? refusedWith("name the case whose controls to run"));
-  return c.kind === "qa" ? qaControls(h, c, args) : sourceControls(h, c, args);
+  return (c.kind === "qa" ? qaControls : sourceControls)(h, c, controlOptions(args));
 }
 
 // The controls asked for: every one the case declares, or the one --only names.
-const only = (list, args) => list.filter((x) => !flag(args, "only") || x.id === flag(args, "only"));
+const only = (list, o) => list.filter((x) => !o.only || x.id === o.only);
 
 // The engine-carried controls run a whole repair round each (Orbit's own test suite, in the runner); --skip-engine
 // leaves them out, for the quick tier that proves the verifier and the judge alone.
-const engineRepairs = (c, args) => (has(args, "skip-engine") ? [] : only((c.repairs ?? []).filter((r) => r.through === "engine"), args));
+const engineRepairs = (c, o) => (o.skipEngine ? [] : only((c.repairs ?? []).filter((r) => r.through === "engine"), o));
 
-async function sourceControls(h, c, args) {
+const judgeRepairs = (c, o) => only((c.repairs ?? []).filter((r) => r.through === "judge"), o);
+
+const verifierNeeds = (c, o) => ["verifier", ...(engineRepairs(c, o).length ? ["runner"] : [])];
+
+async function sourceControls(h, c, o) {
   const { deps } = dockerUp(h, "the controls run the verifier's own containers");
-  const made = controlsRoom(h, c, resolvedImages(imageDefs(engineOf(h)), deps, { need: ["verifier", ...(engineRepairs(c, args).length ? ["runner"] : [])] }));
+  const made = controlsRoom(h, c, resolvedImages(imageDefs(engineOf(h)), deps, { need: verifierNeeds(c, o) }), o);
   docWritten(made.room, "manifest.json", made.manifest);
-  return controlsRan(await withSpec(contextOf(h, made.room, made.manifest, NO_RECORD)), c, h, args);
+  return controlsRan(await withSpec(contextOf(h, made.room, made.manifest, NO_RECORD)), c, h, o);
 }
 
 // What a control's own file does to its variant: a source case's mutations, or an engineering case's definition (the
@@ -381,10 +412,17 @@ function rethrownError(e) {
   throw e;
 }
 
+// A control carried by a whole run of its own: the run its record planned -- read back when it ended, carried on when
+// its room was kept, started under an id planned first otherwise (core/controlset.mjs RUN_OF). A resumed set never
+// starts a second run for one control.
+const controlRun = (h, set, id, start) => runOfControl({ set, id, storeRoot: h.storeRoot, resume: (run) => runResumed(h, [run]), start, newRun: () => newRunId(`${set.id}\u0000${id}`) });
+
+const failedControl = (e) => ({ outcome: e instanceof Blocked ? "BLOCKED" : "REFUSED", summary: e.message });
+
 // A repair control carried through Orbit's ENGINE: a whole run with --repair whose host is the scripted one, driving
 // Orbit's real engineering loop in the runner with the edits its definition names -- no model, no network.
-async function engineControl(h, c, r, args) {
-  const got = await oneRun(h, { caseId: c.id, variant: r.variant, repair: true, host: `scripted:${r.id}`, source: "head", parent: parentOption(flag(args, "parent")) }).catch((e) => ({ outcome: e instanceof Blocked ? "BLOCKED" : "REFUSED", summary: e.message }));
+async function engineControl(h, set, c, r, o) {
+  const got = await controlRun(h, set, r.id, (runId) => oneRun(h, { caseId: c.id, variant: r.variant, repair: true, host: `scripted:${r.id}`, source: "head", parent: o.parent ?? undefined, runId })).catch(failedControl);
   return { id: r.id, kind: "scripted-host", through: "engine", expect: r.expect, got: got.outcome, matched: got.outcome === r.expect, summary: got.summary ?? "", run: got.run ?? null };
 }
 
@@ -395,12 +433,13 @@ async function rowsOf(list, one) {
 }
 
 // Every control of a source case, in its own order: what the verifier must pass and fail, what the judge must pass and
-// refuse of a candidate, and what a scripted host carried through the engine must come to. A verifier whose own
-// reference model fails its self-test proves nothing, so none of its controls is run.
-async function controlsRan(ctx, c, h, args) {
+// refuse of a candidate, and what a scripted host carried through the engine must come to -- each kept in the set's room
+// as it ends, so a resumed set runs only what it had not decided. A verifier whose own reference model fails its
+// self-test proves nothing, so none of its controls is run.
+async function controlsRan(ctx, c, h, o) {
   if (ctx.invalid) return { case: c.id, run: ctx.run.id, rows: [], verifierDefect: ctx.invalid.says, exit: 2 };
   const cache = {};
-  const rows = [...(await rowsOf(only(c.controls, args), (k) => oneControl(ctx, c, k))), ...(await rowsOf(only((c.repairs ?? []).filter((r) => r.through === "judge"), args), (r) => judgedOrDrifted(ctx, c, r, cache))), ...(await rowsOf(engineRepairs(c, args), (r) => engineControl(h, c, r, args)))];
+  const rows = [...(await rowsOf(only(c.controls, o), (k) => keptOr(ctx.room, k, () => oneControl(ctx, c, k)))), ...(await rowsOf(judgeRepairs(c, o), (r) => keptOr(ctx.room, r, () => judgedOrDrifted(ctx, c, r, cache)))), ...(await rowsOf(engineRepairs(c, o), (r) => keptOr(ctx.room, r, () => engineControl(h, ctx.room, c, r, o))))];
   docWritten(ctx.room, "controls.json", { case: c.id, rows });
   return { case: c.id, run: ctx.run.id, rows, exit: controlsExit(rows) };
 }
@@ -408,17 +447,46 @@ async function controlsRan(ctx, c, h, args) {
 // REFUSED when any control no longer applies to this source (FIXTURE_DRIFT); otherwise every row matched, or not.
 const controlsExit = (rows) => (rows.some((r) => r.got === "DRIFTED") ? 2 : rows.length && rows.every((r) => r.matched) ? 0 : 1);
 
-// A QA case's controls: a whole run each, driven by one of its scripted hosts, its verdict held to what it must be.
-async function qaControl(h, c, k, args) {
-  const r = await oneRun(h, { caseId: c.id, host: k.host, source: flag(args, "source") ?? "head", parent: parentOption(flag(args, "parent")) });
+// A QA case's controls: a whole run each, driven by one of its scripted hosts, its verdict held to what it must be --
+// the set kept in a room of its own, as a source case's is.
+function qaControlsRoom(h, c, o) {
+  const room = setRoom(h, c, o);
+  docWritten(room, "manifest.json", setManifest(room, c, whereAt(treeOf(h), h.env), o, { mode: o.source ?? "head", digest: dirDigest(c.dir) }));
+  return room;
+}
+
+const qaControls = (h, c, o) => qaControlsRan(h, c, qaControlsRoom(h, c, o), o);
+
+async function qaControl(h, set, c, k, o) {
+  const r = await controlRun(h, set, k.id, (runId) => oneRun(h, { caseId: c.id, host: k.host, source: o.source ?? "head", parent: o.parent ?? undefined, runId }));
   return { id: k.id, host: k.host, expect: k.expect, got: r.outcome, matched: r.outcome === k.expect, summary: r.summary ?? "", run: r.run };
 }
 
-async function qaControls(h, c, args) {
-  const rows = [];
-  for (const k of c.controls.filter((x) => !flag(args, "only") || x.id === flag(args, "only"))) rows.push(await qaControl(h, c, k, args));
-  return { case: c.id, run: rows.map((r) => r.run).join(" "), rows, exit: controlsExit(rows) };
+async function qaControlsRan(h, c, room, o) {
+  const rows = await rowsOf(only(c.controls, o), (k) => keptOr(room, k, () => qaControl(h, room, c, k, o)));
+  docWritten(room, "controls.json", { case: c.id, rows });
+  return { case: c.id, run: room.id, rows, exit: controlsExit(rows) };
 }
+
+// ---- a control set, carried on -------------------------------------------------------------------------------------------
+
+// A control set carried on from its room (`resume <bnr-…>`): what it was asked, on the tree it measured -- every control
+// it kept stays as it was, the rest run, and a control's own run is carried on when its record planned one. A set whose
+// case moved since it began is refused: what it kept was about another case.
+const unkept = (room) => refusedWith(`the control set ${room.id} keeps no options to be carried on with: run its controls again`);
+
+const controlsResumed = (h, room, m) => (m.config?.asked ? (m.benchmark?.kind === "qa" ? qaResumed : sourceResumed)({ ...h, tree: m.source?.repo ?? h.tree }, room, m) : unkept(room));
+
+const intactSet = (ctx) => (dirDigest(ctx.frozenCase) === ctx.manifest.benchmark.digest ? ctx : refusedWith(`the control set ${ctx.run.id} froze a case that changed since it began: run its controls again`));
+
+async function sourceResumed(h, room, m) {
+  const { deps } = dockerUp(h, "a control set goes on in the verifier's containers");
+  const ctx = intactSet(await withSpec(contextOf(h, room, m, NO_RECORD)));
+  resolvedImages(imageDefs(engineOf(h)), deps, { need: verifierNeeds(ctx.case, m.config.asked), prefer: m.images });
+  return controlsRan(ctx, ctx.case, h, m.config.asked);
+}
+
+const qaResumed = (h, room, m) => ((c) => (dirDigest(c.dir) === m.benchmark.digest ? qaControlsRan(h, c, room, m.config.asked) : refusedWith(`${c.id} changed since the control set ${room.id} began: run its controls again`)))(caseOf(h.root, m.benchmark.case));
 
 const rejectsSay = (x) => (x.missing?.length ? ` · NOT refused by ${x.missing.join(", ")}` : x.rejects?.length ? ` · refused by ${x.rejects.join(", ")}` : "");
 

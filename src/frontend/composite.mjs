@@ -79,9 +79,13 @@ function composite(members) {
   return { root: primary.root, roots: members.map(({ alias, root, prefix }) => ({ alias, root, prefix })), commit: () => primary.commit(), branch: () => primary.branch(), changed: (from) => primary.changed(from), ...merged(members) };
 }
 
+// A member's hits under its namespace -- and null, as its port said, when it could not be searched: `listed` decides what
+// that costs (everything for the primary, that repository alone for any other), exactly as it does for a listing.
+const namespaced = (m, hits) => (hits === null ? null : hits.map((hit) => ({ ...hit, path: m.prefix + hit.path })));
+
 const merged = (members) => ({
   files: () => listed(members, (m) => m.port.files()),
-  search: (pattern) => listed(members, (m) => (m.port.search(pattern) ?? []).map((hit) => ({ ...hit, path: m.prefix + hit.path })), true),
+  search: (pattern) => listed(members, (m) => namespaced(m, m.port.search(pattern)), true),
   read: (rel) => routed(members, rel).port.read(stripped(routed(members, rel), rel)),
   fingerprints: (scopes) => fingerprinted(members, scopes),
 });

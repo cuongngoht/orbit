@@ -4,10 +4,14 @@
 // document, folded from the kept rooms exactly as `metrics` folds them and written nowhere by itself: a release ship
 // writes what this answers next to its evidence.json, and the release notes quote it.
 //
-//   reliabilityOf(runs, o = { scope, store, at, k }) -> { schema, kind, at, scope, store, runs, rates, tools, arms, notes }
-//   sayReliability(r) -> text      RELIABILITY_KIND
+// 0.5.0 (B3, ADR 0054) adds `memory`: each sessions case's memory arms side by side -- pass@1, decisions used, designs
+// refused, cost and minutes of the second session -- and the effect of memory, the `on` arm's minus the `off` arm's.
+//
+//   reliabilityOf(runs, o = { scope, store, at, k }) -> { schema, kind, at, scope, store, runs, rates, tools, arms, memory,
+//                                                        notes }
+//   sayReliability(r) -> text      RELIABILITY_KIND      memoryLines(rows) -> lines
 import { runFacts } from "./metrics.mjs";
-import { groupBy, overheadOf, ratesOf } from "./rates.mjs";
+import { groupBy, memoryOf, overheadOf, ratesOf } from "./rates.mjs";
 import { toolsFoldOf } from "./tools.mjs";
 
 export const RELIABILITY_KIND = "orbit.benchmark.reliability/v1";
@@ -20,6 +24,7 @@ const NOTES = [
   "A model is counted at the effort its host was asked to run at (model@effort; a model alone ran at its own default): two efforts of one model are two rows, never one rate.",
   "An arm's overhead is its median minus the none arm's, on the same case, variant, host basis, model and effort.",
   "A run whose report kept no tool facts (one from before 0.5.0) is counted as unread, never as zero: node benchmark/run.mjs report <bnr-…> writes them.",
+  "A memory arm's numbers are its second session's (a sessions run): the first, the same for both arms, is never the arm's. Memory's effect is the on arm's median minus the off arm's, and says nothing until both have runs that stand; the off arm switches off ORBIT_LEARN and ORBIT_HOST_MEMORY, and what no switch governs stays in both.",
 ];
 
 const countBy = (xs) => xs.reduce((m, x) => ({ ...m, [x]: (m[x] ?? 0) + 1 }), {});
@@ -32,7 +37,7 @@ const comparedArms = (rows) => groupBy(rows, (r) => [r.case, r.variant, r.basis,
 export function reliabilityOf(runs, o = {}) {
   const fs = runs.map(runFacts);
   const rates = ratesOf(fs, o);
-  return { schema: 1, kind: RELIABILITY_KIND, at: o.at ?? null, scope: o.scope ?? {}, store: o.store ?? null, runs: { total: fs.length, byBasis: countBy(fs.map((f) => f.basis)), byArm: countBy(fs.map((f) => f.arm)), byOutcome: countBy(fs.map((f) => f.outcome ?? "unfinished")) }, rates, tools: toolsFoldOf(fs), arms: { rows: comparedArms(rates.rows), overhead: overheadOf(fs) }, notes: NOTES };
+  return { schema: 1, kind: RELIABILITY_KIND, at: o.at ?? null, scope: o.scope ?? {}, store: o.store ?? null, runs: { total: fs.length, byBasis: countBy(fs.map((f) => f.basis)), byArm: countBy(fs.map((f) => f.arm)), byMemory: countBy(fs.filter((f) => f.memory).map((f) => f.memory)), byOutcome: countBy(fs.map((f) => f.outcome ?? "unfinished")) }, rates, tools: toolsFoldOf(fs), arms: { rows: comparedArms(rates.rows), overhead: overheadOf(fs) }, memory: { rows: memoryOf(fs) }, notes: NOTES };
 }
 
 // ---- in words ------------------------------------------------------------------------------------------------------------
@@ -42,7 +47,7 @@ const money = (v) => (v === "unknown" ? "unknown" : `${v} USD`);
 // A model at the effort it was asked to run at, as every line says it.
 const hostSaid = (x) => (x.effort ? `${x.model}@${x.effort}` : x.model);
 
-const rowLine = (r) => `  ${r.case} ${r.variant}${r.arm !== "release" ? ` [${r.arm}]` : ""} (${r.basis}, ${hostSaid(r)}): pass@1 ${r.pass1} over ${r.runs}, pass@${r.passK.k} ${r.passK.value}; median ${money(r.medianCostUsd)}, ${r.medianMinutes} min`;
+const rowLine = (r) => `  ${r.case} ${r.variant}${r.arm !== "release" ? ` [${r.arm}]` : ""}${r.memory ? ` [memory ${r.memory}]` : ""} (${r.basis}, ${hostSaid(r)}): pass@1 ${r.pass1} over ${r.runs}, pass@${r.passK.k} ${r.passK.value}; median ${money(r.medianCostUsd)}, ${r.medianMinutes} min`;
 
 const modelLine = (m) => `  ${hostSaid(m)} (${m.basis}): pass@1 ${m.pass1} over ${m.runs} run(s) of ${m.rows} row(s), pass@${m.passK.k} ${m.passK.value} (mean of ${m.passK.over} row(s)); median ${money(m.medianCostUsd)}, ${m.medianMinutes} min`;
 
@@ -56,6 +61,17 @@ const overheadLine = (o) => `  ${o.case} ${o.variant} ${o.arm} over none (${o.ba
 
 const section = (title, lines) => (lines.length ? [title, ...lines] : [`${title}: none`]);
 
+const signed = (v) => (v === "unknown" ? "unknown" : `${v > 0 ? "+" : ""}${v}`);
+
+const sideSaid = (arm, a) => `${arm}: pass@1 ${a.pass1} over ${a.runs}, ${a.decisions} decision(s), ${a.designsRefused} design(s) refused, ${money(a.costUsd)}, ${a.minutes} min`;
+
+const effectSaid = (e) => (e ? `effect of memory (on − off): pass@1 ${signed(e.pass1)}, decisions ${signed(e.decisions)}, designs refused ${signed(e.designsRefused)}, cost ${signed(e.costUsd)}, minutes ${signed(e.minutes)}` : "effect of memory: unknown until both arms have runs that stand");
+
+const memoryLine = (m) => [`  ${m.case} ${m.variant} (${m.basis}, ${hostSaid(m)}): ${Object.entries(m.arms).map(([arm, a]) => sideSaid(arm, a)).join(" · ")}`, `    ${effectSaid(m.effect)}`];
+
+// The lines `metrics` and the report print of the memory arms: each case's arms side by side, and memory's effect.
+export const memoryLines = (rows) => (rows.length ? section("MEMORY ARMS (the second session's medians)", rows.flatMap(memoryLine)) : []);
+
 // The lines `metrics` prints of the same folds.
 export const ratesLines = (rates) => [...section(`RELIABILITY BY ROW (pass@${rates.k})`, rates.rows.map(rowLine)), ...section("RELIABILITY BY MODEL", rates.models.map(modelLine))];
 
@@ -63,4 +79,4 @@ export const toolsLines = (tools) => section("TOOL CALLS BY SUITE", toolLines(to
 
 export const overheadLines = (rows) => (rows.length ? section("ORBIT OVERHEAD (an Orbit arm minus none)", rows.map(overheadLine)) : []);
 
-export const sayReliability = (r) => [`RELIABILITY  ${r.runs.total} run(s) · ${Object.entries(r.scope).filter(([, v]) => v !== null && v !== undefined).map(([k, v]) => `${k} ${v}`).join(", ") || "every run kept"}`, ...section("ROWS", r.rates.rows.map(rowLine)), ...section("MODELS", r.rates.models.map(modelLine)), ...section("TOOL CALLS", toolLines(r.tools)), ...section("ARMS", r.arms.rows.map(armLine)), ...section("OVERHEAD", r.arms.overhead.map(overheadLine)), ...r.notes.map((n) => `· ${n}`)].join("\n");
+export const sayReliability = (r) => [`RELIABILITY  ${r.runs.total} run(s) · ${Object.entries(r.scope).filter(([, v]) => v !== null && v !== undefined).map(([k, v]) => `${k} ${v}`).join(", ") || "every run kept"}`, ...section("ROWS", r.rates.rows.map(rowLine)), ...section("MODELS", r.rates.models.map(modelLine)), ...section("TOOL CALLS", toolLines(r.tools)), ...section("ARMS", r.arms.rows.map(armLine)), ...section("OVERHEAD", r.arms.overhead.map(overheadLine)), ...section("MEMORY", (r.memory?.rows ?? []).flatMap(memoryLine)), ...r.notes.map((n) => `· ${n}`)].join("\n");

@@ -225,3 +225,23 @@ test("a goal that must be refused is never verified on the none arm when its hos
   assert.equal(isVerified(round("release", invented, { lifecycle: "EXECUTING" })), true, "with Orbit, an engineering task that never completed delivered nothing (unchanged)");
   assert.equal(isVerified(round("release", invented, { lifecycle: "COMPLETED" })), false, "with Orbit, a completed task's change was delivered (unchanged)");
 });
+
+// ---- memory arms (0.5.0, backlog B3, ADR 0054) ------------------------------------------------------------------------
+
+test("--memory is one of the memory arms, refused for a case with no second session, and never with one run id when it starts several", async (t) => {
+  const w = worldOf(t, FILES);
+  const h = harnessOf(w, dockerDouble(NEVER));
+  await assert.rejects(async () => COMMANDS.run.run(h, ["CALC-001", "--memory=sometimes"]), /--memory is one of on, off, all, not sometimes/);
+  await assert.rejects(async () => COMMANDS.run.run(h, ["CALC-001", "--memory=off"]), /CALC-001 has no second session: --memory=off names none of them/);
+  await assert.rejects(async () => COMMANDS.run.run(h, ["CALC-001", "--memory=all", "--run-id=bnr-0123456789ab"]), /--run-id names one run, and --memory=all starts one run per memory arm/, "refused before any arm runs");
+  assert.equal(existsSync(roomOf(w.storeRoot, "bnr-0123456789ab").dir), false, "no room was made under the id");
+  const one = await COMMANDS.run.run(h, ["CALC-001", "--seed=3"]);
+  assert.equal(manifestOf(w, one.run).config.memory, null, "a case with no second session runs on no memory arm");
+});
+
+test("a sessions case lists the memory arms it is compared on", () => {
+  const listing = COMMANDS.list.run({ root: ROOT });
+  const sessions = listing.suites.find((s) => s.id === "orbit-sessions").cases;
+  assert.deepEqual(sessions.map((c) => [c.id, c.kind, (c.memory ?? []).join()]), [["ORBIT-SES-001", "sessions", "on,off"], ["ORBIT-SES-002", "sessions", "on,off"], ["ORBIT-SES-003", "sessions", "on"]]);
+  assert.match(COMMANDS.list.say(listing), /ORBIT-SES-001 1\.0\.0 {2}sessions .* {2}memory on, off/);
+});

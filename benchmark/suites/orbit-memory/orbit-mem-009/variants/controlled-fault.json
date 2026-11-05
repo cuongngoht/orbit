@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "Two planted defects in knowledge recall, applied only to the benchmark copy of the source: freshness is measured with one look at the index per claim instead of one for all of them; and the recall trusts the freshness each claim was stamped with when it was recorded, never measuring it now.",
+  "mutations": [
+    {
+      "id": "one-look-per-claim",
+      "file": "src/knowledge/query.mjs",
+      "find": "  const scopes = measure(claims.map((c) => ({ scope: watched(c) })), ctx.know.model().model, ctx.source);",
+      "replace": "  const scopes = Object.assign({}, ...claims.map((c) => measure([{ scope: watched(c) }], ctx.know.model().model, ctx.source)));",
+      "count": 1
+    },
+    {
+      "id": "freshness-as-stamped",
+      "file": "src/knowledge/views/claims.mjs",
+      "find": "  const answer = query(g.claims, g.ask, ctx.parts, measured(ctx, g.stored));",
+      "replace": "  const answer = query(g.claims, g.ask, ctx.parts, {});",
+      "count": 1
+    }
+  ]
+}

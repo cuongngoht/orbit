@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "partial-fix",
+  "about": "The controlled fault with only the forgetful scan repaired: a freshness check still asks the index once per fact, so a CURRENT look makes many git calls and the verifier must still fail it.",
+  "mutations": [
+    {
+      "id": "scan-remembers-again",
+      "file": "src/architecture/scan.mjs",
+      "find": "export const scopesInto = (was) => ({ ...was });",
+      "replace": "export const scopesInto = (was, scopes) => ({ ...was, ...Object.fromEntries(Object.entries(scopes).filter(([, v]) => v.hash).map(([k, v]) => [k, { hash: v.hash }])) });",
+      "count": 1
+    }
+  ]
+}

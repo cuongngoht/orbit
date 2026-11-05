@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "id": "partial-fix",
+  "about": "The controlled fault with only the root file's scope repaired: an incremental scan still reads the whole tree, so a change to one declaration re-reads every other folder and the verifier must still fail it.",
+  "mutations": [
+    {
+      "id": "root-file-watched-as-itself",
+      "file": "src/architecture/analyzers/shape.mjs",
+      "find": ".map(dirname))",
+      "replace": ".map(watchedAs))",
+      "count": 1
+    }
+  ]
+}

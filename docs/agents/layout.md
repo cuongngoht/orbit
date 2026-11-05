@@ -1134,8 +1134,9 @@ acceptance/    (0.1.0) NATIVE ACCEPTANCE, outside test/ because `node --test` ru
 benchmark/     (ADR 0046, 0047, 0048) THE DOCKER BENCHMARK of Orbit: development tooling, export-ignored, imported by nothing
                of the engine (test/benchmark-lint.test.mjs), not under acceptance/ because the backend acceptance digest
                hashes that tree. run.mjs is its composition root (usage header = its contract; README.md the guide).
-               lib/core/ -- what every run shares: suites.mjs (KINDS -- source, qa, engineering -- each a field table held by
-               src/constraints.mjs; suites, cases, a directory's digest) · freeze.mjs (the branch frozen through read-only
+               lib/core/ -- what every run shares: suites.mjs (KINDS -- source, qa, engineering, sessions -- each a field
+               table held by src/constraints.mjs; suites, cases, a directory's digest; MEMORY_ARMS and SESSION_HOSTS) ·
+               freeze.mjs (the branch frozen through read-only
                git, HARNESS) · git.mjs · mutations.mjs (exact mutations and candidate definitions, FIXTURE_DRIFT) ·
                checkout.mjs (a tree as one fixed
                commit) · context.mjs (frozenRun, resumedRun, the manifest, the bench task, KIND_RUN) · record.mjs (the
@@ -1146,8 +1147,9 @@ benchmark/     (ADR 0046, 0047, 0048) THE DOCKER BENCHMARK of Orbit: development
                judge) · agreement.mjs (the stream's Skill and Agent calls held to the session trail) · sentinel.mjs (every
                secret a run handed out, looked for and masked) · tools.mjs (0.5.0, B9: a run's tool-call failures per
                tool, per relay subcommand and per sandbox step, SANDBOX_FAILURES, and their fold) · rates.mjs (pass@1,
-               pass@k and medians per row and model, the arms' overhead) · metrics.mjs (a fold over the kept runs, apart
-               by host basis) · reliability.mjs (the reliability report a release quotes) · controlset.mjs (0.5.0: a
+               pass@k and medians per row and model, the arms' overhead, a sessions case's memory arms and memory's
+               effect) · metrics.mjs (a fold over the kept runs, apart by host basis; --by revision, model, arm, memory) ·
+               reliability.mjs (the reliability report a release quotes) · controlset.mjs (0.5.0: a
                control set kept in a room of its own -- each control's record, RUN_OF for a control carried by a whole
                run -- so `resume` carries a set on) · diagnosis.mjs (0.5.0: a run's diagnosis bundle, FINISH, read off its
                own records into its report).
@@ -1159,15 +1161,23 @@ benchmark/     (ADR 0046, 0047, 0048) THE DOCKER BENCHMARK of Orbit: development
                for one) · engine.mjs (Orbit's own engine from the frozen checkout, beside the controller: the application
                assembled and seated, its isolated sandbox, the investigation) · relay.mjs (RELAY, the mailbox server) and
                relay-client.mjs (what stands at cli/autonomous-qa.mjs in a QA host's plugin) · hosts.mjs (the scripted
-               reference, idle and false-alarm hosts, and the replay) · judge.mjs (outcomes off the journal, CREDIT,
-               VERDICT) · round.mjs (a coding host's round) · flow.mjs · report.mjs. lib/commands.mjs: the COMMANDS
-               table. images/runner/ (Claude Code pinned; entry.mjs, inspect.mjs, preflight.mjs, scripted.mjs -- the
+               reference, idle and false-alarm hosts -- and a second session's cheat, half, trusts-poison and
+               trusts-stale -- and the replay) · judge.mjs (outcomes off the journal, CREDIT, VERDICT) · round.mjs (a coding
+               host's round; a session's own brief line, budget share, kept home and memory switches) · flow.mjs (a QA run
+               is one SESSION: sessionRan, carriedBy, the phases a sessions run composes) · report.mjs.
+               lib/sessions/ (0.5.0, ADR 0054) -- a SESSIONS case, a QA case worked in two sessions over one checkout and
+               the stores the first left: flow.mjs (the learning session, the carry phase -- what is kept, the code moved
+               under a case that learned on the clean application, the poison planted in the host's own memory -- and the
+               measured session on its memory arm, ARM_ENV) · report.mjs (the second session's QA report, with the
+               sessions, what was offered, the poison, and what a memory arm is compared on). lib/commands.mjs: the
+               COMMANDS table. images/runner/ (Claude Code pinned; entry.mjs, inspect.mjs, preflight.mjs, scripted.mjs -- the
                scripted host a control runs in its place: a repair, a goal, a blocked goal, an interrupted session, or
                idle) · images/verifier/
                (egress.mjs) · images/qa-worker/ (the Playwright image, pinned, and the browser CLI Orbit drives).
                suites/<suite>/suite.json and suites/<suite>/<case-id>/ (case.json, request.md, verifier/, variants/,
-               controls/). fixtures/<app>/ -- a project an engineering case is about (its public tests as checks/). A
-               run's evidence: <store>/benchmark/<bnr-…>/ (rounds/<k>/outcome.json, verified.json, report.md|json).
+               controls/; a sessions case's poison/). fixtures/<app>/ -- a project an engineering case is about (its
+               public tests as checks/). A run's evidence: <store>/benchmark/<bnr-…>/ (rounds/<k>/outcome.json,
+               verified.json, report.md|json; a sessions run's home/, the host's own home kept between its sessions).
 integrations/  what ANOTHER program installs, never part of this plugin's archive. vscode-orbit-live/ (1.8.5, ADR 0021)
                is the Orbit Live companion for VS Code: plain CommonJS with no dependency and no build step, a
                person installs it; companion.js (what it does: a heartbeat in the store's live room, a request

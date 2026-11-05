@@ -19,8 +19,10 @@ const common = (at) => ["--source=head", `--tree=${at.tree}`, `--parent=${at.par
 
 const hostFlags = (at) => [`--usd=${at.usd}`, ...(at.model ? [`--model=${at.model}`] : []), ...(at.effort ? [`--effort=${at.effort}`] : []), ...(at.credential ? [`--credential=${at.credential}`] : []), ...(at.caFile ? [`--ca-file=${at.caFile}`] : [])];
 
-// A QA case plants its own variant; any other case is told which.
-const variantFlag = (row) => (row.variant && row.kind !== "qa" ? [`--variant=${row.variant}`] : []);
+// A QA case plants its own variant, and so does a sessions case (0.5.0, ADR 0054); any other case is told which.
+const OWN_VARIANT = ["qa", "sessions"];
+
+const variantFlag = (row) => (row.variant && !OWN_VARIANT.includes(row.kind) ? [`--variant=${row.variant}`] : []);
 
 export const ARGV = {
   verify: (row, at) => ["run", row.case, ...variantFlag(row), `--run-id=${at.runId}`, ...common(at)],

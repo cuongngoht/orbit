@@ -188,3 +188,16 @@ test("a planted fault is exact: found as many times as it says, or nothing is ap
     assert.deepEqual([r.ok, r.code, r.drift.found, r.entries], [false, FIXTURE_DRIFT, found, undefined]);
   }
 });
+
+// ---- the sessions kind's vocabulary (0.5.0, backlog B3, ADR 0054) ---------------------------------------------------------
+
+test("a sessions run's every phase says who carries it, and its memory arms are the owner's two switches, nothing more", async () => {
+  const { ACTION_ROLES } = await import("../benchmark/lib/core/record.mjs");
+  const { ARM_ENV, LEARN_TYPES, ROUND_TYPES } = await import("../benchmark/lib/sessions/flow.mjs");
+  const { MEMORY_ARMS } = await import("../benchmark/lib/core/suites.mjs");
+  for (const type of [...Object.values(LEARN_TYPES), "benchmark.carry", "benchmark.target", "benchmark.qa", "benchmark.readback", "benchmark.confirm"]) assert.ok(ACTION_ROLES[type], `${type} has a role`);
+  assert.deepEqual([ACTION_ROLES["benchmark.learn.qa"], ACTION_ROLES["benchmark.carry"].mutates], [ACTION_ROLES["benchmark.qa"], true], "a learning round is carried as a round is; carrying over writes the run's own stores");
+  assert.deepEqual(ROUND_TYPES, ["benchmark.learn.qa", "benchmark.qa"], "both sessions' rounds are never sent again");
+  assert.deepEqual(Object.keys(ARM_ENV), MEMORY_ARMS);
+  assert.deepEqual([ARM_ENV.on, ARM_ENV.off], [{}, { ORBIT_LEARN: "off", ORBIT_HOST_MEMORY: "off" }], "on is what a person has; off is ORBIT_LEARN=off and ORBIT_HOST_MEMORY=off");
+});

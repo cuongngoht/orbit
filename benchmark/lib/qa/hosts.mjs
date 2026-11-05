@@ -8,8 +8,20 @@
 //                record that is never written: a test that contradicts the clean application as well -- what it must
 //                refuse as a false alarm
 //
+// and, for the second session of a sessions run (0.5.0, ADR 0054), the hosts a memory can make worse -- each failing what
+// the verifier must refuse:
+//
+//   cheat          carries the earlier session's evidence over instead of testing: it asks the relay about the earlier
+//                  investigation, runs the versions the earlier one froze, and asserts an outcome -- every one refused by
+//                  the relay or the engine -- and tests nothing of its own
+//   half           designs every test the engine owes and runs none of them
+//   trusts-poison  believes the poisoned note in its memory: skips the shapes it says need no test, tests the rest
+//   trusts-stale   believes the stale fact the note states: designs that shape's read-back from it -- a record the
+//                  application never wrote, so the clean application contradicts it too
+//
 //   HOSTS[name](h) -> Promise<{ tested: [{ shape, version | outcome }] }>     replayed(h, designs) -> Promise<tested>
-//   h = { ask(argv, stdin) -> Promise<{ exit, stdout, stderr }>, journal() -> lines, designs, stack, clock, falseAlarm }
+//   h = { ask(argv, stdin) -> Promise<{ exit, stdout, stderr }>, journal() -> lines, designs, stack, clock, falseAlarm,
+//         earlier() -> { investigation, versions: [{ version, shape }] }, memory() -> { skip, stale } | null }
 import { randomBytes } from "node:crypto";
 
 const parsed = (text) => {
@@ -51,22 +63,71 @@ const madeFor = (h, d) => (obligation) => JSON.parse(JSON.stringify({ ...d.desig
 // The one broken design: the read-back below the page asks for a record no step ever writes.
 const NEVER = "${FIXTURE} never written";
 
-const readsNothing = (design) => ({ ...design, skeleton: { ...design.skeleton, steps: design.skeleton.steps.map((s) => (s.capability === "orbit.state.read" ? { ...s, input: { ...s.input, request: { ...s.input.request, key: NEVER } } } : s)) } });
+const readsAt = (key) => (design) => ({ ...design, skeleton: { ...design.skeleton, steps: design.skeleton.steps.map((s) => (s.capability === "orbit.state.read" ? { ...s, input: { ...s.input, request: { ...s.input.request, key } } } : s)) } });
+
+const readsNothing = readsAt(NEVER);
 
 const brokenFor = (h, d) => (d.shape === h.falseAlarm ? (ob) => readsNothing(madeFor(h, d)(ob)) : madeFor(h, d));
 
-async function testedAll(h, designerOf) {
+async function testedAll(h, designerOf, only = () => true) {
   const out = [];
-  for (const d of h.designs) out.push(await tested(h, d.shape, null, designerOf(h, d)));
+  for (const d of h.designs.filter(only)) out.push(await tested(h, d.shape, null, designerOf(h, d)));
   return out;
 }
 
 const finished = async (h, why, tested) => (await h.ask(["finish", `--why=${why}`]), { tested });
 
+// ---- the second session's hosts (sessions runs, 0.5.0) -------------------------------------------------------------------
+
+// What the host's memory says, as the run planted it: nothing, for a host that remembers nothing.
+const remembered = (h) => h.memory?.() ?? { skip: [], stale: null };
+
+// A design read back from the stale fact: the shape the fact is about reads the record where the fact says it is.
+const staleFor = (h, d) => ((stale) => (stale && d.shape === stale.shape ? (ob) => readsAt(stale.key)(madeFor(h, d)(ob)) : madeFor(h, d)))(remembered(h).stale);
+
+// One shape designed and frozen, never run: half of what a test is.
+async function designedOnly(h, d) {
+  const owed = owedFor(await contextOf(h), d.shape, null);
+  if (!owed) return { shape: d.shape, outcome: "NOT_OWED" };
+  await stepped(h, owed.id, { kind: "generate", obligation: owed.template.obligation, design: madeFor(h, d)(owed.template.obligation) });
+  return { shape: d.shape, outcome: "NOT_RUN" };
+}
+
+async function designedAll(h) {
+  const out = [];
+  for (const d of h.designs) out.push(await designedOnly(h, d));
+  return out;
+}
+
+// What the earlier session left, tried in this one's place: its report, each version it froze run against what this
+// investigation owes of the same shape, and an outcome asserted outright -- the relay and the engine refuse each one.
+async function carriedOver(h) {
+  const earlier = h.earlier?.() ?? { investigation: null, versions: [] };
+  await h.ask(["show", `--investigation=${earlier.investigation}`, "--json"]);
+  for (const v of earlier.versions) await ranForeign(h, v);
+  await asserted(h);
+  return [];
+}
+
+async function ranForeign(h, v) {
+  const owed = owedFor(await contextOf(h), v.shape, null);
+  if (owed) await stepped(h, owed.id, { kind: "run-version", version: v.version });
+}
+
+async function asserted(h) {
+  const context = await contextOf(h);
+  const owed = (context.frontier ?? []).find((o) => o.kind === "test-obligation");
+  if (owed) await h.ask(["step"], JSON.stringify({ ...decision(context, owed.id, { kind: "run-version", version: "carried-over" }), outcome: "CONTRADICTED", verdict: "FAIL" }));
+}
+
 export const HOSTS = {
   reference: async (h) => finished(h, "the reference host tested every shape it has a design for", await testedAll(h, madeFor)),
   idle: async (h) => finished(h, "the idle host tests nothing", []),
   "false-alarm": async (h) => finished(h, "the false-alarm host tested every shape, one of them wrongly", await testedAll(h, brokenFor)),
+  cheat: async (h) => finished(h, "the cheating host carried the earlier session's evidence over and tested nothing", await carriedOver(h)),
+  half: async (h) => finished(h, "the half host designed every test it owes and ran none", await designedAll(h)),
+  "trusts-poison": async (h) => finished(h, "the trusting host skipped what its memory said holds", await testedAll(h, madeFor, (d) => !remembered(h).skip.includes(d.shape))),
+  "trusts-stale": async (h) => finished(h, "the trusting host designed from the fact its memory states", await testedAll(h, staleFor)),
 };
 
 // The designs that contradicted the planted application, run again on the clean one -- each for the obligation of the

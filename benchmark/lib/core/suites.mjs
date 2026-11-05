@@ -5,18 +5,22 @@
 // the controls that prove the verifier (controls/). Adding a case is adding a directory and one line in suite.json;
 // nothing here names a case, a module of the engine or a check.
 //
-// A case is one of three KINDS. A `source` case holds Orbit's own source to independent checks, and may hand a failure
+// A case is one of four KINDS. A `source` case holds Orbit's own source to independent checks, and may hand a failure
 // to Orbit to repair through its engineering loop. A `qa` case asks whether Orbit's autonomous QA finds the defect
 // planted in an application: the application, the variant that plants it and the ground truth are the case's. An
 // `engineering` case hands Orbit a GOAL over a frozen fixture repository (benchmark/fixtures/<fixture>/, its `real`
 // variant taking one behaviour away) and judges what the goal left with the same probe, spec, gates and own-test proof
 // a source case uses, plus record checks over what Orbit's owners recorded -- and whether the goal asks for a change or
-// must be refused for want of a rule (`measures.expects`).
+// must be refused for want of a rule (`measures.expects`). A `sessions` case (0.5.0, ADR 0054) is a QA case worked in
+// TWO sessions over one checkout and the stores the first one left: the first learns, the second is judged as a QA
+// case's one round is -- with memory on, or with Orbit's memory switched off (`sessions.memory`, MEMORY_ARMS) -- and a
+// case may plant a POISON in the host's memory before the second (`poison`).
 //
 //   suitesIn(root) -> [{ id, version, title, dir, cases }]         caseOf(root, id) -> case + { dir, suite }
 //   suiteHolding(root, caseId) -> suite id | null
 //   caseFindings(c, dir) -> [sentence]                             dirDigest(dir) -> sha256 of every file, by path
-//   KINDS · TRUTH_OUTCOMES · QA_HOSTS · caseDir(id) · ARMS · DEFAULT_BASELINE · armsOf(c) · baselinePluginOf(c)
+//   KINDS · TRUTH_OUTCOMES · QA_HOSTS · SESSION_HOSTS · MEMORY_ARMS · caseDir(id) · ARMS · DEFAULT_BASELINE · armsOf(c)
+//   baselinePluginOf(c) · memoryArmsOf(c)
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { constraintFindings, missingFindings } from "../../../src/constraints.mjs";
@@ -42,9 +46,20 @@ export const TRUTH_OUTCOMES = ["SATISFIED", "CONTRADICTED", "INCONCLUSIVE", "EXE
 // The scripted hosts a QA case's controls are run with (lib/qa/hosts.mjs): what the verifier must credit and refuse.
 export const QA_HOSTS = ["reference", "idle", "false-alarm"];
 
+// The scripted hosts a sessions case's controls may name besides (lib/qa/hosts.mjs): the ones only a second session can
+// be -- one that carries the earlier session's evidence over instead of testing (`cheat`), one that designs every test
+// it owes and runs none (`half`), one that skips what a poisoned memory says holds (`trusts-poison`) and one that
+// designs a test from the stale fact it says (`trusts-stale`).
+export const SESSION_HOSTS = [...QA_HOSTS, "cheat", "half", "trusts-poison", "trusts-stale"];
+
+// The MEMORY ARMS a sessions case's second session is compared on (0.5.0, backlog B3): what the first session left and
+// Orbit's memory as a person has it by default (`on`), or the same stores with ORBIT_LEARN=off and ORBIT_HOST_MEMORY=off
+// in every Orbit process of the second session (`off`).
+export const MEMORY_ARMS = ["on", "off"];
+
 const COMMON_FIELDS = {
   schema: { type: "integer", enum: [1] },
-  kind: { type: "string", enum: ["source", "qa", "engineering"] },
+  kind: { type: "string", enum: ["source", "qa", "engineering", "sessions"] },
   id: { type: "string", pattern: "^[A-Z][A-Z0-9]*(-[A-Z0-9]+)+$", says: { pattern: "id is upper-case words joined by dashes, such as ORBIT-SRC-001" } },
   version: { type: "string", pattern: "^\\d+\\.\\d+\\.\\d+$" },
   title: TEXT,
@@ -76,7 +91,7 @@ export const REPAIR_SCRIPTS = ["apply", "idle"];
 const SOURCE_FIELDS = { ...COMMON_FIELDS, subject: { type: "object" }, prepare: { type: "object" }, reproduce: TEXT, scope: { type: "object" }, checks: { type: "object" }, variants: { type: "object", minProperties: 1 }, baseline: BASELINE, repairs: { type: "array" } };
 
 // Fields a case may leave out: older cases (and the frozen copies older runs keep) have none of them.
-const OPTIONAL = ["baseline", "repairs", "interrupt", "arms", "baselinePlugin"];
+const OPTIONAL = ["baseline", "repairs", "interrupt", "arms", "baselinePlugin", "poison"];
 
 // THE ARMS a case may be compared on (0.5.0, B23), each handing the host a different plugin and nothing else different:
 // `none` hands it no Orbit at all (no plugin, so no hooks and no trail), `baseline` the plugin frozen from a named git
@@ -203,6 +218,45 @@ const QA_CROSS = [
   { fails: (c) => duplicates((c.controls ?? []).map((k) => k?.id)), say: (bad) => `control ids used twice: ${bad.join(", ")}` },
 ];
 
+// ---- a SESSIONS case: a QA case worked in two sessions, and what is carried from the first to the second -----------------
+
+const SESSIONS_FIELDS = { ...QA_FIELDS, sessions: { type: "object" }, poison: { type: "object" } };
+
+const SHAPE = { type: "string", pattern: "^[a-z][a-z0-9-]{0,63}$" };
+
+// What a sessions case holds beyond a QA case's fields: which application the first session LEARNS on (the planted one,
+// or the clean one, whose memory the code then moves under), the memory arms its second session is compared on, the
+// POISON a case may plant in the host's memory before the second -- a note in the host's own memory, the shapes it says
+// need no test (`skip`) and the stale fact it states (`stale`) -- and a control's learning host besides its own.
+const SESSIONS_SECTIONS = [
+  { at: "case", of: (c) => [c], fields: SESSIONS_FIELDS, required: requiredOf(SESSIONS_FIELDS) },
+  { at: "measures", of: (c) => [c.measures], fields: { kind: { type: "string", enum: ["memory"] }, capability: TEXT }, required: ["kind", "capability"] },
+  ...QA_SECTIONS.filter((s) => ["target", "acceptance", "limits.runner", "limits.engine", "cleanup"].includes(s.at)),
+  { at: "limits", of: (c) => [c.limits], fields: { rounds: { type: "integer", minimum: 1, maximum: 3 }, minutes: { type: "integer", minimum: 20, maximum: 720 }, usd: { type: "number", minimum: 0, maximum: 200 }, runner: { type: "object" }, engine: { type: "object" } }, required: ["rounds", "minutes", "usd", "runner", "engine"] },
+  { at: "sessions", of: (c) => [c.sessions], fields: { learn: { type: "string", enum: ["planted", "clean"] }, memory: { type: "array", items: { type: "string", enum: MEMORY_ARMS }, minItems: 1 } }, required: ["learn", "memory"] },
+  { at: "poison", of: (c) => (c.poison ? [c.poison] : []), fields: { note: REL, skip: { type: "array", items: SHAPE }, stale: { type: "object" } }, required: ["note", "skip", "stale"] },
+  { at: "poison.stale", of: (c) => (c.poison?.stale ? [c.poison.stale] : []), fields: { shape: SHAPE, key: TEXT }, required: ["shape", "key"] },
+  { at: "controls[]", of: (c) => c.controls ?? [], fields: { id: NAME, host: { type: "string", enum: SESSION_HOSTS }, learn: { type: "string", enum: SESSION_HOSTS }, expect: VERDICT }, required: ["id", "host", "expect"] },
+];
+
+const truthShapes = (c, dir) => truthOf(c, dir)?.shapes ?? [];
+
+const POISONED = ["trusts-poison", "trusts-stale"];
+
+// A sessions case beyond its fields: what a QA case must be, a poison note that is the case's own and names only shapes
+// its truth holds, each memory arm once, and a control that trusts a poison only where one is planted.
+const SESSIONS_CROSS = [
+  ...QA_CROSS,
+  { fails: (c, dir) => (c.poison ? missingFiles(dir, [c.poison.note]) : []), say: (bad) => `names a poison note it does not hold: ${bad.join(", ")}` },
+  { fails: (c, dir) => (c.poison ? [...(c.poison.skip ?? []), c.poison.stale?.shape].filter((s) => typeof s === "string" && !truthShapes(c, dir).includes(s)) : []), say: (bad) => `its poison names shapes its truth does not: ${bad.join(", ")}` },
+  { fails: (c) => duplicates(Array.isArray(c.sessions?.memory) ? c.sessions.memory : []), say: (bad) => `memory arms named twice: ${bad.join(", ")}` },
+  { fails: (c) => (Array.isArray(c.sessions?.memory) ? c.sessions.memory.filter((a) => !MEMORY_ARMS.includes(a)) : []), say: (bad) => `a memory arm is one of ${MEMORY_ARMS.join(", ")}, never ${bad.join(", ")}` },
+  { fails: (c) => (c.poison ? [] : (c.controls ?? []).filter((k) => POISONED.includes(k?.host)).map((k) => k.id)), say: (bad) => `controls trust a poison the case does not plant: ${bad.join(", ")}` },
+];
+
+// The memory arms a case's second session runs on; none for a case of another kind.
+export const memoryArmsOf = (c) => (c.kind === "sessions" ? c.sessions.memory : []);
+
 // Where a case's fixture lives, from the case's own directory: <root>/benchmark/suites/<suite>/<case>.
 export const fixtureDirOf = (caseDir, fixture) => join(caseDir, "..", "..", "..", "fixtures", fixture);
 
@@ -222,7 +276,7 @@ export const armsOf = (c) => c.arms ?? ["release"];
 
 export const baselinePluginOf = (c) => c.baselinePlugin ?? c.suite?.baselinePlugin ?? DEFAULT_BASELINE;
 
-export const KINDS = { source: { sections: SOURCE_SECTIONS, cross: SOURCE_CROSS }, qa: { sections: QA_SECTIONS, cross: QA_CROSS }, engineering: { sections: ENGINEERING_SECTIONS, cross: ENGINEERING_CROSS } };
+export const KINDS = { source: { sections: SOURCE_SECTIONS, cross: SOURCE_CROSS }, qa: { sections: QA_SECTIONS, cross: QA_CROSS }, engineering: { sections: ENGINEERING_SECTIONS, cross: ENGINEERING_CROSS }, sessions: { sections: SESSIONS_SECTIONS, cross: SESSIONS_CROSS } };
 
 const crossFindings = (kind, c, dir) => kind.cross.map((r) => [r, r.fails(c, dir)]).filter(([, bad]) => bad.length).map(([r, bad]) => `case: ${r.say(bad)}`);
 

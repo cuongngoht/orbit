@@ -294,7 +294,7 @@ const header = (summary) => `${summary.total} item(s), by class then evidence: $
 
 const refusedLines = (refused) => [...refused.slice(0, REFUSED_LINES).map((r) => `  refused  ${r.kind} ${clipped(printable(r.ref), REF_WIDTH)} -- ${r.why}`), ...(refused.length > REFUSED_LINES ? [`  … ${refused.length - REFUSED_LINES} more reference(s) refused -- \`--json\` names each`] : [])];
 
-const moreLine = (hidden) => (hidden > 0 ? [`  … ${hidden} more -- \`--json\` lists ${RELEVANCE_LIMIT} and counts the rest`] : []);
+const moreLine = (hidden) => (hidden > 0 ? [`  … ${hidden} more -- \`--json\` lists up to ${RELEVANCE_LIMIT} and counts the rest`] : []);
 
 // One line per item, held to `limit` lines in all with what is left out counted, and every refused reference named.
 export function relevanceLines(relevant, summary, limit) {

@@ -217,7 +217,7 @@ test("the section a terminal reads is held to its line bound, says what it left 
   const lines = relevanceLines(freshened(listing, {}).relevant, { ...listing, refused }, 24);
   assert.ok(lines.length <= 24, `${lines.length} lines`);
   assert.match(lines[0], new RegExp(`^${listing.total} item\\(s\\), by class then evidence`));
-  assert.ok(lines.some((l) => /… \d+ more -- `--json` lists 40/.test(l)));
+  assert.ok(lines.some((l) => /… \d+ more -- `--json` lists up to 40 and counts the rest/.test(l)));
   assert.equal(lines.filter((l) => /^ {2}refused/.test(l)).length, 3);
   assert.ok(lines.some((l) => /… 2 more reference\(s\) refused/.test(l)));
   assert.equal(lines.some((l) => l.includes("\u001b")), false, "a name from a host reaches a terminal printable");

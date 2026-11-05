@@ -18,6 +18,7 @@ import { pluginBuiltins, pluginComponents } from "../src/resources/plugin.mjs";
 import { PROVIDERS } from "../src/resources/providers/index.mjs";
 import { getEffectiveResources, everyResource } from "../src/resources/registry.mjs";
 import { classify } from "../src/routing/classify.mjs";
+import { dispatchedBy, explainNeeds } from "../src/routing/explain.mjs";
 import { BUDGET_BYTES, formatDecision } from "../src/routing/format.mjs";
 import { INTENTS, REFINEMENTS } from "../src/routing/intents.mjs";
 import { MAX_SELECTED, ROUTE_DECISION_VERSION, route } from "../src/routing/resolve.mjs";
@@ -272,7 +273,7 @@ test("a capability is matched by what it provides, and names the command it need
   const effective = registry({ capabilities: [cap] });
   const found = effective.capabilities.find((c) => c.id === "postgres.query");
   assert.deepEqual([found.ownership, found.routing.needs], ["project", ["command:psql"]]);
-  assert.deepEqual(effective.capabilities.filter((c) => c.detail?.builtin).map((c) => c.id), ["project-context", "local-checkout"]);
+  assert.deepEqual(effective.capabilities.filter((c) => c.detail?.builtin).map((c) => c.id), ["project-context", "engineering-memory", "local-checkout"]);
 });
 
 test("whatever is switched off, nothing selected is ever a resource the resolver may not use", () => {
@@ -367,7 +368,7 @@ test("every cue of the requirements intent is generic: no product, no vendor, at
   for (const cue of row.cues) assert.ok(termsOf(cue).length > 0 && cue.split(" ").length <= GRAM_LIMIT, cue);
   assert.doesNotMatch(row.cues.join(" "), /github|azure|devops|jira|gitlab|linear|microsoft/i);
   assert.equal(row.cues.includes("issue"), false, "a bare issue would take a code question for a work item");
-  assert.equal(INTENTS.length, 15, "and the header that says fifteen is right");
+  assert.equal(INTENTS.length, 16, "and the header that says sixteen is right");
 });
 
 // ---- running a project is its own question --------------------------------------------------------
@@ -405,4 +406,35 @@ test("every cue of the environment intent is generic: no language, no package ma
   assert.doesNotMatch(row.cues.join(" "), /docker|node|npm|dotnet|python|java|rust|kubernetes|compose|vscode|codespaces|nuget|maven/i);
   assert.equal(row.cues.includes("run"), false, "a bare run is every test prompt");
   assert.equal(row.cues.includes("runtime"), false, "and a bare runtime is a managed server's word");
+});
+
+// ---- an agent only a parent dispatches (0.5.0, B22, ADR 0050) ----------------------------------------
+
+const candidateIds = (d, requirement) => d.graph.nodes.find((n) => n.requirement === requirement)?.candidates.map((c) => `${c.kind}:${c.id}`) ?? [];
+
+test("orbit-map-healer and orbit-qa-case-writer are never chosen straight from a prompt's words: each needs its parent's step first", () => {
+  const drift = route("the UI test failed because the save button's locator drifted", registry());
+  assert.equal(ids(drift.selected).includes("agent:orbit-map-healer"), false, "a healer follows a MAP_DRIFT classification, never the word drift");
+  assert.equal(candidateIds(drift, "ui.map-repair").includes("agent:orbit-map-healer"), false);
+  assert.ok(ids(drift.selected).includes("agent:orbit-failure-analyst"), "the classification that comes first is a direct agent's");
+  const author = route("write the test case for scenario S3 and author it", registry());
+  assert.equal(candidateIds(author, "qa.authoring").includes("agent:orbit-qa-case-writer"), false, "a case writer needs a checked plan's scenario first");
+  assert.ok(ids(author.selected).includes("skill:orbit-ui-test"));
+});
+
+test("an agent dispatched via a skill is a candidate for what that skill pulls in, and for nothing another skill pulls in", () => {
+  const ready = (kind, row) => resource(kind, { enabled: true, available: true, state: "ready", ...row });
+  const effective = (parentOf) => ({ skills: [ready("skill", { id: "parent-a", provides: ["qa.execution"], optional: ["x.helper"] }), ready("skill", { id: "parent-b", provides: ["x.other"] })], agents: [ready("agent", { id: "helper", provides: ["x.helper"], signals: ["helper"], via: [parentOf] })], mcp: [], tools: [], capabilities: [] });
+  assert.ok(ids(route("run regression tests with the helper", effective("parent-a")).selected).includes("agent:helper"), "pulled in by its own parent");
+  assert.equal(ids(route("run regression tests with the helper", effective("parent-b")).selected).includes("agent:helper"), false, "pulled in by a skill that is not its parent");
+  assert.deepEqual(explainNeeds(effective("parent-a").skills[0], effective("parent-a")).map((n) => [n.requirement, n.status, n.provider?.id]), [["x.helper", "when-named", "helper"]], "Control's view of a parent's needs finds its agent");
+});
+
+test("a parent's line names the agents it dispatches, and only the agents that may be used here", () => {
+  const effective = registry();
+  const d = route("the UI test failed because the save button's locator drifted", effective);
+  assert.match(formatDecision(d, { dispatches: dispatchedBy(effective) }), /- orbit-ui-map \(skill, dispatches orbit-map-healer, orbit-map-recorder\)/);
+  assert.doesNotMatch(formatDecision(d), /dispatches/, "with nothing handed in, the line is what it always was");
+  const off = registry({ env: { CLAUDE_PLUGIN_OPTION_AGENT_MAP_HEALER: "false" } });
+  assert.deepEqual(dispatchedBy(off)["orbit-ui-map"], ["orbit-map-recorder"], "a switched-off agent is not one its parent can dispatch");
 });

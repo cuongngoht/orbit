@@ -198,7 +198,10 @@ test("C12: a case with no start screen recalls the notes about the case, not eve
 });
 
 // ---------------------------------------------------------------------- C13
-test("C13: the routing and planning cues are English", () => {
+// The baseline found "hai request" -- half Vietnamese, half English -- among the cues. Since 0.5.0 the routing table
+// holds Vietnamese cues on purpose (src/routing/intents.mjs), each a phrase of its own language, so what this row still
+// holds is that the mixed-language fragment is no cue of the router's or of the investigation planner's.
+test("C13: no routing or planning cue is the mixed-language \"hai request\" the baseline found", () => {
   const cues = [...INTENTS.flatMap((i) => i.cues ?? []), ...GOALS.flatMap((g) => g.cues)];
   assert.ok(!cues.includes("hai request"));
 });

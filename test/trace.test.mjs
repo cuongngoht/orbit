@@ -293,3 +293,18 @@ test("an agent launched by an agent names its parent; two starts of one skill ar
   assert.deepEqual(u.skills.map((s) => [s.id, s.invoked, s.runs]), [["orbit-develop", 3, 2]], "three starts, one delivered twice: two runs");
   assert.deepEqual([u.attribution.session.unknown, u.attribution.session.failed], [1, 0]);
 });
+
+// 0.5.0 (B22, ADR 0050): RouteDecision v3 reaches the trail as table words and ids -- the strategy's word and row, the
+// activation's path and id, the synthetic flag -- and never its reason or its command, which carry the engine's path.
+test("a v3 decision tells the trail its strategy, the path and id it named, and whether the host wrote the prompt -- nothing more", () => {
+  const decision = { version: 3, intent: { id: "development", confidence: "high" }, cues: ["implement"], requirements: [], graph: { nodes: [] }, selected: [], approval: [], blocked: [], missing: [], strategy: { word: "COORDINATED", row: "several-owners", because: "free text of a reason", shown: true }, activation: { path: "workflow", id: "orbit-help", how: "automation", invoke: "node /home/someone/plugin/cli/automation.mjs start" }, synthetic: false };
+  const facts = decisionFacts(decision, true);
+  assert.deepEqual([facts.strategy, facts.activation, facts.synthetic], [{ word: "COORDINATED", row: "several-owners" }, { path: "workflow", id: "orbit-help" }, false]);
+  assert.equal(/free text|someone|automation\.mjs/.test(JSON.stringify(facts)), false, "neither the reason nor the command");
+  const e = eventOf("prompt.submitted", { prompt: { chars: 9 }, ...facts, because: "sneaked" }, { id: "e-v3", at: "2026-11-05T00:00:00.000Z" });
+  assert.deepEqual(["strategy", "activation", "synthetic"].map((k) => k in e.data), [true, true, true]);
+  assert.equal("because" in e.data, false, "the allow-list keeps what it declares and nothing else");
+  assert.deepEqual(decisionFacts(null, false, true), { routing: "off", synthetic: true }, "with routing off, a host's own prompt is still said to be one");
+  assert.deepEqual(decisionFacts(null, false), { routing: "off" }, "and a person's is what it always was");
+  assert.equal("strategy" in decisionFacts({ ...decision, strategy: undefined, activation: undefined }, false), false, "a v2 decision carries no strategy");
+});

@@ -1,13 +1,10 @@
 ---
 name: orbit-ui-explore
 description: >
-  Explore a live screen with playwright-cli when the map is thin and nobody is available to
-  interview: drive its whole surface, watch every layer a verb can prove, and leave behind
-  candidate map records, JSON cases that have each survived a real run, and one HTML session
-  sheet. Use when asked to test a screen nobody has written cases for, to find out what a screen
-  actually does, to go looking for problems in a feature before any scenario has been agreed, or
-  when orbit-test-plan has nothing to read because the map is empty. It observes and proposes; a run
-  is still the only thing that may decide PASS.
+  Exploratory testing of a live screen nobody wrote cases for: drives its whole surface, watches
+  every layer, and leaves candidate map records, cases that survived a real run, and one session
+  sheet. Use to learn what a screen does before scenarios exist. To hunt bugs on evidence, use
+  orbit-qa.
 argument-hint: <screen id or url to explore | "what does this screen do" | add --write to let it submit>
 allowed-tools:
   - Read
@@ -22,6 +19,14 @@ user-invocable: true
 **Host binding:** On protocol v2, resolve the plugin root from this SKILL.md’s actual location and bind the host/protocol/hashed session supplied at startup on every Orbit shell invocation. Resolve command examples against that root; do not assume hook exports persist. Follow [the shared host contract](../../docs/hosts.md) for task stdin, runtime isolation and unavailable native capabilities. Use the supported native protocol for the selected host.
 
 # Explore a live surface, then leave something that runs
+
+**In short.** Explore a live screen with playwright-cli when the map is thin and nobody is available
+to interview: drive its whole surface, watch every layer a verb can prove, and leave behind
+candidate map records, JSON cases that have each survived a real run, and one HTML session sheet.
+Use when asked to test a screen nobody has written cases for, to find out what a screen actually
+does, to go looking for problems in a feature before any scenario has been agreed, or when
+orbit-test-plan has nothing to read because the map is empty. It observes and proposes; a run is
+still the only thing that may decide PASS.
 
 **Two shared references, the same for every `orbit-*` playbook.** Read the one you need; do not
 re-derive what is in them:

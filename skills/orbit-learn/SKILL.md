@@ -1,15 +1,9 @@
 ---
 name: orbit-learn
 description: >
-  Learn across sessions from this project's own run ledger and notes: group what several
-  independent sessions actually hit, turn only what repeats into a dated lesson with its
-  evidence attached, and propose changes that say what to verify and when to roll back.
-  Lessons are kept outside every repository and are recalled into later sessions. Use when
-  asked what we have learned about a case or a screen, why a suggestion was made, to record
-  or correct something worth remembering, to forget something, or at the end of a test
-  session to fold the runs into what is already known. It is not the per-session explorer,
-  it does not run cases, it never decides PASS, and it never proposes a longer timeout, a
-  retry or a weaker assertion to make a number look better.
+  Turns what repeated across independent sessions into dated lessons with evidence, and recalls
+  them. Use to ask what was learned about a case or screen, to record or forget something, or to
+  fold a test session's runs. Never decides PASS or proposes a weaker test.
 argument-hint: <case or screen to recall | "what have we learned" | "remember that …" | analyse after a session>
 allowed-tools:
   - Read
@@ -27,6 +21,15 @@ and run `query storage --json` before working with project files. `$DATA`, `$SCR
 
 
 # Learn across sessions, and say what the evidence was
+
+**In short.** Learn across sessions from this project's own run ledger and notes: group what several
+independent sessions actually hit, turn only what repeats into a dated lesson with its evidence
+attached, and propose changes that say what to verify and when to roll back. Lessons are kept
+outside every repository and are recalled into later sessions. Use when asked what we have learned
+about a case or a screen, why a suggestion was made, to record or correct something worth
+remembering, to forget something, or at the end of a test session to fold the runs into what is
+already known. It is not the per-session explorer, it does not run cases, it never decides PASS, and
+it never proposes a longer timeout, a retry or a weaker assertion to make a number look better.
 
 **Two shared references, the same for every `orbit-*` playbook.** Read the one you need; do not
 re-derive what is in them:

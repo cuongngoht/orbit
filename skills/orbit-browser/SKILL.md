@@ -1,11 +1,9 @@
 ---
 name: orbit-browser
 description: >
-  Pick a browser and a signed-in profile from THIS machine and open a test session on a copy of
-  it, for running UI test cases through playwright-cli. Use when a run is REFUSED with no
-  playwright-cli session or a signed-out one, when asked which browsers or profiles are available
-  here, when setting up a machine to run cases for the first time, or when wiring `launcher` in
-  ui-tests/project.json. Chromium family (Chrome, Edge, Chromium); no password is ever read.
+  Picks a browser and a signed-in profile on this machine and opens a test session on a copy of it.
+  Use when a UI run is refused for no session or a signed-out one, to list profiles, or to set a
+  machine up to run cases. No password is read.
 argument-hint: <"open a browser for testing" | "which profiles do I have" | "why is the session signed out">
 allowed-tools:
   - Read
@@ -22,6 +20,12 @@ and run `query storage --json` before working with project files. `$DATA`, `$SCR
 
 
 # Pick a browser and profile, then run the cases
+
+**In short.** Pick a browser and a signed-in profile from THIS machine and open a test session on a
+copy of it, for running UI test cases through playwright-cli. Use when a run is REFUSED with no
+playwright-cli session or a signed-out one, when asked which browsers or profiles are available
+here, when setting up a machine to run cases for the first time, or when wiring `launcher` in
+ui-tests/project.json. Chromium family (Chrome, Edge, Chromium); no password is ever read.
 
 This is the **optional adapter** behind `project.json` → `launcher`. The engine knows only "a
 script that opens a signed-in browser and prints where it is"; this skill is one such script, for

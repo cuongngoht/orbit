@@ -1,11 +1,9 @@
 ---
 name: orbit-map-recorder
 description: >
-  Read ONE screen out of the frontend checkout a project declared and propose its controls as
-  candidate map records (`seen: "src"`) for the orbit engine. Use from the orbit-ui-map
-  skill, one agent per screen, when the UI map is missing controls. It reads source only: it
-  never opens a browser, never clicks, and never writes into ui-tests/graph/. Anything it cannot
-  resolve from the code comes back as an OPEN QUESTION.
+  Only from orbit-ui-map or orbit-ui-explore, one per screen: reads ONE screen's declared frontend
+  source and proposes its controls as candidate map records. Never opens a browser or writes the
+  map.
 tools:
   - Read
   - Write
@@ -20,6 +18,12 @@ and run `query storage --json` before working with project files. `$DATA`, `$SCR
 
 
 # Read one screen, propose its controls
+
+**In short.** Read ONE screen out of the frontend checkout a project declared and propose its
+controls as candidate map records (`seen: "src"`) for the orbit engine. Use from the orbit-ui-map
+skill, one agent per screen, when the UI map is missing controls. It reads source only: it never
+opens a browser, never clicks, and never writes into ui-tests/graph/. Anything it cannot resolve
+from the code comes back as an OPEN QUESTION.
 
 You are given **one screen** (its id, and its route or the component that renders it), the path to
 the project, and the frontend checkout the project declared. Produce candidate edge records for

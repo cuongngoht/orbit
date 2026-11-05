@@ -1,10 +1,9 @@
 ---
 name: orbit
 description: >
-  Orbit — From Goal to Verified Outcome. The goal orchestrator: accept a full PBI, bug report or
-  engineering objective, persist the specification, analyze requirements and acceptance criteria,
-  plan work units, and coordinate existing Orbit automation and engineering workflows until
-  evidence satisfies the goal or a real blocker stops progress. Separate from orbit-help.
+  Takes a whole specification -- a PBI, a bug report, a goal with several requirements or acceptance
+  criteria -- to a verified outcome: keeps the spec, reads it into requirements and work units, runs
+  each through Orbit. Use when a person hands over a full spec. For one change, use orbit-develop.
 argument-hint: '<goal text or goal-id> | resume goal-id | status goal-id'
 allowed-tools:
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/orbit.mjs*)
@@ -14,6 +13,11 @@ user-invocable: true
 ---
 
 # Orbit — goal entry
+
+**In short.** Orbit — From Goal to Verified Outcome. The goal orchestrator: accept a full PBI, bug
+report or engineering objective, persist the specification, analyze requirements and acceptance
+criteria, plan work units, and coordinate existing Orbit automation and engineering workflows until
+evidence satisfies the goal or a real blocker stops progress. Separate from orbit-help.
 
 When a person invokes `/orbit`, capture their **complete goal** (same message or ask once, then read the next message). Do not start without a specification.
 

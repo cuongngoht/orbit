@@ -26,3 +26,8 @@ export const WORKFLOWS = [
 ];
 
 export const workflowOf = (facts) => WORKFLOWS.find((w) => w.when(facts));
+
+// The workflow a prompt router's classification fits (0.5.0, B22), asked the way orbit-help's navigator asks it
+// (cli/help.mjs `described`): no reference to settle yet, nothing known to start, the first requirement as the
+// playbook's capability. `c` is table words only -- { intent, matched, requirements } -- never a prompt.
+export const routedWorkflow = (c) => workflowOf({ ref: null, intent: c.intent, matched: c.matched ?? [], startable: [], playbook: { capability: c.requirements?.[0] ?? null } });

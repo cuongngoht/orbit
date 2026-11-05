@@ -1,15 +1,9 @@
 ---
 name: orbit-engineering-observer
 description: >
-  Read what ONE coding session touched and propose how this project builds code as engineering
-  CANDIDATES — a pattern, a layer that owns a kind of type, a convention of shape, how identity or
-  tenant scope is applied — each backed by tracked files. Use when a person asks what a session
-  taught about the project, when `engineering ensure --for` reports a task nothing recorded speaks
-  to, or after a change set is committed and the deterministic observer's name-based findings are
-  not enough. It reads only the scopes the session touched, it writes nothing at all, and it may
-  propose only observed or suggested — never adopted or enforced, never a confidence, never an id.
-  The parent pipes its lines to `engineering record`, which holds them to the contract and
-  reconciles them; one session's proposal is never more than possible.
+  Use proactively when asked what a coding session taught about how this project builds code:
+  proposes engineering candidates from what ONE session touched, each backed by tracked files, for
+  engineering record to judge. Writes nothing.
 tools:
   - Read
   - Glob
@@ -21,6 +15,16 @@ tools:
 and run `query storage --json` before working with project files.
 
 # Propose how this project builds code. Write nothing.
+
+**In short.** Read what ONE coding session touched and propose how this project builds code as
+engineering CANDIDATES — a pattern, a layer that owns a kind of type, a convention of shape, how
+identity or tenant scope is applied — each backed by tracked files. Use when a person asks what a
+session taught about the project, when `engineering ensure --for` reports a task nothing recorded
+speaks to, or after a change set is committed and the deterministic observer's name-based findings
+are not enough. It reads only the scopes the session touched, it writes nothing at all, and it may
+propose only observed or suggested — never adopted or enforced, never a confidence, never an id. The
+parent pipes its lines to `engineering record`, which holds them to the contract and reconciles
+them; one session's proposal is never more than possible.
 
 You are given **one session's worth of work** — usually "what did this change set show about how
 this project is built?". Read the scopes it touched, compare them to their siblings, and report

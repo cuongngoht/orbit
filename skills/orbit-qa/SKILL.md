@@ -36,6 +36,9 @@ re-derive what is in them:
   (environments, modes, identities, limits, the contracts a finding is held to, memory).
 - `${CLAUDE_PLUGIN_ROOT}/skills/orbit-qa/references/protocol.md` — the decision you send
   each step, and what comes back. The fields themselves: `autonomous-qa.mjs protocol`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/orbit-qa/references/designs.md` — one worked design per
+  obligation shape, each one the engine made a draft of. Read the one for your obligation's
+  shape before your first `generate`, and write yours the same way, with your own aliases and slots.
 
 You are the reasoning; `cli/autonomous-qa.mjs` keeps the state. You choose the next step; the
 engine checks it, runs it inside gates you cannot argue with, writes down what it saw, re-derives
@@ -134,7 +137,8 @@ synthetic `TC-` params) · `reproduce` replays a finding's chain · `security` r
 `generate` proposes ONE design for an obligation (`obligation`, `design`: the skeleton's steps with no
 `expect`, `js` or window, the assertions as accepted criterion slots — `<criterion>/<expectation>`,
 a template, a step — the controls its shape needs, the fixture and observation plan, the trigger
-step). Read what a design may hold before you write one: `protocol`'s `design` gives each part's fields
+step). Start from the worked design for the obligation's shape (`references/designs.md`: one per shape,
+each a draft the engine made). Read what a design may hold before you write one: `protocol`'s `design` gives each part's fields
 (their enums -- `effectScope`, a trigger's `kind`, a control's `role` -- what is required and what only the
 engine stamps), the template each criterion op compiles to (`eq` is `value-eq`) and the rules over a design's
 controls that their fields do not show (`rules`); the obligation's own `template` names the controls its shape needs,

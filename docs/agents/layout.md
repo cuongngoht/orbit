@@ -867,7 +867,10 @@ skills/orbit-qa/  the INVESTIGATION playbook: context first, a bounded plan, act
                           generation and dispatch PORTS a generated test's lifecycle asks -- refs read the
                           way the binder reads them, only accepted expectations at their digest, every ref
                           sealed and every effect granted before a dispatch, what a worker left read back
-                          only inside its own output
+                          only inside its own output (0.5.0: and every request held to the request table its
+                          answering adapter declares). references/designs.md (0.5.0): one generic WORKED DESIGN
+                          per shape the engine designs, each made a draft through that port by
+                          test/qa-worked-designs.test.mjs -- never an acceptance design
 skills/orbit-engineer/  the AUTONOMOUS ENGINEERING playbook + protocol.md: a requirement (or an
                           objective) to a verified change, one decided step at a time -- the requirement
                           read back, context, environment, the task's own workspace, a plan, the change,

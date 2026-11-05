@@ -226,11 +226,56 @@
       ]
     },
     {
+      "kit": "state",
+      "adapter": {
+        "id": "postgres.reference",
+        "version": "0.1.0",
+        "fingerprint": "5491580ab1c4296f3c2e376976ff1e3a53f53afd8486e3557bbf2e073c33a957",
+        "code": "cffa317d1b85162850ad952dce5991800327da09214505ef1a00e514171c9199",
+        "transport": "postgres-wire"
+      },
+      "system": {
+        "image": "postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+        "emulated": false
+      },
+      "at": "2026-11-05T11:24:47.330Z",
+      "results": [
+        {
+          "id": "count-by-key",
+          "ops": [
+            "read"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "absent-is-zero",
+          "ops": [
+            "read"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "values-are-parameters",
+          "ops": [
+            "read"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "id": "names-are-refused",
+          "ops": [
+            "read"
+          ],
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
       "kit": "messaging",
       "adapter": {
         "id": "amqp.reference",
         "version": "0.1.0",
-        "fingerprint": "36097805e92cffcf44037b81ff01003d88aa1f34a942156ef7e7fa9cd45b1847",
+        "fingerprint": "1f8b4b0f369bd4b01183dee89bf3ef9f715d5d279420aad8c100ea1143f525ce",
         "code": "b25e89df68b25e631d66141430a752de271701ea0bad413e9ecffc1143b5987a",
         "transport": "amqp-0-9-1"
       },
@@ -238,7 +283,7 @@
         "image": "rabbitmq@sha256:485319d42170eab53d8a030e1cc49d95e41f5d325479fa504736db8091981eb7",
         "emulated": false
       },
-      "at": "2026-11-05T11:24:30.846Z",
+      "at": "2026-11-05T18:31:01.620Z",
       "results": [
         {
           "id": "publish-confirmed",
@@ -290,7 +335,7 @@
       "adapter": {
         "id": "jetstream.reference",
         "version": "0.1.0",
-        "fingerprint": "97aad732185f9476047800a93c40a32e957c75298d5ce3306529bd23ad8ab4e6",
+        "fingerprint": "e57293b9710c3ba15c552e545eb54d6b7f1517735fa971c321622dee279dc902",
         "code": "1308b11dfdde6529b412a3a0de5f1f5b29c212f88a370ea3edb8f69931d89f1b",
         "transport": "nats-jetstream"
       },
@@ -298,7 +343,7 @@
         "image": "nats@sha256:823e7f1d6d8ffe3b30dbd73d4a06bbb939acf94929f7fdf224404da7a05bafb5",
         "emulated": false
       },
-      "at": "2026-11-05T11:24:37.969Z",
+      "at": "2026-11-05T18:31:07.917Z",
       "results": [
         {
           "id": "publish-confirmed",
@@ -346,56 +391,11 @@
       ]
     },
     {
-      "kit": "state",
-      "adapter": {
-        "id": "postgres.reference",
-        "version": "0.1.0",
-        "fingerprint": "5491580ab1c4296f3c2e376976ff1e3a53f53afd8486e3557bbf2e073c33a957",
-        "code": "cffa317d1b85162850ad952dce5991800327da09214505ef1a00e514171c9199",
-        "transport": "postgres-wire"
-      },
-      "system": {
-        "image": "postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
-        "emulated": false
-      },
-      "at": "2026-11-05T11:24:47.330Z",
-      "results": [
-        {
-          "id": "count-by-key",
-          "ops": [
-            "read"
-          ],
-          "outcome": "passed"
-        },
-        {
-          "id": "absent-is-zero",
-          "ops": [
-            "read"
-          ],
-          "outcome": "passed"
-        },
-        {
-          "id": "values-are-parameters",
-          "ops": [
-            "read"
-          ],
-          "outcome": "passed"
-        },
-        {
-          "id": "names-are-refused",
-          "ops": [
-            "read"
-          ],
-          "outcome": "passed"
-        }
-      ]
-    },
-    {
       "kit": "scheduler",
       "adapter": {
         "id": "scheduler.hooks",
         "version": "0.1.0",
-        "fingerprint": "e8d844637cd110240819f0e42887f48d28e1fef1c1e0c81b1038a465ed60b69b",
+        "fingerprint": "1e5a257976e16f68f24f49ebaf3bd9806d6992172e84c1ac6f40b59b203d3da0",
         "code": "0a5251aed47a12d93c4e3f727835651f42e061603b5aa0842f762055ed9eda90",
         "transport": "orbit-scheduler-v1"
       },
@@ -403,7 +403,7 @@
         "image": "example invoice-a (acceptance/projects)",
         "emulated": false
       },
-      "at": "2026-11-05T11:25:14.112Z",
+      "at": "2026-11-05T18:31:27.969Z",
       "results": [
         {
           "id": "trigger-dispatches",
@@ -434,7 +434,7 @@
         "image": "example invoice-a (acceptance/projects)",
         "emulated": false
       },
-      "at": "2026-11-05T11:25:14.231Z",
+      "at": "2026-11-05T18:31:28.141Z",
       "results": [
         {
           "id": "clock-barrier",
@@ -458,7 +458,7 @@
         "image": "example invoice-a (acceptance/projects)",
         "emulated": false
       },
-      "at": "2026-11-05T11:25:14.919Z",
+      "at": "2026-11-05T18:31:28.932Z",
       "results": [
         {
           "id": "control-stop-start",
@@ -474,7 +474,7 @@
       "adapter": {
         "id": "worker.hooks",
         "version": "0.1.0",
-        "fingerprint": "720bb49ce3ac72ab676b3d01415e992fa66d88ef8c1da028ccd72209760d0b54",
+        "fingerprint": "7b805c6e10d189ab9b26fd43123721529f4d258f0ef12bd41a97ddb27491107a",
         "code": "0a5251aed47a12d93c4e3f727835651f42e061603b5aa0842f762055ed9eda90",
         "transport": "orbit-workload-v1"
       },
@@ -482,7 +482,7 @@
         "image": "example invoice-a (acceptance/projects)",
         "emulated": false
       },
-      "at": "2026-11-05T11:25:14.983Z",
+      "at": "2026-11-05T18:31:29.001Z",
       "results": [
         {
           "id": "attempts-by-cursor",
@@ -506,7 +506,7 @@
         "image": "example invoice-a (acceptance/projects)",
         "emulated": false
       },
-      "at": "2026-11-05T11:25:15.223Z",
+      "at": "2026-11-05T18:31:29.270Z",
       "results": [
         {
           "id": "identity-issued",

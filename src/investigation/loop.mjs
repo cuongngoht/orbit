@@ -114,10 +114,17 @@ export function step(w, raw) {
 // GENERATION_FAILED, ENVIRONMENT_BLOCKED, SATISFIED ...), the stage or rule behind it, and why; and of a run refused or
 // blocked at a step, where it stopped and what that step's own stop said, of one that failed only where (`stopped`) -- by
 // allow-list, so a host that sent a step learns what it did without reading the journal. Never the observed values.
-// Beside a frozen version, only when there is any, what its design names that an earlier version did too (`shared`).
-export const resultView = (r) => (r && typeof r === "object" ? { outcome: r.outcome ?? null, stage: r.stage ?? null, rule: r.rule ?? null, why: r.why ? scrub(String(r.why)).slice(0, 600) : null, version: typeof r.version === "string" ? r.version : null, execution: r.execution ?? null, findings: (r.findings ?? []).slice(0, 8).map(findingLine), stopped: stoppedView(r.stopped), ...sharedView(r.shared) } : null);
+// Beside a frozen version, only when there is any, what its design names that an earlier version did too (`shared`), and
+// what it rests on that it never causes (`advice`).
+export const resultView = (r) => (r && typeof r === "object" ? { outcome: r.outcome ?? null, stage: r.stage ?? null, rule: r.rule ?? null, why: r.why ? scrub(String(r.why)).slice(0, 600) : null, version: typeof r.version === "string" ? r.version : null, execution: r.execution ?? null, findings: (r.findings ?? []).slice(0, 8).map(findingLine), stopped: stoppedView(r.stopped), ...sharedView(r.shared), ...adviceView(r.advice) } : null);
 
 const findingLine = (f) => scrub(typeof f === "string" ? f : [f.rule ?? f.id ?? f.code, f.say ?? f.why ?? f.message].filter(Boolean).join(": ")).slice(0, 240);
+
+// What a design that was made rests on and never causes (src/qa/backend/contradictions.mjs): a line per rule that says it,
+// beside the answer and never its outcome -- the first four, each scrubbed and bounded at this door like a finding.
+const ADVICE = 4;
+
+const adviceView = (xs) => (Array.isArray(xs) && xs.length ? { advice: xs.slice(0, ADVICE).map(findingLine) } : {});
 
 // Where a run stopped short (src/investigation/run-version.mjs stoppedOf): the step, its verb and capability, refused,
 // blocked or failed, and what a refusal or a block said there -- these five and nothing else, its words scrubbed and

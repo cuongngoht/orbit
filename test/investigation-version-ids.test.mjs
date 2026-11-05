@@ -42,6 +42,10 @@ test("a step's answer says what its action came to: the owner's word, its stage 
   const made = resultView({ outcome: "DRAFT_CREATED", version: VERSION, design: "tds-1", case: "gen-billing-once", digests: { case: "x" } });
   assert.deepEqual(Object.keys(made).sort(), ["execution", "findings", "outcome", "rule", "stage", "stopped", "version", "why"], "an allow-list: nothing else of the result reaches the host");
   assert.equal(made.version, VERSION);
+  const advised = resultView({ outcome: "DRAFT_CREATED", version: VERSION, advice: [...["UNCAUSED_DECISION: step 1 waits for a decision", `UNCAUSED_REDELIVERY: token: abcdefghijklmnop ${"x".repeat(400)}`], "three", "four", "five"] });
+  assert.deepEqual([advised.advice.length, advised.advice[0], advised.advice[1].length], [4, "UNCAUSED_DECISION: step 1 waits for a decision", 240], "what a made design rests on and never causes: beside the answer, the first four, each bounded like a finding");
+  assert.match(advised.advice[1], /^UNCAUSED_REDELIVERY: token \[redacted\]/, "and scrubbed at this door");
+  assert.equal("advice" in resultView({ outcome: "DRAFT_CREATED", version: VERSION, advice: [] }), false, "nothing to say, no field");
 });
 
 test("a run that stopped short says where, and what its stop said -- five fields by allow-list, scrubbed and bounded at the door", () => {

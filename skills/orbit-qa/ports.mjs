@@ -72,6 +72,10 @@ function outputsOf(r, step) {
 
 const semanticsOf = (r, step) => adapterOf(r, step)?.semantics ?? null;
 
+// What a step's request may carry, as the adapter that will answer it declares it (ADR 0052): the table whose match rows
+// say what a match field is compared with and what a match picks (src/qa/backend/contradictions.mjs). None: null.
+const requestTableOf = (r, step) => ((adapter) => (adapter ? declaredOp(adapter, step)?.request ?? null : null))(adapterOf(r, step));
+
 // How an observer of the design's plan would watch: the semantics of the adapter that arms one on its channel.
 const observerSemantics = (r, ref) => ((t) => (t ? selectAdapter(r.ctx.adapters, { family: "messaging", op: "observe", transport: t }).adapter?.semantics ?? null : null))(transportOf(r, "observer", ref));
 
@@ -91,7 +95,7 @@ export function generationPort(b) {
 function generationContext(b, obligation, a) {
   const r = resolver({ ...b, graph: b.graph(), topology: quietly(() => b.topology?.()), design: a.design });
   const steps = a.design?.skeleton?.steps ?? [];
-  return { expectations: expectationsOf(b, obligation), expected: obligation.expected ?? [], outputsOf: (i) => outputsOf(r, steps[i - 1]), semanticsOf: (i) => semanticsOf(r, steps[i - 1]), observerSemantics: (ref) => observerSemantics(r, ref), shape: shapeOf(obligation.shape), caseId: caseIdOf(obligation, a.design), title: titleOf(obligation), validate: (c) => validate(c, b.ctx.graph, b.ctx.dsl, b.ctx.validators, r.lookup), inputFindings: (s) => [...inputFindings(r.lookup(s.capability), s.input), ...basePathFindings(r, r.lookup(s.capability), s.input ?? {}), ...requestShapeFindings(r, s)], faultPointsOf: (alias) => r.declarationOf("workload", alias)?.points ?? null, dsl: b.ctx.dsl, pageOf: (id) => r.lookup(id)?.page };
+  return { expectations: expectationsOf(b, obligation), expected: obligation.expected ?? [], outputsOf: (i) => outputsOf(r, steps[i - 1]), requestTableOf: (i) => requestTableOf(r, steps[i - 1]), semanticsOf: (i) => semanticsOf(r, steps[i - 1]), observerSemantics: (ref) => observerSemantics(r, ref), shape: shapeOf(obligation.shape), caseId: caseIdOf(obligation, a.design), title: titleOf(obligation), validate: (c) => validate(c, b.ctx.graph, b.ctx.dsl, b.ctx.validators, r.lookup), inputFindings: (s) => [...inputFindings(r.lookup(s.capability), s.input), ...basePathFindings(r, r.lookup(s.capability), s.input ?? {}), ...requestShapeFindings(r, s)], faultPointsOf: (alias) => r.declarationOf("workload", alias)?.points ?? null, dsl: b.ctx.dsl, pageOf: (id) => r.lookup(id)?.page };
 }
 
 // What a step's request may carry, as the adapter that will answer it declares (orbit.adapter/v1 `request`, ADR 0052): a

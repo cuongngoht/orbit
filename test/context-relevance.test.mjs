@@ -159,10 +159,12 @@ test("with no runtime graph, a direct path is held by the gates its own unit's m
   assert.deepEqual(root.items.filter((i) => i.class === "verification").map((i) => [i.kind, i.ref, sources(i)]), [["check", "package.json#test", ["architecture"]]]);
 });
 
-test("a name the tree uses in many places names none of them, and the listing's names never crowd out what an owner holds", () => {
-  const many = ["a/index.mjs", "b/index.mjs", "c/index.mjs", "d/index.mjs", "e/handler.mjs"];
+test("a name the tree uses in many places names none of them -- unless the task names where it lies -- and the listing's names never crowd out what an owner holds", () => {
+  const many = ["alpha/index.mjs", "bravo/index.mjs", "charlie/index.mjs", "delta/index.mjs", "echo/handler.mjs"];
   const common = relevanceOf({ task: "fix the index handler", tree: treeOf(many) });
-  assert.deepEqual(common.items.map((i) => i.ref), ["e/handler.mjs"], "four index.mjs files: the word names none of them");
+  assert.deepEqual(common.items.map((i) => i.ref), ["echo/handler.mjs"], "four index.mjs files: the word names none of them");
+  const placed = relevanceOf({ task: "fix the charlie index", tree: treeOf(many) });
+  assert.deepEqual(placed.items.filter((i) => i.kind === "file").map((i) => [i.ref, i.evidence[0].id]), [["charlie/index.mjs", "charlie index"]], "the task names the directory it lies in too");
   const words = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india", "juliet", "kilo", "lima", "mike", "november", "oscar"];
   const listed = relevanceOf({ task: words.join(" "), tree: treeOf([...words.map((w) => `n/${w}.mjs`), "src/db/pool.mjs"]), architecture: [module("src/db")], refs: [{ kind: "file", ref: "src/db/pool.mjs", where: [] }] });
   assert.equal(listed.items.filter((i) => sources(i).every((s) => s === "name" || s === "tree") && i.by === "engine").length, LISTING_LIMIT);

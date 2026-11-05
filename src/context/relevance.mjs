@@ -103,12 +103,15 @@ const written = (w) => [...new Set(piecesOf(w.task))].filter((p) => heldPath(w, 
 const byName = (w, p) => atPath(w, p, "direct", { evidence: [{ source: "name", id: matchedWords(w.want, p).join(" ") }, { source: "tree", id: "tracked" }] });
 
 // How many tracked files share a name, and how many directories: a name the tree uses in more than COMMON_NAME places
-// (every `index`, every `package`) names none of them in particular, and is not taken as naming one.
+// (every `index`, every `package`) names none of them in particular -- unless the task names where it lies too, as
+// "the context status" names src/context/status.mjs and no other status.mjs.
 const counted = (names) => names.reduce((counts, name) => counts.set(name, (counts.get(name) ?? 0) + 1), new Map());
 
 const namesOf = (tree) => (tree ? { files: counted([...tree.files].map((p) => stem(lastName(p)))), dirs: counted([...tree.dirs].map(lastName)) } : null);
 
-const specific = (w, p) => ((w.tree.files.has(p) ? w.names.files : w.names.dirs).get(nameOfPath(w, p)) ?? 0) <= COMMON_NAME;
+const dirOf = (p) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
+
+const specific = (w, p) => ((w.tree.files.has(p) ? w.names.files : w.names.dirs).get(nameOfPath(w, p)) ?? 0) <= COMMON_NAME || matchedWords(w.want, dirOf(p)).length > 0;
 
 const namedInTree = (w) => (w.tree && w.want.size ? [...w.tree.files, ...w.tree.dirs].filter((p) => named(w.want, nameOfPath(w, p)) && specific(w, p)).map((p) => byName(w, p)) : []);
 

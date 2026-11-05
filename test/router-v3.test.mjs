@@ -67,7 +67,18 @@ test("a prompt's marks are table words: opting out and asking for a change anywh
   assert.deepEqual(marks("kiểm tra phân quyền của endpoint đơn hàng"), []);
   assert.deepEqual(marks("thêm endpoint xuất hóa đơn"), ["change"]);
   for (const m of MARKS) for (const cue of m.cues) assert.ok(termsOf(cue).length > 0 && termsOf(cue).length <= GRAM_LIMIT, cue);
-  assert.deepEqual(MARKS.map((m) => m.id), ["opt-out", "continue", "halt", "status", "change"]);
+  assert.deepEqual(MARKS.map((m) => m.id), ["command", "opt-out", "continue", "halt", "status", "change"]);
+});
+
+// B22 M3: a prompt whose FIRST token is a slash command is a command the person invoked -- a pattern over the opening as
+// typed, never a list of commands: Orbit's, another plugin's (`plugin:skill`) and the host's own alike. A path is no
+// command, and neither is a slash command named in the middle of a prompt.
+test("a slash command opening a prompt is its `command` mark, in any language, whoever's command it is -- and nothing else is", () => {
+  const marks = (p) => classify(p).marks;
+  for (const p of ["/orbit-help fix the refund rule", "/orbit:orbit-qa find bugs on the checkout screen", "/review", "  /some-plugin:its-skill do the thing", "/orbit-help sửa quy tắc hoàn tiền", "/orbit tiếp tục PBI-482"]) assert.ok(marks(p).includes("command"), p);
+  for (const p of ["/usr/local/bin/node is missing, fix the path", "please run /orbit-help on this", "fix the /api/orders handler", "// a comment pasted first", "/ alone", "/123 numbered"]) assert.equal(marks(p).includes("command"), false, p);
+  assert.equal(MARKS.find((m) => m.id === "command").pattern instanceof RegExp, true, "a pattern kept as data");
+  assert.equal(JSON.stringify(MARKS.find((m) => m.id === "command")).includes("orbit"), false, "never a list of Orbit's commands");
 });
 
 test("a prompt's shape is counts, never a word of it, and its references are the head's work items -- never a standard's name", () => {

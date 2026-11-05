@@ -52,6 +52,10 @@ export const OPENING_LIMIT = 80;
 
 export const openingGramsOf = (text) => gramsOf(String(text ?? "").trimStart().slice(0, OPENING_LIMIT));
 
+// The START: the opening as it was typed, before it is reduced to terms -- what a mark matched by its own pattern reads
+// (a slash command's `/`, which no term keeps). In this process's memory, like every reduction here, and never kept.
+export const startOf = (text) => String(text ?? "").trimStart().slice(0, OPENING_LIMIT);
+
 // A prompt's SHAPE (0.5.0): counts, and never a word of it -- how long it is, how many of its lines read as list items
 // (a specification is a list), and how many work-item references its head names.
 const LIST_ITEM = /^[ \t]{0,8}(?:[-*•+]|\d{1,3}[.)])[ \t]+\S/gm;

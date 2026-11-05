@@ -24,6 +24,7 @@ const rowOf = (over) => answered(over).strategy.row;
 
 test("every row is reached from the facts that mean it, and answers its own word and path", () => {
   const cases = [
+    [{ asked: asked({ marks: ["command", "change", "continue"] }), work: { named: [open()], current: open() } }, "invoked", "NONE", "none"],
     [{ synthetic: true, work: { named: [open()], current: null } }, "envelope", "NONE", "none"],
     [{ asked: asked({ marks: ["opt-out", "continue"] }), work: { named: [], current: open() } }, "opted-out", "NONE", "none"],
     [{ work: { named: [open()], current: null } }, "resume", "RESUME", "resume"],
@@ -39,7 +40,7 @@ test("every row is reached from the facts that mean it, and answers its own word
     const a = answered(over);
     assert.deepEqual([a.strategy.row, a.strategy.word, a.activation.path], [row, word, path], JSON.stringify(over));
   }
-  assert.deepEqual(STRATEGY.map((r) => r.row), ["envelope", "opted-out", "resume", "conversational", "mission", "specification", "several-owners", "one-agent", "one-skill", "nothing"], "the table's order is the design's (§5.5)");
+  assert.deepEqual(STRATEGY.map((r) => r.row), ["invoked", "envelope", "opted-out", "resume", "conversational", "mission", "specification", "several-owners", "one-agent", "one-skill", "nothing"], "the table's order is the design's (§5.5), behind the person's own slash command (B22 M3)");
 });
 
 test("the last row always matches, and it is the only row that does whatever the facts", () => {
@@ -118,6 +119,20 @@ test("a list is a specification only when it asks for a change or states a work 
   assert.equal(rowOf({ asked: list({ marks: ["change"] }) }), "specification");
   assert.equal(rowOf({ asked: list({ intent: { id: "requirements", confidence: "low" }, matched: ["requirements"] }) }), "specification", "a list of what a work item requires");
   assert.equal(rowOf({ asked: asked({ marks: [], requirements: ["development.implementation", DOORS.goal] }) }), "specification", "acceptance criteria are a specification's own words");
+});
+
+// B22 M3: `/orbit-help fix the refund rule` was the person's own choice of what runs, and the router must never answer
+// it with another skill for the words after the command -- nor resume, coordinate or start a mission past it.
+test("a prompt the person opened with a slash command answers NONE before every other row, whatever its words would have chosen", () => {
+  const command = (over = {}) => ({ asked: asked({ marks: ["command", "change"], ...over }) });
+  const everything = { work: { named: [open()], current: open() }, chosen: [skill("satellite", "mission.orchestration", { gated: true }), agent("orbit-failure-analyst", "failure.classification"), skill("orbit-develop", "development.implementation")] };
+  for (const over of [{}, { matched: ["development", "requirements"] }, { requirements: ["development.implementation", DOORS.goal] }, { marks: ["command", "continue"] }]) {
+    const a = answered({ ...command(over), ...everything });
+    assert.deepEqual([a.strategy.word, a.strategy.row, a.activation.path, a.activation.invoke], ["NONE", "invoked", "none", null], JSON.stringify(over));
+    assert.match(a.strategy.because, /invoked a command themselves/);
+  }
+  assert.equal(rowOf({ synthetic: true, ...command() }), "invoked", "first of all: the host never writes a prompt that opens with a command");
+  assert.equal(rowOf({}), "one-skill", "no command mark: the same prompt's words decide, as before");
 });
 
 test("a status question is the session's to answer only when it asks for nothing else", () => {

@@ -9,8 +9,9 @@
 // (cli/router-hook.mjs) bound:
 //
 //   synthetic  the host adapter marked the prompt as the host's own envelope (a background task's notification)
-//   asked      the classification (src/routing/classify.mjs): intent, matched, marks (opt-out · continue · halt ·
-//              status · change), shape counts, requirements -- a status question ("how far along", "tới đâu rồi") is
+//   asked      the classification (src/routing/classify.mjs): intent, matched, marks (command · opt-out · continue ·
+//              halt · status · change), shape counts, requirements -- a prompt opened with a slash command was the
+//              person's own choice of what runs, and gets nothing (B22 M3); a status question ("how far along", "tới đâu rồi") is
 //              the session's to answer, conversational like a greeting (B5), unless it names an open work to resume
 //              or asks for something else too; and a development intent is a change only where `change` says one is
 //              asked for, since its cues name code as well
@@ -134,6 +135,9 @@ const spanned = (f) => [...CHANGE, ...ITEM, ...VERIFIER].filter((id) => matched(
 const oneSkill = (f) => (skillOf(f) ? `one specialist provides ${skillOf(f).requirement}` : "no Orbit skill or agent is needed, and what is listed below may help");
 
 export const STRATEGY = [
+  // B22 M3: a prompt the person opened with a slash command (its `command` mark, src/routing/intents.mjs MARKS) already
+  // chose what runs -- `/orbit-help fix the refund rule` must never be told to use another skill for the words after it.
+  { row: "invoked", word: "NONE", when: (f) => marked(f, "command"), because: () => "the person invoked a command themselves, and it already chose what runs" },
   { row: "envelope", word: "NONE", when: (f) => f.synthetic === true, because: () => "the host wrote this prompt itself, so nobody asked for anything" },
   { row: "opted-out", word: "NONE", when: (f) => marked(f, "opt-out"), because: () => "the prompt asks to work without Orbit" },
   { row: "resume", word: "RESUME", when: (f) => Boolean(resumable(f)), because: (f) => `open work ${resumable(f).id} is governed by ${resumable(f).owner.what} ${resumable(f).owner.id}`, activation: resumed },

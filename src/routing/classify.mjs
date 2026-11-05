@@ -16,13 +16,13 @@
 //
 // 0.5.0 (B5, B22): a cue in the prompt's head outweighs one only a pasted tail carries (src/routing/terms.mjs
 // WEIGHTS), so the intent -- and `matched` -- are what the person typed; `marks` are the MARKS rows the prompt hit
-// (opt-out, continue, halt, status -- table words); `shape` is counts; `focus` the requirements in the order the
+// (command, opt-out, continue, halt, status, change -- table words); `shape` is counts; `focus` the requirements in the order the
 // request is about them. Confidence is unchanged in meaning: two cues of the person's own, or more, is `high`.
 import { GENERAL, INTENTS, MARKS, REFINEMENTS } from "./intents.mjs";
-import { WEIGHTS, gramsOf, headGramsOf, keyOf, openingGramsOf, shapeOf } from "./terms.mjs";
+import { WEIGHTS, gramsOf, headGramsOf, keyOf, openingGramsOf, shapeOf, startOf } from "./terms.mjs";
 
 export function classify(prompt, intents = INTENTS, refinements = REFINEMENTS) {
-  const read = { grams: gramsOf(prompt), head: headGramsOf(prompt), opening: openingGramsOf(prompt), shape: shapeOf(prompt) };
+  const read = { grams: gramsOf(prompt), head: headGramsOf(prompt), opening: openingGramsOf(prompt), start: startOf(prompt), shape: shapeOf(prompt) };
   const scored = ownHits(intents.map((row) => ({ row, hits: hitsOf(row.cues, read.grams) }))).map(weighedIn(read.head));
   const best = scored.reduce(better, null);
   return decided(best, scored, refinedOf(refinements, best?.row.id ?? GENERAL, read.grams), read);
@@ -36,7 +36,14 @@ function decided(best, scored, refined, read) {
 // A cue the head carries weighs WEIGHTS.head; one only the pasted tail carries, WEIGHTS.tail.
 const weighedIn = (head) => (x) => ({ ...x, weight: x.hits.reduce((w, cue) => w + (head.has(keyOf(cue)) ? WEIGHTS.head : WEIGHTS.tail), 0) });
 
-const marksOf = (read) => MARKS.filter((m) => m.cues.some((c) => read[m.at].has(keyOf(c)))).map((m) => m.id);
+// A mark's row is matched by its own pattern over what it reads (the `start`), or by any of its cues among the grams.
+const hit = (m, read) => (m.pattern ? m.pattern.test(read[m.at]) : m.cues.some((c) => read[m.at].has(keyOf(c))));
+
+const marksOf = (read) => MARKS.filter((m) => hit(m, read)).map((m) => m.id);
+
+// The MARKS alone (0.5.0, B22 M3), for a prompt the router does not classify -- routing switched off -- so the trail can
+// still say a person halted the work: the same rows, read off the same head, opening and start, and nothing else of it.
+export const marksIn = (prompt) => marksOf({ head: headGramsOf(prompt), opening: openingGramsOf(prompt), start: startOf(prompt) });
 
 // The requirements in the order the request is ABOUT them: a refinement that adds a word of its own first -- "why
 // did" in a test question asks for a classification, "plan" for a plan -- then the intent's own, then a refinement

@@ -110,7 +110,15 @@ export const REFINEMENTS = [
 // endpoint" does. A mark is not an intent and asks for nothing. `at` is how far into the prompt its cue counts:
 // `opening`, the first words a person typed (src/routing/terms.mjs OPENING_LIMIT) -- "continue" that opens a prompt
 // asks to go on, while one in the middle of a request is part of the request -- or the whole `head`.
+//
+// A mark may instead be matched by a PATTERN, over the `start` -- the opening as typed, which keeps what no term does.
+// `command` (B22 M3) is the one: a prompt whose first token is a slash command -- `/orbit-help fix the refund rule`,
+// `/review`, `/a-plugin:its-skill …` -- is a command the person invoked themselves, so what runs is already chosen and
+// the router names nothing else (src/routing/strategy.mjs, row `invoked`). A pattern, never a list of commands: whose
+// command it is -- Orbit's, another plugin's or the host's own -- the person decided. A path (`/usr/local/bin/x`) is not
+// one.
 export const MARKS = [
+  { id: "command", at: "start", cues: [], pattern: /^\/[A-Za-z][\w.:-]*(?=\s|$)/ },
   { id: "opt-out", at: "head", cues: ["without orbit", "without using orbit", "no orbit", "skip orbit", "not use orbit", "t use orbit", "không dùng orbit", "không cần orbit", "đừng dùng orbit", "khỏi dùng orbit", "khong dung orbit"] },
   { id: "continue", at: "opening", cues: ["continue", "resume", "carry on", "keep going", "pick up where", "go on with", "tiếp tục", "làm tiếp", "tiếp đi", "chạy tiếp", "tiep tuc"] },
   { id: "halt", at: "opening", cues: ["stop", "wait", "pause", "hold on", "halt", "dừng", "dừng lại", "tạm dừng", "chờ đã", "đợi đã", "khoan"] },

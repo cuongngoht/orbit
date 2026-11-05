@@ -29,8 +29,9 @@ const REGISTRY = getEffectiveResources({ env: {}, plugin: "orbit", components: (
 const CLAUDE = readCatalog(io, catalogFile(REPO, "hosts")).hosts.find((h) => h.id === "claude");
 const WORK = "w-0123456789ab";
 
-// Kinds a router must say NOTHING about, whatever else it gets wrong.
-const SILENT = ["greeting", "chit-chat", "status", "notification", "opt-out"];
+// Kinds a router must say NOTHING about, whatever else it gets wrong. A `command` (B22 M3) is a prompt the person opened
+// with a slash command: what runs is already chosen.
+const SILENT = ["greeting", "chit-chat", "status", "notification", "opt-out", "command"];
 
 // The open work a corpus row says this session has, as src/work/track/open.mjs would answer for it.
 const workOf = (row) => (ask) => ({ named: row.open?.ref && ask.refs.some((r) => r.toLowerCase() === row.open.ref.toLowerCase()) ? [owned(row)] : [], current: row.open?.current && ask.continued ? owned(row) : null });
@@ -93,9 +94,16 @@ test("a request read with high confidence is never silenced, and the share of re
   for (const r of asked.filter((x) => x.decision.intent.confidence === "high")) assert.notEqual(r.text, null, `${r.row.lang} ${r.row.prompt.slice(0, 80)}`);
 });
 
-test("a greeting, chit-chat, a status question, a host's notification and an opt-out get no text at all", () => {
+test("a greeting, chit-chat, a status question, a host's notification, an opt-out and a slash command get no text at all", () => {
   for (const r of RESULTS.filter((x) => SILENT.includes(x.row.kind))) assert.equal(r.text, null, `${r.row.lang} ${r.row.prompt.slice(0, 80)}`);
   for (const r of RESULTS.filter((x) => x.row.kind === "notification")) assert.deepEqual([r.decision.synthetic, r.decision.strategy.row], [true, "envelope"], r.row.prompt.slice(0, 60));
+});
+
+test("a prompt the person opened with a slash command is theirs: NONE by the `invoked` row, in both languages, whatever its words ask and whatever work is open", () => {
+  const commands = RESULTS.filter((x) => x.row.kind === "command");
+  assert.deepEqual(["en", "vi"].map((lang) => commands.some((r) => r.row.lang === lang)), [true, true]);
+  for (const r of commands) assert.deepEqual([r.decision.strategy.word, r.decision.strategy.row, r.decision.activation.path, r.text], ["NONE", "invoked", "none", null], `${r.row.lang} ${r.row.prompt}`);
+  assert.ok(commands.some((r) => r.row.open), "an open work the words name, or continue, is not picked up past a command the person chose");
 });
 
 test("whatever the router says stays inside its budget, opens with the strategy, and never repeats the prompt", () => {

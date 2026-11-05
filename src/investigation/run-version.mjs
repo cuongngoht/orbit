@@ -44,11 +44,15 @@ function heldBack(model, version) {
   return last?.outcome === "AMBIGUOUS" ? { outcome: "AMBIGUOUS", execution: last.execution, why: `the last dispatch of ${version} (${last.execution}) is AMBIGUOUS — what it did is unknown, and it is never sent again: a person reads back and decides` } : null;
 }
 
+// How many times one frozen version may run (settings limits.attempts): what context.budget shows a host, and what
+// attemptOf holds a version to.
+export const attemptsLimit = (settings) => settings?.limits?.attempts ?? 3;
+
 // One more attempt of the same frozen version, within the budget (doc §6.4): a version is never run
 // until it goes green.
 function attemptOf(w, v) {
   const attempt = current(w).starts.filter((s) => s.version === v.record.version).length + 1;
-  const most = w.settings?.limits?.attempts ?? 3;
+  const most = attemptsLimit(w.settings);
   if (attempt > most) throw new Refused(`${v.record.version} was run ${most} time(s), its budget (settings limits.attempts) — what the attempts came to is reported, never one more until it passes`);
   return attempt;
 }

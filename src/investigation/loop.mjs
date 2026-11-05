@@ -32,6 +32,8 @@ import { current, withJournal } from "./act.mjs";
 import { judgeDecision, keptAction } from "./decision.mjs";
 import { ACTIONS, ACTION_KINDS } from "./dispatch.mjs";
 import { deriveFindings, recordFindings } from "./findings.mjs";
+import { obligationBudgets, perObligation } from "./generate.mjs";
+import { attemptsLimit } from "./run-version.mjs";
 import { nextId } from "./model.mjs";
 import { OBLIGATION_KINDS, frontierOf, obligationsOf, snapshotOf } from "./obligations.mjs";
 import { projectReceipts } from "./memory.mjs";
@@ -90,10 +92,13 @@ function countsOf(obligations) {
   return { total: obligations.length, ...byState };
 }
 
+// The investigation's own budget, and what each obligation and each frozen version may spend -- the limits generate and
+// run-version refuse by (generate.mjs BUDGET, run-version.mjs attemptsLimit), shown before a host spends them, with what
+// every obligation that has a design has spent so far.
 function budgetOf(lw) {
   const started = Date.parse(lw.model.resumed.at(-1)?.at ?? lw.model.meta?.at);
   const left = Math.max(0, Math.round((started + lw.settings.limits.minutes * 60000 - (lw.now?.() ?? started)) / 60000));
-  return { actions: { used: lw.model.actions.length, of: lw.settings.limits.actions }, decisions: { used: lw.model.decisions.length, of: lw.settings.limits.decisions }, minutesLeft: left };
+  return { actions: { used: lw.model.actions.length, of: lw.settings.limits.actions }, decisions: { used: lw.model.decisions.length, of: lw.settings.limits.decisions }, minutesLeft: left, perObligation: perObligation(lw.settings), perVersion: { attempts: attemptsLimit(lw.settings) }, obligations: obligationBudgets(lw.model, lw.settings) };
 }
 
 // --------------------------------------------------------------------- step

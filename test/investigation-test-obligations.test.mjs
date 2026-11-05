@@ -3,6 +3,7 @@
 // or a person's decision is waited for, and anything that may safely be tried again is still owed.
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { generated } from "../src/investigation/generate.mjs";
 import { contextOf, loopWorld } from "../src/investigation/loop.mjs";
 import { createInvestigations, eventIdOf } from "../src/investigation/store.mjs";
 import { fakeContext } from "./fakes/context.mjs";
@@ -21,6 +22,28 @@ function worldOf(obligation = {}, evaluations = []) {
 }
 
 const world = (evaluations = [], obligation = {}) => loopWorld(worldOf(obligation, evaluations)).obligations.find((o) => o.kind === "test-obligation");
+
+// What 0.4.0's diagnosis found (0.5.0 B7): what one obligation may cost -- the designs that hold and the repairs of one
+// that failed (src/investigation/generate.mjs) -- and the attempts one frozen version may run were said only by the
+// refusal that spent them. context.budget says them beside the actions and decisions, from the very rows generate is
+// refused by, with what each obligation that has a design has spent.
+test("context.budget says what an obligation may spend on designs and repairs, and a version on attempts -- from the rows that refuse it", () => {
+  const w = worldOf();
+  w.generation = { contextFor: () => assert.fail("a spent budget is refused before anything is designed") };
+  const kept = (n, state) => w.store.appendOnce(ID, "designed", { id: `dsg-${n}`, eventId: `e-dsg-${n}`, obligation: "tob-aaaaaaaaaaaa", digest: String(n).repeat(64), state, ...(state === "designed" ? { design: `tds-${n}` } : { why: "GENERATION_FAILED at controls" }) });
+  const spent = () => contextOf(w).budget.obligations["tob-aaaaaaaaaaaa"];
+  assert.deepEqual([contextOf(w).budget.perObligation, contextOf(w).budget.perVersion, contextOf(w).budget.obligations], [{ designs: 4, repairs: 2 }, { attempts: 3 }, {}], "the defaults, and nothing spent before a design");
+  kept(1, "failed");
+  kept(2, "designed");
+  assert.deepEqual(spent(), { designs: { used: 1, of: 4 }, repairs: { used: 0, of: 2 }, spent: null }, "a first proposal that failed spent no repair");
+  kept(3, "failed");
+  assert.deepEqual(spent(), { designs: { used: 1, of: 4 }, repairs: { used: 1, of: 2 }, spent: null }, "one repair of a design that failed: another may still be sent");
+  kept(4, "failed");
+  assert.deepEqual(spent(), { designs: { used: 1, of: 4 }, repairs: { used: 2, of: 2 }, spent: "repairs" });
+  assert.throws(() => generated(w, { obligation: "tob-aaaaaaaaaaaa", design: {} }), /budget of repairs of a design that failed is spent/, "generate is refused exactly when the budget says so");
+  w.settings.limits = { ...w.settings.limits, designs: 1, repairs: 0, attempts: 5 };
+  assert.deepEqual([contextOf(w).budget.perObligation, contextOf(w).budget.perVersion, spent().spent], [{ designs: 1, repairs: 0 }, { attempts: 5 }, "designs"], "a person's limits, and the first one spent named");
+});
 
 test("derived and not yet designed, it is owed -- and a generate or a run-version is what may target it", () => {
   const o = world();

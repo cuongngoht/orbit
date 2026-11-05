@@ -110,7 +110,11 @@ echo '<decision>' | node ${CLAUDE_PLUGIN_ROOT}/cli/autonomous-qa.mjs step --inve
 
 `context` gives the journal's **position**, the **frontier** (what is still owed, first things
 first, each with the step kinds that can settle it and a template), the budget, open questions,
-and `stop` — a reason the engine would stop now, or null. Each turn:
+and `stop` — a reason the engine would stop now, or null. The budget is the investigation's actions,
+decisions and minutes, and what one obligation may spend on designs that hold and on repairs of one that
+failed (`perObligation`) and one frozen version on attempts (`perVersion`) -- with what each obligation that
+has a design has spent (`obligations`: `used` of each, and the one `spent`, after which `generate` is refused
+for it). Each turn:
 
 1. Read `context` (or the last step's `next`). Take the frontier's first item unless the evidence
    gives you a better reason — say it in `reason`. A write's **read-back** comes first for a reason:

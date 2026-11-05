@@ -37,16 +37,36 @@ function obligationWithin(w, id) {
 }
 
 // What one obligation may cost (doc §6.4): designs that held, and proposals that failed and were
-// repaired again -- a design is never retried until it goes green.
+// repaired again -- a design is never retried until it goes green. Each row says what it counts
+// (`used`: the first proposal that failed is no repair, each one after it is) and when it is spent;
+// the refusal below and what context.budget shows a host (loop.mjs) are these rows, so the two
+// cannot disagree.
+const heldOf = (ds) => ds.filter((d) => d.state === "designed").length;
+const failedOf = (ds) => ds.filter((d) => d.state === "failed").length;
+
 const BUDGET = [
-  { limit: "designs", fallback: 4, over: (ds, n) => ds.filter((d) => d.state === "designed").length >= n, say: "designs" },
-  { limit: "repairs", fallback: 2, over: (ds, n) => ds.filter((d) => d.state === "failed").length > n, say: "repairs of a design that failed" },
+  { limit: "designs", fallback: 4, used: heldOf, over: (ds, n) => heldOf(ds) >= n, say: "designs" },
+  { limit: "repairs", fallback: 2, used: (ds) => Math.max(0, failedOf(ds) - 1), over: (ds, n) => failedOf(ds) > n, say: "repairs of a design that failed" },
 ];
 
+const limitOf = (settings, row) => settings?.limits?.[row.limit] ?? row.fallback;
+
+// The limits each obligation is held to, as a person set them (settings limits.designs, limits.repairs).
+export const perObligation = (settings) => Object.fromEntries(BUDGET.map((b) => [b.limit, limitOf(settings, b)]));
+
+// What one obligation has spent: each limit's count and the limit, and the first one spent -- or null.
+export function obligationBudget(model, obligation, settings) {
+  const designs = model.designs.filter((d) => d.obligation === obligation);
+  const spent = BUDGET.find((b) => b.over(designs, limitOf(settings, b)));
+  return { ...Object.fromEntries(BUDGET.map((b) => [b.limit, { used: b.used(designs), of: limitOf(settings, b) }])), spent: spent?.limit ?? null };
+}
+
+// Every obligation that has spent anything: one with no design yet holds its whole budget (`perObligation`).
+export const obligationBudgets = (model, settings) => Object.fromEntries([...new Set(model.designs.map((d) => d.obligation))].map((o) => [o, obligationBudget(model, o, settings)]));
+
 function budgetHeld(w, obligation) {
-  const designs = current(w).designs.filter((d) => d.obligation === obligation.obligation);
-  const spent = BUDGET.find((b) => b.over(designs, w.settings?.limits?.[b.limit] ?? b.fallback));
-  if (spent) throw new Refused(`${obligation.obligation}'s budget of ${spent.say} is spent (settings limits.${spent.limit} ${w.settings?.limits?.[spent.limit] ?? spent.fallback}) — what it came to is reported, or a person raises the limit`);
+  const spent = BUDGET.find((b) => b.limit === obligationBudget(current(w), obligation.obligation, w.settings).spent);
+  if (spent) throw new Refused(`${obligation.obligation}'s budget of ${spent.say} is spent (settings limits.${spent.limit} ${limitOf(w.settings, spent)}) — what it came to is reported, or a person raises the limit`);
 }
 
 function generationOf(w) {

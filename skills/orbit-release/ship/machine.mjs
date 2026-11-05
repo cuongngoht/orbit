@@ -107,10 +107,14 @@ function repairOf(acts, f, r) {
 // taken for a build -- NOT_BUILT asks for the images again once a person resumed the ship it blocked.
 const builtOf = (acts, open) => lastDoc(inAttempt(settledOf(acts, "release.build"), open.id).filter((x) => x.d.settled.ok === true));
 
+// The cycle's host check as it stands: a refusal stands until a person resumes the ship it blocked -- then the host is
+// asked again, once per resume ("fix it and --resume"), never in a loop of the ship's own.
+const hostCheckOf = (f, acts) => ((x) => (!x || (x.d.settled.ok !== true && resumedAfter(f, x.a.id)) ? null : x.d.settled))(inAttempt(settledOf(acts, "release.host"), f.open.id).at(-1));
+
 function cycleFacts(ctx, acts, f) {
   const cycle = f.open ? builtOf(acts, f.open) : null;
   const rows = cycle ? rowsOf(ctx, f, inAttempt(settledOf(acts, "release.row"), f.open.id)) : new Map();
-  const g = { ...f, cycle: cycle?.settled ?? null, host: cycle ? lastDoc(inAttempt(settledOf(acts, "release.host"), f.open.id))?.settled ?? null : null, gates: cycle ? lastDoc(inAttempt(settledOf(acts, "release.gates"), f.open.id))?.settled ?? null : null, rows, anyFailed: [...rows.values()].some(failedForGood) };
+  const g = { ...f, cycle: cycle?.settled ?? null, host: cycle ? hostCheckOf(f, acts) : null, gates: cycle ? lastDoc(inAttempt(settledOf(acts, "release.gates"), f.open.id))?.settled ?? null : null, rows, anyFailed: [...rows.values()].some(failedForGood) };
   return { ...g, pending: pendingRow(ctx, g), repairs: diags(g, "REPAIR").map((r) => repairOf(acts, g, r)), firstDigest: [...rows.values()].map((r) => r.v.digest).find(Boolean) ?? null };
 }
 

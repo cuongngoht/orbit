@@ -372,6 +372,18 @@ test("B6-1. images that could not be built are built again on resume -- a row ne
   assert.ok(evidenceOf(ctx).harness.images?.length > 0, "the evidence names the images the rows ran on");
 });
 
+test("B6-2. a ship blocked at the host check asks the host again when a person resumes it -- once per resume, never in a loop", async (t) => {
+  const w = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched, host: { ok: false, code: "AUTH_REFUSED", says: "Invalid API key" } } });
+  const { ctx, result } = await shipped(w);
+  assert.deepEqual([result.outcome, result.exit], ["BLOCKED", 3]);
+  const still = await driven(resumedShip(w.world, ctx.ship.id, {}));
+  assert.deepEqual([still.outcome, actsOf(w, ctx, "release.host").length], ["BLOCKED", 2], "a resume asks again; a host still refused blocks again, after one question");
+  w.play.host = undefined;
+  const again = await driven(resumedShip(w.world, ctx.ship.id, {}));
+  assert.deepEqual([again.outcome, again.exit], ["SHIPPABLE", 0], again.summary);
+  assert.equal(actsOf(w, ctx, "release.host").length, 3);
+});
+
 // ---- the boundaries, and what a person reads ------------------------------------------------------------------------------
 
 test("integrating is a write to the ship's own workspace -- AUTO -- and a ship never constructs a write to the person's checkout", () => {

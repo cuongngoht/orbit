@@ -138,9 +138,10 @@ characters, 7,500 for all 25). `test/activation-catalog.test.mjs` holds that, an
 word that brings a prompt to the skill.
 
 Beside every prompt, Orbit's prompt router says how much Orbit the request needs, in one line, or nothing at all
-(RouteDecision v3, ADR 0050). **NONE** adds no text: a greeting, a status question that asks for nothing else ("how
-far along are we?", "tới đâu rồi"), a background task's notification the host delivers as if it were a prompt, an
-opt-out ("without Orbit", "không dùng orbit"), or anything the session already does itself. **DIRECT** names the one
+(RouteDecision v3, ADR 0050). **NONE** adds no text: a prompt you opened with a slash command yourself
+(`/orbit-help fix the refund rule` -- you already chose what runs), a greeting, a status question that asks for nothing
+else ("how far along are we?", "tới đâu rồi"), a background task's notification the host delivers as if it were a
+prompt, an opt-out ("without Orbit", "không dùng orbit"), or anything the session already does itself. **DIRECT** names the one
 skill or agent that fits. **COORDINATED** gives the one command for a change you ask for that several owners take in
 turn -- a work item to settle, or an investigation or a security check to prove it (`/orbit-help`'s workflow) -- or for
 a whole specification (`/orbit`'s goal); a question that only names code ("is the orders endpoint protected?") asks for
@@ -148,6 +149,25 @@ no change. **SATELLITE** is only ever a mission you asked for, and **RESUME** pi
 through its owner. English and Vietnamese are read alike, words past the first 2,000 characters -- a pasted log or file
 -- never decide what a prompt is about, and a one-word match is said only when it is a skill's own word. The router
 suggests; Claude decides. `test/fixtures/routing/corpus.jsonl` holds it to realistic prompts in both languages.
+
+The rest of a session follows its work through, a line at a time and only where Orbit owns the work (0.5.0, ADR 0050):
+
+- **Session start** (a checkout Orbit knows): one line of at most 300 bytes -- each family's usable count, what you
+  switched off, and the project's STATUS word -- and, on a resumed or compacted session, its open work and next step.
+- **After one of Orbit's agents returns**: one line naming the owner record that settles its work (the workflow, goal,
+  mission or task) and where it stands. What the agent said is its report, never the evidence; its message and
+  transcript are never read.
+- **After an Orbit command fails** under the session's governed work: the owner's recovery row, beside the usual
+  diagnosis -- an action that did not settle is read back with `reconcile`, never sent again.
+- **At Stop**: when the session's own coordinated workflow or goal is still running with a step ready, Claude Code's
+  turn is held open -- at most twice per prompt, never twice in a row -- with the step and its one command, or the
+  model says in one sentence why it stops. Never past your pause, cancel, approval or question, never after a turn
+  that only answered a question, never when your prompt said stop or wait, never with the trail off; switch it off in
+  Orbit Control › Advanced › Automation limits (`trigger.holdOnStop`). The hold starts and grants nothing.
+
+`node cli/trace.mjs activation` reads back, per turn and per work, how a suggestion became an outcome: suggested →
+selected → dispatched → executed → verified, each from its own source, with only the owner's record ever verified, and a
+turn that dispatched more of Orbit's agents than its strategy accounted for marked **over-delegated**.
 
 ### Entry points
 
@@ -233,6 +253,7 @@ node cli/live.mjs status --json                        # session.agents: which a
 
 # How sessions used Orbit
 node cli/trace.mjs usage                               # counts with their denominators; per agent, as the host says (0.2.2)
+node cli/trace.mjs activation                          # suggested → selected → dispatched → executed → verified (0.5.0)
 
 # Self-improvement (0.3.0)
 node cli/improve.mjs status                            # switches, opportunities, campaigns

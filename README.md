@@ -377,7 +377,9 @@ From an accepted requirement to a verified outcome:
 4. The host validates what the worker left before anything is recorded; ordered result rows give the outcome.
 
 Backends are reached through adapters (`orbit.adapter/v1`) shipped as packs a project opts into; what each adapter is
-proven to support is computed from conformance receipts.
+proven to support is computed from conformance receipts. An adapter's operation may declare what its request carries
+([ADR 0052](docs/adr/0052-an-adapter-operation-declares-what-its-request-carries.md)), and a design is held to it before
+a draft exists.
 
 ```bash
 node cli/autonomous-qa.mjs plan --plan=<id> --sandbox=<env-id> --mode=fixture-write

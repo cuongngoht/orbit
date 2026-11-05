@@ -36,6 +36,9 @@ re-derive what is in them:
   (environments, modes, identities, limits, the contracts a finding is held to, memory).
 - `${CLAUDE_PLUGIN_ROOT}/skills/orbit-qa/references/protocol.md` — the decision you send
   each step, and what comes back. The fields themselves: `autonomous-qa.mjs protocol`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/orbit-qa/references/designs.md` — one worked design per
+  obligation shape, each one the engine made a draft of. Read the one for your obligation's
+  shape before your first `generate`, and write yours the same way, with your own aliases and slots.
 
 You are the reasoning; `cli/autonomous-qa.mjs` keeps the state. You choose the next step; the
 engine checks it, runs it inside gates you cannot argue with, writes down what it saw, re-derives
@@ -110,7 +113,11 @@ echo '<decision>' | node ${CLAUDE_PLUGIN_ROOT}/cli/autonomous-qa.mjs step --inve
 
 `context` gives the journal's **position**, the **frontier** (what is still owed, first things
 first, each with the step kinds that can settle it and a template), the budget, open questions,
-and `stop` — a reason the engine would stop now, or null. Each turn:
+and `stop` — a reason the engine would stop now, or null. The budget is the investigation's actions,
+decisions and minutes, and what one obligation may spend on designs that hold and on repairs of one that
+failed (`perObligation`) and one frozen version on attempts (`perVersion`) -- with what each obligation that
+has a design has spent (`obligations`: `used` of each, and the one `spent`, after which `generate` is refused
+for it). Each turn:
 
 1. Read `context` (or the last step's `next`). Take the frontier's first item unless the evidence
    gives you a better reason — say it in `reason`. A write's **read-back** comes first for a reason:
@@ -130,7 +137,8 @@ synthetic `TC-` params) · `reproduce` replays a finding's chain · `security` r
 `generate` proposes ONE design for an obligation (`obligation`, `design`: the skeleton's steps with no
 `expect`, `js` or window, the assertions as accepted criterion slots — `<criterion>/<expectation>`,
 a template, a step — the controls its shape needs, the fixture and observation plan, the trigger
-step). Read what a design may hold before you write one: `protocol`'s `design` gives each part's fields
+step). Start from the worked design for the obligation's shape (`references/designs.md`: one per shape,
+each a draft the engine made). Read what a design may hold before you write one: `protocol`'s `design` gives each part's fields
 (their enums -- `effectScope`, a trigger's `kind`, a control's `role` -- what is required and what only the
 engine stamps), the template each criterion op compiles to (`eq` is `value-eq`) and the rules over a design's
 controls that their fields do not show (`rules`); the obligation's own `template` names the controls its shape needs,
@@ -152,7 +160,10 @@ any test's clock advance passes is the schedule's -- unless that is what the tes
 names one that an earlier frozen version of the investigation named too says so beside its answer (`result.shared`:
 that version, its obligation and shape, each value and the word it was named under -- `businessKey`,
 `correlationId`, `messageId` or `occurrenceId`): it is advice, it changes nothing, and it comes before you run --
-choose another key unless what the earlier test left is what this one observes.
+choose another key unless what the earlier test left is what this one observes. A design that names a value an
+accepted criterion states `for` another shape is told so at the FIRST design that names it, before that other test
+has any version (`result.shared` then names the `criterion` and the shape it is stated for): that value is the other
+test's to observe.
 The engine compiles every verdict from the accepted criterion, validates the case with the real grammar, saves it as
 a DRAFT and freezes its version; a design that does not hold comes back
 with its word (`GENERATION_FAILED`, `REQUIRES_REQUIREMENT`, `INVALID_TEST`) and the stage that
@@ -162,7 +173,10 @@ step's `frozen` names and `context` lists under `versions` with its obligation) 
 isolated sandbox: its writes need fixture-write and run under grants minted for its fixture, its refs
 are bound by the engine, and what it came to (`SATISFIED`, `CONTRADICTED`, `INCONCLUSIVE`,
 `ENVIRONMENT_BLOCKED`, …) is decided from the host's own check of the worker's envelope — never from
-what the worker says. A run that did not settle is read back, never sent again: `reconcile` (below).
+what the worker says. A worker stopped before its run finished (its deadline, its supervisor) ruled on nothing:
+`INTERRUPTED` when the version could write nothing -- run it again, and if its own deadline stopped it, wait
+less -- and `AMBIGUOUS` when it had grants to write, which is never sent again (`result.stopped` says why it
+stopped). A run that did not settle is read back, never sent again: `reconcile` (below).
 Every step's answer carries `result`: what its action came to in its owner's word (`DRAFT_CREATED`,
 `GENERATION_FAILED`, `ENVIRONMENT_BLOCKED`, `SATISFIED` …), the stage or rule behind it and why -- read it
 before the next decision: a blocked run names the binding or grant it lacked, a failed design the finding
@@ -176,17 +190,24 @@ them out, the newest three by the fields the adapter declares, and a sentence) -
 defect: an answer of none, complete, is not "it never happened" when the thing was there and settled another way. A
 match on the message alone hides nothing. A refusal is the test's mistake, not the product's: repair the design to
 what `says` asks for and generate again -- never
-guess a request's shape, and never resend one it refused. A fault control's `point` is one its workload
+guess a request's shape, and never resend one it refused. An adapter that declares what its request carries holds
+your design to it before a draft exists: a field it does not read -- `request.businessKey` on a state read that takes
+`key`, a `match` on a field its hooks never answer by -- is `INVALID_TEST` at `validate`, naming the fields it does
+read. A fault control's `point` is one its workload
 declares: `context` lists a workload's declared points beside its alias under `bindings` (`points`), and a
 design that names another is refused before a draft exists (`DECLARED_POINT`, naming them) -- take the point
 from there, never from an obligation's name. A workload that lists none declares none here: a point its hooks
 do not know then refuses the run (`stopped` says `unknown-point`). A fault stops the workload it is armed in,
 and nothing says that workload comes back by itself: bring it back with a step of the design's own
-(`orbit.workload.control` on it, `request.action` `start` or `restart`) after the fault's witness and before
-anything asks that workload for more, reads its effect, or the test ends -- the next test in the sandbox finds
-it as this one left it. A design that does not is refused before a draft exists (`RESTORED_AFTER_FAULT`, naming
-the step to add and where). A design or a version you cite as evidence is cited by its record id (`dsg-…`,
-`ver-…`).
+(`orbit.workload.control` on it, `request.action` `start` or `restart`) after the fault's witness, before
+any later step asks that workload for more (what it did after the fault included), and before the test ends --
+the next test in the sandbox finds it as this one left it. What the fault left below it, a state read, may be
+read first, while it is still down. A design that does not bring it back is refused before a draft exists
+(`RESTORED_AFTER_FAULT`, naming the step to add and where). A fault nobody saw proves nothing about surviving it: a run whose observations never
+carried the point's terminal reason (`fault:<point>`) is `INCONCLUSIVE` whether what followed held or failed
+(`FAULT_NOT_SEEN`) -- so observe the faulted workload's attempts in a step whose answer carries it, and name that step
+as the fault control's witness (`step`), whose verdict the engine compiles. A design or a version you cite as
+evidence is cited by its record id (`dsg-…`, `ver-…`).
 Every ref a design names (`endpointRef`, `channelRef`, `stateRef`, `scheduleRef`, `workloadRef`, `identityRef`,
 `clockRef`) takes one of the aliases `context` lists under `bindings`, by kind, exactly as this sandbox binds them --
 read them there, never guess one from a key, a dotted name or a statement: an alias nothing lists is a binding

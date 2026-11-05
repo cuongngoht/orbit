@@ -8,7 +8,8 @@
 // So a host is told before it designs (ONE_SANDBOX: every test obligation's template and protocol.design print it), and
 // told after a design when the journal shows it (`sharedWith`): a literal the design names under a word of the backend
 // vocabulary that says WHICH business operation, message or period a value is (KEY_WORDS) that an earlier frozen version
-// of the same investigation named too. That is advice, never a refusal: a test may observe on purpose what an earlier one
+// of the same investigation named too -- and, at the FIRST design that names one, a value an accepted criterion states for
+// another shape's test (`statedFor`). That is advice, never a refusal: a test may observe on purpose what an earlier one
 // left -- the period a schedule already decided -- and nothing here can tell which. A value a binding fills (`${…}`) is
 // no literal: the run's own namespace keeps it apart.
 import { requestOf, stepsOf } from "./skeleton.mjs";
@@ -39,3 +40,17 @@ const common = (mine, theirs) => [...mine].filter(([value]) => theirs.has(value)
 const AFTER = "both run in its one sandbox, and whichever runs later finds what the other left there — use one no earlier test used, unless what is already there is what this test observes";
 
 const sharedOne = (e, keys) => ({ version: e.version, obligation: e.obligation, shape: e.shape ?? null, keys, say: `${keys.map((k) => `${k.as.join("/")} ${k.value}`).join(", ")} — named by ${e.version} (${e.shape ?? e.obligation}) of this investigation too: ${AFTER}` });
+
+// What a design names that an ACCEPTED criterion states FOR another shape -- an expectation whose `for` names other
+// obligations' shapes and not this one's (src/qa/fields.mjs): that value is the other test's to observe, and a test that
+// uses it first leaves there what the other one later finds. So it is said at the FIRST design that names it, before any
+// version of the other test exists -- advice like sharedWith, never a refusal. An expectation stated for no shape (`for`
+// empty) or for every shape its op rules with (`for` absent) gives its value to no one test. `expectations`: the
+// accepted slots a design may rule on (Map ref -> expectation) -> [{ criterion, shape, keys: [{ value, as }], say }].
+export const statedFor = (design, shape, expectations) => ((mine) => [...(expectations ?? [])].filter(([, e]) => givenElsewhere(e, shape) && mine.has(e.value)).map(([ref, e]) => statedOne(ref, e, mine.get(e.value))))(keysOf(design));
+
+const givenElsewhere = (e, shape) => Array.isArray(e?.for) && e.for.length > 0 && !e.for.includes(shape) && literal(e.value);
+
+const OTHERS = "that test observes it, and every test of this investigation runs in its one sandbox — use one no accepted criterion states for another test, unless what that test leaves is what this one observes";
+
+const statedOne = (ref, e, as) => ({ criterion: ref, shape: e.for.join(", "), keys: [{ value: e.value, as }], say: `${as.join("/")} ${e.value} — an accepted criterion (${ref}) states it for ${e.for.join(", ")}: ${OTHERS}` });

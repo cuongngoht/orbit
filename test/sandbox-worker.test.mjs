@@ -5,6 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { DEFAULT_DEADLINE_MS, KILL_GRACE_MS, WORKER_API, workerMain } from "../cli/sandbox-worker.mjs";
+import { envelopeFindings } from "../src/run/envelope.mjs";
 
 const OUT = "/work/out";
 const ENVELOPE = join(OUT, "envelope.json");
@@ -91,4 +92,21 @@ test("a runner that could not be started ends the same way, and nothing is signa
   assert.deepEqual([envelope(h).why, h.children[0].killed], ["the runner could not be started", []]);
   h.children[0].emit("exit", 1);
   assert.equal(envelope(h).why, "the runner could not be started", "a late exit changes nothing");
+});
+
+// What 0.4.0's diagnosis found (0.5.0 B7): the host held the envelope written for an interrupted run to a case digest it
+// never claims -- it never ran one -- and called it "ran another case", an EXECUTION_ERROR that read like a worker
+// lying. It claims no case, so it is held to nothing it does not claim; one that answers another dispatch, names a case
+// or claims a result is still held to what it says.
+test("the envelope it writes for an interrupted run is taken for what it is -- no case claimed, so never another case", async () => {
+  const h = harness();
+  const done = workerMain(JSON.stringify(REQUEST), h.io);
+  h.timers[0].fn();
+  h.children[0].emit("exit", null);
+  await done;
+  const expected = { runId: REQUEST.runId, nonce: REQUEST.nonce, caseDigest: "d".repeat(64) };
+  assert.deepEqual(envelopeFindings(envelope(h), expected, new Map()), []);
+  assert.match(envelopeFindings({ ...envelope(h), nonce: "n-other" }, expected, new Map()).join(), /answers another dispatch/);
+  assert.match(envelopeFindings({ ...envelope(h), caseDigest: "e".repeat(64) }, expected, new Map()).join(), /ran another case/, "an interruption that names a case is held to it");
+  assert.match(envelopeFindings({ ...envelope(h), result: { status: "PASS" } }, expected, new Map()).join(), /status is not its result's/, "and one that claims a result is held to it");
 });

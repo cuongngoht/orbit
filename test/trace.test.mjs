@@ -56,6 +56,31 @@ test("the log: one shard per day and host, capped ONCE, pruned past its retentio
   assert.deepEqual(read.map((e) => e.type), ["turn.ended", "trace.dropped"], "torn lines dropped; the cap said once");
 });
 
+// Why three hook processes racing for one trail could never be a deterministic test (test/multi-host-runtime.test.mjs):
+// the writer is FAIL-OPEN, so a line whose writer cannot take the trail's lock costs that line and nothing else --
+// whether another writer held the lock past this writer's bounded backoff, or the disk refused the lock directory for a
+// moment (Windows answers EPERM to a mkdir that races another process removing the same directory). Once the lock is
+// free, the next line lands.
+test("a line whose writer cannot take the trail's lock is dropped, never thrown -- and the next one lands", () => {
+  const io = fakeIo();
+  const log = traceLog(rooms, io);
+  const lock = join(rooms.trace, ".lock");
+  io.dirs.add(lock);
+  io.write(join(lock, "owner.json"), JSON.stringify({ host: "another", pid: 2, token: "live" }));
+  assert.doesNotThrow(() => log.append(ev("turn.ended")));
+  assert.deepEqual(log.read({}), [], "held past the writer's backoff: the line is lost, the moment it describes is not");
+  io.remove(lock);
+  const mkdir = io.mkdir;
+  io.mkdir = () => {
+    io.mkdir = mkdir;
+    throw Object.assign(new Error("EPERM"), { code: "EPERM" });
+  };
+  assert.doesNotThrow(() => log.append(ev("turn.ended")));
+  assert.deepEqual(log.read({}), [], "a lock directory the disk refused for a moment: the same");
+  log.append(ev("turn.ended"));
+  assert.equal(log.read({}).length, 1, "the next line, with the lock free, lands");
+});
+
 test("the emitter stamps what a producer never supplies, is a no-op when off, and a listener cannot stop an append", () => {
   const io = fakeIo();
   const log = traceLog(rooms, io);

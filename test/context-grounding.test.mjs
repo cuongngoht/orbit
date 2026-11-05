@@ -42,9 +42,9 @@ const git = (root, ...args) => execFileSync("git", ["-C", root, "-c", "user.name
 
 const envOf = (name) => Object.fromEntries(Object.entries(sealed({ ORBIT_STORE_DIR: join(TEMP, `${name}-store`) })).filter(([k]) => k !== "CLAUDE_PROJECT_DIR"));
 
-function checkout(name, extra = {}) {
+function checkout(name, extra = {}, files = FILES) {
   const root = join(TEMP, name);
-  for (const [path, text] of Object.entries({ ...FILES, ...extra })) {
+  for (const [path, text] of Object.entries({ ...files, ...extra })) {
     mkdirSync(dirname(join(root, path)), { recursive: true });
     writeFileSync(join(root, path), text);
   }
@@ -142,6 +142,19 @@ test("once paths are known, what the change reaches and the declared checks that
   assert.deepEqual(check.evidence, [{ source: "obligations", id: component.ref }, { source: "runtime", id: "test" }], "the component it holds, and the name the checkout declared it by");
   assert.equal(at(pkg)["check:package.json#test"], undefined, "the change's own required check, never a gate beside it");
   assert.equal(pkg.sufficiency.word, "ENOUGH");
+});
+
+// The read a DISCOVER names must be one that can fill the gap. A checkout whose files declare no component: before
+// runtime understanding read it, `runtime discover` is owed; once it read it and found none, asking again finds the same
+// nothing -- a host sent back to it would loop (0.5.0 review).
+test("a missing component graph is DISCOVERed until runtime understanding has read the checkout, and never again once it found none", () => {
+  const bare = checkout("bare", {}, { "src/orders/createOrder.mjs": FILES["src/orders/createOrder.mjs"], "README.md": "# shop\n" });
+  const before = context(bare);
+  assert.deepEqual([before.sufficiency.word, before.sufficiency.row, before.sufficiency.targets.map((t) => t.run)], ["DISCOVER", "unreached", ["runtime discover"]]);
+  json(bare, "runtime", ["discover", "--json"]);
+  const after = context(bare);
+  assert.deepEqual([after.sufficiency.word, after.sufficiency.row], ["ENOUGH", "grounded"], "the read it named was made, and found no graph: nothing is left to read");
+  assert.match(after.sufficiency.because, /0 verification item\(s\)/, "what holds the change is still said: nothing");
 });
 
 const snapshot = (dir) => (statSync(dir, { throwIfNoEntry: false }) ? readdirSync(dir, { recursive: true }).map(String).sort().filter((p) => statSync(join(dir, p)).isFile()).map((p) => `${p} ${createHash("sha256").update(readFileSync(join(dir, p))).digest("hex")}`) : []);

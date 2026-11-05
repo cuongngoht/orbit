@@ -172,7 +172,7 @@ const summaryOf = (listing, refs) => ({ total: listing.total, listed: listing.it
 
 const capabilityGaps = (b, input) => unanswered(input.architecture.filter((f) => f.kind === "capability"), capabilityTokens(b.task));
 
-const sufficiencyFor = (b, input, listing, judged) => sufficiencyOf({ tree: Boolean(input.tree), classes: listing.byClass, stale: judged.fresh.stale, paths: listing.paths.length, graph: judged.reach.graph, unanswered: capabilityGaps(b, input), refused: judged.refused, blocking: [...requirementQuestions(b), ...goalQuestions(b)] });
+const sufficiencyFor = (b, input, listing, judged) => sufficiencyOf({ tree: Boolean(input.tree), classes: listing.byClass, stale: judged.fresh.stale, paths: listing.paths.length, graph: judged.reach.graph, understood: judged.reach.state, unanswered: capabilityGaps(b, input), refused: judged.refused, blocking: [...requirementQuestions(b), ...goalQuestions(b)] });
 
 function grounded(b) {
   const r = rooms(b);

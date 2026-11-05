@@ -17,7 +17,7 @@ test("every row is reachable, in its order, and the last always answers", () => 
     sufficiencyOf(grounded({ tree: false })).row,
     sufficiencyOf(grounded({ classes: classes({ direct: 0 }) })).row,
     sufficiencyOf(grounded({ stale: [{ ref: "src/orders", owner: "architecture", id: "arch-module-1" }] })).row,
-    sufficiencyOf(grounded({ graph: false, classes: classes({ verification: 0 }) })).row,
+    sufficiencyOf(grounded({ graph: false, classes: classes({ verification: 0 }), understood: "NOT_DISCOVERED" })).row,
     sufficiencyOf(grounded()).row,
   ];
   assert.deepEqual(reached, SUFFICIENCY.map((r) => r.row));
@@ -43,7 +43,7 @@ test("ASK only for a blocking unknown no source can settle -- a question already
   const goal = sufficiencyOf(grounded({ blocking: [{ flow: "goal", goal: "goal-0123456789ab", asks: "which environment the release is checked in", blocks: ["verify"] }] }));
   assert.match(goal.question.answer, /goal analyze goal-0123456789ab --stdin, goal plan goal-0123456789ab/);
   assert.deepEqual(goal.question.blocks, ["verify"]);
-  for (const gap of [{ classes: classes({ direct: 0 }) }, { tree: false }, { stale: [{ ref: "x", owner: "architecture", id: "a" }] }, { graph: false, classes: classes({ verification: 0 }) }, { refused: 5 }]) {
+  for (const gap of [{ classes: classes({ direct: 0 }) }, { tree: false }, { stale: [{ ref: "x", owner: "architecture", id: "a" }] }, { graph: false, classes: classes({ verification: 0 }), understood: "NOT_DISCOVERED" }, { refused: 5 }]) {
     assert.notEqual(sufficiencyOf(grounded(gap)).word, "ASK", `a gap a read can fill is never a question: ${JSON.stringify(gap)}`);
   }
   assert.equal(sufficiencyOf(grounded({ blocking: [QUESTION], classes: classes({ direct: 0 }) })).word, "ASK", "a question only a person can answer outranks reading more");
@@ -57,11 +57,23 @@ test("DISCOVER names the targeted reads that would fill the gap -- never a full 
   assert.deepEqual(nothing.targets, [{ source: "host", target: "references", run: "context --with-refs" }, { source: "architecture", target: "acme", run: "architecture ensure --capability=acme" }, { source: "architecture", target: "vault", run: "architecture ensure --capability=vault" }]);
   const stale = sufficiencyOf(grounded({ stale: [{ ref: "src/orders", owner: "architecture", id: "a1" }, { ref: "src/orders", owner: "architecture", id: "a2" }, { ref: "src/db/pool.mjs", owner: "engineering", id: "e1" }, { ref: "src/x", owner: "knowledge", id: "k-0123" }, { ref: "web", owner: "plan", id: "runtime" }, { ref: "api", owner: "plan", id: "runtime" }] }));
   assert.deepEqual(stale.targets, [{ source: "architecture", target: "src/orders", run: "architecture ensure" }, { source: "engineering", target: "src/db/pool.mjs", run: "engineering why e1" }, { source: "knowledge", target: "src/x", run: "knowledge why k-0123" }, { source: "runtime", target: "component graph", run: "runtime discover" }], "each record that moved, by the owner that re-reads it -- an observation by its own evidence -- once");
-  const unreached = sufficiencyOf(grounded({ graph: false, classes: classes({ verification: 0 }) }));
+  const unreached = sufficiencyOf(grounded({ graph: false, classes: classes({ verification: 0 }), understood: "NOT_DISCOVERED" }));
   assert.deepEqual(unreached.targets, [{ source: "runtime", target: "component graph", run: "runtime discover" }]);
   assert.deepEqual(sufficiencyOf(grounded({ tree: false })).targets, [{ source: "checkout", target: "tracked tree", run: null }]);
   const many = sufficiencyOf(grounded({ classes: classes({ direct: 0 }), unanswered: Array.from({ length: 20 }, (_, i) => `t${i}xx`) }));
   assert.equal(many.targets.length, TARGET_LIMIT, "bounded");
+});
+
+// A DISCOVER names a read that can fill the gap -- and `runtime discover` fills a missing component graph only when
+// runtime understanding has not read this checkout yet, or what it read moved. Once it has read it and found no
+// component the direct paths lie in, asking it again finds the same nothing: that is no gap a read can fill, and a host
+// sent back to it would loop.
+test("the component graph is DISCOVERed only while runtime understanding can still read one -- never again once it read this checkout and found none", () => {
+  const unreached = (understood) => sufficiencyOf(grounded({ graph: false, classes: classes({ verification: 0 }), understood })).row;
+  assert.equal(unreached("NOT_DISCOVERED"), "unreached", "nothing has read what this checkout declares: `runtime discover` does");
+  assert.equal(unreached("STALE"), "unreached", "what it read moved: reading it again may find a graph");
+  for (const read of ["CURRENT", "PARTIAL", "UNKNOWN", null, undefined]) assert.equal(unreached(read), "grounded", `${read}: a read already made, or one that cannot be made here, finds no graph by being made again`);
+  assert.match(sufficiencyOf(grounded({ graph: false, classes: classes({ verification: 0 }), understood: "NOT_DISCOVERED" })).because, /runtime understanding has not read this checkout/);
 });
 
 test("an edit the index cannot see is not a move: only a stale record sends anything to be read again", () => {

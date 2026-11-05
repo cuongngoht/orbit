@@ -83,6 +83,11 @@ const bump = (counts, s) => counts.set(s, (counts.get(s) ?? 0) + 1);
 // The last two dotted parts, so `.test.mjs` is a different shape from `.mjs`.
 const suffix = (name) => name.split(".").slice(1).slice(-2).join(".");
 
-const conventionFact = (s, n, files) => ({ kind: "convention", key: s, statement: `${n} tracked file(s) are named *.${s}`, scope: [...new Set(files.filter((f) => basename(f).endsWith(s)).map(dirname))].sort().slice(0, 8), evidence: files.filter((f) => basename(f).endsWith(s)).slice(0, 3), source: "repository", confidence: "possible", because: `counted ${n} of them`, unknowns: [REPEAT_IS_NOT_AGREEMENT] });
+const conventionFact = (s, n, files) => ({ kind: "convention", key: s, statement: `${n} tracked file(s) are named *.${s}`, scope: [...new Set(files.filter((f) => basename(f).endsWith(s)).map(watchedAs))].sort().slice(0, 8), evidence: files.filter((f) => basename(f).endsWith(s)).slice(0, 3), source: "repository", confidence: "possible", because: `counted ${n} of them`, unknowns: [REPEAT_IS_NOT_AGREEMENT] });
+
+// What a convention watches of one of its files: the folder it sits in -- except at the root, whose folder is `.`, which
+// every reader of a scope takes for the WHOLE tree (the fingerprint, freshness, an incremental scan's narrowing). A file
+// at the root is watched as itself, or every commit anywhere would move the fact and the snapshot would be keyed to HEAD.
+const watchedAs = (f) => (dirname(f) === "." ? f : dirname(f));
 
 const REPEAT_IS_NOT_AGREEMENT = "whether anybody agreed to this — a repeated filename is a count, not a decision, and nothing in a listing can tell them apart";

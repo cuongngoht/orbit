@@ -1062,9 +1062,13 @@ benchmark/     (ADR 0046, 0047, 0048) THE DOCKER BENCHMARK of Orbit: development
                commit) · context.mjs (frozenRun, resumedRun, the manifest, the bench task, KIND_RUN) · record.mjs (the
                task's own door) · room.mjs · docker.mjs (containers through Orbit's Docker provider, attested, deadlines,
                cleanup by label) · images.mjs (verifier, runner, qa-worker: tagged by their directory's digest, reused by
-               id) · runner.mjs (the runner container of any round, behind the egress proxy) · host.mjs (the host's stream
-               as REPORTED facts) · sentinel.mjs (every secret a run handed out, looked for and masked) · metrics.mjs (a
-               fold over the kept runs, apart by host basis).
+               id) · runner.mjs (the runner container of any round, behind the egress proxy; the host's stream captured
+               off its stdout) · host.mjs (the host's stream as REPORTED facts, hostOf v2's call rows, commandsOf for a
+               judge) · agreement.mjs (the stream's Skill and Agent calls held to the session trail) · sentinel.mjs (every
+               secret a run handed out, looked for and masked) · tools.mjs (0.5.0, B9: a run's tool-call failures per
+               tool, per relay subcommand and per sandbox step, SANDBOX_FAILURES, and their fold) · rates.mjs (pass@1,
+               pass@k and medians per row and model, the arms' overhead) · metrics.mjs (a fold over the kept runs, apart
+               by host basis) · reliability.mjs (the reliability report a release quotes).
                lib/source/ -- a source or engineering case: verify.mjs, judge.mjs, candidate.mjs (SCOPE), classify.mjs
                (CAUSES and FAILURE_CLASSES), decide.mjs (NEXT), brief.mjs (a repair's brief, or a goal's), round.mjs (a
                round and its read-back), repairs.mjs (candidate controls straight to the judge), flow.mjs (with

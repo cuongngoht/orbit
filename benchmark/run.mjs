@@ -24,6 +24,7 @@
 //                                     [--seed=<n>] [--model=<id>] [--rounds=<n>] [--minutes=<n>] [--usd=<n>]
 //                                     [--credential=<NAME>] [--ca-file=<pem>] [--host=session:<label>]
 //                                     [--tree=<dir>] [--run-id=<bnr-…>] [--parent=<tsk-…>]
+//                                     [--repeat=<n>] [--arm=none|baseline|release|all]
 //                                     one case on the source of this branch: a source case frozen, verified twice,
 //                                     diagnosed and -- with --repair -- repaired by Orbit and verified again; a QA case's
 //                                     application set up with its own variant planted and a coding host's investigation
@@ -34,8 +35,15 @@
 //                                     --source=worktree its tree) -- the cases, the harness, the store and the task stay
 //                                     this checkout's; --run-id names the run's room before it starts (refused when it is
 //                                     kept already); --parent names the task that started the run (a release ship)
-//   node benchmark/run.mjs run --like=<bnr-…>
-//                                     again: the same case, variant, host, source mode, seed, limits and images, a new run
+//                                     --repeat=<n> (1..10) runs each case n times, each its own room and task, named as
+//                                     one repeat group in every manifest (config.repeat) -- one PASS is not a rate;
+//                                     --arm runs a case on one arm it declares (none: no Orbit at all, no plugin and no
+//                                     trail; baseline: the plugin frozen from the case's or suite's baselinePlugin
+//                                     revision, v0.4.0 by default; release: the run's own source, the default), or with
+//                                     all on each in turn -- the same model, inputs, image and limits
+//   node benchmark/run.mjs run --like=<bnr-…> [--repeat=<n>]
+//                                     again: the same case, variant, host, arm, source mode, seed, limits and images, a
+//                                     new run (n new runs, one repeat group)
 //   node benchmark/run.mjs status <bnr-…>
 //   node benchmark/run.mjs report <bnr-…>
 //                                     where a run stands; its report (written into its room as report.md and .json)
@@ -54,12 +62,22 @@
 //   node benchmark/run.mjs cleanup <bnr-…> [--scratch]
 //                                     the run's containers and networks, by its label only; --scratch its scratch trees
 //   node benchmark/run.mjs where      where the runs are kept, and which there are
-//   node benchmark/run.mjs metrics [--suite=<suite>] [--case=<case>] [--since=<iso date>] [--by=revision]
+//   node benchmark/run.mjs metrics [--suite=<suite>] [--case=<case>] [--since=<iso date>] [--revision=<commit>]
+//                                  [--by=revision,model,arm] [--k=<n>]
 //                                     what the kept runs show, each metric a numerator over a denominator: success,
 //                                     self-healing, detection, false alarms, regressions, interventions, rounds, time
 //                                     and REPORTED cost per verified outcome, reproducibility, the verifier's own
-//                                     controls -- apart by host basis (none, scripted, coding-host); --by=revision adds
-//                                     each case's outcome by source commit
+//                                     controls -- apart by host basis (none, scripted, coding-host); per row (case,
+//                                     variant, arm, basis, model) and per model, pass@1, pass@k (k 1..10, default 3),
+//                                     the median cost and minutes; tool-call failures per suite and per model (per tool,
+//                                     per relay subcommand, per PASS, per sandbox step); each Orbit arm's overhead over
+//                                     the none arm. --by=revision adds each case's outcome and rates by source commit,
+//                                     --by=model and --by=arm every metric again per model or per arm
+//   node benchmark/run.mjs reliability [--revision=<commit>] [--suite=<suite>] [--case=<case>] [--since=<iso date>]
+//                                      [--k=<n>]
+//                                     the reliability report a release quotes, folded from the kept runs like metrics:
+//                                     the rates by row and by model, the tool-call failures, each case's arms side by
+//                                     side and the overhead (orbit.benchmark.reliability/v1). It writes nothing
 //
 // Every command takes --json. A run is recorded as an Orbit task (provider `benchmark`) in this checkout's project, so
 // Orbit Live and Mission Control show it, and a person pauses or cancels it there. Its evidence is kept in the machine

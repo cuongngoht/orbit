@@ -43,7 +43,9 @@ benchmark/
   run.mjs                         the command line; its usage header is its contract
   lib/core/                       what every run shares: suites and their cases, freezing the source, mutations,
                                   the run's room, the task door, Docker, images, the runner container, the sentinel,
-                                  and metrics.mjs (what the kept runs show)
+                                  host.mjs and agreement.mjs (what the host did, and the trail held to it), tools.mjs
+                                  (tool-call failures), rates.mjs (pass@k, medians, overhead), metrics.mjs (what the
+                                  kept runs show) and reliability.mjs (the reliability report)
   lib/source/                     a source or engineering case: verification, the judge, SCOPE, CAUSES, NEXT, repair
                                   rounds, repairs.mjs (candidate controls straight to the judge), the brief, report
   lib/qa/                         a QA case: the engine beside the controller, the relay and its client, the scripted
@@ -132,6 +134,9 @@ The QA cases plant one defect each in Orbit's own synthetic invoice application 
      `controls ORBIT-E2E-001` runs it with scripted hosts instead: a reference goal through Orbit's goal entry must
      PASS, and an idle host must make NO_PROGRESS.
    - `node benchmark/run.mjs run --suite=orbit-qa` runs every case of a suite.
+   - `--repeat=5` runs a case (or every case of a suite) five times, each its own room and task, as one repeat group:
+     one PASS is not a rate. `--arm=none|baseline|release|all` runs a case on the arms it declares (see
+     [Repeats, arms and reliability](#repeats-arms-and-reliability)).
    - With uncommitted changes to what is measured, a run is refused until you say which tree to measure:
      `--source=head` (HEAD, without them) or `--source=worktree` (HEAD and them). Nothing is reset, stashed or written
      in your checkout.
@@ -154,8 +159,11 @@ The QA cases plant one defect each in Orbit's own synthetic invoice application 
    - `--scratch` also removes its scratch trees. The evidence stays.
 7. **Measure.**
    - `node benchmark/run.mjs metrics` folds the kept runs into numerators over denominators, apart by host basis
-     (`none`, `scripted`, `coding-host`). `--suite`, `--case` and `--since` narrow it; `--by=revision` adds each case's
-     outcome by source commit (see [Metrics](#metrics)).
+     (`none`, `scripted`, `coding-host`). `--suite`, `--case`, `--since` and `--revision` narrow it; `--by=revision`
+     adds each case's outcome and rates by source commit, `--by=model` and `--by=arm` every metric again per model or
+     per arm (see [Metrics](#metrics)).
+   - `node benchmark/run.mjs reliability --revision=<commit>` is the reliability report a release quotes: pass@1,
+     pass@k and medians per row and model, tool-call failures, and each case's arms side by side.
 
 Every command takes `--json`. Runs are kept in the machine store under `<store>/benchmark/<bnr-…>/`, and
 `ORBIT_STORE_DIR` moves them as it moves the rest of the store. `node benchmark/run.mjs where` lists them.
@@ -276,7 +284,7 @@ A run interrupted anywhere is carried on by `resume`:
 
 | Container | Image | Network | Mounts | Credential |
 |---|---|---|---|---|
-| runner | runner | the run's internal network; the egress proxy is its only way out | the subject checkout (read-only), the run's runner store (read-write), its out directory, the brief (read-only) | by name only |
+| runner | runner | the run's internal network; the egress proxy is its only way out | the subject checkout (read-only; for an arm with no Orbit, a writable copy of the target instead), the run's runner store (read-write), its out directory, the brief (read-only) | by name only |
 | egress | verifier | the run's internal network, plus the default bridge | none | none |
 | inspect | runner | none | the checkout and the runner store (both read-only), its out directory | none |
 | probe | verifier | none | the tree under test and the case's probe (both read-only) | none |
@@ -520,6 +528,128 @@ two or more of them valid, that came to one outcome -- and the groups that did n
 from every kept `controls.json`, and with `--by=revision` each case's outcomes by source commit. A known finding
 (`baseline: "FAIL"`) that still fails is never counted as a regression.
 
+Since 0.5.0 the same fold also gives each row's **reliability**, the **tool-call failures** and each Orbit arm's
+**overhead** -- described in [Repeats, arms and reliability](#repeats-arms-and-reliability) -- and `--by` is any of
+`revision`, `model` and `arm`, comma-separated: `model` and `arm` repeat every metric above per model or per arm, the
+bases still apart, and `revision` adds the rates of each source commit.
+
+## Repeats, arms and reliability
+
+0.5.0 measures how often a row holds, what a host's failed tool calls cost, and what Orbit adds against no Orbit and
+against the previous release (backlog B2, B9 and B23).
+
+### Repeats
+
+`run <case> --repeat=N` (and `run --suite=<suite> --repeat=N`, and `run --like=<bnr-…> --repeat=N`) makes N runs of a
+case one after another. Each is frozen in a room of its own and recorded as a task of its own; every manifest names the
+group in `config.repeat` (`{ id: "rpt-…", index, of }`), so a metric reads them as one row's repeats. A run that is
+blocked or refused is its own row, and the repeats after it still run. `--repeat` is bounded as data (`BOUNDS` in
+`lib/commands.mjs`: 1..10), and `--run-id` still names exactly one run.
+
+### Arms
+
+A case may declare the arms it is compared on (`arms`, any of `none`, `baseline`, `release`); `run <case> --arm=<arm>`
+runs one, and `--arm=all` each in turn. Only the plugin the host is handed differs -- the case, the model, the frozen
+inputs, the runner image and the limits are the same:
+
+| Arm | The host is handed | What it isolates |
+|---|---|---|
+| `none` | No Orbit: no plugin is mounted and Claude Code gets no `--plugin-dir`, so no Orbit hook fires and no trail is written. With no task workspace, the host changes a writable copy of the target (`worktree/`, beside the run's checkout, which stays the frozen subject); the inspection reads its changes there, and only the verifier judges it -- there is no owner's record to read. | What Claude Code does on its own |
+| `baseline` | The plugin frozen from a named git revision -- the case's `baselinePlugin`, else its suite's, else `v0.4.0` -- by the same read-only git read as any source, the harness removed the same way. A repository that holds no such revision refuses the run. | The previous release |
+| `release` | The run's own source: what every run was before arms, and what a case that declares no arms runs. | This release |
+
+The manifest records `config.arm` and, for an engineering case, the plugin's arm, whether it was handed to the host,
+and its revision (`plugin.revision: { named, commit }`). The engineering kind takes `arms` and `baselinePlugin` today;
+a kind added later (activation, workflow) declares them the same way.
+
+### What the host did, and the evidence for it
+
+- **The controller's capture.** The runner's entry prints the host's stream on the container's stdout as well as into
+  `/work/out/host.jsonl`, bounded below what the controller reads of one stream (15 MiB, closed with the stream's last
+  64 KiB when cut). The controller writes what it receives into `rounds/<k>/host.stream.jsonl` -- a file no container
+  mounts, basis `HOST_OBSERVED` -- with `rounds/<k>/host.stream.at.json` beside it: when each chunk arrived, by the
+  controller's own clock. The runner's copy stays, `REPORTED`, and a round's outputs say whether the two agree.
+- **`hostOf` v2** (`lib/core/host.mjs`) keeps one row per tool call: its name, the skill a Skill call starts, the agent
+  an Agent call dispatches, the Agent call a subagent's call answers to, a file tool's path, its turn and stream line,
+  and whether its result came back as an error. No prompt, no output. A Bash command is read only by `commandsOf`, for a
+  judge's patterns, and never reaches a metric or a report.
+- **The agreement rule** (`lib/core/agreement.mjs`): the stream's Skill and Agent calls must match the trail Orbit's
+  hooks wrote (`skill.invoked`, `agent.invoked`), which the inspection reads with `cli/trace.mjs turns --json` into
+  `turns.json`. A call with no trail line, or a line with no call, is `CONFLICTING`; an arm with no Orbit expects no
+  trail at all. A turn past the view's 80-step cap is compared on the trail's uncapped usage totals, and with neither
+  readable the answer is `UNDETERMINED`, never `AGREES`.
+- **The inspection** also writes `sandbox.json`: every sandbox the runner store holds, with its document's state and
+  block and its operations journal (kind, state, times, its writer's sentence) -- read as data, bounded.
+
+### Tool-call failures
+
+Every run's report carries its tool-call facts (`tools` in `report.json`, a "Tool calls" section in `report.md`), read
+off the run's room and never off what a host says (`lib/core/tools.mjs`):
+
+| Fact | Read from |
+|---|---|
+| Per tool: calls, failed calls (a result marked as an error), unanswered calls | Each round's host stream: the controller's capture, else the runner's own copy (`basis` says which) |
+| Recovery: each failed call to the next call of its thread, in a later turn, that did not fail -- the turns, reported tokens and apportioned reported cost spent getting there | The same stream; the cost is the reported total shared by reported tokens (`APPORTIONED`) |
+| Per relay subcommand: requests, refusals by reason, the engine's non-zero exits | `rounds/<k>/relay/relay.jsonl`; a reason is one word (`RELAY_REASONS`) read off the sentence the relay itself writes |
+| Per sandbox step (`sandbox-prepare`, `restore`, `container-build`, `sandbox-start`, `readiness`, `sandbox-release`): attempts, failures, each failure's class, the host calls it cost, and whether one nothing got past ended BLOCKED with its reason | A source or engineering run: the engineering task's `prepare-sandbox` and `start-sandbox` actions (`inspect/task.json`) and runtime's operations journal (`inspect/sandbox.json`); a QA run: its engine store, whose sandbox the controller set up |
+
+A failure's class is a row of `SANDBOX_FAILURES`, the first that holds: `DOCKER_DOWN`, `IMAGE_PULL` (refused or
+rate-limited), `PORT_HELD`, `RESTORE_FAILED`, `READINESS` (never answered), `TEARDOWN_UNPROVEN`, else `UNCLASSIFIED`.
+Where runtime keeps no word of its own for a cause, a row reads the owner's own sentence, at fragments a test pins to
+the engine's source. The calls a failure cost are the host calls the controller saw arrive after it ended, up to the
+start of the task's next action that succeeded -- or to the end, when nothing got past it.
+
+What no record says is `null` with its reason in `unknown`, never 0: a stream captured with no moments (calls after a
+failure cannot be placed), a room whose inspection never read the sandboxes back (a run from before 0.5.0), and a QA
+run's `sandbox-start` and `readiness` (runtime does not journal them as operations). A QA run's sandbox steps are the
+controller's own: no host call is counted against them.
+
+### Reliability
+
+`metrics` folds each **row** -- one case and variant, on one arm, carried by one host basis and one model -- and each
+model:
+
+| Number | Over |
+|---|---|
+| `pass1` | passes / runs that came to an ending a rate may count -- blocked, invalid, inconclusive, held, unfinished and interrupted runs (a restart is nobody's miss) left out and counted by why |
+| `passK` | the chance at least one of k runs passes, estimated without bias from n >= k runs: 1 - C(n-c, k) / C(n, k); `unknown` with fewer than k (`--k`, 1..10, default 3) |
+| `medianCostUsd` · `costPerVerifiedUsd` · `medianMinutes` | what hosts REPORTED a run cost (median, and the mean over passed runs), and the minutes from freeze to ending |
+| `orbit_overhead` | per case, variant, basis and model: an Orbit arm's median reported cost, turns and tokens minus the `none` arm's |
+
+A run's model is the one asked for, else the one its host named, else `unknown`. Tool-call failures fold per host
+basis, then per suite and per model: per tool, per relay subcommand, failed calls per PASS, recovery episodes and what
+they took, runs that hit a failed call and still passed, and per sandbox step. A report from before 0.5.0 kept no tool
+facts and counts as `unread`; `node benchmark/run.mjs report <bnr-…>` writes them.
+
+`node benchmark/run.mjs reliability [--revision=<commit>] [--suite=…] [--case=…] [--since=…] [--k=…] [--json]` is the
+same fold as one document a release quotes, and writes nothing:
+
+```jsonc
+{
+  "schema": 1, "kind": "orbit.benchmark.reliability/v1", "at": "…", "store": "…",
+  "scope": { "revision": "…", "suite": null, "case": null, "since": null, "k": 3 },
+  "runs": { "total": 0, "byBasis": {}, "byArm": {}, "byOutcome": {} },
+  "rates": { "k": 3, "rows": [ { "case", "suite", "variant", "arm", "basis", "model", "runs", "passed", "excluded",
+                                 "pass1", "passK": { "k", "value" }, "medianCostUsd", "costReported",
+                                 "costPerVerifiedUsd", "medianMinutes" } ],
+             "models": [ { "basis", "model", "rows", "runs", "passed", "excluded", "pass1",
+                           "passK": { "k", "value", "over" }, "medianCostUsd", "costPerVerifiedUsd", "medianMinutes" } ] },
+  "tools": { "<basis>": { "runs", "unread", "suites": { "<suite>": "<fold>" }, "models": { "<model>": "<fold>" } } },
+  "arms": { "rows": [ { "case", "variant", "basis", "model", "arms": { "<arm>": { "runs", "passed", "pass1", "passK",
+                                                                                  "costPerVerifiedUsd", "medianCostUsd",
+                                                                                  "medianMinutes" } } } ],
+            "overhead": [ { "case", "variant", "basis", "model", "arm", "armSide", "noneSide",
+                            "overhead": { "costUsd", "turns", "tokens" } } ] },
+  "notes": [ "…what each number stands on…" ]
+}
+```
+
+A fold is `{ runs, unread, calls: { calls, failed, unanswered, rate, byTool }, relay: { "<sub>": { requests, refused:
+{ "<reason>": n }, nonZero, errors } }, failedPerPass, recovery: { episodes, recovered, turnsPerEpisode, costUsd,
+runsRecovered }, sandbox: { steps: { "<step>": { runs, attempts, failures, rate, classes, callsAfter, callsUnknown,
+stopped, endedBlocked } }, unknown: { "<step>": runs } } }`; every ratio is `{ numerator, denominator, value }`, and a
+value with nothing under it is `unknown`.
+
 ## CI tiers
 
 | Tier | Where | What |
@@ -667,3 +797,11 @@ the runner, so it describes the mechanism only: never a fault, a planted variant
   finding apart as a source case of its own.
 - **An interrupted check's lock.** A step killed mid-run leaves its task's lock behind; Orbit breaks it once it is stale
   (a minute), so the round after an interruption waits that long before it reconciles.
+- **The capture is bounded, and needs the 0.5.0 runner.** The controller's process port stops a container past 16 MiB
+  of stdout, so the runner prints at most 15 MiB of the host's stream there (and the tail when cut); the runner's own
+  copy keeps up to the case's `outputMb`. A runner image built before 0.5.0 prints nothing on its stdout: its capture is
+  empty and the runner's copy is read instead (`REPORTED`). The image is tagged by its directory's digest, so the next
+  `build` makes the new one.
+- **Calls are placed in time by the controller's clock.** The calls a sandbox failure cost are counted between moments
+  the controller saw lines arrive and times the engine's journal keeps -- one machine's clock -- and a stream captured
+  with no moments places nothing (`unknown`).

@@ -19,7 +19,7 @@ import { begunShip, evidenceAsked, resumedShip, statusOf } from "../skills/orbit
 import { driven } from "../skills/orbit-release/ship/steps.mjs";
 import { authorize, isAuto } from "../src/protected/authorize.mjs";
 import { INTEGRATION } from "../skills/orbit-release/ship/workspace.mjs";
-import { adds, DEFAULT_PLAY, GIT_ENV, headOf, refsOf, shipWorldOf, statusOf as gitStatus } from "./fakes/ship-world.mjs";
+import { adds, DEFAULT_PLAY, GIT_ENV, headOf, POLICY, refsOf, shipWorldOf, statusOf as gitStatus } from "./fakes/ship-world.mjs";
 import { sealed } from "./home.mjs";
 
 const OPTS = { repair: true, failFast: true, limits: {}, version: "9.9.9" };
@@ -527,6 +527,57 @@ test("B6. --status prints a failed model-carried row's diagnosis bundle -- relay
   const held = shipWorldOf(t, { files: { ...ADDING }, play: { controls: allMatched } });
   const h = await shipped(held);
   assert.deepEqual((await statusOf(held.world, h.ctx.ship.id)).diagnoses, [], "a ship whose model-carried rows held has nothing to diagnose");
+});
+
+// ---- recorded rows (ADR 0051): a new suite's model-carried rows are recorded, not required ------------------------------------
+
+const RECORDING = { ...POLICY, recorded: { suites: [], cases: ["QA-001"] } };
+
+const missed = () => ({ outcome: "FAIL", summary: "FAIL — a planted defect was not found", host: HOST, diagnosis: DIAGNOSIS });
+
+test("a recorded row that does not hold never blocks SHIPPABLE: run once, said held or not with its run's room -- in the result, --status and evidence.json", async (t) => {
+  const w = shipWorldOf(t, { files: { ...ADDING }, policy: RECORDING, play: { controls: allMatched, autonomous: missed } });
+  const { ctx, result } = await shipped(w);
+  assert.deepEqual([result.outcome, result.exit], ["SHIPPABLE", 0], result.summary);
+  assert.equal(ran(w, (c) => c.kind === "autonomous").length, 1, "once: --retries is 0");
+  assert.ok(ran(w, (c) => c.kind === "selfHealing").length === 1, "a recorded miss stops no other model-carried row");
+  const run = rowDocs(w, ctx, "QA-001:autonomous")[0].planned.run;
+  const room = join(w.store, "benchmark", run);
+  const ev = evidenceOf(ctx);
+  assert.deepEqual(ev.recorded, [{ id: "QA-001:autonomous", case: "QA-001", held: false, state: "FAILED", outcome: "FAIL", run, room, says: "FAIL — a planted defect was not found" }]);
+  assert.equal(ev.rows.find((r) => r.id === "QA-001:autonomous").recorded, true);
+  assert.deepEqual(result.recorded.map((r) => [r.id, r.held, r.room]), [["QA-001:autonomous", false, room]]);
+  assert.match(saidResult(result), /recorded  QA-001:autonomous: not held \(FAILED\) -- .*bnr-/);
+  const s = await statusOf(w.world, ctx.ship.id);
+  assert.deepEqual([s.rows.held, s.rows.total, s.rows.recorded.map((r) => [r.id, r.held, r.room])], [6, 6, [["QA-001:autonomous", false, room]]], "required rows counted apart from recorded ones");
+  assert.match(saidStatus(s), /recorded  QA-001:autonomous: not held \(FAILED\)/);
+  const e = await evidenceAsked(w.world, null);
+  assert.deepEqual([e.publishable, e.code, e.recorded.map((r) => [r.id, r.held, r.room])], [true, "PUBLISHABLE", [["QA-001:autonomous", false, room]]], "--evidence says the recorded rows, re-read from their rooms");
+});
+
+test("a recorded row runs under the ship's retries like any model-carried row, and holds on its own PASS", async (t) => {
+  let n = 0;
+  const autonomous = () => (++n === 1 ? missed() : { outcome: "PASS", summary: "PASS", host: HOST });
+  const w = shipWorldOf(t, { files: { ...ADDING }, policy: RECORDING, play: { controls: allMatched, autonomous } });
+  const { ctx, result } = await shipped(w, { limits: { autonomousRetries: 1 } });
+  assert.deepEqual([result.outcome, n], ["SHIPPABLE", 2]);
+  assert.deepEqual(evidenceOf(ctx).recorded.map((r) => [r.id, r.held, r.state]), [["QA-001:autonomous", true, "HELD"]]);
+});
+
+test("a recorded case's controls stay required: a control that does not hold still ends the release NOT SHIPPABLE", async (t) => {
+  const controls = (c) => (c === "QA-001" ? [{ id: "idle", variant: "real", expect: "FAIL", got: "PASS", matched: false }] : allMatched());
+  const w = shipWorldOf(t, { files: { ...ADDING }, policy: RECORDING, play: { controls } });
+  const { result } = await shipped(w);
+  assert.deepEqual([result.outcome, result.exit], ["NOT_SHIPPABLE", 2]);
+  assert.match(result.summary, /QA-001:controls/);
+});
+
+test("--evidence re-derives a recorded row like any other: a recorded row whose room no longer agrees is UNTRUSTED", async (t) => {
+  const w = shipWorldOf(t, { files: { ...ADDING }, policy: RECORDING, play: { controls: allMatched, autonomous: missed } });
+  const { ctx } = await shipped(w);
+  const ending = join(w.store, "benchmark", evidenceOf(ctx).recorded[0].run, "ending.json");
+  writeFileSync(ending, JSON.stringify({ ...JSON.parse(readFileSync(ending, "utf8")), outcome: "PASS" }));
+  assert.deepEqual(await publishable(w), [false, "UNTRUSTED"], "the evidence said FAIL; the room now says PASS");
 });
 
 // ---- the precheck (0.5.0 backlog B6) ---------------------------------------------------------------------------------------

@@ -67,10 +67,14 @@ const resumedAfter = (f, act) => f.acts.findIndex((x) => x.a.id === act) < f.act
 
 const caseData = (ctx, id) => ctx.cases.get(id) ?? null;
 
+// A RECORDED row (ADR 0051) never stops or blocks a ship: what its diagnosis would do -- stop, block, wait for a person --
+// it is RECORDED, not held, instead. A run again (a restart's interruption, a retry --retries allows) it still gets.
+const recordedDiag = (row, diag) => (row.recorded && diag.then !== "RETRY" ? { ...diag, then: "RECORDED", needs: null, stop: null } : diag);
+
 // A row's latest verdict in this cycle, with what DIAGNOSE makes of it given the retries it has used.
 function rowState(ctx, f, row, docs) {
   const v = docs.at(-1).settled.verdict;
-  const diag = v.state === "HELD" ? null : diagnosed({ row, v, case: caseData(ctx, row.case), repair: ctx.options.repair, ...leftOf(f.limits, docs), resumed: resumedAfter(f, docs.at(-1).act) });
+  const diag = v.state === "HELD" ? null : recordedDiag(row, diagnosed({ row, v, case: caseData(ctx, row.case), repair: ctx.options.repair, ...leftOf(f.limits, docs), resumed: resumedAfter(f, docs.at(-1).act) }));
   return { row, v, diag, runs: docs.length };
 }
 
@@ -84,7 +88,8 @@ const pendingRow = (ctx, f) => ctx.rows.find((r) => (!f.rows.has(r.id) || f.rows
 
 // A row failed for good: not held, and not about to run again. A row its diagnosis runs again (a retry a person allowed)
 // is still open -- counted as failed, it would keep a model-carried row from its own retry.
-const failedForGood = (r) => r.v.state !== "HELD" && r.diag?.then !== "RETRY";
+// A recorded row never fails a cycle (fail fast keeps no model-carried row from running for it).
+const failedForGood = (r) => !r.row.recorded && r.v.state !== "HELD" && r.diag?.then !== "RETRY";
 
 const diags = (f, then) => [...f.rows.values()].filter((r) => r.diag?.then === then);
 
@@ -166,8 +171,11 @@ const allIntegrated = (f) => f.repairs.length > 0 && f.repairs.every((r) => r.st
 
 const repairIn = (f, state) => f.repairs.find((r) => r.state === state) ?? null;
 
-// The ship's own place in its order: a row that is HELD everywhere, every row of the catalog run in this cycle.
-const allHeld = (ctx, f) => ctx.rows.length > 0 && ctx.rows.every((r) => f.rows.get(r.id)?.v.state === "HELD");
+// What SHIPPABLE needs of each row of the catalog in this cycle: a required row HELD; a recorded one (ADR 0051) only run to
+// an end, held or not.
+const rowDone = (r, x) => (r.recorded ? Boolean(x) && (x.v.state === "HELD" || x.diag?.then === "RECORDED") : x?.v.state === "HELD");
+
+const allHeld = (ctx, f) => ctx.rows.length > 0 && ctx.rows.every((r) => rowDone(r, f.rows.get(r.id)));
 
 // PREFLIGHT before RECONCILE: a run read back on resume is judged like any other -- against the catalog and each case's
 // declaration the preflight reads, and the content digest the cycle's earlier rows froze -- never against an empty one.

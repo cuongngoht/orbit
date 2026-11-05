@@ -205,13 +205,22 @@ test("REPAIR_CHECK: a verified candidate is held again by the ship before a byte
 // ---- PUBLISH ------------------------------------------------------------------------------------------------------------
 
 const EV = { source: { commit: "c1", tree: "t1", protected: "p", digest: "d1" }, policy: { digest: "y" }, rows: [{ id: "A:real", run: "bnr-000000000001", state: "HELD", outcome: "PASS" }], artifact: { sha256: "a".repeat(64) }, delivery: { needed: false } };
-const G = (over = {}) => ({ ship: { id: "shp-000000000001" }, view: { lifecycle: "COMPLETED" }, evidence: EV, ending: null, head: { tree: "t1", dirty: [] }, now: { protected: "p", policy: "y", rows: ["A:real"], autonomous: new Set(), single: new Set(["A:real"]) }, rooms: () => ({ manifest: { source: { commit: "c1" } }, ending: { outcome: "PASS" }, report: {} }), artifact: { ok: true }, ...over });
+const G = (over = {}) => ({ ship: { id: "shp-000000000001" }, view: { lifecycle: "COMPLETED" }, evidence: EV, ending: null, head: { tree: "t1", dirty: [] }, now: { protected: "p", policy: "y", rows: ["A:real"], recorded: [], autonomous: new Set(), single: new Set(["A:real"]) }, rooms: () => ({ manifest: { source: { commit: "c1" } }, ending: { outcome: "PASS" }, report: {} }), artifact: { ok: true }, ...over });
 
 test("PUBLISH: every row is reached, and only PUBLISHABLE lets a release be published", () => {
-  const got = [G({ ship: null }), G({ view: { lifecycle: "EXECUTING" } }), G({ view: { lifecycle: "BLOCKED" } }), G({ view: { lifecycle: "FAILED" } }), G({ head: { tree: "t2", dirty: [] } }), G({ head: { tree: "t1", dirty: ["src/a.mjs"] } }), G({ now: { ...G().now, protected: "q" } }), G({ now: { ...G().now, policy: "z" } }), G({ now: { ...G().now, rows: ["A:real", "B:real"] } }), G({ rooms: () => ({ manifest: { source: { commit: "c0" } }, ending: { outcome: "PASS" } }) }), G({ artifact: { ok: false, says: "gone" } }), G()].map(publishableOf);
+  const got = [G({ ship: null }), G({ view: { lifecycle: "EXECUTING" } }), G({ view: { lifecycle: "BLOCKED" } }), G({ view: { lifecycle: "FAILED" } }), G({ head: { tree: "t2", dirty: [] } }), G({ head: { tree: "t1", dirty: ["src/a.mjs"] } }), G({ now: { ...G().now, protected: "q" } }), G({ now: { ...G().now, policy: "z" } }), G({ now: { ...G().now, rows: ["A:real", "B:real"] } }), G({ now: { ...G().now, recorded: ["Q:autonomous"] } }), G({ rooms: () => ({ manifest: { source: { commit: "c0" } }, ending: { outcome: "PASS" } }) }), G({ artifact: { ok: false, says: "gone" } }), G()].map(publishableOf);
   assert.deepEqual(got.map((x) => x.code), PUBLISH.map((r) => r.code));
   assert.deepEqual(got.map((x) => x.publishable), [...PUBLISH.slice(0, -1).map(() => false), true]);
   assert.equal(publishableOf(G({ view: { lifecycle: "PAUSED" } })).code, "PENDING", "a paused ship's verification is still pending");
+});
+
+test("PUBLISH: a recorded row is held to its room like any other, held or not -- only a required row must be HELD (ADR 0051)", () => {
+  const Q = { id: "Q:autonomous", run: "bnr-000000000002", state: "FAILED", outcome: "FAIL", recorded: true };
+  const recording = (rooms) => G({ evidence: { ...EV, rows: [...EV.rows, Q], recorded: [{ id: Q.id, held: false, state: "FAILED", run: Q.run }] }, now: { ...G().now, recorded: [Q.id], autonomous: new Set([Q.id]), single: new Set(["A:real", Q.id]) }, rooms });
+  const room = (outcome) => (run) => ({ dir: `/store/benchmark/${run}`, manifest: { source: { commit: "c1" } }, ending: { outcome: run === Q.run ? outcome : "PASS" }, report: { hostBasis: "scripted" } });
+  const ok = publishableOf(recording(room("FAIL")));
+  assert.deepEqual([ok.code, ok.recorded], ["PUBLISHABLE", [{ id: Q.id, held: false, state: "FAILED", run: Q.run, room: `/store/benchmark/${Q.run}` }]], "a recorded row that did not hold owes no host, and --evidence says it with its room");
+  assert.equal(publishableOf(recording(room("PASS"))).code, "UNTRUSTED", "its room no longer says what the evidence says of it");
 });
 
 // ---- PREFLIGHT -----------------------------------------------------------------------------------------------------------

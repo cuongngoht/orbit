@@ -281,7 +281,7 @@ function shipped(ctx, f, s) {
   settledAct(ctx, s.act, { attempt: f.open.id }, { attempt: f.open.id, evidence: ctx.room.at("evidence.json"), ok: true }, { outcome: "succeeded", receipt: `check:evidence-${sha(JSON.stringify(s.ev)).slice(0, 12)}`, summary: `SHIPPABLE ${short(f.cycle.commit)}` });
   closeAttempt(ctx, f, "succeeded");
   ctx.door.complete(ctx.task, `SHIPPABLE: ${short(f.cycle.commit)}, ${s.ev.rows.length} rows held, artifact ${s.ev.artifact.sha256.slice(0, 12)}${s.delivery ? ` -- repairs to apply: ${s.delivery.patch}` : ""}`);
-  return ended(ctx, { outcome: "SHIPPABLE", exit: 0, summary: `every row of the catalog held on ${short(f.cycle.commit)}${s.delivery ? ", with repairs this ship integrated -- apply them to your branch" : ""}`, evidence: ctx.room.at("evidence.json"), delivery: s.delivery });
+  return ended(ctx, { outcome: "SHIPPABLE", exit: 0, summary: `every row the catalog requires held on ${short(f.cycle.commit)}${s.ev.recorded.length ? `; ${s.ev.recorded.filter((r) => r.held).length} of ${s.ev.recorded.length} recorded row(s) held` : ""}${s.delivery ? ", with repairs this ship integrated -- apply them to your branch" : ""}`, evidence: ctx.room.at("evidence.json"), delivery: s.delivery, recorded: s.ev.recorded });
 }
 
 // ---- reconcile ---------------------------------------------------------------------------------------------------------

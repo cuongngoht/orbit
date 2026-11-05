@@ -39,6 +39,22 @@ test("a cycle runs every verification, then every control, then 16 rows the real
   assert.ok(rows.filter((r) => r.case === "ORBIT-SRC-002" || r.case === "ORBIT-ORC-006").some((r) => r.req === "real" && r.expect.includes("PASS")), "a known finding must PASS its real source: its baseline earns it nothing");
 });
 
+test("the shipped policy records no row yet: every one of the 46 cases keeps what it requires (ADR 0051)", () => {
+  const rows = rowsOf(POLICY, listed());
+  assert.deepEqual([POLICY.recorded.suites, POLICY.recorded.cases, rows.filter((r) => r.recorded).map((r) => r.id)], [[], [], []]);
+  assert.ok(rows.every((r) => r.recorded === false), "every row says it is required");
+});
+
+test("`recorded` marks a suite's or a case's model-carried rows, never its controls; a name the catalog does not hold is refused", () => {
+  const rows = rowsOf(policyOf(JSON.stringify({ ...POLICY, recorded: { suites: ["orbit-qa"], cases: ["ORBIT-E2E-001", "ORBIT-SRC-001"] } })), listed());
+  const recorded = rows.filter((r) => r.recorded).map((r) => r.id).sort();
+  assert.deepEqual(recorded, [...POLICY.catalog["orbit-qa"].map((c) => `${c}:autonomous`), "ORBIT-E2E-001:autonomous", "ORBIT-SRC-001:self-healing"].sort(), "a suite's model-carried rows, a case's, an extra row's");
+  assert.ok(rows.filter((r) => ["ORBIT-QA-001", "ORBIT-E2E-001", "ORBIT-SRC-001"].includes(r.case) && r.run !== "autonomous").every((r) => !r.recorded), "its controls and verifications stay required");
+  assert.equal(rows.length, rowsOf(POLICY, listed()).length, "recording a row runs it all the same");
+  assert.throws(() => policyOf(JSON.stringify({ ...POLICY, recorded: { suites: ["orbit-nope"], cases: [] } })), /recorded rows naming only suites and cases the catalog holds/);
+  assert.throws(() => policyOf(JSON.stringify({ ...POLICY, recorded: { suites: [], cases: ["ORBIT-NOPE-001"] } })), /recorded rows naming only/);
+});
+
 test("Claude Code is the one coding host a release needs; no other host is named", () => {
   assert.deepEqual([POLICY.host.cli, POLICY.host.basis, POLICY.host.endpoints], ["claude-code", "coding-host", ["api.anthropic.com"]]);
   assert.doesNotMatch(readFileSync(join(ROOT, "skills", "orbit-release", "ship", "policy.json"), "utf8"), /grok|codex|antigravity|agy/i);

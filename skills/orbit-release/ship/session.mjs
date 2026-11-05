@@ -144,8 +144,12 @@ const isHeld = (r) => r.v.state === "HELD";
 // Every model-carried row that did not hold, with its diagnosis bundle and its run's room (dispatch.mjs runDiagnosis).
 const diagnosesOf = (ctx, rows) => rows.filter((r) => r.row.autonomous && r.v.state !== "HELD").map((r) => runDiagnosis(ctx.storeRoot, r));
 
-// The rows of the newest cycle, by what each came to: held, and not held -- with the ones its diagnosis runs again.
-const rowsSaid = (ctx, rows) => ({ total: ctx.rows.length, held: rows.filter(isHeld).length, heldRows: rows.filter(isHeld).map((r) => r.row.id), failed: rows.filter((r) => !isHeld(r)).map((r) => `${r.row.id} ${r.v.state}${r.diag?.then === "RETRY" ? " (runs again)" : ""}`) });
+// A recorded row (ADR 0051), held or not, with its run's room -- said apart from the rows a release requires.
+const recordedSaid = (ctx, r) => ({ id: r.row.id, held: isHeld(r), state: r.v.state, run: r.v.run ?? null, room: runRoomOf(ctx.storeRoot, String(r.v.run ?? "").split(" ")[0]).dir, runsAgain: r.diag?.then === "RETRY" });
+
+// The rows of the newest cycle the release requires, by what each came to: held, and not held -- with the ones its
+// diagnosis runs again; and, apart, the recorded ones.
+const rowsSaid = (ctx, all) => ((rows) => ({ total: ctx.rows.filter((r) => !r.recorded).length, held: rows.filter(isHeld).length, heldRows: rows.filter(isHeld).map((r) => r.row.id), failed: rows.filter((r) => !isHeld(r)).map((r) => `${r.row.id} ${r.v.state}${r.diag?.then === "RETRY" ? " (runs again)" : ""}`), recorded: all.filter((r) => r.row.recorded).map((r) => recordedSaid(ctx, r)) }))(all.filter((r) => !r.row.recorded));
 
 // A context to read a ship with: the catalog and each case's declaration as the checkout says them now.
 async function readingOf(world, ship) {
@@ -171,7 +175,8 @@ function artifactOf(ev, file) {
   return ev?.artifact?.file && existsSync(ev.artifact.file) && shaBytes(readFileSync(ev.artifact.file)) === ev.artifact.sha256 ? { ok: true } : { ok: false, says: "the qualified artifact is gone or no longer the file the evidence names: build the archive again (--artifact=<zip> checks it by content)" };
 }
 
-const nowOf = (world, rows) => ({ protected: protectedDigestOf(world, "HEAD"), policy: policyDigest(world.policy), rows: rows.map((r) => r.id), autonomous: new Set(rows.filter((r) => r.autonomous).map((r) => r.id)), single: new Set(rows.filter((r) => r.run !== "controls").map((r) => r.id)) });
+// What the policy asks of the checkout NOW: the rows it requires, the ones it records, and how each is held to its room.
+const nowOf = (world, rows) => ({ protected: protectedDigestOf(world, "HEAD"), policy: policyDigest(world.policy), rows: rows.filter((r) => !r.recorded).map((r) => r.id), recorded: rows.filter((r) => r.recorded).map((r) => r.id), autonomous: new Set(rows.filter((r) => r.autonomous).map((r) => r.id)), single: new Set(rows.filter((r) => r.run !== "controls").map((r) => r.id)) });
 
 export async function evidenceAsked(world, id, artifact = null) {
   const head = { tree: gitSays(world, ["rev-parse", "HEAD^{tree}"]), dirty: gitSays(world, ["status", "--porcelain=v1", "--untracked-files=no"]).split("\n").filter(Boolean) };

@@ -9,7 +9,7 @@
 //   s = { investigation, serve, deadlineMs }          serveOf(ctx, engine, investigation) -> serve
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { fresh, roundRan, runnerSpecOf } from "../core/runner.mjs";
+import { fresh, roundRan, runnerSpecOf, streamFileOf } from "../core/runner.mjs";
 import { admitted, relayServer } from "./relay.mjs";
 
 // What the coding host is told, beside the brief: the one thing to do, and that nobody will answer it.
@@ -38,7 +38,7 @@ const qaRunnerSpec = (ctx, net, k, d) => runnerSpecOf(ctx, net, k, [{ source: ct
 export async function ranQaRound(ctx, k, s) {
   const d = { brief: qaBriefWritten(ctx, k, s), out: fresh(ctx, "rounds", String(k), "out"), relay: mailboxOf(ctx, k) };
   const server = relayServer(d.relay, s.serve);
-  const ran = await roundRan(ctx, k, (net) => qaRunnerSpec(ctx, net, k, d), { deadlineMs: s.deadlineMs, out: d.out }).finally(() => server.stop());
+  const ran = await roundRan(ctx, k, (net) => qaRunnerSpec(ctx, net, k, d), { deadlineMs: s.deadlineMs, out: d.out, capture: streamFileOf(ctx, k) }).finally(() => server.stop());
   return { ...ran, relay: { served: server.state.served, log: d.relay.log } };
 }
 

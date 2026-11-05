@@ -6,7 +6,7 @@
 // It is harness (test/benchmark-*.mjs): never part of a subject, and it runs nothing when a test runner loads it.
 //
 //   worldOf(t, files) -> { base, repo, env, storeRoot }      dockerDouble(play) -> { s, deps }
-//   ranAs(edits, o) · inspectedAs(view) · VIEW(lifecycle, over) · TASK · runOf(w, double, o) · harnessOf(w, double)
+//   ranAs(edits, o) · streamOf(o) · inspectedAs(view) · VIEW(lifecycle, over) · TASK · runOf(w, double, o) · harnessOf(w, double)
 //   closureOf(entries, roots) -> entries   treeOf(t, entries) -> dir   probed(caseDir, spec, entries, o) -> judged
 //   ownTest(t, entries, rels) -> { exit, timedOut }
 import { spawnSync } from "node:child_process";
@@ -97,7 +97,7 @@ const networkVerb = (s, a) => ({ inspect: () => (s.networks.has(a[2]) ? { ok: tr
 const labelled = (labels, a) => ((f) => !f || labels?.[f.slice(6).split("=")[0]] === f.slice(6).split("=").slice(1).join("="))(a.find((x, i) => a[i - 1] === "--filter" && x.startsWith("label=")));
 
 async function attached(c, opts, play) {
-  if (c.argv[1] === "/bench/entry.mjs") return played(c, await play.runner(c, (p) => mapped(c, p)));
+  if (c.argv[1] === "/bench/entry.mjs") return played(c, printed(await play.runner(c, (p) => mapped(c, p)), opts));
   if (c.argv[1] === "/bench/inspect.mjs") return played(c, play.inspect(c, (p) => mapped(c, p)));
   if (c.argv[1] === "/bench/egress.mjs") return { ok: true, out: "" };
   return localRun(c, opts);
@@ -105,14 +105,21 @@ async function attached(c, opts, play) {
 
 const played = (c, r) => ((c.exit = r?.exit ?? 0), r?.timedOut ? { ok: false, out: "", timedOut: true } : { ok: true, out: "", status: c.exit });
 
+// What a played runner printed on the container's stdout, handed to whoever observes the attach -- as docker would.
+const printed = (r, opts) => (r?.stdout ? (opts?.observe?.("out", Buffer.from(r.stdout)), r) : r);
+
 // ---- the runner and the inspection, played -------------------------------------------------------------------------------
 
 export const TASK = "tsk-0000000000a1";
 
 const workspaceOf = (at) => join(at("/work/store"), "repo-calc", "workspaces", TASK, "tree");
 
+// The host's stream a played round writes: an init, one call, a result -- or the events a test names (`o.events`).
+export const streamOf = (o = {}) => (o.events ?? [{ type: "system", subtype: "init", model: "test-double" }, { type: "assistant", message: { content: [{ type: "tool_use", name: "Edit" }] } }, { type: "result", subtype: "success", is_error: false, num_turns: 2, total_cost_usd: o.cost === undefined ? 0.5 : o.cost }]).map((e) => JSON.stringify(e)).join("\n");
+
 // A round as a runner plays it: the task started and said (start.json), the workspace made and edited, the host's
-// stream written. `o.dies` is the controller dying mid-round -- after what `o.dies` names, nothing more is written.
+// stream written -- and printed on the container's stdout, as the runner's entry prints it (`o.silent`: a runner that
+// printed nothing there). `o.dies` is the controller dying mid-round -- after what `o.dies` names, nothing more is written.
 export function ranAs(edits, o = {}) {
   return async (c, at) => {
     const out = at("/work/out");
@@ -123,8 +130,8 @@ export function ranAs(edits, o = {}) {
     for (const [rel, text] of Object.entries(edits)) (text === null ? rmSync(join(tree, rel), { force: true }) : (mkdirSync(dirname(join(tree, rel)), { recursive: true }), writeFileSync(join(tree, rel), text)));
     if (o.dies === "after-edits") throw new Error("the controller died here");
     writeFileSync(join(out, "runner.json"), JSON.stringify({ task: TASK, exit: 0, egress: { holds: true } }));
-    writeFileSync(join(out, "host.jsonl"), [{ type: "system", subtype: "init", model: "test-double" }, { type: "assistant", message: { content: [{ type: "tool_use", name: "Edit" }] } }, { type: "result", subtype: "success", is_error: false, num_turns: 2, total_cost_usd: o.cost === undefined ? 0.5 : o.cost }].map((e) => JSON.stringify(e)).join("\n"));
-    return o.timedOut ? { timedOut: true } : { exit: 0 };
+    writeFileSync(join(out, "host.jsonl"), streamOf(o));
+    return o.timedOut ? { timedOut: true } : { exit: 0, stdout: o.silent ? "" : streamOf(o) };
   };
 }
 

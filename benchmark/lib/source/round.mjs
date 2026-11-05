@@ -15,7 +15,7 @@ import { docker } from "../../../src/runtime/isolation/docker.mjs";
 import { addedLines, agentTestsOf, overlaid, scopeFindings } from "./candidate.mjs";
 import { ranContainer, specFor } from "../core/docker.mjs";
 import { gitOwn } from "../core/git.mjs";
-import { forbidden, fresh, jsonAt, offlineRan, roundRan, RUNNER_HOST, runnerSpecOf } from "../core/runner.mjs";
+import { forbidden, fresh, jsonAt, offlineRan, roundRan, RUNNER_HOST, runnerSpecOf, streamFileOf } from "../core/runner.mjs";
 import { briefOf } from "./brief.mjs";
 import { readRegular } from "../core/room.mjs";
 import { safeRel } from "../core/paths.mjs";
@@ -50,7 +50,7 @@ function briefWritten(ctx, k, state) {
 // stopping the container, whatever the host inside it is doing.
 export async function ranRound(ctx, k, state) {
   const d = { brief: briefWritten(ctx, k, state), out: fresh(ctx, "rounds", String(k), "out") };
-  const o = { deadlineMs: state.deadlineMs, out: d.out, held: state.held, heldEveryMs: ctx.heldEveryMs };
+  const o = { deadlineMs: state.deadlineMs, out: d.out, held: state.held, heldEveryMs: ctx.heldEveryMs, capture: streamFileOf(ctx, k) };
   return offlineHost(ctx) ? offlineRan(ctx, k, runnerSpec(ctx, null, k, d), o) : roundRan(ctx, k, (net) => runnerSpec(ctx, net, k, d), o);
 }
 
@@ -64,7 +64,7 @@ export const offlineHost = (ctx) => /^(scripted|session):/.test(String(ctx.host 
 export async function inspectedRound(ctx, k, task) {
   const out = fresh(ctx, "rounds", String(k), "inspect");
   const r = await ranContainer(inspectSpec(ctx, k, task, out), ctx.deps, { input: "", timeoutMs: 300000, outputBytes: 1024 * 1024, attest: { network: "none", forbidden: forbidden(ctx), pluginTarget: null, imageEnv: docker.imageEnv(ctx.images.runner, ctx.deps) } });
-  return { end: r.refused ? "REFUSED" : r.timedOut ? "TIMEOUT" : `EXIT_${r.exit}`, refused: r.refused ?? null, attested: r.attested, dir: out, inspect: jsonAt(join(out, "inspect.json")), task: jsonAt(join(out, "task.json")), tasks: jsonAt(join(out, "tasks.json")), trace: jsonAt(join(out, "trace.json")), goals: jsonAt(join(out, "goals.json")) };
+  return { end: r.refused ? "REFUSED" : r.timedOut ? "TIMEOUT" : `EXIT_${r.exit}`, refused: r.refused ?? null, attested: r.attested, dir: out, inspect: jsonAt(join(out, "inspect.json")), task: jsonAt(join(out, "task.json")), tasks: jsonAt(join(out, "tasks.json")), trace: jsonAt(join(out, "trace.json")), turns: jsonAt(join(out, "turns.json")), goals: jsonAt(join(out, "goals.json")), sandbox: jsonAt(join(out, "sandbox.json")) };
 }
 
 // ---- the candidate ---------------------------------------------------------------------------------------------------------

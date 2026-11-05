@@ -18,7 +18,11 @@
 // with no plugin, no tool it may use and a budget of a few cents -- whether the host starts here, which version and model
 // it says it is, and whether the credential is accepted. It starts no task and reads nothing.
 //
+// The host's stream is written twice: to /work/out/host.jsonl (as it came, bounded -- REPORTED, a file the agent could
+// also write) and to this container's stdout, which the controller captures into the run's room (HOST_OBSERVED).
+//
 //   node /bench/entry.mjs     brief: /run/brief/brief.json      out: /work/out/{egress,start,runner}.json, host.jsonl
+//                                                               stdout: the host's stream, bounded (STDOUT_CAP)
 import { spawn, spawnSync } from "node:child_process";
 import { closeSync, openSync, readFileSync, writeFileSync, writeSync } from "node:fs";
 import { lookup } from "node:dns/promises";
@@ -137,6 +141,32 @@ function keptChunk(fd, s, chunk, cap) {
   s.tail = Buffer.concat([s.tail, chunk]).subarray(-65536);
 }
 
+// The same stream on this container's stdout too (0.5.0): the controller captures it there, into the run's room and
+// outside every mount this container writes -- the host's stream as the controller OBSERVED it, beside the copy above
+// that the agent could also write. Bounded below what the controller's process port reads of one stream (16 MiB, past
+// which it stops the container), and, when cut, closed with the stream's last 64 KiB, where its result line is. Nothing
+// else of this entry is ever printed on stdout.
+export const STDOUT_CAP = 15 * 1024 * 1024;
+
+export function teeSink(cap, out = process.stdout) {
+  const s = { bytes: 0, cut: false };
+  return { s, write: (chunk) => teedChunk(out, s, chunk, cap), close: (tail) => (s.cut ? out.write(Buffer.concat([Buffer.from("\n"), tail])) : null) };
+}
+
+function teedChunk(out, s, chunk, cap) {
+  const room = Math.max(0, Math.min(cap - s.bytes, chunk.length));
+  if (room > 0) out.write(chunk.subarray(0, room));
+  Object.assign(s, { bytes: s.bytes + room, cut: s.cut || room < chunk.length });
+}
+
+const sinksOf = (b) => ({ out: cappedSink(`${PATHS.out}/host.jsonl`, b.outputBytes), err: cappedSink(`${PATHS.out}/host.err`, 1024 * 1024), tee: teeSink(Math.min(b.outputBytes ?? STDOUT_CAP, STDOUT_CAP)) });
+
+function closedSinks(sinks) {
+  [sinks.out, sinks.err].forEach((x) => x.close());
+  sinks.tee.close(sinks.out.s.tail);
+  writeFileSync(`${PATHS.out}/host-tail.jsonl`, sinks.out.s.tail);
+}
+
 // What runs as the host: Claude Code with its flags -- or, for a control, the scripted host on the round's task.
 const HOST_PROGRAMS = [[isScripted, "/bench/scripted.mjs"], [isSession, "/bench/session.mjs"]];
 
@@ -144,18 +174,17 @@ export const hostCommand = (b, task) => ((p) => (p ? [process.execPath, [p[1], t
 
 const hosted = (b, env, sinks, task) => new Promise((resolve) => {
   const child = spawn(...hostCommand(b, task), { cwd: PATHS.repo, env, stdio: ["pipe", "pipe", "pipe"] });
-  child.stdout.on("data", sinks.out.write);
+  child.stdout.on("data", (chunk) => (sinks.out.write(chunk), sinks.tee.write(chunk)));
   child.stderr.on("data", sinks.err.write);
   child.on("error", (e) => resolve({ exit: null, signal: null, error: e.code ?? String(e.message) })).on("close", (exit, signal) => resolve({ exit, signal }));
   child.stdin.on("error", () => null).end(b.prompt);
 });
 
 async function round(b, env, task) {
-  const sinks = { out: cappedSink(`${PATHS.out}/host.jsonl`, b.outputBytes), err: cappedSink(`${PATHS.out}/host.err`, 1024 * 1024) };
+  const sinks = sinksOf(b);
   const ran = await hosted(b, env, sinks, task);
-  [sinks.out, sinks.err].forEach((x) => x.close());
-  writeFileSync(`${PATHS.out}/host-tail.jsonl`, sinks.out.s.tail);
-  return { ...ran, hostBytes: sinks.out.s.bytes, truncated: sinks.out.s.cut };
+  closedSinks(sinks);
+  return { ...ran, hostBytes: sinks.out.s.bytes, truncated: sinks.out.s.cut, teed: { bytes: sinks.tee.s.bytes, cut: sinks.tee.s.cut } };
 }
 
 // Why a round runs no host: its network did not hold, or its one engineering task does not exist.

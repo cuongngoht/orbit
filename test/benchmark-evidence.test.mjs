@@ -5,9 +5,12 @@
 // trail Orbit's hooks wrote: neither is believed alone, and a session longer than the turns view is counted, never
 // waved through. HOST_DIVERGED is one more failure class, the model's own.
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { STDOUT_CAP, teeSink } from "../benchmark/images/runner/entry.mjs";
+import { sandboxesOf } from "../benchmark/images/runner/inspect.mjs";
 import { agreementOf } from "../benchmark/lib/core/agreement.mjs";
 import { commandsOf, hostOf, streamOf } from "../benchmark/lib/core/host.mjs";
 import { FAILURE_CLASSES } from "../benchmark/lib/source/classify.mjs";
@@ -99,4 +102,40 @@ test("HOST_DIVERGED is one more failure class, and the README and ADR 0048 say w
   assert.equal(FAILURE_CLASSES.at(-1), "UNKNOWN", "the catch-all stays last");
   assert.match(readFileSync(join(ROOT, "benchmark", "README.md"), "utf8"), /`HOST_DIVERGED` \(0\.5\.0\) is the one class that is the model's behaviour/);
   assert.match(readFileSync(join(ROOT, "docs", "adr", "0048-the-benchmark-proves-orbits-self-healing-loop-and-measures-goals.md"), "utf8"), /## Amendment, 2026-11-05 \(0\.5\.0\) — HOST_DIVERGED/);
+});
+
+// ---- the host's stream, as the controller captures it ---------------------------------------------------------------------
+
+test("the runner's entry prints the host's stream on its stdout too, bounded below what the controller reads, and closed with its tail when cut", () => {
+  const printed = [];
+  const out = { write: (b) => printed.push(Buffer.from(b)) };
+  const tee = teeSink(10, out);
+  tee.write(Buffer.from("0123456"));
+  tee.write(Buffer.from("789abc"));
+  tee.close(Buffer.from("TAIL"));
+  assert.deepEqual([Buffer.concat(printed).toString(), tee.s.bytes, tee.s.cut], ["0123456789\nTAIL", 10, true]);
+  const whole = [];
+  const all = teeSink(100, { write: (b) => whole.push(Buffer.from(b)) });
+  all.write(Buffer.from("{}\n"));
+  all.close(Buffer.from("never"));
+  assert.equal(Buffer.concat(whole).toString(), "{}\n", "a stream that was not cut is printed as it came, and nothing else");
+  assert.ok(STDOUT_CAP < 16 * 1024 * 1024, "a stdout past the process port's 16 MiB would stop the round's container");
+});
+
+// ---- the sandboxes a round left, as the inspection reads them back ------------------------------------------------------
+
+const written = (file, value) => (mkdirSync(dirname(file), { recursive: true }), writeFileSync(file, JSON.stringify(value)));
+
+test("the inspection reads every sandbox the runner store holds, with its operations journal -- as data, bounded, never through a link", (t) => {
+  const store = mkdtempSync(join(tmpdir(), "orbit-bench-sandboxes-"));
+  t.after(() => rmSync(store, { recursive: true, force: true }));
+  written(join(store, "repo-x", "checkouts", "co-1", "sandboxes", "env-1.json"), { schema: 1, id: "env-1", kind: "sandbox", owner: { kind: "task", id: "tsk-0000000000a1" }, state: "BLOCKED", blocked: { needs: "environment", because: "restoring node:. (npm ci) failed with exit 1", at: "x" }, endpoints: [{ port: 42001 }] });
+  const ops = join(store, "repo-x", "runtime", "orbit-benchmark-runner", "checkouts", "co-1", "sandboxes", "env-1", "operations");
+  written(join(ops, "op-000000000002.json"), { schema: 1, id: "op-000000000002", kind: "restore", state: "FAILED", at: "2026-11-05T00:00:02.000Z", settledAt: "2026-11-05T00:00:09.000Z", because: "restoring node:. (npm ci) failed with exit 1", fingerprint: "f" });
+  written(join(ops, "op-000000000001.json"), { schema: 1, id: "op-000000000001", kind: "prepare", state: "FAILED", at: "2026-11-05T00:00:01.000Z", settledAt: "2026-11-05T00:00:10.000Z", because: "restoring node:. (npm ci) failed with exit 1" });
+  writeFileSync(join(ops, "op-000000000001.log"), "a log is never read");
+  const got = sandboxesOf(store).json.sandboxes;
+  assert.deepEqual(got.map((s) => [s.id, s.task, s.state, s.blocked?.needs, s.operations.map((o) => `${o.kind}:${o.state}`)]), [["env-1", "tsk-0000000000a1", "BLOCKED", "environment", ["prepare:FAILED", "restore:FAILED"]]]);
+  assert.ok(!JSON.stringify(got).includes("42001") && !JSON.stringify(got).includes("a log is never read"), "no endpoint, no log");
+  assert.deepEqual(sandboxesOf(join(store, "nowhere")).json.sandboxes, [], "a store with no sandbox has none");
 });

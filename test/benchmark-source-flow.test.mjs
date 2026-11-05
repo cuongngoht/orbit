@@ -20,7 +20,7 @@ import { guardedIo } from "../src/store/guard.mjs";
 import { realIo } from "../src/store/io.mjs";
 import { apply } from "../src/task/ops.mjs";
 import { createTasks } from "../src/task/store.mjs";
-import { dockerDouble, harnessOf, inspectedAs, NEVER, ranAs, runOf, TASK, VIEW, worldOf } from "./benchmark-double.mjs";
+import { dockerDouble, harnessOf, inspectedAs, NEVER, ranAs, runOf, streamOf, TASK, VIEW, worldOf } from "./benchmark-double.mjs";
 import { sealed } from "./home.mjs";
 import { takeTurn } from "./benchmark-turn.mjs";
 
@@ -298,4 +298,23 @@ test("a known finding that still fails is evidence kept, and the report says so;
   const r = await runOf(world(t), dockerDouble(NEVER), { variant: "controlled-fault" });
   const rep = reportFor(r);
   assert.deepEqual([rep.outcome, rep.cause, rep.class, rep.known.regression], ["FAIL", "ORBIT_SOURCE_DEFECT", "ORBIT_SOURCE_DEFECT", false], "a planted fault is never a regression of the source");
+});
+
+// ---- the host's stream, as the controller captured it (0.5.0) ------------------------------------------------------------
+
+const repairDoc = (r) => docRead(r.ctx.room, `steps/${r.view.actions.find((a) => a.type === "benchmark.repair").id}.json`);
+
+test("the controller keeps a round's host stream as the container's stdout carried it -- in the round's own directory, with when each line came -- and says whether the runner's own copy agrees", async (t) => {
+  const r = await runOf(world(t), dockerDouble({ runner: ranAs(FIXED), inspect: inspectedAs(VIEW("COMPLETED")) }), { variant: "controlled-fault", repair: true });
+  assert.equal(readFileSync(r.ctx.room.at("rounds", "1", "host.stream.jsonl"), "utf8"), streamOf(), "outside every mount: the round's out directory is the runner's, this file is the controller's");
+  const at = JSON.parse(readFileSync(r.ctx.room.at("rounds", "1", "host.stream.at.json"), "utf8"));
+  assert.ok(at.lines.length >= 1 && at.lines.every(([n, ms]) => Number.isInteger(n) && ms >= Date.parse(r.ctx.manifest.at)), "each chunk's moment, by the controller's clock");
+  assert.deepEqual(((o) => [o.basis, o.bytes, o.agrees])(repairDoc(r).observed), ["HOST_OBSERVED", Buffer.byteLength(streamOf()), true]);
+  assert.equal(r.result.outcome, "REPAIRED_VERIFIED", "the verdict never rests on it");
+});
+
+test("a runner that printed nothing on its stdout leaves an empty capture, and its own copy is never taken as observed", async (t) => {
+  const r = await runOf(world(t), dockerDouble({ runner: ranAs(FIXED, { silent: true }), inspect: inspectedAs(VIEW("COMPLETED")) }), { variant: "controlled-fault", repair: true });
+  assert.deepEqual(((o) => [o.bytes, o.agrees])(repairDoc(r).observed), [0, false]);
+  assert.equal(repairDoc(r).host.started, true, "what the runner wrote is still read, REPORTED, as before");
 });

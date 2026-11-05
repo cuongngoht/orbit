@@ -24,7 +24,7 @@ import { createArchitecture } from "../src/architecture/store.mjs";
 import { capabilityTokens, unanswered } from "../src/architecture/tokens.mjs";
 import { basisOf, freshened, relevanceOf } from "../src/context/relevance.mjs";
 import { symbolHits, treeOf, verifiedRefs } from "../src/context/refs.mjs";
-import { sufficiencyOf } from "../src/context/sufficiency.mjs";
+import { ownWork, sufficiencyOf } from "../src/context/sufficiency.mjs";
 import { watched as engineeringWatched } from "../src/engineering/model.mjs";
 import { recall } from "../src/engineering/recall.mjs";
 import { createEngineering } from "../src/engineering/store.mjs";
@@ -47,7 +47,7 @@ import { machineContext } from "../src/store/context.mjs";
 import { tokens } from "../src/tokens.mjs";
 import { listed } from "../src/work/summary.mjs";
 import { createWorks, rootOf } from "../src/work/store.mjs";
-import { MAX_WORKS, aboutTask } from "../src/work/views/recall.mjs";
+import { MAX_WORKS, namesWork } from "../src/work/views/recall.mjs";
 import { bindRuntime } from "../skills/orbit-runtime/bind.mjs";
 
 function quietly(fn, otherwise = null) {
@@ -156,9 +156,13 @@ function statesOf(b, r, input, listing, understood) {
 
 const openQuestions = (b, root) => quietly(() => createRequirements(b.root, b.io).open(root).questions(), []).filter((q) => isOpen(q) && q.blocking === true).map((q) => ({ flow: "requirements", root, id: q.id, asks: q.asks }));
 
-const requirementQuestions = (b) => quietly(() => listed(createWorks(b.root, b.io)), []).filter((head) => head.root && aboutTask(head, b.task)).slice(0, MAX_WORKS).flatMap((head) => openQuestions(b, rootOf(head.id)));
+// The task's OWN work and goal (src/context/sufficiency.mjs `ownWork`): named by id, or mostly the task's own words --
+// never one that merely shares two words with it, whose question this task must not wait on.
+const ownedWork = (b, head) => head.root && (namesWork(head, b.task) || ownWork(head.objective, b.task));
 
-const goalAbout = (b, id, model) => b.task.includes(id) || aboutTask({ id, root: null, objective: model.analyzed?.objective ?? model.meta?.title ?? "" }, b.task);
+const requirementQuestions = (b) => quietly(() => listed(createWorks(b.root, b.io)), []).filter((head) => ownedWork(b, head)).slice(0, MAX_WORKS).flatMap((head) => openQuestions(b, rootOf(head.id)));
+
+const goalAbout = (b, id, model) => b.task.includes(id) || ownWork(model.analyzed?.objective ?? model.meta?.title ?? "", b.task);
 
 const missingOf = (id, model) => (lifecycleOf(model) === "waiting-input" ? model.analyzed?.intent?.missing ?? [] : []).map((m) => ({ flow: "goal", goal: id, asks: m.statement, blocks: m.blocks ?? [] }));
 

@@ -17,7 +17,22 @@
 // facts: { tree, classes: { direct, dependency, downstream, verification, unknown }, stale: [{ ref, owner, id }],
 //          paths, graph, understood (runtime understanding's word, or null), unanswered: [token], refused,
 //          blocking: [{ flow, asks, … }] }
+import { identifierTokens } from "../tokens.mjs";
+
 export const SUFFICIENCY_WORDS = ["ENOUGH", "DISCOVER", "ASK"];
+
+// WHOSE question is the task's: ASK waits on a person, so it is only ever a question open on the task's OWN work -- a
+// work or a goal the task names by its id (the composition root asks that), or whose objective shares MORE than half of
+// the words of the shorter of the two, and at least OWN_WORDS. Two words in common ("make", "order") is a task NEAR
+// another work, which the WORK section may show; it is never one that must wait on that work's question.
+export const OWN_WORDS = 2;
+
+export function ownWork(objective, task) {
+  const mine = identifierTokens(objective);
+  const asked = identifierTokens(task);
+  const shared = mine.filter((word) => asked.includes(word)).length;
+  return shared >= OWN_WORDS && shared * 2 > Math.min(mine.length, asked.length);
+}
 
 export const TARGET_LIMIT = 6;
 

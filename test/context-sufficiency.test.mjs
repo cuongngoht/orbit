@@ -5,7 +5,7 @@
 // with a goal's missing prerequisite and a requirement's blocking question, is test/context-grounding.test.mjs.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { SUFFICIENCY, SUFFICIENCY_WORDS, TARGET_LIMIT, sufficiencyLines, sufficiencyOf } from "../src/context/sufficiency.mjs";
+import { SUFFICIENCY, SUFFICIENCY_WORDS, TARGET_LIMIT, ownWork, sufficiencyLines, sufficiencyOf } from "../src/context/sufficiency.mjs";
 
 const classes = (over = {}) => ({ direct: 3, dependency: 2, downstream: 1, verification: 1, unknown: 0, ...over });
 const grounded = (over = {}) => ({ tree: true, classes: classes(), stale: [], paths: 2, graph: true, unanswered: [], refused: 0, blocking: [], ...over });
@@ -48,6 +48,21 @@ test("ASK only for a blocking unknown no source can settle -- a question already
   }
   assert.equal(sufficiencyOf(grounded({ blocking: [QUESTION], classes: classes({ direct: 0 }) })).word, "ASK", "a question only a person can answer outranks reading more");
   assert.equal(sufficiencyOf(grounded({ blocking: [{ ...QUESTION, asks: "x".repeat(900) }] })).question.asks.length, 200, "what is quoted is bounded");
+});
+
+// ASK waits on a person, so the question must be about the task's OWN work: a work or a goal the task names by id, or
+// whose objective shares more than half the words of the shorter of the two. Two words in common -- "make", "order" --
+// is a task NEAR another work, which the WORK section may show, never one whose open question it must wait on.
+test("a work or a goal is the task's own -- so its open question can be the task's ASK -- only when most of its words are the task's", () => {
+  const work = "Make createOrder refuse an empty order";
+  assert.equal(ownWork(work, "make createOrder refuse an empty order"), true, "the task restates it");
+  assert.equal(ownWork(work, "createOrder must refuse empty orders, with a clear error"), true, "the task says most of it, in its own words");
+  assert.equal(ownWork("Refuse empty orders at checkout and show the customer a clear error", "refuse empty orders"), true, "a short task that is the heart of a long objective");
+  assert.equal(ownWork(work, "make the order list paginate in pages of twenty"), false, "two words in common is near, never the same work");
+  assert.equal(ownWork(work, "make the order list paginate"), false, "even when the task is short");
+  assert.equal(ownWork(work, "rename the empty state message in the order view"), false);
+  assert.equal(ownWork(work, "order"), false, "one word is never enough");
+  assert.equal(ownWork("", "make createOrder refuse an empty order"), false, "an objective with no words is nobody's");
 });
 
 test("DISCOVER names the targeted reads that would fill the gap -- never a full scan", () => {

@@ -181,6 +181,7 @@ test("ASK is a goal's missing prerequisite, found where the goal keeps it and re
   assert.deepEqual({ ...pkg.sufficiency.question, answer: undefined }, { flow: "goal", goal: goal.id, asks: "which error an empty order answers with", blocks: ["verify"], answer: undefined });
   assert.match(pkg.sufficiency.question.answer, new RegExp(`goal analyze ${goal.id} --stdin`));
   assert.notEqual(context(shop, ["--for=rename the auth server module"]).sufficiency.word, "ASK", "a goal about other work asks nothing of this task");
+  assert.notEqual(context(shop, ["--for=make the order list paginate"]).sufficiency.word, "ASK", "two words in common with the goal (make, order) is another task, never this goal's question");
 });
 
 test("ASK is a blocking question already open on the requirement the task's own work rests on", () => {
@@ -199,6 +200,9 @@ test("ASK is a blocking question already open on the requirement the task's own 
   assert.equal(pkg.sufficiency.question.asks, "What should an empty order answer with?");
   assert.match(pkg.sufficiency.question.answer, new RegExp(`requirements answer ${root} --question=${asked.questions[0].id} --says="…" --human`));
   assert.equal(json(shop, "requirements", ["status", root, "--json"]).open.length, 1, "nothing here asked a question of its own");
+  const near = context(shop, ["--for=make the order list paginate in pages of twenty"]);
+  assert.notEqual(near.sufficiency.word, "ASK", "a task that shares two words (make, order) with the work's objective is another task: it never waits on that work's question");
+  assert.equal(context(shop, [`--for=continue ${root}`]).sufficiency.word, "ASK", "a task that names the work's requirement is about it, whatever its words");
 });
 
 test("outside every checkout every proposed reference is refused and nothing is listed; a malformed envelope is refused whole", () => {

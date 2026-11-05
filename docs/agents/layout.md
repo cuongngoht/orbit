@@ -94,8 +94,9 @@ src/memory/    the run ledger + the notes + a run's EVIDENCE: three rooms in the
 src/hash.mjs · src/quote.mjs · src/freshness.mjs · src/tokens.mjs   four more LEAVES: the one
                hash, the one door free text comes through, the one answer to "has the tree moved
                under this fact" (fresh · stale · unknown, scoped), and the one reduction of a task
-               to the tokens it asks about. All here because two branches need them and neither may
-               import the other
+               to the tokens it asks about (`identifierTokens`, 0.5.0: an identifier split where its
+               words join, so `createOrder` asks about "create" and "order"). All here because two
+               branches need them and neither may import the other
 src/store/     WHERE everything this plugin keeps lives -- OUTSIDE every repo (~/.orbit,
                or ORBIT_STORE_DIR, ONE variable for the WHOLE store). resolve.mjs is the table ·
                context.mjs binds it and stamps LAYOUT · io/atomic/lock. Six rooms, resolved once:
@@ -304,7 +305,23 @@ src/context/   PROJECT CONTEXT as a table of what composes it (architecture ensu
                ensure, engineering recall, the working set, the resolver), clipped per section;
                cli/context.mjs runs it -- the engine's built-in `project.context`. status.mjs (1.8.9): ONE word
                for how much of it rests on evidence (NOT_INITIALIZED · BLOCKED · BOOTSTRAPPED · STALE · PARTIAL ·
-               READY), a pure table the context command, help and the context steps all read
+               READY), a pure table the context command, help and the context steps all read. Data only: it
+               imports leaves and nothing else (a test greps it). (0.5.0, B21) relevance.mjs: what a task TOUCHES,
+               from what the owners already hold -- OWN sources (the host's verified refs, the request's own
+               names and paths, named modules, capabilities, nodes and integrations, engineering and knowledge
+               recall, the working set, impact and obligations) then RELATED ones (owning modules, boundaries,
+               graph edges, integrations, manifest gates) -- one item per (kind, ref) with its class (direct ·
+               dependency · downstream · verification · unknown), evidence, freshness (`freshened`, each record
+               against its owner's scope fingerprint) and finder; at most 40, the rest counted, and no path the
+               tracked tree does not hold · refs.mjs: the envelope `--with-refs` reads, and each reference HELD
+               (the tracked listing; one whole-word search per symbol) or refused by name · sufficiency.mjs:
+               ENOUGH · DISCOVER(targets) · ASK(question), an ordered table whose last row always holds -- ASK
+               only for a question already open about the task's own work, never one made up
+cli/context-grounding.mjs  (0.5.0) the composition root of `relevant` and `sufficiency`: binds the tree (one listing,
+               one search per symbol, one fingerprint call), the architecture, intelligence, engineering and
+               knowledge rooms (knowledge through `claims --json`, asked only when it holds a claim), the working
+               set, runtime understanding's graph and checks through obligations.mjs `planOf`, and the open
+               questions of the task's own work and goal; it decides nothing and writes nothing
 src/tools/     index.mjs the doctor's port, plus the tool manager: catalog · detect (project ->
                orbit-managed -> system, each ASKED its version) · effective (desired vs observed) ·
                install (receipts) · archive (a PINNED SHA-256, via src/store/archive.mjs) ·
@@ -540,7 +557,8 @@ src/runtime/   RUNTIME UNDERSTANDING: what a CHECKOUT needs to run, whether this
                writer.mjs (the ONLY module that writes the repository, grep-tested) · validate.mjs + instances.mjs ·
                settings.mjs (revisioned, a block per host, never a command or a secret) · verification.mjs (a
                projection, never a verdict) + origin.mjs (the one question an investigation asks) · governance.mjs
-               (OPERATIONS) · connectivity/ (whether a server a component needs and Orbit does not run can be
+               (OPERATIONS) · graph.mjs (0.5.0: the checkout's COMPONENT GRAPH impact.mjs reads, one definition
+               for autonomous engineering and project context) · connectivity/ (whether a server a component needs and Orbit does not run can be
                REACHED, per location: targets.mjs a person's targets as data, `targetPrint` what an answer is
                about · states.mjs the FOLD, ordered · observations.mjs what each location last answered, per
                host, its own lock, scrubbed, STALE past five minutes · retry.mjs the one bounded runner, stopped

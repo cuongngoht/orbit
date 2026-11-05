@@ -13,6 +13,7 @@ description: >
 argument-hint: where should I start | implement PBI-482 and test it until it passes
 allowed-tools:
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/help.mjs*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/context.mjs*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/architecture.mjs ensure*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/engineering.mjs recall*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/automation.mjs*)
@@ -148,6 +149,13 @@ workflow, invoke that skill with the SAME task; when it is a command, run it, th
 only when `BLOCKERS` says something the task needs is missing, or the workflow itself asks a
 person. This is the same on every host: on a host without a prompt router (Antigravity), this
 loop is what routes the task.
+
+**Before you choose how much to do, read SUFFICIENCY.** `node ${CLAUDE_PLUGIN_ROOT}/cli/context.mjs
+--for="<the task>" --json` answers `sufficiency` beside `relevant`, what the task touches. ENOUGH:
+carry on with the scope those items show. DISCOVER: only the targeted reads it names are owed first,
+never a repository-wide search; what you find goes back with `--with-refs`, which refuses any reference
+the tracked tree does not hold. ASK: a question about this task's own work is already open; relay it as
+quoted, in the flow it names, and wait for the person. It never makes a question up, and neither do you.
 
 **`UNKNOWN` is not empty by accident.** The working set (what a session has already read,
 changed and run) is recorded by the plugin's hooks; until a session has been recorded in this

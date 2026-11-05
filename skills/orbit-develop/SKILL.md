@@ -113,6 +113,14 @@ its authority (**RULE** · **ADOPTED** · **SOURCE** · **CONFIRMED** · **HOST-
 
 `node ${CLAUDE_PLUGIN_ROOT}/cli/knowledge.mjs why <claim-id>` shows the evidence behind any line.
 
+**Read SUFFICIENCY before you choose the scope** — the line under STATUS. **RELEVANT** lists what the task touches
+(files, symbols, components and checks: `direct`, `dependency`, `downstream`, `verification` or `unknown`, each with
+its evidence and whether it is still current), from what the project already knows. **ENOUGH**: scope the change from
+those items. **DISCOVER**: make only the reads its targets name — search for what the task names, then send what you
+found back on stdin with `--with-refs` (`{ "task": "…", "refs": [{ "kind": "file|symbol", "ref": "…", "why": "…" }] }`);
+a reference the tracked tree does not hold comes back refused, so drop it and never reason from it. **ASK**: relay the
+one question it quotes, in the flow it names, and wait for the person; never ask one of your own in its place.
+
 - A section that says **UNKNOWN** is a gap, not permission to guess. If architecture has never
   been scanned, run `orbit-architecture` (or `orbit-help`) before designing.
 - Do not Grep the whole repository to rediscover what the context already says.

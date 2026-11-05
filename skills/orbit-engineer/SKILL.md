@@ -117,7 +117,12 @@ long timeout. If the host killed it, `reconcile` settles it once its process is 
 ## 3 · Stage by stage
 
 - **CONTEXT** — `gather-context`: the project's architecture, conventions and knowledge, memory
-  first. Read the sections it returns, and follow the engineering conventions they name.
+  first. Read the sections it returns, and follow the engineering conventions they name. Read its
+  `data.sufficiency` before you choose the scope you will `plan`, and `data.relevant` for what the task
+  touches (each item's class, evidence and freshness). ENOUGH: draw the scope from those items.
+  DISCOVER: in PLANNING, read only the targets it names in the workspace, never all of it. ASK: a
+  question about this task's work is already open: tell the person what it quotes and how it is
+  answered, and plan nothing it decides until it is; never put a question of your own in its place.
 - **ENVIRONMENT** — `check-environment`. A block names who must act. If the checkout declares no
   test, or only one that needs a shell, nothing can verify a change: report it, and point at
   `orbit-qc-builder`. If you changed what the checkout declares, run `runtime discover --rescan`,

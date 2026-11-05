@@ -1,0 +1,207 @@
+// GROUNDING for one task: the `relevant` section and the `sufficiency` word of the project context package (0.5.0,
+// B21), composed from the owners that already hold evidence. This file BINDS them and decides nothing:
+// src/context/refs.mjs verifies what a host proposed, src/context/relevance.mjs says what the task touches and
+// src/context/sufficiency.mjs whether that is enough -- and none of the three imports an owner.
+//
+//   the tree        the git-only source port over the project's roots (src/architecture/context.mjs `scanRoots`):
+//                   ONE listing, ONE identifier search per proposed symbol, ONE fingerprint call for freshness
+//   architecture    every fact the store keeps -- modules, boundaries, the system graph's nodes and relations,
+//                   capabilities, gates -- read after the ARCHITECTURE section has ensured them
+//   intelligence    the integration facts
+//   engineering     what `recall` bears on the task (src/engineering/recall.mjs), near the working set's scopes
+//   knowledge       the claims `knowledge claims --for --json` answered, and the paths each one watches
+//   working set     what the latest session read and changed
+//   impact          once paths are known: runtime understanding's component graph and declared checks, as
+//                   src/orchestration/impact.mjs and obligations.mjs read them
+//   questions       a requirement's blocking question, or a goal's missing prerequisite, already open about the
+//                   task's own work -- found, never asked
+//
+// Every read here writes nothing: a store nobody wrote is empty, and an owner that cannot answer is evidence that is
+// not there, never a context that fails.
+import { scanRoots } from "../src/architecture/context.mjs";
+import { withStoredConfig } from "../src/architecture/source.mjs";
+import { createArchitecture } from "../src/architecture/store.mjs";
+import { capabilityTokens, unanswered } from "../src/architecture/tokens.mjs";
+import { basisOf, freshened, relevanceOf } from "../src/context/relevance.mjs";
+import { symbolPattern, symbolsOf, treeOf, verifiedRefs } from "../src/context/refs.mjs";
+import { sufficiencyOf } from "../src/context/sufficiency.mjs";
+import { watched as engineeringWatched } from "../src/engineering/model.mjs";
+import { recall } from "../src/engineering/recall.mjs";
+import { createEngineering } from "../src/engineering/store.mjs";
+import { factState, scopeState } from "../src/freshness.mjs";
+import { createSourceTree } from "../src/frontend/composite.mjs";
+import { lifecycleOf } from "../src/goal/lifecycle.mjs";
+import { modelOf as goalModelOf } from "../src/goal/model.mjs";
+import { createGoals } from "../src/goal/store.mjs";
+import { createIntelligence } from "../src/intelligence/store.mjs";
+import { watched as claimWatched } from "../src/knowledge/model.mjs";
+import { createKnowledge } from "../src/knowledge/store.mjs";
+import { checksOf } from "../src/orchestration/checks.mjs";
+import { planOf } from "../src/orchestration/obligations.mjs";
+import { createRequirements } from "../src/requirements/store.mjs";
+import { isOpen } from "../src/requirements/vocab.mjs";
+import { MAX_EVIDENCE_FILES } from "../src/runtime/discover/readers/index.mjs";
+import { componentGraphOf } from "../src/runtime/graph.mjs";
+import { look } from "../src/runtime/understanding.mjs";
+import { machineContext } from "../src/store/context.mjs";
+import { tokens } from "../src/tokens.mjs";
+import { listed } from "../src/work/summary.mjs";
+import { createWorks, rootOf } from "../src/work/store.mjs";
+import { MAX_WORKS, aboutTask } from "../src/work/views/recall.mjs";
+import { bindRuntime } from "../skills/orbit-runtime/bind.mjs";
+
+function quietly(fn, otherwise = null) {
+  try { return fn() ?? otherwise; }
+  catch { return otherwise; }
+}
+
+// ---- what is bound once ---------------------------------------------------------------------------------------------
+
+function bound(w) {
+  const ctx = { project: w.project, config: w.project.config };
+  const machine = machineContext(ctx, w.env);
+  const source = withStoredConfig(createSourceTree(scanRoots(ctx)), w.project);
+  return { ...w, root: machine.store.root, io: machine.io, source };
+}
+
+const rooms = (b) => ({ arch: createArchitecture(b.root, b.io), intel: createIntelligence(b.root, b.io), eng: createEngineering(b.root, b.io), know: createKnowledge(b.root, b.io) });
+
+// ---- the tree, and what the host proposed ---------------------------------------------------------------------------
+
+const hitsOf = (b, refs) => Object.fromEntries(symbolsOf(refs).map((name) => [name, quietly(() => b.source.search(symbolPattern(name)))]));
+
+function treeAndRefs(b) {
+  const tree = treeOf(quietly(() => b.source.files()));
+  const refs = verifiedRefs(b.refs, { ...(tree ?? {}), hits: hitsOf(b, b.refs), maxFiles: MAX_EVIDENCE_FILES });
+  return { tree, refs };
+}
+
+// ---- what each owner holds -------------------------------------------------------------------------------------------
+
+const engineeringFor = (b, r) => recall(quietly(() => r.eng.all(), []), { asked: tokens(b.task), near: b.workingSet?.scopes ?? [] }).map((row) => row.fact);
+
+const answeredRows = (json) => (json?.answers ?? []).flatMap((a) => [...(a.prevails ?? []), ...(a.rivals ?? []), ...(a.conditional ?? [])]);
+
+const claimOf = (r, row) => ((claim) => (claim ? { id: claim.id, subject: claim.subject, object: claim.object, paths: claimWatched(claim), measured: row.measured } : null))(quietly(() => r.know.find(row.id)));
+
+// The knowledge owner's own answer for the task -- asked only when the store holds a claim to answer with.
+const knowledgeFor = (b, r) => (quietly(() => r.know.count(), 0) > 0 ? answeredRows(quietly(() => b.claims())).map((row) => claimOf(r, row)).filter(Boolean) : []);
+
+function evidenceOf(b, r, seen) {
+  const architecture = quietly(() => r.arch.all(), []);
+  const intelligence = quietly(() => r.intel.all(), []).filter((f) => f.kind === "integration");
+  const workingSet = { changed: b.workingSet?.changed ?? [], read: b.workingSet?.read ?? [] };
+  return { task: b.task, tree: seen.tree, refs: seen.refs.held, architecture, intelligence, engineering: engineeringFor(b, r), knowledge: knowledgeFor(b, r), workingSet };
+}
+
+// ---- what the paths reach, once they are known --------------------------------------------------------------------
+
+// A task's look, as obligations.mjs reads one, with nothing done yet: the paths are its plan's scope.
+const lookAt = (paths, components) => ({ view: { changes: { paths: [] }, actions: [], receipts: [] }, events: [], checks: checksOf(components), planned: () => paths, graph: () => componentGraphOf(components) });
+
+function reached(seen, paths) {
+  const components = seen.view?.components ?? [];
+  if (!components.length) return { graph: false, state: seen.state, plan: null };
+  const plan = planOf(lookAt(paths, components));
+  return { graph: true, state: seen.state, plan: { components: plan.impact.components, checks: plan.required.map((c) => ({ id: c.id, component: c.component })) } };
+}
+
+function impactFor(b, paths) {
+  if (!paths.length) return { graph: false, state: null, plan: null };
+  const rt = quietly(() => bindRuntime({ pluginRoot: b.pluginRoot, env: b.env, cwd: b.cwd }));
+  const seen = rt ? quietly(() => look(rt)) : null;
+  return seen ? reached(seen, paths) : { graph: false, state: null, plan: null };
+}
+
+// ---- freshness: each record against its OWN owner's scope fingerprints ---------------------------------------------
+
+const byId = (facts) => new Map(facts.map((f) => [f.id, f]));
+
+const FACT_SCOPES = { architecture: (f) => f.scope ?? [], intelligence: (f) => f.scope ?? [], engineering: (f) => engineeringWatched(f) };
+
+const scopesOfBasis = (basis, facts) => basis.flatMap((x) => (FACT_SCOPES[x.owner] ? FACT_SCOPES[x.owner](facts[x.owner].get(x.id) ?? {}) : x.owner === "tree" ? [x.id] : []));
+
+const measuredScopes = (scopes, now, model) => Object.fromEntries(scopes.map((s) => [s, scopeState(now[s] ?? null, model?.scopes?.[s]?.hash)]));
+
+const factStateOf = (fact, now, model, scopes) => (fact ? factState({ scope: scopes(fact) }, measuredScopes(scopes(fact), now, model)) : "unknown");
+
+const UNDERSTOOD = { CURRENT: "fresh", STALE: "stale" };
+
+const STATE = {
+  architecture: (x, m) => factStateOf(m.facts.architecture.get(x.id), m.now, m.models.architecture, FACT_SCOPES.architecture),
+  intelligence: (x, m) => factStateOf(m.facts.intelligence.get(x.id), m.now, m.models.intelligence, FACT_SCOPES.intelligence),
+  engineering: (x, m) => factStateOf(m.facts.engineering.get(x.id), m.now, m.models.engineering, FACT_SCOPES.engineering),
+  knowledge: (x, m) => m.claims.get(x.id) ?? "unknown",
+  tree: (x, m) => scopeState(m.now[x.id] ?? null, m.now[x.id]?.hash).state,
+  plan: (x, m) => UNDERSTOOD[m.understood] ?? "unknown",
+};
+
+const modelsOf = (r) => ({ architecture: quietly(() => r.arch.model().model), intelligence: quietly(() => r.intel.model().model), engineering: quietly(() => r.eng.model().model) });
+
+function measuring(b, r, input, basis) {
+  const facts = { architecture: byId(input.architecture), intelligence: byId(input.intelligence), engineering: byId(input.engineering) };
+  const scopes = [...new Set(scopesOfBasis(basis, facts))];
+  const now = scopes.length ? quietly(() => b.source.fingerprints(scopes), {}) : {};
+  return { facts, now, models: modelsOf(r), claims: new Map(input.knowledge.map((c) => [c.id, c.measured])) };
+}
+
+function statesOf(b, r, input, listing, understood) {
+  const basis = basisOf(listing);
+  const m = { ...measuring(b, r, input, basis), understood };
+  return Object.fromEntries(basis.map((x) => [`${x.owner}:${x.id}`, STATE[x.owner]?.(x, m) ?? "unknown"]));
+}
+
+// ---- the questions already open about the task's own work ---------------------------------------------------------
+
+const openQuestions = (b, root) => quietly(() => createRequirements(b.root, b.io).open(root).questions(), []).filter((q) => isOpen(q) && q.blocking === true).map((q) => ({ flow: "requirements", root, id: q.id, asks: q.asks }));
+
+const requirementQuestions = (b) => quietly(() => listed(createWorks(b.root, b.io)), []).filter((head) => head.root && aboutTask(head, b.task)).slice(0, MAX_WORKS).flatMap((head) => openQuestions(b, rootOf(head.id)));
+
+const goalAbout = (b, id, model) => b.task.includes(id) || aboutTask({ id, root: null, objective: model.analyzed?.objective ?? model.meta?.title ?? "" }, b.task);
+
+const missingOf = (id, model) => (lifecycleOf(model) === "waiting-input" ? model.analyzed?.intent?.missing ?? [] : []).map((m) => ({ flow: "goal", goal: id, asks: m.statement, blocks: m.blocks ?? [] }));
+
+const goalQuestionsOf = (b, goals, id) => quietly(() => ((model) => (goalAbout(b, id, model) ? missingOf(id, model) : []))(goalModelOf(goals.read(id) ?? [])), []);
+
+const goalQuestions = (b) => ((goals) => quietly(() => goals.list(), []).flatMap((id) => goalQuestionsOf(b, goals, id)))(createGoals(b.root, b.io));
+
+// ---- the package's two answers --------------------------------------------------------------------------------------
+
+const summaryOf = (listing, refs) => ({ total: listing.total, listed: listing.items.length, more: listing.more, byClass: listing.byClass, refused: refs.refused });
+
+const capabilityGaps = (b, input) => unanswered(input.architecture.filter((f) => f.kind === "capability"), capabilityTokens(b.task));
+
+const sufficiencyFor = (b, input, listing, judged) => sufficiencyOf({ tree: Boolean(input.tree), classes: listing.byClass, stale: judged.fresh.stale, paths: listing.paths.length, graph: judged.reach.graph, unanswered: capabilityGaps(b, input), refused: judged.refused, blocking: [...requirementQuestions(b), ...goalQuestions(b)] });
+
+function grounded(b) {
+  const r = rooms(b);
+  const seen = treeAndRefs(b);
+  const input = evidenceOf(b, r, seen);
+  const reach = impactFor(b, relevanceOf(input).paths);
+  return finished(b, r, { ...input, plan: reach.plan }, seen.refs, reach);
+}
+
+function finished(b, r, input, refs, reach) {
+  const listing = relevanceOf(input);
+  const fresh = freshened(listing, statesOf(b, r, input, listing, reach.state));
+  return { relevant: fresh.relevant, relevance: summaryOf(listing, refs), sufficiency: sufficiencyFor(b, input, listing, { fresh, reach, refused: refs.refused.length }) };
+}
+
+// No checkout -- or nothing here could be composed: no tree to verify anything against, so every proposed reference is
+// refused, nothing is listed, and what stopped it is said.
+function ungrounded(w, problem) {
+  const refs = verifiedRefs(w.refs, null);
+  const listing = relevanceOf({ task: w.task, tree: null });
+  return { relevant: [], relevance: { ...summaryOf(listing, refs), ...(problem ? { problem } : {}) }, sufficiency: sufficiencyOf({ tree: false, classes: listing.byClass, refused: refs.refused.length }) };
+}
+
+const firstLine = (e) => String(e?.message ?? e).split("\n")[0].slice(0, 200);
+
+// -> { relevant, relevance: { total, listed, more, byClass, refused, problem? }, sufficiency }
+//    w: { env, pluginRoot, cwd, project (or null), task, refs (as the host sent them), workingSet (the fold),
+//         claims: () => what `knowledge claims --for --json` answered (or null) }
+export function groundingOf(w) {
+  if (!w.project) return ungrounded(w);
+  try { return grounded(bound(w)); }
+  catch (e) { return ungrounded(w, `the relevant section could not be composed here: ${firstLine(e)}`); }
+}

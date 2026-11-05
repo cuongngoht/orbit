@@ -23,13 +23,15 @@ const QUOTE_LIMIT = 200;
 
 const target = (source, what, run) => ({ source, target: what, run });
 
-// Who re-reads a record that moved, and how: the owner's own memory-first command, never a full scan. A component or
-// a check the change reaches rests on runtime understanding, whose own word is `runtime discover`.
+// Who re-reads a record that moved, and how: the owner's own memory-first command, never a full scan. Architecture and
+// intelligence re-read a moved scope themselves; an engineering or a knowledge record is an OBSERVATION, re-made only
+// by reading what it cites again, so its target is that record's own evidence. A component or a check the change
+// reaches rests on runtime understanding, whose own word is `runtime discover`.
 const RERUN = {
   architecture: (s) => target("architecture", s.ref, "architecture ensure"),
   intelligence: (s) => target("intelligence", s.ref, "intelligence ensure"),
-  engineering: (s) => target("engineering", s.ref, "engineering ensure"),
-  knowledge: (s) => target("knowledge", s.id, `knowledge why ${s.id}`),
+  engineering: (s) => target("engineering", s.ref, `engineering why ${s.id}`),
+  knowledge: (s) => target("knowledge", s.ref, `knowledge why ${s.id}`),
   plan: () => target("runtime", "component graph", "runtime discover"),
 };
 

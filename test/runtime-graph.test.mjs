@@ -24,7 +24,7 @@ test("what understanding read becomes the graph impact.mjs reads: what each comp
 });
 
 test("every composition root that hands a component graph in asks the one definition, and keeps no mapping of its own", () => {
-  for (const root of ["cli/autonomous-engineering.mjs"]) {
+  for (const root of ["cli/autonomous-engineering.mjs", "cli/context-grounding.mjs"]) {
     const text = readFileSync(new URL(`../${root}`, import.meta.url), "utf8");
     assert.match(text, /from "\.\.\/src\/runtime\/graph\.mjs"/, `${root} asks src/runtime/graph.mjs`);
     assert.doesNotMatch(text, /via === "shared"|via === "manifest"/, `${root} maps no dependency of its own`);

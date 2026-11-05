@@ -115,7 +115,8 @@ const namedInTree = (w) => (w.tree && w.want.size ? [...w.tree.files, ...w.tree.
 // 3 · architecture: a module, a capability or a system-graph node the request names.
 const namedModules = (w) => ofKind(w.architecture, "module").filter((f) => named(w.want, lastName(f.key)) && heldPath(w, f.key)).map((f) => atPath(w, f.key, "direct", ARCH(f)));
 
-const namedCapabilities = (w) => ofKind(w.architecture, "capability").filter((f) => named(w.want, f.capability ?? f.key)).flatMap((f) => pathsHeld(w, f.scope).map((p) => atPath(w, p, "direct", ARCH(f))));
+// A capability something PROVIDES: one recorded as absent names where it was looked for, which the task does not touch.
+const namedCapabilities = (w) => ofKind(w.architecture, "capability").filter((f) => f.providedBy && named(w.want, f.capability ?? f.key)).flatMap((f) => pathsHeld(w, f.scope).map((p) => atPath(w, p, "direct", ARCH(f))));
 
 const nodeItems = (w, f) => [atRef("component", f.key, "direct", GRAPH(f)), ...pathsHeld(w, f.evidence).slice(0, PATHS_PER_FACT).map((p) => atPath(w, p, "direct", GRAPH(f)))];
 

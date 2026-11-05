@@ -144,6 +144,13 @@ test("each class comes from its own evidence: named, depended on, depending, hol
   assert.deepEqual([...new Set(listing.items.map((i) => i.class))], CLASSES.filter((c) => listing.items.some((i) => i.class === c)), "ordered by class");
 });
 
+test("a capability the task names lists where it is PROVIDED; one recorded as absent names nothing the task touches", () => {
+  const provided = { id: "arch-capability-ledger", kind: "capability", key: "ledger", capability: "ledger", providedBy: "src/db", scope: ["src/db"], evidence: ["src/db"] };
+  const absent = { id: "arch-capability-vault", kind: "capability", key: "vault", capability: "vault", scope: ["package.json"], evidence: ["package.json"] };
+  const listing = relevanceOf({ task: "write the order to the Ledger, through the Vault", tree, architecture: [provided, absent] });
+  assert.deepEqual(listing.items.filter((i) => sources(i).includes("architecture")).map((i) => [i.ref, i.class]), [["src/db", "direct"]]);
+});
+
 test("with no runtime graph, a direct path is held by the gates its own unit's manifest declares -- the deepest unit only", () => {
   const web = relevanceOf({ task: "the web app", tree, refs: [{ kind: "file", ref: "packages/web/app.mjs", where: [] }], architecture: ARCHITECTURE });
   assert.deepEqual(web.items.filter((i) => i.class === "verification").map((i) => i.ref), ["packages/web/package.json#test"]);

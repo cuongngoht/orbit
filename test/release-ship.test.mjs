@@ -664,6 +664,17 @@ test("B6. --precheck runs only the model-carried rows, each once, stopping at no
   assert.deepEqual([(await statusOf(w.world, ctx.ship.id)).mode, await publishable(w)], ["precheck", [false, "NO_SHIP"]], "--evidence never takes a precheck for a ship");
 });
 
+test("--precheck fails only as a ship would: a recorded row that did not hold is said, recorded -- the precheck still HELD -- and a leak still fails it", async (t) => {
+  const w = shipWorldOf(t, { files: { ...ADDING }, policy: RECORDING, play: { controls: allMatched, autonomous: missed } });
+  const { result } = await shipped(w, { precheck: true, limits: {} });
+  assert.deepEqual([result.outcome, result.exit], ["PRECHECK_HELD", 0], "the ship on this catalog is SHIPPABLE: the precheck says what the ship would do");
+  assert.deepEqual(result.failures.map((x) => [x.row, x.state, x.recorded]), [["QA-001:autonomous", "FAILED", true]], "said, with its room and its bundle, as recorded");
+  assert.match(result.summary, /1 of 2 model-carried row\(s\) held .*; not held: QA-001:autonomous FAILED \(recorded, not required\)/);
+  assert.match(saidResult(result), /PRECHECK HELD[\s\S]*diagnose  QA-001:autonomous FAILED \(recorded, not required\)/);
+  const required = await shipped(shipWorldOf(t, { files: { ...ADDING }, policy: RECORDING, play: { controls: allMatched, autonomous: missed, selfHealing: () => ({ outcome: "REPAIR_REJECTED", summary: "REPAIR_REJECTED", host: HOST }) } }), { precheck: true, limits: {} });
+  assert.deepEqual([required.result.outcome, required.result.failures.map((x) => [x.row, x.recorded])], ["PRECHECK_FAILED", [["QA-001:autonomous", true], ["CALC-001:self-healing", false]]], "a required row that did not hold fails it");
+});
+
 // A precheck a restart cut short in its first row: the worker restarted, and a person resumes it.
 const cutPrecheck = async (t, play = {}) => {
   let n = 0;

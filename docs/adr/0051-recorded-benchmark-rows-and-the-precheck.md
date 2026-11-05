@@ -70,7 +70,9 @@ required and recorded -- each once: no `--retries`, no flaky retry, one cycle; a
 row again. It stops at no failure. It needs no workspace (it repairs nothing) and holds no definition of done, but it
 builds the release tree and the images and asks the host first, as a ship does, so a registry's 429 or a refused
 credential shows there. Once every row ran, `PRECHECKED` ends it: `PRECHECK_HELD` (exit 0) or `PRECHECK_FAILED`
-(exit 2), every failure said with its run's room and its diagnosis bundle. A precheck never writes evidence, and
+(exit 2), every row that did not hold said with its run's room and its diagnosis bundle. It fails only as a ship
+would: on a required row, or a recorded one no recording excuses (`UNEXCUSED`); a recorded row that did not hold is
+said, marked recorded, and leaves the precheck HELD -- the ship on that catalog would be SHIPPABLE. A precheck never writes evidence, and
 `--evidence` never takes one for this checkout's newest ship. `--cycles`, `--attempts` and `--retries` are a ship's,
 refused before anything starts -- on a resume too, whose `--usd` or `--minutes` is laid over the precheck's own limits
 and never brings a ship's back. `--precheck` given with `--resume` of a ship is refused: it never resumes one.

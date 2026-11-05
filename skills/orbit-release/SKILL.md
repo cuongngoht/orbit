@@ -138,8 +138,9 @@ the budget it used, what the relay refused, what the engine stopped, and where a
 **The precheck** (ADR 0051). Before a full ship, `--precheck` runs only the model-carried rows -- required and recorded --
 each once, stopping at no failure: what 0.4.0 did by hand before every ship, in one resumable command. It builds the
 release tree and the images and asks the host first, as a ship does; it needs no workspace and holds no definition of
-done. It ends PRECHECK HELD (exit 0) or PRECHECK FAILED (exit 2), with every failure said with its run's room and its
-bundle. It writes no evidence and is never what `--evidence` reads; `--cycles`, `--attempts` and `--retries` are a
+done. It ends PRECHECK HELD (exit 0) or PRECHECK FAILED (exit 2), with every row that did not hold said with its run's
+room and its bundle -- and it fails only as a ship would: a recorded row that did not hold is said, marked `(recorded,
+not required)`, and leaves it HELD (a leak in its room still fails it). It writes no evidence and is never what `--evidence` reads; `--cycles`, `--attempts` and `--retries` are a
 ship's and are refused with it, on `--resume` too. `--usd`, `--minutes`, `--model`, `--credential` and `--ca-file` work
 as for a ship. `--precheck --resume=shp-…` resumes a precheck and refuses a ship's id.
 

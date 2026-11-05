@@ -250,20 +250,24 @@ function close(ctx, f) {
 // ---- a precheck's ending (0.5.0, B6) ----------------------------------------------------------------------------------
 
 // Every model-carried row ran once: the precheck says each that did not hold, with its run's room and its diagnosis
-// bundle, and qualifies nothing -- the task completes when every row held, and fails when one did not.
+// bundle, and qualifies nothing. It fails only as a ship would -- on a row the ship requires (or one no recording excuses,
+// UNEXCUSED): a RECORDED row that did not hold is said beside the rest, recorded, and never fails a precheck the ship
+// itself would not stop on (ADR 0051).
 const PRECHECK_ENDS = [
-  { when: (failed) => failed.length > 0, outcome: "PRECHECK_FAILED", exit: 2, attempt: "failed", close: (ctx, says) => ctx.door.fail(ctx.task, "VERIFICATION_FAILED", `PRECHECK: ${says}`) },
+  { when: (notHeld) => notHeld.some((r) => r.diag?.then !== "RECORDED"), outcome: "PRECHECK_FAILED", exit: 2, attempt: "failed", close: (ctx, says) => ctx.door.fail(ctx.task, "VERIFICATION_FAILED", `PRECHECK: ${says}`) },
   { when: () => true, outcome: "PRECHECK_HELD", exit: 0, attempt: "succeeded", close: (ctx, says) => ctx.door.complete(ctx.task, `PRECHECK: ${says}`) },
 ];
 
-const precheckSaid = (f, failed) => `${f.rows.size - failed.length} of ${f.rows.size} model-carried row(s) held on ${short(f.cycle.commit)}${failed.length ? `; not held: ${failed.map((r) => `${r.row.id} ${r.v.state}`).join(", ")}` : ""} -- a precheck qualifies nothing`;
+const notHeldSaid = (r) => `${r.row.id} ${r.v.state}${r.diag?.then === "RECORDED" ? " (recorded, not required)" : ""}`;
+
+const precheckSaid = (f, notHeld) => `${f.rows.size - notHeld.length} of ${f.rows.size} model-carried row(s) held on ${short(f.cycle.commit)}${notHeld.length ? `; not held: ${notHeld.map(notHeldSaid).join(", ")}` : ""} -- a precheck qualifies nothing`;
 
 function prechecked(ctx, f) {
-  const failed = [...f.rows.values()].filter((r) => r.v.state !== "HELD");
-  const end = PRECHECK_ENDS.find((e) => e.when(failed));
+  const notHeld = [...f.rows.values()].filter((r) => r.v.state !== "HELD");
+  const end = PRECHECK_ENDS.find((e) => e.when(notHeld));
   closeAttempt(ctx, f, end.attempt);
-  end.close(ctx, precheckSaid(f, failed));
-  return ended(ctx, { outcome: end.outcome, exit: end.exit, summary: precheckSaid(f, failed), failures: failed.map((r) => runDiagnosis(ctx.storeRoot, r)) });
+  end.close(ctx, precheckSaid(f, notHeld));
+  return ended(ctx, { outcome: end.outcome, exit: end.exit, summary: precheckSaid(f, notHeld), failures: notHeld.map((r) => runDiagnosis(ctx.storeRoot, r)) });
 }
 
 // ---- shippable ---------------------------------------------------------------------------------------------------------

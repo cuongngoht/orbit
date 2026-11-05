@@ -28,7 +28,7 @@ const stoppedSaid = (x) => `    stopped step ${said(x.step)} ${said(x.do)} ${sai
 
 const bundleSaid = (d) => (d ? [...d.finish.map(finishSaid), budgetSaid(d.budget), ...relaySaid(d.relay), ...(d.stopped ?? []).map(stoppedSaid)] : ["            its run's report says no diagnosis"]);
 
-export const saidDiagnosis = (d) => [`  diagnose  ${d.row} ${d.state} -- ${d.says}`, `    room    ${d.room ?? "none: the run never began"}`, ...bundleSaid(d.diagnosis)];
+export const saidDiagnosis = (d) => [`  diagnose  ${d.row} ${d.state}${d.recorded ? " (recorded, not required)" : ""} -- ${d.says}`, `    room    ${d.room ?? "none: the run never began"}`, ...bundleSaid(d.diagnosis)];
 
 // Runs whose cost nobody can know -- a restart interrupted them -- said beside what was spent, in dollars too (what they
 // were allowed between them), never added into it.

@@ -31,6 +31,12 @@ It changes:
 
 Every contract change is an addition, so it belongs in a minor release.
 
+**2026-11-05 — M4 landed: the benchmark kind `activation`.** The case kind, its seed round, its judge, its scripted
+controls, the activation metrics and the `orbit-activation` suite (the activation cases and the grounding cases, in
+English and Vietnamese, on three arms) are in `benchmark/`. The suite's controls are required by the release policy;
+its model-carried rows are recorded, never required, until the owner promotes them. Its cases and their truths are the
+harness's own: no plugin a host is handed carries them.
+
 ## Context
 
 1. **0.4.0 proves Orbit only when the host is told what to use.** Every benchmark prompt names the skill and its

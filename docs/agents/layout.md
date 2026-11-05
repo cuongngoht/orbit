@@ -1134,7 +1134,7 @@ acceptance/    (0.1.0) NATIVE ACCEPTANCE, outside test/ because `node --test` ru
 benchmark/     (ADR 0046, 0047, 0048) THE DOCKER BENCHMARK of Orbit: development tooling, export-ignored, imported by nothing
                of the engine (test/benchmark-lint.test.mjs), not under acceptance/ because the backend acceptance digest
                hashes that tree. run.mjs is its composition root (usage header = its contract; README.md the guide).
-               lib/core/ -- what every run shares: suites.mjs (KINDS -- source, qa, engineering -- each a field table held by
+               lib/core/ -- what every run shares: suites.mjs (KINDS -- source, qa, engineering, activation -- each a field table held by
                src/constraints.mjs; suites, cases, a directory's digest) · freeze.mjs (the branch frozen through read-only
                git, HARNESS) · git.mjs · mutations.mjs (exact mutations and candidate definitions, FIXTURE_DRIFT) ·
                checkout.mjs (a tree as one fixed
@@ -1160,13 +1160,19 @@ benchmark/     (ADR 0046, 0047, 0048) THE DOCKER BENCHMARK of Orbit: development
                assembled and seated, its isolated sandbox, the investigation) · relay.mjs (RELAY, the mailbox server) and
                relay-client.mjs (what stands at cli/autonomous-qa.mjs in a QA host's plugin) · hosts.mjs (the scripted
                reference, idle and false-alarm hosts, and the replay) · judge.mjs (outcomes off the journal, CREDIT,
-               VERDICT) · round.mjs (a coding host's round) · flow.mjs · report.mjs. lib/commands.mjs: the COMMANDS
+               VERDICT) · round.mjs (a coding host's round) · flow.mjs · report.mjs.
+               lib/activation/ (0.5.0, B22 M4) -- an activation case: seed.mjs (the seed round: the run's own Orbit lays
+               the case's seed into the runner's store) · round.mjs (the host's round, a writable checkout and the arm's
+               plugin, and the inspection with the run's own Orbit) · judge.mjs (STRATEGY_SEEN, RECORDS, VERDICT: what the
+               host did, held to the hidden truth) · flow.mjs (the phases, factsFrom) · report.mjs.
+               lib/commands.mjs: the COMMANDS
                table. images/runner/ (Claude Code pinned; entry.mjs, inspect.mjs, preflight.mjs, scripted.mjs -- the
-               scripted host a control runs in its place: a repair, a goal, a blocked goal, an interrupted session, or
-               idle) · images/verifier/
+               scripted host a control runs in its place: a repair, a goal, a blocked goal, an interrupted session,
+               idle, or an activation session delivering every hook to Orbit's own entry points) · images/verifier/
                (egress.mjs) · images/qa-worker/ (the Playwright image, pinned, and the browser CLI Orbit drives).
                suites/<suite>/suite.json and suites/<suite>/<case-id>/ (case.json, request.md, verifier/, variants/,
-               controls/). fixtures/<app>/ -- a project an engineering case is about (its public tests as checks/). A
+               controls/; an activation case's seed/). fixtures/<app>/ -- a project an engineering or activation case
+               is about (its public tests as checks/). A
                run's evidence: <store>/benchmark/<bnr-…>/ (rounds/<k>/outcome.json, verified.json, report.md|json).
 integrations/  what ANOTHER program installs, never part of this plugin's archive. vscode-orbit-live/ (1.8.5, ADR 0021)
                is the Orbit Live companion for VS Code: plain CommonJS with no dependency and no build step, a

@@ -146,7 +146,9 @@ const KIND_RUN = {
   engineering: { variant: sourceVariant, subject: (c, variant, entries, frozenEntries) => targetFor(c, variant, frozenEntries), extra: orbitPlugin, attempts: (c, config) => config.rounds + 1, measured: (c) => [`benchmark/fixtures/${c.fixture}/**`], target: true },
 };
 
-const runningConfig = (o, c) => ({ seed: Number.isInteger(o.seed) ? o.seed : Math.floor(Math.random() * 2 ** 31), rounds: o.rounds ?? c.limits.rounds, minutes: o.minutes ?? c.limits.minutes, usd: o.usd ?? c.limits.usd, model: o.model ?? null, repair: o.repair === true, host: o.host ?? null, parent: o.parent ?? null });
+// `repeat` (0.5.0): the group a run belongs to when one command asked for N runs of a case -- its id, which of them this
+// is, and how many were asked -- so a metric reads N runs as one row's repeats, never as N unrelated runs.
+const runningConfig = (o, c) => ({ seed: Number.isInteger(o.seed) ? o.seed : Math.floor(Math.random() * 2 ** 31), rounds: o.rounds ?? c.limits.rounds, minutes: o.minutes ?? c.limits.minutes, usd: o.usd ?? c.limits.usd, model: o.model ?? null, repair: o.repair === true, host: o.host ?? null, parent: o.parent ?? null, repeat: o.group ?? null });
 
 // What the harness is: its modules, the scripts its images run and its command line -- one digest, so a run says which
 // harness judged it, and a change to any of them is a different harness.

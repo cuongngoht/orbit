@@ -3,9 +3,11 @@
 // reads the environment or the command line itself.
 //
 //   COMMANDS[name] = { run(h, args) -> result, say(result) -> text, exit?(result) -> code }
+import { randomBytes } from "node:crypto";
 import { cpSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { Blocked, Refused } from "../../src/errors.mjs";
+import { short } from "../../src/hash.mjs";
 import { flag, has, words } from "../../src/learn/args.mjs";
 import { docker } from "../../src/runtime/isolation/docker.mjs";
 import { madeCheckout } from "./core/checkout.mjs";
@@ -130,9 +132,11 @@ const runIdOption = shaped("run-id", RUN_ID, "bnr- and 12 hex characters");
 
 export const parentOption = shaped("parent", TASK_ID, "a task's id: tsk- and 12 hex characters");
 
-const optionsOf = (args) => ({ host: hostOption(flag(args, "host")), variant: flag(args, "variant"), repair: has(args, "repair"), source: flag(args, "source"), seed: int(flag(args, "seed")), model: flag(args, "model"), rounds: int(flag(args, "rounds")), minutes: int(flag(args, "minutes")), usd: num(flag(args, "usd")), runId: runIdOption(flag(args, "run-id")), parent: parentOption(flag(args, "parent")) });
+const optionsOf = (args) => ({ host: hostOption(flag(args, "host")), variant: flag(args, "variant"), repair: has(args, "repair"), source: flag(args, "source"), seed: int(flag(args, "seed")), model: flag(args, "model"), rounds: int(flag(args, "rounds")), minutes: int(flag(args, "minutes")), usd: num(flag(args, "usd")), runId: runIdOption(flag(args, "run-id")), parent: parentOption(flag(args, "parent")), repeat: int(flag(args, "repeat")) });
 
-const BOUNDS = [["seed", 0, 2 ** 31 - 1], ["rounds", 1, 5], ["minutes", 10, 600], ["usd", 0, 200]];
+// What a command may ask, as data: each option's lowest and highest value. `repeat` (0.5.0) is how many runs of one case
+// one command starts -- enough for a rate over five runs and some to spare, never an open-ended loop of paid rounds.
+export const BOUNDS = [["seed", 0, 2 ** 31 - 1], ["rounds", 1, 5], ["minutes", 10, 600], ["usd", 0, 200], ["repeat", 1, 10]];
 
 const checked = (o) => ((bad) => (bad.length ? refusedWith(`out of bounds: ${bad.map(([k, lo, hi]) => `--${k} is ${lo}..${hi}`).join(", ")}`) : o))(BOUNDS.filter(([k, lo, hi]) => o[k] !== undefined && !(o[k] >= lo && o[k] <= hi)));
 
@@ -194,15 +198,39 @@ async function finished(ctx, kind) {
   const result = await kind.carried(ctx).catch((e) => thrownTidied(ctx, e));
   const left = tidied(ctx);
   const rep = reportWritten(ctx.room, ctx.manifest, ctx.rec.show(ctx.task), eventsOf(ctx.rec, ctx.task));
-  return { run: ctx.run.id, task: ctx.task, case: ctx.case.id, variant: ctx.manifest.benchmark.variant, ...result, report: ctx.room.at("report.md"), evidence: ctx.room.dir, axes: rep.json.axes, leaks: rep.json.leaks, leftBehind: left.clean ? null : left };
+  return { run: ctx.run.id, task: ctx.task, case: ctx.case.id, variant: ctx.manifest.benchmark.variant, ...(ctx.manifest.config.repeat ? { repeat: ctx.manifest.config.repeat } : {}), ...result, report: ctx.room.at("report.md"), evidence: ctx.room.dir, axes: rep.json.axes, leaks: rep.json.leaks, leftBehind: left.clean ? null : left };
 }
 
+// ---- repeated runs (0.5.0, B2): one PASS is not a rate --------------------------------------------------------------------
+
+// N runs of one case, each its own room and task, named as one repeat GROUP in each manifest (`config.repeat`: the
+// group's id, which run this is, how many were asked) -- or, with no --repeat, the one run it always was. A run that is
+// blocked or refused is its own row, and the repeats after it still run.
+const groupIdOf = (o) => `rpt-${short(`${o.caseId}\u0000${Date.now()}\u0000${randomBytes(6).toString("hex")}`, 12)}`;
+
+function repeated(h, o) {
+  if (o.repeat === undefined) return oneRun(h, o);
+  if (o.runId && o.repeat > 1) refusedWith("--run-id names one run, and --repeat starts one run per repeat");
+  return repeatsOf(h, o, groupIdOf(o));
+}
+
+async function repeatsOf(h, o, group) {
+  const runs = [];
+  for (let i = 1; i <= o.repeat; i++) runs.push(await oneRun(h, { ...o, group: { id: group, index: i, of: o.repeat } }).catch(failedRun({ id: o.caseId })));
+  return { case: o.caseId, repeat: { group, of: o.repeat }, runs, exit: Math.max(...runs.map((r) => r.exit ?? 4)) };
+}
+
+// The rows a suite's case adds: one run, or each of its repeats.
+const caseRows = (r) => (r.repeat && Array.isArray(r.runs) ? r.runs : [r]);
+
+const repeatChecked = (o) => (checked({ repeat: o.repeat }), o);
+
 function runCmd(h, args) {
-  if (flag(args, "like")) return oneRun(h, likeOf(h, flag(args, "like")));
+  if (flag(args, "like")) return repeated(h, repeatChecked({ ...likeOf(h, flag(args, "like")), repeat: int(flag(args, "repeat")) }));
   if (flag(args, "suite") && flag(args, "run-id")) refusedWith("--run-id names one run, and --suite starts one run per case");
   if (flag(args, "suite")) return suiteRun(h, args);
   const caseId = words(args)[0] ?? refusedWith("name the case to run (node benchmark/run.mjs list), or --suite=<suite>");
-  return oneRun(h, sourceChecked(checked({ ...optionsOf(args), caseId })));
+  return repeated(h, sourceChecked(checked({ ...optionsOf(args), caseId })));
 }
 
 // A suite's run of one case: the variant asked when the case has it, its real one otherwise -- and a QA case's own.
@@ -216,11 +244,13 @@ async function suiteRun(h, args) {
   const cases = casesOf(h.root, flag(args, "suite"));
   if (!cases.length) throw new Refused(`no suite ${flag(args, "suite")} holds a case`);
   const runs = [];
-  for (const c of cases) runs.push(await oneRun(h, suiteOptions(args, c)).catch(failedRun(c)));
+  for (const c of cases) runs.push(...caseRows(await repeated(h, suiteOptions(args, c)).catch(failedRun(c))));
   return { suite: flag(args, "suite"), runs, exit: Math.max(...runs.map((r) => r.exit ?? 4)) };
 }
 
-const sayOne = (r) => [`${r.case ?? "?"} ${r.variant ?? ""} ${r.run ?? ""}: ${r.outcome} (exit ${r.exit})`, `  ${r.summary ?? ""}`, ...(r.leaks?.length ? [`  LEAK      the credential was found in ${r.leaks.length} file(s) of the run's room, and masked (leaks.json)`] : []), ...(r.report ? [`  report    ${r.report}`, `  evidence  ${r.evidence}`, `  task      ${r.task} (node cli/task.mjs show ${r.task})`] : [])].join("\n");
+const repeatSaid = (r) => (r.repeat?.id ? ` (repeat ${r.repeat.index}/${r.repeat.of}, ${r.repeat.id})` : "");
+
+const sayOne = (r) => [`${r.case ?? "?"} ${r.variant ?? ""} ${r.run ?? ""}${repeatSaid(r)}: ${r.outcome} (exit ${r.exit})`, `  ${r.summary ?? ""}`, ...(r.leaks?.length ? [`  LEAK      the credential was found in ${r.leaks.length} file(s) of the run's room, and masked (leaks.json)`] : []), ...(r.report ? [`  report    ${r.report}`, `  evidence  ${r.evidence}`, `  task      ${r.task} (node cli/task.mjs show ${r.task})`] : [])].join("\n");
 
 const sayRun = (r) => (r.runs ? r.runs.map(sayOne).join("\n") : sayOne(r));
 

@@ -100,9 +100,9 @@ import { requirementsContext } from "../src/requirements/context.mjs";
 import { status as requirementStatus } from "../src/requirements/views/status.mjs";
 import { createContext } from "../src/run/context.mjs";
 import { runtimeProject } from "../src/runtime/context.mjs";
+import { componentGraphOf } from "../src/runtime/graph.mjs";
 import { COMMANDS as RUNTIME } from "../src/runtime/index.mjs";
 import { look } from "../src/runtime/understanding.mjs";
-import { liveOf } from "../src/runtime/vocab.mjs";
 import { scrub } from "../src/scrub.mjs";
 import { sourcesContext } from "../src/sources/context.mjs";
 import { writeAtomic } from "../src/store/atomic.mjs";
@@ -312,16 +312,11 @@ function declared(rt) {
   catch { return []; }
 }
 
-// The checkout's COMPONENT GRAPH, as understanding read it from the files: where each component lives, what
-// it depends on, the shared files it inherits, and the references nothing read resolves. Orchestration
-// derives a change's impact from it (src/orchestration/impact.mjs); unreadable here is null, and then every
-// component with a check is held to it.
-const edgesOf = (c) => c.dependencies ?? [];
-
-const nodeOf = (c) => ({ key: c.key, dir: c.dir, kind: c.kind, live: liveOf(c.kind), dependsOn: edgesOf(c).filter((d) => d.dependsOn).map((d) => d.dependsOn), inherits: edgesOf(c).filter((d) => d.via === "shared").map((d) => d.reference), unresolved: edgesOf(c).filter((d) => d.via === "manifest" && !d.dependsOn).map((d) => d.reference) });
-
+// The checkout's COMPONENT GRAPH, as understanding read it from the files (src/runtime/graph.mjs, the one definition
+// project context reads too). Orchestration derives a change's impact from it (src/orchestration/impact.mjs);
+// unreadable here is null, and then every component with a check is held to it.
 function graphOf(rt) {
-  try { return { components: look(rt()).view.components.map(nodeOf) }; }
+  try { return componentGraphOf(look(rt()).view.components); }
   catch { return null; }
 }
 

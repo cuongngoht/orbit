@@ -29,7 +29,7 @@
 // table words (the open-work lookup with the references the prompt names, in
 // memory). A prompt the HOST wrote (`synthetic`, a background task's notification)
 // is not classified and the registry is not read: the table answers NONE for it.
-import { classify } from "../../routing/classify.mjs";
+import { classify, marksIn } from "../../routing/classify.mjs";
 import { dispatchedBy } from "../../routing/explain.mjs";
 import { BUDGET_BYTES, formatDecision } from "../../routing/format.mjs";
 import { decide } from "../../routing/resolve.mjs";
@@ -48,7 +48,7 @@ function routed(event, world) {
   const prompt = event.synthetic === true ? "" : event.prompt ?? "";
   const asked = classify(prompt);
   const effective = event.synthetic === true ? {} : world.resources();
-  return { decision: decide(asked, effective, factsOf(event, world, asked, prompt)), dispatches: dispatchedBy(effective) };
+  return { decision: decide(asked, effective, factsOf(event, world, asked, prompt)), dispatches: dispatchedBy(effective), marks: asked.marks };
 }
 
 const factsOf = (event, world, asked, prompt) => ({ synthetic: event.synthetic === true, plugin: world.plugin, workflow: world.workflowOf?.({ intent: asked.intent.id, matched: asked.matched, requirements: asked.requirements }) ?? null, host: world.hostRow?.() ?? null, settings: world.automation?.() ?? null, work: world.openWork?.({ refs: refsOf(prompt), continued: asked.marks.includes("continue") }) ?? null });
@@ -66,6 +66,10 @@ const withAdvice = (text, world, decision) => (text && advised(world.automation?
 
 function answered(event, world, r) {
   const text = withAdvice(r ? formatDecision(r.decision, { callVia: world.callVia, dispatches: r.dispatches, engine: world.engine }) : null, world, r?.decision);
-  world.traced?.(r?.decision ?? null, promptFacts(event.prompt, world.salt?.()), Boolean(text), event.synthetic === true);
+  world.traced?.(r?.decision ?? null, promptFacts(event.prompt, world.salt?.()), Boolean(text), event.synthetic === true, marksFor(event, r));
   return text ? world.host.formatPromptContext?.(text, world.input) ?? null : null;
 }
+
+// The prompt's MARKS for the trail (0.5.0, B22 M3): the classification's when it ran, else read off the prompt alone --
+// table words either way, so a Stop hold knows a person said to stop even with routing off. A host's envelope has none.
+const marksFor = (event, r) => r?.marks ?? (event.synthetic === true ? [] : marksIn(event.prompt ?? ""));

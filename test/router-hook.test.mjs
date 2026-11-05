@@ -249,3 +249,38 @@ test("looking for the open work a prompt names or continues reads the journals a
   for (const prompt of ["Continue ORD-12.", "continue", "fix bug ORD-77 in the invoice export", "continue PBI-482"]) assert.equal(hook(payload(prompt, p.checkout), { ORBIT_STORE_DIR: p.store, ORBIT_TRACE: "off" }).code, 0, prompt);
   assert.deepEqual(contents([p.store, p.checkout]), before, "no file created, removed or changed");
 });
+
+// ---- B22 M3: what a Stop hold reads of a prompt, and a person's own command ------------------------------------------
+
+test("a halt cue and a slash command reach the trail as table words, with routing on or off -- and a slash command gets no text at all", (t) => {
+  const store = storeDir(t);
+  hook(payload("stop, wait for me here"), { ORBIT_STORE_DIR: store });
+  assert.deepEqual(lastPrompt(store).marks, ["halt"]);
+  hook(payload("wait -- don't touch it yet"), { ORBIT_STORE_DIR: store, ORBIT_PROMPT_ROUTER: "off" });
+  assert.deepEqual([lastPrompt(store).routing, lastPrompt(store).marks], ["off", ["halt"]], "with routing off the trail still knows a person said to stop");
+  for (const prompt of ["/orbit-help fix the refund rule", "/orbit-help sửa quy tắc hoàn tiền", "/review the export endpoint"]) {
+    const r = hook(payload(prompt), { ORBIT_STORE_DIR: store });
+    assert.deepEqual([r.code, r.out], [0, ""], prompt);
+    assert.deepEqual([lastPrompt(store).strategy, lastPrompt(store).activation, lastPrompt(store).marks.includes("command")], [{ word: "NONE", row: "invoked" }, { path: "none", id: null }, true], prompt);
+  }
+  assert.equal(trailOf(store).some((e) => /fix the refund|hoàn tiền|export endpoint|wait for me/.test(JSON.stringify(e))), false, "table words, never the prompt");
+});
+
+// The explicit routing a host with no prompt event asks for (Antigravity, docs/hosts.md): the decision the hook would
+// make -- RouteDecision v3, over the same facts -- while the planner's own `route()` keeps answering v2 for Orbit
+// Control's Router Inspector.
+test("`resources.mjs route` answers what the prompt hook would: the strategy and the activation, per host", async (t) => {
+  const store = storeDir(t);
+  const ask = (args, extra = {}) => spawnSync(process.execPath, [OBSERVE, "route", ...args], { env: sealed({ ORBIT_STORE_DIR: store }), encoding: "utf8", cwd: EMPTY_TMP, timeout: 30000, ...extra });
+  const text = ask(["check architecture of this project"]);
+  assert.equal(text.status, 0, text.stderr);
+  assert.match(text.stdout, /^Orbit strategy: DIRECT -- one specialist provides architecture\.context: Skill orbit:orbit-architecture\.\nOrbit routing context\n/);
+  const coordinated = JSON.parse(ask(["Implement PBI 4312", "--json"]).stdout);
+  assert.deepEqual([coordinated.version, coordinated.strategy.word, coordinated.activation.path], [3, "COORDINATED", "workflow"]);
+  assert.match(ask(["hello"]).stdout, /would add nothing to this prompt -- strategy NONE: /);
+  const failing = "why did the last UI test run fail?";
+  assert.equal(JSON.parse(ask([failing, "--json"]).stdout).activation.path, "agent", "Claude Code dispatches the one agent");
+  assert.equal(JSON.parse(ask(["--task-stdin", "--json", "--host=antigravity", "--protocol=2"], { input: failing }).stdout).activation.path, "skill", "a host with no native agents is never named one");
+  const { ROUTE_DECISION_VERSION, route } = await import("../src/routing/resolve.mjs");
+  assert.deepEqual([ROUTE_DECISION_VERSION, route("check architecture", {}).version], [2, 2], "the planner's own answer is unchanged");
+});

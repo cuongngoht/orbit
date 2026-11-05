@@ -66,6 +66,7 @@ export { projectCapabilities } from "../../src/extensions/capabilities.mjs";
 export { projectKnowledge } from "../../src/knowledge/summary.mjs";
 export { traceLog } from "../../src/trace/log.mjs";
 export { suggestedEntries, turnOf, turnsOf } from "../../src/trace/projections/turns.mjs";
+export { activationOf } from "../../src/trace/projections/activation.mjs";
 export { usageOf } from "../../src/trace/projections/usage.mjs";
 export { loadProject } from "../../src/project/index.mjs";
 export { realWorld } from "../../skills/orbit-control/world.mjs";

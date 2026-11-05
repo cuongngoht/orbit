@@ -50,6 +50,7 @@ const retryRow = (kind) => ({ token: "retries", path: ["execution", "retries", k
 // each field is optional and defaults only as declared below.
 export const FIELDS = [
   { path: ["trigger", "arbitraryPrompt"], type: "boolean", default: true, narrow: "and", say: "the prompt router may SAY a coordinated workflow would fit; it never starts one", readBy: "src/lifecycle/subscribers/router.mjs" },
+  { path: ["trigger", "holdOnStop"], type: "boolean", default: true, narrow: "and", say: "when the session stops while its own running workflow or goal has a step ready, hold the turn open once or twice, naming the step -- never past a person's pause, cancel, approval or question, never twice in a row; it grants nothing", readBy: "src/lifecycle/subscribers/hold.mjs" },
   { path: ["skillFactory", "reuseFirst"], type: "boolean", default: true, narrow: "and", say: "an active playbook that provides the capability is used before anything is generated", readBy: "src/skill-factory/policy.mjs" },
   { path: ["skillFactory", "scope"], type: "enum", values: SKILL_SCOPES, default: "project", narrow: "order", say: "the widest scope a generated playbook may have", readBy: "src/skill-factory/policy.mjs" },
   { path: ["skillFactory", "maxSkillsPerTask"], type: "integer", min: 0, max: 10, default: 2, narrow: "min", say: "playbooks one task may generate", readBy: "src/skill-factory/policy.mjs" },

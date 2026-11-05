@@ -121,3 +121,20 @@ test("a task's budget is what was asked, never above what the settings allow", (
   assert.deepEqual(narrowedBudget(values, { attempts: 9, actions: 10, minutes: 300 }), { attempts: 4, actions: 10, minutes: 30 });
   assert.deepEqual(narrowedBudget(effectiveOf([]).values, { minutes: 15 }), { attempts: 4, actions: 100, minutes: 15 }, "no minute limit set: what was asked");
 });
+
+// 0.5.0 (B22 M3, ADR 0050): whether a Stop may hold this session's running workflow to its next ready step -- on by
+// default, a person's to switch off in Orbit Control, and a project can only switch it off, never back on.
+test("trigger.holdOnStop: on by default, a boolean, narrowed AND -- either document switches it off -- and written only through Control's door", (t) => {
+  const row = FIELDS.find((f) => f.path.join(".") === "trigger.holdOnStop");
+  assert.deepEqual([row.type, row.default, row.narrow, row.readBy], ["boolean", true, "and", "src/lifecycle/subscribers/hold.mjs"]);
+  assert.equal(defaultsOf().trigger.holdOnStop, true);
+  const value = (...docs) => effectiveOf(docs).fields["trigger.holdOnStop"];
+  assert.deepEqual(value(doc("machine", { trigger: { holdOnStop: false } }), doc("project", { trigger: { holdOnStop: true } })), { value: false, by: "machine" }, "a project cannot switch back on what the machine switched off");
+  assert.deepEqual(value(doc("machine", {}), doc("project", { trigger: { holdOnStop: false } })), { value: false, by: "project" });
+  assert.deepEqual(value(), { value: true, by: "default" });
+  assert.equal(settingsProblems({ trigger: { holdOnStop: "yes" } }).length, 1, "a boolean, never a word");
+  const file = join(room(t), "settings.json");
+  assert.throws(() => writeAutomation(realIo(), file, { trigger: { holdOnStop: false } }, { revision: null, door: "terminal", at: AT }), (e) => e.code === AUTOMATION_DOOR);
+  assert.equal(existsSync(file), false);
+  assert.equal(writeAutomation(realIo(), file, { trigger: { holdOnStop: false } }, PERSON).settings.trigger.holdOnStop, false, "a person, in Control");
+});

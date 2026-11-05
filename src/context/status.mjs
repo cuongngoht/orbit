@@ -36,5 +36,11 @@ export function statusOf(facts) {
   return { word: row.word, because, known: knownOf(facts), unknown: unknownOf(facts), summary: `${row.word}: ${because}` };
 }
 
+// The word for what is KEPT, read without running a section's command: architecture, engineering memory and the
+// working set, each known by what its own store holds. What orbit-help's navigator reads (src/help/model.mjs) and what a
+// session's start says in its one capability line (0.5.0, B22 M3) -- one reading, so the two never disagree.
+//   kept: { bound, architecture: { total, stale, scanned }, engineering: <facts kept>, sessions: <working sets kept>, blocked }
+export const keptStatus = (kept) => statusOf({ bound: kept.bound, sections: [{ id: "architecture", known: kept.architecture.total > 0 || kept.architecture.scanned }, { id: "engineering", known: kept.engineering > 0 }, { id: "working-set", known: kept.sessions > 0 }], architecture: kept.architecture, blocked: kept.blocked ?? null });
+
 // The first section whose command could not answer on this machine at all, said with its own words.
 export const blockedOf = (sections) => ((s) => (s ? `${s.id} could not answer here — ${String(s.lines?.[0] ?? "").replace(/^UNKNOWN -- /, "")}` : null))(sections.find((x) => x.blocked));

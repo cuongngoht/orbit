@@ -212,3 +212,13 @@
 {"prompt":"sửa lỗi 500 của nút Lưu trong checkout handler, xong chưa thì báo mình","lang":"vi","intent":"development","strategy":"DIRECT","top":"orbit-develop","kind":"change"}
 {"prompt":"thêm endpoint xuất hóa đơn và kiểm tra bảo mật của nó","lang":"vi","intent":"development","strategy":"COORDINATED","top":"orbit-help","kind":"change-with-item"}
 {"prompt":"tình hình build sao rồi?","lang":"vi","intent":"general","strategy":"NONE","top":null,"kind":"status"}
+{"prompt":"/orbit-help fix the refund rule","lang":"en","intent":"development","strategy":"NONE","top":null,"kind":"command"}
+{"prompt":"/orbit-develop rename qty to quantity in orders.mjs","lang":"en","intent":"development","strategy":"NONE","top":null,"kind":"command"}
+{"prompt":"/orbit:orbit-qa find bugs on the checkout screen","lang":"en","intent":"investigation","strategy":"NONE","top":null,"kind":"command"}
+{"prompt":"/review the export endpoint before I merge it","lang":"en","intent":"code-review","strategy":"NONE","top":null,"kind":"command"}
+{"prompt":"/orbit-test-plan write a test plan for the refund screen","lang":"en","intent":"qa","strategy":"NONE","top":null,"kind":"command"}
+{"prompt":"/orbit continue PBI-482","lang":"en","intent":"general","strategy":"NONE","top":null,"kind":"command","open":{"ref":"PBI-482","current":true}}
+{"prompt":"/orbit-help sửa quy tắc hoàn tiền","lang":"vi","intent":"development","strategy":"NONE","top":null,"kind":"command"}
+{"prompt":"/orbit-qa tìm lỗi trên màn hình thanh toán","lang":"vi","intent":"investigation","strategy":"NONE","top":null,"kind":"command"}
+{"prompt":"/orbit-test-plan lập kế hoạch kiểm thử cho màn hình hoàn tiền","lang":"vi","intent":"qa","strategy":"NONE","top":null,"kind":"command"}
+{"prompt":"/orbit tiếp tục PBI-482","lang":"vi","intent":"general","strategy":"NONE","top":null,"kind":"command","open":{"ref":"PBI-482","current":true}}

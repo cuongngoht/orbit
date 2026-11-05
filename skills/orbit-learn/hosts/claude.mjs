@@ -26,7 +26,16 @@ export const formatDeny = (reason) => ({
   hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason },
 });
 
-export const formatPostTool = () => null;
+// After a tool returns (0.5.0, B22 M3): context for the parent, beside the tool's result -- and only after an Agent call
+// returns, the one tool whose return Orbit follows through (the owner record that settles the agent's work). Claude Code
+// shows it to the model beside the result only from a SYNCHRONOUS hook; any other tool, or nothing to say, answers null.
+export const formatPostTool = (text, input) =>
+  text && launches(input ?? {}) ? { hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: text } } : null;
+
+// A Stop hook's HOLD (0.5.0, B22 M3): the turn goes on, and the reason is what the model is told. Claude Code never runs
+// a Stop hook on a person's interrupt, marks the next Stop `stop_hook_active`, and ends the turn itself after eight
+// continuations in a row -- the hold's own bounds sit well inside those.
+export const formatHold = (reason) => (reason ? { decision: "block", reason } : null);
 
 // What the prompt router adds to a prompt, in the shape Claude Code reads off a
 // UserPromptSubmit hook: context beside the prompt, never a change to it.
@@ -58,7 +67,17 @@ const named = (row, args) => (row && typeof args?.[row[1]] === "string" ? { kind
 const deliveryOf = (input) => (typeof input.tool_use_id === "string" && input.tool_use_id ? { delivery: input.tool_use_id } : {});
 
 // 0.0.2: `tool_use_id` is the call's delivery key, as Codex's and Grok's are: a hook Claude delivers twice is one call.
-export const normalize = (input) => (input?.hook_event_name ? { hostEvent: input.hook_event_name, session: input.session_id ?? null, ...deliveryOf(input), cwd: input.cwd ?? process.cwd(), prompt: promptOf(input), ...toolOf(input), ...agentsOf(input), ...syntheticOf(input) } : null);
+export const normalize = (input) => (input?.hook_event_name ? { hostEvent: input.hook_event_name, session: input.session_id ?? null, ...deliveryOf(input), cwd: input.cwd ?? process.cwd(), prompt: promptOf(input), ...toolOf(input), ...agentsOf(input), ...syntheticOf(input), ...heldOf(input), ...resumedOf(input) } : null);
+
+// Two marks of the session's own course (0.5.0, B22 M3), each present only when it is true, so every other event is what
+// it always was. `held`: this Stop follows a turn a Stop hook already kept going (`stop_hook_active`) -- a held turn is
+// never held again in a row. `resumed`: a SessionStart that picks up a conversation that already happened (`source`
+// resume or compact), whose open work is said again. A subagent's own stop (SubagentStop) is never this session's turn.
+const RESUMED = ["resume", "compact"];
+
+const heldOf = (input) => (input.hook_event_name === "Stop" && input.stop_hook_active === true ? { held: true } : {});
+
+const resumedOf = (input) => (input.hook_event_name === "SessionStart" && RESUMED.includes(input.source) ? { resumed: true } : {});
 
 // A prompt the HOST wrote (0.5.0, B22): Claude Code hands a background task's notification to UserPromptSubmit as if a
 // person had typed it, opened by an envelope tag of its own. The tags are data, matched against the prompt's opening

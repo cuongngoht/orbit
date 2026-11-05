@@ -12,6 +12,13 @@ cli/sandbox-worker.mjs · cli/sandbox-supervisor.mjs · cli/security-audit.mjs  
                writes an envelope -- never a record, ADR 0038) · a sandbox's SUPERVISOR (heartbeats, signals,
                deadlines; launches nothing, ADR 0036) · the Security Auditor's catalogs, applicability, plan,
                assess and report (ADR 0040)
+cli/follow-hook.mjs  (0.5.0, B22 M3, ADR 0050) a hook root of its own beside router-hook and learn-hook: the
+               SYNCHRONOUS Stop hold and the PostToolUse(Agent) line (src/lifecycle/subscribers/hold.mjs,
+               returned.mjs), staged so a Stop that ran no workflow command loads and reads no owner
+cli/governed.mjs · cli/resources-here.mjs  (0.5.0) composition HELPERS, never entry points: this session's
+               governed work -- its workflow, goal, task, tracked work or mission, by the association table
+               and each owner's own fold -- for the follow-through hooks; and the registry and the strategy's
+               facts composed ONE way for the prompt hook, a session's start and `resources.mjs route`
 src/errors.mjs the three typed stops, as a LEAF -- the ports throw them too
 src/constraints.mjs  a field table's JSON-Schema fragment, ENFORCED (dsl and project both use it)
 src/scrub.mjs  masking by SHAPE, as a LEAF -- the committed corpus and the lessons both pass
@@ -210,20 +217,35 @@ src/trace/     the SESSION TRAIL, event-driven: events.mjs every event type as a
                ALLOW-LIST of fields (a field nobody declared never reaches the disk) · log.mjs the
                append-only port (a shard per day and host, 4 MB cap then one `trace.dropped`, 90
                days, fail-open, a tolerant reader) · emit.mjs the producer side · prompt.mjs a
-               prompt as a SALTED fingerprint and a length, never its text · commands.mjs a Orbit
-               command's subcommand only when that script's own usage header documents it ·
+               prompt as a SALTED fingerprint and a length, never its text, and (0.5.0) its MARKS
+               as table words · commands.mjs a Orbit command's subcommand -- and the operation
+               after it (`goal step`) -- only when that script's own usage header documents it ·
+               log.mjs `recent` (0.5.0) the one BOUNDED read, a session's lines off the tail of
+               this host's two newest shards, for the Stop hold ·
                projections/ pure folds rebuilt on every read (turns: the decision trace, one turn
-               per prompt, followed · diverged · worked directly; usage: counts with their
-               denominators, flows, least privilege) · views.mjs `cli/trace.mjs`. Written by the
-               router's hook and the lifecycle subscriber, read by cli/trace.mjs and Control
+               per prompt, followed · diverged · worked directly, a hold as a step, `lastTurnOf`;
+               usage: counts with their denominators, flows, least privilege; activation (0.5.0,
+               ADR 0050): suggested → selected → dispatched → executed → verified per turn and per
+               work, each link from its own source with its basis, verified ONLY from the work view
+               handed in, and the followed verdict extended by `over-delegated`) · views.mjs
+               `cli/trace.mjs`. Written by the router's hook, the lifecycle subscriber and the Stop
+               hold (`turn.held`), read by cli/trace.mjs, Control and the hold
 src/lifecycle/ ONE lifecycle event for any host (event.mjs: the adapter's `normalize`, the host
-               session hashed), and dispatch.mjs: every subscriber that listens, each isolated,
-               at most one speaking to the host. subscribers/ switches · learning · working-set ·
+               session hashed; 0.5.0 marks `synthetic`, `held` and `resumed`, each on its own event
+               alone), and dispatch.mjs: every subscriber that listens, each isolated,
+               at most one speaking to the host. subscribers/ switches · learning (0.5.0: joins a
+               session start's capability line and open work, and a failed Orbit command's recovery
+               row, into its one answer) · working-set ·
                engineering · improvement (0.3.0: asks the root to start a detached, debounced `improve analyse --hook`,
                which never evaluates) · trace (a PRODUCER: one trail event per moment, `records: false`, never
-               speaks) -- and router.mjs hands the trail its decision and the prompt's
-               fingerprint, never the prompt. A composition-layer caller like src/help/: cli/learn-hook.mjs builds
-               the table and the lazily bound contexts, so nothing here reads process.env
+               speaks) · hold (0.5.0: the Stop hold, an ordered table of why NOT, cheapest first, the
+               owners read only by a turn that ran a workflow's command) · returned (0.5.0: the line
+               after one of this plugin's agents returns) -- and router.mjs hands the trail its decision,
+               the prompt's fingerprint and its marks, never the prompt. owners.mjs (0.5.0) the one table
+               of who settles a session's governed work (workflow · goal · task · investigation ·
+               mission) and every line those four answers say, a leaf. A composition-layer caller
+               like src/help/: cli/learn-hook.mjs and cli/follow-hook.mjs build the tables and the
+               lazily bound contexts, so nothing here reads process.env
 src/resources/ the EFFECTIVE RESOURCE REGISTRY: what Orbit can use HERE, one provider per family --
                skills · agents · mcp · tools · capabilities -- each isolated, so one that throws
                empties only its own family. model.mjs the small common shape: FOUR answers kept
@@ -945,8 +967,13 @@ hooks/hooks.json          SessionStart (direct Orbit recall, and ONE line when n
                           engineering observer at a milestone, if opted in), PostToolUseFailure,
                           every tool (context only -- it records no lesson and no engineering
                           truth, only the working-set line `ok:false` and the trail's failed
-                          step), Stop, async (the trail's turn boundary) and SessionEnd (flush the
-                          last milestone). Beside them, `modules` names hooks/live-pane.tsx
+                          step; 0.5.0: an Orbit command under governed work adds its owner's
+                          recovery row), Stop, async (the trail's turn boundary) and SessionEnd
+                          (flush the last milestone). 0.5.0 (ADR 0050) adds two SYNCHRONOUS
+                          entries, both cli/follow-hook.mjs: Stop (the bounded hold, its one write
+                          the trail's `turn.held`) and PostToolUse matched to `Agent` (one line after
+                          one of this plugin's agents returns) -- and SessionStart opens with one
+                          capability line. Beside them, `modules` names hooks/live-pane.tsx
 hooks/grok.json           (1.8.9) Grok Build's hooks: the same learn and router hooks, every one named
                           `--host=grok --protocol=2` and rooted at ${GROK_PLUGIN_ROOT}, with only the
                           handler fields Grok reads (it skips a handler carrying `if` or `args`)

@@ -13,7 +13,13 @@
 //                 when its switch in the plugin's settings is off
 //                 (`skill_<name>` / `agent_<name>`); unset is on
 //   learning      session-start recall · fold a finished case in · hand back
-//                 where to look after one of ours failed (writes nothing)
+//                 where to look after one of ours failed (writes nothing).
+//                 0.5.0 (B22 M3): a known checkout's session start opens with
+//                 ONE capability line (the registry composed as the router
+//                 composes it, what a person switched off, the STATUS word) and,
+//                 resumed or compacted, this session's open work; a failed Orbit
+//                 command under governed work adds its owner's recovery row --
+//                 each joined into the one answer, each loaded only for its event
 //   working-set   one line of metadata per tool the session used: what it read,
 //                 changed, searched and ran -- never content, never output.
 //                 a toggle in the plugin's settings (`working_set`), or
@@ -65,7 +71,9 @@ import { trace } from "../src/lifecycle/subscribers/trace.mjs";
 import { improvement } from "../src/lifecycle/subscribers/improvement.mjs";
 import { machineContext } from "../src/store/context.mjs";
 import { within } from "../src/project/boundary.mjs";
-import { documented, headerOf } from "../src/trace/commands.mjs";
+import { documented, headerOf, operations, orbitCommands } from "../src/trace/commands.mjs";
+import { keptStatus } from "../src/context/status.mjs";
+import { everyResource, summarize } from "../src/resources/registry.mjs";
 import { createEmitter } from "../src/trace/emit.mjs";
 import { traceLog } from "../src/trace/log.mjs";
 import { stateRooms } from "../src/store/control.mjs";
@@ -94,16 +102,85 @@ async function main() {
   const input = stdin();
   const host = await resolveHookHost(input, process.argv);
   ENV = hostEnvironment(process.env, host);
-  return handle(host, input);
+  const event = quietly(() => lifecycleEvent(host, input, process.argv));
+  return handle(host, input, event, await followed(event));
 }
 
-function handle(host, input) {
-  const event = quietly(() => lifecycleEvent(host, input, process.argv));
+function handle(host, input, event, extras) {
   if (event?.protocol === 2 && event.session) ENV = { ...ENV, ORBIT_SESSION: event.session };
   quietly(() => observedHost(event));
-  emit(quietly(() => dispatch(event, world(host, input, event), SUBSCRIBERS)) ?? fallback(host, input, event));
+  emit(quietly(() => dispatch(event, world(host, input, event, extras), SUBSCRIBERS)) ?? fallback(host, input, event));
   process.exit(0);
 }
+
+// ---- follow-through (0.5.0, B22 M3, ADR 0050) ----------------------------------------------------------------------
+//
+// What the session-start digest and the failure-recovery row need beyond what every hook binds, loaded only for the
+// event that asks, so a tool call's hook pays nothing for them: a KNOWN checkout's session start (the registry, composed
+// by cli/resources-here.mjs exactly as the prompt router composes it, and this session's owners) and the failure of one
+// of this plugin's own commands (the owners, cli/governed.mjs). Anything that fails is nothing.
+const FOLLOWED = { "session-start": startExtras, "post-tool-failure": failureExtras };
+
+async function followed(event) {
+  try { return (await FOLLOWED[event?.event]?.(event)) ?? null; }
+  catch { return null; }
+}
+
+async function startExtras(event) {
+  const project = seated(event?.cwd);
+  if (!project) return null;
+  const [here, governed, capabilities] = await Promise.all([import("./resources-here.mjs"), import("./governed.mjs"), import("../src/extensions/capabilities.mjs")]);
+  return { here, governed, project, caps: routing() ? await capabilities.projectCapabilities(project, ENV) : [] };
+}
+
+async function failureExtras(event) {
+  if (!orbitRan(event)) return null;
+  return { governed: await import("./governed.mjs") };
+}
+
+// A known checkout whose test data is in place -- a seat, a committed ui-tests/, a directory named on purpose that
+// exists. A repository with no ui-tests gets nothing at all at its start, the digest included, as the recall never did.
+const seated = (cwd) => ((project) => (project && existsSync(project.dataRoot) ? project : null))(located(cwd));
+
+const routing = () => switchOf(ENV, "PROMPT_ROUTER", "prompt_router", true);
+
+// A command line that ran one of this plugin's own commands, recognised the way the trail recognises one.
+const orbitRan = (event) => event?.tool?.kind === "command" && orbitCommands(event.command, (rel, line) => shipped(rel, line, event.cwd)).length > 0;
+
+const governedHere = (x, event) => x.governed.governedOf({ env: ENV, cwd: event?.cwd, session: event?.session });
+
+// The session's digest: the capability line's facts while the prompt router is on -- what it says is the router's
+// registry, said once -- and, on a session that picks up a conversation, the owner of its open work.
+function digestOf(x, event) {
+  if (!x?.here) return null;
+  return { capabilities: routing() ? quietly(() => capabilitiesOf(x, event)) : null, owner: event?.resumed === true ? quietly(() => governedHere(x, event).owner()) : null };
+}
+
+function capabilitiesOf(x, event) {
+  const rooms = stateRooms(storeBase(ENV));
+  const automation = quietly(() => x.here.automationValues(rooms, x.project.storeRoot));
+  const effective = x.here.resourcesHere({ pluginRoot: PLUGIN_ROOT, rooms, env: ENV, plugin: engineName(), protocol: event?.protocol, caps: x.caps, storeRoot: x.project.storeRoot, automation });
+  return { summary: summarize(effective), off: switchedOff(effective), status: statusHere(event?.cwd) };
+}
+
+// What a person switched off: a component's switch in the plugin's settings, a resource disabled in Orbit Control.
+const OFF = ["switched-off", "disabled"];
+
+const switchedOff = (effective) => everyResource(effective).filter((r) => OFF.includes(r.state)).map((r) => r.id);
+
+// The project's STATUS word off what is KEPT (src/context/status.mjs `keptStatus`, the navigator's reading): no
+// section's command is run at a session's start.
+function statusHere(cwd) {
+  const ctx = light(cwd);
+  const arch = createArchitecture(ctx.store.root, ctx.io);
+  const facts = arch.all();
+  return keptStatus({ bound: knownCheckout(ctx.project), architecture: { total: facts.length, stale: facts.filter((f) => f.status === "stale").length, scanned: Boolean(arch.model().model) }, engineering: createEngineering(ctx.store.root, ctx.io).all().length, sessions: sessionsKept(ctx) }).word;
+}
+
+const sessionsKept = (ctx) => ctx.io.list(createWorkingSet(workingSetDir(ctx.project), ctx.io).dir).filter((n) => n.endsWith(".jsonl")).length;
+
+// The owner whose recovery row a failed Orbit command gets: this session's governed work, when it holds one.
+const recoveryOf = (x, event) => (x?.governed ? governedHere(x, event).owner() : null);
 
 function quietly(fn) {
   try {
@@ -127,8 +204,8 @@ function emit(payload) {
 
 // Everything a subscriber may reach, bound lazily: a hook that has nothing to do
 // must not pay for resolving a store it will never touch.
-function world(host, input, event) {
-  const bound = { host, input, env: ENV, plugin: engineName(), project: () => located(event?.cwd), light: () => light(event?.cwd), full: () => learnContext(createContext({}, ENV, event?.cwd ?? process.cwd()), ENV) };
+function world(host, input, event, extras = null) {
+  const bound = { host, input, env: ENV, plugin: engineName(), engine: PLUGIN_ROOT, project: () => located(event?.cwd), light: () => light(event?.cwd), full: () => learnContext(createContext({}, ENV, event?.cwd ?? process.cwd()), ENV), digest: (e) => quietly(() => digestOf(extras, e)), recovery: (e) => quietly(() => recoveryOf(extras, e)) };
   return { ...bound, workingSet: () => sessionWorkingSet(event), finalizer: () => finalizerOf(event?.cwd), drainLater: () => drainLater(event?.cwd), improveLater: () => improveLater(event?.cwd), observing: () => (ENV === process.env ? switchOf(process.env, "ENGINEERING_OBSERVE", "engineering_observe", true) : switchOf(ENV, "ENGINEERING_OBSERVE", "engineering_observe", true)), engineering: () => engineeringOf(event), trace: () => traceOf(event), liveSession: () => liveSessionOf(host), failed: (name, e) => failed(bound, name, e) };
 }
 
@@ -191,8 +268,11 @@ function shipped(rel, line, cwd) {
   const reached = ROOT_SPELLINGS.some((root) => line.includes(`${root}/${rel}`)) || (cwd && resolve(cwd) === PLUGIN_ROOT);
   const file = join(PLUGIN_ROOT, rel);
   if (!reached || !existsSync(file)) return null;
-  return documented(headerOf(readFileSync(file, "utf8")), basename(rel, ".mjs"));
+  return commandWords(headerOf(readFileSync(file, "utf8")), basename(rel, ".mjs"));
 }
+
+// Its documented subcommands, and (0.5.0) the operations its usage documents after one: `goal step`.
+const commandWords = (header, name) => new Set([...documented(header, name), ...operations(header, name)]);
 
 // The engineering store and source tree, bound the way cli/engineering.mjs
 // binds them -- including the gates, handed in as data from architecture.

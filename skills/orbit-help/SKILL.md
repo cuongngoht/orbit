@@ -257,6 +257,12 @@ echo '<outcome>'  | node <engine>/cli/automation.mjs settle <task> --json   # on
    asks for one: `node ${CLAUDE_PLUGIN_ROOT}/cli/live.mjs open <task>` starts it beside this session and that one
    closes itself when the task ends.
 
+**A held turn.** On Claude Code, when you stop while this session's workflow is still running with a step ready, the
+turn may be held open (at most twice per prompt): the reason names the ready step and `automation.mjs context <task>`.
+Take that step the usual way -- decide it, run it, settle it -- or, if there is a reason not to go on (the person asked
+you to wait, a step needs something only they can give), say it in one sentence and stop. A hold never approves,
+resumes or overrides anything, and a person's pause, cancel or stop is never held past.
+
 **Never**: settle a step with a success you did not read from the engine; send `outcome`, `verdict`,
 `approved`, `stage` or any word the engine derives (it is refused by name); approve, resume or pass
 `--human`; pass `--entry=workflow` to `live ensure` (that is a workflow's own call, which never brings back a

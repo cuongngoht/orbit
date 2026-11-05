@@ -283,10 +283,17 @@ test("when the relevant section could not be composed, the text says what stoppe
 
 // ---- the boundary: src/context/ is data ----------------------------------------------------------------------------
 
+// Every specifier a module can name -- an import or a re-export over any number of lines, either quote, a side-effect
+// import -- with comments left out, and no import at run time at all: a guard that reads only one-line imports would let
+// a multi-line one reach an owner unseen.
+const specifiersOf = (text) => ((code) => [...code.matchAll(/\bfrom\s*["']([^"']+)["']|\bimport\s*["']([^"']+)["']/g)].map((m) => m[1] ?? m[2]))(text.replace(/^\s*\/\/.*$/gm, ""));
+
 test("src/context imports only leaves: no owner is reached from here -- the composition root hands everything in", () => {
   const dir = new URL("../src/context/", import.meta.url);
   for (const file of readdirSync(dir).filter((f) => f.endsWith(".mjs"))) {
-    const imports = [...readFileSync(new URL(file, dir), "utf8").matchAll(/^import .* from "([^"]+)";$/gm)].map((m) => m[1]);
-    for (const spec of imports) assert.match(spec, /^(\.\/[a-z-]+\.mjs|\.\.\/(tokens|printable|scrub|errors)\.mjs)$/, `src/context/${file} imports ${spec}`);
+    const text = readFileSync(new URL(file, dir), "utf8");
+    for (const spec of specifiersOf(text)) assert.match(spec, /^(\.\/[a-z-]+\.mjs|\.\.\/(tokens|printable|scrub|errors)\.mjs)$/, `src/context/${file} imports ${spec}`);
+    assert.doesNotMatch(text.replace(/^\s*\/\/.*$/gm, ""), /\bimport\s*\(/, `src/context/${file} imports nothing at run time`);
   }
+  assert.deepEqual(specifiersOf('import {\n  a,\n} from "../architecture/store.mjs";\nimport \'./x.mjs\';\nexport { b } from "../work/store.mjs";\n// from "../not/code.mjs"\n'), ["../architecture/store.mjs", "./x.mjs", "../work/store.mjs"], "what the guard reads: every specifier, however it is written");
 });

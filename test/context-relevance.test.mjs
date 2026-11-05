@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import { CLASSES, LISTING_LIMIT, RELEVANCE_LIMIT, basisOf, freshened, named, relevanceLines, relevanceOf, weightOf } from "../src/context/relevance.mjs";
-import { MAX_REFS, envelopeOf, symbolPattern, symbolsOf, treeOf, verifiedRefs } from "../src/context/refs.mjs";
+import { MAX_REFS, SEARCH_BUDGET_MS, envelopeOf, symbolHits, symbolPattern, symbolsOf, symbolsPattern, treeOf, verifiedRefs } from "../src/context/refs.mjs";
 import { identifierTokens } from "../src/tokens.mjs";
 
 const TRACKED = [
@@ -107,6 +107,40 @@ test("one search per symbol, as a whole word git and JavaScript read alike", () 
   assert.equal(word.test("const a$b = 1"), true);
   assert.equal(word.test("const xa$b = 1"), false);
   assert.equal(word.test("a$bc()"), false);
+});
+
+// The bound (0.5.0 review): forty proposed symbols were forty searches of the whole index -- eight seconds on this
+// repository, and up to forty times git's own deadline on a large one, past the context's budget. ONE search answers
+// them all, each line claimed by the symbol it holds as a whole word; only a search that could not run at all is asked
+// again a symbol at a time, and only until SEARCH_BUDGET_MS is spent -- a symbol never searched is UNSEARCHED, never
+// absent.
+const LINES = [{ path: "src/orders/createOrder.mjs", line: 3, text: "export function createOrder(order) {" }, { path: "src/db/pool.mjs", line: 1, text: "export const pool = { a$b: 1 };" }, { path: "src/report/summary.mjs", line: 2, text: "const createOrderLines = [];" }];
+
+const grep = (asked, answer = (pattern) => LINES.filter((l) => new RegExp(pattern).test(l.text))) => (pattern) => (asked.push(pattern), answer(pattern));
+
+test("every proposed symbol is answered by ONE search of the index, each hit claimed by the symbol it holds as a whole word", () => {
+  const refs = ["createOrder", "pool", "a$b", "createOrder", "nowhere"].map((ref) => ({ kind: "symbol", ref }));
+  const asked = [];
+  const hits = symbolHits(refs, grep(asked), () => 0);
+  assert.equal(asked.length, 1, "one search, however many symbols");
+  assert.equal(new RegExp(symbolsPattern(["createOrder", "a$b"])).test("x = a$b"), true, "the one pattern is read alike by git and JavaScript");
+  const { held, refused } = verifiedRefs(refs, { ...tree, hits, maxFiles: 1000 });
+  assert.deepEqual(held.map((h) => [h.ref, h.where.map((at) => at.path)]), [["createOrder", ["src/orders/createOrder.mjs"]], ["pool", ["src/db/pool.mjs"]], ["a$b", ["src/db/pool.mjs"]]], "each where it is a whole word, and nowhere it is part of a longer name");
+  assert.deepEqual(refused.map((r) => [r.ref, r.why]), [["nowhere", "no tracked file holds that identifier as a whole word"]]);
+  assert.deepEqual(symbolHits([{ kind: "file", ref: "src/db/pool.mjs" }], grep(asked), () => 0), {}, "no symbol, no search");
+  assert.equal(asked.length, 1);
+});
+
+test("a search that could not run is asked again one symbol at a time, within SEARCH_BUDGET_MS -- and one never searched is unsearched, never absent", () => {
+  const refs = ["createOrder", "pool", "nowhere"].map((ref) => ({ kind: "symbol", ref }));
+  const asked = [];
+  let now = 0;
+  const slow = grep(asked, (pattern) => (asked.length === 1 ? null : ((now += SEARCH_BUDGET_MS / 2 + 1), LINES.filter((l) => new RegExp(pattern).test(l.text)))));
+  const hits = symbolHits(refs, slow, () => now);
+  assert.equal(asked.length, 3, "the one search, then each symbol until the budget is spent");
+  const { held, refused } = verifiedRefs(refs, { ...tree, hits, maxFiles: 1000 });
+  assert.deepEqual(held.map((h) => h.ref), ["createOrder", "pool"]);
+  assert.deepEqual(refused.map((r) => [r.ref, r.why]), [["nowhere", "the tracked tree could not be searched for it here"]]);
 });
 
 // ---- each class, from its own evidence ----------------------------------------------------------------------------

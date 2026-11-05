@@ -4,7 +4,7 @@
 // src/context/sufficiency.mjs whether that is enough -- and none of the three imports an owner.
 //
 //   the tree        the git-only source port over the project's roots (src/architecture/context.mjs `scanRoots`):
-//                   ONE listing, ONE identifier search per proposed symbol, ONE fingerprint call for freshness
+//                   ONE listing, ONE identifier search for every proposed symbol, ONE fingerprint call for freshness
 //   architecture    every fact the store keeps -- modules, boundaries, the system graph's nodes and relations,
 //                   capabilities, gates -- read after the ARCHITECTURE section has ensured them
 //   intelligence    the integration facts
@@ -23,7 +23,7 @@ import { withStoredConfig } from "../src/architecture/source.mjs";
 import { createArchitecture } from "../src/architecture/store.mjs";
 import { capabilityTokens, unanswered } from "../src/architecture/tokens.mjs";
 import { basisOf, freshened, relevanceOf } from "../src/context/relevance.mjs";
-import { symbolPattern, symbolsOf, treeOf, verifiedRefs } from "../src/context/refs.mjs";
+import { symbolHits, treeOf, verifiedRefs } from "../src/context/refs.mjs";
 import { sufficiencyOf } from "../src/context/sufficiency.mjs";
 import { watched as engineeringWatched } from "../src/engineering/model.mjs";
 import { recall } from "../src/engineering/recall.mjs";
@@ -68,7 +68,8 @@ const rooms = (b) => ({ arch: createArchitecture(b.root, b.io), intel: createInt
 
 // ---- the tree, and what the host proposed ---------------------------------------------------------------------------
 
-const hitsOf = (b, refs) => Object.fromEntries(symbolsOf(refs).map((name) => [name, quietly(() => b.source.search(symbolPattern(name)))]));
+// ONE search of the index for every proposed symbol (src/context/refs.mjs `symbolHits`); a search that throws could not run.
+const hitsOf = (b, refs) => symbolHits(refs, (pattern) => quietly(() => b.source.search(pattern)), Date.now);
 
 function treeAndRefs(b) {
   const tree = treeOf(quietly(() => b.source.files()));

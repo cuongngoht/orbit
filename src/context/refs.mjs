@@ -5,13 +5,13 @@
 //
 //   { "task": "…", "refs": [{ "kind": "file" | "symbol", "ref": "…", "why": "…" }] }
 //
-// Pure: what the tree answered is handed in (`treeOf` over the git-only source port's listing, and the answer of one
-// identifier search per symbol), and every reference comes back HELD -- with where the tree holds it -- or REFUSED BY
-// NAME, with the reason:
+// Pure: what the tree answered is handed in (`treeOf` over the git-only source port's listing, and `symbolHits`: ONE
+// identifier search of the index for every proposed symbol, asked through the search the composition root hands in),
+// and every reference comes back HELD -- with where the tree holds it -- or REFUSED BY NAME, with the reason:
 //
 //   file     held when the tracked listing names it exactly. A directory is not a file, and is refused saying so
-//   symbol   ONE identifier, held when the search of the tracked index (`symbolPattern`) finds it as a whole word.
-//            Its answer is read for at most `maxFiles` files (MAX_EVIDENCE_FILES, handed in by the composition root),
+//   symbol   ONE identifier, held when a line of the tracked index has it as a whole word (`symbolPattern`). Its
+//            answer is read for at most `maxFiles` files (MAX_EVIDENCE_FILES, handed in by the composition root),
 //            and the first WHERE_LIMIT of them are where it is held
 //
 // A reference the tree does not hold is never listed: Orbit never invents a file, a symbol or a relationship, and a
@@ -98,9 +98,30 @@ function heldFile(r, tree) {
   return why ? { refused: refusal(r, why) } : { held: { kind: "file", ref: path, where: [{ path }] } };
 }
 
-// ONE search of the tracked index per symbol, as an extended regular expression git and JavaScript read alike: the
-// identifier as a whole word. The identifier was checked first, so `$` is the only character that needs escaping.
-export const symbolPattern = (name) => `(^|[^A-Za-z0-9_$])${String(name).replace(/\$/g, "\\$")}([^A-Za-z0-9_$]|$)`;
+// An identifier as a whole word, as an extended regular expression git and JavaScript read alike. The identifier was
+// checked first, so `$` is the only character that needs escaping.
+const escaped = (name) => String(name).replace(/\$/g, "\\$");
+
+export const symbolPattern = (name) => `(^|[^A-Za-z0-9_$])${escaped(name)}([^A-Za-z0-9_$]|$)`;
+
+// Every identifier at once: ONE search of the whole index, whose every line `located` then tests again for the one
+// symbol it is asked about.
+export const symbolsPattern = (names) => `(^|[^A-Za-z0-9_$])(${names.map(escaped).join("|")})([^A-Za-z0-9_$]|$)`;
+
+// How long a search that could not answer every symbol at once may be followed by one search per symbol.
+export const SEARCH_BUDGET_MS = 30_000;
+
+const oneByOne = (names, search, clock, until) => Object.fromEntries(names.map((name) => [name, clock() < until ? search(symbolPattern(name)) : null]));
+
+// -> { <symbol>: the hits that answered it | null }   search: (pattern) => hits | null, never throwing; clock: () => ms.
+// ONE search answers every proposed symbol. Only when it could not run at all -- more lines than the port reads, or
+// slower than git's deadline -- is each symbol asked on its own, until SEARCH_BUDGET_MS is spent: one asked by neither
+// is null, which `verifiedRefs` refuses as unsearched, never as absent.
+export function symbolHits(refs, search, clock) {
+  const names = symbolsOf(refs);
+  const all = names.length ? search(symbolsPattern(names)) : null;
+  return all ? Object.fromEntries(names.map((name) => [name, all])) : oneByOne(names, search, clock, clock() + SEARCH_BUDGET_MS);
+}
 
 const firstPerFile = (hits) => ((seen) => hits.filter((h) => !seen.has(h.path) && seen.add(h.path)))(new Set());
 

@@ -257,6 +257,30 @@ test("the section a terminal reads is held to its line bound, says what it left 
   assert.equal(lines.some((l) => l.includes("\u001b")), false, "a name from a host reaches a terminal printable");
 });
 
+// A refusal's REASON can quote what the host sent -- a field name it made up -- and both doors print it: the JSON, and
+// the RELEVANT section a terminal reads. The name is quoted bounded and scrubbed, and the line is printable, as the
+// reference's own name always was (0.5.0 review).
+test("a refusal's reason reaches a terminal printable, and a field name the host made up is quoted bounded, with nothing that looks like a secret", () => {
+  const token = "ghp_0123456789abcdefghijklmnopqrstuvwxyz";
+  const secret = `token=${token}`;
+  const sent = [{ kind: "file", ref: "README.md", "x\u001b[2Jy": 1 }, { kind: "file", ref: "package.json", [secret]: 1 }, { kind: "file", ref: "compose.yaml", ["k".repeat(5000)]: 1 }];
+  const { refused } = verifiedRefs(sent, tree);
+  assert.equal(refused.length, 3);
+  assert.equal(refused.some((r) => r.why.includes(token)), false, "a key shaped like a secret is never echoed back");
+  assert.ok(refused[2].why.length < 200, "a field name is quoted bounded");
+  const lines = relevanceLines([], { total: 0, byClass: {}, refused }, 24);
+  assert.equal(lines.some((l) => l.includes("\u001b")), false, "a reason reaches a terminal printable");
+  assert.match(envelopeOf(JSON.stringify({ [secret]: 1 })).problem, /unknown field/);
+  assert.equal(envelopeOf(JSON.stringify({ [secret]: 1 })).problem.includes(token), false, "nor does the envelope's own refusal echo it");
+});
+
+// What stopped the section is said where a person reads it, not only in `--json`'s `relevance.problem`.
+test("when the relevant section could not be composed, the text says what stopped it", () => {
+  const lines = relevanceLines([], { total: 0, byClass: {}, refused: [], problem: "the relevant section could not be composed here: no\u001b[2J store" }, 24);
+  assert.ok(lines.some((l) => /could not be composed here: no.*store/.test(l)), lines.join("\n"));
+  assert.equal(lines.some((l) => l.includes("\u001b")), false);
+});
+
 // ---- the boundary: src/context/ is data ----------------------------------------------------------------------------
 
 test("src/context imports only leaves: no owner is reached from here -- the composition root hands everything in", () => {

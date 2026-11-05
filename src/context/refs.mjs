@@ -39,10 +39,15 @@ const SHAPE = '{ "task": "…", "refs": [{ "kind": "file|symbol", "ref": "…", 
 
 const unknownKey = (raw) => Object.keys(raw).find((k) => !ENVELOPE_FIELDS.includes(k));
 
+// A field name the host made up, as a refusal quotes it back: bounded, and nothing that looks like a secret.
+export const FIELD_LIMIT = 64;
+
+const quoted = (key) => scrub(String(key)).slice(0, FIELD_LIMIT);
+
 // What is wrong with the ENVELOPE refuses the whole call; what is wrong with one reference refuses that reference.
 const ENVELOPE = [
   { when: (raw) => !isObject(raw), says: () => `--with-refs reads one JSON object on stdin: ${SHAPE}` },
-  { when: (raw) => unknownKey(raw) !== undefined, says: (raw) => `--with-refs: unknown field "${unknownKey(raw)}" — the envelope holds task and refs` },
+  { when: (raw) => unknownKey(raw) !== undefined, says: (raw) => `--with-refs: unknown field "${quoted(unknownKey(raw))}" — the envelope holds task and refs` },
   { when: (raw) => raw.task !== undefined && typeof raw.task !== "string", says: () => "--with-refs: task is the task, in one sentence" },
   { when: (raw) => raw.refs !== undefined && !Array.isArray(raw.refs), says: () => `--with-refs: refs is a list: ${SHAPE}` },
   { when: (raw) => (raw.refs ?? []).length > MAX_REFS, says: () => `--with-refs: at most ${MAX_REFS} references — propose the ones the task touches most` },
@@ -66,7 +71,7 @@ const safePath = (ref) => !/^(\/|[A-Za-z]:\/)/.test(normalized(ref)) && !normali
 
 const RULES = [
   { when: (r) => !isObject(r), why: () => "a reference is an object: { kind, ref, why }" },
-  { when: (r) => firstUnknown(r) !== undefined, why: (r) => `unknown field "${firstUnknown(r)}" — a reference holds kind, ref and why` },
+  { when: (r) => firstUnknown(r) !== undefined, why: (r) => `unknown field "${quoted(firstUnknown(r))}" — a reference holds kind, ref and why` },
   { when: (r) => !REF_KINDS.includes(r.kind), why: () => `kind is one of ${REF_KINDS.join(", ")}` },
   { when: (r) => typeof r.ref !== "string" || !r.ref.trim() || r.ref.length > REF_LIMIT, why: () => `ref is a name of at most ${REF_LIMIT} characters` },
   { when: (r) => r.why !== undefined && (typeof r.why !== "string" || r.why.length > WHY_LIMIT || scrub(r.why) !== r.why), why: () => `why is one sentence of at most ${WHY_LIMIT} characters, and nothing that looks like a secret` },

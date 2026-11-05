@@ -292,14 +292,21 @@ const itemLine = (item) => `  ${item.class.padEnd(12)} ${item.kind.padEnd(9)} ${
 
 const header = (summary) => `${summary.total} item(s), by class then evidence: ${CLASSES.map((cls) => `${summary.byClass[cls] ?? 0} ${cls}`).join(" · ")}`;
 
-const refusedLines = (refused) => [...refused.slice(0, REFUSED_LINES).map((r) => `  refused  ${r.kind} ${clipped(printable(r.ref), REF_WIDTH)} -- ${r.why}`), ...(refused.length > REFUSED_LINES ? [`  … ${refused.length - REFUSED_LINES} more reference(s) refused -- \`--json\` names each`] : [])];
+// A reason can quote what the host sent, so it reaches a terminal printable, as the reference's own name does.
+const refusedLines = (refused) => [...refused.slice(0, REFUSED_LINES).map((r) => `  refused  ${r.kind} ${clipped(printable(r.ref), REF_WIDTH)} -- ${printable(r.why)}`), ...(refused.length > REFUSED_LINES ? [`  … ${refused.length - REFUSED_LINES} more reference(s) refused -- \`--json\` names each`] : [])];
+
+// What stopped the section from being composed at all, said where a person reads it and not only in `--json`.
+const PROBLEM_WIDTH = 240;
+
+const problemLines = (summary) => (summary.problem ? [`  ${clipped(printable(summary.problem), PROBLEM_WIDTH)}`] : []);
 
 const moreLine = (hidden) => (hidden > 0 ? [`  … ${hidden} more -- \`--json\` lists up to ${RELEVANCE_LIMIT} and counts the rest`] : []);
 
-// One line per item, held to `limit` lines in all with what is left out counted, and every refused reference named.
+// One line per item, held to `limit` lines in all with what is left out counted, what stopped it said, and every refused
+// reference named.
 export function relevanceLines(relevant, summary, limit) {
-  const refusals = refusedLines(summary.refused ?? []);
-  const room = Math.max(0, limit - 2 - refusals.length);
+  const notes = [...problemLines(summary), ...refusedLines(summary.refused ?? [])];
+  const room = Math.max(0, limit - 2 - notes.length);
   const shown = relevant.slice(0, room);
-  return [header(summary), ...shown.map(itemLine), ...moreLine(summary.total - shown.length), ...refusals];
+  return [header(summary), ...shown.map(itemLine), ...moreLine(summary.total - shown.length), ...notes];
 }

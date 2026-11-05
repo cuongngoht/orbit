@@ -58,10 +58,11 @@ const staleTargets = (f) => f.stale.map((s) => RERUN[s.owner]?.(s) ?? target(s.o
 
 const discoverTargets = (f) => [target("host", "references", "context --with-refs"), ...f.unanswered.map((t) => target("architecture", t, `architecture ensure --capability=${t}`))];
 
-// How a person settles each kind of question that is already open -- relayed, never answered here.
+// How a person settles each kind of question that is already open -- relayed, never answered here. Each command is
+// named as every target's `run` is: the CLI that runs it (cli/<first word>.mjs), then its arguments.
 const ANSWER = {
   requirements: (q) => `a person answers it: requirements answer ${q.root} --question=${q.id} --says="…" --human`,
-  goal: (q) => `a person answers it; then the goal is analyzed and planned again: goal analyze ${q.goal} --stdin, goal plan ${q.goal}`,
+  goal: (q) => `a person answers it; then the goal is analyzed and planned again: orbit goal analyze ${q.goal} --stdin, then orbit goal plan ${q.goal}`,
 };
 
 const clip = (text) => String(text ?? "").slice(0, QUOTE_LIMIT);

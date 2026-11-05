@@ -41,7 +41,7 @@ test("ASK only for a blocking unknown no source can settle -- a question already
   assert.match(s.because, /^2 question\(s\) about this task's own work are open, and only a person answers them: What happens/);
   assert.deepEqual(s.question, { ...QUESTION, answer: 'a person answers it: requirements answer req-0123456789ab --question=rq-0123456789ab --says="…" --human' });
   const goal = sufficiencyOf(grounded({ blocking: [{ flow: "goal", goal: "goal-0123456789ab", asks: "which environment the release is checked in", blocks: ["verify"] }] }));
-  assert.match(goal.question.answer, /goal analyze goal-0123456789ab --stdin, goal plan goal-0123456789ab/);
+  assert.equal(goal.question.answer, "a person answers it; then the goal is analyzed and planned again: orbit goal analyze goal-0123456789ab --stdin, then orbit goal plan goal-0123456789ab", "each command named by the CLI that runs it (cli/orbit.mjs), as every target's is");
   assert.deepEqual(goal.question.blocks, ["verify"]);
   for (const gap of [{ classes: classes({ direct: 0 }) }, { tree: false }, { stale: [{ ref: "x", owner: "architecture", id: "a" }] }, { graph: false, classes: classes({ verification: 0 }), understood: "NOT_DISCOVERED" }, { refused: 5 }]) {
     assert.notEqual(sufficiencyOf(grounded(gap)).word, "ASK", `a gap a read can fill is never a question: ${JSON.stringify(gap)}`);

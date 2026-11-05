@@ -10,7 +10,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import { CLASSES, FRESHNESS, ITEM_KINDS, RELEVANCE_LIMIT } from "../src/context/relevance.mjs";
 import { createRequirements } from "../src/requirements/store.mjs";
 import { rootId, sourceRecord, workitemText } from "../src/sources/model.mjs";
@@ -20,7 +20,7 @@ import { sealed } from "./home.mjs";
 
 const ENGINE = fileURLToPath(new URL("..", import.meta.url));
 const TEMP = realpathSync.native(mkdtempSync(join(tmpdir(), "orbit-context-grounding-")));
-test.after(() => rmSync(TEMP, { recursive: true, force: true }));
+after(() => rmSync(TEMP, { recursive: true, force: true }));
 
 const TASK = "make createOrder refuse an empty order";
 

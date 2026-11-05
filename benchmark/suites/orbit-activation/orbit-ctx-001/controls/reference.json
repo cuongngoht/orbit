@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "id": "reference",
+  "about": "the reference host of ORBIT-CTX-001: what the truth accepts",
+  "steps": [
+    {
+      "do": "read",
+      "path": "src/worker.mjs"
+    },
+    {
+      "do": "read",
+      "path": "src/store.mjs"
+    },
+    {
+      "do": "read",
+      "path": "test/dedupe.test.mjs"
+    }
+  ]
+}

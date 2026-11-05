@@ -1,0 +1,106 @@
+{
+  "schema": 1,
+  "kind": "activation",
+  "id": "ORBIT-ACT-001",
+  "version": "1.0.0",
+  "title": "Where an integration belongs is asked of Orbit's architecture memory",
+  "goal": "a question about where a new integration belongs, and what already handles payments, is answered through Orbit's architecture skill, which reads the repository once and keeps what it learned -- not a coordinated workflow, not an engineering task",
+  "measures": {
+    "kind": "activation",
+    "capability": "architecture",
+    "tier": "selection"
+  },
+  "request": "request.md",
+  "language": "en",
+  "fixture": {
+    "id": "orders"
+  },
+  "withheld": [
+    "docs/backlog/0.5.0-activation-benchmark.md"
+  ],
+  "arms": [
+    "none",
+    "baseline",
+    "release"
+  ],
+  "acceptance": {
+    "owner": "verifier",
+    "truth": "verifier/truth.json"
+  },
+  "limits": {
+    "rounds": 1,
+    "minutes": 45,
+    "usd": 3,
+    "maxTurns": 25,
+    "runner": {
+      "cpus": 2,
+      "memoryMb": 4096,
+      "pids": 2048,
+      "minutes": 25,
+      "outputMb": 16
+    }
+  },
+  "artifacts": [
+    "manifest",
+    "seed",
+    "host-stream",
+    "inspection",
+    "judged",
+    "report"
+  ],
+  "cleanup": {
+    "containers": "run-label",
+    "networks": "run-label",
+    "scratch": "after-run"
+  },
+  "variants": {
+    "real": {}
+  },
+  "controls": [
+    {
+      "id": "reference",
+      "host": "reference",
+      "expect": "PASS",
+      "file": "controls/reference.json"
+    },
+    {
+      "id": "idle",
+      "host": "idle",
+      "expect": "FAIL",
+      "class": "HOST_DIVERGED"
+    },
+    {
+      "id": "over-eager",
+      "host": "over-eager",
+      "expect": "FAIL",
+      "class": "HOST_DIVERGED"
+    },
+    {
+      "id": "forging",
+      "host": "forging",
+      "expect": "FAIL",
+      "class": "INSUFFICIENT_EVIDENCE"
+    },
+    {
+      "id": "half",
+      "host": "half",
+      "expect": "FAIL",
+      "class": "ORBIT_SOURCE_DEFECT",
+      "file": "controls/half.json"
+    },
+    {
+      "id": "escalating",
+      "host": "escalating",
+      "expect": "FAIL",
+      "class": "HOST_DIVERGED",
+      "file": "controls/escalating.json"
+    },
+    {
+      "id": "forged-trail",
+      "host": "forging",
+      "expect": "FAIL",
+      "class": "INSUFFICIENT_EVIDENCE",
+      "file": "controls/forged-trail.json"
+    }
+  ]
+}

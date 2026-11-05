@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "activate": null,
+  "strategy": [],
+  "how": [],
+  "selection": [
+    {
+      "skills": {
+        "require": [],
+        "allow": [
+          "*"
+        ]
+      },
+      "agents": {
+        "require": [],
+        "allow": [
+          "*"
+        ],
+        "max": 2
+      }
+    }
+  ],
+  "forbid": {
+    "skills": [
+      "satellite"
+    ],
+    "agents": [],
+    "commands": []
+  },
+  "readOnly": {},
+  "records": [],
+  "relevant": null,
+  "grounding": {
+    "rows": [
+      {
+        "id": "ambiguity",
+        "marker": "Đơn hàng lớn nên được bỏ tạm giữ nhanh chóng",
+        "kinds": [
+          "unknown",
+          "assumption"
+        ]
+      },
+      {
+        "id": "constraint",
+        "marker": "các route API hiện có giữ nguyên hợp đồng",
+        "kinds": [
+          "constraint"
+        ]
+      }
+    ],
+    "acceptance": [
+      "Tạm giữ một đơn hàng đang mở trả về 200",
+      "Giao một đơn hàng đang tạm giữ trả về 409",
+      "Bỏ tạm giữ một đơn hàng đang tạm giữ đưa nó về trạng thái mở"
+    ]
+  }
+}

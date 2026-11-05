@@ -5,7 +5,7 @@
 // the controls that prove the verifier (controls/). Adding a case is adding a directory and one line in suite.json;
 // nothing here names a case, a module of the engine or a check.
 //
-// A case is one of four KINDS. A `source` case holds Orbit's own source to independent checks, and may hand a failure
+// A case is one of five KINDS. A `source` case holds Orbit's own source to independent checks, and may hand a failure
 // to Orbit to repair through its engineering loop. A `qa` case asks whether Orbit's autonomous QA finds the defect
 // planted in an application: the application, the variant that plants it and the ground truth are the case's. An
 // `engineering` case hands Orbit a GOAL over a frozen fixture repository (benchmark/fixtures/<fixture>/, its `real`
@@ -14,13 +14,18 @@
 // must be refused for want of a rule (`measures.expects`). A `sessions` case (0.5.0, ADR 0054) is a QA case worked in
 // TWO sessions over one checkout and the stores the first one left: the first learns, the second is judged as a QA
 // case's one round is -- with memory on, or with Orbit's memory switched off (`sessions.memory`, MEMORY_ARMS) -- and a
-// case may plant a POISON in the host's memory before the second (`poison`).
+// case may plant a POISON in the host's memory before the second (`poison`). An `activation` case (0.5.0, B22 M4) asks
+// whether the host uses Orbit BY ITSELF: a prompt that names no skill, on arms with and without Orbit, held to a hidden
+// truth of what a careful host does -- and, for an outcome case, the engineering kind's hidden checks on what it
+// delivered.
 //
 //   suitesIn(root) -> [{ id, version, title, dir, cases }]         caseOf(root, id) -> case + { dir, suite }
 //   suiteHolding(root, caseId) -> suite id | null
 //   caseFindings(c, dir) -> [sentence]                             dirDigest(dir) -> sha256 of every file, by path
 //   KINDS · TRUTH_OUTCOMES · QA_HOSTS · SESSION_HOSTS · MEMORY_ARMS · caseDir(id) · ARMS · DEFAULT_BASELINE · armsOf(c)
 //   baselinePluginOf(c) · memoryArmsOf(c)
+//   activationTruthFindings(t) -> [sentence]      activationTruthOf(c) -> truth | null      ACTIVATION_HOSTS · STRATEGIES
+//   COORDINATIONS · TIERS · LANGUAGES · SWITCH_NAME · SELECTION_CAPS · RECORD_READS · NAMES_A_COMPONENT
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { constraintFindings, missingFindings } from "../../../src/constraints.mjs";
@@ -28,6 +33,7 @@ import { Refused } from "../../../src/errors.mjs";
 import { treeDigest, treeDigests, treeFiles } from "../../../src/store/tree.mjs";
 import { realIo } from "../../../src/store/io.mjs";
 import { safeRel } from "./paths.mjs";
+import { FAILURE_CLASSES } from "../source/classify.mjs";
 
 export const SUITES_DIR = join("benchmark", "suites");
 
@@ -59,7 +65,7 @@ export const MEMORY_ARMS = ["on", "off"];
 
 const COMMON_FIELDS = {
   schema: { type: "integer", enum: [1] },
-  kind: { type: "string", enum: ["source", "qa", "engineering", "sessions"] },
+  kind: { type: "string", enum: ["source", "qa", "engineering", "sessions", "activation"] },
   id: { type: "string", pattern: "^[A-Z][A-Z0-9]*(-[A-Z0-9]+)+$", says: { pattern: "id is upper-case words joined by dashes, such as ORBIT-SRC-001" } },
   version: { type: "string", pattern: "^\\d+\\.\\d+\\.\\d+$" },
   title: TEXT,
@@ -276,7 +282,162 @@ export const armsOf = (c) => c.arms ?? ["release"];
 
 export const baselinePluginOf = (c) => c.baselinePlugin ?? c.suite?.baselinePlugin ?? DEFAULT_BASELINE;
 
-export const KINDS = { source: { sections: SOURCE_SECTIONS, cross: SOURCE_CROSS }, qa: { sections: QA_SECTIONS, cross: QA_CROSS }, engineering: { sections: ENGINEERING_SECTIONS, cross: ENGINEERING_CROSS }, sessions: { sections: SESSIONS_SECTIONS, cross: SESSIONS_CROSS } };
+// ---- THE ACTIVATION KIND (0.5.0, B22 M4, the activation benchmark): does the host use Orbit by itself -------------------
+//
+// A prompt that names no skill and no command, in English or Vietnamese, handed to the real Claude Code with Orbit (or,
+// on the `none` arm, without it) over a fixture project, with an optional SEED of the runner's store; what the host did
+// is read off the stream the controller captured and the trail Orbit's hooks wrote, and held to a hidden TRUTH
+// (verifier/truth.json) -- whether to activate, the strategy, the skills and agents a profile accepts, what is forbidden,
+// which agent must stay read-only, and the owners' records that must hold. An OUTCOME case adds the engineering kind's
+// hidden checks (verifier/spec.mjs and probe.mjs) on what the host delivered. A selection case is capped near $3 and 25
+// turns; an outcome case runs within the engineering kind's limits. The harness never reaches a plugin (HARNESS), and
+// what a case WITHHOLDS beside it -- a document of the plugin's own that restates the suite's truths -- is left out of
+// every plugin its host is handed, as a QA case withholds its ground truth.
+export const ACTIVATION_HOSTS = ["idle", "over-eager", "forging", "half", "escalating", "reference"];
+
+export const STRATEGIES = ["NONE", "DIRECT", "COORDINATED", "SATELLITE", "RESUME"];
+
+export const COORDINATIONS = ["automation", "goal"];
+
+export const TIERS = ["selection", "outcome"];
+
+export const LANGUAGES = ["en", "vi"];
+
+// The switches a case may hand the runner, by name and value: a component's own (ORBIT_SKILL_*, ORBIT_AGENT_*) and the
+// prompt router's -- nothing else of the environment.
+export const SWITCH_NAME = /^ORBIT_(SKILL|AGENT)_[A-Z0-9_]{1,60}$|^ORBIT_PROMPT_ROUTER$/;
+
+export const SWITCH_VALUES = ["on", "off"];
+
+// What a selection case may spend: about three dollars and twenty-five turns, judged on what the host did before the cap.
+export const SELECTION_CAPS = { usd: 3, maxTurns: 25 };
+
+// The owners' records a truth may hold the host to, each read back by the inspection (lib/activation/judge.mjs RECORDS).
+export const RECORD_READS = ["tasks", "workflows", "works", "architecture", "plans", "cases", "ledger", "store", "rooms", "router"];
+
+// What a prompt never names: one of Orbit's components, a slash command (one the prompt opens with, or Orbit's own
+// anywhere), a CLI of the plugin or a command line of node. An API path in a pasted specification is none of these.
+export const NAMES_A_COMPONENT = /\borbit-[a-z]|^\s*\/[a-z]|(^|\s)\/orbit\b|\bcli\/[a-z-]+\.mjs\b|\bnode\s+\S+\.mjs\b/i;
+
+const ACTIVATION_FIELDS = { ...COMMON_FIELDS, language: { type: "string", enum: LANGUAGES }, fixture: { type: "object" }, seed: { type: "object" }, switches: { type: "object" }, withheld: LIST, scope: { type: "object" }, checks: { type: "object" }, variants: { type: "object", minProperties: 1 }, ...ARM_FIELDS };
+
+const ACTIVATION_REQUIRED = ["schema", "kind", "id", "version", "title", "goal", "measures", "request", "language", "fixture", "arms", "acceptance", "limits", "artifacts", "cleanup", "variants", "controls"];
+
+const SHARED_CHECKS = ["checks", "checks.gates[]", "checks.agentTests"];
+
+const ACTIVATION_SECTIONS = [
+  { at: "case", of: (c) => [c], fields: ACTIVATION_FIELDS, required: ACTIVATION_REQUIRED },
+  { at: "measures", of: (c) => [c.measures], fields: { kind: { type: "string", enum: ["activation"] }, capability: NAME, tier: { type: "string", enum: TIERS } }, required: ["kind", "capability", "tier"] },
+  { at: "fixture", of: (c) => [c.fixture], fields: { id: NAME }, required: ["id"] },
+  { at: "seed", of: (c) => (c.seed ? [c.seed] : []), fields: { files: REL, script: REL }, required: [] },
+  { at: "acceptance", of: (c) => [c.acceptance], fields: { owner: { type: "string", enum: ["verifier"] }, truth: REL, spec: REL, probe: REL, samples: { type: "integer", minimum: 1, maximum: 512 } }, required: ["owner", "truth"] },
+  { at: "limits", of: (c) => [c.limits], fields: { rounds: { type: "integer", minimum: 1, maximum: 1 }, minutes: { type: "integer", minimum: 5, maximum: 600 }, usd: { type: "number", minimum: 0, maximum: 200 }, maxTurns: { type: "integer", minimum: 1, maximum: 400 }, runner: { type: "object" }, verifier: { type: "object" } }, required: ["rounds", "minutes", "usd", "maxTurns", "runner"] },
+  { at: "limits.runner", of: (c) => [c.limits?.runner], fields: BOX, required: ["cpus", "memoryMb", "pids", "minutes", "outputMb"] },
+  { at: "limits.verifier", of: (c) => (c.limits?.verifier ? [c.limits.verifier] : []), fields: BOX, required: ["cpus", "memoryMb", "pids", "seconds"] },
+  { at: "scope", of: (c) => (c.scope ? [c.scope] : []), fields: { allow: { ...LIST, minItems: 1 }, deny: LIST, imports: LIST, tests: { type: "string", enum: ["guarded", "as-left"] } }, required: ["allow", "deny"] },
+  ...SOURCE_SECTIONS.filter((x) => SHARED_CHECKS.includes(x.at)).map((x) => ({ ...x, of: (c) => (c.checks ? x.of(c) : []) })),
+  { at: "cleanup", of: (c) => [c.cleanup], fields: { containers: LABELLED, networks: LABELLED, scratch: SCRATCH }, required: ["containers", "networks", "scratch"] },
+  { at: "variants.*", of: (c) => Object.values(c.variants ?? {}), fields: { mutations: REL }, required: [] },
+  { at: "controls[]", of: (c) => c.controls ?? [], fields: { id: NAME, host: { type: "string", enum: ACTIVATION_HOSTS }, expect: VERDICT, class: { type: "string", enum: FAILURE_CLASSES }, file: REL }, required: ["id", "host", "expect"] },
+];
+
+// ---- an activation case's hidden truth ------------------------------------------------------------------------------------
+
+const ACTIVATE = { enum: [true, false, null] };
+
+const TRUTH_SHAPE = { schema: { type: "integer", enum: [1] }, activate: ACTIVATE, strategy: LIST, how: LIST, selection: { type: "array", minItems: 1 }, forbid: { type: "object" }, readOnly: { type: "object" }, records: { type: "array" }, relevant: {}, grounding: {} };
+
+const PART = { require: LIST, allow: LIST, max: { type: "integer", minimum: 0, maximum: 20 } };
+
+const RECORD_ROW = { id: NAME, read: { type: "string", enum: RECORD_READS }, expect: { type: "object" }, arms: LIST };
+
+const RELEVANT = { direct: LIST, dependency: LIST, downstream: LIST, verification: LIST };
+
+const FORBID = { skills: LIST, agents: LIST, commands: LIST };
+
+// A component's bare name, or `*` for every one of its kind.
+const COMPONENT = /^(\*|[a-z][a-z0-9-]{0,39})$/;
+
+// What a list holds, entry by entry (src/constraints.mjs holds an entry to its type alone).
+const entriesFindings = (at, list, ok, says) => (Array.isArray(list) ? list.filter((x) => !ok(x)).map((x) => `${at}: ${x} is not ${says}`) : []);
+
+const shapeOf = (at, fields, record, required = Object.keys(fields)) => (isObject(record) ? [...unknownOf({ at, fields }, record), ...missingFindings(required, record, at), ...constraintFindings(fields, record, at)] : [`${at}: must be an object`]);
+
+const namesFindings = (at, part) => [...entriesFindings(`${at}.require`, part?.require, (x) => COMPONENT.test(x) && x !== "*", "a component's bare name"), ...entriesFindings(`${at}.allow`, part?.allow, (x) => COMPONENT.test(x), "a component's bare name, or *")];
+
+const partFindings = (at, part, required) => [...shapeOf(at, PART, part, required), ...namesFindings(at, part)];
+
+const profileFindings = (p, i) => (isObject(p) ? [...unknownOf({ at: `truth.selection[${i}]`, fields: { skills: 1, agents: 1 } }, p), ...missingFindings(["skills", "agents"], p, `truth.selection[${i}]`), ...partFindings(`truth.selection[${i}].skills`, p.skills, ["require", "allow"]), ...partFindings(`truth.selection[${i}].agents`, p.agents, ["require", "allow", "max"])] : [`truth.selection[${i}]: must be an object`]);
+
+const objectOrNull = (at, v) => (v === undefined || v === null || isObject(v) ? [] : [`${at}: must be an object or null`]);
+
+const wordsFindings = (t) => [...entriesFindings("truth.strategy", t.strategy, (x) => STRATEGIES.includes(x), `one of ${STRATEGIES.join(", ")}`), ...entriesFindings("truth.how", t.how, (x) => COORDINATIONS.includes(x), `one of ${COORDINATIONS.join(", ")}`), ...entriesFindings("truth.forbid.skills", t.forbid?.skills, (x) => COMPONENT.test(x), "a skill's bare name, or *"), ...entriesFindings("truth.forbid.agents", t.forbid?.agents, (x) => COMPONENT.test(x), "an agent's bare name, or *"), ...(t.records ?? []).flatMap((r, i) => entriesFindings(`truth.records[${i}].arms`, r?.arms, (x) => ARMS.includes(x), `one of ${ARMS.join(", ")}`)), ...objectOrNull("truth.relevant", t.relevant), ...objectOrNull("truth.grounding", t.grounding)];
+
+const badPattern = (p) => {
+  try { return (new RegExp(p), false); }
+  catch { return true; }
+};
+
+const patternFindings = (at, list) => (Array.isArray(list) ? list.filter((p) => typeof p !== "string" || badPattern(p)).map((p) => `${at}: ${p} is not a pattern this judge can compile`) : [`${at}: must be a list of patterns`]);
+
+const readOnlyFindings = (t) => Object.entries(isObject(t.readOnly) ? t.readOnly : {}).flatMap(([agent, list]) => [...(/^[a-z][a-z0-9-]{0,39}$/.test(agent) ? [] : [`truth.readOnly: ${agent} is not an agent's bare name`]), ...patternFindings(`truth.readOnly.${agent}`, list)]);
+
+const partsFindings = (t) => [...(t.selection ?? []).flatMap(profileFindings), ...(isObject(t.forbid) ? shapeOf("truth.forbid", FORBID, t.forbid) : []), ...patternFindings("truth.forbid.commands", t.forbid?.commands ?? []), ...readOnlyFindings(t), ...(t.records ?? []).flatMap((r, i) => shapeOf(`truth.records[${i}]`, RECORD_ROW, r, ["id", "read", "expect"])), ...(isObject(t.relevant) ? shapeOf("truth.relevant", RELEVANT, t.relevant) : [])];
+
+const truthKeys = ["schema", "activate", "strategy", "how", "selection", "forbid", "readOnly", "records"];
+
+// The truth's own coherence: a truth that says not to activate names no strategy but NONE; one that names a coordinated
+// strategy says how; a record id is used once.
+const COHERENT = [
+  { says: "a truth that says not to activate accepts only the strategy NONE", fails: (t) => t.activate === false && (t.strategy ?? []).some((s) => s !== "NONE") },
+  { says: "a truth that says to activate never accepts the strategy NONE", fails: (t) => t.activate === true && (t.strategy ?? []).includes("NONE") },
+  { says: "a coordinated strategy says how it is coordinated (automation, goal)", fails: (t) => (t.strategy ?? []).includes("COORDINATED") && !(t.how ?? []).length },
+  { says: "a record id is used once", fails: (t) => duplicates((t.records ?? []).map((r) => r?.id)).length > 0 },
+];
+
+export const activationTruthFindings = (t) => (isObject(t) ? [...shapeOf("truth", TRUTH_SHAPE, t, truthKeys), ...partsFindings(t), ...wordsFindings(t), ...COHERENT.filter((r) => r.fails(t)).map((r) => `truth: ${r.says}`)] : ["truth: the truth file must hold one object"]);
+
+// ---- what an activation case must be beyond its fields -------------------------------------------------------------------
+
+const outcomeCase = (c) => c.measures?.tier === "outcome";
+
+const verifierParts = (c) => [c.acceptance?.spec, c.acceptance?.probe, c.acceptance?.samples, c.checks, c.scope, c.limits?.verifier];
+
+const activationFiles = (c) => [c.request, c.acceptance?.truth, c.acceptance?.spec, c.acceptance?.probe, c.seed?.script, ...Object.values(c.variants ?? {}).map((v) => v?.mutations), ...(c.controls ?? []).map((k) => k?.file)];
+
+const missingDir = (dir, rel) => (typeof rel === "string" && (!safeRel(rel) || !existsSync(join(dir, rel))) ? [rel] : []);
+
+const requestText = (c, dir) => (typeof c.request === "string" && safeRel(c.request) && existsSync(join(dir, c.request)) ? readFileSync(join(dir, c.request), "utf8") : "");
+
+const badSwitches = (c) => Object.entries(isObject(c.switches) ? c.switches : {}).filter(([k, v]) => !SWITCH_NAME.test(k) || !SWITCH_VALUES.includes(v)).map(([k, v]) => `${k}=${v}`);
+
+const overCap = (c) => c.measures?.tier === "selection" && (c.limits?.usd > SELECTION_CAPS.usd || c.limits?.maxTurns > SELECTION_CAPS.maxTurns);
+
+const noFixture = (c, dir) => typeof c.fixture?.id === "string" && c.fixture.id !== "none" && !existsSync(join(fixtureDirOf(dir, c.fixture.id), "fixture.json"));
+
+const plantedOnNothing = (c) => c.fixture?.id === "none" && Object.values(c.variants ?? {}).some((v) => v?.mutations);
+
+const ACTIVATION_CROSS = [
+  { fails: (c, dir) => [...missingFiles(dir, activationFiles(c)), ...missingDir(dir, c.seed?.files)], say: (bad) => `names files it does not hold: ${bad.join(", ")}` },
+  { fails: (c, dir) => (missingFiles(dir, [c.acceptance?.truth]).length ? [] : activationTruthFindings(readTruth(dir, c.acceptance.truth))), say: (bad) => bad.join("; ") },
+  { fails: (c) => (isObject(c.variants) && !Object.hasOwn(c.variants, "real") ? ["real"] : []), say: () => "has no `real` variant: the target the prompt is handed must always be measurable" },
+  { fails: (c, dir) => (noFixture(c, dir) ? [c.fixture.id] : []), say: (bad) => `names a fixture benchmark/fixtures/ does not hold: ${bad.join(", ")}` },
+  { fails: (c) => (plantedOnNothing(c) ? ["none"] : []), say: () => "plants a variant on no fixture at all" },
+  { fails: (c) => (outcomeCase(c) && verifierParts(c).some((x) => x === undefined) ? ["outcome"] : []), say: () => "is an outcome case with no spec, probe, samples, checks, scope or verifier limits: its hidden checks are what decide it" },
+  { fails: (c) => (overCap(c) ? [c.limits.usd, c.limits.maxTurns] : []), say: () => `is a selection case past its caps: at most ${SELECTION_CAPS.usd} USD and ${SELECTION_CAPS.maxTurns} turns` },
+  { fails: (c) => badSwitches(c), say: (bad) => `hands the runner a switch it may not: ${bad.join(", ")} (only ORBIT_SKILL_*, ORBIT_AGENT_* and ORBIT_PROMPT_ROUTER, on or off)` },
+  { fails: (c) => duplicates((c.controls ?? []).map((k) => k?.id)), say: (bad) => `control ids used twice: ${bad.join(", ")}` },
+  { fails: (c) => ((c.controls ?? []).some((k) => k?.host === "reference" && k?.expect === "PASS") ? [] : ["reference"]), say: () => "carries no reference control that must PASS: a case nobody can pass proves nothing" },
+  { fails: (c, dir) => (NAMES_A_COMPONENT.test(requestText(c, dir)) ? [c.request] : []), say: () => "has a prompt that names a skill, an agent, a slash command or a command line: the host is never told what to use" },
+  { fails: (c) => duplicates(Array.isArray(c.arms) ? c.arms : []), say: (bad) => `arms named twice: ${bad.join(", ")}` },
+  { fails: (c) => unsafeGlobs(c.scope?.allow), say: (bad) => `scope globs reach outside the repository: ${bad.join(", ")}` },
+  { fails: (c) => unsafeGlobs(c.withheld), say: (bad) => `withheld globs reach outside the repository: ${bad.join(", ")}` },
+];
+
+// A case's truth, read from its own (frozen) directory: null when it cannot be read.
+export const activationTruthOf = (c) => readTruth(c.dir, c.acceptance.truth);
+
+export const KINDS = { source: { sections: SOURCE_SECTIONS, cross: SOURCE_CROSS }, qa: { sections: QA_SECTIONS, cross: QA_CROSS }, engineering: { sections: ENGINEERING_SECTIONS, cross: ENGINEERING_CROSS }, sessions: { sections: SESSIONS_SECTIONS, cross: SESSIONS_CROSS }, activation: { sections: ACTIVATION_SECTIONS, cross: ACTIVATION_CROSS } };
 
 const crossFindings = (kind, c, dir) => kind.cross.map((r) => [r, r.fails(c, dir)]).filter(([, bad]) => bad.length).map(([r, bad]) => `case: ${r.say(bad)}`);
 

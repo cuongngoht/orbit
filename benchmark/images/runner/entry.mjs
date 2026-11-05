@@ -47,6 +47,15 @@ export const GOAL_DENIED = ["WebFetch", "WebSearch", ...["cleanup", "remove-work
 
 const isGoal = (b) => b.kind === "engineering";
 
+// An ACTIVATION round (0.5.0, B22 M4): a prompt that names no skill, handed to the host as a person would type it, over
+// a writable checkout of the target -- nothing started for it, nothing told of Orbit. What the host is never allowed is
+// only what no round may do (the web); whatever else it does is what the case's judge reads.
+export const isActivation = (b) => b.kind === "activation";
+
+export const ACTIVATION_DENIED = ["WebFetch", "WebSearch"];
+
+const deniedOf = (b) => (isActivation(b) ? ACTIVATION_DENIED : isGoal(b) ? GOAL_DENIED : DENIED);
+
 export const isProbe = (b) => b.kind === "probe";
 
 const pluginOf = (b) => b.plugin ?? PATHS.repo;
@@ -105,7 +114,7 @@ export const startArgs = (b) => ["start", b.objective, `--attempts=${b.attempts}
 
 // A round that starts no task of its own: a QA round (its investigation is open beside the controller), a goal round
 // (its goal starts what it needs), or a later round (its task already exists).
-const noStart = (b) => (isProbe(b) ? { task: null, started: false, probe: true } : isQa(b) ? { task: null, started: false, investigation: b.investigation } : isGoal(b) ? { task: null, started: false, goal: true } : b.task ? { task: b.task, started: false } : null);
+const noStart = (b) => (isProbe(b) ? { task: null, started: false, probe: true } : isQa(b) ? { task: null, started: false, investigation: b.investigation } : isGoal(b) ? { task: null, started: false, goal: true } : isActivation(b) ? { task: null, started: false, activation: true } : b.task ? { task: b.task, started: false } : null);
 
 function taskOf(b, env) {
   if (noStart(b)) return noStart(b);
@@ -129,7 +138,7 @@ const turnArgs = (b) => (Number.isInteger(b.maxTurns) && b.maxTurns > 0 ? ["--ma
 // level's word, never an option of its own.
 const modelArgs = (b) => [...(b.model ? ["--model", b.model] : []), ...(/^[a-z]{1,16}$/.test(String(b.effort ?? "")) ? ["--effort", b.effort] : [])];
 
-export const hostArgs = (b) => ["-p", "--output-format", "stream-json", "--verbose", ...pluginArgs(b), ...turnArgs(b), "--permission-mode", "dontAsk", "--allowedTools", isQa(b) ? QA_TOOLS : TOOLS, "--disallowedTools", (isGoal(b) ? GOAL_DENIED : DENIED).join(","), "--setting-sources", "user", "--strict-mcp-config", "--no-session-persistence", "--add-dir", PATHS.store, ...(isQa(b) ? ["--add-dir", PATHS.target] : []), ...modelArgs(b), ...(b.usd > 0 ? ["--max-budget-usd", String(b.usd)] : [])];
+export const hostArgs = (b) => ["-p", "--output-format", "stream-json", "--verbose", ...pluginArgs(b), ...turnArgs(b), "--permission-mode", "dontAsk", "--allowedTools", isQa(b) ? QA_TOOLS : TOOLS, "--disallowedTools", deniedOf(b).join(","), "--setting-sources", "user", "--strict-mcp-config", "--no-session-persistence", "--add-dir", PATHS.store, ...(isQa(b) ? ["--add-dir", PATHS.target] : []), ...modelArgs(b), ...(b.usd > 0 ? ["--max-budget-usd", String(b.usd)] : [])];
 
 // What a probe's host may do: nothing but answer. Every tool is denied by name and none is allowed, so `dontAsk` refuses
 // whatever else it reaches for; it loads no plugin, no MCP server and no session it could resume.
@@ -205,7 +214,7 @@ async function main() {
   const egress = await egressFor(b, process.env);
   const t = egress.holds ? taskOf(b, process.env) : { task: b.task ?? null, started: false };
   written("start.json", { ...t, egress, round: b.round, at: new Date().toISOString() });
-  written("runner.json", { round: b.round, task: t.task, egress, startedAt: new Date().toISOString(), ...(egress.holds && (t.task || isQa(b) || isGoal(b) || isProbe(b)) ? await round(b, process.env, t.task) : notRun(egress, t)), endedAt: new Date().toISOString() });
+  written("runner.json", { round: b.round, task: t.task, egress, startedAt: new Date().toISOString(), ...(egress.holds && (t.task || isQa(b) || isGoal(b) || isProbe(b) || isActivation(b)) ? await round(b, process.env, t.task) : notRun(egress, t)), endedAt: new Date().toISOString() });
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) main().catch((e) => (process.stderr.write(`entry failed: ${e?.message ?? e}\n`), (process.exitCode = 3)));

@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "id": "reference",
+  "about": "the reference host of ORBIT-ACT-009: what the truth accepts",
+  "steps": [
+    {
+      "do": "skill",
+      "name": "orbit:orbit-sql"
+    },
+    {
+      "do": "orbit",
+      "argv": [
+        "query.mjs",
+        "doctor"
+      ],
+      "mayFail": true
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "activate": true,
+  "strategy": [
+    "COORDINATED"
+  ],
+  "how": [
+    "automation"
+  ],
+  "selection": [
+    {
+      "skills": {
+        "require": [],
+        "allow": [
+          "orbit-help",
+          "orbit-engineer",
+          "orbit-requirements",
+          "orbit-qa"
+        ]
+      },
+      "agents": {
+        "require": [],
+        "allow": [
+          "orbit-engineering-agent",
+          "orbit-qa-agent"
+        ],
+        "max": 2
+      }
+    }
+  ],
+  "forbid": {
+    "skills": [
+      "satellite",
+      "orbit"
+    ],
+    "agents": [],
+    "commands": []
+  },
+  "readOnly": {},
+  "records": [
+    {
+      "id": "workflow-planned",
+      "read": "workflows",
+      "expect": {
+        "steps": [
+          "engineering",
+          "regression"
+        ],
+        "qa": "settled-or-left-out"
+      }
+    },
+    {
+      "id": "engineering-completed",
+      "read": "tasks",
+      "expect": {
+        "provider": "autonomous-engineering",
+        "lifecycle": "COMPLETED"
+      }
+    }
+  ],
+  "relevant": null,
+  "grounding": null
+}

@@ -35,6 +35,7 @@ export const ACTION_ROLES = {
   "benchmark.learn.qa": { tool: "coding-host", mutates: false },
   "benchmark.learn.readback": { tool: "inspection", mutates: false },
   "benchmark.carry": { tool: "controller", mutates: true },
+  "benchmark.activation": { tool: "coding-host", mutates: true },
 };
 
 const roleOf = (type, role) => ({ ...(ACTION_ROLES[type] ?? { tool: "controller", mutates: false }), ...(role ?? {}) });

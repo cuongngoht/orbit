@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "activate": null,
+  "strategy": [],
+  "how": [],
+  "selection": [
+    {
+      "skills": {
+        "require": [],
+        "allow": [
+          "*"
+        ]
+      },
+      "agents": {
+        "require": [],
+        "allow": [
+          "*"
+        ],
+        "max": 2
+      }
+    }
+  ],
+  "forbid": {
+    "skills": [
+      "satellite"
+    ],
+    "agents": [],
+    "commands": []
+  },
+  "readOnly": {},
+  "records": [],
+  "relevant": {
+    "direct": [
+      "src/worker.mjs"
+    ],
+    "dependency": [
+      "src/store.mjs",
+      "src/orders.mjs"
+    ],
+    "downstream": [],
+    "verification": [
+      "test/dedupe.test.mjs",
+      "test/worker.test.mjs",
+      "test/invoice.test.mjs"
+    ]
+  },
+  "grounding": null
+}

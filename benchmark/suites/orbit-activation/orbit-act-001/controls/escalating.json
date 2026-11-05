@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "id": "escalating",
+  "about": "the escalating host of ORBIT-ACT-001: a control that must FAIL as HOST_DIVERGED",
+  "steps": [
+    {
+      "do": "agent",
+      "name": "orbit:orbit-architecture-scanner",
+      "steps": [
+        {
+          "do": "orbit",
+          "argv": [
+            "architecture.mjs",
+            "facts"
+          ]
+        }
+      ]
+    }
+  ]
+}

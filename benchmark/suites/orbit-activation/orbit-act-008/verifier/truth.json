@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "activate": null,
+  "strategy": [],
+  "how": [],
+  "selection": [
+    {
+      "skills": {
+        "require": [],
+        "allow": [
+          "*"
+        ]
+      },
+      "agents": {
+        "require": [],
+        "allow": [
+          "*"
+        ],
+        "max": 2
+      }
+    }
+  ],
+  "forbid": {
+    "skills": [
+      "orbit-engineer"
+    ],
+    "agents": [
+      "orbit-engineering-agent"
+    ],
+    "commands": []
+  },
+  "readOnly": {},
+  "records": [
+    {
+      "id": "no-engineering-step",
+      "read": "tasks",
+      "expect": {
+        "provider": "autonomous-engineering",
+        "stepped": false
+      }
+    },
+    {
+      "id": "router-never-selected",
+      "read": "router",
+      "expect": {
+        "never": [
+          "orbit-engineer",
+          "orbit-engineering-agent"
+        ]
+      }
+    }
+  ],
+  "relevant": null,
+  "grounding": null
+}

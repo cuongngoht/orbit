@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "half",
+  "about": "the half host of ORBIT-ACT-004: a control that must FAIL as ORBIT_SOURCE_DEFECT",
+  "steps": [
+    {
+      "do": "agent",
+      "name": "orbit:orbit-dsl-doctor",
+      "steps": [
+        {
+          "do": "orbit",
+          "argv": [
+            "query.mjs",
+            "check"
+          ],
+          "mayFail": true
+        }
+      ]
+    }
+  ]
+}

@@ -1134,7 +1134,7 @@ acceptance/    (0.1.0) NATIVE ACCEPTANCE, outside test/ because `node --test` ru
 benchmark/     (ADR 0046, 0047, 0048) THE DOCKER BENCHMARK of Orbit: development tooling, export-ignored, imported by nothing
                of the engine (test/benchmark-lint.test.mjs), not under acceptance/ because the backend acceptance digest
                hashes that tree. run.mjs is its composition root (usage header = its contract; README.md the guide).
-               lib/core/ -- what every run shares: suites.mjs (KINDS -- source, qa, engineering, sessions -- each a field
+               lib/core/ -- what every run shares: suites.mjs (KINDS -- source, qa, engineering, sessions, activation -- each a field
                table held by src/constraints.mjs; suites, cases, a directory's digest; MEMORY_ARMS and SESSION_HOSTS) ·
                freeze.mjs (the branch frozen through read-only
                git, HARNESS) · git.mjs · mutations.mjs (exact mutations and candidate definitions, FIXTURE_DRIFT) ·
@@ -1169,15 +1169,20 @@ benchmark/     (ADR 0046, 0047, 0048) THE DOCKER BENCHMARK of Orbit: development
                the stores the first left: flow.mjs (the learning session, the carry phase -- what is kept, the code moved
                under a case that learned on the clean application, the poison planted in the host's own memory -- and the
                measured session on its memory arm, ARM_ENV) · report.mjs (the second session's QA report, with the
-               sessions, what was offered, the poison, and what a memory arm is compared on). lib/commands.mjs: the
-               COMMANDS table. images/runner/ (Claude Code pinned; entry.mjs, inspect.mjs, preflight.mjs, scripted.mjs -- the
-               scripted host a control runs in its place: a repair, a goal, a blocked goal, an interrupted session, or
-               idle) · images/verifier/
-               (egress.mjs) · images/qa-worker/ (the Playwright image, pinned, and the browser CLI Orbit drives).
-               suites/<suite>/suite.json and suites/<suite>/<case-id>/ (case.json, request.md, verifier/, variants/,
-               controls/; a sessions case's poison/). fixtures/<app>/ -- a project an engineering case is about (its
-               public tests as checks/). A run's evidence: <store>/benchmark/<bnr-…>/ (rounds/<k>/outcome.json,
-               verified.json, report.md|json; a sessions run's home/, the host's own home kept between its sessions).
+               sessions, what was offered, the poison, and what a memory arm is compared on).
+               lib/activation/ (0.5.0, B22 M4) -- an activation case: seed.mjs (the seed round: the run's own Orbit lays
+               the case's seed into the runner's store) · round.mjs (the host's round, a writable checkout and the arm's
+               plugin, and the inspection with the run's own Orbit) · judge.mjs (STRATEGY_SEEN, RECORDS, VERDICT: what the
+               host did, held to the hidden truth) · flow.mjs (the phases, factsFrom) · report.mjs.
+               lib/commands.mjs: the COMMANDS table. images/runner/ (Claude Code pinned; entry.mjs, inspect.mjs,
+               preflight.mjs, scripted.mjs -- the scripted host a control runs in its place: a repair, a goal, a blocked
+               goal, an interrupted session, idle, or an activation session delivering every hook to Orbit's own entry
+               points) · images/verifier/ (egress.mjs) · images/qa-worker/ (the Playwright image, pinned, and the
+               browser CLI Orbit drives). suites/<suite>/suite.json and suites/<suite>/<case-id>/ (case.json,
+               request.md, verifier/, variants/, controls/; a sessions case's poison/; an activation case's seed/).
+               fixtures/<app>/ -- a project an engineering or activation case is about (its public tests as checks/). A
+               run's evidence: <store>/benchmark/<bnr-…>/ (rounds/<k>/outcome.json, verified.json, report.md|json; a
+               sessions run's home/, the host's own home kept between its sessions).
 integrations/  what ANOTHER program installs, never part of this plugin's archive. vscode-orbit-live/ (1.8.5, ADR 0021)
                is the Orbit Live companion for VS Code: plain CommonJS with no dependency and no build step, a
                person installs it; companion.js (what it does: a heartbeat in the store's live room, a request

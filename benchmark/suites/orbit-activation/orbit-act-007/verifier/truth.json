@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "activate": true,
+  "strategy": [
+    "RESUME"
+  ],
+  "how": [],
+  "selection": [
+    {
+      "skills": {
+        "require": [],
+        "allow": [
+          "orbit-help",
+          "orbit-engineer",
+          "orbit-requirements"
+        ]
+      },
+      "agents": {
+        "require": [],
+        "allow": [
+          "orbit-engineering-agent"
+        ],
+        "max": 1
+      }
+    }
+  ],
+  "forbid": {
+    "skills": [
+      "satellite"
+    ],
+    "agents": [],
+    "commands": []
+  },
+  "readOnly": {},
+  "records": [
+    {
+      "id": "one-work",
+      "read": "works",
+      "expect": {
+        "ref": "ORD-12",
+        "count": 1
+      }
+    },
+    {
+      "id": "workflow-moved",
+      "read": "workflows",
+      "expect": {
+        "moved": true
+      }
+    }
+  ],
+  "relevant": null,
+  "grounding": null
+}

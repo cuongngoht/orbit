@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "id": "reference",
+  "about": "the reference host of ORBIT-ACT-003: what the truth accepts",
+  "steps": [
+    {
+      "do": "skill",
+      "name": "orbit:orbit-test-plan"
+    },
+    {
+      "do": "orbit",
+      "argv": [
+        "qa-plan.mjs",
+        "new",
+        "order-confirmation-plan",
+        "--screen=order-confirmation"
+      ]
+    }
+  ]
+}

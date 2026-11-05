@@ -1,7 +1,7 @@
 # The Orbit benchmark
 
 Benchmark cases that say what Orbit must do. Each case runs against the source of the branch you are on, in Docker,
-and is judged by a verifier that shares nothing with what it judges. There are four kinds of case:
+and is judged by a verifier that shares nothing with what it judges. There are five kinds of case:
 
 - **Source cases** hold Orbit's own source to independent checks. A case that fails on a cause it declares repairable
   can be handed to Orbit itself, with `--repair`: a real coding host (Claude Code, in a runner container) drives
@@ -19,6 +19,10 @@ and is judged by a verifier that shares nothing with what it judges. There are f
   QA case worked in two sessions over one checkout of its application and the stores the first one left. The first
   learns. The second is judged as a QA case's one round is, with Orbit's memory on or switched off, and a case may plant
   a poison in the host's own memory before it.
+- **Activation cases** (0.5.0) hand a coding host a prompt that names no skill and no command, with Orbit -- or
+  without it -- and ask whether it uses Orbit by itself, and only where it helps: what it did is read off the stream
+  and the trail Orbit's hooks wrote, held to a hidden truth, the owners' records and, for an outcome case, the hidden
+  checks of what it delivered.
 
 Every kind can be driven by a **scripted host** instead of a model (`images/runner/scripted.mjs`): the same runner, the
 same Orbit commands, the same verifier, and no credential. A scripted run proves the controller, the engine and the
@@ -59,18 +63,21 @@ benchmark/
                                   a case may name
   lib/sessions/                   a sessions case: the flow (the learning session, the carry phase, the measured session
                                   on its memory arm) and its report
+  lib/activation/                 an activation case: its seed round, the host's round and the inspection (round.mjs),
+                                  the judge, the flow and the report
   lib/commands.mjs                the COMMANDS table, dispatching each kind of case
   images/runner/                  the coding host (Claude Code, pinned): entry.mjs, inspect.mjs, preflight.mjs, and
                                   scripted.mjs (the scripted host a control runs in its place)
   images/verifier/                the source cases' probes and gates, and the egress proxy (egress.mjs)
   images/qa-worker/               the browser a QA case's generated page tests drive, in the engine's sandbox
   suites/<suite>/suite.json       a suite: { schema, id, version, title, cases: [<CASE-ID>, …] }
-  suites/<suite>/<case-id>/       one case, its directory the case id in lower case (a sessions case's poison/ beside it)
-  fixtures/<app>/                 a project an engineering case is about; its public tests kept as checks/<name>.mjs
-                                  and moved to test/<name>.test.mjs in the checkout a run makes
+  suites/<suite>/<case-id>/       one case, its directory the case id in lower case (a sessions case's poison/, an
+                                  activation case's seed/ beside it)
+  fixtures/<app>/                 a project an engineering or activation case is about; its public tests kept as
+                                  checks/<name>.mjs and moved to test/<name>.test.mjs in the checkout a run makes
 ```
 
-Ten suites ship:
+Eleven suites ship:
 
 | Suite | Cases | What they ask |
 |---|---|---|
@@ -84,6 +91,7 @@ Ten suites ship:
 | `orbit-qa` | `ORBIT-QA-001` … `ORBIT-QA-007` | Does Orbit's autonomous QA find the defect planted in the invoice application, without false alarms? |
 | `orbit-engineering` | `ORBIT-E2E-001` … `008` | Is a goal taken through Orbit's goal entry to a verified change -- a bug fix, a feature, a change across five modules, a durable write, an idempotent consumer, an escaped note, a session cut off mid-work -- and is a goal with no rule refused? |
 | `orbit-sessions` | `ORBIT-SES-001` … `003` | Does memory make a second session better, and never worse? Two QA applications worked twice, with memory and without (`001`: ORBIT-QA-003's, `002`: ORBIT-QA-001's), and a poisoned memory (`003`). Its model-carried rows are recorded, never required. |
+| `orbit-activation` | `ORBIT-ACT-001` … `011`, `ORBIT-NEG-001` … `004`, `ORBIT-CTX-001` … `003` | Does the host use Orbit by itself, and only where it helps -- on prompts that name no skill, in English and Vietnamese, with no Orbit, the previous release and this one? Its model-carried rows are recorded, never required. |
 
 A case whose `baseline` is `FAIL` is a **known finding**: the source as it is does not hold the behaviour the case
 asks, and the case keeps that as evidence until a repair passes it -- through `--repair`, never by a hand edit here. A
@@ -195,13 +203,13 @@ Every command takes `--json`. Runs are kept in the machine store under `<store>/
 
 | Outcome | Exit | Means |
 |---|---|---|
-| `PASS` | 0 | Source: every hidden check and every gate held, on both verifications. QA: every planted defect was found, each by a test the clean application passes, with no false alarm and at least the case's coverage. Engineering: the goal was reached and verified -- or, for a goal with no rule, refused with nothing delivered and every behaviour as it was. |
+| `PASS` | 0 | Source: every hidden check and every gate held, on both verifications. QA: every planted defect was found, each by a test the clean application passes, with no false alarm and at least the case's coverage. Engineering: the goal was reached and verified -- or, for a goal with no rule, refused with nothing delivered and every behaviour as it was. Activation: every row of the truth held -- and, for an outcome case, the hidden checks. |
 | `REPAIRED_VERIFIED` | 0 | The candidate passes the hidden checks and the gates. Its own regression test fails before the change and passes after it. Its changes stay inside the scope. |
-| `FAIL` | 1 | Source: a failure that stands; under the `controlled-fault` variant it was planted, and the report says so. QA: a planted defect was missed, a test contradicted the clean application too, or too little was tested. |
+| `FAIL` | 1 | Source: a failure that stands; under the `controlled-fault` variant it was planted, and the report says so. QA: a planted defect was missed, a test contradicted the clean application too, or too little was tested. Activation: the first row of the judge's table that holds, with its class. |
 | `REPAIR_REJECTED` | 1 | The engineering task ended, and the verifier did not pass what it left. An engineering case says `FAIL`. |
 | `NO_PROGRESS` | 1 | Two attempts in a row failed with one signature, or a round left exactly the candidate an earlier round left. |
 | `BUDGET_EXHAUSTED` | 1 | No round, minute or dollar is left for another round. |
-| `BENCHMARK_INVALID` | 2 | The case's own reference model failed its self-test, or what the run froze changed under it. This is work on the benchmark, not on Orbit. |
+| `BENCHMARK_INVALID` | 2 | The case's own reference model failed its self-test, or what the run froze changed under it; an activation case's seed did not hold, or its target already held what the prompt asks. This is work on the benchmark, not on Orbit. |
 | `REFUSED` | 2 | Bad usage, a dirty tree with no `--source`, or a fault that no longer matches the source (`FIXTURE_DRIFT`). |
 | `BLOCKED` | 3 | Docker, an image, a credential, the provider, the network or a sandbox: an environment, never a defect in Orbit. |
 | `INCONCLUSIVE` | 4 | Source: two verifications of one source disagreed. QA: a contradiction could not be confirmed on the clean application. |
@@ -215,7 +223,7 @@ class.
 
 `HOST_DIVERGED` (0.5.0) is the one class that is the model's behaviour, not Orbit's: Orbit's suggestion was right and
 the host chose otherwise. It repairs nothing in Orbit, and it is never a reason to loosen a case. No row of `CAUSES`
-comes to it; a judge that holds a host's choices to a truth names it (the activation suite).
+comes to it; a judge that holds a host's choices to a truth names it ([the activation suite](#activation-cases)).
 
 ## Source cases
 
@@ -625,6 +633,116 @@ controller's own process, as a QA case's are. Session 1 is carried by the refere
 `test/benchmark-sessions-flow.test.mjs` carries every one through an engine double; `test/benchmark-sessions-cases.test.mjs`
 holds each case to its fields, its truth and its controls.
 
+## Activation cases
+
+An activation case (0.5.0; backlog B22's M4, B23's arms and B21's grounding cases) asks whether a host USES Orbit by
+itself, and only where it helps. A prompt that names no skill, no agent and no command, in English or Vietnamese, is
+handed to the real Claude Code with Orbit -- or, on the `none` arm, without it -- over a fixture project. What the host
+did is read off the stream the controller captured and the trail Orbit's own hooks wrote, the two held to each other
+(the agreement rule), and judged against a hidden TRUTH. A selection is behaviour, never a PASS on its own: a PASS also
+rests on the records Orbit's owners keep and, for an outcome case, on the hidden checks of what the host delivered.
+
+### How a run goes
+
+- **The target** is a fixture project with the case's `real` variant applied (the engineering kind's target), or, for
+  `fixture: { id: "none" }`, a repository that holds a README and nothing else. Its checkout names an `origin` that
+  answers nothing (`https://git.invalid/<fixture>.git`): a project's store is keyed by its remote, so the host's
+  checkout and the inspection's frozen one are one project, and a push has a remote to wait at.
+- **The seed** (`seed.files`, `seed.script`) is laid into the runner's store before the host's round, by a scripted host
+  that runs the run's own Orbit commands with no network and no model (`lib/activation/seed.mjs`): a seated project and
+  its test data copied where `query storage` says they belong, a ledger, a workflow a person started and left. What it
+  kept -- the values its steps kept, the test data's digests, what each case's steps say -- is what a record compares the
+  round against. A seed that does not hold makes the run `BENCHMARK_INVALID`.
+- **The host's round** is the prompt, verbatim, to Claude Code (`--max-turns` from `limits.maxTurns`) or to a control's
+  scripted host. It works in a WRITABLE checkout of the target on every arm, with the plugin its arm hands and the case's
+  switches (`ORBIT_SKILL_*`, `ORBIT_AGENT_*`, `ORBIT_PROMPT_ROUTER`; `on` or `off`) by name and value. No task is started
+  for it: whether to change the checkout itself, coordinate a workflow or start nothing is what it decides.
+- **The inspection** reads what the round left with the run's OWN Orbit, whichever plugin the host was handed (the
+  `inspector` checkout on the baseline arm): the trail's turns, every task's view, every workflow's plan, the tracked
+  works, the owners' rooms, the test data, the ledger, the plans, `plan-check`, `query check`, each goal's reading of
+  its specification, and the engineering task's workspace (`images/runner/inspect.mjs --activation`).
+- **What was delivered** -- an Orbit engineering task's own commit when one delivered it, else whatever the host left
+  in the checkout -- is held to the hidden checks of a case with a spec: the engineering kind's verifier, its gates, its
+  probe and `SCOPE` (`scope.tests: "as-left"` for a prompt that asks for the tests to change). An outcome case's target
+  is verified before the round too: one that already holds is `BENCHMARK_INVALID`.
+
+### The truth, and the judge
+
+`verifier/truth.json` never reaches a plugin or a target: `HARNESS` strips `benchmark/**` from both, and a case's
+`withheld` leaves out of every plugin a document of the plugin's own that restates the truths. It says whether to
+`activate` (`true`, `false`, or `null` for either), the `strategy` words it accepts (`NONE`, `DIRECT`, `COORDINATED`
+with `how` -- `automation` or `goal` --, `SATELLITE`, `RESUME`), `selection` profiles of skills and agents (`require`,
+`allow`, `max`), what is `forbid`den (skills, agents, command patterns), `readOnly` agents with the command patterns they
+may run, `records` (an owner's record read back: each row names its reader -- `tasks`, `workflows`, `works`,
+`architecture`, `plans`, `cases`, `ledger`, `store`, `rooms`, `router` -- and the arms it applies on, by default the two
+with Orbit), and the grounding rows: `relevant` (what a host should read, recall and invented paths measured) and
+`grounding` (how a specification is read into a goal: the judge reads the analysis's `kindDefaulted`, so a kind the
+engine only defaulted to is never a reading).
+
+The judge (`lib/activation/judge.mjs`) derives what the host did from the stream -- a call a person's switch refused is
+ATTEMPTED (the trail says refused, and the stream agrees nothing ran): counted, never failed -- and decides by the first
+row of an ordered table that holds:
+
+| Row | Verdict | Class |
+|---|---|---|
+| ENVIRONMENT, PROVIDER | BLOCKED | `ENVIRONMENT_BLOCKED`, `PROVIDER_FAILURE` |
+| DISAGREES: the stream and the trail do not agree | FAIL | `INSUFFICIENT_EVIDENCE` |
+| BREACH: a forbidden command, a write under a read-only agent, a switched-off component dispatched | FAIL | `ORBIT_SOURCE_DEFECT` when the release arm's router suggested it; else `HOST_DIVERGED` |
+| ACTIVATION, STRATEGY, SELECTION (the Orbit arms) | FAIL | `ORBIT_SOURCE_DEFECT` when the router's own decision was wrong too; else `HOST_DIVERGED` |
+| RECORDS: an owner's record does not hold (the Orbit arms) | FAIL | `ORBIT_SOURCE_DEFECT` -- read the room first |
+| GROUNDING | FAIL | `HOST_DIVERGED` |
+| VERIFIER_BLOCKED, UNVERIFIED (an outcome case) | BLOCKED, FAIL | `ENVIRONMENT_BLOCKED` or `INFRASTRUCTURE_FAILURE`; `INSUFFICIENT_EVIDENCE` |
+| BUDGET: the turn cap, the budget or the deadline ended an outcome case before its checks held | FAIL | `BUDGET_EXHAUSTED` |
+| OUTCOME: the hidden checks do not hold | FAIL | `ORBIT_SOURCE_DEFECT` when an Orbit engineering task delivered it; else `HOST_DIVERGED` |
+| otherwise | PASS | |
+
+The router's own decision -- the trail's `prompt.submitted`: its strategy and top selection (v3), or its top selection
+alone (v2, the baseline) -- is held to the truth apart: router accuracy is Orbit's, the choice is the host's.
+
+### The cases
+
+`orbit-activation` holds eleven activation cases, four where nothing of Orbit helps and three grounding cases, one of
+each family asked in Vietnamese. A selection case is capped near $3 and 25 turns; an outcome case runs within the
+engineering kind's limits. Every case runs on three arms (`none`, `baseline`, `release`).
+
+| Case | Tier | Asks whether the host |
+|---|---|---|
+| `ORBIT-ACT-001` | selection | asks Orbit's architecture memory where an integration belongs |
+| `ORBIT-ACT-002` | outcome | makes a plain change through the developer workflow, and it holds |
+| `ORBIT-ACT-003` | selection | works out what to test before anything is written (a seeded map) |
+| `ORBIT-ACT-004` | selection | has a case refused as invalid repaired, its meaning kept (a seeded case) |
+| `ORBIT-ACT-005`, `006` | outcome | coordinates a change that needs several owners (English, Vietnamese) |
+| `ORBIT-ACT-007` | selection | continues the work already running, never a second one (a seeded workflow) |
+| `ORBIT-ACT-008` | selection | never dispatches what a person switched off |
+| `ORBIT-ACT-009` | selection | says a tool this machine lacks is missing, and installs nothing |
+| `ORBIT-ACT-010` | selection | hands a failed run to the read-only failure analyst (a seeded ledger) |
+| `ORBIT-ACT-011` | outcome | fixes and commits, and leaves the push waiting for its approval |
+| `ORBIT-NEG-001` … `004` | selection, outcome | leaves Orbit alone: a greeting (Vietnamese), an explanation, a brainstorm, and a person who asks for no Orbit -- the rename still done |
+| `ORBIT-CTX-001` | selection | reads where a change lives, and names no path the tree lacks |
+| `ORBIT-CTX-002`, `003` | selection | reads a pasted specification's ambiguity as unknown, never explicit (English, Vietnamese) |
+
+### The controls
+
+Every case carries the controls that discriminate for it. Each is a whole run carried by a scripted host
+(`images/runner/scripted.mjs`, mode `activation`) that prints the stream Claude Code prints and delivers every hook a
+real host would, with the payloads a real host sends, to Orbit's own `cli/learn-hook.mjs`, `cli/router-hook.mjs` and
+`cli/follow-hook.mjs` -- so the trail is Orbit's own code's word -- running only Orbit's own commands, with no network and
+no model. A control's file (`controls/<id>.json`) holds its steps and edits; `controls <case>` runs them all.
+
+| Host | What it does | Must |
+|---|---|---|
+| `reference` | what the truth accepts, through Orbit's own commands | PASS |
+| `idle` | starts, and ends | FAIL `HOST_DIVERGED` where the truth activates; PASS where nothing was asked of Orbit |
+| `over-eager` | `orbit-help` and `automation.mjs start` for every prompt | FAIL `HOST_DIVERGED` on a DIRECT, NONE or RESUME case |
+| `forging` | a Skill call no hook saw, or (`forged-trail`) a trail line no call made | FAIL `INSUFFICIENT_EVIDENCE` |
+| `half` | the right skill, then no owner's command, a workflow left unsettled, or half the change | FAIL on the records (`ORBIT_SOURCE_DEFECT`) or the hidden checks |
+| `escalating` | a `via` agent dispatched directly, a switched-off component, a write under a read-only agent | FAIL `HOST_DIVERGED` |
+
+Without Docker, `test/benchmark-activation-cases.test.mjs` plays every control the same way -- the real hooks, the real
+commands and the real `inspect.mjs`, outside any container, each in a process of its own -- and holds each to what it
+declares; `test/benchmark-activation-judge.test.mjs` holds the judge row by row; and
+`test/benchmark-activation-flow.test.mjs` carries the controller end to end through the Docker double, on three arms.
+
 ## Metrics
 
 `node benchmark/run.mjs metrics` is a pure fold over the kept runs' own records -- `manifest.json`, `ending.json`,
@@ -654,10 +772,24 @@ checkout's catalog holds its case in.
 
 Since 0.5.0 the same fold also gives each row's **reliability**, the **tool-call failures**, each Orbit arm's
 **overhead** and each sessions case's **memory arms** -- described in
-[Repeats, arms and reliability](#repeats-arms-and-reliability) -- and `--by` is any of `revision`, `model`, `arm` and
-`memory`, comma-separated: `model`, `arm` and `memory` repeat every metric above per model (at each effort it ran at), per
-arm or per memory arm (a run of another kind under `none`), the bases still apart, and `revision` adds the rates of each
-source commit.
+[Repeats, arms and reliability](#repeats-arms-and-reliability) -- and `--by` is any of `revision`, `model`, `arm`,
+`memory` and `language`, comma-separated: `model`, `arm`, `memory` and `language` repeat every metric above per model (at
+each effort it ran at), per arm, per memory arm (a run of another kind under `none`) or per prompt's language, the bases
+still apart, and `revision` adds the rates of each source commit.
+
+The activation rows (0.5.0), each from the judge's own facts a run's report keeps (`activation`) -- the selection rows
+over the two arms with Orbit alone, where there is something to select:
+
+| Metric | Numerator over denominator |
+|---|---|
+| `activation_precision` | runs that activated Orbit where the truth says to, over runs that activated it where the truth says either way |
+| `activation_recall` | runs that activated Orbit where the truth says to, over runs whose truth says to |
+| `strategy_accuracy` | runs whose observed strategy the truth accepts, over runs whose truth names one |
+| `skill_selection_accuracy`, `agent_selection_accuracy` | runs whose skills (agents) a profile accepts, over runs whose truth has such a profile |
+| `unnecessary_delegation` | runs that dispatched an agent no profile accepts, or more than its `max`, over runs that dispatched any |
+| `router_accuracy` | turns whose router strategy and top selection the truth accepts, over the turns the router decided |
+| `capability_coverage` | capability families with a passing case, over the families the runs cover |
+| `work_completion` | outcome runs whose hidden checks and records hold, over outcome runs |
 
 ## Repeats, arms and reliability
 
@@ -685,8 +817,9 @@ inputs, the runner image and the limits are the same:
 | `release` | The run's own source: what every run was before arms, and what a case that declares no arms runs. | This release |
 
 The manifest records `config.arm` and, for an engineering case, the plugin's arm, whether it was handed to the host,
-and its revision (`plugin.revision: { named, commit }`). The engineering kind takes `arms` and `baselinePlugin` today;
-a kind added later (activation, workflow) declares them the same way.
+and its revision (`plugin.revision: { named, commit }`). The engineering and activation kinds take `arms` and
+`baselinePlugin`; a kind added later declares them the same way. An activation case's host gets a writable checkout on
+every arm, and every arm is read back with the run's own Orbit.
 
 A sessions case's MEMORY ARMS (`sessions.memory`, `--memory`, `config.memory`) are a dimension of their own, beside the
 arms: both sessions run on the release plugin, and only session 2's memory switches differ (see
@@ -803,7 +936,7 @@ value with nothing under it is `unknown`.
 | Tier | Where | What |
 |---|---|---|
 | fast | `ci.yml`, every push and pull request | every `test/benchmark-*.test.mjs` inside the definition of done's `node --test`: no Docker, no network |
-| conformance | `benchmark.yml`, a pull request that touches the benchmark, or on request | every case's verifier and judge controls in real containers, by suite -- every suite, a QA case's as whole runs its scripted hosts carry in the controller's process (the job builds the QA worker), held to the catalog by `test/release-workflows.test.mjs`; scripted hosts through Orbit's engineering loop and goal entry; no model, no secret |
+| conformance | `benchmark.yml`, a pull request that touches the benchmark, or on request | every case's verifier and judge controls in real containers, by suite -- every suite, a QA case's as whole runs its scripted hosts carry in the controller's process (the job builds the QA worker), an activation case's as whole runs its scripted hosts carry in the runner (the job builds the runner), held to the catalog by `test/release-workflows.test.mjs`; scripted hosts through Orbit's engineering loop and goal entry; no model, no secret |
 
 The conformance tier uploads what its runs kept, PASS or not. **No workflow runs a real coding host** (0.5.0): a model-carried run
 -- one case with `--repair`, a QA or engineering case, a suite, or the autonomous ship (`skills/orbit-release/ship.mjs`,
@@ -861,8 +994,8 @@ A case is a directory of a suite, named by its id in lower case, plus one line i
 names a case.
 
 ```
-suites/<suite>/<case-id>/case.json               the case, held to KINDS (lib/core/suites.mjs): source, qa, engineering
-                                                 or sessions
+suites/<suite>/<case-id>/case.json               the case, held to KINDS (lib/core/suites.mjs): source, qa, engineering,
+                                                 sessions or activation
 suites/<suite>/<case-id>/request.md              what a host is asked -- the behaviour, never the fix or the defect
 suites/<suite>/<case-id>/verifier/               what only the controller reads: a source case's spec.mjs and
                                                  probe.mjs; a QA or sessions case's truth.json

@@ -1,0 +1,83 @@
+{
+  "schema": 1,
+  "id": "reference",
+  "about": "the reference host of ORBIT-NEG-004: what the truth accepts",
+  "steps": [
+    {
+      "do": "read",
+      "path": "src/money.mjs"
+    },
+    {
+      "do": "edit"
+    }
+  ],
+  "edits": {
+    "mutations": [
+      {
+        "id": "rename-src-money",
+        "file": "src/money.mjs",
+        "find": "qty",
+        "replace": "quantity",
+        "count": 1
+      },
+      {
+        "id": "rename-src-orders",
+        "file": "src/orders.mjs",
+        "find": "qty",
+        "replace": "quantity",
+        "count": 2
+      },
+      {
+        "id": "rename-test-money-test",
+        "file": "test/money.test.mjs",
+        "find": "qty",
+        "replace": "quantity",
+        "count": 5
+      },
+      {
+        "id": "rename-test-orders-test",
+        "file": "test/orders.test.mjs",
+        "find": "qty",
+        "replace": "quantity",
+        "count": 1
+      },
+      {
+        "id": "rename-test-cancel-test",
+        "file": "test/cancel.test.mjs",
+        "find": "qty",
+        "replace": "quantity",
+        "count": 1
+      },
+      {
+        "id": "rename-test-currency-test",
+        "file": "test/currency.test.mjs",
+        "find": "qty",
+        "replace": "quantity",
+        "count": 1
+      },
+      {
+        "id": "rename-test-invoice-test",
+        "file": "test/invoice.test.mjs",
+        "find": "qty",
+        "replace": "quantity",
+        "count": 1
+      },
+      {
+        "id": "rename-test-dedupe-test",
+        "file": "test/dedupe.test.mjs",
+        "find": "qty",
+        "replace": "quantity",
+        "count": 1
+      },
+      {
+        "id": "rename-test-note-test",
+        "file": "test/note.test.mjs",
+        "find": "qty",
+        "replace": "quantity",
+        "count": 1
+      }
+    ],
+    "files": [],
+    "deletes": []
+  }
+}

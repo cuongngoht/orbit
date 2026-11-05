@@ -16,7 +16,7 @@
 //
 //   verified(ctx, label, entries, o) -> { label, digest, hidden, gates, agent, failures, signature, complete, problem,
 //                                         problemEnds, skipped }      o: { baseline, agentTests, beforeGates, between,
-//                                                                          candidate }
+//                                                                          candidate, testsAsLeft }
 //   tapCounts(text) -> { tests, pass, fail }      gateEntries(entries, baseline) -> entries
 import { realpathSync } from "node:fs";
 import { join } from "node:path";
@@ -126,7 +126,11 @@ async function parts(ctx, label, entries, o) {
 
 const unanswered = async (ctx, label, entries, o, base) => ({ ...base, gates: [], agent: null, skipped: `the hidden checks did not answer (${base.hidden.end}): the candidate is rejected, and its gates and its own tests are not run` });
 
-const answered = async (ctx, label, entries, o, base) => ({ ...base, gates: await gated(ctx, label, entries, o.baseline ?? entries, o.beforeGates ?? null), agent: o.agentTests?.length ? await agentProven(ctx, label, entries, o.baseline, o.agentTests) : null, skipped: null });
+// A gate runs on the tests the subject had -- or, where a case asks for its tests to be changed (`o.testsAsLeft`: an
+// activation case that renames what they name), on the tests as the candidate left them, held to the same count.
+const gateBase = (entries, o) => (o.testsAsLeft ? entries : o.baseline ?? entries);
+
+const answered = async (ctx, label, entries, o, base) => ({ ...base, gates: await gated(ctx, label, entries, gateBase(entries, o), o.beforeGates ?? null), agent: o.agentTests?.length ? await agentProven(ctx, label, entries, o.baseline, o.agentTests) : null, skipped: null });
 
 export async function verified(ctx, label, entries, o = {}) {
   const v = await parts(ctx, label, entries, o);

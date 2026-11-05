@@ -11,6 +11,9 @@
 //   sessions     (0.5.0, ADR 0054) a QA case worked in TWO sessions over one checkout and the stores the first left: the
 //                first learns, the second is judged -- with memory on, or with ORBIT_LEARN and ORBIT_HOST_MEMORY off --
 //                and a case may plant a poison in the host's own memory before it
+//   activation   (0.5.0, B22 M4) a prompt that names no skill, handed to the coding host with Orbit -- or without it --
+//                over a fixture project: whether it uses Orbit by itself and only where it helps, held to a hidden truth,
+//                the owners' records and, for an outcome case, the hidden checks of what it delivered
 //
 // Development tooling: it never ships (export-ignored), and nothing of the engine imports it.
 //
@@ -74,7 +77,9 @@
 //                                     engineering loop with no model; for a QA case, a whole run with each scripted
 //                                     host -- reference, idle, false-alarm; for a sessions case, a whole two-session run
 //                                     with each -- reference, idle, cheat, half, and for a poison the hosts that trust
-//                                     it (trusts-poison, trusts-stale). A control that no longer applies to the
+//                                     it (trusts-poison, trusts-stale); for an activation case, a whole run with each
+//                                     of its scripted hosts, held to its verdict and its class. A control that no
+//                                     longer applies to the
 //                                     source is its own row, DRIFTED, and the command then exits 2. The set keeps a room
 //                                     of its own (--run-id names it before it starts), each control's row as it ends
 //   node benchmark/run.mjs cleanup <bnr-…> [--scratch]
@@ -82,7 +87,7 @@
 //                                     run it planned for a control); --scratch its scratch trees
 //   node benchmark/run.mjs where      where the runs are kept, and which there are
 //   node benchmark/run.mjs metrics [--suite=<suite>] [--case=<case>] [--since=<iso date>] [--revision=<commit>]
-//                                  [--by=revision,model,arm,memory] [--k=<n>]
+//                                  [--by=revision,model,arm,memory,language] [--k=<n>]
 //                                     what the kept runs show, each metric a numerator over a denominator: success,
 //                                     self-healing, detection, false alarms, regressions, interventions, rounds, time
 //                                     and REPORTED cost per verified outcome, reproducibility, the verifier's own
@@ -92,9 +97,12 @@
 //                                     per model at its effort (per tool, per relay subcommand, per PASS, per sandbox
 //                                     step); each Orbit arm's overhead over the none arm; each sessions case's memory
 //                                     arms side by side -- pass@1, decisions used, designs refused, cost and minutes of
-//                                     the second session -- and memory's effect, on minus off. --by=revision adds each
-//                                     case's outcome and rates by source commit, --by=model, --by=arm and --by=memory
-//                                     every metric again per model at its effort, per arm or per memory arm
+//                                     the second session -- and memory's effect, on minus off; the activation rows
+//                                     (activation precision and recall, strategy, skill and agent selection,
+//                                     unnecessary delegation, the router, capability coverage, work completed).
+//                                     --by=revision adds each case's outcome and rates by source commit, --by=model,
+//                                     --by=arm, --by=memory and --by=language every metric again per model at its
+//                                     effort, per arm, per memory arm or per prompt's language
 //   node benchmark/run.mjs reliability [--revision=<commit>] [--suite=<suite>] [--case=<case>] [--since=<iso date>]
 //                                      [--k=<n>]
 //                                     the reliability report a release quotes, folded from the kept runs like metrics:

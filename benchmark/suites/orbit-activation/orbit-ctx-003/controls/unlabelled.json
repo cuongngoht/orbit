@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "id": "unlabelled",
+  "about": "the half host of ORBIT-CTX-003: a control that must FAIL as HOST_DIVERGED",
+  "steps": [
+    {
+      "do": "skill",
+      "name": "orbit:orbit"
+    },
+    {
+      "do": "goal",
+      "requirements": [
+        {
+          "statement": "Nhân viên hỗ trợ có thể tạm giữ một đơn hàng đang mở",
+          "line": 4
+        },
+        {
+          "statement": "Đơn hàng đang tạm giữ không thể giao",
+          "line": 5
+        },
+        {
+          "statement": "bỏ tạm giữ và đưa đơn hàng về trạng thái mở",
+          "line": 6
+        },
+        {
+          "statement": "Mỗi lần tạm giữ ghi lại ai đã tạm giữ và vào lúc nào",
+          "line": 7
+        },
+        {
+          "statement": "Đơn hàng lớn nên được bỏ tạm giữ nhanh chóng",
+          "line": 8
+        },
+        {
+          "statement": "các route API hiện có giữ nguyên hợp đồng",
+          "line": 9
+        }
+      ],
+      "acceptance": [
+        {
+          "statement": "Tạm giữ một đơn hàng đang mở trả về 200",
+          "line": 12
+        },
+        {
+          "statement": "Giao một đơn hàng đang tạm giữ trả về 409",
+          "line": 13
+        },
+        {
+          "statement": "Bỏ tạm giữ một đơn hàng đang tạm giữ đưa nó về trạng thái mở",
+          "line": 14
+        }
+      ]
+    }
+  ]
+}

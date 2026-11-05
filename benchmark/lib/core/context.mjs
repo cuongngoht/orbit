@@ -5,7 +5,9 @@
 // resumed run is refused when what it froze no longer is what it froze.
 //
 // 0.5.0: a run is on one ARM of its case (`o.arm`, armOf) -- the plugin its host is handed, made per arm by PLUGIN_TREES
-// -- and may be one of a REPEAT group (`o.group`); the manifest's config keeps both.
+// -- and may be one of a REPEAT group (`o.group`); the manifest's config keeps both. An ACTIVATION case (B22 M4) is handed
+// a writable target on every arm, a checkout that names an `origin` answering nothing (ORIGIN_OF), and is read back
+// with the run's own source (`inspectorDir`) whichever plugin its arm handed the host.
 //
 //   frozenRun(h, o) -> ctx        resumedRun(h, runId) -> ctx        frozenIntact(ctx) -> boolean      armOf(c, o) -> arm
 //   freshRoom(h, runId) -> room   (a run id names one run: refused when its room is kept already)
@@ -132,14 +134,20 @@ const PLUGIN_TREES = {
 };
 
 // A host with no Orbit has no task workspace to make a change in: it is handed a writable copy of the target instead,
-// made beside the run's checkout (which stays the run's frozen subject, read-only).
-const worktreeFor = (h, f) => madeCheckout(f.room.at("worktree"), f.faulted.entries, `${f.c.id} ${f.variant} worktree`, h.env, { plugin: false });
+// made beside the run's checkout (which stays the run's frozen subject, read-only). An activation case's host gets one on
+// every arm: whether it changes the checkout itself or hands the change to an engineering task is what it decides.
+const worktreeFor = (h, f) => madeCheckout(f.room.at("worktree"), f.faulted.entries, `${f.c.id} ${f.variant} worktree`, h.env, { plugin: false, origin: originOf(f.c) });
+
+// What a case withholds from the plugin its host is handed, beside the harness (an activation case's `withheld`).
+const withheldOf = (f) => f.c.withheld ?? [];
+
+const kept = (f, tree) => ({ ...tree, entries: tree.entries.filter((e) => !matchesAny(withheldOf(f), e.rel)) });
 
 function orbitPlugin(h, f) {
-  const tree = PLUGIN_TREES[f.arm](h, f);
+  const tree = kept(f, PLUGIN_TREES[f.arm](h, f));
   const made = madeCheckout(f.room.at("plugin"), tree.entries, `${f.c.id} plugin (${f.arm})`, h.env);
   if (f.arm === "none") worktreeFor(h, f);
-  return { files: made.files, commit: made.commit, digest: treeDigestOf(tree.entries), withheld: [], relayed: null, arm: f.arm, handed: f.arm !== "none", revision: tree.revision };
+  return { files: made.files, commit: made.commit, digest: treeDigestOf(tree.entries), withheld: withheldOf(f), relayed: null, arm: f.arm, handed: f.arm !== "none", revision: tree.revision };
 }
 
 // The coding host of a QA run is handed a plugin without what its case withholds (the ground truth, the reference
@@ -156,6 +164,34 @@ function pluginMade(h, f) {
   return { files: made.files, commit: made.commit, digest: treeDigestOf(entries), withheld: f.c.target.withheld, relayed: PLUGIN_CLI };
 }
 
+// ---- an activation case's target, plugin and inspector (0.5.0, B22 M4) ---------------------------------------------------
+
+// The project a prompt with no fixture is handed: a repository that holds a README and nothing else.
+const NO_FIXTURE = ((bytes) => [{ rel: "README.md", mode: "file", bytes, digest: shaBytes(bytes) }])(Buffer.from("A new project. Nothing is here yet.\n", "utf8"));
+
+const fixtureNamed = (c) => ({ ...c, fixture: c.fixture.id });
+
+const activationTarget = (c, variant, entries, frozenEntries) => (c.fixture.id === "none" ? { ok: true, entries: NO_FIXTURE, applied: [] } : targetFor(fixtureNamed(c), variant, frozenEntries));
+
+// The remote an activation case's checkout names: one that answers nothing (`.invalid`), the same on every arm.
+export const ORIGIN_OF = (c) => `https://git.invalid/${c.fixture.id === "none" ? "project" : c.fixture.id}.git`;
+
+// The plugin the arm hands the host (as for an engineering case), the writable target it works in on EVERY arm, and --
+// on the baseline arm -- the run's own source again, as the INSPECTOR: the trail and the owners' records are always read
+// back with this release's own read commands, never with the arm's.
+function activationPlugin(h, f) {
+  const plugin = orbitPlugin(h, f);
+  if (f.arm !== "none") worktreeFor(h, f);
+  if (f.arm === "baseline") madeCheckout(f.room.at("inspector"), f.subject.entries, `${f.c.id} inspector (release)`, h.env);
+  return plugin;
+}
+
+const activationDescribed = (f) => ({ fixture: { id: f.c.fixture.id, clean: f.c.fixture.id === "none" ? treeDigestOf(NO_FIXTURE) : treeDigestOf(fixtureEntries(fixtureNamed(f.c), f.frozen.entries)) }, plugin: f.plugin, activation: { language: f.c.language, tier: f.c.measures.tier, capability: f.c.measures.capability, switches: f.c.switches ?? {} } });
+
+// What a run's manifest says beyond what every run says: a QA case's application and plugin, an engineering case's
+// fixture and plugin, an activation case's fixture, plugin and what it measures.
+const describedOf = (f) => ({ ...(f.c.target ? { target: f.c.target, plugin: f.plugin } : {}), ...(f.c.fixture ? { fixture: { id: f.c.fixture, clean: treeDigestOf(fixtureEntries(f.c, f.frozen.entries)) }, plugin: f.plugin } : {}) });
+
 // What each kind of case does beyond freezing the source: a source case plants its variant's mutations in the subject
 // it measures; a QA case plants its variant in its APPLICATION later, through its engine, and makes the plugin its
 // coding host is handed. Each says how many attempts its task may make.
@@ -167,7 +203,11 @@ const KIND_RUN = {
   qa: QA_RUN,
   engineering: { variant: sourceVariant, subject: (c, variant, entries, frozenEntries) => targetFor(c, variant, frozenEntries), extra: orbitPlugin, attempts: (c, config) => config.rounds + 1, measured: (c) => [`benchmark/fixtures/${c.fixture}/**`], target: true },
   sessions: QA_RUN,
+  activation: { variant: sourceVariant, subject: activationTarget, extra: activationPlugin, attempts: () => 1, measured: (c) => (c.fixture.id === "none" ? [] : [`benchmark/fixtures/${c.fixture.id}/**`]), target: true, origin: ORIGIN_OF, described: activationDescribed },
 };
+
+// The remote a kind's checkout names, if any (an activation case's).
+const originOf = (c) => KIND_RUN[c.kind]?.origin?.(c) ?? null;
 
 // `repeat` (0.5.0): the group a run belongs to when one command asked for N runs of a case -- its id, which of them this
 // is, and how many were asked -- so a metric reads N runs as one row's repeats, never as N unrelated runs.
@@ -198,7 +238,7 @@ export function memoryOf(c, o) {
 const harnessDigest = (engine) => sha([dirDigest(join(engine, "benchmark", "lib")), dirDigest(join(engine, "benchmark", "images")), shaBytes(readFileSync(join(engine, "benchmark", "run.mjs")))].join("\n"));
 
 function manifestOf(h, f) {
-  return { schema: 1, run: f.runId, at: new Date().toISOString(), host: { node: process.version, platform: process.platform, docker: f.dockerVersion }, source: { repo: f.where.root, branch: f.where.branch, detached: f.where.detached, commit: f.where.commit, dirty: f.where.dirty, mode: f.mode, files: f.frozen.entries.length, digest: treeDigestOf(f.frozen.entries), skipped: f.frozen.skipped }, subject: { files: f.faulted.entries.length, digest: treeDigestOf(f.faulted.entries), clean: treeDigestOf(f.subject.entries), excluded: f.subject.skipped.map((s) => s.rel), faults: f.faulted.applied, commit: f.checkout.commit }, benchmark: { suite: f.c.suite.id, suiteVersion: f.c.suite.version, case: f.c.id, kind: f.c.kind, version: f.c.version, variant: f.variant, digest: f.caseDigest, harness: harnessDigest(engineOf(h)) }, ...(f.c.target ? { target: f.c.target, plugin: f.plugin } : {}), ...(f.c.fixture ? { fixture: { id: f.c.fixture, clean: treeDigestOf(fixtureEntries(f.c, f.frozen.entries)) }, plugin: f.plugin } : {}), images: f.images, config: f.config, store: { base: h.storeBase, root: h.storeRoot } };
+  return { schema: 1, run: f.runId, at: new Date().toISOString(), host: { node: process.version, platform: process.platform, docker: f.dockerVersion }, source: { repo: f.where.root, branch: f.where.branch, detached: f.where.detached, commit: f.where.commit, dirty: f.where.dirty, mode: f.mode, files: f.frozen.entries.length, digest: treeDigestOf(f.frozen.entries), skipped: f.frozen.skipped }, subject: { files: f.faulted.entries.length, digest: treeDigestOf(f.faulted.entries), clean: treeDigestOf(f.subject.entries), excluded: f.subject.skipped.map((s) => s.rel), faults: f.faulted.applied, commit: f.checkout.commit }, benchmark: { suite: f.c.suite.id, suiteVersion: f.c.suite.version, case: f.c.id, kind: f.c.kind, version: f.c.version, variant: f.variant, digest: f.caseDigest, harness: harnessDigest(engineOf(h)) }, ...(KIND_RUN[f.c.kind].described ?? describedOf)(f), images: f.images, config: f.config, store: { base: h.storeBase, root: h.storeRoot } };
 }
 
 // ---- a new run --------------------------------------------------------------------------------------------------------
@@ -237,7 +277,7 @@ export function freshRoom(h, runId) {
 
 function recordedRun(h, o, f) {
   cpSync(f.c.dir, f.room.at("frozen", "case"), { recursive: true });
-  const checkout = madeCheckout(f.room.at("checkout"), f.faulted.entries, `${f.c.id} ${o.variant} subject`, h.env, { plugin: !KIND_RUN[f.c.kind].target });
+  const checkout = madeCheckout(f.room.at("checkout"), f.faulted.entries, `${f.c.id} ${o.variant} subject`, h.env, { plugin: !KIND_RUN[f.c.kind].target, origin: originOf(f.c) });
   const config = runningConfig(o, f.c);
   const manifest = manifestOf(h, { ...f, variant: o.variant, checkout, plugin: KIND_RUN[f.c.kind].extra(h, f), config, images: o.images, dockerVersion: o.dockerVersion, caseDigest: dirDigest(f.room.at("frozen", "case")) });
   return withTask(h, f.room, manifest, f.c);
@@ -268,7 +308,7 @@ export function contextOf(h, room, manifest, rec) {
   const deps = h.dockerDeps ? h.dockerDeps(room) : dockerDeps(h.env, room);
   const baseline = baselineOf(room.at("checkout"), h.env);
   const texts = new Map(baseline.map((e) => [e.rel, e.bytes]));
-  return { run: { id: manifest.run }, room, manifest, case: c, frozenCase: c.dir, rec: rec ?? recorderOf(h), task: manifest.task, deps, dockerEnv: dockerClientEnv(h.env), env: h.env, storeBase: h.storeBase, repoRoot: h.root, images: manifest.images, user: userOf(deps), cpuset: cpusetOf(deps, c.limits.verifier?.cpus ?? 1), runnerCpuset: cpusetOf(deps, c.limits.runner.cpus), limits: { ...c.limits.verifier, rounds: manifest.config.rounds, usd: manifest.config.usd }, checkoutDir: room.at("checkout"), runnerStore: madeDir(room, "runner-store"), baseline, baselineDigest: treeDigestOf(baseline), baselineText: (rel) => texts.get(rel)?.toString("utf8") ?? null, probeFile: c.acceptance.probe ? join(c.dir, c.acceptance.probe) : null, engineDir: room.at("checkout"), pluginDir: room.at("plugin"), engineStore: room.at("engine"), allowedHosts: hostsOf(h.env), credentialNames: credentialNames(h.env, h.credential), caFile: h.caFile ? realpathSync(h.caFile) : null, model: manifest.config.model, effort: manifest.config.effort ?? null, repair: manifest.config.repair, host: manifest.config.host ?? null, arm: manifest.config.arm ?? "release", worktreeDir: room.at("worktree"), memory: manifest.config.memory ?? null, learnHost: manifest.config.learnHost ?? null };
+  return { run: { id: manifest.run }, room, manifest, case: c, frozenCase: c.dir, rec: rec ?? recorderOf(h), task: manifest.task, deps, dockerEnv: dockerClientEnv(h.env), env: h.env, storeBase: h.storeBase, repoRoot: h.root, images: manifest.images, user: userOf(deps), cpuset: cpusetOf(deps, c.limits.verifier?.cpus ?? 1), runnerCpuset: cpusetOf(deps, c.limits.runner.cpus), limits: { ...c.limits.verifier, rounds: manifest.config.rounds, usd: manifest.config.usd }, checkoutDir: room.at("checkout"), runnerStore: madeDir(room, "runner-store"), baseline, baselineDigest: treeDigestOf(baseline), baselineText: (rel) => texts.get(rel)?.toString("utf8") ?? null, probeFile: c.acceptance.probe ? join(c.dir, c.acceptance.probe) : null, engineDir: room.at("checkout"), pluginDir: room.at("plugin"), engineStore: room.at("engine"), allowedHosts: hostsOf(h.env), credentialNames: credentialNames(h.env, h.credential), caFile: h.caFile ? realpathSync(h.caFile) : null, model: manifest.config.model, effort: manifest.config.effort ?? null, repair: manifest.config.repair, host: manifest.config.host ?? null, arm: manifest.config.arm ?? "release", worktreeDir: room.at("worktree"), memory: manifest.config.memory ?? null, learnHost: manifest.config.learnHost ?? null, inspectorDir: existsSync(room.at("inspector")) ? room.at("inspector") : room.at("plugin"), switches: c.switches ?? {} };
 }
 
 // The spec is imported from the run's FROZEN copy, and its cases made from the run's own seed.

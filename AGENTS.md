@@ -66,7 +66,7 @@ each round's brief, candidate, patch and outcome, a verified candidate's record,
 never in a repository, and the run's own task stays in the project's task rooms like any other.
 
 One more belongs to release tooling: `<store>/release/<shp-…>/` is one autonomous SHIP (`skills/orbit-release/ship.mjs`,
-ADR 0049) -- its manifest frozen at its start, one document per action keyed by its task's own action id, the release
+ADR 0049), or a precheck (a ship of mode `precheck`, ADR 0051) -- its manifest frozen at its start, one document per action keyed by its task's own action id, the release
 artifact, each verified patch it integrated, the release patch and bundle a person applies, a pristine checkout of each
 release commit it judged (`trees/`), its ending and its `evidence.json`. It is created on first write, never on read and
 never in a repository; the ship's own task stays in the project's task rooms, and the workspace its repairs are
@@ -677,9 +677,12 @@ place real adapters are bound to real config.
   protected paths, no test losing a line) before it is applied, AUTO, in the ship task's own workspace; a new release
   commit invalidates every earlier row and the whole catalog runs again. SHIPPABLE writes `evidence.json` bound to the
   commit, tree, content, protected and policy digests and the artifact; `ship.mjs --evidence` re-derives all of it and
-  is the only door to publishing. The ship never writes the checkout, pushes, tags or publishes; native host and backend
-  acceptance are optional rows (`test/release-ship.test.mjs`, `test/release-ship-tables.test.mjs`,
-  `test/release-ship-policy.test.mjs`, `test/release-ship-door.test.mjs`, `test/benchmark-release-hooks.test.mjs`).
+  is the only door to publishing. A model-carried row of a suite or case the policy RECORDS (ADR 0051) runs once under
+  the ship's retries and is reported held or not, with its run's room -- it never blocks SHIPPABLE, and its controls stay
+  required; `--precheck` runs only the model-carried rows, each once, and qualifies nothing. The ship never writes the
+  checkout, pushes, tags or publishes; native host and backend acceptance are optional rows
+  (`test/release-ship.test.mjs`, `test/release-ship-tables.test.mjs`, `test/release-ship-policy.test.mjs`,
+  `test/release-ship-door.test.mjs`, `test/benchmark-release-hooks.test.mjs`).
 - **A benchmark grades only what its verifier shows, and repairs only through Orbit (ADR 0046, 0047, 0048).** `benchmark/` is
   development tooling: export-ignored, imported by nothing of the engine, held to Five Lines (`test/benchmark-lint.test.mjs`).
   A run is ONE task written through `cli/task.mjs`, so its budget is the door's and a person's pause or cancel stops it;

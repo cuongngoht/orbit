@@ -550,10 +550,17 @@ anyone:
   run, and the command exits 2.
 - A credential block says its cause and class (`CREDENTIALS`, `ENVIRONMENT_BLOCKED`) in its ending, and a QA run's
   report says its `hostBasis`, as a source run's does.
+- A run's report carries its `diagnosis` (0.5.0, `lib/core/diagnosis.mjs`), read off its own records: how the host's
+  session ended round by round (interrupted, the deadline, no session, or the host's own result subtype), the budget
+  it used against its allowance, and for a QA run what the relay refused, what the engine stopped, and where a run a
+  `step` dispatched stopped short -- the relay's log keeps that `result.stopped`, the engine's own allow-listed view,
+  and nothing else of an answer of 0. A ship's `--status` prints it for every model-carried row that did not hold.
 
 The ship's catalog is `skills/orbit-release/ship/policy.json`: every case of every suite, by name. A source case must
 hold its controls and PASS its real source; a QA or engineering case must hold its controls and PASS with the coding host;
-ORBIT-SRC-001's planted fault must be REPAIRED_VERIFIED by the coding host. A source case failing on a cause it declares
+ORBIT-SRC-001's planted fault must be REPAIRED_VERIFIED by the coding host. A suite or case the policy RECORDS (ADR 0051:
+where a new suite's model rows start) has its model-carried rows run and reported, held or not, and never required --
+its controls still are. A source case failing on a cause it declares
 repairable is repaired with `run <case> --repair`, its `verified.json` checked again by the ship, and the patch integrated
 only in the ship's own workspace -- never here, which stays a person's to write.
 

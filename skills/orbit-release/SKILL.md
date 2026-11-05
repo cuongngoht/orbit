@@ -38,8 +38,9 @@ design, and both halves below exist to keep it.
 ```bash
 node skills/orbit-release/ship.mjs                  # the autonomous ship: every case in Docker, Claude Code carrying the rest
 node skills/orbit-release/ship.mjs --no-repair      # verify only: a failure stands, nothing is repaired
+node skills/orbit-release/ship.mjs --precheck       # BEFORE a ship: only the model-carried rows, each once, no fail-fast
 node skills/orbit-release/ship.mjs --resume=shp-…   # carry an interrupted, blocked or held ship on, from its journal
-node skills/orbit-release/ship.mjs --status         # where this checkout's newest ship stands (writes nothing)
+node skills/orbit-release/ship.mjs --status         # where this checkout's newest ship stands, failures diagnosed (writes nothing)
 node skills/orbit-release/ship.mjs --evidence       # THE PUBLISH GATE: exit 0 only on evidence for this very tree
 node skills/orbit-release/ship.mjs --ci             # the fast tier a pipeline holds -- never release qualification
 node skills/orbit-release/ship.mjs --bump=added     # …and what the next version would be
@@ -49,7 +50,11 @@ A ship (ADR 0049) is one Orbit task (provider `release`) and a room in the machi
 Orbit Live shows a session's ship before the benchmark runs it starts, Mission Control shows it and each run beside it,
 and a person pauses or cancels it there. Where it stands is read from its journal every time, so `--resume` carries it
 on: a run that ended is read back from its room, one still open -- or one whose end never wrote the report that agrees
-with its ending -- is carried on with `benchmark/run.mjs resume`, and nothing is ever sent twice.
+with its ending -- is carried on with `benchmark/run.mjs resume`, and nothing is ever sent twice. Every row's room is
+named before the row starts, a control set's too (`controls --run-id`), so a twenty-minute set a restart cut short is
+carried on from the controls it kept (ADR 0051). A resume reads the catalog first (PREFLIGHT, then what was left
+running), so a run read back is judged like any other, and it asks again what blocked the ship: images that could not
+be built are built, a refused host check is asked, a blocked row or repair runs again -- once per resume.
 
 **What it needs.** Orbit's own clone (not an installed plugin: `benchmark/` is export-ignored), with nothing uncommitted
 under the paths it judges with (the benchmark, its tests, this skill, `.github/`); Docker; and a credential for the
@@ -76,7 +81,15 @@ says basis `coding-host`, reported the Claude Code version the runner image pins
 PASS is conformance of the controller and is never evidence here. A run a restart interrupted -- a round the controller
 never saw end, read back by `run.mjs resume` and said so by the run's own report -- keeps no identity of its own, so it
 is never evidence either, whatever it came to; it is not the model's miss, so the row is `INTERRUPTED` and runs again as
-a new run (below). A run that says another host stays `WRONG_HOST`, interrupted or not, and is never run again.
+a new run (below). A run that says another host stays `WRONG_HOST`, interrupted or not, and is never run again. The
+same holds for a repair a restart cut short: `INTERRUPTED`, never integrated, and it spends no repair attempt.
+
+**Recorded rows** (ADR 0051). `policy.json` `recorded` names suites and cases whose model-carried rows a release RECORDS
+and never requires -- where a new suite's model rows start, until the promotion rule moves them (empty today: every one
+of the 46 cases keeps what it requires). A recorded row runs once, under `--retries` like any model-carried row, and is
+said held or not, with its run's room, in the result, `--status` and `evidence.json`; it never stops a release, never
+stops another row under fail fast, and never blocks SHIPPABLE. Its suite's controls stay required. `--evidence` holds a
+recorded row to its room like every other (`UNRECORDED` when the evidence has no record of one the policy records).
 
 **Repairs.** Only a source case's real variant failing on a cause the case declares repairable is repaired. A QA or
 engineering failure stops the release with its evidence: a fix told what a QA case plants would be fitted to the test, so
@@ -94,19 +107,32 @@ the case up to date in the same commit (as 0.4.0 did for ORBIT-SRC-002 and ORBIT
 in the ship's workspace: apply it with `git am <room>/release.patch` (or `git fetch <room>/release.bundle HEAD`), commit,
 and ask `ship.mjs --evidence` -- it says PUBLISHABLE only when your HEAD's tree is the qualified tree, nothing is dirty,
 the protected paths and the policy are as they were, every required row has held evidence whose run's room still agrees,
-and the artifact is the one (`--artifact=<zip>` checks an archive you built again, by its content). Tag only then.
+every recorded row has its record, and the artifact is the one (`--artifact=<zip>` checks an archive you built again, by
+its content). Tag only then.
 
 **Limits and exits.** `--usd`, `--minutes`, `--cycles`, `--attempts` (repair attempts per case) and `--retries` (more
 runs a model-carried row that missed may have, 0 by default, at most 3) narrow or set the policy's limits, within its
-bounds; on `--resume` a person may raise them. A retried row holds only on a PASS of its own run -- the miss is kept in
-the ship's journal beside it. An `INTERRUPTED` run spends none of `--retries`: the row runs again at most
-`INTERRUPTED_RUNS` times a cycle (2, declared in `ship/diagnose.mjs`, not a policy limit), and then the ship BLOCKS on
-the environment, every interrupted run kept. A spent limit BLOCKS the ship with its evidence kept.
+bounds -- a value out of bounds is refused by the flag you typed, before anything starts; on `--resume` a person may
+raise them. A retried row holds only on a PASS of its own run -- the miss is kept in the ship's journal beside it. An
+`INTERRUPTED` run (or repair) spends none of `--retries` (or `--attempts`): it runs again at most `INTERRUPTED_RUNS` times
+a cycle (2, declared in `ship/diagnose.mjs`, not a policy limit), and then the ship BLOCKS on the environment, every
+interrupted run kept. Its cost is UNKNOWN -- what its ended rounds reported, never its whole allowance -- and is said
+beside what was spent (`--status`, `evidence.json` `totals.unknownCost`), never added into `--usd`. A spent limit BLOCKS
+the ship with its evidence kept.
 Exit 0 SHIPPABLE · 2 NOT SHIPPABLE or NO PROGRESS (or refused) · 3 BLOCKED (Docker, the host, its credential, a limit, a
 row the environment kept from an ending -- fix it and `--resume`: the resume is journaled, and a row blocked before it
 runs again as a new run, once per resume) · 4 a person paused or cancelled it. The ship never falls back to another
 host, a scripted host or a model mock. `--status` says the newest cycle, open or closed: the rows it held (`heldRows`),
-those it did not (a row that runs again says so), and its repairs.
+those it did not (a row that runs again says so), the recorded rows, and its repairs -- and for every model-carried row
+that did not hold, its DIAGNOSIS BUNDLE beside its run's room, read off the run's own report: the host's finish reason,
+the budget it used, what the relay refused, what the engine stopped, and where a run stopped short (`result.stopped`).
+
+**The precheck** (ADR 0051). Before a full ship, `--precheck` runs only the model-carried rows -- required and recorded --
+each once, stopping at no failure: what 0.4.0 did by hand before every ship, in one resumable command. It builds the
+release tree and the images and asks the host first, as a ship does; it needs no workspace and holds no definition of
+done. It ends PRECHECK HELD (exit 0) or PRECHECK FAILED (exit 2), with every failure said with its run's room and its
+bundle. It writes no evidence and is never what `--evidence` reads; `--cycles`, `--attempts` and `--retries` are a
+ship's and are refused with it. `--usd`, `--minutes`, `--model`, `--credential` and `--ca-file` work as for a ship.
 
 **Optional.** Native host acceptance (`docs/host-acceptance.json`: Claude Code, Codex, Antigravity, Grok Build) and native
 backend acceptance (`acceptance/run.mjs --record`) are reported beside every ship as `opt` rows and never block it. Record

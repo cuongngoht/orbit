@@ -6,6 +6,10 @@ Accepted (release tooling; no engine contract changes, one additive CLI flag: `c
 ADR 0046 (the Docker benchmark), ADR 0047 (its QA cases), ADR 0048 (repair controls, failure classes, engineering
 cases), ADR 0042 (protected boundaries) and ADR 0016 (one viewer, the journals). Changes what `ship.mjs` requires: native
 host acceptance (Grok Build, Antigravity, Codex, Claude Code) and native backend acceptance become optional.
+Extended by ADR 0051 (0.5.0): recorded rows a release runs and reports but never requires, the precheck, a failed
+row's diagnosis in `--status`, a resumable control set, and what a resumed ship asks again -- among them, a run a
+restart interrupted is never charged its whole allowance, which amends "an unreported one counts at the run's cap"
+below for that one case.
 
 ## Context
 

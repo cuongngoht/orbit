@@ -5,8 +5,10 @@ import { resolveHookHost, resolveHost } from "../skills/orbit-learn/hosts/index.
 import { dispatch } from "../src/lifecycle/dispatch.mjs";
 import { EVENT_NAMES, lifecycleEvent } from "../src/lifecycle/event.mjs";
 import { CAPABILITY_BYTES, OWNERS, OWNER_KINDS, capabilityLine, recoveryRow, returnLine } from "../src/lifecycle/owners.mjs";
+import { learning } from "../src/lifecycle/subscribers/learning.mjs";
 import { returned } from "../src/lifecycle/subscribers/returned.mjs";
 import { hostSession, knownIn, sessionMarks } from "../src/memory/session.mjs";
+import { fakeIo } from "./fakes/io.mjs";
 
 const event = (input, argv = []) => lifecycleEvent(resolveHost(input, argv), input, argv);
 
@@ -140,6 +142,31 @@ test("Claude's adapter answers after a tool ONLY for an Agent call with somethin
 });
 
 const WORKFLOW = { kind: "workflow", id: "tsk-0123456789ab", lifecycle: "EXECUTING", state: "running", ready: ["qa"], open: ["engineering"] };
+
+const quietHost = { isWatched: (input, list) => list.some((w) => String(input?.tool_input?.command ?? "").includes(w)), formatSessionStart: (text) => (text ? { context: text } : null), formatFailure: (text) => ({ failure: text }), formatPostTool: claude.formatPostTool };
+
+test("ONE payload a failed Orbit command gets: the diagnosis a watched command gets, then the governing owner's recovery row", () => {
+  const world = (owner, command) => ({ host: quietHost, input: { tool_input: { command } }, engine: "/plug", recovery: () => owner });
+  const watched = learning.run({ event: "post-tool-failure" }, world(WORKFLOW, "node /p/cli/run-case.mjs x"));
+  assert.match(watched.failure, /^A orbit command exited non-zero/);
+  assert.match(watched.failure, /\nOrbit: this command ran under workflow tsk-0123456789ab \(EXECUTING\)\. An action that did not settle is read back with node \/plug\/cli\/automation\.mjs reconcile tsk-0123456789ab -- never sent again\.$/);
+  assert.match(learning.run({ event: "post-tool-failure" }, world(WORKFLOW, "node /p/cli/automation.mjs step tsk-0123456789ab")).failure, /^Orbit: this command ran under workflow/, "an Orbit command no diagnosis watches gets its owner's row alone");
+  assert.equal(learning.run({ event: "post-tool-failure" }, world(null, "node /p/cli/automation.mjs step x")), null, "no governed work: nothing, as before");
+  assert.match(learning.run({ event: "post-tool-failure" }, world(null, "node /p/cli/run-case.mjs x")).failure, /^A orbit command exited non-zero[^\n]*$/, "a watched command with no governed work: the diagnosis alone, as before");
+});
+
+test("ONE payload a session's start gets: the capability line first, the open work of a resumed session next, the recall after", () => {
+  const ctx = { learn: { all: () => [] }, config: { name: "x" }, store: { root: "/nowhere" }, io: fakeIo(), project: { graphDir: "/nowhere/graph" } };
+  const digest = { capabilities: { summary: [{ family: "skills", total: 25, available: 24 }], off: ["orbit-report"], status: "READY" }, owner: WORKFLOW };
+  const world = { host: quietHost, input: {}, engine: "/plug", light: () => ctx, digest: () => digest };
+  const fresh = learning.run({ event: "session-start" }, world).context.split("\n\n");
+  assert.equal(fresh[0], "Orbit here: skills 24/25 usable; switched off: orbit-report; project STATUS READY.");
+  assert.ok(!fresh.some((p) => p.includes("open work")), "a fresh session has no open work to say");
+  const resumed = learning.run({ event: "session-start", resumed: true }, world).context.split("\n\n");
+  assert.match(resumed[1], /^Orbit: this session's open work is workflow tsk-0123456789ab \(EXECUTING\), next: qa -- node \/plug\/cli\/automation\.mjs context tsk-0123456789ab says where it stands\.$/);
+  assert.equal(learning.run({ event: "session-start" }, { ...world, light: () => null }), null, "an unknown checkout: nothing at all, digest or not");
+  assert.equal(learning.run({ event: "session-start" }, { ...world, digest: () => null }), null, "no digest and nothing recalled: nothing, as before");
+});
 
 test("the capability line is at most 300 bytes, however much a person switched off, and every owner names its own commands", () => {
   const long = capabilityLine({ summary: [{ family: "skills", total: 25, available: 2 }, { family: "agents", total: 20, available: 0 }, { family: "mcp", total: 4, available: 1 }, { family: "tools", total: 24, available: 3 }, { family: "capabilities", total: 5, available: 5 }], off: Array.from({ length: 45 }, (_, i) => `orbit-component-number-${i}`), status: "NOT_INITIALIZED" });

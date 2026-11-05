@@ -22,6 +22,13 @@ export const AC_STATES = ["verified", "failed", "not-verified", "blocked", "not-
 // A guess is never `explicit`: what the specification does not say is an assumption or an unknown.
 export const REQ_KINDS = ["explicit", "derived", "assumption", "unknown", "conflict", "decision", "constraint"];
 
+// What a row that names NO kind is read as (0.5.0, B21's review): a statement nobody labelled is a guess about what the
+// specification says, so it is an assumption -- never `explicit` -- and the row keeps `kindDefaulted`, so `goal analyze`
+// counts it apart and nobody takes the engine's default for the host's own reading. Nothing that plans, verifies or
+// completes a goal reads a row's kind today, so the default moves counts and views only; a rule that comes to read a
+// kind reads `kindDefaulted` beside it.
+export const DEFAULT_REQ_KIND = "assumption";
+
 export const LIFECYCLE = [
   { name: "created", doc: "accepted, not yet analyzed" },
   { name: "analyzing", doc: "analysis in progress" },

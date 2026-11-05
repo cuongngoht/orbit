@@ -1,11 +1,16 @@
 import { flag, has } from "../learn/args.mjs";
 import { analyzeGoal, goalId, planGoal, readAnalysis, resumeGoal, startFromArgs, statusGoal, stepGoal, verifyGoal } from "./commands.mjs";
 import { sayReport } from "./report.mjs";
+import { DEFAULT_REQ_KIND } from "./vocab.mjs";
 
 export { startGoal, analyzeGoal, planGoal, statusGoal, resumeGoal, stepGoal, verifyGoal } from "./commands.mjs";
 
 // The requirements of each kind, as the analysis counted them: "(3 explicit · 1 constraint)".
 const kindsSaid = (kinds) => (Object.keys(kinds ?? {}).length ? ` (${Object.entries(kinds).map(([kind, n]) => `${n} ${kind}`).join(" · ")})` : "");
+
+// The rows that arrived with no kind, said apart from the kinds they were counted in: " · 2 sent with no kind, read as
+// assumption". Nothing when every row was labelled.
+const defaultedSaid = (n) => (n ? ` · ${n} sent with no kind, read as ${DEFAULT_REQ_KIND}` : "");
 
 const caps = (args) => {
   const t = flag(args, "capability");
@@ -27,7 +32,7 @@ export const OPS = {
 
 export const sayOps = {
   start: (r) => `GOAL       ${r.id} started\nTITLE      ${r.title}\nDIGEST     ${r.specDigest}`,
-  analyze: (r) => `GOAL       ${r.id} analyzed · ${r.requirements} requirements${kindsSaid(r.kinds)} · ${r.acceptance} acceptance criteria`,
+  analyze: (r) => `GOAL       ${r.id} analyzed · ${r.requirements} requirements${kindsSaid(r.kinds)}${defaultedSaid(r.kindDefaulted)} · ${r.acceptance} acceptance criteria`,
   plan: (r) => `GOAL       ${r.id} · ${r.plan} · ${r.units} work unit(s)`,
   status: (r) => sayReport(r.view),
   resume: (r) => r.say,

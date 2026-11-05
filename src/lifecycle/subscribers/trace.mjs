@@ -66,7 +66,7 @@ const launched = (event) => (event.launched ? [{ type: "agent.launched", data: {
 function used(event, t) {
   if (event.tool?.kind !== "command") return [{ type: "tool.used", data: { tool: String(event.tool?.name ?? "tool").slice(0, 96), kind: event.tool?.kind ?? "other", ok: okOf(event) } }];
   const orbitCmds = orbitCommands(event.command, t.lookup);
-  if (orbitCmds.length) return orbitCmds.map((c) => ({ type: "command.ran", data: { orbit: c.id, sub: c.sub, ok: okOf(event) } }));
+  if (orbitCmds.length) return orbitCmds.map((c) => ({ type: "command.ran", data: { orbit: c.id, sub: c.sub, op: c.op, ok: okOf(event) } }));
   const shell = commandOf(event);
   return shell ? [{ type: "command.ran", data: { class: shell.class, exe: shell.exe, ok: shell.ok } }] : [];
 }

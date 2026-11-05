@@ -1,9 +1,11 @@
-// The SESSION TRAIL, printed: the decision trace (`turns`, `turn <id>`) and the
-// usage analytics (`usage`). Read-only views over the projections -- they
-// re-judge nothing and write nothing.
+// The SESSION TRAIL, printed: the decision trace (`turns`, `turn <id>`), the
+// usage analytics (`usage`) and, since 0.5.0, the activation chain
+// (`activation`). Read-only views over the projections -- they re-judge nothing
+// and write nothing.
 import { Refused } from "../errors.mjs";
 import { flag, words } from "../learn/args.mjs";
 import { out } from "../query/format.mjs";
+import { activationOf } from "./projections/activation.mjs";
 import { turnOf, turnsOf } from "./projections/turns.mjs";
 import { usageOf } from "./projections/usage.mjs";
 
@@ -35,6 +37,34 @@ export function turnsView(ctx, args) {
   if (args.includes("--json")) return out(JSON.stringify({ version: 1, turns }, null, 2));
   out(`TRACE  last ${daysOf(args, 1)} day(s) · ${turns.length} turn(s) shown · ${new Set(events.map((e) => e.session)).size} session(s)\n`);
   for (const t of turns) out(`  ${clock(t.at)}  ${t.routing?.intent ?? "no routing"}${t.routing?.confidence ? ` (${t.routing.confidence})` : ""} · ${t.followed.verdict.toUpperCase()} · ${t.steps.length} step(s) · ${t.outcome} · ${spent(t.ms)}   ${t.id}\n            ${pathText(t) || "(no steps)"}`);
+}
+
+// ---- the activation chain (0.5.0, B22 M3, ADR 0050) ------------------------------------------------------------------
+
+// ctx: { log, now, work(turn) -> a work view | null, via: { <agent>: [<parent skill>] } } -- both bound by cli/trace.mjs.
+export function activationView(ctx, args) {
+  const events = ctx.log.read(windowOf(ctx, args, 1));
+  const a = activationOf(events, { work: ctx.work, via: ctx.via ?? {}, limit: Number(flag(args, "limit") ?? 20) });
+  const turns = a.turns.filter((t) => !flag(args, "session") || t.session === flag(args, "session"));
+  if (args.includes("--json")) return out(JSON.stringify({ ...a, turns, works: a.works.filter((w) => turns.some((t) => w.turns.includes(t.id))) }, null, 2));
+  activationLines(a, turns, daysOf(args, 1));
+}
+
+const idsSaid = (ids) => (ids?.length ? ids.slice(0, 4).join(", ") + (ids.length > 4 ? ` +${ids.length - 4}` : "") : "—");
+
+const ownersSaid = (owners) => idsSaid(owners.map((o) => `${o.type}${o.id ? ` ${o.id}` : ""}`));
+
+const verifiedSaid = (v) => (v.work ? `${v.work} ${v.level ?? "?"}${v.verified ? " (VERIFIED by its owner)" : ""}` : "— (no work view)");
+
+const strategySaid = (t) => (t.strategy ? `${t.strategy.word}/${t.strategy.row}` : "no strategy");
+
+const chainSaid = (l) => `suggested ${idsSaid(l.suggested.ids)} → selected ${idsSaid(l.selected.ids)} → dispatched ${idsSaid(l.dispatched.ids)} → executed ${ownersSaid(l.executed.owners)} → verified ${verifiedSaid(l.verified)}`;
+
+function activationLines(a, turns, days) {
+  out(`ACTIVATION  last ${days} day(s) · ${turns.length} turn(s) · ${a.works.length} work(s) — each link from its own source; only the owner's record is ever verified\n`);
+  for (const t of turns) out(`  ${clock(t.at)}  ${strategySaid(t)} · ${t.verdict.verdict.toUpperCase()}   ${t.id}\n            ${chainSaid(t.links)}${t.excess.length ? `\n            ${t.verdict.say}` : ""}`);
+  out(`\nLINKS  ${a.links.map((l) => `${l.link}: ${l.source} (${l.basis})`).join(" · ")}`);
+  if (a.works.length) out(`\nWORKS\n${a.works.map((w) => `  ${w.work}  ${w.turns.length} turn(s) · ${w.verdict.verdict.toUpperCase()} · verified ${verifiedSaid(w.links.verified)}`).join("\n")}`);
 }
 
 export function turnView(ctx, args) {

@@ -42,11 +42,15 @@ const entries = (list) => (list ?? []).slice(0, MAX_LIST).map((e) => ({ kind: e.
 const nodeOf = (n) => ({ requirement: n.requirement, level: n.level, status: n.status, transitive: Boolean(n.transitive), provider: n.provider ? { kind: n.provider.kind, id: n.provider.id } : null });
 
 // `synthetic`: the host wrote the prompt itself (0.5.0) -- said even when routing is off, so no reader takes a
-// background task's notification for a person's request.
-export function decisionFacts(decision, injected, synthetic = false) {
-  if (!decision) return { routing: "off", ...(synthetic ? { synthetic: true } : {}) };
-  return { routing: "on", intent: decision.intent?.id ?? null, confidence: decision.intent?.confidence ?? null, cues: (decision.cues ?? []).slice(0, 12), requirements: (decision.requirements ?? []).slice(0, 12), graph: (decision.graph?.nodes ?? []).slice(0, MAX_NODES).map(nodeOf), selected: entries(decision.selected), approval: entries(decision.approval), blocked: entries(decision.blocked), missing: entries(decision.missing), injected: Boolean(injected), ...strategyFacts(decision, synthetic) };
+// background task's notification for a person's request. `marks` (0.5.0, B22 M3): the MARKS rows the prompt hit
+// (src/routing/intents.mjs: opt-out, continue, halt, status, change) -- table words, said with routing off too, and
+// only when there is one, so a Stop hold can tell that a person said to stop.
+export function decisionFacts(decision, injected, synthetic = false, marks = []) {
+  if (!decision) return { routing: "off", ...(synthetic ? { synthetic: true } : {}), ...marksOf(marks) };
+  return { routing: "on", intent: decision.intent?.id ?? null, confidence: decision.intent?.confidence ?? null, cues: (decision.cues ?? []).slice(0, 12), requirements: (decision.requirements ?? []).slice(0, 12), graph: (decision.graph?.nodes ?? []).slice(0, MAX_NODES).map(nodeOf), selected: entries(decision.selected), approval: entries(decision.approval), blocked: entries(decision.blocked), missing: entries(decision.missing), injected: Boolean(injected), ...strategyFacts(decision, synthetic), ...marksOf(marks) };
 }
+
+const marksOf = (marks) => (Array.isArray(marks) && marks.length ? { marks: marks.filter((m) => typeof m === "string").slice(0, MAX_LIST) } : {});
 
 // RouteDecision v3 (0.5.0, B22): the strategy's word and row, the activation's path and id -- table words and ids,
 // never its reason or its command -- and the synthetic flag.

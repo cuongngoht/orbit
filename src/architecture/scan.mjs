@@ -4,7 +4,8 @@
 // reason the analysers are pure. Bootstrap runs all four over every tracked
 // path; an incremental scan runs them over the paths under the scopes that
 // moved; a targeted scan runs the two that read a DECLARATION rather than a
-// tree. Same code, three inputs.
+// tree. Same code, three inputs -- except the analyser that reads only the
+// listing, which opens no file and is always handed all of it (`givenTo`).
 //
 // Nothing here decides WHETHER to scan. That is `ensure.mjs`, and keeping the
 // two apart is what stops a scan from quietly justifying itself.
@@ -40,9 +41,10 @@ export function scan(ctx, decision, opts = {}) {
 const empty = (decision) => ({ facts: [], unknowns: [], scopes: {}, read: 0, analysers: [], skipped: decision.skipped ?? [] });
 
 function ran(ctx, rows, decision, opts) {
-  const files = narrowed(ctx.source.files(), decision, opts);
+  const listing = ctx.source.files();
+  const files = narrowed(listing, decision, opts);
   if (files === null) return { ...empty(decision), unknowns: [NOT_A_CHECKOUT] };
-  return harvested(rows, inputOf(ctx, files, opts), ctx, decision);
+  return harvested(rows, { ...inputOf(ctx, files, opts), listing }, ctx, decision);
 }
 
 // The modules the shape analysis finds are what the imports analysis walks, so
@@ -55,8 +57,13 @@ function inputOf(ctx, files, opts) {
   return { files, read, search, counted, budget: opts.budget, facts: shape({ files, read }).facts, layerTools: opts.layerTools ?? {}, yaml: ctx.yaml ?? null };
 }
 
+// A row that reads only the LISTING is handed all of it, whatever the decision narrowed: it opens no file, so narrowing it
+// saves nothing -- and what it says is about the whole tree (a filename the tree repeats, siblings laid out alike), so a
+// reading of only the part that moved would rewrite a count over the tree with one folder's.
+const givenTo = (row) => (row.reads === "listing" ? { ...row, run: (input) => row.run({ ...input, files: input.listing }) } : row);
+
 function harvested(rows, input, ctx, decision) {
-  const out = analyseWith(rows, input);
+  const out = analyseWith(rows.map(givenTo), input);
   const done = stampAll(out.facts, ctx.source, ctx.now);
   return { ...out, ...done, read: input.counted.n, analysers: rows.map((r) => r.name), skipped: decision.skipped ?? [] };
 }

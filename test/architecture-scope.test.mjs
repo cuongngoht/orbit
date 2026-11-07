@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { ANALYZERS } from "../src/architecture/analyzers/index.mjs";
+import { CONVENTION_SCOPES } from "../src/architecture/analyzers/shape.mjs";
 import { createArchitecture } from "../src/architecture/store.mjs";
 import { ensure } from "../src/architecture/views/ensure.mjs";
 import { createSourceTree } from "../src/frontend/composite.mjs";
@@ -34,14 +35,16 @@ test("a convention that counts a file at the root watches that file, never the w
   assert.ok(json.scope.includes("packages/p0"), "a nested file is still watched by its folder");
 });
 
-function repoOf(t) {
+function repoOf(t, tree = TREE) {
   const base = mkdtempSync(join(tmpdir(), "orbit-arch-scope-"));
   t.after(() => rmSync(base, { recursive: true, force: true }));
   const repo = join(base, "repo");
-  for (const [rel, text] of Object.entries(TREE)) (mkdirSync(dirname(join(repo, rel)), { recursive: true }), writeFileSync(join(repo, rel), text));
+  for (const [rel, text] of Object.entries(tree)) (mkdirSync(dirname(join(repo, rel)), { recursive: true }), writeFileSync(join(repo, rel), text));
   for (const a of [["init", "-q"], ["add", "-A"], ["commit", "-qm", "one"]]) git(repo, a);
   return { base, repo };
 }
+
+const ctxOf = ({ base, repo }) => ({ arch: createArchitecture(join(base, "store"), realIo({ host: "test", now: () => "2026-11-05T00:00:00.000Z" })), source: createSourceTree([repo]), config: { frontend: {} }, project: { layout: 2, root: repo, uiTests: join(repo, "ui-tests") }, now: () => "2026-11-05T00:00:00.000Z" });
 
 const git = (repo, args) => execFileSync("git", args, { cwd: repo, env: sealed(GIT_ENV), stdio: "ignore" });
 
@@ -65,4 +68,44 @@ test("a commit that touches nothing any fact is about leaves the next look CURRE
   writeFileSync(join(repo, "package.json"), JSON.stringify({ name: "demo", dependencies: { left: "1.0.0" } }));
   for (const a of [["commit", "-qam", "the root manifest"]]) git(repo, a);
   assert.equal(looked(ctx), "INCREMENTAL", "a change to the root's own file still moves what is about it");
+});
+
+// A convention is a count over the whole listing, and no scope short of the whole tree keeps a count current -- so it
+// watches a BOUNDED sample of the folders holding what it counted. That bound was a silent `.slice(0, 8)` of the folders
+// in name order (0.5.0 review of B3): on this repository the `*.mjs` convention, 1657 files in 259 folders, watched
+// `acceptance/**` and `benchmark/**` and said nothing of the rest. It watches the folders holding the most, of exactly
+// the files it counted, and says how many of how many.
+const SPREAD = { ...Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`checks/c${i}.test.mjs`, ""])), ...Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`lib/m0${i}/one.mjs`, ""])), ...Object.fromEntries(["lib/m10", "lib/m11"].flatMap((d) => [0, 1, 2, 3].map((i) => [`${d}/f${i}.mjs`, ""]))) };
+
+test("a convention watches the folders holding the most of what it counted, at most CONVENTION_SCOPES, and says how many of how many", () => {
+  const { facts } = shape.run({ files: Object.keys(SPREAD), read: () => "" });
+  const mjs = facts.find((f) => f.kind === "convention" && f.key === "mjs");
+  assert.match(mjs.statement, /^18 tracked file\(s\) are named \*\.mjs$/);
+  assert.equal(mjs.scope.length, CONVENTION_SCOPES, mjs.scope.join(", "));
+  assert.ok(["lib/m10", "lib/m11"].every((d) => mjs.scope.includes(d)), `the folders holding the most are watched first: ${mjs.scope.join(", ")}`);
+  assert.ok(!mjs.scope.includes("checks") && mjs.evidence.every((p) => !p.endsWith(".test.mjs")), "a *.test.mjs is not one of the files *.mjs counted");
+  assert.ok(mjs.unknowns.some((u) => /watches 8 of the 12 folder\(s\) holding one: a file named so added, removed or renamed in any other folder leaves it as it was until a scan counts again/.test(u)), mjs.unknowns.join(" | "));
+  const tests = facts.find((f) => f.kind === "convention" && f.key === "test.mjs");
+  assert.deepEqual(tests.scope, ["checks"]);
+  assert.ok(tests.unknowns.some((u) => /watches every one of the 1 folder\(s\) holding one/.test(u)), tests.unknowns.join(" | "));
+});
+
+const twelve = () => Object.fromEntries(Array.from({ length: 12 }, (_, d) => [0, 1, 2].map((i) => [`pkg/m${String(d).padStart(2, "0")}/f${i}.mjs`, `export const x = ${i};\n`])).flat());
+
+const counted = (ctx, key) => ctx.arch.all().find((f) => f.kind === "convention" && f.key === key)?.statement ?? null;
+
+// What an incremental look re-read came back as the WHOLE tree's count: an incremental scan narrows its input to the
+// scopes that moved, and the shape analysis ran over that part too -- so one folder holding five `*.mjs` rewrote "40
+// tracked file(s)" as "7". It reads no file, so it is handed the whole listing, and every scan counts again.
+test("an incremental look over one folder never rewrites a count over the whole tree with that folder's", (t) => {
+  const at = repoOf(t, twelve());
+  const ctx = ctxOf(at);
+  assert.deepEqual([looked(ctx), counted(ctx, "mjs")], ["BOOTSTRAP", "36 tracked file(s) are named *.mjs"]);
+  for (const i of [3, 4, 5, 6]) writeFileSync(join(at.repo, "pkg/m01", `g${i}.mjs`), "export const y = 1;\n");
+  for (const a of [["add", "-A"], ["commit", "-qm", "four more in one folder"]]) git(at.repo, a);
+  assert.deepEqual([looked(ctx), counted(ctx, "mjs")], ["INCREMENTAL", "40 tracked file(s) are named *.mjs"], "the count over the tree, never pkg/m01's seven");
+  assert.equal(looked(ctx), "CURRENT", "the scan recorded every scope it stamped");
+  writeFileSync(join(at.repo, "pkg/m11", "late.mjs"), "export const z = 1;\n");
+  for (const a of [["add", "-A"], ["commit", "-qm", "one in a folder the convention does not watch"]]) git(at.repo, a);
+  assert.deepEqual([looked(ctx), counted(ctx, "mjs")], ["INCREMENTAL", "41 tracked file(s) are named *.mjs"], "a scan that runs for another fact counts it again");
 });

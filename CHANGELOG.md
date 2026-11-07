@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **A convention says how many of its folders it watches, and an incremental look never rewrites its count.** A
+  convention fact ("1657 tracked file(s) are named *.mjs") watched the first eight of its folders by name and said
+  nothing of the rest, and an incremental look ran the shape analysis over only the scopes that moved, so one folder
+  holding five such files rewrote the whole tree's count with its own. It now watches the eight folders holding the most
+  of exactly the files it counted (`CONVENTION_SCOPES`; a `*.test.mjs` is no longer one of `*.mjs`'s), its `unknowns`
+  say how many of how many, and the shape analysis, which opens no file, is always handed the whole listing, so every
+  scan counts again.
 - **A held-out application measures Orbit on what it was not tuned against (B2, ADR 0056).** Every 0.4.0 fix was found
   on the benchmark's own cases, so their rates say how Orbit does on the cases it was fixed against. A new fixture,
   `benchmark/fixtures/lending/` -- a lending service several library systems share, with an asynchronous drop-box

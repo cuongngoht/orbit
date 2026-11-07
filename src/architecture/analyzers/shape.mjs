@@ -83,7 +83,31 @@ const bump = (counts, s) => counts.set(s, (counts.get(s) ?? 0) + 1);
 // The last two dotted parts, so `.test.mjs` is a different shape from `.mjs`.
 const suffix = (name) => name.split(".").slice(1).slice(-2).join(".");
 
-const conventionFact = (s, n, files) => ({ kind: "convention", key: s, statement: `${n} tracked file(s) are named *.${s}`, scope: [...new Set(files.filter((f) => basename(f).endsWith(s)).map(watchedAs))].sort().slice(0, 8), evidence: files.filter((f) => basename(f).endsWith(s)).slice(0, 3), source: "repository", confidence: "possible", because: `counted ${n} of them`, unknowns: [REPEAT_IS_NOT_AGREEMENT] });
+// How many folders a convention WATCHES, at most. A count over the whole listing has no scope short of the whole tree
+// that keeps it current -- a file named so can appear in any folder, a new one included -- and watching every folder it
+// touches would move the commonest conventions (`*.json`, `*.md`) on nearly every commit: the snapshot keyed to HEAD
+// that a root-level `.` scope once made, by another road. So a convention watches the CONVENTION_SCOPES folders holding
+// the most of the files it counted (then by name), SAYS how many of how many in its `unknowns`, and every scan counts it
+// again from the whole listing (src/architecture/scan.mjs `givenTo`).
+export const CONVENTION_SCOPES = 8;
+
+// Of exactly the files it counted: their suffix IS the convention's, so a `*.test.mjs` is never one of `*.mjs`'s.
+function conventionFact(s, n, files) {
+  const counted = files.filter((f) => suffix(basename(f)) === s);
+  const folders = tallied(counted.map(watchedAs));
+  const scope = mostHeld(folders);
+  return { kind: "convention", key: s, statement: `${n} tracked file(s) are named *.${s}`, scope, evidence: counted.slice(0, 3), source: "repository", confidence: "possible", because: `counted ${n} of them`, unknowns: [REPEAT_IS_NOT_AGREEMENT, unwatchedSaid(scope.length, folders.size)] };
+}
+
+const tallied = (folders) => folders.reduce((held, d) => held.set(d, (held.get(d) ?? 0) + 1), new Map());
+
+const byName = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
+const mostHeld = (folders) => [...folders].sort(([a, x], [b, y]) => y - x || byName(a, b)).slice(0, CONVENTION_SCOPES).map(([d]) => d).sort(byName);
+
+// What a convention cannot see, said by the fact itself: its count is of the listing a scan read, and only the folders it
+// watches move it.
+const unwatchedSaid = (watched, all) => `how many there are now — this counted the listing a scan read, and watches ${watched === all ? `every one of the ${all}` : `${watched} of the ${all}`} folder(s) holding one: a file named so added, removed or renamed in any other folder leaves it as it was until a scan counts again`;
 
 // What a convention watches of one of its files: the folder it sits in -- except at the root, whose folder is `.`, which
 // every reader of a scope takes for the WHOLE tree (the fingerprint, freshness, an incremental scan's narrowing). A file

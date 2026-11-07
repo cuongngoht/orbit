@@ -46,11 +46,11 @@ none of them the host's word:
    no engineering task beside the mission's -- with two rows: `engineering-completed`, the engineering kind's own, and
    `mission-delivered`: the change was delivered by the engineering task the mission's own implement run started (the
    inspection found it by the mission's word), and that task completed on its own journal's proof.
-2. **Criteria settled on an owner's record** (`criteria`, the row `criteria-settled`). The mission COMPLETED, VERIFIED; it recorded at least
-   one acceptance criterion; and every criterion has an evidence row from a run that succeeded, linked to an
-   independent owner (an engineering task, or a check its runner ran) at VERIFIED -- and the inspection, reading that
-   owner back itself through Orbit's own `task show`, finds the record holding: the task COMPLETED with a satisfied
-   verification row and none violated, or the check's row satisfied. A report row, a file it cited, a handoff, a
+2. **Criteria settled on an owner's record** (`criteria`, the row `criteria-settled`). The mission COMPLETED, VERIFIED;
+   it recorded at least one acceptance criterion; and every criterion has an evidence row from a run that succeeded,
+   linked to an independent owner (an engineering task, or a check its runner ran) at VERIFIED -- and the inspection,
+   reading that owner back itself through Orbit's own `task show`, finds the record holding: the task COMPLETED with a
+   satisfied verification row and none violated, or the check's row satisfied. A report row, a file it cited, a handoff, a
    definition or a context answer settles nothing, whatever Satellite or the host says of it. An `investigation:` row is
    independent in Satellite's table, but no QA investigation can run in a mission round's runner, and the inspection
    does not read one back: it settles nothing here.
@@ -150,6 +150,9 @@ controls matrix and its engine controls beside the engineering and workflow suit
 - The tool-kind rule judges kinds, not commands: a verifier's agent may run commands, and which commands is not judged
   here. Every edit an engineer's agent makes is in the engineering task's workspace, as the checkout witness and the
   read-only target hold; the rule does not tell a workspace edit from another.
+- The session's own calls are judged only for an engineering task's step. The trail keeps no path, so an edit the
+  session makes -- a decision it writes to a file before piping it to `mission step`, as hosts do -- cannot be told from
+  an edit of a workspace, and is not judged.
 - A criterion settled by a QA investigation cannot be shown here. The cases' criteria are engineering ones.
 - A mission case is measured on Claude Code, whose agents are native and observed. On a host with no native agents every
   run is carried serially by the session, and `least-privilege` would fail every run: the kind does not measure such a
@@ -166,3 +169,8 @@ controls matrix and its engine controls beside the engineering and workflow suit
   run's `rounds/<k>/outcome.json` records and its inspection's `missions.json`, which say which run and why.
 - Changing `images/runner/` (the entry's mission round, the inspection's mission reads, the scripted mission host) moves
   the runner image's digest: the image is built again before the next run.
+- Building it found two gaps the mission kind shared with the workflow kind, closed for both: a later round's inspection
+  was handed the first round's task, so it found the task by the controller's word and never the owner's (a correct
+  second round of a workflow case failed its own path row); and a PASS of either kind did not count as a verified
+  outcome in `metrics`. A leg's name is now held to its kind's legs (`src/constraints.mjs` holds a list's entries to
+  their type alone), and the legs are one module for both kinds.

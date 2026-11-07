@@ -63,7 +63,7 @@ test("a second message under a business key is held apart from the first only in
   assert.deepEqual(refused(design(steps, [["FIX-ASYNC-1/E3", 3], ["FIX-ASYNC-1/E3", 4]]), "completes-by-deadline"), [], "another obligation's subject is not this rule's");
   assert.deepEqual(refused(design([publish("msg-1"), publish("msg-1"), attempts({ count: 2, match: { messageId: "msg-1" } })], [["FIX-ASYNC-1/E3", 3]]), ONCE), [], "the same message published twice is no second message");
   assert.deepEqual(refused(design([publish("msg-1"), publish("msg-2", OTHER), ...steps.slice(2)], [["FIX-ASYNC-1/E3", 3], ["FIX-ASYNC-1/E3", 4]]), ONCE), [], "two business keys are two effects");
-  assert.deepEqual(refused(design(steps, [["FIX-ASYNC-1/E3", 3], ["FIX-ASYNC-1/E4", 4]]), ONCE), [], "the second ruled by its delivery, not by how it settled");
+  assert.deepEqual(refused(design(steps, [["FIX-ASYNC-1/E3", 3], ["FIX-ASYNC-1/E4", 4]]), ONCE), ["NEVER_REDELIVERED"], "the second ruled by its delivery, not by how it settled -- yet waiting for its SECOND delivery, which nothing here causes, is refused by its own rule");
   assert.deepEqual(advised(design(steps, [["FIX-ASYNC-1/E3", 4]]), ONCE), ["SECOND_SETTLES"], "the second alone held to a settlement may be what a criterion states of it: said");
   const unnamed = [publish("msg-1"), publish("msg-2"), attempts({ count: 1 }), attempts({ count: 1, match: { messageId: "msg-2" } })];
   assert.deepEqual(refused(design(unnamed, [["FIX-ASYNC-1/E3", 3], ["FIX-ASYNC-1/E3", 4]]), ONCE), [], "an observation not narrowed to the first message holds nothing to it");
@@ -71,9 +71,10 @@ test("a second message under a business key is held apart from the first only in
   assert.deepEqual(refused(design([keyless("msg-1"), keyless("msg-2"), ...steps.slice(2)], [["FIX-ASYNC-1/E3", 3], ["FIX-ASYNC-1/E3", 4]]), ONCE), [], "a correlation is not a business key: a design that names none is held to nothing here");
 });
 
-test("a later delivery is said only where nothing in the design interrupts one, and a decision only where nothing moves the clock", () => {
+test("a later delivery is refused where nothing in the design or its shape brings one, said where only its shape may, and a decision said only where nothing moves the clock, and a decision only where nothing moves the clock", () => {
   const second = [publish("msg-1"), attempts({ count: 1, match: { messageId: "msg-1" } })];
-  assert.deepEqual(advised(design(second, [["FIX-ASYNC-1/E4", 2]]), "effect-once-per-key"), ["UNCAUSED_REDELIVERY"]);
+  assert.deepEqual([refused(design(second, [["FIX-ASYNC-1/E4", 2]]), "effect-once-per-key"), advised(design(second, [["FIX-ASYNC-1/E4", 2]]), "effect-once-per-key")], [["NEVER_REDELIVERED"], []], "a shape that declares no way a delivery comes back: refused");
+  assert.deepEqual([refused(design(second, [["FIX-ASYNC-1/E4", 2]]), "lease-expiry-fencing"), advised(design(second, [["FIX-ASYNC-1/E4", 2]]), "lease-expiry-fencing")], [[], ["UNCAUSED_REDELIVERY"]], "one whose shape declares a lease or an ack wait may yet see one come back: said, never refused");
   const faulted = [call("orbit.workload.control", { workloadRef: "worker", request: { action: "fault", point: "before-effect" } }), ...second];
   assert.deepEqual(advised(design(faulted, [["FIX-ASYNC-1/E4", 3]]), "crash-before-effect"), [], "a fault interrupts the first delivery");
   assert.deepEqual(advised({ ...design(second, []), assertions: [{ criterionRef: "X/E1", template: "complete", step: 2 }] }, "effect-once-per-key"), [], "a slot no accepted criterion states says nothing here");

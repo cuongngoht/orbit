@@ -135,21 +135,21 @@ test("a second message under a business key held to the settlement the first is 
 // waited for the schedule to decide its occurrence due with no step that moves the clock, and ORBIT-QA-007's triggered
 // it by hand first -- a trigger proves the handler, never the schedule. A correct application need do neither, and may
 // yet (a consumer that rejects a delivery, a clock an earlier test moved): said beside the answer, never refused.
-test("a later delivery nothing in the design interrupts, and a schedule's decision nothing in it brings about, are said beside the draft -- never refused", async () => {
+test("a later delivery nothing in the design or its obligation's shape brings is refused, naming the step; a schedule's decision nothing in it brings about is said beside the draft -- never refused", async () => {
   const { ctx, store } = await packed();
   const { w } = investigation(ctx);
-  const said = (shape, name) => ((out) => [out.outcome, resultView(out).advice ?? []])(generated(w, { obligation: obligationOf(shape).obligation, design: { ...fixture(name), obligation: obligationOf(shape).obligation } }));
-  const [second, onSecond] = said(ONCE, "once-second-redelivered");
-  assert.equal(second, "DRAFT_CREATED");
-  assert.equal(onSecond.length, 1);
-  assert.ok(onSecond[0].startsWith("UNCAUSED_REDELIVERY: step 4 waits for delivery 2 of msg-a1b2c3d4e5f60002 (FIX-ASYNC-1/E4) and no step here faults, stops or restarts a workload: arm a fault before it settles (orbit.workload.control), or rule the step by its first delivery"), onSecond[0]);
-  assert.ok(onSecond[0].length <= 240, "bounded at the host's door like a finding");
-  const [, onBoth] = said(ONCE, "once-first-redelivered");
-  assert.deepEqual(onBoth.map((a) => a.slice(0, 66)), ["UNCAUSED_REDELIVERY: step 3 waits for delivery 2 of msg-00c0ffee00", "UNCAUSED_REDELIVERY: step 4 waits for delivery 2 of msg-00c0ffee00"], "the first message's later delivery as much as the second's");
+  const sent = (shape, name) => generated(w, { obligation: obligationOf(shape).obligation, design: { ...fixture(name), obligation: obligationOf(shape).obligation } });
+  const second = sent(ONCE, "once-second-redelivered");
+  assert.equal(second.outcome, "GENERATION_FAILED");
+  assert.ok(second.findings.some((f) => f.startsWith("NEVER_REDELIVERED: step 4 waits for delivery 2 of msg-a1b2c3d4e5f60002 (FIX-ASYNC-1/E4) and no step here faults, stops or restarts a workload: arm a fault before it settles (orbit.workload.control), or rule the step by its first delivery")), second.findings.join("\n"));
+  for (const name of ["once-first-redelivered", "once-both-redelivered"]) {
+    const both = sent(ONCE, name);
+    assert.deepEqual([both.outcome, both.findings.filter((f) => f.startsWith("NEVER_REDELIVERED: step 3 waits for delivery 2") || f.startsWith("NEVER_REDELIVERED: step 4 waits for delivery 2")).length], ["GENERATION_FAILED", 2], `${name}: the first message's later delivery as much as the second's`);
+  }
   for (const name of ["occurrence-no-clock", "occurrence-triggered"]) {
-    const [made, advice] = said(OCCURRENCE, name);
-    assert.equal(made, "DRAFT_CREATED", name);
-    assert.match(advice.join("\n"), /^UNCAUSED_DECISION: step \d waits for billing-daily:2026-10-22T09:00:00\+07:00 to be decided due \(SCHED-1\/E1\) and no step here moves the clock: advance it to that occurrence first \(orbit\.clock\.advance\), unless an earlier test/, name);
+    const out = sent(OCCURRENCE, name);
+    assert.equal(out.outcome, "DRAFT_CREATED", name);
+    assert.match((resultView(out).advice ?? []).join("\n"), /^UNCAUSED_DECISION: step \d waits for billing-daily:2026-10-22T09:00:00\+07:00 to be decided due \(SCHED-1\/E1\) and no step here moves the clock: advance it to that occurrence first \(orbit\.clock\.advance\), unless an earlier test/, name);
   }
   rmSync(store, { recursive: true, force: true });
 });

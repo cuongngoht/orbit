@@ -107,11 +107,18 @@ const aloneSay = (x, m) => `step ${x.s.i} waits for ${cut(m.id)} to settle as ${
 // `redeliveryTriggers` name: a crash or a lost connection, which a design causes by faulting, stopping or restarting the
 // workload that consumes it, or the application's own rejection or lease. A design with no step that controls a workload
 // causes none of it, so waiting for a later delivery (a delivery attempt above the first) rests on the application
-// failing on its own -- which a correct one need never do, and may yet do: said, never refused.
+// failing on its own -- which a correct one need never do. Where the obligation's own shape declares how a delivery comes
+// back without a fault (`semantics.redeliveryTriggers`: a lock that expires, a visibility timeout, an ack wait), a
+// correct application may yet do it, and that is said, never refused. Where its shape declares no way at all, nothing
+// in the design or the declarations brings a second delivery, and a correct application that settles the first is ruled
+// against: refused (NEVER_REDELIVERED) -- Sonnet 5.5 sent exactly that on ORBIT-QA-002 after the advice alone was said
+// (0.5.0 re-verify), and it was the run's one false alarm.
 const ATTEMPT = "delivery.attempt";
 const WORKLOAD_CONTROL = "orbit.workload.control";
 
-const uncausedRedelivery = (d, cx) => (stepsOf(d).some((s) => isOp(s, WORKLOAD_CONTROL)) ? [] : waitingFor(d, cx, ATTEMPT).filter((x) => Number.isInteger(x.e.value) && x.e.value > 1).map((x) => redeliverySay(x, narrowedTo(x.s, cx))));
+const declaresRedelivery = (cx) => (cx.shape?.semantics?.redeliveryTriggers ?? []).length > 0;
+
+const uncausedRedelivery = (d, cx, refuses) => (stepsOf(d).some((s) => isOp(s, WORKLOAD_CONTROL)) || declaresRedelivery(cx) === refuses ? [] : waitingFor(d, cx, ATTEMPT).filter((x) => Number.isInteger(x.e.value) && x.e.value > 1).map((x) => redeliverySay(x, narrowedTo(x.s, cx))));
 
 const redeliverySay = (x, id) => `step ${x.s.i} waits for delivery ${x.e.value} of ${id ? cut(id) : "a message"} (${x.ref}) and no step here faults, stops or restarts a workload: arm a fault before it settles (orbit.workload.control), or rule the step by its first delivery — a correct application need deliver a message it settles only once`;
 
@@ -135,7 +142,8 @@ export const CONTRADICTION_RULES = [
   { id: "MATCH_PINS", refuses: true, findings: (d, cx) => matchPins(d, cx) },
   { id: "SECOND_SETTLED", refuses: true, findings: (d, cx) => secondsSettled(d, cx, true) },
   { id: "SECOND_SETTLES", refuses: false, findings: (d, cx) => secondsSettled(d, cx, false) },
-  { id: "UNCAUSED_REDELIVERY", refuses: false, findings: (d, cx) => uncausedRedelivery(d, cx) },
+  { id: "NEVER_REDELIVERED", refuses: true, findings: (d, cx) => uncausedRedelivery(d, cx, true) },
+  { id: "UNCAUSED_REDELIVERY", refuses: false, findings: (d, cx) => uncausedRedelivery(d, cx, false) },
   { id: "UNCAUSED_DECISION", refuses: false, findings: (d, cx) => uncausedDecision(d, cx) },
 ];
 

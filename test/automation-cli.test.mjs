@@ -66,7 +66,7 @@ test("a restriction a person kept from before is honoured: start is refused, and
 test("on with no settings at all: planned, engine steps run here, the engineering step starts a real engineering task that names its parent, and nothing settles on the host's word", (t) => {
   const c = checkout(t);
   const started = json(run(c, ["start", "--for=Implement the refund validation rule", "--json"]));
-  assert.deepEqual(started.plan.steps.map((s) => s.id), ["context", "runtime", "engineering", "regression", "review"]);
+  assert.deepEqual(started.plan.steps.map((s) => s.id), ["context", "runtime", "engineering", "qa", "regression", "review"], "nothing here can be started, and the change's QA step is still planned: SKIPPED at its turn, saying why");
   const task = started.task;
   assert.equal(json(run(c, ["step", task, "--json"], decision("context", revisionOf(c, task), "d-1"))).stepState, "reported");
   assert.equal(json(run(c, ["step", task, "--json"], decision("runtime", revisionOf(c, task), "d-2"))).stepState, "succeeded");

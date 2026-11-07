@@ -18,8 +18,16 @@ const NOT_SCANNED = ["checkout", "frozen"];
 const readable = (path) => ((st) => st.isFile() && st.size <= MAX_FILE)(lstatSync(path));
 
 // Bytes as latin1 text: one character per byte, so a file that is not text is written back exactly as it was read,
-// but for the value.
-const textAt = (path) => (readable(path) ? readFileSync(path, "latin1") : "");
+// but for the value. A file gone between the listing and the read holds nothing to mask: a sandbox's supervisor removes
+// its own owner file as it exits, and ORBIT-QA-005's PASS on Sonnet (0.5.0) was reported REFUSED for that ENOENT.
+export function textAt(path) {
+  try { return readable(path) ? readFileSync(path, "latin1") : ""; }
+  catch (e) { return e?.code === "ENOENT" ? "" : rethrown(e); }
+}
+
+const rethrown = (e) => {
+  throw e;
+};
 
 function rewritten(path, text, values) {
   try { return (writeFileSync(path, maskValues(text, values), "latin1"), "masked"); }

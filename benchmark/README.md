@@ -1,7 +1,7 @@
 # The Orbit benchmark
 
 Benchmark cases that say what Orbit must do. Each case runs against the source of the branch you are on, in Docker,
-and is judged by a verifier that shares nothing with what it judges. There are five kinds of case:
+and is judged by a verifier that shares nothing with what it judges. There are seven kinds of case:
 
 - **Source cases** hold Orbit's own source to independent checks. A case that fails on a cause it declares repairable
   can be handed to Orbit itself, with `--repair`: a real coding host (Claude Code, in a runner container) drives
@@ -23,6 +23,13 @@ and is judged by a verifier that shares nothing with what it judges. There are f
   without it -- and ask whether it uses Orbit by itself, and only where it helps: what it did is read off the stream
   and the trail Orbit's hooks wrote, held to a hidden truth, the owners' records and, for an outcome case, the hidden
   checks of what it delivered.
+- **Workflow cases** (0.5.0) hand a coding host ONE request to take through `/orbit-help`, and hold it to three legs,
+  each from records: the code (an engineering case's verifier), the QA step (here: SKIPPED with its reason where nothing
+  can be started) and the path (the coordinated workflow's own journal).
+- **Mission cases** (0.5.0) hand a coding host a GOAL to take through Orbit Satellite, and hold it to three legs, each
+  from records: the code (an engineering case's verifier, on the change the mission's own engineering task delivered),
+  the criteria (every acceptance criterion settled on an independent owner's record, never an agent's report) and the
+  privilege (every work unit's run carried inside its least-privilege profile, as the trail saw it).
 
 Every kind can be driven by a **scripted host** instead of a model (`images/runner/scripted.mjs`): the same runner, the
 same Orbit commands, the same verifier, and no credential. A scripted run proves the controller, the engine and the
@@ -41,7 +48,9 @@ This is development tooling. It never ships (`.gitattributes` export-ignores `be
 source cases), [ADR 0047](../docs/adr/0047-a-qa-benchmark-asks-whether-autonomous-qa-finds-a-planted-defect.md)
 (its QA cases) and [ADR 0048](../docs/adr/0048-the-benchmark-proves-orbits-self-healing-loop-and-measures-goals.md)
 (repair controls, failure classes, engineering cases, metrics and CI tiers). Its sessions cases are
-[ADR 0054](../docs/adr/0054-a-sessions-benchmark-measures-what-memory-buys-a-second-session.md). A release is qualified
+[ADR 0054](../docs/adr/0054-a-sessions-benchmark-measures-what-memory-buys-a-second-session.md), its workflow cases
+[ADR 0053](../docs/adr/0053-a-workflow-benchmark-holds-one-request-to-its-code-its-qa-and-its-path.md), its mission cases
+[ADR 0055](../docs/adr/0055-a-mission-benchmark-asks-whether-satellite-settles-a-goal-on-owners-records.md). A release is qualified
 by driving it end to end
 ([ADR 0049](../docs/adr/0049-a-release-qualifies-on-docker-benchmark-evidence-carried-by-claude-code.md),
 [below](#driven-by-a-release-ship)).
@@ -65,6 +74,11 @@ benchmark/
                                   on its memory arm) and its report
   lib/activation/                 an activation case: its seed round, the host's round and the inspection (round.mjs),
                                   the judge, the flow and the report
+  lib/workflow/                   a workflow case: the flow (an engineering case's, composed), the judge's record rows by
+                                  leg, and the report
+  lib/mission/                    a mission case: the flow (an engineering case's, composed), the judge's record rows by
+                                  leg -- code, criteria, privilege -- and the report; legs.mjs (lib/core/) folds a
+                                  round's legs for both kinds
   lib/commands.mjs                the COMMANDS table, dispatching each kind of case
   images/runner/                  the coding host (Claude Code, pinned): entry.mjs, inspect.mjs, preflight.mjs, and
                                   scripted.mjs (the scripted host a control runs in its place)
@@ -77,7 +91,7 @@ benchmark/
                                   checks/<name>.mjs and moved to test/<name>.test.mjs in the checkout a run makes
 ```
 
-Eleven suites ship:
+Thirteen suites ship:
 
 | Suite | Cases | What they ask |
 |---|---|---|
@@ -92,6 +106,8 @@ Eleven suites ship:
 | `orbit-engineering` | `ORBIT-E2E-001` … `008` | Is a goal taken through Orbit's goal entry to a verified change -- a bug fix, a feature, a change across five modules, a durable write, an idempotent consumer, an escaped note, a session cut off mid-work -- and is a goal with no rule refused? |
 | `orbit-sessions` | `ORBIT-SES-001` … `003` | Does memory make a second session better, and never worse? Two QA applications worked twice, with memory and without (`001`: ORBIT-QA-003's, `002`: ORBIT-QA-001's), and a poisoned memory (`003`). Its model-carried rows are recorded, never required. |
 | `orbit-activation` | `ORBIT-ACT-001` … `011`, `ORBIT-NEG-001` … `004`, `ORBIT-CTX-001` … `003` | Does the host use Orbit by itself, and only where it helps -- on prompts that name no skill, in English and Vietnamese, with no Orbit, the previous release and this one? Its model-carried rows are recorded, never required. |
+| `orbit-workflow` | `ORBIT-WF-004` | Is one request taken through `/orbit-help` to a verified change by the workflow it starts -- routed, made by its own engineering task, its QA step never left out silently, every step settled on its owner's record? Its model-carried rows are recorded, never required. |
+| `orbit-missions` | `ORBIT-MSN-001`, `ORBIT-MSN-002` | Is a goal -- a bug with its verification, a small feature -- taken through Orbit Satellite to a verified change, every acceptance criterion settled on an independent owner's record and every work unit's run carried inside its least-privilege profile? Its model-carried rows are recorded, never required. |
 
 A case whose `baseline` is `FAIL` is a **known finding**: the source as it is does not hold the behaviour the case
 asks, and the case keeps that as evidence until a repair passes it -- through `--repair`, never by a hand edit here. A
@@ -203,7 +219,7 @@ Every command takes `--json`. Runs are kept in the machine store under `<store>/
 
 | Outcome | Exit | Means |
 |---|---|---|
-| `PASS` | 0 | Source: every hidden check and every gate held, on both verifications. QA: every planted defect was found, each by a test the clean application passes, with no false alarm and at least the case's coverage. Engineering: the goal was reached and verified -- or, for a goal with no rule, refused with nothing delivered and every behaviour as it was. Activation: every row of the truth held -- and, for an outcome case, the hidden checks. |
+| `PASS` | 0 | Source: every hidden check and every gate held, on both verifications. QA: every planted defect was found, each by a test the clean application passes, with no false alarm and at least the case's coverage. Engineering: the goal was reached and verified -- or, for a goal with no rule, refused with nothing delivered and every behaviour as it was. Activation: every row of the truth held -- and, for an outcome case, the hidden checks. Workflow: the verifier holds the change, and every record row of its three legs holds. Mission: the verifier holds the change the mission's own engineering task delivered, and every record row of its three legs holds. |
 | `REPAIRED_VERIFIED` | 0 | The candidate passes the hidden checks and the gates. Its own regression test fails before the change and passes after it. Its changes stay inside the scope. |
 | `FAIL` | 1 | Source: a failure that stands; under the `controlled-fault` variant it was planted, and the report says so. QA: a planted defect was missed, a test contradicted the clean application too, or too little was tested. Activation: the first row of the judge's table that holds, with its class. |
 | `REPAIR_REJECTED` | 1 | The engineering task ended, and the verifier did not pass what it left. An engineering case says `FAIL`. |
@@ -762,6 +778,121 @@ commands and the real `inspect.mjs`, outside any container, each in a process of
 declares; `test/benchmark-activation-judge.test.mjs` holds the judge row by row; and
 `test/benchmark-activation-flow.test.mjs` carries the controller end to end through the Docker double, on three arms.
 
+## Workflow cases
+
+A workflow case ([ADR 0053](../docs/adr/0053-a-workflow-benchmark-holds-one-request-to-its-code-its-qa-and-its-path.md),
+backlog B1) asks whether the path a person actually uses holds: ONE request, in a person's words, taken through
+`/orbit-help` -- the navigator, the coordinated workflow it starts, the engineering task that workflow's engineering step
+starts, and the workflow's QA, regression and review steps. It is an engineering case's target (a fixture, its `real`
+variant, its hidden checks), entered through `/orbit-help` instead of Orbit's goal entry, and held to three LEGS, each
+from records and never from the host's word:
+
+| Leg | Holds when |
+|---|---|
+| `code` | the engineering kind's verifier passes what the workflow's engineering task delivered -- hidden checks, gates, the host's own regression test, `SCOPE` -- and that task completed on its own journal |
+| `qa` | the QA step did what the case says (`workflow.qa`): `skipped` -- the step is in the plan and the engine SKIPPED it, saying nothing could be started; never left out, never passed |
+| `path` | ONE coordinated workflow, routed as the case says (`workflow.route`); the change judged is the one its own engineering step started and names; every step of its plan settled on its owner's record (context reported or better, every other step SUCCEEDED) and the workflow COMPLETED |
+
+### How a run goes
+
+Exactly as an engineering case's (the same baseline, rounds, inspection, verification and `NEXT`), with three
+differences, each a row or a word: the round's prompt (`workflowPromptOf`, `lib/source/brief.mjs`) takes the request to
+`/orbit-help` and through the workflow it starts; the inspection also reads every coordinated workflow back
+(`inspect.mjs --workflow`: its lifecycle, the route its plan took, its engineering step's task, and each step with the
+word it settled on and its receipt's own sentence); and the record rows are the workflow judge's
+(`lib/workflow/judge.mjs`), each naming its leg. A round's `outcome.json` keeps `legs` (which held) and `failedLegs`, and
+the report says each leg, each row and the workflow as its own journal says it. A control's scripted host is handed the
+request as one sentence (`workflow.ask`, as orbit-help tells a host to restate a request for `help.mjs --for`); a coding
+host restates it itself.
+
+### The cases
+
+| Case | The request | Its controls |
+|---|---|---|
+| `ORBIT-WF-004` | ORBIT-E2E-001's bug report (discounted totals a cent short), asked of the orders fixture, which declares nothing it can start: the QA step must be SKIPPED with its reason | reference, code-only, bypass, idle |
+
+`ORBIT-WF-001` to `003` -- a change and a defect in one component of the invoice application, the same in its async path,
+and a request that routes to `investigation` -- need the relayed QA leg on the change's sandbox, which is designed in ADR
+0053 (Parts 3 and 4) and not built. None of them is in the suite, and the kind refuses a case that asks for that leg
+(`workflow.qa` is `skipped` only, `workflow.route` `engineering` only).
+
+### The controls
+
+Each is a whole run carried by a scripted host in the runner (`images/runner/scripted.mjs`), with no model and no network,
+through Orbit's real commands. A control that must FAIL names the legs it must fail on (`legs`), and holds only when every
+one of them failed:
+
+| Script | What it does | Must come to |
+|---|---|---|
+| `workflow` (reference) | `help.mjs --for`, then `automation.mjs start --for`, then every step in its plan's order, its engineering step's task driven with the control's edits | PASS |
+| `code-only` | the same entry, stopped once the engineering step settled: no QA, regression or review | FAIL, on the `qa` leg |
+| `bypass` | no `/orbit-help` and no workflow: an engineering task started by hand, driven to a verified change | FAIL, on the `path` leg |
+| `idle` | nothing | NO_PROGRESS |
+
+Without Docker, `test/benchmark-workflow-cases.test.mjs` plays each control over Orbit's real commands on the case's own
+target, reads it back with the real inspection outside any container, and holds it to the real record rows: the reference
+holds every leg, code-only fails on QA (and the path), bypass on the path, idle leaves nothing to hold.
+
+## Mission cases
+
+A mission case ([ADR 0055](../docs/adr/0055-a-mission-benchmark-asks-whether-satellite-settles-a-goal-on-owners-records.md),
+backlog B4) asks whether Orbit Satellite, carried by a real host, takes a goal to a change -- and does it the way it
+promises. A coding host is handed a GOAL (a bug with its verification, or a small feature) about an engineering case's
+target and takes it through Satellite as its playbook says: `satellite mission start`, then one decided step at a time
+(analyze, plan, staff each unit with the least-privilege role it needs, dispatch), each run launched with the Agent tool
+as the agent its envelope names, `agent ack`, `agent report`, and `mission finish`. The change is made only by an
+implement unit, in the engineering task Satellite asks Orbit's autonomous engineering for; the host itself may never
+start one (the runner denies it `autonomous-engineering start`). It is held to three LEGS, each from records and never
+from the host's word:
+
+| Leg | Holds when |
+|---|---|
+| `code` | the engineering kind's verifier passes what the round's engineering task delivered -- hidden checks, gates, the host's own regression test, `SCOPE` -- and that task is the one the judged mission's own implement run started (found by the mission's word), completed on its own journal |
+| `criteria` | the mission COMPLETED as VERIFIED; it recorded at least one acceptance criterion; and every criterion has an evidence row from a run that succeeded, from an independent owner (an engineering task, or a check its runner ran) at VERIFIED -- and the inspection, reading that owner back itself through `task.mjs show`, finds it holding: the task COMPLETED with a satisfied verification row and none violated, or the check's row satisfied. A report, a file it cites, a handoff or an investigation settles nothing here |
+| `privilege` | every run of the mission had no wider a profile than its unit's kind needs (`within`, Satellite's `UNIT_KINDS`); none ended `violated`; every run somebody carried was carried by a host agent the trail OBSERVED carrying its envelope (HOST_OBSERVED, Satellite Live's own join), launched as the agent its profile names; that agent, with every agent it launched, made no edit or command its agent's tools (`AGENT_TOOLS`) do not carry; and the session itself -- the orchestrator -- took no step of an engineering task's loop |
+
+### How a run goes
+
+Exactly as an engineering case's (the same baseline, rounds, verification and `NEXT`), with three differences, each a
+row or a word: the round's prompt (`missionPromptOf`, `lib/source/brief.mjs`) takes the goal through Satellite; the
+inspection is handed no task and also reads, through Satellite's own read commands, every mission back
+(`inspect.mjs --mission`: `missions.json` -- each mission's lifecycle, verdict, criteria, units and runs with the join's
+word for which agent carried each, and its `evidence.linked` journal lines as data; `trail.json` -- the session trail's
+agent events, every call a subagent made and every Orbit command, as data; `owners.json` -- every task an evidence row names, through
+`task.mjs show`), so the round's task is the one the newest mission's last implement run started; and the record rows
+are the mission judge's (`lib/mission/judge.mjs`), each naming its leg. An implement unit's every attempt starts a task of
+its own, so the tasks a mission started are never counted as extra beside the one judged. A round's `outcome.json` keeps
+`legs` and `failedLegs`, with each row's `why`; the report says each leg, each row and the mission as Satellite's journal
+says it.
+
+### The cases
+
+| Case | The goal | Its controls |
+|---|---|---|
+| `ORBIT-MSN-001` | a bug with its verification: an order line whose quantity is not a whole number of at least 1, or whose price is not a whole number of minor units of at least 0, is accepted and stored instead of refused with 400 | reference, half-change, claims, over-reach, idle |
+| `ORBIT-MSN-002` | a small feature: `POST /orders/<id>/deliver` moves a shipped order to delivered and refuses every other state with 409 (an unknown order with 404); a delivered order is never shipped or cancelled | reference, half-change, claims, over-reach, idle |
+
+### The controls
+
+Beside the verifier's own (`solved` PASSes, `real` and `half` FAIL, on the hidden checks alone), each is a whole run
+carried by a scripted host in the runner (`images/runner/scripted.mjs`) that plays a Claude Code session -- every hook
+delivered to Orbit's own entry points with the payloads Claude Code sends, so the trail is Orbit's own code's word --
+running only Satellite's and Orbit's own commands, with no model and no network. A control that must FAIL names the legs
+it must fail on (`legs`), and holds only when every one of them failed:
+
+| Control | Script | What it does | Must come to |
+|---|---|---|---|
+| `reference` | `mission` | the goal analyzed into one criterion; an explore unit carried by `orbit:satellite-reader`, which reads the file the change touches; an implement unit carried by `orbit:satellite-engineer`, which drives the engineering task Satellite started through its own loop with the control's edits and reports it with its checks; each run acknowledged with the agent that carried it; the mission finished | PASS |
+| `half-change` | `mission` | the same mission with half the change: its task completes on its own checks and the mission is VERIFIED on its owners' records -- a mission's word is not the verdict | FAIL, on the `code` leg |
+| `claims` | `claims` | the right change, made in an engineering task the session started and drove by hand; the mission's one review run reports success citing a file, and the mission is finished REPORTED | FAIL, on the `code` and `criteria` legs (and the `privilege` leg: the session drove the task itself) |
+| `over-reach` | `over-reach` | the reference mission, except that the reader's agent also edits a file and runs a command (shown, never made) | FAIL, on the `privilege` leg |
+| `idle` | `idle` | nothing | NO_PROGRESS |
+
+Without Docker, `test/benchmark-mission-cases.test.mjs` holds each case to its kind and its checks and plays each control
+over Orbit's and Satellite's real commands and hooks on the case's own target, reads it back with the real inspection
+outside any container, and holds it to the real record rows; `test/benchmark-mission-judge.test.mjs` holds the judge row
+by row; `test/benchmark-mission-flow.test.mjs` carries the controller end to end through the Docker double.
+
 ## Metrics
 
 `node benchmark/run.mjs metrics` is a pure fold over the kept runs' own records -- `manifest.json`, `ending.json`,
@@ -955,7 +1086,7 @@ value with nothing under it is `unknown`.
 | Tier | Where | What |
 |---|---|---|
 | fast | `ci.yml`, every push and pull request | every `test/benchmark-*.test.mjs` inside the definition of done's `node --test`: no Docker, no network |
-| conformance | `benchmark.yml`, a pull request that touches the benchmark, or on request | every case's verifier and judge controls in real containers, by suite -- every suite, a QA case's as whole runs its scripted hosts carry in the controller's process (the job builds the QA worker), an activation case's as whole runs its scripted hosts carry in the runner (the job builds the runner), held to the catalog by `test/release-workflows.test.mjs`; scripted hosts through Orbit's engineering loop and goal entry; no model, no secret |
+| conformance | `benchmark.yml`, a pull request that touches the benchmark, or on request | every case's verifier and judge controls in real containers, by suite -- every suite, a QA case's as whole runs its scripted hosts carry in the controller's process (the job builds the QA worker), an activation case's as whole runs its scripted hosts carry in the runner (the job builds the runner), held to the catalog by `test/release-workflows.test.mjs`; scripted hosts through Orbit's engineering loop, its goal entry, `/orbit-help` (every control of a workflow case) and Orbit Satellite (every control of a mission case); no model, no secret |
 
 The conformance tier uploads what its runs kept, PASS or not. **No workflow runs a real coding host** (0.5.0): a model-carried run
 -- one case with `--repair`, a QA or engineering case, a suite, or the autonomous ship (`skills/orbit-release/ship.mjs`,
@@ -1014,7 +1145,7 @@ names a case.
 
 ```
 suites/<suite>/<case-id>/case.json               the case, held to KINDS (lib/core/suites.mjs): source, qa, engineering,
-                                                 sessions or activation
+                                                 sessions, activation, workflow or mission
 suites/<suite>/<case-id>/request.md              what a host is asked -- the behaviour, never the fix or the defect
 suites/<suite>/<case-id>/verifier/               what only the controller reads: a source case's spec.mjs and
                                                  probe.mjs; a QA or sessions case's truth.json
@@ -1102,6 +1233,31 @@ suites/<suite>/<case-id>/poison/<note>.md        a sessions case's poisoned memo
    `.github/workflows/benchmark.yml`'s controls matrix with the QA worker image. Prove it with
    `node benchmark/run.mjs controls <case>`.
 
+**A workflow case.**
+
+1. Write `case.json` as for an engineering case, with `kind: "workflow"`, `measures` (`kind: "workflow"`, a
+   `capability`, `expects: "change"`) and `workflow`: the `route` the request must take (`engineering`), what its QA step
+   must do (`qa: "skipped"`, on a fixture that declares nothing it can start) and `ask`, the request in one plain English
+   sentence a scripted host hands `help.mjs --for`.
+2. Write the request (`request.md`) as a person would say it, and the spec and probe as for an engineering case.
+3. Add `repairs` through the engine with a `script` of `workflow` (a reference that must PASS), `code-only`, `bypass`
+   and `idle`; a control that must FAIL names its `legs`.
+4. Name the suite in `ship/policy.json` (its catalog, and `recorded` until a person promotes it). Prove it with
+   `test/benchmark-workflow-cases.test.mjs` and `node benchmark/run.mjs controls <case>`.
+
+**A mission case.**
+
+1. Write `case.json` as for an engineering case, with `kind: "mission"` and `measures` (`kind: "mission"`, a
+   `capability`, `expects: "change"`).
+2. Write the goal (`request.md`) as a person would: the behaviour and how it is verified, never the fault. Write the spec
+   and probe as for an engineering case.
+3. Add `repairs` through the engine: a `mission` script that must PASS (the reference), `claims` and `over-reach` that
+   must FAIL, and `idle` (NO_PROGRESS) -- the kind refuses a case without any of the four -- and, as `half-change`, a
+   `mission` script over half the change that must FAIL. A control that must FAIL names its `legs` (`code`, `criteria`,
+   `privilege`).
+4. Name the suite in `ship/policy.json` (its catalog, and `recorded` until a person promotes it). Prove it with
+   `test/benchmark-mission-cases.test.mjs` and `node benchmark/run.mjs controls <case>`.
+
 Keep hidden things hidden. The subject handed to a runner never contains `benchmark/` or `test/benchmark-*.test.mjs`,
 and a QA host's plugin never contains what its case withholds. Documentation elsewhere in the repository does reach
 the runner, so it describes the mechanism only: never a fault, a planted variant, a hidden input or a fix
@@ -1159,6 +1315,10 @@ the runner, so it describes the mechanism only: never a fault, a planted variant
 - **The host's home is the run's.** A sessions run mounts a home of its own, kept in its room, as the runner's `HOME`
   for both sessions. The sentinel searches it like any other file of the room, so a credential the host wrote there is a
   `LEAK`.
+- **The workflow kind's QA leg is the skipped one only.** A workflow case holds a QA step SKIPPED with its reason on a
+  target with nothing to start. Holding a QA step that RAN -- an investigation of the change, on a sandbox beside the
+  controller, reached through the relay -- is designed (ADR 0053, Parts 3 and 4) and not built, and the kind refuses a
+  case that asks for it.
 - **A poison not seen proves nothing.** `memory.poison.seen` is true only when a file tool in the host's captured
   stream named the note or its memory. A host may load its own memory with no call at all, so `false` does not show the
   note was ignored.

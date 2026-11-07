@@ -75,7 +75,7 @@ const unclosed = (f, plan) => f.capabilities.filter((c) => stepped(plan).has(c.c
 export const MISSING = [
   { what: "requirement", by: "person", when: (f, plan) => !f.ref && planHas(plan, "engineering"), say: () => "no work item was named: what the change must satisfy is the objective's sentence alone — name one with --ref; an acceptance criterion is never invented" },
   { what: "snapshot", by: "discover", when: (f) => Boolean(f.ref) && f.requirement?.ready !== true, say: () => "the work item has no frozen snapshot that no question blocks: the requirement step settles it first, and a person answers what blocks it" },
-  { what: "startable", by: "discover", when: (f, plan) => f.startable.length === 0 && planHas(plan, "engineering"), say: () => "nothing this checkout declares can be started here yet: the runtime step finds out, and a QA step of the running change goes in when it can" },
+  { what: "startable", by: "discover", when: (f, plan) => f.startable.length === 0 && planHas(plan, "engineering"), say: () => "nothing this checkout declares can be started here yet: the runtime step finds out; the QA step investigates the running change when something can be started, and is SKIPPED, saying why, when nothing can" },
   { what: "capability", by: "person", when: (f, plan) => unclosed(f, plan).length > 0, say: (f, plan) => `not provided here, and not a gap the skill factory may close: ${unclosed(f, plan).join(", ")} — the step blocks until a person decides` },
 ];
 

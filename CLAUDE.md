@@ -26,12 +26,27 @@ workflow runs the ship or a real coding host (0.5.0, backlog B8); CI holds the f
 benchmark's conformance tier, which need no credential.
 
 **Run it in its own session, detached.** The coding host's token is an environment variable of the cloud environment,
-but `CLAUDE_CODE_*` names are filtered there, so it is kept as `ORBIT_CLAUDE_OAUTH_TOKEN` and mapped for the one
-process. Check it by name only (`test -n "$ORBIT_CLAUDE_OAUTH_TOKEN"`); never print it.
+kept as `ORBIT_CODE_OAUTH_TOKEN` (the 0.4.0 environment called it `ORBIT_CLAUDE_OAUTH_TOKEN`), and mapped to
+`CLAUDE_CODE_OAUTH_TOKEN` for the one process that needs it. Check it by name only (`test -n "$ORBIT_CODE_OAUTH_TOKEN"`);
+never print it. Why it is not used under its own name:
+
+- The real Claude Code in the runner reads its credential only under its own names (`CLAUDE_CODE_OAUTH_TOKEN`, or
+  `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN`); an `ORBIT_*` name means nothing to it.
+- The harness hands the credential to the runner container by NAME only: docker fills `-e <NAME>` from the controller's
+  own environment, so Orbit never reads, renames, writes or logs the value. The name the controller sees must therefore
+  already be the name Claude Code reads, and `--credential` takes only those three (`CREDENTIAL_NAMES`,
+  `skills/orbit-release/ship/preflight.mjs`; `CREDENTIALS`, `benchmark/lib/core/context.mjs`) -- any other is refused.
+  Renaming it on the way in would mean handling the value, which "a secret is named, never kept" (AGENTS.md) forbids.
+- The cloud environment filters `CLAUDE_CODE_*` names, which steer the session's own Claude Code, so the token cannot be
+  stored under its own name -- and if it could, this session's own Claude Code would take it as its credential.
+
+So the mapping lives only in the environment of the one detached process and its children (`CLAUDE_CODE_OAUTH_TOKEN=…
+node …`), never exported into the session. A variable added to the environment reaches a session only when it starts or
+its worker restarts: until then it is not in the session's processes, and the model-carried runs wait.
 
 ```bash
 rm -f /var/run/docker.pid; setsid nohup dockerd --registry-mirror=https://mirror.gcr.io > /tmp/dockerd.log 2>&1 &
-CLAUDE_CODE_OAUTH_TOKEN="$ORBIT_CLAUDE_OAUTH_TOKEN" setsid nohup node skills/orbit-release/ship.mjs \
+CLAUDE_CODE_OAUTH_TOKEN="$ORBIT_CODE_OAUTH_TOKEN" setsid nohup node skills/orbit-release/ship.mjs \
   --credential=CLAUDE_CODE_OAUTH_TOKEN --model=claude-sonnet-5-5 --effort=medium --ca-file=/root/.ccr/ca-bundle.crt \
   --usd=150 --retries=2 --json > /tmp/ship.log 2>&1 &
 node skills/orbit-release/ship.mjs --status --json          # where it stands; a failed model row's diagnosis bundle

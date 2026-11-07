@@ -32,6 +32,10 @@ import { judgedRepair } from "./source/repairs.mjs";
 import { BY_NAMES, metricsOf } from "./core/metrics.mjs";
 import { carriedActivation, withActivation } from "./activation/flow.mjs";
 import { activationReportOf } from "./activation/report.mjs";
+import { carriedWorkflow } from "./workflow/flow.mjs";
+import { workflowReportOf } from "./workflow/report.mjs";
+import { carriedMission } from "./mission/flow.mjs";
+import { missionReportOf } from "./mission/report.mjs";
 import { DEFAULT_K } from "./core/rates.mjs";
 import { memoryLines, overheadLines, ratesLines, reliabilityOf, sayReliability, toolsLines } from "./core/reliability.mjs";
 
@@ -116,7 +120,7 @@ function safeJson(buf) {
 // ---- suites -----------------------------------------------------------------------------------------------------------------
 
 // What a case is run on: a source case's variants, a QA case's application and the variant planted in it.
-const VARIANTS_OF = { source: (c) => Object.keys(c.variants), qa: (c) => [`${c.target.stack} ${c.target.variant}`], engineering: (c) => Object.keys(c.variants).map((v) => `${c.fixture}:${v}`), sessions: (c) => [`${c.target.stack} ${c.target.variant}`], activation: (c) => Object.keys(c.variants).map((v) => `${c.fixture.id}:${v}`) };
+const VARIANTS_OF = { source: (c) => Object.keys(c.variants), qa: (c) => [`${c.target.stack} ${c.target.variant}`], engineering: (c) => Object.keys(c.variants).map((v) => `${c.fixture}:${v}`), sessions: (c) => [`${c.target.stack} ${c.target.variant}`], activation: (c) => Object.keys(c.variants).map((v) => `${c.fixture.id}:${v}`), workflow: (c) => Object.keys(c.variants).map((v) => `${c.fixture}:${v}`), mission: (c) => Object.keys(c.variants).map((v) => `${c.fixture}:${v}`) };
 
 const listed = (c) => ({ id: c.id, kind: c.kind, version: c.version, title: c.title, variants: VARIANTS_OF[c.kind](c), controls: [...c.controls.map((k) => `${k.id}:${k.expect}`), ...(c.repairs ?? []).map((r) => `${r.id}(${r.through}):${r.expect}`)], baseline: c.baseline ?? null, arms: armsOf(c), ...(armsOf(c).includes("baseline") ? { baselinePlugin: baselinePluginOf(c) } : {}), ...(memoryArmsOf(c).length ? { memory: memoryArmsOf(c) } : {}) });
 
@@ -184,6 +188,10 @@ const KIND = {
   sessions: { need: (o) => ["qa-worker", ...(o.host === "coding-host" ? ["runner", "verifier"] : [])], completed: async (ctx) => withTruth(ctx), carried: (ctx) => carriedSessions(ctx), reportOf: sessionsReportOf, host: (o) => o.host ?? "coding-host" },
   // 0.5.0 (B22 M4): a prompt that names no skill, to a coding host -- or a control's scripted host -- on an arm.
   activation: { need: () => ["verifier", "runner"], completed: (ctx) => withActivation(ctx), carried: (ctx) => carriedActivation(ctx), reportOf: activationReportOf, host: (o) => o.host ?? null },
+  // 0.5.0 (B1, ADR 0053): one request through /orbit-help, carried as an engineering case's goal is, held to three legs.
+  workflow: { need: () => ["verifier", "runner"], completed: (ctx) => withSpec(ctx), carried: (ctx) => carriedWorkflow(ctx), reportOf: workflowReportOf, host: (o) => o.host ?? null, attempts: true },
+  // 0.5.0 (B4, ADR 0055): a goal through Orbit Satellite, carried as an engineering case's goal is, held to three legs.
+  mission: { need: () => ["verifier", "runner"], completed: (ctx) => withSpec(ctx), carried: (ctx) => carriedMission(ctx), reportOf: missionReportOf, host: (o) => o.host ?? null, attempts: true },
 };
 
 const kindOfRun = (manifest) => KIND[manifest?.benchmark?.kind ?? "source"];
@@ -453,7 +461,7 @@ const NO_RECORD = { show: () => ({}) };
 
 // What a case's controls run over: Orbit's source for a source case, the CLEAN fixture for an engineering case -- every
 // control names the variant it lays over that.
-const CONTROL_BASE = { source: (c, fr) => subjectOf(fr.entries, HARNESS).entries, engineering: (c, fr) => fixtureEntries(c, fr.entries) };
+const CONTROL_BASE = { source: (c, fr) => subjectOf(fr.entries, HARNESS).entries, engineering: (c, fr) => fixtureEntries(c, fr.entries), workflow: (c, fr) => fixtureEntries(c, fr.entries), mission: (c, fr) => fixtureEntries(c, fr.entries) };
 
 // What a control set was asked with, kept in its room's manifest so a resume asks the very same controls of the very
 // same tree: which control (--only), whether the engine-carried ones run (--skip-engine), the task that started it
@@ -505,7 +513,9 @@ async function sourceControls(h, c, o) {
 
 // What a control's own file does to its variant: a source case's mutations, or an engineering case's definition (the
 // edits a candidate would make, files it brings and files it deletes).
-const CONTROL_FILES = { engineering: (dir, rel, entries) => candidateEntries(entries, candidateFile(dir, rel)) };
+const definedOver = (dir, rel, entries) => candidateEntries(entries, candidateFile(dir, rel));
+
+const CONTROL_FILES = { engineering: definedOver, workflow: definedOver, mission: definedOver };
 
 const controlFiled = (ctx, c, k, entries) => (CONTROL_FILES[c.kind] ?? ((dir, rel, e) => mutatedEntries(e, mutationFile(dir, rel))))(ctx.frozenCase, k.file, entries);
 
@@ -543,9 +553,21 @@ const failedControl = (e) => ({ outcome: e instanceof Blocked ? "BLOCKED" : "REF
 
 // A repair control carried through Orbit's ENGINE: a whole run with --repair whose host is the scripted one, driving
 // Orbit's real engineering loop in the runner with the edits its definition names -- no model, no network.
+// The legs a control's run FAILED on (a workflow or a mission case, 0.5.0, ADR 0053, 0055): its last round's own
+// outcome says them.
+const roundsKept = (room) => safeList(room.at("rounds")).filter((n) => /^\d+$/.test(n)).map(Number).sort((a, b) => b - a);
+
+const lastOutcome = (room) => roundsKept(room).map((n) => docRead(room, `rounds/${n}/outcome.json`)).find(Boolean) ?? null;
+
+const legsFailedIn = (h, run) => (RUN_ID.test(String(run)) ? lastOutcome(roomOf(h.storeRoot, run))?.failedLegs ?? [] : []);
+
+// A control that names the legs it must fail on holds only when every one of them failed.
+const legsHeld = (h, run, legs) => (legs ?? []).every((leg) => legsFailedIn(h, run).includes(leg));
+
 async function engineControl(h, set, c, r, o) {
   const got = await controlRun(h, set, r.id, (runId) => oneRun(h, { caseId: c.id, variant: r.variant, repair: true, host: `scripted:${r.id}`, source: "head", parent: o.parent ?? undefined, runId })).catch(failedControl);
-  return { id: r.id, kind: "scripted-host", through: "engine", expect: r.expect, got: got.outcome, matched: got.outcome === r.expect, summary: got.summary ?? "", run: got.run ?? null };
+  const legs = r.legs ? { legs: r.legs, failedLegs: legsFailedIn(h, got.run) } : {};
+  return { id: r.id, kind: "scripted-host", through: "engine", expect: r.expect, got: got.outcome, matched: got.outcome === r.expect && legsHeld(h, got.run, r.legs), summary: got.summary ?? "", run: got.run ?? null, ...legs };
 }
 
 async function rowsOf(list, one) {
@@ -625,7 +647,10 @@ const rejectsSay = (x) => (x.missing?.length ? ` · NOT refused by ${x.missing.j
 // An activation control may name the class its FAIL must carry beside the verdict.
 const classSaid = (x) => (x.expectClass ? ` (${x.expectClass}; got ${x.class ?? "none"})` : "");
 
-const sayControls = (r) => [`CONTROLS   ${r.case} (${r.run})`, ...(r.verifierDefect ? [`  VERIFIER_DEFECT — ${r.verifierDefect}: no control was run`] : []), ...r.rows.map((x) => `  ${x.matched ? "✓" : "✗"} ${x.id.padEnd(20)} ${String(x.kind ?? "host").padEnd(13)} expected ${x.expect.padEnd(17)} got ${String(x.got).padEnd(17)} ${x.summary}${rejectsSay(x)}${classSaid(x)}`)].join("\n");
+// A workflow or a mission control may name the legs its FAIL must be on beside the verdict.
+const legsSaidOf = (x) => (x.legs ? ` (legs ${x.legs.join(", ")}; failed ${x.failedLegs?.join(", ") || "none"})` : "");
+
+const sayControls = (r) => [`CONTROLS   ${r.case} (${r.run})`, ...(r.verifierDefect ? [`  VERIFIER_DEFECT — ${r.verifierDefect}: no control was run`] : []), ...r.rows.map((x) => `  ${x.matched ? "✓" : "✗"} ${x.id.padEnd(20)} ${String(x.kind ?? "host").padEnd(13)} expected ${x.expect.padEnd(17)} got ${String(x.got).padEnd(17)} ${x.summary}${rejectsSay(x)}${classSaid(x)}${legsSaidOf(x)}`)].join("\n");
 
 export const COMMANDS = {
   build: { run: build, say: sayBuild },

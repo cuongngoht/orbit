@@ -12,7 +12,10 @@
 // through Orbit's own loop with the edits its control defines.
 //
 // A GOAL round (an engineering case) starts no task either: the goal is handed to Orbit's own goal entry, which starts
-// the workflow and the engineering task it needs. Orbit is the plugin at /work/orbit; /work/repo is the target.
+// the workflow and the engineering task it needs. Orbit is the plugin at /work/orbit; /work/repo is the target. A
+// WORKFLOW round (0.5.0, ADR 0053) is one too: its request goes to /orbit-help, whose coordinated workflow starts the
+// engineering task. A MISSION round (0.5.0, ADR 0055) is one as well: its goal goes to Orbit Satellite, whose implement
+// unit asks Orbit's autonomous engineering for the task -- the host is never to start one itself.
 //
 // A PROBE (`doctor --host`) is no round of work: after the same egress checks, Claude Code is asked one fixed question
 // with no plugin, no tool it may use and a budget of a few cents -- whether the host starts here, which version and model
@@ -45,7 +48,14 @@ export const DENIED = ["WebFetch", "WebSearch", ...["start", "cleanup", "remove-
 // What a goal round's host is told never to run: removing what its tasks left. Its tasks are its goal's to start.
 export const GOAL_DENIED = ["WebFetch", "WebSearch", ...["cleanup", "remove-workspace"].map((cmd) => `Bash(node /work/orbit/cli/autonomous-engineering.mjs ${cmd}:*)`)];
 
-const isGoal = (b) => b.kind === "engineering";
+// What a mission round's host is told never to run besides (0.5.0, ADR 0055): starting an engineering task by hand. A
+// mission's implement unit asks for the one it needs, through Satellite's own provider, so a change made in a task started
+// any other way is no mission's.
+export const MISSION_DENIED = [...GOAL_DENIED, "Bash(node /work/orbit/cli/autonomous-engineering.mjs start:*)"];
+
+const isGoal = (b) => ["engineering", "workflow", "mission"].includes(b.kind);
+
+const isMission = (b) => b.kind === "mission";
 
 // An ACTIVATION round (0.5.0, B22 M4): a prompt that names no skill, handed to the host as a person would type it, over
 // a writable checkout of the target -- nothing started for it, nothing told of Orbit. What the host is never allowed is
@@ -54,7 +64,7 @@ export const isActivation = (b) => b.kind === "activation";
 
 export const ACTIVATION_DENIED = ["WebFetch", "WebSearch"];
 
-const deniedOf = (b) => (isActivation(b) ? ACTIVATION_DENIED : isGoal(b) ? GOAL_DENIED : DENIED);
+const deniedOf = (b) => (isActivation(b) ? ACTIVATION_DENIED : isMission(b) ? MISSION_DENIED : isGoal(b) ? GOAL_DENIED : DENIED);
 
 export const isProbe = (b) => b.kind === "probe";
 

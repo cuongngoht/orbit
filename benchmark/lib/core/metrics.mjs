@@ -31,8 +31,9 @@ const UNKNOWN = "unknown";
 // Why a run is left out of a rate, by the word it ended on.
 const EXCLUDED = { BLOCKED: "blocked", BENCHMARK_INVALID: "invalid", INCONCLUSIVE: "inconclusive", PAUSED: "held", CANCELLED: "held" };
 
-// What counts as an autonomous outcome VERIFIED by the run's own independent verifier, by kind of case.
-const VERIFIED = { source: ["REPAIRED_VERIFIED"], engineering: ["PASS"], qa: ["PASS"], sessions: ["PASS"], activation: ["PASS"] };
+// What counts as an autonomous outcome VERIFIED by the run's own independent verifier, by kind of case -- a goal case's
+// PASS (an engineering, workflow or mission case's: the change held and every record row with it) among them.
+const VERIFIED = { source: ["REPAIRED_VERIFIED"], engineering: ["PASS"], qa: ["PASS"], sessions: ["PASS"], activation: ["PASS"], workflow: ["PASS"], mission: ["PASS"] };
 
 // The kinds a run of which is a QA investigation judged against a ground truth: a QA run's one session, and a sessions
 // run's second (0.5.0, ADR 0054).

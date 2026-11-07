@@ -592,7 +592,8 @@ is data (`src/dsl/`); no product, vendor or stack named in engine code.
 
 `benchmark/` holds Orbit to cases written as data, on the branch you are on, in Docker. It is development tooling and
 never ships ([benchmark/README.md](benchmark/README.md), [ADR 0046](docs/adr/0046-a-docker-benchmark-holds-orbits-source-to-independent-checks.md),
-[ADR 0047](docs/adr/0047-a-qa-benchmark-asks-whether-autonomous-qa-finds-a-planted-defect.md)). It has two kinds of case.
+[ADR 0047](docs/adr/0047-a-qa-benchmark-asks-whether-autonomous-qa-finds-a-planted-defect.md)). It has seven kinds of
+case in fifteen suites; the two oldest come first.
 
 **Source cases** hold Orbit's own source to independent checks.
 
@@ -610,6 +611,32 @@ never ships ([benchmark/README.md](benchmark/README.md), [ADR 0046](docs/adr/004
 - A contradiction counts as a defect found only once the clean application passes the same test.
 - `controls` proves the verifier without a model: a reference host must pass, while an idle host and a false-alarm
   host must fail.
+
+**Five more kinds** hand a coding host what a person would, and judge what it did from records, never from its word:
+
+- **Engineering cases** (`orbit-engineering`, and `orbit-heldout` on an application nobody tuned Orbit against,
+  [ADR 0056](docs/adr/0056-a-held-out-application-measures-orbit-on-what-it-was-not-tuned-against.md)): a goal about a
+  small frozen project, judged by hidden checks and by what Orbit's owners recorded
+  ([ADR 0048](docs/adr/0048-the-benchmark-proves-orbits-self-healing-loop-and-measures-goals.md)).
+- **Activation cases** (`orbit-activation`,
+  [ADR 0050](docs/adr/0050-the-host-activates-orbit-by-capability-and-orbit-verifies-what-happened.md)): a prompt that
+  names no skill. Does the host use Orbit by itself, and only where it helps -- with no Orbit, the previous release and
+  this one?
+- **Sessions cases** (`orbit-sessions`,
+  [ADR 0054](docs/adr/0054-a-sessions-benchmark-measures-what-memory-buys-a-second-session.md)): does memory make a
+  second session better, and never worse?
+- **Workflow cases** (`orbit-workflow`,
+  [ADR 0053](docs/adr/0053-a-workflow-benchmark-holds-one-request-to-its-code-its-qa-and-its-path.md)): one request
+  through `/orbit-help`, held to its code, its QA step and its path.
+- **Mission cases** (`orbit-missions`,
+  [ADR 0055](docs/adr/0055-a-mission-benchmark-asks-whether-satellite-settles-a-goal-on-owners-records.md)): a goal
+  through Orbit Satellite, every acceptance criterion settled on an owner's record and every run inside its least
+  privilege.
+
+`orbit-tools` is a QA case whose tool calls fail on purpose: the host must read why and correct the call, never repeat
+it. One PASS is not a rate: `run --repeat=N`, the arms and `node benchmark/run.mjs reliability` give pass@1, pass@k,
+cost and minutes per case and model. A release runs every case; a new suite's model-carried rows are recorded, never
+required ([ADR 0051](docs/adr/0051-recorded-benchmark-rows-and-the-precheck.md)).
 
 A run is an Orbit task, so Orbit Live shows it and a person can pause or cancel it.
 

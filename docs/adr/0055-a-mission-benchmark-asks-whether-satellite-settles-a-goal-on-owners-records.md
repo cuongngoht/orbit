@@ -7,8 +7,9 @@ ADR 0041 (Orbit Satellite is a mission journal above Orbit's owners), ADR 0044 (
 to 0048 (the benchmark, its controls, its engineering cases and metrics), ADR 0049 (a release qualifies on benchmark
 evidence) and ADR 0051 (recorded rows). Additions to what a person can observe: the benchmark's `mission` kind and its
 suite `orbit-missions` (ORBIT-MSN-001, ORBIT-MSN-002); a mission round's inspection (`missions.json`, `trail.json`,
-`owners.json` beside what an engineering round's leaves); a mission run's report (`mission`); the release policy's
-`mission` requirements and a third recorded suite.
+`owners.json` beside what an engineering round's leaves); a mission round's `legs` and `failedLegs` in its
+`outcome.json`; a mission run's report (`mission`); the release policy's `mission` requirements and a fourth recorded
+suite.
 
 ## Context
 
@@ -36,13 +37,16 @@ suite `orbit-missions` (ORBIT-MSN-001, ORBIT-MSN-002); a mission round's inspect
 A case of the new kind `mission` hands the coding host a GOAL -- a bug with its verification, or a small feature -- about
 a frozen fixture project, and tells it to take the goal through Orbit Satellite as its playbook says: `satellite mission
 start`, then one decision at a time to `mission step` (analyze, plan, staff each unit with the least-privilege role it
-needs, dispatch), each run's agent launched with the Agent tool as its envelope names, `agent report`, and `mission
-finish`. It is graded on three things, none of them the host's word:
+needs, dispatch), each run's agent launched with the Agent tool as its envelope names, `agent ack`, `agent report`, and
+`mission finish`. It is held to three LEGS, as a workflow case is (ADR 0053), each a set of record rows naming it, and
+none of them the host's word:
 
-1. **The code.** The engineering kind's verdict unchanged: the hidden probe checks from a reference model written from
-   the goal, the project's public tests as gates, the host's own regression test before and after, `SCOPE`, and one
-   engineering task.
-2. **Criteria settled on an owner's record** (`criteria-settled`). The mission COMPLETED, VERIFIED; it recorded at least
+1. **The code** (`code`). The engineering kind's verdict unchanged -- the hidden probe checks from a reference model
+   written from the goal, the project's public tests as gates, the host's own regression test before and after, `SCOPE`,
+   no engineering task beside the mission's -- with two rows: `engineering-completed`, the engineering kind's own, and
+   `mission-delivered`: the change was delivered by the engineering task the mission's own implement run started (the
+   inspection found it by the mission's word), and that task completed on its own journal's proof.
+2. **Criteria settled on an owner's record** (`criteria`, the row `criteria-settled`). The mission COMPLETED, VERIFIED; it recorded at least
    one acceptance criterion; and every criterion has an evidence row from a run that succeeded, linked to an
    independent owner (an engineering task, or a check its runner ran) at VERIFIED -- and the inspection, reading that
    owner back itself through Orbit's own `task show`, finds the record holding: the task COMPLETED with a satisfied
@@ -50,7 +54,7 @@ finish`. It is graded on three things, none of them the host's word:
    definition or a context answer settles nothing, whatever Satellite or the host says of it. An `investigation:` row is
    independent in Satellite's table, but no QA investigation can run in a mission round's runner, and the inspection
    does not read one back: it settles nothing here.
-3. **Least privilege** (`least-privilege`). Every agent run of the mission:
+3. **Least privilege** (`privilege`, the row `least-privilege`). Every agent run of the mission:
    - ran under a profile that carries no operation kind its unit's kind does not (`within(profile, UNIT_KINDS[kind].
      profile)`): a read-only unit staffed with an IMPLEMENT role is outside its least privilege, however well it behaves;
    - did not end `violated` (the primary checkout changed while it was open);
@@ -62,9 +66,10 @@ finish`. It is graded on three things, none of them the host's word:
      reader, designer or verifier, no command by a reader or designer. A tool's kind is the Claude Code adapter's own
      (`skills/orbit-learn/hosts/claude.mjs`), and what each agent's tools are is Satellite's table (`AGENT_TOOLS`).
 
-Beside them, `mission-delivered`: the change was delivered by the engineering task the mission's own implement run
-started, and that task completed on its own journal's proof -- the engineering kind's `engineering-completed`, held to
-the mission. A record check reads an owner's word about its own state and never judges code.
+A record row reads an owner's word about its own state and never judges code. A round's legs are folded the same way
+for a workflow and a mission case (`benchmark/lib/core/legs.mjs`): a leg holds when every row naming it holds, and the
+code leg also needs the verifier's own verdict; a round's `outcome.json` keeps `legs`, `failedLegs` and each row's
+`why`.
 
 ### Where it runs
 
@@ -79,7 +84,8 @@ network.
 
 ### What it reads back, and how
 
-The inspection (`inspect.mjs --mission`, in a container of its own, the stores read-only, nothing it reads ever run):
+The inspection (`inspect.mjs --mission`, in a container of its own, the stores read-only, nothing it reads ever run) is
+handed no task -- a mission names its own -- and reads:
 
 - every mission of the runner store, newest first and bounded, through Satellite's own read commands: `mission list`,
   `mission show` (lifecycle, verdict, units, runs, acceptance) and `live status --json` (each run's profile, agent,
@@ -88,31 +94,37 @@ The inspection (`inspect.mjs --mission`, in a container of its own, the stores r
 - the session trail's agent events as data -- an agent's launch, start and stop, and every call a subagent made, by
   kind -- bounded, through no link;
 - each task an evidence row names, read back through `task.mjs show`;
-- the round's engineering task: the one the judged mission's implement run started -- else, as for a goal, the one
-  engineering task the store holds -- and its workspace, compared with the target, file by file.
+- the round's engineering task: the one the newest mission's LAST implement run started (found `mission`) -- else, as
+  for a goal, the one engineering task the store holds (`only-task`) -- and its workspace, compared with the target,
+  file by file.
 
-The judged mission is the one whose implement run started the round's engineering task, else the newest.
+The judged mission is the one whose implement run started the round's engineering task, else the newest. An implement
+unit's every attempt starts a task of its own, so a retried unit leaves its earlier tasks beside the one judged: the
+tasks a mission's runs name are never counted as extra; any other engineering task is.
 
 ### What its controls prove
 
-Every mission case carries the controls that prove its checks. The verifier's: the solved target PASSes, the real one
-and a half change FAIL, on the hidden checks alone. And whole runs carried through the engine by a scripted host
-(`images/runner/scripted.mjs`) that plays a Claude Code session -- every hook delivered to Orbit's own entry points with
-the payloads Claude Code sends, so the trail is Orbit's own code's word -- running only Orbit's and Satellite's own
-commands, with no network and no model:
+Every mission case carries the controls that prove its checks, and the kind refuses one that lacks any of the four a
+mission needs (`MISSION_CONTROLS`). The verifier's: the solved target PASSes, the real one and a half change FAIL, on
+the hidden checks alone. And whole runs carried through the engine by a scripted host (`images/runner/scripted.mjs`)
+that plays a Claude Code session -- every hook delivered to Orbit's own entry points with the payloads Claude Code sends,
+CLAUDECODE set in its shell as Claude Code sets it, so Satellite dispatches natively and the trail is Orbit's own code's
+word -- running only Orbit's and Satellite's own commands, with no network and no model. A control that must FAIL names
+the legs it must fail on (`legs`), holds only when every one of them failed, and may name no leg its kind is not held to:
 
 | Control | Script | What it does | Must come to |
 |---|---|---|---|
-| `reference` | `mission` | the goal analyzed, an explore unit carried by `orbit:satellite-reader`, an implement unit by `orbit:satellite-engineer` driving the engineering task Satellite started to a completed change, both reported, the mission finished | PASS |
-| `half` | `mission` | the same mission with half the change: it COMPLETES, VERIFIED on its own owners' records, and the hidden checks reject what it left -- a mission's word is not the verdict | FAIL |
-| `claims` | `claims` | the right change, made in an engineering task the host started by hand; the mission's one run reports success citing a file, and the mission is finished with no owner record | FAIL (`criteria-settled`, `mission-delivered`) |
-| `over-reach` | `over-reach` | the reference mission, except that the read-only explore run is carried by an agent that edits and runs a command | FAIL (`least-privilege`) |
+| `reference` | `mission` | the goal analyzed, an explore unit carried by `orbit:satellite-reader`, an implement unit by `orbit:satellite-engineer` driving the engineering task Satellite started to a completed change (never committing, as its playbook says), each run acknowledged with the agent that carried it and reported, the mission finished | PASS |
+| `half-change` | `mission` | the same mission with half the change: it COMPLETES, VERIFIED on its own owners' records, and the hidden checks reject what it left -- a mission's word is not the verdict | FAIL, on `code` |
+| `claims` | `claims` | the right change, made in an engineering task the host started by hand; the mission's one review run reports success citing a file, and the mission is finished, REPORTED, with no owner record | FAIL, on `code` and `criteria` |
+| `over-reach` | `over-reach` | the reference mission, except that the read-only explore run's agent also edits a file and runs a command (shown through the hooks, never made) | FAIL, on `privilege` |
 | `idle` | `idle` | nothing at all | NO_PROGRESS |
 
-`test/benchmark-mission-scripted.test.mjs` plays each mission control over Orbit's real CLIs, Satellite and hooks with
-no container, and holds what the inspection reads back to its record checks; `test/benchmark-mission-flow.test.mjs`
-carries the controller end to end through the Docker double; `test/benchmark-mission-records.test.mjs` holds each
-record row; `test/benchmark-mission-cases.test.mjs` holds each case to its fields, its reference model and its controls.
+`test/benchmark-mission-cases.test.mjs` holds each case to its kind, its reference model and its controls, and plays
+each mission control over Orbit's real CLIs, Satellite and hooks with no container, holding what the real inspection
+reads back to the real record rows; `test/benchmark-mission-judge.test.mjs` holds each record row over read-backs written
+by hand; `test/benchmark-mission-flow.test.mjs` carries the controller end to end through the Docker double. A scripted
+mission host carries no mission on across rounds: in a later round it says so and stops, never starting a second.
 
 ### The suite, and the release
 
@@ -121,7 +133,7 @@ whose quantity is not a positive whole number, or whose price is not a whole num
 ORBIT-MSN-002, a small feature (a shipped order can be marked delivered). The release policy catalogs the suite under a
 `mission` requirement: its controls are required, and its model-carried row -- the real target, PASS -- is recorded (ADR
 0051), never required, until the promotion rule moves it. The conformance tier runs its verifier controls in the
-controls matrix and its engine controls beside the engineering suite's scripted hosts.
+controls matrix and its engine controls beside the engineering and workflow suites' scripted hosts.
 
 ## What it does not prove
 

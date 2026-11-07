@@ -6,10 +6,12 @@
 //
 //   briefOf(ctx, k, state) -> { md, json }      promptOf(task, k, dir) -> text      objectiveOf(c) -> sentence (≤ 240)
 //   goalPromptOf(k, dir) -> text (an engineering case: the goal through Orbit's own goal entry, never a repair brief)
+//   workflowPromptOf(k, dir) -> text (a workflow case, 0.5.0: the request through /orbit-help and the workflow it starts)
 //   testDirOf(c) -> the directory a regression test goes in, read off the case's own agent-test pattern
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { candidateFile } from "../core/mutations.mjs";
+import { isGoalKind } from "../core/suites.mjs";
 import { says } from "./judge.mjs";
 import { HARNESS, TAMPER } from "./candidate.mjs";
 
@@ -38,8 +40,11 @@ export const testDirOf = (c) => /^\^((?:[\w-]+\/)+)/.exec(c.checks?.agentTests?.
 // task's workspace, and how to drive the loop. A coding host is never handed one: it carries no fix of any kind.
 const scriptRow = (ctx) => (ctx.case.repairs ?? []).find((r) => `scripted:${r.id}` === ctx.host) ?? null;
 
-// A goal script reads the goal as its title says it; a repair script plans under the repair's objective.
-const intentOf = (c) => (c.kind === "engineering" ? c.title : objectiveOf(c));
+// A goal script reads the goal as its title says it; a workflow script hands /orbit-help the request in the one sentence
+// its case restates it in (`workflow.ask`); a repair script plans under the repair's objective.
+const INTENT_OF = { engineering: (c) => c.title, workflow: (c) => c.workflow.ask };
+
+const intentOf = (c) => (INTENT_OF[c.kind] ?? objectiveOf)(c);
 
 const scriptOf = (ctx) => ((r) => (r ? { id: r.id, mode: r.script ?? "apply", intent: intentOf(ctx.case), definition: candidateFile(ctx.frozenCase, r.candidate) } : null))(scriptRow(ctx));
 
@@ -60,6 +65,20 @@ export const goalPromptOf = (k, dir = "test/") => [
   "When you stop, say in one line where the goal stands.",
 ].join("\n");
 
+// A WORKFLOW case's prompt (0.5.0, ADR 0053): the request taken where a person takes one -- `/orbit-help`, Orbit's
+// coordinator and navigator -- and through the coordinated workflow it starts, step by step. It names the entry and how a
+// step is settled, never what a step must come to: what QA does, and why, is the workflow's to say.
+export const workflowPromptOf = (k, dir = "test/") => [
+  "You are working inside an Orbit benchmark container. Nobody can answer a question here: where a skill says to ask a person, record what is missing and stop.",
+  "1. The repository at /work/repo is the project to change. Read /run/brief/brief.md: the request, where a change may go, and the budget left.",
+  "2. Take the request to Orbit -- the plugin at /work/orbit -- the way a person does, through /orbit-help (the orbit-help skill): `node /work/orbit/cli/help.mjs --for=\"<the request, in one sentence>\"`, then the coordinated workflow it starts (`node /work/orbit/cli/automation.mjs start --for=…`, then `context`, `step` and `settle`, one decision at a time) and the engineering task its engineering step starts (`node /work/orbit/cli/autonomous-engineering.mjs context|step`). Run every Orbit command from /work/repo, and take every step the workflow's plan holds until it completes or gives a reason to stop.",
+  `3. Make every edit in the workspace the engineering task prints, and add a regression test under ${dir} that fails before your change and passes after it. Never change or delete an existing test.`,
+  "4. Commit the verified change before review. Never push.",
+  "5. Say each step as the workflow settled it -- a skipped one with its reason -- and never call a step done that the workflow did not settle.",
+  ...(k > 1 ? ["This is a later round: resume the workflow and its engineering task where they stand, reconcile what did not settle, and go on."] : []),
+  "When you stop, say in one line where the workflow stands.",
+].join("\n");
+
 // The same goal with no Orbit beside it (0.5.0, B23's `none` arm): what Claude Code does on its own, held to the same
 // verifier -- the goal in a person's words, and nothing about a plugin it was not handed. Its target is writable.
 export const plainPromptOf = (k, dir = "test/") => [
@@ -77,9 +96,12 @@ export const plainPromptOf = (k, dir = "test/") => [
 const BRIEFS = {
   repair: { md: (ctx, k, state) => repairMd(ctx, k, state), prompt: (ctx, k, state) => promptOf(state.engTask, k, testDirOf(ctx.case)), plugin: "/work/repo" },
   goal: { md: goalMd, prompt: (ctx, k) => goalPromptOf(k, testDirOf(ctx.case)), plugin: "/work/orbit" },
+  workflow: { md: goalMd, prompt: (ctx, k) => workflowPromptOf(k, testDirOf(ctx.case)), plugin: "/work/orbit" },
 };
 
-const briefKind = (ctx) => BRIEFS[ctx.case.kind === "engineering" ? "goal" : "repair"];
+const BRIEF_OF = { engineering: "goal", workflow: "workflow" };
+
+const briefKind = (ctx) => BRIEFS[BRIEF_OF[ctx.case.kind] ?? "repair"];
 
 // An arm with no Orbit is handed no plugin, and a prompt that names none.
 const noOrbit = (ctx) => ctx.arm === "none";
@@ -88,7 +110,7 @@ const promptFor = (ctx, k, state, b) => (noOrbit(ctx) ? plainPromptOf(k, testDir
 
 export function briefOf(ctx, k, state) {
   const b = briefKind(ctx);
-  return { md: b.md(ctx, k, state), json: { round: k, kind: ctx.case.kind, host: ctx.host ?? null, arm: ctx.arm ?? "release", script: scriptOf(ctx), plugin: noOrbit(ctx) ? null : b.plugin, goal: ctx.case.kind === "engineering" ? requestOf(ctx) : null, task: state.engTask ?? null, objective: objectiveOf(ctx.case), prompt: promptFor(ctx, k, state, b), model: ctx.model ?? null, effort: ctx.effort ?? null, usd: state.left.usd, minutes: state.left.engineeringMinutes, attempts: ctx.case.limits.engineering.attempts, actions: ctx.case.limits.engineering.actions, allowedHost: ctx.allowedHosts[0], outputBytes: ctx.case.limits.runner.outputMb * 1024 * 1024 } };
+  return { md: b.md(ctx, k, state), json: { round: k, kind: ctx.case.kind, host: ctx.host ?? null, arm: ctx.arm ?? "release", script: scriptOf(ctx), plugin: noOrbit(ctx) ? null : b.plugin, goal: isGoalKind(ctx.case) ? requestOf(ctx) : null, task: state.engTask ?? null, objective: objectiveOf(ctx.case), prompt: promptFor(ctx, k, state, b), model: ctx.model ?? null, effort: ctx.effort ?? null, usd: state.left.usd, minutes: state.left.engineeringMinutes, attempts: ctx.case.limits.engineering.attempts, actions: ctx.case.limits.engineering.actions, allowedHost: ctx.allowedHosts[0], outputBytes: ctx.case.limits.runner.outputMb * 1024 * 1024 } };
 }
 
 function repairMd(ctx, k, state) {

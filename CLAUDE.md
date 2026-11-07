@@ -21,9 +21,9 @@ Host session hints (untrusted): plugin option `host_memory`, or `ORBIT_HOST_MEMO
 
 The release is `node skills/orbit-release/ship.mjs` (ADR 0049; the whole contract is in
 [skills/orbit-release/SKILL.md](skills/orbit-release/SKILL.md)). What follows is how it is actually run in a cloud
-session, and what the 0.4.0 ships taught. A cloud session is the ONLY place a model-carried run happens: no GitHub
-workflow runs the ship or a real coding host (0.5.0, backlog B8); CI holds the fast tier (`ship.mjs --ci`) and the
-benchmark's conformance tier, which need no credential.
+session, and what the 0.4.0 and 0.5.0 ships taught. A cloud session is the ONLY place a model-carried run happens: no
+GitHub workflow runs the ship or a real coding host (0.5.0, backlog B8); CI holds the fast tier (`ship.mjs --ci`) and
+the benchmark's conformance tier, which need no credential.
 
 **Run it in its own session, detached.** The coding host's token is an environment variable of the cloud environment,
 kept as `ORBIT_CODE_OAUTH_TOKEN` (the 0.4.0 environment called it `ORBIT_CLAUDE_OAUTH_TOKEN`), and mapped to
@@ -97,11 +97,26 @@ node skills/orbit-release/ship.mjs --status --json          # where it stands; a
   cut it, the read-back run had no host identity, and the ship ended UNTRUSTED/WRONG_HOST). An interrupted model-carried
   run is never evidence; the row now runs again as a new run outside `--retries`, at most `INTERRUPTED_RUNS` (2) per
   cycle, then BLOCKS for a `--resume`. `--status` reports the newest cycle's held rows, closed or open.
+- **A case's interruption is a moment of its engineering task's own progress, never a minute**
+  (`interrupt: { round, after }`): Sonnet 5.5 finished ORBIT-E2E-007's round 1 in under four minutes, so its four-minute
+  cut never fired and the case measured nothing of a resumed session. The controller now cuts the round once the task
+  has started the steps `after` names, and the run is held to its cut having happened (an `interrupted` record). The
+  same row showed a plan too narrow for its change (its regression test left out) dead-ending at the review's SCOPE
+  failure: a plan can now be sent again while diagnosing.
 - **One investigation's tests share one sandbox** (pre-check QA-006: two false alarms on the clean app -- a host waited
   for `processed` on a second message the system deduped as `duplicate`, and reused a business key an earlier test had
   used). Effect-once and competing-workers now say a second one is not a second effect, every template says the sandbox
   is shared, and a design naming an earlier test's key is told which (advisory). Pre-check rows in parallel with a ship
   -- a separate session -- found this hours before the ship reached it.
+- **Read a QA row's room before calling its miss the model's**: on Sonnet 5.5 at medium effort the QA rows went from 0/7
+  at the 0.5.0 pre-check (six false alarms the clean app contradicted too) to 5/7 at the re-verify, once the engine
+  refused designs no correct application can satisfy, then 7/7 after two more Orbit fixes. An advice the host ignored
+  became a refusal where the declarations prove it (`NEVER_REDELIVERED`, ORBIT-QA-002: a wait for a second delivery
+  nothing brings), and a PASS was reported REFUSED by a cleanup race (the leak sentinel read a file a sandbox's
+  supervisor had just removed, ORBIT-QA-005). A host goes past advice and acts on a refusal.
+- **A cleanup that throws hides why a run stopped** (the sessions controls, ORBIT-SES-001..003: each crashed on the
+  release's own `has no workspace of its own here`, which replaced the error that had stopped the run). A release now
+  answers that error as its result; when a room's ending makes no sense, look for the error a teardown replaced.
 - **A new suite's model-carried rows are recorded, not required** (ADR 0051): name the suite (or case) in
   `ship/policy.json` `recorded`. The ship runs each once under `--retries`, reports it held or not with its room, and
   never blocks on it (a credential found in its room still stops the release); its controls stay required. Promotion
@@ -109,6 +124,12 @@ node skills/orbit-release/ship.mjs --status --json          # where it stands; a
 - **Fix an Orbit defect a row exposes with Opus at max effort** (an Agent, `model: opus`, `effort: max`): a regression
   test that fails before the fix, the full suite, the strict Five Lines lint. Never loosen an acceptance rule, a case's
   ground truth, the verifier or `ship/policy.json` to get a PASS.
+- **Run `node --test` alone.** A full suite run twice into one log at the same time showed a failure that was the two
+  runs' interference (the other said 0 failed), and a resumed session found two of its own earlier suite runs still
+  going. Look first (`pgrep -af 'node --test'`), let a run end or stop it, then run one suite into a log of its own.
+- **One backlog item to a worktree and a branch, merged one at a time** (0.5.0's Wave 3: B1, B4, B9, B2 and the review
+  findings): each merge into the release branch is followed by a full suite, run alone, so a failure names the merge
+  that brought it.
 - **A known finding repaired** leaves the benchmark's own case tests pinned to the old baseline: rebaseline the case
   (baseline PASS, a `controlled-fault` variant planting the old defect) in the same commit, before the next ship.
 - **Publish only on** SHIPPABLE + `ship.mjs --evidence` PUBLISHABLE on the pushed head + green CI: merge the release

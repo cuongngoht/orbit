@@ -14,6 +14,11 @@
 //   activation   (0.5.0, B22 M4) a prompt that names no skill, handed to the coding host with Orbit -- or without it --
 //                over a fixture project: whether it uses Orbit by itself and only where it helps, held to a hidden truth,
 //                the owners' records and, for an outcome case, the hidden checks of what it delivered
+//   workflow     (0.5.0, ADR 0053) one request about a frozen fixture taken through /orbit-help, held to three legs from
+//                records: the code, the QA step, the path
+//   mission      (0.5.0, ADR 0055) a goal about a frozen fixture taken through Orbit Satellite, held to three legs from
+//                records: the code, every criterion settled on an independent owner's record, every run inside its
+//                least-privilege profile
 //
 // Development tooling: it never ships (export-ignored), and nothing of the engine imports it.
 //

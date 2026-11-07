@@ -74,8 +74,9 @@ export function modeOf(where, asked, measured = []) {
   return "head";
 }
 
-// A variant of a case applied to a tree: a source case's exact mutations, or an engineering or workflow case's definition
-// (its mutations, the files it brings and the files it takes away). FIXTURE_DRIFT is the caller's to say.
+// A variant of a case applied to a tree: a source case's exact mutations, or a goal case's definition -- an engineering,
+// workflow or mission case's: its mutations, the files it brings and the files it takes away. FIXTURE_DRIFT is the
+// caller's to say.
 export const variantEntries = (c, name, base) => ((rel) => (!rel ? { ok: true, entries: base, applied: [] } : isGoalKind(c) ? candidateEntries(base, candidateFile(c.dir, rel)) : mutatedEntries(base, mutationFile(c.dir, rel))))(c.variants[name]?.mutations);
 
 function subjectFor(c, variant, entries) {
@@ -198,7 +199,8 @@ const describedOf = (f) => ({ ...(f.c.target ? { target: f.c.target, plugin: f.p
 const QA_RUN = { variant: qaVariant, subject: (c, variant, entries) => ({ ok: true, entries, applied: [] }), extra: pluginMade, attempts: (c, config) => config.rounds, measured: () => [], target: false };
 
 // A sessions case (0.5.0, ADR 0054) is frozen exactly as a QA case is: the same application, the same withheld plugin. A
-// workflow case (0.5.0, ADR 0053) exactly as an engineering case is: its fixture's target, and the frozen Orbit beside it.
+// workflow case (0.5.0, ADR 0053) and a mission case (0.5.0, ADR 0055) exactly as an engineering case is: its fixture's
+// target, and the frozen Orbit beside it.
 const ENGINEERING_RUN = { variant: sourceVariant, subject: (c, variant, entries, frozenEntries) => targetFor(c, variant, frozenEntries), extra: orbitPlugin, attempts: (c, config) => config.rounds + 1, measured: (c) => [`benchmark/fixtures/${c.fixture}/**`], target: true };
 
 const KIND_RUN = {
@@ -207,6 +209,7 @@ const KIND_RUN = {
   engineering: ENGINEERING_RUN,
   sessions: QA_RUN,
   workflow: ENGINEERING_RUN,
+  mission: ENGINEERING_RUN,
   activation: { variant: sourceVariant, subject: activationTarget, extra: activationPlugin, attempts: () => 1, measured: (c) => (c.fixture.id === "none" ? [] : [`benchmark/fixtures/${c.fixture.id}/**`]), target: true, origin: ORIGIN_OF, described: activationDescribed },
 };
 

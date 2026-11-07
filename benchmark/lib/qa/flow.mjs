@@ -26,13 +26,15 @@
 import { cpSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { frozenIntact } from "../core/context.mjs";
+import { relayLines } from "../core/diagnosis.mjs";
 import { cleaned } from "../core/docker.mjs";
 import { hostEnd } from "../core/host.mjs";
 import { docRead, docWritten } from "../core/room.mjs";
+import { roundsIn } from "../core/tools.mjs";
 import { engineFor } from "./engine.mjs";
 import { HOSTS, replayed } from "./hosts.mjs";
 import { designOf, judgedQa, outcomesOf, toConfirm } from "./judge.mjs";
-import { askOf, ranQaRound, serveOf } from "./round.mjs";
+import { askOf, ranQaRound, relayLogOf, serveOf } from "./round.mjs";
 
 export const EXIT = { PASS: 0, FAIL: 1, BENCHMARK_INVALID: 2, BLOCKED: 3, INCONCLUSIVE: 4 };
 
@@ -126,8 +128,10 @@ const minutesLeft = (view) => Math.floor((view.budget?.minutes?.limit ?? 0) - (v
 // have their share.
 const roundMs = (ctx, s) => ((left) => Math.max(1, Math.min(ctx.case.limits.runner.minutes, Math.floor((minutesLeft(show(ctx)) - RESERVE_MINUTES * left) / left))) * 60000)(s.of - s.round + 1);
 
+// A scripted host's round: its requests kept in the round's relay log as a coding host's are, and -- for a case that
+// plants refusals (0.5.0, backlog B9) -- the calls it plants and its bound.
 async function scriptedRound(ctx, s, e, serve, inv) {
-  const h = { ask: askOf(serve), journal: () => e.journal(inv), designs: e.target.designs(ctx.engineDir), stack: ctx.case.target.stack, clock: e.target.clock(ctx.engineDir, ctx.case.target.stack), falseAlarm: e.target.falseAlarm?.shape ?? null, ...((await s.scripted?.(ctx)) ?? {}) };
+  const h = { ask: askOf(serve, relayLogOf(ctx, s.round)), journal: () => e.journal(inv), designs: e.target.designs(ctx.engineDir), stack: ctx.case.target.stack, clock: e.target.clock(ctx.engineDir, ctx.case.target.stack), falseAlarm: e.target.falseAlarm?.shape ?? null, planted: ctx.case.refusals?.planted ?? [], repeats: ctx.case.refusals?.repeats ?? 0, ...((await s.scripted?.(ctx)) ?? {}) };
   return { driver: s.host, ...(await HOSTS[s.host](h)) };
 }
 
@@ -216,10 +220,14 @@ const rowState = (r) => STATE_OF[r.credit] ?? (r.credit === "TESTED" && r.got ==
 
 function verificationRows(ctx, j, inv) {
   for (const r of j.rows) ctx.rec.verification(ctx.task, { subject: `qa.${r.shape}`, obligation: `the planted application's ${r.shape} comes to ${r.expected} (${r.credit.toLowerCase().replace("_", " ")}${r.clean ? `; clean ${r.clean}` : ""})`, state: rowState(r), ...(rowState(r) === "not-verified" ? {} : { evidence: `investigation:${inv}` }) });
+  if (j.refusals) ctx.rec.verification(ctx.task, { subject: "qa.refusals", obligation: `every refused call corrected, and none sent again more than ${j.refusals.repeats} time(s) (${j.refusals.refused} refused)`, state: j.refusals.repeated.length || j.refusals.uncorrected.length ? "violated" : "satisfied", evidence: `investigation:${inv}` });
 }
 
+// The relay's log of every round of the run -- what a case that plants refusals is held to, with its bound.
+const refusalsAsked = (ctx) => (ctx.case.refusals ? { repeats: ctx.case.refusals.repeats, lines: roundsIn(ctx.room).flatMap((k) => relayLines(ctx.room.at("rounds", String(k), "relay", "relay.jsonl")) ?? []) } : null);
+
 function judgedEnding(ctx, rb, cf) {
-  const j = judgedQa(ctx.truth, rb.outcomes, cf?.outcomes ?? {}, { minCoverage: ctx.case.acceptance.minCoverage, cleanIsPlanted: cleanIsPlanted(ctx) });
+  const j = judgedQa(ctx.truth, rb.outcomes, cf?.outcomes ?? {}, { minCoverage: ctx.case.acceptance.minCoverage, cleanIsPlanted: cleanIsPlanted(ctx), refusals: refusalsAsked(ctx) });
   docWritten(ctx.room, "judged.json", j);
   verificationRows(ctx, j, rb.investigation);
   if (show(ctx).attempt?.open) ctx.rec.attemptComplete(ctx.task, j.verdict === "PASS" ? "succeeded" : "failed");

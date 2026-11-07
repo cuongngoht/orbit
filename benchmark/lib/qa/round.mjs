@@ -12,11 +12,12 @@
 //
 //   ranQaRound(ctx, k, s) -> { error, container, runner, host, egress, relay: { served } }
 //   s = { investigation, serve, deadlineMs, session? }      session = { round, of, runner: { mounts, values } }
-//   serveOf(ctx, engine, investigation) -> serve
+//   serveOf(ctx, engine, investigation) -> serve      askOf(serve, log?) -> ask      relayLogOf(ctx, k) -> { log }
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { madeDir } from "../core/room.mjs";
 import { fresh, roundRan, runnerSpecOf, streamFileOf } from "../core/runner.mjs";
-import { admitted, relayServer } from "./relay.mjs";
+import { admitted, helpAnswer, logged, relayServer, requestLine, usageAt } from "./relay.mjs";
 
 // What the coding host is told, beside the brief: the one thing to do, and that nobody will answer it.
 export const qaPromptOf = (investigation) => [
@@ -32,7 +33,7 @@ const usdOf = (ctx, s) => Math.round((ctx.limits.usd / (s.session?.of ?? 1)) * 1
 
 const roundLine = (ctx, k, s) => `- ${s.session ? `Session ${s.session.round} of ${s.session.of}` : `Round ${k} of ${ctx.limits.rounds}`}; about ${Math.round(s.deadlineMs / 60000)} minute(s) and ${usdOf(ctx, s)} USD.`;
 
-const briefMd = (ctx, k, s) => [readFileSync(join(ctx.frozenCase, ctx.case.request), "utf8").trim(), "", "## This round", "", `- The open investigation: \`${s.investigation}\`.`, "- Its commands: `node /work/repo/cli/autonomous-qa.mjs context|step|derive|checkpoint|reconcile|show|report|finish --investigation=" + s.investigation + "` (a decision on stdin for `step`).", "- The application's accepted requirement, contracts and plan: `/work/target/`.", roundLine(ctx, k, s), ""].join("\n");
+const briefMd = (ctx, k, s) => [readFileSync(join(ctx.frozenCase, ctx.case.request), "utf8").trim(), "", "## This round", "", `- The open investigation: \`${s.investigation}\`.`, "- Its commands: `node /work/repo/cli/autonomous-qa.mjs context|step|derive|checkpoint|reconcile|show|report|finish --investigation=" + s.investigation + "` (a decision on stdin for `step`); `node /work/repo/cli/autonomous-qa.mjs --help` says the usage of each, as it is taken here.", "- The application's accepted requirement, contracts and plan: `/work/target/`.", roundLine(ctx, k, s), ""].join("\n");
 
 function qaBriefWritten(ctx, k, s) {
   const dir = fresh(ctx, "rounds", String(k), "brief");
@@ -57,8 +58,27 @@ const secondsOf = (ctx, budget) => (budget === "step" ? ctx.case.limits.engine.s
 
 const answerOf = (r) => ({ exit: r.timedOut ? 3 : (r.status ?? (r.ok ? 0 : 3)), stdout: r.out ?? "", stderr: r.err || r.error || "" });
 
-// What a request admitted to the relay runs: the engine's own CLI, bounded by the case's time for a step or a call.
-export const serveOf = (ctx, engine, investigation) => ({ admit: (req) => admitted(req, investigation), run: async (a) => answerOf(await engine.cli("autonomous-qa.mjs", a.argv, { input: a.stdin, seconds: secondsOf(ctx, a.budget) })) });
+// What a request admitted to the relay runs: the engine's own CLI, bounded by the case's time for a step or a call -- or,
+// for a help probe, nothing: it is answered from the usage the run's frozen engine CLI documents (0.5.0, backlog B9).
+const ranFor = async (ctx, engine, investigation, a) => (a.help ? helpAnswer(usageAt(ctx.engineDir), a.help, investigation) : answerOf(await engine.cli("autonomous-qa.mjs", a.argv, { input: a.stdin, seconds: secondsOf(ctx, a.budget) })));
 
-// A scripted host asks the same way a coding host's request is served, admission included -- only in this process.
-export const askOf = (serve) => async (argv, stdin) => ((a) => (a.refused ? { exit: 2, stdout: "", stderr: `REFUSED ${a.refused}\n` } : serve.run(a)))(serve.admit({ argv, stdin }));
+export const serveOf = (ctx, engine, investigation) => ({ admit: (req) => admitted(req, investigation), run: (a) => ranFor(ctx, engine, investigation, a) });
+
+// A scripted host asks the same way a coding host's request is served, admission included -- only in this process --
+// and, given a log, every request is kept there in the line the mailbox keeps (0.5.0, backlog B9): the controller's own
+// record of what was asked, which a case's refusal rows read. A confirmation's replay is the controller's, and is kept
+// nowhere.
+const refusalOf = (a) => ({ exit: 2, stdout: "", stderr: `REFUSED ${a.refused}\n` });
+
+async function askedOnce(serve, log, n, req) {
+  const a = serve.admit(req);
+  const started = Date.now();
+  const answer = a.refused ? refusalOf(a) : await serve.run(a);
+  if (log) logged(log, requestLine(`scripted-${String(n).padStart(4, "0")}.json`, req, a, { ...answer, ms: Date.now() - started }));
+  return answer;
+}
+
+export const askOf = (serve, log = null) => ((n) => (argv, stdin) => askedOnce(serve, log, (n += 1), { argv, stdin }))(0);
+
+// Where a scripted host's requests of round k are kept: the very file a coding host's relay log is.
+export const relayLogOf = (ctx, k) => ({ log: join(madeDir(ctx.room, "rounds", String(k), "relay"), "relay.jsonl") });

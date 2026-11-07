@@ -60,6 +60,32 @@ A finding is CONFIRMED only on an oracle that confirms: a contract a person decl
 recorded effect, or the product contradicting itself. A requirement from a DRAFT source — a PBI
 nobody accepted, a plan an agent wrote — prepares tests and never confirms anything.
 
+**Every command, exactly.** Each row is the whole call, after `node ${CLAUDE_PLUGIN_ROOT}/cli/autonomous-qa.mjs`;
+`autonomous-qa.mjs --help` prints the usage of each. Never guess a flag and never add one a row does not show: a flag
+a command does not take is refused, and so is a word where a flag belongs. `plan` opens an investigation (§1);
+`settings`, `answer`, `release` and `cancel` are a person's, relayed only on their word.
+
+| call | what it does |
+|---|---|
+| `list [--json]` | earlier investigations, each with its state |
+| `protocol` | the decision protocol, every action kind and its fields (JSON) |
+| `context --investigation=<id>` | where it stands: position, frontier, budget, stop (JSON; writes nothing) |
+| `derive --investigation=<id>` | the test obligations its accepted plans imply (JSON) |
+| `step --investigation=<id> < decision.json` | ONE decision, as JSON on stdin (or `--decision=<file>`) |
+| `checkpoint --investigation=<id>` | what each settled obligation came to (receipts), then memory |
+| `reconcile --investigation=<id> [--json]` | every dispatch that started and never settled, read back — never sent again |
+| `investigate --investigation=<id> [--json]` | the findings, worked out again from the journal |
+| `reproduce --investigation=<id> --finding=fnd-<n> [--json]` | a finding's chain, replayed |
+| `show --investigation=<id> [--json]` | the investigation and its findings |
+| `report --investigation=<id> [--json]` | its report |
+| `finish --investigation=<id> [--why="…"]` | a checkpoint, the stop, the report |
+| `resume --investigation=<id> [--why="…"]` | a paused investigation, on again |
+| `draft --investigation=<id> --finding=fnd-<n> [--json]` | a regression DRAFT of a finding, only on an accepted oracle |
+| `draft-plan --investigation=<id> < plan.json` | a PBI's draft plan, checked and kept as a DRAFT (or `--file=<plan.json>`) |
+
+`--why` is one line. A refusal names the rule that refused it and the one thing to do instead: read it, correct
+the call, and never send the same refused call again.
+
 ## 0 · Before anything: what is already known
 
 1. `node ${CLAUDE_PLUGIN_ROOT}/cli/context.mjs --for="<the objective>"` — project context, memory first.

@@ -1170,11 +1170,14 @@ benchmark/     (ADR 0046, 0047, 0048, 0053, 0054) THE DOCKER BENCHMARK of Orbit:
                GOAL_RECORDS, and RECORDS_BY_KIND: the rows each goal kind is held to), report.mjs.
                lib/qa/ -- a QA case: invoice.mjs (TARGETS: the applications a case may name, and what a person sets up
                for one) · engine.mjs (Orbit's own engine from the frozen checkout, beside the controller: the application
-               assembled and seated, its isolated sandbox, the investigation) · relay.mjs (RELAY, the mailbox server) and
+               assembled and seated, its isolated sandbox, the investigation) · relay.mjs (RELAY, the mailbox server, and
+               0.5.0's help probe answered from the frozen engine CLI's own usage header, never run) and
                relay-client.mjs (what stands at cli/autonomous-qa.mjs in a QA host's plugin) · hosts.mjs (the scripted
-               reference, idle and false-alarm hosts -- and a second session's cheat, half, trusts-poison and
-               trusts-stale -- and the replay) · judge.mjs (outcomes off the journal, CREDIT, VERDICT) · round.mjs (a coding
-               host's round; a session's own brief line, budget share, kept home and memory switches) · flow.mjs (a QA run
+               reference, idle and false-alarm hosts -- a second session's cheat, half, trusts-poison and trusts-stale, and
+               0.5.0's recovers, repeats and uncorrected, which send a case's planted refusals -- and the replay) ·
+               judge.mjs (outcomes off the journal, CREDIT, VERDICT; 0.5.0's refusal rows off the relay's log,
+               CORRECTABLE) · round.mjs (a coding host's round; a session's own brief line, budget share, kept home and
+               memory switches; askOf, a scripted host's requests kept in the round's relay log) · flow.mjs (a QA run
                is one SESSION: sessionRan, carriedBy, the phases a sessions run composes) · report.mjs.
                lib/sessions/ (0.5.0, ADR 0054) -- a SESSIONS case, a QA case worked in two sessions over one checkout and
                the stores the first left: flow.mjs (the learning session, the carry phase -- what is kept, the code moved
@@ -1187,15 +1190,21 @@ benchmark/     (ADR 0046, 0047, 0048, 0053, 0054) THE DOCKER BENCHMARK of Orbit:
                host did, held to the hidden truth) · flow.mjs (the phases, factsFrom) · report.mjs.
                lib/workflow/ (0.5.0, ADR 0053) -- a WORKFLOW case, one request through /orbit-help: flow.mjs (an
                engineering case's flow, composed) · judge.mjs (the record rows by leg -- code, qa, path -- over what the
-               inspection read back of every coordinated workflow; legsOf) · report.mjs (the engineering report, with
-               the legs, each row and the workflow as its own journal says it).
+               inspection read back of every coordinated workflow) · report.mjs (the engineering report, with the legs,
+               each row and the workflow as its own journal says it).
+               lib/mission/ (0.5.0, ADR 0055) -- a MISSION case, a goal through Orbit Satellite: flow.mjs (an
+               engineering case's flow, composed) · judge.mjs (the record rows by leg -- code, criteria, privilege --
+               over what the inspection read back of every mission, the trail and the tasks its evidence names) ·
+               report.mjs (the engineering report, with the legs, each row and the mission as Satellite's journal says
+               it). lib/core/legs.mjs: a round's legs, folded the same for a workflow and a mission case.
                lib/commands.mjs: the COMMANDS table. images/runner/ (Claude Code pinned; entry.mjs, inspect.mjs,
                preflight.mjs, scripted.mjs -- the scripted host a control runs in its place: a repair, a goal, a blocked
                goal, an interrupted session, idle, an activation session delivering every hook to Orbit's own entry
-               points, or a request through /orbit-help -- and the code-only and bypass hosts that fall short of it) · images/verifier/ (egress.mjs) · images/qa-worker/ (the Playwright image, pinned, and the
+               points, a request through /orbit-help -- and the code-only and bypass hosts that fall short of it -- or a
+               mission through Satellite, each run carried by its envelope's agent, and the claims and over-reach hosts) · images/verifier/ (egress.mjs) · images/qa-worker/ (the Playwright image, pinned, and the
                browser CLI Orbit drives). suites/<suite>/suite.json and suites/<suite>/<case-id>/ (case.json,
                request.md, verifier/, variants/, controls/; a sessions case's poison/; an activation case's seed/).
-               fixtures/<app>/ -- a project an engineering, activation or workflow case is about (its public tests as
+               fixtures/<app>/ -- a project an engineering, activation, workflow or mission case is about (its public tests as
                checks/). A
                run's evidence: <store>/benchmark/<bnr-…>/ (rounds/<k>/outcome.json, verified.json, report.md|json; a
                sessions run's home/, the host's own home kept between its sessions).

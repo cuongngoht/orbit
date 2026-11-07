@@ -35,6 +35,8 @@ jobs:
   # A QA case's controls are whole runs, each carried by one of its scripted hosts (reference, idle, false-alarm) in the
   # controller's own process: the application on its isolated sandbox through Orbit's engine, its tests in the QA worker
   # -- no model and no credential (the engine is handed none), only the QA worker image and the time those runs take.
+  # A QA case that plants calls the relay refuses (orbit-tools, 0.5.0) adds the hosts that send them: one that recovers,
+  # one that repeats a refused call past the case's bound, one that never corrects one.
   # A sessions case's controls (ADR 0054) are whole runs the same way, each two sessions over one checkout: the second
   # carried by the control's own scripted host (reference, idle, cheat, half, and the ones that trust a poison).
   # An activation case's controls (0.5.0) are whole runs too: a seed round, a scripted host delivering every hook to
@@ -44,11 +46,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [orbit-source, orbit-governance, orbit-memory, orbit-improvement, orbit-orchestration, orbit-satellite, orbit-verdicts, orbit-engineering, orbit-qa, orbit-sessions, orbit-activation, orbit-workflow]
+        suite: [orbit-source, orbit-governance, orbit-memory, orbit-improvement, orbit-orchestration, orbit-satellite, orbit-verdicts, orbit-engineering, orbit-qa, orbit-sessions, orbit-activation, orbit-workflow, orbit-missions, orbit-tools]
         include:
           - suite: orbit-qa
             images: --qa-worker
             minutes: 360
+          - suite: orbit-tools
+            images: --qa-worker
+            minutes: 240
           - suite: orbit-sessions
             images: --qa-worker
             minutes: 360
@@ -89,7 +94,7 @@ jobs:
   # is held to the outcome it declares (and a workflow control to the legs it names).
   scripted:
     runs-on: ubuntu-latest
-    timeout-minutes: 240
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -111,6 +116,13 @@ jobs:
       # on the QA leg, bypass on the path leg, idle make no progress.
       - name: a request through /orbit-help, held to its code, its QA step and its path
         run: node benchmark/run.mjs controls ORBIT-WF-004
+      # 0.5.0 (B4, ADR 0055): a goal through Orbit Satellite -- the reference must PASS on every leg, half the change fail
+      # on the code leg, a claim no owner's record backs on the code and the criteria, a reader outside its profile on the
+      # privilege leg, idle make no progress.
+      - name: a bug with its verification through Satellite, held to its code, its criteria and its privilege
+        run: node benchmark/run.mjs controls ORBIT-MSN-001
+      - name: a small feature through Satellite, held to the same three legs
+        run: node benchmark/run.mjs controls ORBIT-MSN-002
       - name: the metrics, apart by host basis
         if: always()
         run: node benchmark/run.mjs metrics --json > "$RUNNER_TEMP/metrics.json" || true

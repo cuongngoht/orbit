@@ -244,7 +244,7 @@ test("tool-call failures fold per host basis, per suite and per model: per tool,
   assert.deepEqual([s.calls.calls, s.calls.failed, s.calls.rate, s.calls.byTool.Bash], [20, 6, 0.3, { calls: 12, failed: 6, rate: 0.5 }]);
   assert.deepEqual(s.failedPerPass, { numerator: 2, denominator: 1, value: 2 }, "the failed calls of the runs that passed, per PASS");
   assert.deepEqual([s.recovery.episodes, s.recovery.turnsPerEpisode.value, s.recovery.runsRecovered.value], [2, 3, 0.5]);
-  assert.deepEqual(s.relay.context, { requests: 3, refused: { HELP: 1 }, nonZero: 0, errors: 0 });
+  assert.deepEqual(s.relay.context, { requests: 3, help: 0, refused: { HELP: 1 }, nonZero: 0, errors: 0 }, "a report kept before the relay answered a probe counts none answered");
   assert.deepEqual(((p) => [p.attempts, p.failures, p.rate, p.classes, p.callsAfter.value])(s.sandbox.steps["sandbox-prepare"]), [4, 2, 0.5, { RESTORE_FAILED: 2 }, 4]);
   assert.deepEqual(Object.keys(f.models), ["claude-opus-5-5"]);
 });

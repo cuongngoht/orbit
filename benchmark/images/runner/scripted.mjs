@@ -198,9 +198,10 @@ function checked(s) {
   return [];
 }
 
-// A change that passed its checks: committed in the task's own delivery, then reviewed -- what completes the task.
+// A change that passed its checks: committed in the task's own delivery, then reviewed -- what completes the task. An
+// agent whose playbook never commits (Satellite's engineer, `commits: false`) reviews it as it stands.
 function delivered(s) {
-  if ((contextOf(s)?.allowed ?? []).includes("commit")) stepped(s, { kind: "commit", message: String(s.script.intent).slice(0, 200) });
+  if (s.commits !== false && (contextOf(s)?.allowed ?? []).includes("commit")) stepped(s, { kind: "commit", message: String(s.script.intent).slice(0, 200) });
   const r = stepped(s, { kind: "review" });
   return r.status === 0 ? [] : [`review: ${r.why}`];
 }
@@ -543,17 +544,154 @@ function seeded(s) {
   return problems;
 }
 
+// ---- a MISSION through Orbit Satellite (a mission case, 0.5.0, ADR 0055): a session as Claude Code has it -------------
+//
+// Where a host handed Satellite starts: `satellite mission start` with the goal, then one decided step at a time -- the
+// goal analyzed into one acceptance criterion, an explore unit and an implement unit resting on it planned, each staffed
+// with the least-privilege role it needs and dispatched -- and each run launched with the Agent tool as the agent its
+// envelope names, the envelope pasted verbatim as the call's prompt, with every hook Claude Code delivers around it (an
+// activation session's), so the trail is Orbit's own code's word. The reader reads the file the change touches; the
+// engineer drives the engineering task Satellite started, with the control's edits, in that task's own workspace and
+// through its own loop, and reports it; each run is acknowledged with the agent the call answered. The mission is
+// finished. Every command is Satellite's or Orbit's own, run as a host runs it, CLAUDECODE set as Claude Code sets it in
+// its shell. CLAIMS makes the change in an engineering task started by hand and has the mission's one review run claim
+// it, citing a file; OVER-REACH lets the reader's agent edit a file and run a command (shown, never made). A later round
+// carries no mission on: the scripted host says so and stops, never starting a second.
+const SATELLITE = "../satellite/cli/satellite.mjs";
+
+const satCall = (s, args, input) => cliCall(s, SATELLITE, args, input);
+
+function satContext(s) {
+  const c = satCall(s, ["mission", "context", s.msn]).json;
+  s.satRevision = c?.revision ?? s.satRevision;
+  return c;
+}
+
+const decisionFor = (s, action) => JSON.stringify({ schemaVersion: 1, decisionId: `d-${s.round}-${(s.ids.d = (s.ids.d ?? 0) + 1)}`, expectedRevision: s.satRevision, action, observed: "the mission's context allows this step" });
+
+// ONE decided step of the mission, as a Bash call of the session: judged, recorded, run and settled by Satellite.
+const satStepped = (s, action) => (satContext(s), told(s, `satellite mission step ${action.kind}`, satCall(s, ["mission", "step", s.msn], decisionFor(s, action)), `mission ${action.kind}`));
+
+const satOk = (s, action) => ((r) => (r.status === 0 ? [] : [`mission ${action.kind}: ${r.why}`]))(satStepped(s, action));
+
+const missionAnalysisOf = (digest) => ({ kind: "analyze", intent: { facts: [{ statement: "the goal names a behaviour the project does not hold yet", sourceRef: `goal@${digest}` }], acceptanceCriteria: [{ statement: "the behaviour the goal describes holds, shown by the project's own declared tests", verification: "the engineering task's declared checks pass on the change" }] } });
+
+function missionStarted(s) {
+  s.msn = told(s, "satellite mission start", satCall(s, ["mission", "start", "--stdin"], s.goal ?? s.prompt)).json?.mission ?? null;
+  return s.msn ? satOk(s, missionAnalysisOf(String(satContext(s)?.mission?.goalDigest ?? "").slice(0, 8))) : ["the mission could not be started"];
+}
+
+// The work graph each script plans: an explore unit and the implement unit resting on it -- or, for CLAIMS, one review.
+const CHANGE_UNITS = (s) => [{ key: "explore", kind: "explore", objective: "find where the behaviour the goal names lives in the project" }, { key: "change", kind: "implement", objective: String(s.script.intent).slice(0, 200), dependsOn: ["explore"], acceptanceCriteriaRefs: ["acc-1"] }];
+
+const UNITS_OF = { mission: CHANGE_UNITS, "over-reach": CHANGE_UNITS, claims: () => [{ key: "review", kind: "review", objective: "review the change the goal asks for", acceptanceCriteriaRefs: ["acc-1"] }] };
+
+const planned = (s) => satOk(s, { kind: "plan", units: UNITS_OF[s.script.mode](s) });
+
+// The role each kind of unit is staffed with: the least privilege its kind needs, and nothing a role may not say.
+const READER = { profile: "READ_ONLY", purpose: "Find what the goal needs read, and cite where it is.", restrictions: ["It never changes a file or runs a command."], completionCriteria: ["Every finding cites the file that shows it."] };
+
+const ROLES = { explore: { ...READER, responsibilities: [{ activity: "explore", subject: "project code" }] }, review: { ...READER, responsibilities: [{ activity: "review", subject: "the change" }] }, implement: { responsibilities: [{ activity: "implement", subject: "the change" }], profile: "IMPLEMENT", purpose: "Make the change the goal asks for in the engineering task's own workspace.", restrictions: ["It edits only inside the engineering task workspace."], completionCriteria: ["The engineering task completes on its own verification."] } };
+
+const staffed = (s, unit, kind) => ((role) => (role.length ? role : satOk(s, { kind: "resolve-template", unit })))(satOk(s, { kind: "resolve-role", unit, ...ROLES[kind] }));
+
+const envelopeOf = (s, unit) => satStepped(s, { kind: "dispatch", unit }).json?.result?.envelope ?? null;
+
+// A run carried as Claude Code carries one: an Agent call whose prompt is the envelope, verbatim, as the agent its
+// envelope names -- the agent's own hooks around what `body` does as that agent, and the agent the call answered with.
+function envelopeCarried(s, envelope, body) {
+  const id = nextId(s, "toolu");
+  const input = { tool_name: "Agent", tool_input: { description: `carry ${envelope.agentRunId}`, prompt: JSON.stringify(envelope), subagent_type: envelope.agent.subagentType }, tool_use_id: id };
+  hooked(s, "PreToolUse", input);
+  callShown(s, id, "Agent", { description: input.tool_input.description, subagent_type: input.tool_input.subagent_type });
+  return agentCarried(s, body, { id, input, agent: { id: `agent-${id}`, type: envelope.agent.subagentType } });
+}
+
+function agentCarried(s, body, call) {
+  hooked({ ...s, agent: call.agent }, "SubagentStart");
+  const problems = body({ ...s, parent: call.id, agent: call.agent });
+  hooked({ ...s, agent: call.agent }, "SubagentStop", { stop_hook_active: false });
+  return (resultShown(s, call.id, false), ended(s, call.input, false, { status: "completed", agentId: call.agent.id }), hooked(s, "PostToolUse", { ...call.input, tool_response: { status: "completed", agentId: call.agent.id } }, ["follow-hook.mjs"]), { agent: call.agent.id, problems });
+}
+
+const acked = (s, envelope, agent) => told(s, "satellite agent ack", satCall(s, ["agent", "ack", s.msn, envelope.agentRunId, `--host-agent=${agent}`]));
+
+const reportSaid = (s, envelope, report) => ((r) => (r.status === 0 ? [] : [`agent report ${envelope.agentRunId}: ${r.why}`]))(told(s, "satellite agent report", satCall(s, ["agent", "report", s.msn, envelope.agentRunId], JSON.stringify(report))));
+
+// What a reader does in its run: reads the file the change touches -- and, OVER-REACHING, edits it and runs a command its
+// agent has no tool for, both shown and neither made.
+const overReached = (t, rel) => (editShown(t, join(t.repo, rel)), bashShown(t, { command: `touch ${rel}` }));
+
+const readerDid = (t, rel) => (readShown(t, { path: rel }), t.script.mode === "over-reach" ? overReached(t, rel) : [], []);
+
+const readerReport = (envelope, rel, claim) => ({ schemaVersion: 1, agentRunId: envelope.agentRunId, executionState: "reported", findings: [{ say: claim ? "the change the goal asks for is made, and its tests pass" : `the behaviour the goal names lives in ${rel}`, refs: [`file:${rel}`] }], evidenceRefs: [`file:${rel}`], remainingUnknowns: [], summary: claim ? "the change is in, and nothing else is owed" : `the change belongs in ${rel}` });
+
+// A read-only run: dispatched, carried by its reader, acknowledged and reported by the session (a reader runs nothing).
+function readCarried(s, unit, rel, claim = false) {
+  const envelope = envelopeOf(s, unit);
+  if (!envelope) return [`dispatch ${unit}: no envelope came back`];
+  const run = envelopeCarried(s, envelope, (t) => readerDid(t, rel));
+  return run.problems.length ? run.problems : (acked(s, envelope, run.agent), reportSaid(s, envelope, readerReport(envelope, rel, claim)));
+}
+
+// The engineer's report: the task its envelope drives, and every check that task's runner ran -- read back by Satellite.
+const checksOf = (e) => (cliCall(e, "task.mjs", ["show", e.task]).json?.receipts ?? []).filter((r) => r.domain === "check").map((r) => `check:${e.task}:${r.ref}`);
+
+const engineerReport = (e, envelope) => ({ schemaVersion: 1, agentRunId: envelope.agentRunId, executionState: "reported", findings: [{ say: "the change is made in the engineering task's own workspace, and its declared checks ran", refs: [`task:${e.task}`] }], evidenceRefs: [`task:${e.task}`, ...checksOf(e)].slice(0, 16), remainingUnknowns: [], summary: "the engineering task completed on its own verification" });
+
+const editsShownIn = (e) => ((ws) => (ws ? scopeOf(e.script.definition).forEach((rel) => editShown(e, join(ws, rel))) : null))(contextOf(e)?.workspace?.path);
+
+// What the engineer does in its run: drives the task its envelope names through the task's own loop with the control's
+// edits, never committing, then reports the task.
+function engineerDid(t, envelope) {
+  const e = { ...t, task: envelope.drive.task, revision: null, commits: false };
+  const problems = applied(e);
+  editsShownIn(e);
+  return problems.length ? problems : reportSaid(e, envelope, engineerReport(e, envelope));
+}
+
+function implementCarried(s, unit) {
+  const envelope = envelopeOf(s, unit);
+  if (!envelope?.drive?.task) return [`dispatch ${unit}: Satellite started no engineering task for it`];
+  const run = envelopeCarried(s, envelope, (t) => engineerDid(t, envelope));
+  return (acked(s, envelope, run.agent), run.problems);
+}
+
+const finishedMission = (s) => ((r) => (r.status === 0 ? [] : [`mission finish: ${r.why}`]))(told(s, "satellite mission finish", satCall(s, ["mission", "finish", s.msn])));
+
+const sourceOf = (s) => scopeOf(s.script.definition ?? {}).find((rel) => rel.startsWith("src/")) ?? "README.md";
+
+const CHANGE_STEPS = [missionStarted, planned, (s) => staffed(s, "wu-1", "explore"), (s) => readCarried(s, "wu-1", sourceOf(s)), (s) => staffed(s, "wu-2", "implement"), (s) => implementCarried(s, "wu-2"), finishedMission];
+
+const MISSION_STEPS = { mission: CHANGE_STEPS, "over-reach": CHANGE_STEPS, claims: [missionStarted, planned, bypassed, (s) => staffed(s, "wu-1", "review"), (s) => readCarried(s, "wu-1", sourceOf(s), true), finishedMission] };
+
+const missionSteps = (s) => (s.round > 1 ? [`round ${s.round}: a scripted mission host carries no mission on across rounds`] : MISSION_STEPS[s.script.mode].reduce((problems, step) => (problems.length ? problems : step(s)), []));
+
+// The session: its start, the round's prompt (the router's hook answers it), the mission's steps, its stop and end.
+function missionRan(s) {
+  s.env = { ...(s.env ?? process.env), CLAUDECODE: "1" };
+  hooked(s, "SessionStart", { source: "startup" });
+  hooked(s, "UserPromptSubmit", { prompt: s.prompt }, ["router-hook.mjs"]);
+  const problems = missionSteps(s);
+  return (stopped(s), problems);
+}
+
 // What a script does: APPLY its definition through a repair's loop, take a GOAL through Orbit's goal entry, stop on a
 // goal that is BLOCKED by a missing rule, INTERRUPT its own first round, or sit IDLE -- change nothing at all; an
 // ACTIVATION session, or the SEED of one; a REQUEST through /orbit-help (`workflow`), the same stopped once the change is
-// made (`code-only`), or the change made with no workflow at all (`bypass`).
-export const SCRIPTS = { apply: applied, goal: (s) => goalRan(s, []), blocked: (s) => goalRan(s, MISSING), interrupt: (s) => goalRan(s, []), idle: () => [], activation: activationRan, seed: seeded, workflow: (s) => requested(s), "code-only": (s) => requested(s, engineeringSettled), bypass: bypassed };
+// made (`code-only`), or the change made with no workflow at all (`bypass`); a goal through Orbit Satellite (`mission`),
+// the change claimed by a mission no owner's record backs (`claims`), or a reader's agent outside its profile
+// (`over-reach`).
+export const SCRIPTS = { apply: applied, goal: (s) => goalRan(s, []), blocked: (s) => goalRan(s, MISSING), interrupt: (s) => goalRan(s, []), idle: () => [], activation: activationRan, seed: seeded, workflow: (s) => requested(s), "code-only": (s) => requested(s, engineeringSettled), bypass: bypassed, mission: missionRan, claims: missionRan, "over-reach": missionRan };
 
 // Where Orbit would be in an activation round's container. On the arm with no Orbit nothing is there: no hook is
 // delivered, and every command of Orbit's a host types fails as it would.
 const PLUGIN_AT = "/work/orbit";
 
-const activationOf = (b) => (b.script?.mode === "activation" ? { session: b.script.session ?? `scripted-${b.script.id ?? "session"}`, prompt: b.prompt ?? "", tell: bashTold, plugin: b.plugin ?? PLUGIN_AT, hooks: b.plugin ? undefined : false } : { prompt: b.prompt ?? "" });
+// The scripts that play a whole Claude Code session -- every hook delivered, every command said as a Bash call.
+const SESSIONS = ["activation", "mission", "claims", "over-reach"];
+
+const activationOf = (b) => (SESSIONS.includes(b.script?.mode) ? { session: b.script.session ?? `scripted-${b.script.id ?? "session"}`, prompt: b.prompt ?? "", tell: bashTold, plugin: b.plugin ?? PLUGIN_AT, hooks: b.plugin ? undefined : false } : { prompt: b.prompt ?? "" });
 
 export const stateOf = (b, task) => ((round) => ({ task: /^tsk-[a-f0-9]{12}$/.test(task ?? "") ? task : null, repo: PATHS.repo, plugin: b.plugin ?? PATHS.repo, script: b.script ?? {}, goal: b.goal ?? null, round, interrupt: b.script?.mode === "interrupt" && round === 1, revision: null, steps: [], ids: { n: 0 }, kept: {}, parent: null, agent: null, edits: b.script?.edits ?? null, ...activationOf(b) }))(b.round ?? 1);
 

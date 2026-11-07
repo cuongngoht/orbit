@@ -1,7 +1,7 @@
 # The Orbit benchmark
 
 Benchmark cases that say what Orbit must do. Each case runs against the source of the branch you are on, in Docker,
-and is judged by a verifier that shares nothing with what it judges. There are five kinds of case:
+and is judged by a verifier that shares nothing with what it judges. There are seven kinds of case:
 
 - **Source cases** hold Orbit's own source to independent checks. A case that fails on a cause it declares repairable
   can be handed to Orbit itself, with `--repair`: a real coding host (Claude Code, in a runner container) drives
@@ -26,6 +26,10 @@ and is judged by a verifier that shares nothing with what it judges. There are f
 - **Workflow cases** (0.5.0) hand a coding host ONE request to take through `/orbit-help`, and hold it to three legs,
   each from records: the code (an engineering case's verifier), the QA step (here: SKIPPED with its reason where nothing
   can be started) and the path (the coordinated workflow's own journal).
+- **Mission cases** (0.5.0) hand a coding host a GOAL to take through Orbit Satellite, and hold it to three legs, each
+  from records: the code (an engineering case's verifier, on the change the mission's own engineering task delivered),
+  the criteria (every acceptance criterion settled on an independent owner's record, never an agent's report) and the
+  privilege (every work unit's run carried inside its least-privilege profile, as the trail saw it).
 
 Every kind can be driven by a **scripted host** instead of a model (`images/runner/scripted.mjs`): the same runner, the
 same Orbit commands, the same verifier, and no credential. A scripted run proves the controller, the engine and the
@@ -45,7 +49,8 @@ source cases), [ADR 0047](../docs/adr/0047-a-qa-benchmark-asks-whether-autonomou
 (its QA cases) and [ADR 0048](../docs/adr/0048-the-benchmark-proves-orbits-self-healing-loop-and-measures-goals.md)
 (repair controls, failure classes, engineering cases, metrics and CI tiers). Its sessions cases are
 [ADR 0054](../docs/adr/0054-a-sessions-benchmark-measures-what-memory-buys-a-second-session.md), its workflow cases
-[ADR 0053](../docs/adr/0053-a-workflow-benchmark-holds-one-request-to-its-code-its-qa-and-its-path.md). A release is qualified
+[ADR 0053](../docs/adr/0053-a-workflow-benchmark-holds-one-request-to-its-code-its-qa-and-its-path.md), its mission cases
+[ADR 0055](../docs/adr/0055-a-mission-benchmark-asks-whether-satellite-settles-a-goal-on-owners-records.md). A release is qualified
 by driving it end to end
 ([ADR 0049](../docs/adr/0049-a-release-qualifies-on-docker-benchmark-evidence-carried-by-claude-code.md),
 [below](#driven-by-a-release-ship)).
@@ -71,6 +76,9 @@ benchmark/
                                   the judge, the flow and the report
   lib/workflow/                   a workflow case: the flow (an engineering case's, composed), the judge's record rows by
                                   leg, and the report
+  lib/mission/                    a mission case: the flow (an engineering case's, composed), the judge's record rows by
+                                  leg -- code, criteria, privilege -- and the report; legs.mjs (lib/core/) folds a
+                                  round's legs for both kinds
   lib/commands.mjs                the COMMANDS table, dispatching each kind of case
   images/runner/                  the coding host (Claude Code, pinned): entry.mjs, inspect.mjs, preflight.mjs, and
                                   scripted.mjs (the scripted host a control runs in its place)
@@ -83,7 +91,7 @@ benchmark/
                                   checks/<name>.mjs and moved to test/<name>.test.mjs in the checkout a run makes
 ```
 
-Twelve suites ship:
+Fourteen suites ship:
 
 | Suite | Cases | What they ask |
 |---|---|---|
@@ -99,6 +107,8 @@ Twelve suites ship:
 | `orbit-sessions` | `ORBIT-SES-001` … `003` | Does memory make a second session better, and never worse? Two QA applications worked twice, with memory and without (`001`: ORBIT-QA-003's, `002`: ORBIT-QA-001's), and a poisoned memory (`003`). Its model-carried rows are recorded, never required. |
 | `orbit-activation` | `ORBIT-ACT-001` … `011`, `ORBIT-NEG-001` … `004`, `ORBIT-CTX-001` … `003` | Does the host use Orbit by itself, and only where it helps -- on prompts that name no skill, in English and Vietnamese, with no Orbit, the previous release and this one? Its model-carried rows are recorded, never required. |
 | `orbit-workflow` | `ORBIT-WF-004` | Is one request taken through `/orbit-help` to a verified change by the workflow it starts -- routed, made by its own engineering task, its QA step never left out silently, every step settled on its owner's record? Its model-carried rows are recorded, never required. |
+| `orbit-missions` | `ORBIT-MSN-001`, `ORBIT-MSN-002` | Is a goal -- a bug with its verification, a small feature -- taken through Orbit Satellite to a verified change, every acceptance criterion settled on an independent owner's record and every work unit's run carried inside its least-privilege profile? Its model-carried rows are recorded, never required. |
+| `orbit-tools` | `ORBIT-TOOL-001` | When a tool call fails on purpose, does the host read why, correct the call and never send it again past a bound? `001`: the invoice QA application with nothing planted, and an earlier session's runbook whose calls the relay refuses as written (see [Planted refusals](#planted-refusals)). Its model-carried rows are recorded, never required. |
 
 A case whose `baseline` is `FAIL` is a **known finding**: the source as it is does not hold the behaviour the case
 asks, and the case keeps that as evidence until a repair passes it -- through `--repair`, never by a hand edit here. A
@@ -210,7 +220,7 @@ Every command takes `--json`. Runs are kept in the machine store under `<store>/
 
 | Outcome | Exit | Means |
 |---|---|---|
-| `PASS` | 0 | Source: every hidden check and every gate held, on both verifications. QA: every planted defect was found, each by a test the clean application passes, with no false alarm and at least the case's coverage. Engineering: the goal was reached and verified -- or, for a goal with no rule, refused with nothing delivered and every behaviour as it was. Activation: every row of the truth held -- and, for an outcome case, the hidden checks. Workflow: the verifier holds the change, and every record row of its three legs holds. |
+| `PASS` | 0 | Source: every hidden check and every gate held, on both verifications. QA: every planted defect was found, each by a test the clean application passes, with no false alarm and at least the case's coverage. Engineering: the goal was reached and verified -- or, for a goal with no rule, refused with nothing delivered and every behaviour as it was. Activation: every row of the truth held -- and, for an outcome case, the hidden checks. Workflow: the verifier holds the change, and every record row of its three legs holds. Mission: the verifier holds the change the mission's own engineering task delivered, and every record row of its three legs holds. |
 | `REPAIRED_VERIFIED` | 0 | The candidate passes the hidden checks and the gates. Its own regression test fails before the change and passes after it. Its changes stay inside the scope. |
 | `FAIL` | 1 | Source: a failure that stands; under the `controlled-fault` variant it was planted, and the report says so. QA: a planted defect was missed, a test contradicted the clean application too, or too little was tested. Activation: the first row of the judge's table that holds, with its class. |
 | `REPAIR_REJECTED` | 1 | The engineering task ended, and the verifier did not pass what it left. An engineering case says `FAIL`. |
@@ -450,8 +460,10 @@ The verdict is an ordered table (`lib/qa/judge.mjs`):
 2. **FAIL** on a false alarm.
 3. **FAIL** on a planted defect not found.
 4. **FAIL** when coverage is under the case's `minCoverage`.
-5. **INCONCLUSIVE** when a contradiction could not be confirmed.
-6. **PASS** otherwise.
+5. **FAIL** when a refused call was sent again past the case's bound -- a case that plants refusals only.
+6. **FAIL** when a call the relay refused for how it was written was never corrected -- a case that plants refusals only.
+7. **INCONCLUSIVE** when a contradiction could not be confirmed.
+8. **PASS** otherwise.
 
 A shape the environment blocked is neither coverage nor a miss. A contradiction the ground truth does not list, but
 that the clean application does not share, is reported as found beyond it.
@@ -481,10 +493,21 @@ only for the run's own investigation, as the `RELAY` table allows (`lib/qa/relay
   `security`);
 - never a path. A `--decision` or `--file` is read on the client's side and sent as stdin.
 
+A **help probe** (0.5.0, backlog B9) -- `--help` or `-h` anywhere, `help <subcommand>`, or no subcommand at all, the probe
+the engine's own refusals name -- is answered by the relay itself and never reaches the engine: exit 0, and no engine
+time. It says the usage of the subcommand it names, line for line as the engine's CLI documents it in its own usage
+header (read from the run's frozen source, never run), and what the relay takes of it: the investigation it is always
+about, the flags its `RELAY` row allows and what it reads on stdin -- so a host that would have guessed `report --out`
+reads that `report` takes `--json` alone. A probe of the whole CLI says every subcommand the relay carries, in the
+usage's order; one of a subcommand it does not carry says why, and what it does carry. Every 0.4.0 and early 0.5.0 QA
+row spent a refused call on that probe. The QA playbook (`skills/orbit-qa/SKILL.md`) shows every subcommand's exact call
+in one table, held to the usage and to `RELAY` by `test/benchmark-qa-relay.test.mjs`.
+
 A request that is not a regular file of a request's size is removed unread. The log keeps each request's subcommand,
 flags, and the size and digest of its decision, never the decision itself: the engine's own journal keeps that. It
 keeps how each ended too: its exit code, why the relay refused it (`refused`), and for one the engine refused or
-blocked, the first line the engine said (`why`), printable, scrubbed and bounded.
+blocked, the first line the engine said (`why`), printable, scrubbed and bounded. A help probe is kept as one
+(`help: true`), under the subcommand it asked about -- `--help` for the whole CLI -- with no argument list: nothing ran.
 
 The host is handed:
 
@@ -509,6 +532,43 @@ host goes through the same relay admission, the same engine and the same judge a
 | `reference` | Designs every test obligation the engine owes with acceptance's own designs. | PASS |
 | `idle` | Tests nothing and finishes the investigation. | FAIL |
 | `false-alarm` | Uses the reference designs, but one of them reads back a record nothing writes, so it contradicts the clean application too. The broken design is the one the application names (`falseAlarm` in `TARGETS`): a test that runs to a verdict whatever is planted, so the false alarm shows in every case. | FAIL |
+
+A scripted host's requests are kept in the round's relay log (`rounds/<k>/relay/relay.jsonl`) in the very line the
+mailbox keeps of a coding host's (0.5.0), so a report, its tool-call facts and a case's refusal rows read one record of
+what was asked, whoever asked it.
+
+### Planted refusals
+
+A QA case may make tool calls fail on purpose (0.5.0, backlog B9): `refusals.planted` names calls its request quotes
+from an earlier session's runbook -- `ORBIT-TOOL-001`'s give another investigation's id and a flag the subcommand does
+not take, on the `context` a host needs and the `finish` it is told to make -- and the relay refuses each as it is
+written, saying why. The host is not told they are wrong; a host that reads its brief and the usage (`--help`) never
+sends them, and passes. The judge holds such a case besides to how its host met them, read off the relay's log, never
+off what the host said:
+
+- **Never sent again past the bound.** A refused call is one the relay refused (its own sentence) or the engine refused
+  (exit 2, its first line) -- never one the environment blocked (exit 3: waiting a block out is no failure to read), and
+  never a help probe. The same refused call is one subcommand refused for one reason; sent more than once and
+  `refusals.repeats` more times fails the run.
+- **Corrected.** A call the relay refused for how it was written -- a flag, its value, a word, stdin, another
+  investigation (`CORRECTABLE`) -- must be followed by a request of the same subcommand the relay admitted. A
+  subcommand the relay does not carry cannot be written right, and only the bound holds it.
+
+The judge's `refusals` (`judged.json`) keeps how many calls were refused and each one sent again past the bound or
+never corrected; the report says them. Its controls add three hosts to the reference, idle and false-alarm ones:
+
+| Host | What it does | The verdict it must earn |
+|---|---|---|
+| `reference` | Never sends a planted call: the case asks how a refusal is met, never that one is. | PASS |
+| `recovers` | Sends each planted call once, then works as the reference does, its calls written as the relay takes them. | PASS |
+| `repeats` | Sends the first planted call again past the bound, then works as the one that recovers. | FAIL |
+| `uncorrected` | Sends each planted call once and never sends a refused subcommand again unless it cannot work without it: it tests what the reference tests and leaves the `finish` it was told to make uncorrected. | FAIL |
+
+What B9's backlog entry also lists and no case here plants -- a sandbox failure (Docker down, an image pull refused, a
+port held, a restore that fails, a container that never becomes ready) inside a QA run -- is left out on purpose: a QA
+run's sandbox is the controller's own setup, never a call of its host, and the runner container has no Docker for an
+engineering task's sandbox to fail in. Planting one would be faking it. `docs/backlog/0.5.0.md` (B9) says what each would
+need.
 
 ## Engineering cases
 
@@ -813,6 +873,66 @@ Without Docker, `test/benchmark-workflow-cases.test.mjs` plays each control over
 target, reads it back with the real inspection outside any container, and holds it to the real record rows: the reference
 holds every leg, code-only fails on QA (and the path), bypass on the path, idle leaves nothing to hold.
 
+## Mission cases
+
+A mission case ([ADR 0055](../docs/adr/0055-a-mission-benchmark-asks-whether-satellite-settles-a-goal-on-owners-records.md),
+backlog B4) asks whether Orbit Satellite, carried by a real host, takes a goal to a change -- and does it the way it
+promises. A coding host is handed a GOAL (a bug with its verification, or a small feature) about an engineering case's
+target and takes it through Satellite as its playbook says: `satellite mission start`, then one decided step at a time
+(analyze, plan, staff each unit with the least-privilege role it needs, dispatch), each run launched with the Agent tool
+as the agent its envelope names, `agent ack`, `agent report`, and `mission finish`. The change is made only by an
+implement unit, in the engineering task Satellite asks Orbit's autonomous engineering for; the host itself may never
+start one (the runner denies it `autonomous-engineering start`). It is held to three LEGS, each from records and never
+from the host's word:
+
+| Leg | Holds when |
+|---|---|
+| `code` | the engineering kind's verifier passes what the round's engineering task delivered -- hidden checks, gates, the host's own regression test, `SCOPE` -- and that task is the one the judged mission's own implement run started (found by the mission's word), completed on its own journal |
+| `criteria` | the mission COMPLETED as VERIFIED; it recorded at least one acceptance criterion; and every criterion has an evidence row from a run that succeeded, from an independent owner (an engineering task, or a check its runner ran) at VERIFIED -- and the inspection, reading that owner back itself through `task.mjs show`, finds it holding: the task COMPLETED with a satisfied verification row and none violated, or the check's row satisfied. A report, a file it cites, a handoff or an investigation settles nothing here |
+| `privilege` | every run of the mission had no wider a profile than its unit's kind needs (`within`, Satellite's `UNIT_KINDS`); none ended `violated`; every run somebody carried was carried by a host agent the trail OBSERVED carrying its envelope (HOST_OBSERVED, Satellite Live's own join), launched as the agent its profile names; that agent, with every agent it launched, made no edit or command its agent's tools (`AGENT_TOOLS`) do not carry; and the session itself -- the orchestrator -- took no step of an engineering task's loop |
+
+### How a run goes
+
+Exactly as an engineering case's (the same baseline, rounds, verification and `NEXT`), with three differences, each a
+row or a word: the round's prompt (`missionPromptOf`, `lib/source/brief.mjs`) takes the goal through Satellite; the
+inspection is handed no task and also reads, through Satellite's own read commands, every mission back
+(`inspect.mjs --mission`: `missions.json` -- each mission's lifecycle, verdict, criteria, units and runs with the join's
+word for which agent carried each, and its `evidence.linked` journal lines as data; `trail.json` -- the session trail's
+agent events, every call a subagent made and every Orbit command, as data; `owners.json` -- every task an evidence row names, through
+`task.mjs show`), so the round's task is the one the newest mission's last implement run started; and the record rows
+are the mission judge's (`lib/mission/judge.mjs`), each naming its leg. An implement unit's every attempt starts a task of
+its own, so the tasks a mission started are never counted as extra beside the one judged. A round's `outcome.json` keeps
+`legs` and `failedLegs`, with each row's `why`; the report says each leg, each row and the mission as Satellite's journal
+says it.
+
+### The cases
+
+| Case | The goal | Its controls |
+|---|---|---|
+| `ORBIT-MSN-001` | a bug with its verification: an order line whose quantity is not a whole number of at least 1, or whose price is not a whole number of minor units of at least 0, is accepted and stored instead of refused with 400 | reference, half-change, claims, over-reach, idle |
+| `ORBIT-MSN-002` | a small feature: `POST /orders/<id>/deliver` moves a shipped order to delivered and refuses every other state with 409 (an unknown order with 404); a delivered order is never shipped or cancelled | reference, half-change, claims, over-reach, idle |
+
+### The controls
+
+Beside the verifier's own (`solved` PASSes, `real` and `half` FAIL, on the hidden checks alone), each is a whole run
+carried by a scripted host in the runner (`images/runner/scripted.mjs`) that plays a Claude Code session -- every hook
+delivered to Orbit's own entry points with the payloads Claude Code sends, so the trail is Orbit's own code's word --
+running only Satellite's and Orbit's own commands, with no model and no network. A control that must FAIL names the legs
+it must fail on (`legs`), and holds only when every one of them failed:
+
+| Control | Script | What it does | Must come to |
+|---|---|---|---|
+| `reference` | `mission` | the goal analyzed into one criterion; an explore unit carried by `orbit:satellite-reader`, which reads the file the change touches; an implement unit carried by `orbit:satellite-engineer`, which drives the engineering task Satellite started through its own loop with the control's edits and reports it with its checks; each run acknowledged with the agent that carried it; the mission finished | PASS |
+| `half-change` | `mission` | the same mission with half the change: its task completes on its own checks and the mission is VERIFIED on its owners' records -- a mission's word is not the verdict | FAIL, on the `code` leg |
+| `claims` | `claims` | the right change, made in an engineering task the session started and drove by hand; the mission's one review run reports success citing a file, and the mission is finished REPORTED | FAIL, on the `code` and `criteria` legs (and the `privilege` leg: the session drove the task itself) |
+| `over-reach` | `over-reach` | the reference mission, except that the reader's agent also edits a file and runs a command (shown, never made) | FAIL, on the `privilege` leg |
+| `idle` | `idle` | nothing | NO_PROGRESS |
+
+Without Docker, `test/benchmark-mission-cases.test.mjs` holds each case to its kind and its checks and plays each control
+over Orbit's and Satellite's real commands and hooks on the case's own target, reads it back with the real inspection
+outside any container, and holds it to the real record rows; `test/benchmark-mission-judge.test.mjs` holds the judge row
+by row; `test/benchmark-mission-flow.test.mjs` carries the controller end to end through the Docker double.
+
 ## Metrics
 
 `node benchmark/run.mjs metrics` is a pure fold over the kept runs' own records -- `manifest.json`, `ending.json`,
@@ -927,7 +1047,7 @@ off the run's room and never off what a host says (`lib/core/tools.mjs`):
 |---|---|
 | Per tool: calls, failed calls (a result marked as an error), unanswered calls | Each round's host stream: the controller's capture, else the runner's own copy (`basis` says which) |
 | Recovery: each failed call to the next call of its thread, in a later turn, that did not fail -- the turns, reported tokens and apportioned reported cost spent getting there | The same stream; the cost is the reported total shared by reported tokens (`APPORTIONED`) |
-| Per relay subcommand: requests, refusals by reason, the engine's non-zero exits | `rounds/<k>/relay/relay.jsonl`; a reason is one word (`RELAY_REASONS`) read off the sentence the relay itself writes |
+| Per relay subcommand: requests, help probes the relay answered, refusals by reason, the engine's non-zero exits | `rounds/<k>/relay/relay.jsonl`; a reason is one word (`RELAY_REASONS`) read off the sentence the relay itself writes -- `HELP` is a `--help` an older room's relay refused, before it answered one |
 | Per sandbox step (`sandbox-prepare`, `restore`, `container-build`, `sandbox-start`, `readiness`, `sandbox-release`): attempts, failures, each failure's class, the host calls it cost, and whether one nothing got past ended BLOCKED with its reason | A source or engineering run: the engineering task's `prepare-sandbox` and `start-sandbox` actions and the sandbox receipt it wrote when it ended (`RELEASED` or `REFUSED`), as the inspection read the task back (`inspect/task.json`), and runtime's operations journal for restore and the containers (`inspect/sandbox.json`); a QA run: its engine store's operations, whose sandbox the controller set up |
 
 A failure's class is a row of `SANDBOX_FAILURES`, the first that holds: `DOCKER_DOWN`, `IMAGE_PULL` (refused or
@@ -995,7 +1115,7 @@ same fold as one document a release quotes, and writes nothing:
 }
 ```
 
-A fold is `{ runs, unread, calls: { calls, failed, unanswered, rate, byTool }, relay: { "<sub>": { requests, refused:
+A fold is `{ runs, unread, calls: { calls, failed, unanswered, rate, byTool }, relay: { "<sub>": { requests, help, refused:
 { "<reason>": n }, nonZero, errors } }, failedPerPass, recovery: { episodes, recovered, turnsPerEpisode, costUsd,
 runsRecovered }, sandbox: { steps: { "<step>": { runs, attempts, failures, rate, classes, callsAfter, callsUnknown,
 stopped, endedBlocked } }, unknown: { "<step>": runs } } }`; every ratio is `{ numerator, denominator, value }`, and a
@@ -1006,7 +1126,7 @@ value with nothing under it is `unknown`.
 | Tier | Where | What |
 |---|---|---|
 | fast | `ci.yml`, every push and pull request | every `test/benchmark-*.test.mjs` inside the definition of done's `node --test`: no Docker, no network |
-| conformance | `benchmark.yml`, a pull request that touches the benchmark, or on request | every case's verifier and judge controls in real containers, by suite -- every suite, a QA case's as whole runs its scripted hosts carry in the controller's process (the job builds the QA worker), an activation case's as whole runs its scripted hosts carry in the runner (the job builds the runner), held to the catalog by `test/release-workflows.test.mjs`; scripted hosts through Orbit's engineering loop, its goal entry and `/orbit-help` (every control of a workflow case); no model, no secret |
+| conformance | `benchmark.yml`, a pull request that touches the benchmark, or on request | every case's verifier and judge controls in real containers, by suite -- every suite, a QA case's as whole runs its scripted hosts carry in the controller's process (the job builds the QA worker), an activation case's as whole runs its scripted hosts carry in the runner (the job builds the runner), held to the catalog by `test/release-workflows.test.mjs`; scripted hosts through Orbit's engineering loop, its goal entry, `/orbit-help` (every control of a workflow case) and Orbit Satellite (every control of a mission case); no model, no secret |
 
 The conformance tier uploads what its runs kept, PASS or not. **No workflow runs a real coding host** (0.5.0): a model-carried run
 -- one case with `--repair`, a QA or engineering case, a suite, or the autonomous ship (`skills/orbit-release/ship.mjs`,
@@ -1065,7 +1185,7 @@ names a case.
 
 ```
 suites/<suite>/<case-id>/case.json               the case, held to KINDS (lib/core/suites.mjs): source, qa, engineering,
-                                                 sessions, activation or workflow
+                                                 sessions, activation, workflow or mission
 suites/<suite>/<case-id>/request.md              what a host is asked -- the behaviour, never the fix or the defect
 suites/<suite>/<case-id>/verifier/               what only the controller reads: a source case's spec.mjs and
                                                  probe.mjs; a QA or sessions case's truth.json
@@ -1127,10 +1247,14 @@ suites/<suite>/<case-id>/poison/<note>.md        a sessions case's poisoned memo
 
    Then `acceptance` (`truth`, `minCoverage`), `limits` (`rounds`, `minutes`, `usd`, the `runner`'s box and the
    `engine`'s `stepSeconds` and `callSeconds`), `cleanup` (with `sandbox: "release"`) and `controls`
-   (`{ id, host, expect }`).
+   (`{ id, host, expect }`). A case that makes tool calls fail on purpose adds `refusals` (`repeats`, `planted`: each an
+   argument list the relay refuses as it is written, which its request quotes as a host would type it) and the
+   `recovers`, `repeats` and `uncorrected` controls; `test/benchmark-tools-cases.test.mjs` holds each planted call to
+   the relay.
 2. Write `verifier/truth.json`: `{ schema, from: { file, stack, variant }, default, shapes, expect }`, the engine's own
    outcome words per shape. `test/benchmark-qa-cases.test.mjs` holds each truth to `acceptance/truth.json`.
-3. Keep the request the same for every case on one application. Name no variant and no shape in it.
+3. Keep the request the same for every case on one application -- a case that plants refusals adds only the runbook that
+   quotes them, after it. Name no variant and no shape in it.
 4. Prove the verifier with `node benchmark/run.mjs controls <case>`: reference must PASS; idle and false-alarm must
    FAIL.
 
@@ -1164,6 +1288,19 @@ suites/<suite>/<case-id>/poison/<note>.md        a sessions case's poisoned memo
    and `idle`; a control that must FAIL names its `legs`.
 4. Name the suite in `ship/policy.json` (its catalog, and `recorded` until a person promotes it). Prove it with
    `test/benchmark-workflow-cases.test.mjs` and `node benchmark/run.mjs controls <case>`.
+
+**A mission case.**
+
+1. Write `case.json` as for an engineering case, with `kind: "mission"` and `measures` (`kind: "mission"`, a
+   `capability`, `expects: "change"`).
+2. Write the goal (`request.md`) as a person would: the behaviour and how it is verified, never the fault. Write the spec
+   and probe as for an engineering case.
+3. Add `repairs` through the engine: a `mission` script that must PASS (the reference), `claims` and `over-reach` that
+   must FAIL, and `idle` (NO_PROGRESS) -- the kind refuses a case without any of the four -- and, as `half-change`, a
+   `mission` script over half the change that must FAIL. A control that must FAIL names its `legs` (`code`, `criteria`,
+   `privilege`).
+4. Name the suite in `ship/policy.json` (its catalog, and `recorded` until a person promotes it). Prove it with
+   `test/benchmark-mission-cases.test.mjs` and `node benchmark/run.mjs controls <case>`.
 
 Keep hidden things hidden. The subject handed to a runner never contains `benchmark/` or `test/benchmark-*.test.mjs`,
 and a QA host's plugin never contains what its case withholds. Documentation elsewhere in the repository does reach

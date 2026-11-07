@@ -22,7 +22,9 @@ import { docRead, docWritten, readRegular } from "../core/room.mjs";
 import { safeRel } from "../core/paths.mjs";
 import { isGoalKind } from "../core/suites.mjs";
 import { verified } from "./verify.mjs";
-import { failedLegs, legsOf, workflowRecords } from "../workflow/judge.mjs";
+import { workflowRecords } from "../workflow/judge.mjs";
+import { missionRecords } from "../mission/judge.mjs";
+import { failedLegs, legsOf } from "../core/legs.mjs";
 
 export const EXIT = { PASS: 0, REPAIRED_VERIFIED: 0, FAIL: 1, REPAIR_REJECTED: 1, NO_PROGRESS: 1, BUDGET_EXHAUSTED: 1, BENCHMARK_INVALID: 2, BLOCKED: 3, INCONCLUSIVE: 4 };
 
@@ -214,7 +216,7 @@ const engTaskOf = (ctx, upTo) => Array.from({ length: upTo }, (_, i) => [started
 const latestVerification = (ctx, view) => stepOf(ctx, (view.actions ?? []).filter((a) => a.type === "benchmark.verify" && a.state === "succeeded").at(-1));
 
 // What a round's host does, as the stage says it: a repair through the engineering loop, or a goal through the goal entry.
-const ROUND_WORK = { source: "repairs the source through Orbit's engineering loop", engineering: "takes the goal through Orbit's goal entry, its workflow and its engineering task", workflow: "takes the request through /orbit-help, the workflow it starts and that workflow's engineering task" };
+const ROUND_WORK = { source: "repairs the source through Orbit's engineering loop", engineering: "takes the goal through Orbit's goal entry, its workflow and its engineering task", workflow: "takes the request through /orbit-help, the workflow it starts and that workflow's engineering task", mission: "takes the goal through Orbit Satellite, its work units' agents and the engineering task its implement unit starts" };
 
 // A case that declares an interruption cuts that round's runner -- a coding host or a scripted one, stopped wherever it
 // is, the way a crash stops it -- the moment its engineering task's journal shows the steps the case names (cut.mjs),
@@ -246,13 +248,21 @@ const readBack = (ins, k) => ((v) => (TASK.test(String(v?.task?.id)) ? { domain:
 
 const inspectAct = (ctx, k, task) => recorded(ctx, "benchmark.inspect", `round ${k}: what the round left, read back`, async () => ((ins) => ({ doc: ins, outcome: ins.refused || !ins.inspect ? "failed" : "succeeded", receipt: readBack(ins, k), summary: inspectSummary(ins) }))(await inspectedRound(ctx, k, task)));
 
+// The task a round's inspection is handed: the run's one engineering task -- or none for a case whose record rows hold the
+// task to WHO started it, found by the inspection itself on every round: a workflow case's (ADR 0053), named by its
+// coordinator, and a mission case's (ADR 0055), named by its mission's own implement run (a retried unit starts a task of
+// its own). A task handed in would be found by the controller's word -- `start` -- and never by the owner's.
+const OWNER_NAMED = ["workflow", "mission"];
+
+export const inspectedFor = (ctx, k) => (OWNER_NAMED.includes(ctx.case.kind) ? null : engTaskOf(ctx, k));
+
 const repairOf = async (ctx, view, k, acts) => stepOf(ctx, lastEnded(acts, "benchmark.repair")) ?? (acts.some((a) => a.type === "benchmark.repair") ? { interrupted: true } : await repairAct(ctx, k, roundState(ctx, view, k)));
 
 async function roundCarried(ctx, view, k) {
   const acts = actsOf(view, current(view));
   const repair = await repairOf(ctx, view, k, acts);
   ctx.rec.stage(ctx.task, "REVIEWING", `round ${k}: what the round left, and the candidate's scope`);
-  const ins = stepOf(ctx, lastEnded(actsOf(show(ctx), current(view)), "benchmark.inspect")) ?? (await inspectAct(ctx, k, engTaskOf(ctx, k)));
+  const ins = stepOf(ctx, lastEnded(actsOf(show(ctx), current(view)), "benchmark.inspect")) ?? (await inspectAct(ctx, k, inspectedFor(ctx, k)));
   return judgedRound(ctx, k, repair, ins);
 }
 
@@ -269,15 +279,24 @@ const ENGINEERING_PROVIDER = "autonomous-engineering";
 
 const countedTasks = (ctx, ins) => (ins?.tasks?.json?.tasks ?? []).filter((t) => !isGoalKind(ctx.case) || t.provider === ENGINEERING_PROVIDER);
 
-const extraTasks = (ctx, ins, k) => countedTasks(ctx, ins).map((t) => t.id).filter((t) => t !== (engTaskOf(ctx, k) ?? ins?.inspect?.task)).length;
+// The engineering tasks a round's own MISSION started (0.5.0, ADR 0055): an implement unit's every attempt starts one of
+// its own, so a retried unit leaves its earlier tasks beside the one judged -- none of them a task beside the mission.
+const missionTasksOf = (ins) => new Set((ins?.missions?.json?.missions ?? []).flatMap((m) => (m.runs ?? []).map((r) => /^task:(tsk-[a-f0-9]{12})$/.exec(String(r.providerRef ?? ""))?.[1]).filter(Boolean)));
+
+const OWN_TASKS = { mission: missionTasksOf };
+
+const ownTasksOf = (ctx, ins) => (OWN_TASKS[ctx.case.kind] ?? (() => new Set()))(ins);
+
+const extraTasks = (ctx, ins, k) => ((own) => countedTasks(ctx, ins).map((t) => t.id).filter((t) => t !== (engTaskOf(ctx, k) ?? ins?.inspect?.task) && !own.has(t)).length)(ownTasksOf(ctx, ins));
 
 // The owners' records a round left, read back by the inspection: the engineering task and its actions, every task, the
 // goals and their plans -- each as its owner said it, through Orbit's own read commands.
 const actionsOf = (ins) => (ins?.task?.json?.actions ?? []).map((a) => ({ id: a.id, type: a.type, tool: a.tool ?? null, state: a.state, receipts: a.receipts ?? [], why: String(a.reason ?? "").slice(0, 160) }));
 
 // A workflow case's inspection also says whose word found the task (`found`: the coordinator's, or the only one there was)
-// and reads every coordinated workflow back (0.5.0, ADR 0053).
-const readBackOf = (ins, engineering) => ({ engineering, actions: actionsOf(ins), tasks: ins?.tasks?.json?.tasks ?? [], goals: ins?.goals?.json?.goals ?? [], found: ins?.inspect?.found ?? null, workflows: ins?.workflows?.json?.workflows ?? [] });
+// and reads every coordinated workflow back (0.5.0, ADR 0053); a mission case's, every mission, the trail's agent events and
+// each task its evidence names (0.5.0, ADR 0055).
+const readBackOf = (ins, engineering) => ({ engineering, actions: actionsOf(ins), tasks: ins?.tasks?.json?.tasks ?? [], goals: ins?.goals?.json?.goals ?? [], found: ins?.inspect?.found ?? null, workflows: ins?.workflows?.json?.workflows ?? [], missions: ins?.missions?.json?.missions ?? [], trail: ins?.trail?.json?.events ?? [], owners: ins?.owners?.json?.tasks ?? {} });
 
 const deliveredBy = (rb) => rb.engineering?.lifecycle === "COMPLETED" && (rb.engineering.changes ?? 0) > 0;
 
@@ -303,10 +322,15 @@ const cutIn = (ctx, k, repair) => (k === ctx.case.interrupt.round ? repair?.cont
 const interruptRecords = (ctx, k, repair) => (cuts(ctx.case) ? [{ id: "interrupted", says: `the session was cut where the case interrupts it (${cutSaid(ctx.case)}), the way a crash stops it, and carried on from there`, ok: cutIn(ctx, k, repair) }] : []);
 
 // The record rows each kind of goal is held to: an engineering case's by what its goal expects; a workflow case's (0.5.0,
-// ADR 0053) the engineering task's own code row beside its QA and path rows, each naming its leg (lib/workflow/judge.mjs).
+// ADR 0053) the engineering task's own code row beside its QA and path rows, each naming its leg (lib/workflow/judge.mjs);
+// a mission case's (0.5.0, ADR 0055) the same code row beside its mission's code, criteria and privilege rows
+// (lib/mission/judge.mjs).
+const codeRows = (rb) => GOAL_RECORDS.change.map(recordRow(rb)).map((x) => ({ ...x, leg: "code" }));
+
 const RECORDS_BY_KIND = {
   engineering: (ctx, k, repair, rb) => [...(GOAL_RECORDS[ctx.case.measures?.expects ?? "change"] ?? []).map(recordRow(rb)), ...specRecords(ctx, rb), ...interruptRecords(ctx, k, repair)],
-  workflow: (ctx, k, repair, rb) => [...GOAL_RECORDS.change.map(recordRow(rb)).map((x) => ({ ...x, leg: "code" })), ...workflowRecords(ctx.case, rb), ...specRecords(ctx, rb)],
+  workflow: (ctx, k, repair, rb) => [...codeRows(rb), ...workflowRecords(ctx.case, rb), ...specRecords(ctx, rb)],
+  mission: (ctx, k, repair, rb) => [...codeRows(rb), ...missionRecords(ctx.case, rb), ...specRecords(ctx, rb)],
 };
 
 // An arm with no Orbit (0.5.0, B23) has no owner's record to read: only the verifier judges what its host left. Exported

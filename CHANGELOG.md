@@ -27,6 +27,30 @@
   -- an investigation of the change on a sandbox beside the controller, and the three cases that need it -- is designed
   in ADR 0053 and not built; the kind refuses a case that asks for it.
 
+- **The benchmark's mission kind and the `orbit-missions` suite (backlog B4, ADR 0055).** Satellite had been checked at
+  source level only: no mission had ever run with a real host. A mission case hands a host a GOAL -- a bug with its
+  verification, or a small feature -- to take through Orbit Satellite as its playbook says, and holds it to three legs
+  from records: the code (the engineering kind's verifier on what the mission's own engineering task delivered), the
+  criteria (the mission COMPLETED as VERIFIED, and every acceptance criterion settled by an independent owner's record --
+  an engineering task's own verification, a check its runner ran -- that the inspection reads back from that owner
+  itself; never an agent's report) and the privilege (every work unit's run had no wider a profile than its unit's kind
+  needs, was carried by an agent the trail saw launched as the agent its profile names, and that agent made no edit or
+  command its tools do not carry, nor the session itself any engineering task's step). The inspection reads every mission back through Satellite's own commands
+  (`inspect.mjs --mission`), with the session trail's agent events and the tasks its evidence names; a mission round's
+  host may not start an engineering task by hand. `ORBIT-MSN-001` (an order line that is not a whole positive quantity
+  at a whole price is refused) and `ORBIT-MSN-002` (a shipped order can be marked delivered, and nothing else can) run on
+  the orders fixture; their controls -- `reference` (PASS), `half-change` (FAIL on the code leg: the mission VERIFIED on
+  its own records, the change half made), `claims` (FAIL on the code and the criteria: a change made by hand, a mission
+  that claims it), `over-reach` (FAIL on the privilege leg: a reader's agent that edits and runs a command) and `idle`
+  (NO_PROGRESS) -- are played by a scripted host that is a whole Claude Code session, every hook delivered, and run in
+  the conformance tier and, without Docker, in `test/benchmark-mission-cases.test.mjs` over Orbit's and Satellite's real
+  commands. The release policy requires the suite's controls and records its model-carried rows. A round's legs are now
+  one module for the workflow and the mission kinds (`benchmark/lib/core/legs.mjs`), and a control naming a leg its kind
+  is not held to is refused. Two gaps the mission kind shared with the workflow kind are closed for both: a later round's
+  inspection was handed the first round's task, so it found the task by the controller's word instead of the
+  coordinator's (a correct second round of a workflow case failed its own path row), and a PASS of either kind did not
+  count as a verified outcome in `metrics`.
+
 - **A second message under a business key is not a second effect, and the tests of one investigation share its
   sandbox.** A real Claude Code QA row (ORBIT-QA-006 on Opus) found its planted defect and raised two false alarms that
   the clean application contradicted too. Its `effect-once-per-key` test published a second message under the first
@@ -59,6 +83,31 @@
   while the engine had answered the host why (`finish` refuses an investigation that is no longer active -- `inv-… is
   already paused` once an earlier `finish` stopped it). The log line now keeps the engine's first line (`why`) --
   printable, scrubbed and bounded -- for every request the relay passed on that did not exit 0.
+- **The QA relay answers a `--help` probe with the subcommand's usage (backlog B9).** Every 0.4.0 and early 0.5.0 QA
+  row's first relay call was a `--help` -- the probe the engine's own refusals name (`node cli/autonomous-qa.mjs --help
+  for the usage`) -- and the relay refused it, so the host spent a failed call learning nothing and then guessed a flag.
+  A probe -- `--help` or `-h` anywhere, `help <subcommand>`, or no subcommand at all -- is now answered by the relay
+  itself, exit 0, and never reaches the engine: the subcommand's usage line for line as `cli/autonomous-qa.mjs`
+  documents it in its own usage header, read from the run's frozen source and never run, and what the relay takes of
+  it (the run's investigation, the flags its row allows, what it reads on stdin). A probe of the whole CLI says every
+  subcommand the relay carries; one of a subcommand it does not carry says why and what it does carry. The relay's log
+  keeps a probe as one (`help: true`) under the subcommand it asked about, and the tool-call facts count help probes
+  per relay subcommand; the `HELP` refusal reason stays, for rooms kept from before. The QA playbook now shows every
+  subcommand a host runs as one exact call, held to the CLI's usage and to the relay's table by a test.
+- **`orbit-tools`: a benchmark suite whose tool calls fail on purpose (backlog B9).** Its first case, `ORBIT-TOOL-001`,
+  is a QA case on the invoice application with nothing planted in it, whose request adds an earlier session's runbook:
+  two calls the relay refuses as they are written -- another investigation's id, and a flag the subcommand does not
+  take -- on the `context` a host needs and the `finish` it is told to make. A QA case may now declare such `refusals`
+  (`planted`, and `repeats`: how many times one refused call may be sent again), and the judge holds it besides, read off
+  the relay's log and never off what the host says, to two rows: no refused call -- the relay's refusal, or the engine's
+  exit 2; never a block, never a help probe -- sent again past the bound, and every call refused for how it was written
+  (a flag, its value, a word, stdin, another investigation) corrected by a later request of its subcommand the relay
+  admitted. Its controls add three scripted hosts: `recovers` (PASS), `repeats` and `uncorrected` (FAIL), beside the
+  reference (which never sends a planted call, and PASSes), idle and false-alarm ones. A scripted host's requests are
+  now kept in the round's relay log in the line the mailbox keeps of a coding host's, so a report and the tool-call facts
+  count them too. The policy requires the suite's controls and records its model-carried row; the conformance tier runs
+  the controls with the QA worker image. The sandbox failures B9 lists are left out: a QA run's sandbox is the
+  controller's setup, never a host's call, and the runner has no Docker for a task's sandbox to fail in.
 
 ## 0.4.0
 

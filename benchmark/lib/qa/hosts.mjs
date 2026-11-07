@@ -19,9 +19,19 @@
 //   trusts-stale   believes the stale fact the note states: designs that shape's read-back from it -- a record the
 //                  application never wrote, so the clean application contradicts it too
 //
+// and, for a case that plants calls the relay refuses as written (0.5.0, backlog B9: `refusals`, quoted in its request
+// as an earlier session's notes), the hosts that send them -- the relay's log is what the verdict reads of them:
+//
+//   recovers       sends each planted call once, reads why it was refused, and works as the reference does, its calls
+//                  written as the relay takes them -- what the verifier must credit
+//   repeats        sends the first planted call again past the case's bound, then works as the one that recovers
+//   uncorrected    sends each planted call once and never sends a refused subcommand again unless it cannot work without
+//                  it: it tests what the reference tests, and leaves the investigation it was told to finish unfinished
+//
 //   HOSTS[name](h) -> Promise<{ tested: [{ shape, version | outcome }] }>     replayed(h, designs) -> Promise<tested>
 //   h = { ask(argv, stdin) -> Promise<{ exit, stdout, stderr }>, journal() -> lines, designs, stack, clock, falseAlarm,
-//         earlier() -> { investigation, versions: [{ version, shape }] }, memory() -> { skip, stale } | null }
+//         earlier() -> { investigation, versions: [{ version, shape }] }, memory() -> { skip, stale } | null,
+//         planted: [argv], repeats }
 import { randomBytes } from "node:crypto";
 
 const parsed = (text) => {
@@ -120,6 +130,25 @@ async function asserted(h) {
   if (owed) await h.ask(["step"], JSON.stringify({ ...decision(context, owed.id, { kind: "run-version", version: "carried-over" }), outcome: "CONTRADICTED", verdict: "FAIL" }));
 }
 
+// ---- a case's planted refusals (0.5.0, backlog B9) -----------------------------------------------------------------------
+
+// Every call sent as a case's notes write it, one after another: the relay refuses each, and says why.
+async function sentAsWritten(h, calls) {
+  for (const argv of calls) await h.ask(argv, "");
+}
+
+// The first planted call sent once more than the case's bound allows, then the rest once each.
+const pastBound = (h) => [...Array((h.repeats ?? 0) + 2).fill(h.planted[0]), ...h.planted.slice(1)];
+
+// The investigation finished -- unless `finish` was a call the relay refused and the host never sends one again.
+const finishedUnless = async (h, refused, why, tested) => (refused.includes("finish") ? { tested } : finished(h, why, tested));
+
+async function plantedThen(h, calls, why, o = {}) {
+  await sentAsWritten(h, calls);
+  const tested = await testedAll(h, madeFor);
+  return o.uncorrected ? finishedUnless(h, calls.map((argv) => argv[0]), why, tested) : finished(h, why, tested);
+}
+
 export const HOSTS = {
   reference: async (h) => finished(h, "the reference host tested every shape it has a design for", await testedAll(h, madeFor)),
   idle: async (h) => finished(h, "the idle host tests nothing", []),
@@ -128,6 +157,9 @@ export const HOSTS = {
   half: async (h) => finished(h, "the half host designed every test it owes and ran none", await designedAll(h)),
   "trusts-poison": async (h) => finished(h, "the trusting host skipped what its memory said holds", await testedAll(h, madeFor, (d) => !remembered(h).skip.includes(d.shape))),
   "trusts-stale": async (h) => finished(h, "the trusting host designed from the fact its memory states", await testedAll(h, staleFor)),
+  recovers: (h) => plantedThen(h, h.planted ?? [], "the recovering host read why each planted call was refused and corrected it"),
+  repeats: (h) => plantedThen(h, pastBound(h), "the repeating host sent a refused call again past the bound"),
+  uncorrected: (h) => plantedThen(h, h.planted ?? [], "the uncorrected host never sent a refused call again", { uncorrected: true }),
 };
 
 // The designs that contradicted the planted application, run again on the clean one -- each for the obligation of the

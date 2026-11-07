@@ -19,16 +19,20 @@
 // truth of what a careful host does -- and, for an outcome case, the engineering kind's hidden checks on what it
 // delivered. A `workflow` case (0.5.0, backlog B1, ADR 0053) hands a host ONE request through `/orbit-help` over a
 // fixture, and holds it to three legs from records: the code (the engineering kind's verifier), the QA step (here:
-// SKIPPED with its reason where nothing can be started) and the path (the coordinated workflow's own journal).
+// SKIPPED with its reason where nothing can be started) and the path (the coordinated workflow's own journal). A
+// `mission` case (0.5.0, backlog B4, ADR 0055) hands a host a GOAL to take through Orbit SATELLITE over a fixture, and
+// holds it to three legs: the code, every acceptance criterion settled on an independent owner's record (`criteria`),
+// and every work unit's run carried inside its least-privilege profile (`privilege`).
 //
 //   suitesIn(root) -> [{ id, version, title, dir, cases }]         caseOf(root, id) -> case + { dir, suite }
 //   suiteHolding(root, caseId) -> suite id | null
 //   caseFindings(c, dir) -> [sentence]                             dirDigest(dir) -> sha256 of every file, by path
-//   KINDS · TRUTH_OUTCOMES · QA_HOSTS · SESSION_HOSTS · MEMORY_ARMS · caseDir(id) · ARMS · DEFAULT_BASELINE · armsOf(c)
+//   KINDS · TRUTH_OUTCOMES · QA_HOSTS · REFUSAL_HOSTS · SESSION_HOSTS · MEMORY_ARMS · caseDir(id) · ARMS · DEFAULT_BASELINE · armsOf(c)
 //   baselinePluginOf(c) · memoryArmsOf(c)
 //   activationTruthFindings(t) -> [sentence]      activationTruthOf(c) -> truth | null      ACTIVATION_HOSTS · STRATEGIES
 //   COORDINATIONS · TIERS · LANGUAGES · SWITCH_NAME · SELECTION_CAPS · RECORD_READS · NAMES_A_COMPONENT
 //   GOAL_KINDS · isGoalKind(c) · WORKFLOW_SCRIPTS · WORKFLOW_LEGS · WORKFLOW_ROUTES · WORKFLOW_QA
+//   MISSION_SCRIPTS · MISSION_LEGS · MISSION_CONTROLS
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { constraintFindings, missingFindings } from "../../../src/constraints.mjs";
@@ -56,6 +60,12 @@ export const TRUTH_OUTCOMES = ["SATISFIED", "CONTRADICTED", "INCONCLUSIVE", "EXE
 // The scripted hosts a QA case's controls are run with (lib/qa/hosts.mjs): what the verifier must credit and refuse.
 export const QA_HOSTS = ["reference", "idle", "false-alarm"];
 
+// The scripted hosts that replay the calls a QA case plants (0.5.0, backlog B9: `refusals.planted`, quoted in its
+// request as an earlier session's notes) -- the relay refuses each as written: one that sends each once, reads why and
+// works on with the call corrected (`recovers`); one that sends the first again past the case's bound (`repeats`); and one
+// that never sends a refused subcommand again (`uncorrected`). A case that plants none has no control of these.
+export const REFUSAL_HOSTS = ["recovers", "repeats", "uncorrected"];
+
 // The scripted hosts a sessions case's controls may name besides (lib/qa/hosts.mjs): the ones only a second session can
 // be -- one that carries the earlier session's evidence over instead of testing (`cheat`), one that designs every test
 // it owes and runs none (`half`), one that skips what a poisoned memory says holds (`trusts-poison`) and one that
@@ -69,7 +79,7 @@ export const MEMORY_ARMS = ["on", "off"];
 
 const COMMON_FIELDS = {
   schema: { type: "integer", enum: [1] },
-  kind: { type: "string", enum: ["source", "qa", "engineering", "sessions", "activation", "workflow"] },
+  kind: { type: "string", enum: ["source", "qa", "engineering", "sessions", "activation", "workflow", "mission"] },
   id: { type: "string", pattern: "^[A-Z][A-Z0-9]*(-[A-Z0-9]+)+$", says: { pattern: "id is upper-case words joined by dashes, such as ORBIT-SRC-001" } },
   version: { type: "string", pattern: "^\\d+\\.\\d+\\.\\d+$" },
   title: TEXT,
@@ -171,8 +181,13 @@ const ENGINEERING_SECTIONS = [
   { at: "interrupt", of: (c) => (c.interrupt ? [c.interrupt] : []), fields: { round: { type: "integer", minimum: 1, maximum: 5 }, after: { type: "array", items: STEP, minItems: 1, maxItems: 4 } }, required: ["round", "after"] },
 ];
 
+// What a QA case may plant beyond its application (0.5.0, backlog B9): calls its request quotes from an earlier session's
+// notes, each refused by the relay as it is written, and how many times one refused call may be sent AGAIN before the
+// verdict fails it -- the bound a host that reads why it was refused never reaches.
+const REFUSALS = { repeats: { type: "integer", minimum: 0, maximum: 3 }, planted: { type: "array", items: { type: "array" }, minItems: 1 } };
+
 const QA_SECTIONS = [
-  { at: "case", of: (c) => [c], fields: QA_FIELDS, required: Object.keys(QA_FIELDS) },
+  { at: "case", of: (c) => [c], fields: { ...QA_FIELDS, refusals: { type: "object" } }, required: Object.keys(QA_FIELDS) },
   { at: "measures", of: (c) => [c.measures], fields: { kind: { type: "string", enum: ["detection"] }, capability: TEXT }, required: ["kind", "capability"] },
   { at: "target", of: (c) => [c.target], fields: { app: NAME, stack: NAME, variant: NAME, clean: NAME, plan: NAME, mode: { type: "string", enum: ["observe", "fixture-write"] }, withheld: { ...LIST, minItems: 1 } }, required: ["app", "stack", "variant", "clean", "plan", "mode", "withheld"] },
   { at: "acceptance", of: (c) => [c.acceptance], fields: { owner: { type: "string", enum: ["verifier"] }, truth: REL, minCoverage: { type: "number", minimum: 0, maximum: 1 } }, required: ["owner", "truth", "minCoverage"] },
@@ -180,7 +195,8 @@ const QA_SECTIONS = [
   { at: "limits.runner", of: (c) => [c.limits?.runner], fields: BOX, required: ["cpus", "memoryMb", "pids", "minutes", "outputMb"] },
   { at: "limits.engine", of: (c) => [c.limits?.engine], fields: { stepSeconds: { type: "integer", minimum: 30, maximum: 3600 }, callSeconds: { type: "integer", minimum: 10, maximum: 600 } }, required: ["stepSeconds", "callSeconds"] },
   { at: "cleanup", of: (c) => [c.cleanup], fields: { containers: LABELLED, networks: LABELLED, sandbox: { type: "string", enum: ["release"] }, scratch: SCRATCH }, required: ["containers", "networks", "sandbox", "scratch"] },
-  { at: "controls[]", of: (c) => c.controls ?? [], fields: { id: NAME, host: { type: "string", enum: QA_HOSTS }, expect: VERDICT }, required: ["id", "host", "expect"] },
+  { at: "refusals", of: (c) => (c.refusals ? [c.refusals] : []), fields: REFUSALS, required: ["repeats", "planted"] },
+  { at: "controls[]", of: (c) => c.controls ?? [], fields: { id: NAME, host: { type: "string", enum: [...QA_HOSTS, ...REFUSAL_HOSTS] }, expect: VERDICT }, required: ["id", "host", "expect"] },
 ];
 
 const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -230,6 +246,8 @@ const QA_CROSS = [
   { fails: (c, dir) => ((t) => (t && (t.from?.stack !== c.target?.stack || t.from?.variant !== c.target?.variant) ? ["its truth is another stack's or variant's"] : []))(truthOf(c, dir)), say: (bad) => bad.join("") },
   { fails: (c) => unsafeGlobs(c.target?.withheld), say: (bad) => `withheld globs reach outside the repository: ${bad.join(", ")}` },
   { fails: (c) => duplicates((c.controls ?? []).map((k) => k?.id)), say: (bad) => `control ids used twice: ${bad.join(", ")}` },
+  { fails: (c) => (c.refusals?.planted ?? []).filter((p) => !Array.isArray(p) || p.length < 1 || p.length > 16 || !p.every((a) => typeof a === "string")).map((p) => JSON.stringify(p).slice(0, 80)), say: (bad) => `plants calls that are no argument list a host could send: ${bad.join(", ")}` },
+  { fails: (c) => (c.controls ?? []).filter((k) => REFUSAL_HOSTS.includes(k?.host) && !c.refusals).map((k) => k.id), say: (bad) => `controls whose host replays planted refusals, on a case that plants none: ${bad.join(", ")}` },
 ];
 
 // ---- a SESSIONS case: a QA case worked in two sessions, and what is carried from the first to the second -----------------
@@ -299,8 +317,8 @@ const ENGINEERING_CROSS = [
 // refused when it is loaded, never run on less than it claims.
 
 // The kinds whose target is a fixture handed to a host with Orbit beside it, judged by the engineering kind's verifier
-// and record checks: a goal through Orbit's goal entry, and a request through /orbit-help.
-export const GOAL_KINDS = ["engineering", "workflow"];
+// and record checks: a goal through Orbit's goal entry, a request through /orbit-help, and a goal through Satellite.
+export const GOAL_KINDS = ["engineering", "workflow", "mission"];
 
 export const isGoalKind = (c) => GOAL_KINDS.includes(c?.kind);
 
@@ -331,11 +349,24 @@ const scripted = (c, script) => (c.repairs ?? []).filter((r) => r?.script === sc
 // A workflow case beyond its fields: what an engineering case's target must be, a reference control that must PASS (a case
 // nobody can pass proves nothing), and every control that must FAIL naming the legs it fails on -- and never a leg for a
 // control that must pass.
-const WORKFLOW_CROSS = [
-  ...ENGINEERING_CROSS.filter((r) => !/arm|interrupt/.test(r.say(["x"]))),
-  { fails: (c) => (scripted(c, "workflow").some((r) => r.expect === "PASS") ? [] : ["reference"]), say: () => "carries no `workflow` control that must PASS: a case nobody can pass proves nothing" },
+// What a case held to LEGS must be beside its own rows (a workflow or a mission case): every control that must FAIL names
+// the legs it fails on, each a leg of its kind (src/constraints.mjs holds a list's entries to their type alone), and a
+// control that must pass names none.
+const unknownLegs = (c, legs) => (c.repairs ?? []).flatMap((r) => (Array.isArray(r?.legs) ? r.legs : []).filter((leg) => !legs.includes(leg)).map((leg) => `${r.id} ${leg}`));
+
+const legCross = (legs) => [
   { fails: (c) => (c.repairs ?? []).filter((r) => r?.expect === "FAIL" && !(r.legs ?? []).length).map((r) => r.id), say: (bad) => `controls that must FAIL say which legs they fail on: ${bad.join(", ")}` },
   { fails: (c) => (c.repairs ?? []).filter((r) => r?.expect === "PASS" && (r.legs ?? []).length).map((r) => r.id), say: (bad) => `a control that must PASS fails on no leg: ${bad.join(", ")}` },
+  { fails: (c) => unknownLegs(c, legs), say: (bad) => `controls name legs this kind is not held to (${legs.join(", ")}): ${bad.join(", ")}` },
+];
+
+// An engineering case's own rows that a case without arms or an interruption has nothing to say to.
+const TARGET_CROSS = ENGINEERING_CROSS.filter((r) => !/arm|interrupt/.test(r.say(["x"])));
+
+const WORKFLOW_CROSS = [
+  ...TARGET_CROSS,
+  { fails: (c) => (scripted(c, "workflow").some((r) => r.expect === "PASS") ? [] : ["reference"]), say: () => "carries no `workflow` control that must PASS: a case nobody can pass proves nothing" },
+  ...legCross(WORKFLOW_LEGS),
 ];
 
 // The arms a case runs on, and the revision its baseline arm is frozen from: the case's, else its suite's, else the
@@ -343,6 +374,42 @@ const WORKFLOW_CROSS = [
 export const armsOf = (c) => c.arms ?? ["release"];
 
 export const baselinePluginOf = (c) => c.baselinePlugin ?? c.suite?.baselinePlugin ?? DEFAULT_BASELINE;
+
+// ---- a MISSION case (0.5.0, backlog B4, ADR 0055): a goal taken through Orbit Satellite, held to code, criteria, privilege
+//
+// A mission case is an engineering case's target -- a fixture with its `real` variant applied, its hidden checks, gates,
+// scope and own-test proof -- handed to a host as a GOAL to take through Orbit Satellite: a mission analyzed into its
+// acceptance criteria, its units staffed and dispatched to agents, its implement unit asking Orbit's autonomous
+// engineering for the task that makes the change. Beside the code it is held to two legs read from records
+// (lib/mission/judge.mjs): every acceptance criterion settled on an independent owner's record, never an agent's report,
+// and every work unit's run carried inside its least-privilege profile. It is a goal case (GOAL_KINDS) in every other way.
+
+// What a mission control's scripted host does (images/runner/scripted.mjs SCRIPTS): take the goal through Satellite as a
+// careful host would (`mission`), make the change by hand and have the mission claim it with no owner record (`claims`),
+// let a read-only run's agent edit and run a command (`over-reach`), or sit IDLE.
+export const MISSION_SCRIPTS = ["mission", "claims", "over-reach", "idle"];
+
+// The three legs a mission case is held to, each a record row's (lib/mission/judge.mjs).
+export const MISSION_LEGS = ["code", "criteria", "privilege"];
+
+// The controls every mission case proves its checks with, by the script each runs and what it must come to: a reference
+// that passes, a claim no owner's record backs, an agent outside its profile, and a host that does nothing.
+export const MISSION_CONTROLS = [["mission", "PASS"], ["claims", "FAIL"], ["over-reach", "FAIL"], ["idle", "NO_PROGRESS"]];
+
+const MISSION_FIELDS = { ...COMMON_FIELDS, baseline: BASELINE, fixture: { type: "string", pattern: "^[a-z][a-z0-9-]{0,39}$" }, subject: { type: "object" }, reproduce: TEXT, scope: { type: "object" }, checks: { type: "object" }, variants: { type: "object", minProperties: 1 }, repairs: { type: "array" } };
+
+const MISSION_SECTIONS = [
+  { at: "case", of: (c) => [c], fields: MISSION_FIELDS, required: requiredOf(MISSION_FIELDS).concat(["baseline", "repairs"]) },
+  { at: "measures", of: (c) => [c.measures], fields: { kind: { type: "string", enum: ["mission"] }, capability: TEXT, expects: { type: "string", enum: ["change"] } }, required: ["kind", "capability", "expects"] },
+  ...sharedWith(["subject", "acceptance", "scope", "checks", "checks.gates[]", "checks.agentTests", "limits", "limits.runner", "limits.verifier", "limits.engineering", "cleanup", "variants.*", "controls[]"]),
+  { at: "repairs[]", of: (c) => c.repairs ?? [], fields: { id: NAME, variant: NAME, candidate: REL, through: { type: "string", enum: ["engine"] }, expect: { type: "string", enum: GOAL_OUTCOMES }, script: { type: "string", enum: MISSION_SCRIPTS }, legs: { type: "array", items: { type: "string", enum: MISSION_LEGS }, minItems: 1 } }, required: ["id", "variant", "candidate", "through", "expect", "script"] },
+];
+
+const missingControls = (c) => MISSION_CONTROLS.filter(([script, expect]) => !(c.repairs ?? []).some((r) => r?.script === script && r?.expect === expect)).map(([script, expect]) => `${script} ${expect}`);
+
+// A mission case beyond its fields: what an engineering case's target must be, the four controls that prove its checks,
+// and every control that must FAIL naming the legs it fails on.
+const MISSION_CROSS = [...TARGET_CROSS, { fails: missingControls, say: (bad) => `lacks a control its checks are proved with: ${bad.join(", ")}` }, ...legCross(MISSION_LEGS)];
 
 // ---- THE ACTIVATION KIND (0.5.0, B22 M4, the activation benchmark): does the host use Orbit by itself -------------------
 //
@@ -499,7 +566,7 @@ const ACTIVATION_CROSS = [
 // A case's truth, read from its own (frozen) directory: null when it cannot be read.
 export const activationTruthOf = (c) => readTruth(c.dir, c.acceptance.truth);
 
-export const KINDS = { source: { sections: SOURCE_SECTIONS, cross: SOURCE_CROSS }, qa: { sections: QA_SECTIONS, cross: QA_CROSS }, engineering: { sections: ENGINEERING_SECTIONS, cross: ENGINEERING_CROSS }, sessions: { sections: SESSIONS_SECTIONS, cross: SESSIONS_CROSS }, activation: { sections: ACTIVATION_SECTIONS, cross: ACTIVATION_CROSS }, workflow: { sections: WORKFLOW_SECTIONS, cross: WORKFLOW_CROSS } };
+export const KINDS = { source: { sections: SOURCE_SECTIONS, cross: SOURCE_CROSS }, qa: { sections: QA_SECTIONS, cross: QA_CROSS }, engineering: { sections: ENGINEERING_SECTIONS, cross: ENGINEERING_CROSS }, sessions: { sections: SESSIONS_SECTIONS, cross: SESSIONS_CROSS }, activation: { sections: ACTIVATION_SECTIONS, cross: ACTIVATION_CROSS }, workflow: { sections: WORKFLOW_SECTIONS, cross: WORKFLOW_CROSS }, mission: { sections: MISSION_SECTIONS, cross: MISSION_CROSS } };
 
 const crossFindings = (kind, c, dir) => kind.cross.map((r) => [r, r.fails(c, dir)]).filter(([, bad]) => bad.length).map(([r, bad]) => `case: ${r.say(bad)}`);
 

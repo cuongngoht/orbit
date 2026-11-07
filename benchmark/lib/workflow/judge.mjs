@@ -5,9 +5,11 @@
 // step settled on its owner's record and the workflow completed). A row reads an owner's word about its own state, as
 // the inspection read it back through Orbit's own commands, and never judges code: the hidden checks do that.
 //
-//   workflowRecords(c, rb) -> [{ id, leg, ok, says }]      legsOf(c, round) -> { code, qa, path } | null
+//   workflowRecords(c, rb) -> [{ id, leg, ok, says }]      legsOf(c, round) -> { code, qa, path } | null (core/legs.mjs)
 //   rb: { engineering, found, workflows: [{ id, lifecycle, route, child, steps: [{ id, kind, state, summary }] }] }
-import { WORKFLOW_LEGS } from "../core/suites.mjs";
+
+// Which legs held, from a judged round, and which failed: the same for every kind held to legs.
+export { failedLegs, legsOf } from "../core/legs.mjs";
 
 // The one coordinated workflow a round left -- two are never guessed between.
 const theWorkflow = (rb) => ((ws) => (ws.length === 1 ? ws[0] : null))(rb.workflows ?? []);
@@ -40,14 +42,3 @@ const PATH_ROWS = [
 const rowOf = (c, rb) => (row) => ({ id: row.id, leg: row.leg, ok: row.ok(rb, c) === true, says: row.says });
 
 export const workflowRecords = (c, rb) => [...(QA_ROWS[c.workflow.qa] ?? []), ...PATH_ROWS].map(rowOf(c, rb));
-
-// Which legs held, from a judged round: the code leg is the verifier's (hidden checks, gates, own test, scope) with the
-// code rows; every other leg is its rows'. Null for a round of another kind.
-const codeHeld = (r) => r.v.complete && r.v.failures.length === 0 && r.cand.scope.length === 0 && r.extraTasks === 0;
-
-const rowsHeld = (r, leg) => (r.records ?? []).filter((x) => x.leg === leg).every((x) => x.ok);
-
-export const legsOf = (c, r) => (c.kind === "workflow" ? Object.fromEntries(WORKFLOW_LEGS.map((leg) => [leg, rowsHeld(r, leg) && (leg !== "code" || codeHeld(r))])) : null);
-
-// The legs a judged round failed on, in their order.
-export const failedLegs = (legs) => WORKFLOW_LEGS.filter((leg) => legs && legs[leg] === false);

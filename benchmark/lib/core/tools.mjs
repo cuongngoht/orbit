@@ -8,7 +8,8 @@
 //   recovery  each failed call to the next call of its thread, in a later turn, that did not fail: the turns and the
 //             reported tokens spent getting there, and the reported cost apportioned by those tokens (APPORTIONED).
 //             Failed calls that share one next call are one episode; an episode with none was never got past.
-//   relay     per relay subcommand (a QA round's relay.jsonl): requests, refusals by reason, non-zero exits.
+//   relay     per relay subcommand (a QA round's relay.jsonl): requests, help probes the relay answered itself (0.5.0:
+//             each under the subcommand it asked about, `--help` for the whole CLI), refusals by reason, non-zero exits.
 //   sandbox   per sandbox step: attempts, failures, the class of each failure (SANDBOX_FAILURES), how many host calls
 //             came after it before the host got past it (the task's next action that succeeded) or stopped, and
 //             whether one never got past ended BLOCKED with its reason. A source or engineering run reads its
@@ -103,7 +104,8 @@ function recoveryOf(streams) {
 // ---- the relay, per subcommand ----------------------------------------------------------------------------------------
 
 // Why the relay refused a request, by the sentence it wrote (lib/qa/relay.mjs `admitted`): one word per kind, so a metric
-// counts reasons and never sentences. The first row that holds decides; the last always does.
+// counts reasons and never sentences. The first row that holds decides; the last always does. HELP is a `--help` the
+// relay refused before it answered one (0.5.0, backlog B9): a room kept from then is still read, and says so.
 export const RELAY_REASONS = [
   { reason: "NOT_A_REQUEST", says: /is not a request|is not a regular file/ },
   { reason: "NOT_RELAYED", says: /^the relay runs no / },
@@ -127,7 +129,7 @@ const relayLines = (room, k) => (textAt(atRound(room, k, "relay", "relay.jsonl")
 
 const subOf = (l) => (typeof l.sub === "string" ? l.sub : "(unreadable)");
 
-const subRow = (lines) => ({ requests: lines.length, refused: countBy(lines.filter((l) => l.refused).map(relayReasonOf)), nonZero: lines.filter((l) => !l.refused && !l.error && l.exit !== 0).length, errors: lines.filter((l) => l.error).length });
+const subRow = (lines) => ({ requests: lines.length, help: lines.filter((l) => l.help === true).length, refused: countBy(lines.filter((l) => l.refused).map(relayReasonOf)), nonZero: lines.filter((l) => !l.refused && !l.error && l.exit !== 0).length, errors: lines.filter((l) => l.error).length });
 
 const relayOf = (lines) => Object.fromEntries([...new Set(lines.map(subOf))].sort().map((sub) => [sub, subRow(lines.filter((l) => subOf(l) === sub))]));
 
@@ -271,7 +273,7 @@ const relaySaid = (room) => roundsIn(room).flatMap((k) => relayLines(room, k));
 function hostFacts(room, manifest) {
   const streams = roundsIn(room).map((k) => streamIn(room, k)).filter(Boolean);
   const lines = relaySaid(room);
-  return { streams, lines, relay: lines.length ? relayOf(lines) : null, relayWhy: lines.length ? null : RELAYED.includes(manifest.benchmark?.kind) ? "no relay request was logged (a scripted host asks in the controller's own process)" : "only a QA round's host reaches the engine through the relay" };
+  return { streams, lines, relay: lines.length ? relayOf(lines) : null, relayWhy: lines.length ? null : RELAYED.includes(manifest.benchmark?.kind) ? "no relay request was logged (no host round asked anything, or a scripted host's round kept from before 0.5.0 logged none)" : "only a QA round's host reaches the engine through the relay" };
 }
 
 export function runToolsOf(room, manifest, ending = null) {
@@ -291,7 +293,7 @@ const callsLines = (t) => (t.calls ? [`- calls: ${t.calls.calls}, failed ${rateO
 
 const reasonsSaid = (refused) => Object.entries(refused).map(([k, n]) => `${k} ${n}`).join(", ");
 
-const relayLinesOf = (t) => (t.relay ? Object.entries(t.relay).map(([sub, r]) => `- relay \`${sub}\`: ${r.requests} request(s)${Object.keys(r.refused).length ? `, refused ${reasonsSaid(r.refused)}` : ""}${r.nonZero ? `, ${r.nonZero} non-zero exit(s)` : ""}`) : [`- relay: ${t.unknown.relay}`]);
+const relayLinesOf = (t) => (t.relay ? Object.entries(t.relay).map(([sub, r]) => `- relay \`${sub}\`: ${r.requests} request(s)${r.help ? `, ${r.help} help probe(s) answered` : ""}${Object.keys(r.refused).length ? `, refused ${reasonsSaid(r.refused)}` : ""}${r.nonZero ? `, ${r.nonZero} non-zero exit(s)` : ""}`) : [`- relay: ${t.unknown.relay}`]);
 
 const stepLine = ([step, r]) => `- sandbox \`${step}\` (${r.by}): ${r.failures}/${r.attempts} failed${Object.keys(r.classes).length ? ` — ${reasonsSaid(r.classes)}` : ""}${r.calls?.counted ? `; ${r.calls.total} host call(s) after ${r.calls.counted} failure(s)` : ""}${r.stopped ? `; ${r.stopped} never got past, ${r.endedBlocked} ended BLOCKED with a reason` : ""}`;
 
@@ -331,7 +333,7 @@ function callsFold(t) {
   return { runs: known.length, unknown: t.length - known.length, calls: sumOf(known.map((c) => c.calls)), failed, unanswered: sumOf(known.map((c) => c.unanswered)), rate: ratio(failed, sumOf(known.map((c) => c.calls))).value, byTool: toolsFolded(known.map((c) => c.byTool)) };
 }
 
-const relayRow = (rows) => ({ requests: sumOf(rows.map((r) => r.requests)), refused: added(rows.map((r) => r.refused)), nonZero: sumOf(rows.map((r) => r.nonZero)), errors: sumOf(rows.map((r) => r.errors)) });
+const relayRow = (rows) => ({ requests: sumOf(rows.map((r) => r.requests)), help: sumOf(rows.map((r) => r.help)), refused: added(rows.map((r) => r.refused)), nonZero: sumOf(rows.map((r) => r.nonZero)), errors: sumOf(rows.map((r) => r.errors)) });
 
 const relayFold = (t) => Object.fromEntries([...new Set(t.flatMap((f) => Object.keys(f.tools.relay ?? {})))].sort().map((sub) => [sub, relayRow(t.map((f) => f.tools.relay?.[sub]).filter(Boolean))]));
 

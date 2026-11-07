@@ -92,12 +92,12 @@ test("a later delivery is refused where nothing in the design or its shape bring
 
 // A relay that owes every shape the application's designs cover and keeps every design a host proposes, answering no
 // version -- so a host runs nothing, and what it would have sent is all that is read.
-async function sentBy(host, stack, memory) {
+async function sentBy(host, stack, memory, refusals = {}) {
   const designs = INVOICE.designs(ROOT);
   const owed = designs.map((d, n) => ({ id: `obl-${n + 1}`, kind: "test-obligation", template: { obligation: `tob-${String(n + 1).padStart(12, "0")}`, shape: d.shape } }));
   const sent = [];
   const ask = async (argv, stdin) => ({ exit: 0, stderr: "", stdout: argv[0] === "context" ? JSON.stringify({ position: 1, frontier: owed, versions: [] }) : JSON.stringify(kept(sent, owed, argv, stdin)) });
-  await HOSTS[host]({ ask, journal: () => [], designs, stack, clock: INVOICE.clock(ROOT, stack), falseAlarm: INVOICE.falseAlarm.shape, earlier: () => ({ investigation: "inv-earlier", versions: [] }), memory: () => memory });
+  await HOSTS[host]({ ask, journal: () => [], designs, stack, clock: INVOICE.clock(ROOT, stack), falseAlarm: INVOICE.falseAlarm.shape, earlier: () => ({ investigation: "inv-earlier", versions: [] }), memory: () => memory, planted: refusals.planted ?? [], repeats: refusals.repeats ?? 0 });
   return sent;
 }
 
@@ -115,13 +115,13 @@ test("no design a benchmark control sends is refused or advised by these rules -
   const sentOf = new Map();
   for (const c of CASES) {
     for (const { host } of c.controls) {
-      const sent = await sentBy(host, c.target.stack, c.poison ? { skip: c.poison.skip, stale: c.poison.stale } : null);
+      const sent = await sentBy(host, c.target.stack, c.poison ? { skip: c.poison.skip, stale: c.poison.stale } : null, c.refusals);
       sentOf.set(host, Math.max(sentOf.get(host) ?? 0, sent.length));
       for (const { shape, design: d } of sent) said.push(...[...refused(d, shape, c.target.stack), ...advised(d, shape, c.target.stack)].map((rule) => `${c.id} ${host} ${shape}: ${rule}`));
     }
   }
   assert.deepEqual(said, []);
-  assert.deepEqual(Object.fromEntries([...sentOf].sort()), { cheat: 0, "false-alarm": 9, half: 9, idle: 0, reference: 9, "trusts-poison": 6, "trusts-stale": 9 }, "each host's designs, one per shape it tests -- read off the host itself");
+  assert.deepEqual(Object.fromEntries([...sentOf].sort()), { cheat: 0, "false-alarm": 9, half: 9, idle: 0, recovers: 9, reference: 9, repeats: 9, "trusts-poison": 6, "trusts-stale": 9, uncorrected: 9 }, "each host's designs, one per shape it tests -- read off the host itself");
   const broken = (await sentBy("false-alarm", "invoice-a", null)).filter((s) => s.shape === INVOICE.falseAlarm.shape);
   assert.equal(broken.length, 1, "the false-alarm control still sends its broken design, made like any other");
   assert.match(JSON.stringify(broken[0].design), /never written/, "a read-back of a record no step writes: a contradiction the clean application shows, and no design can");

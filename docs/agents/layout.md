@@ -1159,7 +1159,9 @@ benchmark/     (ADR 0046, 0047, 0048) THE DOCKER BENCHMARK of Orbit: development
                own records into its report).
                lib/source/ -- a source or engineering case: verify.mjs, judge.mjs, candidate.mjs (SCOPE), classify.mjs
                (CAUSES and FAILURE_CLASSES), decide.mjs (NEXT), brief.mjs (a repair's brief, or a goal's), round.mjs (a
-               round and its read-back), repairs.mjs (candidate controls straight to the judge), flow.mjs (with
+               round and its read-back), cut.mjs (0.5.0: where a case's `interrupt` cuts its round -- the engineering
+               task's own steps, read off the runner store as a clock, never a minute), repairs.mjs (candidate controls
+               straight to the judge), flow.mjs (with
                GOAL_RECORDS), report.mjs.
                lib/qa/ -- a QA case: invoice.mjs (TARGETS: the applications a case may name, and what a person sets up
                for one) · engine.mjs (Orbit's own engine from the frozen checkout, beside the controller: the application

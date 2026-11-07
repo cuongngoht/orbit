@@ -15,6 +15,7 @@ import { test } from "node:test";
 import { compared, listed } from "../benchmark/images/runner/inspect.mjs";
 import { hostCommand, isScripted, isSession } from "../benchmark/images/runner/entry.mjs";
 import { hostBasisOf } from "../benchmark/lib/source/flow.mjs";
+import { reachedIn } from "../benchmark/lib/source/cut.mjs";
 import { edited, SCRIPTS, scopeOf, stateOf } from "../benchmark/images/runner/scripted.mjs";
 import { fixtureEntries, variantEntries } from "../benchmark/lib/core/context.mjs";
 import { candidateFile } from "../benchmark/lib/core/mutations.mjs";
@@ -147,11 +148,12 @@ test("a blocked script records the rule the goal leaves out: the plan leaves the
   assert.deepEqual(goalPlanOf(at, s.goalId).units.map((u) => [u.kind, u.state, /^missing:/.test(u.because ?? "")]), [["change", "unresolved", true]]);
 });
 
-test("an interrupt script kills its own check mid-run; the next round reconciles the action the crash left open, takes it again as a new action, and completes the same task", { skip: (process.platform === "win32" && "the kill takes the step's whole process group, which is POSIX: the scripted host runs only in the Linux runner") || (!npmHere() && "npm is not runnable here"), timeout: 300000 }, (t) => {
+test("an interrupt script kills its own check mid-run, right where its case cuts the round, and waits there to be cut; the next round reconciles the action the crash left open, takes it again as a new action, and completes the same task", { skip: (process.platform === "win32" && "the kill takes the step's whole process group, which is POSIX: the scripted host runs only in the Linux runner") || (!npmHere() && "npm is not runnable here"), timeout: 300000 }, (t) => {
   const c = caseOf(ROOT, "ORBIT-E2E-007");
   const at = targetRepository(t, c);
-  const first = goalHost(at, c, "interrupted", 1);
-  assert.match(SCRIPTS.interrupt(first).join(" "), /killed mid-run, as this control intends/, stepsSaid(first));
+  const first = { ...goalHost(at, c, "interrupted", 1), cutWaitMs: 0 };
+  assert.match(SCRIPTS.interrupt(first).join(" "), /killed mid-run, as this control intends, and no cut came where the case interrupts the round/, "no controller cuts it here, so the wait ends");
+  assert.equal(reachedIn(at.env.ORBIT_STORE_DIR, c.interrupt.after), true, "where it waited, the case's cut point was reached: a controller would have cut the round there");
   const cut = tasksOf(at).find((x) => x.provider === "autonomous-engineering");
   assert.notEqual(cut.lifecycle, "COMPLETED", "the first round left the task open");
   const second = goalHost(at, c, "interrupted", 2);

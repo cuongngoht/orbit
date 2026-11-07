@@ -34,6 +34,7 @@ import { treeDigest, treeDigests, treeFiles } from "../../../src/store/tree.mjs"
 import { realIo } from "../../../src/store/io.mjs";
 import { safeRel } from "./paths.mjs";
 import { FAILURE_CLASSES } from "../source/classify.mjs";
+import { ACTION_KINDS } from "../../../src/orchestration/dispatch.mjs";
 
 export const SUITES_DIR = join("benchmark", "suites");
 
@@ -122,8 +123,12 @@ const ENGINEERING_FIELDS = { ...COMMON_FIELDS, baseline: BASELINE, fixture: { ty
 export const GOAL_OUTCOMES = ["PASS", "FAIL", "NO_PROGRESS", "BLOCKED"];
 
 // What an engineering control's scripted host does: drive the GOAL through Orbit's goal intake to a change, stop it as
-// BLOCKED for want of a rule, INTERRUPT its own first round mid-check (the next round reconciles and goes on), or sit IDLE.
+// BLOCKED for want of a rule, INTERRUPT its own first round mid-check and wait there for the controller's cut (the next
+// round reconciles and goes on), or sit IDLE.
 export const GOAL_SCRIPTS = ["goal", "blocked", "interrupt", "idle"];
+
+// What a case's `interrupt.after` may name: the steps an engineering task takes (src/orchestration/dispatch.mjs).
+const STEP = { type: "string", pattern: "^[a-z][a-z-]{1,39}$" };
 
 const BOX = { cpus: { type: "number", minimum: 0.5, maximum: 16 }, memoryMb: { type: "integer", minimum: 256, maximum: 65536 }, pids: { type: "integer", minimum: 64, maximum: 65536 }, minutes: { type: "integer", minimum: 1, maximum: 480 }, seconds: { type: "integer", minimum: 5, maximum: 7200 }, outputMb: { type: "integer", minimum: 1, maximum: 256 } };
 
@@ -160,7 +165,7 @@ const ENGINEERING_SECTIONS = [
   { at: "measures", of: (c) => [c.measures], fields: { kind: { type: "string", enum: ["engineering"] }, capability: TEXT, expects: { type: "string", enum: ["change", "blocked"] } }, required: ["kind", "capability", "expects"] },
   ...sharedWith(["subject", "acceptance", "scope", "checks", "checks.gates[]", "checks.agentTests", "limits", "limits.runner", "limits.verifier", "limits.engineering", "cleanup", "variants.*", "controls[]"]),
   { at: "repairs[]", of: (c) => c.repairs ?? [], fields: { id: NAME, variant: NAME, candidate: REL, through: { type: "string", enum: ["engine"] }, expect: { type: "string", enum: GOAL_OUTCOMES }, script: { type: "string", enum: GOAL_SCRIPTS } }, required: ["id", "variant", "candidate", "through", "expect", "script"] },
-  { at: "interrupt", of: (c) => (c.interrupt ? [c.interrupt] : []), fields: { round: { type: "integer", minimum: 1, maximum: 5 }, afterMinutes: { type: "integer", minimum: 1, maximum: 120 } }, required: ["round", "afterMinutes"] },
+  { at: "interrupt", of: (c) => (c.interrupt ? [c.interrupt] : []), fields: { round: { type: "integer", minimum: 1, maximum: 5 }, after: { type: "array", items: STEP, minItems: 1, maxItems: 4 } }, required: ["round", "after"] },
 ];
 
 const QA_SECTIONS = [
@@ -274,6 +279,8 @@ const ENGINEERING_CROSS = [
   { fails: (c, dir) => (typeof c.fixture === "string" && !existsSync(join(fixtureDirOf(dir, c.fixture), "fixture.json")) ? [c.fixture] : []), say: (bad) => `names a fixture benchmark/fixtures/ does not hold: ${bad.join(", ")}` },
   { fails: (c) => duplicates(Array.isArray(c.arms) ? c.arms : []), say: (bad) => `arms named twice: ${bad.join(", ")}` },
   { fails: (c) => (Array.isArray(c.arms) ? c.arms.filter((a) => !ARMS.includes(a)) : []), say: (bad) => `an arm is one of ${ARMS.join(", ")}, never ${bad.join(", ")}` },
+  { fails: (c) => (Array.isArray(c.interrupt?.after) ? c.interrupt.after.filter((s) => !ACTION_KINDS.includes(s)) : []), say: (bad) => `interrupts after steps no engineering task takes, so it would never be cut: ${bad.join(", ")}` },
+  { fails: (c) => (Number.isInteger(c.interrupt?.round) && Number.isInteger(c.limits?.rounds) && c.interrupt.round >= c.limits.rounds ? [c.interrupt.round] : []), say: () => "interrupts its last round: no round is left to carry the session on from where the cut left it" },
 ];
 
 // The arms a case runs on, and the revision its baseline arm is frozen from: the case's, else its suite's, else the

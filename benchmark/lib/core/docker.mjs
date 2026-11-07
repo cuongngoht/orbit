@@ -9,9 +9,10 @@
 // carries the run's labels; cleanup removes only what carries them.
 //
 //   labelsOf(runId, role)  specFor(role, run, o) -> spec   argvOf(spec, file) -> argv   attestRows(raw, spec, a)
-//   ranContainer(spec, deps, o) -> { exit, oom, timedOut, held, out, err, truncated, captured, attested, refused? }
+//   ranContainer(spec, deps, o) -> { exit, oom, timedOut, held, cut, out, err, truncated, captured, attested, refused? }
 //     o.held() -- asked every o.heldEveryMs while the container runs: true (a person paused or cancelled the run) stops
 //     it there, so a held run leaves nothing of its own running until its deadline
+//     o.cut() -- asked every o.cutEveryMs: true (the case's interruption point was reached) stops it at once, no grace
 //     o.capture -- a file of the run's room: the container's stdout written there as it arrives (atFileOf: when)
 //   leftovers(runId, deps) -> { containers, networks }      cleaned(runId, deps) -> { removed, refused }
 import { closeSync, mkdirSync, openSync, writeFileSync, writeSync } from "node:fs";
@@ -102,13 +103,27 @@ const endOf = (raw) => ({ exit: Number.isInteger(raw?.State?.ExitCode) ? raw.Sta
 // How often a running container asks whether a person held its run.
 export const HELD_EVERY_MS = 15000;
 
+// How often a running container asks whether its case's interruption point was reached (source/cut.mjs): often, since a
+// host's steps can follow each other within seconds and the cut must land between them.
+export const CUT_EVERY_MS = 1000;
+
+// How a container is stopped, by why: for a person's hold with a grace, for a case's cut with none -- as a crash stops it.
+const GRACE = { held: 5, cut: 0 };
+
 // A person's pause or cancel, noticed while a container runs: asked on a timer, and the container stopped the moment
-// it is held. Stopping it ends the attached run, whatever is running inside.
+// it is held. Stopping it ends the attached run, whatever is running inside. A case's CUT is asked the same way, on a
+// timer of its own; whichever is noticed first stops the container, once, and nothing is asked after it.
 function watched(id, deps, o) {
-  const state = { held: false };
-  const timer = o.held ? setInterval(() => (!state.held && o.held() ? ((state.held = true), docker.container.stop(id, deps, { graceSeconds: 5 })) : null), o.heldEveryMs ?? HELD_EVERY_MS) : null;
-  return { held: () => state.held, stop: () => (timer ? clearInterval(timer) : null) };
+  const state = { held: false, cut: false };
+  const timers = [watching(state, o.held, o.heldEveryMs ?? HELD_EVERY_MS, () => stoppedFor(state, "held", id, deps)), watching(state, o.cut, o.cutEveryMs ?? CUT_EVERY_MS, () => stoppedFor(state, "cut", id, deps))];
+  return { held: () => state.held, cut: () => state.cut, stop: () => timers.filter(Boolean).forEach((t) => clearInterval(t)) };
 }
+
+const stoppedYet = (state) => state.held || state.cut;
+
+const watching = (state, ask, everyMs, then) => (ask ? setInterval(() => (!stoppedYet(state) && ask() ? then() : null), everyMs) : null);
+
+const stoppedFor = (state, why, id, deps) => ((state[why] = true), docker.container.stop(id, deps, { graceSeconds: GRACE[why] }));
 
 // ---- a CAPTURE of a container's stdout ----------------------------------------------------------------------------------
 //
@@ -156,7 +171,7 @@ async function attached(id, spec, deps, o) {
   const watch = watched(id, deps, o);
   const r = await docker.container.startAttached(id, { ...deps, env: deps.env }, { input: o.input ?? "", timeoutMs: o.timeoutMs, observe: p.observe, env: spec.env }).finally(() => (watch.stop(), p.close()));
   const stopped = r.timedOut || r.overflow ? docker.container.stop(id, deps, { graceSeconds: 5 }) : null;
-  return { timedOut: Boolean(r.timedOut), held: watch.held(), overflow: Boolean(r.overflow), stopped: stopped?.ok ?? null, out: textOf(p.kept.out), err: textOf(p.kept.err), truncated: p.kept.cut, captured: p.close(), ...endOf(docker.container.inspect(id, deps)) };
+  return { timedOut: Boolean(r.timedOut), held: watch.held(), cut: watch.cut(), overflow: Boolean(r.overflow), stopped: stopped?.ok ?? null, out: textOf(p.kept.out), err: textOf(p.kept.err), truncated: p.kept.cut, captured: p.close(), ...endOf(docker.container.inspect(id, deps)) };
 }
 
 // Created, attested -- a container that does not hold to its rows is removed before it ever starts -- run, removed.

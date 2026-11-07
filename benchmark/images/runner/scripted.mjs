@@ -179,10 +179,17 @@ function implemented(s, c) {
   return problems;
 }
 
-// A check is one decided step -- except the first of a round that interrupts itself, which is killed mid-run.
-const checkOutcome = (s, x) => (s.interrupt ? killedMidStep(s, { kind: "check", command: x.id }) : stepped(s, { kind: "check", command: x.id }).json?.outcome);
+// How long a round that interrupts itself waits, once its check is killed, for the controller to cut it where the case
+// says (benchmark/lib/source/cut.mjs) -- the way a session stalls until a crash takes it. A wait that ends saw no cut.
+export const CUT_WAIT_MS = 180000;
 
-const CHECK_ENDS = { interrupted: "was killed mid-run, as this control intends" };
+const cutAwaited = (s, outcome) => (outcome === "interrupted" ? (pause(s.cutWaitMs ?? CUT_WAIT_MS), "uncut") : outcome);
+
+// A check is one decided step -- except the first of a round that interrupts itself, which is killed mid-run, and the
+// round then left for the controller to cut.
+const checkOutcome = (s, x) => (s.interrupt ? cutAwaited(s, killedMidStep(s, { kind: "check", command: x.id })) : stepped(s, { kind: "check", command: x.id }).json?.outcome);
+
+const CHECK_ENDS = { uncut: "was killed mid-run, as this control intends, and no cut came where the case interrupts the round" };
 
 // Each check the change is required to pass, in turn -- and none after the first that does not succeed.
 function checked(s) {

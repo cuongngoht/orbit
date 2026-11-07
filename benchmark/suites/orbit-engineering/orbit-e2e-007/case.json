@@ -2,7 +2,7 @@
   "schema": 1,
   "kind": "engineering",
   "id": "ORBIT-E2E-007",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "baseline": "FAIL",
   "fixture": "orders",
   "title": "A payment's invoice is durable before its ack, carried through an interrupted session",
@@ -144,6 +144,9 @@
   ],
   "interrupt": {
     "round": 1,
-    "afterMinutes": 4
+    "after": [
+      "implement",
+      "check"
+    ]
   }
 }

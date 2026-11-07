@@ -248,13 +248,20 @@ const readBack = (ins, k) => ((v) => (TASK.test(String(v?.task?.id)) ? { domain:
 
 const inspectAct = (ctx, k, task) => recorded(ctx, "benchmark.inspect", `round ${k}: what the round left, read back`, async () => ((ins) => ({ doc: ins, outcome: ins.refused || !ins.inspect ? "failed" : "succeeded", receipt: readBack(ins, k), summary: inspectSummary(ins) }))(await inspectedRound(ctx, k, task)));
 
+// The task a round's inspection is handed: the run's one engineering task -- or none for a mission case (0.5.0, ADR 0055),
+// whose task is the one its mission's own implement run names, found by the inspection itself on every round: a retried
+// unit starts a task of its own, and a task handed in would be found by the controller's word, not the mission's.
+const MISSION_NAMED = ["mission"];
+
+const inspectedFor = (ctx, k) => (MISSION_NAMED.includes(ctx.case.kind) ? null : engTaskOf(ctx, k));
+
 const repairOf = async (ctx, view, k, acts) => stepOf(ctx, lastEnded(acts, "benchmark.repair")) ?? (acts.some((a) => a.type === "benchmark.repair") ? { interrupted: true } : await repairAct(ctx, k, roundState(ctx, view, k)));
 
 async function roundCarried(ctx, view, k) {
   const acts = actsOf(view, current(view));
   const repair = await repairOf(ctx, view, k, acts);
   ctx.rec.stage(ctx.task, "REVIEWING", `round ${k}: what the round left, and the candidate's scope`);
-  const ins = stepOf(ctx, lastEnded(actsOf(show(ctx), current(view)), "benchmark.inspect")) ?? (await inspectAct(ctx, k, engTaskOf(ctx, k)));
+  const ins = stepOf(ctx, lastEnded(actsOf(show(ctx), current(view)), "benchmark.inspect")) ?? (await inspectAct(ctx, k, inspectedFor(ctx, k)));
   return judgedRound(ctx, k, repair, ins);
 }
 
@@ -271,7 +278,15 @@ const ENGINEERING_PROVIDER = "autonomous-engineering";
 
 const countedTasks = (ctx, ins) => (ins?.tasks?.json?.tasks ?? []).filter((t) => !isGoalKind(ctx.case) || t.provider === ENGINEERING_PROVIDER);
 
-const extraTasks = (ctx, ins, k) => countedTasks(ctx, ins).map((t) => t.id).filter((t) => t !== (engTaskOf(ctx, k) ?? ins?.inspect?.task)).length;
+// The engineering tasks a round's own MISSION started (0.5.0, ADR 0055): an implement unit's every attempt starts one of
+// its own, so a retried unit leaves its earlier tasks beside the one judged -- none of them a task beside the mission.
+const missionTasksOf = (ins) => new Set((ins?.missions?.json?.missions ?? []).flatMap((m) => (m.runs ?? []).map((r) => /^task:(tsk-[a-f0-9]{12})$/.exec(String(r.providerRef ?? ""))?.[1]).filter(Boolean)));
+
+const OWN_TASKS = { mission: missionTasksOf };
+
+const ownTasksOf = (ctx, ins) => (OWN_TASKS[ctx.case.kind] ?? (() => new Set()))(ins);
+
+const extraTasks = (ctx, ins, k) => ((own) => countedTasks(ctx, ins).map((t) => t.id).filter((t) => t !== (engTaskOf(ctx, k) ?? ins?.inspect?.task) && !own.has(t)).length)(ownTasksOf(ctx, ins));
 
 // The owners' records a round left, read back by the inspection: the engineering task and its actions, every task, the
 // goals and their plans -- each as its owner said it, through Orbit's own read commands.

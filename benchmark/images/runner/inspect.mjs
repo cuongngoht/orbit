@@ -20,12 +20,19 @@
 // `automation.mjs context`: its lifecycle, the route its plan took, the engineering task its engineering step started, and
 // each step of its plan with the word it settled on and its receipt's own sentence (why a skipped step was skipped).
 //
-//   node /bench/inspect.mjs <tsk-…|-> [--plugin=<dir>] [--tree=/work/worktree] [--activation] [--workflow]
+// After a MISSION round (`--mission`, 0.5.0, ADR 0055) every mission of the runner store is read back too, newest first and
+// bounded, through Satellite's own read commands (`mission list`, `mission show`, `live status --json`: its verdict, its
+// criteria, its units and each run with the join's word for which agent carried it) and its `evidence.linked` journal
+// lines as data; the session trail's agent events and every call a subagent made, as data; and every task an evidence row
+// names, through `task.mjs show`. The round's task is then the one the newest mission's last implement run started.
+//
+//   node /bench/inspect.mjs <tsk-…|-> [--plugin=<dir>] [--tree=/work/worktree] [--activation] [--workflow] [--mission]
 //                                   out: /work/out/inspect.json, task.json, tasks.json, trace.json, turns.json, goals.json,
 //                                        sandbox.json, files/<rel>; with --activation also activation.json, views.json,
 //                                        workflows.json, works.json, rooms.json, uitests.json, ledger.json, plans.json,
 //                                        plancheck.json, check.json, workspace.json and ws-files/<rel>; with --workflow
-//                                        workflows.json, each workflow's route, child and steps
+//                                        workflows.json, each workflow's route, child and steps; with --mission
+//                                        missions.json, trail.json and owners.json
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -147,11 +154,12 @@ export const coordinatedTask = (list, child = childOf) => oneOf([...new Set(idsO
 // guessed between.
 export const taskFound = (asked, list, named = null) => asked ?? named ?? oneOf(idsOf(ofProvider(list, "autonomous-engineering"))) ?? oneOf(idsOf(listedTasks(list)));
 
-// Which task a round left, and by whose word it was found: the start file's, the coordinators', or the only one there is.
-function foundTask(asked, list) {
-  const named = asked ? null : coordinatedTask(list);
+// Which task a round left, and by whose word it was found: the start file's, the coordinators' -- or, after a mission
+// round, the mission's own implement run's -- or the only one there is.
+function foundTask(asked, list, missions = null) {
+  const named = asked ? null : missions ? missionTask(missions) : coordinatedTask(list);
   const task = taskFound(asked, list, named);
-  return { task, found: asked ? "start" : named ? "coordinator" : task ? "only-task" : null };
+  return { task, found: asked ? "start" : named ? (missions ? "mission" : "coordinator") : task ? "only-task" : null };
 }
 
 // ---- the goals a round left, read back as data ------------------------------------------------------------------------
@@ -244,6 +252,67 @@ const routedOf = (id) => ((c) => ({ id, lifecycle: c?.lifecycle ?? null, route: 
 
 const routedWorkflows = (tasks) => ({ exit: 0, json: { workflows: idsIn(tasks, "automation").slice(0, WORKFLOWS).map(routedOf) } });
 
+// ---- what a mission case's judge reads back (0.5.0, ADR 0055) ---------------------------------------------------------
+
+const MISSION = process.argv.slice(2).includes("--mission");
+
+export const MISSION_LIMITS = { missions: 5, evidence: 200, tasks: 8, events: 5000, bytes: 16 * 1024 * 1024 };
+
+const MISSION_ID = /^msn-[a-f0-9]{12}$/;
+
+const satellite = (args) => spawnSync(process.execPath, [`${PLUGIN}/satellite/cli/satellite.mjs`, ...args], { cwd: PATHS.repo, env: process.env, encoding: "utf8", timeout: 120000, maxBuffer: LIMITS.json });
+
+const newestFirst = (ms) => [...ms].sort((a, b) => String(b?.createdAt ?? "").localeCompare(String(a?.createdAt ?? "")));
+
+const missionIds = () => newestFirst(answered(satellite(["mission", "list"])).json?.missions ?? []).map((m) => m?.id).filter((id) => MISSION_ID.test(String(id))).slice(0, MISSION_LIMITS.missions);
+
+// A run as the mission keeps it, beside the join's word for the host agent that carried it (Satellite Live's own).
+const runOf = (r, live) => ((a) => ({ id: r.id ?? null, unit: r.unit ?? null, profile: r.profile ?? null, agent: r.agent ?? null, dispatch: r.dispatch ?? null, lifecycle: r.lifecycle ?? null, outcome: r.outcome ?? null, provider: r.provider ?? null, providerRef: r.providerRef ?? null, attribution: a?.attribution ?? null, hostAgent: a?.hostAgent ?? null, basis: typeof a?.basis === "string" ? a.basis.slice(0, SAID) : null }))((live?.agents ?? []).find((x) => x?.id === r.id));
+
+const EVIDENCE = (l) => ({ unit: l.unit ?? null, agentRun: l.agentRun ?? null, owner: l.owner ?? null, ref: l.ref ?? null, level: l.level ?? null, independent: l.independent === true, verified: l.verified === true, acceptance: Array.isArray(l.acceptance) ? l.acceptance.slice(0, 16) : [] });
+
+// <store>/<project>/satellite/missions/<msn>/journal.jsonl -- a link is never followed, and what is read is bounded.
+const missionJournal = (id) => dirsIn(PATHS.store).map((p) => join(p, "satellite", "missions", id, "journal.jsonl")).find((f) => existsSync(f) && lstatSync(f).isFile() && lstatSync(f).size <= MISSION_LIMITS.bytes) ?? null;
+
+const evidenceOf = (id) => ((f) => (f ? readFileSync(f, "utf8").split("\n").map(jsonOr).filter((l) => l?.kind === "evidence.linked").slice(0, MISSION_LIMITS.evidence).map(EVIDENCE) : []))(missionJournal(id));
+
+const missionOf = (id) => ((show, live) => ({ id, lifecycle: show?.lifecycle ?? null, verdict: show?.verdict ?? null, createdAt: show?.mission?.createdAt ?? null, criteria: (show?.intent?.acceptanceCriteria ?? []).map((a) => a?.id).filter(Boolean), units: (show?.units ?? []).map((u) => ({ id: u?.id ?? null, kind: u?.kind ?? null, state: u?.state ?? null })), runs: (show?.agentRuns ?? []).map((r) => runOf(r ?? {}, live)), evidence: evidenceOf(id) }))(answered(satellite(["mission", "show", id])).json, answered(satellite(["live", "status", id, "--json"])).json);
+
+export const missionsRead = () => ({ exit: 0, json: { missions: missionIds().map(missionOf) } });
+
+// The task the newest mission's LAST implement run started: an implement unit's every attempt starts a task of its own.
+const TASK_REF = /^task:(tsk-[a-f0-9]{12})$/;
+
+export const missionTask = (missions) => (missions?.json?.missions ?? []).map((m) => (m.runs ?? []).filter((r) => r.provider === "engineering").map((r) => TASK_REF.exec(String(r.providerRef ?? ""))?.[1]).filter(Boolean).at(-1)).find(Boolean) ?? null;
+
+// The session trail's agent events and every call a subagent made, as data: <store>/control/activity/trace/*.jsonl.
+const TRAIL_TYPES = new Set(["agent.invoked", "agent.launched", "agent.started", "agent.ended", "tool.used", "command.ran"]);
+
+const trailRoom = () => join(PATHS.store, "control", "activity", "trace");
+
+const keptEvent = (e) => TRAIL_TYPES.has(e?.type) && (e.type.startsWith("agent.") || Boolean(e.data?.agent));
+
+const TRAIL_EVENT = (e) => ({ type: e.type, at: e.at ?? null, agent: e.data?.agent ?? null, launched: e.data?.launched ?? null, run: e.data?.run ?? null, call: e.data?.call ?? null, id: e.data?.id ?? null, kind: e.data?.kind ?? null, tool: e.data?.tool ?? null, ok: e.data?.ok ?? null });
+
+const shardsOf = (room) => (isDir(room) ? readdirSync(room, { withFileTypes: true }).filter((x) => x.isFile() && x.name.endsWith(".jsonl")).map((x) => join(room, x.name)).sort() : []);
+
+const shardEvents = (f) => (lstatSync(f).size <= MISSION_LIMITS.bytes ? readFileSync(f, "utf8").split("\n").map(jsonOr).filter(keptEvent) : []);
+
+const once = (events) => [...new Map(events.map((e, i) => [e.id ?? `line-${i}`, e])).values()];
+
+export const trailRead = () => ({ exit: 0, json: { source: isDir(trailRoom()) ? "ok" : "none", events: once(shardsOf(trailRoom()).flatMap(shardEvents)).slice(-MISSION_LIMITS.events).map(TRAIL_EVENT) } });
+
+// Every task an evidence row names -- a task's own, or a check's -- as `task.mjs show` reads it back.
+const OWNED_REF = /^(?:task:(tsk-[a-f0-9]{12})|check:(tsk-[a-f0-9]{12}):chk-\d+)$/;
+
+const ownerTasks = (missions) => [...new Set((missions?.json?.missions ?? []).flatMap((m) => (m.evidence ?? []).map((e) => OWNED_REF.exec(String(e.ref ?? ""))).filter(Boolean).map((x) => x[1] ?? x[2])))].slice(0, MISSION_LIMITS.tasks);
+
+const OWNER = (v) => ({ lifecycle: v?.lifecycle ?? null, verification: (v?.verification ?? []).slice(0, 100).map((x) => ({ state: x?.state ?? null, evidence: x?.evidence ?? null })), receipts: (v?.receipts ?? []).slice(0, 100).map((r) => ({ domain: r?.domain ?? null, ref: r?.ref ?? null, outcome: r?.outcome ?? null })) });
+
+export const ownersRead = (missions) => ({ exit: 0, json: { tasks: Object.fromEntries(ownerTasks(missions).map((id) => [id, OWNER(answered(orbit("task.mjs", ["show", id])).json)])) } });
+
+const missionDocs = (missions) => [["missions.json", missions], ["trail.json", trailRead()], ["owners.json", ownersRead(missions)]].forEach(([name, v]) => writeFileSync(join(PATHS.out, name), `${JSON.stringify(v)}\n`));
+
 const worksOf = () => ((r) => ({ exit: r.exit, json: { works: (r.json?.works ?? []).slice(0, 50).map((w) => ({ work: w.work ?? null, ref: w.ref ?? null, standing: w.standing ?? null })) } }))(answered(orbit("track.mjs", ["list"])));
 
 // Each owner's room, by where it keeps its records under a project's store: how many it holds, summed over the store.
@@ -301,12 +370,20 @@ function activationRead(tasks) {
   return docs.forEach(([name, v]) => writeFileSync(join(PATHS.out, name), `${JSON.stringify(v)}\n`));
 }
 
+// What a kind of round reads back beyond every round's documents: an activation's, a workflow's, a mission's -- or nothing.
+const moreOf = (tasks, missions) => (ACTIVATION ? () => activationRead(tasks) : WORKFLOW ? () => writeFileSync(join(PATHS.out, "workflows.json"), `${JSON.stringify(routedWorkflows(tasks))}\n`) : missions ? () => missionDocs(missions) : () => null);
+
+// What every round reads back: the task it found, every task, what the trail says, the goals and the sandboxes.
+const shownOf = (at) => (at.task ? answered(orbit("task.mjs", ["show", at.task])) : { exit: null, json: null, why: "no task was started" });
+
+const roundDocs = (at, tasks) => [["task.json", shownOf(at)], ["tasks.json", tasks], ["trace.json", answered(orbit("trace.mjs", ["usage"]))], ["turns.json", answered(orbit("trace.mjs", ["turns", "--days=30", "--limit=200"]))], ["goals.json", goalsOf()], ["sandbox.json", sandboxesOf()]];
+
 function main(asked) {
   const tasks = answered(orbit("task.mjs", ["list"]));
-  const at = foundTask(asked, tasks);
-  const shown = at.task ? answered(orbit("task.mjs", ["show", at.task])) : { exit: null, json: null, why: "no task was started" };
-  [["task.json", shown], ["tasks.json", tasks], ["trace.json", answered(orbit("trace.mjs", ["usage"]))], ["turns.json", answered(orbit("trace.mjs", ["turns", "--days=30", "--limit=200"]))], ["goals.json", goalsOf()], ["sandbox.json", sandboxesOf()]].forEach(([name, v]) => writeFileSync(join(PATHS.out, name), `${JSON.stringify(v)}\n`));
-  inspected(at, WORKTREE ?? (at.task ? treeOf(at.task) : null), ACTIVATION ? () => activationRead(tasks) : WORKFLOW ? () => writeFileSync(join(PATHS.out, "workflows.json"), `${JSON.stringify(routedWorkflows(tasks))}\n`) : () => null);
+  const missions = MISSION ? missionsRead() : null;
+  const at = foundTask(asked, tasks, missions);
+  roundDocs(at, tasks).forEach(([name, v]) => writeFileSync(join(PATHS.out, name), `${JSON.stringify(v)}\n`));
+  inspected(at, WORKTREE ?? (at.task ? treeOf(at.task) : null), moreOf(tasks, missions));
 }
 
 function inspected(at, tree, more = () => null) {

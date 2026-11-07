@@ -91,7 +91,7 @@ benchmark/
                                   checks/<name>.mjs and moved to test/<name>.test.mjs in the checkout a run makes
 ```
 
-Thirteen suites ship:
+Fourteen suites ship:
 
 | Suite | Cases | What they ask |
 |---|---|---|
@@ -108,6 +108,7 @@ Thirteen suites ship:
 | `orbit-activation` | `ORBIT-ACT-001` … `011`, `ORBIT-NEG-001` … `004`, `ORBIT-CTX-001` … `003` | Does the host use Orbit by itself, and only where it helps -- on prompts that name no skill, in English and Vietnamese, with no Orbit, the previous release and this one? Its model-carried rows are recorded, never required. |
 | `orbit-workflow` | `ORBIT-WF-004` | Is one request taken through `/orbit-help` to a verified change by the workflow it starts -- routed, made by its own engineering task, its QA step never left out silently, every step settled on its owner's record? Its model-carried rows are recorded, never required. |
 | `orbit-missions` | `ORBIT-MSN-001`, `ORBIT-MSN-002` | Is a goal -- a bug with its verification, a small feature -- taken through Orbit Satellite to a verified change, every acceptance criterion settled on an independent owner's record and every work unit's run carried inside its least-privilege profile? Its model-carried rows are recorded, never required. |
+| `orbit-tools` | `ORBIT-TOOL-001` | When a tool call fails on purpose, does the host read why, correct the call and never send it again past a bound? `001`: the invoice QA application with nothing planted, and an earlier session's runbook whose calls the relay refuses as written (see [Planted refusals](#planted-refusals)). Its model-carried rows are recorded, never required. |
 
 A case whose `baseline` is `FAIL` is a **known finding**: the source as it is does not hold the behaviour the case
 asks, and the case keeps that as evidence until a repair passes it -- through `--repair`, never by a hand edit here. A
@@ -459,8 +460,10 @@ The verdict is an ordered table (`lib/qa/judge.mjs`):
 2. **FAIL** on a false alarm.
 3. **FAIL** on a planted defect not found.
 4. **FAIL** when coverage is under the case's `minCoverage`.
-5. **INCONCLUSIVE** when a contradiction could not be confirmed.
-6. **PASS** otherwise.
+5. **FAIL** when a refused call was sent again past the case's bound -- a case that plants refusals only.
+6. **FAIL** when a call the relay refused for how it was written was never corrected -- a case that plants refusals only.
+7. **INCONCLUSIVE** when a contradiction could not be confirmed.
+8. **PASS** otherwise.
 
 A shape the environment blocked is neither coverage nor a miss. A contradiction the ground truth does not list, but
 that the clean application does not share, is reported as found beyond it.
@@ -529,6 +532,43 @@ host goes through the same relay admission, the same engine and the same judge a
 | `reference` | Designs every test obligation the engine owes with acceptance's own designs. | PASS |
 | `idle` | Tests nothing and finishes the investigation. | FAIL |
 | `false-alarm` | Uses the reference designs, but one of them reads back a record nothing writes, so it contradicts the clean application too. The broken design is the one the application names (`falseAlarm` in `TARGETS`): a test that runs to a verdict whatever is planted, so the false alarm shows in every case. | FAIL |
+
+A scripted host's requests are kept in the round's relay log (`rounds/<k>/relay/relay.jsonl`) in the very line the
+mailbox keeps of a coding host's (0.5.0), so a report, its tool-call facts and a case's refusal rows read one record of
+what was asked, whoever asked it.
+
+### Planted refusals
+
+A QA case may make tool calls fail on purpose (0.5.0, backlog B9): `refusals.planted` names calls its request quotes
+from an earlier session's runbook -- `ORBIT-TOOL-001`'s give another investigation's id and a flag the subcommand does
+not take, on the `context` a host needs and the `finish` it is told to make -- and the relay refuses each as it is
+written, saying why. The host is not told they are wrong; a host that reads its brief and the usage (`--help`) never
+sends them, and passes. The judge holds such a case besides to how its host met them, read off the relay's log, never
+off what the host said:
+
+- **Never sent again past the bound.** A refused call is one the relay refused (its own sentence) or the engine refused
+  (exit 2, its first line) -- never one the environment blocked (exit 3: waiting a block out is no failure to read), and
+  never a help probe. The same refused call is one subcommand refused for one reason; sent more than once and
+  `refusals.repeats` more times fails the run.
+- **Corrected.** A call the relay refused for how it was written -- a flag, its value, a word, stdin, another
+  investigation (`CORRECTABLE`) -- must be followed by a request of the same subcommand the relay admitted. A
+  subcommand the relay does not carry cannot be written right, and only the bound holds it.
+
+The judge's `refusals` (`judged.json`) keeps how many calls were refused and each one sent again past the bound or
+never corrected; the report says them. Its controls add three hosts to the reference, idle and false-alarm ones:
+
+| Host | What it does | The verdict it must earn |
+|---|---|---|
+| `reference` | Never sends a planted call: the case asks how a refusal is met, never that one is. | PASS |
+| `recovers` | Sends each planted call once, then works as the reference does, its calls written as the relay takes them. | PASS |
+| `repeats` | Sends the first planted call again past the bound, then works as the one that recovers. | FAIL |
+| `uncorrected` | Sends each planted call once and never sends a refused subcommand again unless it cannot work without it: it tests what the reference tests and leaves the `finish` it was told to make uncorrected. | FAIL |
+
+What B9's backlog entry also lists and no case here plants -- a sandbox failure (Docker down, an image pull refused, a
+port held, a restore that fails, a container that never becomes ready) inside a QA run -- is left out on purpose: a QA
+run's sandbox is the controller's own setup, never a call of its host, and the runner container has no Docker for an
+engineering task's sandbox to fail in. Planting one would be faking it. `docs/backlog/0.5.0.md` (B9) says what each would
+need.
 
 ## Engineering cases
 
@@ -1207,10 +1247,14 @@ suites/<suite>/<case-id>/poison/<note>.md        a sessions case's poisoned memo
 
    Then `acceptance` (`truth`, `minCoverage`), `limits` (`rounds`, `minutes`, `usd`, the `runner`'s box and the
    `engine`'s `stepSeconds` and `callSeconds`), `cleanup` (with `sandbox: "release"`) and `controls`
-   (`{ id, host, expect }`).
+   (`{ id, host, expect }`). A case that makes tool calls fail on purpose adds `refusals` (`repeats`, `planted`: each an
+   argument list the relay refuses as it is written, which its request quotes as a host would type it) and the
+   `recovers`, `repeats` and `uncorrected` controls; `test/benchmark-tools-cases.test.mjs` holds each planted call to
+   the relay.
 2. Write `verifier/truth.json`: `{ schema, from: { file, stack, variant }, default, shapes, expect }`, the engine's own
    outcome words per shape. `test/benchmark-qa-cases.test.mjs` holds each truth to `acceptance/truth.json`.
-3. Keep the request the same for every case on one application. Name no variant and no shape in it.
+3. Keep the request the same for every case on one application -- a case that plants refusals adds only the runbook that
+   quotes them, after it. Name no variant and no shape in it.
 4. Prove the verifier with `node benchmark/run.mjs controls <case>`: reference must PASS; idle and false-alarm must
    FAIL.
 

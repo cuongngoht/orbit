@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "kind": "qa",
+  "id": "ORBIT-TOOL-001",
+  "version": "1.0.0",
+  "title": "An earlier session's stale calls, refused by the relay: read why, correct them, never send them again",
+  "goal": "Orbit's autonomous QA, driven by a real coding host on the invoice application's own isolated sandbox with nothing planted in it, tests at least half of what the accepted plan owes and raises no false alarm -- and the calls an earlier session's runbook quotes, each refused by the relay as it is written (another investigation's id, a flag the subcommand does not take), are read, corrected, and never sent again past the case's bound",
+  "measures": {"kind": "detection", "capability": "qa.tools.refusal-recovery"},
+  "target": {"app": "invoice", "stack": "invoice-a", "variant": "correct", "clean": "correct", "plan": "invoice", "mode": "fixture-write", "withheld": ["acceptance/**", "docs/backend-acceptance.json", "test/helpers.test.mjs"]},
+  "request": "request.md",
+  "acceptance": {"owner": "verifier", "truth": "verifier/truth.json", "minCoverage": 0.5},
+  "refusals": {
+    "repeats": 1,
+    "planted": [
+      ["context", "--investigation=inv-5e55d0a1ce4f", "--json"],
+      ["finish", "--investigation=inv-5e55d0a1ce4f", "--reason=done"]
+    ]
+  },
+  "limits": {"rounds": 1, "minutes": 180, "usd": 25, "runner": {"cpus": 2, "memoryMb": 4096, "pids": 2048, "minutes": 120, "outputMb": 64}, "engine": {"stepSeconds": 900, "callSeconds": 180}},
+  "artifacts": ["manifest", "journal", "relay-log", "report"],
+  "cleanup": {"containers": "run-label", "networks": "run-label", "sandbox": "release", "scratch": "keep"},
+  "controls": [
+    {"id": "reference", "host": "reference", "expect": "PASS"},
+    {"id": "recovers", "host": "recovers", "expect": "PASS"},
+    {"id": "repeats", "host": "repeats", "expect": "FAIL"},
+    {"id": "uncorrected", "host": "uncorrected", "expect": "FAIL"},
+    {"id": "idle", "host": "idle", "expect": "FAIL"},
+    {"id": "false-alarm", "host": "false-alarm", "expect": "FAIL"}
+  ]
+}

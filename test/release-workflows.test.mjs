@@ -32,6 +32,7 @@ test("the conformance tier's controls matrix holds every suite the benchmark has
   const matrix = (/^\s+suite: \[([^\]]+)\]/m.exec(yml)?.[1] ?? "").split(",").map((s) => s.trim()).filter(Boolean).sort();
   assert.deepEqual(matrix, suites, "a suite left out of the matrix is a suite whose controls no pull request runs");
   assert.match(yml, /- suite: orbit-qa\n\s+images: --qa-worker/);
+  assert.match(yml, /- suite: orbit-tools\n\s+images: --qa-worker/, "the tool-call failure suite's QA case runs in the QA worker too");
   assert.match(yml, /- suite: orbit-activation\n\s+images: --runner/, "an activation case's controls are whole runs its scripted hosts carry in the runner");
   assert.match(yml, /node benchmark\/run\.mjs build --verifier \$\{\{ matrix\.images \}\}/);
   assert.match(yml, /timeout-minutes: \$\{\{ matrix\.minutes \|\| 240 \}\}/);

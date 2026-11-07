@@ -94,6 +94,20 @@
   keeps a probe as one (`help: true`) under the subcommand it asked about, and the tool-call facts count help probes
   per relay subcommand; the `HELP` refusal reason stays, for rooms kept from before. The QA playbook now shows every
   subcommand a host runs as one exact call, held to the CLI's usage and to the relay's table by a test.
+- **`orbit-tools`: a benchmark suite whose tool calls fail on purpose (backlog B9).** Its first case, `ORBIT-TOOL-001`,
+  is a QA case on the invoice application with nothing planted in it, whose request adds an earlier session's runbook:
+  two calls the relay refuses as they are written -- another investigation's id, and a flag the subcommand does not
+  take -- on the `context` a host needs and the `finish` it is told to make. A QA case may now declare such `refusals`
+  (`planted`, and `repeats`: how many times one refused call may be sent again), and the judge holds it besides, read off
+  the relay's log and never off what the host says, to two rows: no refused call -- the relay's refusal, or the engine's
+  exit 2; never a block, never a help probe -- sent again past the bound, and every call refused for how it was written
+  (a flag, its value, a word, stdin, another investigation) corrected by a later request of its subcommand the relay
+  admitted. Its controls add three scripted hosts: `recovers` (PASS), `repeats` and `uncorrected` (FAIL), beside the
+  reference (which never sends a planted call, and PASSes), idle and false-alarm ones. A scripted host's requests are
+  now kept in the round's relay log in the line the mailbox keeps of a coding host's, so a report and the tool-call facts
+  count them too. The policy requires the suite's controls and records its model-carried row; the conformance tier runs
+  the controls with the QA worker image. The sandbox failures B9 lists are left out: a QA run's sandbox is the
+  controller's setup, never a host's call, and the runner has no Docker for a task's sandbox to fail in.
 
 ## 0.4.0
 

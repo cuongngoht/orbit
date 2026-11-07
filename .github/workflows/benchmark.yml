@@ -35,6 +35,8 @@ jobs:
   # A QA case's controls are whole runs, each carried by one of its scripted hosts (reference, idle, false-alarm) in the
   # controller's own process: the application on its isolated sandbox through Orbit's engine, its tests in the QA worker
   # -- no model and no credential (the engine is handed none), only the QA worker image and the time those runs take.
+  # A QA case that plants calls the relay refuses (orbit-tools, 0.5.0) adds the hosts that send them: one that recovers,
+  # one that repeats a refused call past the case's bound, one that never corrects one.
   # A sessions case's controls (ADR 0054) are whole runs the same way, each two sessions over one checkout: the second
   # carried by the control's own scripted host (reference, idle, cheat, half, and the ones that trust a poison).
   # An activation case's controls (0.5.0) are whole runs too: a seed round, a scripted host delivering every hook to
@@ -44,11 +46,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [orbit-source, orbit-governance, orbit-memory, orbit-improvement, orbit-orchestration, orbit-satellite, orbit-verdicts, orbit-engineering, orbit-qa, orbit-sessions, orbit-activation, orbit-workflow, orbit-missions]
+        suite: [orbit-source, orbit-governance, orbit-memory, orbit-improvement, orbit-orchestration, orbit-satellite, orbit-verdicts, orbit-engineering, orbit-qa, orbit-sessions, orbit-activation, orbit-workflow, orbit-missions, orbit-tools]
         include:
           - suite: orbit-qa
             images: --qa-worker
             minutes: 360
+          - suite: orbit-tools
+            images: --qa-worker
+            minutes: 240
           - suite: orbit-sessions
             images: --qa-worker
             minutes: 360

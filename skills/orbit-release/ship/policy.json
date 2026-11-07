@@ -217,6 +217,9 @@
     "orbit-missions": [
       "ORBIT-MSN-001",
       "ORBIT-MSN-002"
+    ],
+    "orbit-tools": [
+      "ORBIT-TOOL-001"
     ]
   },
   "recorded": {
@@ -225,7 +228,8 @@
       "orbit-sessions",
       "orbit-activation",
       "orbit-workflow",
-      "orbit-missions"
+      "orbit-missions",
+      "orbit-tools"
     ],
     "cases": []
   },

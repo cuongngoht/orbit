@@ -1173,9 +1173,11 @@ benchmark/     (ADR 0046, 0047, 0048, 0053, 0054) THE DOCKER BENCHMARK of Orbit:
                assembled and seated, its isolated sandbox, the investigation) · relay.mjs (RELAY, the mailbox server, and
                0.5.0's help probe answered from the frozen engine CLI's own usage header, never run) and
                relay-client.mjs (what stands at cli/autonomous-qa.mjs in a QA host's plugin) · hosts.mjs (the scripted
-               reference, idle and false-alarm hosts -- and a second session's cheat, half, trusts-poison and
-               trusts-stale -- and the replay) · judge.mjs (outcomes off the journal, CREDIT, VERDICT) · round.mjs (a coding
-               host's round; a session's own brief line, budget share, kept home and memory switches) · flow.mjs (a QA run
+               reference, idle and false-alarm hosts -- a second session's cheat, half, trusts-poison and trusts-stale, and
+               0.5.0's recovers, repeats and uncorrected, which send a case's planted refusals -- and the replay) ·
+               judge.mjs (outcomes off the journal, CREDIT, VERDICT; 0.5.0's refusal rows off the relay's log,
+               CORRECTABLE) · round.mjs (a coding host's round; a session's own brief line, budget share, kept home and
+               memory switches; askOf, a scripted host's requests kept in the round's relay log) · flow.mjs (a QA run
                is one SESSION: sessionRan, carriedBy, the phases a sessions run composes) · report.mjs.
                lib/sessions/ (0.5.0, ADR 0054) -- a SESSIONS case, a QA case worked in two sessions over one checkout and
                the stores the first left: flow.mjs (the learning session, the carry phase -- what is kept, the code moved

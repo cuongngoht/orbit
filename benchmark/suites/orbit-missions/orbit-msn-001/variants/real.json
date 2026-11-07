@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "id": "real",
+  "about": "An order line is held only to being numbers, so a zero, negative or fractional quantity and a negative or fractional price are accepted and stored; no public test sees it.",
+  "mutations": [
+    {
+      "id": "lines-only-numbers",
+      "file": "src/orders.mjs",
+      "find": "const validLine = (l) => Number.isInteger(l?.qty) && l.qty > 0 && Number.isInteger(l?.unitMinor) && l.unitMinor >= 0;",
+      "replace": "const validLine = (l) => typeof l?.qty === \"number\" && typeof l?.unitMinor === \"number\";",
+      "count": 1
+    }
+  ],
+  "files": [],
+  "deletes": []
+}

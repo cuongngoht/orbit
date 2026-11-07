@@ -17,13 +17,15 @@
 // case may plant a POISON in the host's memory before the second (`poison`). An `activation` case (0.5.0, B22 M4) asks
 // whether the host uses Orbit BY ITSELF: a prompt that names no skill, on arms with and without Orbit, held to a hidden
 // truth of what a careful host does -- and, for an outcome case, the engineering kind's hidden checks on what it
-// delivered.
+// delivered. A `mission` case (0.5.0, ADR 0055) is an engineering case's goal taken through Orbit SATELLITE: the same
+// target, verifier and rounds, its record checks a mission's -- every acceptance criterion settled on an independent
+// owner's record, and every work unit's run carried inside its least-privilege profile.
 //
 //   suitesIn(root) -> [{ id, version, title, dir, cases }]         caseOf(root, id) -> case + { dir, suite }
 //   suiteHolding(root, caseId) -> suite id | null
 //   caseFindings(c, dir) -> [sentence]                             dirDigest(dir) -> sha256 of every file, by path
 //   KINDS · TRUTH_OUTCOMES · QA_HOSTS · SESSION_HOSTS · MEMORY_ARMS · caseDir(id) · ARMS · DEFAULT_BASELINE · armsOf(c)
-//   baselinePluginOf(c) · memoryArmsOf(c)
+//   baselinePluginOf(c) · memoryArmsOf(c) · GOAL_KINDS · isGoalKind(kind) · MISSION_SCRIPTS · MISSION_CONTROLS
 //   activationTruthFindings(t) -> [sentence]      activationTruthOf(c) -> truth | null      ACTIVATION_HOSTS · STRATEGIES
 //   COORDINATIONS · TIERS · LANGUAGES · SWITCH_NAME · SELECTION_CAPS · RECORD_READS · NAMES_A_COMPONENT
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -66,7 +68,7 @@ export const MEMORY_ARMS = ["on", "off"];
 
 const COMMON_FIELDS = {
   schema: { type: "integer", enum: [1] },
-  kind: { type: "string", enum: ["source", "qa", "engineering", "sessions", "activation"] },
+  kind: { type: "string", enum: ["source", "qa", "engineering", "sessions", "activation", "mission"] },
   id: { type: "string", pattern: "^[A-Z][A-Z0-9]*(-[A-Z0-9]+)+$", says: { pattern: "id is upper-case words joined by dashes, such as ORBIT-SRC-001" } },
   version: { type: "string", pattern: "^\\d+\\.\\d+\\.\\d+$" },
   title: TEXT,
@@ -289,6 +291,38 @@ export const armsOf = (c) => c.arms ?? ["release"];
 
 export const baselinePluginOf = (c) => c.baselinePlugin ?? c.suite?.baselinePlugin ?? DEFAULT_BASELINE;
 
+// ---- THE MISSION KIND (0.5.0, ADR 0055): an engineering case's goal, taken through Orbit Satellite -----------------------
+
+// The kinds whose subject is a fixture TARGET handed to the host as a GOAL, judged by the source verifier plus record
+// checks over what Orbit's owners say: an engineering case's goal through Orbit's goal entry, a mission case's through
+// Orbit Satellite. The flow, the verifier, CAUSES, NEXT and the metrics are the same for both.
+export const GOAL_KINDS = ["engineering", "mission"];
+
+export const isGoalKind = (kind) => GOAL_KINDS.includes(kind);
+
+// What a mission control's scripted host does (images/runner/scripted.mjs): take the goal through Satellite as a careful
+// host would (`mission`), make the change by hand and have the mission claim it with no owner record (`claims`), let a
+// read-only run's agent edit and run a command (`over-reach`), or sit IDLE.
+export const MISSION_SCRIPTS = ["mission", "claims", "over-reach", "idle"];
+
+// The controls every mission case proves its checks with, by the script each runs and what it must come to: a reference
+// that passes, a claim no owner's record backs, an agent outside its profile, and a host that does nothing.
+export const MISSION_CONTROLS = [["mission", "PASS"], ["claims", "FAIL"], ["over-reach", "FAIL"], ["idle", "NO_PROGRESS"]];
+
+const MISSION_FIELDS = { ...COMMON_FIELDS, baseline: BASELINE, fixture: { type: "string", pattern: "^[a-z][a-z0-9-]{0,39}$" }, subject: { type: "object" }, reproduce: TEXT, scope: { type: "object" }, checks: { type: "object" }, variants: { type: "object", minProperties: 1 }, repairs: { type: "array", minItems: 1 } };
+
+const MISSION_SECTIONS = [
+  { at: "case", of: (c) => [c], fields: MISSION_FIELDS, required: requiredOf(MISSION_FIELDS).concat(["baseline", "repairs"]) },
+  { at: "measures", of: (c) => [c.measures], fields: { kind: { type: "string", enum: ["mission"] }, capability: TEXT, expects: { type: "string", enum: ["change"] } }, required: ["kind", "capability", "expects"] },
+  ...sharedWith(["subject", "acceptance", "scope", "checks", "checks.gates[]", "checks.agentTests", "limits", "limits.runner", "limits.verifier", "limits.engineering", "cleanup", "variants.*", "controls[]"]),
+  { at: "repairs[]", of: (c) => c.repairs ?? [], fields: { id: NAME, variant: NAME, candidate: REL, through: { type: "string", enum: ["engine"] }, expect: { type: "string", enum: GOAL_OUTCOMES }, script: { type: "string", enum: MISSION_SCRIPTS } }, required: ["id", "variant", "candidate", "through", "expect", "script"] },
+];
+
+const missingControls = (c) => MISSION_CONTROLS.filter(([script, expect]) => !(c.repairs ?? []).some((r) => r?.script === script && r?.expect === expect)).map(([script, expect]) => `${script} ${expect}`);
+
+// A mission case beyond its fields: what an engineering case must be, and the four controls that prove its checks.
+const MISSION_CROSS = [...ENGINEERING_CROSS, { fails: missingControls, say: (bad) => `lacks a control its checks are proved with: ${bad.join(", ")}` }];
+
 // ---- THE ACTIVATION KIND (0.5.0, B22 M4, the activation benchmark): does the host use Orbit by itself -------------------
 //
 // A prompt that names no skill and no command, in English or Vietnamese, handed to the real Claude Code with Orbit (or,
@@ -444,7 +478,7 @@ const ACTIVATION_CROSS = [
 // A case's truth, read from its own (frozen) directory: null when it cannot be read.
 export const activationTruthOf = (c) => readTruth(c.dir, c.acceptance.truth);
 
-export const KINDS = { source: { sections: SOURCE_SECTIONS, cross: SOURCE_CROSS }, qa: { sections: QA_SECTIONS, cross: QA_CROSS }, engineering: { sections: ENGINEERING_SECTIONS, cross: ENGINEERING_CROSS }, sessions: { sections: SESSIONS_SECTIONS, cross: SESSIONS_CROSS }, activation: { sections: ACTIVATION_SECTIONS, cross: ACTIVATION_CROSS } };
+export const KINDS = { source: { sections: SOURCE_SECTIONS, cross: SOURCE_CROSS }, qa: { sections: QA_SECTIONS, cross: QA_CROSS }, engineering: { sections: ENGINEERING_SECTIONS, cross: ENGINEERING_CROSS }, sessions: { sections: SESSIONS_SECTIONS, cross: SESSIONS_CROSS }, activation: { sections: ACTIVATION_SECTIONS, cross: ACTIVATION_CROSS }, mission: { sections: MISSION_SECTIONS, cross: MISSION_CROSS } };
 
 const crossFindings = (kind, c, dir) => kind.cross.map((r) => [r, r.fails(c, dir)]).filter(([, bad]) => bad.length).map(([r, bad]) => `case: ${r.say(bad)}`);
 

@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "kind": "engineering",
+  "id": "ORBIT-HLD-005",
+  "version": "1.0.0",
+  "title": "A higher borrowing limit for teachers, asked with no rule for who counts as a teacher or how many items they may have: refused, never invented, and the limit of five left as it is",
+  "goal": "A goal about the held-out lending service that leaves out the rule it needs -- who counts as a teacher, and how many items they may borrow -- taken through Orbit's goal entry, which must leave the change unresolved for that missing rule, deliver nothing and leave every behaviour as it was.",
+  "baseline": "PASS",
+  "fixture": "lending",
+  "measures": {
+    "kind": "engineering",
+    "capability": "refusing a goal whose rule nobody gave instead of inventing one, on an application Orbit was never tuned against",
+    "expects": "blocked"
+  },
+  "request": "request.md",
+  "subject": {
+    "paths": ["src/api.mjs", "src/store.mjs", "src/dropbox.mjs"],
+    "exports": { "src/api.mjs": ["handle"], "src/store.mjs": ["openStore"], "src/dropbox.mjs": ["consume"] }
+  },
+  "reproduce": "node benchmark/run.mjs run ORBIT-HLD-005",
+  "acceptance": { "owner": "verifier", "spec": "verifier/spec.mjs", "probe": "verifier/probe.mjs", "samples": 48 },
+  "scope": { "allow": ["src/**", "test/**", "README.md"], "deny": [], "imports": ["./*.mjs"] },
+  "checks": {
+    "gates": [
+      { "id": "public-tests", "argv": ["node", "--test", "--test-reporter=tap", "test/api.test.mjs", "test/catalog.test.mjs", "test/dates.test.mjs", "test/dropbox.test.mjs", "test/fines.test.mjs", "test/holds.test.mjs", "test/limits.test.mjs", "test/loans.test.mjs", "test/members.test.mjs", "test/pickup.test.mjs", "test/renewals.test.mjs", "test/store.test.mjs", "test/tenancy.test.mjs"] }
+    ],
+    "agentTests": { "required": true, "pattern": "^test/[^/]+\\.test\\.mjs$" }
+  },
+  "limits": {
+    "rounds": 2,
+    "minutes": 150,
+    "usd": 15,
+    "runner": { "cpus": 2, "memoryMb": 4096, "pids": 2048, "minutes": 90, "outputMb": 16 },
+    "verifier": { "cpus": 2, "memoryMb": 1024, "pids": 512, "seconds": 300 },
+    "engineering": { "attempts": 6, "actions": 120 }
+  },
+  "artifacts": ["report.md", "report.json", "rounds/<k>/candidate.patch", "rounds/<k>/outcome.json", "verified.json"],
+  "cleanup": { "containers": "run-label", "networks": "run-label", "scratch": "after-run" },
+  "variants": { "real": {} },
+  "controls": [
+    { "id": "real", "variant": "real", "expect": "PASS" },
+    { "id": "invented", "variant": "real", "file": "controls/inventor.json", "expect": "FAIL" }
+  ],
+  "repairs": [
+    { "id": "blocked", "variant": "real", "candidate": "controls/inventor.json", "through": "engine", "expect": "PASS", "script": "blocked" },
+    { "id": "inventor", "variant": "real", "candidate": "controls/inventor.json", "through": "engine", "expect": "FAIL", "script": "goal" },
+    { "id": "idle", "variant": "real", "candidate": "controls/inventor.json", "through": "engine", "expect": "NO_PROGRESS", "script": "idle" }
+  ]
+}

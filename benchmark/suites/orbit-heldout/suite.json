@@ -3,5 +3,10 @@
   "id": "orbit-heldout",
   "version": "1.0.0",
   "title": "Held-out goals on an application nobody tuned Orbit against (ADR 0056): is a person's request about the lending service taken through Orbit's goal entry to a verified change -- fines, holds served on return, renewals, one library system's records kept from another -- and is a request with no rule refused?",
-  "cases": ["ORBIT-HLD-001", "ORBIT-HLD-002", "ORBIT-HLD-003"]
+  "cases": [
+    "ORBIT-HLD-001",
+    "ORBIT-HLD-002",
+    "ORBIT-HLD-003",
+    "ORBIT-HLD-004"
+  ]
 }

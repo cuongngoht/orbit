@@ -14,6 +14,7 @@ import { missionReportOf } from "../benchmark/lib/mission/report.mjs";
 import { compared, listed } from "../benchmark/images/runner/inspect.mjs";
 import { hostArgs } from "../benchmark/images/runner/entry.mjs";
 import { runFacts } from "../benchmark/lib/core/metrics.mjs";
+import { inspectedFor } from "../benchmark/lib/source/flow.mjs";
 import { dockerDouble, ranAs, runOf, TASK, VIEW, worldOf } from "./benchmark-double.mjs";
 import { takeTurn } from "./benchmark-turn.mjs";
 
@@ -117,4 +118,10 @@ test("a mission run that PASSed is an autonomous outcome its verifier verified, 
   const kept = (kind, outcome) => ({ manifest: { run: "bnr-000000000001", benchmark: { kind, case: "ORBIT-MSN-001", suite: "orbit-missions", variant: "real" }, config: { repair: true, host: null } }, ending: { outcome }, report: { hostBasis: "coding-host" } });
   assert.deepEqual(["mission", "workflow"].map((kind) => runFacts(kept(kind, "PASS")).verified), [true, true]);
   assert.equal(runFacts(kept("mission", "FAIL")).verified, false);
+});
+
+test("on every round, a case whose rows hold its task to who started it hands its inspection no task: a mission's implement run names it, a workflow's coordinator does -- never the controller's word from an earlier round", () => {
+  const ctx = (kind) => ({ case: { kind }, room: { at: () => { throw new Error("no earlier round is read for this kind"); } } });
+  assert.deepEqual([1, 2, 3].map((k) => inspectedFor(ctx("mission"), k)), [null, null, null]);
+  assert.deepEqual([1, 2].map((k) => inspectedFor(ctx("workflow"), k)), [null, null]);
 });

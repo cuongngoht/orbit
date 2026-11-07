@@ -248,12 +248,13 @@ const readBack = (ins, k) => ((v) => (TASK.test(String(v?.task?.id)) ? { domain:
 
 const inspectAct = (ctx, k, task) => recorded(ctx, "benchmark.inspect", `round ${k}: what the round left, read back`, async () => ((ins) => ({ doc: ins, outcome: ins.refused || !ins.inspect ? "failed" : "succeeded", receipt: readBack(ins, k), summary: inspectSummary(ins) }))(await inspectedRound(ctx, k, task)));
 
-// The task a round's inspection is handed: the run's one engineering task -- or none for a mission case (0.5.0, ADR 0055),
-// whose task is the one its mission's own implement run names, found by the inspection itself on every round: a retried
-// unit starts a task of its own, and a task handed in would be found by the controller's word, not the mission's.
-const MISSION_NAMED = ["mission"];
+// The task a round's inspection is handed: the run's one engineering task -- or none for a case whose record rows hold the
+// task to WHO started it, found by the inspection itself on every round: a workflow case's (ADR 0053), named by its
+// coordinator, and a mission case's (ADR 0055), named by its mission's own implement run (a retried unit starts a task of
+// its own). A task handed in would be found by the controller's word -- `start` -- and never by the owner's.
+const OWNER_NAMED = ["workflow", "mission"];
 
-const inspectedFor = (ctx, k) => (MISSION_NAMED.includes(ctx.case.kind) ? null : engTaskOf(ctx, k));
+export const inspectedFor = (ctx, k) => (OWNER_NAMED.includes(ctx.case.kind) ? null : engTaskOf(ctx, k));
 
 const repairOf = async (ctx, view, k, acts) => stepOf(ctx, lastEnded(acts, "benchmark.repair")) ?? (acts.some((a) => a.type === "benchmark.repair") ? { interrupted: true } : await repairAct(ctx, k, roundState(ctx, view, k)));
 

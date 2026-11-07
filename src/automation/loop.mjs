@@ -126,7 +126,20 @@ function applied(ports, id, ops) {
 // The resolver is asked only for a step a host runs: an engine step's provider is the engine.
 const resolvedFor = (ports, step, kind, facts) => (step.provides && !kind.engine(facts) ? quietly(() => ports.resolve(step.provides)) : null);
 
-const liveFacts = (ports, lw, kind) => (kind.id === "requirement" && lw.ref ? { requirement: { ready: ((l) => Boolean(l?.latest) && l.blocking === 0)(quietly(() => ports.requirements.look(lw.ref))) } } : {});
+// What a step's kind reads when it is decided, beyond the plan: whether a requirement is frozen to be read back, and
+// whether a change's QA has a running change to investigate (0.5.0, ADR 0053) -- only once the runtime step read the
+// checkout and found nothing it declares can be started, and only for a plan that makes a change: an investigation's
+// QA is the work itself. An answer runtime could not give is never nothing.
+const nothingStartable = (ports) => ((list) => Array.isArray(list) && list.length === 0)(quietly(() => ports.runtime.startable()));
+
+const qaSkips = (ports, lw) => lw.plan.steps.some((s) => s.kind === "engineering") && lw.states.some((s) => s.kind === "runtime" && s.state === "succeeded") && nothingStartable(ports);
+
+const LIVE_FACTS = {
+  requirement: (ports, lw) => (lw.ref ? { requirement: { ready: ((l) => Boolean(l?.latest) && l.blocking === 0)(quietly(() => ports.requirements.look(lw.ref))) } } : {}),
+  qa: (ports, lw) => ({ qa: { skips: qaSkips(ports, lw) } }),
+};
+
+const liveFacts = (ports, lw, kind) => LIVE_FACTS[kind.id]?.(ports, lw) ?? {};
 
 // Whether the project playbook the resolver picked DECLARES its workflow, read off its version in place (0.0.4).
 const declaredFor = (ports, r) => r?.provider?.ownership === "project" && r.provider.kind === "skill" && quietly(() => ports.factory?.current?.(r.provider.id))?.runs === "declared";

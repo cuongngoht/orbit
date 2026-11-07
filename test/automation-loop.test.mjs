@@ -29,10 +29,10 @@ test("start plans the engineering workflow from the facts, writes the plan befor
   assert.deepEqual(r.plan.steps.find((s) => s.id === "review").after, ["qa", "regression"], "review waits for both checks of the change");
 });
 
-test("a step's conditions come from the facts: no QA without something startable, no requirement step without a reference", (t) => {
+test("a step's conditions come from the facts: no requirement step without a reference, and a change's QA step whatever can be started", (t) => {
   const o = automationWorld(t, { startable: [] });
   const r = start(o.ports, { objective: "Implement the refund validation rule" });
-  assert.deepEqual(r.plan.steps.map((s) => s.id), ["context", "runtime", "engineering", "regression", "review"]);
+  assert.deepEqual(r.plan.steps.map((s) => s.id), ["context", "runtime", "engineering", "qa", "regression", "review"]);
 });
 
 test("a fresh install starts with no settings at all; a kept restriction (off, manual, planning) starts nothing", (t) => {

@@ -90,6 +90,20 @@
           "PASS"
         ]
       }
+    ],
+    "mission": [
+      {
+        "id": "controls",
+        "kind": "controls"
+      },
+      {
+        "id": "autonomous",
+        "kind": "autonomous",
+        "variant": "real",
+        "expect": [
+          "PASS"
+        ]
+      }
     ]
   },
   "extra": [
@@ -199,6 +213,10 @@
     ],
     "orbit-workflow": [
       "ORBIT-WF-004"
+    ],
+    "orbit-missions": [
+      "ORBIT-MSN-001",
+      "ORBIT-MSN-002"
     ]
   },
   "recorded": {
@@ -206,7 +224,8 @@
     "suites": [
       "orbit-sessions",
       "orbit-activation",
-      "orbit-workflow"
+      "orbit-workflow",
+      "orbit-missions"
     ],
     "cases": []
   },

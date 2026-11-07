@@ -205,11 +205,16 @@ const relevantFacts = (f, rel) => ((all, got) => ({ recall: all.length ? Math.ro
 
 const lineOf = (g, marker) => (g.lines ?? []).findIndex((l) => String(l).includes(marker)) + 1;
 
-const rowsCiting = (g, line) => (g.analysis?.requirements ?? []).filter((r) => r.line === line);
+// A row is the reading of a line only when it cites that line. One that cites none -- `line: null`, the engine inventing
+// no citation (0.5.0), or 0 as an earlier inspection read it -- is the reading of no line, and a marker the
+// specification does not hold (`lineOf` 0) is read by no row.
+const cites = (row, line) => Number.isInteger(row.line) && row.line > 0 && row.line === line;
+
+const rowsCiting = (g, line) => (g.analysis?.requirements ?? []).filter((r) => cites(r, line));
 
 const readRight = (g, item) => ((rows) => rows.length > 0 && rows.every((r) => item.kinds.includes(r.kind) && r.kindDefaulted !== true))(rowsCiting(g, lineOf(g, item.marker)));
 
-const acRecall = (g, markers) => (markers.length ? markers.filter((m) => (g.analysis?.acceptance ?? []).some((a) => a.line === lineOf(g, m))).length / markers.length : null);
+const acRecall = (g, markers) => (markers.length ? markers.filter((m) => (g.analysis?.acceptance ?? []).some((a) => cites(a, lineOf(g, m)))).length / markers.length : null);
 
 const goalRead = (f) => (f.read?.goals ?? []).filter((g) => g.analysis).at(-1) ?? null;
 

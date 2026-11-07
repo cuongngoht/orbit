@@ -13,6 +13,10 @@
   task matched ("public", "api"), and only reading the code tells a meant match from an incidental one. The word is
   unchanged; its reason now ends with the caveat the playbooks already gave -- start from the items, and confirm each in
   the code before it goes in -- so any reader of the word reads it.
+- **A goal's analysis never makes a citation up.** A requirement or acceptance row the host sent without a `sourceRef`
+  was stamped with an invented line (`#L<i+1>`, `#L<100+i>`), which the benchmark's grounding judge then held the row to.
+  A row now keeps the citation it was sent with, or none; `goal analyze` answers `uncited`, the number of rows that cite
+  no line, and says it; the benchmark reads a row with no line as the reading of no line.
 - **A held-out application measures Orbit on what it was not tuned against (B2, ADR 0056).** Every 0.4.0 fix was found
   on the benchmark's own cases, so their rates say how Orbit does on the cases it was fixed against. A new fixture,
   `benchmark/fixtures/lending/` -- a lending service several library systems share, with an asynchronous drop-box

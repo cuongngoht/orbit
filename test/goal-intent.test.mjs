@@ -179,3 +179,27 @@ test("a requirement row sent with no kind is read as an assumption, never explic
   assert.deepEqual(planned(rows), planned(labelledAs("assumption")), "no rule of the plan reads a row's kind");
   assert.deepEqual(planned(rows), planned(labelledAs("explicit")), "so reading a missing kind as an assumption, where it once was explicit, plans the same units");
 });
+
+// 0.5.0 (B21's review): a row the host sent with NO citation was stamped with one the engine made up -- `#L<i+1>` for a
+// requirement, `#L<100+i>` for a criterion -- a line nobody read, which every reader of a citation takes for the line the
+// row came from (the benchmark's grounding judge held such a row to whatever its made-up line said). It keeps none, and
+// `goal analyze` counts the rows that cite no line apart, as it counts a defaulted kind.
+test("a row sent with no citation keeps none -- never a line the engine made up -- and goal analyze counts it apart", () => {
+  const io = fakeIo();
+  const goals = createGoals("/store/acme", io);
+  const p = { ctx: { project: "acme", checkout: "co-111111111111", session: "s", host: "test" }, io, goals };
+  const g = startGoal(p, "Rename the order service.\nThe public API is kept as it is.\nAC1: every caller still compiles\n");
+  const ref = (n) => `spec@${g.specDigest}#L${n}`;
+  const requirements = [{ statement: "the order service is renamed", kind: "explicit", sourceRef: ref(1) }, { statement: "the public API is kept as it is", kind: "constraint" }, { statement: "no caller outside the repository", kind: "assumption", sourceRef: `spec@${g.specDigest}` }];
+  const acceptance = [{ statement: "every caller still compiles" }, { statement: "the API answers as it did", sourceRef: ref(3) }];
+  const analyzed = analyzeGoal(p, g.id, { ...english, requirements, acceptance });
+  assert.equal(analyzed.uncited, 3, "a row sent with no citation, and one naming the specification alone, cite no line");
+  assert.match(sayOps.analyze(analyzed), / · 2 acceptance criteria · 3 cite no line$/);
+  const kept = modelOf(goals.read(g.id)).analyzed;
+  assert.deepEqual(kept.requirements.map((r) => r.sourceRef ?? null), [ref(1), null, `spec@${g.specDigest}`], "a row's citation is the one it was sent with, or none");
+  assert.deepEqual(kept.acceptance.map((a) => a.sourceRef ?? null), [null, ref(3)]);
+  assert.deepEqual(Object.keys(kept.requirements[1]), ["id", "kind", "statement"], "nothing is filled in for it");
+  const cited = analyzeGoal(p, g.id, { ...english, requirements: [requirements[0]], acceptance: [acceptance[1]] });
+  assert.deepEqual([cited.uncited, /cite no line/.test(sayOps.analyze(cited))], [0, false], "a reading whose every row cites a line says nothing of it");
+  assert.throws(() => validateAnalysis({ ...english, requirements: [{ statement: "x", kind: "explicit", sourceRef: "" }] }, EN), Refused, "a citation that was sent is still held to its shape");
+});

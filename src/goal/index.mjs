@@ -12,6 +12,10 @@ const kindsSaid = (kinds) => (Object.keys(kinds ?? {}).length ? ` (${Object.entr
 // assumption". Nothing when every row was labelled.
 const defaultedSaid = (n) => (n ? ` · ${n} sent with no kind, read as ${DEFAULT_REQ_KIND}` : "");
 
+// The rows that cite no line of the specification -- the engine makes none up: " · 2 cite no line". Nothing when every
+// row cites one.
+const uncitedSaid = (n) => (n ? ` · ${n} cite no line` : "");
+
 const caps = (args) => {
   const t = flag(args, "capability");
   return t ? String(t).split(",").map((s) => s.trim()).filter(Boolean) : [];
@@ -32,7 +36,7 @@ export const OPS = {
 
 export const sayOps = {
   start: (r) => `GOAL       ${r.id} started\nTITLE      ${r.title}\nDIGEST     ${r.specDigest}`,
-  analyze: (r) => `GOAL       ${r.id} analyzed · ${r.requirements} requirements${kindsSaid(r.kinds)}${defaultedSaid(r.kindDefaulted)} · ${r.acceptance} acceptance criteria`,
+  analyze: (r) => `GOAL       ${r.id} analyzed · ${r.requirements} requirements${kindsSaid(r.kinds)}${defaultedSaid(r.kindDefaulted)} · ${r.acceptance} acceptance criteria${uncitedSaid(r.uncited)}`,
   plan: (r) => `GOAL       ${r.id} · ${r.plan} · ${r.units} work unit(s)`,
   status: (r) => sayReport(r.view),
   resume: (r) => r.say,

@@ -231,7 +231,7 @@ Every skill is backed by a CLI under `cli/`. The reliable form on any host is `n
 ```bash
 # Goals
 node cli/orbit.mjs goal start --stdin < goal.txt      # keep a goal as submitted
-node cli/orbit.mjs goal analyze <goal-id> --stdin      # the host's reading, as JSON; a row with no kind is an assumption
+node cli/orbit.mjs goal analyze <goal-id> --stdin      # the host's reading, as JSON; a row with no kind is an assumption, one with no sourceRef cites none
 node cli/orbit.mjs goal status <goal-id>               # where it stands
 node cli/orbit.mjs goal plan|resume|step|verify|report|list <goal-id>
 node cli/orbit.mjs doctor

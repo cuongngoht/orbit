@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { Refused } from "../errors.mjs";
 import { flag, has, words } from "../learn/args.mjs";
-import { validateAnalysis } from "./analyze.mjs";
+import { citesNoLine, validateAnalysis } from "./analyze.mjs";
 import { viewOf } from "./execute.mjs";
 import { startFromArgs } from "./start-args.mjs";
 import { stepGoal } from "./step.mjs";
@@ -34,7 +34,7 @@ export function analyzeGoal(ports, id, raw) {
 function appendAnalyzed(ports, id, analysis) {
   const model = viewOf(ports.goals.read(id));
   ports.goals.append(id, "analyzed", { id: nextId(model, "analyzed"), ...analysis });
-  return { id, digest: analysis.digest, requirements: analysis.requirements.length, kinds: kindsOf(analysis.requirements), kindDefaulted: defaultedOf(analysis.requirements), acceptance: analysis.acceptance.length };
+  return { id, digest: analysis.digest, requirements: analysis.requirements.length, kinds: kindsOf(analysis.requirements), kindDefaulted: defaultedOf(analysis.requirements), acceptance: analysis.acceptance.length, uncited: uncitedOf(analysis) };
 }
 
 // How many requirements of each kind the analysis holds, in the vocabulary's order -- a constraint counted apart.
@@ -43,6 +43,10 @@ const kindsOf = (requirements) => Object.fromEntries(REQ_KINDS.map((kind) => [ki
 // How many of them arrived with no kind and were read as DEFAULT_REQ_KIND (src/goal/vocab.mjs) -- already counted in
 // `kinds` as that kind, and counted again here, so the engine's default is never taken for the host's own reading.
 const defaultedOf = (requirements) => requirements.filter((r) => r.kindDefaulted === true).length;
+
+// How many rows -- requirements and criteria alike -- cite no line of the specification (src/goal/analyze.mjs
+// citesNoLine): the engine never makes one up, so a reading that left its lines out is counted, never covered.
+const uncitedOf = (analysis) => [...analysis.requirements, ...analysis.acceptance].filter(citesNoLine).length;
 
 export function planGoal(ports, id) {
   const loaded = loadGoal(ports.goals, ports.io, id);

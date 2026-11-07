@@ -51,7 +51,7 @@ node ${CLAUDE_PLUGIN_ROOT}/cli/orbit.mjs goal resume <goal-id> --json
 
 ## Analyze (host supplies structure; engine validates)
 
-Read the stored spec, produce JSON with `objective`, `intent`, `requirements[]`, `acceptance[]`, `unknowns[]`, `conflicts[]`. Every row needs `sourceRef` as `spec@<digest>#L<n>` from the start response.
+Read the stored spec, produce JSON with `objective`, `intent`, `requirements[]`, `acceptance[]`, `unknowns[]`, `conflicts[]`. Every row needs `sourceRef` as `spec@<digest>#L<n>` from the start response: the line the row comes from. A row sent without one keeps none -- the engine never makes a line up -- and the answer counts every row that cites no line apart (`uncited`), so cite each one.
 
 Label EVERY requirement row with its `kind`: `explicit` only for what the spec states, `derived` (it follows from what
 the spec says), `assumption`, `unknown`, `conflict`, `decision`, or `constraint` -- something the change must NOT

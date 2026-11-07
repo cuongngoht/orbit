@@ -344,7 +344,9 @@ const plansOf = (paths) => ({ exit: 0, json: { plans: dirsIn(join(paths?.dataRoo
 
 // ---- a goal's reading of its specification: its rows' kinds and the lines they cite, beside the specification's lines ---
 
-const lineNo = (ref) => Number(/#L(\d+)$/.exec(String(ref ?? ""))?.[1] ?? 0);
+// The one line a row cites, or null when it cites none: the engine keeps a row's citation as it was sent and invents none
+// (0.5.0: it once wrote `#L<i+1>` for a row sent without one), so a row with no line is the reading of no line.
+const lineNo = (ref) => ((m) => (m ? Number(m[1]) : null))(/#L(\d+)$/.exec(String(ref ?? "")));
 
 const journalLines = (dir) => (existsSync(join(dir, "journal.jsonl")) ? readFileSync(join(dir, "journal.jsonl"), "utf8").split("\n").slice(-2000).map(jsonOr).filter((l) => l && typeof l === "object") : []);
 

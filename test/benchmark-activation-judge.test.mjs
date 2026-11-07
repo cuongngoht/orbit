@@ -6,7 +6,11 @@
 // reached here, in its order, with the class it carries. The router's own accuracy, the owners' records, the grounding
 // rows and what the metrics fold reads are each held apart.
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
+import { goalReadingOf } from "../benchmark/images/runner/inspect.mjs";
 import { factsFrom } from "../benchmark/lib/activation/flow.mjs";
 import { judgedActivation, observedOf, PLUGIN_COMMAND, RECORDS, recordRows, routerOf, routerRight, STRATEGY_SEEN, VERDICT } from "../benchmark/lib/activation/judge.mjs";
 import { FAILURE_CLASSES } from "../benchmark/lib/source/classify.mjs";
@@ -345,6 +349,23 @@ test("a specification read into a goal is held to what each line is: the ambigui
   const none = judged(session(read("/work/repo/README.md")), { truth: GROUNDING, routing: ROUTED("NONE") });
   assert.deepEqual([none.verdict, none.grounding.grounded, none.grounding.facts.grounded], ["PASS", false, false], "no goal read it: recorded as not grounded, never failed");
   assert.equal(judged(session(read("/work/repo/README.md")), { truth: GROUNDING, arm: "none", turns: NO_TRAIL }).grounding, null, "with no Orbit there is no goal to read it");
+});
+
+// A row the host sent with no citation cites no line (0.5.0, B21's review): the engine once made one up, `#L<i+1>`, and
+// this judge then held the row to whatever that line said. Read back it is `line: null`, the reading of no line -- and a
+// marker the specification does not hold is read by no row, not even one an earlier inspection read as line 0.
+test("a goal row that cites no line is the reading of no line, as the inspection reads it back and as the judge holds it", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "orbit-goal-reading-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, "spec.json"), JSON.stringify({ body: SPEC.join("\n") }));
+  writeFileSync(join(dir, "journal.jsonl"), `${JSON.stringify({ kind: "analyzed", requirements: [{ kind: "unknown", sourceRef: "spec@abcdef01#L3" }, { kind: "constraint" }], acceptance: [{ sourceRef: "spec@abcdef01" }] })}\n`);
+  const reading = goalReadingOf(dir).analysis;
+  assert.deepEqual(reading, { requirements: [{ kind: "unknown", kindDefaulted: false, line: 3 }, { kind: "constraint", kindDefaulted: false, line: null }], acceptance: [{ line: null }] });
+  const at = (requirements, acceptance, truth = GROUNDING) => judged(session(bash(`node ${ORBIT}/cli/orbit.mjs goal start --stdin`)), { truth, routing: ROUTED("COORDINATED", "workflow", "orbit"), ins: goalRead(requirements, acceptance) });
+  assert.deepEqual(row(at(reading.requirements, reading.acceptance)), ["FAIL", "GROUNDING", "HOST_DIVERGED"], "the constraint, cited nowhere, was never read");
+  assert.equal(at([{ kind: "unknown", line: 3 }, { kind: "constraint", line: 4 }], reading.acceptance).grounding.facts.acceptanceRecall, 0, "a criterion that cites no line recalls none");
+  const nowhere = { ...GROUNDING, grounding: { rows: [{ id: "nowhere", marker: "a line the specification does not hold", kinds: ["unknown"] }], acceptance: [] } };
+  assert.equal(at([{ kind: "unknown", line: 0 }, { kind: "unknown", line: null }], [], nowhere).verdict, "FAIL", "a marker the specification does not hold is read by no row");
 });
 
 // ---- what the metrics fold reads ------------------------------------------------------------------------------------------------

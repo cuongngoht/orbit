@@ -7,6 +7,8 @@
 //   briefOf(ctx, k, state) -> { md, json }      promptOf(task, k, dir) -> text      objectiveOf(c) -> sentence (≤ 240)
 //   goalPromptOf(k, dir) -> text (an engineering case: the goal through Orbit's own goal entry, never a repair brief)
 //   workflowPromptOf(k, dir) -> text (a workflow case, 0.5.0: the request through /orbit-help and the workflow it starts)
+//   missionPromptOf(k, dir) -> text (a mission case, 0.5.0: the goal through Orbit Satellite, its units' agents and the
+//                              engineering task its implement unit starts)
 //   testDirOf(c) -> the directory a regression test goes in, read off the case's own agent-test pattern
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -42,7 +44,7 @@ const scriptRow = (ctx) => (ctx.case.repairs ?? []).find((r) => `scripted:${r.id
 
 // A goal script reads the goal as its title says it; a workflow script hands /orbit-help the request in the one sentence
 // its case restates it in (`workflow.ask`); a repair script plans under the repair's objective.
-const INTENT_OF = { engineering: (c) => c.title, workflow: (c) => c.workflow.ask };
+const INTENT_OF = { engineering: (c) => c.title, workflow: (c) => c.workflow.ask, mission: (c) => c.title };
 
 const intentOf = (c) => (INTENT_OF[c.kind] ?? objectiveOf)(c);
 
@@ -79,6 +81,20 @@ export const workflowPromptOf = (k, dir = "test/") => [
   "When you stop, say in one line where the workflow stands.",
 ].join("\n");
 
+// A MISSION case's prompt (0.5.0, ADR 0055): the goal taken through Orbit Satellite as its playbook says -- one decided
+// step at a time, each unit's run launched as the agent its envelope names, every run reported, the mission finished. It
+// names the entry and the doors, never which units a mission needs: that is the host's to plan.
+export const missionPromptOf = (k, dir = "test/") => [
+  "You are working inside an Orbit benchmark container. Nobody can answer a question here: where a skill says to ask a person, record what is missing and stop.",
+  "1. The repository at /work/repo is the project to change. Read /run/brief/brief.md: the goal, where a change may go, and the budget left.",
+  "2. Take the goal through Orbit Satellite -- the plugin at /work/orbit -- as its playbook says (the satellite skill, /work/orbit/skills/satellite/SKILL.md, and its protocol.md): `node /work/orbit/satellite/cli/satellite.mjs mission start --stdin` with the goal, then `mission context` and ONE decision at a time to `mission step` -- analyze the goal into its acceptance criteria, plan its work units, staff each with the least-privilege role it needs, and dispatch it. Run every command from /work/repo.",
+  "3. Launch each run's agent with the Agent tool as its envelope names (`envelope.agent.subagentType`), its prompt the envelope pasted verbatim; `agent ack` it with the agent id the Agent tool answered, and pipe its report to `agent report`. The change is made only by an implement unit, in the engineering task Satellite starts for it, in the workspace that task's context prints -- never start an engineering task yourself.",
+  `4. Add a regression test under ${dir} that fails before your change and passes after it. Never change or delete an existing test. Never push.`,
+  "5. End with `mission finish`: it says COMPLETED only when every acceptance criterion is verified by an independent owner's record. Never call the mission done when it does not.",
+  ...(k > 1 ? ["This is a later round: `mission list`, carry the mission on where it stands, reconcile what did not settle, and go on -- never start a second mission."] : []),
+  "When you stop, say in one line where the mission stands.",
+].join("\n");
+
 // The same goal with no Orbit beside it (0.5.0, B23's `none` arm): what Claude Code does on its own, held to the same
 // verifier -- the goal in a person's words, and nothing about a plugin it was not handed. Its target is writable.
 export const plainPromptOf = (k, dir = "test/") => [
@@ -97,9 +113,10 @@ const BRIEFS = {
   repair: { md: (ctx, k, state) => repairMd(ctx, k, state), prompt: (ctx, k, state) => promptOf(state.engTask, k, testDirOf(ctx.case)), plugin: "/work/repo" },
   goal: { md: goalMd, prompt: (ctx, k) => goalPromptOf(k, testDirOf(ctx.case)), plugin: "/work/orbit" },
   workflow: { md: goalMd, prompt: (ctx, k) => workflowPromptOf(k, testDirOf(ctx.case)), plugin: "/work/orbit" },
+  mission: { md: goalMd, prompt: (ctx, k) => missionPromptOf(k, testDirOf(ctx.case)), plugin: "/work/orbit" },
 };
 
-const BRIEF_OF = { engineering: "goal", workflow: "workflow" };
+const BRIEF_OF = { engineering: "goal", workflow: "workflow", mission: "mission" };
 
 const briefKind = (ctx) => BRIEFS[BRIEF_OF[ctx.case.kind] ?? "repair"];
 

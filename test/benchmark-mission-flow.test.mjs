@@ -12,6 +12,7 @@ import { test } from "node:test";
 import { docRead } from "../benchmark/lib/core/room.mjs";
 import { missionReportOf } from "../benchmark/lib/mission/report.mjs";
 import { compared, listed } from "../benchmark/images/runner/inspect.mjs";
+import { hostArgs } from "../benchmark/images/runner/entry.mjs";
 import { dockerDouble, ranAs, runOf, TASK, VIEW, worldOf } from "./benchmark-double.mjs";
 import { takeTurn } from "./benchmark-turn.mjs";
 
@@ -102,4 +103,11 @@ test("a mission whose reader's agent edited a file FAILS on the privilege leg al
   assert.deepEqual(outcome.failedLegs, ["privilege"]);
   assert.match(outcome.records.find((x) => x.id === "least-privilege").why[0], /arn-1's agent made edit call\(s\) its orbit:satellite-reader tools do not carry/);
   assert.match(reportOfRun(r).md, /FAILED \[privilege\] least-privilege/);
+});
+
+test("a mission round's host may never start an engineering task by hand: a mission's implement unit asks for the one it needs, so a change made in any other task is no mission's", () => {
+  const denied = (kind) => ((a) => a[a.indexOf("--disallowedTools") + 1].split(","))(hostArgs({ kind, plugin: "/work/orbit", outputBytes: 1024, usd: 1 }));
+  assert.ok(denied("mission").includes("Bash(node /work/orbit/cli/autonomous-engineering.mjs start:*)"));
+  assert.ok(["cleanup", "remove-workspace"].every((cmd) => denied("mission").includes(`Bash(node /work/orbit/cli/autonomous-engineering.mjs ${cmd}:*)`)), "and removes nothing its tasks left, as a goal round's host never does");
+  assert.ok(!denied("engineering").some((d) => /autonomous-engineering\.mjs start/.test(d)), "a goal round's workflow starts its own task the way a host would");
 });

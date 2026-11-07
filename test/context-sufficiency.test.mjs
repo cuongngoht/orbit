@@ -36,6 +36,15 @@ test("ENOUGH: what the task touches is named, nothing under it moved, something 
   assert.equal(sufficiencyOf(grounded({ paths: 0, graph: false, classes: classes({ verification: 0 }) })).word, "ENOUGH", "a named component with no path has nothing for a graph to reach");
 });
 
+// What B21's review found (0.5.0): "rename the order service and keep its public API" is ENOUGH on this repository from
+// one-word names its words matched -- `public`, `api`. A word-level reading cannot tell a meant match from an incidental
+// one, and a rule that demoted one-word matches would send every short, specific task to DISCOVER. So the word stays,
+// and says what it is: a place to start, each item confirmed in the code -- the caveat every playbook that reads it
+// already gives, in the reason any reader of the word reads.
+test("ENOUGH is a place to start, never proof: its own reason says to confirm each item in the code", () => {
+  assert.match(sufficiencyOf(grounded()).because, /— start from them, and confirm each in the code before it goes in: a name one of the task's words matched is not proof the change needs it$/);
+});
+
 test("ASK only for a blocking unknown no source can settle -- a question already open, carried as found, with how a person answers it", () => {
   const s = sufficiencyOf(grounded({ blocking: [QUESTION, { ...QUESTION, id: "rq-111111111111" }] }));
   assert.equal(s.word, "ASK");

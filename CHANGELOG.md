@@ -9,6 +9,10 @@
   of exactly the files it counted (`CONVENTION_SCOPES`; a `*.test.mjs` is no longer one of `*.mjs`'s), its `unknowns`
   say how many of how many, and the shape analysis, which opens no file, is always handed the whole listing, so every
   scan counts again.
+- **ENOUGH says it is a place to start.** The context package's sufficiency word can be ENOUGH on names one word of the
+  task matched ("public", "api"), and only reading the code tells a meant match from an incidental one. The word is
+  unchanged; its reason now ends with the caveat the playbooks already gave -- start from the items, and confirm each in
+  the code before it goes in -- so any reader of the word reads it.
 - **A held-out application measures Orbit on what it was not tuned against (B2, ADR 0056).** Every 0.4.0 fix was found
   on the benchmark's own cases, so their rates say how Orbit does on the cases it was fixed against. A new fixture,
   `benchmark/fixtures/lending/` -- a lending service several library systems share, with an asynchronous drop-box

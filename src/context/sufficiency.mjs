@@ -12,7 +12,13 @@
 //             ensure --capability=`, the TARGETED decision -- never a full scan), the owner whose record moved under a
 //             direct item, runtime understanding's component graph while it has not read the checkout (or what it read
 //             moved) -- never a read already made that would find the same nothing again
-//   ENOUGH    what the task touches is named, nothing it rests on moved since it was read, and nothing blocks: proceed
+//   ENOUGH    what the task touches is named, nothing it rests on moved since it was read, and nothing blocks: proceed,
+//             STARTING from what is named -- and its reason says so. A direct item can rest on one word of the task
+//             matching a name ("public", "api"), and a word-level reading cannot tell a meant match from an incidental
+//             one: only reading the code can, which is what every playbook that reads this word does before an item
+//             goes in. A rule that demoted a one-word match would send every short, specific task ("fix the login
+//             page", `src/login.mjs`) to DISCOVER, and a list of words that are never meant would be one language's
+//             (0.5.0 review of B21).
 //
 // facts: { tree, classes: { direct, dependency, downstream, verification, unknown }, stale: [{ ref, owner, id }],
 //          paths, graph, understood (runtime understanding's word, or null), unanswered: [token], refused,
@@ -84,7 +90,7 @@ export const SUFFICIENCY = [
   { word: "DISCOVER", row: "nothing-named", when: (f) => f.classes.direct === 0, because: (f) => `nothing the task names is held by the tracked tree or by an owner${f.refused ? ` (${f.refused} proposed reference(s) refused)` : ""} — read the code for it, and propose what you find to be verified`, targets: discoverTargets },
   { word: "DISCOVER", row: "stale", when: (f) => f.stale.length > 0, because: (f) => `${f.stale.length} record(s) under a direct or verification item moved since their owner read them — re-read those, and nothing else`, targets: staleTargets },
   { word: "DISCOVER", row: "unreached", when: graphOwed, because: (f) => `the direct paths are known, and nothing says what they reach or which check holds them — runtime understanding has not read this checkout${f.understood === "STALE" ? " since what it declares moved" : " yet"}`, targets: () => [target("runtime", "component graph", "runtime discover")] },
-  { word: "ENOUGH", row: "grounded", when: () => true, because: (f) => `${f.classes.direct} direct · ${related(f)} related · ${f.classes.verification} verification item(s); nothing under them moved since it was read, and no question about the work is open` },
+  { word: "ENOUGH", row: "grounded", when: () => true, because: (f) => `${f.classes.direct} direct · ${related(f)} related · ${f.classes.verification} verification item(s); nothing under them moved since it was read, and no question about the work is open — start from them, and confirm each in the code before it goes in: a name one of the task's words matched is not proof the change needs it` },
 ];
 
 const NO_CLASSES = { direct: 0, dependency: 0, downstream: 0, verification: 0, unknown: 0 };

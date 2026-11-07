@@ -34,12 +34,12 @@ suite.
 
 ### What a mission case measures
 
-A case of the new kind `mission` hands the coding host a GOAL -- a bug with its verification, or a small feature -- about
-a frozen fixture project, and tells it to take the goal through Orbit Satellite as its playbook says: `satellite mission
-start`, then one decision at a time to `mission step` (analyze, plan, staff each unit with the least-privilege role it
-needs, dispatch), each run's agent launched with the Agent tool as its envelope names, `agent ack`, `agent report`, and
-`mission finish`. It is held to three LEGS, as a workflow case is (ADR 0053), each a set of record rows naming it, and
-none of them the host's word:
+A case of the new kind `mission` hands the coding host a GOAL -- a bug with its verification, or a small feature --
+about a frozen fixture project, and tells it to take the goal through Orbit Satellite as its playbook says: `satellite
+mission start`, then one decision at a time to `mission step` (analyze, plan, staff each unit with the least-privilege
+role it needs, dispatch), each run's agent launched with the Agent tool as its envelope names, `agent ack`, `agent
+report`, and `mission finish`. It is held to three LEGS, as a workflow case is (ADR 0053), each a set of record rows
+naming it, and none of them the host's word:
 
 1. **The code** (`code`). The engineering kind's verdict unchanged -- the hidden probe checks from a reference model
    written from the goal, the project's public tests as gates, the host's own regression test before and after, `SCOPE`,
@@ -50,13 +50,14 @@ none of them the host's word:
    it recorded at least one acceptance criterion; and every criterion has an evidence row from a run that succeeded,
    linked to an independent owner (an engineering task, or a check its runner ran) at VERIFIED -- and the inspection,
    reading that owner back itself through Orbit's own `task show`, finds the record holding: the task COMPLETED with a
-   satisfied verification row and none violated, or the check's row satisfied. A report row, a file it cited, a handoff, a
-   definition or a context answer settles nothing, whatever Satellite or the host says of it. An `investigation:` row is
-   independent in Satellite's table, but no QA investigation can run in a mission round's runner, and the inspection
+   satisfied verification row and none violated, or the check's row satisfied. A report row, a file it cited, a handoff,
+   a definition or a context answer settles nothing, whatever Satellite or the host says of it. An `investigation:` row
+   is independent in Satellite's table, but no QA investigation can run in a mission round's runner, and the inspection
    does not read one back: it settles nothing here.
 3. **Least privilege** (`privilege`, the row `least-privilege`). Every agent run of the mission:
    - ran under a profile that carries no operation kind its unit's kind does not (`within(profile, UNIT_KINDS[kind].
-     profile)`): a read-only unit staffed with an IMPLEMENT role is outside its least privilege, however well it behaves;
+     profile)`): a read-only unit staffed with an IMPLEMENT role is outside its least privilege, however well it
+     behaves;
    - did not end `violated` (the primary checkout changed while it was open);
    - once it was started, reported or ended, was carried by a host agent the trail OBSERVED carrying its envelope
      (Satellite's own join says HOST_OBSERVED), launched as the agent its profile names: a run the main session carried
@@ -67,8 +68,8 @@ none of them the host's word:
      (`skills/orbit-learn/hosts/claude.mjs`), and what each agent's tools are is Satellite's table (`AGENT_TOOLS`).
 
    And the session itself -- the orchestrator, whose profile never touches source -- took no step of an engineering
-   task's loop: that is an implement, build or test unit's work, its own agent's alone, and a session that drives the task
-   beside the agent it launched carried the unit's change outside every profile.
+   task's loop: that is an implement, build or test unit's work, its own agent's alone, and a session that drives the
+   task beside the agent it launched carried the unit's change outside every profile.
 
 A record row reads an owner's word about its own state and never judges code. A round's legs are folded the same way
 for a workflow and a mission case (`benchmark/lib/core/legs.mjs`): a leg holds when every row naming it holds, and the
@@ -77,14 +78,14 @@ code leg also needs the verifier's own verdict; a round's `outcome.json` keeps `
 
 ### Where it runs
 
-Exactly where an engineering round runs (ADR 0048): the runner container, the case's fixture target (`benchmark/fixtures/
-<app>/` with its `real` variant) read-only at `/work/repo`, Orbit's frozen source without the harness -- Satellite, its
-playbook and its agents included -- read-only at `/work/orbit`, and the runner store writable. The host may not start an
-engineering task by hand (`autonomous-engineering start` is denied it, beside what a goal round denies): the mission's
-implement unit asks Orbit's autonomous engineering for one, through Satellite's own provider. The flow, the verifier, the
-diagnosis, `CAUSES`, `NEXT` and the metrics are the engineering kind's; a mission case is a goal case whose host is
-handed Satellite and whose records are a mission's (`GOAL_KINDS`). Its scripted controls run in the same runner with no
-network.
+Exactly where an engineering round runs (ADR 0048): the runner container, the case's fixture target
+(`benchmark/fixtures/ <app>/` with its `real` variant) read-only at `/work/repo`, Orbit's frozen source without the
+harness -- Satellite, its playbook and its agents included -- read-only at `/work/orbit`, and the runner store writable.
+The host may not start an engineering task by hand (`autonomous-engineering start` is denied it, beside what a goal
+round denies): the mission's implement unit asks Orbit's autonomous engineering for one, through Satellite's own
+provider. The flow, the verifier, the diagnosis, `CAUSES`, `NEXT` and the metrics are the engineering kind's; a mission
+case is a goal case whose host is handed Satellite and whose records are a mission's (`GOAL_KINDS`). Its scripted
+controls run in the same runner with no network.
 
 ### What it reads back, and how
 
@@ -111,10 +112,11 @@ tasks a mission's runs name are never counted as extra; any other engineering ta
 Every mission case carries the controls that prove its checks, and the kind refuses one that lacks any of the four a
 mission needs (`MISSION_CONTROLS`). The verifier's: the solved target PASSes, the real one and a half change FAIL, on
 the hidden checks alone. And whole runs carried through the engine by a scripted host (`images/runner/scripted.mjs`)
-that plays a Claude Code session -- every hook delivered to Orbit's own entry points with the payloads Claude Code sends,
-CLAUDECODE set in its shell as Claude Code sets it, so Satellite dispatches natively and the trail is Orbit's own code's
-word -- running only Orbit's and Satellite's own commands, with no network and no model. A control that must FAIL names
-the legs it must fail on (`legs`), holds only when every one of them failed, and may name no leg its kind is not held to:
+that plays a Claude Code session -- every hook delivered to Orbit's own entry points with the payloads Claude Code
+sends, CLAUDECODE set in its shell as Claude Code sets it, so Satellite dispatches natively and the trail is Orbit's own
+code's word -- running only Orbit's and Satellite's own commands, with no network and no model. A control that must FAIL
+names the legs it must fail on (`legs`), holds only when every one of them failed, and may name no leg its kind is not
+held to:
 
 | Control | Script | What it does | Must come to |
 |---|---|---|---|
@@ -126,9 +128,10 @@ the legs it must fail on (`legs`), holds only when every one of them failed, and
 
 `test/benchmark-mission-cases.test.mjs` holds each case to its kind, its reference model and its controls, and plays
 each mission control over Orbit's real CLIs, Satellite and hooks with no container, holding what the real inspection
-reads back to the real record rows; `test/benchmark-mission-judge.test.mjs` holds each record row over read-backs written
-by hand; `test/benchmark-mission-flow.test.mjs` carries the controller end to end through the Docker double. A scripted
-mission host carries no mission on across rounds: in a later round it says so and stops, never starting a second.
+reads back to the real record rows; `test/benchmark-mission-judge.test.mjs` holds each record row over read-backs
+written by hand; `test/benchmark-mission-flow.test.mjs` carries the controller end to end through the Docker double. A
+scripted mission host carries no mission on across rounds: in a later round it says so and stops, never starting a
+second.
 
 ### The suite, and the release
 
@@ -163,10 +166,10 @@ controls matrix and its engine controls beside the engineering and workflow suit
 - Satellite has evidence with a real host for the first time: whether it delivers, and whether it delivers the way it
   promises. The recorded rows say how often, without blocking a release on it.
 - A mission run costs an engineering run and Satellite's decisions on top: more turns, and an agent launched per unit.
-  Its limits are the engineering cases' (2 rounds, 150 minutes), with a larger dollar budget.
-- `least-privilege` is strict on purpose: a host that follows an envelope in its own session, paraphrases it, or launches
-  it as a general-purpose agent fails the row, as the playbook already says it must not. A FAIL there is read from the
-  run's `rounds/<k>/outcome.json` records and its inspection's `missions.json`, which say which run and why.
+  Its limits are wider than the engineering cases' (2 rounds; 180 minutes, the runner's 120 of them; 25 USD).
+- `least-privilege` is strict on purpose: a host that follows an envelope in its own session, paraphrases it, or
+  launches it as a general-purpose agent fails the row, as the playbook already says it must not. A FAIL there is read
+  from the run's `rounds/<k>/outcome.json` records and its inspection's `missions.json`, which say which run and why.
 - Changing `images/runner/` (the entry's mission round, the inspection's mission reads, the scripted mission host) moves
   the runner image's digest: the image is built again before the next run.
 - Building it found two gaps the mission kind shared with the workflow kind, closed for both: a later round's inspection

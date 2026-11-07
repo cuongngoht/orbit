@@ -1205,7 +1205,9 @@ benchmark/     (ADR 0046, 0047, 0048, 0053, 0054) THE DOCKER BENCHMARK of Orbit:
                browser CLI Orbit drives). suites/<suite>/suite.json and suites/<suite>/<case-id>/ (case.json,
                request.md, verifier/, variants/, controls/; a sessions case's poison/; an activation case's seed/).
                fixtures/<app>/ -- a project an engineering, activation, workflow or mission case is about (its public tests as
-               checks/). A
+               checks/): `orders` for the tuned cases, `lending` the HELD-OUT application only suites/orbit-heldout/'s
+               cases are about (0.5.0, ADR 0056: written under an independence rule, named by nothing Orbit ships,
+               test/benchmark-heldout.test.mjs). A
                run's evidence: <store>/benchmark/<bnr-…>/ (rounds/<k>/outcome.json, verified.json, report.md|json; a
                sessions run's home/, the host's own home kept between its sessions).
 integrations/  what ANOTHER program installs, never part of this plugin's archive. vscode-orbit-live/ (1.8.5, ADR 0021)

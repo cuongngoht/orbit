@@ -50,7 +50,8 @@ source cases), [ADR 0047](../docs/adr/0047-a-qa-benchmark-asks-whether-autonomou
 (repair controls, failure classes, engineering cases, metrics and CI tiers). Its sessions cases are
 [ADR 0054](../docs/adr/0054-a-sessions-benchmark-measures-what-memory-buys-a-second-session.md), its workflow cases
 [ADR 0053](../docs/adr/0053-a-workflow-benchmark-holds-one-request-to-its-code-its-qa-and-its-path.md), its mission cases
-[ADR 0055](../docs/adr/0055-a-mission-benchmark-asks-whether-satellite-settles-a-goal-on-owners-records.md). A release is qualified
+[ADR 0055](../docs/adr/0055-a-mission-benchmark-asks-whether-satellite-settles-a-goal-on-owners-records.md), its held-out
+cases [ADR 0056](../docs/adr/0056-a-held-out-application-measures-orbit-on-what-it-was-not-tuned-against.md). A release is qualified
 by driving it end to end
 ([ADR 0049](../docs/adr/0049-a-release-qualifies-on-docker-benchmark-evidence-carried-by-claude-code.md),
 [below](#driven-by-a-release-ship)).
@@ -88,10 +89,11 @@ benchmark/
   suites/<suite>/<case-id>/       one case, its directory the case id in lower case (a sessions case's poison/, an
                                   activation case's seed/ beside it)
   fixtures/<app>/                 a project an engineering or activation case is about; its public tests kept as
-                                  checks/<name>.mjs and moved to test/<name>.test.mjs in the checkout a run makes
+                                  checks/<name>.mjs and moved to test/<name>.test.mjs in the checkout a run makes --
+                                  `orders` for the tuned cases, `lending` the held-out application (ADR 0056)
 ```
 
-Fourteen suites ship:
+Fifteen suites ship:
 
 | Suite | Cases | What they ask |
 |---|---|---|
@@ -104,6 +106,7 @@ Fourteen suites ship:
 | `orbit-verdicts` | `ORBIT-VER-001`, `ORBIT-VER-002` | PASS earned, and a failure classified by an ordered table over demonstrated facts. |
 | `orbit-qa` | `ORBIT-QA-001` … `ORBIT-QA-007` | Does Orbit's autonomous QA find the defect planted in the invoice application, without false alarms? |
 | `orbit-engineering` | `ORBIT-E2E-001` … `008` | Is a goal taken through Orbit's goal entry to a verified change -- a bug fix, a feature, a change across five modules, a durable write, an idempotent consumer, an escaped note, a session cut off mid-work -- and is a goal with no rule refused? |
+| `orbit-heldout` | `ORBIT-HLD-001` … `005` | The same question on an application nobody tuned Orbit against (ADR 0056): a lending service several library systems share -- fines for late returns, holds served when a copy comes back, renewals, one system's records kept from another, and a request with no rule refused. Its model-carried rows are recorded, never required (see [Held-out cases](#held-out-cases)). |
 | `orbit-sessions` | `ORBIT-SES-001` … `003` | Does memory make a second session better, and never worse? Two QA applications worked twice, with memory and without (`001`: ORBIT-QA-003's, `002`: ORBIT-QA-001's), and a poisoned memory (`003`). Its model-carried rows are recorded, never required. |
 | `orbit-activation` | `ORBIT-ACT-001` … `011`, `ORBIT-NEG-001` … `004`, `ORBIT-CTX-001` … `003` | Does the host use Orbit by itself, and only where it helps -- on prompts that name no skill, in English and Vietnamese, with no Orbit, the previous release and this one? Its model-carried rows are recorded, never required. |
 | `orbit-workflow` | `ORBIT-WF-004` | Is one request taken through `/orbit-help` to a verified change by the workflow it starts -- routed, made by its own engineering task, its QA step never left out silently, every step settled on its owner's record? Its model-carried rows are recorded, never required. |
@@ -617,6 +620,30 @@ that leaves out the rule it needs, to a refusal with nothing delivered.
 | `ORBIT-E2E-007` | ORBIT-E2E-004's goal, with the first round cut off mid-work (`interrupt`) | interrupted, idle |
 | `ORBIT-E2E-008` | a loyalty discount with no rule for who is loyal or how much: refused, never invented | blocked, inventor, idle |
 
+### Held-out cases
+
+`orbit-heldout` (0.5.0, backlog B2, [ADR 0056](../docs/adr/0056-a-held-out-application-measures-orbit-on-what-it-was-not-tuned-against.md))
+asks the engineering cases' question of an application nobody tuned Orbit against: `fixtures/lending/`, a lending
+service several library systems share, with an asynchronous drop-box consumer and every record the system it belongs
+to. Its author wrote it under an independence rule -- none of the release failure reports, no existing case's
+verifier or controls, the authoring documentation only -- and the ADR says what reached them all the same. Each request
+is a person's about their own service.
+
+| Case | The goal | Its controls |
+|---|---|---|
+| `ORBIT-HLD-001` | late returns fined by the day and the format, never above the replacement cost, at the desk and the drop box, and a member's balance | solved, real, partial; reference, half, cheat (deletes a test), idle |
+| `ORBIT-HLD-002` | a copy that comes back is set aside for whoever has waited longest for its title, with a week to collect and a notice, theirs alone to borrow | solved, real, partial; reference, half, cheat (a test that held already), idle |
+| `ORBIT-HLD-003` | a loan renewed through the API from the due date it had, twice at most, never overdue, waited for or back | solved, real, partial; reference, half, cheat (weakens a test), idle |
+| `ORBIT-HLD-004` | every request and the drop box work on the caller's own library system only | solved, real, partial; reference, half, cheat (skips a test), idle |
+| `ORBIT-HLD-005` | a higher limit for teachers with no rule for who counts or how many: refused, never invented | real, invented; blocked, inventor, idle |
+
+Every case runs under exactly the tuned engineering cases' budget, so a held-out rate stands beside a tuned one. Its
+partial control is its half host's own change, and fails only the behaviours it leaves out. Three of its cheats are
+refused by name before anything of them runs, and the fourth by its own test passing before. Nothing Orbit ships may
+name the application or a word only its domain has. `test/benchmark-heldout.test.mjs` holds all of it beside
+`test/benchmark-cases.test.mjs`. The suite's controls are required; its model-carried rows are recorded, never required
+(ADR 0051).
+
 ### Scripted hosts for a goal
 
 | Script | What it does |
@@ -1121,6 +1148,12 @@ runsRecovered }, sandbox: { steps: { "<step>": { runs, attempts, failures, rate,
 stopped, endedBlocked } }, unknown: { "<step>": runs } } }`; every ratio is `{ numerator, denominator, value }`, and a
 value with nothing under it is `unknown`.
 
+**A held-out suite beside a tuned one** (ADR 0056). Every row names its suite, and `--suite` narrows a fold to one, so
+`reliability --suite=orbit-heldout --revision=<commit>` and the same with `--suite=orbit-engineering` give each suite's
+pooled pass@1 per host (`rates.models[]`) -- on the same model at the same effort, under the same budget. Their
+difference is B2's measure of generalisation: the target is the held-out suite within 15 points of the tuned one, read
+over repeats (`--repeat=5`), never over one ship.
+
 ## CI tiers
 
 | Tier | Where | What |
@@ -1236,6 +1269,19 @@ suites/<suite>/<case-id>/poison/<note>.md        a sessions case's poisoned memo
    public tests pass on the target, and every scripted control that must PASS leaves a tree that holds every hidden
    check and public test, with a regression test that fails before it and passes after --
    `test/benchmark-cases.test.mjs` holds all of it without Docker; `controls <case>` runs it in containers.
+
+**A held-out case** (ADR 0056) is an engineering case of `orbit-heldout`, on `fixtures/lending/`, the application nobody
+tuned Orbit against. Write it as above, and beyond that:
+
+1. Write it under the independence rule: read no release failure report or diagnosis, and no other case's verifier or
+   controls -- the authoring documentation only -- and say in the case's ADR what reached you all the same.
+2. Give it exactly the tuned engineering cases' budget: limits, samples, the regression-test rule, imports and cleanup.
+3. Prove it with a reference, a half (the verifier's partial control is the same change), a cheat and an idle host; a
+   request with no rule with a blocked one, an inventor and an idle one.
+4. Name no word of its domain anywhere Orbit ships, and fix nothing in Orbit for it alone: a defect a held-out row finds
+   is fixed for every project, and the change log says which held-out behaviour the fix touched.
+
+`test/benchmark-heldout.test.mjs` holds the suite to all of it.
 
 **A QA case.**
 

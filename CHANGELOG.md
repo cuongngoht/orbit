@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- **A held-out application measures Orbit on what it was not tuned against (B2, ADR 0056).** Every 0.4.0 fix was found
+  on the benchmark's own cases, so their rates say how Orbit does on the cases it was fixed against. A new fixture,
+  `benchmark/fixtures/lending/` -- a lending service several library systems share, with an asynchronous drop-box
+  consumer and every record the system it belongs to -- and its suite `orbit-heldout` (ORBIT-HLD-001 to 005) ask the
+  engineering cases' question of it: fines for late returns, holds served when a copy comes back, renewals, one system's
+  records kept from another, and a request with no rule refused. They were written under an independence rule (no
+  release failure report or diagnosis, no other case's verifier or controls), and the ADR says what reached their
+  author all the same; a person confirms it (the backlog's open question 5). Each runs under exactly the tuned
+  engineering cases' budget and is proven by a reference, a half, a cheat and an idle host (blocked, inventor and idle
+  for the request with no rule). The suite's controls are required; its five model-carried rows are recorded, never
+  required. `test/benchmark-heldout.test.mjs` also holds that nothing Orbit ships names the application or a word only
+  its domain has, so no fix can be aimed at it alone. `reliability --suite=orbit-heldout` beside
+  `--suite=orbit-engineering` gives B2's measure: the held-out suite within 15 points of the tuned one. No held-out QA
+  suite yet: the ADR says what one needs.
+
 - **A change's QA step is never left out silently (backlog B1, ADR 0053).** A coordinated workflow that makes a change
   planned its QA step only when something the checkout declared could be started; with nothing to start, the step was
   simply not in the plan, the workflow completed, and nothing anywhere said the change was never QA'd. The `engineering`

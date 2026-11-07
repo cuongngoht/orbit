@@ -46,7 +46,10 @@
   the conformance tier and, without Docker, in `test/benchmark-mission-cases.test.mjs` over Orbit's and Satellite's real
   commands. The release policy requires the suite's controls and records its model-carried rows. A round's legs are now
   one module for the workflow and the mission kinds (`benchmark/lib/core/legs.mjs`), and a control naming a leg its kind
-  is not held to is refused.
+  is not held to is refused. Two gaps the mission kind shared with the workflow kind are closed for both: a later round's
+  inspection was handed the first round's task, so it found the task by the controller's word instead of the
+  coordinator's (a correct second round of a workflow case failed its own path row), and a PASS of either kind did not
+  count as a verified outcome in `metrics`.
 
 - **A second message under a business key is not a second effect, and the tests of one investigation share its
   sandbox.** A real Claude Code QA row (ORBIT-QA-006 on Opus) found its planted defect and raised two false alarms that

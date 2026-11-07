@@ -27,7 +27,7 @@
 //   suitesIn(root) -> [{ id, version, title, dir, cases }]         caseOf(root, id) -> case + { dir, suite }
 //   suiteHolding(root, caseId) -> suite id | null
 //   caseFindings(c, dir) -> [sentence]                             dirDigest(dir) -> sha256 of every file, by path
-//   KINDS · TRUTH_OUTCOMES · QA_HOSTS · SESSION_HOSTS · MEMORY_ARMS · caseDir(id) · ARMS · DEFAULT_BASELINE · armsOf(c)
+//   KINDS · TRUTH_OUTCOMES · QA_HOSTS · REFUSAL_HOSTS · SESSION_HOSTS · MEMORY_ARMS · caseDir(id) · ARMS · DEFAULT_BASELINE · armsOf(c)
 //   baselinePluginOf(c) · memoryArmsOf(c)
 //   activationTruthFindings(t) -> [sentence]      activationTruthOf(c) -> truth | null      ACTIVATION_HOSTS · STRATEGIES
 //   COORDINATIONS · TIERS · LANGUAGES · SWITCH_NAME · SELECTION_CAPS · RECORD_READS · NAMES_A_COMPONENT
@@ -59,6 +59,12 @@ export const TRUTH_OUTCOMES = ["SATISFIED", "CONTRADICTED", "INCONCLUSIVE", "EXE
 
 // The scripted hosts a QA case's controls are run with (lib/qa/hosts.mjs): what the verifier must credit and refuse.
 export const QA_HOSTS = ["reference", "idle", "false-alarm"];
+
+// The scripted hosts that replay the calls a QA case plants (0.5.0, backlog B9: `refusals.planted`, quoted in its
+// request as an earlier session's notes) -- the relay refuses each as written: one that sends each once, reads why and
+// works on with the call corrected (`recovers`); one that sends the first again past the case's bound (`repeats`); and one
+// that never sends a refused subcommand again (`uncorrected`). A case that plants none has no control of these.
+export const REFUSAL_HOSTS = ["recovers", "repeats", "uncorrected"];
 
 // The scripted hosts a sessions case's controls may name besides (lib/qa/hosts.mjs): the ones only a second session can
 // be -- one that carries the earlier session's evidence over instead of testing (`cheat`), one that designs every test
@@ -175,8 +181,13 @@ const ENGINEERING_SECTIONS = [
   { at: "interrupt", of: (c) => (c.interrupt ? [c.interrupt] : []), fields: { round: { type: "integer", minimum: 1, maximum: 5 }, after: { type: "array", items: STEP, minItems: 1, maxItems: 4 } }, required: ["round", "after"] },
 ];
 
+// What a QA case may plant beyond its application (0.5.0, backlog B9): calls its request quotes from an earlier session's
+// notes, each refused by the relay as it is written, and how many times one refused call may be sent AGAIN before the
+// verdict fails it -- the bound a host that reads why it was refused never reaches.
+const REFUSALS = { repeats: { type: "integer", minimum: 0, maximum: 3 }, planted: { type: "array", items: { type: "array" }, minItems: 1 } };
+
 const QA_SECTIONS = [
-  { at: "case", of: (c) => [c], fields: QA_FIELDS, required: Object.keys(QA_FIELDS) },
+  { at: "case", of: (c) => [c], fields: { ...QA_FIELDS, refusals: { type: "object" } }, required: Object.keys(QA_FIELDS) },
   { at: "measures", of: (c) => [c.measures], fields: { kind: { type: "string", enum: ["detection"] }, capability: TEXT }, required: ["kind", "capability"] },
   { at: "target", of: (c) => [c.target], fields: { app: NAME, stack: NAME, variant: NAME, clean: NAME, plan: NAME, mode: { type: "string", enum: ["observe", "fixture-write"] }, withheld: { ...LIST, minItems: 1 } }, required: ["app", "stack", "variant", "clean", "plan", "mode", "withheld"] },
   { at: "acceptance", of: (c) => [c.acceptance], fields: { owner: { type: "string", enum: ["verifier"] }, truth: REL, minCoverage: { type: "number", minimum: 0, maximum: 1 } }, required: ["owner", "truth", "minCoverage"] },
@@ -184,7 +195,8 @@ const QA_SECTIONS = [
   { at: "limits.runner", of: (c) => [c.limits?.runner], fields: BOX, required: ["cpus", "memoryMb", "pids", "minutes", "outputMb"] },
   { at: "limits.engine", of: (c) => [c.limits?.engine], fields: { stepSeconds: { type: "integer", minimum: 30, maximum: 3600 }, callSeconds: { type: "integer", minimum: 10, maximum: 600 } }, required: ["stepSeconds", "callSeconds"] },
   { at: "cleanup", of: (c) => [c.cleanup], fields: { containers: LABELLED, networks: LABELLED, sandbox: { type: "string", enum: ["release"] }, scratch: SCRATCH }, required: ["containers", "networks", "sandbox", "scratch"] },
-  { at: "controls[]", of: (c) => c.controls ?? [], fields: { id: NAME, host: { type: "string", enum: QA_HOSTS }, expect: VERDICT }, required: ["id", "host", "expect"] },
+  { at: "refusals", of: (c) => (c.refusals ? [c.refusals] : []), fields: REFUSALS, required: ["repeats", "planted"] },
+  { at: "controls[]", of: (c) => c.controls ?? [], fields: { id: NAME, host: { type: "string", enum: [...QA_HOSTS, ...REFUSAL_HOSTS] }, expect: VERDICT }, required: ["id", "host", "expect"] },
 ];
 
 const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -234,6 +246,8 @@ const QA_CROSS = [
   { fails: (c, dir) => ((t) => (t && (t.from?.stack !== c.target?.stack || t.from?.variant !== c.target?.variant) ? ["its truth is another stack's or variant's"] : []))(truthOf(c, dir)), say: (bad) => bad.join("") },
   { fails: (c) => unsafeGlobs(c.target?.withheld), say: (bad) => `withheld globs reach outside the repository: ${bad.join(", ")}` },
   { fails: (c) => duplicates((c.controls ?? []).map((k) => k?.id)), say: (bad) => `control ids used twice: ${bad.join(", ")}` },
+  { fails: (c) => (c.refusals?.planted ?? []).filter((p) => !Array.isArray(p) || p.length < 1 || p.length > 16 || !p.every((a) => typeof a === "string")).map((p) => JSON.stringify(p).slice(0, 80)), say: (bad) => `plants calls that are no argument list a host could send: ${bad.join(", ")}` },
+  { fails: (c) => (c.controls ?? []).filter((k) => REFUSAL_HOSTS.includes(k?.host) && !c.refusals).map((k) => k.id), say: (bad) => `controls whose host replays planted refusals, on a case that plants none: ${bad.join(", ")}` },
 ];
 
 // ---- a SESSIONS case: a QA case worked in two sessions, and what is carried from the first to the second -----------------

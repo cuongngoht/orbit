@@ -16,6 +16,7 @@
 //   RELAY -> rows            admitted(request, investigation) -> { argv, stdin, budget } | { help } | { refused }
 //   usageAt(engineDir) -> [line] | null      helpAnswer(usage, help, investigation) -> { exit: 0, stdout, stderr }
 //   relayServer(dirs, serve, o) -> { stop() }      serve(admitted) -> Promise<{ exit, stdout, stderr }>
+//   requestLine(name, req, admitted, answer) -> the line the log keeps      logged({ log }, line)
 import { lstatSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { sha } from "../../../src/hash.mjs";
@@ -221,7 +222,7 @@ const answered = (dirs, name, answer) => (writeFileSync(join(dirs.responses, `.$
 // the decision itself, which the engine's own journal keeps -- how it ended (and, of an answer of 0, where a run it
 // dispatched stopped short: `stopped`, below) and how long it took. A help probe is kept as one (`help: true`), under
 // the subcommand it asked about (`helpOf`), with no argv: nothing was run.
-const logged = (dirs, line) => writeFileSync(dirs.log, `${JSON.stringify({ at: new Date().toISOString(), ...line })}\n`, { flag: "a" });
+export const logged = (dirs, line) => writeFileSync(dirs.log, `${JSON.stringify({ at: new Date().toISOString(), ...line })}\n`, { flag: "a" });
 
 // How a request the engine stopped ended, in the engine's own words: the first line it said when it refused or blocked
 // one (`inv-… is already paused`), which its answer carried to the host -- kept beside the exit code, since the relay's
@@ -257,9 +258,13 @@ async function servedOne(dirs, serve, name) {
   return finishedOne(dirs, name, req, a, { ...answer, ms: Date.now() - started });
 }
 
+// The line kept of one request, however it was asked -- through the mailbox, or by a scripted host in the controller's
+// own process (lib/qa/round.mjs askOf) -- so whatever reads the log reads one shape.
+export const requestLine = (name, req, a, answer) => ({ request: name, sub: a.help?.sub ?? req?.argv?.[0] ?? null, ...(a.help ? { help: true } : {}), argv: a.argv ?? null, stdin: req?.stdin ? { bytes: Buffer.byteLength(req.stdin), digest: sha(req.stdin).slice(0, 16) } : null, refused: a.refused ?? null, exit: answer.exit, ...whyOf(a, answer), ...stoppedOf(a, answer), ms: answer.ms });
+
 function finishedOne(dirs, name, req, a, answer) {
   answered(dirs, name, answer);
-  logged(dirs, { request: name, sub: a.help?.sub ?? req?.argv?.[0] ?? null, ...(a.help ? { help: true } : {}), argv: a.argv ?? null, stdin: req?.stdin ? { bytes: Buffer.byteLength(req.stdin), digest: sha(req.stdin).slice(0, 16) } : null, refused: a.refused ?? null, exit: answer.exit, ...whyOf(a, answer), ...stoppedOf(a, answer), ms: answer.ms });
+  logged(dirs, requestLine(name, req, a, answer));
   return answer;
 }
 

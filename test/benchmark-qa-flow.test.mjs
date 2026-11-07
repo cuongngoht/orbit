@@ -7,7 +7,7 @@
 // that never comes up blocks the run and is released; and a coding host with no credential sets nothing up.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
@@ -28,12 +28,21 @@ const CASE = { schema: 1, kind: "qa", id: "FIX-QA-001", version: "1.0.0", title:
 
 const TRUTH = { schema: 1, from: { file: "acceptance/truth.json", stack: "invoice-a", variant: "toast-without-persistence" }, default: "SATISFIED", shapes: SHAPES, expect: { "persisted-after-write": "CONTRADICTED" } };
 
+// The same case, with calls planted in its request the relay refuses as written (0.5.0, backlog B9): another
+// investigation's id and a flag the subcommand does not take, on a call a host needs and on one it is told to make.
+const PLANTED = [["context", "--investigation=inv-5e55d0a1ce4f", "--json"], ["finish", "--investigation=inv-5e55d0a1ce4f", "--reason=done"]];
+
+const TOOL_CASE = { ...CASE, id: "FIX-TOOL-001", title: "the same, with an earlier session's stale calls", refusals: { repeats: 1, planted: PLANTED } };
+
 const FILES = {
   "src/app.mjs": "export const app = 1;\n",
-  "benchmark/suites/fixture/suite.json": JSON.stringify({ schema: 1, id: "fixture", version: "1.0.0", title: "a QA fixture", cases: ["FIX-QA-001"] }),
+  "benchmark/suites/fixture/suite.json": JSON.stringify({ schema: 1, id: "fixture", version: "1.0.0", title: "a QA fixture", cases: ["FIX-QA-001", "FIX-TOOL-001"] }),
   "benchmark/suites/fixture/fix-qa-001/case.json": JSON.stringify(CASE, null, 2),
   "benchmark/suites/fixture/fix-qa-001/request.md": "Find the defects.\n",
   "benchmark/suites/fixture/fix-qa-001/verifier/truth.json": JSON.stringify(TRUTH),
+  "benchmark/suites/fixture/fix-tool-001/case.json": JSON.stringify(TOOL_CASE, null, 2),
+  "benchmark/suites/fixture/fix-tool-001/request.md": `Find the defects. An earlier session's notes: ${PLANTED.map((a) => `\`${a.join(" ")}\``).join(", ")}.\n`,
+  "benchmark/suites/fixture/fix-tool-001/verifier/truth.json": JSON.stringify(TRUTH),
 };
 
 const GIT_ENV = { GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@orbit.invalid", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@orbit.invalid" };
@@ -108,8 +117,8 @@ const dockerDouble = () => ({ process: { run: (file, a) => ({ ok: true, out: a[0
 
 const harness = (w) => ({ root: w.repo, engine: ROOT, env: w.env, taskEnv: w.env, credential: null, caFile: null, storeRoot: w.storeRoot, storeBase: dirname(w.storeRoot), dockerDeps: dockerDouble });
 
-async function runOf(w, host) {
-  const ctx = { ...(await withTruth(frozenRun(harness(w), { caseId: "FIX-QA-001", host, source: "head", images: { qaWorker: `sha256:${"c".repeat(64)}` }, dockerVersion: "double" }))), engineFor: engineDouble(w) };
+async function runOf(w, host, caseId = "FIX-QA-001") {
+  const ctx = { ...(await withTruth(frozenRun(harness(w), { caseId, host, source: "head", images: { qaWorker: `sha256:${"c".repeat(64)}` }, dockerVersion: "double" }))), engineFor: engineDouble(w) };
   return { ctx, result: await carriedQa(ctx), view: ctx.rec.show(ctx.task) };
 }
 
@@ -181,4 +190,57 @@ test("a coding host with no credential sets nothing up: the run is blocked befor
   assert.deepEqual([r.result.outcome, r.result.exit], ["BLOCKED", 3]);
   assert.match(r.result.summary, /CREDENTIALS/);
   assert.deepEqual(w.engines, []);
+});
+
+// ---- planted refusals (0.5.0, backlog B9) --------------------------------------------------------------------------------
+//
+// A case whose request quotes calls the relay refuses as written: the scripted hosts that send them, every request of a
+// scripted host kept in the round's relay log as a coding host's is, and the verdict's two rows read off that log.
+
+const relayLog = (ctx) => readFileSync(ctx.room.at("rounds", "1", "relay", "relay.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+
+test("a host that reads why each planted call was refused and corrects it passes; the round's relay log keeps every request it made", async (t) => {
+  const r = await runOf(world(t), "recovers", "FIX-TOOL-001");
+  assert.deepEqual([r.result.outcome, r.result.exit], ["PASS", 0]);
+  const log = relayLog(r.ctx);
+  assert.deepEqual(log.slice(0, 2).map((l) => [l.sub, Boolean(l.refused), l.exit]), [["context", true, 2], ["finish", true, 2]], "the planted calls, refused by the relay as written");
+  assert.match(log[0].refused, /names another investigation: this run's is inv-double-toast-wi; --json takes no --json here/);
+  assert.ok(log.slice(2).some((l) => l.sub === "context" && !l.refused) && log.at(-1).sub === "finish" && !log.at(-1).refused, "both corrected, the finish last");
+  assert.ok(log.every((l) => /^scripted-\d{4}\.json$/.test(l.request) && typeof l.ms === "number"));
+  const judged = docRead(r.ctx.room, "judged.json");
+  assert.deepEqual([judged.refusals.refused, judged.refusals.repeated, judged.refusals.uncorrected], [2, [], []]);
+  assert.ok(r.view.verification.some((v) => v.subject === "qa.refusals" && v.state === "satisfied"));
+  const report = reportAt(r.ctx, r.view);
+  assert.match(report.md, /Refused calls: 2 · a refused call may be sent again at most 1 time\(s\) · sent again past it: none · never corrected: none\./);
+  assert.deepEqual([report.json.tools.relay.context.refused, report.json.tools.relay.finish.refused], [{ OTHER_INVESTIGATION: 1 }, { OTHER_INVESTIGATION: 1 }], "the tool-call facts count what the scripted host was refused");
+});
+
+test("a host that never sends a planted call passes: the case asks how a refusal is met, never that one is", async (t) => {
+  const r = await runOf(world(t), "reference", "FIX-TOOL-001");
+  assert.deepEqual([r.result.outcome, docRead(r.ctx.room, "judged.json").refusals.refused], ["PASS", 0]);
+});
+
+test("a host that sends a refused call again past the case's bound fails on it, though everything else held", async (t) => {
+  const r = await runOf(world(t), "repeats", "FIX-TOOL-001");
+  assert.deepEqual([r.result.outcome, r.result.exit], ["FAIL", 1]);
+  assert.match(r.result.summary, /a refused call was sent again past the case's bound/);
+  const judged = docRead(r.ctx.room, "judged.json");
+  assert.deepEqual([judged.found, judged.falseAlarms, judged.refusals.repeated.map((x) => [x.call, x.sent])], [1, 0, [["context", 3]]]);
+  assert.ok(r.view.verification.some((v) => v.subject === "qa.refusals" && v.state === "violated"));
+});
+
+test("a host that never sends a refused finish again fails on it -- the read-back finishes the investigation all the same", async (t) => {
+  const w = world(t);
+  const r = await runOf(w, "uncorrected", "FIX-TOOL-001");
+  assert.deepEqual([r.result.outcome, r.result.exit], ["FAIL", 1]);
+  assert.match(r.result.summary, /a call the relay refused for how it was written was never corrected/);
+  assert.deepEqual(docRead(r.ctx.room, "judged.json").refusals.uncorrected.map((x) => x.call), ["finish"]);
+  assert.ok(!relayLog(r.ctx).some((l) => l.sub === "finish" && !l.refused), "it never asked for finish again");
+});
+
+test("a case that plants no refusals is held to none, and its scripted host's requests are kept all the same", async (t) => {
+  const r = await runOf(world(t), "reference");
+  assert.deepEqual([r.result.outcome, docRead(r.ctx.room, "judged.json").refusals], ["PASS", null]);
+  assert.ok(relayLog(r.ctx).length > 0 && relayLog(r.ctx).every((l) => !l.refused));
+  assert.ok(!r.view.verification.some((v) => v.subject === "qa.refusals"));
 });

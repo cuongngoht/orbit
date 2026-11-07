@@ -17,7 +17,9 @@
 // case may plant a POISON in the host's memory before the second (`poison`). An `activation` case (0.5.0, B22 M4) asks
 // whether the host uses Orbit BY ITSELF: a prompt that names no skill, on arms with and without Orbit, held to a hidden
 // truth of what a careful host does -- and, for an outcome case, the engineering kind's hidden checks on what it
-// delivered.
+// delivered. A `workflow` case (0.5.0, backlog B1, ADR 0053) hands a host ONE request through `/orbit-help` over a
+// fixture, and holds it to three legs from records: the code (the engineering kind's verifier), the QA step (here:
+// SKIPPED with its reason where nothing can be started) and the path (the coordinated workflow's own journal).
 //
 //   suitesIn(root) -> [{ id, version, title, dir, cases }]         caseOf(root, id) -> case + { dir, suite }
 //   suiteHolding(root, caseId) -> suite id | null
@@ -26,6 +28,7 @@
 //   baselinePluginOf(c) · memoryArmsOf(c)
 //   activationTruthFindings(t) -> [sentence]      activationTruthOf(c) -> truth | null      ACTIVATION_HOSTS · STRATEGIES
 //   COORDINATIONS · TIERS · LANGUAGES · SWITCH_NAME · SELECTION_CAPS · RECORD_READS · NAMES_A_COMPONENT
+//   GOAL_KINDS · isGoalKind(c) · WORKFLOW_SCRIPTS · WORKFLOW_LEGS · WORKFLOW_ROUTES · WORKFLOW_QA
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { constraintFindings, missingFindings } from "../../../src/constraints.mjs";
@@ -66,7 +69,7 @@ export const MEMORY_ARMS = ["on", "off"];
 
 const COMMON_FIELDS = {
   schema: { type: "integer", enum: [1] },
-  kind: { type: "string", enum: ["source", "qa", "engineering", "sessions", "activation"] },
+  kind: { type: "string", enum: ["source", "qa", "engineering", "sessions", "activation", "workflow"] },
   id: { type: "string", pattern: "^[A-Z][A-Z0-9]*(-[A-Z0-9]+)+$", says: { pattern: "id is upper-case words joined by dashes, such as ORBIT-SRC-001" } },
   version: { type: "string", pattern: "^\\d+\\.\\d+\\.\\d+$" },
   title: TEXT,
@@ -283,6 +286,58 @@ const ENGINEERING_CROSS = [
   { fails: (c) => (Number.isInteger(c.interrupt?.round) && Number.isInteger(c.limits?.rounds) && c.interrupt.round >= c.limits.rounds ? [c.interrupt.round] : []), say: () => "interrupts its last round: no round is left to carry the session on from where the cut left it" },
 ];
 
+// ---- a WORKFLOW case (0.5.0, backlog B1, ADR 0053): one request through /orbit-help, held to code, QA and path -------
+//
+// A workflow case is an engineering case's target -- a fixture with its `real` variant applied, its hidden checks, gates,
+// scope and own-test proof -- handed to a host as ONE request to take through `/orbit-help`: the coordinator routes it,
+// the engineering task it starts makes the change, and its QA, regression and review steps settle on their owners'
+// records. What it must show beside the code is `workflow`: the route the request takes, what its QA step must do, and
+// `ask` -- the request in ONE plain English sentence, as orbit-help tells a host to restate a request for `help.mjs
+// --for`: what a control's scripted host hands it (a coding host restates the request itself, from request.md).
+// Only what the harness can hold today is a word here: the QA step SKIPPED with its reason, on a target with nothing to
+// start. The relayed QA leg on a change's sandbox (ADR 0053, Parts 3 and 4) is not built, and a case asking for it is
+// refused when it is loaded, never run on less than it claims.
+
+// The kinds whose target is a fixture handed to a host with Orbit beside it, judged by the engineering kind's verifier
+// and record checks: a goal through Orbit's goal entry, and a request through /orbit-help.
+export const GOAL_KINDS = ["engineering", "workflow"];
+
+export const isGoalKind = (c) => GOAL_KINDS.includes(c?.kind);
+
+// What a workflow control's scripted host does (images/runner/scripted.mjs SCRIPTS): take the request through
+// `/orbit-help` and the workflow it starts (`workflow`), the same and stop once the change is made (`code-only`), make the
+// change in an engineering task started by hand with no workflow (`bypass`), or sit IDLE.
+export const WORKFLOW_SCRIPTS = ["workflow", "code-only", "bypass", "idle"];
+
+// The three legs a workflow case is held to, each a record row's (lib/workflow/judge.mjs).
+export const WORKFLOW_LEGS = ["code", "qa", "path"];
+
+export const WORKFLOW_ROUTES = ["engineering"];
+
+export const WORKFLOW_QA = ["skipped"];
+
+const WORKFLOW_FIELDS = { ...COMMON_FIELDS, baseline: BASELINE, fixture: { type: "string", pattern: "^[a-z][a-z0-9-]{0,39}$" }, subject: { type: "object" }, reproduce: TEXT, scope: { type: "object" }, checks: { type: "object" }, variants: { type: "object", minProperties: 1 }, repairs: { type: "array" }, workflow: { type: "object" } };
+
+const WORKFLOW_SECTIONS = [
+  { at: "case", of: (c) => [c], fields: WORKFLOW_FIELDS, required: requiredOf(WORKFLOW_FIELDS).concat(["baseline", "repairs"]) },
+  { at: "measures", of: (c) => [c.measures], fields: { kind: { type: "string", enum: ["workflow"] }, capability: TEXT, expects: { type: "string", enum: ["change"] } }, required: ["kind", "capability", "expects"] },
+  { at: "workflow", of: (c) => [c.workflow], fields: { route: { type: "string", enum: WORKFLOW_ROUTES }, qa: { type: "string", enum: WORKFLOW_QA }, ask: { type: "string", pattern: "^\\S.{0,239}$" } }, required: ["route", "qa", "ask"] },
+  ...sharedWith(["subject", "acceptance", "scope", "checks", "checks.gates[]", "checks.agentTests", "limits", "limits.runner", "limits.verifier", "limits.engineering", "cleanup", "variants.*", "controls[]"]),
+  { at: "repairs[]", of: (c) => c.repairs ?? [], fields: { id: NAME, variant: NAME, candidate: REL, through: { type: "string", enum: ["engine"] }, expect: { type: "string", enum: GOAL_OUTCOMES }, script: { type: "string", enum: WORKFLOW_SCRIPTS }, legs: { type: "array", items: { type: "string", enum: WORKFLOW_LEGS }, minItems: 1 } }, required: ["id", "variant", "candidate", "through", "expect", "script"] },
+];
+
+const scripted = (c, script) => (c.repairs ?? []).filter((r) => r?.script === script);
+
+// A workflow case beyond its fields: what an engineering case's target must be, a reference control that must PASS (a case
+// nobody can pass proves nothing), and every control that must FAIL naming the legs it fails on -- and never a leg for a
+// control that must pass.
+const WORKFLOW_CROSS = [
+  ...ENGINEERING_CROSS.filter((r) => !/arm|interrupt/.test(r.say(["x"]))),
+  { fails: (c) => (scripted(c, "workflow").some((r) => r.expect === "PASS") ? [] : ["reference"]), say: () => "carries no `workflow` control that must PASS: a case nobody can pass proves nothing" },
+  { fails: (c) => (c.repairs ?? []).filter((r) => r?.expect === "FAIL" && !(r.legs ?? []).length).map((r) => r.id), say: (bad) => `controls that must FAIL say which legs they fail on: ${bad.join(", ")}` },
+  { fails: (c) => (c.repairs ?? []).filter((r) => r?.expect === "PASS" && (r.legs ?? []).length).map((r) => r.id), say: (bad) => `a control that must PASS fails on no leg: ${bad.join(", ")}` },
+];
+
 // The arms a case runs on, and the revision its baseline arm is frozen from: the case's, else its suite's, else the
 // previous release.
 export const armsOf = (c) => c.arms ?? ["release"];
@@ -444,7 +499,7 @@ const ACTIVATION_CROSS = [
 // A case's truth, read from its own (frozen) directory: null when it cannot be read.
 export const activationTruthOf = (c) => readTruth(c.dir, c.acceptance.truth);
 
-export const KINDS = { source: { sections: SOURCE_SECTIONS, cross: SOURCE_CROSS }, qa: { sections: QA_SECTIONS, cross: QA_CROSS }, engineering: { sections: ENGINEERING_SECTIONS, cross: ENGINEERING_CROSS }, sessions: { sections: SESSIONS_SECTIONS, cross: SESSIONS_CROSS }, activation: { sections: ACTIVATION_SECTIONS, cross: ACTIVATION_CROSS } };
+export const KINDS = { source: { sections: SOURCE_SECTIONS, cross: SOURCE_CROSS }, qa: { sections: QA_SECTIONS, cross: QA_CROSS }, engineering: { sections: ENGINEERING_SECTIONS, cross: ENGINEERING_CROSS }, sessions: { sections: SESSIONS_SECTIONS, cross: SESSIONS_CROSS }, activation: { sections: ACTIVATION_SECTIONS, cross: ACTIVATION_CROSS }, workflow: { sections: WORKFLOW_SECTIONS, cross: WORKFLOW_CROSS } };
 
 const crossFindings = (kind, c, dir) => kind.cross.map((r) => [r, r.fails(c, dir)]).filter(([, bad]) => bad.length).map(([r, bad]) => `case: ${r.say(bad)}`);
 

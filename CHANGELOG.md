@@ -1,6 +1,265 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
+
+A minor release: Claude Code now uses Orbit by itself, and the benchmark measures how often Orbit's paths work, not only
+whether each passed once. Every skill and agent says first when to use it, within the host's listing budget; the prompt
+router says in one line how much Orbit a prompt needs, or nothing at all; the context package says what a task touches
+and whether that is enough; and a session follows its own work through to its owner's record (ADR 0050, now accepted).
+Autonomous QA holds a design, before a draft exists, to what an adapter reads and to what a correct application can
+satisfy (ADR 0052). Six new benchmark suites ask what 0.4.0 could not: whether the host uses Orbit by itself
+(`orbit-activation`), whether memory makes a second session better (`orbit-sessions`), one request taken through
+`/orbit-help` (`orbit-workflow`), a Satellite mission with a real host (`orbit-missions`), tool calls that fail on
+purpose (`orbit-tools`) and an application nobody tuned Orbit against (`orbit-heldout`). Their controls are required and
+their model-carried rows are recorded, never required (ADR 0051, 0053 to 0056): the catalog is 79 cases of fifteen
+suites, and 30 of the 46 rows a cycle the real Claude Code carries are recorded. Repeats, arms and a reliability report
+turn single PASSes into rates, and every benchmark run is Sonnet 5.5 at medium effort.
+
+All contract changes are additive: `cli/context.mjs --with-refs` and the package's `relevant` and `sufficiency`;
+`cli/trace.mjs activation`; a hook entry for Stop and for a returned agent (`cli/follow-hook.mjs`) and its automation
+setting `trigger.holdOnStop`; RouteDecision v3; a goal's `constraint` kind and the counts `goal analyze` answers; more
+of what autonomous QA's `context`, `generate` and `step` say, a verification outcome (`INTERRUPTED`) among it; and an
+optional `request` table per operation in `orbit.adapter/v1`, under the same apiVersion.
+
+**Claude Code uses Orbit by itself (ADR 0050, accepted; backlog B21, and B22 with B5 inside it).** Every 0.4.0 benchmark
+prompt named its skill, and the router's suggestions misfired all through the 0.4.0 release session. The host now picks
+Orbit from what a request asks, Orbit says how much of it a prompt needs and follows the session's own work through, and
+what happened is read back from the owners' records. What the host lists, and which of its mechanisms hold, were
+measured first (`docs/audit/0.5.0-activation-baseline.md`).
+
+- **Skills and agents say first when to use them, within the listing's budget.** Claude Code picks a skill from its
+  description, and Orbit's 25 skill descriptions were 17,924 characters with their triggers last: the listing drops
+  descriptions when it overflows, and `orbit:satellite` was listed with none. Every `SKILL.md` and `agents/*.md`
+  description now says when to use it in its first sentence and names the component it is most often confused with --
+  6,777 characters for the 25 skills (none above 300) and 4,128 for the 20 agents (was 12,180). A direct agent says "Use
+  proactively"; one only its parent dispatches opens "Only from". What a description said moved into its body, so
+  nothing its contract said is lost. Three agent names a playbook gave wrong or by pattern are spelled out
+  (orbit-architecture delegated to an `orbit-context-scanner` that does not exist), and orbit-architecture and
+  orbit-reverse-engineer, which record facts, say "Never edits source" where they said "Reads only".
+  `test/activation-catalog.test.mjs` holds the budget, and that each first sentence carries a word that reaches its
+  component.
+- **An agent its parent dispatches is reached only through that parent, and every component is reachable.**
+  `catalog/components.json` agent rows gain `via`: the skills whose playbook dispatches the agent. Five agents stay
+  direct (engineering, QA, the failure analyst, the DSL doctor, the engineering observer); the other fifteen name their
+  parents, and the resolver offers one only for a requirement its parent pulled in -- `orbit-map-healer` is never
+  suggested from "the locator drifted". A `security` intent (sixteen now) and new refinements reach what no intent asked
+  for, and the engine's own `engineering-memory` builtin answers `engineering.context` through `engineering.mjs recall`.
+  A test asks the real resolver that every skill and direct agent is selected for some prompt made of the table's own
+  words, and that no `via` agent ever is.
+- **The prompt router says how much Orbit a prompt needs, in one line or not at all (router v3).** One table,
+  `src/routing/strategy.mjs` (eleven ordered rows, the last always matching), answers NONE, DIRECT, COORDINATED,
+  SATELLITE or RESUME. NONE adds no text: a prompt the person opened with a slash command (they already chose what
+  runs), a host's own notification (Claude Code hands a background task's `<task-notification>` to the hook as a
+  prompt), an opt-out, a greeting, a status question that asks for nothing else, or nothing chosen. Anything else opens
+  with ONE line -- the word, why, and the skill or agent to invoke or the one command -- and the coordination advice
+  follows COORDINATED alone. COORDINATED is a change asked for that several owners take in turn, or a specification for
+  `/orbit`'s goal: a question that only names code ("is the orders endpoint protected?") asks for no change. SATELLITE
+  is only ever Satellite's own words, and RESUME an open work some owner governs, named by the prompt or continued,
+  through that owner's own read -- a work tracked under the requirement a reference was kept for included ("continue
+  PBI-482"), found by a lookup that writes nothing. A cue counts only in the first 2,000 characters, so a pasted log
+  decides nothing; a one-cue intent is said only when the word is its component's own; Vietnamese cues sit beside the
+  English ones in every intent, as data. `resources.mjs route`, Antigravity's explicit routing, answers RouteDecision v3
+  over the facts the hook binds, while `route()` stays the planner's v2 that Orbit Control's Router Inspector reads. The
+  trail's `prompt.submitted` keeps the strategy's word and row, the activation's path and id, `synthetic` and the
+  prompt's marks.
+- **A corpus holds the router to what a careful engineer wants (backlog B5).** `test/fixtures/routing/corpus.jsonl` has
+  224 prompts, 146 English and 78 Vietnamese -- greetings, status questions ("tới đâu rồi"), chit-chat, read-only
+  questions, code changes, QA, reports, releases, runtime, requirements, opt-outs, continues, slash commands, host
+  notifications and pasted logs -- each with the intent, the strategy and what it names, written before the router ran
+  over it and never changed to match it. `test/routing-corpus.test.mjs` holds intent and strategy to at least 90% in
+  each language (91.8% and 93.6% on intent, 94.5% and 98.7% on strategy), what the strategy names to 85%, every
+  greeting, chit-chat, status question, notification, opt-out and slash command to no text, and a request read with high
+  confidence to never being silenced. What it still misses is kept as the corpus says it, and named in the test's
+  diagnostics.
+- **A session follows its own work through, a line at a time.** At its start, a checkout the machine knows, with its
+  test data in place, gets one capability line of at most 300 bytes -- each family's usable count, what a person
+  switched off, the project's STATUS word -- and a resumed or compacted session gets its open work and next step. After
+  one of Orbit's agents (`orbit:*`) returns, one line names the owner record that settles its work and where it stands;
+  the agent's message and transcript are never read. After an Orbit command fails under the session's governed work, the
+  owner's recovery row follows the diagnosis: what did not settle is read back with `reconcile`, never sent again. A
+  repository with no ui-tests still gets nothing.
+- **A bounded Stop hold keeps this session's own workflow going, in Claude Code.** At Stop, `cli/follow-hook.mjs` holds
+  the turn with the ready step of the session's own running coordinated workflow or goal and its one command, or asks
+  the model to say in one sentence why it stops -- only when every row of its table allows it: a host that can hold
+  (Claude Code alone; Codex and Grok Build carry none until their Stop blocking is verified, and Antigravity's Stop is a
+  checkpoint), a turn not just held, fewer than two holds for this prompt, no halt in the prompt, a workflow command in
+  the turn, a trail that can count the holds, the work this session's own and running with a step ready, and the new
+  automation setting `trigger.holdOnStop` on (on by default, changed only through Orbit Control's door). Its one write
+  is the trail's `turn.held`; it starts nothing and grants nothing.
+- **`trace.mjs activation`: how a suggestion became an outcome.** `node cli/trace.mjs activation` (with `--days`,
+  `--session`, `--limit`, `--json`) folds, per turn and per work, ADR 0050's five links -- suggested, selected,
+  dispatched, executed, verified -- each with its source and basis, and verified only ever from the owner's record,
+  never from the trail. A turn that dispatched more of Orbit's agents than its strategy accounted for -- a `via` agent
+  whose parent skill did not run, an agent no strategy named, one agent type twice for one work -- is `over-delegated`,
+  and Orbit Control's Trace page carries the verdict on every turn and marks one that is. A command's documented
+  operation (`goal step`) joins its trail line.
+- **The context package says what a task touches, checks a host's references, and says whether that is enough (backlog
+  B21).** `cli/context.mjs --for` now answers RELEVANT -- at most 40 items, the rest counted, each with its class
+  (direct, dependency, downstream, verification or unknown), its evidence, its freshness against its own owner's scopes
+  and who found it, from what the owners already hold: architecture, the system graph, intelligence's integrations,
+  engineering's recall, knowledge's claims, the working set, impact's reach and the declared checks -- and SUFFICIENCY:
+  ENOUGH, DISCOVER naming the targeted reads that can fill the gap (each an Orbit command), or ASK with the question
+  already open about the task's own work or goal, never one made up. `--with-refs` reads `{ task, refs }` on stdin: a
+  file is checked against the tracked listing and a symbol by one whole-word search of the index, and one the tree does
+  not hold is refused by name and never listed. A package writes nothing. An engineering task's CONTEXT stage hands the
+  word and the items to the host as advice, and orbit-develop, orbit-engineer and orbit-help read the word before
+  choosing a scope: ENOUGH goes on, DISCOVER makes only the reads it names, ASK relays the open question and waits. A
+  search that matches nothing is an empty list, and one that could not run is unknown, never the other -- in a project
+  of several repositories too.
+- **`constraint` joins a goal's requirement kinds, and a row sent with no kind is an assumption.** A constraint --
+  something the change must not violate, such as a public API kept or no new dependency -- is a kind of its own beside
+  explicit, derived, assumption, unknown, conflict and decision. `goal analyze` answers `kinds`, the count of each, and
+  says it ("3 requirements (1 explicit · 1 assumption · 1 constraint)"). A row the host sent with no kind was filled in
+  as `explicit`, the one kind a guess must never get; it is now read as `assumption`, keeps `kindDefaulted: true`, and
+  is counted apart ("· N sent with no kind, read as assumption"). No rule that plans, verifies or completes a goal reads
+  a row's kind, so no plan changes; the `/orbit` playbook asks for a kind on every row.
+
+**Autonomous QA: a design is held, before a draft exists, to what an adapter reads and what a correct application can
+satisfy (backlog B7, ADR 0052).** 0.4.0's QA rows on Sonnet missed most of their planted defects, and the first 0.5.0
+pre-check ended six of seven as false alarms the clean application contradicted too. Most of it was Orbit's: designs
+refused only once a run was spent on them, or accepted though no correct application could satisfy them. With the fixes
+below, the seven QA rows on Sonnet 5.5 at medium effort held five at the re-verify, and all seven after the last two
+(`NEVER_REDELIVERED`, below, and the leak sentinel's).
+
+- **A second message under a business key is not a second effect, and the tests of one investigation share its
+  sandbox.** A real Claude Code QA row (ORBIT-QA-006 on Opus) found its planted defect and raised two false alarms that
+  the clean application contradicted too. Its `effect-once-per-key` test published a second message under the first
+  one's business key and waited for that message to be `processed`; a correct system settles it in its own word -- the
+  clean application recorded the duplicate it was -- and never as a second success. Its `completes-by-deadline` test
+  then made the schedule reach the very period whose business key that earlier test had used, in the same sandbox, and
+  waited for the period's message to be processed: the clean application settled that one as a duplicate too.
+  `effect-once-per-key` now says what `crash-after-effect-before-ack` says, in its own words (`says`, one sentence
+  builder for both): a second delivery or publication under the same business key is not a second effect -- observe it
+  by the message alone or by its delivery attempt, and rule the obligation on its own slot, the effect count; and
+  `competing-workers` says it of the same job received by a second worker. The other shapes with a duplicate control say
+  nothing of the kind, each by its own statement: `idempotent-under-repeat`'s repeated request is answered at once and
+  its contract may replay the first answer, `overlap-policy`'s policy may let the overlapping occurrence run, and
+  `webhook-authenticity` is contract-only. Every test obligation's `template` and `protocol`'s `design` now say that the
+  tests of one investigation run one after another in the same sandbox and share its state (`sandbox`): an effect, a key
+  or a scheduled occurrence a test used stays there for the next, so a design uses keys, message ids and occurrences no
+  earlier test used, none an accepted criterion states for another test, and none its schedule produces on its own once
+  the clock reaches them, unless that is what the test observes. And a `generate` step whose design names a literal
+  under a word of the backend vocabulary that says which business operation, message or period it is (`businessKey`,
+  `correlationId`, `messageId`, `occurrenceId`, anywhere in a step's request) that an earlier frozen version of the same
+  investigation named too says so in `result.shared` -- that version, its obligation and shape, the values and the
+  words they were named under, and a sentence. It is advice: nothing is written, refused or decided by it, and every
+  verdict is the one it was, because a test may observe on purpose what an earlier one left -- of the nine acceptance
+  reference designs, sent in order, only the occurrence test on the stack whose clock cannot move is told so, since the
+  deadline test before it triggered that period by hand. A version of the same obligation that never started left
+  nothing there and is not counted; a value a binding fills (`${…}`) is no literal.
+- **An adapter operation declares what its request carries, and a design is held to it where it is made (ADR 0052).**
+  `orbit.adapter/v1` gains an optional `request` table per operation -- additive, under the same apiVersion: one row per
+  field its helper reads (doc, type, enum, pattern, minimum, maximum, required, and `fields` for an object's own keys),
+  what may be sent and never what to send; a row may also say what a match field is compared with (`means`) and what the
+  match picks (`selects`). Each call step of a generated design is held to the table of the adapter selection picks: a
+  field it does not name is refused, naming the fields it reads; a required one missing is named; each field is held to
+  its row -- at the validate stage, as INVALID_TEST, before a draft exists. Before, a field the helper never read (a
+  real host's `request.businessKey` on a state read that takes `key` or `match`) became a frozen version, refused only
+  once a run was spent on it, and a test hook's `match` on a field the hooks do not answer by was dropped without a
+  word. The eight shipped adapters declare a table for every operation, and their conformance receipts were recorded
+  again against the real systems in Docker.
+- **A design no correct application can satisfy is refused.** A new `contradiction` stage refuses what a design and its
+  declarations prove, naming the step: `MATCH_PINS` -- an assertion waits for one value of a field the step's own match
+  names with another (a match that picks the answer leaves only the other value; a match whose count ends the wait cuts
+  short the window the criterion gives its own value); `SECOND_SETTLED` -- a second message under a business key held to
+  the very settlement the first is held to, which a correct worker settles as a duplicate (ORBIT-QA-001, 002 and 003 on
+  the pre-check); and `NEVER_REDELIVERED` -- a wait for a second delivery with no step that faults, stops or restarts a
+  workload, where the obligation's shape declares no way a delivery comes back (ORBIT-QA-002 on the re-verify, whose
+  host had gone past the advice). What a design rests on and a correct application need not do is said beside the answer
+  and never refused (`result.advice`): `UNCAUSED_REDELIVERY` where the shape declares a lease, a visibility timeout or
+  an ack wait, `UNCAUSED_DECISION` (a schedule's decision with nothing that moves the clock) and `SECOND_SETTLES`. No
+  acceptance rule, case truth, verifier or ship policy changed, and no benchmark control, reference design or worked
+  design is refused by these rules.
+- **One worked design per obligation shape.** The orbit-qa playbook's `references/designs.md` carries a generic worked
+  design for each of the 22 shapes the engine designs (the five contract-only shapes are named as gaps): the accepted
+  slots it assumes and the `generate` design itself, on an example system whose aliases a host replaces with the ones
+  `context` lists. Each is written from the shape's own row and the engine's rules, never from the acceptance designs;
+  `test/qa-worked-designs.test.mjs` makes every one a draft through the real generation port and holds that none does
+  what a reference design does. 0.4.0's QA rows on Sonnet spent most of their budgets on designs refused before a draft
+  existed. The worked designs for occurrence-one-execution and overlap-policy read a schedule's `due` after manual
+  triggers alone -- ORBIT-QA-007's host sent the first back renamed -- and now move the clock first.
+- **`context.budget` says what each obligation may still spend.** The design and repair budgets per obligation (4 and 2
+  by default) and the attempts a frozen version may run (3) were said only by the refusal that spent them.
+  `context.budget` now shows the limits (`perObligation`, `perVersion`) and what every obligation with a design has
+  spent (`used`, `spent`), and `generate` is refused exactly when context says spent.
+- **A scheduler's or a worker's observation binds no observer.** `orbit.scheduler.observe` and `orbit.worker.observe`
+  (and the contract-only `orbit.workflow.observe`) listed an `observer` ref, so generation made a draft naming one and
+  the sandbox's binder, which binds an observer only to a channel, blocked the run. Those operations read through the
+  component's own test hooks, which own no observer: an `observerRef` on them is now an unknown key at the validate
+  stage.
+- **An interrupted worker is its own outcome.** A worker stopped before its runner finished -- by its deadline, its
+  supervisor or a runner that ended without a word -- leaves an envelope with no case digest, which the host called "ran
+  another case" and ruled EXECUTION_ERROR: an outcome a host may try again, even when the run had grants and may have
+  written. It is now `INTERRUPTED` (a new verification outcome: it could write nothing, so a new attempt may run) or,
+  when it had grants, AMBIGUOUS (`INTERRUPTED_WRITE`: read back, never sent again). Its run is recorded BLOCKED, cause
+  `interrupted`, proving nothing, and `stopped` says why; reconcile judges a late envelope the same way.
+- **A fault never seen earns no PASS.** A fault control with no witness compiles no verdict of its own, so a run whose
+  fault never fired could hold every step and be SATISFIED. `FAULT_NOT_SEEN` already ruled a FAILED run INCONCLUSIVE
+  when no observation carried `fault:<point>`; it now rules a PASS the same way, and the playbook says to name the
+  witness.
+- **A key an accepted criterion states for another shape is said at the first design that names it.** 0.4.0 said it only
+  when a second design named it again, after the first had already left its effect in the shared sandbox.
+  `result.shared` now names it at the first, with the criterion and the shape it is stated for. Advice, like the rest of
+  `shared`: nothing is refused or decided by it.
+- **Two of B7's fixes are for development.** The Windows trace test that failed once under load -- three hook processes
+  racing for one trail's lock -- now delivers its hosts' hooks in turn, and a new test pins what the writer promises
+  instead: a line whose writer cannot take the lock is dropped, never thrown, and the next one lands. The module map's
+  sandbox section named three modules that do not exist; it names the ones that do, and `test/module-map.test.mjs` holds
+  it to `src/runtime/sandbox/` both ways.
+
+**Engineering and coordinated workflows.** Two dead ends a host could not see: a plan it could not widen once its review
+said the scope was too narrow, and a QA step left out of a change's plan with nothing said.
+
+- **A plan too narrow for its change can be sent again (ORBIT-E2E-007).** A review that failed on SCOPE because the plan
+  left out a path the change needs -- its own regression test -- was a dead end: after `diagnose` no `plan` was allowed,
+  `implement` takes no scope, and `finish` refused every stop the host tried, so the pre-check's host started a second
+  and a third engineering task. In DIAGNOSING a host may now send `plan` again naming every path the change needs (the
+  earlier plan stays in the journal), then `diagnose` `retest`; the SCOPE failure's own reason gives that answer and the
+  other one (take the path out, and `diagnose` `fix`). A `finish` refusal names the stops the journal supports now; a
+  stop that ends the task closes a change and an attempt it left open as `abandoned`; a step that leaves a field out is
+  told what the field must say (`protocol --json` prints it under `says`); and a change that recorded nothing is told to
+  make one or end the task.
+- **A change's QA step is never left out silently (backlog B1, ADR 0053).** A coordinated workflow that makes a change
+  planned its QA step only when something the checkout declared could be started; with nothing to start, the step was
+  simply not in the plan, the workflow completed, and nothing anywhere said the change was never QA'd. The `engineering`
+  workflow now always plans its QA step. When its turn comes, it is the host's investigation of the running change where
+  something can be started; where nothing can, the engine settles it SKIPPED with its reason -- "nothing this checkout
+  declares can be started here, so there is no running change to investigate: QA was skipped, not passed" -- its
+  verification row `not-verified`. The step answer, `automation.mjs context`, the workflow's ending and Orbit Live's plan
+  say it (the plan shows a skipped step's reason where every other step shows why it is planned), and orbit-help tells
+  its host to relay it as skipped. A host's word never skips a QA step, and an investigation's QA, which is the work
+  itself, is never skipped. A skipped step still counts as done for review and completion, as the omitted one did:
+  whether it should block a user-facing change stays the owner's open question. A plan an earlier release wrote with no
+  QA step still gets one once discovery finds something to start.
+
+**Memory, measured (backlog B3, ADR 0054).** `orbit-memory` proved that memory keeps its rules; nothing measured whether
+it helps a host the next time, or how much a wrong memory hurts.
+
+- **An architecture snapshot is no longer keyed to every commit by a file at the repository root.** A convention
+  counting a repeated filename (`*.json`, `*.md`) named each of its files by the folder it sits in, and a file at the
+  root sits in `.` -- which every reader of a scope takes for the whole tree. With a root `package.json` and four more
+  JSON files anywhere, every commit moved the fact: nearly every real project's snapshot was keyed to HEAD, and each
+  look after a commit was INCREMENTAL over the whole tree. A file at the root is now watched as itself. The memory cases
+  found it, and ORBIT-MEM-008 plants it back as its controlled fault.
+- **Memory first, measured: three source cases.** ORBIT-MEM-007 to 009 join `orbit-memory`, required like its others. A
+  second `architecture ensure` on an unchanged checkout is CURRENT -- no file read, no listing, no search, at most four
+  git calls, nothing written -- and costs under half the learning look's time; a commit to a note no fact is about
+  leaves it CURRENT, a changed declaration is INCREMENTAL over what moved alone, and an uncommitted edit is unknown
+  until committed; `knowledge claims` measures every claim's freshness in one look at the index, reading no file. Each
+  probe counts the subject's git calls, names every file it reads, compares the store's bytes and times each look.
+- **The sessions kind and `orbit-sessions`: does memory make a second session better, and never worse?** A sessions case
+  works a QA case's application in two sessions over one checkout and the stores the first left. Session 1 learns, with
+  memory on; session 2 is judged as a QA round is, on its memory arm -- `on`, or `off` with `ORBIT_LEARN=off` and
+  `ORBIT_HOST_MEMORY=off` in every Orbit process (`run --memory=on|off|all`). The report adds what was offered, the
+  poison, and what the second session's work came to (decisions used, designs refused, cost, minutes); `metrics` and
+  `reliability` split every row by memory arm, with memory's effect beside it (`--by=memory`). ORBIT-SES-001 and 002
+  compare both arms on ORBIT-QA-003's and ORBIT-QA-001's applications; ORBIT-SES-003 plants a poisoned note in the
+  host's own memory. The reference control (for the poison, a host that reads it and tests anyway) PASSes; idle, cheat,
+  half, `trusts-poison` and `trusts-stale` hosts FAIL. The suite's controls are required; its model-carried rows are
+  recorded.
+
+**What the reviews left open, closed.** Six findings the reviews of B3, B7 and B21 left open, each fixed with a
+regression test or closed with its reason (`docs/backlog/0.5.0.md`).
 
 - **A convention says how many of its folders it watches, and an incremental look never rewrites its count.** A
   convention fact ("1657 tracked file(s) are named *.mjs") watched the first eight of its folders by name and said
@@ -31,33 +290,60 @@
   never sent again, as an interrupted run already was -- unless the worker's own receipt says it never ran (rule
   `NEVER_RAN`; a worker removed before it was started now reads as `removed`, never `ended`). Reconcile names the same
   words, and a late envelope it cannot hold to a kept request is AMBIGUOUS too when the version could write.
-- **A held-out application measures Orbit on what it was not tuned against (B2, ADR 0056).** Every 0.4.0 fix was found
-  on the benchmark's own cases, so their rates say how Orbit does on the cases it was fixed against. A new fixture,
-  `benchmark/fixtures/lending/` -- a lending service several library systems share, with an asynchronous drop-box
-  consumer and every record the system it belongs to -- and its suite `orbit-heldout` (ORBIT-HLD-001 to 005) ask the
-  engineering cases' question of it: fines for late returns, holds served when a copy comes back, renewals, one system's
-  records kept from another, and a request with no rule refused. They were written under an independence rule (no
-  release failure report or diagnosis, no other case's verifier or controls), and the ADR says what reached their
-  author all the same; a person confirms it (the backlog's open question 5). Each runs under exactly the tuned
-  engineering cases' budget and is proven by a reference, a half, a cheat and an idle host (blocked, inventor and idle
-  for the request with no rule). The suite's controls are required; its five model-carried rows are recorded, never
-  required. `test/benchmark-heldout.test.mjs` also holds that nothing Orbit ships names the application or a word only
-  its domain has, so no fix can be aimed at it alone. `reliability --suite=orbit-heldout` beside
-  `--suite=orbit-engineering` gives B2's measure: the held-out suite within 15 points of the tuned one. No held-out QA
-  suite yet: the ADR says what one needs.
 
-- **A change's QA step is never left out silently (backlog B1, ADR 0053).** A coordinated workflow that makes a change
-  planned its QA step only when something the checkout declared could be started; with nothing to start, the step was
-  simply not in the plan, the workflow completed, and nothing anywhere said the change was never QA'd. The `engineering`
-  workflow now always plans its QA step. When its turn comes, it is the host's investigation of the running change where
-  something can be started; where nothing can, the engine settles it SKIPPED with its reason -- "nothing this checkout
-  declares can be started here, so there is no running change to investigate: QA was skipped, not passed" -- its
-  verification row `not-verified`. The step answer, `automation.mjs context`, the workflow's ending and Orbit Live's plan
-  say it (the plan shows a skipped step's reason where every other step shows why it is planned), and orbit-help tells
-  its host to relay it as skipped. A host's word never skips a QA step, and an investigation's QA, which is the work
-  itself, is never skipped. A skipped step still counts as done for review and completion, as the omitted one did:
-  whether it should block a user-facing change stays the owner's open question. A plan an earlier release wrote with no
-  QA step still gets one once discovery finds something to start.
+**The benchmark measures rates, and the paths people use (backlog B1, B2, B4, B9, B22's M4 and B23).** One PASS is not a
+rate, and 0.4.0 proved each autonomous capability on its own. Each new suite's controls are required and run in CI's
+conformance tier; its model-carried rows are recorded.
+
+- **One PASS is not a rate: repeats and a reliability report (backlog B2).** `run <case> --repeat=N` (with `--suite` and
+  `--like` too; at most 10) makes N runs one after another, each in a room and a task of its own, named one repeat group
+  in every manifest. `metrics` folds, per row -- one case and variant, on one arm, by one host basis, model and effort
+  -- and per model: pass@1, pass@k (the unbiased estimate, `--k`, 3 by default), the median reported cost, cost per
+  verified outcome and the median minutes, over the runs a rate may count (blocked, invalid, inconclusive, held,
+  unfinished and interrupted runs are left out, each by why); `--by` takes revision, model, arm, memory and language.
+  `node benchmark/run.mjs reliability [--revision= --suite= --case= --since= --k=] [--json]` folds the kept rooms in
+  scope into one document (`orbit.benchmark.reliability/v1`), and writes nothing.
+- **Arms: the same case with no Orbit, the previous release and this one (backlog B23).** A case may declare `arms`,
+  each handing the host a different plugin and nothing else different: `none` (no plugin mounted and no `--plugin-dir`,
+  so no hook fires and no trail is written; the host changes a writable copy of the target, which only the verifier
+  judges), `baseline` (the plugin frozen from a named revision -- the case's `baselinePlugin`, its suite's, else
+  `v0.4.0`; a repository without it refuses the run, never another one silently) and `release` (the run's own source,
+  which every run was before). `run --arm=<none|baseline|release|all>` picks one; the manifest names the arm and the
+  plugin's revision; `metrics --by=arm` and `orbit_overhead` give each Orbit arm's median reported cost, turns and
+  tokens minus the none arm's. A goal that must be refused is verified on the none arm only when the host left no
+  change. The activation suite declares all three.
+- **What the host did is read off the controller's own capture, and held to the trail.** The runner prints the host's
+  stream on its stdout as well, and the controller captures it into the run's room (`rounds/<k>/host.stream.jsonl`, each
+  chunk timed by its own clock), a file no container mounts. `hostOf` keeps one row per tool call -- its name, the skill
+  a Skill call starts, the agent an Agent call dispatches, a file tool's path, its turn, whether its result came back an
+  error -- and never a prompt, an input or an output. The agreement rule holds the stream's Skill and Agent calls to the
+  trail Orbit's hooks wrote: a call with no trail line, or a line with no call, is CONFLICTING, and one that cannot be
+  read is UNDETERMINED, never AGREES. A new failure class, `HOST_DIVERGED`, says Orbit's suggestion was right and the
+  host chose otherwise. The inspection keeps the trail's turns and every sandbox the runner store holds (`turns.json`,
+  `sandbox.json`).
+- **Tool-call failures, counted (backlog B9).** A run's report carries `tools` and a "Tool calls" section: per tool,
+  calls, failed calls and unanswered ones, from the controller's capture; recovery, each failed call to the next call of
+  its thread that did not fail, with the turns, tokens and apportioned cost spent getting there; per relay subcommand,
+  requests, help probes, refusals by reason and the engine's non-zero exits; per sandbox step (prepare, restore,
+  container build, start, readiness, release), attempts, failures, the class of each (`SANDBOX_FAILURES`: Docker down, a
+  pull refused or rate-limited, a port held, a restore failed, readiness never answered, a teardown unproven), the host
+  calls each cost and whether one nothing got past ended BLOCKED. What no record says is null, with its reason.
+  `metrics` and `reliability` fold them per host basis, suite and model.
+- **`--effort` beside `--model`.** `run --effort=<low|medium|high|xhigh|max>` goes to the host's own argument list in
+  every brief and to `doctor --host`; the manifest, the report, `status`, a verified candidate and `--like` keep it, and
+  `metrics` and `reliability` count a model at each effort as a host of its own. Every 0.5.0 benchmark run is Sonnet 5.5
+  at medium effort, the owner's decision.
+- **The activation kind and `orbit-activation` (backlog B22's M4, with B23's arms and B21's grounding cases).** A prompt
+  that names no skill and no command is handed to the host with Orbit -- or without it -- and held to a hidden truth:
+  does the host use Orbit by itself, and only where it helps? What it did is read off its stream and the trail Orbit's
+  hooks wrote, and held to the truth, the owners' records and, for an outcome case, the hidden checks of what it
+  delivered; every row is a failure class, `HOST_DIVERGED` where the host chose. A seed round lays a case's seed into
+  the runner's store, and the inspection reads back, always with the run's own Orbit. Eighteen cases -- ORBIT-ACT-001 to
+  011, ORBIT-NEG-001 to 004 (where Orbit should stay out) and B21's ORBIT-CTX-001 to 003 (grounding: recall, invented
+  references, bytes read) -- in English and Vietnamese, each on the three arms, with 86 controls (reference, idle,
+  over-eager, forging, half and escalating hosts, among others). `metrics` adds activation precision and recall,
+  strategy, skill and agent selection, unnecessary delegation, the router's own accuracy, capability coverage and work
+  completion, and `--by=language`.
 - **The benchmark's workflow kind and the `orbit-workflow` suite (backlog B1, ADR 0053).** A workflow case hands a host
   ONE request, in a person's words, to take through `/orbit-help`, and holds it to three legs from records: the code
   (the engineering kind's verifier on what the workflow's own engineering task delivered), the QA step, and the path (one
@@ -70,7 +356,6 @@
   real commands. The release policy requires the suite's controls and records its model-carried row. The relayed QA leg
   -- an investigation of the change on a sandbox beside the controller, and the three cases that need it -- is designed
   in ADR 0053 and not built; the kind refuses a case that asks for it.
-
 - **The benchmark's mission kind and the `orbit-missions` suite (backlog B4, ADR 0055).** Satellite had been checked at
   source level only: no mission had ever run with a real host. A mission case hands a host a GOAL -- a bug with its
   verification, or a small feature -- to take through Orbit Satellite as its playbook says, and holds it to three legs
@@ -94,33 +379,6 @@
   inspection was handed the first round's task, so it found the task by the controller's word instead of the
   coordinator's (a correct second round of a workflow case failed its own path row), and a PASS of either kind did not
   count as a verified outcome in `metrics`.
-
-- **A second message under a business key is not a second effect, and the tests of one investigation share its
-  sandbox.** A real Claude Code QA row (ORBIT-QA-006 on Opus) found its planted defect and raised two false alarms that
-  the clean application contradicted too. Its `effect-once-per-key` test published a second message under the first
-  one's business key and waited for that message to be `processed`; a correct system settles it in its own word -- the
-  clean application recorded the duplicate it was -- and never as a second success. Its `completes-by-deadline` test
-  then made the schedule reach the very period whose business key that earlier test had used, in the same sandbox, and
-  waited for the period's message to be processed: the clean application settled that one as a duplicate too.
-  `effect-once-per-key` now says what `crash-after-effect-before-ack` says, in its own words (`says`, one sentence
-  builder for both): a second delivery or publication under the same business key is not a second effect -- observe it
-  by the message alone or by its delivery attempt, and rule the obligation on its own slot, the effect count; and
-  `competing-workers` says it of the same job received by a second worker. The other shapes with a duplicate control say
-  nothing of the kind, each by its own statement: `idempotent-under-repeat`'s repeated request is answered at once and
-  its contract may replay the first answer, `overlap-policy`'s policy may let the overlapping occurrence run, and
-  `webhook-authenticity` is contract-only. Every test obligation's `template` and `protocol`'s `design` now say that the
-  tests of one investigation run one after another in the same sandbox and share its state (`sandbox`): an effect, a key
-  or a scheduled occurrence a test used stays there for the next, so a design uses keys, message ids and occurrences no
-  earlier test used, none an accepted criterion states for another test, and none its schedule produces on its own once
-  the clock reaches them, unless that is what the test observes. And a `generate` step whose design names a literal
-  under a word of the backend vocabulary that says which business operation, message or period it is (`businessKey`,
-  `correlationId`, `messageId`, `occurrenceId`, anywhere in a step's request) that an earlier frozen version of the same
-  investigation named too says so in `result.shared` -- that version, its obligation and shape, the values and the
-  words they were named under, and a sentence. It is advice: nothing is written, refused or decided by it, and every
-  verdict is the one it was, because a test may observe on purpose what an earlier one left -- of the nine acceptance
-  reference designs, sent in order, only the occurrence test on the stack whose clock cannot move is told so, since the
-  deadline test before it triggered that period by hand. A version of the same obligation that never started left
-  nothing there and is not counted; a value a binding fills (`${…}`) is no literal.
 - **The QA relay's log says why the engine stopped a request.** A host's request that the engine refused or blocked
   was logged with its exit code and the relay's own `refused`, which is null for it, so in `relay.jsonl` an engine
   refusal read as one with no reason. A real row's second `finish --why=x` exited 2 there with nothing beside it,
@@ -152,6 +410,98 @@
   count them too. The policy requires the suite's controls and records its model-carried row; the conformance tier runs
   the controls with the QA worker image. The sandbox failures B9 lists are left out: a QA run's sandbox is the
   controller's setup, never a host's call, and the runner has no Docker for a task's sandbox to fail in.
+- **A held-out application measures Orbit on what it was not tuned against (B2, ADR 0056).** Every 0.4.0 fix was found
+  on the benchmark's own cases, so their rates say how Orbit does on the cases it was fixed against. A new fixture,
+  `benchmark/fixtures/lending/` -- a lending service several library systems share, with an asynchronous drop-box
+  consumer and every record the system it belongs to -- and its suite `orbit-heldout` (ORBIT-HLD-001 to 005) ask the
+  engineering cases' question of it: fines for late returns, holds served when a copy comes back, renewals, one system's
+  records kept from another, and a request with no rule refused. They were written under an independence rule (no
+  release failure report or diagnosis, no other case's verifier or controls), and the ADR says what reached their
+  author all the same; a person confirms it (the backlog's open question 5). Each runs under exactly the tuned
+  engineering cases' budget and is proven by a reference, a half, a cheat and an idle host (blocked, inventor and idle
+  for the request with no rule). The suite's controls are required; its five model-carried rows are recorded, never
+  required. `test/benchmark-heldout.test.mjs` also holds that nothing Orbit ships names the application or a word only
+  its domain has, so no fix can be aimed at it alone. `reliability --suite=orbit-heldout` beside
+  `--suite=orbit-engineering` gives B2's measure: the held-out suite within 15 points of the tuned one. No held-out QA
+  suite yet: the ADR says what one needs.
+- **A case's interruption is a moment of its engineering task's progress, never a minute (ORBIT-E2E-007).** Its first
+  round was to be cut after four wall-clock minutes, and on Sonnet 5.5 at medium effort the round finished in under
+  four: nothing was interrupted, and the case measured nothing of a resumed session. A case now declares
+  `interrupt: { round, after }` -- the steps an engineering task must have started -- and ORBIT-E2E-007 cuts at the
+  first check after its change was opened (`["implement", "check"]`). The controller reads the runner store as untrusted
+  data, asks every second, and stops the container once with no grace, as a crash would; the round keeps its whole
+  deadline, and its brief says nothing of the cut. A case that declares an interruption is held to its having happened
+  (an `interrupted` record), so a run that finished first never passes it, and the report says the round was CUT. The
+  inspection now reads back the engineering task the round's own coordinated workflow names, never just the only one
+  there is, and the case holds the run to one goal and one engineering task.
+- **A run's cleanup never hides why it stopped, and a sessions case that learns on the clean application reaches its
+  second session.** ORBIT-SES-001 to 003's Docker controls crashed with "has no workspace of its own here": a run that
+  stops part-way releases every engine's sandbox, and one whose task never got a workspace threw before any promise
+  existed, so the release's own error replaced the one that had stopped the run. A release now answers that error as its
+  result. Under it, a case that learns on the clean application moved the code under the shared checkout by clearing it
+  and asking the acceptance assembly to build there, which refuses a directory that is not empty; the variant is now
+  assembled beside the checkout and laid over it, its history kept and the move committed.
+- **A run's PASS is never REFUSED for a file that left before the sentinel read it.** ORBIT-QA-005 on Sonnet 5.5 at
+  medium effort ended PASS -- its defect found, no false alarm -- and the suite answered REFUSED: the leak sentinel
+  listed the run's room, and a sandbox's supervisor removed its own owner file before the sentinel read it. A file gone
+  before it is read holds nothing to mask; any other failure to read still stops the sentinel. A QA room with no relay
+  log now says why: no host round asked anything, or the room predates 0.5.0.
+
+**The release (ADR 0051; backlog B6 and B8).** 0.4.0 took twelve ships over two days. A ship now runs its model rows
+first when asked, resumes without losing what it held or charging what it never saw, diagnoses a failed row from its own
+room, and records a new suite's model rows before it requires them.
+
+- **Model-carried runs happen in a Claude Code cloud session only (backlog B8).** The owner decided during 0.4.0 that a
+  real coding host never runs in GitHub Actions. `release.yml` is gone, and so is `benchmark.yml`'s autonomous job with
+  the inputs only it used; `ci.yml` keeps `ship.mjs --ci`, and `benchmark.yml` keeps its conformance tier -- controls
+  and scripted hosts, no credential -- whose controls matrix a test now holds to every suite, `orbit-qa`'s 21 whole-run
+  controls among them, on the QA worker image. A test holds that no workflow hands a job a coding host's credential or
+  runs the ship beyond `--ci`. `CLAUDE.md` says how a cloud session runs the ship: the coding host's token is mapped,
+  for one detached process, to the name Claude Code reads, and never used under its own.
+- **`ship.mjs --precheck`: the model-carried rows first, each once.** A ship stops at its first failed row after about
+  90 minutes of controls, and 0.4.0 ran its model rows by hand before each ship. A precheck is a ship of mode `precheck`
+  -- one task and one room, so `--resume` and `--status` carry it -- that builds the images, asks the host, then runs
+  only the catalog's model-carried rows, required and recorded, each once (no `--retries`, one cycle; a run a restart
+  interrupted still runs again), and stops at no failure. It ends PRECHECK_HELD (exit 0) or PRECHECK_FAILED (exit 2)
+  with every failure's room and diagnosis, fails only on a row a ship would stop on (a recorded row's miss is said,
+  "(recorded, not required)"), and never writes evidence.
+- **`--status` diagnoses a failed model-carried row from its own room.** A run's report (`report.json`, `report.md`) now
+  carries a `diagnosis` read off its own records: how the host's session ended round by round (interrupted, the
+  deadline, no session, a round cut, the host's own result subtype), the budget it used against its allowance, and for a
+  QA run what the relay refused, what the engine stopped and where a run stopped short (`result.stopped`, the one thing
+  the relay log keeps of an answer of 0). `--status` prints it beside the room of every model-carried row of the newest
+  cycle that did not hold.
+- **Recorded rows: run and reported, never required.** The policy's `recorded: { suites, cases }` names model-carried
+  rows a release runs once, under its retries, and reports held or not, with the run's room, in its result, `--status`
+  and `evidence.json`; such a row never fails a cycle, never stops another row and never blocks SHIPPABLE, and its
+  controls stay required. `--evidence` re-derives it like any row: a required row must be HELD, a recorded one must have
+  a record (`UNRECORDED`), and every room must still say what the evidence says. A credential found in a recorded row's
+  room still stops the release (`UNEXCUSED`). 0.5.0 records `orbit-sessions`, `orbit-activation`, `orbit-workflow`,
+  `orbit-missions`, `orbit-tools` and `orbit-heldout` -- 30 of the 46 model-carried rows a cycle -- and a row becomes
+  required only by the backlog's promotion rule, a person's policy change.
+- **A resumed ship asks again what blocked it, and charges nothing it did not see (backlog B6).** Each of 0.4.0's resume
+  dead ends is fixed, its probe kept as the regression test: images a failed build left unbuilt are built again; a
+  refused host check is asked again; the catalog is read before a run is read back, so that run is held to the cycle's
+  content digest; rows run in the cycle's testing stage, not ENVIRONMENT; a run a restart interrupted costs what its
+  ended rounds reported, never its whole allowance, and what such runs were allowed is said in dollars beside the spend
+  (`unknownRuns`, `unknownAllowedUsd`), never added to it; a repair a restart cut short is INTERRUPTED, never UNTRUSTED,
+  and neither it nor one the environment blocked spends one of `--attempts`; limits asked on resume are held before
+  anything is written and laid over the ship's own; and a controls row a restart cut short is carried on from its own
+  room (`controls <case> --run-id`, then `resume`), never started again from the beginning.
+- **A limit out of bounds is refused by the flag a person typed.** An out-of-bounds `--retries` was refused as
+  `--autonomousRetries is 0..3`, the policy's own key, and only after the ship had created its task, which stayed
+  QUEUED. It is now `--retries is 0..3`, before anything is journaled or written.
+- **The publish gate never passes rows it cannot see.** `ship.mjs --evidence` re-derives the rows the policy requires
+  from what the benchmark lists now; when the listing could not be read, or came back empty, it built an empty catalog
+  and said PUBLISHABLE with nothing re-derived. A case the policy names that the listing does not hold now refuses the
+  gate (`CATALOG_UNREAD`).
+- **`--effort`, frozen and held; a reliability report beside the evidence.** `ship.mjs --effort=<level>` (and
+  `--precheck --effort`) names the effort every model-carried row, every repair and the host check run at, beside
+  `--model`. It is frozen when the ship begins -- a resume naming another is refused before anything is written --
+  recorded in `evidence.json` (`host.effort`, each row's `effort`), and a row or a repair run at another is
+  `WRONG_EFFORT`, never that ship's evidence; `--evidence` reads every room again for it. A SHIPPABLE ship keeps the
+  benchmark's `reliability --revision=<release commit>` as `reliability.json` beside `evidence.json`, and its result and
+  `--status` name it: the release notes quote it, and it is never a gate.
 
 ## 0.4.0
 

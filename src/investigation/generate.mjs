@@ -10,7 +10,8 @@
 // Each record is written once, by an eventId made from what it was made of (store.mjs eventIdOf),
 // so the same proposal sent twice is the same design. It runs nothing, and a generated test stays
 // a draft until a person promotes it. Beside a frozen version it says what its design names that an
-// earlier version of the investigation named too (`shared`) -- advice, never a record or a refusal.
+// earlier version of the investigation named too (`shared`), and what its design rests on that it
+// never causes (`advice`, src/qa/backend/contradictions.mjs) -- advice, never a record or a refusal.
 import { caseDigest } from "../dsl/digest.mjs";
 import { Refused } from "../errors.mjs";
 import { canonicalJson, sha } from "../hash.mjs";
@@ -87,7 +88,7 @@ function keptVersion(w, g, obligation, out) {
   designKept(w, obligation, out.design);
   const there = current(w).versions.find((v) => v.design === out.design.id && v.digest === caseDigest(out.case));
   const version = there?.version ?? frozenVersion(w, g, out);
-  return { outcome: "DRAFT_CREATED", version, design: out.design.id, case: out.case.id, channel: out.channel, digests: out.digests, ...sharedOf(w, obligation, out.design, out.stated) };
+  return { outcome: "DRAFT_CREATED", version, design: out.design.id, case: out.case.id, channel: out.channel, digests: out.digests, ...sharedOf(w, obligation, out.design, out.stated), ...(out.advice ? { advice: out.advice } : {}) };
 }
 
 // What this design names -- a business key, a message, an occurrence -- that an earlier frozen version of this

@@ -1,0 +1,113 @@
+{
+  "assertions": [
+    {
+      "criterionRef": "FIX-ASYNC-1/E3",
+      "step": 3,
+      "template": "complete"
+    },
+    {
+      "criterionRef": "FIX-ASYNC-1/E3",
+      "step": 4,
+      "template": "complete"
+    },
+    {
+      "criterionRef": "FIX-ASYNC-1/E2",
+      "step": 5,
+      "template": "count-eq"
+    }
+  ],
+  "controls": [
+    {
+      "role": "duplicate",
+      "why": "a second message under the same business key, sent on purpose"
+    },
+    {
+      "role": "state",
+      "why": "one reminder for the key after both were delivered"
+    }
+  ],
+  "effectScope": "fixture",
+  "obligation": "tob-c35479dac91d",
+  "skeleton": {
+    "steps": [
+      {
+        "capability": "orbit.messaging.publish",
+        "do": "call",
+        "input": {
+          "channelRef": "billing-reminder-requested",
+          "request": {
+            "correlationId": "tenant-a|inv-a|billing-daily:2027-01-06T09:00:00+07:00",
+            "messageId": "msg-a1b2c3d4e5f60002",
+            "payload": {
+              "businessKey": "tenant-a|inv-a|billing-daily:2027-01-06T09:00:00+07:00",
+              "invoiceId": "inv-a",
+              "messageId": "msg-a1b2c3d4e5f60002",
+              "occurrenceId": "billing-daily:2027-01-06T09:00:00+07:00",
+              "tenantId": "tenant-a"
+            }
+          }
+        }
+      },
+      {
+        "capability": "orbit.messaging.publish",
+        "do": "call",
+        "input": {
+          "channelRef": "billing-reminder-requested",
+          "request": {
+            "correlationId": "tenant-a|inv-a|billing-daily:2027-01-06T09:00:00+07:00",
+            "messageId": "msg-a1b2c3d4e5f60003",
+            "payload": {
+              "businessKey": "tenant-a|inv-a|billing-daily:2027-01-06T09:00:00+07:00",
+              "invoiceId": "inv-a",
+              "messageId": "msg-a1b2c3d4e5f60003",
+              "occurrenceId": "billing-daily:2027-01-06T09:00:00+07:00",
+              "tenantId": "tenant-a"
+            }
+          }
+        }
+      },
+      {
+        "capability": "orbit.worker.observe",
+        "do": "call",
+        "input": {
+          "request": {
+            "count": 1,
+            "match": {
+              "messageId": "msg-a1b2c3d4e5f60002"
+            }
+          },
+          "workloadRef": "worker"
+        }
+      },
+      {
+        "capability": "orbit.worker.observe",
+        "do": "call",
+        "input": {
+          "request": {
+            "count": 1,
+            "match": {
+              "messageId": "msg-a1b2c3d4e5f60003"
+            }
+          },
+          "workloadRef": "worker"
+        }
+      },
+      {
+        "capability": "orbit.state.read",
+        "do": "call",
+        "input": {
+          "request": {
+            "key": "tenant-a|inv-a|billing-daily:2027-01-06T09:00:00+07:00",
+            "limit": 5
+          },
+          "stateRef": "reminders"
+        }
+      }
+    ]
+  },
+  "trigger": {
+    "kind": "message",
+    "ref": "billing-reminder-requested",
+    "step": 1
+  }
+}

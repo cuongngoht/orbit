@@ -46,7 +46,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [orbit-source, orbit-governance, orbit-memory, orbit-improvement, orbit-orchestration, orbit-satellite, orbit-verdicts, orbit-engineering, orbit-qa, orbit-sessions, orbit-activation, orbit-workflow, orbit-missions, orbit-tools]
+        suite: [orbit-source, orbit-governance, orbit-memory, orbit-improvement, orbit-orchestration, orbit-satellite, orbit-verdicts, orbit-engineering, orbit-heldout, orbit-qa, orbit-sessions, orbit-activation, orbit-workflow, orbit-missions, orbit-tools]
         include:
           - suite: orbit-qa
             images: --qa-worker
@@ -89,9 +89,10 @@ jobs:
           if-no-files-found: ignore
 
   # Scripted hosts in the runner container, through Orbit's real loops and no model: a reference repair of a known finding
-  # through the engineering loop, a goal through the goal entry to a verified change, a goal with no rule refused, an
-  # interrupted session carried on its own task, and a request through /orbit-help with every control of its case. Each
-  # is held to the outcome it declares (and a workflow control to the legs it names).
+  # through the engineering loop, a goal through the goal entry to a verified change -- on the tuned fixture and on the
+  # held-out one (ADR 0056) -- a goal with no rule refused, an interrupted session carried on its own task, and a request
+  # through /orbit-help with every control of its case. Each is held to the outcome it declares (and a workflow control
+  # to the legs it names).
   scripted:
     runs-on: ubuntu-latest
     timeout-minutes: 360
@@ -110,6 +111,8 @@ jobs:
         run: node benchmark/run.mjs controls ORBIT-E2E-001 --only=reference
       - name: a goal that leaves out its rule, refused and not invented
         run: node benchmark/run.mjs controls ORBIT-E2E-008 --only=blocked
+      - name: a held-out goal through Orbit's goal entry, on the application nobody tuned Orbit against (ADR 0056)
+        run: node benchmark/run.mjs controls ORBIT-HLD-001 --only=reference
       - name: an interrupted session, reconciled on its own task
         run: node benchmark/run.mjs controls ORBIT-E2E-007 --only=interrupted
       # 0.5.0 (B1, ADR 0053): one request through /orbit-help -- the reference must PASS on every leg, code-only must fail

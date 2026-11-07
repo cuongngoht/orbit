@@ -21,30 +21,30 @@ const listed = () => ({ suites: readdirSync(SUITES).map((s) => JSON.parse(readFi
 
 test("the policy names every case of every suite, and nothing else -- the catalog cannot shrink unseen", () => {
   assert.deepEqual(catalogDrift(POLICY, listed()), []);
-  assert.equal(Object.keys(POLICY.catalog).length, 14, "fourteen suites");
-  assert.equal(Object.values(POLICY.catalog).flat().length, 74, "every case they hold");
+  assert.equal(Object.keys(POLICY.catalog).length, 15, "fifteen suites");
+  assert.equal(Object.values(POLICY.catalog).flat().length, 79, "every case they hold");
   const less = { suites: listed().suites.map((s) => ({ ...s, cases: s.cases.filter((c) => c.id !== "ORBIT-SRC-002") })) };
   assert.deepEqual(catalogDrift(POLICY, less), ["ORBIT-SRC-002 is in the release policy and no suite holds it"]);
   const more = { suites: [...listed().suites, { id: "orbit-new", cases: [{ id: "ORBIT-NEW-001", kind: "source" }] }] };
   assert.deepEqual(catalogDrift(POLICY, more), ["ORBIT-NEW-001 is in suite orbit-new and the release policy does not name it"]);
 });
 
-test("a cycle runs every verification, then every control, then 41 rows the real Claude Code carries", () => {
+test("a cycle runs every verification, then every control, then 46 rows the real Claude Code carries", () => {
   const rows = rowsOf(POLICY, listed());
   const auto = rows.filter((r) => r.autonomous);
-  assert.equal(rows.length, 34 * 2 + 8 * 2 + 8 * 2 + 3 * 2 + 18 * 2 + 1 * 2 + 2 * 2 + 1);
-  assert.equal(auto.length, 41, "eight QA cases (ORBIT-TOOL-001 among them), eight engineering cases, three sessions cases, eighteen activation cases, one workflow case, two mission cases, and ORBIT-SRC-001's planted fault repaired");
+  assert.equal(rows.length, 34 * 2 + 8 * 2 + 8 * 2 + 5 * 2 + 3 * 2 + 18 * 2 + 1 * 2 + 2 * 2 + 1);
+  assert.equal(auto.length, 46, "eight QA cases (ORBIT-TOOL-001 among them), eight engineering cases, five held-out engineering cases, three sessions cases, eighteen activation cases, one workflow case, two mission cases, and ORBIT-SRC-001's planted fault repaired");
   assert.deepEqual([...new Set(rows.map((r) => r.run))], ["verify", "controls", "autonomous"], "in that order, so no model is spent on a cycle that will be repaired");
   assert.deepEqual(auto.find((r) => r.case === "ORBIT-SRC-001"), { ...auto.find((r) => r.case === "ORBIT-SRC-001"), variant: "controlled-fault", repair: true, expect: ["REPAIRED_VERIFIED"] });
   assert.ok(rows.filter((r) => r.case === "ORBIT-SRC-002" || r.case === "ORBIT-ORC-006").some((r) => r.req === "real" && r.expect.includes("PASS")), "a known finding must PASS its real source: its baseline earns it nothing");
 });
 
-// 0.5.0 (backlog B3, ADR 0054; B22 M4; B1, ADR 0053; B4, ADR 0055; B9): the sessions, the activation, the workflow, the
-// mission and the tool-call failure suites' model-carried rows start recorded, as every new suite's do; their controls
-// are required from the day they land, as every suite's are.
-test("the shipped policy records the sessions, the activation, the workflow, the mission and the tool-call failure suites' model-carried rows and nothing else: every other row of the 74 cases is required (ADR 0051, 0053, 0054, 0055)", () => {
+// 0.5.0 (backlog B3, ADR 0054; B22 M4; B1, ADR 0053; B4, ADR 0055; B9; B2, ADR 0056): the sessions, the activation, the
+// workflow, the mission, the tool-call failure and the held-out suites' model-carried rows start recorded, as every new
+// suite's do; their controls are required from the day they land, as every suite's are.
+test("the shipped policy records the sessions, the activation, the workflow, the mission, the tool-call failure and the held-out suites' model-carried rows and nothing else: every other row of the 79 cases is required (ADR 0051, 0053, 0054, 0055, 0056)", () => {
   const rows = rowsOf(POLICY, listed());
-  const NEW = ["orbit-sessions", "orbit-activation", "orbit-workflow", "orbit-missions", "orbit-tools"];
+  const NEW = ["orbit-sessions", "orbit-activation", "orbit-workflow", "orbit-missions", "orbit-tools", "orbit-heldout"];
   assert.deepEqual([POLICY.recorded.suites, POLICY.recorded.cases], [NEW, []]);
   assert.deepEqual(rows.filter((r) => r.recorded).map((r) => r.id), NEW.flatMap((suite) => POLICY.catalog[suite]).map((c) => `${c}:autonomous`), "a new suite's model-carried rows start recorded");
   assert.ok(rows.filter((r) => NEW.includes(r.suite) && r.run === "controls").every((r) => r.recorded === false), "their controls are required");
@@ -69,6 +69,15 @@ test("a workflow case must hold its controls, and its model-carried row PASS on 
   const rows = rowsOf(POLICY, listed()).filter((r) => r.kind === "workflow");
   assert.equal(rows.length, POLICY.catalog["orbit-workflow"].length * 2);
   assert.deepEqual([...new Set(rows.map((r) => `${r.req}:${r.run}:${r.variant}:${JSON.stringify(r.expect)}:${r.recorded}`))].sort(), ['autonomous:autonomous:real:["PASS"]:true', "controls:controls:null:null:false"]);
+});
+
+// 0.5.0 (B2, ADR 0056): the held-out suite's cases are engineering cases like the tuned ones -- their controls are
+// required, and each coding host's row must PASS on its real target to be recorded held -- and they are recorded, so a
+// measure of generalisation never blocks a release; its own goal that must be refused is held to PASS like the rest.
+test("a held-out case must hold its controls, and its model-carried row PASS on its real target, recorded", () => {
+  const rows = rowsOf(POLICY, listed()).filter((r) => r.suite === "orbit-heldout");
+  assert.equal(rows.length, POLICY.catalog["orbit-heldout"].length * 2);
+  assert.deepEqual([...new Set(rows.map((r) => `${r.kind}:${r.req}:${r.run}:${r.variant}:${JSON.stringify(r.expect)}:${r.recorded}`))].sort(), ['engineering:autonomous:autonomous:real:["PASS"]:true', "engineering:controls:controls:null:null:false"]);
 });
 
 test("`recorded` marks a suite's or a case's model-carried rows, never its controls; a name the catalog does not hold is refused", () => {

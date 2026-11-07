@@ -116,7 +116,7 @@ export const privilegeFindings = (m, trail) => (!m ? ["no mission was found in t
 const ROWS = [
   { id: "mission-delivered", leg: "code", says: "the change was delivered by the engineering task the mission's own implement run started, and that task completed on its own journal's proof", why: (rb) => (deliveredByIt(rb) ? [] : [`the round's engineering task ${rb.engineering?.id ?? "(none)"} ${rb.engineering?.lifecycle ?? "was not read"}, found by ${rb.found ?? "nobody"}`]) },
   { id: "criteria-settled", leg: "criteria", says: "the mission completed VERIFIED, and every acceptance criterion it recorded is settled by an independent owner's record the inspection read back from that owner -- never by an agent's report", why: (rb) => settledFindings(theMission(rb), rb.owners) },
-  { id: "least-privilege", leg: "privilege", says: "each work unit's run had no wider a profile than its unit's kind needs, was carried by an agent the trail saw launched as that profile's agent, and that agent made no call its profile does not carry", why: (rb) => privilegeFindings(theMission(rb), rb.trail) },
+  { id: "least-privilege", leg: "privilege", says: "each work unit's run had no wider a profile than its unit's kind needs, was carried by an agent the trail saw launched as that profile's agent, and that agent made no call its profile does not carry -- and the session itself took no engineering task's step", why: (rb) => privilegeFindings(theMission(rb), rb.trail) },
 ];
 
 const rowOf = (rb) => (row) => ((why) => ({ id: row.id, leg: row.leg, ok: why.length === 0, says: row.says, why: why.slice(0, 8) }))(row.why(rb));

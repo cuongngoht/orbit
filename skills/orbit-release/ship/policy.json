@@ -76,6 +76,20 @@
           "PASS"
         ]
       }
+    ],
+    "workflow": [
+      {
+        "id": "controls",
+        "kind": "controls"
+      },
+      {
+        "id": "autonomous",
+        "kind": "autonomous",
+        "variant": "real",
+        "expect": [
+          "PASS"
+        ]
+      }
     ]
   },
   "extra": [
@@ -182,13 +196,17 @@
       "ORBIT-CTX-001",
       "ORBIT-CTX-002",
       "ORBIT-CTX-003"
+    ],
+    "orbit-workflow": [
+      "ORBIT-WF-004"
     ]
   },
   "recorded": {
     "about": "Model-carried rows a release RECORDS and never requires (ADR 0051): every autonomous row of a suite or a case named here runs once, under the ship's retries, and is reported held or not, with its run's room, in the ship's result, --status and evidence.json -- it never blocks SHIPPABLE. The controls of a recorded suite or case stay required. A new benchmark suite's model-carried rows start here, and leave only by the promotion rule (docs/backlog/0.5.0.md, Release criteria).",
     "suites": [
       "orbit-sessions",
-      "orbit-activation"
+      "orbit-activation",
+      "orbit-workflow"
     ],
     "cases": []
   },

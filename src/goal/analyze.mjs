@@ -21,6 +21,8 @@ export const citesNoLine = (row) => !/#L[0-9]+(-[0-9]+)?$/.test(String(row?.sour
 
 export function stampAnalysis(raw, specDigest) {
   const requirements = (raw.requirements ?? []).map((r, i) => ({ id: r.id ?? reqId(`${specDigest}:r:${i}:${r.statement}`), ...kindOf(r), statement: String(r.statement ?? "").trim(), ...citationOf(r) }));
+  // A criterion's row is built from the fields the engine keeps, never spread from what was sent: a host's
+  // `mandatory: false` is not carried, so every criterion stays held (src/goal/verification.mjs gateContext says why).
   const acceptance = (raw.acceptance ?? []).map((a, i) => {
     const row = { id: a.id ?? acId(`${specDigest}:a:${i}:${a.statement}`), statement: String(a.statement ?? "").trim(), ...citationOf(a), verification: a.verification ?? "evidence from tests or inspection" };
     const req = a.requirementRef ?? requirements[0]?.id;

@@ -336,10 +336,14 @@ const scripted = (c, script) => (c.repairs ?? []).filter((r) => r?.script === sc
 // nobody can pass proves nothing), and every control that must FAIL naming the legs it fails on -- and never a leg for a
 // control that must pass.
 // What a case held to LEGS must be beside its own rows (a workflow or a mission case): every control that must FAIL names
-// the legs it fails on, and a control that must pass names none.
-const LEG_CROSS = [
+// the legs it fails on, each a leg of its kind (src/constraints.mjs holds a list's entries to their type alone), and a
+// control that must pass names none.
+const unknownLegs = (c, legs) => (c.repairs ?? []).flatMap((r) => (Array.isArray(r?.legs) ? r.legs : []).filter((leg) => !legs.includes(leg)).map((leg) => `${r.id} ${leg}`));
+
+const legCross = (legs) => [
   { fails: (c) => (c.repairs ?? []).filter((r) => r?.expect === "FAIL" && !(r.legs ?? []).length).map((r) => r.id), say: (bad) => `controls that must FAIL say which legs they fail on: ${bad.join(", ")}` },
   { fails: (c) => (c.repairs ?? []).filter((r) => r?.expect === "PASS" && (r.legs ?? []).length).map((r) => r.id), say: (bad) => `a control that must PASS fails on no leg: ${bad.join(", ")}` },
+  { fails: (c) => unknownLegs(c, legs), say: (bad) => `controls name legs this kind is not held to (${legs.join(", ")}): ${bad.join(", ")}` },
 ];
 
 // An engineering case's own rows that a case without arms or an interruption has nothing to say to.
@@ -348,7 +352,7 @@ const TARGET_CROSS = ENGINEERING_CROSS.filter((r) => !/arm|interrupt/.test(r.say
 const WORKFLOW_CROSS = [
   ...TARGET_CROSS,
   { fails: (c) => (scripted(c, "workflow").some((r) => r.expect === "PASS") ? [] : ["reference"]), say: () => "carries no `workflow` control that must PASS: a case nobody can pass proves nothing" },
-  ...LEG_CROSS,
+  ...legCross(WORKFLOW_LEGS),
 ];
 
 // The arms a case runs on, and the revision its baseline arm is frozen from: the case's, else its suite's, else the
@@ -391,7 +395,7 @@ const missingControls = (c) => MISSION_CONTROLS.filter(([script, expect]) => !(c
 
 // A mission case beyond its fields: what an engineering case's target must be, the four controls that prove its checks,
 // and every control that must FAIL naming the legs it fails on.
-const MISSION_CROSS = [...TARGET_CROSS, { fails: missingControls, say: (bad) => `lacks a control its checks are proved with: ${bad.join(", ")}` }, ...LEG_CROSS];
+const MISSION_CROSS = [...TARGET_CROSS, { fails: missingControls, say: (bad) => `lacks a control its checks are proved with: ${bad.join(", ")}` }, ...legCross(MISSION_LEGS)];
 
 // ---- THE ACTIVATION KIND (0.5.0, B22 M4, the activation benchmark): does the host use Orbit by itself -------------------
 //

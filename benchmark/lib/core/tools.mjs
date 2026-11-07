@@ -273,7 +273,7 @@ const relaySaid = (room) => roundsIn(room).flatMap((k) => relayLines(room, k));
 function hostFacts(room, manifest) {
   const streams = roundsIn(room).map((k) => streamIn(room, k)).filter(Boolean);
   const lines = relaySaid(room);
-  return { streams, lines, relay: lines.length ? relayOf(lines) : null, relayWhy: lines.length ? null : RELAYED.includes(manifest.benchmark?.kind) ? "no relay request was logged (a scripted host asks in the controller's own process)" : "only a QA round's host reaches the engine through the relay" };
+  return { streams, lines, relay: lines.length ? relayOf(lines) : null, relayWhy: lines.length ? null : RELAYED.includes(manifest.benchmark?.kind) ? "no relay request was logged (no host round asked anything, or a scripted host's round kept from before 0.5.0 logged none)" : "only a QA round's host reaches the engine through the relay" };
 }
 
 export function runToolsOf(room, manifest, ending = null) {

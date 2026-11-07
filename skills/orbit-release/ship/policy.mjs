@@ -15,7 +15,7 @@ import { canonicalJson, sha } from "../../../src/hash.mjs";
 
 const RUNS = ["verify", "controls", "autonomous"];
 
-const KINDS = ["source", "qa", "engineering", "sessions", "activation"];
+const KINDS = ["source", "qa", "engineering", "sessions", "activation", "workflow"];
 
 // What a policy must say before anything is run on its word.
 const SHAPE = [

@@ -16,11 +16,16 @@
 // host's stream to) and every sandbox the runner store holds, with its operations journal (sandbox.json: what each
 // sandbox step came to, for the tool-call failure metrics).
 //
-//   node /bench/inspect.mjs <tsk-…|-> [--plugin=<dir>] [--tree=/work/worktree] [--activation]
+// After a WORKFLOW round (`--workflow`, 0.5.0, ADR 0053) every coordinated workflow is read back too, through
+// `automation.mjs context`: its lifecycle, the route its plan took, the engineering task its engineering step started, and
+// each step of its plan with the word it settled on and its receipt's own sentence (why a skipped step was skipped).
+//
+//   node /bench/inspect.mjs <tsk-…|-> [--plugin=<dir>] [--tree=/work/worktree] [--activation] [--workflow]
 //                                   out: /work/out/inspect.json, task.json, tasks.json, trace.json, turns.json, goals.json,
 //                                        sandbox.json, files/<rel>; with --activation also activation.json, views.json,
 //                                        workflows.json, works.json, rooms.json, uitests.json, ledger.json, plans.json,
-//                                        plancheck.json, check.json, workspace.json and ws-files/<rel>
+//                                        plancheck.json, check.json, workspace.json and ws-files/<rel>; with --workflow
+//                                        workflows.json, each workflow's route, child and steps
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -227,6 +232,18 @@ const workflowOf = (id) => ((c) => ({ id, revision: c?.revision ?? null, lifecyc
 
 const workflowsOf = (tasks) => ({ exit: 0, json: { workflows: idsIn(tasks, "automation").slice(0, 10).map(workflowOf) } });
 
+// ---- what a workflow case's judge reads back (0.5.0, ADR 0053) ---------------------------------------------------------
+
+const WORKFLOW = process.argv.slice(2).includes("--workflow");
+
+const SAID = 240;
+
+const stepSettled = (s) => ({ id: s.id ?? null, kind: s.kind ?? null, state: s.state ?? null, summary: typeof s.summary === "string" ? s.summary.slice(0, SAID) : null });
+
+const routedOf = (id) => ((c) => ({ id, lifecycle: c?.lifecycle ?? null, route: c?.plan?.workflow ?? null, child: c?.child?.task ?? null, steps: (c?.plan?.steps ?? []).map(stepSettled) }))(answered(orbit("automation.mjs", ["context", id])).json);
+
+const routedWorkflows = (tasks) => ({ exit: 0, json: { workflows: idsIn(tasks, "automation").slice(0, WORKFLOWS).map(routedOf) } });
+
 const worksOf = () => ((r) => ({ exit: r.exit, json: { works: (r.json?.works ?? []).slice(0, 50).map((w) => ({ work: w.work ?? null, ref: w.ref ?? null, standing: w.standing ?? null })) } }))(answered(orbit("track.mjs", ["list"])));
 
 // Each owner's room, by where it keeps its records under a project's store: how many it holds, summed over the store.
@@ -289,7 +306,7 @@ function main(asked) {
   const at = foundTask(asked, tasks);
   const shown = at.task ? answered(orbit("task.mjs", ["show", at.task])) : { exit: null, json: null, why: "no task was started" };
   [["task.json", shown], ["tasks.json", tasks], ["trace.json", answered(orbit("trace.mjs", ["usage"]))], ["turns.json", answered(orbit("trace.mjs", ["turns", "--days=30", "--limit=200"]))], ["goals.json", goalsOf()], ["sandbox.json", sandboxesOf()]].forEach(([name, v]) => writeFileSync(join(PATHS.out, name), `${JSON.stringify(v)}\n`));
-  inspected(at, WORKTREE ?? (at.task ? treeOf(at.task) : null), ACTIVATION ? () => activationRead(tasks) : () => null);
+  inspected(at, WORKTREE ?? (at.task ? treeOf(at.task) : null), ACTIVATION ? () => activationRead(tasks) : WORKFLOW ? () => writeFileSync(join(PATHS.out, "workflows.json"), `${JSON.stringify(routedWorkflows(tasks))}\n`) : () => null);
 }
 
 function inspected(at, tree, more = () => null) {

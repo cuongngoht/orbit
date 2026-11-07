@@ -44,11 +44,11 @@ test("the engineering workflow: requirement and context wait for nothing, QA and
   assert.deepEqual(readyOf(states).map((s) => s.id), ["requirement", "context"], "several steps ready at once; the host picks one");
 });
 
-test("an edge joins only steps that are in the plan: no QA and no requirement leaves no edge to either", () => {
+test("an edge joins only steps that are in the plan: no requirement leaves no edge to it, and a change's QA is always planned", () => {
   const plan = planOf(facts({ startable: [] }), values());
-  assert.deepEqual(ids(plan), ["context", "runtime", "engineering", "regression", "review"]);
+  assert.deepEqual(ids(plan), ["context", "runtime", "engineering", "qa", "regression", "review"]);
   assert.deepEqual(afterOf(plan, "engineering"), ["context", "runtime"]);
-  assert.deepEqual(afterOf(plan, "review"), ["regression"]);
+  assert.deepEqual(afterOf(plan, "review"), ["qa", "regression"], "with nothing to start the QA step is SKIPPED at its turn, saying why -- never left out");
   const inv = planOf(facts({ intent: "investigation", matched: ["investigation"], capabilities: [cap("qa.investigation")] }), values());
   assert.deepEqual(ids(inv), ["context", "runtime", "qa"]);
   assert.deepEqual(afterOf(inv, "qa"), ["context", "runtime"]);

@@ -7,8 +7,9 @@
 // asks for. A work item named with `--ref` is a requirement to implement.
 //
 // A row says WHICH steps an objective gets -- step kinds, or a playbook step FOR a capability -- with the
-// conditions under which a kind is left out: no requirement step without a reference to settle, no QA step
-// when nothing the checkout declares can be started to investigate. What each step waits for is not a row's
+// conditions under which a kind is left out: no requirement step without a reference to settle. A change's QA step
+// is never left out (0.5.0, ADR 0053): where nothing the checkout declares can be started, the engine settles it
+// SKIPPED and says why (steps.mjs), so no change is ever reported tested by a step nobody saw. What each step waits for is not a row's
 // business since 1.8.6: graph.mjs draws it from DEPENDS, adds a playbook step for every capability a person or a
 // host named that no kind here provides, and the draft and register steps before a playbook step whose gap the
 // skill factory may close.
@@ -19,7 +20,7 @@ const PLAYBOOK_INTENTS = ["qa", "release", "documentation", "code-review", "arch
 const hasAny = (facts, ids) => ids.some((id) => facts.matched.includes(id) || facts.intent === id);
 
 export const WORKFLOWS = [
-  { id: "engineering", when: (f) => Boolean(f.ref) || hasAny(f, ENGINEERING_INTENTS), steps: (f) => [f.ref ? "requirement" : null, "context", "runtime", "engineering", f.startable.length ? "qa" : null, "regression", "review"], say: "a change to the code: the requirement, context, runtime, an engineering task, QA of the running change, regression and review" },
+  { id: "engineering", when: (f) => Boolean(f.ref) || hasAny(f, ENGINEERING_INTENTS), steps: (f) => [f.ref ? "requirement" : null, "context", "runtime", "engineering", "qa", "regression", "review"], say: "a change to the code: the requirement, context, runtime, an engineering task, QA of the running change (skipped, saying why, when nothing can be started), regression and review" },
   { id: "investigation", when: (f) => f.intent === "investigation", steps: (f) => ["context", f.startable.length ? "runtime" : null, "qa"], say: "an investigation of the running application" },
   { id: "playbook", when: (f) => Boolean(f.playbook?.capability) && (PLAYBOOK_INTENTS.includes(f.intent) || (f.named ?? []).length > 0), steps: (f) => ["context", { kind: "playbook", for: f.playbook.capability }], say: "the workflow its capability's playbook describes" },
   { id: "none", when: () => true, steps: () => [], say: "nothing to coordinate — orbit-help names the one workflow for it" },

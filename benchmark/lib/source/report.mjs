@@ -13,6 +13,7 @@ import { diagnosisLines, diagnosisOf } from "../core/diagnosis.mjs";
 import { effortSaid, hostSummary } from "../core/host.mjs";
 import { docRead } from "../core/room.mjs";
 import { runToolsOf, toolsMarkdown } from "../core/tools.mjs";
+import { isGoalKind } from "../core/suites.mjs";
 
 const UNKNOWN = "unknown";
 
@@ -37,14 +38,19 @@ const agentsOf = (read) => ((t) => ({ sessions: t?.sessions ?? null, subagents: 
 // say -- read back from the runner's store, so OBSERVED there and never the verdict's ground.
 const throughGoalOf = (doc) => ((parent) => Boolean(parent) && (doc?.goals?.json?.goals ?? []).some((g) => g.task === parent))(doc?.task?.json?.task?.parent ?? null);
 
-const inspectionOf = (doc) => (doc ? { engineering: doc.task?.json ? engineeringIn(doc.task.json) : null, found: doc.inspect?.found ?? null, tasks: (doc.tasks?.json?.tasks ?? []).length, changes: (doc.inspect?.changes ?? []).length, trace: doc.trace?.json ?? null, goals: (doc.goals?.json?.goals ?? []).length, throughGoal: throughGoalOf(doc) } : null);
+// A workflow case's inspection (0.5.0, ADR 0053) also read each coordinated workflow back: its route and its steps.
+const workflowsIn = (doc) => (doc.workflows?.json ? { workflows: doc.workflows.json.workflows ?? [] } : {});
+
+const inspectionOf = (doc) => (doc ? { engineering: doc.task?.json ? engineeringIn(doc.task.json) : null, found: doc.inspect?.found ?? null, tasks: (doc.tasks?.json?.tasks ?? []).length, changes: (doc.inspect?.changes ?? []).length, trace: doc.trace?.json ?? null, goals: (doc.goals?.json?.goals ?? []).length, throughGoal: throughGoalOf(doc), ...workflowsIn(doc) } : null);
 
 // A round's repair as its evidence says -- or, for a round the controller never saw end, only that it was interrupted:
 // what its host would have reported was never read, and stays unknown.
 const repairFields = (act, doc) => ({ act: act?.id ?? null, state: act?.state ?? null, interrupted: Boolean(act) && !doc, engineeringTask: doc?.start?.task ?? doc?.runner?.task ?? null, egress: doc?.start?.egress ?? doc?.runner?.egress ?? null, host: hostSummary(doc?.host ?? null), timedOut: doc?.container?.timedOut ?? null, cut: doc?.container?.cut ?? null, error: doc?.error?.says ?? null, runnerAttested: (doc?.container?.attested ?? []).every((r) => r.ok), egressAttested: (doc?.egress?.attested ?? []).every((r) => r.ok) });
 
 // What a round's verdict did, as its own outcome document says: what it broke that held, what it fixed, how NEXT read it.
-const decidedOf = (room, round) => ((o) => (o ? { next: o.next, class: o.class ?? null, cutShort: o.cutShort === true, regressed: o.regressed ?? [], improved: o.improved ?? [] } : null))(docRead(room, `rounds/${round}/outcome.json`));
+const legsIn = (o) => (o.legs ? { legs: o.legs, failedLegs: o.failedLegs ?? [], records: o.records ?? [] } : {});
+
+const decidedOf = (room, round) => ((o) => (o ? { next: o.next, class: o.class ?? null, cutShort: o.cutShort === true, regressed: o.regressed ?? [], improved: o.improved ?? [], ...legsIn(o) } : null))(docRead(room, `rounds/${round}/outcome.json`));
 
 const costOf = (r) => (typeof r.host?.costUsd === "number" ? { usd: r.host.costUsd, basis: "REPORTED" } : { usd: null, basis: UNKNOWN });
 
@@ -124,7 +130,9 @@ const yes = (v) => (v === null || v === undefined ? "n/a" : v ? "yes" : "no");
 
 const vLine = (v) => `- ${v.label}: ${v.complete ? (v.failures ? "FAIL" : "PASS") : "INCOMPLETE"} — hidden ${v.hidden.passed}/${v.hidden.total}${v.hidden.error ? ` (${v.hidden.error})` : ""}; gates ${v.gates.map((g) => `${g.id} ${g.ok ? "pass" : "fail"} (${g.end}${g.tests === null ? "" : `, ${g.tests} tests`})`).join(", ")}${v.agent ? `; own test fails before ${yes(v.agent.failsBefore)}, passes after ${yes(v.agent.passesAfter)}` : ""}; tree ${v.digest.slice(0, 12)}; signature ${val(v.signature)}${v.hidden.failingGroups.length ? `; failing: ${v.hidden.failingGroups.join(", ")}` : ""}`;
 
-const decidedLine = (d) => (d ? `; next ${d.next}${d.class ? ` (${d.class})` : ""}${d.regressed.length ? `; REGRESSED ${d.regressed.join(", ")}` : ""}${d.improved.length ? `; improved ${d.improved.join(", ")}` : ""}` : "");
+const legsLine = (d) => (d.legs ? `; legs ${Object.entries(d.legs).map(([leg, held]) => `${leg} ${held ? "held" : "FAILED"}`).join(", ")}` : "");
+
+const decidedLine = (d) => (d ? `; next ${d.next}${d.class ? ` (${d.class})` : ""}${d.regressed.length ? `; REGRESSED ${d.regressed.join(", ")}` : ""}${d.improved.length ? `; improved ${d.improved.join(", ")}` : ""}${legsLine(d)}` : "");
 
 const rLine = (r, ins = r.inspection) => `- round ${r.round}${r.interrupted ? " (interrupted, read back)" : ""}: engineering task ${val(r.engineeringTask ?? ins?.engineering?.id)} → ${val(ins?.engineering?.lifecycle)}${ins?.engineering?.stopReason ? ` (${ins.engineering.stopReason})` : ""}, ${val(ins?.engineering?.attempts)} attempt(s), commit ${val(ins?.engineering?.commit)}; host model ${val(r.host?.model)}, ${val(r.host?.turns)} turns, ${val(r.host?.toolCalls)} tool calls, cost ${val(r.cost?.usd)} USD (${r.cost?.basis ?? "reported"})${r.cut ? "; cut where the case interrupts it" : ""}${r.timedOut ? "; stopped at the round's deadline" : ""}${r.error ? `; ${r.error}` : ""}; egress held ${yes(r.egress?.holds)}${decidedLine(r.decided)}`;
 
@@ -136,9 +144,9 @@ const knownLine = (k) => (k.regression ? "REGRESSION — the case expects the so
 // out its rule and the right outcome is to change nothing. Neither is a defect of anything.
 const GOAL_SAYS = { change: "asks for a change: the target, as the case declares it, fails the hidden checks until the change is made", blocked: "leaves out the rule it needs: the right outcome is to say so and change nothing" };
 
-const causeLine = (j) => (j.benchmark.kind === "engineering" ? `The goal ${GOAL_SAYS[j.known.expects] ?? "is the case's"} (baseline ${val(j.known.baseline)})` : `Cause ${val(j.cause)}${j.class ? ` (${j.class})` : ""}; ${knownLine(j.known)}`);
+const causeLine = (j) => (isGoalKind(j.benchmark) ? `The ${j.benchmark.kind === "workflow" ? "request" : "goal"} ${GOAL_SAYS[j.known.expects] ?? "is the case's"} (baseline ${val(j.known.baseline)})` : `Cause ${val(j.cause)}${j.class ? ` (${j.class})` : ""}; ${knownLine(j.known)}`);
 
-const labelOf = (manifest) => (manifest.benchmark.kind === "engineering" ? `the ${manifest.fixture?.id ?? "fixture"} target, ${manifest.benchmark.variant} variant` : manifest.benchmark.variant === "real" ? "real source" : `controlled fault (${manifest.benchmark.variant}): planted, not a defect found in the source`);
+const labelOf = (manifest) => (isGoalKind(manifest.benchmark) ? `the ${manifest.fixture?.id ?? "fixture"} target, ${manifest.benchmark.variant} variant` : manifest.benchmark.variant === "real" ? "real source" : `controlled fault (${manifest.benchmark.variant}): planted, not a defect found in the source`);
 
 function markdownOf(j) {
   return [`# Benchmark run ${j.run} — ${j.outcome}`, "", `${j.summary ?? ""}`, "", `**${j.label}.** Case ${j.benchmark.case} ${j.benchmark.version} (suite ${j.benchmark.suite} ${j.benchmark.suiteVersion}), variant ${j.benchmark.variant}, repair ${yes(j.config.repair)}, host basis ${j.hostBasis}. Task ${j.task}: ${j.lifecycle}${j.stopReason ? ` (${j.stopReason})` : ""}.`, "", `${causeLine(j)}${j.verified ? `; verified candidate: ${j.verified}` : ""}.`, "", "## Inputs, frozen", "", `- source: ${val(j.source.branch)}@${j.source.commit} (${j.source.mode}${j.source.dirty.length ? `, ${j.source.dirty.length} uncommitted path(s) at freeze` : ""}), digest ${j.source.digest}`, `- subject: digest ${j.subject.digest}, ${j.subject.files} files, faults ${j.subject.faults.join(", ") || "none"}, excluded ${j.subject.excluded.length} harness file(s), commit ${j.subject.commit}`, `- benchmark: case digest ${j.benchmark.digest}, harness digest ${j.benchmark.harness}`, `- images: verifier ${val(j.images?.verifier)}, runner ${val(j.images?.runner)} (Claude Code ${val(j.images?.claudeCode)}); docker ${val(j.host.docker)}`, `- config: seed ${j.config.seed}, model ${val(j.config.model)}, effort ${effortSaid(j.config.effort)}, rounds ${j.config.rounds}, minutes ${j.config.minutes}, usd ${j.config.usd}`, "", "## Before and after", "", ...j.verifications.map(vLine), "", "## Repair rounds", "", ...(j.rounds.length ? j.rounds.map((r) => rLine(r)) : ["- none"]), "", `Changes: ${j.changes?.files ?? 0} file(s) +${j.changes?.added ?? 0} -${j.changes?.removed ?? 0}${(j.changes?.paths ?? []).length ? ` (${j.changes.paths.map((p) => p.path).join(", ")})` : ""}. Patch: ${j.evidence}/rounds/<k>/candidate.patch.`, "", "## Kept apart", "", `- correct code: ${yes(j.axes.correct)}`, `- went through Orbit: ${yes(j.axes.throughOrbit.value)} — ${j.axes.throughOrbit.basis}`, ...(j.axes.throughGoal ? [`- came through a goal: ${yes(j.axes.throughGoal.value)} (${val(j.axes.throughGoal.goals)} goal(s)) — ${j.axes.throughGoal.basis}`] : []), ...(j.axes.agents ? [`- agents: ${val(j.axes.agents.subagents)} subagent(s), ${val(j.axes.agents.skills)} skill(s), ${val(j.axes.agents.orbitCommands)} Orbit command(s) in ${val(j.axes.agents.sessions)} session(s) — ${j.axes.agents.basis}`] : []), `- autonomous end to end: ${yes(j.axes.autonomous.value)} — ${j.axes.autonomous.basis}`, `- a person stepped in: ${ivLine(j.interventions)}`, `- blocker: ${j.axes.blocker ?? "none"}`, `- benchmark invalid: ${j.axes.benchmarkInvalid ?? "no"}`, `- credential in the run's room: ${j.leaks.length ? `found in ${j.leaks.length} file(s), masked: ${j.leaks.join(", ")}` : "none found"}`, "", `Totals (reported): ${j.totals.rounds} round(s), cost ${val(j.totals.costUsd)} USD, ${val(j.totals.turns)} turns, ${val(j.totals.toolCalls)} tool calls, ${val(j.totals.durationMs)} ms.`, "", ...toolsMarkdown(j.tools), "## Diagnosis", "", ...diagnosisLines(j.diagnosis), "", "## Not verified", "", ...j.unverified.map((u) => `- ${u}`), "", `Evidence: ${j.evidence}`, ""].join("\n");

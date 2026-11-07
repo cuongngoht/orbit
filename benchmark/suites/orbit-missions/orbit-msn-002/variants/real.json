@@ -1,8 +1,0 @@
-{
-  "schema": 1,
-  "id": "real",
-  "about": "The fixture as it is: an order is open, shipped or cancelled, and nothing delivers one -- the feature the goal asks for is not there yet.",
-  "mutations": [],
-  "files": [],
-  "deletes": []
-}

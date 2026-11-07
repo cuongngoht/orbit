@@ -17,17 +17,22 @@
 // case may plant a POISON in the host's memory before the second (`poison`). An `activation` case (0.5.0, B22 M4) asks
 // whether the host uses Orbit BY ITSELF: a prompt that names no skill, on arms with and without Orbit, held to a hidden
 // truth of what a careful host does -- and, for an outcome case, the engineering kind's hidden checks on what it
-// delivered. A `mission` case (0.5.0, ADR 0055) is an engineering case's goal taken through Orbit SATELLITE: the same
-// target, verifier and rounds, its record checks a mission's -- every acceptance criterion settled on an independent
-// owner's record, and every work unit's run carried inside its least-privilege profile.
+// delivered. A `workflow` case (0.5.0, backlog B1, ADR 0053) hands a host ONE request through `/orbit-help` over a
+// fixture, and holds it to three legs from records: the code (the engineering kind's verifier), the QA step (here:
+// SKIPPED with its reason where nothing can be started) and the path (the coordinated workflow's own journal). A
+// `mission` case (0.5.0, backlog B4, ADR 0055) hands a host a GOAL to take through Orbit SATELLITE over a fixture, and
+// holds it to three legs: the code, every acceptance criterion settled on an independent owner's record (`criteria`),
+// and every work unit's run carried inside its least-privilege profile (`privilege`).
 //
 //   suitesIn(root) -> [{ id, version, title, dir, cases }]         caseOf(root, id) -> case + { dir, suite }
 //   suiteHolding(root, caseId) -> suite id | null
 //   caseFindings(c, dir) -> [sentence]                             dirDigest(dir) -> sha256 of every file, by path
 //   KINDS · TRUTH_OUTCOMES · QA_HOSTS · SESSION_HOSTS · MEMORY_ARMS · caseDir(id) · ARMS · DEFAULT_BASELINE · armsOf(c)
-//   baselinePluginOf(c) · memoryArmsOf(c) · GOAL_KINDS · isGoalKind(kind) · MISSION_SCRIPTS · MISSION_CONTROLS
+//   baselinePluginOf(c) · memoryArmsOf(c)
 //   activationTruthFindings(t) -> [sentence]      activationTruthOf(c) -> truth | null      ACTIVATION_HOSTS · STRATEGIES
 //   COORDINATIONS · TIERS · LANGUAGES · SWITCH_NAME · SELECTION_CAPS · RECORD_READS · NAMES_A_COMPONENT
+//   GOAL_KINDS · isGoalKind(c) · WORKFLOW_SCRIPTS · WORKFLOW_LEGS · WORKFLOW_ROUTES · WORKFLOW_QA
+//   MISSION_SCRIPTS · MISSION_LEGS · MISSION_CONTROLS
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { constraintFindings, missingFindings } from "../../../src/constraints.mjs";
@@ -68,7 +73,7 @@ export const MEMORY_ARMS = ["on", "off"];
 
 const COMMON_FIELDS = {
   schema: { type: "integer", enum: [1] },
-  kind: { type: "string", enum: ["source", "qa", "engineering", "sessions", "activation", "mission"] },
+  kind: { type: "string", enum: ["source", "qa", "engineering", "sessions", "activation", "workflow", "mission"] },
   id: { type: "string", pattern: "^[A-Z][A-Z0-9]*(-[A-Z0-9]+)+$", says: { pattern: "id is upper-case words joined by dashes, such as ORBIT-SRC-001" } },
   version: { type: "string", pattern: "^\\d+\\.\\d+\\.\\d+$" },
   title: TEXT,
@@ -285,43 +290,108 @@ const ENGINEERING_CROSS = [
   { fails: (c) => (Number.isInteger(c.interrupt?.round) && Number.isInteger(c.limits?.rounds) && c.interrupt.round >= c.limits.rounds ? [c.interrupt.round] : []), say: () => "interrupts its last round: no round is left to carry the session on from where the cut left it" },
 ];
 
+// ---- a WORKFLOW case (0.5.0, backlog B1, ADR 0053): one request through /orbit-help, held to code, QA and path -------
+//
+// A workflow case is an engineering case's target -- a fixture with its `real` variant applied, its hidden checks, gates,
+// scope and own-test proof -- handed to a host as ONE request to take through `/orbit-help`: the coordinator routes it,
+// the engineering task it starts makes the change, and its QA, regression and review steps settle on their owners'
+// records. What it must show beside the code is `workflow`: the route the request takes, what its QA step must do, and
+// `ask` -- the request in ONE plain English sentence, as orbit-help tells a host to restate a request for `help.mjs
+// --for`: what a control's scripted host hands it (a coding host restates the request itself, from request.md).
+// Only what the harness can hold today is a word here: the QA step SKIPPED with its reason, on a target with nothing to
+// start. The relayed QA leg on a change's sandbox (ADR 0053, Parts 3 and 4) is not built, and a case asking for it is
+// refused when it is loaded, never run on less than it claims.
+
+// The kinds whose target is a fixture handed to a host with Orbit beside it, judged by the engineering kind's verifier
+// and record checks: a goal through Orbit's goal entry, a request through /orbit-help, and a goal through Satellite.
+export const GOAL_KINDS = ["engineering", "workflow", "mission"];
+
+export const isGoalKind = (c) => GOAL_KINDS.includes(c?.kind);
+
+// What a workflow control's scripted host does (images/runner/scripted.mjs SCRIPTS): take the request through
+// `/orbit-help` and the workflow it starts (`workflow`), the same and stop once the change is made (`code-only`), make the
+// change in an engineering task started by hand with no workflow (`bypass`), or sit IDLE.
+export const WORKFLOW_SCRIPTS = ["workflow", "code-only", "bypass", "idle"];
+
+// The three legs a workflow case is held to, each a record row's (lib/workflow/judge.mjs).
+export const WORKFLOW_LEGS = ["code", "qa", "path"];
+
+export const WORKFLOW_ROUTES = ["engineering"];
+
+export const WORKFLOW_QA = ["skipped"];
+
+const WORKFLOW_FIELDS = { ...COMMON_FIELDS, baseline: BASELINE, fixture: { type: "string", pattern: "^[a-z][a-z0-9-]{0,39}$" }, subject: { type: "object" }, reproduce: TEXT, scope: { type: "object" }, checks: { type: "object" }, variants: { type: "object", minProperties: 1 }, repairs: { type: "array" }, workflow: { type: "object" } };
+
+const WORKFLOW_SECTIONS = [
+  { at: "case", of: (c) => [c], fields: WORKFLOW_FIELDS, required: requiredOf(WORKFLOW_FIELDS).concat(["baseline", "repairs"]) },
+  { at: "measures", of: (c) => [c.measures], fields: { kind: { type: "string", enum: ["workflow"] }, capability: TEXT, expects: { type: "string", enum: ["change"] } }, required: ["kind", "capability", "expects"] },
+  { at: "workflow", of: (c) => [c.workflow], fields: { route: { type: "string", enum: WORKFLOW_ROUTES }, qa: { type: "string", enum: WORKFLOW_QA }, ask: { type: "string", pattern: "^\\S.{0,239}$" } }, required: ["route", "qa", "ask"] },
+  ...sharedWith(["subject", "acceptance", "scope", "checks", "checks.gates[]", "checks.agentTests", "limits", "limits.runner", "limits.verifier", "limits.engineering", "cleanup", "variants.*", "controls[]"]),
+  { at: "repairs[]", of: (c) => c.repairs ?? [], fields: { id: NAME, variant: NAME, candidate: REL, through: { type: "string", enum: ["engine"] }, expect: { type: "string", enum: GOAL_OUTCOMES }, script: { type: "string", enum: WORKFLOW_SCRIPTS }, legs: { type: "array", items: { type: "string", enum: WORKFLOW_LEGS }, minItems: 1 } }, required: ["id", "variant", "candidate", "through", "expect", "script"] },
+];
+
+const scripted = (c, script) => (c.repairs ?? []).filter((r) => r?.script === script);
+
+// A workflow case beyond its fields: what an engineering case's target must be, a reference control that must PASS (a case
+// nobody can pass proves nothing), and every control that must FAIL naming the legs it fails on -- and never a leg for a
+// control that must pass.
+// What a case held to LEGS must be beside its own rows (a workflow or a mission case): every control that must FAIL names
+// the legs it fails on, and a control that must pass names none.
+const LEG_CROSS = [
+  { fails: (c) => (c.repairs ?? []).filter((r) => r?.expect === "FAIL" && !(r.legs ?? []).length).map((r) => r.id), say: (bad) => `controls that must FAIL say which legs they fail on: ${bad.join(", ")}` },
+  { fails: (c) => (c.repairs ?? []).filter((r) => r?.expect === "PASS" && (r.legs ?? []).length).map((r) => r.id), say: (bad) => `a control that must PASS fails on no leg: ${bad.join(", ")}` },
+];
+
+// An engineering case's own rows that a case without arms or an interruption has nothing to say to.
+const TARGET_CROSS = ENGINEERING_CROSS.filter((r) => !/arm|interrupt/.test(r.say(["x"])));
+
+const WORKFLOW_CROSS = [
+  ...TARGET_CROSS,
+  { fails: (c) => (scripted(c, "workflow").some((r) => r.expect === "PASS") ? [] : ["reference"]), say: () => "carries no `workflow` control that must PASS: a case nobody can pass proves nothing" },
+  ...LEG_CROSS,
+];
+
 // The arms a case runs on, and the revision its baseline arm is frozen from: the case's, else its suite's, else the
 // previous release.
 export const armsOf = (c) => c.arms ?? ["release"];
 
 export const baselinePluginOf = (c) => c.baselinePlugin ?? c.suite?.baselinePlugin ?? DEFAULT_BASELINE;
 
-// ---- THE MISSION KIND (0.5.0, ADR 0055): an engineering case's goal, taken through Orbit Satellite -----------------------
+// ---- a MISSION case (0.5.0, backlog B4, ADR 0055): a goal taken through Orbit Satellite, held to code, criteria, privilege
+//
+// A mission case is an engineering case's target -- a fixture with its `real` variant applied, its hidden checks, gates,
+// scope and own-test proof -- handed to a host as a GOAL to take through Orbit Satellite: a mission analyzed into its
+// acceptance criteria, its units staffed and dispatched to agents, its implement unit asking Orbit's autonomous
+// engineering for the task that makes the change. Beside the code it is held to two legs read from records
+// (lib/mission/judge.mjs): every acceptance criterion settled on an independent owner's record, never an agent's report,
+// and every work unit's run carried inside its least-privilege profile. It is a goal case (GOAL_KINDS) in every other way.
 
-// The kinds whose subject is a fixture TARGET handed to the host as a GOAL, judged by the source verifier plus record
-// checks over what Orbit's owners say: an engineering case's goal through Orbit's goal entry, a mission case's through
-// Orbit Satellite. The flow, the verifier, CAUSES, NEXT and the metrics are the same for both.
-export const GOAL_KINDS = ["engineering", "mission"];
-
-export const isGoalKind = (kind) => GOAL_KINDS.includes(kind);
-
-// What a mission control's scripted host does (images/runner/scripted.mjs): take the goal through Satellite as a careful
-// host would (`mission`), make the change by hand and have the mission claim it with no owner record (`claims`), let a
-// read-only run's agent edit and run a command (`over-reach`), or sit IDLE.
+// What a mission control's scripted host does (images/runner/scripted.mjs SCRIPTS): take the goal through Satellite as a
+// careful host would (`mission`), make the change by hand and have the mission claim it with no owner record (`claims`),
+// let a read-only run's agent edit and run a command (`over-reach`), or sit IDLE.
 export const MISSION_SCRIPTS = ["mission", "claims", "over-reach", "idle"];
+
+// The three legs a mission case is held to, each a record row's (lib/mission/judge.mjs).
+export const MISSION_LEGS = ["code", "criteria", "privilege"];
 
 // The controls every mission case proves its checks with, by the script each runs and what it must come to: a reference
 // that passes, a claim no owner's record backs, an agent outside its profile, and a host that does nothing.
 export const MISSION_CONTROLS = [["mission", "PASS"], ["claims", "FAIL"], ["over-reach", "FAIL"], ["idle", "NO_PROGRESS"]];
 
-const MISSION_FIELDS = { ...COMMON_FIELDS, baseline: BASELINE, fixture: { type: "string", pattern: "^[a-z][a-z0-9-]{0,39}$" }, subject: { type: "object" }, reproduce: TEXT, scope: { type: "object" }, checks: { type: "object" }, variants: { type: "object", minProperties: 1 }, repairs: { type: "array", minItems: 1 } };
+const MISSION_FIELDS = { ...COMMON_FIELDS, baseline: BASELINE, fixture: { type: "string", pattern: "^[a-z][a-z0-9-]{0,39}$" }, subject: { type: "object" }, reproduce: TEXT, scope: { type: "object" }, checks: { type: "object" }, variants: { type: "object", minProperties: 1 }, repairs: { type: "array" } };
 
 const MISSION_SECTIONS = [
   { at: "case", of: (c) => [c], fields: MISSION_FIELDS, required: requiredOf(MISSION_FIELDS).concat(["baseline", "repairs"]) },
   { at: "measures", of: (c) => [c.measures], fields: { kind: { type: "string", enum: ["mission"] }, capability: TEXT, expects: { type: "string", enum: ["change"] } }, required: ["kind", "capability", "expects"] },
   ...sharedWith(["subject", "acceptance", "scope", "checks", "checks.gates[]", "checks.agentTests", "limits", "limits.runner", "limits.verifier", "limits.engineering", "cleanup", "variants.*", "controls[]"]),
-  { at: "repairs[]", of: (c) => c.repairs ?? [], fields: { id: NAME, variant: NAME, candidate: REL, through: { type: "string", enum: ["engine"] }, expect: { type: "string", enum: GOAL_OUTCOMES }, script: { type: "string", enum: MISSION_SCRIPTS } }, required: ["id", "variant", "candidate", "through", "expect", "script"] },
+  { at: "repairs[]", of: (c) => c.repairs ?? [], fields: { id: NAME, variant: NAME, candidate: REL, through: { type: "string", enum: ["engine"] }, expect: { type: "string", enum: GOAL_OUTCOMES }, script: { type: "string", enum: MISSION_SCRIPTS }, legs: { type: "array", items: { type: "string", enum: MISSION_LEGS }, minItems: 1 } }, required: ["id", "variant", "candidate", "through", "expect", "script"] },
 ];
 
 const missingControls = (c) => MISSION_CONTROLS.filter(([script, expect]) => !(c.repairs ?? []).some((r) => r?.script === script && r?.expect === expect)).map(([script, expect]) => `${script} ${expect}`);
 
-// A mission case beyond its fields: what an engineering case must be, and the four controls that prove its checks.
-const MISSION_CROSS = [...ENGINEERING_CROSS, { fails: missingControls, say: (bad) => `lacks a control its checks are proved with: ${bad.join(", ")}` }];
+// A mission case beyond its fields: what an engineering case's target must be, the four controls that prove its checks,
+// and every control that must FAIL naming the legs it fails on.
+const MISSION_CROSS = [...TARGET_CROSS, { fails: missingControls, say: (bad) => `lacks a control its checks are proved with: ${bad.join(", ")}` }, ...LEG_CROSS];
 
 // ---- THE ACTIVATION KIND (0.5.0, B22 M4, the activation benchmark): does the host use Orbit by itself -------------------
 //
@@ -478,7 +548,7 @@ const ACTIVATION_CROSS = [
 // A case's truth, read from its own (frozen) directory: null when it cannot be read.
 export const activationTruthOf = (c) => readTruth(c.dir, c.acceptance.truth);
 
-export const KINDS = { source: { sections: SOURCE_SECTIONS, cross: SOURCE_CROSS }, qa: { sections: QA_SECTIONS, cross: QA_CROSS }, engineering: { sections: ENGINEERING_SECTIONS, cross: ENGINEERING_CROSS }, sessions: { sections: SESSIONS_SECTIONS, cross: SESSIONS_CROSS }, activation: { sections: ACTIVATION_SECTIONS, cross: ACTIVATION_CROSS }, mission: { sections: MISSION_SECTIONS, cross: MISSION_CROSS } };
+export const KINDS = { source: { sections: SOURCE_SECTIONS, cross: SOURCE_CROSS }, qa: { sections: QA_SECTIONS, cross: QA_CROSS }, engineering: { sections: ENGINEERING_SECTIONS, cross: ENGINEERING_CROSS }, sessions: { sections: SESSIONS_SECTIONS, cross: SESSIONS_CROSS }, activation: { sections: ACTIVATION_SECTIONS, cross: ACTIVATION_CROSS }, workflow: { sections: WORKFLOW_SECTIONS, cross: WORKFLOW_CROSS }, mission: { sections: MISSION_SECTIONS, cross: MISSION_CROSS } };
 
 const crossFindings = (kind, c, dir) => kind.cross.map((r) => [r, r.fails(c, dir)]).filter(([, bad]) => bad.length).map(([r, bad]) => `case: ${r.say(bad)}`);
 

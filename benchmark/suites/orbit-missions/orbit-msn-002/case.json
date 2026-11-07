@@ -106,9 +106,7 @@
     "scratch": "after-run"
   },
   "variants": {
-    "real": {
-      "mutations": "variants/real.json"
-    },
+    "real": {},
     "solved": {
       "mutations": "variants/solved.json"
     }
@@ -146,7 +144,10 @@
       "candidate": "controls/half.json",
       "through": "engine",
       "expect": "FAIL",
-      "script": "mission"
+      "script": "mission",
+      "legs": [
+        "code"
+      ]
     },
     {
       "id": "claims",
@@ -154,7 +155,11 @@
       "candidate": "controls/reference.json",
       "through": "engine",
       "expect": "FAIL",
-      "script": "claims"
+      "script": "claims",
+      "legs": [
+        "code",
+        "criteria"
+      ]
     },
     {
       "id": "over-reach",
@@ -162,7 +167,10 @@
       "candidate": "controls/reference.json",
       "through": "engine",
       "expect": "FAIL",
-      "script": "over-reach"
+      "script": "over-reach",
+      "legs": [
+        "privilege"
+      ]
     },
     {
       "id": "idle",

@@ -278,11 +278,12 @@ function nextMove(s, c) {
 
 const MAX_MOVES = 16;
 
-// The workflow, one move at a time, until nothing is left to move or a move does not succeed.
-function workflowRan(s, left = MAX_MOVES) {
-  const move = left > 0 ? nextMove(s, autoContext(s)) : null;
+// The workflow, one move at a time, until nothing is left to move, a move does not succeed, or what `done` asks of its
+// context holds (a control that stops part-way).
+function workflowRan(s, left = MAX_MOVES, done = () => false) {
+  const move = left > 0 ? nextMove(s, ((c) => (done(c) ? null : c))(autoContext(s))) : null;
   const problems = move ? move() : [];
-  return problems.length || !move ? problems : workflowRan(s, left - 1);
+  return problems.length || !move ? problems : workflowRan(s, left - 1, done);
 }
 
 const MISSING = [{ statement: "the goal leaves out a rule the change needs, and nobody here can say it", blocks: ["change"] }];
@@ -320,6 +321,33 @@ function goalRan(s, missing) {
   s.auto = s.auto ?? goalCall(s, ["step", s.goalId]).json?.automation?.task ?? null;
   if (!s.auto) return missing.length ? [] : ["the goal's step started no workflow"];
   return goalAsked(s, workflowRan(s));
+}
+
+// ---- a REQUEST through /orbit-help (a workflow case, 0.5.0, ADR 0053), and the controls that fall short of it -------
+//
+// Where a person starts: the navigator asked about the request (`help.mjs --for`), the coordinated workflow it names
+// started (`automation.mjs start --for`) and driven step by step in its own plan's order -- the goal script's own loop, its
+// engineering step's task carried with the control's edits. A later round finds the workflow an earlier one started and
+// carries it on, never starting a second. CODE-ONLY takes the same entry and stops once the engineering step settled: the
+// change made, its QA, regression and review never run. BYPASS never enters /orbit-help or a workflow: an engineering
+// task started by hand, driven to a verified change through its own loop.
+
+const helped = (s) => told(s, "orbit-help navigator", cliCall(s, "help.mjs", [`--for=${s.script.intent}`]));
+
+const startedWorkflow = (s) => (helped(s), told(s, "automation start", cliCall(s, "automation.mjs", ["start", `--for=${s.script.intent}`])).json?.task ?? null);
+
+const keptWorkflow = (s) => (s.round > 1 ? (cliCall(s, "task.mjs", ["list"]).json?.tasks ?? []).find((t) => t.provider === "automation")?.id ?? null : null);
+
+function requested(s, done) {
+  s.auto = keptWorkflow(s) ?? startedWorkflow(s);
+  return s.auto ? workflowRan(s, MAX_MOVES, done) : ["the request started no coordinated workflow"];
+}
+
+const engineeringSettled = (c) => (c?.plan?.steps ?? []).some((x) => x.kind === "engineering" && x.state === "succeeded");
+
+function bypassed(s) {
+  const r = told(s, "autonomous-engineering start", orbitCall(s, ["start", s.script.intent]));
+  return r.json?.task ? taskCarried({ ...s, task: r.json.task, revision: null }) : [`the engineering task could not be started by hand: ${r.why}`];
 }
 
 // ---- an ACTIVATION session (0.5.0, B22 M4): a session as Claude Code has it, every hook delivered to Orbit's own -------
@@ -517,8 +545,9 @@ function seeded(s) {
 
 // What a script does: APPLY its definition through a repair's loop, take a GOAL through Orbit's goal entry, stop on a
 // goal that is BLOCKED by a missing rule, INTERRUPT its own first round, or sit IDLE -- change nothing at all; an
-// ACTIVATION session, or the SEED of one.
-export const SCRIPTS = { apply: applied, goal: (s) => goalRan(s, []), blocked: (s) => goalRan(s, MISSING), interrupt: (s) => goalRan(s, []), idle: () => [], activation: activationRan, seed: seeded };
+// ACTIVATION session, or the SEED of one; a REQUEST through /orbit-help (`workflow`), the same stopped once the change is
+// made (`code-only`), or the change made with no workflow at all (`bypass`).
+export const SCRIPTS = { apply: applied, goal: (s) => goalRan(s, []), blocked: (s) => goalRan(s, MISSING), interrupt: (s) => goalRan(s, []), idle: () => [], activation: activationRan, seed: seeded, workflow: (s) => requested(s), "code-only": (s) => requested(s, engineeringSettled), bypass: bypassed };
 
 // Where Orbit would be in an activation round's container. On the arm with no Orbit nothing is there: no hook is
 // delivered, and every command of Orbit's a host types fails as it would.

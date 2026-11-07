@@ -2,7 +2,12 @@
 
 ## Status
 
-**Proposed (0.5.0; backlog B21, B22 and B23).** Nothing here changes runtime behaviour until it is accepted. The design
+**Accepted (0.5.0; backlog B21, B22 and B23), 2026-11-07,** once every milestone had landed on `release/0.5.0` with its
+tests: M0's measurement ([0.5.0-activation-baseline.md](../audit/0.5.0-activation-baseline.md)); M1 and M2 with B5 --
+trigger-first descriptions, `via`, the strategy table, router v3 and its corpus; M3 -- the bounded lifecycle and the
+activation fold; M4 -- the `activation` benchmark kind and its suite, below; B21's relevance, verified references,
+sufficiency and the `constraint` requirement kind; and B23's three arms in the benchmark harness. It was proposed on
+2026-11-05, before any of them, and nothing of it changed runtime behaviour until its milestone landed. The design
 behind it, with the full inventory and the per-component review, is
 [docs/backlog/0.5.0-proactive-orchestration.md](../backlog/0.5.0-proactive-orchestration.md). The proof is
 [docs/backlog/0.5.0-activation-benchmark.md](../backlog/0.5.0-activation-benchmark.md).

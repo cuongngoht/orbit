@@ -44,7 +44,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [orbit-source, orbit-governance, orbit-memory, orbit-improvement, orbit-orchestration, orbit-satellite, orbit-verdicts, orbit-engineering, orbit-qa, orbit-sessions, orbit-activation]
+        suite: [orbit-source, orbit-governance, orbit-memory, orbit-improvement, orbit-orchestration, orbit-satellite, orbit-verdicts, orbit-engineering, orbit-qa, orbit-sessions, orbit-activation, orbit-workflow]
         include:
           - suite: orbit-qa
             images: --qa-worker
@@ -84,8 +84,9 @@ jobs:
           if-no-files-found: ignore
 
   # Scripted hosts in the runner container, through Orbit's real loops and no model: a reference repair of a known finding
-  # through the engineering loop, a goal through the goal entry to a verified change, a goal with no rule refused, and an
-  # interrupted session carried on its own task. Each is held to the outcome it declares.
+  # through the engineering loop, a goal through the goal entry to a verified change, a goal with no rule refused, an
+  # interrupted session carried on its own task, and a request through /orbit-help with every control of its case. Each
+  # is held to the outcome it declares (and a workflow control to the legs it names).
   scripted:
     runs-on: ubuntu-latest
     timeout-minutes: 240
@@ -106,6 +107,10 @@ jobs:
         run: node benchmark/run.mjs controls ORBIT-E2E-008 --only=blocked
       - name: an interrupted session, reconciled on its own task
         run: node benchmark/run.mjs controls ORBIT-E2E-007 --only=interrupted
+      # 0.5.0 (B1, ADR 0053): one request through /orbit-help -- the reference must PASS on every leg, code-only must fail
+      # on the QA leg, bypass on the path leg, idle make no progress.
+      - name: a request through /orbit-help, held to its code, its QA step and its path
+        run: node benchmark/run.mjs controls ORBIT-WF-004
       - name: the metrics, apart by host basis
         if: always()
         run: node benchmark/run.mjs metrics --json > "$RUNNER_TEMP/metrics.json" || true

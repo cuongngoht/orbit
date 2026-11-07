@@ -20,7 +20,10 @@ import { candidateOf, inspectedRound, ranRound } from "./round.mjs";
 import { cutOf, cutSaid, cuts } from "./cut.mjs";
 import { docRead, docWritten, readRegular } from "../core/room.mjs";
 import { safeRel } from "../core/paths.mjs";
+import { isGoalKind } from "../core/suites.mjs";
 import { verified } from "./verify.mjs";
+import { workflowRecords } from "../workflow/judge.mjs";
+import { failedLegs, legsOf } from "../core/legs.mjs";
 
 export const EXIT = { PASS: 0, REPAIRED_VERIFIED: 0, FAIL: 1, REPAIR_REJECTED: 1, NO_PROGRESS: 1, BUDGET_EXHAUSTED: 1, BENCHMARK_INVALID: 2, BLOCKED: 3, INCONCLUSIVE: 4 };
 
@@ -129,7 +132,7 @@ const goalSettled = (ctx, cause) => (["PASS", "ORBIT_SOURCE_DEFECT", "CAPABILITY
 
 const goalDiagnosis = (ctx, cause) => (GOAL_READY[ctx.case.measures.expects].includes(cause.id) ? { cause, next: "repair", ending: null } : { cause, next: "report", ending: goalSettled(ctx, cause) });
 
-const diagnosisOf = (ctx, cause) => (ctx.case.kind === "engineering" ? goalDiagnosis : repairDiagnosis)(ctx, cause);
+const diagnosisOf = (ctx, cause) => (isGoalKind(ctx.case) ? goalDiagnosis : repairDiagnosis)(ctx, cause);
 
 function diagnosed(ctx, runs) {
   ctx.rec.stage(ctx.task, "DIAGNOSING", "what the two verifications of the subject showed");
@@ -212,7 +215,7 @@ const engTaskOf = (ctx, upTo) => Array.from({ length: upTo }, (_, i) => [started
 const latestVerification = (ctx, view) => stepOf(ctx, (view.actions ?? []).filter((a) => a.type === "benchmark.verify" && a.state === "succeeded").at(-1));
 
 // What a round's host does, as the stage says it: a repair through the engineering loop, or a goal through the goal entry.
-const ROUND_WORK = { source: "repairs the source through Orbit's engineering loop", engineering: "takes the goal through Orbit's goal entry, its workflow and its engineering task" };
+const ROUND_WORK = { source: "repairs the source through Orbit's engineering loop", engineering: "takes the goal through Orbit's goal entry, its workflow and its engineering task", workflow: "takes the request through /orbit-help, the workflow it starts and that workflow's engineering task" };
 
 // A case that declares an interruption cuts that round's runner -- a coding host or a scripted one, stopped wherever it
 // is, the way a crash stops it -- the moment its engineering task's journal shows the steps the case names (cut.mjs),
@@ -262,10 +265,10 @@ const waitingOf = (v) => (v.approvals ?? []).some((a) => a.open === true) || v.s
 const engineeringOf = (ins) => ((v) => (v ? { id: v.task?.id ?? null, lifecycle: v.lifecycle, terminal: v.terminal === true, stopReason: v.stopReason ?? null, waiting: waitingOf(v), stage: v.stage, attempts: (v.attempts ?? []).length, revision: v.revision, commit: (v.receipts ?? []).find((r) => r.domain === "commit")?.ref ?? null, changes: v.changes?.files ?? 0, provider: v.task?.provider ?? null } : null))(ins?.task?.json);
 
 // Tasks a round left beside its ONE engineering task. A source repair starts nothing else, so any other task counts; a
-// goal starts a workflow of its own, so only a second ENGINEERING task counts there.
+// goal or a request through /orbit-help starts a workflow of its own, so only a second ENGINEERING task counts there.
 const ENGINEERING_PROVIDER = "autonomous-engineering";
 
-const countedTasks = (ctx, ins) => (ins?.tasks?.json?.tasks ?? []).filter((t) => ctx.case.kind !== "engineering" || t.provider === ENGINEERING_PROVIDER);
+const countedTasks = (ctx, ins) => (ins?.tasks?.json?.tasks ?? []).filter((t) => !isGoalKind(ctx.case) || t.provider === ENGINEERING_PROVIDER);
 
 const extraTasks = (ctx, ins, k) => countedTasks(ctx, ins).map((t) => t.id).filter((t) => t !== (engTaskOf(ctx, k) ?? ins?.inspect?.task)).length;
 
@@ -273,7 +276,9 @@ const extraTasks = (ctx, ins, k) => countedTasks(ctx, ins).map((t) => t.id).filt
 // goals and their plans -- each as its owner said it, through Orbit's own read commands.
 const actionsOf = (ins) => (ins?.task?.json?.actions ?? []).map((a) => ({ id: a.id, type: a.type, tool: a.tool ?? null, state: a.state, receipts: a.receipts ?? [], why: String(a.reason ?? "").slice(0, 160) }));
 
-const readBackOf = (ins, engineering) => ({ engineering, actions: actionsOf(ins), tasks: ins?.tasks?.json?.tasks ?? [], goals: ins?.goals?.json?.goals ?? [] });
+// A workflow case's inspection also says whose word found the task (`found`: the coordinator's, or the only one there was)
+// and reads every coordinated workflow back (0.5.0, ADR 0053).
+const readBackOf = (ins, engineering) => ({ engineering, actions: actionsOf(ins), tasks: ins?.tasks?.json?.tasks ?? [], goals: ins?.goals?.json?.goals ?? [], found: ins?.inspect?.found ?? null, workflows: ins?.workflows?.json?.workflows ?? [] });
 
 const deliveredBy = (rb) => rb.engineering?.lifecycle === "COMPLETED" && (rb.engineering.changes ?? 0) > 0;
 
@@ -298,8 +303,16 @@ const cutIn = (ctx, k, repair) => (k === ctx.case.interrupt.round ? repair?.cont
 
 const interruptRecords = (ctx, k, repair) => (cuts(ctx.case) ? [{ id: "interrupted", says: `the session was cut where the case interrupts it (${cutSaid(ctx.case)}), the way a crash stops it, and carried on from there`, ok: cutIn(ctx, k, repair) }] : []);
 
-// An arm with no Orbit (0.5.0, B23) has no owner's record to read: only the verifier judges what its host left.
-const recordsOf = (ctx, k, repair, ins) => (ctx.case.kind !== "engineering" || ctx.arm === "none" ? [] : ((rb) => [...(GOAL_RECORDS[ctx.case.measures?.expects ?? "change"] ?? []).map(recordRow(rb)), ...specRecords(ctx, rb), ...interruptRecords(ctx, k, repair)])(readBackOf(ins, engineeringOf(ins))));
+// The record rows each kind of goal is held to: an engineering case's by what its goal expects; a workflow case's (0.5.0,
+// ADR 0053) the engineering task's own code row beside its QA and path rows, each naming its leg (lib/workflow/judge.mjs).
+const RECORDS_BY_KIND = {
+  engineering: (ctx, k, repair, rb) => [...(GOAL_RECORDS[ctx.case.measures?.expects ?? "change"] ?? []).map(recordRow(rb)), ...specRecords(ctx, rb), ...interruptRecords(ctx, k, repair)],
+  workflow: (ctx, k, repair, rb) => [...GOAL_RECORDS.change.map(recordRow(rb)).map((x) => ({ ...x, leg: "code" })), ...workflowRecords(ctx.case, rb), ...specRecords(ctx, rb)],
+};
+
+// An arm with no Orbit (0.5.0, B23) has no owner's record to read: only the verifier judges what its host left. Exported
+// so a test holds a round's real rows to what an inspection read back.
+export const recordsOf = (ctx, k, repair, ins) => (!RECORDS_BY_KIND[ctx.case.kind] || ctx.arm === "none" ? [] : RECORDS_BY_KIND[ctx.case.kind](ctx, k, repair, readBackOf(ins, engineeringOf(ins))));
 
 async function judgedRound(ctx, k, repair, ins) {
   const cand = ins?.inspect ? candidateOf(ctx, ins) : NO_CANDIDATE(ctx);
@@ -362,22 +375,25 @@ const earlierOf = (ctx, k) => Array.from({ length: k - 1 }, (_, i) => docRead(ct
 // it) and not ended by its task.
 const cutShortOf = (r) => (r.repair?.container?.timedOut === true || r.repair?.container?.cut === true) && r.repair.container.held !== true && r.engineering?.terminal !== true;
 
-const roundFacts = (ctx, k, r, before) => ({ frozenIntact: frozenIntact(ctx), roundError: roundError(r), verified: isVerified(r), changed: r.cand.changes.length > 0, engineering: r.engineering, signature: before.signature, previous: before.previous, left: leftOf(ctx, show(ctx)), scope: [...r.cand.scope, ...(r.extraTasks ? [{ id: "EXTRA_TASK" }] : [])], cutShort: cutShortOf(r), patchDigest: r.cand.patchDigest, earlier: earlierOf(ctx, k), expects: r.expects ?? "change", ...(ctx.case.kind === "engineering" ? { standing: null } : {}) });
+const roundFacts = (ctx, k, r, before) => ({ frozenIntact: frozenIntact(ctx), roundError: roundError(r), verified: isVerified(r), changed: r.cand.changes.length > 0, engineering: r.engineering, signature: before.signature, previous: before.previous, left: leftOf(ctx, show(ctx)), scope: [...r.cand.scope, ...(r.extraTasks ? [{ id: "EXTRA_TASK" }] : [])], cutShort: cutShortOf(r), patchDigest: r.cand.patchDigest, earlier: earlierOf(ctx, k), expects: r.expects ?? "change", ...(isGoalKind(ctx.case) ? { standing: null } : {}) });
 
 const signatureOrNot = (failures) => (failures.length ? signatureOf(failures) : undefined);
+
+// A workflow case's round says which of its three legs held, and which failed (0.5.0, ADR 0053).
+const legsDoc = (ctx, r) => ((legs) => (legs ? { legs, failedLegs: failedLegs(legs) } : {}))(legsOf(ctx.case, r));
 
 function concluded(ctx, k, r) {
   const before = { previous: show(ctx).attempts.map((a) => a.failureSignature).filter(Boolean), signature: signatureOrNot(roundFailures(r)) };
   ctx.rec.attemptComplete(ctx.task, isVerified(r) ? "succeeded" : "failed", before.signature);
   const facts = roundFacts(ctx, k, r, before);
   const next = nextOf(facts);
-  return (docWritten(ctx.room, `rounds/${k}/outcome.json`, { round: k, signature: facts.signature ?? null, patchDigest: facts.patchDigest, regressed: r.regressed, improved: r.improved, records: r.records ?? [], cutShort: facts.cutShort, cut: r.repair?.container?.cut === true, next: next.id, outcome: next.outcome, class: next.class }), next);
+  return (docWritten(ctx.room, `rounds/${k}/outcome.json`, { round: k, signature: facts.signature ?? null, patchDigest: facts.patchDigest, regressed: r.regressed, improved: r.improved, records: r.records ?? [], ...legsDoc(ctx, r), cutShort: facts.cutShort, cut: r.repair?.container?.cut === true, next: next.id, outcome: next.outcome, class: next.class }), next);
 }
 
 // An engineering case's outcome in its own words: the goal reached and verified is PASS, and refused is FAIL.
 const GOAL_WORDS = { REPAIRED_VERIFIED: "PASS", REPAIR_REJECTED: "FAIL" };
 
-const wordOf = (ctx, outcome) => (ctx.case.kind === "engineering" ? GOAL_WORDS[outcome] ?? outcome : outcome);
+const wordOf = (ctx, outcome) => (isGoalKind(ctx.case) ? GOAL_WORDS[outcome] ?? outcome : outcome);
 
 const endingFor = (ctx, next, r) => ((outcome) => ({ end: next.end, stop: next.stop, needs: next.needs ?? "environment", outcome, next: next.id, class: next.class, summary: `${outcome}: ${next.says}${r.cand.patch ? ` · patch ${r.cand.patchDigest.slice(0, 12)}` : ""}` }))(wordOf(ctx, next.outcome));
 

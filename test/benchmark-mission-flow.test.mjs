@@ -13,6 +13,7 @@ import { docRead } from "../benchmark/lib/core/room.mjs";
 import { missionReportOf } from "../benchmark/lib/mission/report.mjs";
 import { compared, listed } from "../benchmark/images/runner/inspect.mjs";
 import { hostArgs } from "../benchmark/images/runner/entry.mjs";
+import { runFacts } from "../benchmark/lib/core/metrics.mjs";
 import { dockerDouble, ranAs, runOf, TASK, VIEW, worldOf } from "./benchmark-double.mjs";
 import { takeTurn } from "./benchmark-turn.mjs";
 
@@ -110,4 +111,10 @@ test("a mission round's host may never start an engineering task by hand: a miss
   assert.ok(denied("mission").includes("Bash(node /work/orbit/cli/autonomous-engineering.mjs start:*)"));
   assert.ok(["cleanup", "remove-workspace"].every((cmd) => denied("mission").includes(`Bash(node /work/orbit/cli/autonomous-engineering.mjs ${cmd}:*)`)), "and removes nothing its tasks left, as a goal round's host never does");
   assert.ok(!denied("engineering").some((d) => /autonomous-engineering\.mjs start/.test(d)), "a goal round's workflow starts its own task the way a host would");
+});
+
+test("a mission run that PASSed is an autonomous outcome its verifier verified, in every metric -- as a workflow run's is", () => {
+  const kept = (kind, outcome) => ({ manifest: { run: "bnr-000000000001", benchmark: { kind, case: "ORBIT-MSN-001", suite: "orbit-missions", variant: "real" }, config: { repair: true, host: null } }, ending: { outcome }, report: { hostBasis: "coding-host" } });
+  assert.deepEqual(["mission", "workflow"].map((kind) => runFacts(kept(kind, "PASS")).verified), [true, true]);
+  assert.equal(runFacts(kept("mission", "FAIL")).verified, false);
 });

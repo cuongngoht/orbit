@@ -72,21 +72,29 @@ const INV = "inv-0123456789ab";
 
 const refusal = (argv, stdin) => admitted({ argv, stdin }, INV).refused;
 
+// What the relay wrote for a `--help` before it answered one (every 0.4.0 QA room, and 0.5.0's before backlog B9): a room
+// kept from then is still read, and its refusal is still a word of its own.
+const OLD_HELP_REFUSAL = "`context` --help takes no --help here";
+
 test("every reason the relay refuses for is a word of its own, read off the sentence the relay itself writes", () => {
-  const cases = [[["context", "--help"], "HELP"], [["plan", "--objective=x"], "NOT_RELAYED"], [["context", "--investigation=inv-ffffffffffff"], "OTHER_INVESTIGATION"], [["show", "inv-1"], "WORDS"], [["show", "--json=yes"], "FLAG_VALUE"], [["report", "--out=/x"], "FLAG"], [["context"], "STDIN", "{}"]];
+  assert.equal(refusal(["context", "--help"]), undefined, "a help probe is answered now, never refused");
+  assert.equal(relayReasonOf({ refused: OLD_HELP_REFUSAL }), "HELP", "what an older room's relay refused a probe with");
+  const cases = [[["plan", "--objective=x"], "NOT_RELAYED"], [["context", "--investigation=inv-ffffffffffff"], "OTHER_INVESTIGATION"], [["show", "inv-1"], "WORDS"], [["show", "--json=yes"], "FLAG_VALUE"], [["report", "--out=/x"], "FLAG"], [["context"], "STDIN", "{}"]];
   for (const [argv, reason, stdin] of cases) assert.equal(relayReasonOf({ refused: refusal(argv, stdin) }), reason, `${argv.join(" ")}: ${refusal(argv, stdin)}`);
   assert.equal(relayReasonOf({ refused: admitted(null, INV).refused }), "NOT_A_REQUEST");
   assert.equal(relayReasonOf({ refused: "is not a regular file a request is" }), "NOT_A_REQUEST", "what the mailbox removed unread");
   assert.equal(relayReasonOf({ refused: "a sentence no row knows" }), "OTHER", "the last row always holds");
 });
 
-test("per relay subcommand: requests, refusals by reason and the engine's non-zero exits, from the round's relay log", (t) => {
+test("per relay subcommand: requests, help probes answered, refusals by reason and the engine's non-zero exits, from the round's relay log", (t) => {
   const room = roomFor(t, "qa");
-  const lines = [{ sub: "context", refused: refusal(["context", "--help"]), exit: 2 }, { sub: "context", refused: null, exit: 0 }, { sub: "step", refused: null, exit: 3, why: "inv-… is already paused" }, { sub: "plan", refused: refusal(["plan"]), exit: 2 }, { request: "x.json", error: "the controller could not serve it" }];
+  const lines = [{ sub: "context", refused: OLD_HELP_REFUSAL, exit: 2 }, { sub: "context", help: true, refused: null, exit: 0 }, { sub: "context", refused: null, exit: 0 }, { sub: "--help", help: true, refused: null, exit: 0 }, { sub: "step", refused: null, exit: 3, why: "inv-… is already paused" }, { sub: "plan", refused: refusal(["plan"]), exit: 2 }, { request: "x.json", error: "the controller could not serve it" }];
   put(room, "rounds/1/relay/relay.jsonl", lines.map((l) => JSON.stringify(l)).join("\n"));
-  const relay = runToolsOf(room, manifest("qa")).relay;
-  assert.deepEqual(relay.context, { requests: 2, refused: { HELP: 1 }, nonZero: 0, errors: 0 });
-  assert.deepEqual([relay.step.nonZero, relay.plan.refused, relay["(unreadable)"].errors], [1, { NOT_RELAYED: 1 }, 1]);
+  const facts = runToolsOf(room, manifest("qa"));
+  assert.deepEqual(facts.relay.context, { requests: 3, help: 1, refused: { HELP: 1 }, nonZero: 0, errors: 0 }, "a probe answered is a request, never a refusal or a failure");
+  assert.deepEqual(facts.relay["--help"], { requests: 1, help: 1, refused: {}, nonZero: 0, errors: 0 });
+  assert.deepEqual([facts.relay.step.nonZero, facts.relay.plan.refused, facts.relay["(unreadable)"].errors], [1, { NOT_RELAYED: 1 }, 1]);
+  assert.ok(toolsMarkdown(facts).includes("- relay `context`: 3 request(s), 1 help probe(s) answered, refused HELP 1"));
   assert.match(runToolsOf(roomFor(t), manifest()).unknown.relay, /only a QA round's host reaches the engine through the relay/);
 });
 

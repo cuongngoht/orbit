@@ -1165,7 +1165,8 @@ benchmark/     (ADR 0046, 0047, 0048) THE DOCKER BENCHMARK of Orbit: development
                GOAL_RECORDS), report.mjs.
                lib/qa/ -- a QA case: invoice.mjs (TARGETS: the applications a case may name, and what a person sets up
                for one) · engine.mjs (Orbit's own engine from the frozen checkout, beside the controller: the application
-               assembled and seated, its isolated sandbox, the investigation) · relay.mjs (RELAY, the mailbox server) and
+               assembled and seated, its isolated sandbox, the investigation) · relay.mjs (RELAY, the mailbox server, and
+               0.5.0's help probe answered from the frozen engine CLI's own usage header, never run) and
                relay-client.mjs (what stands at cli/autonomous-qa.mjs in a QA host's plugin) · hosts.mjs (the scripted
                reference, idle and false-alarm hosts -- and a second session's cheat, half, trusts-poison and
                trusts-stale -- and the replay) · judge.mjs (outcomes off the journal, CREDIT, VERDICT) · round.mjs (a coding

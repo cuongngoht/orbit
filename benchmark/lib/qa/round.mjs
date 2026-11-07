@@ -16,7 +16,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fresh, roundRan, runnerSpecOf, streamFileOf } from "../core/runner.mjs";
-import { admitted, relayServer } from "./relay.mjs";
+import { admitted, helpAnswer, relayServer, usageAt } from "./relay.mjs";
 
 // What the coding host is told, beside the brief: the one thing to do, and that nobody will answer it.
 export const qaPromptOf = (investigation) => [
@@ -32,7 +32,7 @@ const usdOf = (ctx, s) => Math.round((ctx.limits.usd / (s.session?.of ?? 1)) * 1
 
 const roundLine = (ctx, k, s) => `- ${s.session ? `Session ${s.session.round} of ${s.session.of}` : `Round ${k} of ${ctx.limits.rounds}`}; about ${Math.round(s.deadlineMs / 60000)} minute(s) and ${usdOf(ctx, s)} USD.`;
 
-const briefMd = (ctx, k, s) => [readFileSync(join(ctx.frozenCase, ctx.case.request), "utf8").trim(), "", "## This round", "", `- The open investigation: \`${s.investigation}\`.`, "- Its commands: `node /work/repo/cli/autonomous-qa.mjs context|step|derive|checkpoint|reconcile|show|report|finish --investigation=" + s.investigation + "` (a decision on stdin for `step`).", "- The application's accepted requirement, contracts and plan: `/work/target/`.", roundLine(ctx, k, s), ""].join("\n");
+const briefMd = (ctx, k, s) => [readFileSync(join(ctx.frozenCase, ctx.case.request), "utf8").trim(), "", "## This round", "", `- The open investigation: \`${s.investigation}\`.`, "- Its commands: `node /work/repo/cli/autonomous-qa.mjs context|step|derive|checkpoint|reconcile|show|report|finish --investigation=" + s.investigation + "` (a decision on stdin for `step`); `node /work/repo/cli/autonomous-qa.mjs --help` says the usage of each, as it is taken here.", "- The application's accepted requirement, contracts and plan: `/work/target/`.", roundLine(ctx, k, s), ""].join("\n");
 
 function qaBriefWritten(ctx, k, s) {
   const dir = fresh(ctx, "rounds", String(k), "brief");
@@ -57,8 +57,11 @@ const secondsOf = (ctx, budget) => (budget === "step" ? ctx.case.limits.engine.s
 
 const answerOf = (r) => ({ exit: r.timedOut ? 3 : (r.status ?? (r.ok ? 0 : 3)), stdout: r.out ?? "", stderr: r.err || r.error || "" });
 
-// What a request admitted to the relay runs: the engine's own CLI, bounded by the case's time for a step or a call.
-export const serveOf = (ctx, engine, investigation) => ({ admit: (req) => admitted(req, investigation), run: async (a) => answerOf(await engine.cli("autonomous-qa.mjs", a.argv, { input: a.stdin, seconds: secondsOf(ctx, a.budget) })) });
+// What a request admitted to the relay runs: the engine's own CLI, bounded by the case's time for a step or a call -- or,
+// for a help probe, nothing: it is answered from the usage the run's frozen engine CLI documents (0.5.0, backlog B9).
+const ranFor = async (ctx, engine, investigation, a) => (a.help ? helpAnswer(usageAt(ctx.engineDir), a.help, investigation) : answerOf(await engine.cli("autonomous-qa.mjs", a.argv, { input: a.stdin, seconds: secondsOf(ctx, a.budget) })));
+
+export const serveOf = (ctx, engine, investigation) => ({ admit: (req) => admitted(req, investigation), run: (a) => ranFor(ctx, engine, investigation, a) });
 
 // A scripted host asks the same way a coding host's request is served, admission included -- only in this process.
 export const askOf = (serve) => async (argv, stdin) => ((a) => (a.refused ? { exit: 2, stdout: "", stderr: `REFUSED ${a.refused}\n` } : serve.run(a)))(serve.admit({ argv, stdin }));

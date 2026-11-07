@@ -34,6 +34,17 @@
   while the engine had answered the host why (`finish` refuses an investigation that is no longer active -- `inv-… is
   already paused` once an earlier `finish` stopped it). The log line now keeps the engine's first line (`why`) --
   printable, scrubbed and bounded -- for every request the relay passed on that did not exit 0.
+- **The QA relay answers a `--help` probe with the subcommand's usage (backlog B9).** Every 0.4.0 and early 0.5.0 QA
+  row's first relay call was a `--help` -- the probe the engine's own refusals name (`node cli/autonomous-qa.mjs --help
+  for the usage`) -- and the relay refused it, so the host spent a failed call learning nothing and then guessed a flag.
+  A probe -- `--help` or `-h` anywhere, `help <subcommand>`, or no subcommand at all -- is now answered by the relay
+  itself, exit 0, and never reaches the engine: the subcommand's usage line for line as `cli/autonomous-qa.mjs`
+  documents it in its own usage header, read from the run's frozen source and never run, and what the relay takes of
+  it (the run's investigation, the flags its row allows, what it reads on stdin). A probe of the whole CLI says every
+  subcommand the relay carries; one of a subcommand it does not carry says why and what it does carry. The relay's log
+  keeps a probe as one (`help: true`) under the subcommand it asked about, and the tool-call facts count help probes
+  per relay subcommand; the `HELP` refusal reason stays, for rooms kept from before. The QA playbook now shows every
+  subcommand a host runs as one exact call, held to the CLI's usage and to the relay's table by a test.
 
 ## 0.4.0
 

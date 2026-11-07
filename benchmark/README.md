@@ -474,10 +474,21 @@ only for the run's own investigation, as the `RELAY` table allows (`lib/qa/relay
   `security`);
 - never a path. A `--decision` or `--file` is read on the client's side and sent as stdin.
 
+A **help probe** (0.5.0, backlog B9) -- `--help` or `-h` anywhere, `help <subcommand>`, or no subcommand at all, the probe
+the engine's own refusals name -- is answered by the relay itself and never reaches the engine: exit 0, and no engine
+time. It says the usage of the subcommand it names, line for line as the engine's CLI documents it in its own usage
+header (read from the run's frozen source, never run), and what the relay takes of it: the investigation it is always
+about, the flags its `RELAY` row allows and what it reads on stdin -- so a host that would have guessed `report --out`
+reads that `report` takes `--json` alone. A probe of the whole CLI says every subcommand the relay carries, in the
+usage's order; one of a subcommand it does not carry says why, and what it does carry. Every 0.4.0 and early 0.5.0 QA
+row spent a refused call on that probe. The QA playbook (`skills/orbit-qa/SKILL.md`) shows every subcommand's exact call
+in one table, held to the usage and to `RELAY` by `test/benchmark-qa-relay.test.mjs`.
+
 A request that is not a regular file of a request's size is removed unread. The log keeps each request's subcommand,
 flags, and the size and digest of its decision, never the decision itself: the engine's own journal keeps that. It
 keeps how each ended too: its exit code, why the relay refused it (`refused`), and for one the engine refused or
-blocked, the first line the engine said (`why`), printable, scrubbed and bounded.
+blocked, the first line the engine said (`why`), printable, scrubbed and bounded. A help probe is kept as one
+(`help: true`), under the subcommand it asked about -- `--help` for the whole CLI -- with no argument list: nothing ran.
 
 The host is handed:
 
@@ -865,7 +876,7 @@ off the run's room and never off what a host says (`lib/core/tools.mjs`):
 |---|---|
 | Per tool: calls, failed calls (a result marked as an error), unanswered calls | Each round's host stream: the controller's capture, else the runner's own copy (`basis` says which) |
 | Recovery: each failed call to the next call of its thread, in a later turn, that did not fail -- the turns, reported tokens and apportioned reported cost spent getting there | The same stream; the cost is the reported total shared by reported tokens (`APPORTIONED`) |
-| Per relay subcommand: requests, refusals by reason, the engine's non-zero exits | `rounds/<k>/relay/relay.jsonl`; a reason is one word (`RELAY_REASONS`) read off the sentence the relay itself writes |
+| Per relay subcommand: requests, help probes the relay answered, refusals by reason, the engine's non-zero exits | `rounds/<k>/relay/relay.jsonl`; a reason is one word (`RELAY_REASONS`) read off the sentence the relay itself writes -- `HELP` is a `--help` an older room's relay refused, before it answered one |
 | Per sandbox step (`sandbox-prepare`, `restore`, `container-build`, `sandbox-start`, `readiness`, `sandbox-release`): attempts, failures, each failure's class, the host calls it cost, and whether one nothing got past ended BLOCKED with its reason | A source or engineering run: the engineering task's `prepare-sandbox` and `start-sandbox` actions and the sandbox receipt it wrote when it ended (`RELEASED` or `REFUSED`), as the inspection read the task back (`inspect/task.json`), and runtime's operations journal for restore and the containers (`inspect/sandbox.json`); a QA run: its engine store's operations, whose sandbox the controller set up |
 
 A failure's class is a row of `SANDBOX_FAILURES`, the first that holds: `DOCKER_DOWN`, `IMAGE_PULL` (refused or
@@ -933,7 +944,7 @@ same fold as one document a release quotes, and writes nothing:
 }
 ```
 
-A fold is `{ runs, unread, calls: { calls, failed, unanswered, rate, byTool }, relay: { "<sub>": { requests, refused:
+A fold is `{ runs, unread, calls: { calls, failed, unanswered, rate, byTool }, relay: { "<sub>": { requests, help, refused:
 { "<reason>": n }, nonZero, errors } }, failedPerPass, recovery: { episodes, recovered, turnsPerEpisode, costUsd,
 runsRecovered }, sandbox: { steps: { "<step>": { runs, attempts, failures, rate, classes, callsAfter, callsUnknown,
 stopped, endedBlocked } }, unknown: { "<step>": runs } } }`; every ratio is `{ numerator, denominator, value }`, and a

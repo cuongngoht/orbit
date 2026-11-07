@@ -58,9 +58,18 @@ export const accusesProduct = (id) => verificationOutcomeOf(id)?.defect === true
 // observation that could not see everything never passes, and neither does a run whose fault was never seen.
 //
 // facts: { status, failure: { helperClass, gap, ambiguous, contradiction, authorization },
-//          envelope: [findings], stale, authority, positiveFailed, faultMissed, wrote }
+//          envelope: [findings], stale, authority, positiveFailed, faultMissed, wrote, ran }
 // `wrote`: the attempt had grants to write with (src/runtime/sandbox/test-grants.mjs), so a write may have happened.
+// `ran`: whether its worker ran -- true when it left an envelope, false only when the worker's own receipt says it never
+// did (never created, never started, removed before it ran: src/investigation/run-version.mjs NEVER_RAN), and null when
+// nothing says, which is never taken for "it did not".
 const failure = (f) => f.failure ?? {};
+
+// The host could not believe what its worker left: no envelope came back, or the one that did failed the host's check
+// (src/run/envelope.mjs). Nothing it claimed is taken -- and nothing it claimed says what it did, so a run that had
+// grants to write, and whose worker may have run, is AMBIGUOUS: read back and never sent again, as an interrupted one is
+// and as reconcile calls a lost one (0.5.0 review of B7). Only the worker's own receipt saying it never ran frees it.
+const unbelieved = (f) => (f.envelope ?? []).length > 0;
 
 // A worker stopped before its runner finished says INTERRUPTED (cli/sandbox-worker.mjs, src/run/envelope.mjs): what it
 // ran up to is not known, so it ruled on nothing -- and a run that had grants may have written, which is never resent.
@@ -72,7 +81,9 @@ const interrupted = (f) => f.status === "INTERRUPTED";
 const RAN_TO_A_VERDICT = ["PASS", "FAIL"];
 
 export const RESULT = [
-  { id: "ENVELOPE", when: (f) => (f.envelope ?? []).length > 0, word: "EXECUTION_ERROR", why: "the worker's envelope did not hold — nothing it claimed is taken" },
+  { id: "NEVER_RAN", when: (f) => unbelieved(f) && f.ran === false, word: "EXECUTION_ERROR", why: "no worker ever ran it — its receipt says it was never created, never started, or removed before it ran — so nothing it was granted was spent: an attempt that proved nothing, and a new one may run" },
+  { id: "UNBELIEVED_WRITE", when: (f) => unbelieved(f) && f.wrote === true, word: "AMBIGUOUS", why: "the host could not believe what its worker left — no envelope, or one that did not hold — and it had grants to write: what it did is unknown, so a person reads back and decides, and it is never sent again" },
+  { id: "ENVELOPE", when: unbelieved, word: "EXECUTION_ERROR", why: "the worker's envelope did not hold — nothing it claimed is taken, and it could write nothing: a new attempt may run" },
   { id: "INTERRUPTED_WRITE", when: (f) => interrupted(f) && f.wrote === true, word: "AMBIGUOUS", why: "its worker was stopped before the run finished, and it had grants to write — what it did is unknown: a person reads back and decides, and it is never sent again" },
   { id: "MOVED", when: (f) => f.stale === true, word: "STALE", why: "what this ran on moved since: the source, the case or the contract" },
   { id: "UNSETTLED_WRITE", when: (f) => Boolean(failure(f).ambiguous), word: "AMBIGUOUS", why: "a write was sent and how it ended is not known" },

@@ -259,12 +259,15 @@ const deadlineOf = (b) => (b.settings?.limits?.caseSeconds ?? 120) * 1000;
 
 // ── running it, and reading back what it left ──────────────────────────────
 
+// A run that left no envelope says what the runtime says became of its worker, as a read-back does (`readBackOf`): the
+// host frees an attempt that had grants to try again only when the worker's own receipt says it never ran
+// (src/investigation/run-version.mjs NEVER_RAN) -- removed before it ran, never created -- and never on a missing word.
 function ran(b, x) {
   const dirs = b.runtime.dirs(x.request.runId);
   laidIn(b, dirs.in, x.frozen.case, x.request.page);
   const answer = b.runtime.dispatch(x.request);
   const back = readBack(dirs.out);
-  return back.envelope ? back : { why: answer.why ?? back.why };
+  return back.envelope ? back : { why: answer.why ?? back.why, worker: b.runtime.worker?.(x.request.runId) ?? null };
 }
 
 // The run's inputs: the frozen case where the request says it is, and the project it runs as -- its name, the packs

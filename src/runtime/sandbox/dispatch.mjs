@@ -101,9 +101,14 @@ async function attestedThenRun(ctx, args, deps, now, spec, receipt) {
   return finished(ctx, args, deps, now, receipt, await runAttached(ctx, args, deps, now, receipt));
 }
 
+// How a worker's receipt says it never ran: it did not hold to the isolation profile and was removed before it was
+// started. Written here alone and read by WORKER_NOW alone, so the receipt's own word is what tells such a worker from
+// one that ran and ended -- whose receipt is STOPPED too (0.5.0 review of B7: a run that may have written is never retried).
+export const REMOVED_UNSTARTED = "removed before it ran";
+
 function refusedWorker(ctx, args, deps, now, receipt, why) {
   now.iso.container.remove(receipt.container.id, deps);
-  ctx.sessions.write({ ...receipt, state: "STOPPED", stoppedHow: "removed before it ran", why });
+  ctx.sessions.write({ ...receipt, state: "STOPPED", stoppedHow: REMOVED_UNSTARTED, why });
   throw new Blocked(`the worker did not hold to the isolation profile, so it was removed before it ran: ${why}`);
 }
 
@@ -135,6 +140,7 @@ export const WORKER_NOW = [
   { id: "none", when: (x) => !x.session, doc: "no receipt: no worker was ever created for it" },
   { id: "lost", when: (x) => x.session.state === "LOST", doc: "the worker could not be created, so it never ran" },
   { id: "unstarted", when: (x) => x.session.state === "STARTING", doc: "the worker was created and never started" },
+  { id: "removed", when: (x) => x.session.state === "STOPPED" && x.session.stoppedHow === REMOVED_UNSTARTED, doc: "it did not hold to the isolation profile and was removed before it was started, so it never ran" },
   { id: "ended", when: (x) => x.session.state !== "RUNNING", doc: "it ended, and its receipt says how" },
   { id: "running", when: (x) => x.alive, doc: "its container still runs" },
   { id: "gone", when: () => true, doc: "its receipt says it runs and its container does not: whatever was attached to it is gone" },

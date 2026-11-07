@@ -75,6 +75,7 @@ test("a worker that does not hold to the profile is removed before it runs", asy
   assert.equal(w.iso.state.calls.some((c) => c.kind === "startAttached"), false);
   const worker = w.ctx.sessions.list({ env: w.ctx.envId, owner: w.ctx.owner }).find((s) => s.kind === "worker");
   assert.deepEqual([worker.state, worker.stoppedHow, w.iso.state.removed.includes(worker.container.id)], ["STOPPED", "removed before it ran", true]);
+  assert.equal(dispatchedNow(w.ctx, { run: RUN }, w.d).worker, "removed", "read back, it never ran -- never a worker that ran and ended, whose receipt is STOPPED too (0.5.0 review of B7)");
 });
 
 test("a worker past its deadline is stopped by its receipt, then removed -- what ends the docker client does not end a container", async () => {
@@ -115,7 +116,7 @@ test("what became of a dispatch is READ BACK from its worker's receipt and conta
   const receipt = w.ctx.sessions.read(r.session);
   const as = (state) => (w.ctx.sessions.write({ ...receipt, state }), dispatchedNow(w.ctx, { run: RUN }, w.d).worker);
   assert.deepEqual([as("LOST"), as("STARTING"), as("RUNNING")], ["lost", "unstarted", "gone"], "a receipt that says it runs over a container that is gone: whatever was attached to it is gone");
-  assert.deepEqual(WORKER_NOW.map((x) => x.id), ["none", "lost", "unstarted", "ended", "running", "gone"]);
+  assert.deepEqual(WORKER_NOW.map((x) => x.id), ["none", "lost", "unstarted", "removed", "ended", "running", "gone"]);
   w.io.write(join(dispatchDirs(w.ctx, RUN).out, "envelope.json"), "{}");
   assert.equal(dispatchedNow(w.ctx, { run: RUN }, w.d).envelope, true, "that an envelope was left is said -- what it says is the host's to judge");
   assert.throws(() => dispatchedNow(w.ctx, { run: "Run 1" }, w.d), (e) => e instanceof Refused);

@@ -446,7 +446,9 @@ src/investigation/verification.mjs · assessments.mjs  (0.1.0, ADR 0032) what a 
                (the run-version action: authorized, prepared and started BEFORE the dispatch, the execution
                named first, the worker's envelope held by the host, its evidence kept only when believed,
                within limits.attempts; the request kept as a `dispatches` artifact under the digest its start
-               records, and a version whose last dispatch is AMBIGUOUS never sent again) · reconcile-runs.mjs
+               records, and a version whose last dispatch is AMBIGUOUS never sent again -- as is one with grants
+               whose envelope the host could not believe, or that left none, unless its worker's receipt says it
+               never ran: `NEVER_RAN`, the WORKER_NOW words that free a new attempt) · reconcile-runs.mjs
                (PBI 19: RECONCILE rows over a start that never settled -- IN_FLIGHT · LATE · RUNNING · NEVER_RAN ·
                LOST_READ · LOST; a late envelope held to the request that was sent, on the live path; a known one
                settles its step, an AMBIGUOUS one leaves it for a person). Their PORTS -- what a design is

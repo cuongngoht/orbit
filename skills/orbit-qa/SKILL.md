@@ -218,7 +218,10 @@ are bound by the engine, and what it came to (`SATISFIED`, `CONTRADICTED`, `INCO
 what the worker says. A worker stopped before its run finished (its deadline, its supervisor) ruled on nothing:
 `INTERRUPTED` when the version could write nothing -- run it again, and if its own deadline stopped it, wait
 less -- and `AMBIGUOUS` when it had grants to write, which is never sent again (`result.stopped` says why it
-stopped). A run that did not settle is read back, never sent again: `reconcile` (below).
+stopped). So is a run whose worker left no envelope, or one the host's check did not believe: `AMBIGUOUS` when it
+had grants to write, unless the worker's own receipt says it never ran (`EXECUTION_ERROR`, rule `NEVER_RAN`: run it
+again); `EXECUTION_ERROR` when it could write nothing. A run that did not settle is read back, never sent again:
+`reconcile` (below).
 Every step's answer carries `result`: what its action came to in its owner's word (`DRAFT_CREATED`,
 `GENERATION_FAILED`, `ENVIRONMENT_BLOCKED`, `SATISFIED` …), the stage or rule behind it and why -- read it
 before the next decision: a blocked run names the binding or grant it lacked, a failed design the finding
@@ -274,8 +277,10 @@ node ${CLAUDE_PLUGIN_ROOT}/cli/autonomous-qa.mjs reconcile --investigation=<id> 
 
 `reconcile` takes every started version that has no evaluation through ordered rows: still within its
 deadline (nothing decided), an envelope left after all (judged now, against the request that was
-sent), a worker still running, one that never ran (a new attempt may go), one gone that could not
-write, and one gone that could — AMBIGUOUS, kept for a person, never sent again.
+sent -- and one with no request kept to hold it to is never taken: AMBIGUOUS if it could write), a worker
+still running, one that never ran -- never created, never started, or removed before it was started (a new
+attempt may go) -- one gone that could not write, and one gone that could — AMBIGUOUS, kept for a person,
+never sent again.
 
 ## 3 · When a step is refused, or stops
 

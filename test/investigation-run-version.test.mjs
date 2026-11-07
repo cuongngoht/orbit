@@ -21,9 +21,10 @@ import { ACTIONS } from "../src/investigation/dispatch.mjs";
 import { generated } from "../src/investigation/generate.mjs";
 import { loopWorld, resultView } from "../src/investigation/loop.mjs";
 import { modelOf } from "../src/investigation/model.mjs";
-import { ranVersion } from "../src/investigation/run-version.mjs";
+import { NEVER_RAN, ranVersion } from "../src/investigation/run-version.mjs";
 import { createInvestigations, eventIdOf } from "../src/investigation/store.mjs";
 import { WORKER_API } from "../src/run/worker.mjs";
+import { WORKER_NOW } from "../src/runtime/sandbox/dispatch.mjs";
 import { freezeVersion } from "../src/qa/generation/version.mjs";
 import { shapeOf } from "../src/qa/obligations/shapes.mjs";
 import { fakeContext } from "./fakes/context.mjs";
@@ -70,15 +71,49 @@ test("a version that held: authorized, prepared and started BEFORE the dispatch,
   assert.equal(JSON.stringify(m.starts).includes("s3cr3t"), false, "the intent names its secrets, never their values");
 });
 
-test("a contradiction of the compiled verdict is CONTRADICTED; a claimed PASS over a failed step is the worker not believed", () => {
+// A worker that claims a PASS its own run log does not hold is not believed -- and a worker the host does not believe has
+// said nothing of what it did. These runs had grants to write (`world`'s prepare mints one), so they are AMBIGUOUS: held
+// back, never dispatched again (0.5.0 review of B7). They were EXECUTION_ERROR, whose "read back first" nothing enforced,
+// so the next attempt ran -- and a write that may have happened was free to happen again.
+const liarOf = (x) => ({ ...envelopeFor(x, "PASS", [{ kind: "step", i: 1, ok: true }, { kind: "step", i: 2, ok: true }]), records: [{ kind: "run", case_digest: x.request.case.digest }, { kind: "step", i: 1, ok: true }, { kind: "step", i: 2, ok: false, error: "x" }] });
+
+test("a contradiction of the compiled verdict is CONTRADICTED; a claimed PASS over a failed step is the worker not believed -- and with grants, never sent again", () => {
   const failed = world((x) => envelopeFor(x, "FAIL", [{ kind: "step", i: 1, ok: true }, { kind: "step", i: 2, ok: false, error: "EXPECT FAILED", contradiction: true }], { failure: { contradiction: true } }));
   assert.equal(ranVersion(failed.w, { version: failed.version }).outcome, "CONTRADICTED");
-  const liar = world((x) => ({ ...envelopeFor(x, "PASS", [{ kind: "step", i: 1, ok: true }, { kind: "step", i: 2, ok: true }]), records: [{ kind: "run", case_digest: x.request.case.digest }, { kind: "step", i: 1, ok: true }, { kind: "step", i: 2, ok: false, error: "x" }] }));
+  const liar = world(liarOf);
   const out = ranVersion(liar.w, { version: liar.version });
-  assert.equal(out.outcome, "EXECUTION_ERROR");
+  assert.deepEqual([out.outcome, out.rule], ["AMBIGUOUS", "UNBELIEVED_WRITE"], out.why);
   assert.ok(out.findings.length > 0);
+  assert.deepEqual([ranVersion(liar.w, { version: liar.version }).outcome, liar.calls.run.length], ["AMBIGUOUS", 1], "what it did is unknown: held back, never dispatched again");
   const silent = world(() => ({ why: "the worker was killed" }));
-  assert.equal(ranVersion(silent.w, { version: silent.version }).outcome, "EXECUTION_ERROR");
+  const s = ranVersion(silent.w, { version: silent.version });
+  assert.deepEqual([s.rule, s.outcome], ["UNBELIEVED_WRITE", "AMBIGUOUS"], "no envelope, and nothing saying its worker never ran: what reconcile calls LOST");
+  assert.deepEqual([ranVersion(silent.w, { version: silent.version }).outcome, silent.calls.run.length], ["AMBIGUOUS", 1]);
+});
+
+// What frees an attempt the host could not believe to run again: that it could write nothing, or that its worker's own
+// receipt says it never ran (src/investigation/run-version.mjs NEVER_RAN, the words of src/runtime/sandbox/dispatch.mjs
+// WORKER_NOW) -- never a missing word, and never a worker that ran and ended without one.
+test("a run the host could not believe runs again only when it could write nothing, or its worker's receipt says it never ran", () => {
+  const readOnly = (t) => ((prepare) => (t.w.dispatch.prepare = (x) => ({ ...prepare(x), grants: [] })))(t.w.dispatch.prepare);
+  const liar = world(liarOf);
+  readOnly(liar);
+  const l = ranVersion(liar.w, { version: liar.version });
+  assert.deepEqual([l.rule, l.outcome], ["ENVELOPE", "EXECUTION_ERROR"], l.why);
+  ranVersion(liar.w, { version: liar.version });
+  assert.equal(liar.calls.run.length, 2, "it could write nothing: a new attempt runs");
+  for (const worker of NEVER_RAN) {
+    const never = world(() => ({ why: "the worker left no envelope", worker }));
+    const a = ranVersion(never.w, { version: never.version });
+    assert.deepEqual([a.rule, a.outcome], ["NEVER_RAN", "EXECUTION_ERROR"], worker);
+    ranVersion(never.w, { version: never.version });
+    assert.equal(never.calls.run.length, 2, `${worker}: nothing it was granted was spent, so a new attempt runs`);
+  }
+  for (const worker of ["ended", "gone", "running", null]) {
+    const may = world(() => ({ why: "the worker left no envelope", worker }));
+    assert.equal(ranVersion(may.w, { version: may.version }).outcome, "AMBIGUOUS", `${worker}: it may have run`);
+  }
+  assert.deepEqual(NEVER_RAN.filter((id) => !WORKER_NOW.some((row) => row.id === id)), [], "each is a word a worker's receipt is read back as");
 });
 
 // What 0.4.0's diagnosis found (0.5.0 B7): a worker interrupted before its runner finished -- its deadline, its
@@ -253,7 +288,7 @@ test("a failure names the step it failed at and never its message -- it quotes w
   assert.deepEqual([a.outcome, a.stopped], ["CONTRADICTED", { step: 2, do: "call", capability: "orbit.state.read", as: "failed", says: null }]);
   const liar = world((x) => ({ ...envelopeFor(x, "REFUSED", [{ kind: "step", i: 1, ok: false, refused: REFUSAL }]), records: [{ kind: "run", case_digest: x.request.case.digest }, { kind: "step", i: 1, ok: true }] }));
   const b = ranVersion(liar.w, { version: liar.version });
-  assert.deepEqual([b.outcome, b.stopped], ["EXECUTION_ERROR", null]);
+  assert.deepEqual([b.outcome, b.stopped], ["AMBIGUOUS", null], "a worker not believed says nothing -- and this one had grants to write, so it is never sent again");
 });
 
 // What a real Claude Code QA row taught (0.4.0, ORBIT-QA-001 on Opus, three runs of three): its crash test faulted the

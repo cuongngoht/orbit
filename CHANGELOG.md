@@ -25,6 +25,12 @@
   removing it answers EPERM, and every store writer read that as a refused write, so a trail line was dropped. An EPERM
   is now a refusal only when it persists past three attempts (70 ms at most); EACCES and EROFS are refused at once, as
   before.
+- **A generated test that had grants is never run again when the host could not believe its worker.** A run-version
+  whose worker left no envelope, or one that failed the host's check, was EXECUTION_ERROR, and a new attempt ran even
+  when the first may have written. It is now AMBIGUOUS when the version had grants to write -- held back, read back,
+  never sent again, as an interrupted run already was -- unless the worker's own receipt says it never ran (rule
+  `NEVER_RAN`; a worker removed before it was started now reads as `removed`, never `ended`). Reconcile names the same
+  words, and a late envelope it cannot hold to a kept request is AMBIGUOUS too when the version could write.
 - **A held-out application measures Orbit on what it was not tuned against (B2, ADR 0056).** Every 0.4.0 fix was found
   on the benchmark's own cases, so their rates say how Orbit does on the cases it was fixed against. A new fixture,
   `benchmark/fixtures/lending/` -- a lending service several library systems share, with an asynchronous drop-box

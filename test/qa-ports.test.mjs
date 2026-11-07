@@ -232,7 +232,11 @@ test("a run lays its inputs where the worker reads them, and reads back only wha
   const escaped = p.dispatch.run({ request: { runId: "exe-1", nonce: "n" }, frozen: { case: { id: "gen-x", steps: [] } } });
   assert.deepEqual([escaped.records, escaped.listed.size, escaped.evidence], [[], 0, null], "evidence outside the worker's own output is never read");
   const silent = ports(ctx, journal(), { runtime: { dirs: () => ({ in: join(room, "in2"), out: join(room, "out2") }), dispatch: () => ({ ok: false, why: "the sandbox is not ready" }) } });
-  assert.deepEqual(silent.dispatch.run({ request: { runId: "exe-2" }, frozen: { case: { id: "gen-x", steps: [] } } }), { why: "the sandbox is not ready" });
+  assert.deepEqual(silent.dispatch.run({ request: { runId: "exe-2" }, frozen: { case: { id: "gen-x", steps: [] } } }), { why: "the sandbox is not ready", worker: null }, "a runtime that says nothing of its worker says nothing");
+  const asked = [];
+  const removed = ports(ctx, journal(), { runtime: { dirs: () => ({ in: join(room, "in3"), out: join(room, "out3") }), dispatch: () => ({ ok: false, why: "the worker was removed before it ran" }), worker: (run) => (asked.push(run), "removed") } });
+  assert.deepEqual(removed.dispatch.run({ request: { runId: "exe-3" }, frozen: { case: { id: "gen-x", steps: [] } } }), { why: "the worker was removed before it ran", worker: "removed" }, "no envelope: what the runtime says became of the worker, as a read-back says it (0.5.0 review of B7)");
+  assert.deepEqual(asked, ["exe-3"]);
   rmSync(room, { recursive: true, force: true });
   rmSync(store, { recursive: true, force: true });
 });

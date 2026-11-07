@@ -133,11 +133,20 @@ export function lateEvaluated(w, start, back, request) {
   return evaluatedRun(w, dispatchOf(w), v, start.attempt, start.execution, request, back, { grants: request.grants ?? [] });
 }
 
+// What became of a worker that left no envelope, in the words of its own receipt (src/runtime/sandbox/dispatch.mjs
+// WORKER_NOW), when they say it NEVER ran: no receipt, so it was never created; created and never started; or removed
+// before it was started. Only these free an attempt that had grants to try again (RESULT NEVER_RAN, reconcile-runs.mjs).
+export const NEVER_RAN = ["none", "lost", "unstarted", "removed"];
+
+// Whether the attempt's worker ran: it left an envelope, so it did; its receipt says it never did; or nothing says --
+// null, never taken for "it did not" (a dispatch port that says nothing of its worker included).
+const ranOf = (r) => (r.envelope ? true : NEVER_RAN.includes(r.worker) ? false : null);
+
 // The host's own check, then the word RESULT gives it -- recorded as the run and its evaluation -- and, of a run the host
 // believed, where it stopped short and what it said there (`stopped`), with what that step's own match left out.
 function evaluatedRun(w, d, v, attempt, execution, request, r, p) {
   const findings = hostFindings(d, v, execution, request, r, p);
-  const result = resultOf({ status: r.envelope?.status ?? "BLOCKED", failure: r.envelope?.result?.failure ?? {}, envelope: findings, authority: v.obligation?.authority ?? "accepted", positiveFailed: positiveFailed(v, r), faultMissed: faultMissed(v, r), wrote: (p.grants ?? []).length > 0 });
+  const result = resultOf({ status: r.envelope?.status ?? "BLOCKED", failure: r.envelope?.result?.failure ?? {}, envelope: findings, authority: v.obligation?.authority ?? "accepted", positiveFailed: positiveFailed(v, r), faultMissed: faultMissed(v, r), wrote: (p.grants ?? []).length > 0, ran: ranOf(r) });
   recorded(w, d, { v, attempt, execution }, r, result, findings);
   return { outcome: result.outcome, rule: result.rule, why: result.why, execution, findings, stopped: findings.length ? null : withExcluded(stoppedOf(v, r, request), v, r, request) };
 }

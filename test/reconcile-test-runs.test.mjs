@@ -82,7 +82,9 @@ test("a late envelope is judged now by the host's own check, against the request
   past(forged);
   forged.seen.back = { ...PASSED(forged.sent()), worker: "ended" };
   forged.seen.back.envelope.nonce = "0".repeat(24);
-  assert.equal(reconciledRuns(forged.w)[0].outcome, "EXECUTION_ERROR", "an envelope that answers another dispatch is never taken");
+  const [f] = reconciledRuns(forged.w);
+  assert.deepEqual([f.outcome, f.cause, f.settled], ["AMBIGUOUS", "UNBELIEVED_WRITE", undefined], "an envelope that answers another dispatch is never taken -- and it says nothing of what this run, which had grants, did");
+  assert.deepEqual(unsettled(forged.model()).map((d) => d.id), ["dec-1"], "its step stays for a person");
 });
 
 test("a late envelope refused at a step says where it stopped and what that step's refusal said, as a live one does", () => {
@@ -118,6 +120,10 @@ test("a worker that never ran proved and spent nothing: its attempt is an execut
   assert.deepEqual([r.rule, r.outcome, r.settled], ["NEVER_RAN", "EXECUTION_ERROR", "dec-1"]);
   assert.throws(() => ranVersion(t.w, { version: t.version }), /the host died/, "a second attempt is dispatched");
   assert.equal(t.model().starts.at(-1).attempt, 2);
+  const removed = died();
+  past(removed);
+  removed.seen.back = { why: "the worker left no envelope", worker: "removed" };
+  assert.deepEqual(reconciledRuns(removed.w).map((x) => [x.rule, x.outcome]), [["NEVER_RAN", "EXECUTION_ERROR"]], "a worker removed before it was started never ran either -- its receipt says so (WORKER_NOW removed)");
 });
 
 test("a worker gone with grants to write is AMBIGUOUS: its step stays for a person, and its version is never sent again", () => {
@@ -152,7 +158,13 @@ test("an envelope with no request kept to hold it to is never taken as it is", (
   const w = { ...t.w, store: { ...t.w.store, readArtifact: (id, kind, digest) => (kind === "dispatches" ? null : t.w.store.readArtifact(id, kind, digest)) } };
   assert.deepEqual(reconciledRuns(w).map((r) => r.rule), ["IN_FLIGHT"], "with no request kept, its deadline is not known either: it is given the longest a dispatch may run");
   t.clock.ms = STARTED_AT + 30 * 60 * 1000 + DISPATCH_SLACK_MS + 1;
-  assert.deepEqual(reconciledRuns(w).map((r) => [r.rule, r.outcome]), [["LATE_UNJUDGED", "EXECUTION_ERROR"]]);
+  assert.deepEqual(reconciledRuns(w).map((r) => [r.rule, r.outcome]), [["LATE_UNJUDGED", "AMBIGUOUS"]], "never taken, and it had grants to write: what it did is unknown");
+  assert.deepEqual(unsettled(t.model()).map((d) => d.id), ["dec-1"], "its step stays for a person");
+  const reading = died({ grants: [] });
+  reading.clock.ms = STARTED_AT + 30 * 60 * 1000 + DISPATCH_SLACK_MS + 1;
+  reading.seen.back = { ...PASSED(reading.sent()), worker: "ended" };
+  const r = { ...reading.w, store: { ...reading.w.store, readArtifact: (id, kind, digest) => (kind === "dispatches" ? null : reading.w.store.readArtifact(id, kind, digest)) } };
+  assert.deepEqual(reconciledRuns(r).map((x) => [x.rule, x.outcome]), [["LATE_UNJUDGED", "EXECUTION_ERROR"]], "one that could write nothing is an attempt that proved nothing");
 });
 
 test("reconcile needs a way to read a dispatch back, bound by the composition root", () => {

@@ -66,6 +66,10 @@ none of them the host's word:
      reader, designer or verifier, no command by a reader or designer. A tool's kind is the Claude Code adapter's own
      (`skills/orbit-learn/hosts/claude.mjs`), and what each agent's tools are is Satellite's table (`AGENT_TOOLS`).
 
+   And the session itself -- the orchestrator, whose profile never touches source -- took no step of an engineering
+   task's loop: that is an implement, build or test unit's work, its own agent's alone, and a session that drives the task
+   beside the agent it launched carried the unit's change outside every profile.
+
 A record row reads an owner's word about its own state and never judges code. A round's legs are folded the same way
 for a workflow and a mission case (`benchmark/lib/core/legs.mjs`): a leg holds when every row naming it holds, and the
 code leg also needs the verifier's own verdict; a round's `outcome.json` keeps `legs`, `failedLegs` and each row's
@@ -91,8 +95,8 @@ handed no task -- a mission names its own -- and reads:
   `mission show` (lifecycle, verdict, units, runs, acceptance) and `live status --json` (each run's profile, agent,
   dispatch, outcome and the join's word, basis and host agent), and each mission's `evidence.linked` journal lines as
   data (which ref, at which level, from which owner, for which criterion, from which run);
-- the session trail's agent events as data -- an agent's launch, start and stop, and every call a subagent made, by
-  kind -- bounded, through no link;
+- the session trail's agent events as data -- an agent's launch, start and stop, every call a subagent made, by kind,
+  and every Orbit command, whoever ran it -- bounded, through no link;
 - each task an evidence row names, read back through `task.mjs show`;
 - the round's engineering task: the one the newest mission's LAST implement run started (found `mission`) -- else, as
   for a goal, the one engineering task the store holds (`only-task`) -- and its workspace, compared with the target,
@@ -116,7 +120,7 @@ the legs it must fail on (`legs`), holds only when every one of them failed, and
 |---|---|---|---|
 | `reference` | `mission` | the goal analyzed, an explore unit carried by `orbit:satellite-reader`, an implement unit by `orbit:satellite-engineer` driving the engineering task Satellite started to a completed change (never committing, as its playbook says), each run acknowledged with the agent that carried it and reported, the mission finished | PASS |
 | `half-change` | `mission` | the same mission with half the change: it COMPLETES, VERIFIED on its own owners' records, and the hidden checks reject what it left -- a mission's word is not the verdict | FAIL, on `code` |
-| `claims` | `claims` | the right change, made in an engineering task the host started by hand; the mission's one review run reports success citing a file, and the mission is finished, REPORTED, with no owner record | FAIL, on `code` and `criteria` |
+| `claims` | `claims` | the right change, made in an engineering task the session started and drove by hand; the mission's one review run reports success citing a file, and the mission is finished, REPORTED, with no owner record | FAIL, on `code` and `criteria` (and, the session having driven the task itself, `privilege`) |
 | `over-reach` | `over-reach` | the reference mission, except that the read-only explore run's agent also edits a file and runs a command (shown through the hooks, never made) | FAIL, on `privilege` |
 | `idle` | `idle` | nothing at all | NO_PROGRESS |
 

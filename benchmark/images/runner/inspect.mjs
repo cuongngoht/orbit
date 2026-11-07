@@ -285,14 +285,16 @@ const TASK_REF = /^task:(tsk-[a-f0-9]{12})$/;
 
 export const missionTask = (missions) => (missions?.json?.missions ?? []).map((m) => (m.runs ?? []).filter((r) => r.provider === "engineering").map((r) => TASK_REF.exec(String(r.providerRef ?? ""))?.[1]).filter(Boolean).at(-1)).find(Boolean) ?? null;
 
-// The session trail's agent events and every call a subagent made, as data: <store>/control/activity/trace/*.jsonl.
+// The session trail's agent events, every call a subagent made and every Orbit command, as data:
+// <store>/control/activity/trace/*.jsonl.
 const TRAIL_TYPES = new Set(["agent.invoked", "agent.launched", "agent.started", "agent.ended", "tool.used", "command.ran"]);
 
 const trailRoom = () => join(PATHS.store, "control", "activity", "trace");
 
-const keptEvent = (e) => TRAIL_TYPES.has(e?.type) && (e.type.startsWith("agent.") || Boolean(e.data?.agent));
+// An agent's own event, a call a subagent made, or an Orbit command whoever ran it (the session's own steps are judged too).
+const keptEvent = (e) => TRAIL_TYPES.has(e?.type) && (e.type.startsWith("agent.") || Boolean(e.data?.agent) || Boolean(e.data?.orbit));
 
-const TRAIL_EVENT = (e) => ({ type: e.type, at: e.at ?? null, agent: e.data?.agent ?? null, launched: e.data?.launched ?? null, run: e.data?.run ?? null, call: e.data?.call ?? null, id: e.data?.id ?? null, kind: e.data?.kind ?? null, tool: e.data?.tool ?? null, ok: e.data?.ok ?? null });
+const TRAIL_EVENT = (e) => ({ type: e.type, at: e.at ?? null, agent: e.data?.agent ?? null, launched: e.data?.launched ?? null, run: e.data?.run ?? null, call: e.data?.call ?? null, id: e.data?.id ?? null, kind: e.data?.kind ?? null, tool: e.data?.tool ?? null, orbit: e.data?.orbit ?? null, sub: e.data?.sub ?? null, ok: e.data?.ok ?? null });
 
 const shardsOf = (room) => (isDir(room) ? readdirSync(room, { withFileTypes: true }).filter((x) => x.isFile() && x.name.endsWith(".jsonl")).map((x) => join(room, x.name)).sort() : []);
 

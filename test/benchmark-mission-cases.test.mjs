@@ -167,7 +167,7 @@ test("the reference takes the goal through Satellite: the goal analyzed, an expl
   assert.equal(readFileSync(join(at.repo, "src/orders.mjs"), "utf8"), before, "the checkout itself is never written");
 });
 
-test("a claim no owner's record backs: the right change made in an engineering task started by hand, the mission's one review run claiming it, the mission REPORTED -- it fails on the code and the criteria, every leg its control names", { skip: NO_NPM, timeout: 600000 }, (t) => {
+test("a claim no owner's record backs: the right change made in an engineering task the session started and drove by hand, the mission's one review run claiming it, the mission REPORTED -- it fails on the code and the criteria, every leg its control names, and on the privilege", { skip: NO_NPM, timeout: 600000 }, (t) => {
   const c = caseNamed("ORBIT-MSN-001");
   const at = targetRepository(t, c);
   const s = hostFor(at, c, "claims");
@@ -178,8 +178,9 @@ test("a claim no owner's record backs: the right change made in an engineering t
   assert.ok(ins.inspect.changes.some((x) => x.rel === "src/orders.mjs"), "the change itself is there: only the records can fail it");
   const j = judged(c, ins);
   assert.equal(j.records.find((x) => x.id === "engineering-completed").ok, true, "an engineering task did complete the change");
-  assert.deepEqual(failedRows(j), ["mission-delivered", "criteria-settled"]);
-  assert.deepEqual(j.failed, ["code", "criteria"]);
+  assert.deepEqual(failedRows(j), ["mission-delivered", "criteria-settled", "least-privilege"]);
+  assert.match(j.records.find((x) => x.id === "least-privilege").why.join(" "), /the session itself took \d+ engineering step/, "and the session drove that task itself: the orchestrator never touches source");
+  assert.deepEqual(j.failed, ["code", "criteria", "privilege"]);
   assert.ok(control(c, "claims").legs.every((leg) => j.failed.includes(leg)), "it fails on every leg its control names");
 });
 

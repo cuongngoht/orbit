@@ -35,7 +35,7 @@
   an engineering task's own verification, a check its runner ran -- that the inspection reads back from that owner
   itself; never an agent's report) and the privilege (every work unit's run had no wider a profile than its unit's kind
   needs, was carried by an agent the trail saw launched as the agent its profile names, and that agent made no edit or
-  command its tools do not carry). The inspection reads every mission back through Satellite's own commands
+  command its tools do not carry, nor the session itself any engineering task's step). The inspection reads every mission back through Satellite's own commands
   (`inspect.mjs --mission`), with the session trail's agent events and the tasks its evidence names; a mission round's
   host may not start an engineering task by hand. `ORBIT-MSN-001` (an order line that is not a whole positive quantity
   at a whole price is refused) and `ORBIT-MSN-002` (a shipped order can be marked delivered, and nothing else can) run on

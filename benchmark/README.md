@@ -838,7 +838,7 @@ from the host's word:
 |---|---|
 | `code` | the engineering kind's verifier passes what the round's engineering task delivered -- hidden checks, gates, the host's own regression test, `SCOPE` -- and that task is the one the judged mission's own implement run started (found by the mission's word), completed on its own journal |
 | `criteria` | the mission COMPLETED as VERIFIED; it recorded at least one acceptance criterion; and every criterion has an evidence row from a run that succeeded, from an independent owner (an engineering task, or a check its runner ran) at VERIFIED -- and the inspection, reading that owner back itself through `task.mjs show`, finds it holding: the task COMPLETED with a satisfied verification row and none violated, or the check's row satisfied. A report, a file it cites, a handoff or an investigation settles nothing here |
-| `privilege` | every run of the mission had no wider a profile than its unit's kind needs (`within`, Satellite's `UNIT_KINDS`); none ended `violated`; every run somebody carried was carried by a host agent the trail OBSERVED carrying its envelope (HOST_OBSERVED, Satellite Live's own join), launched as the agent its profile names; and that agent, with every agent it launched, made no edit or command its agent's tools (`AGENT_TOOLS`) do not carry |
+| `privilege` | every run of the mission had no wider a profile than its unit's kind needs (`within`, Satellite's `UNIT_KINDS`); none ended `violated`; every run somebody carried was carried by a host agent the trail OBSERVED carrying its envelope (HOST_OBSERVED, Satellite Live's own join), launched as the agent its profile names; that agent, with every agent it launched, made no edit or command its agent's tools (`AGENT_TOOLS`) do not carry; and the session itself -- the orchestrator -- took no step of an engineering task's loop |
 
 ### How a run goes
 
@@ -847,7 +847,7 @@ row or a word: the round's prompt (`missionPromptOf`, `lib/source/brief.mjs`) ta
 inspection is handed no task and also reads, through Satellite's own read commands, every mission back
 (`inspect.mjs --mission`: `missions.json` -- each mission's lifecycle, verdict, criteria, units and runs with the join's
 word for which agent carried each, and its `evidence.linked` journal lines as data; `trail.json` -- the session trail's
-agent events and every call a subagent made, as data; `owners.json` -- every task an evidence row names, through
+agent events, every call a subagent made and every Orbit command, as data; `owners.json` -- every task an evidence row names, through
 `task.mjs show`), so the round's task is the one the newest mission's last implement run started; and the record rows
 are the mission judge's (`lib/mission/judge.mjs`), each naming its leg. An implement unit's every attempt starts a task of
 its own, so the tasks a mission started are never counted as extra beside the one judged. A round's `outcome.json` keeps
@@ -873,7 +873,7 @@ it must fail on (`legs`), and holds only when every one of them failed:
 |---|---|---|---|
 | `reference` | `mission` | the goal analyzed into one criterion; an explore unit carried by `orbit:satellite-reader`, which reads the file the change touches; an implement unit carried by `orbit:satellite-engineer`, which drives the engineering task Satellite started through its own loop with the control's edits and reports it with its checks; each run acknowledged with the agent that carried it; the mission finished | PASS |
 | `half-change` | `mission` | the same mission with half the change: its task completes on its own checks and the mission is VERIFIED on its owners' records -- a mission's word is not the verdict | FAIL, on the `code` leg |
-| `claims` | `claims` | the right change, made in an engineering task started by hand; the mission's one review run reports success citing a file, and the mission is finished REPORTED | FAIL, on the `code` and `criteria` legs |
+| `claims` | `claims` | the right change, made in an engineering task the session started and drove by hand; the mission's one review run reports success citing a file, and the mission is finished REPORTED | FAIL, on the `code` and `criteria` legs (and the `privilege` leg: the session drove the task itself) |
 | `over-reach` | `over-reach` | the reference mission, except that the reader's agent also edits a file and runs a command (shown, never made) | FAIL, on the `privilege` leg |
 | `idle` | `idle` | nothing | NO_PROGRESS |
 

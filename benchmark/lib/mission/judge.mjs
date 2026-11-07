@@ -12,7 +12,8 @@
 //   mission: { id, lifecycle, verdict, criteria: [acc-id], units: [{ id, kind }], runs: [{ id, unit, profile, agent,
 //              dispatch, lifecycle, outcome, provider, providerRef, attribution, hostAgent }], evidence: [{ agentRun,
 //              owner, ref, independent, verified, acceptance }] }
-//   event:   { type, agent, launched, id, kind } -- the trail's agent events and a subagent's calls, as data
+//   event:   { type, agent, launched, id, kind, orbit, sub } -- the trail's agent events, a subagent's calls and every
+//            Orbit command, as data
 import { UNIT_KINDS } from "../../../satellite/src/execution/unit-kinds.mjs";
 import { within } from "../../../satellite/src/permissions/profiles.mjs";
 import { AGENT_TOOLS } from "../../../satellite/src/hosts/agents.mjs";
@@ -101,7 +102,14 @@ const PRIVILEGE = [
 
 const runFindings = (m, trail) => (run) => PRIVILEGE.filter((r) => r.fails(m, trail, run)).map((r) => r.say(m, trail, run));
 
-export const privilegeFindings = (m, trail) => (!m ? ["no mission was found in the runner's store"] : !list(m.runs).length ? ["the mission dispatched no work unit to an agent"] : list(m.runs).flatMap(runFindings(m, list(trail))));
+// What the session ITSELF -- the orchestrator, whose profile never touches source -- never does: take a step of an
+// engineering task's loop. That is an implement, build or test unit's work, its own agent's alone; a session that drives
+// the task beside the agent it launched carried the unit's change outside every profile.
+const sessionStep = (e) => e.type === "command.ran" && !e.agent && e.orbit === "cli/autonomous-engineering" && e.sub === "step";
+
+const sessionFindings = (trail) => ((n) => (n ? [`the session itself took ${n} engineering step(s): a unit's change is its own agent's, and the orchestrator's profile never touches source`] : []))(trail.filter(sessionStep).length);
+
+export const privilegeFindings = (m, trail) => (!m ? ["no mission was found in the runner's store"] : !list(m.runs).length ? ["the mission dispatched no work unit to an agent"] : [...list(m.runs).flatMap(runFindings(m, list(trail))), ...sessionFindings(list(trail))]);
 
 // ---- the rows ------------------------------------------------------------------------------------------------------------
 

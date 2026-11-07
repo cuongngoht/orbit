@@ -86,6 +86,13 @@ test("least privilege reads what each run's agent did, and the agents it launche
   assert.match(privilegeFindings(verifier, [launched, { type: "tool.used", agent: "claude:reader", tool: "Edit", kind: "edit" }])[0], /edit call/, "and edits nothing");
 });
 
+test("the session itself never takes an engineering task's step: a unit's change is its own agent's, whatever agent was launched beside it -- reading the task's context is no step", () => {
+  const step = (o = {}) => ({ type: "command.ran", orbit: "cli/autonomous-engineering", sub: "step", ...o });
+  assert.match(privilegeFindings(MISSION, [...TRAIL, step()])[0], /the session itself took 1 engineering step\(s\)/);
+  assert.deepEqual(privilegeFindings(MISSION, [...TRAIL, step({ agent: "claude:engineer" }), step({ sub: "context" }), { type: "command.ran", orbit: "cli/task", sub: "show" }]), [], "an engineer's own step, the session reading the task, or reading any owner");
+  assert.deepEqual(failing(readBack({ trail: [...TRAIL, step()] })), ["least-privilege"]);
+});
+
 test("a run nobody carried is held to its profile and nothing else: dispatched and never launched, or closed by reconcile as interrupted", () => {
   assert.deepEqual(privilegeFindings({ ...MISSION, runs: [run({ lifecycle: "dispatched", outcome: null, attribution: "UNATTRIBUTED", hostAgent: null })] }, []), []);
   assert.deepEqual(privilegeFindings({ ...MISSION, runs: [run({ outcome: "interrupted", attribution: "UNATTRIBUTED", hostAgent: null })] }, []), []);

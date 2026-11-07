@@ -16,7 +16,7 @@
 import { Refused } from "../errors.mjs";
 import { isDenied } from "../protected/authorize.mjs";
 import { approvalOf, fingerprintAsked, kindOf, openActions, openOf, rejectedFingerprints } from "./journal.mjs";
-import { ACTIONS } from "./dispatch.mjs";
+import { ACTIONS, fieldsSaid } from "./dispatch.mjs";
 import { allowedNow } from "./stages.mjs";
 import { DECISION_FIELDS, DECISION_FORBIDDEN, DECISION_SCHEMA, LIFE, MAX_EVIDENCE, TEXT_LIMIT } from "./vocab.mjs";
 
@@ -43,7 +43,10 @@ const extraFields = (a) => Object.keys(a).filter((k) => k !== "kind" && !ACTIONS
 
 const missingFields = (a) => ACTIONS[a.kind].required.filter((k) => a[k] === undefined);
 
-const fieldsProblem = (a) => (extraFields(a).length || missingFields(a).length ? `a ${a.kind} step takes ${ACTIONS[a.kind].fields.join(", ") || "no fields"}${missingFields(a).length ? `, and needs ${missingFields(a).join(", ")}` : ""}${extraFields(a).length ? ` — not ${extraFields(a).join(", ")}` : ""}` : null);
+// A field a step left out is named with what it must say (dispatch.mjs FIELD_SAYS).
+const neededSay = (a) => (missingFields(a).length ? `, and needs ${missingFields(a).join(", ")} — ${fieldsSaid(missingFields(a))}` : "");
+
+const fieldsProblem = (a) => (extraFields(a).length || missingFields(a).length ? `a ${a.kind} step takes ${ACTIONS[a.kind].fields.join(", ") || "no fields"}${neededSay(a)}${extraFields(a).length ? ` — not ${extraFields(a).join(", ")}` : ""}` : null);
 
 const allowedSay = (lw) => (allowedNow(lw).length ? allowedNow(lw).join(", ") : "nothing");
 

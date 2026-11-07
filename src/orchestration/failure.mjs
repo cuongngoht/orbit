@@ -110,7 +110,7 @@ export const CLASSES = [
   { id: "CODE", confidence: "low", when: (f) => f.purpose === "build" && f.changed, because: (f) => (failedDifferently(f) ? "the build fails after the change, and failed differently before it" : "the build fails after the change; nothing shows how it did before") },
   { id: "TEST", confidence: "low", when: (f) => f.purpose === "test" && f.changed, because: (f) => (failedDifferently(f) ? "this test fails after the change, and failed differently before it" : "this test fails after the change; nothing shows how it did before") },
   { id: "CODE", confidence: "low", when: (f) => f.purpose === "run" && f.started && f.changed, because: () => "the application started from the changed code and stopped by itself" },
-  { id: "SCOPE", confidence: "high", when: (f) => f.purpose === "review" && f.unexpected > 0, because: (f) => `${f.unexpected} changed path(s) lie outside what the plan said it would change` },
+  { id: "SCOPE", confidence: "high", when: (f) => f.purpose === "review" && f.unexpected > 0, because: (f) => `${f.unexpected} changed path(s) lie outside what the plan said it would change: if the change needs them, plan again naming every path the change needs, then diagnose retest; if not, diagnose fix and take them out` },
   { id: "CAPABILITY", confidence: "high", when: (f) => f.purpose === "review" && f.missing > 0, because: (f) => `${f.missing} thing(s) the change reaches have no declared check that verifies them` },
   { id: "UNKNOWN", confidence: "low", when: () => true, because: () => "nothing shown is enough to say what it is about" },
 ];

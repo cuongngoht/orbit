@@ -6,7 +6,7 @@
 //
 //   diagnosisOf(d) -> { finish: [line], budget, relay, stopped }      relayLines(file) -> [line] | null      FINISH
 //   diagnosisLines(diagnosis) -> [markdown line]
-//   d: { manifest, ending, rounds: [{ round, host, timedOut, interrupted, error }], relay: [relay line] | null }
+//   d: { manifest, ending, rounds: [{ round, host, timedOut, cut, interrupted, error }], relay: [relay line] | null }
 import { readRegular } from "./room.mjs";
 
 // How many of each kind of relay line a bundle shows: the latest, which is where a round ended up.
@@ -15,6 +15,7 @@ export const SHOWN = 5;
 // Why a host's round ended, in its own words where it said them -- first match wins, the last always matching.
 export const FINISH = [
   { id: "INTERRUPTED", when: (r) => r.interrupted === true, says: () => "interrupted: a restart cut the round short, and what it left was read back" },
+  { id: "CUT", when: (r) => r.cut === true, says: () => "cut where the case interrupts it, the way a crash ends a session: the next round carries on from there" },
   { id: "DEADLINE", when: (r) => r.timedOut === true, says: () => "stopped at the round's deadline" },
   { id: "NO_SESSION", when: (r) => r.host?.started === false, says: () => "the host never started a session" },
   { id: "SAID", when: (r) => typeof r.host?.subtype === "string", says: (r) => `${r.host.subtype}${r.host.isError ? " (an error)" : ""}` },

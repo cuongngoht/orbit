@@ -17,6 +17,7 @@ import { nextOf, signatureOf } from "./decide.mjs";
 import { cleaned } from "../core/docker.mjs";
 import { hostEnd } from "../core/host.mjs";
 import { candidateOf, inspectedRound, ranRound } from "./round.mjs";
+import { cutOf, cutSaid, cuts } from "./cut.mjs";
 import { docRead, docWritten, readRegular } from "../core/room.mjs";
 import { safeRel } from "../core/paths.mjs";
 import { verified } from "./verify.mjs";
@@ -179,8 +180,6 @@ const HOST_TOOLS = { scripted: "scripted-host", session: "session-host", "coding
 
 const basisHere = (ctx) => hostBasisOf({ repair: true, host: ctx.host });
 
-const scripted = (ctx) => hostBasisOf({ repair: ctx.repair, host: ctx.host }) === "scripted";
-
 const offline = (ctx) => OFFLINE.includes(basisHere(ctx));
 
 const credentialProblem = (ctx) => (offline(ctx) || ctx.credentialNames.some((n) => n !== "ANTHROPIC_BASE_URL") ? null : "CREDENTIALS: no credential for the coding host is set here, by name (ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN; --credential=<NAME>) — the baseline is kept, and `resume` goes on once one is");
@@ -215,18 +214,23 @@ const latestVerification = (ctx, view) => stepOf(ctx, (view.actions ?? []).filte
 // What a round's host does, as the stage says it: a repair through the engineering loop, or a goal through the goal entry.
 const ROUND_WORK = { source: "repairs the source through Orbit's engineering loop", engineering: "takes the goal through Orbit's goal entry, its workflow and its engineering task" };
 
-// A case that declares an interruption cuts that round's runner at its minute -- a coding host is stopped wherever it
-// is, the way a crash stops it. A scripted host interrupts itself, at a moment it can name.
-const cutAt = (ctx, k, minutes) => (ctx.case.interrupt?.round === k && !scripted(ctx) ? Math.min(minutes, ctx.case.interrupt.afterMinutes) : minutes);
+// A case that declares an interruption cuts that round's runner -- a coding host or a scripted one, stopped wherever it
+// is, the way a crash stops it -- the moment its engineering task's journal shows the steps the case names (cut.mjs),
+// never at a minute: a fast host finishes before any minute a case could name. The round keeps its whole deadline, and
+// its brief says nothing of the cut.
+const cutWords = (ctx, k) => (cutOf(ctx.case, k, ctx.runnerStore) ? ` · cut at ${cutSaid(ctx.case)}` : "");
 
 function roundState(ctx, view, k) {
   const left = leftOf(ctx, view);
-  const runnerMinutes = cutAt(ctx, k, Math.max(1, Math.min(ctx.case.limits.runner.minutes, left.minutes - RESERVE_MINUTES)));
-  ctx.rec.stage(ctx.task, "FIXING", `round ${k} of ${ctx.limits.rounds}: the ${HOST_WORDS[basisHere(ctx)]} ${ROUND_WORK[ctx.case.kind] ?? ROUND_WORK.source} · ${runnerMinutes} min · $${left.usd} left (${left.usdBasis})`);
-  return { left: { ...left, engineeringMinutes: runnerMinutes }, latest: latestVerification(ctx, view), engTask: engTaskOf(ctx, k - 1), deadlineMs: runnerMinutes * 60000, held: () => Boolean(HELD(show(ctx))) };
+  const runnerMinutes = Math.max(1, Math.min(ctx.case.limits.runner.minutes, left.minutes - RESERVE_MINUTES));
+  ctx.rec.stage(ctx.task, "FIXING", `round ${k} of ${ctx.limits.rounds}: the ${HOST_WORDS[basisHere(ctx)]} ${ROUND_WORK[ctx.case.kind] ?? ROUND_WORK.source} · ${runnerMinutes} min · $${left.usd} left (${left.usdBasis})${cutWords(ctx, k)}`);
+  return { left: { ...left, engineeringMinutes: runnerMinutes }, latest: latestVerification(ctx, view), engTask: engTaskOf(ctx, k - 1), deadlineMs: runnerMinutes * 60000, held: () => Boolean(HELD(show(ctx))), cut: cutOf(ctx.case, k, ctx.runnerStore) };
 }
 
-const repairSummary = (r) => (r.error ? r.error.says : `the host made ${r.host?.toolCalls ?? "an unknown number of"} tool call(s) and ended ${r.container?.timedOut ? "at the round's deadline" : `with ${r.runner?.exit ?? "?"}${r.runner?.setup ? ` (${r.runner.setup})` : ""}`}`);
+// How a round's runner ended, in words: cut where its case interrupts it, at its deadline, or with its own exit.
+const endedSay = (r) => (r.container?.cut ? "where the case cuts it, the way a crash ends a session" : r.container?.timedOut ? "at the round's deadline" : `with ${r.runner?.exit ?? "?"}${r.runner?.setup ? ` (${r.runner.setup})` : ""}`);
+
+const repairSummary = (r) => (r.error ? r.error.says : `the host made ${r.host?.toolCalls ?? "an unknown number of"} tool call(s) and ended ${endedSay(r)}`);
 
 const repairReceipt = (ctx, k, r) => ((t) => (t ? { domain: "task", ref: `runner.${t}`, outcome: "IN_RUNNER_STORE", summary: `the run's one engineering task, in its runner store; round ${k}` } : null))(r.start?.task ?? r.runner?.task ?? null);
 
@@ -287,15 +291,22 @@ const recordRow = (rb) => (row) => ({ id: row.id, ok: row.ok(rb) === true, says:
 
 const specRecords = (ctx, rb) => (typeof ctx.spec?.records === "function" ? ctx.spec.records(rb).map((x) => ({ id: x.id, ok: x.ok === true, says: x.says ?? x.id })) : []);
 
+// A case that declares an interruption is held to its having HAPPENED: the round it names was cut where it says, by the
+// controller (cut.mjs) -- else nothing of the run showed a session carried across a crash, however well a later round
+// did. The cut is the controller's own record of the round (its repair, then its outcome), never a host's word.
+const cutIn = (ctx, k, repair) => (k === ctx.case.interrupt.round ? repair?.container?.cut === true : docRead(ctx.room, `rounds/${ctx.case.interrupt.round}/outcome.json`)?.cut === true);
+
+const interruptRecords = (ctx, k, repair) => (cuts(ctx.case) ? [{ id: "interrupted", says: `the session was cut where the case interrupts it (${cutSaid(ctx.case)}), the way a crash stops it, and carried on from there`, ok: cutIn(ctx, k, repair) }] : []);
+
 // An arm with no Orbit (0.5.0, B23) has no owner's record to read: only the verifier judges what its host left.
-const recordsOf = (ctx, ins, engineering) => (ctx.case.kind !== "engineering" || ctx.arm === "none" ? [] : ((rb) => [...(GOAL_RECORDS[ctx.case.measures?.expects ?? "change"] ?? []).map(recordRow(rb)), ...specRecords(ctx, rb)])(readBackOf(ins, engineering)));
+const recordsOf = (ctx, k, repair, ins) => (ctx.case.kind !== "engineering" || ctx.arm === "none" ? [] : ((rb) => [...(GOAL_RECORDS[ctx.case.measures?.expects ?? "change"] ?? []).map(recordRow(rb)), ...specRecords(ctx, rb), ...interruptRecords(ctx, k, repair)])(readBackOf(ins, engineeringOf(ins))));
 
 async function judgedRound(ctx, k, repair, ins) {
   const cand = ins?.inspect ? candidateOf(ctx, ins) : NO_CANDIDATE(ctx);
   docWritten(ctx.room, `rounds/${k}/candidate.json`, { ...cand, entries: undefined, patch: undefined });
   ctx.room.io.write(ctx.room.at("rounds", String(k), "candidate.patch"), cand.patch);
   const v = await verifiedCandidate(ctx, k, cand);
-  return { repair, ins, cand, v, arm: ctx.arm ?? "release", engineering: engineeringOf(ins), extraTasks: extraTasks(ctx, ins, k), expects: ctx.case.measures?.expects ?? "change", records: recordsOf(ctx, ins, engineeringOf(ins)), ...deltaOf(baselineDocs(ctx, show(ctx))[0], v) };
+  return { repair, ins, cand, v, arm: ctx.arm ?? "release", engineering: engineeringOf(ins), extraTasks: extraTasks(ctx, ins, k), expects: ctx.case.measures?.expects ?? "change", records: recordsOf(ctx, k, repair, ins), ...deltaOf(baselineDocs(ctx, show(ctx))[0], v) };
 }
 
 async function verifiedCandidate(ctx, k, cand) {
@@ -335,7 +346,7 @@ export const isVerified = (r) => VERIFIED_BY[r.expects ?? "change"](r);
 
 // What kept a round from being a round of repair -- the environment, the provider, the network -- and never a host that
 // stopped on its own budget (the budget rows decide that) or a candidate that failed (the verifier does).
-const hostError = (r) => ((e) => (e && e.cause !== "BUDGET_EXHAUSTED" ? e : null))(r.repair?.host ? hostEnd(r.repair.host, { timedOut: r.repair.container?.timedOut || r.repair.container?.held, exit: r.repair.runner?.exit }) : null);
+const hostError = (r) => ((e) => (e && e.cause !== "BUDGET_EXHAUSTED" ? e : null))(r.repair?.host ? hostEnd(r.repair.host, { timedOut: r.repair.container?.timedOut || r.repair.container?.held || r.repair.container?.cut, exit: r.repair.runner?.exit }) : null);
 
 // A candidate's verification that did not run as declared: refused is the environment; anything else (a container
 // with no exit) is the infrastructure. A candidate's own time and memory are never here -- verify.mjs counts them as
@@ -347,8 +358,9 @@ const roundError = (r) => r.repair?.error ?? (r.repair?.runner?.setup === "EGRES
 // The candidates earlier rounds left, and how each failed: a round that leaves one of them again is no progress.
 const earlierOf = (ctx, k) => Array.from({ length: k - 1 }, (_, i) => docRead(ctx.room, `rounds/${i + 1}/outcome.json`)).filter(Boolean).map((o) => ({ patchDigest: o.patchDigest, signature: o.signature ?? undefined }));
 
-// Stopped at its deadline, not held by a person (a held run ends as the person held it) and not ended by its task.
-const cutShortOf = (r) => r.repair?.container?.timedOut === true && r.repair.container.held !== true && r.engineering?.terminal !== true;
+// Stopped at its deadline or cut where its case interrupts it, not held by a person (a held run ends as the person held
+// it) and not ended by its task.
+const cutShortOf = (r) => (r.repair?.container?.timedOut === true || r.repair?.container?.cut === true) && r.repair.container.held !== true && r.engineering?.terminal !== true;
 
 const roundFacts = (ctx, k, r, before) => ({ frozenIntact: frozenIntact(ctx), roundError: roundError(r), verified: isVerified(r), changed: r.cand.changes.length > 0, engineering: r.engineering, signature: before.signature, previous: before.previous, left: leftOf(ctx, show(ctx)), scope: [...r.cand.scope, ...(r.extraTasks ? [{ id: "EXTRA_TASK" }] : [])], cutShort: cutShortOf(r), patchDigest: r.cand.patchDigest, earlier: earlierOf(ctx, k), expects: r.expects ?? "change", ...(ctx.case.kind === "engineering" ? { standing: null } : {}) });
 
@@ -359,7 +371,7 @@ function concluded(ctx, k, r) {
   ctx.rec.attemptComplete(ctx.task, isVerified(r) ? "succeeded" : "failed", before.signature);
   const facts = roundFacts(ctx, k, r, before);
   const next = nextOf(facts);
-  return (docWritten(ctx.room, `rounds/${k}/outcome.json`, { round: k, signature: facts.signature ?? null, patchDigest: facts.patchDigest, regressed: r.regressed, improved: r.improved, records: r.records ?? [], cutShort: facts.cutShort, next: next.id, outcome: next.outcome, class: next.class }), next);
+  return (docWritten(ctx.room, `rounds/${k}/outcome.json`, { round: k, signature: facts.signature ?? null, patchDigest: facts.patchDigest, regressed: r.regressed, improved: r.improved, records: r.records ?? [], cutShort: facts.cutShort, cut: r.repair?.container?.cut === true, next: next.id, outcome: next.outcome, class: next.class }), next);
 }
 
 // An engineering case's outcome in its own words: the goal reached and verified is PASS, and refused is FAIL.

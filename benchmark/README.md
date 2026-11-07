@@ -556,13 +556,21 @@ that leaves out the rule it needs, to a refusal with nothing delivered.
 |---|---|
 | `goal` | `orbit.mjs goal start` with the goal, `analyze` (one change), `plan`, `step`; then the workflow the step started, step by step in its own plan's order (`automation.mjs context`, `step`, and `settle` for the engineering step with the task as its evidence), driving that engineering task through its loop with the control's edits; then `goal resume` and `verify` |
 | `blocked` | the same entry, with the analysis naming a missing prerequisite that blocks the change: the plan leaves it unresolved, the goal's step starts nothing, and the script stops |
-| `interrupt` | `goal`, except that its first round SIGKILLs its own first check the moment the engineering task's journal shows the action open -- the way a crash leaves it. The next round finds the same goal and task, reconciles the open action (closed as interrupted, no outcome taken from it), runs the check again as a new action and goes on |
+| `interrupt` | `goal`, except that its first round SIGKILLs its own first check the moment the engineering task's journal shows the action open -- the way a crash leaves it -- and then waits there (at most three minutes) for the controller's cut, the same cut a coding host gets. The next round finds the same goal and task, reconciles the open action (closed as interrupted, no outcome taken from it), runs the check again as a new action and goes on |
 | `idle` | nothing at all |
 
-A case's `interrupt: { round, afterMinutes }` cuts that round's runner at its minute for a coding host; a scripted host
-interrupts itself at a moment it can name. The round after a cut is `CUT_SHORT` or `CONTINUE`, on the same task. Every
-container of a run's runner store goes by one host name, so a later round can ask whether the process an earlier round
-recorded still runs.
+A case's `interrupt: { round, after }` cuts that round's runner -- a coding host or a scripted one -- the way a crash
+stops a session: the moment the engineering task's own journal shows the steps `after` names, in that order
+(`["implement", "check"]`: the first check after the change was opened), the controller stops the container with no
+grace (`benchmark/lib/source/cut.mjs`). It is never a minute: a fast host finished before any minute a case could name
+(ORBIT-E2E-007 on Sonnet, 0.5.0: round 1 done in under four, nothing interrupted). A step is named as a host decides it
+and found under the type the journal records it as (a check under its command's purpose). The controller reads the
+runner store as untrusted data and as a clock only -- through no link, within bounds -- every second while the round
+runs; the round keeps its whole deadline, and its brief says nothing of the cut. The round after a cut is `CUT_SHORT`,
+on the same task. A case that declares an interruption is held to its having happened: a record row `interrupted` fails
+any run whose round was never cut, so a run that completed before the cut point never passes the case. Every container
+of a run's runner store goes by one host name, so a later round can ask whether the process an earlier round recorded
+still runs.
 
 ## Sessions cases
 
@@ -1035,7 +1043,9 @@ suites/<suite>/<case-id>/poison/<note>.md        a sessions case's poisoned memo
    probe imports, and their exports), `reproduce`, `acceptance`, `scope` (with `imports`), `checks` (the target's public
    tests as explicit files, and `agentTests`), `limits`, `artifacts`, `cleanup`, `variants` (`real`, and `solved` -- the
    clean fixture -- for a change), `controls` and `repairs` (`through: "engine"`, a `script` of `goal`, `blocked`,
-   `interrupt` or `idle`, and `expect` one of `PASS`, `FAIL`, `NO_PROGRESS`, `BLOCKED`). `interrupt` is optional.
+   `interrupt` or `idle`, and `expect` one of `PASS`, `FAIL`, `NO_PROGRESS`, `BLOCKED`). `interrupt` is optional:
+   `{ round, after }`, the round to cut and the engineering steps (`implement`, `check`, ...) whose start, in that
+   order, cuts it -- a round before the case's last.
 2. Write the goal as a person would: the behaviour, never the fault. Every behaviour a hidden check holds must be said.
 3. Write the spec and probe as for a source case. The probe imports the target's own modules and uses a store of its own
    under the container's `/tmp`. Let each group judge the fields its sentence is about (`has`), so a half-made change

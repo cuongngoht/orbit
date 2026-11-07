@@ -1,8 +1,9 @@
 # The autonomous engineering protocol
 
 What the host sends each step, and what comes back. The tables themselves are printed by
-`node ${CLAUDE_PLUGIN_ROOT}/cli/autonomous-engineering.mjs protocol --json`; this page explains
-them and keeps no second copy of a field list that could drift.
+`node ${CLAUDE_PLUGIN_ROOT}/cli/autonomous-engineering.mjs protocol --json` -- each action with the
+fields it takes and, under `says`, what each field must say; this page explains them and keeps no
+second copy of a field list that could drift.
 
 ## The decision
 
@@ -39,7 +40,7 @@ them and keeps no second copy of a field list that could drift.
 | `prepare-workspace` | — | the task's own local clone at its base revision |
 | `prepare-sandbox` | — | the task's sandbox, an environment of its own, prepared at the workspace's tree; blocked `needs person` until a person trusts it in Control |
 | `start-sandbox` | `component`? | starts the declared application from the workspace's changed code in the sandbox (preparing it, replacing a stale one); an application that stops by itself fails the attempt |
-| `plan` | `intent`, `scope` | the smallest change, and every repository-relative path it may touch; the engine answers with the verification plan the scope reaches, and the task stays in PLANNING |
+| `plan` | `intent`, `scope` | the smallest change, and every repository-relative path it may touch -- the tests it adds included, since the review holds the whole change to this scope; the engine answers with the verification plan the scope reaches, and the task stays where it is. In PLANNING before the first attempt, or again in DIAGNOSING when a review found the scope too narrow (then `diagnose` `retest`); the earlier plan stays in the journal |
 | `implement` | — | opens the change (from PLANNING, after a plan, it begins the first attempt); the host edits the workspace, then `record-changes` |
 | `record-changes` | — | reads the change back from the workspace as changed files, and recalculates the verification plan from them |
 | `check` | `command` | one declared build, verify or test command, by id; in BUILDING, TESTING and REGRESSION only one the change is held to |

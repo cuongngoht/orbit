@@ -58,10 +58,11 @@ function briefWritten(ctx, k, state) {
 }
 
 // The runner, between a brief written before it and outputs read after it -- its deadline the round's, enforced by
-// stopping the container, whatever the host inside it is doing.
+// stopping the container, whatever the host inside it is doing; and, for the round a case interrupts, its cut
+// (source/cut.mjs): the container stopped at once the moment the engineering task's journal shows the steps it names.
 export async function ranRound(ctx, k, state) {
   const d = { brief: briefWritten(ctx, k, state), out: fresh(ctx, "rounds", String(k), "out") };
-  const o = { deadlineMs: state.deadlineMs, out: d.out, held: state.held, heldEveryMs: ctx.heldEveryMs, capture: streamFileOf(ctx, k) };
+  const o = { deadlineMs: state.deadlineMs, out: d.out, held: state.held, heldEveryMs: ctx.heldEveryMs, cut: state.cut, cutEveryMs: ctx.cutEveryMs, capture: streamFileOf(ctx, k) };
   return offlineHost(ctx) ? offlineRan(ctx, k, runnerSpec(ctx, null, k, d), o) : roundRan(ctx, k, (net) => runnerSpec(ctx, net, k, d), o);
 }
 

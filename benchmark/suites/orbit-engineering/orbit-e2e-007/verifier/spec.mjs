@@ -3,9 +3,10 @@
 // written
 // from the goal's own words -- an acknowledged payment's invoice is on disk, once per message id; an unknown order is
 // never acknowledged; anything else is skipped -- and never from the fixture's code. What the interruption adds is read
-// off the owners' records (`records`): an action a crash left open was closed as interrupted and taken again as a new
-// action that settled -- never settled as if it had run -- and nothing is left running. Kept beside the probe and handed to
-// no runner; the controller imports a FROZEN copy of it, and it never imports the target.
+// off the owners' records (`records`): the same goal resumed and one engineering task carried across the cut -- never a
+// second one, by hand or by a re-plan -- an action the crash left open closed as interrupted and taken again as a new
+// action that settled -- never settled as if it had run -- and nothing is left running. Kept beside the probe and handed
+// to no runner; the controller imports a FROZEN copy of it, and it never imports the target.
 //
 // An input is a list of orders to create and a list of messages to deliver, in order, each through a store opened again
 // on the same directory (so nothing a process keeps in memory counts). After EVERY delivery the probe opens the store
@@ -13,7 +14,8 @@
 //
 //   GROUPS -> { group: sentence }        cases(seed, samples) -> [{ id, group, input, expect }]
 //   selfTest() -> [finding]              the reference model held to a table written by hand from the goal
-//   records(readBack) -> [{ id, ok, says }]  what the engineering task's own journal must show after the interruption
+//   records(readBack) -> [{ id, ok, says }]  what the goals, the tasks and the engineering task's own journal must show
+//                                            after the interruption
 export const CASE = "ORBIT-E2E-007";
 
 export const GROUPS = {
@@ -110,7 +112,16 @@ const interrupted = (a) => /^interrupted/.test(a.why ?? "");
 // the same tool settled: it was taken again as a new action, never sent again as the old one.
 const takenAgain = (rb, a) => (a.receipts ?? []).length === 0 && rb.actions.some((b) => b.tool === a.tool && b.state === "succeeded" && ordinal(b) > ordinal(a));
 
+// Every engineering task the runner store holds, as the task list says them: the goal's workflow is another provider.
+const engineeringTasks = (rb) => (rb.tasks ?? []).filter((t) => t.provider === "autonomous-engineering");
+
+// The goal says the next round RESUMES the same goal and engineering task: one goal, and one engineering task -- the one
+// read back -- whoever would have started a second, the host by hand or the goal's workflow on a re-plan.
+const oneTask = (rb) => engineeringTasks(rb).length === 1 && engineeringTasks(rb)[0].id === rb.engineering?.id;
+
 export const records = (rb) => [
+  { id: "one-goal", says: "the next round resumed the goal the first one started: no second goal was started", ok: (rb.goals ?? []).length === 1 },
+  { id: "one-engineering-task", says: "one engineering task carried the change across the interruption, and it is the one read back: no second one was started, by hand or by a re-plan", ok: oneTask(rb) },
   { id: "interrupted-taken-again", says: "every action the interruption left open was closed as interrupted, with no outcome taken from it, and taken again as a new action that settled", ok: rb.actions.filter(interrupted).every((a) => takenAgain(rb, a)) },
   { id: "nothing-running", says: "no action of the engineering task is left running", ok: rb.actions.every((a) => a.state !== "running") },
 ];

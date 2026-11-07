@@ -28,7 +28,7 @@ const RELAY = [
 ];
 
 test("FINISH: why a host's round ended, every row reached and in order -- the host's own word only where nothing else explains it", () => {
-  const rounds = [{ interrupted: true, host: HOST }, { timedOut: true, host: HOST }, { host: { started: false } }, { host: { ...HOST, subtype: "error_max_turns", isError: true } }, { host: null }];
+  const rounds = [{ interrupted: true, host: HOST }, { cut: true, timedOut: false, host: HOST }, { timedOut: true, host: HOST }, { host: { started: false } }, { host: { ...HOST, subtype: "error_max_turns", isError: true } }, { host: null }];
   assert.deepEqual(rounds.map((r) => FINISH.find((x) => x.when(r)).id), FINISH.map((x) => x.id));
   assert.equal(diagnosisOf({ manifest: MANIFEST, ending: ENDING, rounds: [{ round: 1, host: { ...HOST, subtype: "error_max_turns", isError: true } }], relay: null }).finish[0].reason, "error_max_turns (an error)");
 });

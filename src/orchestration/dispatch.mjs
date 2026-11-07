@@ -496,3 +496,24 @@ export const ACTIONS = {
 
 export const ACTION_KINDS = Object.keys(ACTIONS);
 
+// What each field an action takes IS, in one sentence: printed by `protocol` beside the action and named by the refusal
+// of a step that left it out -- so a host learns what a field must say where it is asked for, never from a copy that
+// drifts. A plan's scope is the one a review later holds the whole change to.
+export const FIELD_SAYS = {
+  for: "what to gather project context for, one sentence (by default the task's objective)",
+  component: "the key of a component the context names (by default the first one the checkout declares)",
+  intent: "the smallest intended change, one sentence",
+  scope: "every repository-relative path the change will touch, a file or a directory -- the tests it adds included: the review holds the whole change to it",
+  command: "the id of a declared check (the context lists them under checks)",
+  then: "fix (change something) or retest (the same change again)",
+  investigation: "the id of an Autonomous QA investigation (inv-…)",
+  capability: "a capability this project registered (query capabilities lists them)",
+  input: "a JSON object of at most 8 KB the capability is asked with",
+  message: "the commit's message, one sentence (by default the task's objective)",
+  remote: "one of the checkout's remotes, by name (by default origin)",
+  branch: "the branch pushed to (by default the task's own, orbit/<task>)",
+  force: "true only when the objective asks for the push to be forced",
+};
+
+export const fieldsSaid = (fields) => fields.map((k) => `${k}: ${FIELD_SAYS[k]}`).join("; ");
+

@@ -7,9 +7,10 @@
 // workspace (whose configuration is the agent's to write), no test, no import.
 //
 // After a GOAL round (an engineering case) Orbit is the plugin at /work/orbit and /work/repo is the target; the goal
-// started a workflow beside its engineering task, so the task is the one engineering task the store holds, and each
-// goal's latest plan is read back too -- as data: which units it planned, and which a missing prerequisite left
-// unresolved.
+// started a workflow beside its engineering task, so the task is the one the round's own coordinated workflow names as
+// its engineering step's (`automation.mjs context`, the workflow's own record) -- else the one engineering task the store
+// holds -- however many a host left beside it, and each goal's latest plan is read back too -- as data: which units it
+// planned, and which a missing prerequisite left unresolved.
 //
 // It also reads back what the session trail says turn by turn (`trace.mjs turns`, what the agreement rule holds the
 // host's stream to) and every sandbox the runner store holds, with its operations journal (sandbox.json: what each
@@ -122,9 +123,31 @@ const oneOf = (ids) => (ids.length === 1 ? ids[0] : null);
 
 const idsOf = (tasks) => tasks.map((t) => t?.id).filter((id) => TASK.test(String(id)));
 
-// The one ENGINEERING task (a goal starts a workflow task beside it), else the one task the store holds; two are never
+const listedTasks = (list) => list?.json?.tasks ?? [];
+
+const ofProvider = (list, provider) => listedTasks(list).filter((t) => t?.provider === provider);
+
+// A GOAL round's own coordinators say which engineering task is theirs: each coordinated workflow's child -- the task its
+// engineering step dispatched, as `automation.mjs context` reads it off the workflow's own journal, which only its
+// coordinator writes, so a task a host started by hand beside it is never one. Read through Orbit's own command, bounded;
+// the round's task is the one they name, and two different ones are never guessed between.
+const WORKFLOWS = 10;
+
+const childOf = (id) => answered(orbit("automation.mjs", ["context", id])).json?.child?.task ?? null;
+
+export const coordinatedTask = (list, child = childOf) => oneOf([...new Set(idsOf(ofProvider(list, "automation")).slice(0, WORKFLOWS).map(child).filter((t) => TASK.test(String(t))))]);
+
+// The task a start file named; else the one the round's own coordinators name; else the one ENGINEERING task (a goal
+// starts a workflow task beside it), else the one task the store holds -- never the newest of several: two are never
 // guessed between.
-export const taskFound = (asked, list) => asked ?? ((tasks) => oneOf(idsOf(tasks.filter((t) => t?.provider === "autonomous-engineering"))) ?? oneOf(idsOf(tasks)))(list?.json?.tasks ?? []);
+export const taskFound = (asked, list, named = null) => asked ?? named ?? oneOf(idsOf(ofProvider(list, "autonomous-engineering"))) ?? oneOf(idsOf(listedTasks(list)));
+
+// Which task a round left, and by whose word it was found: the start file's, the coordinators', or the only one there is.
+function foundTask(asked, list) {
+  const named = asked ? null : coordinatedTask(list);
+  const task = taskFound(asked, list, named);
+  return { task, found: asked ? "start" : named ? "coordinator" : task ? "only-task" : null };
+}
 
 // ---- the goals a round left, read back as data ------------------------------------------------------------------------
 
@@ -263,16 +286,16 @@ function activationRead(tasks) {
 
 function main(asked) {
   const tasks = answered(orbit("task.mjs", ["list"]));
-  const task = taskFound(asked, tasks);
-  const shown = task ? answered(orbit("task.mjs", ["show", task])) : { exit: null, json: null, why: "no task was started" };
+  const at = foundTask(asked, tasks);
+  const shown = at.task ? answered(orbit("task.mjs", ["show", at.task])) : { exit: null, json: null, why: "no task was started" };
   [["task.json", shown], ["tasks.json", tasks], ["trace.json", answered(orbit("trace.mjs", ["usage"]))], ["turns.json", answered(orbit("trace.mjs", ["turns", "--days=30", "--limit=200"]))], ["goals.json", goalsOf()], ["sandbox.json", sandboxesOf()]].forEach(([name, v]) => writeFileSync(join(PATHS.out, name), `${JSON.stringify(v)}\n`));
-  inspected(asked, task, WORKTREE ?? (task ? treeOf(task) : null), ACTIVATION ? () => activationRead(tasks) : () => null);
+  inspected(at, WORKTREE ?? (at.task ? treeOf(at.task) : null), ACTIVATION ? () => activationRead(tasks) : () => null);
 }
 
-function inspected(asked, task, tree, more = () => null) {
+function inspected(at, tree, more = () => null) {
   more();
   const changes = tree ? copiedOut(tree, compared(listed(PATHS.repo, [".claude-plugin/types"]), listed(tree))) : [];
-  writeFileSync(join(PATHS.out, "inspect.json"), `${JSON.stringify({ task, found: asked ? "start" : task ? "only-task" : null, workspace: Boolean(tree), changes, at: new Date().toISOString() }, null, 2)}\n`);
+  writeFileSync(join(PATHS.out, "inspect.json"), `${JSON.stringify({ task: at.task, found: at.found, workspace: Boolean(tree), changes, at: new Date().toISOString() }, null, 2)}\n`);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) main(TASK.test(process.argv[2] ?? "") ? process.argv[2] : null);

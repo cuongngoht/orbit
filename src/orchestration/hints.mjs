@@ -4,10 +4,11 @@
 // refused is worse than none.
 //
 // A library -- a checkout that declares nothing a sandbox could start -- gets no sandbox hint at all.
-import { blockedBy, sandboxReceipt, startableNow } from "./journal.mjs";
+import { blockedBy, lastOf, openOf, positionOf, sandboxReceipt, startableNow } from "./journal.mjs";
 import { planOf, testsDone } from "./obligations.mjs";
 import { sandboxOf } from "./sandbox.mjs";
 import { allowedNow } from "./stages.mjs";
+import { supportedStops } from "./stop.mjs";
 import { SANDBOX_STATE, STAGE, STOP } from "./vocab.mjs";
 
 // Where a diagnosis comes first: nothing is suggested until it is made.
@@ -24,7 +25,14 @@ const hasPlan = (lw) => lw.view.actions.some((a) => a.type === "plan" && a.state
 
 const unbaselined = (lw) => planOf(lw).required.filter((c) => c.baseline === "none").map((c) => c.id);
 
+// A change opened, and the read-back since found nothing to record. A change with nothing in it is made, or the task is
+// ended by a stop the journal supports -- never left open on a task nobody goes on with.
+const recordedNothing = (lw) => ((a, r) => Boolean(a) && r?.state === "failed" && positionOf(lw, r.id) > positionOf(lw, a.id))(openOf(lw, "implement"), lastOf(lw, "record-changes"));
+
+const endSay = (lw) => (supportedStops(lw).length ? `; with nothing to change, end the task with a stop the journal supports (finish --stop=${supportedStops(lw).join("|")} --because="…")` : "");
+
 export const HINTS = [
+  { id: "NOTHING_RECORDED", when: (h) => recordedNothing(h.lw) && may(h.lw, "record-changes"), say: (h) => `nothing changed since the last recorded change: make the change in the workspace, then record-changes${endSay(h.lw)}` },
   { id: "PLAN_FIRST", when: (h) => h.lw.view.stage === STAGE.PLANNING && !hasPlan(h.lw) && may(h.lw, "plan"), say: () => "plan: its scope says which components the change reaches, and so which checks it is held to -- baseline those before implement" },
   { id: "BASELINE", when: (h) => h.lw.view.stage === STAGE.PLANNING && hasPlan(h.lw) && unbaselined(h.lw).length > 0 && may(h.lw, "check"), say: (h) => `baseline what the change is held to before implement, so a failure it already had is told from one it brings: check ${unbaselined(h.lw).slice(0, 4).join(", ")}${unbaselined(h.lw).length > 4 ? ", …" : ""}` },
   { id: "SANDBOX_PERSON", when: (h) => personBlocked(h.lw) && may(h.lw, "prepare-sandbox"), say: () => "the sandbox waits for a person: trust it in Orbit Control (Mission Control), then prepare-sandbox again" },

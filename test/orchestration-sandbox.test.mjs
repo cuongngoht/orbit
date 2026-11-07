@@ -304,7 +304,7 @@ test("a library -- nothing to run -- is told nothing about a sandbox, and may no
 });
 
 test("the hints are ordered rows, each with a sentence, and none speaks while a diagnosis is owed", async (t) => {
-  assert.deepEqual(HINTS.map((h) => h.id), ["PLAN_FIRST", "BASELINE", "SANDBOX_PERSON", "SANDBOX_STALE", "VERIFY_LIVE", "SANDBOX_READY", "PREPARE_SANDBOX"]);
+  assert.deepEqual(HINTS.map((h) => h.id), ["NOTHING_RECORDED", "PLAN_FIRST", "BASELINE", "SANDBOX_PERSON", "SANDBOX_STALE", "VERIFY_LIVE", "SANDBOX_READY", "PREPARE_SANDBOX"]);
   const o = orchestrationWorld(t, WITH_APP);
   const { id, go } = await reviewing(o);
   await go({ kind: "start-sandbox" });

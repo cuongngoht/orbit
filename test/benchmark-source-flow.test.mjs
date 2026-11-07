@@ -12,7 +12,7 @@ import { join, relative, isAbsolute } from "node:path";
 import { test } from "node:test";
 import { carried } from "../benchmark/lib/source/flow.mjs";
 import { resumedRun, withSpec } from "../benchmark/lib/core/context.mjs";
-import { taskFound } from "../benchmark/images/runner/inspect.mjs";
+import { coordinatedTask, taskFound } from "../benchmark/images/runner/inspect.mjs";
 import { hostCommand } from "../benchmark/images/runner/entry.mjs";
 import { reportOf } from "../benchmark/lib/source/report.mjs";
 import { docRead } from "../benchmark/lib/core/room.mjs";
@@ -156,6 +156,27 @@ test("an inspection named no task takes the one the runner store holds, and gues
   assert.equal(taskFound(null, list("tsk-00000000000b", "tsk-00000000000c")), null);
   assert.equal(taskFound(null, list("../../etc")), null);
   assert.equal(taskFound(null, { exit: 1, json: null }), null);
+});
+
+// A goal round that left several engineering tasks: the one its coordinator's engineering step dispatched last, as the
+// workflow's own context names it -- never the newest by time, and never one a host started beside it.
+const WORKFLOW = "tsk-00000000000f";
+
+const goalList = (...rows) => ({ exit: 0, json: { tasks: rows.map(([id, provider, createdAt]) => ({ id, provider, createdAt })) } });
+
+const SEVERAL = goalList([WORKFLOW, "automation", "2026-11-05T18:07:01Z"], ["tsk-00000000000a", "autonomous-engineering", "2026-11-05T18:07:13Z"], ["tsk-00000000000b", "autonomous-engineering", "2026-11-05T18:09:24Z"], ["tsk-00000000000c", "autonomous-engineering", "2026-11-05T18:09:52Z"]);
+
+test("a goal round that left several engineering tasks is read back on the one its own coordinator names, never the newest -- and two coordinators naming two are never guessed between", () => {
+  const named = (children) => (id) => children[id] ?? null;
+  assert.equal(coordinatedTask(SEVERAL, named({ [WORKFLOW]: "tsk-00000000000b" })), "tsk-00000000000b", "the workflow's own child, not the newest task (tsk-…c)");
+  assert.equal(taskFound(null, SEVERAL, coordinatedTask(SEVERAL, named({ [WORKFLOW]: "tsk-00000000000b" }))), "tsk-00000000000b");
+  assert.equal(taskFound(null, SEVERAL), null, "with no coordinator's word, three engineering tasks are never guessed between");
+  assert.equal(taskFound("tsk-00000000000a", SEVERAL, "tsk-00000000000b"), "tsk-00000000000a", "the task an earlier round was read back on comes first");
+  const two = goalList([WORKFLOW, "automation"], ["tsk-00000000000e", "automation"], ["tsk-00000000000a", "autonomous-engineering"], ["tsk-00000000000b", "autonomous-engineering"]);
+  assert.equal(coordinatedTask(two, named({ [WORKFLOW]: "tsk-00000000000a", "tsk-00000000000e": "tsk-00000000000b" })), null, "two coordinators, two tasks: none");
+  assert.equal(coordinatedTask(two, named({ [WORKFLOW]: "tsk-00000000000a", "tsk-00000000000e": "tsk-00000000000a" })), "tsk-00000000000a", "two coordinators naming one task: that one");
+  assert.equal(coordinatedTask(two, named({ [WORKFLOW]: "../../etc" })), null, "a word that is no task id names nothing");
+  assert.equal(coordinatedTask(goalList(["tsk-00000000000a", "autonomous-engineering"]), () => assert.fail("no workflow, nothing asked")), null);
 });
 
 // ---- a person holds the run --------------------------------------------------------------------------------------------

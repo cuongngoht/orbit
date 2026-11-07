@@ -75,6 +75,11 @@ the design and its declarations, if the declarations said one more thing each:
   later delivery with no step that faults, stops or restarts a workload, a schedule's decision with no step that moves
   the clock, a second message held alone to a settlement. A correct application need do none of them, and may yet --
   so the engine cannot show the contradiction, and says what it rests on.
+- **Amended 2026-11-07 (0.5.0 re-verify):** a later delivery is REFUSED (`NEVER_REDELIVERED`) where the obligation's own
+  shape declares no way a delivery comes back (`semantics.redeliveryTriggers`) and no step controls a workload: then the
+  declarations alone show that nothing brings a second delivery, and a correct application that settles the first is
+  ruled against. Sonnet 5.5 sent exactly that on ORBIT-QA-002 after the advice alone was said, and it was that run's one
+  false alarm. Where the shape declares a lease, a visibility timeout or an ack wait, it is still only said.
 
 Consequences: the four adapters whose declarations gained `means` and `selects` have new fingerprints, so their
 conformance receipts are recorded again on the real systems (`acceptance/kits/messaging.mjs`, `acceptance/kits/hooks.mjs`).

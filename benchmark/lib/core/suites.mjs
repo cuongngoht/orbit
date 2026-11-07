@@ -5,7 +5,7 @@
 // the controls that prove the verifier (controls/). Adding a case is adding a directory and one line in suite.json;
 // nothing here names a case, a module of the engine or a check.
 //
-// A case is one of five KINDS. A `source` case holds Orbit's own source to independent checks, and may hand a failure
+// A case is one of seven KINDS. A `source` case holds Orbit's own source to independent checks, and may hand a failure
 // to Orbit to repair through its engineering loop. A `qa` case asks whether Orbit's autonomous QA finds the defect
 // planted in an application: the application, the variant that plants it and the ground truth are the case's. An
 // `engineering` case hands Orbit a GOAL over a frozen fixture repository (benchmark/fixtures/<fixture>/, its `real`

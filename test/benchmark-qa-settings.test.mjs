@@ -10,6 +10,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
+import { sealed } from "./home.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const caseOf = (id) => JSON.parse(readFileSync(join(ROOT, "benchmark", "suites", "orbit-qa", id, "case.json"), "utf8"));
@@ -41,7 +42,7 @@ test("the code moved under a shared checkout keeps its history: the variant repl
   const base = mkdtempSync(join(tmpdir(), "orbit-moved-"));
   t.after(() => rmSync(base, { recursive: true, force: true }));
   const dir = join(base, "invoice-a");
-  const env = { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@orbit.invalid", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@orbit.invalid" };
+  const env = sealed({ GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@orbit.invalid", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@orbit.invalid" });
   const { assemble } = await import(pathToFileURL(join(ROOT, "acceptance", "projects", "assemble.mjs")).href);
   assemble("invoice-a", dir, { variant: "correct" });
   for (const a of [["init", "-q", "."], ["add", "-A"], ["commit", "-qm", "clean"]]) spawnSync("git", a, { cwd: dir, env });

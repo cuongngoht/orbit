@@ -21,6 +21,10 @@
   carried into the goal's analysis, so the completion gate still holds that criterion. This is on purpose and is now
   said and pinned: a host's reading is not the specification, and only a new revision of the specification makes a
   criterion stop being held.
+- **A store lock waits out a moment's EPERM.** On Windows, making the lock directory while another process is still
+  removing it answers EPERM, and every store writer read that as a refused write, so a trail line was dropped. An EPERM
+  is now a refusal only when it persists past three attempts (70 ms at most); EACCES and EROFS are refused at once, as
+  before.
 - **A held-out application measures Orbit on what it was not tuned against (B2, ADR 0056).** Every 0.4.0 fix was found
   on the benchmark's own cases, so their rates say how Orbit does on the cases it was fixed against. A new fixture,
   `benchmark/fixtures/lending/` -- a lending service several library systems share, with an asynchronous drop-box

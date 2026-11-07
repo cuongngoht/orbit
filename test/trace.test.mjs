@@ -60,10 +60,16 @@ test("the log: one shard per day and host, capped ONCE, pruned past its retentio
 
 // Why three hook processes racing for one trail could never be a deterministic test (test/multi-host-runtime.test.mjs):
 // the writer is FAIL-OPEN, so a line whose writer cannot take the trail's lock costs that line and nothing else --
-// whether another writer held the lock past this writer's bounded backoff, or the disk refused the lock directory for a
-// moment (Windows answers EPERM to a mkdir that races another process removing the same directory). Once the lock is
-// free, the next line lands.
-test("a line whose writer cannot take the trail's lock is dropped, never thrown -- and the next one lands", () => {
+// whether another writer held the lock past this writer's bounded backoff, or the disk kept refusing the lock directory.
+// A refusal for a MOMENT is waited out (0.5.0 review of B7, src/store/lock.mjs PASSING): Windows answers EPERM to a
+// mkdir that races another process removing the same directory, and that once cost the line. Once the lock is free, the
+// next line lands.
+const lockEperm = (io, mkdir, times) => {
+  const left = { n: times };
+  io.mkdir = (p) => (p.endsWith(".lock") && left.n-- > 0 ? (() => { throw Object.assign(new Error("EPERM"), { code: "EPERM" }); })() : mkdir(p));
+};
+
+test("a line whose writer cannot take the trail's lock is dropped, never thrown -- a moment's refusal is waited out, and the next one lands", () => {
   const io = fakeIo();
   const log = traceLog(rooms, io);
   const lock = join(rooms.trace, ".lock");
@@ -73,14 +79,15 @@ test("a line whose writer cannot take the trail's lock is dropped, never thrown 
   assert.deepEqual(log.read({}), [], "held past the writer's backoff: the line is lost, the moment it describes is not");
   io.remove(lock);
   const mkdir = io.mkdir;
-  io.mkdir = () => {
-    io.mkdir = mkdir;
-    throw Object.assign(new Error("EPERM"), { code: "EPERM" });
-  };
-  assert.doesNotThrow(() => log.append(ev("turn.ended")));
-  assert.deepEqual(log.read({}), [], "a lock directory the disk refused for a moment: the same");
+  lockEperm(io, mkdir, 1);
   log.append(ev("turn.ended"));
-  assert.equal(log.read({}).length, 1, "the next line, with the lock free, lands");
+  assert.equal(log.read({}).length, 1, "a lock directory the disk refused for a moment -- a release racing the mkdir -- is waited out: the line lands");
+  lockEperm(io, mkdir, Infinity);
+  assert.doesNotThrow(() => log.append(ev("turn.ended")));
+  assert.equal(log.read({}).length, 1, "one the disk keeps refusing costs that line, and never throws");
+  io.mkdir = mkdir;
+  log.append(ev("turn.ended"));
+  assert.equal(log.read({}).length, 2, "the next line, with the lock free, lands");
 });
 
 test("the emitter stamps what a producer never supplies, is a no-op when off, and a listener cannot stop an append", () => {

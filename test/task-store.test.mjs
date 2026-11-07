@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { Blocked, Refused } from "../src/errors.mjs";
 import { projectStoreRoot, repositoryPaths } from "../src/project/repository.mjs";
 import { realIo } from "../src/store/io.mjs";
+import { BACKOFF, PASSING } from "../src/store/lock.mjs";
 import { modelOf } from "../src/task/model.mjs";
 import { createTasks, JOURNAL } from "../src/task/store.mjs";
 import { KINDS, RECEIPT_DOMAINS, TASK_SCHEMA, isMaterial } from "../src/task/vocab.mjs";
@@ -96,13 +97,15 @@ test("one writer at a time: a task whose lock another session holds is BLOCKED, 
 });
 
 // What AGY's print-mode sandbox did to every task command in 1.7.7 and 1.7.8: the store refused the
-// write, and the answer named a session that did not exist.
-test("a lock the place REFUSES to make is BLOCKED as a refused write, at once -- never as another session holding it", () => {
-  const io = fakeIo({ backoff: [1, 1, 1] });
+// write, and the answer named a session that did not exist. A refusal that PERSISTS is still that -- after the few
+// attempts an EPERM is given, because on Windows it can also be a release racing the mkdir (src/store/lock.mjs PASSING,
+// test/store-lock.test.mjs) -- and never the whole backoff a held lock is waited for.
+test("a lock the place REFUSES to make is BLOCKED as a refused write within a few attempts -- never as another session holding it", () => {
+  const io = fakeIo();
   const denied = { ...io, mkdir: (p) => (p.endsWith(".lock") ? (() => { throw Object.assign(new Error("EPERM"), { code: "EPERM" }); })() : io.mkdir(p)) };
   const tasks = createTasks("/store/repo-a", denied);
   assert.throws(() => tasks.creating(() => {}), (e) => e instanceof Blocked && /cannot be written here \(EPERM\).*this is not another session/.test(e.message));
-  assert.equal(io.state?.slept ?? 0, 0, "nothing waited for a writer that does not exist");
+  assert.equal(io.state.slept, BACKOFF.slice(0, PASSING.EPERM).reduce((a, b) => a + b, 0), "waited only the attempts an EPERM is given -- never the backoff a writer that does not exist would be waited for");
 });
 
 test("listing a project's tasks names only tasks: no lock, no stray file -- and a project with no tasks room lists nothing", () => {

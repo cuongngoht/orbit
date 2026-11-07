@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { leaksMasked } from "../benchmark/lib/core/sentinel.mjs";
+import { leaksMasked, textAt } from "../benchmark/lib/core/sentinel.mjs";
 
 const VALUE = "sentinel-value-0123456789";
 
@@ -44,4 +44,15 @@ test("no credential handed, nothing read", (t) => {
   writeFileSync(join(dir, "steps/act-1.json"), "{}");
   assert.deepEqual(leaksMasked(dir, []), []);
   assert.deepEqual(leaksMasked(dir, [undefined, "", "1234567"]), [], "a value too short to be a credential would mask ordinary words");
+});
+
+// A sandbox's supervisor removes its own owner file as it exits, between the sentinel's listing and its read: ORBIT-QA-005
+// on Sonnet (0.5.0) ended PASS, and its suite answer said REFUSED for that ENOENT. A file gone before it is read holds
+// nothing to mask; any other failure to read still stops the sentinel.
+test("a file gone between the listing and the read holds nothing to mask, and never refuses a run", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "orbit-sentinel-gone-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  assert.equal(textAt(join(dir, "supervision", "supervisor.owner")), "");
+  mkdirSync(join(dir, "a-directory"));
+  assert.equal(textAt(join(dir, "a-directory")), "", "not a regular file: never read");
 });

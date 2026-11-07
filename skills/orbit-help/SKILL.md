@@ -197,7 +197,10 @@ echo '<outcome>'  | node <engine>/cli/automation.mjs settle <task> --json   # on
    { "kind": "run", "step": "<id>" }, "observed": "<one sentence>", "hypothesis": "<one sentence>" }`. A new
    decision takes a new `decisionId`; sending the same one again is answered from the journal and never runs twice.
 2. **An engine step settles itself** (a frozen requirement read back, project context, runtime,
-   regression and review read off the engineering task). Read the answer and decide the next one.
+   regression and review read off the engineering task). Read the answer and decide the next one. A change's QA step
+   is always in its plan; where nothing the checkout declares can be started, the engine SKIPS it at its turn and says
+   why (`stepState: "skipped"`, its `summary`). Relay it as skipped, with that reason, and never call the change tested
+   or QA'd: skipped is not passed.
 3. **A host step answers `how`**: `mode` (skill, agent or playbook), the provider, and `invoke` -- what
    to do. On Claude Code dispatch the named agent with the Agent tool, or run the named skill; on a host
    with no native agents (Codex, Antigravity) run the skill's own loop here, one step at a time. For a

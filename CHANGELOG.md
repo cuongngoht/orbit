@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+- **A change's QA step is never left out silently (backlog B1, ADR 0053).** A coordinated workflow that makes a change
+  planned its QA step only when something the checkout declared could be started; with nothing to start, the step was
+  simply not in the plan, the workflow completed, and nothing anywhere said the change was never QA'd. The `engineering`
+  workflow now always plans its QA step. When its turn comes, it is the host's investigation of the running change where
+  something can be started; where nothing can, the engine settles it SKIPPED with its reason -- "nothing this checkout
+  declares can be started here, so there is no running change to investigate: QA was skipped, not passed" -- its
+  verification row `not-verified`. The step answer, `automation.mjs context`, the workflow's ending and Orbit Live's plan
+  say it (the plan shows a skipped step's reason where every other step shows why it is planned), and orbit-help tells
+  its host to relay it as skipped. A host's word never skips a QA step, and an investigation's QA, which is the work
+  itself, is never skipped. A skipped step still counts as done for review and completion, as the omitted one did:
+  whether it should block a user-facing change stays the owner's open question. A plan an earlier release wrote with no
+  QA step still gets one once discovery finds something to start.
+- **The benchmark's workflow kind and the `orbit-workflow` suite (backlog B1, ADR 0053).** A workflow case hands a host
+  ONE request, in a person's words, to take through `/orbit-help`, and holds it to three legs from records: the code
+  (the engineering kind's verifier on what the workflow's own engineering task delivered), the QA step, and the path (one
+  coordinated workflow, routed as the case asks, the change its own engineering step's, every step settled on its
+  owner's record, the workflow completed). Record rows name their leg, a round's outcome and report say which legs held,
+  and a control that must fail names the legs it must fail on. `ORBIT-WF-004` asks for ORBIT-E2E-001's fix on the
+  orders fixture, which declares nothing it can start: its QA step must be SKIPPED with its reason. Its controls --
+  `reference` (PASS), `code-only` (FAIL on the QA leg), `bypass` (FAIL on the path leg) and `idle` (NO_PROGRESS) -- run
+  in the conformance tier's scripted job and, without Docker, in `test/benchmark-workflow-cases.test.mjs` over Orbit's
+  real commands. The release policy requires the suite's controls and records its model-carried row. The relayed QA leg
+  -- an investigation of the change on a sandbox beside the controller, and the three cases that need it -- is designed
+  in ADR 0053 and not built; the kind refuses a case that asks for it.
+
 - **A second message under a business key is not a second effect, and the tests of one investigation share its
   sandbox.** A real Claude Code QA row (ORBIT-QA-006 on Opus) found its planted defect and raised two false alarms that
   the clean application contradicted too. Its `effect-once-per-key` test published a second message under the first

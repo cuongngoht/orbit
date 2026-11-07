@@ -1187,15 +1187,21 @@ benchmark/     (ADR 0046, 0047, 0048, 0053, 0054) THE DOCKER BENCHMARK of Orbit:
                host did, held to the hidden truth) · flow.mjs (the phases, factsFrom) · report.mjs.
                lib/workflow/ (0.5.0, ADR 0053) -- a WORKFLOW case, one request through /orbit-help: flow.mjs (an
                engineering case's flow, composed) · judge.mjs (the record rows by leg -- code, qa, path -- over what the
-               inspection read back of every coordinated workflow; legsOf) · report.mjs (the engineering report, with
-               the legs, each row and the workflow as its own journal says it).
+               inspection read back of every coordinated workflow) · report.mjs (the engineering report, with the legs,
+               each row and the workflow as its own journal says it).
+               lib/mission/ (0.5.0, ADR 0055) -- a MISSION case, a goal through Orbit Satellite: flow.mjs (an
+               engineering case's flow, composed) · judge.mjs (the record rows by leg -- code, criteria, privilege --
+               over what the inspection read back of every mission, the trail and the tasks its evidence names) ·
+               report.mjs (the engineering report, with the legs, each row and the mission as Satellite's journal says
+               it). lib/core/legs.mjs: a round's legs, folded the same for a workflow and a mission case.
                lib/commands.mjs: the COMMANDS table. images/runner/ (Claude Code pinned; entry.mjs, inspect.mjs,
                preflight.mjs, scripted.mjs -- the scripted host a control runs in its place: a repair, a goal, a blocked
                goal, an interrupted session, idle, an activation session delivering every hook to Orbit's own entry
-               points, or a request through /orbit-help -- and the code-only and bypass hosts that fall short of it) · images/verifier/ (egress.mjs) · images/qa-worker/ (the Playwright image, pinned, and the
+               points, a request through /orbit-help -- and the code-only and bypass hosts that fall short of it -- or a
+               mission through Satellite, each run carried by its envelope's agent, and the claims and over-reach hosts) · images/verifier/ (egress.mjs) · images/qa-worker/ (the Playwright image, pinned, and the
                browser CLI Orbit drives). suites/<suite>/suite.json and suites/<suite>/<case-id>/ (case.json,
                request.md, verifier/, variants/, controls/; a sessions case's poison/; an activation case's seed/).
-               fixtures/<app>/ -- a project an engineering, activation or workflow case is about (its public tests as
+               fixtures/<app>/ -- a project an engineering, activation, workflow or mission case is about (its public tests as
                checks/). A
                run's evidence: <store>/benchmark/<bnr-…>/ (rounds/<k>/outcome.json, verified.json, report.md|json; a
                sessions run's home/, the host's own home kept between its sessions).

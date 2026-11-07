@@ -27,6 +27,27 @@
   -- an investigation of the change on a sandbox beside the controller, and the three cases that need it -- is designed
   in ADR 0053 and not built; the kind refuses a case that asks for it.
 
+- **The benchmark's mission kind and the `orbit-missions` suite (backlog B4, ADR 0055).** Satellite had been checked at
+  source level only: no mission had ever run with a real host. A mission case hands a host a GOAL -- a bug with its
+  verification, or a small feature -- to take through Orbit Satellite as its playbook says, and holds it to three legs
+  from records: the code (the engineering kind's verifier on what the mission's own engineering task delivered), the
+  criteria (the mission COMPLETED as VERIFIED, and every acceptance criterion settled by an independent owner's record --
+  an engineering task's own verification, a check its runner ran -- that the inspection reads back from that owner
+  itself; never an agent's report) and the privilege (every work unit's run had no wider a profile than its unit's kind
+  needs, was carried by an agent the trail saw launched as the agent its profile names, and that agent made no edit or
+  command its tools do not carry). The inspection reads every mission back through Satellite's own commands
+  (`inspect.mjs --mission`), with the session trail's agent events and the tasks its evidence names; a mission round's
+  host may not start an engineering task by hand. `ORBIT-MSN-001` (an order line that is not a whole positive quantity
+  at a whole price is refused) and `ORBIT-MSN-002` (a shipped order can be marked delivered, and nothing else can) run on
+  the orders fixture; their controls -- `reference` (PASS), `half-change` (FAIL on the code leg: the mission VERIFIED on
+  its own records, the change half made), `claims` (FAIL on the code and the criteria: a change made by hand, a mission
+  that claims it), `over-reach` (FAIL on the privilege leg: a reader's agent that edits and runs a command) and `idle`
+  (NO_PROGRESS) -- are played by a scripted host that is a whole Claude Code session, every hook delivered, and run in
+  the conformance tier and, without Docker, in `test/benchmark-mission-cases.test.mjs` over Orbit's and Satellite's real
+  commands. The release policy requires the suite's controls and records its model-carried rows. A round's legs are now
+  one module for the workflow and the mission kinds (`benchmark/lib/core/legs.mjs`), and a control naming a leg its kind
+  is not held to is refused.
+
 - **A second message under a business key is not a second effect, and the tests of one investigation share its
   sandbox.** A real Claude Code QA row (ORBIT-QA-006 on Opus) found its planted defect and raised two false alarms that
   the clean application contradicted too. Its `effect-once-per-key` test published a second message under the first

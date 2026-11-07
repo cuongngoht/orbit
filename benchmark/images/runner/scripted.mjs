@@ -574,11 +574,11 @@ const satStepped = (s, action) => (satContext(s), told(s, `satellite mission ste
 
 const satOk = (s, action) => ((r) => (r.status === 0 ? [] : [`mission ${action.kind}: ${r.why}`]))(satStepped(s, action));
 
-const analysisOf = (digest) => ({ kind: "analyze", intent: { facts: [{ statement: "the goal names a behaviour the project does not hold yet", sourceRef: `goal@${digest}` }], acceptanceCriteria: [{ statement: "the behaviour the goal describes holds, shown by the project's own declared tests", verification: "the engineering task's declared checks pass on the change" }] } });
+const missionAnalysisOf = (digest) => ({ kind: "analyze", intent: { facts: [{ statement: "the goal names a behaviour the project does not hold yet", sourceRef: `goal@${digest}` }], acceptanceCriteria: [{ statement: "the behaviour the goal describes holds, shown by the project's own declared tests", verification: "the engineering task's declared checks pass on the change" }] } });
 
 function missionStarted(s) {
   s.msn = told(s, "satellite mission start", satCall(s, ["mission", "start", "--stdin"], s.goal ?? s.prompt)).json?.mission ?? null;
-  return s.msn ? satOk(s, analysisOf(String(satContext(s)?.mission?.goalDigest ?? "").slice(0, 8))) : ["the mission could not be started"];
+  return s.msn ? satOk(s, missionAnalysisOf(String(satContext(s)?.mission?.goalDigest ?? "").slice(0, 8))) : ["the mission could not be started"];
 }
 
 // The work graph each script plans: an explore unit and the implement unit resting on it -- or, for CLAIMS, one review.
@@ -643,7 +643,7 @@ const editsShownIn = (e) => ((ws) => (ws ? scopeOf(e.script.definition).forEach(
 
 // What the engineer does in its run: drives the task its envelope names through the task's own loop with the control's
 // edits, never committing, then reports the task.
-function engineered(t, envelope) {
+function engineerDid(t, envelope) {
   const e = { ...t, task: envelope.drive.task, revision: null, commits: false };
   const problems = applied(e);
   editsShownIn(e);
@@ -653,7 +653,7 @@ function engineered(t, envelope) {
 function implementCarried(s, unit) {
   const envelope = envelopeOf(s, unit);
   if (!envelope?.drive?.task) return [`dispatch ${unit}: Satellite started no engineering task for it`];
-  const run = envelopeCarried(s, envelope, (t) => engineered(t, envelope));
+  const run = envelopeCarried(s, envelope, (t) => engineerDid(t, envelope));
   return (acked(s, envelope, run.agent), run.problems);
 }
 

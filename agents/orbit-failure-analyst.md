@@ -31,6 +31,14 @@ not a map file, not the product, not a ledger line.
 
 Everything below runs from inside the consuming project.
 
+**Your shell runs the engine's read commands, and nothing else.** You keep `Bash` only to ask the
+engine, and no host can narrow an agent's `Bash` to a pattern, so the line is yours to hold: every
+Bash call is one of the engine's read commands this playbook names -- `node <engine>/cli/query.mjs
+…`, or the `learn.mjs recall` of section 2 -- with the engine's path written out (no `cd` before
+it, no variable for it), and never `ls`, `find`, `cat`, `git` or any other program, alone or after
+it. A file is read with Read, a directory listed with Glob and text searched with Grep: tools that
+cannot write, so what you ran shows by itself that you changed nothing.
+
 Read `${CLAUDE_PLUGIN_ROOT}/skills/orbit-ui-test/references/tools.md` for which tool does which
 job here. You delegate to nobody.
 

@@ -127,3 +127,18 @@ test("the analyst cannot write, and neither agent can edit the map in place", ()
   const doctor = tools(join("agents", "orbit-dsl-doctor.md"));
   assert.ok(doctor.includes("Edit") && doctor.includes("Write"), "the doctor repairs a case file, so it needs both");
 });
+
+// Withholding Write and Edit is not the whole of "changes nothing": the analyst keeps Bash to run the engine, and no host
+// narrows an agent's Bash to a pattern (docs/audit/0.5.0-activation-baseline.md). So its own definition holds the line --
+// the engine's read commands, run as themselves, and every file read through a tool that cannot write -- and every
+// command it shows is one that line allows. The 0.5.0 precheck's ORBIT-ACT-010 (bnr-2bc3599c9c63): an analyst never told
+// listed, found, catted and read git's log through Bash, and could no longer show it had changed nothing.
+test("the analyst's shell runs only the engine's read commands it names, and every file is read through a tool that cannot write", () => {
+  const analyst = text(join("agents", "orbit-failure-analyst.md")).replace(/\s+/g, " ");
+  assert.match(analyst, /every Bash call is one of the engine's read commands this playbook names/, "the analyst never says what its shell is for");
+  assert.match(analyst, /never `ls`, `find`, `cat`, `git`/, "the analyst is never told which shell reads are not its own");
+  assert.match(analyst, /Read, .*Glob.* Grep/, "the analyst is never told how it reads a file instead");
+  const shown = [...analyst.matchAll(/node <engine>\/cli\/([a-z-]+\.mjs(?: [a-z]+)?)/g)].map((m) => m[1]);
+  assert.ok(shown.length >= 5, "the analyst's commands are not being read");
+  for (const c of shown) assert.ok(c.startsWith("query.mjs") || c === "learn.mjs recall", `the analyst shows ${c}, which its shell's own line does not allow`);
+});

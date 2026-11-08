@@ -157,19 +157,20 @@ test("a later delivery nothing in the design or its obligation's shape brings is
 
 // ── pattern 6: a business key an earlier test of the same investigation already settled ─────────────────────────────
 //
-// The tests of one investigation run one after another in one sandbox. ORBIT-QA-006's completes-by-deadline design (an
-// Opus host, 0.4.0) published under the business key an earlier test of its investigation had published under, and
-// waited for its own message to be processed: the clean worker settled it as the duplicate it was. Said as `shared`
-// advice since; the 0.5.0 pre-check's Sonnet host on ORBIT-TOOL-001 (bnr-eab84e468c77) ignored the same advice. What the
-// record PROVES is refused (SETTLED_BEFORE): an earlier version that ran SATISFIED published a message under that key and
-// saw it settle so. Here the earlier test is ORBIT-TOOL-001's own completes-by-deadline design, run SATISFIED, and the
-// later one the same design under a fresh message id -- the QA-006 shape.
+// The tests of one investigation run one after another in one sandbox, and twice a host's later test was ruled against
+// on the clean application by what an earlier one left. ORBIT-QA-006 (an Opus host, 0.4.0): an earlier test published by
+// hand under a period's business key, and its completes-by-deadline test then made the schedule reach that period and
+// waited for the period's message to be processed -- the clean worker settled it as the duplicate it was. ORBIT-TOOL-001
+// (the 0.5.0 pre-check's Sonnet host, bnr-eab84e468c77), the other way round: its earlier test moved the clock and saw the
+// schedule decide the occurrence (occurrence-decided-first, SATISFIED), and its completes-by-deadline design
+// (deadline-after-occurrence) then published by hand a message for that occurrence under tenant-a|inv-a|… and waited for
+// it to be processed. Neither is shown by the record: which business key a schedule's job publishes under is the
+// application's to compose, for the invoices it selects, and nothing declared says it is the one the hand-published
+// message names. Both stay `shared` advice -- the run's own pair is still made, the shared occurrence said beside it.
 //
-// ORBIT-TOOL-001's own pair is not that: its earlier test moved the clock and saw the schedule decide the occurrence
-// (occurrence-decided-first, SATISFIED), and its completes-by-deadline design (deadline-after-occurrence) then published by
-// hand a message for that occurrence under tenant-a|inv-a|…. Which business key the schedule's job published under is the
-// application's to compose, for the invoices it selects -- nothing declared says it is that one -- so the record proves no
-// duplicate: still made, and the shared occurrence said beside it.
+// What the record DOES prove is refused (SETTLED_BEFORE): both messages published by hand under one business key, the
+// earlier one by a version that ran SATISFIED and so saw it settle. Here the earlier test is ORBIT-TOOL-001's own
+// completes-by-deadline design, run SATISFIED, and the later one the same design under a fresh message id.
 function ranAs(w, shape, name, design, outcome = "SATISFIED") {
   const out = generated(w, { obligation: obligationOf(shape).obligation, design: { ...design, obligation: obligationOf(shape).obligation } });
   assert.equal(out.outcome, "DRAFT_CREATED", `${name}: ${JSON.stringify(out.findings)}`);

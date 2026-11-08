@@ -88,9 +88,11 @@ the design and its declarations, if the declarations said one more thing each:
   `SECOND_SETTLED` across two tests of one sandbox, and is named by the earlier version, the key and what holds instead;
   the record is handed in by `src/investigation/generate.mjs` (`cx.investigation`: the accepted obligations' shapes and
   each SATISFIED version, read back in its own obligation's context). What a value only suggests stays `result.shared`
-  advice: the 0.5.0 pre-check's ORBIT-TOOL-001 host published by hand a message for an occurrence an earlier test had
-  made its schedule decide, and the business key the schedule's job published under is the application's to compose for
-  the invoices it selects -- no declaration says it was that one, so no refusal can be shown.
+  advice, and both instances seen so far are that: the 0.5.0 pre-check's ORBIT-TOOL-001 host published by hand a message
+  for an occurrence an earlier test had made its schedule decide, and ORBIT-QA-006's (0.4.0) made the schedule reach a
+  period whose business key an earlier test had published under by hand. The business key a schedule's job publishes
+  under is the application's to compose for the invoices it selects -- no declaration says it was that one, so no
+  refusal can be shown.
 
 Consequences: the four adapters whose declarations gained `means` and `selects` have new fingerprints, so their
 conformance receipts are recorded again on the real systems (`acceptance/kits/messaging.mjs`, `acceptance/kits/hooks.mjs`).

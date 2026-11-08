@@ -80,6 +80,10 @@ test("SessionStart recalls Orbit directly even when host memory exists", () => {
   const recalled = sessionStart(transcript, store);
   assert.match(recalled.stdout, /learn\.mjs recall/);
   assert.match(recalled.stdout, /No architecture snapshot exists/);
+  const said = JSON.parse(recalled.stdout).hookSpecificOutput.additionalContext;
+  assert.ok(said.includes(`\`node ${ROOT}/cli/architecture.mjs ensure\``), "the command it names carries the plugin's own path, as the routing context's lines do");
+  assert.ok(said.includes(`\`node ${ROOT}/cli/learn.mjs recall <case or screen>\``), "and so does the lessons' pointer");
+  assert.doesNotMatch(said, /<plugin>/, "never a placeholder no host was told how to read");
 });
 
 // Bounded on purpose: a count and a pointer, mirroring the architecture line

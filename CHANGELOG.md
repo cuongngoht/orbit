@@ -547,6 +547,14 @@ medium effort, carries its regression test, and was pre-checked again.
   a publication's request rows say which field of the message they set (`means`), and the channel drops no duplicate.
   What a link does not show is said, never refused (`SELF_PUBLISHED`). The playbook's completes-by-deadline guidance says
   the same, and that a test which must see a period's message arrive runs before any test whose clock passes it.
+- **A trigger nothing accepted rules on is told which slot rules it.** ORBIT-QA-001 on the 0.5.0 ship (bnr-2fc9adb2480f)
+  missed its planted defect: the host's three persisted-after-write designs left the HTTP write that triggers the test
+  unruled, put the count slot on it, then moved the trigger off it, and the design budget was spent. A write's answer
+  shows nothing of being accepted on its own, so a slot must rule it, and the refusal said only that. It now names the
+  slot of the obligation's own criterion that compiles at that step, with its template (`rule it by UI-AC-2/E3
+  (value-eq: response.status eq 201)`) -- never another criterion's, which states what another interface answers -- or
+  says that criterion states nothing the answer carries; a call that rules on nothing is told the same. What compiles
+  is unchanged.
 
 ## 0.4.0
 

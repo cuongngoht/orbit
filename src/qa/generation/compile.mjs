@@ -156,7 +156,31 @@ function witnessTree(a, context) {
 
 function structuralTree(a, context) {
   const accepted = operationFor(a.capability)?.accepted;
-  if (!accepted) return { refused: `the trigger step (${a.step}) asks ${a.capability ?? "nothing"}, whose answer shows nothing of being accepted — an accepted criterion must rule on it` };
+  if (!accepted) return { refused: `the trigger step (${a.step}) asks ${a.capability ?? "nothing"}, whose answer shows nothing of being accepted: ${rulingSaid(a.step, context)} — an accepted criterion must rule on it` };
   const path = pathOf(context.outputsOf(a.step) ?? {}, accepted.means, accepted.template);
   return path.refused ? path : checked({ template: accepted.template, path: path.path, ...(accepted.value !== undefined ? { value: accepted.value } : {}), ...(accepted.values !== undefined ? { values: accepted.values } : {}), means: accepted.means });
+}
+
+// ── which accepted slot could rule a step ──────────────────────────────────
+
+// The slots of the obligation's OWN criterion (the criterion its `expected` slots belong to) that rule a step: each one
+// compiled at that step exactly as an assertion naming it would be, so a slot named here is one a design can use, with
+// the template it compiles to. Another criterion's slot may compile there too and is never named: it states what
+// another interface answers (another endpoint's 200), and a host pointed to it would rule a correct answer against it.
+export function slotsRuling(step, context) {
+  const own = ownCriteria(context);
+  const slots = [...(context.expectations ?? new Map())].filter(([ref]) => own.includes(criterionOf(ref))).map(([ref, e]) => ({ ref, e, template: EXPECT_OP.get(e.op)?.template }));
+  return slots.filter((s) => s.template && compiledAssertion({ criterionRef: s.ref, template: s.template, step }, context).tree);
+}
+
+const criterionOf = (ref) => ref.slice(0, ref.lastIndexOf("/"));
+
+const ownCriteria = (context) => [...new Set((context.expected ?? []).map(criterionOf))];
+
+// What a host reads of it: each slot with its template and what it states, or -- none -- that the criterion states
+// nothing this answer carries, with what the answer does carry, so the gap is a person's to close in that criterion.
+export function rulingSaid(step, context) {
+  const slots = slotsRuling(step, context);
+  if (slots.length) return `rule it by ${slots.map((s) => `${s.ref} (${s.template}: ${s.e.property} ${s.e.op} ${JSON.stringify(s.e.value ?? null).slice(0, 40)})`).join(" or ")}`;
+  return `no slot of ${ownCriteria(context).join(", ") || "its criterion"} states what its answer carries (${meaningEntries(context.outputsOf?.(step) ?? {}).map(([, m]) => m).slice(0, 3).join(", ") || "nothing"}), so its criterion's source must state one`;
 }

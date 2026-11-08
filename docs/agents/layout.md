@@ -883,7 +883,8 @@ src/qa/walk.mjs · obligations/ · backend/ · generation/ · security/  (0.1.0,
                `cx.investigation`), said beside the answer where it rests on what the design never causes) ·
                generation/ (design.mjs the
                ordered STAGES a proposal is held to, ending in the REAL validator; controls; compile.mjs the
-               deterministic mapping from an accepted expectation to a predicate; repair keeps the oracle;
+               deterministic mapping from an accepted expectation to a predicate, and which slot of an obligation's
+               own criterion could rule a step a refusal names (`slotsRuling`); repair keeps the oracle;
                version freezes the case; page.mjs (0.1.0, group 1) the ONE place a generated test's page script
                comes from -- `until` and `reads` written as a wait and a reader from templates that only read the
                DOM, an api witness ruling only on its status, PAGE_RULES: proposable verbs, a goto to a path of

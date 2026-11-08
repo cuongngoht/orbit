@@ -214,9 +214,12 @@ export function whereSaid(ref, context) {
   const slot = { ref, e: context.expectations?.get(ref), template: EXPECT_OP.get(context.expectations?.get(ref)?.op)?.template };
   const steps = Array.from({ length: context.stepCount ?? 0 }, (_, n) => n + 1).filter((step) => slot.template && rules(slot, step, context));
   if (steps.length) return `${ref} (${slot.template}) rules step ${steps.join(" or ")}`;
-  if (!context.kinds) return null;
+  return context.kinds ? kindsSaid(slot, context) : null;
+}
+
+function kindsSaid(slot, context) {
   const kinds = slot.template ? kindsRuling(slot, context) : [];
-  return kinds.length ? `${ref} (${slot.template}) is carried by a step asking ${kinds.join(", ")}` : `no answer a step here can ask carries ${ref}'s ${slot.e?.property ?? "property"}, so nothing here can rule it`;
+  return kinds.length ? `${slot.ref} (${slot.template}) is carried by a step asking ${kinds.join(", ")}` : `no answer a step here can ask carries ${slot.ref}'s ${slot.e?.property ?? "property"}, so nothing here can rule it`;
 }
 
 // The kinds of step a slot rules, each as declared: one every adapter of which carries it is named alone; one only some

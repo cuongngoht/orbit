@@ -15,9 +15,12 @@
 // application's accepted plan on a graph that holds what the frozen run's graph holds for that interface. Each refusal
 // now names the slot that could rule the write and the template it compiles to -- derived by compiling each slot of the
 // obligation's own criterion at that step, never another criterion's -- within what a host reads of a finding; the
-// design it points to is made; and what compiles is unchanged.
+// design it points to is made; and what compiles is unchanged. The same answer is on the obligation's template before
+// any design (`ruling`), and -- over every reference design the benchmark's controls send and every design a host gets
+// wrong from one -- a design generation makes, the validator takes, and a refusal that requires a criterion names one
+// (test/qa-actionable.mjs).
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
@@ -36,6 +39,7 @@ import { derivedObligations } from "../src/qa/obligations/derive.mjs";
 import { generationPort } from "../skills/orbit-qa/ports.mjs";
 import { fakeContext } from "./fakes/context.mjs";
 import { fakeIo } from "./fakes/io.mjs";
+import { mutationsOf, unactionable } from "./qa-actionable.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const FIXTURES = join(ROOT, "test", "fixtures", "qa-refusals");
@@ -50,14 +54,22 @@ const node = (key, of, role, attributes = {}) => ({ key, name: key.split(":")[1]
 const BARE = { nodes: [
   node("component:invoice-a", null, "component", { hooksPort: "9090" }),
   node("endpoint:invoice-create", "component:invoice-a", "interface", { path: "/api", port: "8080" }),
+  node("endpoint:invoice-read", "component:invoice-a", "interface", { path: "/api", port: "8080" }),
   node("page:invoices", "component:invoice-a", "interface", { port: "8080" }),
   node("table:invoices", "component:db", "data-resource", { table: "invoices", key: "name" }),
-  node("principal-class:tenant-a-writer", "component:invoice-a", "principal"),
+  ...["tenant-a-writer", "tenant-a-reader", "tenant-b-reader"].map((p) => node(`principal-class:${p}`, "component:invoice-a", "principal")),
+  // the asynchronous half, as test/qa-false-alarms.test.mjs binds it for the same application
+  node("channel:billing-reminder-requested", "component:broker", "channel", { exchange: "billing", routingKey: "billing.reminder.requested" }),
+  node("schedule:billing-daily", "component:invoice-a", "schedule"),
+  node("workload:worker", "component:invoice-a", "workload", { faultPoints: "before-effect after-commit-before-ack" }),
+  node("data-resource:reminders", "server:db", "data-resource", { table: "billing.reminders", key: "business_key" }),
+  node("data-resource:billing-jobs", "server:db", "data-resource", { table: "billing.jobs", key: "occurrence_id" }),
 ], relations: [{ key: "endpoint:invoice-create writes table:invoices", from: "endpoint:invoice-create", to: "table:invoices", relation: "writes", role: "data-write" }] };
 const GRAPH = { ...BARE, digest: graphDigestOf(BARE) };
-const TOPOLOGY = { mode: "network", fingerprint: "f".repeat(64), nodes: [{ key: "server:db", role: "server", name: "db", alias: "db", service: "postgres", ports: [5432], argv: [], compose: { env: [] }, env: { names: [], values: {} } }, { key: "npm:.", role: "component", name: "invoice-a", alias: "invoice-a", ports: [8080, 9090], argv: [], compose: { env: [] }, env: { names: [], values: {} } }] };
-const SERVICES = { postgres: { id: "postgres", transports: [{ id: "postgres-wire", port: 5432 }] } };
-const TENANCY = { tenants: { "tenant-a": "tenant-a" }, identities: { "tenant-a-writer": ["tenant-a"] } };
+const server = (name, service, port) => ({ key: `server:${name}`, role: "server", name, alias: name, service, ports: [port], argv: [], compose: { env: [] }, env: { names: [], values: {} } });
+const TOPOLOGY = { mode: "network", fingerprint: "f".repeat(64), nodes: [server("broker", "rabbitmq", 5672), server("db", "postgres", 5432), { key: "npm:.", role: "component", name: "invoice-a", alias: "invoice-a", ports: [8080, 9090], argv: [], compose: { env: [] }, env: { names: [], values: {} } }] };
+const SERVICES = { rabbitmq: { id: "rabbitmq", transports: [{ id: "amqp-0-9-1", port: 5672 }] }, postgres: { id: "postgres", transports: [{ id: "postgres-wire", port: 5432 }] } };
+const TENANCY = { tenants: { "tenant-a": "tenant-a", "tenant-b": "tenant-b" }, identities: { "tenant-a-writer": ["tenant-a"], "tenant-a-reader": ["tenant-a"], "tenant-b-reader": ["tenant-b"] } };
 
 async function packed() {
   const store = mkdtempSync(join(tmpdir(), "orbit-qa-refusals-"));
@@ -179,5 +191,30 @@ test("the context's frontier carries that contract on the obligation's own templ
   const seen = investigationContext({ ...w, settings: { limits: { decisions: 50, actions: 50, minutes: 20 } }, mode: "fixture-write", ctx: { ...fakeContext(), now: () => 0 } });
   const own = seen.frontier.find((o) => o.template?.obligation === OBLIGATION.obligation);
   assert.deepEqual(own.template.ruling, generation.contractFor(OBLIGATION));
+  rmSync(store, { recursive: true, force: true });
+});
+
+// Made means valid, and a refusal says what to do, over the reference designs the benchmark's controls send
+// (acceptance/designs/, each clock's variant too, for the obligation of its shape on the invoice application's accepted
+// plan): each one made validates as it is, and every design a host gets wrong from one is refused before the validator,
+// a refusal that requires a criterion naming the candidates, or that none exists, within what a host reads.
+const REFERENCES = readdirSync(join(ROOT, "acceptance", "designs")).flatMap((f) => ((r) => [{ shape: f.replace(/\.json$/, ""), design: r.design }, ...Object.entries(r["by-clock"] ?? {}).map(([clock, over]) => ({ shape: f.replace(/\.json$/, ""), clock, design: { ...r.design, ...over } }))])(JSON.parse(readFileSync(join(ROOT, "acceptance", "designs", f), "utf8").replaceAll("{{component}}", "invoice-a"))));
+
+test("every reference design the engine makes validates, and every design a host gets wrong from one is refused before the validator, naming what rules it", async () => {
+  const { ctx, store } = await packed();
+  const { generation } = investigation(ctx);
+  const made = [];
+  for (const r of REFERENCES) {
+    const obligation = OBLIGATIONS.find((o) => o.shape === r.shape);
+    const judge = (d) => ((x) => ({ out: generatedCase(x, generation.contextFor(obligation, { design: x })), cx: generation.contextFor(obligation, { design: x }) }))({ ...d, obligation: obligation.obligation });
+    if (judge(r.design).out.ok) made.push(`${r.shape}${r.clock ? `@${r.clock}` : ""}`);
+    for (const d of [r.design, ...mutationsOf(r.design)]) {
+      const { out, cx } = judge(d);
+      assert.notEqual(out.stage, "validate", `${r.shape}: made by every stage, then refused by the validator — ${(out.findings ?? []).join(" | ")}`);
+      if (out.ok) assert.deepEqual(cx.validate(out.case), [], `${r.shape}: made, and the validator refuses it`);
+      assert.deepEqual(unactionable(out.findings), [], `${r.shape}: a refusal that requires a criterion and names none`);
+    }
+  }
+  assert.deepEqual(made, ["completes-by-deadline@live", "completes-by-deadline@none", "crash-after-effect-before-ack", "crash-before-effect", "effect-once-per-key", "occurrence-one-execution", "permission-enforced", "persisted-after-write", "response-conforms", "screen-shows-result"], "every reference design is made (completes-by-deadline only with its clock's own steps), the page designs among them");
   rmSync(store, { recursive: true, force: true });
 });

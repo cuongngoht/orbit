@@ -547,14 +547,23 @@ medium effort, carries its regression test, and was pre-checked again.
   a publication's request rows say which field of the message they set (`means`), and the channel drops no duplicate.
   What a link does not show is said, never refused (`SELF_PUBLISHED`). The playbook's completes-by-deadline guidance says
   the same, and that a test which must see a period's message arrive runs before any test whose clock passes it.
-- **A trigger nothing accepted rules on is told which slot rules it.** ORBIT-QA-001 on the 0.5.0 ship (bnr-2fc9adb2480f)
-  missed its planted defect: the host's three persisted-after-write designs left the HTTP write that triggers the test
-  unruled, put the count slot on it, then moved the trigger off it, and the design budget was spent. A write's answer
-  shows nothing of being accepted on its own, so a slot must rule it, and the refusal said only that. It now names the
-  slot of the obligation's own criterion that compiles at that step, with its template (`rule it by UI-AC-2/E3
-  (value-eq: response.status eq 201)`) -- never another criterion's, which states what another interface answers -- or
-  says that criterion states nothing the answer carries; a call that rules on nothing is told the same. What compiles
-  is unchanged.
+- **Which slot rules which step is shown before a design and named in every refusal; a design generation makes, the
+  validator takes.** ORBIT-QA-001 on the 0.5.0 ship missed its planted defect twice (bnr-2fc9adb2480f,
+  bnr-0bb060ca0431), each time spending its persisted-after-write design budget on refusals that said a criterion must
+  rule and never which: the HTTP write that triggered the test was left unruled (a write's answer shows nothing of being
+  accepted on its own, and the plan's criterion says what accepted is), the count slot was put on it, the trigger moved
+  to a click, and a page design every generation stage made was then refused by the validator -- "does not end with a
+  report step" -- on a case the host cannot change. Now one compilation answers all three ways
+  (`src/qa/generation/compile.mjs`): the obligation's template in the context carries `ruling` -- each slot of its own
+  criterion, its template, what it states and the kinds of step whose declared answer it rules (`UI-AC-2/E3`,
+  `value-eq`: `orbit.http.read`, `orbit.http.write`, `api`), the trigger's rule and the steps that must rule; a refusal
+  that requires a criterion names the slots that rule that step (`rule it by UI-AC-2/E3 (value-eq: response.status eq
+  201)`), where a misplaced or missing slot rules, a click trigger's api witness, or that none exists; and a page design
+  that does not end with a report is refused by name at `rules` (`ENDS_REPORT`, the validator's own rule by the same
+  verbs), naming the slot a report is ruled by. Only the obligation's own criterion is ever named: another criterion's
+  slot states what another interface answers. What compiles, the budgets and the verdicts are unchanged; every
+  reference design and worked design made validates, and every design a host gets wrong from one is refused before the
+  validator with a refusal a host can act on.
 
 ## 0.4.0
 

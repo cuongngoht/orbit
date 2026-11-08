@@ -121,9 +121,9 @@ node skills/orbit-release/ship.mjs --status --json          # where it stands; a
   `ship/policy.json` `recorded`. The ship runs each once under `--retries`, reports it held or not with its room, and
   never blocks on it (a credential found in its room still stops the release); its controls stay required. Promotion
   to required is a person's policy change, by the rule in `docs/backlog/0.5.0.md`, never something done to get a PASS.
-- **Fix an Orbit defect a row exposes with Opus at max effort** (an Agent, `model: opus`, `effort: max`): a regression
-  test that fails before the fix, the full suite, the strict Five Lines lint. Never loosen an acceptance rule, a case's
-  ground truth, the verifier or `ship/policy.json` to get a PASS.
+- **Fix an Orbit defect a row exposes with Opus at high effort** (an Agent, `model: opus`, `effort: high` -- the owner's
+  0.5.0 decision; it was max before): a regression test that fails before the fix, the full suite, the strict Five Lines
+  lint. Never loosen an acceptance rule, a case's ground truth, the verifier or `ship/policy.json` to get a PASS.
 - **Run `node --test` alone.** A full suite run twice into one log at the same time showed a failure that was the two
   runs' interference (the other said 0 failed), and a resumed session found two of its own earlier suite runs still
   going. Look first (`pgrep -af 'node --test'`), let a run end or stop it, then run one suite into a log of its own.

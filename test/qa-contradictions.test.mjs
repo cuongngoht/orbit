@@ -71,6 +71,30 @@ test("a second message under a business key is held apart from the first only in
   assert.deepEqual(refused(design([keyless("msg-1"), keyless("msg-2"), ...steps.slice(2)], [["FIX-ASYNC-1/E3", 3], ["FIX-ASYNC-1/E3", 4]]), ONCE), [], "a correlation is not a business key: a design that names none is held to nothing here");
 });
 
+// An investigation's record as src/investigation/generate.mjs hands it to the contradiction stage: the shapes its accepted
+// obligations hold the system to, and each earlier version that ran SATISFIED, read in its own obligation's context.
+const ONCE_HELD = ["completes-by-deadline", "effect-once-per-key", "occurrence-one-execution"];
+const proven = (stack, earlier, shapes = ONCE_HELD) => ({ shapes, earlier: earlier.map((e, n) => ({ version: `gen-${n + 1}@v`, shape: e.shape, design: e.design, cx: contextOn(stack, e.design, e.shape) })) });
+const recorded = (d, shape, investigation, stack = "invoice-a") => contradictionFindings(d, { ...contextOn(stack, d, shape), investigation }).map((f) => f.rule);
+
+test("a message under a business key an earlier SATISFIED test of the investigation settled is refused only where that test's own record shows it, and its plan holds the system to one effect per key", () => {
+  const settled = (id, key = KEY, ref = "FIX-ASYNC-1/E3") => design([publish(id, key), attempts({ count: 1, match: { messageId: id } })], [[ref, 2]]);
+  const earlier = [{ shape: "completes-by-deadline", design: settled("msg-1") }];
+  assert.deepEqual(recorded(settled("msg-2"), "completes-by-deadline", proven("invoice-a", earlier)), ["SETTLED_BEFORE"]);
+  assert.deepEqual(recorded(settled("msg-2"), "completes-by-deadline", proven("invoice-b", earlier), "invoice-b"), ["SETTLED_BEFORE"], "on the other stack's broker as on this one's");
+  assert.deepEqual(recorded(settled("msg-2"), "effect-once-per-key", proven("invoice-a", earlier)), ["SETTLED_BEFORE"], "whatever this design's own obligation is");
+  assert.deepEqual(recorded(settled("msg-2"), "completes-by-deadline", proven("invoice-a", earlier, ["completes-by-deadline"])), [], "a plan that holds the system to no one effect per key proves no duplicate");
+  assert.deepEqual(recorded(settled("msg-2"), "completes-by-deadline", proven("invoice-a", [])), [], "nothing earlier ran SATISFIED");
+  assert.deepEqual(recorded(settled("msg-2", OTHER), "completes-by-deadline", proven("invoice-a", earlier)), [], "another business key is another effect");
+  assert.deepEqual(recorded(settled("msg-1"), "completes-by-deadline", proven("invoice-a", earlier)), [], "the same message is never a second one");
+  const otherwise = new Map([...ACCEPTED, ["X/E1", { id: "E1", property: "settlement.outcome", op: "complete-within", value: "duplicate", within: 60, for: [] }]]);
+  const asDuplicate = settled("msg-2", KEY, "X/E1");
+  assert.deepEqual(contradictionFindings(asDuplicate, { ...contextOn("invoice-a", asDuplicate, "completes-by-deadline", otherwise), investigation: proven("invoice-a", earlier) }), [], "held to another settlement than the one the earlier message met");
+  const unnarrowed = [{ shape: "completes-by-deadline", design: design([publish("msg-1"), attempts({ count: 1, match: { outcome: "processed" } })], [["FIX-ASYNC-1/E3", 2]]) }];
+  assert.deepEqual(recorded(settled("msg-2"), "completes-by-deadline", proven("invoice-a", unnarrowed)), [], "an earlier observation not narrowed to its own message shows nothing of that message");
+  assert.deepEqual(contradictionAdvice(settled("msg-2"), { ...contextOn("invoice-a", settled("msg-2"), "completes-by-deadline"), investigation: proven("invoice-a", earlier) }).map((f) => f.rule), [], "a refusal, never advice");
+});
+
 test("a later delivery is refused where nothing in the design or its shape brings one, said where only its shape may, and a decision said only where nothing moves the clock, and a decision only where nothing moves the clock", () => {
   const second = [publish("msg-1"), attempts({ count: 1, match: { messageId: "msg-1" } })];
   assert.deepEqual([refused(design(second, [["FIX-ASYNC-1/E4", 2]]), "effect-once-per-key"), advised(design(second, [["FIX-ASYNC-1/E4", 2]]), "effect-once-per-key")], [["NEVER_REDELIVERED"], []], "a shape that declares no way a delivery comes back: refused");
@@ -109,7 +133,7 @@ function kept(sent, owed, argv, stdin) {
 
 const CASES = readdirSync(join(ROOT, "benchmark", "suites")).flatMap((suite) => readdirSync(join(ROOT, "benchmark", "suites", suite)).filter((c) => c !== "suite.json").map((c) => JSON.parse(readFileSync(join(ROOT, "benchmark", "suites", suite, c, "case.json"), "utf8")))).filter((c) => ["qa", "sessions"].includes(c.kind));
 
-test("no design a benchmark control sends is refused or advised by these rules -- the false alarm the false-alarm control plants is not one a design shows", async () => {
+test("no design a benchmark control sends is refused or advised by these rules, each held to every one it sent before as run SATISFIED -- the false alarm the false-alarm control plants is not one a design shows", async () => {
   assert.ok(CASES.length >= 10, "every QA and sessions case");
   const said = [];
   const sentOf = new Map();
@@ -117,7 +141,7 @@ test("no design a benchmark control sends is refused or advised by these rules -
     for (const { host } of c.controls) {
       const sent = await sentBy(host, c.target.stack, c.poison ? { skip: c.poison.skip, stale: c.poison.stale } : null, c.refusals);
       sentOf.set(host, Math.max(sentOf.get(host) ?? 0, sent.length));
-      for (const { shape, design: d } of sent) said.push(...[...refused(d, shape, c.target.stack), ...advised(d, shape, c.target.stack)].map((rule) => `${c.id} ${host} ${shape}: ${rule}`));
+      for (const [n, { shape, design: d }] of sent.entries()) said.push(...[...recorded(d, shape, proven(c.target.stack, sent.slice(0, n)), c.target.stack), ...advised(d, shape, c.target.stack)].map((rule) => `${c.id} ${host} ${shape}: ${rule}`));
     }
   }
   assert.deepEqual(said, []);

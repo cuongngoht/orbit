@@ -11,7 +11,9 @@
 // so the same proposal sent twice is the same design. It runs nothing, and a generated test stays
 // a draft until a person promotes it. Beside a frozen version it says what its design names that an
 // earlier version of the investigation named too (`shared`), and what its design rests on that it
-// never causes (`advice`, src/qa/backend/contradictions.mjs) -- advice, never a record or a refusal.
+// never causes (`advice`, src/qa/backend/contradictions.mjs) -- advice, never a record or a refusal. What an earlier
+// version's own SATISFIED run proves it left is handed to the generator (`investigation`, recordOf below), so a design
+// held to it is refused before a draft exists.
 import { caseDigest } from "../dsl/digest.mjs";
 import { Refused } from "../errors.mjs";
 import { canonicalJson, sha } from "../hash.mjs";
@@ -25,9 +27,27 @@ import { eventIdOf } from "./store.mjs";
 export function generated(w, a) {
   const g = generationOf(w);
   const obligation = obligationWithin(w, a.obligation);
-  const cx = g.contextFor(obligation, a);
+  const cx = { ...g.contextFor(obligation, a), investigation: recordOf(w, g) };
   const out = generatedCase(a.design, cx);
   return withJournal(w, () => (out.ok ? keptVersion(w, g, obligation, { ...out, stated: statedFor(out.design, obligation.shape, cx.expectations) }) : keptFailure(w, obligation, a, out)));
+}
+
+// What this investigation's own record proves an earlier test left in its one sandbox, for the contradiction stage
+// (src/qa/backend/contradictions.mjs SETTLED_BEFORE): the shapes its accepted obligations hold the system to, and each
+// version that ran and was SATISFIED -- every verdict it made held (verification.mjs MET) -- with its design read back
+// and the context its own obligation reads a design in. A version that never ran, or ran to any other word, proves
+// nothing of what it left; one whose design cannot be read back shows nothing.
+const HELD = "SATISFIED";
+
+const recordOf = (w, g) => ((model) => ({ shapes: model.obligations.filter((o) => o.authority === "accepted").map((o) => o.shape), earlier: model.versions.filter((v) => heldOnce(model, v)).flatMap((v) => provenOf(w, g, model, v)) }))(current(w));
+
+const heldOnce = (model, v) => model.starts.some((s) => s.version === v.version && model.evaluations.some((e) => e.execution === s.execution && e.outcome === HELD));
+
+function provenOf(w, g, model, v) {
+  const d = designedOf(model, v.design);
+  const obligation = d ? model.obligations.findLast((o) => o.obligation === d.obligation) : null;
+  const design = obligation ? keptDesign(w, d) : null;
+  return design ? [{ version: v.version, obligation: obligation.obligation, shape: obligation.shape ?? null, design, cx: g.contextFor(obligation, { design }) }] : [];
 }
 
 // The obligation as the journal holds it now, while its budget lasts.

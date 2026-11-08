@@ -80,6 +80,17 @@ the design and its declarations, if the declarations said one more thing each:
   declarations alone show that nothing brings a second delivery, and a correct application that settles the first is
   ruled against. Sonnet 5.5 sent exactly that on ORBIT-QA-002 after the advice alone was said, and it was that run's one
   false alarm. Where the shape declares a lease, a visibility timeout or an ack wait, it is still only said.
+- **Amended 2026-11-08 (0.5.0 pre-check):** a business key an earlier test of the SAME investigation settled is REFUSED
+  (`SETTLED_BEFORE`) where the investigation's own record proves it: an earlier version that ran SATISFIED (every verdict
+  held) published a message under that key and waited, narrowed to it, for a settlement -- and this design publishes
+  another message under the key and waits, narrowed to it, for that very settlement, in an investigation whose accepted
+  plan holds the system to one effect per business key (an accepted effect-once-per-key obligation). It is
+  `SECOND_SETTLED` across two tests of one sandbox, and is named by the earlier version, the key and what holds instead;
+  the record is handed in by `src/investigation/generate.mjs` (`cx.investigation`: the accepted obligations' shapes and
+  each SATISFIED version, read back in its own obligation's context). What a value only suggests stays `result.shared`
+  advice: the 0.5.0 pre-check's ORBIT-TOOL-001 host published by hand a message for an occurrence an earlier test had
+  made its schedule decide, and the business key the schedule's job published under is the application's to compose for
+  the invoices it selects -- no declaration says it was that one, so no refusal can be shown.
 
 Consequences: the four adapters whose declarations gained `means` and `selects` have new fingerprints, so their
 conformance receipts are recorded again on the real systems (`acceptance/kits/messaging.mjs`, `acceptance/kits/hooks.mjs`).

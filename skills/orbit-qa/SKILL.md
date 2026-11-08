@@ -199,7 +199,10 @@ A design is held, before a draft exists, to what a correct application can satis
 `contradiction`, naming the step, the field, both values and what holds instead): an assertion on the very field its
 step's own match names with another value (`MATCH_PINS` -- the adapter says what each match field is compared with, and
 whether its match is all the answer holds or what a `count` ends the wait on), and, in an effect-once-per-key design, a
-second message under a business key held to the settlement its first message is held to (`SECOND_SETTLED`), and a
+second message under a business key held to the settlement its first message is held to (`SECOND_SETTLED`), in ANY
+design a message published under a business key an earlier test of the investigation already published another message
+under, ran SATISFIED and saw settle -- held to that very settlement (`SETTLED_BEFORE`, where the accepted plan holds the
+system to one effect per business key: the earlier version and the key are named; use a key no earlier test used), and a
 wait for a later delivery (`delivery.attempt` above 1) that nothing in the design faults, stops or restarts a workload
 for, in an obligation whose shape declares no other way a delivery comes back (`NEVER_REDELIVERED`). What a
 design that is made rests on and never causes is said beside its answer (`result.advice`): such a later delivery where

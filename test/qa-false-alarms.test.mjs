@@ -9,7 +9,8 @@
 //   refused  what the design and the declarations prove a correct application contradicts (src/qa/backend/contradictions.mjs):
 //            an assertion on the very field its step's own match pins to another value (MATCH_PINS), and -- the
 //            effect-once-per-key obligation's own subject -- a second message under a business key held to the settlement
-//            the first one is held to (SECOND_SETTLED)
+//            the first one is held to (SECOND_SETTLED) -- and, in any design, one under a business key an earlier
+//            SATISFIED test of the same investigation settled, held to that same settlement (SETTLED_BEFORE)
 //   advised  what holds only if the application does on its own what the design never causes: a later delivery with
 //            nothing that interrupts one (UNCAUSED_REDELIVERY), a schedule's decision with nothing that moves its clock
 //            (UNCAUSED_DECISION) -- said beside the answer, the design still made
@@ -151,6 +152,65 @@ test("a later delivery nothing in the design or its obligation's shape brings is
     assert.equal(out.outcome, "DRAFT_CREATED", name);
     assert.match((resultView(out).advice ?? []).join("\n"), /^UNCAUSED_DECISION: step \d waits for billing-daily:2026-10-22T09:00:00\+07:00 to be decided due \(SCHED-1\/E1\) and no step here moves the clock: advance it to that occurrence first \(orbit\.clock\.advance\), unless an earlier test/, name);
   }
+  rmSync(store, { recursive: true, force: true });
+});
+
+// ── pattern 6: a business key an earlier test of the same investigation already settled ─────────────────────────────
+//
+// The tests of one investigation run one after another in one sandbox. ORBIT-QA-006's completes-by-deadline design (an
+// Opus host, 0.4.0) published under the business key an earlier test of its investigation had published under, and
+// waited for its own message to be processed: the clean worker settled it as the duplicate it was. Said as `shared`
+// advice since; the 0.5.0 pre-check's Sonnet host on ORBIT-TOOL-001 (bnr-eab84e468c77) ignored the same advice. What the
+// record PROVES is refused (SETTLED_BEFORE): an earlier version that ran SATISFIED published a message under that key and
+// saw it settle so. Here the earlier test is ORBIT-TOOL-001's own completes-by-deadline design, run SATISFIED, and the
+// later one the same design under a fresh message id -- the QA-006 shape.
+//
+// ORBIT-TOOL-001's own pair is not that: its earlier test moved the clock and saw the schedule decide the occurrence
+// (occurrence-decided-first, SATISFIED), and its completes-by-deadline design (deadline-after-occurrence) then published by
+// hand a message for that occurrence under tenant-a|inv-a|…. Which business key the schedule's job published under is the
+// application's to compose, for the invoices it selects -- nothing declared says it is that one -- so the record proves no
+// duplicate: still made, and the shared occurrence said beside it.
+function ranAs(w, shape, name, design, outcome = "SATISFIED") {
+  const out = generated(w, { obligation: obligationOf(shape).obligation, design: { ...design, obligation: obligationOf(shape).obligation } });
+  assert.equal(out.outcome, "DRAFT_CREATED", `${name}: ${JSON.stringify(out.findings)}`);
+  const execution = `exe-${name}-1`;
+  w.store.appendOnce(ID, "started", { id: `str-${name}`, eventId: eventIdOf("started", out.version, 1, execution), attempt: 1, version: out.version, execution });
+  w.store.appendOnce(ID, "evaluated", { id: `evl-${name}`, eventId: eventIdOf("evaluated", execution, 1, outcome), attempt: 1, execution, obligation: obligationOf(shape).obligation, outcome });
+  return out.version;
+}
+
+const reused = (design, id) => JSON.parse(JSON.stringify(design).replaceAll("msg-a1b2c3d4e5f60001", id));
+const madeFor = (w, shape, design) => generated(w, { obligation: obligationOf(shape).obligation, design: { ...design, obligation: obligationOf(shape).obligation } });
+
+test("a message published under a business key an earlier SATISFIED test of the same investigation published under and saw settle, held to that same settlement, is refused naming the earlier version and the key", async () => {
+  const { ctx, store } = await packed();
+  const { w } = investigation(ctx);
+  const first = fixture("deadline-after-occurrence");
+  const version = ranAs(w, DEADLINE, "first", first);
+  const second = madeFor(w, DEADLINE, reused(first, "msg-a1b2c3d4e5f60002"));
+  assert.deepEqual([second.outcome, second.stage], ["GENERATION_FAILED", "contradiction"], JSON.stringify(second));
+  assert.deepEqual(second.findings, [`SETTLED_BEFORE: step 4 waits for msg-a1b2c3d4e5f60002 to settle as processed (FIX-ASYNC-1/E3) under businessKey tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00, which ${version} (completes-by-deadline) of this investigation already published msg-a1b2c3d4e5f60001 under and saw settle as processed: use a business key no earlier test of this investigation used, or rule this one by what that test left — its tests share one sandbox, and a second message under a business key is not a second effect`]);
+  const fresh = JSON.parse(JSON.stringify(reused(first, "msg-a1b2c3d4e5f60003")).replaceAll("2026-10-22T09:00:00+07:00", "2026-10-29T09:00:00+07:00"));
+  assert.deepEqual((madeFor(w, DEADLINE, fresh).findings ?? []).filter((f) => f.startsWith("SETTLED_BEFORE")), [], "a business key no earlier test used is no second message");
+  assert.equal(madeFor(w, DEADLINE, first).outcome, "DRAFT_CREATED", "the earlier test's own message sent again is that same message, never a second one");
+  rmSync(store, { recursive: true, force: true });
+});
+
+test("only what the record proves is refused: an earlier version that never ran, or ran to any other word, leaves the design made -- and so does ORBIT-TOOL-001's own pair, whose earlier test only decided the occurrence", async () => {
+  const { ctx, store } = await packed();
+  for (const outcome of [null, "CONTRADICTED", "INCONCLUSIVE"]) {
+    const { w } = investigation(ctx);
+    const first = fixture("deadline-after-occurrence");
+    if (outcome) ranAs(w, DEADLINE, "first", first, outcome);
+    if (!outcome) madeFor(w, DEADLINE, first);
+    const second = madeFor(w, DEADLINE, reused(first, "msg-a1b2c3d4e5f60002"));
+    assert.equal(second.outcome, "DRAFT_CREATED", `${outcome ?? "never ran"}: ${JSON.stringify(second.findings)}`);
+  }
+  const { w } = investigation(ctx);
+  const decided = ranAs(w, OCCURRENCE, "decided", fixture("occurrence-decided-first"));
+  const after = madeFor(w, DEADLINE, fixture("deadline-after-occurrence"));
+  assert.equal(after.outcome, "DRAFT_CREATED", JSON.stringify(after.findings));
+  assert.deepEqual(resultView(after).shared?.map((s) => [s.version, s.keys]), [[decided, [{ value: "billing-daily:2026-10-22T09:00:00+07:00", as: ["occurrenceId"] }]]], "what only a value suggests is said beside the draft");
   rmSync(store, { recursive: true, force: true });
 });
 

@@ -4,7 +4,8 @@
 // each was validated and frozen, ran, and contradicted the CLEAN application too -- a false alarm only the benchmark's
 // confirmation on the clean application caught. So a design is held to them where it is made, by what can be shown:
 //
-//   refused  what follows from the design and the declarations alone: the `contradiction` stage
+//   refused  what follows from the design and the declarations alone -- or from them and the investigation's own record
+//            of what an earlier test proved (SETTLED_BEFORE): the `contradiction` stage
 //            (src/qa/generation/design.mjs) stops it as GENERATION_FAILED before a draft exists, naming the step, the
 //            field, both values and what holds instead, in that order -- the start of a finding is what a host sees of it
 //   advised  what holds only if the application does on its own what the design never causes -- a later delivery, a
@@ -101,6 +102,38 @@ const asFirstSay = (x, m, first) => `step ${x.s.i} waits for ${cut(m.id)} to set
 
 const aloneSay = (x, m) => `step ${x.s.i} waits for ${cut(m.id)} to settle as ${cut(x.e.value)} (${x.ref}), the second message here under ${cut(m.first)}'s businessKey: unless a criterion states how a second one settles, rule it by its first delivery — how it settles is the system's own word (businessKey ${cut(m.key)})`;
 
+// ── a business key an earlier test of the investigation already settled ───
+//
+// The tests of one investigation run in its one sandbox and share its state (shared.mjs ONE_SANDBOX), and what an earlier
+// test PROVED of that state is in its own record: a version that ran and was SATISFIED held every assertion it made, so a
+// message it published under a business key and waited for, on an observation narrowed to that message, settled as it
+// waited -- in this sandbox, before this design runs. A design that publishes ANOTHER message under that business key and
+// waits, narrowed to it, for the very settlement the earlier test's message met holds a second message under a business
+// key to the first one's success -- SECOND_SETTLED across two tests instead of inside one: refused, naming the earlier
+// version, the key and what holds instead. It is said where the investigation's accepted plan holds the system to one
+// effect per business key (an accepted effect-once-per-key obligation of the same investigation), whatever this design's
+// own obligation is. `cx.investigation` is that record (src/investigation/generate.mjs): `{ shapes, earlier: [{ version,
+// shape, design, cx }] }`, each earlier entry a SATISFIED version with its design read back and the context it is read in.
+//
+// What a value only suggests the record does not prove, and stays advice (shared.mjs sharedWith): an occurrence an earlier
+// test brought about publishes under business keys the APPLICATION composes from it, for whatever its job selects -- no
+// declaration says which key, so a message published by hand for that occurrence may as well be the first under its own.
+const proven = (cx) => ((cx.investigation?.shapes ?? []).includes(SUBJECT) ? cx.investigation.earlier ?? [] : []);
+
+// Every wait on how a message settles, beside the message its observation is narrowed to.
+const settledOn = (d, cx) => waitingFor(d, cx, SETTLES).map((x) => ({ ...x, on: narrowedTo(x.s, cx) })).filter((x) => x.on !== null);
+
+// What an earlier proven version's own messages settled as under each business key: [{ version, shape, key, id, value }].
+const metBy = (e) => ((settled) => publications(e.design).flatMap((q) => q.keys.flatMap((key) => settled.filter((y) => y.on === q.id).map((y) => ({ version: e.version, shape: e.shape, key, id: q.id, value: y.e.value })))))(settledOn(e.design, e.cx ?? {}));
+
+function settledBefore(d, cx) {
+  const met = proven(cx).flatMap(metBy);
+  const settled = settledOn(d, cx);
+  return publications(d).flatMap((p) => p.keys.flatMap((key) => met.filter((m) => m.key === key && m.id !== p.id).flatMap((m) => settled.filter((x) => x.on === p.id && x.e.value === m.value).map((x) => beforeSay(x, p, m)))));
+}
+
+const beforeSay = (x, p, m) => `step ${x.s.i} waits for ${cut(p.id)} to settle as ${cut(x.e.value)} (${x.ref}) under businessKey ${cut(m.key)}, which ${m.version} (${m.shape ?? "an earlier test"}) of this investigation already published ${cut(m.id)} under and saw settle as ${cut(m.value)}: use a business key no earlier test of this investigation used, or rule this one by what that test left — its tests share one sandbox, and a second message under a business key is not a second effect`;
+
 // ── a later delivery nothing in the design causes ─────────────────────────
 //
 // A delivery after the first comes when one before it failed or was interrupted before it settled -- what an adapter's
@@ -142,6 +175,7 @@ export const CONTRADICTION_RULES = [
   { id: "MATCH_PINS", refuses: true, findings: (d, cx) => matchPins(d, cx) },
   { id: "SECOND_SETTLED", refuses: true, findings: (d, cx) => secondsSettled(d, cx, true) },
   { id: "SECOND_SETTLES", refuses: false, findings: (d, cx) => secondsSettled(d, cx, false) },
+  { id: "SETTLED_BEFORE", refuses: true, findings: (d, cx) => settledBefore(d, cx) },
   { id: "NEVER_REDELIVERED", refuses: true, findings: (d, cx) => uncausedRedelivery(d, cx, true) },
   { id: "UNCAUSED_REDELIVERY", refuses: false, findings: (d, cx) => uncausedRedelivery(d, cx, false) },
   { id: "UNCAUSED_DECISION", refuses: false, findings: (d, cx) => uncausedDecision(d, cx) },

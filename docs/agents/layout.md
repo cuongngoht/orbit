@@ -876,7 +876,9 @@ src/qa/walk.mjs · obligations/ · backend/ · generation/ · security/  (0.1.0,
                one investigation share -- ONE_SANDBOX said before a host designs, and the keys a design names that an
                earlier version named, said after, never refused; contradictions.mjs (0.5.0) what a correct application
                can be held to -- refused where the design and its adapters' declarations prove a contradiction
-               (MATCH_PINS, SECOND_SETTLED, NEVER_REDELIVERED) or the investigation's own record does (SETTLED_BEFORE: a
+               (MATCH_PINS, SELF_SATISFIED: a wait its own publication satisfies, read off what a publishing adapter's
+               request rows say they set (`means`) and whether its channel drops a duplicate; SECOND_SETTLED,
+               NEVER_REDELIVERED) or the investigation's own record does (SETTLED_BEFORE: a
                business key an earlier SATISFIED version settled, handed in by src/investigation/generate.mjs as
                `cx.investigation`), said beside the answer where it rests on what the design never causes) ·
                generation/ (design.mjs the

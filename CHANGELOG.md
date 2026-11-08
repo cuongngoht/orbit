@@ -536,6 +536,17 @@ medium effort, carries its regression test, and was pre-checked again.
   stops at `contradiction`, naming the earlier version and the key. The two instances seen (ORBIT-QA-006, and the
   pre-check's ORBIT-TOOL-001, whose clean application was ruled against) went through a schedule, whose job composes its
   own business keys: the record cannot show the duplicate there, and it stays `result.shared` advice.
+- **A wait the design's own publication satisfies is refused (`SELF_SATISFIED`, ADR 0052 amendment).** ORBIT-QA-007 (the
+  clean application, required) and ORBIT-TOOL-001 failed on one false alarm: the completes-by-deadline design published
+  by hand the period's reminder request, under the correlation the schedule gives it, awaited that very correlation to
+  rule "the period's request exists within 120 seconds of the occurrence being due", then held its own message -- a
+  second one under the system's key -- to `processed`; the clean worker settled it `duplicate`. The observer, armed
+  before the publication on its channel, sees the design's own message, so that wait holds whatever the application
+  does. It now stops at `contradiction`, naming the step, the field, the value and what holds instead (publish none;
+  move the clock to the occurrence and await the system's own) -- only where the brokers' declarations show every link:
+  a publication's request rows say which field of the message they set (`means`), and the channel drops no duplicate.
+  What a link does not show is said, never refused (`SELF_PUBLISHED`). The playbook's completes-by-deadline guidance says
+  the same, and that a test which must see a period's message arrive runs before any test whose clock passes it.
 
 ## 0.4.0
 

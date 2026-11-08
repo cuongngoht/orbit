@@ -93,9 +93,31 @@ the design and its declarations, if the declarations said one more thing each:
   period whose business key an earlier test had published under by hand. The business key a schedule's job publishes
   under is the application's to compose for the invoices it selects -- no declaration says it was that one, so no
   refusal can be shown.
+- **Amended 2026-11-08 (0.5.0 required rows):** a wait for a value the design's OWN publication put where its observer
+  looks is REFUSED (`SELF_SATISFIED`), from the design and the declarations alone. ORBIT-QA-007 (the clean application,
+  a required row) and ORBIT-TOOL-001 both failed on it: the completes-by-deadline design armed an observer on the
+  period's request channel, published by hand a message correlated as the period's own, and ruled FIX-ASYNC-1/E1 ("the
+  period's reminder request ... exists within 120 seconds of the occurrence being due") on an await of that very
+  correlation -- satisfied by its own message -- then held that hand-published message, a second one under the
+  system's own key, to `processed`; the clean worker settled it `duplicate`. A request row of a PUBLICATION may now say
+  `means` too: which field of the published message it sets, carried as it was sent (the brokers' `messageId`,
+  `correlationId` and their routing field; the stream broker's correlation is held to one line, since a header carries
+  it). The wait is refused only where every link is declared or shown: the slot's property is a field the publishing
+  adapter says its publication sets, with the slot's literal value; the observer was armed before the publication, on
+  its channel, with nothing in its request that narrows what it sees, and the publication names no route of its own
+  (`message.key`); the publishing adapter declares its channel drops no duplicate (`publishDedupe: none` -- a channel
+  that drops a message id it saw in its window may never carry this one); no other await on that observer reads between
+  the publication and the wait; and the wait's match answers every message read (`selects: count`) or names only what
+  the publication carries. Then the observation sees the design's own message, so the wait holds -- or stays undecided
+  -- whatever the application does, and its verdict is never the criterion's. What holds instead is named: publish
+  nothing under it, bring about what makes the system send it (move the clock to the occurrence, trigger the schedule
+  where the clock cannot move, or the request through its interface) and await the system's own. Where a link is not
+  shown (an observer armed after, a deduplicating channel, a route of its own, an await between), it is said, never
+  refused (`SELF_PUBLISHED`). A design that publishes its own trigger and waits for ITS processing is untouched: how a
+  message settles is not a field its publication sets.
 
-Consequences: the four adapters whose declarations gained `means` and `selects` have new fingerprints, so their
-conformance receipts are recorded again on the real systems (`acceptance/kits/messaging.mjs`, `acceptance/kits/hooks.mjs`).
+Consequences: the four adapters whose declarations gained `means` and `selects` -- and the two brokers again, whose
+publications gained `means` -- have new fingerprints, so their conformance receipts are recorded again on the real systems (`acceptance/kits/messaging.mjs`, `acceptance/kits/hooks.mjs`).
 A project adapter that declares neither is held by none of this. The playbook's worked designs for occurrence-one-execution
 and overlap-policy, which read a schedule's `due` after manual triggers alone, now move the clock first: a trigger
 proves the handler, never the schedule.

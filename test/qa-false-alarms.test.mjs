@@ -10,10 +10,12 @@
 //            an assertion on the very field its step's own match pins to another value (MATCH_PINS), and -- the
 //            effect-once-per-key obligation's own subject -- a second message under a business key held to the settlement
 //            the first one is held to (SECOND_SETTLED) -- and, in any design, one under a business key an earlier
-//            SATISFIED test of the same investigation settled, held to that same settlement (SETTLED_BEFORE)
+//            SATISFIED test of the same investigation settled, held to that same settlement (SETTLED_BEFORE), and a wait
+//            for a value the design's own publication put on the channel its observer watches (SELF_SATISFIED)
 //   advised  what holds only if the application does on its own what the design never causes: a later delivery with
 //            nothing that interrupts one (UNCAUSED_REDELIVERY), a schedule's decision with nothing that moves its clock
-//            (UNCAUSED_DECISION) -- said beside the answer, the design still made
+//            (UNCAUSED_DECISION), a value the design published itself that its observer may not have seen
+//            (SELF_PUBLISHED) -- said beside the answer, the design still made
 //
 // and the reference designs for the same shapes (acceptance/designs/) are still made, with nothing said beside them.
 import assert from "node:assert/strict";
@@ -87,6 +89,11 @@ const judged = (generation, shape, design) => ((obligation) => generatedCase({ .
 const ONCE = "effect-once-per-key";
 const DEADLINE = "completes-by-deadline";
 const OCCURRENCE = "occurrence-one-execution";
+
+// The reference designs the benchmark's reference and false-alarm controls send for these shapes (acceptance/designs/, on
+// stack A's live clock).
+const REFERENCE = (shape) => ((r) => JSON.parse(JSON.stringify({ ...r.design, ...(r["by-clock"]?.live ?? {}) }).replaceAll("{{component}}", "invoice-a")))(JSON.parse(readFileSync(join(ROOT, "acceptance", "designs", `${shape}.json`), "utf8")));
+const SETTLING = REFERENCE(ONCE).skeleton.steps[0].input.request.messageId;
 
 // ── pattern 2: an assertion on a field its own step's match pins to another value ───────────────────────────────────
 //
@@ -169,8 +176,10 @@ test("a later delivery nothing in the design or its obligation's shape brings is
 // message names. Both stay `shared` advice -- the run's own pair is still made, the shared occurrence said beside it.
 //
 // What the record DOES prove is refused (SETTLED_BEFORE): both messages published by hand under one business key, the
-// earlier one by a version that ran SATISFIED and so saw it settle. Here the earlier test is ORBIT-TOOL-001's own
-// completes-by-deadline design, run SATISFIED, and the later one the same design under a fresh message id.
+// earlier one by a version that ran SATISFIED and so saw it settle. Here the earlier test is the reference
+// effect-once-per-key design, run SATISFIED, and the later one the same design under a fresh message id. (ORBIT-TOOL-001's
+// own completes-by-deadline design is no longer made at all: its wait for the period's request is one its own
+// publication satisfies -- SELF_SATISFIED, below.)
 function ranAs(w, shape, name, design, outcome = "SATISFIED") {
   const out = generated(w, { obligation: obligationOf(shape).obligation, design: { ...design, obligation: obligationOf(shape).obligation } });
   assert.equal(out.outcome, "DRAFT_CREATED", `${name}: ${JSON.stringify(out.findings)}`);
@@ -180,48 +189,81 @@ function ranAs(w, shape, name, design, outcome = "SATISFIED") {
   return out.version;
 }
 
-const reused = (design, id) => JSON.parse(JSON.stringify(design).replaceAll("msg-a1b2c3d4e5f60001", id));
+const reused = (design, id) => JSON.parse(JSON.stringify(design).replaceAll(SETTLING, id));
 const madeFor = (w, shape, design) => generated(w, { obligation: obligationOf(shape).obligation, design: { ...design, obligation: obligationOf(shape).obligation } });
 
 test("a message published under a business key an earlier SATISFIED test of the same investigation published under and saw settle, held to that same settlement, is refused naming the earlier version and the key", async () => {
   const { ctx, store } = await packed();
   const { w } = investigation(ctx);
-  const first = fixture("deadline-after-occurrence");
-  const version = ranAs(w, DEADLINE, "first", first);
-  const second = madeFor(w, DEADLINE, reused(first, "msg-a1b2c3d4e5f60002"));
+  const first = REFERENCE(ONCE);
+  const version = ranAs(w, ONCE, "first", first);
+  const second = madeFor(w, ONCE, reused(first, "msg-a1b2c3d4e5f60002"));
   assert.deepEqual([second.outcome, second.stage], ["GENERATION_FAILED", "contradiction"], JSON.stringify(second));
-  assert.deepEqual(second.findings, [`SETTLED_BEFORE: step 4 waits for msg-a1b2c3d4e5f60002 to settle as processed (FIX-ASYNC-1/E3) under businessKey tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00, which ${version} (completes-by-deadline) of this investigation already published msg-a1b2c3d4e5f60001 under and saw settle as processed: use a business key no earlier test of this investigation used, or rule this one by what that test left — its tests share one sandbox, and a second message under a business key is not a second effect`]);
-  const fresh = JSON.parse(JSON.stringify(reused(first, "msg-a1b2c3d4e5f60003")).replaceAll("2026-10-22T09:00:00+07:00", "2026-10-29T09:00:00+07:00"));
-  assert.deepEqual((madeFor(w, DEADLINE, fresh).findings ?? []).filter((f) => f.startsWith("SETTLED_BEFORE")), [], "a business key no earlier test used is no second message");
-  assert.equal(madeFor(w, DEADLINE, first).outcome, "DRAFT_CREATED", "the earlier test's own message sent again is that same message, never a second one");
+  assert.deepEqual(second.findings, [`SETTLED_BEFORE: step 3 waits for msg-a1b2c3d4e5f60002 to settle as processed (FIX-ASYNC-1/E3) under businessKey tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00, which ${version} (effect-once-per-key) of this investigation already published ${SETTLING} under and saw settle as processed: use a business key no earlier test of this investigation used, or rule this one by what that test left — its tests share one sandbox, and a second message under a business key is not a second effect`]);
+  const fresh = JSON.parse(JSON.stringify(reused(first, "msg-a1b2c3d4e5f60003")).replaceAll("2026-10-23T09:00:00+07:00", "2026-10-29T09:00:00+07:00"));
+  assert.deepEqual((madeFor(w, ONCE, fresh).findings ?? []).filter((f) => f.startsWith("SETTLED_BEFORE")), [], "a business key no earlier test used is no second message");
+  assert.equal(madeFor(w, ONCE, first).outcome, "DRAFT_CREATED", "the earlier test's own message sent again is that same message, never a second one");
   rmSync(store, { recursive: true, force: true });
 });
 
-test("only what the record proves is refused: an earlier version that never ran, or ran to any other word, leaves the design made -- and so does ORBIT-TOOL-001's own pair, whose earlier test only decided the occurrence", async () => {
+test("only what the record proves is refused by it: an earlier version that never ran, or ran to any other word, leaves the design made -- and what ORBIT-TOOL-001's earlier test only decided stays advice", async () => {
   const { ctx, store } = await packed();
   for (const outcome of [null, "CONTRADICTED", "INCONCLUSIVE"]) {
     const { w } = investigation(ctx);
-    const first = fixture("deadline-after-occurrence");
-    if (outcome) ranAs(w, DEADLINE, "first", first, outcome);
-    if (!outcome) madeFor(w, DEADLINE, first);
-    const second = madeFor(w, DEADLINE, reused(first, "msg-a1b2c3d4e5f60002"));
+    const first = REFERENCE(ONCE);
+    if (outcome) ranAs(w, ONCE, "first", first, outcome);
+    if (!outcome) madeFor(w, ONCE, first);
+    const second = madeFor(w, ONCE, reused(first, "msg-a1b2c3d4e5f60002"));
     assert.equal(second.outcome, "DRAFT_CREATED", `${outcome ?? "never ran"}: ${JSON.stringify(second.findings)}`);
   }
   const { w } = investigation(ctx);
   const decided = ranAs(w, OCCURRENCE, "decided", fixture("occurrence-decided-first"));
-  const after = madeFor(w, DEADLINE, fixture("deadline-after-occurrence"));
+  const own = fixture("deadline-after-occurrence");
+  assert.deepEqual([madeFor(w, DEADLINE, own).stage, (madeFor(w, DEADLINE, own).findings ?? []).map((f) => f.split(":")[0])], ["contradiction", ["SELF_SATISFIED"]], "its own completes-by-deadline design is refused from the design alone, not from the record");
+  const routed = JSON.parse(JSON.stringify(own).replace('"correlationId":', '"routingKey":"billing.reminder.requested","correlationId":'));
+  const after = madeFor(w, DEADLINE, routed);
   assert.equal(after.outcome, "DRAFT_CREATED", JSON.stringify(after.findings));
   assert.deepEqual(resultView(after).shared?.map((s) => [s.version, s.keys]), [[decided, [{ value: "billing-daily:2026-10-22T09:00:00+07:00", as: ["occurrenceId"] }]]], "what only a value suggests is said beside the draft");
+  assert.match((resultView(after).advice ?? []).join("\n"), /^SELF_PUBLISHED: step 3 waits for correlationId tenant-a\|inv-a\|billing-daily:2026-10-22T09:00:00\+07:00 \(FIX-ASYNC-1\/E1\), which step 2 publishes on its channel itself: publish none; move the clock to its occurrence \(or trigger/m, "a publication that names its own route need not reach the observer: said, never refused");
+  rmSync(store, { recursive: true, force: true });
+});
+
+// ── pattern 7: a wait the design's own publication satisfies ────────────────────────────────────────────────────────
+//
+// ORBIT-QA-007 (the clean invoice application, bnr-a0745a2b9dcf) and ORBIT-TOOL-001 (bnr-eab84e468c77) on the 0.5.0
+// release pre-check, Sonnet 5.5 at medium effort: an earlier test moved the clock to billing-daily:2026-10-22T09:00 and
+// saw the schedule decide it (occurrence-advanced, SATISFIED); the completes-by-deadline design (deadline-self-published)
+// then armed an observer on billing-reminder-requested, PUBLISHED by hand a message correlated
+// tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 there, ruled FIX-ASYNC-1/E1 ("the period's reminder request ...
+// exists within 120 seconds of the occurrence being due") on an await of that very correlation, and FIX-ASYNC-1/E3 on its
+// own message's settlement -- which the clean worker settled as the duplicate it was, the schedule's own message for that
+// period having been processed already. E1 is about a message the SYSTEM sends; the observer, armed before the
+// publication on its channel, sees the design's own (the broker's adapter says its publication's correlationId sets
+// message.correlation.correlationId and drops nothing as a duplicate), so the wait holds whatever the application does.
+// Refused from the design alone, whatever ran before it; the repair the refusal names (move the clock to the occurrence
+// and await the system's own message) is the reference design, still made.
+test("a wait for a value the design's own publication put on the channel its observer watches is refused before a draft exists, naming the step, the field, the value and what holds instead -- ORBIT-QA-007's own pair", async () => {
+  const { ctx, store } = await packed();
+  const { w } = investigation(ctx);
+  ranAs(w, OCCURRENCE, "advanced", fixture("occurrence-advanced"));
+  const out = madeFor(w, DEADLINE, fixture("deadline-self-published"));
+  assert.deepEqual([out.outcome, out.stage], ["GENERATION_FAILED", "contradiction"], JSON.stringify(out));
+  assert.deepEqual(out.findings, ["SELF_SATISFIED: step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes itself: publish none; move the clock to its occurrence (or trigger its schedule where the clock cannot move, or send the request its interface takes) and await the system's own — observer req was armed on billing-reminder-requested before step 2, which sets message.correlation.correlationId there (request.correlationId), so this wait holds whatever the application does and rules nothing of the criterion"]);
+  assert.match(resultView(out).findings[0], /^SELF_SATISFIED: step 3 waits for correlationId tenant-a\|inv-a\|billing-daily:2026-10-22T09:00:00\+07:00 \(FIX-ASYNC-1\/E1\), which step 2 publishes itself: publish none; move the clock to its occurrence/, "what a host reads of it says the step, the field, the value and what holds instead");
+  const alone = investigation(ctx).generation;
+  assert.equal(judged(alone, DEADLINE, fixture("deadline-self-published")).stage, "contradiction", "from the design alone: no earlier test is needed");
+  const own = fixture("deadline-self-published");
+  const repaired = { ...own, skeleton: { steps: [own.skeleton.steps[0], { do: "call", capability: "orbit.clock.advance", input: { clockRef: "invoice-a", request: { to: "2026-10-22T09:00:00+07:00" } } }, own.skeleton.steps[2], { ...own.skeleton.steps[3], input: { ...own.skeleton.steps[3].input, request: { count: 1, match: { outcome: "processed" } } } }] }, trigger: { kind: "schedule", ref: "billing-daily", step: 2 } };
+  const made = judged(alone, DEADLINE, repaired);
+  assert.deepEqual([made.ok, made.advice], [true, undefined], `the repair it names is made, with nothing said beside it: ${made.stage} ${JSON.stringify(made.findings)}`);
   rmSync(store, { recursive: true, force: true });
 });
 
 // ── what a correct design for the same obligations looks like ────────────────────────────────────────────────────────
 //
-// The reference designs the benchmark's reference and false-alarm controls send for these shapes (acceptance/designs/, on
-// stack A's live clock): an await by the criterion's own correlation once the clock brought its period, the same message
-// published twice and both deliveries counted in one observation, the clock moved to the occurrence before its decision
-// is read. Each is still made, and nothing is said beside it.
-const REFERENCE = (shape) => ((r) => JSON.parse(JSON.stringify({ ...r.design, ...(r["by-clock"]?.live ?? {}) }).replaceAll("{{component}}", "invoice-a")))(JSON.parse(readFileSync(join(ROOT, "acceptance", "designs", `${shape}.json`), "utf8")));
+// The reference designs (REFERENCE, above): an await by the criterion's own correlation once the clock brought its period,
+// the same message published twice and both deliveries counted in one observation, the clock moved to the occurrence
+// before its decision is read. Each is still made, and nothing is said beside it.
 
 test("the reference designs for the same obligations are made, and nothing is said beside them", async () => {
   const { ctx, store } = await packed();

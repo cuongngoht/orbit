@@ -57,7 +57,9 @@ export const REQUEST_TYPES = ["string", "integer", "number", "boolean", "object"
 // What a MATCH picks of what an operation reads (0.5.0): `answer` -- only the items that carry every one of its fields
 // are answered; `count` -- every item read is answered, and the ones that carry every one of its fields are what the
 // request's `count` counts before the wait ends. With `means` on each of its fields, this is what a design is held to
-// when an assertion rules on the very field its own match names (src/qa/backend/contradictions.mjs).
+// when an assertion rules on the very field its own match names (src/qa/backend/contradictions.mjs). `means` on a field a
+// PUBLICATION sends says which field of the published message it sets: what a design is held to when it waits for a value
+// its own publication put there (SELF_SATISFIED).
 export const MATCH_SELECTS = ["answer", "count"];
 
 export const REQUEST_FIELD_FIELDS = {
@@ -69,7 +71,7 @@ export const REQUEST_FIELD_FIELDS = {
   maximum: { type: "number", doc: "The most a number may be." },
   required: { type: "boolean", doc: "The operation is never asked without it." },
   fields: { type: "object", additionalProperties: { $ref: "#/definitions/requestField" }, doc: "An object's own keys, each a row of its own. Absent: any key." },
-  means: { type: "string", doc: "For a field a match compares: the meaning (src/topology/vocab.mjs MEANINGS, or a sub-path of one) of the answered item's field it is compared with. Absent: unknown, and nothing is concluded from it." },
+  means: { type: "string", doc: "For a field a match compares: the meaning (src/topology/vocab.mjs MEANINGS, or a sub-path of one) of the answered item's field it is compared with. For a field of a publication: the meaning of the published message's field it sets, carried as it was sent. Absent: unknown, and nothing is concluded from it." },
   selects: { type: "string", enum: MATCH_SELECTS, doc: "For a match: answer -- only the items that carry every one of its fields are answered; count -- every item read is answered, and those that carry every one are what count counts before the wait ends. Absent: unknown." },
 };
 

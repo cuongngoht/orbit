@@ -31,6 +31,7 @@
 //   baselinePluginOf(c) · memoryArmsOf(c)
 //   activationTruthFindings(t) -> [sentence]      activationTruthOf(c) -> truth | null      ACTIVATION_HOSTS · STRATEGIES
 //   COORDINATIONS · TIERS · LANGUAGES · SWITCH_NAME · SELECTION_CAPS · RECORD_READS · NAMES_A_COMPONENT
+//   ACTIVATION_WITHHELD · withheldOf(c) -> the globs a case's plugin is frozen without, beside the harness
 //   GOAL_KINDS · isGoalKind(c) · WORKFLOW_SCRIPTS · WORKFLOW_LEGS · WORKFLOW_ROUTES · WORKFLOW_QA
 //   MISSION_SCRIPTS · MISSION_LEGS · MISSION_CONTROLS
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -437,6 +438,18 @@ export const LANGUAGES = ["en", "vi"];
 export const SWITCH_NAME = /^ORBIT_(SKILL|AGENT)_[A-Z0-9_]{1,60}$|^ORBIT_PROMPT_ROUTER$/;
 
 export const SWITCH_VALUES = ["on", "off"];
+
+// What EVERY activation case's plugin withholds, beside the harness and the case's own `withheld`: the router's corpus and
+// its tests, which ask the router a suite's prompts word for word beside the strategy and the choice each expects -- a host
+// that searches the plugin it is handed reads its own case's answer there (the 0.5.0 pre-check: ORBIT-ACT-011's host
+// printed its prompt's corpus line). Leaving them out only narrows what a host sees; nothing it runs reads them.
+export const ACTIVATION_WITHHELD = ["test/fixtures/routing/**", "test/router*.test.mjs", "test/routing-*.test.mjs"];
+
+// What a case withholds from the plugin its host is handed, beside the harness (lib/core/context.mjs): what its kind
+// withholds from every case of it, then the case's own `withheld`.
+const KIND_WITHHELD = { activation: ACTIVATION_WITHHELD };
+
+export const withheldOf = (c) => [...(KIND_WITHHELD[c?.kind] ?? []), ...(c?.withheld ?? [])];
 
 // What a selection case may spend: about three dollars and twenty-five turns, judged on what the host did before the cap.
 export const SELECTION_CAPS = { usd: 3, maxTurns: 25 };

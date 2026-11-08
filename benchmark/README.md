@@ -771,7 +771,10 @@ rests on the records Orbit's owners keep and, for an outcome case, on the hidden
 ### The truth, and the judge
 
 `verifier/truth.json` never reaches a plugin or a target: `HARNESS` strips `benchmark/**` from both, and a case's
-`withheld` leaves out of every plugin a document of the plugin's own that restates the truths. It says whether to
+`withheld` leaves out of every plugin a document of the plugin's own that restates the truths, and the kind itself
+(`ACTIVATION_WITHHELD`, `lib/core/suites.mjs`) leaves out the router's corpus and tests, which ask the suite's prompts word
+for word beside the answer each expects -- no file a plugin carries holds any case's prompt
+(`test/benchmark-activation-cases.test.mjs`). It says whether to
 `activate` (`true`, `false`, or `null` for either), the `strategy` words it accepts (`NONE`, `DIRECT`, `COORDINATED`
 with `how` -- `automation` or `goal` --, `SATELLITE`, `RESUME`), `selection` profiles of skills and agents (`require`,
 `allow`, `max`), what is `forbid`den (skills, agents, command patterns), `readOnly` agents with the command patterns they
@@ -789,8 +792,8 @@ row of an ordered table that holds:
 |---|---|---|
 | ENVIRONMENT, PROVIDER | BLOCKED | `ENVIRONMENT_BLOCKED`, `PROVIDER_FAILURE` |
 | DISAGREES: the stream and the trail do not agree | FAIL | `INSUFFICIENT_EVIDENCE` |
-| BREACH: a forbidden command, a write under a read-only agent, a switched-off component dispatched | FAIL | `ORBIT_SOURCE_DEFECT` when the release arm's router suggested it; else `HOST_DIVERGED` |
-| ACTIVATION, STRATEGY, SELECTION (the Orbit arms) | FAIL | `ORBIT_SOURCE_DEFECT` when the router's own decision was wrong too; else `HOST_DIVERGED` |
+| BREACH: a forbidden command, a command under a read-only agent its list does not allow (a read as much as a write), a switched-off component dispatched | FAIL | `ORBIT_SOURCE_DEFECT` when the release arm's router suggested it; else `HOST_DIVERGED` |
+| ACTIVATION, STRATEGY, SELECTION (the Orbit arms) | FAIL | `ORBIT_SOURCE_DEFECT` when the router's own decision was wrong too; else `HOST_DIVERGED` -- and when the router chose right but said nothing to the host (a one-cue DIRECT, never said), the why says so |
 | RECORDS: an owner's record does not hold (the Orbit arms) | FAIL | `ORBIT_SOURCE_DEFECT` -- read the room first |
 | GROUNDING | FAIL | `HOST_DIVERGED` |
 | VERIFIER_BLOCKED, UNVERIFIED (an outcome case) | BLOCKED, FAIL | `ENVIRONMENT_BLOCKED` or `INFRASTRUCTURE_FAILURE`; `INSUFFICIENT_EVIDENCE` |

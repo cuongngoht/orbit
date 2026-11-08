@@ -62,7 +62,10 @@ const ADVICE = "Orbit coordinates a task by default: a workflow could take this 
 
 const advised = (v, decision) => decision?.strategy?.word === "COORDINATED" && decision.activation?.how === "automation" && Boolean(v?.trigger?.arbitraryPrompt);
 
-const withAdvice = (text, world, decision) => (text && advised(world.automation?.(), decision) && Buffer.byteLength(`${text}\n${ADVICE}`) <= BUDGET_BYTES ? `${text}\n${ADVICE}` : text);
+// The command it names carries the engine's own path once the root knows it, as the strategy line's does.
+const adviceOf = (world) => (world.engine ? ADVICE.replaceAll("<engine>", world.engine) : ADVICE);
+
+const withAdvice = (text, world, decision) => ((advice) => (text && advised(world.automation?.(), decision) && Buffer.byteLength(`${text}\n${advice}`) <= BUDGET_BYTES ? `${text}\n${advice}` : text))(adviceOf(world));
 
 function answered(event, world, r) {
   const text = withAdvice(r ? formatDecision(r.decision, { callVia: world.callVia, dispatches: r.dispatches, engine: world.engine }) : null, world, r?.decision);

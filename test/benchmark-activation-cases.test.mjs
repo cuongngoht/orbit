@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { describe, it, test } from "node:test";
 import { HARNESS } from "../benchmark/lib/core/freeze.mjs";
 import { matchesAny } from "../benchmark/lib/core/paths.mjs";
-import { activationTruthFindings, activationTruthOf, caseFindings, casesOf, NAMES_A_COMPONENT, SELECTION_CAPS } from "../benchmark/lib/core/suites.mjs";
+import { ACTIVATION_WITHHELD, activationTruthFindings, activationTruthOf, caseFindings, casesOf, NAMES_A_COMPONENT, SELECTION_CAPS, withheldOf } from "../benchmark/lib/core/suites.mjs";
 import { FAILURE_CLASSES } from "../benchmark/lib/source/classify.mjs";
 import { entriesOf, playedApart } from "./benchmark-activation-play.mjs";
 import { ROOT } from "./benchmark-double.mjs";
@@ -110,20 +110,25 @@ const textOf = (rel) => {
   catch { return ""; }
 };
 
-test("the hidden truth never reaches a plugin or a target: the harness is never frozen into either, and every case withholds the document that restates the truths", () => {
+test("the hidden truth never reaches a plugin or a target: the harness is never frozen into either, every case withholds the document that restates the truths, and no file its plugin carries holds a case's prompt", () => {
   const files = repositoryFiles();
   const harnessOwn = files.filter((f) => f.startsWith("benchmark/suites/orbit-activation/"));
   assert.ok(harnessOwn.filter((f) => /\/verifier\/truth\.json$/.test(f)).length === CASES.length && harnessOwn.every((f) => matchesAny(HARNESS, f)), "every truth, spec, probe, control and seed is the harness's own, and HARNESS strips it from every plugin and checkout");
   const recordIds = [...new Set(CASES.flatMap((c) => activationTruthOf(c).records.map((r) => r.id)))];
+  const prompts = CASES.map((c) => [c.id, readFileSync(join(c.dir, c.request), "utf8").trim()]);
+  const texts = new Map(files.map((f) => [f, textOf(f)]));
   for (const c of CASES) {
-    const plugin = files.filter((f) => !matchesAny([...HARNESS, ...c.withheld], f));
+    const plugin = files.filter((f) => !matchesAny([...HARNESS, ...withheldOf(c)], f));
     assert.deepEqual(c.withheld, [SPEC_DOC], c.id);
+    assert.deepEqual(withheldOf(c), [...ACTIVATION_WITHHELD, SPEC_DOC], `${c.id}: what the kind withholds from every case, then its own`);
     assert.ok(plugin.length > 500 && !plugin.some((f) => f.startsWith("benchmark/") || f === SPEC_DOC), c.id);
+    assert.deepEqual(plugin.filter((f) => recordIds.some((id) => texts.get(f).includes(`"${id}"`))), [], `${c.id}: no file its host is handed quotes a truth's own record`);
+    assert.deepEqual(plugin.flatMap((f) => prompts.filter(([, prompt]) => texts.get(f).includes(prompt)).map(([id]) => `${f} carries ${id}'s prompt`)), [], `${c.id}: no file its host is handed carries any case's prompt -- the router's corpus and tests ask them beside the answer each expects`);
     assert.ok(entriesOf(c).every((e) => !/(^|\/)(verifier|controls|seed)\/|truth\.json$/.test(e.rel)), `${c.id}: the target is the fixture and its variant, nothing of the case`);
   }
-  const plugin = files.filter((f) => !matchesAny([...HARNESS, SPEC_DOC], f)).map((f) => [f, textOf(f)]);
-  assert.deepEqual(plugin.filter(([, text]) => recordIds.some((id) => text.includes(`"${id}"`))).map(([f]) => f), [], "no file a host is handed quotes a truth's own record");
   assert.ok(recordIds.some((id) => textOf(SPEC_DOC).includes(`"${id}"`)), "the document withheld is the one that would");
+  const corpus = files.filter((f) => matchesAny(ACTIVATION_WITHHELD, f) && prompts.some(([, prompt]) => texts.get(f).includes(prompt)));
+  assert.ok(corpus.includes("test/fixtures/routing/corpus.jsonl") && corpus.includes("test/router-hook.test.mjs"), "what the kind withholds is what would carry them");
 });
 
 // ---- the controls ------------------------------------------------------------------------------------------------------------

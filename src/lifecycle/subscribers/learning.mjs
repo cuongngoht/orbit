@@ -59,24 +59,30 @@ export const learning = { name: "learning", on: Object.keys(HANDLERS), records: 
 function sessionStart(event, world) {
   const ctx = world.light();
   if (!ctx) return null;
-  return world.host.formatSessionStart([...digestOf(event, world), sessionText(ctx)].filter(Boolean).join("\n\n"), world.input);
+  return world.host.formatSessionStart([...digestOf(event, world), sessionText(ctx, world.engine)].filter(Boolean).join("\n\n"), world.input);
 }
 
 // The session's digest (0.5.0): the capability line, then -- on a resumed session -- its open work. Each part is null
 // when the composition root could not read it, and is then simply not said.
 const digestOf = (event, world) => ((d) => [d?.capabilities ? capabilityLine(d.capabilities) : null, event.resumed === true && d?.owner ? openWorkLine(d.owner, world.engine) : null])(world.digest?.(event) ?? null);
 
-function sessionText(ctx) {
-  const lessons = indexText(ctx.learn.all(), { project: ctx.config.name });
+function sessionText(ctx, engine) {
+  const lessons = indexText(ctx.learn.all(), { project: ctx.config.name, engine });
   const facts = createArchitecture(ctx.store.root, ctx.io).all();
-  const architecture = facts.length ? `Orbit architecture: ${facts.length} stored facts; use architecture ensure --dry, facts and why before scanning source.` : missingSnapshot(ctx);
+  const architecture = facts.length ? `Orbit architecture: ${facts.length} stored facts; use architecture ensure --dry, facts and why before scanning source.` : missingSnapshot(ctx, engine);
   return [lessons, architecture, engineeringLine(ctx)].filter(Boolean).join("\n\n");
 }
 
-function missingSnapshot(ctx) {
+const NO_SNAPSHOT = "No architecture snapshot exists for this project yet. `node <plugin>/cli/architecture.mjs ensure` reads it once, and every session after this one reuses that instead of scanning the repository.";
+
+// The command it names carries the plugin's own path once the composition root knows it, as the routing context's lines
+// do (subscribers/router.mjs) -- never a placeholder a host was not told how to read.
+const noSnapshotSaid = (engine) => (engine ? NO_SNAPSHOT.replaceAll("<plugin>", engine) : NO_SNAPSHOT);
+
+function missingSnapshot(ctx, engine) {
   if (!ctx.io.exists(ctx.project.graphDir)) return "";
   const there = ctx.io.exists(architecturePaths(ctx.store.root).model);
-  return there ? "" : "No architecture snapshot exists for this project yet. `node <plugin>/cli/architecture.mjs ensure` reads it once, and every session after this one reuses that instead of scanning the repository.";
+  return there ? "" : noSnapshotSaid(engine);
 }
 
 // Bounded on purpose: a count and a pointer, never the facts themselves. The

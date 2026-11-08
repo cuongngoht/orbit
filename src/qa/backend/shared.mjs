@@ -10,8 +10,10 @@
 // vocabulary that says WHICH business operation, message or period a value is (KEY_WORDS) that an earlier frozen version
 // of the same investigation named too -- and, at the FIRST design that names one, a value an accepted criterion states for
 // another shape's test (`statedFor`). That is advice, never a refusal: a test may observe on purpose what an earlier one
-// left -- the period a schedule already decided -- and nothing here can tell which. A value a binding fills (`${…}`) is
-// no literal: the run's own namespace keeps it apart.
+// left -- the period a schedule already decided -- and nothing here can tell which. Where the earlier test's own record
+// PROVES what it left -- it ran SATISFIED on a message it published under the same business key -- the contradiction
+// stage refuses a design held to that message's settlement (contradictions.mjs SETTLED_BEFORE). A value a binding fills
+// (`${…}`) is no literal: the run's own namespace keeps it apart.
 import { requestOf, stepsOf } from "./skeleton.mjs";
 
 export const ONE_SANDBOX = "the tests of one investigation run one after another in the same sandbox and share its state: an effect, a key or a scheduled occurrence a test used stays there for the next test. So a design uses business keys, message ids and occurrences no earlier test of this investigation used, none an accepted criterion states for another test, and none a schedule will produce on its own once its clock reaches them, unless that is what the test observes";

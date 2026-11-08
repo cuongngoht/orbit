@@ -503,6 +503,40 @@ room, and records a new suite's model rows before it requires them.
   benchmark's `reliability --revision=<release commit>` as `reliability.json` beside `evidence.json`, and its result and
   `--status` name it: the release notes quote it, and it is never a gate.
 
+**What the release pre-check's model rows found, fixed.** Each fix below came from a pre-check room on Sonnet 5.5 at
+medium effort, carries its regression test, and was pre-checked again.
+
+- **A workflow says how to take its next step, not only what it is.** `automation.mjs start`, `resume` and `context` --
+  and every step's and settle's own answer -- print a DO line with the one command and the decision for the next ready
+  step (never while a step is open or blocked), and no answer prints `mode undefined`. ORBIT-ACT-007's host resumed the
+  seeded workflow through the router's RESUME line, read only WHAT came next, and made the change by hand beside it.
+- **The coordination advice and the session-start lines name the plugin's own path.** The advice beside a coordinated
+  workflow said `node <engine>/cli/automation.mjs plan`, and the session start said `node <plugin>/cli/architecture.mjs
+  ensure` and `node <plugin>/cli/learn.mjs recall` -- placeholders no host was told how to read (ORBIT-ACT-005 and 006
+  declined the first). Each now carries the path whenever the composition root knows it.
+- **A test plan is written in the turn that asks (orbit-test-plan).** The asking step starts the plan (`qa-plan new`,
+  with `--screen=<screen>` or `--no-screen --feature=<feature>`), records every question in it with what it blocks, and
+  ends the turn with the plan written -- never promised for after a reply nobody in a headless session gives
+  (ORBIT-ACT-003).
+- **The failure analyst's shell runs only the engine's read commands it names.** Its Bash is for `query.mjs` and
+  `learn.mjs recall`, the engine's path written out; a file is read with Read, a directory listed with Glob, text searched
+  with Grep (ORBIT-ACT-010 ran `ls`, `find`, `cat` and `git log` and so could not show it had changed nothing).
+- **The activation judge says what it saw.** A read-only breach is "ran N commands its read-only list does not allow",
+  never "wrote"; and an ACTIVATION, STRATEGY or SELECTION miss whose router chose right but injected nothing says "the
+  router chose <word> -> <id> and said nothing to the host" beside its class, which stays the table's (ORBIT-ACT-002,
+  010, 011).
+- **An activation case's plugin withholds the router's corpus and tests.** `test/fixtures/routing/corpus.jsonl` held 14
+  of the 18 activation prompts with the strategy and the choice each expects, and two router tests asked a third; the
+  kind now withholds them from every case's plugin (`ACTIVATION_WITHHELD`, before a case's own `withheld`), and no file
+  an activation plugin carries holds any case's prompt (ORBIT-ACT-011's host printed its own prompt's corpus line).
+- **A business key an earlier SATISFIED test of the investigation settled is refused (`SETTLED_BEFORE`, ADR 0052
+  amendment).** A design that publishes a message under a business key an earlier version of the same investigation
+  published another message under -- a version that ran SATISFIED and so saw that message settle -- and waits for its own
+  to settle the very same way, in an investigation whose accepted plan holds the system to one effect per business key,
+  stops at `contradiction`, naming the earlier version and the key. The two instances seen (ORBIT-QA-006, and the
+  pre-check's ORBIT-TOOL-001, whose clean application was ruled against) went through a schedule, whose job composes its
+  own business keys: the record cannot show the duplicate there, and it stays `result.shared` advice.
+
 ## 0.4.0
 
 A minor release: a release now qualifies only on Docker benchmark evidence carried by the real Claude Code CLI, for

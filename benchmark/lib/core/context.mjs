@@ -26,7 +26,7 @@ import { dockerClientEnv } from "./docker.mjs";
 import { candidateEntries, candidateFile, mutatedEntries, mutationFile } from "./mutations.mjs";
 import { gitOwn } from "./git.mjs";
 import { matchesAny } from "./paths.mjs";
-import { armsOf, baselinePluginOf, caseOf, dirDigest, isGoalKind, memoryArmsOf } from "./suites.mjs";
+import { armsOf, baselinePluginOf, caseOf, dirDigest, isGoalKind, memoryArmsOf, withheldOf } from "./suites.mjs";
 import { recorder } from "./record.mjs";
 import { docRead, docWritten, madeDir, newRunId, roomOf } from "./room.mjs";
 import { frozen, frozenAt, HARNESS, subjectOf, treeDigestOf, whereAt } from "./freeze.mjs";
@@ -139,16 +139,13 @@ const PLUGIN_TREES = {
 // every arm: whether it changes the checkout itself or hands the change to an engineering task is what it decides.
 const worktreeFor = (h, f) => madeCheckout(f.room.at("worktree"), f.faulted.entries, `${f.c.id} ${f.variant} worktree`, h.env, { plugin: false, origin: originOf(f.c) });
 
-// What a case withholds from the plugin its host is handed, beside the harness (an activation case's `withheld`).
-const withheldOf = (f) => f.c.withheld ?? [];
-
-const kept = (f, tree) => ({ ...tree, entries: tree.entries.filter((e) => !matchesAny(withheldOf(f), e.rel)) });
+const kept = (f, tree) => ({ ...tree, entries: tree.entries.filter((e) => !matchesAny(withheldOf(f.c), e.rel)) });
 
 function orbitPlugin(h, f) {
   const tree = kept(f, PLUGIN_TREES[f.arm](h, f));
   const made = madeCheckout(f.room.at("plugin"), tree.entries, `${f.c.id} plugin (${f.arm})`, h.env);
   if (f.arm === "none") worktreeFor(h, f);
-  return { files: made.files, commit: made.commit, digest: treeDigestOf(tree.entries), withheld: withheldOf(f), relayed: null, arm: f.arm, handed: f.arm !== "none", revision: tree.revision };
+  return { files: made.files, commit: made.commit, digest: treeDigestOf(tree.entries), withheld: withheldOf(f.c), relayed: null, arm: f.arm, handed: f.arm !== "none", revision: tree.revision };
 }
 
 // The coding host of a QA run is handed a plugin without what its case withholds (the ground truth, the reference

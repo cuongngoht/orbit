@@ -109,10 +109,13 @@ function nextOf(ports, lw) {
 
 const sayNext = (lw, next) => (stopOf(lw) ? stopOf(lw).say(lw) : lw.open.length ? `settle ${lw.open[0].label ?? lw.open[0].id} with its evidence, or reconcile it` : next ? `next: ${next.step} — ${next.goal}` : allDone(lw.states) ? "every step is done — finish completes the workflow" : "nothing is ready");
 
+// The steps started and not yet settled, as a context and a settled step's answer both show them.
+const openView = (lw) => lw.open.map((a) => ({ id: a.id, type: a.type, tool: a.tool, label: a.label, startedAt: a.startedAt }));
+
 export function contextOf(ports, id) {
   const lw = loopWorld(ports, id);
   const next = nextOf(ports, lw);
-  return { task: { id, objective: lw.view.task.objective, root: lw.view.task.root, provider: lw.view.task.provider }, revision: lw.view.revision, lifecycle: lw.view.lifecycle, stage: lw.view.stage, attempt: lw.view.attempt, budget: lw.view.budget, repeats: lw.view.repeats, plan: lw.plan ? planView(lw) : null, ready: readyOf(lw.states).map((s) => s.id), open: lw.open.map((a) => ({ id: a.id, type: a.type, tool: a.tool, label: a.label, startedAt: a.startedAt })), child: childView(ports, lw), approvals: lw.view.approvals.filter((a) => a.open), blocked: lw.view.blocked, stop: stopView(lw), next, say: sayNext(lw, next), watch: watchOf(lw, ports.host), protocol: { schemaVersion: DECISION_SCHEMA } };
+  return { task: { id, objective: lw.view.task.objective, root: lw.view.task.root, provider: lw.view.task.provider }, revision: lw.view.revision, lifecycle: lw.view.lifecycle, stage: lw.view.stage, attempt: lw.view.attempt, budget: lw.view.budget, repeats: lw.view.repeats, plan: lw.plan ? planView(lw) : null, ready: readyOf(lw.states).map((s) => s.id), open: openView(lw), child: childView(ports, lw), approvals: lw.view.approvals.filter((a) => a.open), blocked: lw.view.blocked, stop: stopView(lw), next, say: sayNext(lw, next), watch: watchOf(lw, ports.host), protocol: { schemaVersion: DECISION_SCHEMA } };
 }
 
 // ---- applying task operations ------------------------------------------------------------------------
@@ -451,7 +454,8 @@ const lastReplan = (plan) => (plan && plan.n > 1 ? plan.replans?.at(-1) ?? null 
 function answerOf(ports, id, settledStep) {
   const lw = loopWorld(ports, id);
   const s = lw.states.find((x) => x.id === settledStep.id);
-  return { task: id, step: settledStep.id, stepState: s?.state ?? null, summary: s?.summary ?? null, revision: lw.view.revision, lifecycle: lw.view.lifecycle, stage: lw.view.stage, plan: lw.plan ? `plan-${lw.plan.n}` : null, replan: lastReplan(lw.plan), ready: readyOf(lw.states).map((x) => x.id), stop: stopView(lw), say: sayNext(lw, nextOf(ports, lw)) };
+  const next = nextOf(ports, lw);
+  return { task: id, step: settledStep.id, stepState: s?.state ?? null, summary: s?.summary ?? null, revision: lw.view.revision, lifecycle: lw.view.lifecycle, stage: lw.view.stage, plan: lw.plan ? `plan-${lw.plan.n}` : null, replan: lastReplan(lw.plan), ready: readyOf(lw.states).map((x) => x.id), stop: stopView(lw), open: openView(lw), next, say: sayNext(lw, next) };
 }
 
 // ---- reconcile -------------------------------------------------------------------------------------------

@@ -249,3 +249,12 @@ test("the coordination advice is said only beside a coordinated WORKFLOW: a spec
   assert.match(goal, /^Orbit strategy: COORDINATED -- a specification of a change: orbit keeps it and plans its units: node \/plugin\/cli\/orbit\.mjs goal start --stdin\./);
   assert.doesNotMatch(goal, /automation\.mjs|orbit-help starts it/, "a goal is started by its own one command, never sent to the workflow's door as well");
 });
+
+// Every command the routing context names is one the host can run as it stands: the advice beside a coordinated workflow
+// names the plugin's own path as the strategy line does, never a `<engine>` the host was never told how to read (0.5.0
+// precheck, ORBIT-ACT-005/006: the line a host declined still said `node <engine>/cli/automation.mjs plan`).
+test("the coordination advice names the engine's own path, as the strategy line does", () => {
+  const said = router.run(lifecycleEvent(resolveHost({ hook_event_name: "UserPromptSubmit" }), { hook_event_name: "UserPromptSubmit", session_id: "s", cwd: REPO, prompt: "Implement PBI 4312" }), { routing: () => true, resources: () => REGISTRY, host: resolveHost({ hook_event_name: "UserPromptSubmit" }), input: {}, plugin: "orbit", engine: "/plugin", automation: () => SETTINGS, workflowOf: (c) => routedWorkflow(c).id, hostRow: () => CLAUDE, openWork: () => null })?.hookSpecificOutput?.additionalContext ?? "";
+  assert.match(said, /\nOrbit coordinates a task by default: a workflow could take this — node \/plugin\/cli\/automation\.mjs plan --for="<the task>" shows it/);
+  assert.doesNotMatch(said, /<engine>/);
+});

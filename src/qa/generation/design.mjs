@@ -22,13 +22,18 @@ import { correlationFindings } from "../backend/correlation.mjs";
 import { observationFindings } from "../backend/observations.mjs";
 import { temporalFindings } from "../backend/temporal.mjs";
 import { proposalFindings } from "../obligations/validate.mjs";
-import { compileDesign, rulingSaid, slotsRuling } from "./compile.mjs";
+import { TRIGGER_RULE, compileDesign, rulingSaid, slotContract, whereSaid } from "./compile.mjs";
 import { controlFindings } from "./controls.mjs";
 import { READER_OUTPUTS, pageFindings, pageStepOf } from "./page.mjs";
 
-// A step that rules on nothing is told which slot of its obligation's own criterion could rule it (compile.mjs
-// slotsRuling), when one does -- the trigger the host moved off it is ruled by the same.
-const rulingNamed = (step, cx) => (slotsRuling(step, cx).length ? `: ${rulingSaid(step, cx)}` : "");
+// A step that rules on nothing is told which slot of its obligation's own criterion rules it, or that none does
+// (compile.mjs rulingSaid) -- and a slot nothing rules, where it would (whereSaid).
+const rulingNamed = (step, cx) => `: ${rulingSaid(step, cx)}`;
+
+// What a design is held to about which slot rules which step, said BEFORE a design, from the very functions the stages
+// below refuse with (compile.mjs): each slot of the obligation's own criterion with the kinds of step it rules, the
+// trigger's rule, and the steps that must rule -- the obligation's template in the context carries it (`ruling`).
+export const designContract = (cx) => ({ slots: slotContract(cx), trigger: TRIGGER_RULE, steps: STEP_RULE });
 
 const said = (findings) => findings.map((f) => (typeof f === "string" ? f : `${f.rule}: ${f.say}`));
 
@@ -40,14 +45,16 @@ export const OWN_SLOTS = "the obligation's own expected slots rule it: a design 
 
 // The verbs that rule on their own answer: a generated one carries a compiled verdict or is not made. A report reads a
 // page for nothing else.
-const RULING = ["call", "sql", "report"];
+const RULING = Object.freeze(["call", "sql", "report"]);
+
+const STEP_RULE = `every ${RULING.join(", ")} step rules on its answer by a slot that rules its kind of step; a design that drives a page ends with a report step`;
 
 const STAGES = [
   { id: "contract", outcome: "GENERATION_FAILED", findings: (p) => proposalFindings("design", p.proposal) },
   { id: "controls", outcome: "GENERATION_FAILED", findings: (p, cx) => said(controlFindings(p.proposal, cx.shape, cx)) },
   { id: "rules", outcome: "GENERATION_FAILED", findings: (p, cx) => said([...observationFindings(p.proposal, cx), ...correlationFindings(p.proposal), ...temporalFindings(p.proposal, cx), ...pageFindings(p.proposal, { dsl: cx.dsl, readerSlots: () => rulingSaid(1, { ...cx, outputsOf: () => READER_OUTPUTS }) })]) },
   { id: "mapping", outcome: (p) => (p.compiled.mapping.some((m) => /ACCEPTED criterion/.test(m.why ?? "")) ? "REQUIRES_REQUIREMENT" : "GENERATION_FAILED"), findings: (p) => p.compiled.mapping.filter((m) => m.verdict === "refused").map((m) => `step ${m.step} (${m.criterionRef ?? m.structural}): ${m.why}`) },
-  { id: "coverage", outcome: "GENERATION_FAILED", findings: (p, cx) => (cx.expected ?? []).filter((slot) => !(p.proposal.assertions ?? []).some((a) => a.criterionRef === slot)).map((slot) => `${slot} is a slot of this obligation's own criterion, and nothing in the design rules on it — a design that rules only on other criteria tests something else`) },
+  { id: "coverage", outcome: "GENERATION_FAILED", findings: (p, cx) => (cx.expected ?? []).filter((slot) => !(p.proposal.assertions ?? []).some((a) => a.criterionRef === slot)).map((slot) => `${slot} is a slot of this obligation's own criterion, and nothing in the design rules on it${((where) => (where ? `: ${where}` : ""))(whereSaid(slot, cx))} — a design that rules only on other criteria tests something else`) },
   { id: "contradiction", outcome: "GENERATION_FAILED", findings: (p, cx) => said(contradictionFindings(p.proposal, cx)) },
   { id: "verdicts", outcome: "GENERATION_FAILED", findings: (p, cx) => (p.case.steps ?? []).flatMap((s, n) => (RULING.includes(s.do) && !s.expect ? [`step ${n + 1} (${s.do}) rules on nothing — every ${s.do} rules on its answer, and nothing accepted was mapped to it${rulingNamed(n + 1, cx)}`] : [])) },
   { id: "validate", outcome: "INVALID_TEST", findings: (p, cx) => [...(cx.validate?.(p.case) ?? ["nothing here validates a case — the composition root binds the DSL validator"]), ...stepInputs(p.case, cx)] },

@@ -27,7 +27,7 @@ import { loadExtensions } from "../src/extensions/index.mjs";
 import { qcToolPaths } from "../src/extensions/store.mjs";
 import { generated } from "../src/investigation/generate.mjs";
 import { planDigestOf } from "../src/investigation/input.mjs";
-import { resultView } from "../src/investigation/loop.mjs";
+import { contextOf as investigationContext, resultView } from "../src/investigation/loop.mjs";
 import { modelOf } from "../src/investigation/model.mjs";
 import { createInvestigations, eventIdOf } from "../src/investigation/store.mjs";
 import { rulingSaid, slotsRuling } from "../src/qa/generation/compile.mjs";
@@ -158,5 +158,26 @@ test("a page design that does not end with a report is refused by name before a 
   const made = judged(generation, fixture("persisted-page-reported"));
   assert.equal(made.ok, true, `${made.stage} ${JSON.stringify(made.findings)}`);
   assert.deepEqual(contextOf(generation, fixture("persisted-page-reported")).validate(made.case), [], "what generation makes, the validator takes");
+  rmSync(store, { recursive: true, force: true });
+});
+
+// What the host could not read before it designed: the obligation's template now carries, from the functions the stages
+// refuse with, each slot of its own criterion, its template and the kinds of step it rules.
+test("the obligation's design contract names each slot of its own criterion with its template and the kinds of step it rules -- E3 on the write", async () => {
+  const { ctx, store } = await packed();
+  const { generation } = investigation(ctx);
+  const contract = generation.contractFor(OBLIGATION);
+  assert.deepEqual(contract.slots.map((s) => [s.slot, s.own, s.template, s.rules]), [["UI-AC-2/E1", true, "count-eq", ["orbit.state.read"]], ["UI-AC-2/E2", false, "value-includes", ["report"]], ["UI-AC-2/E3", false, "value-eq", ["orbit.http.read", "orbit.http.write", "api"]]]);
+  assert.match(contract.trigger, /^a trigger step whose own operation shows it was accepted \(orbit\.messaging\.publish, .*\) is ruled by that; any other trigger step must be ruled by a slot that rules its kind of step/);
+  assert.doesNotMatch(contract.trigger, /orbit\.http\.write/, "a write shows nothing of its own acceptance: the plan's criterion says what accepted is");
+  rmSync(store, { recursive: true, force: true });
+});
+
+test("the context's frontier carries that contract on the obligation's own template, before any design", async () => {
+  const { ctx, store } = await packed();
+  const { w, generation } = investigation(ctx);
+  const seen = investigationContext({ ...w, settings: { limits: { decisions: 50, actions: 50, minutes: 20 } }, mode: "fixture-write", ctx: { ...fakeContext(), now: () => 0 } });
+  const own = seen.frontier.find((o) => o.template?.obligation === OBLIGATION.obligation);
+  assert.deepEqual(own.template.ruling, generation.contractFor(OBLIGATION));
   rmSync(store, { recursive: true, force: true });
 });

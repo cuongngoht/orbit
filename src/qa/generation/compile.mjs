@@ -11,7 +11,7 @@
 // What does not map is REFUSED with its reason -- a criterion nobody accepted, a template its op
 // does not compile to or its obligation's shape does not allow, a meaning the step's answer does
 // not carry, a window on an observation that cannot say it saw everything -- and never guessed.
-import { operationFor } from "../../adapters/families.mjs";
+import { OPERATIONS, operationFor } from "../../adapters/families.mjs";
 import { predicateDigest, predicateFindings, renderOf } from "../../predicate.mjs";
 import { MEANINGS, meaningAt, meaningEntries } from "../../topology/vocab.mjs";
 import { witnessControls, witnessSteps } from "../backend/skeleton.mjs";
@@ -25,17 +25,23 @@ const COMPLETENESS = "observation.completeness";
 // declared outputs. Answers { tree, window? } or { refused }.
 // The shape's templates bind the obligation's OWN slots (`expected`); another accepted slot a design rules with -- a
 // positive control's, a completion barrier's window -- compiles to what its own op says.
-export function compiledAssertion(assertion, { expectations, outputsOf, shape, expected }) {
+// A refusal about WHICH slot rules WHICH step says where it would (refusalSaid, below).
+export function compiledAssertion(assertion, context) {
+  const raw = assertionTree(assertion, context);
+  return raw.refused ? { refused: refusalSaid(assertion, context, raw) } : raw;
+}
+
+function assertionTree(assertion, { expectations, outputsOf, shape, expected }) {
   const expectation = expectations.get(assertion.criterionRef);
   const refused = mappingProblem(assertion, expectation, (expected ?? [assertion.criterionRef]).includes(assertion.criterionRef) ? shape : null);
-  if (refused) return { refused };
+  if (refused) return { refused, ...(expectation ? {} : { unaccepted: true }) };
   return answerless(assertion.step, outputsOf(assertion.step)) ?? treeFor(assertion, expectation, outputsOf(assertion.step) ?? {});
 }
 
 // A step whose answer declares no meaning at all -- one past the skeleton's end, one that is not a call or a page step, a
 // call nothing here registers, or one whose resource no adapter here answers -- is said as that, with what to check:
 // "its declared outputs are none" read as if the capability could not be ruled on at all.
-const answerless = (step, outputs) => (meaningEntries(outputs ?? {}).length ? null : { refused: `step ${step} has no answer a verdict can read here — check that the assertion names the step it rules on, counted from 1 as a run counts them, and that the step is a call (or a page's report or api witness) whose capability this project registers and whose resource an adapter here answers` });
+const answerless = (step, outputs) => (meaningEntries(outputs ?? {}).length ? null : { absent: true, refused: `step ${step} has no answer a verdict can read here — check that the assertion names the step it rules on, counted from 1 as a run counts them, and that the step is a call (or a page's report or api witness) whose capability this project registers and whose resource an adapter here answers` });
 
 function mappingProblem(a, e, shape) {
   const op = e ? EXPECT_OP.get(e.op) : null;
@@ -84,7 +90,7 @@ function countedPath(outputs, property, template) {
   const of = MEANINGS.find((m) => m.id === meaningAt(property)?.id)?.countOf;
   const lists = of && template.startsWith("count-") ? fieldsMeaning(outputs, of).filter((f) => f.includes("[]")) : [];
   if (lists.length === 1) return { path: lists[0].slice(0, lists[0].lastIndexOf("[]") + 2) };
-  return { refused: `the step's answer carries nothing that means ${property} — its declared outputs are ${meaningEntries(outputs).map(([f, m]) => `${f}=${m}`).join(", ") || "none"}` };
+  return { absent: true, refused: `the step's answer carries nothing that means ${property} — its declared outputs are ${meaningEntries(outputs).map(([f, m]) => `${f}=${m}`).join(", ") || "none"}` };
 }
 
 // An absence or a completion is claimed within the criterion's own window, on an observation that
@@ -165,27 +171,77 @@ function structuralTree(a, context) {
 }
 
 // ── which accepted slot could rule a step ──────────────────────────────────
-
-// The slots of the obligation's OWN criterion (the criterion its `expected` slots belong to) that rule a step: each one
-// compiled at that step exactly as an assertion naming it would be, so a slot named here is one a design can use, with
-// the template it compiles to. Another criterion's slot may compile there too and is never named: it states what
-// another interface answers (another endpoint's 200), and a host pointed to it would rule a correct answer against it.
-export function slotsRuling(step, context) {
-  const own = ownCriteria(context);
-  const slots = [...(context.expectations ?? new Map())].filter(([ref]) => own.includes(criterionOf(ref))).map(([ref, e]) => ({ ref, e, template: EXPECT_OP.get(e.op)?.template }));
-  return slots.filter((s) => s.template && compiledAssertion({ criterionRef: s.ref, template: s.template, step }, context).tree);
-}
-
+//
+// ONE answer, given three ways: before a design (the obligation's template, `slotContract`: each slot of its own
+// criterion and the kinds of step it rules), in a refusal of a step nothing rules (`rulingSaid`: the slots that rule
+// that step), and in a refusal of a slot put where it does not rule (`whereSaid`: the steps, or kinds of step, it
+// does). Each compiles the slot at that step exactly as an assertion naming it would be compiled (`assertionTree`), so
+// what is shown and what is refused cannot drift, and a slot named is one a design can use, with its template.
+//
+// Only slots of the obligation's OWN criterion (the criterion its `expected` slots belong to) are named. Another
+// criterion's slot may compile on the same step and is never named: it states what another interface answers (another
+// endpoint's 200), and a host pointed to it would rule a correct answer against it.
 const criterionOf = (ref) => ref.slice(0, ref.lastIndexOf("/"));
 
 const ownCriteria = (context) => [...new Set((context.expected ?? []).map(criterionOf))];
 
-// What a host reads of it: each slot with its template and what it states, or -- none -- that the criterion states
-// nothing this answer carries, with what the answer does carry, so the gap is a person's to close in that criterion.
+function ownSlotsOf(context) {
+  const own = ownCriteria(context);
+  return [...(context.expectations ?? new Map())].filter(([ref]) => own.includes(criterionOf(ref))).map(([ref, e]) => ({ ref, e, template: EXPECT_OP.get(e.op)?.template })).filter((s) => s.template);
+}
+
+const rules = (slot, step, context) => !assertionTree({ criterionRef: slot.ref, template: slot.template, step }, context).refused;
+
+const answering = (context, outputs) => ({ ...context, outputsOf: () => outputs });
+
+export const slotsRuling = (step, context) => ownSlotsOf(context).filter((s) => rules(s, step, context));
+
+const statesOf = (e) => `${e.property} ${e.op} ${JSON.stringify(e.value ?? null).slice(0, 40)}`;
+
+// A step nothing rules: each slot that rules it with its template and what it states -- or, none, that the criterion
+// states nothing this answer carries, with what the answer does carry, so the gap is a person's to close in that
+// criterion.
 export function rulingSaid(step, context) {
   const slots = slotsRuling(step, context);
-  if (slots.length) return `rule it by ${slots.map((s) => `${s.ref} (${s.template}: ${s.e.property} ${s.e.op} ${JSON.stringify(s.e.value ?? null).slice(0, 40)})`).join(" or ")}`;
+  if (slots.length) return `rule it by ${slots.map((s) => `${s.ref} (${s.template}: ${statesOf(s.e)})`).join(" or ")}`;
   return `no slot of ${ownCriteria(context).join(", ") || "its criterion"} states what its answer carries (${meaningEntries(context.outputsOf?.(step) ?? {}).map(([, m]) => m).slice(0, 3).join(", ") || "nothing"}), so its criterion's source must state one`;
+}
+
+// A slot nothing rules, or one put on a step that does not carry it: the steps of this design it rules, else the kinds
+// of step (`context.kinds`: what each declares its answer carries) whose answer it rules, else that nothing here can --
+// or null where no kinds were handed in, which is never "none".
+export function whereSaid(ref, context) {
+  const slot = { ref, e: context.expectations?.get(ref), template: EXPECT_OP.get(context.expectations?.get(ref)?.op)?.template };
+  const steps = Array.from({ length: context.stepCount ?? 0 }, (_, n) => n + 1).filter((step) => slot.template && rules(slot, step, context));
+  if (steps.length) return `${ref} (${slot.template}) rules step ${steps.join(" or ")}`;
+  if (!context.kinds) return null;
+  const kinds = slot.template ? kindsRuling(slot, context) : [];
+  return kinds.length ? `${ref} (${slot.template}) is carried by a step asking ${kinds.join(", ")}` : `no answer a step here can ask carries ${ref}'s ${slot.e?.property ?? "property"}, so nothing here can rule it`;
+}
+
+// The kinds of step a slot rules, each as declared: one every adapter of which carries it is named alone; one only some
+// of its adapters carry is named with those adapters.
+function kindsRuling(slot, context) {
+  const kinds = [...new Set((context.kinds ?? []).map((k) => k.kind))];
+  return kinds.map((kind) => kindSaid(kind, (context.kinds ?? []).filter((k) => k.kind === kind), slot, context)).filter(Boolean);
+}
+
+function kindSaid(kind, variants, slot, context) {
+  const ruling = variants.filter((k) => rules(slot, 1, answering(context, k.outputs)));
+  if (!ruling.length) return null;
+  return ruling.length === variants.length ? kind : `${kind} (${ruling.map((k) => k.by).join(", ")})`;
+}
+
+// Before a design: each slot of the obligation's own criterion, whether it is one of its `expected` slots, its
+// template, what it states and the kinds of step it rules.
+export const slotContract = (context) => ownSlotsOf(context).map((s) => ({ slot: s.ref, own: (context.expected ?? []).includes(s.ref), template: s.template, states: statesOf(s.e), rules: kindsRuling(s, context) }));
+
+// What a refusal of an assertion says beside its reason: a slot nobody accepted, which own slots rule that step; a slot
+// put on a step that does not carry it, where it does -- first, where a host reads it.
+function refusalSaid(a, context, raw) {
+  if (raw.unaccepted) return `${raw.refused}: ${rulingSaid(a.step, context)}`;
+  const where = raw.absent ? whereSaid(a.criterionRef, context) : null;
+  return where ? `${where}, not step ${a.step} — ${raw.refused}` : raw.refused;
 }
 
 // A trigger that drives a page (a click) answers nothing a slot reads: the api witness of the request it sent does, and
@@ -195,3 +251,6 @@ function triggerSaid(a, context) {
   const witness = a.capability || slotsRuling(a.step, context).length ? undefined : (a.witnesses ?? []).find((step) => slotsRuling(step, context).length);
   return witness ? `make step ${witness}, the api witness of its request, the trigger: ${rulingSaid(witness, context)}` : rulingSaid(a.step, context);
 }
+
+// The trigger's rule, said before a design from the same rows triggerEvidence holds a design to.
+export const TRIGGER_RULE = `a trigger step whose own operation shows it was accepted (${OPERATIONS.filter((o) => o.accepted).map((o) => o.capability).join(", ")}) is ruled by that; any other trigger step must be ruled by a slot that rules its kind of step -- a page's act by the api witness of the request it sent, made the trigger`;

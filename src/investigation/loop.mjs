@@ -69,7 +69,19 @@ function readersOf(w) {
 // ------------------------------------------------------------------ context
 export function contextOf(w, history = []) {
   const lw = loopWorld(w);
-  return { investigation: w.id, position: lw.model.position, lifecycle: lw.model.lifecycle, inputMode: lw.inputMode, inputs: lw.model.inputs, unsettled: unsettled(lw.model).map(unsettledView), stop: stopOf(lw), budget: budgetOf(lw), obligations: countsOf(lw.obligations), frontier: lw.frontier.slice(0, 12).map(frontierView), findings: lw.model.findings.map(findingView), recall: { history, questions: lw.model.questions.filter((q) => !lw.model.answers.some((a) => a.question === q.id)) }, versions: lw.model.versions.slice(-12).map(versionView(lw.model)), bindings: bindingsOf(w), protocol: { schemaVersion: DECISION_SCHEMA, actions: ACTION_KINDS } };
+  return { investigation: w.id, position: lw.model.position, lifecycle: lw.model.lifecycle, inputMode: lw.inputMode, inputs: lw.model.inputs, unsettled: unsettled(lw.model).map(unsettledView), stop: stopOf(lw), budget: budgetOf(lw), obligations: countsOf(lw.obligations), frontier: lw.frontier.slice(0, 12).map(frontierView).map(contracted(w, lw.model)), findings: lw.model.findings.map(findingView), recall: { history, questions: lw.model.questions.filter((q) => !lw.model.answers.some((a) => a.question === q.id)) }, versions: lw.model.versions.slice(-12).map(versionView(lw.model)), bindings: bindingsOf(w), protocol: { schemaVersion: DECISION_SCHEMA, actions: ACTION_KINDS } };
+}
+
+// A test obligation's template carries what its design is held to about which slot rules which step (`ruling`: the
+// generation port's contractFor, src/qa/generation/design.mjs designContract) -- from the functions its refusals are
+// said from, so a host reads it before it designs. None when no generation port is bound; a graph or a plan that cannot
+// be read leaves the template as it was.
+const contracted = (w, model) => (o) => (o.template?.kind === "generate" ? { ...o, template: { ...o.template, ...rulingOf(w, model, o.template.obligation) } } : o);
+
+function rulingOf(w, model, id) {
+  const obligation = [...(model.obligations ?? [])].reverse().find((x) => x.obligation === id);
+  try { return obligation && typeof w.generation?.contractFor === "function" ? { ruling: w.generation.contractFor(obligation) } : {}; }
+  catch { return {}; }
 }
 
 const frontierView = (o) => ({ id: o.id, kind: o.kind, subject: o.subject, layer: o.layer, title: o.title, why: o.why, oracle: o.oracle, can: o.can, template: o.template });

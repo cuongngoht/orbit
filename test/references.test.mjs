@@ -142,3 +142,15 @@ test("the analyst's shell runs only the engine's read commands it names, and eve
   assert.ok(shown.length >= 5, "the analyst's commands are not being read");
   for (const c of shown) assert.ok(c.startsWith("query.mjs") || c === "learn.mjs recall", `the analyst shows ${c}, which its shell's own line does not allow`);
 });
+
+// A test plan is written in the turn that asks its questions, and they are the plan's own. The 0.5.0 precheck's
+// ORBIT-ACT-003 (bnr-da67b3eaa96f): a host planning a screen's tests in a session nobody answered asked its questions in
+// prose, promised the plan for once someone replied, and left none. The step that asks starts the plan.
+test("the test planner starts the plan in the step that asks, and keeps its questions in it, answered or not", () => {
+  const playbook = text(join("skills", "orbit-test-plan", "SKILL.md"));
+  const asking = playbook.slice(playbook.indexOf("## 2."), playbook.indexOf("## 3.")).replace(/\s+/g, " ");
+  assert.match(asking, /qa-plan\.mjs new/, "the step that asks never starts the plan");
+  assert.match(asking, /The plan is written in the turn that asks/, "the step that asks lets the plan wait for a reply");
+  assert.match(asking, /record every question in it as a `question` with what it `blocks`/, "the questions are left in prose");
+  assert.match(asking, /a session nobody answers/, "a session with nobody to answer is never named");
+});

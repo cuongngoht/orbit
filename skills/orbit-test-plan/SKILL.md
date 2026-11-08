@@ -174,6 +174,15 @@ change what you design or whether a scenario can be verified at all — otherwis
 down as an assumption and move on. Put them in **one** message (`AskUserQuestion` where the
 options are knowable), then stop asking and start deriving.
 
+**The plan is written in the turn that asks.** Start it first (`node <engine>/cli/qa-plan.mjs new
+<id> --screen=<screen> "Title"`) and record every question in it as a `question` with what it
+`blocks`, every assumption as an `assumption`, and a contradiction as a `question` naming both
+sources — where `plan-check` holds them, and where a person who answers later finds them. Then
+derive everything they do not block, check it (section 8), and end the turn with the plan written
+and the questions put to the person. Never end it with the questions in prose alone and the plan
+promised for after a reply: a session nobody answers — a headless run, or one with no
+`AskUserQuestion` — has no next turn, and would leave nothing behind.
+
 These six topics are a **checklist for yourself**, to notice what you have not got. They are not
 a script:
 

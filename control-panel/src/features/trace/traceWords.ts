@@ -14,6 +14,10 @@ export const FOLLOWED: Record<FollowVerdict, { label: string; color: BadgeColor 
   "nothing-routed": { label: "Not routed", color: "subtle" },
 };
 
+// 0.5.0: the one activation verdict beside FOLLOWED's -- the turn dispatched more of Orbit's agents than its strategy
+// accounted for. Every other activation verdict IS the followed verdict, already shown.
+export const OVER_DELEGATED = { label: "Over-delegated", color: "warning" } as const;
+
 export const OUTCOME: Record<TurnOutcome, { label: string; color: BadgeColor }> = {
   unknown: { label: "Outcome unknown", color: "subtle" },
   ok: { label: "OK", color: "success" },
@@ -31,6 +35,7 @@ export const KIND: Record<StepKind, string> = {
   opportunity: "Opportunity",
   decision: "Decision",
   gap: "Trail gap",
+  hold: "Held",
 };
 
 export const DAYS = [1, 7, 30] as const;

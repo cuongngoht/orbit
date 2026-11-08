@@ -2,12 +2,13 @@
 // when nothing stands under it, runs split by host basis so a scripted success is never autonomy, the blocked and the
 // invalid excluded and counted, a cost only ever one a host reported, instability found and said, history by revision.
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { COMMANDS } from "../benchmark/lib/commands.mjs";
-import { metricsOf, METRICS, runFacts } from "../benchmark/lib/core/metrics.mjs";
+import { ACTIVATION_METRICS, BY_NAMES, metricsOf, METRICS, runFacts } from "../benchmark/lib/core/metrics.mjs";
+import { reliabilityOf } from "../benchmark/lib/core/reliability.mjs";
 import { docWritten, newRunId, roomOf } from "../benchmark/lib/core/room.mjs";
 
 let n = 0;
@@ -102,4 +103,211 @@ test("the metrics command folds the store's run rooms in scope, with the verifie
   assert.deepEqual([r.verifier.numerator, r.verifier.denominator, r.verifier.missed], [1, 2, ["ORBIT-SRC-002 allow-all: expected FAIL, got PASS"]]);
   assert.deepEqual(r.history[0].commits.map((c) => [c.commit, c.outcome]), [["111111111111", "FAIL"], ["222222222222", "PASS"]]);
   assert.match(COMMANDS.metrics.say(r), /HISTORY BY REVISION/);
+});
+
+test("metrics --suite counts a control set kept before its manifest named a suite: the catalog places its case -- and another suite's case stays out", (t) => {
+  const store = mkdtempSync(join(tmpdir(), "orbit-bench-sets-"));
+  t.after(() => rmSync(store, { recursive: true, force: true }));
+  const root = join(store, "checkout");
+  mkdirSync(join(root, "benchmark", "suites", "orbit-source"), { recursive: true });
+  writeFileSync(join(root, "benchmark", "suites", "orbit-source", "suite.json"), JSON.stringify({ schema: 1, id: "orbit-source", version: "1.0.0", title: "the source", cases: ["ORBIT-SRC-002"] }));
+  const set = (benchmark) => ((room) => (docWritten(room, "manifest.json", { kind: "controls", run: room.id, at: new Date().toISOString(), benchmark }), docWritten(room, "controls.json", { case: benchmark.case, rows: [{ id: "known-good", expect: "PASS", got: "PASS", matched: true }] })))(roomOf(store, newRunId(benchmark.case)));
+  set({ suite: "orbit-source", case: "ORBIT-SRC-002" });
+  set({ case: "ORBIT-SRC-002" });
+  set({ case: "ORBIT-QA-001" });
+  assert.deepEqual(((r) => [r.verifier.numerator, r.verifier.denominator])(COMMANDS.metrics.run({ storeRoot: store, root }, ["--suite=orbit-source"])), [2, 2], "the set that names its suite, and the older one the catalog places");
+  assert.equal(COMMANDS.metrics.run({ storeRoot: store }, ["--suite=orbit-source"]).verifier.denominator, 1, "with no catalog to read, only the set that names its suite");
+});
+
+// ---- 0.5.0: reliability (B2), tool-call failures (B9), arms (B23) ------------------------------------------------------
+
+// A model-carried run: a goal on an arm, with what its host reported and the tool facts its report kept.
+const goalRun = (o = {}) => ((r) => ({ ...r, manifest: { ...r.manifest, config: { ...r.manifest.config, arm: o.arm ?? "release", repeat: o.group ? { id: o.group, index: 1, of: 5 } : null, ...(o.effort ? { effort: o.effort } : {}) } }, report: { ...r.report, round: o.round ?? null, rounds: o.hostRounds ?? [], tools: o.tools ?? null } }))(run({ case: o.case ?? "ORBIT-E2E-001", suite: o.suite ?? "orbit-engineering", kind: "engineering", repair: true, model: o.model === undefined ? "claude-opus-5-5" : o.model, cost: o.cost ?? null, ms: o.ms, outcome: o.outcome, commit: o.commit, rounds: o.hostRounds }));
+
+const hostRound = (o = {}) => ({ interrupted: o.interrupted === true, host: { model: o.model ?? null, turns: o.turns ?? null, costUsd: o.cost ?? null, tokens: { input: o.tokens ?? null, output: null, cacheRead: null, cacheWrite: null } } });
+
+test("pass@1, pass@k and the medians of each row: its runs that came to an ending, never a restart's or a block's", () => {
+  const outcomes = ["PASS", "PASS", "FAIL", "PASS", "FAIL"];
+  const runs = [...outcomes.map((outcome, i) => goalRun({ outcome, cost: i + 1, ms: (i + 1) * 60000, group: "rpt-000000000001" })), goalRun({ outcome: "BLOCKED" }), goalRun({ outcome: "PASS", hostRounds: [hostRound({ interrupted: true })] })];
+  const row = metricsOf(runs, { k: 3 }).reliability.rows[0];
+  assert.deepEqual([row.case, row.arm, row.basis, row.model, row.runs, row.passed, row.excluded], ["ORBIT-E2E-001", "release", "coding-host", "claude-opus-5-5", 5, 3, { blocked: 1, interrupted: 1 }]);
+  assert.deepEqual([row.pass1, row.passK], [0.6, { k: 3, value: 1 }], "1 - C(2,3)/C(5,3): any three of these five hold a pass");
+  assert.deepEqual([row.medianCostUsd, row.costReported, row.costPerVerifiedUsd, row.medianMinutes], [3, 5, 2.3333, 3]);
+  assert.deepEqual(metricsOf(runs, { k: 6 }).reliability.rows[0].passK, { k: 6, value: "unknown" }, "five runs say nothing about six");
+});
+
+test("each model is its own row, and its rate pools its rows; a model nobody named or reported is unknown, never another's", () => {
+  const runs = [goalRun({ outcome: "PASS" }), goalRun({ outcome: "FAIL", model: "claude-sonnet-5" }), goalRun({ outcome: "PASS", model: null, round: hostRound({ model: "claude-haiku-5" }) }), goalRun({ outcome: "PASS", model: null })];
+  const models = metricsOf(runs).reliability.models.map((m) => [m.model, m.runs, m.pass1]);
+  assert.deepEqual(models, [["claude-haiku-5", 1, 1], ["claude-opus-5-5", 1, 1], ["claude-sonnet-5", 1, 0], ["unknown", 1, 1]], "the model asked for, else the one the host named");
+});
+
+test("--by=model and --by=arm break every metric down, the bases still apart; --by=revision gives the rates of each revision", () => {
+  const runs = [goalRun({ outcome: "PASS", commit: "1".repeat(40) }), goalRun({ outcome: "FAIL", arm: "none", commit: "1".repeat(40) }), goalRun({ outcome: "PASS", model: "claude-sonnet-5", commit: "2".repeat(40) })];
+  const m = metricsOf(runs, { by: ["model", "arm", "revision"] });
+  assert.deepEqual(m.byModel.map((g) => [g.model, g.runs]), [["claude-opus-5-5", 2], ["claude-sonnet-5", 1]]);
+  assert.deepEqual(m.byArm.map((g) => [g.arm, g.runs, g.bases["coding-host"].autonomous_task_success.denominator]), [["none", 1, 1], ["release", 2, 2]]);
+  assert.deepEqual(m.revisions.map((x) => [x.commit, x.rows.length]), [["111111111111", 2], ["222222222222", 1]]);
+  assert.deepEqual([m.runs.byArm, BY_NAMES], [{ release: 2, none: 1 }, ["revision", "model", "arm", "memory", "language"]]);
+});
+
+// ---- the activation rows (0.5.0, B22 M4: the activation benchmark §8) ---------------------------------------------------
+
+// An activation run as its room keeps it: the judge's own facts in its report, its arm and its language in its manifest.
+const actRun = (o = {}) => {
+  const r = run({ kind: "activation", suite: "orbit-activation", case: o.case ?? "ORBIT-ACT-001", repair: false, host: o.host ?? null, outcome: o.outcome ?? "PASS", basis: o.basis ?? "coding-host" });
+  const arm = o.arm ?? "release";
+  const facts = { applies: arm !== "none", activate: true, activated: true, strategyNamed: true, strategyRight: true, skillProfile: true, skillsRight: true, agentProfile: true, agentsRight: true, agentCalls: 0, router: { judged: arm !== "none", right: true }, recordsHeld: true, outcome: null, grounding: null, arm, tier: "selection", language: o.language ?? "en", capability: o.capability ?? "architecture", row: "PASS", verdict: o.outcome ?? "PASS", ...o.facts };
+  return { ...r, manifest: { ...r.manifest, config: { ...r.manifest.config, arm }, activation: { language: facts.language, tier: facts.tier, capability: facts.capability, switches: {} } }, report: { ...r.report, kind: "activation", activation: facts } };
+};
+
+test("the activation rows: precision and recall of activating, strategy and selection, needless delegation and the router -- over the Orbit arms alone, each a numerator over a denominator", () => {
+  const runs = [
+    actRun(),
+    actRun({ outcome: "FAIL", facts: { activated: false, strategyRight: false, skillsRight: false, router: { judged: true, right: false } } }),
+    actRun({ outcome: "FAIL", case: "ORBIT-NEG-002", capability: "abstention", facts: { activate: false, activated: true, strategyRight: false, skillProfile: false, agentProfile: false } }),
+    actRun({ outcome: "FAIL", capability: "qa-case-repair", facts: { agentCalls: 2, agentsRight: false } }),
+    actRun({ case: "ORBIT-ACT-008", capability: "switches", facts: { activate: null, activated: false, strategyNamed: false } }),
+    actRun({ arm: "none", outcome: "PASS", facts: { activated: false } }),
+  ];
+  const b = metricsOf(runs).bases["coding-host"];
+  const at = (id) => [b[id].numerator, b[id].denominator];
+  assert.deepEqual(at("activation_precision"), [2, 3], "of the runs that activated where the truth says either way, those it said to");
+  assert.deepEqual(at("activation_recall"), [2, 3], "of the runs the truth says to activate, those that did -- the none arm's not among them");
+  assert.deepEqual(at("strategy_accuracy"), [2, 4]);
+  assert.deepEqual(at("skill_selection_accuracy"), [3, 4]);
+  assert.deepEqual(at("agent_selection_accuracy"), [3, 4]);
+  assert.deepEqual(at("unnecessary_delegation"), [1, 1], "a dispatch no profile accepts, over the runs that dispatched any agent");
+  assert.deepEqual(at("router_accuracy"), [4, 5], "the router's own decision, judged apart from what the host did with it");
+  assert.deepEqual(at("capability_coverage"), [2, 4], "families with a passing case: architecture and switches, of four");
+  assert.deepEqual(at("work_completion"), [0, 0]);
+  assert.equal(b.work_completion.value, "unknown", "no outcome case ran");
+  assert.deepEqual(ACTIVATION_METRICS.map((m) => m.id), ["activation_precision", "activation_recall", "strategy_accuracy", "skill_selection_accuracy", "agent_selection_accuracy", "unnecessary_delegation", "router_accuracy", "capability_coverage", "work_completion"]);
+  assert.ok(ACTIVATION_METRICS.every((m) => METRICS.includes(m)), "every row is a metric of the fold");
+});
+
+test("the activation rows by arm and by language, a scripted control's runs apart -- and an outcome run completes only when its checks and its records hold", () => {
+  const out = (held, recordsHeld = true) => ({ tier: "outcome", outcome: { held }, recordsHeld });
+  const runs = [actRun({ language: "vi" }), actRun({ arm: "baseline", outcome: "FAIL", facts: { activated: false, router: { judged: true, right: false } } }), actRun({ arm: "none" }), actRun({ facts: out(true) }), actRun({ outcome: "FAIL", facts: out(true, false) }), actRun({ outcome: "FAIL", facts: out(false) }), actRun({ host: "scripted:reference", basis: "scripted" })];
+  const m = metricsOf(runs, { by: ["arm", "language"] });
+  const recall = (g) => [g.bases["coding-host"].activation_recall.numerator, g.bases["coding-host"].activation_recall.denominator];
+  assert.deepEqual(m.byArm.map((g) => [g.arm, ...recall(g)]), [["baseline", 0, 1], ["none", 0, 0], ["release", 4, 4]]);
+  assert.deepEqual(m.byArm.find((g) => g.arm === "baseline").bases["coding-host"].router_accuracy.value, 0, "the previous release's router, on its own");
+  assert.deepEqual(m.byLanguage.map((g) => [g.language, g.runs]), [["en", 6], ["vi", 1]]);
+  const b = m.bases["coding-host"];
+  assert.deepEqual([b.work_completion.numerator, b.work_completion.denominator], [1, 3], "a change that holds its checks with a record that does not is not work completed");
+  assert.deepEqual([m.runs.byBasis.scripted, m.bases.scripted.activation_recall.denominator], [1, 1], "a scripted control is conformance, never autonomy");
+});
+
+// 0.5.0: the owner's decision runs model-carried rows at an effort (`--effort`); a model at two efforts is two hosts.
+test("a model at two efforts is two hosts: its rows, its model row, its tool calls, its arms, its overhead and its groups are kept apart", () => {
+  const sonnet = (effort, outcome, o = {}) => goalRun({ outcome, model: "claude-sonnet-5-5", effort, tools: TOOLS(), ...o });
+  const runs = [sonnet("medium", "PASS"), sonnet("medium", "FAIL"), sonnet("high", "PASS"), sonnet(undefined, "PASS"), sonnet("medium", "PASS", { arm: "none" })];
+  const m = metricsOf(runs, { by: ["model"] });
+  const releaseRows = m.reliability.rows.filter((r) => r.arm === "release");
+  assert.deepEqual(releaseRows.map((r) => [r.model, r.effort, r.runs, r.pass1]), [["claude-sonnet-5-5", null, 1, 1], ["claude-sonnet-5-5", "high", 1, 1], ["claude-sonnet-5-5", "medium", 2, 0.5]], "never one rate over two efforts");
+  assert.deepEqual(m.reliability.models.map((x) => [x.model, x.effort, x.runs]), [["claude-sonnet-5-5", null, 1], ["claude-sonnet-5-5", "high", 1], ["claude-sonnet-5-5", "medium", 3]]);
+  assert.deepEqual(m.byModel.map((g) => [g.model, g.effort, g.runs]), [["claude-sonnet-5-5", null, 1], ["claude-sonnet-5-5", "high", 1], ["claude-sonnet-5-5", "medium", 3]]);
+  assert.deepEqual(Object.keys(m.tools["coding-host"].models), ["claude-sonnet-5-5", "claude-sonnet-5-5@high", "claude-sonnet-5-5@medium"]);
+  assert.deepEqual(m.overhead.map((o) => [o.arm, o.effort]), [["release", "medium"]], "the none arm beside the release arm at the same effort only");
+  assert.match(COMMANDS.metrics.say({ ...m, store: "-" }), /claude-sonnet-5-5@medium \(3 run\(s\)\)/);
+  const groups = metricsOf([sonnet("medium", "PASS", { case: "ORBIT-E2E-002" }), sonnet("high", "FAIL", { case: "ORBIT-E2E-002" })]).reproducibility;
+  assert.deepEqual([groups.denominator, groups.unstable], [0, []], "two efforts are never one group whose outcomes disagree");
+});
+
+test("the reliability document keeps each row's and each model's effort, and compares arms only at one effort", () => {
+  const sonnet = (arm, effort, outcome) => goalRun({ arm, outcome, model: "claude-sonnet-5-5", effort, hostRounds: [hostRound({ cost: 1 })], cost: 1 });
+  const r = COMMANDS.reliability.say(reliabilityOf([sonnet("none", "medium", "PASS"), sonnet("release", "medium", "PASS"), sonnet("release", "high", "FAIL")]));
+  const doc = reliabilityOf([sonnet("none", "medium", "PASS"), sonnet("release", "medium", "PASS"), sonnet("release", "high", "FAIL")]);
+  assert.deepEqual(doc.arms.rows.map((x) => [x.effort, Object.keys(x.arms).sort()]), [["medium", ["none", "release"]]]);
+  assert.deepEqual(doc.rates.rows.map((x) => x.effort).sort(), ["high", "medium", "medium"]);
+  assert.match(r, /\(coding-host, claude-sonnet-5-5@medium\): none pass@1 1\/1/);
+});
+
+test("orbit_overhead: an Orbit arm's median REPORTED cost, turns and tokens minus the none arm's on the same case -- unknown where a side reported none", () => {
+  const armed = (arm, cost, turns, tokens) => goalRun({ arm, outcome: "PASS", hostRounds: [hostRound({ cost, turns, tokens })], cost });
+  const o = metricsOf([armed("none", 1, 10, 1000), armed("none", 3, 30, 3000), armed("release", 4, 40, 9000), armed("baseline", null, 20, 2000)]).overhead;
+  const release = o.find((x) => x.arm === "release");
+  assert.deepEqual([release.case, release.noneSide.runs, release.overhead], ["ORBIT-E2E-001", 2, { costUsd: 2, turns: 20, tokens: 7000 }]);
+  assert.deepEqual(o.find((x) => x.arm === "baseline").overhead, { costUsd: "unknown", turns: 0, tokens: 0 });
+  assert.deepEqual(metricsOf([armed("release", 1, 1, 1)]).overhead, [], "no none arm, nothing to compare");
+});
+
+const TOOLS = (o = {}) => ({ schema: 1, basis: "HOST_OBSERVED", calls: { calls: 10, failed: o.failed ?? 2, unanswered: 0, byTool: { Bash: { calls: 6, failed: o.failed ?? 2, unanswered: 0 }, Read: { calls: 4, failed: 0, unanswered: 0 } } }, recovery: { failed: o.failed ?? 2, episodes: 1, recovered: 1, turns: 3, tokens: 30, costUsd: 0.1, costBasis: "APPORTIONED" }, relay: o.relay ?? null, sandbox: { by: "host", steps: { "sandbox-prepare": { by: "host", attempts: 2, failures: 1, unsettled: 0, classes: { RESTORE_FAILED: 1 }, calls: { counted: 1, total: 4, unknown: 0 }, gotPast: 1, stopped: 0, endedBlocked: 0 } }, failures: [] }, unknown: o.unknown ?? {} });
+
+test("tool-call failures fold per host basis, per suite and per model: per tool, per relay subcommand, per PASS, and per sandbox step", () => {
+  const relay = { context: { requests: 3, refused: { HELP: 1 }, nonZero: 0, errors: 0 } };
+  const runs = [goalRun({ outcome: "PASS", tools: TOOLS() }), goalRun({ outcome: "FAIL", tools: TOOLS({ failed: 4, relay }) }), goalRun({ outcome: "PASS" })];
+  const f = metricsOf(runs).tools["coding-host"];
+  const s = f.suites["orbit-engineering"];
+  assert.deepEqual([f.runs, f.unread, s.unread], [2, 1, 1], "a report from before 0.5.0 is unread, never zero");
+  assert.deepEqual([s.calls.calls, s.calls.failed, s.calls.rate, s.calls.byTool.Bash], [20, 6, 0.3, { calls: 12, failed: 6, rate: 0.5 }]);
+  assert.deepEqual(s.failedPerPass, { numerator: 2, denominator: 1, value: 2 }, "the failed calls of the runs that passed, per PASS");
+  assert.deepEqual([s.recovery.episodes, s.recovery.turnsPerEpisode.value, s.recovery.runsRecovered.value], [2, 3, 0.5]);
+  assert.deepEqual(s.relay.context, { requests: 3, help: 0, refused: { HELP: 1 }, nonZero: 0, errors: 0 }, "a report kept before the relay answered a probe counts none answered");
+  assert.deepEqual(((p) => [p.attempts, p.failures, p.rate, p.classes, p.callsAfter.value])(s.sandbox.steps["sandbox-prepare"]), [4, 2, 0.5, { RESTORE_FAILED: 2 }, 4]);
+  assert.deepEqual(Object.keys(f.models), ["claude-opus-5-5"]);
+});
+
+test("runs that hit a failed call and still passed are over the runs a rate may count: a blocked, unfinished or interrupted run is neither a recovery nor a miss", () => {
+  const runs = [goalRun({ outcome: "PASS", tools: TOOLS() }), goalRun({ outcome: "BLOCKED", tools: TOOLS() }), goalRun({ tools: TOOLS() }), goalRun({ outcome: "FAIL", tools: TOOLS(), hostRounds: [hostRound({ interrupted: true })] })];
+  const r = metricsOf(runs).tools["coding-host"].suites["orbit-engineering"].recovery;
+  assert.deepEqual(r.runsRecovered, { numerator: 1, denominator: 1, value: 1 }, "the one run that came to an ending, and passed");
+  assert.equal(r.episodes, 4, "the calls themselves still count, whoever's run they were in");
+});
+
+test("the reliability command folds the kept rooms of one revision into one document -- rates, tool calls, arms -- and writes nothing", (t) => {
+  const store = mkdtempSync(join(tmpdir(), "orbit-bench-reliability-"));
+  t.after(() => rmSync(store, { recursive: true, force: true }));
+  const keep = (r) => ((room) => (docWritten(room, "manifest.json", { ...r.manifest, run: room.id }), r.ending && docWritten(room, "ending.json", r.ending), docWritten(room, "report.json", r.report)))(roomOf(store, newRunId(r.manifest.run)));
+  for (const r of [goalRun({ outcome: "PASS", commit: "c".repeat(40), arm: "none", hostRounds: [hostRound({ cost: 1 })], cost: 1 }), goalRun({ outcome: "PASS", commit: "c".repeat(40), hostRounds: [hostRound({ cost: 2 })], cost: 2, tools: TOOLS() }), goalRun({ outcome: "FAIL", commit: "d".repeat(40) })]) keep(r);
+  const before = readdirSync(store, { recursive: true }).length;
+  const r = COMMANDS.reliability.run({ storeRoot: store }, ["--revision=cccc", "--k=2"]);
+  assert.deepEqual([r.kind, r.schema, r.runs.total, r.runs.byArm, r.scope.revision, r.scope.k], ["orbit.benchmark.reliability/v1", 1, 2, { none: 1, release: 1 }, "cccc", 2]);
+  assert.deepEqual(r.arms.rows[0].arms.release.pass1, 1);
+  assert.deepEqual(r.arms.overhead[0].overhead.costUsd, 1);
+  assert.equal(r.tools["coding-host"].suites["orbit-engineering"].calls.failed, 2);
+  assert.match(COMMANDS.reliability.say(r), /pass@1 1 over 1/);
+  assert.equal(readdirSync(store, { recursive: true }).length, before, "it writes nothing");
+  assert.throws(() => COMMANDS.reliability.run({ storeRoot: store }, ["--revision=HEAD~1"]), /--revision is a commit id/);
+  assert.throws(() => COMMANDS.metrics.run({ storeRoot: store }, ["--by=colour"]), /--by is any of revision, model, arm/);
+  assert.throws(() => COMMANDS.metrics.run({ storeRoot: store }, ["--k=0"]), /--k is 1\.\.10/);
+});
+
+// ---- memory arms (0.5.0, backlog B3, ADR 0054) -------------------------------------------------------------------------
+
+// A sessions run as its room keeps it: its memory arm, and what its SECOND session's work came to.
+const sessionsRun = (o = {}) => ((r) => ({ ...r, manifest: { ...r.manifest, benchmark: { ...r.manifest.benchmark, suite: "orbit-sessions", case: o.case ?? "ORBIT-SES-001", kind: "sessions", variant: "no-db-write" }, config: { ...r.manifest.config, repair: false, host: "coding-host", model: "claude-sonnet-5-5", effort: "medium", memory: o.memory ?? "on" } }, report: { ...r.report, hostBasis: o.basis ?? "coding-host", round: hostRound({ model: "claude-sonnet-5-5", cost: o.total ?? 2, interrupted: o.interrupted }), memory: { arm: o.memory ?? "on", measured: { decisions: o.decisions ?? 10, designsRefused: o.refused ?? 1, costUsd: o.cost ?? 1, minutes: o.minutes ?? 20 } }, judged: { found: o.outcome === "PASS" ? 1 : 0, planted: 1, falseAlarms: 0, unconfirmed: 0 } } }))(run({ outcome: o.outcome ?? "PASS", repair: false, cost: o.total ?? 2 }));
+
+test("a sessions run's facts: its memory arm and its second session's work -- and a rate never pools the two arms", () => {
+  const f = runFacts(sessionsRun({ memory: "off", decisions: 7, refused: 2, cost: 1.5, minutes: 12 }));
+  assert.deepEqual([f.kind, f.memory, f.basis, f.task, f.verified, f.session], ["sessions", "off", "coding-host", true, true, { decisions: 7, designsRefused: 2, costUsd: 1.5, minutes: 12 }]);
+  assert.equal(f.costUsd, 2, "the run's whole cost is both sessions'; the arm's is its second session's alone");
+  const rows = metricsOf([sessionsRun({ memory: "on" }), sessionsRun({ memory: "off", outcome: "FAIL" })]).reliability.rows;
+  assert.deepEqual(rows.map((r) => [r.memory, r.runs, r.pass1]), [["off", 1, 0], ["on", 1, 1]]);
+  assert.equal(runFacts(goalRun({ outcome: "PASS" })).memory, null, "a run of another kind has no memory arm");
+});
+
+test("memory's effect is the on arm's medians minus the off arm's, over the runs a rate may count -- a restart's run left out and counted", () => {
+  const runs = [sessionsRun({ memory: "on", decisions: 8, refused: 0, cost: 2, minutes: 10 }), sessionsRun({ memory: "on", decisions: 10, refused: 1, cost: 3, minutes: 14 }), sessionsRun({ memory: "on", decisions: 99, interrupted: true }), sessionsRun({ memory: "off", decisions: 14, refused: 2, cost: 4, minutes: 20 }), sessionsRun({ memory: "off", outcome: "FAIL", decisions: 16, refused: 3, cost: 5, minutes: 25 })];
+  const [row] = metricsOf(runs).memory;
+  assert.deepEqual([row.case, row.model, row.effort], ["ORBIT-SES-001", "claude-sonnet-5-5", "medium"]);
+  assert.deepEqual(row.arms.on, { runs: 2, passed: 2, excluded: { interrupted: 1 }, pass1: 1, decisions: 9, designsRefused: 0.5, costUsd: 2.5, minutes: 12 });
+  assert.deepEqual(row.arms.off, { runs: 2, passed: 1, excluded: {}, pass1: 0.5, decisions: 15, designsRefused: 2.5, costUsd: 4.5, minutes: 22.5 });
+  assert.deepEqual(row.effect, { pass1: 0.5, decisions: -6, designsRefused: -2, costUsd: -2, minutes: -10.5 });
+  assert.equal(metricsOf([sessionsRun({ memory: "on" })]).memory[0].effect, null, "with one arm alone, memory's effect is unknown");
+  assert.deepEqual(metricsOf([sessionsRun({ memory: "on", basis: "scripted" }), sessionsRun({ memory: "off" })]).memory.map((m) => [m.basis, Object.keys(m.arms).join()]), [["coding-host", "off"], ["scripted", "on"]], "a scripted host's arm is never compared with a model's");
+});
+
+test("--by=memory breaks every metric down by memory arm, the runs of other kinds under none; reliability carries the arms and says them", () => {
+  const runs = [sessionsRun({ memory: "on" }), sessionsRun({ memory: "off", outcome: "FAIL" }), goalRun({ outcome: "PASS" })];
+  const m = metricsOf(runs, { by: ["memory"] });
+  assert.deepEqual(m.byMemory.map((g) => [g.memory, g.runs, g.bases["coding-host"].autonomous_task_success.value]), [["none", 1, 1], ["off", 1, 0], ["on", 1, 1]]);
+  assert.deepEqual(m.runs.byMemory, { on: 1, off: 1 });
+  const r = reliabilityOf(runs, { scope: {}, k: 1 });
+  assert.deepEqual([r.runs.byMemory, r.memory.rows.length, r.memory.rows[0].effect.pass1], [{ on: 1, off: 1 }, 1, 1]);
+  assert.match(COMMANDS.reliability.say(r), /MEMORY\n {2}ORBIT-SES-001 no-db-write \(coding-host, claude-sonnet-5-5@medium\): on: pass@1 1 over 1/);
+  assert.match(COMMANDS.reliability.say(r), /effect of memory \(on − off\): pass@1 \+1, decisions 0/);
+  assert.match(COMMANDS.metrics.say({ ...m, store: "/s" }), /MEMORY ARMS/);
+  assert.match(COMMANDS.metrics.say({ ...m, store: "/s" }), /BY MEMORY\n {2}memory none/);
 });

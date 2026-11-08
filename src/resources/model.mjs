@@ -24,7 +24,9 @@
 //                              person broke on purpose (higher first)
 //   state · why                one word saying why not, and a sentence
 //   routing                    provides · optional · signals · needs ·
-//                              requiresSignal -- matched against requirements
+//                              requiresSignal -- matched against requirements --
+//                              and via (0.5.0): the skills whose playbook dispatches
+//                              an agent; none means the session may dispatch it
 //   policy                     allow · approval · deny (src/policy.mjs)
 //   detail                     whatever that kind alone knows, never read across kinds
 //
@@ -73,7 +75,7 @@ export function resource(kind, row) {
   return { kind, id: String(row.id), key: String(row.key ?? row.id), source: row.source ?? "unknown", ownership: OWNERSHIPS.includes(row.ownership) ? row.ownership : "plugin", enabled, runtimeReady: row.runtimeReady ?? available, available, eligible: available && selection !== "disabled" && row.eligible !== false, selection, priority: Number.isInteger(row.priority) ? row.priority : 0, state: row.state ?? (enabled ? "unknown" : "disabled"), why: typeof row.why === "string" ? row.why : null, summary: clip(row.summary), routing: routingOf(row), policy: row.policy ?? ALLOW_ALL, detail: row.detail ?? {} };
 }
 
-const routingOf = (row) => ({ provides: words(row.provides), optional: words(row.optional), signals: words(row.signals), needs: words(row.needs), requiresSignal: row.requiresSignal === true });
+const routingOf = (row) => ({ provides: words(row.provides), optional: words(row.optional), signals: words(row.signals), needs: words(row.needs), requiresSignal: row.requiresSignal === true, via: words(row.via) });
 
 const words = (list) => (Array.isArray(list) ? [...new Set(list.filter((w) => typeof w === "string" && w.trim()).map((w) => w.trim().toLowerCase()))] : []);
 

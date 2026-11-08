@@ -109,10 +109,13 @@ function nextOf(ports, lw) {
 
 const sayNext = (lw, next) => (stopOf(lw) ? stopOf(lw).say(lw) : lw.open.length ? `settle ${lw.open[0].label ?? lw.open[0].id} with its evidence, or reconcile it` : next ? `next: ${next.step} — ${next.goal}` : allDone(lw.states) ? "every step is done — finish completes the workflow" : "nothing is ready");
 
+// The steps started and not yet settled, as a context and a settled step's answer both show them.
+const openView = (lw) => lw.open.map((a) => ({ id: a.id, type: a.type, tool: a.tool, label: a.label, startedAt: a.startedAt }));
+
 export function contextOf(ports, id) {
   const lw = loopWorld(ports, id);
   const next = nextOf(ports, lw);
-  return { task: { id, objective: lw.view.task.objective, root: lw.view.task.root, provider: lw.view.task.provider }, revision: lw.view.revision, lifecycle: lw.view.lifecycle, stage: lw.view.stage, attempt: lw.view.attempt, budget: lw.view.budget, repeats: lw.view.repeats, plan: lw.plan ? planView(lw) : null, ready: readyOf(lw.states).map((s) => s.id), open: lw.open.map((a) => ({ id: a.id, type: a.type, tool: a.tool, label: a.label, startedAt: a.startedAt })), child: childView(ports, lw), approvals: lw.view.approvals.filter((a) => a.open), blocked: lw.view.blocked, stop: stopView(lw), next, say: sayNext(lw, next), watch: watchOf(lw, ports.host), protocol: { schemaVersion: DECISION_SCHEMA } };
+  return { task: { id, objective: lw.view.task.objective, root: lw.view.task.root, provider: lw.view.task.provider }, revision: lw.view.revision, lifecycle: lw.view.lifecycle, stage: lw.view.stage, attempt: lw.view.attempt, budget: lw.view.budget, repeats: lw.view.repeats, plan: lw.plan ? planView(lw) : null, ready: readyOf(lw.states).map((s) => s.id), open: openView(lw), child: childView(ports, lw), approvals: lw.view.approvals.filter((a) => a.open), blocked: lw.view.blocked, stop: stopView(lw), next, say: sayNext(lw, next), watch: watchOf(lw, ports.host), protocol: { schemaVersion: DECISION_SCHEMA } };
 }
 
 // ---- applying task operations ------------------------------------------------------------------------
@@ -126,7 +129,20 @@ function applied(ports, id, ops) {
 // The resolver is asked only for a step a host runs: an engine step's provider is the engine.
 const resolvedFor = (ports, step, kind, facts) => (step.provides && !kind.engine(facts) ? quietly(() => ports.resolve(step.provides)) : null);
 
-const liveFacts = (ports, lw, kind) => (kind.id === "requirement" && lw.ref ? { requirement: { ready: ((l) => Boolean(l?.latest) && l.blocking === 0)(quietly(() => ports.requirements.look(lw.ref))) } } : {});
+// What a step's kind reads when it is decided, beyond the plan: whether a requirement is frozen to be read back, and
+// whether a change's QA has a running change to investigate (0.5.0, ADR 0053) -- only once the runtime step read the
+// checkout and found nothing it declares can be started, and only for a plan that makes a change: an investigation's
+// QA is the work itself. An answer runtime could not give is never nothing.
+const nothingStartable = (ports) => ((list) => Array.isArray(list) && list.length === 0)(quietly(() => ports.runtime.startable()));
+
+const qaSkips = (ports, lw) => lw.plan.steps.some((s) => s.kind === "engineering") && lw.states.some((s) => s.kind === "runtime" && s.state === "succeeded") && nothingStartable(ports);
+
+const LIVE_FACTS = {
+  requirement: (ports, lw) => (lw.ref ? { requirement: { ready: ((l) => Boolean(l?.latest) && l.blocking === 0)(quietly(() => ports.requirements.look(lw.ref))) } } : {}),
+  qa: (ports, lw) => ({ qa: { skips: qaSkips(ports, lw) } }),
+};
+
+const liveFacts = (ports, lw, kind) => LIVE_FACTS[kind.id]?.(ports, lw) ?? {};
 
 // Whether the project playbook the resolver picked DECLARES its workflow, read off its version in place (0.0.4).
 const declaredFor = (ports, r) => r?.provider?.ownership === "project" && r.provider.kind === "skill" && quietly(() => ports.factory?.current?.(r.provider.id))?.runs === "declared";
@@ -438,7 +454,8 @@ const lastReplan = (plan) => (plan && plan.n > 1 ? plan.replans?.at(-1) ?? null 
 function answerOf(ports, id, settledStep) {
   const lw = loopWorld(ports, id);
   const s = lw.states.find((x) => x.id === settledStep.id);
-  return { task: id, step: settledStep.id, stepState: s?.state ?? null, summary: s?.summary ?? null, revision: lw.view.revision, lifecycle: lw.view.lifecycle, stage: lw.view.stage, plan: lw.plan ? `plan-${lw.plan.n}` : null, replan: lastReplan(lw.plan), ready: readyOf(lw.states).map((x) => x.id), stop: stopView(lw), say: sayNext(lw, nextOf(ports, lw)) };
+  const next = nextOf(ports, lw);
+  return { task: id, step: settledStep.id, stepState: s?.state ?? null, summary: s?.summary ?? null, revision: lw.view.revision, lifecycle: lw.view.lifecycle, stage: lw.view.stage, plan: lw.plan ? `plan-${lw.plan.n}` : null, replan: lastReplan(lw.plan), ready: readyOf(lw.states).map((x) => x.id), stop: stopView(lw), open: openView(lw), next, say: sayNext(lw, next) };
 }
 
 // ---- reconcile -------------------------------------------------------------------------------------------

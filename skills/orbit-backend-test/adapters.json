@@ -19,6 +19,44 @@
             "messageId": "message.id",
             "outcome": "settlement.outcome",
             "elapsedMs": "elapsed.ms"
+          },
+          "request": {
+            "messageId": {
+              "type": "string",
+              "pattern": "^[\\x21-\\x7e]{1,128}$",
+              "required": true,
+              "doc": "the logical message id every publication carries: 1-128 printable characters",
+              "means": "message.id"
+            },
+            "correlationId": {
+              "type": "string",
+              "doc": "the correlation it travels in",
+              "means": "message.correlation.correlationId"
+            },
+            "causationId": {
+              "type": "string",
+              "doc": "what caused it"
+            },
+            "contentType": {
+              "type": "string",
+              "doc": "its content type: JSON for an object, text for a string, unless said"
+            },
+            "routingKey": {
+              "type": "string",
+              "doc": "the routing key, when it is not the bound channel's own",
+              "means": "message.key"
+            },
+            "mandatory": {
+              "type": "boolean",
+              "doc": "returned when no queue takes it: true unless false"
+            },
+            "headers": {
+              "type": "object",
+              "doc": "flat headers of its own: text, number or boolean values"
+            },
+            "payload": {
+              "doc": "the body: an object is sent as JSON, a text as it is"
+            }
           }
         },
         "observe": {
@@ -30,7 +68,8 @@
           "outputs": {
             "baseline": "cursor.baseline",
             "completeness": "observation.completeness"
-          }
+          },
+          "request": {}
         },
         "observe.await": {
           "doc": "read the observer's own queue for a bounded window, acknowledging what it takes; complete only when the queue was read empty",
@@ -51,6 +90,45 @@
             "through": "cursor.through",
             "completeness": "observation.completeness",
             "gaps": "observation.gaps"
+          },
+          "request": {
+            "count": {
+              "type": "integer",
+              "minimum": 1,
+              "doc": "stop early once this many messages that match were read and the observer's own queue or consumer was read empty"
+            },
+            "waitMs": {
+              "type": "integer",
+              "minimum": 0,
+              "doc": "the window to watch, in milliseconds: the engine's, from an accepted criterion's within, or a control's witness's own bound"
+            },
+            "match": {
+              "type": "object",
+              "selects": "count",
+              "fields": {
+                "messageId": {
+                  "type": "string",
+                  "doc": "the logical message id",
+                  "means": "message.id"
+                },
+                "correlationId": {
+                  "type": "string",
+                  "doc": "the correlation it travels in",
+                  "means": "message.correlation.correlationId"
+                },
+                "routingKey": {
+                  "type": "string",
+                  "doc": "the routing key it was published under",
+                  "means": "message.key"
+                }
+              },
+              "doc": "what a message must carry to count toward `count` -- every message read is answered"
+            },
+            "maxMessages": {
+              "type": "integer",
+              "minimum": 1,
+              "doc": "the most messages one answer holds"
+            }
           }
         },
         "fixture.prepare": {
@@ -60,7 +138,8 @@
           ],
           "outputs": {
             "namespace": "fixture.namespace"
-          }
+          },
+          "request": {}
         },
         "fixture.cleanup": {
           "doc": "delete the fixture's own queues while unused, and say what it left and why; it never deletes an exchange",
@@ -69,7 +148,8 @@
           ],
           "outputs": {
             "cleanup": "fixture.cleanup"
-          }
+          },
+          "request": {}
         }
       },
       "semantics": {
@@ -164,6 +244,41 @@
             "messageId": "message.id",
             "outcome": "settlement.outcome",
             "elapsedMs": "elapsed.ms"
+          },
+          "request": {
+            "messageId": {
+              "type": "string",
+              "pattern": "^[\\x21-\\x7e]{1,128}$",
+              "required": true,
+              "doc": "the logical message id every publication carries: 1-128 printable characters",
+              "means": "message.id"
+            },
+            "correlationId": {
+              "type": "string",
+              "pattern": "^[^\\r\\n\\u0000]*$",
+              "doc": "the correlation it travels in, on one line: a header carries it",
+              "means": "message.correlation.correlationId"
+            },
+            "causationId": {
+              "type": "string",
+              "doc": "what caused it"
+            },
+            "contentType": {
+              "type": "string",
+              "doc": "its content type: JSON for an object, text for a string, unless said"
+            },
+            "subject": {
+              "type": "string",
+              "doc": "the subject, when it is not the bound channel's own: one the channel covers",
+              "means": "message.key"
+            },
+            "headers": {
+              "type": "object",
+              "doc": "flat single-line headers of its own, never a Nats- one"
+            },
+            "payload": {
+              "doc": "the body: an object is sent as JSON, a text as it is"
+            }
           }
         },
         "observe": {
@@ -175,7 +290,8 @@
           "outputs": {
             "baseline": "cursor.baseline",
             "completeness": "observation.completeness"
-          }
+          },
+          "request": {}
         },
         "observe.await": {
           "doc": "fetch from the observer's own consumer for a bounded window, acknowledging what it takes; complete only when a fetch found the consumer empty",
@@ -195,6 +311,45 @@
             "through": "cursor.through",
             "completeness": "observation.completeness",
             "gaps": "observation.gaps"
+          },
+          "request": {
+            "count": {
+              "type": "integer",
+              "minimum": 1,
+              "doc": "stop early once this many messages that match were read and the observer's own queue or consumer was read empty"
+            },
+            "waitMs": {
+              "type": "integer",
+              "minimum": 0,
+              "doc": "the window to watch, in milliseconds: the engine's, from an accepted criterion's within, or a control's witness's own bound"
+            },
+            "match": {
+              "type": "object",
+              "selects": "count",
+              "fields": {
+                "messageId": {
+                  "type": "string",
+                  "doc": "the logical message id",
+                  "means": "message.id"
+                },
+                "correlationId": {
+                  "type": "string",
+                  "doc": "the correlation it travels in",
+                  "means": "message.correlation.correlationId"
+                },
+                "subject": {
+                  "type": "string",
+                  "doc": "the subject it was published to",
+                  "means": "message.key"
+                }
+              },
+              "doc": "what a message must carry to count toward `count` -- every message read is answered"
+            },
+            "maxMessages": {
+              "type": "integer",
+              "minimum": 1,
+              "doc": "the most messages one answer holds"
+            }
           }
         },
         "fixture.prepare": {
@@ -204,7 +359,8 @@
           ],
           "outputs": {
             "namespace": "fixture.namespace"
-          }
+          },
+          "request": {}
         },
         "fixture.cleanup": {
           "doc": "delete the fixture's own consumers and streams, only what the server shows carries the fixture's mark, and say what it left and why; it never purges",
@@ -213,7 +369,8 @@
           ],
           "outputs": {
             "cleanup": "fixture.cleanup"
-          }
+          },
+          "request": {}
         }
       },
       "semantics": {
@@ -314,6 +471,12 @@
             "occurrenceId": "occurrence.id",
             "scheduledFor": "occurrence.scheduledFor",
             "decision": "occurrence.decision"
+          },
+          "request": {
+            "occurrenceId": {
+              "type": "string",
+              "doc": "the occurrence to dispatch; absent, the current one"
+            }
           }
         },
         "observe": {
@@ -334,6 +497,45 @@
             "through": "cursor.through",
             "completeness": "observation.completeness",
             "gaps": "observation.gaps"
+          },
+          "request": {
+            "since": {
+              "type": "integer",
+              "minimum": 0,
+              "doc": "the cursor a previous answer's through gave"
+            },
+            "count": {
+              "type": "integer",
+              "minimum": 1,
+              "doc": "stop once this many decisions that match were read and the cursor caught up"
+            },
+            "waitMs": {
+              "type": "integer",
+              "minimum": 0,
+              "doc": "the window to watch, in milliseconds: the engine's, from an accepted criterion's within, or a control's witness's own bound"
+            },
+            "maxItems": {
+              "type": "integer",
+              "minimum": 1,
+              "doc": "the most decisions one answer holds"
+            },
+            "match": {
+              "type": "object",
+              "selects": "answer",
+              "fields": {
+                "occurrenceId": {
+                  "type": "string",
+                  "doc": "the occurrence",
+                  "means": "occurrence.id"
+                },
+                "decision": {
+                  "type": "string",
+                  "doc": "what the scheduler decided of it",
+                  "means": "occurrence.decision"
+                }
+              },
+              "doc": "the decisions answered: only those that carry every one of these"
+            }
           }
         }
       },
@@ -375,6 +577,12 @@
           ],
           "outputs": {
             "evaluatedThrough": "clock.evaluatedThrough"
+          },
+          "request": {
+            "to": {
+              "required": true,
+              "doc": "the business instant to move the clock to: ISO 8601 with an offset, or epoch milliseconds"
+            }
           }
         }
       },
@@ -414,6 +622,23 @@
           ],
           "outputs": {
             "status": "execution.status"
+          },
+          "request": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "stop",
+                "start",
+                "restart",
+                "fault"
+              ],
+              "required": true,
+              "doc": "what to do to the workload"
+            },
+            "point": {
+              "type": "string",
+              "doc": "with fault: a fault point the workload's node declares"
+            }
           }
         }
       },
@@ -462,6 +687,50 @@
             "through": "cursor.through",
             "completeness": "observation.completeness",
             "gaps": "observation.gaps"
+          },
+          "request": {
+            "since": {
+              "type": "integer",
+              "minimum": 0,
+              "doc": "the cursor a previous answer's through gave"
+            },
+            "count": {
+              "type": "integer",
+              "minimum": 1,
+              "doc": "stop once this many attempts that match were read and the cursor caught up"
+            },
+            "waitMs": {
+              "type": "integer",
+              "minimum": 0,
+              "doc": "the window to watch, in milliseconds: the engine's, from an accepted criterion's within, or a control's witness's own bound"
+            },
+            "maxItems": {
+              "type": "integer",
+              "minimum": 1,
+              "doc": "the most attempts one answer holds"
+            },
+            "match": {
+              "type": "object",
+              "selects": "answer",
+              "fields": {
+                "messageId": {
+                  "type": "string",
+                  "doc": "the logical message id",
+                  "means": "message.id"
+                },
+                "outcome": {
+                  "type": "string",
+                  "doc": "how the worker settled the attempt",
+                  "means": "settlement.outcome"
+                },
+                "executionRef": {
+                  "type": "string",
+                  "doc": "the execution the attempt belongs to",
+                  "means": "execution.ref"
+                }
+              },
+              "doc": "the attempts answered: only those that carry every one of these"
+            }
           }
         }
       },
@@ -501,7 +770,8 @@
           ],
           "outputs": {
             "principal": "principal.claims"
-          }
+          },
+          "request": {}
         }
       },
       "semantics": {},
@@ -538,6 +808,20 @@
           "outputs": {
             "count": "effect.count",
             "rows": "effect.value"
+          },
+          "request": {
+            "key": {
+              "doc": "the bound key column's value: one text, number or boolean"
+            },
+            "match": {
+              "type": "object",
+              "doc": "columns of the bound table and the one text, number or boolean each equals -- with key, 4 columns at most"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "doc": "how many of the rows to sample, within the adapter's own ceiling"
+            }
           }
         }
       },

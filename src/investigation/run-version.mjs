@@ -17,7 +17,7 @@ import { randomBytes } from "node:crypto";
 import { EXCLUDED } from "../adapters/dispatch.mjs";
 import { Refused } from "../errors.mjs";
 import { canonicalJson, sha } from "../hash.mjs";
-import { workerFindings } from "../run/envelope.mjs";
+import { INTERRUPTED, isInterruption, workerFindings } from "../run/envelope.mjs";
 import { WORKER_API } from "../run/worker.mjs";
 import { maskValues, scrub } from "../scrub.mjs";
 import { current, withJournal } from "./act.mjs";
@@ -44,11 +44,15 @@ function heldBack(model, version) {
   return last?.outcome === "AMBIGUOUS" ? { outcome: "AMBIGUOUS", execution: last.execution, why: `the last dispatch of ${version} (${last.execution}) is AMBIGUOUS — what it did is unknown, and it is never sent again: a person reads back and decides` } : null;
 }
 
+// How many times one frozen version may run (settings limits.attempts): what context.budget shows a host, and what
+// attemptOf holds a version to.
+export const attemptsLimit = (settings) => settings?.limits?.attempts ?? 3;
+
 // One more attempt of the same frozen version, within the budget (doc §6.4): a version is never run
 // until it goes green.
 function attemptOf(w, v) {
   const attempt = current(w).starts.filter((s) => s.version === v.record.version).length + 1;
-  const most = w.settings?.limits?.attempts ?? 3;
+  const most = attemptsLimit(w.settings);
   if (attempt > most) throw new Refused(`${v.record.version} was run ${most} time(s), its budget (settings limits.attempts) — what the attempts came to is reported, never one more until it passes`);
   return attempt;
 }
@@ -129,11 +133,20 @@ export function lateEvaluated(w, start, back, request) {
   return evaluatedRun(w, dispatchOf(w), v, start.attempt, start.execution, request, back, { grants: request.grants ?? [] });
 }
 
+// What became of a worker that left no envelope, in the words of its own receipt (src/runtime/sandbox/dispatch.mjs
+// WORKER_NOW), when they say it NEVER ran: no receipt, so it was never created; created and never started; or removed
+// before it was started. Only these free an attempt that had grants to try again (RESULT NEVER_RAN, reconcile-runs.mjs).
+export const NEVER_RAN = ["none", "lost", "unstarted", "removed"];
+
+// Whether the attempt's worker ran: it left an envelope, so it did; its receipt says it never did; or nothing says --
+// null, never taken for "it did not" (a dispatch port that says nothing of its worker included).
+const ranOf = (r) => (r.envelope ? true : NEVER_RAN.includes(r.worker) ? false : null);
+
 // The host's own check, then the word RESULT gives it -- recorded as the run and its evaluation -- and, of a run the host
 // believed, where it stopped short and what it said there (`stopped`), with what that step's own match left out.
 function evaluatedRun(w, d, v, attempt, execution, request, r, p) {
   const findings = hostFindings(d, v, execution, request, r, p);
-  const result = resultOf({ status: r.envelope?.status ?? "BLOCKED", failure: r.envelope?.result?.failure ?? {}, envelope: findings, authority: v.obligation?.authority ?? "accepted", positiveFailed: positiveFailed(v, r), faultMissed: faultMissed(v, r) });
+  const result = resultOf({ status: r.envelope?.status ?? "BLOCKED", failure: r.envelope?.result?.failure ?? {}, envelope: findings, authority: v.obligation?.authority ?? "accepted", positiveFailed: positiveFailed(v, r), faultMissed: faultMissed(v, r), wrote: (p.grants ?? []).length > 0, ran: ranOf(r) });
   recorded(w, d, { v, attempt, execution }, r, result, findings);
   return { outcome: result.outcome, rule: result.rule, why: result.why, execution, findings, stopped: findings.length ? null : withExcluded(stoppedOf(v, r, request), v, r, request) };
 }
@@ -150,7 +163,7 @@ function evaluatedRun(w, d, v, attempt, execution, request, r, p) {
 // needs, and how it failed stays in the run's evidence. A run its runner stopped before any step (a case refused, a
 // precondition blocked: cli/run-case.mjs stopOf) said it in its envelope, and nowhere else.
 const STOPS = ["refused", "blocked"];
-const UNSTARTED = ["REFUSED", "BLOCKED"];
+const UNSTARTED = ["REFUSED", "BLOCKED", INTERRUPTED];
 const STOP_TEXT = 600;
 
 function stoppedOf(v, r, request) {
@@ -252,10 +265,14 @@ function hostFindings(d, v, execution, request, r, p) {
 
 // The run as the HOST holds it: a worker whose envelope did not hold said nothing the run record
 // repeats -- its status is BLOCKED and it proved nothing, whatever it claimed; and only the evidence
-// of an envelope the host believed is kept (`d.keep`), where the investigation's report finds it.
+// of an envelope the host believed is kept (`d.keep`), where the investigation's report finds it. A
+// worker stopped before its runner finished is believed for what it says -- that it never reached a
+// verdict -- so its run is BLOCKED too, because it was interrupted (src/run/envelope.mjs isInterruption).
 function recorded(w, d, { v, attempt, execution }, r, result, findings) {
   const believed = findings.length === 0;
-  const status = believed ? r.envelope.status : "BLOCKED";
-  w.store.append(w.id, "run", { id: nextId(current(w), "run"), case: v.record.case, status, proved: believed ? (r.envelope.result?.proved ?? null) : null, cause: believed ? null : "envelope", version: v.record.version, execution, attempt, evidence: believed ? (d.keep?.(r) ?? r.envelope.evidence ?? null) : null, case_digest: v.record.digest, authority: "draft" });
+  const status = believed && r.envelope.status !== INTERRUPTED ? r.envelope.status : "BLOCKED";
+  w.store.append(w.id, "run", { id: nextId(current(w), "run"), case: v.record.case, status, proved: believed ? (r.envelope.result?.proved ?? null) : null, cause: causeOf(believed, r.envelope), version: v.record.version, execution, attempt, evidence: believed ? (d.keep?.(r) ?? r.envelope.evidence ?? null) : null, case_digest: v.record.digest, authority: "draft" });
   w.store.appendOnce(w.id, "evaluated", { id: nextId(current(w), "evaluated"), eventId: eventIdOf("evaluated", execution, attempt, result.outcome), attempt, execution, obligation: v.obligation?.obligation ?? null, result: `res-${execution.slice(4, 24)}`, outcome: result.outcome, runner: status, cause: result.rule });
 }
+
+const causeOf = (believed, envelope) => (believed ? (isInterruption(envelope) ? "interrupted" : null) : "envelope");

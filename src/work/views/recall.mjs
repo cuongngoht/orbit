@@ -15,7 +15,10 @@ const said = (head, task) => new Set(task.toLowerCase().split(/[^a-z0-9-]+/)).ha
 
 const shared = (head, task) => tokens(head.objective).filter((t) => tokens(task).includes(t)).length;
 
-export const aboutTask = (head, task) => (head.root?.id ? said(head, task) : false) || shared(head, task) >= MIN_SHARED_WORDS;
+// The task names the work itself: its item's id as a word, or the work's or its requirement's id anywhere in it.
+export const namesWork = (head, task) => (head.root?.id ? said(head, task) : false);
+
+export const aboutTask = (head, task) => namesWork(head, task) || shared(head, task) >= MIN_SHARED_WORDS;
 
 function standingOf(w, head) {
   const where = standing(w, head.id);

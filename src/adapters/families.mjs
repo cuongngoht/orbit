@@ -17,6 +17,12 @@
 // (computing the occurrences an accepted schedule implies). `contractOnly` marks a family the
 // model REPRESENTS from 0.1.0 but no adapter is published for yet: an obligation on one is a
 // coverage gap with its reason, never dropped from the denominator (doc §5.6).
+//
+// An `observer` ref is bound only beside what an observer is ARMED on -- a channel or a queue
+// (src/runtime/sandbox/bindings.mjs, declarations.mjs) -- or by the await of one another step
+// armed. What a scheduler decided and what a worker did with each delivery are read by a CURSOR
+// through the component's own test hooks, which own no observer, so those operations bind none:
+// a ref generation accepted and preparation could never bind would block every run that named it.
 
 // The effects and bind kinds are leaf vocabulary (src/topology/vocab.mjs): a capability's own
 // declaration and the grant rows read them too, and neither may import this file.
@@ -42,7 +48,7 @@ export const FAMILIES = [
   ] },
   { id: "scheduler", doc: "the decisions a running scheduler makes", operations: [
     { ...op("trigger", "scheduler", ["schedule", "occurrence", "fixture"], ["trigger"], ["execution.ref", "occurrence.id", "occurrence.scheduledFor"]), accepted: { means: "execution.ref", template: "value-present" } },
-    op("observe", "scheduler", ["schedule", "observer"], ["read"], ["occurrence.id", "occurrence.scheduledFor", "occurrence.decision", "execution.ref", "cursor.through"], ["decisionReceipts"]),
+    op("observe", "scheduler", ["schedule"], ["read"], ["occurrence.id", "occurrence.scheduledFor", "occurrence.decision", "execution.ref", "cursor.through"], ["decisionReceipts"]),
   ] },
   { id: "schedule", doc: "the occurrences an accepted schedule contract implies, computed by Orbit", operations: [
     { ...op("expect", "schedule", ["schedule"], ["none"], ["occurrence.id", "occurrence.scheduledFor"]), selects: false },
@@ -54,7 +60,7 @@ export const FAMILIES = [
     { ...op("control", "workload", ["workload", "fixture"], ["control-workload"], ["execution.status"]), accepted: { means: "execution.status", template: "value-present" } },
   ] },
   { id: "worker", doc: "what a consumer or worker did with each delivery", operations: [
-    op("observe", "worker", ["workload", "observer"], ["read"], ["message.id", "delivery.attempt", "settlement.outcome", "terminal.reason", "execution.ref", "cursor.through"]),
+    op("observe", "worker", ["workload"], ["read"], ["message.id", "delivery.attempt", "settlement.outcome", "terminal.reason", "execution.ref", "cursor.through"]),
   ] },
   { id: "state", doc: "durable state read back below the interface", operations: [
     op("read", "state", ["state", "fixture"], ["read"], ["effect.count", "effect.value"]),
@@ -77,7 +83,7 @@ export const FAMILIES = [
   ] },
   { id: "workflow", contractOnly: true, doc: "durable multi-step processes", operations: [
     op("signal", "workflow", ["workload", "identity", "fixture"], ["trigger"], ["execution.ref", "execution.status"]),
-    op("observe", "workflow", ["workload", "observer"], ["read"], ["execution.ref", "execution.status", "execution.attempt"]),
+    op("observe", "workflow", ["workload"], ["read"], ["execution.ref", "execution.status", "execution.attempt"]),
   ] },
   { id: "webhook", contractOnly: true, doc: "callbacks received from outside", operations: [
     op("deliver", "webhook", ["endpoint", "identity", "fixture"], ["write"], ["response.status", "elapsed.ms"]),

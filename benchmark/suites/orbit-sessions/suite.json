@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "id": "orbit-sessions",
+  "version": "1.0.0",
+  "title": "Does memory make a second session better, and never worse?",
+  "cases": ["ORBIT-SES-001", "ORBIT-SES-002", "ORBIT-SES-003"]
+}

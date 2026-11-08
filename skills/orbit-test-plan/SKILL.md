@@ -1,13 +1,9 @@
 ---
 name: orbit-test-plan
 description: >
-  Decide WHAT to test before any test is written. Read the requirement and everything the
-  project already knows, separate what is known from what is assumed, ask only the questions
-  that change the design, then derive risk-ranked scenarios with acceptance criteria that carry
-  stable ids. The deliverable is one checkable plan per feature in its screen's folder that
-  plan-check holds to its own claims and that the case writer turns into JSON. Use when asked to
-  plan or design tests for a feature, screen, ticket or release, to review whether a suite is
-  complete, or when someone says "write tests for X" before any scenario has been agreed.
+  Decides what to test before any test is written: separates known from assumed, asks only what
+  changes the design, and writes one checkable, risk-ranked plan per feature. Use when asked to plan
+  or design tests, scenarios or coverage. To run agreed cases, use orbit-test-suite.
 argument-hint: <feature, screen or ticket to design tests for | "is our suite complete?">
 allowed-tools:
   - Read
@@ -23,6 +19,14 @@ user-invocable: true
 **Host binding:** On protocol v2, resolve the plugin root from this SKILL.md’s actual location and bind the host/protocol/hashed session supplied at startup on every Orbit shell invocation. Resolve command examples against that root; do not assume hook exports persist. Follow [the shared host contract](../../docs/hosts.md) for task stdin, runtime isolation and unavailable native capabilities. Use the supported native protocol for the selected host.
 
 # Design the tests before writing them
+
+**In short.** Decide WHAT to test before any test is written. Read the requirement and everything
+the project already knows, separate what is known from what is assumed, ask only the questions that
+change the design, then derive risk-ranked scenarios with acceptance criteria that carry stable ids.
+The deliverable is one checkable plan per feature in its screen's folder that plan-check holds to
+its own claims and that the case writer turns into JSON. Use when asked to plan or design tests for
+a feature, screen, ticket or release, to review whether a suite is complete, or when someone says
+"write tests for X" before any scenario has been agreed.
 
 Two jobs, kept apart on purpose:
 
@@ -169,6 +173,16 @@ There is no fixed list of questions to fire at somebody. Ask a question when the
 change what you design or whether a scenario can be verified at all — otherwise read, or write it
 down as an assumption and move on. Put them in **one** message (`AskUserQuestion` where the
 options are knowable), then stop asking and start deriving.
+
+**The plan is written in the turn that asks.** Start it first (`node <engine>/cli/qa-plan.mjs new
+<id> --screen=<screen> "Title"`, or `--no-screen --feature=<feature>` for a plan about no screen)
+and record every question in it as a `question` with what it `blocks`, every assumption as an
+`assumption`, and a contradiction as a `question` naming both sources — where `plan-check` holds
+them, and where a person who answers later finds them. Then derive everything they do not block,
+check it (section 8), and end the turn with the plan written and the questions put to the person.
+Never end it with the questions in prose alone and the plan promised for after a reply: a session
+nobody answers — a headless run, or one with no `AskUserQuestion` — has no next turn, and would
+leave nothing behind.
 
 These six topics are a **checklist for yourself**, to notice what you have not got. They are not
 a script:

@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "id": "real",
+  "about": "docs/refunds.md states the refund approval rule -- who may ask for a refund, who must approve one, and how much -- and nothing of it is built.",
+  "mutations": [
+    {
+      "id": "readme-refunds",
+      "file": "README.md",
+      "find": "- `src/ui.mjs` — an order as HTML.",
+      "replace": "- `src/ui.mjs` — an order as HTML.\n- `docs/refunds.md` — the refund approval rule: who may ask for a refund, who must approve one, and how much.",
+      "count": 1
+    }
+  ],
+  "files": [
+    {
+      "rel": "docs/refunds.md",
+      "lines": [
+        "# Refunds",
+        "",
+        "A customer may be given money back on an order that was SHIPPED. Refunds are asked for and approved through the API.",
+        "The refund approval rule below is the contract; it is not built yet.",
+        "",
+        "## Asking for a refund",
+        "",
+        "`POST /orders/<id>/refunds` with the body `{ \"amountMinor\": <n>, \"by\": { \"role\": \"<role>\" } }` asks for a refund of `n`",
+        "minor units. It is checked in this order:",
+        "",
+        "1. An order nobody has: 404.",
+        "2. Asked for by anyone but a `clerk` or a `manager` (or by nobody): 403.",
+        "3. An order that is not shipped: 409.",
+        "4. An amount that is not a whole number of minor units above 0, or that is more than what is left of the order's total",
+        "   once its approved and pending refunds are counted: 400.",
+        "5. Otherwise it is kept, and answers 201 with the refund -- its `id`, `orderId`, `amountMinor` and `state`:",
+        "   - a refund of at most 5,000 minor units (50.00) is `approved` at once;",
+        "   - a larger one is `pending`: it waits for a manager, whoever asked for it.",
+        "",
+        "Nothing is kept for a refund that is refused.",
+        "",
+        "## Approving a refund",
+        "",
+        "`POST /orders/<id>/refunds/<refund-id>/approve` with the body `{ \"by\": { \"role\": \"manager\" } }` approves a pending",
+        "refund. It is checked in this order:",
+        "",
+        "1. An order nobody has, or a refund that is not one of that order's: 404.",
+        "2. Approved by anyone but a `manager` (or by nobody): 403, and the refund stays as it was.",
+        "3. A refund that is not pending: 409.",
+        "4. Otherwise it answers 200 with the refund, now `approved`.",
+        "",
+        "Every other route keeps its contract."
+      ]
+    }
+  ],
+  "deletes": []
+}

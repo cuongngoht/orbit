@@ -8,12 +8,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { trace } from "../src/lifecycle/subscribers/trace.mjs";
-import { documented, headerOf, orbitCommands } from "../src/trace/commands.mjs";
+import { ATTRIBUTION_WORDS } from "../src/attribution.mjs";
+import { documented, headerOf, operations, orbitCommands } from "../src/trace/commands.mjs";
 import { createEmitter } from "../src/trace/emit.mjs";
 import { eventOf, readable } from "../src/trace/events.mjs";
-import { KEEP_DAYS, MAX_SHARD_BYTES, traceLog } from "../src/trace/log.mjs";
+import { KEEP_DAYS, MAX_SHARD_BYTES, RECENT_BYTES, traceLog } from "../src/trace/log.mjs";
 import { decisionFacts, promptFacts } from "../src/trace/prompt.mjs";
-import { turnsOf } from "../src/trace/projections/turns.mjs";
+import { ACTIVATION_VERDICTS, LINKS, activationOf } from "../src/trace/projections/activation.mjs";
+import { FOLLOW_VERDICTS, lastTurnOf, turnsOf } from "../src/trace/projections/turns.mjs";
 import { ruleOf, usageOf } from "../src/trace/projections/usage.mjs";
 import { fakeIo } from "./fakes/io.mjs";
 import { sealed } from "./home.mjs";
@@ -54,6 +56,38 @@ test("the log: one shard per day and host, capped ONCE, pruned past its retentio
   log.append(ev("turn.ended", {}, { at: "2026-09-24T02:00:00.000Z" }));
   const read = log.read({});
   assert.deepEqual(read.map((e) => e.type), ["turn.ended", "trace.dropped"], "torn lines dropped; the cap said once");
+});
+
+// Why three hook processes racing for one trail could never be a deterministic test (test/multi-host-runtime.test.mjs):
+// the writer is FAIL-OPEN, so a line whose writer cannot take the trail's lock costs that line and nothing else --
+// whether another writer held the lock past this writer's bounded backoff, or the disk kept refusing the lock directory.
+// A refusal for a MOMENT is waited out (0.5.0 review of B7, src/store/lock.mjs PASSING): Windows answers EPERM to a
+// mkdir that races another process removing the same directory, and that once cost the line. Once the lock is free, the
+// next line lands.
+const lockEperm = (io, mkdir, times) => {
+  const left = { n: times };
+  io.mkdir = (p) => (p.endsWith(".lock") && left.n-- > 0 ? (() => { throw Object.assign(new Error("EPERM"), { code: "EPERM" }); })() : mkdir(p));
+};
+
+test("a line whose writer cannot take the trail's lock is dropped, never thrown -- a moment's refusal is waited out, and the next one lands", () => {
+  const io = fakeIo();
+  const log = traceLog(rooms, io);
+  const lock = join(rooms.trace, ".lock");
+  io.dirs.add(lock);
+  io.write(join(lock, "owner.json"), JSON.stringify({ host: "another", pid: 2, token: "live" }));
+  assert.doesNotThrow(() => log.append(ev("turn.ended")));
+  assert.deepEqual(log.read({}), [], "held past the writer's backoff: the line is lost, the moment it describes is not");
+  io.remove(lock);
+  const mkdir = io.mkdir;
+  lockEperm(io, mkdir, 1);
+  log.append(ev("turn.ended"));
+  assert.equal(log.read({}).length, 1, "a lock directory the disk refused for a moment -- a release racing the mkdir -- is waited out: the line lands");
+  lockEperm(io, mkdir, Infinity);
+  assert.doesNotThrow(() => log.append(ev("turn.ended")));
+  assert.equal(log.read({}).length, 1, "one the disk keeps refusing costs that line, and never throws");
+  io.mkdir = mkdir;
+  log.append(ev("turn.ended"));
+  assert.equal(log.read({}).length, 2, "the next line, with the lock free, lands");
 });
 
 test("the emitter stamps what a producer never supplies, is a no-op when off, and a listener cannot stop an append", () => {
@@ -267,4 +301,148 @@ test("an agent launched by an agent names its parent; two starts of one skill ar
   assert.deepEqual(u.attribution.byAgent.find((r) => r.agent === "claude:y").skills, ["orbit-develop"]);
   assert.deepEqual(u.skills.map((s) => [s.id, s.invoked, s.runs]), [["orbit-develop", 3, 2]], "three starts, one delivered twice: two runs");
   assert.deepEqual([u.attribution.session.unknown, u.attribution.session.failed], [1, 0]);
+});
+
+// 0.5.0 (B22, ADR 0050): RouteDecision v3 reaches the trail as table words and ids -- the strategy's word and row, the
+// activation's path and id, the synthetic flag -- and never its reason or its command, which carry the engine's path.
+test("a v3 decision tells the trail its strategy, the path and id it named, and whether the host wrote the prompt -- nothing more", () => {
+  const decision = { version: 3, intent: { id: "development", confidence: "high" }, cues: ["implement"], requirements: [], graph: { nodes: [] }, selected: [], approval: [], blocked: [], missing: [], strategy: { word: "COORDINATED", row: "several-owners", because: "free text of a reason", shown: true }, activation: { path: "workflow", id: "orbit-help", how: "automation", invoke: "node /home/someone/plugin/cli/automation.mjs start" }, synthetic: false };
+  const facts = decisionFacts(decision, true);
+  assert.deepEqual([facts.strategy, facts.activation, facts.synthetic], [{ word: "COORDINATED", row: "several-owners" }, { path: "workflow", id: "orbit-help" }, false]);
+  assert.equal(/free text|someone|automation\.mjs/.test(JSON.stringify(facts)), false, "neither the reason nor the command");
+  const e = eventOf("prompt.submitted", { prompt: { chars: 9 }, ...facts, because: "sneaked" }, { id: "e-v3", at: "2026-11-05T00:00:00.000Z" });
+  assert.deepEqual(["strategy", "activation", "synthetic"].map((k) => k in e.data), [true, true, true]);
+  assert.equal("because" in e.data, false, "the allow-list keeps what it declares and nothing else");
+  assert.deepEqual(decisionFacts(null, false, true), { routing: "off", synthetic: true }, "with routing off, a host's own prompt is still said to be one");
+  assert.deepEqual(decisionFacts(null, false), { routing: "off" }, "and a person's is what it always was");
+  assert.equal("strategy" in decisionFacts({ ...decision, strategy: undefined, activation: undefined }, false), false, "a v2 decision carries no strategy");
+});
+
+// ---- 0.5.0 (B22 M3, ADR 0050): what a Stop hold counts, and the activation chain ------------------------------------
+
+test("a prompt's MARKS reach the trail as table words, with routing on or off, and only when there is one", () => {
+  const decision = { intent: { id: "general", confidence: "low" }, cues: [], requirements: [], graph: { nodes: [] }, selected: [], approval: [], blocked: [], missing: [] };
+  assert.deepEqual(decisionFacts(decision, false, false, ["halt"]).marks, ["halt"]);
+  assert.deepEqual(decisionFacts(null, false, false, ["halt", "command"]), { routing: "off", marks: ["halt", "command"] }, "routing off: still said, so a hold can tell a person said to stop");
+  assert.equal("marks" in decisionFacts(decision, false, false, []), false);
+  const e = eventOf("prompt.submitted", { prompt: { chars: 4 }, routing: "off", marks: ["halt"] }, { id: "e-m", at: "2026-11-05T00:00:00.000Z" });
+  assert.deepEqual(e.data.marks, ["halt"]);
+});
+
+test("turn.held keeps which workflow, which ready steps and which hold of the prompt -- never the reason's text", () => {
+  const e = eventOf("turn.held", { task: "tsk-0123456789ab", steps: ["qa"], count: 1, reason: "Orbit holds this turn: SENTINEL", because: "SENTINEL" }, { id: "e-h", at: "2026-11-05T00:00:00.000Z" });
+  assert.deepEqual(e.data, { task: "tsk-0123456789ab", steps: ["qa"], count: 1 });
+  assert.equal(readable({ ...e, data: { ...e.data, reason: "edited in" } }).data.reason, undefined);
+  assert.deepEqual(turnsOf([ev("prompt.submitted", { routing: "off" }), ev("turn.held", { task: "tsk-0123456789ab", steps: ["qa", "review"], count: 1 })])[0].steps.map((s) => [s.kind, s.label]), [["hold", "held for tsk-0123456789ab (qa, review)"]], "a hold is a step of the turn it held");
+});
+
+test("an OPERATION is kept only where the usage documents it after that subcommand: `goal step`, never an argument or a description", () => {
+  const header = headerOf(readFileSync(join(ROOT, "cli", "orbit.mjs"), "utf8"));
+  const words = new Set([...documented(header, "orbit"), ...operations(header, "orbit")]);
+  assert.ok(["goal start", "goal step", "goal status", "goal resume"].every((w) => words.has(w)));
+  const lookup = (rel) => (rel === "cli/orbit.mjs" ? words : null);
+  assert.deepEqual(orbitCommands("node /p/cli/orbit.mjs goal step goal-0123456789ab --json", lookup), [{ id: "cli/orbit", sub: "goal", op: "step" }]);
+  assert.deepEqual(orbitCommands("node /p/cli/orbit.mjs goal goal-0123456789ab", lookup), [{ id: "cli/orbit", sub: "goal" }], "an id after the subcommand is no operation");
+  assert.deepEqual(orbitCommands("node /p/cli/orbit.mjs goal step", () => documented(header, "orbit")), [{ id: "cli/orbit", sub: "goal" }], "a lookup that knows no operation answers what it always did");
+  for (const [file, name] of [["help.mjs", "help"], ["plan-check.mjs", "plan-check"], ["schema.mjs", "schema"], ["automation.mjs", "automation"], ["setup.mjs", "setup"]]) assert.deepEqual([...operations(headerOf(readFileSync(join(ROOT, "cli", file), "utf8")), name)], [], `${file}: a description a column away is no operation`);
+  const emitted = [];
+  trace.run({ event: "post-tool", tool: { kind: "command" }, command: "node /p/cli/orbit.mjs goal step goal-0123456789ab", ok: true }, { plugin: "orbit", env: {}, trace: () => ({ emit: (type, data) => emitted.push({ type, data }), lookup }) });
+  assert.deepEqual(emitted.map((e) => e.data), [{ orbit: "cli/orbit", sub: "goal", op: "step", ok: true }]);
+  assert.deepEqual(eventOf("command.ran", { orbit: "cli/orbit", sub: "goal", op: "step", ok: true }, { id: "e-o", at: "2026-11-05T00:00:00.000Z" }).data.op, "step");
+});
+
+test("the trail's one bounded read: this host's newest shards, their tails, and one session's lines alone", () => {
+  const io = fakeIo({ host: "laptop-a" });
+  const log = traceLog(rooms, io);
+  const at = (day, s) => `2026-11-0${day}T10:00:${String(s).padStart(2, "0")}.000Z`;
+  for (const [day, session, type] of [[1, "claude:s1", "turn.ended"], [4, "claude:s1", "prompt.submitted"], [5, "claude:s1", "command.ran"], [5, "claude:s2", "prompt.submitted"], [5, "claude:s1", "turn.held"]]) log.append(ev(type, {}, { at: at(day, seq % 60), session }));
+  io.files.set(join(rooms.trace, "2026-11-05-laptop-b.jsonl"), `${JSON.stringify(ev("turn.ended", {}, { at: at(5, 1), session: "claude:s1" }))}\n`);
+  assert.deepEqual(log.recent({ session: "claude:s1" }).map((e) => e.type), ["prompt.submitted", "command.ran", "turn.held"], "the two newest of THIS host's shards; another host's shard and older days are not read");
+  assert.deepEqual(log.recent({ session: "claude:s9" }), []);
+  assert.deepEqual(log.recent({}), [], "no session, no lines");
+  const shard = join(rooms.trace, "2026-11-05-laptop-a.jsonl");
+  io.files.set(shard, `${"x".repeat(RECENT_BYTES)}\n${io.files.get(shard)}`);
+  assert.deepEqual(log.recent({ session: "claude:s1" }).map((e) => e.type), ["prompt.submitted", "command.ran", "turn.held"], "only the tail is read: a long day's head is cut, whole lines kept");
+});
+
+test("the newest turn of one session is its last prompt and everything of that session after it", () => {
+  const events = [ev("prompt.submitted", { routing: "off" }), ev("command.ran", { orbit: "cli/automation", sub: "step", ok: true }), ev("prompt.submitted", { routing: "on" }), ev("tool.used", { tool: "Read", kind: "read", ok: true }), ev("tool.used", { tool: "Read", kind: "read", ok: true }, { session: "claude:other" })];
+  const last = lastTurnOf(events, "claude:s1");
+  assert.deepEqual([last.prompt.data.routing, last.events.map((e) => e.type)], ["on", ["tool.used"]]);
+  assert.equal(lastTurnOf(events.slice(1, 2), "claude:s1"), null, "no prompt of the session: nobody can say which turn this is");
+});
+
+// One turn of a session, as the hooks record it: the router's decision, then what the session did.
+const routedAs = (strategy, activation, selected = []) => ev("prompt.submitted", { prompt: { chars: 30 }, routing: "on", intent: "development", confidence: "high", selected, strategy, activation });
+const VIA = { "orbit-map-healer": ["orbit-ui-map", "orbit-test-suite"], "satellite-reader": ["satellite"] };
+const agentRan = (id, over = {}) => ev("agent.invoked", { id: `orbit:${id}`, ours: true, outcome: "started", ...over });
+
+test("the activation chain: five links, each from its own source with its basis, and the verdict extended by over-delegated alone", () => {
+  assert.deepEqual(LINKS.map((l) => l.link), ["suggested", "selected", "dispatched", "executed", "verified"]);
+  assert.deepEqual(LINKS.map((l) => l.basis), ["ORBIT_DECISION", "HOST_OBSERVED", "HOST_OBSERVED", "RUNTIME_BOUND", "OWNER_RECORD"]);
+  assert.ok(LINKS.slice(1, 4).every((l) => ATTRIBUTION_WORDS.includes(l.basis)), "the middle three are attribution words");
+  assert.deepEqual(ACTIVATION_VERDICTS, [...FOLLOW_VERDICTS, "over-delegated"]);
+  const events = [routedAs({ word: "DIRECT", row: "one-skill" }, { path: "skill", id: "orbit-develop" }, [{ kind: "skill", id: "orbit-develop" }]), ev("skill.invoked", { id: "orbit:orbit-develop", ours: true, outcome: "started" }), ev("skill.invoked", { id: "orbit:orbit-report", ours: true, outcome: "refused" }), ev("task.started", { task: "tsk-0123456789ab" }), ev("command.ran", { orbit: "cli/context", ok: true }), ev("turn.ended")];
+  const [t] = activationOf(events).turns;
+  assert.deepEqual([t.strategy, t.verdict.verdict, t.excess], [{ word: "DIRECT", row: "one-skill" }, "followed", []]);
+  assert.deepEqual([t.links.suggested.ids, t.links.selected.ids, t.links.dispatched.ids], [["orbit-develop"], ["orbit-develop", "orbit-report"], ["orbit-develop"]], "a call its switch refused was selected, never dispatched");
+  assert.deepEqual(t.links.executed.owners, [{ type: "task.started", id: "tsk-0123456789ab" }], "an owner's own event is the executed link; a command the hooks saw is not");
+  assert.deepEqual([t.links.suggested.source, t.links.selected.basis, t.links.executed.basis, t.links.verified.source], ["prompt.submitted", "HOST_OBSERVED", "RUNTIME_BOUND", "the work view (workViewOf), read back from the owners and handed in"]);
+});
+
+test("owner-verified comes ONLY from the work view handed in: a task the trail says finished is never verified by the trail", () => {
+  const events = [routedAs({ word: "DIRECT", row: "one-skill" }, { path: "skill", id: "orbit-engineer" }), ev("task.finished", { task: "tsk-0123456789ab", lifecycle: "COMPLETED" }), ev("turn.ended")];
+  const without = activationOf(events).turns[0].links.verified;
+  assert.deepEqual([without.verified, without.level, without.work], [false, null, null], "no view: nothing is verified, whatever the trail says");
+  const view = { work: "w-0123456789ab", lifecycle: { state: "REPORTED_DONE" }, evidence: { level: "verified", why: "task tsk-0123456789ab completed, as its own journal says" } };
+  const a = activationOf(events, { work: () => view });
+  assert.deepEqual([a.turns[0].links.verified.verified, a.turns[0].links.verified.work, a.turns[0].links.verified.basis], [true, "w-0123456789ab", "OWNER_RECORD"]);
+  assert.deepEqual(a.works.map((w) => [w.work, w.turns.length, w.links.verified.verified]), [["w-0123456789ab", 1, true]], "and per work");
+  const reported = activationOf(events, { work: () => ({ ...view, evidence: { level: "reported", why: "reported by the host" } }) }).turns[0].links.verified;
+  assert.deepEqual([reported.verified, reported.level], [false, "reported"], "a reported work is not a verified one");
+});
+
+test("over-delegated: a via agent with no parent in the turn, an agent no strategy path named, one agent type twice for one work -- never a mission's run", () => {
+  const verdictOf = (events) => activationOf(events, { via: VIA }).turns[0];
+  const skillTurn = routedAs({ word: "DIRECT", row: "one-skill" }, { path: "skill", id: "orbit-ui-test" }, [{ kind: "skill", id: "orbit-ui-test" }]);
+  const orphan = verdictOf([skillTurn, agentRan("orbit-map-healer")]);
+  assert.deepEqual([orphan.verdict.verdict, orphan.excess], ["over-delegated", [{ agent: "orbit-map-healer", why: "via-without-parent" }]]);
+  assert.match(orphan.verdict.say, /orbit-map-healer is dispatched only from its parent skill/);
+  assert.equal(verdictOf([skillTurn, ev("skill.invoked", { id: "orbit:orbit-ui-map", ours: true, outcome: "started" }), agentRan("orbit-map-healer")]).verdict.verdict, "diverged", "its parent ran: the agent is its parent's to dispatch, and the turn's verdict is the followed one");
+  assert.deepEqual(verdictOf([skillTurn, agentRan("orbit-failure-analyst")]).excess, [{ agent: "orbit-failure-analyst", why: "not-in-strategy" }]);
+  assert.deepEqual(verdictOf([routedAs({ word: "NONE", row: "conversational" }, { path: "none", id: null }), agentRan("orbit-qa-agent")]).excess, [{ agent: "orbit-qa-agent", why: "not-in-strategy" }], "a NONE turn names no agent");
+  assert.equal(verdictOf([routedAs({ word: "DIRECT", row: "one-agent" }, { path: "agent", id: "orbit-failure-analyst" }, [{ kind: "agent", id: "orbit-failure-analyst" }]), agentRan("orbit-failure-analyst")]).verdict.verdict, "followed", "the one agent the strategy named");
+  assert.deepEqual(verdictOf([routedAs({ word: "COORDINATED", row: "several-owners" }, { path: "workflow", id: "orbit-help" }), agentRan("orbit-qa-agent"), agentRan("orbit-qa-agent")]).excess, [{ agent: "orbit-qa-agent", why: "twice-for-one-work" }]);
+  assert.deepEqual(verdictOf([routedAs({ word: "COORDINATED", row: "several-owners" }, { path: "workflow", id: "orbit-help" }), agentRan("orbit-engineering-agent"), agentRan("orbit-qa-agent")]).excess, [], "a coordinated path dispatches its steps' agents: each once is accounted for");
+  const mission = [routedAs({ word: "SATELLITE", row: "mission" }, { path: "mission", id: "satellite" }), agentRan("satellite-reader", { run: "msn-0123456789ab/arn-1" }), agentRan("satellite-reader", { run: "msn-0123456789ab/arn-2" })];
+  assert.deepEqual(verdictOf(mission).excess, [], "a mission's runs are its mission's to account for, however many");
+  assert.deepEqual(verdictOf([routedAs(undefined, undefined), agentRan("orbit-qa-agent")]).excess, [], "no strategy recorded: nothing the strategy did not account for");
+  assert.deepEqual(verdictOf([skillTurn, agentRan("orbit-map-healer", { outcome: "refused" }), ev("agent.invoked", { id: "Explore", ours: false, outcome: "started" })]).excess, [], "a refused call and another plugin's agent are not Orbit's dispatches");
+});
+
+test("over-delegated across the turns of one work: one agent type dispatched in two turns of one work", () => {
+  const view = { work: "w-0123456789ab", lifecycle: { state: "IN_PROGRESS" }, evidence: { level: "observed", why: "seen" } };
+  const turnOne = [routedAs({ word: "COORDINATED", row: "several-owners" }, { path: "workflow", id: "orbit-help" }), agentRan("orbit-qa-agent"), ev("turn.ended")];
+  const turnTwo = [routedAs({ word: "RESUME", row: "resume" }, { path: "resume", id: "w-0123456789ab" }), agentRan("orbit-qa-agent"), ev("turn.ended")];
+  const a = activationOf([...turnOne, ...turnTwo], { work: () => view });
+  assert.deepEqual(a.turns.map((t) => t.excess), [[], []], "each turn alone is fine");
+  assert.deepEqual(a.works.map((w) => [w.work, w.turns.length, w.verdict.verdict]), [["w-0123456789ab", 2, "over-delegated"]]);
+});
+
+test("end to end through cli/trace.mjs: `activation` prints each link with its source and basis, and --json is the fold", () => {
+  const store = mkdtempSync(join(tmpdir(), "orbit-trail-activation-"));
+  const env = sealed({ ORBIT_STORE_DIR: store });
+  const hook = (file, input) => spawnSync(process.execPath, [join(ROOT, "cli", file)], { input: JSON.stringify({ session_id: "raw-a-1", cwd: store, ...input }), env, encoding: "utf8", timeout: 30000 });
+  hook("router-hook.mjs", { hook_event_name: "UserPromptSubmit", prompt: "find the locator that drifted on the orders screen" });
+  hook("learn-hook.mjs", { hook_event_name: "PreToolUse", tool_name: "Agent", tool_use_id: "toolu_1", tool_input: { subagent_type: "orbit:orbit-map-healer", prompt: "x" } });
+  hook("learn-hook.mjs", { hook_event_name: "Stop" });
+  const text = spawnSync(process.execPath, [join(ROOT, "cli", "trace.mjs"), "activation"], { env, encoding: "utf8", cwd: store });
+  assert.equal(text.status, 0, text.stderr);
+  assert.match(text.stdout, /^ACTIVATION  last 1 day\(s\) · 1 turn\(s\)/);
+  assert.match(text.stdout, /OVER-DELEGATED/);
+  assert.match(text.stdout, /selected orbit-map-healer → dispatched orbit-map-healer/);
+  assert.match(text.stdout, /verified: the work view \(workViewOf\), read back from the owners and handed in \(OWNER_RECORD\)/);
+  const json = JSON.parse(spawnSync(process.execPath, [join(ROOT, "cli", "trace.mjs"), "activation", "--json"], { env, encoding: "utf8", cwd: store }).stdout);
+  assert.deepEqual([json.version, json.turns.length, json.turns[0].verdict.verdict, json.turns[0].excess[0].why], [1, 1, "over-delegated", "via-without-parent"]);
+  assert.equal(json.turns[0].links.verified.verified, false, "no tracked work here: nothing verified");
 });

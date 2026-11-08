@@ -54,8 +54,16 @@ async function registerRun(ports, lw, step) {
   return { verdict: r.ok ? "satisfied" : "violated", because: r.ok ? undefined : clip(r.findings.map((f) => f.id).join(", ")), receipt: { domain: DOMAIN.SKILL, ref: r.ok ? r.pin : draft, outcome: r.ok ? r.status.toUpperCase() : "REFUSED", summary: r.ok ? registeredSummary(r) : clip(`refused: ${r.findings.map((f) => f.says).join("; ")}`) } };
 }
 
+// A change's QA step, run by the engine only when nothing the checkout declares can be started (steps.mjs `engine`,
+// 0.5.0, ADR 0053): there is no running change to investigate, so the step is SKIPPED and says why -- never passed, never
+// a verification satisfied, and never left out of the plan for nobody to see.
+export const QA_SKIPPED = "nothing this checkout declares can be started here, so there is no running change to investigate: QA was skipped, not passed";
+
+const qaSkipped = async () => ({ verdict: "skipped", receipt: null, because: QA_SKIPPED });
+
 export const ENGINE = {
   requirement: requirementRun,
+  qa: qaSkipped,
   context: contextRun,
   runtime: runtimeRun,
   regression: async (ports, lw) => fromChild(ports, lw),

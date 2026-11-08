@@ -57,6 +57,21 @@ test("search results carry the namespace of the repository they came from", () =
   assert.deepEqual(createSourceTree([a, b]).search("needle").map((h) => h.path).sort(), ["frontend::src/b.ts", "src/a.ts"]);
 });
 
+// A search answers the way the listing does: nothing matched is an empty list, and a primary checkout that could not
+// be searched at all is null -- never an empty list that reads as "nothing here uses it" (0.5.0: the import and usage
+// analysers, and a host's proposed symbols, each tell the two apart). A secondary that cannot answer costs only itself.
+test("a search the primary checkout cannot run is null, as its listing is; nothing matched is an empty list", () => {
+  const notGit = join(mkdtempSync(join(tmpdir(), "orbit-multi-")), "plain");
+  mkdirSync(notGit, { recursive: true });
+  const b = repo("frontend", { "src/b.ts": "needle" });
+  const broken = createSourceTree([notGit, b]);
+  assert.equal(broken.files(), null, "the primary is no checkout, so nothing could be listed");
+  assert.equal(broken.search("needle"), null, "and nothing could be searched, whatever a secondary holds");
+  const a = repo("backend", { "src/a.ts": "needle" });
+  assert.deepEqual(createSourceTree([a, b]).search("absentEverywhere"), [], "nothing matched is an answer");
+  assert.deepEqual(createSourceTree([a, notGit]).search("needle").map((h) => h.path), ["src/a.ts"], "a secondary that cannot answer costs only itself");
+});
+
 test("two checkouts with one directory name get distinct aliases", () => {
   const a = repo("app", { "x.ts": "1" });
   const b = repo("app", { "y.ts": "2" });

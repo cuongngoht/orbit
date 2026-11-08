@@ -1,13 +1,10 @@
 ---
 name: orbit-ui-map
 description: >
-  Fill and correct ui-tests/graph/ — the screens, controls and effects every case points into.
-  Use when a case needs a control the map does not have, when `query verify` names records that
-  drifted, when a screen is new, or when adopting the engine on a product whose map is still
-  empty. Two halves the map already distinguishes: read the checkout the project declared to get
-  candidates (`seen: "src"`), then confirm them in a live browser (`seen: "live"`). This skill
-  names no framework, router or test-id convention — it reads what your project declared and
-  holds you to it.
+  Fills and corrects the UI map (ui-tests/graph): screens, controls and effects, read from the
+  declared frontend source, then confirmed live. Use when a case needs a control the map lacks,
+  query verify reports drift, or a screen is new. To explore a screen nobody mapped, use
+  orbit-ui-explore.
 argument-hint: <screen id or route to map | "the map has no <control>" | "re-observe what verify flagged">
 allowed-tools:
   - Read
@@ -27,6 +24,13 @@ and run `query storage --json` before working with project files. `$DATA`, `$SCR
 
 
 # Fill the map, so nothing downstream has to explore
+
+**In short.** Fill and correct ui-tests/graph/ — the screens, controls and effects every case points
+into. Use when a case needs a control the map does not have, when `query verify` names records that
+drifted, when a screen is new, or when adopting the engine on a product whose map is still empty.
+Two halves the map already distinguishes: read the checkout the project declared to get candidates
+(`seen: "src"`), then confirm them in a live browser (`seen: "live"`). This skill names no
+framework, router or test-id convention — it reads what your project declared and holds you to it.
 
 Every other playbook here says *look it up, do not explore*. This is the one job allowed to look,
 and what it writes is what the others read. So the bar is **provenance, not coverage**: a record

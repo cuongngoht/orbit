@@ -4,17 +4,19 @@
 // the prompt it was handed is nowhere on disk afterwards.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { AUTOMATION_SCHEMA } from "../src/automation/settings.mjs";
 import { dispatch } from "../src/lifecycle/dispatch.mjs";
 import { router } from "../src/lifecycle/subscribers/router.mjs";
 import { mcpCatalog } from "../src/mcp/catalog.mjs";
 import { addFromCatalog } from "../src/mcp/manage.mjs";
 import { createMcpState, observedAs } from "../src/mcp/state.mjs";
-import { stateRooms } from "../src/store/control.mjs";
+import { hostSession } from "../src/memory/session.mjs";
+import { stateRooms, writeState } from "../src/store/control.mjs";
 import { realIo } from "../src/store/io.mjs";
 import { EMPTY_HOME, EMPTY_TMP, sealed } from "./home.mjs";
 
@@ -160,4 +162,125 @@ test("hooks.json wires UserPromptSubmit to the router and an async session-start
   const option = JSON.parse(readFileSync(join(REPO, ".claude-plugin", "plugin.json"), "utf8")).userConfig.prompt_router;
   assert.deepEqual([option.type, option.default], ["boolean", true]);
   for (const file of ["cli/router-hook.mjs", "cli/resources.mjs"]) assert.match(readFileSync(join(REPO, file), "utf8"), /"PROMPT_ROUTER", "prompt_router", true/, file);
+});
+
+// ---- router v3 (0.5.0, B22 M2, ADR 0050): how much Orbit, said in one line, or nothing at all ----------------
+
+const trailOf = (store) => readdirSync(join(stateRooms(store).trace)).filter((n) => n.endsWith(".jsonl")).flatMap((n) => readFileSync(join(stateRooms(store).trace, n), "utf8").trim().split("\n")).map((l) => JSON.parse(l));
+const lastPrompt = (store) => trailOf(store).filter((e) => e.type === "prompt.submitted").at(-1).data;
+const NOTIFICATION = JSON.parse(readFileSync(join(REPO, "test", "fixtures", "hooks", "claude", "UserPromptSubmit-task-notification.json"), "utf8")).input;
+
+test("a prompt the host wrote itself -- a background task's notification -- gets nothing, and the trail says so", (t) => {
+  const store = storeDir(t);
+  const r = hook(JSON.stringify({ ...NOTIFICATION, cwd: EMPTY_TMP }), { ORBIT_STORE_DIR: store });
+  assert.deepEqual([r.code, r.out, r.err], [0, "", ""], "its report said investigate, explore and regression, and it is still nobody's request");
+  const said = lastPrompt(store);
+  assert.deepEqual([said.routing, said.synthetic, said.strategy, said.activation, said.injected], ["on", true, { word: "NONE", row: "envelope" }, { path: "none", id: null }, false]);
+  assert.deepEqual([said.intent, said.selected], ["general", []], "it was not classified at all");
+  const off = storeDir(t);
+  hook(JSON.stringify({ ...NOTIFICATION, cwd: EMPTY_TMP }), { ORBIT_STORE_DIR: off, ORBIT_PROMPT_ROUTER: "off" });
+  assert.deepEqual([lastPrompt(off).routing, lastPrompt(off).synthetic], ["off", true], "with routing off the trail still knows it was the host's");
+});
+
+test("a greeting, a status question and an opt-out get no text at all, in either language, and the trail keeps the strategy", (t) => {
+  const store = storeDir(t);
+  for (const [prompt, row] of [["hello", "conversational"], ["how far along are we?", "conversational"], ["tới đâu rồi, report sao rồi?", "conversational"], ["without orbit, rename qty to quantity in orders.mjs", "opted-out"], ["không dùng orbit, đổi tên qty thành quantity", "opted-out"]]) {
+    const r = hook(payload(prompt), { ORBIT_STORE_DIR: store });
+    assert.deepEqual([r.code, r.out], [0, ""], prompt);
+    assert.deepEqual(lastPrompt(store).strategy, { word: "NONE", row }, prompt);
+  }
+});
+
+test("a request one specialist answers opens with ONE strategy line, then every line it had, and no coordination advice", (t) => {
+  const store = storeDir(t);
+  const context = hook(payload("check architecture of this project"), { ORBIT_STORE_DIR: store }).json.hookSpecificOutput.additionalContext;
+  assert.match(context, /^Orbit strategy: DIRECT -- one specialist provides architecture\.context: Skill orbit:orbit-architecture\.\nOrbit routing context\nIntent: architecture/);
+  assert.doesNotMatch(context, /Orbit coordinates a task by default/, "advice is for a coordinated workflow alone");
+  assert.ok(Buffer.byteLength(context) <= 2048);
+  assert.deepEqual(lastPrompt(store).activation, { path: "skill", id: "orbit-architecture" });
+});
+
+test("a change that spans a work item is COORDINATED, with its one command and the advice -- and neither once a person said the router may not", (t) => {
+  const store = storeDir(t);
+  const context = hook(payload("Implement PBI 4312"), { ORBIT_STORE_DIR: store }).json.hookSpecificOutput.additionalContext;
+  assert.match(context, /^Orbit strategy: COORDINATED -- a change several owners take in turn \(development, requirements\): orbit-help starts the workflow: node \S+cli[\\/]automation\.mjs start --for="<the task>"\./);
+  assert.match(context, /\nOrbit coordinates a task by default: a workflow could take this/);
+  assert.ok(Buffer.byteLength(context) <= 2048);
+  writeState(realIo(), join(stateRooms(store).automation, "settings.json"), { trigger: { arbitraryPrompt: false } }, AUTOMATION_SCHEMA);
+  const held = hook(payload("Implement PBI 4312"), { ORBIT_STORE_DIR: store });
+  assert.equal(lastPrompt(store).strategy.word, "DIRECT");
+  assert.doesNotMatch(held.out, /COORDINATED|Orbit coordinates a task by default/);
+});
+
+// The tracked work a person continues, in a REAL Git checkout and store, as cli/track.mjs left it.
+function trackedRepo(t) {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "orbit-router-resume-")));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const checkout = join(dir, "repo");
+  execFileSync("git", ["init", "-q", checkout], { env: sealed() });
+  execFileSync("git", ["-C", checkout, "-c", "user.email=a@b.c", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init"], { env: sealed() });
+  return { checkout, store: join(dir, "store") };
+}
+
+const tracking = (p, args) => JSON.parse(execFileSync(process.execPath, [join(REPO, "cli", "track.mjs"), ...args, "--json"], { cwd: p.checkout, env: sealed({ ORBIT_STORE_DIR: p.store, ORBIT_TRACE: "off", ORBIT_SESSION: hostSession("claude", "session-raw-1") }), encoding: "utf8" }));
+
+test("an open work this checkout tracked under the reference the prompt names is RESUMEd through its owner's read; a closed one is not", (t) => {
+  const p = trackedRepo(t);
+  const work = tracking(p, ["track", "the refund approval rule", "--ref=ORD-12"]).work;
+  tracking(p, ["link", work, "--workflow=tsk-0123456789ab"]);
+  const resumed = hook(payload("Continue ORD-12.", p.checkout), { ORBIT_STORE_DIR: p.store }).json.hookSpecificOutput.additionalContext;
+  assert.match(resumed, new RegExp(`^Orbit strategy: RESUME -- open work ${work} is governed by workflow tsk-0123456789ab: node \\S+cli[\\\\/]automation\\.mjs resume tsk-0123456789ab\\.`));
+  assert.deepEqual(lastPrompt(p.store).activation, { path: "resume", id: work });
+  const mine = hook(payload("continue", p.checkout), { ORBIT_STORE_DIR: p.store });
+  assert.match(mine.out, /RESUME/, "this session's own work, and the prompt said continue");
+  assert.equal(hook(payload("continue", p.checkout).replace("session-raw-1", "another-session"), { ORBIT_STORE_DIR: p.store }).out, "", "another session's work is not this one's to continue");
+  tracking(p, ["state", work, "--state=cancelled"]);
+  assert.equal(hook(payload("Continue ORD-12.", p.checkout), { ORBIT_STORE_DIR: p.store }).out, "", "a cancelled work is not picked up again");
+});
+
+// The lookup reads journals in the hot path, and must leave the store and the checkout exactly as it found them.
+const contents = (roots) => Object.fromEntries(files(roots).filter((f) => !/[\\/]\.git[\\/]/.test(f)).map((f) => [f, readFileSync(f, "utf8")]));
+
+test("looking for the open work a prompt names or continues reads the journals and writes nothing", (t) => {
+  const p = trackedRepo(t);
+  const work = tracking(p, ["track", "the refund approval rule", "--ref=ORD-12"]).work;
+  tracking(p, ["link", work, "--workflow=tsk-0123456789ab"]);
+  const before = contents([p.store, p.checkout]);
+  for (const prompt of ["Continue ORD-12.", "continue", "fix bug ORD-77 in the invoice export", "continue PBI-482"]) assert.equal(hook(payload(prompt, p.checkout), { ORBIT_STORE_DIR: p.store, ORBIT_TRACE: "off" }).code, 0, prompt);
+  assert.deepEqual(contents([p.store, p.checkout]), before, "no file created, removed or changed");
+});
+
+// ---- B22 M3: what a Stop hold reads of a prompt, and a person's own command ------------------------------------------
+
+test("a halt cue and a slash command reach the trail as table words, with routing on or off -- and a slash command gets no text at all", (t) => {
+  const store = storeDir(t);
+  hook(payload("stop, wait for me here"), { ORBIT_STORE_DIR: store });
+  assert.deepEqual(lastPrompt(store).marks, ["halt"]);
+  hook(payload("wait -- don't touch it yet"), { ORBIT_STORE_DIR: store, ORBIT_PROMPT_ROUTER: "off" });
+  assert.deepEqual([lastPrompt(store).routing, lastPrompt(store).marks], ["off", ["halt"]], "with routing off the trail still knows a person said to stop");
+  for (const prompt of ["/orbit-help fix the refund rule", "/orbit-help sửa quy tắc hoàn tiền", "/review the export endpoint"]) {
+    const r = hook(payload(prompt), { ORBIT_STORE_DIR: store });
+    assert.deepEqual([r.code, r.out], [0, ""], prompt);
+    assert.deepEqual([lastPrompt(store).strategy, lastPrompt(store).activation, lastPrompt(store).marks.includes("command")], [{ word: "NONE", row: "invoked" }, { path: "none", id: null }, true], prompt);
+  }
+  assert.equal(trailOf(store).some((e) => /fix the refund|hoàn tiền|export endpoint|wait for me/.test(JSON.stringify(e))), false, "table words, never the prompt");
+});
+
+// The explicit routing a host with no prompt event asks for (Antigravity, docs/hosts.md): the decision the hook would
+// make -- RouteDecision v3, over the same facts -- while the planner's own `route()` keeps answering v2 for Orbit
+// Control's Router Inspector.
+test("`resources.mjs route` answers what the prompt hook would: the strategy and the activation, per host", async (t) => {
+  const store = storeDir(t);
+  const ask = (args, extra = {}) => spawnSync(process.execPath, [OBSERVE, "route", ...args], { env: sealed({ ORBIT_STORE_DIR: store }), encoding: "utf8", cwd: EMPTY_TMP, timeout: 30000, ...extra });
+  const text = ask(["check architecture of this project"]);
+  assert.equal(text.status, 0, text.stderr);
+  assert.match(text.stdout, /^Orbit strategy: DIRECT -- one specialist provides architecture\.context: Skill orbit:orbit-architecture\.\nOrbit routing context\n/);
+  const coordinated = JSON.parse(ask(["Implement PBI 4312", "--json"]).stdout);
+  assert.deepEqual([coordinated.version, coordinated.strategy.word, coordinated.activation.path], [3, "COORDINATED", "workflow"]);
+  assert.match(ask(["hello"]).stdout, /would add nothing to this prompt -- strategy NONE: /);
+  const failing = "why did the last UI test run fail?";
+  assert.equal(JSON.parse(ask([failing, "--json"]).stdout).activation.path, "agent", "Claude Code dispatches the one agent");
+  assert.equal(JSON.parse(ask(["--task-stdin", "--json", "--host=antigravity", "--protocol=2"], { input: failing }).stdout).activation.path, "skill", "a host with no native agents is never named one");
+  const { ROUTE_DECISION_VERSION, route } = await import("../src/routing/resolve.mjs");
+  assert.deepEqual([ROUTE_DECISION_VERSION, route("check architecture", {}).version], [2, 2], "the planner's own answer is unchanged");
 });

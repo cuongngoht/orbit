@@ -54,8 +54,8 @@ export async function withLockAsync(dir, fn, io, busy) {
 }
 
 function acquire(lock, io, busy) {
-  for (const wait of io.backoff ?? BACKOFF) {
-    const token = took(lock, io);
+  for (const [attempt, wait] of (io.backoff ?? BACKOFF).entries()) {
+    const token = took(lock, io, attempt);
     if (token) return token;
     breakIfStale(lock, io);
     io.sleep(wait);
@@ -68,16 +68,24 @@ function acquire(lock, io, busy) {
 // end in a sentence that sends somebody looking for a writer that does not exist.
 const DENIED = ["EPERM", "EACCES", "EROFS"];
 
-function refusedWrite(e, lock) {
-  if (DENIED.includes(e?.code)) throw new Blocked(`${dirname(lock)} cannot be written here (${e.code}): a sandbox or the file's permissions refuse it, so nothing was written — this is not another session`);
+// EPERM is also what Windows answers to a mkdir that races another process REMOVING a directory of
+// the same name -- a release in flight, gone in milliseconds -- and every store writer takes this
+// lock, so reading it as a refusal cost a write (a trail line dropped; 0.5.0 review of B7). An
+// EPERM is therefore a refusal only once it PERSISTS: the first PASSING[code] attempts wait as for
+// a held lock, the next refuses -- tens of milliseconds, never the whole backoff. EACCES and EROFS
+// never pass, and are refused at once.
+export const PASSING = { EPERM: 3 };
+
+function refusedWrite(e, lock, attempt) {
+  if (DENIED.includes(e?.code) && attempt >= (PASSING[e.code] ?? 0)) throw new Blocked(`${dirname(lock)} cannot be written here (${e.code}): a sandbox or the file's permissions refuse it, so nothing was written — this is not another session`);
   return false;
 }
 
-function took(lock, io) {
+function took(lock, io, attempt) {
   try {
     io.mkdir(lock);
   } catch (e) {
-    return refusedWrite(e, lock);
+    return refusedWrite(e, lock, attempt);
   }
   const token = randomUUID();
   io.write(join(lock, OWNER), JSON.stringify({ host: io.host, pid: io.pid, at: io.now(), token }));
@@ -147,8 +155,9 @@ function release(lock, io, token) {
   }
 }
 
+// The last attempt, past every wait: an EPERM still there has persisted, and is the refusal it says.
 function lastAttempt(lock, io, busy) {
-  const token = took(lock, io);
+  const token = took(lock, io, Infinity);
   if (!token) throw new Blocked(busy ?? heldBy(lock, io));
   return token;
 }

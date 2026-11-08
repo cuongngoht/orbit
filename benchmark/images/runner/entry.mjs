@@ -12,13 +12,20 @@
 // through Orbit's own loop with the edits its control defines.
 //
 // A GOAL round (an engineering case) starts no task either: the goal is handed to Orbit's own goal entry, which starts
-// the workflow and the engineering task it needs. Orbit is the plugin at /work/orbit; /work/repo is the target.
+// the workflow and the engineering task it needs. Orbit is the plugin at /work/orbit; /work/repo is the target. A
+// WORKFLOW round (0.5.0, ADR 0053) is one too: its request goes to /orbit-help, whose coordinated workflow starts the
+// engineering task. A MISSION round (0.5.0, ADR 0055) is one as well: its goal goes to Orbit Satellite, whose implement
+// unit asks Orbit's autonomous engineering for the task -- the host is never to start one itself.
 //
 // A PROBE (`doctor --host`) is no round of work: after the same egress checks, Claude Code is asked one fixed question
 // with no plugin, no tool it may use and a budget of a few cents -- whether the host starts here, which version and model
 // it says it is, and whether the credential is accepted. It starts no task and reads nothing.
 //
+// The host's stream is written twice: to /work/out/host.jsonl (as it came, bounded -- REPORTED, a file the agent could
+// also write) and to this container's stdout, which the controller captures into the run's room (HOST_OBSERVED).
+//
 //   node /bench/entry.mjs     brief: /run/brief/brief.json      out: /work/out/{egress,start,runner}.json, host.jsonl
+//                                                               stdout: the host's stream, bounded (STDOUT_CAP)
 import { spawn, spawnSync } from "node:child_process";
 import { closeSync, openSync, readFileSync, writeFileSync, writeSync } from "node:fs";
 import { lookup } from "node:dns/promises";
@@ -41,7 +48,23 @@ export const DENIED = ["WebFetch", "WebSearch", ...["start", "cleanup", "remove-
 // What a goal round's host is told never to run: removing what its tasks left. Its tasks are its goal's to start.
 export const GOAL_DENIED = ["WebFetch", "WebSearch", ...["cleanup", "remove-workspace"].map((cmd) => `Bash(node /work/orbit/cli/autonomous-engineering.mjs ${cmd}:*)`)];
 
-const isGoal = (b) => b.kind === "engineering";
+// What a mission round's host is told never to run besides (0.5.0, ADR 0055): starting an engineering task by hand. A
+// mission's implement unit asks for the one it needs, through Satellite's own provider, so a change made in a task started
+// any other way is no mission's.
+export const MISSION_DENIED = [...GOAL_DENIED, "Bash(node /work/orbit/cli/autonomous-engineering.mjs start:*)"];
+
+const isGoal = (b) => ["engineering", "workflow", "mission"].includes(b.kind);
+
+const isMission = (b) => b.kind === "mission";
+
+// An ACTIVATION round (0.5.0, B22 M4): a prompt that names no skill, handed to the host as a person would type it, over
+// a writable checkout of the target -- nothing started for it, nothing told of Orbit. What the host is never allowed is
+// only what no round may do (the web); whatever else it does is what the case's judge reads.
+export const isActivation = (b) => b.kind === "activation";
+
+export const ACTIVATION_DENIED = ["WebFetch", "WebSearch"];
+
+const deniedOf = (b) => (isActivation(b) ? ACTIVATION_DENIED : isMission(b) ? MISSION_DENIED : isGoal(b) ? GOAL_DENIED : DENIED);
 
 export const isProbe = (b) => b.kind === "probe";
 
@@ -101,7 +124,7 @@ export const startArgs = (b) => ["start", b.objective, `--attempts=${b.attempts}
 
 // A round that starts no task of its own: a QA round (its investigation is open beside the controller), a goal round
 // (its goal starts what it needs), or a later round (its task already exists).
-const noStart = (b) => (isProbe(b) ? { task: null, started: false, probe: true } : isQa(b) ? { task: null, started: false, investigation: b.investigation } : isGoal(b) ? { task: null, started: false, goal: true } : b.task ? { task: b.task, started: false } : null);
+const noStart = (b) => (isProbe(b) ? { task: null, started: false, probe: true } : isQa(b) ? { task: null, started: false, investigation: b.investigation } : isGoal(b) ? { task: null, started: false, goal: true } : isActivation(b) ? { task: null, started: false, activation: true } : b.task ? { task: b.task, started: false } : null);
 
 function taskOf(b, env) {
   if (noStart(b)) return noStart(b);
@@ -115,13 +138,23 @@ function taskOf(b, env) {
 // A QA round's host also reads the application's public material, and no engineering task is started for it.
 const isQa = (b) => b.kind === "qa";
 
-export const hostArgs = (b) => ["-p", "--output-format", "stream-json", "--verbose", "--plugin-dir", pluginOf(b), "--permission-mode", "dontAsk", "--allowedTools", isQa(b) ? QA_TOOLS : TOOLS, "--disallowedTools", (isGoal(b) ? GOAL_DENIED : DENIED).join(","), "--setting-sources", "user", "--strict-mcp-config", "--no-session-persistence", "--add-dir", PATHS.store, ...(isQa(b) ? ["--add-dir", PATHS.target] : []), ...(b.model ? ["--model", b.model] : []), ...(b.usd > 0 ? ["--max-budget-usd", String(b.usd)] : [])];
+// The plugin the host loads -- none at all for an arm with no Orbit (0.5.0, B23), so no Orbit hook fires and no trail is
+// written -- and a cap on its turns when the brief names one.
+const pluginArgs = (b) => (b.arm === "none" ? [] : ["--plugin-dir", pluginOf(b)]);
+
+const turnArgs = (b) => (Number.isInteger(b.maxTurns) && b.maxTurns > 0 ? ["--max-turns", String(b.maxTurns)] : []);
+
+// The model the host runs and -- beside it (0.5.0) -- the effort it runs at, as the controller asked them; an effort is a
+// level's word, never an option of its own.
+const modelArgs = (b) => [...(b.model ? ["--model", b.model] : []), ...(/^[a-z]{1,16}$/.test(String(b.effort ?? "")) ? ["--effort", b.effort] : [])];
+
+export const hostArgs = (b) => ["-p", "--output-format", "stream-json", "--verbose", ...pluginArgs(b), ...turnArgs(b), "--permission-mode", "dontAsk", "--allowedTools", isQa(b) ? QA_TOOLS : TOOLS, "--disallowedTools", deniedOf(b).join(","), "--setting-sources", "user", "--strict-mcp-config", "--no-session-persistence", "--add-dir", PATHS.store, ...(isQa(b) ? ["--add-dir", PATHS.target] : []), ...modelArgs(b), ...(b.usd > 0 ? ["--max-budget-usd", String(b.usd)] : [])];
 
 // What a probe's host may do: nothing but answer. Every tool is denied by name and none is allowed, so `dontAsk` refuses
 // whatever else it reaches for; it loads no plugin, no MCP server and no session it could resume.
 export const PROBE_DENIED = ["Bash", "Edit", "Write", "Read", "Glob", "Grep", "WebFetch", "WebSearch", "Agent", "Skill", "TodoWrite", "NotebookEdit"];
 
-export const probeArgs = (b) => ["-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "dontAsk", "--disallowedTools", PROBE_DENIED.join(","), "--setting-sources", "user", "--strict-mcp-config", "--no-session-persistence", ...(b.model ? ["--model", b.model] : []), "--max-budget-usd", String(b.usd > 0 ? b.usd : 0.05)];
+export const probeArgs = (b) => ["-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "dontAsk", "--disallowedTools", PROBE_DENIED.join(","), "--setting-sources", "user", "--strict-mcp-config", "--no-session-persistence", ...modelArgs(b), "--max-budget-usd", String(b.usd > 0 ? b.usd : 0.05)];
 
 // What the host printed, kept as it came up to `cap` bytes, and the last 64 KiB always -- where its result line is.
 export function cappedSink(file, cap) {
@@ -137,6 +170,32 @@ function keptChunk(fd, s, chunk, cap) {
   s.tail = Buffer.concat([s.tail, chunk]).subarray(-65536);
 }
 
+// The same stream on this container's stdout too (0.5.0): the controller captures it there, into the run's room and
+// outside every mount this container writes -- the host's stream as the controller OBSERVED it, beside the copy above
+// that the agent could also write. Bounded below what the controller's process port reads of one stream (16 MiB, past
+// which it stops the container), and, when cut, closed with the stream's last 64 KiB, where its result line is. Nothing
+// else of this entry is ever printed on stdout.
+export const STDOUT_CAP = 15 * 1024 * 1024;
+
+export function teeSink(cap, out = process.stdout) {
+  const s = { bytes: 0, cut: false };
+  return { s, write: (chunk) => teedChunk(out, s, chunk, cap), close: (tail) => (s.cut ? out.write(Buffer.concat([Buffer.from("\n"), tail])) : null) };
+}
+
+function teedChunk(out, s, chunk, cap) {
+  const room = Math.max(0, Math.min(cap - s.bytes, chunk.length));
+  if (room > 0) out.write(chunk.subarray(0, room));
+  Object.assign(s, { bytes: s.bytes + room, cut: s.cut || room < chunk.length });
+}
+
+const sinksOf = (b) => ({ out: cappedSink(`${PATHS.out}/host.jsonl`, b.outputBytes), err: cappedSink(`${PATHS.out}/host.err`, 1024 * 1024), tee: teeSink(Math.min(b.outputBytes ?? STDOUT_CAP, STDOUT_CAP)) });
+
+function closedSinks(sinks) {
+  [sinks.out, sinks.err].forEach((x) => x.close());
+  sinks.tee.close(sinks.out.s.tail);
+  writeFileSync(`${PATHS.out}/host-tail.jsonl`, sinks.out.s.tail);
+}
+
 // What runs as the host: Claude Code with its flags -- or, for a control, the scripted host on the round's task.
 const HOST_PROGRAMS = [[isScripted, "/bench/scripted.mjs"], [isSession, "/bench/session.mjs"]];
 
@@ -144,18 +203,17 @@ export const hostCommand = (b, task) => ((p) => (p ? [process.execPath, [p[1], t
 
 const hosted = (b, env, sinks, task) => new Promise((resolve) => {
   const child = spawn(...hostCommand(b, task), { cwd: PATHS.repo, env, stdio: ["pipe", "pipe", "pipe"] });
-  child.stdout.on("data", sinks.out.write);
+  child.stdout.on("data", (chunk) => (sinks.out.write(chunk), sinks.tee.write(chunk)));
   child.stderr.on("data", sinks.err.write);
   child.on("error", (e) => resolve({ exit: null, signal: null, error: e.code ?? String(e.message) })).on("close", (exit, signal) => resolve({ exit, signal }));
   child.stdin.on("error", () => null).end(b.prompt);
 });
 
 async function round(b, env, task) {
-  const sinks = { out: cappedSink(`${PATHS.out}/host.jsonl`, b.outputBytes), err: cappedSink(`${PATHS.out}/host.err`, 1024 * 1024) };
+  const sinks = sinksOf(b);
   const ran = await hosted(b, env, sinks, task);
-  [sinks.out, sinks.err].forEach((x) => x.close());
-  writeFileSync(`${PATHS.out}/host-tail.jsonl`, sinks.out.s.tail);
-  return { ...ran, hostBytes: sinks.out.s.bytes, truncated: sinks.out.s.cut };
+  closedSinks(sinks);
+  return { ...ran, hostBytes: sinks.out.s.bytes, truncated: sinks.out.s.cut, teed: { bytes: sinks.tee.s.bytes, cut: sinks.tee.s.cut } };
 }
 
 // Why a round runs no host: its network did not hold, or its one engineering task does not exist.
@@ -166,7 +224,7 @@ async function main() {
   const egress = await egressFor(b, process.env);
   const t = egress.holds ? taskOf(b, process.env) : { task: b.task ?? null, started: false };
   written("start.json", { ...t, egress, round: b.round, at: new Date().toISOString() });
-  written("runner.json", { round: b.round, task: t.task, egress, startedAt: new Date().toISOString(), ...(egress.holds && (t.task || isQa(b) || isGoal(b) || isProbe(b)) ? await round(b, process.env, t.task) : notRun(egress, t)), endedAt: new Date().toISOString() });
+  written("runner.json", { round: b.round, task: t.task, egress, startedAt: new Date().toISOString(), ...(egress.holds && (t.task || isQa(b) || isGoal(b) || isProbe(b) || isActivation(b)) ? await round(b, process.env, t.task) : notRun(egress, t)), endedAt: new Date().toISOString() });
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) main().catch((e) => (process.stderr.write(`entry failed: ${e?.message ?? e}\n`), (process.exitCode = 3)));

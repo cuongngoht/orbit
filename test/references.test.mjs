@@ -127,3 +127,30 @@ test("the analyst cannot write, and neither agent can edit the map in place", ()
   const doctor = tools(join("agents", "orbit-dsl-doctor.md"));
   assert.ok(doctor.includes("Edit") && doctor.includes("Write"), "the doctor repairs a case file, so it needs both");
 });
+
+// Withholding Write and Edit is not the whole of "changes nothing": the analyst keeps Bash to run the engine, and no host
+// narrows an agent's Bash to a pattern (docs/audit/0.5.0-activation-baseline.md). So its own definition holds the line --
+// the engine's read commands, run as themselves, and every file read through a tool that cannot write -- and every
+// command it shows is one that line allows. The 0.5.0 precheck's ORBIT-ACT-010 (bnr-2bc3599c9c63): an analyst never told
+// listed, found, catted and read git's log through Bash, and could no longer show it had changed nothing.
+test("the analyst's shell runs only the engine's read commands it names, and every file is read through a tool that cannot write", () => {
+  const analyst = text(join("agents", "orbit-failure-analyst.md")).replace(/\s+/g, " ");
+  assert.match(analyst, /every Bash call is one of the engine's read commands this playbook names/, "the analyst never says what its shell is for");
+  assert.match(analyst, /never `ls`, `find`, `cat`, `git`/, "the analyst is never told which shell reads are not its own");
+  assert.match(analyst, /Read, .*Glob.* Grep/, "the analyst is never told how it reads a file instead");
+  const shown = [...analyst.matchAll(/node <engine>\/cli\/([a-z-]+\.mjs(?: [a-z]+)?)/g)].map((m) => m[1]);
+  assert.ok(shown.length >= 5, "the analyst's commands are not being read");
+  for (const c of shown) assert.ok(c.startsWith("query.mjs") || c === "learn.mjs recall", `the analyst shows ${c}, which its shell's own line does not allow`);
+});
+
+// A test plan is written in the turn that asks its questions, and they are the plan's own. The 0.5.0 precheck's
+// ORBIT-ACT-003 (bnr-da67b3eaa96f): a host planning a screen's tests in a session nobody answered asked its questions in
+// prose, promised the plan for once someone replied, and left none. The step that asks starts the plan.
+test("the test planner starts the plan in the step that asks, and keeps its questions in it, answered or not", () => {
+  const playbook = text(join("skills", "orbit-test-plan", "SKILL.md"));
+  const asking = playbook.slice(playbook.indexOf("## 2."), playbook.indexOf("## 3.")).replace(/\s+/g, " ");
+  assert.match(asking, /qa-plan\.mjs new/, "the step that asks never starts the plan");
+  assert.match(asking, /The plan is written in the turn that asks/, "the step that asks lets the plan wait for a reply");
+  assert.match(asking, /record every question in it as a `question` with what it `blocks`/, "the questions are left in prose");
+  assert.match(asking, /a session nobody answers/, "a session with nobody to answer is never named");
+});

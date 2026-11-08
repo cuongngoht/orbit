@@ -3,7 +3,9 @@
 // application. Each row of the credit and verdict tables on its own, and the journal read the way the engine wrote it.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { creditOf, designOf, judgedQa, outcomesOf, shapesOf, toConfirm } from "../benchmark/lib/qa/judge.mjs";
+import { CORRECTABLE, creditOf, designOf, judgedQa, outcomesOf, refusalsOf, shapesOf, toConfirm } from "../benchmark/lib/qa/judge.mjs";
+import { admitted } from "../benchmark/lib/qa/relay.mjs";
+import { RELAY_REASONS } from "../benchmark/lib/core/tools.mjs";
 
 const SHAPES = ["response-conforms", "permission-enforced", "persisted-after-write"];
 
@@ -53,6 +55,67 @@ test("on the clean application, nothing tested is no pass: it must have tested w
   assert.equal(judgedQa(t, got({ "response-conforms": "SATISFIED", "permission-enforced": "SATISFIED" }), {}, { minCoverage: 0.5, cleanIsPlanted: true }).verdict, "PASS");
   assert.equal(judgedQa(t, got({ "response-conforms": "CONTRADICTED", "permission-enforced": "SATISFIED" }), {}, { minCoverage: 0.5, cleanIsPlanted: true }).verdict, "FAIL");
   assert.deepEqual(toConfirm(got({ "response-conforms": "CONTRADICTED" }), true), [], "the clean application is never asked to confirm itself");
+});
+
+// ---- refused calls (0.5.0, backlog B9) -----------------------------------------------------------------------------------
+//
+// A case that plants calls the relay refuses holds its host, besides, to how it met them -- read off the relay's log, each
+// line as the relay keeps it: no refused call sent again past the case's bound, and every call refused for how it was
+// written corrected by a later request of its subcommand that the relay admitted.
+
+const INV = "inv-0123456789ab";
+
+// One line of the relay's log for a request, as the relay would admit or refuse it -- and, for one it admitted, the exit
+// and first line the engine answered.
+const lineOf = (argv, o = {}) => ((a) => ({ sub: a.help?.sub ?? argv[0] ?? null, ...(a.help ? { help: true } : {}), refused: a.refused ?? null, exit: a.refused ? 2 : (o.exit ?? 0), ...(o.why ? { why: o.why } : {}) }))(admitted({ argv, stdin: "" }, INV));
+
+const STALE_CONTEXT = ["context", "--investigation=inv-5e55d0a1ce4f", "--json"];
+const STALE_FINISH = ["finish", "--investigation=inv-5e55d0a1ce4f", "--reason=done"];
+
+const CLEAN = truth();
+const ALL_SATISFIED = got({ "response-conforms": "SATISFIED", "permission-enforced": "SATISFIED", "persisted-after-write": "SATISFIED" });
+
+const judgedWith = (lines, repeats = 1) => judgedQa(CLEAN, ALL_SATISFIED, {}, { minCoverage: 0.5, cleanIsPlanted: true, refusals: { repeats, lines } });
+
+test("a host that reads why each planted call was refused and corrects it passes; one that never met a refusal passes too", () => {
+  const recovered = [lineOf(STALE_CONTEXT), lineOf(STALE_FINISH), lineOf(["context"]), lineOf(["step"]), lineOf(["finish", "--why=done"])];
+  const j = judgedWith(recovered);
+  assert.deepEqual([j.verdict, j.refusals.refused, j.refusals.repeated, j.refusals.uncorrected], ["PASS", 2, [], []]);
+  assert.deepEqual([judgedWith([lineOf(["context"]), lineOf(["finish"])]).verdict, judgedWith([]).refusals.refused], ["PASS", 0], "nothing refused: nothing to recover from");
+  assert.equal(judgedQa(CLEAN, ALL_SATISFIED, {}, { minCoverage: 0.5, cleanIsPlanted: true }).refusals, null, "a case that plants none is held to none");
+});
+
+test("a refused call sent again past the case's bound fails, whatever else held -- and the bound is the case's", () => {
+  const thrice = [lineOf(STALE_CONTEXT), lineOf(STALE_CONTEXT), lineOf(STALE_CONTEXT), lineOf(["context"]), lineOf(["finish"])];
+  const j = judgedWith(thrice, 1);
+  assert.deepEqual([j.verdict, j.why], ["FAIL", "a refused call was sent again past the case's bound: its host did not read why it was refused"]);
+  assert.deepEqual(j.refusals.repeated.map((x) => [x.call, x.sent]), [["context", 3]]);
+  assert.match(j.refusals.repeated[0].why, /names another investigation: this run's is inv-0123456789ab; --json takes no --json here/);
+  assert.equal(judgedWith(thrice, 2).verdict, "PASS", "sent again twice is within a bound of two");
+  assert.equal(judgedWith(thrice.slice(1), 1).verdict, "PASS", "sent again once is within a bound of one");
+  const engineRefused = [lineOf(["reproduce", "--finding=fnd-7"], { exit: 2, why: `fnd-7 is not a finding of ${INV}` }), lineOf(["reproduce", "--finding=fnd-7"], { exit: 2, why: `fnd-7 is not a finding of ${INV}` }), lineOf(["reproduce", "--finding=fnd-7"], { exit: 2, why: `fnd-7 is not a finding of ${INV}` })];
+  assert.equal(judgedWith(engineRefused, 1).verdict, "FAIL", "a ref that does not exist, refused by the engine, counts as the same refused call");
+  const blocked = Array.from({ length: 4 }, () => lineOf(["reconcile"], { exit: 3, why: "BLOCKED a dispatch is still within its deadline" }));
+  assert.equal(judgedWith(blocked, 0).verdict, "PASS", "waiting out what the environment blocked is no refusal to read");
+  assert.equal(judgedWith(Array.from({ length: 4 }, () => lineOf(["context", "--help"])), 0).verdict, "PASS", "a help probe is answered, never refused");
+});
+
+test("a call refused for how it was written that is never corrected fails; one the relay does not carry is never correctable", () => {
+  const unfinished = [lineOf(STALE_CONTEXT), lineOf(STALE_FINISH), lineOf(["context"]), lineOf(["step"])];
+  const j = judgedWith(unfinished);
+  assert.deepEqual([j.verdict, j.refusals.uncorrected.map((x) => x.call)], ["FAIL", ["finish"]]);
+  assert.equal(j.why, "a call the relay refused for how it was written was never corrected: no later request of its subcommand was admitted");
+  assert.equal(judgedWith([...unfinished, lineOf(["finish", "--help"])]).verdict, "FAIL", "a help probe of it corrects nothing");
+  assert.equal(judgedWith([...unfinished, lineOf(["finish", "--why=done"], { exit: 2, why: `${INV} is already completed` })]).verdict, "PASS", "admitted is corrected, whatever the engine then answered");
+  assert.equal(judgedWith([lineOf(["plan", "--objective=x"]), lineOf(["context"])]).verdict, "PASS", "a subcommand the relay does not carry cannot be written right: the bound alone holds it");
+});
+
+test("a refusal is correctable by the reason the relay gave, and every correctable reason is a row of the relay's own reasons", () => {
+  const reasons = RELAY_REASONS.map((r) => r.reason);
+  assert.ok(CORRECTABLE.every((r) => reasons.includes(r)), "never a reason the relay does not give");
+  assert.deepEqual(reasons.filter((r) => !CORRECTABLE.includes(r)), ["NOT_A_REQUEST", "NOT_RELAYED", "HELP", "OTHER"]);
+  const r = refusalsOf([lineOf(["show", "inv-1"]), lineOf(["show", "--json=yes"]), lineOf(["report", "--out=/x"]), lineOf(["context"], { exit: 0 })], 0);
+  assert.deepEqual(r.uncorrected.map((x) => x.call), ["show", "report"], "words, a value and a flag; each one subcommand, said once");
 });
 
 // A journal as the engine writes one: obligations by shape, a generate decision, the design and version it froze,

@@ -1,12 +1,10 @@
 ---
 name: orbit-ui-test
 description: >
-  Run or author a UI test case written as JSON in machine-store drafts or existing regression cases with the orbit
-  engine: one command drives the whole case through playwright-cli, verifies UI + API + SQL,
-  and captures evidence on failure. Use when asked to test a screen or flow end to end, to add
-  a test case, or to find which screen/control/path to use from the UI map. Project-specific
-  traps and preflight rules live in the consuming repo's own playbook; this skill is the
-  engine's contract.
+  Runs or authors ONE JSON UI test case with the Orbit engine: one command drives it through
+  playwright-cli and verifies UI, API and SQL, with evidence on failure. Use to test one flow end to
+  end, add a case, or find which screen, control or path to use. For a set of cases, use
+  orbit-test-suite.
 argument-hint: <case id | "add a case for …" | screen or control to look up>
 allowed-tools:
   - Read
@@ -21,6 +19,13 @@ user-invocable: true
 **Host binding:** On protocol v2, resolve the plugin root from this SKILL.md’s actual location and bind the host/protocol/hashed session supplied at startup on every Orbit shell invocation. Resolve command examples against that root; do not assume hook exports persist. Follow [the shared host contract](../../docs/hosts.md) for task stdin, runtime isolation and unavailable native capabilities. Use the supported native protocol for the selected host.
 
 # Drive the UI from a JSON case
+
+**In short.** Run or author a UI test case written as JSON in machine-store drafts or existing
+regression cases with the orbit engine: one command drives the whole case through playwright-cli,
+verifies UI + API + SQL, and captures evidence on failure. Use when asked to test a screen or flow
+end to end, to add a test case, or to find which screen/control/path to use from the UI map.
+Project-specific traps and preflight rules live in the consuming repo's own playbook; this skill is
+the engine's contract.
 
 run from anywhere inside the project (the engine finds `$DATA/` by walking up, or through
 `ORBIT_UI_TESTS`).

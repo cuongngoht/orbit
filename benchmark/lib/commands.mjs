@@ -3,28 +3,41 @@
 // reads the environment or the command line itself.
 //
 //   COMMANDS[name] = { run(h, args) -> result, say(result) -> text, exit?(result) -> code }
+import { randomBytes } from "node:crypto";
 import { cpSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { Blocked, Refused } from "../../src/errors.mjs";
+import { short } from "../../src/hash.mjs";
 import { flag, has, words } from "../../src/learn/args.mjs";
 import { docker } from "../../src/runtime/isolation/docker.mjs";
 import { madeCheckout } from "./core/checkout.mjs";
-import { contextOf, dockerDeps, engineOf, fixtureEntries, frozenRun, resumedRun, treeOf, userOf, variantEntries, withSpec } from "./core/context.mjs";
+import { contextOf, dockerDeps, engineOf, fixtureEntries, freshRoom, frozenRun, resumedRun, treeOf, userOf, variantEntries, withSpec } from "./core/context.mjs";
+import { keptOr, plannedRuns, runOfControl } from "./core/controlset.mjs";
 import { probedHost } from "./core/probe.mjs";
 import { cleaned, leftovers, ranContainer, specFor } from "./core/docker.mjs";
 import { candidateEntries, candidateFile, mutatedEntries, mutationFile } from "./core/mutations.mjs";
 import { carried, EXIT, verificationSummary } from "./source/flow.mjs";
 import { builtImage, imageDefs, imageIdOf, resolvedImages, ROLES } from "./core/images.mjs";
-import { caseOf, casesOf, dirDigest, suitesIn } from "./core/suites.mjs";
+import { ARMS, armsOf, baselinePluginOf, caseOf, casesOf, dirDigest, MEMORY_ARMS, memoryArmsOf, suiteHolding, suitesIn } from "./core/suites.mjs";
 import { reportOf } from "./source/report.mjs";
 import { carriedQa, withTruth } from "./qa/flow.mjs";
 import { qaReportOf } from "./qa/report.mjs";
+import { carriedSessions } from "./sessions/flow.mjs";
+import { sessionsReportOf } from "./sessions/report.mjs";
 import { leaksMasked } from "./core/sentinel.mjs";
 import { docRead, docWritten, newRunId, readRegular, roomOf, RUN_ID } from "./core/room.mjs";
 import { frozen, HARNESS, subjectOf, whereAt } from "./core/freeze.mjs";
 import { verified } from "./source/verify.mjs";
 import { judgedRepair } from "./source/repairs.mjs";
-import { metricsOf } from "./core/metrics.mjs";
+import { BY_NAMES, metricsOf } from "./core/metrics.mjs";
+import { carriedActivation, withActivation } from "./activation/flow.mjs";
+import { activationReportOf } from "./activation/report.mjs";
+import { carriedWorkflow } from "./workflow/flow.mjs";
+import { workflowReportOf } from "./workflow/report.mjs";
+import { carriedMission } from "./mission/flow.mjs";
+import { missionReportOf } from "./mission/report.mjs";
+import { DEFAULT_K } from "./core/rates.mjs";
+import { memoryLines, overheadLines, ratesLines, reliabilityOf, sayReliability, toolsLines } from "./core/reliability.mjs";
 
 const int = (v) => (v === undefined ? undefined : /^\d+$/.test(v) ? Number(v) : Number.NaN);
 
@@ -72,8 +85,9 @@ async function doctor(h, args) {
 }
 
 // `--host`: the runner image's Claude Code asked one question through the egress proxy (core/probe.mjs) -- only where
-// Docker answers; a few cents of a credential's budget, said as the host reported it.
-const hostChecked = (h, deps, up, args) => (up.ok ? probedHost(h, deps, flag(args, "model") ?? null) : { ok: false, code: "DOCKER", says: `Docker does not answer here: ${String(up.why ?? "").slice(0, 200)}` });
+// Docker answers; a few cents of a credential's budget, said as the host reported it. Asked with the model and the
+// effort a run would hand it, so a host that refuses either says so here, before a release spends hours.
+const hostChecked = (h, deps, up, args) => (up.ok ? probedHost(h, deps, { model: flag(args, "model") ?? null, effort: effortOption(flag(args, "effort")) ?? null }) : { ok: false, code: "DOCKER", says: `Docker does not answer here: ${String(up.why ?? "").slice(0, 200)}` });
 
 const sayPreflight = (p) => (!p ? [] : p.blocked ? [`preflight   BLOCKED — ${p.blocked}`] : [`preflight   ${p.holds ? "HOLDS" : "DOES NOT HOLD"} — clone ${p.clone?.exit === 0 ? "ok" : "failed"}; ${(p.checks ?? []).map((c) => `${c.argv} exit ${c.exit} in ${c.seconds}s`).join("; ")}; tree ${p.clean ? "left clean" : `left ${p.left?.length} path(s)`}`]);
 
@@ -106,13 +120,15 @@ function safeJson(buf) {
 // ---- suites -----------------------------------------------------------------------------------------------------------------
 
 // What a case is run on: a source case's variants, a QA case's application and the variant planted in it.
-const VARIANTS_OF = { source: (c) => Object.keys(c.variants), qa: (c) => [`${c.target.stack} ${c.target.variant}`], engineering: (c) => Object.keys(c.variants).map((v) => `${c.fixture}:${v}`) };
+const VARIANTS_OF = { source: (c) => Object.keys(c.variants), qa: (c) => [`${c.target.stack} ${c.target.variant}`], engineering: (c) => Object.keys(c.variants).map((v) => `${c.fixture}:${v}`), sessions: (c) => [`${c.target.stack} ${c.target.variant}`], activation: (c) => Object.keys(c.variants).map((v) => `${c.fixture.id}:${v}`), workflow: (c) => Object.keys(c.variants).map((v) => `${c.fixture}:${v}`), mission: (c) => Object.keys(c.variants).map((v) => `${c.fixture}:${v}`) };
 
-const listed = (c) => ({ id: c.id, kind: c.kind, version: c.version, title: c.title, variants: VARIANTS_OF[c.kind](c), controls: [...c.controls.map((k) => `${k.id}:${k.expect}`), ...(c.repairs ?? []).map((r) => `${r.id}(${r.through}):${r.expect}`)], baseline: c.baseline ?? null });
+const listed = (c) => ({ id: c.id, kind: c.kind, version: c.version, title: c.title, variants: VARIANTS_OF[c.kind](c), controls: [...c.controls.map((k) => `${k.id}:${k.expect}`), ...(c.repairs ?? []).map((r) => `${r.id}(${r.through}):${r.expect}`)], baseline: c.baseline ?? null, arms: armsOf(c), ...(armsOf(c).includes("baseline") ? { baselinePlugin: baselinePluginOf(c) } : {}), ...(memoryArmsOf(c).length ? { memory: memoryArmsOf(c) } : {}) });
 
 const list = (h) => ({ suites: suitesIn(h.root).map((p) => ({ id: p.id, version: p.version, title: p.title, cases: casesOf(h.root, p.id).map(listed) })) });
 
-const sayList = (r) => r.suites.flatMap((p) => [`${p.id} ${p.version} — ${p.title}`, ...p.cases.map((c) => `  ${c.id} ${c.version}  ${c.kind.padEnd(11)}  ${c.kind === "source" ? "variants" : "on"} ${c.variants.join(", ")}  controls ${c.controls.join(", ")}\n    ${c.title}`)]).join("\n");
+const armsSaid = (c) => `${c.arms.length > 1 || c.arms[0] !== "release" ? `  arms ${c.arms.join(", ")}${c.baselinePlugin ? ` (baseline ${c.baselinePlugin})` : ""}` : ""}${c.memory ? `  memory ${c.memory.join(", ")}` : ""}`;
+
+const sayList = (r) => r.suites.flatMap((p) => [`${p.id} ${p.version} — ${p.title}`, ...p.cases.map((c) => `  ${c.id} ${c.version}  ${c.kind.padEnd(11)}  ${c.kind === "source" ? "variants" : "on"} ${c.variants.join(", ")}  controls ${c.controls.join(", ")}${armsSaid(c)}\n    ${c.title}`)]).join("\n");
 
 // ---- a run --------------------------------------------------------------------------------------------------------------------
 
@@ -130,9 +146,24 @@ const runIdOption = shaped("run-id", RUN_ID, "bnr- and 12 hex characters");
 
 export const parentOption = shaped("parent", TASK_ID, "a task's id: tsk- and 12 hex characters");
 
-const optionsOf = (args) => ({ host: hostOption(flag(args, "host")), variant: flag(args, "variant"), repair: has(args, "repair"), source: flag(args, "source"), seed: int(flag(args, "seed")), model: flag(args, "model"), rounds: int(flag(args, "rounds")), minutes: int(flag(args, "minutes")), usd: num(flag(args, "usd")), runId: runIdOption(flag(args, "run-id")), parent: parentOption(flag(args, "parent")) });
+// Which arm a run hands its host (0.5.0, B23): one of ARMS, or `all` -- every arm the case declares, one after another.
+const armOption = (v) => (v === undefined || [...ARMS, "all"].includes(v) ? v : refusedWith(`--arm is one of ${[...ARMS, "all"].join(", ")}, not ${v}`));
 
-const BOUNDS = [["seed", 0, 2 ** 31 - 1], ["rounds", 1, 5], ["minutes", 10, 600], ["usd", 0, 200]];
+// Which memory arm a sessions run's second session is on (0.5.0, ADR 0054): one of MEMORY_ARMS, or `all` -- every arm the
+// case declares, one after another, each repeated when asked.
+const memoryOption = (v) => (v === undefined || [...MEMORY_ARMS, "all"].includes(v) ? v : refusedWith(`--memory is one of ${[...MEMORY_ARMS, "all"].join(", ")}, not ${v}`));
+
+// The efforts a coding host may be asked to run at (0.5.0), as data: Claude Code's own `--effort <level>`, handed to it
+// beside `--model`. A run that asks none runs at the host's own default for its model, and says so (`effort: null`).
+export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+
+export const effortOption = (v) => (v === undefined || EFFORTS.includes(v) ? v : refusedWith(`--effort is one of ${EFFORTS.join(", ")}, not ${v}`));
+
+const optionsOf = (args) => ({ host: hostOption(flag(args, "host")), variant: flag(args, "variant"), repair: has(args, "repair"), source: flag(args, "source"), seed: int(flag(args, "seed")), model: flag(args, "model"), effort: effortOption(flag(args, "effort")), rounds: int(flag(args, "rounds")), minutes: int(flag(args, "minutes")), usd: num(flag(args, "usd")), runId: runIdOption(flag(args, "run-id")), parent: parentOption(flag(args, "parent")), repeat: int(flag(args, "repeat")), arm: armOption(flag(args, "arm")), memory: memoryOption(flag(args, "memory")) });
+
+// What a command may ask, as data: each option's lowest and highest value. `repeat` (0.5.0) is how many runs of one case
+// one command starts -- enough for a rate over five runs and some to spare, never an open-ended loop of paid rounds.
+export const BOUNDS = [["seed", 0, 2 ** 31 - 1], ["rounds", 1, 5], ["minutes", 10, 600], ["usd", 0, 200], ["repeat", 1, 10], ["k", 1, 10]];
 
 const checked = (o) => ((bad) => (bad.length ? refusedWith(`out of bounds: ${bad.map(([k, lo, hi]) => `--${k} is ${lo}..${hi}`).join(", ")}`) : o))(BOUNDS.filter(([k, lo, hi]) => o[k] !== undefined && !(o[k] >= lo && o[k] <= hi)));
 
@@ -140,12 +171,12 @@ const SOURCE = ["head", "worktree", undefined];
 
 const sourceChecked = (o) => (SOURCE.includes(o.source) ? o : refusedWith("--source is head or worktree"));
 
-// A run like an earlier one: its case, variant, repair, source mode, seed, model and limits -- and the image ids it used,
-// when they are still here. A new run, under a new id; the earlier one is never touched.
+// A run like an earlier one: its case, variant, repair, source mode, seed, model, effort and limits -- and the image ids
+// it used, when they are still here. A new run, under a new id; the earlier one is never touched.
 function likeOf(h, id) {
   const m = docRead(roomOf(h.storeRoot, id), "manifest.json");
   if (!m?.benchmark?.variant) throw new Refused(`no benchmark run ${id} is kept here to run again`);
-  return { caseId: m.benchmark.case, variant: m.benchmark.variant, repair: m.config.repair, host: m.config.host ?? undefined, source: m.source.mode, seed: m.config.seed, model: m.config.model, rounds: m.config.rounds, minutes: m.config.minutes, usd: m.config.usd, preferImages: m.images, like: id };
+  return { caseId: m.benchmark.case, variant: m.benchmark.variant, repair: m.config.repair, host: m.config.host ?? undefined, source: m.source.mode, seed: m.config.seed, model: m.config.model, effort: m.config.effort ?? undefined, rounds: m.config.rounds, minutes: m.config.minutes, usd: m.config.usd, arm: m.config.arm ?? undefined, memory: m.config.memory ?? undefined, learnHost: m.config.learnHost ?? undefined, preferImages: m.images, like: id };
 }
 
 // What each kind of case runs with: the images it needs, how its context is completed, how it is carried to its end,
@@ -154,6 +185,13 @@ const KIND = {
   source: { need: (o) => ["verifier", ...(o.repair ? ["runner"] : [])], completed: (ctx) => withSpec(ctx), carried: (ctx) => carried(ctx), reportOf, host: (o) => o.host ?? null },
   qa: { need: (o) => ["qa-worker", ...(o.host === "coding-host" ? ["runner", "verifier"] : [])], completed: async (ctx) => withTruth(ctx), carried: (ctx) => carriedQa(ctx), reportOf: qaReportOf, host: (o) => o.host ?? "coding-host" },
   engineering: { need: () => ["verifier", "runner"], completed: (ctx) => withSpec(ctx), carried: (ctx) => carried(ctx), reportOf, host: (o) => o.host ?? null, attempts: true },
+  sessions: { need: (o) => ["qa-worker", ...(o.host === "coding-host" ? ["runner", "verifier"] : [])], completed: async (ctx) => withTruth(ctx), carried: (ctx) => carriedSessions(ctx), reportOf: sessionsReportOf, host: (o) => o.host ?? "coding-host" },
+  // 0.5.0 (B22 M4): a prompt that names no skill, to a coding host -- or a control's scripted host -- on an arm.
+  activation: { need: () => ["verifier", "runner"], completed: (ctx) => withActivation(ctx), carried: (ctx) => carriedActivation(ctx), reportOf: activationReportOf, host: (o) => o.host ?? null },
+  // 0.5.0 (B1, ADR 0053): one request through /orbit-help, carried as an engineering case's goal is, held to three legs.
+  workflow: { need: () => ["verifier", "runner"], completed: (ctx) => withSpec(ctx), carried: (ctx) => carriedWorkflow(ctx), reportOf: workflowReportOf, host: (o) => o.host ?? null, attempts: true },
+  // 0.5.0 (B4, ADR 0055): a goal through Orbit Satellite, carried as an engineering case's goal is, held to three legs.
+  mission: { need: () => ["verifier", "runner"], completed: (ctx) => withSpec(ctx), carried: (ctx) => carriedMission(ctx), reportOf: missionReportOf, host: (o) => o.host ?? null, attempts: true },
 };
 
 const kindOfRun = (manifest) => KIND[manifest?.benchmark?.kind ?? "source"];
@@ -194,19 +232,70 @@ async function finished(ctx, kind) {
   const result = await kind.carried(ctx).catch((e) => thrownTidied(ctx, e));
   const left = tidied(ctx);
   const rep = reportWritten(ctx.room, ctx.manifest, ctx.rec.show(ctx.task), eventsOf(ctx.rec, ctx.task));
-  return { run: ctx.run.id, task: ctx.task, case: ctx.case.id, variant: ctx.manifest.benchmark.variant, ...result, report: ctx.room.at("report.md"), evidence: ctx.room.dir, axes: rep.json.axes, leaks: rep.json.leaks, leftBehind: left.clean ? null : left };
+  return { run: ctx.run.id, task: ctx.task, case: ctx.case.id, variant: ctx.manifest.benchmark.variant, arm: ctx.manifest.config.arm ?? "release", ...(ctx.manifest.config.memory ? { memory: ctx.manifest.config.memory } : {}), ...(ctx.manifest.config.repeat ? { repeat: ctx.manifest.config.repeat } : {}), ...result, report: ctx.room.at("report.md"), evidence: ctx.room.dir, axes: rep.json.axes, leaks: rep.json.leaks, leftBehind: left.clean ? null : left };
+}
+
+// ---- repeated runs (0.5.0, B2): one PASS is not a rate --------------------------------------------------------------------
+
+// N runs of one case, each its own room and task, named as one repeat GROUP in each manifest (`config.repeat`: the
+// group's id, which run this is, how many were asked) -- or, with no --repeat, the one run it always was. A run that is
+// blocked or refused is its own row, and the repeats after it still run.
+const groupIdOf = (o) => `rpt-${short(`${o.caseId}\u0000${Date.now()}\u0000${randomBytes(6).toString("hex")}`, 12)}`;
+
+function repeated(h, o) {
+  if (o.repeat === undefined) return oneRun(h, o);
+  if (o.runId && o.repeat > 1) refusedWith("--run-id names one run, and --repeat starts one run per repeat");
+  return repeatsOf(h, o, groupIdOf(o));
+}
+
+async function repeatsOf(h, o, group) {
+  const runs = [];
+  for (let i = 1; i <= o.repeat; i++) runs.push(await oneRun(h, { ...o, group: { id: group, index: i, of: o.repeat } }).catch(failedRun({ id: o.caseId })));
+  return { case: o.caseId, repeat: { group, of: o.repeat }, runs, exit: Math.max(...runs.map((r) => r.exit ?? 4)) };
+}
+
+// The rows a suite's case adds: one run, or each of its repeats and arms.
+const caseRows = (r) => (Array.isArray(r.runs) ? r.runs : [r]);
+
+const repeatChecked = (o) => (checked({ repeat: o.repeat }), o);
+
+// ---- arms (0.5.0, B23): the same case, the same model and limits, a different plugin ----------------------------------
+
+// The one arm asked -- or, with --arm=all, every arm the case declares, one after another (each repeated, when asked).
+// --run-id names one run, so it never goes with --arm=all: refused before any arm runs, never after the first.
+async function armed(h, o) {
+  if (o.arm !== "all") return remembered(h, o);
+  if (o.runId) refusedWith("--run-id names one run, and --arm=all starts one run per arm");
+  const runs = [];
+  for (const arm of armsOf(caseOf(h.root, o.caseId))) runs.push(...caseRows(await remembered(h, { ...o, arm }).catch(failedRun({ id: o.caseId }))));
+  return { case: o.caseId, arms: armsOf(caseOf(h.root, o.caseId)), runs, exit: Math.max(...runs.map((r) => r.exit ?? 4)) };
+}
+
+// ---- memory arms (0.5.0, B3, ADR 0054): the same case, its second session with memory on or off -----------------------
+
+// The one memory arm asked -- or, with --memory=all, every arm the case declares, one after another (each repeated, when
+// asked). --run-id names one run, so it never goes with --memory=all: refused before any arm runs.
+async function remembered(h, o) {
+  if (o.memory !== "all") return repeated(h, o);
+  if (o.runId) refusedWith("--run-id names one run, and --memory=all starts one run per memory arm");
+  const runs = [];
+  for (const memory of memoryArmsOf(caseOf(h.root, o.caseId))) runs.push(...caseRows(await repeated(h, { ...o, memory }).catch(failedRun({ id: o.caseId }))));
+  return { case: o.caseId, memory: memoryArmsOf(caseOf(h.root, o.caseId)), runs, exit: Math.max(...runs.map((r) => r.exit ?? 4)) };
 }
 
 function runCmd(h, args) {
-  if (flag(args, "like")) return oneRun(h, likeOf(h, flag(args, "like")));
+  if (flag(args, "like")) return repeated(h, repeatChecked({ ...likeOf(h, flag(args, "like")), repeat: int(flag(args, "repeat")) }));
   if (flag(args, "suite") && flag(args, "run-id")) refusedWith("--run-id names one run, and --suite starts one run per case");
   if (flag(args, "suite")) return suiteRun(h, args);
   const caseId = words(args)[0] ?? refusedWith("name the case to run (node benchmark/run.mjs list), or --suite=<suite>");
-  return oneRun(h, sourceChecked(checked({ ...optionsOf(args), caseId })));
+  return armed(h, sourceChecked(checked({ ...optionsOf(args), caseId })));
 }
 
-// A suite's run of one case: the variant asked when the case has it, its real one otherwise -- and a QA case's own.
-const suiteVariant = (c, asked) => (c.kind === "qa" ? undefined : c.kind === "source" && asked && Object.hasOwn(c.variants, asked) ? asked : "real");
+// A suite's run of one case: the variant asked when the case has it, its real one otherwise -- and a QA or sessions
+// case's own, planted in its application.
+const OWN_VARIANT = ["qa", "sessions"];
+
+const suiteVariant = (c, asked) => (OWN_VARIANT.includes(c.kind) ? undefined : c.kind === "source" && asked && Object.hasOwn(c.variants, asked) ? asked : "real");
 
 const suiteOptions = (args, c) => ((o) => ({ ...o, caseId: c.id, variant: suiteVariant(c, o.variant) }))(sourceChecked(checked(optionsOf(args))));
 
@@ -216,11 +305,13 @@ async function suiteRun(h, args) {
   const cases = casesOf(h.root, flag(args, "suite"));
   if (!cases.length) throw new Refused(`no suite ${flag(args, "suite")} holds a case`);
   const runs = [];
-  for (const c of cases) runs.push(await oneRun(h, suiteOptions(args, c)).catch(failedRun(c)));
+  for (const c of cases) runs.push(...caseRows(await armed(h, suiteOptions(args, c)).catch(failedRun(c))));
   return { suite: flag(args, "suite"), runs, exit: Math.max(...runs.map((r) => r.exit ?? 4)) };
 }
 
-const sayOne = (r) => [`${r.case ?? "?"} ${r.variant ?? ""} ${r.run ?? ""}: ${r.outcome} (exit ${r.exit})`, `  ${r.summary ?? ""}`, ...(r.leaks?.length ? [`  LEAK      the credential was found in ${r.leaks.length} file(s) of the run's room, and masked (leaks.json)`] : []), ...(r.report ? [`  report    ${r.report}`, `  evidence  ${r.evidence}`, `  task      ${r.task} (node cli/task.mjs show ${r.task})`] : [])].join("\n");
+const repeatSaid = (r) => `${r.arm && r.arm !== "release" ? ` (arm ${r.arm})` : ""}${r.memory ? ` (memory ${r.memory})` : ""}${r.repeat?.id ? ` (repeat ${r.repeat.index}/${r.repeat.of}, ${r.repeat.id})` : ""}`;
+
+const sayOne = (r) => [`${r.case ?? "?"} ${r.variant ?? ""} ${r.run ?? ""}${repeatSaid(r)}: ${r.outcome} (exit ${r.exit})`, `  ${r.summary ?? ""}`, ...(r.leaks?.length ? [`  LEAK      the credential was found in ${r.leaks.length} file(s) of the run's room, and masked (leaks.json)`] : []), ...(r.report ? [`  report    ${r.report}`, `  evidence  ${r.evidence}`, `  task      ${r.task} (node cli/task.mjs show ${r.task})`] : [])].join("\n");
 
 const sayRun = (r) => (r.runs ? r.runs.map(sayOne).join("\n") : sayOne(r));
 
@@ -250,12 +341,22 @@ function report(h, args) {
 
 function status(h, args) {
   const { ctx, view } = kept(h, args);
-  return { run: ctx.run.id, task: ctx.task, case: ctx.manifest.benchmark.case, variant: ctx.manifest.benchmark.variant, repair: ctx.manifest.config.repair, lifecycle: view.lifecycle, stage: view.stage, stopReason: view.stopReason, attempts: (view.attempts ?? []).map((a) => `${a.id}:${a.cause}:${a.outcome ?? "open"}${a.failureSignature ? `:${a.failureSignature}` : ""}`), budget: view.budget, running: (view.actions ?? []).filter((a) => a.state === "running").map((a) => `${a.id} ${a.type}`), ending: docRead(ctx.room, "ending.json"), evidence: ctx.room.dir };
+  return { run: ctx.run.id, task: ctx.task, case: ctx.manifest.benchmark.case, variant: ctx.manifest.benchmark.variant, repair: ctx.manifest.config.repair, arm: ctx.manifest.config.arm ?? "release", memory: ctx.manifest.config.memory ?? null, repeat: ctx.manifest.config.repeat ?? null, model: ctx.manifest.config.model ?? null, effort: ctx.manifest.config.effort ?? null, lifecycle: view.lifecycle, stage: view.stage, stopReason: view.stopReason, attempts: (view.attempts ?? []).map((a) => `${a.id}:${a.cause}:${a.outcome ?? "open"}${a.failureSignature ? `:${a.failureSignature}` : ""}`), budget: view.budget, running: (view.actions ?? []).filter((a) => a.state === "running").map((a) => `${a.id} ${a.type}`), ending: docRead(ctx.room, "ending.json"), evidence: ctx.room.dir };
 }
 
-const sayStatus = (r) => [`RUN        ${r.run} — ${r.case} (${r.variant}${r.repair ? ", repair" : ""})`, `TASK       ${r.task}: ${r.lifecycle} · ${r.stage ?? "no stage"}${r.stopReason ? ` · ${r.stopReason}` : ""}`, `ATTEMPTS   ${r.attempts.join("  ") || "none"}`, `BUDGET     attempts ${r.budget.attempts.spent}/${r.budget.attempts.limit} · actions ${r.budget.actions.spent}/${r.budget.actions.limit} · minutes ${r.budget.minutes.spent}/${r.budget.minutes.limit ?? "-"}`, ...(r.running.length ? [`RUNNING    ${r.running.join(", ")}`] : []), `OUTCOME    ${r.ending ? `${r.ending.outcome} — ${r.ending.summary}` : "not decided yet"}`, `EVIDENCE   ${r.evidence}`].join("\n");
+// The model and the effort a run's host was asked to run at, when it was asked any.
+const hostAsked = (r) => `${r.model ? `, model ${r.model}` : ""}${r.effort ? `, effort ${r.effort}` : ""}`;
 
+const sayStatus = (r) => [`RUN        ${r.run} — ${r.case} (${r.variant}${r.repair ? ", repair" : ""}${r.arm !== "release" ? `, arm ${r.arm}` : ""}${r.memory ? `, memory ${r.memory}` : ""}${hostAsked(r)})${r.repeat ? ` · repeat ${r.repeat.index}/${r.repeat.of} of ${r.repeat.id}` : ""}`, `TASK       ${r.task}: ${r.lifecycle} · ${r.stage ?? "no stage"}${r.stopReason ? ` · ${r.stopReason}` : ""}`, `ATTEMPTS   ${r.attempts.join("  ") || "none"}`, `BUDGET     attempts ${r.budget.attempts.spent}/${r.budget.attempts.limit} · actions ${r.budget.actions.spent}/${r.budget.actions.limit} · minutes ${r.budget.minutes.spent}/${r.budget.minutes.limit ?? "-"}`, ...(r.running.length ? [`RUNNING    ${r.running.join(", ")}`] : []), `OUTCOME    ${r.ending ? `${r.ending.outcome} — ${r.ending.summary}` : "not decided yet"}`, `EVIDENCE   ${r.evidence}`].join("\n");
+
+// A run carried on from its room -- or a control set from its own (core/controlset.mjs), whatever kind of case it holds.
 async function resume(h, args) {
+  const room = roomOf(h.storeRoot, runIdOf(args));
+  const m = docRead(room, "manifest.json");
+  return m?.kind === "controls" ? controlsResumed(h, room, m) : runResumed(h, args);
+}
+
+async function runResumed(h, args) {
   const first = resumedRun(h, runIdOf(args));
   const kind = kindOfRun(first.manifest);
   const { deps } = dockerUp(h, "a resumed run goes on in containers too");
@@ -265,9 +366,16 @@ async function resume(h, args) {
 
 const cleanedHere = (room, deps) => (docker.doctor(deps).ok ? { ...cleaned(room.id, deps), left: leftovers(room.id, deps) } : { containers: [], networks: [], clean: true, left: null, skipped: "Docker does not answer: nothing of this run can be running" });
 
+// What every room a cleanup reaches left, as one answer: a run's own, or a control set's and every run it planned.
+const mergedClean = (xs) => ({ containers: xs.flatMap((x) => x.containers), networks: xs.flatMap((x) => x.networks), clean: xs.every((x) => x.clean), left: xs.every((x) => x.left) ? { containers: xs.flatMap((x) => x.left.containers), networks: xs.flatMap((x) => x.left.networks) } : null, ...(xs.find((x) => x.skipped) ? { skipped: xs.find((x) => x.skipped).skipped } : {}) });
+
+// A control set is cleaned with every run it planned for a control (an engine repair control, a QA control), each by
+// its own label: a person who stopped the set mid-control leaves no container of that control running.
+const cleanedRooms = (h, room, deps) => mergedClean([room, ...plannedRuns(room).map((r) => roomOf(h.storeRoot, r))].map((x) => cleanedHere(x, deps)));
+
 function cleanup(h, args) {
   const room = roomOf(h.storeRoot, runIdOf(args));
-  const done = cleanedHere(room, dockerDeps(h.env, null));
+  const done = cleanedRooms(h, room, dockerDeps(h.env, null));
   if (has(args, "scratch")) rmSync(room.at("scratch"), { recursive: true, force: true });
   return { run: room.id, ...done, scratch: has(args, "scratch") ? "removed" : "kept" };
 }
@@ -292,20 +400,47 @@ export const MAX_RUNS = 500;
 
 const keptRun = (h, n) => ((room) => ({ manifest: docRead(room, "manifest.json"), ending: docRead(room, "ending.json"), report: docRead(room, "report.json"), controls: docRead(room, "controls.json") }))(roomOf(h.storeRoot, n));
 
-const inScope = (args) => (r) => (!flag(args, "suite") || r.manifest.benchmark?.suite === flag(args, "suite")) && (!flag(args, "case") || r.manifest.benchmark?.case === flag(args, "case")) && (!flag(args, "since") || String(r.manifest.at ?? "") >= flag(args, "since"));
+// A source revision named by its commit, or the start of one (`--revision`, 0.5.0): the runs that froze it.
+const revisionOf = (args) => ((v) => (v === undefined || /^[0-9a-f]{4,64}$/.test(v) ? v : refusedWith(`--revision is a commit id, or the start of one, not ${v}`)))(flag(args, "revision"));
 
-const scopeSaid = (args) => ["suite", "case", "since"].filter((k) => flag(args, k)).map((k) => `${k} ${flag(args, k)}`).join(", ") || "every run kept";
+// The suite a kept room is about: its manifest's -- or, for a control set kept before its manifest recorded one (0.5.0),
+// the suite this checkout's catalog holds its case in. A catalog that cannot be read names none.
+function suiteHeld(root, caseId) {
+  try { return suiteHolding(root, caseId); }
+  catch { return null; }
+}
+
+const suiteOfRoom = (h, m) => m.benchmark?.suite ?? (m.kind === "controls" ? suiteHeld(h.root, m.benchmark?.case) : null);
+
+const inScope = (h, args) => (r) => (!flag(args, "suite") || suiteOfRoom(h, r.manifest) === flag(args, "suite")) && (!flag(args, "case") || r.manifest.benchmark?.case === flag(args, "case")) && (!flag(args, "since") || String(r.manifest.at ?? "") >= flag(args, "since")) && (!revisionOf(args) || String(r.manifest.source?.commit ?? "").startsWith(revisionOf(args)));
+
+const SCOPES = ["revision", "suite", "case", "since"];
+
+const scopeSaid = (args) => SCOPES.filter((k) => flag(args, k)).map((k) => `${k} ${flag(args, k)}`).join(", ") || "every run kept";
 
 // Rooms that hold no run of a case: a control set's (its rows are the verifier's own metric) and a host probe's.
 const NOT_RUNS = ["controls", "probe"];
 
 const controlRows = (kept) => kept.filter((r) => r.manifest.kind === "controls" && r.controls).flatMap((r) => r.controls.rows.map((row) => ({ ...row, case: r.controls.case })));
 
+// The kept rooms in scope, newest first, bounded: what `metrics` and `reliability` both fold.
+const scopedRuns = (h, args) => (revisionOf(args), safeList(join(h.storeRoot, "benchmark"))).filter((n) => RUN_ID.test(n)).map((n) => keptRun(h, n)).filter((r) => r.manifest).filter(inScope(h, args)).sort((a, b) => String(b.manifest.at ?? "").localeCompare(String(a.manifest.at ?? ""))).slice(0, MAX_RUNS);
+
+const casesOnly = (scoped) => scoped.filter((r) => !NOT_RUNS.includes(r.manifest.kind));
+
+// What `--by` breaks the runs down by -- revision, model, arm, comma-separated -- and k of pass@k (bounded in BOUNDS).
+const byOption = (v) => ((names) => (names.every((n) => BY_NAMES.includes(n)) ? names : refusedWith(`--by is any of ${BY_NAMES.join(", ")}, comma-separated, not ${v}`)))(v === undefined ? [] : String(v).split(","));
+
+const kOf = (args) => checked({ k: int(flag(args, "k")) }).k;
+
 function metrics(h, args) {
-  const kept = safeList(join(h.storeRoot, "benchmark")).filter((n) => RUN_ID.test(n)).map((n) => keptRun(h, n)).filter((r) => r.manifest);
-  const scoped = kept.filter(inScope(args)).sort((a, b) => String(b.manifest.at ?? "").localeCompare(String(a.manifest.at ?? ""))).slice(0, MAX_RUNS);
-  return { store: join(h.storeRoot, "benchmark"), ...metricsOf(scoped.filter((r) => !NOT_RUNS.includes(r.manifest.kind)), { scope: scopeSaid(args), controls: controlRows(scoped), byRevision: flag(args, "by") === "revision" }) };
+  const scoped = scopedRuns(h, args);
+  return { store: join(h.storeRoot, "benchmark"), ...metricsOf(casesOnly(scoped), { scope: scopeSaid(args), controls: controlRows(scoped), by: byOption(flag(args, "by")), k: kOf(args) }) };
 }
+
+// THE RELIABILITY REPORT (0.5.0): rates, tool-call failures and arms, from the kept rooms in scope -- printed, never
+// written: a release ship writes it next to its evidence.json.
+const reliability = (h, args) => reliabilityOf(casesOnly(scopedRuns(h, args)), { scope: Object.fromEntries(SCOPES.map((k) => [k, flag(args, k) ?? null]).concat([["k", kOf(args) ?? DEFAULT_K]])), store: join(h.storeRoot, "benchmark"), at: new Date().toISOString(), k: kOf(args) });
 
 const cell = (m) => `${String(m.value).padEnd(8)} ${`${Math.round(m.numerator * 100) / 100}/${m.denominator}`.padEnd(12)}${Object.entries(m.excluded ?? {}).filter(([, n]) => n).map(([k, n]) => ` ${k} ${n}`).join("")}`;
 
@@ -313,7 +448,12 @@ const basisLines = (r, basis) => (r.runs.byBasis[basis] ? [`${basis.toUpperCase(
 
 const historyLines = (r) => (r.history ? ["HISTORY BY REVISION", ...r.history.map((x) => `  ${x.case} ${x.variant} (${x.basis}): ${x.commits.map((c) => `${c.commit ?? "?"} ${c.outcome}`).join(" → ")}`)] : []);
 
-const sayMetrics = (r) => [`METRICS    ${r.scope} — ${r.runs.total} run(s) in ${r.store}`, ...["coding-host", "session", "scripted", "none"].flatMap((b) => basisLines(r, b)), `REPRODUCIBILITY ${cell(r.reproducibility)}${r.reproducibility.unstable.length ? ` — unstable: ${r.reproducibility.unstable.map((u) => `${u.case} ${u.variant}`).join(", ")}` : ""}`, `VERIFIER CONTROLS ${cell(r.verifier)}${r.verifier.missed.length ? ` — missed: ${r.verifier.missed.join("; ")}` : ""}`, ...historyLines(r), "A scripted host's numbers are conformance, never autonomy; a value of unknown has nothing to stand on."].join("\n");
+// A breakdown `--by` asked for: every metric again per model (at its effort) or per arm, each basis still apart.
+const SPLIT_SAID = { model: (g) => (g.effort ? `${g.model}@${g.effort}` : g.model), arm: (g) => g.arm, memory: (g) => `memory ${g.memory}`, language: (g) => g.language ?? "no language" };
+
+const splitLines = (title, name, groups) => (groups ? [title, ...groups.flatMap((g) => [`  ${SPLIT_SAID[name](g)} (${g.runs} run(s))`, ...Object.entries(g.bases).filter(([, ms]) => Object.values(ms).some((m) => m.runs)).flatMap(([b, ms]) => Object.entries(ms).filter(([, m]) => m.value !== "unknown").map(([id, m]) => `    ${b.padEnd(12)} ${id.padEnd(26)} ${cell(m)}`))])] : []);
+
+const sayMetrics = (r) => [`METRICS    ${r.scope} — ${r.runs.total} run(s) in ${r.store}`, ...["coding-host", "session", "scripted", "none"].flatMap((b) => basisLines(r, b)), `REPRODUCIBILITY ${cell(r.reproducibility)}${r.reproducibility.unstable.length ? ` — unstable: ${r.reproducibility.unstable.map((u) => `${u.case} ${u.variant}`).join(", ")}` : ""}`, `VERIFIER CONTROLS ${cell(r.verifier)}${r.verifier.missed.length ? ` — missed: ${r.verifier.missed.join("; ")}` : ""}`, ...ratesLines(r.reliability), ...toolsLines(r.tools), ...overheadLines(r.overhead), ...memoryLines(r.memory ?? []), ...historyLines(r), ...splitLines("BY MODEL", "model", r.byModel), ...splitLines("BY ARM", "arm", r.byArm), ...splitLines("BY MEMORY", "memory", r.byMemory), ...splitLines("BY LANGUAGE", "language", r.byLanguage), "A scripted host's numbers are conformance, never autonomy; a value of unknown has nothing to stand on."].join("\n");
 
 // ---- the controls: does the verifier fail what it must and pass what it must, in its own containers -------------------------
 
@@ -321,38 +461,61 @@ const NO_RECORD = { show: () => ({}) };
 
 // What a case's controls run over: Orbit's source for a source case, the CLEAN fixture for an engineering case -- every
 // control names the variant it lays over that.
-const CONTROL_BASE = { source: (c, fr) => subjectOf(fr.entries, HARNESS).entries, engineering: (c, fr) => fixtureEntries(c, fr.entries) };
+const CONTROL_BASE = { source: (c, fr) => subjectOf(fr.entries, HARNESS).entries, engineering: (c, fr) => fixtureEntries(c, fr.entries), workflow: (c, fr) => fixtureEntries(c, fr.entries), mission: (c, fr) => fixtureEntries(c, fr.entries) };
 
-function controlsRoom(h, c, images) {
-  const room = roomOf(h.storeRoot, newRunId(`${c.id}\u0000controls`));
+// What a control set was asked with, kept in its room's manifest so a resume asks the very same controls of the very
+// same tree: which control (--only), whether the engine-carried ones run (--skip-engine), the task that started it
+// (--parent), which tree of the checkout a QA control freezes (--source), and the room's own name (--run-id: a release
+// ship names it before the set starts, so a restart never loses which room to carry on).
+const controlOptions = (args) => ({ runId: runIdOption(flag(args, "run-id")) ?? null, only: flag(args, "only") ?? null, skipEngine: has(args, "skip-engine"), parent: parentOption(flag(args, "parent")) ?? null, source: flag(args, "source") ?? null });
+
+const setRoom = (h, c, o) => freshRoom(h, o.runId ?? newRunId(`${c.id}\u0000controls`));
+
+// A control set's manifest: the tree it measured by its path (a resume measures that tree again), the case, its suite
+// (0.5.0: so `metrics --suite=` counts the set's rows with the suite's runs) and its digest, what it was asked.
+const setManifest = (room, c, where0, o, more) => ({ schema: 1, kind: "controls", run: room.id, task: null, at: new Date().toISOString(), source: { repo: where0.root, branch: where0.branch, commit: where0.commit, mode: more.mode }, benchmark: { suite: c.suite?.id ?? null, suiteVersion: c.suite?.version ?? null, case: c.id, kind: c.kind, version: c.version, variant: "real", digest: more.digest }, subject: { digest: null }, images: more.images ?? null, config: { seed: 20240607, rounds: 1, usd: 0, model: null, repair: false, minutes: 60, asked: o } });
+
+function controlsRoom(h, c, images, o) {
+  const room = setRoom(h, c, o);
   const where0 = whereAt(treeOf(h), h.env);
   cpSync(c.dir, room.at("frozen", "case"), { recursive: true });
   madeCheckout(room.at("checkout"), CONTROL_BASE[c.kind](c, frozen(where0.root, "head", h.env)), `${c.id} controls subject`, h.env, { plugin: c.kind === "source" });
-  return { room, manifest: { schema: 1, kind: "controls", run: room.id, task: null, at: new Date().toISOString(), source: { branch: where0.branch, commit: where0.commit, mode: "head" }, benchmark: { case: c.id, version: c.version, variant: "real", digest: dirDigest(room.at("frozen", "case")) }, subject: { digest: null }, images, config: { seed: 20240607, rounds: 1, usd: 0, model: null, repair: false, minutes: 60 } } };
+  return { room, manifest: setManifest(room, c, where0, o, { mode: "head", digest: dirDigest(room.at("frozen", "case")), images }) };
 }
+
+// A QA case's controls are whole runs its scripted hosts carry -- and so are a sessions case's (0.5.0), each control
+// naming its second session's host and, beside it, its first's, and an activation case's (0.5.0, B22 M4), each carried
+// by the scripted host its control declares.
+const RUN_CONTROLLED = ["qa", "sessions", "activation"];
 
 async function controls(h, args) {
   const c = caseOf(h.root, words(args)[0] ?? refusedWith("name the case whose controls to run"));
-  return c.kind === "qa" ? qaControls(h, c, args) : sourceControls(h, c, args);
+  return (RUN_CONTROLLED.includes(c.kind) ? qaControls : sourceControls)(h, c, controlOptions(args));
 }
 
 // The controls asked for: every one the case declares, or the one --only names.
-const only = (list, args) => list.filter((x) => !flag(args, "only") || x.id === flag(args, "only"));
+const only = (list, o) => list.filter((x) => !o.only || x.id === o.only);
 
 // The engine-carried controls run a whole repair round each (Orbit's own test suite, in the runner); --skip-engine
 // leaves them out, for the quick tier that proves the verifier and the judge alone.
-const engineRepairs = (c, args) => (has(args, "skip-engine") ? [] : only((c.repairs ?? []).filter((r) => r.through === "engine"), args));
+const engineRepairs = (c, o) => (o.skipEngine ? [] : only((c.repairs ?? []).filter((r) => r.through === "engine"), o));
 
-async function sourceControls(h, c, args) {
+const judgeRepairs = (c, o) => only((c.repairs ?? []).filter((r) => r.through === "judge"), o);
+
+const verifierNeeds = (c, o) => ["verifier", ...(engineRepairs(c, o).length ? ["runner"] : [])];
+
+async function sourceControls(h, c, o) {
   const { deps } = dockerUp(h, "the controls run the verifier's own containers");
-  const made = controlsRoom(h, c, resolvedImages(imageDefs(engineOf(h)), deps, { need: ["verifier", ...(engineRepairs(c, args).length ? ["runner"] : [])] }));
+  const made = controlsRoom(h, c, resolvedImages(imageDefs(engineOf(h)), deps, { need: verifierNeeds(c, o) }), o);
   docWritten(made.room, "manifest.json", made.manifest);
-  return controlsRan(await withSpec(contextOf(h, made.room, made.manifest, NO_RECORD)), c, h, args);
+  return controlsRan(await withSpec(contextOf(h, made.room, made.manifest, NO_RECORD)), c, h, o);
 }
 
 // What a control's own file does to its variant: a source case's mutations, or an engineering case's definition (the
 // edits a candidate would make, files it brings and files it deletes).
-const CONTROL_FILES = { engineering: (dir, rel, entries) => candidateEntries(entries, candidateFile(dir, rel)) };
+const definedOver = (dir, rel, entries) => candidateEntries(entries, candidateFile(dir, rel));
+
+const CONTROL_FILES = { engineering: definedOver, workflow: definedOver, mission: definedOver };
 
 const controlFiled = (ctx, c, k, entries) => (CONTROL_FILES[c.kind] ?? ((dir, rel, e) => mutatedEntries(e, mutationFile(dir, rel))))(ctx.frozenCase, k.file, entries);
 
@@ -381,11 +544,30 @@ function rethrownError(e) {
   throw e;
 }
 
+// A control carried by a whole run of its own: the run its record planned -- read back when it ended, carried on when
+// its room was kept, started under an id planned first otherwise (core/controlset.mjs RUN_OF). A resumed set never
+// starts a second run for one control.
+const controlRun = (h, set, id, start) => runOfControl({ set, id, storeRoot: h.storeRoot, resume: (run) => runResumed(h, [run]), start, newRun: () => newRunId(`${set.id}\u0000${id}`) });
+
+const failedControl = (e) => ({ outcome: e instanceof Blocked ? "BLOCKED" : "REFUSED", summary: e.message });
+
 // A repair control carried through Orbit's ENGINE: a whole run with --repair whose host is the scripted one, driving
 // Orbit's real engineering loop in the runner with the edits its definition names -- no model, no network.
-async function engineControl(h, c, r, args) {
-  const got = await oneRun(h, { caseId: c.id, variant: r.variant, repair: true, host: `scripted:${r.id}`, source: "head", parent: parentOption(flag(args, "parent")) }).catch((e) => ({ outcome: e instanceof Blocked ? "BLOCKED" : "REFUSED", summary: e.message }));
-  return { id: r.id, kind: "scripted-host", through: "engine", expect: r.expect, got: got.outcome, matched: got.outcome === r.expect, summary: got.summary ?? "", run: got.run ?? null };
+// The legs a control's run FAILED on (a workflow or a mission case, 0.5.0, ADR 0053, 0055): its last round's own
+// outcome says them.
+const roundsKept = (room) => safeList(room.at("rounds")).filter((n) => /^\d+$/.test(n)).map(Number).sort((a, b) => b - a);
+
+const lastOutcome = (room) => roundsKept(room).map((n) => docRead(room, `rounds/${n}/outcome.json`)).find(Boolean) ?? null;
+
+const legsFailedIn = (h, run) => (RUN_ID.test(String(run)) ? lastOutcome(roomOf(h.storeRoot, run))?.failedLegs ?? [] : []);
+
+// A control that names the legs it must fail on holds only when every one of them failed.
+const legsHeld = (h, run, legs) => (legs ?? []).every((leg) => legsFailedIn(h, run).includes(leg));
+
+async function engineControl(h, set, c, r, o) {
+  const got = await controlRun(h, set, r.id, (runId) => oneRun(h, { caseId: c.id, variant: r.variant, repair: true, host: `scripted:${r.id}`, source: "head", parent: o.parent ?? undefined, runId })).catch(failedControl);
+  const legs = r.legs ? { legs: r.legs, failedLegs: legsFailedIn(h, got.run) } : {};
+  return { id: r.id, kind: "scripted-host", through: "engine", expect: r.expect, got: got.outcome, matched: got.outcome === r.expect && legsHeld(h, got.run, r.legs), summary: got.summary ?? "", run: got.run ?? null, ...legs };
 }
 
 async function rowsOf(list, one) {
@@ -395,12 +577,13 @@ async function rowsOf(list, one) {
 }
 
 // Every control of a source case, in its own order: what the verifier must pass and fail, what the judge must pass and
-// refuse of a candidate, and what a scripted host carried through the engine must come to. A verifier whose own
-// reference model fails its self-test proves nothing, so none of its controls is run.
-async function controlsRan(ctx, c, h, args) {
+// refuse of a candidate, and what a scripted host carried through the engine must come to -- each kept in the set's room
+// as it ends, so a resumed set runs only what it had not decided. A verifier whose own reference model fails its
+// self-test proves nothing, so none of its controls is run.
+async function controlsRan(ctx, c, h, o) {
   if (ctx.invalid) return { case: c.id, run: ctx.run.id, rows: [], verifierDefect: ctx.invalid.says, exit: 2 };
   const cache = {};
-  const rows = [...(await rowsOf(only(c.controls, args), (k) => oneControl(ctx, c, k))), ...(await rowsOf(only((c.repairs ?? []).filter((r) => r.through === "judge"), args), (r) => judgedOrDrifted(ctx, c, r, cache))), ...(await rowsOf(engineRepairs(c, args), (r) => engineControl(h, c, r, args)))];
+  const rows = [...(await rowsOf(only(c.controls, o), (k) => keptOr(ctx.room, k, () => oneControl(ctx, c, k)))), ...(await rowsOf(judgeRepairs(c, o), (r) => keptOr(ctx.room, r, () => judgedOrDrifted(ctx, c, r, cache)))), ...(await rowsOf(engineRepairs(c, o), (r) => keptOr(ctx.room, r, () => engineControl(h, ctx.room, c, r, o))))];
   docWritten(ctx.room, "controls.json", { case: c.id, rows });
   return { case: c.id, run: ctx.run.id, rows, exit: controlsExit(rows) };
 }
@@ -408,21 +591,66 @@ async function controlsRan(ctx, c, h, args) {
 // REFUSED when any control no longer applies to this source (FIXTURE_DRIFT); otherwise every row matched, or not.
 const controlsExit = (rows) => (rows.some((r) => r.got === "DRIFTED") ? 2 : rows.length && rows.every((r) => r.matched) ? 0 : 1);
 
-// A QA case's controls: a whole run each, driven by one of its scripted hosts, its verdict held to what it must be.
-async function qaControl(h, c, k, args) {
-  const r = await oneRun(h, { caseId: c.id, host: k.host, source: flag(args, "source") ?? "head", parent: parentOption(flag(args, "parent")) });
-  return { id: k.id, host: k.host, expect: k.expect, got: r.outcome, matched: r.outcome === k.expect, summary: r.summary ?? "", run: r.run };
+// A QA case's controls: a whole run each, driven by one of its scripted hosts, its verdict held to what it must be --
+// the set kept in a room of its own, as a source case's is.
+function qaControlsRoom(h, c, o) {
+  const room = setRoom(h, c, o);
+  docWritten(room, "manifest.json", setManifest(room, c, whereAt(treeOf(h), h.env), o, { mode: o.source ?? "head", digest: dirDigest(c.dir) }));
+  return room;
 }
 
-async function qaControls(h, c, args) {
-  const rows = [];
-  for (const k of c.controls.filter((x) => !flag(args, "only") || x.id === flag(args, "only"))) rows.push(await qaControl(h, c, k, args));
-  return { case: c.id, run: rows.map((r) => r.run).join(" "), rows, exit: controlsExit(rows) };
+const qaControls = (h, c, o) => qaControlsRan(h, c, qaControlsRoom(h, c, o), o);
+
+// The host a control's run is carried by: a QA case's scripted host by its name; an activation case's control by its own
+// id, whose host kind and steps the case declares.
+const controlHost = (c, k) => (c.kind === "activation" ? `scripted:${k.id}` : k.host);
+
+// The class a control's run ended in, as its own ending says it -- what an activation control may name beside its verdict.
+const classOfRun = (h, run) => (RUN_ID.test(String(run)) ? docRead(roomOf(h.storeRoot, run), "ending.json")?.class ?? null : null);
+
+const controlMatched = (k, got, cls) => got === k.expect && (!k.class || k.class === cls);
+
+async function qaControl(h, set, c, k, o) {
+  const r = await controlRun(h, set, k.id, (runId) => oneRun(h, { caseId: c.id, host: controlHost(c, k), learnHost: k.learn, source: o.source ?? "head", parent: o.parent ?? undefined, runId }));
+  const cls = classOfRun(h, r.run);
+  return { id: k.id, host: k.host, expect: k.expect, ...(k.class ? { expectClass: k.class } : {}), got: r.outcome, class: cls, matched: controlMatched(k, r.outcome, cls), summary: r.summary ?? "", run: r.run };
 }
+
+async function qaControlsRan(h, c, room, o) {
+  const rows = await rowsOf(only(c.controls, o), (k) => keptOr(room, k, () => qaControl(h, room, c, k, o)));
+  docWritten(room, "controls.json", { case: c.id, rows });
+  return { case: c.id, run: room.id, rows, exit: controlsExit(rows) };
+}
+
+// ---- a control set, carried on -------------------------------------------------------------------------------------------
+
+// A control set carried on from its room (`resume <bnr-…>`): what it was asked, on the tree it measured -- every control
+// it kept stays as it was, the rest run, and a control's own run is carried on when its record planned one. A set whose
+// case moved since it began is refused: what it kept was about another case.
+const unkept = (room) => refusedWith(`the control set ${room.id} keeps no options to be carried on with: run its controls again`);
+
+const controlsResumed = (h, room, m) => (m.config?.asked ? (RUN_CONTROLLED.includes(m.benchmark?.kind) ? qaResumed : sourceResumed)({ ...h, tree: m.source?.repo ?? h.tree }, room, m) : unkept(room));
+
+const intactSet = (ctx) => (dirDigest(ctx.frozenCase) === ctx.manifest.benchmark.digest ? ctx : refusedWith(`the control set ${ctx.run.id} froze a case that changed since it began: run its controls again`));
+
+async function sourceResumed(h, room, m) {
+  const { deps } = dockerUp(h, "a control set goes on in the verifier's containers");
+  const ctx = intactSet(await withSpec(contextOf(h, room, m, NO_RECORD)));
+  resolvedImages(imageDefs(engineOf(h)), deps, { need: verifierNeeds(ctx.case, m.config.asked), prefer: m.images });
+  return controlsRan(ctx, ctx.case, h, m.config.asked);
+}
+
+const qaResumed = (h, room, m) => ((c) => (dirDigest(c.dir) === m.benchmark.digest ? qaControlsRan(h, c, room, m.config.asked) : refusedWith(`${c.id} changed since the control set ${room.id} began: run its controls again`)))(caseOf(h.root, m.benchmark.case));
 
 const rejectsSay = (x) => (x.missing?.length ? ` · NOT refused by ${x.missing.join(", ")}` : x.rejects?.length ? ` · refused by ${x.rejects.join(", ")}` : "");
 
-const sayControls = (r) => [`CONTROLS   ${r.case} (${r.run})`, ...(r.verifierDefect ? [`  VERIFIER_DEFECT — ${r.verifierDefect}: no control was run`] : []), ...r.rows.map((x) => `  ${x.matched ? "✓" : "✗"} ${x.id.padEnd(20)} ${String(x.kind ?? "host").padEnd(13)} expected ${x.expect.padEnd(17)} got ${String(x.got).padEnd(17)} ${x.summary}${rejectsSay(x)}`)].join("\n");
+// An activation control may name the class its FAIL must carry beside the verdict.
+const classSaid = (x) => (x.expectClass ? ` (${x.expectClass}; got ${x.class ?? "none"})` : "");
+
+// A workflow or a mission control may name the legs its FAIL must be on beside the verdict.
+const legsSaidOf = (x) => (x.legs ? ` (legs ${x.legs.join(", ")}; failed ${x.failedLegs?.join(", ") || "none"})` : "");
+
+const sayControls = (r) => [`CONTROLS   ${r.case} (${r.run})`, ...(r.verifierDefect ? [`  VERIFIER_DEFECT — ${r.verifierDefect}: no control was run`] : []), ...r.rows.map((x) => `  ${x.matched ? "✓" : "✗"} ${x.id.padEnd(20)} ${String(x.kind ?? "host").padEnd(13)} expected ${x.expect.padEnd(17)} got ${String(x.got).padEnd(17)} ${x.summary}${rejectsSay(x)}${classSaid(x)}${legsSaidOf(x)}`)].join("\n");
 
 export const COMMANDS = {
   build: { run: build, say: sayBuild },
@@ -435,5 +663,6 @@ export const COMMANDS = {
   controls: { run: controls, say: sayControls, exit: (r) => r.exit },
   cleanup: { run: cleanup, say: sayCleanup },
   metrics: { run: metrics, say: sayMetrics },
+  reliability: { run: reliability, say: sayReliability },
   where: { run: where, say: sayWhere },
 };

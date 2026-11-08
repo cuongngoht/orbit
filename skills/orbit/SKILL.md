@@ -1,10 +1,9 @@
 ---
 name: orbit
 description: >
-  Orbit — From Goal to Verified Outcome. The goal orchestrator: accept a full PBI, bug report or
-  engineering objective, persist the specification, analyze requirements and acceptance criteria,
-  plan work units, and coordinate existing Orbit automation and engineering workflows until
-  evidence satisfies the goal or a real blocker stops progress. Separate from orbit-help.
+  Takes a whole specification -- a PBI, a bug report, a goal with several requirements or acceptance
+  criteria -- to a verified outcome: keeps the spec, reads it into requirements and work units, runs
+  each through Orbit. Use when a person hands over a full spec. For one change, use orbit-develop.
 argument-hint: '<goal text or goal-id> | resume goal-id | status goal-id'
 allowed-tools:
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/orbit.mjs*)
@@ -14,6 +13,11 @@ user-invocable: true
 ---
 
 # Orbit — goal entry
+
+**In short.** Orbit — From Goal to Verified Outcome. The goal orchestrator: accept a full PBI, bug
+report or engineering objective, persist the specification, analyze requirements and acceptance
+criteria, plan work units, and coordinate existing Orbit automation and engineering workflows until
+evidence satisfies the goal or a real blocker stops progress. Separate from orbit-help.
 
 When a person invokes `/orbit`, capture their **complete goal** (same message or ask once, then read the next message). Do not start without a specification.
 
@@ -47,7 +51,13 @@ node ${CLAUDE_PLUGIN_ROOT}/cli/orbit.mjs goal resume <goal-id> --json
 
 ## Analyze (host supplies structure; engine validates)
 
-Read the stored spec, produce JSON with `objective`, `intent`, `requirements[]`, `acceptance[]`, `unknowns[]`, `conflicts[]`. Every row needs `sourceRef` as `spec@<digest>#L<n>` from the start response.
+Read the stored spec, produce JSON with `objective`, `intent`, `requirements[]`, `acceptance[]`, `unknowns[]`, `conflicts[]`. Every row needs `sourceRef` as `spec@<digest>#L<n>` from the start response: the line the row comes from. A row sent without one keeps none -- the engine never makes a line up -- and the answer counts every row that cites no line apart (`uncited`), so cite each one.
+
+Label EVERY requirement row with its `kind`: `explicit` only for what the spec states, `derived` (it follows from what
+the spec says), `assumption`, `unknown`, `conflict`, `decision`, or `constraint` -- something the change must NOT
+violate, such as a public API kept or no new dependency. A guess is never `explicit`: what the spec does not say is an
+`assumption` or an `unknown`. A row sent with no `kind` is read as `assumption`, never `explicit`, and the answer counts
+it apart (`kindDefaulted`) beside each kind it kept, so even a row the spec states is an assumption until you label it.
 
 `intent` is YOUR structured reading of the goal, and the plan is drawn from it alone — the engine never looks for words
 in the objective, so a goal in any language plans the same way:

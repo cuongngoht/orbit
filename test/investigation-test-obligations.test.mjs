@@ -3,6 +3,7 @@
 // or a person's decision is waited for, and anything that may safely be tried again is still owed.
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { generated } from "../src/investigation/generate.mjs";
 import { contextOf, loopWorld } from "../src/investigation/loop.mjs";
 import { createInvestigations, eventIdOf } from "../src/investigation/store.mjs";
 import { fakeContext } from "./fakes/context.mjs";
@@ -21,6 +22,28 @@ function worldOf(obligation = {}, evaluations = []) {
 }
 
 const world = (evaluations = [], obligation = {}) => loopWorld(worldOf(obligation, evaluations)).obligations.find((o) => o.kind === "test-obligation");
+
+// What 0.4.0's diagnosis found (0.5.0 B7): what one obligation may cost -- the designs that hold and the repairs of one
+// that failed (src/investigation/generate.mjs) -- and the attempts one frozen version may run were said only by the
+// refusal that spent them. context.budget says them beside the actions and decisions, from the very rows generate is
+// refused by, with what each obligation that has a design has spent.
+test("context.budget says what an obligation may spend on designs and repairs, and a version on attempts -- from the rows that refuse it", () => {
+  const w = worldOf();
+  w.generation = { contextFor: () => assert.fail("a spent budget is refused before anything is designed") };
+  const kept = (n, state) => w.store.appendOnce(ID, "designed", { id: `dsg-${n}`, eventId: `e-dsg-${n}`, obligation: "tob-aaaaaaaaaaaa", digest: String(n).repeat(64), state, ...(state === "designed" ? { design: `tds-${n}` } : { why: "GENERATION_FAILED at controls" }) });
+  const spent = () => contextOf(w).budget.obligations["tob-aaaaaaaaaaaa"];
+  assert.deepEqual([contextOf(w).budget.perObligation, contextOf(w).budget.perVersion, contextOf(w).budget.obligations], [{ designs: 4, repairs: 2 }, { attempts: 3 }, {}], "the defaults, and nothing spent before a design");
+  kept(1, "failed");
+  kept(2, "designed");
+  assert.deepEqual(spent(), { designs: { used: 1, of: 4 }, repairs: { used: 0, of: 2 }, spent: null }, "a first proposal that failed spent no repair");
+  kept(3, "failed");
+  assert.deepEqual(spent(), { designs: { used: 1, of: 4 }, repairs: { used: 1, of: 2 }, spent: null }, "one repair of a design that failed: another may still be sent");
+  kept(4, "failed");
+  assert.deepEqual(spent(), { designs: { used: 1, of: 4 }, repairs: { used: 2, of: 2 }, spent: "repairs" });
+  assert.throws(() => generated(w, { obligation: "tob-aaaaaaaaaaaa", design: {} }), /budget of repairs of a design that failed is spent/, "generate is refused exactly when the budget says so");
+  w.settings.limits = { ...w.settings.limits, designs: 1, repairs: 0, attempts: 5 };
+  assert.deepEqual([contextOf(w).budget.perObligation, contextOf(w).budget.perVersion, spent().spent], [{ designs: 1, repairs: 0 }, { attempts: 5 }, "designs"], "a person's limits, and the first one spent named");
+});
 
 test("derived and not yet designed, it is owed -- and a generate or a run-version is what may target it", () => {
   const o = world();
@@ -70,6 +93,24 @@ test("an obligation's template says what its own expected slots are to its verdi
   assert.equal(world([], { shape: "no-such-shape" }).template.slots, undefined, "a shape nobody declared says nothing");
   const ctx = contextOf(worldOf({ shape: "crash-after-effect-before-ack" }));
   assert.match(ctx.frontier.find((o) => o.kind === "test-obligation")?.template.says ?? "", /not a second effect/, "the frontier a host reads before it designs");
+});
+
+// What a real Claude Code QA row taught (0.4.0, ORBIT-QA-006 on Opus): its effect-once test published a second message
+// under the first one's business key and waited for that one to be processed -- the clean application settled it as the
+// duplicate it was, a false alarm -- and its deadline test made the schedule reach the very period whose business key that
+// earlier test had used in the same sandbox. The effect-once shape now says what the crash-after-effect shape says, in its
+// own words, and every test obligation says that the tests of one investigation share its sandbox.
+test("an effect-once obligation says a second delivery or publication under its key is not a second effect, and every test obligation says its sandbox is shared", async () => {
+  const { ONE_SANDBOX } = await import("../src/qa/backend/shared.mjs");
+  const once = world([], { shape: "effect-once-per-key", expected: ["FIX-1/E2"] }).template;
+  assert.match(once.says ?? "", /^a second delivery or publication under the same business key is not a second effect: how it settles is the system's own word, never a second success to wait for/);
+  assert.match(once.says, /observe it by the message alone or by its delivery attempt, and rule this obligation on its own expected slots \(the effect count\)$/);
+  assert.match(world([], { shape: "competing-workers" }).template.says ?? "", /^the same job received by a second worker is not a second effect: how it settles is the system's own word/);
+  for (const shape of ["idempotent-under-repeat", "overlap-policy", "crash-before-effect", "response-conforms"]) assert.equal(world([], { shape }).template.says, undefined, `${shape}: a second one may succeed, or there is none`);
+  for (const shape of ["response-conforms", "effect-once-per-key", "completes-by-deadline", "persisted-after-write"]) assert.equal(world([], { shape }).template.sandbox, ONE_SANDBOX, shape);
+  assert.equal(world([], { shape: "no-such-shape" }).template.sandbox, undefined, "a shape nobody declared says nothing");
+  const template = contextOf(worldOf({ shape: "effect-once-per-key" })).frontier.find((o) => o.kind === "test-obligation")?.template ?? {};
+  assert.deepEqual([template.sandbox, /not a second effect/.test(template.says ?? "")], [ONE_SANDBOX, true], "the frontier a host reads before it designs");
 });
 
 test("its latest execution's word settles it through that word's own row", () => {

@@ -5,30 +5,46 @@
 // every row, repair and gate. The gate trusts none of it as written: an ordered table (`PUBLISH`) holds it to the
 // checkout as it stands NOW, re-reads every run's own room, and digests the artifact again. Only PUBLISHABLE exits 0.
 //
-//   evidenceOf(ctx, f, delivery) -> evidence        publishableOf(g) -> { publishable, code, says }       PUBLISH
-//   g: { ship, view, evidence, head: { tree, dirty }, now: { protected, policy, rows }, rooms(run), artifact }
-import { identityOf } from "./rows.mjs";
+//   evidenceOf(ctx, f, delivery) -> evidence        publishableOf(g) -> { publishable, code, says, recorded }   PUBLISH
+//   g: { ship, view, evidence, head: { tree, dirty }, now: { protected, policy, unseen, rows, recorded }, rooms(run),
+//        artifact } -- `unseen`: the cases the policy names that the benchmark does not list now (all, unread)
+//   A RECORDED row (ADR 0051) is in the evidence held or not, with its run's room, and the gate holds it to that room as
+//   it holds every row -- only a required row must be HELD.
+//   The effort (0.5.0): the host block says the effort the ship asked (`host.effort`) beside the models the rows
+//   reported, and every row the effort its run's own manifest says it ran at; the gate reads each model-carried row's
+//   room again for it, and a row that held must have run at the ship's.
+import { runRoomOf } from "./dispatch.mjs";
+import { effortOf, identityOf } from "./rows.mjs";
 
 const uniq = (xs) => [...new Set(xs.filter(Boolean))];
 
-const rowEvidence = (r) => ({ id: r.row.id, case: r.row.case, requirement: r.row.req, run: r.v.run, task: r.v.task ?? null, state: r.v.state, outcome: r.v.outcome, basis: r.v.basis ?? null, cli: r.v.cli ?? null, model: r.v.model ?? null, costUsd: r.v.costUsd ?? null, costBasis: r.v.costBasis ?? null, rounds: r.v.rounds ?? null, seconds: r.v.seconds ?? null, superseded: r.v.superseded ?? [], says: r.v.says, runs: r.runs });
+const rowEvidence = (r) => ({ id: r.row.id, case: r.row.case, requirement: r.row.req, recorded: r.row.recorded === true, run: r.v.run, task: r.v.task ?? null, state: r.v.state, outcome: r.v.outcome, basis: r.v.basis ?? null, cli: r.v.cli ?? null, model: r.v.model ?? null, effort: r.v.effort ?? null, costUsd: r.v.costUsd ?? null, costBasis: r.v.costBasis ?? null, rounds: r.v.rounds ?? null, seconds: r.v.seconds ?? null, superseded: r.v.superseded ?? [], says: r.v.says, runs: r.runs });
 
 const repairEvidence = (x) => ({ case: x.d.case, commit: x.d.settled.commit, tree: x.d.settled.tree, patchDigest: x.d.settled.patchDigest, run: x.d.settled.run ?? null, paths: x.d.settled.paths ?? [] });
 
 const autonomousOf = (f) => [...f.rows.values()].filter((r) => r.row.autonomous);
 
+// The recorded rows of a cycle, held or not, each with its run's room: what a release records and never requires.
+export const recordedOf = (storeRoot, rows) => rows.filter((r) => r.recorded).map((r) => ({ id: r.id, case: r.case, held: r.state === "HELD", state: r.state, outcome: r.outcome ?? null, run: r.run ?? null, room: runRoomOf(storeRoot, String(r.run ?? "").split(" ")[0]).dir, says: r.says }));
+
 export function evidenceOf(ctx, f, delivery) {
   const rows = [...f.rows.values()].map(rowEvidence);
   const auto = autonomousOf(f);
-  return { schema: 1, kind: "release-evidence", ship: ctx.ship.id, task: ctx.task, at: new Date(ctx.now()).toISOString(), verdict: "SHIPPABLE", mode: ctx.options.repair ? "autonomous" : "verify-only", policy: { digest: ctx.manifest.policy.digest }, start: ctx.manifest.start, source: { commit: f.cycle.commit, tree: f.cycle.treeId, digest: f.firstDigest, protected: ctx.manifest.protected.digest }, artifact: f.cycle.artifact, harness: { digest: rows.map((r) => r.run && f.rows.get(r.id)?.v.harness).find(Boolean) ?? null, images: f.cycle.images }, host: { cli: ctx.policy.host.cli, basis: ctx.policy.host.basis, image: f.host.probe?.image ?? null, reported: uniq(auto.map((r) => r.v.cli)), models: uniq(auto.map((r) => r.v.model)), endpoint: ctx.endpoint }, gates: f.gates.rows.map((g) => ({ name: g.name, ok: g.ok, detail: g.detail })), rows, repairs: f.acts.filter((x) => x.a.type === "release.integrate" && x.d.settled).map(repairEvidence), superseded: rows.filter((r) => r.superseded.length).map((r) => ({ case: r.case, controls: r.superseded })), optional: ctx.optional ?? [], totals: { usd: f.spent.usd, minutes: f.spent.minutes, cycles: f.attempts, rows: rows.length }, delivery: { needed: f.cycle.commit !== ctx.manifest.start.commit, ...(delivery ?? {}) } };
+  return { schema: 1, kind: "release-evidence", ship: ctx.ship.id, task: ctx.task, at: new Date(ctx.now()).toISOString(), verdict: "SHIPPABLE", mode: ctx.options.repair ? "autonomous" : "verify-only", policy: { digest: ctx.manifest.policy.digest }, start: ctx.manifest.start, source: { commit: f.cycle.commit, tree: f.cycle.treeId, digest: f.firstDigest, protected: ctx.manifest.protected.digest }, artifact: f.cycle.artifact, harness: { digest: rows.map((r) => r.run && f.rows.get(r.id)?.v.harness).find(Boolean) ?? null, images: f.cycle.images }, host: { cli: ctx.policy.host.cli, basis: ctx.policy.host.basis, image: f.host.probe?.image ?? null, reported: uniq(auto.map((r) => r.v.cli)), models: uniq(auto.map((r) => r.v.model)), effort: ctx.options.effort ?? null, endpoint: ctx.endpoint }, gates: f.gates.rows.map((g) => ({ name: g.name, ok: g.ok, detail: g.detail })), rows, repairs: f.acts.filter((x) => x.a.type === "release.integrate" && x.d.settled).map(repairEvidence), superseded: rows.filter((r) => r.superseded.length).map((r) => ({ case: r.case, controls: r.superseded })), recorded: recordedOf(ctx.storeRoot, rows), optional: ctx.optional ?? [], totals: { usd: f.spent.usd, unknownRuns: f.spent.unknownRuns, unknownAllowedUsd: f.spent.unknownAllowedUsd, minutes: f.spent.minutes, cycles: f.attempts, rows: rows.length }, delivery: { needed: f.cycle.commit !== ctx.manifest.start.commit, ...(delivery ?? {}) } };
 }
 
 // ---- the publish gate --------------------------------------------------------------------------------------------------
 
 const IN_FLIGHT = ["QUEUED", "PREPARING", "EXECUTING", "VERIFYING", "WAITING_APPROVAL", "PAUSED"];
 
-// A run's room read again: it still names the commit, the outcome and -- for a model-carried row -- the coding host.
-const agrees = (g, r) => ((room) => Boolean(room?.manifest) && room.manifest.source?.commit === g.evidence.source.commit && room.ending?.outcome === r.outcome && (!g.now.autonomous.has(r.id) || identityOf(room).basis === "coding-host"))(g.rooms(String(r.run ?? "").split(" ")[0]));
+// A run's room read again: it still names the commit, the outcome and -- for a model-carried row -- the effort the
+// evidence says it ran at; and for one that held, the coding host, at the effort the ship asked (an evidence from before
+// 0.5.0 names none, and its rooms none). A recorded row that did not hold is held to its room as it is said, no host owed.
+const hostAgrees = (g, r, room) => r.state !== "HELD" || (identityOf(room).basis === "coding-host" && effortOf(room) === (g.evidence.host?.effort ?? null));
+
+const modelAgrees = (g, r, room) => !g.now.autonomous.has(r.id) || (effortOf(room) === (r.effort ?? null) && hostAgrees(g, r, room));
+
+const agrees = (g, r) => ((room) => Boolean(room?.manifest) && room.manifest.source?.commit === g.evidence.source.commit && (room.ending?.outcome ?? null) === (r.outcome ?? null) && modelAgrees(g, r, room))(g.rooms(String(r.run ?? "").split(" ")[0]));
 
 const roomsAgree = (g) => g.evidence.rows.filter((r) => r.run && g.now.single.has(r.id)).every((r) => agrees(g, r));
 
@@ -41,10 +57,15 @@ export const PUBLISH = [
   { code: "DIRTY", when: (g) => g.head.dirty.length > 0, says: (g) => `uncommitted changes (${g.head.dirty.slice(0, 5).join(", ")}): the evidence is about the committed tree alone` },
   { code: "PROTECTED_MOVED", when: (g) => g.now.protected !== g.evidence.source.protected, says: () => "the harness, a check or the release itself moved since the ship ran" },
   { code: "POLICY_MOVED", when: (g) => g.now.policy !== g.evidence.policy.digest, says: () => "the release policy moved since the ship ran: what it requires is not what was held" },
+  { code: "CATALOG_UNREAD", when: (g) => g.now.unseen.length > 0, says: (g) => `the benchmark does not list ${g.now.unseen.length} case(s) the policy names now (${g.now.unseen.slice(0, 4).join(", ")}${g.now.unseen.length > 4 ? ", …" : ""}): no row of theirs can be held to its room, and a gate that cannot see a row never passes it -- node benchmark/run.mjs list says why` },
   { code: "INCOMPLETE", when: (g) => g.now.rows.some((id) => !g.evidence.rows.some((r) => r.id === id && r.state === "HELD")), says: (g) => `rows the policy requires with no held evidence: ${g.now.rows.filter((id) => !g.evidence.rows.some((r) => r.id === id && r.state === "HELD")).slice(0, 6).join(", ")}` },
+  { code: "UNRECORDED", when: (g) => g.now.recorded.some((id) => !g.evidence.rows.some((r) => r.id === id)), says: (g) => `rows the policy records with no record in the evidence: ${g.now.recorded.filter((id) => !g.evidence.rows.some((r) => r.id === id)).slice(0, 6).join(", ")}` },
   { code: "UNTRUSTED", when: (g) => !roomsAgree(g), says: () => "a run's own room no longer says what the evidence says of it" },
   { code: "ARTIFACT_MISSING", when: (g) => !g.artifact.ok, says: (g) => g.artifact.says },
   { code: "PUBLISHABLE", when: () => true, says: (g) => `ship ${g.ship.id} qualified ${g.evidence.source.commit.slice(0, 12)}: every row held, on this very tree; artifact ${g.evidence.artifact.sha256.slice(0, 12)}` },
 ];
 
-export const publishableOf = (g) => ((r) => ({ publishable: r.code === "PUBLISHABLE", code: r.code, says: r.says(g), ship: g.ship?.id ?? null }))(PUBLISH.find((r) => r.when(g)));
+export const publishableOf = (g) => ((r) => ({ publishable: r.code === "PUBLISHABLE", code: r.code, says: r.says(g), ship: g.ship?.id ?? null, recorded: g.evidence ? recordedAgain(g) : [] }))(PUBLISH.find((r) => r.when(g)));
+
+// The recorded rows as --evidence says them: held or not, with the room each was read again from.
+const recordedAgain = (g) => (g.evidence.recorded ?? []).map((r) => ({ ...r, room: g.rooms(String(r.run ?? "").split(" ")[0]).dir ?? null }));

@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "activate": true,
+  "strategy": [
+    "DIRECT"
+  ],
+  "how": [],
+  "selection": [
+    {
+      "skills": {
+        "require": [],
+        "allow": [
+          "orbit-ui-test"
+        ]
+      },
+      "agents": {
+        "require": [
+          "orbit-dsl-doctor"
+        ],
+        "allow": [],
+        "max": 1
+      }
+    }
+  ],
+  "forbid": {
+    "skills": [
+      "orbit-engineer",
+      "orbit-help",
+      "satellite"
+    ],
+    "agents": [
+      "orbit-map-healer",
+      "orbit-qa-case-writer"
+    ],
+    "commands": []
+  },
+  "readOnly": {},
+  "records": [
+    {
+      "id": "case-repaired",
+      "read": "cases",
+      "expect": {
+        "case": "confirm-order"
+      }
+    }
+  ],
+  "relevant": null,
+  "grounding": null
+}

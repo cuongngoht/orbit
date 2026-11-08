@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "id": "orbit-hld-004-half",
+  "about": "Half the change: reading by id and listing ask for the caller's own system -- and lending a copy, placing a hold on a title and the drop box still reach another system's records. Its own test covers the reads only.",
+  "mutations": [
+    {
+      "id": "restore-readme-says",
+      "file": "README.md",
+      "find": "A lending service for library systems, which several library systems share. Records live on disk, one JSON file each,\nso a service that stops and starts again finds them.",
+      "replace": "A lending service for library systems. Several library systems share one service, and each sees and changes only its\nown records. Records live on disk, one JSON file each, so a service that stops and starts again finds them.",
+      "count": 1
+    },
+    {
+      "id": "restore-api-loan",
+      "file": "src/api.mjs",
+      "find": "found(get(c.store, \"loans\", id), \"no-loan\", loanView)",
+      "replace": "found(loanOf(c, id), \"no-loan\", loanView)",
+      "count": 1
+    },
+    {
+      "id": "restore-api-copy",
+      "file": "src/api.mjs",
+      "find": "found(get(c.store, \"copies\", id), \"no-copy\", copyView)",
+      "replace": "found(mine(c.store, c.tenant, \"copies\", id), \"no-copy\", copyView)",
+      "count": 1
+    },
+    {
+      "id": "restore-api-titles",
+      "file": "src/api.mjs",
+      "find": "answer(200, { titles: list(c.store, \"titles\").map(titleView) })",
+      "replace": "answer(200, { titles: allMine(c.store, c.tenant, \"titles\").map(titleView) })",
+      "count": 1
+    },
+    {
+      "id": "reads-import",
+      "file": "src/api.mjs",
+      "find": "import { get, isKey, list } from \"./store.mjs\";",
+      "replace": "import { get, isKey } from \"./store.mjs\";",
+      "count": 1
+    }
+  ],
+  "files": [
+    {
+      "rel": "test/own-reads.test.mjs",
+      "lines": [
+        "// One library system never reads another's copies, loans or titles.",
+        "import assert from \"node:assert/strict\";",
+        "import { mkdtempSync, rmSync } from \"node:fs\";",
+        "import { tmpdir } from \"node:os\";",
+        "import { join } from \"node:path\";",
+        "import { test } from \"node:test\";",
+        "import { handle } from \"../src/api.mjs\";",
+        "import { openStore } from \"../src/store.mjs\";",
+        "",
+        "function storeFor(t) {",
+        "  const dir = mkdtempSync(join(tmpdir(), \"own-reads-\"));",
+        "  t.after(() => rmSync(dir, { recursive: true, force: true }));",
+        "  return openStore(dir);",
+        "}",
+        "",
+        "const as = (tenant) => (store, method, path, body) => handle(store, { method, path, tenant, today: \"2026-03-02\", body });",
+        "",
+        "test(\"another system's copy, loan and titles are not read\", (t) => {",
+        "  const store = storeFor(t);",
+        "  const title = as(\"harbor\")(store, \"POST\", \"/titles\", { name: \"Theirs\", format: \"book\" }).body;",
+        "  const copy = as(\"harbor\")(store, \"POST\", \"/copies\", { title: title.id, replacementCents: 2000 }).body;",
+        "  const loan = as(\"harbor\")(store, \"POST\", \"/loans\", { copy: copy.id, member: as(\"harbor\")(store, \"POST\", \"/members\", { name: \"Ana\" }).body.id }).body;",
+        "  assert.deepEqual([as(\"upland\")(store, \"GET\", `/copies/${copy.id}`).status, as(\"upland\")(store, \"GET\", `/loans/${loan.id}`).status, as(\"upland\")(store, \"GET\", \"/titles\").body.titles.length], [404, 404, 0]);",
+        "});"
+      ]
+    }
+  ],
+  "deletes": []
+}

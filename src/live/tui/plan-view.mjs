@@ -44,7 +44,11 @@ export function planOf(ctx) {
 
 // ---- rows ----------------------------------------------------------------------------------------------
 
-const stepRow = (s) => ((st) => row([seg(`${st.glyph} `, st.tone), seg(s.id, "label"), dim(s.because ? `  ${s.because}` : "")], [seg(st.word, st.tone), dim(s.after.length ? `  ← ${s.after.join(", ")}` : "")], { status: st.word, depth: 0 }))(stepState(s));
+// A step the engine SKIPPED says why it was skipped where every other step says why it is planned (0.5.0, ADR 0053: a
+// change's QA with nothing to start) -- skipped is never passed, and never silent.
+const whyOf = (s, st) => (st.word === "SKIPPED" && s.summary ? s.summary : s.because);
+
+const stepRow = (s) => ((st) => row([seg(`${st.glyph} `, st.tone), seg(s.id, "label"), dim(whyOf(s, st) ? `  ${whyOf(s, st)}` : "")], [seg(st.word, st.tone), dim(s.after.length ? `  ← ${s.after.join(", ")}` : "")], { status: st.word, depth: 0 }))(stepState(s));
 
 const goalWords = (view) => ((g) => (g ? ` · goal ${g.goal}${g.unit ? ` ${g.unit}` : ""}` : ""))(goalOf(view));
 

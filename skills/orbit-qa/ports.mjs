@@ -20,6 +20,7 @@
 // receipts'. What cannot be read is null, and the engine says what it then cannot do.
 import { copyFileSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
+import { requestFindings } from "../../src/adapters/contract-v1.mjs";
 import { operationFor } from "../../src/adapters/families.mjs";
 import { opKeyOf, selectAdapter } from "../../src/adapters/select.mjs";
 import { inputFindings } from "../../src/capability/invoke.mjs";
@@ -71,6 +72,10 @@ function outputsOf(r, step) {
 
 const semanticsOf = (r, step) => adapterOf(r, step)?.semantics ?? null;
 
+// What a step's request may carry, as the adapter that will answer it declares it (ADR 0052): the table whose match rows
+// say what a match field is compared with and what a match picks (src/qa/backend/contradictions.mjs). None: null.
+const requestTableOf = (r, step) => ((adapter) => (adapter ? declaredOp(adapter, step)?.request ?? null : null))(adapterOf(r, step));
+
 // How an observer of the design's plan would watch: the semantics of the adapter that arms one on its channel.
 const observerSemantics = (r, ref) => ((t) => (t ? selectAdapter(r.ctx.adapters, { family: "messaging", op: "observe", transport: t }).adapter?.semantics ?? null : null))(transportOf(r, "observer", ref));
 
@@ -90,7 +95,16 @@ export function generationPort(b) {
 function generationContext(b, obligation, a) {
   const r = resolver({ ...b, graph: b.graph(), topology: quietly(() => b.topology?.()), design: a.design });
   const steps = a.design?.skeleton?.steps ?? [];
-  return { expectations: expectationsOf(b, obligation), expected: obligation.expected ?? [], outputsOf: (i) => outputsOf(r, steps[i - 1]), semanticsOf: (i) => semanticsOf(r, steps[i - 1]), observerSemantics: (ref) => observerSemantics(r, ref), shape: shapeOf(obligation.shape), caseId: caseIdOf(obligation, a.design), title: titleOf(obligation), validate: (c) => validate(c, b.ctx.graph, b.ctx.dsl, b.ctx.validators, r.lookup), inputFindings: (s) => [...inputFindings(r.lookup(s.capability), s.input), ...basePathFindings(r, r.lookup(s.capability), s.input ?? {})], faultPointsOf: (alias) => r.declarationOf("workload", alias)?.points ?? null, dsl: b.ctx.dsl, pageOf: (id) => r.lookup(id)?.page };
+  return { expectations: expectationsOf(b, obligation), expected: obligation.expected ?? [], outputsOf: (i) => outputsOf(r, steps[i - 1]), requestTableOf: (i) => requestTableOf(r, steps[i - 1]), semanticsOf: (i) => semanticsOf(r, steps[i - 1]), observerSemantics: (ref) => observerSemantics(r, ref), shape: shapeOf(obligation.shape), caseId: caseIdOf(obligation, a.design), title: titleOf(obligation), validate: (c) => validate(c, b.ctx.graph, b.ctx.dsl, b.ctx.validators, r.lookup), inputFindings: (s) => [...inputFindings(r.lookup(s.capability), s.input), ...basePathFindings(r, r.lookup(s.capability), s.input ?? {}), ...requestShapeFindings(r, s)], faultPointsOf: (alias) => r.declarationOf("workload", alias)?.points ?? null, dsl: b.ctx.dsl, pageOf: (id) => r.lookup(id)?.page };
+}
+
+// What a step's request may carry, as the adapter that will answer it declares (orbit.adapter/v1 `request`, ADR 0052): a
+// field it does not read is refused before a draft exists -- never by its helper, once a version was frozen and a run
+// spent on it. An adapter that declares no table holds the request to nothing here.
+function requestShapeFindings(r, step) {
+  const adapter = adapterOf(r, step);
+  const declared = adapter ? declaredOp(adapter, step) : null;
+  return declared?.request ? requestFindings(declared.request, step.input?.request, `${step.capability} request (${adapter.id})`) : [];
 }
 
 // A path is relative to the endpoint it is sent to, and the endpoint's own base path (the graph declares it, `/api`)
@@ -245,12 +259,15 @@ const deadlineOf = (b) => (b.settings?.limits?.caseSeconds ?? 120) * 1000;
 
 // ── running it, and reading back what it left ──────────────────────────────
 
+// A run that left no envelope says what the runtime says became of its worker, as a read-back does (`readBackOf`): the
+// host frees an attempt that had grants to try again only when the worker's own receipt says it never ran
+// (src/investigation/run-version.mjs NEVER_RAN) -- removed before it ran, never created -- and never on a missing word.
 function ran(b, x) {
   const dirs = b.runtime.dirs(x.request.runId);
   laidIn(b, dirs.in, x.frozen.case, x.request.page);
   const answer = b.runtime.dispatch(x.request);
   const back = readBack(dirs.out);
-  return back.envelope ? back : { why: answer.why ?? back.why };
+  return back.envelope ? back : { why: answer.why ?? back.why, worker: b.runtime.worker?.(x.request.runId) ?? null };
 }
 
 // The run's inputs: the frozen case where the request says it is, and the project it runs as -- its name, the packs

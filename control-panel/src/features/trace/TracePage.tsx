@@ -9,7 +9,7 @@ import { formatInstant } from "../../shared/format";
 import { useFollow } from "../../shared/navigation/useFollow";
 import { useTurns } from "./trace.api";
 import type { PathStep, TurnRow } from "./trace.types";
-import { DAYS, FOLLOWED, OUTCOME, formatSpent, isDays, turnPath, type Days } from "./traceWords";
+import { DAYS, FOLLOWED, OUTCOME, OVER_DELEGATED, formatSpent, isDays, turnPath, type Days } from "./traceWords";
 
 const useStyles = makeStyles({
   muted: { color: tokens.colorNeutralForeground3 },
@@ -135,6 +135,11 @@ function TurnLine({ turn: t }: { turn: TurnRow }) {
           <Badge appearance="tint" color={FOLLOWED[t.followed.verdict].color}>
             {FOLLOWED[t.followed.verdict].label}
           </Badge>
+          {t.activation?.verdict === "over-delegated" && (
+            <Badge appearance="outline" color={OVER_DELEGATED.color} title={t.activation.say}>
+              {OVER_DELEGATED.label}
+            </Badge>
+          )}
         </TableCell>
         <TableCell>
           <Badge appearance="outline" color={OUTCOME[t.outcome].color}>

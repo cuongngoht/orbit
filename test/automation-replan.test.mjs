@@ -2,13 +2,14 @@
 // moment, each response building a revision that names the plan it replaced and why, structural revisions bounded
 // by what a person allows -- and the loop applying them without losing a receipt: a playbook nothing provides gets
 // its draft steps once a person lets the factory close the gap, a requirement that moved has what was built on it
-// planned again, and a QA step goes in once discovery finds something to start.
+// planned again, and a plan an earlier release left with no QA step gets one once discovery finds something to start
+// (0.5.0: a change's QA step is always planned, and is the host's or SKIPPED when its turn comes).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { digestOf, planOf, validate } from "../src/automation/plan.mjs";
 import { RESPONSE_IDS, TRIGGERS, TRIGGER_IDS, respond, structuralOf } from "../src/automation/replan.mjs";
 import { effectiveOf } from "../src/automation/settings.mjs";
-import { automationWorld, contextOf, next, settle, start } from "./fakes/automation.mjs";
+import { automationWorld, childEnds, contextOf, next, settle, start } from "./fakes/automation.mjs";
 
 const values = (extra = {}) => effectiveOf([{ by: "machine", content: { ...extra } }]).values;
 
@@ -20,6 +21,10 @@ const playbookPlan = () => planOf(facts({ ref: null, requirement: null, intent: 
 
 const stepOf = (plan, id, state = "pending") => ({ ...plan.steps.find((s) => s.id === id), state });
 
+// A plan an earlier release wrote for a change with nothing to start: no QA step at all -- what ENVIRONMENT_CHANGED still
+// revises once discovery finds something to start. A plan from 0.5.0 on always holds its QA step (ADR 0053).
+const withoutQa = (p) => ((q) => ({ ...q, digest: digestOf(q) }))({ ...p, steps: p.steps.filter((s) => s.kind !== "qa").map((s) => ({ ...s, after: s.after.filter((a) => a !== "qa") })), retries: Object.fromEntries(Object.entries(p.retries).filter(([k]) => k !== "qa")) });
+
 test("every trigger row is reachable in its moment, and each moment's last row always answers", () => {
   const plan = playbookPlan();
   const eng = planOf(facts(), values());
@@ -27,7 +32,7 @@ test("every trigger row is reachable in its moment, and each moment's last row a
     respond({ at: "blocked", step: stepOf(plan, "playbook"), needs: "capability", generates: true, plan, values: values() }).trigger,
     respond({ at: "blocked", step: stepOf(plan, "playbook"), needs: "person", plan, values: values() }).trigger,
     respond({ at: "settled", step: stepOf(eng, "context", "reported"), linked: "rs-0123456789ab", latest: "rs-0123456789ac", plan: eng, values: values() }).trigger,
-    respond({ at: "settled", step: stepOf(eng, "runtime", "succeeded"), runtimeDone: true, startable: 1, plan: eng, values: values() }).trigger,
+    respond({ at: "settled", step: stepOf(eng, "runtime", "succeeded"), runtimeDone: true, startable: 1, plan: withoutQa(eng), values: values() }).trigger,
     respond({ at: "settled", step: stepOf(eng, "context", "reported"), plan: eng, values: values() }).trigger,
     respond({ at: "failed", step: stepOf(eng, "engineering", "failed"), violated: true, plan: eng, values: values() }).trigger,
     respond({ at: "failed", step: stepOf(eng, "engineering", "failed"), plan: eng, values: values() }).trigger,
@@ -77,12 +82,13 @@ test("REQUIREMENT_CHANGED plans again everything built on the requirement, and n
   const plan = planOf(facts(), values());
   const r = respond({ at: "settled", step: stepOf(plan, "runtime", "succeeded"), linked: "rs-0123456789ab", latest: "rs-0123456789ac", plan, values: values() });
   assert.equal(r.trigger, "REQUIREMENT_CHANGED");
-  assert.deepEqual(r.reset, ["requirement", "engineering", "regression", "review"]);
+  assert.deepEqual(r.reset, ["requirement", "engineering", "qa", "regression", "review"]);
   assert.deepEqual(r.revision.steps, plan.steps, "the steps stay: what changed is the evidence they stand on");
 });
 
-test("ENVIRONMENT_CHANGED adds a QA step once discovery finds something to start, and review waits for it", () => {
-  const plan = planOf(facts(), values());
+test("ENVIRONMENT_CHANGED adds a QA step to a plan an earlier release left without one, and review waits for it", () => {
+  assert.ok(planOf(facts(), values()).steps.some((s) => s.kind === "qa"), "a change's QA step is planned whatever can be started");
+  const plan = withoutQa(planOf(facts(), values()));
   assert.ok(!plan.steps.some((s) => s.kind === "qa"));
   const r = respond({ at: "settled", step: stepOf(plan, "runtime", "succeeded"), runtimeDone: true, startable: 2, ran: ["context", "runtime"], plan, values: values() });
   assert.equal(r.trigger, "ENVIRONMENT_CHANGED");
@@ -146,18 +152,22 @@ test("a requirement that moves under a running workflow has the steps built on i
   assert.ok(o.w.view(id).receipts.some((x) => x.key === "requirement:rs-0123456789ac"));
 });
 
-test("discovery finding something to start adds a QA step after the runtime step settles", async (t) => {
+test("a QA step planned while nothing could be started is the host's once discovery finds something to start", async (t) => {
   const opts = { startable: [] };
   const o = automationWorld(t, opts);
   const id = start(o.ports, { objective: "Implement the refund validation rule" }).task;
-  assert.ok(!contextOf(o.ports, id).plan.steps.some((s) => s.kind === "qa"));
+  assert.deepEqual(contextOf(o.ports, id).plan.steps.map((s) => s.id), ["context", "runtime", "engineering", "qa", "regression", "review"]);
   await next(o, id);
   opts.startable = ["web"];
   const r = await next(o, id);
-  assert.equal(r.replan.trigger, "ENVIRONMENT_CHANGED");
-  const plan = contextOf(o.ports, id).plan;
-  assert.deepEqual(plan.steps.map((s) => s.id), ["context", "runtime", "engineering", "qa", "regression", "review"]);
-  assert.equal(plan.revisedOnEvidence, 1);
+  assert.equal(r.replan, null, "nothing to revise: the QA step decides at its turn what it is");
+  const eng = await next(o, id, { step: "engineering" });
+  const child = /(tsk-[a-f0-9]{12})/.exec(eng.how.invoke)[1];
+  childEnds(o, child);
+  await settle(o.ports, id, { schemaVersion: 1, decisionId: eng.decisionId, expectedRevision: eng.revision, stepId: "engineering", executionState: "succeeded", evidenceRefs: [`task:${child}`] });
+  const qa = await next(o, id, { step: "qa" });
+  assert.equal(qa.mode, "agent", "something can be started now: the QA step is an investigation the host runs");
+  assert.equal(contextOf(o.ports, id).plan.revisedOnEvidence, 0);
 });
 
 

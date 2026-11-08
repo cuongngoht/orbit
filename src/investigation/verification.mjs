@@ -26,6 +26,7 @@ export const VERIFICATION_OUTCOMES = [
   { id: "AUTHORIZATION_BLOCKED", counts: false, defect: false, obligation: "needs-approval", retry: "never", recovery: "keep the exact permission that is missing — a person decides; no policy is edited", say: "the policy, the mode or an identity does not allow it" },
   { id: "ENVIRONMENT_BLOCKED", counts: false, defect: false, obligation: "blocked", retry: "safe", recovery: "the runtime's owner makes the sandbox, a dependency or an endpoint ready — never a product failure", say: "the sandbox or a dependency was not ready" },
   { id: "EXECUTION_ERROR", counts: false, defect: false, obligation: "pending", retry: "read-back", recovery: "keep the receipt; retry a bounded number of times only where it is safe", say: "a provider crashed or a protocol failed" },
+  { id: "INTERRUPTED", counts: false, defect: false, obligation: "pending", retry: "safe", recovery: "it could write nothing, so a new attempt may run within the budget — one its own deadline stopped needs a design that waits less, or a longer deadline", say: "its worker was stopped before the run finished, and it could write nothing" },
   { id: "INCONCLUSIVE", counts: false, defect: false, obligation: "pending", retry: "safe", recovery: "restore the observation, or run again with a scope that can conclude", say: "the evidence cannot decide it" },
   { id: "REQUIRES_REQUIREMENT", counts: false, defect: false, obligation: "needs-requirement", retry: "never", recovery: "find the accepted source, or a person settles the missing criterion", say: "the oracle is missing or in conflict" },
   { id: "CONTRADICTED", counts: false, defect: true, obligation: "violated", retry: "never", recovery: "keep the runner's verdict; the verification owner confirms the cause and the finding", say: "a valid run contradicted a qualified oracle" },
@@ -54,16 +55,39 @@ export const accusesProduct = (id) => verificationOutcomeOf(id)?.defect === true
 // contradicted, a gate that refused for want of permission), and the authority of the oracle --
 // never the text of a message. The first row that holds wins and the last always answers, and no
 // row can make a word stronger than its evidence: a draft oracle never confirms anything, an
-// observation that could not see everything never passes.
+// observation that could not see everything never passes, and neither does a run whose fault was never seen.
 //
 // facts: { status, failure: { helperClass, gap, ambiguous, contradiction, authorization },
-//          envelope: [findings], stale, authority, positiveFailed, faultMissed }
+//          envelope: [findings], stale, authority, positiveFailed, faultMissed, wrote, ran }
+// `wrote`: the attempt had grants to write with (src/runtime/sandbox/test-grants.mjs), so a write may have happened.
+// `ran`: whether its worker ran -- true when it left an envelope, false only when the worker's own receipt says it never
+// did (never created, never started, removed before it ran: src/investigation/run-version.mjs NEVER_RAN), and null when
+// nothing says, which is never taken for "it did not".
 const failure = (f) => f.failure ?? {};
 
+// The host could not believe what its worker left: no envelope came back, or the one that did failed the host's check
+// (src/run/envelope.mjs). Nothing it claimed is taken -- and nothing it claimed says what it did, so a run that had
+// grants to write, and whose worker may have run, is AMBIGUOUS: read back and never sent again, as an interrupted one is
+// and as reconcile calls a lost one (0.5.0 review of B7). Only the worker's own receipt saying it never ran frees it.
+const unbelieved = (f) => (f.envelope ?? []).length > 0;
+
+// A worker stopped before its runner finished says INTERRUPTED (cli/sandbox-worker.mjs, src/run/envelope.mjs): what it
+// ran up to is not known, so it ruled on nothing -- and a run that had grants may have written, which is never resent.
+const interrupted = (f) => f.status === "INTERRUPTED";
+
+// A run that ruled: every verdict held, or one did not. A FAULT control's run is about surviving the fault, so a run
+// whose observations never carried its point proved nothing of it either way -- a pass after a fault that never fired
+// is never earned (a control with no witness compiles no verdict that would have failed it).
+const RAN_TO_A_VERDICT = ["PASS", "FAIL"];
+
 export const RESULT = [
-  { id: "ENVELOPE", when: (f) => (f.envelope ?? []).length > 0, word: "EXECUTION_ERROR", why: "the worker's envelope did not hold — nothing it claimed is taken" },
+  { id: "NEVER_RAN", when: (f) => unbelieved(f) && f.ran === false, word: "EXECUTION_ERROR", why: "no worker ever ran it — its receipt says it was never created, never started, or removed before it ran — so nothing it was granted was spent: an attempt that proved nothing, and a new one may run" },
+  { id: "UNBELIEVED_WRITE", when: (f) => unbelieved(f) && f.wrote === true, word: "AMBIGUOUS", why: "the host could not believe what its worker left — no envelope, or one that did not hold — and it had grants to write: what it did is unknown, so a person reads back and decides, and it is never sent again" },
+  { id: "ENVELOPE", when: unbelieved, word: "EXECUTION_ERROR", why: "the worker's envelope did not hold — nothing it claimed is taken, and it could write nothing: a new attempt may run" },
+  { id: "INTERRUPTED_WRITE", when: (f) => interrupted(f) && f.wrote === true, word: "AMBIGUOUS", why: "its worker was stopped before the run finished, and it had grants to write — what it did is unknown: a person reads back and decides, and it is never sent again" },
   { id: "MOVED", when: (f) => f.stale === true, word: "STALE", why: "what this ran on moved since: the source, the case or the contract" },
   { id: "UNSETTLED_WRITE", when: (f) => Boolean(failure(f).ambiguous), word: "AMBIGUOUS", why: "a write was sent and how it ended is not known" },
+  { id: "INTERRUPTED", when: interrupted, word: "INTERRUPTED", why: "its worker was stopped before the run finished — its deadline passed, its supervisor stopped it, or its runner ended without a word — and it could write nothing: an attempt that proved nothing, and a new one may run" },
   { id: "NOTHING_SERVES", when: (f) => Boolean(failure(f).gap), word: "CAPABILITY_MISSING", why: "nothing here could perform or observe what the step needed" },
   { id: "NOT_ALLOWED", when: (f) => f.status === "REFUSED" && failure(f).authorization === true, word: "AUTHORIZATION_BLOCKED", why: "a gate refused it for want of permission" },
   { id: "TEST_WRONG", when: (f) => f.status === "REFUSED", word: "INVALID_TEST", why: "the test itself was refused before it could rule on anything" },
@@ -72,7 +96,7 @@ export const RESULT = [
   { id: "NOT_READY", when: (f) => f.status === "BLOCKED", word: "ENVIRONMENT_BLOCKED", why: "the sandbox or a dependency was not ready, or a budget was spent" },
   { id: "NO_ORACLE", when: (f) => f.authority !== "accepted", word: "REQUIRES_REQUIREMENT", why: "no accepted oracle stands behind it — a draft prepares a test and never rules on one" },
   { id: "POSITIVE_CONTROL", when: (f) => f.status === "FAIL" && f.positiveFailed === true, word: "INCONCLUSIVE", why: "the positive control did not hold, so the refusal this obligation is about proves nothing — what it contradicted is its own criterion's finding" },
-  { id: "FAULT_NOT_SEEN", when: (f) => f.status === "FAIL" && f.faultMissed === true, word: "INCONCLUSIVE", why: "the fault the design injects never showed in what the run observed, so what failed after it says nothing about how the system survives that fault" },
+  { id: "FAULT_NOT_SEEN", when: (f) => RAN_TO_A_VERDICT.includes(f.status) && f.faultMissed === true, word: "INCONCLUSIVE", why: "the fault the design injects never showed in what the run observed, so what held or failed after it says nothing about how the system survives that fault" },
   { id: "CONTRADICTED", when: (f) => f.status === "FAIL" && failure(f).contradiction === true, word: "CONTRADICTED", why: "a verdict compiled from the accepted oracle was contradicted by what was observed" },
   { id: "STEP_FAILED", when: (f) => f.status === "FAIL", word: "EXECUTION_ERROR", why: "a step failed before any verdict could rule" },
   { id: "MET", when: (f) => f.status === "PASS", word: "SATISFIED", why: "every verdict held, against the accepted oracle" },

@@ -1,12 +1,24 @@
 #!/usr/bin/env node
 // THE ORBIT BENCHMARK: cases that say what Orbit must do, run against the branch this checkout is on, in Docker, and
-// judged by a verifier that shares nothing with what it judges. Two kinds of case:
+// judged by a verifier that shares nothing with what it judges. The kinds of case:
 //
-//   source   Orbit's own source held to independent checks -- and, with --repair, a failure the case declares
-//            repairable handed to Orbit to repair through its own autonomous engineering loop, with a real coding host
-//   qa       whether Orbit's autonomous QA FINDS the defect planted in an application: the application set up on its
-//            own isolated sandbox by Orbit's engine beside the controller, a real coding host working one investigation
-//            over it through the relay, and every contradiction confirmed on the clean application before it counts
+//   source       Orbit's own source held to independent checks -- and, with --repair, a failure the case declares
+//                repairable handed to Orbit to repair through its own autonomous engineering loop, with a real coding host
+//   qa           whether Orbit's autonomous QA FINDS the defect planted in an application: the application set up on its
+//                own isolated sandbox by Orbit's engine beside the controller, a real coding host working one
+//                investigation over it through the relay, and every contradiction confirmed on the clean application
+//   engineering  a goal about a frozen fixture taken through Orbit's goal entry to a change the verifier passes
+//   sessions     (0.5.0, ADR 0054) a QA case worked in TWO sessions over one checkout and the stores the first left: the
+//                first learns, the second is judged -- with memory on, or with ORBIT_LEARN and ORBIT_HOST_MEMORY off --
+//                and a case may plant a poison in the host's own memory before it
+//   activation   (0.5.0, B22 M4) a prompt that names no skill, handed to the coding host with Orbit -- or without it --
+//                over a fixture project: whether it uses Orbit by itself and only where it helps, held to a hidden truth,
+//                the owners' records and, for an outcome case, the hidden checks of what it delivered
+//   workflow     (0.5.0, ADR 0053) one request about a frozen fixture taken through /orbit-help, held to three legs from
+//                records: the code, the QA step, the path
+//   mission      (0.5.0, ADR 0055) a goal about a frozen fixture taken through Orbit Satellite, held to three legs from
+//                records: the code, every criterion settled on an independent owner's record, every run inside its
+//                least-privilege profile
 //
 // Development tooling: it never ships (export-ignored), and nothing of the engine imports it.
 //
@@ -14,52 +26,94 @@
 //                                     the images, built once from benchmark/images/ and reused by id; a CA bundle for a
 //                                     network that inspects TLS is a build secret, never written into the image
 //   node benchmark/run.mjs list       the suites, their cases, what each runs on, and their controls
-//   node benchmark/run.mjs doctor [--preflight] [--host [--model=<id>] [--credential=<NAME>]]
+//   node benchmark/run.mjs doctor [--preflight] [--host [--model=<id>] [--effort=<level>] [--credential=<NAME>]]
 //                                     Docker, the images, a credential by name; --preflight runs the subject's own
 //                                     declared checks (npm run lint, npm run test) in the runner container, no host;
 //                                     --host asks the runner image's Claude Code one question through the egress proxy
-//                                     (no tool, no plugin, a budget of a few cents): whether it starts, which version and
-//                                     model it says it is, whether the credential is accepted -- a code when not
+//                                     (no tool, no plugin, a budget of a few cents), with the model and effort a run
+//                                     would hand it: whether it starts, which version and model it says it is, whether
+//                                     the credential is accepted -- a code when not
 //   node benchmark/run.mjs run <case> [--variant=real|controlled-fault] [--repair] [--source=head|worktree]
-//                                     [--seed=<n>] [--model=<id>] [--rounds=<n>] [--minutes=<n>] [--usd=<n>]
+//                                     [--seed=<n>] [--model=<id>] [--effort=low|medium|high|xhigh|max]
+//                                     [--rounds=<n>] [--minutes=<n>] [--usd=<n>]
 //                                     [--credential=<NAME>] [--ca-file=<pem>] [--host=session:<label>]
 //                                     [--tree=<dir>] [--run-id=<bnr-…>] [--parent=<tsk-…>]
+//                                     [--repeat=<n>] [--arm=none|baseline|release|all] [--memory=on|off|all]
 //                                     one case on the source of this branch: a source case frozen, verified twice,
 //                                     diagnosed and -- with --repair -- repaired by Orbit and verified again; a QA case's
 //                                     application set up with its own variant planted and a coding host's investigation
-//                                     over it judged against the case's ground truth
+//                                     over it judged against the case's ground truth; a sessions case's two sessions
 //   node benchmark/run.mjs run --suite=<suite> [the same flags, but --run-id]
 //                                     every case of a suite, one run each
 //                                     --tree measures another checkout of this repository (its HEAD, or with
 //                                     --source=worktree its tree) -- the cases, the harness, the store and the task stay
 //                                     this checkout's; --run-id names the run's room before it starts (refused when it is
 //                                     kept already); --parent names the task that started the run (a release ship)
-//   node benchmark/run.mjs run --like=<bnr-…>
-//                                     again: the same case, variant, host, source mode, seed, limits and images, a new run
+//                                     --repeat=<n> (1..10) runs each case n times, each its own room and task, named as
+//                                     one repeat group in every manifest (config.repeat) -- one PASS is not a rate;
+//                                     --arm runs a case on one arm it declares (none: no Orbit at all, no plugin and no
+//                                     trail; baseline: the plugin frozen from the case's or suite's baselinePlugin
+//                                     revision, v0.4.0 by default; release: the run's own source, the default), or with
+//                                     all on each in turn -- the same model, inputs, image and limits
+//                                     --effort hands the coding host Claude Code's --effort beside --model (EFFORTS);
+//                                     the manifest, the report and a verified candidate's host say it, and metrics
+//                                     count a model at each effort as a host of its own; with none, the host's default
+//                                     --memory runs a sessions case's second session on one memory arm it declares (on:
+//                                     Orbit's memory as a person has it, the default; off: ORBIT_LEARN=off and
+//                                     ORBIT_HOST_MEMORY=off in every Orbit process of it), or with all on each in turn
+//                                     -- refused for a case with no second session; the manifest keeps config.memory
+//   node benchmark/run.mjs run --like=<bnr-…> [--repeat=<n>]
+//                                     again: the same case, variant, host, model, effort, arm, memory arm, source mode,
+//                                     seed, limits and images, a new run (n new runs, one repeat group)
 //   node benchmark/run.mjs status <bnr-…>
 //   node benchmark/run.mjs report <bnr-…>
 //                                     where a run stands; its report (written into its room as report.md and .json)
 //   node benchmark/run.mjs resume <bnr-…>
 //                                     a run carried on from where its task's journal says it stands: a verification or a
-//                                     setup is done again; a repair round or a QA host's round is read back, never sent again
+//                                     setup is done again; a repair round or a QA host's round is read back, never sent
+//                                     again -- or a control set carried on from its room: every control it kept stands,
+//                                     the rest run, and a control's own run (engine, QA) is read back or carried on
 //   node benchmark/run.mjs controls <case> [--only=<control>] [--skip-engine] [--source=head|worktree]
-//                                     [--tree=<dir>] [--parent=<tsk-…>]
+//                                     [--tree=<dir>] [--parent=<tsk-…>] [--run-id=<bnr-…>]
 //                                     what the verifier must pass and must fail: for a source case, a planted fault, a
 //                                     partial fix, allow-all and reject-all in the verifier's own containers; its repair
 //                                     controls -- a reference candidate the judge must pass and every way of cheating it
 //                                     must refuse by name, and (unless --skip-engine) a scripted host driving Orbit's own
 //                                     engineering loop with no model; for a QA case, a whole run with each scripted
-//                                     host -- reference, idle, false-alarm. A control that no longer applies to the
-//                                     source is its own row, DRIFTED, and the command then exits 2
+//                                     host -- reference, idle, false-alarm; for a sessions case, a whole two-session run
+//                                     with each -- reference, idle, cheat, half, and for a poison the hosts that trust
+//                                     it (trusts-poison, trusts-stale); for an activation case, a whole run with each
+//                                     of its scripted hosts, held to its verdict and its class. A control that no
+//                                     longer applies to the
+//                                     source is its own row, DRIFTED, and the command then exits 2. The set keeps a room
+//                                     of its own (--run-id names it before it starts), each control's row as it ends
 //   node benchmark/run.mjs cleanup <bnr-…> [--scratch]
-//                                     the run's containers and networks, by its label only; --scratch its scratch trees
+//                                     the run's containers and networks, by its label only (a control set's, and every
+//                                     run it planned for a control); --scratch its scratch trees
 //   node benchmark/run.mjs where      where the runs are kept, and which there are
-//   node benchmark/run.mjs metrics [--suite=<suite>] [--case=<case>] [--since=<iso date>] [--by=revision]
+//   node benchmark/run.mjs metrics [--suite=<suite>] [--case=<case>] [--since=<iso date>] [--revision=<commit>]
+//                                  [--by=revision,model,arm,memory,language] [--k=<n>]
 //                                     what the kept runs show, each metric a numerator over a denominator: success,
 //                                     self-healing, detection, false alarms, regressions, interventions, rounds, time
 //                                     and REPORTED cost per verified outcome, reproducibility, the verifier's own
-//                                     controls -- apart by host basis (none, scripted, coding-host); --by=revision adds
-//                                     each case's outcome by source commit
+//                                     controls -- apart by host basis (none, scripted, coding-host); per row (case,
+//                                     variant, arm, basis, model and effort) and per model at its effort, pass@1, pass@k
+//                                     (k 1..10, default 3), the median cost and minutes; tool-call failures per suite and
+//                                     per model at its effort (per tool, per relay subcommand, per PASS, per sandbox
+//                                     step); each Orbit arm's overhead over the none arm; each sessions case's memory
+//                                     arms side by side -- pass@1, decisions used, designs refused, cost and minutes of
+//                                     the second session -- and memory's effect, on minus off; the activation rows
+//                                     (activation precision and recall, strategy, skill and agent selection,
+//                                     unnecessary delegation, the router, capability coverage, work completed).
+//                                     --by=revision adds each case's outcome and rates by source commit, --by=model,
+//                                     --by=arm, --by=memory and --by=language every metric again per model at its
+//                                     effort, per arm, per memory arm or per prompt's language
+//   node benchmark/run.mjs reliability [--revision=<commit>] [--suite=<suite>] [--case=<case>] [--since=<iso date>]
+//                                      [--k=<n>]
+//                                     the reliability report a release quotes, folded from the kept runs like metrics:
+//                                     the rates by row and by model, the tool-call failures, each case's arms side by
+//                                     side and the overhead, each sessions case's memory arms and memory's effect
+//                                     (orbit.benchmark.reliability/v1). It writes nothing
 //
 // Every command takes --json. A run is recorded as an Orbit task (provider `benchmark`) in this checkout's project, so
 // Orbit Live and Mission Control show it, and a person pauses or cancels it there. Its evidence is kept in the machine

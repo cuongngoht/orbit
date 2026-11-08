@@ -3,17 +3,17 @@
 // step never decides what comes next; NEXT does, from the journal. Only the steps that END a ship return a result.
 //
 //   driven(ctx) -> result        STEPS        preflightFacts(ctx) -> facts
-//   result: { ship, task, outcome, exit, summary, evidence?, delivery? }
+//   result: { ship, task, outcome, exit, summary, evidence?, reliability?: { file, says }, delivery? }
 //   exit: 0 SHIPPABLE · 2 NOT_SHIPPABLE · 3 BLOCKED (resumable) · 4 a person held it
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { sha } from "../../../src/hash.mjs";
 import { GATES, report, shippable } from "../gates.mjs";
 import { built } from "./artifact.mjs";
-import { begun, carriedOn, dispatched, iso, settledAct } from "./dispatch.mjs";
+import { begun, carriedOn, dispatched, iso, runDiagnosis, settledAct } from "./dispatch.mjs";
 import { evidenceOf } from "./evidence.mjs";
-import { diags, factsOf, nextOf, repairIn } from "./machine.mjs";
-import { catalogDrift, matchesAny, rowsOf } from "./policy.mjs";
+import { diags, factsOf, nextOf, repairIn, shipRows } from "./machine.mjs";
+import { catalogDrift, matchesAny } from "./policy.mjs";
 import { hostOf, preflightOf } from "./preflight.mjs";
 import { docRead, docWritten, jsonAtFile } from "./room.mjs";
 import { delivered, integrated, prepared, pristine } from "./workspace.mjs";
@@ -24,6 +24,14 @@ function staged(ctx, f, stage, because) {
   if (f.view.stage !== stage) ctx.door.stage(ctx.task, stage, because);
   ctx.print?.(`${because}`);
 }
+
+// A stage set again only when the journal says another -- a resume's preflight staged ENVIRONMENT -- and said only then.
+function restaged(ctx, f, stage, because) {
+  if (f.view.stage !== stage) staged(ctx, f, stage, because);
+}
+
+// The stage a cycle's rows run in: TESTING the first time, REGRESSION on a full retest.
+const testingStage = (f) => (f.attempts > 1 ? "REGRESSION" : "TESTING");
 
 // ---- how a ship ends ----------------------------------------------------------------------------------------------------
 
@@ -53,7 +61,7 @@ const BLOCK_REASONS = [
   { when: (f) => f.host && !f.host.ok, says: (f) => `${f.host.code}: ${f.host.says}`, needs: () => "environment" },
   { when: (f) => diags(f, "HELD").length > 0, says: (f) => `${diags(f, "HELD").map((r) => r.row.id).join(", ")}: a person holds the benchmark run in Orbit Control -- resume it there, then resume the ship`, needs: () => "person" },
   { when: (f) => diags(f, "BLOCK").length > 0, says: (f) => diags(f, "BLOCK").map((r) => r.diag.says).join(" · "), needs: () => "environment" },
-  { when: (f) => Boolean(repairIn(f, "BLOCKED")), says: (f) => `${repairIn(f, "BLOCKED").case}: the repair could not run -- ${repairIn(f, "BLOCKED").last.settled.verdict.says}`, needs: () => "environment" },
+  { when: (f) => Boolean(repairIn(f, "BLOCKED")), says: (f) => `${repairIn(f, "BLOCKED").case}: the repair could not run -- ${repairIn(f, "BLOCKED").says ?? repairIn(f, "BLOCKED").last.settled.verdict.says}`, needs: () => "environment" },
   { when: () => true, says: (f, ctx) => ctx.blockedBy ?? "the environment", needs: () => "environment" },
 ];
 
@@ -106,7 +114,7 @@ export const casesIn = (root, listed) => new Map((listed?.suites ?? []).flatMap(
 
 // The catalog a held preflight read, as the rows every cycle runs and each case's own declaration.
 function catalogued(ctx, facts) {
-  ctx.rows = rowsOf(ctx.policy, facts.listed);
+  ctx.rows = shipRows(ctx, facts.listed);
   ctx.cases = casesIn(ctx.root, facts.listed);
   ctx.preflighted = true;
   return null;
@@ -168,14 +176,14 @@ function builtImages(ctx, f, b) {
 
 async function host(ctx, f) {
   const act = begun(ctx, "release.host", "the coding host: the runner image's Claude Code, asked one question", { attempt: f.open.id });
-  const r = await ctx.world.bench(["doctor", "--host", ...(ctx.options.model ? [`--model=${ctx.options.model}`] : []), ...(ctx.options.credential ? [`--credential=${ctx.options.credential}`] : []), ...(ctx.options.caFile ? [`--ca-file=${ctx.options.caFile}`] : [])], {});
+  const r = await ctx.world.bench(["doctor", "--host", ...(ctx.options.model ? [`--model=${ctx.options.model}`] : []), ...(ctx.options.effort ? [`--effort=${ctx.options.effort}`] : []), ...(ctx.options.credential ? [`--credential=${ctx.options.credential}`] : []), ...(ctx.options.caFile ? [`--ca-file=${ctx.options.caFile}`] : [])], {});
   const h = hostOf(r.json?.host ?? null);
   settledAct(ctx, act, { attempt: f.open.id }, { attempt: f.open.id, ...h, probe: r.json?.host ?? null, cost: { usd: r.json?.host?.costUsd ?? 0, basis: "REPORTED" } }, { outcome: h.ok ? "succeeded" : "failed", summary: `${h.code}: ${h.says}` });
   return null;
 }
 
 function gates(ctx, f) {
-  staged(ctx, f, f.attempts > 1 ? "REGRESSION" : "TESTING", `${f.attempts > 1 ? "FULL_RETEST" : "BENCHMARK"}  cycle ${f.attempts} on ${short(f.cycle.commit)}: the definition of done, then every row of the catalog`);
+  staged(ctx, f, testingStage(f), `${f.attempts > 1 ? "FULL_RETEST" : "BENCHMARK"}  cycle ${f.attempts} on ${short(f.cycle.commit)}: the definition of done, then every row of the catalog`);
   const act = begun(ctx, "release.gates", `the definition of done on ${short(f.cycle.commit)}`, { attempt: f.open.id });
   const rows = report(ctx.world.gatesAt(f.cycle.tree), GATES);
   settledAct(ctx, act, { attempt: f.open.id }, { attempt: f.open.id, ok: shippable(rows), rows }, { outcome: shippable(rows) ? "succeeded" : "failed", summary: `${rows.filter((r) => r.ok).length}/${rows.length} gates held` });
@@ -185,9 +193,15 @@ function gates(ctx, f) {
 // What a model-carried row may spend: the case's own cap, never more than the ship has left.
 const usdFor = (ctx, f, row) => (row.run === "verify" || row.run === "controls" ? 0 : Math.min(ctx.cases.get(row.case)?.limits?.usd ?? 20, Math.max(1, Math.floor((f.limits.usd - f.spent.usd) * 100) / 100)));
 
+// A row starts in its cycle's testing stage, whatever a resume's preflight left the journal saying.
+function rowStarted(ctx, f, r) {
+  restaged(ctx, f, testingStage(f), `${f.attempts > 1 ? "FULL_RETEST" : "BENCHMARK"}  cycle ${f.attempts} on ${short(f.cycle.commit)}: the rows of the catalog, carried on`);
+  ctx.print?.(`  ${r.id.padEnd(30)} ${r.run}${r.autonomous ? " (Claude Code)" : ""} on ${short(f.cycle.commit)} …`);
+}
+
 async function row(ctx, f) {
   const r = f.pending;
-  ctx.print?.(`  ${r.id.padEnd(30)} ${r.run}${r.autonomous ? " (Claude Code)" : ""} on ${short(f.cycle.commit)} …`);
+  rowStarted(ctx, f, r);
   const done = await dispatched(ctx, f, r, { kind: "row", tree: f.cycle.tree, commit: f.cycle.commit, usd: usdFor(ctx, f, r), label: `${r.id} on ${short(f.cycle.commit)}` });
   ctx.print?.(done.settled ? `  ${r.id.padEnd(30)} ${done.verdict.state} — ${done.verdict.says}` : `  ${r.id.padEnd(30)} held by a person: carried on by resume`);
   return null;
@@ -233,34 +247,79 @@ function close(ctx, f) {
   return null;
 }
 
+// ---- a precheck's ending (0.5.0, B6) ----------------------------------------------------------------------------------
+
+// Every model-carried row ran once: the precheck says each that did not hold, with its run's room and its diagnosis
+// bundle, and qualifies nothing. It fails only as a ship would -- on a row the ship requires (or one no recording excuses,
+// UNEXCUSED): a RECORDED row that did not hold is said beside the rest, recorded, and never fails a precheck the ship
+// itself would not stop on (ADR 0051).
+const PRECHECK_ENDS = [
+  { when: (notHeld) => notHeld.some((r) => r.diag?.then !== "RECORDED"), outcome: "PRECHECK_FAILED", exit: 2, attempt: "failed", close: (ctx, says) => ctx.door.fail(ctx.task, "VERIFICATION_FAILED", `PRECHECK: ${says}`) },
+  { when: () => true, outcome: "PRECHECK_HELD", exit: 0, attempt: "succeeded", close: (ctx, says) => ctx.door.complete(ctx.task, `PRECHECK: ${says}`) },
+];
+
+const notHeldSaid = (r) => `${r.row.id} ${r.v.state}${r.diag?.then === "RECORDED" ? " (recorded, not required)" : ""}`;
+
+const precheckSaid = (f, notHeld) => `${f.rows.size - notHeld.length} of ${f.rows.size} model-carried row(s) held on ${short(f.cycle.commit)}${notHeld.length ? `; not held: ${notHeld.map(notHeldSaid).join(", ")}` : ""} -- a precheck qualifies nothing`;
+
+function prechecked(ctx, f) {
+  const notHeld = [...f.rows.values()].filter((r) => r.v.state !== "HELD");
+  const end = PRECHECK_ENDS.find((e) => e.when(notHeld));
+  closeAttempt(ctx, f, end.attempt);
+  end.close(ctx, precheckSaid(f, notHeld));
+  return ended(ctx, { outcome: end.outcome, exit: end.exit, summary: precheckSaid(f, notHeld), failures: notHeld.map((r) => runDiagnosis(ctx.storeRoot, r)) });
+}
+
 // ---- shippable ---------------------------------------------------------------------------------------------------------
 
-function ship(ctx, f) {
+async function ship(ctx, f) {
   const act = begun(ctx, "release.evidence", `SHIPPABLE: the evidence for ${short(f.cycle.commit)}`, { attempt: f.open.id });
   const delivery = f.cycle.commit !== ctx.manifest.start.commit ? delivered(ctx.world, ctx.room, f.cycle.tree, ctx.manifest.start.commit) : null;
   const ev = evidenceOf(ctx, f, delivery);
   docWritten(ctx.room, "evidence.json", ev);
-  return shipped(ctx, f, { act, ev, delivery });
+  return shipped(ctx, f, { act, ev, delivery, reliability: await reliabilityWritten(ctx, f.cycle.commit) });
+}
+
+// THE RELIABILITY REPORT (0.5.0, backlog B2): what the benchmark's kept runs of the release commit show -- how often each
+// row holds (pass@1, pass@k), what its tool calls cost, what each arm adds -- asked as a command like every other
+// (`run.mjs reliability --revision=<commit>`) and kept as the benchmark answered it next to evidence.json, for the
+// release notes to quote. NEVER a gate: nothing reads it to decide, the evidence names nothing of it, and a report the
+// benchmark could not give is said and the ship ships as its evidence says.
+const reliabilityAsked = async (ctx, commit) => {
+  try { return await ctx.world.bench(["reliability", `--revision=${commit}`], {}); }
+  catch (e) { return { code: null, json: null, err: String(e?.message ?? e).slice(0, 300) }; }
+};
+
+async function reliabilityWritten(ctx, commit) {
+  const r = await reliabilityAsked(ctx, commit);
+  if (!r?.json) return { file: null, says: `not written: the benchmark gave no reliability report (${r?.err ?? `exit ${r?.code ?? "unknown"}`}) -- node benchmark/run.mjs reliability --revision=${commit} gives it` };
+  docWritten(ctx.room, "reliability.json", r.json);
+  return { file: ctx.room.at("reliability.json"), says: `${r.json.runs?.total ?? 0} kept run(s) of ${short(commit)}, every one that froze it -- quoted, never a gate` };
 }
 
 function shipped(ctx, f, s) {
   ctx.door.receipt(ctx.task, { domain: "check", ref: `evidence-${sha(JSON.stringify(s.ev)).slice(0, 12)}`, outcome: "SHIPPABLE", summary: `${ctx.room.at("evidence.json")}`, action: s.act });
-  settledAct(ctx, s.act, { attempt: f.open.id }, { attempt: f.open.id, evidence: ctx.room.at("evidence.json"), ok: true }, { outcome: "succeeded", receipt: `check:evidence-${sha(JSON.stringify(s.ev)).slice(0, 12)}`, summary: `SHIPPABLE ${short(f.cycle.commit)}` });
+  settledAct(ctx, s.act, { attempt: f.open.id }, { attempt: f.open.id, evidence: ctx.room.at("evidence.json"), reliability: s.reliability, ok: true }, { outcome: "succeeded", receipt: `check:evidence-${sha(JSON.stringify(s.ev)).slice(0, 12)}`, summary: `SHIPPABLE ${short(f.cycle.commit)}` });
   closeAttempt(ctx, f, "succeeded");
   ctx.door.complete(ctx.task, `SHIPPABLE: ${short(f.cycle.commit)}, ${s.ev.rows.length} rows held, artifact ${s.ev.artifact.sha256.slice(0, 12)}${s.delivery ? ` -- repairs to apply: ${s.delivery.patch}` : ""}`);
-  return ended(ctx, { outcome: "SHIPPABLE", exit: 0, summary: `every row of the catalog held on ${short(f.cycle.commit)}${s.delivery ? ", with repairs this ship integrated -- apply them to your branch" : ""}`, evidence: ctx.room.at("evidence.json"), delivery: s.delivery });
+  return ended(ctx, { outcome: "SHIPPABLE", exit: 0, summary: `every row the catalog requires held on ${short(f.cycle.commit)}${s.ev.recorded.length ? `; ${s.ev.recorded.filter((r) => r.held).length} of ${s.ev.recorded.length} recorded row(s) held` : ""}${s.delivery ? ", with repairs this ship integrated -- apply them to your branch" : ""}`, evidence: ctx.room.at("evidence.json"), reliability: s.reliability, delivery: s.delivery, recorded: s.ev.recorded });
 }
 
 // ---- reconcile ---------------------------------------------------------------------------------------------------------
 
+// What a resume carries on is in the stage it was in: a row read back is testing, a repair read back is fixing.
+const LEFT_STAGE = { "release.row": testingStage, "release.repair": () => "FIXING" };
+
 async function reconcile(ctx, f) {
+  const stage = f.running.map((x) => LEFT_STAGE[x.a.type]?.(f)).find(Boolean);
+  if (stage) restaged(ctx, f, stage, "RECONCILE  what the ship left running is read back from its room, never sent again");
   for (const x of f.running) await carriedOn(ctx, f, x);
   return null;
 }
 
 // ---- the table and the loop ----------------------------------------------------------------------------------------------
 
-export const STEPS = { END: endedAlready, HELD: held, RECONCILE: reconcile, PREFLIGHT: preflight, WORKSPACE: workspace, BUDGET: budget, CLOSE: close, CYCLE: cycle, BUILD: build, HOST: host, GATES: gates, ROW: row, REPAIR: repair, INTEGRATE: integrate, SHIP: ship, STOP: stopped, BLOCK: blocked, NO_PROGRESS: noProgress };
+export const STEPS = { END: endedAlready, HELD: held, RECONCILE: reconcile, PREFLIGHT: preflight, WORKSPACE: workspace, BUDGET: budget, CLOSE: close, CYCLE: cycle, BUILD: build, HOST: host, GATES: gates, ROW: row, PRECHECKED: prechecked, REPAIR: repair, INTEGRATE: integrate, SHIP: ship, STOP: stopped, BLOCK: blocked, NO_PROGRESS: noProgress };
 
 async function stepped(ctx) {
   const f = factsOf(ctx, ctx.door.show(ctx.task));

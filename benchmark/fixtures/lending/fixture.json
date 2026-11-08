@@ -1,0 +1,6 @@
+{
+  "schema": 1,
+  "id": "lending",
+  "about": "A lending service several library systems share, with no dependencies: a durable file store whose records each say the system they belong to, a catalogue of titles and copies, members, loans with renewals and fines for late returns, holds served first come first served, an HTTP-shaped API as a pure function, and the drop-box consumer that checks returns in. It is the HELD-OUT application (ADR 0056): written for the orbit-heldout suite by an author who had not read the release failure reports, and never used to tune Orbit. It is the reference solution every case of that suite starts from: each case's `real` variant takes one behaviour away. Its public tests are kept under checks/ and become test/<name>.test.mjs in the checkout a run makes, so nothing under benchmark/ is a test file.",
+  "tests": { "from": "checks/", "to": "test/", "suffix": ".test.mjs" }
+}

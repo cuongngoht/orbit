@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "activate": true,
+  "strategy": [
+    "DIRECT"
+  ],
+  "how": [],
+  "selection": [
+    {
+      "skills": {
+        "require": [
+          "orbit-architecture"
+        ],
+        "allow": [
+          "orbit-reverse-engineer"
+        ]
+      },
+      "agents": {
+        "require": [],
+        "allow": [
+          "orbit-architecture-scanner"
+        ],
+        "max": 1
+      }
+    }
+  ],
+  "forbid": {
+    "skills": [
+      "orbit-engineer",
+      "orbit-help",
+      "satellite",
+      "orbit"
+    ],
+    "agents": [
+      "orbit-engineering-agent",
+      "orbit-qa-agent"
+    ],
+    "commands": []
+  },
+  "readOnly": {},
+  "records": [
+    {
+      "id": "architecture-ensured",
+      "read": "architecture",
+      "expect": {}
+    }
+  ],
+  "relevant": null,
+  "grounding": null
+}

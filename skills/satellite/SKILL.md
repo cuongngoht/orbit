@@ -1,16 +1,9 @@
 ---
 name: satellite
 description: >
-  Orbit Satellite -- take any goal (a bug, a feature, an incident, a review, a refactor, a design, a
-  regression suite) through an autonomous multi-agent mission whose every step is journaled and judged.
-  It reads the goal into a structured intent, investigates before choosing who does what, plans a work
-  graph it revises on evidence, reuses or generates the roles, agent templates, skills and workflows
-  the work needs, dispatches each work unit to a fresh agent run under a least-privilege profile,
-  publishes every handoff immutably, and settles each acceptance criterion only on evidence an
-  independent owner keeps -- never on an agent's word. Use when a person asks for Satellite, a mission,
-  or a goal that needs several specialists. It never pushes, merges, deploys, edits the checkout outside
-  an engineering task's own workspace, grants an approval, or calls a mission done that its journal does
-  not prove.
+  Runs a goal as an autonomous multi-agent mission: plans a work graph, dispatches least-privilege
+  agents, and settles every criterion on an independent owner's record. Use when a person asks for a
+  mission or a multi-agent run. For one change or one workflow, use orbit-engineer or orbit-help.
 argument-hint: 'the goal, in full | continue msn-… | status msn-…'
 allowed-tools:
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/satellite/cli/satellite.mjs*)
@@ -31,6 +24,17 @@ protocol and hashed session supplied at startup on every Orbit shell invocation.
 `${CLAUDE_PLUGIN_ROOT}/skills/satellite/protocol.md` for every shape you send and receive.
 
 # A mission, one decided step at a time
+
+**In short.** Orbit Satellite -- take any goal (a bug, a feature, an incident, a review, a refactor,
+a design, a regression suite) through an autonomous multi-agent mission whose every step is
+journaled and judged. It reads the goal into a structured intent, investigates before choosing who
+does what, plans a work graph it revises on evidence, reuses or generates the roles, agent
+templates, skills and workflows the work needs, dispatches each work unit to a fresh agent run under
+a least-privilege profile, publishes every handoff immutably, and settles each acceptance criterion
+only on evidence an independent owner keeps -- never on an agent's word. Use when a person asks for
+Satellite, a mission, or a goal that needs several specialists. It never pushes, merges, deploys,
+edits the checkout outside an engineering task's own workspace, grants an approval, or calls a
+mission done that its journal does not prove.
 
 Satellite keeps the state; you decide. Every step you send is ONE decision the engine judges before anything runs,
 records before its side effect, and settles only on evidence an owner keeps. `S` below is
@@ -92,7 +96,8 @@ never carry. When evidence moves the plan, `replan` with the cause the engine's 
 ## 5. Dispatch, run the agent, report
 
 - `dispatch` answers an ENVELOPE. On Claude Code run its agent with the Agent tool: `subagent_type` is
-  `envelope.agent.subagentType` (`orbit:satellite-reader`, `-designer`, `-engineer`, `-verifier`), and the prompt is
+  `envelope.agent.subagentType` (`orbit:satellite-reader`, `orbit:satellite-designer`, `orbit:satellite-engineer` or
+  `orbit:satellite-verifier`), and the prompt is
   the envelope itself, pasted VERBATIM as its JSON (its instruction, context slice, grants and report shape) -- never
   the conversation, never a paraphrase: Orbit's hooks read the run's two ids off the envelope's own mark, and that is
   how Satellite Live knows which of the host's agents carries which run (HOST_OBSERVED). An Agent call in the foreground names

@@ -5,10 +5,13 @@
 //   IN_FLIGHT  it was started within its deadline and the time its dispatch is given to end: it may still be running,
 //              so nothing is decided yet
 //   LATE       the worker left an envelope after all: the host checks it now, held to the very request that was
-//              dispatched, exactly as it would have (src/investigation/run-version.mjs lateEvaluated)
+//              dispatched, exactly as it would have (src/investigation/run-version.mjs lateEvaluated) -- and with no
+//              request kept to hold it to, it is never taken: AMBIGUOUS when the version had grants to write, as any
+//              envelope the host cannot believe is (verification.mjs UNBELIEVED_WRITE)
 //   RUNNING    the worker still runs past every bound: nothing is decided, and nothing new is sent beside it
-//   NEVER_RAN  no worker ever ran it (no receipt, never created, never started): an attempt that proved nothing and
-//              spent nothing it was granted -- a new attempt may run
+//   NEVER_RAN  no worker ever ran it (no receipt, never created, never started, removed before it was started --
+//              run-version.mjs NEVER_RAN): an attempt that proved nothing and spent nothing it was granted -- a new
+//              attempt may run
 //   LOST_READ  the worker is gone and left nothing, and the version could not write: an attempt that proved nothing
 //   LOST       the worker is gone and left nothing, and the version had grants to write: what it did is unknown, so it
 //              is AMBIGUOUS -- kept for a person, and never resent
@@ -20,14 +23,12 @@
 import { Refused } from "../errors.mjs";
 import { current, withJournal } from "./act.mjs";
 import { nextId } from "./model.mjs";
-import { DISPATCH_SLACK_MS, lateEvaluated } from "./run-version.mjs";
+import { DISPATCH_SLACK_MS, NEVER_RAN, lateEvaluated } from "./run-version.mjs";
 import { unsettled } from "./stop.mjs";
 import { eventIdOf } from "./store.mjs";
 
 // A start whose request kept no deadline is given the longest a dispatch may run (src/runtime/sandbox/dispatch.mjs).
 const UNKNOWN_DEADLINE_MS = 30 * 60 * 1000;
-
-const NEVER_RAN = ["none", "lost", "unstarted"];
 
 export const RECONCILE = [
   { id: "IN_FLIGHT", when: (x) => x.nowMs < endsBy(x), act: (w, x) => open(x, "IN_FLIGHT", `it was started within its deadline and the time its dispatch is given to end, so it may still be running — reconcile it after ${new Date(endsBy(x)).toISOString()}`) },
@@ -72,8 +73,12 @@ const open = (x, rule, why) => ({ execution: x.start.execution, rule, outcome: n
 // here can hold it to what was dispatched, and it is never taken as it is.
 function late(w, x) {
   const judged = x.request ? lateEvaluated(w, x.start, x.back, x.request) : null;
-  return judged ? { execution: x.start.execution, rule: "LATE", outcome: judged.outcome, why: judged.why, cause: judged.rule, stopped: judged.stopped } : settled(w, x, "EXECUTION_ERROR", "LATE_UNJUDGED", "its worker left an envelope, and the request it was dispatched with is not kept — it is never taken as it is");
+  return judged ? { execution: x.start.execution, rule: "LATE", outcome: judged.outcome, why: judged.why, cause: judged.rule, stopped: judged.stopped } : unjudged(w, x);
 }
+
+// An envelope never taken says nothing of what its worker did -- so a version that had grants to write is AMBIGUOUS,
+// as any envelope the host cannot believe is (verification.mjs UNBELIEVED_WRITE), and is never sent again.
+const unjudged = (w, x) => (x.wrote ? settled(w, x, "AMBIGUOUS", "LATE_UNJUDGED", "its worker left an envelope, the request it was dispatched with is not kept, and it had grants to write — it is never taken as it is, and what it did is unknown: a person reads back and decides, and it is never sent again") : settled(w, x, "EXECUTION_ERROR", "LATE_UNJUDGED", "its worker left an envelope, and the request it was dispatched with is not kept — it is never taken as it is"));
 
 function settled(w, x, outcome, rule, why) {
   w.store.appendOnce(w.id, "evaluated", { id: nextId(current(w), "evaluated"), eventId: eventIdOf("evaluated", x.start.execution, x.start.attempt, rule), attempt: x.start.attempt, execution: x.start.execution, obligation: obligationOf(current(w), x.start), outcome, runner: null, cause: rule });

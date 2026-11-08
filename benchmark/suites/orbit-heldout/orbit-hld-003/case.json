@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "kind": "engineering",
+  "id": "ORBIT-HLD-003",
+  "version": "1.0.0",
+  "title": "A loan can be renewed through the API: its due date moved on by the loan period from the date it had, twice at most, never once overdue, waited for or back",
+  "goal": "A goal about the held-out lending service -- a new route that renews a loan, under rules a person states -- taken through Orbit's goal entry, the workflow it starts and the engineering task that workflow starts, to a change the independent verifier passes.",
+  "baseline": "FAIL",
+  "fixture": "lending",
+  "measures": {
+    "kind": "engineering",
+    "capability": "a new API route with ordered refusal rules across the loans, holds and API modules, on an application Orbit was never tuned against",
+    "expects": "change"
+  },
+  "request": "request.md",
+  "subject": {
+    "paths": ["src/api.mjs", "src/store.mjs", "src/dropbox.mjs"],
+    "exports": { "src/api.mjs": ["handle"], "src/store.mjs": ["openStore"], "src/dropbox.mjs": ["consume"] }
+  },
+  "reproduce": "node benchmark/run.mjs run ORBIT-HLD-003",
+  "acceptance": { "owner": "verifier", "spec": "verifier/spec.mjs", "probe": "verifier/probe.mjs", "samples": 48 },
+  "scope": { "allow": ["src/**", "test/**", "README.md"], "deny": [], "imports": ["./*.mjs"] },
+  "checks": {
+    "gates": [
+      { "id": "public-tests", "argv": ["node", "--test", "--test-reporter=tap", "test/api.test.mjs", "test/catalog.test.mjs", "test/dates.test.mjs", "test/dropbox.test.mjs", "test/fines.test.mjs", "test/holds.test.mjs", "test/limits.test.mjs", "test/loans.test.mjs", "test/members.test.mjs", "test/pickup.test.mjs", "test/store.test.mjs", "test/tenancy.test.mjs"] }
+    ],
+    "agentTests": { "required": true, "pattern": "^test/[^/]+\\.test\\.mjs$" }
+  },
+  "limits": {
+    "rounds": 2,
+    "minutes": 150,
+    "usd": 15,
+    "runner": { "cpus": 2, "memoryMb": 4096, "pids": 2048, "minutes": 90, "outputMb": 16 },
+    "verifier": { "cpus": 2, "memoryMb": 1024, "pids": 512, "seconds": 300 },
+    "engineering": { "attempts": 6, "actions": 120 }
+  },
+  "artifacts": ["report.md", "report.json", "rounds/<k>/candidate.patch", "rounds/<k>/outcome.json", "verified.json"],
+  "cleanup": { "containers": "run-label", "networks": "run-label", "scratch": "after-run" },
+  "variants": { "real": { "mutations": "variants/real.json" }, "solved": {} },
+  "controls": [
+    { "id": "solved", "variant": "solved", "expect": "PASS" },
+    { "id": "real", "variant": "real", "expect": "FAIL" },
+    { "id": "partial", "variant": "real", "file": "controls/half.json", "expect": "FAIL" }
+  ],
+  "repairs": [
+    { "id": "reference", "variant": "real", "candidate": "controls/reference.json", "through": "engine", "expect": "PASS", "script": "goal" },
+    { "id": "half", "variant": "real", "candidate": "controls/half.json", "through": "engine", "expect": "FAIL", "script": "goal" },
+    { "id": "cheat", "variant": "real", "candidate": "controls/cheat.json", "through": "engine", "expect": "FAIL", "script": "goal" },
+    { "id": "idle", "variant": "real", "candidate": "controls/reference.json", "through": "engine", "expect": "NO_PROGRESS", "script": "idle" }
+  ]
+}

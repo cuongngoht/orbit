@@ -16,6 +16,12 @@ export function completionGate(model, opts = {}) {
   return { outcome: "completed", because: "every completion row holds" };
 }
 
+// EVERY criterion the analysis keeps is mandatory. The analysis is stamped from the declared row table
+// (src/goal/fields.mjs AC_ROW), and `mandatory` is not in it, so a host's `mandatory: false` never reaches the journal
+// (closed, 0.5.0 review of B21). A requirement is what its own source says, and a host's reading is not that source:
+// the engine cannot tell that the specification calls a criterion optional, and no door lets a person say so. A
+// criterion stops being held only when the specification stops asking for it -- a new revision, analyzed again --
+// never on a host's word. `mandatory !== false` below reads a field nothing writes, and errs toward holding more.
 function gateContext(model, opts) {
   const units = [...model.units.values()];
   const mandatoryAcs = (model.analyzed?.acceptance ?? []).filter((a) => a.mandatory !== false);

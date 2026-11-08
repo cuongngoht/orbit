@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "kind": "activation",
+  "id": "ORBIT-CTX-003",
+  "version": "1.0.0",
+  "title": "A pasted specification's ambiguity is never read as explicit, in Vietnamese",
+  "goal": "a pasted specification -- four requirements, a constraint and one ambiguous line -- is, when it is read into a goal, read for what it is: the ambiguity unknown or an assumption and never explicit (never a kind the engine only defaulted to), the constraint a constraint; acceptance-criteria recall is recorded, and a host that never read it into a goal is recorded as not grounded",
+  "measures": {
+    "kind": "activation",
+    "capability": "grounding",
+    "tier": "selection"
+  },
+  "request": "request.md",
+  "language": "vi",
+  "fixture": {
+    "id": "orders"
+  },
+  "withheld": [
+    "docs/backlog/0.5.0-activation-benchmark.md"
+  ],
+  "arms": [
+    "none",
+    "baseline",
+    "release"
+  ],
+  "acceptance": {
+    "owner": "verifier",
+    "truth": "verifier/truth.json"
+  },
+  "limits": {
+    "rounds": 1,
+    "minutes": 45,
+    "usd": 3,
+    "maxTurns": 25,
+    "runner": {
+      "cpus": 2,
+      "memoryMb": 4096,
+      "pids": 2048,
+      "minutes": 25,
+      "outputMb": 16
+    }
+  },
+  "artifacts": [
+    "manifest",
+    "seed",
+    "host-stream",
+    "inspection",
+    "judged",
+    "report"
+  ],
+  "cleanup": {
+    "containers": "run-label",
+    "networks": "run-label",
+    "scratch": "after-run"
+  },
+  "variants": {
+    "real": {}
+  },
+  "controls": [
+    {
+      "id": "reference",
+      "host": "reference",
+      "expect": "PASS",
+      "file": "controls/reference.json"
+    },
+    {
+      "id": "forging",
+      "host": "forging",
+      "expect": "FAIL",
+      "class": "INSUFFICIENT_EVIDENCE"
+    },
+    {
+      "id": "unlabelled",
+      "host": "half",
+      "expect": "FAIL",
+      "class": "HOST_DIVERGED",
+      "file": "controls/unlabelled.json"
+    },
+    {
+      "id": "explicit",
+      "host": "half",
+      "expect": "FAIL",
+      "class": "HOST_DIVERGED",
+      "file": "controls/explicit.json"
+    }
+  ]
+}

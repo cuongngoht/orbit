@@ -1,0 +1,131 @@
+{
+  "schema": 1,
+  "id": "orbit-hld-002-half",
+  "about": "Half the change: the queue is served -- the first waiting hold ready with the copy and a week to collect it, a notice sent, the copy marked held -- and anyone may still borrow the held copy, and nobody's hold is ever collected. Its own test covers the queue only.",
+  "mutations": [
+    {
+      "id": "restore-readme-status",
+      "file": "README.md",
+      "find": "a copy and its status: `shelf` or `loan`",
+      "replace": "a copy and its status: `shelf`, `loan` or `held`",
+      "count": 1
+    },
+    {
+      "id": "restore-readme-holds",
+      "file": "README.md",
+      "find": "- `src/holds.mjs` — holds: members waiting for a title.",
+      "replace": "- `src/holds.mjs` — holds: members waiting for a title, first come, first served.",
+      "count": 1
+    },
+    {
+      "id": "restore-catalog-says",
+      "file": "src/catalog.mjs",
+      "find": "// copy may stay out -- three weeks for a book, one week for a DVD -- and a copy is on the shelf or on loan.",
+      "replace": "// copy may stay out -- three weeks for a book, one week for a DVD -- and a copy is on the shelf, on loan, or held for a\n// member who is coming to collect it.",
+      "count": 1
+    },
+    {
+      "id": "restore-loans-shelved",
+      "file": "src/loans.mjs",
+      "find": "  shelved(store, copy);\n",
+      "replace": "  servedOrShelved(store, copy, day);\n",
+      "count": 1
+    },
+    {
+      "id": "restore-loans-returned-says",
+      "file": "src/loans.mjs",
+      "find": "// A loan brought back on a day: fined for the days it is late and the fine charged to its member, and its copy shelved.",
+      "replace": "// A loan brought back on a day: fined for the days it is late and the fine charged to its member, and its copy set\n// aside for the member who has waited longest for the title -- or shelved.",
+      "count": 1
+    },
+    {
+      "id": "restore-loans-catalog",
+      "file": "src/loans.mjs",
+      "find": "import { loanDaysOf, shelved, titleOfCopy } from \"./catalog.mjs\";",
+      "replace": "import { loanDaysOf, titleOfCopy } from \"./catalog.mjs\";",
+      "count": 1
+    },
+    {
+      "id": "restore-loans-says",
+      "file": "src/loans.mjs",
+      "find": "// (dropbox.mjs). A late return is fined and the fine charged to the member, and the copy goes back on the shelf.",
+      "replace": "// (dropbox.mjs). A late return is fined and the fine charged to the member; the copy then goes to whoever is waiting\n// for its title, or back on the shelf.",
+      "count": 1
+    },
+    {
+      "id": "restore-holds-serving",
+      "file": "src/holds.mjs",
+      "find": "export const holdView",
+      "replace": "const readyHoldOf = (store, copy) => holdsOn(store, copy.tenant, copy.title).find((h) => h.state === \"ready\" && h.copy === copy.id) ?? null;\n\n// A copy set aside is its hold's member's alone to borrow; when they borrow it, their hold is collected.\nexport const heldForAnother = (store, copy, member) => copy.status === \"held\" && readyHoldOf(store, copy)?.member !== member.id;\n\nconst collected = (store, hold, member) => (hold && hold.member === member.id ? put(store, \"holds\", { ...hold, state: \"collected\" }) : null);\n\nexport const collectedBy = (store, copy, member) => (copy.status === \"held\" ? collected(store, readyHoldOf(store, copy), member) : null);\n\nfunction setAside(store, copy, hold, day) {\n  const ready = put(store, \"holds\", { ...hold, state: \"ready\", copy: copy.id, pickupBy: addDays(day, PICKUP_DAYS) });\n  put(store, \"copies\", { ...copy, status: \"held\" });\n  created(store, \"notices\", \"notice\", { tenant: copy.tenant, member: hold.member, kind: \"hold-ready\", hold: hold.id, copy: copy.id, pickupBy: ready.pickupBy });\n  return ready;\n}\n\nconst firstWaiting = (store, copy) => holdsOn(store, copy.tenant, copy.title).find((h) => h.state === \"waiting\") ?? null;\n\n// A copy back from a loan: set aside for the member who has waited longest for its title, or shelved.\nexport const servedOrShelved = (store, copy, day) => ((hold) => (hold ? setAside(store, copy, hold, day) : shelved(store, copy)))(firstWaiting(store, copy));\n\nexport const holdView",
+      "count": 1
+    },
+    {
+      "id": "restore-holds-open",
+      "file": "src/holds.mjs",
+      "find": "&& h.state === \"waiting\") ?? null;",
+      "replace": "&& OPEN.includes(h.state)) ?? null;",
+      "count": 1
+    },
+    {
+      "id": "restore-holds-waiting-says",
+      "file": "src/holds.mjs",
+      "find": "// Whether anybody is waiting for a copy's title.",
+      "replace": "// Whether anybody is waiting for a copy's title: a hold placed and not yet served.",
+      "count": 1
+    },
+    {
+      "id": "restore-holds-says",
+      "file": "src/holds.mjs",
+      "find": "// HOLDS: members waiting for a title, in the order they asked.\nimport { created } from \"./store.mjs\";\nimport { allMine } from \"./tenancy.mjs\";\n",
+      "replace": "// HOLDS: members waiting for a title, first come, first served. When a copy of the title comes back it is set aside for\n// whoever has waited longest: their hold is ready, they are sent a notice, and they have a week to collect it -- the copy\n// is theirs alone to borrow until then. With nobody waiting, the copy goes back on the shelf.\nimport { addDays } from \"./dates.mjs\";\nimport { created, put } from \"./store.mjs\";\nimport { allMine } from \"./tenancy.mjs\";\nimport { shelved } from \"./catalog.mjs\";\n\nexport const PICKUP_DAYS = 7;\n\nconst OPEN = [\"waiting\", \"ready\"];\n",
+      "count": 1
+    },
+    {
+      "id": "served-import",
+      "file": "src/loans.mjs",
+      "find": "import { holdWaiting } from \"./holds.mjs\";",
+      "replace": "import { holdWaiting, servedOrShelved } from \"./holds.mjs\";",
+      "count": 1
+    }
+  ],
+  "files": [
+    {
+      "rel": "test/queue-served.test.mjs",
+      "lines": [
+        "// A copy that comes back serves the queue: the first in line's hold is ready, with a week to collect it, and a notice.",
+        "import assert from \"node:assert/strict\";",
+        "import { mkdtempSync, rmSync } from \"node:fs\";",
+        "import { tmpdir } from \"node:os\";",
+        "import { join } from \"node:path\";",
+        "import { test } from \"node:test\";",
+        "import { handle } from \"../src/api.mjs\";",
+        "import { openStore } from \"../src/store.mjs\";",
+        "",
+        "function storeFor(t) {",
+        "  const dir = mkdtempSync(join(tmpdir(), \"queue-served-\"));",
+        "  t.after(() => rmSync(dir, { recursive: true, force: true }));",
+        "  return openStore(dir);",
+        "}",
+        "",
+        "const call = (store, method, path, body, today = \"2026-03-02\") => handle(store, { method, path, tenant: \"harbor\", today, body });",
+        "",
+        "// A copy lent to Ana, and Ben waiting for its title.",
+        "function queued(store) {",
+        "  const title = call(store, \"POST\", \"/titles\", { name: \"Queued\", format: \"book\" }).body;",
+        "  const copy = call(store, \"POST\", \"/copies\", { title: title.id, replacementCents: 2000 }).body;",
+        "  const [ana, ben] = [\"Ana\", \"Ben\"].map((name) => call(store, \"POST\", \"/members\", { name }).body);",
+        "  return { copy, ben, loan: call(store, \"POST\", \"/loans\", { copy: copy.id, member: ana.id }).body, hold: call(store, \"POST\", \"/holds\", { title: title.id, member: ben.id }).body };",
+        "}",
+        "",
+        "test(\"the first in line's hold is ready with the copy and a week to collect it, and they are sent a notice\", (t) => {",
+        "  const store = storeFor(t);",
+        "  const q = queued(store);",
+        "  call(store, \"POST\", `/loans/${q.loan.id}/return`, {}, \"2026-03-06\");",
+        "  const served = call(store, \"GET\", `/holds/${q.hold.id}`).body;",
+        "  assert.deepEqual([served.state, served.copy, served.pickupBy, call(store, \"GET\", `/members/${q.ben.id}/notices`).body.notices.length], [\"ready\", q.copy.id, \"2026-03-13\", 1]);",
+        "});"
+      ]
+    }
+  ],
+  "deletes": []
+}

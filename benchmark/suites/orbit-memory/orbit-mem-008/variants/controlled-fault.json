@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "controlled-fault",
+  "about": "Two planted defects in architecture memory, applied only to the benchmark copy of the source: a convention names a file at the root by the folder it sits in -- the whole tree to every reader of a scope -- so any commit anywhere moves it (the finding this case was written for, repaired in 0.5.0); and an incremental scan reads the whole tree instead of the scopes that moved.",
+  "mutations": [
+    {
+      "id": "root-file-watched-as-the-tree",
+      "file": "src/architecture/analyzers/shape.mjs",
+      "find": ".map(watchedAs))",
+      "replace": ".map(dirname))",
+      "count": 1
+    },
+    {
+      "id": "incremental-reads-everything",
+      "file": "src/architecture/scan.mjs",
+      "find": "  if (decision.scan !== \"scopes\") return files;",
+      "replace": "  if (decision.scan) return files;",
+      "count": 1
+    }
+  ]
+}

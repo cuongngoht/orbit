@@ -25,13 +25,25 @@
 // here, even a module that no longer loads (everything is imported INSIDE the
 // guard for that reason) -- the host gets no routing context and the prompt
 // goes through untouched. The prompt itself is never written anywhere.
+//
+// 0.5.0 (B22, ADR 0050): beside the registry it binds the facts the strategy table
+// reads (src/routing/strategy.mjs) -- automation's own `workflowOf` answer for the
+// classification, this host's row of catalog/hosts.json, the automation settings,
+// and this checkout's open work: the work each reference the prompt names was
+// tracked under, and this session's current work when the prompt says to continue
+// (src/work/track/open.mjs). Each only reads, each that fails is null, and a prompt
+// that names no reference and does not say continue reads no journal at all. The
+// registry and the settings are composed by cli/resources-here.mjs, the one recipe a
+// session's start reads for its capability line too (B22 M3); and the prompt's MARKS
+// (halt, continue, … -- table words) reach the trail with routing on or off, so a
+// Stop hold knows when a person said to stop.
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 let ENV = process.env;
-const MODULES = { settings: "skills/orbit-learn/hosts/settings.mjs", hosts: "skills/orbit-learn/hosts/index.mjs", event: "src/lifecycle/event.mjs", dispatch: "src/lifecycle/dispatch.mjs", router: "src/lifecycle/subscribers/router.mjs", project: "src/project/index.mjs", env: "src/project/env.mjs", repository: "src/project/repository.mjs", compose: "src/resources/compose.mjs", control: "src/store/control.mjs", io: "src/store/io.mjs", version: "src/version.mjs", capabilities: "src/extensions/capabilities.mjs", pack: "skills/orbit-requirements/bind.mjs", emit: "src/trace/emit.mjs", log: "src/trace/log.mjs", prompt: "src/trace/prompt.mjs", hash: "src/hash.mjs", factory: "skills/orbit-help/factory.mjs", automation: "src/automation/settings.mjs" };
+const MODULES = { settings: "skills/orbit-learn/hosts/settings.mjs", hosts: "skills/orbit-learn/hosts/index.mjs", event: "src/lifecycle/event.mjs", dispatch: "src/lifecycle/dispatch.mjs", router: "src/lifecycle/subscribers/router.mjs", project: "src/project/index.mjs", env: "src/project/env.mjs", repository: "src/project/repository.mjs", here: "cli/resources-here.mjs", control: "src/store/control.mjs", io: "src/store/io.mjs", version: "src/version.mjs", capabilities: "src/extensions/capabilities.mjs", emit: "src/trace/emit.mjs", log: "src/trace/log.mjs", prompt: "src/trace/prompt.mjs", hash: "src/hash.mjs" };
 
 async function main() {
   const input = stdin();
@@ -58,27 +70,23 @@ async function answer(m, host, input, event) {
   const routing = () => m.env.switchOf(ENV, "PROMPT_ROUTER", "prompt_router", true);
   const project = event?.event === "user-prompt" && routing() ? quietly(() => m.project.loadProject(ENV, event.cwd)) : null;
   const caps = project ? await m.capabilities.projectCapabilities(project, ENV) : [];
-  const storeRoot = event?.event === "user-prompt" && routing() ? quietly(() => project?.storeRoot ?? m.repository.repositoryPaths(event.cwd, ENV)?.storeRoot) : null;
-  return quietly(() => m.dispatch.dispatch(event, world(m, { host, input, routing, caps, event, project, storeRoot }), [m.router.router]));
+  const paths = event?.event === "user-prompt" && routing() ? quietly(() => (project?.storeRoot ? project : m.repository.repositoryPaths(event.cwd, ENV))) : null;
+  return quietly(() => m.dispatch.dispatch(event, world(m, { host, input, routing, caps, event, project, storeRoot: paths?.storeRoot ?? null, checkout: paths?.checkoutId ?? null }), [m.router.router]));
 }
 
-// The automation settings a person set, machine then project, narrowed -- read, never written.
-function automationValues(m, rooms, storeRoot) {
-  const io = m.io.realIo();
-  const docs = [{ by: "machine", content: m.automation.readAutomation(io, resolve(rooms.automation, "settings.json")).content }, ...(storeRoot ? [{ by: "project", content: m.automation.readAutomation(io, resolve(storeRoot, "automation", "settings.json")).content }] : [])];
-  return m.automation.effectiveOf(docs).values;
-}
-
-// This project's generated playbooks, as the skills family lists them -- the same rows Control and a workflow see.
-const playbooksOf = (m, storeRoot, values) => (storeRoot && values ? m.factory.projectSkillsOf({ paths: { storeRoot }, io: m.io.realIo() }, values)() : []);
-
+// The registry and the automation settings come from ONE composition (cli/resources-here.mjs, 0.5.0), the one a
+// session's start reads for its capability line too: the same catalogs, records, capabilities and playbooks.
 function world(m, b) {
   const plugin = m.version.engineName();
   const rooms = quietly(() => m.control.stateRooms(m.repository.storeBase(ENV)));
   const trail = rooms ? quietly(() => trailOf(m, rooms, b)) : null;
-  const automation = rooms ? quietly(() => automationValues(m, rooms, b.storeRoot)) : null;
-  return { automation: () => automation, host: b.host, input: b.input, env: ENV, plugin, routing: b.routing, callVia: `node ${resolve(PLUGIN_ROOT, "cli", "mcp.mjs")} call`, resources: () => m.compose.effectiveResourcesOf({ pluginRoot: PLUGIN_ROOT, rooms, io: m.io.realIo(), env: ENV, plugin, platform: process.platform, arch: process.arch, componentReady: b.event?.protocol === 2 ? (c) => c.kind === "skill" : undefined, capabilities: () => b.caps, projectSkills: () => playbooksOf(m, b.storeRoot, automation), packCapabilities: () => m.pack.readerResources(m.pack.connectionReader(rooms, m.io.realIo())) }), salt: () => trail?.salt() ?? null, traced: (decision, facts, injected) => quietly(() => trail?.emit("prompt.submitted", { prompt: facts, ...m.prompt.decisionFacts(decision, injected) })) };
+  const automation = rooms ? quietly(() => m.here.automationValues(rooms, b.storeRoot)) : null;
+  return { automation: () => automation, host: b.host, input: b.input, env: ENV, plugin, routing: b.routing, callVia: `node ${resolve(PLUGIN_ROOT, "cli", "mcp.mjs")} call`, resources: () => m.here.resourcesHere({ pluginRoot: PLUGIN_ROOT, rooms, env: ENV, plugin, protocol: b.event?.protocol, caps: b.caps, storeRoot: b.storeRoot, automation }), salt: () => trail?.salt() ?? null, traced: (decision, facts, injected, synthetic, marks) => quietly(() => trail?.emit("prompt.submitted", { prompt: facts, ...m.prompt.decisionFacts(decision, injected, synthetic, marks) })), ...strategyFacts(m, b) };
 }
+
+// What the strategy table reads beside the classification -- each asked with table words, each null when it cannot be
+// read; the readers are cli/resources-here.mjs's, which `resources.mjs route` asks too.
+const strategyFacts = (m, b) => ({ engine: PLUGIN_ROOT, workflowOf: (c) => quietly(() => m.here.workflowOf(c)), hostRow: () => quietly(() => m.here.hostRowOf(PLUGIN_ROOT, b.event?.host)), openWork: (ask) => quietly(() => m.here.openWorkHere({ storeRoot: b.storeRoot, checkout: b.checkout, session: b.event?.session }, ask)) });
 
 // The trail, bound for this one prompt: its session (hashed already) and a
 // short hash of the project's store key -- never a path.

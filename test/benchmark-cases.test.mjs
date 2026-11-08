@@ -139,3 +139,23 @@ for (const c of engineeringCases) {
     assert.deepEqual(fixtureDigests(c), before, "no variant, control or definition ever writes the fixture");
   });
 }
+
+// ---- ORBIT-E2E-007: what its goal says of the owners' records, held by its own record checks --------------------------
+
+const E2E7 = engineeringCases.find((c) => c.id === "ORBIT-E2E-007");
+
+const ENG = "tsk-0000000000e1";
+
+// A read-back as the flow hands a spec's records: the engineering task, its actions, every task and every goal.
+const readBack = (o = {}) => ({ engineering: { id: ENG, lifecycle: "COMPLETED" }, actions: [{ id: "act-8", tool: "rt-test", state: "error", receipts: [], why: "interrupted: the step that ran it ended before it said how it went" }, { id: "act-9", tool: "rt-test", state: "succeeded", receipts: ["check:chk-9"], why: "" }], tasks: [{ id: "tsk-0000000000f1", provider: "automation" }, { id: ENG, provider: "autonomous-engineering" }], goals: [{ id: "goal-0000000000a1" }], ...o });
+
+const failingOf = async (rb) => (await import(pathToFileURL(join(E2E7.dir, E2E7.acceptance.spec)).href)).records(rb).filter((r) => !r.ok).map((r) => r.id);
+
+test("ORBIT-E2E-007's records hold a run to its goal: the same goal resumed, one engineering task carried across the cut, what the cut left open taken again, nothing running", async () => {
+  assert.deepEqual(await failingOf(readBack()), []);
+  assert.deepEqual(await failingOf(readBack({ tasks: [...readBack().tasks, { id: "tsk-0000000000e2", provider: "autonomous-engineering" }] })), ["one-engineering-task"], "a second engineering task, by hand or by a re-plan");
+  assert.deepEqual(await failingOf(readBack({ engineering: { id: "tsk-0000000000e2", lifecycle: "COMPLETED" } })), ["one-engineering-task"], "the one task there is must be the one read back");
+  assert.deepEqual(await failingOf(readBack({ goals: [{ id: "goal-0000000000a1" }, { id: "goal-0000000000a2" }] })), ["one-goal"], "a second goal in place of resuming the first");
+  assert.deepEqual(await failingOf(readBack({ actions: readBack().actions.slice(0, 1) })), ["interrupted-taken-again"], "what the cut left open, never taken again");
+  assert.deepEqual(await failingOf(readBack({ actions: [{ ...readBack().actions[0], state: "running", why: "" }] })), ["nothing-running"]);
+});

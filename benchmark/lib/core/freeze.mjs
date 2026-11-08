@@ -8,6 +8,7 @@
 //
 //   whereAt(repo, env) -> { root, branch, detached, commit, dirty: [path] }
 //   frozen(repo, mode, env) -> { mode, entries: [{ rel, mode, bytes|target, digest }], skipped: [{ rel, why }] }
+//   frozenAt(repo, revision, env) -> { mode: "revision", revision: { named, commit }, entries, skipped }
 //   subjectOf(entries, globs) -> { entries, skipped }       treeDigestOf(entries) -> sha256
 //   writtenTree(dest, entries)                               SOURCE_MODES · HARNESS
 import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, symlinkSync, writeFileSync } from "node:fs";
@@ -80,12 +81,15 @@ function keptObject(out, buf, at, nl) {
 
 const entryOf = (rel, mode, bytes) => (mode === "link" ? { rel, mode, target: bytes.toString("utf8"), digest: sha(`link:${bytes.toString("utf8")}`) } : { rel, mode, bytes, digest: shaBytes(bytes) });
 
-function frozenHead(root, env) {
-  const rows = refusingCredentials(treeRows(said(gitRead(root, ["ls-tree", "-r", "-z", "--full-tree", "HEAD"], env), "list HEAD's tree")));
+// A commit's whole tree -- HEAD's, or (0.5.0) the one a baseline arm names -- read through the same two read-only calls.
+function frozenTree(root, rev, env) {
+  const rows = refusingCredentials(treeRows(said(gitRead(root, ["ls-tree", "-r", "-z", "--full-tree", rev], env), `list ${rev}'s tree`)));
   const kept = rows.filter((r) => !skipOf(r));
-  const objects = objectsFrom(said(gitRead(root, ["cat-file", "--batch"], env, { bytes: true, input: `${kept.map((r) => r.oid).join("\n")}\n` }), "read HEAD's files"));
+  const objects = objectsFrom(said(gitRead(root, ["cat-file", "--batch"], env, { bytes: true, input: `${kept.map((r) => r.oid).join("\n")}\n` }), `read ${rev}'s files`));
   return { entries: kept.filter((r) => objects.has(r.oid)).map((r) => entryOf(r.rel, GIT_MODES[r.gitMode], objects.get(r.oid))), skipped: [...rows.filter(skipOf).map((r) => ({ rel: r.rel, why: skipOf(r) })), ...kept.filter((r) => !objects.has(r.oid)).map((r) => ({ rel: r.rel, why: "its object is not in this clone" }))] };
 }
+
+const frozenHead = (root, env) => frozenTree(root, "HEAD", env);
 
 // ---- the working tree, as git shows it ----------------------------------------------------------------------------
 
@@ -127,11 +131,24 @@ function bounded(entries) {
 
 const FREEZERS = { head: frozenHead, worktree: frozenWorktree };
 
+// What a snapshot may hold of what was read: paths a tree may hold, links that stay inside it, within the size bounds.
+function heldOf(got) {
+  const kept = bounded(got.entries.filter((e) => safeRel(e.rel) && !outward(e)));
+  return { entries: kept, skipped: [...got.skipped, ...got.entries.filter((e) => !kept.includes(e)).map((e) => ({ rel: e.rel, why: "a link out of the tree, or a path no tree may hold" }))] };
+}
+
 export function frozen(root, mode, env) {
   if (!FREEZERS[mode]) throw new Refused(`--source is one of ${SOURCE_MODES.join(", ")}`);
-  const got = FREEZERS[mode](root, env);
-  const kept = bounded(got.entries.filter((e) => safeRel(e.rel) && !outward(e)));
-  return { mode, entries: kept, skipped: [...got.skipped, ...got.entries.filter((e) => !kept.includes(e)).map((e) => ({ rel: e.rel, why: "a link out of the tree, or a path no tree may hold" }))] };
+  return { mode, ...heldOf(FREEZERS[mode](root, env)) };
+}
+
+// A plugin frozen at a NAMED revision (0.5.0, B23's baseline arm: the previous release) -- a tag, a branch or a commit,
+// resolved to the commit it names and read exactly as HEAD is. A repository that holds no such revision refuses it:
+// a baseline is never silently another one.
+export function frozenAt(root, revision, env) {
+  const r = gitRead(root, ["rev-parse", "--verify", "-q", `${revision}^{commit}`], env);
+  if (!r.ok || !/^[0-9a-f]{40,64}$/.test(r.out.trim())) throw new Refused(`the baseline arm names ${revision}, and ${root} holds no such revision — fetch it (git fetch --tags), or name another in the case or its suite (baselinePlugin)`);
+  return { mode: "revision", revision: { named: revision, commit: r.out.trim() }, ...heldOf(frozenTree(root, r.out.trim(), env)) };
 }
 
 export const subjectOf = (entries, globs) => ({ entries: entries.filter((e) => !matchesAny(globs, e.rel)), skipped: entries.filter((e) => matchesAny(globs, e.rel)).map((e) => ({ rel: e.rel, why: "the benchmark harness's own file: never part of what is measured" })) });

@@ -3,7 +3,7 @@
 // hold. It never scans, never validates a plan it has not already been asked
 // to check, and it adds nothing to any store.
 import { createArchitecture } from "../architecture/store.mjs";
-import { statusOf } from "../context/status.mjs";
+import { keptStatus } from "../context/status.mjs";
 import { knownCheckout } from "../project/repository.mjs";
 import { createEngineering } from "../engineering/store.mjs";
 import { errors } from "../qa/finding.mjs";
@@ -37,7 +37,7 @@ export function gatherState(ctx, task = null) {
 
 // How much of what this navigator read rests on evidence, in the context command's own words (src/context/status.mjs):
 // over what it read itself -- architecture, engineering memory and the working set -- never a count of sections.
-const contextStatus = (ctx, s) => statusOf({ bound: knownCheckout(ctx.project), sections: [{ id: "architecture", known: s.architecture.total > 0 || s.architecture.scanned }, { id: "engineering", known: s.engineering.total > 0 }, { id: "working-set", known: s.workingSet.sessions > 0 }], architecture: s.architecture, blocked: ctx.seat?.status === "blocked" ? ctx.seat.because : null });
+const contextStatus = (ctx, s) => keptStatus({ bound: knownCheckout(ctx.project), architecture: s.architecture, engineering: s.engineering.total, sessions: s.workingSet.sessions, blocked: ctx.seat?.status === "blocked" ? ctx.seat.because : null });
 
 // What a named task is ABOUT, as the prompt router's table classifies it -- an
 // intent word and a confidence, never the task's text, which is dropped here.

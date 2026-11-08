@@ -132,6 +132,43 @@ A few ideas run through everything:
 
 ## Skills you can call
 
+You can name any of these yourself, and Claude Code also picks them by itself: it reads each skill's description, so
+every description says *when* to use it in its first sentence and stays within the host's listing budget (at most 300
+characters, 7,500 for all 25). `test/activation-catalog.test.mjs` holds that, and that each first sentence carries a
+word that brings a prompt to the skill.
+
+Beside every prompt, Orbit's prompt router says how much Orbit the request needs, in one line, or nothing at all
+(RouteDecision v3, ADR 0050). **NONE** adds no text: a prompt you opened with a slash command yourself
+(`/orbit-help fix the refund rule` -- you already chose what runs), a greeting, a status question that asks for nothing
+else ("how far along are we?", "tới đâu rồi"), a background task's notification the host delivers as if it were a
+prompt, an opt-out ("without Orbit", "không dùng orbit"), or anything the session already does itself. **DIRECT** names the one
+skill or agent that fits. **COORDINATED** gives the one command for a change you ask for that several owners take in
+turn -- a work item to settle, or an investigation or a security check to prove it (`/orbit-help`'s workflow) -- or for
+a whole specification (`/orbit`'s goal); a question that only names code ("is the orders endpoint protected?") asks for
+no change. **SATELLITE** is only ever a mission you asked for, and **RESUME** picks up an open work of this checkout
+through its owner. English and Vietnamese are read alike, words past the first 2,000 characters -- a pasted log or file
+-- never decide what a prompt is about, and a one-word match is said only when it is a skill's own word. The router
+suggests; Claude decides. `test/fixtures/routing/corpus.jsonl` holds it to realistic prompts in both languages.
+
+The rest of a session follows its work through, a line at a time and only where Orbit owns the work (0.5.0, ADR 0050):
+
+- **Session start** (a checkout Orbit knows): one line of at most 300 bytes -- each family's usable count, what you
+  switched off, and the project's STATUS word -- and, on a resumed or compacted session, its open work and next step.
+- **After one of Orbit's agents returns**: one line naming the owner record that settles its work (the workflow, goal,
+  mission or task) and where it stands. What the agent said is its report, never the evidence; its message and
+  transcript are never read.
+- **After an Orbit command fails** under the session's governed work: the owner's recovery row, beside the usual
+  diagnosis -- an action that did not settle is read back with `reconcile`, never sent again.
+- **At Stop**: when the session's own coordinated workflow or goal is still running with a step ready, Claude Code's
+  turn is held open -- at most twice per prompt, never twice in a row -- with the step and its one command, or the
+  model says in one sentence why it stops. Never past your pause, cancel, approval or question, never after a turn
+  that only answered a question, never when your prompt said stop or wait, never with the trail off; switch it off in
+  Orbit Control › Advanced › Automation limits (`trigger.holdOnStop`). The hold starts and grants nothing.
+
+`node cli/trace.mjs activation` reads back, per turn and per work, how a suggestion became an outcome: suggested →
+selected → dispatched → executed → verified, each from its own source, with only the owner's record ever verified, and a
+turn that dispatched more of Orbit's agents than its strategy accounted for marked **over-delegated**.
+
 ### Entry points
 
 | Skill | Use it for |
@@ -177,8 +214,13 @@ A few ideas run through everything:
 | `orbit-report` | A product owner's project report from GitHub or Azure DevOps, computed from a frozen snapshot. Azure DevOps signs in with your Microsoft account by default ([how](#microsoft-sign-in-for-azure-devops)); GitHub reads with a token. |
 | `orbit-release` | Ship a new version of Orbit, or install it in another repository. |
 
-Role agents (`orbit-engineering-agent`, `orbit-qa-agent`, `orbit-qa-case-writer`, `orbit-failure-analyst`,
-`orbit-map-healer`, …) each do one bounded job for a parent skill.
+Role agents each do one bounded job in a context of their own. Five may be dispatched by the session directly when that
+job is the whole request: `orbit-engineering-agent`, `orbit-qa-agent`, `orbit-failure-analyst`, `orbit-dsl-doctor` and
+`orbit-engineering-observer`. The other fifteen -- the architecture scanner, the reverse-engineering agent, the security
+auditor, the map healer and recorder, the QA case writer, the five requirement roundtable agents and Satellite's four --
+are dispatched only from their parent skill's playbook, because each needs that skill's step before it: their catalog
+row names the parent (`via` in `catalog/components.json`), the router never offers one on its own, and the parent's line
+in the routing context names the agents it dispatches.
 
 ---
 
@@ -189,6 +231,7 @@ Every skill is backed by a CLI under `cli/`. The reliable form on any host is `n
 ```bash
 # Goals
 node cli/orbit.mjs goal start --stdin < goal.txt      # keep a goal as submitted
+node cli/orbit.mjs goal analyze <goal-id> --stdin      # the host's reading, as JSON; a row with no kind is an assumption, one with no sourceRef cites none
 node cli/orbit.mjs goal status <goal-id>               # where it stands
 node cli/orbit.mjs goal plan|resume|step|verify|report|list <goal-id>
 node cli/orbit.mjs doctor
@@ -204,6 +247,8 @@ node cli/task.mjs list                                 # tasks on this machine
 # Project knowledge
 node cli/architecture.mjs ensure                       # is the architecture snapshot current?
 node cli/runtime.mjs discover                          # what this checkout needs to run
+node cli/context.mjs --for="<task>" [--json]           # what the task touches, and whether that is enough (0.5.0)
+node cli/context.mjs --with-refs --json < refs.json    # the same, with the files and symbols you propose, verified
 
 # Live view
 node cli/live.mjs status                               # Orbit Live in a terminal
@@ -211,6 +256,7 @@ node cli/live.mjs status --json                        # session.agents: which a
 
 # How sessions used Orbit
 node cli/trace.mjs usage                               # counts with their denominators; per agent, as the host says (0.2.2)
+node cli/trace.mjs activation                          # suggested → selected → dispatched → executed → verified (0.5.0)
 
 # Self-improvement (0.3.0)
 node cli/improve.mjs status                            # switches, opportunities, campaigns
@@ -314,6 +360,31 @@ command — and unknown is never production.
 
 ## Feature guides
 
+### Project context: what a task touches, and whether that is enough
+
+`context --for="<task>"` is what `orbit-develop`, `orbit-engineer` and `orbit-help` read before they choose a scope.
+Memory first, it composes the architecture, technology, engineering, knowledge, work and working-set sections, and
+since 0.5.0 two answers about the task itself:
+
+- **RELEVANT** lists what the task touches, from what the owners already hold: architecture's modules, boundaries,
+  system-graph nodes and gates, intelligence's integrations, what engineering and knowledge recall for the task, the
+  working set, and, once the paths are known, what the change reaches and which declared checks hold it. Each item is
+  a `file`, `symbol`, `component` or `check`; its class is `direct`, `dependency`, `downstream`, `verification` or
+  `unknown`; it names its evidence and its freshness, measured against each record's own scope (never HEAD); and it
+  says who found it, `engine` or `host-verified`. At most 40 are listed and the rest counted. Names are matched with
+  identifiers split (`createOrder` is "create order"), with no embeddings and no parsing of any language.
+- **SUFFICIENCY** is one word: `ENOUGH` (proceed, starting from those items), `DISCOVER` (with the targeted reads that
+  would fill the gap, never a full scan; each target's `run` is an Orbit command, `node <plugin-root>/cli/<first
+  word>.mjs <the rest>`, and a read already made that would find the same nothing is never named again) or `ASK` (a
+  question about the task's own work is already open: a requirement's blocking question, or a goal's missing
+  prerequisite, on a work or goal the task names by id or whose objective is mostly the task's own words). Orbit never
+  makes a question up, and only a person answers one.
+
+A host proposes what it found with `--with-refs`: `{ "task": "…", "refs": [{ "kind": "file|symbol", "ref": "…",
+"why": "…" }] }` on stdin. A file is checked against the tracked listing, and every proposed symbol by ONE whole-word
+search of the index; one the tree does not hold is refused by name and never listed. Composing RELEVANT and
+SUFFICIENCY writes nothing: only the sections' own memory-first commands refresh what they keep.
+
 ### Coordinated workflows and reusable playbooks
 
 When a workflow needs a capability nothing provides, the skill factory drafts a **project-scoped playbook**: a
@@ -354,7 +425,9 @@ From an accepted requirement to a verified outcome:
 4. The host validates what the worker left before anything is recorded; ordered result rows give the outcome.
 
 Backends are reached through adapters (`orbit.adapter/v1`) shipped as packs a project opts into; what each adapter is
-proven to support is computed from conformance receipts.
+proven to support is computed from conformance receipts. An adapter's operation may declare what its request carries
+([ADR 0052](docs/adr/0052-an-adapter-operation-declares-what-its-request-carries.md)), and a design is held to it before
+a draft exists.
 
 ```bash
 node cli/autonomous-qa.mjs plan --plan=<id> --sandbox=<env-id> --mode=fixture-write
@@ -499,7 +572,10 @@ npm run lint                                                 # Five Lines check,
 ORBIT_UI_TESTS=test/fixtures/ui-tests node cli/query.mjs check
 ORBIT_UI_TESTS=test/fixtures/ui-tests node cli/plan-check.mjs
 node skills/orbit-release/ship.mjs --ci                      # the whole definition of done, one command (the fast tier)
-node skills/orbit-release/ship.mjs                           # a release: the autonomous ship, Docker + Claude Code (ADR 0049)
+node skills/orbit-release/ship.mjs                           # a release: the autonomous ship, Docker + Claude Code (ADR 0049),
+                                                             #   run in a Claude Code cloud session -- no workflow runs a model
+node skills/orbit-release/ship.mjs --precheck                # before a ship: the model-carried rows only, each once (ADR 0051)
+node skills/orbit-release/ship.mjs --status                  # where a ship stands; a failed model row's diagnosis bundle
 node skills/orbit-release/ship.mjs --evidence                # the publish gate: evidence for this very tree, or not
 ```
 
@@ -516,7 +592,8 @@ is data (`src/dsl/`); no product, vendor or stack named in engine code.
 
 `benchmark/` holds Orbit to cases written as data, on the branch you are on, in Docker. It is development tooling and
 never ships ([benchmark/README.md](benchmark/README.md), [ADR 0046](docs/adr/0046-a-docker-benchmark-holds-orbits-source-to-independent-checks.md),
-[ADR 0047](docs/adr/0047-a-qa-benchmark-asks-whether-autonomous-qa-finds-a-planted-defect.md)). It has two kinds of case.
+[ADR 0047](docs/adr/0047-a-qa-benchmark-asks-whether-autonomous-qa-finds-a-planted-defect.md)). It has seven kinds of
+case in fifteen suites; the two oldest come first.
 
 **Source cases** hold Orbit's own source to independent checks.
 
@@ -534,6 +611,32 @@ never ships ([benchmark/README.md](benchmark/README.md), [ADR 0046](docs/adr/004
 - A contradiction counts as a defect found only once the clean application passes the same test.
 - `controls` proves the verifier without a model: a reference host must pass, while an idle host and a false-alarm
   host must fail.
+
+**Five more kinds** hand a coding host what a person would, and judge what it did from records, never from its word:
+
+- **Engineering cases** (`orbit-engineering`, and `orbit-heldout` on an application nobody tuned Orbit against,
+  [ADR 0056](docs/adr/0056-a-held-out-application-measures-orbit-on-what-it-was-not-tuned-against.md)): a goal about a
+  small frozen project, judged by hidden checks and by what Orbit's owners recorded
+  ([ADR 0048](docs/adr/0048-the-benchmark-proves-orbits-self-healing-loop-and-measures-goals.md)).
+- **Activation cases** (`orbit-activation`,
+  [ADR 0050](docs/adr/0050-the-host-activates-orbit-by-capability-and-orbit-verifies-what-happened.md)): a prompt that
+  names no skill. Does the host use Orbit by itself, and only where it helps -- with no Orbit, the previous release and
+  this one?
+- **Sessions cases** (`orbit-sessions`,
+  [ADR 0054](docs/adr/0054-a-sessions-benchmark-measures-what-memory-buys-a-second-session.md)): does memory make a
+  second session better, and never worse?
+- **Workflow cases** (`orbit-workflow`,
+  [ADR 0053](docs/adr/0053-a-workflow-benchmark-holds-one-request-to-its-code-its-qa-and-its-path.md)): one request
+  through `/orbit-help`, held to its code, its QA step and its path.
+- **Mission cases** (`orbit-missions`,
+  [ADR 0055](docs/adr/0055-a-mission-benchmark-asks-whether-satellite-settles-a-goal-on-owners-records.md)): a goal
+  through Orbit Satellite, every acceptance criterion settled on an owner's record and every run inside its least
+  privilege.
+
+`orbit-tools` is a QA case whose tool calls fail on purpose: the host must read why and correct the call, never repeat
+it. One PASS is not a rate: `run --repeat=N`, the arms and `node benchmark/run.mjs reliability` give pass@1, pass@k,
+cost and minutes per case and model. A release runs every case; a new suite's model-carried rows are recorded, never
+required ([ADR 0051](docs/adr/0051-recorded-benchmark-rows-and-the-precheck.md)).
 
 A run is an Orbit task, so Orbit Live shows it and a person can pause or cancel it.
 

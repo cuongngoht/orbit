@@ -3,7 +3,8 @@
 // allow-list: the trail holds metadata only -- no prompt text, no argument, no
 // output, no path -- so there is no field for any of them to arrive in.
 
-export type StepKind = "skill" | "agent" | "orbit" | "shell" | "tool" | "opportunity" | "decision" | "gap";
+/** "hold" (0.5.0): a Stop hook held the turn open for the session's running workflow or goal. */
+export type StepKind = "skill" | "agent" | "orbit" | "shell" | "tool" | "opportunity" | "decision" | "gap" | "hold";
 
 /** One thing the session did, in order. */
 export interface TraceStep {
@@ -28,6 +29,17 @@ export type TurnOutcome = "refused" | "failed" | "open" | "ok" | "unknown";
 
 export interface Followed {
   verdict: FollowVerdict;
+  say: string;
+}
+
+/**
+ * The turn's ACTIVATION verdict (0.5.0, src/trace/projections/activation.mjs): the `followed` verdict, or
+ * over-delegated when the turn dispatched more of Orbit's agents than its strategy accounted for.
+ */
+export type ActivationVerdict = FollowVerdict | "over-delegated";
+
+export interface Activation {
+  verdict: ActivationVerdict;
   say: string;
 }
 
@@ -87,6 +99,8 @@ export interface TurnRow {
   routing: "on" | "off" | null;
   suggested: { kind: string; id: string }[];
   followed: Followed;
+  /** 0.5.0: absent from a server older than the activation fold. */
+  activation?: Activation;
   outcome: TurnOutcome;
   steps: number;
   path: PathStep[];

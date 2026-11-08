@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "kind": "activation",
+  "id": "ORBIT-NEG-002",
+  "version": "1.0.0",
+  "title": "Explaining code needs nothing of Orbit",
+  "goal": "a question about what one function does is answered by reading it: no Orbit skill, agent or command, no owner's record, and nothing the router adds",
+  "measures": {
+    "kind": "activation",
+    "capability": "abstention",
+    "tier": "selection"
+  },
+  "request": "request.md",
+  "language": "en",
+  "fixture": {
+    "id": "orders"
+  },
+  "withheld": [
+    "docs/backlog/0.5.0-activation-benchmark.md"
+  ],
+  "arms": [
+    "none",
+    "baseline",
+    "release"
+  ],
+  "acceptance": {
+    "owner": "verifier",
+    "truth": "verifier/truth.json"
+  },
+  "limits": {
+    "rounds": 1,
+    "minutes": 45,
+    "usd": 3,
+    "maxTurns": 25,
+    "runner": {
+      "cpus": 2,
+      "memoryMb": 4096,
+      "pids": 2048,
+      "minutes": 25,
+      "outputMb": 16
+    }
+  },
+  "artifacts": [
+    "manifest",
+    "seed",
+    "host-stream",
+    "inspection",
+    "judged",
+    "report"
+  ],
+  "cleanup": {
+    "containers": "run-label",
+    "networks": "run-label",
+    "scratch": "after-run"
+  },
+  "variants": {
+    "real": {}
+  },
+  "controls": [
+    {
+      "id": "reference",
+      "host": "reference",
+      "expect": "PASS",
+      "file": "controls/reference.json"
+    },
+    {
+      "id": "idle",
+      "host": "idle",
+      "expect": "PASS"
+    },
+    {
+      "id": "over-eager",
+      "host": "over-eager",
+      "expect": "FAIL",
+      "class": "HOST_DIVERGED"
+    },
+    {
+      "id": "forging",
+      "host": "forging",
+      "expect": "FAIL",
+      "class": "INSUFFICIENT_EVIDENCE"
+    }
+  ]
+}

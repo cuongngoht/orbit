@@ -7,6 +7,8 @@
 //   blocked     the owner waits for someone: the step BLOCKED and the task blocked, naming who
 //   reported    the engine has no record to prove it by (project context): REPORTED, `not-verified` --
 //               never `satisfied`, whatever anybody says
+//   skipped     the engine found nothing to run it on (a change's QA with nothing startable, 0.5.0): SKIPPED with
+//               why, `not-verified` -- a verdict only the engine's own runner gives, never a host's word
 //   host words  `blocked` and `failed` are taken as the host says them -- a failure needs no proof
 //   open        the owner's work still runs: refused, nothing written -- settle again when it ends
 //   unreadable  a step that may stand on a report is REPORTED; a strict one is refused until its evidence
@@ -47,6 +49,7 @@ export const SETTLED = [
   { id: "violated", when: (s) => s.read.verdict === "violated", ops: (s) => [...evidence(s), ...verified(s, "violated"), stepReceipt(s, STEP_WORD.FAILED, s.read.because ?? summaryOf(s)), completed(s, "failed", s.read.because ?? summaryOf(s))] },
   { id: "blocked", when: (s) => s.read.verdict === "blocked", ops: (s) => [...evidence(s), stepReceipt(s, STEP_WORD.BLOCKED, s.read.because), failed(s, s.read.because ?? "blocked"), block(s, s.read.because ?? "its owner waits for someone")] },
   { id: "reported", when: (s) => s.read.verdict === "reported", ops: (s) => [...verified(s, "not-verified"), stepReceipt(s, STEP_WORD.REPORTED, summaryOf(s)), completed(s, "succeeded", `reported, not proven: ${summaryOf(s) ?? "nothing to read back"}`)] },
+  { id: "skipped", when: (s) => s.read.verdict === "skipped", ops: (s) => [...verified(s, "not-verified"), stepReceipt(s, STEP_WORD.SKIPPED, s.read.because), completed(s, "succeeded", `skipped, not verified: ${s.read.because}`)] },
   { id: "host-blocked", when: (s) => says(s, "blocked"), ops: (s) => [stepReceipt(s, STEP_WORD.BLOCKED, hostBecause(s)), failed(s, hostBecause(s)), block({ ...s, read: { needs: NEEDS.PERSON } }, hostBecause(s))] },
   { id: "host-failed", when: (s) => says(s, "failed"), ops: (s) => [...evidence(s), stepReceipt(s, STEP_WORD.FAILED, hostBecause(s)), completed(s, "failed", hostBecause(s))] },
   { id: "open", when: (s) => s.read.verdict === "open", ops: (s) => refuse("STILL_RUNNING", `${s.read.receipt ? keyOf(s.read.receipt) : "its owner"} is still going (${s.read.receipt?.outcome ?? "running"}) — settle it again once it ends; nothing was written`) },

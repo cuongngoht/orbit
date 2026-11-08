@@ -14,20 +14,32 @@
 //        [--usd=<n> --minutes=<n> --cycles=<n> --attempts=<n> --retries=<n>]
 //                                                   limits, within the release policy's bounds (raised on --resume);
 //                                                   --retries: more runs a missed model-carried row may have
-//        [--model=<id> --credential=<NAME> --ca-file=<pem> --no-fail-fast --json --bump=changed|added|fixed|release]
+//        [--model=<id> --effort=low|medium|high|xhigh|max --credential=<NAME> --ca-file=<pem> --no-fail-fast --json
+//         --bump=changed|added|fixed|release]
+//                                                   --effort: the effort every model-carried row's coding host runs at,
+//                                                   beside --model, frozen when the ship begins (a resume never moves it);
+//                                                   a row's run at another effort is never this ship's evidence
+//   node skills/orbit-release/ship.mjs --precheck  [--usd=<n> --minutes=<n> --model=<id> --effort=<level>
+//                                                    --credential=<NAME> --ca-file=<pem>]
+//                                                   before a ship: only the model-carried rows, each once, stopping at
+//                                                   no failure -- every failure said with its run's room and its
+//                                                   diagnosis; a precheck qualifies nothing (--resume carries one on)
 //   node skills/orbit-release/ship.mjs --status[=<shp-…>]
-//                                                   where this checkout's newest ship (or the one named) stands
+//                                                   where this checkout's newest ship (or the one named) stands: its
+//                                                   rows, the recorded ones, and each model-carried row that did not
+//                                                   hold with its run's room and its diagnosis bundle
 //   node skills/orbit-release/ship.mjs --evidence[=<shp-…>] [--artifact=<zip>]
 //                                                   THE PUBLISH GATE: exit 0 only when a ship qualified this very tree,
 //                                                   its evidence holds as read again now, and the artifact is the one
+//                                                   (a precheck is never what it reads)
 //   node skills/orbit-release/ship.mjs --ci         the fast tier a pipeline can hold: the definition of done, the
 //                                                   optional rows, and the autonomous ship AWAITED (`wait`) -- a green
 //                                                   fast CI is never release qualification
 //
-// Exit 0 = SHIPPABLE, PUBLISHABLE, or every gate --ci holds held · 2 = NOT SHIPPABLE, refused, or a gate failed --
-// nothing is tagged · 3 = BLOCKED: Docker, the coding host, its credential, a limit (resumable) · 4 = a person paused or
-// cancelled it. Nothing here writes this checkout, pushes, tags or publishes: integrated repairs reach a branch only as
-// a patch and a bundle a person applies.
+// Exit 0 = SHIPPABLE, PUBLISHABLE, PRECHECK HELD, or every gate --ci holds held · 2 = NOT SHIPPABLE, PRECHECK FAILED,
+// refused, or a gate failed -- nothing is tagged · 3 = BLOCKED: Docker, the coding host, its credential, a limit
+// (resumable) · 4 = a person paused or cancelled it. Nothing here writes this checkout, pushes, tags or publishes:
+// integrated repairs reach a branch only as a patch and a bundle a person applies.
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -41,7 +53,7 @@ import { GATES, bump, report, shippable } from "./gates.mjs";
 import { nativeAcceptance, optional } from "./hosts.mjs";
 import { AWAITED, ciVerdict, markOf } from "./ship/ci.mjs";
 import { doorOf } from "./ship/door.mjs";
-import { policyOf } from "./ship/policy.mjs";
+import { LIMIT_FLAGS, policyOf } from "./ship/policy.mjs";
 import { benchPort, gatesAt, gitPort, workspacesOf } from "./ship/ports.mjs";
 import { CREDENTIAL_NAMES } from "./ship/preflight.mjs";
 import { saidEvidence, saidOptional, saidResult, saidStatus } from "./ship/report.mjs";
@@ -99,13 +111,21 @@ function refused(says) {
   throw new Refused(says);
 }
 
-const optionsAsked = () => ({ model: flag(args, "model") ?? null, credential: credentialAsked(flag(args, "credential")), caFile: flag(args, "ca-file") ?? env.ORBIT_BENCHMARK_CA_FILE ?? null, limits: { minutes: int(flag(args, "minutes")), usd: num(flag(args, "usd")), cycles: int(flag(args, "cycles")), repairAttempts: int(flag(args, "attempts")), autonomousRetries: int(flag(args, "retries")) }, repair: !has(args, "no-repair"), failFast: !has(args, "no-fail-fast"), version: versionOf() });
+// Each limit as its flag says it: a whole number, but USD.
+const READ = { usd: num };
+
+const limitsAsked = () => Object.fromEntries(Object.entries(LIMIT_FLAGS).map(([k, f]) => [k, (READ[k] ?? int)(flag(args, f))]));
+
+const optionsAsked = () => ({ model: flag(args, "model") ?? null, effort: flag(args, "effort") ?? null, credential: credentialAsked(flag(args, "credential")), caFile: flag(args, "ca-file") ?? env.ORBIT_BENCHMARK_CA_FILE ?? null, limits: limitsAsked(), repair: !has(args, "no-repair"), failFast: !has(args, "no-fail-fast"), precheck: has(args, "precheck"), version: versionOf() });
 
 // ---- the autonomous ship -------------------------------------------------------------------------------------------------
 
 const shipOf = (world) => (flag(args, "resume") ? resumedShip(world, flag(args, "resume"), optionsAsked()) : begunShip(world, optionsAsked()));
 
-const announced = (ctx) => (JSON_OUT ? ctx : (print(`SHIP  ${ctx.ship.id} · task ${ctx.task} · ${ctx.manifest.mode} · from ${ctx.manifest.start.branch ?? "detached"}@${ctx.manifest.start.commit.slice(0, 12)} · limits ${ctx.manifest.limits.minutes} min, ${ctx.manifest.limits.usd} USD, ${ctx.manifest.limits.cycles} cycle(s)`), ctx));
+// The host the model-carried rows are asked to run on: its model and effort, when the ship names them.
+const hostSaid = (o) => `${o.model ? ` · model ${o.model}` : ""}${o.effort ? ` · effort ${o.effort}` : ""}`;
+
+const announced = (ctx) => (JSON_OUT ? ctx : (print(`SHIP  ${ctx.ship.id} · task ${ctx.task} · ${ctx.manifest.mode} · from ${ctx.manifest.start.branch ?? "detached"}@${ctx.manifest.start.commit.slice(0, 12)} · limits ${ctx.manifest.limits.minutes} min, ${ctx.manifest.limits.usd} USD, ${ctx.manifest.limits.cycles} cycle(s)${hostSaid(ctx.options)}`), ctx));
 
 async function autonomousShip() {
   const world = worldOf();

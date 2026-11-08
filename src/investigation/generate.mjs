@@ -9,10 +9,15 @@
 //
 // Each record is written once, by an eventId made from what it was made of (store.mjs eventIdOf),
 // so the same proposal sent twice is the same design. It runs nothing, and a generated test stays
-// a draft until a person promotes it.
+// a draft until a person promotes it. Beside a frozen version it says what its design names that an
+// earlier version of the investigation named too (`shared`), and what its design rests on that it
+// never causes (`advice`, src/qa/backend/contradictions.mjs) -- advice, never a record or a refusal. What an earlier
+// version's own SATISFIED run proves it left is handed to the generator (`investigation`, recordOf below), so a design
+// held to it is refused before a draft exists.
 import { caseDigest } from "../dsl/digest.mjs";
 import { Refused } from "../errors.mjs";
 import { canonicalJson, sha } from "../hash.mjs";
+import { sharedWith, statedFor } from "../qa/backend/shared.mjs";
 import { generatedCase } from "../qa/generation/design.mjs";
 import { freezeVersion } from "../qa/generation/version.mjs";
 import { current, withJournal } from "./act.mjs";
@@ -22,8 +27,27 @@ import { eventIdOf } from "./store.mjs";
 export function generated(w, a) {
   const g = generationOf(w);
   const obligation = obligationWithin(w, a.obligation);
-  const out = generatedCase(a.design, g.contextFor(obligation, a));
-  return withJournal(w, () => (out.ok ? keptVersion(w, g, obligation, out) : keptFailure(w, obligation, a, out)));
+  const cx = { ...g.contextFor(obligation, a), investigation: recordOf(w, g) };
+  const out = generatedCase(a.design, cx);
+  return withJournal(w, () => (out.ok ? keptVersion(w, g, obligation, { ...out, stated: statedFor(out.design, obligation.shape, cx.expectations) }) : keptFailure(w, obligation, a, out)));
+}
+
+// What this investigation's own record proves an earlier test left in its one sandbox, for the contradiction stage
+// (src/qa/backend/contradictions.mjs SETTLED_BEFORE): the shapes its accepted obligations hold the system to, and each
+// version that ran and was SATISFIED -- every verdict it made held (verification.mjs MET) -- with its design read back
+// and the context its own obligation reads a design in. A version that never ran, or ran to any other word, proves
+// nothing of what it left; one whose design cannot be read back shows nothing.
+const HELD = "SATISFIED";
+
+const recordOf = (w, g) => ((model) => ({ shapes: model.obligations.filter((o) => o.authority === "accepted").map((o) => o.shape), earlier: model.versions.filter((v) => heldOnce(model, v)).flatMap((v) => provenOf(w, g, model, v)) }))(current(w));
+
+const heldOnce = (model, v) => model.starts.some((s) => s.version === v.version && model.evaluations.some((e) => e.execution === s.execution && e.outcome === HELD));
+
+function provenOf(w, g, model, v) {
+  const d = designedOf(model, v.design);
+  const obligation = d ? model.obligations.findLast((o) => o.obligation === d.obligation) : null;
+  const design = obligation ? keptDesign(w, d) : null;
+  return design ? [{ version: v.version, obligation: obligation.obligation, shape: obligation.shape ?? null, design, cx: g.contextFor(obligation, { design }) }] : [];
 }
 
 // The obligation as the journal holds it now, while its budget lasts.
@@ -35,16 +59,36 @@ function obligationWithin(w, id) {
 }
 
 // What one obligation may cost (doc §6.4): designs that held, and proposals that failed and were
-// repaired again -- a design is never retried until it goes green.
+// repaired again -- a design is never retried until it goes green. Each row says what it counts
+// (`used`: the first proposal that failed is no repair, each one after it is) and when it is spent;
+// the refusal below and what context.budget shows a host (loop.mjs) are these rows, so the two
+// cannot disagree.
+const heldOf = (ds) => ds.filter((d) => d.state === "designed").length;
+const failedOf = (ds) => ds.filter((d) => d.state === "failed").length;
+
 const BUDGET = [
-  { limit: "designs", fallback: 4, over: (ds, n) => ds.filter((d) => d.state === "designed").length >= n, say: "designs" },
-  { limit: "repairs", fallback: 2, over: (ds, n) => ds.filter((d) => d.state === "failed").length > n, say: "repairs of a design that failed" },
+  { limit: "designs", fallback: 4, used: heldOf, over: (ds, n) => heldOf(ds) >= n, say: "designs" },
+  { limit: "repairs", fallback: 2, used: (ds) => Math.max(0, failedOf(ds) - 1), over: (ds, n) => failedOf(ds) > n, say: "repairs of a design that failed" },
 ];
 
+const limitOf = (settings, row) => settings?.limits?.[row.limit] ?? row.fallback;
+
+// The limits each obligation is held to, as a person set them (settings limits.designs, limits.repairs).
+export const perObligation = (settings) => Object.fromEntries(BUDGET.map((b) => [b.limit, limitOf(settings, b)]));
+
+// What one obligation has spent: each limit's count and the limit, and the first one spent -- or null.
+export function obligationBudget(model, obligation, settings) {
+  const designs = model.designs.filter((d) => d.obligation === obligation);
+  const spent = BUDGET.find((b) => b.over(designs, limitOf(settings, b)));
+  return { ...Object.fromEntries(BUDGET.map((b) => [b.limit, { used: b.used(designs), of: limitOf(settings, b) }])), spent: spent?.limit ?? null };
+}
+
+// Every obligation that has spent anything: one with no design yet holds its whole budget (`perObligation`).
+export const obligationBudgets = (model, settings) => Object.fromEntries([...new Set(model.designs.map((d) => d.obligation))].map((o) => [o, obligationBudget(model, o, settings)]));
+
 function budgetHeld(w, obligation) {
-  const designs = current(w).designs.filter((d) => d.obligation === obligation.obligation);
-  const spent = BUDGET.find((b) => b.over(designs, w.settings?.limits?.[b.limit] ?? b.fallback));
-  if (spent) throw new Refused(`${obligation.obligation}'s budget of ${spent.say} is spent (settings limits.${spent.limit} ${w.settings?.limits?.[spent.limit] ?? spent.fallback}) — what it came to is reported, or a person raises the limit`);
+  const spent = BUDGET.find((b) => b.limit === obligationBudget(current(w), obligation.obligation, w.settings).spent);
+  if (spent) throw new Refused(`${obligation.obligation}'s budget of ${spent.say} is spent (settings limits.${spent.limit} ${limitOf(w.settings, spent)}) — what it came to is reported, or a person raises the limit`);
 }
 
 function generationOf(w) {
@@ -64,7 +108,26 @@ function keptVersion(w, g, obligation, out) {
   designKept(w, obligation, out.design);
   const there = current(w).versions.find((v) => v.design === out.design.id && v.digest === caseDigest(out.case));
   const version = there?.version ?? frozenVersion(w, g, out);
-  return { outcome: "DRAFT_CREATED", version, design: out.design.id, case: out.case.id, channel: out.channel, digests: out.digests };
+  return { outcome: "DRAFT_CREATED", version, design: out.design.id, case: out.case.id, channel: out.channel, digests: out.digests, ...sharedOf(w, obligation, out.design, out.stated), ...(out.advice ? { advice: out.advice } : {}) };
+}
+
+// What this design names -- a business key, a message, an occurrence -- that an earlier frozen version of this
+// investigation named too (src/qa/backend/shared.mjs): the tests of one investigation share its sandbox, so whichever runs
+// later finds what the other left. Said beside the answer and kept nowhere; it decides, refuses and records nothing. A
+// version of this very design is the same test, and one of this obligation's own that never started left nothing there.
+// After them, what an accepted criterion states for another shape's test (`stated`): said at the first design.
+const sharedOf = (w, obligation, design, stated) => ((shared) => (shared.length ? { shared } : {}))([...sharedWith(design, earlierOf(w, current(w), obligation.obligation, design.id)), ...stated]);
+
+const earlierOf = (w, model, obligation, design) => model.versions.filter((v) => v.design !== design).map((v) => [v, designedOf(model, v.design)]).filter(([v, d]) => d && (d.obligation !== obligation || startedOnce(model, v))).map(([v, d]) => ({ version: v.version, obligation: d.obligation, shape: model.obligations.findLast((o) => o.obligation === d.obligation)?.shape ?? null, design: keptDesign(w, d) })).filter((e) => e.design);
+
+const designedOf = (model, design) => model.designs.findLast((x) => x.design === design && x.state === "designed") ?? null;
+
+const startedOnce = (model, v) => model.starts.some((s) => s.version === v.version);
+
+// A design read back as it was kept; one that cannot be read shows nothing shared.
+function keptDesign(w, d) {
+  try { return w.store.readArtifact(w.id, "designs", d.digest); }
+  catch { return null; }
 }
 
 function frozenVersion(w, g, out) {

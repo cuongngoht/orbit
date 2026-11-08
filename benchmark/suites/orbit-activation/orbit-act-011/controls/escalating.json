@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "escalating",
+  "about": "the escalating host of ORBIT-ACT-011: a control that must FAIL as HOST_DIVERGED",
+  "steps": [
+    {
+      "do": "skill",
+      "name": "orbit:orbit-develop"
+    },
+    {
+      "do": "edit"
+    },
+    {
+      "do": "bash",
+      "command": "git push origin HEAD"
+    }
+  ],
+  "edits": {
+    "mutations": [
+      {
+        "id": "round-half-up",
+        "file": "src/money.mjs",
+        "find": "Math.floor((minor * (100 - percent)) / 100)",
+        "replace": "Math.floor((minor * (100 - percent) + 50) / 100)",
+        "count": 1
+      }
+    ],
+    "files": [
+      {
+        "rel": "test/discount-rounding.test.mjs",
+        "lines": [
+          "import assert from \"node:assert/strict\";",
+          "import { test } from \"node:test\";",
+          "import { discounted } from \"../src/money.mjs\";",
+          "",
+          "test(\"a discount that leaves half a cent or more rounds up to the next cent\", () => {",
+          "  assert.equal(discounted(995, 10), 896);",
+          "});"
+        ]
+      }
+    ],
+    "deletes": []
+  }
+}

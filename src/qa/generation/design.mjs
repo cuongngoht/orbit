@@ -12,8 +12,12 @@
 //
 // The outcome words are the verification outcomes' (src/investigation/verification.mjs), as data:
 // this module reads no investigation.
+//
+// A design that holds every stage may still rest on what it never causes -- a later delivery, a schedule reaching an
+// occurrence: that is said beside the case it made (`advice`, src/qa/backend/contradictions.mjs), and changes nothing.
 import { needsPage } from "../../dsl/page.mjs";
 import { canonicalJson, sha } from "../../hash.mjs";
+import { contradictionAdvice, contradictionFindings } from "../backend/contradictions.mjs";
 import { correlationFindings } from "../backend/correlation.mjs";
 import { observationFindings } from "../backend/observations.mjs";
 import { temporalFindings } from "../backend/temporal.mjs";
@@ -40,6 +44,7 @@ const STAGES = [
   { id: "rules", outcome: "GENERATION_FAILED", findings: (p, cx) => said([...observationFindings(p.proposal, cx), ...correlationFindings(p.proposal), ...temporalFindings(p.proposal, cx), ...pageFindings(p.proposal)]) },
   { id: "mapping", outcome: (p) => (p.compiled.mapping.some((m) => /ACCEPTED criterion/.test(m.why ?? "")) ? "REQUIRES_REQUIREMENT" : "GENERATION_FAILED"), findings: (p) => p.compiled.mapping.filter((m) => m.verdict === "refused").map((m) => `step ${m.step} (${m.criterionRef ?? m.structural}): ${m.why}`) },
   { id: "coverage", outcome: "GENERATION_FAILED", findings: (p, cx) => (cx.expected ?? []).filter((slot) => !(p.proposal.assertions ?? []).some((a) => a.criterionRef === slot)).map((slot) => `${slot} is a slot of this obligation's own criterion, and nothing in the design rules on it — a design that rules only on other criteria tests something else`) },
+  { id: "contradiction", outcome: "GENERATION_FAILED", findings: (p, cx) => said(contradictionFindings(p.proposal, cx)) },
   { id: "verdicts", outcome: "GENERATION_FAILED", findings: (p) => (p.case.steps ?? []).flatMap((s, n) => (RULING.includes(s.do) && !s.expect ? [`step ${n + 1} (${s.do}) rules on nothing — every ${s.do} rules on its answer, and nothing accepted was mapped to it`] : [])) },
   { id: "validate", outcome: "INVALID_TEST", findings: (p, cx) => [...(cx.validate?.(p.case) ?? ["nothing here validates a case — the composition root binds the DSL validator"]), ...stepInputs(p.case, cx)] },
 ];
@@ -49,8 +54,10 @@ export function generatedCase(proposal, cx) {
   const assembled = { ...p, case: caseOf(proposal, p.compiled, cx) };
   const stop = firstStop(assembled, cx);
   if (stop) return stop;
-  return { ok: true, case: assembled.case, channel: needsPage(assembled.case, cx.dsl, cx.pageOf ?? (() => undefined)) ? "ui" : "pageless", design: stamped(proposal, assembled.compiled), digests: assembled.compiled.digests };
+  return { ok: true, case: assembled.case, channel: needsPage(assembled.case, cx.dsl, cx.pageOf ?? (() => undefined)) ? "ui" : "pageless", design: stamped(proposal, assembled.compiled), digests: assembled.compiled.digests, ...adviceOf(proposal, cx) };
 }
+
+const adviceOf = (proposal, cx) => ((advice) => (advice.length ? { advice } : {}))(said(contradictionAdvice(proposal, cx)));
 
 function firstStop(p, cx) {
   for (const stage of STAGES) {

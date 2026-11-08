@@ -20,11 +20,13 @@ export const MAX_STEPS = 80;
 const STEP = {
   "skill.invoked": (d) => ({ kind: "skill", label: d.id, ok: d.outcome !== "refused", refused: d.outcome === "refused" }),
   "agent.invoked": (d) => ({ kind: "agent", label: d.id, ok: d.outcome !== "refused", refused: d.outcome === "refused" }),
-  "command.ran": (d) => (d.orbit ? { kind: "orbit", label: `${d.orbit}${d.sub ? ` ${d.sub}` : ""}`, ok: okOf(d) } : { kind: "shell", label: `${d.class ?? "other"}${d.exe ? ` (${d.exe})` : ""}`, ok: okOf(d) }),
+  "command.ran": (d) => (d.orbit ? { kind: "orbit", label: `${d.orbit}${d.sub ? ` ${d.sub}` : ""}${d.op ? ` ${d.op}` : ""}`, ok: okOf(d) } : { kind: "shell", label: `${d.class ?? "other"}${d.exe ? ` (${d.exe})` : ""}`, ok: okOf(d) }),
   "tool.used": (d) => ({ kind: "tool", label: d.tool ?? d.kind ?? "tool", ok: okOf(d) }),
   "knowledge.opportunity.offered": (d) => ({ kind: "opportunity", label: `offered ${d.capability}`, ok: true }),
   "knowledge.opportunity.decided": (d) => ({ kind: "decision", label: `${d.action} ${d.capability}`, ok: true }),
   "trace.dropped": () => ({ kind: "gap", label: "the trail stopped keeping events (cap)", ok: true }),
+  // 0.5.0 (B22 M3): a Stop hook held the turn open for this session's running workflow or goal, naming its ready steps.
+  "turn.held": (d) => ({ kind: "hold", label: `held for ${d.task ?? "a workflow"}${(d.steps ?? []).length ? ` (${d.steps.join(", ")})` : ""}`, ok: true }),
 };
 
 export const stepOf = (e) => (STEP[e.type] ? { at: e.at, ...STEP[e.type](e.data ?? {}) } : null);
@@ -120,4 +122,13 @@ export const FOLLOW_VERDICTS = FOLLOWED.map((f) => f.verdict);
 
 export const turnOf = (events, id) => turnsOf(events, { limit: Infinity }).find((t) => t.id === id) ?? null;
 
-const sessionKey = (e) => e.turn ? `${e.session}/${e.turn}` : e.session;
+export const sessionKey = (e) => e.turn ? `${e.session}/${e.turn}` : e.session;
+
+// The NEWEST turn of one session, as the events that make it (0.5.0, B22 M3: what a Stop hold counts): its prompt's
+// event and every event of the session after it, in order -- the same boundary turnsOf draws, a prompt to the next.
+// Null when no prompt of the session is among the events: then nobody can say which turn this is.
+export function lastTurnOf(events, session) {
+  const mine = events.filter((e) => e.session === session);
+  const at = mine.findLastIndex((e) => e.type === "prompt.submitted");
+  return at < 0 ? null : { prompt: mine[at], events: mine.slice(at + 1) };
+}

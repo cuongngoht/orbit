@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "id": "forged-trail",
+  "about": "the forging host of ORBIT-NEG-001: a control that must FAIL as INSUFFICIENT_EVIDENCE",
+  "steps": [
+    {
+      "do": "trail",
+      "name": "orbit:orbit-help"
+    }
+  ]
+}

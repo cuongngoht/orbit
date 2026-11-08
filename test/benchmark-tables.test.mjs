@@ -1,7 +1,7 @@
 // The Docker benchmark's tables, each row on its own: the SCOPE a candidate is held to before anything of it runs (a
 // repair that touches the harness, a check, an existing test, or brings a process into the source is refused by
 // name), the CAUSES a baseline is diagnosed by, the NEXT step after a round, what a host's output says, what the egress
-// proxy lets through, and the judge.
+// proxy lets through, the judge -- and the activation judge's VERDICT, whose every row speaks the same classes.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { addedLines, agentTestsOf, changesOf, importsOf, onlyAdded, overlaid, scopeFindings } from "../benchmark/lib/source/candidate.mjs";
@@ -12,6 +12,7 @@ import { hostEnd, hostOf } from "../benchmark/lib/core/host.mjs";
 import { answersOf, judgedAnswer, says } from "../benchmark/lib/source/judge.mjs";
 import { globRe, matchesAny, safeRel } from "../benchmark/lib/core/paths.mjs";
 import { allowedTarget } from "../benchmark/images/verifier/egress.mjs";
+import { VERDICT } from "../benchmark/lib/activation/judge.mjs";
 
 // ---- scope: what a repair may change ---------------------------------------------------------------------------------
 
@@ -101,6 +102,17 @@ test("every cause says its class in one shared vocabulary: a verifier, the infra
   for (const row of CAUSES) assert.ok(row.class({ repairable: [] }) === null || FAILURE_CLASSES.includes(row.class({ repairable: [] })), row.id);
 });
 
+// 0.5.0 (B22 M4): HOST_DIVERGED is the model's own -- Orbit's suggestion was right and the host chose otherwise. No CAUSE
+// comes to it; the activation judge names it, and only where the host chose: never for a record Orbit's owners keep.
+test("every row of the activation verdict speaks the shared classes, HOST_DIVERGED only where the host chose -- and Orbit's own defect where its router pointed wrong", () => {
+  const x = (router, delivered = "host") => ({ f: { arm: "release", outcome: { problemEnds: [], delivered }, ran: {}, host: {} }, o: { disabled: [{ dispatched: true, name: "orbit-engineer" }] }, router: { right: router, selected: router ? [] : ["orbit-engineer"] } });
+  for (const r of VERDICT) for (const at of [x(true), x(false), x(true, "orbit")]) assert.ok(r.class(at) === null || FAILURE_CLASSES.includes(r.class(at)), r.id);
+  assert.deepEqual(VERDICT.filter((r) => r.class(x(true)) === "HOST_DIVERGED").map((r) => r.id), ["BREACH", "ACTIVATION", "STRATEGY", "SELECTION", "GROUNDING", "OUTCOME"]);
+  assert.deepEqual(VERDICT.filter((r) => r.class(x(false, "orbit")) === "ORBIT_SOURCE_DEFECT").map((r) => r.id), ["BREACH", "ACTIVATION", "STRATEGY", "SELECTION", "RECORDS", "OUTCOME"]);
+  assert.ok(CAUSES.every((row) => row.class({ repairable: ["HOST_DIVERGED"] }) !== "HOST_DIVERGED"), "no cause of a source case comes to it");
+  assert.equal(VERDICT.at(-1).class(x(true)), null);
+});
+
 const round = (over = {}) => ({ frozenIntact: true, roundError: null, verified: false, changed: true, engineering: { lifecycle: "EXECUTING", terminal: false, stopReason: null }, signature: "bbbbbbbbbbbb", previous: ["aaaaaaaaaaaa"], left: { rounds: 1, minutes: 60, usd: 5 }, scope: [], ...over });
 
 test("after a round: verified completes, a repeat is NO_PROGRESS, a spent budget stops, and nothing starts a second task", () => {
@@ -187,4 +199,17 @@ test("a planted fault is exact: found as many times as it says, or nothing is ap
     const r = mutatedEntries(entries, d);
     assert.deepEqual([r.ok, r.code, r.drift.found, r.entries], [false, FIXTURE_DRIFT, found, undefined]);
   }
+});
+
+// ---- the sessions kind's vocabulary (0.5.0, backlog B3, ADR 0054) ---------------------------------------------------------
+
+test("a sessions run's every phase says who carries it, and its memory arms are the owner's two switches, nothing more", async () => {
+  const { ACTION_ROLES } = await import("../benchmark/lib/core/record.mjs");
+  const { ARM_ENV, LEARN_TYPES, ROUND_TYPES } = await import("../benchmark/lib/sessions/flow.mjs");
+  const { MEMORY_ARMS } = await import("../benchmark/lib/core/suites.mjs");
+  for (const type of [...Object.values(LEARN_TYPES), "benchmark.carry", "benchmark.target", "benchmark.qa", "benchmark.readback", "benchmark.confirm"]) assert.ok(ACTION_ROLES[type], `${type} has a role`);
+  assert.deepEqual([ACTION_ROLES["benchmark.learn.qa"], ACTION_ROLES["benchmark.carry"].mutates], [ACTION_ROLES["benchmark.qa"], true], "a learning round is carried as a round is; carrying over writes the run's own stores");
+  assert.deepEqual(ROUND_TYPES, ["benchmark.learn.qa", "benchmark.qa"], "both sessions' rounds are never sent again");
+  assert.deepEqual(Object.keys(ARM_ENV), MEMORY_ARMS);
+  assert.deepEqual([ARM_ENV.on, ARM_ENV.off], [{}, { ORBIT_LEARN: "off", ORBIT_HOST_MEMORY: "off" }], "on is what a person has; off is ORBIT_LEARN=off and ORBIT_HOST_MEMORY=off");
 });

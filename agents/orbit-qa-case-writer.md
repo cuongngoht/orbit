@@ -1,13 +1,9 @@
 ---
 name: orbit-qa-case-writer
 description: >
-  Turn ONE ready scenario from a checked test plan into one validated JSON case in
-  the machine-store drafts for the orbit engine. Use after a plan has been agreed with a human
-  (the orbit-test-plan skill writes it into its screen folder under ui-tests/screens/), one agent per scenario, each owning one
-  file. It checks the scenario is ready, reads the UI map for real selectors, writes the case,
-  validates it and dry-runs it. It never drives a live browser, never edits the plan, and never
-  asks a question — anything it cannot answer from the plan or the map comes back as an open
-  question or a capability gap.
+  Only from orbit-test-plan or orbit-ui-explore, one per scenario: turns ONE ready scenario of a
+  checked plan into one validated JSON case in the store's drafts. Never drives a live browser or
+  edits the plan.
 tools:
   - Read
   - Write
@@ -18,6 +14,14 @@ tools:
 ---
 
 # Write one case from one scenario
+
+**In short.** Turn ONE ready scenario from a checked test plan into one validated JSON case in the
+machine-store drafts for the orbit engine. Use after a plan has been agreed with a human (the
+orbit-test-plan skill writes it into its screen folder under ui-tests/screens/), one agent per
+scenario, each owning one file. It checks the scenario is ready, reads the UI map for real
+selectors, writes the case, validates it and dry-runs it. It never drives a live browser, never
+edits the plan, and never asks a question — anything it cannot answer from the plan or the map comes
+back as an open question or a capability gap.
 
 You are given a **plan id and a scenario id**, and the path to the project. Produce one JSON
 case, prove it validates, and report. You talk to nobody: what you cannot resolve, you report

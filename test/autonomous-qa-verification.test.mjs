@@ -25,6 +25,8 @@ test("every row answers a word the outcomes table holds, and the last always ans
 
 test("each fact earns its own word, in order", () => {
   const cases = [
+    [accepted({ envelope: ["no envelope came back — the worker left none"], wrote: true, ran: false }), "EXECUTION_ERROR"],
+    [accepted({ envelope: ["status re-derived as FAIL"], wrote: true }), "AMBIGUOUS"],
     [accepted({ envelope: ["status re-derived as FAIL"] }), "EXECUTION_ERROR"],
     [accepted({ stale: true }), "STALE"],
     [accepted({ status: "BLOCKED", failure: { helperClass: "ambiguous", ambiguous: "msg-1" } }), "AMBIGUOUS"],
@@ -44,10 +46,29 @@ test("each fact earns its own word, in order", () => {
   for (const [facts, want] of cases) assert.equal(word(facts), want, JSON.stringify(facts));
 });
 
+// What B7's review found (0.5.0): a run the host could not believe -- no envelope came back, or one that failed the
+// host's check -- was EXECUTION_ERROR, so a run that had grants to write was free to run again although nothing said
+// what it did. It is AMBIGUOUS, as an interrupted one is and as reconcile calls a lost one; only the worker's own receipt
+// saying it never ran, or having had nothing to write with, lets a new attempt run.
+test("a run the host could not believe is AMBIGUOUS when it had grants -- unless its worker's receipt says it never ran", () => {
+  const unbelieved = (over) => resultOf(accepted({ envelope: ["no envelope came back — the worker was killed"], ...over }));
+  for (const ran of [true, null, undefined]) assert.deepEqual([unbelieved({ wrote: true, ran }).outcome, unbelieved({ wrote: true, ran }).rule], ["AMBIGUOUS", "UNBELIEVED_WRITE"], String(ran));
+  assert.deepEqual([unbelieved({ wrote: true, ran: false }).outcome, unbelieved({ wrote: true, ran: false }).rule], ["EXECUTION_ERROR", "NEVER_RAN"], "nothing it was granted was spent");
+  assert.deepEqual([unbelieved({ wrote: false, ran: true }).outcome, unbelieved({ wrote: false, ran: true }).rule], ["EXECUTION_ERROR", "ENVELOPE"], "it could write nothing");
+  assert.equal(word(accepted({ envelope: [], wrote: true, ran: true })), "SATISFIED", "a run the host believed is judged on what it ran, grants or not");
+});
+
 test("nothing makes a word stronger than its evidence", () => {
   assert.equal(word({ status: "PASS", authority: "draft" }), "REQUIRES_REQUIREMENT", "a draft oracle never confirms a PASS");
   assert.equal(word(accepted({ status: "PASS", envelope: ["a file the envelope names is missing"] })), "EXECUTION_ERROR", "a worker's claimed PASS is never taken over the host's check");
   assert.equal(word(accepted({ status: "PASS", stale: true })), "STALE", "a PASS on a moved tree raises nothing");
+});
+
+test("a fault the run never observed leaves it INCONCLUSIVE whether what followed held or failed -- a PASS is never earned without it", () => {
+  assert.deepEqual(resultOf(accepted({ envelope: [], faultMissed: true })), { outcome: "INCONCLUSIVE", rule: "FAULT_NOT_SEEN", why: RESULT.find((r) => r.id === "FAULT_NOT_SEEN").why });
+  assert.equal(word(accepted({ status: "FAIL", failure: { contradiction: true }, faultMissed: true })), "INCONCLUSIVE");
+  assert.equal(word(accepted({ faultMissed: false })), "SATISFIED", "a fault it saw lets the pass stand");
+  assert.equal(word(accepted({ status: "PASS", authority: "draft", faultMissed: true })), "REQUIRES_REQUIREMENT", "a draft oracle still confirms nothing first");
 });
 
 test("a negative proves nothing without its positive; a contradiction anywhere stands; only all met satisfies", () => {

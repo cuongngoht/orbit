@@ -31,6 +31,7 @@
 import { short } from "../hash.mjs";
 import { writes } from "../network/observe.mjs";
 import { commitments, gaps } from "../qa/commit.mjs";
+import { ONE_SANDBOX } from "../qa/backend/shared.mjs";
 import { controlRulesFor } from "../qa/generation/controls.mjs";
 import { OWN_SLOTS } from "../qa/generation/design.mjs";
 import { shapeOf } from "../qa/obligations/shapes.mjs";
@@ -329,9 +330,10 @@ function testObligations(lw) {
 // and the assertion templates its own slots may be ruled with -- and what a rule over a control of one of those roles
 // says a design must do (src/qa/generation/controls.mjs `says`: a fault's workload brought back) -- read here, so a host
 // never learns them by a refusal. Beside them, what its own `expected` slots are to its verdict (`slots`, the coverage
-// stage's: src/qa/generation/design.mjs OWN_SLOTS), and what the shape itself says a design must know (`says`: the
-// delivery that comes back after an effect committed is not a second effect).
-const designedBy = (shape) => ((s) => (s ? { controls: s.controls, templates: s.templates, ...ruledBy(s.controls), slots: OWN_SLOTS, ...(s.says ? { says: s.says } : {}) } : {}))(shapeOf(shape));
+// stage's: src/qa/generation/design.mjs OWN_SLOTS), that its test shares the sandbox with every other test of the
+// investigation (`sandbox`: src/qa/backend/shared.mjs ONE_SANDBOX), and what the shape itself says a design must know
+// (`says`: what comes again of work already done is not a second effect).
+const designedBy = (shape) => ((s) => (s ? { controls: s.controls, templates: s.templates, ...ruledBy(s.controls), slots: OWN_SLOTS, sandbox: ONE_SANDBOX, ...(s.says ? { says: s.says } : {}) } : {}))(shapeOf(shape));
 
 const ruledBy = (roles) => ((rules) => (rules.length ? { rules } : {}))(controlRulesFor(roles));
 

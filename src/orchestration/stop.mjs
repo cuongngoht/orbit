@@ -7,7 +7,7 @@
 //
 // A stop is never a verdict. COMPLETED is only ever written when every completion row holds
 // (src/orchestration/verification.mjs).
-import { blockedBy, currentAttempt, kindOf, lastAttempt, lastOf, openActions } from "./journal.mjs";
+import { blockedBy, currentAttempt, kindOf, lastAttempt, lastOf, openActions, openOf } from "./journal.mjs";
 import { planOf } from "./obligations.mjs";
 import { noProgress } from "./progress.mjs";
 import { CHECKING } from "./stages.mjs";
@@ -64,3 +64,21 @@ export const STOP_EVIDENCE = {
   [STOP.REQUIREMENT_BLOCKED]: { holds: (lw) => blockedBy(lw) === STOP.REQUIREMENT_BLOCKED, needs: "the task blocked on its requirement" },
   [STOP.ENVIRONMENT_BLOCKED]: { holds: (lw) => blockedBy(lw) === STOP.ENVIRONMENT_BLOCKED, needs: "the task blocked on its environment" },
 };
+
+// The stops a host could name NOW: those whose evidence the journal already shows -- what a refusal tells it.
+export const supportedStops = (lw) => Object.keys(STOP_EVIDENCE).filter((s) => STOP_EVIDENCE[s].holds(lw));
+
+// What a stop that ENDS the task closes first. Nothing runs on an ended task, so a change still being made (an open
+// `implement`, which only a record-changes reads back) and the attempt it was made in would stay open on it for good --
+// shown as running on a task that runs nothing. A stop that ends the task closes both as abandoned, before its own line;
+// a block ends nothing and closes nothing. `abandoned` is the task's own word for an attempt that came to nothing.
+export const ABANDONED = "the task ended before the change was read back";
+
+const openChange = (lw) => ((a) => (a ? [["act-complete", { action: a.id, outcome: "abandoned", summary: ABANDONED }]] : []))(openOf(lw, "implement"));
+
+const openAttempt = (lw) => (currentAttempt(lw) ? [["attempt-complete", { outcome: "abandoned" }]] : []);
+
+const CLOSES = { fail: (lw) => [...openChange(lw), ...openAttempt(lw)] };
+
+// -> the task operations a stop's write is, in order: what it closes, then the stop itself.
+export const endingOf = (lw, [op, given]) => [...(CLOSES[op]?.(lw) ?? []), [op, given]];

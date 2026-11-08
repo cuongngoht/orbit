@@ -72,6 +72,51 @@ test("a design that does not hold is kept as designed-failed, with its word and 
   assert.match(m.designs[0].why, /^REQUIRES_REQUIREMENT at mapping/);
 });
 
+// What a real Claude Code QA row taught (0.4.0, ORBIT-QA-006 on Opus): the tests of one investigation share its sandbox,
+// and its deadline test made the schedule reach the very period whose business key an earlier test of the same
+// investigation had published under -- the clean application settled that period's message as the duplicate it was. A
+// design that names a key, a message or an occurrence an earlier version of the investigation named is told which,
+// beside its answer: advice, and never a record, a refusal or another outcome.
+const OTHER = "tob-def456";
+const keyed = (obligation, occurrenceId, businessKey) => design({ obligation, skeleton: { steps: [call("orbit.scheduler.trigger", { scheduleRef: "billing-daily", fixtureRef: "fx", request: { occurrenceId } }), call("orbit.state.read", { stateRef: "reminders", fixtureRef: "fx", request: { businessKey } })] } });
+const withOther = (t) => (t.w.store.appendOnce(ID, "obligation", { id: "obr-2", eventId: eventIdOf("obligation", OTHER, 0, "r1"), obligation: OTHER, revision: "r1", shape: "completes-by-deadline" }), t);
+const PERIOD = "billing-daily:2026-10-22T09:00:00+07:00";
+
+test("a design that names a key an earlier version of the investigation named is told which -- and its outcome, its version and its records are the ones it earns without it", () => {
+  const t = withOther(world());
+  const first = generated(t.w, { obligation: "tob-abc123", design: design() });
+  assert.equal("shared" in first, false, "nothing earlier, nothing shared");
+  const lines = t.w.store.read(ID).length;
+  const out = generated(t.w, { obligation: OTHER, design: keyed(OTHER, "billing-daily:2026-10-23T09:00:00+07:00", "inv-a-1") });
+  assert.deepEqual(out.shared, [{ version: first.version, obligation: "tob-abc123", shape: "occurrence-one-execution", keys: [{ value: "inv-a-1", as: ["businessKey"] }], say: `businessKey inv-a-1 — named by ${first.version} (occurrence-one-execution) of this investigation too: both run in its one sandbox, and whichever runs later finds what the other left there — use one no earlier test used, unless what is already there is what this test observes` }]);
+  const alone = generated(withOther(world()).w, { obligation: OTHER, design: keyed(OTHER, "billing-daily:2026-10-23T09:00:00+07:00", "inv-a-1") });
+  assert.deepEqual([out.outcome, out.version, out.case, "shared" in alone], [alone.outcome, alone.version, alone.case, false], "the same outcome and the same frozen version as with nothing before it");
+  assert.deepEqual(t.w.store.read(ID).slice(lines).map((r) => r.kind), ["designed", "version", "validated"], "and nothing more on the journal");
+  assert.equal("shared" in generated(t.w, { obligation: OTHER, design: keyed(OTHER, "billing-daily:2026-10-24T09:00:00+07:00", "${FIXTURE} inv-a-1") }), false, "keys no earlier test named, and a value a binding fills, share nothing");
+});
+
+// What 0.4.0's last fixes left open (0.5.0 B7): a key an accepted criterion states FOR another shape was said only once a
+// second design named it again. The first design that names it is told, before the other test has any version.
+test("a design that names a key an accepted criterion states for another shape is told so at the first design -- and earns what it earns without it", () => {
+  const t = world();
+  const contextFor = t.w.generation.contextFor;
+  const deadline = { id: "E1", property: "message.correlation.correlationId", op: "complete-within", value: "inv-a-1", for: ["completes-by-deadline"], within: 120 };
+  t.w.generation.contextFor = (o, a) => ((cx) => ({ ...cx, expectations: new Map([...cx.expectations, ["SLA-1/E1", deadline]]) }))(contextFor(o, a));
+  const out = generated(t.w, { obligation: "tob-abc123", design: design() });
+  assert.deepEqual(out.shared, [{ criterion: "SLA-1/E1", shape: "completes-by-deadline", keys: [{ value: "inv-a-1", as: ["businessKey"] }], say: "businessKey inv-a-1 — an accepted criterion (SLA-1/E1) states it for completes-by-deadline: that test observes it, and every test of this investigation runs in its one sandbox — use one no accepted criterion states for another test, unless what that test leaves is what this one observes" }]);
+  const alone = generated(world().w, { obligation: "tob-abc123", design: design() });
+  assert.deepEqual([out.outcome, out.version, "shared" in alone], [alone.outcome, alone.version, false], "the same outcome and frozen version as with no such criterion");
+});
+
+test("an earlier version of the same obligation is another test once it started -- one that never ran left nothing in the sandbox", () => {
+  const t = world();
+  const first = generated(t.w, { obligation: "tob-abc123", design: design() });
+  assert.equal("shared" in generated(t.w, { obligation: "tob-abc123", design: keyed("tob-abc123", PERIOD, "inv-a-2") }), false, "the version it replaces never ran");
+  t.w.store.appendOnce(ID, "started", { id: "str-1", eventId: eventIdOf("started", first.version, 1, "exe-1"), attempt: 1, version: first.version, execution: "exe-1" });
+  const again = generated(t.w, { obligation: "tob-abc123", design: keyed("tob-abc123", PERIOD, "inv-a-3") });
+  assert.deepEqual(again.shared.map((s) => [s.version, s.keys]), [[first.version, [{ value: PERIOD, as: ["occurrenceId"] }]]], "the one that ran -- and still not the repair that never did");
+});
+
 test("an obligation the journal does not hold is refused, and generate is an action that mutates nothing", () => {
   const t = world();
   assert.throws(() => generated(t.w, { obligation: "tob-nope", design: design() }), (e) => e instanceof Refused && /not an obligation of/.test(e.message));

@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "activate": true,
+  "strategy": [
+    "DIRECT"
+  ],
+  "how": [],
+  "selection": [
+    {
+      "skills": {
+        "require": [],
+        "allow": [
+          "orbit-ui-test",
+          "orbit-test-suite"
+        ]
+      },
+      "agents": {
+        "require": [
+          "orbit-failure-analyst"
+        ],
+        "allow": [],
+        "max": 1
+      }
+    }
+  ],
+  "forbid": {
+    "skills": [
+      "orbit-engineer",
+      "orbit-help",
+      "satellite"
+    ],
+    "agents": [
+      "orbit-map-healer",
+      "orbit-dsl-doctor"
+    ],
+    "commands": []
+  },
+  "readOnly": {
+    "orbit-failure-analyst": [
+      "^(cd\\s+\\S+\\s*&&\\s*)?node\\s+\"?(/work/orbit|\\$\\{?CLAUDE_PLUGIN_ROOT\\}?)/cli/(query|trace|help|context)\\.mjs\"?(\\s|$)"
+    ]
+  },
+  "records": [
+    {
+      "id": "map-and-cases-unchanged",
+      "read": "store",
+      "expect": {}
+    }
+  ],
+  "relevant": null,
+  "grounding": null
+}

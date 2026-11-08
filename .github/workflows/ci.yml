@@ -43,8 +43,8 @@ jobs:
       # host and backend acceptance reported as optional rows, and the autonomous
       # ship (every benchmark case in Docker, model-carried rows by the real
       # Claude Code CLI) AWAITED -- never run here and never passed. A green run
-      # here is not release qualification: release.yml, or ship.mjs on a machine
-      # with Docker and a credential, is.
+      # here is not release qualification: ship.mjs in a Claude Code cloud
+      # session with Docker and a credential is. No workflow runs a model.
       - name: the definition of done
         run: node skills/orbit-release/ship.mjs --ci
         env:

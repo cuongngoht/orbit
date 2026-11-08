@@ -1,17 +1,10 @@
 ---
 name: orbit-engineer
 description: >
-  Take a requirement or an engineering objective to a VERIFIED change, autonomously and inside
-  Orbit's governance: the requirement and its frozen snapshot first, then the project's context,
-  whether the project's declared checks can run here, a task-owned isolated workspace, the smallest
-  planned change, the builds and tests of what the change reaches, a diagnosis and a fix when
-  something fails, regression, a review against the plan, and completion only when the task's
-  journal proves it. Every step is one decision the engine judges, records and settles with
-  receipts. Use when asked to implement, fix or finish a PBI, work item or change autonomously, to
-  continue one ("continue PBI-482"), or to drive a change through build and test until it is
-  verified. It commits the verified change by itself; only a push of that exact commit waits, for
-  one approval in Orbit Control. It never merges, writes the developer's checkout, runs a shell
-  line, grants an approval or resumes a paused task.
+  Takes a requirement or objective autonomously to a VERIFIED change in a task-owned workspace:
+  plan, build, test, diagnose, fix, regression, review; commits; a push waits for approval. Use for
+  work done on its own or until verified, or to continue it (PBI-482). For a direct change, use
+  orbit-develop.
 argument-hint: '"PBI-482" | "continue PBI-482" | "<one sentence: the change to make>"'
 allowed-tools:
   - Read
@@ -22,6 +15,10 @@ allowed-tools:
   - AskUserQuestion
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/autonomous-engineering.mjs *)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/context.mjs*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/architecture.mjs ensure*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/intelligence.mjs ensure*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/engineering.mjs why*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/knowledge.mjs why*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/task.mjs show*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/task.mjs events*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/requirements.mjs status*)
@@ -38,6 +35,18 @@ user-invocable: true
 **Host binding:** On protocol v2, resolve the plugin root from this SKILL.md’s actual location and bind the host/protocol/hashed session supplied at startup on every Orbit shell invocation. Resolve command examples against that root; do not assume hook exports persist. Follow [the shared host contract](../../docs/hosts.md) for task stdin, runtime isolation and unavailable native capabilities. Use the supported native protocol for the selected host. On Codex and Antigravity there is no native subagent: run this loop in the main session.
 
 # Take a change to verified, one decided step at a time
+
+**In short.** Take a requirement or an engineering objective to a VERIFIED change, autonomously and
+inside Orbit's governance: the requirement and its frozen snapshot first, then the project's
+context, whether the project's declared checks can run here, a task-owned isolated workspace, the
+smallest planned change, the builds and tests of what the change reaches, a diagnosis and a fix when
+something fails, regression, a review against the plan, and completion only when the task's journal
+proves it. Every step is one decision the engine judges, records and settles with receipts. Use when
+asked to implement, fix or finish a PBI, work item or change autonomously, to continue one
+("continue PBI-482"), or to drive a change through build and test until it is verified. It commits
+the verified change by itself; only a push of that exact commit waits, for one approval in Orbit
+Control. It never merges, writes the developer's checkout, runs a shell line, grants an approval or
+resumes a paused task.
 
 **Shared references, the same for every `orbit-*` playbook.** Read the one you need; do not
 re-derive what is in them:
@@ -117,7 +126,19 @@ long timeout. If the host killed it, `reconcile` settles it once its process is 
 ## 3 · Stage by stage
 
 - **CONTEXT** — `gather-context`: the project's architecture, conventions and knowledge, memory
-  first. Read the sections it returns, and follow the engineering conventions they name.
+  first. Read the sections it returns, and follow the engineering conventions they name. Read its
+  `data.sufficiency` before you choose the scope you will `plan`, and `data.relevant` for what the task
+  touches (each item's class, evidence and freshness). It is advice: the stage moves on whatever the
+  word. ENOUGH: start the scope from those items, and confirm each in the workspace before it goes in
+  -- a name one of the task's words matched is not a file the change needs. DISCOVER: in PLANNING,
+  first make the reads its `targets` name, once each, and nothing wider than the task needs. A target's
+  `run` is an Orbit command: `node ${CLAUDE_PLUGIN_ROOT}/cli/<first word>.mjs <the rest>`, run from the
+  checkout. For `context --with-refs`, search the workspace for what the task names, then send what you
+  found on stdin -- `{ "task": "…", "refs": [{ "kind": "file|symbol", "ref": "…" }] }`; it refuses, by
+  name, any reference the tracked tree does not hold: never plan from one it refused. A record that moved
+  stays named until its owner reads it again, so once you have read what it cites, go on. ASK: a question about this task's work is already open: tell the person what it quotes
+  and how it is answered, and plan nothing it decides until it is; never put a question of your own in
+  its place.
 - **ENVIRONMENT** — `check-environment`. A block names who must act. If the checkout declares no
   test, or only one that needs a shell, nothing can verify a change: report it, and point at
   `orbit-qc-builder`. If you changed what the checkout declares, run `runtime discover --rescan`,
@@ -125,7 +146,8 @@ long timeout. If the host killed it, `reconcile` settles it once its process is 
   starts is the task's own, and stopped if the task is cancelled.
 - **WORKSPACE** — `prepare-workspace`.
 - **PLANNING** — `plan` first: `intent`, the smallest change in a sentence, and `scope`, every
-  repository-relative path you will touch, tests included. The task stays in PLANNING, and its
+  repository-relative path you will touch, tests included -- a regression test you add is a path the
+  change touches, and the review holds the whole change to this scope. The task stays in PLANNING, and its
   answer and `context.verificationPlan` say what that scope reaches. That means which components and
   why, which declared checks the change is held to (`required`), which are `excluded` (NOT
   AFFECTED, NOT RUN), and what nothing declared verifies (`missing`). Then run a baseline `check` of
@@ -149,6 +171,11 @@ long timeout. If the host killed it, `reconcile` settles it once its process is 
   stopped by itself) for more, and the workspace's code. Make ONE hypothesis. A `low`-confidence
   class is a hint, not a fact. Then `diagnose` with `then: "fix"` (change something), or
   `"retest"` (the same change again, when the failure looked like the machine's, not the code's).
+  A review that failed on SCOPE has two honest answers. When the change NEEDS the path the plan left
+  out (a test you added, a file the fix must touch), send `plan` again here, naming every path the
+  change needs -- the earlier plan stays in the journal -- then `diagnose` `retest`: the same change,
+  verified and reviewed under the plan it needs. When it does not, `diagnose` `fix` and take the path
+  out. Never diagnose `fix` with nothing to change.
 - **REGRESSION** — `check` every required test still `owed` since the last change. A required check
   that failed exactly as at its baseline (`failed-as-before`) is settled. It stays visible, and it
   is never a pass. At least one required test or verify command must pass for the change to count as
@@ -161,8 +188,8 @@ long timeout. If the host killed it, `reconcile` settles it once its process is 
   A push is a PROTECTED BOUNDARY: it waits for a person to approve exactly that push once in Orbit
   Control (see `waiting-approval` below); never push what the objective did not ask to deliver, and
   never `force` unless asked. Then `review`. Anything outside the plan's scope fails it, and the loop
-  diagnoses that like any failure. When every completion row holds, the engine completes the task
-  itself.
+  diagnoses that like any failure (DIAGNOSING, above). When every completion row holds, the engine
+  completes the task itself.
 
 When the change needs to be seen RUNNING (a screen, an API), run it in the task's SANDBOX and let an
 investigation look at THAT (`orbit-qa-agent`). The sandbox is an environment the task owns,
@@ -190,7 +217,7 @@ its words. No step carries a port, a provider or a directory — a sandbox picks
 | `paused` | Stop. Only a person resumes, in Control. |
 | `no-progress`, `budget` | The engine has already ended the task. Report why, with the signature and what you tried. |
 | `cancelled` | The engine already asked runtime to stop what the task started, and released its sandbox. Report it, and do nothing else. |
-| you cannot go on | `finish <task> --stop=<REASON> --because="…"` — refused unless the journal supports that reason. |
+| you cannot go on | `finish <task> --stop=<REASON> --because="…"` — refused unless the journal supports that reason, and the refusal names the stops it supports now. Ending the task closes a change still open and the attempt it was made in as `abandoned`, so nothing is left running. Never leave a task open and start another. |
 
 ## 4½ · Watching it: Orbit Live
 

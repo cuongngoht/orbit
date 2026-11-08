@@ -42,6 +42,10 @@ test("a step's answer says what its action came to: the owner's word, its stage 
   const made = resultView({ outcome: "DRAFT_CREATED", version: VERSION, design: "tds-1", case: "gen-billing-once", digests: { case: "x" } });
   assert.deepEqual(Object.keys(made).sort(), ["execution", "findings", "outcome", "rule", "stage", "stopped", "version", "why"], "an allow-list: nothing else of the result reaches the host");
   assert.equal(made.version, VERSION);
+  const advised = resultView({ outcome: "DRAFT_CREATED", version: VERSION, advice: [...["UNCAUSED_DECISION: step 1 waits for a decision", `UNCAUSED_REDELIVERY: token: abcdefghijklmnop ${"x".repeat(400)}`], "three", "four", "five"] });
+  assert.deepEqual([advised.advice.length, advised.advice[0], advised.advice[1].length], [4, "UNCAUSED_DECISION: step 1 waits for a decision", 240], "what a made design rests on and never causes: beside the answer, the first four, each bounded like a finding");
+  assert.match(advised.advice[1], /^UNCAUSED_REDELIVERY: token \[redacted\]/, "and scrubbed at this door");
+  assert.equal("advice" in resultView({ outcome: "DRAFT_CREATED", version: VERSION, advice: [] }), false, "nothing to say, no field");
 });
 
 test("a run that stopped short says where, and what its stop said -- five fields by allow-list, scrubbed and bounded at the door", () => {
@@ -72,6 +76,25 @@ test("what the stopped step's own match left out reaches the host by allow-list,
   assert.equal(out.excluded.say.includes("abc.def.ghi"), false, out.excluded.say);
   assert.equal("excluded" in resultView({ outcome: "CONTRADICTED", stopped: { step: 5, as: "failed", says: null } }).stopped, false, "nothing left out, nothing said");
   assert.equal("excluded" in resultView({ outcome: "CONTRADICTED", stopped: { step: 5, as: "failed", excluded: { count: 0, items: [] } } }).stopped, false);
+});
+
+// What a real Claude Code QA row taught (0.4.0, ORBIT-QA-006 on Opus): a test of one investigation made the schedule reach a
+// period whose business key an earlier test of the same investigation had used, and the duplicate the clean application
+// settled it as read as a defect. What a design names that an earlier version named too reaches the host beside the
+// answer -- by allow-list at this door again: the version, its obligation and shape, each value and the words it was named
+// under, the sentence; every word scrubbed and bounded, the newest four -- and only when there is something.
+test("what a frozen design shares with an earlier version reaches the host by allow-list, scrubbed and bounded -- and only when it shares something", () => {
+  const line = (n, over = {}) => ({ version: `gen-${n}@${"b2".repeat(8)}`, obligation: `tob-${n}`, shape: "effect-once-per-key", keys: [{ value: "tenant-a|inv-a|period", as: ["correlationId", "not a word!"], extra: 1 }], say: "correlationId tenant-a|inv-a|period — named by …", design: { skeleton: {} }, ...over });
+  const made = resultView({ outcome: "DRAFT_CREATED", version: VERSION, shared: [line(1), line(2), line(3), line(4), line(5, { keys: [1, 2, 3, 4, 5].map((k) => ({ value: `a@b.test ${k} ${"k".repeat(200)}`, as: ["businessKey"] })), say: "z".repeat(900) })] });
+  assert.equal(made.outcome, "DRAFT_CREATED", "the outcome is the one it earned");
+  assert.deepEqual(made.shared.map((s) => s.obligation), ["tob-2", "tob-3", "tob-4", "tob-5"], "the newest four");
+  assert.deepEqual(made.shared[0], { version: `gen-2@${"b2".repeat(8)}`, obligation: "tob-2", shape: "effect-once-per-key", keys: [{ value: "tenant-a|inv-a|period", as: ["correlationId"] }], say: "correlationId tenant-a|inv-a|period — named by …" }, "what it carries and nothing else: never the earlier design");
+  assert.deepEqual([made.shared[3].keys.length, made.shared[3].keys[0].value.length, made.shared[3].say.length], [4, 120, 600], "bounded");
+  assert.match(made.shared[3].keys[0].value, /^\[upn\] 1 /, "scrubbed by shape");
+  assert.equal("shared" in resultView({ outcome: "DRAFT_CREATED", version: VERSION, shared: [] }), false, "nothing shared, nothing said");
+  assert.deepEqual(resultView({ outcome: "DRAFT_CREATED", shared: [{ version: 7, keys: "x" }] }).shared, [{ version: null, obligation: null, shape: null, keys: [], say: null }], "a field of another kind is null, never echoed");
+  const stated = resultView({ outcome: "DRAFT_CREATED", shared: [{ criterion: `SLA-1/E1 ${"z".repeat(200)}`, shape: "completes-by-deadline", keys: [{ value: "k-1", as: ["correlationId"] }], say: "correlationId k-1 — an accepted criterion …", design: { secret: true } }] }).shared[0];
+  assert.deepEqual(stated, { version: null, obligation: null, shape: "completes-by-deadline", criterion: `SLA-1/E1 ${"z".repeat(71)}`, keys: [{ value: "k-1", as: ["correlationId"] }], say: "correlationId k-1 — an accepted criterion …" }, "a key a criterion states for another shape says which criterion, bounded, and nothing else");
 });
 
 test("context lists the names a design's refs may take here, from the generation port -- and nothing when none is bound", () => {

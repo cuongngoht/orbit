@@ -14,6 +14,14 @@
 // A host event with no row is not an event: `null`, and the dispatcher does
 // nothing. That is the whole of "an unknown host is a safe no-op" -- the
 // fallback adapter has no `normalize`, so every one of its events lands here.
+//
+// `synthetic` (0.5.0): an adapter's word that the HOST wrote a user-prompt itself
+// (a background task's notification), carried as `true` on that event alone and
+// absent everywhere else -- the router answers nothing for it. Two more marks are
+// carried the same way (0.5.0, B22 M3), each on its own event alone: `held` on a
+// turn-end a Stop hook already kept going (a held turn is never held again in a
+// row), and `resumed` on a session-start that picks up a conversation that already
+// happened (its open work is said again).
 import { hostSession } from "../memory/session.mjs";
 import { okOf } from "../outcome.mjs";
 
@@ -40,8 +48,15 @@ export function lifecycleEvent(host, input, argv = []) {
   const seen = host.normalize?.(input, argv) ?? null;
   const event = EVENT_NAMES.includes(seen?.event) ? seen.event : EVENTS[seen?.hostEvent];
   if (!event) return null;
-  return { ...seen, event, host: host.name, session: hostSession(host.name, seen.session), paths: seen.paths ?? [], ok: okOf(seen), ...identities(host, seen), ...agents(host, seen) };
+  return { ...unmarked(seen), event, host: host.name, session: hostSession(host.name, seen.session), paths: seen.paths ?? [], ok: okOf(seen), ...identities(host, seen), ...agents(host, seen), ...marksOf(event, seen) };
 }
+
+const unmarked = ({ synthetic: _s, held: _h, resumed: _r, ...seen }) => seen;
+
+// Each mark on the one event it can be true of, and on no other: [mark, event].
+const MARKS = [["synthetic", "user-prompt"], ["held", "turn-end"], ["resumed", "session-start"]];
+
+const marksOf = (event, seen) => Object.fromEntries(MARKS.filter(([mark, on]) => on === event && seen[mark] === true).map(([mark]) => [mark, true]));
 
 // The agent a hook speaks for and the one an Agent call launched (0.2.2, ADR 0044), hashed the way a session is: the
 // host's raw id never travels past this line. Present only when the host said one, so a main-session event is unchanged.

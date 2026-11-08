@@ -21,6 +21,7 @@
 // read back first. That is the whole reason the decision is recorded before
 // the step, rather than after it.
 import { Blocked, Refused } from "../errors.mjs";
+import { ONE_SANDBOX } from "../qa/backend/shared.mjs";
 import { controlRulesFor } from "../qa/generation/controls.mjs";
 import { OWN_SLOTS } from "../qa/generation/design.mjs";
 import { proposableOf } from "../qa/obligations/contract.mjs";
@@ -31,6 +32,8 @@ import { current, withJournal } from "./act.mjs";
 import { judgeDecision, keptAction } from "./decision.mjs";
 import { ACTIONS, ACTION_KINDS } from "./dispatch.mjs";
 import { deriveFindings, recordFindings } from "./findings.mjs";
+import { obligationBudgets, perObligation } from "./generate.mjs";
+import { attemptsLimit } from "./run-version.mjs";
 import { nextId } from "./model.mjs";
 import { OBLIGATION_KINDS, frontierOf, obligationsOf, snapshotOf } from "./obligations.mjs";
 import { projectReceipts } from "./memory.mjs";
@@ -89,10 +92,13 @@ function countsOf(obligations) {
   return { total: obligations.length, ...byState };
 }
 
+// The investigation's own budget, and what each obligation and each frozen version may spend -- the limits generate and
+// run-version refuse by (generate.mjs BUDGET, run-version.mjs attemptsLimit), shown before a host spends them, with what
+// every obligation that has a design has spent so far.
 function budgetOf(lw) {
   const started = Date.parse(lw.model.resumed.at(-1)?.at ?? lw.model.meta?.at);
   const left = Math.max(0, Math.round((started + lw.settings.limits.minutes * 60000 - (lw.now?.() ?? started)) / 60000));
-  return { actions: { used: lw.model.actions.length, of: lw.settings.limits.actions }, decisions: { used: lw.model.decisions.length, of: lw.settings.limits.decisions }, minutesLeft: left };
+  return { actions: { used: lw.model.actions.length, of: lw.settings.limits.actions }, decisions: { used: lw.model.decisions.length, of: lw.settings.limits.decisions }, minutesLeft: left, perObligation: perObligation(lw.settings), perVersion: { attempts: attemptsLimit(lw.settings) }, obligations: obligationBudgets(lw.model, lw.settings) };
 }
 
 // --------------------------------------------------------------------- step
@@ -108,9 +114,17 @@ export function step(w, raw) {
 // GENERATION_FAILED, ENVIRONMENT_BLOCKED, SATISFIED ...), the stage or rule behind it, and why; and of a run refused or
 // blocked at a step, where it stopped and what that step's own stop said, of one that failed only where (`stopped`) -- by
 // allow-list, so a host that sent a step learns what it did without reading the journal. Never the observed values.
-export const resultView = (r) => (r && typeof r === "object" ? { outcome: r.outcome ?? null, stage: r.stage ?? null, rule: r.rule ?? null, why: r.why ? scrub(String(r.why)).slice(0, 600) : null, version: typeof r.version === "string" ? r.version : null, execution: r.execution ?? null, findings: (r.findings ?? []).slice(0, 8).map(findingLine), stopped: stoppedView(r.stopped) } : null);
+// Beside a frozen version, only when there is any, what its design names that an earlier version did too (`shared`), and
+// what it rests on that it never causes (`advice`).
+export const resultView = (r) => (r && typeof r === "object" ? { outcome: r.outcome ?? null, stage: r.stage ?? null, rule: r.rule ?? null, why: r.why ? scrub(String(r.why)).slice(0, 600) : null, version: typeof r.version === "string" ? r.version : null, execution: r.execution ?? null, findings: (r.findings ?? []).slice(0, 8).map(findingLine), stopped: stoppedView(r.stopped), ...sharedView(r.shared), ...adviceView(r.advice) } : null);
 
 const findingLine = (f) => scrub(typeof f === "string" ? f : [f.rule ?? f.id ?? f.code, f.say ?? f.why ?? f.message].filter(Boolean).join(": ")).slice(0, 240);
+
+// What a design that was made rests on and never causes (src/qa/backend/contradictions.mjs): a line per rule that says it,
+// beside the answer and never its outcome -- the first four, each scrubbed and bounded at this door like a finding.
+const ADVICE = 4;
+
+const adviceView = (xs) => (Array.isArray(xs) && xs.length ? { advice: xs.slice(0, ADVICE).map(findingLine) } : {});
 
 // Where a run stopped short (src/investigation/run-version.mjs stoppedOf): the step, its verb and capability, refused,
 // blocked or failed, and what a refusal or a block said there -- these five and nothing else, its words scrubbed and
@@ -131,6 +145,23 @@ const named = (k) => typeof k === "string" && NAME.test(k);
 const itemView = (i) => Object.fromEntries(Object.entries(i && typeof i === "object" ? i : {}).filter(([k]) => named(k)).slice(0, 8).map(([k, v]) => [k, scalarOf(v)]));
 
 const scalarOf = (v) => (v === null || typeof v === "number" || typeof v === "boolean" ? v : scrub(typeof v === "string" ? v : JSON.stringify(v) ?? "").slice(0, 120));
+
+// What a generate step's design names -- a business key, a message, an occurrence -- that an earlier frozen version of
+// this investigation named too, or that an accepted criterion states for another shape's test (generate.mjs,
+// src/qa/backend/shared.mjs): advice beside the answer, never its outcome. The last four, each by its version,
+// obligation and shape -- or by the criterion that states it -- the values and the words they were named under, and the
+// sentence; every word scrubbed and bounded at this door.
+const SHARED = 4;
+
+const sharedView = (xs) => (Array.isArray(xs) && xs.length ? { shared: xs.slice(-SHARED).map(sharedLine) } : {});
+
+const sharedLine = (x) => ({ version: textOf(x?.version, 140), obligation: textOf(x?.obligation, 80), shape: textOf(x?.shape, 80), ...criterionOf(x), keys: (Array.isArray(x?.keys) ? x.keys : []).slice(0, SHARED).map(keyLine), say: textOf(x?.say, 600) });
+
+const criterionOf = (x) => (typeof x?.criterion === "string" ? { criterion: textOf(x.criterion, 80) } : {});
+
+const keyLine = (k) => ({ value: textOf(k?.value, 120), as: (Array.isArray(k?.as) ? k.as : []).filter(named).slice(0, 8) });
+
+const textOf = (v, n) => (typeof v === "string" ? scrub(v).slice(0, n) : null);
 
 // Judged against the journal as it is UNDER the lock, and written down before
 // the step runs: the record is what makes a crash mid-step visible afterwards.
@@ -287,11 +318,12 @@ function checkpointed(w, receipts, memory) {
 // part of one may carry (src/qa/obligations/contract.mjs DEFINITIONS), the assertion template each criterion op
 // compiles to (src/qa/vocab.mjs EXPECT_OPS), what a rule over its controls says a design must do that their contract
 // does not show (src/qa/generation/controls.mjs `says`), what an obligation's own slots are to its verdict (`slots`,
-// src/qa/generation/design.mjs OWN_SLOTS) and what a shape says a design for it must know (`shapes`,
+// src/qa/generation/design.mjs OWN_SLOTS), that the tests of one investigation share its sandbox (`sandbox`,
+// src/qa/backend/shared.mjs ONE_SANDBOX) and what a shape says a design for it must know (`shapes`,
 // src/qa/obligations/shapes.mjs `says`), so a host reads them before it designs instead of learning them by refusal --
 // or by a false alarm.
 export const protocolOf = () => ({ schemaVersion: DECISION_SCHEMA, fields: DECISION_FIELDS, forbidden: DECISION_FORBIDDEN, textLimit: TEXT_LIMIT, actions: ACTION_KINDS.map((kind) => ({ kind, fields: ACTIONS[kind].fields, required: ACTIONS[kind].required, modes: ACTIONS[kind].modes })), obligations: OBLIGATION_KINDS, states: OBLIGATION_STATES, stops: STOP_REASONS, lifecycle: LIFECYCLE, design: designProtocol() });
 
 const DESIGN_PARTS = ["design", "assertion", "control", "trigger", "observation-plan", "page"];
 
-const designProtocol = () => ({ definitions: proposableOf(DESIGN_PARTS), templates: EXPECT_OPS.map((o) => ({ op: o.name, template: o.template, window: o.window === true, doc: o.doc })), rules: controlRulesFor(), slots: OWN_SLOTS, shapes: OBLIGATION_SHAPES.filter((s) => s.says).map((s) => ({ shape: s.id, says: s.says })) });
+const designProtocol = () => ({ definitions: proposableOf(DESIGN_PARTS), templates: EXPECT_OPS.map((o) => ({ op: o.name, template: o.template, window: o.window === true, doc: o.doc })), rules: controlRulesFor(), slots: OWN_SLOTS, sandbox: ONE_SANDBOX, shapes: OBLIGATION_SHAPES.filter((s) => s.says).map((s) => ({ shape: s.id, says: s.says })) });

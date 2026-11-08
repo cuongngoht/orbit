@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { CAPABILITY_ID } from "../src/capability/contract-v1.mjs";
-import { ADAPTER_FIELDS, declarationFindings } from "../src/adapters/contract-v1.mjs";
+import { ADAPTER_FIELDS, declarationFindings, requestFindings } from "../src/adapters/contract-v1.mjs";
 import { BIND_KIND_IDS, EFFECT_IDS, FAMILIES, OPERATIONS, operationFor } from "../src/adapters/families.mjs";
 import { createAdapterRegistry } from "../src/adapters/registry.mjs";
 import { loadSemantics, meets, mergeSemantics, semanticsFindings } from "../src/adapters/semantics.mjs";
@@ -46,6 +46,21 @@ test("every family operation is a capability id a case can name, binding only kn
   assert.equal(new Set(OPERATIONS.map((o) => o.capability)).size, OPERATIONS.length, "one family operation per capability id");
 });
 
+// What 0.4.0's diagnosis found (0.5.0 B7): orbit.scheduler.observe and orbit.worker.observe accepted an observerRef a
+// design could name, and the sandbox's binder -- which binds an observer only to the channel it is armed on
+// (src/runtime/sandbox/bindings.mjs, declarations.mjs) -- then blocked the run on it: generation took what preparation
+// refuses. A scheduler's decisions and a worker's attempts are read by a cursor through the component's own test hooks,
+// which own no observer; so an operation names an observer only beside what one is armed on, or awaits one.
+const ARMED_ON = ["channel", "queue"];
+const AWAITS_ONE = ["orbit.observe.await"];
+
+test("an operation binds an observer only beside the channel or queue one is armed on, or to await one another step armed", () => {
+  const stray = OPERATIONS.filter((o) => o.refs.includes("observer") && !o.refs.some((r) => ARMED_ON.includes(r)) && !AWAITS_ONE.includes(o.capability)).map((o) => o.capability);
+  assert.deepEqual(stray, [], "generation would accept a ref preparation can never bind");
+  for (const id of ["orbit.scheduler.observe", "orbit.worker.observe"]) assert.equal(operationFor(id).refs.includes("observer"), false, `${id} reads by a cursor, through its component's own hooks`);
+  assert.ok(operationFor("orbit.messaging.observe").refs.includes("observer"), "the messaging family still arms its own");
+});
+
 test("the document's capability names are the family operations, exactly", () => {
   for (const id of ["orbit.messaging.publish", "orbit.messaging.observe", "orbit.job.enqueue", "orbit.job.observe", "orbit.scheduler.trigger", "orbit.scheduler.observe", "orbit.clock.advance", "orbit.observe.await", "orbit.workload.control", "orbit.worker.observe", "orbit.state.read", "orbit.fixture.prepare", "orbit.fixture.cleanup", "orbit.http.read", "orbit.http.write"]) assert.ok(operationFor(id), id);
 });
@@ -72,6 +87,53 @@ test("what a declaration may not say", () => {
   assert.match(problems({ helper: { argv: ["helper.mjs"], runIn: "image" } }), /no image is pinned/);
   assert.match(problems({ helper: { argv: ["helper.mjs"], runIn: "image", image: "example/helper:latest" } }), /image does not look like/);
   assert.match(problems({ semantics: { delivery: "exactly-once" } }), /semantics.delivery is "exactly-once" — one of/);
+});
+
+// What 0.4.0's diagnosis found (0.5.0 B7, ADR 0052): an operation declared no shape for its `request`, so a design
+// that sent a field its adapter never reads -- `request.businessKey` to a state read that takes `key` -- became a draft
+// and a version, and was refused by the helper only once a run was spent on it. An operation MAY now declare what its
+// request carries; the declaration is judged with the rest, and a request is held to it where a design is made.
+const READ_TABLE = {
+  key: { doc: "the bound key column's value: one text, number or boolean" },
+  match: { type: "object", doc: "columns and the values they equal" },
+  limit: { type: "integer", minimum: 1, doc: "how many rows to sample" },
+  mode: { type: "string", enum: ["count", "sample"], required: true, doc: "what to read" },
+  where: { type: "object", fields: { status: { type: "string", pattern: "^[a-z]+$", doc: "a status word" } }, doc: "a match on named fields only" },
+};
+
+test("an operation may declare what its request carries, and that table is judged with the declaration", () => {
+  const problems = (request) => declarationFindings(declaration({ operations: { publish: { effects: ["publish"], outputs: { messageId: "message.id" }, request } } }), vocab).problems.join("\n");
+  assert.equal(problems({ messageId: { type: "string", required: true, pattern: "^[!-~]{1,128}$", doc: "the logical id" }, payload: { doc: "the body, as it is" } }), "");
+  assert.equal(problems({}), "", "an operation that reads nothing from its request says so");
+  assert.match(problems({ messageId: { type: "text", doc: "x" } }), /type must be string, integer, number, boolean, object or array/);
+  assert.match(problems({ messageId: { type: "string" } }), /no doc/, "every field says what it is");
+  assert.match(problems({ messageId: { type: "string", default: "m-1", doc: "x" } }), /unknown field "default"/, "a table says what may be sent, never what to send");
+  assert.match(problems({ match: { type: "object", fields: { id: { type: "uuid", doc: "x" } }, doc: "x" } }), /type must be/, "an object's own keys are rows of their own");
+  assert.match(problems({ messageId: { type: "string", pattern: "([", doc: "x" } }), /pattern .* is not one a request can be held to/);
+});
+
+test("a request is held to the table its operation declares: what it does not read is refused by name, saying what it does", () => {
+  const at = "orbit.state.read request (postgres.reference)";
+  assert.deepEqual(requestFindings(READ_TABLE, { mode: "count", key: "k", limit: 2, match: { status: "x" } }, at), []);
+  assert.deepEqual(requestFindings(READ_TABLE, { mode: "count", businessKey: "k" }, at), [`${at}: unknown field "businessKey" — it reads key, match, limit, mode, where`]);
+  assert.deepEqual(requestFindings(READ_TABLE, { key: "k" }, at), [`${at}: no mode`], "a required one missing is named");
+  assert.deepEqual(requestFindings(READ_TABLE, { mode: "all", limit: 0 }, at), [`${at}: mode must be count or sample`, `${at}: limit must be at least 1`]);
+  assert.deepEqual(requestFindings(READ_TABLE, { mode: "count", where: { status: "ok", tenant: "t" } }, at), [`${at} where: unknown field "tenant" — it reads status`], "an object's own keys, when it declares them");
+  assert.deepEqual(requestFindings(READ_TABLE, { mode: "count", where: { status: "OK" } }, at), [`${at} where: status does not look like ^[a-z]+$`]);
+  assert.deepEqual(requestFindings(undefined, { anything: 1 }, at), [], "an operation that declares no table is held here to nothing -- its helper still refuses at run time");
+  assert.deepEqual(requestFindings({}, { anything: 1 }, at), [`${at}: unknown field "anything" — it reads nothing`]);
+});
+
+// The pack's own adapters say it for every operation they answer, so a design for a stack they serve is held to it.
+test("every operation of every adapter this plugin ships declares what its request carries, and each declaration is clean", () => {
+  const shipped = JSON.parse(readFileSync(join(ROOT, "skills/orbit-backend-test/adapters.json"), "utf8")).adapters;
+  assert.ok(shipped.length >= 8);
+  for (const a of shipped) {
+    assert.deepEqual(declarationFindings(a, vocab).problems, [], a.id);
+    for (const [op, o] of Object.entries(a.operations)) assert.equal(typeof o.request, "object", `${a.id} ${op} declares what its request carries`);
+  }
+  const read = shipped.find((a) => a.id === "postgres.reference").operations.read.request;
+  assert.match(requestFindings(read, { businessKey: "k" }, "read").join(), /unknown field "businessKey" — it reads key, match, limit/, "the key a real host guessed");
 });
 
 test("a semantics field nobody declared is kept and reported as undeclared, never refused, and derives nothing", () => {

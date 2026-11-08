@@ -7,8 +7,12 @@
 // A SCRIPTED host's round (a control: Orbit's own loop driven by a script, no model) has no network at all: no
 // internal network, no egress proxy, no credential -- there is nothing for it to reach.
 //
-//   roundRan(ctx, k, specOf(net, d), o) -> { error, container, runner, start, host, egress }
-//   offlineRan(ctx, k, spec, o) -> the same, with no network
+// The host's stream is read back twice: as the runner wrote it into its out directory (`host`, REPORTED), and -- when the
+// round names `o.capture` -- as the controller captured it off the container's stdout (`observed`, HOST_OBSERVED), in
+// the round's own directory where no container writes.
+//
+//   roundRan(ctx, k, specOf(net, d), o) -> { error, container, runner, start, host, observed, egress }
+//   offlineRan(ctx, k, spec, o) -> the same, with no network          streamFileOf(ctx, k) -> the capture's file
 //   runnerSpecOf(ctx, net, k, mounts, values) · fresh(ctx, ...parts) · forbidden(ctx) · RUNNER_ENV · EGRESS_PORT
 import { mkdirSync, realpathSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -38,13 +42,14 @@ const caMount = (ctx) => (ctx.caFile ? [{ source: ctx.caFile, target: "/run/orbi
 const caEnv = (ctx) => (ctx.caFile ? { NODE_EXTRA_CA_CERTS: "/run/orbit-ca.pem" } : {});
 
 // The runner as every round has it: the image, the user, the entry, the limits, the network and the credential by
-// name -- with the mounts and the values the round brings.
+// name -- with the mounts and the values the round brings, and where the plugin it hands the host is (null: none, and
+// so no mount point for the editor types a plugin's host writes).
 // The host name every container that shares a run's runner store goes by: Orbit records which host ran an action, and
 // asks that host's processes about it -- with a host name of its own per container, a round could never tell an action
 // an earlier round's crash left open from one still running elsewhere.
 export const RUNNER_HOST = "orbit-benchmark-runner";
 
-export const runnerSpecOf = (ctx, net, k, mounts, values = {}, plugin = "/work/repo") => specFor("runner", ctx.run, { n: k, image: ctx.images.runner, user: ctx.user, hostname: RUNNER_HOST, argv: ["node", "/bench/entry.mjs"], mounts: [...mounts, ...caMount(ctx)], tmpfs: [`${plugin}/.claude-plugin/types:rw,nosuid,nodev,size=16m`], env: net ? { names: ctx.credentialNames, values: { ...RUNNER_ENV, ...caEnv(ctx), ...values } } : { names: [], values: { ...OFFLINE_ENV, ...values } }, limits: { cpus: ctx.case.limits.runner.cpus, memoryMb: ctx.case.limits.runner.memoryMb, pids: ctx.case.limits.runner.pids }, cpuset: ctx.runnerCpuset, network: net ? { mode: "network", name: net, alias: "runner" } : null, tmpMb: 2048 });
+export const runnerSpecOf = (ctx, net, k, mounts, values = {}, plugin = "/work/repo") => specFor("runner", ctx.run, { n: k, image: ctx.images.runner, user: ctx.user, hostname: RUNNER_HOST, argv: ["node", "/bench/entry.mjs"], mounts: [...mounts, ...caMount(ctx)], tmpfs: plugin ? [`${plugin}/.claude-plugin/types:rw,nosuid,nodev,size=16m`] : [], env: net ? { names: ctx.credentialNames, values: { ...RUNNER_ENV, ...caEnv(ctx), ...values } } : { names: [], values: { ...OFFLINE_ENV, ...values } }, limits: { cpus: ctx.case.limits.runner.cpus, memoryMb: ctx.case.limits.runner.memoryMb, pids: ctx.case.limits.runner.pids }, cpuset: ctx.runnerCpuset, network: net ? { mode: "network", name: net, alias: "runner" } : null, tmpMb: 2048 });
 
 export const attestOn = (ctx, net, image) => ({ network: net, forbidden: forbidden(ctx), pluginTarget: null, imageEnv: docker.imageEnv(image, ctx.deps) });
 
@@ -59,12 +64,16 @@ export const jsonAt = (file) => {
   catch { return null; }
 };
 
-function runnerOutputs(ctx, out) {
+function runnerOutputs(ctx, out, captured = null) {
   const runner = jsonAt(join(out, "runner.json"));
   const head = textAt(join(out, "host.jsonl"), ctx.case.limits.runner.outputMb * 1024 * 1024 + 1);
   const tail = runner?.truncated ? textAt(join(out, "host-tail.jsonl"), 70 * 1024) : "";
-  return { runner, start: jsonAt(join(out, "start.json")), host: hostOf(`${head}\n${tail}`) };
+  return { runner, start: jsonAt(join(out, "start.json")), host: hostOf(`${head}\n${tail}`), observed: observedOf(captured, head, runner) };
 }
+
+// The host's stream as the controller captured it (HOST_OBSERVED), beside the copy the runner wrote (REPORTED): where it
+// is, how much came, and whether the two say the same -- null when either was cut, since a cut copy proves nothing.
+const observedOf = (captured, head, runner) => (captured ? { basis: "HOST_OBSERVED", file: captured.file, bytes: captured.bytes, lines: captured.lines, agrees: runner?.truncated || runner?.teed?.cut ? null : textAt(captured.file, captured.bytes + 1) === head } : null);
 
 async function withEgress(ctx, net, k, fn) {
   const egress = await startedBackground(egressSpec(ctx, net, k), ctx.deps, { attest: attestOn(ctx, net, ctx.images.verifier), alsoOn: ["bridge"] });
@@ -76,14 +85,18 @@ async function withEgress(ctx, net, k, fn) {
 
 // One round with no network: the runner alone, attested on no network at all, its outputs read back the same way.
 export async function offlineRan(ctx, k, spec, o) {
-  const container = await ranContainer(spec, ctx.deps, { input: "", timeoutMs: o.deadlineMs, outputBytes: 1024 * 1024, attest: attestOn(ctx, "none", ctx.images.runner), held: o.held, heldEveryMs: o.heldEveryMs });
-  return { container, egress: { none: true, holds: true, says: "a scripted host runs with no network" }, ...runnerOutputs(ctx, o.out) };
+  const container = await ranContainer(spec, ctx.deps, { input: "", timeoutMs: o.deadlineMs, outputBytes: 1024 * 1024, attest: attestOn(ctx, "none", ctx.images.runner), held: o.held, heldEveryMs: o.heldEveryMs, cut: o.cut, cutEveryMs: o.cutEveryMs, capture: o.capture });
+  return { container, egress: { none: true, holds: true, says: "a scripted host runs with no network" }, ...runnerOutputs(ctx, o.out, container.captured) };
 }
 
 // One round's runner: the run's internal network, the egress proxy, the runner the round's spec makes, its outputs.
+// `o.capture` names where the controller keeps the host's stream as the container's stdout carried it.
 export async function roundRan(ctx, k, specOf, o) {
   const net = ensuredRunNetwork(ctx.run.id, ctx.deps);
   if (!net.ok) return { error: { cause: "ENVIRONMENT", says: net.why } };
-  const ran = await withEgress(ctx, net.name, k, async () => ({ container: await ranContainer(specOf(net.name), ctx.deps, { input: "", timeoutMs: o.deadlineMs, outputBytes: 1024 * 1024, attest: attestOn(ctx, net.name, ctx.images.runner), held: o.held, heldEveryMs: o.heldEveryMs }) }));
-  return { ...ran, ...(ran.container ? runnerOutputs(ctx, o.out) : {}) };
+  const ran = await withEgress(ctx, net.name, k, async () => ({ container: await ranContainer(specOf(net.name), ctx.deps, { input: "", timeoutMs: o.deadlineMs, outputBytes: 1024 * 1024, attest: attestOn(ctx, net.name, ctx.images.runner), held: o.held, heldEveryMs: o.heldEveryMs, cut: o.cut, cutEveryMs: o.cutEveryMs, capture: o.capture }) }));
+  return { ...ran, ...(ran.container ? runnerOutputs(ctx, o.out, ran.container.captured) : {}) };
 }
+
+// Where a round's host stream is captured: in the round's own directory, outside every mount its containers have.
+export const streamFileOf = (ctx, k) => ctx.room.at("rounds", String(k), "host.stream.jsonl");

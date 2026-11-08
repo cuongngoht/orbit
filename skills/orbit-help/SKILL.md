@@ -1,20 +1,19 @@
 ---
 name: orbit-help
 description: >
-  The one entry point: describe a goal and Orbit takes it through, autonomously by default with
-  nothing to turn on. With a task a coordinated workflow fits (a change, a fix, a PBI, an
-  investigation), it plans the workflow the task needs -- requirement, context, runtime, an
-  engineering task in its own workspace, QA, regression, review, or a project playbook -- and
-  takes it one decided step at a time, each step settled only on evidence its owner keeps and
-  every action gated by its own class. Without a task, or for a read-only question, it is one
-  bounded look at what this project's architecture, UI map, QA plans and lessons already say,
-  and exactly one recommended `orbit-*` workflow with the reason. Use when it is unclear where
-  to start, or to take a task all the way through.
+  Orbit's coordinator and navigator, for when it is unclear where to start or a task needs several
+  owners in turn -- a work item, a code change, the running app, QA, regression, review. Starts or
+  resumes a coordinated workflow; for one specialist's job, use that skill.
 argument-hint: where should I start | implement PBI-482 and test it until it passes
 allowed-tools:
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/help.mjs*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/context.mjs*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/architecture.mjs ensure*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/intelligence.mjs ensure*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/engineering.mjs recall*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/engineering.mjs why*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/knowledge.mjs why*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/runtime.mjs discover*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/automation.mjs*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/skill-factory.mjs*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/live.mjs status*)
@@ -25,6 +24,16 @@ user-invocable: true
 ---
 
 **Host binding:** On protocol v2, resolve the plugin root from this SKILL.md’s actual location and bind the host/protocol/hashed session supplied at startup on every Orbit shell invocation. Resolve command examples against that root; do not assume hook exports persist. Follow [the shared host contract](../../docs/hosts.md) for task stdin, runtime isolation and unavailable native capabilities. Use the supported native protocol for the selected host.
+
+**In short.** The one entry point: describe a goal and Orbit takes it through, autonomously by
+default with nothing to turn on. With a task a coordinated workflow fits (a change, a fix, a PBI, an
+investigation), it plans the workflow the task needs -- requirement, context, runtime, an
+engineering task in its own workspace, QA, regression, review, or a project playbook -- and takes it
+one decided step at a time, each step settled only on evidence its owner keeps and every action
+gated by its own class. Without a task, or for a read-only question, it is one bounded look at what
+this project's architecture, UI map, QA plans and lessons already say, and exactly one recommended
+`orbit-*` workflow with the reason. Use when it is unclear where to start, or to take a task all the
+way through.
 
 # First, when a PERSON invoked /orbit-help: Orbit Live beside this session
 
@@ -149,6 +158,15 @@ only when `BLOCKERS` says something the task needs is missing, or the workflow i
 person. This is the same on every host: on a host without a prompt router (Antigravity), this
 loop is what routes the task.
 
+**Before you choose how much to do, read SUFFICIENCY.** `node ${CLAUDE_PLUGIN_ROOT}/cli/context.mjs
+--for="<the task>" --json` answers `sufficiency` beside `relevant`, what the task touches. ENOUGH:
+carry on, starting from the scope those items show and confirming it in the code. DISCOVER: only the
+reads its `targets` name are owed first, once each, never a repository-wide search -- a target's `run`
+is an Orbit command, `node ${CLAUDE_PLUGIN_ROOT}/cli/<first word>.mjs <the rest>`, and what you find goes
+back with `--with-refs`, which refuses any reference the tracked tree does not hold. ASK: a question
+about this task's own work is already open; relay it as quoted, in the flow it names, and wait for the
+person. It never makes a question up, and neither do you.
+
 **`UNKNOWN` is not empty by accident.** The working set (what a session has already read,
 changed and run) is recorded by the plugin's hooks; until a session has been recorded in this
 checkout — the hooks are off, or nobody has worked here yet — this command says so under
@@ -179,7 +197,10 @@ echo '<outcome>'  | node <engine>/cli/automation.mjs settle <task> --json   # on
    { "kind": "run", "step": "<id>" }, "observed": "<one sentence>", "hypothesis": "<one sentence>" }`. A new
    decision takes a new `decisionId`; sending the same one again is answered from the journal and never runs twice.
 2. **An engine step settles itself** (a frozen requirement read back, project context, runtime,
-   regression and review read off the engineering task). Read the answer and decide the next one.
+   regression and review read off the engineering task). Read the answer and decide the next one. A change's QA step
+   is always in its plan; where nothing the checkout declares can be started, the engine SKIPS it at its turn and says
+   why (`stepState: "skipped"`, its `summary`). Relay it as skipped, with that reason, and never call the change tested
+   or QA'd: skipped is not passed.
 3. **A host step answers `how`**: `mode` (skill, agent or playbook), the provider, and `invoke` -- what
    to do. On Claude Code dispatch the named agent with the Agent tool, or run the named skill; on a host
    with no native agents (Codex, Antigravity) run the skill's own loop here, one step at a time. For a
@@ -238,6 +259,12 @@ echo '<outcome>'  | node <engine>/cli/automation.mjs settle <task> --json   # on
    invoke /orbit-help again). `context.watch` says the same for a host that shows it. A person who wants ANOTHER viewer
    asks for one: `node ${CLAUDE_PLUGIN_ROOT}/cli/live.mjs open <task>` starts it beside this session and that one
    closes itself when the task ends.
+
+**A held turn.** On Claude Code, when you stop while this session's workflow is still running with a step ready, the
+turn may be held open (at most twice per prompt): the reason names the ready step and `automation.mjs context <task>`.
+Take that step the usual way -- decide it, run it, settle it -- or, if there is a reason not to go on (the person asked
+you to wait, a step needs something only they can give), say it in one sentence and stop. A hold never approves,
+resumes or overrides anything, and a person's pause, cancel or stop is never held past.
 
 **Never**: settle a step with a success you did not read from the engine; send `outcome`, `verdict`,
 `approved`, `stage` or any word the engine derives (it is refused by name); approve, resume or pass

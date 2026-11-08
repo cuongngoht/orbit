@@ -1,0 +1,157 @@
+{
+  "schema": 1,
+  "id": "orbit-hld-003-half",
+  "about": "Half the change: the route renews at most twice and refuses an overdue loan and one that is back -- and it counts the new due date from the day of the renewal, and renews while somebody waits for the title. Its own test covers what it does.",
+  "mutations": [
+    {
+      "id": "restore-readme-route",
+      "file": "README.md",
+      "find": "| `POST /loans/:id/return` | checks a loan in at the desk |\n",
+      "replace": "| `POST /loans/:id/return` | checks a loan in at the desk |\n| `POST /loans/:id/renew` | renews a loan |\n",
+      "count": 1
+    },
+    {
+      "id": "restore-readme-loans",
+      "file": "README.md",
+      "find": "- `src/loans.mjs` — lending and returns.",
+      "replace": "- `src/loans.mjs` — lending, renewals and returns.",
+      "count": 1
+    },
+    {
+      "id": "restore-api-route",
+      "file": "src/api.mjs",
+      "find": "  [\"POST\", /^\\/loans\\/([^/]+)\\/return$/, back],\n",
+      "replace": "  [\"POST\", /^\\/loans\\/([^/]+)\\/return$/, back],\n  [\"POST\", /^\\/loans\\/([^/]+)\\/renew$/, renew],\n",
+      "count": 1
+    },
+    {
+      "id": "restore-api-renew",
+      "file": "src/api.mjs",
+      "find": "// ---- holds",
+      "replace": "const renewOrNot = (c, loan) => ((why) => (why ? refused(409, why) : answer(200, loanView(renewed(c.store, c.tenant, loan)))))(renewRefusal(c.store, c.tenant, loan, c.today));\n\nconst renew = (c, [id]) => ((loan) => (loan ? renewOrNot(c, loan) : refused(404, \"no-loan\")))(loanOf(c, id));\n\n// ---- holds",
+      "count": 1
+    },
+    {
+      "id": "restore-api-section",
+      "file": "src/api.mjs",
+      "find": "lending and returns -------------",
+      "replace": "lending, returns and renewals ---",
+      "count": 1
+    },
+    {
+      "id": "restore-api-import",
+      "file": "src/api.mjs",
+      "find": "import { lendRefusal, lent, loanView, returned } from \"./loans.mjs\";",
+      "replace": "import { lendRefusal, lent, loanView, renewed, renewRefusal, returned } from \"./loans.mjs\";",
+      "count": 1
+    },
+    {
+      "id": "restore-holds-waiting",
+      "file": "src/holds.mjs",
+      "find": "const readyHoldOf",
+      "replace": "// Whether anybody is waiting for a copy's title: a hold placed and not yet served.\nexport const holdWaiting = (store, copy) => holdsOn(store, copy.tenant, copy.title).some((h) => h.state === \"waiting\");\n\nconst readyHoldOf",
+      "count": 1
+    },
+    {
+      "id": "restore-loans-view",
+      "file": "src/loans.mjs",
+      "find": "due: l.due, returned: l.returned",
+      "replace": "due: l.due, renewals: l.renewals, returned: l.returned",
+      "count": 1
+    },
+    {
+      "id": "restore-loans-renewal",
+      "file": "src/loans.mjs",
+      "find": "export const loanView",
+      "replace": "// Why a loan may not be renewed on a day, asked in order; none, and it may.\nconst RENEW_REFUSALS = [\n  { error: \"returned\", when: (r) => r.loan.returned !== null },\n  { error: \"overdue\", when: (r) => r.day > r.loan.due },\n  { error: \"renewal-limit\", when: (r) => r.loan.renewals >= RENEWALS },\n  { error: \"hold-waiting\", when: (r) => holdWaiting(r.store, r.copy) },\n];\n\nconst copyOfLoan = (store, tenant, loan) => mine(store, tenant, \"copies\", loan.copy);\n\nexport const renewRefusal = (store, tenant, loan, day) => RENEW_REFUSALS.find((r) => r.when({ store, loan, day, copy: copyOfLoan(store, tenant, loan) }))?.error ?? null;\n\n// A renewal moves the due date on by the title's loan period, counted from the due date it had.\nexport const renewed = (store, tenant, loan) => put(store, \"loans\", { ...loan, due: addDays(loan.due, loanDaysOf(titleOfCopy(store, copyOfLoan(store, tenant, loan)))), renewals: loan.renewals + 1 });\n\nexport const loanView",
+      "count": 1
+    },
+    {
+      "id": "restore-loans-lent",
+      "file": "src/loans.mjs",
+      "find": "returned: null, fineCents: 0 });",
+      "replace": "renewals: 0, returned: null, fineCents: 0 });",
+      "count": 1
+    },
+    {
+      "id": "restore-loans-limit",
+      "file": "src/loans.mjs",
+      "find": "import { collectedBy, heldForAnother, servedOrShelved } from \"./holds.mjs\";\n",
+      "replace": "import { collectedBy, heldForAnother, holdWaiting, servedOrShelved } from \"./holds.mjs\";\n\nexport const RENEWALS = 2;\n",
+      "count": 1
+    },
+    {
+      "id": "restore-loans-says",
+      "file": "src/loans.mjs",
+      "find": "// LOANS: a copy lent to a member until its due date and brought back -- at the desk, or through the drop box",
+      "replace": "// LOANS: a copy lent to a member until its due date, renewed, and brought back -- at the desk, or through the drop box",
+      "count": 1
+    },
+    {
+      "id": "from-today",
+      "file": "src/loans.mjs",
+      "find": "// A renewal moves the due date on by the title's loan period, counted from the due date it had.\nexport const renewed = (store, tenant, loan) => put(store, \"loans\", { ...loan, due: addDays(loan.due, ",
+      "replace": "// A renewal gives the loan the title's loan period again, from the day it is renewed.\nexport const renewed = (store, tenant, loan, day) => put(store, \"loans\", { ...loan, due: addDays(day, ",
+      "count": 1
+    },
+    {
+      "id": "no-hold-rule",
+      "file": "src/loans.mjs",
+      "find": "  { error: \"renewal-limit\", when: (r) => r.loan.renewals >= RENEWALS },\n  { error: \"hold-waiting\", when: (r) => holdWaiting(r.store, r.copy) },\n",
+      "replace": "  { error: \"renewal-limit\", when: (r) => r.loan.renewals >= RENEWALS },\n",
+      "count": 1
+    },
+    {
+      "id": "from-today-route",
+      "file": "src/api.mjs",
+      "find": "answer(200, loanView(renewed(c.store, c.tenant, loan)))",
+      "replace": "answer(200, loanView(renewed(c.store, c.tenant, loan, c.today)))",
+      "count": 1
+    }
+  ],
+  "files": [
+    {
+      "rel": "test/renew-twice.test.mjs",
+      "lines": [
+        "// A loan is renewed twice at most, and never once overdue or back.",
+        "import assert from \"node:assert/strict\";",
+        "import { mkdtempSync, rmSync } from \"node:fs\";",
+        "import { tmpdir } from \"node:os\";",
+        "import { join } from \"node:path\";",
+        "import { test } from \"node:test\";",
+        "import { handle } from \"../src/api.mjs\";",
+        "import { openStore } from \"../src/store.mjs\";",
+        "",
+        "function storeFor(t) {",
+        "  const dir = mkdtempSync(join(tmpdir(), \"renew-twice-\"));",
+        "  t.after(() => rmSync(dir, { recursive: true, force: true }));",
+        "  return openStore(dir);",
+        "}",
+        "",
+        "const call = (store, method, path, body, today = \"2026-03-02\") => handle(store, { method, path, tenant: \"harbor\", today, body });",
+        "",
+        "function lent(store) {",
+        "  const title = call(store, \"POST\", \"/titles\", { name: \"Renewed\", format: \"book\" }).body;",
+        "  const copy = call(store, \"POST\", \"/copies\", { title: title.id, replacementCents: 2000 }).body;",
+        "  return call(store, \"POST\", \"/loans\", { copy: copy.id, member: call(store, \"POST\", \"/members\", { name: \"Ana\" }).body.id }).body;",
+        "}",
+        "",
+        "const renew = (store, loan, day) => call(store, \"POST\", `/loans/${loan.id}/renew`, {}, day);",
+        "",
+        "test(\"a loan is renewed twice, and the third time refused for the limit\", (t) => {",
+        "  const store = storeFor(t);",
+        "  const loan = lent(store);",
+        "  assert.deepEqual([\"2026-03-03\", \"2026-03-04\", \"2026-03-05\"].map((day) => [renew(store, loan, day).status]), [[200], [200], [409]]);",
+        "});",
+        "",
+        "test(\"an overdue loan, and one that is back, are not renewed\", (t) => {",
+        "  const store = storeFor(t);",
+        "  const [late, back] = [lent(store), lent(store)];",
+        "  call(store, \"POST\", `/loans/${back.id}/return`, {}, \"2026-03-04\");",
+        "  assert.deepEqual([renew(store, late, \"2026-03-24\").body.error, renew(store, back, \"2026-03-05\").body.error], [\"overdue\", \"returned\"]);",
+        "});"
+      ]
+    }
+  ],
+  "deletes": []
+}

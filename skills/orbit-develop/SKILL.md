@@ -1,13 +1,9 @@
 ---
 name: orbit-develop
 description: >
-  The developer workflow: implement a change the way THIS project builds code. Project context
-  first (architecture, technology, engineering conventions, project knowledge and the working set,
-  memory first and bounded to the task), then the resources the task actually needs, resolved by
-  capability, then the smallest implementation that fits, verified, then what would prove it and
-  whether anything here can, then reviewed. Use for a feature, a bug fix, a refactor or a rename in
-  the checkout. It never installs, enables or configures a resource and never provisions a missing
-  capability: a gap is reported as an opportunity, and a person decides.
+  Implements a feature, bug fix, refactor or rename in this checkout the way this project builds
+  code: project context first, the smallest change, verified, reviewed. Use for a change asked for
+  directly. To take one autonomously to a verified result in its own workspace, use orbit-engineer.
 argument-hint: implement the change described | fix this bug | refactor this module
 allowed-tools:
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/context.mjs*)
@@ -16,6 +12,10 @@ allowed-tools:
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/mcp.mjs tools*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/mcp.mjs call*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/engineering.mjs recall*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/engineering.mjs why*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/architecture.mjs ensure*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/intelligence.mjs ensure*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/runtime.mjs discover*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/knowledge.mjs claims*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/knowledge.mjs why*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/knowledge.mjs verify*)
@@ -38,6 +38,14 @@ user-invocable: true
 **Host binding:** On protocol v2, resolve the plugin root from this SKILL.md’s actual location and bind the host/protocol/hashed session supplied at startup on every Orbit shell invocation. Resolve command examples against that root; do not assume hook exports persist. Follow [the shared host contract](../../docs/hosts.md) for task stdin, runtime isolation and unavailable native capabilities. Use the supported native protocol for the selected host.
 
 # Implement a change the way this project builds code
+
+**In short.** The developer workflow: implement a change the way THIS project builds code. Project
+context first (architecture, technology, engineering conventions, project knowledge and the working
+set, memory first and bounded to the task), then the resources the task actually needs, resolved by
+capability, then the smallest implementation that fits, verified, then what would prove it and
+whether anything here can, then reviewed. Use for a feature, a bug fix, a refactor or a rename in
+the checkout. It never installs, enables or configures a resource and never provisions a missing
+capability: a gap is reported as an opportunity, and a person decides.
 
 **Orbit Live follows this workflow by itself.** It creates no task, and needs none: while Orbit Live is open beside the
 session it shows what this session's tools read, edit and run -- the working set the plugin's hooks already record --
@@ -112,6 +120,18 @@ its authority (**RULE** · **ADOPTED** · **SOURCE** · **CONFIRMED** · **HOST-
   guess what it means.
 
 `node ${CLAUDE_PLUGIN_ROOT}/cli/knowledge.mjs why <claim-id>` shows the evidence behind any line.
+
+**Read SUFFICIENCY before you choose the scope** — the line under STATUS. **RELEVANT** lists what the task touches
+(files, symbols, components and checks: `direct`, `dependency`, `downstream`, `verification` or `unknown`, each with
+its evidence and whether it is still current), from what the project already knows. **ENOUGH**: start the scope from
+those items, and confirm each in the code before you rely on it — a name one of the task's words matched is not proof
+the change needs it. **DISCOVER**: make the reads its targets name, once each, and nothing wider. A target's `run` is
+an Orbit command: `node ${CLAUDE_PLUGIN_ROOT}/cli/<first word>.mjs <the rest>`. For `context --with-refs`, search for
+what the task names, then send what you found back on stdin (`{ "task": "…", "refs": [{ "kind": "file|symbol", "ref":
+"…", "why": "…" }] }`); a reference the tracked tree does not hold comes back refused, so drop it and never reason from
+it. A record that moved stays named until its owner reads it again: once you have read what it cites, go on.
+**ASK**: relay the one question it quotes, in the flow it names, and wait for the person; never ask one of your own
+in its place.
 
 - A section that says **UNKNOWN** is a gap, not permission to guess. If architecture has never
   been scanned, run `orbit-architecture` (or `orbit-help`) before designing.

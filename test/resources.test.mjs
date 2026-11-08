@@ -154,3 +154,15 @@ test("a capability that says it provides something is listed as a provider of it
   assert.deepEqual(cap.routing.needs, ["command:tracker"], "the command it shells out to, and no connection: that is asked when it is invoked");
   assert.equal(cap.detail.connection, "tracker-a");
 });
+
+// 0.5.0 (B22, ADR 0050): an agent row may name the skills whose playbook dispatches it, and the registry carries it as
+// `routing.via` -- the same read the resolver and Control make, so neither keeps a list of its own.
+test("an agent's parents are carried on its row as routing.via; a direct agent and every skill carry none", () => {
+  const effective = getEffectiveResources(context(), PROVIDERS);
+  const agent = (id) => effective.agents.find((a) => a.id === id);
+  assert.deepEqual(agent("orbit-map-healer").routing.via, ["orbit-ui-map", "orbit-test-suite"]);
+  assert.deepEqual(agent("satellite-reader").routing.via, ["satellite"]);
+  assert.deepEqual(agent("orbit-failure-analyst").routing.via, []);
+  assert.ok(effective.skills.every((s) => Array.isArray(s.routing.via) && s.routing.via.length === 0));
+  assert.deepEqual(resource("agent", { id: "x", via: ["Parent-Skill", " ", 7] }).routing.via, ["parent-skill"], "words, as every routing list is read");
+});

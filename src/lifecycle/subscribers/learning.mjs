@@ -16,10 +16,27 @@
 // What a host's JSON looks like is the adapter's business: this asks
 // `world.host` to format and to recognise a watched command, and never reads
 // the host's fields itself.
+//
+// 0.5.0 (B22 M3, ADR 0050) -- two more lines, JOINED into the one payload this
+// subscriber answers, because the dispatcher hears only the first answer:
+//
+// session-start   FIRST, one capability line of at most 300 bytes: what Orbit can
+//                 do here (each family's usable count of all, what a person
+//                 switched off) and the project's STATUS word -- and on a session
+//                 that picks up a conversation (`resumed`: resume or compact),
+//                 this session's open work and its next step. `world.digest`
+//                 composes them (cli/learn-hook.mjs); a digest that cannot be read
+//                 costs its own lines and nothing else
+// post-tool-failure
+//                 when an Orbit command failed while this session holds governed
+//                 work, the owner's ONE recovery row -- an action that did not
+//                 settle is read back with `reconcile`, never resent -- after the
+//                 diagnosis a watched command gets (`world.recovery`)
 import { architecturePaths, createArchitecture } from "../../architecture/store.mjs";
 import { createEngineering } from "../../engineering/store.mjs";
 import { indexText } from "../../learn/recall.mjs";
 import { runLearn } from "../../learn/index.mjs";
+import { capabilityLine, openWorkLine, recoveryRow } from "../owners.mjs";
 
 export const WATCHED = ["run-case.mjs", "run-awake.mjs", "review.mjs", "note.mjs"];
 
@@ -42,20 +59,30 @@ export const learning = { name: "learning", on: Object.keys(HANDLERS), records: 
 function sessionStart(event, world) {
   const ctx = world.light();
   if (!ctx) return null;
-  return world.host.formatSessionStart(sessionText(ctx), world.input);
+  return world.host.formatSessionStart([...digestOf(event, world), sessionText(ctx, world.engine)].filter(Boolean).join("\n\n"), world.input);
 }
 
-function sessionText(ctx) {
-  const lessons = indexText(ctx.learn.all(), { project: ctx.config.name });
+// The session's digest (0.5.0): the capability line, then -- on a resumed session -- its open work. Each part is null
+// when the composition root could not read it, and is then simply not said.
+const digestOf = (event, world) => ((d) => [d?.capabilities ? capabilityLine(d.capabilities) : null, event.resumed === true && d?.owner ? openWorkLine(d.owner, world.engine) : null])(world.digest?.(event) ?? null);
+
+function sessionText(ctx, engine) {
+  const lessons = indexText(ctx.learn.all(), { project: ctx.config.name, engine });
   const facts = createArchitecture(ctx.store.root, ctx.io).all();
-  const architecture = facts.length ? `Orbit architecture: ${facts.length} stored facts; use architecture ensure --dry, facts and why before scanning source.` : missingSnapshot(ctx);
+  const architecture = facts.length ? `Orbit architecture: ${facts.length} stored facts; use architecture ensure --dry, facts and why before scanning source.` : missingSnapshot(ctx, engine);
   return [lessons, architecture, engineeringLine(ctx)].filter(Boolean).join("\n\n");
 }
 
-function missingSnapshot(ctx) {
+const NO_SNAPSHOT = "No architecture snapshot exists for this project yet. `node <plugin>/cli/architecture.mjs ensure` reads it once, and every session after this one reuses that instead of scanning the repository.";
+
+// The command it names carries the plugin's own path once the composition root knows it, as the routing context's lines
+// do (subscribers/router.mjs) -- never a placeholder a host was not told how to read.
+const noSnapshotSaid = (engine) => (engine ? NO_SNAPSHOT.replaceAll("<plugin>", engine) : NO_SNAPSHOT);
+
+function missingSnapshot(ctx, engine) {
   if (!ctx.io.exists(ctx.project.graphDir)) return "";
   const there = ctx.io.exists(architecturePaths(ctx.store.root).model);
-  return there ? "" : "No architecture snapshot exists for this project yet. `node <plugin>/cli/architecture.mjs ensure` reads it once, and every session after this one reuses that instead of scanning the repository.";
+  return there ? "" : noSnapshotSaid(engine);
 }
 
 // Bounded on purpose: a count and a pointer, never the facts themselves. The
@@ -70,7 +97,7 @@ function engineeringLine(ctx) {
 function afterTool(event, world) {
   if (!world.host.isWatched(world.input, WATCHED)) return null;
   analysed(world.full());
-  return world.host.formatPostTool(world.input);
+  return world.host.formatPostTool(null, world.input);
 }
 
 function analysed(ctx) {
@@ -78,7 +105,10 @@ function analysed(ctx) {
   runLearn(ctx, "analyse", ["--quiet"]);
 }
 
+// ONE payload: the diagnosis a watched command gets, then the governing owner's recovery row (0.5.0).
 function afterFailure(event, world) {
-  if (!world.host.isWatched(world.input, WATCHED)) return null;
-  return world.host.formatFailure(DIAGNOSE, world.input);
+  const lines = [world.host.isWatched(world.input, WATCHED) ? DIAGNOSE : null, recoveryOf(event, world)].filter(Boolean);
+  return lines.length ? world.host.formatFailure(lines.join("\n"), world.input) : null;
 }
+
+const recoveryOf = (event, world) => ((owner) => (owner ? recoveryRow(owner, world.engine) : null))(world.recovery?.(event) ?? null);

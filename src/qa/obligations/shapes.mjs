@@ -22,10 +22,20 @@
 
 const shape = (id, boundary, relations, contract, controls, templates, doc, extra = {}) => ({ id, boundary, relations, contract, controls, templates, semantics: {}, doc, ...extra });
 
-// What comes back after an effect committed is the same work arriving again, and the system's own
-// settlement of it is no second success to wait for (0.4.0: a real host waited for one and called the
-// clean application's silence a defect).
-const ONCE_AFTER_EFFECT = "the delivery that comes back after the effect committed is not a second effect: how it settles is the system's own word, never a second success to wait for — observe it by its delivery attempt or by the message alone, and rule this obligation on its own expected slots (the effect count)";
+// What comes again of work already done -- the delivery that comes back after its effect committed, a
+// second delivery or publication under a business key that already has its effect, the job a second
+// worker receives -- is that same work, and the system's own settlement of it is no second success to
+// wait for (0.4.0: real hosts waited for one, after a crash and under a duplicated key, and called the
+// clean application's own word a defect). Said in each shape's own words for what comes again and how
+// it is observed. A shape whose second one may well succeed says nothing of the kind: a repeated
+// request is answered at once, and its contract may replay the first answer (idempotent-under-repeat);
+// a policy may let an overlapping occurrence run (overlap-policy); a contract-only shape is never
+// designed (webhook-authenticity).
+const notASecondEffect = (again, by) => `${again} is not a second effect: how it settles is the system's own word, never a second success to wait for — observe it by ${by}, and rule this obligation on its own expected slots (the effect count)`;
+
+const ONCE_AFTER_EFFECT = notASecondEffect("the delivery that comes back after the effect committed", "its delivery attempt or by the message alone");
+const ONCE_PER_KEY = notASecondEffect("a second delivery or publication under the same business key", "the message alone or by its delivery attempt");
+const ONCE_PER_JOB = notASecondEffect("the same job received by a second worker", "the job alone or by its attempt");
 
 export const OBLIGATION_SHAPES = [
   shape("response-conforms", "synchronous", ["invocation"], ["response"], ["positive"], ["value-eq", "value-in", "schema-valid"], "an interface answers what its accepted contract says: status, body, schema and error semantics"),
@@ -36,10 +46,10 @@ export const OBLIGATION_SHAPES = [
   shape("persisted-after-write", "state", ["data-write"], ["effect"], ["positive", "state"], ["count-eq", "value-eq"], "a write the interface accepted is there below it, read back"),
   shape("idempotent-under-repeat", "state", ["data-write"], ["idempotency"], ["duplicate", "state"], ["count-eq"], "a second request with the same idempotency key, on purpose, leaves one persisted effect"),
   shape("publication-routed", "publication", ["publish", "route"], ["message-contract"], ["positive"], ["value-eq", "complete"], "a publication reaches the channels its contract routes it to, with its identity and schema", { semantics: { observation: ["shadow-subscription", "independent-cursor", "peek-cursor", "read-only-query", "tap"] } }),
-  shape("effect-once-per-key", "state", ["consume", "data-write"], ["unique-by"], ["duplicate", "state"], ["count-eq"], "a redelivered or duplicated message leaves exactly one durable effect per business key", { semantics: { delivery: ["at-least-once", "effectively-once-within-window"] } }),
+  shape("effect-once-per-key", "state", ["consume", "data-write"], ["unique-by"], ["duplicate", "state"], ["count-eq"], "a redelivered or duplicated message leaves exactly one durable effect per business key", { semantics: { delivery: ["at-least-once", "effectively-once-within-window"] }, says: ONCE_PER_KEY }),
   shape("crash-before-effect", "state", ["consume", "data-write"], ["effect"], ["fault", "state"], ["count-eq"], "a consumer that stops before its effect loses nothing: the message comes back and the effect happens once", { semantics: { redeliveryTriggers: ["crash-before-settle", "connection-loss", "lock-expiry", "visibility-timeout", "ack-wait"] } }),
   shape("crash-after-effect-before-ack", "state", ["consume", "data-write"], ["unique-by"], ["fault", "state"], ["count-eq"], "a consumer that stops after its effect and before it settled does not do it twice", { semantics: { redeliveryTriggers: ["crash-before-settle", "connection-loss", "lock-expiry", "visibility-timeout", "ack-wait"] }, says: ONCE_AFTER_EFFECT }),
-  shape("competing-workers", "state", ["consume"], ["unique-by"], ["duplicate", "state"], ["count-eq"], "two workers that receive one job leave one effect"),
+  shape("competing-workers", "state", ["consume"], ["unique-by"], ["duplicate", "state"], ["count-eq"], "two workers that receive one job leave one effect", { says: ONCE_PER_JOB }),
   shape("lease-expiry-fencing", "state", ["consume"], ["unique-by"], ["fault", "state"], ["count-eq", "count-at-most"], "a worker whose lease expired cannot leave an effect the contract forbids", { semantics: { redeliveryTriggers: ["lock-expiry", "visibility-timeout", "ack-wait"] } }),
   shape("terminal-after-retries", "processing", ["consume", "retry", "terminal"], ["retry-policy"], ["fault"], ["count-eq", "value-eq"], "a message that cannot succeed is retried as the policy says and ends where it says, linked to the original", { semantics: { deadLetter: ["broker-routed", "broker-subqueue", "advisory", "app-managed"] } }),
   shape("ordered-transitions", "state", ["consume"], ["ordering"], ["positive"], ["order-eq"], "state moves in the order the contract requires, within the scope it states", { semantics: { orderingScope: ["key", "partition", "session", "group", "queue", "stream"] } }),

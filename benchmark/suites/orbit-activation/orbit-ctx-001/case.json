@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "kind": "activation",
+  "id": "ORBIT-CTX-001",
+  "version": "1.0.0",
+  "title": "A change's place is found by reading where it lives",
+  "goal": "asked where a duplicate invoice can come from and what fixing it would affect, the host reads the payments consumer itself and names no file the tree does not hold; recall over the relevant files, references the tree lacks and the bytes read are recorded",
+  "measures": {
+    "kind": "activation",
+    "capability": "grounding",
+    "tier": "selection"
+  },
+  "request": "request.md",
+  "language": "en",
+  "fixture": {
+    "id": "orders"
+  },
+  "withheld": [
+    "docs/backlog/0.5.0-activation-benchmark.md"
+  ],
+  "arms": [
+    "none",
+    "baseline",
+    "release"
+  ],
+  "acceptance": {
+    "owner": "verifier",
+    "truth": "verifier/truth.json"
+  },
+  "limits": {
+    "rounds": 1,
+    "minutes": 45,
+    "usd": 3,
+    "maxTurns": 25,
+    "runner": {
+      "cpus": 2,
+      "memoryMb": 4096,
+      "pids": 2048,
+      "minutes": 25,
+      "outputMb": 16
+    }
+  },
+  "artifacts": [
+    "manifest",
+    "seed",
+    "host-stream",
+    "inspection",
+    "judged",
+    "report"
+  ],
+  "cleanup": {
+    "containers": "run-label",
+    "networks": "run-label",
+    "scratch": "after-run"
+  },
+  "variants": {
+    "real": {}
+  },
+  "controls": [
+    {
+      "id": "reference",
+      "host": "reference",
+      "expect": "PASS",
+      "file": "controls/reference.json"
+    },
+    {
+      "id": "forging",
+      "host": "forging",
+      "expect": "FAIL",
+      "class": "INSUFFICIENT_EVIDENCE"
+    },
+    {
+      "id": "half",
+      "host": "half",
+      "expect": "FAIL",
+      "class": "HOST_DIVERGED",
+      "file": "controls/half.json"
+    },
+    {
+      "id": "invented",
+      "host": "half",
+      "expect": "FAIL",
+      "class": "HOST_DIVERGED",
+      "file": "controls/invented.json"
+    }
+  ]
+}

@@ -83,7 +83,9 @@ the engine, never autonomy. A known finding (`baseline: "FAIL"`) that still fail
 
 The fast tier is `node --test` (no Docker). Conformance -- every case's verifier and judge controls in containers, and
 scripted hosts through both loops -- runs on a pull request that touches the benchmark. A real coding host runs only
-when a person dispatches it, from an environment that holds the credential, inside a budget they give.
+when a person dispatches it, from an environment that holds the credential, inside a budget they give. (Amended in
+0.5.0, backlog B8: no workflow runs a real coding host any more -- a model-carried run happens only in a Claude Code
+cloud session a person starts; ADR 0049, "CI".)
 
 ## Consequences
 
@@ -97,3 +99,10 @@ when a person dispatches it, from an environment that holds the credential, insi
   report names the command that would run it.
 - The benchmark never mutates the developer's checkout, `main`, or anything outside a run's room and its containers;
   a scripted host's commands are Orbit's own CLIs as a host runs them, through every gate Orbit already has.
+
+## Amendment, 2026-11-05 (0.5.0) — HOST_DIVERGED
+
+`FAILURE_CLASSES` gains one class, `HOST_DIVERGED`, an addition to the table above: Orbit's suggestion was right and the
+host chose otherwise. It is the model's behaviour, it repairs nothing in Orbit, and it is never a reason to loosen a
+case. No row of `CAUSES` or `NEXT` comes to it -- a judge that holds a host's choices to a truth names it (the activation
+suite, ADR 0050) -- and every class before it keeps its meaning.

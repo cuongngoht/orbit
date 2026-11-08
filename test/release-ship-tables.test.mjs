@@ -29,8 +29,8 @@ const repairs = (state) => [{ case: "A", state }];
 const REACH = {
   ENDED: [settled({ ended: true })],
   HELD_BY_PERSON: [settled({ held: true })],
-  RECONCILE: [settled({ running: [{}] })],
   PREFLIGHT: [settled(), { ...CTX, preflighted: false }],
+  RECONCILE: [settled({ running: [{}] })],
   WORKSPACE: [settled({ workspace: null })],
   OVER_LIMIT: [settled({ spent: { minutes: 61, usd: 0 } })],
   CYCLE_DONE: [settled({ repairs: repairs("INTEGRATED") })],
@@ -45,6 +45,7 @@ const REACH = {
   ROW_BLOCKED: [settled({ rows: new Map([[ROW.id, failed("BLOCK")]]) })],
   FAIL_FAST: [settled({ rows: new Map([[ROW.id, failed("STOP")]]) })],
   ROW: [settled({ pending: ROW })],
+  PRECHECKED: [settled(), { ...CTX, manifest: { mode: "precheck" }, options: { failFast: false } }],
   ROW_STOPPED: [settled({ rows: new Map([[ROW.id, failed("STOP")]]) }), { ...CTX, options: { failFast: false } }],
   REPAIR_BLOCKED: [settled({ repairs: repairs("BLOCKED") })],
   NO_PROGRESS: [settled({ repairs: repairs("NO_PROGRESS") })],
@@ -65,6 +66,10 @@ test("NEXT: a person's hold outranks everything a ship would do, and a model-car
   assert.equal(nextOf(settled({ rows: new Map([[ROW.id, failed("BLOCK")]]), pending: ROW }), CTX).id, "ROW_BLOCKED", "a blocked row stops the cycle before another row is sent");
   assert.equal(nextOf(settled({ repairs: repairs("INTEGRATED"), pending: ROW }), CTX).id, "CYCLE_DONE", "a cycle whose repairs are all in is over: its rows are stale");
   assert.equal(nextOf(settled({ rows: new Map() }), { ...CTX, rows: [] }).id, "UNKNOWN", "an empty catalog is never SHIPPABLE");
+  assert.equal(nextOf(settled({ running: [{}] }), { ...CTX, preflighted: false }).id, "PREFLIGHT", "a resumed ship reads its catalog before it reads back what was running");
+  const precheck = { ...CTX, manifest: { mode: "precheck" }, options: { failFast: false } };
+  assert.deepEqual([nextOf(settled({ workspace: null }), precheck).id, nextOf(settled({ gates: null }), precheck).id], ["PRECHECKED", "PRECHECKED"], "a precheck needs no workspace and holds no definition of done");
+  assert.equal(nextOf(settled({ pending: ROW }), precheck).id, "ROW", "a precheck ends only once every row ran");
 });
 
 // ---- DIAGNOSE ------------------------------------------------------------------------------------------------------------
@@ -115,13 +120,26 @@ const V = (over = {}, row = ROW) => rowVerdict({ row, answer: { code: 0, json: {
 const AUTO = { ...ROW, run: "autonomous", autonomous: true, expect: ["PASS"] };
 
 test("ROW_VERDICT: every row is reached -- a run is held only on the tree, harness, case and host it must have had", () => {
-  const got = [rowVerdict({ row: ROW, answer: { code: null, json: null }, room: { manifest: { source: {} } }, cycle: CYCLE, ship: SHIP }), rowVerdict({ row: ROW, answer: { code: 2, json: null, err: "FIXTURE_DRIFT" }, room: {}, cycle: CYCLE, ship: SHIP }), V({ ending: { outcome: "BLOCKED" } }), V({ ending: { outcome: "PAUSED" } }), V({ manifest: { source: { commit: "c0", repo: "/", digest: "d1" } } }), V({ manifest: { benchmark: { harness: "h2", digest: "k1" } } }), V({ manifest: { benchmark: { harness: "h1", digest: "k2" } } }), V({ report: { leaks: ["out/host.jsonl"] } }), V({ report: { rounds: [{ interrupted: true, host: null }] } }, AUTO), V({ ending: { outcome: "FAIL" } }), V({ report: { hostBasis: "scripted" } }, AUTO), V()];
+  const got = [rowVerdict({ row: ROW, answer: { code: null, json: null }, room: { manifest: { source: {} } }, cycle: CYCLE, ship: SHIP }), rowVerdict({ row: ROW, answer: { code: 2, json: null, err: "FIXTURE_DRIFT" }, room: {}, cycle: CYCLE, ship: SHIP }), V({ ending: { outcome: "BLOCKED" } }), V({ ending: { outcome: "PAUSED" } }), V({ manifest: { source: { commit: "c0", repo: "/", digest: "d1" } } }), V({ manifest: { benchmark: { harness: "h2", digest: "k1" } } }), V({ manifest: { benchmark: { harness: "h1", digest: "k2" } } }), V({ report: { leaks: ["out/host.jsonl"] } }), V({ manifest: { config: { effort: "high" } } }, AUTO), V({ report: { rounds: [{ interrupted: true, host: null }] } }, AUTO), V({ ending: { outcome: "FAIL" } }), V({ report: { hostBasis: "scripted" } }, AUTO), V()];
   assert.deepEqual(got.map((v) => v.code), ROW_VERDICT.map((r) => r.code));
   assert.equal(V({ manifest: { source: { commit: "c1", repo: "/", digest: "d2" } } }).code, "WRONG_TREE", "one cycle, one content digest");
   assert.equal(V({ report: { rounds: [{ host: { started: true, version: "2.1.300", model: "m" } }] } }, AUTO).code, "WRONG_HOST", "the Claude Code the image pins, and no other");
   assert.equal(V({ report: { rounds: [{ host: { started: true, version: "2.1.314", model: null } }] } }, AUTO).code, "WRONG_HOST", "a model the host never named is no evidence");
   assert.equal(V({ report: { hostBasis: "none" } }).code, "HELD", "a verification needs no host at all");
   assert.equal(V({ ending: { outcome: "FAIL" }, report: { hostBasis: "scripted" } }, AUTO).code, "UNEXPECTED", "a failure is a failure, whoever carried it");
+});
+
+// 0.5.0: a ship asks every model-carried row's host to run at one effort (--effort); a run at another is another host's.
+test("ROW_VERDICT: a model-carried run at another effort than the ship asked is never its evidence -- a leak still says LEAK first", () => {
+  const at = (effort, ship, over = {}, row = AUTO) => rowVerdict({ row, answer: { code: 0, json: {} }, room: roomOf({ ...over, manifest: { config: { effort }, ...over.manifest } }), cycle: CYCLE, ship: { ...SHIP, effort: ship } });
+  assert.deepEqual([at("medium", "medium").code, at("medium", "medium").effort], ["HELD", "medium"], "the effort the ship asked, and the run's identity says it");
+  assert.deepEqual(((v) => [v.code, v.state])(at("high", "medium")), ["WRONG_EFFORT", "UNTRUSTED"]);
+  assert.match(at("high", "medium").says, /ran at effort high, and this ship asked medium/);
+  assert.equal(at(null, "medium").code, "WRONG_EFFORT", "a run at the host's own default is not a run at the effort the ship asked");
+  assert.equal(at("medium", null).code, "WRONG_EFFORT", "nor the other way round");
+  assert.equal(at(null, undefined).code, "HELD", "a ship that asks none holds runs that asked none, as every ship before 0.5.0 did");
+  assert.equal(at("high", "medium", { report: { leaks: ["out/host.jsonl"] } }).code, "LEAK", "no row's effort hides a credential in its room");
+  assert.equal(at("high", "medium", {}, ROW).code, "HELD", "a verification has no host to run at an effort");
 });
 
 // A QA run's report names its one round; a run a restart interrupted says it of that round, with no host.
@@ -187,9 +205,11 @@ const PATCH = { digest: "p1", touched: [{ path: "src/a.mjs", added: 1, removed: 
 const R = (over = {}) => repairVerdict({ row: { ...ROW, id: "A:real" }, answer: { code: 0, json: {} }, room: roomOf({ ...REPAIRED, ...over.room }), cycle: { ...CYCLE, digest: null }, ship: SHIP, verified: over.verified === undefined ? VERIFIED : over.verified, patch: over.patch === undefined ? PATCH : over.patch, policy: { protected: ["benchmark/**", "skills/orbit-release/**", "package.json"] }, case: { scope: { allow: over.allow ?? ["src/*.mjs", "test/*.test.mjs"] } } });
 
 test("REPAIR_CHECK: a verified candidate is held again by the ship before a byte of it is applied", () => {
-  const got = [R({ room: { ending: { outcome: "REPAIR_REJECTED" } } }), R({ verified: null }), R({ patch: { ...PATCH, digest: "p2" } }), R({ verified: { ...VERIFIED, host: { basis: "scripted" } } }), R({ patch: { digest: "p1", touched: [] } }), R({ patch: { digest: "p1", touched: [{ path: "src/deep/b.mjs", added: 1, removed: 0, existed: false }] } }), R({ allow: ["**"], patch: { digest: "p1", touched: [{ path: "benchmark/lib/x.mjs", added: 1, removed: 0, existed: true }] } }), R({ patch: { digest: "p1", touched: [{ path: "test/a.test.mjs", added: 0, removed: 2, existed: true }] } }), R()];
+  const got = [R({ room: { manifest: { config: { effort: "high" } } } }), R({ room: { report: { rounds: [{ interrupted: true, host: null }] } } }), R({ room: { ending: { outcome: "REPAIR_REJECTED" } } }), R({ verified: null }), R({ patch: { ...PATCH, digest: "p2" } }), R({ verified: { ...VERIFIED, host: { basis: "scripted" } } }), R({ patch: { digest: "p1", touched: [] } }), R({ patch: { digest: "p1", touched: [{ path: "src/deep/b.mjs", added: 1, removed: 0, existed: false }] } }), R({ allow: ["**"], patch: { digest: "p1", touched: [{ path: "benchmark/lib/x.mjs", added: 1, removed: 0, existed: true }] } }), R({ patch: { digest: "p1", touched: [{ path: "test/a.test.mjs", added: 0, removed: 2, existed: true }] } }), R()];
   assert.deepEqual(got.map((v) => v.code), REPAIR_CHECK.slice(7).map((r) => r.code));
-  assert.deepEqual(got.map((v) => v.state), ["REJECTED", "REFUSED_BY_SHIP", "REFUSED_BY_SHIP", "UNTRUSTED", "REFUSED_BY_SHIP", "REFUSED_BY_SHIP", "REFUSED_BY_SHIP", "REFUSED_BY_SHIP", "VERIFIED"]);
+  assert.deepEqual(got.map((v) => v.state), ["UNTRUSTED", "INTERRUPTED", "REJECTED", "REFUSED_BY_SHIP", "REFUSED_BY_SHIP", "UNTRUSTED", "REFUSED_BY_SHIP", "REFUSED_BY_SHIP", "REFUSED_BY_SHIP", "REFUSED_BY_SHIP", "VERIFIED"]);
+  assert.equal(R({ room: { ending: { outcome: "REPAIR_REJECTED" }, report: { rounds: [{ interrupted: true, host: null }] } } }).code, "INTERRUPTED", "a repair cut short is not the model's rejected candidate either");
+  assert.equal(R({ room: { report: { hostBasis: "scripted", rounds: [{ interrupted: true, host: null }] } } }).code, "WRONG_HOST", "a repair whose run says another host stays WRONG_HOST, interrupted or not -- never run again into an integration");
   assert.equal(R({ verified: { ...VERIFIED, source: { commit: "c0" } } }).code, "NO_VERIFIED_RECORD", "a candidate verified against another source");
   assert.equal(R({ allow: ["**"], patch: { digest: "p1", touched: [{ path: "skills/orbit-release/ship/policy.json", added: 1, removed: 1, existed: true }] } }).code, "PROTECTED", "the release policy is never a candidate's to change");
   assert.equal(R({ patch: { digest: "p1", touched: [{ path: "test/a.test.mjs", added: 3, removed: 0, existed: true }] } }).code, "VERIFIED", "a test may gain lines");
@@ -198,13 +218,31 @@ test("REPAIR_CHECK: a verified candidate is held again by the ship before a byte
 // ---- PUBLISH ------------------------------------------------------------------------------------------------------------
 
 const EV = { source: { commit: "c1", tree: "t1", protected: "p", digest: "d1" }, policy: { digest: "y" }, rows: [{ id: "A:real", run: "bnr-000000000001", state: "HELD", outcome: "PASS" }], artifact: { sha256: "a".repeat(64) }, delivery: { needed: false } };
-const G = (over = {}) => ({ ship: { id: "shp-000000000001" }, view: { lifecycle: "COMPLETED" }, evidence: EV, ending: null, head: { tree: "t1", dirty: [] }, now: { protected: "p", policy: "y", rows: ["A:real"], autonomous: new Set(), single: new Set(["A:real"]) }, rooms: () => ({ manifest: { source: { commit: "c1" } }, ending: { outcome: "PASS" }, report: {} }), artifact: { ok: true }, ...over });
+const G = (over = {}) => ({ ship: { id: "shp-000000000001" }, view: { lifecycle: "COMPLETED" }, evidence: EV, ending: null, head: { tree: "t1", dirty: [] }, now: { protected: "p", policy: "y", unseen: [], rows: ["A:real"], recorded: [], autonomous: new Set(), single: new Set(["A:real"]) }, rooms: () => ({ manifest: { source: { commit: "c1" } }, ending: { outcome: "PASS" }, report: {} }), artifact: { ok: true }, ...over });
 
 test("PUBLISH: every row is reached, and only PUBLISHABLE lets a release be published", () => {
-  const got = [G({ ship: null }), G({ view: { lifecycle: "EXECUTING" } }), G({ view: { lifecycle: "BLOCKED" } }), G({ view: { lifecycle: "FAILED" } }), G({ head: { tree: "t2", dirty: [] } }), G({ head: { tree: "t1", dirty: ["src/a.mjs"] } }), G({ now: { ...G().now, protected: "q" } }), G({ now: { ...G().now, policy: "z" } }), G({ now: { ...G().now, rows: ["A:real", "B:real"] } }), G({ rooms: () => ({ manifest: { source: { commit: "c0" } }, ending: { outcome: "PASS" } }) }), G({ artifact: { ok: false, says: "gone" } }), G()].map(publishableOf);
+  const got = [G({ ship: null }), G({ view: { lifecycle: "EXECUTING" } }), G({ view: { lifecycle: "BLOCKED" } }), G({ view: { lifecycle: "FAILED" } }), G({ head: { tree: "t2", dirty: [] } }), G({ head: { tree: "t1", dirty: ["src/a.mjs"] } }), G({ now: { ...G().now, protected: "q" } }), G({ now: { ...G().now, policy: "z" } }), G({ now: { ...G().now, unseen: ["B"], rows: [] } }), G({ now: { ...G().now, rows: ["A:real", "B:real"] } }), G({ now: { ...G().now, recorded: ["Q:autonomous"] } }), G({ rooms: () => ({ manifest: { source: { commit: "c0" } }, ending: { outcome: "PASS" } }) }), G({ artifact: { ok: false, says: "gone" } }), G()].map(publishableOf);
   assert.deepEqual(got.map((x) => x.code), PUBLISH.map((r) => r.code));
   assert.deepEqual(got.map((x) => x.publishable), [...PUBLISH.slice(0, -1).map(() => false), true]);
   assert.equal(publishableOf(G({ view: { lifecycle: "PAUSED" } })).code, "PENDING", "a paused ship's verification is still pending");
+});
+
+test("PUBLISH: a model-carried row's room is read again for its effort -- one that held, at the effort the ship asked", () => {
+  const A = { id: "Q:autonomous", run: "bnr-000000000002", state: "HELD", outcome: "PASS" };
+  const g = (roomEffort, shipEffort, rowEffort) => G({ evidence: { ...EV, host: { effort: shipEffort }, rows: [...EV.rows, { ...A, effort: rowEffort }] }, now: { ...G().now, rows: ["A:real", A.id], autonomous: new Set([A.id]), single: new Set(["A:real", A.id]) }, rooms: (run) => ({ manifest: { source: { commit: "c1" }, config: { effort: run === A.run ? roomEffort : null } }, ending: { outcome: "PASS" }, report: { hostBasis: "coding-host" } }) });
+  assert.equal(publishableOf(g("medium", "medium", "medium")).code, "PUBLISHABLE");
+  assert.equal(publishableOf(g("high", "medium", "medium")).code, "UNTRUSTED", "its room says another effort than the evidence says of it");
+  assert.equal(publishableOf(g("high", "medium", "high")).code, "UNTRUSTED", "a row that held at another effort than the ship asked, whatever the evidence says of the row");
+  assert.equal(publishableOf(g(null, undefined, undefined)).code, "PUBLISHABLE", "an evidence from before 0.5.0 names no effort, and its rooms none");
+});
+
+test("PUBLISH: a recorded row is held to its room like any other, held or not -- only a required row must be HELD (ADR 0051)", () => {
+  const Q = { id: "Q:autonomous", run: "bnr-000000000002", state: "FAILED", outcome: "FAIL", recorded: true };
+  const recording = (rooms) => G({ evidence: { ...EV, rows: [...EV.rows, Q], recorded: [{ id: Q.id, held: false, state: "FAILED", run: Q.run }] }, now: { ...G().now, recorded: [Q.id], autonomous: new Set([Q.id]), single: new Set(["A:real", Q.id]) }, rooms });
+  const room = (outcome) => (run) => ({ dir: `/store/benchmark/${run}`, manifest: { source: { commit: "c1" } }, ending: { outcome: run === Q.run ? outcome : "PASS" }, report: { hostBasis: "scripted" } });
+  const ok = publishableOf(recording(room("FAIL")));
+  assert.deepEqual([ok.code, ok.recorded], ["PUBLISHABLE", [{ id: Q.id, held: false, state: "FAILED", run: Q.run, room: `/store/benchmark/${Q.run}` }]], "a recorded row that did not hold owes no host, and --evidence says it with its room");
+  assert.equal(publishableOf(recording(room("PASS"))).code, "UNTRUSTED", "its room no longer says what the evidence says of it");
 });
 
 // ---- PREFLIGHT -----------------------------------------------------------------------------------------------------------

@@ -21,16 +21,16 @@ import { Blocked, Refused } from "../errors.mjs";
 import { scrub } from "../scrub.mjs";
 import { briefOf } from "./checks.mjs";
 import { judge, judgeForm, protocolRules } from "./decision.mjs";
-import { ACTIONS, ACTION_KINDS, chkOf, lastRecorded } from "./dispatch.mjs";
+import { ACTIONS, ACTION_KINDS, FIELD_SAYS, chkOf, lastRecorded } from "./dispatch.mjs";
 import { excerptOf } from "./failure.mjs";
 import { hintOf } from "./hints.mjs";
-import { checkRuns, kindOf, openActions, receiptsOf, sandboxReceipt, sandboxSessions, startRuns } from "./journal.mjs";
+import { checkRuns, kindOf, openActions, openOf, receiptsOf, sandboxReceipt, sandboxSessions, startRuns } from "./journal.mjs";
 import { owedIds, planView, requiredIds } from "./obligations.mjs";
 import { gateOf, verdictOf } from "./policy.mjs";
 import { requirementOf } from "./readiness.mjs";
 import { sandboxOf, sbxOf } from "./sandbox.mjs";
 import { allowedNow, beforeAct, movesOf, to, unblocks } from "./stages.mjs";
-import { STOP_EVIDENCE, stopOf } from "./stop.mjs";
+import { STOP_EVIDENCE, endingOf, stopOf, supportedStops } from "./stop.mjs";
 import { completable, liveEvidenceOf, unmet } from "./verification.mjs";
 import { CHECK_TIMEOUT_MS, DECISION_FIELDS, DECISION_FORBIDDEN, DECISION_SCHEMA, DOMAIN, LIFE, MAX_PATHS, RESULT, SANDBOX_STATE, STAGE } from "./vocab.mjs";
 
@@ -241,13 +241,19 @@ function recorded(ports, lw, d) {
   return gate && !d.approval ? asked(ports, lw, d, gate) : started(ports, lw, d, gate);
 }
 
+// A stop written through the task's one door, after what it closes (stop.mjs endingOf): a stop that ends the task never
+// leaves a change it opened, or the attempt that change was made in, open on a task that runs nothing more.
+function wroteStop(ports, lw, writes) {
+  for (const [op, given] of endingOf(lw, writes)) ports.task.apply(lw.id, op, given);
+}
+
 // A stop the evidence says to WRITE -- a requirement that moved, a loop going round, a spent budget --
 // is written instead of anything the decision asked for; a cancel is cleaned up after.
 function halted(ports, lw) {
   const stop = stopOf(lw);
   if (stop?.id === "cancelled") return { cancelled: true };
   if (!stop?.writes) return null;
-  ports.task.apply(lw.id, ...stop.writes);
+  wroteStop(ports, lw, stop.writes);
   return { done: { task: lw.id, state: "stopped", stop: stop.id, say: stop.say } };
 }
 
@@ -289,7 +295,7 @@ function concluded(ports, id, taken, r) {
   if (lw.view.terminal || lw.view.lifecycle === LIFE.PAUSED) return;
   if (taken.kind === "review" && r.outcome === RESULT.SUCCEEDED && completable(lw)) return void ports.task.apply(id, "complete", { summary: summaryOf(lw) });
   const stop = stopOf(lw);
-  if (stop?.writes) ports.task.apply(id, ...stop.writes);
+  if (stop?.writes) wroteStop(ports, lw, stop.writes);
 }
 
 function moved(ports, id, taken, r) {
@@ -343,11 +349,14 @@ async function engineStep(ports, id, kind) {
 
 // ---- finish ------------------------------------------------------------------------------------
 
+// Which stops the journal supports now, in a refusal's words -- so a host that named the wrong one is told the right one.
+const supportedSay = (lw) => (supportedStops(lw).length ? `supports ${supportedStops(lw).map((s) => `${s} now (${STOP_EVIDENCE[s].needs})`).join(", ")}` : "supports none of them yet: keep going, or reconcile what never settled");
+
 function named(ports, lw, stop, because) {
   const row = STOP_EVIDENCE[stop];
-  if (!row) throw new Refused(`STOP: ${stop} is not a stop a host may name — one of ${Object.keys(STOP_EVIDENCE).join(", ")}`);
-  if (!row.holds(lw)) throw new Refused(`STOP: ${stop} needs ${row.needs}, and the journal does not show it`);
-  ports.task.apply(lw.id, "fail", { stop, because });
+  if (!row) throw new Refused(`STOP: ${stop} is not a stop a host may name — the journal ${supportedSay(lw)}; the stops are ${Object.keys(STOP_EVIDENCE).join(", ")}`);
+  if (!row.holds(lw)) throw new Refused(`STOP: ${stop} needs ${row.needs}, and the journal does not show it — it ${supportedSay(lw)}`);
+  wroteStop(ports, lw, ["fail", { stop, because }]);
   return { task: lw.id, state: "failed", stop };
 }
 
@@ -357,11 +366,13 @@ function completedNow(ports, lw) {
 }
 
 function stoppedNow(ports, lw, stop) {
-  ports.task.apply(lw.id, ...stop.writes);
+  wroteStop(ports, lw, stop.writes);
   return { task: lw.id, state: "stopped", stop: stop.id, say: stop.say };
 }
 
-const unmetSay = (lw) => `NOT_COMPLETE: ${unmet(lw).map((u) => u.say).join("; ")} — keep going, or end it with a stop the journal supports: finish --stop=<${Object.keys(STOP_EVIDENCE).join("|")}>`;
+const stopsSay = (lw) => (supportedStops(lw).length ? `end it with a stop the journal supports: finish --stop=<${supportedStops(lw).join("|")}>` : `no stop is supported yet (${Object.keys(STOP_EVIDENCE).join(", ")})`);
+
+const unmetSay = (lw) => `NOT_COMPLETE: ${unmet(lw).map((u) => u.say).join("; ")} — keep going, or ${stopsSay(lw)}`;
 
 function concludedNow(ports, lw) {
   if (completable(lw)) return completedNow(ports, lw);
@@ -408,9 +419,15 @@ function stillRunning(ports, lw, open) {
   if (running.length) throw new Refused(`STILL_RUNNING: ${running.map((a) => a.id).join(", ")} is still being run by its process — it settles itself`);
 }
 
+// A change still being made is no action that never settled: record-changes reads it back -- or, when the task cannot go
+// on, a stop the journal supports ends it with the change abandoned. Said, so a host is never left with nothing to do.
+const endedWith = (lw) => (supportedStops(lw).length ? `, or finish --stop=<${supportedStops(lw).join("|")}> ends the task with it abandoned` : "");
+
+const changeSay = (lw) => ((a) => (a ? ` — ${a.id} implement is a change being made: record-changes reads it back${endedWith(lw)}` : ""))(openOf(lw, "implement"));
+
 function reconcilable(ports, id) {
   const lw = loopWorld(ports, id);
-  if (!unsettledIn(lw).length) throw new Refused("NOTHING_OPEN: no action of this task is waiting to be settled");
+  if (!unsettledIn(lw).length) throw new Refused(`NOTHING_OPEN: no action of this task is waiting to be settled${changeSay(lw)}`);
   stillRunning(ports, lw, unsettledIn(lw));
   return { lw, open: unsettledIn(lw) };
 }
@@ -586,5 +603,7 @@ export function resume(ports, ref) {
 
 // ---- the protocol, as the tables say it ---------------------------------------------------------
 
-export const protocolOf = () => ({ schemaVersion: DECISION_SCHEMA, fields: DECISION_FIELDS, forbidden: DECISION_FORBIDDEN, rules: protocolRules(), actions: ACTION_KINDS.map((kind) => ({ kind, fields: ACTIONS[kind].fields, required: ACTIONS[kind].required })), stops: Object.keys(STOP_EVIDENCE) });
+const fieldsOf = (kind) => Object.fromEntries(ACTIONS[kind].fields.map((k) => [k, FIELD_SAYS[k]]));
+
+export const protocolOf = () => ({ schemaVersion: DECISION_SCHEMA, fields: DECISION_FIELDS, forbidden: DECISION_FORBIDDEN, rules: protocolRules(), actions: ACTION_KINDS.map((kind) => ({ kind, fields: ACTIONS[kind].fields, required: ACTIONS[kind].required, says: fieldsOf(kind) })), stops: Object.keys(STOP_EVIDENCE) });
 

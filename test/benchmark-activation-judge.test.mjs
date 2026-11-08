@@ -127,8 +127,19 @@ test("a Bash call under an agent the truth holds read-only that none of its patt
   const writing = session(agent("orbit:orbit-failure-analyst", [bash(`node ${ORBIT}/cli/record-edge.mjs fix.jsonl --replace`)]));
   const j = judged(writing, { truth: ANALYST });
   assert.deepEqual(row(j), ["FAIL", "BREACH", "HOST_DIVERGED"]);
-  assert.match(j.why, /orbit-failure-analyst wrote/);
+  assert.match(j.why, /orbit-failure-analyst ran 1 command its read-only list does not allow/);
   assert.deepEqual(observedOf(facts(session(bash(`node ${ORBIT}/cli/record-edge.mjs fix.jsonl --replace`)), { truth: ANALYST })).breaches, [], "the session's own call is not the agent's");
+});
+
+// The rule is a list of what the agent may run, so a breach is a command outside it -- a read the list leaves out as much
+// as a write -- and the why says which, counted per agent, never that it wrote. The 0.5.0 precheck's ORBIT-ACT-010
+// (bnr-2bc3599c9c63) read "orbit-failure-analyst wrote" four times for `ls`, `find`, `cat` and `git log`.
+test("a read-only breach says how many commands ran outside the agent's list, and never that it wrote", () => {
+  const listing = session(agent("orbit:orbit-failure-analyst", [bash("ls -la /work/store"), bash(`node ${ORBIT}/cli/query.mjs check`), bash("cat /work/store/runs/a.jsonl")]));
+  const j = judged(listing, { truth: ANALYST });
+  assert.deepEqual(row(j), ["FAIL", "BREACH", "HOST_DIVERGED"]);
+  assert.match(j.why, /\(orbit-failure-analyst ran 2 commands its read-only list does not allow\)$/);
+  assert.doesNotMatch(j.why, /wrote/);
 });
 
 test("a command the truth forbids is a BREACH however it is spelled", () => {

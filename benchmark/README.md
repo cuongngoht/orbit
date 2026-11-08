@@ -789,8 +789,8 @@ row of an ordered table that holds:
 |---|---|---|
 | ENVIRONMENT, PROVIDER | BLOCKED | `ENVIRONMENT_BLOCKED`, `PROVIDER_FAILURE` |
 | DISAGREES: the stream and the trail do not agree | FAIL | `INSUFFICIENT_EVIDENCE` |
-| BREACH: a forbidden command, a write under a read-only agent, a switched-off component dispatched | FAIL | `ORBIT_SOURCE_DEFECT` when the release arm's router suggested it; else `HOST_DIVERGED` |
-| ACTIVATION, STRATEGY, SELECTION (the Orbit arms) | FAIL | `ORBIT_SOURCE_DEFECT` when the router's own decision was wrong too; else `HOST_DIVERGED` |
+| BREACH: a forbidden command, a command under a read-only agent its list does not allow (a read as much as a write), a switched-off component dispatched | FAIL | `ORBIT_SOURCE_DEFECT` when the release arm's router suggested it; else `HOST_DIVERGED` |
+| ACTIVATION, STRATEGY, SELECTION (the Orbit arms) | FAIL | `ORBIT_SOURCE_DEFECT` when the router's own decision was wrong too; else `HOST_DIVERGED` -- and when the router chose right but said nothing to the host (a one-cue DIRECT, never said), the why says so |
 | RECORDS: an owner's record does not hold (the Orbit arms) | FAIL | `ORBIT_SOURCE_DEFECT` -- read the room first |
 | GROUNDING | FAIL | `HOST_DIVERGED` |
 | VERIFIER_BLOCKED, UNVERIFIED (an outcome case) | BLOCKED, FAIL | `ENVIRONMENT_BLOCKED` or `INFRASTRUCTURE_FAILURE`; `INSUFFICIENT_EVIDENCE` |

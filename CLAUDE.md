@@ -124,6 +124,12 @@ node skills/orbit-release/ship.mjs --status --json          # where it stands; a
 - **Fix an Orbit defect a row exposes with Opus at high effort** (an Agent, `model: opus`, `effort: high` -- the owner's
   0.5.0 decision; it was max before): a regression test that fails before the fix, the full suite, the strict Five Lines
   lint. Never loosen an acceptance rule, a case's ground truth, the verifier or `ship/policy.json` to get a PASS.
+  **Every fix is the most general one** (the owner's rule): fix the CLASS of defect a row exposed, never the one case
+  -- name the principle it broke (e.g. "what the engine requires is shown before the host designs", "a refusal names
+  the way out", "what generation made, validation accepts"), derive the fix from the ONE place that already decides it
+  (no second table, no case id, layer, product or shape special-cased), and add a test that holds the principle across
+  every existing design, control and fixture, beside the run's own regression fixture. A fix that only makes the
+  failing row pass is not done.
 - **Run `node --test` alone.** A full suite run twice into one log at the same time showed a failure that was the two
   runs' interference (the other said 0 failed), and a resumed session found two of its own earlier suite runs still
   going. Look first (`pgrep -af 'node --test'`), let a run end or stop it, then run one suite into a log of its own.

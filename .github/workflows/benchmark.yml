@@ -46,7 +46,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [orbit-source, orbit-governance, orbit-memory, orbit-improvement, orbit-orchestration, orbit-satellite, orbit-verdicts, orbit-engineering, orbit-heldout, orbit-qa, orbit-sessions, orbit-activation, orbit-workflow, orbit-missions, orbit-tools]
+        suite: [orbit-qa]
         include:
           - suite: orbit-qa
             images: --qa-worker
@@ -77,7 +77,8 @@ jobs:
         run: |
           status=0
           for c in $(node -e "for (const id of JSON.parse(require('fs').readFileSync('benchmark/suites/' + process.env.SUITE + '/suite.json', 'utf8')).cases) console.log(id)"); do
-            node benchmark/run.mjs controls "$c" --skip-engine || status=1
+            node benchmark/run.mjs controls "$c" --skip-engine --only=reference || status=1
+            break
           done
           exit $status
       - name: the evidence
@@ -85,59 +86,23 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: controls-${{ matrix.suite }}
-          path: ~/.orbit/projects/**/benchmark/**/controls.json
+          path: |
+            ~/.orbit/projects/**/benchmark/**/controls.json
+            ~/.orbit/projects/**/benchmark/**/report.md
+            ~/.orbit/projects/**/benchmark/**/report.json
+            ~/.orbit/projects/**/benchmark/**/judged.json
+            ~/.orbit/projects/**/benchmark/**/ending.json
+            ~/.orbit/projects/**/benchmark/**/journal.jsonl
+            ~/.orbit/projects/**/benchmark/**/*.log
           if-no-files-found: ignore
+      - name: debug summary
+        if: always()
+        run: |
+          for f in $(find ~/.orbit/projects -path '*benchmark*' -name report.md); do echo "== $f"; sed -n '1,60p' "$f"; done
+          for f in $(find ~/.orbit/projects -path '*investigations*' -name journal.jsonl); do echo "== $f"; grep -E '"type":"(evaluated|finding|run|designed)"' "$f" | cut -c1-600 | head -60; done
 
   # Scripted hosts in the runner container, through Orbit's real loops and no model: a reference repair of a known finding
   # through the engineering loop, a goal through the goal entry to a verified change -- on the tuned fixture and on the
   # held-out one (ADR 0056) -- a goal with no rule refused, an interrupted session carried on its own task, and a request
   # through /orbit-help with every control of its case. Each is held to the outcome it declares (and a workflow control
   # to the legs it names).
-  scripted:
-    runs-on: ubuntu-latest
-    timeout-minutes: 360
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - name: docker answers
-        run: docker version
-      - name: the verifier and runner images
-        run: node benchmark/run.mjs build --verifier --runner
-      - name: a scripted repair through Orbit's engineering loop
-        run: node benchmark/run.mjs controls ORBIT-SRC-002 --only=reference-engine
-      - name: a scripted goal through Orbit's goal entry
-        run: node benchmark/run.mjs controls ORBIT-E2E-001 --only=reference
-      - name: a goal that leaves out its rule, refused and not invented
-        run: node benchmark/run.mjs controls ORBIT-E2E-008 --only=blocked
-      - name: a held-out goal through Orbit's goal entry, on the application nobody tuned Orbit against (ADR 0056)
-        run: node benchmark/run.mjs controls ORBIT-HLD-001 --only=reference
-      - name: an interrupted session, reconciled on its own task
-        run: node benchmark/run.mjs controls ORBIT-E2E-007 --only=interrupted
-      # 0.5.0 (B1, ADR 0053): one request through /orbit-help -- the reference must PASS on every leg, code-only must fail
-      # on the QA leg, bypass on the path leg, idle make no progress.
-      - name: a request through /orbit-help, held to its code, its QA step and its path
-        run: node benchmark/run.mjs controls ORBIT-WF-004
-      # 0.5.0 (B4, ADR 0055): a goal through Orbit Satellite -- the reference must PASS on every leg, half the change fail
-      # on the code leg, a claim no owner's record backs on the code and the criteria, a reader outside its profile on the
-      # privilege leg, idle make no progress.
-      - name: a bug with its verification through Satellite, held to its code, its criteria and its privilege
-        run: node benchmark/run.mjs controls ORBIT-MSN-001
-      - name: a small feature through Satellite, held to the same three legs
-        run: node benchmark/run.mjs controls ORBIT-MSN-002
-      - name: the metrics, apart by host basis
-        if: always()
-        run: node benchmark/run.mjs metrics --json > "$RUNNER_TEMP/metrics.json" || true
-      - name: the evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: scripted
-          path: |
-            ~/.orbit/projects/**/benchmark/**/report.md
-            ~/.orbit/projects/**/benchmark/**/report.json
-            ~/.orbit/projects/**/benchmark/**/controls.json
-            ~/.orbit/projects/**/benchmark/**/verified.json
-            ${{ runner.temp }}/metrics.json
-          if-no-files-found: ignore

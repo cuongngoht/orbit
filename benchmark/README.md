@@ -771,7 +771,10 @@ rests on the records Orbit's owners keep and, for an outcome case, on the hidden
 ### The truth, and the judge
 
 `verifier/truth.json` never reaches a plugin or a target: `HARNESS` strips `benchmark/**` from both, and a case's
-`withheld` leaves out of every plugin a document of the plugin's own that restates the truths. It says whether to
+`withheld` leaves out of every plugin a document of the plugin's own that restates the truths, and the kind itself
+(`ACTIVATION_WITHHELD`, `lib/core/suites.mjs`) leaves out the router's corpus and tests, which ask the suite's prompts word
+for word beside the answer each expects -- no file a plugin carries holds any case's prompt
+(`test/benchmark-activation-cases.test.mjs`). It says whether to
 `activate` (`true`, `false`, or `null` for either), the `strategy` words it accepts (`NONE`, `DIRECT`, `COORDINATED`
 with `how` -- `automation` or `goal` --, `SATELLITE`, `RESUME`), `selection` profiles of skills and agents (`require`,
 `allow`, `max`), what is `forbid`den (skills, agents, command patterns), `readOnly` agents with the command patterns they

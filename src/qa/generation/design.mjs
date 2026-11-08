@@ -24,7 +24,7 @@ import { temporalFindings } from "../backend/temporal.mjs";
 import { proposalFindings } from "../obligations/validate.mjs";
 import { compileDesign, rulingSaid, slotsRuling } from "./compile.mjs";
 import { controlFindings } from "./controls.mjs";
-import { pageFindings, pageStepOf } from "./page.mjs";
+import { READER_OUTPUTS, pageFindings, pageStepOf } from "./page.mjs";
 
 // A step that rules on nothing is told which slot of its obligation's own criterion could rule it (compile.mjs
 // slotsRuling), when one does -- the trigger the host moved off it is ruled by the same.
@@ -45,7 +45,7 @@ const RULING = ["call", "sql", "report"];
 const STAGES = [
   { id: "contract", outcome: "GENERATION_FAILED", findings: (p) => proposalFindings("design", p.proposal) },
   { id: "controls", outcome: "GENERATION_FAILED", findings: (p, cx) => said(controlFindings(p.proposal, cx.shape, cx)) },
-  { id: "rules", outcome: "GENERATION_FAILED", findings: (p, cx) => said([...observationFindings(p.proposal, cx), ...correlationFindings(p.proposal), ...temporalFindings(p.proposal, cx), ...pageFindings(p.proposal)]) },
+  { id: "rules", outcome: "GENERATION_FAILED", findings: (p, cx) => said([...observationFindings(p.proposal, cx), ...correlationFindings(p.proposal), ...temporalFindings(p.proposal, cx), ...pageFindings(p.proposal, { dsl: cx.dsl, readerSlots: () => rulingSaid(1, { ...cx, outputsOf: () => READER_OUTPUTS }) })]) },
   { id: "mapping", outcome: (p) => (p.compiled.mapping.some((m) => /ACCEPTED criterion/.test(m.why ?? "")) ? "REQUIRES_REQUIREMENT" : "GENERATION_FAILED"), findings: (p) => p.compiled.mapping.filter((m) => m.verdict === "refused").map((m) => `step ${m.step} (${m.criterionRef ?? m.structural}): ${m.why}`) },
   { id: "coverage", outcome: "GENERATION_FAILED", findings: (p, cx) => (cx.expected ?? []).filter((slot) => !(p.proposal.assertions ?? []).some((a) => a.criterionRef === slot)).map((slot) => `${slot} is a slot of this obligation's own criterion, and nothing in the design rules on it — a design that rules only on other criteria tests something else`) },
   { id: "contradiction", outcome: "GENERATION_FAILED", findings: (p, cx) => said(contradictionFindings(p.proposal, cx)) },

@@ -137,9 +137,12 @@ function provesOf(trees) {
 function triggerEvidence(design) {
   const steps = design.skeleton?.steps ?? [];
   const ruled = new Set([...(design.assertions ?? []).map((a) => a.step), ...witnessSteps(design)]);
-  const trigger = Number.isInteger(design.trigger?.step) && !ruled.has(design.trigger.step) ? [{ structural: "trigger-accepted", step: design.trigger.step, capability: steps[design.trigger.step - 1]?.capability }] : [];
+  const trigger = Number.isInteger(design.trigger?.step) && !ruled.has(design.trigger.step) ? [{ structural: "trigger-accepted", step: design.trigger.step, capability: steps[design.trigger.step - 1]?.capability, verb: steps[design.trigger.step - 1]?.do, witnesses: witnessesAfter(steps, design.trigger.step) }] : [];
   return [...trigger, ...steps.map((s, n) => ({ s, step: n + 1 })).filter(({ s, step }) => step !== design.trigger?.step && !ruled.has(step) && operationFor(s?.capability)?.accepted).map(({ s, step }) => ({ structural: "step-accepted", step, capability: s.capability }))];
 }
+
+// The api witnesses after a page step: what the request that step sent was answered, the one place its acceptance shows.
+const witnessesAfter = (steps, step) => steps.map((s, n) => ({ s, at: n + 1 })).filter(({ s, at }) => at > step && s?.do === "api").map(({ at }) => at);
 
 // A FAULT control's witness rules on what the control itself says happened: a delivery its observation shows ended at
 // the declared point (the open workload protocol's terminal reason `fault:<point>`) -- compiled from the control,
@@ -156,7 +159,7 @@ function witnessTree(a, context) {
 
 function structuralTree(a, context) {
   const accepted = operationFor(a.capability)?.accepted;
-  if (!accepted) return { refused: `the trigger step (${a.step}) asks ${a.capability ?? "nothing"}, whose answer shows nothing of being accepted: ${rulingSaid(a.step, context)} — an accepted criterion must rule on it` };
+  if (!accepted) return { refused: `the trigger step (${a.step}) ${a.capability ? `asks ${a.capability}` : `is a ${a.verb ?? "step of nothing"}`}, whose answer shows nothing of being accepted: ${triggerSaid(a, context)} — an accepted criterion must rule on it` };
   const path = pathOf(context.outputsOf(a.step) ?? {}, accepted.means, accepted.template);
   return path.refused ? path : checked({ template: accepted.template, path: path.path, ...(accepted.value !== undefined ? { value: accepted.value } : {}), ...(accepted.values !== undefined ? { values: accepted.values } : {}), means: accepted.means });
 }
@@ -183,4 +186,12 @@ export function rulingSaid(step, context) {
   const slots = slotsRuling(step, context);
   if (slots.length) return `rule it by ${slots.map((s) => `${s.ref} (${s.template}: ${s.e.property} ${s.e.op} ${JSON.stringify(s.e.value ?? null).slice(0, 40)})`).join(" or ")}`;
   return `no slot of ${ownCriteria(context).join(", ") || "its criterion"} states what its answer carries (${meaningEntries(context.outputsOf?.(step) ?? {}).map(([, m]) => m).slice(0, 3).join(", ") || "nothing"}), so its criterion's source must state one`;
+}
+
+// A trigger that drives a page (a click) answers nothing a slot reads: the api witness of the request it sent does, and
+// that witness ruled by a slot of the obligation's own criterion is the trigger the refusal names. Anything else is told
+// which slot rules the step itself, or that none does.
+function triggerSaid(a, context) {
+  const witness = a.capability || slotsRuling(a.step, context).length ? undefined : (a.witnesses ?? []).find((step) => slotsRuling(step, context).length);
+  return witness ? `make step ${witness}, the api witness of its request, the trigger: ${rulingSaid(witness, context)}` : rulingSaid(a.step, context);
 }

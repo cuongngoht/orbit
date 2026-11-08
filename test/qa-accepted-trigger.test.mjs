@@ -50,6 +50,7 @@ const node = (key, of, role, attributes = {}) => ({ key, name: key.split(":")[1]
 const BARE = { nodes: [
   node("component:invoice-a", null, "component", { hooksPort: "9090" }),
   node("endpoint:invoice-create", "component:invoice-a", "interface", { path: "/api", port: "8080" }),
+  node("page:invoices", "component:invoice-a", "interface", { port: "8080" }),
   node("table:invoices", "component:db", "data-resource", { table: "invoices", key: "name" }),
   node("principal-class:tenant-a-writer", "component:invoice-a", "principal"),
 ], relations: [{ key: "endpoint:invoice-create writes table:invoices", from: "endpoint:invoice-create", to: "table:invoices", relation: "writes", role: "data-write" }] };
@@ -129,5 +130,33 @@ test("a criterion that states nothing the trigger's answer carries is said plain
   const bare = { ...cx, expectations: new Map([...cx.expectations].filter(([ref]) => ref !== "UI-AC-2/E3")) };
   assert.deepEqual(slotsRuling(1, bare), []);
   assert.match(rulingSaid(1, bare), /^no slot of UI-AC-2 states what its answer carries \(response\.status, response\.headers, response\.body\), so its criterion's source must state one$/);
+  rmSync(store, { recursive: true, force: true });
+});
+
+// The ship's first retry of the same row (bnr-0bb060ca0431) drove the page instead, and spent its budget the same way:
+//
+//   persisted-page-trigger-click  the click as the trigger: refused at mapping, "asks nothing"
+//   persisted-page-no-report      the trigger on the api witness: made by every generation stage, then INVALID_TEST at
+//                                 validate -- "does not end with a report step" -- on a case the host cannot change
+//   persisted-page-reported       its next design, a report ruled by E2 last (refused only by the spent budget)
+test("a click as the trigger is told to make the api witness of its request the trigger, naming the slot that rules it", async () => {
+  const { ctx, store } = await packed();
+  const { generation } = investigation(ctx);
+  assert.equal(judged(generation, fixture("persisted-page-trigger-click")).stage, "rules", "as sent it ends with no report, which is said first now");
+  const out = judged(generation, { ...fixture("persisted-page-reported"), trigger: fixture("persisted-page-trigger-click").trigger });
+  assert.deepEqual([out.stage, out.findings], ["mapping", [`step 4 (trigger-accepted): the trigger step (4) is a click, whose answer shows nothing of being accepted: make step 5, the api witness of its request, the trigger: ${NAMED} — an accepted criterion must rule on it`]]);
+  rmSync(store, { recursive: true, force: true });
+});
+
+test("a page design that does not end with a report is refused by name before a case exists, naming the slot a report is ruled by; the design that ends with one is made and validates", async () => {
+  const { ctx, store } = await packed();
+  const { w, generation } = investigation(ctx);
+  const out = sent(w, fixture("persisted-page-no-report"));
+  assert.deepEqual([out.outcome, out.stage], ["GENERATION_FAILED", "rules"], JSON.stringify(out));
+  assert.deepEqual(out.findings, ['ENDS_REPORT: it drives a page and ends with step 6 (call): a page test ends with a report — add { "do": "report", "reads": { "selector": … } } last, rule it by UI-AC-2/E2 (value-includes: ui.text contains "Invoice created")']);
+  assert.ok(resultView(out).findings[0].endsWith('rule it by UI-AC-2/E2 (value-includes: ui.text contains "Invoice created")'), "what a host reads of it is whole");
+  const made = judged(generation, fixture("persisted-page-reported"));
+  assert.equal(made.ok, true, `${made.stage} ${JSON.stringify(made.findings)}`);
+  assert.deepEqual(contextOf(generation, fixture("persisted-page-reported")).validate(made.case), [], "what generation makes, the validator takes");
   rmSync(store, { recursive: true, force: true });
 });

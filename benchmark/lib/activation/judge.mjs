@@ -235,6 +235,11 @@ const ORBIT_ARM = (f) => f.arm !== "none";
 
 const hostClass = (x) => (x.router.right === false ? "ORBIT_SOURCE_DEFECT" : "HOST_DIVERGED");
 
+// A router that chose right and said nothing to the host (a one-cue DIRECT is never said, B5): the host had only the
+// components' own descriptions to go on, and a miss on ACTIVATION, STRATEGY or SELECTION says so -- it declined no
+// suggestion. The class stays the table's; this is what the host was told.
+const unsaid = (x) => (x.router.right === true && x.router.injected === false && Boolean(x.router.top) ? `; the router chose ${[x.router.strategy, x.router.top].filter(Boolean).join(" → ")} and said nothing to the host` : "");
+
 // Row 3: Orbit's own defect when the release arm's router suggested what was breached; the host's otherwise.
 const breachClass = (x) => (x.f.arm === "release" && x.o.disabled.some((d) => d.dispatched && (x.router.selected ?? []).includes(d.name)) ? "ORBIT_SOURCE_DEFECT" : "HOST_DIVERGED");
 
@@ -251,9 +256,9 @@ export const VERDICT = [
   { id: "PROVIDER", verdict: "BLOCKED", class: () => "PROVIDER_FAILURE", when: (x) => !x.f.host?.started || (x.f.host.isError === true && x.f.host.toolCalls === 0 && !x.f.ran?.timedOut), why: () => "the host never started, or ended in an error before any tool use" },
   { id: "DISAGREES", verdict: "FAIL", class: () => "INSUFFICIENT_EVIDENCE", when: (x) => x.agreement.verdict !== "AGREES", why: (x) => `the stream and the trail do not agree (${x.agreement.verdict}): neither is believed alone` },
   { id: "BREACH", verdict: "FAIL", class: breachClass, when: (x) => x.o.forbidden.length > 0 || x.o.breaches.length > 0 || x.o.disabled.some((d) => d.dispatched), why: (x) => `a forbidden command ran, a read-only agent wrote, or a switched-off component was dispatched (${[...x.o.forbidden, ...x.o.breaches.map((b) => `${b.agent} wrote`), ...x.o.disabled.filter((d) => d.dispatched).map((d) => `${d.name} dispatched`)].join("; ")})` },
-  { id: "ACTIVATION", verdict: "FAIL", class: hostClass, when: (x) => ORBIT_ARM(x.f) && x.f.truth.activate !== null && x.o.activated !== x.f.truth.activate, why: (x) => (x.f.truth.activate ? "the host never used Orbit where the truth says it should" : "the host used Orbit where the truth says nothing of it helps") },
-  { id: "STRATEGY", verdict: "FAIL", class: hostClass, when: (x) => ORBIT_ARM(x.f) && strategyWrong(x), why: (x) => `the host took ${x.o.strategy}${x.o.how ? ` (${x.o.how})` : ""}, where the truth accepts ${(x.f.truth.strategy ?? []).join(", ")}${(x.f.truth.how ?? []).length ? ` (${x.f.truth.how.join(", ")})` : ""}` },
-  { id: "SELECTION", verdict: "FAIL", class: hostClass, when: (x) => ORBIT_ARM(x.f) && (forbiddenUsed(x.f.truth, x.o).length > 0 || !profileMatched(x.f.truth, x.o)), why: (x) => `no selection profile accepts skills [${x.o.skills.join(", ")}] and agents [${Object.entries(x.o.agents).map(([a, n]) => `${a}×${n}`).join(", ")}]${forbiddenUsed(x.f.truth, x.o).length ? `; forbidden: ${forbiddenUsed(x.f.truth, x.o).join(", ")}` : ""}` },
+  { id: "ACTIVATION", verdict: "FAIL", class: hostClass, when: (x) => ORBIT_ARM(x.f) && x.f.truth.activate !== null && x.o.activated !== x.f.truth.activate, why: (x) => `${x.f.truth.activate ? "the host never used Orbit where the truth says it should" : "the host used Orbit where the truth says nothing of it helps"}${unsaid(x)}` },
+  { id: "STRATEGY", verdict: "FAIL", class: hostClass, when: (x) => ORBIT_ARM(x.f) && strategyWrong(x), why: (x) => `the host took ${x.o.strategy}${x.o.how ? ` (${x.o.how})` : ""}, where the truth accepts ${(x.f.truth.strategy ?? []).join(", ")}${(x.f.truth.how ?? []).length ? ` (${x.f.truth.how.join(", ")})` : ""}${unsaid(x)}` },
+  { id: "SELECTION", verdict: "FAIL", class: hostClass, when: (x) => ORBIT_ARM(x.f) && (forbiddenUsed(x.f.truth, x.o).length > 0 || !profileMatched(x.f.truth, x.o)), why: (x) => `no selection profile accepts skills [${x.o.skills.join(", ")}] and agents [${Object.entries(x.o.agents).map(([a, n]) => `${a}×${n}`).join(", ")}]${forbiddenUsed(x.f.truth, x.o).length ? `; forbidden: ${forbiddenUsed(x.f.truth, x.o).join(", ")}` : ""}${unsaid(x)}` },
   { id: "RECORDS", verdict: "FAIL", class: () => "ORBIT_SOURCE_DEFECT", when: (x) => x.records.some((r) => !r.ok), why: (x) => `an owner's record does not hold: ${x.records.filter((r) => !r.ok).map((r) => `${r.id} (${r.says})`).join("; ")}` },
   { id: "GROUNDING", verdict: "FAIL", class: () => "HOST_DIVERGED", when: (x) => x.grounding?.ok === false, why: (x) => `not grounded: ${x.grounding.says}` },
   { id: "VERIFIER_BLOCKED", verdict: "BLOCKED", class: (x) => ((x.f.outcome.problemEnds ?? []).includes("REFUSED") ? "ENVIRONMENT_BLOCKED" : "INFRASTRUCTURE_FAILURE"), when: (x) => outcomeCase(x) && Boolean(x.f.outcome?.problem), why: (x) => x.f.outcome.problem },

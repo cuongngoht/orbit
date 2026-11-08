@@ -192,6 +192,20 @@ test("activation that contradicts the truth fails as the host's divergence -- as
   assert.deepEqual(row(judged(idle, { truth: ANY, routing: ROUTED("NONE") })), ["PASS", "PASS", null], "a truth that says either way holds activation to nothing");
 });
 
+// The 0.5.0 precheck's ORBIT-ACT-002 and 011 (bnr-1edd6094b59b, bnr-21ec33b2f8d5): the router chose DIRECT → orbit-develop,
+// a one-cue change it never says (B5), and the miss read as a suggestion the host declined. The class stays the table's;
+// the why says what the host was told.
+test("a miss whose router chose right but said nothing to the host says so: no suggestion was declined", () => {
+  const idle = session(read("/work/repo/README.md"));
+  const unsaid = judged(idle, { routing: ROUTED("DIRECT", "skill", "orbit-architecture", { injected: false }) });
+  assert.deepEqual(row(unsaid), ["FAIL", "ACTIVATION", "HOST_DIVERGED"]);
+  assert.match(unsaid.why, /; the router chose DIRECT → orbit-architecture and said nothing to the host$/);
+  assert.doesNotMatch(judged(idle).why, /said nothing/, "a router that said it is not reported silent");
+  assert.doesNotMatch(judged(idle, { routing: ROUTED("NONE") }).why, /said nothing/, "nor one that chose nothing to say");
+  const other = session(skill("orbit:orbit-develop"));
+  assert.match(judged(other, { routing: ROUTED("DIRECT", "skill", "orbit-architecture", { injected: false }) }).why, /^no selection profile accepts .*; the router chose DIRECT → orbit-architecture and said nothing to the host$/, "a selection miss says it too");
+});
+
 test("a strategy the truth does not accept fails, and how a coordinated one was taken is judged only where the truth names how", () => {
   const coordinated = session(skill("orbit:orbit-help"), bash(`node ${ORBIT}/cli/automation.mjs start --for=x`));
   const wide = { selection: [{ skills: { require: [], allow: ["*"] }, agents: { require: [], allow: ["*"], max: 2 } }] };

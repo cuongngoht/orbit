@@ -25,8 +25,9 @@ const ACCEPTED = new Map(PLAN.criteria.flatMap((c) => (c.expects ?? []).map((e) 
 // for state -- and the request table that adapter declares for the operation a step asks.
 const BY_STACK = { "invoice-a": "amqp.reference", "invoice-b": "jetstream.reference" };
 const answering = (stack, family) => ({ messaging: BY_STACK[stack], observe: BY_STACK[stack], worker: "worker.hooks", scheduler: "scheduler.hooks", clock: "clock.hooks", workload: "workload.hooks", identity: "identity.hooks", state: "postgres.reference" })[family];
-const operationOn = (stack, capability) => ((row) => ((a) => (a ? a.operations[opKeyOf(a, row)] ?? null : null))(row ? ADAPTERS.find((x) => x.id === answering(stack, row.family)) : null))(operationFor(capability));
-const contextOn = (stack, design, shape, expectations = ACCEPTED) => ({ expectations, shape: shapeOf(shape), requestTableOf: (i) => operationOn(stack, design.skeleton?.steps?.[i - 1]?.capability)?.request ?? null });
+const adapterOn = (stack, row) => (row ? ADAPTERS.find((x) => x.id === answering(stack, row.family)) ?? null : null);
+const operationOn = (stack, capability) => ((row) => ((a) => (a ? a.operations[opKeyOf(a, row)] ?? null : null))(adapterOn(stack, row)))(operationFor(capability));
+const contextOn = (stack, design, shape, expectations = ACCEPTED) => ({ expectations, shape: shapeOf(shape), requestTableOf: (i) => operationOn(stack, design.skeleton?.steps?.[i - 1]?.capability)?.request ?? null, semanticsOf: (i) => adapterOn(stack, operationFor(design.skeleton?.steps?.[i - 1]?.capability))?.semantics ?? null });
 
 const call = (capability, input) => ({ do: "call", capability, input });
 const KEY = "tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00";
@@ -69,6 +70,33 @@ test("a second message under a business key is held apart from the first only in
   assert.deepEqual(refused(design(unnamed, [["FIX-ASYNC-1/E3", 3], ["FIX-ASYNC-1/E3", 4]]), ONCE), [], "an observation not narrowed to the first message holds nothing to it");
   const keyless = (id) => call("orbit.messaging.publish", { channelRef: "billing-reminder-requested", request: { messageId: id, correlationId: KEY, payload: { messageId: id } } });
   assert.deepEqual(refused(design([keyless("msg-1"), keyless("msg-2"), ...steps.slice(2)], [["FIX-ASYNC-1/E3", 3], ["FIX-ASYNC-1/E3", 4]]), ONCE), [], "a correlation is not a business key: a design that names none is held to nothing here");
+});
+
+// A wait for the period's request on the channel the design publishes it on itself (ORBIT-QA-007, ORBIT-TOOL-001).
+const armed = (observerRef = "requested") => call("orbit.messaging.observe", { channelRef: "billing-reminder-requested", observerRef, request: {} });
+const SELF = [armed(), publish("msg-1", PERIOD), awaited({ count: 1, match: { correlationId: PERIOD } }), attempts({ count: 1, match: { messageId: "msg-1" } })];
+const selfOf = (steps, stack = "invoice-a") => [refused(design(steps, [["FIX-ASYNC-1/E1", 3], ["FIX-ASYNC-1/E3", 4]]), "completes-by-deadline", stack), advised(design(steps, [["FIX-ASYNC-1/E1", 3], ["FIX-ASYNC-1/E3", 4]]), "completes-by-deadline", stack)];
+const at = (steps, i, over) => steps.map((s, n) => (n === i ? over(s) : s));
+const asking = (s, request) => ({ ...s, input: { ...s.input, request } });
+
+test("a wait for a value the design's own publication put where its observer looks is refused only where every link is declared or shown -- said where one is not", () => {
+  assert.deepEqual(selfOf(SELF), [["SELF_SATISFIED"], []], "armed before, on its channel, set by a field its adapter says it sets, dropped by nothing, read by nothing else first, answered");
+  assert.deepEqual(selfOf(SELF, "invoice-b"), [[], ["SELF_PUBLISHED"]], "a channel that drops a message id it saw in its window may never carry this one: said");
+  assert.deepEqual(selfOf([SELF[1], SELF[0], ...SELF.slice(2)]), [[], ["SELF_PUBLISHED"]], "an observer armed after the publication need not see it");
+  assert.deepEqual(selfOf(at(SELF, 1, (s) => asking(s, { ...s.input.request, routingKey: "billing.reminder.other" }))), [[], ["SELF_PUBLISHED"]], "a publication that names its own route need not reach the observer");
+  assert.deepEqual(selfOf(at(SELF, 0, (s) => asking(s, { prefetch: 1 }))), [[], ["SELF_PUBLISHED"]], "an observer whose request narrows what it sees");
+  const readFirst = design([...SELF.slice(0, 2), awaited({ count: 1 }), ...SELF.slice(2)], [["FIX-ASYNC-1/E1", 4], ["FIX-ASYNC-1/E3", 5]]);
+  assert.deepEqual([refused(readFirst, "completes-by-deadline"), advised(readFirst, "completes-by-deadline")], [[], ["SELF_PUBLISHED"]], "an earlier await on that observer may have read it first");
+  assert.deepEqual(selfOf(at(SELF, 2, (s) => asking(s, { count: 1, match: { messageId: "msg-2" } }))), [["SELF_SATISFIED"], []], "a match whose count ends the wait answers every message it reads");
+  assert.deepEqual(selfOf(at(SELF, 1, (s) => asking(s, { ...s.input.request, correlationId: OTHER }))), [[], []], "another value is no value of its own");
+  assert.deepEqual(selfOf(at(SELF, 0, (s) => ({ ...s, input: { ...s.input, channelRef: "billing-reminder-sent" } }))), [[], []], "an observer of another channel waits for what the system sends there");
+  assert.deepEqual(selfOf(at(SELF, 1, (s) => asking(s, { ...s.input.request, correlationId: "${PERIOD}" }))), [[], []], "a value a binding fills is no literal");
+  const triggered = [armed(), call("orbit.clock.advance", { clockRef: "invoice-a", request: { to: "2026-10-22T09:00:00+07:00" } }), ...SELF.slice(2)];
+  assert.deepEqual(selfOf(triggered), [[], []], "the clock brought the period about: the message awaited is the system's");
+  const settles = [armed(), publish("msg-1", PERIOD), attempts({ count: 1, match: { messageId: "msg-1" } })];
+  assert.deepEqual([refused(design(settles, [["FIX-ASYNC-1/E3", 3]]), "completes-by-deadline"), advised(design(settles, [["FIX-ASYNC-1/E3", 3]]), "completes-by-deadline")], [[], []], "its own trigger published and ITS processing awaited: how it settles is the system's word");
+  const blind = contradictionFindings(design(SELF, [["FIX-ASYNC-1/E1", 3]]), { ...contextOn("invoice-a", design(SELF, []), "completes-by-deadline"), requestTableOf: (i) => (i === 2 ? { messageId: { type: "string" }, correlationId: { type: "string" } } : operationOn("invoice-a", SELF[i - 1].capability)?.request) });
+  assert.deepEqual(blind, [], "an adapter that does not say which field of the message its publication sets shows nothing");
 });
 
 // An investigation's record as src/investigation/generate.mjs hands it to the contradiction stage: the shapes its accepted
@@ -179,6 +207,16 @@ test("a match row may say what it picks and each of its fields what it is compar
   assert.match(problems({ type: "object", fields: { messageId: { type: "string", means: "broker.messageId", doc: "x" } }, doc: "x" }), /match\.messageId means "broker\.messageId", which is not a meaning/);
   assert.match(problems({ type: "object", selects: "all", fields: {}, doc: "x" }), /selects must be answer or count/);
   assert.deepEqual(MATCH_SELECTS, ["answer", "count"]);
+});
+
+test("every field a shipped messaging adapter's publication sends as the message's own says which field it sets -- a meaning its observers' answers carry", () => {
+  for (const a of ADAPTERS.filter((x) => x.family === "messaging")) {
+    const items = meaningEntries(a.operations["observe.await"].outputs).filter(([path]) => path.includes("[].")).map(([, means]) => means);
+    const sets = Object.entries(a.operations.publish.request).filter(([, row]) => row.means);
+    assert.deepEqual(sets.map(([k]) => k).sort(), ["correlationId", "messageId", a.id === "amqp.reference" ? "routingKey" : "subject"].sort(), a.id);
+    for (const [k, row] of sets) assert.ok(items.some((means) => row.means === means || row.means.startsWith(`${means}.`)) && meaningAt(row.means), `${a.id} publish ${k} means ${row.means}`);
+    assert.ok(["none", "id-window"].includes(a.semantics.publishDedupe), `${a.id} says whether its channel drops a message id it saw`);
+  }
 });
 
 test("every match field a shipped adapter compares says what it is compared with -- a meaning its own answer's items carry -- and every match says what it picks", () => {

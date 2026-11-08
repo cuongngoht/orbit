@@ -1,0 +1,64 @@
+{
+  "assertions": [
+    {
+      "criterionRef": "SCHED-1/E1",
+      "step": 2,
+      "template": "complete"
+    },
+    {
+      "criterionRef": "SCHED-1/E2",
+      "step": 3,
+      "template": "count-eq"
+    }
+  ],
+  "controls": [
+    {
+      "role": "positive",
+      "why": "the loop itself decides the period due and runs it once"
+    }
+  ],
+  "effectScope": "fixture",
+  "obligation": "tob-8f2674b1fe6b",
+  "skeleton": {
+    "steps": [
+      {
+        "capability": "orbit.clock.advance",
+        "do": "call",
+        "input": {
+          "clockRef": "invoice-a",
+          "request": {
+            "to": "2026-10-22T02:00:00Z"
+          }
+        }
+      },
+      {
+        "capability": "orbit.scheduler.observe",
+        "do": "call",
+        "input": {
+          "request": {
+            "count": 1,
+            "match": {
+              "occurrenceId": "billing-daily:2026-10-22T09:00:00+07:00"
+            }
+          },
+          "scheduleRef": "billing-daily"
+        }
+      },
+      {
+        "capability": "orbit.state.read",
+        "do": "call",
+        "input": {
+          "request": {
+            "key": "billing-daily:2026-10-22T09:00:00+07:00"
+          },
+          "stateRef": "billing-jobs"
+        }
+      }
+    ]
+  },
+  "trigger": {
+    "kind": "schedule",
+    "ref": "billing-daily",
+    "step": 1
+  }
+}

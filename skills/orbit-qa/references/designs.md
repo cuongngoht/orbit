@@ -540,7 +540,11 @@ that order, on one key, by its correlation.
 ### completes-by-deadline
 
 A positive control: what the trigger starts is done within the accepted deadline, seen on an observation that stayed
-complete -- the window is the slot's own `within`.
+complete -- the window is the slot's own `within`. The message the slot waits for is the SYSTEM's (here, the
+confirmation the write makes it send, on a channel of its own): never publish it yourself. On a schedule, the trigger is
+the clock moved to the occurrence, and the observer of the period's request is armed before it; a design that publishes
+the period's request by hand and awaits its own correlation is refused (`SELF_SATISFIED`). Design it before any test
+whose clock passes the same period.
 
 ```json
 {

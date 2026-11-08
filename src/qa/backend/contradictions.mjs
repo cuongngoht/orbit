@@ -1,8 +1,8 @@
 // What a correct application can never be held to (0.5.0): an assertion a design rules with that its OWN steps -- read
-// with what their answering adapters declare and what its obligation's shape says -- rule out, or that rests on something
-// the design never causes. Real coding hosts sent such designs on the 0.5.0 release pre-check (the benchmark's QA rows):
-// each was validated and frozen, ran, and contradicted the CLEAN application too -- a false alarm only the benchmark's
-// confirmation on the clean application caught. So a design is held to them where it is made, by what can be shown:
+// with what their answering adapters declare and what its obligation's shape says -- rule out, or satisfy whatever the
+// application does, or that rests on something the design never causes. Real coding hosts sent such designs on the 0.5.0
+// release pre-check (the benchmark's QA rows): each was validated and frozen, ran, and contradicted the CLEAN application
+// too -- a false alarm only the benchmark's confirmation on the clean application caught. So a design is held to them where it is made, by what can be shown:
 //
 //   refused  what follows from the design and the declarations alone -- or from them and the investigation's own record
 //            of what an earlier test proved (SETTLED_BEFORE): the `contradiction` stage
@@ -13,12 +13,13 @@
 //            design that was made (`advice`); it decides, records and refuses nothing
 //
 // What a request's match compares and what a match picks are the answering adapter's declaration (orbit.adapter/v1 request
-// rows' `means` and `selects`, src/adapters/contract-v1.mjs): a field whose row says neither is unknown, and unknown is
-// never a refusal. Which business key a publication is under is the backend vocabulary's word for it (bindings.mjs
-// MESSAGE_FIELDS businessKey), read the way a design's keys are read (shared.mjs keysOf) -- never guessed from a value.
+// rows' `means` and `selects`, src/adapters/contract-v1.mjs), and so is which field of the message a publication's request
+// sets (`means` on its rows): a field whose row says nothing is unknown, and unknown is never a refusal. Which business
+// key a publication is under is the backend vocabulary's word for it (bindings.mjs MESSAGE_FIELDS businessKey), read the
+// way a design's keys are read (shared.mjs keysOf) -- never guessed from a value.
 import { EXPECT_OP } from "../vocab.mjs";
 import { keysOf } from "./shared.mjs";
-import { isOp, requestOf, stepsOf } from "./skeleton.mjs";
+import { isOp, refOf, requestOf, stepsOf } from "./skeleton.mjs";
 
 const literal = (v) => typeof v === "string" && v.length > 0 && !v.includes("${");
 const isTable = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -57,6 +58,80 @@ const matchPins = (d, cx) => waits(d, cx).filter((x) => literal(x.e.value)).flat
 const PINNED = { answer: "its answer holds only what its match names", count: "its wait ends once its match is met, so the window the slot is judged in is cut short of its own" };
 
 const pinSay = (x, p) => `step ${x.s.i} waits for ${cut(p.value)} (request.match.${p.key}) and ${x.ref} needs ${cut(x.e.value)} there: match on that and bring it about first — ${p.means} is the field both name, and ${PINNED[p.selects]}`;
+
+// ── a wait the design's own publication satisfies ─────────────────────────
+//
+// A criterion that waits for a message to be seen (complete-within on a field of a message, e.g. its correlation) is about
+// a message the SYSTEM sends: the period's request its schedule publishes, the event its write emits. A design that
+// publishes one itself, on the very channel an observer it armed BEFORE that publication watches, carrying the very value
+// the slot waits for, is seen by that observer -- so the wait holds (or stays undecided) whatever the application does,
+// and its verdict is the design's, never the criterion's. And the message it published is a second one under the
+// system's own key, whose settlement a later slot then reads (ORBIT-QA-007 and ORBIT-TOOL-001 on the 0.5.0 pre-check: the
+// clean worker settled it as the duplicate it was). Refused (SELF_SATISFIED) only where every link is declared or shown:
+//
+//   the field     the publishing adapter's request row says which field of the published message it sets (`means`,
+//                 orbit.adapter/v1), and that is the slot's property, with the slot's value as a literal
+//   the channel   the observer was armed on the publication's own channel, with nothing in its request that narrows what
+//                 it sees, and the publication names no field that routes it elsewhere (a `message.key`)
+//   the delivery  the publishing adapter declares the channel drops nothing as a duplicate (`publishDedupe: none`), and no
+//                 other await on that observer, between the publication and the wait, read it first
+//   the answer    the wait's match answers every message it reads (`selects: count`), names nothing, or names only what
+//                 the publication carries
+//
+// What only looks like it -- an observer armed after the publication, a channel that may drop it, a route it may take
+// elsewhere -- is said beside the answer (SELF_PUBLISHED), never refused: the system may yet send a message of its own
+// under that value.
+const OBSERVE = "orbit.messaging.observe";
+const AWAIT = "orbit.observe.await";
+const ROUTE = "message.key";
+
+// What a publication SETS of the message it sends: each field holding a literal whose row says which field it is.
+const tableOf = (s, cx) => ((t) => (isTable(t) ? t : {}))(cx.requestTableOf?.(s.i));
+const setsOf = (s, cx) => Object.entries(tableOf(s, cx)).filter(([k, row]) => typeof row?.means === "string" && literal(requestOf(s)[k])).map(([k, row]) => ({ key: k, value: requestOf(s)[k], means: row.means }));
+
+// The step that armed the observer a wait reads: the last arming of its observerRef before the wait, on a named channel.
+const armedFor = (d, x) => stepsOf(d).filter((s) => isOp(s, OBSERVE) && literal(refOf(s, "channel")) && refOf(s, "observer") === refOf(x.s, "observer") && s.i < x.s.i).at(-1) ?? null;
+
+// Each wait for a value one of the design's own publications on the observer's channel put under the slot's very field,
+// before the wait: { x, arm, p, f }.
+const selfWaits = (d, cx) => waits(d, cx).filter((x) => isOp(x.s, AWAIT) && literal(x.e.value)).flatMap((x) => ((arm) => (arm ? publishedFor(d, cx, x, arm) : []))(armedFor(d, x)));
+
+const publishedFor = (d, cx, x, arm) => stepsOf(d).filter((p) => isOp(p, PUBLISH) && p.i < x.s.i && refOf(p, "channel") === refOf(arm, "channel")).flatMap((p) => setsOf(p, cx).filter((f) => f.means === x.e.property && f.value === x.e.value).map((f) => ({ x, arm, p, f })));
+
+// Whether the wait's match answers the publication: every message read, nothing named, or only what it carries.
+function answers(w, cx) {
+  const match = requestOf(w.x.s).match;
+  const row = tableOf(w.x.s, cx).match;
+  if (!isTable(match) || Object.keys(match).length === 0 || row?.selects === "count") return true;
+  return Object.entries(match).every(([k, v]) => setsOf(w.p, cx).some((f) => f.means === row?.fields?.[k]?.means && f.value === v));
+}
+
+const routes = (p, cx) => Object.entries(tableOf(p, cx)).some(([k, row]) => row?.means === ROUTE && Object.hasOwn(requestOf(p), k));
+const readBetween = (d, w) => stepsOf(d).some((s) => isOp(s, AWAIT) && refOf(s, "observer") === refOf(w.x.s, "observer") && s.i > w.p.i && s.i < w.x.s.i);
+
+// Each link of the proof, in the order the comment above gives them.
+const SEEN = [
+  (w) => w.arm.i < w.p.i,
+  (w) => Object.keys(requestOf(w.arm)).length === 0,
+  (w, d, cx) => !routes(w.p, cx),
+  (w, d, cx) => cx.semanticsOf?.(w.p.i)?.publishDedupe === "none",
+  (w, d) => !readBetween(d, w),
+  (w, d, cx) => answers(w, cx),
+];
+
+const seen = (w, d, cx) => SEEN.every((holds) => holds(w, d, cx));
+
+function selfSatisfied(d, cx, refuses) {
+  const all = selfWaits(d, cx);
+  const proven = all.filter((w) => seen(w, d, cx));
+  return refuses ? proven.map(selfSay) : all.filter((w) => !proven.some((v) => v.x === w.x)).map(publishedSay);
+}
+
+const INSTEAD = "publish none; move the clock to its occurrence (or trigger its schedule where the clock cannot move, or send the request its interface takes) and await the system's own";
+
+const selfSay = (w) => `step ${w.x.s.i} waits for ${w.f.key} ${cut(w.x.e.value)} (${w.x.ref}), which step ${w.p.i} publishes itself: ${INSTEAD} — observer ${cut(refOf(w.arm, "observer"))} was armed on ${cut(refOf(w.p, "channel"))} before step ${w.p.i}, which sets ${w.x.e.property} there (request.${w.f.key}), so this wait holds whatever the application does and rules nothing of the criterion`;
+
+const publishedSay = (w) => `step ${w.x.s.i} waits for ${w.f.key} ${cut(w.x.e.value)} (${w.x.ref}), which step ${w.p.i} publishes on its channel itself: ${INSTEAD}, unless the system sends one of its own too — whether the observer sees step ${w.p.i}'s own message on ${cut(refOf(w.p, "channel"))} is not shown here, so it is said, never refused`;
 
 // ── a second message under a business key ─────────────────────────────────
 //
@@ -173,6 +248,8 @@ const decisionSay = (x, occurrence) => `step ${x.s.i} waits for ${occurrence ? c
 
 export const CONTRADICTION_RULES = [
   { id: "MATCH_PINS", refuses: true, findings: (d, cx) => matchPins(d, cx) },
+  { id: "SELF_SATISFIED", refuses: true, findings: (d, cx) => selfSatisfied(d, cx, true) },
+  { id: "SELF_PUBLISHED", refuses: false, findings: (d, cx) => selfSatisfied(d, cx, false) },
   { id: "SECOND_SETTLED", refuses: true, findings: (d, cx) => secondsSettled(d, cx, true) },
   { id: "SECOND_SETTLES", refuses: false, findings: (d, cx) => secondsSettled(d, cx, false) },
   { id: "SETTLED_BEFORE", refuses: true, findings: (d, cx) => settledBefore(d, cx) },

@@ -25,11 +25,13 @@
               "type": "string",
               "pattern": "^[\\x21-\\x7e]{1,128}$",
               "required": true,
-              "doc": "the logical message id every publication carries: 1-128 printable characters"
+              "doc": "the logical message id every publication carries: 1-128 printable characters",
+              "means": "message.id"
             },
             "correlationId": {
               "type": "string",
-              "doc": "the correlation it travels in"
+              "doc": "the correlation it travels in",
+              "means": "message.correlation.correlationId"
             },
             "causationId": {
               "type": "string",
@@ -41,7 +43,8 @@
             },
             "routingKey": {
               "type": "string",
-              "doc": "the routing key, when it is not the bound channel's own"
+              "doc": "the routing key, when it is not the bound channel's own",
+              "means": "message.key"
             },
             "mandatory": {
               "type": "boolean",
@@ -247,11 +250,14 @@
               "type": "string",
               "pattern": "^[\\x21-\\x7e]{1,128}$",
               "required": true,
-              "doc": "the logical message id every publication carries: 1-128 printable characters"
+              "doc": "the logical message id every publication carries: 1-128 printable characters",
+              "means": "message.id"
             },
             "correlationId": {
               "type": "string",
-              "doc": "the correlation it travels in"
+              "pattern": "^[^\\r\\n\\u0000]*$",
+              "doc": "the correlation it travels in, on one line: a header carries it",
+              "means": "message.correlation.correlationId"
             },
             "causationId": {
               "type": "string",
@@ -263,7 +269,8 @@
             },
             "subject": {
               "type": "string",
-              "doc": "the subject, when it is not the bound channel's own: one the channel covers"
+              "doc": "the subject, when it is not the bound channel's own: one the channel covers",
+              "means": "message.key"
             },
             "headers": {
               "type": "object",

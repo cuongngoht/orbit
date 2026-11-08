@@ -174,7 +174,11 @@ each a draft the engine made). Read what a design may hold before you write one:
 engine stamps), the template each criterion op compiles to (`eq` is `value-eq`) and the rules over a design's
 controls that their fields do not show (`rules`); the obligation's own `template` names the controls its shape needs,
 the templates its slots take and the rules over those controls (`rules`). Its own `expected` slots are what rule it
-(`slots`): assert each on the step whose answer carries it. A slot of another criterion you assert is held too, and a
+(`slots`): assert each on the step whose answer carries it. Which slot of its criterion rules which kind of step is in the
+template before you design (`ruling`: each slot, its template and the kinds of step it rules; the trigger's rule; the
+steps that must rule), the same answer a refusal names: a trigger whose answer shows nothing of being accepted (an
+interface's write) is ruled by one of them (a create's status, `value-eq`), a page's click is not a trigger -- the api
+witness of its request is -- and a design that drives a page ends with a report. A slot of another criterion you assert is held too, and a
 run stops at the first assertion that fails -- one that fails on a step before the obligation's own ends the test
 there, its contradiction is the obligation's, and its own slots are never read. A shape that says more says it in the
 template (`says`; `protocol`'s `design.shapes` lists them): what comes again of work already done is not a second

@@ -1,0 +1,78 @@
+{
+  "skeleton": {
+    "steps": [
+      {
+        "do": "goto",
+        "url": "/invoices",
+        "until": {
+          "selector": "[data-testid=create-name]"
+        }
+      },
+      {
+        "do": "fill",
+        "selector": "[data-testid=create-name]",
+        "value": "TC-qa-persist-${FIXTURE}"
+      },
+      {
+        "do": "fill",
+        "selector": "[data-testid=create-amount]",
+        "value": "42"
+      },
+      {
+        "do": "click",
+        "selector": "[data-testid=create-submit]",
+        "until": {
+          "selector": "[data-testid=toast]"
+        }
+      },
+      {
+        "do": "api",
+        "match": "/api/invoices",
+        "method": "POST"
+      },
+      {
+        "do": "call",
+        "capability": "orbit.state.read",
+        "input": {
+          "stateRef": "invoices",
+          "request": {
+            "key": "TC-qa-persist-${FIXTURE}",
+            "limit": 5
+          }
+        }
+      }
+    ]
+  },
+  "assertions": [
+    {
+      "criterionRef": "UI-AC-2/E3",
+      "template": "value-eq",
+      "step": 5
+    },
+    {
+      "criterionRef": "UI-AC-2/E1",
+      "template": "count-eq",
+      "step": 6
+    }
+  ],
+  "controls": [
+    {
+      "role": "positive",
+      "why": "a writer creates an invoice on the page"
+    },
+    {
+      "role": "state",
+      "why": "exactly one stored row for the name"
+    }
+  ],
+  "page": {
+    "endpointRef": "invoices",
+    "identityRef": "tenant-a-writer"
+  },
+  "trigger": {
+    "kind": "interface",
+    "ref": "invoices",
+    "step": 5
+  },
+  "effectScope": "fixture"
+}

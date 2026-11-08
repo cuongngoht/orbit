@@ -452,7 +452,8 @@ src/investigation/verification.mjs · assessments.mjs  (0.1.0, ADR 0032) what a 
                (PBI 19: RECONCILE rows over a start that never settled -- IN_FLIGHT · LATE · RUNNING · NEVER_RAN ·
                LOST_READ · LOST; a late envelope held to the request that was sent, on the live path; a known one
                settles its step, an AMBIGUOUS one leaves it for a person). Their PORTS -- what a design is
-               compiled against, how a version is sealed, granted, dispatched and read back -- are
+               compiled against (with every kind of step a design may propose and what its answer carries, as
+               declared: `answerKinds`), how a version is sealed, granted, dispatched and read back -- are
                skills/orbit-qa/ports.mjs, bound by cli/autonomous-qa.mjs
 src/sources/   ACQUISITION of a work item, provider-neutral -- it names no product, vendor, host or tool
                (a test greps it). contract-v1.mjs (the acquisition capabilities, the SOURCE_KINDS with
@@ -883,11 +884,15 @@ src/qa/walk.mjs · obligations/ · backend/ · generation/ · security/  (0.1.0,
                `cx.investigation`), said beside the answer where it rests on what the design never causes) ·
                generation/ (design.mjs the
                ordered STAGES a proposal is held to, ending in the REAL validator; controls; compile.mjs the
-               deterministic mapping from an accepted expectation to a predicate; repair keeps the oracle;
+               deterministic mapping from an accepted expectation to a predicate, and which slot of an obligation's
+               own criterion rules which step, compiled the same way -- before a design (`slotContract`, the
+               obligation template's `ruling` with design.mjs `designContract`) and in a refusal (`rulingSaid`,
+               `whereSaid`); repair keeps the oracle;
                version freezes the case; page.mjs (0.1.0, group 1) the ONE place a generated test's page script
                comes from -- `until` and `reads` written as a wait and a reader from templates that only read the
                DOM, an api witness ruling only on its status, PAGE_RULES: proposable verbs, a goto to a path of
-               the bound interface, selectors of a bounded alphabet) ·
+               the bound interface, selectors of a bounded alphabet, a page test ending with a report as the
+               validator holds it -- ENDS_REPORT) ·
                security/ (catalog.mjs `orbit.control-catalog/v1`, its layers and a preview · applicability.mjs three
                answers over structural roles, unknown never not-applicable · assessment.mjs the PAIRING and FINDING
                tables, obligations, a snapshot pinned to its catalogs, stale on change · store.mjs the rooms and the

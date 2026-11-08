@@ -98,6 +98,9 @@ test("start, resume and context say in words the one command that takes the next
   const said = [started, run(c, ["resume", task]), run(c, ["context", task])];
   for (const r of said) assert.match(r.stdout, new RegExp(`^DO\\s+node <engine>/cli/automation\\.mjs step ${task} with \\{ "schemaVersion": 1, "decisionId": "<yours>", "expectedRevision": ${revisionOf(c, task)}, "action": \\{ "kind": "run", "step": "context" \\}.* on stdin$`, "m"));
   for (const r of [...said, run(c, ["plan", "--for=Implement the refund validation rule"])]) assert.doesNotMatch(r.stdout, /undefined/);
-  assert.equal(json(run(c, ["step", task, "--json"], shownDecision(said[1].stdout, "d-1"))).stepState, "reported", "the decision shown is one step takes as it is, with the host's own id");
-  assert.doesNotMatch(run(c, ["context", task]).stdout, /^DO\s.*"step": "context"/m, "and it moves on with the workflow");
+  const first = run(c, ["step", task], shownDecision(said[1].stdout, "d-1"));
+  assert.match(first.stdout, /^STEP\s+context → reported/m, "the decision shown is one step takes as it is, with the host's own id");
+  assert.match(first.stdout, new RegExp(`^DO\\s+node <engine>/cli/automation\\.mjs step ${task} with \\{.*"expectedRevision": ${revisionOf(c, task)}, "action": \\{ "kind": "run", "step": "runtime" \\}.* on stdin$`, "m"), "and a settled step's answer says how to take the one after it");
+  assert.equal(json(run(c, ["step", task, "--json"], shownDecision(first.stdout, "d-2"))).stepState, "succeeded");
+  assert.doesNotMatch(run(c, ["context", task]).stdout, /^DO\s.*"step": "(context|runtime)"/m, "and it moves on with the workflow");
 });

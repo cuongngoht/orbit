@@ -73,8 +73,9 @@ const missingLine = (m) => `  ${m.what.padEnd(17)} ${m.by === "person" ? "a pers
 
 // The one command that takes the next ready step, said in words as `--json` says it (`next.decide`): a host that came to
 // the workflow through `resume` or a held turn, with no playbook in front of it, is told HOW to go on and not only what
-// is next. Never while a step is open (one runs at a time) or the step is blocked.
-const doLine = (c) => (c.next?.decide && !c.next.blocked && !c.open.length ? [`DO         node <engine>/cli/automation.mjs ${c.next.decide} on stdin`] : []);
+// is next -- in a context and in a settled step's answer alike. Never while a step is open (one runs at a time) or the
+// step is blocked.
+const doLine = (c) => (c.next?.decide && !c.next.blocked && !(c.open ?? []).length ? [`DO         node <engine>/cli/automation.mjs ${c.next.decide} on stdin`] : []);
 
 const sayContext = (c) => [`WORKFLOW   ${c.task.id} — ${c.task.objective}`, `STATE      ${c.lifecycle} · ${c.stage ?? "no stage"} · attempt ${c.attempt.number ?? 0}/${c.attempt.limit ?? "?"} · revision ${c.revision}`, ...(c.plan ? [`PLAN       plan-${c.plan.n} (${c.plan.workflow})${c.plan.revisedOnEvidence ? ` · revised ${c.plan.revisedOnEvidence} time(s) on new evidence` : ""}`, ...c.plan.steps.map(stepLine), ...(c.plan.replans ?? []).map(replanLine)] : ["PLAN       unreadable"]), ...(c.child ? [`CHILD      ${c.child.task} · ${c.child.lifecycle}${c.child.stage ? ` · ${c.child.stage}` : ""}${c.child.attempt ? ` · attempt ${c.child.attempt}` : ""}`] : []), ...(c.open.length ? [`OPEN       ${c.open.map((o) => `${o.id} ${o.label ?? o.type}`).join("; ")}`] : []), ...(c.next?.blocked ? [`BLOCKED    ${c.next.step}: ${c.next.blocked.because}`] : []), ...(c.watch ? [`WATCH      ${c.watch}`] : []), `NEXT       ${c.say}`, ...doLine(c)].join("\n");
 
@@ -82,7 +83,7 @@ const sayStarted = (r) => [`WORKFLOW   ${r.task} ${r.created ? "started" : "is a
 
 const sayStep = (r) => (r.how ? [`STEP       ${r.step} → ${r.mode} ${r.how.provider.id} (${r.action})`, `DO         ${r.how.invoke}`, `EXPECTS    ${r.how.expects.join(", ") || "nothing the engine can read back"}`, `THEN       ${r.how.settle} (decisionId of this step, expectedRevision ${r.revision})`, ...(r.watch ? [`WATCH      ${r.watch}`] : [])].join("\n") : saySettled(r));
 
-const saySettled = (r) => (r.stepState ? [`STEP       ${r.step} → ${r.stepState}${r.summary ? ` · ${r.summary}` : ""}`, `STATE      ${r.lifecycle} · ${r.stage ?? "no stage"} · revision ${r.revision}`, `NEXT       ${r.say}`].join("\n") : `WORKFLOW   ${r.task} · ${r.state}${r.say ? ` — ${r.say}` : ""}`);
+const saySettled = (r) => (r.stepState ? [`STEP       ${r.step} → ${r.stepState}${r.summary ? ` · ${r.summary}` : ""}`, `STATE      ${r.lifecycle} · ${r.stage ?? "no stage"} · revision ${r.revision}`, `NEXT       ${r.say}`, ...doLine(r)].join("\n") : `WORKFLOW   ${r.task} · ${r.state}${r.say ? ` — ${r.say}` : ""}`);
 
 const sayFinished = (r) => [`WORKFLOW   ${r.task} · ${r.state}${r.stop ? ` (${r.stop})` : ""}${r.say ? ` — ${r.say}` : ""}`, ...(r.note ? [`NOTE       ${r.note}`] : [])].join("\n");
 

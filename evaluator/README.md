@@ -59,11 +59,24 @@ the credential names the container holds, bounded to 300 s. The entry then compa
 failed, ran past its time or wrote the checkout ends the run `INFRA_ERROR` (`SEAT`) and no agent runs. What it wrote in
 the store is listed in the run's facts (`seat` in the `ended` line), its output is the room's `out/seat.out`, and the
 manifest says `seated: true` with the command's argv. No turn of the agent is spent on it, and it is the same for every
-arm that carries a plugin, whatever its revision.
+arm that carries a plugin, whatever its revision. On a memory track the seat runs once, before the track's first task;
+its later tasks carry the store that seat bound and are not seated again.
 
 Why: the plugin's hooks observe only a checkout the machine knows -- one a person has used the plugin in -- so an
 unseated arm measures the plugin installed and never used in the repository, and a seated arm the plugin as an adopter
 has it. Which condition a release is judged by is its pre-registration's (an amendment's, for 0.6.0's seated phases).
+
+## What the plugin wrote
+
+For every run of an arm that carries the plugin, after the agent ends, the controller copies the run's store out and
+keeps in the room ONE file, `orbit-trail.jsonl` (`lib/core/trail.mjs`): the plugin's session trail
+(`control/activity/trace/*.jsonl`) and every task and work journal it kept, as METADATA only -- numbers, booleans and
+short tokens with no space (a word, an id, a hash), in objects and lists a few levels deep; a journal line's tokens carry
+no `/` either, so no path. The plugin's trail is already an allow-list (it declares every event's fields and keeps no
+prompt, response, argument, path or file content); the evaluator holds it to that shape again whatever revision wrote
+it. Bounded (5000 lines, 2 MB), it goes through the room's credential scan like every other file. The `ended` line keeps
+its counts (`trail`: events by type, holds by `kind`, advice by `fact`, the plugin's scripts seen run), and the report
+sums them per arm ("What the plugin wrote"), so `turn.held`, `advice.given` and `command.ran` can be read after a run.
 
 ## Claude Code's built-in plugins
 
@@ -217,7 +230,8 @@ The self-check runs, on `orders-e2e-006` and `lending-hld-001`: gold + DONE -> `
 hidden tests); regress + DONE -> `REGRESSED`; and on the first pack a container killed from outside -> `INFRA_ERROR`
 (`KILLED`), a run over its wall time -> `TIMEOUT`, an egress that cannot reach the API -> `INFRA_ERROR` (`EGRESS`) before
 the agent starts; seated with the plugin of `HEAD` + gold + DONE -> `RESOLVED`, the seat ended 0, the checkout unchanged
-and the plugin's binding file (`state/checkouts/<id>.json`) in the run's store; a seat command that writes the checkout ->
+and the plugin's binding file (`state/checkouts/<id>.json`) in the run's store, and -- its scripted agent playing a host to
+the plugin's own declared hooks for one prompt and one plugin command -- the plugin's trail kept in the room; a seat command that writes the checkout ->
 `INFRA_ERROR` (`SEAT`) before the agent starts; then that nothing of the campaign is left on the daemon. And both mini-SWE-agent arms, with mini-SWE-agent's own
 `DeterministicModel` in place of a model: the gold patch applied through `docker exec` into a container with no network
 -> `RESOLVED`; the plugin arm lists the plugin's skills and runs one of its commands through the shell.

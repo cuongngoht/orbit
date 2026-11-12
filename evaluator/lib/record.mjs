@@ -18,12 +18,13 @@
 //             commit } }, runs: [{ campaign, phase, arm, task, trial, track?, word, why, costUsd, minutes }],
 //             comparisons: [{ a, b, set, gate, paired, resolved, regressed, falseDone, difference, verdict,
 //             medianCostUsd, medianMinutes }], verdict, missing: [run],
-//             secondary: null | { amendments: [{ n, file, digest }], comparisons: [...], verdict, missing: [run] } }
+//             secondary: null | { amendments: [{ n, file, digest }], comparisons: [...], verdict,
+//                                 memory: [{ phase, track, arm, task, kept, cold }], missing: [run] } }
 import { existsSync } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { git, headOf, isDirty } from "./core/git.mjs";
 import { EVALUATOR_DIR, median, nowIso, readJson } from "./core/util.mjs";
-import { amendedOf, amendmentsOf, digestOf, loadPrereg, overallOf, setTasks, verdictOf, verifyAmendment } from "./prereg/index.mjs";
+import { amendedOf, amendmentProblems, amendmentsOf, digestOf, loadPrereg, overallOf, setTasks, verdictOf } from "./prereg/index.mjs";
 import { roomOf } from "./run/campaign.mjs";
 import { reportOf } from "./run/report.mjs";
 
@@ -128,7 +129,7 @@ export function recordOf(o) {
 // The amendments beside the pre-registration, each held to it first: a record never carries one that does not stand.
 function heldAmendments(p, file) {
   const amendments = amendmentsOf(file);
-  const problems = amendments.flatMap((a) => verifyAmendment(p, a, basename(file)));
+  const problems = amendmentProblems(p, amendments, basename(file));
   if (problems.length) throw new Error(`an amendment beside ${file} does not hold: ${problems.join("; ")}`);
   return amendments;
 }
@@ -146,12 +147,35 @@ function assembled(p, digest, file, loaded, amendments) {
 // phases (and the registered arms they compare with) owe and the record does not hold.
 function secondaryOf(p, amendments, runs) {
   if (!amendments.length) return null;
-  const comparisons = amendments.flatMap((a) => (a.value.comparisons ?? []).map((c) => comparisonOf(p, heldOutRuns(p, runs), c)));
-  return { amendments: amendments.map((a) => ({ n: a.n, file: a.file, digest: a.digest })), comparisons, verdict: overallOf(comparisons.map((c) => c.verdict)), missing: secondaryMissing(p, amendments, runs) };
+  const made = (kind) => amendments.flatMap((a) => (a.value.comparisons ?? []).filter((c) => (c.kind ?? HELD_OUT) === kind).map((c) => ({ a, c })));
+  const comparisons = made(HELD_OUT).map(({ a, c }) => ({ ...comparisonOf(p, heldOutRuns(p, runs), c), amendment: a.n }));
+  const memory = made("memory").map(({ a, c }) => ({ ...memoryOf(a, c, runs), amendment: a.n }));
+  return { amendments: amendments.map((a) => ({ n: a.n, file: a.file, digest: a.digest })), comparisons, verdict: overallOf(comparisons.map((c) => c.verdict)), memory, missing: [...secondaryMissing(p, amendments, runs), ...memoryMissing(p, amendments, runs)] };
+}
+
+const saidOf = (r) => (r ? { word: r.word, costUsd: r.costUsd, minutes: r.minutes } : null);
+
+// A memory track of an amendment: its last task's run with the store kept, beside that task's cold run on the same arm
+// in the same phase. Reported, with no verdict, as the registered memory phase is.
+function memoryOf(a, c, runs) {
+  const track = a.value.phases.find((ph) => ph.id === c.phase).tracks.find((t) => t.id === c.track);
+  const task = `pack:${track.tasks.at(-1)}`;
+  const kept = runs.filter((r) => r.track === c.track && r.arm === track.arm && r.phase === c.phase).sort((x, y) => (y.step ?? 0) - (x.step ?? 0))[0];
+  const cold = runs.find((r) => !r.track && r.arm === track.arm && r.task === task && r.phase === c.phase);
+  return { kind: "memory", phase: c.phase, track: c.track, arm: track.arm, task, gate: false, kept: saidOf(kept?.task === task ? kept : null), cold: saidOf(cold) };
 }
 
 function secondaryMissing(p, amendments, runs) {
-  const arms = [...new Set(amendments.flatMap((a) => [...(a.value.phases ?? []).filter((ph) => ph.set === HELD_OUT).flatMap((ph) => ph.arms), ...(a.value.comparisons ?? []).flatMap((c) => [c.a, c.b])]))];
+  const arms = [...new Set(amendments.flatMap((a) => [...(a.value.phases ?? []).filter((ph) => ph.set === HELD_OUT).flatMap((ph) => ph.arms), ...(a.value.comparisons ?? []).filter((c) => (c.kind ?? HELD_OUT) === HELD_OUT).flatMap((c) => [c.a, c.b])]))];
   const has = (arm, task) => runs.find((r) => !r.track && r.arm === arm && r.task === task && r.trial === 1 && p.outcomes.words.includes(r.word));
   return arms.flatMap((arm) => heldOutTasks(p).filter((task) => !has(arm, task)).map((task) => `${arm} on ${task}`));
+}
+
+// What an amendment's memory phases owe: every step of every track, and each cold run, with a word.
+function memoryMissing(p, amendments, runs) {
+  const phases = amendments.flatMap((a) => (a.value.phases ?? []).filter((ph) => ph.tracks));
+  const worded = (f) => runs.some((r) => f(r) && p.outcomes.words.includes(r.word));
+  const steps = phases.flatMap((ph) => ph.tracks.flatMap((t) => t.tasks.map((x, i) => ({ ph, t, task: `pack:${x}`, step: i + 1 }))));
+  const cold = phases.flatMap((ph) => (ph.tasks ?? []).flatMap((task) => ph.arms.map((arm) => ({ ph, arm, task }))));
+  return [...steps.filter((s) => !worded((r) => r.phase === s.ph.id && r.track === s.t.id && r.step === s.step && r.task === s.task)).map((s) => `${s.t.arm} on ${s.task} (track ${s.t.id}, step ${s.step})`), ...cold.filter((c) => !worded((r) => r.phase === c.ph.id && !r.track && r.arm === c.arm && r.task === c.task)).map((c) => `${c.arm} on ${c.task} (cold, ${c.ph.id})`)];
 }

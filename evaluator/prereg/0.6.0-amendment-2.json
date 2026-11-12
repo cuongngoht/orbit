@@ -1,0 +1,96 @@
+{
+  "schema": 1,
+  "kind": "orbit-prereg-amendment",
+  "release": "0.6.0",
+  "amendment": 2,
+  "amends": {
+    "file": "0.6.0.json",
+    "digest": "b60909c106783d0a703e91e15bb015e7b289123250ea5f06382780fd84cf253a"
+  },
+  "builds": [
+    {
+      "file": "0.6.0-amendment-1.json",
+      "digest": "b5473060bf43137e81ab56fbcffc8b7f990c20e1b44c9c0e46a12a25a2527fc4"
+    }
+  ],
+  "date": "2026-11-12",
+  "committed": "Committed before any run of its own phase (memory-seated). The registered `final` campaign had begun before it; dev3 (amendment 1) had ended. None of the registered `final`'s outcomes was read in writing it, and it changes nothing any registered phase or amendment 1's phases are run or judged by.",
+  "reason": [
+    "The registered `memory` phase measures what a store kept across two tasks of one repository adds. Its arm (orbit-0.6.0) is the plugin installed and never used in the repository (amendment 1's reason): its hooks write nothing about a checkout the machine does not know, so the store its first run hands to its second holds nothing the plugin learned, and the phase can show little of memory.",
+    "This amendment adds the same pairs with the arm SEATED (amendment 1's condition): the plugin's adoption step taken once, in the first task's checkout, and the store that seat bound kept across the pair, as a person who adopted the plugin in a repository carries it from one task to the next."
+  ],
+  "unchanged": [
+    "The registration (0.6.0.json) and amendment 1 are UNCHANGED and are not edited: every phase, task, order, arm, limit, prompt, outcome, scoring, comparison, verdict rule and ledger line of both.",
+    "The registered `final` comparisons stay the PRIMARY comparison and the release's verdict. The release gate reads the registered file a record names and nothing of an amendment."
+  ],
+  "condition": {
+    "seated": "Amendment 1's seated condition, on its arm orbit-0.6.0-seated (the release candidate's commit). On a memory track the seat runs ONCE, before the agent of the track's first task, in that task's checkout; the track's next task gets the store that run left (the registered memory mechanism, unchanged) and is not seated again -- the checkout's path is the same, so the store already knows it. Each cold run is seated, as every run outside a track is.",
+    "implementation": "evaluator/lib/run/attempt.mjs (seatsHere: a track's later steps carry the store and run no seat)"
+  },
+  "phases": [
+    {
+      "id": "memory-seated",
+      "arms": [
+        "orbit-0.6.0-seated"
+      ],
+      "tasks": [
+        "pack:lending-hld-001",
+        "pack:lending-hld-002"
+      ],
+      "tracks": [
+        {
+          "id": "pair1",
+          "arm": "orbit-0.6.0-seated",
+          "tasks": [
+            "lending-hld-004",
+            "lending-hld-001"
+          ]
+        },
+        {
+          "id": "pair2",
+          "arm": "orbit-0.6.0-seated",
+          "tasks": [
+            "lending-hld-003",
+            "lending-hld-002"
+          ]
+        }
+      ],
+      "budgetUsd": 7,
+      "purpose": "The registered memory phase's pairs and order, seated: each pair's second task run after its first with the store kept, against that task's own cold seated run (the `tasks` here: the held-out runs hold neither lending-hld-001 nor lending-hld-002). Reported apart; no verdict."
+    }
+  ],
+  "comparisons": [
+    {
+      "kind": "memory",
+      "phase": "memory-seated",
+      "track": "pair1",
+      "gate": false
+    },
+    {
+      "kind": "memory",
+      "phase": "memory-seated",
+      "track": "pair2",
+      "gate": false
+    }
+  ],
+  "verdict": [
+    "As the registered memory phase: no verdict. For each pair, the second task's word, cost and minutes with the store kept are reported beside its own cold seated run, in the record's secondary part (`secondary.memory`), which the release gate does not read (gate: false)."
+  ],
+  "budget": {
+    "usd": 7,
+    "ledger": [
+      {
+        "phase": "memory-seated",
+        "usd": 7
+      }
+    ],
+    "spentBefore": {
+      "pilot": 0.12,
+      "baseline": 1.76,
+      "dev1": 0.46,
+      "dev2": 0.3,
+      "dev3": 0.44
+    },
+    "rule": "The same hard ledger: a run never starts when its campaign's budget has less left than its $1.00 cap; $7 holds the phase's 6 runs at the cap. Inside the owner's $50: $3.08 spent when this was committed (pilot, baseline, dev1, dev2, dev3, all ended), at most $20 for the registered final, $7 for the registered memory, $12 for amendment 1's final-seated, and $7 here: at most $49.08 in all."
+  }
+}

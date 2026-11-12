@@ -104,12 +104,12 @@ test("an amendment's comparisons are the record's SECONDARY verdict, by the regi
   campaign(home, "final-seated-060", "final-seated", SEATED);
   const r = recordOf({ prereg: FILE, campaigns: ["final-060", "mini-060", "final-seated-060"], home });
   assert.deepEqual([r.comparisons, r.verdict, r.missing], [primary.comparisons, primary.verdict, primary.missing], "the primary comparisons, verdict and what they owe are the registration's alone");
-  assert.deepEqual(r.secondary.amendments, [{ n: 1, file: "0.6.0-amendment-1.json", digest: AMENDMENTS[0].digest }]);
+  assert.deepEqual(r.secondary.amendments, AMENDMENTS.map((a) => ({ n: a.n, file: a.file, digest: a.digest })));
   const rows = r.runs.map((x) => ({ task: x.task, arm: x.arm, word: x.word }));
   assert.deepEqual(r.secondary.comparisons.map((c) => [c.a, c.b, c.gate, c.verdict]), [["orbit-0.6.0-seated", "plain", false, verdictOf(rows, "orbit-0.6.0-seated", "plain", P.verdictRule).verdict], ["orbit-0.6.0-seated", "orbit-0.5.0-seated", false, verdictOf(rows, "orbit-0.6.0-seated", "orbit-0.5.0-seated", P.verdictRule).verdict]]);
   assert.deepEqual(r.secondary.comparisons.map((c) => c.verdict), ["IMPROVED", "IMPROVED"], "plain's words are the registered final's");
   assert.equal(r.secondary.verdict, overallOf(r.secondary.comparisons.map((c) => c.verdict)));
-  assert.deepEqual(r.secondary.missing, []);
+  assert.deepEqual(r.secondary.missing.filter((m) => !/memory-seated|track/.test(m)), [], "the held-out seated runs are all held (the memory phase's are owed apart)");
   assert.deepEqual([r.arms["orbit-0.6.0-seated"], r.arms["orbit-0.5.0-seated"].commit], [{ kind: "claude+orbit", rev: RC, commit: RC, seat: true }, V050]);
   const without = recordOf({ prereg: FILE, campaigns: ["final-060"], home });
   assert.ok(without.secondary.missing.includes(`orbit-0.6.0-seated on ${HELD[0]}`), "a seated run the amendment owes and the record does not hold is said");
@@ -125,4 +125,29 @@ test("an amendment's campaign must freeze that amendment as it stands; a registe
   assert.throws(() => recordOf({ prereg: FILE, campaigns: ["final-named"], home }), /is the registration's, and the campaign names amendment 1/);
   campaign(home, "seated-other", "final-seated", SEATED, { commits: { ...COMMITS, "orbit-0.6.0-seated": "2".repeat(40) } });
   assert.throws(() => recordOf({ prereg: FILE, campaigns: ["final-060", "seated-other"], home }), /the release candidate's arms ran at different commits/);
+}));
+
+// ---- amendment 2: a memory track, seated, against its cold run -------------------------------------------------------------------
+
+// A memory-seated campaign room: its cold runs and both tracks, steps in order.
+function memoryRoom(home, id, words) {
+  const ph = Q.phases.find((x) => x.id === "memory-seated");
+  const cold = ph.tasks.map((task) => ({ arm: ph.arms[0], task, trial: 1, key: keyOf(ph.arms[0], task) }));
+  const steps = ph.tracks.flatMap((t) => t.tasks.map((x, i) => ({ arm: t.arm, task: `pack:${x}`, trial: 1, track: t.id, step: i + 1, key: `${keyOf(t.arm, `pack:${x}`)}__${t.id}-${i + 1}` })));
+  const dir = join(home, "campaigns", id);
+  mkdirSync(dir, { recursive: true });
+  writeJson(join(dir, "campaign.json"), { id, prereg: { release: P.release, phase: "memory-seated", digest: DIGEST, amendment: amendmentOf(ph) }, model: P.host.model, effort: P.host.effort, limits: P.limits, budgetUsd: 7, claudeCode: "2.1.322", arms: armsFor(ph.arms, COMMITS), plan: [...cold, ...steps], evaluator: { commit: "e", dirty: false } });
+  for (const r of [...cold, ...steps]) said(join(dir, "journal.jsonl"), r, words(r));
+  appendLine(join(dir, "journal.jsonl"), { kind: "finished" });
+}
+
+test("an amendment's memory track: each pair's second task with the store kept, beside its own cold seated run, reported with no verdict", () => withHome((home) => {
+  campaign(home, "final-060", "final", FINAL);
+  memoryRoom(home, "memory-seated-060", (r) => (r.track ? "RESOLVED" : r.task.endsWith("001") ? "UNRESOLVED" : "RESOLVED"));
+  const r = recordOf({ prereg: FILE, campaigns: ["final-060", "memory-seated-060"], home });
+  assert.deepEqual(r.secondary.memory.map((m) => [m.track, m.task, m.kept?.word, m.cold?.word, m.gate]), [["pair1", "pack:lending-hld-001", "RESOLVED", "UNRESOLVED", false], ["pair2", "pack:lending-hld-002", "RESOLVED", "RESOLVED", false]]);
+  assert.ok(!r.secondary.missing.some((m) => /track|cold/.test(m)), "every step and cold run has a word");
+  assert.deepEqual([r.comparisons, r.verdict], [recordOf({ prereg: FILE, campaigns: ["final-060"], home }).comparisons, recordOf({ prereg: FILE, campaigns: ["final-060"], home }).verdict], "the primary is untouched");
+  const owed = recordOf({ prereg: FILE, campaigns: ["final-060"], home }).secondary.missing;
+  assert.ok(owed.includes("orbit-0.6.0-seated on pack:lending-hld-001 (track pair1, step 2)") && owed.includes("orbit-0.6.0-seated on pack:lending-hld-002 (cold, memory-seated)"));
 }));

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { RATED } from "../lib/core/outcome.mjs";
 import { evalHome } from "../lib/core/util.mjs";
-import { amendmentsOf, campaignOf, digestOf, loadPrereg, overallOf, PREREG_DIR, runsOf, verdictOf, verifyAmendment, verifyPrereg } from "../lib/prereg/index.mjs";
+import { amendmentProblems, amendmentsOf, campaignOf, digestOf, loadPrereg, overallOf, PREREG_DIR, runsOf, verdictOf, verifyAmendment, verifyPrereg } from "../lib/prereg/index.mjs";
 import { measuredTop, orderedInstances, repoSplit, selection } from "../lib/prereg/select.mjs";
 
 const P = loadPrereg(join(PREREG_DIR, "0.6.0.json"));
@@ -86,7 +86,7 @@ const AMENDMENTS = amendmentsOf(join(PREREG_DIR, "0.6.0.json"));
 const A = AMENDMENTS[0];
 
 test("amendment 1 stands beside the registration: it names the registration's digest, says only what an amendment may, and adds ids of its own", () => {
-  assert.deepEqual(AMENDMENTS.map((a) => [a.n, a.file]), [[1, "0.6.0-amendment-1.json"]]);
+  assert.deepEqual(AMENDMENTS.map((a) => [a.n, a.file]), [[1, "0.6.0-amendment-1.json"], [2, "0.6.0-amendment-2.json"]]);
   assert.deepEqual(verifyAmendment(P, A), []);
   assert.equal(A.value.amends.digest, digestOf(P));
   assert.deepEqual(A.value.phases.map((ph) => [ph.id, ph.set, ph.arms]), [["dev3", "dev", ["orbit-0.6.0-seated"]], ["final-seated", "heldOut", ["orbit-0.5.0-seated", "orbit-0.6.0-seated"]]]);
@@ -125,5 +125,36 @@ test("an amendment never changes what was registered: a registered arm or phase 
   assert.match(bad({ comparisons: [{ a: "orbit-0.6.0-seated", b: "plain", set: "heldOut" }] }).join("\n"), /that the gate does not read/);
   assert.match(bad({ amends: { file: "0.6.0.json", digest: "0".repeat(64) } }).join("\n"), /does not name the registration as it stands/);
   assert.match(bad({ budget: { ...A.value.budget, usd: 16 } }).join("\n"), /do not add up/);
-  assert.match(bad({ phases: [{ ...A.value.phases[0], arms: ["plain"] }, A.value.phases[1]] }).join("\n"), /phase dev3 runs only its own arms/);
+  assert.match(bad({ phases: [{ ...A.value.phases[0], arms: ["plain"] }, A.value.phases[1]] }).join("\n"), /phase dev3 runs only an amendment.s arms/);
+});
+
+// ---- amendment 2: the registered memory pairs, seated ---------------------------------------------------------------------------
+
+const A2 = AMENDMENTS[1];
+
+test("amendment 2 stands beside the registration and amendment 1, naming both as they stand; its memory phase is the registered one's pairs and order, seated", () => {
+  assert.deepEqual(amendmentProblems(P, AMENDMENTS, "0.6.0.json"), []);
+  assert.deepEqual(A2.value.builds, [{ file: A.file, digest: A.digest }]);
+  const reg = P.phases.find((ph) => ph.id === "memory");
+  const mem = A2.value.phases[0];
+  assert.deepEqual([mem.id, mem.tasks, mem.tracks.map((t) => [t.id, t.tasks])], ["memory-seated", reg.tasks, reg.tracks.map((t) => [t.id, t.tasks])]);
+  assert.ok(mem.arms.every((id) => A.value.arms[id]?.seat === true) && mem.tracks.every((t) => t.arm === "orbit-0.6.0-seated"), "amendment 1's seated arm");
+  assert.deepEqual(A2.value.comparisons.map((c) => [c.kind, c.track, c.gate]), [["memory", "pair1", false], ["memory", "pair2", false]]);
+  const c = campaignOf(P, "memory-seated", { rev: "abc", amendments: AMENDMENTS });
+  const r = campaignOf(P, "memory", { rev: "abc" });
+  assert.deepEqual([c.budgetUsd, c.runs.map((x) => x.task), c.tracks.map((t) => t.tasks), c.prereg.amendment.n], [7, r.runs.map((x) => x.task), r.tracks.map((t) => t.tasks), 2]);
+  const toRun = P.budget.ledger.filter((l) => ["final", "memory"].includes(l.phase)).reduce((s, l) => s + l.usd, 0) + A.value.budget.ledger.find((l) => l.phase === "final-seated").usd;
+  assert.ok(Object.values(A2.value.budget.spentBefore).reduce((s, x) => s + x, 0) + toRun + A2.value.budget.usd <= P.budget.claudeUsd, "inside the owner's $50");
+});
+
+test("a later amendment must name every earlier one as it stands, may run their arms but never redeclare one, and a memory comparison needs its track's cold run", () => {
+  const earlier = [A];
+  const bad = (over) => verifyAmendment(P, { ...A2, value: { ...A2.value, ...over } }, "0.6.0.json", earlier).join("\n");
+  assert.match(bad({ builds: [] }), /does not name every earlier amendment as it stands/);
+  assert.match(verifyAmendment(P, A2, "0.6.0.json", []).join("\n"), /does not name every earlier amendment/);
+  assert.match(bad({ arms: { "orbit-0.6.0-seated": { kind: "claude+orbit", rev: null, seat: true } } }), /arm orbit-0\.6\.0-seated is an earlier amendment's/);
+  assert.match(bad({ phases: [{ ...A2.value.phases[0], id: "dev3" }], budget: { ...A2.value.budget, ledger: [{ phase: "dev3", usd: 7 }] } }), /phase dev3 is an earlier amendment's/);
+  assert.match(bad({ phases: [{ ...A2.value.phases[0], arms: ["orbit-0.6.0"], tracks: A2.value.phases[0].tracks.map((t) => ({ ...t, arm: "orbit-0.6.0" })) }] }), /runs only an amendment.s arms/);
+  assert.match(bad({ phases: [{ ...A2.value.phases[0], tasks: ["pack:lending-hld-001"] }] }), /comparison of track pair2 is not one an amendment may make/);
+  assert.match(bad({ comparisons: [{ kind: "memory", phase: "memory-seated", track: "pair9", gate: false }] }), /comparison of track pair9/);
 });

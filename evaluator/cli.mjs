@@ -27,7 +27,7 @@ import { basename, join } from "node:path";
 import { LABEL, listByLabel, removeContainer, removeNetwork } from "./lib/core/docker.mjs";
 import { ensureTools } from "./lib/core/tools.mjs";
 import { ensureDir, EVALUATOR_DIR, evalHome, readJson, writeJson } from "./lib/core/util.mjs";
-import { amendmentsOf, campaignOf, loadPrereg, PREREG_DIR, verifyAmendment, verifyPrereg } from "./lib/prereg/index.mjs";
+import { amendmentProblems, amendmentsOf, campaignOf, loadPrereg, PREREG_DIR, verifyPrereg } from "./lib/prereg/index.mjs";
 import { campaignStatus, resumeCampaign, startCampaign } from "./lib/run/campaign.mjs";
 import { exportCampaign } from "./lib/run/export.mjs";
 import { markdownOf, writtenReport } from "./lib/run/report.mjs";
@@ -76,7 +76,7 @@ function verifiedPrereg(file) {
   const p = loadPrereg(file);
   const amendments = amendmentsOf(file);
   const r = verifyPrereg(p, { home: home() });
-  return { ...r, amendments, problems: [...r.problems, ...amendments.flatMap((a) => verifyAmendment(p, a, basename(file)))] };
+  return { ...r, amendments, problems: [...r.problems, ...amendmentProblems(p, amendments, basename(file))] };
 }
 
 const amendmentsSaid = (r) => (r.amendments.length ? `; amendment(s) ${r.amendments.map((a) => `${a.n} (${a.value.phases.map((ph) => ph.id).join(", ")})`).join(", ")} stand beside it, the registration unchanged` : "");
@@ -89,7 +89,10 @@ const PREREG = {
 const recordPrinted = (file) => ((r) => [`record ${file}`, `  ${r.release}: ${r.campaigns.map((c) => `${c.id} (${c.phase}${c.finished ? "" : ", NOT finished"})`).join(", ")}`, ...r.comparisons.map((c) => `  ${c.a} against ${c.b}${c.gate ? "" : " (reported)"}: ${c.paired} paired, resolved ${c.resolved[c.a]} / ${c.resolved[c.b]} -> ${c.verdict}`), `  verdict ${r.verdict}${r.missing.length ? `; owed and not held: ${r.missing.slice(0, 6).join(", ")}${r.missing.length > 6 ? ", …" : ""}` : "; every pre-registered held-out run has a word"}`, ...secondaryPrinted(r.secondary)].join("\n"))(readJson(file));
 
 // The secondary verdict, said apart: an amendment's comparisons, which the release gate does not read.
-const secondaryPrinted = (s) => (s ? [`  secondary (amendment ${s.amendments.map((a) => a.n).join(", ")}; reported, never read by the gate):`, ...s.comparisons.map((c) => `    ${c.a} against ${c.b}: ${c.paired} paired, resolved ${c.resolved[c.a]} / ${c.resolved[c.b]} -> ${c.verdict}`), `    secondary verdict ${s.verdict}${s.missing.length ? `; owed and not held: ${s.missing.slice(0, 6).join(", ")}${s.missing.length > 6 ? ", …" : ""}` : ""}`] : []);
+const secondaryPrinted = (s) => (s ? [...s.amendments.flatMap((a) => amendmentPrinted(a, s)), `  secondary verdict ${s.verdict} (reported, never read by the gate)${s.missing.length ? `; owed and not held: ${s.missing.slice(0, 6).join(", ")}${s.missing.length > 6 ? ", …" : ""}` : ""}`] : []);
+
+// One amendment's part of the secondary: its held-out comparisons and its memory tracks.
+const amendmentPrinted = (a, s) => [`  secondary (amendment ${a.n}; reported, never read by the gate):`, ...s.comparisons.filter((c) => c.amendment === a.n).map((c) => `    ${c.a} against ${c.b}: ${c.paired} paired, resolved ${c.resolved[c.a]} / ${c.resolved[c.b]} -> ${c.verdict}`), ...(s.memory ?? []).filter((m) => m.amendment === a.n).map((m) => `    memory ${m.track} (${m.phase}): ${m.task} with the store kept ${m.kept?.word ?? "—"}, cold ${m.cold?.word ?? "—"} (no verdict)`)];
 
 const summaryLine = (r) => `campaign ${r.campaign.id}: ${r.finished ? "finished" : "stopped"}; ${r.arms.map((a) => `${a.arm} ${a.resolved}/${a.gradable}${a.words.INFRA_ERROR ? ` (+${a.words.INFRA_ERROR} infra)` : ""}`).join(", ")}; charged $${r.ledger.chargedUsd}`;
 

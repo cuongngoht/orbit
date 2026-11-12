@@ -60,6 +60,7 @@ import { createTasks } from "../src/task/store.mjs";
 import { INVALIDATE } from "../src/work/freshness.mjs";
 import { modelOf as workModelOf, statesOf as needStatesOf } from "../src/work/model.mjs";
 import { listed } from "../src/work/summary.mjs";
+import { offered, roundsOf } from "../src/work/rounds.mjs";
 import { readView } from "../src/work/track/read.mjs";
 import { workingSetOf } from "../src/work/track/tail.mjs";
 import { createWorks, rootOf } from "../src/work/store.mjs";
@@ -210,7 +211,9 @@ const evidenceLevel = (b, works, id) => quietly(() => readView(viewContext(b, wo
 // which writes nothing; only `work checkpoint` and `work resume` record a move.
 const SCOPE_RULE = INVALIDATE.find((row) => row.name === "scope");
 
-const movedOf = (b, model, proofs) => new Set(quietly(() => SCOPE_RULE.find({ source: b.source }, model), []).map((row) => row.need).filter((need) => proofs.some((p) => p.need === need))).size;
+const movedNeeds = (b, model) => new Set(quietly(() => SCOPE_RULE.find({ source: b.source }, model), []).map((row) => row.need));
+
+const movedOf = (b, model, proofs) => ((moved) => proofs.filter((p) => moved.has(p.need)).length)(movedNeeds(b, model));
 
 function workFactsOf(b, works, id) {
   const model = workModelOf(works.read(id) ?? []);
@@ -219,6 +222,23 @@ function workFactsOf(b, works, id) {
 }
 
 const workFacts = (b) => ((id) => (id ? quietly(() => workFactsOf(b, createWorks(b.root, b.io), id)) : null))(ownWorkId(b));
+
+// ---- the task's own work as a bounded loop (0.6.0, U2) --------------------------------------------------------------
+
+// `--work=` names the work this look is a round of: its round state is read off its checkpoints (src/work/rounds.mjs),
+// and a target what answered it still holds -- settled, and unmoved since -- is not offered again. Nothing is written:
+// a round is recorded by `work checkpoint`.
+const roundModel = (b) => quietly(() => ((lines) => (lines ? workModelOf(lines) : null))(createWorks(b.root, b.io).read(b.work)));
+
+function looped(b, sufficiency) {
+  const model = roundModel(b);
+  if (!model) return { sufficiency, rounds: { work: b.work, problem: `no work ${b.work} is kept here — work start begins one, work list names them` } };
+  const loop = { model, moved: movedNeeds(b, model) };
+  const kept = sufficiency.targets.filter((t) => offered(t, loop));
+  return { sufficiency: { ...sufficiency, targets: kept, withheld: sufficiency.targets.length - kept.length }, rounds: { work: b.work, ...roundsOf(model) } };
+}
+
+const roundsFor = (b, sufficiency) => (b.work ? looped(b, sufficiency) : { sufficiency });
 
 // ---- the package's two answers --------------------------------------------------------------------------------------
 
@@ -242,7 +262,7 @@ function finished(b, r, given, refs, reach) {
   const input = { ...given, plan: reach.plan };
   const listing = relevanceOf(input);
   const fresh = freshened(listing, statesOf(b, r, input, listing, reach.state));
-  return { relevant: fresh.relevant, relevance: summaryOf(listing, refs, input.relations), sufficiency: sufficiencyFor(b, input, listing, { fresh, reach, refused: refs.refused.length, held: refs.held }) };
+  return { relevant: fresh.relevant, relevance: summaryOf(listing, refs, input.relations), ...roundsFor(b, sufficiencyFor(b, input, listing, { fresh, reach, refused: refs.refused.length, held: refs.held })) };
 }
 
 // No checkout -- or nothing here could be composed: no tree to verify anything against, so every proposed reference is
@@ -255,7 +275,7 @@ function ungrounded(w, problem) {
 
 const firstLine = (e) => String(e?.message ?? e).split("\n")[0].slice(0, 200);
 
-// -> { relevant, relevance: { total, listed, more, byClass, refused, gaps, problem? }, sufficiency }
+// -> { relevant, relevance: { total, listed, more, byClass, refused, gaps, problem? }, sufficiency, rounds? }
 //    w: { env, pluginRoot, cwd, project (or null), task, refs (as the host sent them), workingSet (the fold),
 //         claims: () => what `knowledge claims --for --json` answered (or null), work: the w-… `--work=` named (or null) }
 export function groundingOf(w) {

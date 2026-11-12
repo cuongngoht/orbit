@@ -508,7 +508,11 @@ src/work/      WORK: what is being done about a requirement, resumable by anothe
                capability pipeline, no third route; a receipt keeps digests and references) · refs.mjs ·
                memory.mjs (`work-receipt` claims through the stamped door) · actions.mjs · requirement.mjs
                (its ONE read-only look into requirements/) · summary.mjs · views/ · index.mjs the COMMANDS
-               table. It never names a provider
+               table · rounds.mjs (0.6.0, U2): a work as a BOUNDED DISCOVERY LOOP -- a checkpoint is a round and
+               keeps `asked` and `gained`; ROUND_STOP (budget · no-gain · go-on) and `offered` (a target is not
+               offered again while what answered it is settled and unmoved), a pure fold `context --work=` reads.
+               freshness.mjs also invalidates a need settled on a path the index no longer holds (GONE). It never
+               names a provider
 src/work/track/  UNIFIED WORK TRACKING (1.8.8, README §4.18): identity, links and a REPORTED lifecycle in the
                work journal, and the ONE read model over them -- never a second journal and never the
                doing. vocab.mjs (LIFECYCLE, EVIDENCE, LINKS, LIMITS as tables) · fold.mjs (the fold over

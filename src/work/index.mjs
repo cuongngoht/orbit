@@ -123,9 +123,9 @@ const sayClaimed = (r) => (r.state === "off" ? `CLAIMED    nothing kept — ${r.
 
 // ---- checkpoint, resume ---------------------------------------------------------------------
 
-const checkpoint = (ctx, args) => checkpointWork(ctx, targeted(ctx, args).id, flag(args, "why"));
+const checkpoint = (ctx, args) => checkpointWork(ctx, targeted(ctx, args).id, flag(args, "why"), many(args, "asked"));
 
-const sayCheckpoint = (r) => [`CHECKPOINT ${r.checkpoint} · ${r.frontier.length} ready · ${r.stale.length} newly stale`, ...r.frontier.map((f) => `  next  ${f.need}  ${f.type} ${f.subject}`)].join("\n");
+const sayCheckpoint = (r) => [`CHECKPOINT ${r.checkpoint} · ${r.frontier.length} ready · ${r.stale.length} newly stale`, `ROUND      ${r.round.rounds} of ${r.round.max} · gained ${r.gained.length} · ${r.round.stop ? `STOP (${r.round.row})` : "go on"} -- ${r.round.because}`, ...r.frontier.map((f) => `  next  ${f.need}  ${f.type} ${f.subject}`)].join("\n");
 
 const resume = (ctx, args) => resumeWork(ctx, targeted(ctx, args).id);
 

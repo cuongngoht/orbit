@@ -24,8 +24,11 @@
 //   node work.mjs claim <work> <need> [<file>] [--receipt=<rct-n>]
 //                                          what an answer means, as project knowledge: claims, one JSON
 //                                          object per line, resting on the receipt and never on a word typed in
-//   node work.mjs checkpoint <work> [--why="…"] [--json]
-//                                          look again at what moved, then mark the frontier
+//   node work.mjs checkpoint <work> [--why="…"] [--asked="<source> · <target>" …] [--json]
+//                                          look again at what moved, then mark the frontier. A checkpoint is
+//                                          one ROUND of a discovery loop: --asked names the targets the round
+//                                          read (as context printed them), and the needs it settled anew are
+//                                          kept beside them; it prints the round state (src/work/rounds.mjs)
 //   node work.mjs resume <work | --ref=<item id>> [--json]
 //                                          pick a work up: what moved is found, what must be bound is bound,
 //                                          the frontier is printed. Nothing is re-read or re-asked otherwise

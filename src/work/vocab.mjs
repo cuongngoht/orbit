@@ -47,7 +47,9 @@ export const KINDS = {
   receipt: ["id", "need", "capability", "provider", "tool", "queryDigest", "resultDigest", "sourceRefs", "outcome", "why", "seen"],
   settled: ["id", "need", "state", "receipt", "evidence", "why", "scopes"],
   stale: ["id", "need", "because", "from"],
-  checkpoint: ["id", "upto", "frontier", "snapshot", "why"],
+  // `asked`: the targets a discovery round read, as the context package printed them; `gained`: the needs it settled anew,
+  // derived by the engine (src/work/rounds.mjs). A checkpoint without them is a round that said neither (0.6.0, U2).
+  checkpoint: ["id", "upto", "frontier", "snapshot", "why", "asked", "gained"],
   resumed: ["id", "session", "revalidated", "stale"],
   // Unified work tracking (1.8.8, src/work/track/): who is doing the work and how it stands, as lines in the SAME
   // journal. A line is about the work and never a need; an old engine folds none of them and a journal without them
@@ -65,4 +67,4 @@ export const PREFIX = { snapshot: "snp", binding: "bnd", receipt: "rct", settled
 
 // Text that came from a person or somewhere else, scrubbed on the way in.
 // `from` is built by the engine (a fact, a provider, a path and what it hashed to), never typed.
-export const FREE_TEXT = ["objective", "asks", "because", "why", "evidence", "summary", "proved", "unverified", "blocked"];
+export const FREE_TEXT = ["objective", "asks", "because", "why", "evidence", "summary", "proved", "unverified", "blocked", "asked"];

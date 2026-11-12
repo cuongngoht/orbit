@@ -5,6 +5,10 @@
 //   Stop                 src/lifecycle/subscribers/hold.mjs -- hold the turn open, boundedly, when this session's own
 //                        running workflow or goal has a step ready: `decision: "block"` with the step and its one
 //                        command, or nothing. Its one write is the trail's `turn.held`
+//   Stop, after it       src/lifecycle/subscribers/owed.mjs (0.6.0, P3) -- hold the turn open once when it edited code a
+//                        component owns and no check passed after the edit, naming that component's declared safe
+//                        check. The hold answers first (src/lifecycle/dispatch.mjs takes the first payload) and owed
+//                        never holds a Stop the hold speaks for
 //   PostToolUse (Agent)  src/lifecycle/subscribers/returned.mjs -- one line for the parent after one of this plugin's
 //                        agents returns: which owner record settles its work, and where it stands. Writes nothing
 //
@@ -30,13 +34,19 @@ const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 let ENV = process.env;
 
 // Loaded for every event: what a subscriber's cheap rows ask.
-const BASE = { settings: "skills/orbit-learn/hosts/settings.mjs", hosts: "skills/orbit-learn/hosts/index.mjs", event: "src/lifecycle/event.mjs", dispatch: "src/lifecycle/dispatch.mjs", hold: "src/lifecycle/subscribers/hold.mjs", returned: "src/lifecycle/subscribers/returned.mjs", env: "src/project/env.mjs", repository: "src/project/repository.mjs", control: "src/store/control.mjs", io: "src/store/io.mjs", version: "src/version.mjs", log: "src/trace/log.mjs", turns: "src/trace/projections/turns.mjs", emit: "src/trace/emit.mjs", hash: "src/hash.mjs" };
+const BASE = { settings: "skills/orbit-learn/hosts/settings.mjs", hosts: "skills/orbit-learn/hosts/index.mjs", event: "src/lifecycle/event.mjs", dispatch: "src/lifecycle/dispatch.mjs", hold: "src/lifecycle/subscribers/hold.mjs", owed: "src/lifecycle/subscribers/owed.mjs", returned: "src/lifecycle/subscribers/returned.mjs", env: "src/project/env.mjs", repository: "src/project/repository.mjs", control: "src/store/control.mjs", io: "src/store/io.mjs", version: "src/version.mjs", log: "src/trace/log.mjs", turns: "src/trace/projections/turns.mjs", emit: "src/trace/emit.mjs", hash: "src/hash.mjs" };
 
 // Loaded only when a subscriber reaches a row that reads the owners' records.
 const DEEP = { governed: "cli/governed.mjs", automation: "src/automation/settings.mjs" };
 
+// Loaded only when the owed hold reaches its deep rows: runtime understanding, looked at (it writes nothing).
+const UNDERSTANDING = { bind: "skills/orbit-runtime/bind.mjs", understanding: "src/runtime/understanding.mjs" };
+
 // Which subscriber's table says whether an event reaches the owners, by the event it listens for.
-const NEEDS = { "turn-end": (m) => m.hold.needsOwners, "post-tool": (m) => m.returned.needsOwners };
+const NEEDS = { "turn-end": (m) => (event, w) => m.hold.needsOwners(event, w) || m.owed.needsOwners(event, w), "post-tool": (m) => m.returned.needsOwners };
+
+// Whether the owed hold reaches a row that reads what the session's edits owe.
+const owes = (m, b) => b.event?.event === "turn-end" && quietly(() => m.owed.needsOwners(b.event, world(m, null, b))) === true;
 
 async function main() {
   const input = stdin();
@@ -56,12 +66,19 @@ async function answered(m, b) {
   const bound = { ...b, rooms: quietly(() => m.control.stateRooms(m.repository.storeBase(ENV))) };
   const trail = bound.rooms ? quietly(() => trailOf(m, bound.rooms, b.event)) : null;
   const deep = quietly(() => NEEDS[b.event?.event]?.(m)?.(b.event, world(m, null, { ...bound, trail }))) ? await loaded(DEEP) : null;
-  return quietly(() => m.dispatch.dispatch(b.event, world(m, deep, { ...bound, trail }), [m.hold.hold, m.returned.returned]));
+  const understood = deep && owes(m, { ...bound, trail }) ? await loaded(UNDERSTANDING) : null;
+  return quietly(() => m.dispatch.dispatch(b.event, world(m, deep ? { ...deep, understood } : null, { ...bound, trail }), [m.hold.hold, m.owed.owed, m.returned.returned]));
 }
 
 function world(m, deep, b) {
-  const governed = deep ? deep.governed.governedOf({ env: ENV, cwd: b.event?.cwd, session: b.event?.session, nowMs: Date.now() }) : null;
-  return { host: b.host, input: b.input, env: ENV, plugin: m.version.engineName(), engine: PLUGIN_ROOT, nowMs: () => Date.now(), turn: () => b.trail?.turn() ?? null, held: (data) => quietly(() => b.trail?.emit("turn.held", data, { project: projectMark(m, governed) })), settings: () => (deep && b.rooms ? settingsOf(m, deep, b.rooms, governed) : null), governed: () => governed?.holding() ?? null, governedFor: (event) => governedFor(governed, event) };
+  const governed = deep ? deep.governed.governedOf({ env: ENV, cwd: b.event?.cwd, session: b.event?.session, nowMs: Date.now(), components: () => componentsOf(deep.understood, b.event?.cwd) }) : null;
+  return { host: b.host, input: b.input, env: ENV, plugin: m.version.engineName(), engine: PLUGIN_ROOT, nowMs: () => Date.now(), turn: () => b.trail?.turn() ?? null, held: (data) => quietly(() => b.trail?.emit("turn.held", data, { project: projectMark(m, governed) })), settings: () => (deep && b.rooms ? settingsOf(m, deep, b.rooms, governed) : null), governed: () => governed?.holding() ?? null, governedFor: (event) => governedFor(governed, event), work: () => governed?.owner() ?? null, owed: () => governed?.owed() ?? null };
+}
+
+// The checkout's components as runtime understanding keeps them -- a look, which writes nothing and scans nothing.
+function componentsOf(u, cwd) {
+  if (!u || !cwd) return [];
+  return u.understanding.look(u.bind.bindRuntime({ pluginRoot: PLUGIN_ROOT, env: ENV, cwd })).view?.components ?? [];
 }
 
 // The mission an Orbit envelope named, else the session's own governed work.

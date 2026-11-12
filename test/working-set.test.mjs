@@ -97,6 +97,22 @@ test("an observation resets what is 'since'", () => {
   assert.equal(s.lastObserve, AT);
 });
 
+// 0.6.0 (P3): what a Stop may still owe a check for -- every file edited since the last check that PASSED, whoever
+// looked since. An observation resets `since` and leaves this alone; a failed check, a background launch or a command
+// that is not a check clears nothing.
+test("unverified: the files edited since the last PASSING check -- never reset by an observation, a failure or a background launch", () => {
+  const edit = (path) => ({ ev: "post-tool", tool: "edit", paths: [path], tokens: [] });
+  const cmd = (klass, ok, more = {}) => ({ ev: ok ? "post-tool" : "post-tool-failure", tool: "command", paths: [], tokens: [], cmd: { class: klass, ok }, ...more });
+  assert.deepEqual(fold([]).unverified, { changed: [] });
+  assert.deepEqual(fold([edit("src/a.mjs"), cmd("test", true), edit("src/b.mjs"), edit("src/b.mjs")]).unverified.changed, ["src/b.mjs"], "a pass clears what came before it; an edit after it is owed again");
+  assert.deepEqual(fold([edit("src/a.mjs"), { ev: "observe", t: AT }]).unverified.changed, ["src/a.mjs"], "the observer looking is not a check");
+  assert.deepEqual(fold([edit("src/a.mjs"), cmd("test", false)]).unverified.changed, ["src/a.mjs"], "a failed check verifies nothing");
+  assert.deepEqual(fold([edit("src/a.mjs"), cmd("test", true, { bg: true })]).unverified.changed, ["src/a.mjs"], "a background launch is reported the moment it starts");
+  assert.deepEqual(fold([edit("src/a.mjs"), cmd("other", true), cmd("diff", true), cmd("commit", true)]).unverified.changed, ["src/a.mjs"], "only a check class verifies");
+  for (const klass of ["test", "lint", "build"]) assert.deepEqual(fold([edit("src/a.mjs"), cmd(klass, true)]).unverified.changed, [], klass);
+  assert.deepEqual(fold([edit("src/a.mjs"), { ev: "pre-tool", tool: "command", paths: [], tokens: [], cmd: { class: "test", ok: null } }]).unverified.changed, ["src/a.mjs"], "a check STARTING is not one that passed");
+});
+
 test("the store appends, drops a torn line on read, and stops growing at its bound — saying so once", () => {
   const io = fakeIo();
   const ws = createWorkingSet("/ws", io);

@@ -23,3 +23,9 @@
 # vendored chart library, fonts and licences are hashed in their VENDOR.json and
 # checked by the suite, and a CRLF checkout would change every hash.
 /skills/orbit-report/assets/vendor/** -text
+
+# evaluator/ (0.6.0) is the independent evaluator: its controller, task packs (with their HIDDEN tests and gold patches)
+# and results. It measures this plugin from outside and is never part of it -- the archive an agent under test is handed
+# must never hold an answer -- so the directory itself and everything under it are left out.
+/evaluator export-ignore
+/evaluator/** export-ignore

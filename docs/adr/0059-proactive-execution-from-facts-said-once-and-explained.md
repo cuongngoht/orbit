@@ -46,6 +46,11 @@ and its context's `do`.
   beside the workflow hold, never past a person's pause, cancel or question, never for a path no component owns and
   never on a guess about an edit whose write has not landed. The cheap trail row runs first; the working set keeps
   `unverified.changed`. `trigger.holdUnverified`, on by default, is a person's, written only through Control's door.
+  With no declared check for the edited paths, it names instead the tracked test files the relation adapters link to
+  them (`src/context/relations.mjs` `testsWith`, the pack bound once in `cli/relations-port.mjs` for the context package
+  and `cli/governed.mjs` alike) -- the files and never a command, asking for a regression test where no existing test
+  covers the change -- and a path neither speaks for stays silent; the trail keeps how many (`turn.held` `tests`), and a
+  program named for testing (the executable, or what a launcher is told to run) is a test run in the one `CLASSES` table.
 - **What stopped a check, from facts.** `src/orchestration/failure.mjs` gains `DEPENDENCY` (the sandbox's restore
   receipt for the check's component says it ran and failed) and `ACCESS` (a fresh reach answer for a target a person
   said the component requires is unreachable) ahead of `ENVIRONMENT`, and reads the Process port's `code` for a child
@@ -67,14 +72,14 @@ and its context's `do`.
 - A simple change whose check passed hears nothing; a failure hears one line at most, once per fact and subject a
   session. A person who said stop hears nothing at all.
 - A turn that edits owned code and stops unchecked is held once, and the trail says for which check
-  (`turn.held` `kind: "unverified"`, `check`).
+  (`turn.held` `kind: "unverified"`, `check`) -- or, with no declared check, for how many linked test files (`tests`).
 - Tests: `test/routing-facts.test.mjs`, `test/activation-catalog.test.mjs`, `test/advice.test.mjs` (every silence row
   alone, and through the real hooks), `test/lifecycle.test.mjs` (every owner's read-back), `test/stop-hold.test.mjs`,
   `test/automation-settings.test.mjs`, `test/trace.test.mjs`, `test/task-why.test.mjs`,
   `test/orchestration-failure.test.mjs`, `test/orchestration-check-facts.test.mjs`, `test/no-placeholder.test.mjs`,
   `test/resume-command.test.mjs`, `test/work-research.test.mjs`.
 - Known limits: a declared check whose command does not classify as a test, lint or build never clears the cheap trail
-  row; `unverified` is session-wide, so a later turn can be held for an earlier one's edit. The router hook and every
+  row, and a test runner named for something else (`tox`, `jest`) is said only by the words it runs with; `unverified` is session-wide, so a later turn can be held for an earlier one's edit. The router hook and every
   failed call scan up to 64 work journals (measured: about 40-50 ms on the router hook, 55 ms on a failed call). The
   failure classes are proven on the module and its fakes, not end to end through the CLI. The plan markdown banner and
   `skill-factory show` keep their placeholder on purpose: one is written into a project's test data, the other is text

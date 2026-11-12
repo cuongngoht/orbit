@@ -445,6 +445,69 @@ test("through the real hooks: a path no component owns, a passing check after th
   assert.match(stop(p).stdout, /api\/src\/refund\.mjs changed in component node:api/, "what the session still owes is the session's: an earlier edit no check has passed since");
 });
 
+// (P3b) A Python checkout runtime understanding declares no component or check for: what goes with an edited file is
+// what the relation adapters link to it -- here `tests/checkers/test_variables.py` for `pkg/checkers/variables.py`.
+const PYTHON = { "pkg/__init__.py": "", "pkg/checkers/__init__.py": "", "pkg/checkers/variables.py": "def unused(names):\n    return names\n", "pkg/other.py": "VALUE = 1\n", "tests/checkers/test_variables.py": "from pkg.checkers import variables\n\ndef test_unused():\n    assert variables.unused([]) == []\n" };
+
+function python(t) {
+  const p = checkout(t);
+  for (const [file, text] of Object.entries(PYTHON)) {
+    mkdirSync(dirname(join(p.repo, file)), { recursive: true });
+    writeFileSync(join(p.repo, file), text);
+  }
+  execFileSync("git", ["-C", p.repo, "add", "-A"], { env: sealed() });
+  execFileSync("git", ["-C", p.repo, "-c", "user.email=a@b.c", "-c", "user.name=t", "commit", "-q", "-m", "pkg"], { env: sealed() });
+  assert.equal(run(p, "runtime.mjs", ["discover", "--json"]).status, 0);
+  return p;
+}
+
+test("through the real hooks (P3b): a Python edit no component declares a check for is held once, naming the test file the adapters link to it", (t) => {
+  const p = python(t);
+  turn(p, "fix the unused-import false positive");
+  edit(p, "pkg/checkers/variables.py");
+  const before = walk(p.store).filter((f) => !f.includes(join("control", "activity", "trace")));
+  const first = stop(p);
+  assert.equal(first.status, 0, first.stderr);
+  const answer = JSON.parse(first.stdout);
+  assert.equal(answer.decision, "block");
+  assert.match(answer.reason, /pkg\/checkers\/variables\.py changed and no check passed after the edit\. The tests that go with it here: tests\/checkers\/test_variables\.py\. Run them as this project runs its tests/);
+  assert.match(answer.reason, /a behaviour change no existing test covers wants a regression test/);
+  assert.deepEqual(walk(p.store).filter((f) => !f.includes(join("control", "activity", "trace"))), before, "nothing but the trail was written");
+  assert.deepEqual(unverifiedHolds(p).map((e) => e.data), [{ kind: "unverified", tests: 1, count: 1 }], "a count, never a path");
+  assert.deepEqual([stop(p, {}, true).stdout, stop(p).stdout, unverifiedHolds(p).length], ["", "", 1], "never twice for this prompt");
+});
+
+test("through the real hooks (P3b): a passing test run after the edit clears it, whatever runner; a file nothing links a test to is silent", (t) => {
+  const p = python(t);
+  for (const command of ["pytest tests/checkers/test_variables.py", "python -m pytest -q", "python3 -m unittest discover", ".venv/bin/pytest -x"]) {
+    turn(p, `fix the false positive, then ${command}`);
+    edit(p, "pkg/checkers/variables.py");
+    bash(p, command);
+    assert.equal(stop(p).stdout, "", `${command} passed after the edit`);
+  }
+  turn(p, "and once more");
+  edit(p, "pkg/checkers/variables.py");
+  bash(p, "python -m pytest -q", false);
+  assert.match(stop(p).stdout, /tests\/checkers\/test_variables\.py/, "a failed test run verifies nothing");
+  turn(p, "now the constant");
+  edit(p, "pkg/checkers/variables.py");
+  bash(p, "pytest");
+  edit(p, "pkg/other.py");
+  assert.equal(stop(p).stdout, "", "no adapter links a test to pkg/other.py and no component owns it: silent, never a guess");
+  assert.equal(unverifiedHolds(p).length, 1);
+});
+
+test("through the real hooks (P3b): a component's declared check still wins over a test the adapters link", (t) => {
+  const p = understood(t);
+  writeFileSync(join(p.repo, "api", "src", "refund.test.mjs"), "import { refund } from './refund.mjs';\n");
+  execFileSync("git", ["-C", p.repo, "add", "-A"], { env: sealed() });
+  execFileSync("git", ["-C", p.repo, "-c", "user.email=a@b.c", "-c", "user.name=t", "commit", "-q", "-m", "test"], { env: sealed() });
+  turn(p, "make the refund rule reject amounts over what was paid");
+  edit(p, "api/src/refund.mjs");
+  assert.match(stop(p).stdout, /Run its declared test check rt-command-[0-9a-f]+ \(npm run test, in api\)/);
+  assert.deepEqual(unverifiedHolds(p).map((e) => Object.keys(e.data).sort()), [["check", "count", "kind"]]);
+});
+
 test("through the real hooks: the setting off, a halt cue, the working set off -- nothing", (t) => {
   const p = understood(t);
   writeState(realIo(), join(stateRooms(p.store).automation, "settings.json"), { trigger: { holdUnverified: false } }, AUTOMATION_SCHEMA);

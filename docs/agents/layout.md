@@ -21,7 +21,8 @@ cli/governed.mjs · cli/resources-here.mjs  (0.5.0) composition HELPERS, never e
                governed work -- its workflow, goal, task, tracked work or mission, by the association table
                and each owner's own fold -- for the follow-through hooks (0.6.0: and `owed()`, what the
                session's unverified edits owe: the working set, the owning components, a safe verifying
-               check through the verification plan); and the registry and the strategy's
+               check through the verification plan, else -- P3b -- the tracked tests the relation pack links to
+               the edited files, cli/relations-port.mjs); and the registry and the strategy's
                facts composed ONE way for the prompt hook, a session's start and `resources.mjs route`
 cli/session-facts.mjs  (0.6.0, P2) a composition HELPER: the facts about a session's work src/routing/facts.mjs
                derives -- its own working set and the needs of the work it tracks -- read ONE way for a
@@ -377,6 +378,9 @@ cli/context-grounding.mjs  (0.5.0) the composition root of `relevant` and `suffi
                questions of the task's own work and goal, and (0.6.0) the relation adapters of
                skills/orbit-develop/relations/ over the direct files `seedsOf` names; it decides nothing and writes
                nothing
+cli/relations-port.mjs  (0.6.0, P3b) a composition HELPER: the relation pack bound ONCE to a project's committed tree
+               (the source port over `scanRoots`, the tracked listing, `RELATION_ADAPTERS`) -- what the context
+               package's relations and the owed hold's linked tests (cli/governed.mjs) both ask; it decides nothing
 src/tools/     index.mjs the doctor's port, plus the tool manager: catalog · detect (project ->
                orbit-managed -> system, each ASKED its version) · effective (desired vs observed) ·
                install (receipts) · archive (a PINNED SHA-256, via src/store/archive.mjs) ·

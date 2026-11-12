@@ -32,6 +32,16 @@ test("command classes are generic words, first match wins", () => {
   assert.equal(cls("ls -la"), "other");
 });
 
+// 0.6.0 (P3b): a test the host runs clears what its edits owe, whatever runner its project uses -- so a program NAMED for
+// testing is a test run, in this one table, and no row names a runner.
+test("a program named for testing is a test run: the executable, or the program a launcher is told to run -- never an argument", () => {
+  const cls = (command) => collect(ev({ command }), "/repo", AT).cmd.class;
+  for (const command of ["pytest", "pytest -x tests/checkers/unittest_variables.py", "python -m pytest -q", "python3 -m unittest discover", "uv run pytest", "poetry run python -m pytest", ".venv/bin/pytest -x", "PYTHONPATH=src pytest", "npx vitest run", "ctest --output-on-failure", "cargo nextest run", "npm test", "npm run test:unit", "node --test", "go test ./...", "cargo test", "make test"]) assert.equal(cls(command), "test", command);
+  for (const command of ["npm install foo@latest", "docker pull image:latest", "cat src/latest.txt", "python -m http.server", "pip install pytest==8.0.0"]) assert.equal(cls(command), "other", command);
+  assert.equal(cls("git commit -m 'add a pytest'"), "commit", "first match wins");
+  assert.deepEqual(collect(ev({ command: "PYTEST_ADDOPTS='-k secret' .venv/bin/pytest tests/x.py" }), "/repo", AT).cmd, { class: "test", exe: "pytest", ok: true }, "still a class and a bare executable, never an argument");
+});
+
 test("paths are repo-relative, and anything outside the checkout is dropped", () => {
   const line = collect(ev({ tool: { kind: "edit" }, paths: ["/repo/src/a.mjs", "/etc/passwd", "../elsewhere.txt", "src/b.mjs"] }), "/repo", AT);
   assert.deepEqual(line.paths, ["src/a.mjs", "src/b.mjs"]);

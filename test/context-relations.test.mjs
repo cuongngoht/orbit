@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
-import { DIRECT_LIMIT, GAP_TARGET, IMPORTER_READS, LITERAL_LIMIT, fixed, relatedOf } from "../src/context/relations.mjs";
+import { DIRECT_LIMIT, GAP_TARGET, IMPORTER_READS, LITERAL_LIMIT, fixed, relatedOf, testsWith } from "../src/context/relations.mjs";
 import { relevanceLines, relevanceOf, seedsOf } from "../src/context/relevance.mjs";
 import { verifiedRefs } from "../src/context/refs.mjs";
 import { RELATION_ADAPTERS } from "../skills/orbit-develop/relations/index.mjs";
@@ -98,6 +98,33 @@ test("the walk is bounded: each direct file read once, one search for its import
   const q = [];
   relatedOf({ direct: ["a.js"], tree: { files: new Set(["a.js"]), dirs: new Set() }, adapters: RELATION_ADAPTERS, read: () => literals, search: searchOf({ "a.js": literals }, q) });
   assert.equal(q.length, 1 + LITERAL_LIMIT, "one importer search, and LITERAL_LIMIT literals");
+});
+
+// (0.6.0, P3b) What a turn's edits owe, with no declared check, is the tests that go with the edited files: ONE
+// definition, the adapters' `testsOf` -- so for every file of the fixture, what `testsWith` names is exactly the walk's
+// own `test` relation, and it reads no file and searches nothing.
+test("which tests go with a file has one definition: testsWith names exactly the walk's test relation, for every file of the fixture", () => {
+  const app = loginApp();
+  const walked = (path) => relatedOf({ direct: [path], tree: app.tree, adapters: RELATION_ADAPTERS, read: (p) => app.files[p] ?? null, search: searchOf(app.files), maxFiles: 1000 }).items.filter((i) => i.evidence.some((e) => e.source === "test")).map((i) => i.ref).sort();
+  const touched = [];
+  const linked = (path) => testsWith({ direct: [path], tree: app.tree, adapters: RELATION_ADAPTERS, read: (p) => (touched.push(p), null), search: (q) => (touched.push(q), null) }).sort();
+  const files = [...app.tree.files];
+  for (const path of files) assert.deepEqual(linked(path), walked(path), path);
+  assert.ok(files.some((path) => linked(path).length > 0), "the fixture links a test to at least one file");
+  assert.deepEqual(touched, [], "no file read, nothing searched: the tracked listing alone");
+});
+
+test("testsWith is bounded and never guesses: a file no adapter reads names none, no tree names none, at most maxFiles", () => {
+  const tree = { files: new Set(["pkg/a.py", "pkg/b.py", "tests/test_a.py", "pkg/a_test.py", "tests/test_b.py", "web/x.js", "web/x.test.js", "notes.txt"]), dirs: new Set() };
+  const base = { tree, adapters: RELATION_ADAPTERS };
+  assert.deepEqual(testsWith({ ...base, direct: ["pkg/a.py", "web/x.js"] }), ["tests/test_a.py", "pkg/a_test.py", "web/x.test.js"]);
+  assert.deepEqual(testsWith({ ...base, direct: ["pkg/a.py", "pkg/b.py"], maxFiles: 2 }), ["tests/test_a.py", "pkg/a_test.py"]);
+  assert.deepEqual(testsWith({ ...base, direct: ["notes.txt"] }), [], "no adapter reads it: no guess");
+  assert.deepEqual(testsWith({ ...base, direct: ["pkg/a.py"], tree: null }), []);
+  assert.deepEqual(testsWith({ ...base, direct: ["pkg/a.py"], adapters: [{ id: "half", detects: () => true }] }), [], "an adapter missing part of its contract is never called");
+  const many = Array.from({ length: DIRECT_LIMIT + 2 }, (_, i) => `m${i}.py`);
+  const wide = { files: new Set([...many, ...many.map((m) => `test_${m}`)]), dirs: new Set() };
+  assert.equal(testsWith({ ...base, tree: wide, direct: many }).length, DIRECT_LIMIT, "at most DIRECT_LIMIT edited files are asked about");
 });
 
 test("an adapter missing part of its contract is never called", () => {

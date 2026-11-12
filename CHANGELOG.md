@@ -79,7 +79,8 @@ apart from the receipts that allowed its next step.
   paused or waiting work, beside the workflow hold, or for a path no component owns. On by default;
   `trigger.holdUnverified` switches it off, set only in Orbit Control. The working set keeps `unverified.changed`, and
   a cheap trail row runs first, so an ordinary turn reads no owner record. With no declared check for what changed
-  (a Python checkout, say), it names the tracked test files the relation adapters link to the edited files instead --
+  (a Python checkout, say), it names the tracked test files the relation adapters link to the edited files instead
+  (by the patterns the checkout declares for its test runner, pytest's `python_files` and `testpaths`, else the default) --
   the files, never a command, and a regression test where no existing test covers the change -- and a passing run of a
   program named for testing (`pytest`, `python -m unittest`, `vitest`) clears it (P3b).
 - **Explainable (P6).** The trail keeps `advice.given` (the fact, the subject, the provider and its kind, never a

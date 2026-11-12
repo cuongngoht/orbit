@@ -180,7 +180,8 @@ The rest of a session follows its work through, a line at a time and only where 
   passing check after the edit, is held open once per prompt, naming the safe check that component declares and its
   command -- or the model says why it stops. It runs nothing, and never holds after a halt cue, past a paused or waiting
   work, beside the workflow hold, or for a path nothing speaks for. With no declared check, it names the tracked test
-  files Orbit's relation adapters link to the edited files instead (the files, never a command, and a regression test
+  files Orbit's relation adapters link to the edited files instead, by the test patterns the checkout declares (pytest's
+  `python_files`), else the default (the files, never a command, and a regression test
   where none covers the change). On by default; switch it off in Orbit Control (`trigger.holdUnverified`).
 
 `node cli/trace.mjs activation` reads back, per turn and per work, how a suggestion became an outcome: suggested →

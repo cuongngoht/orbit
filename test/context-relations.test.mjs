@@ -114,6 +114,19 @@ test("which tests go with a file has one definition: testsWith names exactly the
   assert.deepEqual(touched, [], "no file read, nothing searched: the tracked listing alone");
 });
 
+test("what a checkout declares for its test runner is read through the walk's own read port, so the walk and testsWith agree on it", () => {
+  const files = { "setup.cfg": "[tool:pytest]\npython_files = *test_*.py\n", "pylint/checkers/variables.py": "import os\n", "tests/checkers/unittest_variables.py": "from pylint.checkers import variables\n" };
+  const tree = { files: new Set(Object.keys(files)), dirs: new Set() };
+  const reads = [];
+  const read = (p) => (reads.push(p), files[p] ?? null);
+  const direct = ["pylint/checkers/variables.py"];
+  assert.deepEqual(testsWith({ direct, tree, adapters: RELATION_ADAPTERS, read }), ["tests/checkers/unittest_variables.py"]);
+  assert.deepEqual(reads, ["setup.cfg"], "only the declared config, through the port handed in");
+  const walk = relatedOf({ direct, tree, adapters: RELATION_ADAPTERS, read, search: searchOf(files), maxFiles: 1000 });
+  assert.deepEqual(walk.items.map((i) => [i.ref, i.class]), [["tests/checkers/unittest_variables.py", "verification"]]);
+  assert.deepEqual(testsWith({ direct, tree, adapters: RELATION_ADAPTERS }), [], "no read port: nothing declared is known, and the default names no unittest_ file");
+});
+
 test("testsWith is bounded and never guesses: a file no adapter reads names none, no tree names none, at most maxFiles", () => {
   const tree = { files: new Set(["pkg/a.py", "pkg/b.py", "tests/test_a.py", "pkg/a_test.py", "tests/test_b.py", "web/x.js", "web/x.test.js", "notes.txt"]), dirs: new Set() };
   const base = { tree, adapters: RELATION_ADAPTERS };

@@ -48,7 +48,9 @@ and its context's `do`.
   `unverified.changed`. `trigger.holdUnverified`, on by default, is a person's, written only through Control's door.
   With no declared check for the edited paths, it names instead the tracked test files the relation adapters link to
   them (`src/context/relations.mjs` `testsWith`, the pack bound once in `cli/relations-port.mjs` for the context package
-  and `cli/governed.mjs` alike) -- the files and never a command, asking for a regression test where no existing test
+  and `cli/governed.mjs` alike; which tests go with a file is what the checkout declares for its test runner -- for
+  Python, pytest's `python_files` and `testpaths` -- and the adapter's convention only when it declares nothing) -- the
+  files and never a command, asking for a regression test where no existing test
   covers the change -- and a path neither speaks for stays silent; the trail keeps how many (`turn.held` `tests`), and a
   program named for testing (the executable, or what a launcher is told to run) is a test run in the one `CLASSES` table.
 - **What stopped a check, from facts.** `src/orchestration/failure.mjs` gains `DEPENDENCY` (the sandbox's restore

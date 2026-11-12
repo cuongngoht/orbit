@@ -477,6 +477,18 @@ test("through the real hooks (P3b): a Python edit no component declares a check 
   assert.deepEqual([stop(p, {}, true).stdout, stop(p).stdout, unverifiedHolds(p).length], ["", "", 1], "never twice for this prompt");
 });
 
+test("through the real hooks (P3b): the checkout's own pytest patterns decide which tests go with a file -- setup.cfg's *test_*.py links unittest_variables.py", (t) => {
+  const p = python(t);
+  writeFileSync(join(p.repo, "setup.cfg"), "[metadata]\nname = pkg\n\n[tool:pytest]\ntestpaths = tests\npython_files = *test_*.py\n");
+  execFileSync("git", ["-C", p.repo, "mv", "tests/checkers/test_variables.py", "tests/checkers/unittest_variables.py"], { env: sealed() });
+  execFileSync("git", ["-C", p.repo, "add", "-A"], { env: sealed() });
+  execFileSync("git", ["-C", p.repo, "-c", "user.email=a@b.c", "-c", "user.name=t", "commit", "-q", "-m", "pytest config"], { env: sealed() });
+  turn(p, "fix the unused-import false positive");
+  edit(p, "pkg/checkers/variables.py");
+  assert.match(stop(p).stdout, /The tests that go with it here: tests\/checkers\/unittest_variables\.py\./);
+  assert.deepEqual(unverifiedHolds(p).map((e) => e.data), [{ kind: "unverified", tests: 1, count: 1 }]);
+});
+
 test("through the real hooks (P3b): a passing test run after the edit clears it, whatever runner; a file nothing links a test to is silent", (t) => {
   const p = python(t);
   for (const command of ["pytest tests/checkers/test_variables.py", "python -m pytest -q", "python3 -m unittest discover", ".venv/bin/pytest -x"]) {

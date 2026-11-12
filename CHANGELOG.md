@@ -146,6 +146,12 @@ tests), so deleting the benchmark loses no engine rule.
 - A failed call whose facts were all said already loads no owner, registry or resolver. Measured hook cost of the new
   facts: about 40-50 ms on the router hook and 55 ms on a failed call.
 - The evaluator's status says GRADING for a run that ended and waits for its grade, never INTERRUPTED.
+- The evaluator stages every tree a run compares (its start and its end) in ONE git directory of its own, whatever the
+  task source: an instance image whose `/testbed` holds untracked files (psf__requests-1142) died with `bad object`.
+  And a run's failure is that run's outcome -- a throw while starting, running or taking the patch is INFRA_ERROR
+  (START, RUN, PATCH, TASK), one while grading is UNGRADABLE -- and the campaign goes on; only a campaign-level failure
+  (the tools volume, Docker unavailable) halts it, in a `halted` journal line. Every pre-registered SWE-bench instance's
+  gold patch RESOLVES in the evaluator before any arm is graded on it.
 
 **Known limits.**
 

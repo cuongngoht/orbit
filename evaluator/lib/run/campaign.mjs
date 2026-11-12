@@ -8,6 +8,7 @@
 //
 //   loadCampaign(file) -> def      frozenCampaign(def, o) -> campaign      planOf(def) -> [{ key, arm, task, trial, track }]
 //   startCampaign(file, o) · resumeCampaign(id, o) · campaignStatus(id, o)
+//   o.ports: { tools, execute, dockerAnswers } -- the Docker-bound steps, faked in checks; the real ones otherwise.
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { armOf } from "../arms/index.mjs";
@@ -111,9 +112,19 @@ async function driven(home, id, o) {
   finally { unlock(); }
 }
 
+// A failure that is the campaign's (its tools volume, Docker no longer answering, its journal) ends it, said in a
+// `halted` line; a failure of one run is that run's outcome (attempt.mjs) and never reaches here.
 async function loop(home, room, campaign, o) {
   const journal = join(room, "journal.jsonl");
-  const tools = ensureTools({ caFile: campaign.caFile });
+  try { return await looped(home, room, campaign, o, journal); }
+  catch (e) {
+    appendLine(journal, { kind: "halted", at: nowIso(), reason: String(e?.message ?? e).slice(0, 400) });
+    throw e;
+  }
+}
+
+async function looped(home, room, campaign, o, journal) {
+  const tools = (o.ports?.tools ?? ensureTools)({ caFile: campaign.caFile });
   if (!tools.ok) throw new Error(`the tools volume could not be made: ${tools.why}`);
   if (tools.claudeCode !== campaign.claudeCode) throw new Error(`the campaign froze Claude Code ${campaign.claudeCode}, and the tools volume has ${tools.claudeCode}`);
   appendLine(journal, { kind: "begun", at: nowIso(), pid: process.pid, tools: { volume: tools.volume, claudeCode: tools.claudeCode, node: tools.node } });
@@ -164,9 +175,16 @@ async function oneRun(home, room, campaign, journal, r, tools, o) {
   if (missing.length) return appendLine(journal, { kind: "skipped", run: r.key, at: nowIso(), reason: `credential: the controller's environment has no ${missing.join(", ")}` });
   const ledger = ledgerOf(fold, campaign.budgetUsd);
   if (!canStart(ledger, cap)) return appendLine(journal, { kind: "skipped", run: r.key, at: nowIso(), reason: `the budget has $${ledger.remainingUsd} left, below this run's cap of $${cap}` });
-  const task = taskOf(r.task, { home, campaign });
+  const task = taskOrWhy(r.task, { home, campaign });
+  if (task.why) return appendLine(journal, { kind: "outcome", run: r.key, attempt: nextAttempt(s), at: nowIso(), word: "INFRA_ERROR", why: `TASK: ${task.why}` });
   const trackStore = r.track ? join(room, "tracks", slug(r.track), "work", "orbit-store") : null;
-  await runAttempt({ campaign, home, room, journal, run: r, attempt: nextAttempt(s), arm, armFrozen: frozen, task, tools, pluginRepo: campaign.pluginRepo, caFile: campaign.caFile, credentialValues: credentialValues(arm.credentialNames), trackStore, keepScratch: o.keepScratch === true });
+  await runAttempt({ campaign, home, room, journal, run: r, attempt: nextAttempt(s), arm, armFrozen: frozen, task, tools, pluginRepo: campaign.pluginRepo, caFile: campaign.caFile, credentialValues: credentialValues(arm.credentialNames), trackStore, keepScratch: o.keepScratch === true, execute: o.ports?.execute, dockerAnswers: o.ports?.dockerAnswers });
+}
+
+// The run's task, or -- when it cannot be read now (a dataset row gone from its cache) -- why: that run's outcome.
+function taskOrWhy(ref, ctx) {
+  try { return taskOf(ref, ctx); }
+  catch (e) { return { why: String(e?.message ?? e).replace(/\s+/g, " ").slice(0, 400) }; }
 }
 
 // ---- reading it -----------------------------------------------------------------------------------------------------------

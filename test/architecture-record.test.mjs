@@ -98,6 +98,7 @@ test("a fact spanning several scopes takes the worst of them", () => {
   assert.equal(factState({ scope: ["a", "d"] }, scopes), UNKNOWN);
   assert.equal(factState({ scope: ["c", "d"] }, scopes), STALE, "stale beats unknown — something demonstrably moved");
   assert.equal(factState({ scope: [] }, scopes), UNKNOWN);
+  assert.equal(factState({ scope: ["a", "never-measured"] }, scopes), UNKNOWN, "a scope nobody measured is unknown, never fresh");
 });
 
 test("a rescan covers what moved and what nothing can speak for — never everything", () => {

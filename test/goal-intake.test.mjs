@@ -36,6 +36,19 @@ test("persisted goal survives read back", () => {
   assert.equal(modelOf(records).meta.title, intake.title);
 });
 
+// A goal's journal is append-only like a task's: a line a killed process tore is dropped, and the next append ends it
+// first, so every record written after it reads back.
+test("a goal journal's torn last line is ended before the next record, which reads back", () => {
+  const io = fakeIo();
+  const goals = createGoals("/store/acme", io);
+  const id = "goal-0123456789ab";
+  goals.begin(id, { id, title: "t" });
+  io.files.set(goals.journalFile(id), `${io.files.get(goals.journalFile(id))}{"at":"2026-10-06T21:04:00Z","kind":"spe`);
+  assert.deepEqual(goals.read(id).map((l) => l.kind), ["created"], "the fragment is not a line");
+  goals.append(id, "paused", { id, because: "a person stopped it" });
+  assert.deepEqual(goals.read(id).map((l) => l.kind), ["created", "paused"]);
+});
+
 test("Vietnamese specification is stored verbatim", () => {
   const vi = "Người dùng có thể hủy đơn chưa thanh toán.\nAC1: Hủy thành công.";
   const intake = intakeFromText(ctx, vi);

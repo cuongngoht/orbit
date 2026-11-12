@@ -11,16 +11,22 @@
 // subject) or null. A word nobody can derive is not a word: no model, no context run inside a hook, never the text of
 // an error, and never a guess at a cause (src/orchestration/failure.mjs classifies a task's check; this says the fact).
 //
-//   seen: { checks: { last: { class, exe, ok, afterEdit } | null, repeats: { class, exe, n } | null } }
+//   seen: { checks: { last: { class, exe, ok, afterEdit } | null, repeats: { class, exe, n } | null } }   (checks.mjs)
 //
 // Ordered: when several hold, the first is the one a line says. A LEAF: it imports nothing and reads nothing.
 
 // What a check is, said as the trail says a shell step: its class and its bare executable.
 export const checkSaid = (c) => `${c.class}${c.exe ? ` (${c.exe})` : ""}`;
 
+// How many failures of one check in a row, with nothing changed between, are no progress (P5): said once, as that.
+export const REPEATS = 3;
+
+const repeated = (seen) => ((r) => (r && r.n >= REPEATS ? checkSaid(r) : null))(seen?.checks?.repeats ?? null);
+
 const lastFailed = (seen) => ((c) => (c && c.ok === false && c.afterEdit === true ? checkSaid(c) : null))(seen?.checks?.last ?? null);
 
 export const FACTS = [
+  { fact: "check.repeats", requires: ["development.implementation"], say: `the same check failed ${REPEATS} or more times in a row with nothing changed between: diagnose why before running it again -- running it again will not change it`, derive: repeated },
   { fact: "check.failed", requires: ["development.implementation"], say: "a check the session ran after its edits failed: find the cause in the change and the output before editing again", derive: lastFailed },
 ];
 

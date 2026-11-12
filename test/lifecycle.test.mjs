@@ -178,6 +178,23 @@ test("the capability line is at most 300 bytes, however much a person switched o
   assert.match(OWNERS.mission.report("msn-0123456789ab", "arn-2"), /agent report msn-0123456789ab arn-2$/);
 });
 
+// 0.6.0 (P5): no loops. Every owner a hook names keeps a write door -- its own step, settle or report -- so an outcome
+// it never heard back is READ BACK through the owner's own command, never resent: each row names its read and its
+// reconcile, and neither is a command that would send anything again.
+const SENDS = ["start", "step", "settle", "report", "approve", "push", "commit"];
+
+test("every owner names its read-back and its reconcile, and neither one sends anything again", () => {
+  for (const [kind, owner] of Object.entries(OWNERS)) {
+    assert.equal(typeof owner.read, "function", `${kind} names no read`);
+    assert.equal(typeof owner.reconcile, "function", `${kind} names no reconcile: an outcome nobody heard back could only be resent`);
+    for (const how of ["read", "reconcile"]) {
+      const words = owner[how]("x-0123456789ab").replace(/^node \S+ /, "").split(/\s+/).filter((w) => /^[a-z-]+$/.test(w));
+      assert.deepEqual(words.filter((w) => SENDS.includes(w)), [], `${kind}.${how} sends: ${owner[how]("x-0123456789ab")}`);
+    }
+    assert.match(recoveryRow({ kind, id: "x-1", lifecycle: "L" }, "/plug"), /never sent again/, `${kind}: its recovery row says it is read back, never resent`);
+  }
+});
+
 test("after one of Orbit's agents returns: one line naming the owner record that settles its work -- and nothing for another plugin's agent or a session with no governed work", () => {
   const asked = [];
   const world = (owner) => ({ host: claude, input: { tool_name: "Agent" }, plugin: "orbit", engine: "/plug", governedFor: (e) => (asked.push(e.invokes.name), owner) });

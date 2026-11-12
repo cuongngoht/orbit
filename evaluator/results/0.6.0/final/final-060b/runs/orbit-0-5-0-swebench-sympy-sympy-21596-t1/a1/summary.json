@@ -1,0 +1,105 @@
+{
+  "kind": "ended",
+  "run": "orbit-0.5.0__swebench_sympy__sympy-21596__t1",
+  "attempt": 1,
+  "at": "2026-11-12T12:14:02.149Z",
+  "chargedUsd": 0.05992669999999999,
+  "infra": null,
+  "timedOut": false,
+  "killedByControl": false,
+  "exit": 0,
+  "oomKilled": false,
+  "wallMs": 104679,
+  "streamBytes": 73312,
+  "streamCut": false,
+  "summary": {
+    "started": true,
+    "model": "claude-sonnet-5-5",
+    "version": "2.1.322",
+    "plugins": [
+      "orbit@0.5.0"
+    ],
+    "hooks": {
+      "ran": 3,
+      "failed": 0
+    },
+    "skillsListed": 41,
+    "result": true,
+    "costUsd": 0.05992669999999999,
+    "tokens": {
+      "input": 18,
+      "output": 1867,
+      "cacheRead": 227047,
+      "cacheWrite": 4629
+    },
+    "turns": 9,
+    "durationMs": 102824,
+    "denials": 0,
+    "subtype": "success",
+    "isError": false,
+    "stoppedOn": null,
+    "apiError": null,
+    "status": "DONE",
+    "statusWhy": null,
+    "asked": false,
+    "tools": {
+      "calls": 8,
+      "byName": {
+        "Bash": 8
+      },
+      "skills": {},
+      "agents": {}
+    },
+    "orbit": {
+      "commands": 0,
+      "byCli": {}
+    }
+  },
+  "patch": {
+    "bytes": 1698,
+    "digest": "bc4d474c71539819136f457d14b5293968f40fa113fbb253af67300e8f426b46",
+    "paths": [
+      "sympy/sets/handlers/intersection.py",
+      "sympy/sets/tests/test_fancysets.py"
+    ]
+  },
+  "plugin": {
+    "digest": "cf98124b0cd41fc4472243299c70a4e5835eae441eaead6568660203380672c4",
+    "files": 2706
+  },
+  "images": {
+    "task": "sha256:1df616eb9faad0688c22d0e38984918699b28fea9e60f5c1158f1e99b8eb2a6f",
+    "taskRef": "swebench/sweb.eval.x86_64.sympy_1776_sympy-21596:latest",
+    "pulled": false,
+    "egress": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb"
+  },
+  "startCommit": "05310afe5e7ded925aad387959f1d75f454f3aaa",
+  "entryPhase": "ended",
+  "seat": null,
+  "trail": {
+    "events": 10,
+    "byType": {
+      "prompt.submitted": 1,
+      "command.ran": 8,
+      "session.ended": 1
+    },
+    "held": {},
+    "advice": {},
+    "commands": {},
+    "journals": {
+      "task": 0,
+      "work": 0
+    },
+    "cut": false
+  },
+  "egress": {
+    "direct": "ENETUNREACH",
+    "outsideName": "EAI_AGAIN",
+    "api": {
+      "connect": 200,
+      "http": 404
+    },
+    "otherHost": 403,
+    "holds": true
+  }
+}

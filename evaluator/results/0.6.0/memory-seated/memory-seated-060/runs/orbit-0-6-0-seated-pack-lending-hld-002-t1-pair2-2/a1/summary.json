@@ -1,0 +1,106 @@
+{
+  "kind": "ended",
+  "run": "orbit-0.6.0-seated__pack_lending-hld-002__t1__pair2-2",
+  "attempt": 1,
+  "at": "2026-11-12T12:44:07.015Z",
+  "chargedUsd": 0.07569660000000002,
+  "infra": null,
+  "timedOut": false,
+  "killedByControl": false,
+  "exit": 0,
+  "oomKilled": false,
+  "wallMs": 23422,
+  "streamBytes": 92934,
+  "streamCut": false,
+  "summary": {
+    "started": true,
+    "model": "claude-sonnet-5-5",
+    "version": "2.1.322",
+    "plugins": [
+      "orbit@0.6.0"
+    ],
+    "hooks": {
+      "ran": 3,
+      "failed": 0
+    },
+    "skillsListed": 42,
+    "result": true,
+    "costUsd": 0.07569660000000002,
+    "tokens": {
+      "input": 10,
+      "output": 2072,
+      "cacheRead": 135646,
+      "cacheWrite": 10348
+    },
+    "turns": 5,
+    "durationMs": 21841,
+    "denials": 0,
+    "subtype": "success",
+    "isError": false,
+    "stoppedOn": null,
+    "apiError": null,
+    "status": "DONE",
+    "statusWhy": null,
+    "asked": false,
+    "tools": {
+      "calls": 4,
+      "byName": {
+        "Bash": 4
+      },
+      "skills": {},
+      "agents": {}
+    },
+    "orbit": {
+      "commands": 0,
+      "byCli": {}
+    }
+  },
+  "patch": {
+    "bytes": 4953,
+    "digest": "cd51df5de6fd2858d3407029cee88d0c66c035586e59ae692c14a06ba23755d1",
+    "paths": [
+      "README.md",
+      "src/holds.mjs",
+      "src/loans.mjs"
+    ]
+  },
+  "plugin": {
+    "digest": "7dd8b16ff0a8a0361008ada47868b60a8df7ecd00b38f7d55c9cb8667c6e5c5f",
+    "files": 2727
+  },
+  "images": {
+    "task": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb",
+    "taskRef": "node:22",
+    "pulled": false,
+    "egress": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb"
+  },
+  "startCommit": "77f82e3b0757621c1466fbc69e128d5eb05d16c6",
+  "entryPhase": "ended",
+  "seat": null,
+  "trail": {
+    "events": 11,
+    "byType": {
+      "prompt.submitted": 2,
+      "command.ran": 7,
+      "session.ended": 2
+    },
+    "held": {},
+    "advice": {},
+    "commands": {},
+    "journals": {
+      "task": 0,
+      "work": 0
+    },
+    "cut": false
+  },
+  "egress": {
+    "direct": "ENETUNREACH",
+    "outsideName": "EAI_AGAIN",
+    "api": {
+      "connect": 200,
+      "http": 404
+    },
+    "otherHost": 403,
+    "holds": true
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "kind": "outcome",
+  "run": "orbit-0.6.0__swebench_pytest-dev__pytest-5809__t1",
+  "attempt": 1,
+  "at": "2026-11-12T12:10:25.647Z",
+  "word": "RESOLVED",
+  "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+  "saidDone": true,
+  "grade": {
+    "ran": true,
+    "applied": true,
+    "resolved": true,
+    "regressed": false,
+    "f2pFailed": [],
+    "p2pFailed": []
+  },
+  "gradeDetail": {
+    "ran": true,
+    "applied": true,
+    "resolved": true,
+    "regressed": false,
+    "f2pFailed": [],
+    "p2pFailed": [],
+    "counts": {
+      "f2pPassed": 1,
+      "f2pFailed": 0,
+      "p2pPassed": 3,
+      "p2pFailed": 0
+    },
+    "harness": {
+      "swebench": "4.1.0",
+      "exit": 0,
+      "runId": "evl-e96536d813be"
+    }
+  }
+}

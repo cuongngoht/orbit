@@ -1,0 +1,71 @@
+{
+  "campaign": "final-seated-060",
+  "run": {
+    "arm": "orbit-0.5.0-seated",
+    "task": "swebench:sympy__sympy-21596",
+    "trial": 1,
+    "key": "orbit-0.5.0-seated__swebench_sympy__sympy-21596__t1"
+  },
+  "attempt": 1,
+  "arm": {
+    "id": "orbit-0.5.0-seated",
+    "kind": "claude+orbit",
+    "def": {
+      "kind": "claude+orbit",
+      "rev": "v0.5.0",
+      "seat": true
+    },
+    "frozen": {
+      "rev": "v0.5.0",
+      "commit": "54aaf0b65bdb8f931ab6fe80c7bf368a971f2aab"
+    }
+  },
+  "seated": true,
+  "seat": {
+    "argv": [
+      "/opt/eval/bin/node",
+      "/opt/orbit-plugin/cli/help.mjs"
+    ],
+    "ranHere": true
+  },
+  "task": {
+    "ref": "swebench:sympy__sympy-21596",
+    "image": "swebench/sweb.eval.x86_64.sympy_1776_sympy-21596:latest",
+    "repo": "/testbed",
+    "digest": "34205e044f8322378d8416837b70f777cce343b2327bae97cf3064e6bc728f5f"
+  },
+  "model": "claude-sonnet-5-5",
+  "effort": "medium",
+  "limits": {
+    "usd": 1,
+    "turns": 80,
+    "minutes": 40,
+    "cpus": 2,
+    "memoryMb": 4096,
+    "pids": 2048
+  },
+  "capUsd": 1,
+  "tools": {
+    "ok": true,
+    "volume": "evl-tools-cc-2.1.322-e13726ca6041",
+    "built": false,
+    "claudeCode": "2.1.322",
+    "claudeCodeSays": "2.1.322 (Claude Code)",
+    "node": "v22.23.5",
+    "nodeImage": "node:22",
+    "nodeImageId": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb",
+    "builtAt": "2026-11-12T05:13:27.498Z"
+  },
+  "containers": {
+    "net": "evl-84ef42cc-21070e78-a1-net",
+    "egress": "evl-84ef42cc-21070e78-a1-egress",
+    "task": "evl-84ef42cc-21070e78-a1-task",
+    "grader": "evl-84ef42cc-21070e78-a1-grader",
+    "label": "final-seated-060/orbit-0.5.0-seated__swebench_sympy__sympy-21596__t1/a1"
+  },
+  "evaluator": {
+    "commit": "78a4a56b01d27ba9528ff1575ea3c5feacd94c5a",
+    "dirty": false
+  },
+  "startedAt": "2026-11-12T12:26:51.422Z"
+}

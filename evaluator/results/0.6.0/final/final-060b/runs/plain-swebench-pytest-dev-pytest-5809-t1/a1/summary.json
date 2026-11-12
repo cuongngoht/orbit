@@ -1,0 +1,85 @@
+{
+  "kind": "ended",
+  "run": "plain__swebench_pytest-dev__pytest-5809__t1",
+  "attempt": 1,
+  "at": "2026-11-12T12:09:08.369Z",
+  "chargedUsd": 0.013628200000000002,
+  "infra": null,
+  "timedOut": false,
+  "killedByControl": false,
+  "exit": 0,
+  "oomKilled": false,
+  "wallMs": 7000,
+  "streamBytes": 16288,
+  "streamCut": false,
+  "summary": {
+    "started": true,
+    "model": "claude-sonnet-5-5",
+    "version": "2.1.322",
+    "plugins": [],
+    "hooks": {
+      "ran": 0,
+      "failed": 0
+    },
+    "skillsListed": 16,
+    "result": true,
+    "costUsd": 0.013628200000000002,
+    "tokens": {
+      "input": 6,
+      "output": 514,
+      "cacheRead": 55882,
+      "cacheWrite": 722
+    },
+    "turns": 4,
+    "durationMs": 6002,
+    "denials": 0,
+    "subtype": "success",
+    "isError": false,
+    "stoppedOn": null,
+    "apiError": null,
+    "status": "DONE",
+    "statusWhy": null,
+    "asked": false,
+    "tools": {
+      "calls": 3,
+      "byName": {
+        "Grep": 2,
+        "Edit": 1
+      },
+      "skills": {},
+      "agents": {}
+    },
+    "orbit": {
+      "commands": 0,
+      "byCli": {}
+    }
+  },
+  "patch": {
+    "bytes": 478,
+    "digest": "bf578ef6f38ccf4697c27d8f1afc9ffc87f8d42f5cab4f0a2747b83036a071c0",
+    "paths": [
+      "src/_pytest/pastebin.py"
+    ]
+  },
+  "plugin": null,
+  "images": {
+    "task": "sha256:0185f5d9efb9cf1364122a7eff7fc5f02227698d01f7e4f2d593917816df42d3",
+    "taskRef": "swebench/sweb.eval.x86_64.pytest-dev_1776_pytest-5809:latest",
+    "pulled": false,
+    "egress": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb"
+  },
+  "startCommit": "e02f28aef4b008a8bd3876fc7b5d4616d0b8d723",
+  "entryPhase": "ended",
+  "seat": null,
+  "trail": null,
+  "egress": {
+    "direct": "ENETUNREACH",
+    "outsideName": "EAI_AGAIN",
+    "api": {
+      "connect": 200,
+      "http": 404
+    },
+    "otherHost": 403,
+    "holds": true
+  }
+}

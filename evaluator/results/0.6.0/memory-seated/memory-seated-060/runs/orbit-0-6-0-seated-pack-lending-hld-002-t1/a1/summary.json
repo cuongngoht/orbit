@@ -1,0 +1,122 @@
+{
+  "kind": "ended",
+  "run": "orbit-0.6.0-seated__pack_lending-hld-002__t1",
+  "attempt": 1,
+  "at": "2026-11-12T12:42:10.805Z",
+  "chargedUsd": 0.10423750000000001,
+  "infra": null,
+  "timedOut": false,
+  "killedByControl": false,
+  "exit": 0,
+  "oomKilled": false,
+  "wallMs": 29611,
+  "streamBytes": 91456,
+  "streamCut": false,
+  "summary": {
+    "started": true,
+    "model": "claude-sonnet-5-5",
+    "version": "2.1.322",
+    "plugins": [
+      "orbit@0.6.0"
+    ],
+    "hooks": {
+      "ran": 3,
+      "failed": 0
+    },
+    "skillsListed": 42,
+    "result": true,
+    "costUsd": 0.10423750000000001,
+    "tokens": {
+      "input": 8,
+      "output": 2195,
+      "cacheRead": 93875,
+      "cacheWrite": 18221
+    },
+    "turns": 4,
+    "durationMs": 27753,
+    "denials": 0,
+    "subtype": "success",
+    "isError": false,
+    "stoppedOn": null,
+    "apiError": null,
+    "status": "DONE",
+    "statusWhy": null,
+    "asked": false,
+    "tools": {
+      "calls": 3,
+      "byName": {
+        "Bash": 3
+      },
+      "skills": {},
+      "agents": {}
+    },
+    "orbit": {
+      "commands": 0,
+      "byCli": {}
+    }
+  },
+  "patch": {
+    "bytes": 4464,
+    "digest": "d9da2c6bf6718bc119b990df47d6686680e34fef6bd9f3efc1b79dd9c28008d0",
+    "paths": [
+      "src/holds.mjs",
+      "src/loans.mjs"
+    ]
+  },
+  "plugin": {
+    "digest": "7dd8b16ff0a8a0361008ada47868b60a8df7ecd00b38f7d55c9cb8667c6e5c5f",
+    "files": 2727
+  },
+  "images": {
+    "task": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb",
+    "taskRef": "node:22",
+    "pulled": false,
+    "egress": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb"
+  },
+  "startCommit": "77f82e3b0757621c1466fbc69e128d5eb05d16c6",
+  "entryPhase": "ended",
+  "seat": {
+    "holds": true,
+    "exit": 0,
+    "ms": 209,
+    "unchanged": true,
+    "changed": [],
+    "gitDirChanged": 0,
+    "storeFiles": 6,
+    "store": [
+      "repo-1e694de3627d1fbe3cb42e1d6bafde83e55ca313ac372ca5abcf11bde30d8bef/store.json",
+      "repo-1e694de3627d1fbe3cb42e1d6bafde83e55ca313ac372ca5abcf11bde30d8bef/ui-tests/project.json",
+      "repo-1e694de3627d1fbe3cb42e1d6bafde83e55ca313ac372ca5abcf11bde30d8bef/ui-tests/project.schema.json",
+      "repo-1e694de3627d1fbe3cb42e1d6bafde83e55ca313ac372ca5abcf11bde30d8bef/ui-tests/schema/case.schema.json",
+      "repo-1e694de3627d1fbe3cb42e1d6bafde83e55ca313ac372ca5abcf11bde30d8bef/ui-tests/schema/plan.schema.json",
+      "state/checkouts/ddc5e473a09bd156b4eb7c426367aa59c37909a35241b49fbfa0631b9b532a39.json"
+    ],
+    "why": null
+  },
+  "trail": {
+    "events": 5,
+    "byType": {
+      "prompt.submitted": 1,
+      "command.ran": 3,
+      "session.ended": 1
+    },
+    "held": {},
+    "advice": {},
+    "commands": {},
+    "journals": {
+      "task": 0,
+      "work": 0
+    },
+    "cut": false
+  },
+  "egress": {
+    "direct": "ENETUNREACH",
+    "outsideName": "EAI_AGAIN",
+    "api": {
+      "connect": 200,
+      "http": 404
+    },
+    "otherHost": 403,
+    "holds": true
+  }
+}

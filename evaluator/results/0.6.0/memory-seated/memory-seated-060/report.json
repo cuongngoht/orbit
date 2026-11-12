@@ -1,0 +1,488 @@
+{
+  "campaign": {
+    "id": "memory-seated-060",
+    "model": "claude-sonnet-5-5",
+    "effort": "medium",
+    "limits": {
+      "usd": 1,
+      "turns": 80,
+      "minutes": 40,
+      "cpus": 2,
+      "memoryMb": 4096,
+      "pids": 2048
+    },
+    "budgetUsd": 7,
+    "claudeCode": "2.1.322",
+    "evaluator": {
+      "commit": "78a4a56b01d27ba9528ff1575ea3c5feacd94c5a",
+      "dirty": false
+    },
+    "arms": {
+      "orbit-0.6.0-seated": {
+        "kind": "claude+orbit",
+        "rev": "6b25eb9ef227b8fe1e896d5d7aff0d22ad52a827",
+        "seat": true,
+        "frozen": {
+          "rev": "6b25eb9ef227b8fe1e896d5d7aff0d22ad52a827",
+          "commit": "6b25eb9ef227b8fe1e896d5d7aff0d22ad52a827"
+        }
+      }
+    },
+    "tasks": {
+      "pack:lending-hld-001": {
+        "digest": "171c4e0a713a76e3ee1f194e0b7f71c8f5337da0d4b0a94f534b19bed94e1954",
+        "image": "node:22"
+      },
+      "pack:lending-hld-002": {
+        "digest": "5020d40a1a212f3e92e291551a10a59c85dda1b9a2e8652922fa2d554fdcecdd",
+        "image": "node:22"
+      },
+      "pack:lending-hld-004": {
+        "digest": "2ef250f1dc950645956d70b8b00097116a687972ed03c40e103d88494ed3bb61",
+        "image": "node:22"
+      },
+      "pack:lending-hld-003": {
+        "digest": "79f5135168c3edcc2a6f1e94a3a93e658ce5c26aa6123aad43fa381243a88d93",
+        "image": "node:22"
+      }
+    },
+    "frozenAt": "2026-11-12T12:41:02.904Z"
+  },
+  "ledger": {
+    "budgetUsd": 7,
+    "chargedUsd": 0.47,
+    "reservedUsd": 0,
+    "remainingUsd": 6.53
+  },
+  "finished": true,
+  "arms": [
+    {
+      "arm": "orbit-0.6.0-seated",
+      "runs": 6,
+      "ended": 6,
+      "gradable": 6,
+      "resolved": 6,
+      "rate": 1,
+      "words": {
+        "RESOLVED": 6,
+        "UNRESOLVED": 0,
+        "REGRESSED": 0,
+        "EMPTY_PATCH": 0,
+        "FALSE_DONE": 0,
+        "TIMEOUT": 0,
+        "BUDGET": 0,
+        "INFRA_ERROR": 0,
+        "UNGRADABLE": 0
+      },
+      "infraErrors": [],
+      "notRun": [],
+      "medianCostUsd": 0.0709739,
+      "medianMinutes": 0.41481666666666667,
+      "chargedUsd": 0.46670340000000005,
+      "interventions": 0,
+      "trail": {
+        "runs": 6,
+        "events": 42,
+        "held": {},
+        "advice": {},
+        "commands": {},
+        "runsHeld": 0,
+        "runsAdvised": 0
+      },
+      "usage": {
+        "skillCalls": 0,
+        "agentCalls": 0,
+        "pluginCommands": 0,
+        "runsWithPluginLoaded": 6
+      }
+    }
+  ],
+  "pairwise": [
+    {
+      "task": "pack:lending-hld-001",
+      "arms": {
+        "orbit-0.6.0-seated": [
+          "RESOLVED"
+        ]
+      }
+    },
+    {
+      "task": "pack:lending-hld-002",
+      "arms": {
+        "orbit-0.6.0-seated": [
+          "RESOLVED"
+        ]
+      }
+    },
+    {
+      "task": "pack:lending-hld-004",
+      "arms": {
+        "orbit-0.6.0-seated": []
+      }
+    },
+    {
+      "task": "pack:lending-hld-003",
+      "arms": {
+        "orbit-0.6.0-seated": []
+      }
+    }
+  ],
+  "runs": [
+    {
+      "arm": "orbit-0.6.0-seated",
+      "task": "pack:lending-hld-001",
+      "trial": 1,
+      "key": "orbit-0.6.0-seated__pack_lending-hld-001__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.0982757,
+      "chargedUsd": 0.0982757,
+      "minutes": 0.47168333333333334,
+      "turns": 5,
+      "tokens": {
+        "input": 10,
+        "output": 1992,
+        "cacheRead": 122477,
+        "cacheWrite": 16522
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 4,
+        "byName": {
+          "Bash": 4
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [
+        "orbit@0.6.0"
+      ],
+      "trail": {
+        "events": 6,
+        "byType": {
+          "prompt.submitted": 1,
+          "command.ran": 4,
+          "session.ended": 1
+        },
+        "held": {},
+        "advice": {},
+        "commands": {},
+        "journals": {
+          "task": 0,
+          "work": 0
+        },
+        "cut": false
+      },
+      "patchBytes": 6526,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "orbit-0.6.0-seated",
+      "task": "pack:lending-hld-002",
+      "trial": 1,
+      "key": "orbit-0.6.0-seated__pack_lending-hld-002__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.10423750000000001,
+      "chargedUsd": 0.10423750000000001,
+      "minutes": 0.49351666666666666,
+      "turns": 4,
+      "tokens": {
+        "input": 8,
+        "output": 2195,
+        "cacheRead": 93875,
+        "cacheWrite": 18221
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 3,
+        "byName": {
+          "Bash": 3
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [
+        "orbit@0.6.0"
+      ],
+      "trail": {
+        "events": 5,
+        "byType": {
+          "prompt.submitted": 1,
+          "command.ran": 3,
+          "session.ended": 1
+        },
+        "held": {},
+        "advice": {},
+        "commands": {},
+        "journals": {
+          "task": 0,
+          "work": 0
+        },
+        "cut": false
+      },
+      "patchBytes": 4464,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "orbit-0.6.0-seated",
+      "task": "pack:lending-hld-004",
+      "trial": 1,
+      "track": "pair1",
+      "step": 1,
+      "key": "orbit-0.6.0-seated__pack_lending-hld-004__t1__pair1-1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.0620117,
+      "chargedUsd": 0.0620117,
+      "minutes": 0.36591666666666667,
+      "turns": 4,
+      "tokens": {
+        "input": 8,
+        "output": 1241,
+        "cacheRead": 101937,
+        "cacheWrite": 9848
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 3,
+        "byName": {
+          "Bash": 3
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [
+        "orbit@0.6.0"
+      ],
+      "trail": {
+        "events": 5,
+        "byType": {
+          "prompt.submitted": 1,
+          "command.ran": 3,
+          "session.ended": 1
+        },
+        "held": {},
+        "advice": {},
+        "commands": {},
+        "journals": {
+          "task": 0,
+          "work": 0
+        },
+        "cut": false
+      },
+      "patchBytes": 4590,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "orbit-0.6.0-seated",
+      "task": "pack:lending-hld-001",
+      "trial": 1,
+      "track": "pair1",
+      "step": 2,
+      "key": "orbit-0.6.0-seated__pack_lending-hld-001__t1__pair1-2",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.0602307,
+      "chargedUsd": 0.0602307,
+      "minutes": 0.3082166666666667,
+      "turns": 4,
+      "tokens": {
+        "input": 8,
+        "output": 1758,
+        "cacheRead": 99467,
+        "cacheWrite": 8172
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 3,
+        "byName": {
+          "Bash": 3
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [
+        "orbit@0.6.0"
+      ],
+      "trail": {
+        "events": 10,
+        "byType": {
+          "prompt.submitted": 2,
+          "command.ran": 6,
+          "session.ended": 2
+        },
+        "held": {},
+        "advice": {},
+        "commands": {},
+        "journals": {
+          "task": 0,
+          "work": 0
+        },
+        "cut": false
+      },
+      "patchBytes": 5039,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "orbit-0.6.0-seated",
+      "task": "pack:lending-hld-003",
+      "trial": 1,
+      "track": "pair2",
+      "step": 1,
+      "key": "orbit-0.6.0-seated__pack_lending-hld-003__t1__pair2-1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.0662512,
+      "chargedUsd": 0.0662512,
+      "minutes": 0.4392666666666667,
+      "turns": 4,
+      "tokens": {
+        "input": 8,
+        "output": 2229,
+        "cacheRead": 99572,
+        "cacheWrite": 8497
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 3,
+        "byName": {
+          "Bash": 3
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [
+        "orbit@0.6.0"
+      ],
+      "trail": {
+        "events": 5,
+        "byType": {
+          "prompt.submitted": 1,
+          "command.ran": 3,
+          "session.ended": 1
+        },
+        "held": {},
+        "advice": {},
+        "commands": {},
+        "journals": {
+          "task": 0,
+          "work": 0
+        },
+        "cut": false
+      },
+      "patchBytes": 6537,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "orbit-0.6.0-seated",
+      "task": "pack:lending-hld-002",
+      "trial": 1,
+      "track": "pair2",
+      "step": 2,
+      "key": "orbit-0.6.0-seated__pack_lending-hld-002__t1__pair2-2",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.07569660000000002,
+      "chargedUsd": 0.07569660000000002,
+      "minutes": 0.39036666666666664,
+      "turns": 5,
+      "tokens": {
+        "input": 10,
+        "output": 2072,
+        "cacheRead": 135646,
+        "cacheWrite": 10348
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 4,
+        "byName": {
+          "Bash": 4
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [
+        "orbit@0.6.0"
+      ],
+      "trail": {
+        "events": 11,
+        "byType": {
+          "prompt.submitted": 2,
+          "command.ran": 7,
+          "session.ended": 2
+        },
+        "held": {},
+        "advice": {},
+        "commands": {},
+        "journals": {
+          "task": 0,
+          "work": 0
+        },
+        "cut": false
+      },
+      "patchBytes": 4953,
+      "touchedTests": [],
+      "infra": null
+    }
+  ]
+}

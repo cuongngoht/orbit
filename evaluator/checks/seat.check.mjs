@@ -15,7 +15,7 @@ import { WRITING_SEAT } from "../lib/arms/scripted.mjs";
 import { changedOf, seatOf, treeOf } from "../lib/container/entry.mjs";
 import { CLAUDE_CODE_VERSION } from "../lib/core/versions.mjs";
 import { readJson } from "../lib/core/util.mjs";
-import { infraAfter } from "../lib/run/attempt.mjs";
+import { infraAfter, seatsHere } from "../lib/run/attempt.mjs";
 import { roomOf, startCampaign } from "../lib/run/campaign.mjs";
 
 const withDir = async (f) => {
@@ -105,6 +105,14 @@ test("a seated run's manifest says seated, with the command's argv; an unseated 
   const tools = () => ({ ok: true, volume: "evl-tools-fake", claudeCode: CLAUDE_CODE_VERSION, node: "v22" });
   await startCampaign(join(home, "c.json"), { home, ports: { tools, dockerAnswers: () => true, execute: async () => ({ infra: null, summary: { started: true }, patch: { bytes: 0 } }) } });
   const manifest = (arm) => readJson(join(roomOf(home, "seat-manifest"), "runs", `${arm}-pack-orders-e2e-001-t1`, "a1", "manifest.json"));
-  assert.deepEqual([manifest("seated").seated, manifest("seated").seat], [true, { argv: WRITING_SEAT }]);
+  assert.deepEqual([manifest("seated").seated, manifest("seated").seat], [true, { argv: WRITING_SEAT, ranHere: true }]);
   assert.deepEqual([manifest("plain").seated, manifest("plain").seat], [false, undefined]);
 }));
+
+test("a memory track is seated once, in its first task's checkout: its later steps carry the store that seat bound", () => {
+  const arm = armOf("o", { kind: "claude+orbit", rev: "v0.5.0", seat: true });
+  assert.equal(seatsHere({ arm, run: { key: "k" } }), true, "a run on no track is seated");
+  assert.equal(seatsHere({ arm, run: { key: "k", track: "pair1", step: 1 } }), true);
+  assert.equal(seatsHere({ arm, run: { key: "k", track: "pair1", step: 2 } }), false);
+  assert.equal(seatsHere({ arm: armOf("o", { kind: "claude+orbit", rev: "v0.5.0" }), run: { key: "k" } }), false);
+});

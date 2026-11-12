@@ -1,0 +1,35 @@
+{
+  "phase": "ended",
+  "agent": {
+    "spawned": true,
+    "exit": 0,
+    "signal": null,
+    "startedAt": "2026-11-12T12:36:37.847Z",
+    "endedAt": "2026-11-12T12:37:10.001Z",
+    "bytes": 90495,
+    "cut": false
+  },
+  "seat": {
+    "argv": [
+      "/opt/eval/bin/node",
+      "/opt/orbit-plugin/cli/help.mjs"
+    ],
+    "exit": 0,
+    "signal": null,
+    "timedOut": false,
+    "ms": 202,
+    "unchanged": true,
+    "changed": [],
+    "gitDirChanged": 0,
+    "storeFiles": [
+      "repo-1e694de3627d1fbe3cb42e1d6bafde83e55ca313ac372ca5abcf11bde30d8bef/store.json",
+      "repo-1e694de3627d1fbe3cb42e1d6bafde83e55ca313ac372ca5abcf11bde30d8bef/ui-tests/project.json",
+      "repo-1e694de3627d1fbe3cb42e1d6bafde83e55ca313ac372ca5abcf11bde30d8bef/ui-tests/project.schema.json",
+      "repo-1e694de3627d1fbe3cb42e1d6bafde83e55ca313ac372ca5abcf11bde30d8bef/ui-tests/schema/case.schema.json",
+      "repo-1e694de3627d1fbe3cb42e1d6bafde83e55ca313ac372ca5abcf11bde30d8bef/ui-tests/schema/plan.schema.json",
+      "state/checkouts/ddc5e473a09bd156b4eb7c426367aa59c37909a35241b49fbfa0631b9b532a39.json"
+    ],
+    "holds": true,
+    "why": null
+  }
+}

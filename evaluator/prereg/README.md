@@ -110,3 +110,15 @@ overall verdict is the SECONDARY one, reported beside the primary in the record 
 gate (`gate: false`). The registered `memory` phase names its arm and stays as registered; no seated memory phase is
 added. The amendment's $15 is inside the owner's $50: $2.64 spent before it, at most $27 more for the registered
 `final` and `memory`, at most $15 here.
+
+## Amendment 2: the memory pairs, seated (`0.6.0-amendment-2.json`)
+
+Committed on 2026-11-12, before any run of its phase; it names the registration and amendment 1 by digest (`builds`)
+and changes neither. The registered `memory` phase's arm is the plugin never used in the repository, so the store its
+first run hands to its second holds nothing the plugin learned. `memory-seated` runs the same two pairs, in the same
+order, on amendment 1's seated arm: the seat runs once, before the first task of a pair, and the second task gets the
+store that run left (and is not seated again: the checkout's path is the same, so the store already knows it); each
+cold run is seated. Per pair, the second task with the store kept is reported beside its own cold seated run in the
+record's `secondary.memory`, with no verdict, and the gate never reads it. Budget $7 (6 runs at the $1.00 cap): with
+$3.08 spent before it and at most $20 + $7 + $12 for the registered `final` and `memory` and amendment 1's
+`final-seated`, the whole stays at most $49.08 of the owner's $50.

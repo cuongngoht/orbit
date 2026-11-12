@@ -13,7 +13,8 @@
 //
 //   loadPrereg(file) -> prereg      verifyPrereg(prereg, o) -> [problem]      phaseTasks(prereg, phase) -> [task ref]
 //   campaignOf(prereg, phase, o) -> campaign definition      verdictOf(rows, a, b, rule) -> { verdict, ... }
-//   amendmentsOf(file) -> [{ n, file, value, digest }]      verifyAmendment(prereg, a) -> [problem]
+//   amendmentsOf(file) -> [{ n, file, value, digest }]      verifyAmendment(prereg, a, file, earlier) -> [problem]
+//   amendmentProblems(prereg, amendments, file) -> [problem]   (each held to the registration and the ones before it)
 //   amendedOf(prereg, amendments) -> the registration with every amendment's arms, phases and comparisons added
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
@@ -110,7 +111,7 @@ const amendmentOf = (ph, amendments) => ((a) => (a ? { amendment: { n: a.n, file
 export const AMENDMENT_KIND = "orbit-prereg-amendment";
 
 // What an amendment may say, and nothing else: it adds, and it says why.
-const AMENDMENT_FIELDS = ["schema", "kind", "release", "amendment", "amends", "date", "committed", "reason", "unchanged", "condition", "arms", "phases", "comparisons", "verdict", "memory", "budget"];
+const AMENDMENT_FIELDS = ["schema", "kind", "release", "amendment", "amends", "builds", "date", "committed", "reason", "unchanged", "condition", "arms", "phases", "comparisons", "verdict", "memory", "budget"];
 
 const AMENDMENT_FILE = (base) => new RegExp(`^${base.replace(/\./g, "\\.")}-amendment-(\\d+)\\.json$`);
 
@@ -131,30 +132,50 @@ export function amendedOf(p, amendments) {
 const sum = (xs) => Math.round(xs.reduce((t, x) => t + x, 0) * 100) / 100;
 
 // What an amendment must be to stand beside the registration it names: its kind and number, the registration's own
-// digest, nothing but what an amendment may say, ids of its own, and a ledger that adds up.
-export function verifyAmendment(p, a, registeredFile = `${p.release}.json`) {
+// digest and every earlier amendment's (`builds`, as each stands), nothing but what an amendment may say, ids of its own,
+// and a ledger that adds up. `earlier`: the amendments numbered before it.
+export function verifyAmendment(p, a, registeredFile = `${p.release}.json`, earlier = []) {
   const v = a.value;
+  const base = amendedOf(p, earlier);
   const problems = [];
   const say = (ok, why) => (ok ? null : problems.push(`amendment ${a.n}: ${why}`));
   say(v.kind === AMENDMENT_KIND && v.schema === 1, `kind is not ${AMENDMENT_KIND} (schema 1)`);
   say(v.release === p.release && v.amendment === a.n, `it says release ${v.release}, amendment ${v.amendment}; its file says ${p.release}, ${a.n}`);
   say(v.amends?.file === registeredFile && v.amends?.digest === digestOf(p), `it does not name the registration as it stands (${registeredFile}, digest ${digestOf(p).slice(0, 12)})`);
+  say(canonical(v.builds ?? []) === canonical(earlier.map((x) => ({ file: x.file, digest: x.digest }))), `it does not name every earlier amendment as it stands (builds: ${earlier.map((x) => `${x.file} ${x.digest.slice(0, 12)}`).join(", ") || "none"})`);
   for (const k of Object.keys(v).filter((x) => !AMENDMENT_FIELDS.includes(x))) say(false, `${k} is not something an amendment may say`);
-  for (const id of Object.keys(v.arms ?? {}).filter((x) => p.arms[x])) say(false, `arm ${id} is the registration's: an amendment adds arms, never changes one`);
-  for (const ph of (v.phases ?? []).filter((x) => p.phases.some((y) => y.id === x.id))) say(false, `phase ${ph.id} is the registration's`);
-  return [...problems, ...amendmentBody(p, a)];
+  for (const id of Object.keys(v.arms ?? {}).filter((x) => base.arms[x])) say(false, `arm ${id} is ${p.arms[id] ? "the registration's" : "an earlier amendment's"}: an amendment adds arms, never changes one`);
+  for (const ph of (v.phases ?? []).filter((x) => base.phases.some((y) => y.id === x.id))) say(false, `phase ${ph.id} is ${p.phases.some((y) => y.id === ph.id) ? "the registration's" : "an earlier amendment's"}`);
+  return [...problems, ...amendmentBody(p, a, earlier)];
 }
 
-function amendmentBody(p, a) {
+// The arms an amendment's phases may run: its own and an earlier amendment's -- never one the registration declares.
+const amendmentArms = (a, earlier) => new Set([...Object.keys(a.value.arms ?? {}), ...earlier.flatMap((x) => Object.keys(x.value.arms ?? {}))]);
+
+// A phase runs a set (dev or heldOut), or its own tasks and memory tracks, on amendment arms only.
+const phaseHolds = (ph, arms) => ph.arms.every((id) => arms.has(id)) && (ph.set === "dev" || ph.set === "heldOut" || (!ph.set && (Array.isArray(ph.tasks) || Array.isArray(ph.tracks)) && (ph.tracks ?? []).every((t) => ph.arms.includes(t.arm) && t.tasks.length >= 2)));
+
+function amendmentBody(p, a, earlier) {
   const v = a.value;
-  const q = amendedOf(p, [a]);
+  const q = amendedOf(p, [...earlier, a]);
+  const arms = amendmentArms(a, earlier);
   const problems = [];
   const say = (ok, why) => (ok ? null : problems.push(`amendment ${a.n}: ${why}`));
-  for (const ph of v.phases ?? []) say(ph.arms.every((id) => v.arms?.[id]) && (ph.set === "dev" || ph.set === "heldOut") && ph.budgetUsd === v.budget?.ledger?.find((l) => l.phase === ph.id)?.usd, `phase ${ph.id} runs only its own arms, on dev or heldOut, with its ledger line as its budget`);
-  for (const c of v.comparisons ?? []) say(c.gate === false && c.set === "heldOut" && [c.a, c.b].every((id) => heldOutArm(q, id)), `comparison ${c.a} against ${c.b} is not a held-out comparison of held-out arms that the gate does not read (gate: false)`);
+  for (const ph of v.phases ?? []) say(phaseHolds(ph, arms) && ph.budgetUsd === v.budget?.ledger?.find((l) => l.phase === ph.id)?.usd, `phase ${ph.id} runs only an amendment's arms, on dev or heldOut or its own tasks and tracks, with its ledger line as its budget`);
+  for (const c of v.comparisons ?? []) say(c.gate === false && COMPARISON_FORMS[c.kind ?? "heldOut"]?.(q, c, v) === true, `comparison ${c.kind === "memory" ? `of track ${c.track}` : `${c.a} against ${c.b}`} is not one an amendment may make: a held-out comparison of held-out arms, or a memory track of its own phase, that the gate does not read (gate: false)`);
   say(sum((v.budget?.ledger ?? []).map((l) => l.usd)) === v.budget?.usd, "its ledger lines do not add up to its budget");
   return problems;
 }
+
+// The comparisons an amendment may make: two held-out arms by the registered verdict rule, or a memory track's kept run
+// against its own cold run (reported, no verdict, as the registered memory phase is).
+const COMPARISON_FORMS = {
+  heldOut: (q, c) => c.set === "heldOut" && [c.a, c.b].every((id) => heldOutArm(q, id)),
+  memory: (q, c, v) => (v.phases ?? []).some((ph) => ph.id === c.phase && (ph.tracks ?? []).some((t) => t.id === c.track) && memoryCold(ph, c.track)),
+};
+
+// A memory track's last task has its cold run in the same phase: the same arm, on that task, with no store kept.
+const memoryCold = (ph, track) => ((t) => (ph.tasks ?? []).includes(`pack:${t.tasks.at(-1)}`) && ph.arms.includes(t.arm))(ph.tracks.find((x) => x.id === track));
 
 const heldOutArm = (q, id) => q.phases.some((ph) => ph.set === "heldOut" && ph.arms.includes(id));
 
@@ -175,3 +196,6 @@ export function verdictOf(rows, a, b, rule) {
 // The release's verdict over its comparisons: REGRESSED if any is, IMPROVED or NO_DIFFERENCE only if all are, else
 // INCONCLUSIVE.
 export const overallOf = (verdicts) => (verdicts.includes("REGRESSED") ? "REGRESSED" : verdicts.every((v) => v === "IMPROVED") ? "IMPROVED" : verdicts.every((v) => v === "NO_DIFFERENCE") ? "NO_DIFFERENCE" : "INCONCLUSIVE");
+
+// Every amendment held to the registration and to the amendments numbered before it.
+export const amendmentProblems = (p, amendments, file) => amendments.flatMap((a) => verifyAmendment(p, a, file, amendments.filter((x) => x.n < a.n)));

@@ -1,0 +1,12 @@
+{
+  "phase": "ended",
+  "agent": {
+    "spawned": true,
+    "exit": 0,
+    "signal": null,
+    "startedAt": "2026-11-12T11:56:50.112Z",
+    "endedAt": "2026-11-12T11:57:23.527Z",
+    "bytes": 80746,
+    "cut": false
+  }
+}

@@ -1,0 +1,79 @@
+diff --git a/src/holds.mjs b/src/holds.mjs
+index da165f1b6fbe810904a4f24be180644ed3d0c4d1..5d3bed05634b6908dc1a35f592b15fb8d723bfdb 100644
+--- a/src/holds.mjs
++++ b/src/holds.mjs
+@@ -1,5 +1,6 @@
+ // HOLDS: members waiting for a title, in the order they asked.
+-import { created } from "./store.mjs";
++import { addDays } from "./dates.mjs";
++import { created, put } from "./store.mjs";
+ import { allMine } from "./tenancy.mjs";
+ 
+ // A title's holds, in the order they were placed.
+@@ -12,6 +13,27 @@ export const newHold = (store, tenant, title, member, day) => created(store, "ho
+ // Whether anybody is waiting for a copy's title.
+ export const holdWaiting = (store, copy) => holdsOn(store, copy.tenant, copy.title).some((h) => h.state === "waiting");
+ 
++export const PICKUP_DAYS = 7;
++
++// The hold a returned copy is set aside for: the earliest placed of its title's waiting holds.
++const firstWaiting = (store, copy) => holdsOn(store, copy.tenant, copy.title).filter((h) => h.state === "waiting").sort((a, b) => a.seq - b.seq)[0] ?? null;
++
++// Sets a copy that came back on a day aside for the first member waiting, and sends them a notice. Returns the held copy,
++// or null when nobody is waiting (the copy is left as it is).
++export function setAside(store, copy, day) {
++  const h = firstWaiting(store, copy);
++  if (!h) return null;
++  const pickupBy = addDays(day, PICKUP_DAYS);
++  put(store, "holds", { ...h, state: "ready", copy: copy.id, pickupBy });
++  created(store, "notices", "notice", { tenant: copy.tenant, member: h.member, kind: "hold-ready", hold: h.id, copy: copy.id, pickupBy });
++  return put(store, "copies", { ...copy, status: "held" });
++}
++
++// The ready hold a copy is set aside for.
++export const readyHoldOfCopy = (store, copy) => holdsOn(store, copy.tenant, copy.title).find((h) => h.state === "ready" && h.copy === copy.id) ?? null;
++
++export const collected = (store, hold) => put(store, "holds", { ...hold, state: "collected" });
++
+ export const holdView = (h) => ({ id: h.id, title: h.title, member: h.member, placed: h.placed, state: h.state, copy: h.copy, pickupBy: h.pickupBy });
+ 
+ export const noticeView = (n) => ({ id: n.id, kind: n.kind, hold: n.hold, copy: n.copy, pickupBy: n.pickupBy });
+diff --git a/src/loans.mjs b/src/loans.mjs
+index 7502e3d0c73f97e24294032f01261ce5446026dc..48dccc68a94c1598706ecac5127f86b9dfd82bc3 100644
+--- a/src/loans.mjs
++++ b/src/loans.mjs
+@@ -6,7 +6,7 @@ import { allMine, mine } from "./tenancy.mjs";
+ import { loanDaysOf, shelved, titleOfCopy } from "./catalog.mjs";
+ import { charged, LOAN_LIMIT } from "./members.mjs";
+ import { fineFor } from "./fines.mjs";
+-import { holdWaiting } from "./holds.mjs";
++import { collected, holdWaiting, readyHoldOfCopy, setAside } from "./holds.mjs";
+ 
+ export const RENEWALS = 2;
+ 
+@@ -15,6 +15,7 @@ const openLoansOf = (store, tenant, member) => allMine(store, tenant, "loans").f
+ // Why a copy may not be lent to a member now, asked in order; none, and it may.
+ const LEND_REFUSALS = [
+   { error: "not-available", when: (c) => c.copy.status === "loan" },
++  { error: "held-for-another", when: (c) => c.copy.status === "held" && readyHoldOfCopy(c.store, c.copy)?.member !== c.member.id },
+   { error: "limit", when: (c) => openLoansOf(c.store, c.tenant, c.member).length >= LOAN_LIMIT },
+ ];
+ 
+@@ -23,6 +24,8 @@ export const lendRefusal = (store, tenant, copy, member) => LEND_REFUSALS.find((
+ const dueOf = (store, copy, day) => addDays(day, loanDaysOf(titleOfCopy(store, copy)));
+ 
+ export function lent(store, tenant, copy, member, day) {
++  const ready = copy.status === "held" ? readyHoldOfCopy(store, copy) : null;
++  if (ready) collected(store, ready);
+   put(store, "copies", { ...copy, status: "loan" });
+   return created(store, "loans", "loan", { tenant, copy: copy.id, member: member.id, out: day, due: dueOf(store, copy, day), renewals: 0, returned: null, fineCents: 0 });
+ }
+@@ -32,7 +35,7 @@ export function returned(store, tenant, loan, day) {
+   const copy = mine(store, tenant, "copies", loan.copy);
+   const fineCents = fineFor(titleOfCopy(store, copy), copy, loan.due, day);
+   charged(store, mine(store, tenant, "members", loan.member), fineCents);
+-  shelved(store, copy);
++  setAside(store, copy, day) ?? shelved(store, copy);
+   return put(store, "loans", { ...loan, returned: day, fineCents });
+ }
+ 

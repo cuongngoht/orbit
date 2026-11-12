@@ -1,0 +1,92 @@
+{
+  "kind": "ended",
+  "run": "orbit-0.6.0__swebench_pytest-dev__pytest-5809__t1",
+  "attempt": 1,
+  "at": "2026-11-12T11:41:11.234Z",
+  "chargedUsd": 0.060924299999999994,
+  "infra": null,
+  "timedOut": false,
+  "killedByControl": false,
+  "exit": 0,
+  "oomKilled": false,
+  "wallMs": 17877,
+  "streamBytes": 57916,
+  "streamCut": false,
+  "summary": {
+    "started": true,
+    "model": "claude-sonnet-5-5",
+    "version": "2.1.322",
+    "plugins": [
+      "orbit@0.6.0"
+    ],
+    "hooks": {
+      "ran": 3,
+      "failed": 0
+    },
+    "skillsListed": 42,
+    "result": true,
+    "costUsd": 0.060924299999999994,
+    "tokens": {
+      "input": 10,
+      "output": 1104,
+      "cacheRead": 110603,
+      "cacheWrite": 9701
+    },
+    "turns": 7,
+    "durationMs": 16131,
+    "denials": 0,
+    "subtype": "success",
+    "isError": false,
+    "stoppedOn": null,
+    "apiError": null,
+    "status": "DONE",
+    "statusWhy": null,
+    "asked": false,
+    "tools": {
+      "calls": 6,
+      "byName": {
+        "Grep": 2,
+        "Edit": 2,
+        "Read": 1,
+        "Bash": 1
+      },
+      "skills": {},
+      "agents": {}
+    },
+    "orbit": {
+      "commands": 0,
+      "byCli": {}
+    }
+  },
+  "patch": {
+    "bytes": 1501,
+    "digest": "f1f088cec02664fc2c1bf948e34a44d4602b97b2efb0a0fa67cef62c9bb50c75",
+    "paths": [
+      "changelog/5764.bugfix.rst",
+      "src/_pytest/pastebin.py",
+      "testing/test_pastebin.py"
+    ]
+  },
+  "plugin": {
+    "digest": "8d927119bde8b8ff722b4080bdc99fe8090430086c6870001bf44dfeb31f0da3",
+    "files": 2727
+  },
+  "images": {
+    "task": "sha256:0185f5d9efb9cf1364122a7eff7fc5f02227698d01f7e4f2d593917816df42d3",
+    "taskRef": "swebench/sweb.eval.x86_64.pytest-dev_1776_pytest-5809:latest",
+    "pulled": false,
+    "egress": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb"
+  },
+  "startCommit": "e02f28aef4b008a8bd3876fc7b5d4616d0b8d723",
+  "entryPhase": "ended",
+  "egress": {
+    "direct": "ENETUNREACH",
+    "outsideName": "EAI_AGAIN",
+    "api": {
+      "connect": 200,
+      "http": 404
+    },
+    "otherHost": 403,
+    "holds": true
+  }
+}

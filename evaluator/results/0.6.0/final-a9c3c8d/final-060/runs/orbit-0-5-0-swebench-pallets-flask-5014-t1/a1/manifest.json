@@ -1,0 +1,62 @@
+{
+  "campaign": "final-060",
+  "run": {
+    "arm": "orbit-0.5.0",
+    "task": "swebench:pallets__flask-5014",
+    "trial": 1,
+    "key": "orbit-0.5.0__swebench_pallets__flask-5014__t1"
+  },
+  "attempt": 1,
+  "arm": {
+    "id": "orbit-0.5.0",
+    "kind": "claude+orbit",
+    "def": {
+      "kind": "claude+orbit",
+      "rev": "v0.5.0"
+    },
+    "frozen": {
+      "rev": "v0.5.0",
+      "commit": "54aaf0b65bdb8f931ab6fe80c7bf368a971f2aab"
+    }
+  },
+  "task": {
+    "ref": "swebench:pallets__flask-5014",
+    "image": "swebench/sweb.eval.x86_64.pallets_1776_flask-5014:latest",
+    "repo": "/testbed",
+    "digest": "5cc7ccbd782cf546cdded80c0811a572ba428ecace70022e5982477ad6a47489"
+  },
+  "model": "claude-sonnet-5-5",
+  "effort": "medium",
+  "limits": {
+    "usd": 1,
+    "turns": 80,
+    "minutes": 40,
+    "cpus": 2,
+    "memoryMb": 4096,
+    "pids": 2048
+  },
+  "capUsd": 1,
+  "tools": {
+    "ok": true,
+    "volume": "evl-tools-cc-2.1.322-e13726ca6041",
+    "built": false,
+    "claudeCode": "2.1.322",
+    "claudeCodeSays": "2.1.322 (Claude Code)",
+    "node": "v22.23.5",
+    "nodeImage": "node:22",
+    "nodeImageId": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb",
+    "builtAt": "2026-11-12T05:13:27.498Z"
+  },
+  "containers": {
+    "net": "evl-0a4d3572-3d477d10-a1-net",
+    "egress": "evl-0a4d3572-3d477d10-a1-egress",
+    "task": "evl-0a4d3572-3d477d10-a1-task",
+    "grader": "evl-0a4d3572-3d477d10-a1-grader",
+    "label": "final-060/orbit-0.5.0__swebench_pallets__flask-5014__t1/a1"
+  },
+  "evaluator": {
+    "commit": "0e2cbb47e97991c464d9b7ecbebef40f938d1d26",
+    "dirty": false
+  },
+  "startedAt": "2026-11-12T11:52:41.008Z"
+}

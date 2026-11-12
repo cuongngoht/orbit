@@ -1,0 +1,110 @@
+diff --git a/README.md b/README.md
+index 41fd800d49dba85683d60ff2af2641833217659a..50cab094e4a85bf614c8df3d79abc2f7b743fac6 100644
+--- a/README.md
++++ b/README.md
+@@ -26,6 +26,7 @@ answers `{ error: <word> }`.
+ | `GET /members/:id/notices` | the notices a member was sent |
+ | `POST /loans` `{ copy, member }` · `GET /loans/:id` | lends a copy to a member, a loan |
+ | `POST /loans/:id/return` | checks a loan in at the desk |
++| `POST /loans/:id/renew` | renews a loan by its title's loan period, twice at most; 409 `renewal-limit`, `overdue`, `hold-waiting` or `returned` |
+ | `POST /holds` `{ title, member }` · `GET /holds/:id` | places a hold on a title, a hold |
+ 
+ `npm test` runs the tests.
+diff --git a/src/api.mjs b/src/api.mjs
+index 767634bda7efb6e2454436ae3c18ae98915c62e3..7d23f224aa34ed6c340459d565e502c24531b215 100644
+--- a/src/api.mjs
++++ b/src/api.mjs
+@@ -6,7 +6,7 @@ import { isKey } from "./store.mjs";
+ import { allMine, isTenant, mine } from "./tenancy.mjs";
+ import { copyView, isFormat, newCopy, newTitle, titleView } from "./catalog.mjs";
+ import { memberView, newMember } from "./members.mjs";
+-import { lendRefusal, lent, loanView, returned } from "./loans.mjs";
++import { lendRefusal, lent, loanView, renewRefusal, renewed, returned } from "./loans.mjs";
+ import { holdView, newHold, noticeView, openHoldOf } from "./holds.mjs";
+ 
+ const answer = (status, body) => ({ status, body });
+@@ -50,6 +50,10 @@ const giveBack = (c, loan) => (loan.returned ? refused(409, "returned") : answer
+ 
+ const back = (c, [id]) => ((loan) => (loan ? giveBack(c, loan) : refused(404, "no-loan")))(loanOf(c, id));
+ 
++const renewOrNot = (c, loan) => ((why) => (why ? refused(409, why) : answer(200, loanView(renewed(c.store, loan)))))(renewRefusal(c.store, loan, c.today));
++
++const renew = (c, [id]) => ((loan) => (loan ? renewOrNot(c, loan) : refused(404, "no-loan")))(loanOf(c, id));
++
+ // ---- holds ------------------------------------------------------------------------------------------------------------
+ 
+ const holdOrNot = (c, title, member) => (openHoldOf(c.store, c.tenant, title, member) ? refused(409, "duplicate-hold") : answer(201, holdView(newHold(c.store, c.tenant, title, member, c.today))));
+@@ -75,6 +79,7 @@ const ROUTES = [
+   ["POST", /^\/loans$/, lend],
+   ["GET", /^\/loans\/([^/]+)$/, (c, [id]) => found(loanOf(c, id), "no-loan", loanView)],
+   ["POST", /^\/loans\/([^/]+)\/return$/, back],
++  ["POST", /^\/loans\/([^/]+)\/renew$/, renew],
+   ["POST", /^\/holds$/, hold],
+   ["GET", /^\/holds\/([^/]+)$/, (c, [id]) => found(mine(c.store, c.tenant, "holds", id), "no-hold", holdView)],
+ ];
+diff --git a/src/holds.mjs b/src/holds.mjs
+index 3b7d1b0d96a49e3f34ce97515f1a89d0f20b3342..df0a874b5af783a121d26b46674478de83e22c8a 100644
+--- a/src/holds.mjs
++++ b/src/holds.mjs
+@@ -17,6 +17,8 @@ export const openHoldOf = (store, tenant, title, member) => holdsOn(store, tenan
+ 
+ export const newHold = (store, tenant, title, member, day) => created(store, "holds", "hold", { tenant, title: title.id, member: member.id, placed: day, state: "waiting", copy: null, pickupBy: null });
+ 
++export const waitingFor = (store, tenant, title) => holdsOn(store, tenant, title.id).some((h) => h.state === "waiting");
++
+ const readyHoldOf = (store, copy) => holdsOn(store, copy.tenant, copy.title).find((h) => h.state === "ready" && h.copy === copy.id) ?? null;
+ 
+ // A copy set aside is its hold's member's alone to borrow; when they borrow it, their hold is collected.
+diff --git a/src/loans.mjs b/src/loans.mjs
+index 446500116e8a5d5bd2ff16506a5c5b6abc02b30d..610f8c9752737663f8ab4d811d2385c32fe563e2 100644
+--- a/src/loans.mjs
++++ b/src/loans.mjs
+@@ -1,13 +1,13 @@
+ // LOANS: a copy lent to a member until its due date and brought back -- at the desk, or through the drop box
+ // (dropbox.mjs). A late return is fined and the fine charged to the member; the copy then goes to whoever is waiting
+ // for its title, or back on the shelf.
+-import { addDays } from "./dates.mjs";
++import { addDays, daysBetween } from "./dates.mjs";
+ import { created, put } from "./store.mjs";
+ import { allMine, mine } from "./tenancy.mjs";
+ import { loanDaysOf, titleOfCopy } from "./catalog.mjs";
+ import { charged, LOAN_LIMIT } from "./members.mjs";
+ import { fineFor } from "./fines.mjs";
+-import { collectedBy, heldForAnother, servedOrShelved } from "./holds.mjs";
++import { collectedBy, heldForAnother, waitingFor, servedOrShelved } from "./holds.mjs";
+ 
+ const openLoansOf = (store, tenant, member) => allMine(store, tenant, "loans").filter((l) => l.member === member.id && !l.returned);
+ 
+@@ -25,7 +25,7 @@ const dueOf = (store, copy, day) => addDays(day, loanDaysOf(titleOfCopy(store, c
+ export function lent(store, tenant, copy, member, day) {
+   collectedBy(store, copy, member);
+   put(store, "copies", { ...copy, status: "loan" });
+-  return created(store, "loans", "loan", { tenant, copy: copy.id, member: member.id, out: day, due: dueOf(store, copy, day), returned: null, fineCents: 0 });
++  return created(store, "loans", "loan", { tenant, copy: copy.id, member: member.id, out: day, due: dueOf(store, copy, day), returned: null, fineCents: 0, renewals: 0 });
+ }
+ 
+ // A loan brought back on a day: fined for the days it is late and the fine charged to its member, and its copy set
+@@ -40,4 +40,22 @@ export function returned(store, tenant, loan, day) {
+ 
+ export const openLoanOfCopy = (store, tenant, copy) => allMine(store, tenant, "loans").find((l) => l.copy === copy.id && !l.returned) ?? null;
+ 
+-export const loanView = (l) => ({ id: l.id, copy: l.copy, member: l.member, out: l.out, due: l.due, returned: l.returned, fineCents: l.fineCents });
++export const loanView = (l) => ({ id: l.id, copy: l.copy, member: l.member, out: l.out, due: l.due, returned: l.returned, fineCents: l.fineCents, renewals: l.renewals ?? 0 });
++
++export const RENEWAL_LIMIT = 2;
++
++// Why a loan may not be renewed on a day, asked in order; none, and it may.
++const RENEW_REFUSALS = [
++  { error: "returned", when: (c) => c.loan.returned },
++  { error: "overdue", when: (c) => daysBetween(c.loan.due, c.day) > 0 },
++  { error: "renewal-limit", when: (c) => (c.loan.renewals ?? 0) >= RENEWAL_LIMIT },
++  { error: "hold-waiting", when: (c) => waitingFor(c.store, c.loan.tenant, titleOfCopy(c.store, mine(c.store, c.loan.tenant, "copies", c.loan.copy))) },
++];
++
++export const renewRefusal = (store, loan, day) => RENEW_REFUSALS.find((r) => r.when({ store, loan, day }))?.error ?? null;
++
++// A loan renewed: due a loan period later than it was due.
++export function renewed(store, loan) {
++  const copy = mine(store, loan.tenant, "copies", loan.copy);
++  return put(store, "loans", { ...loan, due: addDays(loan.due, loanDaysOf(titleOfCopy(store, copy))), renewals: (loan.renewals ?? 0) + 1 });
++}

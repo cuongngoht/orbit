@@ -1,7 +1,9 @@
 // THE REPORT of a campaign, read from its frozen campaign.json and its journal alone: per arm, how many runs were
 // gradable and how many resolved, the rate, regressions, FALSE_DONE, empty patches, timeouts and budget stops, every
 // INFRA_ERROR listed (never counted in a rate), median cost and minutes, interventions (a last message that asked the
-// person something), and how much of the plugin each arm used; then, task by task, every arm's outcome side by side.
+// person something), and how much of the plugin each arm used -- by the host's stream, and by what the plugin itself
+// wrote in its trail (lib/core/trail.mjs: its holds by what they held for, its advice by the fact it named, its own
+// scripts seen run); then, task by task, every arm's outcome side by side.
 // With n this small a one-task difference is noise, and the report says so.
 //
 //   reportOf(room) -> report      markdownOf(report) -> text      writtenReport(room) -> report (report.json, REPORT.md)
@@ -19,7 +21,7 @@ function rowsOf(campaign, fold) {
     const s = fold.runs.get(r.key);
     const o = finalOf(s);
     const e = endedOf(s);
-    return { ...r, word: o?.word ?? (s?.skipped ? "NOT_RUN" : "PENDING"), why: o?.why ?? s?.skipped?.reason ?? null, attempts: s?.attempts.length ?? 0, interrupted: s?.attempts.filter((a) => a.interrupted).length ?? 0, costUsd: e?.summary?.costUsd ?? null, chargedUsd: e?.chargedUsd ?? null, minutes: typeof e?.wallMs === "number" ? e.wallMs / 60000 : null, turns: e?.summary?.turns ?? null, tokens: e?.summary?.tokens ?? null, denials: e?.summary?.denials ?? null, asked: e?.summary?.asked ?? null, saidDone: o?.saidDone ?? null, status: e?.summary?.status ?? null, tools: e?.summary?.tools ?? null, orbit: e?.summary?.orbit ?? null, plugins: e?.summary?.plugins ?? null, patchBytes: e?.patch?.bytes ?? null, touchedTests: (e?.patch?.paths ?? []).filter((p) => /(^|\/)tests?\//.test(p) || /test_|_test\.|\.test\./.test(p)), infra: e?.infra ?? null };
+    return { ...r, word: o?.word ?? (s?.skipped ? "NOT_RUN" : "PENDING"), why: o?.why ?? s?.skipped?.reason ?? null, attempts: s?.attempts.length ?? 0, interrupted: s?.attempts.filter((a) => a.interrupted).length ?? 0, costUsd: e?.summary?.costUsd ?? null, chargedUsd: e?.chargedUsd ?? null, minutes: typeof e?.wallMs === "number" ? e.wallMs / 60000 : null, turns: e?.summary?.turns ?? null, tokens: e?.summary?.tokens ?? null, denials: e?.summary?.denials ?? null, asked: e?.summary?.asked ?? null, saidDone: o?.saidDone ?? null, status: e?.summary?.status ?? null, tools: e?.summary?.tools ?? null, orbit: e?.summary?.orbit ?? null, plugins: e?.summary?.plugins ?? null, trail: e?.trail ?? null, patchBytes: e?.patch?.bytes ?? null, touchedTests: (e?.patch?.paths ?? []).filter((p) => /(^|\/)tests?\//.test(p) || /test_|_test\.|\.test\./.test(p)), infra: e?.infra ?? null };
   });
 }
 
@@ -45,8 +47,18 @@ function armSummary(arm, rows) {
     medianMinutes: median(gradable.map((r) => r.minutes)),
     chargedUsd: sum(done.map((r) => r.chargedUsd)),
     interventions: gradable.filter((r) => r.asked === true).length,
+    trail: trailUsage(gradable),
     usage: { skillCalls: sum(gradable.map((r) => sum(Object.values(r.tools?.skills ?? {})))), agentCalls: sum(gradable.map((r) => sum(Object.values(r.tools?.agents ?? {})))), pluginCommands: sum(gradable.map((r) => r.orbit?.commands ?? 0)), runsWithPluginLoaded: gradable.filter((r) => (r.plugins ?? []).length > 0).length },
   };
+}
+
+const added = (maps) => maps.reduce((o, m) => (Object.entries(m ?? {}).forEach(([k, n]) => (o[k] = (o[k] ?? 0) + n)), o), {});
+
+// What the plugin's own trail says across an arm's gradable runs: how many runs kept one, its events, its holds by kind,
+// its advice by fact, and the plugin scripts it saw run.
+function trailUsage(rows) {
+  const kept = rows.filter((r) => r.trail);
+  return { runs: kept.length, events: sum(kept.map((r) => r.trail.events)), held: added(kept.map((r) => r.trail.held)), advice: added(kept.map((r) => r.trail.advice)), commands: added(kept.map((r) => r.trail.commands)), runsHeld: kept.filter((r) => Object.keys(r.trail.held ?? {}).length).length, runsAdvised: kept.filter((r) => Object.keys(r.trail.advice ?? {}).length).length };
 }
 
 function pairwise(campaign, rows) {
@@ -68,6 +80,10 @@ const pct = (x) => (x === null ? "—" : `${(100 * x).toFixed(0)}%`);
 const val = (x, d = 2) => (x === null || x === undefined ? "—" : typeof x === "number" ? x.toFixed(d) : String(x));
 
 const armLine = (a) => `| ${a.arm} | ${a.resolved} / ${a.gradable} | ${pct(a.rate)} | ${a.words.REGRESSED} | ${a.words.FALSE_DONE} | ${a.words.EMPTY_PATCH} | ${a.words.UNRESOLVED} | ${a.words.TIMEOUT} | ${a.words.BUDGET} | ${a.words.UNGRADABLE} | ${a.words.INFRA_ERROR} | ${val(a.medianCostUsd)} | ${val(a.medianMinutes, 1)} | ${a.interventions} | ${a.usage.skillCalls} / ${a.usage.agentCalls} / ${a.usage.pluginCommands} |`;
+
+const counted = (o) => (Object.keys(o).length ? Object.entries(o).map(([k, n]) => `${k} ${n}`).join(", ") : "none");
+
+const trailLine = (a) => `| ${a.arm} | ${a.trail.runs} | ${a.trail.events} | ${counted(a.trail.held)} (${a.trail.runsHeld} run(s)) | ${counted(a.trail.advice)} (${a.trail.runsAdvised} run(s)) | ${counted(a.trail.commands)} |`;
 
 const armSpec = (id, a) => `- \`${id}\`: ${a.kind}${a.rev ? ` @ ${a.rev}` : ""}${a.frozen?.commit ? ` (commit ${a.frozen.commit.slice(0, 12)})` : ""}${a.behaviour ? ` — ${a.behaviour}${a.patch ? ` ${a.patch}` : ""}, says ${a.status ?? "DONE"}` : ""}`;
 
@@ -91,6 +107,14 @@ export function markdownOf(r) {
     "| arm | resolved | rate | regressed | false done | empty | unresolved | timeout | budget | ungradable | infra | median $ | median min | interventions | usage |",
     "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ...r.arms.map(armLine),
+    "",
+    "## What the plugin wrote",
+    "",
+    "From the plugin's own trail, kept in each run's room as metadata (orbit-trail.jsonl): holds by what they held for, advice by the fact it named, the plugin's scripts seen run.",
+    "",
+    "| arm | runs with a trail | events | holds | advice | plugin scripts run |",
+    "|---|---|---|---|---|---|",
+    ...orNone(r.arms.filter((a) => a.trail.runs > 0).map(trailLine)),
     "",
     "## Task by task",
     "",

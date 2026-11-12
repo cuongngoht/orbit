@@ -1,0 +1,86 @@
+{
+  "kind": "ended",
+  "run": "plain__swebench_pallets__flask-5014__t1",
+  "attempt": 1,
+  "at": "2026-11-12T12:21:44.879Z",
+  "chargedUsd": 0.0144012,
+  "infra": null,
+  "timedOut": false,
+  "killedByControl": false,
+  "exit": 0,
+  "oomKilled": false,
+  "wallMs": 12813,
+  "streamBytes": 37789,
+  "streamCut": false,
+  "summary": {
+    "started": true,
+    "model": "claude-sonnet-5-5",
+    "version": "2.1.322",
+    "plugins": [],
+    "hooks": {
+      "ran": 0,
+      "failed": 0
+    },
+    "skillsListed": 16,
+    "result": true,
+    "costUsd": 0.0144012,
+    "tokens": {
+      "input": 8,
+      "output": 464,
+      "cacheRead": 73332,
+      "cacheWrite": 603
+    },
+    "turns": 4,
+    "durationMs": 11964,
+    "denials": 0,
+    "subtype": "success",
+    "isError": false,
+    "stoppedOn": null,
+    "apiError": null,
+    "status": "DONE",
+    "statusWhy": null,
+    "asked": false,
+    "tools": {
+      "calls": 3,
+      "byName": {
+        "Grep": 1,
+        "Read": 1,
+        "Edit": 1
+      },
+      "skills": {},
+      "agents": {}
+    },
+    "orbit": {
+      "commands": 0,
+      "byCli": {}
+    }
+  },
+  "patch": {
+    "bytes": 499,
+    "digest": "b916b53329a250d699949b5d9e2fb9d45fffb57891c957d7e301f7da81d26dac",
+    "paths": [
+      "src/flask/blueprints.py"
+    ]
+  },
+  "plugin": null,
+  "images": {
+    "task": "sha256:bde4fbdafa36141d4396944da88ec37aabdef612ed36920090675bccd0ca5d72",
+    "taskRef": "swebench/sweb.eval.x86_64.pallets_1776_flask-5014:latest",
+    "pulled": false,
+    "egress": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb"
+  },
+  "startCommit": "966bb873e3a1e42d857362a17f5af2533dfd8f46",
+  "entryPhase": "ended",
+  "seat": null,
+  "trail": null,
+  "egress": {
+    "direct": "ENETUNREACH",
+    "outsideName": "EAI_AGAIN",
+    "api": {
+      "connect": 200,
+      "http": 404
+    },
+    "otherHost": 403,
+    "holds": true
+  }
+}

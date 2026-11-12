@@ -10,6 +10,8 @@ import { planned } from "../src/runtime/lifecycle/world.mjs";
 import { ensure, look } from "../src/runtime/understanding.mjs";
 import { ownerOf } from "../src/runtime/sessions.mjs";
 import { sandboxId } from "../src/runtime/instances.mjs";
+import { restoredOf } from "../src/runtime/sandbox/restore.mjs";
+import { fakeProcess } from "./fakes/process.mjs";
 import { CHECKOUT } from "./fakes/runtime-ctx.mjs";
 import { OTHER, TASK, prepared, sandboxWorld } from "./sandbox.harness.mjs";
 
@@ -30,6 +32,18 @@ test("a prepare RESTORES autonomously: every unit, in the task's workspace, fing
   const receipts = world.sandbox().sandboxDoc().restore.receipts;
   assert.equal(Object.keys(receipts).length, 2, "one fingerprinted receipt per unit restored");
   assert.ok(Object.keys(receipts).every((fp) => /^[a-f0-9]{64}$/.test(fp)));
+});
+
+// 0.6.0, P4: a restore that RAN and failed is kept with its receipt on the sandbox's own document, as a passed one is --
+// so a check that fails after it is read with the fact (src/orchestration/failure.mjs DEPENDENCY), never a sentence.
+test("a restore that failed keeps its receipt on the blocked sandbox, and restoredOf reads it per component", async () => {
+  const world = sandboxWorld(undefined, { process: fakeProcess({ npm: { ok: false, out: "", err: "npm ERR! network", error: "npm ERR! network", status: 1 } }) });
+  const answer = await world.run("sandbox-prepare");
+  assert.equal(answer.state, "BLOCKED");
+  const doc = world.sandbox().sandboxDoc();
+  assert.deepEqual([restoredOf(doc, "node:web")?.ok, restoredOf(doc, "node:web")?.status], [false, 1]);
+  assert.equal(restoredOf(doc, "node:nothing-here"), null, "a component no restore ran for has no receipt");
+  assert.equal(restoredOf(null, "node:web"), null);
 });
 
 test("it restores only in the task's workspace, with the base environment, behind a receipt -- and a second prepare does nothing at all", async () => {

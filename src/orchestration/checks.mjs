@@ -51,11 +51,13 @@ const firstLine = (text) => String(text ?? "").trim().split("\n")[0].slice(0, 20
 // (failure.mjs exactOf) is never taken of a part.
 const cut = (r) => r.overflow === true || outputOf(r).length > LOG_BYTES || outputOf(r).split(/\r?\n/).length > MAX_LINES;
 
-// The port's answer as facts: did it start, did it run out of time, how did it exit -- and whether an observer that
-// was handed its output stopped on an error of its own (a fact about the observation, never about the check).
-const answerOf = (r, ms) => ({ ok: r.ok === true, started: r.unstarted !== true, timedOut: r.timedOut === true, overflow: r.overflow === true, cut: cut(r), status: Number.isInteger(r.status) ? r.status : null, durationMs: ms, reason: r.ok ? null : scrub(firstLine(r.error)), lines: tail(outputOf(r), LOG_BYTES).split(/\r?\n/).slice(-MAX_LINES), observerFailed: r.observerFailed === true });
+// The port's answer as facts: did it start (and, when it did not, the OS's own code for why: `spawnCode`), did it run
+// out of time, how did it exit -- and whether an observer that was handed its output stopped on an error of its own (a
+// fact about the observation, never about the check).
+const answerOf = (r, ms) => ({ ok: r.ok === true, started: r.unstarted !== true, spawnCode: r.unstarted === true && typeof r.code === "string" ? r.code : null, timedOut: r.timedOut === true, overflow: r.overflow === true, cut: cut(r), status: Number.isInteger(r.status) ? r.status : null, durationMs: ms, reason: r.ok ? null : scrub(firstLine(r.error)), lines: tail(outputOf(r), LOG_BYTES).split(/\r?\n/).slice(-MAX_LINES), observerFailed: r.observerFailed === true });
 
-// deps: { process, env, envNamesOf(component), clock() -> ms, keep(at, text), timeoutMs?, observer?(command, at) }
+// deps: { process, env, envNamesOf(component), clock() -> ms, keep(at, text), timeoutMs?, observer?(command, at),
+//         factsOf?(command, at, answer) -> { restore, unreachable } }
 export function createCheckRunner(deps) {
   return { run: (command, at) => ran({ timeoutMs: CHECK_TIMEOUT_MS, ...deps }, command, at) };
 }
@@ -66,7 +68,15 @@ async function ran(deps, command, at) {
   const watch = observing(deps, command, at);
   const answer = answerOf(await executed(deps, command, at, watch), deps.clock() - began);
   deps.keep(at, scrub(answer.lines.join("\n")));
-  return { ...answer, observation: watch ? settledSummary(watch, answer) : null };
+  return { ...answer, facts: answer.ok ? null : await factsAbout(deps, command, at, answer), observation: watch ? settledSummary(watch, answer) : null };
+}
+
+// What the composition root can SHOW about a check that failed, beside its own answer (0.6.0, P4): how the workspace's
+// dependency restore for its component came out, and which targets the component needs a fresh check could not reach.
+// Asked only of a failure; one that cannot be asked is no fact -- the check's answer is exactly what it was.
+async function factsAbout(deps, command, at, answer) {
+  try { return (await deps.factsOf?.(command, at, answer)) ?? null; }
+  catch { return null; }
 }
 
 const optsOf = (deps, command, at) => ({ cwd: contained(at.dir, join(at.dir, command.cwd)), env: childEnv(deps.env, deps.envNamesOf(command.component)), timeoutMs: deps.timeoutMs, maxBuffer: CHECK_OUTPUT_BYTES });

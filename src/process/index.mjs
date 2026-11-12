@@ -66,6 +66,10 @@
 // (src/process/shim.mjs): still no shell, still exactly this argv. Anywhere else, and for
 // anything that is not such a shim, the command is exactly what was asked for.
 //
+// A child that never started says WHY as a fact a caller can branch on, beside the sentence: `unstarted: true` and the
+// OS's own `code` for it (ENOENT: no such program -- or no such directory to run it in; EACCES: there, but not
+// executable by this user), never only inside the words (0.6.0, P4).
+//
 // `opts` for run and runAsync: `input` (stdin), `timeoutMs`, and -- only when the
 // caller names them -- `env` (then EXACTLY that environment and nothing
 // inherited: src/process/env.mjs says what a child needs to start), `cwd`, and
@@ -125,9 +129,12 @@ const placed = (opts) => Object.fromEntries([["env", opts.env], ["cwd", opts.cwd
 function answered(r, file, opts) {
   if (r?.error?.code === "ENOBUFS") return overflowed(file, opts.maxBuffer);
   if (killed(r)) return { ok: false, out: "", error: `${file} was killed after ${opts.timeoutMs / 1000}s — it never answered`, timedOut: true };
-  if (r?.error) return { ok: false, out: "", error: `${file} could not be started — ${r.error.code ?? r.error.message}`, unstarted: true };
+  if (r?.error) return unstartedOf(file, r.error);
   return exited(r, file);
 }
+
+// The one answer for a child that never started, from whichever door: the sentence, and the OS's code as a fact.
+const unstartedOf = (file, e) => ({ ok: false, out: "", error: `${file} could not be started — ${e?.code ?? e?.message ?? e}`, unstarted: true, code: typeof e?.code === "string" ? e.code : null });
 
 const overflowed = (file, limit) => ({ ok: false, out: "", error: `${file} wrote more than ${limit} bytes, so it was stopped`, overflow: true });
 
@@ -161,7 +168,7 @@ function collect(child, file, opts, resolve) {
 function listen(got) {
   got.child.stdout?.on("data", (bytes) => gathered(got, "out", bytes));
   got.child.stderr?.on("data", (bytes) => gathered(got, "err", bytes));
-  got.child.on("error", (e) => finished(got, { ok: false, out: "", error: `${got.file} could not be started — ${e.code ?? e.message}`, unstarted: true }));
+  got.child.on("error", (e) => finished(got, unstartedOf(got.file, e)));
   got.child.on("close", (status) => finished(got, closed(got, status)));
 }
 
@@ -213,7 +220,7 @@ function runObserved(os, file, args, opts) {
 // others; both are the same answer.
 function begunObserved(os, args, w) {
   try { watched(os, os.launch(w.call.file, [...w.call.prefix, ...args.map(String)], { shell: false, windowsHide: true, detached: w.group, stdio: ["pipe", "pipe", "pipe"], ...placed(w.opts) }), w); }
-  catch (e) { w.resolve({ ok: false, out: "", error: `${w.file} could not be started — ${e.code ?? e.message}`, unstarted: true }); }
+  catch (e) { w.resolve(unstartedOf(w.file, e)); }
 }
 
 function watched(os, child, w) {
@@ -228,7 +235,7 @@ function watched(os, child, w) {
 function listenedObserved(got) {
   got.child.stdout?.on("data", (bytes) => arrived(got, "out", bytes));
   got.child.stderr?.on("data", (bytes) => arrived(got, "err", bytes));
-  got.child.on("error", (e) => (got.child.pid === undefined ? settledObserved(got, { ok: false, out: "", error: `${got.file} could not be started — ${e.code ?? e.message}`, unstarted: true }) : null));
+  got.child.on("error", (e) => (got.child.pid === undefined ? settledObserved(got, unstartedOf(got.file, e)) : null));
   got.child.on("close", (status) => settledObserved(got, closed(got, status)));
 }
 

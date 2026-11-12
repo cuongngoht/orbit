@@ -22,7 +22,7 @@ import { loadTask } from "../../src/task/load.mjs";
 import { apply, createTask } from "../../src/task/ops.mjs";
 import { eventsView } from "../../src/task/views.mjs";
 import { start, step } from "../../src/orchestration/loop.mjs";
-import { fakeProcess } from "./process.mjs";
+import { fakeProcess, unstartedAnswer } from "./process.mjs";
 import { CHECKOUT, START, taskWorld } from "../task.harness.mjs";
 
 export const BASE = "0123456789abcdef0123456789abcdef01234567";
@@ -43,7 +43,7 @@ export const WORK = "w-0123456789ab";
 
 export const passes = (out = "ok") => ({ ok: true, out, err: "", status: 0 });
 export const fails = (out, status = 1) => ({ ok: false, out, err: "", error: out.split("\n")[0], status });
-export const unstarted = () => ({ ok: false, out: "", error: "npm could not be started — ENOENT", unstarted: true });
+export const unstarted = (code = "ENOENT") => unstartedAnswer("npm", code);
 
 // `script[purpose]` is a queue of answers; the last one repeats.
 function scripted(script) {
@@ -203,6 +203,8 @@ function memoryTasks(opts) {
 
 // ---- the world ------------------------------------------------------------------------------------
 
+// opts.facts(command, at, answer): what the composition root shows of a check that failed (0.6.0, P4) -- the
+// workspace's restore receipt for its component and the targets it requires a fresh check could not reach.
 // opts.again: another world's { w, dir, rooms, ws } -- a second PROCESS over the same store, rooms
 // and workspace, holding nothing of the first one's memory. opts.at: { dir, project, checkout } -- a
 // project's own store root, for a test that reads the task back through Orbit Control.
@@ -230,7 +232,7 @@ export function orchestrationWorld(t, opts = {}) {
     sandbox: box,
     workspace: ws,
     base: { head: () => BASE, dirty: () => false },
-    checks: { declared: () => opts.declared ?? DECLARED, graph: () => (opts.graph === undefined ? graphOf(opts.declared ?? DECLARED, opts.dependsOn) : opts.graph), run: (command, at) => createCheckRunner({ process, env: { PATH: "/bin", HOME: "/home/x", API_TOKEN: "s3cr3t-value" }, envNamesOf: () => opts.envNames ?? [], clock: () => w.clock.at, keep: (where, text) => roomOf(where.task).keep(where.ref, text), observer: opts.observe ? observerOf(activity, w, opts) : undefined }).run(command, at) },
+    checks: { declared: () => opts.declared ?? DECLARED, graph: () => (opts.graph === undefined ? graphOf(opts.declared ?? DECLARED, opts.dependsOn) : opts.graph), run: (command, at) => createCheckRunner({ process, env: { PATH: "/bin", HOME: "/home/x", API_TOKEN: "s3cr3t-value" }, envNamesOf: () => opts.envNames ?? [], clock: () => w.clock.at, keep: (where, text) => roomOf(where.task).keep(where.ref, text), observer: opts.observe ? observerOf(activity, w, opts) : undefined, factsOf: opts.facts }).run(command, at) },
     context: { gather: async (text) => (calls.context++, { sections: [{ id: "architecture", title: "ARCHITECTURE", known: true, lines: [`for: ${text.slice(0, 40)}`] }], ...(opts.contextStatus ? { status: opts.contextStatus } : {}), ...(opts.contextGrounding ?? {}) }) },
     capabilities: { describe: (id) => (capabilities[id] ? { id, ...capabilities[id] } : null), invoke: async (id, input, o) => (calls.invoked.push({ id, input, approved: o.approved, ...(o.authorized ? { authorized: o.authorized } : {}) }), { written: 1 }) },
     investigations: { outcome: (id) => investigations.get(id) ?? null },

@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "id": "selfcheck-20261112114705",
+  "budgetUsd": 0,
+  "limits": {
+    "usd": 0,
+    "turns": 10,
+    "minutes": 10,
+    "cpus": 2,
+    "memoryMb": 2048,
+    "pids": 512
+  },
+  "arms": {
+    "gold-done": {
+      "kind": "scripted",
+      "behaviour": "patch",
+      "patch": "gold",
+      "status": "DONE",
+      "frozen": {}
+    },
+    "seat-gold-done": {
+      "kind": "scripted",
+      "behaviour": "patch",
+      "patch": "gold",
+      "status": "DONE",
+      "seat": "plugin",
+      "rev": "HEAD",
+      "frozen": {
+        "rev": "HEAD",
+        "commit": "f9634ca3afe710aafa53939afc94a989c83917b7"
+      }
+    },
+    "seat-writes": {
+      "kind": "scripted",
+      "behaviour": "patch",
+      "patch": "gold",
+      "status": "DONE",
+      "seat": "writes-checkout",
+      "frozen": {}
+    }
+  },
+  "runs": [
+    {
+      "arm": "gold-done",
+      "task": "pack:orders-e2e-006",
+      "trial": 1
+    },
+    {
+      "arm": "seat-gold-done",
+      "task": "pack:orders-e2e-006",
+      "trial": 1
+    },
+    {
+      "arm": "seat-writes",
+      "task": "pack:orders-e2e-006",
+      "trial": 1
+    }
+  ],
+  "keepImages": true,
+  "caFile": "/root/.ccr/ca-bundle.crt",
+  "plan": [
+    {
+      "arm": "gold-done",
+      "task": "pack:orders-e2e-006",
+      "trial": 1,
+      "key": "gold-done__pack_orders-e2e-006__t1"
+    },
+    {
+      "arm": "seat-gold-done",
+      "task": "pack:orders-e2e-006",
+      "trial": 1,
+      "key": "seat-gold-done__pack_orders-e2e-006__t1"
+    },
+    {
+      "arm": "seat-writes",
+      "task": "pack:orders-e2e-006",
+      "trial": 1,
+      "key": "seat-writes__pack_orders-e2e-006__t1"
+    }
+  ],
+  "tasks": {
+    "pack:orders-e2e-006": {
+      "digest": "b5f7d882a0f3bea582928c59be51dd541b7089a5e4f727324d780e9a444c6454",
+      "image": "node:22"
+    }
+  },
+  "pluginRepo": "/home/user/wt/seat",
+  "claudeCode": "2.1.322",
+  "evaluator": {
+    "commit": "f9634ca3afe710aafa53939afc94a989c83917b7",
+    "dirty": false
+  },
+  "frozenAt": "2026-11-12T11:47:05.545Z"
+}

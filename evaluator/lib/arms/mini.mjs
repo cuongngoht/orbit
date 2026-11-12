@@ -10,7 +10,8 @@
 // mount) and adds ONE paragraph to the system template: the plugin's skills as a host would list them (each one's name
 // and description, read from its SKILL.md) and how to use one. Listed, never ordered. mini-SWE-agent has no hooks and
 // no Skill tool, so this arm measures what an agent understands and does with the plugin through a shell -- never what
-// the plugin's hooks add.
+// the plugin's hooks add. Seated (`seat: true`), the plugin's adoption command runs once in the container before the
+// hold, as for a seated Claude Code arm (lib/arms/plugin.mjs).
 //
 // The credential: ORBIT_EVAL_ANTHROPIC_API_KEY, by name; the controller maps it to ANTHROPIC_API_KEY in the environment
 // of the one driver process and nowhere else. A `deterministic` arm (self-checks) runs mini-SWE-agent's own

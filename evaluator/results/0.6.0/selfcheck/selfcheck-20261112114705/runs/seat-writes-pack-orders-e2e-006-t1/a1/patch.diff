@@ -1,0 +1,7 @@
+diff --git a/seat-wrote-this.txt b/seat-wrote-this.txt
+new file mode 100644
+index 0000000000000000000000000000000000000000..2ec3eac9e27a9f8cdd05ae1e61493a7618468452
+--- /dev/null
++++ b/seat-wrote-this.txt
+@@ -0,0 +1 @@
++a seat must never write the checkout

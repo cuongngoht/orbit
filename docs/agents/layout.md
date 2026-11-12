@@ -1206,15 +1206,19 @@ evaluator/     (0.6.0) THE INDEPENDENT EVALUATOR: a package of its own (package.
                credential: the room scan) · lib/container/ (what is copied INTO a container, Node built-ins only: entry,
                egress, scripted, hold (a container whose agent runs on the host), grade-pack) · lib/arms/ (index:
                ARM_KINDS · claude: hostArgs, claude and claude+orbit, the built-in plugins off · plugin: git archive of a
-               revision · mini: mini and mini+orbit, the skill listing, the pinned mini-SWE-agent venv · mini-driver.py:
+               revision, and the SEAT (`seat: true` on an arm that carries it: the plugin's own adoption command run once
+               by the entry before the agent, the checkout held byte for byte, else INFRA_ERROR SEAT) · mini: mini and mini+orbit, the skill listing, the pinned mini-SWE-agent venv · mini-driver.py:
                mini-SWE-agent on the host, attached to the task container, writing stream-json · scripted) · lib/tasks/ (index: taskOf · packs · convert, convert-all,
                acceptance-template: the old benchmark's change cases as packs · swebench: the pinned Verified rows) ·
                lib/grade/ (packs: a fresh network-less container · swebench: the official harness in a uv venv) ·
                lib/run/ (attempt: one (arm, task, trial) · campaign: freeze, plan, loop, resume, status · prompt · report ·
                export · selfcheck · verify-packs) · lib/prereg/ (select: the selection rule as code · measure: an image's
-               size from its manifest · index: verify a pre-registration, a phase's campaign from it, the verdict rule) ·
-               record.mjs (a release's record, from its campaigns' journals: what ship.mjs --evidence reads).
-               prereg/<release>.json (committed before any model run it governs) · checks/*.check.mjs (its own tests, run by path); tasks/packs/<id>/
+               size from its manifest · index: verify a pre-registration and the amendments beside it, a phase's campaign from them, the verdict rule) ·
+               record.mjs (a release's record, from its campaigns' journals: what ship.mjs --evidence reads; an
+               amendment's comparisons are its `secondary` verdict, which the gate never reads).
+               prereg/<release>.json (committed before any model run it governs; never edited after) ·
+               prereg/<release>-amendment-<n>.json (adds phases, arms and gate:false comparisons, naming the registration's
+               digest; committed before any run of its own phases) · checks/*.check.mjs (its own tests, run by path); tasks/packs/<id>/
                (issue.md, start.json, hidden/*.spec.mjs, controls/*.patch, pack.json; EXCLUDED.md); history/ (provenance).
                A campaign's room: $ORBIT_EVAL_HOME/campaigns/<id>/ (default ~/.orbit-eval, never in a repository).
 integrations/  what ANOTHER program installs, never part of this plugin's archive. vscode-orbit-live/ (1.8.5, ADR 0021)

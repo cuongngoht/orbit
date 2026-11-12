@@ -85,10 +85,19 @@ for a row), with:
 
 After the agent ends, the controller copies the repository out and takes the **patch** as the difference between the
 start tree and the tree the agent left, through a git directory of its own (`lib/core/git.mjs`): a commit, a reset or a
-deleted `.git` in the agent's checkout changes nothing that is graded. Then the patch alone is graded in a fresh
+deleted `.git` in the agent's checkout changes nothing that is graded. Every tree a run compares is staged in, and read
+from, that ONE git directory (`startOfWork`, `endOfWork`), whatever the task source: a start tree need not be HEAD's (an
+instance image's untracked build output is part of what the agent was handed), so its objects exist only there. Then the patch alone is graded in a fresh
 container. Every container and network carries the labels `orbit.eval=1`, `orbit.eval.campaign`, `orbit.eval.run`,
 `orbit.eval.role`, and only what carries them is ever removed. A cleanup runs every step (`allSettled`) and never
 replaces the error that stopped a run.
+
+**A run's failure is that run's outcome, never the campaign's end.** What throws while a run's start is built, while it
+runs or while its patch is taken ends that run `INFRA_ERROR` with a code (`START`, `RUN`, `PATCH`; `TASK` when its task
+cannot be read on a resume) and one line of why; what throws while it is graded ends it `UNGRADABLE` (`GRADE: ...`).
+Each is journaled like any outcome, the whole error kept in the run's room (`error.txt`), and the campaign goes on to
+its next run. Only the campaign's own failures end it -- its tools volume, its journal, Docker no longer answering at
+all (that attempt is left open, so a resume closes it INTERRUPTED and runs it again) -- said in a `halted` line.
 
 ## Outcome words
 
@@ -129,7 +138,7 @@ A campaign is a JSON file: a list of (arm, task, trial) with limits, a model, an
 
 Its room is `$ORBIT_EVAL_HOME/campaigns/<id>/` (default `~/.orbit-eval`, never in a repository): `campaign.json` frozen
 at start (each arm's plugin commit, each task's digest, the Claude Code version, the evaluator's commit), `journal.jsonl`
-(started, ended, outcome, interrupted, skipped), and `runs/<key>/a<n>/` (manifest, stream, entry record, egress log,
+(started, ended, outcome, interrupted, skipped, halted), and `runs/<key>/a<n>/` (manifest, stream, entry record, egress log,
 patch, grader report, summary, outcome). Scratch trees are removed when a run ends.
 
 - **Hard ledger**: a run does not start when what the budget has left is below its USD cap; an ended run is charged its

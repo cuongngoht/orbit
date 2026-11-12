@@ -45,6 +45,24 @@ export const diffTrees = (gitDir, from, to) => gitMust(["diff", "--binary", "--n
 
 export const changedPaths = (gitDir, from, to) => gitMust(["diff", "--name-only", "-z", "--no-renames", from, to], { env: { GIT_DIR: gitDir } }).out.split("\0").filter(Boolean);
 
+// THE RUN'S GIT DIRECTORY: one of the controller's own per run, and every tree the controller compares -- the start
+// and the end the agent left -- is written into it and read from it, whatever the task source. A start tree need not
+// be HEAD's tree (an image's untracked build output is part of what the agent was handed), so its objects exist only
+// where it was staged: a tree read from any other git directory would be a bad object.
+//
+//   startOfWork(source, gitDir, workTree, base) -> { gitDir, base, startTree }      endOfWork(start, workTree) -> tree
+export function startOfWork(source, gitDir, workTree, base) {
+  privateGitDir(source, gitDir);
+  return { gitDir, base, startTree: treeOfWork(gitDir, workTree, base) };
+}
+
+export function endOfWork(start, workTree) {
+  if (!holdsTree(start.gitDir, start.startTree)) throw new Error(`the start tree ${start.startTree} is not in the run's git directory ${start.gitDir}`);
+  return treeOfWork(start.gitDir, workTree, start.base);
+}
+
+export const holdsTree = (gitDir, tree) => git(["cat-file", "-e", `${tree}^{tree}`], { env: { GIT_DIR: gitDir } }).ok;
+
 // A private copy of a git directory to stage in: the original stays as it was.
 export function privateGitDir(src, dest) {
   rmSync(dest, { recursive: true, force: true });

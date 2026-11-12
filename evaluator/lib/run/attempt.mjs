@@ -6,11 +6,11 @@
 // labels and is removed at the end, all of them, whatever happened -- and a cleanup never replaces the error that
 // stopped the attempt.
 //
-//   runAttempt(ctx) -> { ended, outcome }      namesOf(campaignId, key, n) -> { net, egress, task, grader, label }
+//   runAttempt(ctx) -> { ended, outcome }   (ctx.execute and ctx.dockerAnswers: the Docker-bound steps, faked in checks)      namesOf(campaignId, key, n) -> { net, egress, task, grader, label }
 import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { connect, copyIn, copyOut, createContainer, createNetwork, docker, ensureImage, imagePath, kill, labelsOf, logsOf, removeContainer, removeNetwork, startAttached, startDetached, stateOf } from "../core/docker.mjs";
-import { changedPaths, diffTrees, privateGitDir, treeOfWork } from "../core/git.mjs";
+import { connect, copyIn, copyOut, createContainer, createNetwork, docker, ensureImage, imagePath, kill, labelsOf, logsOf, removeContainer, removeNetwork, startAttached, startDetached, stateOf, version } from "../core/docker.mjs";
+import { changedPaths, diffTrees, endOfWork } from "../core/git.mjs";
 import { scrubbedRoom } from "../core/credential.mjs";
 import { chargeOf } from "../core/journal.mjs";
 import { outcomeOf } from "../core/outcome.mjs";
@@ -30,6 +30,29 @@ export function namesOf(campaignId, key, n) {
 }
 
 const infra = (code, says) => ({ code, says: String(says).slice(0, 400) });
+
+// ---- a run's failure is that run's outcome ----------------------------------------------------------------------------------
+//
+// What throws while a run's start is built (START), while it runs (RUN) or while its patch is taken (PATCH) ends THAT
+// run INFRA_ERROR with the code and one line of why, and what throws while it is graded ends it UNGRADABLE: journaled
+// like any outcome, and the campaign goes on to its next run. The whole error is kept in the run's room (error.txt).
+// Only what is the campaign's -- Docker no longer answering at all -- leaves the attempt open and ends the campaign.
+
+const oneLine = (e) => String(e?.message ?? e).replace(/\s+/g, " ").trim().slice(0, 400);
+
+// The phase a throw happened in, carried on the error so the run's outcome can name it.
+export async function inPhase(code, fn) {
+  try { return await fn(); }
+  catch (e) { throw Object.assign(e instanceof Error ? e : new Error(String(e)), { phase: e?.phase ?? code }); }
+}
+
+function thrownAt(room, e, fallback) {
+  writeText(join(room, "error.txt"), `${e?.phase ?? fallback}: ${e?.stack ?? e}\n`);
+  return { code: e?.phase ?? fallback, says: oneLine(e) };
+}
+
+// Docker answering at all: when it does not, a failed run says nothing about the run, and the campaign stops.
+const dockerAnswers = () => version() !== null;
 
 const limitsOf = (ctx) => ({ ...ctx.campaign.limits, ...(ctx.arm.control.minutes ? { minutes: ctx.arm.control.minutes } : {}) });
 
@@ -152,12 +175,12 @@ function infraAfter(ctx, entry, state, summary, ran) {
   return null;
 }
 
-// The patch: the tree the agent left, against the start, staged in a git directory of the controller's own.
-function patchOf(start, scratch, room) {
+// The patch: the tree the agent left, against the start, both staged in the run's own git directory (the start's).
+export function patchOf(start, scratch, room) {
   const after = join(scratch, "after");
   if (!existsSync(after)) return { bytes: 0, file: null, paths: [], why: "the repository could not be copied out" };
-  const gitDir = privateGitDir(start.gitDir, join(scratch, "diff.git"));
-  const tree = treeOfWork(gitDir, after, start.base);
+  const gitDir = start.gitDir;
+  const tree = endOfWork(start, after);
   const bytes = diffTrees(gitDir, start.startTree, tree);
   const file = join(room, "patch.diff");
   writeFileSync(file, bytes);
@@ -174,7 +197,7 @@ async function executed(ctx, names, room, scratch, labels) {
   if (missing.length) return { infra: infra("CREDENTIAL_MISSING", `the controller's environment has no ${missing.join(", ")}`) };
   const taskImg = ensureImage(ctx.task.image);
   if (!taskImg.ok) return { infra: infra("DOCKER", taskImg.why) };
-  const start = await ctx.task.start(join(scratch, "start"), ctx);
+  const start = await inPhase("START", () => ctx.task.start(join(scratch, "start"), ctx));
   if (start.infra) return { infra: start.infra };
   const egressImg = ctx.arm.needsNetwork ? await networkUp(ctx, names, labels) : { id: null };
   if (egressImg.infra) return { infra: egressImg.infra, images: { task: taskImg.id } };
@@ -210,7 +233,7 @@ async function finished(ctx, names, room, scratch, x) {
   const entry = existsSync(join(room, "out", "entry.json")) ? readJson(join(room, "out", "entry.json")) : null;
   const egress = existsSync(join(room, "out", "egress.json")) ? readJson(join(room, "out", "egress.json")) : null;
   const summary = summaryOf(readOr(join(room, "stream.jsonl"), ""), { pluginDir: ctx.arm.pluginDir });
-  const patch = patchOf(x.start, scratch, room);
+  const patch = await inPhase("PATCH", () => patchOf(x.start, scratch, room));
   return { infra: ran.infra ?? infraAfter(ctx, entry, state, summary, ran), timedOut: ran.timedOut, killedByControl: kills.length > 0 && !ran.timedOut, exit: state?.exitCode ?? null, oomKilled: state?.oomKilled ?? null, wallMs, streamBytes: ran.bytes, streamCut: ran.cut, entry, summary, patch, egress, plugin: x.run.plugin ? { digest: x.run.plugin.digest, files: x.run.plugin.files } : null, images: x.images, startCommit: x.start.base, startTree: x.start.startTree };
 }
 
@@ -236,11 +259,10 @@ export async function runAttempt(ctx) {
   writeJson(join(room, "manifest.json"), manifestOf(ctx, names, capUsd));
   appendLine(ctx.journal, { kind: "started", run: key, attempt: n, at: nowIso(), capUsd, container: names.task, label: names.label });
   let x;
-  let error = null;
-  try { x = await executed(ctx, names, room, scratch, labels); }
-  catch (e) { error = e; }
-  await cleaned(names, scratch, Boolean(error) || ctx.keepScratch);
-  if (error) throw error;
+  try { x = await (ctx.execute ?? executed)(ctx, names, room, scratch, labels); }
+  catch (e) { x = { infra: thrownAt(room, e, "RUN") }; }
+  await cleaned(names, scratch, ctx.keepScratch);
+  if (x.infra && !(ctx.dockerAnswers ?? dockerAnswers)()) throw new Error(`Docker stopped answering during ${key} attempt ${n} (${x.infra.code}: ${x.infra.says}): the campaign stops here; resume it when Docker is back`);
   return settled(ctx, room, names, scratch, x, capUsd);
 }
 
@@ -265,6 +287,7 @@ async function gradeOf(ctx, room, names, scratch, x) {
   if (x.infra || !(x.patch?.bytes > 0)) return null;
   const gscratch = ensureDir(join(scratch, "g"));
   try { return await ctx.task.grade({ patchFile: x.patch.file, scratch: gscratch, names, labels: labelsOf(ctx.campaign.id, names.label, "grader"), room, campaign: ctx.campaign, home: ctx.home }); }
+  catch (e) { return ((t) => ({ ran: false, applied: false, why: `${t.code}: ${t.says}` }))(thrownAt(room, e, "GRADE")); }
   finally { await Promise.allSettled([Promise.resolve().then(() => removeContainer(names.grader)), Promise.resolve().then(() => rmSync(scratch, { recursive: true, force: true }))]); }
 }
 

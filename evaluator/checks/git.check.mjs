@@ -1,11 +1,15 @@
 // The patch is the difference between two trees, taken through a git directory of the controller's own: what the
 // agent did to its own .git (a commit, a reset, a deleted history) changes nothing that is graded.
 import assert from "node:assert/strict";
-import { cpSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { builtRepo, changedPaths, diffTrees, git, privateGitDir, treeOfWork } from "../lib/core/git.mjs";
+import { patchOf } from "../lib/run/attempt.mjs";
+import { packIds } from "../lib/tasks/packs.mjs";
+import { taskOf } from "../lib/tasks/index.mjs";
+import { checkoutStart } from "../lib/tasks/swebench.mjs";
 
 const FILES = [{ rel: "src/a.mjs", text: "export const a = 1;\n" }, { rel: "test/a.test.mjs", text: "// t\n" }, { rel: ".gitignore", text: "node_modules/\n" }];
 
@@ -80,6 +84,51 @@ test("the patch applies to the start with git apply", () => {
     writeFileSync(join(dir, "p.diff"), r.patch, "latin1");
     assert.equal(git(["apply", "--binary", join(dir, "p.diff")], { cwd: join(dir, "s") }).ok, true);
     assert.equal(readFileSync(join(dir, "s", "src/a.mjs"), "utf8"), "export const a = 4;\n");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---- the run's git directory: every tree the controller compares is written into it and read from it -----------------
+
+// A start whose work tree holds a file its HEAD does not (an image's untracked build/), so its start tree is NOT
+// HEAD's tree and its objects exist only where the controller staged it.
+function checkoutScene(fn) {
+  const dir = mkdtempSync(join(tmpdir(), "evl-git-"));
+  try {
+    const scratch = join(dir, "scratch");
+    builtRepo(join(scratch, "start"), FILES);
+    mkdirSync(join(scratch, "start", "build", "lib"), { recursive: true });
+    writeFileSync(join(scratch, "start", "build", "lib", "a.py"), "built = 1\n");
+    const start = checkoutStart(join(scratch, "start"));
+    cpSync(join(scratch, "start"), join(scratch, "after"), { recursive: true });
+    fn(join(scratch, "after"));
+    return { start, patch: patchOf(start, scratch, ensureDirOf(join(dir, "room"))) };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+const ensureDirOf = (d) => (mkdirSync(d, { recursive: true }), d);
+
+test("a start tree with an untracked file is diffed against the end tree: the untracked file is the start's, never the agent's", () => {
+  const r = checkoutScene((w) => writeFileSync(join(w, "src/a.mjs"), "export const a = 5;\n"));
+  assert.deepEqual(r.patch.paths, ["src/a.mjs"]);
+  assert.ok(r.patch.bytes > 0);
+  assert.equal(checkoutScene(() => null).patch.bytes, 0);
+  assert.deepEqual(checkoutScene((w) => rmSync(join(w, "build"), { recursive: true })).patch.paths, ["build/lib/a.py"]);
+});
+
+test("every task source's start holds its start tree in the git directory it names, and an untouched tree is an empty patch", () => {
+  const dir = mkdtempSync(join(tmpdir(), "evl-git-"));
+  try {
+    for (const id of packIds()) {
+      const scratch = join(dir, id);
+      const start = taskOf(`pack:${id}`).start(join(scratch, "start"));
+      assert.equal(git(["cat-file", "-e", `${start.startTree}^{tree}`], { env: { GIT_DIR: start.gitDir } }).ok, true, id);
+      cpSync(join(scratch, "start", "work", "repo"), join(scratch, "after"), { recursive: true });
+      assert.equal(patchOf(start, scratch, ensureDirOf(join(scratch, "room"))).bytes, 0, id);
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

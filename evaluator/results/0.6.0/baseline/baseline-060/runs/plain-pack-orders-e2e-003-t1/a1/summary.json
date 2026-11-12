@@ -1,0 +1,90 @@
+{
+  "kind": "ended",
+  "run": "plain__pack_orders-e2e-003__t1",
+  "attempt": 1,
+  "at": "2026-11-12T08:42:25.864Z",
+  "chargedUsd": 0.12411520000000001,
+  "infra": null,
+  "timedOut": false,
+  "killedByControl": false,
+  "exit": 0,
+  "oomKilled": false,
+  "wallMs": 34585,
+  "streamBytes": 79389,
+  "streamCut": false,
+  "summary": {
+    "started": true,
+    "model": "claude-sonnet-5-5",
+    "version": "2.1.322",
+    "plugins": [],
+    "hooks": {
+      "ran": 0,
+      "failed": 0
+    },
+    "skillsListed": 16,
+    "result": true,
+    "costUsd": 0.12411520000000001,
+    "tokens": {
+      "input": 12,
+      "output": 5613,
+      "cacheRead": 122612,
+      "cacheWrite": 13925
+    },
+    "turns": 13,
+    "durationMs": 33670,
+    "denials": 1,
+    "subtype": "success",
+    "isError": false,
+    "stoppedOn": null,
+    "apiError": null,
+    "status": "DONE",
+    "statusWhy": null,
+    "asked": false,
+    "tools": {
+      "calls": 12,
+      "byName": {
+        "Bash": 3,
+        "bash": 1,
+        "Edit": 7,
+        "Write": 1
+      },
+      "skills": {},
+      "agents": {}
+    },
+    "orbit": {
+      "commands": 0,
+      "byCli": {}
+    }
+  },
+  "patch": {
+    "bytes": 6759,
+    "digest": "c4eae134644ae1f4884bbcf9ae064eb56b67f260850122b7d2fbd5482166daa0",
+    "paths": [
+      "src/api.mjs",
+      "src/money.mjs",
+      "src/orders.mjs",
+      "src/ui.mjs",
+      "src/worker.mjs",
+      "test/currency.test.mjs"
+    ]
+  },
+  "plugin": null,
+  "images": {
+    "task": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb",
+    "taskRef": "node:22",
+    "pulled": false,
+    "egress": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb"
+  },
+  "startCommit": "ae3fb1ef7ccfb8c4009f3bf243aa4e7ba4265837",
+  "entryPhase": "ended",
+  "egress": {
+    "direct": "ENETUNREACH",
+    "outsideName": "EAI_AGAIN",
+    "api": {
+      "connect": 200,
+      "http": 404
+    },
+    "otherHost": 403,
+    "holds": true
+  }
+}

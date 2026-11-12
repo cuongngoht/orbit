@@ -1,0 +1,971 @@
+{
+  "schema": 1,
+  "kind": "orbit-evaluation-record",
+  "release": "0.6.0",
+  "prereg": {
+    "file": "evaluator/prereg/0.6.0.json",
+    "digest": "b60909c106783d0a703e91e15bb015e7b289123250ea5f06382780fd84cf253a"
+  },
+  "evaluator": {
+    "commit": "78a4a56b01d27ba9528ff1575ea3c5feacd94c5a",
+    "dirty": true
+  },
+  "at": "2026-11-12T12:53:17.936Z",
+  "campaigns": [
+    {
+      "id": "final-060b",
+      "phase": "final",
+      "finished": true,
+      "model": "claude-sonnet-5-5",
+      "effort": "medium",
+      "claudeCode": "2.1.322",
+      "evaluator": {
+        "commit": "78a4a56b01d27ba9528ff1575ea3c5feacd94c5a",
+        "dirty": false
+      },
+      "frozenAt": "2026-11-12T12:08:00.133Z",
+      "ledger": {
+        "budgetUsd": 20,
+        "chargedUsd": 0.86,
+        "reservedUsd": 0,
+        "remainingUsd": 19.14
+      }
+    },
+    {
+      "id": "mini-060",
+      "phase": "mini",
+      "finished": true,
+      "model": "claude-sonnet-5-5",
+      "effort": "medium",
+      "claudeCode": "2.1.322",
+      "evaluator": {
+        "commit": "78a4a56b01d27ba9528ff1575ea3c5feacd94c5a",
+        "dirty": false
+      },
+      "frozenAt": "2026-11-12T12:53:11.991Z",
+      "ledger": {
+        "budgetUsd": 15,
+        "chargedUsd": 0,
+        "reservedUsd": 0,
+        "remainingUsd": 15
+      }
+    },
+    {
+      "id": "final-seated-060",
+      "phase": "final-seated",
+      "finished": true,
+      "model": "claude-sonnet-5-5",
+      "effort": "medium",
+      "claudeCode": "2.1.322",
+      "evaluator": {
+        "commit": "78a4a56b01d27ba9528ff1575ea3c5feacd94c5a",
+        "dirty": false
+      },
+      "frozenAt": "2026-11-12T12:24:57.623Z",
+      "ledger": {
+        "budgetUsd": 12,
+        "chargedUsd": 1.03,
+        "reservedUsd": 0,
+        "remainingUsd": 10.97
+      }
+    },
+    {
+      "id": "memory-060",
+      "phase": "memory",
+      "finished": true,
+      "model": "claude-sonnet-5-5",
+      "effort": "medium",
+      "claudeCode": "2.1.322",
+      "evaluator": {
+        "commit": "78a4a56b01d27ba9528ff1575ea3c5feacd94c5a",
+        "dirty": false
+      },
+      "frozenAt": "2026-11-12T12:37:58.185Z",
+      "ledger": {
+        "budgetUsd": 7,
+        "chargedUsd": 0.52,
+        "reservedUsd": 0,
+        "remainingUsd": 6.48
+      }
+    },
+    {
+      "id": "memory-seated-060",
+      "phase": "memory-seated",
+      "finished": true,
+      "model": "claude-sonnet-5-5",
+      "effort": "medium",
+      "claudeCode": "2.1.322",
+      "evaluator": {
+        "commit": "78a4a56b01d27ba9528ff1575ea3c5feacd94c5a",
+        "dirty": false
+      },
+      "frozenAt": "2026-11-12T12:41:02.904Z",
+      "ledger": {
+        "budgetUsd": 7,
+        "chargedUsd": 0.47,
+        "reservedUsd": 0,
+        "remainingUsd": 6.53
+      }
+    }
+  ],
+  "arms": {
+    "plain": {
+      "kind": "claude",
+      "rev": null,
+      "commit": null
+    },
+    "orbit-0.5.0": {
+      "kind": "claude+orbit",
+      "rev": "v0.5.0",
+      "commit": "54aaf0b65bdb8f931ab6fe80c7bf368a971f2aab"
+    },
+    "orbit-0.6.0": {
+      "kind": "claude+orbit",
+      "rev": "6b25eb9ef227b8fe1e896d5d7aff0d22ad52a827",
+      "commit": "6b25eb9ef227b8fe1e896d5d7aff0d22ad52a827"
+    },
+    "mini": {
+      "kind": "mini",
+      "rev": null,
+      "commit": null
+    },
+    "mini-orbit-0.6.0": {
+      "kind": "mini+orbit",
+      "rev": "6b25eb9ef227b8fe1e896d5d7aff0d22ad52a827",
+      "commit": "6b25eb9ef227b8fe1e896d5d7aff0d22ad52a827"
+    },
+    "orbit-0.5.0-seated": {
+      "kind": "claude+orbit",
+      "rev": "v0.5.0",
+      "commit": "54aaf0b65bdb8f931ab6fe80c7bf368a971f2aab",
+      "seat": true
+    },
+    "orbit-0.6.0-seated": {
+      "kind": "claude+orbit",
+      "rev": "6b25eb9ef227b8fe1e896d5d7aff0d22ad52a827",
+      "commit": "6b25eb9ef227b8fe1e896d5d7aff0d22ad52a827",
+      "seat": true
+    }
+  },
+  "runs": [
+    {
+      "campaign": "final-060b",
+      "phase": "final",
+      "arm": "orbit-0.5.0",
+      "task": "swebench:pytest-dev__pytest-5809",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.026219499999999996,
+      "minutes": 0.21686666666666668
+    },
+    {
+      "campaign": "final-060b",
+      "phase": "final",
+      "arm": "plain",
+      "task": "swebench:pytest-dev__pytest-5809",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.013628200000000002,
+      "minutes": 0.11666666666666667
+    },
+    {
+      "campaign": "final-060b",
+      "phase": "final",
+      "arm": "orbit-0.6.0",
+      "task": "swebench:pytest-dev__pytest-5809",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.025795099999999998,
+      "minutes": 0.2854833333333333
+    },
+    {
+      "campaign": "final-060b",
+      "phase": "final",
+      "arm": "orbit-0.6.0",
+      "task": "swebench:sympy__sympy-21596",
+      "trial": 1,
+      "word": "FALSE_DONE",
+      "why": "the agent said DONE, and 1 hidden fail-to-pass test(s) still fail",
+      "costUsd": 0.07738170000000001,
+      "minutes": 0.8371
+    },
+    {
+      "campaign": "final-060b",
+      "phase": "final",
+      "arm": "orbit-0.5.0",
+      "task": "swebench:sympy__sympy-21596",
+      "trial": 1,
+      "word": "FALSE_DONE",
+      "why": "the agent said DONE, and 1 hidden fail-to-pass test(s) still fail",
+      "costUsd": 0.05992669999999999,
+      "minutes": 1.74465
+    },
+    {
+      "campaign": "final-060b",
+      "phase": "final",
+      "arm": "plain",
+      "task": "swebench:sympy__sympy-21596",
+      "trial": 1,
+      "word": "FALSE_DONE",
+      "why": "the agent said DONE, and 1 hidden fail-to-pass test(s) still fail",
+      "costUsd": 0.0666758,
+      "minutes": 1.0075666666666667
+    },
+    {
+      "campaign": "final-060b",
+      "phase": "final",
+      "arm": "orbit-0.6.0",
+      "task": "swebench:sphinx-doc__sphinx-11445",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.03623730000000001,
+      "minutes": 0.3179666666666667
+    },
+    {
+      "campaign": "final-060b",
+      "phase": "final",
+      "arm": "plain",
+      "task": "swebench:sphinx-doc__sphinx-11445",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.019043300000000003,
+      "minutes": 0.21148333333333333
+    },
+    {
+      "campaign": "final-060b",
+      "phase": "final",
+      "arm": "orbit-0.5.0",
+      "task": "swebench:sphinx-doc__sphinx-11445",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.0392774,
+      "minutes": 0.3453833333333333
+    },
+    {
+      "campaign": "final-060b",
+      "phase": "final",
+      "arm": "orbit-0.6.0",
+      "task": "swebench:pallets__flask-5014",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.0181268,
+      "minutes": 0.23463333333333333
+    },
+    {
+      "campaign": "final-060b",
+      "phase": "final",
+      "arm": "orbit-0.5.0",
+      "task": "swebench:pallets__flask-5014",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.017812900000000003,
+      "minutes": 0.1571
+    },
+    {
+      "campaign": "final-060b",
+      "phase": "final",
+      "arm": "plain",
+      "task": "swebench:pallets__flask-5014",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.0144012,
+      "minutes": 0.21355
+    },
+    {
+      "campaign": "final-060b",
+      "phase": "final",
+      "arm": "orbit-0.6.0",
+      "task": "pack:lending-hld-004",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.067237,
+      "minutes": 0.29518333333333335
+    },
+    {
+      "campaign": "final-060b",
+      "phase": "final",
+      "arm": "plain",
+      "task": "pack:lending-hld-004",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.0828209,
+      "minutes": 0.37356666666666666
+    },
+    {
+      "campaign": "final-060b",
+      "phase": "final",
+      "arm": "orbit-0.5.0",
+      "task": "pack:lending-hld-004",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.0641976,
+      "minutes": 0.27571666666666667
+    },
+    {
+      "campaign": "final-060b",
+      "phase": "final",
+      "arm": "orbit-0.6.0",
+      "task": "pack:lending-hld-003",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.07709490000000001,
+      "minutes": 0.40428333333333333
+    },
+    {
+      "campaign": "final-060b",
+      "phase": "final",
+      "arm": "plain",
+      "task": "pack:lending-hld-003",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.07034280000000001,
+      "minutes": 0.3172833333333333
+    },
+    {
+      "campaign": "final-060b",
+      "phase": "final",
+      "arm": "orbit-0.5.0",
+      "task": "pack:lending-hld-003",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.0681276,
+      "minutes": 0.35146666666666665
+    },
+    {
+      "campaign": "mini-060",
+      "phase": "mini",
+      "arm": "mini",
+      "task": "swebench:pytest-dev__pytest-5809",
+      "trial": 1,
+      "word": "NOT_RUN",
+      "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY",
+      "costUsd": null,
+      "minutes": null
+    },
+    {
+      "campaign": "mini-060",
+      "phase": "mini",
+      "arm": "mini-orbit-0.6.0",
+      "task": "swebench:pytest-dev__pytest-5809",
+      "trial": 1,
+      "word": "NOT_RUN",
+      "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY",
+      "costUsd": null,
+      "minutes": null
+    },
+    {
+      "campaign": "mini-060",
+      "phase": "mini",
+      "arm": "mini",
+      "task": "swebench:sympy__sympy-21596",
+      "trial": 1,
+      "word": "NOT_RUN",
+      "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY",
+      "costUsd": null,
+      "minutes": null
+    },
+    {
+      "campaign": "mini-060",
+      "phase": "mini",
+      "arm": "mini-orbit-0.6.0",
+      "task": "swebench:sympy__sympy-21596",
+      "trial": 1,
+      "word": "NOT_RUN",
+      "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY",
+      "costUsd": null,
+      "minutes": null
+    },
+    {
+      "campaign": "mini-060",
+      "phase": "mini",
+      "arm": "mini-orbit-0.6.0",
+      "task": "swebench:sphinx-doc__sphinx-11445",
+      "trial": 1,
+      "word": "NOT_RUN",
+      "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY",
+      "costUsd": null,
+      "minutes": null
+    },
+    {
+      "campaign": "mini-060",
+      "phase": "mini",
+      "arm": "mini",
+      "task": "swebench:sphinx-doc__sphinx-11445",
+      "trial": 1,
+      "word": "NOT_RUN",
+      "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY",
+      "costUsd": null,
+      "minutes": null
+    },
+    {
+      "campaign": "mini-060",
+      "phase": "mini",
+      "arm": "mini",
+      "task": "swebench:pallets__flask-5014",
+      "trial": 1,
+      "word": "NOT_RUN",
+      "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY",
+      "costUsd": null,
+      "minutes": null
+    },
+    {
+      "campaign": "mini-060",
+      "phase": "mini",
+      "arm": "mini-orbit-0.6.0",
+      "task": "swebench:pallets__flask-5014",
+      "trial": 1,
+      "word": "NOT_RUN",
+      "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY",
+      "costUsd": null,
+      "minutes": null
+    },
+    {
+      "campaign": "mini-060",
+      "phase": "mini",
+      "arm": "mini-orbit-0.6.0",
+      "task": "pack:lending-hld-004",
+      "trial": 1,
+      "word": "NOT_RUN",
+      "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY",
+      "costUsd": null,
+      "minutes": null
+    },
+    {
+      "campaign": "mini-060",
+      "phase": "mini",
+      "arm": "mini",
+      "task": "pack:lending-hld-004",
+      "trial": 1,
+      "word": "NOT_RUN",
+      "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY",
+      "costUsd": null,
+      "minutes": null
+    },
+    {
+      "campaign": "mini-060",
+      "phase": "mini",
+      "arm": "mini-orbit-0.6.0",
+      "task": "pack:lending-hld-003",
+      "trial": 1,
+      "word": "NOT_RUN",
+      "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY",
+      "costUsd": null,
+      "minutes": null
+    },
+    {
+      "campaign": "mini-060",
+      "phase": "mini",
+      "arm": "mini",
+      "task": "pack:lending-hld-003",
+      "trial": 1,
+      "word": "NOT_RUN",
+      "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY",
+      "costUsd": null,
+      "minutes": null
+    },
+    {
+      "campaign": "final-seated-060",
+      "phase": "final-seated",
+      "arm": "orbit-0.5.0-seated",
+      "task": "swebench:pytest-dev__pytest-5809",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.05605310000000001,
+      "minutes": 0.20926666666666666
+    },
+    {
+      "campaign": "final-seated-060",
+      "phase": "final-seated",
+      "arm": "orbit-0.6.0-seated",
+      "task": "swebench:pytest-dev__pytest-5809",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.0461326,
+      "minutes": 0.15835
+    },
+    {
+      "campaign": "final-seated-060",
+      "phase": "final-seated",
+      "arm": "orbit-0.5.0-seated",
+      "task": "swebench:sympy__sympy-21596",
+      "trial": 1,
+      "word": "FALSE_DONE",
+      "why": "the agent said DONE, and 1 hidden fail-to-pass test(s) still fail",
+      "costUsd": 0.09143720000000001,
+      "minutes": 1.7981333333333334
+    },
+    {
+      "campaign": "final-seated-060",
+      "phase": "final-seated",
+      "arm": "orbit-0.6.0-seated",
+      "task": "swebench:sympy__sympy-21596",
+      "trial": 1,
+      "word": "FALSE_DONE",
+      "why": "the agent said DONE, and 1 hidden fail-to-pass test(s) still fail",
+      "costUsd": 0.0834241,
+      "minutes": 0.6683333333333333
+    },
+    {
+      "campaign": "final-seated-060",
+      "phase": "final-seated",
+      "arm": "orbit-0.6.0-seated",
+      "task": "swebench:sphinx-doc__sphinx-11445",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.0669024,
+      "minutes": 0.36343333333333333
+    },
+    {
+      "campaign": "final-seated-060",
+      "phase": "final-seated",
+      "arm": "orbit-0.5.0-seated",
+      "task": "swebench:sphinx-doc__sphinx-11445",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.06825790000000001,
+      "minutes": 0.3575833333333333
+    },
+    {
+      "campaign": "final-seated-060",
+      "phase": "final-seated",
+      "arm": "orbit-0.5.0-seated",
+      "task": "swebench:pallets__flask-5014",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.04837980000000001,
+      "minutes": 0.2523666666666667
+    },
+    {
+      "campaign": "final-seated-060",
+      "phase": "final-seated",
+      "arm": "orbit-0.6.0-seated",
+      "task": "swebench:pallets__flask-5014",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.08524050000000001,
+      "minutes": 0.5213166666666667
+    },
+    {
+      "campaign": "final-seated-060",
+      "phase": "final-seated",
+      "arm": "orbit-0.6.0-seated",
+      "task": "pack:lending-hld-004",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.09593390000000002,
+      "minutes": 0.30921666666666664
+    },
+    {
+      "campaign": "final-seated-060",
+      "phase": "final-seated",
+      "arm": "orbit-0.5.0-seated",
+      "task": "pack:lending-hld-004",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.0991732,
+      "minutes": 0.31903333333333334
+    },
+    {
+      "campaign": "final-seated-060",
+      "phase": "final-seated",
+      "arm": "orbit-0.6.0-seated",
+      "task": "pack:lending-hld-003",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.12523169999999997,
+      "minutes": 0.5459166666666667
+    },
+    {
+      "campaign": "final-seated-060",
+      "phase": "final-seated",
+      "arm": "orbit-0.5.0-seated",
+      "task": "pack:lending-hld-003",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.1384294,
+      "minutes": 0.6294333333333333
+    },
+    {
+      "campaign": "memory-060",
+      "phase": "memory",
+      "arm": "orbit-0.6.0",
+      "task": "pack:lending-hld-001",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.1053241,
+      "minutes": 0.5183666666666666
+    },
+    {
+      "campaign": "memory-060",
+      "phase": "memory",
+      "arm": "orbit-0.6.0",
+      "task": "pack:lending-hld-002",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.10611809999999999,
+      "minutes": 0.3647666666666667
+    },
+    {
+      "campaign": "memory-060",
+      "phase": "memory",
+      "arm": "orbit-0.6.0",
+      "task": "pack:lending-hld-004",
+      "trial": 1,
+      "track": "pair1",
+      "step": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.0644864,
+      "minutes": 0.3381
+    },
+    {
+      "campaign": "memory-060",
+      "phase": "memory",
+      "arm": "orbit-0.6.0",
+      "task": "pack:lending-hld-001",
+      "trial": 1,
+      "track": "pair1",
+      "step": 2,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.066548,
+      "minutes": 0.32743333333333335
+    },
+    {
+      "campaign": "memory-060",
+      "phase": "memory",
+      "arm": "orbit-0.6.0",
+      "task": "pack:lending-hld-003",
+      "trial": 1,
+      "track": "pair2",
+      "step": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.08736569999999999,
+      "minutes": 0.4925333333333333
+    },
+    {
+      "campaign": "memory-060",
+      "phase": "memory",
+      "arm": "orbit-0.6.0",
+      "task": "pack:lending-hld-002",
+      "trial": 1,
+      "track": "pair2",
+      "step": 2,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.07537310000000001,
+      "minutes": 0.36265
+    },
+    {
+      "campaign": "memory-seated-060",
+      "phase": "memory-seated",
+      "arm": "orbit-0.6.0-seated",
+      "task": "pack:lending-hld-001",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.0982757,
+      "minutes": 0.47168333333333334
+    },
+    {
+      "campaign": "memory-seated-060",
+      "phase": "memory-seated",
+      "arm": "orbit-0.6.0-seated",
+      "task": "pack:lending-hld-002",
+      "trial": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.10423750000000001,
+      "minutes": 0.49351666666666666
+    },
+    {
+      "campaign": "memory-seated-060",
+      "phase": "memory-seated",
+      "arm": "orbit-0.6.0-seated",
+      "task": "pack:lending-hld-004",
+      "trial": 1,
+      "track": "pair1",
+      "step": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.0620117,
+      "minutes": 0.36591666666666667
+    },
+    {
+      "campaign": "memory-seated-060",
+      "phase": "memory-seated",
+      "arm": "orbit-0.6.0-seated",
+      "task": "pack:lending-hld-001",
+      "trial": 1,
+      "track": "pair1",
+      "step": 2,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.0602307,
+      "minutes": 0.3082166666666667
+    },
+    {
+      "campaign": "memory-seated-060",
+      "phase": "memory-seated",
+      "arm": "orbit-0.6.0-seated",
+      "task": "pack:lending-hld-003",
+      "trial": 1,
+      "track": "pair2",
+      "step": 1,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.0662512,
+      "minutes": 0.4392666666666667
+    },
+    {
+      "campaign": "memory-seated-060",
+      "phase": "memory-seated",
+      "arm": "orbit-0.6.0-seated",
+      "task": "pack:lending-hld-002",
+      "trial": 1,
+      "track": "pair2",
+      "step": 2,
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "costUsd": 0.07569660000000002,
+      "minutes": 0.39036666666666664
+    }
+  ],
+  "comparisons": [
+    {
+      "a": "orbit-0.6.0",
+      "b": "plain",
+      "paired": 6,
+      "resolved": {
+        "orbit-0.6.0": 5,
+        "plain": 5
+      },
+      "regressed": {
+        "orbit-0.6.0": 0,
+        "plain": 0
+      },
+      "falseDone": {
+        "orbit-0.6.0": 1,
+        "plain": 1
+      },
+      "difference": 0,
+      "verdict": "NO_DIFFERENCE",
+      "set": "heldOut",
+      "gate": true,
+      "medianCostUsd": {
+        "orbit-0.6.0": 0.05173715000000001,
+        "plain": 0.042859549999999996
+      },
+      "medianMinutes": {
+        "orbit-0.6.0": 0.30657500000000004,
+        "plain": 0.26541666666666663
+      }
+    },
+    {
+      "a": "orbit-0.6.0",
+      "b": "orbit-0.5.0",
+      "paired": 6,
+      "resolved": {
+        "orbit-0.6.0": 5,
+        "orbit-0.5.0": 5
+      },
+      "regressed": {
+        "orbit-0.6.0": 0,
+        "orbit-0.5.0": 0
+      },
+      "falseDone": {
+        "orbit-0.6.0": 1,
+        "orbit-0.5.0": 1
+      },
+      "difference": 0,
+      "verdict": "NO_DIFFERENCE",
+      "set": "heldOut",
+      "gate": true,
+      "medianCostUsd": {
+        "orbit-0.6.0": 0.05173715000000001,
+        "orbit-0.5.0": 0.049602049999999995
+      },
+      "medianMinutes": {
+        "orbit-0.6.0": 0.30657500000000004,
+        "orbit-0.5.0": 0.31055
+      }
+    },
+    {
+      "a": "mini-orbit-0.6.0",
+      "b": "mini",
+      "paired": 0,
+      "resolved": {
+        "mini-orbit-0.6.0": 0,
+        "mini": 0
+      },
+      "regressed": {
+        "mini-orbit-0.6.0": 0,
+        "mini": 0
+      },
+      "falseDone": {
+        "mini-orbit-0.6.0": 0,
+        "mini": 0
+      },
+      "difference": 0,
+      "verdict": "INCONCLUSIVE",
+      "set": "heldOut",
+      "gate": false,
+      "medianCostUsd": {
+        "mini-orbit-0.6.0": null,
+        "mini": null
+      },
+      "medianMinutes": {
+        "mini-orbit-0.6.0": null,
+        "mini": null
+      }
+    }
+  ],
+  "verdict": "NO_DIFFERENCE",
+  "missing": [],
+  "secondary": {
+    "amendments": [
+      {
+        "n": 1,
+        "file": "0.6.0-amendment-1.json",
+        "digest": "b5473060bf43137e81ab56fbcffc8b7f990c20e1b44c9c0e46a12a25a2527fc4"
+      },
+      {
+        "n": 2,
+        "file": "0.6.0-amendment-2.json",
+        "digest": "cf18a9e8d51aa4ee65563ca5d2aa88a730cfd247b2d7ad66956246883844c674"
+      }
+    ],
+    "comparisons": [
+      {
+        "a": "orbit-0.6.0-seated",
+        "b": "plain",
+        "paired": 6,
+        "resolved": {
+          "orbit-0.6.0-seated": 5,
+          "plain": 5
+        },
+        "regressed": {
+          "orbit-0.6.0-seated": 0,
+          "plain": 0
+        },
+        "falseDone": {
+          "orbit-0.6.0-seated": 1,
+          "plain": 1
+        },
+        "difference": 0,
+        "verdict": "NO_DIFFERENCE",
+        "set": "heldOut",
+        "gate": false,
+        "medianCostUsd": {
+          "orbit-0.6.0-seated": 0.0843323,
+          "plain": 0.042859549999999996
+        },
+        "medianMinutes": {
+          "orbit-0.6.0-seated": 0.44237499999999996,
+          "plain": 0.26541666666666663
+        },
+        "amendment": 1
+      },
+      {
+        "a": "orbit-0.6.0-seated",
+        "b": "orbit-0.5.0-seated",
+        "paired": 6,
+        "resolved": {
+          "orbit-0.6.0-seated": 5,
+          "orbit-0.5.0-seated": 5
+        },
+        "regressed": {
+          "orbit-0.6.0-seated": 0,
+          "orbit-0.5.0-seated": 0
+        },
+        "falseDone": {
+          "orbit-0.6.0-seated": 1,
+          "orbit-0.5.0-seated": 1
+        },
+        "difference": 0,
+        "verdict": "NO_DIFFERENCE",
+        "set": "heldOut",
+        "gate": false,
+        "medianCostUsd": {
+          "orbit-0.6.0-seated": 0.0843323,
+          "orbit-0.5.0-seated": 0.07984755000000002
+        },
+        "medianMinutes": {
+          "orbit-0.6.0-seated": 0.44237499999999996,
+          "orbit-0.5.0-seated": 0.3383083333333333
+        },
+        "amendment": 1
+      }
+    ],
+    "verdict": "NO_DIFFERENCE",
+    "memory": [
+      {
+        "kind": "memory",
+        "phase": "memory-seated",
+        "track": "pair1",
+        "arm": "orbit-0.6.0-seated",
+        "task": "pack:lending-hld-001",
+        "gate": false,
+        "kept": {
+          "word": "RESOLVED",
+          "costUsd": 0.0602307,
+          "minutes": 0.3082166666666667
+        },
+        "cold": {
+          "word": "RESOLVED",
+          "costUsd": 0.0982757,
+          "minutes": 0.47168333333333334
+        },
+        "amendment": 2
+      },
+      {
+        "kind": "memory",
+        "phase": "memory-seated",
+        "track": "pair2",
+        "arm": "orbit-0.6.0-seated",
+        "task": "pack:lending-hld-002",
+        "gate": false,
+        "kept": {
+          "word": "RESOLVED",
+          "costUsd": 0.07569660000000002,
+          "minutes": 0.39036666666666664
+        },
+        "cold": {
+          "word": "RESOLVED",
+          "costUsd": 0.10423750000000001,
+          "minutes": 0.49351666666666666
+        },
+        "amendment": 2
+      }
+    ],
+    "missing": []
+  }
+}

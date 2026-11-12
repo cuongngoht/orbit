@@ -1,0 +1,1105 @@
+{
+  "campaign": {
+    "id": "final-060",
+    "model": "claude-sonnet-5-5",
+    "effort": "medium",
+    "limits": {
+      "usd": 1,
+      "turns": 80,
+      "minutes": 40,
+      "cpus": 2,
+      "memoryMb": 4096,
+      "pids": 2048
+    },
+    "budgetUsd": 20,
+    "claudeCode": "2.1.322",
+    "evaluator": {
+      "commit": "0e2cbb47e97991c464d9b7ecbebef40f938d1d26",
+      "dirty": false
+    },
+    "arms": {
+      "plain": {
+        "kind": "claude",
+        "frozen": {}
+      },
+      "orbit-0.5.0": {
+        "kind": "claude+orbit",
+        "rev": "v0.5.0",
+        "frozen": {
+          "rev": "v0.5.0",
+          "commit": "54aaf0b65bdb8f931ab6fe80c7bf368a971f2aab"
+        }
+      },
+      "orbit-0.6.0": {
+        "kind": "claude+orbit",
+        "rev": "a9c3c8d1eacb960b1754f8bc165c103413347455",
+        "frozen": {
+          "rev": "a9c3c8d1eacb960b1754f8bc165c103413347455",
+          "commit": "a9c3c8d1eacb960b1754f8bc165c103413347455"
+        }
+      }
+    },
+    "tasks": {
+      "swebench:pytest-dev__pytest-5809": {
+        "digest": "3660745791b341e224b3199c9e4bf96a77174a078884de27bea538b8eb62f09e",
+        "image": "swebench/sweb.eval.x86_64.pytest-dev_1776_pytest-5809:latest",
+        "pin": {
+          "dataset": "princeton-nlp/SWE-bench_Verified",
+          "revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+          "row": "3660745791b341e224b3199c9e4bf96a77174a078884de27bea538b8eb62f09e"
+        }
+      },
+      "swebench:sympy__sympy-21596": {
+        "digest": "34205e044f8322378d8416837b70f777cce343b2327bae97cf3064e6bc728f5f",
+        "image": "swebench/sweb.eval.x86_64.sympy_1776_sympy-21596:latest",
+        "pin": {
+          "dataset": "princeton-nlp/SWE-bench_Verified",
+          "revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+          "row": "34205e044f8322378d8416837b70f777cce343b2327bae97cf3064e6bc728f5f"
+        }
+      },
+      "swebench:sphinx-doc__sphinx-11445": {
+        "digest": "b1a7cded572a71ff2a5dde3c0c567ab5bca8b7f8fa84f4cb294ce8af4962bac6",
+        "image": "swebench/sweb.eval.x86_64.sphinx-doc_1776_sphinx-11445:latest",
+        "pin": {
+          "dataset": "princeton-nlp/SWE-bench_Verified",
+          "revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+          "row": "b1a7cded572a71ff2a5dde3c0c567ab5bca8b7f8fa84f4cb294ce8af4962bac6"
+        }
+      },
+      "swebench:pallets__flask-5014": {
+        "digest": "5cc7ccbd782cf546cdded80c0811a572ba428ecace70022e5982477ad6a47489",
+        "image": "swebench/sweb.eval.x86_64.pallets_1776_flask-5014:latest",
+        "pin": {
+          "dataset": "princeton-nlp/SWE-bench_Verified",
+          "revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+          "row": "5cc7ccbd782cf546cdded80c0811a572ba428ecace70022e5982477ad6a47489"
+        }
+      },
+      "pack:lending-hld-004": {
+        "digest": "2ef250f1dc950645956d70b8b00097116a687972ed03c40e103d88494ed3bb61",
+        "image": "node:22"
+      },
+      "pack:lending-hld-003": {
+        "digest": "79f5135168c3edcc2a6f1e94a3a93e658ce5c26aa6123aad43fa381243a88d93",
+        "image": "node:22"
+      }
+    },
+    "frozenAt": "2026-11-12T11:38:58.060Z"
+  },
+  "ledger": {
+    "budgetUsd": 20,
+    "chargedUsd": 1.31,
+    "reservedUsd": 0,
+    "remainingUsd": 18.69
+  },
+  "finished": true,
+  "arms": [
+    {
+      "arm": "plain",
+      "runs": 6,
+      "ended": 6,
+      "gradable": 6,
+      "resolved": 5,
+      "rate": 0.8333333333333334,
+      "words": {
+        "RESOLVED": 5,
+        "UNRESOLVED": 0,
+        "REGRESSED": 0,
+        "EMPTY_PATCH": 0,
+        "FALSE_DONE": 1,
+        "TIMEOUT": 0,
+        "BUDGET": 0,
+        "INFRA_ERROR": 0,
+        "UNGRADABLE": 0
+      },
+      "infraErrors": [],
+      "notRun": [],
+      "medianCostUsd": 0.05810850000000001,
+      "medianMinutes": 0.353175,
+      "chargedUsd": 0.3353602,
+      "interventions": 0,
+      "trail": {
+        "runs": 0,
+        "events": 0,
+        "held": {},
+        "advice": {},
+        "commands": {},
+        "runsHeld": 0,
+        "runsAdvised": 0
+      },
+      "usage": {
+        "skillCalls": 0,
+        "agentCalls": 0,
+        "pluginCommands": 0,
+        "runsWithPluginLoaded": 0
+      }
+    },
+    {
+      "arm": "orbit-0.5.0",
+      "runs": 6,
+      "ended": 6,
+      "gradable": 6,
+      "resolved": 5,
+      "rate": 0.8333333333333334,
+      "words": {
+        "RESOLVED": 5,
+        "UNRESOLVED": 0,
+        "REGRESSED": 0,
+        "EMPTY_PATCH": 0,
+        "FALSE_DONE": 1,
+        "TIMEOUT": 0,
+        "BUDGET": 0,
+        "INFRA_ERROR": 0,
+        "UNGRADABLE": 0
+      },
+      "infraErrors": [],
+      "notRun": [],
+      "medianCostUsd": 0.08055775000000001,
+      "medianMinutes": 0.4105416666666667,
+      "chargedUsd": 0.4628086,
+      "interventions": 0,
+      "trail": {
+        "runs": 0,
+        "events": 0,
+        "held": {},
+        "advice": {},
+        "commands": {},
+        "runsHeld": 0,
+        "runsAdvised": 0
+      },
+      "usage": {
+        "skillCalls": 0,
+        "agentCalls": 0,
+        "pluginCommands": 0,
+        "runsWithPluginLoaded": 6
+      }
+    },
+    {
+      "arm": "orbit-0.6.0",
+      "runs": 6,
+      "ended": 6,
+      "gradable": 6,
+      "resolved": 5,
+      "rate": 0.8333333333333334,
+      "words": {
+        "RESOLVED": 5,
+        "UNRESOLVED": 0,
+        "REGRESSED": 0,
+        "EMPTY_PATCH": 0,
+        "FALSE_DONE": 1,
+        "TIMEOUT": 0,
+        "BUDGET": 0,
+        "INFRA_ERROR": 0,
+        "UNGRADABLE": 0
+      },
+      "infraErrors": [],
+      "notRun": [],
+      "medianCostUsd": 0.08381475,
+      "medianMinutes": 0.38478333333333337,
+      "chargedUsd": 0.5069872,
+      "interventions": 0,
+      "trail": {
+        "runs": 0,
+        "events": 0,
+        "held": {},
+        "advice": {},
+        "commands": {},
+        "runsHeld": 0,
+        "runsAdvised": 0
+      },
+      "usage": {
+        "skillCalls": 0,
+        "agentCalls": 0,
+        "pluginCommands": 0,
+        "runsWithPluginLoaded": 6
+      }
+    }
+  ],
+  "pairwise": [
+    {
+      "task": "swebench:pytest-dev__pytest-5809",
+      "arms": {
+        "plain": [
+          "RESOLVED"
+        ],
+        "orbit-0.5.0": [
+          "RESOLVED"
+        ],
+        "orbit-0.6.0": [
+          "RESOLVED"
+        ]
+      }
+    },
+    {
+      "task": "swebench:sympy__sympy-21596",
+      "arms": {
+        "plain": [
+          "FALSE_DONE"
+        ],
+        "orbit-0.5.0": [
+          "FALSE_DONE"
+        ],
+        "orbit-0.6.0": [
+          "FALSE_DONE"
+        ]
+      }
+    },
+    {
+      "task": "swebench:sphinx-doc__sphinx-11445",
+      "arms": {
+        "plain": [
+          "RESOLVED"
+        ],
+        "orbit-0.5.0": [
+          "RESOLVED"
+        ],
+        "orbit-0.6.0": [
+          "RESOLVED"
+        ]
+      }
+    },
+    {
+      "task": "swebench:pallets__flask-5014",
+      "arms": {
+        "plain": [
+          "RESOLVED"
+        ],
+        "orbit-0.5.0": [
+          "RESOLVED"
+        ],
+        "orbit-0.6.0": [
+          "RESOLVED"
+        ]
+      }
+    },
+    {
+      "task": "pack:lending-hld-004",
+      "arms": {
+        "plain": [
+          "RESOLVED"
+        ],
+        "orbit-0.5.0": [
+          "RESOLVED"
+        ],
+        "orbit-0.6.0": [
+          "RESOLVED"
+        ]
+      }
+    },
+    {
+      "task": "pack:lending-hld-003",
+      "arms": {
+        "plain": [
+          "RESOLVED"
+        ],
+        "orbit-0.5.0": [
+          "RESOLVED"
+        ],
+        "orbit-0.6.0": [
+          "RESOLVED"
+        ]
+      }
+    }
+  ],
+  "runs": [
+    {
+      "arm": "orbit-0.5.0",
+      "task": "swebench:pytest-dev__pytest-5809",
+      "trial": 1,
+      "key": "orbit-0.5.0__swebench_pytest-dev__pytest-5809__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.0568045,
+      "chargedUsd": 0.0568045,
+      "minutes": 0.25025,
+      "turns": 5,
+      "tokens": {
+        "input": 8,
+        "output": 765,
+        "cacheRead": 84785,
+        "cacheWrite": 10165
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 4,
+        "byName": {
+          "Grep": 1,
+          "Edit": 1,
+          "Bash": 2
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [
+        "orbit@0.5.0"
+      ],
+      "trail": null,
+      "patchBytes": 1448,
+      "touchedTests": [
+        "testing/test_pastebin.py"
+      ],
+      "infra": null
+    },
+    {
+      "arm": "plain",
+      "task": "swebench:pytest-dev__pytest-5809",
+      "trial": 1,
+      "key": "plain__swebench_pytest-dev__pytest-5809__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.0386255,
+      "chargedUsd": 0.0386255,
+      "minutes": 0.2304,
+      "turns": 7,
+      "tokens": {
+        "input": 10,
+        "output": 1019,
+        "cacheRead": 91755,
+        "cacheWrite": 4810
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 6,
+        "byName": {
+          "Grep": 3,
+          "Edit": 2,
+          "Read": 1
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "trail": null,
+      "patchBytes": 1181,
+      "touchedTests": [
+        "testing/test_pastebin.py"
+      ],
+      "infra": null
+    },
+    {
+      "arm": "orbit-0.6.0",
+      "task": "swebench:pytest-dev__pytest-5809",
+      "trial": 1,
+      "key": "orbit-0.6.0__swebench_pytest-dev__pytest-5809__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.060924299999999994,
+      "chargedUsd": 0.060924299999999994,
+      "minutes": 0.29795,
+      "turns": 7,
+      "tokens": {
+        "input": 10,
+        "output": 1104,
+        "cacheRead": 110603,
+        "cacheWrite": 9701
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 6,
+        "byName": {
+          "Grep": 2,
+          "Edit": 2,
+          "Read": 1,
+          "Bash": 1
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [
+        "orbit@0.6.0"
+      ],
+      "trail": null,
+      "patchBytes": 1501,
+      "touchedTests": [
+        "testing/test_pastebin.py"
+      ],
+      "infra": null
+    },
+    {
+      "arm": "orbit-0.6.0",
+      "task": "swebench:sympy__sympy-21596",
+      "trial": 1,
+      "key": "orbit-0.6.0__swebench_sympy__sympy-21596__t1",
+      "word": "FALSE_DONE",
+      "why": "the agent said DONE, and 1 hidden fail-to-pass test(s) still fail",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.10621810000000001,
+      "chargedUsd": 0.10621810000000001,
+      "minutes": 1.6852333333333334,
+      "turns": 10,
+      "tokens": {
+        "input": 20,
+        "output": 2586,
+        "cacheRead": 245301,
+        "cacheWrite": 13947
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 9,
+        "byName": {
+          "Bash": 8,
+          "bash": 1
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [
+        "orbit@0.6.0"
+      ],
+      "trail": null,
+      "patchBytes": 2174,
+      "touchedTests": [
+        "sympy/sets/tests/test_fancysets.py"
+      ],
+      "infra": null
+    },
+    {
+      "arm": "orbit-0.5.0",
+      "task": "swebench:sympy__sympy-21596",
+      "trial": 1,
+      "key": "orbit-0.5.0__swebench_sympy__sympy-21596__t1",
+      "word": "FALSE_DONE",
+      "why": "the agent said DONE, and 1 hidden fail-to-pass test(s) still fail",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.09817740000000003,
+      "chargedUsd": 0.09817740000000003,
+      "minutes": 0.8628333333333333,
+      "turns": 8,
+      "tokens": {
+        "input": 16,
+        "output": 2357,
+        "cacheRead": 196394,
+        "cacheWrite": 13734
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 7,
+        "byName": {
+          "Bash": 7
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [
+        "orbit@0.5.0"
+      ],
+      "trail": null,
+      "patchBytes": 1832,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "plain",
+      "task": "swebench:sympy__sympy-21596",
+      "trial": 1,
+      "key": "plain__swebench_sympy__sympy-21596__t1",
+      "word": "FALSE_DONE",
+      "why": "the agent said DONE, and 1 hidden fail-to-pass test(s) still fail",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.06721730000000001,
+      "chargedUsd": 0.06721730000000001,
+      "minutes": 0.9226833333333333,
+      "turns": 8,
+      "tokens": {
+        "input": 16,
+        "output": 2193,
+        "cacheRead": 160073,
+        "cacheWrite": 7312
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 7,
+        "byName": {
+          "Grep": 1,
+          "Read": 1,
+          "Bash": 5
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "trail": null,
+      "patchBytes": 2870,
+      "touchedTests": [
+        "sympy/sets/tests/test_fancysets.py"
+      ],
+      "infra": null
+    },
+    {
+      "arm": "orbit-0.6.0",
+      "task": "swebench:sphinx-doc__sphinx-11445",
+      "trial": 1,
+      "key": "orbit-0.6.0__swebench_sphinx-doc__sphinx-11445__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.072215,
+      "chargedUsd": 0.072215,
+      "minutes": 0.40136666666666665,
+      "turns": 7,
+      "tokens": {
+        "input": 12,
+        "output": 1116,
+        "cacheRead": 138430,
+        "cacheWrite": 11797
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 6,
+        "byName": {
+          "Grep": 1,
+          "Read": 2,
+          "Edit": 1,
+          "Bash": 2
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [
+        "orbit@0.6.0"
+      ],
+      "trail": null,
+      "patchBytes": 478,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "plain",
+      "task": "swebench:sphinx-doc__sphinx-11445",
+      "trial": 1,
+      "key": "plain__swebench_sphinx-doc__sphinx-11445__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.04899970000000001,
+      "chargedUsd": 0.04899970000000001,
+      "minutes": 0.4979,
+      "turns": 7,
+      "tokens": {
+        "input": 14,
+        "output": 1179,
+        "cacheRead": 137097,
+        "cacheWrite": 5868
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 6,
+        "byName": {
+          "Grep": 1,
+          "Read": 1,
+          "Edit": 1,
+          "Bash": 3
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "trail": null,
+      "patchBytes": 478,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "orbit-0.5.0",
+      "task": "swebench:sphinx-doc__sphinx-11445",
+      "trial": 1,
+      "key": "orbit-0.5.0__swebench_sphinx-doc__sphinx-11445__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.06746940000000001,
+      "chargedUsd": 0.06746940000000001,
+      "minutes": 0.4508333333333333,
+      "turns": 7,
+      "tokens": {
+        "input": 14,
+        "output": 1134,
+        "cacheRead": 163494,
+        "cacheWrite": 9938
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 6,
+        "byName": {
+          "Grep": 1,
+          "Read": 1,
+          "Edit": 1,
+          "Bash": 3
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [
+        "orbit@0.5.0"
+      ],
+      "trail": null,
+      "patchBytes": 478,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "orbit-0.6.0",
+      "task": "swebench:pallets__flask-5014",
+      "trial": 1,
+      "key": "orbit-0.6.0__swebench_pallets__flask-5014__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.0504342,
+      "chargedUsd": 0.0504342,
+      "minutes": 0.3682,
+      "turns": 4,
+      "tokens": {
+        "input": 8,
+        "output": 473,
+        "cacheRead": 83362,
+        "cacheWrite": 9338
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 3,
+        "byName": {
+          "Grep": 1,
+          "Read": 1,
+          "Edit": 1
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [
+        "orbit@0.6.0"
+      ],
+      "trail": null,
+      "patchBytes": 499,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "orbit-0.5.0",
+      "task": "swebench:pallets__flask-5014",
+      "trial": 1,
+      "key": "orbit-0.5.0__swebench_pallets__flask-5014__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.04429280000000001,
+      "chargedUsd": 0.04429280000000001,
+      "minutes": 0.17913333333333334,
+      "turns": 3,
+      "tokens": {
+        "input": 6,
+        "output": 423,
+        "cacheRead": 60788,
+        "cacheWrite": 8493
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 2,
+        "byName": {
+          "Grep": 1,
+          "Edit": 1
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [
+        "orbit@0.5.0"
+      ],
+      "trail": null,
+      "patchBytes": 499,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "plain",
+      "task": "swebench:pallets__flask-5014",
+      "trial": 1,
+      "key": "plain__swebench_pallets__flask-5014__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.029003,
+      "chargedUsd": 0.029003,
+      "minutes": 0.23803333333333335,
+      "turns": 4,
+      "tokens": {
+        "input": 8,
+        "output": 535,
+        "cacheRead": 70370,
+        "cacheWrite": 4150
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 3,
+        "byName": {
+          "Grep": 1,
+          "Read": 1,
+          "Edit": 1
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "trail": null,
+      "patchBytes": 499,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "orbit-0.6.0",
+      "task": "pack:lending-hld-004",
+      "trial": 1,
+      "key": "orbit-0.6.0__pack_lending-hld-004__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.0954145,
+      "chargedUsd": 0.0954145,
+      "minutes": 0.34058333333333335,
+      "turns": 4,
+      "tokens": {
+        "input": 8,
+        "output": 1099,
+        "cacheRead": 92725,
+        "cacheWrite": 18784
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 3,
+        "byName": {
+          "Bash": 3
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [
+        "orbit@0.6.0"
+      ],
+      "trail": null,
+      "patchBytes": 4590,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "plain",
+      "task": "pack:lending-hld-004",
+      "trial": 1,
+      "key": "plain__pack_lending-hld-004__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.0746725,
+      "chargedUsd": 0.0746725,
+      "minutes": 0.30251666666666666,
+      "turns": 4,
+      "tokens": {
+        "input": 8,
+        "output": 1368,
+        "cacheRead": 79525,
+        "cacheWrite": 13256
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 3,
+        "byName": {
+          "Bash": 3
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "trail": null,
+      "patchBytes": 4590,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "orbit-0.5.0",
+      "task": "pack:lending-hld-004",
+      "trial": 1,
+      "key": "orbit-0.5.0__pack_lending-hld-004__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.09364610000000001,
+      "chargedUsd": 0.09364610000000001,
+      "minutes": 0.37025,
+      "turns": 4,
+      "tokens": {
+        "input": 8,
+        "output": 1281,
+        "cacheRead": 93321,
+        "cacheWrite": 17872
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 3,
+        "byName": {
+          "Bash": 3
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [
+        "orbit@0.5.0"
+      ],
+      "trail": null,
+      "patchBytes": 4590,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "orbit-0.6.0",
+      "task": "pack:lending-hld-003",
+      "trial": 1,
+      "key": "orbit-0.6.0__pack_lending-hld-003__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.1217811,
+      "chargedUsd": 0.1217811,
+      "minutes": 0.5152,
+      "turns": 5,
+      "tokens": {
+        "input": 10,
+        "output": 3358,
+        "cacheRead": 122131,
+        "cacheWrite": 18992
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 4,
+        "byName": {
+          "Bash": 4
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [
+        "orbit@0.6.0"
+      ],
+      "trail": null,
+      "patchBytes": 9140,
+      "touchedTests": [
+        "test/renew.test.mjs"
+      ],
+      "infra": null
+    },
+    {
+      "arm": "plain",
+      "task": "pack:lending-hld-003",
+      "trial": 1,
+      "key": "plain__pack_lending-hld-003__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.0768422,
+      "chargedUsd": 0.0768422,
+      "minutes": 0.4038333333333333,
+      "turns": 4,
+      "tokens": {
+        "input": 8,
+        "output": 2165,
+        "cacheRead": 77162,
+        "cacheWrite": 11865
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 3,
+        "byName": {
+          "Bash": 3
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "trail": null,
+      "patchBytes": 6882,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "orbit-0.5.0",
+      "task": "pack:lending-hld-003",
+      "trial": 1,
+      "key": "orbit-0.5.0__pack_lending-hld-003__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.10241839999999999,
+      "chargedUsd": 0.10241839999999999,
+      "minutes": 0.5636833333333333,
+      "turns": 4,
+      "tokens": {
+        "input": 8,
+        "output": 2575,
+        "cacheRead": 90964,
+        "cacheWrite": 16889
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 3,
+        "byName": {
+          "Bash": 3
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [
+        "orbit@0.5.0"
+      ],
+      "trail": null,
+      "patchBytes": 6549,
+      "touchedTests": [],
+      "infra": null
+    }
+  ]
+}

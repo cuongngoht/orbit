@@ -1,0 +1,109 @@
+{
+  "kind": "ended",
+  "run": "orbit-0.5.0__swebench_pytest-dev__pytest-5809__t1",
+  "attempt": 1,
+  "at": "2026-11-12T12:08:30.997Z",
+  "chargedUsd": 0.026219499999999996,
+  "infra": null,
+  "timedOut": false,
+  "killedByControl": false,
+  "exit": 0,
+  "oomKilled": false,
+  "wallMs": 13012,
+  "streamBytes": 55647,
+  "streamCut": false,
+  "summary": {
+    "started": true,
+    "model": "claude-sonnet-5-5",
+    "version": "2.1.322",
+    "plugins": [
+      "orbit@0.5.0"
+    ],
+    "hooks": {
+      "ran": 3,
+      "failed": 0
+    },
+    "skillsListed": 41,
+    "result": true,
+    "costUsd": 0.026219499999999996,
+    "tokens": {
+      "input": 8,
+      "output": 1063,
+      "cacheRead": 93895,
+      "cacheWrite": 1546
+    },
+    "turns": 7,
+    "durationMs": 11132,
+    "denials": 0,
+    "subtype": "success",
+    "isError": false,
+    "stoppedOn": null,
+    "apiError": null,
+    "status": "DONE",
+    "statusWhy": null,
+    "asked": false,
+    "tools": {
+      "calls": 6,
+      "byName": {
+        "Grep": 3,
+        "Edit": 2,
+        "Bash": 1
+      },
+      "skills": {},
+      "agents": {}
+    },
+    "orbit": {
+      "commands": 0,
+      "byCli": {}
+    }
+  },
+  "patch": {
+    "bytes": 1516,
+    "digest": "8dba2f60a0656683c8603e89ab6f83fa2fdf1abbe5d95c3de7fe3a56fe096f89",
+    "paths": [
+      "changelog/5764.bugfix.rst",
+      "src/_pytest/pastebin.py",
+      "testing/test_pastebin.py"
+    ]
+  },
+  "plugin": {
+    "digest": "cf98124b0cd41fc4472243299c70a4e5835eae441eaead6568660203380672c4",
+    "files": 2706
+  },
+  "images": {
+    "task": "sha256:0185f5d9efb9cf1364122a7eff7fc5f02227698d01f7e4f2d593917816df42d3",
+    "taskRef": "swebench/sweb.eval.x86_64.pytest-dev_1776_pytest-5809:latest",
+    "pulled": true,
+    "egress": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb"
+  },
+  "startCommit": "e02f28aef4b008a8bd3876fc7b5d4616d0b8d723",
+  "entryPhase": "ended",
+  "seat": null,
+  "trail": {
+    "events": 8,
+    "byType": {
+      "prompt.submitted": 1,
+      "tool.used": 5,
+      "command.ran": 1,
+      "session.ended": 1
+    },
+    "held": {},
+    "advice": {},
+    "commands": {},
+    "journals": {
+      "task": 0,
+      "work": 0
+    },
+    "cut": false
+  },
+  "egress": {
+    "direct": "ENETUNREACH",
+    "outsideName": "EAI_AGAIN",
+    "api": {
+      "connect": 200,
+      "http": 404
+    },
+    "otherHost": 403,
+    "holds": true
+  }
+}

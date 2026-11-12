@@ -1,0 +1,80 @@
+{
+  "kind": "outcome",
+  "run": "orbit-0.6.0__swebench_pylint-dev__pylint-4604__t1",
+  "attempt": 1,
+  "at": "2026-11-12T11:00:36.111Z",
+  "word": "FALSE_DONE",
+  "why": "the agent said DONE, and 21 hidden fail-to-pass test(s) still fail",
+  "saidDone": true,
+  "grade": {
+    "ran": true,
+    "applied": true,
+    "resolved": false,
+    "regressed": false,
+    "f2pFailed": [
+      "tests/checkers/unittest_variables.py::TestVariablesChecker::test_bitbucket_issue_78",
+      "tests/checkers/unittest_variables.py::TestVariablesChecker::test_no_name_in_module_skipped",
+      "tests/checkers/unittest_variables.py::TestVariablesChecker::test_all_elements_without_parent",
+      "tests/checkers/unittest_variables.py::TestVariablesChecker::test_redefined_builtin_ignored",
+      "tests/checkers/unittest_variables.py::TestVariablesChecker::test_redefined_builtin_custom_modules",
+      "tests/checkers/unittest_variables.py::TestVariablesChecker::test_redefined_builtin_modname_not_ignored",
+      "tests/checkers/unittest_variables.py::TestVariablesChecker::test_redefined_builtin_in_function",
+      "tests/checkers/unittest_variables.py::TestVariablesChecker::test_unassigned_global",
+      "tests/checkers/unittest_variables.py::TestVariablesChecker::test_listcomp_in_decorator",
+      "tests/checkers/unittest_variables.py::TestVariablesChecker::test_listcomp_in_ancestors",
+      "tests/checkers/unittest_variables.py::TestVariablesChecker::test_return_type_annotation",
+      "tests/checkers/unittest_variables.py::TestVariablesChecker::test_attribute_in_type_comment",
+      "tests/checkers/unittest_variables.py::TestVariablesCheckerWithTearDown::test_custom_callback_string",
+      "tests/checkers/unittest_variables.py::TestVariablesCheckerWithTearDown::test_redefined_builtin_modname_not_ignored",
+      "tests/checkers/unittest_variables.py::TestVariablesCheckerWithTearDown::test_redefined_builtin_in_function",
+      "tests/checkers/unittest_variables.py::TestVariablesCheckerWithTearDown::test_import_as_underscore",
+      "tests/checkers/unittest_variables.py::TestVariablesCheckerWithTearDown::test_lambda_in_classdef",
+      "tests/checkers/unittest_variables.py::TestVariablesCheckerWithTearDown::test_nested_lambda",
+      "tests/checkers/unittest_variables.py::TestVariablesCheckerWithTearDown::test_ignored_argument_names_no_message",
+      "tests/checkers/unittest_variables.py::TestVariablesCheckerWithTearDown::test_ignored_argument_names_starred_args",
+      "tests/checkers/unittest_variables.py::TestMissingSubmodule::test_package_all"
+    ],
+    "p2pFailed": []
+  },
+  "gradeDetail": {
+    "ran": true,
+    "applied": true,
+    "resolved": false,
+    "regressed": false,
+    "f2pFailed": [
+      "tests/checkers/unittest_variables.py::TestVariablesChecker::test_bitbucket_issue_78",
+      "tests/checkers/unittest_variables.py::TestVariablesChecker::test_no_name_in_module_skipped",
+      "tests/checkers/unittest_variables.py::TestVariablesChecker::test_all_elements_without_parent",
+      "tests/checkers/unittest_variables.py::TestVariablesChecker::test_redefined_builtin_ignored",
+      "tests/checkers/unittest_variables.py::TestVariablesChecker::test_redefined_builtin_custom_modules",
+      "tests/checkers/unittest_variables.py::TestVariablesChecker::test_redefined_builtin_modname_not_ignored",
+      "tests/checkers/unittest_variables.py::TestVariablesChecker::test_redefined_builtin_in_function",
+      "tests/checkers/unittest_variables.py::TestVariablesChecker::test_unassigned_global",
+      "tests/checkers/unittest_variables.py::TestVariablesChecker::test_listcomp_in_decorator",
+      "tests/checkers/unittest_variables.py::TestVariablesChecker::test_listcomp_in_ancestors",
+      "tests/checkers/unittest_variables.py::TestVariablesChecker::test_return_type_annotation",
+      "tests/checkers/unittest_variables.py::TestVariablesChecker::test_attribute_in_type_comment",
+      "tests/checkers/unittest_variables.py::TestVariablesCheckerWithTearDown::test_custom_callback_string",
+      "tests/checkers/unittest_variables.py::TestVariablesCheckerWithTearDown::test_redefined_builtin_modname_not_ignored",
+      "tests/checkers/unittest_variables.py::TestVariablesCheckerWithTearDown::test_redefined_builtin_in_function",
+      "tests/checkers/unittest_variables.py::TestVariablesCheckerWithTearDown::test_import_as_underscore",
+      "tests/checkers/unittest_variables.py::TestVariablesCheckerWithTearDown::test_lambda_in_classdef",
+      "tests/checkers/unittest_variables.py::TestVariablesCheckerWithTearDown::test_nested_lambda",
+      "tests/checkers/unittest_variables.py::TestVariablesCheckerWithTearDown::test_ignored_argument_names_no_message",
+      "tests/checkers/unittest_variables.py::TestVariablesCheckerWithTearDown::test_ignored_argument_names_starred_args",
+      "tests/checkers/unittest_variables.py::TestMissingSubmodule::test_package_all"
+    ],
+    "p2pFailed": [],
+    "counts": {
+      "f2pPassed": 0,
+      "f2pFailed": 21,
+      "p2pPassed": 0,
+      "p2pFailed": 0
+    },
+    "harness": {
+      "swebench": "4.1.0",
+      "exit": 0,
+      "runId": "evl-e0529b372028"
+    }
+  }
+}

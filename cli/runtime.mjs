@@ -152,6 +152,7 @@
 // 2 = REFUSED (bad usage, an unknown id, a stale proposal, nothing person-relayed) · 3 = BLOCKED
 // (nothing could be started, a store that cannot be written). Never 1: this asks the product
 // nothing, so it can never find the product wrong.
+import { engined, enginedDeep } from "../src/engined.mjs";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -200,7 +201,7 @@ async function ran(entry) {
 
 // What a person reads is made printable first: it carries what a checkout's files said, and a
 // terminal obeys an escape sequence. `--json` escapes every control character already.
-const printed = (entry, result) => console.log(args.includes("--json") ? JSON.stringify(result, null, 2) : printable(entry.say(result)));
+const printed = (entry, result) => console.log(args.includes("--json") ? JSON.stringify(enginedDeep(result, PLUGIN_ROOT), null, 2) : printable(engined(entry.say(result), PLUGIN_ROOT)));
 
 // `projects` is about every checkout and none in particular: it needs the machine store and
 // the bindings in it, never a repository.

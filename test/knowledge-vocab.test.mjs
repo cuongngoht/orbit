@@ -54,6 +54,7 @@ test("the ladder's order is the brief's: rule · adopted · source · confirmed 
   assert.equal(tier({ strength: "observed", source: "repository", confidence: "possible" }), "source");
   assert.equal(tier({ strength: "observed", source: "repository", confidence: "certain", status: "stale" }), "confirmed", "a moved scope drops current-source authority, never certainty");
   assert.equal(tier({ strength: "observed", source: "host-memory", confidence: "possible" }), "host-memory");
+  assert.equal(tier({ strength: "observed", source: "host-memory", confidence: "certain" }), "host-memory", "a host's memory that says it is certain is still never confirmed");
   assert.equal(tier({ strength: "suggested", source: "repository", confidence: "possible" }), "inference");
   assert.equal(know.AUTHORITY.at(-1).when({}), true, "the last row always matches");
 });

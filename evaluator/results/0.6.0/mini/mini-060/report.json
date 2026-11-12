@@ -1,0 +1,615 @@
+{
+  "campaign": {
+    "id": "mini-060",
+    "model": "claude-sonnet-5-5",
+    "effort": "medium",
+    "limits": {
+      "usd": 1,
+      "turns": 80,
+      "minutes": 40,
+      "cpus": 2,
+      "memoryMb": 4096,
+      "pids": 2048
+    },
+    "budgetUsd": 15,
+    "claudeCode": "2.1.322",
+    "evaluator": {
+      "commit": "78a4a56b01d27ba9528ff1575ea3c5feacd94c5a",
+      "dirty": false
+    },
+    "arms": {
+      "mini": {
+        "kind": "mini",
+        "frozen": {}
+      },
+      "mini-orbit-0.6.0": {
+        "kind": "mini+orbit",
+        "rev": "6b25eb9ef227b8fe1e896d5d7aff0d22ad52a827",
+        "frozen": {
+          "rev": "6b25eb9ef227b8fe1e896d5d7aff0d22ad52a827",
+          "commit": "6b25eb9ef227b8fe1e896d5d7aff0d22ad52a827"
+        }
+      }
+    },
+    "tasks": {
+      "swebench:pytest-dev__pytest-5809": {
+        "digest": "3660745791b341e224b3199c9e4bf96a77174a078884de27bea538b8eb62f09e",
+        "image": "swebench/sweb.eval.x86_64.pytest-dev_1776_pytest-5809:latest",
+        "pin": {
+          "dataset": "princeton-nlp/SWE-bench_Verified",
+          "revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+          "row": "3660745791b341e224b3199c9e4bf96a77174a078884de27bea538b8eb62f09e"
+        }
+      },
+      "swebench:sympy__sympy-21596": {
+        "digest": "34205e044f8322378d8416837b70f777cce343b2327bae97cf3064e6bc728f5f",
+        "image": "swebench/sweb.eval.x86_64.sympy_1776_sympy-21596:latest",
+        "pin": {
+          "dataset": "princeton-nlp/SWE-bench_Verified",
+          "revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+          "row": "34205e044f8322378d8416837b70f777cce343b2327bae97cf3064e6bc728f5f"
+        }
+      },
+      "swebench:sphinx-doc__sphinx-11445": {
+        "digest": "b1a7cded572a71ff2a5dde3c0c567ab5bca8b7f8fa84f4cb294ce8af4962bac6",
+        "image": "swebench/sweb.eval.x86_64.sphinx-doc_1776_sphinx-11445:latest",
+        "pin": {
+          "dataset": "princeton-nlp/SWE-bench_Verified",
+          "revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+          "row": "b1a7cded572a71ff2a5dde3c0c567ab5bca8b7f8fa84f4cb294ce8af4962bac6"
+        }
+      },
+      "swebench:pallets__flask-5014": {
+        "digest": "5cc7ccbd782cf546cdded80c0811a572ba428ecace70022e5982477ad6a47489",
+        "image": "swebench/sweb.eval.x86_64.pallets_1776_flask-5014:latest",
+        "pin": {
+          "dataset": "princeton-nlp/SWE-bench_Verified",
+          "revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+          "row": "5cc7ccbd782cf546cdded80c0811a572ba428ecace70022e5982477ad6a47489"
+        }
+      },
+      "pack:lending-hld-004": {
+        "digest": "2ef250f1dc950645956d70b8b00097116a687972ed03c40e103d88494ed3bb61",
+        "image": "node:22"
+      },
+      "pack:lending-hld-003": {
+        "digest": "79f5135168c3edcc2a6f1e94a3a93e658ce5c26aa6123aad43fa381243a88d93",
+        "image": "node:22"
+      }
+    },
+    "frozenAt": "2026-11-12T12:53:11.991Z"
+  },
+  "ledger": {
+    "budgetUsd": 15,
+    "chargedUsd": 0,
+    "reservedUsd": 0,
+    "remainingUsd": 15
+  },
+  "finished": true,
+  "arms": [
+    {
+      "arm": "mini",
+      "runs": 6,
+      "ended": 0,
+      "gradable": 0,
+      "resolved": 0,
+      "rate": null,
+      "words": {
+        "RESOLVED": 0,
+        "UNRESOLVED": 0,
+        "REGRESSED": 0,
+        "EMPTY_PATCH": 0,
+        "FALSE_DONE": 0,
+        "TIMEOUT": 0,
+        "BUDGET": 0,
+        "INFRA_ERROR": 0,
+        "UNGRADABLE": 0
+      },
+      "infraErrors": [],
+      "notRun": [
+        {
+          "key": "mini__swebench_pytest-dev__pytest-5809__t1",
+          "word": "NOT_RUN",
+          "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY"
+        },
+        {
+          "key": "mini__swebench_sympy__sympy-21596__t1",
+          "word": "NOT_RUN",
+          "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY"
+        },
+        {
+          "key": "mini__swebench_sphinx-doc__sphinx-11445__t1",
+          "word": "NOT_RUN",
+          "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY"
+        },
+        {
+          "key": "mini__swebench_pallets__flask-5014__t1",
+          "word": "NOT_RUN",
+          "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY"
+        },
+        {
+          "key": "mini__pack_lending-hld-004__t1",
+          "word": "NOT_RUN",
+          "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY"
+        },
+        {
+          "key": "mini__pack_lending-hld-003__t1",
+          "word": "NOT_RUN",
+          "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY"
+        }
+      ],
+      "medianCostUsd": null,
+      "medianMinutes": null,
+      "chargedUsd": 0,
+      "interventions": 0,
+      "trail": {
+        "runs": 0,
+        "events": 0,
+        "held": {},
+        "advice": {},
+        "commands": {},
+        "runsHeld": 0,
+        "runsAdvised": 0
+      },
+      "usage": {
+        "skillCalls": 0,
+        "agentCalls": 0,
+        "pluginCommands": 0,
+        "runsWithPluginLoaded": 0
+      }
+    },
+    {
+      "arm": "mini-orbit-0.6.0",
+      "runs": 6,
+      "ended": 0,
+      "gradable": 0,
+      "resolved": 0,
+      "rate": null,
+      "words": {
+        "RESOLVED": 0,
+        "UNRESOLVED": 0,
+        "REGRESSED": 0,
+        "EMPTY_PATCH": 0,
+        "FALSE_DONE": 0,
+        "TIMEOUT": 0,
+        "BUDGET": 0,
+        "INFRA_ERROR": 0,
+        "UNGRADABLE": 0
+      },
+      "infraErrors": [],
+      "notRun": [
+        {
+          "key": "mini-orbit-0.6.0__swebench_pytest-dev__pytest-5809__t1",
+          "word": "NOT_RUN",
+          "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY"
+        },
+        {
+          "key": "mini-orbit-0.6.0__swebench_sympy__sympy-21596__t1",
+          "word": "NOT_RUN",
+          "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY"
+        },
+        {
+          "key": "mini-orbit-0.6.0__swebench_sphinx-doc__sphinx-11445__t1",
+          "word": "NOT_RUN",
+          "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY"
+        },
+        {
+          "key": "mini-orbit-0.6.0__swebench_pallets__flask-5014__t1",
+          "word": "NOT_RUN",
+          "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY"
+        },
+        {
+          "key": "mini-orbit-0.6.0__pack_lending-hld-004__t1",
+          "word": "NOT_RUN",
+          "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY"
+        },
+        {
+          "key": "mini-orbit-0.6.0__pack_lending-hld-003__t1",
+          "word": "NOT_RUN",
+          "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY"
+        }
+      ],
+      "medianCostUsd": null,
+      "medianMinutes": null,
+      "chargedUsd": 0,
+      "interventions": 0,
+      "trail": {
+        "runs": 0,
+        "events": 0,
+        "held": {},
+        "advice": {},
+        "commands": {},
+        "runsHeld": 0,
+        "runsAdvised": 0
+      },
+      "usage": {
+        "skillCalls": 0,
+        "agentCalls": 0,
+        "pluginCommands": 0,
+        "runsWithPluginLoaded": 0
+      }
+    }
+  ],
+  "pairwise": [
+    {
+      "task": "swebench:pytest-dev__pytest-5809",
+      "arms": {
+        "mini": [
+          "NOT_RUN"
+        ],
+        "mini-orbit-0.6.0": [
+          "NOT_RUN"
+        ]
+      }
+    },
+    {
+      "task": "swebench:sympy__sympy-21596",
+      "arms": {
+        "mini": [
+          "NOT_RUN"
+        ],
+        "mini-orbit-0.6.0": [
+          "NOT_RUN"
+        ]
+      }
+    },
+    {
+      "task": "swebench:sphinx-doc__sphinx-11445",
+      "arms": {
+        "mini": [
+          "NOT_RUN"
+        ],
+        "mini-orbit-0.6.0": [
+          "NOT_RUN"
+        ]
+      }
+    },
+    {
+      "task": "swebench:pallets__flask-5014",
+      "arms": {
+        "mini": [
+          "NOT_RUN"
+        ],
+        "mini-orbit-0.6.0": [
+          "NOT_RUN"
+        ]
+      }
+    },
+    {
+      "task": "pack:lending-hld-004",
+      "arms": {
+        "mini": [
+          "NOT_RUN"
+        ],
+        "mini-orbit-0.6.0": [
+          "NOT_RUN"
+        ]
+      }
+    },
+    {
+      "task": "pack:lending-hld-003",
+      "arms": {
+        "mini": [
+          "NOT_RUN"
+        ],
+        "mini-orbit-0.6.0": [
+          "NOT_RUN"
+        ]
+      }
+    }
+  ],
+  "runs": [
+    {
+      "arm": "mini",
+      "task": "swebench:pytest-dev__pytest-5809",
+      "trial": 1,
+      "key": "mini__swebench_pytest-dev__pytest-5809__t1",
+      "word": "NOT_RUN",
+      "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY",
+      "attempts": 0,
+      "interrupted": 0,
+      "costUsd": null,
+      "chargedUsd": null,
+      "minutes": null,
+      "turns": null,
+      "tokens": null,
+      "denials": null,
+      "asked": null,
+      "saidDone": null,
+      "status": null,
+      "tools": null,
+      "orbit": null,
+      "plugins": null,
+      "trail": null,
+      "patchBytes": null,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "mini-orbit-0.6.0",
+      "task": "swebench:pytest-dev__pytest-5809",
+      "trial": 1,
+      "key": "mini-orbit-0.6.0__swebench_pytest-dev__pytest-5809__t1",
+      "word": "NOT_RUN",
+      "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY",
+      "attempts": 0,
+      "interrupted": 0,
+      "costUsd": null,
+      "chargedUsd": null,
+      "minutes": null,
+      "turns": null,
+      "tokens": null,
+      "denials": null,
+      "asked": null,
+      "saidDone": null,
+      "status": null,
+      "tools": null,
+      "orbit": null,
+      "plugins": null,
+      "trail": null,
+      "patchBytes": null,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "mini",
+      "task": "swebench:sympy__sympy-21596",
+      "trial": 1,
+      "key": "mini__swebench_sympy__sympy-21596__t1",
+      "word": "NOT_RUN",
+      "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY",
+      "attempts": 0,
+      "interrupted": 0,
+      "costUsd": null,
+      "chargedUsd": null,
+      "minutes": null,
+      "turns": null,
+      "tokens": null,
+      "denials": null,
+      "asked": null,
+      "saidDone": null,
+      "status": null,
+      "tools": null,
+      "orbit": null,
+      "plugins": null,
+      "trail": null,
+      "patchBytes": null,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "mini-orbit-0.6.0",
+      "task": "swebench:sympy__sympy-21596",
+      "trial": 1,
+      "key": "mini-orbit-0.6.0__swebench_sympy__sympy-21596__t1",
+      "word": "NOT_RUN",
+      "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY",
+      "attempts": 0,
+      "interrupted": 0,
+      "costUsd": null,
+      "chargedUsd": null,
+      "minutes": null,
+      "turns": null,
+      "tokens": null,
+      "denials": null,
+      "asked": null,
+      "saidDone": null,
+      "status": null,
+      "tools": null,
+      "orbit": null,
+      "plugins": null,
+      "trail": null,
+      "patchBytes": null,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "mini-orbit-0.6.0",
+      "task": "swebench:sphinx-doc__sphinx-11445",
+      "trial": 1,
+      "key": "mini-orbit-0.6.0__swebench_sphinx-doc__sphinx-11445__t1",
+      "word": "NOT_RUN",
+      "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY",
+      "attempts": 0,
+      "interrupted": 0,
+      "costUsd": null,
+      "chargedUsd": null,
+      "minutes": null,
+      "turns": null,
+      "tokens": null,
+      "denials": null,
+      "asked": null,
+      "saidDone": null,
+      "status": null,
+      "tools": null,
+      "orbit": null,
+      "plugins": null,
+      "trail": null,
+      "patchBytes": null,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "mini",
+      "task": "swebench:sphinx-doc__sphinx-11445",
+      "trial": 1,
+      "key": "mini__swebench_sphinx-doc__sphinx-11445__t1",
+      "word": "NOT_RUN",
+      "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY",
+      "attempts": 0,
+      "interrupted": 0,
+      "costUsd": null,
+      "chargedUsd": null,
+      "minutes": null,
+      "turns": null,
+      "tokens": null,
+      "denials": null,
+      "asked": null,
+      "saidDone": null,
+      "status": null,
+      "tools": null,
+      "orbit": null,
+      "plugins": null,
+      "trail": null,
+      "patchBytes": null,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "mini",
+      "task": "swebench:pallets__flask-5014",
+      "trial": 1,
+      "key": "mini__swebench_pallets__flask-5014__t1",
+      "word": "NOT_RUN",
+      "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY",
+      "attempts": 0,
+      "interrupted": 0,
+      "costUsd": null,
+      "chargedUsd": null,
+      "minutes": null,
+      "turns": null,
+      "tokens": null,
+      "denials": null,
+      "asked": null,
+      "saidDone": null,
+      "status": null,
+      "tools": null,
+      "orbit": null,
+      "plugins": null,
+      "trail": null,
+      "patchBytes": null,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "mini-orbit-0.6.0",
+      "task": "swebench:pallets__flask-5014",
+      "trial": 1,
+      "key": "mini-orbit-0.6.0__swebench_pallets__flask-5014__t1",
+      "word": "NOT_RUN",
+      "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY",
+      "attempts": 0,
+      "interrupted": 0,
+      "costUsd": null,
+      "chargedUsd": null,
+      "minutes": null,
+      "turns": null,
+      "tokens": null,
+      "denials": null,
+      "asked": null,
+      "saidDone": null,
+      "status": null,
+      "tools": null,
+      "orbit": null,
+      "plugins": null,
+      "trail": null,
+      "patchBytes": null,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "mini-orbit-0.6.0",
+      "task": "pack:lending-hld-004",
+      "trial": 1,
+      "key": "mini-orbit-0.6.0__pack_lending-hld-004__t1",
+      "word": "NOT_RUN",
+      "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY",
+      "attempts": 0,
+      "interrupted": 0,
+      "costUsd": null,
+      "chargedUsd": null,
+      "minutes": null,
+      "turns": null,
+      "tokens": null,
+      "denials": null,
+      "asked": null,
+      "saidDone": null,
+      "status": null,
+      "tools": null,
+      "orbit": null,
+      "plugins": null,
+      "trail": null,
+      "patchBytes": null,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "mini",
+      "task": "pack:lending-hld-004",
+      "trial": 1,
+      "key": "mini__pack_lending-hld-004__t1",
+      "word": "NOT_RUN",
+      "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY",
+      "attempts": 0,
+      "interrupted": 0,
+      "costUsd": null,
+      "chargedUsd": null,
+      "minutes": null,
+      "turns": null,
+      "tokens": null,
+      "denials": null,
+      "asked": null,
+      "saidDone": null,
+      "status": null,
+      "tools": null,
+      "orbit": null,
+      "plugins": null,
+      "trail": null,
+      "patchBytes": null,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "mini-orbit-0.6.0",
+      "task": "pack:lending-hld-003",
+      "trial": 1,
+      "key": "mini-orbit-0.6.0__pack_lending-hld-003__t1",
+      "word": "NOT_RUN",
+      "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY",
+      "attempts": 0,
+      "interrupted": 0,
+      "costUsd": null,
+      "chargedUsd": null,
+      "minutes": null,
+      "turns": null,
+      "tokens": null,
+      "denials": null,
+      "asked": null,
+      "saidDone": null,
+      "status": null,
+      "tools": null,
+      "orbit": null,
+      "plugins": null,
+      "trail": null,
+      "patchBytes": null,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "mini",
+      "task": "pack:lending-hld-003",
+      "trial": 1,
+      "key": "mini__pack_lending-hld-003__t1",
+      "word": "NOT_RUN",
+      "why": "credential: the controller's environment has no ORBIT_EVAL_ANTHROPIC_API_KEY",
+      "attempts": 0,
+      "interrupted": 0,
+      "costUsd": null,
+      "chargedUsd": null,
+      "minutes": null,
+      "turns": null,
+      "tokens": null,
+      "denials": null,
+      "asked": null,
+      "saidDone": null,
+      "status": null,
+      "tools": null,
+      "orbit": null,
+      "plugins": null,
+      "trail": null,
+      "patchBytes": null,
+      "touchedTests": [],
+      "infra": null
+    }
+  ]
+}

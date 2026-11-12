@@ -1,0 +1,46 @@
+diff --git a/src/worker.mjs b/src/worker.mjs
+index 2527bf924bd092b1f15fcbcd937eb667cff515ae..fdd5c3585623adbdc5d5643ca5918700ce2e1b4b 100644
+--- a/src/worker.mjs
++++ b/src/worker.mjs
+@@ -5,8 +5,9 @@ import { getOrder } from "./orders.mjs";
+ const nextInvoice = (store) => `inv-${String(store.list("invoices").length + 1).padStart(4, "0")}`;
+ 
+ function invoiced(store, message, order) {
+-  const id = nextInvoice(store);
+-  setImmediate(() => store.put("invoices", id, { id, orderId: order.id, amountMinor: order.totalMinor, currency: order.currency, messageId: message.id }));
++  const prior = store.list("invoices").find((i) => i.messageId === message.id);
++  const id = prior ? prior.id : nextInvoice(store);
++  store.put("invoices", id, { id, orderId: order.id, amountMinor: order.totalMinor, currency: order.currency, messageId: message.id });
+   store.put("processed", message.id, { messageId: message.id, invoice: id });
+   return { ack: true, invoice: id };
+ }
+diff --git a/test/invoice-durable.test.mjs b/test/invoice-durable.test.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..dd62d6a3289c155f374462c1caa7ddd006ac44f7
+--- /dev/null
++++ b/test/invoice-durable.test.mjs
+@@ -0,0 +1,24 @@
++import assert from "node:assert/strict";
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { test } from "node:test";
++import { consume } from "../src/worker.mjs";
++import { openStore } from "../src/store.mjs";
++import { createOrder } from "../src/orders.mjs";
++
++test("an acknowledged payment's invoice is already on disk", (t) => {
++  const dir = mkdtempSync(join(tmpdir(), "orders-"));
++  t.after(() => rmSync(dir, { recursive: true, force: true }));
++  const store = openStore(dir);
++  const order = createOrder(store, { lines: [{ qty: 2, unitMinor: 500 }] });
++  const r = consume(store, { id: "m-1", type: "order.paid", orderId: order.id });
++  assert.equal(r.ack, true);
++  const inv = openStore(dir).list("invoices");
++  assert.equal(inv.length, 1);
++  assert.equal(inv[0].orderId, order.id);
++  assert.equal(inv[0].amountMinor, order.totalMinor);
++  assert.deepEqual(consume(store, { id: "m-1", type: "order.paid", orderId: order.id }), { ack: true, duplicate: true });
++  consume(store, { id: "m-2", type: "order.paid", orderId: order.id });
++  assert.equal(openStore(dir).list("invoices").length, 2);
++});

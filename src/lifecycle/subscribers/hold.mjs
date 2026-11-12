@@ -47,24 +47,32 @@ const near = (a, b) => Math.abs(Date.parse(a.at) - Date.parse(b.at)) <= PAIRED_M
 // An end of this turn that is not this Stop's own (older than a moment) and that no hold answered.
 const unheldEnd = (t, nowMs) => t.events.some((e) => (e.type === "session.ended" || (e.type === "turn.ended" && nowMs - Date.parse(e.at) > PAIRED_MS && !t.events.some((h) => h.type === "turn.held" && near(h, e)))));
 
-// The trail's word on this turn: { holds, marks, ran } -- or null when nobody can say which turn this Stop ends.
-const turnOf = (t, nowMs) => (t?.prompt && !unheldEnd(t, nowMs) ? { holds: t.events.filter((e) => e.type === "turn.held").length, marks: t.prompt.data?.marks ?? [], ran: t.events.some(commandOf) } : null);
+// The trail's word on this turn: { holds, marks, ran, events } -- or null when nobody can say which turn this Stop ends.
+const turnOf = (t, nowMs) => (t?.prompt && !unheldEnd(t, nowMs) ? { holds: t.events.filter((e) => e.type === "turn.held").length, marks: t.prompt.data?.marks ?? [], ran: t.events.some(commandOf), events: t.events } : null);
 
 function once(fn) {
   const memo = {};
   return () => ("value" in memo ? memo.value : (memo.value = fn()));
 }
 
-// The facts a row may ask for, each read only when a row reaches it.
-const factsOf = (event, world) => ({ event, world, turn: once(() => turnOf(world.turn?.() ?? null, world.nowMs())), settings: once(() => world.settings?.() ?? null), owner: once(() => world.governed?.() ?? null) });
+// The facts a row may ask for, each read only when a row reaches it. Shared with the owed hold (owed.mjs), which reads
+// the same turn through the same rows.
+export const factsOf = (event, world) => ({ event, world, turn: once(() => turnOf(world.turn?.() ?? null, world.nowMs())), settings: once(() => world.settings?.() ?? null), owner: once(() => world.governed?.() ?? null) });
 
-// Why a turn is NOT held, cheapest first: the first row that holds decides, and the last always does.
-export const HOLD = [
+// The rows EVERY Stop hold is held to first, whatever it holds for (0.6.0: this one and owed.mjs): the host can hold,
+// the turn is not one a Stop hook already kept going, the trail can count this prompt's holds, fewer than MAX_HOLDS of
+// them, and no halt cue.
+export const GUARDS = [
   { row: "host-cannot-hold", when: (f) => typeof f.world.host?.formatHold !== "function" },
   { row: "held-already", when: (f) => f.event.held === true },
   { row: "uncounted", when: (f) => !f.turn() },
   { row: "spent", when: (f) => f.turn().holds >= MAX_HOLDS },
   { row: "halted", when: (f) => f.turn().marks.includes("halt") },
+];
+
+// Why a turn is NOT held, cheapest first: the first row that holds decides, and the last always does.
+export const HOLD = [
+  ...GUARDS,
   { row: "no-workflow-command", when: (f) => !f.turn().ran },
   { row: "switched-off", deep: true, when: (f) => f.settings()?.trigger?.holdOnStop !== true },
   { row: "no-governed-work", deep: true, when: (f) => !f.owner() },
@@ -92,6 +100,6 @@ export const hold = {
 function held(f) {
   const owner = f.owner();
   const count = f.turn().holds + 1;
-  f.world.held?.({ task: owner.id, steps: owner.ready.slice(0, 8), count });
+  f.world.held?.({ kind: "workflow", task: owner.id, steps: owner.ready.slice(0, 8), count });
   return f.world.host.formatHold(holdReason(owner, count, MAX_HOLDS, f.world.engine), f.world.input);
 }

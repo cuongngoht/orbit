@@ -22,6 +22,10 @@
 // `start` is the real port's long-lived child with its stdin and stdout piped: it starts nothing, records what was
 // asked in `starts`, and hands back a child a test drives -- `stdout.push(text)` delivers output, `exit(code)` ends it,
 // and whatever was written to its stdin is in `stdin.written`.
+// The real port's answer for a child that never started (0.6.0, P4): its sentence, `unstarted`, and the OS's own code
+// as a fact -- ENOENT for no such program, EACCES for one that is not executable.
+export const unstartedAnswer = (file, code = "ENOENT") => ({ ok: false, out: "", error: `${file} could not be started — ${code}`, unstarted: true, code });
+
 export function fakeProcess(answers = {}, world = {}) {
   const calls = [];
   const run = (file, args = [], opts = {}) => {

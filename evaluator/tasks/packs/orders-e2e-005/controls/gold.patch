@@ -1,0 +1,47 @@
+diff --git a/src/worker.mjs b/src/worker.mjs
+index b343dd3bbed88f2f15077cdfe59167a1dc60b9ea..ae9cdfa24cde41f5c91e0e83d8e7468d375d0d2f 100644
+--- a/src/worker.mjs
++++ b/src/worker.mjs
+@@ -7,6 +7,7 @@ const nextInvoice = (store) => `inv-${String(store.list("invoices").length + 1).
+ function invoiced(store, message, order) {
+   const id = nextInvoice(store);
+   store.put("invoices", id, { id, orderId: order.id, amountMinor: order.totalMinor, currency: order.currency, messageId: message.id });
++  store.put("processed", message.id, { messageId: message.id, invoice: id });
+   return { ack: true, invoice: id };
+ }
+ 
+@@ -14,5 +15,6 @@ const paid = (store, message) => ((order) => (order ? invoiced(store, message, o
+ 
+ export function consume(store, message) {
+   if (message?.type !== "order.paid") return { ack: true, skipped: "not a payment" };
++  if (store.get("processed", message.id)) return { ack: true, duplicate: true };
+   return paid(store, message);
+ }
+diff --git a/test/redelivery.test.mjs b/test/redelivery.test.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..b69833ebb73ec4cee55d80042925545de30aa0f5
+--- /dev/null
++++ b/test/redelivery.test.mjs
+@@ -0,0 +1,22 @@
++import assert from "node:assert/strict";
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { test } from "node:test";
++import { createOrder } from "../src/orders.mjs";
++import { openStore } from "../src/store.mjs";
++import { consume } from "../src/worker.mjs";
++
++function fresh(t) {
++  const dir = mkdtempSync(join(tmpdir(), "orders-"));
++  t.after(() => rmSync(dir, { recursive: true, force: true }));
++  return dir;
++}
++
++test("a payment delivered again, even after the store is opened again, writes one invoice", (t) => {
++  const dir = fresh(t);
++  const message = { id: "m-3", type: "order.paid", orderId: createOrder(openStore(dir), { lines: [{ qty: 1, unitMinor: 250 }] }).id };
++  assert.equal(consume(openStore(dir), message).ack, true);
++  assert.equal(consume(openStore(dir), message).ack, true);
++  assert.equal(openStore(dir).list("invoices").length, 1);
++});

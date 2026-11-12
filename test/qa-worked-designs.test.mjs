@@ -23,6 +23,7 @@ import { OBLIGATION_SHAPES } from "../src/qa/obligations/shapes.mjs";
 import { generationPort } from "../skills/orbit-qa/ports.mjs";
 import { fakeContext } from "./fakes/context.mjs";
 import { fakeIo } from "./fakes/io.mjs";
+import { mutationsOf, unactionable } from "./qa-actionable.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DOC = readFileSync(join(ROOT, "skills", "orbit-qa", "references", "designs.md"), "utf8");
@@ -76,7 +77,7 @@ function generatedOf(ctx, w) {
   store.appendOnce("inv-20261105-090000-abcd", "binding", { id: "bnd-1", eventId: eventIdOf("binding", "bnd-w", 0, "d"), binding: "bnd-w", type: "plan", ref: plan.id, revision: "r1", digest: planDigestOf(plan), authority: "accepted", state: "fresh" });
   const port = generationPort({ ctx, model: () => modelOf(store.read("inv-20261105-090000-abcd")), planOf: () => plan, graph: () => GRAPH, topology: () => TOPOLOGY, services: SERVICES, drafts: { save: () => {} } });
   const design = { ...w.design, obligation: obligation.obligation };
-  return { obligation, out: generatedCase(design, port.contextFor(obligation, { design })) };
+  return { obligation, out: generatedCase(design, port.contextFor(obligation, { design })), judge: (d) => ((x) => ({ out: generatedCase(x, port.contextFor(obligation, { design: x })), cx: port.contextFor(obligation, { design: x }) }))({ ...d, obligation: obligation.obligation }) };
 }
 
 test("the playbook has one worked design for every shape the engine designs for, and none for a shape only a contract represents", () => {
@@ -114,4 +115,23 @@ const doneBy = (d) => canonicalJson({ steps: (d?.skeleton?.steps ?? []).map((s) 
 test("no worked design does what a reference design does -- the same steps, ruled and controlled the same way -- whatever its names or optional bounds", () => {
   const copies = WORKED.filter((w) => REFERENCE.some((r) => doneBy(r) === doneBy(w.design))).map((w) => w.shape);
   assert.deepEqual(copies, [], "a worked design that does what a reference design does is that reference design, renamed");
+});
+
+// Made means valid, and a refusal says what to do (0.5.0, ORBIT-QA-001 on the ship): every worked design the engine
+// makes, the validator a run uses takes as it is; and every design a host gets wrong from one -- an assertion dropped,
+// moved or named by a slot nobody accepted, the closing report dropped, the trigger put anywhere -- is either made (and
+// validates) or refused, never by the validator after every other stage made it, and a refusal that requires a criterion
+// names the candidates (or that none exists) within what a host reads.
+test("every worked design made validates, and every design a host gets wrong from one is refused before the validator, naming what rules it", async () => {
+  const { ctx, store } = await packed();
+  for (const w of WORKED) {
+    const { judge } = generatedOf(ctx, w);
+    for (const d of [w.design, ...mutationsOf(w.design)]) {
+      const { out, cx } = judge(d);
+      assert.notEqual(out.stage, "validate", `${w.shape}: made by every stage, then refused by the validator — ${(out.findings ?? []).join(" | ")}`);
+      if (out.ok) assert.deepEqual(cx.validate(out.case), [], `${w.shape}: made, and the validator refuses it`);
+      assert.deepEqual(unactionable(out.findings), [], `${w.shape}: a refusal that requires a criterion and names none`);
+    }
+  }
+  rmSync(store, { recursive: true, force: true });
 });

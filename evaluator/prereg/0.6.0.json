@@ -1,0 +1,598 @@
+{
+  "schema": 1,
+  "release": "0.6.0",
+  "registered": "2026-11-12, before any model run of the 0.6.0 evaluation and before any 0.6.0 behaviour change",
+  "dataset": {
+    "name": "princeton-nlp/SWE-bench_Verified",
+    "revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+    "split": "test",
+    "rows": 500,
+    "cache": "$ORBIT_EVAL_HOME/datasets/swe-bench-verified-c104f840cc67.json (outside the repository), fetched while the hub said this revision",
+    "rowDigest": "sha256 of the row's canonical JSON (keys sorted at every depth); every registered instance names its row's digest, and a campaign freezes it again"
+  },
+  "selection": {
+    "seed": 60,
+    "strata": [
+      "<15 min fix",
+      "15 min - 1 hour"
+    ],
+    "maxCompressedBytes": 1200000000,
+    "packs": {
+      "dev": "orders-",
+      "heldOut": "lending-"
+    },
+    "repoImages": {
+      "astropy/astropy": {
+        "instance": "astropy__astropy-12907",
+        "compressedBytes": 1133596395
+      },
+      "django/django": {
+        "instance": "django__django-11099",
+        "compressedBytes": 1151798835
+      },
+      "pallets/flask": {
+        "instance": "pallets__flask-5014",
+        "compressedBytes": 1145538311
+      },
+      "psf/requests": {
+        "instance": "psf__requests-2317",
+        "compressedBytes": 1015309228
+      },
+      "pylint-dev/pylint": {
+        "instance": "pylint-dev__pylint-7080",
+        "compressedBytes": 1082335373
+      },
+      "pytest-dev/pytest": {
+        "instance": "pytest-dev__pytest-7982",
+        "compressedBytes": 1026960031
+      },
+      "sphinx-doc/sphinx": {
+        "instance": "sphinx-doc__sphinx-8721",
+        "compressedBytes": 1097777220
+      },
+      "sympy/sympy": {
+        "instance": "sympy__sympy-20590",
+        "compressedBytes": 1088520303
+      },
+      "matplotlib/matplotlib": {
+        "instance": "matplotlib__matplotlib-24149",
+        "compressedBytes": 3137592353
+      },
+      "pydata/xarray": {
+        "instance": "pydata__xarray-4094",
+        "compressedBytes": 2049552992
+      },
+      "scikit-learn/scikit-learn": {
+        "instance": "scikit-learn__scikit-learn-13142",
+        "compressedBytes": 1480846046
+      },
+      "mwaskom/seaborn": {
+        "instance": "mwaskom__seaborn-3069",
+        "compressedBytes": 1291606701
+      }
+    },
+    "instanceImages": {
+      "astropy__astropy-14365": 1138622054,
+      "pylint-dev__pylint-4604": 1085517697,
+      "psf__requests-1142": 1013737194,
+      "django__django-11555": 1152575432,
+      "astropy__astropy-8872": 1177284524,
+      "pylint-dev__pylint-6903": 1081650296,
+      "psf__requests-2931": 1015369405,
+      "django__django-13121": 1157365454,
+      "astropy__astropy-14182": 1137501157,
+      "pylint-dev__pylint-6528": 1080955343,
+      "pytest-dev__pytest-5809": 1024072299,
+      "sympy__sympy-21596": 1090753354,
+      "sphinx-doc__sphinx-11445": 1107557479,
+      "pallets__flask-5014": 1145538311,
+      "pytest-dev__pytest-7982": 1026960031,
+      "sympy__sympy-16766": 1077644944,
+      "sphinx-doc__sphinx-10323": 1104921330,
+      "pytest-dev__pytest-10081": 1029043916,
+      "sympy__sympy-18698": 1084713375,
+      "sphinx-doc__sphinx-9698": 1102188997
+    },
+    "measured": "2026-11-12, `docker manifest inspect -v` through this machine's registry access (lib/prereg/measure.mjs): the sum of the compressed layer sizes",
+    "disk": "One instance image measured on disk: swebench/sweb.eval.x86_64.pytest-dev_1776_pytest-7982 is 1.03 GB compressed and 3.84 GB on disk; this machine had about 15 GB free. A campaign runs task by task and removes each pulled instance image once no run of it remains, so one SWE-bench image (about 4 GB) is on disk at a time.",
+    "rule": [
+      "A SWE-bench Verified row is a candidate when its difficulty is one of `strata` and its repository is eligible.",
+      "A repository is eligible when the measured compressed size of its instance image (`repoImages`, one instance per repository) is at most `maxCompressedBytes` (1.2 GB, about 4 GB on disk). Measured: matplotlib 3.14 GB, xarray 2.05 GB, scikit-learn 1.48 GB and seaborn 1.29 GB are over; the other eight are within.",
+      "The eligible repositories, in name order, are shuffled with `seed` (the evaluator's seededShuffle: mulberry32 and Fisher-Yates) and dealt alternately: positions 0, 2, 4, ... to dev, 1, 3, 5, ... to held-out. Dev and held-out therefore never share a repository.",
+      "Each set's instances are ordered by taking one instance from each of its repositories in turn, in the dealt order; each repository's candidate instances, in id order, are shuffled with `seed` first.",
+      "An instance whose own image (`instanceImages`) is over `maxCompressedBytes` is passed over. The top ten of each list were measured; none was over.",
+      "Packs: the `orders` packs are dev and the `lending` packs are held-out, each set in id order shuffled with `seed`.",
+      "This ORDER is fixed now. The pilot decides only how many tasks are taken from the top of each list (`counts`). No task is dropped afterwards: one that cannot be graded stays in the table as UNGRADABLE or INFRA_ERROR."
+    ]
+  },
+  "order": {
+    "dev": {
+      "repos": [
+        "astropy/astropy",
+        "pylint-dev/pylint",
+        "psf/requests",
+        "django/django"
+      ],
+      "swebench": [
+        {
+          "id": "astropy__astropy-14365",
+          "repo": "astropy/astropy",
+          "difficulty": "15 min - 1 hour",
+          "rowDigest": "800486ffa7bff291ca7bd2934604175a813004128f883bdb9e11dfc6a8a65d4e"
+        },
+        {
+          "id": "pylint-dev__pylint-4604",
+          "repo": "pylint-dev/pylint",
+          "difficulty": "15 min - 1 hour",
+          "rowDigest": "8c8cabd8cf5cfb861fff15731cd9cf784b32f35e730cf1226005822c46d6cb69"
+        },
+        {
+          "id": "psf__requests-1142",
+          "repo": "psf/requests",
+          "difficulty": "<15 min fix",
+          "rowDigest": "defedaa9742570b995d5d7b07ea85c7840f1c7b0b8d7d68f189a88faa2cfb7e8"
+        },
+        {
+          "id": "django__django-11555",
+          "repo": "django/django",
+          "difficulty": "<15 min fix",
+          "rowDigest": "d7ad960fb648c3333478b10babe4f7f90bfea306a2fc301be5af0d459b5fa709"
+        },
+        {
+          "id": "astropy__astropy-8872",
+          "repo": "astropy/astropy",
+          "difficulty": "15 min - 1 hour",
+          "rowDigest": "7aa4a49daa2d8623f5a939a7d2e9425357918fc3ac5ea71aa1e9aadf566ba2bb"
+        },
+        {
+          "id": "pylint-dev__pylint-6903",
+          "repo": "pylint-dev/pylint",
+          "difficulty": "<15 min fix",
+          "rowDigest": "a43d0e68b751a2662247acd50d184e70c2cd54c159c2aaa7c9a38bee87e9de8d"
+        },
+        {
+          "id": "psf__requests-2931",
+          "repo": "psf/requests",
+          "difficulty": "15 min - 1 hour",
+          "rowDigest": "a08362dd831ec182ff69bf2eb953e337740772389efa5084eb77819bd87a4ea5"
+        },
+        {
+          "id": "django__django-13121",
+          "repo": "django/django",
+          "difficulty": "15 min - 1 hour",
+          "rowDigest": "299f73197c832086df45997384b818335214a55873a3848a39d9c7295d0d1e38"
+        },
+        {
+          "id": "astropy__astropy-14182",
+          "repo": "astropy/astropy",
+          "difficulty": "15 min - 1 hour",
+          "rowDigest": "9dcacc272ac4712c0fa81524e85d78d0543c8e001a48cf32c1f8d723bec21cc0"
+        },
+        {
+          "id": "pylint-dev__pylint-6528",
+          "repo": "pylint-dev/pylint",
+          "difficulty": "15 min - 1 hour",
+          "rowDigest": "22bfa5d64566f5e9643b5ae93bf808a35e48326b57d65181533e794a5bc12116"
+        }
+      ],
+      "packs": [
+        {
+          "id": "orders-e2e-004",
+          "digest": "c5f90224e9474b4926f845fd7786db4d8a0d6e3ff3677da50951e7204447207d",
+          "title": "A payment's invoice is on disk before the payment is acknowledged"
+        },
+        {
+          "id": "orders-e2e-003",
+          "digest": "ebf9bb25d12c74129134747dec54cc80bed447e4801031f06074b283b89656f8",
+          "title": "Orders are kept and shown in their own currency"
+        },
+        {
+          "id": "orders-e2e-006",
+          "digest": "b5f7d882a0f3bea582928c59be51dd541b7089a5e4f727324d780e9a444c6454",
+          "title": "An order keeps a note, and the view draws it escaped"
+        },
+        {
+          "id": "orders-e2e-005",
+          "digest": "b31143e244542b0e948a2e1a62b4b92592ced66f9e6476be6a89687d56f0f5e3",
+          "title": "A payment delivered more than once has one effect"
+        },
+        {
+          "id": "orders-e2e-001",
+          "digest": "8f83abf26b4bce7490e2d555cacb391d90aa52dcfdcc2fe64e8fc88ac647c47e",
+          "title": "A discounted total rounds half up to the nearest minor unit"
+        },
+        {
+          "id": "orders-e2e-002",
+          "digest": "378e9b85ca5e0446ffc2a98ec59c9720772b9e449b38de0912e8812718937e9a",
+          "title": "An open order can be cancelled through the API"
+        }
+      ]
+    },
+    "heldOut": {
+      "repos": [
+        "pytest-dev/pytest",
+        "sympy/sympy",
+        "sphinx-doc/sphinx",
+        "pallets/flask"
+      ],
+      "swebench": [
+        {
+          "id": "pytest-dev__pytest-5809",
+          "repo": "pytest-dev/pytest",
+          "difficulty": "<15 min fix",
+          "rowDigest": "3660745791b341e224b3199c9e4bf96a77174a078884de27bea538b8eb62f09e"
+        },
+        {
+          "id": "sympy__sympy-21596",
+          "repo": "sympy/sympy",
+          "difficulty": "15 min - 1 hour",
+          "rowDigest": "34205e044f8322378d8416837b70f777cce343b2327bae97cf3064e6bc728f5f"
+        },
+        {
+          "id": "sphinx-doc__sphinx-11445",
+          "repo": "sphinx-doc/sphinx",
+          "difficulty": "15 min - 1 hour",
+          "rowDigest": "b1a7cded572a71ff2a5dde3c0c567ab5bca8b7f8fa84f4cb294ce8af4962bac6"
+        },
+        {
+          "id": "pallets__flask-5014",
+          "repo": "pallets/flask",
+          "difficulty": "<15 min fix",
+          "rowDigest": "5cc7ccbd782cf546cdded80c0811a572ba428ecace70022e5982477ad6a47489"
+        },
+        {
+          "id": "pytest-dev__pytest-7982",
+          "repo": "pytest-dev/pytest",
+          "difficulty": "<15 min fix",
+          "rowDigest": "f9ce244d5d9c636091799772324ac490ca5a38317a64b001313a9587c9642b25"
+        },
+        {
+          "id": "sympy__sympy-16766",
+          "repo": "sympy/sympy",
+          "difficulty": "<15 min fix",
+          "rowDigest": "2234bc160af8dbb1ebde44506baebc1eb45a6e2d53109a21ecbade7cc49f5808"
+        },
+        {
+          "id": "sphinx-doc__sphinx-10323",
+          "repo": "sphinx-doc/sphinx",
+          "difficulty": "<15 min fix",
+          "rowDigest": "5c224a906daede2fcfd686fc9cb12e6cf223152e1d8dbf79991a26f8abbc611e"
+        },
+        {
+          "id": "pytest-dev__pytest-10081",
+          "repo": "pytest-dev/pytest",
+          "difficulty": "<15 min fix",
+          "rowDigest": "36bcc37cf3fba51537bf3c2b5dedfcb3255cdffdca9cd797fe5fff4d14d41d8a"
+        },
+        {
+          "id": "sympy__sympy-18698",
+          "repo": "sympy/sympy",
+          "difficulty": "15 min - 1 hour",
+          "rowDigest": "db79410e40eb5f5de5dc7237cf6a1ab45fead68015d7e4020c7b2f8e68cd7ec0"
+        },
+        {
+          "id": "sphinx-doc__sphinx-9698",
+          "repo": "sphinx-doc/sphinx",
+          "difficulty": "<15 min fix",
+          "rowDigest": "429101f37d7034068488f1ef87331de22ebbe46209b4ec9b13b73e5249dd4e86"
+        }
+      ],
+      "packs": [
+        {
+          "id": "lending-hld-004",
+          "digest": "2ef250f1dc950645956d70b8b00097116a687972ed03c40e103d88494ed3bb61",
+          "title": "Every request and the drop box work on the caller's own library system only: another system's records read as ones that do not exist, are never listed, and never change"
+        },
+        {
+          "id": "lending-hld-003",
+          "digest": "79f5135168c3edcc2a6f1e94a3a93e658ce5c26aa6123aad43fa381243a88d93",
+          "title": "A loan can be renewed through the API: its due date moved on by the loan period from the date it had, twice at most, never once overdue, waited for or back"
+        },
+        {
+          "id": "lending-hld-001",
+          "digest": "171c4e0a713a76e3ee1f194e0b7f71c8f5337da0d4b0a94f534b19bed94e1954",
+          "title": "Late returns are fined by the day and the format, never above the copy's replacement cost, at the desk and the drop box, and a member's balance adds the fines up"
+        },
+        {
+          "id": "lending-hld-002",
+          "digest": "5020d40a1a212f3e92e291551a10a59c85dda1b9a2e8652922fa2d554fdcecdd",
+          "title": "A copy that comes back is set aside for whoever has waited longest for its title, ready to collect for a week, with a notice -- theirs alone to borrow -- or shelved when nobody waits"
+        }
+      ]
+    }
+  },
+  "counts": {
+    "status": "FIXED",
+    "targets": {
+      "dev": {
+        "swebench": 3,
+        "packs": 2
+      },
+      "heldOut": {
+        "swebench": 4,
+        "packs": 2
+      }
+    },
+    "rule": [
+      "The targets are 3 SWE-bench + 2 packs for dev and 4 SWE-bench + 2 packs for held-out. Their worst case at the $1.00 cap (pilot 1 + baseline 10 + dev passes 10 + final 18 + memory 6 = $45) fits the $50 Claude ledger, so the counts are the targets whatever the pilot costs, with one exception, fixed now:",
+      "if the pilot ends BUDGET or TIMEOUT (a pack could not be finished inside the cap), dev drops to 2 SWE-bench + 2 packs; held-out never drops below 4 + 2. The per-run cap is never raised.",
+      "If the pilot ends INFRA_ERROR it is run once more; its charge stays in the ledger.",
+      "The counts and what the pilot cost are written here in a second commit, before any other model run."
+    ],
+    "dev": {
+      "swebench": 3,
+      "packs": 2
+    },
+    "heldOut": {
+      "swebench": 4,
+      "packs": 2
+    },
+    "pilot": {
+      "campaign": "pilot-060",
+      "run": "plain__pack_orders-e2e-004__t1",
+      "evaluator": "71aeebc (the commit that registered the order)",
+      "word": "RESOLVED",
+      "costUsd": 0.1156403,
+      "chargedUsd": 0.1156403,
+      "turns": 6,
+      "wallSeconds": 19.2,
+      "tokens": {
+        "input": 10,
+        "output": 1815,
+        "cacheRead": 79983,
+        "cacheWrite": 22368
+      },
+      "stream": "result subtype `success`, stop_reason `end_turn`, terminal_reason `completed`, is_error false, total_cost_usd 0.1156403 (costBasis `list`); no budget stop: the pilot never came near its $1.00 cap, so what Claude Code's stream says on a budget stop is still unseen (the evaluator reads a subtype matching /budget/ as BUDGET)",
+      "decision": "The pilot ended RESOLVED, not BUDGET, TIMEOUT or INFRA_ERROR, so by the rule the counts are the targets: dev 3 SWE-bench + 2 packs, held-out 4 SWE-bench + 2 packs. A pack cost $0.12; a SWE-bench instance is expected to cost more, which the $1.00 cap and the ledger bound."
+    }
+  },
+  "host": {
+    "model": "claude-sonnet-5-5",
+    "effort": "medium",
+    "claudeCode": "2.1.322",
+    "miniSweAgent": "2.4.6",
+    "sharedConditions": [
+      "Claude Code arms: the same argv (lib/arms/claude.mjs hostArgs): headless stream-json, permission mode dontAsk, allowed tools Read, Edit, Write, Glob, Grep, Bash, Skill, Agent, TodoWrite, refused WebFetch, WebSearch, settings from the fresh home only, no MCP server, no session kept, the model, effort, USD cap and turn cap. The only difference between the plain and the plugin arm is --plugin-dir.",
+      "Claude Code's built-in plugins (cc-plugin-agents-md, cc-plugin-privacy, cc-plugin-plugin-authoring) are switched off in every Claude Code arm alike, by the fresh home's user settings (enabledPlugins false).",
+      "A fresh container, HOME and ORBIT_STORE_DIR per run (a memory track keeps only ORBIT_STORE_DIR across its own runs). Node and the pinned Claude Code from one read-only tools volume. CPU 2, memory 4096 MB, pids 2048.",
+      "Claude Code arms reach only api.anthropic.com, through an egress proxy; the entry checks it before the agent starts.",
+      "mini-SWE-agent arms: its default config (mini.yaml) and default agent, run on the host against the same task container by docker exec; that container has no network at all. Commands run with `bash -c` (not its default `bash -lc`, whose /etc/profile resets PATH) and a 1800 s command timeout (Claude Code's Bash timeout here). Its step limit is the turn cap, its cost limit the USD cap. Its instance template's system information is the host's.",
+      "mini+orbit: the same plugin archive as the Claude Code plugin arm, and one paragraph in the system template listing each skill's name and description and how to use one (listed, never ordered). It has no hooks and no Skill tool: it measures what an agent understands and does with the plugin through a shell, never what the plugin's hooks add.",
+      "The patch is the difference between the start tree and the tree the agent left, taken by the controller; it is graded alone, in a fresh container with no network: the official swebench 4.1.0 harness for SWE-bench rows, the pack's hidden tests for packs."
+    ]
+  },
+  "limits": {
+    "usd": 1,
+    "turns": 80,
+    "minutes": 40,
+    "cpus": 2,
+    "memoryMb": 4096,
+    "pids": 2048
+  },
+  "prompt": {
+    "taskText": "the SWE-bench row's problem_statement, or the pack's issue.md, as it is; nothing else of the task",
+    "closing": "---\n\nMake the change this issue asks for in the repository in your current working directory, by editing the files in its working tree. When you have finished, end your last message with a line that says `EVAL_STATUS: DONE`, or, if you could not complete it, `EVAL_STATUS: BLOCKED <the reason>`."
+  },
+  "arms": {
+    "plain": {
+      "kind": "claude"
+    },
+    "orbit-0.5.0": {
+      "kind": "claude+orbit",
+      "rev": "v0.5.0",
+      "note": "tag v0.5.0 = 54aaf0b65bdb8f931ab6fe80c7bf368a971f2aab"
+    },
+    "orbit-0.6.0": {
+      "kind": "claude+orbit",
+      "rev": null,
+      "note": "the 0.6.0 release candidate's commit, named when its campaign begins and frozen in its campaign.json"
+    },
+    "mini": {
+      "kind": "mini"
+    },
+    "mini-orbit-0.6.0": {
+      "kind": "mini+orbit",
+      "rev": null,
+      "note": "the same commit as orbit-0.6.0"
+    }
+  },
+  "outcomes": {
+    "words": [
+      "RESOLVED",
+      "UNRESOLVED",
+      "REGRESSED",
+      "EMPTY_PATCH",
+      "FALSE_DONE",
+      "TIMEOUT",
+      "BUDGET",
+      "INFRA_ERROR",
+      "UNGRADABLE"
+    ],
+    "rated": [
+      "RESOLVED",
+      "UNRESOLVED",
+      "REGRESSED",
+      "EMPTY_PATCH",
+      "FALSE_DONE",
+      "TIMEOUT",
+      "BUDGET",
+      "UNGRADABLE"
+    ],
+    "excludedFromRates": [
+      "INFRA_ERROR",
+      "NOT_RUN"
+    ],
+    "rule": "One word per run, from what the controller and the grader observed (lib/core/outcome.mjs, an ordered table). INFRA_ERROR is the environment's (Docker, network, API, credential) and NOT_RUN a run that never started (budget or credential): both are excluded from every rate and always listed. Every task stays in the table."
+  },
+  "phases": [
+    {
+      "id": "pilot",
+      "arms": [
+        "plain"
+      ],
+      "tasks": [
+        "pack:orders-e2e-004"
+      ],
+      "budgetUsd": 1,
+      "purpose": "ONE run: it prices a task. The counts are fixed after it, before any other model run."
+    },
+    {
+      "id": "baseline",
+      "set": "dev",
+      "arms": [
+        "plain",
+        "orbit-0.5.0"
+      ],
+      "budgetUsd": 11,
+      "purpose": "dev x {plain, 0.5.0}, before any 0.6.0 behaviour change."
+    },
+    {
+      "id": "dev1",
+      "set": "dev",
+      "arms": [
+        "orbit-0.6.0"
+      ],
+      "budgetUsd": 5.5,
+      "purpose": "dev x 0.6.0 at a working commit (first pass). Informs development; never part of the verdict."
+    },
+    {
+      "id": "dev2",
+      "set": "dev",
+      "arms": [
+        "orbit-0.6.0"
+      ],
+      "budgetUsd": 5.5,
+      "purpose": "dev x 0.6.0 at a later working commit (second pass, if any). Informs development; never part of the verdict."
+    },
+    {
+      "id": "final",
+      "set": "heldOut",
+      "arms": [
+        "plain",
+        "orbit-0.5.0",
+        "orbit-0.6.0"
+      ],
+      "budgetUsd": 20,
+      "purpose": "held-out x 3 arms, the verdict's runs."
+    },
+    {
+      "id": "memory",
+      "arms": [
+        "orbit-0.6.0"
+      ],
+      "tasks": [
+        "pack:lending-hld-001",
+        "pack:lending-hld-002"
+      ],
+      "tracks": [
+        {
+          "id": "pair1",
+          "arm": "orbit-0.6.0",
+          "tasks": [
+            "lending-hld-004",
+            "lending-hld-001"
+          ]
+        },
+        {
+          "id": "pair2",
+          "arm": "orbit-0.6.0",
+          "tasks": [
+            "lending-hld-003",
+            "lending-hld-002"
+          ]
+        }
+      ],
+      "budgetUsd": 7,
+      "purpose": "Two pairs from one repository (the lending fixture): the second task of each run after the first with the store kept, against its own cold run (the `tasks` here, unless the held-out runs already hold it). Reported apart from the cold-start table; no verdict."
+    },
+    {
+      "id": "mini",
+      "set": "heldOut",
+      "arms": [
+        "mini",
+        "mini-orbit-0.6.0"
+      ],
+      "budgetUsd": 15,
+      "ledger": "mini",
+      "purpose": "held-out x {mini, mini+orbit}, under its own ledger. NOT_RUN (credential) while ORBIT_EVAL_ANTHROPIC_API_KEY is absent."
+    }
+  ],
+  "comparisons": [
+    {
+      "a": "orbit-0.6.0",
+      "b": "plain",
+      "set": "heldOut"
+    },
+    {
+      "a": "orbit-0.6.0",
+      "b": "orbit-0.5.0",
+      "set": "heldOut"
+    },
+    {
+      "a": "mini-orbit-0.6.0",
+      "b": "mini",
+      "set": "heldOut",
+      "gate": false
+    }
+  ],
+  "verdictRule": {
+    "rated": [
+      "RESOLVED",
+      "UNRESOLVED",
+      "REGRESSED",
+      "EMPTY_PATCH",
+      "FALSE_DONE",
+      "TIMEOUT",
+      "BUDGET",
+      "UNGRADABLE"
+    ],
+    "minPaired": 4,
+    "margin": 2,
+    "measures": "Over the held-out tasks on which both arms have a rated word: resolved count, regressions (REGRESSED), FALSE_DONE, median cost and median minutes per run.",
+    "rule": [
+      "Fewer than 4 paired tasks: INCONCLUSIVE.",
+      "A resolved difference of 2 or more against the release (d <= -2), or 2 or more regressions beyond the other arm's: REGRESSED.",
+      "Else a resolved difference of 2 or more for the release: IMPROVED.",
+      "Else a difference of 0: NO_DIFFERENCE; a difference of exactly 1: INCONCLUSIVE.",
+      "The release's verdict: REGRESSED if either Claude Code comparison is; IMPROVED or NO_DIFFERENCE only if both are; else INCONCLUSIVE. The mini comparison is reported and is not part of it."
+    ],
+    "why": "With six held-out tasks, one task is a sixth of the set and one run of one task is noise (a model is not deterministic, and each task runs once): a one-task difference cannot tell the arms apart, so it is INCONCLUSIVE. This is a first measured baseline, not a proof of superiority.",
+    "implementation": "lib/prereg/index.mjs verdictOf and overallOf"
+  },
+  "budget": {
+    "claudeUsd": 50,
+    "miniUsd": 15,
+    "rule": "A hard ledger per campaign: a run does not start when what its phase's budget has left is below its $1.00 cap; an ended run is charged its reported cost, or its whole cap with no result line; an interrupted one its whole cap. The Claude phases' budgets sum to $50 and the mini phase has its own $15. Nothing is ever spent beyond them.",
+    "ledger": [
+      {
+        "phase": "pilot",
+        "usd": 1
+      },
+      {
+        "phase": "baseline",
+        "usd": 11
+      },
+      {
+        "phase": "dev1",
+        "usd": 5.5
+      },
+      {
+        "phase": "dev2",
+        "usd": 5.5
+      },
+      {
+        "phase": "final",
+        "usd": 20
+      },
+      {
+        "phase": "memory",
+        "usd": 7
+      },
+      {
+        "phase": "mini",
+        "usd": 15,
+        "ledger": "mini"
+      }
+    ]
+  }
+}

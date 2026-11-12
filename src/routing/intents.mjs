@@ -56,7 +56,8 @@
 // It is also one of the verification owners a change can span (src/routing/strategy.mjs, `several-owners`).
 //
 // REFINEMENTS within `*` reach what no broad intent asks for (0.5.0): a system graph, a playbook's improvement, a
-// specification's acceptance criteria and a mission. Each requirement is one a resource's own signals still gate, so
+// specification's acceptance criteria and a mission -- and (0.6.0, U5) a technical question to be answered from a
+// source for the version a project pins. Each requirement is one a resource's own signals still gate, so
 // the refinement asks and the resource's own words decide -- "our mission statement" asks for no mission.
 
 export const GENERAL = "general";
@@ -99,6 +100,7 @@ export const REFINEMENTS = [
   { within: ["*"], cues: ["reverse engineer", "reverse engineering", "talks to what", "system graph", "topology"], requires: ["architecture.reverse"] },
   { within: ["*"], cues: ["playbook", "playbooks", "self-improvement", "improvement campaign"], requires: ["improvement.campaign"] },
   { within: ["*"], cues: ["acceptance criteria", "acceptance criterion", "nghiệm thu"], requires: ["goal.orchestration"] },
+  { within: ["*"], cues: ["research how", "research whether", "research which", "research the", "official docs", "official documentation", "nghiên cứu"], requires: ["research.sourced"] },
   { within: ["*"], cues: ["multi-agent", "multi agent", "orbit satellite", "satellite mission", "use satellite", "with satellite", "as a mission", "run a mission", "start a mission", "nhiều agent"], requires: ["mission.orchestration"] },
 ];
 

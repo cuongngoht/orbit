@@ -1,0 +1,133 @@
+diff --git a/README.md b/README.md
+index f2b9e523830de64e2ef680b1df3d5241b60b9cc5..c470d4f3461b242ab3d580e77ec757a237e6f299 100644
+--- a/README.md
++++ b/README.md
+@@ -1,7 +1,7 @@
+ # lending
+ 
+-A lending service for library systems, which several library systems share. Records live on disk, one JSON file each,
+-so a service that stops and starts again finds them.
++A lending service for library systems. Several library systems share one service, and each sees and changes only its
++own records. Records live on disk, one JSON file each, so a service that stops and starts again finds them.
+ 
+ - `src/dates.mjs` — calendar days (`YYYY-MM-DD`, UTC).
+ - `src/store.mjs` — the durable store: `openStore(dir)`.
+diff --git a/src/api.mjs b/src/api.mjs
+index 3409fd6dc6d25407e95cfdf0336d5e6ceeee69f2..42ecc8085f7c29ed9e7d5c5dcbfae8e31b685776 100644
+--- a/src/api.mjs
++++ b/src/api.mjs
+@@ -2,7 +2,7 @@
+ // `tenant` is the library system the caller signed in as -- the gateway in front of the service sets it -- and `today`
+ // the day the service's clock says it is. A refusal answers { error: <word> }.
+ import { isDay } from "./dates.mjs";
+-import { get, isKey, list } from "./store.mjs";
++import { isKey } from "./store.mjs";
+ import { allMine, isTenant, mine } from "./tenancy.mjs";
+ import { copyView, isFormat, newCopy, newTitle, titleView } from "./catalog.mjs";
+ import { memberView, newMember } from "./members.mjs";
+@@ -38,7 +38,7 @@ const notices = (c, [id]) => ((m) => (m ? noticesOf(c, m) : refused(404, "no-mem
+ const lendOrNot = (c, copy, member) => ((why) => (why ? refused(409, why) : answer(201, loanView(lent(c.store, c.tenant, copy, member, c.today)))))(lendRefusal(c.store, c.tenant, copy, member));
+ 
+ function lend(c) {
+-  const copy = get(c.store, "copies", c.body.copy);
++  const copy = mine(c.store, c.tenant, "copies", c.body.copy);
+   const member = mine(c.store, c.tenant, "members", c.body.member);
+   if (!copy || !member) return refused(404, copy ? "no-member" : "no-copy");
+   return lendOrNot(c, copy, member);
+@@ -59,7 +59,7 @@ const renew = (c, [id]) => ((loan) => (loan ? renewOrNot(c, loan) : refused(404,
+ const holdOrNot = (c, title, member) => (openHoldOf(c.store, c.tenant, title, member) ? refused(409, "duplicate-hold") : answer(201, holdView(newHold(c.store, c.tenant, title, member, c.today))));
+ 
+ function hold(c) {
+-  const title = get(c.store, "titles", c.body.title);
++  const title = mine(c.store, c.tenant, "titles", c.body.title);
+   const member = mine(c.store, c.tenant, "members", c.body.member);
+   if (!title || !member) return refused(404, title ? "no-member" : "no-title");
+   return holdOrNot(c, title, member);
+@@ -68,16 +68,16 @@ function hold(c) {
+ // ---- the routes -------------------------------------------------------------------------------------------------------
+ 
+ const ROUTES = [
+-  ["GET", /^\/titles$/, (c) => answer(200, { titles: list(c.store, "titles").map(titleView) })],
++  ["GET", /^\/titles$/, (c) => answer(200, { titles: allMine(c.store, c.tenant, "titles").map(titleView) })],
+   ["POST", /^\/titles$/, titleAdded],
+   ["GET", /^\/titles\/([^/]+)$/, (c, [id]) => found(mine(c.store, c.tenant, "titles", id), "no-title", titleView)],
+   ["POST", /^\/copies$/, copyAdded],
+-  ["GET", /^\/copies\/([^/]+)$/, (c, [id]) => found(get(c.store, "copies", id), "no-copy", copyView)],
++  ["GET", /^\/copies\/([^/]+)$/, (c, [id]) => found(mine(c.store, c.tenant, "copies", id), "no-copy", copyView)],
+   ["POST", /^\/members$/, memberAdded],
+   ["GET", /^\/members\/([^/]+)$/, (c, [id]) => found(mine(c.store, c.tenant, "members", id), "no-member", memberView)],
+   ["GET", /^\/members\/([^/]+)\/notices$/, notices],
+   ["POST", /^\/loans$/, lend],
+-  ["GET", /^\/loans\/([^/]+)$/, (c, [id]) => found(get(c.store, "loans", id), "no-loan", loanView)],
++  ["GET", /^\/loans\/([^/]+)$/, (c, [id]) => found(loanOf(c, id), "no-loan", loanView)],
+   ["POST", /^\/loans\/([^/]+)\/return$/, back],
+   ["POST", /^\/loans\/([^/]+)\/renew$/, renew],
+   ["POST", /^\/holds$/, hold],
+diff --git a/src/dropbox.mjs b/src/dropbox.mjs
+index 4c02125c025ef19b742aaf2805a59bbef77cce4b..0110ada6e71448330eea55608910a5a1112ed8ff 100644
+--- a/src/dropbox.mjs
++++ b/src/dropbox.mjs
+@@ -6,7 +6,7 @@
+ //   outcome: returned · not-on-loan · unknown-copy · duplicate · rejected (a message this consumer cannot read)
+ import { isDay } from "./dates.mjs";
+ import { get, isKey, put } from "./store.mjs";
+-import { isTenant } from "./tenancy.mjs";
++import { isTenant, mine } from "./tenancy.mjs";
+ import { openLoanOfCopy, returned } from "./loans.mjs";
+ 
+ const wellFormed = (m) => Boolean(m) && isKey(m.id) && isTenant(m.tenant) && isKey(m.copy) && isDay(m.at);
+@@ -14,7 +14,7 @@ const wellFormed = (m) => Boolean(m) && isKey(m.id) && isTenant(m.tenant) && isK
+ const done = (store, m, outcome) => (put(store, "deliveries", { id: m.id, seq: 0, tenant: m.tenant, outcome }), { ack: true, outcome });
+ 
+ function checkedIn(store, m) {
+-  const copy = get(store, "copies", m.copy);
++  const copy = mine(store, m.tenant, "copies", m.copy);
+   const loan = copy ? openLoanOfCopy(store, copy.tenant, copy) : null;
+   if (!loan) return done(store, m, copy ? "not-on-loan" : "unknown-copy");
+   returned(store, copy.tenant, loan, m.at);
+diff --git a/test/own-records.test.mjs b/test/own-records.test.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..5ce82704c621a326dc74305f4c3e65d9ca01a6ef
+--- /dev/null
++++ b/test/own-records.test.mjs
+@@ -0,0 +1,40 @@
++// One library system never sees or changes another's records, through the API or the drop box.
++import assert from "node:assert/strict";
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { test } from "node:test";
++import { handle } from "../src/api.mjs";
++import { consume } from "../src/dropbox.mjs";
++import { openStore } from "../src/store.mjs";
++
++function storeFor(t) {
++  const dir = mkdtempSync(join(tmpdir(), "own-records-"));
++  t.after(() => rmSync(dir, { recursive: true, force: true }));
++  return openStore(dir);
++}
++
++const as = (tenant) => (store, method, path, body) => handle(store, { method, path, tenant, today: "2026-03-02", body });
++
++const [harbor, upland] = [as("harbor"), as("upland")];
++
++function harbors(store) {
++  const title = harbor(store, "POST", "/titles", { name: "Theirs", format: "book" }).body;
++  const [lentCopy, shelfCopy] = [0, 1].map(() => harbor(store, "POST", "/copies", { title: title.id, replacementCents: 2000 }).body);
++  const loan = harbor(store, "POST", "/loans", { copy: lentCopy.id, member: harbor(store, "POST", "/members", { name: "Ana" }).body.id }).body;
++  return { title, lentCopy, shelfCopy, loan };
++}
++
++test("another system's copy, loan and titles are not read", (t) => {
++  const store = storeFor(t);
++  const h = harbors(store);
++  assert.deepEqual([upland(store, "GET", `/copies/${h.shelfCopy.id}`).status, upland(store, "GET", `/loans/${h.loan.id}`).status, upland(store, "GET", "/titles").body.titles.length], [404, 404, 0]);
++});
++
++test("another system's copy is not lent, its title not held, and its drop box check-in never reaches across", (t) => {
++  const store = storeFor(t);
++  const h = harbors(store);
++  const ben = upland(store, "POST", "/members", { name: "Ben" }).body;
++  assert.deepEqual([upland(store, "POST", "/loans", { copy: h.shelfCopy.id, member: ben.id }).status, upland(store, "POST", "/holds", { title: h.title.id, member: ben.id }).status, consume(store, { id: "scan-1", tenant: "upland", copy: h.lentCopy.id, at: "2026-03-05" }).outcome], [404, 404, "unknown-copy"]);
++  assert.deepEqual([harbor(store, "GET", `/copies/${h.shelfCopy.id}`).body.status, harbor(store, "GET", `/loans/${h.loan.id}`).body.returned], ["shelf", null]);
++});

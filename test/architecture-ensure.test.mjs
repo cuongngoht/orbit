@@ -122,13 +122,13 @@ test("tokenising drops the same empty words the lesson store already drops", () 
 // Deciding must never be mistaken for scanning: it fingerprints what the facts
 // already name, and that is all.
 test("deciding lists no files and reads none — that is what a scan is", () => {
-  const source = fakeFrontend({ fingerprints: { "src/dsl": { hash: "aa", files: 2, dirty: 0 } } });
-  const ctx = { arch: { model: () => ({ model: { v: 1, scopes: { "src/dsl": { hash: "aa" } } }, why: null }), all: () => [{ kind: "module", key: "src/dsl", scope: ["src/dsl"] }] }, source };
+  const source = fakeFrontend({ fingerprints: { "src/dsl": { hash: "aa", files: 2, dirty: 0 }, "src/run": { hash: "bb", files: 3, dirty: 0 } } });
+  const ctx = { arch: { model: () => ({ model: { v: 1, scopes: { "src/dsl": { hash: "aa" }, "src/run": { hash: "bb" } } }, why: null }), all: () => [{ kind: "module", key: "src/dsl", scope: ["src/dsl"] }, { kind: "module", key: "src/run", scope: ["src/run"] }] }, source };
   const f = ensureFacts(ctx, ["--for=create a file"]);
 
   assert.equal(decide(f).name, "CURRENT");
   assert.equal(source.calls.files, 0, "it listed the tree");
   assert.equal(source.calls.read, 0, "it read a file");
-  assert.equal(source.calls.fingerprints, 1, "one call, however many scopes");
+  assert.equal(source.calls.fingerprints, 1, "one call, however many facts and scopes");
   assert.equal(source.calls.commit, 1, "one cheap check that there is a checkout at all");
 });

@@ -2,6 +2,9 @@
 
 ## Status
 
+Superseded by ADR 0057 (0.6.0): the in-repo benchmark and the ship it qualified a release with are removed; what
+follows is kept as the record of what was decided then.
+
 Accepted (development tooling; no engine contract changes). Extends ADR 0046 (the Docker benchmark). Builds on
 ADR 0037 (a test writes only through a grant), ADR 0038 (an active generated test runs only where isolation is proven)
 and ADR 0039 (a sandbox's topology is composed from declarations).

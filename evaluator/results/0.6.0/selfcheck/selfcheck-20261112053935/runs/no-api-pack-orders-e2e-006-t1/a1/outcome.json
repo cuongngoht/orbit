@@ -1,0 +1,11 @@
+{
+  "kind": "outcome",
+  "run": "no-api__pack_orders-e2e-006__t1",
+  "attempt": 1,
+  "at": "2026-11-12T05:42:39.333Z",
+  "word": "INFRA_ERROR",
+  "why": "EGRESS: the network did not hold before the agent started: {\"direct\":\"ENETUNREACH\",\"outsideName\":\"EAI_AGAIN\",\"api\":{\"connect\":403,\"http\":null},\"otherHost\":403,\"holds\":false}",
+  "saidDone": false,
+  "grade": null,
+  "gradeDetail": null
+}

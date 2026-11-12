@@ -16,6 +16,7 @@ import { createRequirements } from "../src/requirements/store.mjs";
 import { rootId, sourceRecord, workitemText } from "../src/sources/model.mjs";
 import { createSources } from "../src/sources/store.mjs";
 import { realIo } from "../src/store/io.mjs";
+import { loginApp } from "./fakes/relations.mjs";
 import { sealed } from "./home.mjs";
 
 const ENGINE = fileURLToPath(new URL("..", import.meta.url));
@@ -217,4 +218,84 @@ test("outside every checkout every proposed reference is refused and nothing is 
     assert.equal(r.status, 2, `${args.join(" ")}: ${r.stdout}`);
     assert.match(r.stderr, says);
   }
+});
+
+// 0.6.0, U3: the direct files' own relations, composed over a real checkout with the pack's adapters bound by the
+// composition root -- read from the committed tree, one hop each way, and a file no adapter reads said as a gap.
+test("a proposed file's relations are followed one hop over the committed tree, and a file no adapter reads is a gap with the host's way to fill it", () => {
+  const app = loginApp();
+  const login = checkout("login-app", {}, app.files);
+  const page = "web/src/pages/LoginPage.jsx";
+  const pkg = context(login, ["--with-refs"], withRefs([{ kind: "file", ref: page }, { kind: "file", ref: "web/src/pages/LoginPage.css" }], "fix the login bug"));
+  const items = at(pkg);
+  assert.deepEqual([items["file:web/src/api/sessionClient.js"]?.class, items["file:web/src/api/sessionClient.js"]?.evidence.map((e) => e.source)], ["dependency", ["imports"]]);
+  assert.equal(items["file:web/src/pages/LoginPage.test.jsx"]?.class, "verification");
+  assert.equal(items["file:web/src/legacy/theme.js"], undefined, "the decoy's import is never followed");
+  assert.deepEqual(pkg.relevance.gaps.map((g) => [g.ref, g.target.run]), [["web/src/pages/LoginPage.css", "context --with-refs"]]);
+  const text = cli(login, "context", ["--with-refs"], withRefs([{ kind: "file", ref: "web/src/pages/LoginPage.css" }], "fix the login bug")).stdout;
+  assert.match(text, /gap\s+file web\/src\/pages\/LoginPage\.css -- no relation adapter here reads \*\.css file/);
+});
+
+// 0.6.0, U1: the three levels, bound from the task's OWN work -- its proof needs are the done criteria, and conclude reads
+// the work's evidence back from its one read model (a developer's session is never verified).
+test("the three levels rest on the task's own work: a read confirms, a proof need states done, and only verified evidence concludes", () => {
+  const shop = checkout("levels", { "package-lock.json": '{ "name": "shop", "lockfileVersion": 3, "requires": true, "packages": { "": { "name": "shop" } } }\n' });
+  const where = json(shop, "requirements", ["where", "--json"]);
+  const identity = { provider: "azure-devops", organization: "acme", project: "Shop", id: "4313" };
+  const record = sourceRecord({ identity, kind: "workitem", ref: "4313", revision: "1", text: workitemText({ title: "Empty orders", body: "An empty order must be refused" }), now: "2026-11-05T10:00:00.000Z" });
+  createSources(where.store, realIo()).saveRecord(record);
+  const root = rootId(identity);
+  const port = createRequirements(where.store, realIo()).open(root);
+  port.transact(() => port.setState({ sources: {}, position: 0, lastSnapshot: null, identity }));
+  const work = json(shop, "work", ["start", "Make createOrder refuse an empty order", `--ref=${root}`, "--json"]).work;
+  const rows = (pkg) => Object.fromEntries(Object.entries(pkg.sufficiency.levels).map(([name, l]) => [name, l.row]));
+  assert.deepEqual(rows(context(shop)), { investigate: "grounded", change: "unconfirmed", conclude: "no-proof" }, "named by its words, read by nobody, and no done criterion");
+  const read = () => context(shop, ["--with-refs"], withRefs([{ kind: "file", ref: "src/orders/createOrder.mjs", why: "the order is built here" }]));
+  assert.deepEqual(rows(read()), { investigate: "grounded", change: "no-done-criterion", conclude: "no-proof" }, "the host read it: confirmed, and its relations followed");
+  assert.equal(cli(shop, "work", ["need", work], `${JSON.stringify({ type: "proof", capability: "verification.test", subject: "empty-order", asks: "An empty order is refused", scope: ["src/orders/createOrder.mjs"] })}\n`).status, 0);
+  assert.deepEqual(rows(read()), { investigate: "grounded", change: "ready", conclude: "unproved" });
+  const need = json(shop, "work", ["show", work, "--json"]).needs[0].need;
+  assert.equal(cli(shop, "work", ["settle", work, need, "--state=satisfied", "--evidence=the test refuses it"]).status, 0);
+  const settled = read();
+  assert.deepEqual(rows(settled), { investigate: "grounded", change: "ready", conclude: "unverified" }, "settled by a developer's word: never verified evidence");
+  assert.match(settled.sufficiency.levels.conclude.because, /evidence is (none|observed|reported) — only an owner's completed task/);
+  const text = cli(shop, "context", ["--with-refs"], withRefs([{ kind: "file", ref: "src/orders/createOrder.mjs" }], TASK)).stdout;
+  assert.match(text, /^ {2}investigate holds -- /m);
+  assert.match(text, /^ {2}change {6}holds -- /m);
+  assert.match(text, /^ {2}conclude {4}not yet -- the work's evidence is/m);
+});
+
+// 0.6.0, U2: `--work=` reads the task's own work as the record of a bounded loop -- its round state, and a target a
+// settled, unmoved need already answered is not offered again. It writes nothing; `work checkpoint` records a round.
+test("--work= prints the round state of the task's own work and does not offer again a target a settled, unmoved need answered", () => {
+  const shop = checkout("rounds");
+  const where = json(shop, "requirements", ["where", "--json"]);
+  const identity = { provider: "azure-devops", organization: "acme", project: "Shop", id: "4314" };
+  createSources(where.store, realIo()).saveRecord(sourceRecord({ identity, kind: "workitem", ref: "4314", revision: "1", text: workitemText({ title: "Vault", body: "Rotate the vault key" }), now: "2026-11-05T10:00:00.000Z" }));
+  const root = rootId(identity);
+  const port = createRequirements(where.store, realIo()).open(root);
+  port.transact(() => port.setState({ sources: {}, position: 0, lastSnapshot: null, identity }));
+  const work = json(shop, "work", ["start", "Rotate the vault key", `--ref=${root}`, "--json"]).work;
+  const task = "--for=rotate the vault key";
+  const before = context(shop, [task, `--work=${work}`]);
+  assert.deepEqual([before.sufficiency.word, before.sufficiency.targets[0], before.rounds.rounds, before.rounds.row], ["DISCOVER", { source: "host", target: "references", run: "context --with-refs" }, 0, "go-on"]);
+  assert.equal(cli(shop, "work", ["need", work], `${JSON.stringify({ type: "knowledge", capability: "code.read", subject: "vault-key", asks: "Where is the vault key rotated?" })}\n`).status, 0);
+  const need = json(shop, "work", ["show", work, "--json"]).needs[0].need;
+  assert.equal(cli(shop, "work", ["settle", work, need, "--state=blocked", "--why=nothing in this checkout rotates a key"]).status, 0);
+  const marked = cli(shop, "work", ["checkpoint", work, "--asked=host · references"]);
+  assert.equal(marked.status, 0, marked.stderr);
+  assert.match(marked.stdout, /^ROUND {6}1 of 5 · gained 1 · go on -- /m);
+  const store = shop.env.ORBIT_STORE_DIR;
+  const kept = snapshot(join(store));
+  const after = context(shop, [task, `--work=${work}`]);
+  assert.equal(after.sufficiency.targets.some((t) => t.source === "host" && t.target === "references"), false, "answered by a settled need: not offered again");
+  assert.deepEqual([after.sufficiency.withheld, after.rounds.rounds, after.rounds.gained], [1, 1, [need]]);
+  const text = cli(shop, "context", [task, `--work=${work}`]).stdout;
+  assert.match(text, new RegExp(`^ROUNDS  ${work} · 1 of 5 · go on -- `, "m"));
+  assert.match(text, /^ {2}withheld {4}1 target\(s\) a settled, unmoved need already answered$/m);
+  assert.ok(kept.some((l) => l.includes(`${work}/journal.jsonl`)), "the work's journal is in what is compared");
+  assert.deepEqual(snapshot(join(store)), kept, "a look writes no round, and nothing else");
+  assert.match(context(shop, [task, "--work=w-000000000000"]).rounds.problem, /no work w-000000000000 is kept here/);
+  const bad = cli(shop, "context", [task, "--work=nope"]);
+  assert.deepEqual([bad.status, /--work names a work by its id/.test(bad.stderr)], [2, true]);
 });

@@ -1,0 +1,66 @@
+{
+  "shape": "occurrence-one-execution",
+  "why": "a scheduler observe pinned to skipped under a value-eq executed",
+  "accepted": {
+    "SCHED-9/E1": {
+      "property": "occurrence.decision",
+      "op": "eq",
+      "value": "executed"
+    }
+  },
+  "design": {
+    "skeleton": {
+      "steps": [
+        {
+          "do": "call",
+          "capability": "orbit.clock.advance",
+          "input": {
+            "clockRef": "invoice-a",
+            "request": {
+              "to": "2026-11-03T02:00:00Z"
+            }
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.scheduler.observe",
+          "input": {
+            "scheduleRef": "billing-daily",
+            "request": {
+              "count": 1,
+              "match": {
+                "occurrenceId": "billing-daily:2026-11-03T09:00:00+07:00",
+                "decision": "skipped"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "assertions": [
+      {
+        "criterionRef": "SCHED-9/E1",
+        "template": "value-eq",
+        "step": 2
+      }
+    ],
+    "controls": [
+      {
+        "role": "positive",
+        "why": "x"
+      }
+    ],
+    "trigger": {
+      "kind": "schedule",
+      "ref": "billing-daily",
+      "step": 1
+    },
+    "effectScope": "fixture"
+  },
+  "expect": {
+    "findings": [
+      "MATCH_PINS"
+    ],
+    "advice": []
+  }
+}

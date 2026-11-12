@@ -45,6 +45,7 @@
 // Exit 0 = done, whatever was found -- a finding is never an exit code, and
 // no investigation outcome is PASS or FAIL · 2 = refused (usage, a gate, a
 // missing approval) · 3 = blocked (the machine: browser, store, deadline).
+import { engined, enginedDeep } from "../src/engined.mjs";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -94,7 +95,7 @@ const flag = (name) => args.find((a) => a.startsWith(`--${name}=`))?.slice(name.
 const has = (name) => args.includes(`--${name}`);
 const needed = (name) => flag(name) ?? stop(`--${name}=… is required for ${cmd}`);
 const stop = (why) => { throw new Refused(`${why}\n  node cli/autonomous-qa.mjs --help for the usage`); };
-const shown = (value, human) => (has("json") ? console.log(JSON.stringify(value, null, 2)) : console.log(human(value)));
+const shown = (value, human) => (has("json") ? said(value) : console.log(engined(human(value), dirname(HERE))));
 
 // The context is bound ONCE, with the project's own extensions loaded -- the
 // capabilities an investigation may ask are the ones the project registered,
@@ -352,7 +353,7 @@ function linkCmd() {
 
 // ------------------------------------------------------------------ the loop
 // JSON always: these speak to the host's model, which reads the fields.
-const said = (value) => console.log(JSON.stringify(value, null, 2));
+const said = (value) => console.log(JSON.stringify(enginedDeep(value, dirname(HERE)), null, 2));
 
 function contextCmd() {
   return said(contextFor(investigating()));

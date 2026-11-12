@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ingest } from "../src/knowledge/ingest.mjs";
 import { measured, query } from "../src/knowledge/query.mjs";
+import { claims } from "../src/knowledge/views/claims.mjs";
 import { tokens } from "../src/tokens.mjs";
 import { candidate, knowledgeWorld, seenBy } from "./fakes/knowledge.mjs";
 
@@ -66,6 +67,29 @@ test("freshness is MEASURED for the answer: a scope that moved costs current-sou
   const moved = answerOf(ctx, {});
   assert.deepEqual([moved.prevails[0].claim.object, moved.prevails[0].measured, moved.prevails[0].tier], ["mechanism.x", "stale", "inference"]);
   assert.equal(ctx.know.all()[0].status, "fresh", "reading never restamps");
+});
+
+// Measured is one look at the index for every claim, however many there are -- never one per claim.
+test("freshness is measured in ONE look at the index however many claims it answers", () => {
+  const ctx = world();
+  ingest(ctx, [built("mechanism.x", {}), built("mechanism.y", { region: "eu" }, { evidence: ["src/app/workspace.ts"] })], { seenBy: seenBy() });
+  const before = ctx.source.calls.fingerprints;
+  measured(ctx, ctx.know.all());
+  assert.equal(ctx.source.calls.fingerprints - before, 1);
+});
+
+// The read side `knowledge claims` answers with freshness measured NOW, never the status a claim was stamped with when
+// it was recorded: a commit that moved a claim's scope shows on the next recall.
+test("knowledge claims answers with the freshness measured now, never the one stamped at record time", () => {
+  const ctx = world();
+  ingest(ctx, [built("mechanism.x", {})], { seenBy: seenBy() });
+  ctx.source.write("src/app/group.ts", "changed");
+  const said = [];
+  const log = console.log;
+  console.log = (...a) => said.push(a.join(" "));
+  try { claims(ctx, ["--for=group.created", "--json"]); } finally { console.log = log; }
+  const row = JSON.parse(said.join("\n")).answers.find((a) => a.relation === "is-built-with").prevails[0];
+  assert.deepEqual([row.object, row.measured, row.tier], ["mechanism.x", "stale", "inference"]);
 });
 
 test("with no task, only what binds is shown; with one, a hint needs a direct hit", () => {

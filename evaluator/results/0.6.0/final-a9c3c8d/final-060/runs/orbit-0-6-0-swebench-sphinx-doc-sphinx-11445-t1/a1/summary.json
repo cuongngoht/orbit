@@ -1,0 +1,90 @@
+{
+  "kind": "ended",
+  "run": "orbit-0.6.0__swebench_sphinx-doc__sphinx-11445__t1",
+  "attempt": 1,
+  "at": "2026-11-12T11:48:38.857Z",
+  "chargedUsd": 0.072215,
+  "infra": null,
+  "timedOut": false,
+  "killedByControl": false,
+  "exit": 0,
+  "oomKilled": false,
+  "wallMs": 24082,
+  "streamBytes": 55706,
+  "streamCut": false,
+  "summary": {
+    "started": true,
+    "model": "claude-sonnet-5-5",
+    "version": "2.1.322",
+    "plugins": [
+      "orbit@0.6.0"
+    ],
+    "hooks": {
+      "ran": 3,
+      "failed": 0
+    },
+    "skillsListed": 42,
+    "result": true,
+    "costUsd": 0.072215,
+    "tokens": {
+      "input": 12,
+      "output": 1116,
+      "cacheRead": 138430,
+      "cacheWrite": 11797
+    },
+    "turns": 7,
+    "durationMs": 22605,
+    "denials": 0,
+    "subtype": "success",
+    "isError": false,
+    "stoppedOn": null,
+    "apiError": null,
+    "status": "DONE",
+    "statusWhy": null,
+    "asked": false,
+    "tools": {
+      "calls": 6,
+      "byName": {
+        "Grep": 1,
+        "Read": 2,
+        "Edit": 1,
+        "Bash": 2
+      },
+      "skills": {},
+      "agents": {}
+    },
+    "orbit": {
+      "commands": 0,
+      "byCli": {}
+    }
+  },
+  "patch": {
+    "bytes": 478,
+    "digest": "2d3b589854775998d3c1f1099c7f9616339e8da00be96032e67e42b193038a51",
+    "paths": [
+      "sphinx/util/rst.py"
+    ]
+  },
+  "plugin": {
+    "digest": "8d927119bde8b8ff722b4080bdc99fe8090430086c6870001bf44dfeb31f0da3",
+    "files": 2727
+  },
+  "images": {
+    "task": "sha256:fec58c84a7ccc38fdceb65528bfb6fb923f038cb1dc95de1f79c0a85e2dde4f2",
+    "taskRef": "swebench/sweb.eval.x86_64.sphinx-doc_1776_sphinx-11445:latest",
+    "pulled": true,
+    "egress": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb"
+  },
+  "startCommit": "c4293c6a65504690709bb73d831ec1c93b2a7d6d",
+  "entryPhase": "ended",
+  "egress": {
+    "direct": "ENETUNREACH",
+    "outsideName": "EAI_AGAIN",
+    "api": {
+      "connect": 200,
+      "http": 404
+    },
+    "otherHost": 403,
+    "holds": true
+  }
+}

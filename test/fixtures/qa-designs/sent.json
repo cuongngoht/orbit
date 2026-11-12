@@ -1,0 +1,2193 @@
+{
+ "doc": "Every design the 0.5.0 benchmark's scripted QA and sessions hosts sent (benchmark/lib/qa/hosts.mjs, captured once before the benchmark's removal): per case, its stack and each control's host with the designs it sent in order, by shape; each design once, under the first 12 hex of the SHA-256 of its canonical JSON.",
+ "cases": [
+  {
+   "id": "ORBIT-QA-001",
+   "kind": "qa",
+   "stack": "invoice-a",
+   "controls": [
+    {
+     "id": "reference",
+     "host": "reference",
+     "sent": [
+      {
+       "shape": "response-conforms",
+       "design": "dc4f517a63e6"
+      },
+      {
+       "shape": "permission-enforced",
+       "design": "ebd4596855c7"
+      },
+      {
+       "shape": "completes-by-deadline",
+       "design": "1a9b68c6657c"
+      },
+      {
+       "shape": "occurrence-one-execution",
+       "design": "68bd21cbdf36"
+      },
+      {
+       "shape": "effect-once-per-key",
+       "design": "f40acd602f21"
+      },
+      {
+       "shape": "crash-before-effect",
+       "design": "7471caeb1361"
+      },
+      {
+       "shape": "crash-after-effect-before-ack",
+       "design": "2cf0b4cc579a"
+      },
+      {
+       "shape": "screen-shows-result",
+       "design": "9a56b8857420"
+      },
+      {
+       "shape": "persisted-after-write",
+       "design": "842d9e6e89a7"
+      }
+     ]
+    },
+    {
+     "id": "idle",
+     "host": "idle",
+     "sent": []
+    },
+    {
+     "id": "false-alarm",
+     "host": "false-alarm",
+     "sent": [
+      {
+       "shape": "response-conforms",
+       "design": "dc4f517a63e6"
+      },
+      {
+       "shape": "permission-enforced",
+       "design": "ebd4596855c7"
+      },
+      {
+       "shape": "completes-by-deadline",
+       "design": "1a9b68c6657c"
+      },
+      {
+       "shape": "occurrence-one-execution",
+       "design": "68bd21cbdf36"
+      },
+      {
+       "shape": "effect-once-per-key",
+       "design": "13524f90bbc3"
+      },
+      {
+       "shape": "crash-before-effect",
+       "design": "7471caeb1361"
+      },
+      {
+       "shape": "crash-after-effect-before-ack",
+       "design": "2cf0b4cc579a"
+      },
+      {
+       "shape": "screen-shows-result",
+       "design": "9a56b8857420"
+      },
+      {
+       "shape": "persisted-after-write",
+       "design": "842d9e6e89a7"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ORBIT-QA-002",
+   "kind": "qa",
+   "stack": "invoice-a",
+   "controls": [
+    {
+     "id": "reference",
+     "host": "reference",
+     "sent": [
+      {
+       "shape": "response-conforms",
+       "design": "dc4f517a63e6"
+      },
+      {
+       "shape": "permission-enforced",
+       "design": "ebd4596855c7"
+      },
+      {
+       "shape": "completes-by-deadline",
+       "design": "1a9b68c6657c"
+      },
+      {
+       "shape": "occurrence-one-execution",
+       "design": "68bd21cbdf36"
+      },
+      {
+       "shape": "effect-once-per-key",
+       "design": "f40acd602f21"
+      },
+      {
+       "shape": "crash-before-effect",
+       "design": "7471caeb1361"
+      },
+      {
+       "shape": "crash-after-effect-before-ack",
+       "design": "2cf0b4cc579a"
+      },
+      {
+       "shape": "screen-shows-result",
+       "design": "9a56b8857420"
+      },
+      {
+       "shape": "persisted-after-write",
+       "design": "842d9e6e89a7"
+      }
+     ]
+    },
+    {
+     "id": "idle",
+     "host": "idle",
+     "sent": []
+    },
+    {
+     "id": "false-alarm",
+     "host": "false-alarm",
+     "sent": [
+      {
+       "shape": "response-conforms",
+       "design": "dc4f517a63e6"
+      },
+      {
+       "shape": "permission-enforced",
+       "design": "ebd4596855c7"
+      },
+      {
+       "shape": "completes-by-deadline",
+       "design": "1a9b68c6657c"
+      },
+      {
+       "shape": "occurrence-one-execution",
+       "design": "68bd21cbdf36"
+      },
+      {
+       "shape": "effect-once-per-key",
+       "design": "13524f90bbc3"
+      },
+      {
+       "shape": "crash-before-effect",
+       "design": "7471caeb1361"
+      },
+      {
+       "shape": "crash-after-effect-before-ack",
+       "design": "2cf0b4cc579a"
+      },
+      {
+       "shape": "screen-shows-result",
+       "design": "9a56b8857420"
+      },
+      {
+       "shape": "persisted-after-write",
+       "design": "842d9e6e89a7"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ORBIT-QA-003",
+   "kind": "qa",
+   "stack": "invoice-a",
+   "controls": [
+    {
+     "id": "reference",
+     "host": "reference",
+     "sent": [
+      {
+       "shape": "response-conforms",
+       "design": "dc4f517a63e6"
+      },
+      {
+       "shape": "permission-enforced",
+       "design": "ebd4596855c7"
+      },
+      {
+       "shape": "completes-by-deadline",
+       "design": "1a9b68c6657c"
+      },
+      {
+       "shape": "occurrence-one-execution",
+       "design": "68bd21cbdf36"
+      },
+      {
+       "shape": "effect-once-per-key",
+       "design": "f40acd602f21"
+      },
+      {
+       "shape": "crash-before-effect",
+       "design": "7471caeb1361"
+      },
+      {
+       "shape": "crash-after-effect-before-ack",
+       "design": "2cf0b4cc579a"
+      },
+      {
+       "shape": "screen-shows-result",
+       "design": "9a56b8857420"
+      },
+      {
+       "shape": "persisted-after-write",
+       "design": "842d9e6e89a7"
+      }
+     ]
+    },
+    {
+     "id": "idle",
+     "host": "idle",
+     "sent": []
+    },
+    {
+     "id": "false-alarm",
+     "host": "false-alarm",
+     "sent": [
+      {
+       "shape": "response-conforms",
+       "design": "dc4f517a63e6"
+      },
+      {
+       "shape": "permission-enforced",
+       "design": "ebd4596855c7"
+      },
+      {
+       "shape": "completes-by-deadline",
+       "design": "1a9b68c6657c"
+      },
+      {
+       "shape": "occurrence-one-execution",
+       "design": "68bd21cbdf36"
+      },
+      {
+       "shape": "effect-once-per-key",
+       "design": "13524f90bbc3"
+      },
+      {
+       "shape": "crash-before-effect",
+       "design": "7471caeb1361"
+      },
+      {
+       "shape": "crash-after-effect-before-ack",
+       "design": "2cf0b4cc579a"
+      },
+      {
+       "shape": "screen-shows-result",
+       "design": "9a56b8857420"
+      },
+      {
+       "shape": "persisted-after-write",
+       "design": "842d9e6e89a7"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ORBIT-QA-004",
+   "kind": "qa",
+   "stack": "invoice-a",
+   "controls": [
+    {
+     "id": "reference",
+     "host": "reference",
+     "sent": [
+      {
+       "shape": "response-conforms",
+       "design": "dc4f517a63e6"
+      },
+      {
+       "shape": "permission-enforced",
+       "design": "ebd4596855c7"
+      },
+      {
+       "shape": "completes-by-deadline",
+       "design": "1a9b68c6657c"
+      },
+      {
+       "shape": "occurrence-one-execution",
+       "design": "68bd21cbdf36"
+      },
+      {
+       "shape": "effect-once-per-key",
+       "design": "f40acd602f21"
+      },
+      {
+       "shape": "crash-before-effect",
+       "design": "7471caeb1361"
+      },
+      {
+       "shape": "crash-after-effect-before-ack",
+       "design": "2cf0b4cc579a"
+      },
+      {
+       "shape": "screen-shows-result",
+       "design": "9a56b8857420"
+      },
+      {
+       "shape": "persisted-after-write",
+       "design": "842d9e6e89a7"
+      }
+     ]
+    },
+    {
+     "id": "idle",
+     "host": "idle",
+     "sent": []
+    },
+    {
+     "id": "false-alarm",
+     "host": "false-alarm",
+     "sent": [
+      {
+       "shape": "response-conforms",
+       "design": "dc4f517a63e6"
+      },
+      {
+       "shape": "permission-enforced",
+       "design": "ebd4596855c7"
+      },
+      {
+       "shape": "completes-by-deadline",
+       "design": "1a9b68c6657c"
+      },
+      {
+       "shape": "occurrence-one-execution",
+       "design": "68bd21cbdf36"
+      },
+      {
+       "shape": "effect-once-per-key",
+       "design": "13524f90bbc3"
+      },
+      {
+       "shape": "crash-before-effect",
+       "design": "7471caeb1361"
+      },
+      {
+       "shape": "crash-after-effect-before-ack",
+       "design": "2cf0b4cc579a"
+      },
+      {
+       "shape": "screen-shows-result",
+       "design": "9a56b8857420"
+      },
+      {
+       "shape": "persisted-after-write",
+       "design": "842d9e6e89a7"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ORBIT-QA-005",
+   "kind": "qa",
+   "stack": "invoice-a",
+   "controls": [
+    {
+     "id": "reference",
+     "host": "reference",
+     "sent": [
+      {
+       "shape": "response-conforms",
+       "design": "dc4f517a63e6"
+      },
+      {
+       "shape": "permission-enforced",
+       "design": "ebd4596855c7"
+      },
+      {
+       "shape": "completes-by-deadline",
+       "design": "1a9b68c6657c"
+      },
+      {
+       "shape": "occurrence-one-execution",
+       "design": "68bd21cbdf36"
+      },
+      {
+       "shape": "effect-once-per-key",
+       "design": "f40acd602f21"
+      },
+      {
+       "shape": "crash-before-effect",
+       "design": "7471caeb1361"
+      },
+      {
+       "shape": "crash-after-effect-before-ack",
+       "design": "2cf0b4cc579a"
+      },
+      {
+       "shape": "screen-shows-result",
+       "design": "9a56b8857420"
+      },
+      {
+       "shape": "persisted-after-write",
+       "design": "842d9e6e89a7"
+      }
+     ]
+    },
+    {
+     "id": "idle",
+     "host": "idle",
+     "sent": []
+    },
+    {
+     "id": "false-alarm",
+     "host": "false-alarm",
+     "sent": [
+      {
+       "shape": "response-conforms",
+       "design": "dc4f517a63e6"
+      },
+      {
+       "shape": "permission-enforced",
+       "design": "ebd4596855c7"
+      },
+      {
+       "shape": "completes-by-deadline",
+       "design": "1a9b68c6657c"
+      },
+      {
+       "shape": "occurrence-one-execution",
+       "design": "68bd21cbdf36"
+      },
+      {
+       "shape": "effect-once-per-key",
+       "design": "13524f90bbc3"
+      },
+      {
+       "shape": "crash-before-effect",
+       "design": "7471caeb1361"
+      },
+      {
+       "shape": "crash-after-effect-before-ack",
+       "design": "2cf0b4cc579a"
+      },
+      {
+       "shape": "screen-shows-result",
+       "design": "9a56b8857420"
+      },
+      {
+       "shape": "persisted-after-write",
+       "design": "842d9e6e89a7"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ORBIT-QA-006",
+   "kind": "qa",
+   "stack": "invoice-a",
+   "controls": [
+    {
+     "id": "reference",
+     "host": "reference",
+     "sent": [
+      {
+       "shape": "response-conforms",
+       "design": "dc4f517a63e6"
+      },
+      {
+       "shape": "permission-enforced",
+       "design": "ebd4596855c7"
+      },
+      {
+       "shape": "completes-by-deadline",
+       "design": "1a9b68c6657c"
+      },
+      {
+       "shape": "occurrence-one-execution",
+       "design": "68bd21cbdf36"
+      },
+      {
+       "shape": "effect-once-per-key",
+       "design": "f40acd602f21"
+      },
+      {
+       "shape": "crash-before-effect",
+       "design": "7471caeb1361"
+      },
+      {
+       "shape": "crash-after-effect-before-ack",
+       "design": "2cf0b4cc579a"
+      },
+      {
+       "shape": "screen-shows-result",
+       "design": "9a56b8857420"
+      },
+      {
+       "shape": "persisted-after-write",
+       "design": "842d9e6e89a7"
+      }
+     ]
+    },
+    {
+     "id": "idle",
+     "host": "idle",
+     "sent": []
+    },
+    {
+     "id": "false-alarm",
+     "host": "false-alarm",
+     "sent": [
+      {
+       "shape": "response-conforms",
+       "design": "dc4f517a63e6"
+      },
+      {
+       "shape": "permission-enforced",
+       "design": "ebd4596855c7"
+      },
+      {
+       "shape": "completes-by-deadline",
+       "design": "1a9b68c6657c"
+      },
+      {
+       "shape": "occurrence-one-execution",
+       "design": "68bd21cbdf36"
+      },
+      {
+       "shape": "effect-once-per-key",
+       "design": "13524f90bbc3"
+      },
+      {
+       "shape": "crash-before-effect",
+       "design": "7471caeb1361"
+      },
+      {
+       "shape": "crash-after-effect-before-ack",
+       "design": "2cf0b4cc579a"
+      },
+      {
+       "shape": "screen-shows-result",
+       "design": "9a56b8857420"
+      },
+      {
+       "shape": "persisted-after-write",
+       "design": "842d9e6e89a7"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ORBIT-QA-007",
+   "kind": "qa",
+   "stack": "invoice-a",
+   "controls": [
+    {
+     "id": "reference",
+     "host": "reference",
+     "sent": [
+      {
+       "shape": "response-conforms",
+       "design": "dc4f517a63e6"
+      },
+      {
+       "shape": "permission-enforced",
+       "design": "ebd4596855c7"
+      },
+      {
+       "shape": "completes-by-deadline",
+       "design": "1a9b68c6657c"
+      },
+      {
+       "shape": "occurrence-one-execution",
+       "design": "68bd21cbdf36"
+      },
+      {
+       "shape": "effect-once-per-key",
+       "design": "f40acd602f21"
+      },
+      {
+       "shape": "crash-before-effect",
+       "design": "7471caeb1361"
+      },
+      {
+       "shape": "crash-after-effect-before-ack",
+       "design": "2cf0b4cc579a"
+      },
+      {
+       "shape": "screen-shows-result",
+       "design": "9a56b8857420"
+      },
+      {
+       "shape": "persisted-after-write",
+       "design": "842d9e6e89a7"
+      }
+     ]
+    },
+    {
+     "id": "idle",
+     "host": "idle",
+     "sent": []
+    },
+    {
+     "id": "false-alarm",
+     "host": "false-alarm",
+     "sent": [
+      {
+       "shape": "response-conforms",
+       "design": "dc4f517a63e6"
+      },
+      {
+       "shape": "permission-enforced",
+       "design": "ebd4596855c7"
+      },
+      {
+       "shape": "completes-by-deadline",
+       "design": "1a9b68c6657c"
+      },
+      {
+       "shape": "occurrence-one-execution",
+       "design": "68bd21cbdf36"
+      },
+      {
+       "shape": "effect-once-per-key",
+       "design": "13524f90bbc3"
+      },
+      {
+       "shape": "crash-before-effect",
+       "design": "7471caeb1361"
+      },
+      {
+       "shape": "crash-after-effect-before-ack",
+       "design": "2cf0b4cc579a"
+      },
+      {
+       "shape": "screen-shows-result",
+       "design": "9a56b8857420"
+      },
+      {
+       "shape": "persisted-after-write",
+       "design": "842d9e6e89a7"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ORBIT-SES-001",
+   "kind": "sessions",
+   "stack": "invoice-a",
+   "controls": [
+    {
+     "id": "reference",
+     "host": "reference",
+     "sent": [
+      {
+       "shape": "response-conforms",
+       "design": "dc4f517a63e6"
+      },
+      {
+       "shape": "permission-enforced",
+       "design": "ebd4596855c7"
+      },
+      {
+       "shape": "completes-by-deadline",
+       "design": "1a9b68c6657c"
+      },
+      {
+       "shape": "occurrence-one-execution",
+       "design": "68bd21cbdf36"
+      },
+      {
+       "shape": "effect-once-per-key",
+       "design": "f40acd602f21"
+      },
+      {
+       "shape": "crash-before-effect",
+       "design": "7471caeb1361"
+      },
+      {
+       "shape": "crash-after-effect-before-ack",
+       "design": "2cf0b4cc579a"
+      },
+      {
+       "shape": "screen-shows-result",
+       "design": "9a56b8857420"
+      },
+      {
+       "shape": "persisted-after-write",
+       "design": "842d9e6e89a7"
+      }
+     ]
+    },
+    {
+     "id": "idle",
+     "host": "idle",
+     "sent": []
+    },
+    {
+     "id": "cheat",
+     "host": "cheat",
+     "sent": []
+    },
+    {
+     "id": "half",
+     "host": "half",
+     "sent": [
+      {
+       "shape": "response-conforms",
+       "design": "dc4f517a63e6"
+      },
+      {
+       "shape": "permission-enforced",
+       "design": "ebd4596855c7"
+      },
+      {
+       "shape": "completes-by-deadline",
+       "design": "1a9b68c6657c"
+      },
+      {
+       "shape": "occurrence-one-execution",
+       "design": "68bd21cbdf36"
+      },
+      {
+       "shape": "effect-once-per-key",
+       "design": "f40acd602f21"
+      },
+      {
+       "shape": "crash-before-effect",
+       "design": "7471caeb1361"
+      },
+      {
+       "shape": "crash-after-effect-before-ack",
+       "design": "2cf0b4cc579a"
+      },
+      {
+       "shape": "screen-shows-result",
+       "design": "9a56b8857420"
+      },
+      {
+       "shape": "persisted-after-write",
+       "design": "842d9e6e89a7"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ORBIT-SES-002",
+   "kind": "sessions",
+   "stack": "invoice-a",
+   "controls": [
+    {
+     "id": "reference",
+     "host": "reference",
+     "sent": [
+      {
+       "shape": "response-conforms",
+       "design": "dc4f517a63e6"
+      },
+      {
+       "shape": "permission-enforced",
+       "design": "ebd4596855c7"
+      },
+      {
+       "shape": "completes-by-deadline",
+       "design": "1a9b68c6657c"
+      },
+      {
+       "shape": "occurrence-one-execution",
+       "design": "68bd21cbdf36"
+      },
+      {
+       "shape": "effect-once-per-key",
+       "design": "f40acd602f21"
+      },
+      {
+       "shape": "crash-before-effect",
+       "design": "7471caeb1361"
+      },
+      {
+       "shape": "crash-after-effect-before-ack",
+       "design": "2cf0b4cc579a"
+      },
+      {
+       "shape": "screen-shows-result",
+       "design": "9a56b8857420"
+      },
+      {
+       "shape": "persisted-after-write",
+       "design": "842d9e6e89a7"
+      }
+     ]
+    },
+    {
+     "id": "idle",
+     "host": "idle",
+     "sent": []
+    },
+    {
+     "id": "cheat",
+     "host": "cheat",
+     "sent": []
+    },
+    {
+     "id": "half",
+     "host": "half",
+     "sent": [
+      {
+       "shape": "response-conforms",
+       "design": "dc4f517a63e6"
+      },
+      {
+       "shape": "permission-enforced",
+       "design": "ebd4596855c7"
+      },
+      {
+       "shape": "completes-by-deadline",
+       "design": "1a9b68c6657c"
+      },
+      {
+       "shape": "occurrence-one-execution",
+       "design": "68bd21cbdf36"
+      },
+      {
+       "shape": "effect-once-per-key",
+       "design": "f40acd602f21"
+      },
+      {
+       "shape": "crash-before-effect",
+       "design": "7471caeb1361"
+      },
+      {
+       "shape": "crash-after-effect-before-ack",
+       "design": "2cf0b4cc579a"
+      },
+      {
+       "shape": "screen-shows-result",
+       "design": "9a56b8857420"
+      },
+      {
+       "shape": "persisted-after-write",
+       "design": "842d9e6e89a7"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ORBIT-SES-003",
+   "kind": "sessions",
+   "stack": "invoice-a",
+   "controls": [
+    {
+     "id": "checks-poison",
+     "host": "reference",
+     "sent": [
+      {
+       "shape": "response-conforms",
+       "design": "dc4f517a63e6"
+      },
+      {
+       "shape": "permission-enforced",
+       "design": "ebd4596855c7"
+      },
+      {
+       "shape": "completes-by-deadline",
+       "design": "1a9b68c6657c"
+      },
+      {
+       "shape": "occurrence-one-execution",
+       "design": "68bd21cbdf36"
+      },
+      {
+       "shape": "effect-once-per-key",
+       "design": "f40acd602f21"
+      },
+      {
+       "shape": "crash-before-effect",
+       "design": "7471caeb1361"
+      },
+      {
+       "shape": "crash-after-effect-before-ack",
+       "design": "2cf0b4cc579a"
+      },
+      {
+       "shape": "screen-shows-result",
+       "design": "9a56b8857420"
+      },
+      {
+       "shape": "persisted-after-write",
+       "design": "842d9e6e89a7"
+      }
+     ]
+    },
+    {
+     "id": "idle",
+     "host": "idle",
+     "sent": []
+    },
+    {
+     "id": "cheat",
+     "host": "cheat",
+     "sent": []
+    },
+    {
+     "id": "half",
+     "host": "half",
+     "sent": [
+      {
+       "shape": "response-conforms",
+       "design": "dc4f517a63e6"
+      },
+      {
+       "shape": "permission-enforced",
+       "design": "ebd4596855c7"
+      },
+      {
+       "shape": "completes-by-deadline",
+       "design": "1a9b68c6657c"
+      },
+      {
+       "shape": "occurrence-one-execution",
+       "design": "68bd21cbdf36"
+      },
+      {
+       "shape": "effect-once-per-key",
+       "design": "f40acd602f21"
+      },
+      {
+       "shape": "crash-before-effect",
+       "design": "7471caeb1361"
+      },
+      {
+       "shape": "crash-after-effect-before-ack",
+       "design": "2cf0b4cc579a"
+      },
+      {
+       "shape": "screen-shows-result",
+       "design": "9a56b8857420"
+      },
+      {
+       "shape": "persisted-after-write",
+       "design": "842d9e6e89a7"
+      }
+     ]
+    },
+    {
+     "id": "trusts-poison",
+     "host": "trusts-poison",
+     "sent": [
+      {
+       "shape": "response-conforms",
+       "design": "dc4f517a63e6"
+      },
+      {
+       "shape": "permission-enforced",
+       "design": "ebd4596855c7"
+      },
+      {
+       "shape": "completes-by-deadline",
+       "design": "1a9b68c6657c"
+      },
+      {
+       "shape": "occurrence-one-execution",
+       "design": "68bd21cbdf36"
+      },
+      {
+       "shape": "screen-shows-result",
+       "design": "9a56b8857420"
+      },
+      {
+       "shape": "persisted-after-write",
+       "design": "842d9e6e89a7"
+      }
+     ]
+    },
+    {
+     "id": "trusts-stale",
+     "host": "trusts-stale",
+     "sent": [
+      {
+       "shape": "response-conforms",
+       "design": "dc4f517a63e6"
+      },
+      {
+       "shape": "permission-enforced",
+       "design": "ebd4596855c7"
+      },
+      {
+       "shape": "completes-by-deadline",
+       "design": "1a9b68c6657c"
+      },
+      {
+       "shape": "occurrence-one-execution",
+       "design": "68bd21cbdf36"
+      },
+      {
+       "shape": "effect-once-per-key",
+       "design": "24da1051d444"
+      },
+      {
+       "shape": "crash-before-effect",
+       "design": "7471caeb1361"
+      },
+      {
+       "shape": "crash-after-effect-before-ack",
+       "design": "2cf0b4cc579a"
+      },
+      {
+       "shape": "screen-shows-result",
+       "design": "9a56b8857420"
+      },
+      {
+       "shape": "persisted-after-write",
+       "design": "842d9e6e89a7"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ORBIT-TOOL-001",
+   "kind": "qa",
+   "stack": "invoice-a",
+   "controls": [
+    {
+     "id": "reference",
+     "host": "reference",
+     "sent": [
+      {
+       "shape": "response-conforms",
+       "design": "dc4f517a63e6"
+      },
+      {
+       "shape": "permission-enforced",
+       "design": "ebd4596855c7"
+      },
+      {
+       "shape": "completes-by-deadline",
+       "design": "1a9b68c6657c"
+      },
+      {
+       "shape": "occurrence-one-execution",
+       "design": "68bd21cbdf36"
+      },
+      {
+       "shape": "effect-once-per-key",
+       "design": "f40acd602f21"
+      },
+      {
+       "shape": "crash-before-effect",
+       "design": "7471caeb1361"
+      },
+      {
+       "shape": "crash-after-effect-before-ack",
+       "design": "2cf0b4cc579a"
+      },
+      {
+       "shape": "screen-shows-result",
+       "design": "9a56b8857420"
+      },
+      {
+       "shape": "persisted-after-write",
+       "design": "842d9e6e89a7"
+      }
+     ]
+    },
+    {
+     "id": "recovers",
+     "host": "recovers",
+     "sent": [
+      {
+       "shape": "response-conforms",
+       "design": "dc4f517a63e6"
+      },
+      {
+       "shape": "permission-enforced",
+       "design": "ebd4596855c7"
+      },
+      {
+       "shape": "completes-by-deadline",
+       "design": "1a9b68c6657c"
+      },
+      {
+       "shape": "occurrence-one-execution",
+       "design": "68bd21cbdf36"
+      },
+      {
+       "shape": "effect-once-per-key",
+       "design": "f40acd602f21"
+      },
+      {
+       "shape": "crash-before-effect",
+       "design": "7471caeb1361"
+      },
+      {
+       "shape": "crash-after-effect-before-ack",
+       "design": "2cf0b4cc579a"
+      },
+      {
+       "shape": "screen-shows-result",
+       "design": "9a56b8857420"
+      },
+      {
+       "shape": "persisted-after-write",
+       "design": "842d9e6e89a7"
+      }
+     ]
+    },
+    {
+     "id": "repeats",
+     "host": "repeats",
+     "sent": [
+      {
+       "shape": "response-conforms",
+       "design": "dc4f517a63e6"
+      },
+      {
+       "shape": "permission-enforced",
+       "design": "ebd4596855c7"
+      },
+      {
+       "shape": "completes-by-deadline",
+       "design": "1a9b68c6657c"
+      },
+      {
+       "shape": "occurrence-one-execution",
+       "design": "68bd21cbdf36"
+      },
+      {
+       "shape": "effect-once-per-key",
+       "design": "f40acd602f21"
+      },
+      {
+       "shape": "crash-before-effect",
+       "design": "7471caeb1361"
+      },
+      {
+       "shape": "crash-after-effect-before-ack",
+       "design": "2cf0b4cc579a"
+      },
+      {
+       "shape": "screen-shows-result",
+       "design": "9a56b8857420"
+      },
+      {
+       "shape": "persisted-after-write",
+       "design": "842d9e6e89a7"
+      }
+     ]
+    },
+    {
+     "id": "uncorrected",
+     "host": "uncorrected",
+     "sent": [
+      {
+       "shape": "response-conforms",
+       "design": "dc4f517a63e6"
+      },
+      {
+       "shape": "permission-enforced",
+       "design": "ebd4596855c7"
+      },
+      {
+       "shape": "completes-by-deadline",
+       "design": "1a9b68c6657c"
+      },
+      {
+       "shape": "occurrence-one-execution",
+       "design": "68bd21cbdf36"
+      },
+      {
+       "shape": "effect-once-per-key",
+       "design": "f40acd602f21"
+      },
+      {
+       "shape": "crash-before-effect",
+       "design": "7471caeb1361"
+      },
+      {
+       "shape": "crash-after-effect-before-ack",
+       "design": "2cf0b4cc579a"
+      },
+      {
+       "shape": "screen-shows-result",
+       "design": "9a56b8857420"
+      },
+      {
+       "shape": "persisted-after-write",
+       "design": "842d9e6e89a7"
+      }
+     ]
+    },
+    {
+     "id": "idle",
+     "host": "idle",
+     "sent": []
+    },
+    {
+     "id": "false-alarm",
+     "host": "false-alarm",
+     "sent": [
+      {
+       "shape": "response-conforms",
+       "design": "dc4f517a63e6"
+      },
+      {
+       "shape": "permission-enforced",
+       "design": "ebd4596855c7"
+      },
+      {
+       "shape": "completes-by-deadline",
+       "design": "1a9b68c6657c"
+      },
+      {
+       "shape": "occurrence-one-execution",
+       "design": "68bd21cbdf36"
+      },
+      {
+       "shape": "effect-once-per-key",
+       "design": "13524f90bbc3"
+      },
+      {
+       "shape": "crash-before-effect",
+       "design": "7471caeb1361"
+      },
+      {
+       "shape": "crash-after-effect-before-ack",
+       "design": "2cf0b4cc579a"
+      },
+      {
+       "shape": "screen-shows-result",
+       "design": "9a56b8857420"
+      },
+      {
+       "shape": "persisted-after-write",
+       "design": "842d9e6e89a7"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "designs": {
+  "dc4f517a63e6": {
+   "assertions": [
+    {
+     "criterionRef": "API-AC-1/E1",
+     "step": 1,
+     "template": "value-eq"
+    },
+    {
+     "criterionRef": "API-AC-1/E2",
+     "step": 1,
+     "template": "value-eq"
+    },
+    {
+     "criterionRef": "API-AC-1/E3",
+     "step": 1,
+     "template": "value-eq"
+    }
+   ],
+   "controls": [
+    {
+     "identityRef": "tenant-a-reader",
+     "role": "positive",
+     "why": "the owner is served"
+    }
+   ],
+   "obligation": "tob-000000000001",
+   "skeleton": {
+    "steps": [
+     {
+      "capability": "orbit.http.read",
+      "do": "call",
+      "input": {
+       "endpointRef": "invoice-read",
+       "identityRef": "tenant-a-reader",
+       "method": "GET",
+       "path": "/invoices/inv-a"
+      }
+     }
+    ]
+   }
+  },
+  "ebd4596855c7": {
+   "assertions": [
+    {
+     "criterionRef": "API-AC-1/E1",
+     "step": 1,
+     "template": "value-eq"
+    },
+    {
+     "criterionRef": "API-AC-2/E1",
+     "step": 2,
+     "template": "value-eq"
+    },
+    {
+     "criterionRef": "API-AC-2/E2",
+     "step": 2,
+     "template": "value-eq"
+    },
+    {
+     "criterionRef": "API-AC-2/E3",
+     "step": 2,
+     "template": "value-excludes"
+    }
+   ],
+   "controls": [
+    {
+     "identityRef": "tenant-a-reader",
+     "role": "positive",
+     "why": "the owner is served, so a refusal below means something"
+    },
+    {
+     "identityRef": "tenant-b-reader",
+     "role": "negative",
+     "why": "another tenant is refused, and sees nothing"
+    }
+   ],
+   "obligation": "tob-000000000002",
+   "skeleton": {
+    "steps": [
+     {
+      "capability": "orbit.http.read",
+      "do": "call",
+      "input": {
+       "endpointRef": "invoice-read",
+       "identityRef": "tenant-a-reader",
+       "method": "GET",
+       "path": "/invoices/inv-a"
+      }
+     },
+     {
+      "capability": "orbit.http.read",
+      "do": "call",
+      "input": {
+       "endpointRef": "invoice-read",
+       "identityRef": "tenant-b-reader",
+       "method": "GET",
+       "path": "/invoices/inv-a"
+      }
+     }
+    ]
+   }
+  },
+  "1a9b68c6657c": {
+   "assertions": [
+    {
+     "criterionRef": "FIX-ASYNC-1/E1",
+     "step": 3,
+     "template": "complete"
+    },
+    {
+     "criterionRef": "FIX-ASYNC-1/E3",
+     "step": 4,
+     "template": "complete"
+    }
+   ],
+   "controls": [
+    {
+     "role": "positive",
+     "why": "the due period's request is published and processed in time"
+    }
+   ],
+   "effectScope": "fixture",
+   "obligation": "tob-000000000003",
+   "skeleton": {
+    "steps": [
+     {
+      "capability": "orbit.messaging.observe",
+      "do": "call",
+      "input": {
+       "channelRef": "billing-reminder-requested",
+       "observerRef": "reminder-requests",
+       "request": {}
+      }
+     },
+     {
+      "capability": "orbit.clock.advance",
+      "do": "call",
+      "input": {
+       "clockRef": "invoice-a",
+       "request": {
+        "to": "2026-10-22T09:00:00+07:00"
+       }
+      }
+     },
+     {
+      "capability": "orbit.observe.await",
+      "do": "call",
+      "input": {
+       "observerRef": "reminder-requests",
+       "request": {
+        "count": 1,
+        "match": {
+         "correlationId": "tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00"
+        }
+       }
+      }
+     },
+     {
+      "capability": "orbit.worker.observe",
+      "do": "call",
+      "input": {
+       "request": {
+        "count": 1,
+        "match": {
+         "outcome": "processed"
+        }
+       },
+       "workloadRef": "worker"
+      }
+     }
+    ]
+   },
+   "trigger": {
+    "kind": "schedule",
+    "ref": "billing-daily",
+    "step": 2
+   }
+  },
+  "68bd21cbdf36": {
+   "assertions": [
+    {
+     "criterionRef": "SCHED-1/E1",
+     "step": 2,
+     "template": "complete"
+    },
+    {
+     "criterionRef": "SCHED-1/E2",
+     "step": 3,
+     "template": "count-eq"
+    }
+   ],
+   "controls": [
+    {
+     "role": "positive",
+     "why": "the loop itself decides the pinned period, and one execution runs"
+    }
+   ],
+   "effectScope": "fixture",
+   "obligation": "tob-000000000004",
+   "skeleton": {
+    "steps": [
+     {
+      "capability": "orbit.clock.advance",
+      "do": "call",
+      "input": {
+       "clockRef": "invoice-a",
+       "request": {
+        "to": "2026-10-22T09:00:00+07:00"
+       }
+      }
+     },
+     {
+      "capability": "orbit.scheduler.observe",
+      "do": "call",
+      "input": {
+       "request": {
+        "count": 1,
+        "match": {
+         "decision": "due",
+         "occurrenceId": "billing-daily:2026-10-22T09:00:00+07:00"
+        },
+        "since": 0
+       },
+       "scheduleRef": "billing-daily"
+      }
+     },
+     {
+      "capability": "orbit.state.read",
+      "do": "call",
+      "input": {
+       "request": {
+        "key": "billing-daily:2026-10-22T09:00:00+07:00"
+       },
+       "stateRef": "billing-jobs"
+      }
+     }
+    ]
+   },
+   "trigger": {
+    "kind": "schedule",
+    "ref": "billing-daily",
+    "step": 1
+   }
+  },
+  "f40acd602f21": {
+   "assertions": [
+    {
+     "criterionRef": "FIX-ASYNC-1/E3",
+     "step": 3,
+     "template": "complete"
+    },
+    {
+     "criterionRef": "FIX-ASYNC-1/E2",
+     "step": 4,
+     "template": "count-eq"
+    }
+   ],
+   "controls": [
+    {
+     "role": "duplicate",
+     "why": "the same logical message, published twice on purpose"
+    },
+    {
+     "role": "state",
+     "why": "one reminder for the business key after both deliveries settled"
+    }
+   ],
+   "effectScope": "fixture",
+   "obligation": "tob-000000000005",
+   "skeleton": {
+    "steps": [
+     {
+      "capability": "orbit.messaging.publish",
+      "do": "call",
+      "input": {
+       "channelRef": "billing-reminder-requested",
+       "request": {
+        "correlationId": "tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00",
+        "messageId": "msg-a1b2c3d4e5f60718",
+        "payload": {
+         "businessKey": "tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00",
+         "invoiceId": "inv-a",
+         "messageId": "msg-a1b2c3d4e5f60718",
+         "occurrenceId": "billing-daily:2026-10-23T09:00:00+07:00",
+         "tenantId": "tenant-a"
+        }
+       }
+      }
+     },
+     {
+      "capability": "orbit.messaging.publish",
+      "do": "call",
+      "input": {
+       "channelRef": "billing-reminder-requested",
+       "request": {
+        "correlationId": "tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00",
+        "messageId": "msg-a1b2c3d4e5f60718",
+        "payload": {
+         "businessKey": "tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00",
+         "invoiceId": "inv-a",
+         "messageId": "msg-a1b2c3d4e5f60718",
+         "occurrenceId": "billing-daily:2026-10-23T09:00:00+07:00",
+         "tenantId": "tenant-a"
+        }
+       }
+      }
+     },
+     {
+      "capability": "orbit.worker.observe",
+      "do": "call",
+      "input": {
+       "request": {
+        "count": 2,
+        "match": {
+         "messageId": "msg-a1b2c3d4e5f60718"
+        }
+       },
+       "workloadRef": "worker"
+      }
+     },
+     {
+      "capability": "orbit.state.read",
+      "do": "call",
+      "input": {
+       "request": {
+        "key": "tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00"
+       },
+       "stateRef": "reminders"
+      }
+     }
+    ]
+   },
+   "trigger": {
+    "kind": "message",
+    "ref": "billing-reminder-requested",
+    "step": 1
+   }
+  },
+  "7471caeb1361": {
+   "assertions": [
+    {
+     "criterionRef": "FIX-ASYNC-1/E3",
+     "step": 5,
+     "template": "complete"
+    },
+    {
+     "criterionRef": "FIX-ASYNC-1/E2",
+     "step": 6,
+     "template": "count-eq"
+    }
+   ],
+   "controls": [
+    {
+     "point": "before-effect",
+     "role": "fault",
+     "step": 3,
+     "why": "the worker stops before its effect, at the point the project declared"
+    },
+    {
+     "role": "state",
+     "why": "the effect still happens once"
+    }
+   ],
+   "effectScope": "fixture",
+   "obligation": "tob-000000000006",
+   "skeleton": {
+    "steps": [
+     {
+      "capability": "orbit.workload.control",
+      "do": "call",
+      "input": {
+       "request": {
+        "action": "fault",
+        "point": "before-effect"
+       },
+       "workloadRef": "worker"
+      }
+     },
+     {
+      "capability": "orbit.messaging.publish",
+      "do": "call",
+      "input": {
+       "channelRef": "billing-reminder-requested",
+       "request": {
+        "correlationId": "tenant-a|inv-a|billing-daily:2026-10-24T09:00:00+07:00",
+        "messageId": "msg-b1b2c3d4e5f60719",
+        "payload": {
+         "businessKey": "tenant-a|inv-a|billing-daily:2026-10-24T09:00:00+07:00",
+         "invoiceId": "inv-a",
+         "messageId": "msg-b1b2c3d4e5f60719",
+         "occurrenceId": "billing-daily:2026-10-24T09:00:00+07:00",
+         "tenantId": "tenant-a"
+        }
+       }
+      }
+     },
+     {
+      "capability": "orbit.worker.observe",
+      "do": "call",
+      "input": {
+       "request": {
+        "count": 1,
+        "match": {
+         "messageId": "msg-b1b2c3d4e5f60719",
+         "outcome": "fault"
+        },
+        "waitMs": 30000
+       },
+       "workloadRef": "worker"
+      }
+     },
+     {
+      "capability": "orbit.workload.control",
+      "do": "call",
+      "input": {
+       "request": {
+        "action": "restart"
+       },
+       "workloadRef": "worker"
+      }
+     },
+     {
+      "capability": "orbit.worker.observe",
+      "do": "call",
+      "input": {
+       "request": {
+        "count": 2,
+        "match": {
+         "messageId": "msg-b1b2c3d4e5f60719"
+        }
+       },
+       "workloadRef": "worker"
+      }
+     },
+     {
+      "capability": "orbit.state.read",
+      "do": "call",
+      "input": {
+       "request": {
+        "key": "tenant-a|inv-a|billing-daily:2026-10-24T09:00:00+07:00"
+       },
+       "stateRef": "reminders"
+      }
+     }
+    ]
+   },
+   "trigger": {
+    "kind": "message",
+    "ref": "billing-reminder-requested",
+    "step": 2
+   }
+  },
+  "2cf0b4cc579a": {
+   "assertions": [
+    {
+     "criterionRef": "FIX-ASYNC-1/E4",
+     "step": 5,
+     "template": "complete"
+    },
+    {
+     "criterionRef": "FIX-ASYNC-1/E2",
+     "step": 6,
+     "template": "count-eq"
+    }
+   ],
+   "controls": [
+    {
+     "point": "after-commit-before-ack",
+     "role": "fault",
+     "step": 3,
+     "why": "the worker stops after its effect committed and before it acknowledged"
+    },
+    {
+     "role": "state",
+     "why": "the redelivery does not do it twice"
+    }
+   ],
+   "effectScope": "fixture",
+   "obligation": "tob-000000000007",
+   "skeleton": {
+    "steps": [
+     {
+      "capability": "orbit.workload.control",
+      "do": "call",
+      "input": {
+       "request": {
+        "action": "fault",
+        "point": "after-commit-before-ack"
+       },
+       "workloadRef": "worker"
+      }
+     },
+     {
+      "capability": "orbit.messaging.publish",
+      "do": "call",
+      "input": {
+       "channelRef": "billing-reminder-requested",
+       "request": {
+        "correlationId": "tenant-a|inv-a|billing-daily:2026-10-25T09:00:00+07:00",
+        "messageId": "msg-c1b2c3d4e5f6071a",
+        "payload": {
+         "businessKey": "tenant-a|inv-a|billing-daily:2026-10-25T09:00:00+07:00",
+         "invoiceId": "inv-a",
+         "messageId": "msg-c1b2c3d4e5f6071a",
+         "occurrenceId": "billing-daily:2026-10-25T09:00:00+07:00",
+         "tenantId": "tenant-a"
+        }
+       }
+      }
+     },
+     {
+      "capability": "orbit.worker.observe",
+      "do": "call",
+      "input": {
+       "request": {
+        "count": 1,
+        "match": {
+         "messageId": "msg-c1b2c3d4e5f6071a",
+         "outcome": "fault"
+        },
+        "waitMs": 30000
+       },
+       "workloadRef": "worker"
+      }
+     },
+     {
+      "capability": "orbit.workload.control",
+      "do": "call",
+      "input": {
+       "request": {
+        "action": "restart"
+       },
+       "workloadRef": "worker"
+      }
+     },
+     {
+      "capability": "orbit.worker.observe",
+      "do": "call",
+      "input": {
+       "request": {
+        "count": 2,
+        "match": {
+         "messageId": "msg-c1b2c3d4e5f6071a"
+        }
+       },
+       "workloadRef": "worker"
+      }
+     },
+     {
+      "capability": "orbit.state.read",
+      "do": "call",
+      "input": {
+       "request": {
+        "key": "tenant-a|inv-a|billing-daily:2026-10-25T09:00:00+07:00"
+       },
+       "stateRef": "reminders"
+      }
+     }
+    ]
+   },
+   "trigger": {
+    "kind": "message",
+    "ref": "billing-reminder-requested",
+    "step": 2
+   }
+  },
+  "9a56b8857420": {
+   "assertions": [
+    {
+     "criterionRef": "UI-AC-1/E2",
+     "step": 4,
+     "template": "value-eq"
+    },
+    {
+     "criterionRef": "UI-AC-1/E3",
+     "step": 5,
+     "template": "count-eq"
+    },
+    {
+     "criterionRef": "UI-AC-1/E1",
+     "step": 6,
+     "template": "value-includes"
+    }
+   ],
+   "controls": [
+    {
+     "role": "positive",
+     "why": "the owner's search shows its own seeded invoice"
+    }
+   ],
+   "effectScope": "fixture",
+   "obligation": "tob-000000000008",
+   "page": {
+    "endpointRef": "invoices",
+    "identityRef": "tenant-a-reader"
+   },
+   "skeleton": {
+    "steps": [
+     {
+      "do": "goto",
+      "until": {
+       "selector": "[data-testid=search]"
+      },
+      "url": "/invoices"
+     },
+     {
+      "do": "fill",
+      "selector": "[data-testid=search]",
+      "value": "Synthetic invoice A"
+     },
+     {
+      "do": "click",
+      "selector": "[data-testid=search-submit]",
+      "until": {
+       "attribute": "data-loading",
+       "equals": "false",
+       "selector": "[data-testid=results]"
+      }
+     },
+     {
+      "do": "api",
+      "match": "/api/invoices\\?q=",
+      "method": "GET"
+     },
+     {
+      "capability": "orbit.state.read",
+      "do": "call",
+      "input": {
+       "request": {
+        "key": "Synthetic invoice A"
+       },
+       "stateRef": "invoices"
+      }
+     },
+     {
+      "do": "report",
+      "reads": {
+       "selector": "[data-testid=results]"
+      }
+     }
+    ]
+   }
+  },
+  "842d9e6e89a7": {
+   "assertions": [
+    {
+     "criterionRef": "UI-AC-2/E3",
+     "step": 5,
+     "template": "value-eq"
+    },
+    {
+     "criterionRef": "UI-AC-2/E1",
+     "step": 6,
+     "template": "count-eq"
+    },
+    {
+     "criterionRef": "UI-AC-2/E2",
+     "step": 7,
+     "template": "value-includes"
+    }
+   ],
+   "controls": [
+    {
+     "role": "positive",
+     "why": "the page reports the create, so a row missing below it means something"
+    },
+    {
+     "role": "state",
+     "why": "the created invoice is there, read back below the page"
+    }
+   ],
+   "effectScope": "fixture",
+   "obligation": "tob-000000000009",
+   "page": {
+    "endpointRef": "invoices",
+    "identityRef": "tenant-a-writer"
+   },
+   "skeleton": {
+    "steps": [
+     {
+      "do": "goto",
+      "until": {
+       "selector": "[data-testid=create-form]"
+      },
+      "url": "/invoices"
+     },
+     {
+      "do": "fill",
+      "selector": "[data-testid=create-name]",
+      "value": "${FIXTURE} acceptance invoice"
+     },
+     {
+      "do": "fill",
+      "selector": "[data-testid=create-amount]",
+      "value": "42"
+     },
+     {
+      "do": "click",
+      "selector": "[data-testid=create-submit]",
+      "until": {
+       "attribute": "hidden",
+       "equals": null,
+       "selector": "[data-testid=toast]"
+      }
+     },
+     {
+      "do": "api",
+      "match": "/api/invoices$",
+      "method": "POST"
+     },
+     {
+      "capability": "orbit.state.read",
+      "do": "call",
+      "input": {
+       "request": {
+        "key": "${FIXTURE} acceptance invoice"
+       },
+       "stateRef": "invoices"
+      }
+     },
+     {
+      "do": "report",
+      "reads": {
+       "selector": "[data-testid=toast]"
+      }
+     }
+    ]
+   }
+  },
+  "13524f90bbc3": {
+   "assertions": [
+    {
+     "criterionRef": "FIX-ASYNC-1/E3",
+     "step": 3,
+     "template": "complete"
+    },
+    {
+     "criterionRef": "FIX-ASYNC-1/E2",
+     "step": 4,
+     "template": "count-eq"
+    }
+   ],
+   "controls": [
+    {
+     "role": "duplicate",
+     "why": "the same logical message, published twice on purpose"
+    },
+    {
+     "role": "state",
+     "why": "one reminder for the business key after both deliveries settled"
+    }
+   ],
+   "effectScope": "fixture",
+   "obligation": "tob-000000000005",
+   "skeleton": {
+    "steps": [
+     {
+      "capability": "orbit.messaging.publish",
+      "do": "call",
+      "input": {
+       "channelRef": "billing-reminder-requested",
+       "request": {
+        "correlationId": "tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00",
+        "messageId": "msg-a1b2c3d4e5f60718",
+        "payload": {
+         "businessKey": "tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00",
+         "invoiceId": "inv-a",
+         "messageId": "msg-a1b2c3d4e5f60718",
+         "occurrenceId": "billing-daily:2026-10-23T09:00:00+07:00",
+         "tenantId": "tenant-a"
+        }
+       }
+      }
+     },
+     {
+      "capability": "orbit.messaging.publish",
+      "do": "call",
+      "input": {
+       "channelRef": "billing-reminder-requested",
+       "request": {
+        "correlationId": "tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00",
+        "messageId": "msg-a1b2c3d4e5f60718",
+        "payload": {
+         "businessKey": "tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00",
+         "invoiceId": "inv-a",
+         "messageId": "msg-a1b2c3d4e5f60718",
+         "occurrenceId": "billing-daily:2026-10-23T09:00:00+07:00",
+         "tenantId": "tenant-a"
+        }
+       }
+      }
+     },
+     {
+      "capability": "orbit.worker.observe",
+      "do": "call",
+      "input": {
+       "request": {
+        "count": 2,
+        "match": {
+         "messageId": "msg-a1b2c3d4e5f60718"
+        }
+       },
+       "workloadRef": "worker"
+      }
+     },
+     {
+      "capability": "orbit.state.read",
+      "do": "call",
+      "input": {
+       "request": {
+        "key": "${FIXTURE} never written"
+       },
+       "stateRef": "reminders"
+      }
+     }
+    ]
+   },
+   "trigger": {
+    "kind": "message",
+    "ref": "billing-reminder-requested",
+    "step": 1
+   }
+  },
+  "24da1051d444": {
+   "assertions": [
+    {
+     "criterionRef": "FIX-ASYNC-1/E3",
+     "step": 3,
+     "template": "complete"
+    },
+    {
+     "criterionRef": "FIX-ASYNC-1/E2",
+     "step": 4,
+     "template": "count-eq"
+    }
+   ],
+   "controls": [
+    {
+     "role": "duplicate",
+     "why": "the same logical message, published twice on purpose"
+    },
+    {
+     "role": "state",
+     "why": "one reminder for the business key after both deliveries settled"
+    }
+   ],
+   "effectScope": "fixture",
+   "obligation": "tob-000000000005",
+   "skeleton": {
+    "steps": [
+     {
+      "capability": "orbit.messaging.publish",
+      "do": "call",
+      "input": {
+       "channelRef": "billing-reminder-requested",
+       "request": {
+        "correlationId": "tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00",
+        "messageId": "msg-a1b2c3d4e5f60718",
+        "payload": {
+         "businessKey": "tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00",
+         "invoiceId": "inv-a",
+         "messageId": "msg-a1b2c3d4e5f60718",
+         "occurrenceId": "billing-daily:2026-10-23T09:00:00+07:00",
+         "tenantId": "tenant-a"
+        }
+       }
+      }
+     },
+     {
+      "capability": "orbit.messaging.publish",
+      "do": "call",
+      "input": {
+       "channelRef": "billing-reminder-requested",
+       "request": {
+        "correlationId": "tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00",
+        "messageId": "msg-a1b2c3d4e5f60718",
+        "payload": {
+         "businessKey": "tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00",
+         "invoiceId": "inv-a",
+         "messageId": "msg-a1b2c3d4e5f60718",
+         "occurrenceId": "billing-daily:2026-10-23T09:00:00+07:00",
+         "tenantId": "tenant-a"
+        }
+       }
+      }
+     },
+     {
+      "capability": "orbit.worker.observe",
+      "do": "call",
+      "input": {
+       "request": {
+        "count": 2,
+        "match": {
+         "messageId": "msg-a1b2c3d4e5f60718"
+        }
+       },
+       "workloadRef": "worker"
+      }
+     },
+     {
+      "capability": "orbit.state.read",
+      "do": "call",
+      "input": {
+       "request": {
+        "key": "${FIXTURE} reminder-v1"
+       },
+       "stateRef": "reminders"
+      }
+     }
+    ]
+   },
+   "trigger": {
+    "kind": "message",
+    "ref": "billing-reminder-requested",
+    "step": 1
+   }
+  }
+ }
+}

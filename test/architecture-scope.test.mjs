@@ -109,3 +109,22 @@ test("an incremental look over one folder never rewrites a count over the whole 
   for (const a of [["add", "-A"], ["commit", "-qm", "one in a folder the convention does not watch"]]) git(at.repo, a);
   assert.deepEqual([looked(ctx), counted(ctx, "mjs")], ["INCREMENTAL", "41 tracked file(s) are named *.mjs"], "a scan that runs for another fact counts it again");
 });
+
+// An incremental look re-reads only what moved: the decision names the scopes, and a scan that opened every file of the
+// tree under that name would be a bootstrap on every commit. (A row that reads only the LISTING is handed all of it,
+// above; this is about the files a scan OPENS.)
+const TWO = { "README.md": "# demo\n", "app/package.json": JSON.stringify({ name: "app", dependencies: { a: "1.0.0" } }), "app/main.mjs": "export const a = 1;\n", "lib/package.json": JSON.stringify({ name: "lib", dependencies: { b: "1.0.0" } }), "lib/index.mjs": "export const b = 1;\n" };
+
+test("an incremental look opens only files under the scopes that moved", (t) => {
+  const at = repoOf(t, TWO);
+  const ctx = ctxOf(at);
+  const opened = [];
+  const tree = ctx.source;
+  ctx.source = { ...tree, read: (p) => (opened.push(p), tree.read(p)) };
+  assert.equal(looked(ctx), "BOOTSTRAP");
+  writeFileSync(join(at.repo, "lib/package.json"), JSON.stringify({ name: "lib", dependencies: { b: "2.0.0" } }));
+  for (const a of [["commit", "-qam", "the library's manifest moved"]]) git(at.repo, a);
+  opened.length = 0;
+  assert.equal(looked(ctx), "INCREMENTAL");
+  assert.deepEqual(opened, ["lib/package.json"], "only the manifest that moved is opened again");
+});

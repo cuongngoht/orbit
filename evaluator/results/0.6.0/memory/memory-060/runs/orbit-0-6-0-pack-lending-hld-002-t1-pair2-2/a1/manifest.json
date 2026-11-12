@@ -1,0 +1,65 @@
+{
+  "campaign": "memory-060",
+  "run": {
+    "arm": "orbit-0.6.0",
+    "task": "pack:lending-hld-002",
+    "trial": 1,
+    "track": "pair2",
+    "step": 2,
+    "key": "orbit-0.6.0__pack_lending-hld-002__t1__pair2-2"
+  },
+  "attempt": 1,
+  "arm": {
+    "id": "orbit-0.6.0",
+    "kind": "claude+orbit",
+    "def": {
+      "kind": "claude+orbit",
+      "rev": "6b25eb9ef227b8fe1e896d5d7aff0d22ad52a827"
+    },
+    "frozen": {
+      "rev": "6b25eb9ef227b8fe1e896d5d7aff0d22ad52a827",
+      "commit": "6b25eb9ef227b8fe1e896d5d7aff0d22ad52a827"
+    }
+  },
+  "seated": false,
+  "task": {
+    "ref": "pack:lending-hld-002",
+    "image": "node:22",
+    "repo": "/work/repo",
+    "digest": "5020d40a1a212f3e92e291551a10a59c85dda1b9a2e8652922fa2d554fdcecdd"
+  },
+  "model": "claude-sonnet-5-5",
+  "effort": "medium",
+  "limits": {
+    "usd": 1,
+    "turns": 80,
+    "minutes": 40,
+    "cpus": 2,
+    "memoryMb": 4096,
+    "pids": 2048
+  },
+  "capUsd": 1,
+  "tools": {
+    "ok": true,
+    "volume": "evl-tools-cc-2.1.322-e13726ca6041",
+    "built": false,
+    "claudeCode": "2.1.322",
+    "claudeCodeSays": "2.1.322 (Claude Code)",
+    "node": "v22.23.5",
+    "nodeImage": "node:22",
+    "nodeImageId": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb",
+    "builtAt": "2026-11-12T05:13:27.498Z"
+  },
+  "containers": {
+    "net": "evl-c415d76f-0e233960-a1-net",
+    "egress": "evl-c415d76f-0e233960-a1-egress",
+    "task": "evl-c415d76f-0e233960-a1-task",
+    "grader": "evl-c415d76f-0e233960-a1-grader",
+    "label": "memory-060/orbit-0.6.0__pack_lending-hld-002__t1__pair2-2/a1"
+  },
+  "evaluator": {
+    "commit": "78a4a56b01d27ba9528ff1575ea3c5feacd94c5a",
+    "dirty": false
+  },
+  "startedAt": "2026-11-12T12:40:34.186Z"
+}

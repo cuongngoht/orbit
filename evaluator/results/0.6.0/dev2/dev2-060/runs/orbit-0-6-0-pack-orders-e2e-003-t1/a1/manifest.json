@@ -1,0 +1,62 @@
+{
+  "campaign": "dev2-060",
+  "run": {
+    "arm": "orbit-0.6.0",
+    "task": "pack:orders-e2e-003",
+    "trial": 1,
+    "key": "orbit-0.6.0__pack_orders-e2e-003__t1"
+  },
+  "attempt": 1,
+  "arm": {
+    "id": "orbit-0.6.0",
+    "kind": "claude+orbit",
+    "def": {
+      "kind": "claude+orbit",
+      "rev": "edcfde231f38152a10ab08f6869c4c20e68c0154"
+    },
+    "frozen": {
+      "rev": "edcfde231f38152a10ab08f6869c4c20e68c0154",
+      "commit": "edcfde231f38152a10ab08f6869c4c20e68c0154"
+    }
+  },
+  "task": {
+    "ref": "pack:orders-e2e-003",
+    "image": "node:22",
+    "repo": "/work/repo",
+    "digest": "ebf9bb25d12c74129134747dec54cc80bed447e4801031f06074b283b89656f8"
+  },
+  "model": "claude-sonnet-5-5",
+  "effort": "medium",
+  "limits": {
+    "usd": 1,
+    "turns": 80,
+    "minutes": 40,
+    "cpus": 2,
+    "memoryMb": 4096,
+    "pids": 2048
+  },
+  "capUsd": 1,
+  "tools": {
+    "ok": true,
+    "volume": "evl-tools-cc-2.1.322-e13726ca6041",
+    "built": false,
+    "claudeCode": "2.1.322",
+    "claudeCodeSays": "2.1.322 (Claude Code)",
+    "node": "v22.23.5",
+    "nodeImage": "node:22",
+    "nodeImageId": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb",
+    "builtAt": "2026-11-12T05:13:27.498Z"
+  },
+  "containers": {
+    "net": "evl-a32fe9c7-5f927d55-a1-net",
+    "egress": "evl-a32fe9c7-5f927d55-a1-egress",
+    "task": "evl-a32fe9c7-5f927d55-a1-task",
+    "grader": "evl-a32fe9c7-5f927d55-a1-grader",
+    "label": "dev2-060/orbit-0.6.0__pack_orders-e2e-003__t1/a1"
+  },
+  "evaluator": {
+    "commit": "02f2083f15ada78488676629d9990dc725d6295a",
+    "dirty": false
+  },
+  "startedAt": "2026-11-12T11:26:47.794Z"
+}

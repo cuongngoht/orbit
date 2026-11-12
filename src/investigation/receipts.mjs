@@ -19,7 +19,7 @@
 // case and the map (the composition root decides which) -- with their
 // fingerprints then. Whether it still applies is asked of those files now
 // (src/freshness.mjs), never of HEAD: an unrelated commit leaves it fresh.
-import { factState, scopeState } from "../freshness.mjs";
+import { answerFor, factState, scopeState } from "../freshness.mjs";
 import { short } from "../hash.mjs";
 import { engineVersion } from "../version.mjs";
 
@@ -66,6 +66,6 @@ export const latestFor = (model, obligation) => model.receipts.filter((r) => r.o
 // Does a receipt still apply? Its scope asked NOW against the hashes it kept.
 export function applicabilityOf(receipt, now) {
   if (!receipt.scope?.length || !now) return "unknown";
-  const states = Object.fromEntries(receipt.scope.map((p) => [p, scopeState(now[p] ?? null, receipt.fingerprints?.[p] ?? null)]));
+  const states = Object.fromEntries(receipt.scope.map((p) => [p, scopeState(answerFor(now, p), receipt.fingerprints?.[p] ?? null)]));
   return factState({ scope: receipt.scope }, states);
 }

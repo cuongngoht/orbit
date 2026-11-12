@@ -1,0 +1,26 @@
+diff --git a/src/money.mjs b/src/money.mjs
+index a39c64447fe954c74928e6e0ca24ed01760d502c..1c16766fef992b3cb27a0316e3718c4c667f361c 100644
+--- a/src/money.mjs
++++ b/src/money.mjs
+@@ -7,7 +7,7 @@ export const lineTotal = (line) => line.qty * line.unitMinor;
+ export const subtotal = (lines) => lines.reduce((sum, line) => sum + lineTotal(line), 0);
+ 
+ // What a whole-percentage discount leaves of an amount, in minor units, in integers only.
+-export const discounted = (minor, percent) => Math.floor((minor * (100 - percent)) / 100);
++export const discounted = (minor, percent) => Math.floor((minor * (100 - percent) + 50) / 100);
+ 
+ export const orderTotal = (lines, percent = 0) => discounted(subtotal(lines), percent);
+ 
+diff --git a/test/discount-rounding.test.mjs b/test/discount-rounding.test.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..4e9ba7cc3ebdd0e8dacbd3c121d8a1cfaec2762e
+--- /dev/null
++++ b/test/discount-rounding.test.mjs
+@@ -0,0 +1,7 @@
++import assert from "node:assert/strict";
++import { test } from "node:test";
++import { discounted } from "../src/money.mjs";
++
++test("a discount that leaves half a cent or more rounds up to the next cent", () => {
++  assert.equal(discounted(995, 10), 896);
++});

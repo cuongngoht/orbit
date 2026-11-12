@@ -1,0 +1,13 @@
+diff --git a/src/orders.mjs b/src/orders.mjs
+index f203235e3ad85f33546f8e1bfb4d35b596818f50..2e5f290198e319c3c2143e1fb95adbbbc2c58c9a 100644
+--- a/src/orders.mjs
++++ b/src/orders.mjs
+@@ -11,7 +11,7 @@ const validPercent = (p) => Number.isInteger(p) && p >= 0 && p <= 100;
+ export const invalidOf = (input) => (!Array.isArray(input?.lines) || !input.lines.length || !input.lines.every(validLine) ? "lines" : !validPercent(input.percent ?? 0) ? "percent" : !Object.hasOwn(CURRENCIES, input.currency ?? "USD") ? "currency" : null);
+ 
+ export function createOrder(store, input) {
+-  const order = { id: nextId(store), customer: String(input.customer ?? ""), lines: input.lines, percent: input.percent ?? 0, currency: input.currency ?? "USD", state: "open" };
++  const order = { id: nextId(store), customer: String(input.customer ?? ""), lines: input.lines, percent: input.percent ?? 0, currency: input.currency ?? "USD", note: String(input.note ?? ""), state: "open" };
+   return store.put("orders", order.id, { ...order, totalMinor: orderTotal(order.lines, order.percent) });
+ }
+ 

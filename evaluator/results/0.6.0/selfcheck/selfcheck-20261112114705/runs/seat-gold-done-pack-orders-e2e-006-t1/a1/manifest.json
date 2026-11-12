@@ -1,0 +1,71 @@
+{
+  "campaign": "selfcheck-20261112114705",
+  "run": {
+    "arm": "seat-gold-done",
+    "task": "pack:orders-e2e-006",
+    "trial": 1,
+    "key": "seat-gold-done__pack_orders-e2e-006__t1"
+  },
+  "attempt": 1,
+  "arm": {
+    "id": "seat-gold-done",
+    "kind": "scripted",
+    "def": {
+      "kind": "scripted",
+      "behaviour": "patch",
+      "patch": "gold",
+      "status": "DONE",
+      "seat": "plugin",
+      "rev": "HEAD"
+    },
+    "frozen": {
+      "rev": "HEAD",
+      "commit": "f9634ca3afe710aafa53939afc94a989c83917b7"
+    }
+  },
+  "seated": true,
+  "seat": {
+    "argv": [
+      "/opt/eval/bin/node",
+      "/opt/orbit-plugin/cli/help.mjs"
+    ]
+  },
+  "task": {
+    "ref": "pack:orders-e2e-006",
+    "image": "node:22",
+    "repo": "/work/repo",
+    "digest": "b5f7d882a0f3bea582928c59be51dd541b7089a5e4f727324d780e9a444c6454"
+  },
+  "limits": {
+    "usd": 0,
+    "turns": 10,
+    "minutes": 10,
+    "cpus": 2,
+    "memoryMb": 2048,
+    "pids": 512
+  },
+  "capUsd": 0,
+  "tools": {
+    "ok": true,
+    "volume": "evl-tools-cc-2.1.322-e13726ca6041",
+    "built": false,
+    "claudeCode": "2.1.322",
+    "claudeCodeSays": "2.1.322 (Claude Code)",
+    "node": "v22.23.5",
+    "nodeImage": "node:22",
+    "nodeImageId": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb",
+    "builtAt": "2026-11-12T05:13:27.498Z"
+  },
+  "containers": {
+    "net": "evl-56e3a4e7-7e261249-a1-net",
+    "egress": "evl-56e3a4e7-7e261249-a1-egress",
+    "task": "evl-56e3a4e7-7e261249-a1-task",
+    "grader": "evl-56e3a4e7-7e261249-a1-grader",
+    "label": "selfcheck-20261112114705/seat-gold-done__pack_orders-e2e-006__t1/a1"
+  },
+  "evaluator": {
+    "commit": "f9634ca3afe710aafa53939afc94a989c83917b7",
+    "dirty": false
+  },
+  "startedAt": "2026-11-12T11:47:09.911Z"
+}

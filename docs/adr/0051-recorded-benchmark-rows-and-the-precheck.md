@@ -2,6 +2,9 @@
 
 ## Status
 
+Superseded by ADR 0057 (0.6.0): the in-repo benchmark and the ship it qualified a release with are removed; what
+follows is kept as the record of what was decided then.
+
 Accepted (0.5.0; release tooling, backlog B6 and the 0.5.0 release criteria). No engine contract changes. Builds on
 ADR 0049 (a release qualifies on Docker benchmark evidence carried by Claude Code), whose catalog, verdict tables and
 publish gate it extends, and on ADR 0046 to 0048 (the benchmark the ship drives as a command). Additions to what a

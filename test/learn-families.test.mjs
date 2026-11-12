@@ -36,6 +36,15 @@ test("failures group on the step the ledger records, and say the message is not 
   assert.ok(f.missing.some((m) => /records where a run stopped, never why/.test(m)));
 });
 
+// The fixture's failing runs are one per session, so it cannot tell a tally of runs from a tally of sessions: three
+// runs in one sitting are ONE session, and a family that counted runs would let one afternoon look like a trend.
+test("several runs in one session count once: a failure is tallied by sessions, never runs", () => {
+  const fail = (host, at) => ({ case: "x", status: "FAIL", host, at, fe_commit: "abc1234", failedStep: { i: 1, do: "click", on: "home/Add" } });
+  const runs = [fail("laptop-a", "2026-09-10T08:00:00.000Z"), fail("laptop-a", "2026-09-10T09:00:00.000Z"), fail("laptop-a", "2026-09-10T10:00:00.000Z"), fail("laptop-b", "2026-09-11T08:00:00.000Z")];
+  const [f] = findingsOf(evidenceOf({ memory: { runs: () => runs, notes: () => [], host: "laptop-b" }, frontend: { commit: () => "abc1234" } }, {}), { family: "failures" });
+  assert.equal(f.for, 2, "two sessions, not four runs");
+});
+
 // A laptop off the VPN is not a defect, and a store that learned otherwise would
 // teach the next session to distrust a working product.
 test("BLOCKED is grouped apart from FAIL and never reads as a product defect", () => {

@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "id": "orders-e2e-003",
+  "title": "Orders are kept and shown in their own currency",
+  "source": {
+    "kind": "orbit-benchmark-case",
+    "suite": "orbit-engineering",
+    "case": "ORBIT-E2E-003",
+    "version": "1.0.0",
+    "caseDigest": "b2378ee1d905873954db0732a14518f66fc8da212e0abf8acbd9016802ff53cf"
+  },
+  "fixture": "orders",
+  "image": "node:22",
+  "repo": "/work/repo",
+  "f2p": [
+    {
+      "name": "currency",
+      "file": "currency.spec.mjs",
+      "target": "test/currency.test.mjs"
+    },
+    {
+      "name": "eval-acceptance",
+      "file": "acceptance.spec.mjs",
+      "target": "test/eval-acceptance.test.mjs"
+    }
+  ],
+  "p2p": [
+    "test/cancel.test.mjs",
+    "test/dedupe.test.mjs",
+    "test/invoice.test.mjs",
+    "test/money.test.mjs",
+    "test/note.test.mjs",
+    "test/orders.test.mjs",
+    "test/ui.test.mjs",
+    "test/worker.test.mjs"
+  ],
+  "controls": {
+    "gold": {
+      "expect": "RESOLVED",
+      "about": "the case's reference solution"
+    },
+    "half": {
+      "expect": "NOT_RESOLVED",
+      "about": "Half of the change: currencies are kept, validated and carried to the invoice, but every total is still formatted in dollars by the API and the view."
+    },
+    "tamper": {
+      "expect": "NOT_RESOLVED",
+      "about": "nothing fixed; every test file the grader runs replaced or created by one that passes"
+    },
+    "regress": {
+      "expect": "REGRESSED",
+      "about": "the gold change, src/api.mjs emptied, and test/cancel.test.mjs (which imports it) deleted"
+    }
+  },
+  "grade": {
+    "perFileSeconds": 180,
+    "cpus": 2,
+    "memoryMb": 2048,
+    "pids": 512
+  }
+}

@@ -29,6 +29,7 @@
 // table words (the open-work lookup with the references the prompt names, in
 // memory). A prompt the HOST wrote (`synthetic`, a background task's notification)
 // is not classified and the registry is not read: the table answers NONE for it.
+import { engined } from "../../engined.mjs";
 import { classify, marksIn } from "../../routing/classify.mjs";
 import { dispatchedBy } from "../../routing/explain.mjs";
 import { BUDGET_BYTES, formatDecision } from "../../routing/format.mjs";
@@ -51,7 +52,9 @@ function routed(event, world) {
   return { decision: decide(asked, effective, factsOf(event, world, asked, prompt)), dispatches: dispatchedBy(effective), marks: asked.marks };
 }
 
-const factsOf = (event, world, asked, prompt) => ({ synthetic: event.synthetic === true, plugin: world.plugin, workflow: world.workflowOf?.({ intent: asked.intent.id, matched: asked.matched, requirements: asked.requirements }) ?? null, host: world.hostRow?.() ?? null, settings: world.automation?.() ?? null, work: world.openWork?.({ refs: refsOf(prompt), continued: asked.marks.includes("continue") }) ?? null });
+// `observed` (0.6.0, P2): the facts about the session's work that hold now (src/routing/facts.mjs), read off its own
+// working set by the root -- so a check that failed after the last prompt shapes this one's decision.
+const factsOf = (event, world, asked, prompt) => ({ synthetic: event.synthetic === true, plugin: world.plugin, workflow: world.workflowOf?.({ intent: asked.intent.id, matched: asked.matched, requirements: asked.requirements }) ?? null, host: world.hostRow?.() ?? null, settings: world.automation?.() ?? null, work: world.openWork?.({ refs: refsOf(prompt), continued: asked.marks.includes("continue") }) ?? null, observed: event.synthetic === true ? [] : world.observed?.() ?? [] });
 
 // ONE advisory line, only when the strategy is a COORDINATED workflow (`how: automation`) and a person kept
 // `trigger.arbitraryPrompt` on: the router SAYS a coordinated workflow could take this prompt. A specification's goal
@@ -63,7 +66,7 @@ const ADVICE = "Orbit coordinates a task by default: a workflow could take this 
 const advised = (v, decision) => decision?.strategy?.word === "COORDINATED" && decision.activation?.how === "automation" && Boolean(v?.trigger?.arbitraryPrompt);
 
 // The command it names carries the engine's own path once the root knows it, as the strategy line's does.
-const adviceOf = (world) => (world.engine ? ADVICE.replaceAll("<engine>", world.engine) : ADVICE);
+const adviceOf = (world) => engined(ADVICE, world.engine);
 
 const withAdvice = (text, world, decision) => ((advice) => (text && advised(world.automation?.(), decision) && Buffer.byteLength(`${text}\n${advice}`) <= BUDGET_BYTES ? `${text}\n${advice}` : text))(adviceOf(world));
 

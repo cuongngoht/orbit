@@ -1,0 +1,172 @@
+diff --git a/README.md b/README.md
+index 41fd800d49dba85683d60ff2af2641833217659a..c470d4f3461b242ab3d580e77ec757a237e6f299 100644
+--- a/README.md
++++ b/README.md
+@@ -8,7 +8,7 @@ own records. Records live on disk, one JSON file each, so a service that stops a
+ - `src/tenancy.mjs` — a library system's own records.
+ - `src/catalog.mjs` — titles and their copies. A book may be out for 21 days, a DVD for 7.
+ - `src/members.mjs` — members, and what they owe. A member may have five items out at once.
+-- `src/loans.mjs` — lending and returns.
++- `src/loans.mjs` — lending, renewals and returns.
+ - `src/fines.mjs` — fines for late returns.
+ - `src/holds.mjs` — holds: members waiting for a title, first come, first served.
+ - `src/api.mjs` — the HTTP-shaped API: `handle(store, { method, path, tenant, today, body }) -> { status, body }`.
+@@ -26,6 +26,7 @@ answers `{ error: <word> }`.
+ | `GET /members/:id/notices` | the notices a member was sent |
+ | `POST /loans` `{ copy, member }` · `GET /loans/:id` | lends a copy to a member, a loan |
+ | `POST /loans/:id/return` | checks a loan in at the desk |
++| `POST /loans/:id/renew` | renews a loan |
+ | `POST /holds` `{ title, member }` · `GET /holds/:id` | places a hold on a title, a hold |
+ 
+ `npm test` runs the tests.
+diff --git a/src/api.mjs b/src/api.mjs
+index 767634bda7efb6e2454436ae3c18ae98915c62e3..42ecc8085f7c29ed9e7d5c5dcbfae8e31b685776 100644
+--- a/src/api.mjs
++++ b/src/api.mjs
+@@ -6,7 +6,7 @@ import { isKey } from "./store.mjs";
+ import { allMine, isTenant, mine } from "./tenancy.mjs";
+ import { copyView, isFormat, newCopy, newTitle, titleView } from "./catalog.mjs";
+ import { memberView, newMember } from "./members.mjs";
+-import { lendRefusal, lent, loanView, returned } from "./loans.mjs";
++import { lendRefusal, lent, loanView, renewed, renewRefusal, returned } from "./loans.mjs";
+ import { holdView, newHold, noticeView, openHoldOf } from "./holds.mjs";
+ 
+ const answer = (status, body) => ({ status, body });
+@@ -33,7 +33,7 @@ const noticesOf = (c, member) => answer(200, { notices: allMine(c.store, c.tenan
+ 
+ const notices = (c, [id]) => ((m) => (m ? noticesOf(c, m) : refused(404, "no-member")))(mine(c.store, c.tenant, "members", id));
+ 
+-// ---- lending and returns ----------------------------------------------------------------------------------------------
++// ---- lending, returns and renewals ------------------------------------------------------------------------------------
+ 
+ const lendOrNot = (c, copy, member) => ((why) => (why ? refused(409, why) : answer(201, loanView(lent(c.store, c.tenant, copy, member, c.today)))))(lendRefusal(c.store, c.tenant, copy, member));
+ 
+@@ -50,6 +50,10 @@ const giveBack = (c, loan) => (loan.returned ? refused(409, "returned") : answer
+ 
+ const back = (c, [id]) => ((loan) => (loan ? giveBack(c, loan) : refused(404, "no-loan")))(loanOf(c, id));
+ 
++const renewOrNot = (c, loan) => ((why) => (why ? refused(409, why) : answer(200, loanView(renewed(c.store, c.tenant, loan)))))(renewRefusal(c.store, c.tenant, loan, c.today));
++
++const renew = (c, [id]) => ((loan) => (loan ? renewOrNot(c, loan) : refused(404, "no-loan")))(loanOf(c, id));
++
+ // ---- holds ------------------------------------------------------------------------------------------------------------
+ 
+ const holdOrNot = (c, title, member) => (openHoldOf(c.store, c.tenant, title, member) ? refused(409, "duplicate-hold") : answer(201, holdView(newHold(c.store, c.tenant, title, member, c.today))));
+@@ -75,6 +79,7 @@ const ROUTES = [
+   ["POST", /^\/loans$/, lend],
+   ["GET", /^\/loans\/([^/]+)$/, (c, [id]) => found(loanOf(c, id), "no-loan", loanView)],
+   ["POST", /^\/loans\/([^/]+)\/return$/, back],
++  ["POST", /^\/loans\/([^/]+)\/renew$/, renew],
+   ["POST", /^\/holds$/, hold],
+   ["GET", /^\/holds\/([^/]+)$/, (c, [id]) => found(mine(c.store, c.tenant, "holds", id), "no-hold", holdView)],
+ ];
+diff --git a/src/holds.mjs b/src/holds.mjs
+index 3b7d1b0d96a49e3f34ce97515f1a89d0f20b3342..03b88822bf4d82c489e30c84d176e457d54c3da4 100644
+--- a/src/holds.mjs
++++ b/src/holds.mjs
+@@ -17,6 +17,9 @@ export const openHoldOf = (store, tenant, title, member) => holdsOn(store, tenan
+ 
+ export const newHold = (store, tenant, title, member, day) => created(store, "holds", "hold", { tenant, title: title.id, member: member.id, placed: day, state: "waiting", copy: null, pickupBy: null });
+ 
++// Whether anybody is waiting for a copy's title: a hold placed and not yet served.
++export const holdWaiting = (store, copy) => holdsOn(store, copy.tenant, copy.title).some((h) => h.state === "waiting");
++
+ const readyHoldOf = (store, copy) => holdsOn(store, copy.tenant, copy.title).find((h) => h.state === "ready" && h.copy === copy.id) ?? null;
+ 
+ // A copy set aside is its hold's member's alone to borrow; when they borrow it, their hold is collected.
+diff --git a/src/loans.mjs b/src/loans.mjs
+index 446500116e8a5d5bd2ff16506a5c5b6abc02b30d..2b251d431677e9a210ffea12e0d5d07cc80415ff 100644
+--- a/src/loans.mjs
++++ b/src/loans.mjs
+@@ -1,4 +1,4 @@
+-// LOANS: a copy lent to a member until its due date and brought back -- at the desk, or through the drop box
++// LOANS: a copy lent to a member until its due date, renewed, and brought back -- at the desk, or through the drop box
+ // (dropbox.mjs). A late return is fined and the fine charged to the member; the copy then goes to whoever is waiting
+ // for its title, or back on the shelf.
+ import { addDays } from "./dates.mjs";
+@@ -7,7 +7,9 @@ import { allMine, mine } from "./tenancy.mjs";
+ import { loanDaysOf, titleOfCopy } from "./catalog.mjs";
+ import { charged, LOAN_LIMIT } from "./members.mjs";
+ import { fineFor } from "./fines.mjs";
+-import { collectedBy, heldForAnother, servedOrShelved } from "./holds.mjs";
++import { collectedBy, heldForAnother, holdWaiting, servedOrShelved } from "./holds.mjs";
++
++export const RENEWALS = 2;
+ 
+ const openLoansOf = (store, tenant, member) => allMine(store, tenant, "loans").filter((l) => l.member === member.id && !l.returned);
+ 
+@@ -25,7 +27,7 @@ const dueOf = (store, copy, day) => addDays(day, loanDaysOf(titleOfCopy(store, c
+ export function lent(store, tenant, copy, member, day) {
+   collectedBy(store, copy, member);
+   put(store, "copies", { ...copy, status: "loan" });
+-  return created(store, "loans", "loan", { tenant, copy: copy.id, member: member.id, out: day, due: dueOf(store, copy, day), returned: null, fineCents: 0 });
++  return created(store, "loans", "loan", { tenant, copy: copy.id, member: member.id, out: day, due: dueOf(store, copy, day), renewals: 0, returned: null, fineCents: 0 });
+ }
+ 
+ // A loan brought back on a day: fined for the days it is late and the fine charged to its member, and its copy set
+@@ -40,4 +42,19 @@ export function returned(store, tenant, loan, day) {
+ 
+ export const openLoanOfCopy = (store, tenant, copy) => allMine(store, tenant, "loans").find((l) => l.copy === copy.id && !l.returned) ?? null;
+ 
+-export const loanView = (l) => ({ id: l.id, copy: l.copy, member: l.member, out: l.out, due: l.due, returned: l.returned, fineCents: l.fineCents });
++// Why a loan may not be renewed on a day, asked in order; none, and it may.
++const RENEW_REFUSALS = [
++  { error: "returned", when: (r) => r.loan.returned !== null },
++  { error: "overdue", when: (r) => r.day > r.loan.due },
++  { error: "renewal-limit", when: (r) => r.loan.renewals >= RENEWALS },
++  { error: "hold-waiting", when: (r) => holdWaiting(r.store, r.copy) },
++];
++
++const copyOfLoan = (store, tenant, loan) => mine(store, tenant, "copies", loan.copy);
++
++export const renewRefusal = (store, tenant, loan, day) => RENEW_REFUSALS.find((r) => r.when({ store, loan, day, copy: copyOfLoan(store, tenant, loan) }))?.error ?? null;
++
++// A renewal moves the due date on by the title's loan period, counted from the due date it had.
++export const renewed = (store, tenant, loan) => put(store, "loans", { ...loan, due: addDays(loan.due, loanDaysOf(titleOfCopy(store, copyOfLoan(store, tenant, loan)))), renewals: loan.renewals + 1 });
++
++export const loanView = (l) => ({ id: l.id, copy: l.copy, member: l.member, out: l.out, due: l.due, renewals: l.renewals, returned: l.returned, fineCents: l.fineCents });
+diff --git a/test/renew.test.mjs b/test/renew.test.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..96860000a842ac4fc3299762d67b47882769f28f
+--- /dev/null
++++ b/test/renew.test.mjs
+@@ -0,0 +1,39 @@
++// A loan is renewed from the due date it had, twice at most, and never when overdue, waited for or back.
++import assert from "node:assert/strict";
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { test } from "node:test";
++import { handle } from "../src/api.mjs";
++import { openStore } from "../src/store.mjs";
++
++function storeFor(t) {
++  const dir = mkdtempSync(join(tmpdir(), "renew-"));
++  t.after(() => rmSync(dir, { recursive: true, force: true }));
++  return openStore(dir);
++}
++
++const call = (store, method, path, body, today = "2026-03-02") => handle(store, { method, path, tenant: "harbor", today, body });
++
++function lent(store, format) {
++  const title = call(store, "POST", "/titles", { name: "Renewed", format }).body;
++  const copy = call(store, "POST", "/copies", { title: title.id, replacementCents: 2000 }).body;
++  return { title, loan: call(store, "POST", "/loans", { copy: copy.id, member: call(store, "POST", "/members", { name: "Ana" }).body.id }).body };
++}
++
++const renew = (store, loan, day) => call(store, "POST", `/loans/${loan.id}/renew`, {}, day);
++
++test("a renewal moves the due date on from the due date it had, twice at most", (t) => {
++  const store = storeFor(t);
++  const { loan } = lent(store, "dvd");
++  const answers = ["2026-03-03", "2026-03-04", "2026-03-05"].map((day) => renew(store, loan, day));
++  assert.deepEqual(answers.map((a) => [a.status, a.body.due ?? a.body.error, a.body.renewals ?? null]), [[200, "2026-03-16", 1], [200, "2026-03-23", 2], [409, "renewal-limit", null]]);
++});
++
++test("an overdue loan, one whose title somebody waits for, and one that is back are not renewed", (t) => {
++  const store = storeFor(t);
++  const [late, waited, back] = [lent(store, "dvd"), lent(store, "book"), lent(store, "book")];
++  call(store, "POST", "/holds", { title: waited.title.id, member: call(store, "POST", "/members", { name: "Ben" }).body.id });
++  call(store, "POST", `/loans/${back.loan.id}/return`, {}, "2026-03-04");
++  assert.deepEqual([renew(store, late.loan, "2026-03-10").body.error, renew(store, waited.loan, "2026-03-05").body.error, renew(store, back.loan, "2026-03-05").body.error], ["overdue", "hold-waiting", "returned"]);
++});

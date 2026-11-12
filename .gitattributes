@@ -14,12 +14,13 @@
 # shipped, and kept outside test/ because `node --test` runs every module under test/.
 /acceptance/** export-ignore
 
-# benchmark/ is the Docker benchmark of Orbit's own source (its controller, images, packs and hidden checks): run by a
-# person on a development machine, never shipped. It sits beside acceptance/ rather than inside it, so adding a case
-# never changes the source the backend acceptance record is keyed to.
-/benchmark/** export-ignore
-
 # Bytes that are PINNED must be checked out as they were committed: the report's
 # vendored chart library, fonts and licences are hashed in their VENDOR.json and
 # checked by the suite, and a CRLF checkout would change every hash.
 /skills/orbit-report/assets/vendor/** -text
+
+# evaluator/ (0.6.0) is the independent evaluator: its controller, task packs (with their HIDDEN tests and gold patches)
+# and results. It measures this plugin from outside and is never part of it -- the archive an agent under test is handed
+# must never hold an answer -- so the directory itself and everything under it are left out.
+/evaluator export-ignore
+/evaluator/** export-ignore

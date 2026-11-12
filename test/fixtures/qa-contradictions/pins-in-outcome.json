@@ -1,0 +1,80 @@
+{
+  "shape": "effect-once-per-key",
+  "why": "a worker observe pinned to duplicate under a value-in of processed or acknowledged",
+  "accepted": {
+    "FIX-9/E1": {
+      "property": "settlement.outcome",
+      "op": "in",
+      "value": [
+        "processed",
+        "acknowledged"
+      ]
+    }
+  },
+  "design": {
+    "skeleton": {
+      "steps": [
+        {
+          "do": "call",
+          "capability": "orbit.messaging.publish",
+          "input": {
+            "channelRef": "billing-reminder-requested",
+            "request": {
+              "messageId": "msg-q2c0000000000001",
+              "correlationId": "tenant-a|inv-a|billing-daily:2026-11-02T09:00:00+07:00",
+              "payload": {
+                "messageId": "msg-q2c0000000000001",
+                "businessKey": "tenant-a|inv-a|billing-daily:2026-11-02T09:00:00+07:00",
+                "invoiceId": "inv-a",
+                "tenantId": "tenant-a"
+              }
+            }
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.worker.observe",
+          "input": {
+            "workloadRef": "worker",
+            "request": {
+              "count": 1,
+              "match": {
+                "messageId": "msg-q2c0000000000001",
+                "outcome": "duplicate"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "assertions": [
+      {
+        "criterionRef": "FIX-9/E1",
+        "template": "value-in",
+        "step": 2
+      }
+    ],
+    "controls": [
+      {
+        "role": "duplicate",
+        "why": "x"
+      },
+      {
+        "role": "state",
+        "why": "x"
+      }
+    ],
+    "trigger": {
+      "kind": "message",
+      "ref": "billing-reminder-requested",
+      "step": 1
+    },
+    "effectScope": "fixture"
+  },
+  "expect": {
+    "findings": [
+      "MATCH_PINS"
+    ],
+    "advice": []
+  }
+}

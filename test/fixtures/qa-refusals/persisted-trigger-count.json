@@ -1,0 +1,62 @@
+{
+  "skeleton": {
+    "steps": [
+      {
+        "do": "call",
+        "capability": "orbit.http.write",
+        "input": {
+          "endpointRef": "invoice-create",
+          "identityRef": "tenant-a-writer",
+          "method": "POST",
+          "path": "/invoices",
+          "headers": {
+            "Idempotency-Key": "qa-key-persist-0001"
+          },
+          "body": {
+            "name": "TC-qa-persist-0001",
+            "amount": 42
+          }
+        }
+      },
+      {
+        "do": "call",
+        "capability": "orbit.state.read",
+        "input": {
+          "stateRef": "invoices",
+          "request": {
+            "key": "TC-qa-persist-0001"
+          }
+        }
+      }
+    ]
+  },
+  "assertions": [
+    {
+      "criterionRef": "UI-AC-2/E1",
+      "template": "value-eq",
+      "step": 1
+    },
+    {
+      "criterionRef": "UI-AC-2/E1",
+      "template": "count-eq",
+      "step": 2
+    }
+  ],
+  "controls": [
+    {
+      "role": "positive",
+      "identityRef": "tenant-a-writer",
+      "why": "a writer may create"
+    },
+    {
+      "role": "state",
+      "why": "the created invoice is read back from the store"
+    }
+  ],
+  "trigger": {
+    "kind": "interface",
+    "ref": "invoice-create",
+    "step": 1
+  },
+  "effectScope": "fixture"
+}

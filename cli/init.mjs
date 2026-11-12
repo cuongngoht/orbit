@@ -23,6 +23,8 @@ import { createContext } from "../src/run/context.mjs";
 import { ensureProject } from "../src/seat.mjs";
 import { CASE_SCHEMA, PLAN_SCHEMA, SCHEMA_DIR } from "../src/tests-tree.mjs";
 import { Blocked, Refused } from "../src/errors.mjs";
+import { engined } from "../src/engined.mjs";
+import { pluginRoot } from "../src/version.mjs";
 
 const argv = process.argv.slice(2);
 const flag = (name) => argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
@@ -32,7 +34,7 @@ const USAGE = "usage: node init.mjs <repo> [--in-checkout] [--origin=URL] [--pro
 function main() {
   const root = argv.find((a) => !a.startsWith("--"));
   if (!root) throw new Refused(USAGE);
-  console.log(argv.includes("--in-checkout") ? inCheckout(resolve(root)) : seated(resolve(root)));
+  console.log(engined(argv.includes("--in-checkout") ? inCheckout(resolve(root)) : seated(resolve(root)), pluginRoot()));
 }
 
 // What each kind of project was told: where its data is, and what is left for a person to do.

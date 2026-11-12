@@ -11,7 +11,10 @@
 //
 // A LEAF. Every line is built from table words and ids the composition root read off the owners' journals (an owner is
 // `{ kind, id, lifecycle, ready, open, run }`), never from a prompt, a transcript or what an agent said; `<engine>` is
-// the plugin root the root names. A line a hook adds is a pointer to evidence, never evidence itself.
+// the plugin root the root names, read by the one leaf (src/engined.mjs) before a line is clipped to its budget. A line a
+// hook adds is a pointer to evidence, never evidence itself.
+import { engined } from "../engined.mjs";
+
 export const OWNERS = {
   workflow: { noun: "workflow", read: (id) => `node <engine>/cli/automation.mjs context ${id}`, reconcile: (id) => `node <engine>/cli/automation.mjs reconcile ${id}`, settle: (id) => `node <engine>/cli/automation.mjs settle ${id}` },
   goal: { noun: "goal", read: (id) => `node <engine>/cli/orbit.mjs goal resume ${id}`, reconcile: (id) => `node <engine>/cli/orbit.mjs goal resume ${id}` },
@@ -30,14 +33,12 @@ export const CAPABILITY_BYTES = 300;
 
 const LINE_BYTES = 600;
 
-const engined = (text, engine) => (engine ? String(text).replaceAll("<engine>", engine) : String(text));
-
 const bytes = (text) => Buffer.byteLength(text);
 
 // A line clipped to a byte budget on a character boundary, never mid-character.
-const clipped = (text, max) => (bytes(text) <= max ? text : `${[...text].reduce((kept, ch) => (bytes(`${kept}${ch}…`) <= max ? `${kept}${ch}` : kept), "")}…`);
+export const clipped = (text, max) => (bytes(text) <= max ? text : `${[...text].reduce((kept, ch) => (bytes(`${kept}${ch}…`) <= max ? `${kept}${ch}` : kept), "")}…`);
 
-const named = (list) => `${list.slice(0, LIST_NAMED).join(", ")}${list.length > LIST_NAMED ? ` (+${list.length - LIST_NAMED})` : ""}`;
+export const named = (list) => `${list.slice(0, LIST_NAMED).join(", ")}${list.length > LIST_NAMED ? ` (+${list.length - LIST_NAMED})` : ""}`;
 
 const ownerOf = (owner) => OWNERS[owner?.kind] ?? null;
 

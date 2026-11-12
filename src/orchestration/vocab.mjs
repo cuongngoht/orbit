@@ -124,6 +124,8 @@ export const DECISION_FORBIDDEN = ["outcome", "verdict", "status", "passed", "su
 // What a failure is ABOUT -- what to look at next, never a verdict. The words the existing
 // classifier already uses (src/query/classify.mjs: ENVIRONMENT, DATA, UNKNOWN) mean the same here.
 export const FAILURE_CLASSES = [
+  { id: "DEPENDENCY", say: "what the check needs installed is not there: its dependency restore in the workspace failed — restore them (prepare-sandbox), not the change" },
+  { id: "ACCESS", say: "something the check needs could not be reached from here: the network or the target's settings, not the change" },
   { id: "ENVIRONMENT", say: "the check could not run here, or failed the same way before any change: look at the machine, not the change" },
   { id: "CODE", say: "the build failed after the change: look at what changed" },
   { id: "TEST", say: "a test failed after the change: look at what it expects and what changed" },

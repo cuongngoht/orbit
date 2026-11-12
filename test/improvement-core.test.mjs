@@ -137,6 +137,15 @@ test("a candidate may change where a step reads an answer, never what counts as 
   assert.deepEqual(weakenings(p, oracleOf("workflow", { steps: [wf().steps[1]] })).map((x) => x.id), ["REQUIRED_DROPPED"], "a required step gone");
 });
 
+// An upper bound is looser when its value RISES and stricter when it drops -- the mirror of a lower bound, and a rule
+// only the comparison's direction keeps.
+test("an upper bound (lte, lt) raised is a loosened rule, and one lowered is no weakening", () => {
+  const bound = (op, value) => oracleOf("workflow", { steps: [{ id: "s", outputs: { n: { type: "number", path: "n" } }, success: [{ output: "n", op, value }] }] });
+  const ids = (op, from, to) => weakenings(bound(op, from), bound(op, to)).map((x) => x.id);
+  assert.deepEqual([ids("lte", 5, 6), ids("lt", -2, -1)], [["RULE_LOOSENED"], ["RULE_LOOSENED"]], "a raised upper bound lets more through");
+  assert.deepEqual([ids("lte", 5, 4), ids("lt", -2, -3)], [[], []], "a lowered upper bound lets less through");
+});
+
 const facts = (over = {}) => ({ pin: PIN, digest: "d0", intact: true, provides: ["a.b"], tools: ["Read"], files: ["SKILL.md", "manifest.json"], successorOf: null, oracle: oracleOf("workflow", wf()), ...over });
 
 test("a candidate is untrusted until every rule holds: digest, change, parent, provides, tools, files, oracle, suppression, its owner's contract", () => {
@@ -162,6 +171,8 @@ test("one evaluation: blocked compares nothing, a newly failed step is WORSE wha
   assert.equal(verdictOf(ev([row("baseline", 1, false), row("candidate", 1, true)])).verdict, "BETTER");
   assert.equal(verdictOf(ev([row("baseline", 1, false, { blocked: true }), row("candidate", 1, true)])).verdict, "BLOCKED");
   assert.equal(verdictOf(ev([row("baseline", 1, true), row("candidate", 1, false, { failing: ["evidence"] })])).verdict, "WORSE");
+  const gainedButBroke = ev([row("baseline", 1, false), row("baseline", 2, true, { failing: [] }), row("candidate", 1, true), row("candidate", 2, false, { failing: ["evidence"] }), row("candidate", 3, true), row("baseline", 3, false)]);
+  assert.deepEqual([verdictOf(gainedButBroke).verdict, verdictOf(gainedButBroke).regressions], ["WORSE", ["evidence"]], "more runs met never forgives a step newly failed");
   assert.deepEqual(verdictOf(ev([row("baseline", 1, false), row("candidate", 1, false, { failing: ["notes", "evidence"] })])).regressions, ["evidence"]);
   assert.equal(verdictOf(ev([row("baseline", 1, true), row("candidate", 1, true, { calls: 1 })])).verdict, "INCONCLUSIVE", "speed never buys a verdict on a failure that did not reproduce");
   assert.equal(verdictOf(ev([row("baseline", 1, false), row("candidate", 1, false)])).verdict, "EQUIVALENT");
@@ -201,6 +212,8 @@ test("every gate is asked, in order, and the first that fails decides what happe
   assert.equal(d({ runs: [row("candidate", 1, true, { attribution: "REPORTED" })] }).gate, "EVIDENCE_INDEPENDENT", "a run only reported never promotes anything");
   assert.equal(d({ widened: ["Bash"] }).gate, "NO_NEW_PERMISSIONS");
   assert.equal(d({ current: { pin: PIN, status: "disabled" } }).decision, "block");
+  assert.equal(d({ current: { pin: PIN, status: "active", archived: true } }).decision, "block", "a person's archive of the version in place holds it");
+  assert.equal(d({ current: { pin: PIN, status: "active", revoked: true } }).decision, "block", "a person's revocation of the version in place holds it");
   assert.equal(d({ values: values({ promote: false }) }).decision, "await");
   assert.equal(d({ values: values({ promote: false }), door: "control" }).decision, "promote", "a person in Control promotes what qualified");
   assert.equal(GATE_IDS.length, 12);

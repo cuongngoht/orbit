@@ -28,6 +28,7 @@ allowed-tools:
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/work.mjs resolve*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/work.mjs settle*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/work.mjs checkpoint*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/work.mjs recall*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/track.mjs status*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/track.mjs state*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/track.mjs report*)
@@ -133,6 +134,30 @@ it. A record that moved stays named until its owner reads it again: once you hav
 **ASK**: relay the one question it quotes, in the flow it names, and wait for the person; never ask one of your own
 in its place.
 
+**Three levels** follow the word, one line each (`sufficiency.levels` in `--json`): enough to **investigate** (a direct
+file or symbol the tree holds), to **change** (the direct items confirmed by a read, what depends on them followed, a
+done criterion stated, the check that would prove it identified) and to **conclude** (every done criterion satisfied
+and unmoved, on evidence an owner verified). Each says what it still misses and how that is filled. Investigate until
+`change` holds; edit nothing before it does. A name one of the task's words matched never confirms anything: read the
+file, then propose it with `--with-refs` — however many names match, an unread task stays at investigate. A
+developer's own session never makes `conclude` hold; say what you verified and what is left for a person.
+
+**Relations.** Once a file is confirmed, RELEVANT follows it one hop each way: what it imports (`dependency`), who
+imports it (`downstream`), the tests that go with it (`verification`), and a route-shaped literal another file shares
+(class `unknown`, evidence `route-literal`): a hypothesis until you have read both ends and proposed the other file
+with `--with-refs`. A `gap` line is a file no relation adapter reads: read it yourself and propose what it relates to
+with `--with-refs` — never assume an edge.
+
+**A bounded loop on the task's own work.** When the task has a work (`work.mjs show`, or `track.mjs current`), it is
+the record of what you understand: record each done criterion as a `proof` need, each unknown as a `knowledge` need
+(`work.mjs need <w-…>`), settle each on what you read (`blocked` when it cannot be found out here), and end every round
+with `work.mjs checkpoint <w-…> --asked="<source> · <target>"` naming the targets you read. Ask for context with
+`--work=<w-…>`: it prints the round state (`ROUNDS … go on`, or `STOP (budget | no-gain)`) and stops offering a target
+a settled, unmoved need already answered. Stop when `change` holds, when the round state says STOP, or at a real
+blocker — and say what is still missing. Another session picks it up from the same journal (`work.mjs recall
+--for="<the task>"`, then `context.mjs --work=<w-…>`): a need whose files moved is offered again, and nothing else is
+re-read.
+
 - A section that says **UNKNOWN** is a gap, not permission to guess. If architecture has never
   been scanned, run `orbit-architecture` (or `orbit-help`) before designing.
 - Do not Grep the whole repository to rediscover what the context already says.
@@ -177,6 +202,15 @@ Make the change. Keep to the plan; if the plan has to change, say why.
 Run the project's own checks for what you touched — its tests, its linters, its type checker, the
 gates the engineering facts name as `enforcedBy`. A change is not done until they pass; report the
 output faithfully when they do not.
+
+**Brought in by `check.failed`** (Orbit noticed a check this session ran after its edits fail): read
+the failure in that command's output and find its cause in the change you made before you edit
+again. Never edit or skip the test to make it pass, and never read the exit code alone as a defect --
+a check that could not start, reach a dependency or sign in says so in its output.
+
+**Brought in by `check.repeats`** (the same check failed three times in a row with nothing changed
+between): stop running it. Running it again cannot give another answer; say what its output shows,
+what you have ruled out, and what you will change or find out next -- or ask the person, once.
 
 ## 7. What would prove it — and can anything here?
 

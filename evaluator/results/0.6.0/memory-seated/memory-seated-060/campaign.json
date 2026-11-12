@@ -1,0 +1,138 @@
+{
+  "schema": 1,
+  "id": "memory-seated-060",
+  "prereg": {
+    "release": "0.6.0",
+    "phase": "memory-seated",
+    "digest": "b60909c106783d0a703e91e15bb015e7b289123250ea5f06382780fd84cf253a",
+    "amendment": {
+      "n": 2,
+      "file": "0.6.0-amendment-2.json",
+      "digest": "cf18a9e8d51aa4ee65563ca5d2aa88a730cfd247b2d7ad66956246883844c674"
+    }
+  },
+  "model": "claude-sonnet-5-5",
+  "effort": "medium",
+  "budgetUsd": 7,
+  "limits": {
+    "usd": 1,
+    "turns": 80,
+    "minutes": 40,
+    "cpus": 2,
+    "memoryMb": 4096,
+    "pids": 2048
+  },
+  "arms": {
+    "orbit-0.6.0-seated": {
+      "kind": "claude+orbit",
+      "rev": "6b25eb9ef227b8fe1e896d5d7aff0d22ad52a827",
+      "seat": true,
+      "frozen": {
+        "rev": "6b25eb9ef227b8fe1e896d5d7aff0d22ad52a827",
+        "commit": "6b25eb9ef227b8fe1e896d5d7aff0d22ad52a827"
+      }
+    }
+  },
+  "runs": [
+    {
+      "arm": "orbit-0.6.0-seated",
+      "task": "pack:lending-hld-001",
+      "trial": 1
+    },
+    {
+      "arm": "orbit-0.6.0-seated",
+      "task": "pack:lending-hld-002",
+      "trial": 1
+    }
+  ],
+  "tracks": [
+    {
+      "id": "pair1",
+      "arm": "orbit-0.6.0-seated",
+      "tasks": [
+        "pack:lending-hld-004",
+        "pack:lending-hld-001"
+      ]
+    },
+    {
+      "id": "pair2",
+      "arm": "orbit-0.6.0-seated",
+      "tasks": [
+        "pack:lending-hld-003",
+        "pack:lending-hld-002"
+      ]
+    }
+  ],
+  "caFile": "/root/.ccr/ca-bundle.crt",
+  "plan": [
+    {
+      "arm": "orbit-0.6.0-seated",
+      "task": "pack:lending-hld-001",
+      "trial": 1,
+      "key": "orbit-0.6.0-seated__pack_lending-hld-001__t1"
+    },
+    {
+      "arm": "orbit-0.6.0-seated",
+      "task": "pack:lending-hld-002",
+      "trial": 1,
+      "key": "orbit-0.6.0-seated__pack_lending-hld-002__t1"
+    },
+    {
+      "arm": "orbit-0.6.0-seated",
+      "task": "pack:lending-hld-004",
+      "trial": 1,
+      "track": "pair1",
+      "step": 1,
+      "key": "orbit-0.6.0-seated__pack_lending-hld-004__t1__pair1-1"
+    },
+    {
+      "arm": "orbit-0.6.0-seated",
+      "task": "pack:lending-hld-001",
+      "trial": 1,
+      "track": "pair1",
+      "step": 2,
+      "key": "orbit-0.6.0-seated__pack_lending-hld-001__t1__pair1-2"
+    },
+    {
+      "arm": "orbit-0.6.0-seated",
+      "task": "pack:lending-hld-003",
+      "trial": 1,
+      "track": "pair2",
+      "step": 1,
+      "key": "orbit-0.6.0-seated__pack_lending-hld-003__t1__pair2-1"
+    },
+    {
+      "arm": "orbit-0.6.0-seated",
+      "task": "pack:lending-hld-002",
+      "trial": 1,
+      "track": "pair2",
+      "step": 2,
+      "key": "orbit-0.6.0-seated__pack_lending-hld-002__t1__pair2-2"
+    }
+  ],
+  "tasks": {
+    "pack:lending-hld-001": {
+      "digest": "171c4e0a713a76e3ee1f194e0b7f71c8f5337da0d4b0a94f534b19bed94e1954",
+      "image": "node:22"
+    },
+    "pack:lending-hld-002": {
+      "digest": "5020d40a1a212f3e92e291551a10a59c85dda1b9a2e8652922fa2d554fdcecdd",
+      "image": "node:22"
+    },
+    "pack:lending-hld-004": {
+      "digest": "2ef250f1dc950645956d70b8b00097116a687972ed03c40e103d88494ed3bb61",
+      "image": "node:22"
+    },
+    "pack:lending-hld-003": {
+      "digest": "79f5135168c3edcc2a6f1e94a3a93e658ce5c26aa6123aad43fa381243a88d93",
+      "image": "node:22"
+    }
+  },
+  "pluginRepo": "/home/user/wt/runner",
+  "claudeCode": "2.1.322",
+  "evaluator": {
+    "commit": "78a4a56b01d27ba9528ff1575ea3c5feacd94c5a",
+    "dirty": false
+  },
+  "frozenAt": "2026-11-12T12:41:02.904Z"
+}

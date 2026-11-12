@@ -1,0 +1,36 @@
+{
+  "kind": "outcome",
+  "run": "orbit-0.6.0__swebench_sphinx-doc__sphinx-11445__t1",
+  "attempt": 1,
+  "at": "2026-11-12T12:17:39.276Z",
+  "word": "RESOLVED",
+  "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+  "saidDone": true,
+  "grade": {
+    "ran": true,
+    "applied": true,
+    "resolved": true,
+    "regressed": false,
+    "f2pFailed": [],
+    "p2pFailed": []
+  },
+  "gradeDetail": {
+    "ran": true,
+    "applied": true,
+    "resolved": true,
+    "regressed": false,
+    "f2pFailed": [],
+    "p2pFailed": [],
+    "counts": {
+      "f2pPassed": 2,
+      "f2pFailed": 0,
+      "p2pPassed": 8,
+      "p2pFailed": 0
+    },
+    "harness": {
+      "swebench": "4.1.0",
+      "exit": 0,
+      "runId": "evl-6c49d2eac164"
+    }
+  }
+}

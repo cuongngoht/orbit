@@ -334,6 +334,12 @@ test("turn.held keeps which workflow, which ready steps and which hold of the pr
   assert.deepEqual(e.data, { task: "tsk-0123456789ab", steps: ["qa"], count: 1 });
   assert.equal(readable({ ...e, data: { ...e.data, reason: "edited in" } }).data.reason, undefined);
   assert.deepEqual(turnsOf([ev("prompt.submitted", { routing: "off" }), ev("turn.held", { task: "tsk-0123456789ab", steps: ["qa", "review"], count: 1 })])[0].steps.map((s) => [s.kind, s.label]), [["hold", "held for tsk-0123456789ab (qa, review)"]], "a hold is a step of the turn it held");
+  const owed = eventOf("turn.held", { kind: "unverified", check: "api:test", count: 1, reason: "Orbit holds this turn: SENTINEL", argv: ["npm", "test"], paths: ["src/a.mjs"] }, { id: "e-o", at: "2026-11-05T00:00:00.000Z" });
+  assert.deepEqual(owed.data, { kind: "unverified", check: "api:test", count: 1 }, "0.6.0: what it held for and the check's id -- never the command, a path or the reason");
+  assert.deepEqual(turnsOf([ev("prompt.submitted", { routing: "off" }), ev("turn.held", { kind: "unverified", check: "api:test", count: 1 })])[0].steps.map((s) => s.label), ["held for an unverified edit (api:test)"]);
+  const linked = eventOf("turn.held", { kind: "unverified", tests: 2, count: 1, paths: ["tests/test_a.py"], files: ["tests/test_a.py"] }, { id: "e-t", at: "2026-11-05T00:00:00.000Z" });
+  assert.deepEqual(linked.data, { kind: "unverified", tests: 2, count: 1 }, "0.6.0 (P3b): how many linked test files it named -- never their paths");
+  assert.deepEqual(turnsOf([ev("prompt.submitted", { routing: "off" }), ev("turn.held", linked.data)])[0].steps.map((s) => s.label), ["held for an unverified edit (2 linked test files)"]);
 });
 
 test("an OPERATION is kept only where the usage documents it after that subcommand: `goal step`, never an argument or a description", () => {
@@ -387,7 +393,7 @@ test("the activation chain: five links, each from its own source with its basis,
   assert.deepEqual([t.strategy, t.verdict.verdict, t.excess], [{ word: "DIRECT", row: "one-skill" }, "followed", []]);
   assert.deepEqual([t.links.suggested.ids, t.links.selected.ids, t.links.dispatched.ids], [["orbit-develop"], ["orbit-develop", "orbit-report"], ["orbit-develop"]], "a call its switch refused was selected, never dispatched");
   assert.deepEqual(t.links.executed.owners, [{ type: "task.started", id: "tsk-0123456789ab" }], "an owner's own event is the executed link; a command the hooks saw is not");
-  assert.deepEqual([t.links.suggested.source, t.links.selected.basis, t.links.executed.basis, t.links.verified.source], ["prompt.submitted", "HOST_OBSERVED", "RUNTIME_BOUND", "the work view (workViewOf), read back from the owners and handed in"]);
+  assert.deepEqual([t.links.suggested.source.split(" · ")[0], t.links.selected.basis, t.links.executed.basis, t.links.verified.source], ["prompt.submitted", "HOST_OBSERVED", "RUNTIME_BOUND", "the work view (workViewOf), read back from the owners and handed in"]);
 });
 
 test("owner-verified comes ONLY from the work view handed in: a task the trail says finished is never verified by the trail", () => {
@@ -445,4 +451,19 @@ test("end to end through cli/trace.mjs: `activation` prints each link with its s
   const json = JSON.parse(spawnSync(process.execPath, [join(ROOT, "cli", "trace.mjs"), "activation", "--json"], { env, encoding: "utf8", cwd: store }).stdout);
   assert.deepEqual([json.version, json.turns.length, json.turns[0].verdict.verdict, json.turns[0].excess[0].why], [1, 1, "over-delegated", "via-without-parent"]);
   assert.equal(json.turns[0].links.verified.verified, false, "no tracked work here: nothing verified");
+});
+
+// 0.6.0 (P2, P6): advice from evidence is a suggestion too -- unioned into the suggested link with what it was about, so
+// the chain follows advice -> selected -> executed -> the owner's word; and an agent it named is accounted for.
+test("advice.given joins the suggested link with its fact and subject, and an agent it named is not over-delegation", () => {
+  const advised = (provider, kind = "skill") => ev("advice.given", { fact: "check.failed", subject: "test (npm)", provider, kind, text: "never kept" });
+  assert.deepEqual(Object.keys(eventOf("advice.given", { fact: "check.failed", subject: "test (npm)", provider: "orbit-develop", kind: "skill", text: "the line", prompt: "x" }, { id: "e-1", at: "2026-11-12T00:00:00.000Z" }).data).sort(), ["fact", "kind", "provider", "subject"], "an allow-list: never the line's text");
+  const none = routedAs({ word: "NONE", row: "conversational" }, { path: "none", id: null });
+  const [t] = activationOf([none, ev("command.ran", { class: "test", exe: "npm", ok: false }), advised("orbit-develop"), ev("skill.invoked", { id: "orbit:orbit-develop", ours: true, outcome: "started" }), ev("task.started", { task: "tsk-0123456789ab" })]).turns;
+  assert.deepEqual(t.links.suggested.ids, ["orbit-develop"]);
+  assert.deepEqual(t.links.suggested.advised, [{ fact: "check.failed", subject: "test (npm)", provider: "orbit-develop", kind: "skill" }]);
+  assert.deepEqual([t.links.selected.ids, t.links.dispatched.ids, t.links.executed.owners.map((o) => o.id)], [["orbit-develop"], ["orbit-develop"], ["tsk-0123456789ab"]]);
+  const agentTurn = activationOf([none, advised("orbit-failure-analyst", "agent"), agentRan("orbit-failure-analyst")], { via: VIA }).turns[0];
+  assert.deepEqual(agentTurn.excess, [], "advice named it: accounted for");
+  assert.equal(activationOf([none, agentRan("orbit-failure-analyst")], { via: VIA }).turns[0].excess.length, 1, "and without the advice, still over-delegated");
 });

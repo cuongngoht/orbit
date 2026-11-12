@@ -1,0 +1,11 @@
+{
+  "kind": "outcome",
+  "run": "seat-writes__pack_orders-e2e-006__t1",
+  "attempt": 1,
+  "at": "2026-11-12T11:47:19.213Z",
+  "word": "INFRA_ERROR",
+  "why": "SEAT: the seat did not hold before the agent started: the seat wrote the checkout (seat-wrote-this.txt): a seat writes only the store",
+  "saidDone": false,
+  "grade": null,
+  "gradeDetail": null
+}

@@ -1,0 +1,73 @@
+diff --git a/src/api.mjs b/src/api.mjs
+index 3409fd6dc6d25407e95cfdf0336d5e6ceeee69f2..11d850c476546b4c0d67159e8f2274871fece264 100644
+--- a/src/api.mjs
++++ b/src/api.mjs
+@@ -2,7 +2,7 @@
+ // `tenant` is the library system the caller signed in as -- the gateway in front of the service sets it -- and `today`
+ // the day the service's clock says it is. A refusal answers { error: <word> }.
+ import { isDay } from "./dates.mjs";
+-import { get, isKey, list } from "./store.mjs";
++import { isKey } from "./store.mjs";
+ import { allMine, isTenant, mine } from "./tenancy.mjs";
+ import { copyView, isFormat, newCopy, newTitle, titleView } from "./catalog.mjs";
+ import { memberView, newMember } from "./members.mjs";
+@@ -38,7 +38,7 @@ const notices = (c, [id]) => ((m) => (m ? noticesOf(c, m) : refused(404, "no-mem
+ const lendOrNot = (c, copy, member) => ((why) => (why ? refused(409, why) : answer(201, loanView(lent(c.store, c.tenant, copy, member, c.today)))))(lendRefusal(c.store, c.tenant, copy, member));
+ 
+ function lend(c) {
+-  const copy = get(c.store, "copies", c.body.copy);
++  const copy = mine(c.store, c.tenant, "copies", c.body.copy);
+   const member = mine(c.store, c.tenant, "members", c.body.member);
+   if (!copy || !member) return refused(404, copy ? "no-member" : "no-copy");
+   return lendOrNot(c, copy, member);
+@@ -59,7 +59,7 @@ const renew = (c, [id]) => ((loan) => (loan ? renewOrNot(c, loan) : refused(404,
+ const holdOrNot = (c, title, member) => (openHoldOf(c.store, c.tenant, title, member) ? refused(409, "duplicate-hold") : answer(201, holdView(newHold(c.store, c.tenant, title, member, c.today))));
+ 
+ function hold(c) {
+-  const title = get(c.store, "titles", c.body.title);
++  const title = mine(c.store, c.tenant, "titles", c.body.title);
+   const member = mine(c.store, c.tenant, "members", c.body.member);
+   if (!title || !member) return refused(404, title ? "no-member" : "no-title");
+   return holdOrNot(c, title, member);
+@@ -68,16 +68,16 @@ function hold(c) {
+ // ---- the routes -------------------------------------------------------------------------------------------------------
+ 
+ const ROUTES = [
+-  ["GET", /^\/titles$/, (c) => answer(200, { titles: list(c.store, "titles").map(titleView) })],
++  ["GET", /^\/titles$/, (c) => answer(200, { titles: allMine(c.store, c.tenant, "titles").map(titleView) })],
+   ["POST", /^\/titles$/, titleAdded],
+   ["GET", /^\/titles\/([^/]+)$/, (c, [id]) => found(mine(c.store, c.tenant, "titles", id), "no-title", titleView)],
+   ["POST", /^\/copies$/, copyAdded],
+-  ["GET", /^\/copies\/([^/]+)$/, (c, [id]) => found(get(c.store, "copies", id), "no-copy", copyView)],
++  ["GET", /^\/copies\/([^/]+)$/, (c, [id]) => found(mine(c.store, c.tenant, "copies", id), "no-copy", copyView)],
+   ["POST", /^\/members$/, memberAdded],
+   ["GET", /^\/members\/([^/]+)$/, (c, [id]) => found(mine(c.store, c.tenant, "members", id), "no-member", memberView)],
+   ["GET", /^\/members\/([^/]+)\/notices$/, notices],
+   ["POST", /^\/loans$/, lend],
+-  ["GET", /^\/loans\/([^/]+)$/, (c, [id]) => found(get(c.store, "loans", id), "no-loan", loanView)],
++  ["GET", /^\/loans\/([^/]+)$/, (c, [id]) => found(mine(c.store, c.tenant, "loans", id), "no-loan", loanView)],
+   ["POST", /^\/loans\/([^/]+)\/return$/, back],
+   ["POST", /^\/loans\/([^/]+)\/renew$/, renew],
+   ["POST", /^\/holds$/, hold],
+diff --git a/src/dropbox.mjs b/src/dropbox.mjs
+index 4c02125c025ef19b742aaf2805a59bbef77cce4b..0110ada6e71448330eea55608910a5a1112ed8ff 100644
+--- a/src/dropbox.mjs
++++ b/src/dropbox.mjs
+@@ -6,7 +6,7 @@
+ //   outcome: returned · not-on-loan · unknown-copy · duplicate · rejected (a message this consumer cannot read)
+ import { isDay } from "./dates.mjs";
+ import { get, isKey, put } from "./store.mjs";
+-import { isTenant } from "./tenancy.mjs";
++import { isTenant, mine } from "./tenancy.mjs";
+ import { openLoanOfCopy, returned } from "./loans.mjs";
+ 
+ const wellFormed = (m) => Boolean(m) && isKey(m.id) && isTenant(m.tenant) && isKey(m.copy) && isDay(m.at);
+@@ -14,7 +14,7 @@ const wellFormed = (m) => Boolean(m) && isKey(m.id) && isTenant(m.tenant) && isK
+ const done = (store, m, outcome) => (put(store, "deliveries", { id: m.id, seq: 0, tenant: m.tenant, outcome }), { ack: true, outcome });
+ 
+ function checkedIn(store, m) {
+-  const copy = get(store, "copies", m.copy);
++  const copy = mine(store, m.tenant, "copies", m.copy);
+   const loan = copy ? openLoanOfCopy(store, copy.tenant, copy) : null;
+   if (!loan) return done(store, m, copy ? "not-on-loan" : "unknown-copy");
+   returned(store, copy.tenant, loan, m.at);

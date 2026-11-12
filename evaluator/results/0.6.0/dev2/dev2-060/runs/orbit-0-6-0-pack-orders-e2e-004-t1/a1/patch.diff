@@ -1,0 +1,55 @@
+diff --git a/src/worker.mjs b/src/worker.mjs
+index 2527bf924bd092b1f15fcbcd937eb667cff515ae..a9ca0bcf691d6af93889543bf46ece514f05c950 100644
+--- a/src/worker.mjs
++++ b/src/worker.mjs
+@@ -5,8 +5,10 @@ import { getOrder } from "./orders.mjs";
+ const nextInvoice = (store) => `inv-${String(store.list("invoices").length + 1).padStart(4, "0")}`;
+ 
+ function invoiced(store, message, order) {
+-  const id = nextInvoice(store);
+-  setImmediate(() => store.put("invoices", id, { id, orderId: order.id, amountMinor: order.totalMinor, currency: order.currency, messageId: message.id }));
++  // Write the invoice before the message is marked processed (and acknowledged); reuse one a crashed attempt left.
++  const existing = store.list("invoices").find((i) => i.messageId === message.id);
++  const id = existing ? existing.id : nextInvoice(store);
++  if (!existing) store.put("invoices", id, { id, orderId: order.id, amountMinor: order.totalMinor, currency: order.currency, messageId: message.id });
+   store.put("processed", message.id, { messageId: message.id, invoice: id });
+   return { ack: true, invoice: id };
+ }
+diff --git a/test/worker.test.mjs b/test/worker.test.mjs
+index 142f2dc8428197ceba57d8dc9aea59984812371e..071c7ccb4cf93a9d6b2da696e3289f8ecfbc7cb5 100644
+--- a/test/worker.test.mjs
++++ b/test/worker.test.mjs
+@@ -19,3 +19,33 @@ test("a message that is not a payment is acknowledged and skipped", (t) => {
+ test("a payment for an order nobody has is not acknowledged, so it is delivered again", (t) => {
+   assert.equal(consume(fresh(t), { id: "m-1", type: "order.paid", orderId: "ord-0009" }).ack, false);
+ });
++
++import { createOrder } from "../src/orders.mjs";
++
++function seeded(t) {
++  const store = fresh(t);
++  const order = createOrder(store, { customer: "a", lines: [{ qty: 2, unitMinor: 500 }] });
++  return { store, order };
++}
++
++test("an acknowledged payment's invoice is on disk already; redelivery adds none; a second payment adds one", (t) => {
++  const { store, order } = seeded(t);
++  const r = consume(store, { id: "m-1", type: "order.paid", orderId: order.id });
++  assert.equal(r.ack, true);
++  const again = openStore(store.dir).list("invoices");
++  assert.equal(again.length, 1);
++  assert.equal(again[0].orderId, order.id);
++  assert.equal(again[0].amountMinor, order.totalMinor);
++  assert.equal(consume(store, { id: "m-1", type: "order.paid", orderId: order.id }).ack, true);
++  assert.equal(openStore(store.dir).list("invoices").length, 1);
++  consume(store, { id: "m-2", type: "order.paid", orderId: order.id });
++  assert.equal(openStore(store.dir).list("invoices").length, 2);
++});
++
++test("unacknowledged and skipped messages write nothing", (t) => {
++  const { store } = seeded(t);
++  consume(store, { id: "m-1", type: "order.paid", orderId: "ord-0009" });
++  consume(store, { id: "m-2", type: "order.shipped", orderId: "ord-0001" });
++  assert.equal(openStore(store.dir).list("invoices").length, 0);
++  assert.equal(openStore(store.dir).list("processed").length, 0);
++});

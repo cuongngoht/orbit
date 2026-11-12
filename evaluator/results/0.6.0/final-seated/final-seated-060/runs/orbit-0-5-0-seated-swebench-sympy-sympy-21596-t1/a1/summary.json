@@ -1,0 +1,125 @@
+{
+  "kind": "ended",
+  "run": "orbit-0.5.0-seated__swebench_sympy__sympy-21596__t1",
+  "attempt": 1,
+  "at": "2026-11-12T12:29:10.077Z",
+  "chargedUsd": 0.09143720000000001,
+  "infra": null,
+  "timedOut": false,
+  "killedByControl": false,
+  "exit": 0,
+  "oomKilled": false,
+  "wallMs": 107888,
+  "streamBytes": 71482,
+  "streamCut": false,
+  "summary": {
+    "started": true,
+    "model": "claude-sonnet-5-5",
+    "version": "2.1.322",
+    "plugins": [
+      "orbit@0.5.0"
+    ],
+    "hooks": {
+      "ran": 3,
+      "failed": 0
+    },
+    "skillsListed": 41,
+    "result": true,
+    "costUsd": 0.09143720000000001,
+    "tokens": {
+      "input": 16,
+      "output": 2022,
+      "cacheRead": 196292,
+      "cacheWrite": 12889
+    },
+    "turns": 8,
+    "durationMs": 105626,
+    "denials": 0,
+    "subtype": "success",
+    "isError": false,
+    "stoppedOn": null,
+    "apiError": null,
+    "status": "DONE",
+    "statusWhy": null,
+    "asked": false,
+    "tools": {
+      "calls": 7,
+      "byName": {
+        "Grep": 1,
+        "Read": 1,
+        "Bash": 5
+      },
+      "skills": {},
+      "agents": {}
+    },
+    "orbit": {
+      "commands": 0,
+      "byCli": {}
+    }
+  },
+  "patch": {
+    "bytes": 2793,
+    "digest": "98da66351d38d7e27a82d4fa10da6dafea4a12485c56050bea377844f16afb97",
+    "paths": [
+      "sympy/sets/handlers/intersection.py",
+      "sympy/sets/tests/test_fancysets.py"
+    ]
+  },
+  "plugin": {
+    "digest": "cf98124b0cd41fc4472243299c70a4e5835eae441eaead6568660203380672c4",
+    "files": 2706
+  },
+  "images": {
+    "task": "sha256:1df616eb9faad0688c22d0e38984918699b28fea9e60f5c1158f1e99b8eb2a6f",
+    "taskRef": "swebench/sweb.eval.x86_64.sympy_1776_sympy-21596:latest",
+    "pulled": true,
+    "egress": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb"
+  },
+  "startCommit": "05310afe5e7ded925aad387959f1d75f454f3aaa",
+  "entryPhase": "ended",
+  "seat": {
+    "holds": true,
+    "exit": 0,
+    "ms": 271,
+    "unchanged": true,
+    "changed": [],
+    "gitDirChanged": 0,
+    "storeFiles": 6,
+    "store": [
+      "repo-674c276374d6d513f765d377d39c7a3fe245aebf5f3ca59a6c9bc70377290cf0/store.json",
+      "repo-674c276374d6d513f765d377d39c7a3fe245aebf5f3ca59a6c9bc70377290cf0/ui-tests/project.json",
+      "repo-674c276374d6d513f765d377d39c7a3fe245aebf5f3ca59a6c9bc70377290cf0/ui-tests/project.schema.json",
+      "repo-674c276374d6d513f765d377d39c7a3fe245aebf5f3ca59a6c9bc70377290cf0/ui-tests/schema/case.schema.json",
+      "repo-674c276374d6d513f765d377d39c7a3fe245aebf5f3ca59a6c9bc70377290cf0/ui-tests/schema/plan.schema.json",
+      "state/checkouts/427298c01319355aae99da720b647df7cd291b9e3d2f3b5950ed35fb285aaf3f.json"
+    ],
+    "why": null
+  },
+  "trail": {
+    "events": 9,
+    "byType": {
+      "prompt.submitted": 1,
+      "tool.used": 2,
+      "command.ran": 5,
+      "session.ended": 1
+    },
+    "held": {},
+    "advice": {},
+    "commands": {},
+    "journals": {
+      "task": 0,
+      "work": 0
+    },
+    "cut": false
+  },
+  "egress": {
+    "direct": "ENETUNREACH",
+    "outsideName": "EAI_AGAIN",
+    "api": {
+      "connect": 200,
+      "http": 404
+    },
+    "otherHost": 403,
+    "holds": true
+  }
+}

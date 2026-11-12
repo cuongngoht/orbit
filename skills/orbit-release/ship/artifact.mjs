@@ -1,13 +1,12 @@
-// THE RELEASE ARTIFACT: the archive a host is handed, built from a release commit the one way the release skill says it
-// is built (`git archive --format=zip`, never a zip of a directory: only an archive applies export-ignore), then held to
-// what a host refuses ON THE ARCHIVE ITSELF -- its central directory read here, with no dependency -- and digested two
-// ways: its bytes (the file a release publishes) and its CONTENT (every entry's name and inflated bytes), so an archive a
-// person builds again from a commit of the same tree can be checked against the evidence too.
+// THE RELEASE ARTIFACT: the archive a host is handed, built from a commit the one way the release skill says it is built
+// (`git archive --format=zip`, never a zip of a directory: only an archive applies export-ignore), then held to what a
+// host refuses ON THE ARCHIVE ITSELF -- its central directory read here, with no dependency -- and digested two ways: its
+// bytes (the file a release publishes) and its CONTENT (every entry's name and inflated bytes), so the archive of the
+// commit an evaluation ran and the archive of the commit being released are compared by what a host would unpack.
+// Nothing here keeps a room: the archive is read in memory.
 //
-//   built(world, room, tree, commit) -> { file, version, sha256, content, entries, bytes, refused }
+//   archiveOf(git, rev) -> Buffer      artifactOf(buf) -> { sha256, content, entries, bytes, refused }
 //   entriesOf(buf) -> [{ name, mode, method, size, offset }]      contentDigest(buf) -> hex       ARCHIVE_RULES
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { inflateRawSync } from "node:zlib";
 import { Blocked } from "../../../src/errors.mjs";
 import { sha, shaBytes } from "../../../src/hash.mjs";
@@ -58,19 +57,18 @@ export const ARCHIVE_RULES = [
   { says: "no .claude-plugin/plugin.json at the archive's root -- a host finds no plugin", fails: (es) => !es.some((e) => e.name === ".claude-plugin/plugin.json") },
   { says: "a top-level bin/ -- a host refuses what would go on PATH unseen", fails: (es) => es.some((e) => e.name.startsWith("bin/")) },
   { says: "a symbolic link -- a host refuses the archive outright", fails: (es) => es.some((e) => (e.mode & 0o170000) === SYMLINK) },
-  { says: "a file of development tooling that never ships (benchmark/, acceptance/, integrations/) -- export-ignore did not apply", fails: (es) => es.some((e) => !isDir(e) && /^(benchmark|acceptance|integrations)\//.test(e.name)) },
+  { says: "a file of development tooling that never ships (acceptance/, integrations/, evaluator/) -- export-ignore did not apply", fails: (es) => es.some((e) => !isDir(e) && /^(acceptance|integrations|evaluator)\//.test(e.name)) },
 ];
 
-const versionOf = (tree) => JSON.parse(readFileSync(join(tree, "package.json"), "utf8")).version;
-
-export function built(world, room, tree, commit) {
-  const version = versionOf(tree);
-  const file = room.at("artifacts", `orbit-${version}-${commit.slice(0, 12)}.zip`);
-  ((r) => r.ok || failedArchive(r))((room.io.ensureDir(room.at("artifacts")), world.git(tree, ["archive", "--format=zip", "-o", file, commit])));
-  const buf = readFileSync(file);
-  return { file, version, sha256: shaBytes(buf), content: contentDigest(buf), entries: entriesOf(buf).length, bytes: buf.length, refused: ARCHIVE_RULES.filter((r) => r.fails(entriesOf(buf))).map((r) => r.says) };
+// The archive of one revision, as a host would be handed it, read into memory: `git archive --format=zip <rev>` through
+// the git port the caller binds (ports.mjs gitAt), so nothing is written anywhere.
+export function archiveOf(git, rev) {
+  const r = git(["archive", "--format=zip", rev], { binary: true });
+  if (!r.ok) throw new Blocked(`git archive ${rev} could not build the archive: ${String(r.err ?? "").trim().split("\n").at(-1)?.slice(0, 300) || "no answer"}`);
+  return Buffer.from(r.out);
 }
 
-function failedArchive(r) {
-  throw new Blocked(`git archive could not build the release artifact: ${String(r.err ?? "").trim().split("\n").at(-1)?.slice(0, 300) ?? "no answer"}`);
-}
+// What an archive IS, two ways: its bytes (the file a release publishes; another commit of the same tree has other
+// bytes, since git writes the commit and its time into the zip) and its content (every entry's name and inflated bytes,
+// which two commits of one shipped tree share) -- and what a host would refuse in it.
+export const artifactOf = (buf) => ((es) => ({ sha256: shaBytes(buf), content: contentDigest(buf), entries: es.length, bytes: buf.length, refused: ARCHIVE_RULES.filter((r) => r.fails(es)).map((r) => r.says) }))(entriesOf(buf));

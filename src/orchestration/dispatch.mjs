@@ -209,7 +209,7 @@ function failureOf(ports, lw, command, ran) {
   const signature = signatureOf(runFacts(command, ran), lw.workspace.path);
   const exact = exactOf(runFacts(command, ran), lw.workspace.path);
   const baseline = baselineOf(ports, lw, command.id);
-  return { signature, exact, asBefore: sameAsBaseline(baseline, exact, lw), ...classify({ purpose: command.purpose, started: ran.started, timedOut: ran.timedOut, changed: changed(lw), signature, baseline }) };
+  return { signature, exact, asBefore: sameAsBaseline(baseline, exact, lw), ...classify({ purpose: command.purpose, started: ran.started, spawnCode: ran.spawnCode ?? null, status: ran.status, timedOut: ran.timedOut, changed: changed(lw), signature, baseline, restore: ran.facts?.restore ?? null, unreachable: ran.facts?.unreachable ?? [] }) };
 }
 
 // How a check came out: passed; failed exactly as at its baseline (visible, never a pass -- what is
@@ -233,7 +233,7 @@ const verifiesNow = (lw, command) => changed(lw) && requiredIds(lw).has(command.
 
 // `observation` is what was READ off the run while it ran (src/orchestration/activity/): its bounded summary, kept
 // with the record, never a verdict -- the receipt's word is the check's, whatever an observation counted.
-const checkRecord = (lw, command, ran, failure) => ({ command: command.id, purpose: command.purpose, component: command.component, declaredAs: command.declaredAs, started: ran.started, timedOut: ran.timedOut, status: ran.status, durationMs: ran.durationMs, signature: failure?.signature ?? null, exact: failure?.exact ?? null, class: failure?.class ?? null, confidence: failure?.confidence ?? null, stage: lw.view.stage, tree: ran.tree ?? null, unpinned: ran.unpinned === true, observation: ran.observation ?? null });
+const checkRecord = (lw, command, ran, failure) => ({ command: command.id, purpose: command.purpose, component: command.component, declaredAs: command.declaredAs, started: ran.started, spawnCode: ran.spawnCode ?? null, timedOut: ran.timedOut, status: ran.status, durationMs: ran.durationMs, signature: failure?.signature ?? null, exact: failure?.exact ?? null, class: failure?.class ?? null, confidence: failure?.confidence ?? null, stage: lw.view.stage, tree: ran.tree ?? null, unpinned: ran.unpinned === true, observation: ran.observation ?? null });
 
 function checkResult(ports, lw, command, ran, ref) {
   const failure = ran.ok ? null : failureOf(ports, lw, command, ran);

@@ -138,3 +138,22 @@ test("trigger.holdOnStop: on by default, a boolean, narrowed AND -- either docum
   assert.equal(existsSync(file), false);
   assert.equal(writeAutomation(realIo(), file, { trigger: { holdOnStop: false } }, PERSON).settings.trigger.holdOnStop, false, "a person, in Control");
 });
+
+// 0.6.0 (P3): whether a Stop may hold a turn that edited code a component owns and ran no passing check after it --
+// on by default, a person's to switch off in Orbit Control, and a project can only switch it off, never back on.
+test("trigger.holdUnverified: on by default, a boolean, narrowed AND, read by the owed hold, and written only through Control's door", (t) => {
+  const row = FIELDS.find((f) => f.path.join(".") === "trigger.holdUnverified");
+  assert.deepEqual([row.type, row.default, row.narrow, row.readBy], ["boolean", true, "and", "src/lifecycle/subscribers/owed.mjs"]);
+  assert.equal(defaultsOf().trigger.holdUnverified, true);
+  assert.equal(defaultsOf().trigger.holdOnStop, true, "beside the workflow hold, never instead of it");
+  const value = (...docs) => effectiveOf(docs).fields["trigger.holdUnverified"];
+  assert.deepEqual(value(doc("machine", { trigger: { holdUnverified: false } }), doc("project", { trigger: { holdUnverified: true } })), { value: false, by: "machine" }, "a project cannot switch back on what the machine switched off");
+  assert.deepEqual(value(doc("machine", {}), doc("project", { trigger: { holdUnverified: false } })), { value: false, by: "project" });
+  assert.deepEqual(value(), { value: true, by: "default" });
+  assert.deepEqual(effectiveOf([doc("machine", { trigger: { holdUnverified: false } })]).fields["trigger.holdOnStop"], { value: true, by: "default" }, "the two holds are switched apart");
+  assert.equal(settingsProblems({ trigger: { holdUnverified: "yes" } }).length, 1, "a boolean, never a word");
+  const file = join(room(t), "settings.json");
+  assert.throws(() => writeAutomation(realIo(), file, { trigger: { holdUnverified: false } }, { revision: null, door: "terminal", at: AT }), (e) => e.code === AUTOMATION_DOOR);
+  assert.equal(existsSync(file), false);
+  assert.equal(writeAutomation(realIo(), file, { trigger: { holdUnverified: false } }, PERSON).settings.trigger.holdUnverified, false, "a person, in Control");
+});

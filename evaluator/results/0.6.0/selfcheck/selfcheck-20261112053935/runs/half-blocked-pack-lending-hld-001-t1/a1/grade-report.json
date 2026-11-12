@@ -1,0 +1,196 @@
+{
+  "applied": true,
+  "empty": false,
+  "restored": [
+    {
+      "rel": "test/api.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/catalog.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/dates.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/dropbox.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/holds.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/limits.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/loans.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/members.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/pickup.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/renewals.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/store.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/tenancy.test.mjs",
+      "ok": true
+    }
+  ],
+  "tests": [
+    {
+      "file": "test/fines.test.mjs",
+      "kind": "f2p",
+      "ok": false,
+      "code": 1,
+      "timedOut": false,
+      "pass": 4,
+      "fail": 1,
+      "tail": "TAP version 13\n# Subtest: a book back on its due date owes nothing\nok 1 - a book back on its due date owes nothing\n  ---\n  duration_ms: 47.087482\n  type: 'test'\n  ...\n# Subtest: a book back three days late is fined 75 cents, and its member owes them\nok 2 - a book back three days late is fined 75 cents, and its member owes them\n  ---\n  duration_ms: 58.285535\n  type: 'test'\n  ...\n# Subtest: a DVD is fined a dollar a day\nok 3 - a DVD is fined a dollar a day\n  ---\n  duration_ms: 24.006194\n  type: 'test'\n  ...\n# Subtest: a fine never goes above what the copy would cost to replace\nok 4 - a fine never goes above what the copy would cost to replace\n  ---\n  duration_ms: 11.865301\n  type: 'test'\n  ...\n# Subtest: a late copy dropped in the drop box is fined as one checked in at the desk, and a member owes every fine\nnot ok 5 - a late copy dropped in the drop box is fined as one checked in at the desk, and a member owes every fine\n  ---\n  duration_ms: 34.974265\n  type: 'test'\n  location: '/work/repo/test/fines.test.mjs:54:1'\n  failureType: 'testCodeFailure'\n  error: |-\n    Expected values to be strictly deep-equal:\n    + actual - expected\n    \n      [\n    +   0,\n    -   50,\n        25,\n    +   25\n    -   75\n      ]\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected:\n    0: 50\n    1: 25\n    2: 75\n  actual:\n    0: 0\n    1: 25\n    2: 25\n  operator: 'deepStrictEqual'\n  stack: |-\n    TestContext.<anonymous> (file:///work/repo/test/fines.test.mjs:59:10)\n    Test.runInAsyncScope (node:async_hooks:214:14)\n    Test.run (node:internal/test_runner/test:1047:25)\n    Test.processPendingSubtests (node:internal/test_runner/test:744:18)\n    Test.postRun (node:internal/test_runner/test:1173:19)\n    Test.run (node:internal/test_runner/test:1101:12)\n    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)\n  ...\n1..5\n# tests 5\n# suites 0\n# pass 4\n# fail 1\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 278.433561"
+    },
+    {
+      "file": "test/eval-acceptance.test.mjs",
+      "kind": "f2p",
+      "ok": false,
+      "code": 1,
+      "timedOut": false,
+      "pass": 4,
+      "fail": 1,
+      "tail": "them, and balance:0, fine:0:0, fine:1:0 came back'\n    +   },\n    +   {\n    +     id: 'dropbox-24',\n    +     why: 'expected fine:0:700, balance:700 among them, and balance:0, fine:0:0 came back'\n    +   },\n    +   {\n    +     id: 'dropbox-29',\n    +     why: 'expected fine:0:1050, balance:1050 among them, and balance:0, fine:0:0 came back'\n    +   },\n    +   {\n    +     id: 'dropbox-34',\n    +     why: 'expected fine:0:850, balance:850 among them, and balance:0, fine:0:0 came back'\n    +   },\n    +   {\n    +     id: 'dropbox-39',\n    +     why: 'expected fine:0:1125, fine:1:350, balance:1475 among them, and balance:0, fine:0:0, fine:1:0 came back'\n    +   },\n    +   {\n    +     id: 'dropbox-44',\n    +     why: 'expected fine:0:900, fine:1:475, balance:1375 among them, and balance:0, fine:0:0, fine:1:0 came back'\n    +   }\n    + ]\n    - []\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected:\n  actual:\n    0:\n      id: 'dropbox-two-days'\n      why: 'expected fine:0:50, balance:50 among them, and balance:0, fine:0:0 came back'\n    1:\n      id: 'dropbox-capped'\n      why: 'expected fine:0:300, balance:300 among them, and balance:0, fine:0:0 came back'\n    2:\n      id: 'dropbox-4'\n      why: 'expected fine:0:600, balance:600 among them, and balance:0, fine:0:0 came back'\n    3:\n      id: 'dropbox-9'\n      why: 'expected fine:0:1100, fine:1:500, balance:1600 among them, and balance:0, fine:0:0, fine:1:0 came back'\n    4:\n      id: 'dropbox-14'\n      why: 'expected fine:0:825, fine:1:2200, balance:3025 among them, and balance:0, fine:0:0, fine:1:0 came back'\n    5:\n      id: 'dropbox-19'\n      why: 'expected fine:0:4300, fine:1:4400, balance:8700 among them, and balance:0, fine:0:0, fine:1:0 came back'\n    6:\n      id: 'dropbox-24'\n      why: 'expected fine:0:700, balance:700 among them, and balance:0, fine:0:0 came back'\n    7:\n      id: 'dropbox-29'\n      why: 'expected fine:0:1050, balance:1050 among them, and balance:0, fine:0:0 came back'\n    8:\n      id: 'dropbox-34'\n      why: 'expected fine:0:850, balance:850 among them, and balance:0, fine:0:0 came back'\n    9:\n      id: 'dropbox-39'\n      why: 'expected fine:0:1125, fine:1:350, balance:1475 among them, and balance:0, fine:0:0, fine:1:0 came back'\n    10:\n      id: 'dropbox-44'\n      why: 'expected fine:0:900, fine:1:475, balance:1375 among them, and balance:0, fine:0:0, fine:1:0 came back'\n  operator: 'deepStrictEqual'\n  stack: |-\n    TestContext.<anonymous> (file:///work/repo/test/eval-acceptance.test.mjs:49:12)\n    Test.runInAsyncScope (node:async_hooks:214:14)\n    Test.run (node:internal/test_runner/test:1047:25)\n    Test.processPendingSubtests (node:internal/test_runner/test:744:18)\n    Test.postRun (node:internal/test_runner/test:1173:19)\n    Test.run (node:internal/test_runner/test:1101:12)\n    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)\n  ...\n1..5\n# tests 5\n# suites 0\n# pass 4\n# fail 1\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 3000.41005"
+    },
+    {
+      "file": "test/api.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 3,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: a request with no library system it signed in as is refused\nok 1 - a request with no library system it signed in as is refused\n  ---\n  duration_ms: 5.782504\n  type: 'test'\n  ...\n# Subtest: a request on a day that is not a day of the calendar is refused\nok 2 - a request on a day that is not a day of the calendar is refused\n  ---\n  duration_ms: 1.131423\n  type: 'test'\n  ...\n# Subtest: a route the service does not have is not found\nok 3 - a route the service does not have is not found\n  ---\n  duration_ms: 2.143176\n  type: 'test'\n  ...\n1..3\n# tests 3\n# suites 0\n# pass 3\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 280.370466"
+    },
+    {
+      "file": "test/catalog.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 5,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: a title is added with its format, and says how long a copy of it may be out\nok 1 - a title is added with its format, and says how long a copy of it may be out\n  ---\n  duration_ms: 22.559727\n  type: 'test'\n  ...\n# Subtest: a title needs a name, and a format of book or dvd\nok 2 - a title needs a name, and a format of book or dvd\n  ---\n  duration_ms: 11.742531\n  type: 'test'\n  ...\n# Subtest: a copy of a title is added on the shelf, with what it would cost to replace\nok 3 - a copy of a title is added on the shelf, with what it would cost to replace\n  ---\n  duration_ms: 23.435131\n  type: 'test'\n  ...\n# Subtest: a copy needs a title the system has, and a replacement cost in whole cents\nok 4 - a copy needs a title the system has, and a replacement cost in whole cents\n  ---\n  duration_ms: 5.209506\n  type: 'test'\n  ...\n# Subtest: the system's titles are listed in the order they were added\nok 5 - the system's titles are listed in the order they were added\n  ---\n  duration_ms: 4.812401\n  type: 'test'\n  ...\n1..5\n# tests 5\n# suites 0\n# pass 5\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 270.913268"
+    },
+    {
+      "file": "test/dates.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 3,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: a day is a day of the calendar, written YYYY-MM-DD\nok 1 - a day is a day of the calendar, written YYYY-MM-DD\n  ---\n  duration_ms: 2.420063\n  type: 'test'\n  ...\n# Subtest: days are added across the end of a month and of a year\nok 2 - days are added across the end of a month and of a year\n  ---\n  duration_ms: 0.369635\n  type: 'test'\n  ...\n# Subtest: the days from one day to another\nok 3 - the days from one day to another\n  ---\n  duration_ms: 0.234471\n  type: 'test'\n  ...\n1..3\n# tests 3\n# suites 0\n# pass 3\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 287.399245"
+    },
+    {
+      "file": "test/dropbox.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 4,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: a copy dropped in the box is checked in on the day the box scanned it, and goes back on the shelf\nok 1 - a copy dropped in the box is checked in on the day the box scanned it, and goes back on the shelf\n  ---\n  duration_ms: 49.541268\n  type: 'test'\n  ...\n# Subtest: a message delivered again is acknowledged and changes nothing\nok 2 - a message delivered again is acknowledged and changes nothing\n  ---\n  duration_ms: 70.487553\n  type: 'test'\n  ...\n# Subtest: a copy the system does not have, or one not on loan, is acknowledged and changes nothing\nok 3 - a copy the system does not have, or one not on loan, is acknowledged and changes nothing\n  ---\n  duration_ms: 52.567516\n  type: 'test'\n  ...\n# Subtest: a message the consumer cannot read is acknowledged and rejected\nok 4 - a message the consumer cannot read is acknowledged and rejected\n  ---\n  duration_ms: 11.788301\n  type: 'test'\n  ...\n1..4\n# tests 4\n# suites 0\n# pass 4\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 350.886665"
+    },
+    {
+      "file": "test/holds.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 3,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: a hold is placed on a title on the day it is asked, and waits\nok 1 - a hold is placed on a title on the day it is asked, and waits\n  ---\n  duration_ms: 9.627378\n  type: 'test'\n  ...\n# Subtest: a member holds a title once at a time\nok 2 - a member holds a title once at a time\n  ---\n  duration_ms: 14.073211\n  type: 'test'\n  ...\n# Subtest: a hold names a title and a member the system has\nok 3 - a hold names a title and a member the system has\n  ---\n  duration_ms: 6.246198\n  type: 'test'\n  ...\n1..3\n# tests 3\n# suites 0\n# pass 3\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 211.672717"
+    },
+    {
+      "file": "test/limits.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 2,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: a member may have five items out at once, and the sixth is refused for the limit\nok 1 - a member may have five items out at once, and the sixth is refused for the limit\n  ---\n  duration_ms: 134.758133\n  type: 'test'\n  ...\n# Subtest: once one item comes back, the member may borrow another\nok 2 - once one item comes back, the member may borrow another\n  ---\n  duration_ms: 51.451327\n  type: 'test'\n  ...\n1..2\n# tests 2\n# suites 0\n# pass 2\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 570.616984"
+    },
+    {
+      "file": "test/loans.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 6,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: a copy is lent until its title's loan period is over: three weeks for a book, one week for a DVD\nok 1 - a copy is lent until its title's loan period is over: three weeks for a book, one week for a DVD\n  ---\n  duration_ms: 38.719402\n  type: 'test'\n  ...\n# Subtest: a lent copy is on loan, and nobody else may borrow it\nok 2 - a lent copy is on loan, and nobody else may borrow it\n  ---\n  duration_ms: 152.678205\n  type: 'test'\n  ...\n# Subtest: a loan is read back as it was lent\nok 3 - a loan is read back as it was lent\n  ---\n  duration_ms: 50.390124\n  type: 'test'\n  ...\n# Subtest: a loan checked in at the desk is back on the day it came in, and its copy is back on the shelf\nok 4 - a loan checked in at the desk is back on the day it came in, and its copy is back on the shelf\n  ---\n  duration_ms: 55.948106\n  type: 'test'\n  ...\n# Subtest: a loan that is back already is not checked in again\nok 5 - a loan that is back already is not checked in again\n  ---\n  duration_ms: 57.678494\n  type: 'test'\n  ...\n# Subtest: lending names a copy and a member the system has\nok 6 - lending names a copy and a member the system has\n  ---\n  duration_ms: 15.353351\n  type: 'test'\n  ...\n1..6\n# tests 6\n# suites 0\n# pass 6\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 464.243496"
+    },
+    {
+      "file": "test/members.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 4,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: a member is added and read back by id\nok 1 - a member is added and read back by id\n  ---\n  duration_ms: 11.099408\n  type: 'test'\n  ...\n# Subtest: a member needs a name\nok 2 - a member needs a name\n  ---\n  duration_ms: 1.952165\n  type: 'test'\n  ...\n# Subtest: a member nobody added is not found, and has no notices to read\nok 3 - a member nobody added is not found, and has no notices to read\n  ---\n  duration_ms: 3.638267\n  type: 'test'\n  ...\n# Subtest: a member who was sent nothing has no notices\nok 4 - a member who was sent nothing has no notices\n  ---\n  duration_ms: 3.639965\n  type: 'test'\n  ...\n1..4\n# tests 4\n# suites 0\n# pass 4\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 125.524546"
+    },
+    {
+      "file": "test/pickup.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 4,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: a copy checked in is set aside for the member who has waited longest, and the others keep waiting\nok 1 - a copy checked in is set aside for the member who has waited longest, and the others keep waiting\n  ---\n  duration_ms: 81.702447\n  type: 'test'\n  ...\n# Subtest: the hold that is ready names the copy and gives a week to collect it, and its member is sent a notice\nok 2 - the hold that is ready names the copy and gives a week to collect it, and its member is sent a notice\n  ---\n  duration_ms: 85.613905\n  type: 'test'\n  ...\n# Subtest: only the member a copy is set aside for may borrow it, and their hold is collected when they do\nok 3 - only the member a copy is set aside for may borrow it, and their hold is collected when they do\n  ---\n  duration_ms: 68.099189\n  type: 'test'\n  ...\n# Subtest: a copy dropped in the drop box serves the holds as one checked in at the desk does\nok 4 - a copy dropped in the drop box serves the holds as one checked in at the desk does\n  ---\n  duration_ms: 39.683596\n  type: 'test'\n  ...\n1..4\n# tests 4\n# suites 0\n# pass 4\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 369.902413"
+    },
+    {
+      "file": "test/renewals.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 4,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: a renewal moves the due date on by the title's loan period, counted from the due date it had\nok 1 - a renewal moves the due date on by the title's loan period, counted from the due date it had\n  ---\n  duration_ms: 119.933463\n  type: 'test'\n  ...\n# Subtest: a loan is renewed twice at most\nok 2 - a loan is renewed twice at most\n  ---\n  duration_ms: 62.693886\n  type: 'test'\n  ...\n# Subtest: an overdue loan is not renewed, though one on its due date is\nok 3 - an overdue loan is not renewed, though one on its due date is\n  ---\n  duration_ms: 31.751873\n  type: 'test'\n  ...\n# Subtest: a loan is not renewed while somebody waits for its title, nor once it is back\nok 4 - a loan is not renewed while somebody waits for its title, nor once it is back\n  ---\n  duration_ms: 59.897886\n  type: 'test'\n  ...\n1..4\n# tests 4\n# suites 0\n# pass 4\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 481.593262"
+    },
+    {
+      "file": "test/store.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 3,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: a record put is read back, and a store opened again finds it\nok 1 - a record put is read back, and a store opened again finds it\n  ---\n  duration_ms: 7.521868\n  type: 'test'\n  ...\n# Subtest: every id comes from one counter, and a kind is listed in the order its records were made\nok 2 - every id comes from one counter, and a kind is listed in the order its records were made\n  ---\n  duration_ms: 20.189861\n  type: 'test'\n  ...\n# Subtest: an id that is not a key, or that nothing was put under, reads nothing\nok 3 - an id that is not a key, or that nothing was put under, reads nothing\n  ---\n  duration_ms: 5.381835\n  type: 'test'\n  ...\n1..3\n# tests 3\n# suites 0\n# pass 3\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 406.377238"
+    },
+    {
+      "file": "test/tenancy.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 4,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: another system's records read as ones that do not exist\nok 1 - another system's records read as ones that do not exist\n  ---\n  duration_ms: 43.816842\n  type: 'test'\n  ...\n# Subtest: a system lists only its own titles\nok 2 - a system lists only its own titles\n  ---\n  duration_ms: 31.959596\n  type: 'test'\n  ...\n# Subtest: a change that names another system's record is refused as not found, and changes nothing of theirs\nok 3 - a change that names another system's record is refused as not found, and changes nothing of theirs\n  ---\n  duration_ms: 27.479926\n  type: 'test'\n  ...\n# Subtest: a drop box checks in only its own system's copies\nok 4 - a drop box checks in only its own system's copies\n  ---\n  duration_ms: 34.921848\n  type: 'test'\n  ...\n1..4\n# tests 4\n# suites 0\n# pass 4\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 285.448587"
+    }
+  ]
+}

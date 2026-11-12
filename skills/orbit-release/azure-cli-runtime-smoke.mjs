@@ -12,7 +12,7 @@
 //
 // It prints ONE line of JSON (the record to paste into ADR 0043's "Platform evidence" table) and exits non-zero when
 // the platform did not do what was expected. It needs the network. Nothing here is a test of the suite: the suite runs
-// no network and no real `az`; this is what a person runs, or the `azure-cli-runtime` workflow runs per platform.
+// no network and no real `az`; this is what a person runs, on a machine of each platform.
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

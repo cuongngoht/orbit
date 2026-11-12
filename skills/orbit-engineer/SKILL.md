@@ -29,6 +29,10 @@ allowed-tools:
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/live.mjs doctor*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/live.mjs open*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/track.mjs status*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/work.mjs show*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/work.mjs need*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/work.mjs settle*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/work.mjs checkpoint*)
 user-invocable: true
 ---
 
@@ -138,7 +142,17 @@ long timeout. If the host killed it, `reconcile` settles it once its process is 
   name, any reference the tracked tree does not hold: never plan from one it refused. A record that moved
   stays named until its owner reads it again, so once you have read what it cites, go on. ASK: a question about this task's work is already open: tell the person what it quotes
   and how it is answered, and plan nothing it decides until it is; never put a question of your own in
-  its place.
+  its place. `data.sufficiency.levels` says whether there is enough to investigate, to change and to
+  conclude, each with what it misses: `plan` only once `change` holds -- the direct items confirmed by
+  your read (`--with-refs`), what depends on them followed, a done criterion and the check that proves
+  it -- and never take a name the task's words matched as confirmed. RELEVANT follows a confirmed file
+  one hop each way (imports `dependency`, importers `downstream`, its tests `verification`); a shared
+  route literal is a hypothesis (`unknown`, `route-literal`) until you read both ends and propose the
+  other file; a `gap` is a file no relation adapter reads -- read it and propose what it relates to,
+  never assume an edge. When the task's work is kept (`--ref`), record each done criterion as a
+  `proof` need and each unknown as a `knowledge` need (`work.mjs need <w-…>`), settle each on what you read,
+  close each round of reads with `work.mjs checkpoint <w-…> --asked="<source> · <target>"`, ask
+  `context.mjs --work=<w-…>` again, and stop reading when `change` holds or its ROUNDS line says STOP.
 - **ENVIRONMENT** — `check-environment`. A block names who must act. If the checkout declares no
   test, or only one that needs a shell, nothing can verify a change: report it, and point at
   `orbit-qc-builder`. If you changed what the checkout declares, run `runtime discover --rescan`,
@@ -171,6 +185,9 @@ long timeout. If the host killed it, `reconcile` settles it once its process is 
   stopped by itself) for more, and the workspace's code. Make ONE hypothesis. A `low`-confidence
   class is a hint, not a fact. Then `diagnose` with `then: "fix"` (change something), or
   `"retest"` (the same change again, when the failure looked like the machine's, not the code's).
+  DEPENDENCY (the workspace's dependency restore failed: `prepare-sandbox` restores them again) and ACCESS (a target
+  the component needs could not be reached from here: a person's network or target settings) are the machine's, never
+  the change's -- `retest` once what they name is fixed, never `fix` the code for them.
   A review that failed on SCOPE has two honest answers. When the change NEEDS the path the plan left
   out (a test you added, a file the fix must touch), send `plan` again here, naming every path the
   change needs -- the earlier plan stays in the journal -- then `diagnose` `retest`: the same change,

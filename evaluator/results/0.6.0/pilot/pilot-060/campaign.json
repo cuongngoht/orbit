@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "id": "pilot-060",
+  "prereg": {
+    "release": "0.6.0",
+    "phase": "pilot",
+    "digest": "cdea6eaf5811820802028b725e6ca14728df530d303625e062d6267df73b49e2"
+  },
+  "model": "claude-sonnet-5-5",
+  "effort": "medium",
+  "budgetUsd": 1,
+  "limits": {
+    "usd": 1,
+    "turns": 80,
+    "minutes": 40,
+    "cpus": 2,
+    "memoryMb": 4096,
+    "pids": 2048
+  },
+  "arms": {
+    "plain": {
+      "kind": "claude",
+      "frozen": {}
+    }
+  },
+  "runs": [
+    {
+      "arm": "plain",
+      "task": "pack:orders-e2e-004",
+      "trial": 1
+    }
+  ],
+  "caFile": "/root/.ccr/ca-bundle.crt",
+  "plan": [
+    {
+      "arm": "plain",
+      "task": "pack:orders-e2e-004",
+      "trial": 1,
+      "key": "plain__pack_orders-e2e-004__t1"
+    }
+  ],
+  "tasks": {
+    "pack:orders-e2e-004": {
+      "digest": "c5f90224e9474b4926f845fd7786db4d8a0d6e3ff3677da50951e7204447207d",
+      "image": "node:22"
+    }
+  },
+  "pluginRepo": "/home/user/wt/evaluator",
+  "claudeCode": "2.1.322",
+  "evaluator": {
+    "commit": "71aeebca31c5dc5c996f427c4b2d6231b96ae9bb",
+    "dirty": false
+  },
+  "frozenAt": "2026-11-12T06:12:13.207Z"
+}

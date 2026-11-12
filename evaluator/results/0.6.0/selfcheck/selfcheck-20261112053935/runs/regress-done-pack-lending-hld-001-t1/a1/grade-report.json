@@ -1,0 +1,196 @@
+{
+  "applied": true,
+  "empty": false,
+  "restored": [
+    {
+      "rel": "test/api.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/catalog.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/dates.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/dropbox.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/holds.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/limits.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/loans.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/members.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/pickup.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/renewals.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/store.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/tenancy.test.mjs",
+      "ok": true
+    }
+  ],
+  "tests": [
+    {
+      "file": "test/fines.test.mjs",
+      "kind": "f2p",
+      "ok": false,
+      "code": 1,
+      "timedOut": false,
+      "pass": 0,
+      "fail": 1,
+      "tail": "TAP version 13\n# file:///work/repo/test/fines.test.mjs:7\n# import { handle } from \"../src/api.mjs\";\n#          ^^^^^^\n# SyntaxError: The requested module '../src/api.mjs' does not provide an export named 'handle'\n#     at ModuleJob._instantiate (node:internal/modules/esm/module_job:226:21)\n#     at async ModuleJob.run (node:internal/modules/esm/module_job:335:5)\n#     at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)\n#     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)\n# Node.js v22.23.5\n# Subtest: test/fines.test.mjs\nnot ok 1 - test/fines.test.mjs\n  ---\n  duration_ms: 183.387907\n  type: 'test'\n  location: '/work/repo/test/fines.test.mjs:1:1'\n  failureType: 'testCodeFailure'\n  exitCode: 1\n  signal: ~\n  error: 'test failed'\n  code: 'ERR_TEST_FAILURE'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 0\n# fail 1\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 198.307035"
+    },
+    {
+      "file": "test/eval-acceptance.test.mjs",
+      "kind": "f2p",
+      "ok": false,
+      "code": 1,
+      "timedOut": false,
+      "pass": 0,
+      "fail": 5,
+      "tail": "ce.test.mjs:47:12)\n    Test.runInAsyncScope (node:async_hooks:214:14)\n    Test.run (node:internal/test_runner/test:1047:25)\n    Test.processPendingSubtests (node:internal/test_runner/test:744:18)\n    Test.postRun (node:internal/test_runner/test:1173:19)\n    Test.run (node:internal/test_runner/test:1101:12)\n    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)\n  ...\n# Subtest: balance: `GET /members/:id` says in `balanceCents` every fine the member was charged, added up.\nnot ok 4 - balance: `GET /members/:id` says in `balanceCents` every fine the member was charged, added up.\n  ---\n  duration_ms: 0.362278\n  type: 'test'\n  location: '/work/repo/test/eval-acceptance.test.mjs:46:3'\n  failureType: 'testCodeFailure'\n  error: |-\n    the probe could not answer: {\"code\":\"MISSING_EXPORT\",\"names\":[\"handle (src/api.mjs)\"]}\n    + actual - expected\n    \n    + {\n    +   code: 'MISSING_EXPORT',\n    +   names: [\n    +     'handle (src/api.mjs)'\n    +   ]\n    + }\n    - undefined\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  actual:\n    code: 'MISSING_EXPORT'\n    names:\n      0: 'handle (src/api.mjs)'\n  operator: 'strictEqual'\n  stack: |-\n    TestContext.<anonymous> (file:///work/repo/test/eval-acceptance.test.mjs:47:12)\n    Test.runInAsyncScope (node:async_hooks:214:14)\n    Test.run (node:internal/test_runner/test:1047:25)\n    Test.processPendingSubtests (node:internal/test_runner/test:744:18)\n    Test.postRun (node:internal/test_runner/test:1173:19)\n    Test.run (node:internal/test_runner/test:1101:12)\n    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)\n  ...\n# Subtest: dropbox: A late copy checked in through the drop box is fined and charged exactly as one checked in at the desk.\nnot ok 5 - dropbox: A late copy checked in through the drop box is fined and charged exactly as one checked in at the desk.\n  ---\n  duration_ms: 0.299052\n  type: 'test'\n  location: '/work/repo/test/eval-acceptance.test.mjs:46:3'\n  failureType: 'testCodeFailure'\n  error: |-\n    the probe could not answer: {\"code\":\"MISSING_EXPORT\",\"names\":[\"handle (src/api.mjs)\"]}\n    + actual - expected\n    \n    + {\n    +   code: 'MISSING_EXPORT',\n    +   names: [\n    +     'handle (src/api.mjs)'\n    +   ]\n    + }\n    - undefined\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  actual:\n    code: 'MISSING_EXPORT'\n    names:\n      0: 'handle (src/api.mjs)'\n  operator: 'strictEqual'\n  stack: |-\n    TestContext.<anonymous> (file:///work/repo/test/eval-acceptance.test.mjs:47:12)\n    Test.runInAsyncScope (node:async_hooks:214:14)\n    Test.run (node:internal/test_runner/test:1047:25)\n    Test.processPendingSubtests (node:internal/test_runner/test:744:18)\n    Test.postRun (node:internal/test_runner/test:1173:19)\n    Test.run (node:internal/test_runner/test:1101:12)\n    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)\n  ...\n1..5\n# tests 5\n# suites 0\n# pass 0\n# fail 5\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 238.926244"
+    },
+    {
+      "file": "test/api.test.mjs",
+      "kind": "p2p",
+      "ok": false,
+      "code": 1,
+      "timedOut": false,
+      "pass": 0,
+      "fail": 1,
+      "tail": "TAP version 13\n# file:///work/repo/test/api.test.mjs:7\n# import { handle } from \"../src/api.mjs\";\n#          ^^^^^^\n# SyntaxError: The requested module '../src/api.mjs' does not provide an export named 'handle'\n#     at ModuleJob._instantiate (node:internal/modules/esm/module_job:226:21)\n#     at async ModuleJob.run (node:internal/modules/esm/module_job:335:5)\n#     at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)\n#     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)\n# Node.js v22.23.5\n# Subtest: test/api.test.mjs\nnot ok 1 - test/api.test.mjs\n  ---\n  duration_ms: 176.38729\n  type: 'test'\n  location: '/work/repo/test/api.test.mjs:1:1'\n  failureType: 'testCodeFailure'\n  exitCode: 1\n  signal: ~\n  error: 'test failed'\n  code: 'ERR_TEST_FAILURE'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 0\n# fail 1\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 219.148472"
+    },
+    {
+      "file": "test/catalog.test.mjs",
+      "kind": "p2p",
+      "ok": false,
+      "code": 1,
+      "timedOut": false,
+      "pass": 0,
+      "fail": 1,
+      "tail": "TAP version 13\n# file:///work/repo/test/catalog.test.mjs:7\n# import { handle } from \"../src/api.mjs\";\n#          ^^^^^^\n# SyntaxError: The requested module '../src/api.mjs' does not provide an export named 'handle'\n#     at ModuleJob._instantiate (node:internal/modules/esm/module_job:226:21)\n#     at async ModuleJob.run (node:internal/modules/esm/module_job:335:5)\n#     at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)\n#     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)\n# Node.js v22.23.5\n# Subtest: test/catalog.test.mjs\nnot ok 1 - test/catalog.test.mjs\n  ---\n  duration_ms: 76.684133\n  type: 'test'\n  location: '/work/repo/test/catalog.test.mjs:1:1'\n  failureType: 'testCodeFailure'\n  exitCode: 1\n  signal: ~\n  error: 'test failed'\n  code: 'ERR_TEST_FAILURE'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 0\n# fail 1\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 86.778963"
+    },
+    {
+      "file": "test/dates.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 3,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: a day is a day of the calendar, written YYYY-MM-DD\nok 1 - a day is a day of the calendar, written YYYY-MM-DD\n  ---\n  duration_ms: 6.441155\n  type: 'test'\n  ...\n# Subtest: days are added across the end of a month and of a year\nok 2 - days are added across the end of a month and of a year\n  ---\n  duration_ms: 0.372037\n  type: 'test'\n  ...\n# Subtest: the days from one day to another\nok 3 - the days from one day to another\n  ---\n  duration_ms: 0.253017\n  type: 'test'\n  ...\n1..3\n# tests 3\n# suites 0\n# pass 3\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 175.64626"
+    },
+    {
+      "file": "test/dropbox.test.mjs",
+      "kind": "p2p",
+      "ok": false,
+      "code": 1,
+      "timedOut": false,
+      "pass": 0,
+      "fail": 1,
+      "tail": "TAP version 13\n# file:///work/repo/test/dropbox.test.mjs:7\n# import { handle } from \"../src/api.mjs\";\n#          ^^^^^^\n# SyntaxError: The requested module '../src/api.mjs' does not provide an export named 'handle'\n#     at ModuleJob._instantiate (node:internal/modules/esm/module_job:226:21)\n#     at async ModuleJob.run (node:internal/modules/esm/module_job:335:5)\n#     at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)\n#     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)\n# Node.js v22.23.5\n# Subtest: test/dropbox.test.mjs\nnot ok 1 - test/dropbox.test.mjs\n  ---\n  duration_ms: 94.972917\n  type: 'test'\n  location: '/work/repo/test/dropbox.test.mjs:1:1'\n  failureType: 'testCodeFailure'\n  exitCode: 1\n  signal: ~\n  error: 'test failed'\n  code: 'ERR_TEST_FAILURE'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 0\n# fail 1\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 106.264622"
+    },
+    {
+      "file": "test/holds.test.mjs",
+      "kind": "p2p",
+      "ok": false,
+      "code": 1,
+      "timedOut": false,
+      "pass": 0,
+      "fail": 1,
+      "tail": "TAP version 13\n# file:///work/repo/test/holds.test.mjs:7\n# import { handle } from \"../src/api.mjs\";\n#          ^^^^^^\n# SyntaxError: The requested module '../src/api.mjs' does not provide an export named 'handle'\n#     at ModuleJob._instantiate (node:internal/modules/esm/module_job:226:21)\n#     at async ModuleJob.run (node:internal/modules/esm/module_job:335:5)\n#     at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)\n#     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)\n# Node.js v22.23.5\n# Subtest: test/holds.test.mjs\nnot ok 1 - test/holds.test.mjs\n  ---\n  duration_ms: 59.246685\n  type: 'test'\n  location: '/work/repo/test/holds.test.mjs:1:1'\n  failureType: 'testCodeFailure'\n  exitCode: 1\n  signal: ~\n  error: 'test failed'\n  code: 'ERR_TEST_FAILURE'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 0\n# fail 1\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 66.930751"
+    },
+    {
+      "file": "test/limits.test.mjs",
+      "kind": "p2p",
+      "ok": false,
+      "code": 1,
+      "timedOut": false,
+      "pass": 0,
+      "fail": 1,
+      "tail": "TAP version 13\n# file:///work/repo/test/limits.test.mjs:7\n# import { handle } from \"../src/api.mjs\";\n#          ^^^^^^\n# SyntaxError: The requested module '../src/api.mjs' does not provide an export named 'handle'\n#     at ModuleJob._instantiate (node:internal/modules/esm/module_job:226:21)\n#     at async ModuleJob.run (node:internal/modules/esm/module_job:335:5)\n#     at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)\n#     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)\n# Node.js v22.23.5\n# Subtest: test/limits.test.mjs\nnot ok 1 - test/limits.test.mjs\n  ---\n  duration_ms: 71.405125\n  type: 'test'\n  location: '/work/repo/test/limits.test.mjs:1:1'\n  failureType: 'testCodeFailure'\n  exitCode: 1\n  signal: ~\n  error: 'test failed'\n  code: 'ERR_TEST_FAILURE'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 0\n# fail 1\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 81.94034"
+    },
+    {
+      "file": "test/loans.test.mjs",
+      "kind": "p2p",
+      "ok": false,
+      "code": 1,
+      "timedOut": false,
+      "pass": 0,
+      "fail": 1,
+      "tail": "TAP version 13\n# file:///work/repo/test/loans.test.mjs:7\n# import { handle } from \"../src/api.mjs\";\n#          ^^^^^^\n# SyntaxError: The requested module '../src/api.mjs' does not provide an export named 'handle'\n#     at ModuleJob._instantiate (node:internal/modules/esm/module_job:226:21)\n#     at async ModuleJob.run (node:internal/modules/esm/module_job:335:5)\n#     at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)\n#     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)\n# Node.js v22.23.5\n# Subtest: test/loans.test.mjs\nnot ok 1 - test/loans.test.mjs\n  ---\n  duration_ms: 114.73285\n  type: 'test'\n  location: '/work/repo/test/loans.test.mjs:1:1'\n  failureType: 'testCodeFailure'\n  exitCode: 1\n  signal: ~\n  error: 'test failed'\n  code: 'ERR_TEST_FAILURE'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 0\n# fail 1\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 129.631565"
+    },
+    {
+      "file": "test/members.test.mjs",
+      "kind": "p2p",
+      "ok": false,
+      "code": 1,
+      "timedOut": false,
+      "pass": 0,
+      "fail": 1,
+      "tail": "TAP version 13\n# file:///work/repo/test/members.test.mjs:7\n# import { handle } from \"../src/api.mjs\";\n#          ^^^^^^\n# SyntaxError: The requested module '../src/api.mjs' does not provide an export named 'handle'\n#     at ModuleJob._instantiate (node:internal/modules/esm/module_job:226:21)\n#     at async ModuleJob.run (node:internal/modules/esm/module_job:335:5)\n#     at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)\n#     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)\n# Node.js v22.23.5\n# Subtest: test/members.test.mjs\nnot ok 1 - test/members.test.mjs\n  ---\n  duration_ms: 115.428285\n  type: 'test'\n  location: '/work/repo/test/members.test.mjs:1:1'\n  failureType: 'testCodeFailure'\n  exitCode: 1\n  signal: ~\n  error: 'test failed'\n  code: 'ERR_TEST_FAILURE'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 0\n# fail 1\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 125.2777"
+    },
+    {
+      "file": "test/pickup.test.mjs",
+      "kind": "p2p",
+      "ok": false,
+      "code": 1,
+      "timedOut": false,
+      "pass": 0,
+      "fail": 1,
+      "tail": "TAP version 13\n# file:///work/repo/test/pickup.test.mjs:7\n# import { handle } from \"../src/api.mjs\";\n#          ^^^^^^\n# SyntaxError: The requested module '../src/api.mjs' does not provide an export named 'handle'\n#     at ModuleJob._instantiate (node:internal/modules/esm/module_job:226:21)\n#     at async ModuleJob.run (node:internal/modules/esm/module_job:335:5)\n#     at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)\n#     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)\n# Node.js v22.23.5\n# Subtest: test/pickup.test.mjs\nnot ok 1 - test/pickup.test.mjs\n  ---\n  duration_ms: 133.994232\n  type: 'test'\n  location: '/work/repo/test/pickup.test.mjs:1:1'\n  failureType: 'testCodeFailure'\n  exitCode: 1\n  signal: ~\n  error: 'test failed'\n  code: 'ERR_TEST_FAILURE'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 0\n# fail 1\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 170.691081"
+    },
+    {
+      "file": "test/renewals.test.mjs",
+      "kind": "p2p",
+      "ok": false,
+      "code": 1,
+      "timedOut": false,
+      "pass": 0,
+      "fail": 1,
+      "tail": "TAP version 13\n# file:///work/repo/test/renewals.test.mjs:7\n# import { handle } from \"../src/api.mjs\";\n#          ^^^^^^\n# SyntaxError: The requested module '../src/api.mjs' does not provide an export named 'handle'\n#     at ModuleJob._instantiate (node:internal/modules/esm/module_job:226:21)\n#     at async ModuleJob.run (node:internal/modules/esm/module_job:335:5)\n#     at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)\n#     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)\n# Node.js v22.23.5\n# Subtest: test/renewals.test.mjs\nnot ok 1 - test/renewals.test.mjs\n  ---\n  duration_ms: 49.892084\n  type: 'test'\n  location: '/work/repo/test/renewals.test.mjs:1:1'\n  failureType: 'testCodeFailure'\n  exitCode: 1\n  signal: ~\n  error: 'test failed'\n  code: 'ERR_TEST_FAILURE'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 0\n# fail 1\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 58.068206"
+    },
+    {
+      "file": "test/store.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 3,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: a record put is read back, and a store opened again finds it\nok 1 - a record put is read back, and a store opened again finds it\n  ---\n  duration_ms: 19.386362\n  type: 'test'\n  ...\n# Subtest: every id comes from one counter, and a kind is listed in the order its records were made\nok 2 - every id comes from one counter, and a kind is listed in the order its records were made\n  ---\n  duration_ms: 4.720882\n  type: 'test'\n  ...\n# Subtest: an id that is not a key, or that nothing was put under, reads nothing\nok 3 - an id that is not a key, or that nothing was put under, reads nothing\n  ---\n  duration_ms: 1.395581\n  type: 'test'\n  ...\n1..3\n# tests 3\n# suites 0\n# pass 3\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 180.353909"
+    },
+    {
+      "file": "test/tenancy.test.mjs",
+      "kind": "p2p",
+      "ok": false,
+      "code": 1,
+      "timedOut": false,
+      "pass": 0,
+      "fail": 1,
+      "tail": "TAP version 13\n# file:///work/repo/test/tenancy.test.mjs:7\n# import { handle } from \"../src/api.mjs\";\n#          ^^^^^^\n# SyntaxError: The requested module '../src/api.mjs' does not provide an export named 'handle'\n#     at ModuleJob._instantiate (node:internal/modules/esm/module_job:226:21)\n#     at async ModuleJob.run (node:internal/modules/esm/module_job:335:5)\n#     at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)\n#     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)\n# Node.js v22.23.5\n# Subtest: test/tenancy.test.mjs\nnot ok 1 - test/tenancy.test.mjs\n  ---\n  duration_ms: 94.959663\n  type: 'test'\n  location: '/work/repo/test/tenancy.test.mjs:1:1'\n  failureType: 'testCodeFailure'\n  exitCode: 1\n  signal: ~\n  error: 'test failed'\n  code: 'ERR_TEST_FAILURE'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 0\n# fail 1\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 109.669556"
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "campaign": "final-060",
+  "run": {
+    "arm": "plain",
+    "task": "swebench:sphinx-doc__sphinx-11445",
+    "trial": 1,
+    "key": "plain__swebench_sphinx-doc__sphinx-11445__t1"
+  },
+  "attempt": 1,
+  "arm": {
+    "id": "plain",
+    "kind": "claude",
+    "def": {
+      "kind": "claude"
+    },
+    "frozen": {}
+  },
+  "task": {
+    "ref": "swebench:sphinx-doc__sphinx-11445",
+    "image": "swebench/sweb.eval.x86_64.sphinx-doc_1776_sphinx-11445:latest",
+    "repo": "/testbed",
+    "digest": "b1a7cded572a71ff2a5dde3c0c567ab5bca8b7f8fa84f4cb294ce8af4962bac6"
+  },
+  "model": "claude-sonnet-5-5",
+  "effort": "medium",
+  "limits": {
+    "usd": 1,
+    "turns": 80,
+    "minutes": 40,
+    "cpus": 2,
+    "memoryMb": 4096,
+    "pids": 2048
+  },
+  "capUsd": 1,
+  "tools": {
+    "ok": true,
+    "volume": "evl-tools-cc-2.1.322-e13726ca6041",
+    "built": false,
+    "claudeCode": "2.1.322",
+    "claudeCodeSays": "2.1.322 (Claude Code)",
+    "node": "v22.23.5",
+    "nodeImage": "node:22",
+    "nodeImageId": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb",
+    "builtAt": "2026-11-12T05:13:27.498Z"
+  },
+  "containers": {
+    "net": "evl-0a4d3572-6cadbecb-a1-net",
+    "egress": "evl-0a4d3572-6cadbecb-a1-egress",
+    "task": "evl-0a4d3572-6cadbecb-a1-task",
+    "grader": "evl-0a4d3572-6cadbecb-a1-grader",
+    "label": "final-060/plain__swebench_sphinx-doc__sphinx-11445__t1/a1"
+  },
+  "evaluator": {
+    "commit": "0e2cbb47e97991c464d9b7ecbebef40f938d1d26",
+    "dirty": false
+  },
+  "startedAt": "2026-11-12T11:49:08.282Z"
+}

@@ -10,14 +10,15 @@
 // A row about one control `role` may also say, in `says`, what a design with such a control must do that the control's
 // own contract does not show: a host reads it before it designs (src/investigation/loop.mjs protocolOf, and the template
 // of an obligation whose shape needs that role, src/investigation/obligations.mjs), never first in a refusal.
-import { isOp, refOf, requestOf, stepsOf } from "../backend/skeleton.mjs";
+import { actionsWhere, isOp, refOf, requestOf, stepsOf } from "../backend/skeleton.mjs";
 import { CONTROL_ROLES } from "../obligations/contract.mjs";
 
 // What the workload control (the `orbit.workload.control` family operation) is asked to do, in the open workload
-// protocol's own words: arm a fault point, and the two actions that bring a stopped workload back.
+// protocol's own words (src/qa/backend/skeleton.mjs WORKLOAD_ACTIONS): arm a fault point, and the actions that bring a
+// stopped workload back.
 const WORKLOAD_CONTROL = "orbit.workload.control";
 const FAULT = "fault";
-const BRINGS_BACK = ["start", "restart"];
+const BRINGS_BACK = actionsWhere("bringsBack");
 
 const RESTORED = `A fault stops the workload it is armed in at its point, and nothing declared says that workload comes back by itself: a project may keep it down so what the fault left can be read first. A design that faults one brings it back — a step ${WORKLOAD_CONTROL} on that workload with request.action ${BRINGS_BACK.join(" or ")} — after the step that witnesses the fault, before any later step asks that workload for more or reads what it did after the fault, and before the test ends: the next test in this sandbox finds the workload as this one left it.`;
 

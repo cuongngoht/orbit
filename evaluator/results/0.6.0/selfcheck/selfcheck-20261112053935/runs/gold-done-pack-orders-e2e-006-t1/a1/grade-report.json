@@ -1,0 +1,140 @@
+{
+  "applied": true,
+  "empty": false,
+  "restored": [
+    {
+      "rel": "test/cancel.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/currency.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/dedupe.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/invoice.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/money.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/orders.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/ui.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/worker.test.mjs",
+      "ok": true
+    }
+  ],
+  "tests": [
+    {
+      "file": "test/note.test.mjs",
+      "kind": "f2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 1,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: an order keeps the note it was created with, and draws it escaped\nok 1 - an order keeps the note it was created with, and draws it escaped\n  ---\n  duration_ms: 16.213606\n  type: 'test'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 1\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 161.353481"
+    },
+    {
+      "file": "test/eval-acceptance.test.mjs",
+      "kind": "f2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 7,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: kept: an order created with a note returns it when it is created and when it is read back\nok 1 - kept: an order created with a note returns it when it is created and when it is read back\n  ---\n  duration_ms: 5.812845\n  type: 'test'\n  ...\n# Subtest: durable: a note is still there when the store is opened again\nok 2 - durable: a note is still there when the store is opened again\n  ---\n  duration_ms: 0.159139\n  type: 'test'\n  ...\n# Subtest: drawn: the view draws a non-empty note in a paragraph of its own\nok 3 - drawn: the view draws a non-empty note in a paragraph of its own\n  ---\n  duration_ms: 0.180515\n  type: 'test'\n  ...\n# Subtest: escaped: a note is drawn escaped: &, <, >, \" and ' never reach the page as markup\nok 4 - escaped: a note is drawn escaped: &, <, >, \" and ' never reach the page as markup\n  ---\n  duration_ms: 0.109603\n  type: 'test'\n  ...\n# Subtest: none: an order with no note, or an empty one, has the empty note and no note paragraph\nok 5 - none: an order with no note, or an empty one, has the empty note and no note paragraph\n  ---\n  duration_ms: 0.224256\n  type: 'test'\n  ...\n# Subtest: unchanged: the customer, the total and the state are drawn as before\nok 6 - unchanged: the customer, the total and the state are drawn as before\n  ---\n  duration_ms: 0.09547\n  type: 'test'\n  ...\n# Subtest: seeded: seeded notes and customers\nok 7 - seeded: seeded notes and customers\n  ---\n  duration_ms: 13.371499\n  type: 'test'\n  ...\n1..7\n# tests 7\n# suites 0\n# pass 7\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 641.662451"
+    },
+    {
+      "file": "test/cancel.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 2,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: an open order can be cancelled, and a cancelled order is never shipped\nok 1 - an open order can be cancelled, and a cancelled order is never shipped\n  ---\n  duration_ms: 12.168114\n  type: 'test'\n  ...\n# Subtest: a shipped order cannot be cancelled\nok 2 - a shipped order cannot be cancelled\n  ---\n  duration_ms: 12.118427\n  type: 'test'\n  ...\n1..2\n# tests 2\n# suites 0\n# pass 2\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 167.911069"
+    },
+    {
+      "file": "test/currency.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 2,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: an order keeps its currency, and its total is formatted in it\nok 1 - an order keeps its currency, and its total is formatted in it\n  ---\n  duration_ms: 13.609811\n  type: 'test'\n  ...\n# Subtest: a currency nobody keeps is refused\nok 2 - a currency nobody keeps is refused\n  ---\n  duration_ms: 3.726444\n  type: 'test'\n  ...\n1..2\n# tests 2\n# suites 0\n# pass 2\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 269.882865"
+    },
+    {
+      "file": "test/dedupe.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 1,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: a payment delivered twice writes one invoice\nok 1 - a payment delivered twice writes one invoice\n  ---\n  duration_ms: 18.811176\n  type: 'test'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 1\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 203.382063"
+    },
+    {
+      "file": "test/invoice.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 1,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: a payment writes the order's invoice, and the invoice is still there when the store is opened again\nok 1 - a payment writes the order's invoice, and the invoice is still there when the store is opened again\n  ---\n  duration_ms: 24.553899\n  type: 'test'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 1\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 230.611226"
+    },
+    {
+      "file": "test/money.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 3,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: a line's total is its quantity times its unit price, in minor units\nok 1 - a line's total is its quantity times its unit price, in minor units\n  ---\n  duration_ms: 4.214194\n  type: 'test'\n  ...\n# Subtest: an order with no discount costs its subtotal, and a round discount is exact\nok 2 - an order with no discount costs its subtotal, and a round discount is exact\n  ---\n  duration_ms: 0.248554\n  type: 'test'\n  ...\n# Subtest: a total is formatted in dollars by default\nok 3 - a total is formatted in dollars by default\n  ---\n  duration_ms: 0.164405\n  type: 'test'\n  ...\n1..3\n# tests 3\n# suites 0\n# pass 3\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 191.329869"
+    },
+    {
+      "file": "test/orders.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 2,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: an order is created open, read back, and shipped once\nok 1 - an order is created open, read back, and shipped once\n  ---\n  duration_ms: 8.69937\n  type: 'test'\n  ...\n# Subtest: an unknown order and an unknown route are 404, and an order with no lines is refused\nok 2 - an unknown order and an unknown route are 404, and an order with no lines is refused\n  ---\n  duration_ms: 3.23298\n  type: 'test'\n  ...\n1..2\n# tests 2\n# suites 0\n# pass 2\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 356.991941"
+    },
+    {
+      "file": "test/ui.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 1,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: an order is drawn with its customer escaped, its total and its state\nok 1 - an order is drawn with its customer escaped, its total and its state\n  ---\n  duration_ms: 1.697006\n  type: 'test'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 1\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 155.782986"
+    },
+    {
+      "file": "test/worker.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 2,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: a message that is not a payment is acknowledged and skipped\nok 1 - a message that is not a payment is acknowledged and skipped\n  ---\n  duration_ms: 6.640886\n  type: 'test'\n  ...\n# Subtest: a payment for an order nobody has is not acknowledged, so it is delivered again\nok 2 - a payment for an order nobody has is not acknowledged, so it is delivered again\n  ---\n  duration_ms: 1.76426\n  type: 'test'\n  ...\n1..2\n# tests 2\n# suites 0\n# pass 2\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 190.477409"
+    }
+  ]
+}

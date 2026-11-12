@@ -1,0 +1,85 @@
+{
+  "kind": "ended",
+  "run": "plain__pack_lending-hld-003__t1",
+  "attempt": 1,
+  "at": "2026-11-12T11:56:45.194Z",
+  "chargedUsd": 0.0768422,
+  "infra": null,
+  "timedOut": false,
+  "killedByControl": false,
+  "exit": 0,
+  "oomKilled": false,
+  "wallMs": 24230,
+  "streamBytes": 50737,
+  "streamCut": false,
+  "summary": {
+    "started": true,
+    "model": "claude-sonnet-5-5",
+    "version": "2.1.322",
+    "plugins": [],
+    "hooks": {
+      "ran": 0,
+      "failed": 0
+    },
+    "skillsListed": 16,
+    "result": true,
+    "costUsd": 0.0768422,
+    "tokens": {
+      "input": 8,
+      "output": 2165,
+      "cacheRead": 77162,
+      "cacheWrite": 11865
+    },
+    "turns": 4,
+    "durationMs": 23317,
+    "denials": 0,
+    "subtype": "success",
+    "isError": false,
+    "stoppedOn": null,
+    "apiError": null,
+    "status": "DONE",
+    "statusWhy": null,
+    "asked": false,
+    "tools": {
+      "calls": 3,
+      "byName": {
+        "Bash": 3
+      },
+      "skills": {},
+      "agents": {}
+    },
+    "orbit": {
+      "commands": 0,
+      "byCli": {}
+    }
+  },
+  "patch": {
+    "bytes": 6882,
+    "digest": "941e7c6404c532827b3005d159b30d3fbd34b1633448f4cf6f292e69ddc866d6",
+    "paths": [
+      "README.md",
+      "src/api.mjs",
+      "src/holds.mjs",
+      "src/loans.mjs"
+    ]
+  },
+  "plugin": null,
+  "images": {
+    "task": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb",
+    "taskRef": "node:22",
+    "pulled": false,
+    "egress": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb"
+  },
+  "startCommit": "34ccd9a0fe75d6563539d38441694fd7e1837b01",
+  "entryPhase": "ended",
+  "egress": {
+    "direct": "ENETUNREACH",
+    "outsideName": "EAI_AGAIN",
+    "api": {
+      "connect": 200,
+      "http": 404
+    },
+    "otherHost": 403,
+    "holds": true
+  }
+}

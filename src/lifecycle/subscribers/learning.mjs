@@ -32,10 +32,17 @@
 //                 work, the owner's ONE recovery row -- an action that did not
 //                 settle is read back with `reconcile`, never resent -- after the
 //                 diagnosis a watched command gets (`world.recovery`)
+//
+// 0.6.0 (P2): and after ANY failed tool call, at most one line of advice from
+// evidence -- a fact about the session's work that holds, and the component the
+// resolver chooses for it (src/lifecycle/advice.mjs, `world.advice`) -- last,
+// joined into the same payload. Nothing is added to a call that succeeded.
 import { architecturePaths, createArchitecture } from "../../architecture/store.mjs";
+import { engined } from "../../engined.mjs";
 import { createEngineering } from "../../engineering/store.mjs";
 import { indexText } from "../../learn/recall.mjs";
 import { runLearn } from "../../learn/index.mjs";
+import { adviceLine } from "../advice.mjs";
 import { capabilityLine, openWorkLine, recoveryRow } from "../owners.mjs";
 
 export const WATCHED = ["run-case.mjs", "run-awake.mjs", "review.mjs", "note.mjs"];
@@ -77,7 +84,7 @@ const NO_SNAPSHOT = "No architecture snapshot exists for this project yet. `node
 
 // The command it names carries the plugin's own path once the composition root knows it, as the routing context's lines
 // do (subscribers/router.mjs) -- never a placeholder a host was not told how to read.
-const noSnapshotSaid = (engine) => (engine ? NO_SNAPSHOT.replaceAll("<plugin>", engine) : NO_SNAPSHOT);
+const noSnapshotSaid = (engine) => engined(NO_SNAPSHOT, engine);
 
 function missingSnapshot(ctx, engine) {
   if (!ctx.io.exists(ctx.project.graphDir)) return "";
@@ -105,9 +112,9 @@ function analysed(ctx) {
   runLearn(ctx, "analyse", ["--quiet"]);
 }
 
-// ONE payload: the diagnosis a watched command gets, then the governing owner's recovery row (0.5.0).
+// ONE payload: the diagnosis a watched command gets, then the governing owner's recovery row (0.5.0), then advice (0.6.0).
 function afterFailure(event, world) {
-  const lines = [world.host.isWatched(world.input, WATCHED) ? DIAGNOSE : null, recoveryOf(event, world)].filter(Boolean);
+  const lines = [world.host.isWatched(world.input, WATCHED) ? DIAGNOSE : null, recoveryOf(event, world), adviceLine(event, world)].filter(Boolean);
   return lines.length ? world.host.formatFailure(lines.join("\n"), world.input) : null;
 }
 

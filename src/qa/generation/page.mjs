@@ -10,6 +10,7 @@
 //
 // A selector is a CSS selector of a conservative alphabet, bounded, and carried into a script only as a JSON string
 // literal: what it names is looked up, never run.
+import { pagelessByVerbs } from "../../dsl/page.mjs";
 import { parsedPredicate } from "../../predicate.mjs";
 
 export const SELECTOR = /^[A-Za-z0-9 _\-[\]=:."'#>~+*(),|^$]{1,200}$/;
@@ -68,7 +69,23 @@ export const PAGE_RULES = [
   { id: "UNTIL_ON_ACT", findings: (d) => pageStepsOf(d).filter(({ step }) => step.until !== undefined && !ACT_VERBS.includes(step.do)).map(({ i, step }) => `step ${i} (${step.do}) says what to wait for, and only a step that drives the page waits — ${ACT_VERBS.join(", ")}`) },
   { id: "UNTIL_SHAPE", findings: (d) => pageStepsOf(d).filter(({ step }) => step.until !== undefined && (typeof step.until?.selector !== "string" || (step.until.attribute !== undefined && !ATTRIBUTE.test(String(step.until.attribute))) || (step.until.equals !== undefined && step.until.equals !== null && typeof step.until.equals !== "string"))).map(({ i }) => `step ${i}: until is { selector, attribute?, equals? } — an attribute is a lowercase name, and equals a string or null (the attribute absent)`) },
   { id: "READS", findings: (d) => pageStepsOf(d).filter(({ step }) => (step.do === "report") !== (step.reads !== undefined) || (step.reads !== undefined && typeof step.reads?.selector !== "string")).map(({ i, step }) => (step.do === "report" ? `step ${i} (report) names nothing it reads — reads: { selector }` : `step ${i} (${step.do}) reads, and only a report does`)) },
+  { id: "ENDS_REPORT", findings: (d, o) => endsReportFindings(d, o) },
   { id: "PAGE_REF", findings: (d) => (pageStepsOf(d).some(({ step }) => PAGE_VERBS.includes(step.do)) && typeof d.page?.endpointRef !== "string" ? ["a design that drives a page names the screen it drives — page: { endpointRef, identityRef? }, by the interface's alias"] : []) },
 ];
 
-export const pageFindings = (design) => PAGE_RULES.flatMap((rule) => rule.findings(design ?? {}).map((say) => ({ rule: rule.id, say })));
+// `o.readerSlots()`: which slot of the obligation's own criterion a report's reader could be ruled by, said -- handed in by
+// the stage that holds the generation context (src/qa/generation/design.mjs), so this module compiles nothing.
+export const pageFindings = (design, o = {}) => PAGE_RULES.flatMap((rule) => rule.findings(design ?? {}, o).map((say) => ({ rule: rule.id, say })));
+
+// A test that drives a page ends with a report: the validator holds every case that is not pageless to it
+// (src/dsl/rules/verdict.mjs endsWithReport), by the same verbs (src/dsl/page.mjs). The engine writes no report a design
+// did not propose -- a generated report rules on what it reads, and only a criterion says what that is -- so a design
+// that does not end with one is refused here, by name, before a case exists the host could never change.
+const endsUnreported = (d, dsl) => ((steps) => steps.length > 0 && steps[steps.length - 1]?.do !== "report" && !pagelessByVerbs({ steps }, dsl))(pageStepsOf(d).map(({ step }) => step));
+
+function endsReportFindings(d, o) {
+  const steps = pageStepsOf(d);
+  const last = steps[steps.length - 1];
+  return endsUnreported(d, o.dsl) ? [`it drives a page and ends with step ${last.i} (${String(last.step?.do).slice(0, 20)}): a page test ends with a report — add { "do": "report", "reads": { "selector": … } } last, ${o.readerSlots?.() ?? "ruled by a slot that states what the page shows"}`] : [];
+}
+

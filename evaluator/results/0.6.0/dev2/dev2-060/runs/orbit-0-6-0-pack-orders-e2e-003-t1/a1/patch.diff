@@ -1,0 +1,135 @@
+diff --git a/src/api.mjs b/src/api.mjs
+index ea9cbb8e9209cc061510325dec2a9d3418c07b37..a0a5638086893ece0ee259827d841e9446b48671 100644
+--- a/src/api.mjs
++++ b/src/api.mjs
+@@ -1,8 +1,8 @@
+ // The HTTP-shaped API: a pure function of a store and a request -- { method, path, body } -> { status, body }.
+-import { formatted } from "./money.mjs";
++import { currencyOf, formatted } from "./money.mjs";
+ import { cancelOrder, createOrder, getOrder, invalidOf, shipOrder } from "./orders.mjs";
+ 
+-const viewOf = (order) => ({ ...order, total: formatted(order.totalMinor) });
++const viewOf = (order) => ({ ...order, currency: currencyOf(order), total: formatted(order.totalMinor, currencyOf(order)) });
+ 
+ const ANSWERS = [
+   { when: (r) => !r || r.error === "NOT_FOUND", answer: () => ({ status: 404, body: { error: "no such order" } }) },
+diff --git a/src/money.mjs b/src/money.mjs
+index c6b58cb5cf3df656ffe96fc51e3b7c63fc306212..e5d72b75ec386ca89041ed1be6fb22d9f2159967 100644
+--- a/src/money.mjs
++++ b/src/money.mjs
+@@ -9,4 +9,10 @@ export const discounted = (minor, percent) => Math.floor((minor * (100 - percent
+ 
+ export const orderTotal = (lines, percent = 0) => discounted(subtotal(lines), percent);
+ 
+-export const formatted = (minor) => `$${(minor / 100).toFixed(2)}`;
++export const CURRENCIES = ["USD", "EUR", "JPY"];
++
++export const currencyOf = (order) => order?.currency ?? "USD";
++
++const FORMATS = { USD: (m) => `$${(m / 100).toFixed(2)}`, EUR: (m) => `€${(m / 100).toFixed(2)}`, JPY: (m) => `¥${m}` };
++
++export const formatted = (minor, currency = "USD") => FORMATS[currency](minor);
+diff --git a/src/orders.mjs b/src/orders.mjs
+index b71fc617d5febf4057bd48085b3c3cef5f585a2b..0d629af29d3edc557811474a9db947bae4c14ad5 100644
+--- a/src/orders.mjs
++++ b/src/orders.mjs
+@@ -1,5 +1,5 @@
+ // Orders: created open with their total computed once, shipped once, and cancelled only while they are still open.
+-import { orderTotal } from "./money.mjs";
++import { CURRENCIES, orderTotal } from "./money.mjs";
+ 
+ const nextId = (store) => `ord-${String(store.list("orders").length + 1).padStart(4, "0")}`;
+ 
+@@ -8,10 +8,10 @@ const validLine = (l) => Number.isInteger(l?.qty) && l.qty > 0 && Number.isInteg
+ const validPercent = (p) => Number.isInteger(p) && p >= 0 && p <= 100;
+ 
+ // Why an order cannot be made of what was sent, or null.
+-export const invalidOf = (input) => (!Array.isArray(input?.lines) || !input.lines.length || !input.lines.every(validLine) ? "lines" : !validPercent(input.percent ?? 0) ? "percent" : null);
++export const invalidOf = (input) => (!Array.isArray(input?.lines) || !input.lines.length || !input.lines.every(validLine) ? "lines" : !validPercent(input.percent ?? 0) ? "percent" : !CURRENCIES.includes(input.currency === undefined ? "USD" : input.currency) ? "currency" : null);
+ 
+ export function createOrder(store, input) {
+-  const order = { id: nextId(store), customer: String(input.customer ?? ""), lines: input.lines, percent: input.percent ?? 0, note: String(input.note ?? ""), state: "open" };
++  const order = { id: nextId(store), customer: String(input.customer ?? ""), lines: input.lines, percent: input.percent ?? 0, currency: input.currency ?? "USD", note: String(input.note ?? ""), state: "open" };
+   return store.put("orders", order.id, { ...order, totalMinor: orderTotal(order.lines, order.percent) });
+ }
+ 
+diff --git a/src/ui.mjs b/src/ui.mjs
+index 03c58b0cbb7907c0907326730614c07e9005c2e0..fd9f7225f96f381f4ea61895c110976bd7eb7a23 100644
+--- a/src/ui.mjs
++++ b/src/ui.mjs
+@@ -1,5 +1,5 @@
+ // An order as HTML: every value a customer typed is escaped before it is drawn.
+-import { formatted } from "./money.mjs";
++import { currencyOf, formatted } from "./money.mjs";
+ 
+ const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+ 
+@@ -7,4 +7,4 @@ export const escaped = (text) => String(text ?? "").replace(/[&<>"']/g, (ch) =>
+ 
+ const noteOf = (order) => (order.note ? [`  <p class="note">${escaped(order.note)}</p>`] : []);
+ 
+-export const renderOrder = (order) => [`<article class="order" id="${escaped(order.id)}">`, `  <h2>${escaped(order.customer)}</h2>`, `  <p class="total">${escaped(formatted(order.totalMinor))}</p>`, `  <p class="state">${escaped(order.state)}</p>`, ...noteOf(order), "</article>"].join("\n");
++export const renderOrder = (order) => [`<article class="order" id="${escaped(order.id)}">`, `  <h2>${escaped(order.customer)}</h2>`, `  <p class="total">${escaped(formatted(order.totalMinor, currencyOf(order)))}</p>`, `  <p class="state">${escaped(order.state)}</p>`, ...noteOf(order), "</article>"].join("\n");
+diff --git a/src/worker.mjs b/src/worker.mjs
+index 3da7a5019de9ef5bf3eb53583f05791c2677c78e..33631499132770039b0109d98dadf487c4516909 100644
+--- a/src/worker.mjs
++++ b/src/worker.mjs
+@@ -1,12 +1,13 @@
+ // The payments consumer: an `order.paid` message writes that order's invoice -- once per message, however many times
+ // the message is delivered -- and the message is acknowledged only once the invoice is written.
++import { currencyOf } from "./money.mjs";
+ import { getOrder } from "./orders.mjs";
+ 
+ const nextInvoice = (store) => `inv-${String(store.list("invoices").length + 1).padStart(4, "0")}`;
+ 
+ function invoiced(store, message, order) {
+   const id = nextInvoice(store);
+-  store.put("invoices", id, { id, orderId: order.id, amountMinor: order.totalMinor, messageId: message.id });
++  store.put("invoices", id, { id, orderId: order.id, amountMinor: order.totalMinor, currency: currencyOf(order), messageId: message.id });
+   store.put("processed", message.id, { messageId: message.id, invoice: id });
+   return { ack: true, invoice: id };
+ }
+diff --git a/test/currency.test.mjs b/test/currency.test.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..91b39fd8ec466445bc21a69c18ce3608fb0971eb
+--- /dev/null
++++ b/test/currency.test.mjs
+@@ -0,0 +1,38 @@
++import assert from "node:assert/strict";
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { test } from "node:test";
++import { handle } from "../src/api.mjs";
++import { openStore } from "../src/store.mjs";
++import { renderOrder } from "../src/ui.mjs";
++import { consume } from "../src/worker.mjs";
++
++function fresh(t) {
++  const dir = mkdtempSync(join(tmpdir(), "orders-"));
++  t.after(() => rmSync(dir, { recursive: true, force: true }));
++  return openStore(dir);
++}
++
++const make = (store, currency) => handle(store, { method: "POST", path: "/orders", body: { currency, lines: [{ qty: 1, unitMinor: 1234 }] } });
++
++test("orders keep and format their currency", (t) => {
++  const store = fresh(t);
++  const rs = [undefined, "USD", "EUR", "JPY"].map((c) => make(store, c));
++  assert.deepEqual(rs.map((r) => [r.status, r.body.currency, r.body.total]), [[201, "USD", "$12.34"], [201, "USD", "$12.34"], [201, "EUR", "€12.34"], [201, "JPY", "¥1234"]]);
++  assert.match(renderOrder(rs[3].body), /<p class="total">¥1234<\/p>/);
++  assert.match(renderOrder(rs[2].body), /€12\.34/);
++});
++
++test("an invoice carries the order's currency", (t) => {
++  const store = fresh(t);
++  const o = make(store, "EUR").body;
++  consume(store, { id: "m-1", type: "order.paid", orderId: o.id });
++  assert.equal(store.list("invoices")[0].currency, "EUR");
++});
++
++test("an unknown currency is refused and nothing is stored", (t) => {
++  const store = fresh(t);
++  for (const c of ["GBP", "usd", null, 5]) assert.equal(make(store, c).status, 400);
++  assert.equal(store.list("orders").length, 0);
++});

@@ -1,0 +1,14 @@
+diff --git a/src/flask/blueprints.py b/src/flask/blueprints.py
+index eb50585d2274b124289c3ce84196a9e847373c7c..1aa825622d5315668b76955d19d1b5d399791c4e 100644
+--- a/src/flask/blueprints.py
++++ b/src/flask/blueprints.py
+@@ -190,6 +190,9 @@ class Blueprint(Scaffold):
+             root_path=root_path,
+         )
+ 
++        if not name:
++            raise ValueError("'name' may not be empty.")
++
+         if "." in name:
+             raise ValueError("'name' may not contain a dot '.' character.")
+ 

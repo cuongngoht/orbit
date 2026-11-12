@@ -1,0 +1,81 @@
+diff --git a/README.md b/README.md
+index f50a0e08f9d18b7fb44e7537c53784208ef4cb96..3067e33c68ff9453f35875aff7371886df125958 100644
+--- a/README.md
++++ b/README.md
+@@ -24,7 +24,7 @@ answers `{ error: <word> }`.
+ | `POST /members` `{ name }` · `GET /members/:id` | adds a member, a member |
+ | `GET /members/:id/notices` | the notices a member was sent |
+ | `POST /loans` `{ copy, member }` · `GET /loans/:id` | lends a copy to a member, a loan |
+-| `POST /loans/:id/return` | checks a loan in at the desk |
++| `POST /loans/:id/return` | checks a loan in at the desk; a late return is fined (`fineCents`, books 25¢/day, DVDs $1/day, capped at the copy's `replacementCents`), added to the member's `balanceCents` |
+ | `POST /loans/:id/renew` | renews a loan |
+ | `POST /holds` `{ title, member }` · `GET /holds/:id` | places a hold on a title, a hold |
+ 
+diff --git a/src/api.mjs b/src/api.mjs
+index 42ecc8085f7c29ed9e7d5c5dcbfae8e31b685776..e4595d4b8117351acba69155dedd0bc024a0d50a 100644
+--- a/src/api.mjs
++++ b/src/api.mjs
+@@ -6,7 +6,7 @@ import { isKey } from "./store.mjs";
+ import { allMine, isTenant, mine } from "./tenancy.mjs";
+ import { copyView, isFormat, newCopy, newTitle, titleView } from "./catalog.mjs";
+ import { memberView, newMember } from "./members.mjs";
+-import { lendRefusal, lent, loanView, renewed, renewRefusal, returned } from "./loans.mjs";
++import { balanceOf, lendRefusal, lent, loanView, renewed, renewRefusal, returned } from "./loans.mjs";
+ import { holdView, newHold, noticeView, openHoldOf } from "./holds.mjs";
+ 
+ const answer = (status, body) => ({ status, body });
+@@ -74,7 +74,7 @@ const ROUTES = [
+   ["POST", /^\/copies$/, copyAdded],
+   ["GET", /^\/copies\/([^/]+)$/, (c, [id]) => found(mine(c.store, c.tenant, "copies", id), "no-copy", copyView)],
+   ["POST", /^\/members$/, memberAdded],
+-  ["GET", /^\/members\/([^/]+)$/, (c, [id]) => found(mine(c.store, c.tenant, "members", id), "no-member", memberView)],
++  ["GET", /^\/members\/([^/]+)$/, (c, [id]) => found(mine(c.store, c.tenant, "members", id), "no-member", (m) => ({ ...memberView(m), balanceCents: balanceOf(c.store, m.tenant, m) }))],
+   ["GET", /^\/members\/([^/]+)\/notices$/, notices],
+   ["POST", /^\/loans$/, lend],
+   ["GET", /^\/loans\/([^/]+)$/, (c, [id]) => found(loanOf(c, id), "no-loan", loanView)],
+diff --git a/src/loans.mjs b/src/loans.mjs
+index f5be5d4a6e4ccac2561a7d53b4c73a4fe58a32bd..c4de018ebfeebfb26d4a61d6cf390904c735fe4b 100644
+--- a/src/loans.mjs
++++ b/src/loans.mjs
+@@ -1,6 +1,6 @@
+ // LOANS: a copy lent to a member until its due date, renewed, and brought back -- at the desk, or through the drop box
+ // (dropbox.mjs). The copy then goes to whoever is waiting for its title, or back on the shelf.
+-import { addDays } from "./dates.mjs";
++import { addDays, daysBetween } from "./dates.mjs";
+ import { created, put } from "./store.mjs";
+ import { allMine, mine } from "./tenancy.mjs";
+ import { loanDaysOf, titleOfCopy } from "./catalog.mjs";
+@@ -9,6 +9,14 @@ import { collectedBy, heldForAnother, holdWaiting, servedOrShelved } from "./hol
+ 
+ export const RENEWALS = 2;
+ 
++// Cents a day a late copy is fined, by format; a fine never passes the copy's replacement cost.
++const FINE_PER_DAY = { book: 25, dvd: 100 };
++
++const fineFor = (store, copy, loan, day) => Math.min(Math.max(0, daysBetween(loan.due, day)) * FINE_PER_DAY[titleOfCopy(store, copy).format], copy.replacementCents);
++
++// All the fines a member has been charged.
++export const balanceOf = (store, tenant, member) => allMine(store, tenant, "loans").filter((l) => l.member === member.id).reduce((sum, l) => sum + (l.fineCents ?? 0), 0);
++
+ const openLoansOf = (store, tenant, member) => allMine(store, tenant, "loans").filter((l) => l.member === member.id && !l.returned);
+ 
+ // Why a copy may not be lent to a member now, asked in order; none, and it may.
+@@ -30,8 +38,10 @@ export function lent(store, tenant, copy, member, day) {
+ 
+ // A loan brought back on a day: its copy set aside for the member who has waited longest for the title -- or shelved.
+ export function returned(store, tenant, loan, day) {
+-  servedOrShelved(store, mine(store, tenant, "copies", loan.copy), day);
+-  return put(store, "loans", { ...loan, returned: day });
++  const copy = mine(store, tenant, "copies", loan.copy);
++  const fineCents = fineFor(store, copy, loan, day);
++  servedOrShelved(store, copy, day);
++  return put(store, "loans", { ...loan, returned: day, fineCents });
+ }
+ 
+ export const openLoanOfCopy = (store, tenant, copy) => allMine(store, tenant, "loans").find((l) => l.copy === copy.id && !l.returned) ?? null;
+@@ -51,4 +61,4 @@ export const renewRefusal = (store, tenant, loan, day) => RENEW_REFUSALS.find((r
+ // A renewal moves the due date on by the title's loan period, counted from the due date it had.
+ export const renewed = (store, tenant, loan) => put(store, "loans", { ...loan, due: addDays(loan.due, loanDaysOf(titleOfCopy(store, copyOfLoan(store, tenant, loan)))), renewals: loan.renewals + 1 });
+ 
+-export const loanView = (l) => ({ id: l.id, copy: l.copy, member: l.member, out: l.out, due: l.due, renewals: l.renewals, returned: l.returned });
++export const loanView = (l) => ({ id: l.id, copy: l.copy, member: l.member, out: l.out, due: l.due, renewals: l.renewals, returned: l.returned, fineCents: l.fineCents ?? 0 });

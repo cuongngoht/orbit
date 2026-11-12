@@ -145,6 +145,7 @@ test("finalStatus never re-judges a run that already said what happened", () => 
   const run = (status, verdicts, from, to) => ({ status, verdicts, from, to, c: { steps: Array(8) } });
   assert.equal(finalStatus(run("PASS", 3, 1, 8)), "PASS");
   assert.equal(finalStatus(run("PASS", 3, 6, 8)), "PARTIAL");
+  assert.equal(finalStatus(run("PASS", 3, 1, 7)), "PARTIAL", "a slice one step short of the last is not the whole case");
   assert.equal(finalStatus(run("PASS", 0, 1, 8)), "INCONCLUSIVE");
   assert.equal(finalStatus(run("PASS", 0, 1, 3)), "INCONCLUSIVE", "proving nothing outranks running part");
   assert.equal(finalStatus(run("SKIP", 0, 1, 8)), "SKIP", "a fired skip-if rules on nothing by design");

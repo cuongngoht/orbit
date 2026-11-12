@@ -1,0 +1,184 @@
+{
+  "kind": "outcome",
+  "run": "regress-done__pack_lending-hld-001__t1",
+  "attempt": 1,
+  "at": "2026-11-12T05:41:54.164Z",
+  "word": "REGRESSED",
+  "why": "a pass-to-pass test now fails: test/api.test.mjs, test/catalog.test.mjs, test/dropbox.test.mjs, test/holds.test.mjs, test/limits.test.mjs, test/loans.test.mjs, test/members.test.mjs, test/pickup.test.mjs, test/renewals.test.mjs, test/tenancy.test.mjs",
+  "saidDone": true,
+  "grade": {
+    "ran": true,
+    "applied": true,
+    "resolved": false,
+    "regressed": true,
+    "f2pFailed": [
+      "test/fines.test.mjs",
+      "test/eval-acceptance.test.mjs"
+    ],
+    "p2pFailed": [
+      "test/api.test.mjs",
+      "test/catalog.test.mjs",
+      "test/dropbox.test.mjs",
+      "test/holds.test.mjs",
+      "test/limits.test.mjs",
+      "test/loans.test.mjs",
+      "test/members.test.mjs",
+      "test/pickup.test.mjs",
+      "test/renewals.test.mjs",
+      "test/tenancy.test.mjs"
+    ]
+  },
+  "gradeDetail": {
+    "ran": true,
+    "applied": true,
+    "resolved": false,
+    "regressed": true,
+    "f2pFailed": [
+      "test/fines.test.mjs",
+      "test/eval-acceptance.test.mjs"
+    ],
+    "p2pFailed": [
+      "test/api.test.mjs",
+      "test/catalog.test.mjs",
+      "test/dropbox.test.mjs",
+      "test/holds.test.mjs",
+      "test/limits.test.mjs",
+      "test/loans.test.mjs",
+      "test/members.test.mjs",
+      "test/pickup.test.mjs",
+      "test/renewals.test.mjs",
+      "test/tenancy.test.mjs"
+    ],
+    "tests": [
+      {
+        "file": "test/fines.test.mjs",
+        "kind": "f2p",
+        "ok": false,
+        "code": 1,
+        "timedOut": false,
+        "pass": 0,
+        "fail": 1
+      },
+      {
+        "file": "test/eval-acceptance.test.mjs",
+        "kind": "f2p",
+        "ok": false,
+        "code": 1,
+        "timedOut": false,
+        "pass": 0,
+        "fail": 5
+      },
+      {
+        "file": "test/api.test.mjs",
+        "kind": "p2p",
+        "ok": false,
+        "code": 1,
+        "timedOut": false,
+        "pass": 0,
+        "fail": 1
+      },
+      {
+        "file": "test/catalog.test.mjs",
+        "kind": "p2p",
+        "ok": false,
+        "code": 1,
+        "timedOut": false,
+        "pass": 0,
+        "fail": 1
+      },
+      {
+        "file": "test/dates.test.mjs",
+        "kind": "p2p",
+        "ok": true,
+        "code": 0,
+        "timedOut": false,
+        "pass": 3,
+        "fail": 0
+      },
+      {
+        "file": "test/dropbox.test.mjs",
+        "kind": "p2p",
+        "ok": false,
+        "code": 1,
+        "timedOut": false,
+        "pass": 0,
+        "fail": 1
+      },
+      {
+        "file": "test/holds.test.mjs",
+        "kind": "p2p",
+        "ok": false,
+        "code": 1,
+        "timedOut": false,
+        "pass": 0,
+        "fail": 1
+      },
+      {
+        "file": "test/limits.test.mjs",
+        "kind": "p2p",
+        "ok": false,
+        "code": 1,
+        "timedOut": false,
+        "pass": 0,
+        "fail": 1
+      },
+      {
+        "file": "test/loans.test.mjs",
+        "kind": "p2p",
+        "ok": false,
+        "code": 1,
+        "timedOut": false,
+        "pass": 0,
+        "fail": 1
+      },
+      {
+        "file": "test/members.test.mjs",
+        "kind": "p2p",
+        "ok": false,
+        "code": 1,
+        "timedOut": false,
+        "pass": 0,
+        "fail": 1
+      },
+      {
+        "file": "test/pickup.test.mjs",
+        "kind": "p2p",
+        "ok": false,
+        "code": 1,
+        "timedOut": false,
+        "pass": 0,
+        "fail": 1
+      },
+      {
+        "file": "test/renewals.test.mjs",
+        "kind": "p2p",
+        "ok": false,
+        "code": 1,
+        "timedOut": false,
+        "pass": 0,
+        "fail": 1
+      },
+      {
+        "file": "test/store.test.mjs",
+        "kind": "p2p",
+        "ok": true,
+        "code": 0,
+        "timedOut": false,
+        "pass": 3,
+        "fail": 0
+      },
+      {
+        "file": "test/tenancy.test.mjs",
+        "kind": "p2p",
+        "ok": false,
+        "code": 1,
+        "timedOut": false,
+        "pass": 0,
+        "fail": 1
+      }
+    ],
+    "image": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb",
+    "exit": 0,
+    "timedOut": false
+  }
+}

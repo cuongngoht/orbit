@@ -5,6 +5,7 @@
 // package, and an infrastructure folder nothing depends on. No case names a stack: the graph is data.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { dependentsOf, impactOf, ownerOf } from "../src/orchestration/impact.mjs";
 import { contextOf, finish } from "../src/orchestration/loop.mjs";
 import { fails, orchestrationWorld, passes, prepared } from "./fakes/orchestration.mjs";
 
@@ -330,4 +331,15 @@ test("a file edited and put back while a check runs leaves the run with no tree:
   o.ports.checks.run = (command, at) => ((r) => (o.ws.edit("web/src/App.tsx", 9), o.ws.state.files.delete("web/src/App.tsx"), r))(run(command, at));
   const { test: webTest } = await baselined(o);
   assert.equal(webTest.baseline, "none");
+});
+
+// A directory holds a path only at a path separator: `lib` never holds `library/x.mjs`, a sibling whose name only starts
+// the same. And a dependent is reached through any number of others, never only one step away.
+test("a directory holds a path only at its separator, and dependents are reached through any number of others", () => {
+  const parts = [node("c:lib", "lib"), node("c:library", "library", ["c:lib"]), node("c:app", "app", ["c:library"]), node("c:site", "site", ["c:app"])];
+  assert.equal(ownerOf(parts, "library/x.mjs").key, "c:library");
+  assert.equal(ownerOf([node("c:lib", "lib")], "libx/a.mjs"), null, "a name that only starts the same is not held");
+  assert.deepEqual(impactOf(["libx/a.mjs"], { components: [node("c:lib", "lib")] }), { components: [], unowned: ["libx/a.mjs"] });
+  assert.deepEqual(dependentsOf(parts, "c:lib").sort(), ["c:app", "c:library", "c:site"]);
+  assert.deepEqual(impactOf(["lib/a.mjs"], { components: parts }).components.map((r) => [r.key, r.reason]), [["c:lib", "MODIFIED"], ["c:library", "DEPENDENT"], ["c:app", "DEPENDENT"], ["c:site", "DEPENDENT"]]);
 });

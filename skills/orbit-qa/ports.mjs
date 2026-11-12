@@ -21,14 +21,15 @@
 import { copyFileSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { requestFindings } from "../../src/adapters/contract-v1.mjs";
-import { operationFor } from "../../src/adapters/families.mjs";
+import { OPERATIONS, operationFor } from "../../src/adapters/families.mjs";
 import { opKeyOf, selectAdapter } from "../../src/adapters/select.mjs";
 import { inputFindings } from "../../src/capability/invoke.mjs";
 import { validate } from "../../src/dsl/validate.mjs";
 import { canonicalJson, sha, short, shaBytes } from "../../src/hash.mjs";
 import { planDigestOf } from "../../src/investigation/input.mjs";
 import { modeOf } from "../../src/investigation/vocab.mjs";
-import { pageOutputsOf } from "../../src/qa/generation/page.mjs";
+import { designContract } from "../../src/qa/generation/design.mjs";
+import { READER_OUTPUTS, WITNESS_OUTPUTS, pageOutputsOf } from "../../src/qa/generation/page.mjs";
 import { shapeOf } from "../../src/qa/obligations/shapes.mjs";
 import { capabilityLookup } from "../../src/run/run-case.mjs";
 import { HOOK_PROTOCOLS, sealedBindings } from "../../src/runtime/sandbox/bindings.mjs";
@@ -76,6 +77,12 @@ const semanticsOf = (r, step) => adapterOf(r, step)?.semantics ?? null;
 // say what a match field is compared with and what a match picks (src/qa/backend/contradictions.mjs). None: null.
 const requestTableOf = (r, step) => ((adapter) => (adapter ? declaredOp(adapter, step)?.request ?? null : null))(adapterOf(r, step));
 
+// How the adapter that answers an operation behaves where its transport is known without a ref -- a hooked kind's own
+// protocol (src/runtime/sandbox/bindings.mjs HOOK_PROTOCOLS): what a design that never asks it is held to (an injected
+// clock it never moves, src/qa/backend/contradictions.mjs). Anything else: null.
+const hookedSemantics = (r, row) => ((t) => (t ? selectAdapter(r.ctx.adapters, { family: row.family, op: row.op, transport: t }).adapter?.semantics ?? null : null))(row?.selects ? HOOK_PROTOCOLS[row.refs[0]] ?? null : null);
+const semanticsFor = (r, capability) => hookedSemantics(r, operationFor(capability));
+
 // How an observer of the design's plan would watch: the semantics of the adapter that arms one on its channel.
 const observerSemantics = (r, ref) => ((t) => (t ? selectAdapter(r.ctx.adapters, { family: "messaging", op: "observe", transport: t }).adapter?.semantics ?? null : null))(transportOf(r, "observer", ref));
 
@@ -89,13 +96,29 @@ function effectsOf(r, step) {
 
 // in: { ctx, model(), planOf(ref), graph(), topology()?, services, drafts }
 export function generationPort(b) {
-  return { contextFor: (obligation, a) => generationContext(b, obligation, a), saveDraft: (c) => b.drafts.save(c), versions: versionsOf(b.ctx), bindable: () => bindableFrom({ graph: b.graph(), tenancy: b.tenancy }) };
+  return { contextFor: (obligation, a) => generationContext(b, obligation, a), contractFor: (obligation) => designContract(generationContext(b, obligation, { design: {} })), saveDraft: (c) => b.drafts.save(c), versions: versionsOf(b.ctx), bindable: () => bindableFrom({ graph: b.graph(), tenancy: b.tenancy }) };
 }
 
 function generationContext(b, obligation, a) {
   const r = resolver({ ...b, graph: b.graph(), topology: quietly(() => b.topology?.()), design: a.design });
   const steps = a.design?.skeleton?.steps ?? [];
-  return { expectations: expectationsOf(b, obligation), expected: obligation.expected ?? [], outputsOf: (i) => outputsOf(r, steps[i - 1]), requestTableOf: (i) => requestTableOf(r, steps[i - 1]), semanticsOf: (i) => semanticsOf(r, steps[i - 1]), observerSemantics: (ref) => observerSemantics(r, ref), shape: shapeOf(obligation.shape), caseId: caseIdOf(obligation, a.design), title: titleOf(obligation), validate: (c) => validate(c, b.ctx.graph, b.ctx.dsl, b.ctx.validators, r.lookup), inputFindings: (s) => [...inputFindings(r.lookup(s.capability), s.input), ...basePathFindings(r, r.lookup(s.capability), s.input ?? {}), ...requestShapeFindings(r, s)], faultPointsOf: (alias) => r.declarationOf("workload", alias)?.points ?? null, dsl: b.ctx.dsl, pageOf: (id) => r.lookup(id)?.page };
+  return { expectations: expectationsOf(b, obligation), expected: obligation.expected ?? [], stepCount: steps.length, kinds: answerKinds(b.ctx, r.lookup), outputsOf: (i) => outputsOf(r, steps[i - 1]), requestTableOf: (i) => requestTableOf(r, steps[i - 1]), semanticsOf: (i) => semanticsOf(r, steps[i - 1]), semanticsFor: (capability) => semanticsFor(r, capability), observerSemantics: (ref) => observerSemantics(r, ref), shape: shapeOf(obligation.shape), caseId: caseIdOf(obligation, a.design), title: titleOf(obligation), validate: (c) => validate(c, b.ctx.graph, b.ctx.dsl, b.ctx.validators, r.lookup), inputFindings: (s) => [...inputFindings(r.lookup(s.capability), s.input), ...basePathFindings(r, r.lookup(s.capability), s.input ?? {}), ...requestShapeFindings(r, s)], faultPointsOf: (alias) => r.declarationOf("workload", alias)?.points ?? null, dsl: b.ctx.dsl, pageOf: (id) => r.lookup(id)?.page };
+}
+
+// Every kind of step a design may propose and what its answer carries, as each declares it -- the source the obligation's
+// template and a refusal both name a slot's kinds of step from (src/qa/generation/compile.mjs slotContract, whereSaid):
+// a family operation as each registered adapter that answers it declares (`by` the adapter), or as its capability does;
+// a project's own capability; a page's report and its api witness.
+function answerKinds(ctx, lookup) {
+  const ops = OPERATIONS.filter((o) => !o.contractOnly);
+  const own = (ctx.capabilities?.ids?.() ?? []).filter((id) => !ops.some((o) => o.capability === id)).map((id) => ({ kind: id, outputs: lookup(id)?.outputs }));
+  return [...ops.flatMap((row) => familyKinds(ctx, lookup, row)), ...own.filter((k) => k.outputs), { kind: "report", outputs: READER_OUTPUTS }, { kind: "api", outputs: WITNESS_OUTPUTS }];
+}
+
+function familyKinds(ctx, lookup, row) {
+  const adapters = (ctx.adapters?.list?.() ?? []).filter((a) => a.operations?.[opKeyOf(a, row)]?.outputs);
+  if (adapters.length) return adapters.map((a) => ({ kind: row.capability, by: a.id, outputs: a.operations[opKeyOf(a, row)].outputs }));
+  return lookup(row.capability)?.outputs ? [{ kind: row.capability, outputs: lookup(row.capability).outputs }] : [];
 }
 
 // What a step's request may carry, as the adapter that will answer it declares (orbit.adapter/v1 `request`, ADR 0052): a

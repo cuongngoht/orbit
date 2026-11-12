@@ -1,0 +1,86 @@
+{
+  "kind": "ended",
+  "run": "regress-done__pack_lending-hld-001__t1",
+  "attempt": 1,
+  "at": "2026-11-12T05:41:49.552Z",
+  "chargedUsd": 0,
+  "infra": null,
+  "timedOut": false,
+  "killedByControl": false,
+  "exit": 0,
+  "oomKilled": false,
+  "wallMs": 806,
+  "streamBytes": 469,
+  "streamCut": false,
+  "summary": {
+    "started": true,
+    "model": "scripted",
+    "version": null,
+    "plugins": [],
+    "hooks": {
+      "ran": 0,
+      "failed": 0
+    },
+    "skillsListed": null,
+    "result": true,
+    "costUsd": 0,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": null,
+      "cacheWrite": null
+    },
+    "turns": 1,
+    "durationMs": 0,
+    "denials": 0,
+    "subtype": "success",
+    "isError": false,
+    "stoppedOn": null,
+    "apiError": null,
+    "status": "DONE",
+    "statusWhy": null,
+    "asked": false,
+    "tools": {
+      "calls": 0,
+      "byName": {},
+      "skills": {},
+      "agents": {}
+    },
+    "orbit": {
+      "commands": 0,
+      "byCli": {}
+    }
+  },
+  "patch": {
+    "bytes": 16434,
+    "digest": "cd4824b8b7bd69b78de02549c8da03920e80fb5c67f78b44cd4221c07f3c2784",
+    "paths": [
+      "README.md",
+      "src/api.mjs",
+      "src/fines.mjs",
+      "src/loans.mjs",
+      "src/members.mjs",
+      "test/api.test.mjs",
+      "test/late-fines.test.mjs"
+    ]
+  },
+  "plugin": null,
+  "images": {
+    "task": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb",
+    "taskRef": "node:22",
+    "pulled": false,
+    "egress": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb"
+  },
+  "startCommit": "31951e37d8a0d1204950cdb189023d9e9ebca28e",
+  "entryPhase": "ended",
+  "egress": {
+    "direct": "ENETUNREACH",
+    "outsideName": "EAI_AGAIN",
+    "api": {
+      "connect": 200,
+      "http": 404
+    },
+    "otherHost": 403,
+    "holds": true
+  }
+}

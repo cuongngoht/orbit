@@ -1,0 +1,20 @@
+diff --git a/changelog/5764.bugfix.rst b/changelog/5764.bugfix.rst
+new file mode 100644
+index 0000000000000000000000000000000000000000..93f064bac7278546baf223796fcc1cf86c8e4bd9
+--- /dev/null
++++ b/changelog/5764.bugfix.rst
+@@ -0,0 +1 @@
++Use ``text`` lexer for --pastebin
+diff --git a/src/_pytest/pastebin.py b/src/_pytest/pastebin.py
+index 41576a615b05deb0aa24a326fb1f78977e0e8ec8..79b0d9d407beedaa1d54461119215511e245cef8 100644
+--- a/src/_pytest/pastebin.py
++++ b/src/_pytest/pastebin.py
+@@ -79,7 +79,7 @@ def create_new_paste(contents):
+ 
+     params = {
+         "code": contents,
+-        "lexer": "python3" if sys.version_info[0] >= 3 else "python",
++        "lexer": "text",
+         "expiry": "1week",
+     }
+     url = "https://bpaste.net"

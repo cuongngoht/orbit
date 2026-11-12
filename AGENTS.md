@@ -60,18 +60,11 @@ and logs). Both are created on first write, never on read and never in a reposit
 KNOWN to the machine because it was bound (`state/checkouts/<id>.json`); `state/projects/<key>.json`
 keeps a one-line summary of each, as of a time, and nothing ever scans a directory for projects.
 
-One more room belongs to development tooling, not to the engine: `<store>/benchmark/<bnr-…>/` is one run of the Docker
-benchmark (`benchmark/`, ADR 0046, 0047, 0048) -- its manifest, the frozen case and subject, one evidence document per action,
-each round's brief, candidate, patch and outcome, a verified candidate's record, a QA case's engine store and judged rows, its report. It is created on first write by `benchmark/run.mjs`, never on read and
-never in a repository, and the run's own task stays in the project's task rooms like any other.
-
-One more belongs to release tooling: `<store>/release/<shp-…>/` is one autonomous SHIP (`skills/orbit-release/ship.mjs`,
-ADR 0049), or a precheck (a ship of mode `precheck`, ADR 0051) -- its manifest frozen at its start, one document per action keyed by its task's own action id, the release
-artifact, each verified patch it integrated, the release patch and bundle a person applies, a pristine checkout of each
-release commit it judged (`trees/`), its ending and its `evidence.json` -- and beside it, once SHIPPABLE, the benchmark's
-`reliability.json` of the release commit (0.5.0: quoted, never a gate). It is created on first write, never on read and
-never in a repository; the ship's own task stays in the project's task rooms, and the workspace its repairs are
-integrated in is that task's own (`<store>/workspaces/<tsk>/`).
+No room of the machine store belongs to release tooling (0.6.0, ADR 0057). The publish gate keeps nothing: it reads
+the checkout, the archive git builds and the evaluator's record, every time. The independent evaluator (`evaluator/`) keeps
+its campaigns under a home of its own (`$ORBIT_EVAL_HOME`, default `~/.orbit-eval`), never in the machine store and never
+in a repository; what a person commits of them is exported under `evaluator/results/`, which is export-ignored. The
+rooms an older release left (`<store>/benchmark/`, `<store>/release/`) are read by nothing and preserved as they are.
 
 ## Layout and dependency direction
 
@@ -662,54 +655,27 @@ place real adapters are bound to real config.
   loaded, so something generated and unproved is inert rather than quietly live, and
   `registerTool` refuses anything that did not verify. A capability's own crash is BLOCKED, never
   FAIL — a generated tool's bug must never ship as a defect in somebody's feature.
-- **A release qualifies only on Docker benchmark evidence carried by Claude Code, for the exact source (ADR 0049).** A
-  release is `node skills/orbit-release/ship.mjs`: ONE task (provider `release`) driving PREFLIGHT → BUILD → BENCHMARK →
-  DIAGNOSE → REPAIR → REBUILD → FULL_RETEST → SHIPPABLE as an ordered table over its own journal (`ship/machine.mjs`
-  NEXT), the benchmark asked as a command and never imported. Every case `ship/policy.json` names (all of them: a case
-  that leaves or joins a suite unnamed is CATALOG_DRIFT) must hold on the release commit: a source case its controls and
-  a PASS of its real source (a known finding's baseline earns nothing), a QA or engineering case its controls and a PASS
-  carried by the coding host, ORBIT-SRC-001's planted fault REPAIRED_VERIFIED by it. A model-carried row is evidence only
-  when its run says basis `coding-host`, the Claude Code version the runner image pins, and a model -- at the effort the
-  ship asked and froze when it began (0.5.0: `--effort`, else none; `WRONG_EFFORT` otherwise) -- never a scripted or
-  session host, another host or a mock (an `ANTHROPIC_BASE_URL` the policy does not name blocks). Every row is held to
-  its run's own room (`ROW_VERDICT`, `CONTROL_RULES`: a known finding's control that presupposes its defect is
-  SUPERSEDED, never held, once its real source passes). Only a source case's real variant failing on a cause the case
-  declares repairable is repaired -- through `run.mjs --repair`, never against a QA case's hidden truth -- and a verified
-  candidate is held again (`REPAIR_CHECK`: its record, its patch digest, what git says it touches, the scope, the
-  protected paths, no test losing a line) before it is applied, AUTO, in the ship task's own workspace; a new release
-  commit invalidates every earlier row and the whole catalog runs again. SHIPPABLE writes `evidence.json` bound to the
-  commit, tree, content, protected and policy digests and the artifact; `ship.mjs --evidence` re-derives all of it and
-  is the only door to publishing. A model-carried row of a suite or case the policy RECORDS (ADR 0051) runs once under
-  the ship's retries and is reported held or not, with its run's room -- it never blocks SHIPPABLE (but a credential found
-  in its room stops the release, as in any row's), and its controls stay required; `--precheck` runs only the
-  model-carried rows, each once, and qualifies nothing. The ship never writes the checkout, pushes, tags or publishes;
-  native host and backend acceptance are optional rows (`test/release-ship.test.mjs`,
-  `test/release-ship-tables.test.mjs`, `test/release-ship-policy.test.mjs`, `test/release-ship-door.test.mjs`,
-  `test/benchmark-release-hooks.test.mjs`, and `test/benchmark-release-policy.test.mjs` -- the catalog held to
-  `benchmark/suites/` both ways, under the harness's name so a subject frozen without the harness never carries it).
-- **A benchmark grades only what its verifier shows, and repairs only through Orbit (ADR 0046, 0047, 0048).** `benchmark/` is
-  development tooling: export-ignored, imported by nothing of the engine, held to Five Lines (`test/benchmark-lint.test.mjs`).
-  A run is ONE task written through `cli/task.mjs`, so its budget is the door's and a person's pause or cancel stops it;
-  a repair is ONE engineering task started through `cli/autonomous-engineering.mjs` in a runner container whose only way
-  out is the model's API, never a second task and never a round sent twice. The verifier has no network, no credential
-  and no model; its judge never imports candidate code, its gates run on the subject's own tests, and `SCOPE` refuses a
-  candidate that touches the harness, a check or an existing test before anything of it runs. A host's word is
-  REPORTED and never evidence. A QA case (ADR 0047) runs Orbit's own engine beside the controller, where the isolated
-  sandbox is; its coding host reaches the investigation only through a relay of the subcommands `RELAY` allows, about
-  the run's own investigation and never a path, from a plugin that withholds the ground truth; and a contradiction is a
-  defect found only when the clean application satisfies the same design. The repair loop is proved without a model
-  (ADR 0048): a case's repair controls are candidates carried to the judge or through Orbit's engine by a SCRIPTED host
-  that runs Orbit's own CLIs and nothing else, and every way of cheating a verifier must be refused by name; every
-  failure carries one class of `FAILURE_CLASSES`; a candidate's own timeout is its rejection, never a block; and a
-  verified candidate is kept in `verified.json`, never applied to a checkout. An ENGINEERING case hands a host a goal
-  about a frozen fixture with Orbit beside it, and adds record checks on what Orbit's owners say; a goal with no rule
-  must be refused, never invented. Metrics keep host basis `none`, `scripted` and `coding-host` apart -- a scripted
-  PASS is never autonomy -- and a real host never runs in CI, only in a Claude Code cloud session a person starts
-  (`test/release-workflows.test.mjs`, `test/benchmark-tables.test.mjs`,
-  `test/benchmark-source-flow.test.mjs`, `test/benchmark-docker.test.mjs`, `test/benchmark-source-cases.test.mjs`,
-  `test/benchmark-cases.test.mjs`, `test/benchmark-repairs.test.mjs`, `test/benchmark-scripted-host.test.mjs`,
-  `test/benchmark-metrics.test.mjs`, `test/benchmark-sentinel.test.mjs`, `test/benchmark-qa-relay.test.mjs`,
-  `test/benchmark-qa-judge.test.mjs`, `test/benchmark-qa-flow.test.mjs`, `test/benchmark-qa-cases.test.mjs`).
+- **A release qualifies on the fast tier and the independent evaluator's record of that very artifact (0.6.0, ADR
+  0057).** The evaluator (`evaluator/`) is a package of its own: it imports nothing of the plugin, nothing of the plugin
+  imports it (`test/evaluator-boundary.test.mjs`), and it is export-ignored, so the archive an agent under test is
+  handed never holds a hidden test or a gold patch. It runs one task, with one model, effort, tool set, prompt and limits,
+  in arms that differ only by the plugin (the plain host, Orbit at the previous release, Orbit at the release candidate:
+  `git archive` of a commit), and grades the patch each run leaves by hidden tests in a fresh container with no network
+  -- never by the agent's word and never by Orbit's own records -- into one outcome word per run. What runs and how it is
+  judged is PRE-REGISTERED (`evaluator/prereg/<release>.json`) before any model run it governs; a campaign is made from
+  it (`prereg campaign`), never by hand, and freezes its digest. `node evaluator/cli.mjs record` writes the release's
+  record from the campaigns' journals alone. `node skills/orbit-release/ship.mjs --evidence --evaluation=<record>` is the
+  only door to publishing: ONE ordered table (`PUBLISH`, `ship/evidence.mjs`; the first row that fails decides, each
+  saying what it read and what a person does next) holds a clean checkout, the fast tier run on this tree, the record's
+  shape and release, the pre-registration's digest, the content of `git archive <every release-candidate arm's commit>`
+  against `git archive HEAD` (both computed there with `ship/artifact.mjs`: a commit that touches only export-ignored
+  paths keeps the evidence, any other voids it), every pre-registered held-out run present with an outcome word
+  (`NOT_RUN` only on an arm the verdict does not rest on), the record's comparisons worked out again by the registered
+  rule, and a release verdict that is not REGRESSED. IMPROVED, NO_DIFFERENCE and INCONCLUSIVE are said as what they are;
+  a one-task difference is INCONCLUSIVE, never a gain. No GitHub workflow exists: the gates run where the release is
+  made, and what a pipeline ran is `ship.mjs --ci`. The gate never tags, pushes or publishes, and a gate is never
+  loosened to get a PASS (`test/release-evidence.test.mjs`, `test/orbit-ship-plugin.test.mjs`,
+  `evaluator/checks/record.check.mjs`).
 - **No speculative code.** A verb, field, flag or adapter needs a real case that needs it today.
 - **A concrete tool lives in `skills/`, never in `src/`.** When a real adapter is worth shipping
   (`skills/orbit-sql`: SQL Server via sqlcmd), it is a command a project opts into through
@@ -1030,10 +996,6 @@ ORBIT_STORE_DIR=/tmp/l node cli/autonomous-qa.mjs derive|reconcile --investigati
 ORBIT_STORE_DIR=/tmp/l node cli/security-audit.mjs assess --investigation=<id>   # the controls in effect, from an investigation's own record
 node cli/qa-plan.mjs expects <openapi|asyncapi|schedule>.json [--operation=… --status=… | --channel=… --within=… | --at=…]   # candidate expectations
 node acceptance/run.mjs [--stack=…] [--variant=…] [--keep] [--record]   # native acceptance: two stacks, planted defects, a ground truth (Docker)
-node benchmark/run.mjs build [--verifier|--runner|--qa-worker] [--rebuild] [--ca-file=<pem>] | list | doctor [--preflight] | where   # the Docker benchmark (ADR 0046, 0047, 0048, benchmark/README.md)
-node benchmark/run.mjs run <case> [--variant=real|controlled-fault] [--repair] [--source=head|worktree] [--seed=…] | run --suite=<suite> | run --like=<bnr-…>
-node benchmark/run.mjs status|report|resume|cleanup <bnr-…> | controls <case> [--only=<control>] [--skip-engine]   # a run read back, carried on, cleaned by its label; a case held to its controls (verifier, repair and scripted-host controls)
-node benchmark/run.mjs metrics [--suite=… --case=… --since=… --by=revision] [--json]   # what the kept runs show, apart by host basis
 ORBIT_STORE_DIR=/tmp/l node cli/qc-tool.mjs where|list        # this project's own QC tools (README §7.2)
 ORBIT_STORE_DIR=/tmp/l node cli/qc-tool.mjs new <id> <scratch-dir> [--tool=psql] [--mutates]
 ORBIT_STORE_DIR=/tmp/l node cli/qc-tool.mjs verify|register <dir>   # exit 2 if it would not load
@@ -1087,21 +1049,26 @@ ORBIT_STORE_DIR=/tmp/l node cli/project-report.mjs sign-in <id> [--tenant=<id>] 
 ORBIT_STORE_DIR=/tmp/l node cli/qc-tool.mjs new <id> --report=<kind> --for="…" | put <id> <file> | rollback <id>
 node skills/orbit-sql/sqlcmd.mjs preflight            # can this machine read the database?
 node cli/schema.mjs [--plan]                                 # print the generated case (or plan) schema
-node skills/orbit-release/ship.mjs --ci                   # the whole definition of done, one command (the fast tier CI runs)
-node skills/orbit-release/ship.mjs [--no-repair] [--resume=shp-…] [--usd= --minutes= --cycles= --attempts=]   # the autonomous ship: Docker + Claude Code (ADR 0049)
-node skills/orbit-release/ship.mjs --status[=shp-…] | --evidence[=shp-…] [--artifact=<zip>]   # where a ship stands; the publish gate
+node skills/orbit-release/ship.mjs --ci [--bump=…]       # the whole definition of done, one command (the fast tier)
+node skills/orbit-release/ship.mjs --evidence --evaluation=<record.json> [--artifact=<zip>] [--json]   # the publish gate (ADR 0057)
+node skills/orbit-release/panel.mjs                       # Orbit Control on its own Node: server tests, panel build, committed build
+node evaluator/cli.mjs checks | selfcheck --ca-file=<pem> | prereg verify   # the evaluator proved without a model (evaluator/README.md)
+node evaluator/cli.mjs prereg campaign <phase> --rev=<commit> | run <campaign.json> | resume <id> | status <id> | report <id> | export <id> --to=…
+node evaluator/cli.mjs record --campaign=<id>[,<id>…] [--prereg=<file>] --out=<record.json>   # what --evidence reads
 node skills/orbit-release/pin-python-lock.mjs --python=<Orbit's own Python> --package=azure-cli==<v> [--platform=…]   # re-pin a python-lock tool's locks (network; uv for the other platforms)
 agy                                                          # run antigravity with skills/hooks discovered
 ```
 
 ## Definition of done
 
-All of 1-4 are one command — `node skills/orbit-release/ship.mjs --ci`, which CI runs, so the gate and the pipeline
-cannot disagree about what done means. A RELEASE is `node skills/orbit-release/ship.mjs` (ADR 0049): the same gates on
-the release commit, then every case of the Docker benchmark with the real Claude Code CLI carrying the model rows,
-repairs through the benchmark and a full retest -- what a pipeline cannot hold, so `--ci` prints it as `wait` and a green
-fast CI never qualifies a release. A tag waits for `ship.mjs --evidence` to say PUBLISHABLE. Native host acceptance and
-native backend acceptance are optional rows: recorded as before, never a gate.
+All of 1-4 are one command — `node skills/orbit-release/ship.mjs --ci`, run where the release is made: there is no
+GitHub workflow (0.6.0), and every gate a pipeline used to hold is a row of it (zero dependencies and the control
+server's Five Lines among them; Orbit Control on its own Node, `skills/orbit-release/panel.mjs`, reported beside them).
+A RELEASE qualifies on that fast tier plus the independent evaluator's record of the very artifact (ADR 0057): the
+pre-registered held-out campaigns run with a model (`evaluator/`), `node evaluator/cli.mjs record`, then
+`ship.mjs --evidence --evaluation=<record>` -- what the fast tier cannot decide, so `--ci` prints it as `wait`. A tag
+waits for `--evidence` to say PUBLISHABLE. Native host acceptance and native backend acceptance are optional rows:
+recorded as before, never a gate.
 
 1. `node --test` passes, and the gate prints the test count.
 2. The strict lint prints `0 finding(s)`.
@@ -1111,7 +1078,7 @@ native backend acceptance are optional rows: recorded as before, never a gate.
    `graph/meta.json` keys, the DSL — is a **contract**. Changing one is a major version; adding
    to one is a minor version. While a **prerelease** is current the same rule reads differently:
    a beta publishes no contract, so any change advances it (`1.0.0-beta` -> `1.0.0-beta.2`) and
-   `ship.mjs --bump=release` is what ends it. Bump `version` in **all five** of `package.json`,
+   `ship.mjs --ci --bump=release` is what ends it. Bump `version` in **all five** of `package.json`,
    `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, the root `plugin.json` and
    `.codex-plugin/plugin.json` — the gate checks every one (`VERSIONS`), and a fourth once drifted
    silently through two releases before it did. The same gate holds every other marketplace entry to

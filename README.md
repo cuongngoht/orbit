@@ -571,12 +571,10 @@ npm test                                                     # node --test: no b
 npm run lint                                                 # Five Lines check, must print 0 finding(s)
 ORBIT_UI_TESTS=test/fixtures/ui-tests node cli/query.mjs check
 ORBIT_UI_TESTS=test/fixtures/ui-tests node cli/plan-check.mjs
-node skills/orbit-release/ship.mjs --ci                      # the whole definition of done, one command (the fast tier)
-node skills/orbit-release/ship.mjs                           # a release: the autonomous ship, Docker + Claude Code (ADR 0049),
-                                                             #   run in a Claude Code cloud session -- no workflow runs a model
-node skills/orbit-release/ship.mjs --precheck                # before a ship: the model-carried rows only, each once (ADR 0051)
-node skills/orbit-release/ship.mjs --status                  # where a ship stands; a failed model row's diagnosis bundle
-node skills/orbit-release/ship.mjs --evidence                # the publish gate: evidence for this very tree, or not
+node skills/orbit-release/ship.mjs --ci                      # the whole definition of done, one command (the fast tier);
+                                                             #   there is no GitHub workflow: this is what a pipeline ran
+node skills/orbit-release/panel.mjs                          # Orbit Control on its own Node: server tests, panel build
+node skills/orbit-release/ship.mjs --evidence --evaluation=<record.json>   # the publish gate (ADR 0057)
 ```
 
 Before changing code, read:
@@ -588,65 +586,26 @@ Before changing code, read:
 Key rules in short: zero dependencies; every function body ≤ 5 statements with no `else`/`switch`; the DSL vocabulary
 is data (`src/dsl/`); no product, vendor or stack named in engine code.
 
-### The Docker benchmark
+### The independent evaluator
 
-`benchmark/` holds Orbit to cases written as data, on the branch you are on, in Docker. It is development tooling and
-never ships ([benchmark/README.md](benchmark/README.md), [ADR 0046](docs/adr/0046-a-docker-benchmark-holds-orbits-source-to-independent-checks.md),
-[ADR 0047](docs/adr/0047-a-qa-benchmark-asks-whether-autonomous-qa-finds-a-planted-defect.md)). It has seven kinds of
-case in fifteen suites; the two oldest come first.
+`evaluator/` measures what Orbit adds to a coding host from outside
+([evaluator/README.md](evaluator/README.md), [ADR 0057](docs/adr/0057-an-independent-evaluator-measures-a-release.md)).
+It runs the same task with the same model, effort, tools, limits and prompt in arms that differ only by the plugin --
+the plain host, Orbit at the previous release, Orbit at the release candidate -- and grades the patch each run leaves by
+hidden tests the agent never sees, in a fresh container with no network: never by the agent's word, never by Orbit's
+own records. It is a package of its own (Orbit imports nothing of it, and it imports nothing of Orbit) and never ships.
 
-**Source cases** hold Orbit's own source to independent checks.
-
-- Each run freezes the source and verifies it twice, with no network, no credential and no model.
-- With `--repair`, a failure the case declares repairable goes to a real coding host. That host drives ONE Orbit
-  engineering task in a runner container whose only way out is the model's API.
-- The candidate is then judged by hidden checks the runner never sees, by the repository's own gates on its own tests,
-  and by its own regression test, which must fail before the change and pass after it.
-
-**QA cases** ask whether Orbit's autonomous QA *finds* a defect planted in an application.
-
-- The application runs on an isolated sandbox that Orbit's own engine sets up beside the controller.
-- A real coding host works one investigation over it through a relay. It is given the requirement and the contracts,
-  never the application's source.
-- A contradiction counts as a defect found only once the clean application passes the same test.
-- `controls` proves the verifier without a model: a reference host must pass, while an idle host and a false-alarm
-  host must fail.
-
-**Five more kinds** hand a coding host what a person would, and judge what it did from records, never from its word:
-
-- **Engineering cases** (`orbit-engineering`, and `orbit-heldout` on an application nobody tuned Orbit against,
-  [ADR 0056](docs/adr/0056-a-held-out-application-measures-orbit-on-what-it-was-not-tuned-against.md)): a goal about a
-  small frozen project, judged by hidden checks and by what Orbit's owners recorded
-  ([ADR 0048](docs/adr/0048-the-benchmark-proves-orbits-self-healing-loop-and-measures-goals.md)).
-- **Activation cases** (`orbit-activation`,
-  [ADR 0050](docs/adr/0050-the-host-activates-orbit-by-capability-and-orbit-verifies-what-happened.md)): a prompt that
-  names no skill. Does the host use Orbit by itself, and only where it helps -- with no Orbit, the previous release and
-  this one?
-- **Sessions cases** (`orbit-sessions`,
-  [ADR 0054](docs/adr/0054-a-sessions-benchmark-measures-what-memory-buys-a-second-session.md)): does memory make a
-  second session better, and never worse?
-- **Workflow cases** (`orbit-workflow`,
-  [ADR 0053](docs/adr/0053-a-workflow-benchmark-holds-one-request-to-its-code-its-qa-and-its-path.md)): one request
-  through `/orbit-help`, held to its code, its QA step and its path.
-- **Mission cases** (`orbit-missions`,
-  [ADR 0055](docs/adr/0055-a-mission-benchmark-asks-whether-satellite-settles-a-goal-on-owners-records.md)): a goal
-  through Orbit Satellite, every acceptance criterion settled on an owner's record and every run inside its least
-  privilege.
-
-`orbit-tools` is a QA case whose tool calls fail on purpose: the host must read why and correct the call, never repeat
-it. One PASS is not a rate: `run --repeat=N`, the arms and `node benchmark/run.mjs reliability` give pass@1, pass@k,
-cost and minutes per case and model. A release runs every case; a new suite's model-carried rows are recorded, never
-required ([ADR 0051](docs/adr/0051-recorded-benchmark-rows-and-the-precheck.md)).
-
-A run is an Orbit task, so Orbit Live shows it and a person can pause or cancel it.
+What runs and how it is judged is pre-registered (`evaluator/prereg/<release>.json`) before any model run: SWE-bench
+Verified instances and local task packs, a development set and a held-out set, the arms, and the verdict rule --
+IMPROVED, NO_DIFFERENCE, REGRESSED or INCONCLUSIVE, where a one-task difference is INCONCLUSIVE. A release qualifies on
+the fast tier plus the evaluator's record of that very artifact.
 
 ```bash
-node benchmark/run.mjs build                                 # three images, built once and reused by id
-node benchmark/run.mjs run ORBIT-SRC-001                     # a case on this branch's source: expected PASS, nothing changed
-node benchmark/run.mjs run ORBIT-SRC-001 --variant=controlled-fault --repair   # a planted failure, repaired through Orbit
-node benchmark/run.mjs controls ORBIT-QA-001                 # a QA case's verifier, proved with scripted hosts
-node benchmark/run.mjs run ORBIT-QA-001                      # a coding host's QA, judged against the ground truth
-node benchmark/run.mjs report <bnr-…>                        # the outcome, the checks that ran, the patch or the judged rows
+node evaluator/cli.mjs checks                                # the evaluator's own checks, no Docker
+node evaluator/cli.mjs selfcheck --ca-file=<pem>             # its scripted controls, for real, no model
+node evaluator/cli.mjs prereg campaign final --rev=<commit>  # a phase's campaign, made from the pre-registration
+node evaluator/cli.mjs run <campaign.json> | resume <id> | status <id> | report <id> --md
+node evaluator/cli.mjs record --campaign=<id>,<id> --out=<record.json>   # what ship.mjs --evidence reads
 ```
 
 ---

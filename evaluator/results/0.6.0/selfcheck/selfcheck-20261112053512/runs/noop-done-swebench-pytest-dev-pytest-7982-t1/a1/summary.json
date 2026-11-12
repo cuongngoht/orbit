@@ -1,0 +1,78 @@
+{
+  "kind": "ended",
+  "run": "noop-done__swebench_pytest-dev__pytest-7982__t1",
+  "attempt": 1,
+  "at": "2026-11-12T05:38:18.270Z",
+  "chargedUsd": 0,
+  "infra": null,
+  "timedOut": false,
+  "killedByControl": false,
+  "exit": 0,
+  "oomKilled": false,
+  "wallMs": 707,
+  "streamBytes": 467,
+  "streamCut": false,
+  "summary": {
+    "started": true,
+    "model": "scripted",
+    "version": null,
+    "plugins": [],
+    "hooks": {
+      "ran": 0,
+      "failed": 0
+    },
+    "skillsListed": null,
+    "result": true,
+    "costUsd": 0,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": null,
+      "cacheWrite": null
+    },
+    "turns": 1,
+    "durationMs": 0,
+    "denials": 0,
+    "subtype": "success",
+    "isError": false,
+    "stoppedOn": null,
+    "apiError": null,
+    "status": "DONE",
+    "statusWhy": null,
+    "asked": false,
+    "tools": {
+      "calls": 0,
+      "byName": {},
+      "skills": {},
+      "agents": {}
+    },
+    "orbit": {
+      "commands": 0,
+      "byCli": {}
+    }
+  },
+  "patch": {
+    "bytes": 0,
+    "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "paths": []
+  },
+  "plugin": null,
+  "images": {
+    "task": "sha256:1b6cd660102de29c36d28954eb2f6158b93d11b855a9bbfc577a55eb67a8f375",
+    "taskRef": "swebench/sweb.eval.x86_64.pytest-dev_1776_pytest-7982:latest",
+    "pulled": false,
+    "egress": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb"
+  },
+  "startCommit": "0ca93ffdc963c344cccd3e7e84f4cfa09ab99337",
+  "entryPhase": "ended",
+  "egress": {
+    "direct": "ENETUNREACH",
+    "outsideName": "EAI_AGAIN",
+    "api": {
+      "connect": 200,
+      "http": 404
+    },
+    "otherHost": 403,
+    "holds": true
+  }
+}

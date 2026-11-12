@@ -1,0 +1,11 @@
+{
+  "kind": "outcome",
+  "run": "killed__pack_orders-e2e-006__t1",
+  "attempt": 1,
+  "at": "2026-11-12T05:42:04.676Z",
+  "word": "INFRA_ERROR",
+  "why": "KILLED: the task container ended while the agent ran (exit 137)",
+  "saidDone": false,
+  "grade": null,
+  "gradeDetail": null
+}

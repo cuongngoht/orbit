@@ -1,0 +1,218 @@
+diff --git a/README.md b/README.md
+index f50a0e08f9d18b7fb44e7537c53784208ef4cb96..c470d4f3461b242ab3d580e77ec757a237e6f299 100644
+--- a/README.md
++++ b/README.md
+@@ -7,8 +7,9 @@ own records. Records live on disk, one JSON file each, so a service that stops a
+ - `src/store.mjs` — the durable store: `openStore(dir)`.
+ - `src/tenancy.mjs` — a library system's own records.
+ - `src/catalog.mjs` — titles and their copies. A book may be out for 21 days, a DVD for 7.
+-- `src/members.mjs` — members. A member may have five items out at once.
++- `src/members.mjs` — members, and what they owe. A member may have five items out at once.
+ - `src/loans.mjs` — lending, renewals and returns.
++- `src/fines.mjs` — fines for late returns.
+ - `src/holds.mjs` — holds: members waiting for a title, first come, first served.
+ - `src/api.mjs` — the HTTP-shaped API: `handle(store, { method, path, tenant, today, body }) -> { status, body }`.
+ - `src/dropbox.mjs` — the drop box consumer: `consume(store, { id, tenant, copy, at }) -> { ack, outcome }`.
+diff --git a/src/fines.mjs b/src/fines.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..9fd1c629b23f0ac9387a1ecf8800bb2597ddeb8f
+--- /dev/null
++++ b/src/fines.mjs
+@@ -0,0 +1,9 @@
++// FINES for a late return: so much a day, by the title's format, for every day after the day it was due -- and never
++// more than it would cost to replace the copy.
++import { daysBetween } from "./dates.mjs";
++
++export const DAILY_CENTS = { book: 25, dvd: 100 };
++
++export const daysLate = (due, day) => Math.max(0, daysBetween(due, day));
++
++export const fineFor = (title, copy, due, day) => Math.min(daysLate(due, day) * DAILY_CENTS[title.format], copy.replacementCents);
+diff --git a/src/loans.mjs b/src/loans.mjs
+index f5be5d4a6e4ccac2561a7d53b4c73a4fe58a32bd..2b251d431677e9a210ffea12e0d5d07cc80415ff 100644
+--- a/src/loans.mjs
++++ b/src/loans.mjs
+@@ -1,10 +1,12 @@
+ // LOANS: a copy lent to a member until its due date, renewed, and brought back -- at the desk, or through the drop box
+-// (dropbox.mjs). The copy then goes to whoever is waiting for its title, or back on the shelf.
++// (dropbox.mjs). A late return is fined and the fine charged to the member; the copy then goes to whoever is waiting
++// for its title, or back on the shelf.
+ import { addDays } from "./dates.mjs";
+ import { created, put } from "./store.mjs";
+ import { allMine, mine } from "./tenancy.mjs";
+ import { loanDaysOf, titleOfCopy } from "./catalog.mjs";
+-import { LOAN_LIMIT } from "./members.mjs";
++import { charged, LOAN_LIMIT } from "./members.mjs";
++import { fineFor } from "./fines.mjs";
+ import { collectedBy, heldForAnother, holdWaiting, servedOrShelved } from "./holds.mjs";
+ 
+ export const RENEWALS = 2;
+@@ -25,13 +27,17 @@ const dueOf = (store, copy, day) => addDays(day, loanDaysOf(titleOfCopy(store, c
+ export function lent(store, tenant, copy, member, day) {
+   collectedBy(store, copy, member);
+   put(store, "copies", { ...copy, status: "loan" });
+-  return created(store, "loans", "loan", { tenant, copy: copy.id, member: member.id, out: day, due: dueOf(store, copy, day), renewals: 0, returned: null });
++  return created(store, "loans", "loan", { tenant, copy: copy.id, member: member.id, out: day, due: dueOf(store, copy, day), renewals: 0, returned: null, fineCents: 0 });
+ }
+ 
+-// A loan brought back on a day: its copy set aside for the member who has waited longest for the title -- or shelved.
++// A loan brought back on a day: fined for the days it is late and the fine charged to its member, and its copy set
++// aside for the member who has waited longest for the title -- or shelved.
+ export function returned(store, tenant, loan, day) {
+-  servedOrShelved(store, mine(store, tenant, "copies", loan.copy), day);
+-  return put(store, "loans", { ...loan, returned: day });
++  const copy = mine(store, tenant, "copies", loan.copy);
++  const fineCents = fineFor(titleOfCopy(store, copy), copy, loan.due, day);
++  charged(store, mine(store, tenant, "members", loan.member), fineCents);
++  servedOrShelved(store, copy, day);
++  return put(store, "loans", { ...loan, returned: day, fineCents });
+ }
+ 
+ export const openLoanOfCopy = (store, tenant, copy) => allMine(store, tenant, "loans").find((l) => l.copy === copy.id && !l.returned) ?? null;
+@@ -51,4 +57,4 @@ export const renewRefusal = (store, tenant, loan, day) => RENEW_REFUSALS.find((r
+ // A renewal moves the due date on by the title's loan period, counted from the due date it had.
+ export const renewed = (store, tenant, loan) => put(store, "loans", { ...loan, due: addDays(loan.due, loanDaysOf(titleOfCopy(store, copyOfLoan(store, tenant, loan)))), renewals: loan.renewals + 1 });
+ 
+-export const loanView = (l) => ({ id: l.id, copy: l.copy, member: l.member, out: l.out, due: l.due, renewals: l.renewals, returned: l.returned });
++export const loanView = (l) => ({ id: l.id, copy: l.copy, member: l.member, out: l.out, due: l.due, renewals: l.renewals, returned: l.returned, fineCents: l.fineCents });
+diff --git a/src/members.mjs b/src/members.mjs
+index 644d3a9a619a72aacd8f070e9b73fdb6e8ab09d2..8778c2174e9c32c14861a2978f1bf5ce1ad16c58 100644
+--- a/src/members.mjs
++++ b/src/members.mjs
+@@ -1,8 +1,11 @@
+-// MEMBERS of a library system: who may borrow. A member may have five items out at once.
+-import { created } from "./store.mjs";
++// MEMBERS of a library system: who may borrow, and what they owe -- the fines their late returns were charged, added up.
++// A member may have five items out at once.
++import { created, put } from "./store.mjs";
+ 
+ export const LOAN_LIMIT = 5;
+ 
+-export const newMember = (store, tenant, b) => created(store, "members", "member", { tenant, name: b.name });
++export const newMember = (store, tenant, b) => created(store, "members", "member", { tenant, name: b.name, balanceCents: 0 });
+ 
+-export const memberView = (m) => ({ id: m.id, name: m.name });
++export const charged = (store, member, cents) => put(store, "members", { ...member, balanceCents: member.balanceCents + cents });
++
++export const memberView = (m) => ({ id: m.id, name: m.name, balanceCents: m.balanceCents });
+diff --git a/test/late-fines.test.mjs b/test/late-fines.test.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..a15ebc733ac3dadb0e7b424c19d45c5c1d590cbc
+--- /dev/null
++++ b/test/late-fines.test.mjs
+@@ -0,0 +1,39 @@
++// Late returns are fined by the day and the format, never above the replacement cost, and a member owes every fine.
++import assert from "node:assert/strict";
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { test } from "node:test";
++import { handle } from "../src/api.mjs";
++import { consume } from "../src/dropbox.mjs";
++import { openStore } from "../src/store.mjs";
++
++function storeFor(t) {
++  const dir = mkdtempSync(join(tmpdir(), "late-fines-"));
++  t.after(() => rmSync(dir, { recursive: true, force: true }));
++  return openStore(dir);
++}
++
++const call = (store, method, path, body, today = "2026-03-02") => handle(store, { method, path, tenant: "harbor", today, body });
++
++function lent(store, format, replacementCents, member) {
++  const title = call(store, "POST", "/titles", { name: "Late", format }).body;
++  const copy = call(store, "POST", "/copies", { title: title.id, replacementCents }).body;
++  return { copy, loan: call(store, "POST", "/loans", { copy: copy.id, member: member.id }).body };
++}
++
++test("a late return is fined by the day and the format, never above the copy's replacement cost", (t) => {
++  const store = storeFor(t);
++  const ana = call(store, "POST", "/members", { name: "Ana" }).body;
++  const [onTime, book, dvd] = [lent(store, "book", 2000, ana), lent(store, "book", 2000, ana), lent(store, "dvd", 1250, ana)];
++  const fines = [[onTime, "2026-03-23"], [book, "2026-03-26"], [dvd, "2026-04-30"]].map(([x, day]) => call(store, "POST", `/loans/${x.loan.id}/return`, {}, day).body.fineCents);
++  assert.deepEqual([fines, call(store, "GET", `/members/${ana.id}`).body.balanceCents], [[0, 75, 1250], 1325]);
++});
++
++test("a late copy dropped in the drop box is fined and charged as one checked in at the desk", (t) => {
++  const store = storeFor(t);
++  const ana = call(store, "POST", "/members", { name: "Ana" }).body;
++  const x = lent(store, "book", 2000, ana);
++  consume(store, { id: "scan-1", tenant: "harbor", copy: x.copy.id, at: "2026-03-25" });
++  assert.deepEqual([call(store, "GET", `/loans/${x.loan.id}`).body.fineCents, call(store, "GET", `/members/${ana.id}`).body.balanceCents], [50, 50]);
++});
+diff --git a/test/loans.test.mjs b/test/loans.test.mjs
+deleted file mode 100644
+index 1eaa085abea82a68becfdf6a44e38ebc2699dccb..0000000000000000000000000000000000000000
+--- a/test/loans.test.mjs
++++ /dev/null
+@@ -1,70 +0,0 @@
+-// Lending, and checking a loan in at the desk, through the API.
+-import assert from "node:assert/strict";
+-import { mkdtempSync, rmSync } from "node:fs";
+-import { tmpdir } from "node:os";
+-import { join } from "node:path";
+-import { test } from "node:test";
+-import { handle } from "../src/api.mjs";
+-import { openStore } from "../src/store.mjs";
+-
+-function storeFor(t) {
+-  const dir = mkdtempSync(join(tmpdir(), "lending-"));
+-  t.after(() => rmSync(dir, { recursive: true, force: true }));
+-  return openStore(dir);
+-}
+-
+-const call = (store, method, path, body, today = "2026-03-02") => handle(store, { method, path, tenant: "harbor", today, body });
+-
+-// A copy of a new title of a format, lent to a new member on 2026-03-02.
+-function lentOne(store, format) {
+-  const title = call(store, "POST", "/titles", { name: "Tide Tables", format }).body;
+-  const copy = call(store, "POST", "/copies", { title: title.id, replacementCents: 2000 }).body;
+-  const member = call(store, "POST", "/members", { name: "Ana Reyes" }).body;
+-  return { title, copy, member, loan: call(store, "POST", "/loans", { copy: copy.id, member: member.id }) };
+-}
+-
+-test("a copy is lent until its title's loan period is over: three weeks for a book, one week for a DVD", (t) => {
+-  const store = storeFor(t);
+-  const book = lentOne(store, "book").loan;
+-  const dvd = lentOne(store, "dvd").loan;
+-  assert.deepEqual([book.status, book.body.out, book.body.due, book.body.returned], [201, "2026-03-02", "2026-03-23", null]);
+-  assert.deepEqual([dvd.status, dvd.body.due], [201, "2026-03-09"]);
+-});
+-
+-test("a lent copy is on loan, and nobody else may borrow it", (t) => {
+-  const store = storeFor(t);
+-  const { copy } = lentOne(store, "book");
+-  const ben = call(store, "POST", "/members", { name: "Ben Okafor" }).body;
+-  assert.equal(call(store, "GET", `/copies/${copy.id}`).body.status, "loan");
+-  assert.deepEqual(call(store, "POST", "/loans", { copy: copy.id, member: ben.id }), { status: 409, body: { error: "not-available" } });
+-});
+-
+-test("a loan is read back as it was lent", (t) => {
+-  const store = storeFor(t);
+-  const { copy, member, loan } = lentOne(store, "book");
+-  const read = call(store, "GET", `/loans/${loan.body.id}`);
+-  assert.deepEqual([read.status, read.body.copy, read.body.member, read.body.due], [200, copy.id, member.id, "2026-03-23"]);
+-  assert.deepEqual(call(store, "GET", "/loans/loan-77"), { status: 404, body: { error: "no-loan" } });
+-});
+-
+-test("a loan checked in at the desk is back on the day it came in, and its copy is back on the shelf", (t) => {
+-  const store = storeFor(t);
+-  const { copy, loan } = lentOne(store, "book");
+-  const back = call(store, "POST", `/loans/${loan.body.id}/return`, {}, "2026-03-10");
+-  assert.deepEqual([back.status, back.body.returned], [200, "2026-03-10"]);
+-  assert.equal(call(store, "GET", `/copies/${copy.id}`).body.status, "shelf");
+-});
+-
+-test("a loan that is back already is not checked in again", (t) => {
+-  const store = storeFor(t);
+-  const { loan } = lentOne(store, "book");
+-  call(store, "POST", `/loans/${loan.body.id}/return`, {}, "2026-03-10");
+-  assert.deepEqual(call(store, "POST", `/loans/${loan.body.id}/return`, {}, "2026-03-11"), { status: 409, body: { error: "returned" } });
+-});
+-
+-test("lending names a copy and a member the system has", (t) => {
+-  const store = storeFor(t);
+-  const { copy, member } = lentOne(store, "book");
+-  assert.deepEqual(call(store, "POST", "/loans", { copy: "copy-90", member: member.id }), { status: 404, body: { error: "no-copy" } });
+-  assert.deepEqual(call(store, "POST", "/loans", { copy: copy.id, member: "member-90" }), { status: 404, body: { error: "no-member" } });
+-});

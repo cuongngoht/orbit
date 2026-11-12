@@ -1,0 +1,29 @@
+diff --git a/test/holds-served.test.mjs b/test/holds-served.test.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..8bd7b7f78895c3054aa3aef5673709cae6315123
+--- /dev/null
++++ b/test/holds-served.test.mjs
+@@ -0,0 +1,23 @@
++// Holds are served first come, first served.
++import assert from "node:assert/strict";
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { test } from "node:test";
++import { handle } from "../src/api.mjs";
++import { openStore } from "../src/store.mjs";
++
++function storeFor(t) {
++  const dir = mkdtempSync(join(tmpdir(), "holds-served-"));
++  t.after(() => rmSync(dir, { recursive: true, force: true }));
++  return openStore(dir);
++}
++
++const call = (store, method, path, body) => handle(store, { method, path, tenant: "harbor", today: "2026-03-02", body });
++
++test("a hold placed for a title is served first come, first served", (t) => {
++  const store = storeFor(t);
++  const title = call(store, "POST", "/titles", { name: "Queued", format: "book" }).body;
++  const ben = call(store, "POST", "/members", { name: "Ben" }).body;
++  assert.equal(call(store, "POST", "/holds", { title: title.id, member: ben.id }).body.state, "waiting");
++});

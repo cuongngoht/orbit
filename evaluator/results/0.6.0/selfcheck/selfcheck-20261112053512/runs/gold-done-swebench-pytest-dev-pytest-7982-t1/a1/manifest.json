@@ -1,0 +1,59 @@
+{
+  "campaign": "selfcheck-20261112053512",
+  "run": {
+    "arm": "gold-done",
+    "task": "swebench:pytest-dev__pytest-7982",
+    "trial": 1,
+    "key": "gold-done__swebench_pytest-dev__pytest-7982__t1"
+  },
+  "attempt": 1,
+  "arm": {
+    "id": "gold-done",
+    "kind": "scripted",
+    "def": {
+      "kind": "scripted",
+      "behaviour": "patch",
+      "patch": "gold",
+      "status": "DONE"
+    },
+    "frozen": {}
+  },
+  "task": {
+    "ref": "swebench:pytest-dev__pytest-7982",
+    "image": "swebench/sweb.eval.x86_64.pytest-dev_1776_pytest-7982:latest",
+    "repo": "/testbed",
+    "digest": "f9ce244d5d9c636091799772324ac490ca5a38317a64b001313a9587c9642b25"
+  },
+  "limits": {
+    "usd": 0,
+    "turns": 1,
+    "minutes": 10,
+    "cpus": 2,
+    "memoryMb": 2048,
+    "pids": 512
+  },
+  "capUsd": 0,
+  "tools": {
+    "ok": true,
+    "volume": "evl-tools-cc-2.1.322-e13726ca6041",
+    "built": false,
+    "claudeCode": "2.1.322",
+    "claudeCodeSays": "2.1.322 (Claude Code)",
+    "node": "v22.23.5",
+    "nodeImage": "node:22",
+    "nodeImageId": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb",
+    "builtAt": "2026-11-12T05:13:27.498Z"
+  },
+  "containers": {
+    "net": "evl-d1b73695-582aab09-a1-net",
+    "egress": "evl-d1b73695-582aab09-a1-egress",
+    "task": "evl-d1b73695-582aab09-a1-task",
+    "grader": "evl-d1b73695-582aab09-a1-grader",
+    "label": "selfcheck-20261112053512/gold-done__swebench_pytest-dev__pytest-7982__t1/a1"
+  },
+  "evaluator": {
+    "commit": "055cc4ebf8d8f865c5e8e206e898637a9288978a",
+    "dirty": false
+  },
+  "startedAt": "2026-11-12T05:35:13.747Z"
+}

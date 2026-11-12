@@ -1259,6 +1259,26 @@ benchmark/     (ADR 0046, 0047, 0048, 0053, 0054) THE DOCKER BENCHMARK of Orbit:
                test/benchmark-heldout.test.mjs). A
                run's evidence: <store>/benchmark/<bnr-…>/ (rounds/<k>/outcome.json, verified.json, report.md|json; a
                sessions run's home/, the host's own home kept between its sessions).
+evaluator/     (0.6.0) THE INDEPENDENT EVALUATOR: a package of its own (package.json, no dependency, README.md the guide),
+               export-ignored, importing nothing of the product and imported by nothing (test/evaluator-boundary.test.mjs),
+               splittable with `git subtree split --prefix=evaluator`; Five Lines does not hold it. cli.mjs is its one entry.
+               lib/core/ (util · proc: argv only, a child's environment by allow-list · docker: labels, create, cp, cleanup by
+               label · git: a start repo from files, a patch as a diff of trees through the controller's own git dir ·
+               tools: Node + the pinned Claude Code in a read-only volume · versions · stream: stream-json read as the host's
+               word · outcome: OUTCOMES, the ordered table of words · journal: the fold, the hard ledger, resume ·
+               credential: the room scan) · lib/container/ (what is copied INTO a container, Node built-ins only: entry,
+               egress, scripted, hold (a container whose agent runs on the host), grade-pack) · lib/arms/ (index:
+               ARM_KINDS · claude: hostArgs, claude and claude+orbit, the built-in plugins off · plugin: git archive of a
+               revision · mini: mini and mini+orbit, the skill listing, the pinned mini-SWE-agent venv · mini-driver.py:
+               mini-SWE-agent on the host, attached to the task container, writing stream-json · scripted) · lib/tasks/ (index: taskOf · packs · convert, convert-all,
+               acceptance-template: the old benchmark's change cases as packs · swebench: the pinned Verified rows) ·
+               lib/grade/ (packs: a fresh network-less container · swebench: the official harness in a uv venv) ·
+               lib/run/ (attempt: one (arm, task, trial) · campaign: freeze, plan, loop, resume, status · prompt · report ·
+               export · selfcheck · verify-packs) · lib/prereg/ (select: the selection rule as code · measure: an image's
+               size from its manifest · index: verify a pre-registration, a phase's campaign from it, the verdict rule).
+               prereg/<release>.json (committed before any model run it governs) · checks/*.check.mjs (its own tests, run by path); tasks/packs/<id>/
+               (issue.md, start.json, hidden/*.spec.mjs, controls/*.patch, pack.json; EXCLUDED.md); history/ (provenance).
+               A campaign's room: $ORBIT_EVAL_HOME/campaigns/<id>/ (default ~/.orbit-eval, never in a repository).
 integrations/  what ANOTHER program installs, never part of this plugin's archive. vscode-orbit-live/ (1.8.5, ADR 0021)
                is the Orbit Live companion for VS Code: plain CommonJS with no dependency and no build step, a
                person installs it; companion.js (what it does: a heartbeat in the store's live room, a request

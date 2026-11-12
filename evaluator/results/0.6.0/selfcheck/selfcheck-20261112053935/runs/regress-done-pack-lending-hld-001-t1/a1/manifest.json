@@ -1,0 +1,59 @@
+{
+  "campaign": "selfcheck-20261112053935",
+  "run": {
+    "arm": "regress-done",
+    "task": "pack:lending-hld-001",
+    "trial": 1,
+    "key": "regress-done__pack_lending-hld-001__t1"
+  },
+  "attempt": 1,
+  "arm": {
+    "id": "regress-done",
+    "kind": "scripted",
+    "def": {
+      "kind": "scripted",
+      "behaviour": "patch",
+      "patch": "regress",
+      "status": "DONE"
+    },
+    "frozen": {}
+  },
+  "task": {
+    "ref": "pack:lending-hld-001",
+    "image": "node:22",
+    "repo": "/work/repo",
+    "digest": "171c4e0a713a76e3ee1f194e0b7f71c8f5337da0d4b0a94f534b19bed94e1954"
+  },
+  "limits": {
+    "usd": 0,
+    "turns": 1,
+    "minutes": 10,
+    "cpus": 2,
+    "memoryMb": 2048,
+    "pids": 512
+  },
+  "capUsd": 0,
+  "tools": {
+    "ok": true,
+    "volume": "evl-tools-cc-2.1.322-e13726ca6041",
+    "built": false,
+    "claudeCode": "2.1.322",
+    "claudeCodeSays": "2.1.322 (Claude Code)",
+    "node": "v22.23.5",
+    "nodeImage": "node:22",
+    "nodeImageId": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb",
+    "builtAt": "2026-11-12T05:13:27.498Z"
+  },
+  "containers": {
+    "net": "evl-fd08fe9b-e3b03172-a1-net",
+    "egress": "evl-fd08fe9b-e3b03172-a1-egress",
+    "task": "evl-fd08fe9b-e3b03172-a1-task",
+    "grader": "evl-fd08fe9b-e3b03172-a1-grader",
+    "label": "selfcheck-20261112053935/regress-done__pack_lending-hld-001__t1/a1"
+  },
+  "evaluator": {
+    "commit": "45591529651f30aca23916cfebf0510b86c543e1",
+    "dirty": false
+  },
+  "startedAt": "2026-11-12T05:41:45.813Z"
+}

@@ -1,0 +1,62 @@
+{
+  "campaign": "dev1-060",
+  "run": {
+    "arm": "orbit-0.6.0",
+    "task": "swebench:psf__requests-1142",
+    "trial": 1,
+    "key": "orbit-0.6.0__swebench_psf__requests-1142__t1"
+  },
+  "attempt": 1,
+  "arm": {
+    "id": "orbit-0.6.0",
+    "kind": "claude+orbit",
+    "def": {
+      "kind": "claude+orbit",
+      "rev": "b2ec7358d849b3b25bb0033921319f9fe00c4432"
+    },
+    "frozen": {
+      "rev": "b2ec7358d849b3b25bb0033921319f9fe00c4432",
+      "commit": "b2ec7358d849b3b25bb0033921319f9fe00c4432"
+    }
+  },
+  "task": {
+    "ref": "swebench:psf__requests-1142",
+    "image": "swebench/sweb.eval.x86_64.psf_1776_requests-1142:latest",
+    "repo": "/testbed",
+    "digest": "defedaa9742570b995d5d7b07ea85c7840f1c7b0b8d7d68f189a88faa2cfb7e8"
+  },
+  "model": "claude-sonnet-5-5",
+  "effort": "medium",
+  "limits": {
+    "usd": 1,
+    "turns": 80,
+    "minutes": 40,
+    "cpus": 2,
+    "memoryMb": 4096,
+    "pids": 2048
+  },
+  "capUsd": 1,
+  "tools": {
+    "ok": true,
+    "volume": "evl-tools-cc-2.1.322-e13726ca6041",
+    "built": false,
+    "claudeCode": "2.1.322",
+    "claudeCodeSays": "2.1.322 (Claude Code)",
+    "node": "v22.23.5",
+    "nodeImage": "node:22",
+    "nodeImageId": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb",
+    "builtAt": "2026-11-12T05:13:27.498Z"
+  },
+  "containers": {
+    "net": "evl-aebef02d-48353840-a1-net",
+    "egress": "evl-aebef02d-48353840-a1-egress",
+    "task": "evl-aebef02d-48353840-a1-task",
+    "grader": "evl-aebef02d-48353840-a1-grader",
+    "label": "dev1-060/orbit-0.6.0__swebench_psf__requests-1142__t1/a1"
+  },
+  "evaluator": {
+    "commit": "0c10489fb44c545a816c0250ae2ddff774a053c9",
+    "dirty": false
+  },
+  "startedAt": "2026-11-12T11:00:38.852Z"
+}

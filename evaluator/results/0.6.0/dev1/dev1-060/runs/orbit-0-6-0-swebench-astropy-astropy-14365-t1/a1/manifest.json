@@ -1,0 +1,62 @@
+{
+  "campaign": "dev1-060",
+  "run": {
+    "arm": "orbit-0.6.0",
+    "task": "swebench:astropy__astropy-14365",
+    "trial": 1,
+    "key": "orbit-0.6.0__swebench_astropy__astropy-14365__t1"
+  },
+  "attempt": 1,
+  "arm": {
+    "id": "orbit-0.6.0",
+    "kind": "claude+orbit",
+    "def": {
+      "kind": "claude+orbit",
+      "rev": "b2ec7358d849b3b25bb0033921319f9fe00c4432"
+    },
+    "frozen": {
+      "rev": "b2ec7358d849b3b25bb0033921319f9fe00c4432",
+      "commit": "b2ec7358d849b3b25bb0033921319f9fe00c4432"
+    }
+  },
+  "task": {
+    "ref": "swebench:astropy__astropy-14365",
+    "image": "swebench/sweb.eval.x86_64.astropy_1776_astropy-14365:latest",
+    "repo": "/testbed",
+    "digest": "800486ffa7bff291ca7bd2934604175a813004128f883bdb9e11dfc6a8a65d4e"
+  },
+  "model": "claude-sonnet-5-5",
+  "effort": "medium",
+  "limits": {
+    "usd": 1,
+    "turns": 80,
+    "minutes": 40,
+    "cpus": 2,
+    "memoryMb": 4096,
+    "pids": 2048
+  },
+  "capUsd": 1,
+  "tools": {
+    "ok": true,
+    "volume": "evl-tools-cc-2.1.322-e13726ca6041",
+    "built": false,
+    "claudeCode": "2.1.322",
+    "claudeCodeSays": "2.1.322 (Claude Code)",
+    "node": "v22.23.5",
+    "nodeImage": "node:22",
+    "nodeImageId": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb",
+    "builtAt": "2026-11-12T05:13:27.498Z"
+  },
+  "containers": {
+    "net": "evl-aebef02d-cbf4f87d-a1-net",
+    "egress": "evl-aebef02d-cbf4f87d-a1-egress",
+    "task": "evl-aebef02d-cbf4f87d-a1-task",
+    "grader": "evl-aebef02d-cbf4f87d-a1-grader",
+    "label": "dev1-060/orbit-0.6.0__swebench_astropy__astropy-14365__t1/a1"
+  },
+  "evaluator": {
+    "commit": "0c10489fb44c545a816c0250ae2ddff774a053c9",
+    "dirty": false
+  },
+  "startedAt": "2026-11-12T10:57:08.733Z"
+}

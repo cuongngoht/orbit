@@ -1,0 +1,10 @@
+{
+  "direct": "ENETUNREACH",
+  "outsideName": "EAI_AGAIN",
+  "api": {
+    "connect": 200,
+    "http": 404
+  },
+  "otherHost": 403,
+  "holds": true
+}

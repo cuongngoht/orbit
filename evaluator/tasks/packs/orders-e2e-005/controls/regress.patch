@@ -1,0 +1,117 @@
+diff --git a/src/api.mjs b/src/api.mjs
+index 1703a8ee87fdeaf65181655a405616504d76b74b..cb0ff5c3b541f646105198ee23ac0fc3d805023e 100644
+--- a/src/api.mjs
++++ b/src/api.mjs
+@@ -1,29 +1 @@
+-// The HTTP-shaped API: a pure function of a store and a request -- { method, path, body } -> { status, body }.
+-import { formatted } from "./money.mjs";
+-import { cancelOrder, createOrder, getOrder, invalidOf, shipOrder } from "./orders.mjs";
+-
+-const viewOf = (order) => ({ ...order, total: formatted(order.totalMinor, order.currency) });
+-
+-const ANSWERS = [
+-  { when: (r) => !r || r.error === "NOT_FOUND", answer: () => ({ status: 404, body: { error: "no such order" } }) },
+-  { when: (r) => r.error === "CONFLICT", answer: (r) => ({ status: 409, body: { error: `the order is ${r.state}` } }) },
+-  { when: () => true, answer: (r, ok) => ({ status: ok, body: viewOf(r) }) },
+-];
+-
+-const answered = (r, ok = 200) => ANSWERS.find((a) => a.when(r)).answer(r, ok);
+-
+-const created = (store, body) => ((why) => (why ? { status: 400, body: { error: `invalid ${why}` } } : answered(createOrder(store, body), 201)))(invalidOf(body));
+-
+-const ORDER = "(ord-\\d{4})";
+-
+-export const ROUTES = [
+-  { method: "POST", path: new RegExp("^/orders$"), run: (store, m, body) => created(store, body ?? {}) },
+-  { method: "GET", path: new RegExp(`^/orders/${ORDER}$`), run: (store, m) => answered(getOrder(store, m[1])) },
+-  { method: "POST", path: new RegExp(`^/orders/${ORDER}/ship$`), run: (store, m) => answered(shipOrder(store, m[1])) },
+-  { method: "POST", path: new RegExp(`^/orders/${ORDER}/cancel$`), run: (store, m) => answered(cancelOrder(store, m[1])) },
+-];
+-
+-export function handle(store, request) {
+-  const route = ROUTES.find((r) => r.method === request?.method && r.path.test(String(request?.path ?? "")));
+-  return route ? route.run(store, route.path.exec(request.path), request.body) : { status: 404, body: { error: "no such route" } };
+-}
++export {};
+diff --git a/src/worker.mjs b/src/worker.mjs
+index b343dd3bbed88f2f15077cdfe59167a1dc60b9ea..ae9cdfa24cde41f5c91e0e83d8e7468d375d0d2f 100644
+--- a/src/worker.mjs
++++ b/src/worker.mjs
+@@ -7,6 +7,7 @@ const nextInvoice = (store) => `inv-${String(store.list("invoices").length + 1).
+ function invoiced(store, message, order) {
+   const id = nextInvoice(store);
+   store.put("invoices", id, { id, orderId: order.id, amountMinor: order.totalMinor, currency: order.currency, messageId: message.id });
++  store.put("processed", message.id, { messageId: message.id, invoice: id });
+   return { ack: true, invoice: id };
+ }
+ 
+@@ -14,5 +15,6 @@ const paid = (store, message) => ((order) => (order ? invoiced(store, message, o
+ 
+ export function consume(store, message) {
+   if (message?.type !== "order.paid") return { ack: true, skipped: "not a payment" };
++  if (store.get("processed", message.id)) return { ack: true, duplicate: true };
+   return paid(store, message);
+ }
+diff --git a/test/cancel.test.mjs b/test/cancel.test.mjs
+deleted file mode 100644
+index 48ebf6e47453a6454075f8a9c81713bfed813e96..0000000000000000000000000000000000000000
+--- a/test/cancel.test.mjs
++++ /dev/null
+@@ -1,29 +0,0 @@
+-import assert from "node:assert/strict";
+-import { mkdtempSync, rmSync } from "node:fs";
+-import { tmpdir } from "node:os";
+-import { join } from "node:path";
+-import { test } from "node:test";
+-import { handle } from "../src/api.mjs";
+-import { openStore } from "../src/store.mjs";
+-
+-function fresh(t) {
+-  const dir = mkdtempSync(join(tmpdir(), "orders-"));
+-  t.after(() => rmSync(dir, { recursive: true, force: true }));
+-  return openStore(dir);
+-}
+-
+-const made = (store) => handle(store, { method: "POST", path: "/orders", body: { lines: [{ qty: 1, unitMinor: 700 }] } }).body.id;
+-
+-test("an open order can be cancelled, and a cancelled order is never shipped", (t) => {
+-  const store = fresh(t);
+-  const id = made(store);
+-  assert.equal(handle(store, { method: "POST", path: `/orders/${id}/cancel` }).body.state, "cancelled");
+-  assert.equal(handle(store, { method: "POST", path: `/orders/${id}/ship` }).status, 409);
+-});
+-
+-test("a shipped order cannot be cancelled", (t) => {
+-  const store = fresh(t);
+-  const id = made(store);
+-  handle(store, { method: "POST", path: `/orders/${id}/ship` });
+-  assert.equal(handle(store, { method: "POST", path: `/orders/${id}/cancel` }).status, 409);
+-});
+diff --git a/test/redelivery.test.mjs b/test/redelivery.test.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..b69833ebb73ec4cee55d80042925545de30aa0f5
+--- /dev/null
++++ b/test/redelivery.test.mjs
+@@ -0,0 +1,22 @@
++import assert from "node:assert/strict";
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { test } from "node:test";
++import { createOrder } from "../src/orders.mjs";
++import { openStore } from "../src/store.mjs";
++import { consume } from "../src/worker.mjs";
++
++function fresh(t) {
++  const dir = mkdtempSync(join(tmpdir(), "orders-"));
++  t.after(() => rmSync(dir, { recursive: true, force: true }));
++  return dir;
++}
++
++test("a payment delivered again, even after the store is opened again, writes one invoice", (t) => {
++  const dir = fresh(t);
++  const message = { id: "m-3", type: "order.paid", orderId: createOrder(openStore(dir), { lines: [{ qty: 1, unitMinor: 250 }] }).id };
++  assert.equal(consume(openStore(dir), message).ack, true);
++  assert.equal(consume(openStore(dir), message).ack, true);
++  assert.equal(openStore(dir).list("invoices").length, 1);
++});

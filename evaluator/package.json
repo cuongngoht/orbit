@@ -1,0 +1,13 @@
+{
+  "name": "orbit-evaluator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "An independent evaluator: the same task, model, effort, tools and limits with and without a plugin, graded by hidden tests the agent never sees.",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "bin": {},
+  "scripts": {
+    "checks": "node --test checks/",
+    "selfcheck": "node cli.mjs selfcheck"
+  }
+}

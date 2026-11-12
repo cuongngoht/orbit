@@ -1,0 +1,128 @@
+{
+  "campaign": {
+    "id": "pilot-060",
+    "model": "claude-sonnet-5-5",
+    "effort": "medium",
+    "limits": {
+      "usd": 1,
+      "turns": 80,
+      "minutes": 40,
+      "cpus": 2,
+      "memoryMb": 4096,
+      "pids": 2048
+    },
+    "budgetUsd": 1,
+    "claudeCode": "2.1.322",
+    "evaluator": {
+      "commit": "71aeebca31c5dc5c996f427c4b2d6231b96ae9bb",
+      "dirty": false
+    },
+    "arms": {
+      "plain": {
+        "kind": "claude",
+        "frozen": {}
+      }
+    },
+    "tasks": {
+      "pack:orders-e2e-004": {
+        "digest": "c5f90224e9474b4926f845fd7786db4d8a0d6e3ff3677da50951e7204447207d",
+        "image": "node:22"
+      }
+    },
+    "frozenAt": "2026-11-12T06:12:13.207Z"
+  },
+  "ledger": {
+    "budgetUsd": 1,
+    "chargedUsd": 0.12,
+    "reservedUsd": 0,
+    "remainingUsd": 0.88
+  },
+  "finished": true,
+  "arms": [
+    {
+      "arm": "plain",
+      "runs": 1,
+      "ended": 1,
+      "gradable": 1,
+      "resolved": 1,
+      "rate": 1,
+      "words": {
+        "RESOLVED": 1,
+        "UNRESOLVED": 0,
+        "REGRESSED": 0,
+        "EMPTY_PATCH": 0,
+        "FALSE_DONE": 0,
+        "TIMEOUT": 0,
+        "BUDGET": 0,
+        "INFRA_ERROR": 0,
+        "UNGRADABLE": 0
+      },
+      "infraErrors": [],
+      "notRun": [],
+      "medianCostUsd": 0.1156403,
+      "medianMinutes": 0.31953333333333334,
+      "chargedUsd": 0.1156403,
+      "interventions": 0,
+      "usage": {
+        "skillCalls": 0,
+        "agentCalls": 0,
+        "pluginCommands": 0,
+        "runsWithPluginLoaded": 0
+      }
+    }
+  ],
+  "pairwise": [
+    {
+      "task": "pack:orders-e2e-004",
+      "arms": {
+        "plain": [
+          "RESOLVED"
+        ]
+      }
+    }
+  ],
+  "runs": [
+    {
+      "arm": "plain",
+      "task": "pack:orders-e2e-004",
+      "trial": 1,
+      "key": "plain__pack_orders-e2e-004__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.1156403,
+      "chargedUsd": 0.1156403,
+      "minutes": 0.31953333333333334,
+      "turns": 6,
+      "tokens": {
+        "input": 10,
+        "output": 1815,
+        "cacheRead": 79983,
+        "cacheWrite": 22368
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 5,
+        "byName": {
+          "Bash": 5
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "patchBytes": 2415,
+      "touchedTests": [
+        "test/invoice-durable.test.mjs"
+      ],
+      "infra": null
+    }
+  ]
+}

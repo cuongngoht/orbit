@@ -1,0 +1,94 @@
+{
+  "kind": "ended",
+  "run": "orbit-0.6.0__pack_orders-e2e-003__t1",
+  "attempt": 1,
+  "at": "2026-11-12T11:02:30.908Z",
+  "chargedUsd": 0.1230269,
+  "infra": null,
+  "timedOut": false,
+  "killedByControl": false,
+  "exit": 0,
+  "oomKilled": false,
+  "wallMs": 30022,
+  "streamBytes": 104889,
+  "streamCut": false,
+  "summary": {
+    "started": true,
+    "model": "claude-sonnet-5-5",
+    "version": "2.1.322",
+    "plugins": [
+      "orbit@0.6.0"
+    ],
+    "hooks": {
+      "ran": 3,
+      "failed": 0
+    },
+    "skillsListed": 42,
+    "result": true,
+    "costUsd": 0.1230269,
+    "tokens": {
+      "input": 10,
+      "output": 4052,
+      "cacheRead": 117949,
+      "cacheWrite": 17673
+    },
+    "turns": 12,
+    "durationMs": 28561,
+    "denials": 1,
+    "subtype": "success",
+    "isError": false,
+    "stoppedOn": null,
+    "apiError": null,
+    "status": "DONE",
+    "statusWhy": null,
+    "asked": false,
+    "tools": {
+      "calls": 11,
+      "byName": {
+        "Bash": 3,
+        "Edit": 7,
+        "Write": 1
+      },
+      "skills": {},
+      "agents": {}
+    },
+    "orbit": {
+      "commands": 0,
+      "byCli": {}
+    }
+  },
+  "patch": {
+    "bytes": 6629,
+    "digest": "032019242fe3734e2f38b88bce9f6f79348f0c5e97aade30176573e118c48c72",
+    "paths": [
+      "src/api.mjs",
+      "src/money.mjs",
+      "src/orders.mjs",
+      "src/ui.mjs",
+      "src/worker.mjs",
+      "test/currency.test.mjs"
+    ]
+  },
+  "plugin": {
+    "digest": "dbe6bfcff4c707ca7af6c8bf7f9edd116fee7e28251863ca94d652780cf744c3",
+    "files": 2726
+  },
+  "images": {
+    "task": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb",
+    "taskRef": "node:22",
+    "pulled": false,
+    "egress": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb"
+  },
+  "startCommit": "ae3fb1ef7ccfb8c4009f3bf243aa4e7ba4265837",
+  "entryPhase": "ended",
+  "egress": {
+    "direct": "ENETUNREACH",
+    "outsideName": "EAI_AGAIN",
+    "api": {
+      "connect": 200,
+      "http": 404
+    },
+    "otherHost": 403,
+    "holds": true
+  }
+}

@@ -1,0 +1,140 @@
+{
+  "applied": true,
+  "empty": false,
+  "restored": [
+    {
+      "rel": "test/cancel.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/currency.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/dedupe.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/invoice.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/money.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/orders.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/ui.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/worker.test.mjs",
+      "ok": true
+    }
+  ],
+  "tests": [
+    {
+      "file": "test/note.test.mjs",
+      "kind": "f2p",
+      "ok": false,
+      "code": 1,
+      "timedOut": false,
+      "pass": 0,
+      "fail": 1,
+      "tail": "TAP version 13\n# Subtest: an order keeps the note it was created with, and draws it escaped\nnot ok 1 - an order keeps the note it was created with, and draws it escaped\n  ---\n  duration_ms: 21.016079\n  type: 'test'\n  location: '/work/repo/test/note.test.mjs:16:1'\n  failureType: 'testCodeFailure'\n  error: |-\n    The input did not match the regular expression /<p class=\"note\">leave at &lt;door&gt;<\\/p>/. Input:\n    \n    '<article class=\"order\" id=\"ord-0001\">\\n' +\n      '  <h2></h2>\\n' +\n      '  <p class=\"total\">$1.00</p>\\n' +\n      '  <p class=\"state\">open</p>\\n' +\n      '</article>'\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected:\n  actual: |-\n    <article class=\"order\" id=\"ord-0001\">\n      <h2></h2>\n      <p class=\"total\">$1.00</p>\n      <p class=\"state\">open</p>\n    </article>\n  operator: 'match'\n  stack: |-\n    TestContext.<anonymous> (file:///work/repo/test/note.test.mjs:21:10)\n    Test.runInAsyncScope (node:async_hooks:214:14)\n    Test.run (node:internal/test_runner/test:1047:25)\n    Test.start (node:internal/test_runner/test:944:17)\n    startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17)\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 0\n# fail 1\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 642.691924"
+    },
+    {
+      "file": "test/eval-acceptance.test.mjs",
+      "kind": "f2p",
+      "ok": false,
+      "code": 1,
+      "timedOut": false,
+      "pass": 4,
+      "fail": 3,
+      "tail": "gt;br aab/, and created=<\"/ > >br aab/, customer=Ada, read=<\"/ > >br aab/, state=open, status=201, total=$25.00, view=none came back'\n    35:\n      id: 'seeded-43'\n      why: 'expected exactly created=>c\"..o,éa r r1/bo, customer=Ada, read=>c\"..o,éa r r1/bo, state=open, status=201, total=$25.00, view=&gt;c&quot;..o,éa r r1/bo, and created=>c\"..o,éa r r1/bo, customer=Ada, read=>c\"..o,éa r r1/bo, state=open, status=201, total=$25.00, view=none came back'\n    36:\n      id: 'seeded-44'\n      why: `expected exactly created=.ac cc\" ' b, , a c1 .bbr<'11>>a.., customer=&gt;//a, read=.ac cc\" ' b, , a c1 .bbr<'11>>a.., state=open, status=201, total=$25.00, view=.ac cc&quot; &#39; b, , a c1 .bbr&lt;&#39;11&gt;&gt;a.., and created=.ac cc\" ' b, , a c1 .bbr<'11>>a.., customer=&gt;//a, read=.ac cc\" ' b, , a c1 .bbr<'11>>a.., state=open, status=201, total=$25.00, view=none came back`\n    37:\n      id: 'seeded-45'\n      why: \"expected exactly created=<1&>acb  rb/b/'&rr/r>1c.r>/o.&  <&c.> é, customer=Ada, read=<1&>acb  rb/b/'&rr/r>1c.r>/o.&  <&c.> é, state=open, status=201, total=$25.00, view=&lt;1&amp;&gt;acb  rb/b/&#39;&amp;rr/r&gt;1c.r&gt;/o.&amp;  &lt;&amp;c.&gt; é, and created=<1&>acb  rb/b/'&rr/r>1c.r>/o.&  <&c.> é, customer=Ada, read=<1&>acb  rb/b/'&rr/r>1c.r>/o.&  <&c.> é, state=open, status=201, total=$25.00, view=none came back\"\n    38:\n      id: 'seeded-46'\n      why: `expected exactly created=<c' c\",.b o < bb ,é/r, customer=Ada, read=<c' c\",.b o < bb ,é/r, state=open, status=201, total=$25.00, view=&lt;c&#39; c&quot;,.b o &lt; bb ,é/r, and created=<c' c\",.b o < bb ,é/r, customer=Ada, read=<c' c\",.b o < bb ,é/r, state=open, status=201, total=$25.00, view=none came back`\n    39:\n      id: 'seeded-47'\n      why: 'expected exactly created=. /,>&cbé1 .&<.1>1bc.oc, customer=Ada, read=. /,>&cbé1 .&<.1>1bc.oc, state=open, status=201, total=$25.00, view=. /,&gt;&amp;cbé1 .&amp;&lt;.1&gt;1bc.oc, and created=. /,>&cbé1 .&<.1>1bc.oc, customer=Ada, read=. /,>&cbé1 .&<.1>1bc.oc, state=open, status=201, total=$25.00, view=none came back'\n    40:\n      id: 'seeded-48'\n      why: 'expected exactly created=,/\"c/1a .a. \". r c<.a, customer=Ada, read=,/\"c/1a .a. \". r c<.a, state=open, status=201, total=$25.00, view=,/&quot;c/1a .a. &quot;. r c&lt;.a, and created=,/\"c/1a .a. \". r c<.a, customer=Ada, read=,/\"c/1a .a. \". r c<.a, state=open, status=201, total=$25.00, view=none came back'\n  operator: 'deepStrictEqual'\n  stack: |-\n    TestContext.<anonymous> (file:///work/repo/test/eval-acceptance.test.mjs:49:12)\n    Test.runInAsyncScope (node:async_hooks:214:14)\n    Test.run (node:internal/test_runner/test:1047:25)\n    Test.processPendingSubtests (node:internal/test_runner/test:744:18)\n    Test.postRun (node:internal/test_runner/test:1173:19)\n    Test.run (node:internal/test_runner/test:1101:12)\n    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)\n  ...\n1..7\n# tests 7\n# suites 0\n# pass 4\n# fail 3\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 672.506235"
+    },
+    {
+      "file": "test/cancel.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 2,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: an open order can be cancelled, and a cancelled order is never shipped\nok 1 - an open order can be cancelled, and a cancelled order is never shipped\n  ---\n  duration_ms: 14.389819\n  type: 'test'\n  ...\n# Subtest: a shipped order cannot be cancelled\nok 2 - a shipped order cannot be cancelled\n  ---\n  duration_ms: 1.93586\n  type: 'test'\n  ...\n1..2\n# tests 2\n# suites 0\n# pass 2\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 185.661154"
+    },
+    {
+      "file": "test/currency.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 2,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: an order keeps its currency, and its total is formatted in it\nok 1 - an order keeps its currency, and its total is formatted in it\n  ---\n  duration_ms: 15.891578\n  type: 'test'\n  ...\n# Subtest: a currency nobody keeps is refused\nok 2 - a currency nobody keeps is refused\n  ---\n  duration_ms: 4.080033\n  type: 'test'\n  ...\n1..2\n# tests 2\n# suites 0\n# pass 2\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 192.272286"
+    },
+    {
+      "file": "test/dedupe.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 1,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: a payment delivered twice writes one invoice\nok 1 - a payment delivered twice writes one invoice\n  ---\n  duration_ms: 30.964928\n  type: 'test'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 1\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 213.463683"
+    },
+    {
+      "file": "test/invoice.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 1,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: a payment writes the order's invoice, and the invoice is still there when the store is opened again\nok 1 - a payment writes the order's invoice, and the invoice is still there when the store is opened again\n  ---\n  duration_ms: 19.829648\n  type: 'test'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 1\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 119.196571"
+    },
+    {
+      "file": "test/money.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 3,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: a line's total is its quantity times its unit price, in minor units\nok 1 - a line's total is its quantity times its unit price, in minor units\n  ---\n  duration_ms: 4.938116\n  type: 'test'\n  ...\n# Subtest: an order with no discount costs its subtotal, and a round discount is exact\nok 2 - an order with no discount costs its subtotal, and a round discount is exact\n  ---\n  duration_ms: 0.384469\n  type: 'test'\n  ...\n# Subtest: a total is formatted in dollars by default\nok 3 - a total is formatted in dollars by default\n  ---\n  duration_ms: 0.286925\n  type: 'test'\n  ...\n1..3\n# tests 3\n# suites 0\n# pass 3\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 220.824659"
+    },
+    {
+      "file": "test/orders.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 2,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: an order is created open, read back, and shipped once\nok 1 - an order is created open, read back, and shipped once\n  ---\n  duration_ms: 14.017383\n  type: 'test'\n  ...\n# Subtest: an unknown order and an unknown route are 404, and an order with no lines is refused\nok 2 - an unknown order and an unknown route are 404, and an order with no lines is refused\n  ---\n  duration_ms: 6.426217\n  type: 'test'\n  ...\n1..2\n# tests 2\n# suites 0\n# pass 2\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 662.451099"
+    },
+    {
+      "file": "test/ui.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 1,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: an order is drawn with its customer escaped, its total and its state\nok 1 - an order is drawn with its customer escaped, its total and its state\n  ---\n  duration_ms: 2.880127\n  type: 'test'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 1\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 361.296866"
+    },
+    {
+      "file": "test/worker.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 2,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: a message that is not a payment is acknowledged and skipped\nok 1 - a message that is not a payment is acknowledged and skipped\n  ---\n  duration_ms: 11.143215\n  type: 'test'\n  ...\n# Subtest: a payment for an order nobody has is not acknowledged, so it is delivered again\nok 2 - a payment for an order nobody has is not acknowledged, so it is delivered again\n  ---\n  duration_ms: 1.716999\n  type: 'test'\n  ...\n1..2\n# tests 2\n# suites 0\n# pass 2\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 281.712804"
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "id": "orders-e2e-002",
+  "title": "An open order can be cancelled through the API",
+  "source": {
+    "kind": "orbit-benchmark-case",
+    "suite": "orbit-engineering",
+    "case": "ORBIT-E2E-002",
+    "version": "1.0.0",
+    "caseDigest": "094f1e82ced780e0730b55c5eeaf163cd1010f46a8ed1340d19424457e380cfa"
+  },
+  "fixture": "orders",
+  "image": "node:22",
+  "repo": "/work/repo",
+  "f2p": [
+    {
+      "name": "cancel",
+      "file": "cancel.spec.mjs",
+      "target": "test/cancel.test.mjs"
+    },
+    {
+      "name": "eval-acceptance",
+      "file": "acceptance.spec.mjs",
+      "target": "test/eval-acceptance.test.mjs"
+    }
+  ],
+  "p2p": [
+    "test/currency.test.mjs",
+    "test/dedupe.test.mjs",
+    "test/invoice.test.mjs",
+    "test/money.test.mjs",
+    "test/note.test.mjs",
+    "test/orders.test.mjs",
+    "test/ui.test.mjs",
+    "test/worker.test.mjs"
+  ],
+  "controls": {
+    "gold": {
+      "expect": "RESOLVED",
+      "about": "the case's reference solution"
+    },
+    "cheat": {
+      "expect": "RESOLVED",
+      "about": "The reference solution, and one of the project's existing tests deleted on the way: a verifier must refuse it whatever else it does right.",
+      "graded": "graded by the hidden tests alone, every graded test file restored from the start: RESOLVED when the cheat carries the reference change (its test edit is undone), NOT_RESOLVED otherwise"
+    },
+    "tamper": {
+      "expect": "NOT_RESOLVED",
+      "about": "nothing fixed; every test file the grader runs replaced or created by one that passes"
+    },
+    "regress": {
+      "expect": "REGRESSED",
+      "about": "the gold change, src/api.mjs emptied, and test/currency.test.mjs (which imports it) deleted"
+    }
+  },
+  "grade": {
+    "perFileSeconds": 180,
+    "cpus": 2,
+    "memoryMb": 2048,
+    "pids": 512
+  }
+}

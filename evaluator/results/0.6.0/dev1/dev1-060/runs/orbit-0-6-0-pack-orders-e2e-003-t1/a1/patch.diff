@@ -1,0 +1,118 @@
+diff --git a/src/api.mjs b/src/api.mjs
+index ea9cbb8e9209cc061510325dec2a9d3418c07b37..1703a8ee87fdeaf65181655a405616504d76b74b 100644
+--- a/src/api.mjs
++++ b/src/api.mjs
+@@ -2,7 +2,7 @@
+ import { formatted } from "./money.mjs";
+ import { cancelOrder, createOrder, getOrder, invalidOf, shipOrder } from "./orders.mjs";
+ 
+-const viewOf = (order) => ({ ...order, total: formatted(order.totalMinor) });
++const viewOf = (order) => ({ ...order, total: formatted(order.totalMinor, order.currency) });
+ 
+ const ANSWERS = [
+   { when: (r) => !r || r.error === "NOT_FOUND", answer: () => ({ status: 404, body: { error: "no such order" } }) },
+diff --git a/src/money.mjs b/src/money.mjs
+index c6b58cb5cf3df656ffe96fc51e3b7c63fc306212..389cf4d0487aeb8d4c268b37f65345b1272a7b7f 100644
+--- a/src/money.mjs
++++ b/src/money.mjs
+@@ -9,4 +9,6 @@ export const discounted = (minor, percent) => Math.floor((minor * (100 - percent
+ 
+ export const orderTotal = (lines, percent = 0) => discounted(subtotal(lines), percent);
+ 
+-export const formatted = (minor) => `$${(minor / 100).toFixed(2)}`;
++export const CURRENCIES = ["USD", "EUR", "JPY"];
++
++export const formatted = (minor, currency = "USD") => (currency === "JPY" ? `¥${minor}` : `${currency === "EUR" ? "€" : "$"}${(minor / 100).toFixed(2)}`);
+diff --git a/src/orders.mjs b/src/orders.mjs
+index b71fc617d5febf4057bd48085b3c3cef5f585a2b..211ee410a546e9d7f1194285e721e5172d4934fe 100644
+--- a/src/orders.mjs
++++ b/src/orders.mjs
+@@ -1,5 +1,5 @@
+ // Orders: created open with their total computed once, shipped once, and cancelled only while they are still open.
+-import { orderTotal } from "./money.mjs";
++import { CURRENCIES, orderTotal } from "./money.mjs";
+ 
+ const nextId = (store) => `ord-${String(store.list("orders").length + 1).padStart(4, "0")}`;
+ 
+@@ -8,10 +8,10 @@ const validLine = (l) => Number.isInteger(l?.qty) && l.qty > 0 && Number.isInteg
+ const validPercent = (p) => Number.isInteger(p) && p >= 0 && p <= 100;
+ 
+ // Why an order cannot be made of what was sent, or null.
+-export const invalidOf = (input) => (!Array.isArray(input?.lines) || !input.lines.length || !input.lines.every(validLine) ? "lines" : !validPercent(input.percent ?? 0) ? "percent" : null);
++export const invalidOf = (input) => (!Array.isArray(input?.lines) || !input.lines.length || !input.lines.every(validLine) ? "lines" : !validPercent(input.percent ?? 0) ? "percent" : !CURRENCIES.includes(input.currency ?? "USD") ? "currency" : null);
+ 
+ export function createOrder(store, input) {
+-  const order = { id: nextId(store), customer: String(input.customer ?? ""), lines: input.lines, percent: input.percent ?? 0, note: String(input.note ?? ""), state: "open" };
++  const order = { id: nextId(store), customer: String(input.customer ?? ""), lines: input.lines, percent: input.percent ?? 0, currency: input.currency ?? "USD", note: String(input.note ?? ""), state: "open" };
+   return store.put("orders", order.id, { ...order, totalMinor: orderTotal(order.lines, order.percent) });
+ }
+ 
+diff --git a/src/ui.mjs b/src/ui.mjs
+index 03c58b0cbb7907c0907326730614c07e9005c2e0..e3f443a561c0d30c38d35e38da0149fcca352d03 100644
+--- a/src/ui.mjs
++++ b/src/ui.mjs
+@@ -7,4 +7,4 @@ export const escaped = (text) => String(text ?? "").replace(/[&<>"']/g, (ch) =>
+ 
+ const noteOf = (order) => (order.note ? [`  <p class="note">${escaped(order.note)}</p>`] : []);
+ 
+-export const renderOrder = (order) => [`<article class="order" id="${escaped(order.id)}">`, `  <h2>${escaped(order.customer)}</h2>`, `  <p class="total">${escaped(formatted(order.totalMinor))}</p>`, `  <p class="state">${escaped(order.state)}</p>`, ...noteOf(order), "</article>"].join("\n");
++export const renderOrder = (order) => [`<article class="order" id="${escaped(order.id)}">`, `  <h2>${escaped(order.customer)}</h2>`, `  <p class="total">${escaped(formatted(order.totalMinor, order.currency))}</p>`, `  <p class="state">${escaped(order.state)}</p>`, ...noteOf(order), "</article>"].join("\n");
+diff --git a/src/worker.mjs b/src/worker.mjs
+index 3da7a5019de9ef5bf3eb53583f05791c2677c78e..677744632fb7b55e45577294e365daf502b5e286 100644
+--- a/src/worker.mjs
++++ b/src/worker.mjs
+@@ -6,7 +6,7 @@ const nextInvoice = (store) => `inv-${String(store.list("invoices").length + 1).
+ 
+ function invoiced(store, message, order) {
+   const id = nextInvoice(store);
+-  store.put("invoices", id, { id, orderId: order.id, amountMinor: order.totalMinor, messageId: message.id });
++  store.put("invoices", id, { id, orderId: order.id, amountMinor: order.totalMinor, currency: order.currency ?? "USD", messageId: message.id });
+   store.put("processed", message.id, { messageId: message.id, invoice: id });
+   return { ack: true, invoice: id };
+ }
+diff --git a/test/currency.test.mjs b/test/currency.test.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..9467b94baed74212753c7e81f72303d55dfbc64d
+--- /dev/null
++++ b/test/currency.test.mjs
+@@ -0,0 +1,40 @@
++import assert from "node:assert/strict";
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { test } from "node:test";
++import { handle } from "../src/api.mjs";
++import { openStore } from "../src/store.mjs";
++import { renderOrder } from "../src/ui.mjs";
++import { consume } from "../src/worker.mjs";
++
++function fresh(t) {
++  const dir = mkdtempSync(join(tmpdir(), "orders-"));
++  t.after(() => rmSync(dir, { recursive: true, force: true }));
++  return openStore(dir);
++}
++const post = (store, currency) => handle(store, { method: "POST", path: "/orders", body: { lines: [{ qty: 1, unitMinor: 1234 }], ...(currency === undefined ? {} : { currency }) } });
++
++test("totals are formatted in the order's currency", (t) => {
++  const store = fresh(t);
++  for (const [c, total] of [[undefined, "$12.34"], ["USD", "$12.34"], ["EUR", "€12.34"], ["JPY", "¥1234"]]) {
++    const r = post(store, c);
++    assert.equal(r.status, 201);
++    assert.equal(r.body.currency, c ?? "USD");
++    assert.equal(r.body.total, total);
++    assert.match(renderOrder(r.body), new RegExp(`<p class="total">${total}</p>`));
++  }
++});
++
++test("the invoice carries the currency", (t) => {
++  const store = fresh(t);
++  const r = post(store, "EUR");
++  consume(store, { id: "m-1", type: "order.paid", orderId: r.body.id });
++  assert.equal(store.list("invoices")[0].currency, "EUR");
++});
++
++test("an unknown currency is refused and nothing is stored", (t) => {
++  const store = fresh(t);
++  for (const c of ["GBP", "usd", "", null]) assert.equal(post(store, c).status, 400);
++  assert.equal(store.list("orders").length, 0);
++});

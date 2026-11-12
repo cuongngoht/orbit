@@ -62,6 +62,7 @@
 // Exit 0 = done (a task that stopped for a reason is a state) · 2 = REFUSED (bad usage, a decision
 // the protocol refuses, a rule that said no) · 3 = BLOCKED (a lock held, a machine that could not
 // answer). Never 1.
+import { engined, enginedDeep } from "../src/engined.mjs";
 import { readFileSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -168,7 +169,7 @@ function switchedOn() {
 }
 
 function printed(entry, result) {
-  console.log(args.includes("--json") ? JSON.stringify(result, null, 2) : printable([entry.say(result), attachedLine(result.tracking)].filter(Boolean).join("\n")));
+  console.log(args.includes("--json") ? JSON.stringify(enginedDeep(result, PLUGIN_ROOT), null, 2) : printable(engined([entry.say(result), attachedLine(result.tracking)].filter(Boolean).join("\n"), PLUGIN_ROOT)));
   emitted(result);
   learnedAfter(result);
 }

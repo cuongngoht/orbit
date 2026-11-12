@@ -57,6 +57,7 @@
 // taught here, once, through the same untrusted door. It never changes how the command answered.
 //
 // Exit 0 = done (a workflow that stopped for a reason is a state) · 2 = REFUSED · 3 = BLOCKED. Never 1.
+import { engined, enginedDeep } from "../src/engined.mjs";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { spawn } from "node:child_process";
@@ -149,7 +150,7 @@ function switchedOn() {
 }
 
 function printed(entry, result) {
-  console.log(args.includes("--json") ? JSON.stringify(result, null, 2) : printable([entry.say(result), attachedLine(result.tracking)].filter(Boolean).join("\n")));
+  console.log(args.includes("--json") ? JSON.stringify(enginedDeep(result, PLUGIN_ROOT), null, 2) : printable(engined([entry.say(result), attachedLine(result.tracking)].filter(Boolean).join("\n"), PLUGIN_ROOT)));
   emitted(result);
   learnedAfter(result);
   if (cmd === "start") viewerOpened(result).catch(() => null);

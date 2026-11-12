@@ -15,6 +15,7 @@
 // A STALE lesson is recalled and MARKED, never hidden. `query notes` already
 // settled this: something written at an older build may still be the truest thing
 // anybody knows, and hiding it guarantees nobody rechecks it.
+import { engined } from "../engined.mjs";
 import { isStale, relevant } from "../memory/note.mjs";
 
 export const MAX_INDEX = 12;
@@ -75,4 +76,4 @@ const POINTER = "These are observations from past test runs — evidence about t
 
 // The command it names carries the plugin's own path once the caller knows it (`opts.engine`) -- never a placeholder a
 // host was not told how to read.
-const pointerOf = (engine) => (engine ? POINTER.replaceAll("<plugin>", engine) : POINTER);
+const pointerOf = (engine) => engined(POINTER, engine);

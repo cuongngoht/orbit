@@ -14,10 +14,45 @@ into its own repository with `git subtree split --prefix=evaluator`.
 | Role | What | Where |
 |---|---|---|
 | Task source | local packs (`pack:<id>`); SWE-bench Verified rows (`swebench:<instance id>`) | `lib/tasks/`, `tasks/packs/` |
-| Arm (what is under test) | `claude` (plain Claude Code), `claude+orbit` (Claude Code with `--plugin-dir` = `git archive <rev>` of the plugin repository), `scripted` (self-controls only) | `lib/arms/` |
+| Arm (what is under test) | `claude` (plain Claude Code), `claude+orbit` (Claude Code with `--plugin-dir` = `git archive <rev>` of the plugin repository), `mini` and `mini+orbit` (mini-SWE-agent, plain and with the plugin listed), `scripted` (self-controls only) | `lib/arms/` |
 | Grader | hidden tests in a fresh container with no network, on the patch alone, after the agent's container is gone | `lib/grade/`, `lib/container/grade-pack.mjs` |
 
-A new arm (mini-SWE-agent, later) is one new file in `lib/arms/` registered in `lib/arms/index.mjs`.
+A new arm is one new file in `lib/arms/` registered in `lib/arms/index.mjs`.
+
+## The mini-SWE-agent arms
+
+A second coding host makes a 2 x 2 -- {Claude Code, mini-SWE-agent} x {plain, + the plugin} -- so a gain can be told
+apart as the plugin's or the host's. mini-SWE-agent 2.4.6 (`lib/core/versions.mjs`) is installed pinned in a uv
+virtualenv under `$ORBIT_EVAL_HOME/tools/`, and runs on the HOST (`lib/arms/mini-driver.py`, with that virtualenv's
+Python): its default agent and default config (`mini.yaml`), its Docker environment attached to the task container the
+runner made, so every command runs there by `docker exec`. That container gets **no network at all** (the model is
+called from the host process; the entry checks that nothing gets out and no outside name resolves) and no credential;
+it runs a hold (`lib/container/hold.mjs`) while the host's agent works, and is then released and graded like any other.
+The driver writes what happened as stream-json, so a mini run is read, scored and reported exactly as a Claude Code run.
+
+Same model, effort (`reasoning_effort`, which the client sends as adaptive thinking with that effort), step limit (=
+the turn cap), USD cap (mini's cost limit, from its client's price table), wall time and prompt as the Claude Code
+arms. Two settings differ from `mini.yaml`, for every mini arm alike: commands run with `bash -c` (a login shell's
+`/etc/profile` resets PATH, and every arm must see the container's own PATH, HOME and ORBIT_STORE_DIR) and with a 1800 s
+command timeout (Claude Code's Bash timeout here).
+
+`mini+orbit` gets the same plugin archive as the Claude Code plugin arm (Node is in the tools volume both mount) and
+ONE paragraph added to the system template: each skill's name and description, read from the archive's `SKILL.md`
+frontmatter, and how to use one (read `<plugin>/skills/<id>/SKILL.md` and follow it; its commands run as
+`node <plugin>/cli/<x>.mjs ...` with ORBIT_STORE_DIR set). Listed, never ordered. mini-SWE-agent has no hooks and no
+Skill tool, so this arm measures what an agent understands and does with the plugin through a shell -- never what the
+plugin's hooks add.
+
+The credential: `ORBIT_EVAL_ANTHROPIC_API_KEY`, checked by name, set as `ANTHROPIC_API_KEY` in the environment of the
+one driver process and nowhere else (never the container, never a file). When the controller's environment lacks it,
+the run is `NOT_RUN (credential)`, charged nothing, and tried again on a resume; the campaign goes on.
+
+## Claude Code's built-in plugins
+
+Claude Code 2.1.322 loads three built-in plugins in every session (`cc-plugin-agents-md`, `cc-plugin-privacy`,
+`cc-plugin-plugin-authoring`). Every Claude Code arm alike switches them off through the fresh home's user settings
+(`/work/home/.claude/settings.json`, `enabledPlugins: false`; `lib/arms/claude.mjs HOST_SETTINGS`), so the only plugin
+an arm differs by is the one under test.
 
 ## One run
 
@@ -98,7 +133,10 @@ at start (each arm's plugin commit, each task's digest, the Claude Code version,
 patch, grader report, summary, outcome). Scratch trees are removed when a run ends.
 
 - **Hard ledger**: a run does not start when what the budget has left is below its USD cap; an ended run is charged its
-  reported `total_cost_usd`, or its whole cap when the stream has no result line; an interrupted one its whole cap.
+  reported `total_cost_usd`, or its whole cap when the stream has no result line; an interrupted one its whole cap. A
+  run whose arm's credential the controller's environment lacks is `NOT_RUN`, charged nothing.
+- **Images**: a task image the campaign pulled is removed as soon as no run left in the plan needs it, so a campaign
+  that goes task by task (as a pre-registered one does) holds one SWE-bench instance image (about 4 GB) at a time.
 - **Resume**: a run started and never ended is INTERRUPTED (its containers removed by their labels, its cap charged) and
   run again as a new attempt, at most twice; a run with an outcome is never run again.
 
@@ -110,7 +148,13 @@ node evaluator/cli.mjs report <id> [--md]                        # per arm, and 
 node evaluator/cli.mjs export <id> --to=evaluator/results/<release>   # what to commit (streams over 1 MB as a digest)
 node evaluator/cli.mjs cleanup <id>                              # leftover containers and networks, by label
 node evaluator/cli.mjs tools [--ca-file=<pem>]                   # build or show the tools volume
+node evaluator/cli.mjs prereg verify                             # the pre-registration re-derived from its rule
+node evaluator/cli.mjs prereg campaign <phase> [--rev=<commit>]  # a phase's campaign, built from the pre-registration
 ```
+
+A release's runs are governed by its pre-registration (`prereg/0.6.0.json`, committed before any model run; see
+`prereg/README.md`): the selection rule and seed, the order of the tasks, the arms, limits, prompt, outcome table,
+comparisons, verdict rule and ledger. Its campaigns are made from it with `prereg campaign`, never written by hand.
 
 ## Task packs
 
@@ -138,4 +182,6 @@ The self-check runs, on `orders-e2e-006` and `lending-hld-001`: gold + DONE -> `
 `EMPTY_PATCH`; half + BLOCKED -> `UNRESOLVED`; half + DONE -> `FALSE_DONE`; tamper + DONE -> `FALSE_DONE` (graded by the
 hidden tests); regress + DONE -> `REGRESSED`; and on the first pack a container killed from outside -> `INFRA_ERROR`
 (`KILLED`), a run over its wall time -> `TIMEOUT`, an egress that cannot reach the API -> `INFRA_ERROR` (`EGRESS`) before
-the agent starts; then that nothing of the campaign is left on the daemon.
+the agent starts; then that nothing of the campaign is left on the daemon. And both mini-SWE-agent arms, with mini-SWE-agent's own
+`DeterministicModel` in place of a model: the gold patch applied through `docker exec` into a container with no network
+-> `RESOLVED`; the plugin arm lists the plugin's skills and runs one of its commands through the shell.

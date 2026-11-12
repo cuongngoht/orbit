@@ -13,13 +13,16 @@
 //   node cli.mjs selfcheck [--ca-file=<pem>] [--tasks=pack:a,swebench:b] [--controls=gold-done,noop-done] [--keep-images]
 //   node cli.mjs packs list | verify [<id>...] | convert --from=<old benchmark dir>
 //   node cli.mjs tools [--ca-file=<pem>]                                    the tools volume (Node + pinned Claude Code)
+//   node cli.mjs prereg verify [--file=<prereg.json>]                       the registered order re-derived from its rule
+//   node cli.mjs prereg campaign <phase> [--rev=<commit>] [--id=] [--ca-file=] [--out=]   a phase's campaign, from it
 //   node cli.mjs checks                                                     the evaluator's own checks (no Docker)
 import { spawnSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { LABEL, listByLabel, removeContainer, removeNetwork } from "./lib/core/docker.mjs";
 import { ensureTools } from "./lib/core/tools.mjs";
-import { ensureDir, EVALUATOR_DIR, evalHome } from "./lib/core/util.mjs";
+import { ensureDir, EVALUATOR_DIR, evalHome, writeJson } from "./lib/core/util.mjs";
+import { campaignOf, loadPrereg, PREREG_DIR, verifyPrereg } from "./lib/prereg/index.mjs";
 import { campaignStatus, resumeCampaign, startCampaign } from "./lib/run/campaign.mjs";
 import { exportCampaign } from "./lib/run/export.mjs";
 import { markdownOf, writtenReport } from "./lib/run/report.mjs";
@@ -48,6 +51,7 @@ const COMMANDS = {
   selfcheck: async (_, f) => selfcheckPrinted(await selfcheck({ caFile: f["ca-file"], tasks: f.tasks ? String(f.tasks).split(",") : undefined, controls: f.controls ? String(f.controls).split(",") : undefined, keepImages: f["keep-images"] === true, scratchDir: ensureDir(join(home(), "selfcheck")) })),
   packs: async ([sub, ...ids], f) => PACKS[sub ?? "list"](ids, f),
   tools: (_, f) => print(ensureTools({ caFile: f["ca-file"] })),
+  prereg: ([sub, ...rest], f) => PREREG[sub ?? "verify"](rest, f),
   checks: () => process.exit(spawnSync(process.execPath, ["--test", ...readdirSync(join(EVALUATOR_DIR, "checks")).filter((n) => n.endsWith(".check.mjs")).map((n) => join(EVALUATOR_DIR, "checks", n))], { stdio: "inherit" }).status ?? 1),
 };
 
@@ -55,6 +59,13 @@ const PACKS = {
   list: () => print(packIds().join("\n")),
   verify: async (ids) => verifyPrinted(await verifyPacks(ids.length ? ids : packIds())),
   convert: (_, f) => print(convertAll(f.from, PACKS_DIR).map((d) => `${d.id}\t${d.excluded ? `EXCLUDED: ${d.excluded}` : d.controls.join(",")}`).join("\n")),
+};
+
+const preregFile = (f) => f.file ?? join(PREREG_DIR, "0.6.0.json");
+
+const PREREG = {
+  verify: (_, f) => ((r) => (print(r.problems.length ? `PREREG FAILED:\n${r.problems.map((x) => `  - ${x}`).join("\n")}` : `PREREG HOLDS: the registered order is the rule's${r.rowsChecked ? ", rows and digests checked against the cached dataset" : " (packs only: no cached dataset here)"}`), (process.exitCode = r.problems.length ? 1 : 0)))(verifyPrereg(loadPrereg(preregFile(f)), { home: home() })),
+  campaign: ([phase], f) => print(writeJson(f.out ?? join(home(), "defs", `${f.id ?? phase}.json`), campaignOf(loadPrereg(preregFile(f)), phase, { id: f.id, rev: f.rev, caFile: f["ca-file"] }))),
 };
 
 const summaryLine = (r) => `campaign ${r.campaign.id}: ${r.finished ? "finished" : "stopped"}; ${r.arms.map((a) => `${a.arm} ${a.resolved}/${a.gradable}${a.words.INFRA_ERROR ? ` (+${a.words.INFRA_ERROR} infra)` : ""}`).join(", ")}; charged $${r.ledger.chargedUsd}`;
@@ -83,7 +94,7 @@ function verifyPrinted(rows) {
 }
 
 async function main([cmd, ...rest]) {
-  if (!COMMANDS[cmd]) return print(`usage: node cli.mjs run|resume|status|report|export|cleanup|selfcheck|packs|tools|checks ... (see the head of cli.mjs)`), (process.exitCode = 2);
+  if (!COMMANDS[cmd]) return print(`usage: node cli.mjs run|resume|status|report|export|cleanup|selfcheck|packs|tools|prereg|checks ... (see the head of cli.mjs)`), (process.exitCode = 2);
   try { await COMMANDS[cmd](positional(rest), flags(rest)); }
   catch (e) { print(`error: ${e.message}`); process.exitCode = 1; }
   return null;

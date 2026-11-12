@@ -12,7 +12,7 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { armOf } from "../arms/index.mjs";
 import { credentialValues } from "../core/credential.mjs";
-import { docker, LABEL, listByLabel, removeContainer, removeNetwork } from "../core/docker.mjs";
+import { docker, imageId, LABEL, listByLabel, removeContainer, removeNetwork } from "../core/docker.mjs";
 import { git, headOf, isDirty } from "../core/git.mjs";
 import { canStart, foldJournal, interruptedCount, ledgerOf, MAX_RERUNS, nextAttempt, openAttempts, readJournal } from "../core/journal.mjs";
 import { ensureTools } from "../core/tools.mjs";
@@ -118,18 +118,24 @@ async function loop(home, room, campaign, o) {
   if (tools.claudeCode !== campaign.claudeCode) throw new Error(`the campaign froze Claude Code ${campaign.claudeCode}, and the tools volume has ${tools.claudeCode}`);
   appendLine(journal, { kind: "begun", at: nowIso(), pid: process.pid, tools: { volume: tools.volume, claudeCode: tools.claudeCode, node: tools.node } });
   interruptedClosed(campaign, journal);
-  for (const r of campaign.plan) await oneRun(home, room, campaign, journal, r, tools, o);
-  if (!campaign.keepImages) appendLine(journal, { kind: "images-removed", at: nowIso(), images: imagesRemoved(campaign, journal) });
+  for (const [i, r] of campaign.plan.entries()) {
+    await oneRun(home, room, campaign, journal, r, tools, o);
+    imagesDone(campaign, journal, campaign.plan.slice(i + 1));
+  }
+  imagesDone(campaign, journal, []);
   appendLine(journal, { kind: "finished", at: nowIso() });
   return writtenReport(room);
 }
 
-// The task images this campaign pulled (a SWE-bench instance image is gigabytes), removed when it ends unless it says
-// keepImages; an image that was already on the daemon is left as it was.
-function imagesRemoved(campaign, journal) {
+// The task images this campaign pulled (a SWE-bench instance image is gigabytes), removed as soon as no run left in
+// the plan needs one -- so a campaign that goes task by task holds one at a time -- unless it says keepImages; an image
+// that was already on the daemon is left as it was. A run that needs it again later (a resumed attempt) pulls it again.
+function imagesDone(campaign, journal, remaining) {
+  if (campaign.keepImages) return;
+  const needed = new Set(remaining.map((r) => campaign.tasks[r.task]?.image));
   const lines = readJournal(journal).filter((l) => l.kind === "ended" && l.images?.pulled && l.images?.taskRef);
-  const refs = [...new Set(lines.map((l) => l.images.taskRef))].filter((ref) => ref !== campaign.tools?.nodeImage && !/^node:/.test(ref));
-  return refs.map((ref) => ({ ref, removed: docker(["image", "rm", ref]).ok }));
+  const refs = [...new Set(lines.map((l) => l.images.taskRef))].filter((ref) => !needed.has(ref) && !/^node:/.test(ref) && imageId(ref));
+  if (refs.length) appendLine(journal, { kind: "images-removed", at: nowIso(), images: refs.map((ref) => ({ ref, removed: docker(["image", "rm", ref]).ok })) });
 }
 
 // Every attempt a dead controller left open: its containers removed (only by its own labels), INTERRUPTED, its cap charged.

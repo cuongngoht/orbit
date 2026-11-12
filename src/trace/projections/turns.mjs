@@ -26,7 +26,7 @@ const STEP = {
   "knowledge.opportunity.decided": (d) => ({ kind: "decision", label: `${d.action} ${d.capability}`, ok: true }),
   "trace.dropped": () => ({ kind: "gap", label: "the trail stopped keeping events (cap)", ok: true }),
   // 0.5.0 (B22 M3): a Stop hook held the turn open for this session's running workflow or goal, naming its ready steps.
-  "turn.held": (d) => ({ kind: "hold", label: `held for ${d.task ?? "a workflow"}${(d.steps ?? []).length ? ` (${d.steps.join(", ")})` : ""}`, ok: true }),
+  "turn.held": (d) => ({ kind: "hold", label: d.kind === "unverified" ? `held for an unverified edit (${d.check ?? "a declared check"})` : `held for ${d.task ?? "a workflow"}${(d.steps ?? []).length ? ` (${d.steps.join(", ")})` : ""}`, ok: true }),
 };
 
 export const stepOf = (e) => (STEP[e.type] ? { at: e.at, ...STEP[e.type](e.data ?? {}) } : null);

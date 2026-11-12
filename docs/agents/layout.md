@@ -14,10 +14,14 @@ cli/sandbox-worker.mjs · cli/sandbox-supervisor.mjs · cli/security-audit.mjs  
                assess and report (ADR 0040)
 cli/follow-hook.mjs  (0.5.0, B22 M3, ADR 0050) a hook root of its own beside router-hook and learn-hook: the
                SYNCHRONOUS Stop hold and the PostToolUse(Agent) line (src/lifecycle/subscribers/hold.mjs,
-               returned.mjs), staged so a Stop that ran no workflow command loads and reads no owner
+               returned.mjs), staged so a Stop that ran no workflow command loads and reads no owner; 0.6.0
+               (P3) the owed hold after it (owed.mjs: an edit no check passed after, held once naming the
+               component's declared check), runtime understanding loaded only when its deep rows are reached
 cli/governed.mjs · cli/resources-here.mjs  (0.5.0) composition HELPERS, never entry points: this session's
                governed work -- its workflow, goal, task, tracked work or mission, by the association table
-               and each owner's own fold -- for the follow-through hooks; and the registry and the strategy's
+               and each owner's own fold -- for the follow-through hooks (0.6.0: and `owed()`, what the
+               session's unverified edits owe: the working set, the owning components, a safe verifying
+               check through the verification plan); and the registry and the strategy's
                facts composed ONE way for the prompt hook, a session's start and `resources.mjs route`
 src/errors.mjs the three typed stops, as a LEAF -- the ports throw them too
 src/constraints.mjs  a field table's JSON-Schema fragment, ENFORCED (dsl and project both use it)

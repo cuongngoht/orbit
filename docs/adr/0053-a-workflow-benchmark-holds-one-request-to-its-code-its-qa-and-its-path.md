@@ -2,6 +2,9 @@
 
 ## Status
 
+Superseded by ADR 0057 (0.6.0): the in-repo benchmark and the ship it qualified a release with are removed; what
+follows is kept as the record of what was decided then.
+
 Accepted (0.5.0; backlog B1, "Code + QA in one workflow, through `/orbit-help`"). Built in part: what this pass built and
 what it left are listed at the end, and nothing left is in the suite. Builds on ADR 0046 to 0048 (the benchmark, its QA
 cases, its engineering cases and controls), ADR 0049 (a release qualifies on benchmark evidence), ADR 0051 (recorded

@@ -2,6 +2,9 @@
 
 ## Status
 
+Superseded by ADR 0057 (0.6.0): the in-repo benchmark and the ship it qualified a release with are removed; what
+follows is kept as the record of what was decided then.
+
 Accepted (0.5.0; backlog B2, "Reliability and generalisation"), 2026-11-07. Development tooling: no engine contract
 changes. Builds on ADR 0046 and 0048 (the benchmark, its engineering cases, its controls and metrics), ADR 0049 (a
 release qualifies on benchmark evidence) and ADR 0051 (recorded rows). Additions to what a person can observe: the

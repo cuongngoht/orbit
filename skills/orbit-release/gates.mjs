@@ -168,7 +168,7 @@ function verdict(g, run) {
   }
 }
 
-// A row a release only REPORTS (`required: false`: native host and backend acceptance, ADR 0049) never stops it.
+// A row a release only REPORTS (`required: false`: native host and backend acceptance, Orbit Control on its own Node) never stops it.
 export const shippable = (rows) => rows.every((r) => r.ok || r.required === false);
 
 // `node --test` exits 0 with "fail 0"; the count is what the DoD asks to be

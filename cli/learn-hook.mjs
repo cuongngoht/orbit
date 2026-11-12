@@ -19,7 +19,10 @@
 //                 composes it, what a person switched off, the STATUS word) and,
 //                 resumed or compacted, this session's open work; a failed Orbit
 //                 command under governed work adds its owner's recovery row --
-//                 each joined into the one answer, each loaded only for its event
+//                 each joined into the one answer, each loaded only for its event.
+//                 0.6.0 (P2): any failed call may add ONE line of advice from
+//                 evidence (src/lifecycle/advice.mjs): a fact about the
+//                 session's work and the component the resolver chooses for it
 //   working-set   one line of metadata per tool the session used: what it read,
 //                 changed, searched and ran -- never content, never output.
 //                 a toggle in the plugin's settings (`working_set`), or
@@ -55,7 +58,8 @@ import { loadProject } from "../src/project/index.mjs";
 import { lifecycleEvent } from "../src/lifecycle/event.mjs";
 import { dispatch } from "../src/lifecycle/dispatch.mjs";
 import { learning } from "../src/lifecycle/subscribers/learning.mjs";
-import { workingSet } from "../src/lifecycle/subscribers/working-set.mjs";
+import { sessionOf, workingSet } from "../src/lifecycle/subscribers/working-set.mjs";
+import { collect } from "../src/engineering/working-set/collect.mjs";
 import { engineering } from "../src/lifecycle/subscribers/engineering.mjs";
 import { switches } from "../src/lifecycle/subscribers/switches.mjs";
 import { engineeringContext } from "../src/engineering/context.mjs";
@@ -134,9 +138,20 @@ async function startExtras(event) {
   return { here, governed, project, caps: routing() ? await capabilities.projectCapabilities(project, ENV) : [] };
 }
 
+// 0.6.0 (P2): any failed call reads the session's facts (its working set, and this call as if already kept); the owners,
+// the registry and the resolver load only when one holds or an Orbit command failed.
 async function failureExtras(event) {
-  if (!orbitRan(event)) return null;
-  return { governed: await import("./governed.mjs") };
+  const observed = await observedAfter(event);
+  if (!orbitRan(event) && !observed.length) return null;
+  const [governed, here, resolve] = await Promise.all([import("./governed.mjs"), observed.length ? import("./resources-here.mjs") : null, observed.length ? import("../src/routing/resolve.mjs") : null]);
+  return { governed, here, resolve, observed, orbit: orbitRan(event) };
+}
+
+async function observedAfter(event) {
+  const ws = sessionWorkingSet(event);
+  if (!ws) return [];
+  const facts = await import("./session-facts.mjs");
+  return quietly(() => facts.observedIn([...ws.read(sessionOf(event, ws.host, ws.now())), collect(event, ws.roots, ws.now())].filter(Boolean))) ?? [];
 }
 
 // A known checkout whose test data is in place -- a seat, a committed ui-tests/, a directory named on purpose that
@@ -181,7 +196,23 @@ function statusHere(cwd) {
 const sessionsKept = (ctx) => ctx.io.list(createWorkingSet(workingSetDir(ctx.project), ctx.io).dir).filter((n) => n.endsWith(".jsonl")).length;
 
 // The owner whose recovery row a failed Orbit command gets: this session's governed work, when it holds one.
-const recoveryOf = (x, event) => (x?.governed ? governedHere(x, event).owner() : null);
+const recoveryOf = (x, event) => (x?.governed && x.orbit ? governedHere(x, event).owner() : null);
+
+// What src/lifecycle/advice.mjs asks of a failed call (0.6.0, P2), each read only when its row is reached: the facts that
+// hold, this session's trail (null with the trail off), its governed work, the component the resolver chooses here for a
+// fact -- the registry composed as the prompt router composes it -- and the one write, `advice.given`.
+function adviceOf(x, event) {
+  if (!x?.observed?.length) return null;
+  return { observed: () => x.observed, session: () => quietly(() => sessionTrail(event)), owner: () => quietly(() => governedHere(x, event).owner()), resolve: (o) => quietly(() => x.resolve.reactingTo(o, registryHere(x, event))), said: (data) => quietly(() => traceOf(event)?.emit("advice.given", data, { session: event.session ?? null })) };
+}
+
+const sessionTrail = (event) => (traceOf(event) && event?.session ? traceLog(stateRooms(storeBase(ENV)), realIo()).recent({ session: event.session }) : null);
+
+function registryHere(x, event) {
+  const rooms = stateRooms(storeBase(ENV));
+  const storeRoot = located(event?.cwd)?.storeRoot ?? null;
+  return x.here.resourcesHere({ pluginRoot: PLUGIN_ROOT, rooms, env: ENV, plugin: engineName(), protocol: event?.protocol, caps: [], storeRoot, automation: quietly(() => x.here.automationValues(rooms, storeRoot)) });
+}
 
 function quietly(fn) {
   try {
@@ -206,7 +237,7 @@ function emit(payload) {
 // Everything a subscriber may reach, bound lazily: a hook that has nothing to do
 // must not pay for resolving a store it will never touch.
 function world(host, input, event, extras = null) {
-  const bound = { host, input, env: ENV, plugin: engineName(), engine: PLUGIN_ROOT, project: () => located(event?.cwd), light: () => light(event?.cwd), full: () => learnContext(createContext({}, ENV, event?.cwd ?? process.cwd()), ENV), digest: (e) => quietly(() => digestOf(extras, e)), recovery: (e) => quietly(() => recoveryOf(extras, e)) };
+  const bound = { host, input, env: ENV, plugin: engineName(), engine: PLUGIN_ROOT, project: () => located(event?.cwd), light: () => light(event?.cwd), full: () => learnContext(createContext({}, ENV, event?.cwd ?? process.cwd()), ENV), digest: (e) => quietly(() => digestOf(extras, e)), recovery: (e) => quietly(() => recoveryOf(extras, e)), advice: () => quietly(() => adviceOf(extras, event)) };
   return { ...bound, workingSet: () => sessionWorkingSet(event), finalizer: () => finalizerOf(event?.cwd), drainLater: () => drainLater(event?.cwd), improveLater: () => improveLater(event?.cwd), observing: () => (ENV === process.env ? switchOf(process.env, "ENGINEERING_OBSERVE", "engineering_observe", true) : switchOf(ENV, "ENGINEERING_OBSERVE", "engineering_observe", true)), engineering: () => engineeringOf(event), trace: () => traceOf(event), liveSession: () => liveSessionOf(host), failed: (name, e) => failed(bound, name, e) };
 }
 

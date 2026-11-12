@@ -57,11 +57,10 @@ export function resolveRequirement(node, ctx) {
 
 function judged(resource, node, ctx) {
   if (!resource.routing.provides.includes(node.requirement) || !reached(resource, node)) return null;
-  const sigHits = resource.routing.signals.filter((s) => ctx.grams.has(keyOf(s)));
-  const factHits = (resource.routing.reactsTo ?? []).filter((f) => ctx.facts?.has(f));
-  if (resource.routing.requiresSignal && !sigHits.length && !factHits.length) return null;
+  const hits = { sigHits: resource.routing.signals.filter((s) => ctx.grams.has(keyOf(s))), factHits: (resource.routing.reactsTo ?? []).filter((f) => ctx.facts?.has(f)) };
+  if (resource.routing.requiresSignal && !hits.sigHits.length && !hits.factHits.length) return null;
   const verdict = resource.kind === "mcp" ? capabilityVerdict(resource.policy, node.requirement, ctx.workflow) : "allow";
-  return { resource, sigHits, factHits, verdict: resource.selection === "approval" && verdict === "allow" ? "approval" : verdict, coverage: resource.routing.provides.filter((p) => ctx.asked.has(p)).length, selectable: resource.eligible && verdict !== "deny" && (node.level !== "optional" || sigHits.length + factHits.length > 0) };
+  return { resource, ...hits, verdict: resource.selection === "approval" && verdict === "allow" ? "approval" : verdict, coverage: resource.routing.provides.filter((p) => ctx.asked.has(p)).length, selectable: resource.eligible && verdict !== "deny" && (node.level !== "optional" || hits.sigHits.length + hits.factHits.length > 0) };
 }
 
 // With no `via`, anybody may reach it; with one, only the parent that pulled this requirement in

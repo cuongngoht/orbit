@@ -15,7 +15,7 @@ import * as codex from "../skills/orbit-learn/hosts/codex.mjs";
 import * as grok from "../skills/orbit-learn/hosts/grok.mjs";
 import { resolveHost } from "../skills/orbit-learn/hosts/index.mjs";
 import { observedIn } from "../cli/session-facts.mjs";
-import { MAX_PER_PROMPT, QUIET, SILENCE_ROWS, adviceLine, adviceRowOf } from "../src/lifecycle/advice.mjs";
+import { MAX_PER_PROMPT, QUIET, SILENCE_ROWS, adviceLine, adviceRowOf, unsaidOf } from "../src/lifecycle/advice.mjs";
 import { learning } from "../src/lifecycle/subscribers/learning.mjs";
 import { pluginBuiltins, pluginComponents } from "../src/resources/plugin.mjs";
 import { PROVIDERS } from "../src/resources/providers/index.mjs";
@@ -109,6 +109,16 @@ test("said once per session for one fact and subject, and at most once a prompt;
   assert.ok(adviceLine(EVENT, world({ trail: [given("check.failed", "lint (eslint)"), prompt()] })), "another subject is another fact");
   const later = adviceLine(EVENT, world({ lines: [edit, failed, failed, failed], trail: [given("check.failed", "test (npm)"), prompt()] }));
   assert.match(later, /^Orbit noticed check\.repeats/, "the same check failing again and again is new evidence");
+});
+
+// One definition of "said already": the hook asks it BEFORE loading the owners, the registry and the resolver, and the
+// silence table asks the same function -- so a failure whose every fact was said costs only the reads that found it out.
+test("what is unsaid is one function, the hook's early look and the silence table's row alike", () => {
+  const observed = [{ fact: "check.repeats", subject: "test (npm)" }, { fact: "check.failed", subject: "test (npm)" }];
+  assert.deepEqual(unsaidOf(observed, [given("check.failed", "test (npm)")]), [observed[0]]);
+  assert.deepEqual(unsaidOf(observed, [given("check.failed", "test (npm)"), given("check.repeats", "test (npm)")]), []);
+  assert.deepEqual(unsaidOf(observed, []), observed);
+  assert.equal(adviceRowOf(EVENT, world({ trail: [given("check.failed", "test (npm)"), prompt()] })).row, "said-already");
 });
 
 test("a simple single-file change whose check passed gets nothing, and a successful call is never the advice path", () => {

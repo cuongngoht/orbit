@@ -53,12 +53,17 @@ const given = (events) => (events ?? []).filter((e) => e.type === "advice.given"
 
 const sameAs = (o) => (e) => e.data?.fact === o.fact && e.data?.subject === o.subject;
 
+// The facts not yet said this session about the same subject, read off the session's own trail events -- the one
+// definition of "said already", which the composition root also asks BEFORE it loads the owners, the registry and the
+// resolver, so a failure whose every fact was said costs only the reads that found that out.
+export const unsaidOf = (observed, events) => (observed ?? []).filter((o) => !given(events).some(sameAs(o)));
+
 // The facts a row may ask for, each read once and only when a row reaches it.
 function factsOf(event, world) {
   const port = once(() => world.advice?.() ?? null);
   const session = once(() => port()?.session() ?? null);
   const turn = once(() => lastTurnOf(session() ?? [], event.session));
-  const unsaid = once(() => (port()?.observed() ?? []).filter((o) => !given(session()).some(sameAs(o))));
+  const unsaid = once(() => unsaidOf(port()?.observed() ?? [], session()));
   return { event, world, port, session, turn, unsaid, chosen: once(() => firstChosen(port(), unsaid())), owner: once(() => port()?.owner() ?? null) };
 }
 

@@ -139,12 +139,20 @@ async function startExtras(event) {
 }
 
 // 0.6.0 (P2): any failed call reads the session's facts (its working set, and this call as if already kept); the owners,
-// the registry and the resolver load only when one holds or an Orbit command failed.
+// the registry and the resolver load only when one holds that this session's trail has not heard yet, or an Orbit
+// command failed. With the trail off nothing is said (advice.mjs SILENCE), so nothing more is loaded for it either.
 async function failureExtras(event) {
-  const observed = await observedAfter(event);
+  const observed = await unheardAfter(event);
   if (!orbitRan(event) && !observed.length) return null;
   const [governed, here, resolve] = await Promise.all([import("./governed.mjs"), observed.length ? import("./resources-here.mjs") : null, observed.length ? import("../src/routing/resolve.mjs") : null]);
   return { governed, here, resolve, observed, orbit: orbitRan(event) };
+}
+
+async function unheardAfter(event) {
+  const observed = await observedAfter(event);
+  if (!observed.length) return [];
+  const { unsaidOf } = await import("../src/lifecycle/advice.mjs");
+  return ((events) => (events ? unsaidOf(observed, events) : []))(quietly(() => sessionTrail(event)));
 }
 
 async function observedAfter(event) {

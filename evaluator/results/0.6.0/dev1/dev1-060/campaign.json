@@ -1,0 +1,134 @@
+{
+  "schema": 1,
+  "id": "dev1-060",
+  "prereg": {
+    "release": "0.6.0",
+    "phase": "dev1",
+    "digest": "b60909c106783d0a703e91e15bb015e7b289123250ea5f06382780fd84cf253a"
+  },
+  "model": "claude-sonnet-5-5",
+  "effort": "medium",
+  "budgetUsd": 5.5,
+  "limits": {
+    "usd": 1,
+    "turns": 80,
+    "minutes": 40,
+    "cpus": 2,
+    "memoryMb": 4096,
+    "pids": 2048
+  },
+  "arms": {
+    "orbit-0.6.0": {
+      "kind": "claude+orbit",
+      "rev": "b2ec7358d849b3b25bb0033921319f9fe00c4432",
+      "frozen": {
+        "rev": "b2ec7358d849b3b25bb0033921319f9fe00c4432",
+        "commit": "b2ec7358d849b3b25bb0033921319f9fe00c4432"
+      }
+    }
+  },
+  "runs": [
+    {
+      "arm": "orbit-0.6.0",
+      "task": "swebench:astropy__astropy-14365",
+      "trial": 1
+    },
+    {
+      "arm": "orbit-0.6.0",
+      "task": "swebench:pylint-dev__pylint-4604",
+      "trial": 1
+    },
+    {
+      "arm": "orbit-0.6.0",
+      "task": "swebench:psf__requests-1142",
+      "trial": 1
+    },
+    {
+      "arm": "orbit-0.6.0",
+      "task": "pack:orders-e2e-004",
+      "trial": 1
+    },
+    {
+      "arm": "orbit-0.6.0",
+      "task": "pack:orders-e2e-003",
+      "trial": 1
+    }
+  ],
+  "caFile": "/root/.ccr/ca-bundle.crt",
+  "plan": [
+    {
+      "arm": "orbit-0.6.0",
+      "task": "swebench:astropy__astropy-14365",
+      "trial": 1,
+      "key": "orbit-0.6.0__swebench_astropy__astropy-14365__t1"
+    },
+    {
+      "arm": "orbit-0.6.0",
+      "task": "swebench:pylint-dev__pylint-4604",
+      "trial": 1,
+      "key": "orbit-0.6.0__swebench_pylint-dev__pylint-4604__t1"
+    },
+    {
+      "arm": "orbit-0.6.0",
+      "task": "swebench:psf__requests-1142",
+      "trial": 1,
+      "key": "orbit-0.6.0__swebench_psf__requests-1142__t1"
+    },
+    {
+      "arm": "orbit-0.6.0",
+      "task": "pack:orders-e2e-004",
+      "trial": 1,
+      "key": "orbit-0.6.0__pack_orders-e2e-004__t1"
+    },
+    {
+      "arm": "orbit-0.6.0",
+      "task": "pack:orders-e2e-003",
+      "trial": 1,
+      "key": "orbit-0.6.0__pack_orders-e2e-003__t1"
+    }
+  ],
+  "tasks": {
+    "swebench:astropy__astropy-14365": {
+      "digest": "800486ffa7bff291ca7bd2934604175a813004128f883bdb9e11dfc6a8a65d4e",
+      "image": "swebench/sweb.eval.x86_64.astropy_1776_astropy-14365:latest",
+      "pin": {
+        "dataset": "princeton-nlp/SWE-bench_Verified",
+        "revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+        "row": "800486ffa7bff291ca7bd2934604175a813004128f883bdb9e11dfc6a8a65d4e"
+      }
+    },
+    "swebench:pylint-dev__pylint-4604": {
+      "digest": "8c8cabd8cf5cfb861fff15731cd9cf784b32f35e730cf1226005822c46d6cb69",
+      "image": "swebench/sweb.eval.x86_64.pylint-dev_1776_pylint-4604:latest",
+      "pin": {
+        "dataset": "princeton-nlp/SWE-bench_Verified",
+        "revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+        "row": "8c8cabd8cf5cfb861fff15731cd9cf784b32f35e730cf1226005822c46d6cb69"
+      }
+    },
+    "swebench:psf__requests-1142": {
+      "digest": "defedaa9742570b995d5d7b07ea85c7840f1c7b0b8d7d68f189a88faa2cfb7e8",
+      "image": "swebench/sweb.eval.x86_64.psf_1776_requests-1142:latest",
+      "pin": {
+        "dataset": "princeton-nlp/SWE-bench_Verified",
+        "revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+        "row": "defedaa9742570b995d5d7b07ea85c7840f1c7b0b8d7d68f189a88faa2cfb7e8"
+      }
+    },
+    "pack:orders-e2e-004": {
+      "digest": "c5f90224e9474b4926f845fd7786db4d8a0d6e3ff3677da50951e7204447207d",
+      "image": "node:22"
+    },
+    "pack:orders-e2e-003": {
+      "digest": "ebf9bb25d12c74129134747dec54cc80bed447e4801031f06074b283b89656f8",
+      "image": "node:22"
+    }
+  },
+  "pluginRepo": "/home/user/wt/evaluator",
+  "claudeCode": "2.1.322",
+  "evaluator": {
+    "commit": "0c10489fb44c545a816c0250ae2ddff774a053c9",
+    "dirty": false
+  },
+  "frozenAt": "2026-11-12T10:57:06.861Z"
+}

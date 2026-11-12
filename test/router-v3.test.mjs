@@ -258,3 +258,20 @@ test("the coordination advice names the engine's own path, as the strategy line 
   assert.match(said, /\nOrbit coordinates a task by default: a workflow could take this — node \/plugin\/cli\/automation\.mjs plan --for="<the task>" shows it/);
   assert.doesNotMatch(said, /<engine>/);
 });
+
+// 0.6.0 (P1, P2): a fact about the session's work that holds shapes the NEXT prompt's decision -- its requirement joins
+// what the prompt asked, and the component that reacts to it is chosen on that evidence and said -- unless the prompt
+// halts the work or the host wrote it.
+test("a fact found after the prompt shapes the next one: chosen on its evidence and said, never on a halt or an envelope", () => {
+  const observed = [{ fact: "check.failed", subject: "test (npm)" }];
+  const plain = decided("ok, what now?");
+  assert.equal(plain.strategy.word, "NONE", "without the fact a chat line chooses nothing");
+  const asked = classify("ok, what now?");
+  const after = decide(asked, REGISTRY, { plugin: "orbit", host: CLAUDE, settings: SETTINGS, observed });
+  assert.deepEqual([after.strategy.word, after.activation.id, after.strategy.shown], ["DIRECT", "orbit-develop", true]);
+  assert.match(after.selected.find((e) => e.id === "orbit-develop").reason, /\(after check\.failed\)/);
+  const halted = decide(classify("stop, wait for me"), REGISTRY, { plugin: "orbit", host: CLAUDE, settings: SETTINGS, observed });
+  assert.equal(halted.selected.some((e) => e.id === "orbit-develop"), false, "a person said to stop: no fact speaks over them");
+  const envelope = decide(classify(""), REGISTRY, { synthetic: true, observed });
+  assert.equal(envelope.strategy.word, "NONE");
+});

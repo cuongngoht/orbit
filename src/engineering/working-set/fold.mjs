@@ -10,9 +10,12 @@
 //   since        what happened since the observer last looked: which files
 //                changed, whether a check passed AFTER the last edit, whether a
 //                commit landed -- the facts a milestone is decided from
+//   checks       (0.6.0) the last check and the run of one check failing with
+//                nothing changed between (checks.mjs)
 //
 // A background launch (`bg`) never counts as a check that passed: the host
 // reports it the moment it STARTS, before anything is known.
+import { checksOf } from "./checks.mjs";
 import { CHECKS } from "./collect.mjs";
 
 const fresh = () => ({ changed: [], checked: false, committed: false });
@@ -45,7 +48,7 @@ const kindOf = (line) => (REDUCERS[line.ev] ? line.ev : line.tool);
 
 export function fold(lines) {
   const s = lines.reduce((acc, l) => ({ ...(REDUCERS[kindOf(l)] ?? ((x) => x))(acc, l), events: acc.events + 1 }), EMPTY());
-  return { ...s, read: uniq(s.read), changed: uniq(s.changed), searched: uniq(s.searched), scopes: scopesOf([...s.changed, ...s.read]), since: { ...s.since, changed: uniq(s.since.changed), scopes: scopesOf(s.since.changed) } };
+  return { ...s, read: uniq(s.read), changed: uniq(s.changed), searched: uniq(s.searched), scopes: scopesOf([...s.changed, ...s.read]), since: { ...s.since, changed: uniq(s.since.changed), scopes: scopesOf(s.since.changed) }, checks: checksOf(lines) };
 }
 
 const uniq = (list) => [...new Set(list)];

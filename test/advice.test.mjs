@@ -154,4 +154,6 @@ test("through the real hooks: one line after the failed check, kept on the trail
   const next = contextOf(run("router-hook.mjs", { hook_event_name: "UserPromptSubmit", prompt: "ok, what now?" }));
   assert.match(next, /orbit-develop/, "the next prompt's decision is shaped by the fact found after the last one");
   assert.match(next, /after check\.failed/);
+  const chain = spawnSync(process.execPath, [join(REPO, "cli", "trace.mjs"), "activation"], { cwd: repo, env, encoding: "utf8" });
+  assert.match(chain.stdout, /suggested orbit-develop \(advice: check\.failed → orbit-develop\)/, "trace.mjs activation follows the advice as a suggestion");
 });

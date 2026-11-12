@@ -62,12 +62,14 @@ const archived = (repo, ref = "HEAD") => ((f) => (git(repo, "archive", "--format
 const refused = (buf) => ARCHIVE_RULES.filter((r) => r.fails(entriesOf(buf))).map((r) => r.says.split(" -- ")[0]);
 
 test("the release artifact is held to what a host refuses on the ARCHIVE: a symlink, a bin/, tooling export-ignore should keep out", (t) => {
-  const FILES = { ".claude-plugin/plugin.json": "{}\n", "src/a.mjs": "export const a = 1;\n", ".gitattributes": "/benchmark/** export-ignore\n/link export-ignore\n", "benchmark/run.mjs": "// tooling\n" };
+  const FILES = { ".claude-plugin/plugin.json": "{}\n", "src/a.mjs": "export const a = 1;\n", ".gitattributes": "/benchmark/** export-ignore\n/evaluator/** export-ignore\n/link export-ignore\n", "benchmark/run.mjs": "// tooling\n", "evaluator/cli.mjs": "// the independent evaluator\n" };
   const ok = repoWith(t, FILES, process.platform === "win32" ? {} : { link: "src/a.mjs" });
   assert.deepEqual(refused(archived(ok)), [], "export-ignore kept the tooling and the link out");
   assert.ok(entriesOf(archived(ok)).some((e) => e.name === ".claude-plugin/plugin.json"));
   const bad = repoWith(t, { ...FILES, ".gitattributes": "", "bin/orbit": "#!/bin/sh\n" }, process.platform === "win32" ? {} : { link: "src/a.mjs" });
-  assert.deepEqual(refused(archived(bad)), ["a top-level bin/", ...(process.platform === "win32" ? [] : ["a symbolic link"]), "a file of development tooling that never ships (benchmark/, acceptance/, integrations/)"]);
+  assert.deepEqual(refused(archived(bad)), ["a top-level bin/", ...(process.platform === "win32" ? [] : ["a symbolic link"]), "a file of development tooling that never ships (benchmark/, acceptance/, integrations/, evaluator/)"]);
+  const evaluatorOnly = repoWith(t, { ...FILES, ".gitattributes": "/benchmark/** export-ignore\n/link export-ignore\n" }, process.platform === "win32" ? {} : { link: "src/a.mjs" });
+  assert.deepEqual(refused(archived(evaluatorOnly)), ["a file of development tooling that never ships (benchmark/, acceptance/, integrations/, evaluator/)"], "the evaluator holds hidden tests and gold patches: an archive that carries it is refused");
   assert.deepEqual(refused(archived(repoWith(t, { "src/a.mjs": "1\n" }))), ["no .claude-plugin/plugin.json at the archive's root"]);
 });
 

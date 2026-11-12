@@ -1,0 +1,70 @@
+{
+  "campaign": "dev3-060",
+  "run": {
+    "arm": "orbit-0.6.0-seated",
+    "task": "swebench:pylint-dev__pylint-4604",
+    "trial": 1,
+    "key": "orbit-0.6.0-seated__swebench_pylint-dev__pylint-4604__t1"
+  },
+  "attempt": 1,
+  "arm": {
+    "id": "orbit-0.6.0-seated",
+    "kind": "claude+orbit",
+    "def": {
+      "kind": "claude+orbit",
+      "rev": "a9c3c8d",
+      "seat": true
+    },
+    "frozen": {
+      "rev": "a9c3c8d",
+      "commit": "a9c3c8d1eacb960b1754f8bc165c103413347455"
+    }
+  },
+  "seated": true,
+  "seat": {
+    "argv": [
+      "/opt/eval/bin/node",
+      "/opt/orbit-plugin/cli/help.mjs"
+    ]
+  },
+  "task": {
+    "ref": "swebench:pylint-dev__pylint-4604",
+    "image": "swebench/sweb.eval.x86_64.pylint-dev_1776_pylint-4604:latest",
+    "repo": "/testbed",
+    "digest": "8c8cabd8cf5cfb861fff15731cd9cf784b32f35e730cf1226005822c46d6cb69"
+  },
+  "model": "claude-sonnet-5-5",
+  "effort": "medium",
+  "limits": {
+    "usd": 1,
+    "turns": 80,
+    "minutes": 40,
+    "cpus": 2,
+    "memoryMb": 4096,
+    "pids": 2048
+  },
+  "capUsd": 1,
+  "tools": {
+    "ok": true,
+    "volume": "evl-tools-cc-2.1.322-e13726ca6041",
+    "built": false,
+    "claudeCode": "2.1.322",
+    "claudeCodeSays": "2.1.322 (Claude Code)",
+    "node": "v22.23.5",
+    "nodeImage": "node:22",
+    "nodeImageId": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb",
+    "builtAt": "2026-11-12T05:13:27.498Z"
+  },
+  "containers": {
+    "net": "evl-70e13c83-e7e12063-a1-net",
+    "egress": "evl-70e13c83-e7e12063-a1-egress",
+    "task": "evl-70e13c83-e7e12063-a1-task",
+    "grader": "evl-70e13c83-e7e12063-a1-grader",
+    "label": "dev3-060/orbit-0.6.0-seated__swebench_pylint-dev__pylint-4604__t1/a1"
+  },
+  "evaluator": {
+    "commit": "12f87957c55e91762a53533940e5ad09d07e748c",
+    "dirty": false
+  },
+  "startedAt": "2026-11-12T11:53:28.737Z"
+}

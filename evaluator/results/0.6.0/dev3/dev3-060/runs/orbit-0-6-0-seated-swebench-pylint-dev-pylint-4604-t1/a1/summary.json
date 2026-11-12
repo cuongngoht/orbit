@@ -1,0 +1,109 @@
+{
+  "kind": "ended",
+  "run": "orbit-0.6.0-seated__swebench_pylint-dev__pylint-4604__t1",
+  "attempt": 1,
+  "at": "2026-11-12T11:54:39.203Z",
+  "chargedUsd": 0.095348,
+  "infra": null,
+  "timedOut": false,
+  "killedByControl": false,
+  "exit": 0,
+  "oomKilled": false,
+  "wallMs": 40045,
+  "streamBytes": 155770,
+  "streamCut": false,
+  "summary": {
+    "started": true,
+    "model": "claude-sonnet-5-5",
+    "version": "2.1.322",
+    "plugins": [
+      "orbit@0.6.0"
+    ],
+    "hooks": {
+      "ran": 3,
+      "failed": 0
+    },
+    "skillsListed": 42,
+    "result": true,
+    "costUsd": 0.095348,
+    "tokens": {
+      "input": 22,
+      "output": 1792,
+      "cacheRead": 269600,
+      "cacheWrite": 12606
+    },
+    "turns": 12,
+    "durationMs": 38041,
+    "denials": 0,
+    "subtype": "success",
+    "isError": false,
+    "stoppedOn": null,
+    "apiError": null,
+    "status": "DONE",
+    "statusWhy": null,
+    "asked": false,
+    "tools": {
+      "calls": 10,
+      "byName": {
+        "Grep": 1,
+        "Read": 1,
+        "Edit": 1,
+        "Bash": 7
+      },
+      "skills": {},
+      "agents": {}
+    },
+    "orbit": {
+      "commands": 0,
+      "byCli": {}
+    }
+  },
+  "patch": {
+    "bytes": 1139,
+    "digest": "5a74c1e8bd5b34c87f38728490bf2f9146902d7020bf71d6b2acfecb00641a0a",
+    "paths": [
+      "pylint/checkers/variables.py",
+      "tests/functional/u/unused/unused_import_type_comment.py"
+    ]
+  },
+  "plugin": {
+    "digest": "8d927119bde8b8ff722b4080bdc99fe8090430086c6870001bf44dfeb31f0da3",
+    "files": 2727
+  },
+  "images": {
+    "task": "sha256:df6eb48f445388d0e228108c635625a0cc9f0cf5ed87303e89f75ab6fc3c2b39",
+    "taskRef": "swebench/sweb.eval.x86_64.pylint-dev_1776_pylint-4604:latest",
+    "pulled": true,
+    "egress": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb"
+  },
+  "startCommit": "0f266873c24f8f7270d257c8c8a8676930be0c72",
+  "entryPhase": "ended",
+  "seat": {
+    "holds": true,
+    "exit": 0,
+    "ms": 211,
+    "unchanged": true,
+    "changed": [],
+    "gitDirChanged": 0,
+    "storeFiles": 6,
+    "store": [
+      "repo-674c276374d6d513f765d377d39c7a3fe245aebf5f3ca59a6c9bc70377290cf0/store.json",
+      "repo-674c276374d6d513f765d377d39c7a3fe245aebf5f3ca59a6c9bc70377290cf0/ui-tests/project.json",
+      "repo-674c276374d6d513f765d377d39c7a3fe245aebf5f3ca59a6c9bc70377290cf0/ui-tests/project.schema.json",
+      "repo-674c276374d6d513f765d377d39c7a3fe245aebf5f3ca59a6c9bc70377290cf0/ui-tests/schema/case.schema.json",
+      "repo-674c276374d6d513f765d377d39c7a3fe245aebf5f3ca59a6c9bc70377290cf0/ui-tests/schema/plan.schema.json",
+      "state/checkouts/427298c01319355aae99da720b647df7cd291b9e3d2f3b5950ed35fb285aaf3f.json"
+    ],
+    "why": null
+  },
+  "egress": {
+    "direct": "ENETUNREACH",
+    "outsideName": "EAI_AGAIN",
+    "api": {
+      "connect": 200,
+      "http": 404
+    },
+    "otherHost": 403,
+    "holds": true
+  }
+}

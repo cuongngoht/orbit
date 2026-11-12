@@ -36,9 +36,9 @@ const LINE_BYTES = 600;
 const bytes = (text) => Buffer.byteLength(text);
 
 // A line clipped to a byte budget on a character boundary, never mid-character.
-const clipped = (text, max) => (bytes(text) <= max ? text : `${[...text].reduce((kept, ch) => (bytes(`${kept}${ch}…`) <= max ? `${kept}${ch}` : kept), "")}…`);
+export const clipped = (text, max) => (bytes(text) <= max ? text : `${[...text].reduce((kept, ch) => (bytes(`${kept}${ch}…`) <= max ? `${kept}${ch}` : kept), "")}…`);
 
-const named = (list) => `${list.slice(0, LIST_NAMED).join(", ")}${list.length > LIST_NAMED ? ` (+${list.length - LIST_NAMED})` : ""}`;
+export const named = (list) => `${list.slice(0, LIST_NAMED).join(", ")}${list.length > LIST_NAMED ? ` (+${list.length - LIST_NAMED})` : ""}`;
 
 const ownerOf = (owner) => OWNERS[owner?.kind] ?? null;
 

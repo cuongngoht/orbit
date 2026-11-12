@@ -17,7 +17,7 @@
 // stopping a process, writing a repository, deploying. Cancelling a task stops nothing; what a
 // task started is the runtime's to stop, under the runtime's own ownership rules.
 export const OPERATIONS = [
-  { class: "TASK_READ", commands: ["show", "events", "list", "machine", "where"], mutates: "none", approval: "none", says: "reads task journals; writes, probes and runs nothing" },
+  { class: "TASK_READ", commands: ["show", "events", "why", "list", "machine", "where"], mutates: "none", approval: "none", says: "reads task journals; writes, probes and runs nothing" },
   { class: "TASK_RECORD", commands: ["create", "stage", "attempt", "decide", "act", "link", "request-approval", "approval", "block", "unblock", "complete", "fail"], mutates: "store", approval: "none", says: "appends what an execution did to its own journal in the project's machine store; records an action and never performs one" },
   { class: "TASK_STOP", commands: ["pause", "cancel", "reject"], mutates: "store", approval: "human", says: "a person's decision that stops work on one task, made on the revision they read; stops no process" },
   { class: "TASK_GRANT", commands: ["approve", "resume"], mutates: "store", approval: "control", says: "a person's decision that allows something -- one action, once, or work again after a pause -- made in Orbit Control on the revision they read; never from a terminal, and never more than the one action it approves" },

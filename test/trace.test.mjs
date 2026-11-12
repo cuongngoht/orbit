@@ -334,6 +334,9 @@ test("turn.held keeps which workflow, which ready steps and which hold of the pr
   assert.deepEqual(e.data, { task: "tsk-0123456789ab", steps: ["qa"], count: 1 });
   assert.equal(readable({ ...e, data: { ...e.data, reason: "edited in" } }).data.reason, undefined);
   assert.deepEqual(turnsOf([ev("prompt.submitted", { routing: "off" }), ev("turn.held", { task: "tsk-0123456789ab", steps: ["qa", "review"], count: 1 })])[0].steps.map((s) => [s.kind, s.label]), [["hold", "held for tsk-0123456789ab (qa, review)"]], "a hold is a step of the turn it held");
+  const owed = eventOf("turn.held", { kind: "unverified", check: "api:test", count: 1, reason: "Orbit holds this turn: SENTINEL", argv: ["npm", "test"], paths: ["src/a.mjs"] }, { id: "e-o", at: "2026-11-05T00:00:00.000Z" });
+  assert.deepEqual(owed.data, { kind: "unverified", check: "api:test", count: 1 }, "0.6.0: what it held for and the check's id -- never the command, a path or the reason");
+  assert.deepEqual(turnsOf([ev("prompt.submitted", { routing: "off" }), ev("turn.held", { kind: "unverified", check: "api:test", count: 1 })])[0].steps.map((s) => s.label), ["held for an unverified edit (api:test)"]);
 });
 
 test("an OPERATION is kept only where the usage documents it after that subcommand: `goal step`, never an argument or a description", () => {

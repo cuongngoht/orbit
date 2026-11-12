@@ -20,6 +20,7 @@ import { apply, createTask } from "./ops.mjs";
 import { summaryOf } from "./summary.mjs";
 import { CODES } from "./vocab.mjs";
 import { eventsView, taskView } from "./views.mjs";
+import { whyOf } from "./why.mjs";
 
 const int = (v) => (typeof v === "string" && /^\d+$/.test(v) ? Number(v) : v);
 
@@ -98,6 +99,8 @@ function show(ctx, args) {
 
 const events = (ctx, args) => eventsView(loadTask(ctx, task(args)).model, int(flag(args, "since")) ?? 0);
 
+const why = (ctx, args) => ((loaded) => whyOf(loaded.model, loaded.now))(loadTask(ctx, task(args)));
+
 function listRow(ctx, id) {
   try { return summaryOf(show(ctx, [id])); }
   catch (e) { return e?.code === CODES.TASK_UNKNOWN ? null : { id, unreadable: true, why: "its journal could not be read" }; }
@@ -118,6 +121,31 @@ const approvalLine = (a) => `  ${a.id}  ${a.action} · ${a.environment ?? "?"} �
 const decisionLine = (d) => (d ? `DECISION   ${d.observed} → ${d.nextAction}` : "DECISION   none recorded");
 
 const sayShown = (v) => [`TASK       ${v.task.id} — ${v.task.objective}`, `STATE      ${v.lifecycle} · ${v.stage ?? "no stage"} · ${attemptWords(v.attempt)}${v.stopReason ? ` · ${v.stopReason}` : ""}`, decisionLine(v.decision), `CHANGES    ${v.changes.files} file(s) +${v.changes.added} -${v.changes.removed} · ${v.receipts.length} receipt(s) · ${v.verification.length} verification row(s)`, ...(v.approvals.length ? ["APPROVALS", ...v.approvals.map(approvalLine)] : []), `REVISION   ${v.revision}`].join("\n");
+
+// `task why`: each decision, how it settled and what moved the task after it, on which receipt.
+const NO_RECEIPT = "on no receipt";
+
+const byWords = (by) => (by.length ? `on ${by.map((b) => `${b.key}${b.found ? "" : " (not in this journal)"}`).join(", ")}` : NO_RECEIPT);
+
+const MOVE_WORDS = {
+  stage: (x) => `stage ${x.to}${x.because ? ` (${x.because})` : ""}`,
+  verification: (x) => `verification "${x.obligation}" ${x.state}`,
+  attempt: (x) => `attempt ${x.attempt} ${x.to}`,
+  blocked: (x) => `blocked ${x.to}${x.because ? ` (${x.because})` : ""}`,
+  unblocked: (x) => `unblocked${x.because ? ` (${x.because})` : ""}`,
+  completed: (x) => `completed${x.summary ? ` (${x.summary})` : ""}`,
+  failed: (x) => `failed ${x.to}${x.because ? ` (${x.because})` : ""}`,
+};
+
+const movedLine = (x) => `    then        ${MOVE_WORDS[x.kind](x)} ${byWords(x.by)}`;
+
+const actionLine = (a) => `      ${a.id} ${a.type}${a.label ? ` "${a.label}"` : ""} · ${a.state}${a.receipts.length ? ` · ${a.receipts.map((r) => `${r.key}${r.outcome ? ` ${r.outcome}` : ""}`).join(", ")}` : " · no receipt"}`;
+
+const citedWords = (cited) => cited.map((c) => `${c.id} (${c.is === "unknown" ? "not in this journal" : c.is})`).join(", ");
+
+const decisionWhyLines = (d) => [`  ${d.id}${d.attempt ? `  ${d.attempt}` : ""}  → ${d.nextAction}`, `    observed    ${d.observed}`, `    hypothesis  ${d.hypothesis}`, ...(d.reason ? [`    reason      ${d.reason}`] : []), ...(d.cited.length ? [`    cited       ${citedWords(d.cited)}`] : []), `    settled     ${d.settled.word} — ${d.settled.say}`, ...d.settled.actions.map(actionLine), ...d.moved.map(movedLine)];
+
+const sayWhy = (r) => [`TASK       ${r.task} — ${r.objective} · ${r.lifecycle} · revision ${r.revision}`, `DECISIONS  ${r.decisions.length}${Object.entries(r.settled).map(([w, n]) => ` · ${w} ${n}`).join("")}`, ...r.decisions.flatMap(decisionWhyLines)].join("\n");
 
 const sayEvents = (r) => [`TASK       ${r.task} · revision ${r.revision}`, ...r.events.map((e) => `  ${String(e.n).padStart(4)}  ${e.at}  ${e.kind}`)].join("\n");
 
@@ -153,6 +181,7 @@ export const COMMANDS = {
   reject: record(verdict("reject", (args) => ({ reason: flag(args, "reason") }))),
   show: read(show, sayShown),
   events: read(events, sayEvents),
+  why: read(why, sayWhy),
   list: read(list, sayListed),
   machine: { run: (ctx) => machineView(ctx), say: sayMachine, writes: "nothing", needs: "machine" },
   where: read(where, sayWhere),

@@ -14,10 +14,14 @@ cli/sandbox-worker.mjs · cli/sandbox-supervisor.mjs · cli/security-audit.mjs  
                assess and report (ADR 0040)
 cli/follow-hook.mjs  (0.5.0, B22 M3, ADR 0050) a hook root of its own beside router-hook and learn-hook: the
                SYNCHRONOUS Stop hold and the PostToolUse(Agent) line (src/lifecycle/subscribers/hold.mjs,
-               returned.mjs), staged so a Stop that ran no workflow command loads and reads no owner
+               returned.mjs), staged so a Stop that ran no workflow command loads and reads no owner; 0.6.0
+               (P3) the owed hold after it (owed.mjs: an edit no check passed after, held once naming the
+               component's declared check), runtime understanding loaded only when its deep rows are reached
 cli/governed.mjs · cli/resources-here.mjs  (0.5.0) composition HELPERS, never entry points: this session's
                governed work -- its workflow, goal, task, tracked work or mission, by the association table
-               and each owner's own fold -- for the follow-through hooks; and the registry and the strategy's
+               and each owner's own fold -- for the follow-through hooks (0.6.0: and `owed()`, what the
+               session's unverified edits owe: the working set, the owning components, a safe verifying
+               check through the verification plan); and the registry and the strategy's
                facts composed ONE way for the prompt hook, a session's start and `resources.mjs route`
 cli/session-facts.mjs  (0.6.0, P2) a composition HELPER: the facts about a session's work src/routing/facts.mjs
                derives -- its own working set and the needs of the work it tracks -- read ONE way for a
@@ -544,7 +548,9 @@ src/task/      TASK EXECUTION: what happened while something autonomous tried to
                · approvals.mjs (fingerprint of type, tool, environment and params -- the params never kept;
                decide once, spend once, consumed BEFORE the action) · ops.mjs (the ONE write door: `apply`
                and `createTask`, TASK_ACTIVE under the room lock) · views.mjs (the one JSON a CLI, Control and
-               the page read; readiness from the journal and the registry, never probed) · summary.mjs ·
+               the page read; readiness from the journal and the registry, never probed) · why.mjs (0.6.0,
+               `task why`: each decision, how it settled -- RECEIPT, or REPORTED and never proven, OPEN or
+               AMBIGUOUS read back -- and what moved the task next on which receipt; the fold only) · summary.mjs ·
                machine.mjs (the MACHINE VIEW: registry × tasks rooms, a projection, no index, `rootOf` and
                `since` handed in) · live.mjs (a task as a LIVE page reads it: the same fold and view over a follower, and
                FINGERPRINT, what a person watching cares about, so a view is resent only when it moved -- an expiry

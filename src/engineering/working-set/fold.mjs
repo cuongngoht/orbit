@@ -12,6 +12,9 @@
 //                commit landed -- the facts a milestone is decided from
 //   checks       (0.6.0) the last check and the run of one check failing with
 //                nothing changed between (checks.mjs)
+//   unverified   (0.6.0) the files edited since the last PASSING check, whoever looked since: what a Stop
+//                may still owe a check for (src/lifecycle/subscribers/owed.mjs). `since` resets when the
+//                observer looks and is not this
 //
 // A background launch (`bg`) never counts as a check that passed: the host
 // reports it the moment it STARTS, before anything is known.
@@ -20,7 +23,7 @@ import { CHECKS } from "./collect.mjs";
 
 const fresh = () => ({ changed: [], checked: false, committed: false });
 
-export const EMPTY = () => ({ events: 0, read: [], changed: [], searched: [], commands: [], observes: 0, lastObserve: null, ended: false, truncated: false, since: fresh() });
+export const EMPTY = () => ({ events: 0, read: [], changed: [], searched: [], commands: [], observes: 0, lastObserve: null, ended: false, truncated: false, since: fresh(), unverified: { changed: [] } });
 
 const REDUCERS = {
   edit: (s, l) => ({ ...s, changed: [...s.changed, ...l.paths], since: { ...s.since, changed: [...s.since.changed, ...l.paths], checked: false } }),
@@ -46,9 +49,19 @@ function afterCommand(since, line) {
 
 const kindOf = (line) => (REDUCERS[line.ev] ? line.ev : line.tool);
 
+// What is still unverified: an edit adds its paths, a check that PASSED (never a background launch) clears them all.
+const passedCheck = (line) => Boolean(line.cmd?.ok) && !line.bg && CHECKS.includes(line.cmd.class);
+
+const UNVERIFIED = {
+  edit: (u, l) => ({ changed: [...u.changed, ...l.paths] }),
+  command: (u, l) => (passedCheck(l) ? { changed: [] } : u),
+};
+
+const unverifiedAfter = (acc, l) => (UNVERIFIED[kindOf(l)] ?? ((u) => u))(acc.unverified, l);
+
 export function fold(lines) {
-  const s = lines.reduce((acc, l) => ({ ...(REDUCERS[kindOf(l)] ?? ((x) => x))(acc, l), events: acc.events + 1 }), EMPTY());
-  return { ...s, read: uniq(s.read), changed: uniq(s.changed), searched: uniq(s.searched), scopes: scopesOf([...s.changed, ...s.read]), since: { ...s.since, changed: uniq(s.since.changed), scopes: scopesOf(s.since.changed) }, checks: checksOf(lines) };
+  const s = lines.reduce((acc, l) => ({ ...(REDUCERS[kindOf(l)] ?? ((x) => x))(acc, l), events: acc.events + 1, unverified: unverifiedAfter(acc, l) }), EMPTY());
+  return { ...s, read: uniq(s.read), changed: uniq(s.changed), searched: uniq(s.searched), scopes: scopesOf([...s.changed, ...s.read]), since: { ...s.since, changed: uniq(s.since.changed), scopes: scopesOf(s.since.changed) }, unverified: { changed: uniq(s.unverified.changed) }, checks: checksOf(lines) };
 }
 
 const uniq = (list) => [...new Set(list)];

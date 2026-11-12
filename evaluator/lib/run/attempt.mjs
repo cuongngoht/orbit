@@ -7,6 +7,7 @@
 // stopped the attempt.
 //
 //   runAttempt(ctx) -> { ended, outcome }   (ctx.execute and ctx.dockerAnswers: the Docker-bound steps, faked in checks)      namesOf(campaignId, key, n) -> { net, egress, task, grader, label }
+//   infraAfter(ctx, entry, state, summary, ran) -> null | { code, says }   (what the entry and the container say went wrong)
 import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { connect, copyIn, copyOut, createContainer, createNetwork, docker, ensureImage, imagePath, kill, labelsOf, logsOf, removeContainer, removeNetwork, startAttached, startDetached, stateOf, version } from "../core/docker.mjs";
@@ -116,9 +117,15 @@ function evalrunDir(ctx, scratch) {
   const files = ctx.arm.files({ ...ctx, frozen: ctx.armFrozen });
   for (const f of files.filter((x) => x.kind === "agent")) (f.from ? cpSync(f.from, join(dir, "agent", f.name)) : writeFileSync(join(dir, "agent", f.name), f.bytes ?? ""));
   const limits = limitsOf(ctx);
-  writeJson(join(dir, "brief.json"), { repo: ctx.task.repo, makeDirs: ["/work/home", "/work/orbit-store"], writeFiles: ctx.arm.homeFiles ?? [], egress: networkBrief(ctx.arm), agent: { argv: ctx.arm.argv({ model: ctx.campaign.model, effort: ctx.campaign.effort, limits, task: ctx.task }), stdin: promptOf(ctx.task.issue) }, outCap: 15 * 1024 * 1024 });
+  writeJson(join(dir, "brief.json"), { repo: ctx.task.repo, makeDirs: ["/work/home", "/work/orbit-store"], writeFiles: ctx.arm.homeFiles ?? [], egress: networkBrief(ctx.arm), ...seatBrief(ctx.arm), agent: { argv: ctx.arm.argv({ model: ctx.campaign.model, effort: ctx.campaign.effort, limits, task: ctx.task }), stdin: promptOf(ctx.task.issue) }, outCap: 15 * 1024 * 1024 });
   return { dir, plugin: files.find((x) => x.kind === "plugin") ?? null };
 }
+
+// A seated arm's seat, as the entry runs it: the plugin's adoption command in the checkout, with the run's own HOME and
+// store and none of the credential names the container holds, bounded in time; what it wrote to the store is listed.
+const SEAT_SECONDS = 300;
+
+const seatBrief = (arm) => (arm.seat ? { seat: { argv: arm.seat.argv, dropEnv: containerCredentials(arm), store: "/work/orbit-store", timeoutMs: SEAT_SECONDS * 1000 } } : {});
 
 function copiedIn(ctx, names, run, start) {
   const pairs = [[run.dir, "/opt"], ...start.copyIn.map((c) => [c.from, c.to]), ...(run.plugin ? [[run.plugin.from, run.plugin.to]] : []), ...(ctx.trackStore && existsSync(ctx.trackStore) ? [[dirname(ctx.trackStore), "/"]] : [])];
@@ -132,9 +139,10 @@ const RELEASE = "/opt/evalrun/release";
 
 const stopChild = (child) => (child.kill("SIGTERM"), setTimeout(() => child.kill("SIGKILL"), 10000).unref());
 
-// Whether the container's hold said it is ready, before the container ended (the network check failed) or two minutes.
-async function holdReady(file, ended) {
-  for (let i = 0; i < 600 && !ended.done; i += 1) {
+// Whether the container's hold said it is ready, before the container ended (the network check or the seat failed) or
+// two minutes, and the seat's own bound for a seated arm.
+async function holdReady(file, ended, seconds) {
+  for (let i = 0; i < seconds * 5 && !ended.done; i += 1) {
     if (readOr(file, "").includes('"ready":true')) return true;
     await new Promise((r) => setTimeout(r, 200));
   }
@@ -147,7 +155,7 @@ async function holdReady(file, ended) {
 async function hostRan(ctx, names, room, scratch, limits) {
   const ended = { done: false };
   const container = startAttached(names.task, join(room, "container.out"), { deadlineMs: limits.minutes * 60000 + 180000, onDeadline: () => kill(names.task), capBytes: 1024 * 1024 }).then((r) => ((ended.done = true), r));
-  if (!(await holdReady(join(room, "container.out"), ended))) return container;
+  if (!(await holdReady(join(room, "container.out"), ended, 120 + (ctx.arm.seat ? SEAT_SECONDS : 0)))) return container;
   const h = ctx.arm.host({ ...ctx, frozen: ctx.armFrozen, container: names.task, prompt: promptOf(ctx.task.issue), limits, trajectory: join(room, "trajectory.json"), configFile: join(room, "driver.json"), configDir: ensureDir(join(scratch, "host-config")) });
   const ran = h.infra ? { infra: h.infra } : await driven(h, room, limits);
   docker(["exec", names.task, "touch", RELEASE]);
@@ -164,10 +172,11 @@ async function driven(h, room, limits) {
 
 // ---- after the agent ----------------------------------------------------------------------------------------------------
 
-function infraAfter(ctx, entry, state, summary, ran) {
+export function infraAfter(ctx, entry, state, summary, ran) {
   if (ran.timedOut) return null;
   if (!entry) return infra("KILLED", `the task container ended before its entry wrote anything (exit ${state?.exitCode})`);
   if (entry.phase === "egress") return infra("EGRESS", `the network did not hold before the agent started: ${JSON.stringify(entry.egress)}`);
+  if (entry.phase === "seat") return infra("SEAT", `the seat did not hold before the agent started: ${entry.seat?.why ?? "no reason recorded"}`);
   if (entry.phase === "not-started") return infra("AGENT_NOT_STARTED", entry.agent?.why ?? "the agent's program did not start");
   if (entry.phase !== "ended") return infra(state?.oomKilled ? "OOM" : "KILLED", `the task container ended while the agent ran (exit ${state?.exitCode}${state?.oomKilled ? ", out of memory" : ""})`);
   if (!summary.started) return infra("HOST_NOT_STARTED", `the agent's stream has no init line (agent exit ${entry.agent?.exit})`);
@@ -291,8 +300,11 @@ async function gradeOf(ctx, room, names, scratch, x) {
   finally { await Promise.allSettled([Promise.resolve().then(() => removeContainer(names.grader)), Promise.resolve().then(() => rmSync(scratch, { recursive: true, force: true }))]); }
 }
 
-const endedFacts = (x) => ({ infra: x.infra ?? null, timedOut: x.timedOut === true, killedByControl: x.killedByControl ?? false, exit: x.exit ?? null, oomKilled: x.oomKilled ?? null, wallMs: x.wallMs ?? null, streamBytes: x.streamBytes ?? null, streamCut: x.streamCut ?? null, summary: x.summary ? { ...x.summary, lastText: undefined } : null, patch: x.patch ? { bytes: x.patch.bytes, digest: x.patch.digest ?? null, paths: x.patch.paths ?? [] } : null, plugin: x.plugin ?? null, images: x.images ?? null, startCommit: x.startCommit ?? null, entryPhase: x.entry?.phase ?? null, egress: x.egress ?? x.entry?.egress ?? null });
+const endedFacts = (x) => ({ infra: x.infra ?? null, timedOut: x.timedOut === true, killedByControl: x.killedByControl ?? false, exit: x.exit ?? null, oomKilled: x.oomKilled ?? null, wallMs: x.wallMs ?? null, streamBytes: x.streamBytes ?? null, streamCut: x.streamCut ?? null, summary: x.summary ? { ...x.summary, lastText: undefined } : null, patch: x.patch ? { bytes: x.patch.bytes, digest: x.patch.digest ?? null, paths: x.patch.paths ?? [] } : null, plugin: x.plugin ?? null, images: x.images ?? null, startCommit: x.startCommit ?? null, entryPhase: x.entry?.phase ?? null, seat: seatFacts(x.entry?.seat), egress: x.egress ?? x.entry?.egress ?? null });
+
+// What the seat did, as the run's facts keep it: never its output (that is in the room's out/seat.out).
+const seatFacts = (s) => (s ? { holds: s.holds, exit: s.exit, ms: s.ms, unchanged: s.unchanged, changed: s.changed, gitDirChanged: s.gitDirChanged, storeFiles: s.storeFiles.length, store: s.storeFiles.slice(0, 50), why: s.why } : null);
 
 function manifestOf(ctx, names, capUsd) {
-  return { campaign: ctx.campaign.id, run: ctx.run, attempt: ctx.attempt, arm: { id: ctx.arm.id, kind: ctx.arm.kind, def: ctx.arm.def, frozen: ctx.armFrozen ?? null }, task: { ref: ctx.task.ref, image: ctx.task.image, repo: ctx.task.repo, digest: ctx.task.digest }, model: ctx.campaign.model, effort: ctx.campaign.effort, limits: limitsOf(ctx), capUsd, tools: ctx.tools, containers: names, evaluator: ctx.campaign.evaluator, startedAt: nowIso() };
+  return { campaign: ctx.campaign.id, run: ctx.run, attempt: ctx.attempt, arm: { id: ctx.arm.id, kind: ctx.arm.kind, def: ctx.arm.def, frozen: ctx.armFrozen ?? null }, seated: Boolean(ctx.arm.seat), ...(ctx.arm.seat ? { seat: { argv: ctx.arm.seat.argv } } : {}), task: { ref: ctx.task.ref, image: ctx.task.image, repo: ctx.task.repo, digest: ctx.task.digest }, model: ctx.campaign.model, effort: ctx.campaign.effort, limits: limitsOf(ctx), capUsd, tools: ctx.tools, containers: names, evaluator: ctx.campaign.evaluator, startedAt: nowIso() };
 }

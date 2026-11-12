@@ -27,6 +27,10 @@ export const SELF_CONTROLS = {
   // mini-SWE-agent's own deterministic model, on the host, acting in a container with no network: both mini arms.
   "mini-gold": [{ kind: "mini", deterministic: "gold" }, "RESOLVED", null, "first"],
   "mini-orbit-gold": [{ kind: "mini+orbit", rev: "HEAD", deterministic: "gold" }, "RESOLVED", null, "first"],
+  // The seat: seated with the plugin's own adoption command, a run grades as before; a seat that writes the checkout
+  // ends the run before any agent.
+  "seat-gold-done": [{ kind: "scripted", behaviour: "patch", patch: "gold", status: "DONE", seat: "plugin", rev: "HEAD" }, "RESOLVED", null, "first"],
+  "seat-writes": [{ kind: "scripted", behaviour: "patch", patch: "gold", status: "DONE", seat: "writes-checkout" }, "INFRA_ERROR", "SEAT", "first"],
 };
 
 export function selfcheckCampaign(o = {}) {
@@ -65,10 +69,19 @@ function miniPluginRow(o, id) {
   return { key: "(mini+orbit: the skills listed, a plugin command run)", expect: "skills listed, >= 1 command", got, ok: (s?.skillsListed ?? 0) > 0 && (s?.orbit?.commands ?? 0) >= 1, why: null };
 }
 
+// The seated control's seat ran, held, left the checkout as it was, and bound the checkout in the run's store (the
+// plugin's binding file, state/checkouts/<id>.json).
+function seatRow(o, id) {
+  const s = readJournal(join(roomOf(o.home ?? evalHome(), id), "journal.jsonl")).filter((l) => l.kind === "ended" && /^seat-gold-done__/.test(l.run)).at(-1)?.seat;
+  const bound = (s?.store ?? []).some((p) => /^state\/checkouts\/[^/]+\.json$/.test(p));
+  const got = s ? `exit ${s.exit}, checkout ${s.unchanged ? "unchanged" : `changed (${s.changed.join(", ")})`}, ${bound ? "binding file in the store" : "no binding file"}` : "no seat recorded";
+  return { key: "(seat: the plugin's adoption command, before the agent)", expect: "exit 0, unchanged, bound", got, ok: Boolean(s?.holds && s.unchanged && bound), why: s?.why ?? null };
+}
+
 export async function selfcheck(o) {
   const def = selfcheckCampaign(o);
   const file = join(o.scratchDir, `${def.id}.json`);
   writeJson(file, def);
   const report = await startCampaign(file, o);
-  return { id: def.id, rows: [...judgedSelfcheck(report), ...(def.tracks ? [trackRow(o, def.id)] : []), ...(def.arms["mini-orbit-gold"] ? [miniPluginRow(o, def.id)] : []), leftoverRow(def.id)] };
+  return { id: def.id, rows: [...judgedSelfcheck(report), ...(def.tracks ? [trackRow(o, def.id)] : []), ...(def.arms["mini-orbit-gold"] ? [miniPluginRow(o, def.id)] : []), ...(def.arms["seat-gold-done"] ? [seatRow(o, def.id)] : []), leftoverRow(def.id)] };
 }

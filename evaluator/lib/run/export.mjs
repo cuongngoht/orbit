@@ -14,7 +14,7 @@ export const STREAM_MAX = 1024 * 1024;
 
 const TOP = ["campaign.json", "journal.jsonl", "report.json", "REPORT.md"];
 
-const PER_RUN = ["manifest.json", "summary.json", "outcome.json", "patch.diff", "grade-report.json", "egress.log", "out/entry.json", "out/egress.json"];
+const PER_RUN = ["manifest.json", "summary.json", "outcome.json", "patch.diff", "grade-report.json", "swebench-report.json", "egress.log", "out/entry.json", "out/egress.json"];
 
 const copied = (from, to) => (existsSync(from) ? (ensureDir(join(to, "..")), copyFileSync(from, to), true) : false);
 

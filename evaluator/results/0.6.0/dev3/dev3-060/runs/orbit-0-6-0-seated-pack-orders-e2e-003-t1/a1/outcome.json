@@ -1,0 +1,120 @@
+{
+  "kind": "outcome",
+  "run": "orbit-0.6.0-seated__pack_orders-e2e-003__t1",
+  "attempt": 1,
+  "at": "2026-11-12T11:56:55.748Z",
+  "word": "RESOLVED",
+  "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+  "saidDone": true,
+  "grade": {
+    "ran": true,
+    "applied": true,
+    "resolved": true,
+    "regressed": false,
+    "f2pFailed": [],
+    "p2pFailed": []
+  },
+  "gradeDetail": {
+    "ran": true,
+    "applied": true,
+    "resolved": true,
+    "regressed": false,
+    "f2pFailed": [],
+    "p2pFailed": [],
+    "tests": [
+      {
+        "file": "test/currency.test.mjs",
+        "kind": "f2p",
+        "ok": true,
+        "code": 0,
+        "timedOut": false,
+        "pass": 2,
+        "fail": 0
+      },
+      {
+        "file": "test/eval-acceptance.test.mjs",
+        "kind": "f2p",
+        "ok": true,
+        "code": 0,
+        "timedOut": false,
+        "pass": 7,
+        "fail": 0
+      },
+      {
+        "file": "test/cancel.test.mjs",
+        "kind": "p2p",
+        "ok": true,
+        "code": 0,
+        "timedOut": false,
+        "pass": 2,
+        "fail": 0
+      },
+      {
+        "file": "test/dedupe.test.mjs",
+        "kind": "p2p",
+        "ok": true,
+        "code": 0,
+        "timedOut": false,
+        "pass": 1,
+        "fail": 0
+      },
+      {
+        "file": "test/invoice.test.mjs",
+        "kind": "p2p",
+        "ok": true,
+        "code": 0,
+        "timedOut": false,
+        "pass": 1,
+        "fail": 0
+      },
+      {
+        "file": "test/money.test.mjs",
+        "kind": "p2p",
+        "ok": true,
+        "code": 0,
+        "timedOut": false,
+        "pass": 3,
+        "fail": 0
+      },
+      {
+        "file": "test/note.test.mjs",
+        "kind": "p2p",
+        "ok": true,
+        "code": 0,
+        "timedOut": false,
+        "pass": 1,
+        "fail": 0
+      },
+      {
+        "file": "test/orders.test.mjs",
+        "kind": "p2p",
+        "ok": true,
+        "code": 0,
+        "timedOut": false,
+        "pass": 2,
+        "fail": 0
+      },
+      {
+        "file": "test/ui.test.mjs",
+        "kind": "p2p",
+        "ok": true,
+        "code": 0,
+        "timedOut": false,
+        "pass": 1,
+        "fail": 0
+      },
+      {
+        "file": "test/worker.test.mjs",
+        "kind": "p2p",
+        "ok": true,
+        "code": 0,
+        "timedOut": false,
+        "pass": 2,
+        "fail": 0
+      }
+    ],
+    "image": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb",
+    "exit": 0,
+    "timedOut": false
+  }
+}

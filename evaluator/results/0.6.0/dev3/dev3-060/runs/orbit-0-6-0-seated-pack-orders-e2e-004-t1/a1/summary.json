@@ -1,0 +1,106 @@
+{
+  "kind": "ended",
+  "run": "orbit-0.6.0-seated__pack_orders-e2e-004__t1",
+  "attempt": 1,
+  "at": "2026-11-12T11:56:10.141Z",
+  "chargedUsd": 0.0747389,
+  "infra": null,
+  "timedOut": false,
+  "killedByControl": false,
+  "exit": 0,
+  "oomKilled": false,
+  "wallMs": 23302,
+  "streamBytes": 59025,
+  "streamCut": false,
+  "summary": {
+    "started": true,
+    "model": "claude-sonnet-5-5",
+    "version": "2.1.322",
+    "plugins": [
+      "orbit@0.6.0"
+    ],
+    "hooks": {
+      "ran": 3,
+      "failed": 0
+    },
+    "skillsListed": 42,
+    "result": true,
+    "costUsd": 0.0747389,
+    "tokens": {
+      "input": 10,
+      "output": 1725,
+      "cacheRead": 115089,
+      "cacheWrite": 11490
+    },
+    "turns": 5,
+    "durationMs": 21124,
+    "denials": 0,
+    "subtype": "success",
+    "isError": false,
+    "stoppedOn": null,
+    "apiError": null,
+    "status": "DONE",
+    "statusWhy": null,
+    "asked": false,
+    "tools": {
+      "calls": 4,
+      "byName": {
+        "Bash": 4
+      },
+      "skills": {},
+      "agents": {}
+    },
+    "orbit": {
+      "commands": 0,
+      "byCli": {}
+    }
+  },
+  "patch": {
+    "bytes": 2264,
+    "digest": "790112aae5f878003a379fffe0531d2ec7f146f81d0d99e79701917c0b33e009",
+    "paths": [
+      "src/worker.mjs",
+      "test/worker.test.mjs"
+    ]
+  },
+  "plugin": {
+    "digest": "8d927119bde8b8ff722b4080bdc99fe8090430086c6870001bf44dfeb31f0da3",
+    "files": 2727
+  },
+  "images": {
+    "task": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb",
+    "taskRef": "node:22",
+    "pulled": false,
+    "egress": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb"
+  },
+  "startCommit": "80bf8c2421e77011e4c018a1e4769ba0bc95f07e",
+  "entryPhase": "ended",
+  "seat": {
+    "holds": true,
+    "exit": 0,
+    "ms": 242,
+    "unchanged": true,
+    "changed": [],
+    "gitDirChanged": 0,
+    "storeFiles": 6,
+    "store": [
+      "repo-1e694de3627d1fbe3cb42e1d6bafde83e55ca313ac372ca5abcf11bde30d8bef/store.json",
+      "repo-1e694de3627d1fbe3cb42e1d6bafde83e55ca313ac372ca5abcf11bde30d8bef/ui-tests/project.json",
+      "repo-1e694de3627d1fbe3cb42e1d6bafde83e55ca313ac372ca5abcf11bde30d8bef/ui-tests/project.schema.json",
+      "repo-1e694de3627d1fbe3cb42e1d6bafde83e55ca313ac372ca5abcf11bde30d8bef/ui-tests/schema/case.schema.json",
+      "repo-1e694de3627d1fbe3cb42e1d6bafde83e55ca313ac372ca5abcf11bde30d8bef/ui-tests/schema/plan.schema.json",
+      "state/checkouts/ddc5e473a09bd156b4eb7c426367aa59c37909a35241b49fbfa0631b9b532a39.json"
+    ],
+    "why": null
+  },
+  "egress": {
+    "direct": "ENETUNREACH",
+    "outsideName": "EAI_AGAIN",
+    "api": {
+      "connect": 200,
+      "http": 404
+    },
+    "otherHost": 403,
+    "holds": true
+  }
+}

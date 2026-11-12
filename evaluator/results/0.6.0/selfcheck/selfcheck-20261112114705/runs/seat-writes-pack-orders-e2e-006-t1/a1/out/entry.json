@@ -1,0 +1,22 @@
+{
+  "phase": "seat",
+  "seat": {
+    "argv": [
+      "/opt/eval/bin/node",
+      "-e",
+      "require('node:fs').writeFileSync('seat-wrote-this.txt', 'a seat must never write the checkout\\n')"
+    ],
+    "exit": 0,
+    "signal": null,
+    "timedOut": false,
+    "ms": 35,
+    "unchanged": false,
+    "changed": [
+      "seat-wrote-this.txt"
+    ],
+    "gitDirChanged": 0,
+    "storeFiles": [],
+    "holds": false,
+    "why": "the seat wrote the checkout (seat-wrote-this.txt): a seat writes only the store"
+  }
+}

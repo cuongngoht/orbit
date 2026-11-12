@@ -156,8 +156,24 @@ test("a later delivery nothing in the design or its obligation's shape brings is
   }
   for (const name of ["occurrence-no-clock", "occurrence-triggered"]) {
     const out = sent(OCCURRENCE, name);
-    assert.equal(out.outcome, "DRAFT_CREATED", name);
-    assert.match((resultView(out).advice ?? []).join("\n"), /^UNCAUSED_DECISION: step \d waits for billing-daily:2026-10-22T09:00:00\+07:00 to be decided due \(SCHED-1\/E1\) and no step here moves the clock: advance it to that occurrence first \(orbit\.clock\.advance\), unless an earlier test/, name);
+    assert.equal(out.outcome, "GENERATION_FAILED", name);
+    assert.match(out.findings.join("\n"), /^NEVER_DECIDED: step \d waits for billing-daily:2026-10-22T09:00:00\+07:00 to be decided due \(SCHED-1\/E1\) and no step here moves the clock: advance it to that occurrence first \(orbit\.clock\.advance\), since its clock is injected and no earlier test of this investigation moved it/, name);
+  }
+  rmSync(store, { recursive: true, force: true });
+});
+
+// 0.6.0 (Q2): the decision ORBIT-QA-005 and -007 waited for is decidable from the declarations and the record -- the
+// clock's adapter declares it injected, no step moves it, and no earlier version of the investigation that RAN moved it:
+// refused (NEVER_DECIDED, above). Once an earlier version ran -- to any word, not only SATISFIED: a clock it moved stays
+// moved -- the design rests on where that test left the clock, which is not shown: said beside the draft, never refused.
+test("a schedule's decision nothing in the design brings about is said, never refused, once an earlier version that ran -- to any word -- moved the clock", async () => {
+  const { ctx, store } = await packed();
+  for (const outcome of ["SATISFIED", "CONTRADICTED", "INCONCLUSIVE"]) {
+    const { w } = investigation(ctx);
+    ranAs(w, OCCURRENCE, "advanced", fixture("occurrence-advanced"), outcome);
+    const out = generated(w, { obligation: obligationOf(OCCURRENCE).obligation, design: { ...fixture("occurrence-no-clock"), obligation: obligationOf(OCCURRENCE).obligation } });
+    assert.equal(out.outcome, "DRAFT_CREATED", `${outcome}: ${JSON.stringify(out.findings)}`);
+    assert.match((resultView(out).advice ?? []).join("\n"), /^UNCAUSED_DECISION: step \d waits for billing-daily:2026-10-22T09:00:00\+07:00 to be decided due \(SCHED-1\/E1\) and no step here moves the clock: advance it to that occurrence first \(orbit\.clock\.advance\), unless an earlier test/, outcome);
   }
   rmSync(store, { recursive: true, force: true });
 });
@@ -199,7 +215,7 @@ test("a message published under a business key an earlier SATISFIED test of the 
   const version = ranAs(w, ONCE, "first", first);
   const second = madeFor(w, ONCE, reused(first, "msg-a1b2c3d4e5f60002"));
   assert.deepEqual([second.outcome, second.stage], ["GENERATION_FAILED", "contradiction"], JSON.stringify(second));
-  assert.deepEqual(second.findings, [`SETTLED_BEFORE: step 3 waits for msg-a1b2c3d4e5f60002 to settle as processed (FIX-ASYNC-1/E3) under businessKey tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00, which ${version} (effect-once-per-key) of this investigation already published ${SETTLING} under and saw settle as processed: use a business key no earlier test of this investigation used, or rule this one by what that test left — its tests share one sandbox, and a second message under a business key is not a second effect`]);
+  assert.deepEqual(second.findings, [`SETTLED_BEFORE: step 3 waits for msg-a1b2c3d4e5f60002 to settle as processed (FIX-ASYNC-1/E3) under businessKey tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00: use a business key no earlier test of this investigation used, or rule this one by what that test left — ${version} (effect-once-per-key) of this investigation already published ${SETTLING} under it and saw it settle as processed; its tests share one sandbox, and a second message under a business key is not a second effect`]);
   const fresh = JSON.parse(JSON.stringify(reused(first, "msg-a1b2c3d4e5f60003")).replaceAll("2026-10-23T09:00:00+07:00", "2026-10-29T09:00:00+07:00"));
   assert.deepEqual((madeFor(w, ONCE, fresh).findings ?? []).filter((f) => f.startsWith("SETTLED_BEFORE")), [], "a business key no earlier test used is no second message");
   assert.equal(madeFor(w, ONCE, first).outcome, "DRAFT_CREATED", "the earlier test's own message sent again is that same message, never a second one");
@@ -224,7 +240,7 @@ test("only what the record proves is refused by it: an earlier version that neve
   const after = madeFor(w, DEADLINE, routed);
   assert.equal(after.outcome, "DRAFT_CREATED", JSON.stringify(after.findings));
   assert.deepEqual(resultView(after).shared?.map((s) => [s.version, s.keys]), [[decided, [{ value: "billing-daily:2026-10-22T09:00:00+07:00", as: ["occurrenceId"] }]]], "what only a value suggests is said beside the draft");
-  assert.match((resultView(after).advice ?? []).join("\n"), /^SELF_PUBLISHED: step 3 waits for correlationId tenant-a\|inv-a\|billing-daily:2026-10-22T09:00:00\+07:00 \(FIX-ASYNC-1\/E1\), which step 2 publishes on its channel itself: publish none; move the clock to its occurrence \(or trigger/m, "a publication that names its own route need not reach the observer: said, never refused");
+  assert.match((resultView(after).advice ?? []).join("\n"), /^SELF_PUBLISHED: step 3 waits for correlationId tenant-a\|inv-a\|billing-daily:2026-10-22T09:00:00\+07:00 \(FIX-ASYNC-1\/E1\), which step 2 publishes on billing-reminder-requested itself: publish none; bring its occurrence about as the system does/m, "a publication that names its own route need not reach the observer: said, never refused");
   rmSync(store, { recursive: true, force: true });
 });
 
@@ -248,8 +264,8 @@ test("a wait for a value the design's own publication put on the channel its obs
   ranAs(w, OCCURRENCE, "advanced", fixture("occurrence-advanced"));
   const out = madeFor(w, DEADLINE, fixture("deadline-self-published"));
   assert.deepEqual([out.outcome, out.stage], ["GENERATION_FAILED", "contradiction"], JSON.stringify(out));
-  assert.deepEqual(out.findings, ["SELF_SATISFIED: step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes itself: publish none; move the clock to its occurrence (or trigger its schedule where the clock cannot move, or send the request its interface takes) and await the system's own — observer req was armed on billing-reminder-requested before step 2, which sets message.correlation.correlationId there (request.correlationId), so this wait holds whatever the application does and rules nothing of the criterion"]);
-  assert.match(resultView(out).findings[0], /^SELF_SATISFIED: step 3 waits for correlationId tenant-a\|inv-a\|billing-daily:2026-10-22T09:00:00\+07:00 \(FIX-ASYNC-1\/E1\), which step 2 publishes itself: publish none; move the clock to its occurrence/, "what a host reads of it says the step, the field, the value and what holds instead");
+  assert.deepEqual(out.findings, ["SELF_SATISFIED: step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes itself: publish none; bring its occurrence about as the system does — move the clock to it (orbit.clock.advance), or where the clock cannot move trigger the handler that sends it (orbit.scheduler.trigger: that proves the handler, never the schedule), or send the request its interface takes — and await the system's own — observer req was armed on billing-reminder-requested before step 2, which sets message.correlation.correlationId there (request.correlationId), so this wait holds whatever the application does and rules nothing of the criterion"]);
+  assert.match(resultView(out).findings[0], /^SELF_SATISFIED: step 3 waits for correlationId tenant-a\|inv-a\|billing-daily:2026-10-22T09:00:00\+07:00 \(FIX-ASYNC-1\/E1\), which step 2 publishes itself: publish none; bring its occurrence about as the system does — move the clock to it/, "what a host reads of it says the step, the field, the value and what holds instead");
   const alone = investigation(ctx).generation;
   assert.equal(judged(alone, DEADLINE, fixture("deadline-self-published")).stage, "contradiction", "from the design alone: no earlier test is needed");
   const own = fixture("deadline-self-published");

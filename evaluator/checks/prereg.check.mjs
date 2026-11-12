@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { RATED } from "../lib/core/outcome.mjs";
 import { evalHome } from "../lib/core/util.mjs";
-import { campaignOf, loadPrereg, overallOf, PREREG_DIR, runsOf, verdictOf, verifyPrereg } from "../lib/prereg/index.mjs";
+import { amendmentsOf, campaignOf, digestOf, loadPrereg, overallOf, PREREG_DIR, runsOf, verdictOf, verifyAmendment, verifyPrereg } from "../lib/prereg/index.mjs";
 import { measuredTop, orderedInstances, repoSplit, selection } from "../lib/prereg/select.mjs";
 
 const P = loadPrereg(join(PREREG_DIR, "0.6.0.json"));
@@ -78,4 +78,52 @@ test("the verdict: a one-task difference is INCONCLUSIVE, two is IMPROVED or REG
   assert.equal(overallOf(["IMPROVED", "REGRESSED"]), "REGRESSED");
   assert.equal(overallOf(["IMPROVED", "IMPROVED"]), "IMPROVED");
   assert.equal(overallOf(["NO_DIFFERENCE", "NO_DIFFERENCE"]), "NO_DIFFERENCE");
+});
+
+// ---- amendment 1: the seated condition --------------------------------------------------------------------------------------------
+
+const AMENDMENTS = amendmentsOf(join(PREREG_DIR, "0.6.0.json"));
+const A = AMENDMENTS[0];
+
+test("amendment 1 stands beside the registration: it names the registration's digest, says only what an amendment may, and adds ids of its own", () => {
+  assert.deepEqual(AMENDMENTS.map((a) => [a.n, a.file]), [[1, "0.6.0-amendment-1.json"]]);
+  assert.deepEqual(verifyAmendment(P, A), []);
+  assert.equal(A.value.amends.digest, digestOf(P));
+  assert.deepEqual(A.value.phases.map((ph) => [ph.id, ph.set, ph.arms]), [["dev3", "dev", ["orbit-0.6.0-seated"]], ["final-seated", "heldOut", ["orbit-0.5.0-seated", "orbit-0.6.0-seated"]]]);
+  assert.ok(A.value.comparisons.every((c) => c.gate === false), "the gate never reads an amendment's comparisons");
+  assert.ok(Object.values(A.value.arms).every((a) => a.seat === true && a.kind === "claude+orbit"));
+  assert.deepEqual(Object.values(A.value.arms).map((a) => a.rev), [P.arms["orbit-0.5.0"].rev, P.arms["orbit-0.6.0"].rev], "the seated arms are the registered plugin arms, seated");
+});
+
+test("amendment 1's ledger: its lines add up to its $15, and with what was spent before it and the registered phases still to run it fits the owner's $50", () => {
+  const b = A.value.budget;
+  assert.equal(b.ledger.reduce((s, l) => s + l.usd, 0), b.usd);
+  const toRun = P.budget.ledger.filter((l) => ["final", "memory"].includes(l.phase)).reduce((s, l) => s + l.usd, 0);
+  const spent = Object.values(b.spentBefore).reduce((s, x) => s + x, 0);
+  assert.ok(spent + toRun + b.usd <= P.budget.claudeUsd, `${spent} + ${toRun} + ${b.usd} must fit $${P.budget.claudeUsd}`);
+  assert.ok(A.value.phases.find((ph) => ph.id === "final-seated").budgetUsd >= 12 * P.limits.usd, "final-seated's 12 runs fit at the cap");
+});
+
+test("every registered phase's campaign is the same with the amendment beside it; an amendment's phase is built from the same rule, and freezes the amendment", () => {
+  for (const ph of P.phases) assert.deepEqual(campaignOf(P, ph.id, { id: "x", rev: "abc", amendments: AMENDMENTS }), campaignOf(P, ph.id, { id: "x", rev: "abc" }), ph.id);
+  assert.throws(() => campaignOf(P, "dev3", { rev: "abc" }), /no phase dev3/, "an amendment's phase exists only beside its amendment");
+  const dev3 = campaignOf(P, "dev3", { rev: "abc", amendments: AMENDMENTS });
+  assert.deepEqual([dev3.id, dev3.budgetUsd, dev3.arms, dev3.prereg], ["dev3-060", 3, { "orbit-0.6.0-seated": { kind: "claude+orbit", rev: "abc", seat: true } }, { release: "0.6.0", phase: "dev3", digest: digestOf(P), amendment: { n: 1, file: A.file, digest: A.digest } }]);
+  assert.deepEqual(dev3.runs.map((r) => r.task), campaignOf(P, "dev1", { rev: "abc" }).runs.map((r) => r.task), "the dev set, in the registered order");
+  const seated = campaignOf(P, "final-seated", { rev: "abc", amendments: AMENDMENTS });
+  assert.deepEqual([seated.budgetUsd, seated.runs.length, seated.arms["orbit-0.5.0-seated"].rev], [12, 12, "v0.5.0"]);
+  assert.deepEqual([...new Set(seated.runs.map((r) => r.task))], [...new Set(campaignOf(P, "final", { rev: "abc" }).runs.map((r) => r.task))], "the held-out set, in the registered order");
+  assert.throws(() => campaignOf(P, "final-seated", { amendments: AMENDMENTS }), /--rev/);
+});
+
+test("an amendment never changes what was registered: a registered arm or phase re-declared, a field it may not say, a comparison the gate would read, another digest -- each refused by name", () => {
+  const bad = (over) => verifyAmendment(P, { ...A, value: { ...A.value, ...over } });
+  assert.match(bad({ arms: { ...A.value.arms, "orbit-0.6.0": { kind: "claude+orbit", rev: null, seat: true } } }).join("\n"), /arm orbit-0\.6\.0 is the registration's/);
+  assert.match(bad({ phases: [...A.value.phases, { ...P.phases.find((x) => x.id === "final"), arms: ["orbit-0.6.0-seated"] }] }).join("\n"), /phase final is the registration's/);
+  assert.match(bad({ limits: { ...P.limits, usd: 2 } }).join("\n"), /limits is not something an amendment may say/);
+  assert.match(bad({ verdictRule: P.verdictRule }).join("\n"), /verdictRule is not something an amendment may say/);
+  assert.match(bad({ comparisons: [{ a: "orbit-0.6.0-seated", b: "plain", set: "heldOut" }] }).join("\n"), /that the gate does not read/);
+  assert.match(bad({ amends: { file: "0.6.0.json", digest: "0".repeat(64) } }).join("\n"), /does not name the registration as it stands/);
+  assert.match(bad({ budget: { ...A.value.budget, usd: 16 } }).join("\n"), /do not add up/);
+  assert.match(bad({ phases: [{ ...A.value.phases[0], arms: ["plain"] }, A.value.phases[1]] }).join("\n"), /phase dev3 runs only its own arms/);
 });

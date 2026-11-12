@@ -1,0 +1,377 @@
+{
+  "campaign": {
+    "id": "dev3-060",
+    "model": "claude-sonnet-5-5",
+    "effort": "medium",
+    "limits": {
+      "usd": 1,
+      "turns": 80,
+      "minutes": 40,
+      "cpus": 2,
+      "memoryMb": 4096,
+      "pids": 2048
+    },
+    "budgetUsd": 3,
+    "claudeCode": "2.1.322",
+    "evaluator": {
+      "commit": "12f87957c55e91762a53533940e5ad09d07e748c",
+      "dirty": false
+    },
+    "arms": {
+      "orbit-0.6.0-seated": {
+        "kind": "claude+orbit",
+        "rev": "a9c3c8d",
+        "seat": true,
+        "frozen": {
+          "rev": "a9c3c8d",
+          "commit": "a9c3c8d1eacb960b1754f8bc165c103413347455"
+        }
+      }
+    },
+    "tasks": {
+      "swebench:astropy__astropy-14365": {
+        "digest": "800486ffa7bff291ca7bd2934604175a813004128f883bdb9e11dfc6a8a65d4e",
+        "image": "swebench/sweb.eval.x86_64.astropy_1776_astropy-14365:latest",
+        "pin": {
+          "dataset": "princeton-nlp/SWE-bench_Verified",
+          "revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+          "row": "800486ffa7bff291ca7bd2934604175a813004128f883bdb9e11dfc6a8a65d4e"
+        }
+      },
+      "swebench:pylint-dev__pylint-4604": {
+        "digest": "8c8cabd8cf5cfb861fff15731cd9cf784b32f35e730cf1226005822c46d6cb69",
+        "image": "swebench/sweb.eval.x86_64.pylint-dev_1776_pylint-4604:latest",
+        "pin": {
+          "dataset": "princeton-nlp/SWE-bench_Verified",
+          "revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+          "row": "8c8cabd8cf5cfb861fff15731cd9cf784b32f35e730cf1226005822c46d6cb69"
+        }
+      },
+      "swebench:psf__requests-1142": {
+        "digest": "defedaa9742570b995d5d7b07ea85c7840f1c7b0b8d7d68f189a88faa2cfb7e8",
+        "image": "swebench/sweb.eval.x86_64.psf_1776_requests-1142:latest",
+        "pin": {
+          "dataset": "princeton-nlp/SWE-bench_Verified",
+          "revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+          "row": "defedaa9742570b995d5d7b07ea85c7840f1c7b0b8d7d68f189a88faa2cfb7e8"
+        }
+      },
+      "pack:orders-e2e-004": {
+        "digest": "c5f90224e9474b4926f845fd7786db4d8a0d6e3ff3677da50951e7204447207d",
+        "image": "node:22"
+      },
+      "pack:orders-e2e-003": {
+        "digest": "ebf9bb25d12c74129134747dec54cc80bed447e4801031f06074b283b89656f8",
+        "image": "node:22"
+      }
+    },
+    "frozenAt": "2026-11-12T11:51:46.054Z"
+  },
+  "ledger": {
+    "budgetUsd": 3,
+    "chargedUsd": 0.44,
+    "reservedUsd": 0,
+    "remainingUsd": 2.56
+  },
+  "finished": true,
+  "arms": [
+    {
+      "arm": "orbit-0.6.0-seated",
+      "runs": 5,
+      "ended": 5,
+      "gradable": 5,
+      "resolved": 4,
+      "rate": 0.8,
+      "words": {
+        "RESOLVED": 4,
+        "UNRESOLVED": 0,
+        "REGRESSED": 0,
+        "EMPTY_PATCH": 0,
+        "FALSE_DONE": 1,
+        "TIMEOUT": 0,
+        "BUDGET": 0,
+        "INFRA_ERROR": 0,
+        "UNGRADABLE": 0
+      },
+      "infraErrors": [],
+      "notRun": [],
+      "medianCostUsd": 0.07828339999999999,
+      "medianMinutes": 0.5243166666666667,
+      "chargedUsd": 0.4373199,
+      "interventions": 0,
+      "usage": {
+        "skillCalls": 0,
+        "agentCalls": 0,
+        "pluginCommands": 0,
+        "runsWithPluginLoaded": 5
+      }
+    }
+  ],
+  "pairwise": [
+    {
+      "task": "swebench:astropy__astropy-14365",
+      "arms": {
+        "orbit-0.6.0-seated": [
+          "RESOLVED"
+        ]
+      }
+    },
+    {
+      "task": "swebench:pylint-dev__pylint-4604",
+      "arms": {
+        "orbit-0.6.0-seated": [
+          "FALSE_DONE"
+        ]
+      }
+    },
+    {
+      "task": "swebench:psf__requests-1142",
+      "arms": {
+        "orbit-0.6.0-seated": [
+          "RESOLVED"
+        ]
+      }
+    },
+    {
+      "task": "pack:orders-e2e-004",
+      "arms": {
+        "orbit-0.6.0-seated": [
+          "RESOLVED"
+        ]
+      }
+    },
+    {
+      "task": "pack:orders-e2e-003",
+      "arms": {
+        "orbit-0.6.0-seated": [
+          "RESOLVED"
+        ]
+      }
+    }
+  ],
+  "runs": [
+    {
+      "arm": "orbit-0.6.0-seated",
+      "task": "swebench:astropy__astropy-14365",
+      "trial": 1,
+      "key": "orbit-0.6.0-seated__swebench_astropy__astropy-14365__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.07828339999999999,
+      "chargedUsd": 0.07828339999999999,
+      "minutes": 0.5243166666666667,
+      "turns": 7,
+      "tokens": {
+        "input": 14,
+        "output": 1373,
+        "cacheRead": 169734,
+        "cacheWrite": 11888
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 6,
+        "byName": {
+          "Grep": 1,
+          "Bash": 5
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [
+        "orbit@0.6.0"
+      ],
+      "patchBytes": 1051,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "orbit-0.6.0-seated",
+      "task": "swebench:pylint-dev__pylint-4604",
+      "trial": 1,
+      "key": "orbit-0.6.0-seated__swebench_pylint-dev__pylint-4604__t1",
+      "word": "FALSE_DONE",
+      "why": "the agent said DONE, and 21 hidden fail-to-pass test(s) still fail",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.095348,
+      "chargedUsd": 0.095348,
+      "minutes": 0.6674166666666667,
+      "turns": 12,
+      "tokens": {
+        "input": 22,
+        "output": 1792,
+        "cacheRead": 269600,
+        "cacheWrite": 12606
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 10,
+        "byName": {
+          "Grep": 1,
+          "Read": 1,
+          "Edit": 1,
+          "Bash": 7
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [
+        "orbit@0.6.0"
+      ],
+      "patchBytes": 1139,
+      "touchedTests": [
+        "tests/functional/u/unused/unused_import_type_comment.py"
+      ],
+      "infra": null
+    },
+    {
+      "arm": "orbit-0.6.0-seated",
+      "task": "swebench:psf__requests-1142",
+      "trial": 1,
+      "key": "orbit-0.6.0-seated__swebench_psf__requests-1142__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.053868599999999996,
+      "chargedUsd": 0.053868599999999996,
+      "minutes": 0.21995,
+      "turns": 3,
+      "tokens": {
+        "input": 6,
+        "output": 915,
+        "cacheRead": 61906,
+        "cacheWrite": 9629
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 2,
+        "byName": {
+          "Grep": 1,
+          "Edit": 1
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [
+        "orbit@0.6.0"
+      ],
+      "patchBytes": 866,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "orbit-0.6.0-seated",
+      "task": "pack:orders-e2e-004",
+      "trial": 1,
+      "key": "orbit-0.6.0-seated__pack_orders-e2e-004__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.0747389,
+      "chargedUsd": 0.0747389,
+      "minutes": 0.3883666666666667,
+      "turns": 5,
+      "tokens": {
+        "input": 10,
+        "output": 1725,
+        "cacheRead": 115089,
+        "cacheWrite": 11490
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 4,
+        "byName": {
+          "Bash": 4
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [
+        "orbit@0.6.0"
+      ],
+      "patchBytes": 2264,
+      "touchedTests": [
+        "test/worker.test.mjs"
+      ],
+      "infra": null
+    },
+    {
+      "arm": "orbit-0.6.0-seated",
+      "task": "pack:orders-e2e-003",
+      "trial": 1,
+      "key": "orbit-0.6.0-seated__pack_orders-e2e-003__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0.135081,
+      "chargedUsd": 0.135081,
+      "minutes": 0.6422166666666667,
+      "turns": 16,
+      "tokens": {
+        "input": 14,
+        "output": 4574,
+        "cacheRead": 183130,
+        "cacheWrite": 17750
+      },
+      "denials": 1,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 15,
+        "byName": {
+          "Bash": 6,
+          "Edit": 8,
+          "Write": 1
+        },
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [
+        "orbit@0.6.0"
+      ],
+      "patchBytes": 6802,
+      "touchedTests": [
+        "test/currency.test.mjs"
+      ],
+      "infra": null
+    }
+  ]
+}

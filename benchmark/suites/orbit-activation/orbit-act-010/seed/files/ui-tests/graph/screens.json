@@ -1,4 +1,0 @@
-[
-  { "id": "orders", "name": "Orders", "url": "/orders", "seen": "src" },
-  { "id": "order-confirmation", "name": "Order confirmation", "url": "/orders/{id}/confirm", "seen": "src" }
-]

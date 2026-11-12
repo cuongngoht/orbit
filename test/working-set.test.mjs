@@ -5,8 +5,9 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { collect } from "../src/engineering/working-set/collect.mjs";
-import { fold } from "../src/engineering/working-set/fold.mjs";
+import { CHECKS, CLASSES, WORKS, collect } from "../src/engineering/working-set/collect.mjs";
+import { CHECK_PURPOSES } from "../src/orchestration/vocab.mjs";
+import { MAX_RAN, fold } from "../src/engineering/working-set/fold.mjs";
 import { MAX_BYTES, TTL_MS, createWorkingSet } from "../src/engineering/working-set/store.mjs";
 import { fakeIo } from "./fakes/io.mjs";
 import { sealed } from "./home.mjs";
@@ -30,6 +31,16 @@ test("command classes are generic words, first match wins", () => {
   assert.equal(cls("npm run lint"), "lint");
   assert.equal(cls("make build"), "build");
   assert.equal(cls("ls -la"), "other");
+});
+
+// 0.6.0 (P3b): a test the host runs clears what its edits owe, whatever runner its project uses -- so a program NAMED for
+// testing is a test run, in this one table, and no row names a runner.
+test("a program named for testing is a test run: the executable, or the program a launcher is told to run -- never an argument", () => {
+  const cls = (command) => collect(ev({ command }), "/repo", AT).cmd.class;
+  for (const command of ["pytest", "pytest -x tests/checkers/unittest_variables.py", "python -m pytest -q", "python3 -m unittest discover", "uv run pytest", "poetry run python -m pytest", ".venv/bin/pytest -x", "PYTHONPATH=src pytest", "npx vitest run", "ctest --output-on-failure", "cargo nextest run", "npm test", "npm run test:unit", "node --test", "go test ./...", "cargo test", "make test"]) assert.equal(cls(command), "test", command);
+  for (const command of ["npm install foo@latest", "docker pull image:latest", "cat src/latest.txt", "python -m http.server", "pip install pytest==8.0.0"]) assert.equal(cls(command), "other", command);
+  assert.equal(cls("git commit -m 'add a pytest'"), "commit", "first match wins");
+  assert.deepEqual(collect(ev({ command: "PYTEST_ADDOPTS='-k secret' .venv/bin/pytest tests/x.py" }), "/repo", AT).cmd, { class: "test", exe: "pytest", ok: true }, "still a class and a bare executable, never an argument");
 });
 
 test("paths are repo-relative, and anything outside the checkout is dropped", () => {
@@ -118,17 +129,38 @@ test("an observation resets what is 'since'", () => {
 // 0.6.0 (P3): what a Stop may still owe a check for -- every file edited since the last check that PASSED, whoever
 // looked since. An observation resets `since` and leaves this alone; a failed check, a background launch or a command
 // that is not a check clears nothing.
-test("unverified: the files edited since the last PASSING check -- never reset by an observation, a failure or a background launch", () => {
+test("unverified: the files edited since the last PASSING test -- never reset by an observation, a failure, a background launch, a lint or a build", () => {
   const edit = (path) => ({ ev: "post-tool", tool: "edit", paths: [path], tokens: [] });
   const cmd = (klass, ok, more = {}) => ({ ev: ok ? "post-tool" : "post-tool-failure", tool: "command", paths: [], tokens: [], cmd: { class: klass, ok }, ...more });
-  assert.deepEqual(fold([]).unverified, { changed: [] });
+  assert.deepEqual(fold([]).unverified, { changed: [], ran: [] });
   assert.deepEqual(fold([edit("src/a.mjs"), cmd("test", true), edit("src/b.mjs"), edit("src/b.mjs")]).unverified.changed, ["src/b.mjs"], "a pass clears what came before it; an edit after it is owed again");
   assert.deepEqual(fold([edit("src/a.mjs"), { ev: "observe", t: AT }]).unverified.changed, ["src/a.mjs"], "the observer looking is not a check");
   assert.deepEqual(fold([edit("src/a.mjs"), cmd("test", false)]).unverified.changed, ["src/a.mjs"], "a failed check verifies nothing");
   assert.deepEqual(fold([edit("src/a.mjs"), cmd("test", true, { bg: true })]).unverified.changed, ["src/a.mjs"], "a background launch is reported the moment it starts");
-  assert.deepEqual(fold([edit("src/a.mjs"), cmd("other", true), cmd("diff", true), cmd("commit", true)]).unverified.changed, ["src/a.mjs"], "only a check class verifies");
-  for (const klass of ["test", "lint", "build"]) assert.deepEqual(fold([edit("src/a.mjs"), cmd(klass, true)]).unverified.changed, [], klass);
+  assert.deepEqual(fold([edit("src/a.mjs"), cmd("other", true), cmd("diff", true), cmd("commit", true)]).unverified.changed, ["src/a.mjs"], "only a class that shows the change works clears it");
+  assert.deepEqual(fold([edit("src/a.mjs"), cmd("test", true)]).unverified.changed, [], "a test passing shows it works");
+  for (const klass of ["lint", "build"]) assert.deepEqual(fold([edit("src/a.mjs"), cmd(klass, true)]).unverified.changed, ["src/a.mjs"], `a ${klass} passing says it reads well or compiles, never that it works`);
+  for (const klass of ["lint", "build"]) assert.equal(fold([edit("src/a.mjs"), cmd(klass, true)]).since.checked, true, "the observer's milestone is unchanged: a passing check of any CHECKS class");
   assert.deepEqual(fold([edit("src/a.mjs"), { ev: "pre-tool", tool: "command", paths: [], tokens: [], cmd: { class: "test", ok: null } }]).unverified.changed, ["src/a.mjs"], "a check STARTING is not one that passed");
+});
+
+// 0.6.0 (P3b): which classes show a change WORKS is decided once, by CHECK_PURPOSES (a purpose that verifies and builds
+// nothing); the working set reads no orchestration, so its `works` column is held equal to it here.
+test("WORKS is CHECK_PURPOSES' own word: a generic class shows the change works only when the purpose it names verifies and builds nothing", () => {
+  const derived = CHECK_PURPOSES.filter((p) => p.verifies && !p.building).map((p) => p.name).filter((name) => CLASSES.some((c) => c.name === name));
+  assert.deepEqual(WORKS, derived);
+  assert.deepEqual(WORKS, ["test"]);
+  for (const c of CLASSES.filter((x) => !x.works)) assert.equal(CHECK_PURPOSES.some((p) => p.name === c.name && p.verifies && !p.building), false, c.name);
+  assert.ok(WORKS.every((w) => CHECKS.includes(w)), "what shows a change works is a check too");
+});
+
+test("unverified.ran: the runs that passed since the last edit, a class and a bare executable, bounded -- what tells a declared verifying check", () => {
+  const edit = { ev: "post-tool", tool: "edit", paths: ["src/a.mjs"], tokens: [] };
+  const cmd = (klass, exe, ok = true, more = {}) => ({ ev: ok ? "post-tool" : "post-tool-failure", tool: "command", paths: [], tokens: [], cmd: { class: klass, exe, ok }, ...more });
+  assert.deepEqual(fold([edit, cmd("lint", "make"), cmd("lint", "make"), cmd("build", "npm"), cmd("other", "python", false), cmd("lint", "x", true, { bg: true })]).unverified.ran, [{ class: "lint", exe: "make" }, { class: "build", exe: "npm" }], "passed, once each, never a failure or a background launch");
+  assert.deepEqual(fold([cmd("lint", "make"), edit]).unverified.ran, [], "a run before the last edit verified the code as it was then");
+  assert.deepEqual(fold([edit, cmd("lint", "make"), cmd("test", "npm")]).unverified, { changed: [], ran: [] });
+  assert.equal(fold([edit, ...Array.from({ length: MAX_RAN + 4 }, (_, i) => cmd("other", `x${i}`))]).unverified.ran.length, MAX_RAN);
 });
 
 test("the store appends, drops a torn line on read, and stops growing at its bound — saying so once", () => {

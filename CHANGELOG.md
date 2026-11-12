@@ -1,5 +1,184 @@
 # Changelog
 
+## 0.6.0
+
+A minor release in three parts. **Project Understanding**: the context package says, for each of three levels, whether
+a task knows enough to investigate, to change or to conclude; it follows a confirmed file's relations one hop each way;
+and the task's own work keeps the rounds of a bounded discovery loop that the next session picks up (ADR 0058).
+**Proactive Execution**: a fact about the session's work brings a skill or agent in, never a word of the prompt; one
+line of advice after a failed call, or silence by an ordered table; a turn that edited code is not left unverified;
+and `task why` says why a task did what it did (ADR 0059). **Independent Evaluation**: the in-repo benchmark is gone,
+and a release qualifies on the fast tier plus a record of an evaluator that imports nothing of Orbit and grades by
+hidden tests alone (ADR 0057). Autonomous QA's contradiction rules now read every design through one model of what it
+causes (Q2).
+
+All contract changes are additive: `cli/task.mjs why`, `cli/context.mjs --work=`, `cli/work.mjs checkpoint --asked=`;
+the context package's `sufficiency.levels`; `reactsTo` on catalog rows; the automation setting `trigger.holdUnverified`;
+the trail's `advice.given` and `turn.held`'s `kind` and `check`; an engineering task's failure classes `DEPENDENCY` and
+`ACCESS` and its context's `do`; QA rule ids `NEVER_DECIDED` and `CLOCK_PASSED`; and a 26th skill, `orbit-research`.
+Release tooling changes for the person who ships Orbit: `ship.mjs` has two modes, `--ci` and
+`--evidence --evaluation=<record>`, and no GitHub workflow runs.
+
+The evaluation of this release is in `evaluator/results/0.6.0/REPORT.md`.
+
+**Project Understanding (backlog U1-U5, ADR 0058).** 0.5.0's SUFFICIENCY said whether a task could choose a scope.
+Nothing said whether a change could be made or a task concluded, nothing bounded how long discovery went on, and
+relations were module to module, from one regular expression.
+
+- **Three levels of sufficiency (U1).** `sufficiency.levels.{investigate,change,conclude}`, each `{ holds, row,
+  because, missing }` from an ordered table over facts a reader can demonstrate, never a count of search hits
+  (`src/context/sufficiency.mjs` `LEVELS`). Investigate holds on a direct item the tracked tree holds. Change needs the
+  direct items confirmed by a read (proposed after reading, or cited by an owner's fresh record), what depends on them
+  known or said unknown, a done criterion (a `proof` need on the task's own work) and the check that would prove it: a
+  name the task's words matched is a candidate, never confirmed. Conclude needs every proof need satisfied, nothing it
+  rests on moved, and the work's evidence `verified`, which a developer's own session never is.
+- **File-level relations, on demand (U3).** RELEVANT follows each direct file one hop out (the file read once, whole:
+  each name it imports that resolves to a tracked file, wherever its statement breaks across lines) and one hop in (one
+  fixed-string search of the index, kept only when the importer's own adapter resolves the name back), plus the tests
+  that go with it. What a file names and how a name resolves are a language's, so they live in relation adapters a
+  pack provides -- JavaScript/TypeScript and Python in `skills/orbit-develop/relations/` -- and `src/context/` names no
+  language. A route-shaped literal another file also holds is a hypothesis the host verifies, never an edge; a file no
+  adapter reads is a gap the host fills with `--with-refs`.
+- **A bounded discovery loop on the task's own work (U2).** The work journal already is the record of what a task
+  understands: done criteria are `proof` needs, gaps `knowledge` needs, and a round is a checkpoint, which now keeps
+  what it asked (`work checkpoint --asked=<source · target>`, at most six) and what it gained (the needs it settled
+  anew). `src/work/rounds.mjs` is a pure fold: rounds stop after five, or after two in a row that settle nothing new,
+  and a target is never offered again while what answered it is settled and unmoved. `context --work=<w-…>` prints the
+  round state and withholds what was answered; a later session re-reads only what went stale.
+- **Freshness events (U4).** Edit, rename, delete and branch switch, held across every owner that keeps facts on a real
+  repository (`test/freshness-events.test.mjs`). A scope the index no longer holds is GONE, said as such and never
+  "unknown" without a reason, and a work need settled on a path that is gone is invalidated (`from: <path>#gone`).
+- **Research, sourced and version-scoped (U5).** `orbit-research`, an instruction-only skill over existing doors: the
+  technology and version from the manifests (`intelligence`), a knowledge need on the task's work scoped to that
+  manifest, the provider's answer or the host's own sourced lookup, and a claim whose context is that version. A
+  version bump makes it stale; asking again is the same need. Its catalog row reacts to `knowledge.owed`.
+- The playbooks that read SUFFICIENCY (`orbit-develop`, `orbit-engineer`, `orbit-help`) say the levels, the loop and
+  the relations gap.
+
+**Proactive Execution (backlog P1-P7, ADR 0059).** Orbit's suggestions came from the prompt's words alone; a plain
+session's failed test got no diagnosis, a turn could end with edits nothing checked, and a task's reasons were kept
+apart from the receipts that allowed its next step.
+
+- **Conditions of use (P1).** `reactsTo` on a catalog row names facts about the session's work its own playbook handles,
+  words of a closed vocabulary (`src/routing/facts.mjs` `FACTS`), each with a deriver over what the engine read of the
+  session: `check.failed` (a check run after the session's edits failed), `check.repeats` and `knowledge.owed` (a
+  knowledge need of the tracked work nobody answered, or whose answer moved). A fact that holds counts for a row as
+  one of its signals would, so the existing resolver picks who provides it. A test holds words, derivers and rows to
+  each other; `orbit-develop` reacts to both check facts and `orbit-research` to `knowledge.owed`.
+- **Advice from evidence (P2).** After a tool call fails, at most one line: the fact, its subject, the component the
+  resolver chose and the call that brings it in -- or nothing, by an ordered silence table, cheapest row first (the host
+  cannot carry a line, nothing bound, the trail off, a halt cue, no fact, said already this session about the same
+  subject, this prompt had its line, the governed work paused or waiting for a person, no component reacts). Nothing is
+  said after a call that succeeded. The same facts reach the next prompt's routing decision, so a check that failed
+  after the last prompt shapes the next suggestion.
+- **No loops (P5).** The same check failing three times in a row with nothing changed between is said once, as no
+  progress (`check.repeats`), and every owner with a write door names its read-back.
+- **A turn is not left unverified (P3).** At Stop, a turn that edited code a component of this checkout owns, with no
+  passing check after the edit, is held open once per prompt, naming the safe check that component (or one depending
+  on it) declares and its command -- or the model says why it stops. It runs nothing. Never after a halt cue, past a
+  paused or waiting work, beside the workflow hold, or for a path no component owns. On by default;
+  `trigger.holdUnverified` switches it off, set only in Orbit Control. The working set keeps `unverified.changed`, and
+  a cheap trail row runs first, so an ordinary turn reads no owner record. With no declared check for what changed
+  (a Python checkout, say), it names the tracked test files the relation adapters link to the edited files instead
+  (by the patterns the checkout declares for its test runner, pytest's `python_files` and `testpaths`, else the default) --
+  the files, never a command, and a regression test where no existing test covers the change -- and a passing run of a
+  program named for testing (`pytest`, `python -m unittest`, `vitest`) clears it (P3b). Only evidence the change works
+  clears it: a passing test, or the owning component's own declared verifying check -- a lint, a build or a manual
+  repro passing never does.
+- **Explainable (P6).** The trail keeps `advice.given` (the fact, the subject, the provider and its kind, never a
+  sentence) and the activation chain counts it as suggested. `node cli/task.mjs why <task> [--json]`: each decision of
+  a task, how it settled -- a receipt, or REPORTED and never proven; OPEN or AMBIGUOUS read back, never resent -- and
+  which receipt moved the task next, read off the task's own fold alone.
+- **What stopped a check (P4).** An engineering task's failed check is `DEPENDENCY` when the workspace's dependency
+  restore for its component ran and failed, and `ACCESS` when a target a person said the component requires is
+  unreachable in a fresh check from here -- before `ENVIRONMENT`, `CODE`, `TEST`, `CAPABILITY`, `REQUIREMENT`, `DATA`,
+  `SCOPE` and `UNKNOWN`.
+  Only facts are read: the Process port's `code` for a child that never started, the exit status (126 and 127 are the
+  shell's own), the restore receipt (kept on a blocked prepare too) and the reach answer.
+- **No placeholder, and every resume names its command (P7; backlog Q3, Q7).** No line a host reads carries
+  `<engine>` or `<plugin>`: each CLI and hook writes the plugin's own path (`src/engined.mjs`), and
+  `test/no-placeholder.test.mjs` asks every hook and CLI. A resumed goal says its NEXT command, and an engineering
+  task's context says `do`, the one command that goes on (`step` with the decision's shape, or `reconcile` for what did
+  not settle). Two texts keep the placeholder on purpose: the plan markdown banner written into a project's test data,
+  and `skill-factory show`, which a host edits and puts back.
+
+**Autonomous QA: one model of what a design causes (backlog Q2).** A verdict must depend on the application, never on
+what the design itself causes, and never be one a correct application cannot meet. The four contradiction rules of
+0.5.0 each named operation and shape ids. They are now selections over one model (`src/qa/backend/causes.mjs`: effects,
+references, observers, what a request sets, what a match pins, the declared semantics) and name neither. Six gaps are
+closed, each with a regression fixture (fifteen in `test/fixtures/qa-contradictions/`): what comes again is a column
+on the shape, so crash-after-effect and competing-workers are held like effect-once; redelivery triggers come from the
+adapters; `MATCH_PINS` covers `eq` and `in`; `SELF_SATISFIED` covers enqueue and trigger and its absent-within mirror;
+`NEVER_DECIDED` refuses a design that waits for a schedule to decide an occurrence on an injected clock nothing moved,
+and `CLOCK_PASSED` advises on one that moves the clock only where an earlier test already took it; the record keeps
+every version that ran. A golden snapshot over every reference, worked and sent design did not move at the refactor,
+and the old harness's no-model QA control sets, run one last time on this branch, all held.
+
+**Every engine rule only the benchmark held is a product test (backlog R1).** Before `benchmark/` was deleted, each of
+its 60 controlled-fault mutations of the no-model probe cases was applied alone and run against the product tests: 22
+were caught by nothing but the benchmark's verifiers. Each now has a product test that fails on its mutation and
+passes on the branch (`test/policy-strictest.test.mjs`, `satellite/test/rules.test.mjs`, and additions to the module
+tests), so deleting the benchmark loses no engine rule.
+
+**Independent evaluation, and the release gate (backlog E1-E4, R2-R4, Q8; ADR 0057).**
+
+- **Added: `evaluator/`.** A package of its own that imports nothing of Orbit and is imported by nothing, export-ignored
+  and refused by the archive rules (`test/evaluator-boundary.test.mjs`). Arms differ only by the plugin: Claude Code
+  plain, with Orbit at `v0.5.0`, and with Orbit at the release candidate; mini-SWE-agent plain and with Orbit, run from
+  the host against a task container with no network. Tasks are ten local packs converted from the old engineering and
+  held-out cases (graded by hidden node tests in a network-less container) and SWE-bench Verified rows pinned by
+  revision and row digest (graded by the official harness, `swebench` 4.1.0). One fresh container, home and store per
+  run; network only to the model API; Claude Code's own built-in plugins off in every arm. Outcome words from what the
+  controller and the grader observed (RESOLVED, UNRESOLVED, REGRESSED, EMPTY_PATCH, FALSE_DONE, TIMEOUT, BUDGET,
+  INFRA_ERROR, UNGRADABLE, NOT_RUN), a hard budget ledger, a journal a campaign resumes from, a credential scan of
+  every room. Self-checks without a model held: packs 19 of 19, SWE-bench 5 of 5, mini arms 4 of 4.
+- **The 0.6.0 pre-registration** (`evaluator/prereg/0.6.0.json`) was committed before any model run it governs: the
+  seeded selection (dev 3 SWE-bench rows and 2 packs, held-out 4 and 2), arms, limits, prompt, scoring and the verdict
+  rule. `node evaluator/cli.mjs record --campaign=<ids> --out=<file>` writes the record the gate reads.
+- **Added: `ship.mjs --evidence --evaluation=<record>`,** one ordered PUBLISH table of 14 rows: the fast tier holds on
+  this tree, the record is about this release and this pre-registration, bound to this artifact's content digest,
+  complete, agreeing with its own journals, and not REGRESSED. `--ci` gains two gates (zero dependencies; Five Lines on
+  the control server) and reports Orbit Control on its own Node (`skills/orbit-release/panel.mjs`) as an optional row.
+- **Changed:** `ship.mjs` with no mode prints its usage and exits 2.
+- **Removed:** `benchmark/` and its tests; the autonomous ship (its default mode, `--precheck`, `--status`, `--resume`)
+  and its machine; every GitHub workflow -- the Windows and Node 20/22 matrix and the cross-platform Azure CLI runs are
+  commands a person runs on that machine. ADRs 0046-0049, 0051 and 0053-0056 are superseded.
+
+**Fixes.**
+
+- A relation is found wherever its statement breaks across lines (a multi-line JavaScript import, a Python import in
+  parentheses or after a backslash): an importer whose line alone names nothing is read whole, at most 16 per direct
+  file.
+- A failed call whose facts were all said already loads no owner, registry or resolver. Measured hook cost of the new
+  facts: about 40-50 ms on the router hook and 55 ms on a failed call.
+- The evaluator's status says GRADING for a run that ended and waits for its grade, never INTERRUPTED.
+- The evaluator stages every tree a run compares (its start and its end) in ONE git directory of its own, whatever the
+  task source: an instance image whose `/testbed` holds untracked files (psf__requests-1142) died with `bad object`.
+  And a run's failure is that run's outcome -- a throw while starting, running or taking the patch is INFRA_ERROR
+  (START, RUN, PATCH, TASK), one while grading is UNGRADABLE -- and the campaign goes on; only a campaign-level failure
+  (the tools volume, Docker unavailable) halts it, in a `halted` journal line. Every pre-registered SWE-bench instance's
+  gold patch RESOLVES in the evaluator before any arm is graded on it.
+
+**Known limits.**
+
+- Architecture's own import scan (`src/architecture/analyzers/imports.mjs`) is per line and misses an import whose
+  specifier is on the next line; context's relations read such files whole, architecture's module edges do not.
+- Python re-exports through `__init__` are not followed; a commented-out JavaScript import counts; more than 16
+  importer hit files per direct file are not read whole.
+- The unverified hold: a declared check whose command does not classify as a test, lint or build never clears the cheap
+  trail row, and `unverified` is session-wide, so a later turn can be held for an earlier turn's edit.
+- A host's own sourced lookup settles the knowledge need with its sources but records no claim (a claim needs a
+  receipt).
+- The router hook and every failed call scan up to 64 work journals.
+- `NEVER_DECIDED` assumes an injected clock reaches no occurrence unless moved; it was not run against a live
+  application. `acceptance/run.mjs` could not run in the release session (its worker image's install fails behind a
+  TLS-inspecting proxy, and it takes no CA file).
+- The mini-SWE-agent arms ran only their self-checks: their real runs need a key of their own
+  (`ORBIT_EVAL_ANTHROPIC_API_KEY`) and are NOT_RUN without it. Claude Code lists three built-in plugins in every arm;
+  they are switched off, never absent. A budget stop is recognised by a result subtype matching `budget`.
+- An engineering task's `DEPENDENCY` and `ACCESS` classes are proven on the module and its port fakes, not end to end
+  through the CLI.
+
 ## 0.5.0
 
 A minor release: Claude Code now uses Orbit by itself, and the benchmark measures how often Orbit's paths work, not only

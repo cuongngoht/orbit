@@ -12,6 +12,18 @@ export const refOf = (s, kind) => s.step?.input?.[`${kind}Ref`];
 
 export const requestOf = (s) => s.step?.input?.request ?? {};
 
+// What a workload control's action does, in the open workload protocol's own words (its adapter's request.action): the
+// actions that end the run a delivery in flight is in, and the ones that bring a stopped workload back. One table, read
+// by the design's control rules (src/qa/generation/controls.mjs) and the model of what a design causes (causes.mjs).
+export const WORKLOAD_ACTIONS = [
+  { action: "fault", interrupts: true },
+  { action: "start", bringsBack: true },
+  { action: "restart", interrupts: true, bringsBack: true },
+  { action: "stop", interrupts: true },
+];
+
+export const actionsWhere = (column) => WORKLOAD_ACTIONS.filter((a) => a[column] === true).map((a) => a.action);
+
 export const triggerStep = (design) => (Number.isInteger(design?.trigger?.step) ? design.trigger.step : null);
 
 // The FAULT controls whose witness the engine compiles (src/qa/obligations/contract.mjs CONTROL_FIELDS step): a fault

@@ -1,0 +1,112 @@
+{
+  "kind": "ended",
+  "run": "orbit-0.6.0-seated__pack_orders-e2e-003__t1",
+  "attempt": 1,
+  "at": "2026-11-12T11:56:53.768Z",
+  "chargedUsd": 0.135081,
+  "infra": null,
+  "timedOut": false,
+  "killedByControl": false,
+  "exit": 0,
+  "oomKilled": false,
+  "wallMs": 38533,
+  "streamBytes": 91565,
+  "streamCut": false,
+  "summary": {
+    "started": true,
+    "model": "claude-sonnet-5-5",
+    "version": "2.1.322",
+    "plugins": [
+      "orbit@0.6.0"
+    ],
+    "hooks": {
+      "ran": 3,
+      "failed": 0
+    },
+    "skillsListed": 42,
+    "result": true,
+    "costUsd": 0.135081,
+    "tokens": {
+      "input": 14,
+      "output": 4574,
+      "cacheRead": 183130,
+      "cacheWrite": 17750
+    },
+    "turns": 16,
+    "durationMs": 36455,
+    "denials": 1,
+    "subtype": "success",
+    "isError": false,
+    "stoppedOn": null,
+    "apiError": null,
+    "status": "DONE",
+    "statusWhy": null,
+    "asked": false,
+    "tools": {
+      "calls": 15,
+      "byName": {
+        "Bash": 6,
+        "Edit": 8,
+        "Write": 1
+      },
+      "skills": {},
+      "agents": {}
+    },
+    "orbit": {
+      "commands": 0,
+      "byCli": {}
+    }
+  },
+  "patch": {
+    "bytes": 6802,
+    "digest": "d85ebc547081ece9618a0ea44d6d67a30ebfb8422d1192684958a1f90b1e1b66",
+    "paths": [
+      "src/api.mjs",
+      "src/money.mjs",
+      "src/orders.mjs",
+      "src/ui.mjs",
+      "src/worker.mjs",
+      "test/currency.test.mjs"
+    ]
+  },
+  "plugin": {
+    "digest": "8d927119bde8b8ff722b4080bdc99fe8090430086c6870001bf44dfeb31f0da3",
+    "files": 2727
+  },
+  "images": {
+    "task": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb",
+    "taskRef": "node:22",
+    "pulled": false,
+    "egress": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb"
+  },
+  "startCommit": "ae3fb1ef7ccfb8c4009f3bf243aa4e7ba4265837",
+  "entryPhase": "ended",
+  "seat": {
+    "holds": true,
+    "exit": 0,
+    "ms": 237,
+    "unchanged": true,
+    "changed": [],
+    "gitDirChanged": 0,
+    "storeFiles": 6,
+    "store": [
+      "repo-1e694de3627d1fbe3cb42e1d6bafde83e55ca313ac372ca5abcf11bde30d8bef/store.json",
+      "repo-1e694de3627d1fbe3cb42e1d6bafde83e55ca313ac372ca5abcf11bde30d8bef/ui-tests/project.json",
+      "repo-1e694de3627d1fbe3cb42e1d6bafde83e55ca313ac372ca5abcf11bde30d8bef/ui-tests/project.schema.json",
+      "repo-1e694de3627d1fbe3cb42e1d6bafde83e55ca313ac372ca5abcf11bde30d8bef/ui-tests/schema/case.schema.json",
+      "repo-1e694de3627d1fbe3cb42e1d6bafde83e55ca313ac372ca5abcf11bde30d8bef/ui-tests/schema/plan.schema.json",
+      "state/checkouts/ddc5e473a09bd156b4eb7c426367aa59c37909a35241b49fbfa0631b9b532a39.json"
+    ],
+    "why": null
+  },
+  "egress": {
+    "direct": "ENETUNREACH",
+    "outsideName": "EAI_AGAIN",
+    "api": {
+      "connect": 200,
+      "http": 404
+    },
+    "otherHost": 403,
+    "holds": true
+  }
+}

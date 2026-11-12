@@ -71,7 +71,7 @@ export const REQUEST_FIELD_FIELDS = {
   maximum: { type: "number", doc: "The most a number may be." },
   required: { type: "boolean", doc: "The operation is never asked without it." },
   fields: { type: "object", additionalProperties: { $ref: "#/definitions/requestField" }, doc: "An object's own keys, each a row of its own. Absent: any key." },
-  means: { type: "string", doc: "For a field a match compares: the meaning (src/topology/vocab.mjs MEANINGS, or a sub-path of one) of the answered item's field it is compared with. For a field of a publication: the meaning of the published message's field it sets, carried as it was sent. Absent: unknown, and nothing is concluded from it." },
+  means: { type: "string", doc: "For a field a match compares: the meaning (src/topology/vocab.mjs MEANINGS, or a sub-path of one) of the answered item's field it is compared with. For a field of a request that sends or moves something -- a publication, a trigger, a clock move: the meaning of what it sets (the published message's field, carried as it was sent; the occurrence it names; the instant it moves to). Absent: unknown, and nothing is concluded from it." },
   selects: { type: "string", enum: MATCH_SELECTS, doc: "For a match: answer -- only the items that carry every one of its fields are answered; count -- every item read is answered, and those that carry every one are what count counts before the wait ends. Absent: unknown." },
 };
 

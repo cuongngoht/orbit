@@ -2,6 +2,9 @@
 
 ## Status
 
+Superseded by ADR 0057 (0.6.0): the in-repo benchmark and the ship it qualified a release with are removed; what
+follows is kept as the record of what was decided then.
+
 Accepted (0.5.0; backlog B4, "Satellite with a real host"). Development tooling: no engine contract changes. Builds on
 ADR 0041 (Orbit Satellite is a mission journal above Orbit's owners), ADR 0044 (run identity and attribution), ADR 0046
 to 0048 (the benchmark, its controls, its engineering cases and metrics), ADR 0049 (a release qualifies on benchmark

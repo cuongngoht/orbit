@@ -21,7 +21,8 @@ cli/governed.mjs · cli/resources-here.mjs  (0.5.0) composition HELPERS, never e
                governed work -- its workflow, goal, task, tracked work or mission, by the association table
                and each owner's own fold -- for the follow-through hooks (0.6.0: and `owed()`, what the
                session's unverified edits owe: the working set, the owning components, a safe verifying
-               check through the verification plan); and the registry and the strategy's
+               check through the verification plan, else -- P3b -- the tracked tests the relation pack links to
+               the edited files, cli/relations-port.mjs); and the registry and the strategy's
                facts composed ONE way for the prompt hook, a session's start and `resources.mjs route`
 cli/session-facts.mjs  (0.6.0, P2) a composition HELPER: the facts about a session's work src/routing/facts.mjs
                derives -- its own working set and the needs of the work it tracks -- read ONE way for a
@@ -377,6 +378,9 @@ cli/context-grounding.mjs  (0.5.0) the composition root of `relevant` and `suffi
                questions of the task's own work and goal, and (0.6.0) the relation adapters of
                skills/orbit-develop/relations/ over the direct files `seedsOf` names; it decides nothing and writes
                nothing
+cli/relations-port.mjs  (0.6.0, P3b) a composition HELPER: the relation pack bound ONCE to a project's committed tree
+               (the source port over `scanRoots`, the tracked listing, `RELATION_ADAPTERS`) -- what the context
+               package's relations and the owed hold's linked tests (cli/governed.mjs) both ask; it decides nothing
 src/tools/     index.mjs the doctor's port, plus the tool manager: catalog · detect (project ->
                orbit-managed -> system, each ASKED its version) · effective (desired vs observed) ·
                install (receipts) · archive (a PINNED SHA-256, via src/store/archive.mjs) ·
@@ -907,11 +911,19 @@ src/qa/walk.mjs · obligations/ · backend/ · generation/ · security/  (0.1.0,
                one investigation share -- ONE_SANDBOX said before a host designs, and the keys a design names that an
                earlier version named, said after, never refused; contradictions.mjs (0.5.0) what a correct application
                can be held to -- refused where the design and its adapters' declarations prove a contradiction
-               (MATCH_PINS, SELF_SATISFIED: a wait its own publication satisfies, read off what a publishing adapter's
-               request rows say they set (`means`) and whether its channel drops a duplicate; SECOND_SETTLED,
-               NEVER_REDELIVERED) or the investigation's own record does (SETTLED_BEFORE: a
-               business key an earlier SATISFIED version settled, handed in by src/investigation/generate.mjs as
-               `cx.investigation`), said beside the answer where it rests on what the design never causes) ·
+               (MATCH_PINS on any value-holding slot; SELF_SATISFIED: a slot its own emission -- any effect that
+               `emits` -- satisfies or, absent-within, fails, read off what an emitting adapter's request rows say
+               they set (`means`) and whether its reference drops a duplicate; SECOND_SETTLED: what a shape's `again`
+               says comes again held to the first one's success; NEVER_REDELIVERED: a later ordinal no interrupting
+               control of the consuming workload causes, by the redelivery triggers the adapters declare) or the
+               investigation's own record does (SETTLED_BEFORE: a business key an earlier SATISFIED version settled;
+               NEVER_DECIDED: an injected clock no version that RAN moved -- every version that ran handed in by
+               src/investigation/generate.mjs as `cx.investigation`, with its word), said beside the answer where it
+               rests on what the design never causes (CLOCK_PASSED among them);
+               causes.mjs (0.6.0) the ONE model those rules read a design through -- per step its effects (the
+               families' `effects`), the references it acts on, the observer it arms or reads, what its request
+               sets and its match pins (request rows' `means`/`selects`) and its adapter's semantics -- so no rule
+               names a family operation or a shape (test/qa-causes.test.mjs greps both) ·
                generation/ (design.mjs the
                ordered STAGES a proposal is held to, ending in the REAL validator; controls; compile.mjs the
                deterministic mapping from an accepted expectation to a predicate, and which slot of an obligation's
@@ -1145,20 +1157,17 @@ skills/orbit-security-audit/  (0.1.0) the SECURITY AUDIT playbook + catalogs/ (t
                           investigation's generated tests READ BACK as the auditor's results, one per control role,
                           each role earning a word only from the steps of the frozen case that show it)
 skills/orbit-browser/ OPTIONAL adapter: pick a local browser+profile, opted into by launcher
-skills/orbit-release/  release + adoption: the DoD as gates, the version rule, the install routes; ship.mjs the
-                          AUTONOMOUS SHIP (ADR 0049) and its ship/ modules -- policy.json + policy.mjs (the catalog,
-                          the host, the limits, the protected paths, as data) · machine.mjs (facts folded from the
-                          ship task's journal, NEXT, SHIP_MODES: a ship, verify-only, or a precheck (ADR 0051), recorded
-                          rows) · steps.mjs (STEPS and the loop) · dispatch.mjs (one benchmark run: its room named first,
-                          a control set's too, watched, judged from its room, carried on; COSTS; a failed row's
-                          diagnosis bundle read off its run's report) · rows.mjs (ARGV,
-                          ROW_VERDICT, CONTROL_RULES, REPAIR_CHECK) · diagnose.mjs (DIAGNOSE) · preflight.mjs ·
-                          workspace.mjs (the ship task's own workspace, a verified patch applied AUTO, pristine
-                          checkouts, the release patch and bundle) · artifact.mjs (git archive, ARCHIVE_RULES, byte
-                          and content digests) · evidence.mjs (evidence.json, PUBLISH) · session.mjs (a ship begun,
-                          resumed, read) · door.mjs (the journal through cli/task.mjs) · ports.mjs (the real
-                          processes, bound only by ship.mjs) · ci.mjs (the fast tier) · report.mjs; hosts.mjs and
-                          backend.mjs read the native acceptance records, OPTIONAL rows since ADR 0049;
+skills/orbit-release/  release + adoption: the DoD as gates, the version rule, the install routes; ship.mjs THE
+                          RELEASE GATE (ADR 0057): --ci (the fast tier) and --evidence --evaluation=<record> (the
+                          publish gate) -- gates.mjs (GATES, the definition of done as data) and its ship/ modules:
+                          evidence.mjs (PUBLISH, one ordered table over facts read again and only when a row asks:
+                          the checkout, the fast tier, the evaluator's record, the pre-registration it names, the
+                          archives' content; the held-out runs the pre-registration owes and its verdict rule worked
+                          out again) · artifact.mjs (git archive in memory, ARCHIVE_RULES, byte and content digests)
+                          · ci.mjs (the fast tier's marks, release qualification AWAITED) · ports.mjs (the real
+                          processes and git, bound only by ship.mjs); panel.mjs (0.6.0) Orbit Control on its own
+                          Node, what the pipeline's control jobs held, a reported row; hosts.mjs and backend.mjs read
+                          the native acceptance records, OPTIONAL rows;
                           frontmatter.mjs (1.8.9) holds every SKILL.md and agent to the frontmatter shape a
                           host parses, by line -- a gate, and a suite test; pin-python-lock.mjs (0.2.1) writes
                           the lock of a python-lock tool for each platform (pip for the host, uv for the others,
@@ -1187,78 +1196,6 @@ acceptance/    (0.1.0) NATIVE ACCEPTANCE, outside test/ because `node --test` ru
                security audit; held to the truth, to no leftover container, network, volume or secret, and to
                an unchanged checkout; Docker or the worker image missing is BLOCKED exit 3, never a skip;
                receipts written only by `--record` from a run that matched)
-benchmark/     (ADR 0046, 0047, 0048, 0053, 0054) THE DOCKER BENCHMARK of Orbit: development tooling, export-ignored, imported by nothing
-               of the engine (test/benchmark-lint.test.mjs), not under acceptance/ because the backend acceptance digest
-               hashes that tree. run.mjs is its composition root (usage header = its contract; README.md the guide).
-               lib/core/ -- what every run shares: suites.mjs (KINDS -- source, qa, engineering, sessions, activation, workflow --
-               each a field table held by src/constraints.mjs; suites, cases, a directory's digest; MEMORY_ARMS and
-               SESSION_HOSTS; GOAL_KINDS, the kinds whose target is a fixture with Orbit beside it; WORKFLOW_SCRIPTS and
-               WORKFLOW_LEGS) ·
-               freeze.mjs (the branch frozen through read-only
-               git, HARNESS) · git.mjs · mutations.mjs (exact mutations and candidate definitions, FIXTURE_DRIFT) ·
-               checkout.mjs (a tree as one fixed
-               commit) · context.mjs (frozenRun, resumedRun, the manifest, the bench task, KIND_RUN) · record.mjs (the
-               task's own door) · room.mjs · docker.mjs (containers through Orbit's Docker provider, attested, deadlines,
-               cleanup by label) · images.mjs (verifier, runner, qa-worker: tagged by their directory's digest, reused by
-               id) · runner.mjs (the runner container of any round, behind the egress proxy; the host's stream captured
-               off its stdout) · host.mjs (the host's stream as REPORTED facts, hostOf v2's call rows, commandsOf for a
-               judge) · agreement.mjs (the stream's Skill and Agent calls held to the session trail) · sentinel.mjs (every
-               secret a run handed out, looked for and masked) · tools.mjs (0.5.0, B9: a run's tool-call failures per
-               tool, per relay subcommand and per sandbox step, SANDBOX_FAILURES, and their fold) · rates.mjs (pass@1,
-               pass@k and medians per row and model, the arms' overhead, a sessions case's memory arms and memory's
-               effect) · metrics.mjs (a fold over the kept runs, apart by host basis; --by revision, model, arm, memory) ·
-               reliability.mjs (the reliability report a release quotes) · controlset.mjs (0.5.0: a
-               control set kept in a room of its own -- each control's record, RUN_OF for a control carried by a whole
-               run -- so `resume` carries a set on) · diagnosis.mjs (0.5.0: a run's diagnosis bundle, FINISH, read off its
-               own records into its report).
-               lib/source/ -- a source, engineering or workflow case: verify.mjs, judge.mjs, candidate.mjs (SCOPE),
-               classify.mjs (CAUSES and FAILURE_CLASSES), decide.mjs (NEXT), brief.mjs (a repair's brief, a goal's, or a
-               request's through /orbit-help), round.mjs (a round and its read-back), cut.mjs (0.5.0: where a case's `interrupt` cuts its round -- the engineering
-               task's own steps, read off the runner store as a clock, never a minute), repairs.mjs (candidate controls
-               straight to the judge), flow.mjs (with
-               GOAL_RECORDS, and RECORDS_BY_KIND: the rows each goal kind is held to), report.mjs.
-               lib/qa/ -- a QA case: invoice.mjs (TARGETS: the applications a case may name, and what a person sets up
-               for one) · engine.mjs (Orbit's own engine from the frozen checkout, beside the controller: the application
-               assembled and seated, its isolated sandbox, the investigation) · relay.mjs (RELAY, the mailbox server, and
-               0.5.0's help probe answered from the frozen engine CLI's own usage header, never run) and
-               relay-client.mjs (what stands at cli/autonomous-qa.mjs in a QA host's plugin) · hosts.mjs (the scripted
-               reference, idle and false-alarm hosts -- a second session's cheat, half, trusts-poison and trusts-stale, and
-               0.5.0's recovers, repeats and uncorrected, which send a case's planted refusals -- and the replay) ·
-               judge.mjs (outcomes off the journal, CREDIT, VERDICT; 0.5.0's refusal rows off the relay's log,
-               CORRECTABLE) · round.mjs (a coding host's round; a session's own brief line, budget share, kept home and
-               memory switches; askOf, a scripted host's requests kept in the round's relay log) · flow.mjs (a QA run
-               is one SESSION: sessionRan, carriedBy, the phases a sessions run composes) · report.mjs.
-               lib/sessions/ (0.5.0, ADR 0054) -- a SESSIONS case, a QA case worked in two sessions over one checkout and
-               the stores the first left: flow.mjs (the learning session, the carry phase -- what is kept, the code moved
-               under a case that learned on the clean application, the poison planted in the host's own memory -- and the
-               measured session on its memory arm, ARM_ENV) · report.mjs (the second session's QA report, with the
-               sessions, what was offered, the poison, and what a memory arm is compared on).
-               lib/activation/ (0.5.0, B22 M4) -- an activation case: seed.mjs (the seed round: the run's own Orbit lays
-               the case's seed into the runner's store) · round.mjs (the host's round, a writable checkout and the arm's
-               plugin, and the inspection with the run's own Orbit) · judge.mjs (STRATEGY_SEEN, RECORDS, VERDICT: what the
-               host did, held to the hidden truth) · flow.mjs (the phases, factsFrom) · report.mjs.
-               lib/workflow/ (0.5.0, ADR 0053) -- a WORKFLOW case, one request through /orbit-help: flow.mjs (an
-               engineering case's flow, composed) · judge.mjs (the record rows by leg -- code, qa, path -- over what the
-               inspection read back of every coordinated workflow) · report.mjs (the engineering report, with the legs,
-               each row and the workflow as its own journal says it).
-               lib/mission/ (0.5.0, ADR 0055) -- a MISSION case, a goal through Orbit Satellite: flow.mjs (an
-               engineering case's flow, composed) · judge.mjs (the record rows by leg -- code, criteria, privilege --
-               over what the inspection read back of every mission, the trail and the tasks its evidence names) ·
-               report.mjs (the engineering report, with the legs, each row and the mission as Satellite's journal says
-               it). lib/core/legs.mjs: a round's legs, folded the same for a workflow and a mission case.
-               lib/commands.mjs: the COMMANDS table. images/runner/ (Claude Code pinned; entry.mjs, inspect.mjs,
-               preflight.mjs, scripted.mjs -- the scripted host a control runs in its place: a repair, a goal, a blocked
-               goal, an interrupted session, idle, an activation session delivering every hook to Orbit's own entry
-               points, a request through /orbit-help -- and the code-only and bypass hosts that fall short of it -- or a
-               mission through Satellite, each run carried by its envelope's agent, and the claims and over-reach hosts) · images/verifier/ (egress.mjs) · images/qa-worker/ (the Playwright image, pinned, and the
-               browser CLI Orbit drives). suites/<suite>/suite.json and suites/<suite>/<case-id>/ (case.json,
-               request.md, verifier/, variants/, controls/; a sessions case's poison/; an activation case's seed/).
-               fixtures/<app>/ -- a project an engineering, activation, workflow or mission case is about (its public tests as
-               checks/): `orders` for the tuned cases, `lending` the HELD-OUT application only suites/orbit-heldout/'s
-               cases are about (0.5.0, ADR 0056: written under an independence rule, named by nothing Orbit ships,
-               test/benchmark-heldout.test.mjs). A
-               run's evidence: <store>/benchmark/<bnr-…>/ (rounds/<k>/outcome.json, verified.json, report.md|json; a
-               sessions run's home/, the host's own home kept between its sessions).
 evaluator/     (0.6.0) THE INDEPENDENT EVALUATOR: a package of its own (package.json, no dependency, README.md the guide),
                export-ignored, importing nothing of the product and imported by nothing (test/evaluator-boundary.test.mjs),
                splittable with `git subtree split --prefix=evaluator`; Five Lines does not hold it. cli.mjs is its one entry.
@@ -1269,14 +1206,19 @@ evaluator/     (0.6.0) THE INDEPENDENT EVALUATOR: a package of its own (package.
                credential: the room scan) · lib/container/ (what is copied INTO a container, Node built-ins only: entry,
                egress, scripted, hold (a container whose agent runs on the host), grade-pack) · lib/arms/ (index:
                ARM_KINDS · claude: hostArgs, claude and claude+orbit, the built-in plugins off · plugin: git archive of a
-               revision · mini: mini and mini+orbit, the skill listing, the pinned mini-SWE-agent venv · mini-driver.py:
+               revision, and the SEAT (`seat: true` on an arm that carries it: the plugin's own adoption command run once
+               by the entry before the agent, the checkout held byte for byte, else INFRA_ERROR SEAT) · mini: mini and mini+orbit, the skill listing, the pinned mini-SWE-agent venv · mini-driver.py:
                mini-SWE-agent on the host, attached to the task container, writing stream-json · scripted) · lib/tasks/ (index: taskOf · packs · convert, convert-all,
                acceptance-template: the old benchmark's change cases as packs · swebench: the pinned Verified rows) ·
                lib/grade/ (packs: a fresh network-less container · swebench: the official harness in a uv venv) ·
                lib/run/ (attempt: one (arm, task, trial) · campaign: freeze, plan, loop, resume, status · prompt · report ·
                export · selfcheck · verify-packs) · lib/prereg/ (select: the selection rule as code · measure: an image's
-               size from its manifest · index: verify a pre-registration, a phase's campaign from it, the verdict rule).
-               prereg/<release>.json (committed before any model run it governs) · checks/*.check.mjs (its own tests, run by path); tasks/packs/<id>/
+               size from its manifest · index: verify a pre-registration and the amendments beside it, a phase's campaign from them, the verdict rule) ·
+               record.mjs (a release's record, from its campaigns' journals: what ship.mjs --evidence reads; an
+               amendment's comparisons are its `secondary` verdict, which the gate never reads).
+               prereg/<release>.json (committed before any model run it governs; never edited after) ·
+               prereg/<release>-amendment-<n>.json (adds phases, arms and gate:false comparisons, naming the registration's
+               digest; committed before any run of its own phases) · checks/*.check.mjs (its own tests, run by path); tasks/packs/<id>/
                (issue.md, start.json, hidden/*.spec.mjs, controls/*.patch, pack.json; EXCLUDED.md); history/ (provenance).
                A campaign's room: $ORBIT_EVAL_HOME/campaigns/<id>/ (default ~/.orbit-eval, never in a repository).
 integrations/  what ANOTHER program installs, never part of this plugin's archive. vscode-orbit-live/ (1.8.5, ADR 0021)

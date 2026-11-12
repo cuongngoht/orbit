@@ -1,4 +1,0 @@
-[
-  { "from": "orders", "via": "Confirm", "kind": "button", "selector": "getByRole('button',{name:'Confirm'})", "opens": "page", "to": "order-confirmation", "seen": "src" },
-  { "from": "order-confirmation", "via": "Place order", "kind": "button", "selector": "getByRole('button',{name:'Place order'})", "opens": "inline", "to": null, "seen": "src" }
-]

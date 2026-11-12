@@ -1,0 +1,39 @@
+diff --git a/src/worker.mjs b/src/worker.mjs
+index 2527bf924bd092b1f15fcbcd937eb667cff515ae..15816826b2e781a228718c743cf876585cda10be 100644
+--- a/src/worker.mjs
++++ b/src/worker.mjs
+@@ -5,8 +5,9 @@ import { getOrder } from "./orders.mjs";
+ const nextInvoice = (store) => `inv-${String(store.list("invoices").length + 1).padStart(4, "0")}`;
+ 
+ function invoiced(store, message, order) {
+-  const id = nextInvoice(store);
+-  setImmediate(() => store.put("invoices", id, { id, orderId: order.id, amountMinor: order.totalMinor, currency: order.currency, messageId: message.id }));
++  const existing = store.list("invoices").find((i) => i.messageId === message.id);
++  const id = existing ? existing.id : nextInvoice(store);
++  if (!existing) store.put("invoices", id, { id, orderId: order.id, amountMinor: order.totalMinor, currency: order.currency, messageId: message.id });
+   store.put("processed", message.id, { messageId: message.id, invoice: id });
+   return { ack: true, invoice: id };
+ }
+diff --git a/test/worker.test.mjs b/test/worker.test.mjs
+index 142f2dc8428197ceba57d8dc9aea59984812371e..660e7a527e34dea3cd4aafea1f6fddb223718898 100644
+--- a/test/worker.test.mjs
++++ b/test/worker.test.mjs
+@@ -19,3 +19,18 @@ test("a message that is not a payment is acknowledged and skipped", (t) => {
+ test("a payment for an order nobody has is not acknowledged, so it is delivered again", (t) => {
+   assert.equal(consume(fresh(t), { id: "m-1", type: "order.paid", orderId: "ord-0009" }).ack, false);
+ });
++
++test("an acknowledged payment's invoice is on disk when consume returns", (t) => {
++  const store = fresh(t);
++  store.put("orders", "ord-0001", { id: "ord-0001", totalMinor: 1234, currency: "USD" });
++  const r = consume(store, { id: "m-1", type: "order.paid", orderId: "ord-0001" });
++  assert.equal(r.ack, true);
++  const again = openStore(store.dir);
++  const inv = again.list("invoices");
++  assert.equal(inv.length, 1);
++  assert.equal(inv[0].orderId, "ord-0001");
++  assert.equal(inv[0].amountMinor, 1234);
++  assert.equal(consume(again, { id: "m-1", type: "order.paid", orderId: "ord-0001" }).ack, true);
++  consume(again, { id: "m-2", type: "order.paid", orderId: "ord-0001" });
++  assert.equal(openStore(store.dir).list("invoices").length, 2);
++});

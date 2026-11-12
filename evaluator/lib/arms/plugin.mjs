@@ -4,14 +4,29 @@
 // other development tree -- and an archive that still holds any of the evaluator is refused: the agent under test must
 // never be handed an answer.
 //
+// An arm that carries the plugin may be SEATED (`seat: true`): before its agent starts, the entry runs, once, in the
+// task container, the command the plugin's own coordinator skill (`/orbit-help`) runs the first time a person asks in a
+// repository -- `node <plugin>/cli/help.mjs` in the checkout, which binds the checkout in the run's fresh store and
+// writes nothing in the checkout -- with no answer from a person, no network and no credential. It measures the plugin
+// as an adopter has it (a repository a person has used it in), where an unseated arm measures it merely installed.
+//
 //   resolvedPlugin(repo, rev) -> { rev, commit }        preparedPlugin(home, repo, commit) -> { dir, digest, files }
+//   SEAT_ARGV      seatOf(def) -> null | { argv }      seatProblems(def, carriesPlugin) -> [problem]
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { git } from "../core/git.mjs";
 import { must } from "../core/proc.mjs";
 import { sha256 } from "../core/util.mjs";
+import { TOOLS_MOUNT } from "../core/versions.mjs";
 
 export const PLUGIN_DIR_IN_CONTAINER = "/opt/orbit-plugin";
+
+// The plugin's own adoption command: the same for every revision that carries it (v0.5.0 and the 0.6.0 candidate).
+export const SEAT_ARGV = [`${TOOLS_MOUNT}/bin/node`, `${PLUGIN_DIR_IN_CONTAINER}/cli/help.mjs`];
+
+export const seatOf = (def) => (def.seat === true ? { argv: SEAT_ARGV } : null);
+
+export const seatProblems = (def, carriesPlugin) => (def.seat === undefined ? [] : !carriesPlugin ? ["seat: an arm that carries no plugin has nothing to seat"] : typeof def.seat === "boolean" ? [] : ["seat is true or false"]);
 
 const PREFIX = "orbit-plugin";
 

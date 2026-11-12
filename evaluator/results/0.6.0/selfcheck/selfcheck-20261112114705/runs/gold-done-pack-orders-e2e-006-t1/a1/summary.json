@@ -1,0 +1,83 @@
+{
+  "kind": "ended",
+  "run": "gold-done__pack_orders-e2e-006__t1",
+  "attempt": 1,
+  "at": "2026-11-12T11:47:07.974Z",
+  "chargedUsd": 0,
+  "infra": null,
+  "timedOut": false,
+  "killedByControl": false,
+  "exit": 0,
+  "oomKilled": false,
+  "wallMs": 441,
+  "streamBytes": 469,
+  "streamCut": false,
+  "summary": {
+    "started": true,
+    "model": "scripted",
+    "version": null,
+    "plugins": [],
+    "hooks": {
+      "ran": 0,
+      "failed": 0
+    },
+    "skillsListed": null,
+    "result": true,
+    "costUsd": 0,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": null,
+      "cacheWrite": null
+    },
+    "turns": 1,
+    "durationMs": 0,
+    "denials": 0,
+    "subtype": "success",
+    "isError": false,
+    "stoppedOn": null,
+    "apiError": null,
+    "status": "DONE",
+    "statusWhy": null,
+    "asked": false,
+    "tools": {
+      "calls": 0,
+      "byName": {},
+      "skills": {},
+      "agents": {}
+    },
+    "orbit": {
+      "commands": 0,
+      "byCli": {}
+    }
+  },
+  "patch": {
+    "bytes": 3369,
+    "digest": "309a5156768bf7d5d4a054ac84c9bc1cc8d996cf6877df5ca4e4d748e0d9238b",
+    "paths": [
+      "src/orders.mjs",
+      "src/ui.mjs",
+      "test/order-note.test.mjs"
+    ]
+  },
+  "plugin": null,
+  "images": {
+    "task": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb",
+    "taskRef": "node:22",
+    "pulled": false,
+    "egress": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb"
+  },
+  "startCommit": "3be742c0548ebe1dbd0c1f831ba7d1b0df46e323",
+  "entryPhase": "ended",
+  "seat": null,
+  "egress": {
+    "direct": "ENETUNREACH",
+    "outsideName": "EAI_AGAIN",
+    "api": {
+      "connect": 200,
+      "http": 404
+    },
+    "otherHost": 403,
+    "holds": true
+  }
+}

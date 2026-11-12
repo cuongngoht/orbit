@@ -2,6 +2,9 @@
 
 ## Status
 
+Superseded by ADR 0057 (0.6.0): the in-repo benchmark and the ship it qualified a release with are removed; what
+follows is kept as the record of what was decided then.
+
 Accepted (development tooling; no engine contract changes). Extends ADR 0046 (the Docker benchmark) and ADR 0047 (its
 QA cases). Builds on ADR 0019 (a change is held to what it reaches), ADR 0042 (protected boundaries) and ADR 0044 (run
 identity and attribution).

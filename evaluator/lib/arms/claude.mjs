@@ -2,8 +2,9 @@
 // the same tools allowed, web lookups refused for every arm (no answer looked up on the internet), settings from the
 // fresh home only, no MCP server, no session kept, the same model, effort, USD cap and turn cap. The ONLY difference
 // between `claude` and `claude+orbit` is `--plugin-dir`, the plugin archive of the revision the arm names. The host's
-// built-in plugins are off in both (HOST_SETTINGS).
-import { PLUGIN_DIR_IN_CONTAINER, preparedPlugin, resolvedPlugin } from "./plugin.mjs";
+// built-in plugins are off in both (HOST_SETTINGS). A `claude+orbit` arm may be seated (`seat: true`, lib/arms/plugin.mjs):
+// the plugin's adoption command runs once before the agent, and no turn of the agent is spent on it.
+import { PLUGIN_DIR_IN_CONTAINER, preparedPlugin, resolvedPlugin, seatOf, seatProblems } from "./plugin.mjs";
 import { TOOLS_MOUNT } from "../core/versions.mjs";
 
 export const ALLOWED_TOOLS = ["Read", "Edit", "Write", "Glob", "Grep", "Bash", "Skill", "Agent", "TodoWrite"];
@@ -37,14 +38,15 @@ function base(id, def, kind) {
     credentialNames: [credentialOf(def)],
     homeFiles: HOME_FILES,
     control: {},
-    validate: () => [...(CREDENTIAL_NAMES.includes(credentialOf(def)) ? [] : [`credential must be one of ${CREDENTIAL_NAMES.join(", ")}`]), ...Object.keys(def).filter((k) => !["kind", "credential", "rev"].includes(k)).map((k) => `${k} is not a field of a ${kind} arm`)],
+    seat: seatOf(def),
+    validate: () => [...(CREDENTIAL_NAMES.includes(credentialOf(def)) ? [] : [`credential must be one of ${CREDENTIAL_NAMES.join(", ")}`]), ...Object.keys(def).filter((k) => !["kind", "credential", "rev", "seat"].includes(k)).map((k) => `${k} is not a field of a ${kind} arm`)],
     freeze: () => ({}),
     files: () => [],
     argv: (ctx) => hostArgs({ model: ctx.model, effort: ctx.effort, usd: ctx.limits.usd, turns: ctx.limits.turns, pluginDir: null }),
   };
 }
 
-export const claudeArm = (id, def) => ({ ...base(id, def, "claude"), validate: () => [...base(id, def, "claude").validate(), ...(def.rev ? ["a plain arm takes no rev"] : [])] });
+export const claudeArm = (id, def) => ({ ...base(id, def, "claude"), validate: () => [...base(id, def, "claude").validate(), ...(def.rev ? ["a plain arm takes no rev"] : []), ...seatProblems(def, false)] });
 
 // + a plugin: the archive of `rev` (a tag or a commit of the plugin repository), frozen to its commit when the campaign
 // begins, copied into the container, and named to Claude Code with --plugin-dir.
@@ -52,7 +54,7 @@ export function orbitArm(id, def) {
   const b = base(id, def, "claude+orbit");
   return {
     ...b,
-    validate: () => [...b.validate(), ...(typeof def.rev === "string" && def.rev ? [] : ["rev (a tag or commit of the plugin repository) is required"])],
+    validate: () => [...b.validate(), ...(typeof def.rev === "string" && def.rev ? [] : ["rev (a tag or commit of the plugin repository) is required"]), ...seatProblems(def, true)],
     freeze: (ctx) => resolvedPlugin(ctx.pluginRepo, def.rev),
     files: (ctx) => ((p) => [{ kind: "plugin", from: p.dir, to: "/opt", digest: p.digest, files: p.files }])(preparedPlugin(ctx.home, ctx.pluginRepo, ctx.frozen.commit)),
     argv: (ctx) => hostArgs({ model: ctx.model, effort: ctx.effort, usd: ctx.limits.usd, turns: ctx.limits.turns, pluginDir: PLUGIN_DIR_IN_CONTAINER }),

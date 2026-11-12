@@ -13,19 +13,25 @@
 //   node cli.mjs selfcheck [--ca-file=<pem>] [--tasks=pack:a,swebench:b] [--controls=gold-done,noop-done] [--keep-images]
 //   node cli.mjs packs list | verify [<id>...] | convert --from=<old benchmark dir>
 //   node cli.mjs tools [--ca-file=<pem>]                                    the tools volume (Node + pinned Claude Code)
-//   node cli.mjs prereg verify [--file=<prereg.json>]                       the registered order re-derived from its rule
+//   node cli.mjs prereg verify [--file=<prereg.json>]                       the registered order re-derived from its rule,
+//                                                                           and every amendment beside it held to it
 //   node cli.mjs prereg campaign <phase> [--rev=<commit>] [--id=] [--ca-file=] [--out=]   a phase's campaign, from it
+//                                                                           (a registered phase or an amendment's)
 //   node cli.mjs checks                                                     the evaluator's own checks (no Docker)
+//   node cli.mjs record --campaign=<id>[,<id>...] [--prereg=<prereg.json>] [--out=<file>]
+//                                                                           a release's record, from its campaigns'
+//                                                                           journals: what ship.mjs --evidence reads
 import { spawnSync } from "node:child_process";
 import { readdirSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { LABEL, listByLabel, removeContainer, removeNetwork } from "./lib/core/docker.mjs";
 import { ensureTools } from "./lib/core/tools.mjs";
-import { ensureDir, EVALUATOR_DIR, evalHome, writeJson } from "./lib/core/util.mjs";
-import { campaignOf, loadPrereg, PREREG_DIR, verifyPrereg } from "./lib/prereg/index.mjs";
+import { ensureDir, EVALUATOR_DIR, evalHome, readJson, writeJson } from "./lib/core/util.mjs";
+import { amendmentsOf, campaignOf, loadPrereg, PREREG_DIR, verifyAmendment, verifyPrereg } from "./lib/prereg/index.mjs";
 import { campaignStatus, resumeCampaign, startCampaign } from "./lib/run/campaign.mjs";
 import { exportCampaign } from "./lib/run/export.mjs";
 import { markdownOf, writtenReport } from "./lib/run/report.mjs";
+import { recordOf } from "./lib/record.mjs";
 import { selfcheck } from "./lib/run/selfcheck.mjs";
 import { verifyPacks } from "./lib/run/verify-packs.mjs";
 import { convertAll } from "./lib/tasks/convert-all.mjs";
@@ -52,6 +58,7 @@ const COMMANDS = {
   packs: async ([sub, ...ids], f) => PACKS[sub ?? "list"](ids, f),
   tools: (_, f) => print(ensureTools({ caFile: f["ca-file"] })),
   prereg: ([sub, ...rest], f) => PREREG[sub ?? "verify"](rest, f),
+  record: (_, f) => print(recordPrinted(writeJson(f.out ?? join(home(), "records", `${Date.now()}.json`), recordOf({ prereg: preregFile(f), campaigns: String(f.campaign ?? "").split(",").filter(Boolean), home: home() })))),
   checks: () => process.exit(spawnSync(process.execPath, ["--test", ...readdirSync(join(EVALUATOR_DIR, "checks")).filter((n) => n.endsWith(".check.mjs")).map((n) => join(EVALUATOR_DIR, "checks", n))], { stdio: "inherit" }).status ?? 1),
 };
 
@@ -63,10 +70,26 @@ const PACKS = {
 
 const preregFile = (f) => f.file ?? join(PREREG_DIR, "0.6.0.json");
 
+// The registration and every amendment beside it, verified together: an amendment that does not hold is a problem of
+// the pre-registration.
+function verifiedPrereg(file) {
+  const p = loadPrereg(file);
+  const amendments = amendmentsOf(file);
+  const r = verifyPrereg(p, { home: home() });
+  return { ...r, amendments, problems: [...r.problems, ...amendments.flatMap((a) => verifyAmendment(p, a, basename(file)))] };
+}
+
+const amendmentsSaid = (r) => (r.amendments.length ? `; amendment(s) ${r.amendments.map((a) => `${a.n} (${a.value.phases.map((ph) => ph.id).join(", ")})`).join(", ")} stand beside it, the registration unchanged` : "");
+
 const PREREG = {
-  verify: (_, f) => ((r) => (print(r.problems.length ? `PREREG FAILED:\n${r.problems.map((x) => `  - ${x}`).join("\n")}` : `PREREG HOLDS: the registered order is the rule's${r.rowsChecked ? ", rows and digests checked against the cached dataset" : " (packs only: no cached dataset here)"}`), (process.exitCode = r.problems.length ? 1 : 0)))(verifyPrereg(loadPrereg(preregFile(f)), { home: home() })),
-  campaign: ([phase], f) => print(writeJson(f.out ?? join(home(), "defs", `${f.id ?? phase}.json`), campaignOf(loadPrereg(preregFile(f)), phase, { id: f.id, rev: f.rev, caFile: f["ca-file"] }))),
+  verify: (_, f) => ((r) => (print(r.problems.length ? `PREREG FAILED:\n${r.problems.map((x) => `  - ${x}`).join("\n")}` : `PREREG HOLDS: the registered order is the rule's${r.rowsChecked ? ", rows and digests checked against the cached dataset" : " (packs only: no cached dataset here)"}${amendmentsSaid(r)}`), (process.exitCode = r.problems.length ? 1 : 0)))(verifiedPrereg(preregFile(f))),
+  campaign: ([phase], f) => ((r) => (r.problems.length ? (print(`PREREG FAILED:\n${r.problems.map((x) => `  - ${x}`).join("\n")}`), (process.exitCode = 1)) : print(writeJson(f.out ?? join(home(), "defs", `${f.id ?? phase}.json`), campaignOf(loadPrereg(preregFile(f)), phase, { id: f.id, rev: f.rev, caFile: f["ca-file"], amendments: r.amendments })))))(verifiedPrereg(preregFile(f))),
 };
+
+const recordPrinted = (file) => ((r) => [`record ${file}`, `  ${r.release}: ${r.campaigns.map((c) => `${c.id} (${c.phase}${c.finished ? "" : ", NOT finished"})`).join(", ")}`, ...r.comparisons.map((c) => `  ${c.a} against ${c.b}${c.gate ? "" : " (reported)"}: ${c.paired} paired, resolved ${c.resolved[c.a]} / ${c.resolved[c.b]} -> ${c.verdict}`), `  verdict ${r.verdict}${r.missing.length ? `; owed and not held: ${r.missing.slice(0, 6).join(", ")}${r.missing.length > 6 ? ", …" : ""}` : "; every pre-registered held-out run has a word"}`, ...secondaryPrinted(r.secondary)].join("\n"))(readJson(file));
+
+// The secondary verdict, said apart: an amendment's comparisons, which the release gate does not read.
+const secondaryPrinted = (s) => (s ? [`  secondary (amendment ${s.amendments.map((a) => a.n).join(", ")}; reported, never read by the gate):`, ...s.comparisons.map((c) => `    ${c.a} against ${c.b}: ${c.paired} paired, resolved ${c.resolved[c.a]} / ${c.resolved[c.b]} -> ${c.verdict}`), `    secondary verdict ${s.verdict}${s.missing.length ? `; owed and not held: ${s.missing.slice(0, 6).join(", ")}${s.missing.length > 6 ? ", …" : ""}` : ""}`] : []);
 
 const summaryLine = (r) => `campaign ${r.campaign.id}: ${r.finished ? "finished" : "stopped"}; ${r.arms.map((a) => `${a.arm} ${a.resolved}/${a.gradable}${a.words.INFRA_ERROR ? ` (+${a.words.INFRA_ERROR} infra)` : ""}`).join(", ")}; charged $${r.ledger.chargedUsd}`;
 
@@ -94,7 +117,7 @@ function verifyPrinted(rows) {
 }
 
 async function main([cmd, ...rest]) {
-  if (!COMMANDS[cmd]) return print(`usage: node cli.mjs run|resume|status|report|export|cleanup|selfcheck|packs|tools|prereg|checks ... (see the head of cli.mjs)`), (process.exitCode = 2);
+  if (!COMMANDS[cmd]) return print(`usage: node cli.mjs run|resume|status|report|export|cleanup|selfcheck|packs|tools|prereg|record|checks ... (see the head of cli.mjs)`), (process.exitCode = 2);
   try { await COMMANDS[cmd](positional(rest), flags(rest)); }
   catch (e) { print(`error: ${e.message}`); process.exitCode = 1; }
   return null;

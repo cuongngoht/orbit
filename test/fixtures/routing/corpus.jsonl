@@ -75,7 +75,7 @@
 {"prompt":"forecast when the backlog will be done","lang":"en","intent":"reporting","strategy":"DIRECT","top":"orbit-report","kind":"report"}
 {"prompt":"ship orbit 0.5.0","lang":"en","intent":"release","strategy":"DIRECT","top":"orbit-release","kind":"release"}
 {"prompt":"bump the version of the orbit plugin and update the changelog","lang":"en","intent":"release","strategy":"DIRECT","top":"orbit-release","kind":"release"}
-{"prompt":"qualify the orbit release on the docker benchmark","lang":"en","intent":"release","strategy":"DIRECT","top":"orbit-release","kind":"release"}
+{"prompt":"qualify the orbit release on the independent evaluator's record","lang":"en","intent":"release","strategy":"DIRECT","top":"orbit-release","kind":"release"}
 {"prompt":"release the new version of our mobile app to the store","lang":"en","intent":"release","strategy":"NONE","top":null,"kind":"release"}
 {"prompt":"publish the npm package for the sdk","lang":"en","intent":"release","strategy":"NONE","top":null,"kind":"release"}
 {"prompt":"how do I run the app locally?","lang":"en","intent":"environment","strategy":"DIRECT","top":"orbit-runtime","kind":"runtime"}

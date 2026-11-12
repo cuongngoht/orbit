@@ -105,17 +105,19 @@ export const FRESHNESS = [
 // that can only ever be claimed within one -- an absence and a completion. A criterion that
 // says it in prose still prepares a test; only one that says it like this can be MAPPED to an
 // assertion without anybody's judgement.
+// `admits` says which observed values an op's slot holds for: `one` -- the stated value itself -- or `any` of the stated
+// values (src/qa/backend/contradictions.mjs MATCH_PINS reads it); an op that compares no value admits nothing named.
 export const EXPECT_OPS = [
-  { name: "eq", template: "value-eq", doc: "the observed value equals the stated value" },
+  { name: "eq", template: "value-eq", admits: "one", doc: "the observed value equals the stated value" },
   { name: "present", template: "value-present", doc: "the observed value is there -- an id, a reference -- whatever it is" },
-  { name: "in", template: "value-in", doc: "the observed value is one of the stated values" },
+  { name: "in", template: "value-in", admits: "any", doc: "the observed value is one of the stated values" },
   { name: "excludes", template: "value-excludes", doc: "the observed value never contains the stated value -- a marker that must not appear" },
   { name: "contains", template: "value-includes", doc: "the observed text contains the stated text -- a name a screen shows" },
   { name: "count-eq", template: "count-eq", doc: "exactly this many durable effects" },
   { name: "count-at-most", template: "count-at-most", doc: "no more than this many" },
   { name: "conforms", template: "schema-valid", doc: "the observed value conforms to the stated, pinned schema" },
   { name: "ordered", template: "order-eq", doc: "the observed sequence is in the stated order" },
-  { name: "complete-within", template: "complete", window: true, doc: "the business condition holds within the window" },
+  { name: "complete-within", template: "complete", window: true, admits: "one", doc: "the business condition holds within the window" },
   { name: "absent-within", template: "absent-within", window: true, doc: "nothing matching appears within the window, on observation that stayed complete" },
 ];
 

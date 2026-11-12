@@ -26,8 +26,11 @@ const STEP = {
   "knowledge.opportunity.decided": (d) => ({ kind: "decision", label: `${d.action} ${d.capability}`, ok: true }),
   "trace.dropped": () => ({ kind: "gap", label: "the trail stopped keeping events (cap)", ok: true }),
   // 0.5.0 (B22 M3): a Stop hook held the turn open for this session's running workflow or goal, naming its ready steps.
-  "turn.held": (d) => ({ kind: "hold", label: d.kind === "unverified" ? `held for an unverified edit (${d.check ?? "a declared check"})` : `held for ${d.task ?? "a workflow"}${(d.steps ?? []).length ? ` (${d.steps.join(", ")})` : ""}`, ok: true }),
+  "turn.held": (d) => ({ kind: "hold", label: d.kind === "unverified" ? `held for an unverified edit (${owedSaid(d)})` : `held for ${d.task ?? "a workflow"}${(d.steps ?? []).length ? ` (${d.steps.join(", ")})` : ""}`, ok: true }),
 };
+
+// What an unverified hold named: the declared check's id, or (0.6.0, P3b) how many linked test files.
+const owedSaid = (d) => d.check ?? (Number.isInteger(d.tests) ? `${d.tests} linked test ${d.tests === 1 ? "file" : "files"}` : "a declared check");
 
 export const stepOf = (e) => (STEP[e.type] ? { at: e.at, ...STEP[e.type](e.data ?? {}) } : null);
 

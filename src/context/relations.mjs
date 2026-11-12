@@ -9,7 +9,9 @@
 //     detects(path)                  -> true when this adapter reads files like this one
 //     specifiersOf(text)             -> the names a file's text (or one line of it) imports
 //     resolve(specifier, from, tree) -> the tracked path a name in `from` resolves to, or null -- never a guess
-//     testsOf(path, tree)            -> the tracked tests that go with a path, by the language's own convention
+//     testsOf(path, tree, read)      -> the tracked tests that go with a path: by what the checkout itself declares
+//                                       for its test runner, read through `read` (the walk's own port, each file once),
+//                                       else by the language's own convention
 //     importersPattern(path)         -> ONE fixed string every line that imports the path contains }
 //
 // For each direct file (at most DIRECT_LIMIT):
@@ -63,7 +65,7 @@ const outOf = (r, a, path, text) => [...new Set(quietly(() => a.specifiersOf(tex
 
 // ---- what goes with it ----------------------------------------------------------------------------------------------
 
-const testsOf = (r, a, path) => quietly(() => a.testsOf(path, r.tree), []).filter((p) => held(r, p) && p !== path);
+const testsOf = (r, a, path) => quietly(() => a.testsOf(path, r.tree, (file) => (held(r, file) ? readOnce(r, file) : null)), []).filter((p) => held(r, p) && p !== path);
 
 const withTests = (r, a, path) => testsOf(r, a, path).map((t) => item(t, "verification", "test", path));
 
@@ -159,3 +161,17 @@ export function relatedOf(input) {
   if (!r.direct.length || !input.tree) return { items: [], gaps: [], hypotheses: [] };
   return bounded(r, r.direct.flatMap((path) => aroundOne(r, path)));
 }
+
+// THE TESTS THAT GO WITH FILES (0.6.0, P3b): what each file's own adapter says goes with it (`testsOf`), and nothing
+// else -- the `test` relation the walk above reads, without its importer and literal searches. What a turn owes when no
+// component declares a check (src/lifecycle/subscribers/owed.mjs, through cli/governed.mjs) names these. A file no
+// adapter detects names none: never a guess. It reads only what an adapter asks of `read` (what the checkout declares
+// for its test runner), each file once.
+// -> [path]: tracked, at most `maxFiles`, in the order the files and their adapters named them
+//    input: { direct: [path], tree (src/context/refs.mjs treeOf), adapters, read, maxFiles }
+export function testsWith(input) {
+  const r = worldOf(input);
+  return input.tree ? [...new Set(r.direct.flatMap((path) => linkedTo(r, path)))].slice(0, r.maxFiles) : [];
+}
+
+const linkedTo = (r, path) => ((a) => (a ? testsOf(r, a, path) : []))(adapterOf(r, path));

@@ -1,0 +1,133 @@
+{
+  "shape": "occurrence-one-execution",
+  "why": "an earlier version that RAN -- to any word -- moved the clock: whether it reached the occurrence is not shown, so it is said",
+  "design": {
+    "assertions": [
+      {
+        "criterionRef": "SCHED-1/E1",
+        "step": 1,
+        "template": "complete"
+      },
+      {
+        "criterionRef": "SCHED-1/E2",
+        "step": 2,
+        "template": "count-eq"
+      }
+    ],
+    "controls": [
+      {
+        "role": "positive",
+        "why": "the pinned due period is decided due and executed once"
+      }
+    ],
+    "effectScope": "fixture",
+    "obligation": "tob-8f2674b1fe6b",
+    "skeleton": {
+      "steps": [
+        {
+          "capability": "orbit.scheduler.observe",
+          "do": "call",
+          "input": {
+            "request": {
+              "count": 1,
+              "match": {
+                "occurrenceId": "billing-daily:2026-10-22T09:00:00+07:00"
+              }
+            },
+            "scheduleRef": "billing-daily"
+          }
+        },
+        {
+          "capability": "orbit.state.read",
+          "do": "call",
+          "input": {
+            "request": {
+              "key": "billing-daily:2026-10-22T09:00:00+07:00",
+              "limit": 5
+            },
+            "stateRef": "billing-jobs"
+          }
+        }
+      ]
+    },
+    "trigger": {
+      "kind": "none"
+    }
+  },
+  "earlier": [
+    {
+      "shape": "occurrence-one-execution",
+      "design": {
+        "assertions": [
+          {
+            "criterionRef": "SCHED-1/E1",
+            "step": 2,
+            "template": "complete"
+          },
+          {
+            "criterionRef": "SCHED-1/E2",
+            "step": 3,
+            "template": "count-eq"
+          }
+        ],
+        "controls": [
+          {
+            "role": "positive",
+            "why": "the loop itself decides the period due and runs it once"
+          }
+        ],
+        "effectScope": "fixture",
+        "obligation": "tob-8f2674b1fe6b",
+        "skeleton": {
+          "steps": [
+            {
+              "capability": "orbit.clock.advance",
+              "do": "call",
+              "input": {
+                "clockRef": "invoice-a",
+                "request": {
+                  "to": "2026-10-22T02:00:00Z"
+                }
+              }
+            },
+            {
+              "capability": "orbit.scheduler.observe",
+              "do": "call",
+              "input": {
+                "request": {
+                  "count": 1,
+                  "match": {
+                    "occurrenceId": "billing-daily:2026-10-22T09:00:00+07:00"
+                  }
+                },
+                "scheduleRef": "billing-daily"
+              }
+            },
+            {
+              "capability": "orbit.state.read",
+              "do": "call",
+              "input": {
+                "request": {
+                  "key": "billing-daily:2026-10-22T09:00:00+07:00"
+                },
+                "stateRef": "billing-jobs"
+              }
+            }
+          ]
+        },
+        "trigger": {
+          "kind": "schedule",
+          "ref": "billing-daily",
+          "step": 1
+        }
+      },
+      "outcome": "CONTRADICTED"
+    }
+  ],
+  "expect": {
+    "findings": [],
+    "advice": [
+      "UNCAUSED_DECISION"
+    ]
+  }
+}

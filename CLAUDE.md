@@ -19,128 +19,75 @@ Host session hints (untrusted): plugin option `host_memory`, or `ORBIT_HOST_MEMO
 
 ## Shipping a release from Claude Code cloud
 
-The release is `node skills/orbit-release/ship.mjs` (ADR 0049; the whole contract is in
-[skills/orbit-release/SKILL.md](skills/orbit-release/SKILL.md)). What follows is how it is actually run in a cloud
-session, and what the 0.4.0 and 0.5.0 ships taught. A cloud session is the ONLY place a model-carried run happens: no
-GitHub workflow runs the ship or a real coding host (0.5.0, backlog B8); CI holds the fast tier (`ship.mjs --ci`) and
-the benchmark's conformance tier, which need no credential.
+A release qualifies on two things (ADR 0057; the whole contract is in
+[skills/orbit-release/SKILL.md](skills/orbit-release/SKILL.md)): the fast tier, `node skills/orbit-release/ship.mjs
+--ci`, and a record of the independent evaluator ([evaluator/README.md](evaluator/README.md)) for that very artifact,
+read by `node skills/orbit-release/ship.mjs --evidence --evaluation=<record.json>`. There is no GitHub workflow (0.6.0,
+backlog Q8): the gates run where the release is made, and a cloud session is the only place a model run happens. The
+old in-repo Docker benchmark and its autonomous ship are gone; what they taught is in ADR 0046-0057 and the CHANGELOG.
 
-**Run it in its own session, detached.** The coding host's token is an environment variable of the cloud environment,
-kept as `ORBIT_CODE_OAUTH_TOKEN` (the 0.4.0 environment called it `ORBIT_CLAUDE_OAUTH_TOKEN`), and mapped to
-`CLAUDE_CODE_OAUTH_TOKEN` for the one process that needs it. Check it by name only (`test -n "$ORBIT_CODE_OAUTH_TOKEN"`);
-never print it. Why it is not used under its own name:
+**The campaigns, detached, with the credential mapped by name.** The coding host's token is an environment variable of
+the cloud environment, kept as `ORBIT_CODE_OAUTH_TOKEN`, and mapped to `CLAUDE_CODE_OAUTH_TOKEN` for the one controller
+process that needs it. Check it by name only (`test -n "$ORBIT_CODE_OAUTH_TOKEN"`); never print it. Why it is not used
+under its own name:
 
-- The real Claude Code in the runner reads its credential only under its own names (`CLAUDE_CODE_OAUTH_TOKEN`, or
-  `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN`); an `ORBIT_*` name means nothing to it.
-- The harness hands the credential to the runner container by NAME only: docker fills `-e <NAME>` from the controller's
-  own environment, so Orbit never reads, renames, writes or logs the value. The name the controller sees must therefore
-  already be the name Claude Code reads, and `--credential` takes only those three (`CREDENTIAL_NAMES`,
-  `skills/orbit-release/ship/preflight.mjs`; `CREDENTIALS`, `benchmark/lib/core/context.mjs`) -- any other is refused.
-  Renaming it on the way in would mean handling the value, which "a secret is named, never kept" (AGENTS.md) forbids.
+- The real Claude Code reads its credential only under its own names (`CLAUDE_CODE_OAUTH_TOKEN`, or `ANTHROPIC_API_KEY`
+  / `ANTHROPIC_AUTH_TOKEN`); an `ORBIT_*` name means nothing to it.
+- The evaluator hands the credential to a run's container by NAME only (`docker -e CLAUDE_CODE_OAUTH_TOKEN`, filled from
+  the controller's own environment): the value is never written, renamed or logged, and a room file that holds it is
+  removed and its run is `INFRA_ERROR`. The mini-SWE-agent arms read `ORBIT_EVAL_ANTHROPIC_API_KEY` by name and are
+  `NOT_RUN (credential)` without it, which the pre-registration allows (they are reported, never the verdict's).
 - The cloud environment filters `CLAUDE_CODE_*` names, which steer the session's own Claude Code, so the token cannot be
   stored under its own name -- and if it could, this session's own Claude Code would take it as its credential.
 
-So the mapping lives only in the environment of the one detached process and its children (`CLAUDE_CODE_OAUTH_TOKEN=…
-node …`), never exported into the session. A variable added to the environment reaches a session only when it starts or
-its worker restarts: until then it is not in the session's processes, and the model-carried runs wait.
+So the mapping lives only in the environment of the one detached controller (`CLAUDE_CODE_OAUTH_TOKEN=… node …`), never
+exported into the session. A variable added to the environment reaches a session only when it starts or its worker
+restarts. A campaign is made from the pre-registration (`evaluator/prereg/<release>.json`, committed before any model
+run it governs), never written by hand, and runs at the model, effort and limits the pre-registration names.
 
 ```bash
 rm -f /var/run/docker.pid; setsid nohup dockerd --registry-mirror=https://mirror.gcr.io > /tmp/dockerd.log 2>&1 &
-CLAUDE_CODE_OAUTH_TOKEN="$ORBIT_CODE_OAUTH_TOKEN" setsid nohup node skills/orbit-release/ship.mjs \
-  --credential=CLAUDE_CODE_OAUTH_TOKEN --model=claude-sonnet-5-5 --effort=medium --ca-file=/root/.ccr/ca-bundle.crt \
-  --usd=150 --retries=2 --json > /tmp/ship.log 2>&1 &
-node skills/orbit-release/ship.mjs --status --json          # where it stands; a failed model row's diagnosis bundle
-# after a worker restart (process gone, no ending): dockerd again, then the same command with --resume=<shp-…>
-# before a ship: the same command with --precheck in place of --retries=2 (the model-carried rows only, each once)
+node evaluator/cli.mjs prereg verify                                   # the registered order, re-derived from its rule
+node evaluator/cli.mjs prereg campaign final --rev=<release commit> --ca-file=/root/.ccr/ca-bundle.crt --out=/tmp/final.json
+CLAUDE_CODE_OAUTH_TOKEN="$ORBIT_CODE_OAUTH_TOKEN" setsid nohup node evaluator/cli.mjs run /tmp/final.json \
+  > /tmp/final.log 2>&1 &
+node evaluator/cli.mjs status final-060                                # where it stands, and its ledger
+# after a worker restart (controller gone, no `finished`): dockerd again, then the same launch with `resume final-060`
+node evaluator/cli.mjs report final-060 --md
+node evaluator/cli.mjs export final-060 --to=evaluator/results/0.6.0/final   # what to commit: export-ignored
+node evaluator/cli.mjs record --campaign=final-060,mini-060 --out=evaluator/results/0.6.0/record.json
+node skills/orbit-release/ship.mjs --ci                                # the fast tier, alone
+node skills/orbit-release/ship.mjs --evidence --evaluation=evaluator/results/0.6.0/record.json
 ```
 
 - **Docker Hub rate-limits** (HTTP 429): pull through `mirror.gcr.io`. **TLS is inspected** by the egress gateway:
   always `--ca-file=/root/.ccr/ca-bundle.crt`. A restart leaves a stale `/var/run/docker.pid`: remove it first.
 - **The worker restarts every hour or two** and kills every process (files survive). Watch with background waits of at
-  most ~100 minutes and `--resume`; a ship is read back from its journal and never re-runs a held row. Since 0.5.0
-  (ADR 0051) a resume also carries a control set on from the controls it kept, builds images a failed build left
-  unbuilt, asks a refused host check again, and never charges a run it interrupted its whole `--usd` allowance (its
-  cost is said as unknown) -- nor a cut-short repair one of its `--attempts`.
-- **Model: Sonnet 5.5 at medium effort** (`--model=claude-sonnet-5-5 --effort=medium`), the owner's decision for 0.5.0
-  (backlog open question 3), for the pre-check and the ship alike. The effort goes to every model-carried row's Claude
-  Code (`--effort`, beside `--model`) and to the host check, is frozen when the ship begins (a resume naming another is
-  refused), and is recorded in `evidence.json` beside the model; a row run at another effort is never that ship's
-  evidence (`WRONG_EFFORT`), and `--evidence` reads it again from every room. 0.4.0's lesson stands: on Sonnet most
-  autonomous QA rows missed their planted defects, so read a QA row's miss from its room (below) before calling it the
-  model's -- 0.5.0 gave the QA playbook a worked design per obligation shape for exactly that (B7), and B2 measures
-  Sonnet's QA pass@1. **`--retries=2`** lets a model-carried row that missed run again (policy bound 0..3); it holds
-  only on its own PASS.
-- **Never push to the branch while a ship runs**: `--evidence` is PUBLISHABLE only for the exact tree that qualified.
-  Park a fix on a side branch and bring it in after the ship ends (or before the next one).
-- **Pre-check before a full ship.** A ship stops at its first failed row after ~90 minutes of controls; run the
-  model-carried rows first, each once, so every failure shows in one pass: `ship.mjs --precheck` with the same
-  `--credential --model --effort --ca-file --usd`, detached and resumed like a ship (it refuses `--retries`). It ends
-  PRECHECK HELD or PRECHECK FAILED with every failure's run room and diagnosis, and qualifies nothing. (0.4.0 did this by
-  hand, `node benchmark/run.mjs run <case>` row by row.)
-- **Diagnose a failed row from its room before calling it the model's fault.** Start from `ship.mjs --status`: for each
-  model-carried row that did not hold it prints the bundle the run's report keeps -- the host's finish reason, the budget
-  it used, what the relay refused, what the engine stopped, and where a run stopped short (`result.stopped`) -- beside
-  the run's room. When that is not enough, the room: `<store>/benchmark/<bnr-…>/rounds/1/relay/relay.jsonl` (every
-  request, exit code, refusal), `rounds/1/out/host.jsonl` (the decisions the host sent), the investigation or task
-  journal, and `node benchmark/run.mjs report <bnr-…>`.
-  Most 0.4.0 "misses" were Orbit defects a host could not get past: a frozen version's id nobody showed it, a step's
-  result dropped, design/version refs refused, bindings it had to guess, an endpoint base path repeated, `goal resume`
-  reading raw journals, a sandbox supervisor race, a retry that could never run, a 20-minute gate deadline, a refused
-  run's reason kept in the worker's log, fault points and a state's key column nobody listed, a design contract the host
-  could not read before proposing, an investigation held to 20 minutes while its brief promised 120, and a fault that
-  left its workload down with nothing telling the host to bring it back (ship 12: ORBIT-QA-001's two crash shapes were
-  false alarms on the clean app in 3 of 3 runs -- a fix that unlocks a new path, here naming fault points, can expose
-  the next gap on a row that used to pass, so pre-check every model row again after one), and an observation whose match
-  (`outcome: processed`) hid the redelivery that settled as `duplicate`, answering "none, complete" (ship 13: the
-  crash-after-effect false alarm in 3 of 3 runs -- the host now sees what its match left out, beside where it stopped).
-- **A restart mid-row is INTERRUPTED, not the model's miss** (ship 14: ORBIT-QA-001's run said PASS, but a worker restart
-  cut it, the read-back run had no host identity, and the ship ended UNTRUSTED/WRONG_HOST). An interrupted model-carried
-  run is never evidence; the row now runs again as a new run outside `--retries`, at most `INTERRUPTED_RUNS` (2) per
-  cycle, then BLOCKS for a `--resume`. `--status` reports the newest cycle's held rows, closed or open.
-- **A case's interruption is a moment of its engineering task's own progress, never a minute**
-  (`interrupt: { round, after }`): Sonnet 5.5 finished ORBIT-E2E-007's round 1 in under four minutes, so its four-minute
-  cut never fired and the case measured nothing of a resumed session. The controller now cuts the round once the task
-  has started the steps `after` names, and the run is held to its cut having happened (an `interrupted` record). The
-  same row showed a plan too narrow for its change (its regression test left out) dead-ending at the review's SCOPE
-  failure: a plan can now be sent again while diagnosing.
-- **One investigation's tests share one sandbox** (pre-check QA-006: two false alarms on the clean app -- a host waited
-  for `processed` on a second message the system deduped as `duplicate`, and reused a business key an earlier test had
-  used). Effect-once and competing-workers now say a second one is not a second effect, every template says the sandbox
-  is shared, and a design naming an earlier test's key is told which (advisory). Pre-check rows in parallel with a ship
-  -- a separate session -- found this hours before the ship reached it.
-- **Read a QA row's room before calling its miss the model's**: on Sonnet 5.5 at medium effort the QA rows went from 0/7
-  at the 0.5.0 pre-check (six false alarms the clean app contradicted too) to 5/7 at the re-verify, once the engine
-  refused designs no correct application can satisfy, then 7/7 after two more Orbit fixes. An advice the host ignored
-  became a refusal where the declarations prove it (`NEVER_REDELIVERED`, ORBIT-QA-002: a wait for a second delivery
-  nothing brings), and a PASS was reported REFUSED by a cleanup race (the leak sentinel read a file a sandbox's
-  supervisor had just removed, ORBIT-QA-005). A host goes past advice and acts on a refusal.
-- **A cleanup that throws hides why a run stopped** (the sessions controls, ORBIT-SES-001..003: each crashed on the
-  release's own `has no workspace of its own here`, which replaced the error that had stopped the run). A release now
-  answers that error as its result; when a room's ending makes no sense, look for the error a teardown replaced.
-- **A new suite's model-carried rows are recorded, not required** (ADR 0051): name the suite (or case) in
-  `ship/policy.json` `recorded`. The ship runs each once under `--retries`, reports it held or not with its room, and
-  never blocks on it (a credential found in its room still stops the release); its controls stay required. Promotion
-  to required is a person's policy change, by the rule in `docs/backlog/0.5.0.md`, never something done to get a PASS.
-- **Fix an Orbit defect a row exposes with Opus at high effort** (an Agent, `model: opus`, `effort: high` -- the owner's
-  0.5.0 decision; it was max before): a regression test that fails before the fix, the full suite, the strict Five Lines
-  lint. Never loosen an acceptance rule, a case's ground truth, the verifier or `ship/policy.json` to get a PASS.
-  **Every fix is the most general one** (the owner's rule): fix the CLASS of defect a row exposed, never the one case
-  -- name the principle it broke (e.g. "what the engine requires is shown before the host designs", "a refusal names
-  the way out", "what generation made, validation accepts"), derive the fix from the ONE place that already decides it
-  (no second table, no case id, layer, product or shape special-cased), and add a test that holds the principle across
-  every existing design, control and fixture, beside the run's own regression fixture. A fix that only makes the
-  failing row pass is not done.
-- **Run `node --test` alone.** A full suite run twice into one log at the same time showed a failure that was the two
-  runs' interference (the other said 0 failed), and a resumed session found two of its own earlier suite runs still
-  going. Look first (`pgrep -af 'node --test'`), let a run end or stop it, then run one suite into a log of its own.
-- **One backlog item to a worktree and a branch, merged one at a time** (0.5.0's Wave 3: B1, B4, B9, B2 and the review
-  findings): each merge into the release branch is followed by a full suite, run alone, so a failure names the merge
-  that brought it.
-- **A known finding repaired** leaves the benchmark's own case tests pinned to the old baseline: rebaseline the case
-  (baseline PASS, a `controlled-fault` variant planting the old defect) in the same commit, before the next ship.
-- **Publish only on** SHIPPABLE + `ship.mjs --evidence` PUBLISHABLE on the pushed head + green CI: merge the release
-  PR, tag `v<version>` on the merge commit.
-- **The reliability report** (0.5.0, B2): a SHIPPABLE ship keeps `reliability.json` beside `evidence.json` -- the
-  benchmark's `reliability --revision=<release commit>` over every kept run of that commit (pre-checks, ship rows,
-  repeats) -- and its result and `--status` name it. The release notes quote it; it is never a gate. A ship that could not
-  get one says why; `node benchmark/run.mjs reliability --revision=<commit> --json` gives it again.
+  most ~100 minutes and `resume`: a campaign is read back from its journal, a run with an outcome is never run again, and
+  a run a restart cut is INTERRUPTED (its cap charged) and run again as a new attempt, at most twice.
+- **The ledger is hard.** A run never starts when what its phase's budget has left is below its cap; the phases' budgets
+  are the pre-registration's, and nothing raises them.
+- **A record is one evaluation.** Name only the campaigns of the release candidate's commit (the held-out `final` and
+  `mini`, and `memory` if you want its track beside them) -- never a `dev` pass, which ran another commit. `record`
+  refuses a campaign made under another pre-registration, an arm at two commits and a run in two campaigns.
+- **Never commit a change that ships while an evaluation of that tree runs**: `--evidence` compares the content of
+  `git archive <the commit the campaign froze>` with `git archive HEAD`. A commit that touches only export-ignored paths
+  (the exported results, the record) keeps the evidence; any other voids it, and the held-out campaigns run again at
+  the new commit. Park a fix on a side branch.
+- **Read a run's room before calling a miss the model's.** `$ORBIT_EVAL_HOME/campaigns/<id>/runs/<key>/a<n>/`: the
+  stream the host wrote, `summary.json` (cost, turns, what it said, the plugin's commands it ran), `outcome.json`, the
+  patch, the grader's report, the entry and egress records. An `INFRA_ERROR` is the environment's, excluded from every
+  rate and always listed; a cleanup never replaces the error that stopped a run.
+- **Fix an Orbit defect a run exposes by the most general fix** (the owner's rule, with the model and effort the owner
+  chose for fixes): a regression test that fails before the fix, the full suite, the strict Five Lines lint. Fix the
+  CLASS of defect -- name the principle it broke, derive the fix from the ONE place that already decides it (no second
+  table, no task, layer, product or shape special-cased), and hold it with a test across every existing design,
+  control and fixture. Never fit a held-out task: a dev pass informs development, the held-out set only measures.
+  Never loosen a gate, a verdict rule or a pre-registration to get a PASS.
+- **Run `node --test` alone.** Two suite runs at once interfere. Look first (`pgrep -af 'node --test'`), let a run end or
+  stop it, then run one suite into a log of its own. One backlog item to a worktree and a branch, merged one at a time,
+  each merge followed by a full suite run alone.
+- **Publish only on** `ship.mjs --evidence` PUBLISHABLE on the pushed head (it runs the fast tier itself): merge the
+  release PR, tag `v<version>` on the merge commit -- whose content must still be the evaluated one. The release notes
+  quote the comparison table it prints; IMPROVED, NO_DIFFERENCE and INCONCLUSIVE are said as what they are, and a
+  one-task difference is never called a gain.

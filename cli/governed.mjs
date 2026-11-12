@@ -21,10 +21,15 @@
 // and a read that fails is null -- a hook that cannot tell says nothing. Nothing here writes.
 //
 // 0.6.0 (P3) `owed()`: what this session's edits still owe a check -- the working set's `unverified.changed` (edits
-// since the last check that PASSED), the components of runtime understanding's graph that own them (the composition
+// since the last test that PASSED), the components of runtime understanding's graph that own them (the composition
 // root hands their list in as `components`, read with `look`, writing nothing) and, through the verification plan
 // (src/orchestration/obligations.mjs `planOf`, as cli/context-grounding.mjs asks it), a declared SAFE verifying check
-// of one of them: { changed, paths, components, check } -- `check` with its argv as the checkout declared it, or null.
+// of one of them: { changed, paths, components, check, declaredPassed, tests } -- `check` with its argv as the checkout
+// declared it, or null; `declaredPassed` when one of those declared verifying checks passed after the last edit (its
+// command's class and executable among the working set's `unverified.ran`: a lint or a build alone never clears, but a
+// component's own declared verifying check does); and, when `check` is null, `tests`: the tracked test files the relation pack links to the edited files (0.6.0, P3b:
+// the relation adapters' `testsOf`, bound as the context package binds them, cli/relations-port.mjs), at most
+// TESTS_NAMED -- named, never a command: nothing declared how this checkout runs them.
 import { join } from "node:path";
 import { parseRunRef } from "../src/attribution.mjs";
 import { readyOf, stateOf } from "../src/automation/plan.mjs";
@@ -45,6 +50,7 @@ import { modelOf as taskModelOf } from "../src/task/model.mjs";
 import { createTasks, journalLine } from "../src/task/store.mjs";
 import { taskView } from "../src/task/views.mjs";
 import { createWorks } from "../src/work/store.mjs";
+import { commandOf } from "../src/engineering/working-set/collect.mjs";
 import { fold } from "../src/engineering/working-set/fold.mjs";
 import { createWorkingSet } from "../src/engineering/working-set/store.mjs";
 import { checksOf } from "../src/orchestration/checks.mjs";
@@ -57,6 +63,7 @@ import { workingSetDir } from "../src/project/runtime.mjs";
 import { componentGraphOf } from "../src/runtime/graph.mjs";
 import { openWorkOf } from "../src/work/track/open.mjs";
 import { missionDirOf, roomsOf } from "../satellite/src/store/rooms.mjs";
+import { sourceOf, testsLinked, treeIn } from "./relations-port.mjs";
 import { journalLine as missionLine } from "../satellite/src/store/line.mjs";
 import { modelOf as missionModelOf } from "../satellite/src/mission/fold.mjs";
 import { lifecycleOf as missionLifecycleOf } from "../satellite/src/mission/state.mjs";
@@ -192,11 +199,12 @@ function missionOwner(c, ref) {
 
 // The session's working-set lines, where the working-set subscriber writes them: under the project the host names
 // (CLAUDE_PROJECT_DIR), else the one the hook ran in -- and none while a person switched the working set off.
-function sessionLines(c, opts) {
+function sessionLines(c, opts, project) {
   if (!switchOf(opts.env ?? {}, "WORKING_SET", "working_set", true)) return [];
-  const project = [opts.env?.CLAUDE_PROJECT_DIR, opts.cwd].filter(Boolean).map((dir) => quietly(() => loadProject(opts.env, dir))).find(Boolean);
-  return project ? createWorkingSet(workingSetDir(project), c.io).read(opts.session) : [];
+  return project() ? createWorkingSet(workingSetDir(project()), c.io).read(opts.session) : [];
 }
+
+const projectOf = (opts) => [opts.env?.CLAUDE_PROJECT_DIR, opts.cwd].filter(Boolean).map((dir) => quietly(() => loadProject(opts.env, dir))).find(Boolean) ?? null;
 
 // The verification plan's look with nothing done yet: the paths are its scope (cli/context-grounding.mjs reads it so).
 const lookAt = (paths, components) => ({ view: { changes: { paths: [] }, actions: [], receipts: [] }, events: [], checks: checksOf(components), planned: () => paths, graph: () => componentGraphOf(components) });
@@ -207,16 +215,39 @@ const RANK = { MODIFIED: 0, SHARED: 0, DEPENDENT: 1 };
 
 const rankOf = (plan, key) => RANK[plan.impact.components.find((c) => c.key === key)?.reason] ?? null;
 
-const chosenOf = (plan) => plan.required.filter((c) => VERIFYING.includes(c.purpose) && rankOf(plan, c.component) !== null).sort((a, b) => rankOf(plan, a.component) - rankOf(plan, b.component))[0] ?? null;
+const verifyingOf = (plan) => plan.required.filter((c) => VERIFYING.includes(c.purpose) && rankOf(plan, c.component) !== null).sort((a, b) => rankOf(plan, a.component) - rankOf(plan, b.component));
 
-function owedFor(changed, components) {
+const declaredOf = (components, c) => checksOf(components).find((x) => x.id === c.id && x.component === c.component) ?? null;
+
+// Whether a DECLARED verifying check passed after the last edit: its own command, as the working set classes one (a
+// class and a bare executable, collect.mjs `commandOf` -- the working set keeps nothing more), is among what passed.
+const ranAs = (check) => commandOf({ command: check.argv.join(" "), ok: true });
+
+const passedIn = (ran, check) => ((cmd) => ran.some((r) => r.class === cmd.class && r.exe === cmd.exe))(ranAs(check));
+
+function checkedFor(changed, components, ran) {
   const plan = verificationPlanOf(lookAt(changed, components));
-  const chosen = chosenOf(plan);
+  const declared = verifyingOf(plan).map((c) => declaredOf(components, c)).filter(Boolean);
   const owning = plan.impact.components.filter((c) => DIRECT.includes(c.reason)).map((c) => c.key);
-  return { changed, paths: changed.filter((p) => !plan.impact.unowned.includes(p)), components: owning, check: chosen ? checksOf(components).find((x) => x.id === chosen.id && x.component === chosen.component) ?? null : null };
+  return { changed, paths: changed.filter((p) => !plan.impact.unowned.includes(p)), components: owning, check: declared[0] ?? null, declaredPassed: declared.some((c) => passedIn(ran, c)) };
 }
 
-const owedOf = (c, opts) => ((changed) => (changed.length ? owedFor(changed, quietly(() => opts.components?.()) ?? []) : { changed, paths: [], components: [], check: null }))(fold(sessionLines(c, opts)).unverified.changed);
+// At most this many test files are named for one turn's edits.
+export const TESTS_NAMED = 5;
+
+// The tracked tests the relation pack links to the edited files (cli/relations-port.mjs, the binding the context
+// package's relations use) -- asked only when no component declares a check; a tree that cannot be listed names none.
+const testsFor = (project, changed) => (project ? quietly(() => ((source) => testsLinked(source, treeIn(source), changed, TESTS_NAMED))(sourceOf(project))) ?? [] : []);
+
+const owedFor = (u, components, project) => ((o) => ({ ...o, tests: o.check ? [] : testsFor(project(), u.changed) }))(checkedFor(u.changed, components, u.ran ?? []));
+
+const NOTHING_OWED = Object.freeze({ changed: [], paths: [], components: [], check: null, declaredPassed: false, tests: [] });
+
+function owedOf(c, opts) {
+  const project = once(() => projectOf(opts));
+  const unverified = fold(sessionLines(c, opts, project)).unverified;
+  return unverified.changed.length ? owedFor(unverified, quietly(() => opts.components?.()) ?? [], project) : NOTHING_OWED;
+}
 
 // ---- the reader ---------------------------------------------------------------------------------------------------
 

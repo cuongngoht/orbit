@@ -337,6 +337,9 @@ test("turn.held keeps which workflow, which ready steps and which hold of the pr
   const owed = eventOf("turn.held", { kind: "unverified", check: "api:test", count: 1, reason: "Orbit holds this turn: SENTINEL", argv: ["npm", "test"], paths: ["src/a.mjs"] }, { id: "e-o", at: "2026-11-05T00:00:00.000Z" });
   assert.deepEqual(owed.data, { kind: "unverified", check: "api:test", count: 1 }, "0.6.0: what it held for and the check's id -- never the command, a path or the reason");
   assert.deepEqual(turnsOf([ev("prompt.submitted", { routing: "off" }), ev("turn.held", { kind: "unverified", check: "api:test", count: 1 })])[0].steps.map((s) => s.label), ["held for an unverified edit (api:test)"]);
+  const linked = eventOf("turn.held", { kind: "unverified", tests: 2, count: 1, paths: ["tests/test_a.py"], files: ["tests/test_a.py"] }, { id: "e-t", at: "2026-11-05T00:00:00.000Z" });
+  assert.deepEqual(linked.data, { kind: "unverified", tests: 2, count: 1 }, "0.6.0 (P3b): how many linked test files it named -- never their paths");
+  assert.deepEqual(turnsOf([ev("prompt.submitted", { routing: "off" }), ev("turn.held", linked.data)])[0].steps.map((s) => s.label), ["held for an unverified edit (2 linked test files)"]);
 });
 
 test("an OPERATION is kept only where the usage documents it after that subcommand: `goal step`, never an argument or a description", () => {

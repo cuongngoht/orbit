@@ -11,9 +11,9 @@
 // so the same proposal sent twice is the same design. It runs nothing, and a generated test stays
 // a draft until a person promotes it. Beside a frozen version it says what its design names that an
 // earlier version of the investigation named too (`shared`), and what its design rests on that it
-// never causes (`advice`, src/qa/backend/contradictions.mjs) -- advice, never a record or a refusal. What an earlier
-// version's own SATISFIED run proves it left is handed to the generator (`investigation`, recordOf below), so a design
-// held to it is refused before a draft exists.
+// never causes (`advice`, src/qa/backend/contradictions.mjs) -- advice, never a record or a refusal. What every earlier
+// version that ran did, and the word it ran to, is handed to the generator (`investigation`, recordOf below), so a design
+// held to what it proves is refused before a draft exists.
 import { caseDigest } from "../dsl/digest.mjs";
 import { Refused } from "../errors.mjs";
 import { canonicalJson, sha } from "../hash.mjs";
@@ -32,22 +32,27 @@ export function generated(w, a) {
   return withJournal(w, () => (out.ok ? keptVersion(w, g, obligation, { ...out, stated: statedFor(out.design, obligation.shape, cx.expectations) }) : keptFailure(w, obligation, a, out)));
 }
 
-// What this investigation's own record proves an earlier test left in its one sandbox, for the contradiction stage
-// (src/qa/backend/contradictions.mjs SETTLED_BEFORE): the shapes its accepted obligations hold the system to, and each
-// version that ran and was SATISFIED -- every verdict it made held (verification.mjs MET) -- with its design read back
-// and the context its own obligation reads a design in. A version that never ran, or ran to any other word, proves
-// nothing of what it left; one whose design cannot be read back shows nothing.
+// What this investigation's own record shows earlier tests did in its one sandbox, for the contradiction stage
+// (src/qa/backend/contradictions.mjs): the shapes its accepted obligations hold the system to, and each version that RAN
+// -- started at least once, whatever it came to -- with the word it ran to (SATISFIED where any run of it was: every
+// verdict it made held, verification.mjs MET; else its latest evaluation's word, or null), its design read back and the
+// context its own obligation reads a design in. What a version caused is its design's, whatever its verdict: a clock it
+// moved stays moved. What it PROVED it left is only a SATISFIED one's (SETTLED_BEFORE reads those alone). A version that
+// never ran caused nothing; one whose design cannot be read back shows nothing.
 const HELD = "SATISFIED";
 
-const recordOf = (w, g) => ((model) => ({ shapes: model.obligations.filter((o) => o.authority === "accepted").map((o) => o.shape), earlier: model.versions.filter((v) => heldOnce(model, v)).flatMap((v) => provenOf(w, g, model, v)) }))(current(w));
+const recordOf = (w, g) => ((model) => ({ shapes: model.obligations.filter((o) => o.authority === "accepted").map((o) => o.shape), earlier: model.versions.filter((v) => ranOnce(model, v)).flatMap((v) => ranOf(w, g, model, v)) }))(current(w));
 
-const heldOnce = (model, v) => model.starts.some((s) => s.version === v.version && model.evaluations.some((e) => e.execution === s.execution && e.outcome === HELD));
+const ranOnce = (model, v) => model.starts.some((s) => s.version === v.version);
 
-function provenOf(w, g, model, v) {
+const evaluationsOf = (model, v) => model.evaluations.filter((e) => model.starts.some((s) => s.version === v.version && s.execution === e.execution));
+const outcomeOf = (model, v) => ((es) => (es.some((e) => e.outcome === HELD) ? HELD : es.at(-1)?.outcome ?? null))(evaluationsOf(model, v));
+
+function ranOf(w, g, model, v) {
   const d = designedOf(model, v.design);
   const obligation = d ? model.obligations.findLast((o) => o.obligation === d.obligation) : null;
   const design = obligation ? keptDesign(w, d) : null;
-  return design ? [{ version: v.version, obligation: obligation.obligation, shape: obligation.shape ?? null, design, cx: g.contextFor(obligation, { design }) }] : [];
+  return design ? [{ version: v.version, obligation: obligation.obligation, shape: obligation.shape ?? null, design, cx: g.contextFor(obligation, { design }), outcome: outcomeOf(model, v) }] : [];
 }
 
 // The obligation as the journal holds it now, while its budget lasts.

@@ -2,6 +2,9 @@
 
 ## Status
 
+Superseded by ADR 0057 (0.6.0): the in-repo benchmark and the ship it qualified a release with are removed; what
+follows is kept as the record of what was decided then.
+
 Accepted (release tooling; no engine contract changes, one additive CLI flag: `cli/task.mjs create --parent`). Builds on
 ADR 0046 (the Docker benchmark), ADR 0047 (its QA cases), ADR 0048 (repair controls, failure classes, engineering
 cases), ADR 0042 (protected boundaries) and ADR 0016 (one viewer, the journals). Changes what `ship.mjs` requires: native

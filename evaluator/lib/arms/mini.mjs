@@ -10,7 +10,8 @@
 // mount) and adds ONE paragraph to the system template: the plugin's skills as a host would list them (each one's name
 // and description, read from its SKILL.md) and how to use one. Listed, never ordered. mini-SWE-agent has no hooks and
 // no Skill tool, so this arm measures what an agent understands and does with the plugin through a shell -- never what
-// the plugin's hooks add.
+// the plugin's hooks add. Seated (`seat: true`), the plugin's adoption command runs once in the container before the
+// hold, as for a seated Claude Code arm (lib/arms/plugin.mjs).
 //
 // The credential: ORBIT_EVAL_ANTHROPIC_API_KEY, by name; the controller maps it to ANTHROPIC_API_KEY in the environment
 // of the one driver process and nowhere else. A `deterministic` arm (self-checks) runs mini-SWE-agent's own
@@ -23,7 +24,7 @@ import { join } from "node:path";
 import { cleanEnv, run } from "../core/proc.mjs";
 import { ensureDir, EVALUATOR_DIR, writeText } from "../core/util.mjs";
 import { MINI_PYTHON, MINI_SWE_AGENT_VERSION, TOOLS_MOUNT } from "../core/versions.mjs";
-import { PLUGIN_DIR_IN_CONTAINER, preparedPlugin, resolvedPlugin } from "./plugin.mjs";
+import { PLUGIN_DIR_IN_CONTAINER, preparedPlugin, resolvedPlugin, seatOf, seatProblems } from "./plugin.mjs";
 
 export const MINI_CREDENTIAL = "ORBIT_EVAL_ANTHROPIC_API_KEY";
 
@@ -104,7 +105,7 @@ const pluginMeta = (pluginDir) => ((f) => (existsSync(f) ? ((j) => [{ name: j.na
 
 // ---- the arms -------------------------------------------------------------------------------------------------------------
 
-const FIELDS = ["kind", "rev", "deterministic"];
+const FIELDS = ["kind", "rev", "deterministic", "seat"];
 
 // A deterministic arm's steps: mini-SWE-agent's own test model applying a control patch of the task and submitting; with
 // a plugin, it first reads a skill and runs one of the plugin's commands, so both are proven reachable through the shell.
@@ -127,7 +128,8 @@ function base(id, def, kind, withPlugin) {
     containerCredentialNames: [],
     control: {},
     pluginDir: withPlugin ? PLUGIN_DIR_IN_CONTAINER : null,
-    validate: () => [...Object.keys(def).filter((k) => !FIELDS.includes(k)).map((k) => `${k} is not a field of a ${kind} arm`), ...(scripted && !/^[a-z]+$/.test(def.deterministic) ? ["deterministic names the task's control patch to apply (gold)"] : []), ...(withPlugin ? (typeof def.rev === "string" && def.rev ? [] : ["rev (a tag or commit of the plugin repository) is required"]) : def.rev ? ["a plain arm takes no rev"] : [])],
+    seat: withPlugin ? seatOf(def) : null,
+    validate: () => [...seatProblems(def, withPlugin), ...Object.keys(def).filter((k) => !FIELDS.includes(k)).map((k) => `${k} is not a field of a ${kind} arm`), ...(scripted && !/^[a-z]+$/.test(def.deterministic) ? ["deterministic names the task's control patch to apply (gold)"] : []), ...(withPlugin ? (typeof def.rev === "string" && def.rev ? [] : ["rev (a tag or commit of the plugin repository) is required"]) : def.rev ? ["a plain arm takes no rev"] : [])],
     freeze: (ctx) => (withPlugin ? resolvedPlugin(ctx.pluginRepo, def.rev) : {}),
     files: (ctx) => [{ kind: "agent", from: join(EVALUATOR_DIR, "lib", "container", "hold.mjs"), name: "hold.mjs" }, ...(scripted ? [{ kind: "agent", bytes: ctx.task.controlPatch(def.deterministic), name: "control.patch" }] : []), ...(withPlugin ? ((p) => [{ kind: "plugin", from: p.dir, to: "/opt", digest: p.digest, files: p.files }])(preparedPlugin(ctx.home, ctx.pluginRepo, ctx.frozen.commit)) : [])],
     argv: () => [`${TOOLS_MOUNT}/bin/node`, "/opt/evalrun/agent/hold.mjs"],

@@ -1,0 +1,298 @@
+{
+  "campaign": {
+    "id": "selfcheck-20261112114705",
+    "model": null,
+    "effort": null,
+    "limits": {
+      "usd": 0,
+      "turns": 10,
+      "minutes": 10,
+      "cpus": 2,
+      "memoryMb": 2048,
+      "pids": 512
+    },
+    "budgetUsd": 0,
+    "claudeCode": "2.1.322",
+    "evaluator": {
+      "commit": "f9634ca3afe710aafa53939afc94a989c83917b7",
+      "dirty": false
+    },
+    "arms": {
+      "gold-done": {
+        "kind": "scripted",
+        "behaviour": "patch",
+        "patch": "gold",
+        "status": "DONE",
+        "frozen": {}
+      },
+      "seat-gold-done": {
+        "kind": "scripted",
+        "behaviour": "patch",
+        "patch": "gold",
+        "status": "DONE",
+        "seat": "plugin",
+        "rev": "HEAD",
+        "frozen": {
+          "rev": "HEAD",
+          "commit": "f9634ca3afe710aafa53939afc94a989c83917b7"
+        }
+      },
+      "seat-writes": {
+        "kind": "scripted",
+        "behaviour": "patch",
+        "patch": "gold",
+        "status": "DONE",
+        "seat": "writes-checkout",
+        "frozen": {}
+      }
+    },
+    "tasks": {
+      "pack:orders-e2e-006": {
+        "digest": "b5f7d882a0f3bea582928c59be51dd541b7089a5e4f727324d780e9a444c6454",
+        "image": "node:22"
+      }
+    },
+    "frozenAt": "2026-11-12T11:47:05.545Z"
+  },
+  "ledger": {
+    "budgetUsd": 0,
+    "chargedUsd": 0,
+    "reservedUsd": 0,
+    "remainingUsd": 0
+  },
+  "finished": true,
+  "arms": [
+    {
+      "arm": "gold-done",
+      "runs": 1,
+      "ended": 1,
+      "gradable": 1,
+      "resolved": 1,
+      "rate": 1,
+      "words": {
+        "RESOLVED": 1,
+        "UNRESOLVED": 0,
+        "REGRESSED": 0,
+        "EMPTY_PATCH": 0,
+        "FALSE_DONE": 0,
+        "TIMEOUT": 0,
+        "BUDGET": 0,
+        "INFRA_ERROR": 0,
+        "UNGRADABLE": 0
+      },
+      "infraErrors": [],
+      "notRun": [],
+      "medianCostUsd": 0,
+      "medianMinutes": 0.00735,
+      "chargedUsd": 0,
+      "interventions": 0,
+      "usage": {
+        "skillCalls": 0,
+        "agentCalls": 0,
+        "pluginCommands": 0,
+        "runsWithPluginLoaded": 0
+      }
+    },
+    {
+      "arm": "seat-gold-done",
+      "runs": 1,
+      "ended": 1,
+      "gradable": 1,
+      "resolved": 1,
+      "rate": 1,
+      "words": {
+        "RESOLVED": 1,
+        "UNRESOLVED": 0,
+        "REGRESSED": 0,
+        "EMPTY_PATCH": 0,
+        "FALSE_DONE": 0,
+        "TIMEOUT": 0,
+        "BUDGET": 0,
+        "INFRA_ERROR": 0,
+        "UNGRADABLE": 0
+      },
+      "infraErrors": [],
+      "notRun": [],
+      "medianCostUsd": 0,
+      "medianMinutes": 0.01105,
+      "chargedUsd": 0,
+      "interventions": 0,
+      "usage": {
+        "skillCalls": 0,
+        "agentCalls": 0,
+        "pluginCommands": 0,
+        "runsWithPluginLoaded": 0
+      }
+    },
+    {
+      "arm": "seat-writes",
+      "runs": 1,
+      "ended": 1,
+      "gradable": 0,
+      "resolved": 0,
+      "rate": null,
+      "words": {
+        "RESOLVED": 0,
+        "UNRESOLVED": 0,
+        "REGRESSED": 0,
+        "EMPTY_PATCH": 0,
+        "FALSE_DONE": 0,
+        "TIMEOUT": 0,
+        "BUDGET": 0,
+        "INFRA_ERROR": 1,
+        "UNGRADABLE": 0
+      },
+      "infraErrors": [
+        {
+          "key": "seat-writes__pack_orders-e2e-006__t1",
+          "why": "SEAT: the seat did not hold before the agent started: the seat wrote the checkout (seat-wrote-this.txt): a seat writes only the store"
+        }
+      ],
+      "notRun": [],
+      "medianCostUsd": null,
+      "medianMinutes": null,
+      "chargedUsd": 0,
+      "interventions": 0,
+      "usage": {
+        "skillCalls": 0,
+        "agentCalls": 0,
+        "pluginCommands": 0,
+        "runsWithPluginLoaded": 0
+      }
+    }
+  ],
+  "pairwise": [
+    {
+      "task": "pack:orders-e2e-006",
+      "arms": {
+        "gold-done": [
+          "RESOLVED"
+        ],
+        "seat-gold-done": [
+          "RESOLVED"
+        ],
+        "seat-writes": [
+          "INFRA_ERROR"
+        ]
+      }
+    }
+  ],
+  "runs": [
+    {
+      "arm": "gold-done",
+      "task": "pack:orders-e2e-006",
+      "trial": 1,
+      "key": "gold-done__pack_orders-e2e-006__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0,
+      "chargedUsd": 0,
+      "minutes": 0.00735,
+      "turns": 1,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": null,
+        "cacheWrite": null
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 0,
+        "byName": {},
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "patchBytes": 3369,
+      "touchedTests": [
+        "test/order-note.test.mjs"
+      ],
+      "infra": null
+    },
+    {
+      "arm": "seat-gold-done",
+      "task": "pack:orders-e2e-006",
+      "trial": 1,
+      "key": "seat-gold-done__pack_orders-e2e-006__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0,
+      "chargedUsd": 0,
+      "minutes": 0.01105,
+      "turns": 1,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": null,
+        "cacheWrite": null
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 0,
+        "byName": {},
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "patchBytes": 3369,
+      "touchedTests": [
+        "test/order-note.test.mjs"
+      ],
+      "infra": null
+    },
+    {
+      "arm": "seat-writes",
+      "task": "pack:orders-e2e-006",
+      "trial": 1,
+      "key": "seat-writes__pack_orders-e2e-006__t1",
+      "word": "INFRA_ERROR",
+      "why": "SEAT: the seat did not hold before the agent started: the seat wrote the checkout (seat-wrote-this.txt): a seat writes only the store",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": null,
+      "chargedUsd": 0,
+      "minutes": 0.007633333333333333,
+      "turns": null,
+      "tokens": null,
+      "denials": null,
+      "asked": null,
+      "saidDone": false,
+      "status": null,
+      "tools": {
+        "calls": 0,
+        "byName": {},
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": null,
+      "patchBytes": 257,
+      "touchedTests": [],
+      "infra": {
+        "code": "SEAT",
+        "says": "the seat did not hold before the agent started: the seat wrote the checkout (seat-wrote-this.txt): a seat writes only the store"
+      }
+    }
+  ]
+}

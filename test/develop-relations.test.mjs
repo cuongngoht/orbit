@@ -10,7 +10,7 @@ import { adapterFindings } from "../src/context/relations.mjs";
 import { treeOf } from "../src/context/refs.mjs";
 import { RELATION_ADAPTERS } from "../skills/orbit-develop/relations/index.mjs";
 import { JAVASCRIPT } from "../skills/orbit-develop/relations/javascript.mjs";
-import { PYTHON } from "../skills/orbit-develop/relations/python.mjs";
+import { DEFAULT_FILES, MAX_CONFIG_BYTES, MAX_PATTERNS, PYTHON, RUNNER_CONFIGS, declaredTests } from "../skills/orbit-develop/relations/python.mjs";
 import { FIXTURE, loginApp } from "./fakes/relations.mjs";
 
 test("every shipped adapter holds the contract, and each detects its own files and no other's", () => {
@@ -99,4 +99,45 @@ test("a Python test goes with its module by name, and its importers are found by
 test("the fixture is the two-sided project the walk is told about", () => {
   assert.match(readFileSync(new URL("web/src/api/sessionClient.js", FIXTURE), "utf8"), /"\/api\/session"/);
   assert.match(readFileSync(new URL("server/app/routes/session_routes.py", FIXTURE), "utf8"), /"\/api\/session"/);
+});
+
+// (0.6.0, P3b) Which tests go with a Python module is what the checkout DECLARES for its test runner, and the runner's
+// default only when it declares nothing -- read through the port the walk hands in, never a file of its own.
+const PYLINT = ["pylint/checkers/variables.py", "tests/checkers/unittest_variables.py", "tests/checkers/test_variables.py", "tests/variables_test.py", "doc/unittest_variables.py"];
+const declaring = (files, configs) => ({ tree: treeOf([...files, ...Object.keys(configs)]), read: (path) => configs[path] ?? null });
+
+test("a Python test goes with its module by the patterns the checkout declares: setup.cfg [tool:pytest] python_files = *test_*.py links unittest_variables.py", () => {
+  const { tree, read } = declaring(PYLINT, { "setup.cfg": "[metadata]\nname = pylint\n\n[tool:pytest]\ntestpaths = tests\npython_files = *test_*.py\naddopts = --strict-markers\n\n[flake8]\nmax-line-length = 100\n" });
+  assert.deepEqual(PYTHON.testsOf("pylint/checkers/variables.py", tree, read), ["tests/checkers/unittest_variables.py", "tests/checkers/test_variables.py"], "the declared pattern, under the declared testpaths: doc/ is not where tests live, and *_test.py is not declared");
+  assert.deepEqual(PYTHON.testsOf("pylint/checkers/variables.py", tree), ["tests/checkers/test_variables.py", "tests/variables_test.py"], "no read port: nothing declared is known, so the default");
+});
+
+test("no runner config: today's convention, test_name.py and name_test.py -- and nothing is read that the tree does not hold", () => {
+  const asked = [];
+  const tree = treeOf(PYLINT);
+  assert.deepEqual(PYTHON.testsOf("pylint/checkers/variables.py", tree, (p) => (asked.push(p), null)), ["tests/checkers/test_variables.py", "tests/variables_test.py"]);
+  assert.deepEqual(asked, [], "no config file is tracked, so none is read");
+  assert.deepEqual(DEFAULT_FILES, ["test_*.py", "*_test.py"]);
+});
+
+test("a config naming another pattern links only that, from whichever file pytest would read first", () => {
+  const files = ["app/variables.py", "t/check_variables.py", "t/test_variables.py", "t/variables_spec.py"];
+  const toml = "[project]\nname = \"app\"\n[tool.pytest.ini_options]\npython_files = [\n  \"check_*.py\",\n  \"*_spec.py\",\n]\n[tool.black]\nline-length = 100\n";
+  const pyproject = declaring(files, { "pyproject.toml": toml });
+  assert.deepEqual(PYTHON.testsOf("app/variables.py", pyproject.tree, pyproject.read), ["t/check_variables.py", "t/variables_spec.py"]);
+  const ini = declaring(files, { "pytest.ini": "[pytest]\npython_files =\n    check_*.py\n    # not a pattern\n", "setup.cfg": "[tool:pytest]\npython_files = *_spec.py\n" });
+  assert.deepEqual(PYTHON.testsOf("app/variables.py", ini.tree, ini.read), ["t/check_variables.py"], "pytest.ini wins, and a comment line is no pattern");
+  const empty = declaring(files, { "pytest.ini": "", "setup.cfg": "[tool:pytest]\npython_files = *_spec.py\n" });
+  assert.deepEqual(PYTHON.testsOf("app/variables.py", empty.tree, empty.read), ["t/test_variables.py"], "an empty pytest.ini is pytest's config even without its section: the default");
+  const tox = declaring(files, { "tox.ini": "[tox]\nenvlist = py3\n", "setup.cfg": "[tool:pytest]\npython_files = check_*.py\n" });
+  assert.deepEqual(PYTHON.testsOf("app/variables.py", tox.tree, tox.read), ["t/check_variables.py"], "a tox.ini without [pytest] is not pytest's config");
+  const literal = declaring(files, { "setup.cfg": "[tool:pytest]\npython_files = tests.py\n" });
+  assert.deepEqual(PYTHON.testsOf("app/variables.py", literal.tree, literal.read), [], "a pattern with no * names no file for a source: nothing is guessed");
+});
+
+test("reading a runner's config is bounded: MAX_CONFIG_BYTES of it, MAX_PATTERNS patterns", () => {
+  const many = Array.from({ length: MAX_PATTERNS + 5 }, (_, i) => `p${i}_*.py`).join(" ");
+  assert.equal(declaredTests(treeOf(["setup.cfg"]), () => `[tool:pytest]\npython_files = ${many}\n`).files.length, MAX_PATTERNS);
+  assert.equal(declaredTests(treeOf(["setup.cfg"]), () => `${"#".repeat(MAX_CONFIG_BYTES)}\n[tool:pytest]\npython_files = x_*.py\n`), null, "a section past the bound is not read");
+  assert.deepEqual(RUNNER_CONFIGS.map((c) => c.file), ["pytest.ini", "pyproject.toml", "tox.ini", "setup.cfg"]);
 });

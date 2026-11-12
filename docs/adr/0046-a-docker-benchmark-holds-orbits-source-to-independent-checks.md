@@ -2,6 +2,9 @@
 
 ## Status
 
+Superseded by ADR 0057 (0.6.0): the in-repo benchmark and the ship it qualified a release with are removed; what
+follows is kept as the record of what was decided then.
+
 Accepted (development tooling; no engine contract changes). Builds on ADR 0017 (a coordinator dispatches to owners and
 proves nothing itself), ADR 0038 (an active generated test runs only where isolation is proven), ADR 0042 (autonomous by
 default, protected boundaries), ADR 0044 (attribution only by evidence) and ADR 0045 (self-improvement on independent

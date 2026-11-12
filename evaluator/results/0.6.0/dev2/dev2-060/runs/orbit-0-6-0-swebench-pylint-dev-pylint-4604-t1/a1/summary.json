@@ -1,0 +1,90 @@
+{
+  "kind": "ended",
+  "run": "orbit-0.6.0__swebench_pylint-dev__pylint-4604__t1",
+  "attempt": 1,
+  "at": "2026-11-12T11:25:14.750Z",
+  "chargedUsd": 0.0408001,
+  "infra": null,
+  "timedOut": false,
+  "killedByControl": false,
+  "exit": 0,
+  "oomKilled": false,
+  "wallMs": 32243,
+  "streamBytes": 146150,
+  "streamCut": false,
+  "summary": {
+    "started": true,
+    "model": "claude-sonnet-5-5",
+    "version": "2.1.322",
+    "plugins": [
+      "orbit@0.6.0"
+    ],
+    "hooks": {
+      "ran": 3,
+      "failed": 0
+    },
+    "skillsListed": 42,
+    "result": true,
+    "costUsd": 0.0408001,
+    "tokens": {
+      "input": 14,
+      "output": 1221,
+      "cacheRead": 171141,
+      "cacheWrite": 2862
+    },
+    "turns": 8,
+    "durationMs": 30811,
+    "denials": 0,
+    "subtype": "success",
+    "isError": false,
+    "stoppedOn": null,
+    "apiError": null,
+    "status": "DONE",
+    "statusWhy": null,
+    "asked": false,
+    "tools": {
+      "calls": 7,
+      "byName": {
+        "Grep": 1,
+        "Read": 1,
+        "Edit": 1,
+        "Bash": 4
+      },
+      "skills": {},
+      "agents": {}
+    },
+    "orbit": {
+      "commands": 0,
+      "byCli": {}
+    }
+  },
+  "patch": {
+    "bytes": 736,
+    "digest": "7828582d131f5fafc262e0e00bbe3348539c684e9dca647ca3a7b7a10e2a4243",
+    "paths": [
+      "pylint/checkers/variables.py"
+    ]
+  },
+  "plugin": {
+    "digest": "4620a1bc97618f6998e74130d4ab481aeaac7796e8a39360c27b0f7cd105654c",
+    "files": 2727
+  },
+  "images": {
+    "task": "sha256:df6eb48f445388d0e228108c635625a0cc9f0cf5ed87303e89f75ab6fc3c2b39",
+    "taskRef": "swebench/sweb.eval.x86_64.pylint-dev_1776_pylint-4604:latest",
+    "pulled": true,
+    "egress": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb"
+  },
+  "startCommit": "0f266873c24f8f7270d257c8c8a8676930be0c72",
+  "entryPhase": "ended",
+  "egress": {
+    "direct": "ENETUNREACH",
+    "outsideName": "EAI_AGAIN",
+    "api": {
+      "connect": 200,
+      "http": 404
+    },
+    "otherHost": 403,
+    "holds": true
+  }
+}

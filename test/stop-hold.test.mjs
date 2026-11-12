@@ -13,7 +13,7 @@ import { test } from "node:test";
 import { AUTOMATION_SCHEMA } from "../src/automation/settings.mjs";
 import { dispatch } from "../src/lifecycle/dispatch.mjs";
 import { GUARDS, HOLD, HOLD_ROWS, MAX_HOLDS, NOT_RUNNING, PAIRED_MS, WORKFLOW_COMMANDS, hold, holdRowOf, needsOwners } from "../src/lifecycle/subscribers/hold.mjs";
-import { OWED, OWED_ROWS, QUIET, needsOwners as owedNeedsOwners, owed, owedRowOf, uncheckedEdit } from "../src/lifecycle/subscribers/owed.mjs";
+import { NAMED, OWED, OWED_ROWS, QUIET, namedOf, needsOwners as owedNeedsOwners, owed, owedRowOf, uncheckedEdit } from "../src/lifecycle/subscribers/owed.mjs";
 import { hostSession } from "../src/memory/session.mjs";
 import { stateRooms, writeState } from "../src/store/control.mjs";
 import { realIo } from "../src/store/io.mjs";
@@ -155,7 +155,7 @@ test("an edit no check passed after is held ONCE, naming the component's declare
   const w = owedWorld();
   const answer = owed.run(STOP, w);
   assert.equal(answer.decision, "block");
-  assert.match(answer.reason, /^Orbit holds this turn \(1 of 2 for this prompt\): api\/src\/refund\.mjs changed in component node:api and no check passed after the edit\./);
+  assert.match(answer.reason, /^Orbit holds this turn \(1 of 2 for this prompt\): api\/src\/refund\.mjs changed in component node:api and no test or declared verifying check passed after the edit\./);
   assert.match(answer.reason, /Run its declared test check rt-command-b464ab6e \(npm run test, in api\) to verify it, or say in one sentence why you stop here\./);
   assert.deepEqual(w.wrote, [{ kind: "unverified", check: "rt-command-b464ab6e", count: 1 }], "what it writes is turn.held, and only that");
   const again = owedWorld({ turn: turnOf([EDIT(), ev("turn.held", { kind: "unverified", check: CHECK.id, count: 1 }), EDIT()]) });
@@ -168,7 +168,7 @@ test("the guards are hold's own rows, shared and not copied, and the owed rows r
   assert.deepEqual(OWED.slice(0, GUARDS.length), GUARDS, "the same row objects");
   assert.deepEqual(GUARDS.map((r) => r.row), ["host-cannot-hold", "held-already", "uncounted", "spent", "halted"]);
   assert.deepEqual(HOLD.slice(0, GUARDS.length), GUARDS);
-  assert.deepEqual(OWED_ROWS.slice(GUARDS.length), ["verified", "said-already", "workflow-holds", "switched-off", "work-quiet", "unrecorded", "unowned", "no-check", "hold"]);
+  assert.deepEqual(OWED_ROWS.slice(GUARDS.length), ["verified", "said-already", "workflow-holds", "switched-off", "work-quiet", "unrecorded", "declared-passed", "unnamed", "hold"]);
   assert.deepEqual(OWED.filter((r) => r.deep).map((r) => r.row), ["switched-off", "work-quiet", "unrecorded"]);
   assert.equal(OWED.at(-1).when({}), true, "the last row always answers");
 });
@@ -184,7 +184,7 @@ test("each guard alone stops it: a host that cannot hold, a held turn, an uncoun
   assert.deepEqual([owed.run(STOP, halted), owedRow(halted), halted.wrote], [null, "halted", []], "the person said to stop");
 });
 
-test("the cheap row: an edit and no check that PASSED after it -- a passing check after the edit is not held", () => {
+test("the cheap row: an edit and no TEST that PASSED after it -- a passing test after the edit is not held; a lint or a build reads on", () => {
   assert.equal(uncheckedEdit([EDIT()]), true);
   assert.equal(uncheckedEdit([]), false, "nothing edited");
   assert.equal(uncheckedEdit([ev("tool.used", { tool: "Read", kind: "read", ok: true })]), false);
@@ -193,7 +193,8 @@ test("the cheap row: an edit and no check that PASSED after it -- a passing chec
   assert.equal(uncheckedEdit([EDIT(), CHECKED(false)]), true, "a failed check verifies nothing");
   assert.equal(uncheckedEdit([EDIT(), CHECKED(true, "other")]), true, "a command that is not a check");
   assert.equal(uncheckedEdit([EDIT(), ev("command.ran", { orbit: "cli/automation", sub: "step", ok: true })]), true, "an Orbit command is not a check");
-  for (const klass of ["test", "lint", "build"]) assert.equal(uncheckedEdit([EDIT(), CHECKED(true, klass)]), false, klass);
+  assert.equal(uncheckedEdit([EDIT(), CHECKED(true, "test")]), false, "a test passing shows the change works");
+  for (const klass of ["lint", "build"]) assert.equal(uncheckedEdit([EDIT(), CHECKED(true, klass)]), true, `a ${klass} passing says it reads well or compiles, never that it works`);
   assert.equal(uncheckedEdit([ev("tool.used", { tool: "Edit", kind: "edit", ok: false })]), false, "an edit that failed changed nothing");
   const w = owedWorld({ turn: turnOf([EDIT(), CHECKED()]) });
   assert.deepEqual([owed.run(STOP, w), owedRow(w), w.wrote], [null, "verified", []]);
@@ -228,16 +229,63 @@ test("never past a person's pause, cancel or question on the session's governed 
   for (const work of [null, { kind: "task", id: "tsk-0123456789ab", state: "running" }, { kind: "task", id: "tsk-0123456789ab", state: "ended" }]) assert.equal(owedRow(owedWorld({ work })), "hold", JSON.stringify(work));
 });
 
-test("never for a path no component owns, a component with no declared safe verifying check, or an edit the working set has not kept yet", () => {
-  const unowned = owedWorld({ owed: { changed: ["scratch/notes.txt"], paths: [], components: [], check: null } });
-  assert.deepEqual([owed.run(STOP, unowned), owedRow(unowned), unowned.wrote], [null, "unowned", []]);
-  const nothing = owedWorld({ owed: { ...OWED_FACT, check: null } });
-  assert.deepEqual([owed.run(STOP, nothing), owedRow(nothing)], [null, "no-check"]);
+test("never for a path neither a component's check nor a linked test speaks for, or an edit the working set has not kept yet", () => {
+  const unowned = owedWorld({ owed: { changed: ["scratch/notes.txt"], paths: [], components: [], check: null, tests: [] } });
+  assert.deepEqual([owed.run(STOP, unowned), owedRow(unowned), unowned.wrote], [null, "unnamed", []]);
+  const nothing = owedWorld({ owed: { ...OWED_FACT, check: null, tests: [] } });
+  assert.deepEqual([owed.run(STOP, nothing), owedRow(nothing)], [null, "unnamed"], "a component with no declared safe verifying check and no linked test");
+  assert.equal(owedRow(owedWorld({ owed: { ...OWED_FACT, check: null } })), "unnamed", "a fact with no tests field names none");
   // The trail saw the edit, but the async working-set write of the very last edit has not landed: nothing is guessed.
   for (const missed of [{ changed: [], paths: [], components: [], check: null }, null]) {
     const w = owedWorld({ owed: missed });
     assert.deepEqual([owed.run(STOP, w), owedRow(w), w.wrote], [null, "unrecorded", []], JSON.stringify(missed));
   }
+});
+
+// ---- (P3b) with no declared check, the tests the relation adapters link to the edited files ---------------------------
+
+const LINKED = { changed: ["pylint/checkers/variables.py"], paths: [], components: [], check: null, tests: ["tests/checkers/test_variables.py"] };
+
+test("NAMED is ordered by what the engine has: a declared check, else the linked tests -- the first that names something is said", () => {
+  assert.deepEqual(NAMED.map((n) => n.by), ["check", "tests"]);
+  assert.equal(namedOf(OWED_FACT).by, "check");
+  assert.equal(namedOf({ ...OWED_FACT, tests: ["api/test/refund.test.mjs"] }).by, "check", "a declared check wins over a linked test");
+  assert.equal(namedOf(LINKED).by, "tests");
+  for (const o of [{ ...LINKED, tests: [] }, { ...LINKED, tests: undefined }]) assert.equal(namedOf(o), null, JSON.stringify(o));
+});
+
+test("an edit no component's check speaks for, with linked tests, is held ONCE naming the test files -- never a command -- and asking for a regression test", () => {
+  const w = owedWorld({ owed: LINKED });
+  const answer = owed.run(STOP, w);
+  assert.equal(answer.decision, "block");
+  assert.match(answer.reason, /^Orbit holds this turn \(1 of 2 for this prompt\): pylint\/checkers\/variables\.py changed and no test passed after the edit\. The tests that go with it here: tests\/checkers\/test_variables\.py\./);
+  assert.match(answer.reason, /Run them as this project runs its tests to verify it -- and a behaviour change no existing test covers wants a regression test -- or say in one sentence why you stop here\./);
+  assert.deepEqual(w.wrote, [{ kind: "unverified", tests: 1, count: 1 }], "how many test files it named -- never a path, never a check it does not have");
+  const again = owedWorld({ owed: LINKED, turn: turnOf([EDIT(), ev("turn.held", { kind: "unverified", tests: 1, count: 1 }), EDIT()]) });
+  assert.deepEqual([owed.run(STOP, again), owedRow(again)], [null, "said-already"], "once per prompt, whatever it named");
+  for (const [over, row] of [[{ turn: turnOf([EDIT()], ["halt"]) }, "halted"], [{ settings: { trigger: { holdUnverified: false } } }, "switched-off"], [{ work: { kind: "task", id: "tsk-0123456789ab", state: "paused" } }, "work-quiet"], [{ turn: turnOf([EDIT(), CHECKED(true, "test")]) }, "verified"]]) {
+    const quiet = owedWorld({ owed: LINKED, ...over });
+    assert.deepEqual([owed.run(STOP, quiet), owedRow(quiet), quiet.wrote], [null, row, []], row);
+  }
+  const both = owedWorld({ owed: { ...OWED_FACT, tests: ["api/test/refund.test.mjs"] } });
+  assert.deepEqual([owed.run(STOP, both).reason.includes("rt-command-b464ab6e"), both.wrote], [true, [{ kind: "unverified", check: CHECK.id, count: 1 }]], "a declared check still wins");
+});
+
+test("the linked tests' reason is printable and bounded too", () => {
+  const w = owedWorld({ owed: { ...LINKED, tests: ["tests/test_\u001b[2Jx.py", ...Array.from({ length: 40 }, (_, i) => `tests/${"y".repeat(60)}${i}/test_variables.py`)] } });
+  const reason = owed.run(STOP, w).reason;
+  assert.equal(/\u001b/.test(reason), false);
+  assert.ok(Buffer.byteLength(reason) <= 600, `${Buffer.byteLength(reason)} bytes`);
+  assert.deepEqual(w.wrote, [{ kind: "unverified", tests: 41, count: 1 }]);
+});
+
+test("a component's DECLARED verifying check that passed after the edit clears it, whatever class its command is; a lint or a build alone never does", () => {
+  const lint = owedWorld({ turn: turnOf([EDIT(), CHECKED(true, "lint")]) });
+  assert.match(owed.run(STOP, lint).reason, /rt-command-b464ab6e/, "a lint passing reads on, and the edit is still owed");
+  const build = owedWorld({ turn: turnOf([EDIT(), CHECKED(true, "build")]), owed: LINKED });
+  assert.match(owed.run(STOP, build).reason, /tests\/checkers\/test_variables\.py/, "a build passing too");
+  const declared = owedWorld({ turn: turnOf([EDIT(), CHECKED(true, "lint")]), owed: { ...OWED_FACT, declaredPassed: true } });
+  assert.deepEqual([owed.run(STOP, declared), owedRow(declared), declared.wrote], [null, "declared-passed", []]);
 });
 
 test("one hold at a time: a Stop the workflow hold speaks for is never held again for an edit, and the hold answers first", () => {
@@ -351,11 +399,12 @@ test("through the real hooks: the setting off, the trail off, a paused workflow 
 // component owns beside it.
 const MANIFEST = { "package.json": { name: "refunds", version: "1.0.0", scripts: { test: "node --test", build: "node build.mjs" } }, "package-lock.json": { name: "refunds", version: "1.0.0", lockfileVersion: 3, requires: true, packages: { "": { name: "refunds", version: "1.0.0" } } } };
 
-function understood(t) {
+function understood(t, scripts = {}) {
   const p = checkout(t);
   mkdirSync(join(p.repo, "api", "src"), { recursive: true });
   mkdirSync(join(p.repo, "notes"));
-  for (const [file, doc] of Object.entries(MANIFEST)) writeFileSync(join(p.repo, "api", file), `${JSON.stringify(doc, null, 2)}\n`);
+  const manifest = { ...MANIFEST, "package.json": { ...MANIFEST["package.json"], scripts: { ...MANIFEST["package.json"].scripts, ...scripts } } };
+  for (const [file, doc] of Object.entries(manifest)) writeFileSync(join(p.repo, "api", file), `${JSON.stringify(doc, null, 2)}\n`);
   writeFileSync(join(p.repo, "api", "src", "refund.mjs"), "export const refund = (a) => a;\n");
   writeFileSync(join(p.repo, "notes", "plan.txt"), "a plan\n");
   execFileSync("git", ["-C", p.repo, "add", "-A"], { env: sealed() });
@@ -380,7 +429,7 @@ test("through the real hooks: an edit under a component with no passing check af
   assert.equal(first.status, 0, first.stderr);
   const answer = JSON.parse(first.stdout);
   assert.equal(answer.decision, "block");
-  assert.match(answer.reason, /api\/src\/refund\.mjs changed in component node:api and no check passed after the edit\. Run its declared test check rt-command-[0-9a-f]+ \(npm run test, in api\)/);
+  assert.match(answer.reason, /api\/src\/refund\.mjs changed in component node:api and no test or declared verifying check passed after the edit\. Run its declared test check rt-command-[0-9a-f]+ \(npm run test, in api\)/);
   assert.deepEqual(walk(p.store).filter((f) => !f.includes(join("control", "activity", "trace"))), before, "nothing but the trail was written");
   const held = unverifiedHolds(p);
   assert.deepEqual(held.map((e) => Object.keys(e.data).sort()), [["check", "count", "kind"]]);
@@ -405,6 +454,112 @@ test("through the real hooks: a path no component owns, a passing check after th
   turn(p, "write the plan again");
   edit(p, "notes/plan.txt");
   assert.match(stop(p).stdout, /api\/src\/refund\.mjs changed in component node:api/, "what the session still owes is the session's: an earlier edit no check has passed since");
+});
+
+// (P3b) A Python checkout runtime understanding declares no component or check for: what goes with an edited file is
+// what the relation adapters link to it -- here `tests/checkers/test_variables.py` for `pkg/checkers/variables.py`.
+const PYTHON = { "pkg/__init__.py": "", "pkg/checkers/__init__.py": "", "pkg/checkers/variables.py": "def unused(names):\n    return names\n", "pkg/other.py": "VALUE = 1\n", "tests/checkers/test_variables.py": "from pkg.checkers import variables\n\ndef test_unused():\n    assert variables.unused([]) == []\n" };
+
+function python(t) {
+  const p = checkout(t);
+  for (const [file, text] of Object.entries(PYTHON)) {
+    mkdirSync(dirname(join(p.repo, file)), { recursive: true });
+    writeFileSync(join(p.repo, file), text);
+  }
+  execFileSync("git", ["-C", p.repo, "add", "-A"], { env: sealed() });
+  execFileSync("git", ["-C", p.repo, "-c", "user.email=a@b.c", "-c", "user.name=t", "commit", "-q", "-m", "pkg"], { env: sealed() });
+  assert.equal(run(p, "runtime.mjs", ["discover", "--json"]).status, 0);
+  return p;
+}
+
+test("through the real hooks (P3b): a Python edit no component declares a check for is held once, naming the test file the adapters link to it", (t) => {
+  const p = python(t);
+  turn(p, "fix the unused-import false positive");
+  edit(p, "pkg/checkers/variables.py");
+  const before = walk(p.store).filter((f) => !f.includes(join("control", "activity", "trace")));
+  const first = stop(p);
+  assert.equal(first.status, 0, first.stderr);
+  const answer = JSON.parse(first.stdout);
+  assert.equal(answer.decision, "block");
+  assert.match(answer.reason, /pkg\/checkers\/variables\.py changed and no test passed after the edit\. The tests that go with it here: tests\/checkers\/test_variables\.py\. Run them as this project runs its tests/);
+  assert.match(answer.reason, /a behaviour change no existing test covers wants a regression test/);
+  assert.deepEqual(walk(p.store).filter((f) => !f.includes(join("control", "activity", "trace"))), before, "nothing but the trail was written");
+  assert.deepEqual(unverifiedHolds(p).map((e) => e.data), [{ kind: "unverified", tests: 1, count: 1 }], "a count, never a path");
+  assert.deepEqual([stop(p, {}, true).stdout, stop(p).stdout, unverifiedHolds(p).length], ["", "", 1], "never twice for this prompt");
+});
+
+test("through the real hooks (P3b): the checkout's own pytest patterns decide which tests go with a file -- setup.cfg's *test_*.py links unittest_variables.py", (t) => {
+  const p = python(t);
+  writeFileSync(join(p.repo, "setup.cfg"), "[metadata]\nname = pkg\n\n[tool:pytest]\ntestpaths = tests\npython_files = *test_*.py\n");
+  execFileSync("git", ["-C", p.repo, "mv", "tests/checkers/test_variables.py", "tests/checkers/unittest_variables.py"], { env: sealed() });
+  execFileSync("git", ["-C", p.repo, "add", "-A"], { env: sealed() });
+  execFileSync("git", ["-C", p.repo, "-c", "user.email=a@b.c", "-c", "user.name=t", "commit", "-q", "-m", "pytest config"], { env: sealed() });
+  turn(p, "fix the unused-import false positive");
+  edit(p, "pkg/checkers/variables.py");
+  assert.match(stop(p).stdout, /The tests that go with it here: tests\/checkers\/unittest_variables\.py\./);
+  assert.deepEqual(unverifiedHolds(p).map((e) => e.data), [{ kind: "unverified", tests: 1, count: 1 }]);
+});
+
+test("through the real hooks (P3b): a passing test run after the edit clears it, whatever runner; a file nothing links a test to is silent", (t) => {
+  const p = python(t);
+  for (const command of ["pytest tests/checkers/test_variables.py", "python -m pytest -q", "python3 -m unittest discover", ".venv/bin/pytest -x"]) {
+    turn(p, `fix the false positive, then ${command}`);
+    edit(p, "pkg/checkers/variables.py");
+    bash(p, command);
+    assert.equal(stop(p).stdout, "", `${command} passed after the edit`);
+  }
+  turn(p, "and once more");
+  edit(p, "pkg/checkers/variables.py");
+  bash(p, "python -m pytest -q", false);
+  assert.match(stop(p).stdout, /tests\/checkers\/test_variables\.py/, "a failed test run verifies nothing");
+  turn(p, "now the constant");
+  edit(p, "pkg/checkers/variables.py");
+  bash(p, "pytest");
+  edit(p, "pkg/other.py");
+  assert.equal(stop(p).stdout, "", "no adapter links a test to pkg/other.py and no component owns it: silent, never a guess");
+  assert.equal(unverifiedHolds(p).length, 1);
+});
+
+test("through the real hooks (P3b): a component's declared check still wins over a test the adapters link", (t) => {
+  const p = understood(t);
+  writeFileSync(join(p.repo, "api", "src", "refund.test.mjs"), "import { refund } from './refund.mjs';\n");
+  execFileSync("git", ["-C", p.repo, "add", "-A"], { env: sealed() });
+  execFileSync("git", ["-C", p.repo, "-c", "user.email=a@b.c", "-c", "user.name=t", "commit", "-q", "-m", "test"], { env: sealed() });
+  turn(p, "make the refund rule reject amounts over what was paid");
+  edit(p, "api/src/refund.mjs");
+  assert.match(stop(p).stdout, /Run its declared test check rt-command-[0-9a-f]+ \(npm run test, in api\)/);
+  assert.deepEqual(unverifiedHolds(p).map((e) => Object.keys(e.data).sort()), [["check", "count", "kind"]]);
+});
+
+// What a turn owes is evidence the change WORKS: a lint or a build passing shows it reads well or compiles, never that.
+const DEV2 = "/opt/miniconda3/envs/testbed/bin/python -m pylint /tmp/a.py --disable=all --enable=unused-import";
+
+test("through the real hooks: a lint, a build or a manual repro passing after the edit is still held; a test or the component's declared verifying check clears it", (t) => {
+  const p = understood(t, { lint: "node lint.mjs" });
+  for (const command of ["npm run build", "make lint", DEV2]) {
+    turn(p, `change the refund rule, then ${command}`);
+    edit(p, "api/src/refund.mjs");
+    bash(p, command);
+    assert.match(stop(p).stdout, /"decision":"block"/, `${command} passing shows nothing works`);
+  }
+  turn(p, "change it again and run its declared lint");
+  edit(p, "api/src/refund.mjs");
+  bash(p, "npm run lint");
+  assert.equal(stop(p).stdout, "", "the component's own declared verifying check (purpose verify) passed after the edit");
+  turn(p, "and once more, with its test");
+  edit(p, "api/src/refund.mjs");
+  bash(p, "npm run build");
+  bash(p, "npm test");
+  assert.equal(stop(p).stdout, "", "a test passed after the edit");
+  assert.equal(unverifiedHolds(p).length, 3);
+});
+
+test("through the real hooks (P3b): the dev2 repro after a Python edit is still held, naming the linked test", (t) => {
+  const p = python(t);
+  turn(p, "fix the unused-import false positive");
+  edit(p, "pkg/checkers/variables.py");
+  bash(p, DEV2);
+  assert.match(stop(p).stdout, /The tests that go with it here: tests\/checkers\/test_variables\.py/);
 });
 
 test("through the real hooks: the setting off, a halt cue, the working set off -- nothing", (t) => {

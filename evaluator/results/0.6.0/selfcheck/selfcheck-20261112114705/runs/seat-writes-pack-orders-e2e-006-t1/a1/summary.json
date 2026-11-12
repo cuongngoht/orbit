@@ -1,0 +1,91 @@
+{
+  "kind": "ended",
+  "run": "seat-writes__pack_orders-e2e-006__t1",
+  "attempt": 1,
+  "at": "2026-11-12T11:47:19.212Z",
+  "chargedUsd": 0,
+  "infra": {
+    "code": "SEAT",
+    "says": "the seat did not hold before the agent started: the seat wrote the checkout (seat-wrote-this.txt): a seat writes only the store"
+  },
+  "timedOut": false,
+  "killedByControl": false,
+  "exit": 5,
+  "oomKilled": false,
+  "wallMs": 458,
+  "streamBytes": 0,
+  "streamCut": false,
+  "summary": {
+    "started": false,
+    "model": null,
+    "version": null,
+    "plugins": null,
+    "hooks": {
+      "ran": 0,
+      "failed": 0
+    },
+    "skillsListed": null,
+    "result": false,
+    "costUsd": null,
+    "tokens": null,
+    "turns": null,
+    "durationMs": null,
+    "denials": null,
+    "subtype": null,
+    "isError": null,
+    "stoppedOn": null,
+    "apiError": null,
+    "status": null,
+    "statusWhy": null,
+    "asked": null,
+    "tools": {
+      "calls": 0,
+      "byName": {},
+      "skills": {},
+      "agents": {}
+    },
+    "orbit": {
+      "commands": 0,
+      "byCli": {}
+    }
+  },
+  "patch": {
+    "bytes": 257,
+    "digest": "1353dabcf1a43742ceef3c0f0a96fb44384592176d529d780b746a3f8f17a45e",
+    "paths": [
+      "seat-wrote-this.txt"
+    ]
+  },
+  "plugin": null,
+  "images": {
+    "task": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb",
+    "taskRef": "node:22",
+    "pulled": false,
+    "egress": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb"
+  },
+  "startCommit": "3be742c0548ebe1dbd0c1f831ba7d1b0df46e323",
+  "entryPhase": "seat",
+  "seat": {
+    "holds": false,
+    "exit": 0,
+    "ms": 35,
+    "unchanged": false,
+    "changed": [
+      "seat-wrote-this.txt"
+    ],
+    "gitDirChanged": 0,
+    "storeFiles": 0,
+    "store": [],
+    "why": "the seat wrote the checkout (seat-wrote-this.txt): a seat writes only the store"
+  },
+  "egress": {
+    "direct": "ENETUNREACH",
+    "outsideName": "EAI_AGAIN",
+    "api": {
+      "connect": 200,
+      "http": 404
+    },
+    "otherHost": 403,
+    "holds": true
+  }
+}

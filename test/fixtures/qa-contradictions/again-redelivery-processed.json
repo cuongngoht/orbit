@@ -1,0 +1,122 @@
+{
+  "shape": "crash-after-effect-before-ack",
+  "why": "the ship-13 class: after the fault, the redelivery is awaited by a match that names outcome processed -- the redelivery of a committed effect settles as the system's own word: said",
+  "design": {
+    "skeleton": {
+      "steps": [
+        {
+          "do": "call",
+          "capability": "orbit.workload.control",
+          "input": {
+            "workloadRef": "worker",
+            "request": {
+              "action": "fault",
+              "point": "after-commit-before-ack"
+            }
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.messaging.publish",
+          "input": {
+            "channelRef": "billing-reminder-requested",
+            "request": {
+              "messageId": "msg-q2a0000000000001",
+              "correlationId": "tenant-a|inv-a|billing-daily:2026-11-02T09:00:00+07:00",
+              "payload": {
+                "messageId": "msg-q2a0000000000001",
+                "businessKey": "tenant-a|inv-a|billing-daily:2026-11-02T09:00:00+07:00",
+                "invoiceId": "inv-a",
+                "tenantId": "tenant-a"
+              }
+            }
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.worker.observe",
+          "input": {
+            "workloadRef": "worker",
+            "request": {
+              "count": 1,
+              "match": {
+                "messageId": "msg-q2a0000000000001",
+                "outcome": "fault"
+              },
+              "waitMs": 30000
+            }
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.workload.control",
+          "input": {
+            "workloadRef": "worker",
+            "request": {
+              "action": "restart"
+            }
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.worker.observe",
+          "input": {
+            "workloadRef": "worker",
+            "request": {
+              "match": {
+                "messageId": "msg-q2a0000000000001",
+                "outcome": "processed"
+              }
+            }
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.state.read",
+          "input": {
+            "stateRef": "reminders",
+            "request": {
+              "key": "tenant-a|inv-a|billing-daily:2026-11-02T09:00:00+07:00"
+            }
+          }
+        }
+      ]
+    },
+    "assertions": [
+      {
+        "criterionRef": "FIX-ASYNC-1/E4",
+        "template": "complete",
+        "step": 5
+      },
+      {
+        "criterionRef": "FIX-ASYNC-1/E2",
+        "template": "count-eq",
+        "step": 6
+      }
+    ],
+    "controls": [
+      {
+        "role": "fault",
+        "point": "after-commit-before-ack",
+        "step": 3,
+        "why": "the worker stops after its effect committed and before it acknowledged"
+      },
+      {
+        "role": "state",
+        "why": "one reminder for the key"
+      }
+    ],
+    "trigger": {
+      "kind": "message",
+      "ref": "billing-reminder-requested",
+      "step": 2
+    },
+    "effectScope": "fixture"
+  },
+  "expect": {
+    "findings": [],
+    "advice": [
+      "SECOND_SETTLES"
+    ]
+  }
+}

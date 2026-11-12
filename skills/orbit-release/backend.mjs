@@ -1,8 +1,8 @@
 // Native BACKEND acceptance (doc §15; PBI 21): the example project taken through the whole loop on every stack and in
 // every planted variant by acceptance/run.mjs -- recorded only by its `--record`, from a run that matched -- and keyed
 // to the SOURCE it ran on: the engine and the acceptance definition alike, so a change to either is a change the
-// acceptance must see again. Since ADR 0049 a release REPORTS it and never requires it (`optional`, hosts.mjs): the
-// Docker benchmark carried by Claude Code is what qualifies a release; this stays as optional extended validation.
+// acceptance must see again. A release REPORTS it and never requires it (`optional`, hosts.mjs): the
+// fast tier and the independent evaluator's record qualify a release (ADR 0057); this stays optional extended validation.
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";

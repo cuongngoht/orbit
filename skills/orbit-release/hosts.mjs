@@ -1,7 +1,7 @@
 // Native acceptance is recorded after live host dispatch, never inferred from
 // adapter unit tests, binary presence, package validation or a green UI build.
-// Since ADR 0049 it is OPTIONAL for a release: Claude Code, in the Docker benchmark's runner, is the one coding host a
-// release needs (skills/orbit-release/ship.mjs), and these records are reported beside it -- `optional` -- never a gate.
+// It is OPTIONAL for a release: the fast tier and the independent evaluator's record qualify a release (ADR 0057,
+// skills/orbit-release/ship.mjs), and these records are reported beside them -- `optional` -- never a gate.
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
@@ -34,5 +34,5 @@ export function acceptanceOf(record, digest) {
 // a pipeline makes none. A release runs without --ci, where a missing or stale record still refuses it.
 export const awaited = (row, ci) => (ci && !row.ok ? { ...row, ok: true, pending: true } : row);
 
-// A row a release REPORTS and never requires (ADR 0049): it says what it says, and `shippable` passes over it.
+// A row a release REPORTS and never requires: it says what it says, and `shippable` passes over it.
 export const optional = (row) => ({ ...row, required: false });

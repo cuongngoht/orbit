@@ -1,0 +1,89 @@
+{
+  "kind": "ended",
+  "run": "orbit-0.6.0__swebench_psf__requests-1142__t1",
+  "attempt": 1,
+  "at": "2026-11-12T11:25:55.671Z",
+  "chargedUsd": 0.0242863,
+  "infra": null,
+  "timedOut": false,
+  "killedByControl": false,
+  "exit": 0,
+  "oomKilled": false,
+  "wallMs": 12326,
+  "streamBytes": 72880,
+  "streamCut": false,
+  "summary": {
+    "started": true,
+    "model": "claude-sonnet-5-5",
+    "version": "2.1.322",
+    "plugins": [
+      "orbit@0.6.0"
+    ],
+    "hooks": {
+      "ran": 3,
+      "failed": 0
+    },
+    "skillsListed": 42,
+    "result": true,
+    "costUsd": 0.0242863,
+    "tokens": {
+      "input": 6,
+      "output": 927,
+      "cacheRead": 69723,
+      "cacheWrite": 2008
+    },
+    "turns": 4,
+    "durationMs": 10782,
+    "denials": 0,
+    "subtype": "success",
+    "isError": false,
+    "stoppedOn": null,
+    "apiError": null,
+    "status": "DONE",
+    "statusWhy": null,
+    "asked": false,
+    "tools": {
+      "calls": 3,
+      "byName": {
+        "Grep": 1,
+        "Edit": 1,
+        "Bash": 1
+      },
+      "skills": {},
+      "agents": {}
+    },
+    "orbit": {
+      "commands": 0,
+      "byCli": {}
+    }
+  },
+  "patch": {
+    "bytes": 866,
+    "digest": "1ae4eab90033e6506d248447ce80677744344ca82f2c623898dd48521bea12c3",
+    "paths": [
+      "requests/models.py"
+    ]
+  },
+  "plugin": {
+    "digest": "4620a1bc97618f6998e74130d4ab481aeaac7796e8a39360c27b0f7cd105654c",
+    "files": 2727
+  },
+  "images": {
+    "task": "sha256:b2733e57feb4cfaeac24ab5ec496d4cb89a37db53bd0ca72eaededdb2ce19d1c",
+    "taskRef": "swebench/sweb.eval.x86_64.psf_1776_requests-1142:latest",
+    "pulled": false,
+    "egress": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb"
+  },
+  "startCommit": "546130c8c878adabd16ac5221a36e39e4dab3645",
+  "entryPhase": "ended",
+  "egress": {
+    "direct": "ENETUNREACH",
+    "outsideName": "EAI_AGAIN",
+    "api": {
+      "connect": 200,
+      "http": 404
+    },
+    "otherHost": 403,
+    "holds": true
+  }
+}

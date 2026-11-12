@@ -18,6 +18,8 @@
 //                   a gap the host fills with `--with-refs`
 //   questions       a requirement's blocking question, or a goal's missing prerequisite, already open about the
 //                   task's own work -- found, never asked
+//   the task's work (0.6.0) its proof needs (the done criteria), whether each is settled and unmoved, and the
+//                   evidence its one read model reads back from the linked tasks -- what the three levels rest on
 //
 // Every read here writes nothing: a store nobody wrote is empty, and an owner that cannot answer is evidence that is
 // not there, never a context that fails.
@@ -28,7 +30,7 @@ import { capabilityTokens, unanswered } from "../src/architecture/tokens.mjs";
 import { relatedOf } from "../src/context/relations.mjs";
 import { basisOf, freshened, relevanceOf, seedsOf } from "../src/context/relevance.mjs";
 import { symbolHits, treeOf, verifiedRefs } from "../src/context/refs.mjs";
-import { ownWork, sufficiencyOf } from "../src/context/sufficiency.mjs";
+import { directFacts, ownWork, sufficiencyOf } from "../src/context/sufficiency.mjs";
 import { watched as engineeringWatched } from "../src/engineering/model.mjs";
 import { recall } from "../src/engineering/recall.mjs";
 import { createEngineering } from "../src/engineering/store.mjs";
@@ -49,7 +51,17 @@ import { componentGraphOf } from "../src/runtime/graph.mjs";
 import { look } from "../src/runtime/understanding.mjs";
 import { machineContext } from "../src/store/context.mjs";
 import { tokens } from "../src/tokens.mjs";
+import { CHECKS as CHECK_CLASSES } from "../src/engineering/working-set/collect.mjs";
+import { sessionActivityOf, sessionLinesOf } from "../src/live/session.mjs";
+import { workingSetDir } from "../src/project/runtime.mjs";
+import { realIo } from "../src/store/io.mjs";
+import { COMMANDS as TASK_COMMANDS } from "../src/task/index.mjs";
+import { createTasks } from "../src/task/store.mjs";
+import { INVALIDATE } from "../src/work/freshness.mjs";
+import { modelOf as workModelOf, statesOf as needStatesOf } from "../src/work/model.mjs";
 import { listed } from "../src/work/summary.mjs";
+import { readView } from "../src/work/track/read.mjs";
+import { workingSetOf } from "../src/work/track/tail.mjs";
 import { createWorks, rootOf } from "../src/work/store.mjs";
 import { MAX_WORKS, namesWork } from "../src/work/views/recall.mjs";
 import { RELATION_ADAPTERS } from "../skills/orbit-develop/relations/index.mjs";
@@ -181,13 +193,42 @@ const goalQuestionsOf = (b, goals, id) => quietly(() => ((model) => (goalAbout(b
 
 const goalQuestions = (b) => ((goals) => quietly(() => goals.list(), []).flatMap((id) => goalQuestionsOf(b, goals, id)))(createGoals(b.root, b.io));
 
+// ---- the task's own work: its done criteria, and what its owners say of them (0.6.0, U1) ----------------------------
+
+// Which work is the task's: the one `--work=` names, else the ONE work the task names by id or mostly restates -- two
+// candidates are ambiguous, never the newest.
+const candidateWorks = (b) => quietly(() => listed(createWorks(b.root, b.io)), []).filter((head) => namesWork(head, b.task) || ownWork(head.objective, b.task));
+
+const ownWorkId = (b) => b.work ?? ((heads) => (heads.length === 1 ? heads[0].id : null))(candidateWorks(b));
+
+// The work's evidence as its one read model says it (src/work/track/read.mjs), read back from the linked tasks' owners.
+const viewContext = (b, works) => ({ works, nowMs: Date.now(), idleAfterMs: 120_000, checkout: b.project.checkoutId ?? null, host: null, workingSet: workingSetOf(realIo(), quietly(() => workingSetDir(b.project)) ?? b.root, "ok"), activity: { linesOf: sessionLinesOf, activityOf: sessionActivityOf, checks: CHECK_CLASSES }, taskView: (id) => TASK_COMMANDS.show.run({ tasks: createTasks(b.root, b.io), checkout: b.project.checkoutId ?? null, now: () => new Date().toISOString() }, [id]) });
+
+const evidenceLevel = (b, works, id) => quietly(() => readView(viewContext(b, works), id).evidence.level, "none");
+
+// A proof need settled on files that moved since -- asked read-only of the work's own scope rule (src/work/freshness.mjs),
+// which writes nothing; only `work checkpoint` and `work resume` record a move.
+const SCOPE_RULE = INVALIDATE.find((row) => row.name === "scope");
+
+const movedOf = (b, model, proofs) => new Set(quietly(() => SCOPE_RULE.find({ source: b.source }, model), []).map((row) => row.need).filter((need) => proofs.some((p) => p.need === need))).size;
+
+function workFactsOf(b, works, id) {
+  const model = workModelOf(works.read(id) ?? []);
+  const proofs = needStatesOf(model).filter((n) => n.type === "proof" && n.state !== "not-applicable");
+  return { id, proofs: proofs.length, unproved: proofs.filter((n) => n.state !== "satisfied").length, moved: movedOf(b, model, proofs), evidence: evidenceLevel(b, works, id) };
+}
+
+const workFacts = (b) => ((id) => (id ? quietly(() => workFactsOf(b, createWorks(b.root, b.io), id)) : null))(ownWorkId(b));
+
 // ---- the package's two answers --------------------------------------------------------------------------------------
 
 const summaryOf = (listing, refs, relations) => ({ total: listing.total, listed: listing.items.length, more: listing.more, byClass: listing.byClass, refused: refs.refused, gaps: relations?.gaps ?? [] });
 
 const capabilityGaps = (b, input) => unanswered(input.architecture.filter((f) => f.kind === "capability"), capabilityTokens(b.task));
 
-const sufficiencyFor = (b, input, listing, judged) => sufficiencyOf({ tree: Boolean(input.tree), classes: listing.byClass, stale: judged.fresh.stale, paths: listing.paths.length, graph: judged.reach.graph, understood: judged.reach.state, unanswered: capabilityGaps(b, input), refused: judged.refused, blocking: [...requirementQuestions(b), ...goalQuestions(b)] });
+const levelFacts = (b, listing, judged) => ({ ...directFacts(judged.fresh.relevant, judged.held), followed: seedsOf(listing).length, work: workFacts(b) });
+
+const sufficiencyFor = (b, input, listing, judged) => sufficiencyOf({ tree: Boolean(input.tree), classes: listing.byClass, stale: judged.fresh.stale, paths: listing.paths.length, graph: judged.reach.graph, understood: judged.reach.state, unanswered: capabilityGaps(b, input), refused: judged.refused, blocking: [...requirementQuestions(b), ...goalQuestions(b)], ...levelFacts(b, listing, judged) });
 
 function grounded(b) {
   const r = rooms(b);
@@ -201,7 +242,7 @@ function finished(b, r, given, refs, reach) {
   const input = { ...given, plan: reach.plan };
   const listing = relevanceOf(input);
   const fresh = freshened(listing, statesOf(b, r, input, listing, reach.state));
-  return { relevant: fresh.relevant, relevance: summaryOf(listing, refs, input.relations), sufficiency: sufficiencyFor(b, input, listing, { fresh, reach, refused: refs.refused.length }) };
+  return { relevant: fresh.relevant, relevance: summaryOf(listing, refs, input.relations), sufficiency: sufficiencyFor(b, input, listing, { fresh, reach, refused: refs.refused.length, held: refs.held }) };
 }
 
 // No checkout -- or nothing here could be composed: no tree to verify anything against, so every proposed reference is
@@ -216,7 +257,7 @@ const firstLine = (e) => String(e?.message ?? e).split("\n")[0].slice(0, 200);
 
 // -> { relevant, relevance: { total, listed, more, byClass, refused, gaps, problem? }, sufficiency }
 //    w: { env, pluginRoot, cwd, project (or null), task, refs (as the host sent them), workingSet (the fold),
-//         claims: () => what `knowledge claims --for --json` answered (or null) }
+//         claims: () => what `knowledge claims --for --json` answered (or null), work: the w-… `--work=` named (or null) }
 export function groundingOf(w) {
   if (!w.project) return ungrounded(w);
   try { return grounded(bound(w)); }

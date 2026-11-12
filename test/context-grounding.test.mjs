@@ -235,3 +235,32 @@ test("a proposed file's relations are followed one hop over the committed tree, 
   const text = cli(login, "context", ["--with-refs"], withRefs([{ kind: "file", ref: "web/src/pages/LoginPage.css" }], "fix the login bug")).stdout;
   assert.match(text, /gap\s+file web\/src\/pages\/LoginPage\.css -- no relation adapter here reads \*\.css file/);
 });
+
+// 0.6.0, U1: the three levels, bound from the task's OWN work -- its proof needs are the done criteria, and conclude reads
+// the work's evidence back from its one read model (a developer's session is never verified).
+test("the three levels rest on the task's own work: a read confirms, a proof need states done, and only verified evidence concludes", () => {
+  const shop = checkout("levels", { "package-lock.json": '{ "name": "shop", "lockfileVersion": 3, "requires": true, "packages": { "": { "name": "shop" } } }\n' });
+  const where = json(shop, "requirements", ["where", "--json"]);
+  const identity = { provider: "azure-devops", organization: "acme", project: "Shop", id: "4313" };
+  const record = sourceRecord({ identity, kind: "workitem", ref: "4313", revision: "1", text: workitemText({ title: "Empty orders", body: "An empty order must be refused" }), now: "2026-11-05T10:00:00.000Z" });
+  createSources(where.store, realIo()).saveRecord(record);
+  const root = rootId(identity);
+  const port = createRequirements(where.store, realIo()).open(root);
+  port.transact(() => port.setState({ sources: {}, position: 0, lastSnapshot: null, identity }));
+  const work = json(shop, "work", ["start", "Make createOrder refuse an empty order", `--ref=${root}`, "--json"]).work;
+  const rows = (pkg) => Object.fromEntries(Object.entries(pkg.sufficiency.levels).map(([name, l]) => [name, l.row]));
+  assert.deepEqual(rows(context(shop)), { investigate: "grounded", change: "unconfirmed", conclude: "no-proof" }, "named by its words, read by nobody, and no done criterion");
+  const read = () => context(shop, ["--with-refs"], withRefs([{ kind: "file", ref: "src/orders/createOrder.mjs", why: "the order is built here" }]));
+  assert.deepEqual(rows(read()), { investigate: "grounded", change: "no-done-criterion", conclude: "no-proof" }, "the host read it: confirmed, and its relations followed");
+  assert.equal(cli(shop, "work", ["need", work], `${JSON.stringify({ type: "proof", capability: "verification.test", subject: "empty-order", asks: "An empty order is refused", scope: ["src/orders/createOrder.mjs"] })}\n`).status, 0);
+  assert.deepEqual(rows(read()), { investigate: "grounded", change: "ready", conclude: "unproved" });
+  const need = json(shop, "work", ["show", work, "--json"]).needs[0].need;
+  assert.equal(cli(shop, "work", ["settle", work, need, "--state=satisfied", "--evidence=the test refuses it"]).status, 0);
+  const settled = read();
+  assert.deepEqual(rows(settled), { investigate: "grounded", change: "ready", conclude: "unverified" }, "settled by a developer's word: never verified evidence");
+  assert.match(settled.sufficiency.levels.conclude.because, /evidence is (none|observed|reported) — only an owner's completed task/);
+  const text = cli(shop, "context", ["--with-refs"], withRefs([{ kind: "file", ref: "src/orders/createOrder.mjs" }], TASK)).stdout;
+  assert.match(text, /^ {2}investigate holds -- /m);
+  assert.match(text, /^ {2}change {6}holds -- /m);
+  assert.match(text, /^ {2}conclude {4}not yet -- the work's evidence is/m);
+});

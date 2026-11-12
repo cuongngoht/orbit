@@ -33,8 +33,12 @@
 // owners already hold, at most 40 with the rest counted. `--with-refs` adds the
 // host's own references: each is verified against the tracked tree, and one the
 // tree does not hold is refused by name and never listed. `--json` carries
-// `relevant`, `relevance` (the counts, and every refused reference) and
-// `sufficiency`.
+// `relevant`, `relevance` (the counts, every refused reference, and every
+// direct file no relation adapter reads) and `sufficiency`.
+//
+// SUFFICIENCY also answers three LEVELS (0.6.0): whether there is enough to
+// investigate, to change and to conclude, each with what it rests on or still
+// misses -- one line each, and `sufficiency.levels` in `--json`.
 //
 // Exit 0 = printed (a section may still say UNKNOWN) · 2 = bad usage.
 import { readFileSync } from "node:fs";
@@ -46,7 +50,7 @@ import { envelopeOf } from "../src/context/refs.mjs";
 import { relevanceLines } from "../src/context/relevance.mjs";
 import { SECTION_LINES, SECTIONS, sectionOf, taskOf, workingSetSection } from "../src/context/sections.mjs";
 import { blockedOf, statusOf } from "../src/context/status.mjs";
-import { sufficiencyLines } from "../src/context/sufficiency.mjs";
+import { levelLines, sufficiencyLines } from "../src/context/sufficiency.mjs";
 import { Refused } from "../src/errors.mjs";
 import { projectCapabilities } from "../src/extensions/capabilities.mjs";
 import { printable } from "../src/printable.mjs";
@@ -139,7 +143,7 @@ function shown(status, sections, decision, grounding) {
   unknowns(sections);
 }
 
-const opening = (status, sufficiency) => console.log(`STATUS  ${status.word} -- ${status.because}\n${sufficiencyLines(sufficiency).map(printable).join("\n")}\n\nPROJECT CONTEXT  memory first, bounded to the task\n`);
+const opening = (status, sufficiency) => console.log(`STATUS  ${status.word} -- ${status.because}\n${[...sufficiencyLines(sufficiency), ...levelLines(sufficiency)].map(printable).join("\n")}\n\nPROJECT CONTEXT  memory first, bounded to the task\n`);
 
 function closing(decision, grounding) {
   console.log(`== RELEVANT ==\n${relevanceLines(grounding.relevant, grounding.relevance, SECTION_LINES).join("\n")}\n`);

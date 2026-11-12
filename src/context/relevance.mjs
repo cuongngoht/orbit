@@ -25,8 +25,8 @@
 // that owner's own scope fingerprints (src/freshness.mjs, never HEAD), and joined after the bound (`freshened`).
 //
 // A PATH IS LISTED ONLY WHEN THE TRACKED TREE HOLDS IT: a fact citing a file since deleted lists nothing, and no
-// listing at all lists no path. No embeddings, no dependency, and no language is parsed: a file-level import graph
-// belongs to a language pack, never to src/.
+// listing at all lists no path. No embeddings, no dependency, and no language is parsed here: what a file imports is a
+// relation adapter's, in a pack (src/context/relations.mjs walks one hop; skills/orbit-develop/relations/ reads).
 import { printable } from "../printable.mjs";
 import { identifierTokens } from "../tokens.mjs";
 
@@ -152,7 +152,17 @@ const checkSupport = (c) => ({ evidence: [{ source: "obligations", id: c.compone
 
 const fromChecks = (w) => (w.plan?.checks ?? []).map((c) => atRef("check", c.id, "verification", checkSupport(c)));
 
-const OWN = [fromHost, written, namedInTree, namedModules, namedCapabilities, namedNodes, namedIntegrations, fromEngineering, fromKnowledge, fromWorkingSet, fromImpact, fromChecks];
+// 8 · once the direct files are known: their file-level relations (src/context/relations.mjs, followed by a pack's
+// adapters the composition root binds) -- an import a `dependency`, an importer `downstream`, a test that goes with one
+// `verification` -- and each route-shaped literal another file shares, which is a HYPOTHESIS and stays `unknown` until
+// the host reads both ends and proposes the file (`--with-refs`): then it is `host-verified`.
+const fromRelatedFiles = (w) => (w.relations.items ?? []).filter((r) => heldPath(w, r.ref)).map((r) => atPath(w, r.ref, r.class, { evidence: r.evidence }));
+
+const proposed = (w, ref) => w.refs.some((r) => r.kind === "file" && r.ref === ref);
+
+const fromHypotheses = (w) => (w.relations.hypotheses ?? []).filter((h) => heldPath(w, h.ref)).map((h) => atPath(w, h.ref, "unknown", { evidence: [{ source: "route-literal", id: h.literal }], by: proposed(w, h.ref) ? "host-verified" : "engine" }));
+
+const OWN = [fromHost, written, namedInTree, namedModules, namedCapabilities, namedNodes, namedIntegrations, fromEngineering, fromKnowledge, fromWorkingSet, fromImpact, fromChecks, fromRelatedFiles, fromHypotheses];
 
 // ---- what is related to a direct item ----------------------------------------------------------------------------------
 
@@ -247,12 +257,13 @@ function listed(w, map, aside) {
   return { items: shown, total: all.length + aside, more: all.length + aside - shown.length, byClass: countsOf(all, aside), paths: shown.filter((i) => i.path && i.class === "direct").map((i) => i.ref) };
 }
 
-const worldOf = (input) => ({ task: input.task ?? "", tree: input.tree ?? null, names: namesOf(input.tree), want: new Set(identifierTokens(input.task)), refs: input.refs ?? [], architecture: input.architecture ?? [], intelligence: input.intelligence ?? [], engineering: input.engineering ?? [], knowledge: input.knowledge ?? [], workingSet: input.workingSet ?? {}, plan: input.plan ?? null });
+const worldOf = (input) => ({ task: input.task ?? "", tree: input.tree ?? null, names: namesOf(input.tree), want: new Set(identifierTokens(input.task)), refs: input.refs ?? [], architecture: input.architecture ?? [], intelligence: input.intelligence ?? [], engineering: input.engineering ?? [], knowledge: input.knowledge ?? [], workingSet: input.workingSet ?? {}, plan: input.plan ?? null, relations: input.relations ?? {} });
 
 // -> { items (at most RELEVANCE_LIMIT, still carrying the `basis` freshness is measured on), total, more, byClass, paths }
 //    input: { task, tree (src/context/refs.mjs treeOf), refs (held), architecture, intelligence (integrations),
 //             engineering (recalled), knowledge ({ id, subject, object, paths }), workingSet ({ changed, read }),
-//             plan ({ components: [{ key, reason }], checks: [{ id, component }] } | null) }
+//             plan ({ components: [{ key, reason }], checks: [{ id, component }] } | null),
+//             relations (src/context/relations.mjs `relatedOf`, or nothing) }
 export function relevanceOf(input) {
   const w = worldOf(input);
   const map = merged(OWN.flatMap((source) => source(w)));
@@ -260,6 +271,12 @@ export function relevanceOf(input) {
   const d = directOf(w, [...map.values()]);
   return listed(w, merged(RELATED.flatMap((source) => source(w, d)), map), aside);
 }
+
+// The direct FILES the relations are followed from: each one something besides its name made direct -- a path the task
+// writes out, a reference the host proposed, an owner's record, the working set. A name one of the task's words matched
+// is not proof the task touches the file (SUFFICIENCY's ENOUGH says so), so it seeds nothing: a decoy called like the
+// task is never a reason to follow what it imports.
+export const seedsOf = (listing) => listing.items.filter((i) => i.class === "direct" && i.kind === "file" && !listingOnly(i)).map((i) => i.ref);
 
 // ---- freshness, joined after the bound ---------------------------------------------------------------------------------
 
@@ -300,12 +317,17 @@ const PROBLEM_WIDTH = 240;
 
 const problemLines = (summary) => (summary.problem ? [`  ${clipped(printable(summary.problem), PROBLEM_WIDTH)}`] : []);
 
+// A direct file nothing here could follow, and how the host fills it: read it, and propose what it relates to.
+const GAP_LINES = 3;
+
+const gapLines = (gaps) => [...gaps.slice(0, GAP_LINES).map((g) => `  gap      file ${clipped(printable(g.ref), REF_WIDTH)} -- ${printable(g.why)}${g.target?.run ? ` -- ${g.target.run}` : ""}`), ...(gaps.length > GAP_LINES ? [`  … ${gaps.length - GAP_LINES} more gap(s) -- \`--json\` names each`] : [])];
+
 const moreLine = (hidden) => (hidden > 0 ? [`  … ${hidden} more -- \`--json\` lists up to ${RELEVANCE_LIMIT} and counts the rest`] : []);
 
 // One line per item, held to `limit` lines in all with what is left out counted, what stopped it said, and every refused
 // reference named.
 export function relevanceLines(relevant, summary, limit) {
-  const notes = [...problemLines(summary), ...refusedLines(summary.refused ?? [])];
+  const notes = [...problemLines(summary), ...refusedLines(summary.refused ?? []), ...gapLines(summary.gaps ?? [])];
   const room = Math.max(0, limit - 2 - notes.length);
   const shown = relevant.slice(0, room);
   return [header(summary), ...shown.map(itemLine), ...moreLine(summary.total - shown.length), ...notes];

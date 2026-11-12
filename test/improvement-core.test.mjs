@@ -137,6 +137,15 @@ test("a candidate may change where a step reads an answer, never what counts as 
   assert.deepEqual(weakenings(p, oracleOf("workflow", { steps: [wf().steps[1]] })).map((x) => x.id), ["REQUIRED_DROPPED"], "a required step gone");
 });
 
+// An upper bound is looser when its value RISES and stricter when it drops -- the mirror of a lower bound, and a rule
+// only the comparison's direction keeps.
+test("an upper bound (lte, lt) raised is a loosened rule, and one lowered is no weakening", () => {
+  const bound = (op, value) => oracleOf("workflow", { steps: [{ id: "s", outputs: { n: { type: "number", path: "n" } }, success: [{ output: "n", op, value }] }] });
+  const ids = (op, from, to) => weakenings(bound(op, from), bound(op, to)).map((x) => x.id);
+  assert.deepEqual([ids("lte", 5, 6), ids("lt", -2, -1)], [["RULE_LOOSENED"], ["RULE_LOOSENED"]], "a raised upper bound lets more through");
+  assert.deepEqual([ids("lte", 5, 4), ids("lt", -2, -3)], [[], []], "a lowered upper bound lets less through");
+});
+
 const facts = (over = {}) => ({ pin: PIN, digest: "d0", intact: true, provides: ["a.b"], tools: ["Read"], files: ["SKILL.md", "manifest.json"], successorOf: null, oracle: oracleOf("workflow", wf()), ...over });
 
 test("a candidate is untrusted until every rule holds: digest, change, parent, provides, tools, files, oracle, suppression, its owner's contract", () => {

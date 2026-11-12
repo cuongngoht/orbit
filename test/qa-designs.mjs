@@ -34,7 +34,7 @@ const answering = (stack, family) => ({ messaging: BY_STACK[stack], observe: BY_
 export const adapterOn = (stack, row) => (row ? ADAPTERS.find((x) => x.id === answering(stack, row.family)) ?? null : null);
 export const operationOn = (stack, capability) => ((row) => ((a) => (a ? a.operations[opKeyOf(a, row)] ?? null : null))(adapterOn(stack, row)))(operationFor(capability));
 const stepOf = (design, i) => design.skeleton?.steps?.[i - 1];
-export const contextOn = (stack, design, shape, expectations = ACCEPTED) => ({ expectations, shape: shapeOf(shape), requestTableOf: (i) => operationOn(stack, stepOf(design, i)?.capability)?.request ?? null, semanticsOf: (i) => adapterOn(stack, operationFor(stepOf(design, i)?.capability))?.semantics ?? null });
+export const contextOn = (stack, design, shape, expectations = ACCEPTED) => ({ expectations, shape: shapeOf(shape), requestTableOf: (i) => operationOn(stack, stepOf(design, i)?.capability)?.request ?? null, semanticsOf: (i) => adapterOn(stack, operationFor(stepOf(design, i)?.capability))?.semantics ?? null, semanticsFor: (capability) => adapterOn(stack, operationFor(capability))?.semantics ?? null });
 
 // An investigation's record as src/investigation/generate.mjs hands it to the contradiction stage: the shapes its accepted
 // obligations hold the system to, and each earlier version that ran, read in its own obligation's context.
@@ -65,9 +65,12 @@ export const FIXTURE_DIRS = ["qa-false-alarms", "qa-refusals", "qa-contradiction
 const AFTER = { "deadline-after-occurrence": "occurrence-decided-first", "deadline-self-published": "occurrence-advanced" };
 const shapeOfFixture = (name) => FIXTURE_SHAPES[name.split("-")[0]];
 const fixtureIn = (dir, name) => json("test", "fixtures", dir, `${name}.json`);
-const fixtureNames = (dir) => (existsSync(join(ROOT, "test", "fixtures", dir)) ? readdirSync(join(ROOT, "test", "fixtures", dir)).filter((f) => f.endsWith(".json") && f !== "golden.json").map((f) => f.slice(0, -5)).sort() : []);
+const fixtureNames = (dir) => (existsSync(join(ROOT, "test", "fixtures", dir)) ? readdirSync(join(ROOT, "test", "fixtures", dir)).filter((f) => f.endsWith(".json") && !["golden.json", "captured.json"].includes(f)).map((f) => f.slice(0, -5)).sort() : []);
 const pairOf = (dir, name, stack) => (AFTER[name] ? { investigation: proven(stack, [{ shape: shapeOfFixture(AFTER[name]), design: fixtureIn(dir, AFTER[name]) }]) } : {});
 const fixtureCase = (dir, name, stack, d) => ({ stack, shape: d.shape ?? shapeOfFixture(name), design: d.design ?? d, ...(d.accepted ? { expectations: new Map([...ACCEPTED, ...Object.entries(d.accepted)]) } : {}), ...(d.earlier ? { investigation: proven(stack, d.earlier, d.shapes ?? ONCE_HELD) } : pairOf(dir, name, stack)) });
+export const fixtureOf = (dir, name) => fixtureIn(dir, name);
+export const fixtureCaseOf = (dir, name, stack) => ({ label: `fixture ${dir}/${name} ${stack}`, ...fixtureCase(dir, name, stack, fixtureIn(dir, name)) });
+export const fixtureNamesIn = (dir) => fixtureNames(dir);
 export const fixtures = () => FIXTURE_DIRS.flatMap((dir) => fixtureNames(dir).flatMap((name) => STACKS.map((stack) => ({ label: `fixture ${dir}/${name} ${stack}`, ...fixtureCase(dir, name, stack, fixtureIn(dir, name)) }))));
 
 // Every (design, context) the 0.5.0 tests asked the rules about, replayed in the context as it was captured: the request

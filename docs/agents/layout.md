@@ -877,11 +877,15 @@ src/qa/walk.mjs · obligations/ · backend/ · generation/ · security/  (0.1.0,
                one investigation share -- ONE_SANDBOX said before a host designs, and the keys a design names that an
                earlier version named, said after, never refused; contradictions.mjs (0.5.0) what a correct application
                can be held to -- refused where the design and its adapters' declarations prove a contradiction
-               (MATCH_PINS, SELF_SATISFIED: a wait its own publication satisfies, read off what a publishing adapter's
-               request rows say they set (`means`) and whether its channel drops a duplicate; SECOND_SETTLED,
-               NEVER_REDELIVERED) or the investigation's own record does (SETTLED_BEFORE: a
-               business key an earlier SATISFIED version settled, handed in by src/investigation/generate.mjs as
-               `cx.investigation`), said beside the answer where it rests on what the design never causes);
+               (MATCH_PINS on any value-holding slot; SELF_SATISFIED: a slot its own emission -- any effect that
+               `emits` -- satisfies or, absent-within, fails, read off what an emitting adapter's request rows say
+               they set (`means`) and whether its reference drops a duplicate; SECOND_SETTLED: what a shape's `again`
+               says comes again held to the first one's success; NEVER_REDELIVERED: a later ordinal no interrupting
+               control of the consuming workload causes, by the redelivery triggers the adapters declare) or the
+               investigation's own record does (SETTLED_BEFORE: a business key an earlier SATISFIED version settled;
+               NEVER_DECIDED: an injected clock no version that RAN moved -- every version that ran handed in by
+               src/investigation/generate.mjs as `cx.investigation`, with its word), said beside the answer where it
+               rests on what the design never causes (CLOCK_PASSED among them);
                causes.mjs (0.6.0) the ONE model those rules read a design through -- per step its effects (the
                families' `effects`), the references it acts on, the observer it arms or reads, what its request
                sets and its match pins (request rows' `means`/`selects`) and its adapter's semantics -- so no rule

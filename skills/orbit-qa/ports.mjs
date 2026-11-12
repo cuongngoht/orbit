@@ -77,6 +77,12 @@ const semanticsOf = (r, step) => adapterOf(r, step)?.semantics ?? null;
 // say what a match field is compared with and what a match picks (src/qa/backend/contradictions.mjs). None: null.
 const requestTableOf = (r, step) => ((adapter) => (adapter ? declaredOp(adapter, step)?.request ?? null : null))(adapterOf(r, step));
 
+// How the adapter that answers an operation behaves where its transport is known without a ref -- a hooked kind's own
+// protocol (src/runtime/sandbox/bindings.mjs HOOK_PROTOCOLS): what a design that never asks it is held to (an injected
+// clock it never moves, src/qa/backend/contradictions.mjs). Anything else: null.
+const hookedSemantics = (r, row) => ((t) => (t ? selectAdapter(r.ctx.adapters, { family: row.family, op: row.op, transport: t }).adapter?.semantics ?? null : null))(row?.selects ? HOOK_PROTOCOLS[row.refs[0]] ?? null : null);
+const semanticsFor = (r, capability) => hookedSemantics(r, operationFor(capability));
+
 // How an observer of the design's plan would watch: the semantics of the adapter that arms one on its channel.
 const observerSemantics = (r, ref) => ((t) => (t ? selectAdapter(r.ctx.adapters, { family: "messaging", op: "observe", transport: t }).adapter?.semantics ?? null : null))(transportOf(r, "observer", ref));
 
@@ -96,7 +102,7 @@ export function generationPort(b) {
 function generationContext(b, obligation, a) {
   const r = resolver({ ...b, graph: b.graph(), topology: quietly(() => b.topology?.()), design: a.design });
   const steps = a.design?.skeleton?.steps ?? [];
-  return { expectations: expectationsOf(b, obligation), expected: obligation.expected ?? [], stepCount: steps.length, kinds: answerKinds(b.ctx, r.lookup), outputsOf: (i) => outputsOf(r, steps[i - 1]), requestTableOf: (i) => requestTableOf(r, steps[i - 1]), semanticsOf: (i) => semanticsOf(r, steps[i - 1]), observerSemantics: (ref) => observerSemantics(r, ref), shape: shapeOf(obligation.shape), caseId: caseIdOf(obligation, a.design), title: titleOf(obligation), validate: (c) => validate(c, b.ctx.graph, b.ctx.dsl, b.ctx.validators, r.lookup), inputFindings: (s) => [...inputFindings(r.lookup(s.capability), s.input), ...basePathFindings(r, r.lookup(s.capability), s.input ?? {}), ...requestShapeFindings(r, s)], faultPointsOf: (alias) => r.declarationOf("workload", alias)?.points ?? null, dsl: b.ctx.dsl, pageOf: (id) => r.lookup(id)?.page };
+  return { expectations: expectationsOf(b, obligation), expected: obligation.expected ?? [], stepCount: steps.length, kinds: answerKinds(b.ctx, r.lookup), outputsOf: (i) => outputsOf(r, steps[i - 1]), requestTableOf: (i) => requestTableOf(r, steps[i - 1]), semanticsOf: (i) => semanticsOf(r, steps[i - 1]), semanticsFor: (capability) => semanticsFor(r, capability), observerSemantics: (ref) => observerSemantics(r, ref), shape: shapeOf(obligation.shape), caseId: caseIdOf(obligation, a.design), title: titleOf(obligation), validate: (c) => validate(c, b.ctx.graph, b.ctx.dsl, b.ctx.validators, r.lookup), inputFindings: (s) => [...inputFindings(r.lookup(s.capability), s.input), ...basePathFindings(r, r.lookup(s.capability), s.input ?? {}), ...requestShapeFindings(r, s)], faultPointsOf: (alias) => r.declarationOf("workload", alias)?.points ?? null, dsl: b.ctx.dsl, pageOf: (id) => r.lookup(id)?.page };
 }
 
 // Every kind of step a design may propose and what its answer carries, as each declares it -- the source the obligation's

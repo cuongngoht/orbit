@@ -1,0 +1,156 @@
+{
+  "shape": "completes-by-deadline",
+  "why": "after an earlier test moved the clock to the period, this design moves it there again and waits for the period's message: nothing comes due again",
+  "design": {
+    "assertions": [
+      {
+        "criterionRef": "FIX-ASYNC-1/E1",
+        "step": 3,
+        "template": "complete"
+      },
+      {
+        "criterionRef": "FIX-ASYNC-1/E3",
+        "step": 4,
+        "template": "complete"
+      }
+    ],
+    "controls": [
+      {
+        "role": "positive",
+        "why": "a valid reminder request is processed within the deadline"
+      }
+    ],
+    "effectScope": "fixture",
+    "obligation": "tob-28b50d2396fd",
+    "skeleton": {
+      "steps": [
+        {
+          "capability": "orbit.messaging.observe",
+          "do": "call",
+          "input": {
+            "channelRef": "billing-reminder-requested",
+            "observerRef": "req",
+            "request": {}
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.clock.advance",
+          "input": {
+            "clockRef": "invoice-a",
+            "request": {
+              "to": "2026-10-22T09:00:00+07:00"
+            }
+          }
+        },
+        {
+          "capability": "orbit.observe.await",
+          "do": "call",
+          "input": {
+            "observerRef": "req",
+            "request": {
+              "count": 1,
+              "match": {
+                "correlationId": "tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00"
+              }
+            }
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.worker.observe",
+          "input": {
+            "workloadRef": "worker",
+            "request": {
+              "count": 1,
+              "match": {
+                "outcome": "processed"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "trigger": {
+      "kind": "schedule",
+      "ref": "billing-daily",
+      "step": 2
+    }
+  },
+  "earlier": [
+    {
+      "shape": "occurrence-one-execution",
+      "design": {
+        "assertions": [
+          {
+            "criterionRef": "SCHED-1/E1",
+            "step": 2,
+            "template": "complete"
+          },
+          {
+            "criterionRef": "SCHED-1/E2",
+            "step": 3,
+            "template": "count-eq"
+          }
+        ],
+        "controls": [
+          {
+            "role": "positive",
+            "why": "the loop itself decides the period due and runs it once"
+          }
+        ],
+        "effectScope": "fixture",
+        "obligation": "tob-8f2674b1fe6b",
+        "skeleton": {
+          "steps": [
+            {
+              "capability": "orbit.clock.advance",
+              "do": "call",
+              "input": {
+                "clockRef": "invoice-a",
+                "request": {
+                  "to": "2026-10-22T02:00:00Z"
+                }
+              }
+            },
+            {
+              "capability": "orbit.scheduler.observe",
+              "do": "call",
+              "input": {
+                "request": {
+                  "count": 1,
+                  "match": {
+                    "occurrenceId": "billing-daily:2026-10-22T09:00:00+07:00"
+                  }
+                },
+                "scheduleRef": "billing-daily"
+              }
+            },
+            {
+              "capability": "orbit.state.read",
+              "do": "call",
+              "input": {
+                "request": {
+                  "key": "billing-daily:2026-10-22T09:00:00+07:00"
+                },
+                "stateRef": "billing-jobs"
+              }
+            }
+          ]
+        },
+        "trigger": {
+          "kind": "schedule",
+          "ref": "billing-daily",
+          "step": 1
+        }
+      },
+      "outcome": "SATISFIED"
+    }
+  ],
+  "expect": {
+    "findings": [],
+    "advice": [
+      "CLOCK_PASSED"
+    ]
+  }
+}

@@ -1,11 +1,11 @@
 {
- "checked": 685,
+ "checked": 713,
  "said": {
   "fixture qa-false-alarms/deadline-after-occurrence invoice-a": {
    "findings": [
     {
      "rule": "SELF_SATISFIED",
-     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes itself: publish none; move the clock to its occurrence (or trigger its schedule where the clock cannot move, or send the request its interface takes) and await the system's own — observer requested was armed on billing-reminder-requested before step 2, which sets message.correlation.correlationId there (request.correlationId), so this wait holds whatever the application does and rules nothing of the criterion"
+     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes itself: publish none; bring its occurrence about as the system does — move the clock to it (orbit.clock.advance), or where the clock cannot move trigger the handler that sends it (orbit.scheduler.trigger: that proves the handler, never the schedule), or send the request its interface takes — and await the system's own — observer requested was armed on billing-reminder-requested before step 2, which sets message.correlation.correlationId there (request.correlationId), so this wait holds whatever the application does and rules nothing of the criterion"
     }
    ],
    "advice": []
@@ -15,7 +15,7 @@
    "advice": [
     {
      "rule": "SELF_PUBLISHED",
-     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes on its channel itself: publish none; move the clock to its occurrence (or trigger its schedule where the clock cannot move, or send the request its interface takes) and await the system's own, unless the system sends one of its own too — whether the observer sees step 2's own message on billing-reminder-requested is not shown here, so it is said, never refused"
+     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes on billing-reminder-requested itself: publish none; bring its occurrence about as the system does — move the clock to it (orbit.clock.advance), or where the clock cannot move trigger the handler that sends it (orbit.scheduler.trigger: that proves the handler, never the schedule), or send the request its interface takes — and await the system's own, unless the system sends one of its own too — whether step 3 reads step 2's own on billing-reminder-requested is not shown here, so it is said, never refused"
     }
    ]
   },
@@ -41,7 +41,7 @@
    "findings": [
     {
      "rule": "SELF_SATISFIED",
-     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes itself: publish none; move the clock to its occurrence (or trigger its schedule where the clock cannot move, or send the request its interface takes) and await the system's own — observer req was armed on billing-reminder-requested before step 2, which sets message.correlation.correlationId there (request.correlationId), so this wait holds whatever the application does and rules nothing of the criterion"
+     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes itself: publish none; bring its occurrence about as the system does — move the clock to it (orbit.clock.advance), or where the clock cannot move trigger the handler that sends it (orbit.scheduler.trigger: that proves the handler, never the schedule), or send the request its interface takes — and await the system's own — observer req was armed on billing-reminder-requested before step 2, which sets message.correlation.correlationId there (request.correlationId), so this wait holds whatever the application does and rules nothing of the criterion"
     }
    ],
    "advice": []
@@ -51,45 +51,45 @@
    "advice": [
     {
      "rule": "SELF_PUBLISHED",
-     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes on its channel itself: publish none; move the clock to its occurrence (or trigger its schedule where the clock cannot move, or send the request its interface takes) and await the system's own, unless the system sends one of its own too — whether the observer sees step 2's own message on billing-reminder-requested is not shown here, so it is said, never refused"
+     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes on billing-reminder-requested itself: publish none; bring its occurrence about as the system does — move the clock to it (orbit.clock.advance), or where the clock cannot move trigger the handler that sends it (orbit.scheduler.trigger: that proves the handler, never the schedule), or send the request its interface takes — and await the system's own, unless the system sends one of its own too — whether step 3 reads step 2's own on billing-reminder-requested is not shown here, so it is said, never refused"
     }
    ]
   },
   "fixture qa-false-alarms/occurrence-no-clock invoice-a": {
-   "findings": [],
-   "advice": [
+   "findings": [
     {
-     "rule": "UNCAUSED_DECISION",
-     "say": "step 1 waits for billing-daily:2026-10-22T09:00:00+07:00 to be decided due (SCHED-1/E1) and no step here moves the clock: advance it to that occurrence first (orbit.clock.advance), unless an earlier test of this investigation did — a schedule decides an occurrence when its own loop reaches it, and a trigger proves the handler, never the schedule"
+     "rule": "NEVER_DECIDED",
+     "say": "step 1 waits for billing-daily:2026-10-22T09:00:00+07:00 to be decided due (SCHED-1/E1) and no step here moves the clock: advance it to that occurrence first (orbit.clock.advance), since its clock is injected and no earlier test of this investigation moved it — a schedule decides an occurrence when its own loop reaches it, and a trigger proves the handler, never the schedule"
     }
-   ]
+   ],
+   "advice": []
   },
   "fixture qa-false-alarms/occurrence-no-clock invoice-b": {
-   "findings": [],
-   "advice": [
+   "findings": [
     {
-     "rule": "UNCAUSED_DECISION",
-     "say": "step 1 waits for billing-daily:2026-10-22T09:00:00+07:00 to be decided due (SCHED-1/E1) and no step here moves the clock: advance it to that occurrence first (orbit.clock.advance), unless an earlier test of this investigation did — a schedule decides an occurrence when its own loop reaches it, and a trigger proves the handler, never the schedule"
+     "rule": "NEVER_DECIDED",
+     "say": "step 1 waits for billing-daily:2026-10-22T09:00:00+07:00 to be decided due (SCHED-1/E1) and no step here moves the clock: advance it to that occurrence first (orbit.clock.advance), since its clock is injected and no earlier test of this investigation moved it — a schedule decides an occurrence when its own loop reaches it, and a trigger proves the handler, never the schedule"
     }
-   ]
+   ],
+   "advice": []
   },
   "fixture qa-false-alarms/occurrence-triggered invoice-a": {
-   "findings": [],
-   "advice": [
+   "findings": [
     {
-     "rule": "UNCAUSED_DECISION",
-     "say": "step 2 waits for billing-daily:2026-10-22T09:00:00+07:00 to be decided due (SCHED-1/E1) and no step here moves the clock: advance it to that occurrence first (orbit.clock.advance), unless an earlier test of this investigation did — a schedule decides an occurrence when its own loop reaches it, and a trigger proves the handler, never the schedule"
+     "rule": "NEVER_DECIDED",
+     "say": "step 2 waits for billing-daily:2026-10-22T09:00:00+07:00 to be decided due (SCHED-1/E1) and no step here moves the clock: advance it to that occurrence first (orbit.clock.advance), since its clock is injected and no earlier test of this investigation moved it — a schedule decides an occurrence when its own loop reaches it, and a trigger proves the handler, never the schedule"
     }
-   ]
+   ],
+   "advice": []
   },
   "fixture qa-false-alarms/occurrence-triggered invoice-b": {
-   "findings": [],
-   "advice": [
+   "findings": [
     {
-     "rule": "UNCAUSED_DECISION",
-     "say": "step 2 waits for billing-daily:2026-10-22T09:00:00+07:00 to be decided due (SCHED-1/E1) and no step here moves the clock: advance it to that occurrence first (orbit.clock.advance), unless an earlier test of this investigation did — a schedule decides an occurrence when its own loop reaches it, and a trigger proves the handler, never the schedule"
+     "rule": "NEVER_DECIDED",
+     "say": "step 2 waits for billing-daily:2026-10-22T09:00:00+07:00 to be decided due (SCHED-1/E1) and no step here moves the clock: advance it to that occurrence first (orbit.clock.advance), since its clock is injected and no earlier test of this investigation moved it — a schedule decides an occurrence when its own loop reaches it, and a trigger proves the handler, never the schedule"
     }
-   ]
+   ],
+   "advice": []
   },
   "fixture qa-false-alarms/once-both-redelivered invoice-a": {
    "findings": [
@@ -105,17 +105,17 @@
    "advice": []
   },
   "fixture qa-false-alarms/once-both-redelivered invoice-b": {
-   "findings": [
+   "findings": [],
+   "advice": [
     {
-     "rule": "NEVER_REDELIVERED",
+     "rule": "UNCAUSED_REDELIVERY",
      "say": "step 3 waits for delivery 2 of msg-a1b2c3d4e5f60001 (FIX-ASYNC-1/E4) and no step here faults, stops or restarts a workload: arm a fault before it settles (orbit.workload.control), or rule the step by its first delivery — a correct application need deliver a message it settles only once"
     },
     {
-     "rule": "NEVER_REDELIVERED",
+     "rule": "UNCAUSED_REDELIVERY",
      "say": "step 4 waits for delivery 2 of msg-a1b2c3d4e5f60002 (FIX-ASYNC-1/E4) and no step here faults, stops or restarts a workload: arm a fault before it settles (orbit.workload.control), or rule the step by its first delivery — a correct application need deliver a message it settles only once"
     }
-   ],
-   "advice": []
+   ]
   },
   "fixture qa-false-alarms/once-first-redelivered invoice-a": {
    "findings": [
@@ -131,17 +131,17 @@
    "advice": []
   },
   "fixture qa-false-alarms/once-first-redelivered invoice-b": {
-   "findings": [
+   "findings": [],
+   "advice": [
     {
-     "rule": "NEVER_REDELIVERED",
+     "rule": "UNCAUSED_REDELIVERY",
      "say": "step 3 waits for delivery 2 of msg-00c0ffee00000a01 (FIX-ASYNC-1/E4) and no step here faults, stops or restarts a workload: arm a fault before it settles (orbit.workload.control), or rule the step by its first delivery — a correct application need deliver a message it settles only once"
     },
     {
-     "rule": "NEVER_REDELIVERED",
+     "rule": "UNCAUSED_REDELIVERY",
      "say": "step 4 waits for delivery 2 of msg-00c0ffee00000a02 (FIX-ASYNC-1/E4) and no step here faults, stops or restarts a workload: arm a fault before it settles (orbit.workload.control), or rule the step by its first delivery — a correct application need deliver a message it settles only once"
     }
-   ],
-   "advice": []
+   ]
   },
   "fixture qa-false-alarms/once-second-redelivered invoice-a": {
    "findings": [
@@ -153,13 +153,13 @@
    "advice": []
   },
   "fixture qa-false-alarms/once-second-redelivered invoice-b": {
-   "findings": [
+   "findings": [],
+   "advice": [
     {
-     "rule": "NEVER_REDELIVERED",
+     "rule": "UNCAUSED_REDELIVERY",
      "say": "step 4 waits for delivery 2 of msg-a1b2c3d4e5f60002 (FIX-ASYNC-1/E4) and no step here faults, stops or restarts a workload: arm a fault before it settles (orbit.workload.control), or rule the step by its first delivery — a correct application need deliver a message it settles only once"
     }
-   ],
-   "advice": []
+   ]
   },
   "fixture qa-false-alarms/once-second-settled invoice-a": {
    "findings": [
@@ -178,6 +178,276 @@
     }
    ],
    "advice": []
+  },
+  "fixture qa-contradictions/again-competing-counted invoice-a": {
+   "findings": [
+    {
+     "rule": "SECOND_SETTLED",
+     "say": "step 3 counts 2 deliveries of job-q2a0000000000003 that settle as processed (request.match.outcome, FIX-ASYNC-1/E3), holding each after the first to the first one's word: drop outcome from its match and rule it by the job alone or by its attempt — the same job received by a second worker is not a second effect, and how it settles is the system's own word"
+    }
+   ],
+   "advice": []
+  },
+  "fixture qa-contradictions/again-competing-counted invoice-b": {
+   "findings": [
+    {
+     "rule": "SECOND_SETTLED",
+     "say": "step 3 counts 2 deliveries of job-q2a0000000000003 that settle as processed (request.match.outcome, FIX-ASYNC-1/E3), holding each after the first to the first one's word: drop outcome from its match and rule it by the job alone or by its attempt — the same job received by a second worker is not a second effect, and how it settles is the system's own word"
+    }
+   ],
+   "advice": []
+  },
+  "fixture qa-contradictions/again-redelivery-counted invoice-a": {
+   "findings": [
+    {
+     "rule": "SECOND_SETTLED",
+     "say": "step 5 counts 2 deliveries of msg-q2a0000000000002 that settle as processed (request.match.outcome, FIX-ASYNC-1/E3), holding each after the first to the first one's word: drop outcome from its match and rule it by its delivery attempt or by the message alone — the delivery that comes back after the effect committed is not a second effect, and how it settles is the system's own word"
+    }
+   ],
+   "advice": []
+  },
+  "fixture qa-contradictions/again-redelivery-counted invoice-b": {
+   "findings": [
+    {
+     "rule": "SECOND_SETTLED",
+     "say": "step 5 counts 2 deliveries of msg-q2a0000000000002 that settle as processed (request.match.outcome, FIX-ASYNC-1/E3), holding each after the first to the first one's word: drop outcome from its match and rule it by its delivery attempt or by the message alone — the delivery that comes back after the effect committed is not a second effect, and how it settles is the system's own word"
+    }
+   ],
+   "advice": []
+  },
+  "fixture qa-contradictions/again-redelivery-processed invoice-a": {
+   "findings": [],
+   "advice": [
+    {
+     "rule": "SECOND_SETTLES",
+     "say": "step 5 waits for delivery 2 of msg-q2a0000000000001 to settle as processed (request.match.outcome, FIX-ASYNC-1/E4): unless a criterion states how it settles, drop outcome from its match and rule it by its delivery attempt or by the message alone — the delivery that comes back after the effect committed is not a second effect, and how it settles is the system's own word"
+    }
+   ]
+  },
+  "fixture qa-contradictions/again-redelivery-processed invoice-b": {
+   "findings": [],
+   "advice": [
+    {
+     "rule": "SECOND_SETTLES",
+     "say": "step 5 waits for delivery 2 of msg-q2a0000000000001 to settle as processed (request.match.outcome, FIX-ASYNC-1/E4): unless a criterion states how it settles, drop outcome from its match and rule it by its delivery attempt or by the message alone — the delivery that comes back after the effect committed is not a second effect, and how it settles is the system's own word"
+    }
+   ]
+  },
+  "fixture qa-contradictions/clock-passed invoice-a": {
+   "findings": [],
+   "advice": [
+    {
+     "rule": "CLOCK_PASSED",
+     "say": "step 3 waits for tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1) after step 2 moves the clock to 2026-10-22T09:00:00+07:00, where gen-1@v of this investigation already moved it (2026-10-22T02:00:00Z): move it to a period no earlier test reached, or rule this by what that test left — nothing comes due again by a move to where the clock already was, and its tests share one sandbox"
+    }
+   ]
+  },
+  "fixture qa-contradictions/clock-passed invoice-b": {
+   "findings": [],
+   "advice": [
+    {
+     "rule": "CLOCK_PASSED",
+     "say": "step 3 waits for tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1) after step 2 moves the clock to 2026-10-22T09:00:00+07:00, where gen-1@v of this investigation already moved it (2026-10-22T02:00:00Z): move it to a period no earlier test reached, or rule this by what that test left — nothing comes due again by a move to where the clock already was, and its tests share one sandbox"
+    }
+   ]
+  },
+  "fixture qa-contradictions/decision-earlier-moved invoice-a": {
+   "findings": [],
+   "advice": [
+    {
+     "rule": "UNCAUSED_DECISION",
+     "say": "step 1 waits for billing-daily:2026-10-22T09:00:00+07:00 to be decided due (SCHED-1/E1) and no step here moves the clock: advance it to that occurrence first (orbit.clock.advance), unless an earlier test of this investigation did — a schedule decides an occurrence when its own loop reaches it, and a trigger proves the handler, never the schedule"
+    }
+   ]
+  },
+  "fixture qa-contradictions/decision-earlier-moved invoice-b": {
+   "findings": [],
+   "advice": [
+    {
+     "rule": "UNCAUSED_DECISION",
+     "say": "step 1 waits for billing-daily:2026-10-22T09:00:00+07:00 to be decided due (SCHED-1/E1) and no step here moves the clock: advance it to that occurrence first (orbit.clock.advance), unless an earlier test of this investigation did — a schedule decides an occurrence when its own loop reaches it, and a trigger proves the handler, never the schedule"
+    }
+   ]
+  },
+  "fixture qa-contradictions/decision-no-clock invoice-a": {
+   "findings": [
+    {
+     "rule": "NEVER_DECIDED",
+     "say": "step 1 waits for billing-daily:2026-10-22T09:00:00+07:00 to be decided due (SCHED-1/E1) and no step here moves the clock: advance it to that occurrence first (orbit.clock.advance), since its clock is injected and no earlier test of this investigation moved it — a schedule decides an occurrence when its own loop reaches it, and a trigger proves the handler, never the schedule"
+    }
+   ],
+   "advice": []
+  },
+  "fixture qa-contradictions/decision-no-clock invoice-b": {
+   "findings": [
+    {
+     "rule": "NEVER_DECIDED",
+     "say": "step 1 waits for billing-daily:2026-10-22T09:00:00+07:00 to be decided due (SCHED-1/E1) and no step here moves the clock: advance it to that occurrence first (orbit.clock.advance), since its clock is injected and no earlier test of this investigation moved it — a schedule decides an occurrence when its own loop reaches it, and a trigger proves the handler, never the schedule"
+    }
+   ],
+   "advice": []
+  },
+  "fixture qa-contradictions/pins-eq-decision invoice-a": {
+   "findings": [
+    {
+     "rule": "MATCH_PINS",
+     "say": "step 2 waits for skipped (request.match.decision) and SCHED-9/E1 needs executed there: match on that and bring it about first — occurrence.decision is the field both name, and its answer holds only what its match names"
+    }
+   ],
+   "advice": []
+  },
+  "fixture qa-contradictions/pins-eq-decision invoice-b": {
+   "findings": [
+    {
+     "rule": "MATCH_PINS",
+     "say": "step 2 waits for skipped (request.match.decision) and SCHED-9/E1 needs executed there: match on that and bring it about first — occurrence.decision is the field both name, and its answer holds only what its match names"
+    }
+   ],
+   "advice": []
+  },
+  "fixture qa-contradictions/pins-in-outcome invoice-a": {
+   "findings": [
+    {
+     "rule": "MATCH_PINS",
+     "say": "step 2 waits for duplicate (request.match.outcome) and FIX-9/E1 needs one of processed, acknowledged there: match on that and bring it about first — settlement.outcome is the field both name, and its answer holds only what its match names"
+    }
+   ],
+   "advice": []
+  },
+  "fixture qa-contradictions/pins-in-outcome invoice-b": {
+   "findings": [
+    {
+     "rule": "MATCH_PINS",
+     "say": "step 2 waits for duplicate (request.match.outcome) and FIX-9/E1 needs one of processed, acknowledged there: match on that and bring it about first — settlement.outcome is the field both name, and its answer holds only what its match names"
+    }
+   ],
+   "advice": []
+  },
+  "fixture qa-contradictions/redelivery-control-after invoice-a": {
+   "findings": [
+    {
+     "rule": "NEVER_REDELIVERED",
+     "say": "step 2 waits for delivery 2 of msg-q2b0000000000001 (FIX-ASYNC-1/E4) and no step before it faults, stops or restarts worker: arm a fault before it settles (orbit.workload.control), or rule the step by its first delivery — a correct application need deliver a message it settles only once"
+    }
+   ],
+   "advice": []
+  },
+  "fixture qa-contradictions/redelivery-control-after invoice-b": {
+   "findings": [],
+   "advice": [
+    {
+     "rule": "UNCAUSED_REDELIVERY",
+     "say": "step 2 waits for delivery 2 of msg-q2b0000000000001 (FIX-ASYNC-1/E4) and no step before it faults, stops or restarts worker: arm a fault before it settles (orbit.workload.control), or rule the step by its first delivery — a correct application need deliver a message it settles only once"
+    }
+   ]
+  },
+  "fixture qa-contradictions/redelivery-control-start invoice-a": {
+   "findings": [
+    {
+     "rule": "NEVER_REDELIVERED",
+     "say": "step 3 waits for delivery 2 of msg-q2b0000000000002 (FIX-ASYNC-1/E4) and no step here faults, stops or restarts a workload: arm a fault before it settles (orbit.workload.control), or rule the step by its first delivery — a correct application need deliver a message it settles only once"
+    }
+   ],
+   "advice": []
+  },
+  "fixture qa-contradictions/redelivery-control-start invoice-b": {
+   "findings": [],
+   "advice": [
+    {
+     "rule": "UNCAUSED_REDELIVERY",
+     "say": "step 3 waits for delivery 2 of msg-q2b0000000000002 (FIX-ASYNC-1/E4) and no step here faults, stops or restarts a workload: arm a fault before it settles (orbit.workload.control), or rule the step by its first delivery — a correct application need deliver a message it settles only once"
+    }
+   ]
+  },
+  "fixture qa-contradictions/redelivery-job-attempt invoice-a": {
+   "findings": [],
+   "advice": [
+    {
+     "rule": "UNCAUSED_REDELIVERY",
+     "say": "step 2 waits for delivery 2 of a message (JOB-1/E1) and no step here faults, stops or restarts a workload: arm a fault before it settles (orbit.workload.control), or rule the step by its first delivery — a correct application need deliver a message it settles only once"
+    }
+   ]
+  },
+  "fixture qa-contradictions/redelivery-job-attempt invoice-b": {
+   "findings": [],
+   "advice": [
+    {
+     "rule": "UNCAUSED_REDELIVERY",
+     "say": "step 2 waits for delivery 2 of a message (JOB-1/E1) and no step here faults, stops or restarts a workload: arm a fault before it settles (orbit.workload.control), or rule the step by its first delivery — a correct application need deliver a message it settles only once"
+    }
+   ]
+  },
+  "fixture qa-contradictions/redelivery-other-workload invoice-a": {
+   "findings": [
+    {
+     "rule": "NEVER_REDELIVERED",
+     "say": "step 3 waits for delivery 2 of msg-q2b0000000000003 (FIX-ASYNC-1/E4) and no step before it faults, stops or restarts worker: arm a fault before it settles (orbit.workload.control), or rule the step by its first delivery — a correct application need deliver a message it settles only once"
+    }
+   ],
+   "advice": []
+  },
+  "fixture qa-contradictions/redelivery-other-workload invoice-b": {
+   "findings": [],
+   "advice": [
+    {
+     "rule": "UNCAUSED_REDELIVERY",
+     "say": "step 3 waits for delivery 2 of msg-q2b0000000000003 (FIX-ASYNC-1/E4) and no step before it faults, stops or restarts worker: arm a fault before it settles (orbit.workload.control), or rule the step by its first delivery — a correct application need deliver a message it settles only once"
+    }
+   ]
+  },
+  "fixture qa-contradictions/self-absent-publish invoice-a": {
+   "findings": [
+    {
+     "rule": "SELF_SATISFIED",
+     "say": "step 3 rules correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 absent (DEADLINE-9/E1), which step 2 publishes itself: publish none; bring its occurrence about as the system does — move the clock to it (orbit.clock.advance), or where the clock cannot move trigger the handler that sends it (orbit.scheduler.trigger: that proves the handler, never the schedule), or send the request its interface takes — and await the system's own — observer req was armed on billing-reminder-requested before step 2, which sets message.correlation.correlationId there (request.correlationId), so this slot fails whatever the application does and rules nothing of the criterion"
+    }
+   ],
+   "advice": []
+  },
+  "fixture qa-contradictions/self-absent-publish invoice-b": {
+   "findings": [],
+   "advice": [
+    {
+     "rule": "SELF_PUBLISHED",
+     "say": "step 3 rules correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 absent (DEADLINE-9/E1), which step 2 publishes on billing-reminder-requested itself: publish none; bring its occurrence about as the system does — move the clock to it (orbit.clock.advance), or where the clock cannot move trigger the handler that sends it (orbit.scheduler.trigger: that proves the handler, never the schedule), or send the request its interface takes — and await the system's own, unless the system sends one of its own too — whether step 3 reads step 2's own on billing-reminder-requested is not shown here, so it is said, never refused"
+    }
+   ]
+  },
+  "fixture qa-contradictions/self-absent-trigger invoice-a": {
+   "findings": [],
+   "advice": [
+    {
+     "rule": "SELF_PUBLISHED",
+     "say": "step 3 rules occurrenceId billing-daily:2026-11-03T09:00:00+07:00 absent (DUE-9/E1), which step 2 triggers on billing-daily itself: trigger none; move the clock to its occurrence (orbit.clock.advance) and await what the schedule's own loop decides — a trigger proves the handler, never the schedule, unless the system sends one of its own too — whether step 3 reads step 2's own on billing-daily is not shown here, so it is said, never refused"
+    }
+   ]
+  },
+  "fixture qa-contradictions/self-absent-trigger invoice-b": {
+   "findings": [],
+   "advice": [
+    {
+     "rule": "SELF_PUBLISHED",
+     "say": "step 3 rules occurrenceId billing-daily:2026-11-03T09:00:00+07:00 absent (DUE-9/E1), which step 2 triggers on billing-daily itself: trigger none; move the clock to its occurrence (orbit.clock.advance) and await what the schedule's own loop decides — a trigger proves the handler, never the schedule, unless the system sends one of its own too — whether step 3 reads step 2's own on billing-daily is not shown here, so it is said, never refused"
+    }
+   ]
+  },
+  "fixture qa-contradictions/self-trigger-occurrence invoice-a": {
+   "findings": [],
+   "advice": [
+    {
+     "rule": "SELF_PUBLISHED",
+     "say": "step 3 waits for occurrenceId billing-daily:2026-11-03T09:00:00+07:00 (SCHED-9/E2), which step 2 triggers on billing-daily itself: trigger none; move the clock to its occurrence (orbit.clock.advance) and await what the schedule's own loop decides — a trigger proves the handler, never the schedule, unless the system sends one of its own too — whether step 3 reads step 2's own on billing-daily is not shown here, so it is said, never refused"
+    }
+   ]
+  },
+  "fixture qa-contradictions/self-trigger-occurrence invoice-b": {
+   "findings": [],
+   "advice": [
+    {
+     "rule": "SELF_PUBLISHED",
+     "say": "step 3 waits for occurrenceId billing-daily:2026-11-03T09:00:00+07:00 (SCHED-9/E2), which step 2 triggers on billing-daily itself: trigger none; move the clock to its occurrence (orbit.clock.advance) and await what the schedule's own loop decides — a trigger proves the handler, never the schedule, unless the system sends one of its own too — whether step 3 reads step 2's own on billing-daily is not shown here, so it is said, never refused"
+    }
+   ]
   },
   "captured 1 completes-by-deadline": {
    "findings": [
@@ -246,7 +516,7 @@
    "findings": [
     {
      "rule": "SELF_SATISFIED",
-     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes itself: publish none; move the clock to its occurrence (or trigger its schedule where the clock cannot move, or send the request its interface takes) and await the system's own — observer requested was armed on billing-reminder-requested before step 2, which sets message.correlation.correlationId there (request.correlationId), so this wait holds whatever the application does and rules nothing of the criterion"
+     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes itself: publish none; bring its occurrence about as the system does — move the clock to it (orbit.clock.advance), or where the clock cannot move trigger the handler that sends it (orbit.scheduler.trigger: that proves the handler, never the schedule), or send the request its interface takes — and await the system's own — observer requested was armed on billing-reminder-requested before step 2, which sets message.correlation.correlationId there (request.correlationId), so this wait holds whatever the application does and rules nothing of the criterion"
     }
    ],
    "advice": []
@@ -256,7 +526,7 @@
    "advice": [
     {
      "rule": "SELF_PUBLISHED",
-     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes on its channel itself: publish none; move the clock to its occurrence (or trigger its schedule where the clock cannot move, or send the request its interface takes) and await the system's own, unless the system sends one of its own too — whether the observer sees step 2's own message on billing-reminder-requested is not shown here, so it is said, never refused"
+     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes on billing-reminder-requested itself: publish none; bring its occurrence about as the system does — move the clock to it (orbit.clock.advance), or where the clock cannot move trigger the handler that sends it (orbit.scheduler.trigger: that proves the handler, never the schedule), or send the request its interface takes — and await the system's own, unless the system sends one of its own too — whether step 3 reads step 2's own on billing-reminder-requested is not shown here, so it is said, never refused"
     }
    ]
   },
@@ -265,7 +535,7 @@
    "advice": [
     {
      "rule": "SELF_PUBLISHED",
-     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 1 publishes on its channel itself: publish none; move the clock to its occurrence (or trigger its schedule where the clock cannot move, or send the request its interface takes) and await the system's own, unless the system sends one of its own too — whether the observer sees step 1's own message on billing-reminder-requested is not shown here, so it is said, never refused"
+     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 1 publishes on billing-reminder-requested itself: publish none; bring its occurrence about as the system does — move the clock to it (orbit.clock.advance), or where the clock cannot move trigger the handler that sends it (orbit.scheduler.trigger: that proves the handler, never the schedule), or send the request its interface takes — and await the system's own, unless the system sends one of its own too — whether step 3 reads step 1's own on billing-reminder-requested is not shown here, so it is said, never refused"
     }
    ]
   },
@@ -274,7 +544,7 @@
    "advice": [
     {
      "rule": "SELF_PUBLISHED",
-     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes on its channel itself: publish none; move the clock to its occurrence (or trigger its schedule where the clock cannot move, or send the request its interface takes) and await the system's own, unless the system sends one of its own too — whether the observer sees step 2's own message on billing-reminder-requested is not shown here, so it is said, never refused"
+     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes on billing-reminder-requested itself: publish none; bring its occurrence about as the system does — move the clock to it (orbit.clock.advance), or where the clock cannot move trigger the handler that sends it (orbit.scheduler.trigger: that proves the handler, never the schedule), or send the request its interface takes — and await the system's own, unless the system sends one of its own too — whether step 3 reads step 2's own on billing-reminder-requested is not shown here, so it is said, never refused"
     }
    ]
   },
@@ -283,7 +553,7 @@
    "advice": [
     {
      "rule": "SELF_PUBLISHED",
-     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes on its channel itself: publish none; move the clock to its occurrence (or trigger its schedule where the clock cannot move, or send the request its interface takes) and await the system's own, unless the system sends one of its own too — whether the observer sees step 2's own message on billing-reminder-requested is not shown here, so it is said, never refused"
+     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes on billing-reminder-requested itself: publish none; bring its occurrence about as the system does — move the clock to it (orbit.clock.advance), or where the clock cannot move trigger the handler that sends it (orbit.scheduler.trigger: that proves the handler, never the schedule), or send the request its interface takes — and await the system's own, unless the system sends one of its own too — whether step 3 reads step 2's own on billing-reminder-requested is not shown here, so it is said, never refused"
     }
    ]
   },
@@ -292,7 +562,7 @@
    "advice": [
     {
      "rule": "SELF_PUBLISHED",
-     "say": "step 4 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes on its channel itself: publish none; move the clock to its occurrence (or trigger its schedule where the clock cannot move, or send the request its interface takes) and await the system's own, unless the system sends one of its own too — whether the observer sees step 2's own message on billing-reminder-requested is not shown here, so it is said, never refused"
+     "say": "step 4 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes on billing-reminder-requested itself: publish none; bring its occurrence about as the system does — move the clock to it (orbit.clock.advance), or where the clock cannot move trigger the handler that sends it (orbit.scheduler.trigger: that proves the handler, never the schedule), or send the request its interface takes — and await the system's own, unless the system sends one of its own too — whether step 4 reads step 2's own on billing-reminder-requested is not shown here, so it is said, never refused"
     }
    ]
   },
@@ -300,7 +570,7 @@
    "findings": [
     {
      "rule": "SELF_SATISFIED",
-     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes itself: publish none; move the clock to its occurrence (or trigger its schedule where the clock cannot move, or send the request its interface takes) and await the system's own — observer requested was armed on billing-reminder-requested before step 2, which sets message.correlation.correlationId there (request.correlationId), so this wait holds whatever the application does and rules nothing of the criterion"
+     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes itself: publish none; bring its occurrence about as the system does — move the clock to it (orbit.clock.advance), or where the clock cannot move trigger the handler that sends it (orbit.scheduler.trigger: that proves the handler, never the schedule), or send the request its interface takes — and await the system's own — observer requested was armed on billing-reminder-requested before step 2, which sets message.correlation.correlationId there (request.correlationId), so this wait holds whatever the application does and rules nothing of the criterion"
     }
    ],
    "advice": []
@@ -470,7 +740,7 @@
    "findings": [
     {
      "rule": "SELF_SATISFIED",
-     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes itself: publish none; move the clock to its occurrence (or trigger its schedule where the clock cannot move, or send the request its interface takes) and await the system's own — observer requested was armed on billing-reminder-requested before step 2, which sets message.correlation.correlationId there (request.correlationId), so this wait holds whatever the application does and rules nothing of the criterion"
+     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes itself: publish none; bring its occurrence about as the system does — move the clock to it (orbit.clock.advance), or where the clock cannot move trigger the handler that sends it (orbit.scheduler.trigger: that proves the handler, never the schedule), or send the request its interface takes — and await the system's own — observer requested was armed on billing-reminder-requested before step 2, which sets message.correlation.correlationId there (request.correlationId), so this wait holds whatever the application does and rules nothing of the criterion"
     }
    ],
    "advice": []
@@ -480,7 +750,7 @@
    "advice": [
     {
      "rule": "SELF_PUBLISHED",
-     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes on its channel itself: publish none; move the clock to its occurrence (or trigger its schedule where the clock cannot move, or send the request its interface takes) and await the system's own, unless the system sends one of its own too — whether the observer sees step 2's own message on billing-reminder-requested is not shown here, so it is said, never refused"
+     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes on billing-reminder-requested itself: publish none; bring its occurrence about as the system does — move the clock to it (orbit.clock.advance), or where the clock cannot move trigger the handler that sends it (orbit.scheduler.trigger: that proves the handler, never the schedule), or send the request its interface takes — and await the system's own, unless the system sends one of its own too — whether step 3 reads step 2's own on billing-reminder-requested is not shown here, so it is said, never refused"
     }
    ]
   },
@@ -488,7 +758,7 @@
    "findings": [
     {
      "rule": "SELF_SATISFIED",
-     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes itself: publish none; move the clock to its occurrence (or trigger its schedule where the clock cannot move, or send the request its interface takes) and await the system's own — observer req was armed on billing-reminder-requested before step 2, which sets message.correlation.correlationId there (request.correlationId), so this wait holds whatever the application does and rules nothing of the criterion"
+     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes itself: publish none; bring its occurrence about as the system does — move the clock to it (orbit.clock.advance), or where the clock cannot move trigger the handler that sends it (orbit.scheduler.trigger: that proves the handler, never the schedule), or send the request its interface takes — and await the system's own — observer req was armed on billing-reminder-requested before step 2, which sets message.correlation.correlationId there (request.correlationId), so this wait holds whatever the application does and rules nothing of the criterion"
     }
    ],
    "advice": []
@@ -497,7 +767,7 @@
    "findings": [
     {
      "rule": "SELF_SATISFIED",
-     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes itself: publish none; move the clock to its occurrence (or trigger its schedule where the clock cannot move, or send the request its interface takes) and await the system's own — observer req was armed on billing-reminder-requested before step 2, which sets message.correlation.correlationId there (request.correlationId), so this wait holds whatever the application does and rules nothing of the criterion"
+     "say": "step 3 waits for correlationId tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00 (FIX-ASYNC-1/E1), which step 2 publishes itself: publish none; bring its occurrence about as the system does — move the clock to it (orbit.clock.advance), or where the clock cannot move trigger the handler that sends it (orbit.scheduler.trigger: that proves the handler, never the schedule), or send the request its interface takes — and await the system's own — observer req was armed on billing-reminder-requested before step 2, which sets message.correlation.correlationId there (request.correlationId), so this wait holds whatever the application does and rules nothing of the criterion"
     }
    ],
    "advice": []

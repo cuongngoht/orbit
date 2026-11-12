@@ -111,8 +111,13 @@ test("a later delivery is refused where nothing in the design or its shape bring
   assert.deepEqual(contradictionAdvice(design(second, [["X/E1", 2]]), contextOn("invoice-a", design(second, []), "effect-once-per-key", once)), [], "its first delivery needs no cause");
   const occurrence = "billing-daily:2026-10-22T09:00:00+07:00";
   const watched = [decisions({ count: 1, match: { occurrenceId: occurrence } })];
-  assert.deepEqual(advised(design(watched, [["SCHED-1/E1", 1]]), "occurrence-one-execution"), ["UNCAUSED_DECISION"]);
-  assert.deepEqual(advised(design([call("orbit.scheduler.trigger", { scheduleRef: "billing-daily", request: { occurrenceId: occurrence } }), ...watched], [["SCHED-1/E1", 2]]), "occurrence-one-execution"), ["UNCAUSED_DECISION"], "a trigger proves the handler, never the schedule");
+  assert.deepEqual([refused(design(watched, [["SCHED-1/E1", 1]]), "occurrence-one-execution"), advised(design(watched, [["SCHED-1/E1", 1]]), "occurrence-one-execution")], [["NEVER_DECIDED"], []], "an injected clock nothing here or earlier moved: refused");
+  const triggered = design([call("orbit.scheduler.trigger", { scheduleRef: "billing-daily", request: { occurrenceId: occurrence } }), ...watched], [["SCHED-1/E1", 2]]);
+  assert.deepEqual(refused(triggered, "occurrence-one-execution"), ["NEVER_DECIDED"], "a trigger proves the handler, never the schedule");
+  const moved = proven("invoice-a", [{ shape: "occurrence-one-execution", design: design([call("orbit.clock.advance", { clockRef: "invoice-a", request: { to: "2026-10-22T09:00:00+07:00" } })], []), outcome: "CONTRADICTED" }]);
+  assert.deepEqual([recorded(design(watched, [["SCHED-1/E1", 1]]), "occurrence-one-execution", moved), contradictionAdvice(design(watched, [["SCHED-1/E1", 1]]), { ...contextOn("invoice-a", design(watched, []), "occurrence-one-execution"), investigation: moved }).map((f) => f.rule)], [[], ["UNCAUSED_DECISION"]], "an earlier version that ran -- to any word -- moved the clock: said, never refused");
+  const blind = { ...contextOn("invoice-a", design(watched, []), "occurrence-one-execution"), semanticsFor: () => null };
+  assert.deepEqual([contradictionFindings(design(watched, [["SCHED-1/E1", 1]]), blind).map((f) => f.rule), contradictionAdvice(design(watched, [["SCHED-1/E1", 1]]), blind).map((f) => f.rule)], [[], ["UNCAUSED_DECISION"]], "a clock no adapter declares injected may be real time: said");
   assert.deepEqual(advised(design([call("orbit.clock.advance", { clockRef: "invoice-a", request: { to: "2026-10-22T09:00:00+07:00" } }), ...watched], [["SCHED-1/E1", 2]]), "occurrence-one-execution"), [], "the clock moved to it");
   assert.ok(CONTRADICTION_RULES.filter((r) => !r.refuses).every((r) => !contradictionFindings(design(watched, [["SCHED-1/E1", 1]]), contextOn("invoice-a", design(watched, []), "occurrence-one-execution")).some((f) => f.rule === r.id)), "advice never refuses");
 });

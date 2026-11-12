@@ -1,0 +1,69 @@
+{
+  "shape": "effect-once-per-key",
+  "why": "a job's later attempt is the family's own ordinal (execution.attempt): with no adapter declaring how a job comes back, said",
+  "accepted": {
+    "JOB-1/E1": {
+      "property": "execution.attempt",
+      "op": "complete-within",
+      "value": 2,
+      "within": 60,
+      "for": []
+    }
+  },
+  "design": {
+    "skeleton": {
+      "steps": [
+        {
+          "do": "call",
+          "capability": "orbit.job.enqueue",
+          "input": {
+            "queueRef": "billing-jobs",
+            "request": {
+              "jobId": "job-q2b0000000000004"
+            }
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.job.observe",
+          "input": {
+            "queueRef": "billing-jobs",
+            "observerRef": "jobs",
+            "request": {
+              "count": 1
+            }
+          }
+        }
+      ]
+    },
+    "assertions": [
+      {
+        "criterionRef": "JOB-1/E1",
+        "template": "complete",
+        "step": 2
+      }
+    ],
+    "controls": [
+      {
+        "role": "duplicate",
+        "why": "x"
+      },
+      {
+        "role": "state",
+        "why": "x"
+      }
+    ],
+    "trigger": {
+      "kind": "message",
+      "ref": "billing-jobs",
+      "step": 1
+    },
+    "effectScope": "fixture"
+  },
+  "expect": {
+    "findings": [],
+    "advice": [
+      "UNCAUSED_REDELIVERY"
+    ]
+  }
+}

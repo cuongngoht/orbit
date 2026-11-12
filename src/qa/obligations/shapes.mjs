@@ -40,9 +40,9 @@ const notASecondEffect = (again, by) => `${again} is not a second effect: how it
 
 const saysOf = (again) => (again ? { says: notASecondEffect(again.what, again.by) } : {});
 
-const ONCE_AFTER_EFFECT = { what: "the delivery that comes back after the effect committed", by: "its delivery attempt or by the message alone", ways: [] };
-const ONCE_PER_KEY = { what: "a second delivery or publication under the same business key", by: "the message alone or by its delivery attempt", ways: ["business-key"] };
-const ONCE_PER_JOB = { what: "the same job received by a second worker", by: "the job alone or by its attempt", ways: [] };
+const ONCE_AFTER_EFFECT = { what: "the delivery that comes back after the effect committed", by: "its delivery attempt or by the message alone", ways: ["redelivery"] };
+const ONCE_PER_KEY = { what: "a second delivery or publication under the same business key", by: "the message alone or by its delivery attempt", ways: ["business-key", "redelivery"] };
+const ONCE_PER_JOB = { what: "the same job received by a second worker", by: "the job alone or by its attempt", ways: ["redelivery"] };
 
 export const OBLIGATION_SHAPES = [
   shape("response-conforms", "synchronous", ["invocation"], ["response"], ["positive"], ["value-eq", "value-in", "schema-valid"], "an interface answers what its accepted contract says: status, body, schema and error semantics"),

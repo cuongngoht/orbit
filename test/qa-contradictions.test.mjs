@@ -1,33 +1,14 @@
 // What a design can be shown to hold a correct application to (src/qa/backend/contradictions.mjs, 0.5.0): each rule on its
-// own edges, read with the shipped adapters' declarations -- and every design the benchmark's scripted controls send
-// (benchmark/lib/qa/hosts.mjs, captured from the hosts themselves) and every worked design the playbook shows held to
-// them: none of those may be refused, or a control would fail for the rule, not the product.
+// own edges, read with the shipped adapters' declarations -- and every design the old benchmark's scripted controls sent
+// (test/fixtures/qa-designs/sent.json, captured from the hosts themselves) and every worked design the playbook shows held
+// to them: none of those may be refused, or a control would fail for the rule, not the product.
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
 import { test } from "node:test";
-import { fileURLToPath } from "node:url";
 import { declarationFindings, MATCH_SELECTS } from "../src/adapters/contract-v1.mjs";
-import { operationFor } from "../src/adapters/families.mjs";
-import { opKeyOf } from "../src/adapters/select.mjs";
 import { CONTRADICTION_RULES, contradictionAdvice, contradictionFindings } from "../src/qa/backend/contradictions.mjs";
 import { shapeOf } from "../src/qa/obligations/shapes.mjs";
 import { meaningAt, meaningEntries } from "../src/topology/vocab.mjs";
-import { HOSTS } from "../benchmark/lib/qa/hosts.mjs";
-import { INVOICE } from "../benchmark/lib/qa/invoice.mjs";
-
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const ADAPTERS = JSON.parse(readFileSync(join(ROOT, "skills", "orbit-backend-test", "adapters.json"), "utf8")).adapters;
-const PLAN = JSON.parse(readFileSync(join(ROOT, "acceptance", "projects", "_shared", "ui-tests", "screens", "_no-screen", "invoice.plan.json"), "utf8"));
-const ACCEPTED = new Map(PLAN.criteria.flatMap((c) => (c.expects ?? []).map((e) => [`${c.id}/${e.id}`, e])));
-
-// The adapter each family is answered by on a stack: its broker's for the channels, the hooks' for the rest, a database's
-// for state -- and the request table that adapter declares for the operation a step asks.
-const BY_STACK = { "invoice-a": "amqp.reference", "invoice-b": "jetstream.reference" };
-const answering = (stack, family) => ({ messaging: BY_STACK[stack], observe: BY_STACK[stack], worker: "worker.hooks", scheduler: "scheduler.hooks", clock: "clock.hooks", workload: "workload.hooks", identity: "identity.hooks", state: "postgres.reference" })[family];
-const adapterOn = (stack, row) => (row ? ADAPTERS.find((x) => x.id === answering(stack, row.family)) ?? null : null);
-const operationOn = (stack, capability) => ((row) => ((a) => (a ? a.operations[opKeyOf(a, row)] ?? null : null))(adapterOn(stack, row)))(operationFor(capability));
-const contextOn = (stack, design, shape, expectations = ACCEPTED) => ({ expectations, shape: shapeOf(shape), requestTableOf: (i) => operationOn(stack, design.skeleton?.steps?.[i - 1]?.capability)?.request ?? null, semanticsOf: (i) => adapterOn(stack, operationFor(design.skeleton?.steps?.[i - 1]?.capability))?.semantics ?? null });
+import { ACCEPTED, ADAPTERS, contextOn, operationOn, proven, references, SENT, sentOf, WORKED } from "./qa-designs.mjs";
 
 const call = (capability, input) => ({ do: "call", capability, input });
 const KEY = "tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00";
@@ -99,10 +80,6 @@ test("a wait for a value the design's own publication put where its observer loo
   assert.deepEqual(blind, [], "an adapter that does not say which field of the message its publication sets shows nothing");
 });
 
-// An investigation's record as src/investigation/generate.mjs hands it to the contradiction stage: the shapes its accepted
-// obligations hold the system to, and each earlier version that ran SATISFIED, read in its own obligation's context.
-const ONCE_HELD = ["completes-by-deadline", "effect-once-per-key", "occurrence-one-execution"];
-const proven = (stack, earlier, shapes = ONCE_HELD) => ({ shapes, earlier: earlier.map((e, n) => ({ version: `gen-${n + 1}@v`, shape: e.shape, design: e.design, cx: contextOn(stack, e.design, e.shape) })) });
 const recorded = (d, shape, investigation, stack = "invoice-a") => contradictionFindings(d, { ...contextOn(stack, d, shape), investigation }).map((f) => f.rule);
 
 test("a message under a business key an earlier SATISFIED test of the investigation settled is refused only where that test's own record shows it, and its plan holds the system to one effect per key", () => {
@@ -140,56 +117,29 @@ test("a later delivery is refused where nothing in the design or its shape bring
   assert.ok(CONTRADICTION_RULES.filter((r) => !r.refuses).every((r) => !contradictionFindings(design(watched, [["SCHED-1/E1", 1]]), contextOn("invoice-a", design(watched, []), "occurrence-one-execution")).some((f) => f.rule === r.id)), "advice never refuses");
 });
 
-// ── what the benchmark's controls send ──────────────────────────────────────────────────────────────────────────────
+// ── what the old benchmark's controls sent ──────────────────────────────────────────────────────────────────────────
 
-// A relay that owes every shape the application's designs cover and keeps every design a host proposes, answering no
-// version -- so a host runs nothing, and what it would have sent is all that is read.
-async function sentBy(host, stack, memory, refusals = {}) {
-  const designs = INVOICE.designs(ROOT);
-  const owed = designs.map((d, n) => ({ id: `obl-${n + 1}`, kind: "test-obligation", template: { obligation: `tob-${String(n + 1).padStart(12, "0")}`, shape: d.shape } }));
-  const sent = [];
-  const ask = async (argv, stdin) => ({ exit: 0, stderr: "", stdout: argv[0] === "context" ? JSON.stringify({ position: 1, frontier: owed, versions: [] }) : JSON.stringify(kept(sent, owed, argv, stdin)) });
-  await HOSTS[host]({ ask, journal: () => [], designs, stack, clock: INVOICE.clock(ROOT, stack), falseAlarm: INVOICE.falseAlarm.shape, earlier: () => ({ investigation: "inv-earlier", versions: [] }), memory: () => memory, planted: refusals.planted ?? [], repeats: refusals.repeats ?? 0 });
-  return sent;
-}
-
-function kept(sent, owed, argv, stdin) {
-  const decision = argv[0] === "step" ? JSON.parse(stdin) : null;
-  if (decision?.action?.kind === "generate") sent.push({ shape: owed.find((o) => o.id === decision.target)?.template.shape, design: decision.action.design });
-  return {};
-}
-
-const CASES = readdirSync(join(ROOT, "benchmark", "suites")).flatMap((suite) => readdirSync(join(ROOT, "benchmark", "suites", suite)).filter((c) => c !== "suite.json").map((c) => JSON.parse(readFileSync(join(ROOT, "benchmark", "suites", suite, c, "case.json"), "utf8")))).filter((c) => ["qa", "sessions"].includes(c.kind));
-
-test("no design a benchmark control sends is refused or advised by these rules, each held to every one it sent before as run SATISFIED -- the false alarm the false-alarm control plants is not one a design shows", async () => {
-  assert.ok(CASES.length >= 10, "every QA and sessions case");
-  const said = [];
-  const sentOf = new Map();
-  for (const c of CASES) {
-    for (const { host } of c.controls) {
-      const sent = await sentBy(host, c.target.stack, c.poison ? { skip: c.poison.skip, stale: c.poison.stale } : null, c.refusals);
-      sentOf.set(host, Math.max(sentOf.get(host) ?? 0, sent.length));
-      for (const [n, { shape, design: d }] of sent.entries()) said.push(...[...recorded(d, shape, proven(c.target.stack, sent.slice(0, n)), c.target.stack), ...advised(d, shape, c.target.stack)].map((rule) => `${c.id} ${host} ${shape}: ${rule}`));
-    }
-  }
+// Every design the 0.5.0 benchmark's scripted QA and sessions hosts sent, per case and control, as they were captured
+// before the benchmark's removal (test/fixtures/qa-designs/sent.json).
+test("no design a benchmark control sent is refused or advised by these rules, each held to every one it sent before as run SATISFIED -- the false alarm the false-alarm control planted is not one a design shows", () => {
+  assert.ok(SENT.cases.length >= 10, "every QA and sessions case");
+  const said = SENT.cases.flatMap((c) => c.controls.flatMap((k) => sentOf(k).flatMap(({ shape, design: d }, n, all) => [...recorded(d, shape, proven(c.stack, all.slice(0, n)), c.stack), ...advised(d, shape, c.stack)].map((rule) => `${c.id} ${k.host} ${shape}: ${rule}`))));
   assert.deepEqual(said, []);
-  assert.deepEqual(Object.fromEntries([...sentOf].sort()), { cheat: 0, "false-alarm": 9, half: 9, idle: 0, recovers: 9, reference: 9, repeats: 9, "trusts-poison": 6, "trusts-stale": 9, uncorrected: 9 }, "each host's designs, one per shape it tests -- read off the host itself");
-  const broken = (await sentBy("false-alarm", "invoice-a", null)).filter((s) => s.shape === INVOICE.falseAlarm.shape);
-  assert.equal(broken.length, 1, "the false-alarm control still sends its broken design, made like any other");
+  const sentBy = Object.fromEntries([...new Set(SENT.cases.flatMap((c) => c.controls.map((k) => k.host)))].sort().map((host) => [host, Math.max(...SENT.cases.flatMap((c) => c.controls.filter((k) => k.host === host).map((k) => k.sent.length)))]));
+  assert.deepEqual(sentBy, { cheat: 0, "false-alarm": 9, half: 9, idle: 0, recovers: 9, reference: 9, repeats: 9, "trusts-poison": 6, "trusts-stale": 9, uncorrected: 9 }, "each host's designs, one per shape it tests");
+  const broken = sentOf(SENT.cases.find((c) => c.id === "ORBIT-QA-001").controls.find((k) => k.host === "false-alarm")).filter((s) => s.shape === "effect-once-per-key");
+  assert.equal(broken.length, 1, "the false-alarm control sent its broken design, made like any other");
   assert.match(JSON.stringify(broken[0].design), /never written/, "a read-back of a record no step writes: a contradiction the clean application shows, and no design can");
 });
 
 test("every reference design, on each stack and with each clock its stack allows, is held to none of these rules", () => {
-  const designs = INVOICE.designs(ROOT).flatMap((d) => Object.entries(d["by-clock"] ?? { none: {} }).flatMap(([clock, over]) => Object.keys(BY_STACK).map((stack) => ({ stack, clock, shape: d.shape, design: JSON.parse(JSON.stringify({ ...d.design, ...over }).replaceAll("{{component}}", stack)) }))));
+  const designs = references();
   assert.ok(designs.length >= 20);
-  assert.deepEqual(designs.flatMap((x) => [...refused(x.design, x.shape, x.stack), ...advised(x.design, x.shape, x.stack)].map((rule) => `${x.stack} ${x.shape} (${x.clock}): ${rule}`)), []);
+  assert.deepEqual(designs.flatMap((x) => [...refused(x.design, x.shape, x.stack), ...advised(x.design, x.shape, x.stack)].map((rule) => `${x.label}: ${rule}`)), []);
 });
 
 // The playbook's worked designs (skills/orbit-qa/references/designs.md) are what a host starts from: none may be held to
 // any of these rules, refused or said, on the slots each says it assumes.
-const DOC = readFileSync(join(ROOT, "skills", "orbit-qa", "references", "designs.md"), "utf8");
-const WORKED = [...DOC.matchAll(/^### ([a-z-]+)\n[\s\S]*?```json\n([\s\S]*?)```/gm)].map(([, , json]) => JSON.parse(json));
-
 test("no worked design the playbook shows is held to any of these rules", () => {
   assert.ok(WORKED.length >= 20);
   const held = (w) => ((cx) => [...contradictionFindings(w.design, cx), ...contradictionAdvice(w.design, cx)].map((f) => `${w.shape}: ${f.rule}`))(contextOn("invoice-a", w.design, w.shape, new Map(Object.entries(w.accepted))));

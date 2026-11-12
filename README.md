@@ -134,7 +134,7 @@ A few ideas run through everything:
 
 You can name any of these yourself, and Claude Code also picks them by itself: it reads each skill's description, so
 every description says *when* to use it in its first sentence and stays within the host's listing budget (at most 300
-characters, 7,500 for all 25). `test/activation-catalog.test.mjs` holds that, and that each first sentence carries a
+characters, 7,500 for all 26). `test/activation-catalog.test.mjs` holds that, and that each first sentence carries a
 word that brings a prompt to the skill.
 
 Beside every prompt, Orbit's prompt router says how much Orbit the request needs, in one line, or nothing at all
@@ -150,6 +150,13 @@ through its owner. English and Vietnamese are read alike, words past the first 2
 -- never decide what a prompt is about, and a one-word match is said only when it is a skill's own word. The router
 suggests; Claude decides. `test/fixtures/routing/corpus.jsonl` holds it to realistic prompts in both languages.
 
+Since 0.6.0 a FACT about the session's work brings a skill or agent in as well as the prompt's words, and never a word
+the engine guessed (ADR 0059): a check the session ran after its edits failed (`check.failed`), the same check failed
+three times in a row with nothing changed between (`check.repeats`, said once as no progress), or the session's tracked
+work has a knowledge need nobody answered (`knowledge.owed`). A catalog row names the facts its playbook handles
+(`reactsTo`), and a fact that holds counts for it as one of its words would -- so a check that failed after the last
+prompt shapes the next prompt's decision.
+
 The rest of a session follows its work through, a line at a time and only where Orbit owns the work (0.5.0, ADR 0050):
 
 - **Session start** (a checkout Orbit knows): one line of at most 300 bytes -- each family's usable count, what you
@@ -159,15 +166,27 @@ The rest of a session follows its work through, a line at a time and only where 
   transcript are never read.
 - **After an Orbit command fails** under the session's governed work: the owner's recovery row, beside the usual
   diagnosis -- an action that did not settle is read back with `reconcile`, never sent again.
+- **After any tool call fails** (0.6.0): at most one line of advice -- the fact that holds, its subject, the skill or
+  agent that handles it and the call that brings it in -- or nothing. An ordered silence table keeps it quiet when the
+  host cannot carry a line, the trail is off, your prompt said stop, nothing holds, the same fact was said already this
+  session, this prompt had its line, your governed work is paused or waiting for you, or nothing here handles it.
+  Nothing is said after a call that succeeded.
 - **At Stop**: when the session's own coordinated workflow or goal is still running with a step ready, Claude Code's
   turn is held open -- at most twice per prompt, never twice in a row -- with the step and its one command, or the
   model says in one sentence why it stops. Never past your pause, cancel, approval or question, never after a turn
   that only answered a question, never when your prompt said stop or wait, never with the trail off; switch it off in
   Orbit Control › Advanced › Automation limits (`trigger.holdOnStop`). The hold starts and grants nothing.
+- **At Stop, after edits nothing checked** (0.6.0): a turn that edited code a component of this checkout owns, with no
+  passing check after the edit, is held open once per prompt, naming the safe check that component declares and its
+  command -- or the model says why it stops. It runs nothing, and never holds after a halt cue, past a paused or waiting
+  work, beside the workflow hold, or for a path no component owns. On by default; switch it off in Orbit Control
+  (`trigger.holdUnverified`).
 
 `node cli/trace.mjs activation` reads back, per turn and per work, how a suggestion became an outcome: suggested →
 selected → dispatched → executed → verified, each from its own source, with only the owner's record ever verified, and a
-turn that dispatched more of Orbit's agents than its strategy accounted for marked **over-delegated**.
+turn that dispatched more of Orbit's agents than its strategy accounted for marked **over-delegated**. A line of advice
+after a failed call is kept as `advice.given` (the fact, its subject, the provider and its kind, never the sentence) and
+counted as suggested.
 
 ### Entry points
 
@@ -188,6 +207,7 @@ turn that dispatched more of Orbit's agents than its strategy accounted for mark
 | `orbit-architecture` | An evidence-backed architecture snapshot, recalled from memory and rescanned only when stale. |
 | `orbit-reverse-engineer` | Map a system's running parts (components, interfaces, channels, stores) into a system graph. |
 | `orbit-dotnet` | Which technologies a .NET solution declares and what its code actually uses each for. |
+| `orbit-research` | Answer a technical question from a source, for the version this project's manifest pins, and keep the answer as knowledge scoped to that version (0.6.0). |
 | `orbit-learn` | Lessons from repeated evidence across independent sessions. |
 | `orbit-improve` | Improve this project's playbooks and Satellite roles from what they did: a successor compared with the version it would replace in independent sessions, promoted through gates, rolled back on regression. |
 
@@ -243,12 +263,15 @@ node cli/help.mjs --for="<task>"                       # one recommended next st
 node cli/requirements.mjs resolve <ref>                # find a work item
 node cli/autonomous-engineering.mjs start --ref=<item> # a task taken to a verified change
 node cli/task.mjs list                                 # tasks on this machine
+node cli/task.mjs why <task> [--json]                  # each decision, how it settled, what moved the task next (0.6.0)
+node cli/work.mjs checkpoint <w-…> --asked="<source · target>"   # one round of discovery: what it asked (0.6.0)
 
 # Project knowledge
 node cli/architecture.mjs ensure                       # is the architecture snapshot current?
 node cli/runtime.mjs discover                          # what this checkout needs to run
 node cli/context.mjs --for="<task>" [--json]           # what the task touches, and whether that is enough (0.5.0)
 node cli/context.mjs --with-refs --json < refs.json    # the same, with the files and symbols you propose, verified
+node cli/context.mjs --for="<task>" --work=<w-…>       # with the round state of the task's own work (0.6.0)
 
 # Live view
 node cli/live.mjs status                               # Orbit Live in a terminal
@@ -385,6 +408,28 @@ A host proposes what it found with `--with-refs`: `{ "task": "…", "refs": [{ "
 search of the index; one the tree does not hold is refused by name and never listed. Composing RELEVANT and
 SUFFICIENCY writes nothing: only the sections' own memory-first commands refresh what they keep.
 
+**Three levels (0.6.0, ADR 0058).** SUFFICIENCY also answers, level by level, whether the task knows enough to
+**investigate** (a direct file or symbol the tracked tree holds), to **change** (the direct items confirmed by a read,
+what depends on them known or said unknown, a done criterion recorded as a `proof` need on the task's own work, and the
+check that would prove it identified) and to **conclude** (every proof need satisfied, nothing it rests on moved since,
+and the work's evidence `verified` by an owner's completed task). Each level is one ordered table over facts, never a
+count of search hits: it says the row that stops it and everything it misses, with the command that fills each. A name
+the task's words matched is a candidate, never confirmed, however many there are.
+
+**Relations, one hop each way.** RELEVANT follows each direct file to what it imports and to who imports it, and to the
+tests that go with it -- read from the tracked tree, on demand, never a graph of the repository. What a file names is a
+language's, so it is read by relation adapters in a pack (JavaScript/TypeScript and Python ship in
+`skills/orbit-develop/relations/`). A route-shaped string two files share is a hypothesis you verify by reading both; a
+file no adapter reads is a gap you fill by reading it and proposing what you found with `--with-refs`.
+
+**A bounded discovery loop.** Discovery is recorded on the task's own work: its done criteria are `proof` needs, its
+gaps `knowledge` needs, and each round is a checkpoint that keeps what it asked (`work checkpoint <w-…> --asked="<source
+· target>"`, as the package printed it). `context --work=<w-…>` reads the rounds back: they stop after five, or after two
+in a row that settle nothing new, and a target already answered is not offered again while that answer is fresh -- so
+the next session re-reads only what went stale. A scope that is gone from the tree is said as GONE, and a need settled
+on it is invalidated, to be settled again. A question about how a technology behaves goes to `orbit-research`: answered from a source for the
+version the manifest pins, and kept as knowledge scoped to that version, so a version bump makes it stale.
+
 ### Coordinated workflows and reusable playbooks
 
 When a workflow needs a capability nothing provides, the skill factory drafts a **project-scoped playbook**: a
@@ -440,10 +485,28 @@ node cli/query.mjs adapters --matrix                           # what each adapt
 node acceptance/run.mjs [--stack=…] [--variant=…]              # native acceptance: two stacks, planted defects
 ```
 
+A verdict must depend on the application, never on what the design itself causes. Every contradiction rule reads a
+design through one model of what it causes (`src/qa/backend/causes.mjs`) and names no operation or shape: a wait for a
+second delivery nothing brings, a match the design pins itself, a result its own step satisfies. Since 0.6.0 two more:
+`NEVER_DECIDED` refuses a design that waits for a schedule to decide an occurrence when the clock is injected and
+nothing in the investigation moved it, and `CLOCK_PASSED` advises when a design moves the clock only to where an earlier
+test already took it.
+
 Security catalogs (default: ASVS 5.0.0 L1, labelled with OWASP Top 10 2025 and API Security Top 10 2023), limits and
 isolation are configured by a person in Orbit Control; a task's own sandbox needs nobody's trust to run
 ([ADR 0040](docs/adr/0040-standards-and-policies-are-configured-in-orbit-control.md)). Orbit never calls anything
 "compliant".
+
+### Autonomous engineering: what stopped a check
+
+An engineering task (`orbit-engineer`, `autonomous-engineering.mjs`) classifies a failed check from facts it can
+demonstrate, never from the words of an error: `DEPENDENCY` (the workspace's dependency restore for that component ran
+and failed), `ACCESS` (a target a person said the component requires is unreachable from here, asked fresh),
+`ENVIRONMENT` (it could not run here, or failed the same way before any change), `CODE`, `TEST`, `CAPABILITY`,
+`REQUIREMENT`, `DATA`, `SCOPE` and `UNKNOWN`. A class chooses what to look at next; it is never a verdict. The task's
+context ends with a `DO` line: the one command that goes on -- `step` with the decision's shape on stdin, or
+`reconcile` for an action that did not settle. `node cli/task.mjs why <task>` says, for each decision, how it settled (a
+receipt, or REPORTED and never proven; OPEN or AMBIGUOUS read back, never resent) and which receipt moved the task next.
 
 ### Orbit Satellite — multi-agent missions
 

@@ -11,7 +11,7 @@
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { copyOut, createContainer, ensureImage, labelsOf, removeContainer } from "../core/docker.mjs";
-import { gitMust, privateGitDir, treeOfWork } from "../core/git.mjs";
+import { gitMust, startOfWork } from "../core/git.mjs";
 import { cleanEnv, run } from "../core/proc.mjs";
 import { canonical, ensureDir, evalHome, sha256, writeJson } from "../core/util.mjs";
 import { gradeSwebench } from "../grade/swebench.mjs";
@@ -80,9 +80,14 @@ async function startOf(id, scratch, ctx) {
   } finally {
     removeContainer(name);
   }
+  return { copyIn: [], ...checkoutStart(scratch), image: img.id, pulled: img.pulled };
+}
+
+// The start of a checkout copied out of an image: its HEAD and the tree its work tree holds, staged in the run's own
+// git directory (start.git, beside it), which every later tree of the run is staged in too.
+export function checkoutStart(scratch) {
   const base = gitMust(["rev-parse", "HEAD"], { cwd: scratch }).out.trim();
-  const gd = privateGitDir(join(scratch, ".git"), join(scratch, "..", "start.git"));
-  return { copyIn: [], gitDir: join(scratch, ".git"), base, startTree: treeOfWork(gd, scratch, base), image: img.id, pulled: img.pulled };
+  return startOfWork(join(scratch, ".git"), join(scratch, "..", "start.git"), scratch, base);
 }
 
 export function swebenchTask(id, ctx = {}) {

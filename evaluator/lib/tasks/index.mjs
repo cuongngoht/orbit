@@ -3,12 +3,19 @@
 // (and nothing else of the task), how the starting tree is made and found, its control patches, and how it is graded.
 //
 //   taskOf(ref, ctx) -> task      task: { ref, source, image, repo, issue, digest, controlPatch(name),
-//                                         start(scratch) -> { copyIn, gitDir, base, startTree }, grade(ctx) }
+//                                         start(scratch) -> { copyIn, gitDir, base, startTree }  (gitDir: the run's own, holding startTree), grade(ctx) }
 import { join } from "node:path";
-import { builtRepo } from "../core/git.mjs";
+import { builtRepo, startOfWork } from "../core/git.mjs";
 import { gradePack } from "../grade/packs.mjs";
 import { controlPatch, loadPack, packDigest, startFiles } from "./packs.mjs";
 import { swebenchTask } from "./swebench.mjs";
+
+// A pack's start: its files committed once, and that tree staged in the run's own git directory, as every source's is.
+function packStart(pack, scratch) {
+  const repo = join(scratch, "work", "repo");
+  const r = builtRepo(repo, startFiles(pack));
+  return { copyIn: [{ from: join(scratch, "work"), to: "/" }], ...startOfWork(join(repo, ".git"), join(scratch, "start.git"), repo, r.commit) };
+}
 
 function packTask(id) {
   const pack = loadPack(id);
@@ -21,7 +28,7 @@ function packTask(id) {
     issue: pack.issue,
     digest: packDigest(pack),
     controlPatch: (name) => controlPatch(pack, name),
-    start: (scratch) => ((r) => ({ copyIn: [{ from: join(scratch, "work"), to: "/" }], gitDir: join(scratch, "work", "repo", ".git"), base: r.commit, startTree: r.tree }))(builtRepo(join(scratch, "work", "repo"), startFiles(pack))),
+    start: (scratch) => packStart(pack, scratch),
     grade: (ctx) => gradePack(pack, ctx),
   };
 }

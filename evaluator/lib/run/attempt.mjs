@@ -10,7 +10,7 @@
 import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { connect, copyIn, copyOut, createContainer, createNetwork, docker, ensureImage, imagePath, kill, labelsOf, logsOf, removeContainer, removeNetwork, startAttached, startDetached, stateOf } from "../core/docker.mjs";
-import { changedPaths, diffTrees, privateGitDir, treeOfWork } from "../core/git.mjs";
+import { changedPaths, diffTrees, endOfWork } from "../core/git.mjs";
 import { scrubbedRoom } from "../core/credential.mjs";
 import { chargeOf } from "../core/journal.mjs";
 import { outcomeOf } from "../core/outcome.mjs";
@@ -152,12 +152,12 @@ function infraAfter(ctx, entry, state, summary, ran) {
   return null;
 }
 
-// The patch: the tree the agent left, against the start, staged in a git directory of the controller's own.
-function patchOf(start, scratch, room) {
+// The patch: the tree the agent left, against the start, both staged in the run's own git directory (the start's).
+export function patchOf(start, scratch, room) {
   const after = join(scratch, "after");
   if (!existsSync(after)) return { bytes: 0, file: null, paths: [], why: "the repository could not be copied out" };
-  const gitDir = privateGitDir(start.gitDir, join(scratch, "diff.git"));
-  const tree = treeOfWork(gitDir, after, start.base);
+  const gitDir = start.gitDir;
+  const tree = endOfWork(start, after);
   const bytes = diffTrees(gitDir, start.startTree, tree);
   const file = join(room, "patch.diff");
   writeFileSync(file, bytes);

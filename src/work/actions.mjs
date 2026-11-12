@@ -10,6 +10,7 @@
 import { Refused } from "../errors.mjs";
 import { quote } from "../quote.mjs";
 import { load, refreshed, standing } from "./resume.mjs";
+import { askedFindings, gainedSince, roundsOf } from "./rounds.mjs";
 import { judgeNeeds, MAX_NEEDS } from "./needs.mjs";
 import { numbered } from "./model.mjs";
 import { workOf, rootOf } from "./store.mjs";
@@ -137,13 +138,21 @@ function settled(w, id, spec) {
 }
 
 // Where the work stands, marked: what is stale is found first, what has to be bound is bound,
-// and only then is the frontier written down -- so the frontier is never a stale one.
-export function checkpointWork(w, id, why) {
-  return w.works.transact(id, () => {
-    const done = refreshed(w, id);
-    const where = standing(w, id);
-    const model = load(w, id);
-    const [row] = numbered(model, "checkpoint", [{ upto: model.position, frontier: where.frontier.map((f) => f.need), snapshot: where.snapshot ?? undefined, why }]);
-    return { ...where, checkpoint: w.works.append(id, "checkpoint", row).id, stale: done.stale, bound: done.bound.bound };
-  });
+// and only then is the frontier written down -- so the frontier is never a stale one. A checkpoint
+// is also one ROUND of a discovery loop (0.6.0, src/work/rounds.mjs): it keeps the targets the host
+// says it asked, and the needs this round settled anew, which the engine reads off the journal.
+export function checkpointWork(w, id, why, asked = []) {
+  const wrong = askedFindings(asked);
+  if (wrong.length) throw new Refused(wrong[0]);
+  return w.works.transact(id, () => marked(w, id, why, asked));
+}
+
+const checkpointRow = (model, where, why, asked) => numbered(model, "checkpoint", [{ upto: model.position, frontier: where.frontier.map((f) => f.need), snapshot: where.snapshot ?? undefined, why, asked: asked.length ? [...new Set(asked)] : undefined, gained: gainedSince(model) }])[0];
+
+function marked(w, id, why, asked) {
+  const done = refreshed(w, id);
+  const where = standing(w, id);
+  const row = checkpointRow(load(w, id), where, why, asked);
+  const line = w.works.append(id, "checkpoint", row);
+  return { ...where, checkpoint: line.id, gained: line.gained, round: roundsOf(load(w, id)), stale: done.stale, bound: done.bound.bound };
 }

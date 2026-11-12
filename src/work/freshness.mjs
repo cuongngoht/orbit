@@ -48,13 +48,19 @@ function byBindings(w, model) {
 // What the files hashed to when the need was settled, in the shape `measure` reads.
 const baselineOf = (model, need) => ({ scopes: Object.fromEntries(Object.entries(model.settled.get(need.id)?.scopes ?? {}).map(([path, hash]) => [path, { hash }])) });
 
+// A settled path MOVED when it hashes to something else now, or when the index holds nothing there any more (GONE,
+// src/freshness.mjs: deleted, or renamed away) -- a result resting on a file that is gone is never reused. Either is
+// said in `from` as the path and what it is now: its new hash, or `gone`.
+const moved = (v, was) => v.state === STALE || (v.gone === true && Boolean(was));
+
 function movedFor(w, model, need) {
-  const measured = measure([{ scope: need.scope }], baselineOf(model, need), w.source);
-  return Object.entries(measured).filter(([, v]) => v.state === STALE).map(([path, v]) => ({ need: need.id, because: "scope", from: `${path}#${v.hash}` }));
+  const baseline = baselineOf(model, need);
+  const measured = measure([{ scope: need.scope }], baseline, w.source);
+  return Object.entries(measured).filter(([path, v]) => moved(v, baseline.scopes[path])).map(([path, v]) => ({ need: need.id, because: "scope", from: `${path}#${v.gone ? "gone" : v.hash}` }));
 }
 
 // Only a need that was SETTLED has a result resting on files; unknown (no baseline, or an
-// edit the index cannot see) is not a claim that anything moved.
+// edit the index cannot see) is not a claim that anything moved -- a path gone from the index is.
 function byScopes(w, model) {
   if (!w.source) return [];
   return [...model.needs.values()].filter((n) => n.scope.length && stateOf(n, model) === "satisfied").flatMap((n) => movedFor(w, model, n));

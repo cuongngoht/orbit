@@ -20,6 +20,10 @@ allowed-tools:
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/live.mjs ensure*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/live.mjs open*)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/track.mjs*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/work.mjs show*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/work.mjs need*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/work.mjs settle*)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/cli/work.mjs checkpoint*)
 user-invocable: true
 ---
 
@@ -166,6 +170,15 @@ is an Orbit command, `node ${CLAUDE_PLUGIN_ROOT}/cli/<first word>.mjs <the rest>
 back with `--with-refs`, which refuses any reference the tracked tree does not hold. ASK: a question
 about this task's own work is already open; relay it as quoted, in the flow it names, and wait for the
 person. It never makes a question up, and neither do you.
+
+Three lines follow the word: whether there is enough to **investigate**, to **change** and to **conclude**
+(`sufficiency.levels`), each with what it misses. A name the task's words matched confirms nothing: read
+it, and propose it with `--with-refs`. A `gap` line is a file no relation adapter reads: read it and
+propose what it relates to, never an assumed edge; a `route-literal` item is a hypothesis until both ends
+are read. When the task has a work, its needs are the loop's record -- done criteria as `proof` needs,
+unknowns as `knowledge` needs, a `work.mjs checkpoint <w-…> --asked="<source> · <target>"` per round of
+reads -- and `context.mjs --work=<w-…>` prints the round state: stop reading when `change` holds or it
+says STOP, and hand the workflow what is still missing.
 
 **`UNKNOWN` is not empty by accident.** The working set (what a session has already read,
 changed and run) is recorded by the plugin's hooks; until a session has been recorded in this

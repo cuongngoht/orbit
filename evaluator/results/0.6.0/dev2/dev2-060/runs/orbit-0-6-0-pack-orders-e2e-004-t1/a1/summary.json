@@ -1,0 +1,90 @@
+{
+  "kind": "ended",
+  "run": "orbit-0.6.0__pack_orders-e2e-004__t1",
+  "attempt": 1,
+  "at": "2026-11-12T11:26:45.850Z",
+  "chargedUsd": 0.0850318,
+  "infra": null,
+  "timedOut": false,
+  "killedByControl": false,
+  "exit": 0,
+  "oomKilled": false,
+  "wallMs": 26024,
+  "streamBytes": 66397,
+  "streamCut": false,
+  "summary": {
+    "started": true,
+    "model": "claude-sonnet-5-5",
+    "version": "2.1.322",
+    "plugins": [
+      "orbit@0.6.0"
+    ],
+    "hooks": {
+      "ran": 3,
+      "failed": 0
+    },
+    "skillsListed": 42,
+    "result": true,
+    "costUsd": 0.0850318,
+    "tokens": {
+      "input": 12,
+      "output": 2042,
+      "cacheRead": 141358,
+      "cacheWrite": 12613
+    },
+    "turns": 7,
+    "durationMs": 24430,
+    "denials": 0,
+    "subtype": "success",
+    "isError": false,
+    "stoppedOn": null,
+    "apiError": null,
+    "status": "DONE",
+    "statusWhy": null,
+    "asked": false,
+    "tools": {
+      "calls": 6,
+      "byName": {
+        "Read": 1,
+        "Bash": 4,
+        "bash": 1
+      },
+      "skills": {},
+      "agents": {}
+    },
+    "orbit": {
+      "commands": 0,
+      "byCli": {}
+    }
+  },
+  "patch": {
+    "bytes": 3013,
+    "digest": "dedf8bda12b51d8de453ed6535063586fb69aeac3d767d2b96adfd5e1c1fbaa5",
+    "paths": [
+      "src/worker.mjs",
+      "test/worker.test.mjs"
+    ]
+  },
+  "plugin": {
+    "digest": "4620a1bc97618f6998e74130d4ab481aeaac7796e8a39360c27b0f7cd105654c",
+    "files": 2727
+  },
+  "images": {
+    "task": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb",
+    "taskRef": "node:22",
+    "pulled": false,
+    "egress": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb"
+  },
+  "startCommit": "80bf8c2421e77011e4c018a1e4769ba0bc95f07e",
+  "entryPhase": "ended",
+  "egress": {
+    "direct": "ENETUNREACH",
+    "outsideName": "EAI_AGAIN",
+    "api": {
+      "connect": 200,
+      "http": 404
+    },
+    "otherHost": 403,
+    "holds": true
+  }
+}

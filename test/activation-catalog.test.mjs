@@ -11,8 +11,10 @@ import { catalogFile, readCatalog } from "../src/catalog.mjs";
 import { pluginBuiltins, pluginComponents } from "../src/resources/plugin.mjs";
 import { PROVIDERS } from "../src/resources/providers/index.mjs";
 import { getEffectiveResources } from "../src/resources/registry.mjs";
+import { FACTS, FACT_WORDS } from "../src/routing/facts.mjs";
 import { INTENTS, REFINEMENTS } from "../src/routing/intents.mjs";
-import { route } from "../src/routing/resolve.mjs";
+import { classify } from "../src/routing/classify.mjs";
+import { decide, route } from "../src/routing/resolve.mjs";
 import { gramsOf, keyOf } from "../src/routing/terms.mjs";
 import { realIo } from "../src/store/io.mjs";
 
@@ -49,7 +51,7 @@ test("every skill description fits the listing: at most 300 characters each and 
   for (const name of SKILLS) assert.ok(descriptionOf("skill", name).length <= SKILL_LIMIT, `${name}: ${descriptionOf("skill", name).length} characters`);
   const total = SKILLS.reduce((n, name) => n + descriptionOf("skill", name).length, 0);
   assert.ok(total <= SKILLS_TOTAL, `the skills' descriptions total ${total} characters`);
-  assert.equal(SKILLS.length, 25, "the budget was set for the 25 skills that ship");
+  assert.equal(SKILLS.length, 26, "the budget was set for the 26 skills that ship");
   for (const [kind, name] of all) assert.doesNotMatch(descriptionOf(kind, name), /[<>]/, `${name}: a host refuses a description that reads as XML`);
 });
 
@@ -96,7 +98,7 @@ test("every agent a playbook names is direct or lists that playbook as its paren
 // can use -- grown until nothing more is reached.
 function reachable() {
   const rows = [...Object.values(CATALOG.skills), ...Object.values(CATALOG.agents), ...Object.values(CATALOG.builtins)];
-  let asked = new Set([...INTENTS, ...REFINEMENTS].flatMap((r) => r.requires));
+  let asked = new Set([...INTENTS, ...REFINEMENTS, ...FACTS].flatMap((r) => r.requires));
   for (let grown = true; grown; ) {
     const more = rows.filter((row) => row.provides.some((p) => asked.has(p))).flatMap((row) => [...(row.needs ?? []), ...(row.optional ?? [])]);
     grown = more.some((r) => !asked.has(r));
@@ -168,4 +170,35 @@ test("orbit-release is recommended only for Orbit itself: signals that name it, 
   assert.equal(new Set(signals).size, signals.length, "a signal listed twice");
   for (const s of signals) assert.ok(keyOf(s).split(" ").length > 1 && /\borbit\b/.test(keyOf(s)), `${s} is a bare word or does not name Orbit`);
   assert.equal(rowOf("skill", "orbit-release").requiresSignal, true);
+});
+
+// Conditions of use (0.6.0, P1): a row's `reactsTo` names facts about a session's work, never words. Words, derivers and
+// rows are held to each other both ways: a word no row reacts to, or a row reacting to a word nobody derives, is a
+// condition that can never bring anything in -- and a row reacts only to what its OWN playbook says it handles.
+const ROWS = [...Object.entries(CATALOG.skills).map(([name, row]) => ["skill", name, row]), ...Object.entries(CATALOG.agents).map(([name, row]) => ["agent", name, row])];
+
+test("every reactsTo word is a FACTS word, and every FACTS word has a deriver and a row that reacts to it and provides what it requires", () => {
+  for (const [kind, name, row] of ROWS) for (const word of row.reactsTo ?? []) assert.ok(FACT_WORDS.includes(word), `${kind} ${name} reacts to ${word}, which src/routing/facts.mjs does not declare`);
+  for (const f of FACTS) {
+    assert.equal(typeof f.derive, "function", `${f.fact} has no deriver`);
+    assert.ok(f.requires.length > 0 && f.say.length > 0, `${f.fact} requires nothing or says nothing`);
+    const reacting = ROWS.filter(([, , row]) => (row.reactsTo ?? []).includes(f.fact));
+    assert.ok(reacting.length > 0, `no row reacts to ${f.fact}`);
+    assert.ok(f.requires.every((q) => reacting.some(([, , row]) => row.provides.includes(q))), `${f.fact} requires ${f.requires.join(", ")}, which no row reacting to it provides`);
+  }
+  assert.equal(new Set(FACT_WORDS).size, FACT_WORDS.length, "a fact declared twice");
+});
+
+test("a row reacts only to a fact its own playbook says what it does about", () => {
+  for (const [kind, name, row] of ROWS) for (const word of row.reactsTo ?? []) assert.ok(bodyOf(kind, name).includes(`\`${word}\``), `${kind} ${name} reacts to ${word}, and its playbook never says what it does when brought in by it`);
+});
+
+test("a fact that holds brings its component in through the real resolver, with no word of the prompt naming it", () => {
+  for (const f of FACTS) {
+    const decision = decide(classify(""), REGISTRY, { observed: [{ fact: f.fact, subject: "x" }] });
+    const reacting = ROWS.filter(([, , row]) => (row.reactsTo ?? []).includes(f.fact)).map(([kind, name]) => `${kind} ${name}`);
+    assert.ok([...decision.selected, ...decision.approval].some((e) => reacting.includes(`${e.kind} ${e.id}`)), `${f.fact} selected none of ${reacting.join(", ")}`);
+    assert.equal(decision.strategy.shown, true, `${f.fact}: a component chosen on a fact is said`);
+    assert.deepEqual(decide(classify(""), REGISTRY, {}).selected.filter((e) => e.kind === "skill" || e.kind === "agent"), [], "and without it, an empty prompt chooses nothing");
+  }
 });

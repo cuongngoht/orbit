@@ -58,7 +58,10 @@ const verifiedSaid = (v) => (v.work ? `${v.work} ${v.level ?? "?"}${v.verified ?
 
 const strategySaid = (t) => (t.strategy ? `${t.strategy.word}/${t.strategy.row}` : "no strategy");
 
-const chainSaid = (l) => `suggested ${idsSaid(l.suggested.ids)} → selected ${idsSaid(l.selected.ids)} → dispatched ${idsSaid(l.dispatched.ids)} → executed ${ownersSaid(l.executed.owners)} → verified ${verifiedSaid(l.verified)}`;
+// Advice from evidence the turn was given (0.6.0): which fact brought which component in.
+const advisedSaid = (advised) => ((advised ?? []).length ? ` (advice: ${advised.map((a) => `${a.fact} → ${a.provider}`).join(", ")})` : "");
+
+const chainSaid = (l) => `suggested ${idsSaid(l.suggested.ids)}${advisedSaid(l.suggested.advised)} → selected ${idsSaid(l.selected.ids)} → dispatched ${idsSaid(l.dispatched.ids)} → executed ${ownersSaid(l.executed.owners)} → verified ${verifiedSaid(l.verified)}`;
 
 function activationLines(a, turns, days) {
   out(`ACTIVATION  last ${days} day(s) · ${turns.length} turn(s) · ${a.works.length} work(s) — each link from its own source; only the owner's record is ever verified\n`);

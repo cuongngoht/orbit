@@ -203,6 +203,15 @@ Run the project's own checks for what you touched — its tests, its linters, it
 gates the engineering facts name as `enforcedBy`. A change is not done until they pass; report the
 output faithfully when they do not.
 
+**Brought in by `check.failed`** (Orbit noticed a check this session ran after its edits fail): read
+the failure in that command's output and find its cause in the change you made before you edit
+again. Never edit or skip the test to make it pass, and never read the exit code alone as a defect --
+a check that could not start, reach a dependency or sign in says so in its output.
+
+**Brought in by `check.repeats`** (the same check failed three times in a row with nothing changed
+between): stop running it. Running it again cannot give another answer; say what its output shows,
+what you have ruled out, and what you will change or find out next -- or ask the person, once.
+
 ## 7. What would prove it — and can anything here?
 
 ```bash

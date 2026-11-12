@@ -10,12 +10,15 @@
 //   since        what happened since the observer last looked: which files
 //                changed, whether a check passed AFTER the last edit, whether a
 //                commit landed -- the facts a milestone is decided from
+//   checks       (0.6.0) the last check and the run of one check failing with
+//                nothing changed between (checks.mjs)
 //   unverified   (0.6.0) the files edited since the last PASSING check, whoever looked since: what a Stop
 //                may still owe a check for (src/lifecycle/subscribers/owed.mjs). `since` resets when the
 //                observer looks and is not this
 //
 // A background launch (`bg`) never counts as a check that passed: the host
 // reports it the moment it STARTS, before anything is known.
+import { checksOf } from "./checks.mjs";
 import { CHECKS } from "./collect.mjs";
 
 const fresh = () => ({ changed: [], checked: false, committed: false });
@@ -58,7 +61,7 @@ const unverifiedAfter = (acc, l) => (UNVERIFIED[kindOf(l)] ?? ((u) => u))(acc.un
 
 export function fold(lines) {
   const s = lines.reduce((acc, l) => ({ ...(REDUCERS[kindOf(l)] ?? ((x) => x))(acc, l), events: acc.events + 1, unverified: unverifiedAfter(acc, l) }), EMPTY());
-  return { ...s, read: uniq(s.read), changed: uniq(s.changed), searched: uniq(s.searched), scopes: scopesOf([...s.changed, ...s.read]), since: { ...s.since, changed: uniq(s.since.changed), scopes: scopesOf(s.since.changed) }, unverified: { changed: uniq(s.unverified.changed) } };
+  return { ...s, read: uniq(s.read), changed: uniq(s.changed), searched: uniq(s.searched), scopes: scopesOf([...s.changed, ...s.read]), since: { ...s.since, changed: uniq(s.since.changed), scopes: scopesOf(s.since.changed) }, unverified: { changed: uniq(s.unverified.changed) }, checks: checksOf(lines) };
 }
 
 const uniq = (list) => [...new Set(list)];

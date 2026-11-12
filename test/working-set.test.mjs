@@ -90,6 +90,24 @@ test("a background launch or a failed check is never a check that passed", () =>
   assert.equal(fold([edit, { ev: "post-tool-failure", tool: "command", cmd: { class: "test", ok: false } }]).since.checked, false);
 });
 
+// 0.6.0 (P1, P5): what the session's checks came to -- the last one, and one check failing again and again with nothing
+// changed between it. The same check is its class and its bare executable; only an edit or that check passing ends a run.
+test("the fold keeps the last check and counts one check failing in a row with no edit between", () => {
+  const edit = { ev: "post-tool", tool: "edit", paths: ["src/x.mjs"], tokens: [] };
+  const fail = (exe = "npm", cls = "test") => ({ ev: "post-tool-failure", tool: "command", paths: [], tokens: [], cmd: { class: cls, exe, ok: false } });
+  const pass = (exe = "npm") => ({ ev: "post-tool", tool: "command", paths: [], tokens: [], cmd: { class: "test", exe, ok: true } });
+  const other = { ev: "post-tool", tool: "command", paths: [], tokens: [], cmd: { class: "other", exe: "cat", ok: true } };
+  assert.deepEqual(fold([]).checks, { last: null, repeats: null });
+  assert.deepEqual(fold([fail()]).checks, { last: { class: "test", exe: "npm", ok: false, afterEdit: false }, repeats: { class: "test", exe: "npm", n: 1 } });
+  assert.deepEqual(fold([edit, fail(), other, fail(), fail()]).checks, { last: { class: "test", exe: "npm", ok: false, afterEdit: true }, repeats: { class: "test", exe: "npm", n: 3 } }, "a command that changed nothing does not break the run");
+  assert.equal(fold([fail(), fail(), edit, fail()]).checks.repeats.n, 1, "an edit between starts the count again");
+  assert.equal(fold([fail(), fail(), pass(), fail()]).checks.repeats.n, 1, "the check passing ends the run");
+  assert.equal(fold([fail(), fail("pytest"), fail()]).checks.repeats.n, 1, "another check failing is not the same check");
+  assert.equal(fold([fail(), fail(), fail("x", "build")]).checks.repeats.class, "build");
+  assert.equal(fold([fail(), { ...pass(), bg: true }]).checks.repeats.n, 1, "a background launch ended nothing");
+  assert.equal(fold([fail(), { ev: "pre-tool", tool: "command", cmd: { class: "test", exe: "npm", ok: null } }]).checks.repeats.n, 1, "a check starting is not a check that ended");
+});
+
 test("an observation resets what is 'since'", () => {
   const s = fold([{ ev: "post-tool", tool: "edit", paths: ["src/x.mjs"] }, { ev: "observe", t: AT }]);
   assert.deepEqual(s.since.changed, []);

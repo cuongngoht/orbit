@@ -122,6 +122,10 @@ const ns = (f) => f.plugin ?? "orbit";
 // A project's generated playbook is never a native skill: it is printed and followed (src/skill-factory/).
 const invokeSkill = (f, s) => (s.ownership === "project" ? `node <engine>/cli/skill-factory.mjs show ${s.id}` : `Skill ${ns(f)}:${s.id}`);
 
+// How a host calls one chosen component (0.6.0: the strategy's lines and an advice line say it one way): a skill or an
+// agent by its namespaced name, a project's generated playbook by the command that prints it.
+export const invocationOf = (c, plugin) => (c.kind === "agent" ? `Agent ${plugin ?? "orbit"}:${c.id}` : invokeSkill({ plugin }, c));
+
 const skillPath = (f) => ((s) => (s ? { path: "skill", id: s.id, how: null, invoke: invokeSkill(f, s) } : NONE))(skillOf(f));
 
 const agentPath = (f) => ((a) => ({ path: "agent", id: a.id, how: null, invoke: `Agent ${ns(f)}:${a.id}` }))(agentOf(f));

@@ -35,6 +35,7 @@
 // Inspector and `resources.mjs route` show; the prompt hook asks `decide`.
 import { everyResource } from "../resources/registry.mjs";
 import { classify, heard } from "./classify.mjs";
+import { withFacts } from "./facts.mjs";
 import { expandGraph } from "./graph.mjs";
 import { DOORS, strategyOf } from "./strategy.mjs";
 
@@ -47,17 +48,31 @@ export function route(prompt, effective, classifier = classify) {
   return planned(classifier(prompt), effective).decision;
 }
 
-// asked: classify()'s answer   facts: what the composition root bound (src/routing/strategy.mjs names them)
+// asked: classify()'s answer   facts: what the composition root bound (src/routing/strategy.mjs names them) -- and,
+// since 0.6.0, `observed`: the facts about the session's work that hold ({ fact, subject }, src/routing/facts.mjs),
+// whose requirements join what the prompt asked and which count as evidence for a component that reacts to them. A
+// prompt that halts the work is shaped by none of them: a person said to stop.
 export function decide(asked, effective, facts = {}) {
-  const plan = planned(asked, effective);
+  const observed = observedFor(asked, facts);
+  const plan = planned(withFacts(asked, observed), effective, observed);
   const chosen = chosenOf(plan.nodes, asked);
   const answer = strategyOf({ ...facts, asked: said(asked), chosen, doors: doorsOf(effective) });
   return { ...plan.decision, version: ROUTE_DECISION_V3, strategy: { ...answer.strategy, shown: shownOf(answer, asked, chosen) }, activation: answer.activation, synthetic: facts.synthetic === true };
 }
 
-function planned(asked, effective) {
-  const graph = expandGraph(asked.asked ?? asked.requirements.map((requirement) => ({ requirement, level: "required", because: `intent ${asked.intent.id}` })), { resources: everyResource(effective), grams: asked.grams });
+const observedFor = (asked, facts) => ((asked.marks ?? []).includes("halt") || facts.synthetic === true ? [] : facts.observed ?? []);
+
+function planned(asked, effective, observed = []) {
+  const graph = expandGraph(asked.asked ?? asked.requirements.map((requirement) => ({ requirement, level: "required", because: `intent ${asked.intent.id}` })), { resources: everyResource(effective), grams: asked.grams, facts: new Set(observed.map((o) => o.fact)) });
   return { decision: decided(asked, graph), nodes: graph.nodes };
+}
+
+// The provider the resolver chooses for ONE observed fact (src/lifecycle/advice.mjs names it): the first node that
+// fact's requirements asked for whose chosen provider reacts to the fact -- or null. Nothing a prompt said is read.
+export function reactingTo(observed, effective) {
+  const nodes = planned(withFacts(classify(""), [observed]), effective, [observed]).nodes;
+  const node = nodes.find((n) => ["selected", "approval"].includes(n.status) && n.factHits?.includes(observed.fact));
+  return node ? { kind: node.provider.kind, id: node.provider.id, key: node.provider.key, ownership: node.provider.ownership, requirement: node.requirement, approval: node.status === "approval" } : null;
 }
 
 // The classification as the strategy reads it: table words and counts, never the prompt's grams.
@@ -70,7 +85,9 @@ const chosenOf = (nodes, asked) => nodes.filter(counted).map(chosenEntry).sort(b
 
 const counted = (n) => ["selected", "approval"].includes(n.status) && !n.provider.detail?.implicit && !n.provider.detail?.builtin;
 
-const chosenEntry = (n) => ({ kind: n.provider.kind, id: n.provider.id, key: n.provider.key, ownership: n.provider.ownership, requirement: n.requirement, transitive: n.transitive, via: n.provider.routing.via ?? [], gated: n.provider.routing.requiresSignal === true && n.sigHits.length > 0 });
+// `gated`: chosen on evidence that names it -- one of its own signals in the prompt where it asks for one, or a fact
+// about the session's work it reacts to (0.6.0) -- which is what lets a one-cue intent be said (classify.mjs `heard`).
+const chosenEntry = (n) => ({ kind: n.provider.kind, id: n.provider.id, key: n.provider.key, ownership: n.provider.ownership, requirement: n.requirement, transitive: n.transitive, via: n.provider.routing.via ?? [], gated: (n.provider.routing.requiresSignal === true && n.sigHits.length > 0) || (n.factHits ?? []).length > 0 });
 
 const byFocus = (focus) => (a, b) => rankIn(focus, a) - rankIn(focus, b);
 
@@ -103,7 +120,7 @@ function entryOf(n) {
 const pulledBy = (n) => n.viaId ?? n.from.join(", ");
 
 const REASONS = {
-  selected: (n) => `${n.transitive ? `provides ${n.requirement} for ${pulledBy(n)}` : `relevant to ${n.requirement}`}${n.sigHits.length ? ` (mentions ${n.sigHits.join(", ")})` : ""}`,
+  selected: (n) => `${n.transitive ? `provides ${n.requirement} for ${pulledBy(n)}` : `relevant to ${n.requirement}`}${n.sigHits.length ? ` (mentions ${n.sigHits.join(", ")})` : ""}${(n.factHits ?? []).length ? ` (after ${n.factHits.join(", ")})` : ""}`,
   approval: (n) => `relevant to ${n.requirement}, but ${n.why} before it is used`,
   blocked: (n) => `relevant to ${n.requirement}, but ${n.why}`,
   missing: (n) => `${n.transitive ? `${pulledBy(n)} needs ${n.requirement}` : `relevant to ${n.requirement}`}, but ${n.provider.id} -- ${n.why}`,

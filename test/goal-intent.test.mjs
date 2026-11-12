@@ -101,6 +101,13 @@ test("a missing prerequisite leaves the unit it blocks UNRESOLVED, never started
   assert.equal(lifecycleOf(model), "waiting-input");
 });
 
+// A prerequisite blocks EVERY kind it names, not only the first: a missing environment that both the procedure and its
+// verification need leaves both unresolved.
+test("a missing prerequisite blocks every kind it names, never only the first", () => {
+  const analysis = validateAnalysis({ ...english, intent: { ...reading, missing: [{ statement: "which environment the release is checked in", blocks: ["procedure", "verify"] }] } }, EN);
+  assert.deepEqual(planUnits(analysis, EN).map((u) => u.state), ["unresolved", "unresolved"]);
+});
+
 test("a procedure whose reading names no capability is unresolved: nothing would say what it provides", () => {
   const analysis = validateAnalysis({ ...english, intent: { ...reading, capabilities: [] } }, EN);
   const [procedure] = planUnits(analysis, EN);

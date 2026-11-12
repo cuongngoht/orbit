@@ -20,6 +20,7 @@ test("FORM: not a decision, a forbidden field, an unknown field, an unknown acti
   await refused(o, id, { ...ok, schemaVersion: 2 }, "SHAPE");
   await refused(o, id, "plan", "SHAPE");
   for (const word of ["outcome", "verdict", "stage", "signature", "confidence", "approved", "human"]) await refused(o, id, { ...ok, [word]: "x" }, "FORBIDDEN");
+  for (const empty of [false, null, 0, ""]) await refused(o, id, { ...ok, approved: empty }, "FORBIDDEN");
   await refused(o, id, { ...ok, chainOfThought: "…" }, "FIELDS");
   await refused(o, id, { ...ok, action: { kind: "shell", command: "rm -rf /" } }, "ACTION");
   await refused(o, id, { ...ok, action: "plan" }, "ACTION");

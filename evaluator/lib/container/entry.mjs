@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // THE ENTRY of a task container: what runs first in the container one (arm, task, trial) gets. It makes the run's
-// fresh home and store, checks what the network lets it reach -- nothing direct, no outside name, the model's API
-// through the egress proxy and nothing else through it -- and only then runs the agent the brief names, with the
+// fresh home and store (and the files its brief names in them, such as the host's own settings), checks what the
+// network lets it reach -- nothing direct, no outside name, the model's API through the egress proxy and nothing else
+// through it; or, for a container with no network, nothing at all -- and only then runs the agent the brief names, with the
 // prompt on its stdin. The agent's stdout is this container's stdout (the controller captures it), bounded; what this
 // entry itself observed goes to /opt/evalrun/out/entry.json, which the controller reads after the container ends.
 // It decides nothing about the run: the controller and the grader do. Copied into the container alone; it imports
@@ -15,6 +16,7 @@ import { mkdirSync, openSync, readFileSync, writeFileSync, writeSync, closeSync 
 import { request } from "node:http";
 import { connect } from "node:net";
 import { connect as tlsConnect } from "node:tls";
+import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 
 export const RUN_DIR = "/opt/evalrun";
@@ -57,7 +59,15 @@ async function apiAnswer(proxy, host) {
   return { connect: 200, http: await httpsStatus(c.socket, host, 10000) };
 }
 
+// A container with no network at all (an arm whose agent runs on the host): nothing direct gets out, no outside name
+// resolves, and there is no proxy to ask.
+async function isolatedOf(e) {
+  const [outside, name] = await Promise.all([direct("1.1.1.1", 443, 3000), resolved(e.refusedProbe)]);
+  return { isolated: true, direct: outside, outsideName: name, holds: outside !== "connected" && name !== "resolved" };
+}
+
 export async function egressOf(e) {
+  if (e.isolated) return isolatedOf(e);
   const [outside, name, api, other] = await Promise.all([direct("1.1.1.1", 443, 3000), resolved(e.refusedProbe), apiAnswer(e.proxy, e.allow), tunnelled(e.proxy, `${e.refusedProbe}:443`, 5000)]);
   other.socket?.destroy();
   const holds = outside !== "connected" && name !== "resolved" && api.connect === 200 && typeof api.http === "number" && other.status === 403;
@@ -94,6 +104,7 @@ async function main() {
   const b = JSON.parse(readFileSync(`${RUN_DIR}/brief.json`, "utf8"));
   mkdirSync(`${RUN_DIR}/out`, { recursive: true });
   for (const d of b.makeDirs ?? []) mkdirSync(d, { recursive: true });
+  for (const f of b.writeFiles ?? []) (mkdirSync(dirname(f.path), { recursive: true }), writeFileSync(f.path, f.text));
   const egress = b.egress ? await egressOf(b.egress) : { none: true, holds: true };
   written("egress.json", egress);
   if (!egress.holds) return (written("entry.json", { phase: "egress", egress }), process.exit(3));

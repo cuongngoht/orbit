@@ -22,7 +22,7 @@ export function must(argv, o = {}) {
 }
 
 // A long command whose stdout goes to a file as it arrives, kept up to `capBytes` and its last 64 KiB always; a
-// deadline (ms) calls `onDeadline` once, and `every` hooks ({ ms, fn }) are called while it runs.
+// deadline (ms) calls `onDeadline(child)` once, and `every` hooks ({ ms, fn }) are called while it runs.
 export function runToFile(argv, file, o = {}) {
   return new Promise((resolve) => {
     const fd = openSync(file, "w");
@@ -51,7 +51,7 @@ function kept(fd, s, chunk, cap) {
 
 function hooks(child, s, o) {
   const timers = [];
-  if (o.deadlineMs > 0) timers.push(setTimeout(() => ((s.timedOut = true), o.onDeadline?.()), o.deadlineMs));
+  if (o.deadlineMs > 0) timers.push(setTimeout(() => ((s.timedOut = true), o.onDeadline?.(child)), o.deadlineMs));
   for (const h of o.at ?? []) timers.push(setTimeout(() => h.fn(), h.ms));
   return timers;
 }

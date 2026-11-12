@@ -11,3 +11,9 @@ export const TOOLS_MOUNT = "/opt/eval";
 export const API_HOST = "api.anthropic.com";
 
 export const REFUSED_PROBE_HOST = "example.com";
+
+// mini-SWE-agent, the second coding host (checked with PyPI on 2026-11-12: 2.4.6, the latest), in a uv virtualenv of
+// this Python under $ORBIT_EVAL_HOME/tools/.
+export const MINI_SWE_AGENT_VERSION = "2.4.6";
+
+export const MINI_PYTHON = "3.11";

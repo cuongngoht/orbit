@@ -9,13 +9,14 @@
 //   runAttempt(ctx) -> { ended, outcome }      namesOf(campaignId, key, n) -> { net, egress, task, grader, label }
 import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { connect, copyIn, copyOut, createContainer, createNetwork, ensureImage, imagePath, kill, labelsOf, logsOf, removeContainer, removeNetwork, startAttached, startDetached, stateOf } from "../core/docker.mjs";
+import { connect, copyIn, copyOut, createContainer, createNetwork, docker, ensureImage, imagePath, kill, labelsOf, logsOf, removeContainer, removeNetwork, startAttached, startDetached, stateOf } from "../core/docker.mjs";
 import { changedPaths, diffTrees, privateGitDir, treeOfWork } from "../core/git.mjs";
 import { scrubbedRoom } from "../core/credential.mjs";
 import { chargeOf } from "../core/journal.mjs";
 import { outcomeOf } from "../core/outcome.mjs";
 import { summaryOf } from "../core/stream.mjs";
-import { appendLine, EVALUATOR_DIR, ensureDir, nowIso, readJson, sha256, slug, writeJson } from "../core/util.mjs";
+import { runToFile } from "../core/proc.mjs";
+import { appendLine, EVALUATOR_DIR, ensureDir, nowIso, readJson, sha256, slug, writeJson, writeText } from "../core/util.mjs";
 import { API_HOST, REFUSED_PROBE_HOST, TOOLS_MOUNT } from "../core/versions.mjs";
 import { promptOf } from "./prompt.mjs";
 
@@ -62,10 +63,10 @@ function taskSpec(ctx, names, labels, imageRef) {
     name: names.task,
     image: imageRef,
     labels: { ...labels, "orbit.eval.role": "task" },
-    network: names.net,
+    network: ctx.arm.needsNetwork ? names.net : null,
     alias: "task",
-    env: { ...AGENT_ENV, PATH: `${TOOLS_MOUNT}/bin:${imagePath(imageRef)}`, HOME: "/work/home", ORBIT_STORE_DIR: "/work/orbit-store", HTTPS_PROXY: `http://egress:${EGRESS_PORT}`, HTTP_PROXY: `http://egress:${EGRESS_PORT}`, NO_PROXY: "localhost,127.0.0.1", ...(ctx.caFile ? { NODE_EXTRA_CA_CERTS: "/run/eval-ca.pem" } : {}) },
-    envNames: ctx.arm.credentialNames,
+    env: { ...AGENT_ENV, PATH: `${TOOLS_MOUNT}/bin:${imagePath(imageRef)}`, HOME: "/work/home", ORBIT_STORE_DIR: "/work/orbit-store", ...(ctx.arm.needsNetwork ? proxyEnv(ctx) : {}) },
+    envNames: containerCredentials(ctx.arm),
     mounts: [{ type: "volume", source: ctx.tools.volume, target: TOOLS_MOUNT, readOnly: true }, ...(ctx.caFile ? [{ source: ctx.caFile, target: "/run/eval-ca.pem", readOnly: true }] : [])],
     limits: { cpus: limits.cpus, memoryMb: limits.memoryMb, pids: limits.pids },
     argv: [`${TOOLS_MOUNT}/bin/node`, "/opt/evalrun/entry.mjs"],
@@ -73,6 +74,15 @@ function taskSpec(ctx, names, labels, imageRef) {
     entrypoint: "",
   };
 }
+
+const proxyEnv = (ctx) => ({ HTTPS_PROXY: `http://egress:${EGRESS_PORT}`, HTTP_PROXY: `http://egress:${EGRESS_PORT}`, NO_PROXY: "localhost,127.0.0.1", ...(ctx.caFile ? { NODE_EXTRA_CA_CERTS: "/run/eval-ca.pem" } : {}) });
+
+// The credential NAMES handed to the task container: an arm whose agent runs on the host hands it none.
+const containerCredentials = (arm) => arm.containerCredentialNames ?? arm.credentialNames;
+
+// What the entry checks of the network before the agent starts: the egress proxy's one way out, or -- for an arm whose
+// container has no network at all -- that nothing gets out and no outside name resolves.
+const networkBrief = (arm) => (arm.needsNetwork ? { proxy: { host: "egress", port: EGRESS_PORT }, allow: API_HOST, refusedProbe: REFUSED_PROBE_HOST } : { isolated: true, refusedProbe: REFUSED_PROBE_HOST });
 
 // The run directory copied into the container: the entry, its brief, and the arm's own files.
 function evalrunDir(ctx, scratch) {
@@ -83,7 +93,7 @@ function evalrunDir(ctx, scratch) {
   const files = ctx.arm.files({ ...ctx, frozen: ctx.armFrozen });
   for (const f of files.filter((x) => x.kind === "agent")) (f.from ? cpSync(f.from, join(dir, "agent", f.name)) : writeFileSync(join(dir, "agent", f.name), f.bytes ?? ""));
   const limits = limitsOf(ctx);
-  writeJson(join(dir, "brief.json"), { repo: ctx.task.repo, makeDirs: ["/work/home", "/work/orbit-store"], egress: { proxy: { host: "egress", port: EGRESS_PORT }, allow: API_HOST, refusedProbe: REFUSED_PROBE_HOST }, agent: { argv: ctx.arm.argv({ model: ctx.campaign.model, effort: ctx.campaign.effort, limits, task: ctx.task }), stdin: promptOf(ctx.task.issue) }, outCap: 15 * 1024 * 1024 });
+  writeJson(join(dir, "brief.json"), { repo: ctx.task.repo, makeDirs: ["/work/home", "/work/orbit-store"], writeFiles: ctx.arm.homeFiles ?? [], egress: networkBrief(ctx.arm), agent: { argv: ctx.arm.argv({ model: ctx.campaign.model, effort: ctx.campaign.effort, limits, task: ctx.task }), stdin: promptOf(ctx.task.issue) }, outCap: 15 * 1024 * 1024 });
   return { dir, plugin: files.find((x) => x.kind === "plugin") ?? null };
 }
 
@@ -91,6 +101,42 @@ function copiedIn(ctx, names, run, start) {
   const pairs = [[run.dir, "/opt"], ...start.copyIn.map((c) => [c.from, c.to]), ...(run.plugin ? [[run.plugin.from, run.plugin.to]] : []), ...(ctx.trackStore && existsSync(ctx.trackStore) ? [[dirname(ctx.trackStore), "/"]] : [])];
   const bad = pairs.find(([from, to]) => !copyIn(from, names.task, to).ok);
   return bad ? infra("DOCKER", `docker cp ${bad[0]} into the task container failed`) : null;
+}
+
+// ---- an agent that runs on the host --------------------------------------------------------------------------------------
+
+const RELEASE = "/opt/evalrun/release";
+
+const stopChild = (child) => (child.kill("SIGTERM"), setTimeout(() => child.kill("SIGKILL"), 10000).unref());
+
+// Whether the container's hold said it is ready, before the container ended (the network check failed) or two minutes.
+async function holdReady(file, ended) {
+  for (let i = 0; i < 600 && !ended.done; i += 1) {
+    if (readOr(file, "").includes('"ready":true')) return true;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return false;
+}
+
+// The container runs the entry and its hold; the arm's own program runs here, on the host, to its end or the wall time
+// (then it is stopped), and acts in the container by `docker exec`; then the hold is released and the container ends
+// as any agent's would. Its stdout is the run's stream; its config, without any credential, is kept in the room.
+async function hostRan(ctx, names, room, scratch, limits) {
+  const ended = { done: false };
+  const container = startAttached(names.task, join(room, "container.out"), { deadlineMs: limits.minutes * 60000 + 180000, onDeadline: () => kill(names.task), capBytes: 1024 * 1024 }).then((r) => ((ended.done = true), r));
+  if (!(await holdReady(join(room, "container.out"), ended))) return container;
+  const h = ctx.arm.host({ ...ctx, frozen: ctx.armFrozen, container: names.task, prompt: promptOf(ctx.task.issue), limits, trajectory: join(room, "trajectory.json"), configFile: join(room, "driver.json"), configDir: ensureDir(join(scratch, "host-config")) });
+  const ran = h.infra ? { infra: h.infra } : await driven(h, room, limits);
+  docker(["exec", names.task, "touch", RELEASE]);
+  const c = await container;
+  return { ...ran, container: { code: c.code, timedOut: c.timedOut } };
+}
+
+async function driven(h, room, limits) {
+  writeJson(h.argv.at(-1), h.config);
+  const r = await runToFile(h.argv, join(room, "stream.jsonl"), { env: h.env, deadlineMs: limits.minutes * 60000, onDeadline: stopChild, capBytes: 16 * 1024 * 1024 });
+  writeText(join(room, "driver.err"), r.err);
+  return { timedOut: r.timedOut, bytes: r.bytes, cut: r.cut, code: r.code };
 }
 
 // ---- after the agent ----------------------------------------------------------------------------------------------------
@@ -128,14 +174,10 @@ async function executed(ctx, names, room, scratch, labels) {
   if (missing.length) return { infra: infra("CREDENTIAL_MISSING", `the controller's environment has no ${missing.join(", ")}`) };
   const taskImg = ensureImage(ctx.task.image);
   if (!taskImg.ok) return { infra: infra("DOCKER", taskImg.why) };
-  const egressImg = ensureImage(ctx.tools.nodeImage);
-  if (!egressImg.ok) return { infra: infra("DOCKER", egressImg.why) };
   const start = await ctx.task.start(join(scratch, "start"), ctx);
   if (start.infra) return { infra: start.infra };
-  const net = createNetwork(names.net, labels);
-  if (!net.ok) return { infra: infra("DOCKER", net.why), images: { task: taskImg.id } };
-  const e = await egressUp(ctx, names, labels, egressImg.id);
-  if (e) return { infra: e, images: { task: taskImg.id, egress: egressImg.id } };
+  const egressImg = ctx.arm.needsNetwork ? await networkUp(ctx, names, labels) : { id: null };
+  if (egressImg.infra) return { infra: egressImg.infra, images: { task: taskImg.id } };
   const c = createContainer(taskSpec(ctx, names, labels, ctx.task.image));
   if (!c.ok) return { infra: infra("DOCKER", c.why) };
   const run = evalrunDir(ctx, scratch);
@@ -144,11 +186,21 @@ async function executed(ctx, names, room, scratch, labels) {
   return finished(ctx, names, room, scratch, { start, run, images: { task: taskImg.id, taskRef: ctx.task.image, pulled: taskImg.pulled, egress: egressImg.id } });
 }
 
+// The internal network and its egress proxy, for an arm whose agent calls the model from inside the container.
+async function networkUp(ctx, names, labels) {
+  const egressImg = ensureImage(ctx.tools.nodeImage);
+  if (!egressImg.ok) return { infra: infra("DOCKER", egressImg.why) };
+  const net = createNetwork(names.net, labels);
+  if (!net.ok) return { infra: infra("DOCKER", net.why) };
+  const e = await egressUp(ctx, names, labels, egressImg.id);
+  return e ? { infra: e } : egressImg;
+}
+
 async function finished(ctx, names, room, scratch, x) {
   const limits = limitsOf(ctx);
   const startedAt = Date.now();
   const kills = ctx.arm.control.killAfterSeconds ? [{ ms: ctx.arm.control.killAfterSeconds * 1000, fn: () => kill(names.task) }] : [];
-  const ran = await startAttached(names.task, join(room, "stream.jsonl"), { deadlineMs: limits.minutes * 60000, onDeadline: () => kill(names.task), at: kills, capBytes: 16 * 1024 * 1024 });
+  const ran = ctx.arm.runsOn === "host" ? await hostRan(ctx, names, room, scratch, limits) : await startAttached(names.task, join(room, "stream.jsonl"), { deadlineMs: limits.minutes * 60000, onDeadline: () => kill(names.task), at: kills, capBytes: 16 * 1024 * 1024 });
   const wallMs = Date.now() - startedAt;
   const state = stateOf(names.task);
   copyOut(names.task, "/opt/evalrun/out", join(room, "out"));
@@ -159,7 +211,7 @@ async function finished(ctx, names, room, scratch, x) {
   const egress = existsSync(join(room, "out", "egress.json")) ? readJson(join(room, "out", "egress.json")) : null;
   const summary = summaryOf(readOr(join(room, "stream.jsonl"), ""), { pluginDir: ctx.arm.pluginDir });
   const patch = patchOf(x.start, scratch, room);
-  return { infra: infraAfter(ctx, entry, state, summary, ran), timedOut: ran.timedOut, killedByControl: kills.length > 0 && !ran.timedOut, exit: state?.exitCode ?? null, oomKilled: state?.oomKilled ?? null, wallMs, streamBytes: ran.bytes, streamCut: ran.cut, entry, summary, patch, egress, plugin: x.run.plugin ? { digest: x.run.plugin.digest, files: x.run.plugin.files } : null, images: x.images, startCommit: x.start.base, startTree: x.start.startTree };
+  return { infra: ran.infra ?? infraAfter(ctx, entry, state, summary, ran), timedOut: ran.timedOut, killedByControl: kills.length > 0 && !ran.timedOut, exit: state?.exitCode ?? null, oomKilled: state?.oomKilled ?? null, wallMs, streamBytes: ran.bytes, streamCut: ran.cut, entry, summary, patch, egress, plugin: x.run.plugin ? { digest: x.run.plugin.digest, files: x.run.plugin.files } : null, images: x.images, startCommit: x.start.base, startTree: x.start.startTree };
 }
 
 // ---- the attempt, from its journal line to its outcome --------------------------------------------------------------------

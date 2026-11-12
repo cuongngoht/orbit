@@ -7,6 +7,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { LABEL, listByLabel } from "../core/docker.mjs";
+import { readJournal } from "../core/journal.mjs";
 import { evalHome, nowIso, writeJson } from "../core/util.mjs";
 import { roomOf, startCampaign } from "./campaign.mjs";
 
@@ -23,13 +24,16 @@ export const SELF_CONTROLS = {
   killed: [{ kind: "scripted", behaviour: "sleep", status: "NONE", killAfterSeconds: 8 }, "INFRA_ERROR", "KILLED", "first"],
   "over-time": [{ kind: "scripted", behaviour: "sleep", status: "NONE", minutes: 0.5 }, "TIMEOUT", null, "first"],
   "no-api": [{ kind: "scripted", behaviour: "noop", status: "DONE", egressAllow: ["no-such-host.invalid"] }, "INFRA_ERROR", "EGRESS", "first"],
+  // mini-SWE-agent's own deterministic model, on the host, acting in a container with no network: both mini arms.
+  "mini-gold": [{ kind: "mini", deterministic: "gold" }, "RESOLVED", null, "first"],
+  "mini-orbit-gold": [{ kind: "mini+orbit", rev: "HEAD", deterministic: "gold" }, "RESOLVED", null, "first"],
 };
 
 export function selfcheckCampaign(o = {}) {
   const tasks = o.tasks ?? DEFAULT_PACKS;
   const controls = Object.fromEntries(Object.entries(SELF_CONTROLS).filter(([arm]) => !o.controls || o.controls.includes(arm)));
   const runs = Object.entries(controls).flatMap(([arm, [, , , where]]) => (where === "all" ? tasks : tasks.slice(0, 1)).map((task) => ({ arm, task, trial: 1 })));
-  return { schema: 1, id: o.id ?? `selfcheck-${nowIso().replace(/[^0-9]/g, "").slice(0, 14)}`, budgetUsd: 0, limits: { usd: 0, turns: 1, minutes: 10, cpus: 2, memoryMb: 2048, pids: 512 }, arms: Object.fromEntries(Object.entries(controls).map(([arm, [def]]) => [arm, def])), runs, ...(o.controls ? {} : { tracks: [{ id: "memory", arm: "noop-done", tasks: [tasks[0], tasks[0]] }] }), ...(o.keepImages ? { keepImages: true } : {}), ...(o.caFile ? { caFile: o.caFile } : {}) };
+  return { schema: 1, id: o.id ?? `selfcheck-${nowIso().replace(/[^0-9]/g, "").slice(0, 14)}`, budgetUsd: 0, limits: { usd: 0, turns: 10, minutes: 10, cpus: 2, memoryMb: 2048, pids: 512 }, arms: Object.fromEntries(Object.entries(controls).map(([arm, [def]]) => [arm, def])), runs, ...(o.controls ? {} : { tracks: [{ id: "memory", arm: "noop-done", tasks: [tasks[0], tasks[0]] }] }), ...(o.keepImages ? { keepImages: true } : {}), ...(o.caFile ? { caFile: o.caFile } : {}) };
 }
 
 export function judgedSelfcheck(report) {
@@ -53,10 +57,18 @@ function trackRow(o, id) {
   return { key: "(memory track: one store carried across its 2 runs)", expect: "2 lines", got: `${lines} lines`, ok: lines === 2, why: null };
 }
 
+// The mini+orbit control listed the plugin's skills to the agent and ran one of the plugin's commands through the shell.
+function miniPluginRow(o, id) {
+  const lines = readJournal(join(roomOf(o.home ?? evalHome(), id), "journal.jsonl")).filter((l) => l.kind === "ended" && /^mini-orbit-gold__/.test(l.run));
+  const s = lines.at(-1)?.summary;
+  const got = s ? `${s.skillsListed ?? 0} skills listed, ${s.orbit?.commands ?? 0} plugin command(s)` : "no run";
+  return { key: "(mini+orbit: the skills listed, a plugin command run)", expect: "skills listed, >= 1 command", got, ok: (s?.skillsListed ?? 0) > 0 && (s?.orbit?.commands ?? 0) >= 1, why: null };
+}
+
 export async function selfcheck(o) {
   const def = selfcheckCampaign(o);
   const file = join(o.scratchDir, `${def.id}.json`);
   writeJson(file, def);
   const report = await startCampaign(file, o);
-  return { id: def.id, rows: [...judgedSelfcheck(report), ...(def.tracks ? [trackRow(o, def.id)] : []), leftoverRow(def.id)] };
+  return { id: def.id, rows: [...judgedSelfcheck(report), ...(def.tracks ? [trackRow(o, def.id)] : []), ...(def.arms["mini-orbit-gold"] ? [miniPluginRow(o, def.id)] : []), leftoverRow(def.id)] };
 }

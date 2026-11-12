@@ -3,7 +3,8 @@
 // task, tool and the evaluator itself were, by commit and digest), journal.jsonl, and one room per run attempt. It
 // runs to its end from its journal alone, so a controller that dies (a worker restart) is resumed, never restarted:
 // a held outcome is never run again, an attempt cut short is INTERRUPTED (charged its cap) and run again as a new
-// attempt at most MAX_RERUNS times, and a run never starts when what the budget has left is below its cap.
+// attempt at most MAX_RERUNS times, and a run never starts when what the budget has left is below its cap, nor when
+// the controller's environment lacks a credential its arm names (NOT_RUN, charged nothing, tried again on a resume).
 //
 //   loadCampaign(file) -> def      frozenCampaign(def, o) -> campaign      planOf(def) -> [{ key, arm, task, trial, track }]
 //   startCampaign(file, o) · resumeCampaign(id, o) · campaignStatus(id, o)
@@ -36,7 +37,7 @@ export function loadCampaign(file) {
 
 function problemsOf(def) {
   const arms = Object.entries(def.arms ?? {});
-  const models = arms.some(([, a]) => a.kind !== "scripted");
+  const models = arms.some(([, a]) => a.kind !== "scripted" && !a.deterministic);
   return [
     ...(def.schema === 1 ? [] : ["schema must be 1"]),
     ...(/^[a-z0-9][a-z0-9._-]{0,63}$/.test(def.id ?? "") ? [] : ["id must be a short lowercase name"]),
@@ -142,6 +143,9 @@ function interruptedClosed(campaign, journal) {
   }
 }
 
+// The credential names an arm needs that the controller's environment does not hold: checked by name, never by value.
+export const missingCredentials = (arm, env = process.env) => arm.credentialNames.filter((n) => !(typeof env[n] === "string" && env[n].length > 0));
+
 async function oneRun(home, room, campaign, journal, r, tools, o) {
   const fold = foldJournal(readJournal(journal));
   const s = fold.runs.get(r.key);
@@ -150,6 +154,8 @@ async function oneRun(home, room, campaign, journal, r, tools, o) {
   const { frozen, ...armDef } = campaign.arms[r.arm];
   const arm = armOf(r.arm, armDef);
   const cap = arm.charges ? campaign.limits.usd : 0;
+  const missing = missingCredentials(arm);
+  if (missing.length) return appendLine(journal, { kind: "skipped", run: r.key, at: nowIso(), reason: `credential: the controller's environment has no ${missing.join(", ")}` });
   const ledger = ledgerOf(fold, campaign.budgetUsd);
   if (!canStart(ledger, cap)) return appendLine(journal, { kind: "skipped", run: r.key, at: nowIso(), reason: `the budget has $${ledger.remainingUsd} left, below this run's cap of $${cap}` });
   const task = taskOf(r.task, { home, campaign });

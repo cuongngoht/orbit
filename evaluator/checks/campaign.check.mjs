@@ -81,5 +81,8 @@ test("the self-check covers every outcome word a control can earn without a mode
   for (const w of ["RESOLVED", "UNRESOLVED", "REGRESSED", "EMPTY_PATCH", "FALSE_DONE", "TIMEOUT", "INFRA_ERROR"]) assert.ok(words.has(w), w);
   const c = selfcheckCampaign({ id: "s2" });
   assert.equal(c.budgetUsd, 0);
-  assert.ok(Object.values(c.arms).every((a) => a.kind === "scripted"));
+  // Without a model: every arm of the self-check spends nothing and needs no credential (the mini arms run their
+  // deterministic model).
+  const arms = Object.entries(c.arms).map(([id, a]) => armOf(id, a));
+  assert.ok(arms.every((a) => a.charges === false && a.credentialNames.length === 0), arms.filter((a) => a.charges !== false || a.credentialNames.length).map((a) => a.id).join(", "));
 });

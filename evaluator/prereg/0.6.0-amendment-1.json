@@ -1,0 +1,99 @@
+{
+  "schema": 1,
+  "kind": "orbit-prereg-amendment",
+  "release": "0.6.0",
+  "amendment": 1,
+  "amends": {
+    "file": "0.6.0.json",
+    "digest": "b60909c106783d0a703e91e15bb015e7b289123250ea5f06382780fd84cf253a"
+  },
+  "date": "2026-11-12",
+  "committed": "Committed before any run of its own phases (dev3, final-seated) and before any seated run on the held-out set. The registered `final` campaign (final-060) had begun at 2026-11-12T11:38:58Z, before this commit; none of its outcomes was read in writing this amendment, and nothing here changes how it is run or judged.",
+  "reason": [
+    "The dev passes (dev1-060 and dev2-060, Orbit 0.6.0 on the dev set) and baseline-060 (Orbit 0.5.0) made 0 Skill, 0 Agent and 0 Orbit CLI calls in every plugin arm, and the 0.6.0 behaviours that act on their own (the advice after a failed check, the unverified hold) never acted.",
+    "The cause is the plugin's own deliberate rule, which stays: its hooks observe only a checkout the machine KNOWS -- one a person has used the plugin in (a seat: `/orbit-help`, `init`, or a workflow's start write the store's binding file) -- so a repository merely opened with the plugin enabled is written about nowhere. Every evaluator container is a fresh checkout nobody ever used the plugin in, so the working set writes nothing and those behaviours cannot act.",
+    "The registered condition therefore measures the plugin installed and never used in the repository. This amendment adds a second condition that measures the plugin as an adopter has it: the same arms after the ONE adoption step a person takes in a repository."
+  ],
+  "unchanged": [
+    "The registered phases, tasks and their order, arms, model, effort, limits, prompt, outcome table, scoring, comparisons, verdict rule and ledger lines of 0.6.0.json are UNCHANGED, and that file is not edited.",
+    "The registered `final` comparisons (orbit-0.6.0 against plain, orbit-0.6.0 against orbit-0.5.0, on the held-out set) stay the PRIMARY comparison and the release's verdict: the release gate (skills/orbit-release/ship/evidence.mjs) reads the registered file the record names and nothing of this amendment."
+  ],
+  "condition": {
+    "seated": "Before the agent starts, the evaluator runs, once, inside the task container, the plugin's own adoption command -- `node <plugin>/cli/help.mjs` in the checkout, what `/orbit-help` runs the first time a person asks in a repository (it binds the checkout in the store and writes nothing in the checkout) -- with the run's fresh HOME and ORBIT_STORE_DIR, as the user the agent runs as, with no credential, no answer from a person and no network beyond the run's own. The checkout must then be byte for byte the start tree; if it is not, or the command failed, the run is INFRA_ERROR (SEAT) and no agent runs. No turn of the agent is spent on it, and it is the same for every arm that carries the plugin, v0.5.0 and the 0.6.0 candidate alike. The run's manifest records `seated: true` and the command's argv.",
+    "implementation": "evaluator/lib/arms/plugin.mjs (SEAT_ARGV, `seat: true`), evaluator/lib/container/entry.mjs (seatOf), evaluator/lib/run/attempt.mjs (SEAT); proven without a model by the self-check's seat controls"
+  },
+  "arms": {
+    "orbit-0.5.0-seated": {
+      "kind": "claude+orbit",
+      "rev": "v0.5.0",
+      "seat": true,
+      "note": "the registered orbit-0.5.0 arm, seated"
+    },
+    "orbit-0.6.0-seated": {
+      "kind": "claude+orbit",
+      "rev": null,
+      "seat": true,
+      "note": "the registered orbit-0.6.0 arm, seated: the release candidate's commit, named when its campaign begins and frozen in its campaign.json"
+    }
+  },
+  "phases": [
+    {
+      "id": "dev3",
+      "set": "dev",
+      "arms": [
+        "orbit-0.6.0-seated"
+      ],
+      "budgetUsd": 3,
+      "purpose": "dev x orbit-0.6.0 SEATED, one pass. Informational: informs development; never part of any verdict."
+    },
+    {
+      "id": "final-seated",
+      "set": "heldOut",
+      "arms": [
+        "orbit-0.5.0-seated",
+        "orbit-0.6.0-seated"
+      ],
+      "budgetUsd": 12,
+      "purpose": "held-out x {orbit-0.5.0 seated, orbit-0.6.0 seated}: the secondary comparison's runs. The plain arm carries no plugin, so its registered `final` runs are the same in both conditions and are not run again."
+    }
+  ],
+  "comparisons": [
+    {
+      "a": "orbit-0.6.0-seated",
+      "b": "plain",
+      "set": "heldOut",
+      "gate": false
+    },
+    {
+      "a": "orbit-0.6.0-seated",
+      "b": "orbit-0.5.0-seated",
+      "set": "heldOut",
+      "gate": false
+    }
+  ],
+  "verdict": [
+    "Each comparison is judged by the registered verdict rule (0.6.0.json verdictRule: minPaired 4, margin 2, the same rated words), over the held-out tasks both arms have a rated word on; the plain arm's words are those of the registered `final` campaign.",
+    "The SECONDARY verdict is the registered rule's overall verdict over these two comparisons. It is reported beside the primary one and the release gate does not read it (gate: false)."
+  ],
+  "memory": "The registered `memory` phase names its arm (orbit-0.6.0) and stays exactly as registered; this amendment adds no seated memory phase.",
+  "budget": {
+    "usd": 15,
+    "ledger": [
+      {
+        "phase": "dev3",
+        "usd": 3
+      },
+      {
+        "phase": "final-seated",
+        "usd": 12
+      }
+    ],
+    "spentBefore": {
+      "pilot": 0.12,
+      "baseline": 1.76,
+      "dev1": 0.46,
+      "dev2": 0.3
+    },
+    "rule": "The same hard ledger as the registered phases: a run never starts when its campaign's budget has less left than its $1.00 cap. final-seated's $12 holds its 12 runs at the cap; dev3's $3 holds its 5 runs at what a dev pass has cost (dev1 $0.46, dev2 $0.30), and the ledger stops a run that would not fit. Inside the owner's $50: the registered phases had spent $2.64 (pilot, baseline, dev1, dev2) when this was committed, the registered final ($20) and memory ($7) can spend at most $27 more, and this amendment at most $15, so the whole is at most $44.64."
+  }
+}

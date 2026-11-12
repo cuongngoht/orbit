@@ -74,3 +74,39 @@ noise; such a difference cannot tell two arms apart. This is a first measured ba
 
 **Memory track.** Reported apart from the cold-start table, with no verdict: for each pair, the second task's word,
 cost and minutes with the store kept, against its own cold run.
+
+## Amendment 1: the seated condition (`0.6.0-amendment-1.json`)
+
+Committed on 2026-11-12, before any run of its own phases and before any seated run on the held-out set. The registered
+`final` campaign (final-060) had begun before it was committed; none of its outcomes was read in writing it, and it
+changes nothing that campaign is run or judged by. An amendment is a file of its own beside the registration, naming
+the registration's digest (`amends`); the registration itself is never edited.
+
+**Why.** The dev passes (dev1-060, dev2-060) and baseline-060 made 0 Skill, 0 Agent and 0 plugin CLI calls in every
+plugin arm, and the 0.6.0 behaviours that act on their own (the advice after a failed check, the unverified hold) never
+acted. By the plugin's own deliberate rule, which stays, its hooks observe only a checkout the machine knows -- one a
+person has used the plugin in -- and every evaluator container is a fresh checkout nobody ever used it in. The
+registered condition measures the plugin installed and never used in the repository; the amendment adds the plugin as
+an adopter has it.
+
+**Unchanged.** The registered phases, tasks, order, arms, model, effort, limits, prompt, outcomes, scoring, comparisons,
+verdict rule and ledger lines. The registered `final` comparisons stay the PRIMARY comparison and the release's
+verdict; the release gate reads the registered file a record names and nothing of an amendment.
+
+**The seated condition.** Before the agent starts, the evaluator runs once, in the task container, the plugin's own
+adoption command -- `node <plugin>/cli/help.mjs` in the checkout, what `/orbit-help` runs the first time a person asks
+in a repository -- with the run's fresh HOME and store, as the agent's user, with no credential. The checkout must then
+be byte for byte the start tree, else the run is `INFRA_ERROR` (`SEAT`) and no agent runs. No turn of the agent is spent
+on it; it is the same for v0.5.0 and the 0.6.0 candidate; the manifest says `seated: true` and the command's argv.
+
+| phase | runs | budget |
+|---|---|---|
+| dev3 | dev x orbit-0.6.0 seated; informational, never part of any verdict | $3 |
+| final-seated | held-out x {orbit-0.5.0 seated, orbit-0.6.0 seated} | $12 |
+
+**Secondary comparison.** orbit-0.6.0 seated against plain (the registered `final` campaign's plain runs: plain carries
+no plugin, so it is the same in both conditions) and against orbit-0.5.0 seated, by the registered verdict rule; their
+overall verdict is the SECONDARY one, reported beside the primary in the record (`secondary`) and never read by the
+gate (`gate: false`). The registered `memory` phase names its arm and stays as registered; no seated memory phase is
+added. The amendment's $15 is inside the owner's $50: $2.64 spent before it, at most $27 more for the registered
+`final` and `memory`, at most $15 here.

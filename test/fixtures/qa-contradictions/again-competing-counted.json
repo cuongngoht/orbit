@@ -1,0 +1,102 @@
+{
+  "shape": "competing-workers",
+  "why": "the same job delivered twice and both deliveries held to processed: a second worker's receipt is no second success",
+  "design": {
+    "skeleton": {
+      "steps": [
+        {
+          "do": "call",
+          "capability": "orbit.messaging.publish",
+          "input": {
+            "channelRef": "billing-reminder-requested",
+            "request": {
+              "messageId": "job-q2a0000000000003",
+              "correlationId": "tenant-a|inv-a|billing-daily:2026-11-02T09:00:00+07:00",
+              "payload": {
+                "messageId": "job-q2a0000000000003",
+                "businessKey": "tenant-a|inv-a|billing-daily:2026-11-02T09:00:00+07:00",
+                "invoiceId": "inv-a",
+                "tenantId": "tenant-a"
+              }
+            }
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.messaging.publish",
+          "input": {
+            "channelRef": "billing-reminder-requested",
+            "request": {
+              "messageId": "job-q2a0000000000003",
+              "correlationId": "tenant-a|inv-a|billing-daily:2026-11-02T09:00:00+07:00",
+              "payload": {
+                "messageId": "job-q2a0000000000003",
+                "businessKey": "tenant-a|inv-a|billing-daily:2026-11-02T09:00:00+07:00",
+                "invoiceId": "inv-a",
+                "tenantId": "tenant-a"
+              }
+            }
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.worker.observe",
+          "input": {
+            "workloadRef": "worker",
+            "request": {
+              "count": 2,
+              "match": {
+                "messageId": "job-q2a0000000000003",
+                "outcome": "processed"
+              }
+            }
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.state.read",
+          "input": {
+            "stateRef": "reminders",
+            "request": {
+              "key": "tenant-a|inv-a|billing-daily:2026-11-02T09:00:00+07:00"
+            }
+          }
+        }
+      ]
+    },
+    "assertions": [
+      {
+        "criterionRef": "FIX-ASYNC-1/E3",
+        "template": "complete",
+        "step": 3
+      },
+      {
+        "criterionRef": "FIX-ASYNC-1/E2",
+        "template": "count-eq",
+        "step": 4
+      }
+    ],
+    "controls": [
+      {
+        "role": "duplicate",
+        "why": "the same job twice"
+      },
+      {
+        "role": "state",
+        "why": "one reminder for the key"
+      }
+    ],
+    "trigger": {
+      "kind": "message",
+      "ref": "billing-reminder-requested",
+      "step": 1
+    },
+    "effectScope": "fixture"
+  },
+  "expect": {
+    "findings": [
+      "SECOND_SETTLED"
+    ],
+    "advice": []
+  }
+}

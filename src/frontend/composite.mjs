@@ -102,9 +102,11 @@ const routed = (members, rel) => members.slice(1).find((m) => String(rel).starts
 
 const stripped = (member, rel) => String(rel).slice(member.prefix.length);
 
+// A member that could not answer leaves its scopes OUT: unanswered, never a `null` that would read as a scope the index
+// no longer holds (src/freshness.mjs GONE).
 function fingerprinted(members, scopes) {
   const byMember = members.map((m) => ({ m, mine: scopes.filter((s) => routed(members, s) === m) }));
   const answers = byMember.map(({ m, mine }) => (mine.length ? m.port.fingerprints(mine.map((s) => stripped(m, s))) : {}));
   if (answers[0] === null) return null;
-  return Object.fromEntries(byMember.flatMap(({ m, mine }, i) => mine.map((s) => [s, answers[i]?.[stripped(m, s)] ?? null])));
+  return Object.fromEntries(byMember.flatMap(({ m, mine }, i) => (answers[i] ? mine.map((s) => [s, answers[i][stripped(m, s)] ?? null]) : [])));
 }

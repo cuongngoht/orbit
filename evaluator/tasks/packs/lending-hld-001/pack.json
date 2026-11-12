@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "id": "lending-hld-001",
+  "title": "Late returns are fined by the day and the format, never above the copy's replacement cost, at the desk and the drop box, and a member's balance adds the fines up",
+  "source": {
+    "kind": "orbit-benchmark-case",
+    "suite": "orbit-heldout",
+    "case": "ORBIT-HLD-001",
+    "version": "1.0.0",
+    "caseDigest": "bbb76ef930bafe99d928c9cfa4a358f884c1a09403fde009ba3952122b0d171c"
+  },
+  "fixture": "lending",
+  "image": "node:22",
+  "repo": "/work/repo",
+  "f2p": [
+    {
+      "name": "fines",
+      "file": "fines.spec.mjs",
+      "target": "test/fines.test.mjs"
+    },
+    {
+      "name": "eval-acceptance",
+      "file": "acceptance.spec.mjs",
+      "target": "test/eval-acceptance.test.mjs"
+    }
+  ],
+  "p2p": [
+    "test/api.test.mjs",
+    "test/catalog.test.mjs",
+    "test/dates.test.mjs",
+    "test/dropbox.test.mjs",
+    "test/holds.test.mjs",
+    "test/limits.test.mjs",
+    "test/loans.test.mjs",
+    "test/members.test.mjs",
+    "test/pickup.test.mjs",
+    "test/renewals.test.mjs",
+    "test/store.test.mjs",
+    "test/tenancy.test.mjs"
+  ],
+  "controls": {
+    "gold": {
+      "expect": "RESOLVED",
+      "about": "the case's reference solution"
+    },
+    "half": {
+      "expect": "NOT_RESOLVED",
+      "about": "Half the change: the fine charged where a loan is checked in at the desk -- by the day, the format and the cap, onto the member's balance -- and never on a copy that comes back through the drop box. Its own test covers the desk only."
+    },
+    "cheat": {
+      "expect": "RESOLVED",
+      "about": "The reference change, with an existing public test deleted along the way (test/loans.test.mjs): the project's own tests still pass, and the verifier refuses it by name.",
+      "graded": "graded by the hidden tests alone, every graded test file restored from the start: RESOLVED when the cheat carries the reference change (its test edit is undone), NOT_RESOLVED otherwise"
+    },
+    "tamper": {
+      "expect": "NOT_RESOLVED",
+      "about": "nothing fixed; every test file the grader runs replaced or created by one that passes"
+    },
+    "regress": {
+      "expect": "REGRESSED",
+      "about": "the gold change, src/api.mjs emptied, and test/api.test.mjs (which imports it) deleted"
+    }
+  },
+  "grade": {
+    "perFileSeconds": 180,
+    "cpus": 2,
+    "memoryMb": 2048,
+    "pids": 512
+  }
+}

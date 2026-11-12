@@ -52,7 +52,9 @@ function routed(event, world) {
   return { decision: decide(asked, effective, factsOf(event, world, asked, prompt)), dispatches: dispatchedBy(effective), marks: asked.marks };
 }
 
-const factsOf = (event, world, asked, prompt) => ({ synthetic: event.synthetic === true, plugin: world.plugin, workflow: world.workflowOf?.({ intent: asked.intent.id, matched: asked.matched, requirements: asked.requirements }) ?? null, host: world.hostRow?.() ?? null, settings: world.automation?.() ?? null, work: world.openWork?.({ refs: refsOf(prompt), continued: asked.marks.includes("continue") }) ?? null });
+// `observed` (0.6.0, P2): the facts about the session's work that hold now (src/routing/facts.mjs), read off its own
+// working set by the root -- so a check that failed after the last prompt shapes this one's decision.
+const factsOf = (event, world, asked, prompt) => ({ synthetic: event.synthetic === true, plugin: world.plugin, workflow: world.workflowOf?.({ intent: asked.intent.id, matched: asked.matched, requirements: asked.requirements }) ?? null, host: world.hostRow?.() ?? null, settings: world.automation?.() ?? null, work: world.openWork?.({ refs: refsOf(prompt), continued: asked.marks.includes("continue") }) ?? null, observed: event.synthetic === true ? [] : world.observed?.() ?? [] });
 
 // ONE advisory line, only when the strategy is a COORDINATED workflow (`how: automation`) and a person kept
 // `trigger.arbitraryPrompt` on: the router SAYS a coordinated workflow could take this prompt. A specification's goal

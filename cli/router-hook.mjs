@@ -32,7 +32,9 @@
 // and this checkout's open work: the work each reference the prompt names was
 // tracked under, and this session's current work when the prompt says to continue
 // (src/work/track/open.mjs). Each only reads, each that fails is null, and a prompt
-// that names no reference and does not say continue reads no journal at all. The
+// that names no reference and does not say continue reads no journal at all. 0.6.0 (P2): and the facts about the
+// session's work that hold (cli/session-facts.mjs: its own working set, one file), so a check that failed after the
+// last prompt shapes this one's decision (src/routing/facts.mjs). The
 // registry and the settings are composed by cli/resources-here.mjs, the one recipe a
 // session's start reads for its capability line too (B22 M3); and the prompt's MARKS
 // (halt, continue, … -- table words) reach the trail with routing on or off, so a
@@ -44,7 +46,7 @@ import { enginedDeep } from "../src/engined.mjs";
 
 const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 let ENV = process.env;
-const MODULES = { settings: "skills/orbit-learn/hosts/settings.mjs", hosts: "skills/orbit-learn/hosts/index.mjs", event: "src/lifecycle/event.mjs", dispatch: "src/lifecycle/dispatch.mjs", router: "src/lifecycle/subscribers/router.mjs", project: "src/project/index.mjs", env: "src/project/env.mjs", repository: "src/project/repository.mjs", here: "cli/resources-here.mjs", control: "src/store/control.mjs", io: "src/store/io.mjs", version: "src/version.mjs", capabilities: "src/extensions/capabilities.mjs", emit: "src/trace/emit.mjs", log: "src/trace/log.mjs", prompt: "src/trace/prompt.mjs", hash: "src/hash.mjs" };
+const MODULES = { settings: "skills/orbit-learn/hosts/settings.mjs", hosts: "skills/orbit-learn/hosts/index.mjs", event: "src/lifecycle/event.mjs", dispatch: "src/lifecycle/dispatch.mjs", router: "src/lifecycle/subscribers/router.mjs", project: "src/project/index.mjs", env: "src/project/env.mjs", repository: "src/project/repository.mjs", here: "cli/resources-here.mjs", control: "src/store/control.mjs", io: "src/store/io.mjs", version: "src/version.mjs", capabilities: "src/extensions/capabilities.mjs", emit: "src/trace/emit.mjs", log: "src/trace/log.mjs", prompt: "src/trace/prompt.mjs", hash: "src/hash.mjs", facts: "cli/session-facts.mjs" };
 
 async function main() {
   const input = stdin();
@@ -87,7 +89,7 @@ function world(m, b) {
 
 // What the strategy table reads beside the classification -- each asked with table words, each null when it cannot be
 // read; the readers are cli/resources-here.mjs's, which `resources.mjs route` asks too.
-const strategyFacts = (m, b) => ({ engine: PLUGIN_ROOT, workflowOf: (c) => quietly(() => m.here.workflowOf(c)), hostRow: () => quietly(() => m.here.hostRowOf(PLUGIN_ROOT, b.event?.host)), openWork: (ask) => quietly(() => m.here.openWorkHere({ storeRoot: b.storeRoot, checkout: b.checkout, session: b.event?.session }, ask)) });
+const strategyFacts = (m, b) => ({ engine: PLUGIN_ROOT, observed: () => quietly(() => m.facts.observedHere({ env: ENV, cwd: b.event?.cwd, event: b.event })) ?? [], workflowOf: (c) => quietly(() => m.here.workflowOf(c)), hostRow: () => quietly(() => m.here.hostRowOf(PLUGIN_ROOT, b.event?.host)), openWork: (ask) => quietly(() => m.here.openWorkHere({ storeRoot: b.storeRoot, checkout: b.checkout, session: b.event?.session }, ask)) });
 
 // The trail, bound for this one prompt: its session (hashed already) and a
 // short hash of the project's store key -- never a path.

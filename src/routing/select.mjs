@@ -18,6 +18,11 @@
 //                the resource's own in the prompt. Enabled means eligible to be
 //                CONSIDERED; it never means "add me to every task"
 //
+// A FACT about the session's work that holds (0.6.0, src/routing/facts.mjs) and
+// that a resource says it reacts to (`reactsTo`) is evidence the way its own
+// signal in the prompt is: it lets a `requiresSignal` resource through, makes an
+// optional requirement's provider selectable, and outranks a mere word.
+//
 // The selectable ones are then ORDERED by a table of comparisons, the first
 // that separates two deciding -- a person's explicit priority before anything
 // the engine infers, and a stable id last, so a tie is never decided by the
@@ -34,6 +39,7 @@ const ORDER = [
   (a, b) => Number(b.selectable) - Number(a.selectable),
   (a, b) => Number(a.verdict === "approval") - Number(b.verdict === "approval"),
   (a, b) => (b.resource.priority ?? 0) - (a.resource.priority ?? 0),
+  (a, b) => b.factHits.length - a.factHits.length,
   (a, b) => b.sigHits.length - a.sigHits.length,
   (a, b) => rank(TRUST, a.resource.ownership) - rank(TRUST, b.resource.ownership),
   (a, b) => b.coverage - a.coverage,
@@ -43,7 +49,7 @@ const ORDER = [
 
 const rank = (list, value) => (list.includes(value) ? list.indexOf(value) : list.length);
 
-// node: { requirement, level }   ctx: { resources, grams, asked (Set), workflow }
+// node: { requirement, level }   ctx: { resources, grams, asked (Set), workflow, facts (Set of fact words that hold) }
 export function resolveRequirement(node, ctx) {
   const candidates = ctx.resources.map((r) => judged(r, node, ctx)).filter(Boolean).sort(compare);
   return { ...outcomeOf(node, candidates), candidates: candidates.map(shown) };
@@ -51,10 +57,10 @@ export function resolveRequirement(node, ctx) {
 
 function judged(resource, node, ctx) {
   if (!resource.routing.provides.includes(node.requirement) || !reached(resource, node)) return null;
-  const sigHits = resource.routing.signals.filter((s) => ctx.grams.has(keyOf(s)));
-  if (resource.routing.requiresSignal && !sigHits.length) return null;
+  const hits = { sigHits: resource.routing.signals.filter((s) => ctx.grams.has(keyOf(s))), factHits: (resource.routing.reactsTo ?? []).filter((f) => ctx.facts?.has(f)) };
+  if (resource.routing.requiresSignal && !hits.sigHits.length && !hits.factHits.length) return null;
   const verdict = resource.kind === "mcp" ? capabilityVerdict(resource.policy, node.requirement, ctx.workflow) : "allow";
-  return { resource, sigHits, verdict: resource.selection === "approval" && verdict === "allow" ? "approval" : verdict, coverage: resource.routing.provides.filter((p) => ctx.asked.has(p)).length, selectable: resource.eligible && verdict !== "deny" && (node.level !== "optional" || sigHits.length > 0) };
+  return { resource, ...hits, verdict: resource.selection === "approval" && verdict === "allow" ? "approval" : verdict, coverage: resource.routing.provides.filter((p) => ctx.asked.has(p)).length, selectable: resource.eligible && verdict !== "deny" && (node.level !== "optional" || hits.sigHits.length + hits.factHits.length > 0) };
 }
 
 // With no `via`, anybody may reach it; with one, only the parent that pulled this requirement in
@@ -67,7 +73,7 @@ const compare = (a, b) => ORDER.reduce((d, by) => d || by(a, b), 0);
 const OUTCOMES = [
   { status: "selected", when: (c) => c[0]?.selectable && c[0].verdict === "allow", provider: (c) => c[0] },
   { status: "approval", when: (c) => c[0]?.selectable, provider: (c) => c[0] },
-  { status: "skipped", when: (c, node) => node.level === "optional" && !c.some((x) => x.sigHits.length), provider: () => null },
+  { status: "skipped", when: (c, node) => node.level === "optional" && !c.some((x) => x.sigHits.length || x.factHits.length), provider: () => null },
   { status: "blocked", when: (c) => c.some((x) => x.resource.eligible && x.verdict === "deny"), provider: (c) => c.find((x) => x.resource.eligible && x.verdict === "deny") },
   { status: "missing", when: (c) => c.some((x) => x.resource.state !== "unknown"), provider: (c) => c.find((x) => x.resource.state !== "unknown") },
   { status: "unknown", when: (c) => c.length > 0, provider: () => null },
@@ -77,7 +83,7 @@ const OUTCOMES = [
 function outcomeOf(node, candidates) {
   const row = OUTCOMES.find((o) => o.when(candidates, node));
   const chosen = row.provider(candidates);
-  return { status: row.status, provider: chosen ? chosen.resource : null, sigHits: chosen?.sigHits ?? [], why: chosen ? whyOf(row.status, chosen) : null };
+  return { status: row.status, provider: chosen ? chosen.resource : null, sigHits: chosen?.sigHits ?? [], factHits: chosen?.factHits ?? [], why: chosen ? whyOf(row.status, chosen) : null };
 }
 
 const WHY = {
@@ -97,4 +103,4 @@ function whyUnusable(r) {
 
 // A candidate as the Router Inspector shows it: why it could or could not be
 // chosen, and never a fragment of the prompt -- a signal is a table word.
-const shown = (c) => ({ kind: c.resource.kind, key: c.resource.key, id: c.resource.id, ownership: c.resource.ownership, eligible: c.resource.eligible, selectable: c.selectable, verdict: c.verdict, signals: c.sigHits, state: c.resource.state, why: c.selectable ? null : c.resource.eligible ? (c.verdict === "deny" ? "policy denies it" : "optional, and nothing in the task names it") : whyUnusable(c.resource) });
+const shown = (c) => ({ kind: c.resource.kind, key: c.resource.key, id: c.resource.id, ownership: c.resource.ownership, eligible: c.resource.eligible, selectable: c.selectable, verdict: c.verdict, signals: c.sigHits, facts: c.factHits, state: c.resource.state, why: c.selectable ? null : c.resource.eligible ? (c.verdict === "deny" ? "policy denies it" : "optional, and nothing in the task names it") : whyUnusable(c.resource) });

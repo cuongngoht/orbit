@@ -1,0 +1,63 @@
+{
+  "shape": "occurrence-one-execution",
+  "why": "no clock step, an injected clock, and no earlier version that ran moved it: the loop never reaches the occurrence",
+  "design": {
+    "assertions": [
+      {
+        "criterionRef": "SCHED-1/E1",
+        "step": 1,
+        "template": "complete"
+      },
+      {
+        "criterionRef": "SCHED-1/E2",
+        "step": 2,
+        "template": "count-eq"
+      }
+    ],
+    "controls": [
+      {
+        "role": "positive",
+        "why": "the pinned due period is decided due and executed once"
+      }
+    ],
+    "effectScope": "fixture",
+    "obligation": "tob-8f2674b1fe6b",
+    "skeleton": {
+      "steps": [
+        {
+          "capability": "orbit.scheduler.observe",
+          "do": "call",
+          "input": {
+            "request": {
+              "count": 1,
+              "match": {
+                "occurrenceId": "billing-daily:2026-10-22T09:00:00+07:00"
+              }
+            },
+            "scheduleRef": "billing-daily"
+          }
+        },
+        {
+          "capability": "orbit.state.read",
+          "do": "call",
+          "input": {
+            "request": {
+              "key": "billing-daily:2026-10-22T09:00:00+07:00",
+              "limit": 5
+            },
+            "stateRef": "billing-jobs"
+          }
+        }
+      ]
+    },
+    "trigger": {
+      "kind": "none"
+    }
+  },
+  "expect": {
+    "findings": [
+      "NEVER_DECIDED"
+    ],
+    "advice": []
+  }
+}

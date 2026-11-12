@@ -1,0 +1,146 @@
+diff --git a/README.md b/README.md
+index f50a0e08f9d18b7fb44e7537c53784208ef4cb96..c470d4f3461b242ab3d580e77ec757a237e6f299 100644
+--- a/README.md
++++ b/README.md
+@@ -7,8 +7,9 @@ own records. Records live on disk, one JSON file each, so a service that stops a
+ - `src/store.mjs` — the durable store: `openStore(dir)`.
+ - `src/tenancy.mjs` — a library system's own records.
+ - `src/catalog.mjs` — titles and their copies. A book may be out for 21 days, a DVD for 7.
+-- `src/members.mjs` — members. A member may have five items out at once.
++- `src/members.mjs` — members, and what they owe. A member may have five items out at once.
+ - `src/loans.mjs` — lending, renewals and returns.
++- `src/fines.mjs` — fines for late returns.
+ - `src/holds.mjs` — holds: members waiting for a title, first come, first served.
+ - `src/api.mjs` — the HTTP-shaped API: `handle(store, { method, path, tenant, today, body }) -> { status, body }`.
+ - `src/dropbox.mjs` — the drop box consumer: `consume(store, { id, tenant, copy, at }) -> { ack, outcome }`.
+diff --git a/src/api.mjs b/src/api.mjs
+index 42ecc8085f7c29ed9e7d5c5dcbfae8e31b685776..0edbf445300ef5223898f0a96b3a2c1750a3a74e 100644
+--- a/src/api.mjs
++++ b/src/api.mjs
+@@ -6,7 +6,7 @@ import { isKey } from "./store.mjs";
+ import { allMine, isTenant, mine } from "./tenancy.mjs";
+ import { copyView, isFormat, newCopy, newTitle, titleView } from "./catalog.mjs";
+ import { memberView, newMember } from "./members.mjs";
+-import { lendRefusal, lent, loanView, renewed, renewRefusal, returned } from "./loans.mjs";
++import { lendRefusal, lent, loanView, renewed, renewRefusal, returnedAtDesk } from "./loans.mjs";
+ import { holdView, newHold, noticeView, openHoldOf } from "./holds.mjs";
+ 
+ const answer = (status, body) => ({ status, body });
+@@ -46,7 +46,7 @@ function lend(c) {
+ 
+ const loanOf = (c, id) => mine(c.store, c.tenant, "loans", id);
+ 
+-const giveBack = (c, loan) => (loan.returned ? refused(409, "returned") : answer(200, loanView(returned(c.store, c.tenant, loan, c.today))));
++const giveBack = (c, loan) => (loan.returned ? refused(409, "returned") : answer(200, loanView(returnedAtDesk(c.store, c.tenant, loan, c.today))));
+ 
+ const back = (c, [id]) => ((loan) => (loan ? giveBack(c, loan) : refused(404, "no-loan")))(loanOf(c, id));
+ 
+diff --git a/src/fines.mjs b/src/fines.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..9fd1c629b23f0ac9387a1ecf8800bb2597ddeb8f
+--- /dev/null
++++ b/src/fines.mjs
+@@ -0,0 +1,9 @@
++// FINES for a late return: so much a day, by the title's format, for every day after the day it was due -- and never
++// more than it would cost to replace the copy.
++import { daysBetween } from "./dates.mjs";
++
++export const DAILY_CENTS = { book: 25, dvd: 100 };
++
++export const daysLate = (due, day) => Math.max(0, daysBetween(due, day));
++
++export const fineFor = (title, copy, due, day) => Math.min(daysLate(due, day) * DAILY_CENTS[title.format], copy.replacementCents);
+diff --git a/src/loans.mjs b/src/loans.mjs
+index f5be5d4a6e4ccac2561a7d53b4c73a4fe58a32bd..4b0aef5957fe6a3955fba10fc86c9faeaa0a69e9 100644
+--- a/src/loans.mjs
++++ b/src/loans.mjs
+@@ -4,7 +4,8 @@ import { addDays } from "./dates.mjs";
+ import { created, put } from "./store.mjs";
+ import { allMine, mine } from "./tenancy.mjs";
+ import { loanDaysOf, titleOfCopy } from "./catalog.mjs";
+-import { LOAN_LIMIT } from "./members.mjs";
++import { charged, LOAN_LIMIT } from "./members.mjs";
++import { fineFor } from "./fines.mjs";
+ import { collectedBy, heldForAnother, holdWaiting, servedOrShelved } from "./holds.mjs";
+ 
+ export const RENEWALS = 2;
+@@ -25,7 +26,7 @@ const dueOf = (store, copy, day) => addDays(day, loanDaysOf(titleOfCopy(store, c
+ export function lent(store, tenant, copy, member, day) {
+   collectedBy(store, copy, member);
+   put(store, "copies", { ...copy, status: "loan" });
+-  return created(store, "loans", "loan", { tenant, copy: copy.id, member: member.id, out: day, due: dueOf(store, copy, day), renewals: 0, returned: null });
++  return created(store, "loans", "loan", { tenant, copy: copy.id, member: member.id, out: day, due: dueOf(store, copy, day), renewals: 0, returned: null, fineCents: 0 });
+ }
+ 
+ // A loan brought back on a day: its copy set aside for the member who has waited longest for the title -- or shelved.
+@@ -34,6 +35,14 @@ export function returned(store, tenant, loan, day) {
+   return put(store, "loans", { ...loan, returned: day });
+ }
+ 
++// A loan checked in at the desk: fined for the days it is late, and the fine charged to its member.
++export function returnedAtDesk(store, tenant, loan, day) {
++  const copy = mine(store, tenant, "copies", loan.copy);
++  const fineCents = fineFor(titleOfCopy(store, copy), copy, loan.due, day);
++  charged(store, mine(store, tenant, "members", loan.member), fineCents);
++  return put(store, "loans", { ...returned(store, tenant, loan, day), fineCents });
++}
++
+ export const openLoanOfCopy = (store, tenant, copy) => allMine(store, tenant, "loans").find((l) => l.copy === copy.id && !l.returned) ?? null;
+ 
+ // Why a loan may not be renewed on a day, asked in order; none, and it may.
+@@ -51,4 +60,4 @@ export const renewRefusal = (store, tenant, loan, day) => RENEW_REFUSALS.find((r
+ // A renewal moves the due date on by the title's loan period, counted from the due date it had.
+ export const renewed = (store, tenant, loan) => put(store, "loans", { ...loan, due: addDays(loan.due, loanDaysOf(titleOfCopy(store, copyOfLoan(store, tenant, loan)))), renewals: loan.renewals + 1 });
+ 
+-export const loanView = (l) => ({ id: l.id, copy: l.copy, member: l.member, out: l.out, due: l.due, renewals: l.renewals, returned: l.returned });
++export const loanView = (l) => ({ id: l.id, copy: l.copy, member: l.member, out: l.out, due: l.due, renewals: l.renewals, returned: l.returned, fineCents: l.fineCents });
+diff --git a/src/members.mjs b/src/members.mjs
+index 644d3a9a619a72aacd8f070e9b73fdb6e8ab09d2..8778c2174e9c32c14861a2978f1bf5ce1ad16c58 100644
+--- a/src/members.mjs
++++ b/src/members.mjs
+@@ -1,8 +1,11 @@
+-// MEMBERS of a library system: who may borrow. A member may have five items out at once.
+-import { created } from "./store.mjs";
++// MEMBERS of a library system: who may borrow, and what they owe -- the fines their late returns were charged, added up.
++// A member may have five items out at once.
++import { created, put } from "./store.mjs";
+ 
+ export const LOAN_LIMIT = 5;
+ 
+-export const newMember = (store, tenant, b) => created(store, "members", "member", { tenant, name: b.name });
++export const newMember = (store, tenant, b) => created(store, "members", "member", { tenant, name: b.name, balanceCents: 0 });
+ 
+-export const memberView = (m) => ({ id: m.id, name: m.name });
++export const charged = (store, member, cents) => put(store, "members", { ...member, balanceCents: member.balanceCents + cents });
++
++export const memberView = (m) => ({ id: m.id, name: m.name, balanceCents: m.balanceCents });
+diff --git a/test/desk-fines.test.mjs b/test/desk-fines.test.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..ac2890f2072500df1f2f81418a5a40cf3ac9ea03
+--- /dev/null
++++ b/test/desk-fines.test.mjs
+@@ -0,0 +1,24 @@
++// A loan checked in late at the desk is fined, and its member owes the fine.
++import assert from "node:assert/strict";
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { test } from "node:test";
++import { handle } from "../src/api.mjs";
++import { openStore } from "../src/store.mjs";
++
++function storeFor(t) {
++  const dir = mkdtempSync(join(tmpdir(), "desk-fines-"));
++  t.after(() => rmSync(dir, { recursive: true, force: true }));
++  return openStore(dir);
++}
++
++const call = (store, method, path, body, today = "2026-03-02") => handle(store, { method, path, tenant: "harbor", today, body });
++
++test("a book checked in three days late at the desk is fined 75 cents, and its member owes them", (t) => {
++  const store = storeFor(t);
++  const ana = call(store, "POST", "/members", { name: "Ana" }).body;
++  const title = call(store, "POST", "/titles", { name: "Late", format: "book" }).body;
++  const loan = call(store, "POST", "/loans", { copy: call(store, "POST", "/copies", { title: title.id, replacementCents: 2000 }).body.id, member: ana.id }).body;
++  assert.deepEqual([call(store, "POST", `/loans/${loan.id}/return`, {}, "2026-03-26").body.fineCents, call(store, "GET", `/members/${ana.id}`).body.balanceCents], [75, 75]);
++});

@@ -1,0 +1,134 @@
+{
+  "kind": "outcome",
+  "run": "regress-done__pack_orders-e2e-006__t1",
+  "attempt": 1,
+  "at": "2026-11-12T05:41:45.810Z",
+  "word": "REGRESSED",
+  "why": "a pass-to-pass test now fails: test/cancel.test.mjs, test/currency.test.mjs, test/orders.test.mjs",
+  "saidDone": true,
+  "grade": {
+    "ran": true,
+    "applied": true,
+    "resolved": false,
+    "regressed": true,
+    "f2pFailed": [
+      "test/note.test.mjs",
+      "test/eval-acceptance.test.mjs"
+    ],
+    "p2pFailed": [
+      "test/cancel.test.mjs",
+      "test/currency.test.mjs",
+      "test/orders.test.mjs"
+    ]
+  },
+  "gradeDetail": {
+    "ran": true,
+    "applied": true,
+    "resolved": false,
+    "regressed": true,
+    "f2pFailed": [
+      "test/note.test.mjs",
+      "test/eval-acceptance.test.mjs"
+    ],
+    "p2pFailed": [
+      "test/cancel.test.mjs",
+      "test/currency.test.mjs",
+      "test/orders.test.mjs"
+    ],
+    "tests": [
+      {
+        "file": "test/note.test.mjs",
+        "kind": "f2p",
+        "ok": false,
+        "code": 1,
+        "timedOut": false,
+        "pass": 0,
+        "fail": 1
+      },
+      {
+        "file": "test/eval-acceptance.test.mjs",
+        "kind": "f2p",
+        "ok": false,
+        "code": 1,
+        "timedOut": false,
+        "pass": 0,
+        "fail": 7
+      },
+      {
+        "file": "test/cancel.test.mjs",
+        "kind": "p2p",
+        "ok": false,
+        "code": 1,
+        "timedOut": false,
+        "pass": 0,
+        "fail": 1
+      },
+      {
+        "file": "test/currency.test.mjs",
+        "kind": "p2p",
+        "ok": false,
+        "code": 1,
+        "timedOut": false,
+        "pass": 0,
+        "fail": 1
+      },
+      {
+        "file": "test/dedupe.test.mjs",
+        "kind": "p2p",
+        "ok": true,
+        "code": 0,
+        "timedOut": false,
+        "pass": 1,
+        "fail": 0
+      },
+      {
+        "file": "test/invoice.test.mjs",
+        "kind": "p2p",
+        "ok": true,
+        "code": 0,
+        "timedOut": false,
+        "pass": 1,
+        "fail": 0
+      },
+      {
+        "file": "test/money.test.mjs",
+        "kind": "p2p",
+        "ok": true,
+        "code": 0,
+        "timedOut": false,
+        "pass": 3,
+        "fail": 0
+      },
+      {
+        "file": "test/orders.test.mjs",
+        "kind": "p2p",
+        "ok": false,
+        "code": 1,
+        "timedOut": false,
+        "pass": 0,
+        "fail": 1
+      },
+      {
+        "file": "test/ui.test.mjs",
+        "kind": "p2p",
+        "ok": true,
+        "code": 0,
+        "timedOut": false,
+        "pass": 1,
+        "fail": 0
+      },
+      {
+        "file": "test/worker.test.mjs",
+        "kind": "p2p",
+        "ok": true,
+        "code": 0,
+        "timedOut": false,
+        "pass": 2,
+        "fail": 0
+      }
+    ],
+    "image": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb",
+    "exit": 0,
+    "timedOut": false
+  }
+}

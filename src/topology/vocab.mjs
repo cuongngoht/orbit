@@ -50,6 +50,9 @@ export const RELATION_ROLES = [
 // the interface it was read at, or the data below it. A meaning with no layer is ABOUT the
 // observation (its completeness, its cursor) and proves nothing by itself.
 //
+// `ordinal` marks a meaning that says which REPETITION of a thing an answer is -- its first delivery, its second attempt
+// -- so a wait for one above the first rests on something bringing that thing again (src/qa/backend/causes.mjs).
+//
 // `identity` marks a meaning that names WHICH thing an observation is about -- the same across its
 // deliveries, attempts and decisions -- never how that thing went. A request's match that names one
 // of them and something else besides asks how THAT thing went, and what it read of that thing and
@@ -66,7 +69,7 @@ export const MEANINGS = [
   { id: "message.key", layer: "api", identity: true, doc: "the routing or partition key a message carried" },
   { id: "message.correlation", layer: "api", identity: true, doc: "the correlation and causation a message carried, as { correlationId, causationId } -- a criterion about one names it (message.correlation.correlationId)" },
   { id: "message.payload", layer: "api", doc: "the projected payload of a message" },
-  { id: "delivery.attempt", layer: "api", doc: "which delivery of a message this was" },
+  { id: "delivery.attempt", layer: "api", ordinal: true, doc: "which delivery of a message this was" },
   { id: "settlement.outcome", layer: "api", doc: "how a publication or a delivery was settled: confirmed, rejected, acknowledged, dead-lettered" },
   { id: "terminal.reason", layer: "api", doc: "why a delivery ended where it did" },
   { id: "occurrence.id", layer: "api", identity: true, doc: "the planned period a schedule decided, with its revision" },
@@ -74,7 +77,7 @@ export const MEANINGS = [
   { id: "occurrence.decision", layer: "api", doc: "what a schedule decided at an evaluation: due, not due, missed, skipped" },
   { id: "execution.ref", layer: "api", identity: true, doc: "a job, workflow or consumer execution a workload reported" },
   { id: "execution.status", layer: "api", doc: "how that execution stands" },
-  { id: "execution.attempt", layer: "api", doc: "which attempt of that execution" },
+  { id: "execution.attempt", layer: "api", ordinal: true, doc: "which attempt of that execution" },
   { id: "effect.count", layer: "sql", countOf: "effect.value", doc: "how many durable effects a read-back found -- or, where only the effects are answered, how many of them there are" },
   { id: "effect.value", layer: "sql", doc: "the value a durable effect holds" },
   { id: "clock.evaluatedThrough", layer: null, doc: "the business time an injected clock has been evaluated through" },
@@ -103,14 +106,16 @@ export const BOUNDARIES = [
 
 // What an operation can DO to the world. `mutates` is the column the grant rows read
 // (the grant rows, src/runtime/sandbox/test-grants.mjs): an observation that takes a message is `consume`,
-// a mutation however it is named (doc §5.7).
+// a mutation however it is named (doc §5.7). `emits` marks an effect that puts on a reference what an observer of that
+// reference reads back -- before the system did anything with it -- so a design's own emission is never what the system
+// sends (src/qa/backend/causes.mjs).
 export const EFFECTS = [
   { id: "none", mutates: false, doc: "computes, asks nothing of the system under test" },
   { id: "read", mutates: false, doc: "reads without changing anything anybody else can see" },
   { id: "write", mutates: true, doc: "changes durable state" },
-  { id: "publish", mutates: true, doc: "sends a message" },
-  { id: "enqueue", mutates: true, doc: "puts a job on a queue" },
-  { id: "trigger", mutates: true, doc: "makes a workload run now" },
+  { id: "publish", mutates: true, emits: true, doc: "sends a message" },
+  { id: "enqueue", mutates: true, emits: true, doc: "puts a job on a queue" },
+  { id: "trigger", mutates: true, emits: true, doc: "makes a workload run now" },
   { id: "consume", mutates: true, doc: "reserves or takes a message -- allowed only on a resource the fixture owns" },
   { id: "settle", mutates: true, doc: "acknowledges, rejects, commits or completes a delivery" },
   { id: "create-resource", mutates: true, doc: "creates a channel, a subscription, a group or a namespace" },

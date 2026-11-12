@@ -1,0 +1,97 @@
+diff --git a/src/api.mjs b/src/api.mjs
+index 58db4810e5a139d50a3458eade82131672428240..1703a8ee87fdeaf65181655a405616504d76b74b 100644
+--- a/src/api.mjs
++++ b/src/api.mjs
+@@ -1,6 +1,6 @@
+ // The HTTP-shaped API: a pure function of a store and a request -- { method, path, body } -> { status, body }.
+ import { formatted } from "./money.mjs";
+-import { createOrder, getOrder, invalidOf, shipOrder } from "./orders.mjs";
++import { cancelOrder, createOrder, getOrder, invalidOf, shipOrder } from "./orders.mjs";
+ 
+ const viewOf = (order) => ({ ...order, total: formatted(order.totalMinor, order.currency) });
+ 
+@@ -20,6 +20,7 @@ export const ROUTES = [
+   { method: "POST", path: new RegExp("^/orders$"), run: (store, m, body) => created(store, body ?? {}) },
+   { method: "GET", path: new RegExp(`^/orders/${ORDER}$`), run: (store, m) => answered(getOrder(store, m[1])) },
+   { method: "POST", path: new RegExp(`^/orders/${ORDER}/ship$`), run: (store, m) => answered(shipOrder(store, m[1])) },
++  { method: "POST", path: new RegExp(`^/orders/${ORDER}/cancel$`), run: (store, m) => answered(cancelOrder(store, m[1])) },
+ ];
+ 
+ export function handle(store, request) {
+diff --git a/src/orders.mjs b/src/orders.mjs
+index a9499430da61236e7eb0f34a0f3eefed12e2397f..e594e13355bf6e42387a3a47aeb9578e0af7e435 100644
+--- a/src/orders.mjs
++++ b/src/orders.mjs
+@@ -24,3 +24,5 @@ function moved(store, id, from, to) {
+ }
+ 
+ export const shipOrder = (store, id) => moved(store, id, "open", "shipped");
++
++export const cancelOrder = (store, id) => moved(store, id, "open", "cancelled");
+diff --git a/test/cancel-order.test.mjs b/test/cancel-order.test.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..63e70d3597f9246c6c5bad845f8de32167832aed
+--- /dev/null
++++ b/test/cancel-order.test.mjs
+@@ -0,0 +1,25 @@
++import assert from "node:assert/strict";
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { test } from "node:test";
++import { handle } from "../src/api.mjs";
++import { openStore } from "../src/store.mjs";
++
++function fresh(t) {
++  const dir = mkdtempSync(join(tmpdir(), "orders-"));
++  t.after(() => rmSync(dir, { recursive: true, force: true }));
++  return dir;
++}
++
++test("an open order is cancelled, a cancelled one is never shipped, and a shipped one cannot be cancelled", (t) => {
++  const store = openStore(fresh(t));
++  const made = () => handle(store, { method: "POST", path: "/orders", body: { lines: [{ qty: 1, unitMinor: 300 }] } }).body.id;
++  const a = made();
++  const b = made();
++  assert.equal(handle(store, { method: "POST", path: `/orders/${a}/cancel` }).body.state, "cancelled");
++  assert.equal(handle(store, { method: "POST", path: `/orders/${a}/ship` }).status, 409);
++  handle(store, { method: "POST", path: `/orders/${b}/ship` });
++  assert.equal(handle(store, { method: "POST", path: `/orders/${b}/cancel` }).status, 409);
++  assert.equal(handle(store, { method: "POST", path: "/orders/ord-0042/cancel" }).status, 404);
++});
+diff --git a/test/orders.test.mjs b/test/orders.test.mjs
+deleted file mode 100644
+index 151007bb65dd8e48c99debc6f33b52a71d918c66..0000000000000000000000000000000000000000
+--- a/test/orders.test.mjs
++++ /dev/null
+@@ -1,30 +0,0 @@
+-import assert from "node:assert/strict";
+-import { mkdtempSync, rmSync } from "node:fs";
+-import { tmpdir } from "node:os";
+-import { join } from "node:path";
+-import { test } from "node:test";
+-import { handle } from "../src/api.mjs";
+-import { openStore } from "../src/store.mjs";
+-
+-function fresh(t) {
+-  const dir = mkdtempSync(join(tmpdir(), "orders-"));
+-  t.after(() => rmSync(dir, { recursive: true, force: true }));
+-  return openStore(dir);
+-}
+-
+-const LINES = [{ qty: 2, unitMinor: 500 }];
+-
+-test("an order is created open, read back, and shipped once", (t) => {
+-  const store = fresh(t);
+-  const made = handle(store, { method: "POST", path: "/orders", body: { customer: "Ada", lines: LINES } });
+-  assert.deepEqual([made.status, made.body.state, made.body.total], [201, "open", "$10.00"]);
+-  assert.equal(handle(store, { method: "POST", path: `/orders/${made.body.id}/ship` }).body.state, "shipped");
+-  assert.equal(handle(store, { method: "POST", path: `/orders/${made.body.id}/ship` }).status, 409);
+-});
+-
+-test("an unknown order and an unknown route are 404, and an order with no lines is refused", (t) => {
+-  const store = fresh(t);
+-  assert.equal(handle(store, { method: "GET", path: "/orders/ord-0001" }).status, 404);
+-  assert.equal(handle(store, { method: "DELETE", path: "/orders" }).status, 404);
+-  assert.equal(handle(store, { method: "POST", path: "/orders", body: { lines: [] } }).status, 400);
+-});

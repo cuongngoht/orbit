@@ -58,7 +58,7 @@ export const ARCHIVE_RULES = [
   { says: "no .claude-plugin/plugin.json at the archive's root -- a host finds no plugin", fails: (es) => !es.some((e) => e.name === ".claude-plugin/plugin.json") },
   { says: "a top-level bin/ -- a host refuses what would go on PATH unseen", fails: (es) => es.some((e) => e.name.startsWith("bin/")) },
   { says: "a symbolic link -- a host refuses the archive outright", fails: (es) => es.some((e) => (e.mode & 0o170000) === SYMLINK) },
-  { says: "a file of development tooling that never ships (benchmark/, acceptance/, integrations/) -- export-ignore did not apply", fails: (es) => es.some((e) => !isDir(e) && /^(benchmark|acceptance|integrations)\//.test(e.name)) },
+  { says: "a file of development tooling that never ships (benchmark/, acceptance/, integrations/, evaluator/) -- export-ignore did not apply", fails: (es) => es.some((e) => !isDir(e) && /^(benchmark|acceptance|integrations|evaluator)\//.test(e.name)) },
 ];
 
 const versionOf = (tree) => JSON.parse(readFileSync(join(tree, "package.json"), "utf8")).version;

@@ -1,0 +1,89 @@
+{
+  "shape": "completes-by-deadline",
+  "why": "a correlation the design publishes itself on the channel its observer was armed on, then rules absent: its own message is what the observer sees",
+  "accepted": {
+    "DEADLINE-9/E1": {
+      "property": "message.correlation.correlationId",
+      "op": "absent-within",
+      "value": "tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00",
+      "within": 30
+    }
+  },
+  "design": {
+    "skeleton": {
+      "steps": [
+        {
+          "do": "call",
+          "capability": "orbit.messaging.observe",
+          "input": {
+            "channelRef": "billing-reminder-requested",
+            "observerRef": "req",
+            "request": {}
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.messaging.publish",
+          "input": {
+            "channelRef": "billing-reminder-requested",
+            "request": {
+              "messageId": "msg-q2d0000000000001",
+              "correlationId": "tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00",
+              "payload": {
+                "messageId": "msg-q2d0000000000001",
+                "businessKey": "tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00",
+                "invoiceId": "inv-a",
+                "tenantId": "tenant-a"
+              }
+            }
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.observe.await",
+          "input": {
+            "observerRef": "req",
+            "request": {
+              "match": {
+                "correlationId": "tenant-a|inv-a|billing-daily:2026-10-22T09:00:00+07:00"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "assertions": [
+      {
+        "criterionRef": "DEADLINE-9/E1",
+        "template": "absent-within",
+        "step": 3
+      }
+    ],
+    "controls": [
+      {
+        "role": "positive",
+        "why": "x"
+      }
+    ],
+    "trigger": {
+      "kind": "message",
+      "ref": "billing-reminder-requested",
+      "step": 2
+    },
+    "effectScope": "fixture"
+  },
+  "expect": {
+    "findings": [
+      "SELF_SATISFIED"
+    ],
+    "advice": []
+  },
+  "expectOn": {
+    "invoice-b": {
+      "findings": [],
+      "advice": [
+        "SELF_PUBLISHED"
+      ]
+    }
+  }
+}

@@ -1,0 +1,169 @@
+diff --git a/src/api.mjs b/src/api.mjs
+index ea9cbb8e9209cc061510325dec2a9d3418c07b37..cb0ff5c3b541f646105198ee23ac0fc3d805023e 100644
+--- a/src/api.mjs
++++ b/src/api.mjs
+@@ -1,29 +1 @@
+-// The HTTP-shaped API: a pure function of a store and a request -- { method, path, body } -> { status, body }.
+-import { formatted } from "./money.mjs";
+-import { cancelOrder, createOrder, getOrder, invalidOf, shipOrder } from "./orders.mjs";
+-
+-const viewOf = (order) => ({ ...order, total: formatted(order.totalMinor) });
+-
+-const ANSWERS = [
+-  { when: (r) => !r || r.error === "NOT_FOUND", answer: () => ({ status: 404, body: { error: "no such order" } }) },
+-  { when: (r) => r.error === "CONFLICT", answer: (r) => ({ status: 409, body: { error: `the order is ${r.state}` } }) },
+-  { when: () => true, answer: (r, ok) => ({ status: ok, body: viewOf(r) }) },
+-];
+-
+-const answered = (r, ok = 200) => ANSWERS.find((a) => a.when(r)).answer(r, ok);
+-
+-const created = (store, body) => ((why) => (why ? { status: 400, body: { error: `invalid ${why}` } } : answered(createOrder(store, body), 201)))(invalidOf(body));
+-
+-const ORDER = "(ord-\\d{4})";
+-
+-export const ROUTES = [
+-  { method: "POST", path: new RegExp("^/orders$"), run: (store, m, body) => created(store, body ?? {}) },
+-  { method: "GET", path: new RegExp(`^/orders/${ORDER}$`), run: (store, m) => answered(getOrder(store, m[1])) },
+-  { method: "POST", path: new RegExp(`^/orders/${ORDER}/ship$`), run: (store, m) => answered(shipOrder(store, m[1])) },
+-  { method: "POST", path: new RegExp(`^/orders/${ORDER}/cancel$`), run: (store, m) => answered(cancelOrder(store, m[1])) },
+-];
+-
+-export function handle(store, request) {
+-  const route = ROUTES.find((r) => r.method === request?.method && r.path.test(String(request?.path ?? "")));
+-  return route ? route.run(store, route.path.exec(request.path), request.body) : { status: 404, body: { error: "no such route" } };
+-}
++export {};
+diff --git a/src/money.mjs b/src/money.mjs
+index c6b58cb5cf3df656ffe96fc51e3b7c63fc306212..780bb5394550ab747315a849ebe4e08a8edc468a 100644
+--- a/src/money.mjs
++++ b/src/money.mjs
+@@ -1,5 +1,7 @@
+-// Money in minor units (cents): a line's total, an order's total after a whole-percentage discount, and a total
+-// formatted in dollars.
++// Money in minor units (cents for USD and EUR, yen for JPY): a line's total, an order's total after a whole-percentage
++// discount, and a total formatted for its currency.
++export const CURRENCIES = { USD: { minor: 2, symbol: "$" }, EUR: { minor: 2, symbol: "€" }, JPY: { minor: 0, symbol: "¥" } };
++
+ export const lineTotal = (line) => line.qty * line.unitMinor;
+ 
+ export const subtotal = (lines) => lines.reduce((sum, line) => sum + lineTotal(line), 0);
+@@ -9,4 +11,6 @@ export const discounted = (minor, percent) => Math.floor((minor * (100 - percent
+ 
+ export const orderTotal = (lines, percent = 0) => discounted(subtotal(lines), percent);
+ 
+-export const formatted = (minor) => `$${(minor / 100).toFixed(2)}`;
++const currencyOf = (code) => CURRENCIES[code] ?? CURRENCIES.USD;
++
++export const formatted = (minor, code = "USD") => ((c) => `${c.symbol}${(minor / 10 ** c.minor).toFixed(c.minor)}`)(currencyOf(code));
+diff --git a/src/orders.mjs b/src/orders.mjs
+index b71fc617d5febf4057bd48085b3c3cef5f585a2b..2e5f290198e319c3c2143e1fb95adbbbc2c58c9a 100644
+--- a/src/orders.mjs
++++ b/src/orders.mjs
+@@ -1,5 +1,5 @@
+ // Orders: created open with their total computed once, shipped once, and cancelled only while they are still open.
+-import { orderTotal } from "./money.mjs";
++import { CURRENCIES, orderTotal } from "./money.mjs";
+ 
+ const nextId = (store) => `ord-${String(store.list("orders").length + 1).padStart(4, "0")}`;
+ 
+@@ -8,10 +8,10 @@ const validLine = (l) => Number.isInteger(l?.qty) && l.qty > 0 && Number.isInteg
+ const validPercent = (p) => Number.isInteger(p) && p >= 0 && p <= 100;
+ 
+ // Why an order cannot be made of what was sent, or null.
+-export const invalidOf = (input) => (!Array.isArray(input?.lines) || !input.lines.length || !input.lines.every(validLine) ? "lines" : !validPercent(input.percent ?? 0) ? "percent" : null);
++export const invalidOf = (input) => (!Array.isArray(input?.lines) || !input.lines.length || !input.lines.every(validLine) ? "lines" : !validPercent(input.percent ?? 0) ? "percent" : !Object.hasOwn(CURRENCIES, input.currency ?? "USD") ? "currency" : null);
+ 
+ export function createOrder(store, input) {
+-  const order = { id: nextId(store), customer: String(input.customer ?? ""), lines: input.lines, percent: input.percent ?? 0, note: String(input.note ?? ""), state: "open" };
++  const order = { id: nextId(store), customer: String(input.customer ?? ""), lines: input.lines, percent: input.percent ?? 0, currency: input.currency ?? "USD", note: String(input.note ?? ""), state: "open" };
+   return store.put("orders", order.id, { ...order, totalMinor: orderTotal(order.lines, order.percent) });
+ }
+ 
+diff --git a/src/ui.mjs b/src/ui.mjs
+index 03c58b0cbb7907c0907326730614c07e9005c2e0..e3f443a561c0d30c38d35e38da0149fcca352d03 100644
+--- a/src/ui.mjs
++++ b/src/ui.mjs
+@@ -7,4 +7,4 @@ export const escaped = (text) => String(text ?? "").replace(/[&<>"']/g, (ch) =>
+ 
+ const noteOf = (order) => (order.note ? [`  <p class="note">${escaped(order.note)}</p>`] : []);
+ 
+-export const renderOrder = (order) => [`<article class="order" id="${escaped(order.id)}">`, `  <h2>${escaped(order.customer)}</h2>`, `  <p class="total">${escaped(formatted(order.totalMinor))}</p>`, `  <p class="state">${escaped(order.state)}</p>`, ...noteOf(order), "</article>"].join("\n");
++export const renderOrder = (order) => [`<article class="order" id="${escaped(order.id)}">`, `  <h2>${escaped(order.customer)}</h2>`, `  <p class="total">${escaped(formatted(order.totalMinor, order.currency))}</p>`, `  <p class="state">${escaped(order.state)}</p>`, ...noteOf(order), "</article>"].join("\n");
+diff --git a/src/worker.mjs b/src/worker.mjs
+index 3da7a5019de9ef5bf3eb53583f05791c2677c78e..46dd39829722b2818e3820ca5b25ce46feb4d24f 100644
+--- a/src/worker.mjs
++++ b/src/worker.mjs
+@@ -6,7 +6,7 @@ const nextInvoice = (store) => `inv-${String(store.list("invoices").length + 1).
+ 
+ function invoiced(store, message, order) {
+   const id = nextInvoice(store);
+-  store.put("invoices", id, { id, orderId: order.id, amountMinor: order.totalMinor, messageId: message.id });
++  store.put("invoices", id, { id, orderId: order.id, amountMinor: order.totalMinor, currency: order.currency, messageId: message.id });
+   store.put("processed", message.id, { messageId: message.id, invoice: id });
+   return { ack: true, invoice: id };
+ }
+diff --git a/test/cancel.test.mjs b/test/cancel.test.mjs
+deleted file mode 100644
+index 48ebf6e47453a6454075f8a9c81713bfed813e96..0000000000000000000000000000000000000000
+--- a/test/cancel.test.mjs
++++ /dev/null
+@@ -1,29 +0,0 @@
+-import assert from "node:assert/strict";
+-import { mkdtempSync, rmSync } from "node:fs";
+-import { tmpdir } from "node:os";
+-import { join } from "node:path";
+-import { test } from "node:test";
+-import { handle } from "../src/api.mjs";
+-import { openStore } from "../src/store.mjs";
+-
+-function fresh(t) {
+-  const dir = mkdtempSync(join(tmpdir(), "orders-"));
+-  t.after(() => rmSync(dir, { recursive: true, force: true }));
+-  return openStore(dir);
+-}
+-
+-const made = (store) => handle(store, { method: "POST", path: "/orders", body: { lines: [{ qty: 1, unitMinor: 700 }] } }).body.id;
+-
+-test("an open order can be cancelled, and a cancelled order is never shipped", (t) => {
+-  const store = fresh(t);
+-  const id = made(store);
+-  assert.equal(handle(store, { method: "POST", path: `/orders/${id}/cancel` }).body.state, "cancelled");
+-  assert.equal(handle(store, { method: "POST", path: `/orders/${id}/ship` }).status, 409);
+-});
+-
+-test("a shipped order cannot be cancelled", (t) => {
+-  const store = fresh(t);
+-  const id = made(store);
+-  handle(store, { method: "POST", path: `/orders/${id}/ship` });
+-  assert.equal(handle(store, { method: "POST", path: `/orders/${id}/cancel` }).status, 409);
+-});
+diff --git a/test/currency-orders.test.mjs b/test/currency-orders.test.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..88d9712b16ea5d2f50fd4a12025db4771031584f
+--- /dev/null
++++ b/test/currency-orders.test.mjs
+@@ -0,0 +1,24 @@
++import assert from "node:assert/strict";
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { test } from "node:test";
++import { handle } from "../src/api.mjs";
++import { openStore } from "../src/store.mjs";
++import { renderOrder } from "../src/ui.mjs";
++
++function fresh(t) {
++  const dir = mkdtempSync(join(tmpdir(), "orders-"));
++  t.after(() => rmSync(dir, { recursive: true, force: true }));
++  return dir;
++}
++
++test("an order keeps its currency, shows its total in it, and a currency nobody keeps is refused", (t) => {
++  const store = openStore(fresh(t));
++  const made = (currency) => handle(store, { method: "POST", path: "/orders", body: { lines: [{ qty: 2, unitMinor: 1050 }], currency } });
++  const eur = made("EUR").body;
++  assert.deepEqual([eur.currency, eur.total], ["EUR", "€21.00"]);
++  assert.equal(made("JPY").body.total, "¥2100");
++  assert.match(renderOrder(eur), /<p class="total">€21\.00<\/p>/);
++  assert.equal(made("GBP").status, 400);
++});

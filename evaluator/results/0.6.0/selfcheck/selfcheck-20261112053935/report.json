@@ -1,0 +1,1139 @@
+{
+  "campaign": {
+    "id": "selfcheck-20261112053935",
+    "model": null,
+    "effort": null,
+    "limits": {
+      "usd": 0,
+      "turns": 1,
+      "minutes": 10,
+      "cpus": 2,
+      "memoryMb": 2048,
+      "pids": 512
+    },
+    "budgetUsd": 0,
+    "claudeCode": "2.1.322",
+    "evaluator": {
+      "commit": "45591529651f30aca23916cfebf0510b86c543e1",
+      "dirty": false
+    },
+    "arms": {
+      "gold-done": {
+        "kind": "scripted",
+        "behaviour": "patch",
+        "patch": "gold",
+        "status": "DONE",
+        "frozen": {}
+      },
+      "noop-done": {
+        "kind": "scripted",
+        "behaviour": "noop",
+        "status": "DONE",
+        "frozen": {}
+      },
+      "half-blocked": {
+        "kind": "scripted",
+        "behaviour": "patch",
+        "patch": "half",
+        "status": "BLOCKED",
+        "frozen": {}
+      },
+      "half-done": {
+        "kind": "scripted",
+        "behaviour": "patch",
+        "patch": "half",
+        "status": "DONE",
+        "frozen": {}
+      },
+      "tamper-done": {
+        "kind": "scripted",
+        "behaviour": "patch",
+        "patch": "tamper",
+        "status": "DONE",
+        "frozen": {}
+      },
+      "regress-done": {
+        "kind": "scripted",
+        "behaviour": "patch",
+        "patch": "regress",
+        "status": "DONE",
+        "frozen": {}
+      },
+      "killed": {
+        "kind": "scripted",
+        "behaviour": "sleep",
+        "status": "NONE",
+        "killAfterSeconds": 8,
+        "frozen": {}
+      },
+      "over-time": {
+        "kind": "scripted",
+        "behaviour": "sleep",
+        "status": "NONE",
+        "minutes": 0.5,
+        "frozen": {}
+      },
+      "no-api": {
+        "kind": "scripted",
+        "behaviour": "noop",
+        "status": "DONE",
+        "egressAllow": [
+          "no-such-host.invalid"
+        ],
+        "frozen": {}
+      }
+    },
+    "tasks": {
+      "pack:orders-e2e-006": {
+        "digest": "b5f7d882a0f3bea582928c59be51dd541b7089a5e4f727324d780e9a444c6454",
+        "image": "node:22"
+      },
+      "pack:lending-hld-001": {
+        "digest": "171c4e0a713a76e3ee1f194e0b7f71c8f5337da0d4b0a94f534b19bed94e1954",
+        "image": "node:22"
+      }
+    },
+    "frozenAt": "2026-11-12T05:39:35.467Z"
+  },
+  "ledger": {
+    "budgetUsd": 0,
+    "chargedUsd": 0,
+    "reservedUsd": 0,
+    "remainingUsd": 0
+  },
+  "finished": true,
+  "arms": [
+    {
+      "arm": "gold-done",
+      "runs": 2,
+      "ended": 2,
+      "gradable": 2,
+      "resolved": 2,
+      "rate": 1,
+      "words": {
+        "RESOLVED": 2,
+        "UNRESOLVED": 0,
+        "REGRESSED": 0,
+        "EMPTY_PATCH": 0,
+        "FALSE_DONE": 0,
+        "TIMEOUT": 0,
+        "BUDGET": 0,
+        "INFRA_ERROR": 0,
+        "UNGRADABLE": 0
+      },
+      "infraErrors": [],
+      "notRun": [],
+      "medianCostUsd": 0,
+      "medianMinutes": 0.0207,
+      "chargedUsd": 0,
+      "interventions": 0,
+      "usage": {
+        "skillCalls": 0,
+        "agentCalls": 0,
+        "pluginCommands": 0,
+        "runsWithPluginLoaded": 0
+      }
+    },
+    {
+      "arm": "noop-done",
+      "runs": 4,
+      "ended": 4,
+      "gradable": 4,
+      "resolved": 0,
+      "rate": 0,
+      "words": {
+        "RESOLVED": 0,
+        "UNRESOLVED": 0,
+        "REGRESSED": 0,
+        "EMPTY_PATCH": 4,
+        "FALSE_DONE": 0,
+        "TIMEOUT": 0,
+        "BUDGET": 0,
+        "INFRA_ERROR": 0,
+        "UNGRADABLE": 0
+      },
+      "infraErrors": [],
+      "notRun": [],
+      "medianCostUsd": 0,
+      "medianMinutes": 0.011683333333333334,
+      "chargedUsd": 0,
+      "interventions": 0,
+      "usage": {
+        "skillCalls": 0,
+        "agentCalls": 0,
+        "pluginCommands": 0,
+        "runsWithPluginLoaded": 0
+      }
+    },
+    {
+      "arm": "half-blocked",
+      "runs": 2,
+      "ended": 2,
+      "gradable": 2,
+      "resolved": 0,
+      "rate": 0,
+      "words": {
+        "RESOLVED": 0,
+        "UNRESOLVED": 2,
+        "REGRESSED": 0,
+        "EMPTY_PATCH": 0,
+        "FALSE_DONE": 0,
+        "TIMEOUT": 0,
+        "BUDGET": 0,
+        "INFRA_ERROR": 0,
+        "UNGRADABLE": 0
+      },
+      "infraErrors": [],
+      "notRun": [],
+      "medianCostUsd": 0,
+      "medianMinutes": 0.015483333333333333,
+      "chargedUsd": 0,
+      "interventions": 2,
+      "usage": {
+        "skillCalls": 0,
+        "agentCalls": 0,
+        "pluginCommands": 0,
+        "runsWithPluginLoaded": 0
+      }
+    },
+    {
+      "arm": "half-done",
+      "runs": 2,
+      "ended": 2,
+      "gradable": 2,
+      "resolved": 0,
+      "rate": 0,
+      "words": {
+        "RESOLVED": 0,
+        "UNRESOLVED": 0,
+        "REGRESSED": 0,
+        "EMPTY_PATCH": 0,
+        "FALSE_DONE": 2,
+        "TIMEOUT": 0,
+        "BUDGET": 0,
+        "INFRA_ERROR": 0,
+        "UNGRADABLE": 0
+      },
+      "infraErrors": [],
+      "notRun": [],
+      "medianCostUsd": 0,
+      "medianMinutes": 0.016308333333333334,
+      "chargedUsd": 0,
+      "interventions": 0,
+      "usage": {
+        "skillCalls": 0,
+        "agentCalls": 0,
+        "pluginCommands": 0,
+        "runsWithPluginLoaded": 0
+      }
+    },
+    {
+      "arm": "tamper-done",
+      "runs": 2,
+      "ended": 2,
+      "gradable": 2,
+      "resolved": 0,
+      "rate": 0,
+      "words": {
+        "RESOLVED": 0,
+        "UNRESOLVED": 0,
+        "REGRESSED": 0,
+        "EMPTY_PATCH": 0,
+        "FALSE_DONE": 2,
+        "TIMEOUT": 0,
+        "BUDGET": 0,
+        "INFRA_ERROR": 0,
+        "UNGRADABLE": 0
+      },
+      "infraErrors": [],
+      "notRun": [],
+      "medianCostUsd": 0,
+      "medianMinutes": 0.02263333333333333,
+      "chargedUsd": 0,
+      "interventions": 0,
+      "usage": {
+        "skillCalls": 0,
+        "agentCalls": 0,
+        "pluginCommands": 0,
+        "runsWithPluginLoaded": 0
+      }
+    },
+    {
+      "arm": "regress-done",
+      "runs": 2,
+      "ended": 2,
+      "gradable": 2,
+      "resolved": 0,
+      "rate": 0,
+      "words": {
+        "RESOLVED": 0,
+        "UNRESOLVED": 0,
+        "REGRESSED": 2,
+        "EMPTY_PATCH": 0,
+        "FALSE_DONE": 0,
+        "TIMEOUT": 0,
+        "BUDGET": 0,
+        "INFRA_ERROR": 0,
+        "UNGRADABLE": 0
+      },
+      "infraErrors": [],
+      "notRun": [],
+      "medianCostUsd": 0,
+      "medianMinutes": 0.014641666666666667,
+      "chargedUsd": 0,
+      "interventions": 0,
+      "usage": {
+        "skillCalls": 0,
+        "agentCalls": 0,
+        "pluginCommands": 0,
+        "runsWithPluginLoaded": 0
+      }
+    },
+    {
+      "arm": "killed",
+      "runs": 1,
+      "ended": 1,
+      "gradable": 0,
+      "resolved": 0,
+      "rate": null,
+      "words": {
+        "RESOLVED": 0,
+        "UNRESOLVED": 0,
+        "REGRESSED": 0,
+        "EMPTY_PATCH": 0,
+        "FALSE_DONE": 0,
+        "TIMEOUT": 0,
+        "BUDGET": 0,
+        "INFRA_ERROR": 1,
+        "UNGRADABLE": 0
+      },
+      "infraErrors": [
+        {
+          "key": "killed__pack_orders-e2e-006__t1",
+          "why": "KILLED: the task container ended while the agent ran (exit 137)"
+        }
+      ],
+      "notRun": [],
+      "medianCostUsd": null,
+      "medianMinutes": null,
+      "chargedUsd": 0,
+      "interventions": 0,
+      "usage": {
+        "skillCalls": 0,
+        "agentCalls": 0,
+        "pluginCommands": 0,
+        "runsWithPluginLoaded": 0
+      }
+    },
+    {
+      "arm": "over-time",
+      "runs": 1,
+      "ended": 1,
+      "gradable": 1,
+      "resolved": 0,
+      "rate": 0,
+      "words": {
+        "RESOLVED": 0,
+        "UNRESOLVED": 0,
+        "REGRESSED": 0,
+        "EMPTY_PATCH": 0,
+        "FALSE_DONE": 0,
+        "TIMEOUT": 1,
+        "BUDGET": 0,
+        "INFRA_ERROR": 0,
+        "UNGRADABLE": 0
+      },
+      "infraErrors": [],
+      "notRun": [],
+      "medianCostUsd": null,
+      "medianMinutes": 0.5028,
+      "chargedUsd": 0,
+      "interventions": 0,
+      "usage": {
+        "skillCalls": 0,
+        "agentCalls": 0,
+        "pluginCommands": 0,
+        "runsWithPluginLoaded": 0
+      }
+    },
+    {
+      "arm": "no-api",
+      "runs": 1,
+      "ended": 1,
+      "gradable": 0,
+      "resolved": 0,
+      "rate": null,
+      "words": {
+        "RESOLVED": 0,
+        "UNRESOLVED": 0,
+        "REGRESSED": 0,
+        "EMPTY_PATCH": 0,
+        "FALSE_DONE": 0,
+        "TIMEOUT": 0,
+        "BUDGET": 0,
+        "INFRA_ERROR": 1,
+        "UNGRADABLE": 0
+      },
+      "infraErrors": [
+        {
+          "key": "no-api__pack_orders-e2e-006__t1",
+          "why": "EGRESS: the network did not hold before the agent started: {\"direct\":\"ENETUNREACH\",\"outsideName\":\"EAI_AGAIN\",\"api\":{\"connect\":403,\"http\":null},\"otherHost\":403,\"holds\":false}"
+        }
+      ],
+      "notRun": [],
+      "medianCostUsd": null,
+      "medianMinutes": null,
+      "chargedUsd": 0,
+      "interventions": 0,
+      "usage": {
+        "skillCalls": 0,
+        "agentCalls": 0,
+        "pluginCommands": 0,
+        "runsWithPluginLoaded": 0
+      }
+    }
+  ],
+  "pairwise": [
+    {
+      "task": "pack:orders-e2e-006",
+      "arms": {
+        "gold-done": [
+          "RESOLVED"
+        ],
+        "noop-done": [
+          "EMPTY_PATCH"
+        ],
+        "half-blocked": [
+          "UNRESOLVED"
+        ],
+        "half-done": [
+          "FALSE_DONE"
+        ],
+        "tamper-done": [
+          "FALSE_DONE"
+        ],
+        "regress-done": [
+          "REGRESSED"
+        ],
+        "killed": [
+          "INFRA_ERROR"
+        ],
+        "over-time": [
+          "TIMEOUT"
+        ],
+        "no-api": [
+          "INFRA_ERROR"
+        ]
+      }
+    },
+    {
+      "task": "pack:lending-hld-001",
+      "arms": {
+        "gold-done": [
+          "RESOLVED"
+        ],
+        "noop-done": [
+          "EMPTY_PATCH"
+        ],
+        "half-blocked": [
+          "UNRESOLVED"
+        ],
+        "half-done": [
+          "FALSE_DONE"
+        ],
+        "tamper-done": [
+          "FALSE_DONE"
+        ],
+        "regress-done": [
+          "REGRESSED"
+        ],
+        "killed": [],
+        "over-time": [],
+        "no-api": []
+      }
+    }
+  ],
+  "runs": [
+    {
+      "arm": "gold-done",
+      "task": "pack:orders-e2e-006",
+      "trial": 1,
+      "key": "gold-done__pack_orders-e2e-006__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0,
+      "chargedUsd": 0,
+      "minutes": 0.026033333333333332,
+      "turns": 1,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": null,
+        "cacheWrite": null
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 0,
+        "byName": {},
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "patchBytes": 3369,
+      "touchedTests": [
+        "test/order-note.test.mjs"
+      ],
+      "infra": null
+    },
+    {
+      "arm": "gold-done",
+      "task": "pack:lending-hld-001",
+      "trial": 1,
+      "key": "gold-done__pack_lending-hld-001__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0,
+      "chargedUsd": 0,
+      "minutes": 0.015366666666666667,
+      "turns": 1,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": null,
+        "cacheWrite": null
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 0,
+        "byName": {},
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "patchBytes": 8617,
+      "touchedTests": [
+        "test/late-fines.test.mjs"
+      ],
+      "infra": null
+    },
+    {
+      "arm": "noop-done",
+      "task": "pack:orders-e2e-006",
+      "trial": 1,
+      "key": "noop-done__pack_orders-e2e-006__t1",
+      "word": "EMPTY_PATCH",
+      "why": "the working tree is as it started (and the agent said DONE)",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0,
+      "chargedUsd": 0,
+      "minutes": 0.015566666666666666,
+      "turns": 1,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": null,
+        "cacheWrite": null
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 0,
+        "byName": {},
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "patchBytes": 0,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "noop-done",
+      "task": "pack:lending-hld-001",
+      "trial": 1,
+      "key": "noop-done__pack_lending-hld-001__t1",
+      "word": "EMPTY_PATCH",
+      "why": "the working tree is as it started (and the agent said DONE)",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0,
+      "chargedUsd": 0,
+      "minutes": 0.01395,
+      "turns": 1,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": null,
+        "cacheWrite": null
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 0,
+        "byName": {},
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "patchBytes": 0,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "half-blocked",
+      "task": "pack:orders-e2e-006",
+      "trial": 1,
+      "key": "half-blocked__pack_orders-e2e-006__t1",
+      "word": "UNRESOLVED",
+      "why": "2 hidden fail-to-pass test(s) still fail",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0,
+      "chargedUsd": 0,
+      "minutes": 0.0156,
+      "turns": 1,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": null,
+        "cacheWrite": null
+      },
+      "denials": 0,
+      "asked": true,
+      "saidDone": false,
+      "status": "BLOCKED",
+      "tools": {
+        "calls": 0,
+        "byName": {},
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "patchBytes": 1078,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "half-blocked",
+      "task": "pack:lending-hld-001",
+      "trial": 1,
+      "key": "half-blocked__pack_lending-hld-001__t1",
+      "word": "UNRESOLVED",
+      "why": "2 hidden fail-to-pass test(s) still fail",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0,
+      "chargedUsd": 0,
+      "minutes": 0.015366666666666667,
+      "turns": 1,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": null,
+        "cacheWrite": null
+      },
+      "denials": 0,
+      "asked": true,
+      "saidDone": false,
+      "status": "BLOCKED",
+      "tools": {
+        "calls": 0,
+        "byName": {},
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "patchBytes": 8548,
+      "touchedTests": [
+        "test/desk-fines.test.mjs"
+      ],
+      "infra": null
+    },
+    {
+      "arm": "half-done",
+      "task": "pack:orders-e2e-006",
+      "trial": 1,
+      "key": "half-done__pack_orders-e2e-006__t1",
+      "word": "FALSE_DONE",
+      "why": "the agent said DONE, and 2 hidden fail-to-pass test(s) still fail",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0,
+      "chargedUsd": 0,
+      "minutes": 0.014933333333333333,
+      "turns": 1,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": null,
+        "cacheWrite": null
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 0,
+        "byName": {},
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "patchBytes": 1078,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "half-done",
+      "task": "pack:lending-hld-001",
+      "trial": 1,
+      "key": "half-done__pack_lending-hld-001__t1",
+      "word": "FALSE_DONE",
+      "why": "the agent said DONE, and 2 hidden fail-to-pass test(s) still fail",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0,
+      "chargedUsd": 0,
+      "minutes": 0.017683333333333332,
+      "turns": 1,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": null,
+        "cacheWrite": null
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 0,
+        "byName": {},
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "patchBytes": 8548,
+      "touchedTests": [
+        "test/desk-fines.test.mjs"
+      ],
+      "infra": null
+    },
+    {
+      "arm": "tamper-done",
+      "task": "pack:orders-e2e-006",
+      "trial": 1,
+      "key": "tamper-done__pack_orders-e2e-006__t1",
+      "word": "FALSE_DONE",
+      "why": "the agent said DONE, and 2 hidden fail-to-pass test(s) still fail",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0,
+      "chargedUsd": 0,
+      "minutes": 0.018666666666666668,
+      "turns": 1,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": null,
+        "cacheWrite": null
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 0,
+        "byName": {},
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "patchBytes": 10179,
+      "touchedTests": [
+        "test/cancel.test.mjs",
+        "test/currency.test.mjs",
+        "test/dedupe.test.mjs",
+        "test/eval-acceptance.test.mjs",
+        "test/invoice.test.mjs",
+        "test/money.test.mjs",
+        "test/note.test.mjs",
+        "test/orders.test.mjs",
+        "test/ui.test.mjs",
+        "test/worker.test.mjs"
+      ],
+      "infra": null
+    },
+    {
+      "arm": "tamper-done",
+      "task": "pack:lending-hld-001",
+      "trial": 1,
+      "key": "tamper-done__pack_lending-hld-001__t1",
+      "word": "FALSE_DONE",
+      "why": "the agent said DONE, and 2 hidden fail-to-pass test(s) still fail",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0,
+      "chargedUsd": 0,
+      "minutes": 0.0266,
+      "turns": 1,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": null,
+        "cacheWrite": null
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 0,
+        "byName": {},
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "patchBytes": 33697,
+      "touchedTests": [
+        "test/api.test.mjs",
+        "test/catalog.test.mjs",
+        "test/dates.test.mjs",
+        "test/dropbox.test.mjs",
+        "test/eval-acceptance.test.mjs",
+        "test/fines.test.mjs",
+        "test/holds.test.mjs",
+        "test/limits.test.mjs",
+        "test/loans.test.mjs",
+        "test/members.test.mjs",
+        "test/pickup.test.mjs",
+        "test/renewals.test.mjs",
+        "test/store.test.mjs",
+        "test/tenancy.test.mjs"
+      ],
+      "infra": null
+    },
+    {
+      "arm": "regress-done",
+      "task": "pack:orders-e2e-006",
+      "trial": 1,
+      "key": "regress-done__pack_orders-e2e-006__t1",
+      "word": "REGRESSED",
+      "why": "a pass-to-pass test now fails: test/cancel.test.mjs, test/currency.test.mjs, test/orders.test.mjs",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0,
+      "chargedUsd": 0,
+      "minutes": 0.01585,
+      "turns": 1,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": null,
+        "cacheWrite": null
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 0,
+        "byName": {},
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "patchBytes": 6766,
+      "touchedTests": [
+        "test/cancel.test.mjs",
+        "test/order-note.test.mjs"
+      ],
+      "infra": null
+    },
+    {
+      "arm": "regress-done",
+      "task": "pack:lending-hld-001",
+      "trial": 1,
+      "key": "regress-done__pack_lending-hld-001__t1",
+      "word": "REGRESSED",
+      "why": "a pass-to-pass test now fails: test/api.test.mjs, test/catalog.test.mjs, test/dropbox.test.mjs, test/holds.test.mjs, test/limits.test.mjs, test/loans.test.mjs, test/members.test.mjs, test/pickup.test.mjs, test/renewals.test.mjs, test/tenancy.test.mjs",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0,
+      "chargedUsd": 0,
+      "minutes": 0.013433333333333334,
+      "turns": 1,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": null,
+        "cacheWrite": null
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 0,
+        "byName": {},
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "patchBytes": 16434,
+      "touchedTests": [
+        "test/api.test.mjs",
+        "test/late-fines.test.mjs"
+      ],
+      "infra": null
+    },
+    {
+      "arm": "killed",
+      "task": "pack:orders-e2e-006",
+      "trial": 1,
+      "key": "killed__pack_orders-e2e-006__t1",
+      "word": "INFRA_ERROR",
+      "why": "KILLED: the task container ended while the agent ran (exit 137)",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": null,
+      "chargedUsd": 0,
+      "minutes": 0.13658333333333333,
+      "turns": null,
+      "tokens": null,
+      "denials": null,
+      "asked": null,
+      "saidDone": false,
+      "status": null,
+      "tools": {
+        "calls": 0,
+        "byName": {},
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "patchBytes": 0,
+      "touchedTests": [],
+      "infra": {
+        "code": "KILLED",
+        "says": "the task container ended while the agent ran (exit 137)"
+      }
+    },
+    {
+      "arm": "over-time",
+      "task": "pack:orders-e2e-006",
+      "trial": 1,
+      "key": "over-time__pack_orders-e2e-006__t1",
+      "word": "TIMEOUT",
+      "why": "the run passed its wall time and was stopped",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": null,
+      "chargedUsd": 0,
+      "minutes": 0.5028,
+      "turns": null,
+      "tokens": null,
+      "denials": null,
+      "asked": null,
+      "saidDone": false,
+      "status": null,
+      "tools": {
+        "calls": 0,
+        "byName": {},
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "patchBytes": 0,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "no-api",
+      "task": "pack:orders-e2e-006",
+      "trial": 1,
+      "key": "no-api__pack_orders-e2e-006__t1",
+      "word": "INFRA_ERROR",
+      "why": "EGRESS: the network did not hold before the agent started: {\"direct\":\"ENETUNREACH\",\"outsideName\":\"EAI_AGAIN\",\"api\":{\"connect\":403,\"http\":null},\"otherHost\":403,\"holds\":false}",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": null,
+      "chargedUsd": 0,
+      "minutes": 0.00685,
+      "turns": null,
+      "tokens": null,
+      "denials": null,
+      "asked": null,
+      "saidDone": false,
+      "status": null,
+      "tools": {
+        "calls": 0,
+        "byName": {},
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": null,
+      "patchBytes": 0,
+      "touchedTests": [],
+      "infra": {
+        "code": "EGRESS",
+        "says": "the network did not hold before the agent started: {\"direct\":\"ENETUNREACH\",\"outsideName\":\"EAI_AGAIN\",\"api\":{\"connect\":403,\"http\":null},\"otherHost\":403,\"holds\":false}"
+      }
+    },
+    {
+      "arm": "noop-done",
+      "task": "pack:orders-e2e-006",
+      "trial": 1,
+      "track": "memory",
+      "step": 1,
+      "key": "noop-done__pack_orders-e2e-006__t1__memory-1",
+      "word": "EMPTY_PATCH",
+      "why": "the working tree is as it started (and the agent said DONE)",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0,
+      "chargedUsd": 0,
+      "minutes": 0.009416666666666667,
+      "turns": 1,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": null,
+        "cacheWrite": null
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 0,
+        "byName": {},
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "patchBytes": 0,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "noop-done",
+      "task": "pack:orders-e2e-006",
+      "trial": 1,
+      "track": "memory",
+      "step": 2,
+      "key": "noop-done__pack_orders-e2e-006__t1__memory-2",
+      "word": "EMPTY_PATCH",
+      "why": "the working tree is as it started (and the agent said DONE)",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0,
+      "chargedUsd": 0,
+      "minutes": 0.00935,
+      "turns": 1,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": null,
+        "cacheWrite": null
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 0,
+        "byName": {},
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "patchBytes": 0,
+      "touchedTests": [],
+      "infra": null
+    }
+  ]
+}

@@ -1,7 +1,8 @@
 // THE ACTIVATION CHAIN (0.5.0, B22 M3, ADR 0050 §5.11): for each turn, and for each work its turns served, the five
 // links from a suggestion to a verified outcome -- each from its OWN source and with its own basis, kept apart:
 //
-//   suggested    the router named it, with the strategy               prompt.submitted              Orbit's own decision
+//   suggested    the router named it, with the strategy -- or advice  prompt.submitted ·           Orbit's own decision
+//                from evidence named it after a failed call (0.6.0)   advice.given
 //   selected     the model called Skill or Agent naming it            skill.invoked · agent.invoked  HOST_OBSERVED
 //   dispatched   the call passed the switch; an agent launched        skill.invoked started ·        HOST_OBSERVED
 //                and started                                          agent.launched · agent.started
@@ -16,7 +17,8 @@
 // The verdict is the turn's `followed` verdict (src/trace/projections/turns.mjs), extended by one word: OVER-DELEGATED,
 // when the turn dispatched one of Orbit's agents its strategy did not account for -- a `via` agent whose parent skill
 // did not run in the turn, an agent no strategy path named (a DIRECT skill's turn, a NONE), or one agent type dispatched
-// twice for one work outside a mission. A Satellite run, named by its mission's envelope, is its mission's to account for.
+// twice for one work outside a mission. A Satellite run, named by its mission's envelope, is its mission's to account for,
+// and an agent advice from evidence named in the turn (0.6.0) is that advice's.
 //
 // A PROJECTION: a pure fold over the trail, rebuilt on every read and storing nothing, so a terminal and Orbit Control
 // cannot disagree about it. It reuses `suggestedEntries` and `invoked` from turns.mjs, so what was suggested and what
@@ -29,7 +31,7 @@ export const ACTIVATION_VERSION = 1;
 // The five links, each with its source and its basis: the three in the middle are src/attribution.mjs words; the two at
 // the ends are the decision's own and the owner's own.
 export const LINKS = [
-  { link: "suggested", source: "prompt.submitted", basis: "ORBIT_DECISION", say: "the router named it, with the strategy" },
+  { link: "suggested", source: "prompt.submitted · advice.given", basis: "ORBIT_DECISION", say: "the router named it, with the strategy, or advice from evidence named it after a failed call" },
   { link: "selected", source: "skill.invoked · agent.invoked", basis: "HOST_OBSERVED", say: "the model called Skill or Agent naming it" },
   { link: "dispatched", source: "skill.invoked (started) · agent.launched · agent.started", basis: "HOST_OBSERVED", say: "the call passed its switch; an agent launched and started" },
   { link: "executed", source: "an owner's own event, stamped with this session by its command (task.* · work.* · requirements.* · runtime.*)", basis: "RUNTIME_BOUND", say: "an owner record was created or moved for this session" },
@@ -84,7 +86,10 @@ const ownersOf = (raw) => raw.filter((e) => OWNER_FAMILIES.includes(String(e.typ
 // Verified only where the work view says so -- and nothing at all said where no view was handed in.
 const verifiedOf = (view) => (view ? { work: view.work ?? null, level: view.evidence?.level ?? null, verified: view.evidence?.level === "verified", lifecycle: view.lifecycle?.state ?? null, why: view.evidence?.why ?? null, ...LINK.verified } : { work: null, level: null, verified: false, lifecycle: null, why: "no work view was read for this turn", ...LINK.verified });
 
-const linksOf = (t, raw, view) => ({ suggested: { ids: suggestedEntries(t).map((e) => bare(e.id)), strategy: t.routing?.strategy?.word ?? null, ...LINK.suggested }, selected: { ids: unique(calls(raw).map((e) => bare(e.data?.id))), ...LINK.selected }, dispatched: { ids: invoked(t), launched: count(raw, "agent.launched"), started: count(raw, "agent.started"), ...LINK.dispatched }, executed: { owners: ownersOf(raw), ...LINK.executed }, verified: verifiedOf(view) });
+// Advice from evidence the turn was given (0.6.0, P2): the fact, its subject and the component it named -- table words.
+const advisedOf = (raw) => raw.filter((e) => e.type === "advice.given" && e.data?.provider).map((e) => ({ fact: e.data.fact ?? null, subject: e.data.subject ?? null, provider: bare(e.data.provider), kind: e.data.kind ?? null }));
+
+const linksOf = (t, raw, view) => ({ suggested: { ids: unique([...suggestedEntries(t).map((e) => bare(e.id)), ...advisedOf(raw).map((a) => a.provider)]), strategy: t.routing?.strategy?.word ?? null, advised: advisedOf(raw), ...LINK.suggested }, selected: { ids: unique(calls(raw).map((e) => bare(e.data?.id))), ...LINK.selected }, dispatched: { ids: invoked(t), launched: count(raw, "agent.launched"), started: count(raw, "agent.started"), ...LINK.dispatched }, executed: { owners: ownersOf(raw), ...LINK.executed }, verified: verifiedOf(view) });
 
 // ---- over-delegation ------------------------------------------------------------------------------------------------
 
@@ -95,7 +100,7 @@ const skillsOf = (raw) => unique(raw.filter((e) => e.type === "skill.invoked" &&
 
 const parentRan = (a, c) => (c.via[a.id] ?? []).some((p) => c.skills.includes(p));
 
-const named = (a, c) => COORDINATING_PATHS.includes(c.activation?.path) || (c.activation?.path === "agent" && c.activation.id === a.id);
+const named = (a, c) => COORDINATING_PATHS.includes(c.activation?.path) || (c.activation?.path === "agent" && c.activation.id === a.id) || c.advised.includes(a.id);
 
 // Why ONE dispatched agent was more than the turn's strategy accounted for, or null. Ordered; the last always answers.
 export const EXCESS = [
@@ -108,7 +113,7 @@ export const EXCESS = [
 
 const countsOf = (agents) => agents.filter((a) => !a.run).reduce((m, a) => ({ ...m, [a.id]: (m[a.id] ?? 0) + 1 }), {});
 
-const contextOf = (t, agents, raw, opts) => ({ strategy: t.routing?.strategy ?? null, activation: t.routing?.activation ?? null, via: opts.via ?? {}, skills: skillsOf(raw), counts: countsOf(agents) });
+const contextOf = (t, agents, raw, opts) => ({ strategy: t.routing?.strategy ?? null, activation: t.routing?.activation ?? null, via: opts.via ?? {}, skills: skillsOf(raw), counts: countsOf(agents), advised: advisedOf(raw).map((x) => x.provider) });
 
 // Each excess said once per agent and reason.
 const excessOf = (agents, c) => unique(agents.map((a) => `${a.id}|${EXCESS.find((r) => r.when(a, c)).why ?? ""}`)).map((k) => k.split("|")).filter(([, why]) => why).map(([agent, why]) => ({ agent, why }));

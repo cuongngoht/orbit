@@ -2,8 +2,8 @@
 // PROJECT CONTEXT for one task -- the engine's built-in `project.context`,
 // which orbit-develop asks for before it reads any source.
 //
-//   node cli/context.mjs --for="<the task, in one sentence>" [--json]
-//   node cli/context.mjs --with-refs [--json] < refs.json
+//   node cli/context.mjs --for="<the task, in one sentence>" [--work=<w-…>] [--json]
+//   node cli/context.mjs --with-refs [--work=<w-…>] [--json] < refs.json
 //                        stdin: { "task": "…", "refs": [{ "kind": "file|symbol", "ref": "…", "why": "…" }] }
 //
 // Memory first and bounded to the task: architecture, technology and
@@ -33,8 +33,17 @@
 // owners already hold, at most 40 with the rest counted. `--with-refs` adds the
 // host's own references: each is verified against the tracked tree, and one the
 // tree does not hold is refused by name and never listed. `--json` carries
-// `relevant`, `relevance` (the counts, and every refused reference) and
-// `sufficiency`.
+// `relevant`, `relevance` (the counts, every refused reference, and every
+// direct file no relation adapter reads) and `sufficiency`.
+//
+// SUFFICIENCY also answers three LEVELS (0.6.0): whether there is enough to
+// investigate, to change and to conclude, each with what it rests on or still
+// misses -- one line each, and `sufficiency.levels` in `--json`. `--work=<w-…>`
+// names the task's own work: its checkpoints are the ROUNDS of a bounded
+// discovery loop (src/work/rounds.mjs) -- the round state is printed (`rounds`
+// in `--json`), and a DISCOVER target that a settled, unmoved need already
+// answered is not offered again. It only reads; `work need | settle |
+// checkpoint | resume` write.
 //
 // Exit 0 = printed (a section may still say UNKNOWN) · 2 = bad usage.
 import { engined, enginedDeep } from "../src/engined.mjs";
@@ -47,7 +56,7 @@ import { envelopeOf } from "../src/context/refs.mjs";
 import { relevanceLines } from "../src/context/relevance.mjs";
 import { SECTION_LINES, SECTIONS, sectionOf, taskOf, workingSetSection } from "../src/context/sections.mjs";
 import { blockedOf, statusOf } from "../src/context/status.mjs";
-import { sufficiencyLines } from "../src/context/sufficiency.mjs";
+import { levelLines, sufficiencyLines } from "../src/context/sufficiency.mjs";
 import { Refused } from "../src/errors.mjs";
 import { projectCapabilities } from "../src/extensions/capabilities.mjs";
 import { printable } from "../src/printable.mjs";
@@ -72,7 +81,7 @@ const nativeFactory = await (await import("../skills/orbit-learn/hosts/resources
 const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const argv = process.argv.slice(2);
 const SECTION_TIMEOUT_MS = 180_000;
-const USAGE = 'usage: node cli/context.mjs --for="<the task, in one sentence>" [--json] · node cli/context.mjs --with-refs [--json] < { "task": "…", "refs": [{ "kind": "file|symbol", "ref": "…", "why": "…" }] }';
+const USAGE = 'usage: node cli/context.mjs --for="<the task, in one sentence>" [--work=<w-…>] [--json] · node cli/context.mjs --with-refs [--work=<w-…>] [--json] < { "task": "…", "refs": [{ "kind": "file|symbol", "ref": "…", "why": "…" }] }';
 
 const forFlag = (args) => args.find((a) => a.startsWith("--for="))?.slice(6);
 
@@ -88,6 +97,10 @@ function inputOf(args) {
 const INPUT = inputOf(argv);
 const TASK = taskOf(INPUT.task);
 
+// `--work=<w-…>` (0.6.0, U2): the task's own work, whose checkpoints are the rounds of this look. Read, never written.
+const WORK_ID = /^w-[0-9a-f]{12}$/;
+const WORK = argv.find((a) => a.startsWith("--work="))?.slice(7) ?? null;
+
 async function main() {
   refusedInput();
   const project = quietly(() => loadProject(ENV, process.cwd()));
@@ -98,6 +111,7 @@ async function main() {
 function refusedInput() {
   if (INPUT.problem) throw new Refused(INPUT.problem);
   if (!TASK) throw new Refused(USAGE);
+  if (WORK !== null && !WORK_ID.test(WORK)) throw new Refused(`--work names a work by its id (w- and twelve hex digits): ${USAGE}`);
 }
 
 // What the context amounts to, asked AFTER every section ran: `architecture ensure` may just have learned what there
@@ -130,17 +144,22 @@ async function resources(project) {
 // The knowledge owner's own answer for the task, as its JSON: asked only when the store holds a claim.
 const claimsAnswer = () => ((r) => (r.ok ? JSON.parse(r.out) : null))(processes.run(process.execPath, [join(PLUGIN_ROOT, "cli", "knowledge.mjs"), "claims", "--for-stdin", "--json"], { input: TASK, env: ENV }));
 
-const groundingFor = (project, worked) => groundingOf({ env: ENV, pluginRoot: PLUGIN_ROOT, cwd: process.cwd(), project, task: TASK, refs: INPUT.refs ?? [], workingSet: worked.latest, claims: claimsAnswer });
+const groundingFor = (project, worked) => groundingOf({ env: ENV, pluginRoot: PLUGIN_ROOT, cwd: process.cwd(), project, task: TASK, refs: INPUT.refs ?? [], workingSet: worked.latest, claims: claimsAnswer, work: WORK });
 
 function shown(status, sections, decision, grounding) {
   if (argv.includes("--json")) return console.log(JSON.stringify(enginedDeep({ status, sections, decision, ...grounding }, PLUGIN_ROOT), null, 2));
-  opening(status, grounding.sufficiency);
+  opening(status, grounding.sufficiency, grounding.rounds);
   for (const s of sections) console.log(engined(`== ${s.title} ==\n${s.lines.join("\n")}\n`, PLUGIN_ROOT));
   closing(decision, grounding);
   unknowns(sections);
 }
 
-const opening = (status, sufficiency) => console.log(`STATUS  ${status.word} -- ${status.because}\n${sufficiencyLines(sufficiency).map(printable).join("\n")}\n\nPROJECT CONTEXT  memory first, bounded to the task\n`);
+const opening = (status, sufficiency, rounds) => console.log(`STATUS  ${status.word} -- ${status.because}\n${[...sufficiencyLines(sufficiency), ...levelLines(sufficiency), ...roundLines(sufficiency, rounds)].map(printable).join("\n")}\n\nPROJECT CONTEXT  memory first, bounded to the task\n`);
+
+// The round state of `--work=`'s loop, and how many targets were not offered again because what answered them holds.
+const withheldLine = (s) => (s.withheld ? [`  withheld    ${s.withheld} target(s) a settled, unmoved need already answered`] : []);
+
+const roundLines = (s, r) => (!r ? [] : r.problem ? [`ROUNDS  ${r.problem}`] : [`ROUNDS  ${r.work} · ${r.rounds} of ${r.max} · ${r.stop ? `STOP (${r.row})` : "go on"} -- ${r.because}`, ...withheldLine(s)]);
 
 function closing(decision, grounding) {
   console.log(`== RELEVANT ==\n${relevanceLines(grounding.relevant, grounding.relevance, SECTION_LINES).join("\n")}\n`);

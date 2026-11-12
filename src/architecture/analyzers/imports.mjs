@@ -17,9 +17,11 @@
 // blobs, so an untracked file cannot contribute an edge.
 const SEARCH = "(from|require\\(|import\\()[[:space:]]*['\"]\\.";
 
-const SPECIFIER = /(?:\bfrom\s*|\brequire\s*\(\s*|\bimport\s*\(\s*)["'](\.[^"']*)["']/;
+// Exported because a file-level relation adapter (skills/orbit-develop/relations/) reads a specifier with exactly this
+// expression: one definition of what an import of this family looks like, held to agree by a test.
+export const SPECIFIER = /(?:\bfrom\s*|\brequire\s*\(\s*|\bimport\s*\(\s*)["'](\.[^"']*)["']/;
 
-const SOURCE_FILE = /\.(mjs|cjs|js|jsx|ts|tsx)$/;
+export const SOURCE_FILE = /\.(mjs|cjs|js|jsx|ts|tsx)$/;
 
 export const DEFAULT_BUDGET = 4000;
 

@@ -1,0 +1,140 @@
+{
+  "applied": true,
+  "empty": false,
+  "restored": [
+    {
+      "rel": "test/cancel.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/currency.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/dedupe.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/invoice.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/money.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/orders.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/ui.test.mjs",
+      "ok": true
+    },
+    {
+      "rel": "test/worker.test.mjs",
+      "ok": true
+    }
+  ],
+  "tests": [
+    {
+      "file": "test/note.test.mjs",
+      "kind": "f2p",
+      "ok": false,
+      "code": 1,
+      "timedOut": false,
+      "pass": 0,
+      "fail": 1,
+      "tail": "TAP version 13\n# file:///work/repo/test/note.test.mjs:6\n# import { handle } from \"../src/api.mjs\";\n#          ^^^^^^\n# SyntaxError: The requested module '../src/api.mjs' does not provide an export named 'handle'\n#     at ModuleJob._instantiate (node:internal/modules/esm/module_job:226:21)\n#     at async ModuleJob.run (node:internal/modules/esm/module_job:335:5)\n#     at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)\n#     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)\n# Node.js v22.23.5\n# Subtest: test/note.test.mjs\nnot ok 1 - test/note.test.mjs\n  ---\n  duration_ms: 133.71262\n  type: 'test'\n  location: '/work/repo/test/note.test.mjs:1:1'\n  failureType: 'testCodeFailure'\n  exitCode: 1\n  signal: ~\n  error: 'test failed'\n  code: 'ERR_TEST_FAILURE'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 0\n# fail 1\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 161.415991"
+    },
+    {
+      "file": "test/eval-acceptance.test.mjs",
+      "kind": "f2p",
+      "ok": false,
+      "code": 1,
+      "timedOut": false,
+      "pass": 0,
+      "fail": 7,
+      "tail": ": 'ERR_ASSERTION'\n  name: 'AssertionError'\n  actual:\n    code: 'MISSING_EXPORT'\n    names:\n      0: 'src/api.mjs#handle'\n  operator: 'strictEqual'\n  stack: |-\n    TestContext.<anonymous> (file:///work/repo/test/eval-acceptance.test.mjs:47:12)\n    Test.runInAsyncScope (node:async_hooks:214:14)\n    Test.run (node:internal/test_runner/test:1047:25)\n    Test.processPendingSubtests (node:internal/test_runner/test:744:18)\n    Test.postRun (node:internal/test_runner/test:1173:19)\n    Test.run (node:internal/test_runner/test:1101:12)\n    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)\n  ...\n# Subtest: unchanged: the customer, the total and the state are drawn as before\nnot ok 6 - unchanged: the customer, the total and the state are drawn as before\n  ---\n  duration_ms: 0.17135\n  type: 'test'\n  location: '/work/repo/test/eval-acceptance.test.mjs:46:3'\n  failureType: 'testCodeFailure'\n  error: |-\n    the probe could not answer: {\"code\":\"MISSING_EXPORT\",\"names\":[\"src/api.mjs#handle\"]}\n    + actual - expected\n    \n    + {\n    +   code: 'MISSING_EXPORT',\n    +   names: [\n    +     'src/api.mjs#handle'\n    +   ]\n    + }\n    - undefined\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  actual:\n    code: 'MISSING_EXPORT'\n    names:\n      0: 'src/api.mjs#handle'\n  operator: 'strictEqual'\n  stack: |-\n    TestContext.<anonymous> (file:///work/repo/test/eval-acceptance.test.mjs:47:12)\n    Test.runInAsyncScope (node:async_hooks:214:14)\n    Test.run (node:internal/test_runner/test:1047:25)\n    Test.processPendingSubtests (node:internal/test_runner/test:744:18)\n    Test.postRun (node:internal/test_runner/test:1173:19)\n    Test.run (node:internal/test_runner/test:1101:12)\n    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)\n  ...\n# Subtest: seeded: seeded notes and customers\nnot ok 7 - seeded: seeded notes and customers\n  ---\n  duration_ms: 0.23825\n  type: 'test'\n  location: '/work/repo/test/eval-acceptance.test.mjs:46:3'\n  failureType: 'testCodeFailure'\n  error: |-\n    the probe could not answer: {\"code\":\"MISSING_EXPORT\",\"names\":[\"src/api.mjs#handle\"]}\n    + actual - expected\n    \n    + {\n    +   code: 'MISSING_EXPORT',\n    +   names: [\n    +     'src/api.mjs#handle'\n    +   ]\n    + }\n    - undefined\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  actual:\n    code: 'MISSING_EXPORT'\n    names:\n      0: 'src/api.mjs#handle'\n  operator: 'strictEqual'\n  stack: |-\n    TestContext.<anonymous> (file:///work/repo/test/eval-acceptance.test.mjs:47:12)\n    Test.runInAsyncScope (node:async_hooks:214:14)\n    Test.run (node:internal/test_runner/test:1047:25)\n    Test.processPendingSubtests (node:internal/test_runner/test:744:18)\n    Test.postRun (node:internal/test_runner/test:1173:19)\n    Test.run (node:internal/test_runner/test:1101:12)\n    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)\n  ...\n1..7\n# tests 7\n# suites 0\n# pass 0\n# fail 7\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 344.573519"
+    },
+    {
+      "file": "test/cancel.test.mjs",
+      "kind": "p2p",
+      "ok": false,
+      "code": 1,
+      "timedOut": false,
+      "pass": 0,
+      "fail": 1,
+      "tail": "TAP version 13\n# file:///work/repo/test/cancel.test.mjs:6\n# import { handle } from \"../src/api.mjs\";\n#          ^^^^^^\n# SyntaxError: The requested module '../src/api.mjs' does not provide an export named 'handle'\n#     at ModuleJob._instantiate (node:internal/modules/esm/module_job:226:21)\n#     at async ModuleJob.run (node:internal/modules/esm/module_job:335:5)\n#     at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)\n#     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)\n# Node.js v22.23.5\n# Subtest: test/cancel.test.mjs\nnot ok 1 - test/cancel.test.mjs\n  ---\n  duration_ms: 92.17545\n  type: 'test'\n  location: '/work/repo/test/cancel.test.mjs:1:1'\n  failureType: 'testCodeFailure'\n  exitCode: 1\n  signal: ~\n  error: 'test failed'\n  code: 'ERR_TEST_FAILURE'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 0\n# fail 1\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 100.806228"
+    },
+    {
+      "file": "test/currency.test.mjs",
+      "kind": "p2p",
+      "ok": false,
+      "code": 1,
+      "timedOut": false,
+      "pass": 0,
+      "fail": 1,
+      "tail": "TAP version 13\n# file:///work/repo/test/currency.test.mjs:6\n# import { handle } from \"../src/api.mjs\";\n#          ^^^^^^\n# SyntaxError: The requested module '../src/api.mjs' does not provide an export named 'handle'\n#     at ModuleJob._instantiate (node:internal/modules/esm/module_job:226:21)\n#     at async ModuleJob.run (node:internal/modules/esm/module_job:335:5)\n#     at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)\n#     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)\n# Node.js v22.23.5\n# Subtest: test/currency.test.mjs\nnot ok 1 - test/currency.test.mjs\n  ---\n  duration_ms: 136.213301\n  type: 'test'\n  location: '/work/repo/test/currency.test.mjs:1:1'\n  failureType: 'testCodeFailure'\n  exitCode: 1\n  signal: ~\n  error: 'test failed'\n  code: 'ERR_TEST_FAILURE'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 0\n# fail 1\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 154.62238"
+    },
+    {
+      "file": "test/dedupe.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 1,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: a payment delivered twice writes one invoice\nok 1 - a payment delivered twice writes one invoice\n  ---\n  duration_ms: 24.008647\n  type: 'test'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 1\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 164.232393"
+    },
+    {
+      "file": "test/invoice.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 1,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: a payment writes the order's invoice, and the invoice is still there when the store is opened again\nok 1 - a payment writes the order's invoice, and the invoice is still there when the store is opened again\n  ---\n  duration_ms: 12.974127\n  type: 'test'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 1\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 117.249796"
+    },
+    {
+      "file": "test/money.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 3,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: a line's total is its quantity times its unit price, in minor units\nok 1 - a line's total is its quantity times its unit price, in minor units\n  ---\n  duration_ms: 2.736971\n  type: 'test'\n  ...\n# Subtest: an order with no discount costs its subtotal, and a round discount is exact\nok 2 - an order with no discount costs its subtotal, and a round discount is exact\n  ---\n  duration_ms: 0.346108\n  type: 'test'\n  ...\n# Subtest: a total is formatted in dollars by default\nok 3 - a total is formatted in dollars by default\n  ---\n  duration_ms: 0.294848\n  type: 'test'\n  ...\n1..3\n# tests 3\n# suites 0\n# pass 3\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 127.678276"
+    },
+    {
+      "file": "test/orders.test.mjs",
+      "kind": "p2p",
+      "ok": false,
+      "code": 1,
+      "timedOut": false,
+      "pass": 0,
+      "fail": 1,
+      "tail": "TAP version 13\n# file:///work/repo/test/orders.test.mjs:6\n# import { handle } from \"../src/api.mjs\";\n#          ^^^^^^\n# SyntaxError: The requested module '../src/api.mjs' does not provide an export named 'handle'\n#     at ModuleJob._instantiate (node:internal/modules/esm/module_job:226:21)\n#     at async ModuleJob.run (node:internal/modules/esm/module_job:335:5)\n#     at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)\n#     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)\n# Node.js v22.23.5\n# Subtest: test/orders.test.mjs\nnot ok 1 - test/orders.test.mjs\n  ---\n  duration_ms: 133.375955\n  type: 'test'\n  location: '/work/repo/test/orders.test.mjs:1:1'\n  failureType: 'testCodeFailure'\n  exitCode: 1\n  signal: ~\n  error: 'test failed'\n  code: 'ERR_TEST_FAILURE'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 0\n# fail 1\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 153.679159"
+    },
+    {
+      "file": "test/ui.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 1,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: an order is drawn with its customer escaped, its total and its state\nok 1 - an order is drawn with its customer escaped, its total and its state\n  ---\n  duration_ms: 1.014728\n  type: 'test'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 1\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 129.115399"
+    },
+    {
+      "file": "test/worker.test.mjs",
+      "kind": "p2p",
+      "ok": true,
+      "code": 0,
+      "timedOut": false,
+      "pass": 2,
+      "fail": 0,
+      "tail": "TAP version 13\n# Subtest: a message that is not a payment is acknowledged and skipped\nok 1 - a message that is not a payment is acknowledged and skipped\n  ---\n  duration_ms: 10.981961\n  type: 'test'\n  ...\n# Subtest: a payment for an order nobody has is not acknowledged, so it is delivered again\nok 2 - a payment for an order nobody has is not acknowledged, so it is delivered again\n  ---\n  duration_ms: 1.084792\n  type: 'test'\n  ...\n1..2\n# tests 2\n# suites 0\n# pass 2\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 177.309125"
+    }
+  ]
+}

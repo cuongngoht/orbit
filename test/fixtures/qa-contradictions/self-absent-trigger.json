@@ -1,0 +1,114 @@
+{
+  "shape": "not-before-due",
+  "why": "an occurrence the design triggers early, then rules absent: its own trigger may be what appears",
+  "accepted": {
+    "DUE-9/E1": {
+      "property": "occurrence.id",
+      "op": "absent-within",
+      "value": "billing-daily:2026-11-03T09:00:00+07:00",
+      "within": 30
+    },
+    "DUE-9/E2": {
+      "property": "occurrence.decision",
+      "op": "complete-within",
+      "value": "due",
+      "within": 60,
+      "for": []
+    }
+  },
+  "design": {
+    "skeleton": {
+      "steps": [
+        {
+          "do": "call",
+          "capability": "orbit.clock.advance",
+          "input": {
+            "clockRef": "invoice-a",
+            "request": {
+              "to": "2026-11-03T01:59:00Z"
+            }
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.scheduler.trigger",
+          "input": {
+            "scheduleRef": "billing-daily",
+            "request": {
+              "occurrenceId": "billing-daily:2026-11-03T09:00:00+07:00"
+            }
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.scheduler.observe",
+          "input": {
+            "scheduleRef": "billing-daily",
+            "request": {
+              "match": {
+                "occurrenceId": "billing-daily:2026-11-03T09:00:00+07:00"
+              }
+            }
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.clock.advance",
+          "input": {
+            "clockRef": "invoice-a",
+            "request": {
+              "to": "2026-11-03T02:00:00Z"
+            }
+          }
+        },
+        {
+          "do": "call",
+          "capability": "orbit.scheduler.observe",
+          "input": {
+            "scheduleRef": "billing-daily",
+            "request": {
+              "count": 1,
+              "match": {
+                "occurrenceId": "billing-daily:2026-11-03T09:00:00+07:00"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "assertions": [
+      {
+        "criterionRef": "DUE-9/E1",
+        "template": "absent-within",
+        "step": 3
+      },
+      {
+        "criterionRef": "DUE-9/E2",
+        "template": "complete",
+        "step": 5
+      }
+    ],
+    "controls": [
+      {
+        "role": "negative",
+        "why": "x"
+      },
+      {
+        "role": "positive",
+        "why": "x"
+      }
+    ],
+    "trigger": {
+      "kind": "schedule",
+      "ref": "billing-daily",
+      "step": 4
+    },
+    "effectScope": "fixture"
+  },
+  "expect": {
+    "findings": [],
+    "advice": [
+      "SELF_PUBLISHED"
+    ]
+  }
+}

@@ -209,24 +209,30 @@ deadline's request and the schedule's one execution -- design the one that must 
 schedule's decision and its one execution are still there to read afterwards, and a message is seen only by an observer
 armed before it came.
 A design is held, before a draft exists, to what a correct application can satisfy (`GENERATION_FAILED` at stage
-`contradiction`, naming the step, the field, both values and what holds instead): an assertion on the very field its
-step's own match names with another value (`MATCH_PINS` -- the adapter says what each match field is compared with, and
-whether its match is all the answer holds or what a `count` ends the wait on), and, in an effect-once-per-key design, a
-second message under a business key held to the settlement its first message is held to (`SECOND_SETTLED`), in ANY
-design a message published under a business key an earlier test of the investigation already published another message
-under, ran SATISFIED and saw settle -- held to that very settlement (`SETTLED_BEFORE`, where the accepted plan holds the
-system to one effect per business key: the earlier version and the key are named; use a key no earlier test used), a wait
-for a value the design's OWN publication put where its observer looks (`SELF_SATISFIED`: the observer was armed on the
-channel before the publication, and the publishing adapter says its request sets the very field the slot waits on, with
-the slot's value -- the wait holds whatever the application does; publish nothing under it, bring about what makes the
-system send it and await that one), and a
-wait for a later delivery (`delivery.attempt` above 1) that nothing in the design faults, stops or restarts a workload
-for, in an obligation whose shape declares no other way a delivery comes back (`NEVER_REDELIVERED`). What a
-design that is made rests on and never causes is said beside its answer (`result.advice`): a value it published itself
-that its observer may or may not see (`SELF_PUBLISHED`: an observer armed after, a channel that drops duplicates, a route
-of its own), such a later delivery where the shape declares a lease or an ack wait that may bring one, a schedule's decision with no step that moves the clock (a
-trigger proves the handler, never the schedule), a second message held alone to a settlement. Read it before you run:
-change the design unless what it rests on is what an earlier test of the investigation left on purpose.
+`contradiction`, naming the step, the field, both values and what holds instead) -- one principle: a verdict depends on
+the application, never on what your design itself causes. Refused: an assertion (a wait, an `eq`, an `in`) on the very
+field its step's own match names with another value (`MATCH_PINS` -- the adapter says what each match field is compared
+with, and whether its match is all the answer holds or what a `count` ends the wait on); what the obligation's shape
+declares comes again held to the first one's success (`SECOND_SETTLED`: a second message under a business key settled
+like the first, or deliveries of one message counted on a match that names how they settled); in ANY design a message
+published under a business key an earlier test of the investigation already published another message under, ran
+SATISFIED and saw settle -- held to that very settlement (`SETTLED_BEFORE`, where the accepted plan holds the system to
+one effect per business key: the earlier version and the key are named; use a key no earlier test used); a slot on a
+value the design's OWN emission (a publication, an enqueue, a trigger) put where its step reads (`SELF_SATISFIED`: the
+observer was armed on that reference before the emission, and the emitting adapter says its request sets the very field
+the slot rules, with the slot's value -- a wait then holds, and an absent-within fails, whatever the application does;
+emit nothing under it, bring about what makes the system send it and await that one); a wait for a later delivery or
+attempt (an ordinal above 1) that no step BEFORE it causes by faulting, stopping or restarting the workload that consumes
+it, where every way the adapters declare a delivery comes back is one a design causes (`NEVER_REDELIVERED`); and a wait
+for a schedule's decision with no step that moves an injected clock nothing earlier in the investigation moved
+(`NEVER_DECIDED` -- a trigger proves the handler, never the schedule). What a design that is made rests on and never
+causes is said beside its answer (`result.advice`): a value it emitted itself that its step may or may not read
+(`SELF_PUBLISHED`: an observer armed after, a reference that drops duplicates, a route of its own, a read by a cursor), a
+later delivery where an adapter declares a lease or an ack wait that may bring one, a schedule's decision where an
+earlier test moved the clock or the clock may be real time, a clock moved only to where an earlier test already moved it
+(`CLOCK_PASSED`: nothing comes due again, and an observer you armed sees only what comes after), what comes again held
+alone to a settlement. Read it before you run: change the design unless what it rests on is what an earlier test of the
+investigation left on purpose.
 The engine compiles every verdict from the accepted criterion, validates the case with the real grammar, saves it as
 a DRAFT and freezes its version; a design that does not hold comes back
 with its word (`GENERATION_FAILED`, `REQUIRES_REQUIREMENT`, `INVALID_TEST`) and the stage that

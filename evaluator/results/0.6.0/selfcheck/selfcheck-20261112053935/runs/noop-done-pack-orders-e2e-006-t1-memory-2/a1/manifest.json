@@ -1,0 +1,60 @@
+{
+  "campaign": "selfcheck-20261112053935",
+  "run": {
+    "arm": "noop-done",
+    "task": "pack:orders-e2e-006",
+    "trial": 1,
+    "track": "memory",
+    "step": 2,
+    "key": "noop-done__pack_orders-e2e-006__t1__memory-2"
+  },
+  "attempt": 1,
+  "arm": {
+    "id": "noop-done",
+    "kind": "scripted",
+    "def": {
+      "kind": "scripted",
+      "behaviour": "noop",
+      "status": "DONE"
+    },
+    "frozen": {}
+  },
+  "task": {
+    "ref": "pack:orders-e2e-006",
+    "image": "node:22",
+    "repo": "/work/repo",
+    "digest": "b5f7d882a0f3bea582928c59be51dd541b7089a5e4f727324d780e9a444c6454"
+  },
+  "limits": {
+    "usd": 0,
+    "turns": 1,
+    "minutes": 10,
+    "cpus": 2,
+    "memoryMb": 2048,
+    "pids": 512
+  },
+  "capUsd": 0,
+  "tools": {
+    "ok": true,
+    "volume": "evl-tools-cc-2.1.322-e13726ca6041",
+    "built": false,
+    "claudeCode": "2.1.322",
+    "claudeCodeSays": "2.1.322 (Claude Code)",
+    "node": "v22.23.5",
+    "nodeImage": "node:22",
+    "nodeImageId": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb",
+    "builtAt": "2026-11-12T05:13:27.498Z"
+  },
+  "containers": {
+    "net": "evl-fd08fe9b-e0010768-a1-net",
+    "egress": "evl-fd08fe9b-e0010768-a1-egress",
+    "task": "evl-fd08fe9b-e0010768-a1-task",
+    "grader": "evl-fd08fe9b-e0010768-a1-grader",
+    "label": "selfcheck-20261112053935/noop-done__pack_orders-e2e-006__t1__memory-2/a1"
+  },
+  "evaluator": {
+    "commit": "45591529651f30aca23916cfebf0510b86c543e1",
+    "dirty": false
+  },
+  "startedAt": "2026-11-12T05:42:42.428Z"
+}

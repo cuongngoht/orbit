@@ -23,6 +23,9 @@ cli/governed.mjs · cli/resources-here.mjs  (0.5.0) composition HELPERS, never e
                session's unverified edits owe: the working set, the owning components, a safe verifying
                check through the verification plan); and the registry and the strategy's
                facts composed ONE way for the prompt hook, a session's start and `resources.mjs route`
+cli/session-facts.mjs  (0.6.0, P2) a composition HELPER: the facts about a session's work src/routing/facts.mjs
+               derives -- its own working set and the needs of the work it tracks -- read ONE way for a
+               failed call's advice (learn-hook) and the next prompt's decision (router-hook)
 src/errors.mjs the three typed stops, as a LEAF -- the ports throw them too
 src/constraints.mjs  a field table's JSON-Schema fragment, ENFORCED (dsl and project both use it)
 src/scrub.mjs  masking by SHAPE, as a LEAF -- the committed corpus and the lessons both pass
@@ -161,7 +164,8 @@ src/engineering/  how this project TENDS or is REQUIRED to build code, evidence-
                · ensure.mjs + freshen.mjs RE-MEASURE, never re-derive: the one write is `status`
                · recall.mjs + vocab ROUTING: the few facts a task touches, each with how far it may
                steer the work (only a gate or a person binds) · working-set/ what a session
-               TOUCHED, metadata only (collect · fold · store) · observe/ milestone.mjs decides
+               TOUCHED, metadata only (collect · fold · store · checks: 0.6.0, the last check and one
+               check failing in a row with nothing changed between) · observe/ milestone.mjs decides
                WHEN (a commit, the end of a session, a check passing after an edit -- never every
                tool) and analyzers/ propose from file NAMES and checks, never contents; every
                candidate goes through the same contract and reconciliation, untrusted. 1.8.9:
@@ -248,7 +252,9 @@ src/lifecycle/ ONE lifecycle event for any host (event.mjs: the adapter's `norma
                after one of this plugin's agents returns) -- and router.mjs hands the trail its decision,
                the prompt's fingerprint and its marks, never the prompt. owners.mjs (0.5.0) the one table
                of who settles a session's governed work (workflow · goal · task · investigation ·
-               mission) and every line those four answers say, a leaf. A composition-layer caller
+               mission) and every line those four answers say, a leaf. advice.mjs (0.6.0, P2) advice from
+               evidence after a FAILED call: an ordered SILENCE table, then at most one line naming a fact,
+               its subject and the component the resolver chooses for it; `advice.given` on the trail. A composition-layer caller
                like src/help/: cli/learn-hook.mjs and cli/follow-hook.mjs build the tables and the
                lazily bound contexts, so nothing here reads process.env
 src/resources/ the EFFECTIVE RESOURCE REGISTRY: what Orbit can use HERE, one provider per family --
@@ -274,7 +280,9 @@ src/routing/   the PROMPT ROUTER, a PLANNER: intents.mjs (sixteen broad intents 
                (`route`: RouteDecision v2 -- graph, selected, approval, blocked, missing, plan;
                `decide`: v3, the same and strategy, activation, synthetic) · strategy.mjs (0.5.0, a
                LEAF: how much Orbit -- NONE · DIRECT · COORDINATED · SATELLITE · RESUME -- one ordered
-               table over facts the hook binds, the last row always matching) · explain.mjs
+               table over facts the hook binds, the last row always matching) · facts.mjs (0.6.0, P1, a
+               LEAF: the CLOSED vocabulary of facts about a session's work a row may `reactsTo` -- each with
+               what it requires, its sentence and its deriver; never a prompt's word) · explain.mjs
                (DERIVED views for Control: a skill's resolved needs, a resource's potential
                consumers, the agents a skill dispatches) · format.mjs (≤ 2 KB: nothing for NONE, one
                strategy line, then the v2 lines). It connects, starts, installs and writes nothing,
@@ -356,12 +364,19 @@ src/context/   PROJECT CONTEXT as a table of what composes it (architecture ensu
                sufficiency.mjs: ENOUGH · DISCOVER(targets) · ASK(question), an ordered table whose last row
                always holds -- ASK only for a question already open about the task's OWN work (`ownWork`: named
                by id, or mostly the task's own words), never one made up; DISCOVER only for a read that can
-               still fill the gap
+               still fill the gap · relations.mjs (0.6.0, U3): FILE-LEVEL relations on demand -- the relation
+               ADAPTER contract `{ id, detects, specifiersOf, resolve, testsOf, importersPattern }` and `relatedOf`,
+               one hop out (the direct files' own imports, each read once) and one hop in (one fixed-string search
+               per direct file), the tests that go with a file, a route-shaped literal another file shares as a
+               HYPOTHESIS, and a file no adapter reads as a GAP whose target is `context --with-refs`; bounded,
+               nothing stored, no language named (a test greps it)
 cli/context-grounding.mjs  (0.5.0) the composition root of `relevant` and `sufficiency`: binds the tree (one listing,
                one search for every proposed symbol, one fingerprint call), the architecture, intelligence, engineering and
                knowledge rooms (knowledge through `claims --json`, asked only when it holds a claim), the working
                set, runtime understanding's graph and checks through obligations.mjs `planOf`, and the open
-               questions of the task's own work and goal; it decides nothing and writes nothing
+               questions of the task's own work and goal, and (0.6.0) the relation adapters of
+               skills/orbit-develop/relations/ over the direct files `seedsOf` names; it decides nothing and writes
+               nothing
 src/tools/     index.mjs the doctor's port, plus the tool manager: catalog · detect (project ->
                orbit-managed -> system, each ASKED its version) · effective (desired vs observed) ·
                install (receipts) · archive (a PINNED SHA-256, via src/store/archive.mjs) ·
@@ -505,7 +520,11 @@ src/work/      WORK: what is being done about a requirement, resumable by anothe
                capability pipeline, no third route; a receipt keeps digests and references) · refs.mjs ·
                memory.mjs (`work-receipt` claims through the stamped door) · actions.mjs · requirement.mjs
                (its ONE read-only look into requirements/) · summary.mjs · views/ · index.mjs the COMMANDS
-               table. It never names a provider
+               table · rounds.mjs (0.6.0, U2): a work as a BOUNDED DISCOVERY LOOP -- a checkpoint is a round and
+               keeps `asked` and `gained`; ROUND_STOP (budget · no-gain · go-on) and `offered` (a target is not
+               offered again while what answered it is settled and unmoved), a pure fold `context --work=` reads.
+               freshness.mjs also invalidates a need settled on a path the index no longer holds (GONE). It never
+               names a provider
 src/work/track/  UNIFIED WORK TRACKING (1.8.8, README §4.18): identity, links and a REPORTED lifecycle in the
                work journal, and the ONE read model over them -- never a second journal and never the
                doing. vocab.mjs (LIFECYCLE, EVIDENCE, LINKS, LIMITS as tables) · fold.mjs (the fold over
@@ -888,11 +907,19 @@ src/qa/walk.mjs · obligations/ · backend/ · generation/ · security/  (0.1.0,
                one investigation share -- ONE_SANDBOX said before a host designs, and the keys a design names that an
                earlier version named, said after, never refused; contradictions.mjs (0.5.0) what a correct application
                can be held to -- refused where the design and its adapters' declarations prove a contradiction
-               (MATCH_PINS, SELF_SATISFIED: a wait its own publication satisfies, read off what a publishing adapter's
-               request rows say they set (`means`) and whether its channel drops a duplicate; SECOND_SETTLED,
-               NEVER_REDELIVERED) or the investigation's own record does (SETTLED_BEFORE: a
-               business key an earlier SATISFIED version settled, handed in by src/investigation/generate.mjs as
-               `cx.investigation`), said beside the answer where it rests on what the design never causes) ·
+               (MATCH_PINS on any value-holding slot; SELF_SATISFIED: a slot its own emission -- any effect that
+               `emits` -- satisfies or, absent-within, fails, read off what an emitting adapter's request rows say
+               they set (`means`) and whether its reference drops a duplicate; SECOND_SETTLED: what a shape's `again`
+               says comes again held to the first one's success; NEVER_REDELIVERED: a later ordinal no interrupting
+               control of the consuming workload causes, by the redelivery triggers the adapters declare) or the
+               investigation's own record does (SETTLED_BEFORE: a business key an earlier SATISFIED version settled;
+               NEVER_DECIDED: an injected clock no version that RAN moved -- every version that ran handed in by
+               src/investigation/generate.mjs as `cx.investigation`, with its word), said beside the answer where it
+               rests on what the design never causes (CLOCK_PASSED among them);
+               causes.mjs (0.6.0) the ONE model those rules read a design through -- per step its effects (the
+               families' `effects`), the references it acts on, the observer it arms or reads, what its request
+               sets and its match pins (request rows' `means`/`selects`) and its adapter's semantics -- so no rule
+               names a family operation or a shape (test/qa-causes.test.mjs greps both) ·
                generation/ (design.mjs the
                ordered STAGES a proposal is held to, ending in the REAL validator; controls; compile.mjs the
                deterministic mapping from an accepted expectation to a predicate, and which slot of an obligation's
@@ -938,7 +965,15 @@ skills/orbit-improve/      (0.3.0, ADR 0045) the SELF-IMPROVEMENT playbook: stat
 skills/orbit-develop/    the DEVELOPER playbook: provides `development.implementation`, needs
                           `project.context` + `repository.read` (capabilities, never a server);
                           project context first, resources as the resolver decides, the smallest
-                          verified change, review. It never installs or enables anything
+                          verified change, review. It never installs or enables anything.
+                          relations/ (0.6.0, U3): the RELATION ADAPTERS context follows a task's files
+                          with (javascript.mjs reads a specifier with architecture's own `SPECIFIER`;
+                          python.mjs resolves relative names in their package and an absolute one only
+                          when exactly one file could be it), RELATION_ADAPTERS in index.mjs
+skills/orbit-research/   (0.6.0, U5) the RESEARCH playbook, instruction-only: a technical question answered
+                          from a source for the version a manifest pins -- a `knowledge` need scoped to the
+                          manifest, a managed provider through the broker or the host's own sourced lookup, a
+                          claim in { technology, version } context; brought in by `knowledge.owed`
 skills/orbit-test-suite/    the TESTER playbook: pick browser+profile, drive the agreed set,
                           write one review, hand over what a browser cannot check
 skills/orbit-test-plan/      the QC playbook: read first, ask only what changes the design, derive
@@ -1232,6 +1267,26 @@ benchmark/     (ADR 0046, 0047, 0048, 0053, 0054) THE DOCKER BENCHMARK of Orbit:
                test/benchmark-heldout.test.mjs). A
                run's evidence: <store>/benchmark/<bnr-…>/ (rounds/<k>/outcome.json, verified.json, report.md|json; a
                sessions run's home/, the host's own home kept between its sessions).
+evaluator/     (0.6.0) THE INDEPENDENT EVALUATOR: a package of its own (package.json, no dependency, README.md the guide),
+               export-ignored, importing nothing of the product and imported by nothing (test/evaluator-boundary.test.mjs),
+               splittable with `git subtree split --prefix=evaluator`; Five Lines does not hold it. cli.mjs is its one entry.
+               lib/core/ (util · proc: argv only, a child's environment by allow-list · docker: labels, create, cp, cleanup by
+               label · git: a start repo from files, a patch as a diff of trees through the controller's own git dir ·
+               tools: Node + the pinned Claude Code in a read-only volume · versions · stream: stream-json read as the host's
+               word · outcome: OUTCOMES, the ordered table of words · journal: the fold, the hard ledger, resume ·
+               credential: the room scan) · lib/container/ (what is copied INTO a container, Node built-ins only: entry,
+               egress, scripted, hold (a container whose agent runs on the host), grade-pack) · lib/arms/ (index:
+               ARM_KINDS · claude: hostArgs, claude and claude+orbit, the built-in plugins off · plugin: git archive of a
+               revision · mini: mini and mini+orbit, the skill listing, the pinned mini-SWE-agent venv · mini-driver.py:
+               mini-SWE-agent on the host, attached to the task container, writing stream-json · scripted) · lib/tasks/ (index: taskOf · packs · convert, convert-all,
+               acceptance-template: the old benchmark's change cases as packs · swebench: the pinned Verified rows) ·
+               lib/grade/ (packs: a fresh network-less container · swebench: the official harness in a uv venv) ·
+               lib/run/ (attempt: one (arm, task, trial) · campaign: freeze, plan, loop, resume, status · prompt · report ·
+               export · selfcheck · verify-packs) · lib/prereg/ (select: the selection rule as code · measure: an image's
+               size from its manifest · index: verify a pre-registration, a phase's campaign from it, the verdict rule).
+               prereg/<release>.json (committed before any model run it governs) · checks/*.check.mjs (its own tests, run by path); tasks/packs/<id>/
+               (issue.md, start.json, hidden/*.spec.mjs, controls/*.patch, pack.json; EXCLUDED.md); history/ (provenance).
+               A campaign's room: $ORBIT_EVAL_HOME/campaigns/<id>/ (default ~/.orbit-eval, never in a repository).
 integrations/  what ANOTHER program installs, never part of this plugin's archive. vscode-orbit-live/ (1.8.5, ADR 0021)
                is the Orbit Live companion for VS Code: plain CommonJS with no dependency and no build step, a
                person installs it; companion.js (what it does: a heartbeat in the store's live room, a request

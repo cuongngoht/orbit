@@ -222,3 +222,12 @@
 {"prompt":"/orbit-qa tìm lỗi trên màn hình thanh toán","lang":"vi","intent":"investigation","strategy":"NONE","top":null,"kind":"command"}
 {"prompt":"/orbit-test-plan lập kế hoạch kiểm thử cho màn hình hoàn tiền","lang":"vi","intent":"qa","strategy":"NONE","top":null,"kind":"command"}
 {"prompt":"/orbit tiếp tục PBI-482","lang":"vi","intent":"general","strategy":"NONE","top":null,"kind":"command","open":{"ref":"PBI-482","current":true}}
+{"prompt":"research how the retry policy of our http client behaves in the version we pin","lang":"en","intent":"general","strategy":"DIRECT","top":"orbit-research","kind":"research"}
+{"prompt":"research whether the queue client supports batching in the version this project uses","lang":"en","intent":"general","strategy":"DIRECT","top":"orbit-research","kind":"research"}
+{"prompt":"check the official docs for the ORM's bulk insert in the version we pin","lang":"en","intent":"documentation","strategy":"DIRECT","top":"orbit-research","kind":"research"}
+{"prompt":"nghiên cứu cách thư viện xử lý retry trong phiên bản dự án đang dùng","lang":"vi","intent":"general","strategy":"DIRECT","top":"orbit-research","kind":"research"}
+{"prompt":"nghiên cứu xem client hàng đợi có hỗ trợ gửi theo lô ở phiên bản hiện tại không","lang":"vi","intent":"general","strategy":"DIRECT","top":"orbit-research","kind":"research"}
+{"prompt":"look up where the refund rule is defined","lang":"en","intent":"general","strategy":"NONE","top":null,"kind":"read-only"}
+{"prompt":"explain what the research module in src/research does","lang":"en","intent":"documentation","strategy":"NONE","top":null,"kind":"read-only"}
+{"prompt":"which version of node does this project need to run?","lang":"en","intent":"environment","strategy":"DIRECT","top":"orbit-runtime","kind":"runtime"}
+{"prompt":"tìm xem quy tắc hoàn tiền được định nghĩa ở đâu","lang":"vi","intent":"general","strategy":"NONE","top":null,"kind":"read-only"}

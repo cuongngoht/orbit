@@ -16,6 +16,7 @@ import { createRequirements } from "../src/requirements/store.mjs";
 import { rootId, sourceRecord, workitemText } from "../src/sources/model.mjs";
 import { createSources } from "../src/sources/store.mjs";
 import { realIo } from "../src/store/io.mjs";
+import { loginApp } from "./fakes/relations.mjs";
 import { sealed } from "./home.mjs";
 
 const ENGINE = fileURLToPath(new URL("..", import.meta.url));
@@ -217,4 +218,20 @@ test("outside every checkout every proposed reference is refused and nothing is 
     assert.equal(r.status, 2, `${args.join(" ")}: ${r.stdout}`);
     assert.match(r.stderr, says);
   }
+});
+
+// 0.6.0, U3: the direct files' own relations, composed over a real checkout with the pack's adapters bound by the
+// composition root -- read from the committed tree, one hop each way, and a file no adapter reads said as a gap.
+test("a proposed file's relations are followed one hop over the committed tree, and a file no adapter reads is a gap with the host's way to fill it", () => {
+  const app = loginApp();
+  const login = checkout("login-app", {}, app.files);
+  const page = "web/src/pages/LoginPage.jsx";
+  const pkg = context(login, ["--with-refs"], withRefs([{ kind: "file", ref: page }, { kind: "file", ref: "web/src/pages/LoginPage.css" }], "fix the login bug"));
+  const items = at(pkg);
+  assert.deepEqual([items["file:web/src/api/sessionClient.js"]?.class, items["file:web/src/api/sessionClient.js"]?.evidence.map((e) => e.source)], ["dependency", ["imports"]]);
+  assert.equal(items["file:web/src/pages/LoginPage.test.jsx"]?.class, "verification");
+  assert.equal(items["file:web/src/legacy/theme.js"], undefined, "the decoy's import is never followed");
+  assert.deepEqual(pkg.relevance.gaps.map((g) => [g.ref, g.target.run]), [["web/src/pages/LoginPage.css", "context --with-refs"]]);
+  const text = cli(login, "context", ["--with-refs"], withRefs([{ kind: "file", ref: "web/src/pages/LoginPage.css" }], "fix the login bug")).stdout;
+  assert.match(text, /gap\s+file web\/src\/pages\/LoginPage\.css -- no relation adapter here reads \*\.css file/);
 });

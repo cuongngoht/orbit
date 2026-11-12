@@ -352,12 +352,19 @@ src/context/   PROJECT CONTEXT as a table of what composes it (architecture ensu
                sufficiency.mjs: ENOUGH · DISCOVER(targets) · ASK(question), an ordered table whose last row
                always holds -- ASK only for a question already open about the task's OWN work (`ownWork`: named
                by id, or mostly the task's own words), never one made up; DISCOVER only for a read that can
-               still fill the gap
+               still fill the gap · relations.mjs (0.6.0, U3): FILE-LEVEL relations on demand -- the relation
+               ADAPTER contract `{ id, detects, specifiersOf, resolve, testsOf, importersPattern }` and `relatedOf`,
+               one hop out (the direct files' own imports, each read once) and one hop in (one fixed-string search
+               per direct file), the tests that go with a file, a route-shaped literal another file shares as a
+               HYPOTHESIS, and a file no adapter reads as a GAP whose target is `context --with-refs`; bounded,
+               nothing stored, no language named (a test greps it)
 cli/context-grounding.mjs  (0.5.0) the composition root of `relevant` and `sufficiency`: binds the tree (one listing,
                one search for every proposed symbol, one fingerprint call), the architecture, intelligence, engineering and
                knowledge rooms (knowledge through `claims --json`, asked only when it holds a claim), the working
                set, runtime understanding's graph and checks through obligations.mjs `planOf`, and the open
-               questions of the task's own work and goal; it decides nothing and writes nothing
+               questions of the task's own work and goal, and (0.6.0) the relation adapters of
+               skills/orbit-develop/relations/ over the direct files `seedsOf` names; it decides nothing and writes
+               nothing
 src/tools/     index.mjs the doctor's port, plus the tool manager: catalog · detect (project ->
                orbit-managed -> system, each ASKED its version) · effective (desired vs observed) ·
                install (receipts) · archive (a PINNED SHA-256, via src/store/archive.mjs) ·
@@ -927,7 +934,11 @@ skills/orbit-improve/      (0.3.0, ADR 0045) the SELF-IMPROVEMENT playbook: stat
 skills/orbit-develop/    the DEVELOPER playbook: provides `development.implementation`, needs
                           `project.context` + `repository.read` (capabilities, never a server);
                           project context first, resources as the resolver decides, the smallest
-                          verified change, review. It never installs or enables anything
+                          verified change, review. It never installs or enables anything.
+                          relations/ (0.6.0, U3): the RELATION ADAPTERS context follows a task's files
+                          with (javascript.mjs reads a specifier with architecture's own `SPECIFIER`;
+                          python.mjs resolves relative names in their package and an absolute one only
+                          when exactly one file could be it), RELATION_ADAPTERS in index.mjs
 skills/orbit-test-suite/    the TESTER playbook: pick browser+profile, drive the agreed set,
                           write one review, hand over what a browser cannot check
 skills/orbit-test-plan/      the QC playbook: read first, ask only what changes the design, derive

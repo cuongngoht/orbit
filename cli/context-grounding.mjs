@@ -13,6 +13,9 @@
 //   working set     what the latest session read and changed
 //   impact          once paths are known: runtime understanding's component graph and declared checks, as
 //                   src/orchestration/impact.mjs and obligations.mjs read them
+//   relations       once the direct files are known: one hop out and one hop in from each, through the relation
+//                   adapters of skills/orbit-develop/relations/ (src/context/relations.mjs); a file no adapter reads is
+//                   a gap the host fills with `--with-refs`
 //   questions       a requirement's blocking question, or a goal's missing prerequisite, already open about the
 //                   task's own work -- found, never asked
 //
@@ -22,7 +25,8 @@ import { scanRoots } from "../src/architecture/context.mjs";
 import { withStoredConfig } from "../src/architecture/source.mjs";
 import { createArchitecture } from "../src/architecture/store.mjs";
 import { capabilityTokens, unanswered } from "../src/architecture/tokens.mjs";
-import { basisOf, freshened, relevanceOf } from "../src/context/relevance.mjs";
+import { relatedOf } from "../src/context/relations.mjs";
+import { basisOf, freshened, relevanceOf, seedsOf } from "../src/context/relevance.mjs";
 import { symbolHits, treeOf, verifiedRefs } from "../src/context/refs.mjs";
 import { ownWork, sufficiencyOf } from "../src/context/sufficiency.mjs";
 import { watched as engineeringWatched } from "../src/engineering/model.mjs";
@@ -48,6 +52,7 @@ import { tokens } from "../src/tokens.mjs";
 import { listed } from "../src/work/summary.mjs";
 import { createWorks, rootOf } from "../src/work/store.mjs";
 import { MAX_WORKS, namesWork } from "../src/work/views/recall.mjs";
+import { RELATION_ADAPTERS } from "../skills/orbit-develop/relations/index.mjs";
 import { bindRuntime } from "../skills/orbit-runtime/bind.mjs";
 
 function quietly(fn, otherwise = null) {
@@ -114,6 +119,12 @@ function impactFor(b, paths) {
   return seen ? reached(seen, paths) : { graph: false, state: null, plan: null };
 }
 
+// ---- the direct files' own relations, one hop each way --------------------------------------------------------------
+
+// The pack's adapters (skills/orbit-develop/relations/) read what each file imports; the walk (src/context/relations.mjs)
+// reads only the direct files, from the committed tree, and asks the index one search per file and per route literal.
+const relationsFor = (b, seen, listing) => relatedOf({ direct: seedsOf(listing), tree: seen.tree, adapters: RELATION_ADAPTERS, read: (path) => quietly(() => b.source.read(path)), search: (pattern) => quietly(() => b.source.search(pattern)), maxFiles: MAX_EVIDENCE_FILES });
+
 // ---- freshness: each record against its OWN owner's scope fingerprints ---------------------------------------------
 
 const byId = (facts) => new Map(facts.map((f) => [f.id, f]));
@@ -172,7 +183,7 @@ const goalQuestions = (b) => ((goals) => quietly(() => goals.list(), []).flatMap
 
 // ---- the package's two answers --------------------------------------------------------------------------------------
 
-const summaryOf = (listing, refs) => ({ total: listing.total, listed: listing.items.length, more: listing.more, byClass: listing.byClass, refused: refs.refused });
+const summaryOf = (listing, refs, relations) => ({ total: listing.total, listed: listing.items.length, more: listing.more, byClass: listing.byClass, refused: refs.refused, gaps: relations?.gaps ?? [] });
 
 const capabilityGaps = (b, input) => unanswered(input.architecture.filter((f) => f.kind === "capability"), capabilityTokens(b.task));
 
@@ -182,14 +193,15 @@ function grounded(b) {
   const r = rooms(b);
   const seen = treeAndRefs(b);
   const input = evidenceOf(b, r, seen);
-  const reach = impactFor(b, relevanceOf(input).paths);
-  return finished(b, r, { ...input, plan: reach.plan }, seen.refs, reach);
+  const first = relevanceOf(input);
+  return finished(b, r, { ...input, relations: relationsFor(b, seen, first) }, seen.refs, impactFor(b, first.paths));
 }
 
-function finished(b, r, input, refs, reach) {
+function finished(b, r, given, refs, reach) {
+  const input = { ...given, plan: reach.plan };
   const listing = relevanceOf(input);
   const fresh = freshened(listing, statesOf(b, r, input, listing, reach.state));
-  return { relevant: fresh.relevant, relevance: summaryOf(listing, refs), sufficiency: sufficiencyFor(b, input, listing, { fresh, reach, refused: refs.refused.length }) };
+  return { relevant: fresh.relevant, relevance: summaryOf(listing, refs, input.relations), sufficiency: sufficiencyFor(b, input, listing, { fresh, reach, refused: refs.refused.length }) };
 }
 
 // No checkout -- or nothing here could be composed: no tree to verify anything against, so every proposed reference is
@@ -202,7 +214,7 @@ function ungrounded(w, problem) {
 
 const firstLine = (e) => String(e?.message ?? e).split("\n")[0].slice(0, 200);
 
-// -> { relevant, relevance: { total, listed, more, byClass, refused, problem? }, sufficiency }
+// -> { relevant, relevance: { total, listed, more, byClass, refused, gaps, problem? }, sufficiency }
 //    w: { env, pluginRoot, cwd, project (or null), task, refs (as the host sent them), workingSet (the fold),
 //         claims: () => what `knowledge claims --for --json` answered (or null) }
 export function groundingOf(w) {

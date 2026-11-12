@@ -171,6 +171,8 @@ test("one evaluation: blocked compares nothing, a newly failed step is WORSE wha
   assert.equal(verdictOf(ev([row("baseline", 1, false), row("candidate", 1, true)])).verdict, "BETTER");
   assert.equal(verdictOf(ev([row("baseline", 1, false, { blocked: true }), row("candidate", 1, true)])).verdict, "BLOCKED");
   assert.equal(verdictOf(ev([row("baseline", 1, true), row("candidate", 1, false, { failing: ["evidence"] })])).verdict, "WORSE");
+  const gainedButBroke = ev([row("baseline", 1, false), row("baseline", 2, true, { failing: [] }), row("candidate", 1, true), row("candidate", 2, false, { failing: ["evidence"] }), row("candidate", 3, true), row("baseline", 3, false)]);
+  assert.deepEqual([verdictOf(gainedButBroke).verdict, verdictOf(gainedButBroke).regressions], ["WORSE", ["evidence"]], "more runs met never forgives a step newly failed");
   assert.deepEqual(verdictOf(ev([row("baseline", 1, false), row("candidate", 1, false, { failing: ["notes", "evidence"] })])).regressions, ["evidence"]);
   assert.equal(verdictOf(ev([row("baseline", 1, true), row("candidate", 1, true, { calls: 1 })])).verdict, "INCONCLUSIVE", "speed never buys a verdict on a failure that did not reproduce");
   assert.equal(verdictOf(ev([row("baseline", 1, false), row("candidate", 1, false)])).verdict, "EQUIVALENT");
@@ -210,6 +212,8 @@ test("every gate is asked, in order, and the first that fails decides what happe
   assert.equal(d({ runs: [row("candidate", 1, true, { attribution: "REPORTED" })] }).gate, "EVIDENCE_INDEPENDENT", "a run only reported never promotes anything");
   assert.equal(d({ widened: ["Bash"] }).gate, "NO_NEW_PERMISSIONS");
   assert.equal(d({ current: { pin: PIN, status: "disabled" } }).decision, "block");
+  assert.equal(d({ current: { pin: PIN, status: "active", archived: true } }).decision, "block", "a person's archive of the version in place holds it");
+  assert.equal(d({ current: { pin: PIN, status: "active", revoked: true } }).decision, "block", "a person's revocation of the version in place holds it");
   assert.equal(d({ values: values({ promote: false }) }).decision, "await");
   assert.equal(d({ values: values({ promote: false }), door: "control" }).decision, "promote", "a person in Control promotes what qualified");
   assert.equal(GATE_IDS.length, 12);

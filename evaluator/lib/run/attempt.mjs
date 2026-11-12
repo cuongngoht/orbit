@@ -16,6 +16,7 @@ import { scrubbedRoom } from "../core/credential.mjs";
 import { chargeOf } from "../core/journal.mjs";
 import { outcomeOf } from "../core/outcome.mjs";
 import { summaryOf } from "../core/stream.mjs";
+import { TRAIL_FILE, trailOf } from "../core/trail.mjs";
 import { runToFile } from "../core/proc.mjs";
 import { appendLine, EVALUATOR_DIR, ensureDir, nowIso, readJson, sha256, slug, writeJson, writeText } from "../core/util.mjs";
 import { API_HOST, REFUSED_PROBE_HOST, TOOLS_MOUNT } from "../core/versions.mjs";
@@ -117,7 +118,7 @@ function evalrunDir(ctx, scratch) {
   const files = ctx.arm.files({ ...ctx, frozen: ctx.armFrozen });
   for (const f of files.filter((x) => x.kind === "agent")) (f.from ? cpSync(f.from, join(dir, "agent", f.name)) : writeFileSync(join(dir, "agent", f.name), f.bytes ?? ""));
   const limits = limitsOf(ctx);
-  writeJson(join(dir, "brief.json"), { repo: ctx.task.repo, makeDirs: ["/work/home", "/work/orbit-store"], writeFiles: ctx.arm.homeFiles ?? [], egress: networkBrief(ctx.arm), ...seatBrief(ctx.arm), agent: { argv: ctx.arm.argv({ model: ctx.campaign.model, effort: ctx.campaign.effort, limits, task: ctx.task }), stdin: promptOf(ctx.task.issue) }, outCap: 15 * 1024 * 1024 });
+  writeJson(join(dir, "brief.json"), { repo: ctx.task.repo, makeDirs: ["/work/home", "/work/orbit-store"], writeFiles: ctx.arm.homeFiles ?? [], egress: networkBrief(ctx.arm), ...seatBrief(ctx), agent: { argv: ctx.arm.argv({ model: ctx.campaign.model, effort: ctx.campaign.effort, limits, task: ctx.task }), stdin: promptOf(ctx.task.issue) }, outCap: 15 * 1024 * 1024 });
   return { dir, plugin: files.find((x) => x.kind === "plugin") ?? null };
 }
 
@@ -125,7 +126,11 @@ function evalrunDir(ctx, scratch) {
 // store and none of the credential names the container holds, bounded in time; what it wrote to the store is listed.
 const SEAT_SECONDS = 300;
 
-const seatBrief = (arm) => (arm.seat ? { seat: { argv: arm.seat.argv, dropEnv: containerCredentials(arm), store: "/work/orbit-store", timeoutMs: SEAT_SECONDS * 1000 } } : {});
+// A memory track's later steps carry the store its first step's seat bound (the checkout's path is the same), so a seat
+// runs once per track, in its first task's checkout -- as a person seats a repository once.
+export const seatsHere = (ctx) => Boolean(ctx.arm.seat) && !(ctx.run?.track && ctx.run.step > 1);
+
+const seatBrief = (ctx) => (seatsHere(ctx) ? { seat: { argv: ctx.arm.seat.argv, dropEnv: containerCredentials(ctx.arm), store: "/work/orbit-store", timeoutMs: SEAT_SECONDS * 1000 } } : {});
 
 function copiedIn(ctx, names, run, start) {
   const pairs = [[run.dir, "/opt"], ...start.copyIn.map((c) => [c.from, c.to]), ...(run.plugin ? [[run.plugin.from, run.plugin.to]] : []), ...(ctx.trackStore && existsSync(ctx.trackStore) ? [[dirname(ctx.trackStore), "/"]] : [])];
@@ -155,7 +160,7 @@ async function holdReady(file, ended, seconds) {
 async function hostRan(ctx, names, room, scratch, limits) {
   const ended = { done: false };
   const container = startAttached(names.task, join(room, "container.out"), { deadlineMs: limits.minutes * 60000 + 180000, onDeadline: () => kill(names.task), capBytes: 1024 * 1024 }).then((r) => ((ended.done = true), r));
-  if (!(await holdReady(join(room, "container.out"), ended, 120 + (ctx.arm.seat ? SEAT_SECONDS : 0)))) return container;
+  if (!(await holdReady(join(room, "container.out"), ended, 120 + (seatsHere(ctx) ? SEAT_SECONDS : 0)))) return container;
   const h = ctx.arm.host({ ...ctx, frozen: ctx.armFrozen, container: names.task, prompt: promptOf(ctx.task.issue), limits, trajectory: join(room, "trajectory.json"), configFile: join(room, "driver.json"), configDir: ensureDir(join(scratch, "host-config")) });
   const ran = h.infra ? { infra: h.infra } : await driven(h, room, limits);
   docker(["exec", names.task, "touch", RELEASE]);
@@ -238,12 +243,23 @@ async function finished(ctx, names, room, scratch, x) {
   copyOut(names.task, "/opt/evalrun/out", join(room, "out"));
   copyOut(names.task, ctx.task.repo, join(scratch, "after"));
   if (ctx.trackStore) (rmSync(ctx.trackStore, { recursive: true, force: true }), ensureDir(dirname(ctx.trackStore)), copyOut(names.task, "/work/orbit-store", ctx.trackStore));
+  const trail = x.run.plugin ? keptTrail(ctx, names, room, scratch) : null;
   writeFileSync(join(room, "egress.log"), logsOf(names.egress));
   const entry = existsSync(join(room, "out", "entry.json")) ? readJson(join(room, "out", "entry.json")) : null;
   const egress = existsSync(join(room, "out", "egress.json")) ? readJson(join(room, "out", "egress.json")) : null;
   const summary = summaryOf(readOr(join(room, "stream.jsonl"), ""), { pluginDir: ctx.arm.pluginDir });
   const patch = await inPhase("PATCH", () => patchOf(x.start, scratch, room));
-  return { infra: ran.infra ?? infraAfter(ctx, entry, state, summary, ran), timedOut: ran.timedOut, killedByControl: kills.length > 0 && !ran.timedOut, exit: state?.exitCode ?? null, oomKilled: state?.oomKilled ?? null, wallMs, streamBytes: ran.bytes, streamCut: ran.cut, entry, summary, patch, egress, plugin: x.run.plugin ? { digest: x.run.plugin.digest, files: x.run.plugin.files } : null, images: x.images, startCommit: x.start.base, startTree: x.start.startTree };
+  return { infra: ran.infra ?? infraAfter(ctx, entry, state, summary, ran), timedOut: ran.timedOut, killedByControl: kills.length > 0 && !ran.timedOut, exit: state?.exitCode ?? null, oomKilled: state?.oomKilled ?? null, wallMs, streamBytes: ran.bytes, streamCut: ran.cut, entry, summary, patch, egress, plugin: x.run.plugin ? { digest: x.run.plugin.digest, files: x.run.plugin.files } : null, images: x.images, startCommit: x.start.base, startTree: x.start.startTree, trail };
+}
+
+// What the plugin wrote in the run's store, kept in the room as metadata (lib/core/trail.mjs): the store as the agent
+// left it (a track's, already copied out to carry on), read on the controller, never the store itself.
+function keptTrail(ctx, names, room, scratch) {
+  const dir = ctx.trackStore ?? join(scratch, "orbit-store");
+  if (!ctx.trackStore) copyOut(names.task, "/work/orbit-store", dir);
+  const t = trailOf(existsSync(dir) ? dir : null);
+  writeFileSync(join(room, TRAIL_FILE), t.lines.map((l) => JSON.stringify(l)).join("\n") + (t.lines.length ? "\n" : ""));
+  return t.summary;
 }
 
 // ---- the attempt, from its journal line to its outcome --------------------------------------------------------------------
@@ -300,11 +316,11 @@ async function gradeOf(ctx, room, names, scratch, x) {
   finally { await Promise.allSettled([Promise.resolve().then(() => removeContainer(names.grader)), Promise.resolve().then(() => rmSync(scratch, { recursive: true, force: true }))]); }
 }
 
-const endedFacts = (x) => ({ infra: x.infra ?? null, timedOut: x.timedOut === true, killedByControl: x.killedByControl ?? false, exit: x.exit ?? null, oomKilled: x.oomKilled ?? null, wallMs: x.wallMs ?? null, streamBytes: x.streamBytes ?? null, streamCut: x.streamCut ?? null, summary: x.summary ? { ...x.summary, lastText: undefined } : null, patch: x.patch ? { bytes: x.patch.bytes, digest: x.patch.digest ?? null, paths: x.patch.paths ?? [] } : null, plugin: x.plugin ?? null, images: x.images ?? null, startCommit: x.startCommit ?? null, entryPhase: x.entry?.phase ?? null, seat: seatFacts(x.entry?.seat), egress: x.egress ?? x.entry?.egress ?? null });
+const endedFacts = (x) => ({ infra: x.infra ?? null, timedOut: x.timedOut === true, killedByControl: x.killedByControl ?? false, exit: x.exit ?? null, oomKilled: x.oomKilled ?? null, wallMs: x.wallMs ?? null, streamBytes: x.streamBytes ?? null, streamCut: x.streamCut ?? null, summary: x.summary ? { ...x.summary, lastText: undefined } : null, patch: x.patch ? { bytes: x.patch.bytes, digest: x.patch.digest ?? null, paths: x.patch.paths ?? [] } : null, plugin: x.plugin ?? null, images: x.images ?? null, startCommit: x.startCommit ?? null, entryPhase: x.entry?.phase ?? null, seat: seatFacts(x.entry?.seat), trail: x.trail ?? null, egress: x.egress ?? x.entry?.egress ?? null });
 
 // What the seat did, as the run's facts keep it: never its output (that is in the room's out/seat.out).
 const seatFacts = (s) => (s ? { holds: s.holds, exit: s.exit, ms: s.ms, unchanged: s.unchanged, changed: s.changed, gitDirChanged: s.gitDirChanged, storeFiles: s.storeFiles.length, store: s.storeFiles.slice(0, 50), why: s.why } : null);
 
 function manifestOf(ctx, names, capUsd) {
-  return { campaign: ctx.campaign.id, run: ctx.run, attempt: ctx.attempt, arm: { id: ctx.arm.id, kind: ctx.arm.kind, def: ctx.arm.def, frozen: ctx.armFrozen ?? null }, seated: Boolean(ctx.arm.seat), ...(ctx.arm.seat ? { seat: { argv: ctx.arm.seat.argv } } : {}), task: { ref: ctx.task.ref, image: ctx.task.image, repo: ctx.task.repo, digest: ctx.task.digest }, model: ctx.campaign.model, effort: ctx.campaign.effort, limits: limitsOf(ctx), capUsd, tools: ctx.tools, containers: names, evaluator: ctx.campaign.evaluator, startedAt: nowIso() };
+  return { campaign: ctx.campaign.id, run: ctx.run, attempt: ctx.attempt, arm: { id: ctx.arm.id, kind: ctx.arm.kind, def: ctx.arm.def, frozen: ctx.armFrozen ?? null }, seated: Boolean(ctx.arm.seat), ...(ctx.arm.seat ? { seat: { argv: ctx.arm.seat.argv, ranHere: seatsHere(ctx), ...(seatsHere(ctx) ? {} : { carried: `the store of track ${ctx.run.track}, seated at its step 1` }) } } : {}), task: { ref: ctx.task.ref, image: ctx.task.image, repo: ctx.task.repo, digest: ctx.task.digest }, model: ctx.campaign.model, effort: ctx.campaign.effort, limits: limitsOf(ctx), capUsd, tools: ctx.tools, containers: names, evaluator: ctx.campaign.evaluator, startedAt: nowIso() };
 }

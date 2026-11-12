@@ -4,12 +4,13 @@
 // Three controls act on the RUN rather than the agent, and only a scripted arm may carry them: a kill from outside
 // after some seconds, an egress proxy that allows some other host, and a shorter wall time. Two act on the SEAT: `seat:
 // "plugin"` hands it the plugin archive of `rev` and seats it with the plugin's own adoption command, as a seated model
-// arm is; `seat: "writes-checkout"` seats it with a command that writes a file into the checkout, which must end the run
+// arm is, and the scripted agent then plays a host to the plugin's own hooks (lib/container/scripted.mjs), so its trail
+// is written and kept; `seat: "writes-checkout"` seats it with a command that writes a file into the checkout, which must end the run
 // INFRA_ERROR (SEAT) before any agent runs.
 import { join } from "node:path";
 import { EVALUATOR_DIR } from "../core/util.mjs";
 import { TOOLS_MOUNT } from "../core/versions.mjs";
-import { preparedPlugin, resolvedPlugin, SEAT_ARGV } from "./plugin.mjs";
+import { PLUGIN_DIR_IN_CONTAINER, preparedPlugin, resolvedPlugin, SEAT_ARGV } from "./plugin.mjs";
 
 const BEHAVIOURS = ["patch", "noop", "sleep"];
 const STATUSES = ["DONE", "BLOCKED", "NONE"];
@@ -44,6 +45,6 @@ export function scriptedArm(id, def) {
     validate: () => problemsOf(def),
     freeze: (ctx) => (withPlugin(def) ? resolvedPlugin(ctx.pluginRepo, def.rev) : {}),
     files: (ctx) => [{ kind: "agent", from: join(EVALUATOR_DIR, "lib", "container", "scripted.mjs"), name: "scripted.mjs" }, ...(def.behaviour === "patch" ? [{ kind: "agent", bytes: ctx.task.controlPatch(def.patch), name: "control.patch" }] : []), ...(withPlugin(def) ? ((p) => [{ kind: "plugin", from: p.dir, to: "/opt", digest: p.digest, files: p.files }])(preparedPlugin(ctx.home, ctx.pluginRepo, ctx.frozen.commit)) : [])],
-    argv: () => [`${TOOLS_MOUNT}/bin/node`, "/opt/evalrun/agent/scripted.mjs", def.behaviour, def.status ?? "DONE", "/opt/evalrun/agent/control.patch"],
+    argv: () => [`${TOOLS_MOUNT}/bin/node`, "/opt/evalrun/agent/scripted.mjs", def.behaviour, def.status ?? "DONE", "/opt/evalrun/agent/control.patch", ...(withPlugin(def) ? [PLUGIN_DIR_IN_CONTAINER] : [])],
   };
 }

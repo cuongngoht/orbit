@@ -4,10 +4,11 @@
 // model's runs.
 //
 //   selfcheckCampaign(o) -> campaign definition        SELF_CONTROLS        judgedSelfcheck(report) -> [{ key, expect, got, ok }]
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { LABEL, listByLabel } from "../core/docker.mjs";
 import { readJournal } from "../core/journal.mjs";
+import { TRAIL_FILE } from "../core/trail.mjs";
 import { evalHome, nowIso, writeJson } from "../core/util.mjs";
 import { roomOf, startCampaign } from "./campaign.mjs";
 
@@ -78,10 +79,21 @@ function seatRow(o, id) {
   return { key: "(seat: the plugin's adoption command, before the agent)", expect: "exit 0, unchanged, bound", got, ok: Boolean(s?.holds && s.unchanged && bound), why: s?.why ?? null };
 }
 
+// The seated control's agent played a host to the plugin's own hooks: the plugin's trail was kept in the run's room as
+// metadata, with the prompt it saw and the plugin command it saw run.
+function trailRow(o, id) {
+  const room = roomOf(o.home ?? evalHome(), id);
+  const ended = readJournal(join(room, "journal.jsonl")).filter((l) => l.kind === "ended" && /^seat-gold-done__/.test(l.run)).at(-1);
+  const t = ended?.trail;
+  const kept = Boolean(ended) && readdirSync(join(room, "runs")).some((d) => d.startsWith("seat-gold-done") && existsSync(join(room, "runs", d, `a${ended.attempt}`, TRAIL_FILE)));
+  const got = t ? `${t.events} event(s), ${t.byType?.["prompt.submitted"] ?? 0} prompt(s), ${t.commands?.["cli/help"] ?? 0} plugin command(s), file ${kept ? "kept" : "absent"}` : "no trail recorded";
+  return { key: "(seat: the plugin's trail kept in the room, as metadata)", expect: "a prompt, a plugin command, kept", got, ok: Boolean(t && kept && t.byType?.["prompt.submitted"] >= 1 && t.commands?.["cli/help"] >= 1), why: null };
+}
+
 export async function selfcheck(o) {
   const def = selfcheckCampaign(o);
   const file = join(o.scratchDir, `${def.id}.json`);
   writeJson(file, def);
   const report = await startCampaign(file, o);
-  return { id: def.id, rows: [...judgedSelfcheck(report), ...(def.tracks ? [trackRow(o, def.id)] : []), ...(def.arms["mini-orbit-gold"] ? [miniPluginRow(o, def.id)] : []), ...(def.arms["seat-gold-done"] ? [seatRow(o, def.id)] : []), leftoverRow(def.id)] };
+  return { id: def.id, rows: [...judgedSelfcheck(report), ...(def.tracks ? [trackRow(o, def.id)] : []), ...(def.arms["mini-orbit-gold"] ? [miniPluginRow(o, def.id)] : []), ...(def.arms["seat-gold-done"] ? [seatRow(o, def.id), trailRow(o, def.id)] : []), leftoverRow(def.id)] };
 }

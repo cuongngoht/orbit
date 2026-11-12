@@ -4,9 +4,14 @@
 // status it was told to say, in the shape of a coding host's stream-json, so the controller reads it exactly as it reads
 // a real host. `sleep` never ends on its own (the wall-time and kill controls). Copied into the container alone.
 //
-//   node scripted.mjs patch|noop|sleep <DONE|BLOCKED|NONE> [patch-file]      cwd: the task's repository
+// Handed a plugin directory (a seated control), it also plays a HOST to that plugin's own hooks, as its hooks file
+// declares them for Claude Code: a prompt submitted, then one Bash call that runs one of the plugin's commands (the
+// hooks before and after it), then the end of the turn -- so the plugin writes its trail as it would in a host's session,
+// and the controller is proven to keep it.
+//
+//   node scripted.mjs patch|noop|sleep <DONE|BLOCKED|NONE> [patch-file] [plugin-dir]      cwd: the task's repository
 import { spawnSync } from "node:child_process";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -23,8 +28,31 @@ function applied(file) {
 // the count of these lines proves it did.
 const remembered = () => (process.env.ORBIT_STORE_DIR ? appendFileSync(join(process.env.ORBIT_STORE_DIR, "scripted-runs.log"), `${new Date().toISOString()}\n`) : null);
 
-function main([behaviour, status, file]) {
+// The commands the plugin's hooks file declares for one event and tool, as a host matches them (`*` or a regex of names).
+function hooksFor(plugin, event, tool) {
+  const groups = JSON.parse(readFileSync(join(plugin, "hooks", "hooks.json"), "utf8")).hooks?.[event] ?? [];
+  const matches = (m) => !m || m === "*" || !tool || new RegExp(`^(?:${m})$`).test(tool);
+  return groups.filter((g) => matches(g.matcher)).flatMap((g) => (g.hooks ?? []).filter((h) => h.type === "command").map((h) => h));
+}
+
+function fired(plugin, event, payload, tool) {
+  for (const h of hooksFor(plugin, event, tool)) spawnSync("sh", ["-c", h.command], { input: JSON.stringify({ session_id: "scripted-session", hook_event_name: event, cwd: process.cwd(), ...payload }), env: { ...process.env, CLAUDE_PLUGIN_ROOT: plugin }, timeout: (h.timeout ?? 10) * 1000, stdio: ["pipe", "ignore", "ignore"] });
+}
+
+// One prompt, one Bash call of a plugin command with its hooks, and the turn's end.
+function hostTurn(plugin) {
+  const command = `node ${plugin}/cli/help.mjs`;
+  const call = { tool_name: "Bash", tool_use_id: "scripted-call-1", tool_input: { command } };
+  fired(plugin, "UserPromptSubmit", { prompt: "scripted control: apply the change" });
+  fired(plugin, "PreToolUse", call, "Bash");
+  const r = spawnSync(process.execPath, [`${plugin}/cli/help.mjs`], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  fired(plugin, "PostToolUse", { ...call, tool_response: { stdout: "", stderr: "", exit_code: r.status } }, "Bash");
+  fired(plugin, "Stop", { stop_hook_active: false });
+}
+
+function main([behaviour, status, file, plugin]) {
   remembered();
+  if (plugin && existsSync(join(plugin, "hooks", "hooks.json"))) hostTurn(plugin);
   line({ type: "system", subtype: "init", model: "scripted", session_id: "scripted", tools: [], plugins: [] });
   if (behaviour === "sleep") return setInterval(() => null, 1 << 30);
   const a = behaviour === "patch" ? applied(file) : { ok: true };

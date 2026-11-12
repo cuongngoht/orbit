@@ -540,7 +540,9 @@ src/task/      TASK EXECUTION: what happened while something autonomous tried to
                · approvals.mjs (fingerprint of type, tool, environment and params -- the params never kept;
                decide once, spend once, consumed BEFORE the action) · ops.mjs (the ONE write door: `apply`
                and `createTask`, TASK_ACTIVE under the room lock) · views.mjs (the one JSON a CLI, Control and
-               the page read; readiness from the journal and the registry, never probed) · summary.mjs ·
+               the page read; readiness from the journal and the registry, never probed) · why.mjs (0.6.0,
+               `task why`: each decision, how it settled -- RECEIPT, or REPORTED and never proven, OPEN or
+               AMBIGUOUS read back -- and what moved the task next on which receipt; the fold only) · summary.mjs ·
                machine.mjs (the MACHINE VIEW: registry × tasks rooms, a projection, no index, `rootOf` and
                `since` handed in) · live.mjs (a task as a LIVE page reads it: the same fold and view over a follower, and
                FINGERPRINT, what a person watching cares about, so a view is resent only when it moved -- an expiry

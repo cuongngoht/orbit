@@ -52,6 +52,10 @@
 //   node task.mjs show <task>              where it stands: state, stage, attempt, decision, approvals
 //   node task.mjs events <task> [--since=<n>]
 //                                          its journal, line by line, from a position on
+//   node task.mjs why <task>               each decision -- observed, hypothesis, reason, evidence cited --
+//                                          how it settled (its action, receipts, result: a receipt, or
+//                                          REPORTED and never proven; OPEN or AMBIGUOUS read back, never
+//                                          resent) and which receipt or record moved the task next
 //   node task.mjs list                     this checkout's tasks
 //   node task.mjs machine                  every task on this machine, across the projects Orbit knows
 //   node task.mjs where                    where this checkout's tasks are kept

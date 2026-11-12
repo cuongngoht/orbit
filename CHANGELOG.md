@@ -82,7 +82,9 @@ apart from the receipts that allowed its next step.
   (a Python checkout, say), it names the tracked test files the relation adapters link to the edited files instead
   (by the patterns the checkout declares for its test runner, pytest's `python_files` and `testpaths`, else the default) --
   the files, never a command, and a regression test where no existing test covers the change -- and a passing run of a
-  program named for testing (`pytest`, `python -m unittest`, `vitest`) clears it (P3b).
+  program named for testing (`pytest`, `python -m unittest`, `vitest`) clears it (P3b). Only evidence the change works
+  clears it: a passing test, or the owning component's own declared verifying check -- a lint, a build or a manual
+  repro passing never does.
 - **Explainable (P6).** The trail keeps `advice.given` (the fact, the subject, the provider and its kind, never a
   sentence) and the activation chain counts it as suggested. `node cli/task.mjs why <task> [--json]`: each decision of
   a task, how it settled -- a receipt, or REPORTED and never proven; OPEN or AMBIGUOUS read back, never resent -- and

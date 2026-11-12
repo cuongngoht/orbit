@@ -177,7 +177,8 @@ The rest of a session follows its work through, a line at a time and only where 
   that only answered a question, never when your prompt said stop or wait, never with the trail off; switch it off in
   Orbit Control › Advanced › Automation limits (`trigger.holdOnStop`). The hold starts and grants nothing.
 - **At Stop, after edits nothing checked** (0.6.0): a turn that edited code a component of this checkout owns, with no
-  passing check after the edit, is held open once per prompt, naming the safe check that component declares and its
+  passing test or declared verifying check after the edit (a lint or a build alone shows nothing works), is held open
+  once per prompt, naming the safe check that component declares and its
   command -- or the model says why it stops. It runs nothing, and never holds after a halt cue, past a paused or waiting
   work, beside the workflow hold, or for a path nothing speaks for. With no declared check, it names the tracked test
   files Orbit's relation adapters link to the edited files instead, by the test patterns the checkout declares (pytest's

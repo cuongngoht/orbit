@@ -35,7 +35,7 @@ export const MAX_TOKENS = 8;
 export const CLASSES = [
   { name: "commit", when: (w) => w.includes("git") && w.includes("commit") },
   { name: "diff", when: (w) => w.includes("git") && w.includes("diff") },
-  { name: "test", when: (w, programs = []) => w.some((x) => /^tests?$/.test(x)) || programs.some((x) => /tests?$/.test(x)) },
+  { name: "test", works: true, when: (w, programs = []) => w.some((x) => /^tests?$/.test(x)) || programs.some((x) => /tests?$/.test(x)) },
   { name: "lint", when: (w) => w.some((x) => /^(lint|check|typecheck)$/.test(x)) },
   { name: "build", when: (w) => w.some((x) => /^(build|compile)$/.test(x)) },
   { name: "other", when: () => true },
@@ -52,6 +52,14 @@ const programsOf = (command) => [exeOf(command), ...unassigned(command).toLowerC
 
 // Which classes are a CHECK: a successful one after an edit is a milestone.
 export const CHECKS = ["test", "lint", "build"];
+
+// Which classes are evidence the change WORKS (0.6.0, P3b): what a turn's edits owe (src/lifecycle/subscribers/owed.mjs)
+// clears only on one of these. A generic run proves that only for a check purpose that VERIFIES and builds nothing
+// (src/orchestration/vocab.mjs CHECK_PURPOSES: test) -- a lint or a build passing says the code reads well or compiles,
+// never that it works, and a declared `verify` check counts only as the component's own declared check (cli/governed.mjs).
+// The `works` column is spelled here, because the working set reads no orchestration, and held equal to CHECK_PURPOSES
+// by test/working-set.test.mjs.
+export const WORKS = CLASSES.filter((c) => c.works).map((c) => c.name);
 
 // `roots` is every spelling of the checkout root: the real path and the one the
 // host was given can differ by a symlink (a temp directory on macOS, a mapped

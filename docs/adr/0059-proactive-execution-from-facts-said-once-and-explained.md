@@ -53,6 +53,11 @@ and its context's `do`.
   files and never a command, asking for a regression test where no existing test
   covers the change -- and a path neither speaks for stays silent; the trail keeps how many (`turn.held` `tests`), and a
   program named for testing (the executable, or what a launcher is told to run) is a test run in the one `CLASSES` table.
+  What clears it is evidence the change WORKS: a passing run of a class `WORKS` names (a generic class whose
+  `CHECK_PURPOSES` purpose verifies and builds nothing: a test, held equal by `test/working-set.test.mjs`), or of a
+  component's own DECLARED verifying check (its command's class and executable among the working set's
+  `unverified.ran`) -- never a lint, a build or a manual run alone; `since.checked` and the observer's milestone are
+  unchanged.
 - **What stopped a check, from facts.** `src/orchestration/failure.mjs` gains `DEPENDENCY` (the sandbox's restore
   receipt for the check's component says it ran and failed) and `ACCESS` (a fresh reach answer for a target a person
   said the component requires is unreachable) ahead of `ENVIRONMENT`, and reads the Process port's `code` for a child

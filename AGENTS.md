@@ -129,7 +129,11 @@ what a child of a tool that keeps identity state is given, and `src/connections/
 every reader, collector and probe asks for a request's authorization: `src/connections/` reads no tool,
 because how a connection signs in is an adapter's (`skills/orbit-report/auth/`), bound with the tools port
 by the composition roots.
-`src/context/` is pure data; `cli/context.mjs` composes it with the process port. `src/attribution.mjs` (0.2.2, ADR 0044) is a LEAF
+`src/context/` is pure data; `cli/context.mjs` composes it with the process port. Since 0.6.0 (ADR 0058) it also holds
+the relation adapter CONTRACT (`src/context/relations.mjs`) and nothing of a language: the adapters live in a pack
+(`skills/orbit-develop/relations/`, JavaScript/TypeScript and Python) and are handed in with the tracked listing, the
+read and the search by `cli/context-grounding.mjs` (`test/context-relations.test.mjs` greps `src/context/` for a
+language, a framework or a stack). `src/attribution.mjs` (0.2.2, ADR 0044) is a LEAF
 for the same reason: the trail, Orbit Live, Satellite and Control must say one attribution word about one call, and none
 may import another for it. `src/protected/` (0.2.0) is a
 LEAF for the reason `src/policy.mjs` is one: the task's approvals, the orchestrator, the capability pipeline, the MCP
@@ -225,6 +229,22 @@ place real adapters are bound to real config.
   disabled, policy not deny), by an ordered table ending in a stable id; an OPTIONAL requirement
   is resolved only when the task names its provider. A simple change selects no MCP server
   however many are enabled.
+- **A FACT about the session's work brings a component in, never a word the engine guessed (0.6.0, ADR 0059).** Beside
+  a prompt's words, a catalog row may name in `reactsTo` the facts its own playbook handles -- words of ONE closed
+  vocabulary, `FACTS` in `src/routing/facts.mjs` (`check.failed`, `check.repeats`, `knowledge.owed`), each with a
+  deriver over what the composition root read of the session (the working set's checks fold, the tracked work's needs)
+  and never over the text of an error, a model's reading or a guessed cause. A fact that holds counts for a row as one
+  of its signals would, and the EXISTING resolver chooses who provides its requirement: no name of a component is
+  written beside a fact, and a row reacts only to facts its playbook handles (`test/routing-facts.test.mjs`,
+  `test/activation-catalog.test.mjs`).
+- **After a failed call, at most one line of advice, and silence by an ordered table (0.6.0, ADR 0059).**
+  `src/lifecycle/advice.mjs` speaks only when every row of `SILENCE` lets it, cheapest first: the host can carry a line,
+  something is bound, the trail is on, no halt cue, a fact holds, it was not said this session about the same subject,
+  this prompt has not had its line, the governed work is not paused, cancelled, waiting or blocked, and a component
+  here reacts to it. Nothing is said after a call that succeeded. The line names the fact, its subject, the provider
+  the resolver chose and the call; the trail keeps `advice.given` (fact, subject, provider and kind, never the
+  sentence), and the same facts reach the next prompt's routing decision. A port that fails costs the line, never the
+  failure payload it joins (`test/advice.test.mjs`).
 - **A secret is named, never kept.** A managed definition names the environment variable each
   header or variable comes from; a value, a URL with credentials or a secret-named query key, or a
   secret-shaped argument is refused. Values are read from the secret port at the moment of
@@ -425,7 +445,17 @@ place real adapters are bound to real config.
   file's contents; a Orbit subcommand only when that command's own usage header documents it. The
   views are pure folds rebuilt on every read, so `cli/trace.mjs` and Control cannot disagree.
   Writing is fail-open, bounded, local to the machine store, and switched by `trace` /
-  `ORBIT_TRACE`.
+  `ORBIT_TRACE`. Since 0.6.0 `advice.given` keeps a line of advice as table words (fact, subject, provider, kind) and
+  the activation fold counts it as suggested; `turn.held` also keeps `kind` (`workflow` or `unverified`) and, for an
+  unverified hold, the id of the declared check it named (`test/trace.test.mjs`, `test/stop-hold.test.mjs`).
+- **A turn is not left unverified, and the hold runs nothing (0.6.0, ADR 0059).** At Stop,
+  `src/lifecycle/subscribers/owed.mjs` holds a turn open ONCE per prompt when it edited code a component of runtime
+  understanding's graph owns and no check passed after the edit, naming the SAFE check that component (or one that
+  depends on it) declares and its command -- by the ordered `OWED` rows, after the guards every Stop hold is held to
+  (`hold.mjs` `GUARDS`): never after a halt cue, never past a paused, cancelled or waiting work, never beside the
+  workflow hold, never for a path no component owns, never on a guess about an edit whose write has not landed. The
+  cheap trail row runs first, so an ordinary turn reads no owner record. `trigger.holdUnverified` (on by default) is a
+  person's, set only through Control's door (`test/stop-hold.test.mjs`, `test/automation-settings.test.mjs`).
 - **What it takes to run a CHECKOUT is checkout-scoped, and understanding it executes nothing.** `src/runtime/`
   keeps facts per checkout (`<storeRoot>/checkouts/<checkoutId>/`) because a branch's manifest, a machine's tools
   and a held port differ per checkout; nothing checkout-varying is project-scoped, and nothing there is a second
@@ -594,7 +624,12 @@ place real adapters are bound to real config.
   `RUN_STATES` says `verifies`, and it is PASS -- SKIP, PARTIAL, REFUSED, BLOCKED and
   INCONCLUSIVE never raise coverage, nor does a PASS whose build, environment or plan revision no
   longer matches. An empty scope reports `—`, never 100%. Which layers a plan may speak about
-  comes from `LAYERS`, so nothing in `src/qa/` names a layer.
+  comes from `LAYERS`, so nothing in `src/qa/` names a layer. A QA design's verdict must depend on the application,
+  never on what the design itself causes (0.6.0, backlog Q2): every contradiction rule
+  (`src/qa/backend/contradictions.mjs`) is a SELECTION over one model of what a design causes,
+  `src/qa/backend/causes.mjs` -- effects, references, observers, what a request sets, what a match pins, the semantics
+  a shape and an adapter declare -- and names no operation id and no shape id; what comes again is a column on the
+  shape, and a redelivery trigger is an adapter's (`test/qa-causes.test.mjs`, `test/qa-contradictions-golden.test.mjs`).
 - **A map record is corrected, never re-recorded.** `record-edge.mjs --replace` is the inverse of the
   append: the key must already exist, only the fields the line carries are touched, and the record
   keeps its place in the file. A note somebody wrote at 2am and a `destructive` guard are not
@@ -702,7 +737,11 @@ place real adapters are bound to real config.
   keyed to a fact's own SCOPE, never to HEAD: keying it to the commit would make every fact
   stale on every push, and a tool whose answer is always "re-do everything" is one people
   learn to ignore. `stale` means needs revalidation and never means false; an uncommitted edit
-  the index cannot see is `unknown`, which is neither.
+  the index cannot see is `unknown`, which is neither. A scope the index no longer holds (deleted, renamed away, gone
+  on a branch switch) is GONE (0.6.0): said as such, with its own sentence, never a bare `unknown`, and a work need
+  settled on a path that is gone is invalidated (`from: <path>#gone`) and settled again, never reused
+  (`src/freshness.mjs`, `src/work/freshness.mjs`; `test/freshness-events.test.mjs` holds edit, rename, delete and
+  branch switch on a real repository across every owner that keeps facts).
 - **Test data has one home and all generated state is store-only.** Read and write the selected dataRoot.
   Nothing automatically replicates a checkout write. The store never goes into a working tree, including a
   gitignored directory. A typed store path that fails is Refused; an unwritable default is Blocked.
@@ -811,7 +850,13 @@ place real adapters are bound to real config.
   runs (refused by name if it asserts an outcome, a stage, a signature, a confidence or an approval;
   STALE on a moved revision), recorded before its side effect, and settled with receipts; the engine
   moves the stage, classifies and signs a failure, concludes NO_PROGRESS (three attempts on one
-  signature) and completes a task only when every COMPLETION row holds. A change is made only in the
+  signature) and completes a task only when every COMPLETION row holds. A failure's class reads only facts
+  (`src/orchestration/failure.mjs`, 0.6.0): the Process port's `code` for a child that never started, the exit status
+  (126 and 127 are the shell's own), the sandbox's dependency-restore receipt (DEPENDENCY) and a fresh reach answer for
+  the targets a person said the component requires (ACCESS) -- never the words of its output
+  (`test/orchestration-failure.test.mjs`, `test/orchestration-check-facts.test.mjs`). A task's context ends with `do`,
+  the one command that goes on, and no line a host reads carries a placeholder (`test/no-placeholder.test.mjs`,
+  `test/resume-command.test.mjs`). A change is made only in the
   task's OWN workspace -- a local clone, owner written first, detached, no hook run -- and the
   primary checkout is never written, not even its `.git`. A check is a command the checkout DECLARED, `safe`, chosen by
   id and run argv-only; nothing a model writes becomes a command, and there is no command endpoint.
@@ -1004,6 +1049,7 @@ ORBIT_STORE_DIR=/tmp/l node cli/resources.mjs list|observe|route "<prompt>"  # t
 ORBIT_STORE_DIR=/tmp/l node cli/mcp.mjs list|tools <server>  # managed · external MCP (no add/enable/install)
 ORBIT_STORE_DIR=/tmp/l node cli/mcp.mjs call <server> <tool> --for=<capability> --input='{…}'  # through every gate
 ORBIT_UI_TESTS=test/fixtures/ui-tests ORBIT_STORE_DIR=/tmp/l node cli/context.mjs --for="<task>"  # project.context, memory first
+ORBIT_STORE_DIR=/tmp/l node cli/context.mjs --for="<task>" --work=<w-…> [--json]   # with the rounds of the task's own work (0.6.0)
 ORBIT_UI_TESTS=test/fixtures/ui-tests ORBIT_STORE_DIR=/tmp/l node cli/help.mjs --for="<task>"     # one NEXT for a task
 ORBIT_UI_TESTS=test/fixtures/ui-tests node cli/query.mjs extensions   # loaded, refused, and WHY
 ORBIT_UI_TESTS=test/fixtures/ui-tests node cli/query.mjs capabilities # what {"do":"call"} may ask
@@ -1032,6 +1078,7 @@ ORBIT_STORE_DIR=/tmp/l node cli/requirements.mjs resolve <ref>|acquire <ref>|sta
 ORBIT_STORE_DIR=/tmp/l node cli/requirements.mjs answer <root> --question=rq-… --says="…" --human   # a person's word, relayed
 ORBIT_STORE_DIR=/tmp/l node cli/work.mjs start "<objective>" --ref=<id> [--snapshot=rs-…]   # the one work a requirement has
 ORBIT_STORE_DIR=/tmp/l node cli/work.mjs show|need|resolve|invoke|settle|claim|checkpoint|resume|recall|list|where   # a work (README §4.12)
+ORBIT_STORE_DIR=/tmp/l node cli/work.mjs checkpoint <w-…> [--why="…"] [--asked="<source> · <target>" …]   # one round: what it asked, what it gained (0.6.0)
 ORBIT_STORE_DIR=/tmp/l node cli/runtime.mjs discover|status|doctor|design|proposal|settings|projects   # what a checkout needs to run (README §4.13)
 ORBIT_STORE_DIR=/tmp/l node cli/runtime.mjs start|stop [--component=<key>]   # what a file declared; only what Orbit can prove it started
 ORBIT_STORE_DIR=/tmp/l node cli/runtime.mjs adopt <id> --human              # the one command that writes the repository
@@ -1039,6 +1086,7 @@ ORBIT_STORE_DIR=/tmp/l node cli/runtime.mjs sandboxes|sandbox|sandbox-prepare|sa
 ORBIT_STORE_DIR=/tmp/l node cli/task.mjs create "<objective>" [--work=w-…] | stage | attempt | act | link | decide   # record an execution (README §4.14)
 ORBIT_STORE_DIR=/tmp/l node cli/task.mjs pause|cancel <task> --human --expect=<revision>   # a person's, on the revision read; approve and resume are Control's
 ORBIT_STORE_DIR=/tmp/l node cli/task.mjs show <task> | events <task> | list | machine [--json]   # one task, or every task on this machine
+ORBIT_STORE_DIR=/tmp/l node cli/task.mjs why <task> [--json]   # each decision, how it settled, which receipt moved the task next (0.6.0)
 ORBIT_STORE_DIR=/tmp/l node cli/autonomous-engineering.mjs start --ref=<item> | start "<objective>"   # a task taken to a verified change (README §4.15)
 ORBIT_STORE_DIR=/tmp/l node cli/autonomous-engineering.mjs context <task> | step <task> < decision.json | reconcile <task> | finish <task> | resume <ref>
 ORBIT_STORE_DIR=/tmp/l node cli/project-report.mjs status|settings|runs|parts|where   # a PO report (README §4.10)

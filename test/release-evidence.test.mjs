@@ -293,3 +293,56 @@ test("the evaluator's own record command makes a record from campaign rooms, and
   assert.equal(e.code, "PUBLISHABLE", e.says);
   assert.equal(e.verdict, made.verdict, "the evaluator and the gate work the verdict out alike");
 });
+
+// ---- the primary is the gate's, an amendment's secondary verdict is never read ---------------------------------------------------
+
+const AMENDMENT_REL = "evaluator/prereg/0.6.0-amendment-1.json";
+const AMENDMENT = JSON.parse(readFileSync(join(ROOT, AMENDMENT_REL), "utf8"));
+const SEATED_ARMS = AMENDMENT.phases.find((ph) => ph.id === "final-seated").arms;
+
+// Seated runs that would REGRESS the release against plain and against 0.5.0 seated, were the gate to read them.
+const seatedRuns = () => SEATED_ARMS.flatMap((arm) => HELD.map((task) => ({ campaign: "final-seated-060", phase: "final-seated", arm, task, trial: 1, word: arm === "orbit-0.6.0-seated" ? "REGRESSED" : "RESOLVED", why: null, costUsd: 0.3, minutes: 4 })));
+
+test("the gate reads only the primary comparison: an amendment's seated runs and a REGRESSED secondary verdict -- even one its runs contradict -- change nothing it says", (t) => {
+  const w = world(t);
+  const runs = [...runsWith(ONE_MORE), ...seatedRuns()];
+  const arms = { ...w.record.arms, "orbit-0.5.0-seated": { kind: "claude+orbit", rev: "v0.5.0", commit: "5".repeat(40), seat: true }, "orbit-0.6.0-seated": { kind: "claude+orbit", rev: w.commit, commit: w.commit, seat: true } };
+  const secondary = { amendments: [{ n: 1, file: "0.6.0-amendment-1.json", digest: "a".repeat(64) }], comparisons: [{ a: "orbit-0.6.0-seated", b: "plain", gate: false, paired: 6, difference: 0, verdict: "IMPROVED" }], verdict: "REGRESSED", missing: ["anything"] };
+  const e = world(t, { repo: w.repo, record: { ...recordWith(w.commit, runs), arms, secondary } }).e();
+  assert.equal(e.code, "PUBLISHABLE", e.says);
+  assert.deepEqual([e.verdict, e.comparisons], [w.e().verdict, w.e().comparisons], "the primary verdict and comparisons, as without the amendment's runs");
+  assert.ok(!e.comparisons.some((c) => SEATED_ARMS.includes(c.a) || SEATED_ARMS.includes(c.b)), "no comparison of the gate names a seated arm");
+  assert.doesNotMatch(saidEvidence(e), /seated|secondary/);
+  assert.deepEqual(candidateArms(P), ["orbit-0.6.0", "mini-orbit-0.6.0"], "the candidate arms the gate holds to HEAD are the registration's");
+  assert.equal(world(t, { repo: w.repo, record: { ...recordWith(w.commit, runs), arms, secondary: null } }).e().code, "PUBLISHABLE");
+});
+
+test("the evaluator's record with an amendment's campaign: its secondary verdict beside the primary, and the gate holds it on the primary alone", (t) => {
+  const w = world(t);
+  const home = mkdtempSync(join(tmpdir(), "orbit-evalhome-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  campaignRoom(home, "final-060", "final", w.commit, ONE_MORE);
+  campaignRoom(home, "mini-060", "mini", w.commit, () => "NOT_RUN");
+  seatedRoom(home, "final-seated-060", w.commit, (arm) => (arm === "orbit-0.6.0-seated" ? "REGRESSED" : "RESOLVED"));
+  const out = join(home, "record.json");
+  const r = spawnSync(process.execPath, [join(ROOT, "evaluator", "cli.mjs"), "record", "--campaign=final-060,mini-060,final-seated-060", `--prereg=${join(ROOT, PREREG_REL)}`, `--out=${out}`], { encoding: "utf8", env: sealed({ ORBIT_EVAL_HOME: home }) });
+  assert.doesNotMatch(r.stdout, /^error:/m, r.stdout);
+  const made = JSON.parse(readFileSync(out, "utf8"));
+  assert.deepEqual([made.secondary.verdict, made.secondary.comparisons.map((c) => c.gate)], ["REGRESSED", [false, false]]);
+  assert.match(r.stdout, /secondary \(amendment 1; reported, never read by the gate\)/);
+  const e = world(t, { repo: w.repo, record: made }).e();
+  assert.equal(e.code, "PUBLISHABLE", e.says);
+  assert.deepEqual([e.verdict, e.comparisons.length], [made.verdict, made.comparisons.length], "the gate's verdict is the record's primary one");
+});
+
+// A campaign room of the amendment's held-out phase, as `prereg campaign final-seated` makes it: the registration's
+// digest and the amendment's beside it.
+function seatedRoom(home, id, commit, word) {
+  const plan = HELD.flatMap((task) => SEATED_ARMS.map((arm) => ({ arm, task, trial: 1, key: `${arm}__${task.replace(/[:/]/g, "_")}__t1` })));
+  const arms = Object.fromEntries(SEATED_ARMS.map((a) => [a, { kind: "claude+orbit", rev: AMENDMENT.arms[a].rev ?? commit, seat: true, frozen: { commit: AMENDMENT.arms[a].rev === null ? commit : "5".repeat(40) } }]));
+  const lines = plan.flatMap((r) => [{ kind: "started", run: r.key, attempt: 1, capUsd: 1 }, { kind: "ended", run: r.key, attempt: 1, chargedUsd: 0.3, wallMs: 240000, summary: { costUsd: 0.3 } }, { kind: "outcome", run: r.key, attempt: 1, word: word(r.arm, r.task), why: null }]);
+  mkdirSync(join(home, "campaigns", id), { recursive: true });
+  const amendment = { n: 1, file: "0.6.0-amendment-1.json", digest: shaOf(canonicalJson(AMENDMENT)) };
+  writeFileSync(join(home, "campaigns", id, "campaign.json"), JSON.stringify({ id, prereg: { release: P.release, phase: "final-seated", digest: sha(PREREG_TEXT), amendment }, model: P.host.model, effort: P.host.effort, limits: P.limits, budgetUsd: 12, claudeCode: "2.1.322", arms, plan, evaluator: { commit: "e", dirty: false } }));
+  writeFileSync(join(home, "campaigns", id, "journal.jsonl"), [...lines, { kind: "finished" }].map((l) => JSON.stringify(l)).join("\n") + "\n");
+}

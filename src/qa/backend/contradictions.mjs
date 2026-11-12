@@ -242,7 +242,7 @@ function settledBefore(m, cx) {
   return publications(m).flatMap((p) => p.keys.flatMap((key) => met.filter((n) => n.key === key && n.id !== p.id).flatMap((n) => settled.filter((x) => x.on === p.id && x.e.value === n.value).map((x) => beforeSay(x, p, n)))));
 }
 
-const beforeSay = (x, p, m) => `step ${x.s.i} waits for ${cut(p.id)} to settle as ${cut(x.e.value)} (${x.ref}) under businessKey ${cut(m.key)}, which ${m.version} (${m.shape ?? "an earlier test"}) of this investigation already published ${cut(m.id)} under and saw settle as ${cut(m.value)}: use a business key no earlier test of this investigation used, or rule this one by what that test left — its tests share one sandbox, and a second message under a business key is not a second effect`;
+const beforeSay = (x, p, m) => `step ${x.s.i} waits for ${cut(p.id)} to settle as ${cut(x.e.value)} (${x.ref}) under businessKey ${cut(m.key)}: use a business key no earlier test of this investigation used, or rule this one by what that test left — ${m.version} (${m.shape ?? "an earlier test"}) of this investigation already published ${cut(m.id)} under it and saw it settle as ${cut(m.value)}; its tests share one sandbox, and a second message under a business key is not a second effect`;
 
 // ── a later delivery nothing in the design causes ─────────────────────────
 //

@@ -579,7 +579,7 @@
    "findings": [
     {
      "rule": "SETTLED_BEFORE",
-     "say": "step 2 waits for msg-2 to settle as processed (FIX-ASYNC-1/E3) under businessKey tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00, which gen-1@v (completes-by-deadline) of this investigation already published msg-1 under and saw settle as processed: use a business key no earlier test of this investigation used, or rule this one by what that test left — its tests share one sandbox, and a second message under a business key is not a second effect"
+     "say": "step 2 waits for msg-2 to settle as processed (FIX-ASYNC-1/E3) under businessKey tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00: use a business key no earlier test of this investigation used, or rule this one by what that test left — gen-1@v (completes-by-deadline) of this investigation already published msg-1 under it and saw it settle as processed; its tests share one sandbox, and a second message under a business key is not a second effect"
     }
    ],
    "advice": []
@@ -588,7 +588,7 @@
    "findings": [
     {
      "rule": "SETTLED_BEFORE",
-     "say": "step 2 waits for msg-2 to settle as processed (FIX-ASYNC-1/E3) under businessKey tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00, which gen-1@v (completes-by-deadline) of this investigation already published msg-1 under and saw settle as processed: use a business key no earlier test of this investigation used, or rule this one by what that test left — its tests share one sandbox, and a second message under a business key is not a second effect"
+     "say": "step 2 waits for msg-2 to settle as processed (FIX-ASYNC-1/E3) under businessKey tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00: use a business key no earlier test of this investigation used, or rule this one by what that test left — gen-1@v (completes-by-deadline) of this investigation already published msg-1 under it and saw it settle as processed; its tests share one sandbox, and a second message under a business key is not a second effect"
     }
    ],
    "advice": []
@@ -597,7 +597,7 @@
    "findings": [
     {
      "rule": "SETTLED_BEFORE",
-     "say": "step 2 waits for msg-2 to settle as processed (FIX-ASYNC-1/E3) under businessKey tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00, which gen-1@v (completes-by-deadline) of this investigation already published msg-1 under and saw settle as processed: use a business key no earlier test of this investigation used, or rule this one by what that test left — its tests share one sandbox, and a second message under a business key is not a second effect"
+     "say": "step 2 waits for msg-2 to settle as processed (FIX-ASYNC-1/E3) under businessKey tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00: use a business key no earlier test of this investigation used, or rule this one by what that test left — gen-1@v (completes-by-deadline) of this investigation already published msg-1 under it and saw it settle as processed; its tests share one sandbox, and a second message under a business key is not a second effect"
     }
    ],
    "advice": []
@@ -731,7 +731,7 @@
    "findings": [
     {
      "rule": "SETTLED_BEFORE",
-     "say": "step 3 waits for msg-a1b2c3d4e5f60002 to settle as processed (FIX-ASYNC-1/E3) under businessKey tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00, which gen-c35479da-0bec874c@f5a67c18978c02b3 (effect-once-per-key) of this investigation already published msg-a1b2c3d4e5f60718 under and saw settle as processed: use a business key no earlier test of this investigation used, or rule this one by what that test left — its tests share one sandbox, and a second message under a business key is not a second effect"
+     "say": "step 3 waits for msg-a1b2c3d4e5f60002 to settle as processed (FIX-ASYNC-1/E3) under businessKey tenant-a|inv-a|billing-daily:2026-10-23T09:00:00+07:00: use a business key no earlier test of this investigation used, or rule this one by what that test left — gen-c35479da-0bec874c@f5a67c18978c02b3 (effect-once-per-key) of this investigation already published msg-a1b2c3d4e5f60718 under it and saw it settle as processed; its tests share one sandbox, and a second message under a business key is not a second effect"
     }
    ],
    "advice": []

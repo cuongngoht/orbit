@@ -74,6 +74,12 @@ function orbitCalls(uses, pluginDir) {
   return { commands: clis.length, byCli: countBy(clis) };
 }
 
+// A plugin as the host's init line names it: its name, and its version when the line says one.
+const pluginName = (p) => (typeof p === "string" ? str(p) : str(p?.name) && `${p.name}${str(p?.version) ? `@${p.version}` : ""}`);
+
+// The hooks the host ran (a plugin's, mostly): how many answered, and how many did not succeed.
+const hooksOf = (es) => ((rs) => ({ ran: rs.length, failed: rs.filter((e) => e.outcome !== "success").length }))(es.filter((e) => e.type === "system" && e.subtype === "hook_response"));
+
 export function summaryOf(text, o = {}) {
   const es = events(text);
   const init = es.find((e) => e.type === "system" && e.subtype === "init") ?? null;
@@ -85,7 +91,8 @@ export function summaryOf(text, o = {}) {
     started: Boolean(init),
     model: str(init?.model),
     version: str(init?.claude_code_version),
-    plugins: Array.isArray(init?.plugins) ? init.plugins.map((p) => str(p?.name ?? p)).filter(Boolean) : null,
+    plugins: Array.isArray(init?.plugins) ? init.plugins.map(pluginName).filter(Boolean) : null,
+    hooks: hooksOf(es),
     skillsListed: Array.isArray(init?.skills) ? init.skills.length : null,
     result: Boolean(result),
     costUsd: num(result?.total_cost_usd),

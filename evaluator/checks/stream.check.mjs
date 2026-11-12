@@ -74,3 +74,10 @@ test("nothing parses from garbage, and nothing throws", () => {
   assert.equal(s.lastText, null);
   assert.equal(s.asked, null);
 });
+
+test("a plugin is named with its version, and the hooks it ran are counted with their failures", () => {
+  const text = [{ type: "system", subtype: "hook_response", outcome: "success" }, { type: "system", subtype: "hook_response", outcome: "error" }, { type: "system", subtype: "init", plugins: [{ name: "orbit", version: "0.5.0", path: "/opt/orbit-plugin" }, { name: "builtin-x", path: "builtin" }] }].map((e) => JSON.stringify(e)).join("\n");
+  const s = summaryOf(text);
+  assert.deepEqual(s.plugins, ["orbit@0.5.0", "builtin-x"]);
+  assert.deepEqual(s.hooks, { ran: 2, failed: 1 });
+});

@@ -1,7 +1,7 @@
 // A campaign's definition, its plan, and the arms: the same flags, prompt and limits for every model arm, with only
 // --plugin-dir between them; controls that act on a run allowed on a scripted arm alone.
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -85,4 +85,21 @@ test("the self-check covers every outcome word a control can earn without a mode
   // deterministic model).
   const arms = Object.entries(c.arms).map(([id, a]) => armOf(id, a));
   assert.ok(arms.every((a) => a.charges === false && a.credentialNames.length === 0), arms.filter((a) => a.charges !== false || a.credentialNames.length).map((a) => a.id).join(", "));
+});
+
+test("status: a run that ended and waits for its grade is GRADING, never INTERRUPTED", async () => {
+  const { campaignStatus } = await import("../lib/run/campaign.mjs");
+  const home = mkdtempSync(join(tmpdir(), "evl-st-"));
+  try {
+    const room = join(home, "campaigns", "c1");
+    const plan = planOf(def({ trials: 1 }));
+    mkdirSync(room, { recursive: true });
+    writeFileSync(join(room, "campaign.json"), JSON.stringify({ ...def({ trials: 1 }), plan }));
+    const lines = [{ kind: "started", run: plan[0].key, attempt: 1, capUsd: 1 }, { kind: "ended", run: plan[0].key, attempt: 1, chargedUsd: 0.1 }, { kind: "started", run: plan[1].key, attempt: 1, capUsd: 1 }, { kind: "interrupted", run: plan[1].key, attempt: 1, chargedUsd: 1 }];
+    writeFileSync(join(room, "journal.jsonl"), lines.map((l) => JSON.stringify(l)).join("\n"));
+    const states = campaignStatus("c1", { home }).rows.map((r) => r.state);
+    assert.deepEqual(states.slice(0, 2), ["GRADING", "INTERRUPTED"]);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
 });

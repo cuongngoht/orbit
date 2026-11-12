@@ -175,7 +175,7 @@ export function campaignStatus(id, o = {}) {
   const room = roomOf(o.home ?? evalHome(), id);
   const campaign = readJson(join(room, "campaign.json"));
   const fold = foldJournal(readJournal(join(room, "journal.jsonl")));
-  const rows = campaign.plan.map((r) => ((s) => ({ key: r.key, arm: r.arm, task: r.task, trial: r.trial, state: s?.outcome ? s.outcome.word : s?.skipped && !s.attempts.length ? "NOT_RUN" : openAttempts(fold).some((a) => a.run === r.key) ? "RUNNING" : s?.attempts.length ? "INTERRUPTED" : "PLANNED", attempts: s?.attempts.length ?? 0, why: s?.outcome?.why ?? s?.skipped?.reason ?? null }))(fold.runs.get(r.key)));
+  const rows = campaign.plan.map((r) => ((s) => ({ key: r.key, arm: r.arm, task: r.task, trial: r.trial, state: s?.outcome ? s.outcome.word : s?.skipped && !s.attempts.length ? "NOT_RUN" : openAttempts(fold).some((a) => a.run === r.key) ? "RUNNING" : s?.attempts.at(-1)?.ended && !s.attempts.at(-1).interrupted ? "GRADING" : s?.attempts.length ? "INTERRUPTED" : "PLANNED", attempts: s?.attempts.length ?? 0, why: s?.outcome?.why ?? s?.skipped?.reason ?? null }))(fold.runs.get(r.key)));
   const lock = existsSync(join(room, "lock")) ? readJson(join(room, "lock")) : null;
   return { id, room, ledger: ledgerOf(fold, campaign.budgetUsd), controller: lock ? { pid: lock.pid, alive: alive(lock.pid) } : null, finished: Boolean(fold.finished), rows };
 }

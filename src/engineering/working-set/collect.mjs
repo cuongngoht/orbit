@@ -27,15 +27,28 @@ import { okOf } from "../../outcome.mjs";
 export const MAX_PATHS = 20;
 export const MAX_TOKENS = 8;
 
-// Ordered, first match wins, the last always matches.
+// Ordered, first match wins, the last always matches. A row reads the command's words (`w`: every run of letters and
+// digits) and, for a test, the PROGRAMS it names (`programs`): a test run is one whose words say test, or one whose
+// program is named for testing -- the word as the end of its name, the way a runner is called after what it does (0.6.0,
+// P3b: a test the host runs clears what its edits owe, whatever runner its project uses). Still generic English: no row
+// names a runner, so one called for something else is said by the words it is run with (`npm test`, `make test`).
 export const CLASSES = [
   { name: "commit", when: (w) => w.includes("git") && w.includes("commit") },
   { name: "diff", when: (w) => w.includes("git") && w.includes("diff") },
-  { name: "test", when: (w) => w.some((x) => /^tests?$/.test(x)) },
+  { name: "test", when: (w, programs = []) => w.some((x) => /^tests?$/.test(x)) || programs.some((x) => /tests?$/.test(x)) },
   { name: "lint", when: (w) => w.some((x) => /^(lint|check|typecheck)$/.test(x)) },
   { name: "build", when: (w) => w.some((x) => /^(build|compile)$/.test(x)) },
   { name: "other", when: () => true },
 ];
+
+// Where a command names the program it runs: its executable, and a bare name among its first HEAD words -- where a
+// launcher is told which program, or which module, to run. A path, a version or a reference (`tests/a.py`,
+// `pkg@latest`, `image:latest`) is an argument and never a program.
+export const HEAD = 6;
+
+const BARE = /^[a-z][a-z0-9_-]*$/;
+
+const programsOf = (command) => [exeOf(command), ...unassigned(command).toLowerCase().split(/\s+/).slice(1, HEAD).filter((x) => BARE.test(x))].filter(Boolean);
 
 // Which classes are a CHECK: a successful one after an edit is a milestone.
 export const CHECKS = ["test", "lint", "build"];
@@ -113,7 +126,8 @@ function relativeTo(path, root) {
 export function commandOf(event) {
   if (!event.command) return null;
   const words = event.command.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
-  return { class: CLASSES.find((c) => c.when(words)).name, exe: exeOf(event.command), ok: okOf(event) };
+  const programs = programsOf(event.command);
+  return { class: CLASSES.find((c) => c.when(words, programs)).name, exe: exeOf(event.command), ok: okOf(event) };
 }
 
 // The bare name of what ran, and nothing that could be an argument -- nor a value: a leading `NAME=value` sets the

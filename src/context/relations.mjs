@@ -159,3 +159,16 @@ export function relatedOf(input) {
   if (!r.direct.length || !input.tree) return { items: [], gaps: [], hypotheses: [] };
   return bounded(r, r.direct.flatMap((path) => aroundOne(r, path)));
 }
+
+// THE TESTS THAT GO WITH FILES (0.6.0, P3b): what each file's own adapter says goes with it (`testsOf`), and nothing
+// else -- the `test` relation the walk above reads, without its reads and searches. What a turn owes when no component
+// declares a check (src/lifecycle/subscribers/owed.mjs, through cli/governed.mjs) names these. A file no adapter
+// detects names none: never a guess.
+// -> [path]: tracked, at most `maxFiles`, in the order the files and their adapters named them
+//    input: { direct: [path], tree (src/context/refs.mjs treeOf), adapters, maxFiles }
+export function testsWith(input) {
+  const r = worldOf(input);
+  return input.tree ? [...new Set(r.direct.flatMap((path) => linkedTo(r, path)))].slice(0, r.maxFiles) : [];
+}
+
+const linkedTo = (r, path) => ((a) => (a ? testsOf(r, a, path) : []))(adapterOf(r, path));

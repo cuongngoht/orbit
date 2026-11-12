@@ -13,7 +13,7 @@ import { test } from "node:test";
 import { AUTOMATION_SCHEMA } from "../src/automation/settings.mjs";
 import { dispatch } from "../src/lifecycle/dispatch.mjs";
 import { GUARDS, HOLD, HOLD_ROWS, MAX_HOLDS, NOT_RUNNING, PAIRED_MS, WORKFLOW_COMMANDS, hold, holdRowOf, needsOwners } from "../src/lifecycle/subscribers/hold.mjs";
-import { OWED, OWED_ROWS, QUIET, needsOwners as owedNeedsOwners, owed, owedRowOf, uncheckedEdit } from "../src/lifecycle/subscribers/owed.mjs";
+import { NAMED, OWED, OWED_ROWS, QUIET, namedOf, needsOwners as owedNeedsOwners, owed, owedRowOf, uncheckedEdit } from "../src/lifecycle/subscribers/owed.mjs";
 import { hostSession } from "../src/memory/session.mjs";
 import { stateRooms, writeState } from "../src/store/control.mjs";
 import { realIo } from "../src/store/io.mjs";
@@ -168,7 +168,7 @@ test("the guards are hold's own rows, shared and not copied, and the owed rows r
   assert.deepEqual(OWED.slice(0, GUARDS.length), GUARDS, "the same row objects");
   assert.deepEqual(GUARDS.map((r) => r.row), ["host-cannot-hold", "held-already", "uncounted", "spent", "halted"]);
   assert.deepEqual(HOLD.slice(0, GUARDS.length), GUARDS);
-  assert.deepEqual(OWED_ROWS.slice(GUARDS.length), ["verified", "said-already", "workflow-holds", "switched-off", "work-quiet", "unrecorded", "unowned", "no-check", "hold"]);
+  assert.deepEqual(OWED_ROWS.slice(GUARDS.length), ["verified", "said-already", "workflow-holds", "switched-off", "work-quiet", "unrecorded", "unnamed", "hold"]);
   assert.deepEqual(OWED.filter((r) => r.deep).map((r) => r.row), ["switched-off", "work-quiet", "unrecorded"]);
   assert.equal(OWED.at(-1).when({}), true, "the last row always answers");
 });
@@ -228,16 +228,54 @@ test("never past a person's pause, cancel or question on the session's governed 
   for (const work of [null, { kind: "task", id: "tsk-0123456789ab", state: "running" }, { kind: "task", id: "tsk-0123456789ab", state: "ended" }]) assert.equal(owedRow(owedWorld({ work })), "hold", JSON.stringify(work));
 });
 
-test("never for a path no component owns, a component with no declared safe verifying check, or an edit the working set has not kept yet", () => {
-  const unowned = owedWorld({ owed: { changed: ["scratch/notes.txt"], paths: [], components: [], check: null } });
-  assert.deepEqual([owed.run(STOP, unowned), owedRow(unowned), unowned.wrote], [null, "unowned", []]);
-  const nothing = owedWorld({ owed: { ...OWED_FACT, check: null } });
-  assert.deepEqual([owed.run(STOP, nothing), owedRow(nothing)], [null, "no-check"]);
+test("never for a path neither a component's check nor a linked test speaks for, or an edit the working set has not kept yet", () => {
+  const unowned = owedWorld({ owed: { changed: ["scratch/notes.txt"], paths: [], components: [], check: null, tests: [] } });
+  assert.deepEqual([owed.run(STOP, unowned), owedRow(unowned), unowned.wrote], [null, "unnamed", []]);
+  const nothing = owedWorld({ owed: { ...OWED_FACT, check: null, tests: [] } });
+  assert.deepEqual([owed.run(STOP, nothing), owedRow(nothing)], [null, "unnamed"], "a component with no declared safe verifying check and no linked test");
+  assert.equal(owedRow(owedWorld({ owed: { ...OWED_FACT, check: null } })), "unnamed", "a fact with no tests field names none");
   // The trail saw the edit, but the async working-set write of the very last edit has not landed: nothing is guessed.
   for (const missed of [{ changed: [], paths: [], components: [], check: null }, null]) {
     const w = owedWorld({ owed: missed });
     assert.deepEqual([owed.run(STOP, w), owedRow(w), w.wrote], [null, "unrecorded", []], JSON.stringify(missed));
   }
+});
+
+// ---- (P3b) with no declared check, the tests the relation adapters link to the edited files ---------------------------
+
+const LINKED = { changed: ["pylint/checkers/variables.py"], paths: [], components: [], check: null, tests: ["tests/checkers/test_variables.py"] };
+
+test("NAMED is ordered by what the engine has: a declared check, else the linked tests -- the first that names something is said", () => {
+  assert.deepEqual(NAMED.map((n) => n.by), ["check", "tests"]);
+  assert.equal(namedOf(OWED_FACT).by, "check");
+  assert.equal(namedOf({ ...OWED_FACT, tests: ["api/test/refund.test.mjs"] }).by, "check", "a declared check wins over a linked test");
+  assert.equal(namedOf(LINKED).by, "tests");
+  for (const o of [{ ...LINKED, tests: [] }, { ...LINKED, tests: undefined }]) assert.equal(namedOf(o), null, JSON.stringify(o));
+});
+
+test("an edit no component's check speaks for, with linked tests, is held ONCE naming the test files -- never a command -- and asking for a regression test", () => {
+  const w = owedWorld({ owed: LINKED });
+  const answer = owed.run(STOP, w);
+  assert.equal(answer.decision, "block");
+  assert.match(answer.reason, /^Orbit holds this turn \(1 of 2 for this prompt\): pylint\/checkers\/variables\.py changed and no check passed after the edit\. The tests that go with it here: tests\/checkers\/test_variables\.py\./);
+  assert.match(answer.reason, /Run them as this project runs its tests to verify it -- and a behaviour change no existing test covers wants a regression test -- or say in one sentence why you stop here\./);
+  assert.deepEqual(w.wrote, [{ kind: "unverified", tests: 1, count: 1 }], "how many test files it named -- never a path, never a check it does not have");
+  const again = owedWorld({ owed: LINKED, turn: turnOf([EDIT(), ev("turn.held", { kind: "unverified", tests: 1, count: 1 }), EDIT()]) });
+  assert.deepEqual([owed.run(STOP, again), owedRow(again)], [null, "said-already"], "once per prompt, whatever it named");
+  for (const [over, row] of [[{ turn: turnOf([EDIT()], ["halt"]) }, "halted"], [{ settings: { trigger: { holdUnverified: false } } }, "switched-off"], [{ work: { kind: "task", id: "tsk-0123456789ab", state: "paused" } }, "work-quiet"], [{ turn: turnOf([EDIT(), CHECKED(true, "test")]) }, "verified"]]) {
+    const quiet = owedWorld({ owed: LINKED, ...over });
+    assert.deepEqual([owed.run(STOP, quiet), owedRow(quiet), quiet.wrote], [null, row, []], row);
+  }
+  const both = owedWorld({ owed: { ...OWED_FACT, tests: ["api/test/refund.test.mjs"] } });
+  assert.deepEqual([owed.run(STOP, both).reason.includes("rt-command-b464ab6e"), both.wrote], [true, [{ kind: "unverified", check: CHECK.id, count: 1 }]], "a declared check still wins");
+});
+
+test("the linked tests' reason is printable and bounded too", () => {
+  const w = owedWorld({ owed: { ...LINKED, tests: ["tests/test_\u001b[2Jx.py", ...Array.from({ length: 40 }, (_, i) => `tests/${"y".repeat(60)}${i}/test_variables.py`)] } });
+  const reason = owed.run(STOP, w).reason;
+  assert.equal(/\u001b/.test(reason), false);
+  assert.ok(Buffer.byteLength(reason) <= 600, `${Buffer.byteLength(reason)} bytes`);
+  assert.deepEqual(w.wrote, [{ kind: "unverified", tests: 41, count: 1 }]);
 });
 
 test("one hold at a time: a Stop the workflow hold speaks for is never held again for an edit, and the hold answers first", () => {

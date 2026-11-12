@@ -23,19 +23,15 @@
 //
 // Every read here writes nothing: a store nobody wrote is empty, and an owner that cannot answer is evidence that is
 // not there, never a context that fails.
-import { scanRoots } from "../src/architecture/context.mjs";
-import { withStoredConfig } from "../src/architecture/source.mjs";
 import { createArchitecture } from "../src/architecture/store.mjs";
 import { capabilityTokens, unanswered } from "../src/architecture/tokens.mjs";
-import { relatedOf } from "../src/context/relations.mjs";
 import { basisOf, freshened, relevanceOf, seedsOf } from "../src/context/relevance.mjs";
-import { symbolHits, treeOf, verifiedRefs } from "../src/context/refs.mjs";
+import { symbolHits, verifiedRefs } from "../src/context/refs.mjs";
 import { directFacts, ownWork, sufficiencyOf } from "../src/context/sufficiency.mjs";
 import { watched as engineeringWatched } from "../src/engineering/model.mjs";
 import { recall } from "../src/engineering/recall.mjs";
 import { createEngineering } from "../src/engineering/store.mjs";
 import { factState, scopeState } from "../src/freshness.mjs";
-import { createSourceTree } from "../src/frontend/composite.mjs";
 import { lifecycleOf } from "../src/goal/lifecycle.mjs";
 import { modelOf as goalModelOf } from "../src/goal/model.mjs";
 import { createGoals } from "../src/goal/store.mjs";
@@ -65,8 +61,8 @@ import { readView } from "../src/work/track/read.mjs";
 import { workingSetOf } from "../src/work/track/tail.mjs";
 import { createWorks, rootOf } from "../src/work/store.mjs";
 import { MAX_WORKS, namesWork } from "../src/work/views/recall.mjs";
-import { RELATION_ADAPTERS } from "../skills/orbit-develop/relations/index.mjs";
 import { bindRuntime } from "../skills/orbit-runtime/bind.mjs";
+import { relationsAround, sourceOf, treeIn } from "./relations-port.mjs";
 
 function quietly(fn, otherwise = null) {
   try { return fn() ?? otherwise; }
@@ -78,7 +74,7 @@ function quietly(fn, otherwise = null) {
 function bound(w) {
   const ctx = { project: w.project, config: w.project.config };
   const machine = machineContext(ctx, w.env);
-  const source = withStoredConfig(createSourceTree(scanRoots(ctx)), w.project);
+  const source = sourceOf(w.project);
   return { ...w, root: machine.store.root, io: machine.io, source };
 }
 
@@ -90,7 +86,7 @@ const rooms = (b) => ({ arch: createArchitecture(b.root, b.io), intel: createInt
 const hitsOf = (b, refs) => symbolHits(refs, (pattern) => quietly(() => b.source.search(pattern)), Date.now);
 
 function treeAndRefs(b) {
-  const tree = treeOf(quietly(() => b.source.files()));
+  const tree = treeIn(b.source);
   const refs = verifiedRefs(b.refs, { ...(tree ?? {}), hits: hitsOf(b, b.refs), maxFiles: MAX_EVIDENCE_FILES });
   return { tree, refs };
 }
@@ -134,9 +130,9 @@ function impactFor(b, paths) {
 
 // ---- the direct files' own relations, one hop each way --------------------------------------------------------------
 
-// The pack's adapters (skills/orbit-develop/relations/) read what each file imports; the walk (src/context/relations.mjs)
+// The pack's adapters (skills/orbit-develop/relations/, bound once in cli/relations-port.mjs) read what each file imports; the walk (src/context/relations.mjs)
 // reads only the direct files, from the committed tree, and asks the index one search per file and per route literal.
-const relationsFor = (b, seen, listing) => relatedOf({ direct: seedsOf(listing), tree: seen.tree, adapters: RELATION_ADAPTERS, read: (path) => quietly(() => b.source.read(path)), search: (pattern) => quietly(() => b.source.search(pattern)), maxFiles: MAX_EVIDENCE_FILES });
+const relationsFor = (b, seen, listing) => relationsAround(b.source, seen.tree, seedsOf(listing), MAX_EVIDENCE_FILES);
 
 // ---- freshness: each record against its OWN owner's scope fingerprints ---------------------------------------------
 

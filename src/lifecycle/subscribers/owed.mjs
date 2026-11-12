@@ -1,7 +1,10 @@
-// THE OWED HOLD (0.6.0, P3): a turn is not left unverified. When a session stops after editing code a component of
-// this checkout owns, and no check passed after the edit, the turn is held open ONCE for this prompt, naming the safe
-// check that component declares and its command -- or asking the model to say why it stops. No hook can make the model
-// run anything, and this runs nothing: it says what the checkout already declares would verify the edit.
+// THE OWED HOLD (0.6.0, P3): a turn is not left unverified. What a turn OWES before it stops is verification evidence
+// for what it changed. When a session stops after an edit no check passed after, the turn is held open ONCE for this
+// prompt, naming what would provide that evidence from the facts the engine HAS, in order (NAMED): the safe verifying
+// check a component that owns the edited path declares, and its command; else (P3b) the tracked test files the relation
+// adapters link to the edited files -- the files, never a command, since nothing declared how this checkout runs them,
+// and a behaviour change no existing test covers wants a regression test; else nothing is held. It also asks the model
+// to say why it stops, if it does. No hook can make the model run anything, and this runs nothing.
 //
 // It holds only when EVERY row of OWED lets it, in order, cheapest first -- so a turn that edited nothing, or ran a
 // passing check after its last edit, costs a bounded read of the trail and nothing else:
@@ -16,11 +19,12 @@
 //   the session's governed work, if it has one, is not paused, cancelled or waiting for a person
 //   the session's working set keeps an edit since the last passing check (`unverified.changed`) -- the async write of
 //     the very last edit may not have landed yet: then nothing is held, never a guess
-//   a component of runtime understanding's graph owns one of those files
-//   it, or a component that depends on it, declares a SAFE verifying check (cli/governed.mjs `owed`)
+//   something NAMED says what would verify them (cli/governed.mjs `owed`): a component of runtime understanding's graph
+//     owns one of those files and it, or a component that depends on it, declares a SAFE verifying check; else a relation
+//     adapter links tracked tests to them (src/context/relations.mjs `testsWith`). A path neither speaks for: silent
 //
-// What it writes is one `turn.held` with `kind: "unverified"` and the check's id (the trail, through `world.held`) and
-// nothing else. Every fact is a port the composition root (cli/follow-hook.mjs) binds, read only when its row is
+// What it writes is one `turn.held` with `kind: "unverified"` and the check's id, or how many test files it named (the
+// trail, through `world.held`; never a path) and nothing else. Every fact is a port the composition root (cli/follow-hook.mjs) binds, read only when its row is
 // reached; a port that fails answers null, and a row that cannot tell never holds.
 import { CHECKS } from "../../engineering/working-set/collect.mjs";
 import { printable } from "../../printable.mjs";
@@ -43,6 +47,16 @@ const heldFor = (turn) => turn.events.some((e) => e.type === "turn.held" && e.da
 
 const owedOf = (f) => f.owed();
 
+// What would verify the edits, from the facts the engine has, in order -- the first that names something is said:
+//   check   a declared SAFE verifying check of a component that owns an edited path: its id and its command
+//   tests   the tracked tests the relation adapters link to the edited files: the files, how many in the trail
+export const NAMED = [
+  { by: "check", when: (o) => Boolean(o.check), reason: (o, count, max) => checkReason(o, count, max), trail: (o) => ({ check: o.check.id }) },
+  { by: "tests", when: (o) => (o.tests ?? []).length > 0, reason: (o, count, max) => testsReason(o, count, max), trail: (o) => ({ tests: o.tests.length }) },
+];
+
+export const namedOf = (o) => NAMED.find((n) => n.when(o)) ?? null;
+
 // Why a turn is NOT held for an unverified edit, cheapest first: the first row that holds decides, and the last does.
 export const OWED = [
   ...GUARDS,
@@ -52,8 +66,7 @@ export const OWED = [
   { row: "switched-off", deep: true, when: (f) => f.settings()?.trigger?.holdUnverified !== true },
   { row: "work-quiet", deep: true, when: (f) => QUIET.includes(f.work()?.state) },
   { row: "unrecorded", deep: true, when: (f) => !(owedOf(f)?.changed ?? []).length },
-  { row: "unowned", when: (f) => !owedOf(f).components.length },
-  { row: "no-check", when: (f) => !owedOf(f).check },
+  { row: "unnamed", when: (f) => !namedOf(owedOf(f)) },
   { row: "hold", holds: true, when: () => true },
 ];
 
@@ -82,13 +95,18 @@ export const owed = {
 
 const commandSaid = (check) => printable(`${check.argv.join(" ")}${check.cwd && check.cwd !== "." ? `, in ${check.cwd}` : ""}`);
 
-// The reason a host hands the model: which files, which component, which check and its command -- table words, ids
-// and what the checkout declared, made printable; never a prompt or anything the session said.
-export const owedReason = (o, count, max) => clipped(`Orbit holds this turn (${count} of ${max} for this prompt): ${printable(named(o.paths.length ? o.paths : o.changed))} changed in component ${printable(o.check.component)} and no check passed after the edit. Run its declared ${printable(o.check.purpose)} check ${printable(o.check.id)} (${commandSaid(o.check)}) to verify it, or say in one sentence why you stop here.`, REASON_BYTES);
+// The reason a host hands the model: which files, and what would verify them -- a component and its declared check and
+// command, or the tracked tests linked to them -- table words, ids, paths and what the checkout declared, made
+// printable; never a prompt or anything the session said.
+const checkReason = (o, count, max) => `Orbit holds this turn (${count} of ${max} for this prompt): ${printable(named(o.paths.length ? o.paths : o.changed))} changed in component ${printable(o.check.component)} and no check passed after the edit. Run its declared ${printable(o.check.purpose)} check ${printable(o.check.id)} (${commandSaid(o.check)}) to verify it, or say in one sentence why you stop here.`;
+
+const testsReason = (o, count, max) => `Orbit holds this turn (${count} of ${max} for this prompt): ${printable(named(o.changed))} changed and no check passed after the edit. The tests that go with it here: ${printable(named(o.tests))}. Run them as this project runs its tests to verify it -- and a behaviour change no existing test covers wants a regression test -- or say in one sentence why you stop here.`;
+
+export const owedReason = (o, count, max) => clipped(namedOf(o).reason(o, count, max), REASON_BYTES);
 
 function held(f) {
   const o = owedOf(f);
   const count = f.turn().holds + 1;
-  f.world.held?.({ kind: "unverified", check: o.check.id, count });
+  f.world.held?.({ kind: "unverified", ...namedOf(o).trail(o), count });
   return f.world.host.formatHold(owedReason(o, count, MAX_HOLDS), f.world.input);
 }

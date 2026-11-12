@@ -46,7 +46,10 @@ export function createNetwork(name, labels, internal = true) {
   return r.ok ? { ok: true, name } : { ok: false, why: String(r.err).trim().slice(-300) };
 }
 
-const labelOf = (kind, name, key) => ((r) => (r.ok ? r.out.trim() : null))(docker([kind, "inspect", "--format", `{{index .Labels "${key}"}}`, name]));
+// A container keeps its labels under .Config; a network and a volume at the top.
+const LABELS_AT = { container: ".Config.Labels", network: ".Labels", volume: ".Labels" };
+
+const labelOf = (kind, name, key) => ((r) => (r.ok ? r.out.trim() : null))(docker([kind, "inspect", "--format", `{{index ${LABELS_AT[kind]} "${key}"}}`, name]));
 
 // Removed only when its own labels say it is the evaluator's.
 export function removeNetwork(name) {

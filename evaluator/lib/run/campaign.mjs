@@ -138,13 +138,14 @@ async function oneRun(home, room, campaign, journal, r, tools, o) {
   const s = fold.runs.get(r.key);
   if (s?.outcome) return;
   if (s && interruptedCount(s) > MAX_RERUNS) return appendLine(journal, { kind: "outcome", run: r.key, attempt: s.attempts.at(-1).n, at: nowIso(), word: "INFRA_ERROR", why: `INTERRUPTED: cut short ${interruptedCount(s)} times` });
-  const arm = armOf(r.arm, campaign.arms[r.arm]);
+  const { frozen, ...armDef } = campaign.arms[r.arm];
+  const arm = armOf(r.arm, armDef);
   const cap = arm.charges ? campaign.limits.usd : 0;
   const ledger = ledgerOf(fold, campaign.budgetUsd);
   if (!canStart(ledger, cap)) return appendLine(journal, { kind: "skipped", run: r.key, at: nowIso(), reason: `the budget has $${ledger.remainingUsd} left, below this run's cap of $${cap}` });
   const task = taskOf(r.task, { home, campaign });
   const trackStore = r.track ? join(room, "tracks", slug(r.track), "orbit-store") : null;
-  await runAttempt({ campaign, home, room, journal, run: r, attempt: nextAttempt(s), arm, armFrozen: campaign.arms[r.arm].frozen, task, tools, pluginRepo: campaign.pluginRepo, caFile: campaign.caFile, credentialValues: credentialValues(arm.credentialNames), trackStore, keepScratch: o.keepScratch === true });
+  await runAttempt({ campaign, home, room, journal, run: r, attempt: nextAttempt(s), arm, armFrozen: frozen, task, tools, pluginRepo: campaign.pluginRepo, caFile: campaign.caFile, credentialValues: credentialValues(arm.credentialNames), trackStore, keepScratch: o.keepScratch === true });
 }
 
 // ---- reading it -----------------------------------------------------------------------------------------------------------

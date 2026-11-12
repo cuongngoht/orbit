@@ -5,6 +5,7 @@
 //
 //   selfcheckCampaign(o) -> campaign definition        SELF_CONTROLS        judgedSelfcheck(report) -> [{ key, expect, got, ok }]
 import { join } from "node:path";
+import { LABEL, listByLabel } from "../core/docker.mjs";
 import { nowIso, writeJson } from "../core/util.mjs";
 import { startCampaign } from "./campaign.mjs";
 
@@ -37,10 +38,16 @@ export function judgedSelfcheck(report) {
   });
 }
 
+// After the campaign, nothing of it is left on the daemon: every container and network it made was removed.
+function leftoverRow(id) {
+  const left = [...listByLabel("container", LABEL.campaign, id), ...listByLabel("network", LABEL.campaign, id)];
+  return { key: "(cleanup: nothing of the campaign left on the daemon)", expect: "0 left", got: `${left.length} left`, ok: left.length === 0, why: left.join(", ") || null };
+}
+
 export async function selfcheck(o) {
   const def = selfcheckCampaign(o);
   const file = join(o.scratchDir, `${def.id}.json`);
   writeJson(file, def);
   const report = await startCampaign(file, o);
-  return { id: def.id, rows: judgedSelfcheck(report) };
+  return { id: def.id, rows: [...judgedSelfcheck(report), leftoverRow(def.id)] };
 }

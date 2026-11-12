@@ -881,7 +881,11 @@ src/qa/walk.mjs · obligations/ · backend/ · generation/ · security/  (0.1.0,
                request rows say they set (`means`) and whether its channel drops a duplicate; SECOND_SETTLED,
                NEVER_REDELIVERED) or the investigation's own record does (SETTLED_BEFORE: a
                business key an earlier SATISFIED version settled, handed in by src/investigation/generate.mjs as
-               `cx.investigation`), said beside the answer where it rests on what the design never causes) ·
+               `cx.investigation`), said beside the answer where it rests on what the design never causes);
+               causes.mjs (0.6.0) the ONE model those rules read a design through -- per step its effects (the
+               families' `effects`), the references it acts on, the observer it arms or reads, what its request
+               sets and its match pins (request rows' `means`/`selects`) and its adapter's semantics -- so no rule
+               names a family operation or a shape (test/qa-causes.test.mjs greps both) ·
                generation/ (design.mjs the
                ordered STAGES a proposal is held to, ending in the REAL validator; controls; compile.mjs the
                deterministic mapping from an accepted expectation to a predicate, and which slot of an obligation's

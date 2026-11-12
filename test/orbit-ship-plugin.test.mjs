@@ -14,13 +14,14 @@ const OK = {
   archive: "ok",
   "skills/orbit-release/frontmatter.mjs": "ok",
   "test/no-compat-layer.test.mjs": "# tests 1\n# pass 1\n# fail 0",
+  dependencies: "ok",
 };
 
 // Two gates run `node -e`, so the fake answers what the inline script ASKS FOR
 // rather than what argv[0] says: keyed on "-e", the archive gate was handed the
 // version gate's answer and the fake called a sound repo unshippable.
 const asked = (args) => {
-  if (args[0] === "-e") return args[1].includes("existsSync") ? "archive" : "version";
+  if (args[0] === "-e") return args[1].includes("existsSync") ? "archive" : args[1].includes("devDependencies") ? "dependencies" : "version";
   if (args[0] === "--test" && args[1]?.includes("no-compat-layer")) return "test/no-compat-layer.test.mjs";
   return args[0];
 };
@@ -33,7 +34,7 @@ const runner = (over = {}, code = 0) => (args) => ({
 
 test("every gate holds when the repo is in order", () => {
   const rows = report(runner(), GATES);
-  assert.equal(rows.length, 10);
+  assert.equal(rows.length, 12);
   assert.ok(shippable(rows), JSON.stringify(rows));
   assert.equal(rows[0].detail, "124 tests", "the count the definition of done asks to be reported");
   assert.match(rows[3].detail, /1 plan\(s\), 0 error\(s\)/, "the plans are part of done too");
@@ -42,6 +43,8 @@ test("every gate holds when the repo is in order", () => {
   assert.match(rows[7].detail, /no top-level bin\//, "the layout a host will accept");
   assert.match(rows[8].detail, /frontmatter shape a host parses/, "and every skill's frontmatter, which a host strips when it cannot parse it");
   assert.equal(rows[9].detail, "1 tests", "the no-compatibility-layer gate");
+  assert.match(rows[10].detail, /declare no dependency/, "zero dependencies, which a pipeline used to hold on its own");
+  assert.match(rows[11].name, /control server holds to Five Lines/, "and the control server's lint");
 });
 
 // Each gate has to be able to FAIL, or running them proves nothing -- which is
@@ -62,6 +65,7 @@ test("each gate fails on its own kind of trouble, and one failure does not hide 
   assert.match(failing({ archive: "no .claude-plugin/plugin.json — nothing declares the plugin" })[0].detail, /nothing declares the plugin/);
   assert.match(failing({ "skills/orbit-release/frontmatter.mjs": "skills/x/SKILL.md: line 34: it is at the margin and is not a key" })[0].detail, /skills\/x\/SKILL\.md: line 34/);
   assert.deepEqual(failing({ "test/no-compat-layer.test.mjs": "# tests 1\n# fail 1" }).map((r) => r.detail), ["1 of 1 failing"]);
+  assert.deepEqual(failing({ dependencies: "control-server/package.json" }).map((r) => r.detail), ["control-server/package.json: zero dependencies is a rule"]);
 });
 
 // The gate reads a COUNT, and the character in front of it is the runner's
@@ -86,7 +90,7 @@ test("a clean report with a dirty exit code is still a failure", () => {
 test("a gate that throws is reported, not allowed to end the run", () => {
   const boom = () => { throw new Error("spawn ENOENT"); };
   const rows = report(boom, GATES);
-  assert.equal(rows.length, 10, "all ten still report");
+  assert.equal(rows.length, 12, "all twelve still report");
   assert.ok(rows.every((r) => !r.ok && r.detail === "spawn ENOENT"));
 });
 
@@ -118,7 +122,7 @@ test("a change during a prerelease advances the prerelease, and release ends it"
 // half is covered above with a fake runner; the CLI is a dozen lines that bind
 // it to a real process, and it is exercised by running it:
 //
-//   node skills/orbit-release/ship.mjs --bump=added
+//   node skills/orbit-release/ship.mjs --ci --bump=added
 
 // The gate is run on whatever OS the releaser is using, and git hands files
 // back with that checkout's line endings. Comparing them byte for byte made the

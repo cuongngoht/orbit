@@ -16,16 +16,20 @@
 //   node cli.mjs prereg verify [--file=<prereg.json>]                       the registered order re-derived from its rule
 //   node cli.mjs prereg campaign <phase> [--rev=<commit>] [--id=] [--ca-file=] [--out=]   a phase's campaign, from it
 //   node cli.mjs checks                                                     the evaluator's own checks (no Docker)
+//   node cli.mjs record --campaign=<id>[,<id>...] [--prereg=<prereg.json>] [--out=<file>]
+//                                                                           a release's record, from its campaigns'
+//                                                                           journals: what ship.mjs --evidence reads
 import { spawnSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { LABEL, listByLabel, removeContainer, removeNetwork } from "./lib/core/docker.mjs";
 import { ensureTools } from "./lib/core/tools.mjs";
-import { ensureDir, EVALUATOR_DIR, evalHome, writeJson } from "./lib/core/util.mjs";
+import { ensureDir, EVALUATOR_DIR, evalHome, readJson, writeJson } from "./lib/core/util.mjs";
 import { campaignOf, loadPrereg, PREREG_DIR, verifyPrereg } from "./lib/prereg/index.mjs";
 import { campaignStatus, resumeCampaign, startCampaign } from "./lib/run/campaign.mjs";
 import { exportCampaign } from "./lib/run/export.mjs";
 import { markdownOf, writtenReport } from "./lib/run/report.mjs";
+import { recordOf } from "./lib/record.mjs";
 import { selfcheck } from "./lib/run/selfcheck.mjs";
 import { verifyPacks } from "./lib/run/verify-packs.mjs";
 import { convertAll } from "./lib/tasks/convert-all.mjs";
@@ -52,6 +56,7 @@ const COMMANDS = {
   packs: async ([sub, ...ids], f) => PACKS[sub ?? "list"](ids, f),
   tools: (_, f) => print(ensureTools({ caFile: f["ca-file"] })),
   prereg: ([sub, ...rest], f) => PREREG[sub ?? "verify"](rest, f),
+  record: (_, f) => print(recordPrinted(writeJson(f.out ?? join(home(), "records", `${Date.now()}.json`), recordOf({ prereg: preregFile(f), campaigns: String(f.campaign ?? "").split(",").filter(Boolean), home: home() })))),
   checks: () => process.exit(spawnSync(process.execPath, ["--test", ...readdirSync(join(EVALUATOR_DIR, "checks")).filter((n) => n.endsWith(".check.mjs")).map((n) => join(EVALUATOR_DIR, "checks", n))], { stdio: "inherit" }).status ?? 1),
 };
 
@@ -67,6 +72,8 @@ const PREREG = {
   verify: (_, f) => ((r) => (print(r.problems.length ? `PREREG FAILED:\n${r.problems.map((x) => `  - ${x}`).join("\n")}` : `PREREG HOLDS: the registered order is the rule's${r.rowsChecked ? ", rows and digests checked against the cached dataset" : " (packs only: no cached dataset here)"}`), (process.exitCode = r.problems.length ? 1 : 0)))(verifyPrereg(loadPrereg(preregFile(f)), { home: home() })),
   campaign: ([phase], f) => print(writeJson(f.out ?? join(home(), "defs", `${f.id ?? phase}.json`), campaignOf(loadPrereg(preregFile(f)), phase, { id: f.id, rev: f.rev, caFile: f["ca-file"] }))),
 };
+
+const recordPrinted = (file) => ((r) => [`record ${file}`, `  ${r.release}: ${r.campaigns.map((c) => `${c.id} (${c.phase}${c.finished ? "" : ", NOT finished"})`).join(", ")}`, ...r.comparisons.map((c) => `  ${c.a} against ${c.b}${c.gate ? "" : " (reported)"}: ${c.paired} paired, resolved ${c.resolved[c.a]} / ${c.resolved[c.b]} -> ${c.verdict}`), `  verdict ${r.verdict}${r.missing.length ? `; owed and not held: ${r.missing.slice(0, 6).join(", ")}${r.missing.length > 6 ? ", …" : ""}` : "; every pre-registered held-out run has a word"}`].join("\n"))(readJson(file));
 
 const summaryLine = (r) => `campaign ${r.campaign.id}: ${r.finished ? "finished" : "stopped"}; ${r.arms.map((a) => `${a.arm} ${a.resolved}/${a.gradable}${a.words.INFRA_ERROR ? ` (+${a.words.INFRA_ERROR} infra)` : ""}`).join(", ")}; charged $${r.ledger.chargedUsd}`;
 
@@ -94,7 +101,7 @@ function verifyPrinted(rows) {
 }
 
 async function main([cmd, ...rest]) {
-  if (!COMMANDS[cmd]) return print(`usage: node cli.mjs run|resume|status|report|export|cleanup|selfcheck|packs|tools|prereg|checks ... (see the head of cli.mjs)`), (process.exitCode = 2);
+  if (!COMMANDS[cmd]) return print(`usage: node cli.mjs run|resume|status|report|export|cleanup|selfcheck|packs|tools|prereg|record|checks ... (see the head of cli.mjs)`), (process.exitCode = 2);
   try { await COMMANDS[cmd](positional(rest), flags(rest)); }
   catch (e) { print(`error: ${e.message}`); process.exitCode = 1; }
   return null;

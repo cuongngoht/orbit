@@ -1,9 +1,0 @@
-{
-  "schema": 1,
-  "id": "orbit-tools",
-  "version": "1.0.0",
-  "title": "Tool calls that fail on purpose: a host that meets a refusal reads why, corrects the call and never sends it again past a bound",
-  "cases": [
-    "ORBIT-TOOL-001"
-  ]
-}

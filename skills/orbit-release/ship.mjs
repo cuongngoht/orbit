@@ -1,64 +1,37 @@
 #!/usr/bin/env node
-// SHIP: Orbit's release, qualified end to end and only on evidence (ADR 0049) -- the definition of done, a fresh release
-// artifact and fresh benchmark images, every case of every suite run in Docker, every row a model must carry carried by
-// the real Claude Code CLI in the benchmark's runner, a repairable source defect repaired through the benchmark's own
-// repair path and integrated only once an independent verifier passed it, and the whole catalog run again on the
-// result -- one Orbit task (provider `release`) whose journal says where it stands, so Orbit Live and Mission Control
-// show it and `--resume` carries it on. Claude Code is the one coding host a release needs; native host acceptance
-// (Grok, Antigravity, Codex, Claude) and native backend acceptance are optional rows that never block it.
+// SHIP: Orbit's release gate (ADR 0057). Two modes, and nothing here tags, pushes, publishes or writes the checkout.
 //
-//   node skills/orbit-release/ship.mjs              PREFLIGHT → BUILD → BENCHMARK → DIAGNOSE → REPAIR → REBUILD →
-//                                                   FULL_RETEST → SHIPPABLE, from this checkout's HEAD
-//        [--no-repair]                              verify only: a failure stands, nothing is repaired
-//        [--resume=<shp-…>]                         carry an interrupted, blocked or held ship on, from its journal
-//        [--usd=<n> --minutes=<n> --cycles=<n> --attempts=<n> --retries=<n>]
-//                                                   limits, within the release policy's bounds (raised on --resume);
-//                                                   --retries: more runs a missed model-carried row may have
-//        [--model=<id> --effort=low|medium|high|xhigh|max --credential=<NAME> --ca-file=<pem> --no-fail-fast --json
-//         --bump=changed|added|fixed|release]
-//                                                   --effort: the effort every model-carried row's coding host runs at,
-//                                                   beside --model, frozen when the ship begins (a resume never moves it);
-//                                                   a row's run at another effort is never this ship's evidence
-//   node skills/orbit-release/ship.mjs --precheck  [--usd=<n> --minutes=<n> --model=<id> --effort=<level>
-//                                                    --credential=<NAME> --ca-file=<pem>]
-//                                                   before a ship: only the model-carried rows, each once, stopping at
-//                                                   no failure -- every failure said with its run's room and its
-//                                                   diagnosis; a precheck qualifies nothing (--resume carries one on)
-//   node skills/orbit-release/ship.mjs --status[=<shp-…>]
-//                                                   where this checkout's newest ship (or the one named) stands: its
-//                                                   rows, the recorded ones, and each model-carried row that did not
-//                                                   hold with its run's room and its diagnosis bundle
-//   node skills/orbit-release/ship.mjs --evidence[=<shp-…>] [--artifact=<zip>]
-//                                                   THE PUBLISH GATE: exit 0 only when a ship qualified this very tree,
-//                                                   its evidence holds as read again now, and the artifact is the one
-//                                                   (a precheck is never what it reads)
-//   node skills/orbit-release/ship.mjs --ci         the fast tier a pipeline can hold: the definition of done, the
-//                                                   optional rows, and the autonomous ship AWAITED (`wait`) -- a green
-//                                                   fast CI is never release qualification
+//   node skills/orbit-release/ship.mjs --ci [--bump=changed|added|fixed|release]
+//        THE FAST TIER: the definition of done (the suite and its count, Five Lines, the fixture project and plans, the
+//        generated schemas, the five version files, the archive a host accepts, frontmatter, no compatibility layer, zero
+//        dependencies, the control server's Five Lines), the rows a release only reports (native host and backend
+//        acceptance, the control panel's build), and release qualification AWAITED (`wait`) -- a green fast tier is
+//        never release qualification. What a pipeline used to run is this one command, run where the release is made.
 //
-// Exit 0 = SHIPPABLE, PUBLISHABLE, PRECHECK HELD, or every gate --ci holds held · 2 = NOT SHIPPABLE, PRECHECK FAILED,
-// refused, or a gate failed -- nothing is tagged · 3 = BLOCKED: Docker, the coding host, its credential, a limit
-// (resumable) · 4 = a person paused or cancelled it. Nothing here writes this checkout, pushes, tags or publishes:
-// integrated repairs reach a branch only as a patch and a bundle a person applies.
-import { readFileSync } from "node:fs";
+//   node skills/orbit-release/ship.mjs --evidence --evaluation=<record.json> [--artifact=<zip>] [--json]
+//        THE PUBLISH GATE: exit 0 only when, in order, this checkout is clean, the fast tier holds on this tree, the
+//        independent evaluator's record (node evaluator/cli.mjs record) has the shape the evaluator writes and is about
+//        this release, the pre-registration it names is the committed one, the plugin every release-candidate arm ran
+//        is the plugin HEAD ships (content digests of the two archives, computed here), every pre-registered held-out
+//        run has an outcome word, the record's comparisons are what its runs say, and the release's pre-registered
+//        verdict is not REGRESSED. It prints the comparison table, IMPROVED / NO_DIFFERENCE / INCONCLUSIVE said plainly.
+//
+// Exit 0 = every gate of the fast tier held, or PUBLISHABLE · 2 = a gate failed, NOT PUBLISHABLE (naming the row), or
+// the command was not one of the two.
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Refused } from "../../src/errors.mjs";
 import { flag, has } from "../../src/learn/args.mjs";
 import { printable } from "../../src/printable.mjs";
 import { command } from "../../src/project/command.mjs";
-import { repositoryPaths } from "../../src/project/repository.mjs";
 import { backendAcceptance } from "./backend.mjs";
 import { GATES, bump, report, shippable } from "./gates.mjs";
 import { nativeAcceptance, optional } from "./hosts.mjs";
+import { controlPanel } from "./panel.mjs";
+import { archiveOf } from "./ship/artifact.mjs";
 import { AWAITED, ciVerdict, markOf } from "./ship/ci.mjs";
-import { doorOf } from "./ship/door.mjs";
-import { LIMIT_FLAGS, policyOf } from "./ship/policy.mjs";
-import { benchPort, gatesAt, gitPort, workspacesOf } from "./ship/ports.mjs";
-import { CREDENTIAL_NAMES } from "./ship/preflight.mjs";
-import { saidEvidence, saidOptional, saidResult, saidStatus } from "./ship/report.mjs";
-import { begunShip, evidenceAsked, resumedShip, statusOf } from "./ship/session.mjs";
-import { driven } from "./ship/steps.mjs";
+import { factsOf, publishableOf, saidEvidence } from "./ship/evidence.mjs";
+import { gatesAt, gitAt } from "./ship/ports.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const args = process.argv.slice(2);
@@ -66,9 +39,12 @@ const JSON_OUT = has(args, "json");
 
 const print = (text) => console.log(printable(text));
 
-// ---- the fast tier: what a pipeline can hold ----------------------------------------------------------------------------
+// ---- the fast tier ----------------------------------------------------------------------------------------------------------
 
-const optionalRows = (root) => [optional(nativeAcceptance(root)), optional(backendAcceptance(root))];
+const optionalRows = (root) => [optional(nativeAcceptance(root)), optional(backendAcceptance(root)), optional(controlPanel(root, process.env))];
+
+// What --ci runs and what --evidence holds this tree to: one list, so the two can never disagree about done.
+const fastTier = () => [...report(gatesAt(process.env)(ROOT), GATES), ...optionalRows(ROOT)];
 
 const versionOf = () => JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version;
 
@@ -77,81 +53,43 @@ const CHANGE = flag(args, "bump");
 const nextVersion = () => (CHANGE ? `version ${versionOf()} -> ${bump(versionOf(), CHANGE)} (${CHANGE}) — set it in all FIVE version files.` : `version ${versionOf()}. Pass --bump=changed|added|fixed|release to see the next one.`);
 
 function ciShip() {
-  const rows = [...report(gatesAt(process.env)(ROOT), GATES), ...optionalRows(ROOT), AWAITED];
+  const rows = [...fastTier(), AWAITED];
   for (const r of rows) print(`${markOf(r)}  ${r.name}\n        ${r.detail}`);
-  print(`\n${ciVerdict(rows)}`);
+  print(`\n${ciVerdict(rows)}\n  ${nextVersion()}`);
   return shippable(rows) ? 0 : 2;
 }
 
-// ---- the ports this machine binds ---------------------------------------------------------------------------------------
+// ---- the publish gate ---------------------------------------------------------------------------------------------------------
 
-// What the task door, the store and the benchmark are asked with: this process's environment, without a ui-tests
-// override that would point the checkout's project somewhere else.
-const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== "ORBIT_UI_TESTS"));
+const git = gitAt(ROOT, process.env);
 
-function pathsOf() {
-  const p = repositoryPaths(ROOT, env);
-  if (!p) throw new Refused(`${ROOT} is not a git checkout: a ship runs from Orbit's own clone`);
-  return p;
-}
+// Every path git would call changed or new here -- tracked or not, ignored files aside.
+const dirty = () => ((r) => (r.ok ? r.out.split("\n").filter(Boolean).map((l) => l.slice(3)) : [`git status failed: ${r.err.trim().slice(0, 200)}`]))(git(["status", "--porcelain=v1", "--untracked-files=all"]));
 
-function worldOf() {
-  const p = pathsOf();
-  const policy = policyOf(readFileSync(join(ROOT, "skills", "orbit-release", "ship", "policy.json"), "utf8"));
-  return { root: ROOT, env, now: () => Date.now(), storeRoot: p.storeRoot, project: { key: p.storeKey, checkoutId: p.checkoutId }, policy, door: doorOf({ cli: join(ROOT, "cli", "task.mjs"), cwd: ROOT, env }), bench: benchPort(ROOT, env), git: gitPort(join(p.storeRoot, "workspaces", ".no-hooks"), env), gatesAt: gatesAt(process.env), workspaces: workspacesOf(ROOT, p.storeRoot, env), print: JSON_OUT ? null : print, everyMs: 15000, optional: optionalRows(ROOT) };
-}
+const readIn = (rel) => (existsSync(join(ROOT, rel)) ? readFileSync(join(ROOT, rel), "utf8") : null);
 
-const int = (v) => (v === undefined ? undefined : /^\d+$/.test(v) ? Number(v) : Number.NaN);
+const readAt = (file) => (file && existsSync(resolve(file)) ? readFileSync(resolve(file), "utf8") : null);
 
-const num = (v) => (v === undefined ? undefined : Number(v));
+const recordText = () => ((file) => (file ? { file, text: readAt(file) } : null))(flag(args, "evaluation"));
 
-const credentialAsked = (v) => (v === undefined || CREDENTIAL_NAMES.includes(v) ? v ?? null : refused(`--credential names one of ${CREDENTIAL_NAMES.join(", ")} -- a NAME, never a value`));
+const given = () => ((file) => (file ? readFileSync(resolve(file)) : null))(flag(args, "artifact"));
 
-function refused(says) {
-  throw new Refused(says);
-}
+const announcedTier = () => (JSON_OUT ? null : print("the fast tier, on this tree (the suite takes minutes) ..."), fastTier());
 
-// Each limit as its flag says it: a whole number, but USD.
-const READ = { usd: num };
+const ports = () => ({ dirty, fastTier: announcedTier, version: versionOf, recordText, read: readIn, archive: (rev) => archiveOf(git, rev), given });
 
-const limitsAsked = () => Object.fromEntries(Object.entries(LIMIT_FLAGS).map(([k, f]) => [k, (READ[k] ?? int)(flag(args, f))]));
-
-const optionsAsked = () => ({ model: flag(args, "model") ?? null, effort: flag(args, "effort") ?? null, credential: credentialAsked(flag(args, "credential")), caFile: flag(args, "ca-file") ?? env.ORBIT_BENCHMARK_CA_FILE ?? null, limits: limitsAsked(), repair: !has(args, "no-repair"), failFast: !has(args, "no-fail-fast"), precheck: has(args, "precheck"), version: versionOf() });
-
-// ---- the autonomous ship -------------------------------------------------------------------------------------------------
-
-const shipOf = (world) => (flag(args, "resume") ? resumedShip(world, flag(args, "resume"), optionsAsked()) : begunShip(world, optionsAsked()));
-
-// The host the model-carried rows are asked to run on: its model and effort, when the ship names them.
-const hostSaid = (o) => `${o.model ? ` · model ${o.model}` : ""}${o.effort ? ` · effort ${o.effort}` : ""}`;
-
-const announced = (ctx) => (JSON_OUT ? ctx : (print(`SHIP  ${ctx.ship.id} · task ${ctx.task} · ${ctx.manifest.mode} · from ${ctx.manifest.start.branch ?? "detached"}@${ctx.manifest.start.commit.slice(0, 12)} · limits ${ctx.manifest.limits.minutes} min, ${ctx.manifest.limits.usd} USD, ${ctx.manifest.limits.cycles} cycle(s)${hostSaid(ctx.options)}`), ctx));
-
-async function autonomousShip() {
-  const world = worldOf();
-  const ctx = announced(shipOf(world));
-  const result = { ...(await driven(ctx)), optional: world.optional };
-  print(JSON_OUT ? JSON.stringify(result, null, 2) : `${saidResult(result)}${result.exit === 0 ? `\n  ${nextVersion()}` : ""}`);
-  return result.exit;
-}
-
-async function status() {
-  const s = await statusOf(worldOf(), flag(args, "status") ?? null);
-  print(JSON_OUT ? JSON.stringify(s, null, 2) : saidStatus(s));
-  return 0;
-}
-
-async function evidence() {
-  const e = await evidenceAsked(worldOf(), flag(args, "evidence") ?? null, flag(args, "artifact") ?? null);
-  print(JSON_OUT ? JSON.stringify(e, null, 2) : `${saidEvidence(e)}\n${saidOptional(optionalRows(ROOT)).join("\n")}`);
+function evidence() {
+  const e = publishableOf(factsOf(ports()));
+  print(JSON_OUT ? JSON.stringify(e, null, 2) : saidEvidence(e));
   return e.publishable ? 0 : 2;
 }
 
+const usage = () => (print("usage: node skills/orbit-release/ship.mjs --ci [--bump=…] | --evidence --evaluation=<record.json> [--artifact=<zip>] [--json] (see the head of ship.mjs)"), 2);
+
 const MODES = [
   { when: () => has(args, "ci"), run: ciShip },
-  { when: () => has(args, "status") || flag(args, "status") !== undefined, run: status },
-  { when: () => has(args, "evidence") || flag(args, "evidence") !== undefined, run: evidence },
-  { when: () => true, run: autonomousShip },
+  { when: () => has(args, "evidence"), run: evidence },
+  { when: () => true, run: usage },
 ];
 
 command(async () => {

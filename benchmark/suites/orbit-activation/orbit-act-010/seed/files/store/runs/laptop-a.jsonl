@@ -1,2 +1,0 @@
-{"at":"2026-11-03T09:00:00.000Z","host":"laptop-a","case":"confirm-order","status":"PASS","done":4,"of":4,"fe_commit":"abc1234"}
-{"at":"2026-11-04T09:00:00.000Z","host":"laptop-a","case":"confirm-order","status":"FAIL","done":2,"of":4,"fe_commit":"def5678"}

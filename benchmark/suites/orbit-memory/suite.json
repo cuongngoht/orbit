@@ -1,7 +1,0 @@
-{
-  "schema": 1,
-  "id": "orbit-memory",
-  "version": "1.1.0",
-  "title": "Orbit's memory, held to how sure it may be, what survives a crash, and what a second look costs",
-  "cases": ["ORBIT-MEM-001", "ORBIT-MEM-002", "ORBIT-MEM-003", "ORBIT-MEM-004", "ORBIT-MEM-005", "ORBIT-MEM-006", "ORBIT-MEM-007", "ORBIT-MEM-008", "ORBIT-MEM-009"]
-}

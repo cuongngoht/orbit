@@ -1,3 +1,0 @@
-[
-  { "on": "order-confirmation/Place order", "api": "POST /orders/{id}/confirm", "backend": "orders", "src": "src/api.mjs:1", "timing": "sync", "seen": "src" }
-]

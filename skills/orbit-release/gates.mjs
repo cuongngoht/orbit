@@ -53,7 +53,25 @@ export const GATES = [
     name: "no compatibility layer ships: no adapter module, no legacy alias",
     check: (run) => counted(run(["--test", "test/no-compat-layer.test.mjs"])),
   },
+  // Two the pipeline held on its own, asked here since 0.6.0 removed every workflow (backlog Q8), so nothing it ran is
+  // lost: what CI ran is this one command, run where the release is made.
+  {
+    name: "zero dependencies: the plugin and the control server declare none",
+    check: (run) => dependencyFree(run(["-e", DEPENDENCIES])),
+  },
+  {
+    name: "the control server holds to Five Lines",
+    check: (run) => matched(run(["cli/check-five-lines.mjs", "control-server/src", "--strict"]), /^0 finding\(s\)/m, "the control server's lint reported findings"),
+  },
 ];
+
+// Every package.json a release ships code from, and what each declares it needs: nothing, by rule.
+const DEPENDENCIES = 'const bad=["package.json","control-server/package.json"].filter((f)=>{const p=require("./"+f);return Object.keys({...p.dependencies,...p.devDependencies,...p.optionalDependencies,...p.peerDependencies}).length>0});console.log(bad.join(", ")||"ok")';
+
+function dependencyFree(r) {
+  const said = firstLine(r.out);
+  return said === "ok" ? { ok: true, detail: "package.json and control-server/package.json declare no dependency" } : { ok: false, detail: `${said || "the check said nothing"}: zero dependencies is a rule` };
+}
 
 // Printed by the child, because only the child knows where it is installed.
 // FIVE files. The root plugin.json carries a version too, and it was not in

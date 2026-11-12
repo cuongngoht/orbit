@@ -151,7 +151,7 @@ through its owner. English and Vietnamese are read alike, words past the first 2
 suggests; Claude decides. `test/fixtures/routing/corpus.jsonl` holds it to realistic prompts in both languages.
 
 Since 0.6.0 a FACT about the session's work brings a skill or agent in as well as the prompt's words, and never a word
-the engine guessed (ADR 0059): a check the session ran after its edits failed (`check.failed`), the same check failed
+the engine guessed ([ADR 0059](docs/adr/0059-proactive-execution-from-facts-said-once-and-explained.md)): a check the session ran after its edits failed (`check.failed`), the same check failed
 three times in a row with nothing changed between (`check.repeats`, said once as no progress), or the session's tracked
 work has a knowledge need nobody answered (`knowledge.owed`). A catalog row names the facts its playbook handles
 (`reactsTo`), and a fact that holds counts for it as one of its words would -- so a check that failed after the last
@@ -408,7 +408,7 @@ A host proposes what it found with `--with-refs`: `{ "task": "…", "refs": [{ "
 search of the index; one the tree does not hold is refused by name and never listed. Composing RELEVANT and
 SUFFICIENCY writes nothing: only the sections' own memory-first commands refresh what they keep.
 
-**Three levels (0.6.0, ADR 0058).** SUFFICIENCY also answers, level by level, whether the task knows enough to
+**Three levels (0.6.0, [ADR 0058](docs/adr/0058-a-task-knows-enough-by-levels-on-its-own-work.md)).** SUFFICIENCY also answers, level by level, whether the task knows enough to
 **investigate** (a direct file or symbol the tracked tree holds), to **change** (the direct items confirmed by a read,
 what depends on them known or said unknown, a done criterion recorded as a `proof` need on the task's own work, and the
 check that would prove it identified) and to **conclude** (every proof need satisfied, nothing it rests on moved since,

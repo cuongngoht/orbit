@@ -46,6 +46,7 @@
 // checkpoint | resume` write.
 //
 // Exit 0 = printed (a section may still say UNKNOWN) · 2 = bad usage.
+import { engined, enginedDeep } from "../src/engined.mjs";
 import { readFileSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -146,9 +147,9 @@ const claimsAnswer = () => ((r) => (r.ok ? JSON.parse(r.out) : null))(processes.
 const groundingFor = (project, worked) => groundingOf({ env: ENV, pluginRoot: PLUGIN_ROOT, cwd: process.cwd(), project, task: TASK, refs: INPUT.refs ?? [], workingSet: worked.latest, claims: claimsAnswer, work: WORK });
 
 function shown(status, sections, decision, grounding) {
-  if (argv.includes("--json")) return console.log(JSON.stringify({ status, sections, decision, ...grounding }, null, 2));
+  if (argv.includes("--json")) return console.log(JSON.stringify(enginedDeep({ status, sections, decision, ...grounding }, PLUGIN_ROOT), null, 2));
   opening(status, grounding.sufficiency, grounding.rounds);
-  for (const s of sections) console.log(`== ${s.title} ==\n${s.lines.join("\n")}\n`);
+  for (const s of sections) console.log(engined(`== ${s.title} ==\n${s.lines.join("\n")}\n`, PLUGIN_ROOT));
   closing(decision, grounding);
   unknowns(sections);
 }
@@ -162,7 +163,7 @@ const roundLines = (s, r) => (!r ? [] : r.problem ? [`ROUNDS  ${r.problem}`] : [
 
 function closing(decision, grounding) {
   console.log(`== RELEVANT ==\n${relevanceLines(grounding.relevant, grounding.relevance, SECTION_LINES).join("\n")}\n`);
-  console.log(`== RESOURCES ==\n${formatDecision(decision, { callVia: `node ${join(PLUGIN_ROOT, "cli", "mcp.mjs")} call` }) ?? "nothing beyond what this session already has"}`);
+  console.log(`== RESOURCES ==\n${formatDecision(decision, { engine: PLUGIN_ROOT, callVia: `node ${join(PLUGIN_ROOT, "cli", "mcp.mjs")} call` }) ?? "nothing beyond what this session already has"}`);
 }
 
 function unknowns(sections) {

@@ -23,6 +23,7 @@
 // anything else opens with ONE line: the word, why, and the one way in (the skill
 // or agent to invoke, or for COORDINATED, RESUME and SATELLITE the one command,
 // `<engine>` read as `opts.engine`). The lines a v2 decision had follow, unchanged.
+import { engined } from "../engined.mjs";
 import { labelOf } from "../resources/model.mjs";
 
 export const BUDGET_BYTES = 2048;
@@ -53,8 +54,6 @@ function listed(decision, shown, opts) {
 }
 
 const strategyLine = (d, engine) => (d?.strategy ? [`Orbit strategy: ${d.strategy.word} -- ${d.strategy.because}${d.activation?.invoke ? `: ${engined(d.activation.invoke, engine)}` : ""}.`] : []);
-
-const engined = (text, engine) => (engine ? text.replaceAll("<engine>", engine) : text);
 
 const section = (title, entries, dispatches) => (entries.length ? [title, ...entries.map((e) => line(e, dispatches)), ""] : []);
 

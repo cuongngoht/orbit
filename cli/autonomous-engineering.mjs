@@ -62,6 +62,7 @@
 // Exit 0 = done (a task that stopped for a reason is a state) · 2 = REFUSED (bad usage, a decision
 // the protocol refuses, a rule that said no) · 3 = BLOCKED (a lock held, a machine that could not
 // answer). Never 1.
+import { engined, enginedDeep } from "../src/engined.mjs";
 import { readFileSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -99,9 +100,12 @@ import { switchOf } from "../src/project/env.mjs";
 import { requirementsContext } from "../src/requirements/context.mjs";
 import { status as requirementStatus } from "../src/requirements/views/status.mjs";
 import { createContext } from "../src/run/context.mjs";
+import { checkTarget } from "../src/runtime/connectivity/check.mjs";
+import { targetsOf } from "../src/runtime/connectivity/targets.mjs";
 import { runtimeProject } from "../src/runtime/context.mjs";
 import { componentGraphOf } from "../src/runtime/graph.mjs";
 import { COMMANDS as RUNTIME } from "../src/runtime/index.mjs";
+import { restoredOf } from "../src/runtime/sandbox/restore.mjs";
 import { look } from "../src/runtime/understanding.mjs";
 import { scrub } from "../src/scrub.mjs";
 import { sourcesContext } from "../src/sources/context.mjs";
@@ -168,7 +172,7 @@ function switchedOn() {
 }
 
 function printed(entry, result) {
-  console.log(args.includes("--json") ? JSON.stringify(result, null, 2) : printable([entry.say(result), attachedLine(result.tracking)].filter(Boolean).join("\n")));
+  console.log(args.includes("--json") ? JSON.stringify(enginedDeep(result, PLUGIN_ROOT), null, 2) : printable(engined([entry.say(result), attachedLine(result.tracking)].filter(Boolean).join("\n"), PLUGIN_ROOT)));
   emitted(result);
   learnedAfter(result);
 }
@@ -374,7 +378,29 @@ function observerFor(h) {
   return (command, at) => (at.action ? ((file) => createObservation({ identity: { task: at.task, action: at.action, attempt: at.attempt ?? null, check: at.ref }, command, why: at.why, adapters: ADAPTERS, sink: activitySink(h, file), clock: () => Date.now(), budget: budgetFor(h, file) }))(activityFile(h.paths.storeRoot, at.task, at.action)) : null);
 }
 
-const checksPort = (h, rt) => ({ declared: () => declared(rt), graph: () => graphOf(rt), run: (command, at) => createCheckRunner({ process: h.proc, env: ENV, envNamesOf: envNamesOf(rt), clock: () => Date.now(), keep: (where, text) => roomAt(h.io, roomDir(h, where.task)).keep(where.ref, text), observer: observerFor(h) }).run(command, at) });
+const checksPort = (h, rt, boxOf) => ({ declared: () => declared(rt), graph: () => graphOf(rt), run: (command, at) => createCheckRunner({ process: h.proc, env: ENV, envNamesOf: envNamesOf(rt), clock: () => Date.now(), keep: (where, text) => roomAt(h.io, roomDir(h, where.task)).keep(where.ref, text), observer: observerFor(h), factsOf: factsOf(rt, boxOf) }).run(command, at) });
+
+// ---- what a failed check is read with, beside its own answer (0.6.0, P4: src/orchestration/failure.mjs) -----------
+
+// Only what is real here: the task's sandbox document says how the restore of the check's component's dependencies in
+// THIS workspace came out (none ran: null), and the connectivity targets a person said the component requires are
+// asked again, once, from where the check ran (this machine) -- a name lookup and one TCP connect each, nothing read.
+const factsOf = (rt, boxOf) => async (command, at) => ({ restore: restoreFact(boxOf, at.task, command.component), unreachable: await unreachableFor(rt, command.component).catch(() => []) });
+
+function restoreFact(boxOf, task, component) {
+  try { return restoredOf(boxOf(task).sandboxDoc(), component); }
+  catch { return null; }
+}
+
+const NATIVE = "native";
+
+const neededBy = (ctx, component) => targetsOf(ctx.readSettings().settings).filter((t) => t.requiredBy.includes(component) && t.checkFrom.includes(NATIVE));
+
+async function unreachableFor(rt, component) {
+  const ctx = rt();
+  const asked = await Promise.all(neededBy(ctx, component).map((t) => checkTarget(ctx, t.id, { providers: [NATIVE] })));
+  return asked.filter((a) => a.results[NATIVE]?.state === "UNREACHABLE").map((a) => ({ target: a.target.id, label: a.target.label }));
+}
 
 function gathered(h, text) {
   const r = h.proc.run(process.execPath, [join(PLUGIN_ROOT, "cli", "context.mjs"), "--for-stdin", "--json"], { input: text, env: ENV, cwd: h.paths.root, timeoutMs: CONTEXT_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
@@ -449,7 +475,7 @@ function assembled(h, rt, rooms, caps) {
   const lazyRooms = { resolve: (ref) => requirementsPort(rooms()).resolve(ref), latest: (root) => requirementsPort(rooms()).latest(root), look: (task) => requirementsPort(rooms()).look(task) };
   const lazyWork = { ensure: (spec) => workPort(rooms()).ensure(spec), objectiveOf: (root) => workPort(rooms()).objectiveOf(root), find: (ref) => workPort(rooms()).find(ref) };
   const ready = { caps: null };
-  return { task: taskPort(taskContext(h)), requirements: lazyRooms, work: lazyWork, runtime: runtimePort(rt), sandbox: sandboxPort(boxes(h), rt), workspace: createWorkspaces({ root: h.paths.storeRoot, io: h.io, trees, host: h.io.host, now: () => new Date().toISOString() }), base: { head: () => trees.head(), dirty: () => trees.dirty() }, checks: checksPort(h, rt), context: { gather: async (text) => gathered(h, text) }, capabilities: capabilitiesPort(() => ready.caps), investigations: { outcome: (id) => outcomeOf(h, id) }, roomOf: (id) => roomAt(h.io, roomDir(h, id)), lock: (id, fn) => locked(h, id, fn), liveness: livenessOf(h), now: () => new Date().toISOString(), host: h.io.host, pid: process.pid, pidStartedAt: () => h.proc.startedAtOf(process.pid), actor: actor(), readDecision: (file) => readFileSync(file ?? 0, "utf8"), where: () => ({ orchestration: join(h.paths.storeRoot, "orchestration"), workspaces: join(h.paths.storeRoot, "workspaces") }), prepare: async () => { ready.caps = await caps(); } };
+  return { task: taskPort(taskContext(h)), requirements: lazyRooms, work: lazyWork, runtime: runtimePort(rt), sandbox: sandboxPort(boxes(h), rt), workspace: createWorkspaces({ root: h.paths.storeRoot, io: h.io, trees, host: h.io.host, now: () => new Date().toISOString() }), base: { head: () => trees.head(), dirty: () => trees.dirty() }, checks: checksPort(h, rt, boxes(h)), context: { gather: async (text) => gathered(h, text) }, capabilities: capabilitiesPort(() => ready.caps), investigations: { outcome: (id) => outcomeOf(h, id) }, roomOf: (id) => roomAt(h.io, roomDir(h, id)), lock: (id, fn) => locked(h, id, fn), liveness: livenessOf(h), now: () => new Date().toISOString(), host: h.io.host, pid: process.pid, pidStartedAt: () => h.proc.startedAtOf(process.pid), actor: actor(), readDecision: (file) => readFileSync(file ?? 0, "utf8"), where: () => ({ orchestration: join(h.paths.storeRoot, "orchestration"), workspaces: join(h.paths.storeRoot, "workspaces") }), prepare: async () => { ready.caps = await caps(); } };
 }
 
 // ---- the session trail: ids and words, never a sentence of a task ---------------------------------

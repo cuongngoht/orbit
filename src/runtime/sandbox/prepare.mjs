@@ -168,7 +168,7 @@ async function ranAll(c, rows) {
     if (!unchangedSince(c, r)) return halt("environment", MOVED_UNDER_TRUST(r));
     const done = ranOne(c, r);
     receipts[r.fingerprint] = done.receipt;
-    if (!done.ok) return halt("environment", `${done.because}; what it printed is in the sandbox's operations room`);
+    if (!done.ok) return { ...halt("environment", `${done.because}; what it printed is in the sandbox's operations room`), patch: { receipts } };
   }
   return go({ receipts });
 }
@@ -329,11 +329,15 @@ function answerOf(c, outcome) {
 
 // A sandbox that cannot go on keeps WHY on its own document, so whoever looks at it later is told, and a person
 // who acts finds it still there to prepare again.
+// What a restore came to is kept with it (0.6.0, P4): a failed one is a fact a check that fails after it is read with
+// (src/runtime/sandbox/restore.mjs `restoredOf`), never only a sentence.
 function blockedOn(c, outcome) {
   const doc = c.ctx.sandboxDoc();
-  if (!outcome.ok) c.ctx.sandboxes.write({ ...doc, blocked: { needs: outcome.needs, because: outcome.because, at: c.ctx.now() }, updatedAt: c.ctx.now() });
+  if (!outcome.ok) c.ctx.sandboxes.write({ ...doc, ...restoreOnBlock(doc, c.state), blocked: { needs: outcome.needs, because: outcome.because, at: c.ctx.now() }, updatedAt: c.ctx.now() });
   return outcome;
 }
+
+const restoreOnBlock = (doc, s) => (s.receipts ? { restore: restoreKept(doc, s) } : {});
 
 // -> { environment, state: READY | BLOCKED, tree, reused, placements, endpoints, blocked }. Idempotent: a sandbox
 // that is READY at the print of what it would be built from is the answer, and nothing runs again.

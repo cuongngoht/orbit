@@ -34,6 +34,8 @@
 // writes anything but an assessment's own snapshot.
 //
 // Exit 0 = done · 2 = REFUSED · 3 = BLOCKED. Never 1.
+import { engined, enginedDeep } from "../src/engined.mjs";
+import { pluginRoot } from "../src/version.mjs";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -61,7 +63,7 @@ async function main() {
   const entry = Object.hasOwn(COMMANDS, cmd ?? "") ? COMMANDS[cmd] : null;
   if (!entry) return help();
   const result = await entry.run(portsHere(), args);
-  console.log(args.includes("--json") ? JSON.stringify(result, null, 2) : printable(entry.say(result)));
+  console.log(args.includes("--json") ? JSON.stringify(enginedDeep(result, pluginRoot()), null, 2) : printable(engined(entry.say(result), pluginRoot())));
 }
 
 function jsonFile(name) {

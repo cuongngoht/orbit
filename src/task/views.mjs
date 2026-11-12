@@ -63,9 +63,10 @@ const ACTION_STATES = [
   { when: () => true, state: (a) => a.ended.outcome ?? "ended" },
 ];
 
-const actionState = (a) => ACTION_STATES.find((r) => r.when(a)).state(a);
+export const actionState = (a) => ACTION_STATES.find((r) => r.when(a)).state(a);
 
-const receiptsFor = (m, a) => [...m.receipts.entries()].filter(([key, r]) => r.action === a.id || key === a.ended?.receipt || r.ref === a.ended?.receipt).map(([key]) => key);
+// The receipts an action rests on: linked to it, or named by its end. Shared with `task why` (why.mjs).
+export const receiptsFor = (m, a) => [...m.receipts.entries()].filter(([key, r]) => r.action === a.id || key === a.ended?.receipt || r.ref === a.ended?.receipt).map(([key]) => key);
 
 function actionView(m, a) {
   const receipts = receiptsFor(m, a);

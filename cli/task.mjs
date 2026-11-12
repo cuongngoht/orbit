@@ -52,6 +52,10 @@
 //   node task.mjs show <task>              where it stands: state, stage, attempt, decision, approvals
 //   node task.mjs events <task> [--since=<n>]
 //                                          its journal, line by line, from a position on
+//   node task.mjs why <task>               each decision -- observed, hypothesis, reason, evidence cited --
+//                                          how it settled (its action, receipts, result: a receipt, or
+//                                          REPORTED and never proven; OPEN or AMBIGUOUS read back, never
+//                                          resent) and which receipt or record moved the task next
 //   node task.mjs list                     this checkout's tasks
 //   node task.mjs machine                  every task on this machine, across the projects Orbit knows
 //   node task.mjs where                    where this checkout's tasks are kept
@@ -65,6 +69,8 @@
 //
 // Exit 0 = done · 2 = REFUSED (bad usage, an unknown task, a rule that said no, a stale
 // revision) · 3 = BLOCKED (another session holds the task, nowhere to keep anything). Never 1.
+import { engined, enginedDeep } from "../src/engined.mjs";
+import { pluginRoot } from "../src/version.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { commandEnvironment } from "../skills/orbit-learn/hosts/settings.mjs";
@@ -105,7 +111,7 @@ function main() {
 const ran = (entry, ctx) => ((result) => (cmd === "create" ? tracked(ctx, result) : result))(entry.run(ctx, args));
 
 function printed(entry, ctx, result) {
-  console.log(args.includes("--json") ? JSON.stringify(result, null, 2) : printable([entry.say(result), attachedLine(result.tracking)].filter(Boolean).join("\n")));
+  console.log(args.includes("--json") ? JSON.stringify(enginedDeep(result, pluginRoot()), null, 2) : printable(engined([entry.say(result), attachedLine(result.tracking)].filter(Boolean).join("\n"), pluginRoot())));
   emitted(ctx, result);
 }
 

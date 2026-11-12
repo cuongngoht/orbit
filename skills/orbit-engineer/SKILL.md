@@ -185,6 +185,9 @@ long timeout. If the host killed it, `reconcile` settles it once its process is 
   stopped by itself) for more, and the workspace's code. Make ONE hypothesis. A `low`-confidence
   class is a hint, not a fact. Then `diagnose` with `then: "fix"` (change something), or
   `"retest"` (the same change again, when the failure looked like the machine's, not the code's).
+  DEPENDENCY (the workspace's dependency restore failed: `prepare-sandbox` restores them again) and ACCESS (a target
+  the component needs could not be reached from here: a person's network or target settings) are the machine's, never
+  the change's -- `retest` once what they name is fixed, never `fix` the code for them.
   A review that failed on SCOPE has two honest answers. When the change NEEDS the path the plan left
   out (a test you added, a file the fix must touch), send `plan` again here, naming every path the
   change needs -- the earlier plan stays in the journal -- then `diagnose` `retest`: the same change,

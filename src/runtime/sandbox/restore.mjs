@@ -46,6 +46,11 @@ export const RESTORE_ROWS = [
 
 export const restoreRowOf = (c) => RESTORE_ROWS.find((r) => r.when(c));
 
+// How the last restore of one component's dependencies in this sandbox came out, from the sandbox's own document: its
+// receipt ({ at, ok, status, durationMs }) under the fingerprint its plan was restored at, or null when none ran. What
+// a check that fails after it is classified with (src/orchestration/failure.mjs DEPENDENCY) -- a fact, never a sentence.
+export const restoredOf = (doc, component) => ((plan) => (plan ? doc.restore?.receipts?.[plan.fingerprint] ?? null : null))((doc?.restore?.plans ?? []).find((p) => p.component === component));
+
 // Run one plan in the workspace. -> { ok, status, durationMs, log }, the log being text for the room.
 export function restore(ctx, plan, envNames) {
   const started = ctx.clock();

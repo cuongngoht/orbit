@@ -43,6 +43,8 @@
 //
 // Exit 0 = done (nothing tracked, or nothing to change, is not a failure) · 2 = REFUSED (bad usage, an unknown or untracked
 // work, an id that is not that thing's shape) · 3 = BLOCKED (another session holds the work, nowhere to keep anything). Never 1.
+import { engined, enginedDeep } from "../src/engined.mjs";
+import { pluginRoot } from "../src/version.mjs";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -79,7 +81,7 @@ function main() {
 }
 
 function printed(entry, result) {
-  console.log(args.includes("--json") ? JSON.stringify(result, null, 2) : printable(entry.say(result)));
+  console.log(args.includes("--json") ? JSON.stringify(enginedDeep(result, pluginRoot()), null, 2) : printable(engined(entry.say(result), pluginRoot())));
 }
 
 const quietly = (fn) => {

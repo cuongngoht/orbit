@@ -8,6 +8,8 @@ import { test } from "node:test";
 import { sealed } from "./home.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+// The plugin's own root, as the CLI that prints a NEXT line knows it (0.6.0, Q3: no line a host reads carries `<engine>`).
+const ROOT_SAID = ROOT.replaceAll("\\", "/").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const UI_TESTS = join(ROOT, "test", "fixtures", "ui-tests");
 const temp = () => mkdtempSync(join(tmpdir(), "orbit-help-"));
 
@@ -25,7 +27,7 @@ test("it recommends architecture ensure over an unscanned fixture project, and e
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /PROJECT {7}fixture/);
   assert.match(r.stdout, /UNDERSTANDING/);
-  assert.match(r.stdout, /NEXT {10}node <engine>\/cli\/architecture\.mjs ensure/);
+  assert.match(r.stdout, new RegExp(`NEXT {10}node ${ROOT_SAID}/cli/architecture\\.mjs ensure`));
   assert.match(r.stdout, /BECAUSE {7}nothing has scanned/);
 });
 
@@ -71,7 +73,7 @@ test("--for routes a task: a change to the code is coordinated by default, the d
   const r = runHelp(["--for=implement the ZETA-9181 webhook handler in the backend"], store);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /TASK {10}development \(high confidence\)/);
-  assert.match(r.stdout, /NEXT {10}node <engine>\/cli\/automation\.mjs start/, "nothing to turn on");
+  assert.match(r.stdout, new RegExp(`NEXT {10}node ${ROOT_SAID}/cli/automation\\.mjs start`), "nothing to turn on");
   assert.equal(JSON.parse(runHelp(["--json", "--for=add an MCP server"], store).stdout).next, "control", "a question about resources is answered, not coordinated");
   restricted(store);
   const kept = runHelp(["--for=implement the ZETA-9181 webhook handler in the backend"], store);

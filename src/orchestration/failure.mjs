@@ -1,10 +1,13 @@
 // What a FAILED check is about, and the one identity two runs of the same failure share.
 //
-//   classify(facts)    an ordered table over facts a caller can demonstrate -- did it start,
-//                      did it finish, did the code change, how did the same command do at the
-//                      baseline -- never over the text of an error message. `high` only with a
-//                      baseline that passed; `low` routes nowhere. A class chooses what to look at
-//                      next; it is never a verdict and never turns a failure into a pass.
+//   classify(facts)    an ordered table over facts a caller can demonstrate -- did it start (and the
+//                      OS's own code when it did not), how it exited, did it finish, did the code
+//                      change, how did the same command do at the baseline, did the workspace's
+//                      dependency restore fail, could a target it needs be reached from here --
+//                      never over the text of an error message. `high` only with a baseline that
+//                      passed, or a fact that the check could not speak for the change at all;
+//                      `low` routes nowhere. A class chooses what to look at next; it is never a
+//                      verdict and never turns a failure into a pass.
 //   signatureOf(run)   a 12-hex hash of what failed, normalised so that what changes between two
 //                      runs of the SAME failure -- a timestamp, an absolute path, an id, a duration,
 //                      the order lines arrive in -- does not move it, and a different failing test
@@ -98,14 +101,41 @@ const passedAtBaseline = (f) => f.baseline?.state === "succeeded";
 
 const failedDifferently = (f) => f.baseline?.state === "failed" && f.baseline.signature !== f.signature;
 
-// A check that did not start says nothing about the change. One that ran past its time does not
-// either -- unless the same command passed before the change, which makes the change the thing that
-// moved.
+// What a child that never started, or the shell that ran it, says by CODE (0.6.0, P4): the Process port's `code` for a
+// spawn that failed, and the exit statuses a POSIX shell keeps for itself. Read as facts, never off the words.
+const SPAWN_SAYS = { ENOENT: "no such program here, or no such directory to run it in", EACCES: "it is here, but not executable" };
+
+const SHELL_SAYS = { 126: "found but could not be executed", 127: "not found" };
+
+const spawnSaid = (f) => (Object.hasOwn(SPAWN_SAYS, f.spawnCode ?? "") ? ` (${f.spawnCode}: ${SPAWN_SAYS[f.spawnCode]})` : "");
+
+const shellCode = (f) => Object.hasOwn(SHELL_SAYS, String(f.status));
+
+// What a check runs could not be run: it never started, or the shell that ran it could not find or execute a command.
+const unrunnable = (f) => f.started === false || shellCode(f);
+
+// The workspace's dependency restore for the check's component RAN and failed (its receipt), and the targets the
+// component requires that a fresh check from here could not reach -- facts the composition root hands in.
+const restoreFailed = (f) => f.restore?.ok === false;
+
+const unreachable = (f) => (Array.isArray(f.unreachable) ? f.unreachable : []);
+
+const restoreSaid = (f) => `restoring its dependencies in this workspace failed${Number.isInteger(f.restore.status) ? ` (exit ${f.restore.status})` : ""}`;
+
+const targetsSaid = (f) => unreachable(f).slice(0, 3).map((t) => t.label ?? t.target).join(", ") + (unreachable(f).length > 3 ? ", …" : "");
+
+// A check that did not start says nothing about the change, and neither does one whose dependencies failed to
+// restore or that needs something this machine cannot reach. One that ran past its time does not either -- unless the
+// same command passed before the change, which makes the change the thing that moved.
 export const CLASSES = [
-  { id: "ENVIRONMENT", confidence: "high", when: (f) => f.started === false, because: () => "it could not be started here" },
+  { id: "DEPENDENCY", confidence: "high", when: (f) => restoreFailed(f) && unrunnable(f), because: (f) => `${restoreSaid(f)}, and what the check runs could not be run${spawnSaid(f)}${shellCode(f) ? ` (exit ${f.status}: ${SHELL_SAYS[f.status]})` : ""}` },
+  { id: "ACCESS", confidence: "high", when: (f) => f.started === true && unreachable(f).length > 0, because: (f) => `it needs ${targetsSaid(f)}, which a fresh check from here could not reach: the network or the target's settings, not the change` },
+  { id: "DEPENDENCY", confidence: "low", when: (f) => restoreFailed(f), because: (f) => `${restoreSaid(f)}: nothing it says is about the change until a restore succeeds` },
+  { id: "ENVIRONMENT", confidence: "high", when: (f) => f.started === false, because: (f) => `it could not be started here${spawnSaid(f)}` },
   { id: "ENVIRONMENT", confidence: "low", when: (f) => sameAtBaseline(f), because: () => "it failed the same way before any change was made" },
   { id: "CODE", confidence: "high", when: (f) => f.purpose === "build" && f.changed && passedAtBaseline(f), because: () => "the build passed before the change and fails after it" },
   { id: "TEST", confidence: "high", when: (f) => f.purpose === "test" && f.changed && passedAtBaseline(f), because: () => "this test passed before the change and fails after it" },
+  { id: "ENVIRONMENT", confidence: "low", when: (f) => shellCode(f), because: (f) => `exit ${f.status} is the shell's own: a command it was asked to run was ${SHELL_SAYS[f.status]}` },
   { id: "ENVIRONMENT", confidence: "low", when: (f) => f.timedOut === true, because: () => "it did not finish in the time a check is given; nothing shows whether the change or the machine is why" },
   { id: "CODE", confidence: "low", when: (f) => f.purpose === "build" && f.changed, because: (f) => (failedDifferently(f) ? "the build fails after the change, and failed differently before it" : "the build fails after the change; nothing shows how it did before") },
   { id: "TEST", confidence: "low", when: (f) => f.purpose === "test" && f.changed, because: (f) => (failedDifferently(f) ? "this test fails after the change, and failed differently before it" : "this test fails after the change; nothing shows how it did before") },
@@ -115,7 +145,8 @@ export const CLASSES = [
   { id: "UNKNOWN", confidence: "low", when: () => true, because: () => "nothing shown is enough to say what it is about" },
 ];
 
-// facts: { purpose, started, timedOut, changed, signature, baseline: { state, signature } | null, unexpected?, missing? }
+// facts: { purpose, started, spawnCode?, status?, timedOut, changed, signature, baseline: { state, signature } | null,
+//          restore?: { ok, status } | null, unreachable?: [{ target, label }], unexpected?, missing? }
 export function classify(facts) {
   const row = CLASSES.find((c) => c.when(facts));
   return { class: row.id, confidence: row.confidence, because: row.because(facts) };

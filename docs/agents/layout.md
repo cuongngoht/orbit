@@ -787,6 +787,11 @@ src/improvement/  (0.3.0, ADR 0045) AUTONOMOUS SELF-IMPROVEMENT of a project's r
                composition root; cli/live.mjs and control-server/src/core.mjs hand IMPROVEMENT_SOURCE to Live
 src/printable.mjs  a LEAF: text a terminal may be handed -- control characters and reordering marks removed, so a
                manifest's text cannot drive the terminal it is printed to
+src/engined.mjs  a LEAF (0.6.0, Q3): `<engine>` and `<plugin>` read as the plugin's own root (one `/` separator), in a
+               line (`engined`) or in every string of a value (`enginedDeep`). A module names a command with the
+               placeholder; each writer a host reads -- the three hooks' payloads, a CLI's printed()/--json, the query
+               views' shared `out`, the goal printer, a refusal -- reads it ONCE, and a module that measures a line
+               against a budget reads it before measuring (test/no-placeholder.test.mjs)
 src/store/registry.mjs  the PROJECT REGISTRY: membership is the binding files (state/checkouts), a one-line summary
                per checkout beside them (state/projects) -- never a scan; a person forgets one whose directory is gone · fact-room.mjs one file per fact, a model
                and findings, which architecture's store and runtime's are two uses of · revisioned.mjs the

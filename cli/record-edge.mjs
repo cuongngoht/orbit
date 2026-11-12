@@ -21,6 +21,8 @@
 //
 // Exit 0 = written (or nothing to do), 1 = rejected or rolled back, 2 = usage/IO.
 import { command } from "../src/project/command.mjs";
+import { rootWord } from "../src/engined.mjs";
+import { pluginRoot } from "../src/version.mjs";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadCases } from "../src/dsl/index.mjs";
@@ -112,7 +114,7 @@ function done(ctx, accepted) {
 function provenance(accepted) {
   if (!REPLACE) return;
   console.log("\nwrite down what it used to say — a correction is the one write that erases evidence:");
-  for (const a of accepted) console.log(`  node <engine>/cli/note.mjs ${arg(a.key)} ${arg(`corrected ${a.changed.join(", ")}`)} ${arg(`was ${values(a, a.was)}`)} --type=finding`);
+  for (const a of accepted) console.log(`  node ${rootWord(pluginRoot())}/cli/note.mjs ${arg(a.key)} ${arg(`corrected ${a.changed.join(", ")}`)} ${arg(`was ${values(a, a.was)}`)} --type=finding`);
 }
 
 // Printed to be pasted, so it is quoted the way a shell needs. A selector is

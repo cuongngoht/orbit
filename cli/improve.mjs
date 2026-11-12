@@ -44,6 +44,7 @@
 //
 // Exit 0 = done (a campaign waiting for the host, a person or another session is a state) · 2 = REFUSED · 3 = BLOCKED.
 // Never 1.
+import { engined, enginedDeep } from "../src/engined.mjs";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -97,7 +98,7 @@ async function main() {
   const entry = Object.hasOwn(COMMANDS, cmd ?? "") ? COMMANDS[cmd] : null;
   if (!entry) return help();
   const result = await entry.run(await portsHere(), args);
-  if (!HOOK) console.log(args.includes("--json") ? JSON.stringify(result, null, 2) : printable(entry.say(result)));
+  if (!HOOK) console.log(args.includes("--json") ? JSON.stringify(enginedDeep(result, PLUGIN_ROOT), null, 2) : printable(engined(entry.say(result), PLUGIN_ROOT)));
 }
 
 const nowIso = () => new Date().toISOString();

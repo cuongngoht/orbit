@@ -51,10 +51,14 @@ const facts = (extra) => ({ purpose: "test", started: true, timedOut: false, cha
 
 test("each class is reached from facts, and only a passing baseline earns `high` for the change", () => {
   const cases = [
+    [{ started: false, restore: { ok: false, status: 1 } }, "DEPENDENCY", "high"],
+    [{ unreachable: [{ target: "db", label: "orders db" }] }, "ACCESS", "high"],
+    [{ restore: { ok: false, status: 1 }, baseline: { state: "succeeded", signature: null } }, "DEPENDENCY", "low"],
     [{ started: false }, "ENVIRONMENT", "high"],
     [{ baseline: { state: "failed", signature: "aaaaaaaaaaaa" } }, "ENVIRONMENT", "low"],
     [{ purpose: "build", baseline: { state: "succeeded", signature: null } }, "CODE", "high"],
     [{ baseline: { state: "succeeded", signature: null } }, "TEST", "high"],
+    [{ status: 127 }, "ENVIRONMENT", "low"],
     [{ timedOut: true }, "ENVIRONMENT", "low"],
     [{ timedOut: true, baseline: { state: "succeeded", signature: null } }, "TEST", "high"],
     [{ purpose: "build" }, "CODE", "low"],
@@ -68,6 +72,45 @@ test("each class is reached from facts, and only a passing baseline earns `high`
   for (const [given, cls, confidence] of cases) assert.deepEqual([classify(facts(given)).class, classify(facts(given)).confidence], [cls, confidence], JSON.stringify(given));
   const reached = new Set(cases.map(([given]) => CLASSES.findIndex((c) => c.when(facts(given)))));
   assert.equal(reached.size, CLASSES.length, "every row is reachable");
+});
+
+// 0.6.0, P4: what stopped a check is told from FACTS -- the Process port's code, the shell's own exit statuses, the
+// workspace's restore receipt and a fresh reach answer -- never from what the output says.
+test("DEPENDENCY is a restore that ran and failed: high when what the check runs then could not be run, low otherwise", () => {
+  const failedRestore = { ok: false, status: 1 };
+  for (const unrunnable of [{ started: false, spawnCode: "ENOENT" }, { status: 127 }, { status: 126 }]) {
+    const got = classify(facts({ ...unrunnable, restore: failedRestore }));
+    assert.deepEqual([got.class, got.confidence], ["DEPENDENCY", "high"], JSON.stringify(unrunnable));
+    assert.match(got.because, /restoring its dependencies in this workspace failed \(exit 1\)/);
+  }
+  assert.deepEqual(["class", "confidence"].map((k) => classify(facts({ status: 1, restore: failedRestore }))[k]), ["DEPENDENCY", "low"]);
+  for (const restore of [null, undefined, { ok: true, status: 0 }]) assert.notEqual(classify(facts({ started: false, restore })).class, "DEPENDENCY", "a restore that passed, or none at all, says nothing about dependencies");
+});
+
+test("ACCESS is a target the component requires that a fresh check could not reach -- only for a check that ran", () => {
+  const unreachable = [{ target: "orders-db", label: "orders database" }];
+  const got = classify(facts({ unreachable }));
+  assert.deepEqual([got.class, got.confidence], ["ACCESS", "high"]);
+  assert.match(got.because, /orders database/);
+  assert.equal(classify(facts({ started: false, unreachable })).class, "ENVIRONMENT", "a check that never started is about its start, not the network");
+  assert.equal(classify(facts({ unreachable: [] })).class, "TEST");
+});
+
+test("a check that could not start says why by the OS's code, and the shell's 126/127 is the machine's -- unless a passing baseline names the change", () => {
+  assert.match(classify(facts({ started: false, spawnCode: "ENOENT" })).because, /ENOENT: no such program here/);
+  assert.match(classify(facts({ started: false, spawnCode: "EACCES" })).because, /EACCES: it is here, but not executable/);
+  assert.equal(classify(facts({ started: false, spawnCode: "EWHATEVER" })).because, "it could not be started here", "a code with no words of its own is not guessed at");
+  assert.deepEqual(["class", "confidence"].map((k) => classify(facts({ status: 126 }))[k]), ["ENVIRONMENT", "low"]);
+  assert.equal(classify(facts({ status: 127, baseline: { state: "succeeded", signature: null } })).class, "TEST", "it passed before the change: the change is what moved");
+});
+
+test("an output that SAYS a dependency is missing, access was denied or a host refused is still not a class without the fact", () => {
+  const said = ["Error: Cannot find module 'left-pad'", "permission denied", "EACCES: permission denied, open '/x'", "connect ECONNREFUSED 10.0.0.5:5432", "getaddrinfo ENOTFOUND db.internal", "npm ERR! missing dependency", "sh: 1: jest: not found"];
+  for (const line of said) {
+    const got = classify(facts({ lines: [line], error: line, reason: line, status: 1 }));
+    assert.ok(!["DEPENDENCY", "ACCESS"].includes(got.class), `${line} -> ${got.class}`);
+    assert.equal(got.class, "TEST", line);
+  }
 });
 
 test("an application that stopped by itself is CODE only when the code changed, and never more than low -- nothing shows how it ran before", () => {

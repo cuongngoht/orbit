@@ -47,6 +47,10 @@ function logOf(ports, args) {
 
 // ---- words ---------------------------------------------------------------------------------------
 
+// The one command that goes on, as `--json` says it (`do`): the decision a step takes, or the read-back an unsettled
+// action owes (0.6.0, Q7). None where only a person moves the task.
+const doLine = (c) => (c.do ? [`DO         ${c.do}`] : []);
+
 const allowed = (c) => (c.allowed?.length ? c.allowed.join(", ") : "nothing");
 
 const short12 = (tree) => String(tree ?? "").slice(0, 12) || "no tree";
@@ -83,15 +87,15 @@ const planLines = (c) => (c.verificationPlan ? PLAN_LINES.map((line) => line(c.v
 
 const qaLine = (c) => `QA         live evidence ${c.evidence.state} (${c.evidence.id}) — ${c.evidence.say}`;
 
-const sayContext = (c) => [`TASK       ${c.task.id} — ${c.task.objective}`, `STATE      ${c.lifecycle} · ${c.stage ?? "no stage"} · attempt ${c.attempt.number ?? 0}/${c.attempt.limit ?? "?"} · revision ${c.revision}`, ...(c.workspace?.path ? [`WORKSPACE  ${c.workspace.id} → ${c.workspace.path}  (edit here; run Orbit from your checkout)`] : []), `CHANGES    ${c.changes.files} file(s) +${c.changes.added} -${c.changes.removed}`, ...planLines(c), ...sandboxLines(c), qaLine(c), ...(c.latestFailure ? [`FAILURE    ${c.latestFailure.check} · ${c.latestFailure.class} (${c.latestFailure.confidence}) · signature ${c.latestFailure.signature} · repeats ${c.repeats}`] : []), ...(c.open.length ? [`OPEN       ${c.open.map((o) => `${o.id} ${o.kind} — ${o.settle}`).join("; ")}`] : []), ...(c.completion?.length ? [`UNMET      ${c.completion.map((u) => u.id).join(", ")}`] : []), `ALLOWED    ${allowed(c)}`, `NEXT       ${c.next}`].join("\n");
+const sayContext = (c) => [`TASK       ${c.task.id} — ${c.task.objective}`, `STATE      ${c.lifecycle} · ${c.stage ?? "no stage"} · attempt ${c.attempt.number ?? 0}/${c.attempt.limit ?? "?"} · revision ${c.revision}`, ...(c.workspace?.path ? [`WORKSPACE  ${c.workspace.id} → ${c.workspace.path}  (edit here; run Orbit from your checkout)`] : []), `CHANGES    ${c.changes.files} file(s) +${c.changes.added} -${c.changes.removed}`, ...planLines(c), ...sandboxLines(c), qaLine(c), ...(c.latestFailure ? [`FAILURE    ${c.latestFailure.check} · ${c.latestFailure.class} (${c.latestFailure.confidence}) · signature ${c.latestFailure.signature} · repeats ${c.repeats}`] : []), ...(c.open.length ? [`OPEN       ${c.open.map((o) => `${o.id} ${o.kind} — ${o.settle}`).join("; ")}`] : []), ...(c.completion?.length ? [`UNMET      ${c.completion.map((u) => u.id).join(", ")}`] : []), `ALLOWED    ${allowed(c)}`, `NEXT       ${c.next}`, ...doLine(c)].join("\n");
 
 const sayStarted = (r) => [`TASK       ${r.task} ${r.created ? "started" : "is already running for this work — picked up"}`, ...(r.dirty ? ["NOTE       your checkout has uncommitted changes; the workspace starts from HEAD and does not have them"] : []), sayContext(r.context)].join("\n");
 
-const sayStep = (r) => (r.action ? [`STEP       ${r.action} ${r.kind} → ${r.outcome}${r.summary ? ` · ${r.summary}` : ""}`, ...(r.failure ? [`FAILURE    ${r.failure.class} (${r.failure.confidence}) · ${r.failure.because} · signature ${r.failure.signature}`] : []), `STATE      ${r.lifecycle} · ${r.stage} · revision ${r.revision}`, `NEXT       ${r.next}`].join("\n") : `TASK       ${r.task} · ${r.state}${r.say ? ` — ${r.say}` : ""}`);
+const sayStep = (r) => (r.action ? [`STEP       ${r.action} ${r.kind} → ${r.outcome}${r.summary ? ` · ${r.summary}` : ""}`, ...(r.failure ? [`FAILURE    ${r.failure.class} (${r.failure.confidence}) · ${r.failure.because} · signature ${r.failure.signature}`] : []), `STATE      ${r.lifecycle} · ${r.stage} · revision ${r.revision}`, `NEXT       ${r.next}`, ...doLine(r)].join("\n") : `TASK       ${r.task} · ${r.state}${r.say ? ` — ${r.say}` : ""}`);
 
 const sayFinished = (r) => `TASK       ${r.task} · ${r.state}${r.stop ? ` (${r.stop})` : ""}${r.say ? ` — ${r.say}` : ""}`;
 
-const sayReconciled = (r) => [`TASK       ${r.task}`, ...r.settled.map((s) => `SETTLED    ${s.action} ${s.kind} → ${s.outcome}${s.summary ? ` · ${s.summary}` : ""}`), `NEXT       ${r.context.next}`].join("\n");
+const sayReconciled = (r) => [`TASK       ${r.task}`, ...r.settled.map((s) => `SETTLED    ${s.action} ${s.kind} → ${s.outcome}${s.summary ? ` · ${s.summary}` : ""}`), `NEXT       ${r.context.next}`, ...doLine(r.context)].join("\n");
 
 const sandboxEnd = (b) => `SANDBOX    ${b.environment} → ${b.released ? "released" : "kept"}${b.why ? ` · ${b.why}` : ""}`;
 

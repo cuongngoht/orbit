@@ -24,6 +24,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { enginedDeep } from "../src/engined.mjs";
 
 const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 let ENV = process.env;
@@ -102,7 +103,7 @@ function stdin() {
 
 // Exit only once stdout has taken the answer: a pipe may be asynchronous, and an exit that races it would drop it.
 function finish(payload) {
-  const text = quietly(() => (payload == null ? null : `${JSON.stringify(payload)}\n`));
+  const text = quietly(() => (payload == null ? null : `${JSON.stringify(enginedDeep(payload, PLUGIN_ROOT))}\n`));
   if (!text) return process.exit(0);
   process.stdout.write(text, () => process.exit(0));
 }

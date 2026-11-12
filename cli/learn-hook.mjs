@@ -47,6 +47,7 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { enginedDeep } from "../src/engined.mjs";
 import { resolveHookHost } from "../skills/orbit-learn/hosts/index.mjs";
 import { createContext } from "../src/run/context.mjs";
 import { learnContext } from "../src/learn/context.mjs";
@@ -199,7 +200,7 @@ function stdin() {
 }
 
 function emit(payload) {
-  if (payload != null) console.log(JSON.stringify(payload));
+  if (payload != null) console.log(JSON.stringify(enginedDeep(payload, PLUGIN_ROOT)));
 }
 
 // Everything a subscriber may reach, bound lazily: a hook that has nothing to do

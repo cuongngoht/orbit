@@ -83,8 +83,11 @@ test("on with no settings at all: planned, engine steps run here, the engineerin
   assert.equal(spawnSync("git", ["status", "--porcelain"], { cwd: c.repo, encoding: "utf8" }).stdout, "", "the developer's checkout is untouched");
 });
 
+// The plugin's own root, as the CLI that prints the line knows it (0.6.0, Q3: no line a host reads carries `<engine>`).
+const ROOT_SAID = resolve(".").replaceAll("\\", "/").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 // The decision a DO line shows, with the host's own decisionId in it.
-const shownDecision = (text, id) => /^DO\s+node <engine>\/cli\/automation\.mjs step tsk-[a-f0-9]{12} with (\{.*\}) on stdin$/m.exec(text)?.[1]?.replace('"<yours>"', JSON.stringify(id)) ?? null;
+const shownDecision = (text, id) => new RegExp(`^DO\\s+node ${ROOT_SAID}/cli/automation\\.mjs step tsk-[a-f0-9]{12} with (\\{.*\\}) on stdin$`, "m").exec(text)?.[1]?.replace('"<yours>"', JSON.stringify(id)) ?? null;
 
 // What a host READS -- the words, not --json -- after start, resume and context names the one command that takes the next
 // ready step (0.5.0 precheck, ORBIT-ACT-007: a host that picked a workflow up through `resume`, with no playbook in front
@@ -96,11 +99,11 @@ test("start, resume and context say in words the one command that takes the next
   const task = /^WORKFLOW\s+(tsk-[a-f0-9]{12}) started$/m.exec(started.stdout)?.[1];
   assert.ok(task, started.stdout + started.stderr);
   const said = [started, run(c, ["resume", task]), run(c, ["context", task])];
-  for (const r of said) assert.match(r.stdout, new RegExp(`^DO\\s+node <engine>/cli/automation\\.mjs step ${task} with \\{ "schemaVersion": 1, "decisionId": "<yours>", "expectedRevision": ${revisionOf(c, task)}, "action": \\{ "kind": "run", "step": "context" \\}.* on stdin$`, "m"));
+  for (const r of said) assert.match(r.stdout, new RegExp(`^DO\\s+node ${ROOT_SAID}/cli/automation\\.mjs step ${task} with \\{ "schemaVersion": 1, "decisionId": "<yours>", "expectedRevision": ${revisionOf(c, task)}, "action": \\{ "kind": "run", "step": "context" \\}.* on stdin$`, "m"));
   for (const r of [...said, run(c, ["plan", "--for=Implement the refund validation rule"])]) assert.doesNotMatch(r.stdout, /undefined/);
   const first = run(c, ["step", task], shownDecision(said[1].stdout, "d-1"));
   assert.match(first.stdout, /^STEP\s+context → reported/m, "the decision shown is one step takes as it is, with the host's own id");
-  assert.match(first.stdout, new RegExp(`^DO\\s+node <engine>/cli/automation\\.mjs step ${task} with \\{.*"expectedRevision": ${revisionOf(c, task)}, "action": \\{ "kind": "run", "step": "runtime" \\}.* on stdin$`, "m"), "and a settled step's answer says how to take the one after it");
+  assert.match(first.stdout, new RegExp(`^DO\\s+node ${ROOT_SAID}/cli/automation\\.mjs step ${task} with \\{.*"expectedRevision": ${revisionOf(c, task)}, "action": \\{ "kind": "run", "step": "runtime" \\}.* on stdin$`, "m"), "and a settled step's answer says how to take the one after it");
   assert.equal(json(run(c, ["step", task, "--json"], shownDecision(first.stdout, "d-2"))).stepState, "succeeded");
   assert.doesNotMatch(run(c, ["context", task]).stdout, /^DO\s.*"step": "(context|runtime)"/m, "and it moves on with the workflow");
 });

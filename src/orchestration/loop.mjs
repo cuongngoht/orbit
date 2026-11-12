@@ -128,6 +128,24 @@ const stopSay = (stop, lw) => [stop.say, stop.hints ? hintOf(lw) : null].filter(
 
 const nextSay = (lw) => (stopOf(lw) ? stopSay(stopOf(lw), lw) : `next: ${hintOf(lw) ?? allowedSay(lw)} — decide on revision ${lw.view.revision}`);
 
+// HOW a host goes on, as the one command that does it (0.6.0, Q7), beside NEXT's what: an action that never settled is
+// read back by `reconcile`; a task a step may move is sent the decision its protocol takes, on the revision read; a
+// task only a person moves (paused, waiting for an approval, ended) names none -- Orbit Control is theirs.
+const ENGINEERING = "node <engine>/cli/autonomous-engineering.mjs";
+
+const kindSaid = (lw) => (allowedNow(lw).length === 1 ? allowedNow(lw)[0] : `<${allowedNow(lw).join("|")}>`);
+
+const decisionSaid = (lw) => `{ "schemaVersion": ${DECISION_SCHEMA}, "expectedRevision": ${lw.view.revision}, "action": { "kind": "${kindSaid(lw)}", …its fields }, "observed": "…", "hypothesis": "…" }`;
+
+const steppable = (lw) => (!stopOf(lw) || stopOf(lw).hints) && allowedNow(lw).length > 0;
+
+const DO_ROWS = [
+  { when: (lw) => stopOf(lw)?.id === "unsettled", say: (lw) => `${ENGINEERING} reconcile ${lw.id}` },
+  { when: steppable, say: (lw) => `${ENGINEERING} step ${lw.id} with ${decisionSaid(lw)} on stdin` },
+];
+
+export const doOf = (lw) => DO_ROWS.find((r) => r.when(lw))?.say(lw) ?? null;
+
 const nextOf = (lw, room) => (room.read("pending") && lw.view.lifecycle !== LIFE.PAUSED ? "what a pause held back is applied by the next step, which then asks for a decision on what is there" : nextSay(lw));
 
 const taskBrief = (v) => ({ id: v.task.id, objective: v.task.objective, work: v.task.work, root: v.task.root, snapshot: v.task.snapshot, baseRevision: v.task.baseRevision, workspace: v.task.workspace });
@@ -142,7 +160,7 @@ const evidenceOf = (lw) => liveEvidenceOf(lw);
 export function contextOf(ports, id) {
   const bound = roomed(ports, id);
   const lw = loopWorld(bound, id);
-  return { task: taskBrief(lw.view), revision: lw.view.revision, lifecycle: lw.view.lifecycle, stage: lw.view.stage, attempt: lw.view.attempt, budget: lw.view.budget, repeats: lw.view.repeats, approvals: lw.view.approvals.filter((a) => ["pending", "granted"].includes(a.state)), open: openView(lw, bound), blocked: lw.view.blocked, requirement: lw.requirement, workspace: lw.workspace, changes: changesView(lw), latestFailure: latestFailure(bound, lw), checks: checksView(lw), verificationPlan: planView(lw), verification: lw.view.verification, completion: lw.view.stage === STAGE.REVIEWING ? unmet(lw) : null, pending: Boolean(bound.room.read("pending")), stop: stopView(lw), allowed: allowedNow(lw), sandbox: sandboxView(lw), evidence: evidenceOf(lw), next: nextOf(lw, bound.room), protocol: { schemaVersion: DECISION_SCHEMA, actions: ACTION_KINDS } };
+  return { task: taskBrief(lw.view), revision: lw.view.revision, lifecycle: lw.view.lifecycle, stage: lw.view.stage, attempt: lw.view.attempt, budget: lw.view.budget, repeats: lw.view.repeats, approvals: lw.view.approvals.filter((a) => ["pending", "granted"].includes(a.state)), open: openView(lw, bound), blocked: lw.view.blocked, requirement: lw.requirement, workspace: lw.workspace, changes: changesView(lw), latestFailure: latestFailure(bound, lw), checks: checksView(lw), verificationPlan: planView(lw), verification: lw.view.verification, completion: lw.view.stage === STAGE.REVIEWING ? unmet(lw) : null, pending: Boolean(bound.room.read("pending")), stop: stopView(lw), allowed: allowedNow(lw), sandbox: sandboxView(lw), evidence: evidenceOf(lw), next: nextOf(lw, bound.room), do: doOf(lw), protocol: { schemaVersion: DECISION_SCHEMA, actions: ACTION_KINDS } };
 }
 
 // ---- context, with what runtime says about the sandbox NOW ------------------------------------------
@@ -308,7 +326,7 @@ const failureBrief = (f) => (f ? { class: f.class, confidence: f.confidence, bec
 
 function answerOf(ports, id, taken, r) {
   const lw = loopWorld(ports, id);
-  return { task: id, action: taken.act.id, kind: taken.kind, outcome: r.outcome, summary: r.summary ?? null, reason: r.reason ?? null, receipts: (r.receipts ?? []).map(keyOf), failure: failureBrief(r.failure), data: r.data ?? null, revision: lw.view.revision, lifecycle: lw.view.lifecycle, stage: lw.view.stage, attempt: lw.view.attempt, completion: lw.view.stage === STAGE.REVIEWING ? unmet(lw) : null, stop: stopView(lw), allowed: allowedNow(lw), next: nextSay(lw) };
+  return { task: id, action: taken.act.id, kind: taken.kind, outcome: r.outcome, summary: r.summary ?? null, reason: r.reason ?? null, receipts: (r.receipts ?? []).map(keyOf), failure: failureBrief(r.failure), data: r.data ?? null, revision: lw.view.revision, lifecycle: lw.view.lifecycle, stage: lw.view.stage, attempt: lw.view.attempt, completion: lw.view.stage === STAGE.REVIEWING ? unmet(lw) : null, stop: stopView(lw), allowed: allowedNow(lw), next: nextSay(lw), do: doOf(lw) };
 }
 
 function settled(ports, id, taken, r) {

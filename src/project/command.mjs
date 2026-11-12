@@ -1,6 +1,8 @@
 // Thin CLI boundary for commands that can refuse a destination before writing.
 import { Blocked, Refused } from "../errors.mjs";
+import { engined } from "../engined.mjs";
 import { printable } from "../printable.mjs";
+import { pluginRoot } from "../version.mjs";
 
 // Handles a synchronous main and an async one alike. Loading a project's own
 // extensions is the one async thing this engine does (importing a module is),
@@ -15,6 +17,6 @@ const settled = (result) => (result && typeof result.then === "function" ? resul
 
 function stopped(error) {
   if (!(error instanceof Refused) && !(error instanceof Blocked)) throw error;
-  console.error(printable(error.message));
+  console.error(printable(engined(error.message, pluginRoot())));
   process.exitCode = error instanceof Refused ? 2 : 3;
 }

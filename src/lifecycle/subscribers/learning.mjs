@@ -33,6 +33,7 @@
 //                 settle is read back with `reconcile`, never resent -- after the
 //                 diagnosis a watched command gets (`world.recovery`)
 import { architecturePaths, createArchitecture } from "../../architecture/store.mjs";
+import { engined } from "../../engined.mjs";
 import { createEngineering } from "../../engineering/store.mjs";
 import { indexText } from "../../learn/recall.mjs";
 import { runLearn } from "../../learn/index.mjs";
@@ -77,7 +78,7 @@ const NO_SNAPSHOT = "No architecture snapshot exists for this project yet. `node
 
 // The command it names carries the plugin's own path once the composition root knows it, as the routing context's lines
 // do (subscribers/router.mjs) -- never a placeholder a host was not told how to read.
-const noSnapshotSaid = (engine) => (engine ? NO_SNAPSHOT.replaceAll("<plugin>", engine) : NO_SNAPSHOT);
+const noSnapshotSaid = (engine) => engined(NO_SNAPSHOT, engine);
 
 function missingSnapshot(ctx, engine) {
   if (!ctx.io.exists(ctx.project.graphDir)) return "";

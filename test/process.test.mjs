@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { createProcess } from "../src/process/index.mjs";
@@ -278,4 +278,26 @@ test("on Windows a CIM listing that does not answer -- or does not hold the pid 
   assert.deepEqual(proc.ancestry(4321), [4321, 4000, 4]);
   assert.equal(asked.length, 2, "CIM first, then WMI");
   assert.deepEqual([asked[1].opts.env.SystemDrive, asked[1].opts.env.PSModulePath, asked[1].opts.env.SECRET], ["C:", "C:\\m", undefined]);
+});
+
+// 0.6.0, P4: a child that never started says WHY as a fact -- the OS's own code -- beside the sentence, from every door
+// that runs to completion, so a reader classifies it without reading the words (src/orchestration/failure.mjs).
+test("a child that never started carries the OS's code as a fact, from run, runAsync and runObserved alike", async (t) => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "orbit-unstarted-")));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const plain = join(dir, "not-executable");
+  writeFileSync(plain, "#!/bin/sh\nexit 0\n", { mode: 0o644 });
+  const port = createProcess();
+  const doors = [(f) => port.run(f, []), (f) => port.runAsync(f, [], { timeoutMs: 5000 }), (f) => port.runObserved(f, [], { timeoutMs: 5000, observe: () => {} })];
+  for (const door of doors) {
+    const missing = await door(join(dir, "no-such-program"));
+    assert.deepEqual([missing.ok, missing.unstarted, missing.code], [false, true, "ENOENT"]);
+    assert.match(missing.error, /could not be started — ENOENT/, "and the sentence is what it was");
+    if (process.platform !== "win32") assert.deepEqual([(await door(plain)).unstarted, (await door(plain)).code], [true, "EACCES"]);
+  }
+});
+
+test("an error with no code of its own is still unstarted, and its code is null -- never a guess", () => {
+  const r = createProcess({ spawn: () => ({ error: new Error("spawn failed") }) }).run("x", []);
+  assert.deepEqual([r.unstarted, r.code], [true, null]);
 });

@@ -6,6 +6,8 @@
 //
 //   node scripted.mjs patch|noop|sleep <DONE|BLOCKED|NONE> [patch-file]      cwd: the task's repository
 import { spawnSync } from "node:child_process";
+import { appendFileSync } from "node:fs";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const line = (v) => process.stdout.write(`${JSON.stringify(v)}\n`);
@@ -17,7 +19,12 @@ function applied(file) {
   return { ok: r.status === 0, err: String(r.stderr ?? "").slice(-300) };
 }
 
+// One line in the run's store, as an agent's memory would be: a memory track carries the store from run to run, and
+// the count of these lines proves it did.
+const remembered = () => (process.env.ORBIT_STORE_DIR ? appendFileSync(join(process.env.ORBIT_STORE_DIR, "scripted-runs.log"), `${new Date().toISOString()}\n`) : null);
+
 function main([behaviour, status, file]) {
+  remembered();
   line({ type: "system", subtype: "init", model: "scripted", session_id: "scripted", tools: [], plugins: [] });
   if (behaviour === "sleep") return setInterval(() => null, 1 << 30);
   const a = behaviour === "patch" ? applied(file) : { ok: true };

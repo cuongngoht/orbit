@@ -8,7 +8,7 @@
 //
 //   runAttempt(ctx) -> { ended, outcome }      namesOf(campaignId, key, n) -> { net, egress, task, grader, label }
 import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { connect, copyIn, copyOut, createContainer, createNetwork, ensureImage, imagePath, kill, labelsOf, logsOf, removeContainer, removeNetwork, startAttached, startDetached, stateOf } from "../core/docker.mjs";
 import { changedPaths, diffTrees, privateGitDir, treeOfWork } from "../core/git.mjs";
 import { scrubbedRoom } from "../core/credential.mjs";
@@ -88,7 +88,7 @@ function evalrunDir(ctx, scratch) {
 }
 
 function copiedIn(ctx, names, run, start) {
-  const pairs = [[run.dir, "/opt"], ...start.copyIn.map((c) => [c.from, c.to]), ...(run.plugin ? [[run.plugin.from, run.plugin.to]] : []), ...(ctx.trackStore && existsSync(ctx.trackStore) ? [[ctx.trackStore, "/work"]] : [])];
+  const pairs = [[run.dir, "/opt"], ...start.copyIn.map((c) => [c.from, c.to]), ...(run.plugin ? [[run.plugin.from, run.plugin.to]] : []), ...(ctx.trackStore && existsSync(ctx.trackStore) ? [[dirname(ctx.trackStore), "/"]] : [])];
   const bad = pairs.find(([from, to]) => !copyIn(from, names.task, to).ok);
   return bad ? infra("DOCKER", `docker cp ${bad[0]} into the task container failed`) : null;
 }
@@ -141,7 +141,7 @@ async function executed(ctx, names, room, scratch, labels) {
   const run = evalrunDir(ctx, scratch);
   const cp = copiedIn(ctx, names, run, start);
   if (cp) return { infra: cp };
-  return finished(ctx, names, room, scratch, { start, run, images: { task: taskImg.id, egress: egressImg.id } });
+  return finished(ctx, names, room, scratch, { start, run, images: { task: taskImg.id, taskRef: ctx.task.image, pulled: taskImg.pulled, egress: egressImg.id } });
 }
 
 async function finished(ctx, names, room, scratch, x) {
@@ -153,7 +153,7 @@ async function finished(ctx, names, room, scratch, x) {
   const state = stateOf(names.task);
   copyOut(names.task, "/opt/evalrun/out", join(room, "out"));
   copyOut(names.task, ctx.task.repo, join(scratch, "after"));
-  if (ctx.trackStore) (rmSync(ctx.trackStore, { recursive: true, force: true }), copyOut(names.task, "/work/orbit-store", ctx.trackStore));
+  if (ctx.trackStore) (rmSync(ctx.trackStore, { recursive: true, force: true }), ensureDir(dirname(ctx.trackStore)), copyOut(names.task, "/work/orbit-store", ctx.trackStore));
   writeFileSync(join(room, "egress.log"), logsOf(names.egress));
   const entry = existsSync(join(room, "out", "entry.json")) ? readJson(join(room, "out", "entry.json")) : null;
   const egress = existsSync(join(room, "out", "egress.json")) ? readJson(join(room, "out", "egress.json")) : null;

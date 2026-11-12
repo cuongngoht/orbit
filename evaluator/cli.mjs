@@ -10,7 +10,7 @@
 //   node cli.mjs report <id> [--md]                                         the report (written to its room too)
 //   node cli.mjs export <id> --to=<dir>                                     what to commit, under evaluator/results/
 //   node cli.mjs cleanup <id>                                               remove its leftover containers and networks
-//   node cli.mjs selfcheck [--ca-file=<pem>] [--tasks=pack:a,pack:b]       the scripted self-controls, for real
+//   node cli.mjs selfcheck [--ca-file=<pem>] [--tasks=pack:a,swebench:b] [--controls=gold-done,noop-done] [--keep-images]
 //   node cli.mjs packs list | verify [<id>...] | convert --from=<old benchmark dir>
 //   node cli.mjs tools [--ca-file=<pem>]                                    the tools volume (Node + pinned Claude Code)
 //   node cli.mjs checks                                                     the evaluator's own checks (no Docker)
@@ -45,7 +45,7 @@ const COMMANDS = {
   report: ([id], f) => ((r) => print(f.md ? markdownOf(r) : r))(writtenReport(roomOf(id))),
   export: ([id], f) => print(exportCampaign(id, f.to ?? join(EVALUATOR_DIR, "results"))),
   cleanup: ([id]) => print(cleanedUp(id)),
-  selfcheck: async (_, f) => selfcheckPrinted(await selfcheck({ caFile: f["ca-file"], tasks: f.tasks ? String(f.tasks).split(",") : undefined, scratchDir: ensureDir(join(home(), "selfcheck")) })),
+  selfcheck: async (_, f) => selfcheckPrinted(await selfcheck({ caFile: f["ca-file"], tasks: f.tasks ? String(f.tasks).split(",") : undefined, controls: f.controls ? String(f.controls).split(",") : undefined, keepImages: f["keep-images"] === true, scratchDir: ensureDir(join(home(), "selfcheck")) })),
   packs: async ([sub, ...ids], f) => PACKS[sub ?? "list"](ids, f),
   tools: (_, f) => print(ensureTools({ caFile: f["ca-file"] })),
   checks: () => process.exit(spawnSync(process.execPath, ["--test", ...readdirSync(join(EVALUATOR_DIR, "checks")).filter((n) => n.endsWith(".check.mjs")).map((n) => join(EVALUATOR_DIR, "checks", n))], { stdio: "inherit" }).status ?? 1),

@@ -11,7 +11,7 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { armOf } from "../arms/index.mjs";
 import { credentialValues } from "../core/credential.mjs";
-import { LABEL, listByLabel, removeContainer, removeNetwork } from "../core/docker.mjs";
+import { docker, LABEL, listByLabel, removeContainer, removeNetwork } from "../core/docker.mjs";
 import { git, headOf, isDirty } from "../core/git.mjs";
 import { canStart, foldJournal, interruptedCount, ledgerOf, MAX_RERUNS, nextAttempt, openAttempts, readJournal } from "../core/journal.mjs";
 import { ensureTools } from "../core/tools.mjs";
@@ -57,7 +57,7 @@ export function planOf(def) {
   return [...ordered, ...tracked].map((r) => ({ ...r, key: keyOf(r) }));
 }
 
-const keyOf = (r) => `${r.arm}__${r.task.replace(/[:/]/g, "_")}__t${r.trial}${r.track ? `__${r.track}` : ""}`;
+const keyOf = (r) => `${r.arm}__${r.task.replace(/[:/]/g, "_")}__t${r.trial}${r.track ? `__${r.track}-${r.step}` : ""}`;
 
 const evaluatorOf = () => ({ commit: headOf(EVALUATOR_DIR), dirty: isDirty(EVALUATOR_DIR) });
 
@@ -118,8 +118,17 @@ async function loop(home, room, campaign, o) {
   appendLine(journal, { kind: "begun", at: nowIso(), pid: process.pid, tools: { volume: tools.volume, claudeCode: tools.claudeCode, node: tools.node } });
   interruptedClosed(campaign, journal);
   for (const r of campaign.plan) await oneRun(home, room, campaign, journal, r, tools, o);
+  if (!campaign.keepImages) appendLine(journal, { kind: "images-removed", at: nowIso(), images: imagesRemoved(campaign, journal) });
   appendLine(journal, { kind: "finished", at: nowIso() });
   return writtenReport(room);
+}
+
+// The task images this campaign pulled (a SWE-bench instance image is gigabytes), removed when it ends unless it says
+// keepImages; an image that was already on the daemon is left as it was.
+function imagesRemoved(campaign, journal) {
+  const lines = readJournal(journal).filter((l) => l.kind === "ended" && l.images?.pulled && l.images?.taskRef);
+  const refs = [...new Set(lines.map((l) => l.images.taskRef))].filter((ref) => ref !== campaign.tools?.nodeImage && !/^node:/.test(ref));
+  return refs.map((ref) => ({ ref, removed: docker(["image", "rm", ref]).ok }));
 }
 
 // Every attempt a dead controller left open: its containers removed (only by its own labels), INTERRUPTED, its cap charged.
@@ -144,7 +153,7 @@ async function oneRun(home, room, campaign, journal, r, tools, o) {
   const ledger = ledgerOf(fold, campaign.budgetUsd);
   if (!canStart(ledger, cap)) return appendLine(journal, { kind: "skipped", run: r.key, at: nowIso(), reason: `the budget has $${ledger.remainingUsd} left, below this run's cap of $${cap}` });
   const task = taskOf(r.task, { home, campaign });
-  const trackStore = r.track ? join(room, "tracks", slug(r.track), "orbit-store") : null;
+  const trackStore = r.track ? join(room, "tracks", slug(r.track), "work", "orbit-store") : null;
   await runAttempt({ campaign, home, room, journal, run: r, attempt: nextAttempt(s), arm, armFrozen: frozen, task, tools, pluginRepo: campaign.pluginRepo, caFile: campaign.caFile, credentialValues: credentialValues(arm.credentialNames), trackStore, keepScratch: o.keepScratch === true });
 }
 

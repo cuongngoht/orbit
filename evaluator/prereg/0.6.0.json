@@ -302,7 +302,7 @@
     }
   },
   "counts": {
-    "status": "PENDING_PILOT",
+    "status": "FIXED",
     "targets": {
       "dev": {
         "swebench": 3,
@@ -319,9 +319,32 @@
       "If the pilot ends INFRA_ERROR it is run once more; its charge stays in the ledger.",
       "The counts and what the pilot cost are written here in a second commit, before any other model run."
     ],
-    "dev": null,
-    "heldOut": null,
-    "pilot": null
+    "dev": {
+      "swebench": 3,
+      "packs": 2
+    },
+    "heldOut": {
+      "swebench": 4,
+      "packs": 2
+    },
+    "pilot": {
+      "campaign": "pilot-060",
+      "run": "plain__pack_orders-e2e-004__t1",
+      "evaluator": "71aeebc (the commit that registered the order)",
+      "word": "RESOLVED",
+      "costUsd": 0.1156403,
+      "chargedUsd": 0.1156403,
+      "turns": 6,
+      "wallSeconds": 19.2,
+      "tokens": {
+        "input": 10,
+        "output": 1815,
+        "cacheRead": 79983,
+        "cacheWrite": 22368
+      },
+      "stream": "result subtype `success`, stop_reason `end_turn`, terminal_reason `completed`, is_error false, total_cost_usd 0.1156403 (costBasis `list`); no budget stop: the pilot never came near its $1.00 cap, so what Claude Code's stream says on a budget stop is still unseen (the evaluator reads a subtype matching /budget/ as BUDGET)",
+      "decision": "The pilot ended RESOLVED, not BUDGET, TIMEOUT or INFRA_ERROR, so by the rule the counts are the targets: dev 3 SWE-bench + 2 packs, held-out 4 SWE-bench + 2 packs. A pack cost $0.12; a SWE-bench instance is expected to cost more, which the $1.00 cap and the ledger bound."
+    }
   },
   "host": {
     "model": "claude-sonnet-5-5",

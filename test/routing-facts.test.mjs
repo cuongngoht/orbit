@@ -37,3 +37,10 @@ test("a fact's requirement joins what a prompt asked, saying which fact asked fo
   assert.equal(change.asked.filter((n) => n.requirement === "development.implementation").length, 1);
   assert.deepEqual(withFacts(classify("hello"), []).asked, classify("hello").asked);
 });
+
+test("an open knowledge need on the session's tracked work is knowledge.owed, named by the need's subject; an answered one is not", () => {
+  const need = (state, type = "knowledge") => ({ need: "nd-0123456789", type, subject: "acme-sdk.retry-policy", capability: "documentation.search", state });
+  for (const state of ["pending", "stale"]) assert.deepEqual(observedOf({ needs: [need(state)] }), [{ fact: "knowledge.owed", subject: "acme-sdk.retry-policy" }], state);
+  for (const state of ["satisfied", "blocked", "not-applicable"]) assert.deepEqual(observedOf({ needs: [need(state)] }), [], state);
+  assert.deepEqual(observedOf({ needs: [need("pending", "proof"), need("pending", "action")] }), [], "only a question to find out owes research");
+});

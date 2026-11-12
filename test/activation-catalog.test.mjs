@@ -51,7 +51,7 @@ test("every skill description fits the listing: at most 300 characters each and 
   for (const name of SKILLS) assert.ok(descriptionOf("skill", name).length <= SKILL_LIMIT, `${name}: ${descriptionOf("skill", name).length} characters`);
   const total = SKILLS.reduce((n, name) => n + descriptionOf("skill", name).length, 0);
   assert.ok(total <= SKILLS_TOTAL, `the skills' descriptions total ${total} characters`);
-  assert.equal(SKILLS.length, 25, "the budget was set for the 25 skills that ship");
+  assert.equal(SKILLS.length, 26, "the budget was set for the 26 skills that ship");
   for (const [kind, name] of all) assert.doesNotMatch(descriptionOf(kind, name), /[<>]/, `${name}: a host refuses a description that reads as XML`);
 });
 

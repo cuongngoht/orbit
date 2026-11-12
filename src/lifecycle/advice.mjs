@@ -37,7 +37,7 @@ export const LINE_BYTES = 420;
 const PROBE = "orbit-advice-probe";
 
 // What the composition root read of the session, in the shape a FACTS row derives from (src/routing/facts.mjs).
-export const seenOf = (lines) => ({ checks: checksOf(lines ?? []) });
+export const seenOf = (lines, needs) => ({ checks: checksOf(lines ?? []), needs: needs ?? [] });
 
 function once(fn) {
   const memo = {};

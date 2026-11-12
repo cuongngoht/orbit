@@ -11,7 +11,8 @@
 // subject) or null. A word nobody can derive is not a word: no model, no context run inside a hook, never the text of
 // an error, and never a guess at a cause (src/orchestration/failure.mjs classifies a task's check; this says the fact).
 //
-//   seen: { checks: { last: { class, exe, ok, afterEdit } | null, repeats: { class, exe, n } | null } }   (checks.mjs)
+//   seen: { checks: { last: { class, exe, ok, afterEdit } | null, repeats: { class, exe, n } | null }   (checks.mjs)
+//           needs: [{ need, type, subject, capability, state }] }   the session's tracked work (src/work/model.mjs statesOf)
 //
 // Ordered: when several hold, the first is the one a line says. A LEAF: it imports nothing and reads nothing.
 
@@ -25,9 +26,15 @@ const repeated = (seen) => ((r) => (r && r.n >= REPEATS ? checkSaid(r) : null))(
 
 const lastFailed = (seen) => ((c) => (c && c.ok === false && c.afterEdit === true ? checkSaid(c) : null))(seen?.checks?.last ?? null);
 
+// A knowledge need the session's tracked work has not settled: one nobody answered yet, or one whose answer moved.
+export const OPEN_NEED = ["pending", "stale"];
+
+const owedKnowledge = (seen) => (seen?.needs ?? []).find((n) => n.type === "knowledge" && OPEN_NEED.includes(n.state))?.subject ?? null;
+
 export const FACTS = [
   { fact: "check.repeats", requires: ["development.implementation"], say: `the same check failed ${REPEATS} or more times in a row with nothing changed between: diagnose why before running it again -- running it again will not change it`, derive: repeated },
   { fact: "check.failed", requires: ["development.implementation"], say: "a check the session ran after its edits failed: find the cause in the change and the output before editing again", derive: lastFailed },
+  { fact: "knowledge.owed", requires: ["research.sourced"], say: "the session's tracked work has a question to find out that nothing answered yet, or whose answer moved: answer it from a source -- the official documentation of the version this project pins -- before building on a guess", derive: owedKnowledge },
 ];
 
 export const FACT_WORDS = FACTS.map((f) => f.fact);

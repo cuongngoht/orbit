@@ -42,7 +42,7 @@ const EVENT = { event: "post-tool-failure", session: SESSION, command: "npm test
 // governed work, the REAL resolver over the shipped catalog, and the one write.
 function world(over = {}) {
   const kept = [];
-  const port = { observed: () => observedIn(over.lines ?? [edit, failed]), session: () => ("trail" in over ? over.trail : [prompt()]), owner: () => over.owner ?? null, resolve: (o) => reactingTo(o, over.registry ?? REGISTRY), said: (data) => kept.push(data) };
+  const port = { observed: () => observedIn(over.lines ?? [edit, failed], over.needs ?? []), session: () => ("trail" in over ? over.trail : [prompt()]), owner: () => over.owner ?? null, resolve: (o) => reactingTo(o, over.registry ?? REGISTRY), said: (data) => kept.push(data) };
   return { kept, host: over.host ?? claude, input: {}, plugin: "orbit", engine: "/plug", advice: () => ("port" in over ? over.port : port) };
 }
 
@@ -53,6 +53,13 @@ test("a check that failed after the session's edits gets ONE line: the fact, its
   assert.ok(Buffer.byteLength(line) <= 420);
   assert.deepEqual(w.kept, [{ fact: "check.failed", subject: "test (npm)", provider: "orbit-develop", kind: "skill" }], "and advice.given keeps the fact, the subject and the provider -- never the sentence");
   assert.equal(adviceRowOf(EVENT, world()).row, "speak");
+});
+
+test("an open knowledge need on the session's work brings orbit-research in -- on the fact alone, no word of a prompt", () => {
+  const w = world({ lines: [], needs: [{ need: "nd-0123456789", type: "knowledge", subject: "acme-sdk.retry-policy", capability: "documentation.search", state: "stale" }] });
+  assert.match(adviceLine(EVENT, w), /^Orbit noticed knowledge\.owed -- acme-sdk\.retry-policy: .* orbit-research handles it: Skill orbit:orbit-research\.$/);
+  assert.deepEqual(w.kept.map((k) => [k.fact, k.provider]), [["knowledge.owed", "orbit-research"]]);
+  assert.equal(adviceLine(EVENT, world({ lines: [], needs: [{ type: "knowledge", subject: "x", state: "satisfied" }, { type: "proof", subject: "y", state: "pending" }] })), null, "an answered question, or a need of another kind, owes no research");
 });
 
 test("the same check failing three times in a row with nothing changed is said as no progress, not as a retry", () => {

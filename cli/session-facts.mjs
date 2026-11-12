@@ -4,8 +4,10 @@
 // composition helper, loaded by each hook when it needs it and not before.
 //
 // It reads the session's own working set (one append-only file, src/engineering/working-set/store.mjs) in the checkout
-// the machine KNOWS (a host's project root first, then the directory it named), and nothing else: no git, no child
-// process, no network, and nothing written. A checkout nobody bound has no working set and no facts.
+// the machine KNOWS (a host's project root first, then the directory it named), and -- for `knowledge.owed` (U5) -- the
+// needs of the work this session is tracking in that checkout (src/work/track/resolve.mjs `currentOf`, over the bounded
+// scan of the newest journals), and nothing else: no git, no child process, no network, and nothing written. A checkout
+// nobody bound has no working set, no work and no facts.
 import { seenOf } from "../src/lifecycle/advice.mjs";
 import { sessionOf } from "../src/lifecycle/subscribers/working-set.mjs";
 import { createWorkingSet } from "../src/engineering/working-set/store.mjs";
@@ -14,6 +16,12 @@ import { knownCheckout } from "../src/project/repository.mjs";
 import { workingSetDir } from "../src/project/runtime.mjs";
 import { observedOf } from "../src/routing/facts.mjs";
 import { realIo } from "../src/store/io.mjs";
+import { taskSessionMark } from "../src/memory/session.mjs";
+import { repositoryAt } from "../src/project/boundary.mjs";
+import { checkoutId } from "../src/project/repository.mjs";
+import { modelOf, statesOf } from "../src/work/model.mjs";
+import { createWorks } from "../src/work/store.mjs";
+import { currentOf, scanOf } from "../src/work/track/resolve.mjs";
 
 function quietly(fn) {
   try { return fn(); }
@@ -33,7 +41,16 @@ export function sessionLines(at) {
   return project ? createWorkingSet(workingSetDir(project), io).read(sessionOf(at.event, io.host, io.now())) : [];
 }
 
-// The facts that hold over a session's lines -- the reading both hooks share.
-export const observedIn = (lines) => observedOf(seenOf(lines ?? []));
+// The needs of the work this session is tracking in this checkout, each with its state -- [] when it tracks none.
+export function sessionNeeds(at) {
+  const project = sessionProject(at.env, at.cwd);
+  const root = at.event?.session ? repositoryAt(at.cwd) : null;
+  return project?.storeRoot && root ? needsOf(createWorks(project.storeRoot, at.io ?? realIo()), taskSessionMark(at.event.session), checkoutId(root)) : [];
+}
 
-export const observedHere = (at) => observedIn(sessionLines(at));
+const needsOf = (works, mark, checkout) => ((current) => (current ? statesOf(modelOf(works.read(current.id) ?? [])) : []))(currentOf(scanOf(works), mark, checkout));
+
+// The facts that hold over a session's lines and its work's needs -- the reading both hooks share.
+export const observedIn = (lines, needs) => observedOf(seenOf(lines ?? [], needs ?? []));
+
+export const observedHere = (at) => observedIn(sessionLines(at), quietly(() => sessionNeeds(at)) ?? []);

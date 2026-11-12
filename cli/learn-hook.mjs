@@ -151,7 +151,7 @@ async function observedAfter(event) {
   const ws = sessionWorkingSet(event);
   if (!ws) return [];
   const facts = await import("./session-facts.mjs");
-  return quietly(() => facts.observedIn([...ws.read(sessionOf(event, ws.host, ws.now())), collect(event, ws.roots, ws.now())].filter(Boolean))) ?? [];
+  return quietly(() => facts.observedIn([...ws.read(sessionOf(event, ws.host, ws.now())), collect(event, ws.roots, ws.now())].filter(Boolean), quietly(() => facts.sessionNeeds({ env: ENV, cwd: event?.cwd, event })))) ?? [];
 }
 
 // A known checkout whose test data is in place -- a seat, a committed ui-tests/, a directory named on purpose that

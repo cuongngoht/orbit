@@ -98,6 +98,12 @@
       "description": "Let Claude start the orbit-dotnet skill. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_DOTNET_INTELLIGENCE overrides this on one machine.",
       "default": true
     },
+    "skill_research": {
+      "type": "boolean",
+      "title": "Skill · orbit-research",
+      "description": "Let Claude start the orbit-research skill. Off: a PreToolUse hook refuses it and says why. Unset counts as on, so an install with no settings runs everything. An exported ORBIT_SKILL_RESEARCH overrides this on one machine.",
+      "default": true
+    },
     "skill_drive_ui": {
       "type": "boolean",
       "title": "Skill · orbit-ui-test",

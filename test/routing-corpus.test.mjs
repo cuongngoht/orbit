@@ -114,3 +114,15 @@ test("whatever the router says stays inside its budget, opens with the strategy,
   }
   assert.ok(RESULTS.filter((x) => x.text).length >= 40, "and it does say something for the requests it should");
 });
+
+// 0.6.0 (U5): a research request, in either language, brings orbit-research in and says so; a prompt that only names
+// research, a version or a lookup -- a module called research, the runtime a project needs, where a rule lives -- never
+// does. Research is recommended on its own words alone (`requiresSignal`), or on the fact that brings it (knowledge.owed).
+test("a research request brings orbit-research in, in both languages, and a prompt that only names research or a version never does", () => {
+  const research = RESULTS.filter((r) => r.row.kind === "research");
+  assert.ok(research.filter((r) => r.row.lang === "en").length >= 2 && research.filter((r) => r.row.lang === "vi").length >= 2);
+  for (const r of research) assert.deepEqual([r.decision.activation.id, r.decision.strategy.shown], ["orbit-research", true], r.row.prompt);
+  const near = RESULTS.filter((r) => r.row.kind !== "research" && /research|version|look up|nghiên cứu|phiên bản/i.test(r.row.prompt));
+  assert.ok(near.length >= 3, "the corpus keeps prompts that merely name research or a version");
+  for (const r of near) assert.equal([...r.decision.selected, ...r.decision.approval].some((e) => e.id === "orbit-research"), false, r.row.prompt);
+});

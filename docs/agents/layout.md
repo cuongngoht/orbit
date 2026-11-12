@@ -19,6 +19,9 @@ cli/governed.mjs · cli/resources-here.mjs  (0.5.0) composition HELPERS, never e
                governed work -- its workflow, goal, task, tracked work or mission, by the association table
                and each owner's own fold -- for the follow-through hooks; and the registry and the strategy's
                facts composed ONE way for the prompt hook, a session's start and `resources.mjs route`
+cli/session-facts.mjs  (0.6.0, P2) a composition HELPER: the facts about a session's work src/routing/facts.mjs
+               derives -- its own working set and the needs of the work it tracks -- read ONE way for a
+               failed call's advice (learn-hook) and the next prompt's decision (router-hook)
 src/errors.mjs the three typed stops, as a LEAF -- the ports throw them too
 src/constraints.mjs  a field table's JSON-Schema fragment, ENFORCED (dsl and project both use it)
 src/scrub.mjs  masking by SHAPE, as a LEAF -- the committed corpus and the lessons both pass
@@ -157,7 +160,8 @@ src/engineering/  how this project TENDS or is REQUIRED to build code, evidence-
                · ensure.mjs + freshen.mjs RE-MEASURE, never re-derive: the one write is `status`
                · recall.mjs + vocab ROUTING: the few facts a task touches, each with how far it may
                steer the work (only a gate or a person binds) · working-set/ what a session
-               TOUCHED, metadata only (collect · fold · store) · observe/ milestone.mjs decides
+               TOUCHED, metadata only (collect · fold · store · checks: 0.6.0, the last check and one
+               check failing in a row with nothing changed between) · observe/ milestone.mjs decides
                WHEN (a commit, the end of a session, a check passing after an edit -- never every
                tool) and analyzers/ propose from file NAMES and checks, never contents; every
                candidate goes through the same contract and reconciliation, untrusted. 1.8.9:
@@ -244,7 +248,9 @@ src/lifecycle/ ONE lifecycle event for any host (event.mjs: the adapter's `norma
                after one of this plugin's agents returns) -- and router.mjs hands the trail its decision,
                the prompt's fingerprint and its marks, never the prompt. owners.mjs (0.5.0) the one table
                of who settles a session's governed work (workflow · goal · task · investigation ·
-               mission) and every line those four answers say, a leaf. A composition-layer caller
+               mission) and every line those four answers say, a leaf. advice.mjs (0.6.0, P2) advice from
+               evidence after a FAILED call: an ordered SILENCE table, then at most one line naming a fact,
+               its subject and the component the resolver chooses for it; `advice.given` on the trail. A composition-layer caller
                like src/help/: cli/learn-hook.mjs and cli/follow-hook.mjs build the tables and the
                lazily bound contexts, so nothing here reads process.env
 src/resources/ the EFFECTIVE RESOURCE REGISTRY: what Orbit can use HERE, one provider per family --
@@ -270,7 +276,9 @@ src/routing/   the PROMPT ROUTER, a PLANNER: intents.mjs (sixteen broad intents 
                (`route`: RouteDecision v2 -- graph, selected, approval, blocked, missing, plan;
                `decide`: v3, the same and strategy, activation, synthetic) · strategy.mjs (0.5.0, a
                LEAF: how much Orbit -- NONE · DIRECT · COORDINATED · SATELLITE · RESUME -- one ordered
-               table over facts the hook binds, the last row always matching) · explain.mjs
+               table over facts the hook binds, the last row always matching) · facts.mjs (0.6.0, P1, a
+               LEAF: the CLOSED vocabulary of facts about a session's work a row may `reactsTo` -- each with
+               what it requires, its sentence and its deriver; never a prompt's word) · explain.mjs
                (DERIVED views for Control: a skill's resolved needs, a resource's potential
                consumers, the agents a skill dispatches) · format.mjs (≤ 2 KB: nothing for NONE, one
                strategy line, then the v2 lines). It connects, starts, installs and writes nothing,
@@ -933,6 +941,10 @@ skills/orbit-develop/    the DEVELOPER playbook: provides `development.implement
                           `project.context` + `repository.read` (capabilities, never a server);
                           project context first, resources as the resolver decides, the smallest
                           verified change, review. It never installs or enables anything
+skills/orbit-research/   (0.6.0, U5) the RESEARCH playbook, instruction-only: a technical question answered
+                          from a source for the version a manifest pins -- a `knowledge` need scoped to the
+                          manifest, a managed provider through the broker or the host's own sourced lookup, a
+                          claim in { technology, version } context; brought in by `knowledge.owed`
 skills/orbit-test-suite/    the TESTER playbook: pick browser+profile, drive the agreed set,
                           write one review, hand over what a browser cannot check
 skills/orbit-test-plan/      the QC playbook: read first, ask only what changes the design, derive

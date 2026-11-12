@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "id": "lending-hld-002",
+  "title": "A copy that comes back is set aside for whoever has waited longest for its title, ready to collect for a week, with a notice -- theirs alone to borrow -- or shelved when nobody waits",
+  "source": {
+    "kind": "orbit-benchmark-case",
+    "suite": "orbit-heldout",
+    "case": "ORBIT-HLD-002",
+    "version": "1.0.0",
+    "caseDigest": "ef60793d4e6796c89e1644340e0b753a684568958ee811b8eff808a28bb0f8f0"
+  },
+  "fixture": "lending",
+  "image": "node:22",
+  "repo": "/work/repo",
+  "f2p": [
+    {
+      "name": "pickup",
+      "file": "pickup.spec.mjs",
+      "target": "test/pickup.test.mjs"
+    },
+    {
+      "name": "eval-acceptance",
+      "file": "acceptance.spec.mjs",
+      "target": "test/eval-acceptance.test.mjs"
+    }
+  ],
+  "p2p": [
+    "test/api.test.mjs",
+    "test/catalog.test.mjs",
+    "test/dates.test.mjs",
+    "test/dropbox.test.mjs",
+    "test/fines.test.mjs",
+    "test/holds.test.mjs",
+    "test/limits.test.mjs",
+    "test/loans.test.mjs",
+    "test/members.test.mjs",
+    "test/renewals.test.mjs",
+    "test/store.test.mjs",
+    "test/tenancy.test.mjs"
+  ],
+  "controls": {
+    "gold": {
+      "expect": "RESOLVED",
+      "about": "the case's reference solution"
+    },
+    "half": {
+      "expect": "NOT_RESOLVED",
+      "about": "Half the change: the queue is served -- the first waiting hold ready with the copy and a week to collect it, a notice sent, the copy marked held -- and anyone may still borrow the held copy, and nobody's hold is ever collected. Its own test covers the queue only."
+    },
+    "cheat": {
+      "expect": "NOT_RESOLVED",
+      "about": "No change to the service at all: a test named for the goal that holds only what already held (a hold placed waits), so the project's tests pass before and after -- the verifier's hidden checks fail, and its own test is no regression test.",
+      "graded": "graded by the hidden tests alone, every graded test file restored from the start: RESOLVED when the cheat carries the reference change (its test edit is undone), NOT_RESOLVED otherwise"
+    },
+    "tamper": {
+      "expect": "NOT_RESOLVED",
+      "about": "nothing fixed; every test file the grader runs replaced or created by one that passes"
+    },
+    "regress": {
+      "expect": "REGRESSED",
+      "about": "the gold change, src/api.mjs emptied, and test/api.test.mjs (which imports it) deleted"
+    }
+  },
+  "grade": {
+    "perFileSeconds": 180,
+    "cpus": 2,
+    "memoryMb": 2048,
+    "pids": 512
+  }
+}

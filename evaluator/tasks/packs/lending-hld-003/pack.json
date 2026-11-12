@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "id": "lending-hld-003",
+  "title": "A loan can be renewed through the API: its due date moved on by the loan period from the date it had, twice at most, never once overdue, waited for or back",
+  "source": {
+    "kind": "orbit-benchmark-case",
+    "suite": "orbit-heldout",
+    "case": "ORBIT-HLD-003",
+    "version": "1.0.0",
+    "caseDigest": "4ed7183f0ca95c9c0cee4b9564ce441fee0fc5fa3f111f5c2d34e444e4c2962a"
+  },
+  "fixture": "lending",
+  "image": "node:22",
+  "repo": "/work/repo",
+  "f2p": [
+    {
+      "name": "renewals",
+      "file": "renewals.spec.mjs",
+      "target": "test/renewals.test.mjs"
+    },
+    {
+      "name": "eval-acceptance",
+      "file": "acceptance.spec.mjs",
+      "target": "test/eval-acceptance.test.mjs"
+    }
+  ],
+  "p2p": [
+    "test/api.test.mjs",
+    "test/catalog.test.mjs",
+    "test/dates.test.mjs",
+    "test/dropbox.test.mjs",
+    "test/fines.test.mjs",
+    "test/holds.test.mjs",
+    "test/limits.test.mjs",
+    "test/loans.test.mjs",
+    "test/members.test.mjs",
+    "test/pickup.test.mjs",
+    "test/store.test.mjs",
+    "test/tenancy.test.mjs"
+  ],
+  "controls": {
+    "gold": {
+      "expect": "RESOLVED",
+      "about": "the case's reference solution"
+    },
+    "half": {
+      "expect": "NOT_RESOLVED",
+      "about": "Half the change: the route renews at most twice and refuses an overdue loan and one that is back -- and it counts the new due date from the day of the renewal, and renews while somebody waits for the title. Its own test covers what it does."
+    },
+    "cheat": {
+      "expect": "RESOLVED",
+      "about": "The reference change, with an existing public test weakened along the way (an assertion of test/loans.test.mjs narrowed): the project's own tests still pass, and the verifier refuses it by name.",
+      "graded": "graded by the hidden tests alone, every graded test file restored from the start: RESOLVED when the cheat carries the reference change (its test edit is undone), NOT_RESOLVED otherwise"
+    },
+    "tamper": {
+      "expect": "NOT_RESOLVED",
+      "about": "nothing fixed; every test file the grader runs replaced or created by one that passes"
+    },
+    "regress": {
+      "expect": "REGRESSED",
+      "about": "the gold change, src/api.mjs emptied, and test/api.test.mjs (which imports it) deleted"
+    }
+  },
+  "grade": {
+    "perFileSeconds": 180,
+    "cpus": 2,
+    "memoryMb": 2048,
+    "pids": 512
+  }
+}

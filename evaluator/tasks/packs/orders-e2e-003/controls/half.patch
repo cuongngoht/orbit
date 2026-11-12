@@ -1,0 +1,49 @@
+diff --git a/src/money.mjs b/src/money.mjs
+index c6b58cb5cf3df656ffe96fc51e3b7c63fc306212..a9dcd0323ed37cf30177efb27033535c77c1b5a1 100644
+--- a/src/money.mjs
++++ b/src/money.mjs
+@@ -1,5 +1,7 @@
+ // Money in minor units (cents): a line's total, an order's total after a whole-percentage discount, and a total
+ // formatted in dollars.
++export const CURRENCIES = { USD: { minor: 2, symbol: "$" }, EUR: { minor: 2, symbol: "€" }, JPY: { minor: 0, symbol: "¥" } };
++
+ export const lineTotal = (line) => line.qty * line.unitMinor;
+ 
+ export const subtotal = (lines) => lines.reduce((sum, line) => sum + lineTotal(line), 0);
+diff --git a/src/orders.mjs b/src/orders.mjs
+index b71fc617d5febf4057bd48085b3c3cef5f585a2b..2e5f290198e319c3c2143e1fb95adbbbc2c58c9a 100644
+--- a/src/orders.mjs
++++ b/src/orders.mjs
+@@ -1,5 +1,5 @@
+ // Orders: created open with their total computed once, shipped once, and cancelled only while they are still open.
+-import { orderTotal } from "./money.mjs";
++import { CURRENCIES, orderTotal } from "./money.mjs";
+ 
+ const nextId = (store) => `ord-${String(store.list("orders").length + 1).padStart(4, "0")}`;
+ 
+@@ -8,10 +8,10 @@ const validLine = (l) => Number.isInteger(l?.qty) && l.qty > 0 && Number.isInteg
+ const validPercent = (p) => Number.isInteger(p) && p >= 0 && p <= 100;
+ 
+ // Why an order cannot be made of what was sent, or null.
+-export const invalidOf = (input) => (!Array.isArray(input?.lines) || !input.lines.length || !input.lines.every(validLine) ? "lines" : !validPercent(input.percent ?? 0) ? "percent" : null);
++export const invalidOf = (input) => (!Array.isArray(input?.lines) || !input.lines.length || !input.lines.every(validLine) ? "lines" : !validPercent(input.percent ?? 0) ? "percent" : !Object.hasOwn(CURRENCIES, input.currency ?? "USD") ? "currency" : null);
+ 
+ export function createOrder(store, input) {
+-  const order = { id: nextId(store), customer: String(input.customer ?? ""), lines: input.lines, percent: input.percent ?? 0, note: String(input.note ?? ""), state: "open" };
++  const order = { id: nextId(store), customer: String(input.customer ?? ""), lines: input.lines, percent: input.percent ?? 0, currency: input.currency ?? "USD", note: String(input.note ?? ""), state: "open" };
+   return store.put("orders", order.id, { ...order, totalMinor: orderTotal(order.lines, order.percent) });
+ }
+ 
+diff --git a/src/worker.mjs b/src/worker.mjs
+index 3da7a5019de9ef5bf3eb53583f05791c2677c78e..46dd39829722b2818e3820ca5b25ce46feb4d24f 100644
+--- a/src/worker.mjs
++++ b/src/worker.mjs
+@@ -6,7 +6,7 @@ const nextInvoice = (store) => `inv-${String(store.list("invoices").length + 1).
+ 
+ function invoiced(store, message, order) {
+   const id = nextInvoice(store);
+-  store.put("invoices", id, { id, orderId: order.id, amountMinor: order.totalMinor, messageId: message.id });
++  store.put("invoices", id, { id, orderId: order.id, amountMinor: order.totalMinor, currency: order.currency, messageId: message.id });
+   store.put("processed", message.id, { messageId: message.id, invoice: id });
+   return { ack: true, invoice: id };
+ }

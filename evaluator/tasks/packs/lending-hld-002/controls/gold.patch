@@ -1,0 +1,188 @@
+diff --git a/README.md b/README.md
+index 8fff1c05f5c7da7f2c27a1d01d813d42fb07fae7..c470d4f3461b242ab3d580e77ec757a237e6f299 100644
+--- a/README.md
++++ b/README.md
+@@ -10,7 +10,7 @@ own records. Records live on disk, one JSON file each, so a service that stops a
+ - `src/members.mjs` — members, and what they owe. A member may have five items out at once.
+ - `src/loans.mjs` — lending, renewals and returns.
+ - `src/fines.mjs` — fines for late returns.
+-- `src/holds.mjs` — holds: members waiting for a title.
++- `src/holds.mjs` — holds: members waiting for a title, first come, first served.
+ - `src/api.mjs` — the HTTP-shaped API: `handle(store, { method, path, tenant, today, body }) -> { status, body }`.
+ - `src/dropbox.mjs` — the drop box consumer: `consume(store, { id, tenant, copy, at }) -> { ack, outcome }`.
+ 
+@@ -21,7 +21,7 @@ answers `{ error: <word> }`.
+ |---|---|
+ | `POST /titles` `{ name, format }` · `GET /titles` · `GET /titles/:id` | adds a title (`book` or `dvd`), the system's titles, a title |
+ | `POST /copies` `{ title, replacementCents }` | adds a copy of a title |
+-| `GET /copies/:id` | a copy and its status: `shelf` or `loan` |
++| `GET /copies/:id` | a copy and its status: `shelf`, `loan` or `held` |
+ | `POST /members` `{ name }` · `GET /members/:id` | adds a member, a member |
+ | `GET /members/:id/notices` | the notices a member was sent |
+ | `POST /loans` `{ copy, member }` · `GET /loans/:id` | lends a copy to a member, a loan |
+diff --git a/src/catalog.mjs b/src/catalog.mjs
+index d30f8cb4f9408da828e0dfea952f2f4d51d7b845..a5268fa073f1e686ccf217e4e795545ffb496180 100644
+--- a/src/catalog.mjs
++++ b/src/catalog.mjs
+@@ -1,5 +1,6 @@
+ // THE CATALOGUE: the titles a library system lends and the copies it holds of each. A title's format says how long a
+-// copy may stay out -- three weeks for a book, one week for a DVD -- and a copy is on the shelf or on loan.
++// copy may stay out -- three weeks for a book, one week for a DVD -- and a copy is on the shelf, on loan, or held for a
++// member who is coming to collect it.
+ import { created, put } from "./store.mjs";
+ import { mine } from "./tenancy.mjs";
+ 
+diff --git a/src/holds.mjs b/src/holds.mjs
+index da165f1b6fbe810904a4f24be180644ed3d0c4d1..03b88822bf4d82c489e30c84d176e457d54c3da4 100644
+--- a/src/holds.mjs
++++ b/src/holds.mjs
+@@ -1,17 +1,46 @@
+-// HOLDS: members waiting for a title, in the order they asked.
+-import { created } from "./store.mjs";
++// HOLDS: members waiting for a title, first come, first served. When a copy of the title comes back it is set aside for
++// whoever has waited longest: their hold is ready, they are sent a notice, and they have a week to collect it -- the copy
++// is theirs alone to borrow until then. With nobody waiting, the copy goes back on the shelf.
++import { addDays } from "./dates.mjs";
++import { created, put } from "./store.mjs";
+ import { allMine } from "./tenancy.mjs";
++import { shelved } from "./catalog.mjs";
++
++export const PICKUP_DAYS = 7;
++
++const OPEN = ["waiting", "ready"];
+ 
+ // A title's holds, in the order they were placed.
+ const holdsOn = (store, tenant, titleId) => allMine(store, tenant, "holds").filter((h) => h.title === titleId);
+ 
+-export const openHoldOf = (store, tenant, title, member) => holdsOn(store, tenant, title.id).find((h) => h.member === member.id && h.state === "waiting") ?? null;
++export const openHoldOf = (store, tenant, title, member) => holdsOn(store, tenant, title.id).find((h) => h.member === member.id && OPEN.includes(h.state)) ?? null;
+ 
+ export const newHold = (store, tenant, title, member, day) => created(store, "holds", "hold", { tenant, title: title.id, member: member.id, placed: day, state: "waiting", copy: null, pickupBy: null });
+ 
+-// Whether anybody is waiting for a copy's title.
++// Whether anybody is waiting for a copy's title: a hold placed and not yet served.
+ export const holdWaiting = (store, copy) => holdsOn(store, copy.tenant, copy.title).some((h) => h.state === "waiting");
+ 
++const readyHoldOf = (store, copy) => holdsOn(store, copy.tenant, copy.title).find((h) => h.state === "ready" && h.copy === copy.id) ?? null;
++
++// A copy set aside is its hold's member's alone to borrow; when they borrow it, their hold is collected.
++export const heldForAnother = (store, copy, member) => copy.status === "held" && readyHoldOf(store, copy)?.member !== member.id;
++
++const collected = (store, hold, member) => (hold && hold.member === member.id ? put(store, "holds", { ...hold, state: "collected" }) : null);
++
++export const collectedBy = (store, copy, member) => (copy.status === "held" ? collected(store, readyHoldOf(store, copy), member) : null);
++
++function setAside(store, copy, hold, day) {
++  const ready = put(store, "holds", { ...hold, state: "ready", copy: copy.id, pickupBy: addDays(day, PICKUP_DAYS) });
++  put(store, "copies", { ...copy, status: "held" });
++  created(store, "notices", "notice", { tenant: copy.tenant, member: hold.member, kind: "hold-ready", hold: hold.id, copy: copy.id, pickupBy: ready.pickupBy });
++  return ready;
++}
++
++const firstWaiting = (store, copy) => holdsOn(store, copy.tenant, copy.title).find((h) => h.state === "waiting") ?? null;
++
++// A copy back from a loan: set aside for the member who has waited longest for its title, or shelved.
++export const servedOrShelved = (store, copy, day) => ((hold) => (hold ? setAside(store, copy, hold, day) : shelved(store, copy)))(firstWaiting(store, copy));
++
+ export const holdView = (h) => ({ id: h.id, title: h.title, member: h.member, placed: h.placed, state: h.state, copy: h.copy, pickupBy: h.pickupBy });
+ 
+ export const noticeView = (n) => ({ id: n.id, kind: n.kind, hold: n.hold, copy: n.copy, pickupBy: n.pickupBy });
+diff --git a/src/loans.mjs b/src/loans.mjs
+index 7502e3d0c73f97e24294032f01261ce5446026dc..2b251d431677e9a210ffea12e0d5d07cc80415ff 100644
+--- a/src/loans.mjs
++++ b/src/loans.mjs
+@@ -1,12 +1,13 @@
+ // LOANS: a copy lent to a member until its due date, renewed, and brought back -- at the desk, or through the drop box
+-// (dropbox.mjs). A late return is fined and the fine charged to the member, and the copy goes back on the shelf.
++// (dropbox.mjs). A late return is fined and the fine charged to the member; the copy then goes to whoever is waiting
++// for its title, or back on the shelf.
+ import { addDays } from "./dates.mjs";
+ import { created, put } from "./store.mjs";
+ import { allMine, mine } from "./tenancy.mjs";
+-import { loanDaysOf, shelved, titleOfCopy } from "./catalog.mjs";
++import { loanDaysOf, titleOfCopy } from "./catalog.mjs";
+ import { charged, LOAN_LIMIT } from "./members.mjs";
+ import { fineFor } from "./fines.mjs";
+-import { holdWaiting } from "./holds.mjs";
++import { collectedBy, heldForAnother, holdWaiting, servedOrShelved } from "./holds.mjs";
+ 
+ export const RENEWALS = 2;
+ 
+@@ -15,6 +16,7 @@ const openLoansOf = (store, tenant, member) => allMine(store, tenant, "loans").f
+ // Why a copy may not be lent to a member now, asked in order; none, and it may.
+ const LEND_REFUSALS = [
+   { error: "not-available", when: (c) => c.copy.status === "loan" },
++  { error: "held-for-another", when: (c) => heldForAnother(c.store, c.copy, c.member) },
+   { error: "limit", when: (c) => openLoansOf(c.store, c.tenant, c.member).length >= LOAN_LIMIT },
+ ];
+ 
+@@ -23,16 +25,18 @@ export const lendRefusal = (store, tenant, copy, member) => LEND_REFUSALS.find((
+ const dueOf = (store, copy, day) => addDays(day, loanDaysOf(titleOfCopy(store, copy)));
+ 
+ export function lent(store, tenant, copy, member, day) {
++  collectedBy(store, copy, member);
+   put(store, "copies", { ...copy, status: "loan" });
+   return created(store, "loans", "loan", { tenant, copy: copy.id, member: member.id, out: day, due: dueOf(store, copy, day), renewals: 0, returned: null, fineCents: 0 });
+ }
+ 
+-// A loan brought back on a day: fined for the days it is late and the fine charged to its member, and its copy shelved.
++// A loan brought back on a day: fined for the days it is late and the fine charged to its member, and its copy set
++// aside for the member who has waited longest for the title -- or shelved.
+ export function returned(store, tenant, loan, day) {
+   const copy = mine(store, tenant, "copies", loan.copy);
+   const fineCents = fineFor(titleOfCopy(store, copy), copy, loan.due, day);
+   charged(store, mine(store, tenant, "members", loan.member), fineCents);
+-  shelved(store, copy);
++  servedOrShelved(store, copy, day);
+   return put(store, "loans", { ...loan, returned: day, fineCents });
+ }
+ 
+diff --git a/test/holds-served.test.mjs b/test/holds-served.test.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..6e5f67eaa90d607d7695c61a18b26ef59af5f423
+--- /dev/null
++++ b/test/holds-served.test.mjs
+@@ -0,0 +1,43 @@
++// A copy that comes back is set aside for whoever has waited longest for its title, theirs alone to collect.
++import assert from "node:assert/strict";
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { test } from "node:test";
++import { handle } from "../src/api.mjs";
++import { consume } from "../src/dropbox.mjs";
++import { openStore } from "../src/store.mjs";
++
++function storeFor(t) {
++  const dir = mkdtempSync(join(tmpdir(), "holds-served-"));
++  t.after(() => rmSync(dir, { recursive: true, force: true }));
++  return openStore(dir);
++}
++
++const call = (store, method, path, body, today = "2026-03-02") => handle(store, { method, path, tenant: "harbor", today, body });
++
++const member = (store, name) => call(store, "POST", "/members", { name }).body;
++
++function waited(store) {
++  const title = call(store, "POST", "/titles", { name: "Queued", format: "dvd" }).body;
++  const copy = call(store, "POST", "/copies", { title: title.id, replacementCents: 2500 }).body;
++  const loan = call(store, "POST", "/loans", { copy: copy.id, member: member(store, "Ana").id }).body;
++  const [ben, cy] = [member(store, "Ben"), member(store, "Cy")];
++  return { copy, loan, ben, cy, holds: [ben, cy].map((m) => call(store, "POST", "/holds", { title: title.id, member: m.id }).body) };
++}
++
++test("a copy checked in at the desk is set aside for the first in line, with a week to collect it and a notice", (t) => {
++  const store = storeFor(t);
++  const w = waited(store);
++  call(store, "POST", `/loans/${w.loan.id}/return`, {}, "2026-03-06");
++  const first = call(store, "GET", `/holds/${w.holds[0].id}`).body;
++  assert.deepEqual([first.state, first.copy, first.pickupBy, call(store, "GET", `/holds/${w.holds[1].id}`).body.state, call(store, "GET", `/members/${w.ben.id}/notices`).body.notices.length], ["ready", w.copy.id, "2026-03-13", "waiting", 1]);
++});
++
++test("a copy dropped in the drop box is held for the first in line alone, whose hold is collected when they borrow it", (t) => {
++  const store = storeFor(t);
++  const w = waited(store);
++  consume(store, { id: "scan-9", tenant: "harbor", copy: w.copy.id, at: "2026-03-06" });
++  const tries = [call(store, "POST", "/loans", { copy: w.copy.id, member: w.cy.id }).status, call(store, "POST", "/loans", { copy: w.copy.id, member: w.ben.id }).status];
++  assert.deepEqual([...tries, call(store, "GET", `/holds/${w.holds[0].id}`).body.state], [409, 201, "collected"]);
++});

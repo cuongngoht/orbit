@@ -218,3 +218,13 @@ test("one line per level, after the word's", () => {
   assert.match(lines[1], /^ {2}change {6}not yet -- a direct item confirmed by a read/);
   assert.match(lines[2], /^ {2}conclude {4}holds -- /);
 });
+
+// The playbooks that read SUFFICIENCY read the levels and run the loop (0.6.0, U1-U3): each names the three levels, the
+// relations gap and how it is filled, and the loop's record -- and may run every write the loop asks of it.
+test("each playbook that reads SUFFICIENCY reads the three levels, fills a relations gap with --with-refs, and may run the loop's writes", () => {
+  for (const skill of PLAYBOOKS) {
+    const text = readFileSync(new URL(`../skills/${skill}/SKILL.md`, import.meta.url), "utf8");
+    for (const word of ["investigate", "change", "conclude", "gap", "route-literal", "--work=<w-…>", '--asked="<source> · <target>"', "`proof` need", "`knowledge` need"]) assert.ok(text.includes(word), `${skill} says ${word}`);
+    for (const write of ["work.mjs need", "work.mjs settle", "work.mjs checkpoint"]) assert.ok(grantsOf(skill).some((g) => g.endsWith(write)), `${skill} may run ${write}`);
+  }
+});

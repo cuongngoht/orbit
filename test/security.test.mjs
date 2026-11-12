@@ -29,7 +29,7 @@ import { createMemory } from "../src/memory/index.mjs";
 import { memoryPaths } from "../src/memory/store.mjs";
 import { reportHtml } from "../src/report/index.mjs";
 import { model } from "../src/report/model.mjs";
-import { SECRET_NAME, scrub, scrubbed } from "../src/scrub.mjs";
+import { SECRET_NAME, scrub, scrubbed, scrubRecord } from "../src/scrub.mjs";
 import { UI_TESTS } from "./fakes/context.mjs";
 
 // A run that carried everything worth protecting: a password handed in on the
@@ -111,6 +111,18 @@ test("opaque bearer credentials and quoted secret values are masked as text", ()
   for (const text of ['Authorization: Bearer opaque-credential', 'Bearer opaque-credential', '{"password":"opaque-credential"}', "password='opaque-credential with spaces'"]) {
     assert.ok(!scrubbed(text).includes("opaque-credential"), text);
   }
+});
+
+// An opaque key is masked by its SHAPE from 32 hexadecimal characters up -- shorter than a commit id, so an API key of
+// 32 is never left in the text -- and who was signed in is a free-text field of a run record like any other, while the
+// build the verdict was taken on stays exactly as written.
+test("a run of 32 hexadecimal characters is masked, and scrubRecord masks who was signed in but keeps fe_commit", () => {
+  const key = "0123456789abcdef0123456789abcdef";
+  assert.equal(scrub(`key=${key.slice(0, 31)} then ${key}`), `key=${key.slice(0, 31)} then [hex]`);
+  const commit = "0123456789abcdef0123456789abcdef01234567";
+  const rec = scrubRecord({ case: "c", fe_commit: commit, identity: { upn: "teacher1@contoso.example" } });
+  assert.ok(!JSON.stringify(rec.identity).includes("contoso.example"), "who was signed in is free text");
+  assert.equal(rec.fe_commit, commit, "a structural field is never masked");
 });
 
 // Leaving the repository did not make the ledger private: it is projected into

@@ -79,6 +79,8 @@ test("repeats count back from the last attempt that ended, on its failure signat
   assert.equal(repeatsOf([ended("aaa"), ended("bbb"), ended("bbb"), ended("bbb")]), 3);
   assert.equal(repeatsOf([ended("aaa"), ended(null)]), 0, "an attempt with no signature breaks the run");
   assert.equal(repeatsOf([ended("aaa"), ended("aaa"), { completed: null }]), 2, "the open attempt is not counted");
+  assert.equal(repeatsOf([ended("bbb"), ended("aaa"), ended("bbb"), ended("bbb")]), 2, "only the repeats IN A ROW count, never one scattered earlier");
+  assert.equal(repeatsOf([ended("bbb"), ended("bbb"), ended(null), ended("bbb")]), 1, "a success breaks the run");
 });
 
 test("an approval's state is read against the clock: requested, granted, consumed, rejected -- and lapsed without any line saying so", () => {

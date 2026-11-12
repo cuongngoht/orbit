@@ -1,0 +1,85 @@
+{
+  "kind": "ended",
+  "run": "plain__swebench_pylint-dev__pylint-4604__t1",
+  "attempt": 1,
+  "at": "2026-11-12T06:18:31.861Z",
+  "chargedUsd": 0.0484459,
+  "infra": null,
+  "timedOut": false,
+  "killedByControl": false,
+  "exit": 0,
+  "oomKilled": false,
+  "wallMs": 21670,
+  "streamBytes": 114969,
+  "streamCut": false,
+  "summary": {
+    "started": true,
+    "model": "claude-sonnet-5-5",
+    "version": "2.1.322",
+    "plugins": [],
+    "hooks": {
+      "ran": 0,
+      "failed": 0
+    },
+    "skillsListed": 16,
+    "result": true,
+    "costUsd": 0.0484459,
+    "tokens": {
+      "input": 14,
+      "output": 1094,
+      "cacheRead": 134579,
+      "cacheWrite": 6005
+    },
+    "turns": 8,
+    "durationMs": 20731,
+    "denials": 0,
+    "subtype": "success",
+    "isError": false,
+    "stoppedOn": null,
+    "apiError": null,
+    "status": "DONE",
+    "statusWhy": null,
+    "asked": false,
+    "tools": {
+      "calls": 7,
+      "byName": {
+        "Grep": 1,
+        "Read": 1,
+        "Edit": 1,
+        "Bash": 4
+      },
+      "skills": {},
+      "agents": {}
+    },
+    "orbit": {
+      "commands": 0,
+      "byCli": {}
+    }
+  },
+  "patch": {
+    "bytes": 707,
+    "digest": "2aeb26bf1b4b04f63d6d42aaf7ea3e9e19672465ea4ac2cd174ac77f58d89826",
+    "paths": [
+      "pylint/checkers/variables.py"
+    ]
+  },
+  "plugin": null,
+  "images": {
+    "task": "sha256:df6eb48f445388d0e228108c635625a0cc9f0cf5ed87303e89f75ab6fc3c2b39",
+    "taskRef": "swebench/sweb.eval.x86_64.pylint-dev_1776_pylint-4604:latest",
+    "pulled": false,
+    "egress": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb"
+  },
+  "startCommit": "0f266873c24f8f7270d257c8c8a8676930be0c72",
+  "entryPhase": "ended",
+  "egress": {
+    "direct": "ENETUNREACH",
+    "outsideName": "EAI_AGAIN",
+    "api": {
+      "connect": 200,
+      "http": 404
+    },
+    "otherHost": 403,
+    "holds": true
+  }
+}

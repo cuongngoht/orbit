@@ -1,0 +1,42 @@
+diff --git a/src/worker.mjs b/src/worker.mjs
+index 2527bf924bd092b1f15fcbcd937eb667cff515ae..018acb94271b1a7538627bbc6ec0604adca9ab9e 100644
+--- a/src/worker.mjs
++++ b/src/worker.mjs
+@@ -6,7 +6,7 @@ const nextInvoice = (store) => `inv-${String(store.list("invoices").length + 1).
+ 
+ function invoiced(store, message, order) {
+   const id = nextInvoice(store);
+-  setImmediate(() => store.put("invoices", id, { id, orderId: order.id, amountMinor: order.totalMinor, currency: order.currency, messageId: message.id }));
++  store.put("invoices", id, { id, orderId: order.id, amountMinor: order.totalMinor, currency: order.currency, messageId: message.id });
+   store.put("processed", message.id, { messageId: message.id, invoice: id });
+   return { ack: true, invoice: id };
+ }
+diff --git a/test/invoice-durable.test.mjs b/test/invoice-durable.test.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..9c35431ad8d0ccee28fce2761659c51022629c1f
+--- /dev/null
++++ b/test/invoice-durable.test.mjs
+@@ -0,0 +1,23 @@
++import assert from "node:assert/strict";
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { test } from "node:test";
++import { consume } from "../src/worker.mjs";
++import { openStore } from "../src/store.mjs";
++
++test("an acknowledged payment's invoice is on disk when consume returns", (t) => {
++  const dir = mkdtempSync(join(tmpdir(), "orders-"));
++  t.after(() => rmSync(dir, { recursive: true, force: true }));
++  const store = openStore(dir);
++  store.put("orders", "ord-0001", { id: "ord-0001", totalMinor: 1250, currency: "USD" });
++  const r = consume(store, { id: "m-1", type: "order.paid", orderId: "ord-0001" });
++  assert.equal(r.ack, true);
++  const again = openStore(dir).list("invoices");
++  assert.equal(again.length, 1);
++  assert.equal(again[0].orderId, "ord-0001");
++  assert.equal(again[0].amountMinor, 1250);
++  assert.equal(consume(store, { id: "m-1", type: "order.paid", orderId: "ord-0001" }).ack, true);
++  consume(store, { id: "m-2", type: "order.paid", orderId: "ord-0001" });
++  assert.equal(openStore(dir).list("invoices").length, 2);
++});

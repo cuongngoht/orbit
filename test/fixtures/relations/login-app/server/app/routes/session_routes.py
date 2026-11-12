@@ -1,5 +1,8 @@
-from ..auth.session import create_session
-from ..http import route
+from ..auth.session import (
+    create_session,
+)
+from ..http import \
+    route
 
 
 @route("POST", "/api/session")

@@ -1,5 +1,7 @@
-from app.routes.session_routes import post_session
+from app.routes import (
+    session_routes,
+)
 
 
 def test_post_session_returns_the_user():
-    assert post_session({"user": "a", "password": "b"}) == {"user": "a"}
+    assert session_routes.post_session({"user": "a", "password": "b"}) == {"user": "a"}

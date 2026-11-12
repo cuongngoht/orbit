@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
-import { DIRECT_LIMIT, GAP_TARGET, LITERAL_LIMIT, fixed, relatedOf } from "../src/context/relations.mjs";
+import { DIRECT_LIMIT, GAP_TARGET, IMPORTER_READS, LITERAL_LIMIT, fixed, relatedOf } from "../src/context/relations.mjs";
 import { relevanceLines, relevanceOf, seedsOf } from "../src/context/relevance.mjs";
 import { verifiedRefs } from "../src/context/refs.mjs";
 import { RELATION_ADAPTERS } from "../skills/orbit-develop/relations/index.mjs";
@@ -104,6 +104,25 @@ test("an adapter missing part of its contract is never called", () => {
   const app = loginApp();
   const half = { id: "half", detects: () => true };
   assert.deepEqual(relatedOf({ direct: [PAGE], tree: app.tree, adapters: [half], read: (p) => app.files[p], search: searchOf(app.files) }).gaps.map((g) => g.ref), [PAGE]);
+});
+
+// An importer whose own hit line names nothing -- the specifier sits below `import(` -- is read whole: the page imports
+// the client that way in the fixture, and the handler's test imports it inside a parenthesised list.
+test("an importer whose statement breaks across lines is read whole, once, and only when its line names nothing", () => {
+  const app = loginApp();
+  const reads = [];
+  const r = relatedOf({ direct: [CLIENT], tree: app.tree, adapters: RELATION_ADAPTERS, read: (p) => (reads.push(p), app.files[p]), search: searchOf(app.files), maxFiles: 1000 });
+  assert.deepEqual(r.items.find((i) => i.ref === PAGE), { ref: PAGE, class: "downstream", evidence: [{ source: "imported-by", id: `${PAGE} -> ${CLIENT}` }] });
+  assert.deepEqual(reads, [CLIENT, PAGE], "the direct file, then the one hit file whose line named nothing");
+  const handler = relatedOf({ direct: [HANDLER], tree: app.tree, adapters: RELATION_ADAPTERS, read: (p) => app.files[p], search: searchOf(app.files), maxFiles: 1000 });
+  assert.equal(handler.items.find((i) => i.ref === "server/tests/test_session_routes.py")?.class, "verification");
+  assert.deepEqual(handler.items.filter((i) => i.class === "dependency").map((i) => i.ref).sort(), ["server/app/auth/session.py", "server/app/http.py"], "a parenthesised list and a backslash continuation");
+  const many = Object.fromEntries(Array.from({ length: IMPORTER_READS + 5 }, (_, i) => [`u${i}.js`, 'const x = require(\n  "./target.js"\n);\n']));
+  const files = { ...many, "target.js": "export const t = 1;\n" };
+  const counted = [];
+  const out = relatedOf({ direct: ["target.js"], tree: { files: new Set(Object.keys(files)), dirs: new Set() }, adapters: RELATION_ADAPTERS, read: (p) => (counted.push(p), files[p]), search: searchOf(files), maxFiles: 1000 });
+  assert.equal(counted.length, 1 + IMPORTER_READS, "at most IMPORTER_READS hit files read whole per direct file");
+  assert.equal(out.items.length, IMPORTER_READS);
 });
 
 // src/ names no language, framework or stack: what a file imports is a pack's to know.

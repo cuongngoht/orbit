@@ -13,9 +13,11 @@
 //     importersPattern(path)         -> ONE fixed string every line that imports the path contains }
 //
 // For each direct file (at most DIRECT_LIMIT):
-//   out      the file is READ once, and each name it imports that resolves to a tracked file is a `dependency`
+//   out      the file is READ once, WHOLE, and each name it imports that resolves to a tracked file is a `dependency` --
+//            wherever its statement breaks across lines
 //   in       ONE fixed-string search of the index for who imports it: a hit counts only when its own adapter resolves a
-//            name on that line back to the file -- a `downstream` item, or `verification` when it is one of its tests
+//            name on that line -- or, when the line alone names nothing, in that file's whole text -- back to the file:
+//            a `downstream` item, or `verification` when it is one of its tests
 //   tests    what the adapter says goes with it: `verification`
 //   routes   a ROUTE-SHAPED string literal in it (a quoted `/a/b`, two or more segments) that another tracked file also
 //            holds -- one fixed-string search per literal -- is a HYPOTHESIS, not an edge: nothing here knows the two
@@ -67,17 +69,31 @@ const withTests = (r, a, path) => testsOf(r, a, path).map((t) => item(t, "verifi
 
 // ---- one hop in: who imports it, by one search ------------------------------------------------------------------------
 
-const importsIt = (r, hit, path) => ((a) => Boolean(a) && quietly(() => a.specifiersOf(hit.text), []).some((spec) => resolved(r, a, spec, hit.path) === path))(adapterOf(r, hit.path));
+// A statement may break anywhere -- `import {` on one line and `} from "./x"` three lines down, a `require(` whose
+// specifier sits on the next line, a parenthesised name list -- so a hit's own line is asked first, and when it names
+// nothing that resolves here, the hit's file is read WHOLE (once per walk, for at most IMPORTER_READS files per direct
+// file) and asked again. A file the search did not hit is never read.
+export const IMPORTER_READS = 16;
+
+const namesIn = (r, a, text, from, path) => quietly(() => a.specifiersOf(text), []).some((spec) => resolved(r, a, spec, from) === path);
+
+const byLine = (r, a, hits, from, path) => hits.some((h) => h.path === from && namesIn(r, a, h.text, from, path));
+
+const byText = (r, a, from, path) => namesIn(r, a, readOnce(r, from) ?? "", from, path);
+
+const importsIt = (r, hits, from, at, path) => ((a) => Boolean(a) && (byLine(r, a, hits, from, path) || (at < IMPORTER_READS && byText(r, a, from, path))))(adapterOf(r, from));
 
 const filesOf = (hits) => [...new Set(hits.map((h) => h.path))];
 
 const importerItem = (tests, from, path) => item(from, tests.includes(from) ? "verification" : "downstream", "imported-by", `${from} -> ${path}`);
 
+const importerFiles = (r, hits, path) => filesOf(hits.filter((h) => held(r, h.path) && h.path !== path && !r.direct.includes(h.path))).filter((from, at) => importsIt(r, hits, from, at, path));
+
 function importersOf(r, a, path) {
   const pattern = quietly(() => a.importersPattern(path));
   const hits = pattern ? quietly(() => r.search(fixed(pattern))) : [];
   if (hits === null) return [gap(path, "who imports it could not be searched here")];
-  return filesOf(hits.filter((h) => held(r, h.path) && h.path !== path && importsIt(r, h, path))).slice(0, r.maxFiles).map((from) => importerItem(testsOf(r, a, path), from, path));
+  return importerFiles(r, hits, path).slice(0, r.maxFiles).map((from) => importerItem(testsOf(r, a, path), from, path));
 }
 
 // ---- a route-shaped literal another file also holds -----------------------------------------------------------------
@@ -100,7 +116,7 @@ const NO_ADAPTER = (path) => `no relation adapter here reads ${path.includes("."
 function aroundOne(r, path) {
   const a = adapterOf(r, path);
   if (!a) return [gap(path, NO_ADAPTER(path))];
-  const text = quietly(() => r.read(path));
+  const text = readOnce(r, path);
   return text === null ? unread(path) : [...outOf(r, a, path, text), ...withTests(r, a, path), ...importersOf(r, a, path), ...hypothesesOf(r, path, text)];
 }
 
@@ -129,7 +145,10 @@ function bounded(r, found) {
   return { items: items.map(strip), gaps: unique(ofType(found, "gap"), (g) => g.ref).map(strip), hypotheses: hypotheses.map(strip) };
 }
 
-const worldOf = (input) => ({ direct: [...new Set(input.direct ?? [])].slice(0, DIRECT_LIMIT), tree: input.tree ?? { files: new Set() }, adapters: (input.adapters ?? []).filter((a) => adapterFindings(a).length === 0), read: input.read ?? (() => null), search: input.search ?? (() => null), maxFiles: input.maxFiles ?? Infinity });
+// Each file's committed text, read at most once per walk: a direct file's whole text is what its imports are read from.
+const readOnce = (r, path) => (r.texts.has(path) ? r.texts.get(path) : r.texts.set(path, quietly(() => r.read(path))).get(path));
+
+const worldOf = (input) => ({ texts: new Map(), direct: [...new Set(input.direct ?? [])].slice(0, DIRECT_LIMIT), tree: input.tree ?? { files: new Set() }, adapters: (input.adapters ?? []).filter((a) => adapterFindings(a).length === 0), read: input.read ?? (() => null), search: input.search ?? (() => null), maxFiles: input.maxFiles ?? Infinity });
 
 // -> { items: [{ ref, class: dependency | downstream | verification, evidence: [{ source, id }] }],
 //      gaps: [{ ref, why, target }], hypotheses: [{ ref, literal, from }] }

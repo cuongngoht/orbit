@@ -25,7 +25,35 @@ test("the JavaScript adapter reads a specifier exactly as architecture's import 
   const lines = ['import { a } from "./a.js";', "const b = require('../b');", 'const c = await import("./c/index.mjs");', 'export { d } from "./d";', 'import e from "e-package";', "const f = 1;", "import './side-effect.css';"];
   for (const line of lines) assert.deepEqual(JAVASCRIPT.specifiersOf(line), SPECIFIER.exec(line) ? [SPECIFIER.exec(line)[1]] : [], line);
   assert.equal(JAVASCRIPT.detects("x.ts"), SOURCE_FILE.test("x.ts"));
-  assert.deepEqual(JAVASCRIPT.specifiersOf(loginApp().files["web/src/pages/LoginPage.jsx"]), ["../api/sessionClient.js", "../components/Button.jsx"], "every import of a file, not only its first line's");
+  assert.deepEqual(JAVASCRIPT.specifiersOf(loginApp().files["web/src/pages/LoginPage.jsx"]), ["../components/Button.jsx", "../api/sessionClient.js"], "every import of a file, wherever its statement breaks");
+});
+
+// The commonest shape in a real frontend puts the specifier lines below its keyword. Read whole, the adapter finds each
+// specifier with the analyser's own expression: the same as that expression finds on the statement written on one line.
+const MULTILINE = [
+  ['import {\n  a,\n  b,\n} from "./x.js";', ["./x.js"]],
+  ["export {\n  c,\n} from './y';", ["./y"]],
+  ['const z = require(\n  "./z"\n);', ["./z"]],
+  ["const w = await import(\n  './w.mjs'\n);", ["./w.mjs"]],
+  ['import def,\n{ e } from\n  "../v";', ["../v"]],
+];
+
+test("a JavaScript statement broken over lines is read whole -- and agrees with the analyser's expression on that statement in one line", () => {
+  for (const [text, specs] of MULTILINE) {
+    assert.deepEqual(JAVASCRIPT.specifiersOf(text), specs, text);
+    assert.deepEqual(JAVASCRIPT.specifiersOf(text), [SPECIFIER.exec(text.replace(/\s*\n\s*/g, " "))?.[1]], `${text}: the analyser on one line`);
+  }
+  assert.deepEqual(JAVASCRIPT.specifiersOf(MULTILINE.map(([t]) => t).join("\n")), MULTILINE.flatMap(([, s]) => s), "every statement of a whole file");
+});
+
+test("a Python statement broken over lines -- a parenthesised name list or a backslash -- is read whole", () => {
+  assert.deepEqual(PYTHON.specifiersOf("from a.b import (\n    x,\n    y,\n)\n"), ["a.b", "a.b.x", "a.b.y"]);
+  assert.deepEqual(PYTHON.specifiersOf("from a.b import (x,\n    y)\n"), ["a.b", "a.b.x", "a.b.y"]);
+  assert.deepEqual(PYTHON.specifiersOf("from app import \\\n    routes, \\\n    auth\n"), ["app", "app.routes", "app.auth"]);
+  assert.deepEqual(PYTHON.specifiersOf("import a, \\\n    b.c\n"), ["a", "b.c"]);
+  assert.deepEqual(PYTHON.specifiersOf("from app.routes import ("), ["app.routes"], "a line that only opens its list still names its module");
+  const { files } = loginApp();
+  assert.deepEqual(PYTHON.specifiersOf(files["server/tests/test_session_routes.py"]), ["app.routes", "app.routes.session_routes"]);
 });
 
 test("a relative JavaScript name resolves as written, with a source extension, or to its index -- and only to a tracked file", () => {

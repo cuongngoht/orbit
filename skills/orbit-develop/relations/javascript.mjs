@@ -2,7 +2,8 @@
 //
 // What a file imports is read with the SAME expression architecture's import analyser reads it with
 // (src/architecture/analyzers/imports.mjs `SPECIFIER`): a relative `from "…"`, `require("…")` or `import("…")`. A bare
-// specifier names a package, which the manifests already say, and is never a file here. A relative one resolves the way
+// specifier names a package, which the manifests already say, and is never a file here. The text is read WHOLE, so a
+// statement broken over lines (`import {\n  a,\n} from "./x"`, `require(\n  "./y"\n)`) is found wherever it breaks. A relative one resolves the way
 // the module resolvers do it -- the path as written, then with each source extension, then its index file -- and only to
 // a file the tracked tree holds. A test goes with a file when it is called `<name>.test.*` or `<name>.spec.*`.
 import { SOURCE_FILE, SPECIFIER } from "../../../src/architecture/analyzers/imports.mjs";

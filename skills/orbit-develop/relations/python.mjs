@@ -1,12 +1,14 @@
 // The relation adapter for Python sources (0.6.0, U3; the contract is src/context/relations.mjs).
 //
-// `import a.b` and `from a.b import c` name a module; `from .a import b` and `from . import b` name one relative to the
+// `import a.b` and `from a.b import c` name a module -- over the whole text, so a parenthesised name list spread over
+// lines (`from a import (\n  x,\n  y)`) and a backslash continuation are read as one statement, and a line holding
+// only `from a import (` still names `a`; `from .a import b` and `from . import b` name one relative to the
 // importing file's own package (a dot per level). A relative name resolves inside that package; an absolute one
 // resolves only when EXACTLY ONE tracked file ends in its path (`a/b.py`, or `a/b/__init__.py`) -- two candidates are
 // two guesses, and none is taken. A name imported FROM a module may itself be a module (`from app import routes`), so
 // each is offered both ways and only what the tree holds resolves. A test goes with `name.py` when it is called
 // `test_name.py` or `name_test.py`.
-const FROM = /^[ \t]*from[ \t]+(\.*[\w.]*)[ \t]+import[ \t]+(?:\(([^)]*)\)|([\w \t,]+))/gm;
+const FROM = /^[ \t]*from[ \t]+(\.*[\w.]*)[ \t]+import[ \t]+(?:\(([^)]*)\)?|([\w \t,]+))/gm;
 const IMPORT = /^[ \t]*import[ \t]+([\w.]+(?:[ \t]*,[ \t]*[\w.]+)*)/gm;
 
 const dirOf = (p) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
@@ -21,7 +23,10 @@ const joinedName = (mod, name) => (/^\.+$/.test(mod) ? `${mod}${name}` : `${mod}
 
 const fromSpecs = (m) => [m[1], ...names(m[2] ?? m[3]).map((n) => joinedName(m[1], n))].filter(Boolean);
 
-export const specifiersOf = (text) => [...[...String(text ?? "").matchAll(FROM)].flatMap(fromSpecs), ...[...String(text ?? "").matchAll(IMPORT)].flatMap((m) => names(m[1]))];
+// A backslash at a line's end continues the statement on the next: joined first, so a name after it is still read.
+const joinedLines = (text) => String(text ?? "").replace(/\\\r?\n/g, " ");
+
+export const specifiersOf = (text) => ((code) => [...[...code.matchAll(FROM)].flatMap(fromSpecs), ...[...code.matchAll(IMPORT)].flatMap((m) => names(m[1]))])(joinedLines(text));
 
 const moduleFiles = (base) => [`${base}.py`, `${base}/__init__.py`];
 

@@ -1,0 +1,11 @@
+{
+  "kind": "outcome",
+  "run": "noop-done__pack_orders-e2e-006__t1",
+  "attempt": 1,
+  "at": "2026-11-12T05:40:09.170Z",
+  "word": "EMPTY_PATCH",
+  "why": "the working tree is as it started (and the agent said DONE)",
+  "saidDone": true,
+  "grade": null,
+  "gradeDetail": null
+}

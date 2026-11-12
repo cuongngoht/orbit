@@ -1,0 +1,53 @@
+diff --git a/src/orders.mjs b/src/orders.mjs
+index f203235e3ad85f33546f8e1bfb4d35b596818f50..2e5f290198e319c3c2143e1fb95adbbbc2c58c9a 100644
+--- a/src/orders.mjs
++++ b/src/orders.mjs
+@@ -11,7 +11,7 @@ const validPercent = (p) => Number.isInteger(p) && p >= 0 && p <= 100;
+ export const invalidOf = (input) => (!Array.isArray(input?.lines) || !input.lines.length || !input.lines.every(validLine) ? "lines" : !validPercent(input.percent ?? 0) ? "percent" : !Object.hasOwn(CURRENCIES, input.currency ?? "USD") ? "currency" : null);
+ 
+ export function createOrder(store, input) {
+-  const order = { id: nextId(store), customer: String(input.customer ?? ""), lines: input.lines, percent: input.percent ?? 0, currency: input.currency ?? "USD", state: "open" };
++  const order = { id: nextId(store), customer: String(input.customer ?? ""), lines: input.lines, percent: input.percent ?? 0, currency: input.currency ?? "USD", note: String(input.note ?? ""), state: "open" };
+   return store.put("orders", order.id, { ...order, totalMinor: orderTotal(order.lines, order.percent) });
+ }
+ 
+diff --git a/src/ui.mjs b/src/ui.mjs
+index 05ce39a2a7d2859b0090d4844d316a680022fe15..e3f443a561c0d30c38d35e38da0149fcca352d03 100644
+--- a/src/ui.mjs
++++ b/src/ui.mjs
+@@ -5,4 +5,6 @@ const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&
+ 
+ export const escaped = (text) => String(text ?? "").replace(/[&<>"']/g, (ch) => ESCAPES[ch]);
+ 
+-export const renderOrder = (order) => [`<article class="order" id="${escaped(order.id)}">`, `  <h2>${escaped(order.customer)}</h2>`, `  <p class="total">${escaped(formatted(order.totalMinor, order.currency))}</p>`, `  <p class="state">${escaped(order.state)}</p>`, "</article>"].join("\n");
++const noteOf = (order) => (order.note ? [`  <p class="note">${escaped(order.note)}</p>`] : []);
++
++export const renderOrder = (order) => [`<article class="order" id="${escaped(order.id)}">`, `  <h2>${escaped(order.customer)}</h2>`, `  <p class="total">${escaped(formatted(order.totalMinor, order.currency))}</p>`, `  <p class="state">${escaped(order.state)}</p>`, ...noteOf(order), "</article>"].join("\n");
+diff --git a/test/order-note.test.mjs b/test/order-note.test.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..deda411ea4dbd4cc3deb9f6d7400a1c0c5fcbd9b
+--- /dev/null
++++ b/test/order-note.test.mjs
+@@ -0,0 +1,22 @@
++import assert from "node:assert/strict";
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { test } from "node:test";
++import { handle } from "../src/api.mjs";
++import { openStore } from "../src/store.mjs";
++import { renderOrder } from "../src/ui.mjs";
++
++function fresh(t) {
++  const dir = mkdtempSync(join(tmpdir(), "orders-"));
++  t.after(() => rmSync(dir, { recursive: true, force: true }));
++  return dir;
++}
++
++test("an order keeps its note across a restart and the view draws it escaped", (t) => {
++  const dir = fresh(t);
++  const id = handle(openStore(dir), { method: "POST", path: "/orders", body: { lines: [{ qty: 1, unitMinor: 100 }], note: "ring twice & wait" } }).body.id;
++  const order = handle(openStore(dir), { method: "GET", path: `/orders/${id}` }).body;
++  assert.equal(order.note, "ring twice & wait");
++  assert.match(renderOrder(order), /<p class="note">ring twice &amp; wait<\/p>/);
++});

@@ -1,0 +1,89 @@
+{
+  "kind": "ended",
+  "run": "tamper-done__pack_orders-e2e-006__t1",
+  "attempt": 1,
+  "at": "2026-11-12T05:41:14.934Z",
+  "chargedUsd": 0,
+  "infra": null,
+  "timedOut": false,
+  "killedByControl": false,
+  "exit": 0,
+  "oomKilled": false,
+  "wallMs": 1120,
+  "streamBytes": 469,
+  "streamCut": false,
+  "summary": {
+    "started": true,
+    "model": "scripted",
+    "version": null,
+    "plugins": [],
+    "hooks": {
+      "ran": 0,
+      "failed": 0
+    },
+    "skillsListed": null,
+    "result": true,
+    "costUsd": 0,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": null,
+      "cacheWrite": null
+    },
+    "turns": 1,
+    "durationMs": 0,
+    "denials": 0,
+    "subtype": "success",
+    "isError": false,
+    "stoppedOn": null,
+    "apiError": null,
+    "status": "DONE",
+    "statusWhy": null,
+    "asked": false,
+    "tools": {
+      "calls": 0,
+      "byName": {},
+      "skills": {},
+      "agents": {}
+    },
+    "orbit": {
+      "commands": 0,
+      "byCli": {}
+    }
+  },
+  "patch": {
+    "bytes": 10179,
+    "digest": "1bb91aaa6597f3c9552473b5eb28ce32b158ff97fd1cd17d7217e3c8b0a4588d",
+    "paths": [
+      "test/cancel.test.mjs",
+      "test/currency.test.mjs",
+      "test/dedupe.test.mjs",
+      "test/eval-acceptance.test.mjs",
+      "test/invoice.test.mjs",
+      "test/money.test.mjs",
+      "test/note.test.mjs",
+      "test/orders.test.mjs",
+      "test/ui.test.mjs",
+      "test/worker.test.mjs"
+    ]
+  },
+  "plugin": null,
+  "images": {
+    "task": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb",
+    "taskRef": "node:22",
+    "pulled": false,
+    "egress": "sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb"
+  },
+  "startCommit": "3be742c0548ebe1dbd0c1f831ba7d1b0df46e323",
+  "entryPhase": "ended",
+  "egress": {
+    "direct": "ENETUNREACH",
+    "outsideName": "EAI_AGAIN",
+    "api": {
+      "connect": 200,
+      "http": 404
+    },
+    "otherHost": 403,
+    "holds": true
+  }
+}

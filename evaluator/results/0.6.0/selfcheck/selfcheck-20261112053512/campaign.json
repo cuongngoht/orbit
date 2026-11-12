@@ -1,0 +1,104 @@
+{
+  "schema": 1,
+  "id": "selfcheck-20261112053512",
+  "budgetUsd": 0,
+  "limits": {
+    "usd": 0,
+    "turns": 1,
+    "minutes": 10,
+    "cpus": 2,
+    "memoryMb": 2048,
+    "pids": 512
+  },
+  "arms": {
+    "gold-done": {
+      "kind": "scripted",
+      "behaviour": "patch",
+      "patch": "gold",
+      "status": "DONE",
+      "frozen": {}
+    },
+    "noop-done": {
+      "kind": "scripted",
+      "behaviour": "noop",
+      "status": "DONE",
+      "frozen": {}
+    }
+  },
+  "runs": [
+    {
+      "arm": "gold-done",
+      "task": "swebench:pytest-dev__pytest-7982",
+      "trial": 1
+    },
+    {
+      "arm": "gold-done",
+      "task": "swebench:pallets__flask-5014",
+      "trial": 1
+    },
+    {
+      "arm": "noop-done",
+      "task": "swebench:pytest-dev__pytest-7982",
+      "trial": 1
+    },
+    {
+      "arm": "noop-done",
+      "task": "swebench:pallets__flask-5014",
+      "trial": 1
+    }
+  ],
+  "caFile": "/root/.ccr/ca-bundle.crt",
+  "plan": [
+    {
+      "arm": "gold-done",
+      "task": "swebench:pytest-dev__pytest-7982",
+      "trial": 1,
+      "key": "gold-done__swebench_pytest-dev__pytest-7982__t1"
+    },
+    {
+      "arm": "gold-done",
+      "task": "swebench:pallets__flask-5014",
+      "trial": 1,
+      "key": "gold-done__swebench_pallets__flask-5014__t1"
+    },
+    {
+      "arm": "noop-done",
+      "task": "swebench:pytest-dev__pytest-7982",
+      "trial": 1,
+      "key": "noop-done__swebench_pytest-dev__pytest-7982__t1"
+    },
+    {
+      "arm": "noop-done",
+      "task": "swebench:pallets__flask-5014",
+      "trial": 1,
+      "key": "noop-done__swebench_pallets__flask-5014__t1"
+    }
+  ],
+  "tasks": {
+    "swebench:pytest-dev__pytest-7982": {
+      "digest": "f9ce244d5d9c636091799772324ac490ca5a38317a64b001313a9587c9642b25",
+      "image": "swebench/sweb.eval.x86_64.pytest-dev_1776_pytest-7982:latest",
+      "pin": {
+        "dataset": "princeton-nlp/SWE-bench_Verified",
+        "revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+        "row": "f9ce244d5d9c636091799772324ac490ca5a38317a64b001313a9587c9642b25"
+      }
+    },
+    "swebench:pallets__flask-5014": {
+      "digest": "5cc7ccbd782cf546cdded80c0811a572ba428ecace70022e5982477ad6a47489",
+      "image": "swebench/sweb.eval.x86_64.pallets_1776_flask-5014:latest",
+      "pin": {
+        "dataset": "princeton-nlp/SWE-bench_Verified",
+        "revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+        "row": "5cc7ccbd782cf546cdded80c0811a572ba428ecace70022e5982477ad6a47489"
+      }
+    }
+  },
+  "pluginRepo": "/home/user/wt/evaluator",
+  "claudeCode": "2.1.322",
+  "evaluator": {
+    "commit": "055cc4ebf8d8f865c5e8e206e898637a9288978a",
+    "dirty": false
+  },
+  "frozenAt": "2026-11-12T05:35:12.963Z"
+}

@@ -1,0 +1,11 @@
+{
+  "kind": "outcome",
+  "run": "over-time__pack_orders-e2e-006__t1",
+  "attempt": 1,
+  "at": "2026-11-12T05:42:36.874Z",
+  "word": "TIMEOUT",
+  "why": "the run passed its wall time and was stopped",
+  "saidDone": false,
+  "grade": null,
+  "gradeDetail": null
+}

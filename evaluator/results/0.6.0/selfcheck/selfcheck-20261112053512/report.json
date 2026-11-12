@@ -1,0 +1,306 @@
+{
+  "campaign": {
+    "id": "selfcheck-20261112053512",
+    "model": null,
+    "effort": null,
+    "limits": {
+      "usd": 0,
+      "turns": 1,
+      "minutes": 10,
+      "cpus": 2,
+      "memoryMb": 2048,
+      "pids": 512
+    },
+    "budgetUsd": 0,
+    "claudeCode": "2.1.322",
+    "evaluator": {
+      "commit": "055cc4ebf8d8f865c5e8e206e898637a9288978a",
+      "dirty": false
+    },
+    "arms": {
+      "gold-done": {
+        "kind": "scripted",
+        "behaviour": "patch",
+        "patch": "gold",
+        "status": "DONE",
+        "frozen": {}
+      },
+      "noop-done": {
+        "kind": "scripted",
+        "behaviour": "noop",
+        "status": "DONE",
+        "frozen": {}
+      }
+    },
+    "tasks": {
+      "swebench:pytest-dev__pytest-7982": {
+        "digest": "f9ce244d5d9c636091799772324ac490ca5a38317a64b001313a9587c9642b25",
+        "image": "swebench/sweb.eval.x86_64.pytest-dev_1776_pytest-7982:latest",
+        "pin": {
+          "dataset": "princeton-nlp/SWE-bench_Verified",
+          "revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+          "row": "f9ce244d5d9c636091799772324ac490ca5a38317a64b001313a9587c9642b25"
+        }
+      },
+      "swebench:pallets__flask-5014": {
+        "digest": "5cc7ccbd782cf546cdded80c0811a572ba428ecace70022e5982477ad6a47489",
+        "image": "swebench/sweb.eval.x86_64.pallets_1776_flask-5014:latest",
+        "pin": {
+          "dataset": "princeton-nlp/SWE-bench_Verified",
+          "revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+          "row": "5cc7ccbd782cf546cdded80c0811a572ba428ecace70022e5982477ad6a47489"
+        }
+      }
+    },
+    "frozenAt": "2026-11-12T05:35:12.963Z"
+  },
+  "ledger": {
+    "budgetUsd": 0,
+    "chargedUsd": 0,
+    "reservedUsd": 0,
+    "remainingUsd": 0
+  },
+  "finished": true,
+  "arms": [
+    {
+      "arm": "gold-done",
+      "runs": 2,
+      "ended": 2,
+      "gradable": 2,
+      "resolved": 2,
+      "rate": 1,
+      "words": {
+        "RESOLVED": 2,
+        "UNRESOLVED": 0,
+        "REGRESSED": 0,
+        "EMPTY_PATCH": 0,
+        "FALSE_DONE": 0,
+        "TIMEOUT": 0,
+        "BUDGET": 0,
+        "INFRA_ERROR": 0,
+        "UNGRADABLE": 0
+      },
+      "infraErrors": [],
+      "notRun": [],
+      "medianCostUsd": 0,
+      "medianMinutes": 0.018033333333333332,
+      "chargedUsd": 0,
+      "interventions": 0,
+      "usage": {
+        "skillCalls": 0,
+        "agentCalls": 0,
+        "pluginCommands": 0,
+        "runsWithPluginLoaded": 0
+      }
+    },
+    {
+      "arm": "noop-done",
+      "runs": 2,
+      "ended": 2,
+      "gradable": 2,
+      "resolved": 0,
+      "rate": 0,
+      "words": {
+        "RESOLVED": 0,
+        "UNRESOLVED": 0,
+        "REGRESSED": 0,
+        "EMPTY_PATCH": 2,
+        "FALSE_DONE": 0,
+        "TIMEOUT": 0,
+        "BUDGET": 0,
+        "INFRA_ERROR": 0,
+        "UNGRADABLE": 0
+      },
+      "infraErrors": [],
+      "notRun": [],
+      "medianCostUsd": 0,
+      "medianMinutes": 0.013416666666666667,
+      "chargedUsd": 0,
+      "interventions": 0,
+      "usage": {
+        "skillCalls": 0,
+        "agentCalls": 0,
+        "pluginCommands": 0,
+        "runsWithPluginLoaded": 0
+      }
+    }
+  ],
+  "pairwise": [
+    {
+      "task": "swebench:pytest-dev__pytest-7982",
+      "arms": {
+        "gold-done": [
+          "RESOLVED"
+        ],
+        "noop-done": [
+          "EMPTY_PATCH"
+        ]
+      }
+    },
+    {
+      "task": "swebench:pallets__flask-5014",
+      "arms": {
+        "gold-done": [
+          "RESOLVED"
+        ],
+        "noop-done": [
+          "EMPTY_PATCH"
+        ]
+      }
+    }
+  ],
+  "runs": [
+    {
+      "arm": "gold-done",
+      "task": "swebench:pytest-dev__pytest-7982",
+      "trial": 1,
+      "key": "gold-done__swebench_pytest-dev__pytest-7982__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0,
+      "chargedUsd": 0,
+      "minutes": 0.02033333333333333,
+      "turns": 1,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": null,
+        "cacheWrite": null
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 0,
+        "byName": {},
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "patchBytes": 537,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "gold-done",
+      "task": "swebench:pallets__flask-5014",
+      "trial": 1,
+      "key": "gold-done__swebench_pallets__flask-5014__t1",
+      "word": "RESOLVED",
+      "why": "every hidden fail-to-pass test passes and no pass-to-pass test fails",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0,
+      "chargedUsd": 0,
+      "minutes": 0.015733333333333332,
+      "turns": 1,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": null,
+        "cacheWrite": null
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 0,
+        "byName": {},
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "patchBytes": 499,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "noop-done",
+      "task": "swebench:pytest-dev__pytest-7982",
+      "trial": 1,
+      "key": "noop-done__swebench_pytest-dev__pytest-7982__t1",
+      "word": "EMPTY_PATCH",
+      "why": "the working tree is as it started (and the agent said DONE)",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0,
+      "chargedUsd": 0,
+      "minutes": 0.011783333333333333,
+      "turns": 1,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": null,
+        "cacheWrite": null
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 0,
+        "byName": {},
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "patchBytes": 0,
+      "touchedTests": [],
+      "infra": null
+    },
+    {
+      "arm": "noop-done",
+      "task": "swebench:pallets__flask-5014",
+      "trial": 1,
+      "key": "noop-done__swebench_pallets__flask-5014__t1",
+      "word": "EMPTY_PATCH",
+      "why": "the working tree is as it started (and the agent said DONE)",
+      "attempts": 1,
+      "interrupted": 0,
+      "costUsd": 0,
+      "chargedUsd": 0,
+      "minutes": 0.01505,
+      "turns": 1,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": null,
+        "cacheWrite": null
+      },
+      "denials": 0,
+      "asked": false,
+      "saidDone": true,
+      "status": "DONE",
+      "tools": {
+        "calls": 0,
+        "byName": {},
+        "skills": {},
+        "agents": {}
+      },
+      "orbit": {
+        "commands": 0,
+        "byCli": {}
+      },
+      "plugins": [],
+      "patchBytes": 0,
+      "touchedTests": [],
+      "infra": null
+    }
+  ]
+}

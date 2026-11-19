@@ -43,6 +43,14 @@ are `*.spec.ts(x)` outside any `test/` directory, so the plugin's `node --test` 
   `autonomous-engineering context`; it says Verified only where Orbit does, and Unknown where Orbit has not spoken.
   Claude finishing is not a verification. Approvals at a protected boundary are shown, never granted: only Orbit
   Control proves a person.
+- **Azure, optional, at the owner's request.** The Azure CLI is in the image, installed from the plugin's own
+  hash-checked lock (`catalog/locks/azure-cli-2.91.0-linux-*.lock`) on CPython 3.13.15, exactly as Orbit's catalog pins
+  its own copy (`azure-cli-private`). `az login --use-device-code --allow-no-subscriptions`, `az account show`,
+  `az logout`, with Orbit's own pins (no broker, no new login experience, no telemetry) and a profile of Orbit Web's own
+  (`/data/azure`): never Orbit's profile, which Orbit keeps for its own connections (ADR 0043), and never a token asked
+  of the CLI. Claude Code is given it only when a person turns on "Let Claude Code use this Azure sign-in"; otherwise
+  `Bash(az:*)` and the directory are refused to it. The original scope left Azure DevOps integrations and Azure
+  deployment out; this adds only the official CLI and its sign-in, which is still all it adds.
 - **Changes are read from git in the workspace** (with hooks, fsmonitor, external diff and textconv off), never from
   what the model said it did.
 - **One container, said plainly.** The coding agent's shell and the CLIs' sign-ins share a container and a user. The

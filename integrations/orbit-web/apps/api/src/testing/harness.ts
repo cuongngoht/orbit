@@ -158,6 +158,8 @@ export function signedIn(fake: FakeProcessPort): FakeProcessPort {
   return fake
     .on(program("claude", "--version"), { run: { stdout: "2.1.328 (Claude Code)\n" } })
     .on(program("gh", "--version"), { run: { stdout: "gh version 2.89.0 (2026-03-26)\n" } })
+    .on(program("az", "version"), { run: { stdout: '{\n  "azure-cli": "2.91.0",\n  "azure-cli-core": "2.91.0",\n  "extensions": {}\n}\n' } })
+    .on(program("az", "account", "show"), { run: { code: 1, stderr: "Please run 'az login' to setup account.\n" } })
     .on(program("claude", "auth", "status"), { run: { stdout: JSON.stringify({ loggedIn: true, authMethod: "claude.ai", apiProvider: "firstParty" }) } })
     .on(program("gh", "auth", "status"), { run: { stdout: JSON.stringify({ hosts: { "github.com": [{ state: "success", active: true, host: "github.com", login: ACCOUNT.login, tokenSource: "/data/github/hosts.yml", gitProtocol: "https" }] } }) } })
     .on(ghApi("user"), { run: { stdout: JSON.stringify(ACCOUNT) } })

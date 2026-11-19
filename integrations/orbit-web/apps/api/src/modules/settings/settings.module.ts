@@ -23,6 +23,7 @@ export class SettingsService {
     return {
       defaultModel: isModelChoice(saved.defaultModel) ? saved.defaultModel : DEFAULT_MODEL,
       webTools: saved.webTools === true,
+      azureForClaude: saved.azureForClaude === true,
       theme: isTheme(saved.theme) ? saved.theme : "system",
       maxBudgetUsd: this.config.maxBudgetUsd,
     };

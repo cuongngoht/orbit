@@ -19,6 +19,7 @@ export class HealthService {
     const tools = await this.toolchain.get();
     const problems = storageProblems(this.config.data);
     const storage = { ok: problems.length === 0, detail: problems.length === 0 ? null : problems.join("; ") };
+    // The Azure CLI is optional (an image may be built without it): reported, never what makes the status degraded.
     const parts = [tools.claude, tools.gh, tools.git, tools.orbitPlugin, storage];
     return {
       status: parts.every((p) => p.ok) ? "ok" : "degraded",
@@ -26,6 +27,7 @@ export class HealthService {
       claude: tools.claude,
       gh: tools.gh,
       git: tools.git,
+      az: tools.az,
       orbitPlugin: tools.orbitPlugin,
       storage,
     };

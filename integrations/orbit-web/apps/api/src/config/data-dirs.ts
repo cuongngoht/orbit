@@ -4,7 +4,7 @@ import { accessSync, chmodSync, constants, mkdirSync, rmSync, writeFileSync } fr
 import { join } from "node:path";
 import type { DataDirs } from "./config.js";
 
-export const PRIVATE_DIRS: (keyof DataDirs)[] = ["app", "claude", "github", "orbit", "sessions", "workspaces", "home"];
+export const PRIVATE_DIRS: (keyof DataDirs)[] = ["app", "claude", "github", "azure", "orbit", "sessions", "workspaces", "home"];
 
 export function ensureDataDirs(data: DataDirs): void {
   mkdirSync(data.root, { recursive: true, mode: 0o700 });

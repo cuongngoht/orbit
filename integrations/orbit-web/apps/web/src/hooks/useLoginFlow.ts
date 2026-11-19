@@ -4,7 +4,7 @@ import type { LoginSnapshot } from "@orbit-web/contracts";
 import { useEffect, useState } from "react";
 import { subscribe } from "../services/sse";
 
-export type LoginKind = "claude" | "github";
+export type LoginKind = "claude" | "github" | "azure";
 
 export function newer(a: LoginSnapshot | null, b: LoginSnapshot | null): LoginSnapshot | null {
   if (a === null) return b;

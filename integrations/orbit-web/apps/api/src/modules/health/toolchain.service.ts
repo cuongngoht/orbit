@@ -6,13 +6,14 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AppConfig } from "../../config/config.js";
 import { APP_CONFIG, PROCESS_PORT } from "../../core/tokens.js";
-import { baseEnv } from "../../infra/process/env.js";
+import { azureEnv, baseEnv } from "../../infra/process/env.js";
 import { endedHow, succeeded, type ProcessPort } from "../../infra/process/process.port.js";
 
 export interface Toolchain {
   claude: ComponentCheck;
   gh: ComponentCheck;
   git: ComponentCheck;
+  az: ComponentCheck;
   orbitPlugin: ComponentCheck;
   versions: BuildVersions;
 }
@@ -24,6 +25,7 @@ interface BuildInfo {
   claude?: string;
   gh?: string;
   git?: string;
+  az?: string;
 }
 
 const CACHE_MS = 30_000;
@@ -42,6 +44,8 @@ function readJson<T>(file: string): T | null {
 @Injectable()
 export class ToolchainService {
   private cached: { at: number; value: Promise<Toolchain> } | null = null;
+  // The Azure CLI takes a second to start and is in the image or not: asked once.
+  private azure: Promise<{ check: ComponentCheck; version: string | null }> | null = null;
 
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
@@ -56,13 +60,15 @@ export class ToolchainService {
   }
 
   private async probe(): Promise<Toolchain> {
-    const [claude, gh, git] = await Promise.all([this.version(this.config.binaries.claude), this.version(this.config.binaries.gh), this.version(this.config.binaries.git)]);
+    this.azure ??= this.version(this.config.binaries.az, ["version", "--output", "json"], azureEnv(this.config));
+    const [claude, gh, git, az] = await Promise.all([this.version(this.config.binaries.claude), this.version(this.config.binaries.gh), this.version(this.config.binaries.git), this.azure]);
     const plugin = this.plugin();
     const info = readJson<BuildInfo>(this.config.buildInfoFile) ?? {};
     return {
       claude: claude.check,
       gh: gh.check,
       git: git.check,
+      az: az.check,
       orbitPlugin: plugin.check,
       versions: {
         web: info.web ?? ORBIT_WEB_VERSION,
@@ -71,13 +77,14 @@ export class ToolchainService {
         claude: claude.version ?? info.claude ?? null,
         gh: gh.version ?? info.gh ?? null,
         git: git.version ?? info.git ?? null,
+        az: az.version ?? info.az ?? null,
         node: process.versions.node,
       },
     };
   }
 
-  private async version(file: string): Promise<{ check: ComponentCheck; version: string | null }> {
-    const r = await this.process.run(file, ["--version"], { cwd: this.config.data.home, env: baseEnv(this.config), timeoutMs: 15_000 });
+  private async version(file: string, args = ["--version"], env = baseEnv(this.config)): Promise<{ check: ComponentCheck; version: string | null }> {
+    const r = await this.process.run(file, args, { cwd: this.config.data.home, env, timeoutMs: 60_000 });
     if (!succeeded(r)) return { check: { ok: false, detail: `not usable: ${endedHow(r)}` }, version: null };
     const version = versionIn(r.stdout);
     return { check: { ok: true, detail: version }, version };

@@ -66,4 +66,14 @@ Needs: Docker, a Claude account, a GitHub account with the fixture repository. E
 20. **Continue**: send `In one sentence, what did you change and why?`; the chat shows *Continuing Claude Code …* and
     answers about the earlier fix (the same Claude conversation, resumed).
 
-Report each step PASS or FAIL with what you saw. Then *Disconnect* GitHub and sign out of Claude if you are done.
+Optional, with an Azure account:
+
+21. **Connect Azure**: Settings → Azure Account → *Connect Azure* (a tenant if your organisation needs one); the card
+    shows https://login.microsoft.com/device (or microsoft.com/devicelogin) and a code; sign in; the card says
+    *Connected* with your user and subscription (from `az account show`).
+22. **Off by default for Claude**: in a chat, ask Claude to run `az account show`; it is refused (`Permission denied:
+    Bash`). Turn on *Let Claude Code use this Azure sign-in*, ask again: it answers with your account.
+23. **Sign out** in the card: `az account show` in the container says to run `az login`.
+
+Report each step PASS or FAIL with what you saw. Then *Disconnect* GitHub, sign out of Azure and of Claude if you are
+done.

@@ -24,6 +24,7 @@ const PASS_THROUGH = [
   "NODE_EXTRA_CA_CERTS",
   "SSL_CERT_FILE",
   "SSL_CERT_DIR",
+  "REQUESTS_CA_BUNDLE",
 ];
 
 export const CLAUDE_CREDENTIAL_NAMES = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"];
@@ -64,9 +65,27 @@ export function ghEnv(config: AppConfig): Record<string, string> {
   };
 }
 
+// The Azure CLI as Orbit itself pins it (catalog/tools.json, the azure-cli row): no broker, no new login experience
+// (whose subscription picker would wait for a keyboard), no telemetry, a plain-file token cache (a container has no
+// keyring) -- and its profile in /data/azure, Orbit Web's own, never Orbit's (Orbit keeps a profile of its own).
+const AZURE_PINS = {
+  AZURE_CORE_ENABLE_BROKER_ON_WINDOWS: "false",
+  AZURE_CORE_ENABLE_BROKER_ON_MAC: "false",
+  AZURE_CORE_LOGIN_EXPERIENCE_V2: "off",
+  AZURE_CORE_COLLECT_TELEMETRY: "false",
+  AZURE_CORE_ENCRYPT_TOKEN_CACHE: "false",
+  AZURE_CORE_NO_COLOR: "true",
+};
+
+export function azureEnv(config: AppConfig): Record<string, string> {
+  return { ...baseEnv(config), ...AZURE_PINS, AZURE_CONFIG_DIR: config.data.azure, BROWSER: "true" };
+}
+
 export const hasClaudeEnvCredential = (config: AppConfig): boolean => Object.keys(pick(config.sourceEnv, CLAUDE_CREDENTIAL_NAMES)).length > 0;
 
-export function claudeEnv(config: AppConfig, extra: Record<string, string> = {}): Record<string, string> {
+// `azure`: a person let Claude Code use the Azure CLI's sign-in, so its `az` finds the profile. Otherwise it is not
+// told where the profile is (and its tools are refused the directory).
+export function claudeEnv(config: AppConfig, o: { azure?: boolean } = {}): Record<string, string> {
   return {
     ...baseEnv(config),
     ...pick(config.sourceEnv, CLAUDE_CREDENTIAL_NAMES),
@@ -74,7 +93,7 @@ export function claudeEnv(config: AppConfig, extra: Record<string, string> = {})
     ORBIT_STORE_DIR: config.data.orbit,
     DISABLE_AUTOUPDATER: "1",
     BROWSER: "true",
-    ...extra,
+    ...(o.azure ? { ...AZURE_PINS, AZURE_CONFIG_DIR: config.data.azure } : {}),
   };
 }
 

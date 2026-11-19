@@ -58,3 +58,13 @@ test("a delta never doubles text a client already holds, and a gap waits", () =>
   assert.equal(applyDelta("Hello", { messageId: "m", offset: 2, text: "llo" }), "Hello");
   assert.equal(applyDelta("He", { messageId: "m", offset: 5, text: "!" }), "He");
 });
+
+test("an Azure tenant is a GUID or a domain, never an option", async () => {
+  const { checkAzureLogin } = await import("./validate.js");
+  assert.deepEqual(checkAzureLogin(undefined), { ok: true, value: {} });
+  assert.deepEqual(checkAzureLogin({ tenant: " contoso.onmicrosoft.com " }), { ok: true, value: { tenant: "contoso.onmicrosoft.com" } });
+  assert.deepEqual(checkAzureLogin({ tenant: "72f988bf-86f1-41af-91ab-2d7cd011db47" }), { ok: true, value: { tenant: "72f988bf-86f1-41af-91ab-2d7cd011db47" } });
+  assert.deepEqual(checkAzureLogin({ tenant: "" }), { ok: true, value: {} });
+  for (const bad of ["--allow-no-subscriptions", "a b.com", "x", "contoso", { a: 1 }]) assert.equal(checkAzureLogin({ tenant: bad }).ok, false, String(bad));
+  assert.equal(checkAzureLogin({ tenant: "contoso.com", extra: 1 }).ok, false);
+});

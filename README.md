@@ -349,7 +349,8 @@ node cli/live.mjs open          # open beside this session (tmux · Windows Term
 (machine-scoped settings: `orbit.live.storeDirs`, `orbit.live.nodePath`).
 
 **In a browser:** [Orbit Web](integrations/orbit-web) (0.7.0) is one Docker image holding the official Claude Code
-CLI, GitHub CLI, git and this plugin, with a web chat over them: connect your own Claude and GitHub accounts, pick a
+CLI, GitHub CLI, Azure CLI, git and this plugin, with a web chat over them: connect your own Claude and GitHub accounts
+(Azure optional), pick a
 repository, branch and model, and watch Claude Code with Orbit work, the changes it made and what Orbit says about
 them (`cd integrations/orbit-web/docker && docker compose up -d --build`, then http://localhost:3000).
 

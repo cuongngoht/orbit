@@ -2,6 +2,8 @@
 // whether the chat workspace may open (both accounts connected).
 import { Controller, Get, Inject, Injectable, Module } from "@nestjs/common";
 import type { SetupStatus } from "@orbit-web/contracts";
+import { AzureAuthModule } from "../azure-auth/azure-auth.module.js";
+import { AzureAuthService } from "../azure-auth/azure-auth.service.js";
 import { ClaudeAuthModule } from "../claude-auth/claude-auth.module.js";
 import { ClaudeAuthService } from "../claude-auth/claude-auth.service.js";
 import { GithubModule } from "../github/github.module.js";
@@ -16,11 +18,12 @@ export class SetupService {
     @Inject(HealthService) private readonly health: HealthService,
     @Inject(ClaudeAuthService) private readonly claude: ClaudeAuthService,
     @Inject(GithubAuthService) private readonly github: GithubAuthService,
+    @Inject(AzureAuthService) private readonly azure: AzureAuthService,
   ) {}
 
   async status(): Promise<SetupStatus> {
-    const [tools, health, claude, github] = await Promise.all([this.toolchain.get(), this.health.report(), this.claude.status(), this.github.status()]);
-    return { versions: tools.versions, claude, github, health, ready: claude.state === "connected" && github.state === "connected" };
+    const [tools, health, claude, github, azure] = await Promise.all([this.toolchain.get(), this.health.report(), this.claude.status(), this.github.status(), this.azure.status()]);
+    return { versions: tools.versions, claude, github, azure, health, ready: claude.state === "connected" && github.state === "connected" };
   }
 }
 
@@ -35,7 +38,7 @@ export class SetupController {
 }
 
 @Module({
-  imports: [HealthModule, ClaudeAuthModule, GithubModule],
+  imports: [HealthModule, ClaudeAuthModule, GithubModule, AzureAuthModule],
   providers: [SetupService],
   controllers: [SetupController],
   exports: [SetupService],

@@ -15,13 +15,15 @@ export interface ComponentCheck {
   detail: string | null;
 }
 
-// GET /api/health -- what is installed and writable here. Never a path, a variable or an account.
+// GET /api/health -- what is installed and writable here. Never a path, a variable or an account. `az` is reported but
+// optional (an image may be built without the Azure CLI): it never makes the status degraded.
 export interface HealthReport {
   status: "ok" | "degraded";
   api: ComponentCheck;
   claude: ComponentCheck;
   gh: ComponentCheck;
   git: ComponentCheck;
+  az: ComponentCheck;
   orbitPlugin: ComponentCheck;
   storage: ComponentCheck;
 }
@@ -33,6 +35,7 @@ export interface BuildVersions {
   claude: string | null;
   gh: string | null;
   git: string | null;
+  az: string | null;
   node: string;
 }
 
@@ -41,7 +44,7 @@ export interface LoginSnapshot {
   state: LoginState;
   // The URL the CLI printed for a person to open, exactly as printed.
   url: string | null;
-  // GitHub CLI's one-time device code, exactly as printed. Claude's flow has none.
+  // The one-time device code GitHub CLI or the Azure CLI printed, exactly as printed. Claude's flow has none.
   code: string | null;
   // Claude's flow waits for the code a person copies from the browser page.
   needsCode: boolean;
@@ -82,12 +85,37 @@ export interface GitHubStatus {
   flow: LoginSnapshot;
 }
 
+// The Azure account the Azure CLI in this container is signed in to, as `az account show` says it. Optional: the chat
+// workspace never waits for it.
+export interface AzureAccount {
+  user: string;
+  userType: string | null;
+  tenantId: string | null;
+  subscription: string | null;
+  subscriptionId: string | null;
+}
+
+export interface AzureStatus {
+  state: ConnectionState;
+  account: AzureAccount | null;
+  detail: string | null;
+  flow: LoginSnapshot;
+  // Whether Claude Code may use this sign-in (a person's setting; off unless they turn it on).
+  availableToClaude: boolean;
+}
+
+export interface AzureLoginRequest {
+  // A tenant (directory) id or domain to sign in to; the CLI's own default when absent.
+  tenant?: string;
+}
+
 export interface SetupStatus {
   versions: BuildVersions;
   claude: ClaudeStatus;
   github: GitHubStatus;
+  azure: AzureStatus;
   health: HealthReport;
-  // Both accounts are connected: the chat workspace may open.
+  // Both required accounts (Claude and GitHub) are connected: the chat workspace may open.
   ready: boolean;
 }
 
@@ -210,6 +238,8 @@ export interface Settings {
   defaultModel: ModelChoice;
   // WebFetch and WebSearch are offered to Claude only when this is on.
   webTools: boolean;
+  // Claude Code is given the Azure CLI's sign-in (it may then run `az` as the signed-in account) only when this is on.
+  azureForClaude: boolean;
   theme: ThemePreference;
   // Read-only: the per-run budget cap the container was started with (ORBIT_WEB_MAX_BUDGET_USD), or none.
   maxBudgetUsd: number | null;
@@ -218,6 +248,7 @@ export interface Settings {
 export interface UpdateSettingsRequest {
   defaultModel?: ModelChoice;
   webTools?: boolean;
+  azureForClaude?: boolean;
   theme?: ThemePreference;
 }
 

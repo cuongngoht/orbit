@@ -2,7 +2,8 @@
 
 A self-hosted, browser-based Claude Code experience with the [Orbit](../../README.md) plugin, in one Docker image.
 
-Run the image, open http://localhost:3000, connect **your own** Claude account and GitHub account, pick a repository,
+Run the image, open http://localhost:3000, connect **your own** Claude account and GitHub account (and, if you work
+with Azure, your Azure account), pick a repository,
 a branch and a Claude model, and ask. Claude Code runs with Orbit in a workspace of that chat's own; the page streams
 what it writes and every tool it runs, shows the files it changed (read from git) and what Orbit says about the work.
 
@@ -12,6 +13,7 @@ Docker is the only thing to install. The image holds:
 |---|---|---|
 | Claude Code CLI (`claude`) | 2.1.328 | exact npm version |
 | GitHub CLI (`gh`) | 2.89.0 | release tarball, SHA-256 per architecture |
+| Azure CLI (`az`, optional) | 2.91.0 | the plugin's own hash-checked lock (`catalog/locks/`), on CPython 3.13.15 (SHA-256 per architecture) -- exactly as Orbit's catalog pins it |
 | git | 2.39 (Debian 12) | the base image's digest |
 | Node.js | 24 | the base image's digest (`node:24-bookworm`) |
 | Orbit plugin | the commit the image is built from (0.6.0 today) | `git archive` of that commit |
@@ -48,7 +50,8 @@ docker run -d --name orbit-web --hostname orbit-web \
 Build the image yourself: `node scripts/build-image.mjs [--tag=…] [--ref=<commit>] [--ca-file=<pem>]` (from this
 directory; it runs `docker build -f integrations/orbit-web/docker/Dockerfile .` at the repository root). `--ref` picks
 the Orbit commit to bundle; `--ca-file` hands a TLS-inspecting proxy's CA to the download steps as a BuildKit secret
-(never kept in a layer).
+(never kept in a layer). The image is about 3.5 GB unpacked, a third of it the Azure CLI; build it without the Azure
+CLI with `docker build --build-arg AZURE_CLI=0 …` (the Azure card then says it is not installed).
 
 ### Settings (environment variables)
 
@@ -59,7 +62,7 @@ the Orbit commit to bundle; `--ca-file` hands a TLS-inspecting proxy's CA to the
 | `ORBIT_WEB_ACCESS_TOKEN` | unset | token mode: every API call needs it (min. 16 characters) |
 | `ORBIT_WEB_COOKIE_SECURE` | unset | `1` marks the access cookie Secure (behind an HTTPS proxy) |
 | `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` | unset | Claude Code's own credential variables, passed to it by name if you start the container with one |
-| `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`, `HTTPS_PROXY`, `NO_PROXY` | unset | passed to the CLIs, for a proxy or a private CA |
+| `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE`, `HTTPS_PROXY`, `NO_PROXY` | unset | passed to the CLIs, for a proxy or a private CA (`REQUESTS_CA_BUNDLE` is the Azure CLI's) |
 
 The data directory, plugin directory and port are fixed by the image (`/data`, `/opt/orbit/plugin`, `3000`).
 
@@ -73,6 +76,7 @@ uid 10001) and private to it (mode 0700):
 | `/data/app` | Orbit Web's SQLite database: settings, sessions, messages, events, runs | Orbit Web |
 | `/data/claude` | Claude Code's sign-in and native session state (`CLAUDE_CONFIG_DIR`) | Claude Code |
 | `/data/github` | GitHub CLI's sign-in (`GH_CONFIG_DIR`, stored in plain text: a container has no keyring) | GitHub CLI |
+| `/data/azure` | the Azure CLI's sign-in (`AZURE_CONFIG_DIR`; its token cache is a plain file for the same reason) | Azure CLI |
 | `/data/orbit` | Orbit's machine store (`ORBIT_STORE_DIR`) | Orbit |
 | `/data/workspaces/<session>/repository` | each chat's own clone | git |
 | `/data/sessions/<session>/runs/` | a masked, bounded copy of each run's stream, for troubleshooting | Orbit Web |
@@ -105,6 +109,16 @@ Orbit Web's own and no personal access token. GitHub CLI asks for its usual scop
 keeps the authorization until you revoke it under GitHub → Settings → Applications. An expired sign-in shows
 *Expired*; your chats stay.
 
+**Azure (optional).** Settings → Azure Account → *Connect Azure* (optionally naming a tenant: its id or a domain)
+runs `az login --use-device-code --allow-no-subscriptions --output none [--tenant <t>]` with the Azure CLI pinned the
+way Orbit pins it (no broker, no interactive subscription picker, no telemetry). The page shows the URL and the
+one-time code the Azure CLI printed; enter it there and sign in. *Connected* is what `az account show` says (who,
+which tenant and subscription); *Sign out* runs `az logout`. Orbit Web never asks the CLI for a token. The chat
+workspace never waits for Azure. **Claude Code is not given this sign-in unless you turn on "Let Claude Code use this
+Azure sign-in"**: with it on, Claude Code's `az` finds the profile and may run any `az` command as that account in any
+chat; with it off, `az` is refused to it and its file tools are refused `/data/azure`. Orbit's own Azure connections
+(project reports, ADR 0043) never use this sign-in: Orbit signs in through its own Azure CLI profile, in its store.
+
 ## Use it
 
 1. **New chat**: search your repositories (owned, collaborator, organisation member: every page of the API plus
@@ -134,6 +148,7 @@ boundary that only Orbit Control can approve, and Orbit Web shows such an approv
 browser ── React + Fluent UI v9 ──HTTP/SSE──▶ NestJS API (one origin, /api)
                                                ├─ claude auth …            (Claude Code CLI)
                                                ├─ gh auth … / gh api … / gh repo clone   (GitHub CLI)
+                                               ├─ az login --use-device-code / az account show / az logout   (Azure CLI, optional)
                                                ├─ claude -p --plugin-dir /opt/orbit/plugin …  ──▶ Orbit's hooks, skills, agents
                                                ├─ git status / git diff    (the chat's workspace)
                                                └─ node /opt/orbit/plugin/cli/{live,task,autonomous-engineering}.mjs  (Orbit, read-only)
@@ -155,7 +170,8 @@ browser ── React + Fluent UI v9 ──HTTP/SSE──▶ NestJS API (one orig
   CLI's own result line.
 - **API**: `GET /api/health`, `GET /api/setup/status`; `GET /api/claude/status`, `POST /api/claude/login`,
   `POST /api/claude/login/code`, `POST /api/claude/login/cancel`, `GET /api/claude/login/events`,
-  `POST /api/claude/logout`; the same five for `/api/github` (no code route); `GET /api/repositories[?refresh=1]`,
+  `POST /api/claude/logout`; the same five for `/api/github` and `/api/azure` (no code route; Azure's login takes an
+  optional `tenant`); `GET /api/repositories[?refresh=1]`,
   `GET /api/repositories/:owner/:repo/branches`; `GET|POST /api/sessions`, `GET|PATCH|DELETE /api/sessions/:id`,
   `POST /api/sessions/:id/messages`, `GET /api/sessions/:id/events` (SSE), `POST /api/sessions/:id/stop`,
   `GET /api/sessions/:id/changes`, `GET /api/sessions/:id/changes/file?path=`, `GET /api/sessions/:id/verification`;
@@ -175,9 +191,10 @@ For one person, on their own machine, by default:
 - **Inputs are validated** against closed rules (repository and branch names, models, titles, prompts); a repository
   opens only if the GitHub account lists it; a workspace path is built only from a server-made id and checked to
   resolve inside `/data/workspaces`; a diff is served only for a path git listed as changed.
-- **Credentials stay with the CLIs.** Orbit Web never reads, stores or sends a token: it never runs `gh auth token`,
-  never puts a credential in a remote URL or a git config, never passes `GH_*`/`GITHUB_*` to Claude Code, and passes
-  Claude Code's own credential variables by name. Everything a process printed is masked by token shape before it is
+- **Credentials stay with the CLIs.** Orbit Web never reads, stores or sends a token: it never runs `gh auth token`
+  or `az account get-access-token`, never puts a credential in a remote URL or a git config, never passes
+  `GH_*`/`GITHUB_*` to Claude Code (nor the Azure profile, unless you turn that on), and passes Claude Code's own
+  credential variables by name. Everything a process printed is masked by token shape before it is
   stored, logged or shown. A strict Content-Security-Policy, Markdown without raw HTML, and highlighting that escapes.
 - **The image**: a non-root user, `cap_drop: ALL`, `no-new-privileges`, no Docker socket, no credential in any layer.
 
@@ -186,7 +203,8 @@ user**. Claude Code's tools are a coding agent's: it runs commands in the reposi
 contents are untrusted input to it. The environment scrub, the deny rules (`git push`, `gh`, reading the sign-in
 directories), `--setting-sources user` (a repository's own `.claude/settings.json` is never read) and the private
 directories are **defence in depth, not isolation**: a determined prompt injection in a repository could still reach
-the GitHub CLI's stored token or Orbit Web's local API. Open repositories you trust, keep the port on loopback, and
+the GitHub CLI's stored token, the Azure CLI's (whether or not Claude Code is allowed to use it) or Orbit Web's local
+API. Open repositories you trust, keep the port on loopback, and
 disconnect GitHub when you are done. Separating the sign-ins from the code execution (another container or user) is
 work for a later version.
 
@@ -199,6 +217,8 @@ work for a later version.
 | Claude sign-in never finishes | `docker exec -it orbit-web claude auth login`, then refresh the page |
 | GitHub: `x509: certificate signed by unknown authority` | you are behind a TLS-inspecting proxy: mount its CA and set `SSL_CERT_FILE` (and `NODE_EXTRA_CA_CERTS`) to it |
 | GitHub sign-in expired | Connect GitHub again; chats and workspaces stay |
+| Azure: `Please run 'az login'` in a chat | the Azure card is not connected, or "Let Claude Code use this Azure sign-in" is off |
+| Azure: an organisation needs a specific tenant | type its tenant id or domain in the Azure card before *Connect Azure* |
 | A repository is missing | *Refresh*; an organisation that restricts OAuth apps must approve GitHub CLI for your account |
 | "The workspace could not be prepared" | the chat's message says which step failed (clone, branch, identity); delete the chat and try again |
 | A model is refused | the chat shows the CLI's own error: your account cannot use that model; pick another |

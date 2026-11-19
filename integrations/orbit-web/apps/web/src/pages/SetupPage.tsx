@@ -2,6 +2,7 @@
 // is already in the image.
 import { Button, Text, Title2, makeStyles, tokens } from "@fluentui/react-components";
 import type { SetupStatus } from "@orbit-web/contracts";
+import { AzureCard } from "../features/setup/AzureCard";
 import { ClaudeCard } from "../features/setup/ClaudeCard";
 import { GitHubCard } from "../features/setup/GitHubCard";
 import { SystemCard } from "../features/setup/SystemCard";
@@ -17,10 +18,11 @@ export function SetupPage({ status, reload, onContinue, title = "Set up Orbit We
   return (
     <div className={s.page}>
       <Title2>{title}</Title2>
-      <Text className={s.muted}>Connect your own Claude and GitHub accounts. Both sign-ins use the official command-line tools inside this container; nothing is stored outside it.</Text>
+      <Text className={s.muted}>Connect your own Claude and GitHub accounts (and, if you work with Azure, your Azure account). Every sign-in uses the official command-line tool inside this container; nothing is stored outside it.</Text>
       <div className={s.grid}>
         <ClaudeCard status={status?.claude ?? null} onChanged={reload} />
         <GitHubCard status={status?.github ?? null} onChanged={reload} />
+        <AzureCard status={status?.azure ?? null} onChanged={reload} />
       </div>
       <SystemCard status={status} />
       {onContinue && (

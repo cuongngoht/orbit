@@ -2,6 +2,7 @@
 import { Card, CardHeader, Field, MessageBar, MessageBarBody, Select, Switch, Text, Title2, makeStyles, tokens } from "@fluentui/react-components";
 import { MODEL_CHOICES, MODEL_LABELS, type ModelChoice, type SetupStatus, type Settings, type ThemePreference } from "@orbit-web/contracts";
 import { useState } from "react";
+import { AzureCard } from "../features/setup/AzureCard";
 import { ClaudeCard } from "../features/setup/ClaudeCard";
 import { GitHubCard } from "../features/setup/GitHubCard";
 import { SystemCard } from "../features/setup/SystemCard";
@@ -17,7 +18,7 @@ const useStyles = makeStyles({
 export function SettingsPage({ status, settings, reloadStatus, onSettings }: { status: SetupStatus | null; settings: Settings | null; reloadStatus: () => void; onSettings: (s: Settings) => void }) {
   const s = useStyles();
   const [error, setError] = useState<string | null>(null);
-  const save = async (change: Partial<Pick<Settings, "defaultModel" | "webTools" | "theme">>) => {
+  const save = async (change: Partial<Pick<Settings, "defaultModel" | "webTools" | "azureForClaude" | "theme">>) => {
     setError(null);
     try {
       onSettings(await send<Settings>("PATCH", "/api/settings", change));
@@ -31,6 +32,7 @@ export function SettingsPage({ status, settings, reloadStatus, onSettings }: { s
       <div className={s.grid}>
         <ClaudeCard status={status?.claude ?? null} onChanged={reloadStatus} />
         <GitHubCard status={status?.github ?? null} onChanged={reloadStatus} />
+        <AzureCard status={status?.azure ?? null} onChanged={reloadStatus} />
       </div>
       {settings && (
         <Card aria-label="Preferences">

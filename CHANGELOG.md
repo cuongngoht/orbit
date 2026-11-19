@@ -16,6 +16,12 @@ archive is unchanged (Orbit Web and the workflows below are export-ignored). Not
   passes the code you paste to that process), verified by `claude auth status`. GitHub: `gh auth login --web` (the page
   shows the one-time code and URL GitHub CLI printed), verified by `gh auth status` and `gh api user`; disconnect is
   `gh auth logout`. No GitHub App, no OAuth app of its own, no personal access token.
+- **Azure, optional (at the owner's request).** The Azure CLI 2.91.0, installed from the plugin's own hash-checked lock
+  on CPython 3.13.15 exactly as Orbit's catalog pins it (`--build-arg AZURE_CLI=0` leaves it out). `az login
+  --use-device-code` from the page (an optional tenant; the URL and one-time code the CLI printed), `az account show`
+  to say who is signed in, `az logout`; never a token asked of it. Claude Code gets this sign-in only when a person
+  turns on "Let Claude Code use this Azure sign-in"; otherwise `az` and `/data/azure` are refused to it. Orbit's own
+  Azure connections keep their own profile (ADR 0043).
 - **Repositories and workspaces.** Every repository the account reaches (all pages of `user/repos` for owner,
   collaborator and organisation member, merged with `gh repo list`), its branches, and a clone per chat into
   `/data/workspaces/<id>/repository` on a branch of its own; nothing is ever pushed.
@@ -30,9 +36,10 @@ archive is unchanged (Orbit Web and the workflows below are export-ignored). Not
 - **Secured for one person on one machine.** Loopback only by default, a Host allow-list, a required header and same
   origin for every change, bounded JSON bodies, a strict CSP, masked process output, and an access-token mode for any
   other host name. The README says plainly that the agent's shell and the sign-ins share one container.
-- **Checked.** 127 deterministic tests (unit, mocked-process integration with real git and Orbit, web), a 21-check Docker
+- **Checked.** 139 deterministic tests (unit, mocked-process integration with real git and Orbit, web), a 22-check Docker
   smoke test, and one real capped Sonnet run with a restart and a resumed turn (PASS 16, BLOCKED 3 for the steps that
-  need a person, STAND-IN 1 for GitHub; `integrations/orbit-web/tests/acceptance/results/0.7.0/`).
+  need a person, STAND-IN 1 for GitHub; `integrations/orbit-web/tests/acceptance/results/0.7.0/`). The real GitHub
+  and Azure CLIs were each seen to print a real one-time code in the container; finishing either needs a person.
 - **Two scoped workflows** (ADR 0060): `orbit-web-ci.yml` for pull requests that touch Orbit Web, and
   `orbit-web-release.yml`, by hand and reviewer-gated, to publish `ghcr.io/<owner>/orbit-web:0.7.0` (and `latest` only
   when asked). The plugin's release gates stay `ship.mjs`.

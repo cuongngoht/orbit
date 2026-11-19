@@ -3,6 +3,7 @@
 import { isModelChoice, type ModelChoice } from "./models.js";
 import { THEMES, type ThemePreference } from "./status.js";
 import type {
+  AzureLoginRequest,
   ClaudeLoginCodeRequest,
   ClaudeLoginMode,
   CreateSessionRequest,
@@ -105,13 +106,15 @@ export function checkSendMessage(body: unknown): Checked<SendMessageRequest> {
 
 export function checkUpdateSettings(body: unknown): Checked<UpdateSettingsRequest> {
   if (!isRecord(body)) return { ok: false, errors: ["the body must be a JSON object"] };
-  const errors = unknownFields(body, ["defaultModel", "webTools", "theme"]);
+  const errors = unknownFields(body, ["defaultModel", "webTools", "azureForClaude", "theme"]);
   if (body.defaultModel !== undefined && !isModelChoice(body.defaultModel)) errors.push("defaultModel must be one of sonnet, opus, haiku");
   if (body.webTools !== undefined && typeof body.webTools !== "boolean") errors.push("webTools must be true or false");
+  if (body.azureForClaude !== undefined && typeof body.azureForClaude !== "boolean") errors.push("azureForClaude must be true or false");
   if (body.theme !== undefined && !isTheme(body.theme)) errors.push("theme must be one of system, light, dark");
   return checked(errors, () => ({
     ...(body.defaultModel !== undefined ? { defaultModel: body.defaultModel as ModelChoice } : {}),
     ...(body.webTools !== undefined ? { webTools: body.webTools as boolean } : {}),
+    ...(body.azureForClaude !== undefined ? { azureForClaude: body.azureForClaude as boolean } : {}),
     ...(body.theme !== undefined ? { theme: body.theme as ThemePreference } : {}),
   }));
 }
@@ -132,4 +135,20 @@ export function checkLoginCode(body: unknown): Checked<ClaudeLoginCodeRequest> {
   const code = typeof body.code === "string" ? body.code.trim() : "";
   if (code.length === 0 || code.length > LIMITS.loginCodeLength || !/^[\x21-\x7e]+$/.test(code)) errors.push("code must be the code shown on the sign-in page");
   return checked(errors, () => ({ code }));
+}
+
+// A Microsoft Entra tenant: its id (a GUID) or a domain it owns. Never something an argument parser could read as an
+// option.
+const TENANT_ID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+const TENANT_DOMAIN = /^(?=.{3,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
+
+export const isTenant = (v: unknown): v is string => typeof v === "string" && (TENANT_ID.test(v) || TENANT_DOMAIN.test(v));
+
+export function checkAzureLogin(body: unknown): Checked<AzureLoginRequest> {
+  if (body === undefined || body === null) return { ok: true, value: {} };
+  if (!isRecord(body)) return { ok: false, errors: ["the body must be a JSON object"] };
+  const errors = unknownFields(body, ["tenant"]);
+  const tenant = typeof body.tenant === "string" ? body.tenant.trim() : body.tenant;
+  if (tenant !== undefined && tenant !== "" && !isTenant(tenant)) errors.push("tenant must be a tenant id (GUID) or a domain name");
+  return checked(errors, () => (typeof tenant === "string" && tenant !== "" ? { tenant } : {}));
 }

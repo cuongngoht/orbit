@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { claudeArgs } from "./claude-args.js";
 
-const base = { model: "sonnet" as const, pluginDir: "/opt/orbit/plugin", sessionId: "11111111-2222-3333-4444-555555555555", resume: false, webTools: false, maxBudgetUsd: null, protectedDirs: ["/data/claude", "/data/github"] };
+const base = { model: "sonnet" as const, pluginDir: "/opt/orbit/plugin", sessionId: "11111111-2222-3333-4444-555555555555", resume: false, webTools: false, azure: false, maxBudgetUsd: null, protectedDirs: ["/data/claude", "/data/github"] };
 
 const after = (args: string[], flag: string): string | undefined => args[args.indexOf(flag) + 1];
 
@@ -41,4 +41,9 @@ test("the web tools and a budget cap are added only when set", () => {
   assert.equal(a.includes("WebFetch") && a.indexOf("WebFetch") > a.indexOf("--disallowedTools"), false);
   assert.equal(after(a, "--max-budget-usd"), "2");
   assert.equal(claudeArgs(base).includes("--max-budget-usd"), false);
+});
+
+test("the Azure CLI is refused to Claude Code unless a person allowed it", () => {
+  assert.ok(claudeArgs(base).includes("Bash(az:*)"));
+  assert.equal(claudeArgs({ ...base, azure: true }).includes("Bash(az:*)"), false);
 });

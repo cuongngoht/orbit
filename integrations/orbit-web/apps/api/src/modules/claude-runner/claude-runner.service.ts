@@ -109,18 +109,21 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
 
   private start(session: SessionRecord, prompt: string, runId: string): void {
     const resume = session.turns > 0;
+    const prefs = this.settings.get();
+    const azure = prefs.azureForClaude;
     const args = claudeArgs({
       model: session.model,
       pluginDir: this.config.pluginDir,
       sessionId: session.claudeSessionId,
       resume,
-      webTools: this.settings.get().webTools,
+      webTools: prefs.webTools,
+      azure,
       maxBudgetUsd: this.config.maxBudgetUsd,
-      protectedDirs: [this.config.data.claude, this.config.data.github, this.config.data.app],
+      protectedDirs: [this.config.data.claude, this.config.data.github, this.config.data.app, ...(azure ? [] : [this.config.data.azure])],
     });
     this.runs.start({ id: runId, sessionId: session.id, model: session.model, resumed: resume });
     this.setStatus(session.id, "running", null, runId);
-    const handle = this.process.spawn(this.config.binaries.claude, args, { cwd: session.workspacePath, env: claudeEnv(this.config) });
+    const handle = this.process.spawn(this.config.binaries.claude, args, { cwd: session.workspacePath, env: claudeEnv(this.config, { azure }) });
     const mapper = new StreamMapper({ requestedModel: session.model, resumed: resume, cwd: session.workspacePath });
     let resolveDone: () => void = () => undefined;
     const run: ActiveRun = {

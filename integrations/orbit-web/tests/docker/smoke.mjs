@@ -101,11 +101,13 @@ async function main() {
     gh: exec("gh", "--version"),
     git: exec("git", "--version"),
     node: exec("node", "--version"),
+    az: exec("az", "version", "--output", "json"),
   };
   check("5. claude is installed", versions.claude.status === 0, versions.claude.stdout.trim());
   check("6. gh is installed", versions.gh.status === 0, versions.gh.stdout.split("\n")[0]);
   check("7. git is installed", versions.git.status === 0, versions.git.stdout.trim());
   check("   node is installed", versions.node.status === 0, versions.node.stdout.trim());
+  check("   the Azure CLI is installed (optional component)", versions.az.status === 0, (/"azure-cli": "([^"]+)"/.exec(versions.az.stdout) ?? [])[1] ?? versions.az.stderr.trim().slice(0, 200));
 
   const validate = exec("claude", "plugin", "validate", "/opt/orbit/plugin");
   check("8. the Orbit plugin is present and loadable (claude plugin validate)", validate.status === 0, validate.stdout.trim().split("\n").at(-1));
@@ -116,10 +118,10 @@ async function main() {
 
   const id = exec("id", "-u");
   check("   the container runs as a non-root user", id.status === 0 && id.stdout.trim() !== "0", `uid ${id.stdout.trim()}`);
-  const perms = exec("stat", "-c", "%a %U", "/data/claude", "/data/github", "/data/app");
+  const perms = exec("stat", "-c", "%a %U", "/data/claude", "/data/github", "/data/azure", "/data/app");
   check("   the persistent directories are private to that user", perms.stdout.trim().split("\n").every((l) => l.startsWith("700 ")), perms.stdout.trim().replace(/\n/g, ", "));
 
-  check("11. missing authentication gives the setup state", setup.body.ready === false && setup.body.claude?.state === "not_connected" && setup.body.github?.state === "not_connected", `claude ${setup.body.claude?.state}, github ${setup.body.github?.state}`);
+  check("11. missing authentication gives the setup state", setup.body.ready === false && setup.body.claude?.state === "not_connected" && setup.body.github?.state === "not_connected" && setup.body.azure?.state === "not_connected", `claude ${setup.body.claude?.state}, github ${setup.body.github?.state}, azure ${setup.body.azure?.state}`);
   check("   a foreign Host header is refused", (await rawStatus(port, "/api/health", "attacker.example")) === 421);
   const naked = await http(port, "/api/settings", { method: "PATCH", headers: { "content-type": "application/json" }, body: '{"theme":"dark"}' });
   check("   a change without the Orbit Web header is refused", naked.status === 403);

@@ -14,6 +14,8 @@ export const DENY_RULES = ["Bash(git push:*)", "Bash(gh:*)", "Bash(git credentia
 
 export interface ClaudeRunOptions {
   model: ModelChoice;
+  // A person let Claude Code use the Azure CLI's sign-in; otherwise `az` is refused to it.
+  azure: boolean;
   pluginDir: string;
   // First turn: the id Orbit Web chose for the Claude session. Later turns: the id to resume.
   sessionId: string;
@@ -47,6 +49,7 @@ export function claudeArgs(o: ClaudeRunOptions): string[] {
     allowed.join(","),
     "--disallowedTools",
     ...DENY_RULES,
+    ...(o.azure ? [] : ["Bash(az:*)"]),
     ...fileRules(o.protectedDirs),
     ...(o.webTools ? [] : WEB_TOOLS),
     // The user's settings only: a repository's own .claude/settings.json is untrusted input and could set `env` (an

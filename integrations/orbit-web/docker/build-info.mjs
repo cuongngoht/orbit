@@ -10,7 +10,7 @@ const scratch = mkdtempSync(join(tmpdir(), "build-info-"));
 const env = { PATH: process.env.PATH, HOME: scratch, CLAUDE_CONFIG_DIR: scratch, GH_CONFIG_DIR: scratch, DISABLE_AUTOUPDATER: "1" };
 
 const version = (file, args = ["--version"]) => {
-  try {
+    try {
     return /\b(\d+\.\d+\.\d+(?:[-.][0-9A-Za-z.]+)?)\b/.exec(execFileSync(file, args, { encoding: "utf8", env }))?.[1] ?? null;
   } catch {
     return null;
@@ -25,6 +25,7 @@ const info = {
   claude: version("claude"),
   gh: version("gh"),
   git: version("git"),
+  az: version("az", ["version", "--output", "json"]),
   node: process.versions.node,
 };
 rmSync(scratch, { recursive: true, force: true });

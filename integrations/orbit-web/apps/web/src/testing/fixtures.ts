@@ -1,18 +1,20 @@
 // What the API answers, for the web app's tests.
-import type { ClaudeStatus, GitHubStatus, LoginSnapshot, OrbitPanel, SessionDetail, SetupStatus } from "@orbit-web/contracts";
+import type { AzureStatus, ClaudeStatus, GitHubStatus, LoginSnapshot, OrbitPanel, SessionDetail, SetupStatus } from "@orbit-web/contracts";
 
 export const idleFlow = (): LoginSnapshot => ({ state: "idle", url: null, code: null, needsCode: false, message: null, startedAt: null, updatedAt: "2026-11-19T00:00:00.000Z" });
 
 const ok = { ok: true, detail: null };
 
-export function setupStatus(claude: Partial<ClaudeStatus> = {}, github: Partial<GitHubStatus> = {}): SetupStatus {
+export function setupStatus(claude: Partial<ClaudeStatus> = {}, github: Partial<GitHubStatus> = {}, azure: Partial<AzureStatus> = {}): SetupStatus {
   const c: ClaudeStatus = { state: "not_connected", method: null, source: null, detail: null, flow: idleFlow(), ...claude };
   const g: GitHubStatus = { state: "not_connected", account: null, detail: null, flow: idleFlow(), ...github };
+  const a: AzureStatus = { state: "not_connected", account: null, detail: null, flow: idleFlow(), availableToClaude: false, ...azure };
   return {
-    versions: { web: "0.7.0", orbit: "0.6.0", orbitCommit: "6c36207cd57204f6f50deb3431a5db516b27f4bc", claude: "2.1.328", gh: "2.89.0", git: "2.43.0", node: "24.11.0" },
+    versions: { web: "0.7.0", orbit: "0.6.0", orbitCommit: "6c36207cd57204f6f50deb3431a5db516b27f4bc", claude: "2.1.328", gh: "2.89.0", git: "2.43.0", az: "2.91.0", node: "24.11.0" },
     claude: c,
     github: g,
-    health: { status: "ok", api: ok, claude: { ok: true, detail: "2.1.328" }, gh: { ok: true, detail: "2.89.0" }, git: ok, orbitPlugin: { ok: true, detail: "0.6.0" }, storage: ok },
+    azure: a,
+    health: { status: "ok", api: ok, claude: { ok: true, detail: "2.1.328" }, gh: { ok: true, detail: "2.89.0" }, git: ok, az: { ok: true, detail: "2.91.0" }, orbitPlugin: { ok: true, detail: "0.6.0" }, storage: ok },
     ready: c.state === "connected" && g.state === "connected",
   };
 }

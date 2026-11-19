@@ -1227,7 +1227,7 @@ integrations/  what ANOTHER program installs, never part of this plugin's archiv
                picked up, the asking terminal split through VS Code's Terminal API, only Orbit's viewer ever run)
                and extension.js (VS Code's API handed in). test/vscode-companion.test.mjs drives it with a fake of
                that API, end to end from `live open`. orbit-web/ (Orbit Web 0.7.0, ADR 0060) is the self-hosted browser
-               host: one Docker image with the official claude and gh CLIs, git, this plugin (`git archive` of a commit)
+               host: one Docker image with the official claude, gh and az CLIs, git, this plugin (`git archive` of a commit)
                and a NestJS API serving a React + Fluent UI v9 app; npm workspaces of its own (packages/contracts,
                apps/api, apps/web) with their own lockfile and dependencies, which no gate of this plugin reads; its
                specs are *.spec.ts(x) outside any test/ directory so the root `node --test` never collects them;

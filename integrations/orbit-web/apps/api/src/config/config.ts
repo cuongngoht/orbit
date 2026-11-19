@@ -9,6 +9,7 @@ export interface DataDirs {
   app: string;
   claude: string;
   github: string;
+  azure: string;
   orbit: string;
   sessions: string;
   workspaces: string;
@@ -40,7 +41,7 @@ export interface AppConfig {
   // The access cookie is marked Secure: set when Orbit Web is reached through an HTTPS proxy.
   secureCookie: boolean;
   maxBudgetUsd: number | null;
-  binaries: { claude: string; gh: string; git: string; node: string };
+  binaries: { claude: string; gh: string; git: string; az: string; node: string };
   // The server's own environment: the only place allow-listed variables are copied from for a child process.
   sourceEnv: Readonly<Record<string, string | undefined>>;
   limits: Limits;
@@ -65,6 +66,7 @@ export function dataDirs(root: string): DataDirs {
     app: join(root, "app"),
     claude: join(root, "claude"),
     github: join(root, "github"),
+    azure: join(root, "azure"),
     orbit: join(root, "orbit"),
     sessions: join(root, "sessions"),
     workspaces: join(root, "workspaces"),
@@ -125,6 +127,7 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): A
       claude: env.ORBIT_WEB_CLAUDE_BIN || "claude",
       gh: env.ORBIT_WEB_GH_BIN || "gh",
       git: env.ORBIT_WEB_GIT_BIN || "git",
+      az: env.ORBIT_WEB_AZ_BIN || "az",
       node: process.execPath,
     },
     sourceEnv: { ...env },

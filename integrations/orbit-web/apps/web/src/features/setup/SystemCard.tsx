@@ -34,6 +34,7 @@ export function SystemCard({ status }: { status: SetupStatus | null }) {
         <Check label="Claude CLI" check={status.health.claude} />
         <Check label="GitHub CLI" check={status.health.gh} />
         <Check label="Git" check={status.health.git} />
+        <Check label="Azure CLI (optional)" check={status.health.az} />
         <Check label="Orbit plugin" check={status.health.orbitPlugin} />
         <Check label="Storage" check={status.health.storage} />
         <Text>Orbit Engine</Text>

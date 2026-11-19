@@ -1,0 +1,71 @@
+# Orbit Web CI -- a SCOPED exception to "no GitHub workflow" (ADR 0060). It runs only when a pull request touches
+# integrations/orbit-web/** (or these two workflow files), needs no credential, and only calls scripts that run the
+# same in any shell: what it checks is runnable without GitHub. Orbit's own release gates stay `ship.mjs` (ADR 0057).
+name: Orbit Web CI
+
+on:
+  pull_request:
+    paths:
+      - "integrations/orbit-web/**"
+      - ".github/workflows/orbit-web-*.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: orbit-web-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Typecheck, lint, tests, builds
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+      - name: Orbit Web checks (unit, mocked-process integration, web, builds)
+        run: node integrations/orbit-web/scripts/ci.mjs
+
+  orbit:
+    name: Orbit's own suite and lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+      - name: node --test (the plugin's suite, unchanged by Orbit Web)
+        run: node --test
+      - name: Five Lines, strict
+        run: node cli/check-five-lines.mjs src cli skills --strict
+      - name: The plugin archive holds no part of Orbit Web or of these workflows
+        run: |
+          if git archive --format=tar HEAD | tar -t | grep -E '^(integrations|\.github)(/|$)'; then
+            echo "integrations/ or .github/ reached the plugin archive" >&2
+            exit 1
+          fi
+
+  image:
+    name: Docker image and smoke test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+      - name: Build the image
+        run: node integrations/orbit-web/scripts/build-image.mjs --tag=orbit-web:ci
+      - name: Smoke test (no credential; the setup state, the programs, the plugin, persistence)
+        run: node integrations/orbit-web/tests/docker/smoke.mjs --image=orbit-web:ci

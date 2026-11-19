@@ -1,0 +1,11 @@
+# The build context is the repository root, and the image needs two things from it: the repository's history (the
+# plugin is `git archive` of a commit) and Orbit Web's own sources. Nothing else is sent to the builder.
+*
+!.git
+!integrations/orbit-web
+integrations/orbit-web/**/node_modules
+integrations/orbit-web/**/dist
+integrations/orbit-web/**/.spec-dist
+integrations/orbit-web/**/coverage
+integrations/orbit-web/**/.env
+integrations/orbit-web/**/.env.*

@@ -1,0 +1,77 @@
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+/* highlight.js token colours, one set per theme (the app sets data-theme on <html>). */
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-built_in,
+.hljs-literal {
+  color: var(--code-keyword);
+}
+.hljs-string,
+.hljs-attr,
+.hljs-template-tag {
+  color: var(--code-string);
+}
+.hljs-comment,
+.hljs-quote {
+  color: var(--code-comment);
+  font-style: italic;
+}
+.hljs-number,
+.hljs-symbol,
+.hljs-variable {
+  color: var(--code-number);
+}
+.hljs-title,
+.hljs-section,
+.hljs-type,
+.hljs-name {
+  color: var(--code-title);
+}
+.hljs-meta,
+.hljs-tag {
+  color: var(--code-meta);
+}
+.hljs-addition {
+  color: var(--code-addition);
+}
+.hljs-deletion {
+  color: var(--code-deletion);
+}
+
+:root {
+  --code-keyword: #8250df;
+  --code-string: #0a3069;
+  --code-comment: #6e7781;
+  --code-number: #0550ae;
+  --code-title: #953800;
+  --code-meta: #116329;
+  --code-addition: #116329;
+  --code-deletion: #82071e;
+  --diff-add-bg: #e6ffec;
+  --diff-del-bg: #ffebe9;
+  --diff-hunk-bg: #ddf4ff;
+}
+
+html[data-theme="dark"] {
+  --code-keyword: #d2a8ff;
+  --code-string: #a5d6ff;
+  --code-comment: #8b949e;
+  --code-number: #79c0ff;
+  --code-title: #ffa657;
+  --code-meta: #7ee787;
+  --code-addition: #aff5b4;
+  --code-deletion: #ffdcd7;
+  --diff-add-bg: #12261e;
+  --diff-del-bg: #25171c;
+  --diff-hunk-bg: #121d2f;
+}

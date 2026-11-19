@@ -1,0 +1,21 @@
+{
+  "name": "@orbit-web/contracts",
+  "version": "0.7.0",
+  "private": true,
+  "description": "The DTOs, application event names and status words the Orbit Web API and web app share.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsc -p tsconfig.spec.json && node --test --test-reporter=spec \".spec-dist/**/*.spec.js\""
+  }
+}

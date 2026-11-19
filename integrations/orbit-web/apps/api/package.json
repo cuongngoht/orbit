@@ -1,0 +1,30 @@
+{
+  "name": "@orbit-web/api",
+  "version": "0.7.0",
+  "private": true,
+  "description": "Orbit Web's NestJS API: runs the official Claude Code and GitHub CLIs as controlled processes and keeps chat state in SQLite.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.spec.json --noEmit",
+    "test": "npm run test:compile && npm run test:unit && npm run test:integration",
+    "test:compile": "tsc -p tsconfig.spec.json",
+    "test:unit": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 --test-reporter=spec \".spec-dist/src/**/*.spec.js\"",
+    "test:integration": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 --test-reporter=spec \".spec-dist/tests/**/*.spec.js\"",
+    "start": "node --disable-warning=ExperimentalWarning dist/main.js"
+  },
+  "dependencies": {
+    "@nestjs/common": "12.5.1",
+    "@nestjs/core": "12.5.1",
+    "@nestjs/platform-express": "12.5.1",
+    "@orbit-web/contracts": "0.7.0",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "12.5.1",
+    "@types/express": "5.0.6"
+  }
+}

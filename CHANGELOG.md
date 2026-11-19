@@ -1,5 +1,49 @@
 # Changelog
 
+## Orbit Web 0.7.0
+
+Orbit Web is new: a self-hosted, browser-based Claude Code experience with the Orbit plugin, shipped as one Docker
+image (`integrations/orbit-web/`, ADR 0060). Its version is its own; the plugin it bundles stays 0.6.0, and the plugin's
+archive is unchanged (Orbit Web and the workflows below are export-ignored). Nothing under `src/`, `cli/`, `skills/`,
+`hooks/` or `agents/` changed.
+
+- **One image, Docker only.** The official Claude Code CLI (2.1.328), GitHub CLI (2.89.0), git, Node.js 24, the Orbit
+  plugin (`git archive` of the commit the image is built from) and Orbit Web's NestJS API serving its React + Fluent UI
+  v9 app. Every input is pinned (base image digest, lockfile, SHA-256 per architecture). A non-root user, tini, a health
+  check, and one volume (`/data`) for both sign-ins, the chats, the workspaces and Orbit's store.
+  `cd integrations/orbit-web/docker && docker compose up -d --build`, then http://localhost:3000.
+- **Your own accounts, through the official CLIs only.** Claude: `claude auth login` (the page shows the CLI's URL and
+  passes the code you paste to that process), verified by `claude auth status`. GitHub: `gh auth login --web` (the page
+  shows the one-time code and URL GitHub CLI printed), verified by `gh auth status` and `gh api user`; disconnect is
+  `gh auth logout`. No GitHub App, no OAuth app of its own, no personal access token.
+- **Azure, optional (at the owner's request).** The Azure CLI 2.91.0, installed from the plugin's own hash-checked lock
+  on CPython 3.13.15 exactly as Orbit's catalog pins it (`--build-arg AZURE_CLI=0` leaves it out). `az login
+  --use-device-code` from the page (an optional tenant; the URL and one-time code the CLI printed), `az account show`
+  to say who is signed in, `az logout`; never a token asked of it. Claude Code gets this sign-in only when a person
+  turns on "Let Claude Code use this Azure sign-in"; otherwise `az` and `/data/azure` are refused to it. Orbit's own
+  Azure connections keep their own profile (ADR 0043).
+- **Repositories and workspaces.** Every repository the account reaches (all pages of `user/repos` for owner,
+  collaborator and organisation member, merged with `gh repo list`), its branches, and a clone per chat into
+  `/data/workspaces/<id>/repository` on a branch of its own; nothing is ever pushed.
+- **Chat.** Claude Code runs headless with Orbit (`-p --output-format stream-json --include-partial-messages
+  --plugin-dir`), `--session-id` then `--resume`, `--permission-mode dontAsk` with an allow-list and deny rules (no
+  bypass). Text streams as it is written; tool activity shows each call's real output; a subagent's work sits under
+  its Agent call; Stop interrupts the process group; sessions persist, resume after a restart, and a run a restart cut
+  short says interrupted.
+- **What changed, and what Orbit says.** Changed files, line counts and a highlighted diff read from git in the
+  workspace; the Orbit panel copies Orbit's own `live status`, `task show` and `autonomous-engineering context`, and
+  says Unknown until Orbit itself gives a verdict.
+- **Secured for one person on one machine.** Loopback only by default, a Host allow-list, a required header and same
+  origin for every change, bounded JSON bodies, a strict CSP, masked process output, and an access-token mode for any
+  other host name. The README says plainly that the agent's shell and the sign-ins share one container.
+- **Checked.** 134 deterministic tests (unit, mocked-process integration with real git and Orbit, web), a 22-check Docker
+  smoke test, and one real capped Sonnet run with a restart and a resumed turn (PASS 16, BLOCKED 3 for the steps that
+  need a person, STAND-IN 1 for GitHub; `integrations/orbit-web/tests/acceptance/results/0.7.0/`). The real GitHub
+  and Azure CLIs were each seen to print a real one-time code in the container; finishing either needs a person.
+- **Two scoped workflows** (ADR 0060): `orbit-web-ci.yml` for pull requests that touch Orbit Web, and
+  `orbit-web-release.yml`, by hand and reviewer-gated, to publish `ghcr.io/<owner>/orbit-web:0.7.0` (and `latest` only
+  when asked). The plugin's release gates stay `ship.mjs`.
+
 ## 0.6.0
 
 A minor release in three parts. **Project Understanding**: the context package says, for each of three levels, whether

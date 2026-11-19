@@ -1,0 +1,37 @@
+{
+  "name": "orbit-web",
+  "version": "0.7.0",
+  "private": true,
+  "description": "Orbit Web: a self-hosted, browser-based Claude Code experience with the Orbit plugin, shipped as one Docker image.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "workspaces": [
+    "packages/contracts",
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "build": "npm run build -w @orbit-web/contracts && npm run build -w @orbit-web/api && npm run build -w @orbit-web/web",
+    "typecheck": "npm run build -w @orbit-web/contracts && npm run typecheck -w @orbit-web/api && npm run typecheck -w @orbit-web/web",
+    "lint": "eslint --max-warnings=0 .",
+    "test": "npm run build -w @orbit-web/contracts && npm run test -w @orbit-web/contracts && npm run test -w @orbit-web/api && npm run test -w @orbit-web/web",
+    "ci": "node scripts/ci.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.19.2",
+    "eslint": "10.15.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.14.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.73.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cuongngoht/orbit.git",
+    "directory": "integrations/orbit-web"
+  }
+}

@@ -47,7 +47,8 @@ node skills/orbit-release/ship.mjs --evidence --evaluation=<record.json> [--arti
 
 A release qualifies on two things (ADR 0057): the fast tier on the release commit, and a record of the **independent
 evaluator** (`evaluator/`, its own README) for that very artifact. Nothing here tags, pushes, publishes or writes the
-checkout, and there is no GitHub workflow: the gates run where the release is made (0.6.0, backlog Q8).
+checkout, and no GitHub workflow gates the plugin: the gates run where the release is made (0.6.0, backlog Q8). Orbit
+Web's two scoped workflows (ADR 0060) build and publish only Orbit Web's image and decide nothing here.
 
 **The evaluator** runs one task with one model, effort, tool set, prompt and limits in arms that differ only by the
 plugin -- the plain coding host, Orbit at the previous release, Orbit at the release candidate (`git archive` of a

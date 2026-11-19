@@ -10,3 +10,10 @@ export const ORBIT_WEB_VERSION = "0.7.0";
 // The header every state-changing request carries. A browser cannot add it to a cross-site request without a CORS
 // preflight the API never answers, so its presence is part of the CSRF defence.
 export const MUTATION_HEADER = "x-orbit-web";
+
+// The error code of every API call made before Orbit Web is signed in to a Claude account (HTTP 401). The web app
+// answers it with the sign-in page.
+export const CLAUDE_SIGN_IN_REQUIRED = "claude_sign_in_required";
+
+// The CLI's word for a Claude account sign-in (`claude auth status` -> authMethod). Nothing else signs Orbit Web in.
+export const CLAUDE_ACCOUNT_METHOD = "claude.ai";

@@ -53,20 +53,25 @@ export interface LoginSnapshot {
   updatedAt: string;
 }
 
-export interface ClaudeStatus {
-  state: ConnectionState;
-  // The CLI's own word for how it is signed in (e.g. "claude.ai", "oauth_token"), when it says one.
-  method: string | null;
-  // "environment" when the container was given the CLI's own credential variable.
-  source: "cli" | "environment" | null;
-  detail: string | null;
-  flow: LoginSnapshot;
+// The Claude account Orbit Web is signed in with: the identity of this Orbit Web, as `claude auth status` says it.
+export interface ClaudeAccount {
+  email: string | null;
+  organization: string | null;
+  // The CLI's own word for the subscription (e.g. "pro", "max", "team"), when it says one.
+  plan: string | null;
 }
 
-export type ClaudeLoginMode = "claudeai" | "console";
-
-export interface ClaudeLoginRequest {
-  mode?: ClaudeLoginMode;
+// The Claude sign-in IS the sign-in of Orbit Web: every API call but the health check, the access token and the Claude
+// sign-in itself is refused (401 claude_sign_in_required) until `claude auth status` reports a Claude account
+// (`authMethod: "claude.ai"`). An API key or a token variable the container was started with is not an account, and is
+// never given to Claude Code.
+export interface ClaudeStatus {
+  state: ConnectionState;
+  // The CLI's own word for how it is signed in (e.g. "claude.ai"), when it says one.
+  method: string | null;
+  account: ClaudeAccount | null;
+  detail: string | null;
+  flow: LoginSnapshot;
 }
 
 export interface ClaudeLoginCodeRequest {

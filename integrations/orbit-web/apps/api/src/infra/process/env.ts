@@ -3,8 +3,9 @@
 //   - gh never sees GH_TOKEN / GITHUB_TOKEN (they would override the stored sign-in, and `gh auth login` refuses
 //     to run beside them), and nothing but gh is told where gh keeps its sign-in;
 //   - Claude Code is never given any GH_* / GITHUB_* name, so the coding agent cannot find GitHub's credential;
-//   - the CLI's own credential names (CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN) are passed
-//     to Claude Code BY NAME when the container was started with them, never written anywhere.
+//   - the CLI's own credential names (CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN) are NEVER
+//     passed: Claude Code would use one before the Claude account signed in here, and that account is the sign-in of
+//     Orbit Web itself (the Claude sign-in gate). A container started with one is told it is ignored.
 import type { AppConfig } from "../../config/config.js";
 
 const PASS_THROUGH = [
@@ -81,14 +82,14 @@ export function azureEnv(config: AppConfig): Record<string, string> {
   return { ...baseEnv(config), ...AZURE_PINS, AZURE_CONFIG_DIR: config.data.azure, BROWSER: "true" };
 }
 
-export const hasClaudeEnvCredential = (config: AppConfig): boolean => Object.keys(pick(config.sourceEnv, CLAUDE_CREDENTIAL_NAMES)).length > 0;
+// The Claude credential variables the container was started with, by name: ignored, and said so.
+export const ignoredClaudeCredentials = (config: AppConfig): string[] => Object.keys(pick(config.sourceEnv, CLAUDE_CREDENTIAL_NAMES));
 
 // `azure`: a person let Claude Code use the Azure CLI's sign-in, so its `az` finds the profile. Otherwise it is not
 // told where the profile is (and its tools are refused the directory).
 export function claudeEnv(config: AppConfig, o: { azure?: boolean } = {}): Record<string, string> {
   return {
     ...baseEnv(config),
-    ...pick(config.sourceEnv, CLAUDE_CREDENTIAL_NAMES),
     CLAUDE_CONFIG_DIR: config.data.claude,
     ORBIT_STORE_DIR: config.data.orbit,
     DISABLE_AUTOUPDATER: "1",

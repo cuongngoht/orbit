@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { applyDelta } from "./events.js";
 import {
+  checkClaudeLogin,
   checkCreateSession,
   checkLoginCode,
   checkSendMessage,
@@ -67,4 +68,13 @@ test("an Azure tenant is a GUID or a domain, never an option", async () => {
   assert.deepEqual(checkAzureLogin({ tenant: "" }), { ok: true, value: {} });
   for (const bad of ["--allow-no-subscriptions", "a b.com", "x", "contoso", { a: 1 }]) assert.equal(checkAzureLogin({ tenant: bad }).ok, false, String(bad));
   assert.equal(checkAzureLogin({ tenant: "contoso.com", extra: 1 }).ok, false);
+});
+
+test("the Claude sign-in takes no mode: a Claude account is the only sign-in", () => {
+  assert.deepEqual(checkClaudeLogin(undefined), { ok: true, value: null });
+  assert.deepEqual(checkClaudeLogin(null), { ok: true, value: null });
+  assert.deepEqual(checkClaudeLogin({}), { ok: true, value: null });
+  assert.equal(checkClaudeLogin({ mode: "console" }).ok, false);
+  assert.equal(checkClaudeLogin({ mode: "claudeai" }).ok, false);
+  assert.equal(checkClaudeLogin("claudeai").ok, false);
 });

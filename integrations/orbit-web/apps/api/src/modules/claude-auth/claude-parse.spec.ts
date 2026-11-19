@@ -1,11 +1,38 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseClaudeStatus, readClaudeLogin } from "./claude-auth.service.js";
+import { parseClaudeStatus, readClaudeLogin, signInOf, type CliStatus } from "./claude-auth.service.js";
 
-test("claude auth status (JSON) says whether it is signed in and how", () => {
-  assert.deepEqual(parseClaudeStatus('{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty"}'), { loggedIn: true, authMethod: "claude.ai", apiProvider: "firstParty" });
-  assert.deepEqual(parseClaudeStatus('{"loggedIn":false}'), { loggedIn: false, authMethod: null, apiProvider: null });
+const cli = (over: Partial<CliStatus>): CliStatus => ({ loggedIn: false, authMethod: null, apiProvider: null, email: null, orgName: null, subscriptionType: null, ...over });
+
+test("claude auth status (JSON) says whether it is signed in, how, and to which account", () => {
+  // The shape claude 2.1.x prints for a Claude account sign-in (paths and ids left out: nothing reads them).
+  const signedIn = '{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty","loginExpiresAt":"2026-12-19T11:19:26.532Z","email":"octo@example.com","orgId":"org-1","orgName":"Octo Org","subscriptionType":"team","storedClaudeAiLogin":true}';
+  assert.deepEqual(parseClaudeStatus(signedIn), cli({ loggedIn: true, authMethod: "claude.ai", apiProvider: "firstParty", email: "octo@example.com", orgName: "Octo Org", subscriptionType: "team" }));
+  assert.deepEqual(parseClaudeStatus('{"loggedIn":false,"authMethod":"none"}'), cli({ authMethod: "none" }));
+  assert.deepEqual(parseClaudeStatus('{"loggedIn":false,"email":"  ","orgName":7}'), cli({}));
   assert.equal(parseClaudeStatus("Not logged in"), null);
+  assert.equal(parseClaudeStatus('{"authMethod":"claude.ai"}'), null);
+});
+
+test("only a Claude account signs Orbit Web in, and the account is who it is", () => {
+  const account = signInOf(cli({ loggedIn: true, authMethod: "claude.ai", email: "octo@example.com", orgName: "Octo Org", subscriptionType: "max" }), []);
+  assert.deepEqual(account, { state: "connected", method: "claude.ai", account: { email: "octo@example.com", organization: "Octo Org", plan: "max" }, detail: null });
+  for (const method of ["api_key", "oauth_token", "console", null]) {
+    const other = signInOf(cli({ loggedIn: true, authMethod: method, email: "octo@example.com" }), []);
+    assert.equal(other.state, "not_connected", String(method));
+    assert.equal(other.account, null, "no identity is shown for what is not a Claude account");
+    assert.match(other.detail ?? "", /not a Claude account/);
+  }
+  assert.deepEqual(signInOf(cli({ authMethod: "none" }), []), { state: "not_connected", method: null, account: null, detail: null });
+});
+
+test("a credential variable the container was started with is named as ignored -- by name, never by value", () => {
+  const signedOut = signInOf(cli({}), ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"]);
+  assert.equal(signedOut.state, "not_connected");
+  assert.equal(signedOut.detail, "This container was started with CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY; Orbit Web ignores them: it signs in with a Claude account only.");
+  const signedIn = signInOf(cli({ loggedIn: true, authMethod: "claude.ai" }), ["ANTHROPIC_API_KEY"]);
+  assert.equal(signedIn.state, "connected");
+  assert.match(signedIn.detail ?? "", /ANTHROPIC_API_KEY; Orbit Web ignores it/);
 });
 
 test("claude auth login: the URL after visit:, and the prompt for the code (no newline after it)", () => {

@@ -1,38 +1,48 @@
 import { Body, Controller, Get, HttpCode, Inject, Module, Post, Req, Res } from "@nestjs/common";
-import { checkClaudeLoginMode, checkLoginCode, type ClaudeStatus, type LoginSnapshot } from "@orbit-web/contracts";
+import { APP_GUARD } from "@nestjs/core";
+import { checkClaudeLogin, checkLoginCode, type ClaudeStatus, type LoginSnapshot } from "@orbit-web/contracts";
 import type { Request, Response } from "express";
+import { BeforeClaudeSignIn } from "../../common/before-claude-sign-in.js";
 import { accepted } from "../../common/errors.js";
 import { openSse } from "../../infra/sse/sse.js";
 import { ClaudeAuthService } from "./claude-auth.service.js";
+import { ClaudeSignInGuard } from "./claude-sign-in.guard.js";
 
+// Everything but sign-out is reachable before the sign-in: it IS the sign-in.
 @Controller("claude")
 export class ClaudeAuthController {
   constructor(@Inject(ClaudeAuthService) private readonly claude: ClaudeAuthService) {}
 
   @Get("status")
+  @BeforeClaudeSignIn()
   status(): Promise<ClaudeStatus> {
     return this.claude.status();
   }
 
   @Post("login")
+  @BeforeClaudeSignIn()
   @HttpCode(202)
   login(@Body() body: unknown): LoginSnapshot {
-    return this.claude.login(accepted(checkClaudeLoginMode(body)));
+    accepted(checkClaudeLogin(body));
+    return this.claude.login();
   }
 
   @Post("login/code")
+  @BeforeClaudeSignIn()
   @HttpCode(202)
   code(@Body() body: unknown): LoginSnapshot {
     return this.claude.submitCode(accepted(checkLoginCode(body)).code);
   }
 
   @Post("login/cancel")
+  @BeforeClaudeSignIn()
   @HttpCode(200)
   cancel(): LoginSnapshot {
     return this.claude.cancel();
   }
 
   @Get("login/events")
+  @BeforeClaudeSignIn()
   events(@Req() req: Request, @Res() res: Response): void {
     let stop: () => void = () => undefined;
     const channel = openSse(req, res, () => stop());
@@ -48,7 +58,7 @@ export class ClaudeAuthController {
 }
 
 @Module({
-  providers: [ClaudeAuthService],
+  providers: [ClaudeAuthService, { provide: APP_GUARD, useClass: ClaudeSignInGuard }],
   controllers: [ClaudeAuthController],
   exports: [ClaudeAuthService],
 })

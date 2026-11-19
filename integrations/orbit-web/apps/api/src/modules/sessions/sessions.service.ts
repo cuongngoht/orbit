@@ -1,13 +1,13 @@
 // Chat sessions: one repository, one branch, one model preference, one workspace, one Claude Code conversation.
 import { Inject, Injectable } from "@nestjs/common";
-import { checkCreateSession, checkUpdateSession, type SessionDetail, type SessionSummary } from "@orbit-web/contracts";
+import { checkCreateSession, checkUpdateSession, CLAUDE_SIGN_IN_REQUIRED, type SessionDetail, type SessionSummary } from "@orbit-web/contracts";
 import { randomUUID } from "node:crypto";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import type { AppConfig } from "../../config/config.js";
 import { EventHub } from "../../core/event-hub.js";
 import { APP_CONFIG } from "../../core/tokens.js";
-import { accepted, badRequest, conflict, notFound } from "../../common/errors.js";
+import { accepted, ApiError, badRequest, conflict, notFound } from "../../common/errors.js";
 import { isSessionId } from "../../common/workspace-path.js";
 import { MessageStore, SessionStore, type SessionRecord } from "../../infra/storage/stores.js";
 import { ClaudeAuthService } from "../claude-auth/claude-auth.service.js";
@@ -64,7 +64,8 @@ export class SessionsService {
   // workspace in the background; the first prompt, when given, is sent once the workspace is ready.
   async create(body: unknown): Promise<SessionSummary> {
     const req = accepted(checkCreateSession(body));
-    if ((await this.claude.account()).state !== "connected") throw conflict("claude_not_connected", "Connect your Claude account first.");
+    // The gate already holds every route to the Claude sign-in; this is the same rule, said where the account is used.
+    if ((await this.claude.account()).state !== "connected") throw new ApiError(401, CLAUDE_SIGN_IN_REQUIRED, "Sign in to Orbit Web with your Claude account first.");
     if ((await this.github.connection()).state !== "connected") throw conflict("github_not_connected", "Connect GitHub first.");
     const repo = await this.repositories.authorized(req.repository);
     const [owner, name] = [repo.owner, repo.name];

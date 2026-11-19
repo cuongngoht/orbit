@@ -1,10 +1,12 @@
 // GET/PATCH /api/settings: a person's preferences (default model, whether Claude may use the web tools, theme).
-// POST /api/access: in token mode, trades the access token for an HttpOnly, SameSite=Strict cookie.
+// POST /api/access: in token mode, trades the access token for an HttpOnly, SameSite=Strict cookie (asked for before the
+// Claude sign-in, so it is reachable before it).
 import { Body, Controller, Get, HttpCode, Inject, Injectable, Module, Patch, Post, Res } from "@nestjs/common";
 import { checkUpdateSettings, DEFAULT_MODEL, isModelChoice, isTheme, type Settings } from "@orbit-web/contracts";
 import type { Response } from "express";
 import type { AppConfig } from "../../config/config.js";
 import { APP_CONFIG } from "../../core/tokens.js";
+import { BeforeClaudeSignIn } from "../../common/before-claude-sign-in.js";
 import { accepted, ApiError, badRequest } from "../../common/errors.js";
 import { ACCESS_COOKIE, accessTokenMatches } from "../../infra/security/guards.js";
 import { SettingsStore } from "../../infra/storage/stores.js";
@@ -55,6 +57,7 @@ export class SettingsController {
   }
 
   @Post("access")
+  @BeforeClaudeSignIn()
   @HttpCode(204)
   access(@Body() body: unknown, @Res({ passthrough: true }) res: Response): void {
     const token = typeof (body as { token?: unknown } | null)?.token === "string" ? (body as { token: string }).token : null;

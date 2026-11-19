@@ -6,7 +6,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
 import type { ChangesReport, FileDiff, OrbitPanel, SessionDetail, SessionSummary } from "@orbit-web/contracts";
-import { FakeProcessPort, type Call, type FakeChild } from "../../src/testing/fake-process.js";
+import { FakeProcessPort, program, type Call, type FakeChild } from "../../src/testing/fake-process.js";
 import { NodeProcessPort } from "../../src/infra/process/node-process.js";
 import { claudeRun, eventually, REPOSITORY, signedIn, startHarness, type Harness } from "../../src/testing/harness.js";
 
@@ -52,7 +52,7 @@ describe("a chat, end to end through the API", () => {
   before(async () => {
     fake = signedIn(new FakeProcessPort(new NodeProcessPort()));
     fake.on(claudeRun, { spawn: fixingRun });
-    h = await startHarness({ fake, env: { GH_TOKEN: "gho_000000000000000000000000000000000000" } });
+    h = await startHarness({ fake, env: { GH_TOKEN: "gho_000000000000000000000000000000000000", ANTHROPIC_API_KEY: "sk-ant-api03-never-reaches-claude-code-00000000", CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat01-never-reaches-claude-code-00000000" } });
   });
   after(() => h.close());
 
@@ -89,7 +89,7 @@ describe("a chat, end to end through the API", () => {
     assert.equal(started.claudeCodeVersion, "2.1.328");
   });
 
-  test("Claude Code ran headless in the workspace, with the Orbit plugin, the prompt on stdin, and no GitHub credential", () => {
+  test("Claude Code ran headless in the workspace, with the Orbit plugin, the prompt on stdin, as the signed-in Claude account and with no other credential", () => {
     const { call, child } = fake.children.find((c) => claudeRun(c.call.file, c.call.args)) as { call: Call; child: FakeChild };
     const detail = call.args;
     assert.equal(after1(detail, "--plugin-dir"), h.config.pluginDir);
@@ -100,6 +100,8 @@ describe("a chat, end to end through the API", () => {
     assert.equal(call.env.CLAUDE_CONFIG_DIR, h.config.data.claude);
     assert.equal(call.env.ORBIT_STORE_DIR, h.config.data.orbit);
     assert.deepEqual(Object.keys(call.env).filter((k) => /^(GH_|GITHUB_)/.test(k)), []);
+    // The container's own Claude credential variables would take the place of the account signed in here.
+    assert.deepEqual(Object.keys(call.env).filter((k) => /^(ANTHROPIC_|CLAUDE_CODE_OAUTH)/.test(k)), []);
     assert.deepEqual(child.written, ["Fix the incorrect addition in sum.mjs so the existing test passes. Do not modify the test."]);
     assert.equal(child.inputClosed, true);
   });
@@ -160,6 +162,10 @@ describe("a chat, end to end through the API", () => {
     await eventually(async () => ((await h.get(`/api/sessions/${session.id}`)).body as SessionDetail).status, (s) => s === "running");
     assert.equal((await h.send("POST", `/api/sessions/${session.id}/messages`, { text: "again" })).status, 409, "one run per session");
     assert.equal((await h.send("DELETE", `/api/sessions/${session.id}`)).status, 409, "a running chat is not deleted");
+    const signOut = await h.send("POST", "/api/claude/logout");
+    assert.equal(signOut.status, 409, "the account is not signed out while Claude Code works for it");
+    assert.equal((signOut.body as { error: { code: string } }).error.code, "run_active");
+    assert.deepEqual(fake.callsOf(program("claude", "auth", "logout")), []);
     await eventually(() => fake.children.at(-1)?.child.written.length ?? 0, (n) => n > 0);
     assert.equal((await h.send("POST", `/api/sessions/${session.id}/stop`)).status, 202);
     const detail = await eventually(async () => (await h.get(`/api/sessions/${session.id}`)).body as SessionDetail, (d) => d.status === "interrupted");

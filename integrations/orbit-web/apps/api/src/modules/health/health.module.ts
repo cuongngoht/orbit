@@ -1,9 +1,11 @@
 // GET /api/health: whether the API answers, the programs run, the plugin is present and the storage is writable.
-// It names no path, variable or account, so it is safe to leave open in token mode (the container's health check).
+// It names no path, variable or account, so it is safe to leave open in token mode (the container's health check) and
+// before the Claude sign-in.
 import { Controller, Get, Inject, Injectable, Module, Res } from "@nestjs/common";
 import type { HealthReport } from "@orbit-web/contracts";
 import type { Response } from "express";
 import type { AppConfig } from "../../config/config.js";
+import { BeforeClaudeSignIn } from "../../common/before-claude-sign-in.js";
 import { storageProblems } from "../../config/data-dirs.js";
 import { APP_CONFIG } from "../../core/tokens.js";
 import { ToolchainService } from "./toolchain.service.js";
@@ -35,6 +37,7 @@ export class HealthService {
 }
 
 @Controller("health")
+@BeforeClaudeSignIn()
 export class HealthController {
   constructor(@Inject(HealthService) private readonly health: HealthService) {}
 

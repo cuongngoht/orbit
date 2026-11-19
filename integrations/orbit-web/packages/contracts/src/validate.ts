@@ -5,7 +5,6 @@ import { THEMES, type ThemePreference } from "./status.js";
 import type {
   AzureLoginRequest,
   ClaudeLoginCodeRequest,
-  ClaudeLoginMode,
   CreateSessionRequest,
   SendMessageRequest,
   UpdateSessionRequest,
@@ -119,13 +118,12 @@ export function checkUpdateSettings(body: unknown): Checked<UpdateSettingsReques
   }));
 }
 
-export function checkClaudeLoginMode(body: unknown): Checked<ClaudeLoginMode> {
-  if (body === undefined || body === null) return { ok: true, value: "claudeai" };
+// POST /api/claude/login takes nothing: Orbit Web signs in with a Claude account only (`--claudeai`), so there is no
+// mode to choose. An empty object is accepted; a field is refused by name (an Anthropic Console account is not offered).
+export function checkClaudeLogin(body: unknown): Checked<null> {
+  if (body === undefined || body === null) return { ok: true, value: null };
   if (!isRecord(body)) return { ok: false, errors: ["the body must be a JSON object"] };
-  const errors = unknownFields(body, ["mode"]);
-  const mode = body.mode ?? "claudeai";
-  if (mode !== "claudeai" && mode !== "console") errors.push("mode must be claudeai or console");
-  return checked(errors, () => mode as ClaudeLoginMode);
+  return checked(unknownFields(body, []), () => null);
 }
 
 // The code a person copies from the Claude sign-in page: printable, no whitespace, bounded.

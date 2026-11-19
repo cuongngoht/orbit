@@ -149,18 +149,23 @@ function parseFrame(raw: string): SseFrame | null {
 }
 
 export const ACCOUNT = { login: "octo", id: 42, name: "Octo Cat" };
+
+// What `claude auth status --json` prints for a Claude account sign-in (the fields Orbit Web reads, and two it does not).
+export const CLAUDE_SIGNED_IN = { loggedIn: true, authMethod: "claude.ai", apiProvider: "firstParty", email: "octo@example.com", orgName: "Octo Org", subscriptionType: "max", storedClaudeAiLogin: true };
+export const CLAUDE_SIGNED_OUT = { loggedIn: false, authMethod: "none", apiProvider: "firstParty" };
 export const REPOSITORY = "octo/sum-fixture";
 
 const ghApi = (path: string): ((file: string, args: string[]) => boolean) => (file, args) => program("gh", "api")(file, args) && args.some((a) => a === path || a.startsWith(`${path}?`));
 
-// Both accounts signed in, one repository with two branches, and a clone that makes a real repository.
+// Both accounts signed in (Claude to a Claude account), one repository with two branches, and a clone that makes a real
+// repository.
 export function signedIn(fake: FakeProcessPort): FakeProcessPort {
   return fake
     .on(program("claude", "--version"), { run: { stdout: "2.1.328 (Claude Code)\n" } })
     .on(program("gh", "--version"), { run: { stdout: "gh version 2.89.0 (2026-03-26)\n" } })
     .on(program("az", "version"), { run: { stdout: '{\n  "azure-cli": "2.91.0",\n  "azure-cli-core": "2.91.0",\n  "extensions": {}\n}\n' } })
     .on(program("az", "account", "show"), { run: { code: 1, stderr: "Please run 'az login' to setup account.\n" } })
-    .on(program("claude", "auth", "status"), { run: { stdout: JSON.stringify({ loggedIn: true, authMethod: "claude.ai", apiProvider: "firstParty" }) } })
+    .on(program("claude", "auth", "status"), { run: { stdout: JSON.stringify(CLAUDE_SIGNED_IN) } })
     .on(program("gh", "auth", "status"), { run: { stdout: JSON.stringify({ hosts: { "github.com": [{ state: "success", active: true, host: "github.com", login: ACCOUNT.login, tokenSource: "/data/github/hosts.yml", gitProtocol: "https" }] } }) } })
     .on(ghApi("user"), { run: { stdout: JSON.stringify(ACCOUNT) } })
     .on(ghApi("user/repos"), { run: { stdout: [{ full_name: REPOSITORY, name: "sum-fixture", owner: "octo", private: true, default_branch: "main", updated_at: "2026-11-01T00:00:00Z", archived: false, fork: false }, { full_name: "acme/tools", name: "tools", owner: "acme", private: false, default_branch: "trunk", updated_at: "2026-10-01T00:00:00Z", archived: false, fork: false }].map((r) => JSON.stringify(r)).join("\n") } })

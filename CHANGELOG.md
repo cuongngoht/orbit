@@ -36,7 +36,7 @@ archive is unchanged (Orbit Web and the workflows below are export-ignored). Not
 - **Secured for one person on one machine.** Loopback only by default, a Host allow-list, a required header and same
   origin for every change, bounded JSON bodies, a strict CSP, masked process output, and an access-token mode for any
   other host name. The README says plainly that the agent's shell and the sign-ins share one container.
-- **Checked.** 139 deterministic tests (unit, mocked-process integration with real git and Orbit, web), a 22-check Docker
+- **Checked.** 134 deterministic tests (unit, mocked-process integration with real git and Orbit, web), a 22-check Docker
   smoke test, and one real capped Sonnet run with a restart and a resumed turn (PASS 16, BLOCKED 3 for the steps that
   need a person, STAND-IN 1 for GitHub; `integrations/orbit-web/tests/acceptance/results/0.7.0/`). The real GitHub
   and Azure CLIs were each seen to print a real one-time code in the container; finishing either needs a person.

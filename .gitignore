@@ -19,3 +19,11 @@ __pycache__/
 
 # Claude Code writes the API types for an editor into a plugin folder it loads (claude --plugin-dir .)
 .claude-plugin/types/
+
+# Orbit Web (integrations/orbit-web, 0.7.0): build output, compiled specs, coverage and local environment files are
+# made on the machine that builds it and never committed.
+integrations/orbit-web/**/dist/
+integrations/orbit-web/**/.spec-dist/
+integrations/orbit-web/**/coverage/
+integrations/orbit-web/**/.env
+integrations/orbit-web/**/.env.*

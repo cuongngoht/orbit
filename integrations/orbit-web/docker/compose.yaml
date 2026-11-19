@@ -1,0 +1,33 @@
+# Orbit Web on this machine: http://localhost:3000, reachable from this machine only.
+#
+#   cd integrations/orbit-web/docker && docker compose up -d --build
+#
+# Everything a person creates (the two sign-ins, chats, workspaces, Orbit's store) lives in the named volume, so
+# `docker compose restart` and `docker compose up -d --build` keep it. `docker compose down -v` deletes it.
+name: orbit-web
+
+services:
+  orbit-web:
+    image: ghcr.io/cuongngoht/orbit-web:0.7.0
+    build:
+      context: ../../..
+      dockerfile: integrations/orbit-web/docker/Dockerfile
+    container_name: orbit-web
+    # Orbit's machine store names its runtime room after the host name: a fixed one keeps it across re-creations.
+    hostname: orbit-web
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - orbit-web-data:/data
+    environment:
+      # A per-run spending cap for Claude Code, in US dollars (unset: no cap).
+      ORBIT_WEB_MAX_BUDGET_USD: ${ORBIT_WEB_MAX_BUDGET_USD:-}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    stop_grace_period: 20s
+
+volumes:
+  orbit-web-data:

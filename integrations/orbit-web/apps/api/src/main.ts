@@ -6,6 +6,8 @@ import { ConfigError, loadConfig } from "./config/config.js";
 import { ensureDataDirs } from "./config/data-dirs.js";
 
 async function main(): Promise<void> {
+  // Everything Orbit Web and its children create (the database, a workspace, a CLI's sign-in) is private to its user.
+  process.umask(0o077);
   const config = loadConfig(process.env);
   ensureDataDirs(config.data);
   const app = await createApp(config);

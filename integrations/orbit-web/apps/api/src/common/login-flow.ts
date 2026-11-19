@@ -139,8 +139,9 @@ export class LoginFlow {
     this.finish(verdict.ok ? "connected" : "failed", verdict.message);
   }
 
+  // An ended flow keeps only its outcome: the URL and the one-time code are no longer anything to act on.
   private finish(state: LoginState, message: string | null): void {
-    this.set({ ...this.snapshot, state, message, needsCode: false, code: null });
+    this.set({ ...this.snapshot, state, message, needsCode: false, code: null, url: null });
   }
 
   private set(next: LoginSnapshot): void {

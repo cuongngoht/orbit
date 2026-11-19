@@ -25,7 +25,7 @@ const CACHE_MS = 15_000;
 // What `gh auth login --web` printed so far: its one-time code and the URL to enter it at.
 export function readGhLogin(output: string): LoginFields {
   const code = [...output.matchAll(/one-time code:\s*([A-Z0-9]{4}-[A-Z0-9]{4})/g)].at(-1)?.[1] ?? null;
-  const url = [...output.matchAll(/web browser:\s*(https:\/\/\S+)/g)].at(-1)?.[1] ?? [...output.matchAll(/(https:\/\/\S+\/login\/device)\b/g)].at(-1)?.[1] ?? null;
+  const url = [...output.matchAll(/continue in your web browser:\s*(https:\/\/\S+)/g)].at(-1)?.[1] ?? null;
   const done = /Authentication complete/i.test(output);
   return { code, url, message: done ? "GitHub accepted the sign-in; checking it with gh…" : null };
 }

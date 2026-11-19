@@ -21,6 +21,8 @@ test("the device flow's one-time code and URL are read exactly as gh printed the
   const done = readGhLogin(`${out}✓ Authentication complete.\n✓ Logged in as octo\n`);
   assert.match(done.message ?? "", /accepted/);
   assert.deepEqual(readGhLogin("nothing yet"), { code: null, url: null, message: null });
+  const failed = readGhLogin('failed to authenticate via web browser: Post "https://github.com/login/device/code": tls: failed');
+  assert.equal(failed.url, null, "a URL inside an error message is not a URL to open");
 });
 
 test("repository and branch rows from the API and from gh repo list", () => {

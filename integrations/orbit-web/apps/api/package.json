@@ -9,7 +9,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.spec.json --noEmit",
-    "test": "tsc -p tsconfig.spec.json && node --disable-warning=ExperimentalWarning --test --test-concurrency=1 --test-reporter=spec \".spec-dist/**/*.spec.js\"",
+    "test": "npm run test:compile && npm run test:unit && npm run test:integration",
+    "test:compile": "tsc -p tsconfig.spec.json",
+    "test:unit": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 --test-reporter=spec \".spec-dist/src/**/*.spec.js\"",
+    "test:integration": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 --test-reporter=spec \".spec-dist/tests/**/*.spec.js\"",
     "start": "node --disable-warning=ExperimentalWarning dist/main.js"
   },
   "dependencies": {

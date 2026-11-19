@@ -17,7 +17,7 @@
     "build": "npm run build -w @orbit-web/contracts && npm run build -w @orbit-web/api && npm run build -w @orbit-web/web",
     "typecheck": "npm run build -w @orbit-web/contracts && npm run typecheck -w @orbit-web/api && npm run typecheck -w @orbit-web/web",
     "lint": "eslint --max-warnings=0 .",
-    "test": "npm run test -w @orbit-web/contracts && npm run test -w @orbit-web/api && npm run test -w @orbit-web/web",
+    "test": "npm run build -w @orbit-web/contracts && npm run test -w @orbit-web/contracts && npm run test -w @orbit-web/api && npm run test -w @orbit-web/web",
     "ci": "node scripts/ci.mjs"
   },
   "devDependencies": {

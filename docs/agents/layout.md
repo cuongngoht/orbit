@@ -1226,7 +1226,14 @@ integrations/  what ANOTHER program installs, never part of this plugin's archiv
                person installs it; companion.js (what it does: a heartbeat in the store's live room, a request
                picked up, the asking terminal split through VS Code's Terminal API, only Orbit's viewer ever run)
                and extension.js (VS Code's API handed in). test/vscode-companion.test.mjs drives it with a fake of
-               that API, end to end from `live open`
+               that API, end to end from `live open`. orbit-web/ (Orbit Web 0.7.0, ADR 0060) is the self-hosted browser
+               host: one Docker image with the official claude and gh CLIs, git, this plugin (`git archive` of a commit)
+               and a NestJS API serving a React + Fluent UI v9 app; npm workspaces of its own (packages/contracts,
+               apps/api, apps/web) with their own lockfile and dependencies, which no gate of this plugin reads; its
+               specs are *.spec.ts(x) outside any test/ directory so the root `node --test` never collects them;
+               docker/ (Dockerfile, compose.yaml), scripts/ (ci.mjs, build-image.mjs, release.mjs), tests/ (Docker
+               smoke, the real acceptance run and its results). Imports nothing of the plugin: it runs the plugin's CLIs
+               as programs. Its README says what it is and how it is secured
 satellite/     (0.1.1, ADR 0041) ORBIT SATELLITE, a mission journal above Orbit's owners; its own docs are
                satellite/docs/ (README, hosts, invocation, contract-map, adr/0001-0004). src/ imports only Orbit's
                leaves (satellite/test/boundary.test.mjs): store/ (rooms under <storeRoot>/satellite/, the journal

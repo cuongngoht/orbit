@@ -49,8 +49,10 @@ export function claudeArgs(o: ClaudeRunOptions): string[] {
     ...DENY_RULES,
     ...fileRules(o.protectedDirs),
     ...(o.webTools ? [] : WEB_TOOLS),
+    // The user's settings only: a repository's own .claude/settings.json is untrusted input and could set `env` (an
+    // API base URL that would receive the credential) or hooks that run before any tool call.
     "--setting-sources",
-    "user,project",
+    "user",
     "--strict-mcp-config",
     ...(o.maxBudgetUsd !== null ? ["--max-budget-usd", String(o.maxBudgetUsd)] : []),
   ];

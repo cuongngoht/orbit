@@ -7,8 +7,12 @@
 /test/fixtures/** -text
 
 # integrations/ holds what another program installs (1.8.5: the VS Code companion, an extension a person adds to
-# VS Code), never part of this plugin's archive.
+# VS Code; 0.7.0: Orbit Web, a Docker image a person runs), never part of this plugin's archive.
 /integrations/** export-ignore
+
+# .github/ holds Orbit Web's two scoped workflows (ADR 0060): repository automation, never part of the plugin.
+/.github export-ignore
+/.github/** export-ignore
 
 # acceptance/ (0.1.0) is the native acceptance harness and its example projects: run by a person or a CI job, never
 # shipped, and kept outside test/ because `node --test` runs every module under test/.

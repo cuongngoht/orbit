@@ -707,8 +707,11 @@ place real adapters are bound to real config.
   paths keeps the evidence, any other voids it), every pre-registered held-out run present with an outcome word
   (`NOT_RUN` only on an arm the verdict does not rest on), the record's comparisons worked out again by the registered
   rule, and a release verdict that is not REGRESSED. IMPROVED, NO_DIFFERENCE and INCONCLUSIVE are said as what they are;
-  a one-task difference is INCONCLUSIVE, never a gain. No GitHub workflow exists: the gates run where the release is
-  made, and what a pipeline ran is `ship.mjs --ci`. The gate never tags, pushes or publishes, and a gate is never
+  a one-task difference is INCONCLUSIVE, never a gain. No GitHub workflow gates the plugin: the gates run where the
+  release is made, and what a pipeline ran is `ship.mjs --ci`. The one scoped exception (0.7.0, ADR 0060) is Orbit
+  Web's: `.github/workflows/orbit-web-ci.yml` runs only for `integrations/orbit-web/**` and
+  `orbit-web-release.yml` only by hand, reviewer-gated, to publish its image; both call scripts that run the same
+  without GitHub, `.github/` is export-ignored, and neither decides anything about a plugin release. The gate never tags, pushes or publishes, and a gate is never
   loosened to get a PASS (`test/release-evidence.test.mjs`, `test/orbit-ship-plugin.test.mjs`,
   `evaluator/checks/record.check.mjs`).
 - **No speculative code.** A verb, field, flag or adapter needs a real case that needs it today.
@@ -1109,8 +1112,9 @@ agy                                                          # run antigravity w
 
 ## Definition of done
 
-All of 1-4 are one command — `node skills/orbit-release/ship.mjs --ci`, run where the release is made: there is no
-GitHub workflow (0.6.0), and every gate a pipeline used to hold is a row of it (zero dependencies and the control
+All of 1-4 are one command — `node skills/orbit-release/ship.mjs --ci`, run where the release is made: no GitHub
+workflow gates the plugin (0.6.0; Orbit Web's two scoped workflows, ADR 0060, gate only Orbit Web), and every gate a
+pipeline used to hold is a row of it (zero dependencies and the control
 server's Five Lines among them; Orbit Control on its own Node, `skills/orbit-release/panel.mjs`, reported beside them).
 A RELEASE qualifies on that fast tier plus the independent evaluator's record of the very artifact (ADR 0057): the
 pre-registered held-out campaigns run with a model (`evaluator/`), `node evaluator/cli.mjs record`, then

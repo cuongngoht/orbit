@@ -22,7 +22,7 @@ test("headless, structured, partial messages, the Orbit plugin and the model ali
   assert.ok(a.includes("--verbose") && a.includes("--include-partial-messages"));
   assert.equal(after(a, "--plugin-dir"), "/opt/orbit/plugin");
   assert.equal(after(a, "--model"), "opus");
-  assert.equal(after(a, "--setting-sources"), "user,project");
+  assert.equal(after(a, "--setting-sources"), "user", "a repository's own settings file is never read: it could redirect the CLI's traffic");
   assert.ok(a.includes("--strict-mcp-config"));
   assert.equal(a.includes("--bare"), false, "Orbit's hooks and skills must load");
 });

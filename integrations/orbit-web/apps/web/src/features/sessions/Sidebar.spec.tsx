@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { SessionSummary } from "@orbit-web/contracts";
 import { describe, expect, test, vi } from "vitest";
@@ -37,9 +37,12 @@ describe("the session list", () => {
     await userEvent.type(input, "Add the API");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(api.calls.find((c) => c.method === "PATCH")?.body).toEqual({ title: "Add the API" }));
+    // The rename dialog has closed before the menu opens again (its exit can lag under a loaded test run).
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull(), { timeout: 5000 });
     await userEvent.click(screen.getByRole("button", { name: "Actions for Add API" }));
-    await userEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
-    await userEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Delete" }, { timeout: 5000 }));
+    const confirm = await screen.findByRole("dialog", {}, { timeout: 5000 });
+    await userEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(api.calls.some((c) => c.method === "DELETE" && c.path === `/api/sessions/${OTHER}`)).toBe(true));
     expect(changed).toHaveBeenCalledTimes(2);
   });

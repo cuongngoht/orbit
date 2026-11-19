@@ -22,8 +22,10 @@ Host session hints (untrusted): plugin option `host_memory`, or `ORBIT_HOST_MEMO
 A release qualifies on two things (ADR 0057; the whole contract is in
 [skills/orbit-release/SKILL.md](skills/orbit-release/SKILL.md)): the fast tier, `node skills/orbit-release/ship.mjs
 --ci`, and a record of the independent evaluator ([evaluator/README.md](evaluator/README.md)) for that very artifact,
-read by `node skills/orbit-release/ship.mjs --evidence --evaluation=<record.json>`. There is no GitHub workflow (0.6.0,
-backlog Q8): the gates run where the release is made, and a cloud session is the only place a model run happens. The
+read by `node skills/orbit-release/ship.mjs --evidence --evaluation=<record.json>`. No GitHub workflow gates the plugin
+(0.6.0, backlog Q8): the gates run where the release is made, and a cloud session is the only place a model run happens.
+The one scoped exception is Orbit Web's (0.7.0, ADR 0060): two workflows that fire only for `integrations/orbit-web/**`
+(PR checks) or by hand behind a reviewer (its GHCR image), each calling a script that runs the same without GitHub. The
 old in-repo Docker benchmark and its autonomous ship are gone; what they taught is in ADR 0046-0057 and the CHANGELOG.
 
 **The campaigns, detached, with the credential mapped by name.** The coding host's token is an environment variable of

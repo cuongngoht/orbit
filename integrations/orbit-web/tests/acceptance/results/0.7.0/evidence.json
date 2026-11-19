@@ -1,0 +1,324 @@
+{
+  "image": "orbit-web:0.7.0",
+  "budgetUsdPerTurn": 2,
+  "startedAt": "2026-11-19T14:06:50.199Z",
+  "runs": [
+    {
+      "turn": 1,
+      "prompt": "Fix the incorrect addition in sum.mjs so the existing test passes. Do not modify the test.",
+      "ms": 6818,
+      "started": {
+        "claudeSessionId": "8bd3ae39-468b-409d-b4f3-f45122792836",
+        "claudeCodeVersion": "2.1.328",
+        "model": "claude-sonnet-5-5",
+        "requestedModel": "sonnet",
+        "permissionMode": "dontAsk",
+        "plugins": [
+          {
+            "name": "orbit",
+            "version": "0.6.0"
+          },
+          {
+            "name": "cc-plugin-agents-md",
+            "version": null
+          },
+          {
+            "name": "cc-plugin-telemetry",
+            "version": null
+          },
+          {
+            "name": "cc-plugin-privacy",
+            "version": null
+          },
+          {
+            "name": "cc-plugin-plugin-authoring",
+            "version": null
+          }
+        ],
+        "orbitLoaded": true,
+        "orbitVersion": "0.6.0",
+        "resumed": false
+      },
+      "end": {
+        "type": "session.completed",
+        "data": {
+          "subtype": "success",
+          "result": "I fixed `sum.mjs` by changing `a - b` to `a + b`. I ran `node --test sum.test.mjs` and the test passes (1 of 1). I didn't touch the test file, and I haven't committed anything.",
+          "permissionDenials": 0,
+          "costUsd": 0.058139800000000005,
+          "turns": 5,
+          "durationMs": 5007
+        }
+      },
+      "deltas": 9,
+      "deltasWithoutId": 9,
+      "durableWithId": 22,
+      "durable": 22,
+      "messages": 2,
+      "tools": [
+        "Read sum.mjs",
+        "Edit sum.mjs",
+        "Find *test*",
+        "$ node --test sum.test.mjs 2>&1 | tail -15"
+      ],
+      "toolFailures": 0,
+      "denials": [],
+      "firstDeltaMs": 1795097223446,
+      "endMs": 1795097224020
+    },
+    {
+      "turn": 2,
+      "prompt": "In one sentence, what did you change and why?",
+      "ms": 2690,
+      "started": {
+        "claudeSessionId": "8bd3ae39-468b-409d-b4f3-f45122792836",
+        "claudeCodeVersion": "2.1.328",
+        "model": "claude-sonnet-5-5",
+        "requestedModel": "sonnet",
+        "permissionMode": "dontAsk",
+        "plugins": [
+          {
+            "name": "orbit",
+            "version": "0.6.0"
+          },
+          {
+            "name": "cc-plugin-agents-md",
+            "version": null
+          },
+          {
+            "name": "cc-plugin-telemetry",
+            "version": null
+          },
+          {
+            "name": "cc-plugin-privacy",
+            "version": null
+          },
+          {
+            "name": "cc-plugin-plugin-authoring",
+            "version": null
+          }
+        ],
+        "orbitLoaded": true,
+        "orbitVersion": "0.6.0",
+        "resumed": true
+      },
+      "end": {
+        "type": "session.completed",
+        "data": {
+          "subtype": "success",
+          "result": "I changed `sum` in `sum.mjs` from returning `a - b` to `a + b`, because the function is meant to add two numbers and the subtraction made the existing test fail.",
+          "permissionDenials": 0,
+          "costUsd": 0.061699000000000004,
+          "turns": 1,
+          "durationMs": 1413
+        }
+      },
+      "deltas": 10,
+      "deltasWithoutId": 10,
+      "durableWithId": 7,
+      "durable": 7,
+      "messages": 2,
+      "tools": [],
+      "toolFailures": 0,
+      "denials": [],
+      "firstDeltaMs": 1795097233243,
+      "endMs": 1795097234194
+    }
+  ],
+  "fixtureHead": "160ad2b33bb0811aacb4b68b8b8ace257a8029dd",
+  "versions": {
+    "web": "0.7.0",
+    "orbit": "0.6.0",
+    "orbitCommit": "26925c2f2c5db7118c147085eea50174196b9266",
+    "claude": "2.1.328",
+    "gh": "2.89.0-acceptance",
+    "git": "2.39.5",
+    "node": "24.22.3"
+  },
+  "sessionId": "c92ae583-a538-423e-9f02-e64dfee78b69",
+  "changes": {
+    "sessionId": "c92ae583-a538-423e-9f02-e64dfee78b69",
+    "repository": "acceptance/sum-fixture",
+    "baseBranch": "main",
+    "workBranch": "orbit-web/c92ae583",
+    "currentBranch": "orbit-web/c92ae583",
+    "baseCommit": "160ad2b33bb0811aacb4b68b8b8ace257a8029dd",
+    "headCommit": "160ad2b33bb0811aacb4b68b8b8ace257a8029dd",
+    "upstream": null,
+    "files": [
+      {
+        "path": "sum.mjs",
+        "oldPath": null,
+        "kind": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "binary": false
+      }
+    ],
+    "totals": {
+      "files": 1,
+      "additions": 1,
+      "deletions": 1
+    },
+    "checkedAt": "2026-11-19T14:07:04.037Z"
+  },
+  "testOutput": "✔ sum adds two numbers (0.716847ms)\nℹ tests 1\nℹ suites 0\nℹ pass 1\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 76.287785\n",
+  "diff": "diff --git a/sum.mjs b/sum.mjs\nindex 8620661..c1ca312 100644\n--- a/sum.mjs\n+++ b/sum.mjs\n@@ -1,4 +1,4 @@\n // Adds two numbers.\n export function sum(a, b) {\n-  return a - b;\n+  return a + b;\n }\n",
+  "orbitPanel": {
+    "state": "available",
+    "reason": null,
+    "checkedAt": "2026-11-19T14:07:04.468Z",
+    "association": {
+      "how": "none",
+      "taskId": null
+    },
+    "presentation": "IDLE",
+    "task": null,
+    "work": null,
+    "planWord": null,
+    "checks": [],
+    "missing": [],
+    "verification": [],
+    "completion": null,
+    "approvals": [],
+    "sessionChecks": [
+      {
+        "at": "2026-11-19T14:07:02.613Z",
+        "kind": "test",
+        "program": "node",
+        "ok": true
+      }
+    ],
+    "failure": null,
+    "stop": null,
+    "verdict": {
+      "word": "unknown",
+      "label": "Unknown",
+      "source": "No Orbit task is linked to this session, so Orbit has given no verdict."
+    }
+  },
+  "followUpAnswer": "I changed `sum` in `sum.mjs` from returning `a - b` to `a + b`, because the function is meant to add two numbers and the subtraction made the existing test fail.",
+  "finishedAt": "2026-11-19T14:07:14.502Z",
+  "steps": [
+    {
+      "n": 1,
+      "label": "Start Orbit Web Docker",
+      "status": "PASS",
+      "detail": "orbit-web:0.7.0 healthy on 127.0.0.1:34863"
+    },
+    {
+      "n": 2,
+      "label": "Open the application",
+      "status": "PASS",
+      "detail": "GET / -> 200"
+    },
+    {
+      "n": 3,
+      "label": "Sign in to Claude Code",
+      "status": "BLOCKED",
+      "detail": "the browser sign-in needs a person; this run used Claude Code's own environment credential (Orbit Web reads it as: connected, source environment, method oauth_token)"
+    },
+    {
+      "n": 4,
+      "label": "Click Connect GitHub",
+      "status": "BLOCKED",
+      "detail": "the device flow needs a person at github.com/login/device (the real gh in the image was seen to print a real one-time code)"
+    },
+    {
+      "n": 5,
+      "label": "Authenticate using GitHub CLI's browser flow",
+      "status": "BLOCKED",
+      "detail": "needs a person; GitHub is stood in for by the acceptance fake (connected as orbit-acceptance)"
+    },
+    {
+      "n": 6,
+      "label": "Select the fixture GitHub repository",
+      "status": "STAND-IN",
+      "detail": "listed through Orbit Web's own code from the stand-in: [\"acceptance/sum-fixture\"]"
+    },
+    {
+      "n": 7,
+      "label": "Select the branch",
+      "status": "PASS",
+      "detail": "branches: [\"main\"]"
+    },
+    {
+      "n": 8,
+      "label": "Choose Sonnet",
+      "status": "PASS",
+      "detail": "model: sonnet"
+    },
+    {
+      "n": 9,
+      "label": "Create a new chat",
+      "status": "PASS",
+      "detail": "HTTP 201 {\"id\":\"c92ae583-a538-423e-9f02-e64dfee78b69\",\"title\":\"Fix the incorrect addition in sum.mjs so the existing test …\",\"repository\":\"acceptance/sum-fixture\",\"branch\":\"main\",\"workBranch\":null,\"model\":\"son"
+    },
+    {
+      "n": 10,
+      "label": "Send the prompt",
+      "status": "PASS",
+      "detail": "Fix the incorrect addition in sum.mjs so the existing test passes. Do not modify the test."
+    },
+    {
+      "n": 11,
+      "label": "The real Claude CLI runs",
+      "status": "PASS",
+      "detail": "Claude Code 2.1.328 (claude-sonnet-5-5); ended session.completed; cost $0.058139800000000005; turns 5"
+    },
+    {
+      "n": 12,
+      "label": "The Orbit plugin is active",
+      "status": "PASS",
+      "detail": "init plugins: [{\"name\":\"orbit\",\"version\":\"0.6.0\"},{\"name\":\"cc-plugin-agents-md\",\"version\":null},{\"name\":\"cc-plugin-telemetry\",\"version\":null},{\"name\":\"cc-plugin-privacy\",\"version\":null},{\"name\":\"cc-plugin-plugin-authoring\",\"version\":null}]"
+    },
+    {
+      "n": 13,
+      "label": "The source really changed",
+      "status": "PASS",
+      "detail": "changed: [\"modified:sum.mjs\"]; sum.test.mjs untouched: true"
+    },
+    {
+      "n": 14,
+      "label": "The test passes",
+      "status": "PASS",
+      "detail": "node --test exit 0: ℹ pass 1 ℹ fail 0"
+    },
+    {
+      "n": 15,
+      "label": "Streaming shows the real execution",
+      "status": "PASS",
+      "detail": "9 text deltas (none with an SSE id), 22 durable events each with its seq as SSE id, tools: [\"Read sum.mjs\",\"Edit sum.mjs\",\"Find *test*\",\"$ node --test sum.test.mjs 2>&1 | tail -15\"]"
+    },
+    {
+      "n": 16,
+      "label": "The changed files appear",
+      "status": "PASS",
+      "detail": "1 file(s) +1 -1 on orbit-web/c92ae583 from main"
+    },
+    {
+      "n": 17,
+      "label": "The Git diff is accurate",
+      "status": "PASS",
+      "detail": "the API's diff is byte-identical to git diff in the workspace"
+    },
+    {
+      "n": 18,
+      "label": "Orbit's status is read correctly",
+      "status": "PASS",
+      "detail": "panel: available, association none/no task, verdict unknown (No Orbit task is linked to this session, so Orbit has given no verdict.); Orbit's own live status: none/no task"
+    },
+    {
+      "n": 19,
+      "label": "Restart the container",
+      "status": "PASS",
+      "detail": "after restart: status completed, 2 messages, turns 1, workspace kept: true"
+    },
+    {
+      "n": 20,
+      "label": "Reopen and continue the session",
+      "status": "PASS",
+      "detail": "resumed true with the same Claude session (true); ended session.completed; cost $0.061699000000000004; answer: I changed `sum` in `sum.mjs` from returning `a - b` to `a + b`, because the function is meant to add two numbers and the subtraction made the existing test fail."
+    }
+  ]
+}

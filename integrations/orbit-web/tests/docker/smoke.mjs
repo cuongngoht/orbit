@@ -148,7 +148,13 @@ async function main() {
 }
 
 main().catch((err) => {
-  process.stdout.write(`FAIL  the smoke test itself: ${err.stack ?? err}\n`);
+  // fetch() says only "fetch failed"; what happened to the connection is its cause.
+  process.stdout.write(`FAIL  the smoke test itself: ${err.stack ?? err}${err.cause ? `\n  cause: ${err.cause.stack ?? err.cause}` : ""}\n`);
+  // What the container was doing, before it is removed.
+  const state = docker(["inspect", "--format", "{{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} started={{.State.StartedAt}}", name]);
+  process.stdout.write(`  container: ${(state.stdout || state.stderr).trim()}\n`);
+  const logs = docker(["logs", "--tail", "40", name]);
+  process.stdout.write(`  its last log lines:\n${`${logs.stdout}${logs.stderr}`.trim().split("\n").map((l) => `    ${l}`).join("\n")}\n`);
   docker(["rm", "-f", name]);
   docker(["volume", "rm", volume]);
   process.exit(1);

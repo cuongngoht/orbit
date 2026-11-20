@@ -190,3 +190,12 @@ export function orbitEnv(config: AppConfig, orbitSession: string | null): Record
     ...(orbitSession ? { ORBIT_SESSION: orbitSession } : {}),
   };
 }
+
+// How a process in the agent's container is pointed at its only way out (governed deployment): the control plane's
+// egress proxy, with a credential that says whose connections they are -- `run:<token>` for a run, `signin:<token>`
+// for the Claude sign-in (the proxy reads the token, never the name) -- and no traffic Claude Code calls
+// non-essential. The control plane itself is reached directly (the agent gateway).
+export function egressProxyEnv(controlHost: string, proxyPort: number, user: "run" | "signin", token: string): Record<string, string> {
+  const proxy = `http://${user}:${token}@${controlHost}:${proxyPort}`;
+  return { HTTPS_PROXY: proxy, HTTP_PROXY: proxy, https_proxy: proxy, http_proxy: proxy, NO_PROXY: controlHost, no_proxy: controlHost, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" };
+}

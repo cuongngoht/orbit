@@ -106,7 +106,12 @@ or changes an audit record.
   strict run the control plane checks the agent's container with canaries (its own rooms absent, the shared ones present,
   the copies read-only, no direct connection, no public name) and records the check. Requests from the agent's network
   reach the agent gateway alone; the proxy decides every connection as the run whose token it carries, and never reaches
-  an address that is not on the public internet unless the installation names an internal range.
+  an address that is not on the public internet unless the installation names an internal range. The Claude sign-in
+  (`claude auth login`, agent-placed and not a run) holds a channel of its own while it runs: a token handed to that
+  process alone, which the proxy grants the Claude account's hosts (`CLAUDE_ACCOUNT_HOSTS`, the same three the default
+  Constitution allows an agent) and nothing else, each connection recorded as `egress.sign_in` -- decided by that fixed
+  rule and never by a Constitution, because the sign-in opens Orbit Web before one can exist. A repository's declared
+  marketplace plugins are installed outside any run, so in this deployment they have no way out and are not fetched.
 
 ### Privileged switches, the gateway, the push broker
 

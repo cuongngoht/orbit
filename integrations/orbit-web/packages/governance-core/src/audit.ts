@@ -63,6 +63,7 @@ export const AUDIT_EVENTS = {
   "protected.failed": row("A protected action failed.", "approvalId", "action", "fingerprint", "cause"),
   "settings.privileged.changed": row("A privileged setting was changed.", "setting", "value"),
   "settings.privileged.refused": row("A change of a privileged setting was refused.", "setting", "cause"),
+  "egress.sign_in": row("A connection of Orbit Web's own Claude sign-in, decided by its fixed channel: the Claude account's hosts, nothing else.", "resource"),
   "isolation.attested": row("The agent runtime's isolation was checked and held.", "runner", "checks"),
   "isolation.failed": row("The agent runtime's isolation could not be shown.", "cause"),
   "session.deleted": row("A chat was deleted; its governance records stay.", "scope"),

@@ -21,6 +21,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import type { AppConfig } from "../../config/config.js";
 import { APP_CONFIG } from "../../core/tokens.js";
 import { GovernanceDatabase } from "../../infra/governance/governance-db.js";
+import { egressProxyEnv } from "../../infra/process/env.js";
 import { RunBindingStore, sha256, type RunBinding } from "../../infra/governance/stores.js";
 import type { SessionRecord } from "../../infra/storage/stores.js";
 import { ToolchainService } from "../health/toolchain.service.js";
@@ -163,8 +164,7 @@ export class RunGovernanceService implements OnApplicationBootstrap {
     const gateway = `http://${g.agentControlHost}:${this.config.port}/api/agent`;
     const base = { ORBIT_AGENT_GATEWAY: gateway, ORBIT_AGENT_TOKEN: token };
     if (g.deployment !== "governed" || g.proxyPort === null) return base;
-    const proxy = `http://run:${token}@${g.agentControlHost}:${g.proxyPort}`;
-    return { ...base, HTTPS_PROXY: proxy, HTTP_PROXY: proxy, https_proxy: proxy, http_proxy: proxy, NO_PROXY: g.agentControlHost, no_proxy: g.agentControlHost, ENABLE_CLAUDEAI_MCP_SERVERS: "false", CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" };
+    return { ...base, ...egressProxyEnv(g.agentControlHost, g.proxyPort, "run", token), ENABLE_CLAUDEAI_MCP_SERVERS: "false" };
   }
 
   private async started(ctx: GovernanceContext, plan: RunPlan, session: SessionRecord, mode: string): Promise<void> {

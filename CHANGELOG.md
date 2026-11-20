@@ -25,7 +25,9 @@ nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
   database, no governance record, no sign-in, a read-only root, an internal network whose only way out is the control
   plane's proxy (each connection a decision of the Constitution, never off the public internet), checked by canaries
   before every strict run. In the single container governance holds at the API, not at the files, and strict runs are
-  refused while isolation is required.
+  refused while isolation is required. The Claude sign-in, which runs in the agent's container and is not a run, holds
+  a channel of its own while it runs: the Claude account's three hosts and nothing else, each connection recorded --
+  without it a governed Orbit Web could never be signed in. Declared marketplace plugins are not fetched there.
 - **Privileged switches.** Turning on GitHub's or Azure's sign-in for Claude Code, or project plugins, needs an operator
   with that permission (and the Constitution's decision); turning one off needs nobody. The agent's own requests are
   refused and recorded -- ADR 0062's "a misled agent could turn either switch on itself" no longer holds.
@@ -40,6 +42,9 @@ nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
   workspaces, decisions, approvals, audit timeline, findings, reports.
 - **Python 3.15.2 in the image** (python-build-standalone, SHA-256 per architecture) with pip and venv, for Claude Code;
   the System card reports it.
+- **An image never takes a file's mode from the checkout it was built from.** A VM rebuilt from a checkout updated under
+  umask 077 shipped a package.json only root could read, and the container restarted in a loop; the image now makes
+  what it ships readable itself, and the smoke test holds it.
 - **The security lab** (`tests/security-lab/run.mjs`): the governed deployment started for real and attacked from the
   agent's own container; 20 demonstration steps PASS; attacks on the switches, the Constitution, owner rights,
   administrative sessions, credentials, prohibited capabilities, approval replay, the audit record and egress
@@ -153,9 +158,9 @@ nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
   (`/api/sessions/:id/events`, replayed after `Last-Event-ID`) and the app stream (`/api/events`: the sidebar's chats,
   the connectors' sign-ins, the customizations -- notifications that replace polling). Adding an event is a catalog row
   and its payload type.
-- **Checked.** 389 deterministic tests (governance-core 24, contracts 14, API unit 120, API integration with mocked
-  processes 110, web 121), `scripts/ci.mjs` green; the Docker smoke test (29 checks) also checks the Azure Repos helper,
-  the runtime user's file rights and Python; the security lab's governed run is recorded in
+- **Checked.** 391 deterministic tests (governance-core 25, contracts 14, API unit 120, API integration with mocked
+  processes 111, web 121), `scripts/ci.mjs` green; the Docker smoke test (30 checks) also checks the Azure Repos helper,
+  the runtime user's file rights (it can read everything the image ships) and Python; the security lab's governed run is recorded in
   `tests/security-lab/results/0.8.0`. The real-model runs (the acceptance run, and the governed deployment with a real
   model) need a person's Claude sign-in volume and are not recorded yet.
 

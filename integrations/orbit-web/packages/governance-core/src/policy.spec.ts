@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { checkConstitution, checkOverlay, defaultConstitution, lintRules, type Constitution, type PolicyOverlay, type Rule } from "./constitution.js";
 import { evaluate, resourceMatches } from "./evaluate.js";
 import { impactOf } from "./risk.js";
-import { ACTION_KINDS, ACTIONS, strictest } from "./vocabulary.js";
+import { ACTION_KINDS, ACTIONS, CLAUDE_ACCOUNT_HOSTS, isClaudeAccountHost, strictest } from "./vocabulary.js";
 import { ask, ORG } from "./testing.spec-helpers.js";
 
 const base = (): Constitution => defaultConstitution(ORG);
@@ -49,6 +49,14 @@ test("what cannot be judged is denied: no policy, no verified identity, an unkno
   assert.deepEqual(evaluate(policy(base()), ask({ action: "system.reboot" })), { verdict: "deny", matchedRules: [], reasonCodes: ["UNKNOWN_ACTION"], enforcement: "none" });
   assert.deepEqual(evaluate(policy(base()), ask({ organizationId: "other" })).reasonCodes, ["ORGANIZATION_MISMATCH"]);
   for (const r of [evaluate(policy(null), ask()), evaluate(policy(base()), ask({ principalId: null })), evaluate(policy(base()), ask({ organizationId: "other" }))]) assert.equal(r.verdict, "deny");
+});
+
+test("the Claude account's hosts are declared once: the default Constitution lets an agent reach exactly them", () => {
+  const reach = (resource: string) => evaluate(policy(base()), ask({ action: "network.egress", resource })).verdict;
+  assert.deepEqual(CLAUDE_ACCOUNT_HOSTS.map((h) => reach(`${h.host}:${h.port}`)), CLAUDE_ACCOUNT_HOSTS.map(() => "allow"));
+  assert.deepEqual(CLAUDE_ACCOUNT_HOSTS.map((h) => [h.host, h.port]), [["api.anthropic.com", 443], ["platform.claude.com", 443], ["claude.ai", 443]]);
+  assert.deepEqual([reach("example.com:443"), reach("api.anthropic.com:80")], ["deny", "deny"]);
+  assert.deepEqual([isClaudeAccountHost("PLATFORM.claude.com", 443), isClaudeAccountHost("platform.claude.com", 80), isClaudeAccountHost("claude.ai.example.com", 443)], [true, false, false]);
 });
 
 test("an action no rule names gets the default decision, which is never allow", () => {

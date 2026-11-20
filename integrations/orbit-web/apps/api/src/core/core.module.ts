@@ -7,6 +7,7 @@ import { NodeProcessPort } from "../infra/process/node-process.js";
 import { AGENT_PROCESS_PORT, type ProcessPort } from "../infra/process/process.port.js";
 import { RunnerProcessPort } from "../infra/process/runner-port.js";
 import { AgentFs } from "../infra/process/agent-fs.js";
+import { SignInChannel } from "../infra/egress/sign-in-channel.js";
 import { GovernanceDatabase } from "../infra/governance/governance-db.js";
 import { AgentStore, ApprovalStore, AuditStore, FindingStore, GovernedWorkspaceStore, IsolationStore, OperatorStore, OverlayStore, ReportStore, RevisionStore, RunBindingStore } from "../infra/governance/stores.js";
 import { Database } from "../infra/storage/database.js";
@@ -51,6 +52,8 @@ export class CoreModule {
           inject: [PROCESS_PORT],
         },
         AgentFs,
+        // The Claude sign-in's own way out of the agent's container (governed deployment): the sign-in and the proxy share it.
+        SignInChannel,
         { provide: Database, useFactory: () => new Database(join(config.data.app, "orbit-web.db")) },
         // Governance's own database, apart from the chats': deleting a chat never reaches it.
         { provide: GovernanceDatabase, useFactory: () => new GovernanceDatabase(join(config.data.governance, "governance.db")) },
@@ -67,7 +70,7 @@ export class CoreModule {
         StreamGateway,
         DatabaseCloser,
       ],
-      exports: [APP_CONFIG, PROCESS_PORT, AGENT_PROCESS_PORT, AgentFs, Database, SettingsStore, SessionStore, MessageStore, EventStore, RunStore, ProjectStore, ShareStore, EventBus, LiveText, StreamGateway, GovernanceDatabase, ...GOVERNANCE_STORES],
+      exports: [APP_CONFIG, PROCESS_PORT, AGENT_PROCESS_PORT, AgentFs, SignInChannel, Database, SettingsStore, SessionStore, MessageStore, EventStore, RunStore, ProjectStore, ShareStore, EventBus, LiveText, StreamGateway, GovernanceDatabase, ...GOVERNANCE_STORES],
     };
   }
 }

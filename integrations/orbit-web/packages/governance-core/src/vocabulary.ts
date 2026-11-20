@@ -93,6 +93,17 @@ export const actionSpec = (kind: ActionKind): ActionSpec => ACTIONS[kind];
 export const PRIVILEGED_SETTINGS = ["githubForClaude", "azureForClaude", "projectPlugins"] as const;
 export type PrivilegedSetting = (typeof PRIVILEGED_SETTINGS)[number];
 
+// THE CLAUDE ACCOUNT'S OWN SERVICE: where the Claude Code CLI signs in and reaches its model (the hosts Anthropic
+// documents for Claude Code: the API, Claude Console's sign-in and claude.ai's). Declared once: the default
+// Constitution lets an agent reach exactly these, and Orbit Web's own Claude sign-in reaches these and nothing else.
+export const CLAUDE_ACCOUNT_HOSTS = [
+  { rule: "egress-model-api", host: "api.anthropic.com", port: 443 },
+  { rule: "egress-model-auth", host: "platform.claude.com", port: 443 },
+  { rule: "egress-model-account", host: "claude.ai", port: 443 },
+] as const;
+
+export const isClaudeAccountHost = (host: string, port: number): boolean => CLAUDE_ACCOUNT_HOSTS.some((h) => h.host === host.toLowerCase() && h.port === port);
+
 // Why a decision came out the way it did. A decision carries every code that applied, in the order it applied.
 export const REASON_CODES = [
   "RULE_MATCHED",
@@ -108,6 +119,8 @@ export const REASON_CODES = [
   "AGENT_NOT_REGISTERED",
   "WORKSPACE_NOT_GOVERNED",
   "AUDIT_UNAVAILABLE",
+  // Orbit Web's own Claude sign-in, decided by its fixed channel (the Claude account's hosts), never by a Constitution.
+  "SIGN_IN_CHANNEL",
 ] as const;
 export type ReasonCode = (typeof REASON_CODES)[number];
 

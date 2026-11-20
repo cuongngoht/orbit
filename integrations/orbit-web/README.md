@@ -379,13 +379,18 @@ Claude configuration, the workspaces, the sessions, Orbit's store and a home -- 
 -- on a read-only root; it has no Orbit Web database, no governance record and no sign-in of GitHub or Azure to read.
 Its network is internal: it reaches the control plane's agent gateway and proxy and nothing else, and public names do
 not resolve. Every connection it makes leaves through the proxy as a decision of the Constitution (none until one is
-published: publish the default first), never to an address off the public internet. The control plane never writes or
-runs anything in a directory the agent can write. Before every strict run Orbit Web checks the agent's container
-(Governance → Overview shows what was checked) and records it.
+published: publish the default first), never to an address off the public internet. One exception, fixed: the Claude
+sign-in (`claude auth login`, which runs in the agent's container and is not a run) holds a channel of its own while it
+runs -- the Claude account's hosts (`api.anthropic.com`, `platform.claude.com`, `claude.ai`, port 443) and nothing
+else, each connection recorded (`egress.sign_in`) -- so Orbit Web can be signed in before any Constitution exists, and
+no Constitution can lock it out of its own sign-in. The control plane never writes or runs anything in a directory the
+agent can write. Before every strict run Orbit Web checks the agent's container (Governance → Overview shows what was
+checked) and records it.
 
 In this deployment the GitHub and Azure switches are refused -- a push is Orbit Web's (above) -- and declared
-marketplace plugins cannot be fetched unless the Constitution allows their host. Chats nobody governs run here too,
-isolated the same way and bound the same way for the proxy.
+marketplace plugins cannot be fetched: their install runs outside any run and has no way out (a repository's own
+skills, commands and agents still load). Chats nobody governs run here too, isolated the same way and bound the same
+way for the proxy.
 
 ## How it works
 

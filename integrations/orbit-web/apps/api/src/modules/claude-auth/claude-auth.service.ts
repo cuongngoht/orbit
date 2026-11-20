@@ -6,12 +6,13 @@
 // is signed in, the API answers nothing but the health check, the access token and this sign-in
 // (claude-sign-in.guard.ts). The CLI keeps its credential in CLAUDE_CONFIG_DIR (/data/claude); Orbit Web never reads it.
 import { Inject, Injectable } from "@nestjs/common";
-import { CLAUDE_ACCOUNT_METHOD, type ClaudeStatus, type LoginSnapshot } from "@orbit-web/contracts";
+import { CLAUDE_ACCOUNT_METHOD, LOGIN_ACTIVE, type ClaudeStatus, type LoginSnapshot } from "@orbit-web/contracts";
 import type { AppConfig } from "../../config/config.js";
 import { AGENT_PROCESS_PORT, APP_CONFIG } from "../../core/tokens.js";
 import { conflict } from "../../common/errors.js";
 import { LoginFlow, lastWords, type LoginDriver, type LoginFields } from "../../common/login-flow.js";
-import { claudeEnv, ignoredClaudeCredentials } from "../../infra/process/env.js";
+import { SignInChannel } from "../../infra/egress/sign-in-channel.js";
+import { claudeEnv, egressProxyEnv, ignoredClaudeCredentials } from "../../infra/process/env.js";
 import { endedHow, type ProcessPort } from "../../infra/process/process.port.js";
 import { tail } from "../../infra/security/redact.js";
 import { SessionStore } from "../../infra/storage/stores.js";
@@ -79,8 +80,13 @@ export class ClaudeAuthService {
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(AGENT_PROCESS_PORT) private readonly process: ProcessPort,
     @Inject(SessionStore) private readonly sessions: SessionStore,
+    @Inject(SignInChannel) private readonly channel: SignInChannel,
   ) {
     this.flow = new LoginFlow(process);
+    // The sign-in's way out (governed deployment) ends with the sign-in, however it ended.
+    this.flow.subscribe((s) => {
+      if (!LOGIN_ACTIVE.includes(s.state)) this.channel.close();
+    });
   }
 
   async status(): Promise<ClaudeStatus> {
@@ -97,6 +103,7 @@ export class ClaudeAuthService {
 
   login(): LoginSnapshot {
     this.cached = null;
+    if (this.flow.active()) return this.flow.current();
     return this.flow.start(this.driver());
   }
 
@@ -147,12 +154,21 @@ export class ClaudeAuthService {
     return signInOf(parsed, ignoredClaudeCredentials(this.config));
   }
 
+  // In the governed deployment the sign-in runs in the agent's container, whose only way out is the egress proxy: it
+  // is given a channel of its own there (infra/egress/sign-in-channel.ts), for as long as a sign-in may take. In the
+  // single deployment it goes out as it always did.
+  private wayOut(): Record<string, string> {
+    const g = this.config.governance;
+    if (g.deployment !== "governed" || g.proxyPort === null) return {};
+    return egressProxyEnv(g.agentControlHost, g.proxyPort, "signin", this.channel.open(this.config.limits.loginTimeoutMs + 60_000));
+  }
+
   private driver(): LoginDriver {
     return {
       file: this.config.binaries.claude,
       args: ["auth", "login", "--claudeai"],
       cwd: this.config.data.home,
-      env: claudeEnv(this.config),
+      env: { ...claudeEnv(this.config), ...this.wayOut() },
       timeoutMs: this.config.limits.loginTimeoutMs,
       read: readClaudeLogin,
       ready: (f) => typeof f.url === "string" && f.url.length > 0,

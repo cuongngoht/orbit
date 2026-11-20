@@ -10,6 +10,7 @@
 import { checked, isRecord, unknownFields, type Checked } from "./canonical.js";
 import {
   ACTIONS,
+  CLAUDE_ACCOUNT_HOSTS,
   isActionKind,
   isEffect,
   isEnvironment,
@@ -206,9 +207,7 @@ export function defaultConstitution(organizationId: string, name = "default"): C
       { id: "workspace-write", action: "repository.write", effect: "allow" },
       { id: "workspace-execute", action: "workspace.execute", effect: "allow" },
       { id: "web-tools", action: "tool.web", effect: "deny" },
-      { id: "egress-model-api", action: "network.egress", resource: "api.anthropic.com:443", effect: "allow" },
-      { id: "egress-model-auth", action: "network.egress", resource: "platform.claude.com:443", effect: "allow" },
-      { id: "egress-model-account", action: "network.egress", resource: "claude.ai:443", effect: "allow" },
+      ...CLAUDE_ACCOUNT_HOSTS.map((h): Rule => ({ id: h.rule, action: "network.egress", resource: `${h.host}:${h.port}`, effect: "allow" })),
       { id: "outside-workspace", action: "filesystem.outside_workspace", effect: "deny" },
       { id: "raw-secret-access", action: "credential.read_raw", effect: "deny" },
       { id: "privileged-settings", action: "settings.privileged.write", principalType: "human", effect: "allow" },

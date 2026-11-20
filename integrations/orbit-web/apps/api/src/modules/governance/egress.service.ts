@@ -6,12 +6,15 @@ import { Inject, Injectable, Logger, type OnApplicationBootstrap, type OnApplica
 import type { Server } from "node:http";
 import type { AppConfig } from "../../config/config.js";
 import { AGENT_PROCESS_PORT, APP_CONFIG } from "../../core/tokens.js";
+import { isClaudeAccountHost } from "@orbit-web/governance-core";
 import { allowedPrivate, startEgressProxy, type EgressAsk, type EgressVerdict } from "../../infra/egress/proxy.js";
+import { SignInChannel } from "../../infra/egress/sign-in-channel.js";
 import type { ProcessPort } from "../../infra/process/process.port.js";
 import { RunnerProcessPort } from "../../infra/process/runner-port.js";
+import { AuditService } from "./audit.service.js";
 import { IsolationService } from "./isolation.service.js";
 import { PolicyService } from "./policy.service.js";
-import type { Principal } from "./principal.js";
+import { systemContext, type Principal } from "./principal.js";
 import { fromNetwork, networkList, PrincipalResolver } from "./principals.js";
 import { RegistryService } from "./registry.service.js";
 import { RunnerAttestor } from "./runner-attestor.js";
@@ -28,6 +31,8 @@ export class EgressService implements OnApplicationBootstrap, OnApplicationShutd
     @Inject(PolicyService) private readonly policy: PolicyService,
     @Inject(PrincipalResolver) private readonly principals: PrincipalResolver,
     @Inject(RegistryService) private readonly registry: RegistryService,
+    @Inject(SignInChannel) private readonly signIn: SignInChannel,
+    @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -46,6 +51,7 @@ export class EgressService implements OnApplicationBootstrap, OnApplicationShutd
   // One connection out: a decision of the Constitution in effect, as the run whose token the connection carries --
   // and, without one, as nobody (which is never granted anything). Recorded either way.
   decide(ask: EgressAsk): EgressVerdict {
+    if (ask.token !== null && this.signIn.holds(ask.token)) return this.signInConnection(ask);
     const binding = ask.token === null ? null : this.principals.binding(ask.token);
     const principal: Principal = binding === null ? { kind: "anonymous", agentNetwork: true } : { kind: "agent", binding };
     const scope = binding === null ? "GOVERNED_WORKSPACE" : this.registry.of(binding.sessionId).scope;
@@ -53,5 +59,15 @@ export class EgressService implements OnApplicationBootstrap, OnApplicationShutd
     if (decision.verdict === "allow") return { allow: true, reason: "" };
     const why = binding === null ? "no run's token was given" : `the Constitution in effect does not allow ${ask.host}:${ask.port} (${decision.reasonCodes.join(", ")})`;
     return { allow: false, reason: `this connection is refused: ${why}. Decision ${decision.decisionId}.` };
+  }
+
+  // Orbit Web's own Claude sign-in (infra/egress/sign-in-channel.ts): the Claude account's hosts and nothing else --
+  // never a Constitution's to grant or refuse, since the sign-in is what opens Orbit Web before one can exist.
+  private signInConnection(ask: EgressAsk): EgressVerdict {
+    const resource = `${ask.host}:${ask.port}`;
+    const allow = isClaudeAccountHost(ask.host, ask.port);
+    this.audit.record(systemContext("claude-sign-in"), { type: "egress.sign_in", outcome: allow ? "allow" : "deny", reasonCodes: ["SIGN_IN_CHANNEL"], data: { resource } });
+    if (allow) return { allow: true, reason: "" };
+    return { allow: false, reason: `this connection is refused: the Claude sign-in reaches the Claude account's own hosts only, and ${resource} is not one.` };
   }
 }

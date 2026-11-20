@@ -14,7 +14,7 @@ import type { RunnerProcessPort } from "../../infra/process/runner-port.js";
 import type { Attestor } from "./isolation.service.js";
 
 // The rooms the agent's container must never see, and those it must.
-const CONTROL_ROOMS = ["app", "governance", "github", "azure", "control"] as const;
+const CONTROL_ROOMS = ["app", "governance", "github", "azure", "control", "research"] as const;
 const SHARED_ROOMS = ["sessions", "repos"] as const;
 
 // An address on the internet (no name to resolve) and a name every public resolver answers.

@@ -28,7 +28,7 @@ import { ToolchainService } from "../health/toolchain.service.js";
 import { AuditService } from "./audit.service.js";
 import { IsolationService } from "./isolation.service.js";
 import { PolicyService } from "./policy.service.js";
-import { systemContext, type GovernanceContext, type Principal } from "./principal.js";
+import { RESEARCH_AGENT, systemContext, type GovernanceContext, type Principal } from "./principal.js";
 import { RegistryService } from "./registry.service.js";
 
 // How long a run's token may live at most (a run ends sooner; its token ends with it).
@@ -51,6 +51,13 @@ export interface RunPlan {
 export type Prepared = { ok: true; plan: RunPlan } | { ok: false; message: string; reasonCodes: string[] };
 
 const LEGACY: RunPlan = { scope: "LEGACY_ORBIT", binding: null, env: {}, webTools: null, execute: true, note: null, governed: false, isolation: "not_applicable" };
+
+
+// What a run is minted for: a chat, or a research session (which has no working branch).
+interface Bindable {
+  id: string;
+  workBranch: string | null;
+}
 
 export const gatewayNote = (governed: boolean, revision: number | null): string =>
   [
@@ -121,6 +128,21 @@ export class RunGovernanceService implements OnApplicationBootstrap {
     return { ok: true, plan };
   }
 
+  // A RESEARCH run. In the single deployment nothing changes and nothing is recorded, as for a chat. In the governed
+  // deployment it runs in the agent's container too, whose only way out is the egress proxy: it is bound (a token for
+  // the proxy, its start and end recorded), the Constitution decides each of its connections, and it is given no
+  // gateway -- nothing to push, nothing to ask.
+  async prepareResearch(researchSessionId: string, runId: string): Promise<RunPlan> {
+    if (this.config.governance.deployment !== "governed") return LEGACY;
+    const effective = this.policy.effective();
+    const { binding, token } = this.mint({ id: researchSessionId, workBranch: null }, runId, RESEARCH_AGENT, effective?.record.id ?? "none");
+    const g = this.config.governance;
+    const env = g.proxyPort === null ? {} : { ...egressProxyEnv(g.agentControlHost, g.proxyPort, "run", token), ENABLE_CLAUDEAI_MCP_SERVERS: "false" };
+    const plan: RunPlan = { scope: "LEGACY_ORBIT", binding, env, webTools: false, execute: false, note: null, governed: false, isolation: this.isolation.status().state };
+    await this.started(systemContext("run-start"), plan, { id: researchSessionId }, "research");
+    return plan;
+  }
+
   // The run ended (however it did): recorded, and its token ends.
   finished(plan: RunPlan, runId: string, status: string, exitCode: number | null): void {
     if (plan.binding === null) return;
@@ -148,7 +170,7 @@ export class RunGovernanceService implements OnApplicationBootstrap {
     return { refused: true, state: status.state, message };
   }
 
-  private mint(session: SessionRecord, runId: string, agentId: string, policyRevision: string): { binding: RunBinding; token: string } {
+  private mint(session: Bindable, runId: string, agentId: string, policyRevision: string): { binding: RunBinding; token: string } {
     const token = randomBytes(32).toString("base64url");
     const now = Date.now();
     const binding: RunBinding = { runId, sessionId: session.id, agentId, organizationId: this.audit.organizationId(), policyRevision, workBranch: session.workBranch, createdAt: new Date(now).toISOString(), expiresAt: new Date(now + RUN_TOKEN_TTL_MS).toISOString(), endedAt: null };
@@ -167,7 +189,7 @@ export class RunGovernanceService implements OnApplicationBootstrap {
     return { ...base, ...egressProxyEnv(g.agentControlHost, g.proxyPort, "run", token), ENABLE_CLAUDEAI_MCP_SERVERS: "false" };
   }
 
-  private async started(ctx: GovernanceContext, plan: RunPlan, session: SessionRecord, mode: string): Promise<void> {
+  private async started(ctx: GovernanceContext, plan: RunPlan, session: Pick<SessionRecord, "id">, mode: string): Promise<void> {
     this.runtimeVersion ??= (await this.toolchain.get()).versions.claude;
     const binding = plan.binding as RunBinding;
     this.audit.record({ ...ctx, principal: { kind: "agent", binding } }, { type: "run.started", outcome: "started", workspaceId: session.id, data: { scope: plan.scope, runtime: "claude-code", runtimeVersion: this.runtimeVersion, mode, isolation: plan.isolation } });

@@ -21,8 +21,10 @@
     "@nestjs/platform-express": "12.5.1",
     "@orbit-web/contracts": "0.8.0",
     "@orbit-web/governance-core": "0.8.0",
+    "parse5": "8.1.1",
     "reflect-metadata": "0.2.2",
-    "rxjs": "7.8.2"
+    "rxjs": "7.8.2",
+    "unpdf": "2.2.1"
   },
   "devDependencies": {
     "@nestjs/testing": "12.5.1",

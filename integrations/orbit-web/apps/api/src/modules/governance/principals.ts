@@ -12,7 +12,7 @@ import { APP_CONFIG } from "../../core/tokens.js";
 import { RunBindingStore, sha256, type RunBinding } from "../../infra/governance/stores.js";
 import { cookieValue } from "../../infra/security/guards.js";
 import { OPERATOR_COOKIE, OperatorService } from "./operator.service.js";
-import type { GovernanceContext, Principal } from "./principal.js";
+import { RESEARCH_AGENT, type GovernanceContext, type Principal } from "./principal.js";
 
 export interface Resolved {
   principal: Principal;
@@ -87,7 +87,8 @@ export class PrincipalResolver {
     const runToken = req.headers[RUN_TOKEN_HEADER];
     if (typeof runToken === "string" && runToken.length > 0) {
       const binding = this.binding(runToken);
-      return binding === null ? { principal: { kind: "anonymous", agentNetwork }, invalidRunToken: true } : { principal: { kind: "agent", binding }, invalidRunToken: false };
+      // A research run's token opens the egress proxy alone: never the agent gateway.
+      return binding === null || binding.agentId === RESEARCH_AGENT ? { principal: { kind: "anonymous", agentNetwork }, invalidRunToken: true } : { principal: { kind: "agent", binding }, invalidRunToken: false };
     }
     // Nothing from the agent's network is a person's, whatever cookie it carries.
     const cookie = agentNetwork ? null : cookieValue(req.headers.cookie, OPERATOR_COOKIE);

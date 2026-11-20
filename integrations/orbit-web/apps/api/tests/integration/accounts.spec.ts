@@ -118,6 +118,7 @@ describe("the models a run may use are the signed-in account's own", () => {
     const moved = (await h.send("PATCH", `/api/sessions/${chat.id}`, { model: "claude-mythos-5" })).body as SessionSummary;
     assert.deepEqual([moved.model, moved.effort], ["claude-mythos-5", "high"], "an effort the new model does not take moves to one it does");
     assert.equal((await h.send("PATCH", `/api/sessions/${chat.id}`, { mode: "autonomous" })).status, 400, "auto mode is not available with it");
+    await settled(h, chat.id);
   });
 });
 

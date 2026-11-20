@@ -2,7 +2,7 @@
 // events are journaled with the session's own sequence number and replayed after Last-Event-ID; the text still being
 // written (`research.message.delta`) is transient and superseded by `research.message.completed`.
 import type { EffortChoice, ModelChoice } from "../models.js";
-import type { ResearchCitation, ResearchSessionStatus } from "../research.js";
+import type { ResearchSessionStatus } from "../research.js";
 import type { MessageDeltaData, RunUsage } from "./session.js";
 
 export interface ResearchStatusData {
@@ -35,11 +35,13 @@ export interface ResearchMessageCompletedData {
   truncated: boolean;
 }
 
-// The citations of one answer, each verified against the passages its run was given; `rejected` names the labels the
-// model wrote that no passage of the run had (removed from the text, never shown as evidence).
+// The citations of one answer, each verified against the passages its run was given -- by id and label only: the
+// journal keeps no copy of a source's text (a client reads the citations from the session). `rejected` names the
+// labels the model wrote that no passage of the run had (removed from the text, never shown as evidence).
 export interface ResearchCitationRecordedData {
   messageId: string;
-  citations: ResearchCitation[];
+  citationIds: string[];
+  labels: string[];
   rejected: string[];
 }
 

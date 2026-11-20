@@ -100,6 +100,7 @@ export class ClaudeAuthService {
   private cached: { at: number; value: Promise<Asked> } | null = null;
   // The identity the CLI reported last (synchronously: what the app stream's filter asks on each notification).
   private last: Identity | null = null;
+  private readonly workChecks: (() => string | null)[] = [];
 
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
@@ -177,11 +178,20 @@ export class ClaudeAuthService {
     return status;
   }
 
+  // What else works for the account and must end before it signs out (a research run): each says so, or null.
+  workCheck(check: () => string | null): void {
+    this.workChecks.push(check);
+  }
+
   private refuseWhileWorking(): void {
     const running = this.sessions.withStatus("running").length;
     const preparing = this.sessions.withStatus("preparing").length;
     if (running > 0) throw conflict("run_active", `Claude is still working in ${running === 1 ? "a chat" : `${running} chats`}. Stop ${running === 1 ? "it" : "them"} before signing out.`);
     if (preparing > 0) throw conflict("workspace_preparing", "A chat's workspace is still being prepared. Wait until it is ready (or fails) before signing out.");
+    for (const check of this.workChecks) {
+      const busy = check();
+      if (busy !== null) throw conflict("run_active", busy);
+    }
   }
 
   private options() {

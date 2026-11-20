@@ -110,7 +110,7 @@ describe("the isolation check", () => {
     server = await startRunner(p, "127.0.0.1");
     port = new RunnerProcessPort("127.0.0.1", p);
     root = mkdtempSync(join(tmpdir(), "attest-"));
-    for (const d of ["app", "governance", "github", "azure", "control", "sessions", "repos"]) mkdirSync(join(root, d));
+    for (const d of ["app", "governance", "github", "azure", "control", "research", "sessions", "repos"]) mkdirSync(join(root, d));
   });
   after(async () => {
     rmSync(root, { recursive: true, force: true });
@@ -122,7 +122,7 @@ describe("the isolation check", () => {
     const attestor = new RunnerAttestor({ data: dataDirs(root) } as never, port, { egress: { host: "127.0.0.1", port: closed }, dnsName: "localhost" });
     const { checks } = await attestor.attest();
     const byName = Object.fromEntries(checks.map((c) => [c.name, c.ok]));
-    assert.deepEqual(byName, { sees_sessions: true, sees_repos: true, no_app: false, no_governance: false, no_github: false, no_azure: false, no_control: false, repos_read_only: false, direct_egress: true, public_dns: false });
+    assert.deepEqual(byName, { sees_sessions: true, sees_repos: true, no_app: false, no_governance: false, no_github: false, no_azure: false, no_control: false, no_research: false, repos_read_only: false, direct_egress: true, public_dns: false });
     assert.match(checks.find((c) => c.name === "no_governance")?.detail ?? "", /VISIBLE/);
   });
 

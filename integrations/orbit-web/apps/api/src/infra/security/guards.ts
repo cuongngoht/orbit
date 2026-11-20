@@ -6,7 +6,8 @@
 //                 link needs the token, as an HttpOnly SameSite=Strict cookie (so EventSource works) or a bearer header.
 //   mutationGuard a state-changing call must carry the X-Orbit-Web header (a cross-site page cannot add it without a
 //                 CORS preflight, which is never answered), an Origin of this very host when the browser sends one,
-//                 and a JSON body when it has a body.
+//                 and a JSON body when it has a body -- but for the one research upload route, whose body is a file's
+//                 own bytes.
 //   headers       a strict Content-Security-Policy and the usual hardening headers on every response.
 //
 // The AGENT GATEWAY (/api/agent/...) is the one exception to the first three: a governed run reaches it by Orbit Web's
@@ -113,15 +114,24 @@ function originMatches(req: Request): boolean {
 
 const hasBody = (req: Request): boolean => Number(req.headers["content-length"] ?? 0) > 0 || req.headers["transfer-encoding"] !== undefined;
 
+const typeIs = (req: Request, type: string): boolean => String(req.headers["content-type"] ?? "").startsWith(type);
+
+// The ONE route whose body is not JSON: a research source's file, sent as its own bytes (never as a form). Only that
+// method on that path, only as application/octet-stream -- and held to the header, origin and site rules below like
+// every change; the route itself bounds what it reads (modules/research).
+export const RESEARCH_UPLOAD = /^\/api\/research\/workspaces\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/sources\/upload$/;
+
+export const isResearchUpload = (req: Pick<Request, "method" | "path" | "headers">): boolean => req.method === "POST" && RESEARCH_UPLOAD.test(routedPath(req.path)) && String(req.headers["content-type"] ?? "").startsWith("application/octet-stream");
+
 export function mutationGuard() {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (SAFE_METHODS.has(req.method) || !isApi(req)) return next();
-    if (isAgentPath(req)) return hasBody(req) && !String(req.headers["content-type"] ?? "").startsWith("application/json") ? refuse(res, 415, "json_required", "A request body must be JSON.") : next();
+    if (isAgentPath(req)) return hasBody(req) && !typeIs(req, "application/json") ? refuse(res, 415, "json_required", "A request body must be JSON.") : next();
     if (req.headers[MUTATION_HEADER] !== "1") return refuse(res, 403, "missing_header", `A change needs the ${MUTATION_HEADER} header.`);
     if (!originMatches(req)) return refuse(res, 403, "cross_origin", "A change must come from this page's own origin.");
     const site = req.headers["sec-fetch-site"];
     if (site !== undefined && site !== "same-origin" && site !== "none") return refuse(res, 403, "cross_site", "A change must come from this page's own origin.");
-    if (hasBody(req) && !String(req.headers["content-type"] ?? "").startsWith("application/json")) return refuse(res, 415, "json_required", "A request body must be JSON.");
+    if (hasBody(req) && !typeIs(req, "application/json") && !isResearchUpload(req)) return refuse(res, 415, "json_required", "A request body must be JSON.");
     next();
   };
 }

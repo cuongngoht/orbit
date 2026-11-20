@@ -11,6 +11,10 @@ import { randomUUID } from "node:crypto";
 import type { AuditPrincipalType, OperatorRole, Permission } from "@orbit-web/governance-core";
 import type { RunBinding } from "../../infra/governance/stores.js";
 
+// The agent a RESEARCH run is bound as (modules/research): it has no tool and no workspace, and the agent gateway refuses
+// its token (principals.ts) -- in the governed deployment the token is its credential for the egress proxy alone.
+export const RESEARCH_AGENT = "research";
+
 export type Principal =
   | { kind: "operator"; operatorId: string; username: string; sessionId: string; roles: OperatorRole[]; permissions: Permission[]; csrfToken: string; expiresAt: string }
   | { kind: "agent"; binding: RunBinding }

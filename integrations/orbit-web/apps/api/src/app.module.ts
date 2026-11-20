@@ -13,6 +13,7 @@ import { HealthModule } from "./modules/health/health.module.js";
 import { EventsModule } from "./modules/events/events.module.js";
 import { OrbitModule } from "./modules/orbit/orbit.module.js";
 import { ProjectModule } from "./modules/project/project.module.js";
+import { ResearchModule } from "./modules/research/research.module.js";
 import { SessionsModule } from "./modules/sessions/sessions.module.js";
 import { SettingsModule } from "./modules/settings/settings.module.js";
 import { SetupModule } from "./modules/setup/setup.module.js";
@@ -43,6 +44,7 @@ export class AppModule {
         ChatModule,
         ShareModule,
         BrokerModule,
+        ResearchModule,
       ],
     };
   }

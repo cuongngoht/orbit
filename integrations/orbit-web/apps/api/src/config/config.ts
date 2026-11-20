@@ -20,6 +20,9 @@ export interface DataDirs {
   // agent), and its own HOME for the programs it runs with a credential.
   repos: string;
   control: string;
+  // Research: the files each workspace's sources were read from, named by their content's hash (the control plane's
+  // alone: never mounted where the agent runs, never in a workspace or a repository).
+  research: string;
 }
 
 export const DEPLOYMENTS = ["single", "governed"] as const;
@@ -57,6 +60,22 @@ export interface Limits {
   orbitRefreshMs: number;
 }
 
+// RESEARCH's bounds, each an ORBIT_WEB_RESEARCH_* variable.
+export interface ResearchConfig {
+  // An uploaded file, and what a URL may answer, at most.
+  maxUploadBytes: number;
+  maxUrlBytes: number;
+  // Whether a source may be imported from a URL at all (the fetcher reaches the public internet only).
+  urlImport: boolean;
+  // How many sources are read and indexed at once.
+  ingestConcurrency: number;
+  // How much retrieved text one question gives the model, at most (characters).
+  contextChars: number;
+  // Reading one file, and fetching one URL, at most.
+  extractTimeoutMs: number;
+  fetchTimeoutMs: number;
+}
+
 export interface AppConfig {
   port: number;
   bind: string;
@@ -81,6 +100,7 @@ export interface AppConfig {
   // HOME for the programs the control plane runs with a credential (gh, az, a clone, a push): /data/home in the single
   // deployment, as before; in the governed deployment a directory of the control plane's own, never the agent's.
   controlHome: string;
+  research: ResearchConfig;
 }
 
 export class ConfigError extends Error {}
@@ -110,6 +130,7 @@ export function dataDirs(root: string): DataDirs {
     governance: join(root, "governance"),
     repos: join(root, "repos"),
     control: join(root, "control"),
+    research: join(root, "research"),
   };
 }
 
@@ -159,6 +180,39 @@ const positiveInt = (raw: string | undefined, fallback: number, name: string): n
   if (!Number.isInteger(n) || n <= 0 || n > 65535) throw new ConfigError(`${name} must be a port number`);
   return n;
 };
+
+// A whole number within bounds, or the default when unset.
+const bounded = (raw: string | undefined, fallback: number, min: number, max: number, name: string): number => {
+  if (raw === undefined || raw === "") return fallback;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < min || n > max) throw new ConfigError(`${name} must be a whole number from ${min} to ${max}`);
+  return n;
+};
+
+const MB = 1024 * 1024;
+
+export const DEFAULT_RESEARCH: ResearchConfig = {
+  maxUploadBytes: 25 * MB,
+  maxUrlBytes: 10 * MB,
+  urlImport: true,
+  ingestConcurrency: 2,
+  contextChars: 24_000,
+  extractTimeoutMs: 120_000,
+  fetchTimeoutMs: 30_000,
+};
+
+function researchConfig(env: Readonly<Record<string, string | undefined>>): ResearchConfig {
+  const flag = env.ORBIT_WEB_RESEARCH_URL_IMPORT;
+  if (flag !== undefined && flag !== "" && flag !== "on" && flag !== "off") throw new ConfigError("ORBIT_WEB_RESEARCH_URL_IMPORT must be on or off");
+  return {
+    ...DEFAULT_RESEARCH,
+    maxUploadBytes: bounded(env.ORBIT_WEB_RESEARCH_MAX_UPLOAD_MB, 25, 1, 200, "ORBIT_WEB_RESEARCH_MAX_UPLOAD_MB") * MB,
+    maxUrlBytes: bounded(env.ORBIT_WEB_RESEARCH_MAX_URL_MB, 10, 1, 100, "ORBIT_WEB_RESEARCH_MAX_URL_MB") * MB,
+    urlImport: flag !== "off",
+    ingestConcurrency: bounded(env.ORBIT_WEB_RESEARCH_INGEST_CONCURRENCY, 2, 1, 8, "ORBIT_WEB_RESEARCH_INGEST_CONCURRENCY"),
+    contextChars: bounded(env.ORBIT_WEB_RESEARCH_CONTEXT_CHARS, 24_000, 2_000, 200_000, "ORBIT_WEB_RESEARCH_CONTEXT_CHARS"),
+  };
+}
 
 const budget = (raw: string | undefined): number | null => {
   if (raw === undefined || raw === "") return null;
@@ -219,5 +273,6 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): A
     governance,
     controlHome: governance.deployment === "governed" ? join(data.control, "home") : data.home,
     githubUrl: githubUrlOf(env.ORBIT_WEB_GITHUB_URL),
+    research: researchConfig(env),
   };
 }

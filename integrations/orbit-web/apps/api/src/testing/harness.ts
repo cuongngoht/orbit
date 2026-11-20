@@ -110,6 +110,8 @@ export interface HarnessOptions {
   dataDir?: string;
   fake?: FakeProcessPort;
   env?: Record<string, string>;
+  // Providers replaced for this test (a research URL fetch's address policy, say), as [token, value].
+  overrides?: [unknown, unknown][];
 }
 
 export async function startHarness(o: HarnessOptions = {}): Promise<Harness> {
@@ -120,12 +122,13 @@ export async function startHarness(o: HarnessOptions = {}): Promise<Harness> {
   const fake = o.fake ?? signedIn(new FakeProcessPort(new NodeProcessPort()));
   const codes: string[] = [];
   const announcer: BootstrapAnnouncer = { announce: (code) => void codes.push(code) };
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule.forRoot(config)] })
+  let builder = Test.createTestingModule({ imports: [AppModule.forRoot(config)] })
     .overrideProvider(PROCESS_PORT)
     .useValue(fake)
     .overrideProvider(BOOTSTRAP_ANNOUNCER)
-    .useValue(announcer)
-    .compile();
+    .useValue(announcer);
+  for (const [token, value] of o.overrides ?? []) builder = builder.overrideProvider(token).useValue(value);
+  const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>({ bodyParser: false, logger: false });
   configureApp(app, config);
   await app.listen(0, "127.0.0.1");
@@ -335,7 +338,9 @@ export function azureSignedIn(fake: FakeProcessPort): FakeProcessPort {
     .on(gitClone, { run: (call) => fixtureGitClone(call) });
 }
 
-export const claudeRun = program("claude", "-p");
+// A chat's Claude Code run, and a research run (restricted, no tool): two profiles, told apart by their own flags.
+export const claudeRun = (file: string, args: string[]): boolean => program("claude", "-p")(file, args) && !args.includes("--restricted");
+export const researchRun = (file: string, args: string[]): boolean => program("claude", "-p")(file, args) && args.includes("--restricted");
 
 // Waits for a condition, polling.
 export async function eventually<T>(read: () => Promise<T> | T, ok: (v: T) => boolean, timeoutMs = 10_000): Promise<T> {

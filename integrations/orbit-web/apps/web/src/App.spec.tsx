@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { SessionSummary } from "@orbit-web/contracts";
 import { afterEach, describe, expect, test } from "vitest";
@@ -7,7 +7,7 @@ import { takeAccessLink } from "./services/accessLink";
 import { fakeApi, withStatus, type FakeApi } from "./testing/fakeApi";
 import { FakeEventSource } from "./testing/fakeEventSource";
 import { pushApp } from "./testing/events";
-import { SESSION_ID, claudeStatus, sessionDetail, sessionSummary, settings, setupStatus, signedOutClaude, sources } from "./testing/fixtures";
+import { SESSION_ID, claudeStatus, idleFlow, sessionDetail, sessionSummary, settings, setupStatus, signedOutClaude, sources } from "./testing/fixtures";
 
 const refused = (status: number, code: string, message: string) => withStatus(status, { error: { code, message } });
 
@@ -43,16 +43,19 @@ describe("Orbit Web opens on the Claude sign-in, and the Claude account is its s
     expect(screen.getByRole("button", { name: "Continue with Claude" })).toBeDisabled();
   });
 
-  test("an access link opens the Claude sign-in in one click, and leaves no token in the address", async () => {
+  test("an access link goes straight to Claude's authorize link, and leaves no token in the address", async () => {
     const TOKEN = "0123456789abcdef0123456789abcdef";
     window.history.replaceState(null, "", `/#access=${TOKEN}`);
     takeAccessLink();
     let granted = false;
     const api = fakeApi()
       .on("GET", "/api/claude/status", () => (granted ? signedOutClaude() : refused(401, "access_token_required", "This Orbit Web needs its access token.")))
-      .on("POST", "/api/access", () => ((granted = true), undefined));
+      .on("POST", "/api/access", () => ((granted = true), undefined))
+      .on("POST", "/api/claude/login", () => ({ ...idleFlow(), state: "starting" }));
     render(<App />);
-    await waitFor(() => expect(screen.getByRole("button", { name: "Continue with Claude" })).toBeEnabled());
+    await waitFor(() => expect(api.calls.some((c) => c.path === "/api/claude/login")).toBe(true));
+    act(() => FakeEventSource.last("/api/claude/login/events").emit({ ...idleFlow(), state: "awaiting_user", url: "https://claude.com/cai/oauth/authorize?x=1", needsCode: true, updatedAt: "2026-11-19T00:01:00.000Z" }));
+    expect(await screen.findByRole("link", { name: "https://claude.com/cai/oauth/authorize?x=1" })).toBeInTheDocument();
     expect(screen.queryByLabelText(/Access token/)).toBeNull();
     expect(api.calls.find((c) => c.path === "/api/access")?.body).toEqual({ token: TOKEN });
     expect(window.location.href).not.toContain(TOKEN);
@@ -88,11 +91,12 @@ describe("signed in: the workspace, as in Claude Code", () => {
     expect(FakeEventSource.instances.map((s) => s.url)).toContain("/api/events");
   });
 
-  test("the account sits at the bottom of the sidebar; its menu opens Settings, and Sign out returns to the sign-in page", async () => {
+  test("the account sits at the bottom of the sidebar; its menu opens Settings, and Sign out returns to the sign-in page, which opens a new sign-in", async () => {
     let signedInNow = true;
     const api = signedIn()
       .on("GET", "/api/claude/status", () => (signedInNow ? claudeStatus() : signedOutClaude()))
-      .on("POST", "/api/claude/logout", () => ((signedInNow = false), signedOutClaude()));
+      .on("POST", "/api/claude/logout", () => ((signedInNow = false), signedOutClaude()))
+      .on("POST", "/api/claude/login", () => ({ ...idleFlow(), state: "starting" }));
     render(<App />);
     await userEvent.click(await screen.findByRole("button", { name: "Signed in as octo@example.com" }));
     expect(await screen.findByText("Octo Org · max")).toBeInTheDocument();
@@ -106,7 +110,7 @@ describe("signed in: the workspace, as in Claude Code", () => {
     await userEvent.click(screen.getByRole("button", { name: "Signed in as octo@example.com" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: "Sign out" }));
     expect(await screen.findByRole("heading", { name: "Sign in to Orbit Web" })).toBeInTheDocument();
-    expect(api.calls.filter((c) => c.method === "POST").map((c) => c.path)).toEqual(["/api/claude/logout"]);
+    await waitFor(() => expect(api.calls.filter((c) => c.method === "POST").map((c) => c.path)).toEqual(["/api/claude/logout", "/api/claude/login"]));
   });
 
   test("a sign-out the API refuses while Claude works in a chat is said, and Orbit Web stays open", async () => {

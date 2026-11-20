@@ -187,9 +187,10 @@ nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
   (`/api/sessions/:id/events`, replayed after `Last-Event-ID`) and the app stream (`/api/events`: the sidebar's chats,
   the connectors' sign-ins, the customizations -- notifications that replace polling). Adding an event is a catalog row
   and its payload type.
-- **Checked.** 499 deterministic tests (governance-core 33, contracts 17, API unit 149, API integration with mocked
-  processes 155, web 145), `scripts/ci.mjs` green; the Docker smoke test (30 checks) also checks the Azure Repos helper,
-  the runtime user's file rights (it can read everything the image ships) and Python; the security lab's governed run is recorded in
+- **Checked.** 502 deterministic tests (governance-core 33, contracts 17, API unit 149, API integration with mocked
+  processes 156, web 147), `scripts/ci.mjs` green; the Docker smoke test (34 checks) also checks the Azure Repos helper,
+  the runtime user's file rights (it can read everything the image ships), Python, `/data/research` private to that user,
+  and a research workspace with a source read and indexed in the container kept across a restart and a new container; the security lab's governed run is recorded in
   `tests/security-lab/results/0.8.0`. The real-model runs (the acceptance run, and the governed deployment with a real
   model) need a person's Claude sign-in volume and are not recorded yet.
 

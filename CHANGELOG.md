@@ -15,7 +15,7 @@ nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
   governance.
 - **The Constitution as a table.** One row per action with two boxes -- *Allowed* and *A person approves first*; neither
   ticked is denied, and what nobody may ever be granted cannot be ticked -- the hosts the agent may reach as a list, the
-  obligations as boxes. A rule the table cannot show is kept as written; the JSON stays under *Advanced*.
+  obligations as boxes. A rule the table cannot show is kept as written; there is no JSON view.
 - **The Company Constitution.** A declarative policy (`orbit.governance/v1`) over a closed set of actions, each saying
   where it is enforced (boundary, control, runtime); default deny; deny > approval > allow; overlays only narrow; an
   agent can never be granted authority over its own governance. Its revisions go draft → validated → pending approval

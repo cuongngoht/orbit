@@ -168,6 +168,19 @@ describe("the Governance console", () => {
     expect(screen.queryByRole("button", { name: "Save draft" })).toBeNull();
   });
 
+  test("the table is the whole Constitution: no JSON view, and a revision it cannot show offers nothing to save", async () => {
+    const broken = revision({ state: "DRAFT", risk: null, impact: null, document: { apiVersion: "orbit.governance/v1" } as unknown as Constitution });
+    fakeApi()
+      .on("GET", "/api/operator/state", () => governanceState("organization_owner"))
+      .on("GET", "/api/governance/constitution", () => ({ effective: null, revisions: [broken] }))
+      .on("GET", "/api/governance/revisions/rev-2", () => broken);
+    renderLive(<GovernanceView page="constitution" item="rev-2" go={vi.fn()} />);
+    expect(await screen.findByText(/This revision cannot be shown/)).toBeTruthy();
+    expect(screen.queryByText(/as JSON/)).toBeNull();
+    expect(screen.queryByRole("textbox", { name: /Document/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save draft" })).toBeNull();
+  });
+
   test("a refusal from the API is said as it is", async () => {
     fakeApi()
       .on("GET", "/api/operator/state", () => governanceState("organization_owner"))

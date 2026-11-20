@@ -1,9 +1,11 @@
 // What every module shares: the configuration, the process port, the database and its stores, and the event layer
 // (the bus every producer publishes to, the live-text subscriber, the SSE gateway).
-import { type DynamicModule, Global, Inject, Injectable, Module, type OnApplicationShutdown } from "@nestjs/common";
+import { type DynamicModule, Global, Inject, Injectable, Module, type OnApplicationShutdown, type Provider } from "@nestjs/common";
 import { join } from "node:path";
 import type { AppConfig } from "../config/config.js";
 import { NodeProcessPort } from "../infra/process/node-process.js";
+import { GovernanceDatabase } from "../infra/governance/governance-db.js";
+import { AgentStore, ApprovalStore, AuditStore, FindingStore, GovernedWorkspaceStore, IsolationStore, OperatorStore, OverlayStore, ReportStore, RevisionStore, RunBindingStore } from "../infra/governance/stores.js";
 import { Database } from "../infra/storage/database.js";
 import { EventStore, MessageStore, ProjectStore, RunStore, SessionStore, SettingsStore, ShareStore } from "../infra/storage/stores.js";
 import { EventBus } from "./events/event-bus.js";
@@ -13,14 +15,22 @@ import { APP_CONFIG, PROCESS_PORT } from "./tokens.js";
 
 @Injectable()
 class DatabaseCloser implements OnApplicationShutdown {
-  constructor(@Inject(Database) private readonly database: Database) {}
+  constructor(
+    @Inject(Database) private readonly database: Database,
+    @Inject(GovernanceDatabase) private readonly governance: GovernanceDatabase,
+  ) {}
 
   onApplicationShutdown(): void {
     this.database.close();
+    this.governance.close();
   }
 }
 
 const store = <T>(Store: new (db: Database) => T) => ({ provide: Store, useFactory: (db: Database) => new Store(db), inject: [Database] });
+
+const GOVERNANCE_STORES: (new (db: GovernanceDatabase) => unknown)[] = [OperatorStore, AuditStore, RevisionStore, OverlayStore, AgentStore, GovernedWorkspaceStore, RunBindingStore, ApprovalStore, FindingStore, ReportStore, IsolationStore];
+
+const governanceStore = (Store: new (db: GovernanceDatabase) => unknown): Provider => ({ provide: Store, useFactory: (db: GovernanceDatabase) => new Store(db), inject: [GovernanceDatabase] });
 
 @Global()
 @Module({})
@@ -32,6 +42,9 @@ export class CoreModule {
         { provide: APP_CONFIG, useValue: config },
         { provide: PROCESS_PORT, useValue: new NodeProcessPort() },
         { provide: Database, useFactory: () => new Database(join(config.data.app, "orbit-web.db")) },
+        // Governance's own database, apart from the chats': deleting a chat never reaches it.
+        { provide: GovernanceDatabase, useFactory: () => new GovernanceDatabase(join(config.data.governance, "governance.db")) },
+        ...GOVERNANCE_STORES.map(governanceStore),
         store(SettingsStore),
         store(SessionStore),
         store(MessageStore),
@@ -44,7 +57,7 @@ export class CoreModule {
         StreamGateway,
         DatabaseCloser,
       ],
-      exports: [APP_CONFIG, PROCESS_PORT, Database, SettingsStore, SessionStore, MessageStore, EventStore, RunStore, ProjectStore, ShareStore, EventBus, LiveText, StreamGateway],
+      exports: [APP_CONFIG, PROCESS_PORT, Database, SettingsStore, SessionStore, MessageStore, EventStore, RunStore, ProjectStore, ShareStore, EventBus, LiveText, StreamGateway, GovernanceDatabase, ...GOVERNANCE_STORES],
     };
   }
 }

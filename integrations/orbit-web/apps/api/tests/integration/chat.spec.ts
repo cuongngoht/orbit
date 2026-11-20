@@ -174,7 +174,7 @@ describe("a chat, end to end through the API", () => {
 
   test("with GitHub given to Claude Code, its next run may push and open pull requests through gh -- and only then", async () => {
     const before = fake.children.length;
-    assert.equal((await h.send("PATCH", "/api/settings", { githubForClaude: true })).status, 200);
+    assert.equal((await (await h.owner()).send("PATCH", "/api/settings", { githubForClaude: true })).status, 200);
     assert.equal(((await h.get("/api/github/status")).body as { availableToClaude: boolean }).availableToClaude, true);
     assert.equal((await h.send("POST", `/api/sessions/${session.id}/messages`, { text: "Push it and open a pull request." })).status, 202);
     await eventually(async () => ((await h.get(`/api/sessions/${session.id}`)).body as SessionDetail).status, (s) => s === "completed");

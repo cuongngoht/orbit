@@ -126,7 +126,7 @@ describe("GitHub's sign-in, when a person lets Claude Code use it", () => {
   after(() => h.close());
 
   test("reaches only a chat whose repository came from GitHub: a chat with none still has gh and git push refused", async () => {
-    assert.equal((await h.send("PATCH", "/api/settings", { githubForClaude: true })).status, 200);
+    assert.equal((await (await h.owner()).send("PATCH", "/api/settings", { githubForClaude: true })).status, 200);
     const created = await h.send("POST", "/api/sessions", { repository: null, model: "haiku", prompt: "Write hello.txt" });
     assert.equal(created.status, 201);
     const id = (created.body as SessionSummary).id;

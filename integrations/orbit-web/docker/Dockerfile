@@ -129,8 +129,10 @@ LABEL org.opencontainers.image.title="Orbit Web" \
 RUN groupadd --system --gid 10001 orbit \
  && useradd --system --uid 10001 --gid orbit --home-dir /data/home --no-create-home --shell /usr/sbin/nologin orbit \
  && mkdir -p /data/app /data/claude /data/github /data/azure /data/orbit /data/sessions /data/workspaces /data/home \
+    /data/governance /data/repos /data/control \
  && chown -R orbit:orbit /data \
- && chmod 0700 /data/app /data/claude /data/github /data/azure /data/orbit /data/sessions /data/workspaces /data/home
+ && chmod 0700 /data/app /data/claude /data/github /data/azure /data/orbit /data/sessions /data/workspaces /data/home \
+    /data/governance /data/repos /data/control
 
 COPY --from=tools /opt/tini /usr/local/bin/tini
 COPY --from=tools /opt/gh /opt/gh

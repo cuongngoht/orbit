@@ -36,10 +36,28 @@ export interface CustomizationsChangedData {
   sessionId: string;
 }
 
+// What governance changed: a page that shows it reads it again. Ids only -- the app stream reaches every page, and
+// what changed is read through the routes an operator's permissions open.
+export const GOVERNANCE_AREAS = ["operators", "constitution", "overlays", "agents", "workspaces", "audit", "findings", "reports", "isolation"] as const;
+
+export type GovernanceArea = (typeof GOVERNANCE_AREAS)[number];
+
+export interface GovernanceChangedData {
+  area: GovernanceArea;
+  id: string | null;
+}
+
+export interface ApprovalChangedData {
+  approvalId: string;
+  state: string;
+}
+
 export interface AppEventDataMap {
   "session.summary": SessionSummaryData;
   "session.removed": SessionRemovedData;
   "connector.status": ConnectorStatusData;
   "connector.flow": ConnectorFlowData;
   "customizations.changed": CustomizationsChangedData;
+  "governance.changed": GovernanceChangedData;
+  "approval.changed": ApprovalChangedData;
 }

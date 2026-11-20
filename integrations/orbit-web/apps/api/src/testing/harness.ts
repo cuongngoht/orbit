@@ -9,13 +9,15 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { MUTATION_HEADER } from "@orbit-web/contracts";
+import { MUTATION_HEADER, OPERATOR_CSRF_HEADER, type GovernanceState } from "@orbit-web/contracts";
 import { AppModule } from "../app.module.js";
 import { configureApp } from "../bootstrap.js";
 import { DEFAULT_LIMITS, loadConfig, type AppConfig } from "../config/config.js";
 import { ensureDataDirs } from "../config/data-dirs.js";
 import { PROCESS_PORT } from "../core/tokens.js";
 import { NodeProcessPort } from "../infra/process/node-process.js";
+import { BOOTSTRAP_ANNOUNCER, type BootstrapAnnouncer } from "../modules/governance/bootstrap-code.js";
+import { OPERATOR_COOKIE } from "../modules/governance/operator.service.js";
 import { FakeProcessPort, program, type Call } from "./fake-process.js";
 
 // The repository's own Orbit plugin: the nearest directory above this file whose manifest names "orbit".
@@ -35,12 +37,29 @@ export interface Reply {
   headers: Headers;
 }
 
+// A person signed in to governance in a test: every request carries the session's cookie and, for a change, its CSRF
+// token -- what the web app sends.
+export interface OperatorClient {
+  cookie: string;
+  csrf: string;
+  state: GovernanceState;
+  get(path: string, headers?: Record<string, string>): Promise<Reply>;
+  send(method: string, path: string, body?: unknown, headers?: Record<string, string>): Promise<Reply>;
+}
+
+export const OWNER = { username: "owner", password: "correct horse battery staple", displayName: "Olivia Owner", organizationName: "Acme" };
+
 export interface Harness {
   url: string;
   app: NestExpressApplication;
   fake: FakeProcessPort;
   config: AppConfig;
   dataDir: string;
+  // What Orbit Web announced as the first owner's code (its log, in production): the last one, or null.
+  bootstrapCode(): string | null;
+  // The first owner, enrolled with that code (once) -- or signed in again when already enrolled.
+  owner(): Promise<OperatorClient>;
+  signIn(username: string, password: string): Promise<OperatorClient>;
   get(path: string, headers?: Record<string, string>): Promise<Reply>;
   send(method: string, path: string, body?: unknown, headers?: Record<string, string>): Promise<Reply>;
   events(path: string, o: { lastEventId?: number; until: (events: Record<string, unknown>[]) => boolean; timeoutMs?: number }): Promise<{ frames: SseFrame[]; events: Record<string, unknown>[] }>;
@@ -99,9 +118,13 @@ export async function startHarness(o: HarnessOptions = {}): Promise<Harness> {
   config.limits = { ...DEFAULT_LIMITS, loginTimeoutMs: 3_000, stopGraceMs: 300, orbitRefreshMs: 50 };
   ensureDataDirs(config.data);
   const fake = o.fake ?? signedIn(new FakeProcessPort(new NodeProcessPort()));
+  const codes: string[] = [];
+  const announcer: BootstrapAnnouncer = { announce: (code) => void codes.push(code) };
   const moduleRef = await Test.createTestingModule({ imports: [AppModule.forRoot(config)] })
     .overrideProvider(PROCESS_PORT)
     .useValue(fake)
+    .overrideProvider(BOOTSTRAP_ANNOUNCER)
+    .useValue(announcer)
     .compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>({ bodyParser: false, logger: false });
   configureApp(app, config);
@@ -112,21 +135,46 @@ export async function startHarness(o: HarnessOptions = {}): Promise<Harness> {
     const text = await r.text();
     return { status: r.status, body: jsonOr(text), headers: r.headers };
   };
+  const send = async (method: string, path: string, body?: unknown, headers: Record<string, string> = {}): Promise<Reply> =>
+    reply(
+      await fetch(`${url}${path}`, {
+        method,
+        headers: { [MUTATION_HEADER]: "1", ...(body !== undefined ? { "content-type": "application/json" } : {}), ...headers },
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      }),
+    );
+  const clientOf = (r: Reply): OperatorClient => {
+    if (r.status !== 200 && r.status !== 201) throw new Error(`operator sign-in failed: ${r.status} ${JSON.stringify(r.body)}`);
+    const cookie = `${OPERATOR_COOKIE}=${/orbit_web_operator=([^;]+)/.exec(r.headers.get("set-cookie") ?? "")?.[1] ?? ""}`;
+    const state = r.body as GovernanceState;
+    const csrf = state.session?.csrfToken ?? "";
+    return {
+      cookie,
+      csrf,
+      state,
+      get: async (path, headers = {}) => reply(await fetch(`${url}${path}`, { headers: { cookie, ...headers } })),
+      send: (method, path, body, headers = {}) => send(method, path, body, { cookie, [OPERATOR_CSRF_HEADER]: csrf, ...headers }),
+    };
+  };
+  const signIn = async (username: string, password: string): Promise<OperatorClient> => clientOf(await send("POST", "/api/operator/login", { username, password }));
+  let enrolled = false;
+  const owner = async (): Promise<OperatorClient> => {
+    if (enrolled) return signIn(OWNER.username, OWNER.password);
+    const r = await send("POST", "/api/operator/bootstrap", { code: codes.at(-1) ?? "", ...OWNER });
+    enrolled = r.status === 201;
+    return enrolled ? clientOf(r) : signIn(OWNER.username, OWNER.password);
+  };
   return {
     url,
     app,
     fake,
     config,
     dataDir,
+    bootstrapCode: () => codes.at(-1) ?? null,
+    owner,
+    signIn,
     get: async (path, headers = {}) => reply(await fetch(`${url}${path}`, { headers })),
-    send: async (method, path, body, headers = {}) =>
-      reply(
-        await fetch(`${url}${path}`, {
-          method,
-          headers: { [MUTATION_HEADER]: "1", ...(body !== undefined ? { "content-type": "application/json" } : {}), ...headers },
-          ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-        }),
-      ),
+    send,
     events: (path, opts) => readSse(`${url}${path}`, opts),
     stream: (path) => openStream(`${url}${path}`),
     close: async (keepData = false) => {

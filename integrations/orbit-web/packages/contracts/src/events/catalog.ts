@@ -47,6 +47,8 @@ export const EVENT_CATALOG = {
   "connector.status": { stream: "app", durable: false, summary: "A connector's sign-in changed." },
   "connector.flow": { stream: "app", durable: false, summary: "A connector's sign-in flow moved." },
   "customizations.changed": { stream: "app", durable: false, summary: "A project's skills or plugins changed." },
+  "governance.changed": { stream: "app", durable: false, summary: "Something governance keeps changed (operators, the Constitution, agents, workspaces, audit, findings, reports): read it again." },
+  "approval.changed": { stream: "app", durable: false, summary: "A protected action's approval was asked for, decided or spent." },
 } as const satisfies Record<string, EventSpec>;
 
 export type EventType = keyof typeof EVENT_CATALOG;

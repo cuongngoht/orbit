@@ -14,6 +14,31 @@ export interface DataDirs {
   sessions: string;
   workspaces: string;
   home: string;
+  // Governance: operators, the Constitution, approvals and the audit record (governance.db). Never in a workspace.
+  governance: string;
+  // The control plane's own copies of the repositories it fetches and pushes (governed deployment: read-only to the
+  // agent), and its own HOME for the programs it runs with a credential.
+  repos: string;
+  control: string;
+}
+
+export const DEPLOYMENTS = ["single", "governed"] as const;
+export type Deployment = (typeof DEPLOYMENTS)[number];
+
+// How the agent runtime is placed. `single` (the default): Claude Code runs in the API's own container, as its own user
+// -- isolation from the control plane is NOT proven there. `governed`: Claude Code and everything that touches a
+// workspace run in a container of their own (the runner), which holds no credential, no governance record and no
+// database, and reaches the internet only through the control plane's egress proxy.
+export interface GovernedConfig {
+  deployment: Deployment;
+  // governed: where the agent container's runner listens.
+  runner: { host: string; port: number } | null;
+  // governed: the networks the agent container's requests come from. Such a request reaches the agent gateway alone.
+  agentNetworks: string[];
+  // governed: the port of the egress proxy the control plane runs for the agent.
+  proxyPort: number | null;
+  // How the agent reaches the control plane: the gateway (http://<host>:<port>) and, governed, the proxy.
+  agentControlHost: string;
 }
 
 export interface Limits {
@@ -46,6 +71,7 @@ export interface AppConfig {
   // The server's own environment: the only place allow-listed variables are copied from for a child process.
   sourceEnv: Readonly<Record<string, string | undefined>>;
   limits: Limits;
+  governance: GovernedConfig;
 }
 
 export class ConfigError extends Error {}
@@ -72,7 +98,42 @@ export function dataDirs(root: string): DataDirs {
     sessions: join(root, "sessions"),
     workspaces: join(root, "workspaces"),
     home: join(root, "home"),
+    governance: join(root, "governance"),
+    repos: join(root, "repos"),
+    control: join(root, "control"),
   };
+}
+
+const CIDR = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/;
+
+const isCidr = (v: string): boolean => {
+  const m = CIDR.exec(v);
+  return m !== null && m.slice(1, 5).every((o) => Number(o) <= 255) && Number(m[5]) <= 32;
+};
+
+function hostPort(raw: string | undefined, name: string): { host: string; port: number } | null {
+  if (raw === undefined || raw === "") return null;
+  const at = raw.lastIndexOf(":");
+  const host = raw.slice(0, at);
+  const port = Number(raw.slice(at + 1));
+  if (at <= 0 || !/^[A-Za-z0-9.-]+$/.test(host) || !Number.isInteger(port) || port <= 0 || port > 65535) throw new ConfigError(`${name} must be host:port`);
+  return { host, port };
+}
+
+// The governed deployment is all or nothing: every part of it is named, or Orbit Web refuses to start.
+function governedConfig(env: Readonly<Record<string, string | undefined>>, port: number): GovernedConfig {
+  const deployment = env.ORBIT_WEB_DEPLOYMENT === undefined || env.ORBIT_WEB_DEPLOYMENT === "" ? "single" : env.ORBIT_WEB_DEPLOYMENT;
+  if (deployment !== "single" && deployment !== "governed") throw new ConfigError("ORBIT_WEB_DEPLOYMENT must be single or governed");
+  if (deployment === "single") return { deployment, runner: null, agentNetworks: [], proxyPort: null, agentControlHost: "127.0.0.1" };
+  const runner = hostPort(env.ORBIT_WEB_RUNNER, "ORBIT_WEB_RUNNER");
+  const agentNetworks = hostList(env.ORBIT_WEB_AGENT_NETWORKS);
+  const host = env.ORBIT_WEB_AGENT_CONTROL_HOST ?? "";
+  if (runner === null) throw new ConfigError("ORBIT_WEB_DEPLOYMENT=governed needs ORBIT_WEB_RUNNER (the agent container's runner, host:port)");
+  if (agentNetworks.length === 0 || !agentNetworks.every(isCidr)) throw new ConfigError("ORBIT_WEB_DEPLOYMENT=governed needs ORBIT_WEB_AGENT_NETWORKS (the agent network, as CIDR)");
+  if (!/^[A-Za-z0-9.-]+$/.test(host)) throw new ConfigError("ORBIT_WEB_DEPLOYMENT=governed needs ORBIT_WEB_AGENT_CONTROL_HOST (this container's name on the agent network)");
+  const proxyPort = positiveInt(env.ORBIT_WEB_EGRESS_PROXY_PORT, 3128, "ORBIT_WEB_EGRESS_PROXY_PORT");
+  if (proxyPort === port) throw new ConfigError("ORBIT_WEB_EGRESS_PROXY_PORT must differ from ORBIT_WEB_PORT");
+  return { deployment, runner, agentNetworks, proxyPort, agentControlHost: host };
 }
 
 const positiveInt = (raw: string | undefined, fallback: number, name: string): number => {
@@ -113,8 +174,9 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): A
     throw new ConfigError(`ORBIT_WEB_ALLOWED_HOSTS names ${widened.join(", ")} beyond this machine: set ORBIT_WEB_ACCESS_TOKEN as well, or Orbit Web would answer anyone who can reach it`);
   }
   if (accessToken !== null && accessToken.length < 16) throw new ConfigError("ORBIT_WEB_ACCESS_TOKEN must be at least 16 characters");
+  const port = positiveInt(env.ORBIT_WEB_PORT, 3000, "ORBIT_WEB_PORT");
   return {
-    port: positiveInt(env.ORBIT_WEB_PORT, 3000, "ORBIT_WEB_PORT"),
+    port,
     bind: env.ORBIT_WEB_BIND && env.ORBIT_WEB_BIND.length > 0 ? env.ORBIT_WEB_BIND : "127.0.0.1",
     data: dataDirs(absolute(env.ORBIT_WEB_DATA_DIR, "/data", "ORBIT_WEB_DATA_DIR")),
     pluginDir: absolute(env.ORBIT_PLUGIN_DIR, "/opt/orbit/plugin", "ORBIT_PLUGIN_DIR"),
@@ -134,5 +196,6 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): A
     },
     sourceEnv: { ...env },
     limits: { ...DEFAULT_LIMITS },
+    governance: governedConfig(env, port),
   };
 }

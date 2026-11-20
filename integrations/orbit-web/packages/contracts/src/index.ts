@@ -1,5 +1,6 @@
 export * from "./dto.js";
 export * from "./events/index.js";
+export * from "./governance.js";
 export * from "./models.js";
 export * from "./orbit.js";
 export * from "./project.js";

@@ -8,6 +8,11 @@
 //                 CORS preflight, which is never answered), an Origin of this very host when the browser sends one,
 //                 and a JSON body when it has a body.
 //   headers       a strict Content-Security-Policy and the usual hardening headers on every response.
+//
+// The AGENT GATEWAY (/api/agent/...) is the one exception to the first three: a governed run reaches it by Orbit Web's
+// name on the agent network (not a loopback Host), without the access token, and from a program rather than a page.
+// It is authenticated by its run's own token instead (modules/governance), which a browser never sends by itself, and
+// answers nothing else.
 import { timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import { MUTATION_HEADER } from "@orbit-web/contracts";
@@ -35,6 +40,7 @@ export function hostnameOf(host: string | undefined): string | null {
 
 export function hostGuard(config: AppConfig) {
   return (req: Request, res: Response, next: NextFunction): void => {
+    if (isAgentPath(req)) return next();
     const name = hostnameOf(req.headers.host);
     if (name !== null && config.allowedHosts.includes(name)) return next();
     refuse(res, 421, "host_not_allowed", "This host name is not one Orbit Web answers to.");
@@ -70,13 +76,16 @@ export const routedPath = (path: string): string => path.toLowerCase().replace(/
 
 const isApi = (req: Pick<Request, "path">): boolean => routedPath(req.path).startsWith("/api/");
 
+// The agent gateway: a governed run's door, authenticated by the run's own token (modules/governance).
+export const isAgentPath = (req: Pick<Request, "path">): boolean => routedPath(req.path).startsWith("/api/agent/");
+
 // A shared chat's link (modules/share): READING it is the one thing a link's token opens, before the access token. Its
 // shape and its existence are the share module's to judge, so a token that names no share is not found either way.
 export const isSharedRead = (req: Pick<Request, "method" | "path">): boolean => (req.method === "GET" || req.method === "HEAD") && /^\/api\/shared\/[^/]+$/.test(routedPath(req.path));
 
 export function accessGate(config: AppConfig) {
   return (req: Request, res: Response, next: NextFunction): void => {
-    if (config.accessToken === null || !isApi(req) || OPEN_PATHS.has(routedPath(req.path)) || isSharedRead(req)) return next();
+    if (config.accessToken === null || !isApi(req) || OPEN_PATHS.has(routedPath(req.path)) || isSharedRead(req) || isAgentPath(req)) return next();
     const token = presentedToken(req);
     if (token !== null && sameToken(token, config.accessToken)) return next();
     refuse(res, 401, "access_token_required", "This Orbit Web needs its access token.");
@@ -107,6 +116,7 @@ const hasBody = (req: Request): boolean => Number(req.headers["content-length"] 
 export function mutationGuard() {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (SAFE_METHODS.has(req.method) || !isApi(req)) return next();
+    if (isAgentPath(req)) return hasBody(req) && !String(req.headers["content-type"] ?? "").startsWith("application/json") ? refuse(res, 415, "json_required", "A request body must be JSON.") : next();
     if (req.headers[MUTATION_HEADER] !== "1") return refuse(res, 403, "missing_header", `A change needs the ${MUTATION_HEADER} header.`);
     if (!originMatches(req)) return refuse(res, 403, "cross_origin", "A change must come from this page's own origin.");
     const site = req.headers["sec-fetch-site"];

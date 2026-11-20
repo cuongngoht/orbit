@@ -74,6 +74,11 @@ bundles stays 0.6.0 and its archive is unchanged; nothing under `src/`, `cli/`, 
   refused. The web tools (`WebFetch`, `WebSearch`) are on by default and never pre-approved: a fetch can carry data in
   its URL, so each is reviewed by the classifier like a `curl`. What is ordinary is narrow -- the public sources the task
   needs; probing unrelated endpoints (request-capture sites, paste services, tunnels) is still reconnaissance.
+- **The API is `/api/` and nothing else** (found by the security review, and reachable on a deployment): the router
+  matched any case while the access gate compared the path as sent, so `/API/sessions` passed without the token. The
+  guards now decide on the routed path (lower case, repeated slashes as one), the router is case-sensitive and strict,
+  and the access link's route checks the token itself. A deployment's proxy can refuse other spellings too.
+- **Paste on the access page** takes the access link or the bare token from the clipboard and goes on by itself.
 - **The access link, from inside.** Settings → Account shows this Orbit Web's access link to copy or open in a new
   tab (`GET /api/access/link`, behind the access gate and the Claude sign-in, `no-store`); the sign-in page never shows
   it -- the link is the token -- but its token field gains *Show* and *Paste*.
@@ -107,7 +112,7 @@ bundles stays 0.6.0 and its archive is unchanged; nothing under `src/`, `cli/`, 
   (`/api/sessions/:id/events`, replayed after `Last-Event-ID`) and the app stream (`/api/events`: the sidebar's chats,
   the connectors' sign-ins, the customizations -- notifications that replace polling). Adding an event is a catalog row
   and its payload type.
-- **Checked.** 296 deterministic tests (contracts 14, API unit 103, API integration with mocked processes 73, web 106),
+- **Checked.** 298 deterministic tests (contracts 14, API unit 103, API integration with mocked processes 74, web 107),
   `scripts/ci.mjs` green; the Docker smoke test also checks the Azure Repos helper and the runtime user's file rights.
   The real-model acceptance run is updated for the new API; a 0.8.0 run needs a person's Claude sign-in volume and is
   not recorded yet.

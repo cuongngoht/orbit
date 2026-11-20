@@ -16,6 +16,9 @@ export const BODY_LIMIT = "256kb";
 export function configureApp(app: NestExpressApplication, config: AppConfig): NestExpressApplication {
   app.disable("x-powered-by");
   app.set("etag", false);
+  // Routes match as written: `/API/sessions` is no route at all (the guards decide on the routed path as well).
+  app.set("case sensitive routing", true);
+  app.set("strict routing", true);
   app.use(hostGuard(config));
   app.use(securityHeaders());
   app.use(accessGate(config));

@@ -23,10 +23,8 @@ describe("the access token, asked for first by an Orbit Web reachable from the i
     expect(api.calls.at(-1)).toMatchObject({ method: "POST", path: "/api/access", body: { token: TOKEN } });
   });
 
-  test("the token can be shown to check it, and pasted from the clipboard", async () => {
-    const readText = vi.fn(async () => "a-pasted-access-token-of-length");
-    Object.defineProperty(navigator, "clipboard", { value: { readText }, configurable: true });
-    const api = fakeApi().on("POST", "/api/access", () => withStatus(401, { error: { code: "access_token_invalid", message: "That is not this Orbit Web's access token." } }));
+  test("the token can be shown to check it", async () => {
+    fakeApi();
     renderUi(<AccessPage onGranted={() => undefined} />);
     const field = screen.getByLabelText(/Access token/);
     expect(field).toHaveAttribute("type", "password");
@@ -34,9 +32,22 @@ describe("the access token, asked for first by an Orbit Web reachable from the i
     expect(field).toHaveAttribute("type", "text");
     await userEvent.click(screen.getByRole("button", { name: "Hide the token" }));
     expect(field).toHaveAttribute("type", "password");
-    await userEvent.click(screen.getByRole("button", { name: "Paste" }));
-    expect(field).toHaveValue("a-pasted-access-token-of-length");
-    expect(api.calls, "pasting sends nothing: Continue does").toEqual([]);
+  });
+
+  test("Paste takes the access link -- or the bare token -- from the clipboard and goes on by itself", async () => {
+    const granted = vi.fn();
+    for (const [clip, token] of [
+      ["https://orbit.example/#access=a-pasted-access-token-of-length", "a-pasted-access-token-of-length"],
+      ["  another-access-token-of-length  ", "another-access-token-of-length"],
+    ] as const) {
+      Object.defineProperty(navigator, "clipboard", { value: { readText: vi.fn(async () => clip) }, configurable: true });
+      const api = fakeApi().on("POST", "/api/access", () => undefined);
+      const view = renderUi(<AccessPage onGranted={granted} />);
+      await userEvent.click(screen.getByRole("button", { name: "Paste" }));
+      await waitFor(() => expect(api.calls.find((c) => c.path === "/api/access")?.body).toEqual({ token }));
+      view.unmount();
+    }
+    expect(granted).toHaveBeenCalledTimes(2);
   });
 
   test("a wrong token is said, and nothing opens", async () => {

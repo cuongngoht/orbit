@@ -63,13 +63,20 @@ function presentedToken(req: Request): string | null {
 
 const OPEN_PATHS = new Set(["/api/health", "/api/access"]);
 
+// The path as a router could match it -- lower case, repeated slashes as one -- which is the path every guard here
+// decides on: a guard comparing the path as sent while the router matched any case let `/API/…` past the access token.
+// (The router is made case-sensitive and strict too, bootstrap.ts; this keeps the guards right whatever it does.)
+export const routedPath = (path: string): string => path.toLowerCase().replace(/\/{2,}/g, "/");
+
+const isApi = (req: Pick<Request, "path">): boolean => routedPath(req.path).startsWith("/api/");
+
 // A shared chat's link (modules/share): READING it is the one thing a link's token opens, before the access token. Its
 // shape and its existence are the share module's to judge, so a token that names no share is not found either way.
-export const isSharedRead = (req: Pick<Request, "method" | "path">): boolean => (req.method === "GET" || req.method === "HEAD") && /^\/api\/shared\/[^/]+$/.test(req.path);
+export const isSharedRead = (req: Pick<Request, "method" | "path">): boolean => (req.method === "GET" || req.method === "HEAD") && /^\/api\/shared\/[^/]+$/.test(routedPath(req.path));
 
 export function accessGate(config: AppConfig) {
   return (req: Request, res: Response, next: NextFunction): void => {
-    if (config.accessToken === null || !req.path.startsWith("/api/") || OPEN_PATHS.has(req.path) || isSharedRead(req)) return next();
+    if (config.accessToken === null || !isApi(req) || OPEN_PATHS.has(routedPath(req.path)) || isSharedRead(req)) return next();
     const token = presentedToken(req);
     if (token !== null && sameToken(token, config.accessToken)) return next();
     refuse(res, 401, "access_token_required", "This Orbit Web needs its access token.");
@@ -77,6 +84,13 @@ export function accessGate(config: AppConfig) {
 }
 
 export const accessTokenMatches = (config: AppConfig, token: string): boolean => config.accessToken !== null && sameToken(token, config.accessToken);
+
+// Whether this request itself carries the access token (cookie or bearer): what a route that gives the token out checks
+// again, whatever the gate in front of it decided.
+export function accessTokenPresented(config: AppConfig, req: Request): boolean {
+  const token = presentedToken(req);
+  return token !== null && accessTokenMatches(config, token);
+}
 
 function originMatches(req: Request): boolean {
   const origin = req.headers.origin;
@@ -92,7 +106,7 @@ const hasBody = (req: Request): boolean => Number(req.headers["content-length"] 
 
 export function mutationGuard() {
   return (req: Request, res: Response, next: NextFunction): void => {
-    if (SAFE_METHODS.has(req.method) || !req.path.startsWith("/api/")) return next();
+    if (SAFE_METHODS.has(req.method) || !isApi(req)) return next();
     if (req.headers[MUTATION_HEADER] !== "1") return refuse(res, 403, "missing_header", `A change needs the ${MUTATION_HEADER} header.`);
     if (!originMatches(req)) return refuse(res, 403, "cross_origin", "A change must come from this page's own origin.");
     const site = req.headers["sec-fetch-site"];

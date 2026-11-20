@@ -87,6 +87,16 @@ describe("token mode, for a host name beyond loopback", () => {
     assert.equal((await h.get("/api/settings", { cookie: cookie.split(";")[0] as string })).status, 200);
   });
 
+  test("the API is /api/ and nothing else: no other spelling of it -- case, repeated slashes -- gets past the token", async () => {
+    for (const path of ["/API/sessions", "/Api/settings", "/API/access/link", "/api/ACCESS/link", "//api/sessions", "/aPi/setup/status"]) {
+      const r = await h.get(path);
+      assert.notEqual(r.status, 200, path);
+      assert.equal(JSON.stringify(r.body).includes(token), false, path);
+    }
+    const write = await fetch(`${h.url}/API/settings`, { method: "PATCH", headers: { "content-type": "application/json" }, body: '{"theme":"dark"}' });
+    assert.notEqual(write.status, 200, "a change spelled otherwise needs the token and the header too");
+  });
+
   test("the access link is given only to whoever is already in, never cached", async () => {
     assert.equal((await h.get("/api/access/link")).status, 401);
     const r = await h.get("/api/access/link", { authorization: `Bearer ${token}` });

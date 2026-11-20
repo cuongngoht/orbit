@@ -24,18 +24,27 @@ const useStyles = makeStyles({
   foot: { color: tokens.colorNeutralForeground3 },
 });
 
+// The token an access link carries (`…#access=<token>`), else the text itself, trimmed.
+const tokenIn = (text: string): string => /#access=([A-Za-z0-9._~-]{16,512})/.exec(text)?.[1] ?? text.trim();
+
 export function AccessPage({ onGranted }: { onGranted: () => void }) {
   const s = useStyles();
   const [fromLink] = useState(accessLinkToken);
   const [token, setToken] = useState("");
   const [shown, setShown] = useState(false);
-  // The clipboard is read only when asked, and what it holds goes into the field: Continue sends it.
+  // The clipboard is read only when asked. It may hold the access link (copied from Settings → Account, or as it was
+  // given) or the bare token: the token is taken from either and sent at once, as an opened access link would be.
   const paste = async () => {
+    let text: string;
     try {
-      setToken((await navigator.clipboard.readText()).trim());
+      text = await navigator.clipboard.readText();
     } catch {
       setError("The clipboard could not be read here: paste into the field instead.");
+      return;
     }
+    const pasted = tokenIn(text);
+    setToken(pasted);
+    if (pasted.length > 0) submit(pasted);
   };
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(fromLink !== null);
@@ -94,7 +103,7 @@ export function AccessPage({ onGranted }: { onGranted: () => void }) {
             <span className={s.number}>1</span>
             <Text weight="semibold">Enter this Orbit Web's access token</Text>
           </div>
-          <Field label="Access token" hint="The token you were given with the link to this Orbit Web (made when it was deployed). A link ending in #access=… fills it in for you.">
+          <Field label="Access token" hint="The token you were given with the link to this Orbit Web (made when it was deployed). Copied the access link? Paste takes it and goes on — and an opened link ending in #access=… needs nothing at all.">
             <Input
               type={shown ? "text" : "password"}
               value={token}

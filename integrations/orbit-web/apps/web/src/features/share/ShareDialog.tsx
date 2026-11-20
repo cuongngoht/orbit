@@ -28,8 +28,11 @@ import { useResource } from "../../hooks/useResource";
 import { errorText, get, send } from "../../services/api";
 
 const useStyles = makeStyles({
+  surface: { width: "min(520px, 94vw)", maxWidth: "min(520px, 94vw)" },
   body: { display: "flex", flexDirection: "column", gap: "12px" },
-  row: { display: "flex", gap: "8px", alignItems: "flex-end" },
+  row: { display: "flex", gap: "8px", alignItems: "flex-end", flexWrap: "wrap" },
+  actions: { flexWrap: "wrap", gap: "8px" },
+  compactBtn: { minWidth: "44px", minHeight: "44px", flexShrink: 0 },
   muted: { color: tokens.colorNeutralForeground3 },
 });
 
@@ -109,7 +112,7 @@ function ShareBody({ sessionId, onBusy }: { sessionId: string; onBusy: (busy: bo
           <MessageBarBody>{error}</MessageBarBody>
         </MessageBar>
       )}
-      <DialogActions>
+      <DialogActions className={s.actions}>
         {share === null ? (
           <Button appearance="primary" disabled={busy} onClick={() => void create()}>
             Create link
@@ -132,17 +135,22 @@ function ShareBody({ sessionId, onBusy }: { sessionId: string; onBusy: (busy: bo
   );
 }
 
-export function ShareButton({ sessionId }: { sessionId: string }) {
+export function ShareButton({ sessionId, compact = false }: { sessionId: string; compact?: boolean }) {
+  const s = useStyles();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   return (
     <Dialog open={open} onOpenChange={(_, d) => !busy && setOpen(d.open)}>
       <DialogTrigger disableButtonEnhancement>
-        <Button size="small" appearance="subtle" icon={<Share20Regular />}>
-          Share
-        </Button>
+        {compact ? (
+          <Button className={s.compactBtn} size="small" appearance="subtle" icon={<Share20Regular />} aria-label="Share" />
+        ) : (
+          <Button size="small" appearance="subtle" icon={<Share20Regular />}>
+            Share
+          </Button>
+        )}
       </DialogTrigger>
-      <DialogSurface>
+      <DialogSurface className={s.surface}>
         <DialogBody>
           <DialogTitle>Share this chat</DialogTitle>
           <DialogContent>{open && <ShareBody sessionId={sessionId} onBusy={setBusy} />}</DialogContent>

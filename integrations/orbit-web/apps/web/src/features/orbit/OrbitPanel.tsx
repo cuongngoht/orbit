@@ -10,9 +10,19 @@ import { errorText, get } from "../../services/api";
 const useStyles = makeStyles({
   root: { display: "flex", flexDirection: "column", gap: "10px" },
   row: { display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" },
+  refreshBtn: { "@media (pointer: coarse)": { minWidth: "40px", minHeight: "40px" } },
   muted: { color: tokens.colorNeutralForeground3 },
   grid: { display: "grid", gridTemplateColumns: "max-content 1fr", columnGap: "10px", rowGap: "3px" },
   mono: { fontFamily: tokens.fontFamilyMonospace, fontSize: tokens.fontSizeBase200, overflowWrap: "anywhere" },
+  pre: {
+    fontFamily: tokens.fontFamilyMonospace,
+    fontSize: tokens.fontSizeBase200,
+    maxWidth: "100%",
+    overflowX: "auto",
+    whiteSpace: "pre-wrap",
+    overflowWrap: "anywhere",
+    margin: 0,
+  },
   section: { display: "flex", flexDirection: "column", gap: "4px" },
   list: { margin: 0, paddingLeft: "18px" },
 });
@@ -60,7 +70,7 @@ export function OrbitPanel({ sessionId, live }: { sessionId: string; live: Panel
         <Badge size="large" appearance="filled" color={VERDICT_COLOR[panel.verdict.word]} aria-label="Orbit verdict">
           {panel.verdict.label}
         </Badge>
-        <Button appearance="subtle" size="small" icon={loading ? <Spinner size="extra-tiny" /> : <ArrowClockwise16Regular />} onClick={() => void read()} aria-label="Ask Orbit again" />
+        <Button className={s.refreshBtn} appearance="subtle" size="small" icon={loading ? <Spinner size="extra-tiny" /> : <ArrowClockwise16Regular />} onClick={() => void read()} aria-label="Ask Orbit again" />
       </div>
       <Text size={200} className={s.muted}>
         {panel.verdict.source}
@@ -163,7 +173,7 @@ export function OrbitPanel({ sessionId, live }: { sessionId: string; live: Panel
           <Text weight="semibold" size={300}>
             Latest failure ({panel.failure.failureClass ?? "unclassified"})
           </Text>
-          <pre className={s.mono}>{panel.failure.excerpt.join("\n")}</pre>
+          <pre className={s.pre}>{panel.failure.excerpt.join("\n")}</pre>
         </div>
       )}
       {panel.approvals.length > 0 && (

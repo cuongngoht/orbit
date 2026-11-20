@@ -11,7 +11,8 @@ import { get } from "../../services/api";
 
 const useStyles = makeStyles({
   root: { display: "flex", flexDirection: "column", gap: "10px", padding: "14px 16px", borderRadius: tokens.borderRadiusLarge, border: `1px solid ${tokens.colorNeutralStroke2}`, backgroundColor: tokens.colorNeutralBackground1 },
-  actions: { display: "flex", gap: "8px", flexWrap: "wrap" },
+  actions: { display: "flex", gap: "8px", flexWrap: "wrap", "@media (max-width: 639px)": { flexDirection: "column", alignItems: "stretch" } },
+  actionBtn: { "@media (max-width: 639px), (pointer: coarse)": { minHeight: "44px" } },
   hint: { color: tokens.colorNeutralForeground3 },
 });
 
@@ -46,10 +47,10 @@ export function AccessLinkCard() {
             <Input readOnly value={link} onFocus={(e) => e.target.select()} />
           </Field>
           <div className={s.actions}>
-            <Button icon={<Copy16Regular />} onClick={() => void copy(link)}>
+            <Button className={s.actionBtn} icon={<Copy16Regular />} onClick={() => void copy(link)}>
               {copied ? "Copied" : "Copy link"}
             </Button>
-            <Button icon={<Open16Regular />} onClick={() => window.open(link, "_blank", "noopener,noreferrer")}>
+            <Button className={s.actionBtn} icon={<Open16Regular />} onClick={() => window.open(link, "_blank", "noopener,noreferrer")}>
               Open in a new tab
             </Button>
           </div>

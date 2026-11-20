@@ -1,6 +1,7 @@
 // An assistant's text as Markdown. Raw HTML in it is shown as text, never rendered (no rehype-raw); links open in a
 // new tab without the page as opener; code blocks are highlighted.
-import { Link, makeStyles, tokens } from "@fluentui/react-components";
+import { Link, makeStyles, shorthands, tokens } from "@fluentui/react-components";
+import type { ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { CodeBlock } from "./CodeBlock";
@@ -11,11 +12,37 @@ const useStyles = makeStyles({
     overflowWrap: "anywhere",
     "& p": { margin: "0 0 8px 0" },
     "& ul, & ol": { margin: "0 0 8px 0", paddingLeft: "22px" },
-    "& table": { borderCollapse: "collapse", margin: "8px 0" },
-    "& th, & td": { border: `1px solid ${tokens.colorNeutralStroke2}`, padding: "4px 8px" },
+    "& table": { borderCollapse: "collapse", width: "100%", margin: "0" },
+    "& th, & td": {
+      border: `1px solid ${tokens.colorNeutralStroke2}`,
+      padding: "6px 10px",
+      minWidth: "96px",
+      textAlign: "left",
+      verticalAlign: "top",
+      overflowWrap: "break-word",
+      wordBreak: "normal",
+    },
     "& :not(pre) > code": { fontFamily: tokens.fontFamilyMonospace, backgroundColor: tokens.colorNeutralBackground3, padding: "1px 4px", borderRadius: tokens.borderRadiusSmall },
   },
+  tableWrap: {
+    width: "100%",
+    maxWidth: "100%",
+    overflowX: "auto",
+    marginTop: "8px",
+    marginBottom: "8px",
+    borderRadius: tokens.borderRadiusMedium,
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+  },
 });
+
+function ScrollTable({ children }: { children?: ReactNode }) {
+  const s = useStyles();
+  return (
+    <div className={s.tableWrap}>
+      <table>{children}</table>
+    </div>
+  );
+}
 
 const components: Components = {
   a: ({ href, children }) => (
@@ -23,6 +50,7 @@ const components: Components = {
       {children}
     </Link>
   ),
+  table: ({ children }) => <ScrollTable>{children}</ScrollTable>,
   code: ({ className, children }) => {
     const language = /language-([\w-]+)/.exec(className ?? "")?.[1] ?? null;
     const text = String(children ?? "");

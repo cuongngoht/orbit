@@ -9,9 +9,10 @@ import type { SignOut } from "../auth/useSignOut";
 
 const useStyles = makeStyles({
   root: { display: "flex", flexDirection: "column", gap: "14px" },
-  who: { display: "flex", alignItems: "center", gap: "14px", padding: "14px 16px", borderRadius: tokens.borderRadiusLarge, border: `1px solid ${tokens.colorNeutralStroke2}`, backgroundColor: tokens.colorNeutralBackground1 },
+  who: { display: "flex", alignItems: "center", gap: "14px", flexWrap: "wrap", padding: "14px 16px", borderRadius: tokens.borderRadiusLarge, border: `1px solid ${tokens.colorNeutralStroke2}`, backgroundColor: tokens.colorNeutralBackground1 },
   identity: { display: "flex", flexDirection: "column", gap: "2px", flexGrow: 1, minWidth: 0 },
   email: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  signOutBtn: { "@media (max-width: 639px)": { width: "100%", minHeight: "44px" } },
   hint: { color: tokens.colorNeutralForeground3 },
 });
 
@@ -46,7 +47,7 @@ export function ClaudeAccountCard({ status, signOut }: { status: ClaudeStatus | 
         </MessageBar>
       )}
       <div>
-        <Button appearance="secondary" icon={<SignOut20Regular />} disabled={signOut.busy} onClick={() => void signOut.signOut()}>
+        <Button className={s.signOutBtn} appearance="secondary" icon={<SignOut20Regular />} disabled={signOut.busy} onClick={() => void signOut.signOut()}>
           Sign out
         </Button>
       </div>

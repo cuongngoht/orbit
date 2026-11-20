@@ -1,15 +1,17 @@
 // One tool call, as the stream reported it: its title, its input, its real output, and how it ended. An Agent call
 // holds what its subagent did, linked by the CLI's own parent id.
-import { Button, Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
+import { Button, Spinner, Text, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
 import { CheckmarkCircle16Regular, ChevronDown16Regular, ChevronRight16Regular, ErrorCircle16Regular, Warning16Regular } from "@fluentui/react-icons";
 import { useState, type ReactNode } from "react";
 import { CodeBlock } from "../../components/CodeBlock";
 import type { ToolItem } from "./chatReducer";
 
 const useStyles = makeStyles({
-  card: { border: `1px solid ${tokens.colorNeutralStroke2}`, borderRadius: tokens.borderRadiusMedium, padding: "6px 10px", display: "flex", flexDirection: "column", gap: "6px" },
-  head: { display: "flex", alignItems: "center", gap: "8px", minWidth: 0 },
-  title: { fontFamily: tokens.fontFamilyMonospace, fontSize: tokens.fontSizeBase200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 },
+  card: { border: `1px solid ${tokens.colorNeutralStroke2}`, borderRadius: tokens.borderRadiusMedium, padding: "6px 10px", display: "flex", flexDirection: "column", gap: "6px", minWidth: 0, maxWidth: "100%", overflow: "hidden" },
+  head: { display: "flex", alignItems: "center", gap: "8px", minWidth: 0, minHeight: "36px", "@media (pointer: coarse)": { minHeight: "44px" } },
+  headClickable: { cursor: "pointer" },
+  toggleBtn: { flexShrink: 0, minWidth: "36px", minHeight: "36px", "@media (pointer: coarse)": { minWidth: "44px", minHeight: "44px" } },
+  title: { fontFamily: tokens.fontFamilyMonospace, fontSize: tokens.fontSizeBase200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1, minWidth: 0 },
   ok: { color: tokens.colorPaletteGreenForeground1 },
   bad: { color: tokens.colorPaletteRedForeground1 },
   warn: { color: tokens.colorPaletteDarkOrangeForeground1 },
@@ -32,8 +34,21 @@ export function ToolCard({ tool, children }: { tool: ToolItem; children?: ReactN
   const detailed = tool.input !== "";
   return (
     <div className={s.card} data-testid="tool" data-state={tool.state}>
-      <div className={s.head}>
-        {detailed && <Button appearance="transparent" size="small" icon={open ? <ChevronDown16Regular /> : <ChevronRight16Regular />} onClick={() => setOpen(!open)} aria-label={open ? "Hide details" : "Show details"} aria-expanded={open} />}
+      <div className={mergeClasses(s.head, detailed && s.headClickable)} onClick={detailed ? () => setOpen((o) => !o) : undefined}>
+        {detailed && (
+          <Button
+            className={s.toggleBtn}
+            appearance="transparent"
+            size="small"
+            icon={open ? <ChevronDown16Regular /> : <ChevronRight16Regular />}
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen((o) => !o);
+            }}
+            aria-label={open ? "Hide details" : "Show details"}
+            aria-expanded={open}
+          />
+        )}
         <StateIcon tool={tool} />
         <Text className={s.title}>{tool.title}</Text>
       </div>

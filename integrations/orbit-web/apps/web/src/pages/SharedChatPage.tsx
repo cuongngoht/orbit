@@ -11,11 +11,22 @@ import { useResource } from "../hooks/useResource";
 import { get } from "../services/api";
 
 const useStyles = makeStyles({
-  page: { minHeight: "100vh", backgroundColor: tokens.colorNeutralBackground1, color: tokens.colorNeutralForeground1 },
-  inner: { maxWidth: "820px", margin: "0 auto", padding: "28px 20px 48px", display: "flex", flexDirection: "column", gap: "18px" },
+  page: { minHeight: "100dvh", backgroundColor: tokens.colorNeutralBackground1, color: tokens.colorNeutralForeground1 },
+  inner: {
+    maxWidth: "820px",
+    margin: "0 auto",
+    paddingTop: "28px",
+    paddingRight: "20px",
+    paddingBottom: "48px",
+    paddingLeft: "20px",
+    "@media (max-width: 639px)": { paddingTop: "16px", paddingRight: "12px", paddingBottom: "max(32px, env(safe-area-inset-bottom))", paddingLeft: "12px" },
+    display: "flex",
+    flexDirection: "column",
+    gap: "18px",
+  },
   brand: { display: "flex", alignItems: "center", gap: "8px", color: tokens.colorNeutralForeground3 },
   logo: { width: "22px", height: "22px" },
-  heading: { margin: 0, fontSize: "26px", lineHeight: "34px", fontWeight: tokens.fontWeightSemibold },
+  heading: { margin: 0, fontSize: "clamp(20px, 5vw, 26px)", lineHeight: "1.3", fontWeight: tokens.fontWeightSemibold },
   meta: { display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", color: tokens.colorNeutralForeground3 },
   foot: { color: tokens.colorNeutralForeground3, borderTop: `1px solid ${tokens.colorNeutralStroke2}`, paddingTop: "12px" },
 });

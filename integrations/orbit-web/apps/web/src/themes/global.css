@@ -17,13 +17,6 @@ body {
   font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 
-/* Fix double dropdown caret inside Fluent Select where the native arrow shows alongside the custom chevron. */
-select.fui-Select__select {
-  appearance: none;
-  -webkit-appearance: none;
-  background-image: none;
-}
-
 /* Prevent iOS Safari automatic zoom when focusing form fields on small viewports. */
 @media (max-width: 639px) {
   input,

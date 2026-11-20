@@ -5,11 +5,11 @@ import type { ComponentCheck, SetupStatus } from "@orbit-web/contracts";
 
 const useStyles = makeStyles({
   root: { display: "flex", flexDirection: "column", gap: "14px" },
-  table: { display: "grid", gridTemplateColumns: "max-content 1fr", columnGap: "16px", rowGap: "6px", alignItems: "center" },
+  table: { display: "grid", gridTemplateColumns: "max-content minmax(0, 1fr)", columnGap: "16px", rowGap: "6px", alignItems: "center", "@media (max-width: 639px)": { gridTemplateColumns: "1fr", rowGap: "4px" } },
   ok: { color: tokens.colorPaletteGreenForeground1, verticalAlign: "middle" },
   bad: { color: tokens.colorPaletteRedForeground1, verticalAlign: "middle" },
-  muted: { color: tokens.colorNeutralForeground3 },
-  mono: { fontFamily: tokens.fontFamilyMonospace },
+  muted: { color: tokens.colorNeutralForeground3, overflowWrap: "anywhere" },
+  mono: { fontFamily: tokens.fontFamilyMonospace, overflowWrap: "anywhere" },
 });
 
 function Check({ label, check }: { label: string; check: ComponentCheck }) {

@@ -39,6 +39,10 @@ const useStyles = makeStyles({
   drawer: {
     width: "min(312px, 85vw)",
     maxWidth: "100%",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "stretch",
+    overflow: "hidden",
     paddingTop: 0,
     paddingRight: 0,
     paddingBottom: 0,

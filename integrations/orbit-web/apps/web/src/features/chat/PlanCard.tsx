@@ -7,6 +7,7 @@ import { Markdown } from "../../components/Markdown";
 const useStyles = makeStyles({
   card: { borderLeft: `3px solid ${tokens.colorBrandStroke1}` },
   body: { display: "flex", flexDirection: "column", gap: "10px" },
+  runBtn: { minHeight: "40px", "@media (max-width: 639px)": { width: "100%", minHeight: "44px" } },
   muted: { color: tokens.colorNeutralForeground3 },
 });
 
@@ -20,7 +21,7 @@ export function PlanCard({ plan, truncated, onRun, canRun }: { plan: string; tru
         {truncated && <Text size={200} className={s.muted}>(the plan was longer; this is its beginning)</Text>}
         {onRun && (
           <div>
-            <Button appearance="primary" icon={<Flash16Regular />} disabled={!canRun} onClick={onRun}>
+            <Button className={s.runBtn} appearance="primary" icon={<Flash16Regular />} disabled={!canRun} onClick={onRun}>
               Run it in Autonomous
             </Button>
           </div>

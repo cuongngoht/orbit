@@ -9,11 +9,14 @@ import { PlanCard } from "./PlanCard";
 import { ToolCard } from "./ToolCard";
 
 const useStyles = makeStyles({
-  list: { display: "flex", flexDirection: "column", gap: "10px" },
-  user: { alignSelf: "flex-end", maxWidth: "80%", backgroundColor: tokens.colorBrandBackground2, padding: "8px 12px", borderRadius: tokens.borderRadiusLarge, whiteSpace: "pre-wrap", overflowWrap: "anywhere" },
-  assistant: { maxWidth: "100%" },
-  meta: { color: tokens.colorNeutralForeground3 },
-  line: { display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" },
+  list: { display: "flex", flexDirection: "column", gap: "10px", minWidth: 0, maxWidth: "100%" },
+  user: { alignSelf: "flex-end", maxWidth: "80%", "@media (max-width: 639px)": { maxWidth: "88%" }, backgroundColor: tokens.colorBrandBackground2, padding: "8px 12px", borderRadius: tokens.borderRadiusLarge, whiteSpace: "pre-wrap", overflowWrap: "anywhere" },
+  assistant: { maxWidth: "100%", minWidth: 0 },
+  meta: { color: tokens.colorNeutralForeground3, overflowWrap: "anywhere" },
+  line: { display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", minWidth: 0, maxWidth: "100%" },
+  msgBar: { minWidth: 0, maxWidth: "100%" },
+  msgBody: { minWidth: 0, overflowWrap: "anywhere", wordBreak: "break-word" },
+  msgCode: { overflowWrap: "anywhere", wordBreak: "break-word" },
   cursor: { display: "inline-block", width: "8px", height: "14px", backgroundColor: tokens.colorNeutralForeground3, marginLeft: "2px", verticalAlign: "text-bottom" },
 });
 
@@ -49,8 +52,8 @@ function Workspace({ item }: { item: WorkspaceItem }) {
   if (item.state === "preparing") return <Spinner size="tiny" label={STEPS[item.step] ?? "Preparing the workspace…"} labelPosition="after" />;
   if (item.state === "failed")
     return (
-      <MessageBar intent="error">
-        <MessageBarBody>Workspace not prepared ({item.step}): {item.message}</MessageBarBody>
+      <MessageBar intent="error" className={s.msgBar}>
+        <MessageBarBody className={s.msgBody}>Workspace not prepared ({item.step}): {item.message}</MessageBarBody>
       </MessageBar>
     );
   return <Text size={200} className={s.meta}>Workspace ready on branch {item.workBranch}.</Text>;
@@ -63,7 +66,7 @@ function Branch({ item }: { item: BranchItem }) {
     <div className={s.line}>
       <BranchFork16Regular className={s.meta} />
       <Text size={200} className={s.meta}>
-        Now working on <code>{item.workBranch}</code>
+        Now working on <code className={s.msgCode}>{item.workBranch}</code>
         {item.created ? `, a new branch from ${item.from ? `the work on ${item.from}` : "the work as it was"}.` : item.from ? ` (switched from ${item.from}).` : "."}
       </Text>
     </div>
@@ -107,13 +110,13 @@ function RunEnd({ item }: { item: RunEndItem }) {
   }
   if (e.type === "session.interrupted")
     return (
-      <MessageBar intent="warning">
-        <MessageBarBody>{e.data.reason === "user_stop" ? "Stopped. The run was interrupted; it did not complete." : "Orbit Web restarted while this run was active; it was interrupted and is not resumed on its own."}</MessageBarBody>
+      <MessageBar intent="warning" className={s.msgBar}>
+        <MessageBarBody className={s.msgBody}>{e.data.reason === "user_stop" ? "Stopped. The run was interrupted; it did not complete." : "Orbit Web restarted while this run was active; it was interrupted and is not resumed on its own."}</MessageBarBody>
       </MessageBar>
     );
   return (
-    <MessageBar intent="error">
-      <MessageBarBody>Claude Code failed: {e.data.message}</MessageBarBody>
+    <MessageBar intent="error" className={s.msgBar}>
+      <MessageBarBody className={s.msgBody}>Claude Code failed: {e.data.message}</MessageBarBody>
     </MessageBar>
   );
 }
@@ -137,6 +140,7 @@ export interface TimelineActions {
 }
 
 function Item({ item, items, actions }: { item: TimelineItem; items: TimelineItem[]; actions: TimelineActions }) {
+  const s = useStyles();
   switch (item.kind) {
     case "message":
       return <Message item={item} />;
@@ -162,15 +166,15 @@ function Item({ item, items, actions }: { item: TimelineItem; items: TimelineIte
       return <Branch item={item} />;
     case "notice":
       return (
-        <MessageBar intent="info">
-          <MessageBarBody>{item.notice.message}</MessageBarBody>
+        <MessageBar intent="info" className={s.msgBar}>
+          <MessageBarBody className={s.msgBody}>{item.notice.message}</MessageBarBody>
         </MessageBar>
       );
     case "denied":
       return (
-        <MessageBar intent="warning">
-          <MessageBarBody>
-            Permission denied: {item.denied.toolName} was not allowed. <code>{item.denied.input.slice(0, 200)}</code>
+        <MessageBar intent="warning" className={s.msgBar}>
+          <MessageBarBody className={s.msgBody}>
+            Permission denied: {item.denied.toolName} was not allowed. <code className={s.msgCode}>{item.denied.input.slice(0, 200)}</code>
           </MessageBarBody>
         </MessageBar>
       );

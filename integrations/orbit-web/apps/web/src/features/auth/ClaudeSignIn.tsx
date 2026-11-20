@@ -11,8 +11,10 @@ import { errorText, send } from "../../services/api";
 
 const useStyles = makeStyles({
   body: { display: "flex", flexDirection: "column", gap: "12px", textAlign: "left" },
-  continue: { width: "100%", borderRadius: tokens.borderRadiusXLarge },
-  row: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "flex-end" },
+  continue: { width: "100%", borderRadius: tokens.borderRadiusXLarge, "@media (max-width: 639px), (pointer: coarse)": { minHeight: "44px" } },
+  row: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "flex-end", "@media (max-width: 639px)": { flexDirection: "column", alignItems: "stretch" } },
+  codeField: { flexGrow: 1, minWidth: 0 },
+  actionBtn: { "@media (max-width: 639px), (pointer: coarse)": { minHeight: "44px" } },
   url: { wordBreak: "break-all" },
   link: { display: "flex", flexDirection: "column", gap: "8px", padding: "10px 12px", borderRadius: tokens.borderRadiusMedium, border: `1px solid ${tokens.colorNeutralStroke2}`, backgroundColor: tokens.colorNeutralBackground3 },
   hint: { color: tokens.colorNeutralForeground3 },
@@ -101,10 +103,10 @@ function FlowView(p: { flow: LoginSnapshot | null; code: string; setCode: (v: st
               p.onSubmit();
             }}
           >
-            <Field label="2. Paste the code the page shows">
+            <Field className={s.codeField} label="2. Paste the code the page shows">
               <Input value={p.code} onChange={(_, d) => p.setCode(d.value)} autoComplete="off" spellCheck={false} />
             </Field>
-            <Button type="submit" appearance="primary" disabled={p.busy || p.code.trim().length === 0}>
+            <Button className={s.actionBtn} type="submit" appearance="primary" disabled={p.busy || p.code.trim().length === 0}>
               Submit code
             </Button>
           </form>

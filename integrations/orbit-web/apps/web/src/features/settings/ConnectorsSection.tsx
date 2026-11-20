@@ -20,6 +20,7 @@ import {
   Text,
   makeStyles,
   mergeClasses,
+  shorthands,
   tokens,
 } from "@fluentui/react-components";
 import { Checkmark16Regular } from "@fluentui/react-icons";
@@ -28,6 +29,7 @@ import { useEffect, useState } from "react";
 import { ConnectionBadge } from "../../components/StatusBadge";
 import { SourceMark } from "../../components/SourceMark";
 import { flowActive, useConnectorFlow } from "../../hooks/useLoginFlow";
+import { useViewport } from "../../hooks/useViewport";
 import { errorText, send } from "../../services/api";
 
 const useStyles = makeStyles({
@@ -35,13 +37,39 @@ const useStyles = makeStyles({
   row: { cursor: "pointer" },
   rowSelected: { backgroundColor: tokens.colorSubtleBackgroundSelected },
   name: { display: "flex", alignItems: "center", gap: "10px" },
-  icon: { width: "28px", height: "28px", borderRadius: tokens.borderRadiusMedium, border: `1px solid ${tokens.colorNeutralStroke2}`, display: "inline-flex", alignItems: "center", justifyContent: "center", backgroundColor: tokens.colorNeutralBackground1 },
+  icon: { width: "28px", height: "28px", borderRadius: tokens.borderRadiusMedium, border: `1px solid ${tokens.colorNeutralStroke2}`, display: "inline-flex", alignItems: "center", justifyContent: "center", backgroundColor: tokens.colorNeutralBackground1, flexShrink: 0 },
   muted: { color: tokens.colorNeutralForeground3 },
-  status: { display: "flex", alignItems: "center", gap: "6px" },
+  status: { display: "flex", alignItems: "center", gap: "6px", minWidth: 0 },
+  accountWrap: { color: tokens.colorNeutralForeground3, overflowWrap: "anywhere" },
   detail: { display: "flex", flexDirection: "column", gap: "10px", padding: "16px", borderRadius: tokens.borderRadiusLarge, border: `1px solid ${tokens.colorNeutralStroke2}`, backgroundColor: tokens.colorNeutralBackground1 },
-  detailHead: { display: "flex", alignItems: "center", gap: "10px" },
-  buttons: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "flex-end" },
-  code: { fontFamily: tokens.fontFamilyMonospace, fontSize: tokens.fontSizeHero700, letterSpacing: "4px", fontWeight: tokens.fontWeightSemibold },
+  detailHead: { display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" },
+  buttons: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "flex-end", "@media (max-width: 639px)": { flexDirection: "column", alignItems: "stretch" } },
+  actionBtn: { "@media (max-width: 639px), (pointer: coarse)": { minHeight: "44px" } },
+  code: { fontFamily: tokens.fontFamilyMonospace, fontSize: "clamp(20px, 6vw, 28px)", letterSpacing: "3px", fontWeight: tokens.fontWeightSemibold },
+  cardList: { display: "flex", flexDirection: "column", gap: "8px" },
+  cardBtn: {
+    width: "100%",
+    minHeight: "60px",
+    paddingTop: "10px",
+    paddingRight: "12px",
+    paddingBottom: "10px",
+    paddingLeft: "12px",
+    borderRadius: tokens.borderRadiusLarge,
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    backgroundColor: tokens.colorNeutralBackground1,
+    color: tokens.colorNeutralForeground1,
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    textAlign: "left",
+    cursor: "pointer",
+  },
+  cardSelected: {
+    ...shorthands.borderColor(tokens.colorBrandStroke1),
+    backgroundColor: tokens.colorSubtleBackgroundSelected,
+  },
+  cardBody: { display: "flex", flexDirection: "column", gap: "2px", flexGrow: 1, minWidth: 0 },
+  cardTop: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" },
 });
 
 const CLI: Record<ConnectorName, string> = { github: "GitHub CLI", azure: "the Azure CLI" };
@@ -129,12 +157,12 @@ function GitHubDetail({ status, onChanged }: { status: GitHubStatus; onChanged: 
       {!flowActive(flow) && (
         <div className={s.buttons}>
           {!connected && (
-            <Button appearance="primary" disabled={busy} onClick={() => act(() => send<LoginSnapshot>("POST", "/api/github/login"))}>
+            <Button className={s.actionBtn} appearance="primary" disabled={busy} onClick={() => act(() => send<LoginSnapshot>("POST", "/api/github/login"))}>
               Connect GitHub
             </Button>
           )}
           {connected && (
-            <Button appearance="secondary" disabled={busy} onClick={() => act(() => send("POST", "/api/github/logout"))}>
+            <Button className={s.actionBtn} appearance="secondary" disabled={busy} onClick={() => act(() => send("POST", "/api/github/logout"))}>
               Disconnect
             </Button>
           )}
@@ -187,14 +215,14 @@ function AzureDetail({ status, onChanged }: { status: AzureStatus; onChanged: ()
           <Field label="Tenant (optional)">
             <Input value={tenant} onChange={(_, d) => setTenant(d.value)} placeholder="contoso.onmicrosoft.com" autoComplete="off" spellCheck={false} />
           </Field>
-          <Button appearance="primary" type="submit" disabled={busy}>
+          <Button className={s.actionBtn} appearance="primary" type="submit" disabled={busy}>
             Connect Azure
           </Button>
         </form>
       )}
       {connected && !flowActive(flow) && (
         <div className={s.buttons}>
-          <Button appearance="secondary" disabled={busy} onClick={() => act(() => send("POST", "/api/azure/logout"))}>
+          <Button className={s.actionBtn} appearance="secondary" disabled={busy} onClick={() => act(() => send("POST", "/api/azure/logout"))}>
             Sign out
           </Button>
         </div>
@@ -215,6 +243,7 @@ interface Row {
 
 export function ConnectorsSection({ status, onChanged, initial }: { status: SetupStatus | null; onChanged: () => void; initial?: ConnectorName | null }) {
   const s = useStyles();
+  const { isMobile } = useViewport();
   const [open, setOpen] = useState<ConnectorName | null>(initial ?? null);
   if (status === null) return <Spinner label="Reading the connectors…" />;
   const rows: Row[] = [
@@ -223,53 +252,78 @@ export function ConnectorsSection({ status, onChanged, initial }: { status: Setu
   ];
   return (
     <div className={s.root}>
-      <Table aria-label="Connectors">
-        <TableHeader>
-          <TableRow>
-            <TableHeaderCell>Connector</TableHeaderCell>
-            <TableHeaderCell>Type</TableHeaderCell>
-            <TableHeaderCell>Authorization</TableHeaderCell>
-            <TableHeaderCell>Status</TableHeaderCell>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
+      {isMobile ? (
+        <div className={s.cardList} role="list" aria-label="Connectors">
           {rows.map((r) => {
             const connected = r.state === "connected";
             return (
-              <TableRow key={r.connector} className={mergeClasses(s.row, open === r.connector && s.rowSelected)} onClick={() => setOpen(r.connector)} aria-label={SOURCE_LABELS[r.connector]}>
-                <TableCell>
-                  <span className={s.name}>
-                    <span className={s.icon}>
-                      <SourceMark source={r.connector} />
-                    </span>
-                    {SOURCE_LABELS[r.connector]}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <span className={s.muted}>CLI · {r.connector === "github" ? "gh" : "az"}</span>
-                </TableCell>
-                <TableCell>{connected ? "Individual" : <span className={s.muted}>—</span>}</TableCell>
-                <TableCell>
-                  {connected ? (
-                    <span className={s.status}>
-                      <Checkmark16Regular aria-label="connected" />
-                      <Text size={200} className={s.muted}>
-                        {r.account}
-                      </Text>
-                    </span>
-                  ) : r.state === "not_connected" ? (
-                    <Button size="small" onClick={() => setOpen(r.connector)}>
-                      Connect
-                    </Button>
-                  ) : (
+              <button key={r.connector} type="button" role="listitem" className={mergeClasses(s.cardBtn, open === r.connector && s.cardSelected)} aria-label={SOURCE_LABELS[r.connector]} onClick={() => setOpen(r.connector)}>
+                <span className={s.icon}>
+                  <SourceMark source={r.connector} />
+                </span>
+                <span className={s.cardBody}>
+                  <span className={s.cardTop}>
+                    <Text weight="semibold">{SOURCE_LABELS[r.connector]}</Text>
                     <ConnectionBadge state={r.state} />
-                  )}
-                </TableCell>
-              </TableRow>
+                  </span>
+                  <Text size={200} className={s.accountWrap}>
+                    CLI · {r.connector === "github" ? "gh" : "az"}
+                    {connected && r.account ? ` · ${r.account}` : ""}
+                  </Text>
+                </span>
+              </button>
             );
           })}
-        </TableBody>
-      </Table>
+        </div>
+      ) : (
+        <Table aria-label="Connectors">
+          <TableHeader>
+            <TableRow>
+              <TableHeaderCell>Connector</TableHeaderCell>
+              <TableHeaderCell>Type</TableHeaderCell>
+              <TableHeaderCell>Authorization</TableHeaderCell>
+              <TableHeaderCell>Status</TableHeaderCell>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((r) => {
+              const connected = r.state === "connected";
+              return (
+                <TableRow key={r.connector} className={mergeClasses(s.row, open === r.connector && s.rowSelected)} onClick={() => setOpen(r.connector)} aria-label={SOURCE_LABELS[r.connector]}>
+                  <TableCell>
+                    <span className={s.name}>
+                      <span className={s.icon}>
+                        <SourceMark source={r.connector} />
+                      </span>
+                      {SOURCE_LABELS[r.connector]}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <span className={s.muted}>CLI · {r.connector === "github" ? "gh" : "az"}</span>
+                  </TableCell>
+                  <TableCell>{connected ? "Individual" : <span className={s.muted}>—</span>}</TableCell>
+                  <TableCell>
+                    {connected ? (
+                      <span className={s.status}>
+                        <Checkmark16Regular aria-label="connected" />
+                        <Text size={200} className={s.accountWrap}>
+                          {r.account}
+                        </Text>
+                      </span>
+                    ) : r.state === "not_connected" ? (
+                      <Button size="small" onClick={() => setOpen(r.connector)}>
+                        Connect
+                      </Button>
+                    ) : (
+                      <ConnectionBadge state={r.state} />
+                    )}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      )}
       {open !== null && (
         <section className={s.detail} aria-label={`${SOURCE_LABELS[open]} connection`}>
           <div className={s.detailHead}>

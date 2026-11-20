@@ -86,6 +86,9 @@ export interface ClaudeRunOptions {
   // the agent gateway. Absent: as an ungoverned run.
   execute?: boolean;
   governanceNote?: string | null;
+  // Whether governance holds this run (it has a binding): then it reaches no MCP server at all. Required, so no caller
+  // leaves it to be guessed from anything else.
+  bound: boolean;
 }
 
 // A run under governance holds no credential at all: Orbit Web pushes for it, through the agent gateway.
@@ -147,7 +150,7 @@ export function claudeArgs(o: ClaudeRunOptions): string[] {
     // owner's decision, ADR 0064). A repository's own .mcp.json is still never started: Claude Code starts one only once
     // settings approve it, and only the user's are read. A run governance holds reaches none: its Constitution decides
     // what a run may reach, and has no action for a connector.
-    ...(governed ? ["--strict-mcp-config"] : []),
+    ...(o.bound ? ["--strict-mcp-config"] : []),
     ...(Object.keys(settings).length > 0 ? ["--settings", JSON.stringify(settings)] : []),
     ...(o.maxBudgetUsd !== null ? ["--max-budget-usd", String(o.maxBudgetUsd)] : []),
   ];

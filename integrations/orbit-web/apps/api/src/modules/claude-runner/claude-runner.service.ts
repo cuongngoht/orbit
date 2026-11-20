@@ -189,6 +189,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
       webTools: prefs.webTools && plan.webTools !== false,
       execute: plan.execute,
       governanceNote: plan.note,
+      bound: plan.binding !== null,
       azure,
       github,
       maxBudgetUsd: this.config.maxBudgetUsd,

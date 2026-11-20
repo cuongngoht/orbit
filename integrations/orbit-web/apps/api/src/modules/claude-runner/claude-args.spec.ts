@@ -17,6 +17,7 @@ const base = {
   github: false,
   maxBudgetUsd: null,
   protectedDirs: ["/data/claude", "/data/github"],
+  bound: false,
 };
 
 const after = (args: string[], flag: string): string | undefined => args[args.indexOf(flag) + 1];
@@ -43,9 +44,11 @@ test("headless, structured, partial messages, the Orbit plugin and the model ali
 });
 
 test("a run governance holds reaches no MCP server: its Constitution has no action for one", () => {
-  const governed = claudeArgs({ ...base, governanceNote: "This chat is GOVERNED by your organization's Constitution." });
+  const governed = claudeArgs({ ...base, bound: true, governanceNote: "This chat is GOVERNED by your organization's Constitution." });
   assert.ok(governed.includes("--strict-mcp-config"));
   assert.equal(after(governed, "--setting-sources"), "user");
+  // Decided by the run's binding, not by what it is told: a bound run with no note reaches none either.
+  assert.ok(claudeArgs({ ...base, bound: true }).includes("--strict-mcp-config"));
 });
 
 test("a model that takes no effort level (the account's catalog says so) is given none", () => {

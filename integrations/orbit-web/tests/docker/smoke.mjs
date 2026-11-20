@@ -127,6 +127,10 @@ async function main() {
 
   const id = exec("id", "-u");
   check("   the container runs as a non-root user", id.status === 0 && id.stdout.trim() !== "0", `uid ${id.stdout.trim()}`);
+  // Everything Orbit Web and the plugin ship can be read by that user, whatever mode a file had in the checkout the
+  // image was built from (a deploy under umask 077 once shipped a package.json only root could read: a crash loop).
+  const unreadable = exec("sh", "-c", "find /opt/orbit-web /opt/orbit \\( -name node_modules -prune \\) -o ! -readable -print | head -5");
+  check("   that user can read everything Orbit Web and the plugin ship", unreadable.status === 0 && unreadable.stdout.trim() === "", unreadable.stdout.trim().replace(/\n/g, ", ") || unreadable.stderr.trim().slice(0, 200));
   const perms = exec("stat", "-c", "%a %U", "/data/claude", "/data/github", "/data/azure", "/data/app");
   check("   the persistent directories are private to that user", perms.stdout.trim().split("\n").every((l) => l.startsWith("700 ")), perms.stdout.trim().replace(/\n/g, ", "));
   // What Claude Code runs as: it creates, edits, renames and deletes in a chat's workspace, and cannot write the

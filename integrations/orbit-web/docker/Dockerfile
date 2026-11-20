@@ -28,17 +28,21 @@ RUN --mount=type=secret,id=ca,required=false \
     if [ -s /run/secrets/ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/ca; fi; \
     npm ci --no-audit --no-fund
 COPY integrations/orbit-web/ ./
-RUN npm run build -w @orbit-web/governance-core && npm run build -w @orbit-web/contracts && npm run build -w @orbit-web/api \
+# What the image ships never carries the mode a file had where it was built: a checkout made under a strict umask
+# (0600 files) would otherwise reach the image unreadable to the runtime user -- the web build copies public/ as it is.
+RUN find . \( -name node_modules -prune \) -o -print0 | xargs -0 chmod a+rX \
+ && npm run build -w @orbit-web/governance-core && npm run build -w @orbit-web/contracts && npm run build -w @orbit-web/api \
  && npm run build -w @orbit-web/web
 
 # --- only what the API needs at run time ---------------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS runtime-deps
 WORKDIR /opt/orbit-web
-COPY integrations/orbit-web/package.json integrations/orbit-web/package-lock.json ./
-COPY integrations/orbit-web/packages/contracts/package.json packages/contracts/
-COPY integrations/orbit-web/packages/governance-core/package.json packages/governance-core/
-COPY integrations/orbit-web/apps/api/package.json apps/api/
-COPY integrations/orbit-web/apps/web/package.json apps/web/
+# Copied into the image as they are: their mode is set here, never taken from the checkout (see the build stage).
+COPY --chmod=0644 integrations/orbit-web/package.json integrations/orbit-web/package-lock.json ./
+COPY --chmod=0644 integrations/orbit-web/packages/contracts/package.json packages/contracts/
+COPY --chmod=0644 integrations/orbit-web/packages/governance-core/package.json packages/governance-core/
+COPY --chmod=0644 integrations/orbit-web/apps/api/package.json apps/api/
+COPY --chmod=0644 integrations/orbit-web/apps/web/package.json apps/web/
 RUN --mount=type=secret,id=ca,required=false \
     if [ -s /run/secrets/ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/ca; fi; \
     npm ci --omit=dev --no-audit --no-fund -w @orbit-web/api \
@@ -177,7 +181,7 @@ COPY --from=build /src/packages/contracts/dist /opt/orbit-web/packages/contracts
 COPY --from=build /src/packages/governance-core/dist /opt/orbit-web/packages/governance-core/dist
 COPY --from=build /src/apps/api/dist /opt/orbit-web/apps/api/dist
 COPY --from=build /src/apps/web/dist /opt/orbit-web/apps/web/dist
-COPY integrations/orbit-web/docker/healthcheck.mjs integrations/orbit-web/docker/build-info.mjs /opt/orbit-web/docker/
+COPY --chmod=0644 integrations/orbit-web/docker/healthcheck.mjs integrations/orbit-web/docker/build-info.mjs /opt/orbit-web/docker/
 # The git credential helper of an Azure Repos clone (docker/git-credential-azure-cli.mjs): named on that one git
 # command by Orbit Web, never configured anywhere.
 COPY --chmod=0755 integrations/orbit-web/docker/git-credential-azure-cli.mjs /opt/orbit-web/docker/git-credential-azure-cli.mjs

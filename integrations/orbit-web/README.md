@@ -710,6 +710,7 @@ For one person, on their own machine, by default:
 | A source says *Failed* | its tooltip says why: a kind research does not read, a PDF with no selectable text (scanned), a protected or broken file, a page that could not be fetched; fix it and *Try again*, or add it again |
 | A source says *Stale* | the page could not be fetched again; the earlier snapshot is still used -- *Fetch again* later |
 | A URL never reaches its page | the server fetches only the public internet on ports 80 and 443, directly (no proxy); a page on an internal network or behind a proxy: save it as a file and upload it. `ORBIT_WEB_RESEARCH_URL_IMPORT=off` switches URL import off |
+| A URL source fails with HTTP 401 or 403 | the site serves that page only to a person's browser or a signed-in account (many paper repositories do); the server sends no cookie, credential or browser disguise, by design. Open it in your browser, save the document (its PDF), and upload it |
 | *Ask* is not offered | no selected source is ready: select one, or wait for the selected ones to be read |
 | An answer says the sources do not say | by design: it answers only from passages of the selected sources -- select more, or add a source that does |
 | A run seems stuck | **Stop**; it ends as interrupted; send the next message to continue |

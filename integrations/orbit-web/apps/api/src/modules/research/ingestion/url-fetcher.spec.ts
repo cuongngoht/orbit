@@ -21,6 +21,9 @@ before(async () => {
       "/big": () => res.writeHead(200, { "content-type": "text/plain" }).end("x".repeat(4096)),
       "/image": () => res.writeHead(200, { "content-type": "image/png" }).end("png"),
       "/gone": () => res.writeHead(404).end(),
+      "/refused": () => res.writeHead(403).end(),
+      "/sign-in": () => res.writeHead(401).end(),
+      "/slow-down": () => res.writeHead(429).end(),
       "/cookie": () => res.writeHead(200, { "content-type": "text/plain" }).end(String(req.headers.cookie ?? "") + String(req.headers.authorization ?? "")),
     };
     (routes[req.url ?? ""] ?? routes["/gone"])?.();
@@ -50,6 +53,13 @@ test("a page too large, of a type research does not read, or answering an error,
   await assert.rejects(fetchUrl(`${base}/gone`, options), /HTTP 404/);
   await assert.rejects(fetchUrl(`http://user:secret@127.0.0.1:${port}/page`, options), /user name or password/);
   await assert.rejects(fetchUrl("ftp://example.com/x", options), /Only http and https/);
+});
+
+// A site that serves only a person's browser (or a signed-in account) refuses a server's request: the person is told
+// so, and what to do instead -- the server never retries with a browser's disguise, a cookie or a credential.
+test("a site that refuses this server says what a person does instead: save the document in a browser and upload it", async () => {
+  for (const path of ["/refused", "/sign-in"]) await assert.rejects(fetchUrl(`${base}${path}`, options), /HTTP 40[13]\)?.*only to a person's browser.*upload it/s);
+  await assert.rejects(fetchUrl(`${base}/slow-down`, options), /HTTP 429.*try again later.*upload it/s);
 });
 
 test("Orbit Web's own policy: the public internet on ports 80 and 443 -- never loopback, link-local, private or this host", async () => {

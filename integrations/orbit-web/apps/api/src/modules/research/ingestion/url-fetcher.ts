@@ -137,6 +137,18 @@ function body(res: IncomingMessage, maxBytes: number, deadline: number): Promise
   });
 }
 
+// What a refusal means to the person who gave the URL, and what they do instead. The server never retries in a
+// browser's disguise, with a cookie or with a credential: a page that serves only a person's browser is that person's
+// to save and upload.
+const BROWSER_ONLY = (status: number) => `The site refused this server's request (HTTP ${status}): it serves the page only to a person's browser, or to a signed-in account. Open it in your browser, save the document, and upload it.`;
+const STATUS_MESSAGES: Record<number, (status: number) => string> = {
+  401: BROWSER_ONLY,
+  403: BROWSER_ONLY,
+  429: (status) => `The site is limiting requests (HTTP ${status}): try again later, or save the document in your browser and upload it.`,
+};
+
+const statusMessage = (status: number): string => (STATUS_MESSAGES[status] ?? ((s: number) => `The page answered HTTP ${s}.`))(status);
+
 export async function fetchUrl(raw: string, o: FetchOptions): Promise<Fetched> {
   const deadline = Date.now() + o.timeoutMs;
   let url = new URL(raw);
@@ -151,7 +163,7 @@ export async function fetchUrl(raw: string, o: FetchOptions): Promise<Fetched> {
     }
     if (status < 200 || status > 299) {
       res.destroy();
-      throw new FetchError(`The page answered HTTP ${status}.`);
+      throw new FetchError(statusMessage(status));
     }
     const contentType = typeof res.headers["content-type"] === "string" ? res.headers["content-type"] : null;
     if (!readableContentType(contentType)) {

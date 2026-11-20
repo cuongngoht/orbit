@@ -46,7 +46,7 @@ export const AUDIT_EVENTS = {
   "agent.registered": row("An agent was registered.", "runtime", "name"),
   "agent.suspended": row("An agent was suspended."),
   "agent.reinstated": row("An agent was reinstated."),
-  "workspace.governed": row("A workspace was placed under governance.", "profile"),
+  "workspace.governed": row("A workspace was placed under governance.", "profile", "previousAgentId"),
   "workspace.released": row("A workspace was released from governance."),
   "policy.decision": row("A request was decided under the policy in effect.", "action", "resource", "environment", "enforcement", "fingerprint", "scope", "matchedRules"),
   "run.started": row("A governed run started.", "scope", "runtime", "runtimeVersion", "mode", "isolation"),

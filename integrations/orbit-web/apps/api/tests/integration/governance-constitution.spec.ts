@@ -218,6 +218,14 @@ describe("governed workspaces, findings and the daily report", () => {
     const op = (await owner.send("POST", "/api/governance/operators", { username: "otto", password: "otto has a long password", roles: ["agent_operator"] })).body as OperatorView;
     const otto = await h.signIn(op.username, "otto has a long password");
     assert.equal(code(await otto.send("DELETE", `/api/governance/workspaces/${session.id}`)), "permission_required");
+    // Moving a governed workspace to another agent is an administrator's, as releasing it is.
+    const other = (await owner.send("POST", "/api/governance/agents", { name: "another agent" })).body as AgentView;
+    assert.equal(code(await otto.send("PUT", `/api/governance/workspaces/${session.id}`, { agentId: other.id, profile: "strict" })), "permission_required");
+    assert.equal((await otto.send("PUT", `/api/governance/workspaces/${session.id}`, { agentId: agent.id, profile: "strict" })).status, 200, "the same agent again is no move");
+    assert.equal((await owner.send("PUT", `/api/governance/workspaces/${session.id}`, { agentId: other.id, profile: "strict" })).status, 200);
+    assert.equal((await owner.send("PUT", `/api/governance/workspaces/${session.id}`, { agentId: agent.id, profile: "strict" })).status, 200);
+    const moves = ((await owner.get("/api/governance/audit?type=workspace.governed")).body as AuditPage).events.map((e) => [e.outcome, e.data.previousAgentId]);
+    assert.deepEqual(moves, [["reassigned", other.id], ["reassigned", agent.id], ["governed", agent.id], ["governed", null]]);
     assert.equal(code(await otto.send("POST", "/api/governance/agents", { name: "mine" })), "permission_required");
     assert.equal(code(await owner.send("PUT", `/api/governance/workspaces/${session.id}`, { agentId: "agt-nobody", profile: "strict" })), "not_found");
   });

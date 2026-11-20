@@ -99,10 +99,17 @@ export class RegistryService {
     if (agent === null) throw notFound("The agent");
     if (agent.status !== "active") throw conflict("agent_suspended", `${agent.name} is suspended: a workspace is governed by an active agent.`);
     if (session.status === "running") throw conflict("run_active", "Claude is working in this chat: stop it or wait for it to finish, then govern it.");
+    const previous = this.governed.get(sessionId);
+    // Handing a governed workspace to ANOTHER agent takes it out from under the first agent's overlays: it is an
+    // administrator's move, as releasing it is -- never the workspace operator's alone.
+    if (previous !== null && previous.agentId !== agent.id && !(ctx.principal.kind === "operator" && ctx.principal.permissions.includes("agents.manage"))) {
+      this.audit.record(ctx, { type: "authz.denied", outcome: "refused", workspaceId: sessionId, data: { permission: "agents.manage", route: `govern ${sessionId}`, cause: "reassign_agent" } });
+      throw new ApiError(HttpStatus.FORBIDDEN, "permission_required", "This workspace is governed by another agent: moving it to a different agent needs the agents.manage permission.");
+    }
     const record: GovernedWorkspaceRecord = { sessionId, agentId: agent.id, profile: req.profile, governedAt: new Date().toISOString(), governedBy: labelOf(ctx.principal) };
     return this.database.transaction(() => {
       this.governed.set(record);
-      this.audit.record(ctx, { type: "workspace.governed", outcome: "governed", workspaceId: sessionId, agentId: agent.id, data: { profile: req.profile } });
+      this.audit.record(ctx, { type: "workspace.governed", outcome: previous === null || previous.agentId === agent.id ? "governed" : "reassigned", workspaceId: sessionId, agentId: agent.id, data: { profile: req.profile, previousAgentId: previous?.agentId ?? null } });
       this.changed("workspaces", sessionId);
       return { sessionId, title: session.title, repository: session.repository, status: session.status, scope: "GOVERNED_WORKSPACE", agentId: agent.id, profile: req.profile, governedAt: record.governedAt, governedBy: record.governedBy };
     });

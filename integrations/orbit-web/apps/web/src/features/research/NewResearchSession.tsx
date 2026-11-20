@@ -1,7 +1,8 @@
 // A NEW RESEARCH SESSION: in a new research workspace (named here) or one this account already has, with the model and
 // effort its account may use, and -- if wanted -- a first question, asked as soon as a selected source is ready. No
 // repository, no branch and no GitHub: research needs none of them.
-import { Button, Dropdown, Field, Input, MessageBar, MessageBarBody, Option, Radio, RadioGroup, Spinner, Text, Textarea, makeStyles, tokens } from "@fluentui/react-components";
+import { Button, Dropdown, Field, Input, MessageBar, MessageBarBody, Option, Radio, RadioGroup, Spinner, Text, Textarea, makeStyles, shorthands, tokens } from "@fluentui/react-components";
+import { ShieldCheckmark16Regular } from "@fluentui/react-icons";
 import { DEFAULT_EFFORT, DEFAULT_MODEL, modelOf, RESEARCH_LIMITS, type ResearchSessionDetail, type ResearchWorkspaceSummary, type Settings } from "@orbit-web/contracts";
 import { useState } from "react";
 import { useResource } from "../../hooks/useResource";
@@ -11,11 +12,36 @@ import { ModelEffortPicker } from "../composer/RunPickers";
 import { research } from "./api";
 
 const useStyles = makeStyles({
-  form: { display: "flex", flexDirection: "column", gap: "16px", width: "100%", maxWidth: "640px", textAlign: "left" },
-  card: { display: "flex", flexDirection: "column", gap: "12px", borderRadius: "16px", border: `1px solid ${tokens.colorNeutralStroke2}`, backgroundColor: "var(--orbit-card-bg)", paddingTop: "16px", paddingRight: "16px", paddingBottom: "16px", paddingLeft: "16px" },
+  form: { display: "flex", flexDirection: "column", gap: "16px", width: "100%", maxWidth: "640px", textAlign: "left", minWidth: 0 },
+  card: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "14px",
+    borderRadius: "20px",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    backgroundColor: "var(--orbit-card-bg)",
+    boxShadow: "var(--orbit-soft-shadow)",
+    paddingTop: "20px",
+    paddingRight: "20px",
+    paddingBottom: "20px",
+    paddingLeft: "20px",
+    minWidth: 0,
+  },
+  field: { minWidth: 0, width: "100%", maxWidth: "100%" },
+  control: { minWidth: 0, width: "100%", maxWidth: "100%" },
   row: { display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" },
   muted: { color: tokens.colorNeutralForeground3 },
-  start: { alignSelf: "flex-start" },
+  footer: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
+    flexWrap: "wrap",
+    paddingTop: "4px",
+  },
+  privacy: { display: "flex", alignItems: "flex-start", gap: "6px", flexGrow: 1, flexBasis: "260px", color: tokens.colorNeutralForeground3 },
+  privacyIcon: { flexShrink: 0, marginTop: "2px" },
+  start: { borderRadius: "10px", minHeight: "36px", flexShrink: 0 },
 });
 
 export function NewResearchSession({ settings, onCreated }: { settings: Settings | null; onCreated: (session: ResearchSessionDetail) => void }) {
@@ -67,18 +93,19 @@ export function NewResearchSession({ settings, onCreated }: { settings: Settings
         </RadioGroup>
         {mode === "new" ? (
           <>
-            <Field label="Workspace name" required>
-              <Input value={name} onChange={(_, d) => setName(d.value)} placeholder="AI Governance Research" maxLength={RESEARCH_LIMITS.nameLength} autoFocus />
+            <Field className={s.field} label="Workspace name" required>
+              <Input className={s.control} value={name} onChange={(_, d) => setName(d.value)} placeholder="AI Governance Research" maxLength={RESEARCH_LIMITS.nameLength} autoFocus />
             </Field>
-            <Field label="Description (optional)">
-              <Input value={description} onChange={(_, d) => setDescription(d.value)} maxLength={RESEARCH_LIMITS.descriptionLength} />
+            <Field className={s.field} label="Description (optional)">
+              <Input className={s.control} value={description} onChange={(_, d) => setDescription(d.value)} maxLength={RESEARCH_LIMITS.descriptionLength} />
             </Field>
           </>
         ) : workspaces.loading && workspaces.data === null ? (
           <Spinner size="tiny" />
         ) : (
-          <Field label="Workspace">
+          <Field className={s.field} label="Workspace">
             <Dropdown
+              className={s.control}
               value={list.find((w) => w.id === chosen)?.name ?? ""}
               selectedOptions={chosen ? [chosen] : []}
               onOptionSelect={(_, d) => setExisting(d.optionValue ?? null)}
@@ -99,20 +126,25 @@ export function NewResearchSession({ settings, onCreated }: { settings: Settings
           </Text>
           <ModelEffortPicker model={run.model} effort={run.effort} onModel={setModel} onEffort={setEffort} />
         </div>
-        <Field label="First question (optional)" hint="Asked at once when a selected source is ready. In a new workspace it waits for you: add sources, then ask it.">
-          <Textarea value={question} onChange={(_, d) => setQuestion(d.value)} rows={3} resize="vertical" maxLength={RESEARCH_LIMITS.questionLength} placeholder="What do these sources say about…" />
+        <Field className={s.field} label="First question (optional)" hint="Asked at once when a selected source is ready. In a new workspace it waits for you: add sources, then ask it.">
+          <Textarea className={s.control} value={question} onChange={(_, d) => setQuestion(d.value)} rows={3} resize="vertical" maxLength={RESEARCH_LIMITS.questionLength} placeholder="What do these sources say about…" />
         </Field>
-        <Text size={200} className={s.muted}>
-          Sources are stored on this Orbit server. When you ask, the passages retrieved from the sources you select are sent to Claude (Anthropic) to answer.
-        </Text>
         {error && (
           <MessageBar intent="error">
             <MessageBarBody>{error}</MessageBarBody>
           </MessageBar>
         )}
-        <Button className={s.start} appearance="primary" type="submit" disabled={!ready || busy}>
-          {busy ? "Starting…" : "Start research"}
-        </Button>
+        <div className={s.footer}>
+          <div className={s.privacy}>
+            <ShieldCheckmark16Regular className={s.privacyIcon} aria-hidden />
+            <Text size={200}>
+              Sources are stored on this Orbit server. When you ask, the passages retrieved from the sources you select are sent to Claude (Anthropic) to answer.
+            </Text>
+          </div>
+          <Button className={s.start} appearance="primary" type="submit" disabled={!ready || busy}>
+            {busy ? "Starting…" : "Start research"}
+          </Button>
+        </div>
       </div>
     </form>
   );

@@ -2,7 +2,7 @@
 // panels -- SOURCES (what this session may retrieve from), the RESEARCH CHAT, and EVIDENCE (citations, notes,
 // findings, a source's text). Side by side from 1440px; below, the evidence opens as a drawer (and the sources fold
 // away); on a phone, one panel at a time behind tabs. Each panel scrolls on its own; the composer stays in view.
-import { Badge, Button, Dialog, DialogBody, DialogContent, DialogSurface, DialogTitle, DialogTrigger, MessageBar, MessageBarBody, OverlayDrawer, Spinner, Tab, TabList, Text, ToggleButton, Tooltip, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
+import { Badge, Button, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, DialogTrigger, MessageBar, MessageBarBody, OverlayDrawer, Spinner, Tab, TabList, Text, ToggleButton, Tooltip, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import { BookOpen20Regular, Dismiss20Regular, Navigation20Regular, PanelLeftContract20Regular, PanelLeftExpand20Regular, PanelRightContract20Regular, PanelRightExpand20Regular, People20Regular } from "@fluentui/react-icons";
 import type { ResearchCitation, ResearchFinding, ResearchNote, ResearchSessionDetail, ResearchSessionSummary, ResearchSourceSummary, ResearchWorkspaceDetail } from "@orbit-web/contracts";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -24,39 +24,111 @@ import type { PreviewTarget } from "./SourcePreview";
 import { useResearchStream } from "./useResearchStream";
 
 const useStyles = makeStyles({
-  root: { display: "flex", flexDirection: "column", height: "100%", minHeight: 0, minWidth: 0 },
+  root: { display: "flex", flexDirection: "column", height: "100%", minHeight: 0, minWidth: 0, backgroundColor: tokens.colorNeutralBackground1 },
   top: {
     display: "flex",
     alignItems: "center",
     gap: "10px",
-    minHeight: "52px",
+    minHeight: "56px",
     paddingTop: "8px",
-    paddingRight: "12px",
+    paddingRight: "14px",
     paddingBottom: "8px",
     paddingLeft: "16px",
     backgroundColor: "var(--orbit-header-bg)",
+    backdropFilter: "blur(12px)",
+    WebkitBackdropFilter: "blur(12px)",
     ...shorthands.borderBottom("1px", "solid", tokens.colorNeutralStroke2),
     flexShrink: 0,
     minWidth: 0,
   },
   topMobile: { paddingTop: "max(6px, env(safe-area-inset-top))", paddingLeft: "8px", paddingRight: "8px", gap: "6px" },
-  titles: { display: "flex", flexDirection: "column", minWidth: 0, flexGrow: 1 },
+  brandEmblem: {
+    width: "32px",
+    height: "32px",
+    borderRadius: "10px",
+    backgroundColor: tokens.colorBrandBackground2,
+    color: tokens.colorBrandForeground1,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  titles: { display: "flex", flexDirection: "column", gap: "1px", minWidth: 0, flexGrow: 1 },
   title: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   sub: { display: "flex", alignItems: "center", gap: "6px", minWidth: 0, color: tokens.colorNeutralForeground3, fontSize: tokens.fontSizeBase200 },
   ellipsis: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 },
+  sharedBadge: { flexShrink: 0, whiteSpace: "nowrap" },
+  statusGroup: { display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 },
+  divider: { width: "1px", height: "20px", backgroundColor: tokens.colorNeutralStroke2, flexShrink: 0, marginLeft: "2px", marginRight: "2px" },
   actions: { display: "flex", alignItems: "center", gap: "4px", flexShrink: 0 },
-  touch: { minWidth: "44px", minHeight: "44px" },
+  headerBtn: { minHeight: "32px", borderRadius: "10px", flexShrink: 0 },
+  touch: { minWidth: "44px", minHeight: "44px", borderRadius: "10px", flexShrink: 0 },
   panels: { display: "flex", flexGrow: 1, minHeight: 0, minWidth: 0 },
-  sources: { width: "300px", flexShrink: 0, minHeight: 0, borderRight: `1px solid ${tokens.colorNeutralStroke2}` },
-  sourcesNarrow: { width: "272px" },
+  sources: { width: "300px", flexShrink: 0, minHeight: 0, ...shorthands.borderRight("1px", "solid", tokens.colorNeutralStroke2) },
+  sourcesNarrow: { width: "276px" },
   chat: { flexGrow: 1, minWidth: 0, minHeight: 0 },
-  evidence: { width: "360px", flexShrink: 0, minHeight: 0, borderLeft: `1px solid ${tokens.colorNeutralStroke2}` },
-  drawer: { width: "min(420px, 92vw)", maxWidth: "100%", paddingTop: 0, paddingRight: 0, paddingBottom: 0, paddingLeft: 0, display: "flex", flexDirection: "column", alignItems: "stretch", overflow: "hidden" },
-  drawerHead: { display: "flex", justifyContent: "flex-end", paddingTop: "4px", paddingRight: "4px", flexShrink: 0 },
-  mobileTabs: { flexShrink: 0, borderBottom: `1px solid ${tokens.colorNeutralStroke2}`, paddingLeft: "8px", paddingRight: "8px" },
+  evidence: { width: "372px", flexShrink: 0, minHeight: 0, ...shorthands.borderLeft("1px", "solid", tokens.colorNeutralStroke2) },
+  drawer: {
+    width: "min(440px, 92vw)",
+    maxWidth: "100%",
+    paddingTop: 0,
+    paddingRight: 0,
+    paddingBottom: 0,
+    paddingLeft: 0,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "stretch",
+    overflow: "hidden",
+    backgroundColor: tokens.colorNeutralBackground1,
+    isolation: "isolate",
+  },
+  mobileTabsWrap: {
+    flexShrink: 0,
+    paddingTop: "8px",
+    paddingRight: "12px",
+    paddingBottom: "8px",
+    paddingLeft: "12px",
+    ...shorthands.borderBottom("1px", "solid", tokens.colorNeutralStroke2),
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
+  mobileTabList: {
+    width: "100%",
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: "2px",
+    paddingTop: "3px",
+    paddingRight: "3px",
+    paddingBottom: "3px",
+    paddingLeft: "3px",
+    borderRadius: "12px",
+    backgroundColor: tokens.colorNeutralBackground3,
+    "& [role='tab']": {
+      justifyContent: "center",
+      borderRadius: "9px",
+      minHeight: "34px",
+      paddingTop: "4px",
+      paddingRight: "6px",
+      paddingBottom: "4px",
+      paddingLeft: "6px",
+      fontSize: tokens.fontSizeBase200,
+    },
+    "& [role='tab']::after": { display: "none" },
+    "& .fui-Tab__indicator": { display: "none" },
+    "& [role='tab'][aria-selected='true']": {
+      backgroundColor: "var(--orbit-card-bg)",
+      boxShadow: "var(--orbit-soft-shadow)",
+      color: tokens.colorNeutralForeground1,
+      fontWeight: tokens.fontWeightSemibold,
+    },
+  },
   single: { flexGrow: 1, minHeight: 0, display: "flex", flexDirection: "column" },
   center: { marginTop: "48px" },
-  shareSurface: { width: "min(520px, 94vw)", maxWidth: "min(520px, 94vw)" },
+  shareSurface: {
+    borderRadius: "20px",
+    backgroundColor: "var(--orbit-card-bg)",
+    width: "min(520px, 94vw)",
+    maxWidth: "min(520px, 94vw)",
+  },
 });
 
 type MobilePanel = "sources" | "chat" | "evidence";
@@ -69,7 +141,8 @@ export interface ResearchPageProps {
 
 export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPageProps) {
   const s = useStyles();
-  const { isMobile, isCompact, isWide } = useViewport();
+  const { isMobile, isCompact, isWide, isCoarse } = useViewport();
+  const touch = isMobile || isCoarse;
   const detail = useResource<ResearchSessionDetail>(() => research.session(sessionId), [sessionId]);
   const { state, connected } = useResearchStream(sessionId);
   const workspaceId = detail.data?.workspaceId ?? null;
@@ -237,6 +310,11 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
         setFindingDraft(null);
       }}
       onChanged={reloadEvidence}
+      onClose={!isMobile && !isWide ? () => setDrawer(false) : undefined}
+      onNewNote={() => {
+        setNoteDraft({ title: "", body: "" });
+        openEvidence("notes");
+      }}
     />
   );
   const chat = (
@@ -247,6 +325,7 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
       citationsOf={citationsOf}
       usable={usable}
       selected={sel.length}
+      totalSources={list.length}
       draftQuestion={session.draftQuestion}
       busy={busy}
       error={error}
@@ -259,6 +338,12 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
       onCite={cite}
       onSaveNote={saveNote}
       onAddFinding={addFinding}
+      onAddSources={() => setAdding(true)}
+      onOpenSources={() => {
+        if (isMobile) setMobilePanel("sources");
+        else if (list.length === 0) setAdding(true);
+        else setShowSources(true);
+      }}
       right={<ModelEffortPicker model={session.model} effort={session.effort} onModel={(model) => void updateRun({ model })} onEffort={(effort) => void updateRun({ effort })} disabled={status === "running"} />}
     />
   );
@@ -267,7 +352,9 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
     <div className={s.root}>
       <header className={mergeClasses(s.top, isMobile && s.topMobile)}>
         {onOpenNav && <Button className={s.touch} appearance="subtle" icon={<Navigation20Regular />} aria-label="Open navigation" onClick={onOpenNav} />}
-        <BookOpen20Regular aria-hidden />
+        <span className={s.brandEmblem} aria-hidden>
+          <BookOpen20Regular />
+        </span>
         <div className={s.titles}>
           <Text weight="semibold" className={s.title}>
             {session.title}
@@ -277,28 +364,42 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
             {!isMobile && <span>·</span>}
             {!isMobile && <span>{usable} of {list.length} sources in use</span>}
             {session.access === "shared" && (
-              <Badge appearance="tint" size="small">
+              <Badge className={s.sharedBadge} appearance="tint" size="small">
                 shared by {session.owner}
               </Badge>
             )}
           </span>
         </div>
-        <SessionStatusBadge status={status} />
-        {!connected && (
-          <Badge appearance="outline" color="warning">
-            Reconnecting…
-          </Badge>
-        )}
+        <div className={s.statusGroup}>
+          <SessionStatusBadge status={status} />
+          {!connected && (
+            <Badge className={s.sharedBadge} appearance="outline" color="warning">
+              Reconnecting…
+            </Badge>
+          )}
+        </div>
+        {!isMobile && <span className={s.divider} aria-hidden />}
         <div className={s.actions}>
-          <WorkspaceShare workspaceId={workspaceId} name={workspace.data?.name ?? session.workspaceName} compact={isMobile} />
+          <WorkspaceShare workspaceId={workspaceId} name={workspace.data?.name ?? session.workspaceName} compact={isMobile} touch={touch} />
           {!isMobile && (
             <Tooltip content={showSources ? "Hide the sources" : "Show the sources"} relationship="label">
-              <ToggleButton appearance="subtle" size="small" checked={showSources} icon={showSources ? <PanelLeftContract20Regular /> : <PanelLeftExpand20Regular />} onClick={() => setShowSources((v) => !v)} aria-label="Sources panel" />
+              <ToggleButton
+                className={s.headerBtn}
+                appearance="subtle"
+                size="small"
+                checked={showSources}
+                icon={showSources ? <PanelLeftContract20Regular /> : <PanelLeftExpand20Regular />}
+                onClick={() => setShowSources((v) => !v)}
+                aria-label="Sources panel"
+              >
+                {!isCompact && "Sources"}
+              </ToggleButton>
             </Tooltip>
           )}
           {!isMobile && (
             <Tooltip content="Citations, notes and findings" relationship="label">
               <ToggleButton
+                className={s.headerBtn}
                 appearance="subtle"
                 size="small"
                 checked={isWide ? showEvidence : drawer}
@@ -314,8 +415,8 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
       </header>
       {isMobile ? (
         <>
-          <div className={s.mobileTabs}>
-            <TabList size="small" selectedValue={mobilePanel} onTabSelect={(_, d) => setMobilePanel(d.value as MobilePanel)} aria-label="Research panels">
+          <div className={s.mobileTabsWrap}>
+            <TabList className={s.mobileTabList} size="small" selectedValue={mobilePanel} onTabSelect={(_, d) => setMobilePanel(d.value as MobilePanel)} aria-label="Research panels">
               <Tab value="sources">Sources</Tab>
               <Tab value="chat">Chat</Tab>
               <Tab value="evidence">Evidence</Tab>
@@ -332,9 +433,6 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
       )}
       {!isMobile && !isWide && (
         <OverlayDrawer open={drawer} onOpenChange={(_, d) => setDrawer(d.open)} position="end" className={s.drawer} aria-label="Evidence">
-          <div className={s.drawerHead}>
-            <Button appearance="subtle" icon={<Dismiss20Regular />} aria-label="Close the evidence" onClick={() => setDrawer(false)} />
-          </div>
           {drawer && evidencePanel}
         </OverlayDrawer>
       )}
@@ -354,21 +452,33 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
   );
 }
 
-function WorkspaceShare({ workspaceId, name, compact }: { workspaceId: string; name: string; compact: boolean }) {
+function WorkspaceShare({ workspaceId, name, compact, touch }: { workspaceId: string; name: string; compact: boolean; touch: boolean }) {
   const s = useStyles();
+  const [open, setOpen] = useState(false);
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={(_, d) => setOpen(d.open)}>
       <DialogTrigger disableButtonEnhancement>
-        <Button appearance="subtle" size="small" icon={<People20Regular />} aria-label="Share the workspace">
+        <Button className={touch ? s.touch : s.headerBtn} appearance="subtle" size="small" icon={<People20Regular />} aria-label="Share the workspace">
           {!compact && "Share"}
         </Button>
       </DialogTrigger>
       <DialogSurface className={s.shareSurface}>
         <DialogBody>
-          <DialogTitle>Share “{name}”</DialogTitle>
-          <DialogContent>
-            <PeopleAccess path={research.workspaceAccessPath(workspaceId)} what="research workspace" />
-          </DialogContent>
+          <DialogTitle
+            action={
+              <DialogTrigger action="close" disableButtonEnhancement>
+                <Button appearance="subtle" size="small" aria-label="Close" icon={<Dismiss20Regular />} />
+              </DialogTrigger>
+            }
+          >
+            Share “{name}”
+          </DialogTitle>
+          <DialogContent>{open && <PeopleAccess path={research.workspaceAccessPath(workspaceId)} what="research workspace" />}</DialogContent>
+          <DialogActions>
+            <DialogTrigger action="close" disableButtonEnhancement>
+              <Button appearance="secondary">Done</Button>
+            </DialogTrigger>
+          </DialogActions>
         </DialogBody>
       </DialogSurface>
     </Dialog>

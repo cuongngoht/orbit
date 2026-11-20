@@ -10,6 +10,7 @@ import {
   DialogContent,
   DialogSurface,
   DialogTitle,
+  DialogTrigger,
   Field,
   Input,
   MessageBar,
@@ -23,45 +24,155 @@ import {
   Textarea,
   makeStyles,
   mergeClasses,
+  shorthands,
   tokens,
 } from "@fluentui/react-components";
-import { ArrowUpload20Regular, CheckmarkCircle16Regular, ErrorCircle16Regular } from "@fluentui/react-icons";
+import { ArrowUpload20Regular, CheckmarkCircle16Regular, Dismiss20Regular, ErrorCircle16Regular } from "@fluentui/react-icons";
 import { RESEARCH_LIMITS, RESEARCH_UPLOAD_EXTENSIONS, type ResearchSourceSummary } from "@orbit-web/contracts";
 import { useEffect, useRef, useState } from "react";
+import { useViewport } from "../../hooks/useViewport";
 import { errorText } from "../../services/api";
 import { research } from "./api";
 import { SourceIcon } from "./labels";
 
 const useStyles = makeStyles({
-  surface: { width: "min(640px, 96vw)", maxWidth: "min(640px, 96vw)" },
-  body: { display: "flex", flexDirection: "column", gap: "14px", minHeight: "280px" },
+  surface: {
+    width: "min(620px, 94vw)",
+    maxWidth: "min(620px, 94vw)",
+    borderRadius: "20px",
+    backgroundColor: "var(--orbit-card-bg)",
+    overflow: "hidden",
+  },
+  body: { display: "flex", flexDirection: "column", gap: "14px", minHeight: "280px", minWidth: 0 },
+  tabList: {
+    width: "100%",
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "4px",
+    paddingTop: "4px",
+    paddingRight: "4px",
+    paddingBottom: "4px",
+    paddingLeft: "4px",
+    borderRadius: "12px",
+    backgroundColor: tokens.colorNeutralBackground3,
+    "& [role='tab']": {
+      justifyContent: "center",
+      borderRadius: "9px",
+      minHeight: "34px",
+      paddingTop: "5px",
+      paddingRight: "10px",
+      paddingBottom: "5px",
+      paddingLeft: "10px",
+      fontSize: tokens.fontSizeBase200,
+    },
+    "& [role='tab']::after": { display: "none" },
+    "& .fui-Tab__indicator": { display: "none" },
+    "& [role='tab'][aria-selected='true']": {
+      backgroundColor: "var(--orbit-card-bg)",
+      boxShadow: "var(--orbit-soft-shadow)",
+      color: tokens.colorNeutralForeground1,
+      fontWeight: tokens.fontWeightSemibold,
+    },
+  },
+  tabListMobile: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    "& [role='tab']": { minHeight: "38px" },
+  },
   drop: {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: "8px",
-    minHeight: "140px",
-    borderRadius: "14px",
-    border: `1px dashed ${tokens.colorNeutralStroke1}`,
-    backgroundColor: tokens.colorNeutralBackground2,
+    gap: "10px",
+    minHeight: "160px",
+    borderRadius: "16px",
+    ...shorthands.border("1px", "dashed", tokens.colorNeutralStroke1),
+    backgroundColor: "var(--orbit-tool-bg)",
     color: tokens.colorNeutralForeground2,
     textAlign: "center",
-    paddingTop: "16px",
-    paddingRight: "16px",
-    paddingBottom: "16px",
-    paddingLeft: "16px",
+    paddingTop: "20px",
+    paddingRight: "18px",
+    paddingBottom: "20px",
+    paddingLeft: "18px",
+    transitionProperty: "background-color, border-color",
+    transitionDuration: "140ms",
   },
-  dropActive: { border: `1px dashed ${tokens.colorBrandStroke1}`, backgroundColor: tokens.colorBrandBackground2 },
-  files: { listStyleType: "none", paddingLeft: 0, marginTop: 0, marginBottom: 0, display: "flex", flexDirection: "column", gap: "8px", maxHeight: "220px", overflowY: "auto" },
-  file: { display: "flex", flexDirection: "column", gap: "4px" },
+  dropActive: {
+    ...shorthands.borderColor(tokens.colorBrandStroke1),
+    backgroundColor: tokens.colorBrandBackground2,
+  },
+  uploadEmblem: {
+    width: "44px",
+    height: "44px",
+    borderRadius: "9999px",
+    backgroundColor: tokens.colorBrandBackground2,
+    color: tokens.colorBrandForeground1,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  chooseBtn: { borderRadius: "10px", minHeight: "36px" },
+  extRow: { display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "4px" },
+  extChip: {
+    fontSize: "11px",
+    fontFamily: tokens.fontFamilyMonospace,
+    color: tokens.colorNeutralForeground3,
+    backgroundColor: tokens.colorNeutralBackground3,
+    borderRadius: "6px",
+    paddingTop: "2px",
+    paddingRight: "6px",
+    paddingBottom: "2px",
+    paddingLeft: "6px",
+  },
+  files: {
+    listStyleType: "none",
+    paddingLeft: 0,
+    marginTop: 0,
+    marginBottom: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    maxHeight: "220px",
+    overflowY: "auto",
+  },
+  file: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+    borderRadius: "12px",
+    backgroundColor: "var(--orbit-card-bg)",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    paddingTop: "10px",
+    paddingRight: "12px",
+    paddingBottom: "10px",
+    paddingLeft: "12px",
+  },
   fileHead: { display: "flex", alignItems: "center", gap: "6px", minWidth: 0 },
-  fileName: { flexGrow: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  ok: { color: tokens.colorPaletteGreenForeground1 },
-  bad: { color: tokens.colorPaletteRedForeground1 },
+  fileName: { flexGrow: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: tokens.fontWeightMedium },
+  ok: { color: tokens.colorPaletteGreenForeground1, flexShrink: 0 },
+  bad: { color: tokens.colorPaletteRedForeground1, flexShrink: 0 },
   muted: { color: tokens.colorNeutralForeground3 },
-  existing: { display: "flex", flexDirection: "column", gap: "4px", maxHeight: "260px", overflowY: "auto" },
-  existingRow: { display: "flex", alignItems: "center", gap: "6px", minWidth: 0 },
+  tabForm: { display: "flex", flexDirection: "column", gap: "12px", minWidth: 0 },
+  field: { minWidth: 0, width: "100%", maxWidth: "100%" },
+  input: { minWidth: 0, width: "100%", maxWidth: "100%" },
+  existing: { display: "flex", flexDirection: "column", gap: "8px", maxHeight: "260px", overflowY: "auto" },
+  existingRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "8px",
+    minWidth: 0,
+    borderRadius: "12px",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    backgroundColor: "var(--orbit-tool-bg)",
+    paddingTop: "6px",
+    paddingRight: "10px",
+    paddingBottom: "6px",
+    paddingLeft: "6px",
+  },
+  actionBtn: { borderRadius: "10px" },
+  doneBtn: { borderRadius: "10px" },
 });
 
 type Mode = "upload" | "url" | "text" | "existing";
@@ -94,14 +205,23 @@ export interface AddSourcesDialogProps {
 
 export function AddSourcesDialog(p: AddSourcesDialogProps) {
   const s = useStyles();
+  const { isMobile } = useViewport();
   const [mode, setMode] = useState<Mode>("upload");
   return (
     <Dialog open={p.open} onOpenChange={(_, d) => p.onOpenChange(d.open)}>
       <DialogSurface className={s.surface}>
         <DialogBody>
-          <DialogTitle>Add sources</DialogTitle>
+          <DialogTitle
+            action={
+              <DialogTrigger action="close" disableButtonEnhancement>
+                <Button appearance="subtle" size="small" aria-label="Close" icon={<Dismiss20Regular />} />
+              </DialogTrigger>
+            }
+          >
+            Add sources
+          </DialogTitle>
           <DialogContent className={s.body}>
-            <TabList size="small" selectedValue={mode} onTabSelect={(_, d) => setMode(d.value as Mode)}>
+            <TabList className={mergeClasses(s.tabList, isMobile && s.tabListMobile)} size="small" selectedValue={mode} onTabSelect={(_, d) => setMode(d.value as Mode)}>
               <Tab value="upload">Upload</Tab>
               <Tab value="url">Website</Tab>
               <Tab value="text">Paste text</Tab>
@@ -113,7 +233,9 @@ export function AddSourcesDialog(p: AddSourcesDialogProps) {
             {mode === "existing" && <ExistingTab {...p} />}
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => p.onOpenChange(false)}>Done</Button>
+            <Button className={s.doneBtn} onClick={() => p.onOpenChange(false)}>
+              Done
+            </Button>
           </DialogActions>
         </DialogBody>
       </DialogSurface>
@@ -177,11 +299,20 @@ function UploadTab(p: AddSourcesDialogProps) {
         }}
         data-testid="drop-zone"
       >
-        <ArrowUpload20Regular />
-        <Text>Drop files here, or</Text>
-        <Button appearance="primary" onClick={() => input.current?.click()}>
+        <span className={s.uploadEmblem} aria-hidden>
+          <ArrowUpload20Regular />
+        </span>
+        <Text weight="medium">Drop files here, or</Text>
+        <Button className={s.chooseBtn} appearance="primary" onClick={() => input.current?.click()}>
           Choose files
         </Button>
+        <div className={s.extRow} aria-hidden>
+          {RESEARCH_UPLOAD_EXTENSIONS.map((ext) => (
+            <span key={ext} className={s.extChip}>
+              {ext}
+            </span>
+          ))}
+        </div>
         <Text size={200} className={s.muted}>
           PDF, Word (.docx), text, Markdown and web pages (.html). A PDF made of scanned images has no text research can read.
         </Text>
@@ -225,6 +356,7 @@ function UploadTab(p: AddSourcesDialogProps) {
 }
 
 function UrlTab(p: AddSourcesDialogProps) {
+  const s = useStyles();
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
@@ -248,17 +380,17 @@ function UrlTab(p: AddSourcesDialogProps) {
   };
   return (
     <form
+      className={s.tabForm}
       onSubmit={(e) => {
         e.preventDefault();
         void add();
       }}
-      style={{ display: "flex", flexDirection: "column", gap: 12 }}
     >
-      <Field label="Website URL" hint="http or https. The Orbit server fetches it -- only from the public internet -- and keeps what it read.">
-        <Input type="url" value={url} onChange={(_, d) => setUrl(d.value)} placeholder="https://example.com/article" maxLength={RESEARCH_LIMITS.urlLength} required />
+      <Field className={s.field} label="Website URL" hint="http or https. The Orbit server fetches it -- only from the public internet -- and keeps what it read.">
+        <Input className={s.input} type="url" value={url} onChange={(_, d) => setUrl(d.value)} placeholder="https://example.com/article" maxLength={RESEARCH_LIMITS.urlLength} required />
       </Field>
-      <Field label="Title (optional)">
-        <Input value={title} onChange={(_, d) => setTitle(d.value)} maxLength={RESEARCH_LIMITS.titleLength} />
+      <Field className={s.field} label="Title (optional)">
+        <Input className={s.input} value={title} onChange={(_, d) => setTitle(d.value)} maxLength={RESEARCH_LIMITS.titleLength} />
       </Field>
       {error && (
         <MessageBar intent="error">
@@ -271,7 +403,7 @@ function UrlTab(p: AddSourcesDialogProps) {
         </MessageBar>
       )}
       <div>
-        <Button appearance="primary" type="submit" disabled={busy || url.trim() === ""}>
+        <Button className={s.actionBtn} appearance="primary" type="submit" disabled={busy || url.trim() === ""}>
           Add website
         </Button>
       </div>
@@ -280,6 +412,7 @@ function UrlTab(p: AddSourcesDialogProps) {
 }
 
 function TextTab(p: AddSourcesDialogProps) {
+  const s = useStyles();
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const [format, setFormat] = useState<"markdown" | "text">("markdown");
@@ -304,17 +437,17 @@ function TextTab(p: AddSourcesDialogProps) {
   };
   return (
     <form
+      className={s.tabForm}
       onSubmit={(e) => {
         e.preventDefault();
         void add();
       }}
-      style={{ display: "flex", flexDirection: "column", gap: 12 }}
     >
-      <Field label="Title" required>
-        <Input value={title} onChange={(_, d) => setTitle(d.value)} maxLength={RESEARCH_LIMITS.titleLength} />
+      <Field className={s.field} label="Title" required>
+        <Input className={s.input} value={title} onChange={(_, d) => setTitle(d.value)} maxLength={RESEARCH_LIMITS.titleLength} />
       </Field>
-      <Field label="Text" hint={`Up to ${RESEARCH_LIMITS.pastedTextLength.toLocaleString()} characters.`} required>
-        <Textarea value={text} onChange={(_, d) => setText(d.value)} resize="vertical" rows={8} maxLength={RESEARCH_LIMITS.pastedTextLength} />
+      <Field className={s.field} label="Text" hint={`Up to ${RESEARCH_LIMITS.pastedTextLength.toLocaleString()} characters.`} required>
+        <Textarea className={s.input} value={text} onChange={(_, d) => setText(d.value)} resize="vertical" rows={8} maxLength={RESEARCH_LIMITS.pastedTextLength} />
       </Field>
       <RadioGroup layout="horizontal" value={format} onChange={(_, d) => setFormat(d.value as "markdown" | "text")} aria-label="Format">
         <Radio value="markdown" label="Markdown" />
@@ -331,7 +464,7 @@ function TextTab(p: AddSourcesDialogProps) {
         </MessageBar>
       )}
       <div>
-        <Button appearance="primary" type="submit" disabled={busy || title.trim() === "" || text.trim() === ""}>
+        <Button className={s.actionBtn} appearance="primary" type="submit" disabled={busy || title.trim() === "" || text.trim() === ""}>
           Add text
         </Button>
       </div>
@@ -357,6 +490,7 @@ function ExistingTab(p: AddSourcesDialogProps) {
       ))}
       <div>
         <Button
+          className={s.actionBtn}
           appearance="primary"
           disabled={picked.length === 0}
           onClick={() => {

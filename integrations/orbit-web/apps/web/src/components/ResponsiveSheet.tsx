@@ -19,6 +19,7 @@ const useStyles = makeStyles({
     alignItems: "stretch",
     overflow: "hidden",
     backgroundColor: "var(--orbit-card-bg)",
+    isolation: "isolate",
   },
   grabberWrap: {
     width: "100%",
@@ -27,6 +28,7 @@ const useStyles = makeStyles({
     paddingTop: "10px",
     paddingBottom: "4px",
     flexShrink: 0,
+    backgroundColor: "var(--orbit-card-bg)",
   },
   grabber: {
     width: "36px",
@@ -47,6 +49,7 @@ const useStyles = makeStyles({
     paddingLeft: "16px",
     ...shorthands.borderBottom("1px", "solid", tokens.colorNeutralStroke2),
     flexShrink: 0,
+    backgroundColor: "var(--orbit-card-bg)",
   },
   close: {
     minWidth: "44px",
@@ -64,6 +67,7 @@ const useStyles = makeStyles({
     display: "flex",
     flexDirection: "column",
     gap: "10px",
+    backgroundColor: "var(--orbit-card-bg)",
   },
 });
 

@@ -185,4 +185,39 @@ describe("a research session", () => {
     await userEvent.click(within(tabs).getByRole("tab", { name: "Evidence" }));
     expect(await screen.findByRole("region", { name: "Evidence" })).toBeInTheDocument();
   });
+
+  test("an empty phone chat offers Upload or add sources directly, opening the Add sources dialog", async () => {
+    mobileViewport();
+    fakeApi()
+      .on("GET", `/api/research/sessions/${RESEARCH_ID}`, () => researchDetail({ messages: [], selection: [] }))
+      .on("GET", `/api/research/workspaces/${WORKSPACE_ID}`, () => workspace({ sourceCount: 0 }))
+      .on("GET", `/api/research/workspaces/${WORKSPACE_ID}/sources`, () => [])
+      .on("GET", `/api/research/workspaces/${WORKSPACE_ID}/notes`, () => [])
+      .on("GET", `/api/research/workspaces/${WORKSPACE_ID}/findings`, () => []);
+    show();
+    const cta = await screen.findByRole("button", { name: "Upload or add sources" });
+    await userEvent.click(cta);
+    expect(await screen.findByRole("dialog", { name: "Add sources" })).toBeInTheDocument();
+  });
+
+  test("Share workspace dialog provides immediate Close and Done controls", async () => {
+    wideViewport();
+    api();
+    show();
+    await userEvent.click(await screen.findByRole("button", { name: "Share the workspace" }));
+    const dialog = await screen.findByRole("dialog", { name: /Share/ });
+    expect(within(dialog).getByRole("button", { name: "Done" })).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /Share/ })).toBeNull());
+  });
+
+  test("tablet Evidence drawer integrates Close the evidence inside the panel header and closes on click", async () => {
+    tabletViewport();
+    api();
+    show();
+    await userEvent.click(await screen.findByRole("button", { name: "Evidence panel" }));
+    const evidence = await screen.findByRole("region", { name: "Evidence" });
+    await userEvent.click(within(evidence).getByRole("button", { name: "Close the evidence" }));
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Evidence" })).toBeNull());
+  });
 });

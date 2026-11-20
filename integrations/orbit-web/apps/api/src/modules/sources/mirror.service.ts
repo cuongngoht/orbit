@@ -88,6 +88,15 @@ export class MirrorService {
     return { ok: true, oid: line ? (line.split("\t")[0] as string) : null, detail: "" };
   }
 
+  // The remote's own default branch (what its HEAD names), or null when it does not say.
+  async remoteDefault(session: SessionRecord): Promise<{ ok: boolean; branch: string | null; detail: string }> {
+    const remote = await this.remoteOf(session);
+    const r = await this.git.controlGit(this.path(session.id), [...remote.helper, "ls-remote", "--symref", "--", remote.url, "HEAD"], remote.env, this.config.limits.commandTimeoutMs);
+    if (r.code !== 0) return { ok: false, branch: null, detail: (r.stderr || r.stdout).trim().slice(-300) };
+    const named = /^ref: refs\/heads\/(\S+)\tHEAD$/m.exec(r.stdout)?.[1] ?? null;
+    return { ok: true, branch: named, detail: "" };
+  }
+
   // The commit a person approved, pushed to exactly the branch they approved -- never forced: a push that is not a
   // fast-forward of what the remote has is refused by git itself, so nobody's work is ever overwritten. (The approval
   // was already checked against where the remote's branch stood just before this push.)

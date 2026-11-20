@@ -130,16 +130,21 @@ export class PushBroker implements Executor, OnModuleInit {
 
   // ---- steps ------------------------------------------------------------------------------------------------------
 
-  // Never the branch the chat started from, nor the repository's default: a chat's work arrives there by a pull request.
+  // Never the branch the chat started from, the repository's default, or a branch the source protects: a chat's work
+  // arrives there by a pull request. Branch names are compared as the more lenient source does (Azure DevOps ignores
+  // case), and when the default cannot be established -- neither the source's listing nor the remote's own HEAD says it
+  // -- nothing is pushed.
   private async refuseProtectedBranch(session: SessionRecord, branch: string): Promise<void> {
-    if (branch === session.branch) throw conflict("default_branch", `${branch} is the branch this chat started from: a chat pushes its own branch, and its work reaches ${branch} by a pull request.`);
-    const defaultName = await this.sources
-      .branches(session.source as "github" | "azure", session.repositoryId as string)
-      .then((list) => list.branches.find((b) => b.isDefault)?.name ?? null)
-      .catch((err: unknown) => {
-        throw new ApiError(HttpStatus.BAD_GATEWAY, "branches_unavailable", `The repository's default branch could not be read, so nothing is pushed: ${err instanceof Error ? err.message : String(err)}`);
-      });
-    if (branch === defaultName) throw conflict("default_branch", `${branch} is the repository's default branch: a chat never pushes to it directly.`);
+    const same = (a: string | null | undefined) => typeof a === "string" && a.toLowerCase() === branch.toLowerCase();
+    if (same(session.branch)) throw conflict("default_branch", `${branch} is the branch this chat started from: a chat pushes its own branch, and its work reaches ${session.branch} by a pull request.`);
+    const listed = await this.sources.branches(session.source as "github" | "azure", session.repositoryId as string).catch((err: unknown) => {
+      throw new ApiError(HttpStatus.BAD_GATEWAY, "branches_unavailable", `The repository's branches could not be read, so nothing is pushed: ${err instanceof Error ? err.message : String(err)}`);
+    });
+    const remote = await this.mirror.remoteDefault(session);
+    const defaults = [listed.branches.find((b) => b.isDefault)?.name ?? null, remote.ok ? remote.branch : null].filter((b): b is string => b !== null);
+    if (defaults.length === 0) throw new ApiError(HttpStatus.BAD_GATEWAY, "default_unknown", "The repository's default branch could not be established (neither its listing nor its own HEAD names one), so nothing is pushed.");
+    if (defaults.some(same)) throw conflict("default_branch", `${branch} is the repository's default branch: a chat never pushes to it directly.`);
+    if (listed.branches.some((b) => b.protected && same(b.name))) throw conflict("protected_branch", `${branch} is a protected branch of the repository: a chat never pushes to it directly.`);
   }
 
   private async commitOf(session: SessionRecord, branch: string, expected: string | null): Promise<string> {

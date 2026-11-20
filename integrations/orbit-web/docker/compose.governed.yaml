@@ -1,0 +1,95 @@
+# Orbit Web, GOVERNED: the control plane and the coding agent in two containers of the same image.
+#
+#   cd integrations/orbit-web/docker && docker compose -f compose.governed.yaml up -d --build
+#   docker compose -f compose.governed.yaml logs orbit-web     # the first owner's one-time code (Governance)
+#
+#   orbit-web    the control plane: the API and the web app, Orbit Web's database, governance's records, the GitHub and
+#                Azure CLIs' sign-ins, the control plane's own copies of the repositories, and the egress proxy -- the
+#                agent's only way out. Published on this machine only.
+#   orbit-agent  Claude Code and everything that touches a workspace, started through its runner. It has the Claude
+#                account's configuration, the workspaces, the chats' sessions, Orbit's store and a home -- and none of
+#                the rooms above: they are not mounted. Its network is internal: it reaches the control plane's gateway
+#                and proxy, and nothing else. Its root file system is read-only.
+#
+# Both run as the same non-root user, with no capability and no Docker socket. The isolation is the mounts, the process
+# namespace and the network -- which the agent cannot change -- not the user. Orbit Web checks it before every strict
+# run (Governance → Overview says what was checked); a check the agent's container answers is a check of the wiring,
+# not proof against a runner the agent has taken over (README, "The limit, said plainly").
+#
+# Nothing leaves the agent's container until a Constitution is published (Governance → Company Constitution): every
+# connection through the proxy is one of its decisions.
+name: orbit-web-governed
+
+x-hardened: &hardened
+  image: ${ORBIT_WEB_IMAGE:-ghcr.io/cuongngoht/orbit-web:0.8.0}
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+
+services:
+  orbit-web:
+    <<: *hardened
+    build:
+      context: ../../..
+      dockerfile: integrations/orbit-web/docker/Dockerfile
+    hostname: orbit-web-control
+    ports:
+      - "127.0.0.1:${ORBIT_WEB_HOST_PORT:-3000}:3000"
+    volumes:
+      - orbit-web-data:/data
+    environment:
+      ORBIT_WEB_DEPLOYMENT: governed
+      ORBIT_WEB_RUNNER: orbit-agent:7070
+      ORBIT_WEB_AGENT_NETWORKS: ${ORBIT_WEB_AGENT_SUBNET:-172.31.250.0/24}
+      ORBIT_WEB_AGENT_CONTROL_HOST: orbit-web
+      ORBIT_WEB_EGRESS_PROXY_PORT: "3128"
+      # A per-run spending cap for Claude Code, in US dollars (unset: no cap).
+      ORBIT_WEB_MAX_BUDGET_USD: ${ORBIT_WEB_MAX_BUDGET_USD:-}
+    networks:
+      - default
+      - agent
+    stop_grace_period: 20s
+
+  orbit-agent:
+    <<: *hardened
+    command: ["node", "--disable-warning=ExperimentalWarning", "/opt/orbit-web/apps/api/dist/runner/main.js"]
+    # Orbit's machine store names its runtime room after the host name: a fixed one keeps it across re-creations.
+    hostname: orbit-agent
+    working_dir: /data/home
+    read_only: true
+    tmpfs:
+      - /tmp:rw,mode=1777,size=1g
+    volumes:
+      - { type: volume, source: orbit-web-data, target: /data/claude, volume: { subpath: claude } }
+      - { type: volume, source: orbit-web-data, target: /data/workspaces, volume: { subpath: workspaces } }
+      - { type: volume, source: orbit-web-data, target: /data/sessions, volume: { subpath: sessions } }
+      - { type: volume, source: orbit-web-data, target: /data/orbit, volume: { subpath: orbit } }
+      - { type: volume, source: orbit-web-data, target: /data/home, volume: { subpath: home } }
+      # The control plane's copies of the repositories: what the workspaces are cloned and fetched from. Read-only.
+      - { type: volume, source: orbit-web-data, target: /data/repos, read_only: true, volume: { subpath: repos } }
+    networks:
+      - agent
+    # Names of this compose project still resolve (Docker's own resolver); a name on the internet does not.
+    dns:
+      - 127.0.0.1
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('net').connect(7070,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      orbit-web:
+        condition: service_healthy
+    stop_grace_period: 20s
+
+networks:
+  agent:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${ORBIT_WEB_AGENT_SUBNET:-172.31.250.0/24}
+
+volumes:
+  orbit-web-data:

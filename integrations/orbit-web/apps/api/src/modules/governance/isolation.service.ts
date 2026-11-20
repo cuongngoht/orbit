@@ -14,6 +14,8 @@ import type { IsolationCheck, IsolationStatus } from "@orbit-web/contracts";
 import type { AppConfig } from "../../config/config.js";
 import { APP_CONFIG } from "../../core/tokens.js";
 import { IsolationStore } from "../../infra/governance/stores.js";
+import { AuditService } from "./audit.service.js";
+import { systemContext } from "./principal.js";
 
 export const SINGLE_DETAIL =
   "Claude Code runs in this container as this container's user: it could read and change Orbit Web's files, governance's included. Governance holds at the API here -- the agent has no operator session, no switch and no gateway beyond its run -- not at the files. Run strict workspaces in the governed deployment (docker/compose.governed.yaml).";
@@ -32,6 +34,7 @@ export class IsolationService {
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(IsolationStore) private readonly store: IsolationStore,
+    @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
   // The runner side registers itself in the governed deployment (modules/isolation).
@@ -58,6 +61,8 @@ export class IsolationService {
     const ok = checks.length > 0 && checks.every((c) => c.ok);
     const record = { checkedAt: new Date().toISOString(), state: ok ? ("attested" as const) : ("failed" as const), checks, detail: ok ? "The agent's container was checked just now: none of the control plane's rooms is in it, its own room is, and it has no way out but the proxy." : `The agent's container failed ${checks.filter((c) => !c.ok).map((c) => c.name).join(", ")}.` };
     this.store.insert(record);
+    // What was checked is evidence too: the run that follows names this state.
+    this.audit.record(systemContext("isolation"), { type: ok ? "isolation.attested" : "isolation.failed", outcome: record.state, data: ok ? { runner: this.config.governance.runner?.host ?? "runner", checks: checks.map((c) => c.name).join(",") } : { cause: record.detail } });
     return { deployment: "governed", ...record };
   }
 

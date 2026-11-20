@@ -18,6 +18,7 @@ import { Composer } from "../composer/Composer";
 import { ModelEffortPicker, ModePicker } from "../composer/RunPickers";
 import { WorkBranchPicker } from "../composer/WorkBranchPicker";
 import { OrbitPanel } from "../orbit/OrbitPanel";
+import { PushButton } from "../push/PushButton";
 import { ShareButton } from "../share/ShareDialog";
 import { Timeline } from "./Timeline";
 
@@ -216,6 +217,7 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
             </>
           )}
           <div className={s.actions}>
+            <PushButton session={session} compact={isMobile} />
             <ShareButton sessionId={sessionId} compact={isMobile} />
             <Tooltip content="What changed in the workspace" relationship="description">
               <ToggleButton

@@ -117,7 +117,8 @@ describe("signed in: the workspace, as in Claude Code", () => {
     expect(within(dialog).getByLabelText("Claude Account").textContent).toContain("Octo Org · max");
     await userEvent.click(within(dialog).getByRole("button", { name: "Close settings" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull());
-    await userEvent.click(screen.getByRole("button", { name: "Signed in as octo@example.com" }));
+    // The dialog's close transition hides the rest of the page from assistive technology for a moment: wait for it.
+    await userEvent.click(await screen.findByRole("button", { name: "Signed in as octo@example.com" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: "Sign out" }));
     expect(await screen.findByRole("heading", { name: "Sign in to Orbit Web" })).toBeInTheDocument();
     await waitFor(() => expect(api.calls.filter((c) => c.method === "POST").map((c) => c.path)).toEqual(["/api/claude/logout", "/api/claude/login"]));

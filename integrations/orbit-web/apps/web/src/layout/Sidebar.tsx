@@ -42,6 +42,7 @@ import {
   PuzzlePiece20Regular,
   Rename16Regular,
   Search20Regular,
+  ShieldKeyhole20Regular,
   Settings20Regular,
   SignOut20Regular,
 } from "@fluentui/react-icons";
@@ -97,6 +98,9 @@ export interface SidebarProps {
   onOpen: (id: string) => void;
   onCustomize: () => void;
   onSettings: () => void;
+  // The Governance console is open (and its entry is the current page).
+  governance?: boolean;
+  onGovernance?: () => void;
   onSignOut: () => void;
   onRenamed: (s: SessionSummary) => void;
   onDeleted: (id: string) => void;
@@ -175,6 +179,11 @@ export function Sidebar(p: SidebarProps) {
           <Tooltip content="Customize" relationship="label">
             <Button appearance="subtle" icon={<PuzzlePiece20Regular />} onClick={p.onCustomize} />
           </Tooltip>
+          {p.onGovernance && (
+            <Tooltip content="Governance" relationship="label">
+              <Button appearance="subtle" icon={<ShieldKeyhole20Regular />} aria-current={p.governance ? "page" : undefined} onClick={p.onGovernance} />
+            </Tooltip>
+          )}
         </div>
         <div style={{ flexGrow: 1 }} />
         <div className={mergeClasses(s.foot, s.footCollapsed)}>
@@ -197,7 +206,7 @@ export function Sidebar(p: SidebarProps) {
         </Tooltip>
       </div>
       <div className={s.nav}>
-        <Button className={mergeClasses(s.navItem, p.selected === null && s.navSelected)} appearance="subtle" icon={<Add20Regular />} aria-current={p.selected === null ? "page" : undefined} onClick={p.onNew}>
+        <Button className={mergeClasses(s.navItem, p.selected === null && !p.governance && s.navSelected)} appearance="subtle" icon={<Add20Regular />} aria-current={p.selected === null && !p.governance ? "page" : undefined} onClick={p.onNew}>
           New session
         </Button>
         {searching ? (
@@ -224,6 +233,11 @@ export function Sidebar(p: SidebarProps) {
         <Button className={s.navItem} appearance="subtle" icon={<PuzzlePiece20Regular />} onClick={p.onCustomize}>
           Customize
         </Button>
+        {p.onGovernance && (
+          <Button className={mergeClasses(s.navItem, p.governance && s.navSelected)} appearance="subtle" icon={<ShieldKeyhole20Regular />} aria-current={p.governance ? "page" : undefined} onClick={p.onGovernance}>
+            Governance
+          </Button>
+        )}
       </div>
       <div className={s.section}>
         <Text size={200} weight="semibold">

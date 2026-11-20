@@ -10,9 +10,10 @@ import { CLAUDE_SIGN_IN_REQUIRED, type ClaudeStatus, type ConnectorName, type Se
 import { useCallback, useEffect, useState } from "react";
 import { useSignOut } from "./features/auth/useSignOut";
 import { ChatScreen } from "./features/chat/ChatScreen";
+import { GovernanceView } from "./features/governance/GovernanceView";
 import { NewSession } from "./features/newSession/NewSession";
 import { SettingsDialog } from "./features/settings/SettingsDialog";
-import { useHashRoute } from "./hooks/useHashRoute";
+import { useHashRoute, type GovernancePage } from "./hooks/useHashRoute";
 import { useSessions, useSources } from "./hooks/useLive";
 import { useResource, type Resource } from "./hooks/useResource";
 import { useViewport } from "./hooks/useViewport";
@@ -81,6 +82,8 @@ function Workspace({ claude, settings, reloadClaude, onSignedOut }: { claude: Cl
   // The connector a page sent the person to Settings to connect, opened there.
   const [connector, setConnector] = useState<ConnectorName | null>(null);
   const selected = route.view.view === "chat" ? route.view.sessionId : null;
+  const governance = route.view.view === "governance" ? route.view : null;
+  const goGovernance = useCallback((page: GovernancePage, item: string | null = null) => open({ view: "governance", page, item }), [open]);
 
   // The sign-in ended elsewhere (a terminal, an expiry): the API says so, and the sign-in is read again.
   const lost = [sessions.errorCode, sources.errorCode, settings.errorCode].includes(CLAUDE_SIGN_IN_REQUIRED);
@@ -130,6 +133,11 @@ function Workspace({ claude, settings, reloadClaude, onSignedOut }: { claude: Cl
       setDrawerOpen(false);
       openSettings("account");
     },
+    governance: governance !== null,
+    onGovernance: () => {
+      setDrawerOpen(false);
+      goGovernance("overview");
+    },
     onSignOut: () => {
       setDrawerOpen(false);
       void signOut.signOut();
@@ -157,7 +165,9 @@ function Workspace({ claude, settings, reloadClaude, onSignedOut }: { claude: Cl
           </MessageBar>
         )}
         <div className={s.view}>
-          {selected === null ? (
+          {governance !== null ? (
+            <GovernanceView page={governance.page} item={governance.item} go={goGovernance} onOpenNav={isCompact ? () => setDrawerOpen(true) : undefined} />
+          ) : selected === null ? (
             <NewSession
               settings={settings.data}
               sources={sources.data}

@@ -1,6 +1,9 @@
 // What the API answers, for the web app's tests.
+import type { Permission } from "@orbit-web/governance-core";
 import {
   ORBIT_WEB_VERSION,
+  type ApprovalView,
+  type GovernanceState,
   type AzureStatus,
   type ClaudeStatus,
   type ConnectionState,
@@ -157,6 +160,55 @@ export function orbitPanel(over: Partial<OrbitPanel> = {}): OrbitPanel {
     failure: null,
     stop: null,
     verdict: { word: "unknown", label: "Unknown", source: "No Orbit task is linked to this session, so Orbit has given no verdict." },
+    ...over,
+  };
+}
+
+// ---- governance -------------------------------------------------------------------------------------------------------
+
+export const ORG = { id: "org-0123456789ab", name: "Acme" };
+
+const OWNER_PERMISSIONS = ["governance.read", "audit.read", "audit.verify", "reports.read", "reports.generate", "findings.read", "findings.manage", "constitution.edit", "constitution.approve", "constitution.publish", "operators.read", "operators.manage", "roles.manage", "agents.manage", "workspaces.govern", "approvals.read", "approvals.decide", "settings.privileged.write"];
+const AUDITOR_PERMISSIONS = ["governance.read", "audit.read", "audit.verify", "reports.read", "reports.generate", "findings.read", "operators.read", "approvals.read"];
+
+export const CSRF = "c".repeat(64);
+
+export function governanceState(role: "none" | "uninitialized" | "organization_owner" | "auditor" = "organization_owner"): GovernanceState {
+  if (role === "uninitialized") return { initialized: false, organization: null, bootstrapOpen: true, session: null, deployment: "single" };
+  if (role === "none") return { initialized: true, organization: ORG, bootstrapOpen: false, session: null, deployment: "single" };
+  const permissions = (role === "auditor" ? AUDITOR_PERMISSIONS : OWNER_PERMISSIONS) as Permission[];
+  return {
+    initialized: true,
+    organization: ORG,
+    bootstrapOpen: false,
+    deployment: "single",
+    session: { operator: { id: "op-1", username: role === "auditor" ? "audrey" : "owner", displayName: role === "auditor" ? "Audrey" : "Olivia", status: "active", roles: [role], createdAt: "2026-11-20T00:00:00.000Z" }, permissions, csrfToken: CSRF, expiresAt: "2026-11-21T00:00:00.000Z" },
+  };
+}
+
+export const FINGERPRINT = "f".repeat(64);
+
+export function approval(over: Partial<ApprovalView> = {}): ApprovalView {
+  return {
+    id: "apr-1",
+    action: "repository.push",
+    environment: "development",
+    fingerprint: FINGERPRINT,
+    state: "pending",
+    params: { repository: "github:octo/sum-fixture", remote: "https://github.com/octo/sum-fixture.git", ref: "refs/heads/orbit-web/0b6c2f5e", commit: "a".repeat(40), force: false, expectedRemoteOid: null, branch: "orbit-web/0b6c2f5e", sourceRef: "refs/orbit/push/x", sessionId: SESSION_ID },
+    summary: "Push aaaaaaaaaaaa to orbit-web/0b6c2f5e of octo/sum-fixture (GitHub): 1 commit(s), 1 file(s)",
+    requestedAt: "2026-11-20T10:00:00.000Z",
+    requestedBy: "agent:agt-1",
+    agentId: "agt-1",
+    workspaceId: SESSION_ID,
+    runId: "run-1",
+    decisionId: "dec-1",
+    expiresAt: "2026-11-21T10:00:00.000Z",
+    decidedBy: null,
+    decidedAt: null,
+    consumedAt: null,
+    outcome: null,
+    change: { files: 1, insertions: 1, deletions: 1, commits: 1, diffstat: " sum.mjs | 2 +-\n 1 file changed, 1 insertion(+), 1 deletion(-)\n" },
     ...over,
   };
 }

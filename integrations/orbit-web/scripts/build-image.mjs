@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Builds the Orbit Web image from the repository root (the plugin is `git archive` of ORBIT_REF, default HEAD).
 //
-//   node scripts/build-image.mjs [--tag=orbit-web:0.7.0] [--ref=<commit|tag>] [--ca-file=<pem>] [--platform=linux/amd64]
+//   node scripts/build-image.mjs [--tag=orbit-web:0.8.0] [--ref=<commit|tag>] [--ca-file=<pem>] [--platform=linux/amd64]
 //
 // --ca-file hands a TLS-inspecting proxy's CA to the download steps as a BuildKit secret; it is never kept in a layer.
 import { spawnSync } from "node:child_process";

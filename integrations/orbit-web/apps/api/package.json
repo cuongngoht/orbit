@@ -1,6 +1,6 @@
 {
   "name": "@orbit-web/api",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "description": "Orbit Web's NestJS API: runs the official Claude Code and GitHub CLIs as controlled processes and keeps chat state in SQLite.",
   "type": "module",
@@ -19,7 +19,7 @@
     "@nestjs/common": "12.5.1",
     "@nestjs/core": "12.5.1",
     "@nestjs/platform-express": "12.5.1",
-    "@orbit-web/contracts": "0.7.0",
+    "@orbit-web/contracts": "0.8.0",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2"
   },

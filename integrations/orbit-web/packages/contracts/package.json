@@ -1,6 +1,6 @@
 {
   "name": "@orbit-web/contracts",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "description": "The DTOs, application event names and status words the Orbit Web API and web app share.",
   "type": "module",

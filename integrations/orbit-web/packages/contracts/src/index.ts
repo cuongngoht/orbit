@@ -5,7 +5,7 @@ export * from "./orbit.js";
 export * from "./status.js";
 export * from "./validate.js";
 
-export const ORBIT_WEB_VERSION = "0.7.0";
+export const ORBIT_WEB_VERSION = "0.8.0";
 
 // The header every state-changing request carries. A browser cannot add it to a cross-site request without a CORS
 // preflight the API never answers, so its presence is part of the CSRF defence.

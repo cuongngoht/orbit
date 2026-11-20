@@ -4,16 +4,18 @@
 // turn. Only GitHub is stood in for (tests/acceptance/fake-gh.mjs, mounted and named by ORBIT_WEB_GH_BIN): its sign-in,
 // listing and clone of a real repository need a person, so those steps are reported BLOCKED, never passed.
 //
-// The Claude credential is handed to the container BY NAME only (`docker run -e CLAUDE_CODE_OAUTH_TOKEN`): start this
-// with the CLI's own variable name set, e.g.
+// The Claude account is Orbit Web's own sign-in, and no credential variable signs anything in (Orbit Web gives none to
+// Claude Code). So the run mounts, at /data/claude, a docker volume a person signed in to a Claude account once -- the
+// image's Claude CLI keeps its sign-in there -- and never removes it:
 //
-//   CLAUDE_CODE_OAUTH_TOKEN="$ORBIT_CLAUDE_OAUTH_TOKEN" node tests/acceptance/real-run.mjs --image=orbit-web:0.7.0 \
+//   docker run --rm -it -v orbit-web-acceptance-claude:/data/claude --entrypoint claude orbit-web:<version> auth login --claudeai
+//   node tests/acceptance/real-run.mjs --claude-volume=orbit-web-acceptance-claude [--image=orbit-web:<version>] \
 //     [--budget=2] [--ca-file=<pem>] [--out=<dir>] [--keep]
 //
 // Every step is PASS, FAIL, BLOCKED (needs a person) or STAND-IN (GitHub replaced by the fixture), with its evidence.
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,7 +25,10 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const opt = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3) ?? null;
 const flag = (name) => process.argv.includes(`--${name}`);
 
-const IMAGE = opt("image") ?? "orbit-web:0.7.0";
+const VERSION = JSON.parse(readFileSync(join(HERE, "..", "..", "package.json"), "utf8")).version;
+const IMAGE = opt("image") ?? `orbit-web:${VERSION}`;
+const CLAUDE_VOLUME = opt("claude-volume");
+const signInCommand = (volume) => `docker run --rm -it -v ${volume}:/data/claude --entrypoint claude ${IMAGE} auth login --claudeai`;
 const BUDGET = opt("budget") ?? "2";
 const PROMPT = "Fix the incorrect addition in sum.mjs so the existing test passes. Do not modify the test.";
 const FOLLOW_UP = "In one sentence, what did you change and why?";
@@ -126,8 +131,8 @@ function startContainer(fixture) {
     "-v", `${fixture.served}:/fixture:ro`,
     "-v", `${join(HERE, "fake-gh.mjs")}:/acceptance/fake-gh.mjs:ro`,
     "-e", "ORBIT_WEB_GH_BIN=/acceptance/fake-gh.mjs",
-    // By NAME: docker copies the value from this process's environment; it is never on a command line or in a file.
-    "-e", "CLAUDE_CODE_OAUTH_TOKEN",
+    // The Claude account a person signed in once, where the image's Claude CLI keeps its sign-in.
+    "-v", `${CLAUDE_VOLUME}:/data/claude`,
     "-e", `ORBIT_WEB_MAX_BUDGET_USD=${BUDGET}`,
     ...(ca ? ["-v", `${ca}:/etc/orbit-web-ca.pem:ro`, "-e", "NODE_EXTRA_CA_CERTS=/etc/orbit-web-ca.pem", "-e", "SSL_CERT_FILE=/etc/orbit-web-ca.pem"] : []),
     "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
@@ -159,8 +164,12 @@ const summarise = (frames) => {
 
 async function main() {
   mkdirSync(OUT, { recursive: true });
-  if (!process.env.CLAUDE_CODE_OAUTH_TOKEN && !process.env.ANTHROPIC_API_KEY) {
-    step(0, "a Claude credential for the run", "BLOCKED", "neither CLAUDE_CODE_OAUTH_TOKEN nor ANTHROPIC_API_KEY is set (checked by name)");
+  if (CLAUDE_VOLUME === null) {
+    step(0, "a Claude account signed in for the run", "BLOCKED", `name the volume a person signed in once: --claude-volume=<name>; sign one in with: ${signInCommand("<name>")}`);
+    return finish();
+  }
+  if (docker(["volume", "inspect", CLAUDE_VOLUME]).status !== 0) {
+    step(0, "a Claude account signed in for the run", "BLOCKED", `there is no volume ${CLAUDE_VOLUME}; a person signs one in with: ${signInCommand(CLAUDE_VOLUME)}`);
     return finish();
   }
   if (docker(["image", "inspect", IMAGE]).status !== 0) {
@@ -190,15 +199,17 @@ async function run(fixture) {
   const index = await fetch(`http://127.0.0.1:${PORT}/`);
   step(2, "Open the application", index.status === 200 ? "PASS" : "FAIL", `GET / -> ${index.status}`);
 
-  const setup = (await api("/api/setup/status")).body;
-  evidence.versions = setup.versions;
-  step(3, "Sign in to Claude Code", "BLOCKED", `the browser sign-in needs a person; this run used Claude Code's own environment credential (Orbit Web reads it as: ${setup.claude.state}, source ${setup.claude.source}, method ${setup.claude.method})`);
-  step(4, "Click Connect GitHub", "BLOCKED", "the device flow needs a person at github.com/login/device (the real gh in the image was seen to print a real one-time code)");
-  step(5, "Authenticate using GitHub CLI's browser flow", "BLOCKED", `needs a person; GitHub is stood in for by the acceptance fake (connected as ${setup.github.account?.login ?? "?"})`);
-  if (setup.claude.state !== "connected") {
-    step(6, "the Claude credential works", "FAIL", JSON.stringify(setup.claude));
+  // The account's address is not written into the evidence: method and plan say what signed in.
+  const claude = (await api("/api/claude/status")).body;
+  if (claude.state !== "connected") {
+    step(3, "Sign in to Claude Code", "BLOCKED", `the volume ${CLAUDE_VOLUME} is not signed in to a Claude account (Orbit Web reads: ${claude.state}${claude.detail ? `; ${claude.detail}` : ""}); a person signs it in with: ${signInCommand(CLAUDE_VOLUME)}`);
     return;
   }
+  const setup = (await api("/api/setup/status")).body;
+  evidence.versions = setup.versions;
+  step(3, "Sign in to Claude Code", "BLOCKED", `the browser sign-in needs a person; this run used a Claude account a person signed in once in the volume ${CLAUDE_VOLUME} (Orbit Web reads it as: ${claude.state}, method ${claude.method}, plan ${claude.account?.plan ?? "?"})`);
+  step(4, "Click Connect GitHub", "BLOCKED", "the device flow needs a person at github.com/login/device (the real gh in the image was seen to print a real one-time code)");
+  step(5, "Authenticate using GitHub CLI's browser flow", "BLOCKED", `needs a person; GitHub is stood in for by the acceptance fake (connected as ${setup.github.account?.login ?? "?"})`);
   const repos = (await api("/api/repositories")).body;
   const listed = repos.repositories?.some((r) => r.fullName === FIXTURE_REPOSITORY);
   step(6, "Select the fixture GitHub repository", listed ? "STAND-IN" : "FAIL", `listed through Orbit Web's own code from the stand-in: ${JSON.stringify(repos.repositories?.map((r) => r.fullName))}`);
@@ -268,7 +279,7 @@ function finish() {
   writeFileSync(join(OUT, "evidence.json"), `${JSON.stringify(evidence, null, 2)}\n`);
   const counts = steps.reduce((m, s) => ({ ...m, [s.status]: (m[s.status] ?? 0) + 1 }), {});
   const md = [
-    "# Orbit Web 0.7.0 -- real acceptance run",
+    `# Orbit Web ${VERSION} -- real acceptance run`,
     "",
     `Image ${IMAGE}; Claude Code ${evidence.versions?.claude ?? "?"}; Orbit ${evidence.versions?.orbit ?? "?"} (${evidence.versions?.orbitCommit ?? "?"}); budget $${BUDGET} per turn.`,
     "",

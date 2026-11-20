@@ -1,21 +1,24 @@
-// Settings: the two accounts, a person's preferences, and the system checks.
+// Settings: the Claude account Orbit Web is signed in with (and Sign out), GitHub and Azure, a person's preferences, and
+// the system checks.
 import { Card, CardHeader, Field, MessageBar, MessageBarBody, Select, Switch, Text, Title2, makeStyles, tokens } from "@fluentui/react-components";
-import { MODEL_CHOICES, MODEL_LABELS, type ModelChoice, type SetupStatus, type Settings, type ThemePreference } from "@orbit-web/contracts";
+import { MODEL_CHOICES, MODEL_LABELS, type ClaudeStatus, type ModelChoice, type SetupStatus, type Settings, type ThemePreference } from "@orbit-web/contracts";
 import { useState } from "react";
+import type { SignOut } from "../features/auth/useSignOut";
 import { AzureCard } from "../features/setup/AzureCard";
-import { ClaudeCard } from "../features/setup/ClaudeCard";
+import { ClaudeAccountCard } from "../features/setup/ClaudeAccountCard";
 import { GitHubCard } from "../features/setup/GitHubCard";
 import { SystemCard } from "../features/setup/SystemCard";
 import { errorText, send } from "../services/api";
 
 const useStyles = makeStyles({
-  page: { maxWidth: "880px", margin: "0 auto", padding: "24px", display: "flex", flexDirection: "column", gap: "16px", overflowY: "auto", height: "100%", boxSizing: "border-box" },
+  // The page scrolls; its cards keep their own height (a flex column of fixed height would squeeze them).
+  page: { maxWidth: "880px", margin: "0 auto", padding: "24px", display: "flex", flexDirection: "column", gap: "16px", overflowY: "auto", height: "100%", boxSizing: "border-box", "& > *": { flexShrink: 0 } },
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "16px" },
   prefs: { display: "flex", flexDirection: "column", gap: "12px" },
   muted: { color: tokens.colorNeutralForeground3 },
 });
 
-export function SettingsPage({ status, settings, reloadStatus, onSettings }: { status: SetupStatus | null; settings: Settings | null; reloadStatus: () => void; onSettings: (s: Settings) => void }) {
+export function SettingsPage({ status, claude, signOut, settings, reloadStatus, onSettings }: { status: SetupStatus | null; claude: ClaudeStatus; signOut: SignOut; settings: Settings | null; reloadStatus: () => void; onSettings: (s: Settings) => void }) {
   const s = useStyles();
   const [error, setError] = useState<string | null>(null);
   const save = async (change: Partial<Pick<Settings, "defaultModel" | "webTools" | "azureForClaude" | "theme">>) => {
@@ -30,7 +33,7 @@ export function SettingsPage({ status, settings, reloadStatus, onSettings }: { s
     <div className={s.page}>
       <Title2>Settings</Title2>
       <div className={s.grid}>
-        <ClaudeCard status={status?.claude ?? null} onChanged={reloadStatus} />
+        <ClaudeAccountCard status={claude} signOut={signOut} />
         <GitHubCard status={status?.github ?? null} onChanged={reloadStatus} />
         <AzureCard status={status?.azure ?? null} onChanged={reloadStatus} />
       </div>

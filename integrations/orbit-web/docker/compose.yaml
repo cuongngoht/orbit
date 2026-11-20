@@ -8,7 +8,7 @@ name: orbit-web
 
 services:
   orbit-web:
-    image: ghcr.io/cuongngoht/orbit-web:0.7.0
+    image: ghcr.io/cuongngoht/orbit-web:0.8.0
     build:
       context: ../../..
       dockerfile: integrations/orbit-web/docker/Dockerfile

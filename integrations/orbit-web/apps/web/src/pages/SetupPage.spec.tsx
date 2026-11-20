@@ -7,13 +7,15 @@ import { idleFlow, setupStatus } from "../testing/fixtures";
 import { renderUi } from "../testing/render";
 import { SetupPage } from "./SetupPage";
 
-describe("the first-run setup page", () => {
-  test("shows both accounts not connected and keeps the workspace closed", () => {
+describe("the setup page, after the Claude sign-in", () => {
+  test("says who is signed in to Claude, asks for GitHub, and keeps the workspace closed until it is connected", () => {
     fakeApi();
     renderUi(<SetupPage status={setupStatus()} reload={() => undefined} onContinue={() => undefined} />);
-    expect(screen.getByLabelText("Claude Account").textContent).toContain("Not connected");
+    expect(screen.getByText(/Signed in with Claude as/).textContent).toContain("octo@example.com");
+    expect(screen.queryByLabelText("Claude Account")).toBeNull();
     expect(screen.getByLabelText("GitHub Connection").textContent).toContain("Not connected");
     expect(screen.getByRole("button", { name: "Open the chat workspace" })).toBeDisabled();
+    expect(screen.getByText(/Connect GitHub to continue/)).toBeInTheDocument();
     expect(screen.getByLabelText("System Status").textContent).toContain("0.6.0");
   });
 
@@ -39,24 +41,10 @@ describe("the first-run setup page", () => {
     expect(await screen.findByText(/HTTP 415/)).toBeInTheDocument();
   });
 
-  test("Connect Claude shows the sign-in link and sends the pasted code", async () => {
-    const api = fakeApi()
-      .on("POST", "/api/claude/login", () => ({ ...idleFlow(), state: "starting" }))
-      .on("POST", "/api/claude/login/code", () => ({ ...idleFlow(), state: "verifying" }));
-    renderUi(<SetupPage status={setupStatus()} reload={() => undefined} />);
-    await userEvent.click(screen.getByRole("button", { name: "Connect Claude" }));
-    expect(api.calls.at(-1)?.body).toEqual({ mode: "claudeai" });
-    act(() => FakeEventSource.last("/api/claude/login/events").emit({ ...idleFlow(), state: "awaiting_user", url: "https://claude.com/cai/oauth/authorize?x=1", needsCode: true, updatedAt: "2026-11-19T00:01:00.000Z" }));
-    expect(await screen.findByRole("link", { name: "https://claude.com/cai/oauth/authorize?x=1" })).toBeInTheDocument();
-    await userEvent.type(screen.getByLabelText("2. Paste the code the page shows"), "abc#def");
-    await userEvent.click(screen.getByRole("button", { name: "Submit code" }));
-    expect(api.calls.at(-1)).toMatchObject({ method: "POST", path: "/api/claude/login/code", body: { code: "abc#def" } });
-  });
-
-  test("with both accounts connected the workspace opens, and GitHub shows who is connected", async () => {
+  test("with GitHub connected the workspace opens, and GitHub shows who is connected", async () => {
     fakeApi();
     const open = vi.fn();
-    renderUi(<SetupPage status={setupStatus({ state: "connected", method: "claude.ai", source: "cli" }, { state: "connected", account: { login: "octo", name: "Octo Cat" } })} reload={() => undefined} onContinue={open} />);
+    renderUi(<SetupPage status={setupStatus({}, { state: "connected", account: { login: "octo", name: "Octo Cat" } })} reload={() => undefined} onContinue={open} />);
     expect(screen.getByLabelText("GitHub Connection").textContent).toContain("@octo");
     await userEvent.click(screen.getByRole("button", { name: "Open the chat workspace" }));
     expect(open).toHaveBeenCalled();

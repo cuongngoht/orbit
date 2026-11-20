@@ -1,6 +1,6 @@
 {
   "name": "@orbit-web/web",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "description": "Orbit Web's React + Fluent UI v9 app, served by the API from one origin.",
   "type": "module",
@@ -14,7 +14,7 @@
   "dependencies": {
     "@fluentui/react-components": "9.75.2",
     "@fluentui/react-icons": "2.0.347",
-    "@orbit-web/contracts": "0.7.0",
+    "@orbit-web/contracts": "0.8.0",
     "highlight.js": "11.12.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",

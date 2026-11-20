@@ -1,11 +1,12 @@
-# Orbit Web 0.7.0
+# Orbit Web 0.8.0
 
 A self-hosted, browser-based Claude Code experience with the [Orbit](../../README.md) plugin, in one Docker image.
 
-Run the image, open http://localhost:3000, connect **your own** Claude account and GitHub account (and, if you work
-with Azure, your Azure account), pick a repository,
-a branch and a Claude model, and ask. Claude Code runs with Orbit in a workspace of that chat's own; the page streams
-what it writes and every tool it runs, shows the files it changed (read from git) and what Orbit says about the work.
+Run the image, open http://localhost:3000 and **sign in with your own Claude account** -- it is Orbit Web's sign-in,
+asked for before anything else opens -- then connect your GitHub account (and, if you work with Azure, your Azure
+account), pick a repository, a branch and a Claude model, and ask. Claude Code runs with Orbit, as the Claude account
+you signed in with, in a workspace of that chat's own; the page streams what it writes and every tool it runs, shows
+the files it changed (read from git) and what Orbit says about the work.
 
 Docker is the only thing to install. The image holds:
 
@@ -17,7 +18,7 @@ Docker is the only thing to install. The image holds:
 | git | 2.39 (Debian 12) | the base image's digest |
 | Node.js | 24 | the base image's digest (`node:24-bookworm`) |
 | Orbit plugin | the commit the image is built from (0.6.0 today) | `git archive` of that commit |
-| Orbit Web (NestJS API + React/Fluent UI v9 app) | 0.7.0 | `package-lock.json`, exact versions |
+| Orbit Web (NestJS API + React/Fluent UI v9 app) | 0.8.0 | `package-lock.json`, exact versions |
 | tini | 0.19.0 | release binary, SHA-256 per architecture |
 
 `GET /api/setup/status` (and the Settings page) reports every one of these versions, the Orbit commit included.
@@ -36,7 +37,7 @@ Or with `docker run` (the published image, once a release exists):
 docker run -d --name orbit-web --hostname orbit-web \
   -p 127.0.0.1:3000:3000 -v orbit-web-data:/data \
   --cap-drop ALL --security-opt no-new-privileges:true \
-  ghcr.io/cuongngoht/orbit-web:0.7.0
+  ghcr.io/cuongngoht/orbit-web:0.8.0
 ```
 
 | what | command |
@@ -45,7 +46,7 @@ docker run -d --name orbit-web --hostname orbit-web \
 | rebuild after a pull (keeps everything) | `docker compose up -d --build` |
 | logs | `docker compose logs -f` |
 | stop | `docker compose down` |
-| delete every chat, workspace and both sign-ins | `docker compose down -v` |
+| delete every chat, workspace and every sign-in | `docker compose down -v` |
 
 Build the image yourself: `node scripts/build-image.mjs [--tag=…] [--ref=<commit>] [--ca-file=<pem>]` (from this
 directory; it runs `docker build -f integrations/orbit-web/docker/Dockerfile .` at the repository root). `--ref` picks
@@ -61,7 +62,7 @@ CLI with `docker build --build-arg AZURE_CLI=0 …` (the Azure card then says it
 | `ORBIT_WEB_ALLOWED_HOSTS` | loopback only | more host names to answer to (comma-separated); **requires** `ORBIT_WEB_ACCESS_TOKEN` |
 | `ORBIT_WEB_ACCESS_TOKEN` | unset | token mode: every API call needs it (min. 16 characters) |
 | `ORBIT_WEB_COOKIE_SECURE` | unset | `1` marks the access cookie Secure (behind an HTTPS proxy) |
-| `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` | unset | Claude Code's own credential variables, passed to it by name if you start the container with one |
+| `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` | unset | **ignored**: Orbit Web signs in with a Claude account only and gives no credential variable to any program; the sign-in page names the ones it ignored |
 | `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE`, `HTTPS_PROXY`, `NO_PROXY` | unset | passed to the CLIs, for a proxy or a private CA (`REQUESTS_CA_BUNDLE` is the Azure CLI's) |
 
 The data directory, plugin directory and port are fixed by the image (`/data`, `/opt/orbit/plugin`, `3000`).
@@ -74,7 +75,7 @@ uid 10001) and private to it (mode 0700):
 | directory | holds | owner of the format |
 |---|---|---|
 | `/data/app` | Orbit Web's SQLite database: settings, sessions, messages, events, runs | Orbit Web |
-| `/data/claude` | Claude Code's sign-in and native session state (`CLAUDE_CONFIG_DIR`) | Claude Code |
+| `/data/claude` | the Claude CLI's sign-in -- Orbit Web's own sign-in -- and Claude Code's native session state (`CLAUDE_CONFIG_DIR`, set for the whole image) | Claude Code |
 | `/data/github` | GitHub CLI's sign-in (`GH_CONFIG_DIR`, stored in plain text: a container has no keyring) | GitHub CLI |
 | `/data/azure` | the Azure CLI's sign-in (`AZURE_CONFIG_DIR`; its token cache is a plain file for the same reason) | Azure CLI |
 | `/data/orbit` | Orbit's machine store (`ORBIT_STORE_DIR`) | Orbit |
@@ -86,21 +87,35 @@ A restart keeps all of it. A run that was going when the container stopped is sh
 is never started again by itself. Keep `hostname: orbit-web` (or `--hostname orbit-web`): Orbit's store names its
 runtime room after the host name. A bind mount instead of the named volume must be writable by uid 10001.
 
-## Connect your accounts
+## Sign in: your Claude account is Orbit Web's sign-in
 
-**Claude.** Settings → Claude Account → *Connect Claude* runs `claude auth login --claudeai` (or `--console` for an
-Anthropic Console account). The page shows the URL the CLI printed; sign in there, copy the code the page shows, and
-paste it into Orbit Web, which writes it to that one process's stdin -- nothing else. *Connected* is what
-`claude auth status` says afterwards. If it does not finish in the browser, sign in from a terminal instead:
+Orbit Web opens on **Sign in to Orbit Web** and on nothing else. *Sign in with Claude* runs
+`claude auth login --claudeai`; the page shows the URL the CLI printed; sign in there with your Claude account, copy
+the code the page shows, and paste it into Orbit Web, which writes it to that one process's stdin -- nothing else.
+Orbit Web is signed in when, and only when, `claude auth status` reports a Claude account (`authMethod: "claude.ai"`);
+the header then shows who (your address, organisation and plan), and Claude Code runs as that account in every chat.
+
+- **Always required, and enforced by the API, not only by the page.** Until the sign-in, every route but
+  `GET /api/health`, `POST /api/access` (token mode) and the sign-in itself answers 401 `claude_sign_in_required` and
+  runs nothing: no settings, no chats, no GitHub or Azure sign-in.
+- **Only a Claude account.** An API key, a token, or an Anthropic Console sign-in is not one: the page says so and stays
+  on the sign-in. `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` are never given to Claude
+  Code (it would use one before the account you signed in with); a container started with one is told it is ignored.
+- **Sign out** (the header, or Settings → Claude Account) runs `claude auth logout` and returns to the sign-in page at
+  once; the API is closed again. It is refused while Claude Code works in a chat or a workspace is being prepared:
+  stop it (or wait) first. Your chats are kept for the next sign-in.
+- **One account per Orbit Web**, kept until you sign out, for one person (see the security model).
+
+If the sign-in does not finish in the browser, sign in from a terminal instead, then reload the page (the image's
+`claude` keeps its sign-in in `/data/claude`, where Orbit Web reads it):
 
 ```bash
-docker exec -it orbit-web claude auth login
+docker exec -it orbit-web claude auth login --claudeai
 ```
 
-or start the container with Claude Code's own `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) or
-`ANTHROPIC_API_KEY`; the page then says the credential comes from the environment.
+## Connect your accounts
 
-**GitHub.** Settings → GitHub Connection → *Connect GitHub* runs
+**GitHub.** Once signed in, the setup page (or Settings) → GitHub Connection → *Connect GitHub* runs
 `gh auth login --hostname github.com --git-protocol https --web --skip-ssh-key --insecure-storage`. The page shows the
 URL (https://github.com/login/device) and the one-time code **GitHub CLI** printed; enter the code there and authorize.
 *Connected* needs both `gh auth status` and `gh api user` to answer. There is no GitHub App, no OAuth application of
@@ -121,6 +136,8 @@ chat; with it off, `az` is refused to it and its file tools are refused `/data/a
 
 ## Use it
 
+0. **Sign in** with your Claude account (above); the setup page then asks for GitHub, and the chat workspace opens once
+   it is connected.
 1. **New chat**: search your repositories (owned, collaborator, organisation member: every page of the API plus
    `gh repo list`; *Refresh* reads them again), pick a branch (default first) and a model (Sonnet, Opus or Haiku -- the
    CLI's own aliases; a model your account cannot use fails with the CLI's own error), and write what to do.
@@ -168,14 +185,17 @@ browser ── React + Fluent UI v9 ──HTTP/SSE──▶ NestJS API (one orig
   sequence number and sent with it as the SSE id, so a reconnect gets exactly what it missed; text deltas are
   transient and carry their offset, so they never double. The outcome of a run is decided from its exit status and the
   CLI's own result line.
-- **API**: `GET /api/health`, `GET /api/setup/status`; `GET /api/claude/status`, `POST /api/claude/login`,
+- **API**: `GET /api/health`, `GET /api/setup/status`; `GET /api/claude/status` (the sign-in: state, method, and the
+  account's email, organisation and plan), `POST /api/claude/login` (no body: always `--claudeai`),
   `POST /api/claude/login/code`, `POST /api/claude/login/cancel`, `GET /api/claude/login/events`,
-  `POST /api/claude/logout`; the same five for `/api/github` and `/api/azure` (no code route; Azure's login takes an
-  optional `tenant`); `GET /api/repositories[?refresh=1]`,
+  `POST /api/claude/logout` (409 `run_active` / `workspace_preparing` while Claude Code works); the same five for
+  `/api/github` and `/api/azure` (no code route; Azure's login takes an optional `tenant`); `GET /api/repositories[?refresh=1]`,
   `GET /api/repositories/:owner/:repo/branches`; `GET|POST /api/sessions`, `GET|PATCH|DELETE /api/sessions/:id`,
   `POST /api/sessions/:id/messages`, `GET /api/sessions/:id/events` (SSE), `POST /api/sessions/:id/stop`,
   `GET /api/sessions/:id/changes`, `GET /api/sessions/:id/changes/file?path=`, `GET /api/sessions/:id/verification`;
-  `GET|PATCH /api/settings`; `POST /api/access` (token mode). Errors are `{ "error": { "code", "message" } }`.
+  `GET|PATCH /api/settings`; `POST /api/access` (token mode). Errors are `{ "error": { "code", "message" } }`. Until
+  the Claude sign-in, every route but `GET /api/health`, `POST /api/access` and the five `/api/claude/status|login…`
+  routes answers 401 `claude_sign_in_required` (a global guard: a route is closed unless it is marked open).
 
 ## Security model
 
@@ -185,6 +205,11 @@ For one person, on their own machine, by default:
   127.0.0.1, ::1), which also defeats DNS rebinding. Answering another host name requires `ORBIT_WEB_ACCESS_TOKEN`
   (Orbit Web refuses to start otherwise); then every API call needs the token, traded once for an HttpOnly,
   SameSite=Strict cookie. Put it behind an authenticated HTTPS reverse proxy before exposing it anywhere else.
+- **The Claude sign-in gates the API.** Until the Claude CLI is signed in to a Claude account, a global guard answers
+  401 to every route but the health check, the access token and the sign-in, before any program runs. It is the
+  sign-in of this Orbit Web, not of a browser: whoever reaches the API (loopback, or the access token in token mode)
+  works as the one Claude account signed in here. So it adds to the loopback rule and the access token, and replaces
+  neither.
 - **Changes need proof of origin**: every POST/PATCH/DELETE needs the `X-Orbit-Web` header (a cross-site page cannot
   send it without a CORS preflight, which is never answered), a matching Origin when the browser sends one, and a JSON
   body; bodies are limited to 256 KB.
@@ -193,8 +218,8 @@ For one person, on their own machine, by default:
   resolve inside `/data/workspaces`; a diff is served only for a path git listed as changed.
 - **Credentials stay with the CLIs.** Orbit Web never reads, stores or sends a token: it never runs `gh auth token`
   or `az account get-access-token`, never puts a credential in a remote URL or a git config, never passes
-  `GH_*`/`GITHUB_*` to Claude Code (nor the Azure profile, unless you turn that on), and passes Claude Code's own
-  credential variables by name. Everything a process printed is masked by token shape before it is
+  `GH_*`/`GITHUB_*` to Claude Code (nor the Azure profile, unless you turn that on), and gives no program Claude
+  Code's own credential variables (`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`). Everything a process printed is masked by token shape before it is
   stored, logged or shown. A strict Content-Security-Policy, Markdown without raw HTML, and highlighting that escapes.
 - **The image**: a non-root user, `cap_drop: ALL`, `no-new-privileges`, no Docker socket, no credential in any layer.
 
@@ -214,7 +239,10 @@ work for a later version.
 |---|---|
 | The page does not load | `docker compose ps` (healthy?), `docker compose logs`; `curl -s localhost:3000/api/health` says which part is not usable |
 | `host_not_allowed` (HTTP 421) | open it as http://localhost:3000 or http://127.0.0.1:3000, or set `ORBIT_WEB_ALLOWED_HOSTS` with `ORBIT_WEB_ACCESS_TOKEN` |
-| Claude sign-in never finishes | `docker exec -it orbit-web claude auth login`, then refresh the page |
+| Claude sign-in never finishes | `docker exec -it orbit-web claude auth login --claudeai`, then reload the page |
+| The page asks to sign in although the container was started with `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` | by design: Orbit Web signs in with a Claude account only and ignores those variables; sign in on the page |
+| "… which is not a Claude account" | the Claude CLI was signed in some other way (an Anthropic Console account, a key): *Sign in with Claude* replaces it with your Claude account |
+| *Sign out* is refused | a chat is running or its workspace is being prepared: stop it (or wait), then sign out |
 | GitHub: `x509: certificate signed by unknown authority` | you are behind a TLS-inspecting proxy: mount its CA and set `SSL_CERT_FILE` (and `NODE_EXTRA_CA_CERTS`) to it |
 | GitHub sign-in expired | Connect GitHub again; chats and workspaces stay |
 | Azure: `Please run 'az login'` in a chat | the Azure card is not connected, or "Let Claude Code use this Azure sign-in" is off |
@@ -239,9 +267,9 @@ npm run dev -w @orbit-web/web  # the app on :5173, /api proxied to :3000
 | kind | where | what it proves |
 |---|---|---|
 | unit | `packages/contracts/src/*.spec.ts`, `apps/api/src/**/*.spec.ts` | parsers, mapper, redaction, argv, state machines, path rules |
-| integration, mocked processes | `apps/api/tests/integration/*.spec.ts` | the real API over HTTP/SSE with claude and gh scripted; git and Orbit's CLIs run for real |
-| web | `apps/web/src/**/*.spec.tsx` | setup, login progress, pickers, chat streaming, tool activity, stop, history, diff, Orbit panel |
-| Docker | `tests/docker/smoke.mjs` | the image builds, starts, serves, holds the four programs and a loadable plugin, persists across restarts |
+| integration, mocked processes | `apps/api/tests/integration/*.spec.ts` | the real API over HTTP/SSE with claude and gh scripted; git and Orbit's CLIs run for real; the Claude sign-in gate over every route the application declares |
+| web | `apps/web/src/**/*.spec.tsx` | the sign-in page and the account menu, setup, login progress, pickers, chat streaming, tool activity, stop, history, diff, Orbit panel |
+| Docker | `tests/docker/smoke.mjs` | the image builds, starts, serves, holds the four programs and a loadable plugin, opens on the Claude sign-in with every other route closed, persists across restarts (with a stand-in Claude sign-in) |
 | real | `tests/acceptance/` | one capped real run with a real Claude model; see its README |
 
 Specs are named `*.spec.ts(x)` and live outside any `test/` directory, so the plugin's own `node --test` never collects

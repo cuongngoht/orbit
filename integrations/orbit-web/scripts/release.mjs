@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // What the release workflow asks before and after it publishes, runnable anywhere:
 //
-//   node scripts/release.mjs verify --version=0.7.0
+//   node scripts/release.mjs verify --version=0.8.0
 //     the version asked is integrations/orbit-web/package.json's (and every workspace's), and CHANGELOG.md has a
 //     "## Orbit Web <version>" section; exits 1 naming what does not hold.
-//   node scripts/release.mjs notes --version=0.7.0 --image=ghcr.io/<owner>/orbit-web --digest=sha256:… --commit=<sha> [--latest=true]
+//   node scripts/release.mjs notes --version=0.8.0 --image=ghcr.io/<owner>/orbit-web --digest=sha256:… --commit=<sha> [--latest=true]
 //     the release notes: that changelog section, the image by digest, and the plugin it bundles.
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";

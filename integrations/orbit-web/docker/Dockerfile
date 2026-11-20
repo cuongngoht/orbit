@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1.7
 #
-# Orbit Web 0.7.0: one image with the official Claude Code CLI, GitHub CLI, the Azure CLI, git, the Orbit plugin (at a pinned commit
+# Orbit Web 0.8.0: one image with the official Claude Code CLI, GitHub CLI, the Azure CLI, git, the Orbit plugin (at a pinned commit
 # of this repository), and Orbit Web's NestJS API serving its React app. Built from the REPOSITORY ROOT:
 #
-#   docker build -f integrations/orbit-web/docker/Dockerfile -t orbit-web:0.7.0 .
+#   docker build -f integrations/orbit-web/docker/Dockerfile -t orbit-web:0.8.0 .
 #
 # Behind a TLS-inspecting proxy, hand its CA to the build steps that download (never kept in a layer):
 #
-#   docker build --secret id=ca,src=/path/to/ca.pem -f integrations/orbit-web/docker/Dockerfile -t orbit-web:0.7.0 .
+#   docker build --secret id=ca,src=/path/to/ca.pem -f integrations/orbit-web/docker/Dockerfile -t orbit-web:0.8.0 .
 #
 # Every input is pinned: the base image by digest, npm packages by package-lock.json and exact versions, the GitHub
 # CLI, tini and CPython release files by SHA-256 per architecture, the Azure CLI by the plugin's own hash-checked lock,
@@ -115,7 +115,7 @@ RUN --mount=type=secret,id=ca,required=false \
 
 # --- the image -------------------------------------------------------------------------------------------------------
 FROM ${NODE_IMAGE}
-ARG WEB_VERSION=0.7.0
+ARG WEB_VERSION=0.8.0
 LABEL org.opencontainers.image.title="Orbit Web" \
       org.opencontainers.image.description="Self-hosted, browser-based Claude Code with the Orbit plugin." \
       org.opencontainers.image.version="${WEB_VERSION}" \
@@ -140,9 +140,13 @@ COPY --from=build /src/apps/api/dist /opt/orbit-web/apps/api/dist
 COPY --from=build /src/apps/web/dist /opt/orbit-web/apps/web/dist
 COPY integrations/orbit-web/docker/healthcheck.mjs integrations/orbit-web/docker/build-info.mjs /opt/orbit-web/docker/
 
+# CLAUDE_CONFIG_DIR: where the Claude CLI keeps its sign-in -- Orbit Web's own sign-in -- for every `claude` in the
+# container, so a terminal sign-in (`docker exec -it orbit-web claude auth login --claudeai`) lands where Orbit Web
+# reads it. Orbit Web also names it for each Claude process it starts.
 ENV PATH=/opt/claude/bin:/opt/gh/bin:/opt/azure-cli/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     NODE_ENV=production \
     HOME=/data/home \
+    CLAUDE_CONFIG_DIR=/data/claude \
     NO_COLOR=1 \
     DISABLE_AUTOUPDATER=1 \
     ORBIT_WEB_BIND=0.0.0.0 \

@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 // THE DOCKER SMOKE TEST: the real image, started the way a person starts it, checked from outside. No credential is
 // used: it proves the image builds and starts, serves the web app and the API, holds the four programs and a loadable
-// Orbit plugin, runs as a non-root user, says "not connected" for both accounts when nobody signed in, and keeps its
-// state across a restart and across re-creating the container from the same volume.
+// Orbit plugin, runs as a non-root user, opens on the Claude sign-in when nobody signed in -- every other route refused
+// -- and keeps its state across a restart and across re-creating the container from the same volume. That last part
+// needs the API open, so a Claude account sign-in is stood in for there (claude-signed-in.mjs; a real one needs a
+// person), and those checks say so.
 //
-//   node tests/docker/smoke.mjs [--image=orbit-web:0.7.0] [--build] [--ca-file=<pem>] [--keep]
+//   node tests/docker/smoke.mjs [--image=orbit-web:0.8.0] [--build] [--ca-file=<pem>] [--keep]
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
@@ -75,9 +77,13 @@ async function healthy(port, seconds = 90) {
 
 const exec = (...args) => docker(["exec", name, ...args]);
 
-function start(port) {
-  return docker(["run", "-d", "--name", name, "--hostname", "orbit-web", "-p", `127.0.0.1:${port}:3000`, "-v", `${volume}:/data`, "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", image]);
+// `signedIn`: the Claude CLI's sign-in is stood in for (mounted read-only and named by ORBIT_WEB_CLAUDE_BIN).
+function start(port, { signedIn = false } = {}) {
+  const standIn = signedIn ? ["-v", `${join(WEB, "tests", "docker", "claude-signed-in.mjs")}:/smoke/claude-signed-in.mjs:ro`, "-e", "ORBIT_WEB_CLAUDE_BIN=/smoke/claude-signed-in.mjs"] : [];
+  return docker(["run", "-d", "--name", name, "--hostname", "orbit-web", "-p", `127.0.0.1:${port}:3000`, "-v", `${volume}:/data`, ...standIn, "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", image]);
 }
+
+const SIGN_IN_REQUIRED = "claude_sign_in_required";
 
 async function main() {
   if (flag("build")) {
@@ -113,19 +119,37 @@ async function main() {
   check("8. the Orbit plugin is present and loadable (claude plugin validate)", validate.status === 0, validate.stdout.trim().split("\n").at(-1));
   const shipped = exec("sh", "-c", "test -f /opt/orbit/plugin/.claude-plugin/plugin.json && test ! -e /opt/orbit/plugin/evaluator && test ! -e /opt/orbit/plugin/integrations && echo ok");
   check("   ...as git archive made it (no evaluator/, no integrations/)", shipped.stdout.trim() === "ok");
-  const setup = await http(port, "/api/setup/status");
-  check("   ...and the API reads it and the build info", setup.body.health?.orbitPlugin?.ok === true && /^[0-9a-f]{40}$/.test(setup.body.versions?.orbitCommit ?? ""), JSON.stringify(setup.body.versions));
+  check("   ...and the API reads it", health.body.orbitPlugin?.ok === true, JSON.stringify(health.body.orbitPlugin));
 
   const id = exec("id", "-u");
   check("   the container runs as a non-root user", id.status === 0 && id.stdout.trim() !== "0", `uid ${id.stdout.trim()}`);
   const perms = exec("stat", "-c", "%a %U", "/data/claude", "/data/github", "/data/azure", "/data/app");
   check("   the persistent directories are private to that user", perms.stdout.trim().split("\n").every((l) => l.startsWith("700 ")), perms.stdout.trim().replace(/\n/g, ", "));
 
-  check("11. missing authentication gives the setup state", setup.body.ready === false && setup.body.claude?.state === "not_connected" && setup.body.github?.state === "not_connected" && setup.body.azure?.state === "not_connected", `claude ${setup.body.claude?.state}, github ${setup.body.github?.state}, azure ${setup.body.azure?.state}`);
+  const terminal = exec("claude", "auth", "status", "--json");
+  const where = (() => {
+    try {
+      return JSON.parse(terminal.stdout).configDirectory ?? null;
+    } catch {
+      return null;
+    }
+  })();
+  check("   a terminal sign-in (docker exec ... claude auth login) lands where Orbit Web reads it", where === "/data/claude", `claude in the container keeps its sign-in in ${where}`);
+  const claude = await http(port, "/api/claude/status");
+  check("11. missing authentication opens on the Claude sign-in", claude.status === 200 && claude.body.state === "not_connected" && claude.body.account === null, `claude ${claude.body.state}`);
+  const gated = await Promise.all(["/api/setup/status", "/api/settings", "/api/github/status", "/api/sessions"].map(async (path) => [path, await http(port, path)]));
+  check("   ...and every other route waits for it", gated.every(([, r]) => r.status === 401 && r.body.error?.code === SIGN_IN_REQUIRED), gated.map(([path, r]) => `${path} ${r.status}`).join(", "));
   check("   a foreign Host header is refused", (await rawStatus(port, "/api/health", "attacker.example")) === 421);
   const naked = await http(port, "/api/settings", { method: "PATCH", headers: { "content-type": "application/json" }, body: '{"theme":"dark"}' });
   check("   a change without the Orbit Web header is refused", naked.status === 403);
 
+  // From here the API must be open: the same volume, a new container whose Claude sign-in is stood in for.
+  docker(["rm", "-f", name]);
+  start(port, { signedIn: true });
+  await healthy(port);
+  const setup = await http(port, "/api/setup/status");
+  check("   a Claude account sign-in (STAND-IN: a real one needs a person) opens the API", setup.status === 200 && setup.body.claude?.account?.email === "smoke@example.com", `HTTP ${setup.status}`);
+  check("   ...which reads the build info", /^[0-9a-f]{40}$/.test(setup.body.versions?.orbitCommit ?? ""), JSON.stringify(setup.body.versions));
   const change = await http(port, "/api/settings", { method: "PATCH", headers: { "content-type": "application/json", "x-orbit-web": "1" }, body: JSON.stringify({ theme: "dark", defaultModel: "opus" }) });
   check("9. state is written to the volume", change.status === 200 && change.body.defaultModel === "opus");
   docker(["restart", name]);
@@ -133,7 +157,7 @@ async function main() {
   const afterRestart = await http(port, "/api/settings");
   check("10. a restart keeps the state", afterRestart.body.defaultModel === "opus" && afterRestart.body.theme === "dark", JSON.stringify(afterRestart.body));
   docker(["rm", "-f", name]);
-  start(port);
+  start(port, { signedIn: true });
   await healthy(port);
   const afterRecreate = await http(port, "/api/settings");
   check("   a new container on the same volume keeps it too", afterRecreate.body.defaultModel === "opus", JSON.stringify(afterRecreate.body));

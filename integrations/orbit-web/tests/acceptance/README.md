@@ -14,12 +14,17 @@ own Claude and GitHub accounts. Only these use a model; every other test of Orbi
 ## Automated run
 
 ```bash
-node scripts/build-image.mjs --tag=orbit-web:0.7.0 [--ca-file=<proxy CA>]
-CLAUDE_CODE_OAUTH_TOKEN=<your token> node tests/acceptance/real-run.mjs --image=orbit-web:0.7.0 --budget=2 [--ca-file=<pem>] [--out=<dir>] [--keep]
+node scripts/build-image.mjs --tag=orbit-web:0.8.0 [--ca-file=<proxy CA>]
+# once, by a person: sign a volume in to a Claude account (open the URL it prints, paste the code back)
+docker run --rm -it -v orbit-web-acceptance-claude:/data/claude --entrypoint claude orbit-web:0.8.0 auth login --claudeai
+node tests/acceptance/real-run.mjs --claude-volume=orbit-web-acceptance-claude --budget=2 [--image=orbit-web:0.8.0] [--ca-file=<pem>] [--out=<dir>] [--keep]
 ```
 
-The credential is handed to the container by name only (`docker run -e CLAUDE_CODE_OAUTH_TOKEN`); it is never on a
-command line or in a file. Each Claude Code turn is capped with `--max-budget-usd` (`--budget`, default $2). GitHub is
+The Claude account is Orbit Web's own sign-in (ADR 0061), and no credential variable signs anything in: Orbit Web
+gives none to Claude Code. So the run mounts the volume a person signed in once at `/data/claude`, where the image's
+Claude CLI keeps its sign-in, and never removes it; without it the run stops BLOCKED and prints the command above. The
+evidence names the sign-in's method and plan, never the account's address. Each Claude Code turn is capped with
+`--max-budget-usd` (`--budget`, default $2). GitHub is
 stood in for by `fake-gh.mjs`, mounted read-only and named by `ORBIT_WEB_GH_BIN`: it answers the few gh commands Orbit
 Web runs about the fixture repository, so the run exercises the real Orbit Web, the real Claude Code with the real
 Orbit plugin, real git and real Orbit -- without a GitHub account. It is not in the image.
@@ -29,17 +34,18 @@ GitHub's device flow) or **STAND-IN** (GitHub's repository listing served by the
 `REPORT.md`, `evidence.json` and both turns' event streams to `--out`. The last recorded run is in
 [results/0.7.0](results/0.7.0/REPORT.md).
 
-## Manual run (20 steps)
+## Manual run (21 steps)
 
 Needs: Docker, a Claude account, a GitHub account with the fixture repository. Expected time: 10 minutes.
 
 1. **Start Orbit Web**: `cd integrations/orbit-web/docker && docker compose up -d --build`; `docker compose ps` says
    healthy.
-2. **Open the application**: http://localhost:3000 shows *Set up Orbit Web*; System Status shows the Claude CLI,
-   GitHub CLI, git and the Orbit plugin with versions, and storage ok; both accounts say *Not connected*.
-3. **Sign in to Claude Code**: *Connect Claude* → open the link shown → sign in → paste the code the page gives you →
-   *Submit code*. The card says *Connected* (from `claude auth status`). Fallback: `docker exec -it orbit-web claude
-   auth login`.
+2. **Open the application**: http://localhost:3000 shows *Sign in to Orbit Web* and nothing else: no Settings, no
+   chats; `curl -s localhost:3000/api/setup/status` answers 401 `claude_sign_in_required`.
+3. **Sign in with your Claude account**: *Sign in with Claude* → open the link shown → sign in → paste the code the
+   page gives you → *Submit code*. The page opens *Set up Orbit Web*, says *Signed in with Claude as* your address, and
+   the header shows it (from `claude auth status`). Fallback: `docker exec -it orbit-web claude auth login --claudeai`,
+   then reload. System Status shows the Claude CLI, GitHub CLI, git and the Orbit plugin with versions, and storage ok.
 4. **Click Connect GitHub**: the card shows https://github.com/login/device and a one-time code, and *Waiting for
    authorization…*.
 5. **Authenticate**: open the URL, enter the code, authorize GitHub CLI. The card says *Connected as @you*.
@@ -65,15 +71,17 @@ Needs: Docker, a Claude account, a GitHub account with the fixture repository. E
     changes are all there.
 20. **Continue**: send `In one sentence, what did you change and why?`; the chat shows *Continuing Claude Code …* and
     answers about the earlier fix (the same Claude conversation, resumed).
+21. **Sign out** from the header (your address → *Sign out*): the page returns to *Sign in to Orbit Web* at once, and
+    the API answers 401 again. While a chat is running, *Sign out* is refused and says to stop it first.
 
-Optional, with an Azure account:
+Optional, with an Azure account (signed in to Claude again):
 
-21. **Connect Azure**: Settings → Azure Account → *Connect Azure* (a tenant if your organisation needs one); the card
+22. **Connect Azure**: Settings → Azure Account → *Connect Azure* (a tenant if your organisation needs one); the card
     shows https://login.microsoft.com/device (or microsoft.com/devicelogin) and a code; sign in; the card says
     *Connected* with your user and subscription (from `az account show`).
-22. **Off by default for Claude**: in a chat, ask Claude to run `az account show`; it is refused (`Permission denied:
+23. **Off by default for Claude**: in a chat, ask Claude to run `az account show`; it is refused (`Permission denied:
     Bash`). Turn on *Let Claude Code use this Azure sign-in*, ask again: it answers with your account.
-23. **Sign out** in the card: `az account show` in the container says to run `az login`.
+24. **Sign out** in the Azure card: `az account show` in the container says to run `az login`.
 
 Report each step PASS or FAIL with what you saw. Then *Disconnect* GitHub, sign out of Azure and of Claude if you are
 done.

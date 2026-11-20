@@ -1,5 +1,68 @@
 # Changelog
 
+## Orbit Web 0.8.0
+
+Orbit Web becomes a Claude Code workspace behind one sign-in: your Claude account (ADR 0061, ADR 0062). The plugin it
+bundles stays 0.6.0 and its archive is unchanged; nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
+
+- **Your Claude account is Orbit Web's sign-in, and only a Claude account** (ADR 0061). The page opens on *Sign in to
+  Orbit Web* (*Continue with Claude*: `claude auth login --claudeai`) and on nothing else; a global API guard answers
+  401 `claude_sign_in_required` to every route but the health check, the access token and the sign-in, before any
+  program runs. An API key, a token or a Console sign-in is not one; `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY` and
+  `ANTHROPIC_AUTH_TOKEN` are given to no program, and a container started with one is told it is ignored. Sign out is
+  refused while Claude Code works. The image sets `CLAUDE_CONFIG_DIR=/data/claude`, so a terminal sign-in lands where
+  Orbit Web reads it.
+- **The workspace, laid out like Claude Code.** No setup gate: once signed in, the chat is open. A sidebar (New
+  session, Search, Customize, your chats with their source and a dot while they work or when they failed, rename and
+  delete, the account at the bottom; it folds and stays folded) and one composer, always at the bottom, whose toolbar
+  holds what the chat starts from and how it runs. Settings is a dialog over any view, with a search: Account,
+  Appearance, Code, **Connectors** (a table of GitHub and Azure DevOps in the style of Claude's connectors -- the CLIs'
+  device sign-ins work as before), Skills, Plugins, System. Orbit's own brand colours, light and dark.
+- **A chat with or without a repository.** With none, it runs in an empty repository of its own (`git init`, an empty
+  start commit, its own branch, the Claude account's address as the commit identity), with Changes and the Orbit panel
+  as for any chat.
+- **Two sources: GitHub and Azure DevOps.** The repository picker has a tab per source, then the repository, then the
+  branch (default first); a source not connected offers *Connect*. Azure DevOps repositories are read with
+  `az rest --resource 499b84ac-…` (your profile, up to 50 organisations, their repositories, a repository's branches;
+  kept five minutes) and cloned with `git clone` and the image's one-shot credential helper
+  (`docker/git-credential-azure-cli.mjs`): it answers git for `dev.azure.com` and `*.visualstudio.com` only, by asking
+  the Azure CLI for a token that goes from az to git for that clone, never through Orbit Web and never written; nothing
+  lands in the remote URL or `.git/config`, and Claude Code has no helper.
+- **Every model and effort, and two modes.** Opus 5.5, Fable 5.2, Sonnet 5.5, Haiku 5.5 (`--model` aliases) and Low,
+  Medium (recommended), High, Extra, Max (`--effort`), per chat, from its next message; defaults in Settings → Code.
+  **Autonomous** is Claude Code's auto mode (`--permission-mode auto`), **Plan** its plan mode (`--permission-mode
+  plan`); `dontAsk` is gone and there is still no bypass. The deny rules (`git credential`, a global git config, `git
+  push` and `gh` unless allowed, `az` unless allowed, the sign-in directories) bind in both. A plan arrives as a **Plan card** with *Run it
+  in Autonomous*. In Autonomous, Claude Code creates, edits, renames and deletes files in its workspace -- checked with
+  the real CLI and Orbit Web's exact arguments (no permission denial for `Write`, `Edit`, `rm`, `rm -r`, `mv`, `mkdir`,
+  an unnamed clean-up, Claude Code's protected paths or a local commit; the sign-in directory refused), and in the image
+  as its user (the workspaces writable, the programs and the plugin not).
+- **Commit, and push when you allow it.** Claude Code is told, in one fixed sentence appended to its system prompt, what
+  the workspace allows: it commits on its own instead of chaining `git commit … && git push …` (a refused push used to
+  take the commit with it). A new switch beside Azure's, *Let Claude Code push and open pull requests with this GitHub
+  sign-in* (Settings → Connectors → GitHub, off by default), gives its `gh` GitHub CLI's sign-in and its `git` a
+  helper for github.com alone; `gh auth`, `gh repo delete`, `gh secret`, the account's keys and `git credential` stay
+  refused.
+- **A repository's own skills and plugins, read on its first fetch.** A last workspace step reads, from regular files
+  only and bounded, the repository's `.claude/skills`, `.claude/commands`, `.claude/agents`, `CLAUDE.md`, `.mcp.json`
+  (listed, never started), the plugins `.claude/settings.json` enables and its marketplaces, and
+  `.claude-plugin/`. **Load project skills** (on by default) loads the skills, commands and agents for that chat with
+  `--plugin-dir`, as instructions only (frontmatter rebuilt from four keys, no hooks, no allowed tools, pre-run commands
+  made text). **Run project plugins** (off by default: a plugin is code that would run beside the sign-ins) loads a
+  repository that is a plugin and installs the declared ones (`claude plugin marketplace add` / `install --scope user`
+  / `disable --scope user`), enabling them for that chat's runs only. The chat says what was loaded; Settings → Skills
+  and Plugins list it all, with each plugin's state.
+- **Event-driven streams.** One catalog (`packages/contracts/src/events/catalog.ts`) names every event, its stream and
+  whether it is stored; producers publish to one event bus (stored first, then delivered; a failing subscriber is
+  isolated), and projections keep the read models current. Two SSE streams through one gateway: a chat's
+  (`/api/sessions/:id/events`, replayed after `Last-Event-ID`) and the app stream (`/api/events`: the sidebar's chats,
+  the connectors' sign-ins, the customizations -- notifications that replace polling). Adding an event is a catalog row
+  and its payload type.
+- **Checked.** 228 deterministic tests (contracts 12, API unit 87, API integration with mocked processes 55, web 74),
+  `scripts/ci.mjs` green; the Docker smoke test also checks the Azure Repos helper and the runtime user's file rights.
+  The real-model acceptance run is updated for the new API; a 0.8.0 run needs a person's Claude sign-in volume and is
+  not recorded yet.
+
 ## Orbit Web 0.7.0
 
 Orbit Web is new: a self-hosted, browser-based Claude Code experience with the Orbit plugin, shipped as one Docker

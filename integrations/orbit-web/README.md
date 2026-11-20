@@ -3,10 +3,13 @@
 A self-hosted, browser-based Claude Code experience with the [Orbit](../../README.md) plugin, in one Docker image.
 
 Run the image, open http://localhost:3000 and **sign in with your own Claude account** -- it is Orbit Web's sign-in,
-asked for before anything else opens -- then connect your GitHub account (and, if you work with Azure, your Azure
-account), pick a repository, a branch and a Claude model, and ask. Claude Code runs with Orbit, as the Claude account
-you signed in with, in a workspace of that chat's own; the page streams what it writes and every tool it runs, shows
-the files it changed (read from git) and what Orbit says about the work.
+asked for before anything else opens. The workspace then opens at once, laid out like Claude Code: a sidebar (New
+session, Search, Customize, your chats, your account) and the composer always at the bottom. Start a chat from a
+repository on **GitHub** or **Azure DevOps** -- or from none, in an empty workspace of its own -- pick the model
+(Opus 5.5, Fable 5.2, Sonnet 5.5, Haiku 5.5), the effort (Low to Max) and the mode (**Autonomous** or **Plan**), and
+ask. Claude Code runs with Orbit, as the Claude account you signed in with, in that chat's own workspace, with the
+repository's own skills, commands and agents; the page streams what it writes and every tool it runs, shows the files
+it changed (read from git) and what Orbit says about the work.
 
 Docker is the only thing to install. The image holds:
 
@@ -21,7 +24,7 @@ Docker is the only thing to install. The image holds:
 | Orbit Web (NestJS API + React/Fluent UI v9 app) | 0.8.0 | `package-lock.json`, exact versions |
 | tini | 0.19.0 | release binary, SHA-256 per architecture |
 
-`GET /api/setup/status` (and the Settings page) reports every one of these versions, the Orbit commit included.
+`GET /api/setup/status` (and Settings → System) reports every one of these versions, the Orbit commit included.
 
 ## Run it
 
@@ -52,7 +55,7 @@ Build the image yourself: `node scripts/build-image.mjs [--tag=…] [--ref=<comm
 directory; it runs `docker build -f integrations/orbit-web/docker/Dockerfile .` at the repository root). `--ref` picks
 the Orbit commit to bundle; `--ca-file` hands a TLS-inspecting proxy's CA to the download steps as a BuildKit secret
 (never kept in a layer). The image is about 3.5 GB unpacked, a third of it the Azure CLI; build it without the Azure
-CLI with `docker build --build-arg AZURE_CLI=0 …` (the Azure card then says it is not installed).
+CLI with `docker build --build-arg AZURE_CLI=0 …` (Azure DevOps then says it is not installed, and the rest works).
 
 ### Settings (environment variables)
 
@@ -65,7 +68,9 @@ CLI with `docker build --build-arg AZURE_CLI=0 …` (the Azure card then says it
 | `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` | unset | **ignored**: Orbit Web signs in with a Claude account only and gives no credential variable to any program; the sign-in page names the ones it ignored |
 | `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE`, `HTTPS_PROXY`, `NO_PROXY` | unset | passed to the CLIs, for a proxy or a private CA (`REQUESTS_CA_BUNDLE` is the Azure CLI's) |
 
-The data directory, plugin directory and port are fixed by the image (`/data`, `/opt/orbit/plugin`, `3000`).
+The data directory, plugin directory and port are fixed by the image (`/data`, `/opt/orbit/plugin`, `3000`). What a
+person chooses in the page -- theme, a new chat's model, effort and mode, whether a repository's skills load and its
+plugins run, the web tools, whether Claude Code may use the Azure sign-in -- is kept in Settings (`/data/app`).
 
 ## Persistent storage
 
@@ -74,12 +79,13 @@ uid 10001) and private to it (mode 0700):
 
 | directory | holds | owner of the format |
 |---|---|---|
-| `/data/app` | Orbit Web's SQLite database: settings, sessions, messages, events, runs | Orbit Web |
-| `/data/claude` | the Claude CLI's sign-in -- Orbit Web's own sign-in -- and Claude Code's native session state (`CLAUDE_CONFIG_DIR`, set for the whole image) | Claude Code |
+| `/data/app` | Orbit Web's SQLite database: settings, sessions, messages, events, runs, what each repository brought | Orbit Web |
+| `/data/claude` | the Claude CLI's sign-in -- Orbit Web's own sign-in -- Claude Code's native session state, and the plugins a project declared once installed (`CLAUDE_CONFIG_DIR`, set for the whole image) | Claude Code |
 | `/data/github` | GitHub CLI's sign-in (`GH_CONFIG_DIR`, stored in plain text: a container has no keyring) | GitHub CLI |
 | `/data/azure` | the Azure CLI's sign-in (`AZURE_CONFIG_DIR`; its token cache is a plain file for the same reason) | Azure CLI |
 | `/data/orbit` | Orbit's machine store (`ORBIT_STORE_DIR`) | Orbit |
-| `/data/workspaces/<session>/repository` | each chat's own clone | git |
+| `/data/workspaces/<session>/repository` | each chat's own clone -- or, for a chat without a repository, its own empty repository | git |
+| `/data/sessions/<session>/project-plugin/` | the chat's copy of its repository's skills, commands and agents, as instructions only | Orbit Web |
 | `/data/sessions/<session>/runs/` | a masked, bounded copy of each run's stream, for troubleshooting | Orbit Web |
 | `/data/home` | the user's home (caches the agent's tools make) | — |
 
@@ -89,21 +95,22 @@ runtime room after the host name. A bind mount instead of the named volume must 
 
 ## Sign in: your Claude account is Orbit Web's sign-in
 
-Orbit Web opens on **Sign in to Orbit Web** and on nothing else. *Sign in with Claude* runs
+Orbit Web opens on **Sign in to Orbit Web** and on nothing else. *Continue with Claude* runs
 `claude auth login --claudeai`; the page shows the URL the CLI printed; sign in there with your Claude account, copy
 the code the page shows, and paste it into Orbit Web, which writes it to that one process's stdin -- nothing else.
 Orbit Web is signed in when, and only when, `claude auth status` reports a Claude account (`authMethod: "claude.ai"`);
-the header then shows who (your address, organisation and plan), and Claude Code runs as that account in every chat.
+the account sits at the bottom of the sidebar (your address and plan; its menu shows the organisation), and Claude
+Code runs as that account in every chat.
 
 - **Always required, and enforced by the API, not only by the page.** Until the sign-in, every route but
   `GET /api/health`, `POST /api/access` (token mode) and the sign-in itself answers 401 `claude_sign_in_required` and
-  runs nothing: no settings, no chats, no GitHub or Azure sign-in.
+  runs nothing: no settings, no chats, no streams, no GitHub or Azure sign-in.
 - **Only a Claude account.** An API key, a token, or an Anthropic Console sign-in is not one: the page says so and stays
   on the sign-in. `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` are never given to Claude
   Code (it would use one before the account you signed in with); a container started with one is told it is ignored.
-- **Sign out** (the header, or Settings → Claude Account) runs `claude auth logout` and returns to the sign-in page at
-  once; the API is closed again. It is refused while Claude Code works in a chat or a workspace is being prepared:
-  stop it (or wait) first. Your chats are kept for the next sign-in.
+- **Sign out** (the account menu at the bottom of the sidebar, or Settings → Account) runs `claude auth logout` and
+  returns to the sign-in page at once; the API is closed again. It is refused while Claude Code works in a chat or a
+  workspace is being prepared: stop it (or wait) first. Your chats are kept for the next sign-in.
 - **One account per Orbit Web**, kept until you sign out, for one person (see the security model).
 
 If the sign-in does not finish in the browser, sign in from a terminal instead, then reload the page (the image's
@@ -113,89 +120,189 @@ If the sign-in does not finish in the browser, sign in from a terminal instead, 
 docker exec -it orbit-web claude auth login --claudeai
 ```
 
-## Connect your accounts
-
-**GitHub.** Once signed in, the setup page (or Settings) → GitHub Connection → *Connect GitHub* runs
-`gh auth login --hostname github.com --git-protocol https --web --skip-ssh-key --insecure-storage`. The page shows the
-URL (https://github.com/login/device) and the one-time code **GitHub CLI** printed; enter the code there and authorize.
-*Connected* needs both `gh auth status` and `gh api user` to answer. There is no GitHub App, no OAuth application of
-Orbit Web's own and no personal access token. GitHub CLI asks for its usual scopes (`repo`, `read:org`, `gist`).
-*Disconnect* runs `gh auth logout --hostname github.com --user <login>`; that ends the CLI's sign-in here, and GitHub
-keeps the authorization until you revoke it under GitHub → Settings → Applications. An expired sign-in shows
-*Expired*; your chats stay.
-
-**Azure (optional).** Settings → Azure Account → *Connect Azure* (optionally naming a tenant: its id or a domain)
-runs `az login --use-device-code --allow-no-subscriptions --output none [--tenant <t>]` with the Azure CLI pinned the
-way Orbit pins it (no broker, no interactive subscription picker, no telemetry). The page shows the URL and the
-one-time code the Azure CLI printed; enter it there and sign in. *Connected* is what `az account show` says (who,
-which tenant and subscription); *Sign out* runs `az logout`. Orbit Web never asks the CLI for a token. The chat
-workspace never waits for Azure. **Claude Code is not given this sign-in unless you turn on "Let Claude Code use this
-Azure sign-in"**: with it on, Claude Code's `az` finds the profile and may run any `az` command as that account in any
-chat; with it off, `az` is refused to it and its file tools are refused `/data/azure`. Orbit's own Azure connections
-(project reports, ADR 0043) never use this sign-in: Orbit signs in through its own Azure CLI profile, in its store.
-
 ## Use it
 
-0. **Sign in** with your Claude account (above); the setup page then asks for GitHub, and the chat workspace opens once
-   it is connected.
-1. **New chat**: search your repositories (owned, collaborator, organisation member: every page of the API plus
-   `gh repo list`; *Refresh* reads them again), pick a branch (default first) and a model (Sonnet, Opus or Haiku -- the
-   CLI's own aliases; a model your account cannot use fails with the CLI's own error), and write what to do.
-2. Orbit Web clones the repository into the chat's workspace with `gh repo clone`, creates a branch of its own
-   (`orbit-web/<id>`) so the branch you picked is never written, sets a local commit identity (your GitHub name and
-   noreply address), and seats it with Orbit. Then it sends your message.
-3. The chat streams Claude's text as it is written and every tool call with its real input and output; a subagent's
-   calls sit under the Agent call that started them. **Stop** interrupts the run (SIGINT to its process group, then
-   SIGTERM, then SIGKILL); an interrupted run is never shown as completed. Enter sends; Shift+Enter is a new line.
-4. **Changes** lists what git says changed against the commit the chat started from (committed and uncommitted,
-   untracked files, renames, conflicts, line counts) and shows each file's diff, highlighted. Binary and very large files
-   are named, not rendered.
-5. **Orbit** shows Orbit's own record of the work: the task, its lifecycle and stage, the checks the change is held to,
+No connector is needed to start: once you are signed in, the chat is open.
+
+1. **New session** (the sidebar, or the empty page you land on): write what to do in the composer at the bottom.
+   Enter sends; Shift+Enter is a new line.
+2. **What it starts from** -- the composer's toolbar, on the left. The repository picker has a tab per source:
+   **GitHub** and **Azure DevOps**. Search, pick a repository, then a branch (the default first). A source that is not
+   connected offers *Connect* (Settings → Connectors); *Refresh* reads the list again. **No repository** (the default)
+   starts the chat in an empty repository of its own (`git init`, one empty commit to start from), for a question, a
+   prototype or anything that needs no code yet.
+3. **How it runs** -- on the right. **Model · Effort**: *Model · this session* lists Opus 5.5, Fable 5.2, Sonnet 5.5
+   and Haiku 5.5 (the CLI's own aliases `opus`, `fable`, `sonnet`, `haiku`; a model your account cannot use fails with
+   the CLI's own error), and *Effort* Low, Medium (recommended), High, Extra and Max (`--effort low|medium|high|xhigh|max`:
+   higher effort is more thorough, takes longer and uses your limits faster). **Mode**:
+   - **Autonomous** -- Claude Code's auto mode (`--permission-mode auto`): it reads, edits and runs commands on its own;
+     reads and file edits in the workspace go ahead, and Claude Code's classifier reviews every other action before it
+     runs. What it refuses is shown in the chat as *Permission denied*.
+   - **Plan** -- Claude Code's plan mode (`--permission-mode plan`): it reads and plans, and changes nothing. Its plan
+     arrives as a **Plan** card; *Run it in Autonomous* switches the chat to Autonomous and asks Claude to carry out
+     the plan above, in the same conversation.
+
+   A new chat starts with the defaults in Settings → Code (Sonnet 5.5, Medium, Autonomous until you change them).
+4. **Sending the first message creates the chat** and opens it. Orbit Web prepares its workspace, step by step in the
+   chat: the clone (GitHub with `gh repo clone`; Azure DevOps with `git clone`, see Connectors) or the empty repository,
+   a branch of its own (`orbit-web/<id>`, so the branch you picked is never written), a local commit identity (GitHub's
+   name and noreply address, the Azure account's user, or -- with no repository -- the Claude account's address), Orbit
+   seated in it, and **what the repository brings** (below). Then it sends your message.
+5. **In the chat**, Claude's text streams as it is written and every tool call shows its real input and output; a
+   subagent's calls sit under the Agent call that started them. **Stop** interrupts the run (SIGINT to its process
+   group, then SIGTERM, then SIGKILL); an interrupted run is never shown as completed. The repository and branch are
+   the chat's for good; the model, effort and mode can change at any time and apply from the next message.
+6. **Changes** (top right) lists what git says changed against the commit the chat started from (committed and
+   uncommitted, untracked files, renames, conflicts, line counts) and shows each file's diff, highlighted. **Orbit**
+   shows Orbit's own record of the work: the task, its lifecycle and stage, the checks the change is held to,
    verification rows, unmet completion rows, approvals waiting at a protected boundary, and the commands Orbit saw run.
    It says **Verified** only when Orbit itself does, and **Unknown** until then. Claude finishing is not a verification.
-6. Continue the chat any time, after a restart too: the next message resumes the same Claude Code conversation
-   (`--resume`).
+7. **The sidebar** keeps your chats current as they change, in this tab or another: a dot while one works or when it
+   failed, the source it came from, *Search* over titles and repositories, and each chat's menu to rename or delete it
+   (deleting removes its workspace). It folds away and stays folded. Continue any chat at any time, after a restart
+   too: the next message resumes the same Claude Code conversation (`--resume`).
 
-Nothing is ever pushed. `git push` and `gh` are refused to the agent; a push in an Orbit workflow is a protected
+**Commit, push, pull request.** Claude Code commits on the chat's branch whenever you ask. It pushes and opens pull
+requests only when you turn on *Let Claude Code push and open pull requests with this GitHub sign-in* (Settings →
+Connectors → GitHub); otherwise `git push` and `gh` are refused to it, it is told so (so it commits on its own instead of
+losing the commit in a refused `git commit … && git push`), and you push. A push in an Orbit workflow is a protected
 boundary that only Orbit Control can approve, and Orbit Web shows such an approval but cannot grant it.
+
+### What Claude Code may do in a chat
+
+In **Autonomous**, Claude Code creates, edits, renames and deletes files and directories in the chat's workspace,
+including files the repository already had (`Write`/`Edit`, and `rm`, `mv`, `mkdir` through its shell), and commits
+on the chat's branch; with GitHub's switch on, it also pushes and opens pull requests. The workspace is owned by the image's user, so nothing at the file-system level stands in
+the way; what decides is Claude Code's own permission system: edits in the working directory are approved by auto mode
+itself, and shell commands go to its classifier, which may refuse a destructive command on files that existed before
+the session (`git reset --hard`, `git clean -fd`, a broad `rm -rf`) when you did not ask for it -- say what you want
+removed, and it goes ahead. It can never write the image's programs or the Orbit plugin (they belong to root), its
+file tools are refused the sign-in directories and Orbit Web's database, and the deny rules below bind in every mode.
+In **Plan** it changes nothing.
+
+### What a repository brings
+
+On a repository's **first fetch** (the workspace's last step), Orbit Web reads what the repository has for Claude
+Code -- from its files only: regular files, never through a symbolic link, bounded (200 items of each kind, 256 KB a
+file, 4 levels deep, 2,000 entries a directory):
+
+| read | what becomes of it |
+|---|---|
+| `.claude/skills/*/SKILL.md`, `.claude/commands/**/*.md`, `.claude/agents/*.md` | with **Load project skills** on (the default): copied into a plugin of the chat's own and loaded with `--plugin-dir`, **as instructions only** -- their frontmatter rebuilt from `name`, `description`, `model` and `argument-hint` alone (no hooks, no `allowed-tools`), every pre-run `` !`command` `` made plain text, and a file whose frontmatter never closes left out |
+| a repository that is a plugin (`.claude-plugin/plugin.json`), or a marketplace of local plugins | with **Run project plugins** on (**off** by default): loaded with `--plugin-dir` |
+| the plugins `.claude/settings.json` enables (`name@marketplace`) and the marketplaces it names | with **Run project plugins** on: `claude plugin marketplace add`, `claude plugin install --scope user`, then `claude plugin disable --scope user` (uninstalled again if that fails), and enabled for **that chat's runs only** (`--settings '{"enabledPlugins":…}'`); off, they are listed as *Not run* |
+| `CLAUDE.md` | read by Claude Code itself from the working directory |
+| `.mcp.json` | listed, never started (`--strict-mcp-config`) |
+| the rest of `.claude/settings.json` (hooks, `env`, permissions) | never read: Claude Code runs with `--setting-sources user` |
+
+The chat says what was loaded ("Loaded from this repository: 2 skills, 1 command, 0 agents · plugins: …"), and
+**Settings → Skills** and **Settings → Plugins** list everything, Orbit's own included, with each project plugin's state
+(*Loaded*, *Installed*, *Installing…*, *Not run*, *Failed* with the CLI's own words). Both switches are in
+Settings → Code.
+
+## Connectors: GitHub and Azure DevOps
+
+**Settings → Connectors** is a table of the two repository sources -- connector, type (the CLI that signs in),
+authorization, status (✓ and the account, or *Connect*). A row opens its detail, where each CLI's own device sign-in
+runs as before; its progress reaches every open page on the app stream.
+
+**GitHub.** *Connect GitHub* runs `gh auth login --hostname github.com --git-protocol https --web --skip-ssh-key
+--insecure-storage`. The page shows the URL (https://github.com/login/device) and the one-time code **GitHub CLI**
+printed; enter the code there and authorize. *Connected* needs both `gh auth status` and `gh api user` to answer. There
+is no GitHub App, no OAuth application of Orbit Web's own and no personal access token. GitHub CLI asks for its usual
+scopes (`repo`, `read:org`, `gist`). *Disconnect* runs `gh auth logout --hostname github.com --user <login>`; that ends
+the CLI's sign-in here, and GitHub keeps the authorization until you revoke it under GitHub → Settings → Applications.
+Its repositories are every page of `user/repos` (owner, collaborator, organisation member) merged with `gh repo list`.
+**Claude Code is not given this sign-in unless you turn on "Let Claude Code push and open pull requests with this
+GitHub sign-in"**: with it on, its `gh` finds GitHub CLI's sign-in (`GH_CONFIG_DIR`) and its `git` asks `gh` for the
+credential of github.com -- and of github.com alone -- through a helper named in its environment (no git configuration
+is written); `git push` and `gh` are no longer refused, but `gh auth` (printing the token, signing out), `gh repo delete`,
+`gh secret`, `gh ssh-key`, `gh gpg-key` and `git credential` still are, and its instructions say never to force-push or
+push to the default branch. With it off, `gh` and `git push` are refused to it and it is not told where the sign-in is.
+
+**Azure DevOps (optional).** *Connect Azure* (optionally naming a tenant: its id or a domain) runs
+`az login --use-device-code --allow-no-subscriptions --output none [--tenant <t>]` with the Azure CLI pinned the way
+Orbit pins it (no broker, no interactive subscription picker, no telemetry). The page shows the URL and the one-time
+code the Azure CLI printed; enter it there and sign in. *Connected* is what `az account show` says; *Sign out* runs
+`az logout`.
+
+- **Its repositories** are read with `az rest --resource 499b84ac-1321-427f-aa17-267ca6975798` (Azure DevOps), so the
+  Azure CLI holds the token: your profile (`app.vssps.visualstudio.com/_apis/profile/profiles/me`), the organisations
+  you belong to (`_apis/accounts?memberId=…`, up to 50, four at a time), each one's repositories
+  (`dev.azure.com/<organisation>/_apis/git/repositories`; disabled ones are left out) and a repository's branches
+  (`…/refs?filter=heads/`). The list is kept five minutes; *Refresh* reads it again. A repository is named back by its
+  organisation and id, and opens only if the list holds it.
+- **Its clone** is `git clone` with `-c credential.helper= -c credential.helper=/opt/orbit-web/docker/git-credential-azure-cli.mjs`,
+  the URL taken from that list (never from the browser). The helper answers git's `get` for `dev.azure.com` and
+  `*.visualstudio.com` only, by asking the Azure CLI -- Orbit Web's own profile -- for an Azure DevOps access token:
+  the token goes from az to git for that one clone, never through Orbit Web, and is never written; the remote URL and
+  the workspace's `.git/config` carry nothing, and Claude Code has no such helper.
+- **Claude Code is not given this sign-in unless you turn on "Let Claude Code use this Azure sign-in"**: with it on,
+  Claude Code's `az` finds the profile and may run any `az` command as that account in any chat; with it off, `az` is
+  refused to it and its file tools are refused `/data/azure`. Orbit's own Azure connections (project reports, ADR 0043)
+  never use this sign-in: Orbit signs in through its own Azure CLI profile, in its store.
 
 ## How it works
 
 ```
-browser ── React + Fluent UI v9 ──HTTP/SSE──▶ NestJS API (one origin, /api)
-                                               ├─ claude auth …            (Claude Code CLI)
-                                               ├─ gh auth … / gh api … / gh repo clone   (GitHub CLI)
-                                               ├─ az login --use-device-code / az account show / az logout   (Azure CLI, optional)
-                                               ├─ claude -p --plugin-dir /opt/orbit/plugin …  ──▶ Orbit's hooks, skills, agents
-                                               ├─ git status / git diff    (the chat's workspace)
-                                               └─ node /opt/orbit/plugin/cli/{live,task,autonomous-engineering}.mjs  (Orbit, read-only)
+browser ── React + Fluent UI v9 ── HTTP + two SSE streams ──▶ NestJS API (one origin, /api)
+  ├─ claude auth … · claude plugin …                       (Claude Code CLI)
+  ├─ gh auth … · gh api … · gh repo clone                   (GitHub CLI)
+  ├─ az login … · az account show · az rest … (Azure DevOps) (Azure CLI, optional)
+  ├─ git clone + the one-shot credential helper (Azure Repos) · git init (no repository)
+  ├─ claude -p --plugin-dir /opt/orbit/plugin [--plugin-dir <the chat's project plugin> …] ──▶ Orbit's hooks, skills, agents
+  ├─ git status · git diff                                   (the chat's workspace)
+  └─ node /opt/orbit/plugin/cli/{live,task,autonomous-engineering}.mjs  (Orbit, read-only)
 ```
 
 - **One way to start a program**: a file and an argument list (no shell), an explicit working directory, an
   allow-listed environment, its own process group. No endpoint accepts a command.
-- **The Claude runner**: `claude -p --output-format stream-json --verbose --include-partial-messages --model <alias>
-  --plugin-dir /opt/orbit/plugin (--session-id <id> | --resume <id>) --permission-mode dontAsk --allowedTools
-  Read,Edit,Write,Glob,Grep,Bash,Skill,Agent,TodoWrite --disallowedTools "Bash(git push:*)" "Bash(gh:*)" … WebFetch
-  WebSearch --setting-sources user --strict-mcp-config [--max-budget-usd <n>]`, the prompt on stdin, cwd the
-  workspace. The web tools are added only when Settings allows them. Tools the allow-list does not name are refused,
-  and every refusal is shown in the chat. Never a bypass mode.
-- **Events**: one pure mapper turns Claude Code's stream-json into application events (`session.started`,
-  `message.started|delta|completed`, `tool.started|completed|failed`, `permission.denied`, `orbit.updated`,
-  `verification.updated`, `session.completed|failed|interrupted`, …). Durable events are stored with a per-session
-  sequence number and sent with it as the SSE id, so a reconnect gets exactly what it missed; text deltas are
-  transient and carry their offset, so they never double. The outcome of a run is decided from its exit status and the
-  CLI's own result line.
-- **API**: `GET /api/health`, `GET /api/setup/status`; `GET /api/claude/status` (the sign-in: state, method, and the
-  account's email, organisation and plan), `POST /api/claude/login` (no body: always `--claudeai`),
-  `POST /api/claude/login/code`, `POST /api/claude/login/cancel`, `GET /api/claude/login/events`,
-  `POST /api/claude/logout` (409 `run_active` / `workspace_preparing` while Claude Code works); the same five for
-  `/api/github` and `/api/azure` (no code route; Azure's login takes an optional `tenant`); `GET /api/repositories[?refresh=1]`,
-  `GET /api/repositories/:owner/:repo/branches`; `GET|POST /api/sessions`, `GET|PATCH|DELETE /api/sessions/:id`,
-  `POST /api/sessions/:id/messages`, `GET /api/sessions/:id/events` (SSE), `POST /api/sessions/:id/stop`,
-  `GET /api/sessions/:id/changes`, `GET /api/sessions/:id/changes/file?path=`, `GET /api/sessions/:id/verification`;
-  `GET|PATCH /api/settings`; `POST /api/access` (token mode). Errors are `{ "error": { "code", "message" } }`. Until
-  the Claude sign-in, every route but `GET /api/health`, `POST /api/access` and the five `/api/claude/status|login…`
-  routes answers 401 `claude_sign_in_required` (a global guard: a route is closed unless it is marked open).
+- **The Claude runner**: `claude -p --output-format stream-json --verbose --include-partial-messages --model
+  <opus|fable|sonnet|haiku> --effort <low|medium|high|xhigh|max> --plugin-dir /opt/orbit/plugin [--plugin-dir <project
+  plugin> …] (--session-id <id> | --resume <id>) --permission-mode <auto|plan> --allowedTools
+  Read,Edit,Write,Glob,Grep,Bash,Skill,Agent,TodoWrite --disallowedTools "Bash(git push:*)" "Bash(gh:*)" "Bash(git
+  credential:*)" "Bash(git config --global:*)" ["Bash(az:*)"] "Read(//data/claude/**)" "Edit(//data/claude/**)" …
+  [WebFetch WebSearch] --append-system-prompt "<what this workspace allows>" --setting-sources user --strict-mcp-config
+  [--settings '{"enabledPlugins":…}'] [--max-budget-usd <n>]`, the prompt on stdin, cwd the workspace. With GitHub's
+  switch on, `"Bash(git push:*)" "Bash(gh:*)"` give way to `"Bash(gh auth:*)" "Bash(gh repo delete:*)" …`. The
+  appended text is one of two fixed sentences (no request or repository writes it): commit locally, and either "pushing
+  and gh are not available here, never chain them" or "push the branch you work on and open a pull request with gh". The model, effort and mode are the only words a
+  request puts on this line, each checked against its closed list first; the web tools are added only when Settings
+  allows them. In auto mode Claude Code itself drops the broad `Bash` allow rule and reviews each command; the deny
+  rules bind in every mode. Never a bypass mode.
+- **Events, driven by one catalog.** `packages/contracts/src/events/catalog.ts` names every event there is, the stream
+  it travels on and whether it is stored -- the one list of what exists. Every producer (the workspace, the runner and
+  its stream mapper, the sign-ins, the sources, the project reader, Orbit) publishes to one **event bus**, which refuses
+  a type the catalog does not have or a stream it does not travel on, stores what is durable first, then hands the
+  event to its subscribers (a throwing subscriber is isolated): the open messages' live text, the transcript, the
+  session directory (which turns a chat's events into the app stream's `session.summary` and `session.removed`), the
+  Orbit refresh, the SSE gateway. Each event is one envelope, `{ id, type, stream, sessionId, seq, runId, at, data }`.
+  - **The session stream**, `GET /api/sessions/:id/events`: the chat's durable events (`workspace.*`,
+    `project.inventory|plugin`, `session.status|started|completed|failed|interrupted`, `message.started|completed`,
+    `tool.started|completed|failed`, `permission.denied`, `plan.proposed`, `run.notice`, `orbit.updated`,
+    `verification.updated`) with a per-session sequence number as the SSE id, so a reconnect gets exactly what it
+    missed; `message.delta` is transient and carries its offset, and a message still being written is sent whole as a
+    snapshot, so text never doubles.
+  - **The app stream**, `GET /api/events`: notifications any page may need -- `session.summary`, `session.removed`,
+    `connector.status`, `connector.flow`, `customizations.changed`. Never stored: a page that (re)connects reads the
+    read models again (`/api/sessions`, `/api/sources`, `/api/customizations`) and applies what follows. Nothing polls.
+
+  Adding an event is a catalog row and its payload type; the bus, the gateway and the web's `useAppEvent(type, …)`
+  carry it from there. The outcome of a run is still decided from its exit status and the CLI's own result line.
+- **API**: `GET /api/health`; `GET /api/claude/status` (state, method, and the account's email, organisation and plan),
+  `POST /api/claude/login` (no body: always `--claudeai`), `POST /api/claude/login/code`, `POST /api/claude/login/cancel`,
+  `GET /api/claude/login/events` (the one stream open before the sign-in), `POST /api/claude/logout` (409 `run_active` /
+  `workspace_preparing` while Claude Code works); `GET /api/github/status`, `POST /api/github/login|login/cancel|logout`
+  and the same four for `/api/azure` (Azure's login takes an optional `tenant`); `GET /api/sources`;
+  `GET /api/repositories?source=github|azure[&refresh=1]`, `GET /api/repositories/branches?source=…&id=…`;
+  `GET|POST /api/sessions` (a repository is `{ source, id }` or `null`), `GET|PATCH|DELETE /api/sessions/:id` (a title,
+  model, effort or mode), `POST /api/sessions/:id/messages`, `POST /api/sessions/:id/stop`,
+  `GET /api/sessions/:id/events` (SSE), `GET /api/sessions/:id/changes`, `GET /api/sessions/:id/changes/file?path=`,
+  `GET /api/sessions/:id/verification`, `GET /api/sessions/:id/project`; `GET /api/customizations`; `GET /api/events`
+  (SSE); `GET /api/setup/status`; `GET|PATCH /api/settings`; `POST /api/access` (token mode). Errors are
+  `{ "error": { "code", "message" } }`. Until the Claude sign-in, every route but `GET /api/health`,
+  `POST /api/access` and the `/api/claude/status|login…` routes answers 401 `claude_sign_in_required` (a global guard:
+  a route is closed unless it is marked open).
 
 ## Security model
 
@@ -213,25 +320,33 @@ For one person, on their own machine, by default:
 - **Changes need proof of origin**: every POST/PATCH/DELETE needs the `X-Orbit-Web` header (a cross-site page cannot
   send it without a CORS preflight, which is never answered), a matching Origin when the browser sends one, and a JSON
   body; bodies are limited to 256 KB.
-- **Inputs are validated** against closed rules (repository and branch names, models, titles, prompts); a repository
-  opens only if the GitHub account lists it; a workspace path is built only from a server-made id and checked to
-  resolve inside `/data/workspaces`; a diff is served only for a path git listed as changed.
-- **Credentials stay with the CLIs.** Orbit Web never reads, stores or sends a token: it never runs `gh auth token`
-  or `az account get-access-token`, never puts a credential in a remote URL or a git config, never passes
-  `GH_*`/`GITHUB_*` to Claude Code (nor the Azure profile, unless you turn that on), and gives no program Claude
-  Code's own credential variables (`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`). Everything a process printed is masked by token shape before it is
+- **Inputs are validated** against closed rules (sources, repository ids per source, branch names, models, efforts,
+  modes, titles, prompts); a repository opens only if its source lists it, and its clone URL comes from that listing;
+  a workspace path is built only from a server-made id and checked to resolve inside `/data/workspaces`; a diff is
+  served only for a path git listed as changed.
+- **Credentials stay with the CLIs.** Orbit Web never reads, stores or sends a token: it never runs `gh auth token`,
+  never puts a credential in a remote URL or a git config, never passes a token variable to Claude Code and tells it
+  where GitHub's or Azure's sign-in is only when you turn that on, and gives no program Claude Code's own credential variables
+  (`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`). The one place a token is asked for is the
+  Azure Repos clone: the image's credential helper asks the Azure CLI and hands the answer to git, for that clone only
+  (above); Orbit Web's own process never sees it. Everything a process printed is masked by token shape before it is
   stored, logged or shown. A strict Content-Security-Policy, Markdown without raw HTML, and highlighting that escapes.
+- **What a repository brings is untrusted input.** Its skills, commands and agents load as instructions only (their
+  frontmatter rebuilt from four keys, pre-run commands made text); its settings, hooks, `env` and MCP servers are never
+  loaded. **Its plugins are code** -- hooks that run at session start, MCP servers -- that would run in this container,
+  where the sign-ins are; so they run only once you turn on *Run project plugins*, and then only for the chats of
+  repositories that declare them.
 - **The image**: a non-root user, `cap_drop: ALL`, `no-new-privileges`, no Docker socket, no credential in any layer.
 
 **The limit, said plainly.** The coding agent's shell, the CLIs' sign-ins and Orbit Web run in **one container as one
 user**. Claude Code's tools are a coding agent's: it runs commands in the repository you opened, and that repository's
 contents are untrusted input to it. The environment scrub, the deny rules (`git push`, `gh`, reading the sign-in
-directories), `--setting-sources user` (a repository's own `.claude/settings.json` is never read) and the private
-directories are **defence in depth, not isolation**: a determined prompt injection in a repository could still reach
-the GitHub CLI's stored token, the Azure CLI's (whether or not Claude Code is allowed to use it) or Orbit Web's local
-API. Open repositories you trust, keep the port on loopback, and
-disconnect GitHub when you are done. Separating the sign-ins from the code execution (another container or user) is
-work for a later version.
+directories), auto mode's classifier, `--setting-sources user` (a repository's own `.claude/settings.json` is never
+read) and the private directories are **defence in depth, not isolation**: a determined prompt injection in a
+repository could still reach the GitHub CLI's stored token, the Azure CLI's (whether or not Claude Code is allowed to
+use them) or Orbit Web's local API; with GitHub's switch on, it can also push and open pull requests as you. Open repositories you trust, keep *Run project plugins* off unless you trust them
+too, keep the port on loopback, and disconnect a source when you are done. Separating the sign-ins from the code
+execution (another container or user) is work for a later version.
 
 ## Troubleshooting
 
@@ -241,14 +356,21 @@ work for a later version.
 | `host_not_allowed` (HTTP 421) | open it as http://localhost:3000 or http://127.0.0.1:3000, or set `ORBIT_WEB_ALLOWED_HOSTS` with `ORBIT_WEB_ACCESS_TOKEN` |
 | Claude sign-in never finishes | `docker exec -it orbit-web claude auth login --claudeai`, then reload the page |
 | The page asks to sign in although the container was started with `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` | by design: Orbit Web signs in with a Claude account only and ignores those variables; sign in on the page |
-| "… which is not a Claude account" | the Claude CLI was signed in some other way (an Anthropic Console account, a key): *Sign in with Claude* replaces it with your Claude account |
+| "… which is not a Claude account" | the Claude CLI was signed in some other way (an Anthropic Console account, a key): *Continue with Claude* replaces it with your Claude account |
 | *Sign out* is refused | a chat is running or its workspace is being prepared: stop it (or wait), then sign out |
+| The repository picker says *Connect* | that source is not connected: Settings → Connectors |
 | GitHub: `x509: certificate signed by unknown authority` | you are behind a TLS-inspecting proxy: mount its CA and set `SSL_CERT_FILE` (and `NODE_EXTRA_CA_CERTS`) to it |
 | GitHub sign-in expired | Connect GitHub again; chats and workspaces stay |
-| Azure: `Please run 'az login'` in a chat | the Azure card is not connected, or "Let Claude Code use this Azure sign-in" is off |
-| Azure: an organisation needs a specific tenant | type its tenant id or domain in the Azure card before *Connect Azure* |
-| A repository is missing | *Refresh*; an organisation that restricts OAuth apps must approve GitHub CLI for your account |
-| "The workspace could not be prepared" | the chat's message says which step failed (clone, branch, identity); delete the chat and try again |
+| A GitHub repository is missing | *Refresh*; an organisation that restricts OAuth apps must approve GitHub CLI for your account |
+| Azure DevOps lists nothing, or not every organisation | the account must be a member of the organisation (the list reads at most 50); an organisation that needs another tenant: connect again naming its tenant; *Refresh* |
+| Azure DevOps clone fails with an authentication error | sign out of Azure DevOps and connect again (the helper asks the Azure CLI for a token each time); for an organisation of another tenant, name that tenant when you connect |
+| Azure: `Please run 'az login'` in a chat | Azure DevOps is not connected, or "Let Claude Code use this Azure sign-in" is off |
+| *Permission denied* in Autonomous | Claude Code's classifier (or a deny rule) refused that action: say exactly what you want done (name the files to remove, for instance), or ask for another way |
+| *Permission denied* on `git push` or `gh` | GitHub's switch is off (Settings → Connectors → GitHub → *Let Claude Code push and open pull requests…*): turn it on, or push yourself; Claude Code still commits |
+| Plan mode changed nothing | by design: *Run it in Autonomous* on its plan card |
+| A project plugin says *Not run* | *Run project plugins* is off (Settings → Code); turn it on only for repositories you trust, then start a new chat |
+| A project plugin says *Failed* | its tooltip quotes the CLI (a marketplace that cannot be fetched, a plugin it does not have); the chat still runs without it |
+| "The workspace could not be prepared" | the chat's message says which step failed (clone, init, branch, identity, orbit); delete the chat and try again |
 | A model is refused | the chat shows the CLI's own error: your account cannot use that model; pick another |
 | A run seems stuck | **Stop**; it ends as interrupted; send the next message to continue |
 | Disk use grows | delete chats you no longer need (removes their workspaces); `docker system df -v` |
@@ -266,10 +388,10 @@ npm run dev -w @orbit-web/web  # the app on :5173, /api proxied to :3000
 
 | kind | where | what it proves |
 |---|---|---|
-| unit | `packages/contracts/src/*.spec.ts`, `apps/api/src/**/*.spec.ts` | parsers, mapper, redaction, argv, state machines, path rules |
-| integration, mocked processes | `apps/api/tests/integration/*.spec.ts` | the real API over HTTP/SSE with claude and gh scripted; git and Orbit's CLIs run for real; the Claude sign-in gate over every route the application declares |
-| web | `apps/web/src/**/*.spec.tsx` | the sign-in page and the account menu, setup, login progress, pickers, chat streaming, tool activity, stop, history, diff, Orbit panel |
-| Docker | `tests/docker/smoke.mjs` | the image builds, starts, serves, holds the four programs and a loadable plugin, opens on the Claude sign-in with every other route closed, persists across restarts (with a stand-in Claude sign-in) |
+| unit | `packages/contracts/src/*.spec.ts`, `apps/api/src/**/*.spec.ts` | the event catalog and bus, parsers (GitHub, Azure DevOps), the stream mapper (plans included), redaction, argv (model, effort, mode, plugins), the project reader's bounds and its instructions-only copy, state machines, path rules |
+| integration, mocked processes | `apps/api/tests/integration/*.spec.ts` | the real API over HTTP and both SSE streams with claude, gh and `az rest` scripted; git and Orbit's CLIs run for real; chats with and without a repository, Azure DevOps listing and clone (no credential in `.git/config`), a repository's skills and plugins, the Claude sign-in gate over every route the application declares |
+| web | `apps/web/src/**/*.spec.tsx` | the sign-in page, the workspace (sidebar, a new session and its pickers, the app stream), an open chat (streaming, tools, Stop, the plan card), Settings (connectors and their device sign-ins, Code, Skills, Plugins), the diff and the Orbit panel |
+| Docker | `tests/docker/smoke.mjs` | the image builds, starts, serves, holds the four programs, a loadable plugin and the Azure Repos credential helper, opens on the Claude sign-in with every other route closed, persists across restarts (with a stand-in Claude sign-in) |
 | real | `tests/acceptance/` | one capped real run with a real Claude model; see its README |
 
 Specs are named `*.spec.ts(x)` and live outside any `test/` directory, so the plugin's own `node --test` never collects

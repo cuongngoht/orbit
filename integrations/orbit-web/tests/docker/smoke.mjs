@@ -125,6 +125,12 @@ async function main() {
   check("   the container runs as a non-root user", id.status === 0 && id.stdout.trim() !== "0", `uid ${id.stdout.trim()}`);
   const perms = exec("stat", "-c", "%a %U", "/data/claude", "/data/github", "/data/azure", "/data/app");
   check("   the persistent directories are private to that user", perms.stdout.trim().split("\n").every((l) => l.startsWith("700 ")), perms.stdout.trim().replace(/\n/g, ", "));
+  // What Claude Code runs as: it creates, edits, renames and deletes in a chat's workspace, and cannot write the
+  // image's programs or the plugin (whatever its permission rules then allow is Claude Code's to decide).
+  const rights = exec("sh", "-c", 'd=/data/workspaces/smoke-rights/repository && mkdir -p "$d/sub" && echo a > "$d/f" && echo b >> "$d/f" && mv "$d/f" "$d/sub/g" && rm -r /data/workspaces/smoke-rights && ! touch /opt/orbit/plugin/x 2>/dev/null && ! touch /opt/claude/bin/x 2>/dev/null && ! touch /opt/orbit-web/x 2>/dev/null && echo ok');
+  check("   that user creates, edits, renames and deletes in /data/workspaces, and cannot write the programs or the plugin", rights.stdout.trim() === "ok", rights.stderr.trim().slice(0, 200));
+  const helper = exec("sh", "-c", 'test -x /opt/orbit-web/docker/git-credential-azure-cli.mjs && printf "protocol=https\\nhost=github.com\\n\\n" | /opt/orbit-web/docker/git-credential-azure-cli.mjs get; echo "exit=$?"');
+  check("   the Azure Repos credential helper is there, and answers nothing for another host", helper.stdout.trim() === "exit=0", (helper.stdout + helper.stderr).trim().slice(0, 200));
 
   const terminal = exec("claude", "auth", "status", "--json");
   const where = (() => {

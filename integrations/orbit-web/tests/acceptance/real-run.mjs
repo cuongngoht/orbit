@@ -210,14 +210,14 @@ async function run(fixture) {
   step(3, "Sign in to Claude Code", "BLOCKED", `the browser sign-in needs a person; this run used a Claude account a person signed in once in the volume ${CLAUDE_VOLUME} (Orbit Web reads it as: ${claude.state}, method ${claude.method}, plan ${claude.account?.plan ?? "?"})`);
   step(4, "Click Connect GitHub", "BLOCKED", "the device flow needs a person at github.com/login/device (the real gh in the image was seen to print a real one-time code)");
   step(5, "Authenticate using GitHub CLI's browser flow", "BLOCKED", `needs a person; GitHub is stood in for by the acceptance fake (connected as ${setup.github.account?.login ?? "?"})`);
-  const repos = (await api("/api/repositories")).body;
+  const repos = (await api("/api/repositories?source=github")).body;
   const listed = repos.repositories?.some((r) => r.fullName === FIXTURE_REPOSITORY);
   step(6, "Select the fixture GitHub repository", listed ? "STAND-IN" : "FAIL", `listed through Orbit Web's own code from the stand-in: ${JSON.stringify(repos.repositories?.map((r) => r.fullName))}`);
-  const branches = (await api(`/api/repositories/${FIXTURE_REPOSITORY}/branches`)).body;
+  const branches = (await api(`/api/repositories/branches?source=github&id=${encodeURIComponent(FIXTURE_REPOSITORY)}`)).body;
   step(7, "Select the branch", branches.branches?.[0]?.name === "main" ? "PASS" : "FAIL", `branches: ${JSON.stringify(branches.branches?.map((b) => b.name))}`);
-  step(8, "Choose Sonnet", "PASS", "model: sonnet");
+  step(8, "Choose Sonnet 5.5, Medium effort, Autonomous", "PASS", "model: sonnet, effort: medium, mode: autonomous (--permission-mode auto)");
 
-  const created = await api("/api/sessions", { method: "POST", body: JSON.stringify({ repository: FIXTURE_REPOSITORY, branch: "main", model: "sonnet", prompt: PROMPT }) });
+  const created = await api("/api/sessions", { method: "POST", body: JSON.stringify({ repository: { source: "github", id: FIXTURE_REPOSITORY }, branch: "main", model: "sonnet", effort: "medium", mode: "autonomous", prompt: PROMPT }) });
   step(9, "Create a new chat", created.status === 201 ? "PASS" : "FAIL", `HTTP ${created.status} ${JSON.stringify(created.body).slice(0, 200)}`);
   if (created.status !== 201) return;
   const id = created.body.id;

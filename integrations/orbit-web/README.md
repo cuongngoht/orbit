@@ -269,7 +269,9 @@ Governance is administered by **operators** -- people Orbit Web verifies itself.
 workspace; it is not an operator, and neither is the access token. Open **Governance** in the sidebar.
 
 - **The first owner.** While governance has no owner, Orbit Web prints a one-time code on its own standard output at
-  start: `docker compose logs orbit-web`. Enter it in Governance with the organization's name, your username and a
+  start: `docker logs orbit-web 2>&1 | grep -A3 one-time` from any folder (or Docker Desktop → Containers → orbit-web →
+  Logs; the governed deployment: `docker compose -f compose.governed.yaml logs orbit-web`). Enter it in Governance with
+  the organization's name, your username and a
   password (12+ characters). It works once, until Orbit Web restarts; it is never shown on a page, written to a file or
   given to Claude Code. Locked out, or the log gone? On the container itself:
   `docker compose exec -T orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js reset-password --username=<you> --owner < password.txt`
@@ -545,7 +547,7 @@ For one person, on their own machine, by default:
 | Disk use grows | delete chats you no longer need (removes their workspaces); `docker system df -v` |
 | Build behind a proxy | `node scripts/build-image.mjs --ca-file=<the proxy CA>` |
 | Orbit panel says not seated / unavailable | the workspace is seated when it is prepared; the panel's message quotes Orbit |
-| Turning on a GitHub/Azure switch says *needs an Orbit operator* | sign in under Governance (its first owner: the code in `docker compose logs orbit-web`) |
+| Turning on a GitHub/Azure switch says *needs an Orbit operator* | sign in under Governance (its first owner: the code in `docker logs orbit-web`) |
 | A governed chat's run is refused | its message says why: no Constitution published, the agent suspended, or isolation not proven where it is required (the single deployment) |
 | *Push* says nothing is allowed | publish a Constitution first (Governance → Company Constitution); a push needs an operator to approve it |
 | In the governed deployment Claude Code cannot reach a host | every connection is the Constitution's decision: *Policy decisions* shows the refusal; allow that `host:port` (a high-risk change) |

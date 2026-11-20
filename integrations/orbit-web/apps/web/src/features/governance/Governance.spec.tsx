@@ -48,7 +48,8 @@ describe("the Governance console", () => {
       .on("GET", "/api/governance/overview", overview);
     renderLive(<GovernanceView page="overview" item={null} go={vi.fn()} />);
     const form = await screen.findByRole("form", { name: "Enrol the first owner" });
-    expect(within(form).getByText(/docker compose logs orbit-web/)).toBeTruthy();
+    // Where the code is, said as a command that works from any folder.
+    expect(within(form).getByText("docker logs orbit-web")).toBeTruthy();
     await userEvent.type(within(form).getByLabelText(/One-time code/), "abcd-ef01");
     await userEvent.type(within(form).getByLabelText(/Organization/), "Acme");
     await userEvent.type(within(form).getByLabelText(/Your username/), "owner");

@@ -1,6 +1,6 @@
 // THE OPERATOR'S SIGN-IN, separate from the Claude sign-in: the Claude account opens the workspace; governance is
 // administered only by a person Orbit Web verified itself. Until an owner exists the first owner is enrolled here with
-// the one-time code Orbit Web printed in its own log (`docker compose logs orbit-web`) -- the code is never shown on a
+// the one-time code Orbit Web printed in its own log (`docker logs orbit-web`) -- the code is never shown on a
 // page and never given to Claude Code.
 import { Button, Field, Input, MessageBar, MessageBarBody, Text, makeStyles, tokens } from "@fluentui/react-components";
 import { ShieldKeyhole24Regular } from "@fluentui/react-icons";
@@ -75,8 +75,10 @@ export function BootstrapForm() {
           </Text>
         </div>
         <Text className={s.muted}>
-          Governance has no owner yet. The one-time code is in Orbit Web's own log, where only whoever runs the container can read it:{" "}
-          <span className={s.code}>docker compose logs orbit-web</span>. It works once, until Orbit Web restarts.
+          Governance has no owner yet. The one-time code is in Orbit Web's own log, where only whoever runs the container can read it: in a
+          terminal, from any folder, <span className={s.code}>docker logs orbit-web</span> (the governed deployment:{" "}
+          <span className={s.code}>docker compose -f compose.governed.yaml logs orbit-web</span>), or Docker Desktop → Containers → orbit-web →
+          Logs. It works once, until Orbit Web restarts.
         </Text>
         <Field label="One-time code" required>
           <Input value={code} onChange={(_, d) => setCode(d.value)} autoComplete="off" spellCheck={false} />

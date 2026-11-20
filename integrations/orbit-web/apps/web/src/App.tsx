@@ -4,7 +4,7 @@
 // Settings over either. No connector is needed to start: a chat runs with a repository or without one. In token mode
 // the access token is asked for before anything -- but for a share link (`#/share/<token>`), which opens its one
 // read-only chat and asks the API for nothing else.
-import { Button, FluentProvider, MessageBar, MessageBarActions, MessageBarBody, Spinner, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
+import { Button, FluentProvider, MessageBar, MessageBarActions, MessageBarBody, OverlayDrawer, Spinner, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
 import { Dismiss20Regular } from "@fluentui/react-icons";
 import { CLAUDE_SIGN_IN_REQUIRED, type ClaudeStatus, type ConnectorName, type SessionSummary, type Settings } from "@orbit-web/contracts";
 import { useCallback, useEffect, useState } from "react";
@@ -15,6 +15,7 @@ import { SettingsDialog } from "./features/settings/SettingsDialog";
 import { useHashRoute } from "./hooks/useHashRoute";
 import { useSessions, useSources } from "./hooks/useLive";
 import { useResource, type Resource } from "./hooks/useResource";
+import { useViewport } from "./hooks/useViewport";
 import { Sidebar } from "./layout/Sidebar";
 import { AccessPage } from "./pages/AccessPage";
 import { SharedChatPage, sharedTokenOf } from "./pages/SharedChatPage";
@@ -24,11 +25,28 @@ import { AppEventsProvider, useAppEvent } from "./services/events/AppEvents";
 import { isDark, themeOf, useSystemDark } from "./themes/theme";
 
 const useStyles = makeStyles({
-  shell: { display: "flex", height: "100vh", backgroundColor: tokens.colorNeutralBackground1, color: tokens.colorNeutralForeground1 },
+  shell: {
+    display: "flex",
+    height: "100dvh",
+    overflow: "hidden",
+    paddingLeft: "env(safe-area-inset-left)",
+    paddingRight: "env(safe-area-inset-right)",
+    backgroundColor: tokens.colorNeutralBackground1,
+    color: tokens.colorNeutralForeground1,
+  },
   side: { width: "272px", flexShrink: 0, height: "100%" },
   sideCollapsed: { width: "56px" },
+  drawer: {
+    width: "min(312px, 85vw)",
+    maxWidth: "100%",
+    paddingTop: 0,
+    paddingRight: 0,
+    paddingBottom: 0,
+    paddingLeft: 0,
+    backgroundColor: tokens.colorNeutralBackground2,
+  },
   main: { flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" },
-  view: { flexGrow: 1, minHeight: 0 },
+  view: { flexGrow: 1, minHeight: 0, display: "flex", flexDirection: "column" },
   center: { padding: "48px" },
 });
 
@@ -49,11 +67,13 @@ function useCollapsed(): [boolean, () => void] {
 // and leaving it (signing out) closes every stream it opened.
 function Workspace({ claude, settings, reloadClaude, onSignedOut }: { claude: ClaudeStatus; settings: Resource<Settings>; reloadClaude: () => void; onSignedOut: (s: ClaudeStatus) => void }) {
   const s = useStyles();
+  const { isCompact } = useViewport();
   const { route, open, openSettings, closeSettings } = useHashRoute();
   const sessions = useSessions();
   const sources = useSources();
   const signOut = useSignOut(onSignedOut);
   const [collapsed, toggle] = useCollapsed();
+  const [drawerOpen, setDrawerOpen] = useState(false);
   // The connector a page sent the person to Settings to connect, opened there.
   const [connector, setConnector] = useState<ConnectorName | null>(null);
   const selected = route.view.view === "chat" ? route.view.sessionId : null;
@@ -84,26 +104,47 @@ function Workspace({ claude, settings, reloadClaude, onSignedOut }: { claude: Cl
     openSettings("connectors");
   };
 
+  const sidebarProps = {
+    sessions: sessions.sessions,
+    loading: sessions.loading,
+    selected,
+    account: claude.account,
+    signingOut: signOut.busy,
+    onNew: () => {
+      setDrawerOpen(false);
+      open({ view: "new" });
+    },
+    onOpen: (id: string) => {
+      setDrawerOpen(false);
+      open({ view: "chat", sessionId: id });
+    },
+    onCustomize: () => {
+      setDrawerOpen(false);
+      openSettings("skills");
+    },
+    onSettings: () => {
+      setDrawerOpen(false);
+      openSettings("account");
+    },
+    onSignOut: () => {
+      setDrawerOpen(false);
+      void signOut.signOut();
+    },
+    onRenamed: sessions.upsert,
+    onDeleted: removed,
+  };
+
   return (
     <div className={s.shell}>
-      <div className={mergeClasses(s.side, collapsed && s.sideCollapsed)}>
-        <Sidebar
-          sessions={sessions.sessions}
-          loading={sessions.loading}
-          selected={selected}
-          collapsed={collapsed}
-          account={claude.account}
-          signingOut={signOut.busy}
-          onToggle={toggle}
-          onNew={() => open({ view: "new" })}
-          onOpen={(id) => open({ view: "chat", sessionId: id })}
-          onCustomize={() => openSettings("skills")}
-          onSettings={() => openSettings("account")}
-          onSignOut={() => void signOut.signOut()}
-          onRenamed={sessions.upsert}
-          onDeleted={removed}
-        />
-      </div>
+      {!isCompact ? (
+        <div className={mergeClasses(s.side, collapsed && s.sideCollapsed)}>
+          <Sidebar {...sidebarProps} collapsed={collapsed} onToggle={toggle} />
+        </div>
+      ) : (
+        <OverlayDrawer open={drawerOpen} onOpenChange={(_, d) => setDrawerOpen(d.open)} position="start" className={s.drawer}>
+          <Sidebar {...sidebarProps} collapsed={false} isDrawer onToggle={() => setDrawerOpen(false)} />
+        </OverlayDrawer>
+      )}
       <main className={s.main}>
         {signOut.error && route.settings === null && (
           <MessageBar intent="error">
@@ -113,9 +154,17 @@ function Workspace({ claude, settings, reloadClaude, onSignedOut }: { claude: Cl
         )}
         <div className={s.view}>
           {selected === null ? (
-            <NewSession settings={settings.data} sources={sources.data} onCreated={created} onConnect={connect} />
+            <NewSession
+              settings={settings.data}
+              sources={sources.data}
+              onCreated={created}
+              onConnect={connect}
+              onOpenNav={isCompact ? () => setDrawerOpen(true) : undefined}
+              account={claude.account}
+              onOpenAccount={isCompact ? () => openSettings("account") : undefined}
+            />
           ) : (
-            <ChatScreen key={selected} sessionId={selected} onUpdated={sessions.upsert} />
+            <ChatScreen key={selected} sessionId={selected} onUpdated={sessions.upsert} onOpenNav={isCompact ? () => setDrawerOpen(true) : undefined} />
           )}
         </div>
       </main>

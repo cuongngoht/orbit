@@ -3,9 +3,11 @@
 // it is read from changes). The text after the slash narrows it: a skill's own name first, then the plugin's, then a
 // word of what it does. Choosing one only writes `/<name> ` into the message, ready for what it takes; nothing is sent until
 // the person sends, and Claude Code then runs the skill the message names.
-import { Text, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
+import { Button, Text, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
+import { Dismiss16Regular } from "@fluentui/react-icons";
 import type { SlashCommand, SlashCommands } from "@orbit-web/contracts";
 import { useEffect, useState } from "react";
+import { useViewport } from "../../hooks/useViewport";
 import { errorText, get } from "../../services/api";
 
 const SHOWN = 60;
@@ -19,17 +21,28 @@ const useStyles = makeStyles({
     zIndex: 10,
     display: "flex",
     flexDirection: "column",
-    maxHeight: "340px",
+    maxHeight: "min(340px, 45dvh)",
     borderRadius: "12px",
     backgroundColor: tokens.colorNeutralBackground1,
     ...shorthands.border("1px", "solid", tokens.colorNeutralStroke1),
     boxShadow: tokens.shadow16,
     overflow: "hidden",
   },
+  bar: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: "4px",
+    paddingRight: "6px",
+    paddingBottom: "4px",
+    paddingLeft: "12px",
+    ...shorthands.borderBottom("1px", "solid", tokens.colorNeutralStroke2),
+  },
   list: { overflowY: "auto", padding: "6px" },
   group: { display: "flex", flexDirection: "column" },
   label: { padding: "6px 10px 4px", fontSize: tokens.fontSizeBase100, fontWeight: tokens.fontWeightSemibold, color: tokens.colorNeutralForeground3, textTransform: "uppercase", letterSpacing: "0.04em" },
-  option: { display: "flex", flexDirection: "column", gap: "2px", padding: "6px 10px", borderRadius: "8px", cursor: "pointer" },
+  option: { display: "flex", flexDirection: "column", justifyContent: "center", gap: "2px", paddingTop: "6px", paddingRight: "10px", paddingBottom: "6px", paddingLeft: "10px", borderRadius: "8px", cursor: "pointer", "@media (pointer: coarse)": { minHeight: "48px", paddingTop: "8px", paddingBottom: "8px" } },
+  optionMobile: { minHeight: "48px", paddingTop: "8px", paddingBottom: "8px" },
   active: { backgroundColor: tokens.colorNeutralBackground1Selected },
   line: { display: "flex", alignItems: "baseline", gap: "8px", minWidth: 0 },
   name: { fontFamily: tokens.fontFamilyMonospace, fontSize: tokens.fontSizeBase300, fontWeight: tokens.fontWeightSemibold, color: tokens.colorNeutralForeground1, whiteSpace: "nowrap" },
@@ -100,8 +113,9 @@ const GROUPS: { origin: SlashCommand["origin"]; label: string }[] = [
   { origin: "orbit", label: "Orbit" },
 ];
 
-export function SlashMenu(p: { id: string; items: SlashCommand[]; active: number; query: string; state: SlashState; onPick: (c: SlashCommand) => void; onHover: (index: number) => void }) {
+export function SlashMenu(p: { id: string; items: SlashCommand[]; active: number; query: string; state: SlashState; onPick: (c: SlashCommand) => void; onHover: (index: number) => void; onClose?: () => void }) {
   const s = useStyles();
+  const { isMobile } = useViewport();
   useEffect(() => {
     document.getElementById(optionId(p.id, p.active))?.scrollIntoView?.({ block: "nearest" });
   }, [p.id, p.active]);
@@ -110,6 +124,14 @@ export function SlashMenu(p: { id: string; items: SlashCommand[]; active: number
   const said = [status, note].filter((t): t is string => t !== null);
   return (
     <div className={s.popup}>
+      {isMobile && p.onClose && (
+        <div className={s.bar}>
+          <Text size={200} weight="semibold">
+            Skills &amp; commands
+          </Text>
+          <Button appearance="subtle" size="small" icon={<Dismiss16Regular />} aria-label="Close commands" onClick={p.onClose} />
+        </div>
+      )}
       {p.items.length > 0 && (
         <div className={s.list} role="listbox" id={p.id} aria-label="Skills and commands">
           {GROUPS.map((g) => {
@@ -126,7 +148,7 @@ export function SlashMenu(p: { id: string; items: SlashCommand[]; active: number
                     id={optionId(p.id, index)}
                     role="option"
                     aria-selected={index === p.active}
-                    className={mergeClasses(s.option, index === p.active && s.active)}
+                    className={mergeClasses(s.option, isMobile && s.optionMobile, index === p.active && s.active)}
                     onMouseDown={(e) => {
                       e.preventDefault();
                       p.onPick(c);

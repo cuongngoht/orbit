@@ -3,10 +3,11 @@
 // under it a toolbar: what the chat starts from on the left (repository, branch), how it runs on the right (model ·
 // effort, mode). Typing is always possible; sending waits until the chat can take a message. `/` at the start of the
 // message opens the slash menu (SlashMenu.tsx): ↑ ↓ move, Enter or Tab takes one, Escape closes it.
-import { Button, Tooltip, makeStyles, shorthands, tokens } from "@fluentui/react-components";
-import { ArrowUp20Filled, Stop16Filled } from "@fluentui/react-icons";
+import { Button, Tooltip, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
+import { ArrowUp20Filled, SlashForward16Regular, Stop16Filled } from "@fluentui/react-icons";
 import type { SlashCommand } from "@orbit-web/contracts";
 import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useViewport } from "../../hooks/useViewport";
 import { SlashMenu, matching, optionId, slashQuery, useSlashCommands } from "./SlashMenu";
 
 const useStyles = makeStyles({
@@ -16,15 +17,31 @@ const useStyles = makeStyles({
     display: "flex",
     alignItems: "flex-end",
     gap: "8px",
-    padding: "10px 10px 10px 16px",
+    paddingTop: "10px",
+    paddingRight: "10px",
+    paddingBottom: "10px",
+    paddingLeft: "16px",
     borderRadius: "16px",
     backgroundColor: tokens.colorNeutralBackground1,
     ...shorthands.border("1px", "solid", tokens.colorNeutralStroke1),
     boxShadow: tokens.shadow4,
     ":focus-within": { ...shorthands.borderColor(tokens.colorNeutralStroke1Pressed), boxShadow: tokens.shadow8 },
   },
+  boxMobile: {
+    paddingTop: "8px",
+    paddingRight: "8px",
+    paddingBottom: "8px",
+    paddingLeft: "8px",
+    borderRadius: "20px",
+  },
+  slashBtn: {
+    flexShrink: 0,
+    minWidth: "40px",
+    minHeight: "40px",
+  },
   input: {
     flexGrow: 1,
+    minWidth: 0,
     resize: "none",
     border: "none",
     outlineStyle: "none",
@@ -33,13 +50,23 @@ const useStyles = makeStyles({
     fontFamily: tokens.fontFamilyBase,
     fontSize: tokens.fontSizeBase400,
     lineHeight: tokens.lineHeightBase400,
-    padding: "4px 0",
+    paddingTop: "4px",
+    paddingRight: "0",
+    paddingBottom: "4px",
+    paddingLeft: "0",
     maxHeight: "40vh",
     "::placeholder": { color: tokens.colorNeutralForeground4 },
   },
+  inputMobile: {
+    fontSize: "16px",
+    maxHeight: "32dvh",
+  },
   send: { flexShrink: 0 },
-  toolbar: { display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap", padding: "0 6px" },
+  sendTouch: { minWidth: "44px", minHeight: "44px" },
+  toolbar: { display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap", paddingTop: "0", paddingRight: "6px", paddingBottom: "0", paddingLeft: "6px" },
+  toolbarMobile: { flexWrap: "nowrap", overflowX: "auto", gap: "6px", paddingTop: "2px", paddingRight: "0", paddingBottom: "2px", paddingLeft: "0" },
   side: { display: "flex", alignItems: "center", gap: "2px", flexWrap: "wrap", minWidth: 0 },
+  sideMobile: { flexWrap: "nowrap", flexShrink: 0, gap: "6px" },
   grow: { flexGrow: 1 },
 });
 
@@ -67,6 +94,7 @@ const rowsOf = (text: string): number => Math.min(10, Math.max(2, text.split("\n
 
 export function Composer(p: ComposerProps) {
   const s = useStyles();
+  const { isMobile, isCoarse } = useViewport();
   const [text, setText] = useState("");
   const [active, setActive] = useState(0);
   // The text the menu was closed at with Escape: it stays closed until the text changes.
@@ -93,6 +121,15 @@ export function Composer(p: ComposerProps) {
     edit(`/${c.name} `);
     input.current?.focus();
   };
+  const toggleSlash = () => {
+    if (open) {
+      setDismissed(text);
+      return;
+    }
+    setDismissed(null);
+    if (!text.startsWith("/")) edit("/");
+    input.current?.focus();
+  };
   // The menu's keys, while it offers something; true when the key was its.
   const menuKey = (e: KeyboardEvent<HTMLTextAreaElement>): boolean => {
     if (open && e.key === "Escape") {
@@ -108,21 +145,31 @@ export function Composer(p: ComposerProps) {
     if (takes && items[current] !== undefined) pick(items[current]);
     return takes;
   };
+  const touchSized = isMobile || isCoarse;
   return (
     <div className={s.wrap}>
       {p.above}
       <div className={s.anchor}>
-        {open && <SlashMenu id={listId} items={items} active={current} query={query ?? ""} state={slash} onPick={pick} onHover={setActive} />}
+        {open && <SlashMenu id={listId} items={items} active={current} query={query ?? ""} state={slash} onPick={pick} onHover={setActive} onClose={() => setDismissed(text)} />}
         <form
-          className={s.box}
+          className={mergeClasses(s.box, isMobile && s.boxMobile)}
           onSubmit={(e) => {
             e.preventDefault();
             submit();
           }}
         >
+          {isMobile && p.commandsPath !== undefined && (
+            <Button
+              className={s.slashBtn}
+              appearance={open ? "primary" : "subtle"}
+              icon={<SlashForward16Regular />}
+              aria-label="Skills and commands"
+              onClick={toggleSlash}
+            />
+          )}
           <textarea
             ref={input}
-            className={s.input}
+            className={mergeClasses(s.input, isMobile && s.inputMobile)}
             rows={rowsOf(text)}
             placeholder={p.placeholder}
             aria-label="Message"
@@ -137,7 +184,7 @@ export function Composer(p: ComposerProps) {
                 e.preventDefault();
                 return;
               }
-              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              if (!isCoarse && e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 submit();
               }
@@ -145,20 +192,20 @@ export function Composer(p: ComposerProps) {
           />
           {p.running ? (
             <Tooltip content="Stop" relationship="label">
-              <Button className={s.send} shape="circular" appearance="secondary" icon={<Stop16Filled />} onClick={p.onStop} />
+              <Button className={mergeClasses(s.send, touchSized && s.sendTouch)} shape="circular" appearance="secondary" icon={<Stop16Filled />} onClick={p.onStop} />
             </Tooltip>
           ) : (
             <Tooltip content="Send" relationship="label">
-              <Button className={s.send} shape="circular" appearance="primary" type="submit" icon={<ArrowUp20Filled />} disabled={!ready} />
+              <Button className={mergeClasses(s.send, touchSized && s.sendTouch)} shape="circular" appearance="primary" type="submit" icon={<ArrowUp20Filled />} disabled={!ready} />
             </Tooltip>
           )}
         </form>
       </div>
       {(p.left || p.right) && (
-        <div className={s.toolbar} role="toolbar" aria-label="How this chat runs">
-          <div className={s.side}>{p.left}</div>
-          <div className={s.grow} />
-          <div className={s.side}>{p.right}</div>
+        <div className={mergeClasses(s.toolbar, isMobile && s.toolbarMobile, isMobile && "orbit-hscroll")} role="toolbar" aria-label="How this chat runs">
+          <div className={mergeClasses(s.side, isMobile && s.sideMobile)}>{p.left}</div>
+          {!isMobile && <div className={s.grow} />}
+          <div className={mergeClasses(s.side, isMobile && s.sideMobile)}>{p.right}</div>
         </div>
       )}
     </div>

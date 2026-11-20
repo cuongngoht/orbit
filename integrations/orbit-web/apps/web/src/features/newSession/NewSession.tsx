@@ -1,9 +1,11 @@
 // A NEW SESSION: an empty page with the composer at the bottom, as in Claude Code. The toolbar holds the draft -- a
 // repository of either source (or none), its branch, the model and effort, the mode -- and sending the first message
 // creates the chat with them and opens it.
-import { MessageBar, MessageBarBody, Text, Title2, makeStyles, tokens } from "@fluentui/react-components";
-import { DEFAULT_EFFORT, DEFAULT_MODE, DEFAULT_MODEL, type EffortChoice, type ModeChoice, type ModelChoice, type RepositorySource, type SessionSummary, type Settings, type SourcesStatus } from "@orbit-web/contracts";
+import { Avatar, Button, MessageBar, MessageBarBody, Text, Title2, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
+import { Navigation20Regular } from "@fluentui/react-icons";
+import { DEFAULT_EFFORT, DEFAULT_MODE, DEFAULT_MODEL, type ClaudeAccount, type EffortChoice, type ModeChoice, type ModelChoice, type RepositorySource, type SessionSummary, type Settings, type SourcesStatus } from "@orbit-web/contracts";
 import { useState } from "react";
+import { useViewport } from "../../hooks/useViewport";
 import { errorText, send } from "../../services/api";
 import { Composer } from "../composer/Composer";
 import { BranchPicker, RepositoryPicker, type RepositoryChoice } from "../composer/RepositoryPicker";
@@ -11,15 +13,38 @@ import { ModelEffortPicker, ModePicker } from "../composer/RunPickers";
 
 const useStyles = makeStyles({
   root: { display: "flex", flexDirection: "column", height: "100%", minHeight: 0 },
-  top: { padding: "14px 20px", color: tokens.colorNeutralForeground3 },
-  hero: { flexGrow: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "10px", padding: "24px", textAlign: "center" },
+  top: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", minHeight: "52px", paddingTop: "14px", paddingRight: "20px", paddingBottom: "14px", paddingLeft: "20px", color: tokens.colorNeutralForeground3 },
+  topMobile: { paddingTop: "max(8px, env(safe-area-inset-top))", paddingRight: "12px", paddingBottom: "8px", paddingLeft: "12px", borderBottom: `1px solid ${tokens.colorNeutralStroke2}` },
+  topLeft: { display: "flex", alignItems: "center", gap: "8px", minWidth: 0 },
+  touchBtn: { minWidth: "44px", minHeight: "44px" },
+  hero: { flexGrow: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "10px", paddingTop: "24px", paddingRight: "24px", paddingBottom: "24px", paddingLeft: "24px", textAlign: "center" },
+  heroMobile: { paddingTop: "16px", paddingRight: "16px", paddingBottom: "16px", paddingLeft: "16px" },
   logo: { width: "44px", height: "44px", opacity: 0.9 },
+  heading: { marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, fontSize: "clamp(22px, 5.5vw, 28px)", lineHeight: "1.25" },
   muted: { color: tokens.colorNeutralForeground3, maxWidth: "520px" },
-  bottom: { padding: "0 20px 20px" },
+  bottom: { paddingTop: "0", paddingRight: "20px", paddingBottom: "20px", paddingLeft: "20px", flexShrink: 0 },
+  bottomMobile: { paddingTop: "0", paddingRight: "12px", paddingBottom: "max(12px, env(safe-area-inset-bottom))", paddingLeft: "12px" },
 });
 
-export function NewSession({ settings, sources, onCreated, onConnect }: { settings: Settings | null; sources: SourcesStatus | null; onCreated: (s: SessionSummary) => void; onConnect: (source: RepositorySource) => void }) {
+export function NewSession({
+  settings,
+  sources,
+  onCreated,
+  onConnect,
+  onOpenNav,
+  account,
+  onOpenAccount,
+}: {
+  settings: Settings | null;
+  sources: SourcesStatus | null;
+  onCreated: (s: SessionSummary) => void;
+  onConnect: (source: RepositorySource) => void;
+  onOpenNav?: () => void;
+  account?: ClaudeAccount | null;
+  onOpenAccount?: () => void;
+}) {
   const s = useStyles();
+  const { isMobile, isCoarse } = useViewport();
   const [choice, setChoice] = useState<RepositoryChoice | null>(null);
   const [branch, setBranch] = useState<string | null>(null);
   // A choice a person made wins; until then, Settings' defaults.
@@ -50,17 +75,31 @@ export function NewSession({ settings, sources, onCreated, onConnect }: { settin
 
   return (
     <section className={s.root} aria-label="New session">
-      <div className={s.top}>
-        <Text weight="semibold">New session</Text>
+      <div className={mergeClasses(s.top, isMobile && s.topMobile)}>
+        <div className={s.topLeft}>
+          {onOpenNav && <Button className={s.touchBtn} appearance="subtle" icon={<Navigation20Regular />} aria-label="Open navigation" onClick={onOpenNav} />}
+          <Text weight="semibold">New session</Text>
+        </div>
+        {onOpenAccount && (
+          <Button
+            className={s.touchBtn}
+            appearance="subtle"
+            icon={<Avatar name={account?.email ?? "Claude account"} size={24} />}
+            aria-label="Account and settings"
+            onClick={onOpenAccount}
+          />
+        )}
       </div>
-      <div className={s.hero}>
+      <div className={mergeClasses(s.hero, isMobile && s.heroMobile)}>
         <img src="/orbit.svg" alt="" className={s.logo} />
-        <Title2 as="h1">What should Orbit work on?</Title2>
+        <Title2 as="h1" className={s.heading}>
+          What should Orbit work on?
+        </Title2>
         <Text className={s.muted}>Describe a task or ask a question. Start from a repository on GitHub or Azure DevOps — or from none, in an empty workspace of its own.</Text>
       </div>
-      <div className={s.bottom}>
+      <div className={mergeClasses(s.bottom, isMobile && s.bottomMobile)}>
         <Composer
-          autoFocus
+          autoFocus={!isMobile && !isCoarse}
           placeholder="Describe a task or ask a question"
           canSend={!busy}
           running={false}

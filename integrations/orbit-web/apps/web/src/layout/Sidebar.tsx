@@ -35,6 +35,7 @@ import {
   Add20Regular,
   ChevronDown12Regular,
   Delete16Regular,
+  Dismiss20Regular,
   MoreHorizontal16Regular,
   PanelLeftContract20Regular,
   PanelLeftExpand20Regular,
@@ -52,23 +53,29 @@ import { errorText, send } from "../services/api";
 
 const useStyles = makeStyles({
   root: { display: "flex", flexDirection: "column", height: "100%", minHeight: 0, backgroundColor: tokens.colorNeutralBackground2, borderRight: `1px solid ${tokens.colorNeutralStroke2}` },
-  head: { display: "flex", alignItems: "center", gap: "8px", padding: "12px 12px 8px 16px" },
+  rootDrawer: { borderRightStyle: "none", paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" },
+  head: { display: "flex", alignItems: "center", gap: "8px", paddingTop: "12px", paddingRight: "12px", paddingBottom: "8px", paddingLeft: "16px" },
+  headCollapsed: { paddingTop: "12px", paddingRight: "0", paddingBottom: "8px", paddingLeft: "0", justifyContent: "center" },
   brand: { display: "flex", alignItems: "center", gap: "8px", flexGrow: 1, minWidth: 0 },
   logo: { width: "22px", height: "22px" },
-  nav: { display: "flex", flexDirection: "column", gap: "2px", padding: "4px 8px" },
-  navItem: { justifyContent: "flex-start", fontWeight: tokens.fontWeightRegular, width: "100%" },
+  nav: { display: "flex", flexDirection: "column", gap: "2px", paddingTop: "4px", paddingRight: "8px", paddingBottom: "4px", paddingLeft: "8px" },
+  navCollapsed: { paddingTop: "4px", paddingRight: "0", paddingBottom: "4px", paddingLeft: "0", alignItems: "center" },
+  navItem: { justifyContent: "flex-start", fontWeight: tokens.fontWeightRegular, width: "100%", "@media (pointer: coarse)": { minHeight: "44px" } },
   navSelected: { backgroundColor: tokens.colorSubtleBackgroundSelected },
   section: { display: "flex", alignItems: "center", gap: "4px", padding: "14px 16px 4px", color: tokens.colorNeutralForeground3 },
   recents: { flexGrow: 1, overflowY: "auto", padding: "0 8px 8px", margin: 0, listStyleType: "none" },
   item: { display: "flex", alignItems: "center", gap: "6px", borderRadius: tokens.borderRadiusMedium, paddingLeft: "8px", ":hover": { backgroundColor: tokens.colorSubtleBackgroundHover } },
   itemSelected: { backgroundColor: tokens.colorSubtleBackgroundSelected },
-  itemButton: { flexGrow: 1, minWidth: 0, display: "flex", alignItems: "center", gap: "8px", border: "none", backgroundColor: "transparent", padding: "7px 0", textAlign: "left", cursor: "pointer", color: tokens.colorNeutralForeground1 },
+  itemButton: { flexGrow: 1, minWidth: 0, display: "flex", alignItems: "center", gap: "8px", border: "none", backgroundColor: "transparent", paddingTop: "7px", paddingRight: "0", paddingBottom: "7px", paddingLeft: "0", textAlign: "left", cursor: "pointer", color: tokens.colorNeutralForeground1, "@media (pointer: coarse)": { minHeight: "44px", paddingTop: "10px", paddingBottom: "10px" } },
   itemTitle: { flexGrow: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: tokens.fontSizeBase300 },
+  touchBtn: { "@media (pointer: coarse)": { minWidth: "44px", minHeight: "44px" } },
   dot: { width: "7px", height: "7px", borderRadius: "50%", flexShrink: 0 },
   running: { backgroundColor: tokens.colorPaletteMarigoldBackground3 },
   failed: { backgroundColor: tokens.colorPaletteRedBackground3 },
-  foot: { borderTop: `1px solid ${tokens.colorNeutralStroke2}`, padding: "8px" },
-  account: { width: "100%", justifyContent: "flex-start", fontWeight: tokens.fontWeightRegular },
+  foot: { borderTop: `1px solid ${tokens.colorNeutralStroke2}`, paddingTop: "8px", paddingRight: "8px", paddingBottom: "8px", paddingLeft: "8px" },
+  footCollapsed: { paddingTop: "8px", paddingRight: "0", paddingBottom: "8px", paddingLeft: "0", display: "flex", justifyContent: "center", width: "100%" },
+  account: { width: "100%", justifyContent: "flex-start", fontWeight: tokens.fontWeightRegular, "@media (pointer: coarse)": { minHeight: "44px" } },
+  accountCollapsed: { width: "40px", minWidth: "40px", height: "40px", paddingTop: "0", paddingRight: "0", paddingBottom: "0", paddingLeft: "0", justifyContent: "center" },
   accountText: { display: "flex", alignItems: "baseline", gap: "6px", minWidth: 0, flexGrow: 1, overflow: "hidden" },
   email: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   muted: { color: tokens.colorNeutralForeground3 },
@@ -82,6 +89,7 @@ export interface SidebarProps {
   loading: boolean;
   selected: string | null;
   collapsed: boolean;
+  isDrawer?: boolean;
   account: ClaudeAccount | null;
   signingOut: boolean;
   onToggle: () => void;
@@ -101,7 +109,7 @@ function AccountMenu({ account, collapsed, busy, onSettings, onSignOut }: { acco
   return (
     <Menu positioning="above-start">
       <MenuTrigger disableButtonEnhancement>
-        <Button className={s.account} appearance="subtle" icon={<Avatar name={name} size={24} />} aria-label={`Signed in as ${name}`} disabled={busy}>
+        <Button className={mergeClasses(s.account, collapsed && s.accountCollapsed)} appearance="subtle" icon={<Avatar name={name} size={24} />} aria-label={`Signed in as ${name}`} disabled={busy}>
           {!collapsed && (
             <span className={s.accountText}>
               <span className={s.email}>{name}</span>
@@ -155,12 +163,12 @@ export function Sidebar(p: SidebarProps) {
   if (p.collapsed)
     return (
       <nav className={mergeClasses(s.root, s.collapsed)} aria-label="Orbit">
-        <div className={s.head}>
+        <div className={mergeClasses(s.head, s.headCollapsed)}>
           <Tooltip content="Open the sidebar" relationship="label">
             <Button appearance="subtle" icon={<PanelLeftExpand20Regular />} onClick={p.onToggle} />
           </Tooltip>
         </div>
-        <div className={s.nav}>
+        <div className={mergeClasses(s.nav, s.navCollapsed)}>
           <Tooltip content="New session" relationship="label">
             <Button appearance="subtle" icon={<Add20Regular />} onClick={p.onNew} />
           </Tooltip>
@@ -169,14 +177,14 @@ export function Sidebar(p: SidebarProps) {
           </Tooltip>
         </div>
         <div style={{ flexGrow: 1 }} />
-        <div className={s.foot}>
+        <div className={mergeClasses(s.foot, s.footCollapsed)}>
           <AccountMenu account={p.account} collapsed busy={p.signingOut} onSettings={p.onSettings} onSignOut={p.onSignOut} />
         </div>
       </nav>
     );
 
   return (
-    <nav className={s.root} aria-label="Orbit">
+    <nav className={mergeClasses(s.root, p.isDrawer && s.rootDrawer)} aria-label="Orbit">
       <div className={s.head}>
         <div className={s.brand}>
           <img src="/orbit.svg" alt="" className={s.logo} />
@@ -185,7 +193,7 @@ export function Sidebar(p: SidebarProps) {
           </Text>
         </div>
         <Tooltip content="Close the sidebar" relationship="label">
-          <Button appearance="subtle" icon={<PanelLeftContract20Regular />} onClick={p.onToggle} />
+          <Button className={p.isDrawer ? s.touchBtn : undefined} appearance="subtle" icon={p.isDrawer ? <Dismiss20Regular /> : <PanelLeftContract20Regular />} aria-label="Close the sidebar" onClick={p.onToggle} />
         </Tooltip>
       </div>
       <div className={s.nav}>
@@ -235,7 +243,7 @@ export function Sidebar(p: SidebarProps) {
             </button>
             <Menu>
               <MenuTrigger disableButtonEnhancement>
-                <Button appearance="transparent" size="small" icon={<MoreHorizontal16Regular />} aria-label={`Actions for ${x.title}`} />
+                <Button className={s.touchBtn} appearance="transparent" size="small" icon={<MoreHorizontal16Regular />} aria-label={`Actions for ${x.title}`} />
               </MenuTrigger>
               <MenuPopover>
                 <MenuList>

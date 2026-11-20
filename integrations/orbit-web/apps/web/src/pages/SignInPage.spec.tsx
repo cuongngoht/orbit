@@ -12,22 +12,23 @@ describe("the sign-in page: Orbit Web signs in with a Claude account", () => {
     fakeApi();
     renderUi(<SignInPage status={signedOutClaude()} onChanged={() => undefined} />);
     expect(screen.getByRole("heading", { name: "Sign in to Orbit Web" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sign in with Claude" })).toBeInTheDocument();
+    expect(screen.getByText(/Orbit Web 0\.8\.0/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue with Claude" })).toBeInTheDocument();
     expect(screen.queryByText(/Console/)).toBeNull();
-    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Sign in with Claude"]);
+    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Continue with Claude"]);
   });
 
-  test("Sign in with Claude starts the CLI's sign-in with no mode, shows its link and sends the pasted code", async () => {
+  test("Continue with Claude starts the CLI's sign-in with no mode, shows its link and sends the pasted code", async () => {
     const api = fakeApi()
       .on("POST", "/api/claude/login", () => ({ ...idleFlow(), state: "starting" }))
       .on("POST", "/api/claude/login/code", () => ({ ...idleFlow(), state: "verifying" }));
     renderUi(<SignInPage status={signedOutClaude()} onChanged={() => undefined} />);
-    await userEvent.click(screen.getByRole("button", { name: "Sign in with Claude" }));
+    await userEvent.click(screen.getByRole("button", { name: "Continue with Claude" }));
     expect(api.calls.at(-1)).toMatchObject({ method: "POST", path: "/api/claude/login", body: undefined });
     expect(api.calls.at(-1)?.headers["x-orbit-web"]).toBe("1");
     act(() => FakeEventSource.last("/api/claude/login/events").emit({ ...idleFlow(), state: "awaiting_user", url: "https://claude.com/cai/oauth/authorize?x=1", needsCode: true, updatedAt: "2026-11-19T00:01:00.000Z" }));
     expect(await screen.findByRole("link", { name: "https://claude.com/cai/oauth/authorize?x=1" })).toHaveAttribute("rel", "noopener noreferrer");
-    expect(screen.queryByRole("button", { name: "Sign in with Claude" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Continue with Claude" })).toBeNull();
     await userEvent.type(screen.getByLabelText("2. Paste the code the page shows"), "abc#def");
     await userEvent.click(screen.getByRole("button", { name: "Submit code" }));
     expect(api.calls.at(-1)).toMatchObject({ method: "POST", path: "/api/claude/login/code", body: { code: "abc#def" } });
@@ -52,6 +53,6 @@ describe("the sign-in page: Orbit Web signs in with a Claude account", () => {
     fakeApi();
     renderUi(<SignInPage status={signedOutClaude({ state: "unavailable", detail: "claude auth status timed out" })} onChanged={() => undefined} />);
     expect(screen.getByText(/The Claude CLI did not answer: claude auth status timed out/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sign in with Claude" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue with Claude" })).toBeInTheDocument();
   });
 });

@@ -1,0 +1,255 @@
+import { act, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import type { Customizations, SetupStatus } from "@orbit-web/contracts";
+import { describe, expect, test, vi } from "vitest";
+import type { SettingsSection } from "../../hooks/useHashRoute";
+import { fakeApi, type FakeApi } from "../../testing/fakeApi";
+import { pushApp } from "../../testing/events";
+import { FakeEventSource } from "../../testing/fakeEventSource";
+import { SESSION_ID, claudeStatus, idleFlow, inventory, settings, setupStatus } from "../../testing/fixtures";
+import { renderLive } from "../../testing/render";
+import type { SignOut } from "../auth/useSignOut";
+import { SettingsDialog, type SettingsDialogProps } from "./SettingsDialog";
+
+const CUSTOMIZATIONS: Customizations = {
+  orbit: { version: "0.6.0", skills: [{ name: "orbit-help", description: "Orbit's coordinator and navigator.", path: "skills/orbit-help/SKILL.md" }], agents: [{ name: "orbit-qa-agent", description: "Runs one bounded QA investigation.", path: "agents/orbit-qa-agent.md" }] },
+  projects: [
+    {
+      sessionId: SESSION_ID,
+      title: "Fix sum",
+      inventory: inventory({
+        plugins: [
+          { id: "lint-kit@acme-tools", kind: "declared", source: "acme/claude-plugins", path: null, state: "declared", detail: null },
+          { id: "broken@acme-tools", kind: "declared", source: "acme/claude-plugins", path: null, state: "failed", detail: "marketplace not found" },
+        ],
+      }),
+    },
+    // A chat started without a repository: nothing of a project's to list.
+    { sessionId: "22222222-3333-4444-8555-666666666666", title: "Explain closures", inventory: inventory({ repository: null, skills: [], commands: [], agents: [], plugins: [], claudeMd: false, loaded: false }) },
+  ],
+};
+
+function show(section: SettingsSection, o: { status?: SetupStatus; connector?: "github" | "azure"; api?: FakeApi } = {}) {
+  let status = o.status ?? setupStatus();
+  const api = (o.api ?? fakeApi())
+    .on("GET", "/api/setup/status", () => status)
+    .on("GET", "/api/customizations", () => CUSTOMIZATIONS)
+    .on("PATCH", "/api/settings", (body) => settings(body as object));
+  const signOut: SignOut = { signOut: vi.fn(async () => undefined), busy: false, error: null, clear: vi.fn() };
+  const p: SettingsDialogProps = { section, connector: o.connector ?? null, claude: claudeStatus(), signOut, settings: settings(), onSettings: vi.fn(), onSection: vi.fn(), onClose: vi.fn() };
+  renderLive(<SettingsDialog {...p} />);
+  return { p, api, signOut, setStatus: (s: SetupStatus) => (status = s), statusReads: () => api.calls.filter((c) => c.path === "/api/setup/status").length };
+}
+
+const patches = (api: FakeApi) => api.calls.filter((c) => c.method === "PATCH").map((c) => c.body);
+const sections = (nav: HTMLElement) => within(nav).getAllByRole("button").map((b) => b.textContent).filter((t) => t !== "");
+const posted = (api: FakeApi, path: string) => api.calls.find((c) => c.method === "POST" && c.path === path);
+const flow = (connector: "github" | "azure", over: object) => pushApp("connector.flow", { connector, flow: { ...idleFlow(), updatedAt: "2026-11-20T00:01:00.000Z", ...over } });
+// The app stream this dialog follows is open, and every component that follows it has subscribed: a notification
+// pushed before a component's subscribing effect ran would reach nobody.
+async function streamOpen() {
+  await waitFor(() => expect(FakeEventSource.instances.some((s) => s.url === "/api/events" && !s.closed)).toBe(true));
+  await act(async () => undefined);
+}
+
+describe("Settings: the sections, over the page", () => {
+  test("lists its sections, finds one by what it is about, and closes", async () => {
+    const { p } = show("account");
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    const nav = within(dialog).getByRole("navigation", { name: "Settings sections" });
+    expect(sections(nav)).toEqual(["Account", "Appearance", "Code", "Connectors", "Skills", "Plugins", "System"]);
+    expect(within(nav).getByRole("button", { name: "Account" })).toHaveAttribute("aria-current", "page");
+    expect(within(dialog).getByRole("heading", { name: "Account" })).toBeInTheDocument();
+    await userEvent.type(within(dialog).getByRole("searchbox", { name: "Search settings" }), "effort");
+    expect(sections(nav)).toEqual(["Code"]);
+    await userEvent.click(within(nav).getByRole("button", { name: "Code" }));
+    expect(p.onSection).toHaveBeenCalledWith("code");
+    await userEvent.clear(within(dialog).getByRole("searchbox", { name: "Search settings" }));
+    await userEvent.type(within(dialog).getByRole("searchbox", { name: "Search settings" }), "zzz");
+    expect(within(nav).getByText("Nothing matches.")).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Close settings" }));
+    expect(p.onClose).toHaveBeenCalled();
+  });
+
+  test("Account: who Orbit Web is signed in as, and Sign out", async () => {
+    const { signOut } = show("account");
+    const account = await screen.findByLabelText("Claude Account");
+    expect(account.textContent).toContain("octo@example.com");
+    expect(account.textContent).toContain("Octo Org · max");
+    await userEvent.click(within(account).getByRole("button", { name: "Sign out" }));
+    expect(signOut.signOut).toHaveBeenCalled();
+  });
+
+  test("System: the checks and the versions this container holds", async () => {
+    show("system");
+    const system = await screen.findByLabelText("System Status");
+    expect(system.textContent).toContain("Everything is in place.");
+    expect(system.textContent).toContain("0.6.0");
+  });
+});
+
+describe("Settings → Connectors: GitHub and Azure DevOps, as Claude's connectors look", () => {
+  test("a table of the two connectors: their type, authorization and status", async () => {
+    show("connectors", { status: setupStatus({}, { state: "connected", account: { login: "octo", name: "Octo Cat" } }) });
+    const table = await screen.findByRole("table", { name: "Connectors" });
+    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Connector", "Type", "Authorization", "Status"]);
+    const github = within(table).getByRole("row", { name: "GitHub" });
+    expect(github.textContent).toContain("CLI · gh");
+    expect(github.textContent).toContain("Individual");
+    expect(github.textContent).toContain("@octo");
+    const azure = within(table).getByRole("row", { name: "Azure DevOps" });
+    expect(azure.textContent).toContain("CLI · az");
+    expect(within(azure).getByRole("button", { name: "Connect" })).toBeInTheDocument();
+  });
+
+  test("GitHub: Connect starts GitHub CLI's device sign-in; its link and code arrive on the app stream; a finished one reads the status again", async () => {
+    const { api, statusReads } = show("connectors", { api: fakeApi().on("POST", "/api/github/login", () => ({ ...idleFlow(), state: "starting" })) });
+    const table = await screen.findByRole("table", { name: "Connectors" });
+    await userEvent.click(within(within(table).getByRole("row", { name: "GitHub" })).getByRole("button", { name: "Connect" }));
+    const detail = await screen.findByRole("region", { name: "GitHub connection" });
+    await userEvent.click(within(detail).getByRole("button", { name: "Connect GitHub" }));
+    await waitFor(() => expect(posted(api, "/api/github/login")).toBeDefined());
+    expect(posted(api, "/api/github/login")?.headers["x-orbit-web"]).toBe("1");
+    await streamOpen();
+    flow("github", { state: "awaiting_user", url: "https://github.com/login/device", code: "WXYZ-1234" });
+    expect(await within(detail).findByLabelText("one-time code")).toHaveTextContent("WXYZ-1234");
+    expect(within(detail).getByRole("link", { name: "https://github.com/login/device" })).toHaveAttribute("rel", "noopener noreferrer");
+    expect(within(detail).getByText("Waiting for authorization…")).toBeInTheDocument();
+    const before = statusReads();
+    flow("github", { state: "connected", message: "Connected as octo.", updatedAt: "2026-11-20T00:02:00.000Z" });
+    await waitFor(() => expect(statusReads()).toBeGreaterThan(before));
+  });
+
+  test("GitHub: a failed sign-in says what the CLI said", async () => {
+    show("connectors", { connector: "github" });
+    const detail = await screen.findByRole("region", { name: "GitHub connection" });
+    await streamOpen();
+    flow("github", { state: "failed", message: "failed to authenticate via web browser: HTTP 415" });
+    expect(await within(detail).findByText(/HTTP 415/)).toBeInTheDocument();
+  });
+
+  test("GitHub: an expired sign-in keeps the chats and offers to connect again; a connected one disconnects", async () => {
+    show("connectors", { connector: "github", status: setupStatus({}, { state: "expired", detail: "gh says the sign-in is error." }) });
+    const detail = await screen.findByRole("region", { name: "GitHub connection" });
+    expect(detail.textContent).toContain("Expired");
+    expect(within(detail).getByText(/Your chats are kept/)).toBeInTheDocument();
+    expect(within(detail).getByRole("button", { name: "Connect GitHub" })).toBeInTheDocument();
+  });
+
+  test("GitHub connected: who, and Disconnect", async () => {
+    const { api } = show("connectors", { connector: "github", status: setupStatus({}, { state: "connected", account: { login: "octo", name: "Octo Cat" } }), api: fakeApi().on("POST", "/api/github/logout", () => ({})) });
+    const detail = await screen.findByRole("region", { name: "GitHub connection" });
+    expect(detail.textContent).toContain("Connected as @octo (Octo Cat)");
+    await userEvent.click(within(detail).getByRole("button", { name: "Disconnect" }));
+    await waitFor(() => expect(api.calls.some((c) => c.method === "POST" && c.path === "/api/github/logout")).toBe(true));
+  });
+
+  test("Azure DevOps: Connect sends the optional tenant, and shows the URL and code the Azure CLI printed", async () => {
+    const { api } = show("connectors", { connector: "azure", api: fakeApi().on("POST", "/api/azure/login", () => ({ ...idleFlow(), state: "starting" })) });
+    const detail = await screen.findByRole("region", { name: "Azure DevOps connection" });
+    await userEvent.type(within(detail).getByLabelText("Tenant (optional)"), "contoso.onmicrosoft.com");
+    await userEvent.click(within(detail).getByRole("button", { name: "Connect Azure" }));
+    await waitFor(() => expect(posted(api, "/api/azure/login")?.body).toEqual({ tenant: "contoso.onmicrosoft.com" }));
+    await streamOpen();
+    flow("azure", { state: "awaiting_user", url: "https://microsoft.com/devicelogin", code: "DXT2KQ9LM" });
+    expect(await within(detail).findByLabelText("Azure one-time code")).toHaveTextContent("DXT2KQ9LM");
+    expect(within(detail).getByRole("link", { name: "https://microsoft.com/devicelogin" })).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  test("Azure DevOps connected: who and which subscription, Sign out, and the switch that lets Claude Code use it", async () => {
+    const azure = { state: "connected" as const, account: { user: "dev@contoso.com", userType: "user", tenantId: "t", subscription: "Contoso Dev", subscriptionId: "s" } };
+    const { api } = show("connectors", { connector: "azure", status: setupStatus({}, {}, azure), api: fakeApi().on("POST", "/api/azure/logout", () => ({})) });
+    const detail = await screen.findByRole("region", { name: "Azure DevOps connection" });
+    expect(detail.textContent).toContain("Signed in as dev@contoso.com · Contoso Dev");
+    const toggle = within(detail).getByRole("switch", { name: "Let Claude Code use this Azure sign-in" });
+    expect(toggle).not.toBeChecked();
+    await userEvent.click(toggle);
+    await waitFor(() => expect(patches(api)).toEqual([{ azureForClaude: true }]));
+    await userEvent.click(within(detail).getByRole("button", { name: "Sign out" }));
+    await waitFor(() => expect(api.calls.some((c) => c.path === "/api/azure/logout")).toBe(true));
+  });
+
+  test("an image without the Azure CLI says so and offers no sign-in", async () => {
+    show("connectors", { connector: "azure", status: setupStatus({}, {}, { state: "unavailable", detail: "The Azure CLI is not installed in this image." }) });
+    const detail = await screen.findByRole("region", { name: "Azure DevOps connection" });
+    expect(within(detail).getByText(/not installed in this image/)).toBeInTheDocument();
+    expect(within(detail).queryByRole("button", { name: "Connect Azure" })).toBeNull();
+  });
+
+  test("a connector's status on the app stream reads the table again", async () => {
+    const { setStatus, statusReads } = show("connectors");
+    const table = await screen.findByRole("table", { name: "Connectors" });
+    await streamOpen();
+    const before = statusReads();
+    setStatus(setupStatus({}, { state: "connected", account: { login: "octo", name: null } }));
+    pushApp("connector.status", { connector: "github", state: "connected", account: "octo" });
+    await waitFor(() => expect(statusReads()).toBeGreaterThan(before));
+    expect(await within(table).findByText("@octo")).toBeInTheDocument();
+  });
+});
+
+describe("Settings → Appearance and Code: saved as they change", () => {
+  test("the theme", async () => {
+    const { api, p } = show("appearance");
+    await userEvent.click(await screen.findByRole("radio", { name: "Dark" }));
+    await waitFor(() => expect(patches(api)).toEqual([{ theme: "dark" }]));
+    await waitFor(() => expect(p.onSettings).toHaveBeenCalledWith(expect.objectContaining({ theme: "dark" })));
+  });
+
+  test("a new chat's model, effort and mode; what a repository brings; the web tools", async () => {
+    const { api } = show("code");
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    await userEvent.selectOptions(within(dialog).getByLabelText("Default model"), "opus");
+    const effort = within(dialog).getByLabelText(/Default effort/);
+    expect(within(effort).getAllByRole("option").map((o) => o.textContent)).toEqual(["Low", "Medium (recommended)", "High", "Extra", "Max"]);
+    await userEvent.selectOptions(effort, "max");
+    await userEvent.click(within(dialog).getByRole("radio", { name: /^Plan — / }));
+    expect(within(dialog).getByRole("switch", { name: "Load project skills" })).toBeChecked();
+    await userEvent.click(within(dialog).getByRole("switch", { name: "Load project skills" }));
+    expect(within(dialog).getByRole("switch", { name: "Run project plugins" })).not.toBeChecked();
+    expect(within(dialog).getByText(/runs code — hooks at session start, MCP servers — in this container/)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("switch", { name: "Run project plugins" }));
+    await userEvent.click(within(dialog).getByRole("switch", { name: /web tools/ }));
+    expect(within(dialog).getByText(/No per-run budget cap is set/)).toBeInTheDocument();
+    await waitFor(() => expect(patches(api)).toEqual([{ defaultModel: "opus" }, { defaultEffort: "max" }, { defaultMode: "plan" }, { projectSkills: false }, { projectPlugins: true }, { webTools: true }]));
+  });
+});
+
+describe("Settings → Skills and Plugins: what Claude Code is given", () => {
+  test("each project's skills, commands and agents, Orbit's own in their tab, and a search over both", async () => {
+    const { api } = show("skills");
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    const project = await within(dialog).findByRole("region", { name: "Skills of Fix sum" });
+    expect(within(dialog).queryByRole("region", { name: "Skills of Explain closures" })).toBeNull();
+    expect(project.textContent).toContain("Loaded for this chat, as instructions (no hooks, no pre-run commands).");
+    expect(project.textContent).toContain("CLAUDE.md: read by Claude Code from the repository.");
+    const rows = within(within(project).getByRole("table", { name: "Skills of Fix sum" })).getAllByRole("row").slice(1);
+    expect(rows.map((r) => r.textContent)).toEqual([expect.stringContaining("release-notesskillWrite the release notes"), expect.stringContaining("/deploycommandDeploy the preview.")]);
+    await userEvent.type(within(dialog).getByRole("searchbox", { name: "Search skills" }), "deploy");
+    await waitFor(() => expect(within(within(project).getByRole("table", { name: "Skills of Fix sum" })).getAllByRole("row")).toHaveLength(2));
+    await userEvent.clear(within(dialog).getByRole("searchbox", { name: "Search skills" }));
+    await userEvent.click(within(dialog).getByRole("tab", { name: "Orbit" }));
+    const orbit = await within(dialog).findByRole("table", { name: "Orbit's skills" });
+    expect(orbit.textContent).toContain("orbit-help");
+    expect(orbit.textContent).toContain("orbit-qa-agent");
+    await streamOpen();
+    const reads = api.calls.filter((c) => c.path === "/api/customizations").length;
+    pushApp("customizations.changed", { sessionId: SESSION_ID });
+    await waitFor(() => expect(api.calls.filter((c) => c.path === "/api/customizations").length).toBeGreaterThan(reads));
+  });
+
+  test("the plugins -- Orbit's, and each project's with what became of it -- and the way to the switch", async () => {
+    const { p } = show("plugins");
+    const table = await screen.findByRole("table", { name: "Plugins" });
+    await waitFor(() => expect(within(table).getAllByRole("row")).toHaveLength(4));
+    const [, orbit, declared, failed] = within(table).getAllByRole("row");
+    expect(orbit?.textContent).toContain("orbit");
+    expect(orbit?.textContent).toContain("Loaded");
+    expect(declared?.textContent).toContain("lint-kit@acme-tools");
+    expect(declared?.textContent).toContain("octo/sum-fixture · acme/claude-plugins");
+    expect(declared?.textContent).toContain("Not run");
+    expect(failed?.textContent).toContain("Failed");
+    await userEvent.click(screen.getByRole("button", { name: "Settings → Code" }));
+    expect(p.onSection).toHaveBeenCalledWith("code");
+  });
+});

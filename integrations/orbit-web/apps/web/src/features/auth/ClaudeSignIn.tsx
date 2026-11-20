@@ -13,7 +13,7 @@ const useStyles = makeStyles({
   row: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "flex-end" },
   url: { wordBreak: "break-all" },
   hint: { color: tokens.colorNeutralForeground3 },
-  mono: { fontFamily: tokens.fontFamilyMonospace, whiteSpace: "nowrap" },
+  mono: { display: "block", margin: "4px 0", fontFamily: tokens.fontFamilyMonospace, overflowWrap: "anywhere" },
 });
 
 export function ClaudeSignIn({ status, onChanged }: { status: ClaudeStatus | null; onChanged: () => void }) {
@@ -59,7 +59,8 @@ export function ClaudeSignIn({ status, onChanged }: { status: ClaudeStatus | nul
         </Button>
       )}
       <Text size={200} className={s.hint}>
-        If signing in here does not finish, sign in from a terminal instead: <span className={s.mono}>docker exec -it orbit-web claude auth login --claudeai</span>, then reload this page.
+        If signing in here does not finish, sign in from a terminal, then reload this page:
+        <span className={s.mono}>docker exec -it orbit-web claude auth login --claudeai</span>
       </Text>
     </div>
   );

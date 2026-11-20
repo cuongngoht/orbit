@@ -22,7 +22,7 @@ export function SignInPage({ status, onChanged }: { status: ClaudeStatus | null;
       <div className={s.panel}>
         <img src="/orbit.svg" alt="" className={s.logo} />
         <h1 className={s.heading}>Sign in to Orbit Web</h1>
-        <Text className={s.lead}>Your Claude account is Orbit Web's sign-in. Claude Code runs as this account in every chat, and nothing opens until you sign in.</Text>
+        <Text align="center" className={s.lead}>Your Claude account is Orbit Web's sign-in. Claude Code runs as this account in every chat, and nothing opens until you sign in.</Text>
       </div>
       <section className={s.card} aria-label="Sign in to Orbit Web">
         <ClaudeSignIn status={status} onChanged={onChanged} />

@@ -57,6 +57,7 @@ const useStyles = makeStyles({
   logo: { width: "22px", height: "22px" },
   nav: { display: "flex", flexDirection: "column", gap: "2px", padding: "4px 8px" },
   navItem: { justifyContent: "flex-start", fontWeight: tokens.fontWeightRegular, width: "100%" },
+  navSelected: { backgroundColor: tokens.colorSubtleBackgroundSelected },
   section: { display: "flex", alignItems: "center", gap: "4px", padding: "14px 16px 4px", color: tokens.colorNeutralForeground3 },
   recents: { flexGrow: 1, overflowY: "auto", padding: "0 8px 8px", margin: 0, listStyleType: "none" },
   item: { display: "flex", alignItems: "center", gap: "6px", borderRadius: tokens.borderRadiusMedium, paddingLeft: "8px", ":hover": { backgroundColor: tokens.colorSubtleBackgroundHover } },
@@ -188,7 +189,7 @@ export function Sidebar(p: SidebarProps) {
         </Tooltip>
       </div>
       <div className={s.nav}>
-        <Button className={s.navItem} appearance={p.selected === null ? "secondary" : "subtle"} icon={<Add20Regular />} onClick={p.onNew}>
+        <Button className={mergeClasses(s.navItem, p.selected === null && s.navSelected)} appearance="subtle" icon={<Add20Regular />} aria-current={p.selected === null ? "page" : undefined} onClick={p.onNew}>
           New session
         </Button>
         {searching ? (
@@ -228,8 +229,8 @@ export function Sidebar(p: SidebarProps) {
           <li key={x.id} className={mergeClasses(s.item, p.selected === x.id && s.itemSelected)}>
             <button type="button" className={s.itemButton} onClick={() => p.onOpen(x.id)} aria-current={p.selected === x.id ? "page" : undefined} title={x.repository ? `${x.title} — ${x.repository}` : x.title}>
               <span className={s.itemTitle}>{x.title}</span>
-              {(x.status === "running" || x.status === "preparing") && <span className={mergeClasses(s.dot, s.running)} aria-label={x.status === "running" ? "working" : "preparing"} />}
-              {(x.status === "failed" || x.status === "setup_failed") && <span className={mergeClasses(s.dot, s.failed)} aria-label="failed" />}
+              {(x.status === "running" || x.status === "preparing") && <span role="img" className={mergeClasses(s.dot, s.running)} aria-label={x.status === "running" ? "working" : "preparing"} />}
+              {(x.status === "failed" || x.status === "setup_failed") && <span role="img" className={mergeClasses(s.dot, s.failed)} aria-label="failed" />}
               <SourceMark source={x.source} />
             </button>
             <Menu>

@@ -58,9 +58,11 @@ function Lines({ rows, label }: { rows: Line[]; label: string }) {
 
 const projectLines = (inv: ProjectInventory): Line[] => [...lines(inv.skills, "skill"), ...lines(inv.commands, "command"), ...lines(inv.agents, "agent")];
 
+// A chat started without a repository brings nothing of a project's: only chats with one are listed.
 function useCustomizationsView(): { data: Customizations | null; error: string | null; loading: boolean } {
   const read = useCustomizations();
-  return { data: read.data, error: read.error, loading: read.loading && read.data === null };
+  const data = useMemo(() => (read.data ? { ...read.data, projects: read.data.projects.filter((p) => p.inventory.repository !== null) } : null), [read.data]);
+  return { data, error: read.error, loading: read.loading && read.data === null };
 }
 
 export function SkillsSection() {

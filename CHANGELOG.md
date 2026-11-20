@@ -15,7 +15,8 @@ nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
   governance.
 - **The Constitution as a table.** One row per action with two boxes -- *Allowed* and *A person approves first*; neither
   ticked is denied, and what nobody may ever be granted cannot be ticked -- the hosts the agent may reach as a list, the
-  obligations as boxes. A rule the table cannot show is kept as written; there is no JSON view.
+  obligations as boxes. A rule the table cannot show is kept as written; there is no JSON view. Git is one row:
+  *Allowed* alone lets an agent push its branch itself, at once (by default a person approves each push).
 - **The Company Constitution.** A declarative policy (`orbit.governance/v1`) over a closed set of actions, each saying
   where it is enforced (boundary, control, runtime); default deny; deny > approval > allow; overlays only narrow; an
   agent can never be granted authority over its own governance. Its revisions go draft → validated → pending approval
@@ -35,9 +36,9 @@ nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
   with that permission (and the Constitution's decision); turning one off needs nobody. The agent's own requests are
   refused and recorded -- ADR 0062's "a misled agent could turn either switch on itself" no longer holds.
 - **Push a chat's branch to GitHub or Azure DevOps.** *Push* in a chat: Orbit Web carries the branch's commit into its
-  own copy of the repository, shows exactly what would be pushed, and pushes it after an operator approves that
-  fingerprint -- with GitHub CLI's helper or the Azure CLI's one-shot helper, never forced, never to the default or a
-  protected branch (a chat started from a story branch pushes to it). A governed agent asks for the same push through its gateway. An approval is spent once; a replay
+  own copy of the repository, shows exactly what would be pushed, and pushes it -- at once where the Constitution
+  simply allows it, otherwise after an operator approves that fingerprint -- with GitHub CLI's helper or the Azure CLI's one-shot helper, never forced, never to the default or a
+  protected branch (a chat started from a story branch pushes to it). A governed agent asks for the same push through its gateway, and is held to the same decision. An approval is spent once; a replay
   is refused and recorded.
 - **The audit record, the auditor, the console.** A hash-chained record in governance's own database (a chat's deletion
   never reaches it), checked at every start; findings worked out from it by rules, each citing its records; daily
@@ -161,8 +162,8 @@ nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
   (`/api/sessions/:id/events`, replayed after `Last-Event-ID`) and the app stream (`/api/events`: the sidebar's chats,
   the connectors' sign-ins, the customizations -- notifications that replace polling). Adding an event is a catalog row
   and its payload type.
-- **Checked.** 402 deterministic tests (governance-core 32, contracts 14, API unit 122, API integration with mocked
-  processes 111, web 123), `scripts/ci.mjs` green; the Docker smoke test (30 checks) also checks the Azure Repos helper,
+- **Checked.** 406 deterministic tests (governance-core 33, contracts 14, API unit 122, API integration with mocked
+  processes 112, web 125), `scripts/ci.mjs` green; the Docker smoke test (30 checks) also checks the Azure Repos helper,
   the runtime user's file rights (it can read everything the image ships) and Python; the security lab's governed run is recorded in
   `tests/security-lab/results/0.8.0`. The real-model runs (the acceptance run, and the governed deployment with a real
   model) need a person's Claude sign-in volume and are not recorded yet.

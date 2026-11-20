@@ -33,6 +33,7 @@ function limitOf(action: ActionKind): { fixed: boolean; note: string | null } {
   if (ceiling.agent === "deny") return { fixed: false, note: "Never an agent: what is ticked applies to people." };
   if (ceiling.agent === "require_approval") return { fixed: false, note: "An agent always waits for a person's approval of exactly the action." };
   if (action === "network.egress") return { fixed: false, note: "Any host not in the list below." };
+  if (action === "repository.push") return { fixed: false, note: "Allowed alone: the agent pushes its branch itself, at once -- never forced, never to the default or a protected branch." };
   return { fixed: false, note: null };
 }
 
@@ -171,7 +172,7 @@ export function ConstitutionTable({ document, editable, onChange }: { document: 
         <div className={s.section}>
           <Text weight="semibold">Rules the table does not show</Text>
           <Text size={200} className={s.note}>
-            Kept exactly as written; change them in the document below.
+            Kept exactly as written.
           </Text>
           <ul aria-label="Rules the table does not show">
             {table.kept.map((r) => (

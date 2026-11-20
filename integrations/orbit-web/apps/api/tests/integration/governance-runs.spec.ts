@@ -2,7 +2,8 @@
 // behaves as a misled agent would: it calls Orbit Web's own API from its shell. The run is decided before it starts
 // (refused where isolation is required and not proven), bound to its agent, and handed no sign-in; the agent cannot
 // turn a credential switch on, reach governance, or read a credential; its push waits for a person, who approves the
-// exact commit; Orbit Web pushes it to the repository (a local bare repository here) and refuses it a second time.
+// exact commit; Orbit Web pushes it to the repository (a local bare repository here) and refuses it a second time. Once
+// the Constitution simply allows git, the agent's push is made at once, with nobody asked.
 // Azure DevOps pushes the same way, with the Azure CLI's one-shot helper.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -251,6 +252,31 @@ describe("a governed workspace, its agent, and its push (GitHub)", () => {
     assert.match(granted.outcome ?? "", /git push/);
     const failed = ((await owner.get("/api/governance/audit?type=protected.failed")).body as AuditPage).events;
     assert.ok(failed.some((e) => e.data.approvalId === view.id));
+  });
+
+  test("once the Constitution simply allows git -- Allowed ticked alone, a high-risk change another person approved -- the agent's push is made at once, and nobody is asked", async () => {
+    const revision = await publish(owner, approver, (c) => ({ ...c, rules: c.rules.map((r) => (r.action === "repository.push" ? { ...r, effect: "allow" as const } : r)) }));
+    assert.equal(revision.risk, "high");
+    let fresh = (await h.send("POST", "/api/sessions", { repository: { source: "github", id: REPOSITORY }, branch: "main", model: "haiku" })).body as SessionSummary;
+    await waitStatus(h, fresh.id, ["ready"]);
+    fresh = (await h.get(`/api/sessions/${fresh.id}`)).body as SessionSummary;
+    assert.equal((await owner.send("PUT", `/api/governance/workspaces/${fresh.id}`, { agentId, profile: "strict" })).status, 200);
+    const asked = ((await owner.get("/api/governance/approvals")).body as ApprovalList).approvals.length;
+    queue.push(async (c) => {
+      writeFileSync(join(c.cwd, "sum.mjs"), "export const sum = (a, b) => a + b;\n");
+      git(c.cwd, "commit", "-qam", "Fix the addition");
+      seen.free = await call(c.env, "POST", `${c.env.ORBIT_AGENT_GATEWAY}/push`, {}, { "x-orbit-run-token": c.env.ORBIT_AGENT_TOKEN as string });
+    });
+    assert.equal((await h.send("POST", `/api/sessions/${fresh.id}/messages`, { text: "Fix it, commit it and push it." })).status, 202);
+    await waitStatus(h, fresh.id, ["completed"]);
+    assert.equal(seen.free?.status, 200, JSON.stringify(seen.free?.body));
+    const free = seen.free?.body as AgentPushResult;
+    assert.deepEqual([free.state, free.approvalId, free.decision.verdict], ["pushed", null, "allow"]);
+    const head = git(join(h.dataDir, "workspaces", fresh.id, "repository"), "rev-parse", "HEAD").stdout.trim();
+    assert.equal(spawnSync("git", ["--git-dir", remote, "rev-parse", `refs/heads/${fresh.workBranch}`], { encoding: "utf8" }).stdout.trim(), head, "the commit is at the remote's branch");
+    assert.equal(((await owner.get("/api/governance/approvals")).body as ApprovalList).approvals.length, asked, "no approval was asked for");
+    const done = ((await owner.get("/api/governance/audit?type=protected.completed")).body as AuditPage).events;
+    assert.ok(done.some((e) => e.decisionId === free.decision.decisionId && e.workspaceId === fresh.id && e.principalType === "agent"), "recorded under the decision that allowed it");
   });
 });
 

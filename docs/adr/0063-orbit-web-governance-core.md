@@ -39,8 +39,10 @@ runtime would be governed by exactly the same rules.
 container, the broker or the egress proxy -- the agent cannot change it), `control` (the API's authorization), `runtime`
 (the agent runtime's own configuration: defence in depth) or `none` (nothing can carry it out, so it is denied). Only a
 boundary action may ever be reported as PREVENTED. A ceiling per kind of principal caps what any rule may grant: an agent
-never administers its own governance and gets at most one approval of a protected action; nobody reads a raw credential
-or changes an audit record.
+never administers its own governance and gets at most one approval of a production action; nobody reads a raw
+credential or changes an audit record. Git (`repository.push`) has no ceiling: it is the Constitution's to decide for an
+agent as for a person -- allowed, the broker pushes at once; by default a person approves each push first -- and
+loosening it is a high-risk change, approved by somebody who wrote none of it.
 
 ### Operators: a person, verified by Orbit Web, never derived from the Claude sign-in
 
@@ -122,8 +124,9 @@ or changes an audit record.
   a decision, a push, its workspace's approvals, a draft of the Constitution.
 - **The push broker** carries a chat's branch to GitHub or Azure DevOps, asked by the agent or by an operator: the
   commit as a bundle the agent's git writes, fetched with every object checked into the control plane's copy; where the
-  remote's branch stands; a decision of `repository.push` on exactly that; an approval of its fingerprint by a person;
-  the approval spent before the push against the fingerprint taken again; the push made with the source's own sign-in
+  remote's branch stands; a decision of `repository.push` on exactly that -- where it simply allows the push, the push
+  is made at once and recorded under that decision; otherwise an approval of its fingerprint by a person, spent before
+  the push against the fingerprint taken again; the push made with the source's own sign-in
   (GitHub CLI's helper, or the Azure CLI's one-shot helper), never forced, never to the default or a protected branch,
   and refused when the default cannot be established (`push-target.ts` decides it alone). The branch a chat started
   from is pushed like any other when it is a working branch -- a story branch, neither default nor protected --

@@ -1,7 +1,7 @@
 // PUSH BRANCH, in an open chat's header -- for a chat whose repository came from GitHub or Azure DevOps. Orbit Web
-// pushes the chat's working branch itself, with the source's own sign-in (GitHub CLI's, or the Azure CLI's), after a
-// person approves exactly that push: the commit, the branch, the remote, where the remote's branch stood. Claude Code
-// never holds the sign-in for it. Pushing is a protected action and Orbit Web's API is reachable from the agent's shell
+// pushes the chat's working branch itself, with the source's own sign-in (GitHub CLI's, or the Azure CLI's): at once
+// where the Constitution simply allows it, otherwise after a person approves exactly that push -- the commit, the
+// branch, the remote, where the remote's branch stood. Claude Code never holds the sign-in for it. Pushing is a protected action and Orbit Web's API is reachable from the agent's shell
 // too, so it is asked for by an operator signed in to governance -- never by whoever reaches the page.
 import { Button, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, MessageBar, MessageBarBody, Spinner, Text, Tooltip, makeStyles } from "@fluentui/react-components";
 import { ArrowUpload20Regular } from "@fluentui/react-icons";
@@ -26,6 +26,8 @@ function PushBody({ session }: { session: SessionDetail }) {
   const s = useStyles();
   const operator = useOperator();
   const [approval, setApproval] = useState<ApprovalView | null>(null);
+  // What a push the Constitution simply allows came to: it was made at once, and no approval exists for it.
+  const [pushed, setPushed] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const earlier = useResource<ApprovalList>(operator.state?.session ? () => get(`/api/sessions/${session.id}/pushes`) : null, [session.id, operator.state?.session?.operator.id, approval?.state]);
@@ -45,17 +47,17 @@ function PushBody({ session }: { session: SessionDetail }) {
     setBusy(true);
     setError(null);
     void send<AgentPushResult & { approval: ApprovalView | null }>("POST", `/api/sessions/${session.id}/push`, {})
-      .then((r) => setApproval(r.approval))
+      .then((r) => (r.approval === null ? setPushed(r.message) : setApproval(r.approval)))
       .catch((err: unknown) => setError(errorText(err)))
       .finally(() => setBusy(false));
   };
   return (
     <div className={s.body}>
       <Text>
-        Push <b>{session.workBranch}</b> to <b>{session.repository}</b> ({sourceName(session.source)}). Orbit Web reads the branch's commit from this chat's workspace, works out exactly what the push is, and asks for its approval;{" "}
-        {operator.can("approvals.decide") ? "you approve it here, and Orbit Web pushes it with the source's sign-in." : "an operator who may approve pushes then decides it (Governance → Approvals)."}
+        Push <b>{session.workBranch}</b> to <b>{session.repository}</b> ({sourceName(session.source)}). Orbit Web reads the branch's commit from this chat's workspace and works out exactly what the push is. Where the Constitution simply allows it, Orbit Web pushes it at once; otherwise it asks for its approval
+        {operator.can("approvals.decide") ? ": you approve it here, and Orbit Web pushes it with the source's sign-in." : ", and an operator who may approve pushes decides it (Governance → Approvals)."}
       </Text>
-      {approval === null && (
+      {approval === null && pushed === null && (
         <div>
           <Button appearance="primary" icon={<ArrowUpload20Regular />} disabled={busy || session.workBranch === null} onClick={prepare}>
             {busy ? "Working it out…" : "Prepare the push"}
@@ -65,6 +67,11 @@ function PushBody({ session }: { session: SessionDetail }) {
       {error && (
         <MessageBar intent="error">
           <MessageBarBody>{error}</MessageBarBody>
+        </MessageBar>
+      )}
+      {pushed && (
+        <MessageBar intent="success">
+          <MessageBarBody>{pushed}</MessageBarBody>
         </MessageBar>
       )}
       {approval && <ApprovalCard approval={approval} inline onChanged={setApproval} />}

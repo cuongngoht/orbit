@@ -86,11 +86,19 @@ test("an agent can never be granted authority over its own governance, whatever 
   assert.equal(evaluate(policy(generous), ask({ principalType: "human", principalId: "op-1", action: "governance.audit.modify" })).verdict, "deny");
 });
 
-test("a protected action is never simply allowed to an agent: the most it gets is one approval", () => {
+test("git is the Constitution's to decide for an agent: allowed, it pushes; by default it waits for one approval", () => {
   const generous = withRules([{ id: "push", action: "repository.push", effect: "allow" }]);
   const r = evaluate(policy(generous), ask({ action: "repository.push", resource: "github.com/o/r" }));
-  assert.deepEqual([r.verdict, r.reasonCodes, r.enforcement], ["require_approval", ["RULE_MATCHED", "PRINCIPAL_CEILING"], "boundary"]);
+  assert.deepEqual([r.verdict, r.reasonCodes, r.enforcement], ["allow", ["RULE_MATCHED"], "boundary"]);
   assert.equal(evaluate(policy(base()), ask({ action: "repository.push", resource: "github.com/o/r" })).verdict, "require_approval");
+  assert.equal(evaluate(policy(withRules([{ id: "push", action: "repository.push", effect: "deny" }])), ask({ action: "repository.push", resource: "github.com/o/r" })).verdict, "deny");
+});
+
+test("a production action is never simply allowed to an agent: the most it gets is one approval", () => {
+  for (const action of ["deployment.production", "database.production.migrate", "data.production.destroy"] as const) {
+    const most = (ACTIONS[action].ceiling as Partial<Record<string, string>>).agent;
+    assert.equal(most, "require_approval", action);
+  }
 });
 
 test("an action nothing can carry out is denied, even when a rule allows it", () => {
@@ -178,10 +186,10 @@ test("a change that loosens a sensitive action, or weakens an obligation, is hig
   const softDefault = { ...b, defaults: { decision: "require_approval" as const } };
   assert.equal(impactOf(b, softDefault).risk, "high");
 
-  // Removing the approval requirement changes nothing for an agent (its ceiling holds) but frees a person: high.
+  // Removing the approval requirement frees an agent's git as much as a person's: high, so somebody else approves it.
   const pushFree = withRules(b.rules.map((r) => (r.id === "git-push" ? { ...r, effect: "allow" as const } : r)));
   const freed = impactOf(b, pushFree);
-  assert.deepEqual([freed.risk, freed.widened.map((c) => c.principalType)], ["high", ["human"]]);
+  assert.deepEqual([freed.risk, [...new Set(freed.widened.map((c) => c.principalType))]], ["high", ["human", "agent", "service"]]);
 
   // A prefix rule is asked about with a resource under it, and one outside it stays as it was.
   const prefix = withRules([...b.rules, { id: "egress-corp", action: "network.egress", resource: "corp.example/*", effect: "allow" }]);

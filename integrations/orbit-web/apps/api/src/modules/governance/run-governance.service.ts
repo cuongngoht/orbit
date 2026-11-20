@@ -56,7 +56,7 @@ export const gatewayNote = (governed: boolean, revision: number | null): string 
   [
     governed ? `This chat is GOVERNED by your organization's Constitution${revision !== null ? ` (revision ${revision})` : ""}.` : "This chat runs under Orbit Web's governed deployment.",
     "You hold no repository credential and cannot push or open a pull request yourself. Orbit Web's agent gateway is at $ORBIT_AGENT_GATEWAY; your run's own token is in $ORBIT_AGENT_TOKEN, sent as the x-orbit-run-token header (never print it or write it anywhere).",
-    "When the work is committed and should be pushed, ask the gateway: curl -s -X POST -H \"x-orbit-run-token: $ORBIT_AGENT_TOKEN\" -H 'content-type: application/json' -d '{}' \"$ORBIT_AGENT_GATEWAY/push\" -- a person approves that exact commit and Orbit Web pushes it; say so, and stop there.",
+    "When the work is committed and should be pushed, ask the gateway: curl -s -X POST -H \"x-orbit-run-token: $ORBIT_AGENT_TOKEN\" -H 'content-type: application/json' -d '{}' \"$ORBIT_AGENT_GATEWAY/push\" -- Orbit Web pushes the branch you work on for you. Its answer says what happened: \"state\": \"pushed\" (the Constitution allows it: it is pushed, go on), \"pending\" (a person approves that exact commit first, then Orbit Web pushes it: say so, and stop there), or an error saying why nothing was pushed.",
     "To ask whether an action is allowed: POST $ORBIT_AGENT_GATEWAY/decisions with {\"action\": \"...\", \"resource\": \"...\"}. Orbit Web's other routes, its records and the sign-ins are not yours to reach: every attempt is refused and recorded.",
   ].join(" ");
 

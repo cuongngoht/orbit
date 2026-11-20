@@ -285,7 +285,9 @@ workspace; it is not an operator, and neither is the access token. Open **Govern
   default `deny`, the strictest winning. Start from the default (*Company Constitution → Start from the default*), tick
   what may happen in its table -- one row per action, *Allowed* and *A person approves first* (neither ticked: denied;
   what nobody may ever be granted cannot be ticked), the hosts the agent may reach as a list, the obligations as boxes;
-  a rule the table cannot show is kept as written, and there is no JSON view -- then validate, ask for
+  a rule the table cannot show is kept as written, and there is no JSON view. Git is one row (`repository.push`):
+  *Allowed* alone lets an agent push its branch itself, at once; with *A person approves first* (the default) each push
+  waits for one approval -- then validate, ask for
   approval, approve and publish. What a change loosens is worked out and shown before anybody approves
   or publishes it; a **high-risk** change (loosening a sensitive action, weakening an obligation) is approved by somebody
   who wrote none of it. A published revision never changes; a rollback is a copy published again. Overlays narrow it for
@@ -294,7 +296,7 @@ workspace; it is not an operator, and neither is the access token. Open **Govern
   are decided first -- the agent registered and active, a Constitution published, the agent's isolation checked just
   now (or the Constitution says isolation is optional), `agent.run.start` allowed -- and bound to it; it holds no CLI
   sign-in, and asks the **agent gateway** for anything more. A chat nobody governs runs as before.
-- **Approvals.** A protected action -- a push -- waits in *Approvals* with exactly what it is (repository, remote,
+- **Approvals.** A push the Constitution does not simply allow waits in *Approvals* with exactly what it is (repository, remote,
   branch, commit, where the remote's branch stood) and its fingerprint; approving binds that fingerprint, spends it once
   and carries the action out; anything that moved since is refused and asked for again.
 - **Evidence.** *Policy decisions*, the *Audit timeline* (hash-chained, verified on demand and at every start),
@@ -357,11 +359,13 @@ code the Azure CLI printed; enter it there and sign in. *Connected* is what `az 
 Claude Code. It is a protected action, so it is asked for by an operator signed in to Governance: *Prepare the push*
 reads the branch's commit from the workspace, carries it into Orbit Web's own copy of the repository (every object
 checked), asks the remote where the branch stands, and shows exactly what would be pushed and its fingerprint; *Approve
-and push* pushes it (an operator without the right to approve leaves it in *Approvals*). Never forced -- what is not a
+and push* pushes it (an operator without the right to approve leaves it in *Approvals*); where the Constitution simply
+allows pushes, *Prepare the push* pushes it at once. Never forced -- what is not a
 fast-forward of the remote's branch is refused by git, so nobody's work is overwritten --, never to the repository's
 default or a protected branch, and nowhere when the default cannot be established. A chat started from a working
 branch (a story branch, neither default nor protected) pushes to that branch like any other. A governed agent asks for
-the same push through its gateway; a person approves it the same way.
+the same push through its gateway: it is pushed at once where the Constitution allows it, and otherwise a person
+approves it the same way.
 
 ### Python
 
@@ -558,7 +562,7 @@ For one person, on their own machine, by default:
 | Orbit panel says not seated / unavailable | the workspace is seated when it is prepared; the panel's message quotes Orbit |
 | Turning on a GitHub/Azure switch says *needs an Orbit operator* | sign in under Governance (its first owner: the code in `docker logs orbit-web`) |
 | A governed chat's run is refused | its message says why: no Constitution published, the agent suspended, or isolation not proven where it is required (the single deployment) |
-| *Push* says nothing is allowed | publish a Constitution first (Governance → Company Constitution); a push needs an operator to approve it |
+| *Push* says nothing is allowed | publish a Constitution first (Governance → Company Constitution); a push needs an operator to approve it, unless the Constitution simply allows pushes |
 | In the governed deployment Claude Code cannot reach a host | every connection is the Constitution's decision: *Policy decisions* shows the refusal; allow that `host:port` (a high-risk change) |
 
 ## Develop and test

@@ -7,10 +7,11 @@
 //   3. where the branch stands at the remote now (asked with the source's own sign-in);
 //   4. a DECISION of the Constitution on `repository.push` with exactly these parameters -- repository, remote, ref,
 //      commit, force (never), and the remote's commit the push expects to replace -- whose fingerprint an approval is
-//      bound to; for an agent the most it can ever be is an approval (governance-core's ceiling);
-//   5. a person approves that fingerprint (Governance → Approvals, or the chat's Push), and the approval is SPENT before
-//      the push, against the fingerprint taken again from the copy and the remote just then: a branch that moved, a
-//      remote that moved, or an approval presented twice is refused and recorded;
+//      bound to. Git is the Constitution's to decide, for an agent as for a person: where it simply ALLOWS the push,
+//      step 5 is skipped and the push is made at once, recorded under that decision;
+//   5. otherwise a person approves that fingerprint (Governance → Approvals, or the chat's Push), and the approval is
+//      SPENT before the push, against the fingerprint taken again from the copy and the remote just then: a branch that
+//      moved, a remote that moved, or an approval presented twice is refused and recorded;
 //   6. the control plane pushes the commit from its copy with the source's credential -- never forced: what is not a
 //      fast-forward of the remote's branch is refused by git, so nobody's work there is overwritten.
 //
@@ -30,8 +31,9 @@ import { redactSecrets, tail } from "../../infra/security/redact.js";
 import { SessionStore, type SessionRecord } from "../../infra/storage/stores.js";
 import { GitGateway } from "../changes/git.gateway.js";
 import { ApprovalService, type ExecutionResult, type Executor } from "../governance/approvals.service.js";
+import { AuditService } from "../governance/audit.service.js";
 import type { GovernanceContext } from "../governance/principal.js";
-import { PolicyService } from "../governance/policy.service.js";
+import { PolicyService, type Decision } from "../governance/policy.service.js";
 import { pushRefusal } from "./push-target.js";
 import { MirrorService } from "../sources/mirror.service.js";
 import { SourcesService } from "../sources/sources.module.js";
@@ -64,14 +66,15 @@ export class PushBroker implements Executor, OnModuleInit {
     @Inject(SourcesService) private readonly sources: SourcesService,
     @Inject(PolicyService) private readonly policy: PolicyService,
     @Inject(ApprovalService) private readonly approvals: ApprovalService,
+    @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
   onModuleInit(): void {
     this.approvals.registerExecutor("repository.push", this);
   }
 
-  // Steps 1-4 (and 5's request): what a push of this chat's branch would be, decided and -- unless refused -- waiting
-  // for a person.
+  // Steps 1-4 (and 5's request): what a push of this chat's branch would be, decided, and then pushed at once where the
+  // Constitution allows it, or waiting for a person where it asks for one.
   async request(ctx: GovernanceContext, session: SessionRecord, body: unknown, scope: EnforcementScope): Promise<AgentPushResult & { approval: ApprovalView | null }> {
     const req = accepted(checkAgentPush(body));
     if (session.source === null || session.repositoryId === null || session.branch === null) throw conflict("no_repository", "This chat has no repository to push to.");
@@ -88,6 +91,7 @@ export class PushBroker implements Executor, OnModuleInit {
     const said = { decisionId: decision.decisionId, verdict: decision.verdict, reasonCodes: decision.reasonCodes, enforcement: decision.enforcement, policyRevision: decision.policyRevision };
     if (decision.verdict === "deny") throw new ApiError(HttpStatus.FORBIDDEN, "push_denied", `The Constitution in effect does not allow pushing to ${remote.name} (${decision.reasonCodes.join(", ")}). Decision ${decision.decisionId}.`, said);
     const change = await this.changeOf(session, commit);
+    if (decision.verdict === "allow") return this.pushNow(ctx, session, { commit, branch, remote: remote.name }, decision, said);
     const binding = ctx.principal.kind === "agent" ? ctx.principal.binding : null;
     const approval = this.approvals.request(ctx, {
       action: "repository.push",
@@ -104,6 +108,23 @@ export class PushBroker implements Executor, OnModuleInit {
     const view = this.approvals.view(approval.id);
     const message = view.state === "pending" ? `A person approves this exact push (${view.fingerprint.slice(0, 16)}) in Orbit Web; Orbit Web then pushes it. Nothing was pushed yet.` : `This push was already asked for: it is ${view.state}.`;
     return { approvalId: view.id, state: view.state, fingerprint: view.fingerprint, decision: said, message, approval: view };
+  }
+
+  // Step 6 with no step 5: the Constitution in effect simply allows this push, so nobody is asked. What happened is
+  // recorded as an approved push's is -- started, then finished or failed -- under the decision that allowed it.
+  private async pushNow(ctx: GovernanceContext, session: SessionRecord, push: { commit: string; branch: string; remote: string }, decision: Decision, said: AgentPushResult["decision"]): Promise<AgentPushResult & { approval: null }> {
+    const fingerprint = decision.fingerprint as string;
+    const about = { decisionId: decision.decisionId, workspaceId: session.id };
+    this.audit.record(ctx, { type: "protected.executing", outcome: "executing", ...about, data: { action: "repository.push", fingerprint } });
+    const r = await this.mirror.push(session, push.commit, push.branch);
+    if (!succeeded(r)) {
+      const cause = `git push ${endedHow(r)}: ${redactSecrets(tail(r.stderr || r.stdout, 3))}`;
+      this.audit.record(ctx, { type: "protected.failed", outcome: "failed", ...about, data: { action: "repository.push", fingerprint, cause } });
+      throw new ApiError(HttpStatus.BAD_GATEWAY, "push_failed", `Nothing was pushed: ${cause}`, said);
+    }
+    this.audit.record(ctx, { type: "protected.completed", outcome: "completed", ...about, data: { action: "repository.push", fingerprint } });
+    this.logger.log(`pushed ${push.commit.slice(0, 12)} to ${push.branch} of session ${session.id} (allowed by ${decision.decisionId})`);
+    return { approvalId: null, state: "pushed", fingerprint, decision: said, message: `Pushed ${push.commit.slice(0, 12)} to ${push.branch} of ${push.remote}: the Constitution in effect allows it, so nobody was asked.`, approval: null };
   }
 
   // ---- the executor -------------------------------------------------------------------------------------------------

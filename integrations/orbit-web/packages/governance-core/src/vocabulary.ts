@@ -57,7 +57,7 @@ export interface ActionSpec {
 
 const NOBODY: Record<PrincipalType, Effect> = { human: "deny", agent: "deny", service: "deny" };
 const PEOPLE_ONLY: Partial<Record<PrincipalType, Effect>> = { agent: "deny", service: "deny" };
-// A protected action is never simply allowed to an agent: the most it gets is one approval of exactly it.
+// A production action is never simply allowed to an agent: the most it gets is one approval of exactly it.
 const PROTECTED: Partial<Record<PrincipalType, Effect>> = { agent: "require_approval", service: "require_approval" };
 
 export const ACTIONS = {
@@ -70,7 +70,9 @@ export const ACTIONS = {
   "filesystem.outside_workspace": { summary: "Reach files outside the agent's own storage.", subject: "filesystem", enforcement: "boundary", sensitive: true, ceiling: { agent: "deny", service: "deny" }, fingerprint: ["path"] },
   "credential.read_raw": { summary: "Read a stored credential itself: a token, a sign-in file, a session.", subject: "credentials", enforcement: "boundary", sensitive: true, ceiling: NOBODY, fingerprint: ["credential"] },
   "settings.privileged.write": { summary: "Turn on a setting that hands the agent a sign-in or lets a repository's code run.", subject: "credentials", enforcement: "control", sensitive: true, ceiling: PEOPLE_ONLY, fingerprint: ["setting"] },
-  "repository.push": { summary: "Push one commit to a remote repository.", subject: "git", enforcement: "boundary", sensitive: true, ceiling: PROTECTED, fingerprint: ["repository", "remote", "ref", "commit", "force", "expectedRemoteOid"] },
+  // Git with the remote is the Constitution's to decide, for an agent as for a person: allowed, Orbit Web pushes at once;
+  // a person approves first, it waits for one approval of exactly that push. Never forced, never the default branch.
+  "repository.push": { summary: "Git: push the work's branch to its remote repository.", subject: "git", enforcement: "boundary", sensitive: true, ceiling: {}, fingerprint: ["repository", "remote", "ref", "commit", "force", "expectedRemoteOid"] },
   "deployment.production": { summary: "Deploy to a production environment.", subject: "production", enforcement: "none", sensitive: true, ceiling: PROTECTED, fingerprint: ["environment", "target", "revision"] },
   "database.production.migrate": { summary: "Migrate a production database.", subject: "production", enforcement: "none", sensitive: true, ceiling: PROTECTED, fingerprint: ["environment", "target", "revision"] },
   "data.production.destroy": { summary: "Delete or overwrite production data.", subject: "production", enforcement: "none", sensitive: true, ceiling: PROTECTED, fingerprint: ["environment", "target", "operation"] },

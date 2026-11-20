@@ -87,12 +87,12 @@ export interface ClaudeRunOptions {
   governanceNote?: string | null;
 }
 
-// A run under governance holds no credential at all: pushing is asked for through the agent gateway.
+// A run under governance holds no credential at all: Orbit Web pushes for it, through the agent gateway.
 export const GOVERNED_NOTE =
   OPENING +
-  "Pushing and the GitHub CLI are not available to you here (there is no credential in this run, and they are refused by " +
-  "rule): never chain a push or a gh command into another command -- the whole command would be refused, with what " +
-  "came before it -- but commit on its own.";
+  "`git push` and the GitHub CLI are refused to you here (there is no credential in this run): never chain one into " +
+  "another command -- the whole command would be refused, with what came before it -- but commit on its own, then ask " +
+  "Orbit Web's agent gateway to push (below).";
 
 // Claude Code reads a rule path that starts with `//` as an absolute path (a single `/` is relative to the settings
 // file), and an Edit rule covers every built-in tool that writes a file.

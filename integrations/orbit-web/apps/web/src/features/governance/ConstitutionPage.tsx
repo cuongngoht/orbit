@@ -4,6 +4,10 @@
 // it; a high-risk change is approved by somebody who wrote none of it. A rollback is a copy of an earlier revision,
 // published anew.
 import {
+  Accordion,
+  AccordionHeader,
+  AccordionItem,
+  AccordionPanel,
   Button,
   Dialog,
   DialogActions,
@@ -26,7 +30,7 @@ import {
   Text,
   Textarea,
 } from "@fluentui/react-components";
-import { ACTION_KINDS, ENVIRONMENTS, PRINCIPAL_TYPES, type Impact } from "@orbit-web/governance-core";
+import { ACTION_KINDS, ENVIRONMENTS, PRINCIPAL_TYPES, checkConstitution, type Constitution, type Impact } from "@orbit-web/governance-core";
 import type { ConstitutionOverview, OperatorList, RevisionView, SimulateResult } from "@orbit-web/contracts";
 import { useMemo, useState } from "react";
 import type { GovernancePage } from "../../hooks/useHashRoute";
@@ -34,9 +38,22 @@ import { useResource } from "../../hooks/useResource";
 import { errorText, get, send } from "../../services/api";
 import { useOperator } from "../../services/operator";
 import { useAppEvent } from "../../services/events/AppEvents";
+import { ConstitutionTable } from "./ConstitutionTable";
 import { Card, Word, short, useParts, when, who } from "./parts";
 
 const EDITABLE = new Set(["DRAFT", "VALIDATED", "REJECTED"]);
+
+// The document as the table can show it: a Constitution the shared rules accept, or why it is not one yet.
+function tableable(text: string): { document: Constitution | null; problem: string | null } {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch (err) {
+    return { document: null, problem: `the document is not JSON (${errorText(err)})` };
+  }
+  const checked = checkConstitution(value);
+  return checked.ok ? { document: checked.value, problem: null } : { document: null, problem: checked.errors.join("; ") };
+}
 
 function ImpactView({ impact }: { impact: Impact }) {
   const s = useParts();
@@ -174,6 +191,7 @@ function RevisionDetail({ revision, names, onChanged }: { revision: RevisionView
   const s = useParts();
   const { can } = useOperator();
   const [text, setText] = useState(() => JSON.stringify(revision.document, null, 2));
+  const shown = useMemo(() => tableable(text), [text]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<"publish" | "approve" | null>(null);
@@ -222,9 +240,23 @@ function RevisionDetail({ revision, names, onChanged }: { revision: RevisionView
           <Word value="runtime" label={w.code.toLowerCase().replace(/_/g, " ")} /> {w.ruleId}: {w.message}
         </Text>
       ))}
-      <Field label={editable ? "Document (JSON)" : "Document"}>
-        <Textarea value={text} onChange={(_, d) => setText(d.value)} readOnly={!editable} resize="vertical" textarea={{ style: { fontFamily: "monospace", minHeight: 280, fontSize: 12 } }} />
-      </Field>
+      {shown.document !== null ? (
+        <ConstitutionTable document={shown.document} editable={editable} onChange={(next) => setText(JSON.stringify(next, null, 2))} />
+      ) : (
+        <MessageBar intent="warning">
+          <MessageBarBody>This document cannot be shown as a table: {shown.problem}. Change it as JSON below.</MessageBarBody>
+        </MessageBar>
+      )}
+      <Accordion collapsible defaultOpenItems={shown.document === null ? ["json"] : []}>
+        <AccordionItem value="json">
+          <AccordionHeader>Advanced: the document as JSON</AccordionHeader>
+          <AccordionPanel>
+            <Field label={editable ? "Document (JSON)" : "Document"}>
+              <Textarea value={text} onChange={(_, d) => setText(d.value)} readOnly={!editable} resize="vertical" textarea={{ style: { fontFamily: "monospace", minHeight: 280, fontSize: 12 } }} />
+            </Field>
+          </AccordionPanel>
+        </AccordionItem>
+      </Accordion>
       <div className={s.row}>
         {editable && (
           <Button onClick={save} disabled={busy}>

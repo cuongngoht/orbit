@@ -10,4 +10,5 @@ export * from "./lifecycle.js";
 export * from "./rbac.js";
 export * from "./report.js";
 export * from "./risk.js";
+export * from "./table.js";
 export * from "./vocabulary.js";

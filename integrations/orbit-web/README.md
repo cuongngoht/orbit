@@ -282,8 +282,11 @@ workspace; it is not an operator, and neither is the access token. Open **Govern
 - **The Company Constitution** is a JSON document (`apiVersion: orbit.governance/v1`) of rules over a closed set of
   actions -- run an agent, read and write the workspace, run its commands, the web tools, network egress by
   `host:port`, credentials, privileged settings, pushes, production -- each `allow`, `require_approval` or `deny`, the
-  default `deny`, the strictest winning. Start from the default (*Company Constitution → Start from the default*), then
-  validate, ask for approval, approve and publish. What a change loosens is worked out and shown before anybody approves
+  default `deny`, the strictest winning. Start from the default (*Company Constitution → Start from the default*), tick
+  what may happen in its table -- one row per action, *Allowed* and *A person approves first* (neither ticked: denied;
+  what nobody may ever be granted cannot be ticked), the hosts the agent may reach as a list, the obligations as boxes;
+  a rule the table cannot show is kept as written, and the JSON stays under *Advanced* -- then validate, ask for
+  approval, approve and publish. What a change loosens is worked out and shown before anybody approves
   or publishes it; a **high-risk** change (loosening a sensitive action, weakening an obligation) is approved by somebody
   who wrote none of it. A published revision never changes; a rollback is a copy published again. Overlays narrow it for
   one project, workspace or agent. *Simulate* asks a revision what it would decide, recording nothing.

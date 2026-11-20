@@ -13,6 +13,9 @@ nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
   is enrolled with a one-time code printed on the control plane's own log, spent once; an offline terminal
   (`cli/governance.js`) recovers an owner and checks the audit chain. The access token and share links open nothing of
   governance.
+- **The Constitution as a table.** One row per action with two boxes -- *Allowed* and *A person approves first*; neither
+  ticked is denied, and what nobody may ever be granted cannot be ticked -- the hosts the agent may reach as a list, the
+  obligations as boxes. A rule the table cannot show is kept as written; the JSON stays under *Advanced*.
 - **The Company Constitution.** A declarative policy (`orbit.governance/v1`) over a closed set of actions, each saying
   where it is enforced (boundary, control, runtime); default deny; deny > approval > allow; overlays only narrow; an
   agent can never be granted authority over its own governance. Its revisions go draft → validated → pending approval
@@ -158,8 +161,8 @@ nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
   (`/api/sessions/:id/events`, replayed after `Last-Event-ID`) and the app stream (`/api/events`: the sidebar's chats,
   the connectors' sign-ins, the customizations -- notifications that replace polling). Adding an event is a catalog row
   and its payload type.
-- **Checked.** 391 deterministic tests (governance-core 25, contracts 14, API unit 120, API integration with mocked
-  processes 111, web 121), `scripts/ci.mjs` green; the Docker smoke test (30 checks) also checks the Azure Repos helper,
+- **Checked.** 400 deterministic tests (governance-core 32, contracts 14, API unit 120, API integration with mocked
+  processes 111, web 123), `scripts/ci.mjs` green; the Docker smoke test (30 checks) also checks the Azure Repos helper,
   the runtime user's file rights (it can read everything the image ships) and Python; the security lab's governed run is recorded in
   `tests/security-lab/results/0.8.0`. The real-model runs (the acceptance run, and the governed deployment with a real
   model) need a person's Claude sign-in volume and are not recorded yet.

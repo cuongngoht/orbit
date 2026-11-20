@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { GovernanceOverview, RevisionView } from "@orbit-web/contracts";
+import { defaultConstitution, type Constitution } from "@orbit-web/governance-core";
 import { resetOperatorStore } from "../../services/operator";
 import { fakeApi, withStatus } from "../../testing/fakeApi";
 import { approval, CSRF, FINGERPRINT, governanceState, ORG } from "../../testing/fixtures";
@@ -121,6 +122,50 @@ describe("the Governance console", () => {
     expect(within(dialog).getByText(/It weakens isolation from required to optional/)).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "Publish" }));
     await waitFor(() => expect(api.calls.find((c) => c.path === "/api/governance/revisions/rev-2/publish")?.body).toEqual({ digest: "e".repeat(64) }));
+  });
+
+  test("the Constitution is a table: a tick changes that action's own rule, a host is added to the list, and Save draft sends it", async () => {
+    const draft = revision({ state: "DRAFT", risk: null, impact: null, document: defaultConstitution(ORG.id) });
+    const api = fakeApi()
+      .on("GET", "/api/operator/state", () => governanceState("organization_owner"))
+      .on("GET", "/api/governance/constitution", () => ({ effective: null, revisions: [draft] }))
+      .on("GET", "/api/governance/revisions/rev-2", () => draft)
+      .on("PUT", "/api/governance/revisions/rev-2", () => draft);
+    renderLive(<GovernanceView page="constitution" item="rev-2" go={vi.fn()} />);
+    const webTools = await screen.findByRole("checkbox", { name: "Allowed: tool.web" });
+    expect((webTools as HTMLInputElement).checked).toBe(false);
+    // What nobody may ever be granted cannot be ticked.
+    expect((screen.getByRole("checkbox", { name: "Allowed: credential.read_raw" }) as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole("checkbox", { name: "Allowed: deployment.production" }) as HTMLInputElement).disabled).toBe(true);
+    await userEvent.click(webTools);
+    await userEvent.click(screen.getByRole("checkbox", { name: "A person approves first: governance.role.grant" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Host to allow" }), "Registry.npmjs.org:443");
+    await userEvent.click(screen.getByRole("button", { name: "Add host" }));
+    expect(within(screen.getByLabelText("Hosts the agent may reach")).getByText("registry.npmjs.org:443")).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    await waitFor(() => expect(api.calls.some((c) => c.method === "PUT")).toBe(true));
+    const sent = api.calls.find((c) => c.method === "PUT")?.body as { document: Constitution; expectedDigest: string };
+    expect(sent.expectedDigest).toBe("e".repeat(64));
+    const rules = sent.document.rules;
+    expect(rules.find((r) => r.id === "web-tools")).toEqual({ id: "web-tools", action: "tool.web", effect: "allow" });
+    expect(rules.find((r) => r.action === "governance.role.grant" && r.principalType === undefined)).toEqual({ id: "governance-role-grant", action: "governance.role.grant", effect: "require_approval" });
+    expect(rules.find((r) => r.resource === "registry.npmjs.org:443")).toEqual({ id: "egress-registry-npmjs-org-443", action: "network.egress", resource: "registry.npmjs.org:443", effect: "allow" });
+    // The rest is kept as it was: the rules the table does not show, and Claude Code's own hosts.
+    expect(rules.filter((r) => r.id === "privileged-settings" || r.id === "modify-governance")).toHaveLength(2);
+    expect(rules.filter((r) => r.action === "network.egress").map((r) => r.resource)).toEqual(["api.anthropic.com:443", "platform.claude.com:443", "claude.ai:443", "registry.npmjs.org:443"]);
+  });
+
+  test("a published revision's table is read only", async () => {
+    const published = revision({ id: "rev-1", state: "PUBLISHED", revision: 1, document: defaultConstitution(ORG.id) });
+    fakeApi()
+      .on("GET", "/api/operator/state", () => governanceState("organization_owner"))
+      .on("GET", "/api/governance/constitution", () => ({ effective: published, revisions: [published] }))
+      .on("GET", "/api/governance/revisions/rev-1", () => published);
+    renderLive(<GovernanceView page="constitution" item="rev-1" go={vi.fn()} />);
+    expect(((await screen.findByRole("checkbox", { name: "Allowed: workspace.execute" })) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole("checkbox", { name: "Allowed: workspace.execute" }) as HTMLInputElement).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: "Add host" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save draft" })).toBeNull();
   });
 
   test("a refusal from the API is said as it is", async () => {

@@ -63,7 +63,7 @@ CLI with `docker build --build-arg AZURE_CLI=0 …` (Azure DevOps then says it i
 |---|---|---|
 | `ORBIT_WEB_MAX_BUDGET_USD` | unset | a per-run spending cap passed to Claude Code (`--max-budget-usd`) |
 | `ORBIT_WEB_ALLOWED_HOSTS` | loopback only | more host names to answer to (comma-separated); **requires** `ORBIT_WEB_ACCESS_TOKEN` |
-| `ORBIT_WEB_ACCESS_TOKEN` | unset | token mode: every API call needs it (min. 16 characters) |
+| `ORBIT_WEB_ACCESS_TOKEN` | unset | token mode: every API call needs it (min. 16 characters); the page asks for it first, or takes it from an access link `https://<host>/#access=<token>` |
 | `ORBIT_WEB_COOKIE_SECURE` | unset | `1` marks the access cookie Secure (behind an HTTPS proxy) |
 | `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` | unset | **ignored**: Orbit Web signs in with a Claude account only and gives no credential variable to any program; the sign-in page names the ones it ignored |
 | `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE`, `HTTPS_PROXY`, `NO_PROXY` | unset | passed to the CLIs, for a proxy or a private CA (`REQUESTS_CA_BUNDLE` is the Azure CLI's) |
@@ -315,7 +315,10 @@ For one person, on their own machine, by default:
 - **Loopback only.** Compose publishes `127.0.0.1:3000`; the API answers only Host names on an allow-list (localhost,
   127.0.0.1, ::1), which also defeats DNS rebinding. Answering another host name requires `ORBIT_WEB_ACCESS_TOKEN`
   (Orbit Web refuses to start otherwise); then every API call needs the token, traded once for an HttpOnly,
-  SameSite=Strict cookie. Put it behind an authenticated HTTPS reverse proxy before exposing it anywhere else.
+  SameSite=Strict cookie. The page asks for it before the Claude sign-in (two steps, said as two), or takes it from an
+  **access link**, `https://<host>/#access=<token>`: the fragment never reaches a server or a Referer, and the page
+  removes it from the address bar and the history entry before anything else reads the URL. Share such a link as you
+  would the token. Put it behind an authenticated HTTPS reverse proxy before exposing it anywhere else.
 - **The Claude sign-in gates the API.** Until the Claude CLI is signed in to a Claude account, a global guard answers
   401 to every route but the health check, the access token and the sign-in, before any program runs. It is the
   sign-in of this Orbit Web, not of a browser: whoever reaches the API (loopback, or the access token in token mode)

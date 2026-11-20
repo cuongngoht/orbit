@@ -1,38 +1,116 @@
-// Token mode: this Orbit Web answers a host name beyond loopback, so it asks for its access token first.
-import { Button, Card, Field, Input, MessageBar, MessageBarBody, Title3, makeStyles } from "@fluentui/react-components";
-import { useState } from "react";
+// Token mode: this Orbit Web answers a host name beyond loopback, so before anything -- the Claude sign-in included -- it
+// asks for its access token: the one made when it was deployed, given with the link to it. Two steps, said as two: the
+// token here, then Continue with Claude (shown, waiting). An access link (`#access=<token>`) fills and sends it itself.
+import { Button, Field, Input, MessageBar, MessageBarBody, Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
+import { ORBIT_WEB_VERSION } from "@orbit-web/contracts";
+import { useEffect, useRef, useState } from "react";
+import { accessLinkToken, forgetAccessLink } from "../services/accessLink";
 import { errorText, send } from "../services/api";
 
-const useStyles = makeStyles({ page: { maxWidth: "420px", margin: "80px auto", padding: "0 16px" }, form: { display: "flex", flexDirection: "column", gap: "12px" } });
+const useStyles = makeStyles({
+  page: { minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "28px", padding: "48px 16px", boxSizing: "border-box", backgroundColor: tokens.colorNeutralBackground2 },
+  panel: { width: "100%", maxWidth: "440px", display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" },
+  logo: { width: "48px", height: "48px", marginBottom: "6px" },
+  heading: { margin: 0, fontSize: "30px", lineHeight: "38px", fontWeight: tokens.fontWeightSemibold, letterSpacing: "-0.01em", color: tokens.colorNeutralForeground1 },
+  lead: { color: tokens.colorNeutralForeground2, maxWidth: "400px" },
+  card: { width: "100%", maxWidth: "440px", boxSizing: "border-box", padding: "24px", borderRadius: "16px", border: `1px solid ${tokens.colorNeutralStroke2}`, backgroundColor: tokens.colorNeutralBackground1, boxShadow: tokens.shadow4, display: "flex", flexDirection: "column", gap: "18px" },
+  step: { display: "flex", flexDirection: "column", gap: "10px" },
+  stepTitle: { display: "flex", alignItems: "center", gap: "8px" },
+  number: { width: "22px", height: "22px", borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: tokens.fontSizeBase200, fontWeight: tokens.fontWeightSemibold, backgroundColor: tokens.colorBrandBackground, color: tokens.colorNeutralForegroundOnBrand },
+  numberWaiting: { backgroundColor: tokens.colorNeutralBackground5, color: tokens.colorNeutralForeground3 },
+  wide: { width: "100%" },
+  muted: { color: tokens.colorNeutralForeground3 },
+  foot: { color: tokens.colorNeutralForeground3 },
+});
 
 export function AccessPage({ onGranted }: { onGranted: () => void }) {
   const s = useStyles();
+  const [fromLink] = useState(accessLinkToken);
   const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(fromLink !== null);
+  // Trades a token for the access cookie; what it learns is said once the answer is in.
+  const trade = async (value: string) => {
+    try {
+      await send("POST", "/api/access", { token: value });
+      onGranted();
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      forgetAccessLink();
+      setBusy(false);
+    }
+  };
+  const submit = (value: string) => {
+    setBusy(true);
+    setError(null);
+    void trade(value);
+  };
+
+  // An access link's token is sent once, as soon as the page is here.
+  const sent = useRef(false);
+  useEffect(() => {
+    if (sent.current || fromLink === null) return;
+    sent.current = true;
+    void trade(fromLink);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arrival
+  }, []);
+
   return (
-    <div className={s.page}>
-      <Card>
+    <main className={s.page}>
+      <div className={s.panel}>
+        <img src="/orbit.svg" alt="" className={s.logo} />
+        <h1 className={s.heading}>Sign in to Orbit Web</h1>
+        <Text align="center" className={s.lead}>
+          This Orbit Web is reachable from the internet, so it asks for its access token first. Then you sign in with your Claude account.
+        </Text>
+      </div>
+      <section className={s.card} aria-label="Sign in to Orbit Web">
         <form
-          className={s.form}
+          className={s.step}
           onSubmit={(e) => {
             e.preventDefault();
-            send("POST", "/api/access", { token }).then(onGranted, (err: unknown) => setError(errorText(err)));
+            submit(token);
           }}
         >
-          <Title3>Orbit Web</Title3>
-          <Field label="Access token">
-            <Input type="password" value={token} onChange={(_, d) => setToken(d.value)} autoComplete="current-password" />
+          <div className={s.stepTitle}>
+            <span className={s.number}>1</span>
+            <Text weight="semibold">Enter this Orbit Web's access token</Text>
+          </div>
+          <Field label="Access token" hint="The token you were given with the link to this Orbit Web (made when it was deployed). A link ending in #access=… fills it in for you.">
+            <Input type="password" value={token} onChange={(_, d) => setToken(d.value)} autoComplete="current-password" autoFocus />
           </Field>
           {error && (
             <MessageBar intent="error">
               <MessageBarBody>{error}</MessageBarBody>
             </MessageBar>
           )}
-          <Button appearance="primary" type="submit" disabled={token.length === 0}>
-            Continue
-          </Button>
+          {busy ? (
+            <Spinner size="tiny" label="Checking the access token…" />
+          ) : (
+            <Button className={s.wide} appearance="primary" type="submit" disabled={token.length === 0}>
+              Continue
+            </Button>
+          )}
         </form>
-      </Card>
-    </div>
+        <div className={s.step} aria-label="Next: sign in with Claude">
+          <div className={s.stepTitle}>
+            <span className={`${s.number} ${s.numberWaiting}`}>2</span>
+            <Text weight="semibold" className={s.muted}>
+              Sign in with your Claude account
+            </Text>
+          </div>
+          <Button className={s.wide} appearance="secondary" disabled>
+            Continue with Claude
+          </Button>
+          <Text size={200} className={s.muted}>
+            Opens once the access token is accepted: a link to sign in with Claude, and a code to paste back.
+          </Text>
+        </div>
+      </section>
+      <Text size={200} className={s.foot}>
+        Orbit Web {ORBIT_WEB_VERSION}
+      </Text>
+    </main>
   );
 }

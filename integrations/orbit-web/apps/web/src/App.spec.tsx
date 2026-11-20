@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import type { SessionSummary } from "@orbit-web/contracts";
 import { afterEach, describe, expect, test } from "vitest";
 import { App } from "./App";
+import { takeAccessLink } from "./services/accessLink";
 import { fakeApi, withStatus, type FakeApi } from "./testing/fakeApi";
 import { FakeEventSource } from "./testing/fakeEventSource";
 import { pushApp } from "./testing/events";
@@ -35,11 +36,26 @@ describe("Orbit Web opens on the Claude sign-in, and the Claude account is its s
     expect(FakeEventSource.instances.map((s) => s.url)).not.toContain("/api/events");
   });
 
-  test("in token mode the access token is asked for first", async () => {
+  test("in token mode the access token is asked for first; the Claude sign-in waits for it", async () => {
     fakeApi().on("GET", "/api/claude/status", () => refused(401, "access_token_required", "This Orbit Web needs its access token."));
     render(<App />);
-    expect(await screen.findByLabelText("Access token")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Sign in to Orbit Web" })).toBeNull();
+    expect(await screen.findByLabelText(/Access token/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue with Claude" })).toBeDisabled();
+  });
+
+  test("an access link opens the Claude sign-in in one click, and leaves no token in the address", async () => {
+    const TOKEN = "0123456789abcdef0123456789abcdef";
+    window.history.replaceState(null, "", `/#access=${TOKEN}`);
+    takeAccessLink();
+    let granted = false;
+    const api = fakeApi()
+      .on("GET", "/api/claude/status", () => (granted ? signedOutClaude() : refused(401, "access_token_required", "This Orbit Web needs its access token.")))
+      .on("POST", "/api/access", () => ((granted = true), undefined));
+    render(<App />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Continue with Claude" })).toBeEnabled());
+    expect(screen.queryByLabelText(/Access token/)).toBeNull();
+    expect(api.calls.find((c) => c.path === "/api/access")?.body).toEqual({ token: TOKEN });
+    expect(window.location.href).not.toContain(TOKEN);
   });
 
   test("a sign-in that ended elsewhere (a terminal, an expiry) closes the workspace", async () => {

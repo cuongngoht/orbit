@@ -1,12 +1,31 @@
 // The page's place, kept in the URL hash so a reload or a bookmark comes back to it and the server needs no route but
-// `/`: `#/` is a new session, `#/chat/<id>` an open chat, and `?settings=<section>` opens Settings over either.
+// `/`: `#/` is a new session, `#/chat/<id>` an open chat, `#/governance/<page>[/<item>]` the Governance console, and
+// `?settings=<section>` opens Settings over any of them.
 import { useCallback, useEffect, useState } from "react";
 
 export const SETTINGS_SECTIONS = ["account", "appearance", "code", "connectors", "skills", "plugins", "system"] as const;
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
-export type View = { view: "new" } | { view: "chat"; sessionId: string };
+export const GOVERNANCE_PAGES = ["overview", "constitution", "operators", "agents", "decisions", "approvals", "audit", "findings", "reports"] as const;
+
+export type GovernancePage = (typeof GOVERNANCE_PAGES)[number];
+
+export type View = { view: "new" } | { view: "chat"; sessionId: string } | { view: "governance"; page: GovernancePage; item: string | null };
+
+const isGovernancePage = (v: string | undefined): v is GovernancePage => v !== undefined && (GOVERNANCE_PAGES as readonly string[]).includes(v);
+
+function viewOf(parts: string[]): View {
+  if (parts[0] === "chat" && parts[1]) return { view: "chat", sessionId: decodeURIComponent(parts[1]) };
+  if (parts[0] === "governance") return { view: "governance", page: isGovernancePage(parts[1]) ? parts[1] : "overview", item: parts[2] ? decodeURIComponent(parts[2]) : null };
+  return { view: "new" };
+}
+
+function pathOf(v: View): string {
+  if (v.view === "chat") return `#/chat/${encodeURIComponent(v.sessionId)}`;
+  if (v.view === "governance") return `#/governance/${v.page}${v.item ? `/${encodeURIComponent(v.item)}` : ""}`;
+  return "#/";
+}
 
 export interface Route {
   view: View;
@@ -20,12 +39,11 @@ export function parseRoute(hash: string): Route {
   const parts = path.split("/").filter(Boolean);
   const wanted = new URLSearchParams(query).get("settings");
   const settings = isSection(wanted) ? wanted : parts[0] === "settings" ? (isSection(parts[1] ?? null) ? (parts[1] as SettingsSection) : "account") : null;
-  const view: View = parts[0] === "chat" && parts[1] ? { view: "chat", sessionId: decodeURIComponent(parts[1]) } : { view: "new" };
-  return { view, settings };
+  return { view: viewOf(parts), settings };
 }
 
 export function hrefOf(r: Route): string {
-  const path = r.view.view === "chat" ? `#/chat/${encodeURIComponent(r.view.sessionId)}` : "#/";
+  const path = pathOf(r.view);
   return r.settings ? `${path}?settings=${r.settings}` : path;
 }
 

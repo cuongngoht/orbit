@@ -88,12 +88,12 @@ export class MirrorService {
     return { ok: true, oid: line ? (line.split("\t")[0] as string) : null, detail: "" };
   }
 
-  // The commit a person approved, pushed to exactly the branch they approved -- and only if the remote's branch is still
-  // where it was when they approved it (or still does not exist).
-  async push(session: SessionRecord, commit: string, branch: string, expectedOid: string | null): Promise<RunResult> {
+  // The commit a person approved, pushed to exactly the branch they approved -- never forced: a push that is not a
+  // fast-forward of what the remote has is refused by git itself, so nobody's work is ever overwritten. (The approval
+  // was already checked against where the remote's branch stood just before this push.)
+  async push(session: SessionRecord, commit: string, branch: string): Promise<RunResult> {
     const remote = await this.remoteOf(session);
-    const lease = `--force-with-lease=refs/heads/${branch}:${expectedOid ?? ""}`;
-    return this.git.controlGit(this.path(session.id), [...remote.helper, "push", "--no-verify", lease, "--", remote.url, `${commit}:refs/heads/${branch}`], remote.env);
+    return this.git.controlGit(this.path(session.id), [...remote.helper, "push", "--no-verify", "--", remote.url, `${commit}:refs/heads/${branch}`], remote.env);
   }
 
   revParse(sessionId: string, ref: string): Promise<RunResult> {

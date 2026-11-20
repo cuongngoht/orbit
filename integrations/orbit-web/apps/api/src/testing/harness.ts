@@ -130,6 +130,8 @@ export async function startHarness(o: HarnessOptions = {}): Promise<Harness> {
   configureApp(app, config);
   await app.listen(0, "127.0.0.1");
   const port = (app.getHttpServer().address() as AddressInfo).port;
+  // The agent gateway is told where Orbit Web listens: here, the free port it was given.
+  config.port = port;
   const url = `http://127.0.0.1:${port}`;
   const reply = async (r: Response): Promise<Reply> => {
     const text = await r.text();

@@ -1,7 +1,8 @@
 // THE SIDEBAR, as in Claude Code: Orbit and a collapse button; New session, Search (it filters the recents), Customize
-// (Settings → Skills); the recent chats -- each with its source and a dot while it works or when it failed, and a menu
-// to rename or delete it -- kept current by the app stream; and at the bottom the Claude account Orbit Web is signed in
-// with, whose menu opens Settings or signs out.
+// (Settings → Skills); the recent sessions of both kinds -- a chat (code icon, its source) or a research session (book
+// icon, its workspace), each with a dot while it works or when it failed, a mark when another account shared it, and a
+// menu to rename or delete it -- filtered by kind, kept current by the app stream; and at the bottom the Claude account
+// Orbit Web is signed in with, whose menu opens Settings or signs out.
 import {
   Avatar,
   Button,
@@ -25,6 +26,8 @@ import {
   MessageBarBody,
   SearchBox,
   Spinner,
+  Tab,
+  TabList,
   Text,
   Tooltip,
   makeStyles,
@@ -33,20 +36,23 @@ import {
 } from "@fluentui/react-components";
 import {
   Add20Regular,
+  BookOpen16Regular,
   ChevronDown12Regular,
+  Code16Regular,
   Delete16Regular,
   Dismiss20Regular,
   MoreHorizontal16Regular,
   PanelLeftContract20Regular,
   PanelLeftExpand20Regular,
   PuzzlePiece20Regular,
+  People16Regular,
   Rename16Regular,
   Search20Regular,
   ShieldKeyhole20Regular,
   Settings20Regular,
   SignOut20Regular,
 } from "@fluentui/react-icons";
-import type { ClaudeAccount, SessionSummary } from "@orbit-web/contracts";
+import type { ClaudeAccount, ResearchSessionSummary, SessionSummary } from "@orbit-web/contracts";
 import { useMemo, useState } from "react";
 import { SourceMark } from "../components/SourceMark";
 import { accountLine } from "../features/auth/account";
@@ -105,10 +111,25 @@ const useStyles = makeStyles({
   who: { display: "flex", flexDirection: "column", padding: "2px 10px 8px" },
   collapsed: { alignItems: "center" },
   empty: { padding: "8px", color: tokens.colorNeutralForeground3 },
+  filter: { paddingTop: 0, paddingRight: "8px", paddingBottom: "4px", paddingLeft: "8px" },
+  kindIcon: { flexShrink: 0, color: tokens.colorNeutralForeground3 },
+  shared: { flexShrink: 0, color: tokens.colorNeutralForeground3 },
+  srOnly: { position: "absolute", width: "1px", height: "1px", overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" },
 });
+
+// One row of the recents: a chat or a research session.
+export type RecentEntry = { kind: "coding"; session: SessionSummary } | { kind: "research"; session: ResearchSessionSummary };
+
+type Filter = "all" | "coding" | "research";
+
+const isWorking = (e: RecentEntry): boolean => e.session.status === "running" || (e.kind === "coding" && e.session.status === "preparing");
+const isFailed = (e: RecentEntry): boolean => e.session.status === "failed" || (e.kind === "coding" && e.session.status === "setup_failed");
+const subtitleOf = (e: RecentEntry): string | null => (e.kind === "coding" ? e.session.repository : e.session.workspaceName);
 
 export interface SidebarProps {
   sessions: SessionSummary[];
+  // The research sessions, listed beside the chats.
+  research?: ResearchSessionSummary[];
   loading: boolean;
   selected: string | null;
   collapsed: boolean;
@@ -126,6 +147,8 @@ export interface SidebarProps {
   onSignOut: () => void;
   onRenamed: (s: SessionSummary) => void;
   onDeleted: (id: string) => void;
+  onResearchRenamed?: (s: ResearchSessionSummary) => void;
+  onResearchDeleted?: (id: string) => void;
 }
 
 function AccountMenu({ account, collapsed, busy, onSettings, onSignOut }: { account: ClaudeAccount | null; collapsed: boolean; busy: boolean; onSettings: () => void; onSignOut: () => void }) {
@@ -179,12 +202,16 @@ export function Sidebar(p: SidebarProps) {
   const s = useStyles();
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
-  const [renaming, setRenaming] = useState<SessionSummary | null>(null);
-  const [deleting, setDeleting] = useState<SessionSummary | null>(null);
+  const [renaming, setRenaming] = useState<RecentEntry | null>(null);
+  const [deleting, setDeleting] = useState<RecentEntry | null>(null);
+  const [filter, setFilter] = useState<Filter>("all");
+  const hasResearch = (p.research?.length ?? 0) > 0;
   const shown = useMemo(() => {
+    const entries: RecentEntry[] = [...p.sessions.map((session) => ({ kind: "coding" as const, session })), ...(p.research ?? []).map((session) => ({ kind: "research" as const, session }))];
+    entries.sort((a, b) => b.session.updatedAt.localeCompare(a.session.updatedAt) || b.session.createdAt.localeCompare(a.session.createdAt));
     const q = query.trim().toLowerCase();
-    return q === "" ? p.sessions : p.sessions.filter((x) => x.title.toLowerCase().includes(q) || (x.repository ?? "").toLowerCase().includes(q));
-  }, [p.sessions, query]);
+    return entries.filter((e) => (filter === "all" || e.kind === filter) && (q === "" || e.session.title.toLowerCase().includes(q) || (subtitleOf(e) ?? "").toLowerCase().includes(q)));
+  }, [p.sessions, p.research, query, filter]);
 
   if (p.collapsed)
     return (
@@ -266,50 +293,74 @@ export function Sidebar(p: SidebarProps) {
           Recents
         </Text>
       </div>
+      {hasResearch && (
+        <div className={s.filter}>
+          <TabList size="small" selectedValue={filter} onTabSelect={(_, d) => setFilter(d.value as Filter)} aria-label="Show sessions of kind">
+            <Tab value="all">All</Tab>
+            <Tab value="coding">Chat</Tab>
+            <Tab value="research">Research</Tab>
+          </TabList>
+        </div>
+      )}
       <ul className={s.recents} aria-label="Chats">
         {p.loading && <Spinner size="tiny" />}
-        {!p.loading && shown.length === 0 && <li className={s.empty}>{query ? "No chat matches." : "No chats yet."}</li>}
-        {shown.map((x) => (
-          <li key={x.id} className={mergeClasses(s.item, p.selected === x.id && s.itemSelected)}>
-            <button type="button" className={s.itemButton} onClick={() => p.onOpen(x.id)} aria-current={p.selected === x.id ? "page" : undefined} title={x.repository ? `${x.title} — ${x.repository}` : x.title}>
-              <span className={s.itemTitle}>{x.title}</span>
-              {(x.status === "running" || x.status === "preparing") && <span role="img" className={mergeClasses(s.dot, s.running)} aria-label={x.status === "running" ? "working" : "preparing"} />}
-              {(x.status === "failed" || x.status === "setup_failed") && <span role="img" className={mergeClasses(s.dot, s.failed)} aria-label="failed" />}
-              <SourceMark source={x.source} />
-            </button>
-            <Menu>
-              <MenuTrigger disableButtonEnhancement>
-                <Button data-row-actions="" className={s.touchBtn} appearance="transparent" size="small" icon={<MoreHorizontal16Regular />} aria-label={`Actions for ${x.title}`} />
-              </MenuTrigger>
-              <MenuPopover>
-                <MenuList>
-                  <MenuItem icon={<Rename16Regular />} onClick={() => setRenaming(x)}>
-                    Rename
-                  </MenuItem>
-                  <MenuItem icon={<Delete16Regular />} onClick={() => setDeleting(x)}>
-                    Delete
-                  </MenuItem>
-                </MenuList>
-              </MenuPopover>
-            </Menu>
-          </li>
-        ))}
+        {!p.loading && shown.length === 0 && <li className={s.empty}>{query ? "No chat matches." : filter === "research" ? "No research sessions yet." : "No chats yet."}</li>}
+        {shown.map((e) => {
+          const x = e.session;
+          const subtitle = subtitleOf(e);
+          return (
+            <li key={x.id} className={mergeClasses(s.item, p.selected === x.id && s.itemSelected)}>
+              <button type="button" className={s.itemButton} onClick={() => p.onOpen(x.id)} aria-current={p.selected === x.id ? "page" : undefined} title={subtitle ? `${x.title} — ${subtitle}` : x.title}>
+                {e.kind === "research" ? <BookOpen16Regular className={s.kindIcon} aria-hidden /> : <Code16Regular className={s.kindIcon} aria-hidden />}
+                <span className={s.itemTitle}>{x.title}</span>
+                {e.kind === "research" && <span className={s.srOnly}> (research)</span>}
+                {isWorking(e) && <span role="img" className={mergeClasses(s.dot, s.running)} aria-label={x.status === "running" ? "working" : "preparing"} />}
+                {isFailed(e) && <span role="img" className={mergeClasses(s.dot, s.failed)} aria-label="failed" />}
+                {x.access === "shared" && <People16Regular className={s.shared} role="img" aria-label={`Shared with you by ${x.owner ?? "its owner"}`} />}
+                {e.kind === "coding" && <SourceMark source={e.session.source} />}
+              </button>
+              <Menu>
+                <MenuTrigger disableButtonEnhancement>
+                  <Button data-row-actions="" className={s.touchBtn} appearance="transparent" size="small" icon={<MoreHorizontal16Regular />} aria-label={`Actions for ${x.title}`} />
+                </MenuTrigger>
+                <MenuPopover>
+                  <MenuList>
+                    <MenuItem icon={<Rename16Regular />} onClick={() => setRenaming(e)}>
+                      Rename
+                    </MenuItem>
+                    <MenuItem icon={<Delete16Regular />} onClick={() => setDeleting(e)}>
+                      Delete
+                    </MenuItem>
+                  </MenuList>
+                </MenuPopover>
+              </Menu>
+            </li>
+          );
+        })}
       </ul>
       <div className={s.foot}>
         <AccountMenu account={p.account} collapsed={false} busy={p.signingOut} onSettings={p.onSettings} onSignOut={p.onSignOut} />
       </div>
-      {renaming && <RenameDialog session={renaming} onClose={() => setRenaming(null)} onDone={p.onRenamed} />}
-      {deleting && <DeleteDialog session={deleting} onClose={() => setDeleting(null)} onDone={() => p.onDeleted(deleting.id)} />}
+      {renaming && (
+        <RenameDialog
+          entry={renaming}
+          onClose={() => setRenaming(null)}
+          onDone={(updated) => (updated.kind === "research" ? p.onResearchRenamed?.(updated.session) : p.onRenamed(updated.session))}
+        />
+      )}
+      {deleting && <DeleteDialog entry={deleting} onClose={() => setDeleting(null)} onDone={() => (deleting.kind === "research" ? p.onResearchDeleted?.(deleting.session.id) : p.onDeleted(deleting.session.id))} />}
     </nav>
   );
 }
 
-function RenameDialog({ session, onClose, onDone }: { session: SessionSummary; onClose: () => void; onDone: (s: SessionSummary) => void }) {
+function RenameDialog({ entry, onClose, onDone }: { entry: RecentEntry; onClose: () => void; onDone: (e: RecentEntry) => void }) {
+  const session = entry.session;
   const [title, setTitle] = useState(session.title);
   const [error, setError] = useState<string | null>(null);
   const save = async () => {
     try {
-      onDone(await send<SessionSummary>("PATCH", `/api/sessions/${session.id}`, { title }));
+      if (entry.kind === "research") onDone({ kind: "research", session: await send<ResearchSessionSummary>("PATCH", `/api/research/sessions/${session.id}`, { title }) });
+      else onDone({ kind: "coding", session: await send<SessionSummary>("PATCH", `/api/sessions/${session.id}`, { title }) });
       onClose();
     } catch (err) {
       setError(errorText(err));
@@ -325,7 +376,7 @@ function RenameDialog({ session, onClose, onDone }: { session: SessionSummary; o
           }}
         >
           <DialogBody>
-            <DialogTitle>Rename chat</DialogTitle>
+            <DialogTitle>{entry.kind === "research" ? "Rename research session" : "Rename chat"}</DialogTitle>
             <DialogContent>
               <Field label="Title">
                 <Input value={title} onChange={(_, d) => setTitle(d.value)} maxLength={120} autoFocus />
@@ -351,11 +402,12 @@ function RenameDialog({ session, onClose, onDone }: { session: SessionSummary; o
   );
 }
 
-function DeleteDialog({ session, onClose, onDone }: { session: SessionSummary; onClose: () => void; onDone: () => void }) {
+function DeleteDialog({ entry, onClose, onDone }: { entry: RecentEntry; onClose: () => void; onDone: () => void }) {
+  const session = entry.session;
   const [error, setError] = useState<string | null>(null);
   const remove = async () => {
     try {
-      await send("DELETE", `/api/sessions/${session.id}`);
+      await send("DELETE", entry.kind === "research" ? `/api/research/sessions/${session.id}` : `/api/sessions/${session.id}`);
       onDone();
       onClose();
     } catch (err) {
@@ -368,7 +420,9 @@ function DeleteDialog({ session, onClose, onDone }: { session: SessionSummary; o
         <DialogBody>
           <DialogTitle>Delete “{session.title}”?</DialogTitle>
           <DialogContent>
-            This removes the chat, its history and its workspace (including any local commits in it). Nothing was pushed from it.
+            {entry.kind === "research"
+              ? `This removes the research session's conversation. The workspace “${entry.session.workspaceName}” keeps its sources, notes and findings.`
+              : "This removes the chat, its history and its workspace (including any local commits in it). Nothing was pushed from it."}
             {error && (
               <MessageBar intent="error">
                 <MessageBarBody>{error}</MessageBarBody>

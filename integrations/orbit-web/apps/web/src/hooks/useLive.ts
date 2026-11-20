@@ -1,6 +1,6 @@
 // READ MODELS KEPT CURRENT BY THE APP STREAM: each is read once (and again whenever the stream reopens -- nothing is
 // replayed), then updated from the notifications that concern it. No polling.
-import type { ConnectorName, Customizations, SessionSummary, SourcesStatus } from "@orbit-web/contracts";
+import type { ConnectorName, Customizations, ResearchSessionSummary, SessionSummary, SourcesStatus } from "@orbit-web/contracts";
 import { useCallback, useMemo, useState } from "react";
 import { useAppEvent, useAppStream } from "../services/events/AppEvents";
 import { get } from "../services/api";
@@ -38,6 +38,36 @@ export function useSessions(): Sessions {
     return [...byId.values()].sort(byRecent);
   }, [read.data, updates]);
   return { sessions, loading: read.loading && read.data === null, error: read.error, errorCode: read.errorCode, upsert, remove };
+}
+
+export interface ResearchSessions {
+  sessions: ResearchSessionSummary[];
+  upsert: (s: ResearchSessionSummary) => void;
+  remove: (id: string) => void;
+}
+
+const byRecentResearch = (a: ResearchSessionSummary, b: ResearchSessionSummary) => b.updatedAt.localeCompare(a.updatedAt) || b.createdAt.localeCompare(a.createdAt);
+
+// The research sessions of the workspaces this account may open, beside the chats: `GET /api/research/sessions`, then
+// `research.session.summary` / `research.session.removed`. One that cannot be read leaves the chats as they are.
+export function useResearchSessions(): ResearchSessions {
+  const { generation } = useAppStream();
+  const read = useResource<ResearchSessionSummary[]>(() => get("/api/research/sessions"), [generation]);
+  const [updates, setUpdates] = useState<Map<string, ResearchSessionSummary | null>>(() => new Map());
+  const upsert = useCallback((s: ResearchSessionSummary) => setUpdates((m) => new Map(m).set(s.id, s)), []);
+  const remove = useCallback((id: string) => setUpdates((m) => new Map(m).set(id, null)), []);
+  useAppEvent("research.session.summary", (e) => upsert(e.data.session));
+  useAppEvent("research.session.removed", (e) => remove(e.data.sessionId));
+  const sessions = useMemo(() => {
+    const byId = new Map((Array.isArray(read.data) ? read.data : []).map((s) => [s.id, s]));
+    for (const [id, update] of updates) {
+      const base = byId.get(id);
+      if (update === null) byId.delete(id);
+      else if (base === undefined || update.updatedAt >= base.updatedAt) byId.set(id, update);
+    }
+    return [...byId.values()].sort(byRecentResearch);
+  }, [read.data, updates]);
+  return { sessions, upsert, remove };
 }
 
 // Which repository sources can list repositories now: `GET /api/sources`, then `connector.status`.

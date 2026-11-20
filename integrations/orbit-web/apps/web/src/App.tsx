@@ -1,7 +1,7 @@
 // Orbit Web: the sign-in page until a Claude account is signed in -- the Claude sign-in IS Orbit Web's sign-in, and the
 // API refuses everything else until then -- then the workspace, as in Claude Code: the sidebar (new session, search,
-// the chats, the account) and beside it a new session or an open chat, the composer always at the bottom, with
-// Settings over either. No connector is needed to start: a chat runs with a repository or without one. In token mode
+// the chats and research sessions, the account) and beside it a new session, an open chat or an open research session,
+// with Settings over any of them. No connector is needed to start: a chat runs with a repository or without one. In token mode
 // the access token is asked for before anything -- but for a share link (`#/share/<token>`), which opens its one
 // read-only chat and asks the API for nothing else.
 import { Button, FluentProvider, MessageBar, MessageBarActions, MessageBarBody, OverlayDrawer, Spinner, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
@@ -12,9 +12,10 @@ import { useSignOut } from "./features/auth/useSignOut";
 import { ChatScreen } from "./features/chat/ChatScreen";
 import { GovernanceView } from "./features/governance/GovernanceView";
 import { NewSession } from "./features/newSession/NewSession";
+import { ResearchPage } from "./features/research/ResearchPage";
 import { SettingsDialog } from "./features/settings/SettingsDialog";
 import { useHashRoute, type GovernancePage } from "./hooks/useHashRoute";
-import { useSessions, useSources } from "./hooks/useLive";
+import { useResearchSessions, useSessions, useSources } from "./hooks/useLive";
 import { useResource, type Resource } from "./hooks/useResource";
 import { useViewport } from "./hooks/useViewport";
 import { Sidebar } from "./layout/Sidebar";
@@ -76,13 +77,14 @@ function Workspace({ claude, settings, reloadClaude, onSignedOut }: { claude: Cl
   const { isCompact } = useViewport();
   const { route, open, openSettings, closeSettings } = useHashRoute();
   const sessions = useSessions();
+  const researchSessions = useResearchSessions();
   const sources = useSources();
   const signOut = useSignOut(onSignedOut);
   const [collapsed, toggle] = useCollapsed();
   const [drawerOpen, setDrawerOpen] = useState(false);
   // The connector a page sent the person to Settings to connect, opened there.
   const [connector, setConnector] = useState<ConnectorName | null>(null);
-  const selected = route.view.view === "chat" ? route.view.sessionId : null;
+  const selected = route.view.view === "chat" || route.view.view === "research" ? route.view.sessionId : null;
   const governance = route.view.view === "governance" ? route.view : null;
   const goGovernance = useCallback((page: GovernancePage, item: string | null = null) => open({ view: "governance", page, item }), [open]);
 
@@ -102,6 +104,15 @@ function Workspace({ claude, settings, reloadClaude, onSignedOut }: { claude: Cl
     [remove, selected, open],
   );
   useAppEvent("session.removed", (e) => removed(e.data.sessionId));
+  const { remove: removeResearch } = researchSessions;
+  const removedResearch = useCallback(
+    (id: string) => {
+      removeResearch(id);
+      if (id === selected) open({ view: "new" });
+    },
+    [removeResearch, selected, open],
+  );
+  useAppEvent("research.session.removed", (e) => removedResearch(e.data.sessionId));
 
   const created = (session: SessionSummary) => {
     sessions.upsert(session);
@@ -114,6 +125,7 @@ function Workspace({ claude, settings, reloadClaude, onSignedOut }: { claude: Cl
 
   const sidebarProps = {
     sessions: sessions.sessions,
+    research: researchSessions.sessions,
     loading: sessions.loading,
     selected,
     account: claude.account,
@@ -124,7 +136,7 @@ function Workspace({ claude, settings, reloadClaude, onSignedOut }: { claude: Cl
     },
     onOpen: (id: string) => {
       setDrawerOpen(false);
-      open({ view: "chat", sessionId: id });
+      open({ view: researchSessions.sessions.some((r) => r.id === id) ? "research" : "chat", sessionId: id });
     },
     onCustomize: () => {
       setDrawerOpen(false);
@@ -145,6 +157,8 @@ function Workspace({ claude, settings, reloadClaude, onSignedOut }: { claude: Cl
     },
     onRenamed: sessions.upsert,
     onDeleted: removed,
+    onResearchRenamed: researchSessions.upsert,
+    onResearchDeleted: removedResearch,
   };
 
   return (
@@ -173,11 +187,17 @@ function Workspace({ claude, settings, reloadClaude, onSignedOut }: { claude: Cl
               settings={settings.data}
               sources={sources.data}
               onCreated={created}
+              onResearchCreated={(session) => {
+                researchSessions.upsert(session);
+                open({ view: "research", sessionId: session.id });
+              }}
               onConnect={connect}
               onOpenNav={isCompact ? () => setDrawerOpen(true) : undefined}
               account={claude.account}
               onOpenAccount={isCompact ? () => openSettings("account") : undefined}
             />
+          ) : route.view.view === "research" ? (
+            <ResearchPage key={selected} sessionId={selected} onUpdated={researchSessions.upsert} onOpenNav={isCompact ? () => setDrawerOpen(true) : undefined} />
           ) : (
             <ChatScreen key={selected} sessionId={selected} onUpdated={sessions.upsert} onOpenNav={isCompact ? () => setDrawerOpen(true) : undefined} />
           )}

@@ -1,6 +1,6 @@
 // The page's place, kept in the URL hash so a reload or a bookmark comes back to it and the server needs no route but
-// `/`: `#/` is a new session, `#/chat/<id>` an open chat, `#/governance/<page>[/<item>]` the Governance console, and
-// `?settings=<section>` opens Settings over any of them.
+// `/`: `#/` is a new session, `#/chat/<id>` an open chat, `#/research/<id>` an open research session,
+// `#/governance/<page>[/<item>]` the Governance console, and `?settings=<section>` opens Settings over any of them.
 import { useCallback, useEffect, useState } from "react";
 
 export const SETTINGS_SECTIONS = ["account", "appearance", "code", "connectors", "skills", "plugins", "system"] as const;
@@ -11,18 +11,20 @@ export const GOVERNANCE_PAGES = ["overview", "constitution", "operators", "agent
 
 export type GovernancePage = (typeof GOVERNANCE_PAGES)[number];
 
-export type View = { view: "new" } | { view: "chat"; sessionId: string } | { view: "governance"; page: GovernancePage; item: string | null };
+export type View = { view: "new" } | { view: "chat"; sessionId: string } | { view: "research"; sessionId: string } | { view: "governance"; page: GovernancePage; item: string | null };
 
 const isGovernancePage = (v: string | undefined): v is GovernancePage => v !== undefined && (GOVERNANCE_PAGES as readonly string[]).includes(v);
 
 function viewOf(parts: string[]): View {
   if (parts[0] === "chat" && parts[1]) return { view: "chat", sessionId: decodeURIComponent(parts[1]) };
+  if (parts[0] === "research" && parts[1]) return { view: "research", sessionId: decodeURIComponent(parts[1]) };
   if (parts[0] === "governance") return { view: "governance", page: isGovernancePage(parts[1]) ? parts[1] : "overview", item: parts[2] ? decodeURIComponent(parts[2]) : null };
   return { view: "new" };
 }
 
 function pathOf(v: View): string {
   if (v.view === "chat") return `#/chat/${encodeURIComponent(v.sessionId)}`;
+  if (v.view === "research") return `#/research/${encodeURIComponent(v.sessionId)}`;
   if (v.view === "governance") return `#/governance/${v.page}${v.item ? `/${encodeURIComponent(v.item)}` : ""}`;
   return "#/";
 }

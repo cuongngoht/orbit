@@ -32,6 +32,8 @@ export interface Viewport {
   isNarrowDesktop: boolean;
   /** True on touch-primary devices (pointer: coarse). */
   isCoarse: boolean;
+  /** True at 1440px and wider (a research session shows its three panels side by side). */
+  isWide: boolean;
 }
 
 export function useViewport(): Viewport {
@@ -39,11 +41,13 @@ export function useViewport(): Viewport {
   const isCompact = useMediaQuery("(max-width: 1023px)");
   const isNarrowDesktop = useMediaQuery("(max-width: 1279px)");
   const isCoarse = useMediaQuery("(pointer: coarse)");
+  const isWide = useMediaQuery("(min-width: 1440px)");
   return {
     isMobile,
     isCompact,
     isTablet: !isMobile && isCompact,
     isNarrowDesktop,
     isCoarse,
+    isWide,
   };
 }

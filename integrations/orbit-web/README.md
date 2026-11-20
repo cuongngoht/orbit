@@ -77,6 +77,11 @@ CLI with `docker build --build-arg AZURE_CLI=0 …` (Azure DevOps then says it i
 | `ORBIT_WEB_AGENT_CONTROL_HOST` | -- | governed: this container's name on the agent network (the gateway's and the proxy's host) |
 | `ORBIT_WEB_EGRESS_PROXY_PORT` | `3128` | governed: the egress proxy's port |
 | `ORBIT_WEB_EGRESS_PRIVATE_ALLOW` | unset | governed: internal IPv4 ranges (CIDR) the proxy may reach; none unless named -- the Constitution still decides each connection |
+| `ORBIT_WEB_RESEARCH_MAX_UPLOAD_MB` | `25` | [Research](#research): the largest file a source may be uploaded as (1-200) |
+| `ORBIT_WEB_RESEARCH_MAX_URL_MB` | `10` | Research: the most a URL's page may answer (1-100) |
+| `ORBIT_WEB_RESEARCH_URL_IMPORT` | `on` | Research: `off` refuses importing sources from URLs at all (the server never fetches a page) |
+| `ORBIT_WEB_RESEARCH_INGEST_CONCURRENCY` | `2` | Research: how many sources are read and indexed at once (1-8) |
+| `ORBIT_WEB_RESEARCH_CONTEXT_CHARS` | `24000` | Research: how much retrieved text one question gives the model, at most (2000-200000 characters) |
 
 **Telemetry.** With a collector named, every Claude Code process Orbit Web starts exports as a person's own Claude
 Code would with the same settings, and only Claude Code gets the variables (never git, gh, az or Orbit's own commands):
@@ -99,7 +104,8 @@ uid 10001) and private to it (mode 0700):
 
 | directory | holds | owner of the format |
 |---|---|---|
-| `/data/app` | Orbit Web's SQLite database: settings, sessions, messages, events, runs, what each repository brought | Orbit Web |
+| `/data/app` | Orbit Web's SQLite database: settings, sessions, messages, events, runs, what each repository brought, who owns each chat and who it is shared with -- and research: workspaces, the extracted text of every source revision and its full-text index, research sessions, their runs, citations, notes and findings | Orbit Web |
+| `/data/research/workspaces/<workspace>/objects/` | the files research sources were read from (uploads, URL snapshots, pasted texts), each named by its SHA-256 -- never by a name a person typed -- and stored once per workspace | Orbit Web |
 | `/data/claude` | the Claude CLI's sign-in -- Orbit Web's own sign-in -- Claude Code's native session state, and the plugins a project declared once installed (`CLAUDE_CONFIG_DIR`, set for the whole image) | Claude Code |
 | `/data/github` | GitHub CLI's sign-in (`GH_CONFIG_DIR`, stored in plain text: a container has no keyring) | GitHub CLI |
 | `/data/azure` | the Azure CLI's sign-in (`AZURE_CONFIG_DIR`; its token cache is a plain file for the same reason) | Azure CLI |
@@ -113,7 +119,30 @@ uid 10001) and private to it (mode 0700):
 | `/data/control` | the control plane's own room: its HOME for the CLIs it runs with a credential (governed) and a push's bundles in passing | Orbit Web |
 
 In the governed deployment the agent's container mounts only `claude`, `workspaces`, `sessions`, `orbit` and `home` (and
-`repos` read-only); a run's log is kept in `/data/app/run-logs/` instead of `/data/sessions/<session>/runs/`.
+`repos` read-only); a run's log is kept in `/data/app/run-logs/` instead of `/data/sessions/<session>/runs/`. `research`
+is the control plane's alone: the isolation check requires it to be absent from the agent's container (a research run is
+given the passages it needs on its standard input, never a path).
+
+"Stored locally" means on the Orbit server -- in this volume, wherever the container runs (on Azure, on the disk
+attached there) -- not on a person's laptop, and never in a browser or a repository.
+
+### Back up and restore
+
+Everything is in the volume. Stop the container (so SQLite's write-ahead log is folded in), archive the volume, start
+it again:
+
+```bash
+docker compose stop orbit-web
+docker run --rm -v orbit-web_orbit-web-data:/data:ro -v "$PWD":/backup debian:bookworm-slim \
+  tar -C /data -czf /backup/orbit-web-data-$(date +%F).tgz .
+docker compose start orbit-web
+```
+
+To restore, stop the container, empty the volume and unpack the archive into it with the owner kept
+(`tar -C /data --same-owner -xzf …`, as root in the helper container), then start it. A backup holds the CLIs' sign-ins
+(`/data/claude`, `/data/github`, `/data/azure`) and every research document: keep it as you would those. To keep only
+research, `/data/app` and `/data/research` go together -- the database names the files by hash, and the files are
+nothing without it.
 
 A restart keeps all of it. A run that was going when the container stopped is shown as **interrupted** afterwards and
 is never started again by itself. Keep `hostname: orbit-web` (or `--hostname orbit-web`): Orbit's store names its
@@ -148,9 +177,28 @@ If the sign-in does not finish in the browser, sign in from a terminal instead, 
 docker exec -it orbit-web claude auth login --claudeai
 ```
 
+### Each Claude account its own
+
+Orbit Web is signed in to one Claude account at a time, and what it shows is that account's: the chats and research
+workspaces it made, and those another account shared with its email. Sign in as another account and you see its own --
+nothing of the first. Every route under a chat (its messages, stream, changes, project, share, push) answers 404 to an
+account that may not open it; the sidebar, the customizations and the page's live notifications are filtered the same
+way. **Share** (a chat's header, or a research workspace's) names the emails of other Claude accounts that may open it:
+they read it and carry on with it as themselves; only its owner deletes it, shares it on or makes a public link. A chat
+from before owners existed becomes the first signed-in account's, once. This separates accounts at the API and the
+pages, not on disk (see [the limit](#security-model)); GitHub's and Azure's sign-ins and Settings stay the installation's.
+
+**The models are the account's too.** At every sign-in Orbit Web asks the account's own Claude CLI which models it may
+use and which effort levels each takes (its control protocol's `initialize`: restricted, no tool, no model called), so
+a model a program gives an account -- a research preview, say -- appears for that account alone, and a model it cannot
+use is not offered. Chats, research sessions and Settings' defaults are held to that list; picking a model whose
+effort levels do not include the one chosen moves the effort to one it takes; a model that takes no effort level is given
+none. When the CLI cannot be asked, the default list is shown (*Model · this session* says so) and the CLI decides.
+
 ## Use it
 
-No connector is needed to start: once you are signed in, the chat is open.
+No connector is needed to start: once you are signed in, the chat is open. **New session** offers two kinds: **Chat /
+Coding** (the default, below) and **[Research](#research)**.
 
 1. **New session** (the sidebar, or the empty page you land on): write what to do in the composer at the bottom.
    Enter sends; Shift+Enter is a new line. **`/` at the start of a message lists the skills and commands** the chat
@@ -164,10 +212,11 @@ No connector is needed to start: once you are signed in, the chat is open.
    connected offers *Connect* (Settings → Connectors); *Refresh* reads the list again. **No repository** (the default)
    starts the chat in an empty repository of its own (`git init`, one empty commit to start from), for a question, a
    prototype or anything that needs no code yet.
-3. **How it runs** -- on the right. **Model · Effort**: *Model · this session* lists Opus 5.5, Fable 5.2, Sonnet 5.5
-   and Haiku 5.5 (the CLI's own aliases `opus`, `fable`, `sonnet`, `haiku`; a model your account cannot use fails with
-   the CLI's own error), and *Effort* Low, Medium (recommended), High, Extra and Max (`--effort low|medium|high|xhigh|max`:
-   higher effort is more thorough, takes longer and uses your limits faster). **Mode**:
+3. **How it runs** -- on the right. **Model · Effort**: *Model · this session* lists the models your account may use
+   ([above](#each-claude-account-its-own); by default Opus 5.5, Fable 5.2, Sonnet 5.5 and Haiku 5.5 -- the CLI's own
+   aliases `opus`, `fable`, `sonnet`, `haiku`), and *Effort* the levels the chosen model takes -- Low, Medium
+   (recommended), High, Extra and Max (`--effort low|medium|high|xhigh|max`: higher effort is more thorough, takes longer
+   and uses your limits faster). A model auto mode is not available with plans only. **Mode**:
    - **Autonomous** -- Claude Code's auto mode (`--permission-mode auto`): it reads, edits and runs commands on its own;
      reads and file edits in the workspace go ahead, and Claude Code's classifier reviews every other action before it
      runs. What it refuses is shown in the chat as *Permission denied*.
@@ -198,9 +247,10 @@ No connector is needed to start: once you are signed in, the chat is open.
    shows Orbit's own record of the work: the task, its lifecycle and stage, the checks the change is held to,
    verification rows, unmet completion rows, approvals waiting at a protected boundary, and the commands Orbit saw run.
    It says **Verified** only when Orbit itself does, and **Unknown** until then. Claude finishing is not a verification.
-7. **The sidebar** keeps your chats current as they change, in this tab or another: a dot while one works or when it
-   failed, the source it came from, *Search* over titles and repositories, and each chat's menu to rename or delete it
-   (deleting removes its workspace). It folds away and stays folded. Continue any chat at any time, after a restart
+7. **The sidebar** keeps your chats and research sessions current as they change, in this tab or another: a code or a
+   book icon for each kind, a dot while one works or when it failed, the source it came from, a people mark when
+   another account shared it, *All · Chat · Research* to filter, *Search* over titles, repositories and workspaces, and
+   each one's menu to rename or delete it (deleting a chat removes its workspace; a research session, its conversation). It folds away and stays folded. Continue any chat at any time, after a restart
    too: the next message resumes the same Claude Code conversation (`--resume`).
 
 **Share** (the chat's header) makes a read-only link to the conversation as it is now: `https://<host>/#/share/<token>`
@@ -262,6 +312,78 @@ The chat says what was loaded ("Loaded from this repository: 2 skills, 1 command
 **Settings → Skills** and **Settings → Plugins** list everything, Orbit's own included, with each project plugin's state
 (*Loaded*, *Installed*, *Installing…*, *Not run*, *Failed* with the CLI's own words). Both switches are in
 Settings → Code.
+
+## Research
+
+A **research workspace** keeps knowledge that lasts: its sources, notes and findings. A **research session** is one
+conversation in a workspace, over the sources it selects. Research needs no repository, no branch and no GitHub.
+
+1. **New session → Research.** Name a new workspace (or pick one you have), choose the model and effort, and, if you
+   want, a first question -- it is asked as soon as a selected source is ready. *Start research* opens the session.
+2. **Sources** (the left panel): *Add* uploads files (pick or drop several; each shows its progress and what came of it),
+   a **website** by URL, a **pasted text** (Markdown or plain), or -- for this session -- sources the workspace already
+   has. Research reads **PDF** (selectable text, page by page; a PDF made of scanned images has no text and is said to
+   have none: there is no OCR), **Word** (.docx), **text**, **Markdown** and **web pages** (.html, or a URL). A file is
+   what its bytes say it is: anything else, or a file named as one thing and holding another, is refused and never
+   stored. Each source shows its state -- queued, reading, ready, failed (and why; *Try again*), stale -- and a checkbox:
+   **whether this session's questions may retrieve from it**, kept per session. *Select all* / *Deselect all*, *Search*,
+   and per source *Preview*, *Rename*, *Fetch again* (a URL), *Delete*. A source added to the workspace is offered to
+   every session of it that had all its sources selected, and to the one you added it from.
+3. **Ask** (the middle panel): *Ask about your sources…*. The answer streams as it is written; *Stop* interrupts it (it
+   is kept as cut off, never completed); *Ask again* repeats a question whose run did not complete. The composer says how
+   many selected sources a question can search now (*Using N sources*). The mode is the one that is built: **selected
+   sources only** -- no web search, no other workspace; when the passages do not answer, the answer says so.
+4. **Evidence** (the right panel): **Citations** of the answer you choose -- each one a passage, its source, its page
+   and section when the format has them, its revision -- and clicking one (or a citation chip in the answer) opens the
+   source's extracted text at that passage, marked. **Notes** (Markdown; *Save as note* on an answer ties it to its
+   first citation) and **Findings** (*Add as finding* on an answer; F-001, F-002 …) with their review status: draft →
+   needs review → reviewed or rejected, back to draft; changing a reviewed finding's words makes it a draft again. A
+   reviewed finding is a reviewed research conclusion -- **not an approved policy**: nothing in research writes to
+   governance.
+5. **Another session** in the same workspace reuses its sources -- nothing is uploaded or read again.
+
+From 1440px the three panels sit side by side (the sources and the evidence fold away from the header); below, the
+evidence opens as a drawer; on a phone, *Sources · Chat · Evidence* are tabs. **Share** (the header) shares the whole
+workspace -- sources, sessions, notes, findings -- with other Claude accounts by email.
+
+**How an answer is made.**
+
+- **Ingestion.** A file is stored in the server's volume by its SHA-256, read in a worker thread (bounded in time and
+  memory: a file that takes too long or expands too far fails, it does not stop the server), its text normalized and cut
+  into passages (about a paragraph or a few, never across a page, anew at each heading), and indexed in SQLite's
+  full-text search (FTS5: English words stemmed, diacritics folded -- "ro ri" finds "rò rỉ"). A URL is fetched by the
+  server -- only on the public internet's web ports (80, 443), never this machine, a private network or a cloud's
+  metadata address; every address its name resolves to is checked, the connection goes to the one checked, and each
+  redirect (five at most) is checked again; no cookie or credential is sent; the size and time are bounded -- and kept
+  as a **snapshot**, so the page changing later does not change your research.
+- **Revisions.** A source's text is a series of immutable revisions. *Fetch again* makes a new revision only when the
+  page's bytes changed; the earlier revision stays readable for the citations that cite it. A refresh that fails leaves
+  the source **stale**: the snapshot it had is still used, as of its date.
+- **Retrieval.** A question's evidence is frozen first: the revisions the selected sources are indexed at, and the
+  passages retrieved from them alone -- ranked by BM25, ties broken by their place, with the opening passages of the
+  sources added when few match (a broad "summarize these") -- within `ORBIT_WEB_RESEARCH_CONTEXT_CHARS`. Nothing of an
+  unselected source, another workspace, or the rest of a document reaches the model. Changing the selection while an
+  answer is written changes the next question.
+- **The run.** The official Claude CLI, in a profile of its own: **no tool at all** (`--tools ""`), restricted (no
+  settings file is read, so no hook, plugin or permission rule), no MCP server, no slash command, nothing persisted, a
+  fixed system prompt, the model and effort you chose. It is given the conversation so far, the passages -- each labelled
+  S1, S2 … with its source, revision, page and section, between tags that carry a random value made for this question,
+  so no document can close them -- and the question, and told that the passages are data, never instructions; that every
+  statement about the sources cites its passage; that it says so when they do not answer; and that it can approve
+  nothing. A process that reports a tool or tries to use one is stopped, and the run fails as refused.
+- **Citations are the server's.** The model can only write a label; each one is looked up in the passages this question
+  was given, and only a label found there becomes a citation -- with the source, the revision, its place in the text and
+  a copy of the passage, from the server's own record (never a page or a quote the model wrote). Any other label is
+  removed from the answer.
+- **What leaves the server.** Sources are stored on the Orbit server. The passages a question retrieves -- and the
+  question and the conversation so far -- are sent to Claude (Anthropic) to answer it. Storing documents locally does
+  not keep their passages from the model's provider; a local model is not built.
+
+**Deleting.** Deleting a session removes its conversation and its runs; the workspace's sources, notes and findings
+stay, and so do the citations a note or a finding keeps. Deleting a source removes it, its text and -- once no other
+revision of the workspace stores the same bytes -- its file; citations that quoted it keep their copy, marked as from a
+deleted source. Deleting a workspace (its owner types its name back to confirm) removes everything it holds, rows and
+files; it is refused while one of its sessions is answering.
 
 ## Governance
 
@@ -507,6 +629,16 @@ For one person, on their own machine, by default:
   access gate and the Claude sign-in gate let through, the token (32 random bytes, in the URL's fragment) names one
   share, and the snapshot holds the conversation alone -- tools by their title unless their owner shares what they did,
   every text masked again, no id of the chat -- served `no-store` and `noindex`.
+- **Each account its own** ([above](#each-claude-account-its-own)): a chat or a research workspace answers only the
+  account that owns it and the accounts it was shared with; any other gets 404, on every route under it (a test reads
+  every route the application declares and holds each one).
+- **Research** ([above](#research)): a research run has no tool, reads no settings file, loads no MCP server, persists
+  nothing and is never in a bypass mode; a process that reports or uses a tool is stopped. Documents' words reach it only
+  between tags it cannot close, as data. Citations are verified against the passages the run was given. An upload is
+  the one body that is not JSON, on one route, under the same header and origin rules; files are named by their hash.
+  The URL fetcher reaches only the public internet's web ports, checks every address and every redirect, and connects
+  to the address it checked. A research run's token (governed deployment) opens the egress proxy alone, never the
+  agent gateway. What a run writes is masked by token shape before it is kept; no event keeps a source's text.
 - **Governance** (above): operators verified by Orbit Web, the Company Constitution deciding every governed run and
   protected action, approvals spent once, and a hash-chained audit record apart from the chats' database. The agent is
   never an operator: no request it can make -- with its run's token or without -- reaches a governance route, turns a
@@ -530,6 +662,11 @@ For one person, on their own machine, by default:
   account's configuration is necessarily readable by the agent, and the model API is reachable by design. The
   isolation check is the agent container's own answer: a check of the wiring, not proof against a runner the agent has
   taken over. The audit chain is tamper evidence on this host, not proof against whoever controls the host.
+- **Research.** The passages a question retrieves are sent to Claude (Anthropic). A research run's restrictions are the
+  Claude CLI's own flags, not an operating system's: in the single deployment it runs as the same user as everything
+  else in the container. Accounts are separated at the API and the pages, not on disk -- in the single deployment a
+  chat's agent can read the files of another account's workspace -- and the CLIs' sign-ins and Settings are the
+  installation's. Sharing has no read-only level.
 - Open repositories you trust, keep *Run project plugins* off unless you trust them too, keep the port on loopback, and
   disconnect a source when you are done.
 
@@ -557,6 +694,13 @@ For one person, on their own machine, by default:
 | A project plugin says *Failed* | its tooltip quotes the CLI (a marketplace that cannot be fetched, a plugin it does not have); the chat still runs without it |
 | "The workspace could not be prepared" | the chat's message says which step failed (clone, init, branch, identity, orbit); delete the chat and try again |
 | A model is refused | the chat shows the CLI's own error: your account cannot use that model; pick another |
+| *Model · this session* says it shows the default list | the account's own Claude CLI could not be asked which models it may use (its message says why); sign in again, or pick from the list -- the CLI decides |
+| A chat or a research workspace is gone after signing in | it belongs to the account that made it: sign in as that account, or ask its owner to share it with your email |
+| A source says *Failed* | its tooltip says why: a kind research does not read, a PDF with no selectable text (scanned), a protected or broken file, a page that could not be fetched; fix it and *Try again*, or add it again |
+| A source says *Stale* | the page could not be fetched again; the earlier snapshot is still used -- *Fetch again* later |
+| A URL never reaches its page | the server fetches only the public internet on ports 80 and 443, directly (no proxy); a page on an internal network or behind a proxy: save it as a file and upload it. `ORBIT_WEB_RESEARCH_URL_IMPORT=off` switches URL import off |
+| *Ask* is not offered | no selected source is ready: select one, or wait for the selected ones to be read |
+| An answer says the sources do not say | by design: it answers only from passages of the selected sources -- select more, or add a source that does |
 | A run seems stuck | **Stop**; it ends as interrupted; send the next message to continue |
 | Disk use grows | delete chats you no longer need (removes their workspaces); `docker system df -v` |
 | Build behind a proxy | `node scripts/build-image.mjs --ca-file=<the proxy CA>` |
@@ -579,7 +723,9 @@ npm run dev -w @orbit-web/web  # the app on :5173, /api proxied to :3000
 |---|---|---|
 | unit | `packages/contracts/src/*.spec.ts`, `apps/api/src/**/*.spec.ts` | the event catalog and bus, parsers (GitHub, Azure DevOps), the stream mapper (plans included), redaction, argv (model, effort, mode, plugins), the project reader's bounds and its instructions-only copy, state machines, path rules |
 | integration, mocked processes | `apps/api/tests/integration/*.spec.ts` | the real API over HTTP and both SSE streams with claude, gh and `az rest` scripted; git and Orbit's CLIs run for real; chats with and without a repository, Azure DevOps listing and clone (no credential in `.git/config`), a repository's skills and plugins, the Claude sign-in gate over every route the application declares |
-| web | `apps/web/src/**/*.spec.tsx` | the sign-in page, the workspace (sidebar, a new session and its pickers, the app stream), an open chat (streaming, tools, Stop, the plan card), Settings (connectors and their device sign-ins, Code, Skills, Plugins), the diff and the Orbit panel |
+| web | `apps/web/src/**/*.spec.tsx` | the sign-in page, the workspace (sidebar, a new session and its pickers, the app stream), an open chat (streaming, tools, Stop, the plan card), Settings (connectors and their device sign-ins, Code, Skills, Plugins), the diff and the Orbit panel; research: the kind chooser, the sidebar's kinds and filter, the three panels at each width, selection, uploads, citations that open their passage, notes, the stream folded without doubling |
+| accounts | `apps/api/tests/integration/accounts.spec.ts` | each account's own chats through every route under one, sharing by email and what only an owner does, the claim of chats from before owners, the model catalog per account (read at sign-in, held on chats and Settings, the fallback) |
+| research | `apps/api/src/modules/research/**/*.spec.ts`, `apps/api/tests/integration/research*.spec.ts` | PDF, Word, HTML, Markdown and text read (pages, headings, encodings, a scanned PDF, a ZIP bomb), chunks and their places, what is refused (type, size, names, paths), URL import and SSRF (loopback, metadata, private ranges, IPv6 carrying IPv4, redirects, DNS answers, a drip-fed head), revisions and retries; retrieval only from the selected sources; the run's profile (no tool), a tool reported or used, prompt injection kept as data, secrets masked, citations verified and opening their passage, notes and findings, governance untouched, accounts kept apart through every research route, stop and restart interrupted and never run again |
 | Docker | `tests/docker/smoke.mjs` | the image builds, starts, serves, holds the four programs, a loadable plugin and the Azure Repos credential helper, opens on the Claude sign-in with every other route closed, persists across restarts (with a stand-in Claude sign-in) |
 | governance | `packages/governance-core/src/*.spec.ts`, `apps/api/tests/integration/governance-*.spec.ts`, `apps/api/src/runner/*.spec.ts`, `apps/api/src/infra/egress/*.spec.ts` | the decision, lifecycle, impact, approvals, audit chain and auditor as pure rules; operators, the first owner and the offline terminal; the Constitution's lifecycle over HTTP; governed runs, the gateway and pushes to GitHub (a local remote) and Azure DevOps; the runner, the isolation check and the egress proxy |
 | security lab | `tests/security-lab/run.mjs` | the governed deployment for real (Docker): the 20-step demonstration and ten attacks from the agent's own container, each verdict read outside the agent; results in `results/0.8.0` |

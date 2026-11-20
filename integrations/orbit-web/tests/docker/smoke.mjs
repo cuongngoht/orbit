@@ -2,7 +2,8 @@
 // THE DOCKER SMOKE TEST: the real image, started the way a person starts it, checked from outside. No credential is
 // used: it proves the image builds and starts, serves the web app and the API, holds the four programs and a loadable
 // Orbit plugin, runs as a non-root user, opens on the Claude sign-in when nobody signed in -- every other route refused
-// -- and keeps its state across a restart and across re-creating the container from the same volume. That last part
+// -- and keeps its state (Settings, and a research workspace with a source it read and indexed in the container's own
+// worker) across a restart and across re-creating the container from the same volume. That last part
 // needs the API open, so a Claude account sign-in is stood in for there (claude-signed-in.mjs; a real one needs a
 // person), and those checks say so.
 //
@@ -85,6 +86,41 @@ function start(port, { signedIn = false } = {}) {
 
 const SIGN_IN_REQUIRED = "claude_sign_in_required";
 
+const MUTATE = { "content-type": "application/json", "x-orbit-web": "1" };
+const RESEARCH_TEXT = "Smoke test notes. Orbit Web keeps research sources on its own data volume; a restart keeps them.";
+
+// A research workspace and one pasted source, waited for until it is read and indexed.
+async function researchSeed(port) {
+  const made = await http(port, "/api/research/workspaces", { method: "POST", headers: MUTATE, body: JSON.stringify({ name: "Smoke research", description: "made by the Docker smoke test" }) });
+  if (made.status !== 201 && made.status !== 200) return { ok: false, detail: `create workspace: HTTP ${made.status} ${made.text.slice(0, 200)}` };
+  const workspace = made.body.id;
+  const added = await http(port, `/api/research/workspaces/${workspace}/sources/text`, { method: "POST", headers: MUTATE, body: JSON.stringify({ title: "Smoke notes", text: RESEARCH_TEXT }) });
+  if (added.status !== 201 && added.status !== 200) return { ok: false, workspace, detail: `add text: HTTP ${added.status} ${added.text.slice(0, 200)}` };
+  const ready = await sourceState(port, workspace, added.body.id, 30);
+  return { ok: ready === "ready", workspace, source: added.body.id, detail: `source ${ready}` };
+}
+
+async function sourceState(port, workspace, source, seconds) {
+  let state = "missing";
+  for (let i = 0; i < seconds; i += 1) {
+    const list = await http(port, `/api/research/workspaces/${workspace}/sources`);
+    state = Array.isArray(list.body) ? (list.body.find((s) => s.id === source)?.state ?? "missing") : `HTTP ${list.status}`;
+    if (state === "ready" || state === "failed") return state;
+    await sleep(1000);
+  }
+  return state;
+}
+
+async function researchKept(port, seeded) {
+  if (!seeded.workspace || !seeded.source) return { ok: false, detail: "nothing was made to keep" };
+  const listed = await http(port, "/api/research/workspaces");
+  const found = Array.isArray(listed.body) && listed.body.some((w) => w.id === seeded.workspace && w.sourceCount === 1);
+  const state = await sourceState(port, seeded.workspace, seeded.source, 1);
+  const content = await http(port, `/api/research/sources/${seeded.source}/content`);
+  const text = JSON.stringify(content.body);
+  return { ok: found && state === "ready" && text.includes("own data volume"), detail: `workspace ${found ? "listed" : "missing"}, source ${state}, content HTTP ${content.status}` };
+}
+
 async function main() {
   if (flag("build")) {
     const args = ["scripts/build-image.mjs", `--tag=${image}`, ...(opt("ca-file") ? [`--ca-file=${opt("ca-file")}`] : [])];
@@ -131,7 +167,7 @@ async function main() {
   // image was built from (a deploy under umask 077 once shipped a package.json only root could read: a crash loop).
   const unreadable = exec("sh", "-c", "find /opt/orbit-web /opt/orbit \\( -name node_modules -prune \\) -o ! -readable -print | head -5");
   check("   that user can read everything Orbit Web and the plugin ship", unreadable.status === 0 && unreadable.stdout.trim() === "", unreadable.stdout.trim().replace(/\n/g, ", ") || unreadable.stderr.trim().slice(0, 200));
-  const perms = exec("stat", "-c", "%a %U", "/data/claude", "/data/github", "/data/azure", "/data/app");
+  const perms = exec("stat", "-c", "%a %U", "/data/claude", "/data/github", "/data/azure", "/data/app", "/data/research");
   check("   the persistent directories are private to that user", perms.stdout.trim().split("\n").every((l) => l.startsWith("700 ")), perms.stdout.trim().replace(/\n/g, ", "));
   // What Claude Code runs as: it creates, edits, renames and deletes in a chat's workspace, and cannot write the
   // image's programs or the plugin (whatever its permission rules then allow is Claude Code's to decide).
@@ -166,15 +202,25 @@ async function main() {
   check("   ...which reads the build info", /^[0-9a-f]{40}$/.test(setup.body.versions?.orbitCommit ?? ""), JSON.stringify(setup.body.versions));
   const change = await http(port, "/api/settings", { method: "PATCH", headers: { "content-type": "application/json", "x-orbit-web": "1" }, body: JSON.stringify({ theme: "dark", defaultModel: "opus" }) });
   check("9. state is written to the volume", change.status === 200 && change.body.defaultModel === "opus");
+  // Research keeps its workspaces in the database and its documents under /data/research: one of each, made now, read
+  // back after the restart and after the new container. A pasted text is read and indexed without any model.
+  const research = await researchSeed(port);
+  check("   a research workspace and a pasted source are kept (read and indexed, no model asked)", research.ok, research.detail);
   docker(["restart", name]);
   await healthy(port);
   const afterRestart = await http(port, "/api/settings");
   check("10. a restart keeps the state", afterRestart.body.defaultModel === "opus" && afterRestart.body.theme === "dark", JSON.stringify(afterRestart.body));
+  const researchAfterRestart = await researchKept(port, research);
+  check("   ...and the research workspace with its source, still ready", researchAfterRestart.ok, researchAfterRestart.detail);
   docker(["rm", "-f", name]);
   start(port, { signedIn: true });
   await healthy(port);
   const afterRecreate = await http(port, "/api/settings");
   check("   a new container on the same volume keeps it too", afterRecreate.body.defaultModel === "opus", JSON.stringify(afterRecreate.body));
+  const researchAfterRecreate = await researchKept(port, research);
+  check("   ...research included", researchAfterRecreate.ok, researchAfterRecreate.detail);
+  const objects = exec("sh", "-c", 'find "/data/research/workspaces/$1/objects" -type f | wc -l', "sh", research.workspace ?? "none");
+  check("   the source's bytes are in /data/research, kept by their hash", objects.status === 0 && Number(objects.stdout.trim()) >= 1, `${objects.stdout.trim() || objects.stderr.trim().slice(0, 200)} file(s)`);
 
   if (!flag("keep")) {
     docker(["rm", "-f", name]);

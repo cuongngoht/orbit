@@ -7,6 +7,25 @@ governance: operators verified apart from that sign-in, a Company Constitution t
 holds, and an audit record that shows (ADR 0063). The plugin it bundles stays 0.6.0 and its archive is unchanged;
 nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
 
+- **Research** (ADR 0064). *New session* offers two kinds: **Chat / Coding** (as before) and **Research** -- a workspace
+  of sources, sessions that ask questions answered only from passages the server retrieved from the sources a session
+  selects, and evidence: citations the server verified (each opens its passage, in the exact revision), notes, and
+  findings a person reviews (`reviewed` is not an approved policy; nothing in research writes to governance). No
+  repository, branch or GitHub. Sources: uploads (the file's own bytes -- the one non-JSON body, on one route, under the
+  CSRF rules), URLs (fetched by the server as snapshots: public internet on ports 80/443 only, every resolved address
+  and redirect checked, the checked address connected to), pasted text; PDF (page numbers; no OCR), Word, HTML,
+  Markdown and text read in a worker thread, chunked, indexed in SQLite FTS5; stored under `/data/research` by
+  SHA-256; immutable revisions, a refresh making a new one only when the page changed. A research run has no tool
+  (`--tools ""`, `--restricted`, no MCP server, nothing persisted, `dontAsk`); documents reach it as data between tags it
+  cannot close; a process that reports or uses a tool is stopped. Three panels side by side from 1440px, a drawer below,
+  tabs on a phone. Two runtime dependencies, pure JavaScript and pinned: `unpdf` 2.2.1, `parse5` 8.1.1.
+- **Each Claude account its own chats and models** (ADR 0064). A chat and a research workspace belong to the account that
+  made them; another account sees nothing of them through any route, unless their owner shares them by email (only the
+  owner deletes, shares on, or makes a public link); a chat from before owners is claimed once by the first account that
+  signs in. The models and effort levels offered are the signed-in account's own, asked of its Claude CLI at every
+  sign-in (a model a program gives an account appears for it alone), and every choice is held to them.
+- **The egress proxy refuses IPv6 that carries IPv4** (IPv4-compatible `::/96`, NAT64 `64:ff9b::/96`, 6to4 `2002::/16`):
+  the one definition of "not the public internet" that the proxy and research's URL import share.
 - **Governance: operators, verified by Orbit Web** (ADR 0063). The Claude account opens the workspace; governance is
   administered by operators -- a local credential (scrypt), a server-side session (HttpOnly, SameSite=Strict, idle and
   absolute expiry, revocation, a CSRF token), six roles read on every request, never from a request. The first owner
@@ -163,8 +182,8 @@ nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
   (`/api/sessions/:id/events`, replayed after `Last-Event-ID`) and the app stream (`/api/events`: the sidebar's chats,
   the connectors' sign-ins, the customizations -- notifications that replace polling). Adding an event is a catalog row
   and its payload type.
-- **Checked.** 406 deterministic tests (governance-core 33, contracts 14, API unit 122, API integration with mocked
-  processes 112, web 125), `scripts/ci.mjs` green; the Docker smoke test (30 checks) also checks the Azure Repos helper,
+- **Checked.** 499 deterministic tests (governance-core 33, contracts 17, API unit 149, API integration with mocked
+  processes 155, web 145), `scripts/ci.mjs` green; the Docker smoke test (30 checks) also checks the Azure Repos helper,
   the runtime user's file rights (it can read everything the image ships) and Python; the security lab's governed run is recorded in
   `tests/security-lab/results/0.8.0`. The real-model runs (the acceptance run, and the governed deployment with a real
   model) need a person's Claude sign-in volume and are not recorded yet.

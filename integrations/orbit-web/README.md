@@ -216,9 +216,13 @@ Its repositories are every page of `user/repos` (owner, collaborator, organisati
 **Claude Code is not given this sign-in unless you turn on "Let Claude Code push and open pull requests with this
 GitHub sign-in"**: with it on, its `gh` finds GitHub CLI's sign-in (`GH_CONFIG_DIR`) and its `git` asks `gh` for the
 credential of github.com -- and of github.com alone -- through a helper named in its environment (no git configuration
-is written); `git push` and `gh` are no longer refused, but `gh auth` (printing the token, signing out), `gh repo delete`,
-`gh secret`, `gh ssh-key`, `gh gpg-key` and `git credential` still are, and its instructions say never to force-push or
-push to the default branch. With it off, `gh` and `git push` are refused to it and it is not told where the sign-in is.
+is written) -- in a chat whose repository came from GitHub, and in no other. `git push`, `gh pr …` and the like are no
+longer refused, but `gh auth` (printing the token, signing out), `gh api`, extensions, aliases, gh's configuration,
+workflows and runs, releases, gists, secrets and variables, the account's keys, codespaces, the organisation, rulesets,
+caches, deleting, renaming, archiving or re-configuring a repository, and `git credential` still are, and its
+instructions say never to force-push or push to the default branch -- rules on the command as written, beside auto
+mode's classifier, not a wall. With it off, `gh` and `git push` are refused to it and it is not told where the sign-in
+is.
 
 **Azure DevOps (optional).** *Connect Azure* (optionally naming a tenant: its id or a domain) runs
 `az login --use-device-code --allow-no-subscriptions --output none [--tenant <t>]` with the Azure CLI pinned the way
@@ -344,7 +348,8 @@ contents are untrusted input to it. The environment scrub, the deny rules (`git 
 directories), auto mode's classifier, `--setting-sources user` (a repository's own `.claude/settings.json` is never
 read) and the private directories are **defence in depth, not isolation**: a determined prompt injection in a
 repository could still reach the GitHub CLI's stored token, the Azure CLI's (whether or not Claude Code is allowed to
-use them) or Orbit Web's local API; with GitHub's switch on, it can also push and open pull requests as you. Open repositories you trust, keep *Run project plugins* off unless you trust them
+use them) or Orbit Web's local API -- through which it could also turn on the switches that hand it a sign-in. With
+GitHub's switch on, it pushes and opens pull requests as you by design. Open repositories you trust, keep *Run project plugins* off unless you trust them
 too, keep the port on loopback, and disconnect a source when you are done. Separating the sign-ins from the code
 execution (another container or user) is work for a later version.
 

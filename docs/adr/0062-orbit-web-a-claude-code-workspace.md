@@ -134,9 +134,12 @@ refused whole and the commit lost with it -- it never chains a refused push into
 Azure's, *Let Claude Code push and open pull requests with this GitHub sign-in* (`githubForClaude`, off by default),
 follows the pattern ADR 0060 set for Azure: with it on, the run's environment names GitHub CLI's configuration
 (`GH_CONFIG_DIR`, never a token variable) and gives git a credential helper for `https://github.com` alone
-(`GIT_CONFIG_*`: `gh auth git-credential`; no git configuration file is written); `git push` and `gh` leave the deny
-list, while `gh auth`, `gh repo delete`, `gh secret`, `gh ssh-key`, `gh gpg-key` and `git credential` stay on it and
-the file tools stay refused `/data/github`; the sentence then says to push the branch it works on and open a pull
+(`GIT_CONFIG_*`: `gh auth git-credential`; no git configuration file is written), in a chat whose repository came from
+GitHub and no other; `git push` and `gh` leave the deny list, while `gh auth`, `gh api`, extensions, aliases, gh's
+configuration, workflows, runs, releases, gists, secrets, variables, the account's keys, codespaces, the organisation,
+rulesets, caches, deleting, renaming, archiving or editing a repository, and `git credential` stay on it (an allow-list
+cannot be had: an allow rule never carves an exception out of a deny rule), and the file tools stay refused
+`/data/github`; the sentence then says to push the branch it works on and open a pull
 request, never force-push and never push to the default branch.
 
 ## Consequences
@@ -153,8 +156,10 @@ request, never force-push and never push to the default branch.
   is now the classifier's to judge, and a destructive command on files that existed before the session may be refused
   unless the person asked for it. Plan changes nothing.
 - With GitHub's switch on, the agent can push and open pull requests as the person, and -- like Azure's -- reach the
-  stored sign-in through a subprocess if a prompt injection drives it there: the switch is the person's, off by
-  default, and the README says so.
+  stored sign-in through a subprocess if a prompt injection drives it there; and since the agent reaches Orbit Web's
+  local API, a misled one could turn either switch on itself. The switches are the person's, off by default, and the
+  README says all of this. The stronger design -- Orbit Web pushing and opening the pull request itself at a person's
+  click, the agent never holding the sign-in, or the agent as another Unix user -- is later work.
 - A repository is untrusted input in one more way: its skills now reach Claude Code, as instructions. Its plugins reach
   it only when a person turns them on, and they are then code running beside the sign-ins -- which the README's
   "limit, said plainly" now names.

@@ -116,6 +116,29 @@ describe("a chat with no repository", () => {
   });
 });
 
+describe("GitHub's sign-in, when a person lets Claude Code use it", () => {
+  let h: Harness;
+  let fake: FakeProcessPort;
+  before(async () => {
+    fake = signedIn(new FakeProcessPort(new NodeProcessPort())).on(claudeRun, { spawn: writingRun });
+    h = await startHarness({ fake });
+  });
+  after(() => h.close());
+
+  test("reaches only a chat whose repository came from GitHub: a chat with none still has gh and git push refused", async () => {
+    assert.equal((await h.send("PATCH", "/api/settings", { githubForClaude: true })).status, 200);
+    const created = await h.send("POST", "/api/sessions", { repository: null, model: "haiku", prompt: "Write hello.txt" });
+    assert.equal(created.status, 201);
+    const id = (created.body as SessionSummary).id;
+    await eventually(async () => fake.children.find((c) => claudeRun(c.call.file, c.call.args)), (c) => c !== undefined);
+    await eventually(async () => ((await h.get(`/api/sessions/${id}`)).body as SessionDetail).status, (s) => s === "completed");
+    const call = fake.children.find((c) => claudeRun(c.call.file, c.call.args))?.call as Call;
+    assert.equal(call.env.GH_CONFIG_DIR, undefined);
+    assert.equal(call.env.GIT_CONFIG_KEY_0, undefined);
+    assert.ok(call.args.includes("Bash(git push:*)") && call.args.includes("Bash(gh:*)"));
+  });
+});
+
 describe("the app stream: every page hears of a chat's life", () => {
   let h: Harness;
   before(async () => (h = await startHarness({ fake: signedIn(new FakeProcessPort(new NodeProcessPort())).on(claudeRun, { spawn: writingRun }) })));

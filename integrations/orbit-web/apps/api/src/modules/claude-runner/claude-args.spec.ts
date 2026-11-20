@@ -81,7 +81,9 @@ test("Claude Code is told, in one fixed text, that it commits here and never cha
 test("a person may let Claude Code push and open pull requests: gh and git push are allowed, gh's own sign-in is not", () => {
   const a = claudeArgs({ ...base, github: true });
   for (const allowed of ["Bash(git push:*)", "Bash(gh:*)"]) assert.equal(a.includes(allowed), false, allowed);
-  for (const rule of ["Bash(gh auth:*)", "Bash(gh repo delete:*)", "Bash(gh secret:*)", "Bash(git credential:*)", "Bash(git config --global:*)", "Read(//data/github/**)", "Edit(//data/github/**)"]) assert.ok(a.includes(rule), rule);
+  const kept = ["Bash(gh auth:*)", "Bash(gh api:*)", "Bash(gh extension:*)", "Bash(gh workflow:*)", "Bash(gh release:*)", "Bash(gh gist:*)", "Bash(gh secret:*)", "Bash(gh repo delete:*)", "Bash(gh repo edit:*)"];
+  for (const rule of [...kept, "Bash(git credential:*)", "Bash(git config --global:*)", "Read(//data/github/**)", "Edit(//data/github/**)"]) assert.ok(a.includes(rule), rule);
+  assert.equal(a.some((x) => /^Bash\(gh (pr|repo create|repo view)/.test(x)), false, "pull requests and the repository itself stay usable");
   const note = after(a, "--append-system-prompt") ?? "";
   assert.equal(note, WORKSPACE_NOTES.github);
   assert.match(note, /open a pull request with gh/);

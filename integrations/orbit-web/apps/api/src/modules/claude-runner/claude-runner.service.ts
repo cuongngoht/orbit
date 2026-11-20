@@ -110,7 +110,8 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     const resume = session.turns > 0;
     const prefs = this.settings.get();
     const azure = prefs.azureForClaude;
-    const github = prefs.githubForClaude;
+    // GitHub's sign-in only ever reaches a chat whose repository came from GitHub.
+    const github = prefs.githubForClaude && session.source === "github";
     const project = this.project.runtime(session);
     const args = claudeArgs({
       model: session.model,

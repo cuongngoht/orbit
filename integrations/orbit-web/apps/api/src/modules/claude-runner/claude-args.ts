@@ -19,9 +19,14 @@ export const ALWAYS_DENIED = ["Bash(git credential:*)", "Bash(git config --globa
 // Refused unless a person let Claude Code use GitHub CLI's sign-in: pushing, and gh altogether.
 export const GITHUB_DENIED = ["Bash(git push:*)", "Bash(gh:*)"];
 
-// Refused even then: gh's own sign-in (printing its token, signing out), and what no task here needs -- deleting a
-// repository, its secrets, the account's keys.
-export const GITHUB_SENSITIVE = ["Bash(gh auth:*)", "Bash(gh repo delete:*)", "Bash(gh secret:*)", "Bash(gh ssh-key:*)", "Bash(gh gpg-key:*)"];
+// Refused even then: gh's own sign-in (printing its token, signing out), and what pushing and opening a pull request
+// never needs and a misled agent could make costly -- raw API calls, extensions and aliases, gh's configuration,
+// workflows and runs, releases, gists, secrets and variables, the account's keys, codespaces, the organisation and its
+// rulesets, caches, and deleting, renaming, archiving or re-configuring a repository. A deny rule matches the command as
+// written, so this is defence in depth beside auto mode's classifier, not a wall (README).
+const GH_SENSITIVE_COMMANDS = ["auth", "api", "extension", "alias", "config", "workflow", "run", "release", "gist", "secret", "variable", "ssh-key", "gpg-key", "codespace", "org", "ruleset", "cache", "repo delete", "repo edit", "repo rename", "repo archive"];
+
+export const GITHUB_SENSITIVE = GH_SENSITIVE_COMMANDS.map((c) => `Bash(gh ${c}:*)`);
 
 const OPENING =
   "You are running in Orbit Web, in a workspace of this chat's own inside a container. Create, edit, rename and delete " +

@@ -41,8 +41,8 @@ bundles stays 0.6.0 and its archive is unchanged; nothing under `src/`, `cli/`, 
   the workspace allows: it commits on its own instead of chaining `git commit … && git push …` (a refused push used to
   take the commit with it). A new switch beside Azure's, *Let Claude Code push and open pull requests with this GitHub
   sign-in* (Settings → Connectors → GitHub, off by default), gives its `gh` GitHub CLI's sign-in and its `git` a
-  helper for github.com alone; `gh auth`, `gh repo delete`, `gh secret`, the account's keys and `git credential` stay
-  refused.
+  helper for github.com alone, in chats whose repository came from GitHub; `gh auth`, `gh api`, extensions, workflows,
+  releases, gists, secrets, the account's keys, deleting or editing a repository and `git credential` stay refused.
 - **A repository's own skills and plugins, read on its first fetch.** A last workspace step reads, from regular files
   only and bounded, the repository's `.claude/skills`, `.claude/commands`, `.claude/agents`, `CLAUDE.md`, `.mcp.json`
   (listed, never started), the plugins `.claude/settings.json` enables and its marketplaces, and
@@ -58,7 +58,7 @@ bundles stays 0.6.0 and its archive is unchanged; nothing under `src/`, `cli/`, 
   (`/api/sessions/:id/events`, replayed after `Last-Event-ID`) and the app stream (`/api/events`: the sidebar's chats,
   the connectors' sign-ins, the customizations -- notifications that replace polling). Adding an event is a catalog row
   and its payload type.
-- **Checked.** 228 deterministic tests (contracts 12, API unit 87, API integration with mocked processes 55, web 74),
+- **Checked.** 229 deterministic tests (contracts 12, API unit 87, API integration with mocked processes 56, web 74),
   `scripts/ci.mjs` green; the Docker smoke test also checks the Azure Repos helper and the runtime user's file rights.
   The real-model acceptance run is updated for the new API; a 0.8.0 run needs a person's Claude sign-in volume and is
   not recorded yet.

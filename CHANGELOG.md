@@ -191,12 +191,15 @@ nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
   (`/api/sessions/:id/events`, replayed after `Last-Event-ID`) and the app stream (`/api/events`: the sidebar's chats,
   the connectors' sign-ins, the customizations -- notifications that replace polling). Adding an event is a catalog row
   and its payload type.
-- **Checked.** 504 deterministic tests (governance-core 33, contracts 17, API unit 150, API integration with mocked
-  processes 156, web 148), `scripts/ci.mjs` green; the Docker smoke test (34 checks) also checks the Azure Repos helper,
+- **Checked.** 509 deterministic tests (governance-core 33, contracts 17, API unit 151, API integration with mocked
+  processes 156, web 152), `scripts/ci.mjs` green; the Docker smoke test (34 checks) also checks the Azure Repos helper,
   the runtime user's file rights (it can read everything the image ships), Python, `/data/research` private to that user,
   and a research workspace with a source read and indexed in the container kept across a restart and a new container; the security lab's governed run is recorded in
-  `tests/security-lab/results/0.8.0`. The real-model runs (the acceptance run, and the governed deployment with a real
-  model) need a person's Claude sign-in volume and are not recorded yet.
+  `tests/security-lab/results/0.8.0`. Research's definition of done was run in a real Chromium against the local image
+  with a real Claude sign-in (a PDF and a pasted text, grounded answers with page-exact citations, a note, a second
+  session on the same sources, a restart, a chat making a Claude Docs document); it found the stop that waited on open
+  streams and the two page faults fixed above. The real-model runs in the governed deployment need a person's Claude
+  sign-in volume and are not recorded yet.
 
 ## Orbit Web 0.7.0
 

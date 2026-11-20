@@ -1,7 +1,8 @@
 // ONE OPEN CHAT: its title and status above, the conversation, and the composer always at the bottom -- with the
 // repository the chat started from (fixed), its working branch (moved here, between runs: WorkBranchPicker), and the
-// model, effort and mode it runs with (changed here, they apply from the next message). On the right, when asked: what
-// changed in the workspace, and what Orbit says.
+// model, effort and mode it runs with (changed here, they apply from the next message). In the header, Share (a
+// read-only link to a snapshot of the conversation). On the right, when asked: what changed in the workspace, and what
+// Orbit says.
 import { Badge, Button, MessageBar, MessageBarBody, Spinner, Tab, TabList, Text, ToggleButton, Tooltip, makeStyles, tokens } from "@fluentui/react-components";
 import { Dismiss20Regular, DocumentBulletList20Regular, Info20Regular } from "@fluentui/react-icons";
 import { ACCEPTS_MESSAGES, type SessionDetail, type SessionSummary, type UpdateSessionRequest } from "@orbit-web/contracts";
@@ -16,6 +17,7 @@ import { Composer } from "../composer/Composer";
 import { ModelEffortPicker, ModePicker } from "../composer/RunPickers";
 import { WorkBranchPicker } from "../composer/WorkBranchPicker";
 import { OrbitPanel } from "../orbit/OrbitPanel";
+import { ShareButton } from "../share/ShareDialog";
 import { Timeline } from "./Timeline";
 
 const useStyles = makeStyles({
@@ -103,6 +105,7 @@ export function ChatScreen({ sessionId, onUpdated }: { sessionId: string; onUpda
               Reconnecting…
             </Badge>
           )}
+          <ShareButton sessionId={sessionId} />
           <Tooltip content="What changed in the workspace" relationship="description">
             <ToggleButton size="small" appearance="subtle" icon={<DocumentBulletList20Regular />} checked={panel === "changes"} onClick={() => setPanel(panel === "changes" ? null : "changes")}>
               Changes

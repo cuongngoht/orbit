@@ -55,6 +55,11 @@ bundles stays 0.6.0 and its archive is unchanged; nothing under `src/`, `cli/`, 
   repository that is a plugin and installs the declared ones (`claude plugin marketplace add` / `install --scope user`
   / `disable --scope user`), enabling them for that chat's runs only. The chat says what was loaded; Settings → Skills
   and Plugins list it all, with each plugin's state.
+- **Share a chat.** *Share* in a chat's header makes a read-only link (`#/share/<token>`, 32 random bytes in the
+  fragment) to a snapshot of its conversation: anyone with it reads it without the access token or a Claude account,
+  and sees nothing else of Orbit Web. Tools are shown by their title unless the owner includes what they did; every
+  text is masked again; *Update to now* refreshes it under the same link, *Stop sharing* or deleting the chat ends it.
+  `GET /api/shared/<token>` is the one route the access gate lets through for it (`isSharedRead`), and only to read.
 - **Autonomous reaches the internet.** Auto mode's classifier was told nothing about this place ("Network posture: None
   configured") and read Claude checking that a public site answers as reconnaissance. Each Autonomous run now carries
   the CLI's own environment (`claude auto-mode defaults`, read once, no model asked) with its *Network posture* (open
@@ -94,7 +99,7 @@ bundles stays 0.6.0 and its archive is unchanged; nothing under `src/`, `cli/`, 
   (`/api/sessions/:id/events`, replayed after `Last-Event-ID`) and the app stream (`/api/events`: the sidebar's chats,
   the connectors' sign-ins, the customizations -- notifications that replace polling). Adding an event is a catalog row
   and its payload type.
-- **Checked.** 277 deterministic tests (contracts 13, API unit 100, API integration with mocked processes 66, web 98),
+- **Checked.** 289 deterministic tests (contracts 14, API unit 101, API integration with mocked processes 71, web 103),
   `scripts/ci.mjs` green; the Docker smoke test also checks the Azure Repos helper and the runtime user's file rights.
   The real-model acceptance run is updated for the new API; a 0.8.0 run needs a person's Claude sign-in volume and is
   not recorded yet.

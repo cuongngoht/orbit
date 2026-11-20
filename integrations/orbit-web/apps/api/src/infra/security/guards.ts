@@ -2,8 +2,8 @@
 //
 //   hostGuard     the Host header must name an allowed host (loopback by default). A page on another site that
 //                 re-binds its own name to 127.0.0.1 still sends ITS name as Host, and is refused (DNS rebinding).
-//   accessGate    with ORBIT_WEB_ACCESS_TOKEN set, every /api call but the health check needs the token, as an
-//                 HttpOnly SameSite=Strict cookie (so EventSource works) or a bearer header.
+//   accessGate    with ORBIT_WEB_ACCESS_TOKEN set, every /api call but the health check and reading a shared chat's
+//                 link needs the token, as an HttpOnly SameSite=Strict cookie (so EventSource works) or a bearer header.
 //   mutationGuard a state-changing call must carry the X-Orbit-Web header (a cross-site page cannot add it without a
 //                 CORS preflight, which is never answered), an Origin of this very host when the browser sends one,
 //                 and a JSON body when it has a body.
@@ -63,9 +63,13 @@ function presentedToken(req: Request): string | null {
 
 const OPEN_PATHS = new Set(["/api/health", "/api/access"]);
 
+// A shared chat's link (modules/share): READING it is the one thing a link's token opens, before the access token. Its
+// shape and its existence are the share module's to judge, so a token that names no share is not found either way.
+export const isSharedRead = (req: Pick<Request, "method" | "path">): boolean => (req.method === "GET" || req.method === "HEAD") && /^\/api\/shared\/[^/]+$/.test(req.path);
+
 export function accessGate(config: AppConfig) {
   return (req: Request, res: Response, next: NextFunction): void => {
-    if (config.accessToken === null || !req.path.startsWith("/api/") || OPEN_PATHS.has(req.path)) return next();
+    if (config.accessToken === null || !req.path.startsWith("/api/") || OPEN_PATHS.has(req.path) || isSharedRead(req)) return next();
     const token = presentedToken(req);
     if (token !== null && sameToken(token, config.accessToken)) return next();
     refuse(res, 401, "access_token_required", "This Orbit Web needs its access token.");

@@ -1,5 +1,6 @@
 // Orbit Web's own state: one SQLite file under /data/app, through Node's built-in node:sqlite (no native module).
-// It holds settings, sessions, their messages, their durable events, their runs and their projects' inventories --
+// It holds settings, sessions, their messages, their durable events, their runs, their projects' inventories and their
+// shared copies --
 // never a credential: the CLIs keep their own sign-ins in their own directories. MIGRATIONS only ever grows: a data
 // volume of an earlier Orbit Web is brought forward in order, each step in one transaction.
 import { DatabaseSync } from "node:sqlite";
@@ -72,6 +73,15 @@ const MIGRATIONS: string[] = [
    CREATE TABLE project_inventories (
      session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
      data TEXT NOT NULL,
+     updated_at TEXT NOT NULL
+   );`,
+  // 0.8.0: a chat's shared copy -- the snapshot its link shows -- kept beside it, and gone with it.
+  `CREATE TABLE shares (
+     session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+     token TEXT NOT NULL UNIQUE,
+     include_tools INTEGER NOT NULL,
+     data TEXT NOT NULL,
+     created_at TEXT NOT NULL,
      updated_at TEXT NOT NULL
    );`,
 ];

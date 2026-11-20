@@ -2,7 +2,8 @@
 // API refuses everything else until then -- then the workspace, as in Claude Code: the sidebar (new session, search,
 // the chats, the account) and beside it a new session or an open chat, the composer always at the bottom, with
 // Settings over either. No connector is needed to start: a chat runs with a repository or without one. In token mode
-// the access token is asked for before anything.
+// the access token is asked for before anything -- but for a share link (`#/share/<token>`), which opens its one
+// read-only chat and asks the API for nothing else.
 import { Button, FluentProvider, MessageBar, MessageBarActions, MessageBarBody, Spinner, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
 import { Dismiss20Regular } from "@fluentui/react-icons";
 import { CLAUDE_SIGN_IN_REQUIRED, type ClaudeStatus, type ConnectorName, type SessionSummary, type Settings } from "@orbit-web/contracts";
@@ -16,6 +17,7 @@ import { useSessions, useSources } from "./hooks/useLive";
 import { useResource, type Resource } from "./hooks/useResource";
 import { Sidebar } from "./layout/Sidebar";
 import { AccessPage } from "./pages/AccessPage";
+import { SharedChatPage, sharedTokenOf } from "./pages/SharedChatPage";
 import { SignInPage } from "./pages/SignInPage";
 import { get } from "./services/api";
 import { AppEventsProvider, useAppEvent } from "./services/events/AppEvents";
@@ -162,6 +164,21 @@ function Gate({ claude, settings }: { claude: Resource<ClaudeStatus>; settings: 
 }
 
 export function App() {
+  const shared = sharedTokenOf(window.location.hash);
+  return shared === null ? <OrbitWeb /> : <Shared token={shared} />;
+}
+
+// A share link: the one chat it shows, in the reader's own light or dark.
+function Shared({ token }: { token: string }) {
+  const dark = isDark("system", useSystemDark());
+  return (
+    <FluentProvider theme={themeOf(dark)} style={{ minHeight: "100%" }}>
+      <SharedChatPage token={token} />
+    </FluentProvider>
+  );
+}
+
+function OrbitWeb() {
   const systemDark = useSystemDark();
   // The sign-in is read again every few seconds: a sign-out from a terminal closes the page here too.
   const claude = useResource<ClaudeStatus>(() => get("/api/claude/status"), [], 15_000);

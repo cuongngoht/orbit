@@ -1,6 +1,7 @@
 // Request and response bodies of the Orbit Web API (`/api/...`). One definition for both sides.
 import type { EffortChoice, ModeChoice, ModelChoice, RepositorySource } from "./models.js";
 import type { ConnectionState, LoginState, SessionStatus, ThemePreference } from "./status.js";
+import type { AnySessionEvent } from "./events/envelope.js";
 
 export interface ApiErrorBody {
   error: {
@@ -267,6 +268,42 @@ export interface WorkBranches {
 export interface ChangeBranchRequest {
   branch: string;
   create?: boolean;
+}
+
+// SHARING A CHAT: a read-only link to a SNAPSHOT of its conversation, taken when it is shared -- what comes after is in
+// it only once its owner updates it. Anyone with the link reads it, without the access token or a Claude sign-in; it
+// shows the conversation and nothing else of Orbit Web. Tools are said by their title only unless the owner chose to
+// include what they did (their input and output may hold the repository's code). Everything is masked by token shape.
+export const SHARE_TOKEN = /^[A-Za-z0-9_-]{43}$/;
+
+export interface ShareInfo {
+  // The link is `<origin>/#/share/<token>`: in the fragment, so no server or Referer ever sees it.
+  token: string;
+  includeTools: boolean;
+  createdAt: string;
+  updatedAt: string;
+  // How many entries the snapshot holds (messages, tool calls, plans).
+  entries: number;
+}
+
+// GET /api/sessions/:id/share
+export interface ShareState {
+  share: ShareInfo | null;
+}
+
+// POST /api/sessions/:id/share -- share the conversation as it is now, or update the shared copy (same link).
+export interface ShareRequest {
+  includeTools?: boolean;
+}
+
+// GET /api/shared/:token -- what a shared link shows.
+export interface SharedChat {
+  title: string;
+  repository: string | null;
+  source: RepositorySource | null;
+  sharedAt: string;
+  includeTools: boolean;
+  events: AnySessionEvent[];
 }
 
 export interface SendMessageRequest {

@@ -27,6 +27,8 @@ const OPEN = [
   "POST /api/claude/login/code",
   "POST /api/claude/login/cancel",
   "GET /api/claude/login/events",
+  // A shared chat's link: one read-only snapshot, which needs no Claude account to read (modules/share).
+  "GET /api/shared/:token",
 ];
 
 interface Route {
@@ -65,7 +67,7 @@ describe("before the Claude sign-in, Orbit Web answers nothing but the way to it
   before(async () => (h = await startHarness({ fake: claudeSignedOut(signedIn(new FakeProcessPort(new NodeProcessPort()))) })));
   after(() => h.close());
 
-  test("the routes reachable before the sign-in are exactly the health check, the access token and the Claude sign-in", () => {
+  test("the routes reachable before the sign-in are exactly the health check, the access token, the Claude sign-in and reading a shared chat", () => {
     const routes = routesOf(h);
     assert.ok(routes.length >= 30, `the application's routes were read (${routes.length})`);
     assert.deepEqual(routes.filter((r) => r.open).map((r) => `${r.method} ${r.path}`).sort(), [...OPEN].sort());

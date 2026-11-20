@@ -10,6 +10,7 @@ import type {
   ProjectInventory,
   RepositorySource,
   SessionStatus,
+  SharedChat,
 } from "@orbit-web/contracts";
 import type { Database } from "./database.js";
 
@@ -262,5 +263,53 @@ export class RunStore {
       signal: null,
       costUsd: null,
     }));
+  }
+}
+
+// A chat's shared copy: the snapshot its link shows (modules/share), one per chat, found by the link's token.
+export interface ShareRecord {
+  sessionId: string;
+  token: string;
+  includeTools: boolean;
+  snapshot: SharedChat;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const shareOf = (r: Row): ShareRecord => ({
+  sessionId: str(r.session_id),
+  token: str(r.token),
+  includeTools: Number(r.include_tools) === 1,
+  snapshot: JSON.parse(str(r.data)) as SharedChat,
+  createdAt: str(r.created_at),
+  updatedAt: str(r.updated_at),
+});
+
+export class ShareStore {
+  constructor(private readonly database: Database) {}
+
+  get(sessionId: string): ShareRecord | null {
+    const row = this.database.db.prepare("SELECT * FROM shares WHERE session_id = ?").get(sessionId) as Row | undefined;
+    return row ? shareOf(row) : null;
+  }
+
+  byToken(token: string): ShareRecord | null {
+    const row = this.database.db.prepare("SELECT * FROM shares WHERE token = ?").get(token) as Row | undefined;
+    return row ? shareOf(row) : null;
+  }
+
+  // A new snapshot under the chat's link (made on its first share, kept by every update).
+  put(sessionId: string, token: string, includeTools: boolean, snapshot: SharedChat): ShareRecord {
+    const now = new Date().toISOString();
+    this.database.db
+      .prepare(
+        "INSERT INTO shares (session_id, token, include_tools, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(session_id) DO UPDATE SET include_tools = excluded.include_tools, data = excluded.data, updated_at = excluded.updated_at",
+      )
+      .run(sessionId, token, includeTools ? 1 : 0, JSON.stringify(snapshot), now, now);
+    return this.get(sessionId) as ShareRecord;
+  }
+
+  delete(sessionId: string): void {
+    this.database.db.prepare("DELETE FROM shares WHERE session_id = ?").run(sessionId);
   }
 }

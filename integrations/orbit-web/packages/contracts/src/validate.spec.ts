@@ -5,6 +5,7 @@ import { EFFORT_CHOICES, MODEL_CHOICES, MODE_PERMISSION } from "./models.js";
 import {
   checkChangeBranch,
   checkClaudeLogin,
+  checkShareRequest,
   checkCreateSession,
   isRepositoryRef,
   splitAzureId,
@@ -58,6 +59,13 @@ test("a message is non-empty text of a bounded length", () => {
   assert.equal(checkSendMessage({ text: "   " }).ok, false);
   assert.equal(checkSendMessage({ text: "x".repeat(100_001) }).ok, false);
   assert.equal(checkSendMessage({ text: "go", command: "rm" }).ok, false);
+});
+
+test("sharing names only whether the tools' doings come along, and they do not unless asked", () => {
+  assert.deepEqual(checkShareRequest(undefined), { ok: true, value: { includeTools: false } });
+  assert.deepEqual(checkShareRequest({}), { ok: true, value: { includeTools: false } });
+  assert.deepEqual(checkShareRequest({ includeTools: true }), { ok: true, value: { includeTools: true } });
+  for (const bad of [{ includeTools: "yes" }, { public: true }, "x"]) assert.equal(checkShareRequest(bad).ok, false, JSON.stringify(bad));
 });
 
 test("a working branch is a valid branch name, an existing one or -- with create -- a new one", () => {

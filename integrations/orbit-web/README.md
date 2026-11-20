@@ -191,6 +191,16 @@ No connector is needed to start: once you are signed in, the chat is open.
    (deleting removes its workspace). It folds away and stays folded. Continue any chat at any time, after a restart
    too: the next message resumes the same Claude Code conversation (`--resume`).
 
+**Share** (the chat's header) makes a read-only link to the conversation as it is now: `https://<host>/#/share/<token>`
+(32 random bytes, in the fragment, so no server or Referer sees it). Anyone with the link reads it -- without the access
+token or a Claude account -- and sees nothing else of Orbit Web: not the workspace, its files, the changes, Orbit's
+record or your other chats. It is a snapshot: what comes after is in it only once you press *Update to now* (the same
+link). Tools are shown by their title (`$ npm test`, `Edit sum.mjs`) unless you include what they did -- their input
+and output, which may hold the repository's code; every text is masked by token shape again. *Stop sharing* ends the
+link at once (sharing again makes a new one), and deleting the chat ends it too. The one route a link opens is
+`GET /api/shared/<token>`: the access gate lets that read through and nothing else, and the token is checked by the
+share itself.
+
 **Commit, push, pull request.** Claude Code commits on the chat's branch whenever you ask. It pushes and opens pull
 requests only when you turn on *Let Claude Code push and open pull requests with this GitHub sign-in* (Settings →
 Connectors → GitHub); otherwise `git push` and `gh` are refused to it, it is told so (so it commits on its own instead of
@@ -386,6 +396,10 @@ For one person, on their own machine, by default:
   loaded. **Its plugins are code** -- hooks that run at session start, MCP servers -- that would run in this container,
   where the sign-ins are; so they run only once you turn on *Run project plugins*, and then only for the chats of
   repositories that declare them.
+- **A shared chat's link** opens one read-only snapshot and nothing else: `GET /api/shared/<token>` is the one route the
+  access gate and the Claude sign-in gate let through, the token (32 random bytes, in the URL's fragment) names one
+  share, and the snapshot holds the conversation alone -- tools by their title unless their owner shares what they did,
+  every text masked again, no id of the chat -- served `no-store` and `noindex`.
 - **The image**: a non-root user, `cap_drop: ALL`, `no-new-privileges`, no Docker socket, no credential in any layer.
 
 **The limit, said plainly.** The coding agent's shell, the CLIs' sign-ins and Orbit Web run in **one container as one

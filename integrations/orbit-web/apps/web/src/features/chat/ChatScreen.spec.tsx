@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { SessionDetail, WorkBranches } from "@orbit-web/contracts";
+import type { SessionDetail, ShareInfo, WorkBranches } from "@orbit-web/contracts";
 import { describe, expect, test, vi } from "vitest";
 import { fakeApi, withStatus, type FakeApi } from "../../testing/fakeApi";
 import { sessionStream } from "../../testing/events";
@@ -217,5 +217,53 @@ describe("the working branch, chosen in the chat's toolbar", () => {
   test("while Claude works the branch stays as it is", async () => {
     open(sessionDetail({ status: "running" }), withBranches());
     expect(await screen.findByRole("button", { name: "Working branch orbit-web/0b6c2f5e" })).toBeDisabled();
+  });
+});
+
+describe("sharing the chat", () => {
+  const TOKEN = "C".repeat(43);
+  const LINK = `${window.location.origin}/#/share/${TOKEN}`;
+  const info = (includeTools: boolean): ShareInfo => ({ token: TOKEN, includeTools, createdAt: "2026-11-20T04:00:00.000Z", updatedAt: "2026-11-20T04:00:00.000Z", entries: 4 });
+  function sharing(start: ShareInfo | null) {
+    let current = start;
+    return fakeApi()
+      .on("GET", `${PATH}/share`, () => ({ share: current }))
+      .on("POST", `${PATH}/share`, (body) => (current = info((body as { includeTools?: boolean }).includeTools === true)))
+      .on("DELETE", `${PATH}/share`, () => {
+        current = null;
+        return undefined;
+      });
+  }
+
+  test("Share makes a link to the conversation as it is now -- what the tools did only if asked -- to copy", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const a = sharing(null);
+    open(sessionDetail(), a);
+    await userEvent.click(await screen.findByRole("button", { name: "Share" }));
+    const dialog = await screen.findByRole("dialog", { name: "Share this chat" });
+    expect(within(dialog).getByText(/anyone with the link/i)).toBeInTheDocument();
+    expect(await within(dialog).findByRole("checkbox", { name: /what the tools did/i })).not.toBeChecked();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create link" }));
+    await waitFor(() => expect(a.calls.find((c) => c.method === "POST" && c.path === `${PATH}/share`)?.body).toEqual({ includeTools: false }));
+    expect(await within(dialog).findByRole("textbox", { name: "Link" })).toHaveValue(LINK);
+    await userEvent.click(within(dialog).getByRole("button", { name: "Copy link" }));
+    expect(writeText).toHaveBeenCalledWith(LINK);
+    expect(await within(dialog).findByRole("button", { name: "Copied" })).toBeInTheDocument();
+  });
+
+  test("a shared chat's copy is updated to now -- with the tools' doings when chosen -- or stopped", async () => {
+    const a = sharing(info(false));
+    open(sessionDetail(), a);
+    await userEvent.click(await screen.findByRole("button", { name: "Share" }));
+    const dialog = await screen.findByRole("dialog", { name: "Share this chat" });
+    expect(await within(dialog).findByRole("textbox", { name: "Link" })).toHaveValue(LINK);
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: /what the tools did/i }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Update to now" }));
+    await waitFor(() => expect(a.calls.filter((c) => c.method === "POST").at(-1)?.body).toEqual({ includeTools: true }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Stop sharing" }));
+    await waitFor(() => expect(a.calls.some((c) => c.method === "DELETE" && c.path === `${PATH}/share`)).toBe(true));
+    expect(await within(dialog).findByRole("button", { name: "Create link" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("textbox", { name: "Link" })).toBeNull();
   });
 });

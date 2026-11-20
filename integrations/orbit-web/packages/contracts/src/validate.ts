@@ -19,6 +19,7 @@ import type {
   AzureLoginRequest,
   ChangeBranchRequest,
   ClaudeLoginCodeRequest,
+  ShareRequest,
   CreateSessionRequest,
   RepositoryRef,
   SendMessageRequest,
@@ -143,6 +144,15 @@ export function checkChangeBranch(body: unknown): Checked<Required<ChangeBranchR
   if (!isBranchName(body.branch)) errors.push("branch must be a valid branch name");
   if (body.create !== undefined && typeof body.create !== "boolean") errors.push("create must be true or false");
   return checked(errors, () => ({ branch: body.branch as string, create: body.create === true }));
+}
+
+// Sharing a chat: whether what the tools did is shared too (it is not unless asked).
+export function checkShareRequest(body: unknown): Checked<Required<ShareRequest>> {
+  if (body === undefined || body === null) return { ok: true, value: { includeTools: false } };
+  if (!isRecord(body)) return { ok: false, errors: ["the body must be a JSON object"] };
+  const errors = unknownFields(body, ["includeTools"]);
+  if (body.includeTools !== undefined && typeof body.includeTools !== "boolean") errors.push("includeTools must be true or false");
+  return checked(errors, () => ({ includeTools: body.includeTools === true }));
 }
 
 export function checkUpdateSession(body: unknown): Checked<UpdateSessionRequest> {

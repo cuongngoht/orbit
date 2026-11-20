@@ -36,6 +36,16 @@ describe("Orbit Web opens on the Claude sign-in, and the Claude account is its s
     expect(FakeEventSource.instances.map((s) => s.url)).not.toContain("/api/events");
   });
 
+  test("a share link opens the read-only chat at once: no access token, no sign-in, nothing else of Orbit Web asked", async () => {
+    const token = "B".repeat(43);
+    window.history.replaceState(null, "", `/#/share/${token}`);
+    const api = fakeApi().on("GET", `/api/shared/${token}`, () => ({ title: "Fix sum", repository: null, source: null, sharedAt: "2026-11-20T04:00:00.000Z", includeTools: false, events: [] }));
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "Fix sum" })).toBeInTheDocument();
+    expect(api.calls.map((c) => c.path)).toEqual([`/api/shared/${token}`]);
+    window.history.replaceState(null, "", "/");
+  });
+
   test("in token mode the access token is asked for first; the Claude sign-in waits for it", async () => {
     fakeApi().on("GET", "/api/claude/status", () => refused(401, "access_token_required", "This Orbit Web needs its access token."));
     render(<App />);

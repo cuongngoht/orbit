@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { AppConfig } from "../config/config.js";
 import { NodeProcessPort } from "../infra/process/node-process.js";
 import { Database } from "../infra/storage/database.js";
-import { EventStore, MessageStore, ProjectStore, RunStore, SessionStore, SettingsStore } from "../infra/storage/stores.js";
+import { EventStore, MessageStore, ProjectStore, RunStore, SessionStore, SettingsStore, ShareStore } from "../infra/storage/stores.js";
 import { EventBus } from "./events/event-bus.js";
 import { LiveText } from "./events/live-text.js";
 import { StreamGateway } from "./events/stream-gateway.js";
@@ -38,12 +38,13 @@ export class CoreModule {
         store(EventStore),
         store(RunStore),
         store(ProjectStore),
+        store(ShareStore),
         EventBus,
         LiveText,
         StreamGateway,
         DatabaseCloser,
       ],
-      exports: [APP_CONFIG, PROCESS_PORT, Database, SettingsStore, SessionStore, MessageStore, EventStore, RunStore, ProjectStore, EventBus, LiveText, StreamGateway],
+      exports: [APP_CONFIG, PROCESS_PORT, Database, SettingsStore, SessionStore, MessageStore, EventStore, RunStore, ProjectStore, ShareStore, EventBus, LiveText, StreamGateway],
     };
   }
 }

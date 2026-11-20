@@ -28,15 +28,17 @@ function StateIcon({ tool }: { tool: ToolItem }) {
 export function ToolCard({ tool, children }: { tool: ToolItem; children?: ReactNode }) {
   const s = useStyles();
   const [open, setOpen] = useState(false);
+  // A call always has an input; none at all is a shared chat's tool, said by its title only: nothing to show.
+  const detailed = tool.input !== "";
   return (
     <div className={s.card} data-testid="tool" data-state={tool.state}>
       <div className={s.head}>
-        <Button appearance="transparent" size="small" icon={open ? <ChevronDown16Regular /> : <ChevronRight16Regular />} onClick={() => setOpen(!open)} aria-label={open ? "Hide details" : "Show details"} aria-expanded={open} />
+        {detailed && <Button appearance="transparent" size="small" icon={open ? <ChevronDown16Regular /> : <ChevronRight16Regular />} onClick={() => setOpen(!open)} aria-label={open ? "Hide details" : "Show details"} aria-expanded={open} />}
         <StateIcon tool={tool} />
         <Text className={s.title}>{tool.title}</Text>
       </div>
       {children && <div className={s.children}>{children}</div>}
-      {open && (
+      {open && detailed && (
         <>
           <Text size={200} className={s.label}>
             Input{tool.agent ? ` — subagent ${tool.agent.subagentType ?? "general"}` : ""}

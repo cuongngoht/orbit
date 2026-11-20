@@ -21,19 +21,22 @@ FROM ${NODE_IMAGE} AS build
 WORKDIR /src
 COPY integrations/orbit-web/package.json integrations/orbit-web/package-lock.json ./
 COPY integrations/orbit-web/packages/contracts/package.json packages/contracts/
+COPY integrations/orbit-web/packages/governance-core/package.json packages/governance-core/
 COPY integrations/orbit-web/apps/api/package.json apps/api/
 COPY integrations/orbit-web/apps/web/package.json apps/web/
 RUN --mount=type=secret,id=ca,required=false \
     if [ -s /run/secrets/ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/ca; fi; \
     npm ci --no-audit --no-fund
 COPY integrations/orbit-web/ ./
-RUN npm run build -w @orbit-web/contracts && npm run build -w @orbit-web/api && npm run build -w @orbit-web/web
+RUN npm run build -w @orbit-web/governance-core && npm run build -w @orbit-web/contracts && npm run build -w @orbit-web/api \
+ && npm run build -w @orbit-web/web
 
 # --- only what the API needs at run time ---------------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS runtime-deps
 WORKDIR /opt/orbit-web
 COPY integrations/orbit-web/package.json integrations/orbit-web/package-lock.json ./
 COPY integrations/orbit-web/packages/contracts/package.json packages/contracts/
+COPY integrations/orbit-web/packages/governance-core/package.json packages/governance-core/
 COPY integrations/orbit-web/apps/api/package.json apps/api/
 COPY integrations/orbit-web/apps/web/package.json apps/web/
 RUN --mount=type=secret,id=ca,required=false \
@@ -136,6 +139,7 @@ COPY --from=azure /opt/azure-cli /opt/azure-cli
 COPY --from=plugin /opt/orbit /opt/orbit
 COPY --from=runtime-deps /opt/orbit-web /opt/orbit-web
 COPY --from=build /src/packages/contracts/dist /opt/orbit-web/packages/contracts/dist
+COPY --from=build /src/packages/governance-core/dist /opt/orbit-web/packages/governance-core/dist
 COPY --from=build /src/apps/api/dist /opt/orbit-web/apps/api/dist
 COPY --from=build /src/apps/web/dist /opt/orbit-web/apps/web/dist
 COPY integrations/orbit-web/docker/healthcheck.mjs integrations/orbit-web/docker/build-info.mjs /opt/orbit-web/docker/

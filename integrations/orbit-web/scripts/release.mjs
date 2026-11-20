@@ -15,7 +15,7 @@ const REPO = join(WEB, "..", "..");
 const opt = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3) ?? null;
 const json = (path) => JSON.parse(readFileSync(path, "utf8"));
 
-const MANIFESTS = ["package.json", "packages/contracts/package.json", "apps/api/package.json", "apps/web/package.json"];
+const MANIFESTS = ["package.json", "packages/contracts/package.json", "packages/governance-core/package.json", "apps/api/package.json", "apps/web/package.json"];
 
 export function changelogSection(text, version) {
   const lines = text.split("\n");

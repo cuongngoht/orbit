@@ -13,10 +13,12 @@ const args = new Set(process.argv.slice(2));
 
 const STEPS = [
   { name: "install", cmd: ["npm", "ci", "--no-audit", "--no-fund"], skip: args.has("--skip-install") },
+  { name: "governance-core build", cmd: ["npm", "run", "build", "-w", "@orbit-web/governance-core"] },
   { name: "contracts build", cmd: ["npm", "run", "build", "-w", "@orbit-web/contracts"] },
   { name: "typecheck api", cmd: ["npm", "run", "typecheck", "-w", "@orbit-web/api"] },
   { name: "typecheck web", cmd: ["npm", "run", "typecheck", "-w", "@orbit-web/web"] },
   { name: "lint", cmd: ["npx", "eslint", "--max-warnings=0", "."] },
+  { name: "governance-core unit tests", cmd: ["npm", "run", "test", "-w", "@orbit-web/governance-core"], kind: "node" },
   { name: "contracts unit tests", cmd: ["npm", "run", "test", "-w", "@orbit-web/contracts"], kind: "node" },
   { name: "api compile tests", cmd: ["npm", "run", "test:compile", "-w", "@orbit-web/api"] },
   { name: "api unit tests", cmd: ["npm", "run", "test:unit", "-w", "@orbit-web/api"], kind: "node" },

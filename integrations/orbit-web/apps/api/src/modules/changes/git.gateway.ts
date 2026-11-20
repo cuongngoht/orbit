@@ -111,8 +111,9 @@ export class GitGateway {
 
   // A bundle of one branch of the workspace, as bytes: how a commit leaves the agent's workspace for the control plane's
   // own repository (the push broker) -- the control plane never reads the workspace's .git.
-  bundle(cwd: string, branch: string, maxBytes: number): Promise<BinaryResult> {
-    return this.process.runBinary(this.config.binaries.git, [...HARDENING, "bundle", "create", "-", `refs/heads/${branch}`], { cwd, env: gitEnv(this.config), timeoutMs: this.config.limits.cloneTimeoutMs, maxOutputBytes: maxBytes });
+  // `exclude`: a commit the control plane's copy already has -- only what is newer travels.
+  bundle(cwd: string, branch: string, maxBytes: number, exclude: string | null = null): Promise<BinaryResult> {
+    return this.process.runBinary(this.config.binaries.git, [...HARDENING, "bundle", "create", "-", `refs/heads/${branch}`, ...(exclude === null ? [] : [`^${exclude}`])], { cwd, env: gitEnv(this.config), timeoutMs: this.config.limits.cloneTimeoutMs, maxOutputBytes: maxBytes });
   }
 
   // A local clone of the control plane's copy (/data/repos/<id>.git, read-only to the agent): no network, no credential.

@@ -11,7 +11,10 @@ bundles stays 0.6.0 and its archive is unchanged; nothing under `src/`, `cli/`, 
   program runs. An API key, a token or a Console sign-in is not one; `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY` and
   `ANTHROPIC_AUTH_TOKEN` are given to no program, and a container started with one is told it is ignored. Sign out is
   refused while Claude Code works. The image sets `CLAUDE_CONFIG_DIR=/data/claude`, so a terminal sign-in lands where
-  Orbit Web reads it.
+  Orbit Web reads it. The sign-in page starts the CLI's sign-in by itself and shows the whole authorize URL to open or
+  copy (*Copy link*); a sign-in a person cancelled, or one that failed, waits for *Continue with Claude*. Reached from
+  the internet, it asks for the access token first, or takes it from an access link (`https://<host>/#access=<token>`,
+  read from the fragment and removed from the address bar before anything else reads it).
 - **The workspace, laid out like Claude Code.** No setup gate: once signed in, the chat is open. A sidebar (New
   session, Search, Customize, your chats with their source and a dot while they work or when they failed, rename and
   delete, the account at the bottom; it folds and stays folded) and one composer, always at the bottom, whose toolbar
@@ -52,13 +55,25 @@ bundles stays 0.6.0 and its archive is unchanged; nothing under `src/`, `cli/`, 
   repository that is a plugin and installs the declared ones (`claude plugin marketplace add` / `install --scope user`
   / `disable --scope user`), enabling them for that chat's runs only. The chat says what was loaded; Settings → Skills
   and Plugins list it all, with each plugin's state.
+- **`/` lists the skills a chat can run.** At the start of a message, `/` opens a list of the project's skills and
+  commands, then Orbit's, by the names Claude Code gives them -- a skill's directory, a command's path, never a
+  frontmatter name, and no `user-invocable: false` skill (checked against the real CLI) -- read from the plugin
+  directories the chat's next run loads (`GET /api/sessions/:id/commands`); a new chat gets Orbit's and the chosen
+  repository's as an earlier chat read them, and says so (`GET /api/commands`). Choosing one writes `/<name> ` for the
+  person to finish; headless Claude Code runs the skill the message names.
+- **Claude Code's telemetry, when a collector is named.** `OTEL_EXPORTER_OTLP_ENDPOINT` (and the collector's token,
+  `OTEL_EXPORTER_OTLP_HEADERS`) in the container's environment turn on OpenTelemetry for every Claude Code process, with
+  fixed attributes: metrics, logs and traces over OTLP http/protobuf, the metrics' repository, version, entrypoint,
+  session and account, the events' tool details -- never a prompt, a response, a tool's content or a raw API body. An
+  `OTEL_*` the container sets overrides its default; only Claude Code gets any of it, and a `*_HEADERS=` assignment a
+  process prints is masked.
 - **Event-driven streams.** One catalog (`packages/contracts/src/events/catalog.ts`) names every event, its stream and
   whether it is stored; producers publish to one event bus (stored first, then delivered; a failing subscriber is
   isolated), and projections keep the read models current. Two SSE streams through one gateway: a chat's
   (`/api/sessions/:id/events`, replayed after `Last-Event-ID`) and the app stream (`/api/events`: the sidebar's chats,
   the connectors' sign-ins, the customizations -- notifications that replace polling). Adding an event is a catalog row
   and its payload type.
-- **Checked.** 229 deterministic tests (contracts 12, API unit 87, API integration with mocked processes 56, web 74),
+- **Checked.** 259 deterministic tests (contracts 12, API unit 95, API integration with mocked processes 59, web 93),
   `scripts/ci.mjs` green; the Docker smoke test also checks the Azure Repos helper and the runtime user's file rights.
   The real-model acceptance run is updated for the new API; a 0.8.0 run needs a person's Claude sign-in volume and is
   not recorded yet.

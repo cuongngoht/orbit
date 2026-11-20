@@ -67,6 +67,18 @@ CLI with `docker build --build-arg AZURE_CLI=0 …` (Azure DevOps then says it i
 | `ORBIT_WEB_COOKIE_SECURE` | unset | `1` marks the access cookie Secure (behind an HTTPS proxy) |
 | `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` | unset | **ignored**: Orbit Web signs in with a Claude account only and gives no credential variable to any program; the sign-in page names the ones it ignored |
 | `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE`, `HTTPS_PROXY`, `NO_PROXY` | unset | passed to the CLIs, for a proxy or a private CA (`REQUESTS_CA_BUNDLE` is the Azure CLI's) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | unset | turns on **Claude Code's telemetry** (OpenTelemetry) and names the collector; a signal's own `OTEL_EXPORTER_OTLP_<SIGNAL>_ENDPOINT` does too. Unset, nothing is exported |
+| `OTEL_EXPORTER_OTLP_HEADERS` | unset | the collector's token, as OTLP headers (`Authorization=Bearer …`) |
+| any other `OTEL_*` | see below | overrides one of the fixed telemetry attributes, or adds one (`OTEL_RESOURCE_ATTRIBUTES`) |
+
+**Telemetry.** With a collector named, every Claude Code process Orbit Web starts exports as a person's own Claude
+Code would with the same settings, and only Claude Code gets the variables (never git, gh, az or Orbit's own commands):
+`CLAUDE_CODE_ENABLE_TELEMETRY=1`; metrics, logs and traces over OTLP `http/protobuf`; the metrics' repository,
+version, entrypoint, session id, account id and resource attributes (`OTEL_METRICS_INCLUDE_*=1`); and the events'
+tool details and managed settings (`OTEL_LOG_TOOL_DETAILS=1`, `OTEL_LOG_MANAGED_SETTINGS=1`) -- never a prompt, a
+response, a tool's content or a raw API body (`OTEL_LOG_USER_PROMPTS`, `OTEL_LOG_ASSISTANT_RESPONSES`,
+`OTEL_LOG_TOOL_CONTENT`, `OTEL_LOG_RAW_API_BODIES` are `0`). Keep the endpoint and the token in the container's env file
+(never in the image); a `*_HEADERS=` assignment a process prints is masked like a token.
 
 The data directory, plugin directory and port are fixed by the image (`/data`, `/opt/orbit/plugin`, `3000`). What a
 person chooses in the page -- theme, a new chat's model, effort and mode, whether a repository's skills load and its
@@ -95,9 +107,11 @@ runtime room after the host name. A bind mount instead of the named volume must 
 
 ## Sign in: your Claude account is Orbit Web's sign-in
 
-Orbit Web opens on **Sign in to Orbit Web** and on nothing else. *Continue with Claude* runs
-`claude auth login --claudeai`; the page shows the URL the CLI printed; sign in there with your Claude account, copy
-the code the page shows, and paste it into Orbit Web, which writes it to that one process's stdin -- nothing else.
+Orbit Web opens on **Sign in to Orbit Web** and on nothing else. The page starts `claude auth login --claudeai` by
+itself and shows the whole URL the CLI printed, to open in a new tab or copy with *Copy link* (for another browser);
+sign in there with your Claude account, copy the code the page shows, and paste it into Orbit Web, which writes it to
+that one process's stdin -- nothing else. A sign-in you cancelled, or one that failed or timed out, is not started
+again by itself: *Continue with Claude* does it.
 Orbit Web is signed in when, and only when, `claude auth status` reports a Claude account (`authMethod: "claude.ai"`);
 the account sits at the bottom of the sidebar (your address and plan; its menu shows the organisation), and Claude
 Code runs as that account in every chat.
@@ -125,7 +139,12 @@ docker exec -it orbit-web claude auth login --claudeai
 No connector is needed to start: once you are signed in, the chat is open.
 
 1. **New session** (the sidebar, or the empty page you land on): write what to do in the composer at the bottom.
-   Enter sends; Shift+Enter is a new line.
+   Enter sends; Shift+Enter is a new line. **`/` at the start of a message lists the skills and commands** the chat
+   can run -- the repository's own first (*This project*), then Orbit's -- by the names Claude Code gives them
+   (`/<plugin>:<skill>`, e.g. `/orbit:orbit-help`), each with what it takes and what it does. Typing narrows the list (a
+   skill's own name, then its plugin's, then a word of what it does); ↑ ↓ move, Enter or Tab writes `/<name> ` into the
+   message for you to finish, Escape closes it. The list is what that chat's runs load: in a new chat, Orbit's, and the
+   chosen repository's as an earlier chat of it read them (it says so; a repository is read once a chat opens it).
 2. **What it starts from** -- the composer's toolbar, on the left. The repository picker has a tab per source:
    **GitHub** and **Azure DevOps**. Search, pick a repository, then a branch (the default first). A source that is not
    connected offers *Connect* (Settings → Connectors); *Refresh* reads the list again. **No repository** (the default)
@@ -331,7 +350,9 @@ For one person, on their own machine, by default:
   modes, titles, prompts); a repository opens only if its source lists it, and its clone URL comes from that listing;
   a workspace path is built only from a server-made id and checked to resolve inside `/data/workspaces`; a diff is
   served only for a path git listed as changed.
-- **Credentials stay with the CLIs.** Orbit Web never reads, stores or sends a token: it never runs `gh auth token`,
+- **Credentials stay with the CLIs.** Orbit Web never reads, stores or sends a token (but for the telemetry collector's
+  token, which an operator puts in the container's environment and Orbit Web hands to Claude Code alone, so it can
+  export): it never runs `gh auth token`,
   never puts a credential in a remote URL or a git config, never passes a token variable to Claude Code and tells it
   where GitHub's or Azure's sign-in is only when you turn that on, and gives no program Claude Code's own credential variables
   (`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`). The one place a token is asked for is the
@@ -351,7 +372,7 @@ contents are untrusted input to it. The environment scrub, the deny rules (`git 
 directories), auto mode's classifier, `--setting-sources user` (a repository's own `.claude/settings.json` is never
 read) and the private directories are **defence in depth, not isolation**: a determined prompt injection in a
 repository could still reach the GitHub CLI's stored token, the Azure CLI's (whether or not Claude Code is allowed to
-use them) or Orbit Web's local API -- through which it could also turn on the switches that hand it a sign-in. With
+use them), the telemetry collector's token (it is in Claude Code's environment) or Orbit Web's local API -- through which it could also turn on the switches that hand it a sign-in. With
 GitHub's switch on, it pushes and opens pull requests as you by design. Open repositories you trust, keep *Run project plugins* off unless you trust them
 too, keep the port on loopback, and disconnect a source when you are done. Separating the sign-ins from the code
 execution (another container or user) is work for a later version.

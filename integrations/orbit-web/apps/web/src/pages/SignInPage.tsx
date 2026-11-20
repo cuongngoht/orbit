@@ -22,7 +22,7 @@ const useStyles = makeStyles({
     backgroundColor: tokens.colorNeutralBackground2,
   },
   panel: { width: "100%", maxWidth: "440px", display: "flex", flexDirection: "column", alignItems: "center", gap: "12px", textAlign: "center" },
-  logo: { width: "48px", height: "48px", marginBottom: "6px" },
+  logo: { width: "56px", height: "56px", marginBottom: "4px" },
   heading: { margin: 0, fontSize: "clamp(24px, 6vw, 30px)", lineHeight: "1.25", fontWeight: tokens.fontWeightSemibold, letterSpacing: "-0.01em", color: tokens.colorNeutralForeground1 },
   lead: { color: tokens.colorNeutralForeground2, maxWidth: "400px" },
   card: {

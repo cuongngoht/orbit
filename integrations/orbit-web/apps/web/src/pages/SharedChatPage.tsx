@@ -25,7 +25,7 @@ const useStyles = makeStyles({
     gap: "18px",
   },
   brand: { display: "flex", alignItems: "center", gap: "8px", color: tokens.colorNeutralForeground3 },
-  logo: { width: "22px", height: "22px" },
+  logo: { width: "26px", height: "26px" },
   heading: { margin: 0, fontSize: "clamp(20px, 5vw, 26px)", lineHeight: "1.3", fontWeight: tokens.fontWeightSemibold },
   meta: { display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", color: tokens.colorNeutralForeground3 },
   foot: { color: tokens.colorNeutralForeground3, borderTop: `1px solid ${tokens.colorNeutralStroke2}`, paddingTop: "12px" },

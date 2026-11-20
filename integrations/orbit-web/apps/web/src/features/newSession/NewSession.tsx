@@ -16,7 +16,7 @@ const useStyles = makeStyles({
   top: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", minHeight: "52px", paddingTop: "10px", paddingRight: "16px", paddingBottom: "10px", paddingLeft: "16px", color: tokens.colorNeutralForeground2 },
   topMobile: { paddingTop: "max(8px, env(safe-area-inset-top))", paddingRight: "10px", paddingBottom: "6px", paddingLeft: "8px" },
   topLeft: { display: "flex", alignItems: "center", gap: "8px", minWidth: 0 },
-  topLogo: { width: "18px", height: "18px" },
+  topLogo: { width: "24px", height: "24px" },
   touchBtn: { minWidth: "44px", minHeight: "44px" },
   stage: {
     flexGrow: 1,
@@ -34,7 +34,7 @@ const useStyles = makeStyles({
   },
   hero: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "10px", textAlign: "center" },
   heroMobile: { flexGrow: 1, minHeight: 0, overflowY: "auto", paddingTop: "16px", paddingRight: "20px", paddingBottom: "16px", paddingLeft: "20px" },
-  logo: { width: "40px", height: "40px", opacity: 0.92 },
+  logo: { width: "54px", height: "54px" },
   heading: { marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, fontSize: "clamp(24px, 6vw, 32px)", lineHeight: "1.2", letterSpacing: "-0.025em", fontWeight: tokens.fontWeightSemibold },
   muted: { color: tokens.colorNeutralForeground3, maxWidth: "460px", lineHeight: "1.55" },
   composerDesktop: { width: "100%", maxWidth: "760px" },

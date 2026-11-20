@@ -58,7 +58,7 @@ const useStyles = makeStyles({
   head: { display: "flex", alignItems: "center", gap: "8px", paddingTop: "12px", paddingRight: "12px", paddingBottom: "8px", paddingLeft: "16px", minWidth: 0 },
   headCollapsed: { paddingTop: "12px", paddingRight: "0", paddingBottom: "8px", paddingLeft: "0", justifyContent: "center" },
   brand: { display: "flex", alignItems: "center", gap: "8px", flexGrow: 1, minWidth: 0 },
-  logo: { width: "22px", height: "22px" },
+  logo: { width: "26px", height: "26px" },
   nav: { display: "flex", flexDirection: "column", gap: "2px", paddingTop: "4px", paddingRight: "8px", paddingBottom: "4px", paddingLeft: "8px", minWidth: 0 },
   navCollapsed: { paddingTop: "4px", paddingRight: "0", paddingBottom: "4px", paddingLeft: "0", alignItems: "center" },
   navItem: { justifyContent: "flex-start", fontWeight: tokens.fontWeightRegular, width: "100%", borderRadius: "10px", transitionProperty: "background-color", transitionDuration: "140ms", ":hover": { backgroundColor: tokens.colorSubtleBackgroundHover }, "@media (pointer: coarse)": { minHeight: "44px" } },

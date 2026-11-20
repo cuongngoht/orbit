@@ -87,15 +87,17 @@ function start(port, { signedIn = false } = {}) {
 const SIGN_IN_REQUIRED = "claude_sign_in_required";
 
 const MUTATE = { "content-type": "application/json", "x-orbit-web": "1" };
+const succeeded = (r) => r.status >= 200 && r.status < 300;
 const RESEARCH_TEXT = "Smoke test notes. Orbit Web keeps research sources on its own data volume; a restart keeps them.";
 
 // A research workspace and one pasted source, waited for until it is read and indexed.
 async function researchSeed(port) {
   const made = await http(port, "/api/research/workspaces", { method: "POST", headers: MUTATE, body: JSON.stringify({ name: "Smoke research", description: "made by the Docker smoke test" }) });
-  if (made.status !== 201 && made.status !== 200) return { ok: false, detail: `create workspace: HTTP ${made.status} ${made.text.slice(0, 200)}` };
+  if (!succeeded(made)) return { ok: false, detail: `create workspace: HTTP ${made.status} ${made.text.slice(0, 200)}` };
   const workspace = made.body.id;
   const added = await http(port, `/api/research/workspaces/${workspace}/sources/text`, { method: "POST", headers: MUTATE, body: JSON.stringify({ title: "Smoke notes", text: RESEARCH_TEXT }) });
-  if (added.status !== 201 && added.status !== 200) return { ok: false, workspace, detail: `add text: HTTP ${added.status} ${added.text.slice(0, 200)}` };
+  // 202: a source is accepted and queued; it is read and indexed after the answer.
+  if (!succeeded(added)) return { ok: false, workspace, detail: `add text: HTTP ${added.status} ${added.text.slice(0, 200)}` };
   const ready = await sourceState(port, workspace, added.body.id, 30);
   return { ok: ready === "ready", workspace, source: added.body.id, detail: `source ${ready}` };
 }

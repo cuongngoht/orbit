@@ -68,6 +68,7 @@ describe("sharing a chat", () => {
     assert.equal(chat.events.find((e) => e.type === "tool.completed")?.data && (chat.events.find((e) => e.type === "tool.completed")?.data as { output: string }).output, "");
     const text = JSON.stringify(chat);
     assert.equal(text.includes(SECRET), false, "masked by token shape");
+    assert.equal(text.includes("ghp_"), false, "nor any piece of it -- the title included, whose first line was cut");
     assert.equal(text.includes(session.id), false, "no id of the chat reaches the page");
     assert.equal(info.entries, chat.events.length);
   });

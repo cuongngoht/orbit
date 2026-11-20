@@ -94,7 +94,8 @@ export class ShareService {
         const one = shown(e, includeTools);
         return one === null ? [] : [one];
       });
-    return { title: session.title, repository: session.repository, source: session.source, sharedAt: new Date().toISOString(), includeTools, events };
+    // The title is masked again here: a chat named before titles were masked could hold a piece of a credential.
+    return { title: masked(session.title), repository: session.repository === null ? null : masked(session.repository), source: session.source, sharedAt: new Date().toISOString(), includeTools, events };
   }
 
   private session(id: string): SessionRecord {

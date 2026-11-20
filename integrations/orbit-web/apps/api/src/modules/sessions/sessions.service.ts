@@ -11,6 +11,7 @@ import { EventBus } from "../../core/events/event-bus.js";
 import { APP_CONFIG } from "../../core/tokens.js";
 import { accepted, ApiError, conflict, notFound } from "../../common/errors.js";
 import { isSessionId } from "../../common/workspace-path.js";
+import { redactSecrets } from "../../infra/security/redact.js";
 import { MessageStore, SessionStore, type SessionRecord } from "../../infra/storage/stores.js";
 import { ClaudeAuthService } from "../claude-auth/claude-auth.service.js";
 import { ClaudeRunnerService } from "../claude-runner/claude-runner.service.js";
@@ -34,8 +35,10 @@ export const summaryOf = (s: SessionRecord): SessionSummary => ({
   updatedAt: s.updatedAt,
 });
 
+// The first line of the first message, masked by token shape BEFORE it is cut: a credential cut in half no longer has
+// its shape, and a title is shown everywhere (the sidebar, a shared chat's page).
 export const titleFrom = (prompt: string | undefined, repository: string | null): string => {
-  const line = (prompt ?? "").trim().split("\n")[0]?.trim() ?? "";
+  const line = redactSecrets((prompt ?? "").trim().split("\n")[0]?.trim() ?? "");
   if (line.length === 0) return repository === null ? "New chat" : `Chat on ${repository}`;
   return line.length > 60 ? `${line.slice(0, 59)}…` : line;
 };

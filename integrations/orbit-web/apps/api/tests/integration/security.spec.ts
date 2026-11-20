@@ -54,6 +54,10 @@ describe("the default, loopback-only surface", () => {
     assert.equal(r.headers.get("x-powered-by"), null);
   });
 
+  test("on this machine alone there is no access link: nothing to give", async () => {
+    assert.deepEqual((await h.get("/api/access/link")).body, { token: null });
+  });
+
   test("the health check names no path, variable or account", async () => {
     const text = JSON.stringify((await h.get("/api/health")).body);
     assert.doesNotMatch(text, /\/data|\/tmp|HOME|token|octo/i);
@@ -81,5 +85,13 @@ describe("token mode, for a host name beyond loopback", () => {
     assert.match(cookie, /SameSite=Strict/);
     assert.match(cookie, /Max-Age=2592000/, "not a session cookie: a browser restart or a redeploy asks for nothing again");
     assert.equal((await h.get("/api/settings", { cookie: cookie.split(";")[0] as string })).status, 200);
+  });
+
+  test("the access link is given only to whoever is already in, never cached", async () => {
+    assert.equal((await h.get("/api/access/link")).status, 401);
+    const r = await h.get("/api/access/link", { authorization: `Bearer ${token}` });
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.body, { token });
+    assert.equal(r.headers.get("cache-control"), "no-store");
   });
 });

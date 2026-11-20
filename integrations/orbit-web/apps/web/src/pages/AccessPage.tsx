@@ -2,6 +2,7 @@
 // asks for its access token: the one made when it was deployed, given with the link to it. Two steps, said as two: the
 // token here, then Continue with Claude (shown, waiting). An access link (`#access=<token>`) fills and sends it itself.
 import { Button, Field, Input, MessageBar, MessageBarBody, Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
+import { ClipboardPaste16Regular, Eye16Regular, EyeOff16Regular } from "@fluentui/react-icons";
 import { ORBIT_WEB_VERSION } from "@orbit-web/contracts";
 import { useEffect, useRef, useState } from "react";
 import { accessLinkToken, forgetAccessLink, onAccessLink } from "../services/accessLink";
@@ -27,6 +28,15 @@ export function AccessPage({ onGranted }: { onGranted: () => void }) {
   const s = useStyles();
   const [fromLink] = useState(accessLinkToken);
   const [token, setToken] = useState("");
+  const [shown, setShown] = useState(false);
+  // The clipboard is read only when asked, and what it holds goes into the field: Continue sends it.
+  const paste = async () => {
+    try {
+      setToken((await navigator.clipboard.readText()).trim());
+    } catch {
+      setError("The clipboard could not be read here: paste into the field instead.");
+    }
+  };
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(fromLink !== null);
   // Trades a token for the access cookie; what it learns is said once the answer is in.
@@ -85,7 +95,21 @@ export function AccessPage({ onGranted }: { onGranted: () => void }) {
             <Text weight="semibold">Enter this Orbit Web's access token</Text>
           </div>
           <Field label="Access token" hint="The token you were given with the link to this Orbit Web (made when it was deployed). A link ending in #access=… fills it in for you.">
-            <Input type="password" value={token} onChange={(_, d) => setToken(d.value)} autoComplete="current-password" autoFocus />
+            <Input
+              type={shown ? "text" : "password"}
+              value={token}
+              onChange={(_, d) => setToken(d.value)}
+              autoComplete="current-password"
+              autoFocus
+              contentAfter={
+                <>
+                  <Button appearance="transparent" size="small" icon={shown ? <EyeOff16Regular /> : <Eye16Regular />} aria-label={shown ? "Hide the token" : "Show the token"} onClick={() => setShown(!shown)} />
+                  <Button appearance="transparent" size="small" icon={<ClipboardPaste16Regular />} onClick={() => void paste()}>
+                    Paste
+                  </Button>
+                </>
+              }
+            />
           </Field>
           {error && (
             <MessageBar intent="error">

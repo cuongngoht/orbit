@@ -74,6 +74,9 @@ bundles stays 0.6.0 and its archive is unchanged; nothing under `src/`, `cli/`, 
   refused. The web tools (`WebFetch`, `WebSearch`) are on by default and never pre-approved: a fetch can carry data in
   its URL, so each is reviewed by the classifier like a `curl`. What is ordinary is narrow -- the public sources the task
   needs; probing unrelated endpoints (request-capture sites, paste services, tunnels) is still reconnaissance.
+- **The access link, from inside.** Settings → Account shows this Orbit Web's access link to copy or open in a new
+  tab (`GET /api/access/link`, behind the access gate and the Claude sign-in, `no-store`); the sign-in page never shows
+  it -- the link is the token -- but its token field gains *Show* and *Paste*.
 - **The access token is asked for once per browser**: the cookie it is traded for is kept 30 days, so a browser restart
   or a redeploy no longer brings back the access page.
 - **The image declares Claude Code's telemetry attributes** (`ENV`, held equal to the code's by a test): any `claude`
@@ -104,7 +107,7 @@ bundles stays 0.6.0 and its archive is unchanged; nothing under `src/`, `cli/`, 
   (`/api/sessions/:id/events`, replayed after `Last-Event-ID`) and the app stream (`/api/events`: the sidebar's chats,
   the connectors' sign-ins, the customizations -- notifications that replace polling). Adding an event is a catalog row
   and its payload type.
-- **Checked.** 290 deterministic tests (contracts 14, API unit 102, API integration with mocked processes 71, web 103),
+- **Checked.** 296 deterministic tests (contracts 14, API unit 103, API integration with mocked processes 73, web 106),
   `scripts/ci.mjs` green; the Docker smoke test also checks the Azure Repos helper and the runtime user's file rights.
   The real-model acceptance run is updated for the new API; a 0.8.0 run needs a person's Claude sign-in volume and is
   not recorded yet.

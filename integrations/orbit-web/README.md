@@ -63,7 +63,7 @@ CLI with `docker build --build-arg AZURE_CLI=0 …` (Azure DevOps then says it i
 |---|---|---|
 | `ORBIT_WEB_MAX_BUDGET_USD` | unset | a per-run spending cap passed to Claude Code (`--max-budget-usd`) |
 | `ORBIT_WEB_ALLOWED_HOSTS` | loopback only | more host names to answer to (comma-separated); **requires** `ORBIT_WEB_ACCESS_TOKEN` |
-| `ORBIT_WEB_ACCESS_TOKEN` | unset | token mode: every API call needs it (min. 16 characters); the page asks for it first, or takes it from an access link `https://<host>/#access=<token>`, then keeps it 30 days in an HttpOnly cookie (a browser restart or a redeploy asks again for nothing) |
+| `ORBIT_WEB_ACCESS_TOKEN` | unset | token mode: every API call needs it (min. 16 characters); the page asks for it first (with *Show* and *Paste* beside the field), or takes it from an access link `https://<host>/#access=<token>`, then keeps it 30 days in an HttpOnly cookie (a browser restart or a redeploy asks again for nothing). Once in, **Settings → Account** offers the access link to copy or open in another browser -- never the sign-in page: the link is the token |
 | `ORBIT_WEB_COOKIE_SECURE` | unset | `1` marks the access cookie Secure (behind an HTTPS proxy) |
 | `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` | unset | **ignored**: Orbit Web signs in with a Claude account only and gives no credential variable to any program; the sign-in page names the ones it ignored |
 | `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE`, `HTTPS_PROXY`, `NO_PROXY` | unset | passed to the CLIs, for a proxy or a private CA (`REQUESTS_CA_BUNDLE` is the Azure CLI's) |

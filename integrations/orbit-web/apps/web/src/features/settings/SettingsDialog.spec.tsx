@@ -80,6 +80,31 @@ describe("Settings: the sections, over the page", () => {
     expect(signOut.signOut).toHaveBeenCalled();
   });
 
+  test("Account: the access link, to copy or open in another browser -- given only to whoever is in", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const opened = vi.spyOn(window, "open").mockImplementation(() => null);
+    const TOKEN = "a-long-and-random-access-token";
+    const LINK = `${window.location.origin}/#access=${TOKEN}`;
+    show("account", { api: fakeApi().on("GET", "/api/access/link", () => ({ token: TOKEN })) });
+    const card = await screen.findByLabelText("Access link");
+    expect(await within(card).findByRole("textbox", { name: "Access link" })).toHaveValue(LINK);
+    expect(card.textContent).toMatch(/anyone with this link/i);
+    await userEvent.click(within(card).getByRole("button", { name: "Copy link" }));
+    expect(writeText).toHaveBeenCalledWith(LINK);
+    expect(await within(card).findByRole("button", { name: "Copied" })).toBeInTheDocument();
+    await userEvent.click(within(card).getByRole("button", { name: "Open in a new tab" }));
+    expect(opened).toHaveBeenCalledWith(LINK, "_blank", "noopener,noreferrer");
+    opened.mockRestore();
+  });
+
+  test("Account: on this machine alone there is no access link, and it says why", async () => {
+    show("account", { api: fakeApi().on("GET", "/api/access/link", () => ({ token: null })) });
+    const card = await screen.findByLabelText("Access link");
+    expect(await within(card).findByText(/answers this machine only/i)).toBeInTheDocument();
+    expect(within(card).queryByRole("button", { name: "Copy link" })).toBeNull();
+  });
+
   test("System: the checks and the versions this container holds", async () => {
     show("system");
     const system = await screen.findByLabelText("System Status");

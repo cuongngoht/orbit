@@ -270,6 +270,12 @@ export interface ChangeBranchRequest {
   create?: boolean;
 }
 
+// GET /api/access/link: this Orbit Web's access token, for whoever is already in -- Settings → Account offers the
+// access link (`<origin>/#access=<token>`) to open it in another browser. Null on this machine alone (no token).
+export interface AccessLink {
+  token: string | null;
+}
+
 // SHARING A CHAT: a read-only link to a SNAPSHOT of its conversation, taken when it is shared -- what comes after is in
 // it only once its owner updates it. Anyone with the link reads it, without the access token or a Claude sign-in; it
 // shows the conversation and nothing else of Orbit Web. Tools are said by their title only unless the owner chose to

@@ -2,9 +2,9 @@
 // plugins a repository is or declares are run -- off unless a person turns it on: they run code --, whether Claude may
 // use the web tools, theme).
 // POST /api/access: in token mode, trades the access token for an HttpOnly, SameSite=Strict cookie kept 30 days (asked for
-// before the Claude sign-in, so it is reachable before it).
+// before the Claude sign-in, so it is reachable before it). GET /api/access/link: the token again, for whoever is in.
 import { Body, Controller, Get, HttpCode, Inject, Injectable, Module, Patch, Post, Res } from "@nestjs/common";
-import { checkUpdateSettings, DEFAULT_EFFORT, DEFAULT_MODE, DEFAULT_MODEL, isEffortChoice, isModeChoice, isModelChoice, isTheme, type Settings } from "@orbit-web/contracts";
+import { checkUpdateSettings, DEFAULT_EFFORT, DEFAULT_MODE, DEFAULT_MODEL, isEffortChoice, isModeChoice, isModelChoice, isTheme, type AccessLink, type Settings } from "@orbit-web/contracts";
 import type { Response } from "express";
 import type { AppConfig } from "../../config/config.js";
 import { APP_CONFIG } from "../../core/tokens.js";
@@ -65,6 +65,14 @@ export class SettingsController {
   @Patch("settings")
   update(@Body() body: unknown): Settings {
     return this.settings.update(body);
+  }
+
+  // The access link's token, for whoever is already in: the access gate and the Claude sign-in gate stand in front of
+  // this route, so it tells nobody anything they could not already do. Never cached.
+  @Get("access/link")
+  link(@Res({ passthrough: true }) res: Response): AccessLink {
+    res.setHeader("Cache-Control", "no-store");
+    return { token: this.config.accessToken };
   }
 
   @Post("access")

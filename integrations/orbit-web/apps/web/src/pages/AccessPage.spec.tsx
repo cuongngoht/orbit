@@ -23,6 +23,22 @@ describe("the access token, asked for first by an Orbit Web reachable from the i
     expect(api.calls.at(-1)).toMatchObject({ method: "POST", path: "/api/access", body: { token: TOKEN } });
   });
 
+  test("the token can be shown to check it, and pasted from the clipboard", async () => {
+    const readText = vi.fn(async () => "a-pasted-access-token-of-length");
+    Object.defineProperty(navigator, "clipboard", { value: { readText }, configurable: true });
+    const api = fakeApi().on("POST", "/api/access", () => withStatus(401, { error: { code: "access_token_invalid", message: "That is not this Orbit Web's access token." } }));
+    renderUi(<AccessPage onGranted={() => undefined} />);
+    const field = screen.getByLabelText(/Access token/);
+    expect(field).toHaveAttribute("type", "password");
+    await userEvent.click(screen.getByRole("button", { name: "Show the token" }));
+    expect(field).toHaveAttribute("type", "text");
+    await userEvent.click(screen.getByRole("button", { name: "Hide the token" }));
+    expect(field).toHaveAttribute("type", "password");
+    await userEvent.click(screen.getByRole("button", { name: "Paste" }));
+    expect(field).toHaveValue("a-pasted-access-token-of-length");
+    expect(api.calls, "pasting sends nothing: Continue does").toEqual([]);
+  });
+
   test("a wrong token is said, and nothing opens", async () => {
     fakeApi().on("POST", "/api/access", () => withStatus(401, { error: { code: "access_token_invalid", message: "That is not this Orbit Web's access token." } }));
     const granted = vi.fn();

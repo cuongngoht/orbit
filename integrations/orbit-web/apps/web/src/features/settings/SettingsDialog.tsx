@@ -20,6 +20,7 @@ import { useResource } from "../../hooks/useResource";
 import { get } from "../../services/api";
 import { useAppEvent, useAppStream } from "../../services/events/AppEvents";
 import type { SignOut } from "../auth/useSignOut";
+import { AccessLinkCard } from "./AccessLinkCard";
 import { ClaudeAccountCard } from "./ClaudeAccountCard";
 import { ConnectorsSection } from "./ConnectorsSection";
 import { PluginsSection, SkillsSection } from "./CustomizeSections";
@@ -52,7 +53,7 @@ interface Section {
 }
 
 const SECTIONS: Section[] = [
-  { id: "account", label: "Account", icon: <Person20Regular />, about: "The Claude account Orbit Web is signed in with.", words: "claude sign out email plan" },
+  { id: "account", label: "Account", icon: <Person20Regular />, about: "The Claude account Orbit Web is signed in with, and its access link.", words: "claude sign out email plan access link token" },
   { id: "appearance", label: "Appearance", icon: <PaintBrush20Regular />, about: "How Orbit Web looks.", words: "theme dark light system" },
   { id: "code", label: "Code", icon: <Code20Regular />, about: "How a new chat runs, and what a repository brings to it.", words: "model effort mode autonomous plan skills plugins web tools budget" },
   { id: "connectors", label: "Connectors", icon: <PlugConnected20Regular />, about: "Connect Orbit Web to your repositories on GitHub and Azure DevOps.", words: "github azure devops sign in cli repository" },
@@ -87,7 +88,13 @@ function useSetupStatus(): { data: SetupStatus | null; reload: () => void } {
 }
 
 function Body({ p, status, reloadStatus }: { p: SettingsDialogProps; status: SetupStatus | null; reloadStatus: () => void }) {
-  if (p.section === "account") return <ClaudeAccountCard status={p.claude} signOut={p.signOut} />;
+  if (p.section === "account")
+    return (
+      <>
+        <ClaudeAccountCard status={p.claude} signOut={p.signOut} />
+        <AccessLinkCard />
+      </>
+    );
   if (p.section === "connectors") return <ConnectorsSection status={status} onChanged={reloadStatus} initial={p.connector ?? null} />;
   if (p.section === "skills") return <SkillsSection />;
   if (p.section === "plugins") return <PluginsSection onOpenCode={() => p.onSection("code")} />;

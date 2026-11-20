@@ -55,6 +55,9 @@ bundles stays 0.6.0 and its archive is unchanged; nothing under `src/`, `cli/`, 
   repository that is a plugin and installs the declared ones (`claude plugin marketplace add` / `install --scope user`
   / `disable --scope user`), enabling them for that chat's runs only. The chat says what was loaded; Settings → Skills
   and Plugins list it all, with each plugin's state.
+- **Azure DevOps through `az rest`.** With the Azure CLI's sign-in allowed, Claude Code is told in one fixed sentence
+  that the image has no azure-devops extension (`az boards` stopped at an install prompt no run can answer) and how to
+  read a work item, a repository or a pull request with `az rest` and Azure DevOps' resource id -- as Orbit Web does.
 - **Share a chat.** *Share* in a chat's header makes a read-only link (`#/share/<token>`, 32 random bytes in the
   fragment) to a snapshot of its conversation: anyone with it reads it without the access token or a Claude account,
   and sees nothing else of Orbit Web. Tools are shown by their title unless the owner includes what they did; every

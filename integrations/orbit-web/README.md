@@ -321,7 +321,10 @@ browser ── React + Fluent UI v9 ── HTTP + two SSE streams ──▶ Nest
   [--settings '{"enabledPlugins":…}'] [--max-budget-usd <n>]`, the prompt on stdin, cwd the workspace. With GitHub's
   switch on, `"Bash(git push:*)" "Bash(gh:*)"` give way to `"Bash(gh auth:*)" "Bash(gh repo delete:*)" …`. The
   appended text is one of two fixed sentences (no request or repository writes it): commit locally, and either "pushing
-  and gh are not available here, never chain them" or "push the branch you work on and open a pull request with gh". The model, effort and mode are the only words a
+  and gh are not available here, never chain them" or "push the branch you work on and open a pull request with gh";
+  with the Azure CLI's sign-in allowed, a third fixed sentence says `az` is signed in to Azure DevOps and its
+  azure-devops extension (`az boards`) is not here: read work items, repositories and pull requests with `az rest
+  --resource 499b84ac-1321-427f-aa17-267ca6975798`, the way Orbit Web reads them. The model, effort and mode are the only words a
   request puts on this line, each checked against its closed list first; the web tools are added only when Settings
   allows them. In auto mode Claude Code itself drops the broad `Bash` allow rule and reviews each command; the deny
   rules bind in every mode. Never a bypass mode.

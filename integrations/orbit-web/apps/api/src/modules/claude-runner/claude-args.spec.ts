@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { WORKSPACE_NOTES, claudeArgs } from "./claude-args.js";
+import { AZURE_DEVOPS_RESOURCE } from "../sources/azure-parse.js";
+import { AZURE_NOTE, WORKSPACE_NOTES, claudeArgs } from "./claude-args.js";
 
 const base = {
   model: "sonnet" as const,
@@ -73,7 +74,7 @@ test("Claude Code is told, in one fixed text, that it commits here and never cha
   assert.equal(note, WORKSPACE_NOTES.local);
   assert.match(note, /commit locally/);
   assert.match(note, /never chain a push or a gh command/);
-  for (const other of [claudeArgs({ ...base, mode: "plan", model: "opus", effort: "max", resume: true }), claudeArgs({ ...base, webTools: true, azure: true, maxBudgetUsd: 1 })]) {
+  for (const other of [claudeArgs({ ...base, mode: "plan", model: "opus", effort: "max", resume: true }), claudeArgs({ ...base, webTools: true, maxBudgetUsd: 1 })]) {
     assert.equal(after(other, "--append-system-prompt"), WORKSPACE_NOTES.local, "the same text whatever the run");
   }
   assert.equal(a.filter((x) => x === "--append-system-prompt").length, 1);
@@ -114,4 +115,14 @@ test("in Autonomous the classifier is told what is true of this place; Plan says
   assert.equal(claudeArgs({ ...base, mode: "plan", autoModeEnvironment: env }).includes("--settings"), false);
   const a = claudeArgs({ ...base, autoModeEnvironment: env, webTools: true });
   assert.equal(after(a, "--allowedTools")?.split(",").some((t) => /curl|wget|Bash\(|Web/.test(t)), false);
+});
+
+test("with the Azure CLI's sign-in, Claude Code is told to read Azure DevOps through az rest -- no extension -- and nothing of it otherwise", () => {
+  const on = after(claudeArgs({ ...base, azure: true }), "--append-system-prompt") ?? "";
+  assert.equal(on, `${WORKSPACE_NOTES.local} ${AZURE_NOTE}`);
+  assert.ok(AZURE_NOTE.includes(`--resource ${AZURE_DEVOPS_RESOURCE}`), "the one resource id Orbit Web reads Azure DevOps with");
+  assert.match(AZURE_NOTE, /az boards/);
+  assert.match(AZURE_NOTE, /'https:\/\/dev\.azure\.com\/<organization>\/_apis\/wit\/workitems\/<id>\?\$expand=all&api-version=7\.1'/, "quoted, so a shell keeps $expand");
+  assert.equal(after(claudeArgs({ ...base, azure: true, github: true }), "--append-system-prompt"), `${WORKSPACE_NOTES.github} ${AZURE_NOTE}`);
+  assert.equal(after(claudeArgs(base), "--append-system-prompt")?.includes("az rest"), false);
 });

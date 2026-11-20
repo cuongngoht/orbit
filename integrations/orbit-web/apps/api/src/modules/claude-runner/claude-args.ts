@@ -7,6 +7,7 @@
 // no bypass mode here, and nothing a request says becomes an argument except the model, effort and mode, each checked
 // against its closed list first.
 import { MODE_PERMISSION, type EffortChoice, type ModeChoice, type ModelChoice } from "@orbit-web/contracts";
+import { AZURE_DEVOPS_RESOURCE } from "../sources/azure-parse.js";
 
 export const BASE_TOOLS = ["Read", "Edit", "Write", "Glob", "Grep", "Bash", "Skill", "Agent", "TodoWrite"];
 
@@ -47,6 +48,17 @@ export const WORKSPACE_NOTES = {
     "request with gh. Commit first, as a command of its own; never force-push, never push to the default branch " +
     "directly, and never print or move a credential (gh auth is refused).",
 } as const;
+
+// Said only when a person let Claude Code use the Azure CLI's sign-in. The image has the Azure CLI and not its
+// azure-devops extension (`az boards` stops at an install prompt nobody can answer in a run), and Azure DevOps is read the
+// way Orbit Web itself reads it: `az rest` with Azure DevOps' own resource id.
+export const AZURE_NOTE =
+  "The Azure CLI is signed in to Azure DevOps here (a person let you use its sign-in). Its azure-devops extension " +
+  "(az boards, az repos, az pipelines) is not installed, and is not to be installed: read Azure DevOps -- work items, " +
+  `repositories, pull requests -- through its REST API with az rest --resource ${AZURE_DEVOPS_RESOURCE}, e.g. a work ` +
+  `item with all its fields and links: az rest --method get --resource ${AZURE_DEVOPS_RESOURCE} --url ` +
+  "'https://dev.azure.com/<organization>/_apis/wit/workitems/<id>?$expand=all&api-version=7.1'. Never print or move " +
+  "a token.";
 
 export interface ClaudeRunOptions {
   model: ModelChoice;
@@ -111,7 +123,7 @@ export function claudeArgs(o: ClaudeRunOptions): string[] {
     ...fileRules(o.protectedDirs),
     ...(o.webTools ? [] : WEB_TOOLS),
     "--append-system-prompt",
-    o.github ? WORKSPACE_NOTES.github : WORKSPACE_NOTES.local,
+    [o.github ? WORKSPACE_NOTES.github : WORKSPACE_NOTES.local, ...(o.azure ? [AZURE_NOTE] : [])].join(" "),
     // The user's settings only: a repository's own .claude/settings.json is untrusted input and could set `env` (an
     // API base URL that would receive the credential) or hooks that run before any tool call.
     "--setting-sources",

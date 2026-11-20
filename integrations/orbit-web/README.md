@@ -286,8 +286,9 @@ workspace; it is not an operator, and neither is the access token. Open **Govern
   what may happen in its table -- one row per action, *Allowed* and *A person approves first* (neither ticked: denied;
   what nobody may ever be granted cannot be ticked), the hosts the agent may reach as a list, the obligations as boxes;
   a rule the table cannot show is kept as written, and there is no JSON view. Git is one row (`repository.push`):
-  *Allowed* alone lets an agent push its branch itself, at once; with *A person approves first* (the default) each push
-  waits for one approval -- then validate, ask for
+  *Allowed* alone lets an agent push the chat's own branch itself, at once (another branch, or a person who may not
+  approve pushes, still asks); with *A person approves first* (the default) each push waits for one approval -- then
+  validate, ask for
   approval, approve and publish. What a change loosens is worked out and shown before anybody approves
   or publishes it; a **high-risk** change (loosening a sensitive action, weakening an obligation) is approved by somebody
   who wrote none of it. A published revision never changes; a rollback is a copy published again. Overlays narrow it for
@@ -360,7 +361,7 @@ Claude Code. It is a protected action, so it is asked for by an operator signed 
 reads the branch's commit from the workspace, carries it into Orbit Web's own copy of the repository (every object
 checked), asks the remote where the branch stands, and shows exactly what would be pushed and its fingerprint; *Approve
 and push* pushes it (an operator without the right to approve leaves it in *Approvals*); where the Constitution simply
-allows pushes, *Prepare the push* pushes it at once. Never forced -- what is not a
+allows pushes, *Prepare the push* by an operator who may approve them pushes it at once. Never forced -- what is not a
 fast-forward of the remote's branch is refused by git, so nobody's work is overwritten --, never to the repository's
 default or a protected branch, and nowhere when the default cannot be established. A chat started from a working
 branch (a story branch, neither default nor protected) pushes to that branch like any other. A governed agent asks for

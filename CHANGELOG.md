@@ -16,7 +16,8 @@ nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
 - **The Constitution as a table.** One row per action with two boxes -- *Allowed* and *A person approves first*; neither
   ticked is denied, and what nobody may ever be granted cannot be ticked -- the hosts the agent may reach as a list, the
   obligations as boxes. A rule the table cannot show is kept as written; there is no JSON view. Git is one row:
-  *Allowed* alone lets an agent push its branch itself, at once (by default a person approves each push).
+  *Allowed* alone lets an agent push the chat's own branch itself, at once (by default a person approves each push;
+  another branch, or an operator who may not approve pushes, still asks).
 - **The Company Constitution.** A declarative policy (`orbit.governance/v1`) over a closed set of actions, each saying
   where it is enforced (boundary, control, runtime); default deny; deny > approval > allow; overlays only narrow; an
   agent can never be granted authority over its own governance. Its revisions go draft → validated → pending approval

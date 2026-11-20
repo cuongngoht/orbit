@@ -33,7 +33,7 @@ function limitOf(action: ActionKind): { fixed: boolean; note: string | null } {
   if (ceiling.agent === "deny") return { fixed: false, note: "Never an agent: what is ticked applies to people." };
   if (ceiling.agent === "require_approval") return { fixed: false, note: "An agent always waits for a person's approval of exactly the action." };
   if (action === "network.egress") return { fixed: false, note: "Any host not in the list below." };
-  if (action === "repository.push") return { fixed: false, note: "Allowed alone: the agent pushes its branch itself, at once -- never forced, never to the default or a protected branch." };
+  if (action === "repository.push") return { fixed: false, note: "Allowed alone: the agent pushes the chat's own branch itself, at once (another branch waits for a person) -- never forced, never to the default or a protected branch." };
   return { fixed: false, note: null };
 }
 

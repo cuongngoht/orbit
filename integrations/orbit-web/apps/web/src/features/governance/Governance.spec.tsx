@@ -139,7 +139,7 @@ describe("the Governance console", () => {
     expect((screen.getByRole("checkbox", { name: "Allowed: deployment.production" }) as HTMLInputElement).disabled).toBe(true);
     // Git is one row the Constitution decides for an agent too: its boxes can be ticked, and it says what Allowed means.
     expect((screen.getByRole("checkbox", { name: "A person approves first: repository.push" }) as HTMLInputElement).disabled).toBe(false);
-    expect(screen.getByText(/Allowed alone: the agent pushes its branch itself, at once/)).toBeTruthy();
+    expect(screen.getByText(/Allowed alone: the agent pushes the chat's own branch itself, at once/)).toBeTruthy();
     await userEvent.click(webTools);
     await userEvent.click(screen.getByRole("checkbox", { name: "A person approves first: governance.role.grant" }));
     await userEvent.type(screen.getByRole("textbox", { name: "Host to allow" }), "Registry.npmjs.org:443");

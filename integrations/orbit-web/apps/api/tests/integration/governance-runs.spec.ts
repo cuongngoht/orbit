@@ -277,6 +277,30 @@ describe("a governed workspace, its agent, and its push (GitHub)", () => {
     assert.equal(((await owner.get("/api/governance/approvals")).body as ApprovalList).approvals.length, asked, "no approval was asked for");
     const done = ((await owner.get("/api/governance/audit?type=protected.completed")).body as AuditPage).events;
     assert.ok(done.some((e) => e.decisionId === free.decision.decisionId && e.workspaceId === fresh.id && e.principalType === "agent"), "recorded under the decision that allowed it");
+
+    // What Allowed covers is the chat's own branch: another branch of the workspace still waits for a person.
+    queue.push(async (c) => {
+      git(c.cwd, "checkout", "-qb", "side");
+      writeFileSync(join(c.cwd, "SIDE.md"), "side\n");
+      git(c.cwd, "add", "SIDE.md");
+      git(c.cwd, "commit", "-qm", "Side work");
+      seen.side = await call(c.env, "POST", `${c.env.ORBIT_AGENT_GATEWAY}/push`, { branch: "side" }, { "x-orbit-run-token": c.env.ORBIT_AGENT_TOKEN as string });
+      git(c.cwd, "checkout", "-q", fresh.workBranch as string);
+    });
+    await h.send("POST", `/api/sessions/${fresh.id}/messages`, { text: "Push the side branch too." });
+    await waitStatus(h, fresh.id, ["completed"]);
+    const side = seen.side?.body as AgentPushResult;
+    assert.deepEqual([side.state, side.decision.verdict], ["pending", "allow"], JSON.stringify(side));
+    assert.equal(spawnSync("git", ["--git-dir", remote, "rev-parse", "--verify", "--quiet", "refs/heads/side"], { encoding: "utf8" }).stdout, "", "the side branch was not pushed");
+
+    // A person pushes at once only when they may approve pushes; an operator who may not only asks, as before.
+    await owner.send("POST", "/api/governance/operators", { username: "audrey", password: "audrey has a long password", roles: ["auditor"] });
+    const auditor = await h.signIn("audrey", "audrey has a long password");
+    const asks = await auditor.send("POST", `/api/sessions/${fresh.id}/push`, {});
+    assert.equal(asks.status, 200, JSON.stringify(asks.body));
+    assert.deepEqual([(asks.body as AgentPushResult).state, (asks.body as { approval: ApprovalView | null }).approval?.state], ["pending", "pending"]);
+    const pushes = await owner.send("POST", `/api/sessions/${fresh.id}/push`, {});
+    assert.deepEqual([(pushes.body as AgentPushResult).state, (pushes.body as { approval: ApprovalView | null }).approval], ["pushed", null], JSON.stringify(pushes.body));
   });
 });
 

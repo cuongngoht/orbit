@@ -7,8 +7,9 @@
 //   3. where the branch stands at the remote now (asked with the source's own sign-in);
 //   4. a DECISION of the Constitution on `repository.push` with exactly these parameters -- repository, remote, ref,
 //      commit, force (never), and the remote's commit the push expects to replace -- whose fingerprint an approval is
-//      bound to. Git is the Constitution's to decide, for an agent as for a person: where it simply ALLOWS the push,
-//      step 5 is skipped and the push is made at once, recorded under that decision;
+//      bound to. Git is the Constitution's to decide, for an agent as for a person: where it simply ALLOWS the push of
+//      the chat's own working branch, asked by the agent or by a person who may approve pushes, step 5 is skipped and
+//      the push is made at once, recorded under that decision (atOnce);
 //   5. otherwise a person approves that fingerprint (Governance → Approvals, or the chat's Push), and the approval is
 //      SPENT before the push, against the fingerprint taken again from the copy and the remote just then: a branch that
 //      moved, a remote that moved, or an approval presented twice is refused and recorded;
@@ -42,6 +43,15 @@ import { SourcesService } from "../sources/sources.module.js";
 const MAX_BUNDLE = 512 * 1024 * 1024;
 // What a push is, to the Constitution: never production (that is a deployment's), never "local" either.
 const PUSH_ENVIRONMENT: Environment = "development";
+
+// WHO PUSHES WITH NOBODY ASKED: the Constitution simply allows the push, it is the chat's own working branch (another
+// branch of the workspace waits for a person), and whoever asks is the run's agent or a person who may approve pushes
+// (`approvals.decide`) -- any other operator only asks for it, as before.
+function atOnce(ctx: GovernanceContext, session: SessionRecord, branch: string, verdict: string): boolean {
+  const p = ctx.principal;
+  const asker = p.kind === "agent" || (p.kind === "operator" && p.permissions.includes("approvals.decide"));
+  return verdict === "allow" && branch === session.workBranch && asker;
+}
 
 const fail = (status: number, code: string, what: string, r?: RunResult): ApiError => new ApiError(status, code, r === undefined ? what : `${what} ${endedHow(r)}: ${redactSecrets(tail(r.stderr || r.stdout, 3))}`);
 
@@ -91,7 +101,7 @@ export class PushBroker implements Executor, OnModuleInit {
     const said = { decisionId: decision.decisionId, verdict: decision.verdict, reasonCodes: decision.reasonCodes, enforcement: decision.enforcement, policyRevision: decision.policyRevision };
     if (decision.verdict === "deny") throw new ApiError(HttpStatus.FORBIDDEN, "push_denied", `The Constitution in effect does not allow pushing to ${remote.name} (${decision.reasonCodes.join(", ")}). Decision ${decision.decisionId}.`, said);
     const change = await this.changeOf(session, commit);
-    if (decision.verdict === "allow") return this.pushNow(ctx, session, { commit, branch, remote: remote.name }, decision, said);
+    if (atOnce(ctx, session, branch, decision.verdict)) return this.pushNow(ctx, session, { commit, branch, remote: remote.name }, decision, said);
     const binding = ctx.principal.kind === "agent" ? ctx.principal.binding : null;
     const approval = this.approvals.request(ctx, {
       action: "repository.push",

@@ -182,6 +182,10 @@ export const useParts = makeStyles({
     minWidth: 0,
     borderRadius: "12px",
     ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    "& table": {
+      tableLayout: "auto",
+      width: "100%",
+    },
     "& thead th": {
       backgroundColor: tokens.colorNeutralBackground2,
       fontSize: tokens.fontSizeBase200,
@@ -193,8 +197,10 @@ export const useParts = makeStyles({
   selectWrap: {
     position: "relative",
     display: "inline-flex",
-    minWidth: "150px",
-    minHeight: "34px",
+    minWidth: "140px",
+    maxWidth: "100%",
+    boxSizing: "border-box",
+    minHeight: "36px",
     "@media (max-width: 639px), (pointer: coarse)": { minHeight: "42px" },
     borderRadius: "10px",
     backgroundColor: "var(--orbit-card-bg)",
@@ -417,7 +423,7 @@ const LABELS: Record<string, string> = {
 // A word of governance, said as a badge whose colour says how much it allows or how bad it is.
 export function Word({ value, label }: { value: string; label?: string }) {
   return (
-    <Badge appearance="tint" color={TONES[value] ?? "informative"} style={{ borderRadius: "9999px" }}>
+    <Badge appearance="tint" color={TONES[value] ?? "informative"} style={{ borderRadius: "9999px", flexShrink: 0, whiteSpace: "nowrap" }}>
       {label ?? LABELS[value] ?? value.replace(/_/g, " ").toLowerCase()}
     </Badge>
   );

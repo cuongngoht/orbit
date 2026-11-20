@@ -1,11 +1,12 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { Customizations, GovernanceOverview } from "@orbit-web/contracts";
+import type { Customizations, GovernanceOverview, RevisionSummary } from "@orbit-web/contracts";
 import { defaultConstitution } from "@orbit-web/governance-core";
 import { useState } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { App } from "./App";
 import { ChatScreen } from "./features/chat/ChatScreen";
+import { ConstitutionPage } from "./features/governance/ConstitutionPage";
 import { ConstitutionTable } from "./features/governance/ConstitutionTable";
 import { GovernanceView } from "./features/governance/GovernanceView";
 import { NewSession } from "./features/newSession/NewSession";
@@ -252,5 +253,26 @@ describe("responsive mobile-first layout", () => {
 
     await userEvent.click(webAllowed);
     expect(onChange).toHaveBeenCalled();
+  });
+
+  test("mobile ConstitutionPage uses stacked Revisions cards and routes to selected revision", async () => {
+    mobileViewport();
+    resetOperatorStore();
+    const revisions: RevisionSummary[] = [
+      { id: "rev-2", revision: null, state: "PENDING_APPROVAL", digest: "e".repeat(64), name: "next", risk: "high", source: "copy", basedOn: "rev-1", createdAt: "2026-11-20T10:00:00.000Z", createdBy: "op-1", updatedAt: "2026-11-20T10:05:00.000Z", publishedAt: null },
+      { id: "rev-1", revision: 1, state: "PUBLISHED", digest: "d".repeat(64), name: "default", risk: "low", source: "default", basedOn: null, createdAt: "2026-11-20T09:00:00.000Z", createdBy: "op-1", updatedAt: "2026-11-20T09:05:00.000Z", publishedAt: "2026-11-20T09:05:00.000Z" },
+    ];
+    fakeApi()
+      .on("GET", "/api/operator/state", () => governanceState("organization_owner"))
+      .on("GET", "/api/governance/constitution", () => ({ effective: null, revisions }))
+      .on("GET", "/api/governance/operators", () => ({ operators: [] }));
+
+    const go = vi.fn();
+    renderLive(<ConstitutionPage item={null} go={go} />);
+
+    expect(await screen.findByText("pending approval")).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "Revisions" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "next" }));
+    expect(go).toHaveBeenCalledWith("constitution", "rev-2");
   });
 });

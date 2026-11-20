@@ -24,12 +24,17 @@ import {
   TableRow,
   Text,
   makeStyles,
+  mergeClasses,
+  shorthands,
+  tokens,
 } from "@fluentui/react-components";
+import { LockClosed16Regular } from "@fluentui/react-icons";
 import { ACTION_KINDS, ENVIRONMENTS, PRINCIPAL_TYPES, checkConstitution, type Constitution, type Impact } from "@orbit-web/governance-core";
 import type { ConstitutionOverview, OperatorList, RevisionView, SimulateResult } from "@orbit-web/contracts";
 import { useMemo, useState } from "react";
 import type { GovernancePage } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
+import { useViewport } from "../../hooks/useViewport";
 import { errorText, get, send } from "../../services/api";
 import { useOperator } from "../../services/operator";
 import { useAppEvent } from "../../services/events/AppEvents";
@@ -39,11 +44,93 @@ import { Card, CleanSelect, Word, short, useParts, when, who } from "./parts";
 const EDITABLE = new Set(["DRAFT", "VALIDATED", "REJECTED"]);
 
 const useStyles = makeStyles({
+  colRev: { width: "76px", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" },
+  colNowrap: { whiteSpace: "nowrap" },
+  colUpdated: { whiteSpace: "nowrap", color: tokens.colorNeutralForeground2 },
+  colActions: { textAlign: "right", whiteSpace: "nowrap" },
+  nameBtn: {
+    justifyContent: "flex-start",
+    minWidth: "unset",
+    paddingLeft: 0,
+    paddingRight: 0,
+    fontWeight: tokens.fontWeightSemibold,
+    color: tokens.colorNeutralForeground1,
+  },
+  rowSelected: { backgroundColor: tokens.colorSubtleBackgroundSelected },
+  revList: { display: "flex", flexDirection: "column", gap: "8px" },
+  revCard: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    paddingTop: "12px",
+    paddingBottom: "12px",
+    paddingLeft: "14px",
+    paddingRight: "14px",
+    borderRadius: "12px",
+    backgroundColor: tokens.colorNeutralBackground2,
+    ...shorthands.border("1px", "solid", "transparent"),
+    minWidth: 0,
+  },
+  revCardActive: {
+    backgroundColor: tokens.colorSubtleBackgroundSelected,
+    ...shorthands.borderColor(tokens.colorBrandStroke1),
+  },
+  revTop: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", flexWrap: "wrap" },
+  revFoot: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", flexWrap: "wrap" },
+  readOnlyRow: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    color: tokens.colorNeutralForeground3,
+  },
+  warnRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: "8px",
+    flexWrap: "wrap",
+    backgroundColor: tokens.colorPaletteMarigoldBackground1,
+    ...shorthands.border("1px", "solid", tokens.colorPaletteMarigoldBorder1),
+    borderRadius: "10px",
+    paddingTop: "8px",
+    paddingBottom: "8px",
+    paddingLeft: "12px",
+    paddingRight: "12px",
+  },
+  historyList: { display: "flex", flexDirection: "column", gap: "8px", listStyleType: "none", paddingLeft: 0, marginTop: 0, marginBottom: 0 },
+  historyItem: { display: "flex", alignItems: "baseline", gap: "8px", flexWrap: "wrap" },
+  historyDot: { width: "7px", height: "7px", borderRadius: "9999px", backgroundColor: tokens.colorBrandForeground1, flexShrink: 0, alignSelf: "center" },
   simGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+    gridTemplateColumns: "124px minmax(180px, 1.15fr) minmax(210px, 1.35fr) 144px auto",
     gap: "10px",
     alignItems: "end",
+    "@media (max-width: 959px)": { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" },
+    "@media (max-width: 639px)": { gridTemplateColumns: "1fr" },
+  },
+  simField: { minWidth: 0, width: "100%" },
+  simResourceField: {
+    minWidth: 0,
+    width: "100%",
+    "@media (max-width: 959px)": { gridColumn: "1 / -1" },
+  },
+  simControl: { width: "100%", minWidth: 0 },
+  simInput: {
+    width: "100%",
+    minWidth: 0,
+    maxWidth: "100%",
+    boxSizing: "border-box",
+    minHeight: "36px",
+    "@media (max-width: 639px), (pointer: coarse)": { minHeight: "42px" },
+  },
+  simBtnWrap: {
+    minWidth: 0,
+    "@media (max-width: 959px)": { gridColumn: "1 / -1" },
+  },
+  simBtn: {
+    width: "100%",
+    minHeight: "36px",
+    borderRadius: "10px",
+    "@media (max-width: 639px), (pointer: coarse)": { minHeight: "42px" },
   },
 });
 
@@ -138,20 +225,20 @@ function Simulation({ revisionId }: { revisionId: string | null }) {
   return (
     <Card title="Simulate a decision" description="Asks this revision what it would decide. Nothing is recorded and nothing is allowed by asking.">
       <div className={styles.simGrid}>
-        <Field label="Who">
-          {(fp) => <CleanSelect fieldProps={fp} value={principalType} onChange={setPrincipalType} options={PRINCIPAL_TYPES.map((p) => ({ value: p, label: p }))} />}
+        <Field label="Who" className={styles.simField}>
+          {(fp) => <CleanSelect className={styles.simControl} fieldProps={fp} value={principalType} onChange={setPrincipalType} options={PRINCIPAL_TYPES.map((p) => ({ value: p, label: p }))} />}
         </Field>
-        <Field label="Action">
-          {(fp) => <CleanSelect fieldProps={fp} value={action} onChange={setAction} options={ACTION_KINDS.map((a) => ({ value: a, label: a }))} />}
+        <Field label="Action" className={styles.simField}>
+          {(fp) => <CleanSelect className={styles.simControl} fieldProps={fp} value={action} onChange={setAction} options={ACTION_KINDS.map((a) => ({ value: a, label: a }))} />}
         </Field>
-        <Field label="Resource">
-          <Input value={resource} onChange={(_, d) => setResource(d.value)} placeholder="e.g. api.anthropic.com:443" />
+        <Field label="Resource" className={styles.simResourceField}>
+          <Input className={styles.simInput} value={resource} onChange={(_, d) => setResource(d.value)} placeholder="e.g. api.anthropic.com:443" />
         </Field>
-        <Field label="Environment">
-          {(fp) => <CleanSelect fieldProps={fp} value={environment} onChange={setEnvironment} options={ENVIRONMENTS.map((e) => ({ value: e, label: e }))} />}
+        <Field label="Environment" className={styles.simField}>
+          {(fp) => <CleanSelect className={styles.simControl} fieldProps={fp} value={environment} onChange={setEnvironment} options={ENVIRONMENTS.map((e) => ({ value: e, label: e }))} />}
         </Field>
-        <div>
-          <Button appearance="secondary" onClick={ask} style={{ width: "100%" }}>
+        <div className={styles.simBtnWrap}>
+          <Button className={styles.simBtn} appearance="secondary" onClick={ask}>
             Ask
           </Button>
         </div>
@@ -179,6 +266,7 @@ function Simulation({ revisionId }: { revisionId: string | null }) {
 
 function RevisionDetail({ revision, names, onChanged }: { revision: RevisionView; names: ReadonlyMap<string, string>; onChanged: (r: RevisionView) => void }) {
   const s = useParts();
+  const styles = useStyles();
   const { can } = useOperator();
   const [shown, setShown] = useState(() => tableable(revision.document));
   const [error, setError] = useState<string | null>(null);
@@ -212,15 +300,24 @@ function RevisionDetail({ revision, names, onChanged }: { revision: RevisionView
         </>
       }
     >
+      {!editable && shown.document !== null && (
+        <div className={styles.readOnlyRow}>
+          <LockClosed16Regular aria-hidden />
+          <Text size={200}>{can("constitution.edit") ? "Read-only — choose or start a draft above to edit." : "Read-only revision."}</Text>
+        </div>
+      )}
       {revision.errors.length > 0 && (
         <MessageBar intent="warning">
           <MessageBarBody>{revision.errors.join("; ")}</MessageBarBody>
         </MessageBar>
       )}
       {revision.warnings.map((w) => (
-        <Text key={`${w.ruleId}:${w.code}`} size={200}>
-          <Word value="runtime" label={w.code.toLowerCase().replace(/_/g, " ")} /> {w.ruleId}: {w.message}
-        </Text>
+        <div key={`${w.ruleId}:${w.code}`} className={styles.warnRow}>
+          <Word value="runtime" label={w.code.toLowerCase().replace(/_/g, " ")} />
+          <Text size={200}>
+            <span className={s.mono}>{w.ruleId}</span>: {w.message}
+          </Text>
+        </div>
       ))}
       {shown.document !== null ? (
         <ConstitutionTable document={shown.document} editable={editable} onChange={(next) => setShown({ document: next, problem: null })} />
@@ -274,13 +371,20 @@ function RevisionDetail({ revision, names, onChanged }: { revision: RevisionView
       {revision.impact && <ImpactView impact={revision.impact} />}
       {revision.history.length > 0 && (
         <div className={s.inset}>
-          <ul className={s.list} aria-label="History">
+          <Text weight="semibold" size={300}>
+            Revision history
+          </Text>
+          <ul className={styles.historyList} aria-label="History">
             {revision.history.map((h) => (
-              <li key={h.eventId}>
-                <Text size={200}>
-                  {when(h.at)} · {h.what} by {who(h.by, names)}
-                  {h.digest ? ` · ${short(h.digest)}` : ""}
+              <li key={h.eventId} className={styles.historyItem}>
+                <span className={styles.historyDot} aria-hidden />
+                <Text size={200} weight="semibold">
+                  {h.what}
                 </Text>
+                <Text size={200} className={s.muted}>
+                  by {who(h.by, names)} · {when(h.at)}
+                </Text>
+                {h.digest && <span className={s.codeChip}>{short(h.digest)}</span>}
               </li>
             ))}
           </ul>
@@ -312,6 +416,8 @@ function RevisionDetail({ revision, names, onChanged }: { revision: RevisionView
 
 export function ConstitutionPage({ item, go }: { item: string | null; go: (page: GovernancePage, item?: string | null) => void }) {
   const s = useParts();
+  const styles = useStyles();
+  const { isMobile } = useViewport();
   const { can } = useOperator();
   const overview = useResource<ConstitutionOverview>(() => get("/api/governance/constitution"), []);
   const operators = useResource<OperatorList>(can("operators.read") ? () => get("/api/governance/operators") : null, []);
@@ -332,13 +438,14 @@ export function ConstitutionPage({ item, go }: { item: string | null; go: (page:
 
   if (overview.data === null) return overview.error ? <MessageBar intent="error"><MessageBarBody>{overview.error}</MessageBarBody></MessageBar> : <Spinner label="Reading the Constitution…" />;
   const o = overview.data;
+  const activeId = item ?? o.effective?.id ?? null;
   return (
     <div className={s.page}>
       <Card
         title="Revisions"
         actions={
           can("constitution.edit") && (
-            <Button appearance="primary" onClick={() => draft({})}>
+            <Button appearance="primary" shape="circular" onClick={() => draft({})}>
               {o.effective ? "New draft from the one in effect" : "Start from the default Constitution"}
             </Button>
           )
@@ -354,44 +461,77 @@ export function ConstitutionPage({ item, go }: { item: string | null; go: (page:
             <MessageBarBody>{error}</MessageBarBody>
           </MessageBar>
         )}
-        <div className={s.tableWrap}>
-          <Table size="small" aria-label="Revisions">
-            <TableHeader>
-              <TableRow>
-                <TableHeaderCell>Revision</TableHeaderCell>
-                <TableHeaderCell>Name</TableHeaderCell>
-                <TableHeaderCell>State</TableHeaderCell>
-                <TableHeaderCell>Risk</TableHeaderCell>
-                <TableHeaderCell>Updated</TableHeaderCell>
-                <TableHeaderCell />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {o.revisions.map((r) => (
-                <TableRow key={r.id} aria-selected={r.id === item}>
-                  <TableCell>{r.revision ?? "—"}</TableCell>
-                  <TableCell>
-                    <Button appearance="transparent" onClick={() => go("constitution", r.id)}>
+        {isMobile ? (
+          <div className={styles.revList} aria-label="Revisions">
+            {o.revisions.map((r) => (
+              <div key={r.id} className={mergeClasses(styles.revCard, r.id === activeId && styles.revCardActive)} aria-current={r.id === activeId ? "true" : undefined}>
+                <div className={styles.revTop}>
+                  <div className={s.row}>
+                    <Button className={styles.nameBtn} appearance="transparent" onClick={() => go("constitution", r.id)}>
                       {r.name}
                     </Button>
-                  </TableCell>
-                  <TableCell>
+                    <Text size={200} className={s.muted}>
+                      {r.revision !== null ? `Revision ${r.revision}` : "Draft"}
+                    </Text>
+                  </div>
+                  <div className={s.row}>
                     <Word value={r.state} />
-                  </TableCell>
-                  <TableCell>{r.risk ? <Word value={r.risk} /> : "—"}</TableCell>
-                  <TableCell>{when(r.updatedAt)}</TableCell>
-                  <TableCell>
-                    {r.state === "SUPERSEDED" && can("constitution.edit") && (
-                      <Button size="small" onClick={() => draft({ from: r.id })}>
-                        Roll back to this
-                      </Button>
-                    )}
-                  </TableCell>
+                    {r.risk && <Word value={r.risk} />}
+                  </div>
+                </div>
+                <div className={styles.revFoot}>
+                  <Text size={200} className={s.muted}>
+                    {when(r.updatedAt)}
+                  </Text>
+                  {r.state === "SUPERSEDED" && can("constitution.edit") && (
+                    <Button size="small" shape="circular" onClick={() => draft({ from: r.id })}>
+                      Roll back to this
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className={s.tableWrap}>
+            <Table size="small" aria-label="Revisions">
+              <TableHeader>
+                <TableRow>
+                  <TableHeaderCell className={styles.colRev}>Revision</TableHeaderCell>
+                  <TableHeaderCell>Name</TableHeaderCell>
+                  <TableHeaderCell className={styles.colNowrap}>State</TableHeaderCell>
+                  <TableHeaderCell className={styles.colNowrap}>Risk</TableHeaderCell>
+                  <TableHeaderCell className={styles.colNowrap}>Updated</TableHeaderCell>
+                  <TableHeaderCell className={styles.colActions} />
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+              </TableHeader>
+              <TableBody>
+                {o.revisions.map((r) => (
+                  <TableRow key={r.id} className={r.id === activeId ? styles.rowSelected : undefined} aria-selected={r.id === activeId}>
+                    <TableCell className={styles.colRev}>{r.revision ?? "—"}</TableCell>
+                    <TableCell>
+                      <Button className={styles.nameBtn} appearance="transparent" onClick={() => go("constitution", r.id)}>
+                        {r.name}
+                      </Button>
+                    </TableCell>
+                    <TableCell className={styles.colNowrap}>
+                      <Word value={r.state} />
+                    </TableCell>
+                    <TableCell className={styles.colNowrap}>{r.risk ? <Word value={r.risk} /> : "—"}</TableCell>
+                    <TableCell className={styles.colUpdated}>{when(r.updatedAt)}</TableCell>
+                    <TableCell className={styles.colActions}>
+                      {r.state === "SUPERSEDED" && can("constitution.edit") && (
+                        <Button size="small" shape="circular" onClick={() => draft({ from: r.id })}>
+                          Roll back to this
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </Card>
       {item && selected.data && (
         <RevisionDetail

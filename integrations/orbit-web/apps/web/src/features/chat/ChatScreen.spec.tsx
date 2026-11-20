@@ -1,8 +1,8 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { SessionDetail } from "@orbit-web/contracts";
+import type { SessionDetail, WorkBranches } from "@orbit-web/contracts";
 import { describe, expect, test, vi } from "vitest";
-import { fakeApi, type FakeApi } from "../../testing/fakeApi";
+import { fakeApi, withStatus, type FakeApi } from "../../testing/fakeApi";
 import { sessionStream } from "../../testing/events";
 import { SESSION_ID, inventory, sessionDetail, sessionSummary } from "../../testing/fixtures";
 import { renderUi } from "../../testing/render";
@@ -163,5 +163,59 @@ describe("an open chat: the conversation, and the composer always at the bottom"
     expect(within(side).getByRole("tab", { name: "Orbit" })).toHaveAttribute("aria-selected", "true");
     await userEvent.click(within(side).getByRole("button", { name: "Close the panel" }));
     expect(screen.queryByRole("complementary", { name: "Changes and Orbit" })).toBeNull();
+  });
+});
+
+describe("the working branch, chosen in the chat's toolbar", () => {
+  const BRANCHES: WorkBranches = {
+    current: "orbit-web/0b6c2f5e",
+    base: "main",
+    remoteError: null,
+    branches: [
+      { name: "main", local: true, remote: true, isDefault: true },
+      { name: "dev", local: false, remote: true, isDefault: false },
+      { name: "orbit-web/0b6c2f5e", local: true, remote: false, isDefault: false },
+    ],
+  };
+  const withBranches = () => fakeApi().on("GET", `${PATH}/branches`, () => BRANCHES);
+
+  test("lists the chat's branches and the repository's, never offers the default one, and moves the chat to the one chosen", async () => {
+    const a = withBranches().on("POST", `${PATH}/branch`, () => sessionSummary({ workBranch: "dev" }));
+    const { updated } = open(sessionDetail(), a);
+    await userEvent.click(await screen.findByRole("button", { name: "Working branch orbit-web/0b6c2f5e" }));
+    const list = await screen.findByRole("listbox", { name: "Branches" });
+    expect(within(list).getAllByRole("option").map((o) => o.getAttribute("aria-label"))).toEqual(["main", "dev", "orbit-web/0b6c2f5e"]);
+    expect(within(within(list).getByRole("option", { name: "main" })).getByRole("button")).toBeDisabled();
+    expect(within(list).getByText(/default · not worked on/)).toBeInTheDocument();
+    expect(within(list).getByRole("option", { name: "orbit-web/0b6c2f5e" })).toHaveAttribute("aria-selected", "true");
+    await userEvent.click(within(within(list).getByRole("option", { name: "dev" })).getByRole("button"));
+    await waitFor(() => expect(a.calls.find((c) => c.method === "POST" && c.path === `${PATH}/branch`)?.body).toEqual({ branch: "dev" }));
+    expect(await screen.findByRole("button", { name: "Working branch dev" })).toBeInTheDocument();
+    expect(updated).toHaveBeenCalledWith(expect.objectContaining({ workBranch: "dev" }));
+  });
+
+  test("a new branch is made from the work as it is", async () => {
+    const a = withBranches().on("POST", `${PATH}/branch`, () => sessionSummary({ workBranch: "docs/approvers" }));
+    open(sessionDetail(), a);
+    await userEvent.click(await screen.findByRole("button", { name: "Working branch orbit-web/0b6c2f5e" }));
+    await userEvent.type(await screen.findByRole("textbox", { name: "New branch name" }), "docs/approvers");
+    await userEvent.click(screen.getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(a.calls.find((c) => c.method === "POST" && c.path === `${PATH}/branch`)?.body).toEqual({ branch: "docs/approvers", create: true }));
+    expect(await screen.findByRole("button", { name: "Working branch docs/approvers" })).toBeInTheDocument();
+  });
+
+  test("what the workspace refuses is said, and the chat stays where it was", async () => {
+    const a = withBranches().on("POST", `${PATH}/branch`, () => withStatus(409, { error: { code: "workspace_dirty", message: "The workspace has 2 uncommitted changes: commit them first." } }));
+    open(sessionDetail(), a);
+    await userEvent.click(await screen.findByRole("button", { name: "Working branch orbit-web/0b6c2f5e" }));
+    const list = await screen.findByRole("listbox", { name: "Branches" });
+    await userEvent.click(within(within(list).getByRole("option", { name: "dev" })).getByRole("button"));
+    expect(await screen.findByText(/2 uncommitted changes/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Working branch orbit-web/0b6c2f5e" })).toBeInTheDocument();
+  });
+
+  test("while Claude works the branch stays as it is", async () => {
+    open(sessionDetail({ status: "running" }), withBranches());
+    expect(await screen.findByRole("button", { name: "Working branch orbit-web/0b6c2f5e" })).toBeDisabled();
   });
 });

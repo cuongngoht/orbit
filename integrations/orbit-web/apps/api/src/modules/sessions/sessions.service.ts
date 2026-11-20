@@ -106,6 +106,7 @@ export class SessionsService {
   delete(id: string): void {
     const s = this.record(id);
     if (s.status === "running" || this.runner.isRunning(id)) throw conflict("run_active", "Stop the run before deleting this chat.");
+    if (this.runner.isBusy(id)) throw conflict("workspace_busy", "Wait until the working branch has moved before deleting this chat.");
     if (s.status === "preparing") throw conflict("workspace_preparing", "Wait until the workspace is prepared (or fails) before deleting this chat.");
     this.sessions.delete(id);
     this.workspaces.remove(id);

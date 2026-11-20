@@ -79,6 +79,15 @@ export interface WorkspaceItem {
   workBranch: string | null;
 }
 
+// A person moved the working branch: to another branch, or to a new one made from the work as it was.
+export interface BranchItem {
+  kind: "branch";
+  id: string;
+  from: string | null;
+  workBranch: string;
+  created: boolean;
+}
+
 // Plan mode proposed a plan (the ExitPlanMode input): shown as a plan, with the way to carry it out.
 export interface PlanItem {
   kind: "plan";
@@ -94,7 +103,7 @@ export interface ProjectItem {
   inventory: ProjectInventory;
 }
 
-export type TimelineItem = MessageItem | ToolItem | RunStartItem | RunEndItem | NoticeItem | DeniedItem | WorkspaceItem | PlanItem | ProjectItem;
+export type TimelineItem = MessageItem | ToolItem | RunStartItem | RunEndItem | NoticeItem | DeniedItem | WorkspaceItem | BranchItem | PlanItem | ProjectItem;
 
 export interface ChatState {
   lastSeq: number;
@@ -145,6 +154,8 @@ function applyDurable(state: ChatState, e: AnySessionEvent): ChatState {
       return workspace(state, { step: "ready", state: "ready", message: null, workBranch: e.data.workBranch });
     case "workspace.failed":
       return workspace(state, { step: e.data.step, state: "failed", message: e.data.message, workBranch: null });
+    case "workspace.branch":
+      return { ...state, items: [...state.items, { kind: "branch", id: `branch-${e.seq}`, from: e.data.from, workBranch: e.data.workBranch, created: e.data.created }] };
     case "project.inventory":
       return project(state, e.data.inventory);
     case "project.plugin": {

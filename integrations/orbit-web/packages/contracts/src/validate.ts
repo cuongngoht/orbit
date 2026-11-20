@@ -17,6 +17,7 @@ import {
 import { THEMES, type ThemePreference } from "./status.js";
 import type {
   AzureLoginRequest,
+  ChangeBranchRequest,
   ClaudeLoginCodeRequest,
   CreateSessionRequest,
   RepositoryRef,
@@ -133,6 +134,15 @@ export function checkCreateSession(body: unknown): Checked<CreateSessionRequest>
     ...(body.title !== undefined ? { title: cleanTitle(body.title) as string } : {}),
     ...(body.prompt !== undefined ? { prompt: body.prompt as string } : {}),
   }));
+}
+
+// A working branch: a branch name git would accept, existing -- or, with `create`, new.
+export function checkChangeBranch(body: unknown): Checked<Required<ChangeBranchRequest>> {
+  if (!isRecord(body)) return { ok: false, errors: ["the body must be a JSON object"] };
+  const errors = unknownFields(body, ["branch", "create"]);
+  if (!isBranchName(body.branch)) errors.push("branch must be a valid branch name");
+  if (body.create !== undefined && typeof body.create !== "boolean") errors.push("create must be true or false");
+  return checked(errors, () => ({ branch: body.branch as string, create: body.create === true }));
 }
 
 export function checkUpdateSession(body: unknown): Checked<UpdateSessionRequest> {

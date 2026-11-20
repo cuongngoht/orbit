@@ -36,8 +36,8 @@ export class GitGateway {
   // An Azure Repos clone. Git asks the one-shot credential helper the image ships (it asks the Azure CLI for a token
   // for this clone and hands it to git); the helper list is reset first so no other helper answers, and nothing is
   // written: the remote URL carries no credential and .git/config names no helper.
-  cloneAzure(cwd: string, url: string, branch: string, destination: string): Promise<RunResult> {
-    const args = ["-c", "credential.helper=", "-c", `credential.helper=${this.config.binaries.azureGitHelper}`, "clone", "--branch", branch, "--no-recurse-submodules", "--", url, destination];
+  cloneAzure(cwd: string, url: string, branch: string, destination: string, extra: string[] = []): Promise<RunResult> {
+    const args = ["-c", "credential.helper=", "-c", `credential.helper=${this.config.binaries.azureGitHelper}`, "clone", "--branch", branch, "--no-recurse-submodules", ...extra, "--", url, destination];
     return this.process.run(this.config.binaries.git, [...HARDENING, ...args], { cwd, env: azureGitEnv(this.config), timeoutMs: this.config.limits.cloneTimeoutMs });
   }
 
@@ -47,6 +47,37 @@ export class GitGateway {
 
   createBranch(cwd: string, branch: string): Promise<RunResult> {
     return this.git(cwd, ["checkout", "-b", branch]);
+  }
+
+  // THE WORKING BRANCH (branch.service.ts). Branch names reach these only once isBranchName accepted them (never an
+  // option), and every network fetch happens in a clone of Orbit Web's own: here, git reads a local repository only.
+
+  // The workspace's branches, by their full names (refs/heads/...).
+  localBranches(cwd: string): Promise<RunResult> {
+    return this.git(cwd, ["for-each-ref", "--format=%(refname)", "refs/heads"]);
+  }
+
+  // The repository's default branch as the clone recorded it (refs/remotes/origin/HEAD), if it did.
+  originHead(cwd: string): Promise<RunResult> {
+    return this.git(cwd, ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"]);
+  }
+
+  switchTo(cwd: string, branch: string): Promise<RunResult> {
+    return this.git(cwd, ["switch", "--no-guess", branch]);
+  }
+
+  // A new branch at `startPoint` (HEAD when none: what is uncommitted comes along).
+  switchToNew(cwd: string, branch: string, startPoint?: string): Promise<RunResult> {
+    return this.git(cwd, ["switch", "--no-guess", "-c", branch, ...(startPoint === undefined ? [] : [startPoint])]);
+  }
+
+  // One branch of a repository of Orbit Web's own (a path), into the workspace's view of its repository.
+  fetchLocal(cwd: string, repository: string, branch: string): Promise<RunResult> {
+    return this.git(cwd, ["fetch", "--no-tags", "--no-recurse-submodules", repository, `+refs/heads/${branch}:refs/remotes/origin/${branch}`]);
+  }
+
+  mergeBase(cwd: string, a: string, b: string): Promise<RunResult> {
+    return this.git(cwd, ["merge-base", a, b]);
   }
 
   setConfig(cwd: string, key: string, value: string): Promise<RunResult> {

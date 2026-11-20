@@ -55,6 +55,14 @@ bundles stays 0.6.0 and its archive is unchanged; nothing under `src/`, `cli/`, 
   repository that is a plugin and installs the declared ones (`claude plugin marketplace add` / `install --scope user`
   / `disable --scope user`), enabling them for that chat's runs only. The chat says what was loaded; Settings → Skills
   and Plugins list it all, with each plugin's state.
+- **The working branch, chosen in the chat.** The branch button in an open chat's toolbar lists the chat's own branches
+  and its repository's (`GET /api/sessions/:id/branches`) and moves the workspace (`POST /api/sessions/:id/branch`): to
+  a branch of the repository -- fetched through the source's sign-in into a bare clone of Orbit Web's own of that one
+  branch (borrowing the workspace's objects, outside it, so no workspace configuration is read where a credential is),
+  then into the workspace -- to a branch the workspace has, or to a new branch made from the work as it is. Never the
+  default branch, never over uncommitted work, never while Claude works; no run starts while a branch moves (the runner
+  holds the chat). Changes are read against where the branch left the chat's starting branch, and each move is a
+  `workspace.branch` event and a line in the conversation.
 - **`/` lists the skills a chat can run.** At the start of a message, `/` opens a list of the project's skills and
   commands, then Orbit's, by the names Claude Code gives them -- a skill's directory, a command's path, never a
   frontmatter name, and no `user-invocable: false` skill (checked against the real CLI) -- read from the plugin

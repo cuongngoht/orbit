@@ -46,6 +46,8 @@ interface ActiveRun {
 export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutdown {
   private readonly logger = new Logger("ClaudeRunner");
   private readonly active = new Map<string, ActiveRun>();
+  // Sessions whose workspace is changing (holding): no run starts in them until it is done.
+  private readonly held = new Set<string>();
 
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
@@ -70,11 +72,29 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     return this.active.has(sessionId);
   }
 
+  // A run, or a change of the workspace under way (its working branch moving).
+  isBusy(sessionId: string): boolean {
+    return this.active.has(sessionId) || this.held.has(sessionId);
+  }
+
+  // Runs `work` while no run may start in this session -- refused while one runs or another change is under way.
+  async holding<T>(sessionId: string, work: () => Promise<T>): Promise<T> {
+    if (this.active.has(sessionId)) throw conflict("run_active", "Claude is still working on this session. Stop it or wait for it to finish.");
+    if (this.held.has(sessionId)) throw conflict("workspace_busy", "The working branch is already changing.");
+    this.held.add(sessionId);
+    try {
+      return await work();
+    } finally {
+      this.held.delete(sessionId);
+    }
+  }
+
   // A person's message: stored, shown, and handed to Claude Code as the next turn of this session.
   send(sessionId: string, text: string): RunAccepted {
     const session = this.sessions.get(sessionId);
     if (!session) throw notFound("Session");
     if (this.active.has(sessionId) || session.status === "running") throw conflict("run_active", "Claude is still working on this session. Stop it or wait for it to finish.");
+    if (this.held.has(sessionId)) throw conflict("workspace_busy", "The working branch is changing; send your message once it has.");
     if (session.status === "preparing") throw conflict("workspace_not_ready", "The workspace is still being prepared.");
     if (!ACCEPTS_MESSAGES.includes(session.status)) throw conflict("workspace_failed", "This session's workspace could not be prepared; start a new chat.");
     const runId = randomUUID();

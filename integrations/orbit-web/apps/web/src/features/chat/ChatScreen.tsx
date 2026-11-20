@@ -1,8 +1,9 @@
 // ONE OPEN CHAT: its title and status above, the conversation, and the composer always at the bottom -- with the
-// repository and branch the chat started from (fixed), and the model, effort and mode it runs with (changed here, they
-// apply from the next message). On the right, when asked: what changed in the workspace, and what Orbit says.
+// repository the chat started from (fixed), its working branch (moved here, between runs: WorkBranchPicker), and the
+// model, effort and mode it runs with (changed here, they apply from the next message). On the right, when asked: what
+// changed in the workspace, and what Orbit says.
 import { Badge, Button, MessageBar, MessageBarBody, Spinner, Tab, TabList, Text, ToggleButton, Tooltip, makeStyles, tokens } from "@fluentui/react-components";
-import { BranchFork16Regular, Dismiss20Regular, DocumentBulletList20Regular, Info20Regular } from "@fluentui/react-icons";
+import { Dismiss20Regular, DocumentBulletList20Regular, Info20Regular } from "@fluentui/react-icons";
 import { ACCEPTS_MESSAGES, type SessionDetail, type SessionSummary, type UpdateSessionRequest } from "@orbit-web/contracts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { SessionStatusBadge } from "../../components/StatusBadge";
@@ -13,6 +14,7 @@ import { errorText, get, send } from "../../services/api";
 import { ChangesPanel } from "../changes/ChangesPanel";
 import { Composer } from "../composer/Composer";
 import { ModelEffortPicker, ModePicker } from "../composer/RunPickers";
+import { WorkBranchPicker } from "../composer/WorkBranchPicker";
 import { OrbitPanel } from "../orbit/OrbitPanel";
 import { Timeline } from "./Timeline";
 
@@ -43,11 +45,13 @@ export function ChatScreen({ sessionId, onUpdated }: { sessionId: string; onUpda
   const status = state.status ?? detail.data?.status ?? "preparing";
   const running = status === "running";
 
-  // The header (title, preferences, status) is read again whenever the chat's status changes.
+  // The header (title, preferences, status, working branch) is read again whenever the chat's status changes, or its
+  // working branch moved (in this tab or another).
+  const branchMoves = useMemo(() => state.items.filter((i) => i.kind === "branch").length, [state.items]);
   useEffect(() => {
     void detail.reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- the status is what moves it
-  }, [state.status]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the status and the branch moves are what move it
+  }, [state.status, branchMoves]);
 
   useEffect(() => {
     const el = scroller.current;
@@ -55,7 +59,7 @@ export function ChatScreen({ sessionId, onUpdated }: { sessionId: string; onUpda
   }, [state.items]);
 
   // The changes panel reads git again after each tool and each run end.
-  const version = useMemo(() => state.items.filter((i) => (i.kind === "tool" && i.state !== "running") || i.kind === "run-end" || i.kind === "workspace").length, [state.items]);
+  const version = useMemo(() => state.items.filter((i) => (i.kind === "tool" && i.state !== "running") || i.kind === "run-end" || i.kind === "workspace" || i.kind === "branch").length, [state.items]);
 
   const attempt = async (work: () => Promise<unknown>) => {
     setError(null);
@@ -149,10 +153,16 @@ export function ChatScreen({ sessionId, onUpdated }: { sessionId: string; onUpda
                   {session.repository ?? "No repository"}
                 </span>
                 {session.workBranch && (
-                  <span className={s.chip} title={`${session.branch ?? "an empty start"} → ${session.workBranch}`}>
-                    <BranchFork16Regular />
-                    {session.branch ? `${session.branch} → ${session.workBranch}` : session.workBranch}
-                  </span>
+                  <WorkBranchPicker
+                    sessionId={sessionId}
+                    base={session.branch}
+                    work={session.workBranch}
+                    disabled={!canSend || sending}
+                    onMoved={(summary) => {
+                      if (detail.data) detail.set({ ...detail.data, ...summary });
+                      onUpdated(summary);
+                    }}
+                  />
                 )}
               </>
             }

@@ -67,9 +67,9 @@ export class GithubSource {
     return { source: "github", repository: repo.fullName, branches: orderBranches(branches) };
   }
 
-  async clone(fullName: string, branch: string, destination: string, cwd: string): Promise<RunResult> {
+  async clone(fullName: string, branch: string, destination: string, cwd: string, extra: string[] = []): Promise<RunResult> {
     const repo = await this.authorized(fullName);
-    return this.gh.clone(repo.owner, repo.name, branch, destination, cwd);
+    return this.gh.clone(repo.owner, repo.name, branch, destination, cwd, extra);
   }
 
   private parseList(stdout: string): Repository[] {

@@ -239,6 +239,36 @@ export interface UpdateSessionRequest {
   mode?: ModeChoice;
 }
 
+// THE WORKING BRANCH of an open chat: the branch its workspace has checked out, where Claude Code commits. A chat starts
+// on a branch of its own (orbit-web/<id>); a person may move it to another branch of the repository (fetched for it)
+// or of the workspace, or to a new branch made from the work as it is. Never the repository's default branch.
+
+// One branch a chat can work on: the workspace's (local), the repository's (remote), or both.
+export interface WorkBranch {
+  name: string;
+  local: boolean;
+  remote: boolean;
+  // The repository's default branch: listed, never worked on directly.
+  isDefault: boolean;
+}
+
+// GET /api/sessions/:id/branches
+export interface WorkBranches {
+  // The branch the workspace has checked out; null when HEAD names none.
+  current: string | null;
+  // The branch the chat compares its changes against (the one it started from); null without a repository.
+  base: string | null;
+  branches: WorkBranch[];
+  // The repository's branches could not be read now (its source said why): the workspace's are listed alone.
+  remoteError: string | null;
+}
+
+// POST /api/sessions/:id/branch -- an existing branch, or (create) a new one from the work as it is.
+export interface ChangeBranchRequest {
+  branch: string;
+  create?: boolean;
+}
+
 export interface SendMessageRequest {
   text: string;
 }

@@ -145,7 +145,7 @@ export class GhGateway {
 
   // `gh repo clone` runs git with gh's own credential helper for this one command: nothing is written to a git
   // config, and the remote is the plain https URL.
-  clone(owner: string, name: string, branch: string, destination: string, cwd: string): Promise<RunResult> {
-    return this.gh(["repo", "clone", `https://${GITHUB_HOST}/${owner}/${name}.git`, destination, "--no-upstream", "--", "--branch", branch, "--no-recurse-submodules"], this.config.limits.cloneTimeoutMs, cwd);
+  clone(owner: string, name: string, branch: string, destination: string, cwd: string, extra: string[] = []): Promise<RunResult> {
+    return this.gh(["repo", "clone", `https://${GITHUB_HOST}/${owner}/${name}.git`, destination, "--no-upstream", "--", "--branch", branch, "--no-recurse-submodules", ...extra], this.config.limits.cloneTimeoutMs, cwd);
   }
 }

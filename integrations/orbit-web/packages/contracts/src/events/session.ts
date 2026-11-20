@@ -26,6 +26,15 @@ export interface WorkspaceReadyData {
   orbitSeated: boolean;
 }
 
+// The working branch moved: to an existing branch (`created` false), or to a new one made from the work as it was.
+export interface WorkspaceBranchData {
+  from: string | null;
+  workBranch: string;
+  created: boolean;
+  // What the chat's changes are now read against.
+  baseCommit: string;
+}
+
 export interface WorkspaceFailedData {
   step: string;
   message: string;
@@ -174,6 +183,7 @@ export interface SessionEventDataMap {
   "workspace.preparing": WorkspacePreparingData;
   "workspace.ready": WorkspaceReadyData;
   "workspace.failed": WorkspaceFailedData;
+  "workspace.branch": WorkspaceBranchData;
   "project.inventory": ProjectInventoryData;
   "project.plugin": ProjectPluginData;
   "session.status": SessionStatusData;

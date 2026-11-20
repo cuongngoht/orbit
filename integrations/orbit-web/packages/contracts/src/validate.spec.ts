@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { applyDelta, DURABLE_EVENT_TYPES, EVENT_CATALOG, isDurableType, isEventType, streamOf } from "./events/index.js";
 import { EFFORT_CHOICES, MODEL_CHOICES, MODE_PERMISSION } from "./models.js";
 import {
+  checkChangeBranch,
   checkClaudeLogin,
   checkCreateSession,
   isRepositoryRef,
@@ -57,6 +58,12 @@ test("a message is non-empty text of a bounded length", () => {
   assert.equal(checkSendMessage({ text: "   " }).ok, false);
   assert.equal(checkSendMessage({ text: "x".repeat(100_001) }).ok, false);
   assert.equal(checkSendMessage({ text: "go", command: "rm" }).ok, false);
+});
+
+test("a working branch is a valid branch name, an existing one or -- with create -- a new one", () => {
+  assert.deepEqual(checkChangeBranch({ branch: "feature/approvers" }), { ok: true, value: { branch: "feature/approvers", create: false } });
+  assert.deepEqual(checkChangeBranch({ branch: "docs/x", create: true }), { ok: true, value: { branch: "docs/x", create: true } });
+  for (const bad of [{}, { branch: "" }, { branch: "-f" }, { branch: "a..b" }, { branch: "x", create: "yes" }, { branch: "x", force: true }, "x"]) assert.equal(checkChangeBranch(bad).ok, false, JSON.stringify(bad));
 });
 
 test("an update names something to change: the title, or the model, effort or mode of the next message", () => {

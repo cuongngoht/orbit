@@ -21,6 +21,19 @@ describe("the chat timeline", () => {
     expect(done.items[0]).toMatchObject({ text: "Hello world", streaming: false });
   });
 
+  test("each move of the working branch is a line of its own, in order", () => {
+    seq = 0;
+    const s = apply([
+      ev("workspace.ready", { repository: "octo/sum-fixture", branch: "main", workBranch: "orbit-web/0b6c2f5e", baseCommit: "a", orbitSeated: true }),
+      ev("workspace.branch", { from: "orbit-web/0b6c2f5e", workBranch: "dev", created: false, baseCommit: "a" }),
+      ev("workspace.branch", { from: "dev", workBranch: "docs/approvers", created: true, baseCommit: "a" }),
+    ]);
+    expect(s.items.filter((i) => i.kind === "branch")).toEqual([
+      { kind: "branch", id: "branch-2", from: "orbit-web/0b6c2f5e", workBranch: "dev", created: false },
+      { kind: "branch", id: "branch-3", from: "dev", workBranch: "docs/approvers", created: true },
+    ]);
+  });
+
   test("a durable event replayed after a reconnect changes nothing", () => {
     seq = 0;
     const first = ev("message.completed", { messageId: "u1", role: "user", text: "Fix it", parentToolUseId: null, partial: false, truncated: false });

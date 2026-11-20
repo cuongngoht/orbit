@@ -87,9 +87,9 @@ export class AzureSource {
     return { source: "azure", repository: repo.id, branches: orderBranches(parseRefs(r.stdout, repo.defaultBranch) as Branch[]) };
   }
 
-  async clone(id: string, branch: string, destination: string, cwd: string): Promise<RunResult> {
+  async clone(id: string, branch: string, destination: string, cwd: string, extra: string[] = []): Promise<RunResult> {
     const repo = await this.authorized(id);
-    return this.git.cloneAzure(cwd, repo.cloneUrl, branch, destination);
+    return this.git.cloneAzure(cwd, repo.cloneUrl, branch, destination, extra);
   }
 
   private rest(url: string): Promise<RunResult> {

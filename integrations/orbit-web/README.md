@@ -169,8 +169,16 @@ No connector is needed to start: once you are signed in, the chat is open.
    seated in it, and **what the repository brings** (below). Then it sends your message.
 5. **In the chat**, Claude's text streams as it is written and every tool call shows its real input and output; a
    subagent's calls sit under the Agent call that started them. **Stop** interrupts the run (SIGINT to its process
-   group, then SIGTERM, then SIGKILL); an interrupted run is never shown as completed. The repository and branch are
-   the chat's for good; the model, effort and mode can change at any time and apply from the next message.
+   group, then SIGTERM, then SIGKILL); an interrupted run is never shown as completed. The repository is the chat's for
+   good; the model, effort and mode can change at any time and apply from the next message.
+   **The working branch** -- the branch button in the toolbar (`main → orbit-web/<id>`) -- is where Claude Code works
+   and commits. Between runs, choose another: a branch of the repository (fetched for it through the source's sign-in,
+   into a clone of Orbit Web's own outside the workspace, then into the workspace), a branch the workspace already has
+   (the chat's own, one Claude made), or **a new branch** made from the work as it is (what is uncommitted comes along).
+   The repository's default branch is listed and never offered; a switch to an existing branch waits until the work is
+   committed (or discarded); and no message is sent while a branch moves, nor does it move while Claude works. Changes
+   are then read against where the working branch left the branch the chat started from, and the move is a line in
+   the conversation.
 6. **Changes** (top right) lists what git says changed against the commit the chat started from (committed and
    uncommitted, untracked files, renames, conflicts, line counts) and shows each file's diff, highlighted. **Orbit**
    shows Orbit's own record of the work: the task, its lifecycle and stage, the checks the change is held to,

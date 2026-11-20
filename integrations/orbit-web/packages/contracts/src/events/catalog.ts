@@ -23,6 +23,7 @@ export const EVENT_CATALOG = {
   "workspace.preparing": { stream: "session", durable: true, summary: "A step of preparing the chat's workspace started." },
   "workspace.ready": { stream: "session", durable: true, summary: "The workspace is ready: the chat accepts messages." },
   "workspace.failed": { stream: "session", durable: true, summary: "Preparing the workspace failed at a step." },
+  "workspace.branch": { stream: "session", durable: true, summary: "The chat's working branch changed: another branch, or a new one from the work." },
   "project.inventory": { stream: "session", durable: true, summary: "The repository's skills, commands, agents and plugins, read on its first fetch." },
   "project.plugin": { stream: "session", durable: true, summary: "One project plugin changed state (installing, installed, loaded, failed)." },
   "session.status": { stream: "session", durable: true, summary: "The chat's status changed." },

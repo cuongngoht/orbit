@@ -55,6 +55,14 @@ export class SourcesService {
   clone(origin: Pick<RepositoryOrigin, "source" | "id" | "branch">, destination: string, cwd: string): Promise<RunResult> {
     return origin.source === "github" ? this.github.clone(origin.id, origin.branch, destination, cwd) : this.azure.clone(origin.id, origin.branch, destination, cwd);
   }
+
+  // One branch, fetched the way a workspace is cloned -- the source's own sign-in, a new directory, nothing of the
+  // workspace's configuration read -- as a bare clone of that branch alone that borrows what the workspace already
+  // has (`reference`), so only what is new comes over the network.
+  cloneBranch(origin: Pick<RepositoryOrigin, "source" | "id" | "branch">, destination: string, cwd: string, reference: string): Promise<RunResult> {
+    const extra = ["--bare", "--single-branch", "--reference-if-able", reference];
+    return origin.source === "github" ? this.github.clone(origin.id, origin.branch, destination, cwd, extra) : this.azure.clone(origin.id, origin.branch, destination, cwd, extra);
+  }
 }
 
 const sourceOf = (value: unknown): RepositorySource => {

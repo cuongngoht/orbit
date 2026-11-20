@@ -3,7 +3,8 @@
 import { Badge, MessageBar, MessageBarBody, Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
 import { Markdown } from "../../components/Markdown";
 import { EFFORT_LABELS, MODE_LABELS } from "@orbit-web/contracts";
-import { childrenOf, type MessageItem, type ProjectItem, type RunEndItem, type RunStartItem, type TimelineItem, type WorkspaceItem } from "./chatReducer";
+import { BranchFork16Regular } from "@fluentui/react-icons";
+import { childrenOf, type BranchItem, type MessageItem, type ProjectItem, type RunEndItem, type RunStartItem, type TimelineItem, type WorkspaceItem } from "./chatReducer";
 import { PlanCard } from "./PlanCard";
 import { ToolCard } from "./ToolCard";
 
@@ -53,6 +54,20 @@ function Workspace({ item }: { item: WorkspaceItem }) {
       </MessageBar>
     );
   return <Text size={200} className={s.meta}>Workspace ready on branch {item.workBranch}.</Text>;
+}
+
+// The working branch moved: said in the conversation, where the work before and after it sits.
+function Branch({ item }: { item: BranchItem }) {
+  const s = useStyles();
+  return (
+    <div className={s.line}>
+      <BranchFork16Regular className={s.meta} />
+      <Text size={200} className={s.meta}>
+        Now working on <code>{item.workBranch}</code>
+        {item.created ? `, a new branch from ${item.from ? `the work on ${item.from}` : "the work as it was"}.` : item.from ? ` (switched from ${item.from}).` : "."}
+      </Text>
+    </div>
+  );
 }
 
 function RunStart({ item }: { item: RunStartItem }) {
@@ -143,6 +158,8 @@ function Item({ item, items, actions }: { item: TimelineItem; items: TimelineIte
       return <RunEnd item={item} />;
     case "workspace":
       return <Workspace item={item} />;
+    case "branch":
+      return <Branch item={item} />;
     case "notice":
       return (
         <MessageBar intent="info">

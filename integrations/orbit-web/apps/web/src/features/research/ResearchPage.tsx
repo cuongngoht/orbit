@@ -138,8 +138,11 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
   const list = sources.data ?? [];
   const usable = list.filter((x) => sel.includes(x.id) && searchable(x)).length;
 
-  const openEvidence = (next: EvidenceTab) => {
+  // The evidence panel shows a tab, or a passage over it: both are set here, so a tab opened for a note or a finding
+  // is never hidden behind the passage opened before it.
+  const openEvidence = (next: EvidenceTab, shown: PreviewTarget | null = null) => {
     setTab(next);
+    setPreview(shown);
     if (isMobile) setMobilePanel("evidence");
     else if (!isWide) setDrawer(true);
     else setShowEvidence(true);
@@ -189,8 +192,7 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
     const c = citationsOf(messageId).find((x) => x.label === label);
     if (!c) return;
     setChosen(messageId);
-    setPreview(previewOf(c));
-    openEvidence("citations");
+    openEvidence("citations", previewOf(c));
   };
 
   if (detail.error && detail.data === null)
@@ -214,10 +216,7 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
         setNoteDraft({ title: "", body: "" });
         openEvidence("notes");
       }}
-      onPreview={(source) => {
-        setPreview({ sourceId: source.id, revisionId: null, chunkOrdinal: null, title: source.title, quote: null });
-        openEvidence(tab);
-      }}
+      onPreview={(source) => openEvidence(tab, { sourceId: source.id, revisionId: null, chunkOrdinal: null, title: source.title, quote: null })}
     />
   );
   const evidencePanel = (
@@ -255,7 +254,6 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
       onStop={() => void research.stop(sessionId).catch((err: unknown) => setError(errorText(err)))}
       onShowCitations={(id) => {
         setChosen(id);
-        setPreview(null);
         openEvidence("citations");
       }}
       onCite={cite}

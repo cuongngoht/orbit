@@ -63,6 +63,34 @@ describe("a research session", () => {
     expect(within(evidence).getByText(/Page 2/)).toBeInTheDocument();
   });
 
+  // Browsers now answer scrollIntoView() with a promise (CSSOM View); an effect that returned it handed React a
+  // "clean-up" that was no function, and closing the passage threw.
+  test("closing an opened passage leaves no error behind, whatever scrolling it answers", async () => {
+    wideViewport();
+    api();
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => Promise.resolve() as unknown as void);
+    const reported: unknown[] = [];
+    const onError = (e: ErrorEvent) => reported.push(e.error);
+    window.addEventListener("error", onError);
+    const logged = vi.spyOn(console, "error");
+    try {
+      show();
+      await userEvent.click(await screen.findByRole("button", { name: "Citation S1" }));
+      const evidence = screen.getByRole("region", { name: "Evidence" });
+      await within(evidence).findByText("Network egress is denied by default.");
+      expect(scroll).toHaveBeenCalled();
+      await userEvent.click(within(evidence).getByRole("button", { name: "Back" }));
+      await waitFor(() => expect(within(evidence).queryByRole("button", { name: "Back" })).toBeNull());
+      expect(evidence.querySelector("[data-cited]")).toBeNull();
+      expect(reported).toEqual([]);
+      expect(logged.mock.calls.filter((args) => args.some((a) => a instanceof TypeError))).toEqual([]);
+    } finally {
+      window.removeEventListener("error", onError);
+      scroll.mockRestore();
+      logged.mockRestore();
+    }
+  });
+
   test("the answer list's citations: each one says where it is from and opens it", async () => {
     wideViewport();
     api();
@@ -93,6 +121,23 @@ describe("a research session", () => {
     expect(screen.getByLabelText("writing")).toBeInTheDocument();
   });
 
+  test("a first question kept for later says what it waits for: a ready source, then the person who asks it", async () => {
+    wideViewport();
+    const a = api(researchDetail({ messages: [], draftQuestion: "What about egress?" }));
+    show();
+    expect(await screen.findByText(/Your first question is ready to ask: “What about egress\?”/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Ask it now" }));
+    await waitFor(() => expect(a.calls.find((c) => c.method === "POST" && c.path.endsWith("/messages"))?.body).toEqual({ text: "What about egress?" }));
+  });
+
+  test("a first question with no selected source ready waits for one, and cannot be asked yet", async () => {
+    wideViewport();
+    api(researchDetail({ messages: [], draftQuestion: "What about egress?", selection: [SOURCE_B] }));
+    show();
+    expect(await screen.findByText(/Your first question waits for a selected source to be ready: “What about egress\?”/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ask it now" })).toBeDisabled();
+  });
+
   test("an answer kept as a note: the notes tab opens with it, tied to its first citation", async () => {
     wideViewport();
     const a = api();
@@ -102,6 +147,18 @@ describe("a research session", () => {
     expect(within(form).getByRole("textbox", { name: "Title" })).toHaveValue("Egress is denied by default [S1].");
     await userEvent.click(within(form).getByRole("button", { name: "Save note" }));
     await waitFor(() => expect(a.calls.find((c) => c.method === "POST" && c.path.endsWith("/notes"))?.body).toMatchObject({ citationId: "c1111111-1111-4222-8333-444444444444", sessionId: RESEARCH_ID }));
+  });
+
+  test("an answer kept as a note while a passage is open: the note's form shows, not the passage", async () => {
+    wideViewport();
+    api();
+    show();
+    await userEvent.click(await screen.findByRole("button", { name: "Citation S1" }));
+    const evidence = screen.getByRole("region", { name: "Evidence" });
+    await within(evidence).findByRole("button", { name: "Back" });
+    await userEvent.click(screen.getByRole("button", { name: "Save as note" }));
+    expect(await within(evidence).findByRole("form", { name: "New note" })).toBeInTheDocument();
+    expect(within(evidence).queryByRole("button", { name: "Back" })).toBeNull();
   });
 
   test("below 1440px the evidence is a drawer; the sources stay beside the chat", async () => {

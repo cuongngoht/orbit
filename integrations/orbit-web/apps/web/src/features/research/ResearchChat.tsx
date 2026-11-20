@@ -161,7 +161,9 @@ export function ResearchChat(p: ResearchChatProps) {
               )}
               {p.draftQuestion && messages.length === 0 && (
                 <MessageBar intent="info">
-                  <MessageBarBody>Your first question is waiting for a source to be ready: “{p.draftQuestion}”</MessageBarBody>
+                  <MessageBarBody>
+                    {p.usable > 0 ? "Your first question is ready to ask" : "Your first question waits for a selected source to be ready"}: “{p.draftQuestion}”
+                  </MessageBarBody>
                   <MessageBarActions>
                     <Button size="small" disabled={p.usable === 0 || running} onClick={() => p.onAsk(p.draftQuestion as string)}>
                       Ask it now

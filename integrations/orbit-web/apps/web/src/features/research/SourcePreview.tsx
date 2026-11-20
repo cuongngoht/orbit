@@ -34,7 +34,10 @@ export function SourcePreview({ target, onBack }: { target: PreviewTarget; onBac
   const s = useStyles();
   const content = useResource<ResearchSourceContent>(() => research.content(target.sourceId, target.revisionId, target.chunkOrdinal), [target.sourceId, target.revisionId, target.chunkOrdinal]);
   const cited = useRef<HTMLDivElement>(null);
-  useEffect(() => cited.current?.scrollIntoView({ block: "center" }), [content.data]);
+  // A block, returning nothing: scrollIntoView() answers a promise now, and an effect's return is its clean-up.
+  useEffect(() => {
+    void cited.current?.scrollIntoView({ block: "center" });
+  }, [content.data]);
   const c = content.data;
   return (
     <section className={s.root} aria-label={`Source: ${target.title}`}>

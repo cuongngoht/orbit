@@ -99,7 +99,7 @@ export function NewResearchSession({ settings, onCreated }: { settings: Settings
           </Text>
           <ModelEffortPicker model={run.model} effort={run.effort} onModel={setModel} onEffort={setEffort} />
         </div>
-        <Field label="First question (optional)" hint="Asked as soon as a selected source is ready -- after you add sources to a new workspace.">
+        <Field label="First question (optional)" hint="Asked at once when a selected source is ready. In a new workspace it waits for you: add sources, then ask it.">
           <Textarea value={question} onChange={(_, d) => setQuestion(d.value)} rows={3} resize="vertical" maxLength={RESEARCH_LIMITS.questionLength} placeholder="What do these sources say about…" />
         </Field>
         <Text size={200} className={s.muted}>

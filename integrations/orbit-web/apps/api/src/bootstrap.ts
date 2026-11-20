@@ -13,6 +13,13 @@ import { accessGate, hostGuard, mutationGuard, securityHeaders } from "./infra/s
 
 export const BODY_LIMIT = "256kb";
 
+// How the Nest application is made, in production and in the tests alike. `forceCloseConnections`: a stop ends the
+// connections still open -- the streams a page holds (it reconnects to the next start from the last event it saw).
+// Without it the HTTP server waits for them for ever, so the shutdown hooks after it never run (the databases are
+// never closed) and the container is killed when its grace period runs out. The runs are stopped before that, by
+// their own `beforeApplicationShutdown`.
+export const NEST_OPTIONS = { bodyParser: false, forceCloseConnections: true } as const;
+
 export function configureApp(app: NestExpressApplication, config: AppConfig): NestExpressApplication {
   app.disable("x-powered-by");
   app.set("etag", false);
@@ -37,6 +44,6 @@ export function configureApp(app: NestExpressApplication, config: AppConfig): Ne
 }
 
 export async function createApp(config: AppConfig): Promise<INestApplication> {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule.forRoot(config), { bodyParser: false, logger: new Logger() });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule.forRoot(config), { ...NEST_OPTIONS, logger: new Logger() });
   return configureApp(app, config);
 }

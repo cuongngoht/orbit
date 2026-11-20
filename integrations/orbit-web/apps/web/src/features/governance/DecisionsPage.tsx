@@ -1,7 +1,7 @@
 // POLICY DECISIONS: every decision the Constitution made, newest first -- who asked (a person, an agent, nobody
 // verified), for what, under which revision, what it answered and why, and where it is held (boundary, control,
 // runtime). Each is an audit record: its id opens it in the audit timeline.
-import { Button, MessageBar, MessageBarBody, Select, Spinner, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Text } from "@fluentui/react-components";
+import { Button, MessageBar, MessageBarBody, Spinner, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Text } from "@fluentui/react-components";
 import type { DecisionList } from "@orbit-web/contracts";
 import { useState } from "react";
 import type { GovernancePage } from "../../hooks/useHashRoute";
@@ -9,6 +9,13 @@ import { useResource } from "../../hooks/useResource";
 import { get } from "../../services/api";
 import { useAppEvent } from "../../services/events/AppEvents";
 import { Card, Word, short, useParts, when } from "./parts";
+
+const VERDICTS = [
+  { value: "", label: "All verdicts" },
+  { value: "allow", label: "Allow" },
+  { value: "require_approval", label: "Requires approval" },
+  { value: "deny", label: "Deny" },
+] as const;
 
 export function DecisionsPage({ go }: { go: (page: GovernancePage, item?: string | null) => void }) {
   const s = useParts();
@@ -20,12 +27,21 @@ export function DecisionsPage({ go }: { go: (page: GovernancePage, item?: string
       <Card
         title="Decisions"
         actions={
-          <Select aria-label="Verdict" value={verdict} onChange={(_, d) => setVerdict(d.value)}>
-            <option value="">every verdict</option>
-            <option value="allow">allow</option>
-            <option value="require_approval">requires approval</option>
-            <option value="deny">deny</option>
-          </Select>
+          <div className={s.pillBar} role="group" aria-label="Verdict">
+            {VERDICTS.map((v) => (
+              <Button
+                key={v.value || "all"}
+                size="small"
+                shape="circular"
+                appearance={verdict === v.value ? "primary" : "subtle"}
+                className={s.filterPill}
+                aria-pressed={verdict === v.value}
+                onClick={() => setVerdict(v.value)}
+              >
+                {v.label}
+              </Button>
+            ))}
+          </div>
         }
       >
         {list.data === null ? (
@@ -37,9 +53,11 @@ export function DecisionsPage({ go }: { go: (page: GovernancePage, item?: string
             <Spinner />
           )
         ) : list.data.decisions.length === 0 ? (
-          <Text className={s.muted}>No decision yet.</Text>
+          <div className={s.empty}>
+            <Text>No decision yet.</Text>
+          </div>
         ) : (
-          <div className={s.scroll}>
+          <div className={s.tableWrap}>
             <Table size="small" aria-label="Decisions">
               <TableHeader>
                 <TableRow>

@@ -15,7 +15,6 @@ import {
   Input,
   MessageBar,
   MessageBarBody,
-  Select,
   Spinner,
   Table,
   TableBody,
@@ -24,6 +23,7 @@ import {
   TableHeaderCell,
   TableRow,
   Text,
+  makeStyles,
 } from "@fluentui/react-components";
 import { ACTION_KINDS, ENVIRONMENTS, PRINCIPAL_TYPES, checkConstitution, type Constitution, type Impact } from "@orbit-web/governance-core";
 import type { ConstitutionOverview, OperatorList, RevisionView, SimulateResult } from "@orbit-web/contracts";
@@ -34,9 +34,18 @@ import { errorText, get, send } from "../../services/api";
 import { useOperator } from "../../services/operator";
 import { useAppEvent } from "../../services/events/AppEvents";
 import { ConstitutionTable } from "./ConstitutionTable";
-import { Card, Word, short, useParts, when, who } from "./parts";
+import { Card, CleanSelect, Word, short, useParts, when, who } from "./parts";
 
 const EDITABLE = new Set(["DRAFT", "VALIDATED", "REJECTED"]);
+
+const useStyles = makeStyles({
+  simGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+    gap: "10px",
+    alignItems: "end",
+  },
+});
 
 // The document as the table can show it: a Constitution the shared rules accept, or why it is not one.
 function tableable(value: unknown): { document: Constitution | null; problem: string | null } {
@@ -55,16 +64,18 @@ function ImpactView({ impact }: { impact: Impact }) {
       {impact.reasons.length === 0 ? (
         <Text className={s.muted}>It loosens nothing against the revision in effect{impact.narrowed.length > 0 ? `, and narrows ${impact.narrowed.length} answer(s)` : ""}.</Text>
       ) : (
-        <ul className={s.list}>
-          {impact.reasons.map((r) => (
-            <li key={r}>
-              <Text>{r}</Text>
-            </li>
-          ))}
-        </ul>
+        <div className={s.inset}>
+          <ul className={s.list}>
+            {impact.reasons.map((r) => (
+              <li key={r}>
+                <Text>{r}</Text>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       {impact.widened.length > 0 && (
-        <div className={s.scroll}>
+        <div className={s.tableWrap}>
           <Table size="small" aria-label="What it loosens">
             <TableHeader>
               <TableRow>
@@ -111,6 +122,7 @@ function ImpactView({ impact }: { impact: Impact }) {
 
 function Simulation({ revisionId }: { revisionId: string | null }) {
   const s = useParts();
+  const styles = useStyles();
   const [principalType, setPrincipalType] = useState<string>("agent");
   const [action, setAction] = useState<string>("repository.push");
   const [resource, setResource] = useState("");
@@ -124,38 +136,25 @@ function Simulation({ revisionId }: { revisionId: string | null }) {
       .catch((err: unknown) => setError(errorText(err)));
   };
   return (
-    <Card title="Simulate a decision">
-      <Text size={200} className={s.muted}>
-        Asks this revision what it would decide. Nothing is recorded and nothing is allowed by asking.
-      </Text>
-      <div className={s.row}>
+    <Card title="Simulate a decision" description="Asks this revision what it would decide. Nothing is recorded and nothing is allowed by asking.">
+      <div className={styles.simGrid}>
         <Field label="Who">
-          <Select value={principalType} onChange={(_, d) => setPrincipalType(d.value)}>
-            {PRINCIPAL_TYPES.map((p) => (
-              <option key={p}>{p}</option>
-            ))}
-          </Select>
+          {(fp) => <CleanSelect fieldProps={fp} value={principalType} onChange={setPrincipalType} options={PRINCIPAL_TYPES.map((p) => ({ value: p, label: p }))} />}
         </Field>
         <Field label="Action">
-          <Select value={action} onChange={(_, d) => setAction(d.value)}>
-            {ACTION_KINDS.map((a) => (
-              <option key={a}>{a}</option>
-            ))}
-          </Select>
+          {(fp) => <CleanSelect fieldProps={fp} value={action} onChange={setAction} options={ACTION_KINDS.map((a) => ({ value: a, label: a }))} />}
         </Field>
         <Field label="Resource">
           <Input value={resource} onChange={(_, d) => setResource(d.value)} placeholder="e.g. api.anthropic.com:443" />
         </Field>
         <Field label="Environment">
-          <Select value={environment} onChange={(_, d) => setEnvironment(d.value)}>
-            {ENVIRONMENTS.map((e) => (
-              <option key={e}>{e}</option>
-            ))}
-          </Select>
+          {(fp) => <CleanSelect fieldProps={fp} value={environment} onChange={setEnvironment} options={ENVIRONMENTS.map((e) => ({ value: e, label: e }))} />}
         </Field>
-        <Button onClick={ask} style={{ alignSelf: "flex-end" }}>
-          Ask
-        </Button>
+        <div>
+          <Button appearance="secondary" onClick={ask} style={{ width: "100%" }}>
+            Ask
+          </Button>
+        </div>
       </div>
       {error && (
         <MessageBar intent="error">
@@ -163,13 +162,15 @@ function Simulation({ revisionId }: { revisionId: string | null }) {
         </MessageBar>
       )}
       {result && (
-        <div className={s.row} aria-label="Simulated decision">
-          <Word value={result.evaluation.verdict} />
-          <Text size={200}>held by: {result.evaluation.enforcement}</Text>
-          <Text size={200} className={s.mono}>
-            {result.evaluation.reasonCodes.join(", ")}
-            {result.evaluation.matchedRules.length > 0 ? ` · ${result.evaluation.matchedRules.join(", ")}` : ""}
-          </Text>
+        <div className={s.inset} aria-label="Simulated decision">
+          <div className={s.row}>
+            <Word value={result.evaluation.verdict} />
+            <Text size={200}>held by: {result.evaluation.enforcement}</Text>
+            <Text size={200} className={s.mono}>
+              {result.evaluation.reasonCodes.join(", ")}
+              {result.evaluation.matchedRules.length > 0 ? ` · ${result.evaluation.matchedRules.join(", ")}` : ""}
+            </Text>
+          </div>
         </div>
       )}
     </Card>
@@ -204,11 +205,13 @@ function RevisionDetail({ revision, names, onChanged }: { revision: RevisionView
           {revision.name} <Word value={revision.state} /> {revision.risk && <Word value={revision.risk} label={`${revision.risk} risk`} />} {revision.revision !== null && <Text>revision {revision.revision}</Text>}
         </>
       }
+      description={
+        <>
+          Digest <span className={s.codeChip}>{short(revision.digest, 16)}</span> · from {revision.source}
+          {revision.basedOn ? ` (${short(revision.basedOn, 13)})` : ""} · written by {revision.authors.map((a) => who(a, names)).join(", ")}
+        </>
+      }
     >
-      <Text size={200} className={s.muted}>
-        Digest <span className={s.mono}>{revision.digest}</span> · from {revision.source}
-        {revision.basedOn ? ` (${short(revision.basedOn, 13)})` : ""} · written by {revision.authors.map((a) => who(a, names)).join(", ")}
-      </Text>
       {revision.errors.length > 0 && (
         <MessageBar intent="warning">
           <MessageBarBody>{revision.errors.join("; ")}</MessageBarBody>
@@ -270,16 +273,18 @@ function RevisionDetail({ revision, names, onChanged }: { revision: RevisionView
       )}
       {revision.impact && <ImpactView impact={revision.impact} />}
       {revision.history.length > 0 && (
-        <ul className={s.list} aria-label="History">
-          {revision.history.map((h) => (
-            <li key={h.eventId}>
-              <Text size={200}>
-                {when(h.at)} · {h.what} by {who(h.by, names)}
-                {h.digest ? ` · ${short(h.digest)}` : ""}
-              </Text>
-            </li>
-          ))}
-        </ul>
+        <div className={s.inset}>
+          <ul className={s.list} aria-label="History">
+            {revision.history.map((h) => (
+              <li key={h.eventId}>
+                <Text size={200}>
+                  {when(h.at)} · {h.what} by {who(h.by, names)}
+                  {h.digest ? ` · ${short(h.digest)}` : ""}
+                </Text>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       <Dialog open={confirm !== null} onOpenChange={(_, d) => !d.open && setConfirm(null)}>
         <DialogSurface>
@@ -349,7 +354,7 @@ export function ConstitutionPage({ item, go }: { item: string | null; go: (page:
             <MessageBarBody>{error}</MessageBarBody>
           </MessageBar>
         )}
-        <div className={s.scroll}>
+        <div className={s.tableWrap}>
           <Table size="small" aria-label="Revisions">
             <TableHeader>
               <TableRow>

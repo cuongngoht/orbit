@@ -1,7 +1,7 @@
 // ONE PROTECTED ACTION waiting for -- or decided by -- a person: exactly what it is (the action's bound parameters and
 // their fingerprint), what it would change (read from Orbit Web's own copy of the repository, never the agent's
 // workspace), and the decision. Approving binds the fingerprint shown here; for a push, Orbit Web then pushes at once.
-import { Button, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, MessageBar, MessageBarBody, Text } from "@fluentui/react-components";
+import { Button, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, MessageBar, MessageBarBody, Text, tokens } from "@fluentui/react-components";
 import type { ApprovalView } from "@orbit-web/contracts";
 import { useState } from "react";
 import { errorText, send } from "../../services/api";
@@ -29,42 +29,50 @@ export function ApprovalCard({ approval, onChanged, inline = false }: { approval
   const p = approval.params;
   const params = Object.entries(p).filter(([k]) => !["sourceRef", "sessionId"].includes(k));
   return (
-    <Card title={<>{approval.summary} <Word value={approval.state} /></>}>
-      <Text size={200} className={s.muted}>
-        {approval.action} · asked {when(approval.requestedAt)} by {approval.requestedBy} · {approval.state === "pending" ? `waits until ${when(approval.expiresAt)}` : approval.decidedAt ? `decided ${when(approval.decidedAt)}` : ""}
-      </Text>
-      <table aria-label="What exactly is approved">
-        <tbody>
-          {params.map(([k, v]) => (
-            <tr key={k}>
-              <td style={{ paddingRight: 12, verticalAlign: "top" }}>
-                <Text size={200}>{k}</Text>
-              </td>
-              <td>
-                <Text size={200} className={s.mono}>
-                  {v === null ? "none (a new branch)" : String(v)}
+    <Card
+      title={
+        <>
+          {approval.summary} <Word value={approval.state} />
+        </>
+      }
+      description={`${approval.action} · asked ${when(approval.requestedAt)} by ${approval.requestedBy}${approval.state === "pending" ? ` · waits until ${when(approval.expiresAt)}` : approval.decidedAt ? ` · decided ${when(approval.decidedAt)}` : ""}`}
+    >
+      <div className={s.inset}>
+        <table aria-label="What exactly is approved" style={{ width: "100%", borderCollapse: "collapse" }}>
+          <tbody>
+            {params.map(([k, v]) => (
+              <tr key={k}>
+                <td style={{ paddingRight: 14, paddingTop: 3, paddingBottom: 3, verticalAlign: "top", width: "120px" }}>
+                  <Text size={200} className={s.muted}>
+                    {k}
+                  </Text>
+                </td>
+                <td style={{ paddingTop: 3, paddingBottom: 3 }}>
+                  <Text size={200} className={s.mono}>
+                    {v === null ? "none (a new branch)" : String(v)}
+                  </Text>
+                </td>
+              </tr>
+            ))}
+            <tr>
+              <td style={{ paddingRight: 14, paddingTop: 4, paddingBottom: 2, verticalAlign: "top" }}>
+                <Text size={200} weight="semibold">
+                  fingerprint
                 </Text>
               </td>
+              <td style={{ paddingTop: 4, paddingBottom: 2 }}>
+                <span className={s.codeChip}>{approval.fingerprint}</span>
+              </td>
             </tr>
-          ))}
-          <tr>
-            <td style={{ paddingRight: 12 }}>
-              <Text size={200} weight="semibold">
-                fingerprint
-              </Text>
-            </td>
-            <td>
-              <Text size={200} className={s.mono}>
-                {approval.fingerprint}
-              </Text>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+          </tbody>
+        </table>
+      </div>
       {approval.change && (
         <>
           <Text size={200}>
-            {approval.change.commits} commit(s) · {approval.change.files} file(s) · +{approval.change.insertions} −{approval.change.deletions}
+            {approval.change.commits} commit(s) · {approval.change.files} file(s) ·{" "}
+            <span style={{ color: tokens.colorPaletteGreenForeground1 }}>+{approval.change.insertions}</span>{" "}
+            <span style={{ color: tokens.colorPaletteRedForeground1 }}>−{approval.change.deletions}</span>
           </Text>
           {approval.change.diffstat && <pre className={s.pre}>{approval.change.diffstat}</pre>}
         </>

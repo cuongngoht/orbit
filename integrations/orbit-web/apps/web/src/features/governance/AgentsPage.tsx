@@ -2,14 +2,14 @@
 // the strict profile. A workspace nobody governs runs as Orbit Web always did (legacy); a governed one runs only as the
 // Constitution allows, bound to its agent. Moving a governed workspace to another agent, or releasing it, is an
 // administrator's.
-import { Button, Field, Input, MessageBar, MessageBarBody, Select, Spinner, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Text } from "@fluentui/react-components";
+import { Button, Field, Input, MessageBar, MessageBarBody, Spinner, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Text } from "@fluentui/react-components";
 import type { AgentList, WorkspaceList } from "@orbit-web/contracts";
 import { useState } from "react";
 import { useResource } from "../../hooks/useResource";
 import { errorText, get, send } from "../../services/api";
 import { useOperator } from "../../services/operator";
 import { useAppEvent } from "../../services/events/AppEvents";
-import { Card, Word, short, useParts, when } from "./parts";
+import { Card, CleanSelect, Word, short, useParts, when } from "./parts";
 
 export function AgentsPage() {
   const s = useParts();
@@ -32,6 +32,7 @@ export function AgentsPage() {
   };
   if (agents.data === null || workspaces.data === null) return agents.error || workspaces.error ? <MessageBar intent="error"><MessageBarBody>{agents.error ?? workspaces.error}</MessageBarBody></MessageBar> : <Spinner label="Reading agents and workspaces…" />;
   const active = agents.data.agents.filter((a) => a.status === "active");
+  const agentOptions = active.map((a) => ({ value: a.id, label: a.name }));
   return (
     <div className={s.page}>
       {error && (
@@ -40,7 +41,7 @@ export function AgentsPage() {
         </MessageBar>
       )}
       <Card title="Agents">
-        <div className={s.scroll}>
+        <div className={s.tableWrap}>
           <Table size="small" aria-label="Agents">
             <TableHeader>
               <TableRow>
@@ -95,11 +96,11 @@ export function AgentsPage() {
           </div>
         )}
       </Card>
-      <Card title="Workspaces">
-        <Text size={200} className={s.muted}>
-          A governed workspace runs only where its agent's isolation was shown (or the Constitution says it is optional), bound to its agent and the revision in effect.
-        </Text>
-        <div className={s.scroll}>
+      <Card
+        title="Workspaces"
+        description="A governed workspace runs only where its agent's isolation was shown (or the Constitution says it is optional), bound to its agent and the revision in effect."
+      >
+        <div className={s.tableWrap}>
           <Table size="small" aria-label="Workspaces">
             <TableHeader>
               <TableRow>
@@ -126,13 +127,12 @@ export function AgentsPage() {
                     <div className={s.row}>
                       {can("workspaces.govern") && w.status !== "deleted" && active.length > 0 && (
                         <>
-                          <Select aria-label={`Agent for ${w.title}`} value={choice[w.sessionId] ?? w.agentId ?? active[0]?.id ?? ""} onChange={(_, d) => setChoice({ ...choice, [w.sessionId]: d.value })}>
-                            {active.map((a) => (
-                              <option key={a.id} value={a.id}>
-                                {a.name}
-                              </option>
-                            ))}
-                          </Select>
+                          <CleanSelect
+                            ariaLabel={`Agent for ${w.title}`}
+                            value={choice[w.sessionId] ?? w.agentId ?? active[0]?.id ?? ""}
+                            options={agentOptions}
+                            onChange={(value) => setChoice({ ...choice, [w.sessionId]: value })}
+                          />
                           <Button size="small" onClick={() => act("PUT", `/api/governance/workspaces/${w.sessionId}`, { agentId: choice[w.sessionId] ?? w.agentId ?? active[0]?.id, profile: "strict" })}>
                             {w.scope === "GOVERNED_WORKSPACE" ? "Update" : "Govern"}
                           </Button>

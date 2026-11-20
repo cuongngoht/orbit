@@ -128,12 +128,14 @@ attached there) -- not on a person's laptop, and never in a browser or a reposit
 
 ### Back up and restore
 
-Everything is in the volume. Stop the container (so SQLite's write-ahead log is folded in), archive the volume, start
-it again:
+Everything is in the volume. Stop the container (nothing writes while it is archived; a stop closes the databases and
+folds their write-ahead logs in), archive the whole volume -- never `orbit-web.db` alone: an `orbit-web.db-wal` beside it
+is part of it -- into a directory of your own outside any repository (the archive holds sign-ins), start it again:
 
 ```bash
+mkdir -m 700 -p ~/orbit-web-backups
 docker compose stop orbit-web
-docker run --rm -v orbit-web_orbit-web-data:/data:ro -v "$PWD":/backup debian:bookworm-slim \
+docker run --rm -v orbit-web_orbit-web-data:/data:ro -v ~/orbit-web-backups:/backup debian:bookworm-slim \
   tar -C /data -czf /backup/orbit-web-data-$(date +%F).tgz .
 docker compose start orbit-web
 ```

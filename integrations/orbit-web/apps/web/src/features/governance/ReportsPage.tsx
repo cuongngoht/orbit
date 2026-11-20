@@ -53,9 +53,11 @@ export function ReportsPage({ item, go }: { item: string | null; go: (page: Gove
         {list.data === null ? (
           <Spinner />
         ) : list.data.reports.length === 0 ? (
-          <Text className={s.muted}>No report yet.</Text>
+          <div className={s.empty}>
+            <Text>No report yet.</Text>
+          </div>
         ) : (
-          <div className={s.scroll}>
+          <div className={s.tableWrap}>
             <Table size="small" aria-label="Reports">
               <TableHeader>
                 <TableRow>

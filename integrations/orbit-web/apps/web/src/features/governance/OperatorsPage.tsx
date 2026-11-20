@@ -130,7 +130,7 @@ export function OperatorsPage() {
   return (
     <div className={s.page}>
       <Card title="Operators">
-        <div className={s.scroll}>
+        <div className={s.tableWrap}>
           <Table size="small" aria-label="Operators">
             <TableHeader>
               <TableRow>

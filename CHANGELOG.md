@@ -26,6 +26,11 @@ nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
   sign-in (a model a program gives an account appears for it alone), and every choice is held to them.
 - **The egress proxy refuses IPv6 that carries IPv4** (IPv4-compatible `::/96`, NAT64 `64:ff9b::/96`, 6to4 `2002::/16`):
   the one definition of "not the public internet" that the proxy and research's URL import share.
+- **A stop no longer waits for an open page** (found while verifying research's restart): the HTTP server waited for the
+  stream every open page holds, so no shutdown hook after it ran -- the databases were never closed, their write-ahead
+  logs stayed beside them, and the container was killed at its 20-second grace. A stop now ends those connections (a
+  page reconnects to the next start from the last event it saw) after the runs are stopped, closes the databases and
+  exits in about a second.
 - **Governance: operators, verified by Orbit Web** (ADR 0063). The Claude account opens the workspace; governance is
   administered by operators -- a local credential (scrypt), a server-side session (HttpOnly, SameSite=Strict, idle and
   absolute expiry, revocation, a CSRF token), six roles read on every request, never from a request. The first owner

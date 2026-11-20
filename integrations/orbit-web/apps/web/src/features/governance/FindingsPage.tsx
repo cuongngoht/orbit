@@ -30,7 +30,7 @@ function Finding({ f, go, onChanged }: { f: FindingView; go: (page: GovernancePa
       </Text>
       <div className={s.row}>
         {f.evidenceIds.slice(0, 12).map((id) => (
-          <Button key={id} size="small" appearance="outline" onClick={() => go("audit", id)}>
+          <Button key={id} size="small" shape="circular" appearance="outline" onClick={() => go("audit", id)}>
             {short(id.replace(/^evt-/, ""), 8)}
           </Button>
         ))}
@@ -76,7 +76,11 @@ export function FindingsPage({ go }: { go: (page: GovernancePage, item?: string 
           <MessageBarBody>The audit chain does not hold at record {list.data.chain.brokenAt}: findings after it stand on records that may have been changed.</MessageBarBody>
         </MessageBar>
       )}
-      {list.data.findings.length === 0 && <Text className={s.muted}>No finding: nothing in the record fits a rule.</Text>}
+      {list.data.findings.length === 0 && (
+        <div className={s.empty}>
+          <Text>No finding: nothing in the record fits a rule.</Text>
+        </div>
+      )}
       {list.data.findings.map((f) => (
         <Finding key={f.id} f={f} go={go} onChanged={() => void list.reload()} />
       ))}

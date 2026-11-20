@@ -1,7 +1,7 @@
 // A restart of Orbit Web (the container restarting) keeps history, workspaces and the Claude conversation, and
 // reports a run it cut short as interrupted -- never as still running, never as completed, never started again.
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
@@ -39,6 +39,24 @@ test("a graceful restart interrupts the active run, and the next start shows it 
     assert.equal(second.fake.children.length, 0, "nothing was started again on its own");
   } finally {
     await second.close();
+  }
+});
+
+// A page holds its app stream open for as long as it is open. A stop must end it: the HTTP server waits for every open
+// connection before the shutdown hooks after it run, so with one open the databases were never closed (their
+// write-ahead logs left beside them, which a backup has to carry) and the container was killed at its grace period.
+test("a stop ends the streams a page holds open, closes the database and folds its write-ahead log in", async () => {
+  const first = await startHarness();
+  const stream = await first.stream("/api/events");
+  const stopped = await Promise.race([first.close(true).then(() => true), new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 5_000).unref())]);
+  // A stop that waits is ended here, so the assertion below fails instead of the suite hanging.
+  if (!stopped) first.app.getHttpServer().closeAllConnections();
+  stream.close();
+  try {
+    assert.equal(stopped, true, "the stop waited for the open stream");
+    assert.equal(existsSync(join(first.dataDir, "app", "orbit-web.db-wal")), false, "the database was closed and its write-ahead log folded in");
+  } finally {
+    rmSync(first.dataDir, { recursive: true, force: true });
   }
 });
 

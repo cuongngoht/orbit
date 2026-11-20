@@ -1,15 +1,19 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { Customizations } from "@orbit-web/contracts";
+import type { Customizations, GovernanceOverview } from "@orbit-web/contracts";
+import { defaultConstitution } from "@orbit-web/governance-core";
 import { useState } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { App } from "./App";
 import { ChatScreen } from "./features/chat/ChatScreen";
+import { ConstitutionTable } from "./features/governance/ConstitutionTable";
+import { GovernanceView } from "./features/governance/GovernanceView";
 import { NewSession } from "./features/newSession/NewSession";
 import { SettingsDialog } from "./features/settings/SettingsDialog";
 import type { SettingsSection } from "./hooks/useHashRoute";
+import { resetOperatorStore } from "./services/operator";
 import { fakeApi } from "./testing/fakeApi";
-import { SESSION_ID, claudeStatus, inventory, sessionDetail, sessionSummary, settings, setupStatus, sources } from "./testing/fixtures";
+import { ORG, SESSION_ID, claudeStatus, governanceState, inventory, sessionDetail, sessionSummary, settings, setupStatus, sources } from "./testing/fixtures";
 import { renderLive, renderUi } from "./testing/render";
 
 const originalMatchMedia = window.matchMedia;
@@ -208,5 +212,45 @@ describe("responsive mobile-first layout", () => {
     expect(screen.getByRole("button", { name: "Open navigation" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Orbit" }));
     expect(await screen.findByRole("complementary", { name: "Changes and Orbit" })).toBeInTheDocument();
+  });
+
+  test("governance overview KPI cards jump straight to the right page and use pill navigation on mobile", async () => {
+    mobileViewport();
+    resetOperatorStore();
+    const overview: GovernanceOverview = {
+      organization: ORG,
+      effective: null,
+      counts: { operators: 2, agents: 1, governedWorkspaces: 1, pendingApprovals: 3, openFindings: 0, revisionsInReview: 1 },
+      isolation: { deployment: "single", state: "not_proven", checkedAt: null, checks: [], detail: "Single container." },
+      audit: { count: 4, head: "h".repeat(64), lastVerification: null },
+    };
+    fakeApi()
+      .on("GET", "/api/operator/state", () => governanceState("organization_owner"))
+      .on("GET", "/api/governance/overview", () => overview);
+
+    const go = vi.fn();
+    renderLive(<GovernanceView page="overview" item={null} go={go} onOpenNav={() => undefined} />);
+
+    const kpi = await screen.findByRole("button", { name: /Approvals waiting/ });
+    expect(kpi.textContent).toContain("3");
+    await userEvent.click(kpi);
+    expect(go).toHaveBeenCalledWith("approvals");
+
+    const nav = screen.getByRole("navigation", { name: "Governance" });
+    expect(within(nav).getByRole("button", { name: "Overview" })).toHaveAttribute("aria-current", "page");
+  });
+
+  test("mobile ConstitutionTable uses stacked cards while keeping action checkboxes intact", async () => {
+    mobileViewport();
+    const onChange = vi.fn();
+    renderUi(<ConstitutionTable document={defaultConstitution(ORG.id)} editable onChange={onChange} />);
+
+    expect(screen.queryByRole("table", { name: "What may happen" })).toBeNull();
+    const webAllowed = screen.getByRole("checkbox", { name: "Allowed: tool.web" }) as HTMLInputElement;
+    expect(webAllowed.checked).toBe(false);
+    expect(screen.getByRole("checkbox", { name: "A person approves first: repository.push" })).toBeInTheDocument();
+
+    await userEvent.click(webAllowed);
+    expect(onChange).toHaveBeenCalled();
   });
 });

@@ -11,7 +11,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { MUTATION_HEADER, OPERATOR_CSRF_HEADER, type GovernanceState } from "@orbit-web/contracts";
 import { AppModule } from "../app.module.js";
-import { configureApp } from "../bootstrap.js";
+import { configureApp, NEST_OPTIONS } from "../bootstrap.js";
 import { DEFAULT_LIMITS, loadConfig, type AppConfig } from "../config/config.js";
 import { ensureDataDirs } from "../config/data-dirs.js";
 import { PROCESS_PORT } from "../core/tokens.js";
@@ -129,7 +129,7 @@ export async function startHarness(o: HarnessOptions = {}): Promise<Harness> {
     .useValue(announcer);
   for (const [token, value] of o.overrides ?? []) builder = builder.overrideProvider(token).useValue(value);
   const moduleRef = await builder.compile();
-  const app = moduleRef.createNestApplication<NestExpressApplication>({ bodyParser: false, logger: false });
+  const app = moduleRef.createNestApplication<NestExpressApplication>({ ...NEST_OPTIONS, logger: false });
   configureApp(app, config);
   await app.listen(0, "127.0.0.1");
   const port = (app.getHttpServer().address() as AddressInfo).port;

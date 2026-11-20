@@ -21,16 +21,20 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import type { ProjectInventory, ProjectPlugin } from "@orbit-web/contracts";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { AppConfig } from "../../config/config.js";
 import { EventBus } from "../../core/events/event-bus.js";
-import { APP_CONFIG, PROCESS_PORT } from "../../core/tokens.js";
-import { claudeEnv } from "../../infra/process/env.js";
+import { AGENT_PROCESS_PORT, APP_CONFIG } from "../../core/tokens.js";
+import { baseEnv, claudeEnv } from "../../infra/process/env.js";
 import { endedHow, succeeded, type ProcessPort, type RunResult } from "../../infra/process/process.port.js";
 import { tail } from "../../infra/security/redact.js";
 import { ProjectStore, type SessionRecord } from "../../infra/storage/stores.js";
 import { SettingsService } from "../settings/settings.module.js";
 import { isRegularDir, readRepository, within, type DeclaredMarketplace, type Readout } from "./inventory.js";
-import { buildProjectPlugin } from "./project-plugin.js";
+import { buildProjectPlugin, type BuiltPlugin } from "./project-plugin.js";
+
+// The same reading, as a program the agent's placement runs (runner/project-load.ts): beside this module in the build.
+const PROJECT_LOAD = fileURLToPath(new URL("../../runner/project-load.js", import.meta.url));
 
 const CLI_TIMEOUT_MS = 3 * 60_000;
 
@@ -58,7 +62,7 @@ export class ProjectService {
 
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
-    @Inject(PROCESS_PORT) private readonly process: ProcessPort,
+    @Inject(AGENT_PROCESS_PORT) private readonly process: ProcessPort,
     @Inject(ProjectStore) private readonly store: ProjectStore,
     @Inject(EventBus) private readonly bus: EventBus,
     @Inject(SettingsService) private readonly settings: SettingsService,
@@ -75,16 +79,24 @@ export class ProjectService {
   // The "project" step of preparing a workspace. Never throws: what fails is said in the inventory.
   async load(session: SessionRecord): Promise<ProjectInventory> {
     try {
-      const readout = readRepository(session.workspacePath);
       const prefs = this.settings.get();
       const runPlugins = prefs.projectPlugins;
-      const built = prefs.projectSkills ? buildProjectPlugin(session.workspacePath, this.pluginDir(session.id), session.repository) : null;
+      const { readout, built } = await this.read(session, prefs.projectSkills);
       const inventory = this.save(session.id, this.inventoryOf(session, readout, runPlugins, built?.built === true, built?.truncated === true));
       return runPlugins ? await this.installDeclared(session, inventory, readout.marketplaces) : inventory;
     } catch (err) {
       this.logger.warn(`the project of ${session.id} could not be read: ${err instanceof Error ? err.message : String(err)}`);
       return this.save(session.id, this.inventoryOf(session, null, false, false, false));
     }
+  }
+
+  // The repository's project and the session's project plugin: read in this process (single deployment), or by the
+  // agent's own placement (governed) -- the control plane never reads or writes what the agent can write.
+  private async read(session: SessionRecord, build: boolean): Promise<{ readout: Readout; built: BuiltPlugin | null }> {
+    if (this.config.governance.deployment !== "governed") return { readout: readRepository(session.workspacePath), built: build ? buildProjectPlugin(session.workspacePath, this.pluginDir(session.id), session.repository) : null };
+    const r = await this.process.run(this.config.binaries.node, [PROJECT_LOAD, session.workspacePath, this.pluginDir(session.id), session.repository ?? "", build ? "1" : "0"], { cwd: "/", env: baseEnv(this.config), timeoutMs: CLI_TIMEOUT_MS, maxOutputBytes: 8 * 1024 * 1024 });
+    if (!succeeded(r)) throw new Error(`the project could not be read (${endedHow(r)}): ${tail(r.stderr, 2)}`);
+    return JSON.parse(r.stdout) as { readout: Readout; built: BuiltPlugin | null };
   }
 
   // What a run of this chat loads beside Orbit: the project plugin, the repository's own plugins, and the declared

@@ -5,6 +5,8 @@ import { Inject, Injectable } from "@nestjs/common";
 import { checkCreateSession, checkUpdateSession, CLAUDE_SIGN_IN_REQUIRED, type SessionDetail, type SessionSummary } from "@orbit-web/contracts";
 import { randomUUID } from "node:crypto";
 import { rmSync } from "node:fs";
+import { AgentFs } from "../../infra/process/agent-fs.js";
+import { MirrorService } from "../sources/mirror.service.js";
 import { join } from "node:path";
 import type { AppConfig } from "../../config/config.js";
 import { EventBus } from "../../core/events/event-bus.js";
@@ -60,6 +62,8 @@ export class SessionsService {
     @Inject(ClaudeRunnerService) private readonly runner: ClaudeRunnerService,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(RegistryService) private readonly registry: RegistryService,
+    @Inject(AgentFs) private readonly files: AgentFs,
+    @Inject(MirrorService) private readonly mirror: MirrorService,
   ) {}
 
   list(): SessionSummary[] {
@@ -112,15 +116,17 @@ export class SessionsService {
   // Removes the chat, its events and its workspace. Claude Code's own transcript and Orbit's store keep what they
   // recorded, as each of them keeps it -- and so does governance: its records are in a database of their own, which a
   // chat's deletion never reaches. The deletion itself is recorded there first; if it cannot be, nothing is deleted.
-  delete(id: string, ctx: GovernanceContext): void {
+  async delete(id: string, ctx: GovernanceContext): Promise<void> {
     const s = this.record(id);
     if (s.status === "running" || this.runner.isRunning(id)) throw conflict("run_active", "Stop the run before deleting this chat.");
     if (this.runner.isBusy(id)) throw conflict("workspace_busy", "Wait until the working branch has moved before deleting this chat.");
     if (s.status === "preparing") throw conflict("workspace_preparing", "Wait until the workspace is prepared (or fails) before deleting this chat.");
     this.audit.record(ctx, { type: "session.deleted", outcome: "deleted", workspaceId: id, data: { scope: this.registry.of(id).scope } });
     this.sessions.delete(id);
-    this.workspaces.remove(id);
-    rmSync(join(this.config.data.sessions, id), { recursive: true, force: true });
+    await this.workspaces.remove(id);
+    await this.files.rmrf(join(this.config.data.sessions, id));
+    // The control plane's own copy of the repository: its own to remove.
+    rmSync(this.mirror.path(id), { recursive: true, force: true });
     this.bus.publishApp("session.removed", { sessionId: id });
   }
 

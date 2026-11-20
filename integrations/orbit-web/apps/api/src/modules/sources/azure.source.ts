@@ -94,7 +94,7 @@ export class AzureSource {
 
   private rest(url: string): Promise<RunResult> {
     return this.process.run(this.config.binaries.az, ["rest", "--method", "get", "--url", url, "--resource", AZURE_DEVOPS_RESOURCE, "--output", "json"], {
-      cwd: this.config.data.home,
+      cwd: this.config.controlHome,
       env: azureEnv(this.config),
       timeoutMs: 60_000,
     });

@@ -133,7 +133,7 @@ export class GithubAuthService {
     return {
       file: this.config.binaries.gh,
       args: this.gh.loginArgs(),
-      cwd: this.config.data.home,
+      cwd: this.config.controlHome,
       env: ghEnv(this.config),
       timeoutMs: this.config.limits.loginTimeoutMs,
       read: readGhLogin,

@@ -6,11 +6,11 @@
 // read and loaded. Every step is a session event. Nothing is ever pushed from here.
 import { Inject, Injectable, Logger, type OnModuleInit } from "@nestjs/common";
 import type { WorkspaceStep } from "@orbit-web/contracts";
-import { mkdirSync, rmSync } from "node:fs";
 import type { AppConfig } from "../../config/config.js";
 import { EventBus } from "../../core/events/event-bus.js";
 import { APP_CONFIG } from "../../core/tokens.js";
 import { contained, repositoryDir, sessionRoot } from "../../common/workspace-path.js";
+import { AgentFs } from "../../infra/process/agent-fs.js";
 import { endedHow, succeeded, type RunResult } from "../../infra/process/process.port.js";
 import { tail } from "../../infra/security/redact.js";
 import { SessionStore, type SessionRecord } from "../../infra/storage/stores.js";
@@ -21,6 +21,7 @@ import { ClaudeRunnerService } from "../claude-runner/claude-runner.service.js";
 import { GithubAuthService } from "../github/github-auth.service.js";
 import { OrbitGateway } from "../orbit/orbit.gateway.js";
 import { ProjectService } from "../project/project.service.js";
+import { MirrorService } from "../sources/mirror.service.js";
 import { SourcesService } from "../sources/sources.module.js";
 
 export const workBranchOf = (sessionId: string): string => `orbit-web/${sessionId.slice(0, 8)}`;
@@ -60,6 +61,8 @@ export class WorkspaceService implements OnModuleInit {
     @Inject(OrbitGateway) private readonly orbit: OrbitGateway,
     @Inject(ProjectService) private readonly project: ProjectService,
     @Inject(ClaudeRunnerService) private readonly runner: ClaudeRunnerService,
+    @Inject(AgentFs) private readonly files: AgentFs,
+    @Inject(MirrorService) private readonly mirror: MirrorService,
   ) {}
 
   // A preparation a restart cut short is not taken up again: the session says so and may be deleted.
@@ -100,26 +103,27 @@ export class WorkspaceService implements OnModuleInit {
     }
   }
 
-  remove(sessionId: string): void {
+  async remove(sessionId: string): Promise<void> {
     const root = sessionRoot(this.config.data, sessionId);
-    if (contained(this.config.data.workspaces, root)) rmSync(root, { recursive: true, force: true });
+    if (contained(this.config.data.workspaces, root)) await this.files.rmrf(root);
   }
 
   private step(session: SessionRecord, step: WorkspaceStep): void {
     this.bus.publishSession(session.id, "workspace.preparing", { repository: session.repository, branch: session.branch, step });
   }
 
-  private root(session: SessionRecord, step: WorkspaceStep): string {
+  private async root(session: SessionRecord, step: WorkspaceStep): Promise<string> {
     const root = sessionRoot(this.config.data, session.id);
     if (!contained(this.config.data.workspaces, root)) throw new StepFailed(step, "The workspace path is outside the workspaces directory.");
-    mkdirSync(root, { recursive: true, mode: 0o700 });
+    await this.files.mkdirp(root);
     return root;
   }
 
   private async clone(session: SessionRecord): Promise<void> {
-    const root = this.root(session, "clone");
+    const root = await this.root(session, "clone");
     this.step(session, "clone");
     if (session.source === null || session.repositoryId === null || session.branch === null) throw new StepFailed("clone", "This chat names no repository to clone.");
+    if (this.config.governance.deployment === "governed") return this.cloneThroughMirror(session, root);
     const origin = { source: session.source, id: session.repositoryId, branch: session.branch };
     const how = origin.source === "github" ? `gh repo clone ${session.repository}` : `git clone ${session.repository}`;
     let r: RunResult;
@@ -131,11 +135,25 @@ export class WorkspaceService implements OnModuleInit {
     must("clone", r, how);
   }
 
+  // GOVERNED: the credentialed clone goes into the control plane's own copy (/data/repos, read-only to the agent); the
+  // workspace is a local clone of it, made by the agent's own git. No credential and no network reach the workspace.
+  private async cloneThroughMirror(session: SessionRecord, root: string): Promise<void> {
+    const how = session.source === "github" ? `gh repo clone ${session.repository}` : `git clone ${session.repository}`;
+    let r: RunResult;
+    try {
+      r = await this.mirror.clone(session);
+    } catch (err) {
+      throw new StepFailed("clone", `${how}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    must("clone", r, how);
+    must("clone", await this.git.cloneLocal(root, this.mirror.path(session.id), session.branch as string, "repository"), "git clone (from Orbit Web's copy)");
+  }
+
   // No repository: an empty one, so the branch, the changes and Orbit work the same.
   private async init(session: SessionRecord): Promise<void> {
-    this.root(session, "init");
+    await this.root(session, "init");
     this.step(session, "init");
-    mkdirSync(session.workspacePath, { recursive: true, mode: 0o700 });
+    await this.files.mkdirp(session.workspacePath);
     must("init", await this.git.init(session.workspacePath), "git init");
     must("init", await this.git.emptyCommit(session.workspacePath), "git commit --allow-empty");
   }

@@ -35,19 +35,27 @@ export const CLAUDE_CREDENTIAL_NAMES = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AP
 const pick = (source: AppConfig["sourceEnv"], names: readonly string[]): Record<string, string> =>
   Object.fromEntries(names.flatMap((n) => (typeof source[n] === "string" && source[n] !== "" ? [[n, source[n] as string]] : [])));
 
-export function baseEnv(config: AppConfig): Record<string, string> {
+const PROXY_NAMES = new Set(["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "NO_PROXY", "no_proxy"]);
+
+// `home`: the agent's HOME (/data/home) unless a control-plane program is given its own. In the governed deployment the
+// agent's programs never inherit the server's proxy variables: their only way out is the control plane's own proxy.
+export function baseEnv(config: AppConfig, home = config.data.home, agent = home === config.data.home): Record<string, string> {
+  const names = config.governance.deployment === "governed" && agent ? PASS_THROUGH.filter((n) => !PROXY_NAMES.has(n)) : PASS_THROUGH;
   return {
     PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-    ...pick(config.sourceEnv, PASS_THROUGH),
-    HOME: config.data.home,
+    ...pick(config.sourceEnv, names),
+    HOME: home,
     NO_COLOR: "1",
   };
 }
 
+// The environment of a program the CONTROL PLANE runs (a credential's CLI, a clone, a push): its own HOME.
+export const controlEnv = (config: AppConfig): Record<string, string> => baseEnv(config, config.controlHome, false);
+
 // Git as Orbit Web runs it: no system or global configuration, never a prompt, no optional index locks.
-export function gitEnv(config: AppConfig): Record<string, string> {
+export function gitEnv(config: AppConfig, base: Record<string, string> = baseEnv(config)): Record<string, string> {
   return {
-    ...baseEnv(config),
+    ...base,
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_CONFIG_GLOBAL: "/dev/null",
     GIT_TERMINAL_PROMPT: "0",
@@ -57,7 +65,7 @@ export function gitEnv(config: AppConfig): Record<string, string> {
 
 export function ghEnv(config: AppConfig): Record<string, string> {
   return {
-    ...gitEnv(config),
+    ...gitEnv(config, controlEnv(config)),
     GH_CONFIG_DIR: config.data.github,
     GH_NO_UPDATE_NOTIFIER: "1",
     GH_NO_EXTENSION_UPDATE_NOTIFIER: "1",
@@ -81,13 +89,27 @@ const AZURE_PINS = {
 };
 
 export function azureEnv(config: AppConfig): Record<string, string> {
-  return { ...baseEnv(config), ...AZURE_PINS, AZURE_CONFIG_DIR: config.data.azure, BROWSER: "true" };
+  return { ...controlEnv(config), ...AZURE_PINS, AZURE_CONFIG_DIR: config.data.azure, BROWSER: "true" };
 }
 
 // Git cloning an Azure Repos repository: git's own hardening, and the Azure CLI's profile for the one-shot credential
 // helper git runs (it asks `az` for a token for that clone; git hands it to the server; nothing is written).
 export function azureGitEnv(config: AppConfig): Record<string, string> {
-  return { ...gitEnv(config), ...AZURE_PINS, AZURE_CONFIG_DIR: config.data.azure, BROWSER: "true" };
+  return { ...gitEnv(config, controlEnv(config)), ...AZURE_PINS, AZURE_CONFIG_DIR: config.data.azure, BROWSER: "true" };
+}
+
+// Git as the CONTROL PLANE runs it on its own repositories (/data/repos): a fetch or a push with GitHub CLI's
+// credential helper for github.com alone, named in git's environment (no git configuration file is written).
+export function githubGitEnv(config: AppConfig): Record<string, string> {
+  return {
+    ...gitEnv(config, controlEnv(config)),
+    GH_CONFIG_DIR: config.data.github,
+    GH_PROMPT_DISABLED: "1",
+    GH_NO_UPDATE_NOTIFIER: "1",
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "credential.https://github.com.helper",
+    GIT_CONFIG_VALUE_0: `!${config.binaries.gh} auth git-credential`,
+  };
 }
 
 // CLAUDE CODE'S TELEMETRY: OpenTelemetry as a person's own Claude Code sends it, and only once the container names a

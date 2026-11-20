@@ -12,7 +12,7 @@ import { createWriteStream, mkdirSync, type WriteStream } from "node:fs";
 import { join } from "node:path";
 import type { AppConfig } from "../../config/config.js";
 import { EventBus } from "../../core/events/event-bus.js";
-import { APP_CONFIG, PROCESS_PORT } from "../../core/tokens.js";
+import { AGENT_PROCESS_PORT, APP_CONFIG } from "../../core/tokens.js";
 import { conflict, notFound } from "../../common/errors.js";
 import { claudeEnv } from "../../infra/process/env.js";
 import { LineSplitter } from "../../infra/process/lines.js";
@@ -52,7 +52,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
 
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
-    @Inject(PROCESS_PORT) private readonly process: ProcessPort,
+    @Inject(AGENT_PROCESS_PORT) private readonly process: ProcessPort,
     @Inject(SessionStore) private readonly sessions: SessionStore,
     @Inject(RunStore) private readonly runs: RunStore,
     @Inject(EventBus) private readonly bus: EventBus,
@@ -234,7 +234,8 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
   // A diagnostic copy of the run's stream, masked and bounded, under /data/sessions/<session>/runs/.
   private openLog(sessionId: string, runId: string): WriteStream | null {
     try {
-      const dir = join(this.config.data.sessions, sessionId, "runs");
+      // Governed: in the control plane's own room -- never appended to through a directory the agent can write.
+      const dir = this.config.governance.deployment === "governed" ? join(this.config.data.app, "run-logs", sessionId) : join(this.config.data.sessions, sessionId, "runs");
       mkdirSync(dir, { recursive: true, mode: 0o700 });
       return createWriteStream(join(dir, `${runId}.jsonl`), { flags: "a", mode: 0o600 });
     } catch (err) {

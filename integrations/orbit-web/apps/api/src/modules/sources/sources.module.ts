@@ -14,6 +14,7 @@ import { ChangesModule } from "../changes/changes.module.js";
 import { GithubModule } from "../github/github.module.js";
 import { AzureSource } from "./azure.source.js";
 import { GithubSource } from "./github.source.js";
+import { MirrorService } from "./mirror.service.js";
 
 // What a new chat's workspace is cloned from: a listed repository and one of its branches.
 export interface RepositoryOrigin {
@@ -52,8 +53,8 @@ export class SourcesService {
     return { source: ref.source, id: repo.id, fullName: repo.fullName, branch: chosen };
   }
 
-  clone(origin: Pick<RepositoryOrigin, "source" | "id" | "branch">, destination: string, cwd: string): Promise<RunResult> {
-    return origin.source === "github" ? this.github.clone(origin.id, origin.branch, destination, cwd) : this.azure.clone(origin.id, origin.branch, destination, cwd);
+  clone(origin: Pick<RepositoryOrigin, "source" | "id" | "branch">, destination: string, cwd: string, extra: string[] = []): Promise<RunResult> {
+    return origin.source === "github" ? this.github.clone(origin.id, origin.branch, destination, cwd, extra) : this.azure.clone(origin.id, origin.branch, destination, cwd, extra);
   }
 
   // One branch, fetched the way a workspace is cloned -- the source's own sign-in, a new directory, nothing of the
@@ -93,8 +94,8 @@ export class SourcesController {
 
 @Module({
   imports: [GithubModule, AzureAuthModule, ChangesModule],
-  providers: [GithubSource, AzureSource, SourcesService],
+  providers: [GithubSource, AzureSource, SourcesService, MirrorService],
   controllers: [SourcesController],
-  exports: [SourcesService],
+  exports: [SourcesService, MirrorService],
 })
 export class SourcesModule {}

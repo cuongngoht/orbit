@@ -2,7 +2,15 @@
 // line: no endpoint takes a command, and a value a person typed is one argument, whatever characters it holds. Every
 // child gets an explicit working directory and an explicit environment (built by ./env.ts from an allow-list), runs
 // in a process group of its own, and is stopped as a group.
+//
+// TWO PLACEMENTS. PROCESS_PORT starts a program in the CONTROL PLANE (gh, az, a credentialed clone or push, a version
+// probe): where the sign-ins and governance's records are. AGENT_PROCESS_PORT starts one where the AGENT runs: Claude
+// Code itself, and every program that touches a workspace, the agent's own Claude configuration or Orbit's store --
+// whatever the agent can write, read or plant a link in. In the single deployment both are this container; in the
+// governed deployment the agent port reaches the agent container's runner (runner-port.ts), and the control plane
+// never runs a program over what the agent can write.
 export const PROCESS_PORT = Symbol("PROCESS_PORT");
+export const AGENT_PROCESS_PORT = Symbol("AGENT_PROCESS_PORT");
 
 export interface RunOptions {
   cwd: string;
@@ -45,9 +53,18 @@ export interface ProcessHandle {
   readonly exited: Promise<ExitInfo>;
 }
 
+// A run whose standard output is bytes (a git bundle), kept whole up to the limit.
+export interface BinaryResult extends ExitInfo {
+  stdout: Buffer;
+  stderr: string;
+  timedOut: boolean;
+  truncated: boolean;
+}
+
 export interface ProcessPort {
   run(file: string, args: readonly string[], options: RunOptions): Promise<RunResult>;
   spawn(file: string, args: readonly string[], options: SpawnOptions): ProcessHandle;
+  runBinary(file: string, args: readonly string[], options: RunOptions): Promise<BinaryResult>;
 }
 
 export const succeeded = (r: RunResult): boolean => r.code === 0 && r.spawnError === null && !r.timedOut;

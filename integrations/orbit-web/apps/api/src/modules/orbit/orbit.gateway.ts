@@ -6,7 +6,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import type { AppConfig } from "../../config/config.js";
-import { APP_CONFIG, PROCESS_PORT } from "../../core/tokens.js";
+import { AGENT_PROCESS_PORT, APP_CONFIG } from "../../core/tokens.js";
 import { orbitEnv } from "../../infra/process/env.js";
 import type { ProcessPort, RunResult } from "../../infra/process/process.port.js";
 
@@ -20,7 +20,7 @@ export const isTaskId = (v: unknown): v is string => typeof v === "string" && /^
 export class OrbitGateway {
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
-    @Inject(PROCESS_PORT) private readonly process: ProcessPort,
+    @Inject(AGENT_PROCESS_PORT) private readonly process: ProcessPort,
   ) {}
 
   private orbit(cli: string, args: string[], cwd: string, claudeSessionId: string | null, timeoutMs = 30_000): Promise<RunResult> {

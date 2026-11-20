@@ -60,8 +60,8 @@ export class SessionsController {
 
   @Delete(":id")
   @HttpCode(204)
-  remove(@Req() req: Request, @Param("id") id: string): void {
-    this.sessions.delete(id, this.principals.context(req));
+  remove(@Req() req: Request, @Param("id") id: string): Promise<void> {
+    return this.sessions.delete(id, this.principals.context(req));
   }
 }
 

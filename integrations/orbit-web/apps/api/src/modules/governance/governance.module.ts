@@ -9,6 +9,7 @@ import { AuditorController } from "./auditor.controller.js";
 import { AuditService } from "./audit.service.js";
 import { BOOTSTRAP_ANNOUNCER, BootstrapCode, stdoutAnnouncer } from "./bootstrap-code.js";
 import { ConstitutionService } from "./constitution.service.js";
+import { EgressService } from "./egress.service.js";
 import { FindingsService } from "./findings.service.js";
 import { GovernanceController } from "./governance.controller.js";
 import { GovernanceGuard } from "./governance.guard.js";
@@ -34,6 +35,7 @@ import { PrivilegedSettingsGate } from "./settings-gate.js";
     ApprovalService,
     FindingsService,
     IsolationService,
+    EgressService,
     // After the Claude sign-in gate (its module is imported first): a signed-out Orbit Web answers every route with the
     // Claude sign-in, governance's or not.
     { provide: APP_GUARD, useClass: GovernanceGuard },

@@ -17,6 +17,8 @@ export function ensureDataDirs(data: DataDirs): void {
       // A directory another user owns keeps its mode; the storage check reports whether it is writable.
     }
   }
+  // The control plane's own HOME (governed deployment).
+  mkdirSync(join(data.control, "home"), { recursive: true, mode: 0o700 });
 }
 
 // Whether every directory exists and can be written: a probe file is written and removed in each. The probe's name is

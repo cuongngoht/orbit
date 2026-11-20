@@ -100,7 +100,7 @@ export class AzureAuthService {
   }
 
   private az(args: string[], timeoutMs = 60_000) {
-    return this.process.run(this.config.binaries.az, args, { cwd: this.config.data.home, env: azureEnv(this.config), timeoutMs });
+    return this.process.run(this.config.binaries.az, args, { cwd: this.config.controlHome, env: azureEnv(this.config), timeoutMs });
   }
 
   private async ask(): Promise<AzureConnection> {
@@ -117,7 +117,7 @@ export class AzureAuthService {
     return {
       file: this.config.binaries.az,
       args: ["login", "--use-device-code", "--allow-no-subscriptions", "--output", "none", ...(tenant ? ["--tenant", tenant] : [])],
-      cwd: this.config.data.home,
+      cwd: this.config.controlHome,
       env: azureEnv(this.config),
       timeoutMs: this.config.limits.loginTimeoutMs,
       read: readAzLogin,

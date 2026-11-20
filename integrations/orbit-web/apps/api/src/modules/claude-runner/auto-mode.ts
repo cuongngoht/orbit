@@ -10,7 +10,7 @@
 // when they cannot be read nothing is set and the CLI's own stand.
 import { Inject, Injectable, Logger, type OnModuleInit } from "@nestjs/common";
 import type { AppConfig } from "../../config/config.js";
-import { APP_CONFIG, PROCESS_PORT } from "../../core/tokens.js";
+import { AGENT_PROCESS_PORT, APP_CONFIG } from "../../core/tokens.js";
 import { claudeEnv } from "../../infra/process/env.js";
 import { endedHow, succeeded, type ProcessPort } from "../../infra/process/process.port.js";
 
@@ -58,7 +58,7 @@ export class AutoModeService implements OnModuleInit {
 
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
-    @Inject(PROCESS_PORT) private readonly process: ProcessPort,
+    @Inject(AGENT_PROCESS_PORT) private readonly process: ProcessPort,
   ) {}
 
   // Read at start, in the background: a run that starts before it is read uses the CLI's own environment.

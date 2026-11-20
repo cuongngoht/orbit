@@ -110,7 +110,7 @@ export class GhGateway {
     @Inject(PROCESS_PORT) private readonly process: ProcessPort,
   ) {}
 
-  private gh(args: string[], timeoutMs = this.config.limits.commandTimeoutMs, cwd = this.config.data.home): Promise<RunResult> {
+  private gh(args: string[], timeoutMs = this.config.limits.commandTimeoutMs, cwd = this.config.controlHome): Promise<RunResult> {
     return this.process.run(this.config.binaries.gh, args, { cwd, env: ghEnv(this.config), timeoutMs, maxOutputBytes: 32 * 1024 * 1024 });
   }
 

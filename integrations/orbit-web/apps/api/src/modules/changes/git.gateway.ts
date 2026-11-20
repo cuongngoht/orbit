@@ -4,9 +4,9 @@
 // global configuration (gitEnv). Nothing here pushes.
 import { Inject, Injectable } from "@nestjs/common";
 import type { AppConfig } from "../../config/config.js";
-import { APP_CONFIG, PROCESS_PORT } from "../../core/tokens.js";
+import { AGENT_PROCESS_PORT, APP_CONFIG, PROCESS_PORT } from "../../core/tokens.js";
 import { azureGitEnv, gitEnv } from "../../infra/process/env.js";
-import type { ProcessPort, RunResult } from "../../infra/process/process.port.js";
+import type { BinaryResult, ProcessPort, RunResult } from "../../infra/process/process.port.js";
 
 const HARDENING = ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-c", "diff.external=", "-c", "core.quotePath=false"];
 
@@ -16,7 +16,10 @@ export const DIFF_LIMIT_BYTES = 1024 * 1024;
 export class GitGateway {
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
-    @Inject(PROCESS_PORT) private readonly process: ProcessPort,
+    // Every git command in a workspace runs where the agent runs: the workspace is what the agent writes.
+    @Inject(AGENT_PROCESS_PORT) private readonly process: ProcessPort,
+    // A clone, a fetch or a push with a credential runs in the control plane, outside any workspace.
+    @Inject(PROCESS_PORT) private readonly control: ProcessPort,
   ) {}
 
   git(cwd: string, args: string[], maxOutputBytes = 8 * 1024 * 1024): Promise<RunResult> {
@@ -38,7 +41,7 @@ export class GitGateway {
   // written: the remote URL carries no credential and .git/config names no helper.
   cloneAzure(cwd: string, url: string, branch: string, destination: string, extra: string[] = []): Promise<RunResult> {
     const args = ["-c", "credential.helper=", "-c", `credential.helper=${this.config.binaries.azureGitHelper}`, "clone", "--branch", branch, "--no-recurse-submodules", ...extra, "--", url, destination];
-    return this.process.run(this.config.binaries.git, [...HARDENING, ...args], { cwd, env: azureGitEnv(this.config), timeoutMs: this.config.limits.cloneTimeoutMs });
+    return this.control.run(this.config.binaries.git, [...HARDENING, ...args], { cwd, env: azureGitEnv(this.config), timeoutMs: this.config.limits.cloneTimeoutMs });
   }
 
   head(cwd: string): Promise<RunResult> {
@@ -104,6 +107,23 @@ export class GitGateway {
   // A file git does not track yet, as a diff against nothing (exit 1 means "they differ").
   untrackedDiff(cwd: string, path: string): Promise<RunResult> {
     return this.git(cwd, ["diff", "--no-ext-diff", "--no-textconv", "--no-color", "--no-index", "--", "/dev/null", path], DIFF_LIMIT_BYTES);
+  }
+
+  // A bundle of one branch of the workspace, as bytes: how a commit leaves the agent's workspace for the control plane's
+  // own repository (the push broker) -- the control plane never reads the workspace's .git.
+  bundle(cwd: string, branch: string, maxBytes: number): Promise<BinaryResult> {
+    return this.process.runBinary(this.config.binaries.git, [...HARDENING, "bundle", "create", "-", `refs/heads/${branch}`], { cwd, env: gitEnv(this.config), timeoutMs: this.config.limits.cloneTimeoutMs, maxOutputBytes: maxBytes });
+  }
+
+  // A local clone of the control plane's copy (/data/repos/<id>.git, read-only to the agent): no network, no credential.
+  cloneLocal(cwd: string, source: string, branch: string, destination: string): Promise<RunResult> {
+    return this.git(cwd, ["clone", "--no-hardlinks", "--branch", branch, "--no-recurse-submodules", "--", source, destination]);
+  }
+
+  // ---- the control plane's own repositories (/data/repos): git run there with its own HOME and a credential --------
+
+  controlGit(cwd: string, args: string[], env: Record<string, string>, timeoutMs = this.config.limits.cloneTimeoutMs): Promise<RunResult> {
+    return this.control.run(this.config.binaries.git, [...HARDENING, ...args], { cwd, env, timeoutMs, maxOutputBytes: 4 * 1024 * 1024 });
   }
 
   untrackedNumstat(cwd: string, path: string): Promise<RunResult> {

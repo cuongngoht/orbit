@@ -8,7 +8,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { CLAUDE_ACCOUNT_METHOD, type ClaudeStatus, type LoginSnapshot } from "@orbit-web/contracts";
 import type { AppConfig } from "../../config/config.js";
-import { APP_CONFIG, PROCESS_PORT } from "../../core/tokens.js";
+import { AGENT_PROCESS_PORT, APP_CONFIG } from "../../core/tokens.js";
 import { conflict } from "../../common/errors.js";
 import { LoginFlow, lastWords, type LoginDriver, type LoginFields } from "../../common/login-flow.js";
 import { claudeEnv, ignoredClaudeCredentials } from "../../infra/process/env.js";
@@ -77,7 +77,7 @@ export class ClaudeAuthService {
 
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
-    @Inject(PROCESS_PORT) private readonly process: ProcessPort,
+    @Inject(AGENT_PROCESS_PORT) private readonly process: ProcessPort,
     @Inject(SessionStore) private readonly sessions: SessionStore,
   ) {
     this.flow = new LoginFlow(process);

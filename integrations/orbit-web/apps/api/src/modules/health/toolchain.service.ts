@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AppConfig } from "../../config/config.js";
 import { APP_CONFIG, PROCESS_PORT } from "../../core/tokens.js";
-import { azureEnv, baseEnv } from "../../infra/process/env.js";
+import { azureEnv, controlEnv } from "../../infra/process/env.js";
 import { endedHow, succeeded, type ProcessPort } from "../../infra/process/process.port.js";
 
 export interface Toolchain {
@@ -83,8 +83,8 @@ export class ToolchainService {
     };
   }
 
-  private async version(file: string, args = ["--version"], env = baseEnv(this.config)): Promise<{ check: ComponentCheck; version: string | null }> {
-    const r = await this.process.run(file, args, { cwd: this.config.data.home, env, timeoutMs: 60_000 });
+  private async version(file: string, args = ["--version"], env = controlEnv(this.config)): Promise<{ check: ComponentCheck; version: string | null }> {
+    const r = await this.process.run(file, args, { cwd: this.config.controlHome, env, timeoutMs: 60_000 });
     if (!succeeded(r)) return { check: { ok: false, detail: `not usable: ${endedHow(r)}` }, version: null };
     const version = versionIn(r.stdout);
     return { check: { ok: true, detail: version }, version };

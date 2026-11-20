@@ -25,6 +25,7 @@ import { SessionStore, type SessionRecord } from "../../infra/storage/stores.js"
 import { parseStatus } from "../changes/git-parse.js";
 import { GitGateway } from "../changes/git.gateway.js";
 import { ClaudeRunnerService } from "../claude-runner/claude-runner.service.js";
+import { MirrorService } from "../sources/mirror.service.js";
 import { SourcesService } from "../sources/sources.module.js";
 import { summaryOf } from "./sessions.service.js";
 
@@ -54,6 +55,7 @@ export class BranchService {
     @Inject(SourcesService) private readonly sources: SourcesService,
     @Inject(GitGateway) private readonly git: GitGateway,
     @Inject(ClaudeRunnerService) private readonly runner: ClaudeRunnerService,
+    @Inject(MirrorService) private readonly mirror: MirrorService,
   ) {}
 
   // Read while Claude works too: listing changes nothing.
@@ -119,6 +121,14 @@ export class BranchService {
   // A branch of the repository, fetched through the source into a clone of Orbit Web's own, then into the workspace.
   private async fetch(session: SessionRecord, name: string): Promise<void> {
     if (session.source === null || session.repositoryId === null) throw notFound(`The branch ${name}`);
+    // GOVERNED: through the control plane's own copy -- the credentialed fetch there, then the agent's git fetches
+    // from that copy (read-only to it). Nothing is written in a directory the agent can write but by the agent.
+    if (this.config.governance.deployment === "governed") {
+      await this.mirror.ensure(session.id);
+      must(await this.mirror.fetch(session, name), `fetching ${name} from ${session.repository}`);
+      must(await this.git.fetchLocal(session.workspacePath, this.mirror.path(session.id), name), "git fetch");
+      return;
+    }
     const room = join(this.config.data.sessions, session.id);
     const scratch = join(room, SCRATCH);
     mkdirSync(room, { recursive: true, mode: 0o700 });

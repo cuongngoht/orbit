@@ -72,6 +72,12 @@ export interface AppConfig {
   sourceEnv: Readonly<Record<string, string | undefined>>;
   limits: Limits;
   governance: GovernedConfig;
+  // Where GitHub's repositories are fetched from and pushed to by the control plane (the push broker): GitHub itself.
+  // A test points it at local bare repositories (file:///…); nothing else ever changes it.
+  githubUrl: string;
+  // HOME for the programs the control plane runs with a credential (gh, az, a clone, a push): /data/home in the single
+  // deployment, as before; in the governed deployment a directory of the control plane's own, never the agent's.
+  controlHome: string;
 }
 
 export class ConfigError extends Error {}
@@ -118,6 +124,12 @@ function hostPort(raw: string | undefined, name: string): { host: string; port: 
   const port = Number(raw.slice(at + 1));
   if (at <= 0 || !/^[A-Za-z0-9.-]+$/.test(host) || !Number.isInteger(port) || port <= 0 || port > 65535) throw new ConfigError(`${name} must be host:port`);
   return { host, port };
+}
+
+function githubUrlOf(raw: string | undefined): string {
+  if (raw === undefined || raw === "") return "https://github.com";
+  if (!/^(https:\/\/[A-Za-z0-9.-]+(:\d+)?|file:\/\/\/[^\s]+)$/.test(raw)) throw new ConfigError("ORBIT_WEB_GITHUB_URL must be an https:// origin or a file:/// directory");
+  return raw.replace(/\/+$/, "");
 }
 
 // The governed deployment is all or nothing: every part of it is named, or Orbit Web refuses to start.
@@ -175,10 +187,12 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): A
   }
   if (accessToken !== null && accessToken.length < 16) throw new ConfigError("ORBIT_WEB_ACCESS_TOKEN must be at least 16 characters");
   const port = positiveInt(env.ORBIT_WEB_PORT, 3000, "ORBIT_WEB_PORT");
+  const data = dataDirs(absolute(env.ORBIT_WEB_DATA_DIR, "/data", "ORBIT_WEB_DATA_DIR"));
+  const governance = governedConfig(env, port);
   return {
     port,
     bind: env.ORBIT_WEB_BIND && env.ORBIT_WEB_BIND.length > 0 ? env.ORBIT_WEB_BIND : "127.0.0.1",
-    data: dataDirs(absolute(env.ORBIT_WEB_DATA_DIR, "/data", "ORBIT_WEB_DATA_DIR")),
+    data,
     pluginDir: absolute(env.ORBIT_PLUGIN_DIR, "/opt/orbit/plugin", "ORBIT_PLUGIN_DIR"),
     webDist: env.ORBIT_WEB_STATIC_DIR ? absolute(env.ORBIT_WEB_STATIC_DIR, "", "ORBIT_WEB_STATIC_DIR") : defaultWebDist(),
     buildInfoFile: absolute(env.ORBIT_WEB_BUILD_INFO, "/opt/orbit-web/build-info.json", "ORBIT_WEB_BUILD_INFO"),
@@ -196,6 +210,8 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): A
     },
     sourceEnv: { ...env },
     limits: { ...DEFAULT_LIMITS },
-    governance: governedConfig(env, port),
+    governance,
+    controlHome: governance.deployment === "governed" ? join(data.control, "home") : data.home,
+    githubUrl: githubUrlOf(env.ORBIT_WEB_GITHUB_URL),
   };
 }

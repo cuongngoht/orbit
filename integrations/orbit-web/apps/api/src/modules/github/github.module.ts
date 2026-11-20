@@ -2,6 +2,7 @@
 // (`connector.flow`, `connector.status`), not a stream of its own.
 import { Controller, Get, HttpCode, Inject, Module, Post } from "@nestjs/common";
 import type { GitHubStatus, LoginSnapshot } from "@orbit-web/contracts";
+import { SettingsModule } from "../settings/settings.module.js";
 import { GhGateway } from "./gh.gateway.js";
 import { GithubAuthService } from "./github-auth.service.js";
 
@@ -34,6 +35,7 @@ export class GithubController {
 }
 
 @Module({
+  imports: [SettingsModule],
   providers: [GhGateway, GithubAuthService],
   controllers: [GithubController],
   exports: [GhGateway, GithubAuthService],

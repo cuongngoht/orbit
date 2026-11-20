@@ -161,11 +161,11 @@ export function checkSendMessage(body: unknown): Checked<SendMessageRequest> {
 
 export function checkUpdateSettings(body: unknown): Checked<UpdateSettingsRequest> {
   if (!isRecord(body)) return { ok: false, errors: ["the body must be a JSON object"] };
-  const errors = unknownFields(body, ["defaultModel", "defaultEffort", "defaultMode", "projectSkills", "projectPlugins", "webTools", "azureForClaude", "theme"]);
+  const errors = unknownFields(body, ["defaultModel", "defaultEffort", "defaultMode", "projectSkills", "projectPlugins", "webTools", "githubForClaude", "azureForClaude", "theme"]);
   if (body.defaultModel !== undefined && !isModelChoice(body.defaultModel)) errors.push(`defaultModel must be one of ${MODEL_CHOICES.join(", ")}`);
   if (body.defaultEffort !== undefined && !isEffortChoice(body.defaultEffort)) errors.push(`defaultEffort must be one of ${EFFORT_CHOICES.join(", ")}`);
   if (body.defaultMode !== undefined && !isModeChoice(body.defaultMode)) errors.push(`defaultMode must be one of ${MODE_CHOICES.join(", ")}`);
-  for (const flag of ["projectSkills", "projectPlugins", "webTools", "azureForClaude"]) if (body[flag] !== undefined && typeof body[flag] !== "boolean") errors.push(`${flag} must be true or false`);
+  for (const flag of ["projectSkills", "projectPlugins", "webTools", "githubForClaude", "azureForClaude"]) if (body[flag] !== undefined && typeof body[flag] !== "boolean") errors.push(`${flag} must be true or false`);
   if (body.theme !== undefined && !isTheme(body.theme)) errors.push("theme must be one of system, light, dark");
   return checked(errors, () => ({
     ...(body.defaultModel !== undefined ? { defaultModel: body.defaultModel as ModelChoice } : {}),
@@ -174,6 +174,7 @@ export function checkUpdateSettings(body: unknown): Checked<UpdateSettingsReques
     ...(body.projectSkills !== undefined ? { projectSkills: body.projectSkills as boolean } : {}),
     ...(body.projectPlugins !== undefined ? { projectPlugins: body.projectPlugins as boolean } : {}),
     ...(body.webTools !== undefined ? { webTools: body.webTools as boolean } : {}),
+    ...(body.githubForClaude !== undefined ? { githubForClaude: body.githubForClaude as boolean } : {}),
     ...(body.azureForClaude !== undefined ? { azureForClaude: body.azureForClaude as boolean } : {}),
     ...(body.theme !== undefined ? { theme: body.theme as ThemePreference } : {}),
   }));

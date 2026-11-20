@@ -2,7 +2,8 @@
 // Nothing else of the server's environment reaches a child. In particular:
 //   - gh never sees GH_TOKEN / GITHUB_TOKEN (they would override the stored sign-in, and `gh auth login` refuses
 //     to run beside them), and nothing but gh is told where gh keeps its sign-in;
-//   - Claude Code is never given any GH_* / GITHUB_* name, so the coding agent cannot find GitHub's credential;
+//   - Claude Code is given no GH_* / GITHUB_* name, so the coding agent cannot find GitHub's credential -- unless a
+//     person lets it use GitHub CLI's sign-in (Settings), and then only where gh keeps it (never a token variable);
 //   - the CLI's own credential names (CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN) are NEVER
 //     passed: Claude Code would use one before the Claude account signed in here, and that account is the sign-in of
 //     Orbit Web itself (the Claude sign-in gate). A container started with one is told it is ignored.
@@ -91,9 +92,26 @@ export function azureGitEnv(config: AppConfig): Record<string, string> {
 // The Claude credential variables the container was started with, by name: ignored, and said so.
 export const ignoredClaudeCredentials = (config: AppConfig): string[] => Object.keys(pick(config.sourceEnv, CLAUDE_CREDENTIAL_NAMES));
 
-// `azure`: a person let Claude Code use the Azure CLI's sign-in, so its `az` finds the profile. Otherwise it is not
-// told where the profile is (and its tools are refused the directory).
-export function claudeEnv(config: AppConfig, o: { azure?: boolean } = {}): Record<string, string> {
+// GitHub CLI's sign-in, for a Claude Code a person let use it: gh finds its configuration, never prompts, and git asks gh
+// for the credential of github.com -- and of github.com alone -- as a helper named in git's environment (no git config
+// file is written, and the token never passes through Orbit Web).
+function githubForClaude(config: AppConfig): Record<string, string> {
+  return {
+    GH_CONFIG_DIR: config.data.github,
+    GH_PROMPT_DISABLED: "1",
+    GH_NO_UPDATE_NOTIFIER: "1",
+    GH_NO_EXTENSION_UPDATE_NOTIFIER: "1",
+    GH_SPINNER_DISABLED: "1",
+    GIT_TERMINAL_PROMPT: "0",
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "credential.https://github.com.helper",
+    GIT_CONFIG_VALUE_0: `!${config.binaries.gh} auth git-credential`,
+  };
+}
+
+// `azure` / `github`: a person let Claude Code use that CLI's sign-in, so its `az` finds the profile, or its `gh` and
+// `git push` find GitHub's. Otherwise it is not told where the sign-in is (and its tools are refused the directory).
+export function claudeEnv(config: AppConfig, o: { azure?: boolean; github?: boolean } = {}): Record<string, string> {
   return {
     ...baseEnv(config),
     CLAUDE_CONFIG_DIR: config.data.claude,
@@ -101,6 +119,7 @@ export function claudeEnv(config: AppConfig, o: { azure?: boolean } = {}): Recor
     DISABLE_AUTOUPDATER: "1",
     BROWSER: "true",
     ...(o.azure ? { ...AZURE_PINS, AZURE_CONFIG_DIR: config.data.azure } : {}),
+    ...(o.github ? githubForClaude(config) : {}),
   };
 }
 

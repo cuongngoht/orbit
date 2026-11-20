@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { claudeArgs } from "./claude-args.js";
+import { WORKSPACE_NOTES, claudeArgs } from "./claude-args.js";
 
 const base = {
   model: "sonnet" as const,
@@ -12,6 +12,7 @@ const base = {
   resume: false,
   webTools: false,
   azure: false,
+  github: false,
   maxBudgetUsd: null,
   protectedDirs: ["/data/claude", "/data/github"],
 };
@@ -63,6 +64,29 @@ test("permissions never bypass; pushing and gh are refused in every mode", () =>
   assert.equal(a.some((x) => /bypass|dangerously/i.test(x)), false);
   assert.equal(after(a, "--allowedTools"), "Read,Edit,Write,Glob,Grep,Bash,Skill,Agent,TodoWrite");
   for (const rule of ["Bash(git push:*)", "Bash(gh:*)", "Read(//data/github/**)", "Edit(//data/claude/**)", "WebFetch", "WebSearch"]) assert.ok(a.includes(rule), rule);
+});
+
+test("Claude Code is told, in one fixed text, that it commits here and never chains a push", () => {
+  const a = claudeArgs(base);
+  const note = after(a, "--append-system-prompt") ?? "";
+  assert.equal(note, WORKSPACE_NOTES.local);
+  assert.match(note, /commit locally/);
+  assert.match(note, /never chain a push or a gh command/);
+  for (const other of [claudeArgs({ ...base, mode: "plan", model: "opus", effort: "max", resume: true }), claudeArgs({ ...base, webTools: true, azure: true, maxBudgetUsd: 1 })]) {
+    assert.equal(after(other, "--append-system-prompt"), WORKSPACE_NOTES.local, "the same text whatever the run");
+  }
+  assert.equal(a.filter((x) => x === "--append-system-prompt").length, 1);
+});
+
+test("a person may let Claude Code push and open pull requests: gh and git push are allowed, gh's own sign-in is not", () => {
+  const a = claudeArgs({ ...base, github: true });
+  for (const allowed of ["Bash(git push:*)", "Bash(gh:*)"]) assert.equal(a.includes(allowed), false, allowed);
+  for (const rule of ["Bash(gh auth:*)", "Bash(gh repo delete:*)", "Bash(gh secret:*)", "Bash(git credential:*)", "Bash(git config --global:*)", "Read(//data/github/**)", "Edit(//data/github/**)"]) assert.ok(a.includes(rule), rule);
+  const note = after(a, "--append-system-prompt") ?? "";
+  assert.equal(note, WORKSPACE_NOTES.github);
+  assert.match(note, /open a pull request with gh/);
+  assert.match(note, /never force-push/);
+  assert.equal(a.some((x) => /bypass|dangerously/i.test(x)), false);
 });
 
 test("the web tools and a budget cap are added only when set", () => {

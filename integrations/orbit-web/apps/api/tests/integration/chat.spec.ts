@@ -161,6 +161,25 @@ describe("a chat, end to end through the API", () => {
     assert.equal(detail.turns, 2);
   });
 
+  test("with GitHub given to Claude Code, its next run may push and open pull requests through gh -- and only then", async () => {
+    const before = fake.children.length;
+    assert.equal((await h.send("PATCH", "/api/settings", { githubForClaude: true })).status, 200);
+    assert.equal(((await h.get("/api/github/status")).body as { availableToClaude: boolean }).availableToClaude, true);
+    assert.equal((await h.send("POST", `/api/sessions/${session.id}/messages`, { text: "Push it and open a pull request." })).status, 202);
+    await eventually(async () => ((await h.get(`/api/sessions/${session.id}`)).body as SessionDetail).status, (s) => s === "completed");
+    const call = fake.children.slice(before).find((c) => claudeRun(c.call.file, c.call.args))?.call as Call;
+    assert.equal(call.env.GH_CONFIG_DIR, h.config.data.github, "gh finds its own sign-in");
+    assert.equal(call.env.GIT_CONFIG_KEY_0, "credential.https://github.com.helper", "git asks gh, for github.com alone");
+    assert.match(call.env.GIT_CONFIG_VALUE_0 ?? "", /auth git-credential$/);
+    assert.deepEqual(Object.keys(call.env).filter((k) => k === "GH_TOKEN" || k === "GITHUB_TOKEN"), [], "never a token variable");
+    assert.equal(call.args.includes("Bash(git push:*)"), false);
+    assert.equal(call.args.includes("Bash(gh:*)"), false);
+    for (const rule of ["Bash(gh auth:*)", "Bash(git credential:*)", `Read(/${h.config.data.github}/**)`]) assert.ok(call.args.includes(rule), rule);
+    assert.match(after1(call.args, "--append-system-prompt") ?? "", /open a pull request with gh/);
+    assert.equal((await h.send("PATCH", "/api/settings", { githubForClaude: false })).status, 200);
+    assert.equal(((await h.get("/api/github/status")).body as { availableToClaude: boolean }).availableToClaude, false);
+  });
+
   test("stop interrupts the run's process group; an interrupted run is never completed", async () => {
     fake.on(claudeRun, { spawn: longRun });
     await h.send("POST", `/api/sessions/${session.id}/messages`, { text: "Run something long." });

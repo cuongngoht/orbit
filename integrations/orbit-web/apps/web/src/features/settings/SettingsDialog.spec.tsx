@@ -136,10 +136,14 @@ describe("Settings → Connectors: GitHub and Azure DevOps, as Claude's connecto
     expect(within(detail).getByRole("button", { name: "Connect GitHub" })).toBeInTheDocument();
   });
 
-  test("GitHub connected: who, and Disconnect", async () => {
+  test("GitHub connected: who, the switch that lets Claude Code push and open pull requests, and Disconnect", async () => {
     const { api } = show("connectors", { connector: "github", status: setupStatus({}, { state: "connected", account: { login: "octo", name: "Octo Cat" } }), api: fakeApi().on("POST", "/api/github/logout", () => ({})) });
     const detail = await screen.findByRole("region", { name: "GitHub connection" });
     expect(detail.textContent).toContain("Connected as @octo (Octo Cat)");
+    const toggle = within(detail).getByRole("switch", { name: "Let Claude Code push and open pull requests with this GitHub sign-in" });
+    expect(toggle).not.toBeChecked();
+    await userEvent.click(toggle);
+    await waitFor(() => expect(patches(api)).toEqual([{ githubForClaude: true }]));
     await userEvent.click(within(detail).getByRole("button", { name: "Disconnect" }));
     await waitFor(() => expect(api.calls.some((c) => c.method === "POST" && c.path === "/api/github/logout")).toBe(true));
   });

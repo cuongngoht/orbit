@@ -66,6 +66,8 @@ test("an update names something to change: the title, or the model, effort or mo
   assert.equal(checkUpdateSession({ mode: "bypassPermissions" }).ok, false);
   assert.equal(checkUpdateSettings({ webTools: "yes" }).ok, false);
   assert.equal(checkUpdateSettings({ projectPlugins: 1 }).ok, false);
+  assert.equal(checkUpdateSettings({ githubForClaude: "on" }).ok, false);
+  assert.deepEqual(checkUpdateSettings({ githubForClaude: true }), { ok: true, value: { githubForClaude: true } });
   assert.deepEqual(checkUpdateSettings({ theme: "dark" }), { ok: true, value: { theme: "dark" } });
   assert.deepEqual(checkUpdateSettings({ defaultEffort: "low", defaultMode: "plan", projectPlugins: false }), { ok: true, value: { defaultEffort: "low", defaultMode: "plan", projectPlugins: false } });
 });

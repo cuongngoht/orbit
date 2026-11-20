@@ -18,7 +18,7 @@ import {
 
 // GET /api/settings, as a fresh Orbit Web answers it.
 export function settings(over: Partial<Settings> = {}): Settings {
-  return { defaultModel: "sonnet", defaultEffort: "medium", defaultMode: "autonomous", projectSkills: true, projectPlugins: false, webTools: false, azureForClaude: false, theme: "system", maxBudgetUsd: null, ...over };
+  return { defaultModel: "sonnet", defaultEffort: "medium", defaultMode: "autonomous", projectSkills: true, projectPlugins: false, webTools: false, githubForClaude: false, azureForClaude: false, theme: "system", maxBudgetUsd: null, ...over };
 }
 
 // GET /api/sources: by default neither source is connected (a chat still starts, without a repository).
@@ -95,7 +95,7 @@ export const signedOutClaude = (over: Partial<ClaudeStatus> = {}): ClaudeStatus 
 // GET /api/setup/status, which answers only once Orbit Web is signed in to Claude: so Claude is signed in by default.
 export function setupStatus(claude: Partial<ClaudeStatus> = {}, github: Partial<GitHubStatus> = {}, azure: Partial<AzureStatus> = {}): SetupStatus {
   const c: ClaudeStatus = claudeStatus(claude);
-  const g: GitHubStatus = { state: "not_connected", account: null, detail: null, flow: idleFlow(), ...github };
+  const g: GitHubStatus = { state: "not_connected", account: null, detail: null, flow: idleFlow(), availableToClaude: false, ...github };
   const a: AzureStatus = { state: "not_connected", account: null, detail: null, flow: idleFlow(), availableToClaude: false, ...azure };
   return {
     versions: { web: ORBIT_WEB_VERSION, orbit: "0.6.0", orbitCommit: "6c36207cd57204f6f50deb3431a5db516b27f4bc", claude: "2.1.328", gh: "2.89.0", git: "2.43.0", az: "2.91.0", node: "24.11.0" },

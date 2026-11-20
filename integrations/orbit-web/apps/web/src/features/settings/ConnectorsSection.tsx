@@ -140,6 +140,10 @@ function GitHubDetail({ status, onChanged }: { status: GitHubStatus; onChanged: 
           )}
         </div>
       )}
+      <Switch checked={status.availableToClaude} disabled={busy} onChange={(_, d) => void act(() => send("PATCH", "/api/settings", { githubForClaude: d.checked }))} label="Let Claude Code push and open pull requests with this GitHub sign-in" />
+      <Text size={200} className={s.muted}>
+        Off, Claude Code commits in its workspace and you push. On, it may push branches and open pull requests with <code>gh</code> as this account in any chat (never a force-push or the default branch, by its instructions); the sign-in itself stays out of its reach (<code>gh auth</code> is refused). Turn it on only for repositories you trust.
+      </Text>
       <Text size={200} className={s.muted}>
         Uses GitHub CLI's own sign-in; no GitHub App and no personal access token. Disconnecting ends the CLI's sign-in in this container; to revoke the authorization itself, use GitHub's Settings → Applications.
       </Text>

@@ -110,6 +110,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     const resume = session.turns > 0;
     const prefs = this.settings.get();
     const azure = prefs.azureForClaude;
+    const github = prefs.githubForClaude;
     const project = this.project.runtime(session);
     const args = claudeArgs({
       model: session.model,
@@ -121,12 +122,13 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
       resume,
       webTools: prefs.webTools,
       azure,
+      github,
       maxBudgetUsd: this.config.maxBudgetUsd,
       protectedDirs: [this.config.data.claude, this.config.data.github, this.config.data.app, ...(azure ? [] : [this.config.data.azure])],
     });
     this.runs.start({ id: runId, sessionId: session.id, model: session.model, effort: session.effort, mode: session.mode, resumed: resume });
     this.setStatus(session.id, "running", null, runId);
-    const handle = this.process.spawn(this.config.binaries.claude, args, { cwd: session.workspacePath, env: claudeEnv(this.config, { azure }) });
+    const handle = this.process.spawn(this.config.binaries.claude, args, { cwd: session.workspacePath, env: claudeEnv(this.config, { azure, github }) });
     const mapper = new StreamMapper({ requestedModel: session.model, requestedEffort: session.effort, requestedMode: session.mode, resumed: resume, cwd: session.workspacePath });
     let resolveDone: () => void = () => undefined;
     const run: ActiveRun = {

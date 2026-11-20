@@ -31,6 +31,7 @@ export class SettingsService {
       projectSkills: saved.projectSkills !== false,
       projectPlugins: saved.projectPlugins === true,
       webTools: saved.webTools === true,
+      githubForClaude: saved.githubForClaude === true,
       azureForClaude: saved.azureForClaude === true,
       theme: isTheme(saved.theme) ? saved.theme : "system",
       maxBudgetUsd: this.config.maxBudgetUsd,

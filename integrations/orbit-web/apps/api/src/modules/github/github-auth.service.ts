@@ -12,6 +12,7 @@ import { ghEnv } from "../../infra/process/env.js";
 import { endedHow, succeeded, type ProcessPort } from "../../infra/process/process.port.js";
 import { tail } from "../../infra/security/redact.js";
 import { SettingsStore } from "../../infra/storage/stores.js";
+import { SettingsService } from "../settings/settings.module.js";
 import { GhGateway, parseAuthHosts, parseUser } from "./gh.gateway.js";
 
 export interface GitHubConnection {
@@ -41,6 +42,7 @@ export class GithubAuthService {
     @Inject(PROCESS_PORT) process: ProcessPort,
     @Inject(GhGateway) private readonly gh: GhGateway,
     @Inject(SettingsStore) private readonly settings: SettingsStore,
+    @Inject(SettingsService) private readonly prefs: SettingsService,
     @Inject(EventBus) private readonly bus: EventBus,
   ) {
     this.flow = new LoginFlow(process);
@@ -56,7 +58,7 @@ export class GithubAuthService {
   }
 
   async status(): Promise<GitHubStatus> {
-    return { ...(await this.connection()), flow: this.flow.current() };
+    return { ...(await this.connection()), flow: this.flow.current(), availableToClaude: this.prefs.get().githubForClaude };
   }
 
   connection(fresh = false): Promise<GitHubConnection> {

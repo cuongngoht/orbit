@@ -88,6 +88,9 @@ export interface GitHubStatus {
   account: GitHubAccount | null;
   detail: string | null;
   flow: LoginSnapshot;
+  // Whether Claude Code may use this sign-in to push and open pull requests (a person's setting; off unless they turn
+  // it on).
+  availableToClaude: boolean;
 }
 
 // The Azure account the Azure CLI in this container is signed in to, as `az account show` says it. Optional: the chat
@@ -292,6 +295,9 @@ export interface Settings {
   projectPlugins: boolean;
   // WebFetch and WebSearch are offered to Claude only when this is on.
   webTools: boolean;
+  // Claude Code is given GitHub CLI's sign-in (it may then push and open pull requests with `gh` as the signed-in
+  // account) only when this is on.
+  githubForClaude: boolean;
   // Claude Code is given the Azure CLI's sign-in (it may then run `az` as the signed-in account) only when this is on.
   azureForClaude: boolean;
   theme: ThemePreference;
@@ -306,6 +312,7 @@ export interface UpdateSettingsRequest {
   projectSkills?: boolean;
   projectPlugins?: boolean;
   webTools?: boolean;
+  githubForClaude?: boolean;
   azureForClaude?: boolean;
   theme?: ThemePreference;
 }

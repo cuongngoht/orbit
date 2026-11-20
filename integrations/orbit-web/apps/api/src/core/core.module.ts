@@ -1,11 +1,14 @@
-// What every module shares: the configuration, the process port, the database and its stores, the event hub.
+// What every module shares: the configuration, the process port, the database and its stores, and the event layer
+// (the bus every producer publishes to, the live-text subscriber, the SSE gateway).
 import { type DynamicModule, Global, Inject, Injectable, Module, type OnApplicationShutdown } from "@nestjs/common";
 import { join } from "node:path";
 import type { AppConfig } from "../config/config.js";
 import { NodeProcessPort } from "../infra/process/node-process.js";
 import { Database } from "../infra/storage/database.js";
-import { EventStore, MessageStore, RunStore, SessionStore, SettingsStore } from "../infra/storage/stores.js";
-import { EventHub } from "./event-hub.js";
+import { EventStore, MessageStore, ProjectStore, RunStore, SessionStore, SettingsStore } from "../infra/storage/stores.js";
+import { EventBus } from "./events/event-bus.js";
+import { LiveText } from "./events/live-text.js";
+import { StreamGateway } from "./events/stream-gateway.js";
 import { APP_CONFIG, PROCESS_PORT } from "./tokens.js";
 
 @Injectable()
@@ -34,10 +37,13 @@ export class CoreModule {
         store(MessageStore),
         store(EventStore),
         store(RunStore),
-        EventHub,
+        store(ProjectStore),
+        EventBus,
+        LiveText,
+        StreamGateway,
         DatabaseCloser,
       ],
-      exports: [APP_CONFIG, PROCESS_PORT, Database, SettingsStore, SessionStore, MessageStore, EventStore, RunStore, EventHub],
+      exports: [APP_CONFIG, PROCESS_PORT, Database, SettingsStore, SessionStore, MessageStore, EventStore, RunStore, ProjectStore, EventBus, LiveText, StreamGateway],
     };
   }
 }

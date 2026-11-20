@@ -4,7 +4,7 @@ import "reflect-metadata";
 import { Test } from "@nestjs/testing";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -44,7 +44,42 @@ export interface Harness {
   get(path: string, headers?: Record<string, string>): Promise<Reply>;
   send(method: string, path: string, body?: unknown, headers?: Record<string, string>): Promise<Reply>;
   events(path: string, o: { lastEventId?: number; until: (events: Record<string, unknown>[]) => boolean; timeoutMs?: number }): Promise<{ frames: SseFrame[]; events: Record<string, unknown>[] }>;
+  // Opens a stream and returns once the server holds the subscription (its headers arrived), so what the test does
+  // next is seen on it -- the app stream sends nothing on connect.
+  stream(path: string): Promise<OpenStream>;
   close(keepData?: boolean): Promise<void>;
+}
+
+export interface OpenStream {
+  // Each frame's data, in order, as it arrives.
+  events: Record<string, unknown>[];
+  until(cond: (events: Record<string, unknown>[]) => boolean, timeoutMs?: number): Promise<Record<string, unknown>[]>;
+  close(): void;
+}
+
+export async function openStream(url: string): Promise<OpenStream> {
+  const controller = new AbortController();
+  const res = await fetch(url, { headers: { accept: "text/event-stream" }, signal: controller.signal });
+  const events: Record<string, unknown>[] = [];
+  const reader = res.body!.pipeThrough(new TextDecoderStream()).getReader();
+  void (async () => {
+    let buffer = "";
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += value;
+        for (let end = buffer.indexOf("\n\n"); end !== -1; end = buffer.indexOf("\n\n")) {
+          const frame = parseFrame(buffer.slice(0, end));
+          buffer = buffer.slice(end + 2);
+          if (frame) events.push(frame.data);
+        }
+      }
+    } catch {
+      // aborted by close()
+    }
+  })();
+  return { events, until: (cond, timeoutMs = 10_000) => eventually(() => [...events], cond, timeoutMs), close: () => controller.abort() };
 }
 
 export interface SseFrame {
@@ -93,6 +128,7 @@ export async function startHarness(o: HarnessOptions = {}): Promise<Harness> {
         }),
       ),
     events: (path, opts) => readSse(`${url}${path}`, opts),
+    stream: (path) => openStream(`${url}${path}`),
     close: async (keepData = false) => {
       await app.close();
       if (!keepData) rmSync(dataDir, { recursive: true, force: true });
@@ -177,17 +213,49 @@ export function signedIn(fake: FakeProcessPort): FakeProcessPort {
 
 const git = (cwd: string, ...args: string[]) => spawnSync("git", ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.com", ...args], { cwd, encoding: "utf8" });
 
-// What `gh repo clone` leaves: a repository with a wrong addition and the test that catches it.
-export function fixtureClone(call: Call): { code: number; stderr?: string } {
-  const dest = join(call.cwd, call.args[3] as string);
+// A repository with a wrong addition and the test that catches it, plus any `extra` files (a project's .claude/...).
+export function fixtureRepositoryAt(dest: string, extra: Record<string, string> = {}): { code: number } {
   spawnSync("git", ["init", "-q", "-b", "main", dest]);
   writeFileSync(join(dest, "sum.mjs"), "export const sum = (a, b) => a - b;\n");
   writeFileSync(join(dest, "package.json"), `${JSON.stringify({ name: "sum-fixture", type: "module", scripts: { test: "node --test" } }, null, 2)}\n`);
   writeFileSync(join(dest, "sum.test.mjs"), 'import assert from "node:assert/strict";\nimport { test } from "node:test";\nimport { sum } from "./sum.mjs";\n\ntest("adds", () => assert.equal(sum(2, 3), 5));\n');
   writeFileSync(join(dest, "README.md"), "# sum fixture\n");
+  for (const [path, text] of Object.entries(extra)) {
+    mkdirSync(dirname(join(dest, path)), { recursive: true });
+    writeFileSync(join(dest, path), text);
+  }
   git(dest, "add", ".");
   git(dest, "commit", "-qm", "fixture");
   return { code: 0 };
+}
+
+// What `gh repo clone` leaves (its fourth argument is the destination).
+export function fixtureClone(call: Call, extra: Record<string, string> = {}): { code: number; stderr?: string } {
+  return fixtureRepositoryAt(join(call.cwd, call.args[3] as string), extra);
+}
+
+// What `git clone … -- <url> <destination>` leaves.
+export function fixtureGitClone(call: Call, extra: Record<string, string> = {}): { code: number } {
+  return fixtureRepositoryAt(join(call.cwd, call.args.at(-1) as string), extra);
+}
+
+export const gitClone = (file: string, args: string[]): boolean => (file === "git" || file.endsWith("/git")) && args.includes("clone");
+
+// One Azure DevOps organization with one repository (two branches), the Azure CLI signed in, its clone scripted.
+export const AZURE = { organization: "Fabrikam", project: "Fiber", name: "Web", repositoryId: "278d5cd2-584d-4b63-824a-2ba458937249", user: "octo@fabrikam.example" };
+export const AZURE_REPOSITORY = `${AZURE.organization}/${AZURE.repositoryId}`;
+
+const azRest = (url: string) => (file: string, args: string[]) => program("az", "rest")(file, args) && args.some((a) => a.startsWith(url));
+
+export function azureSignedIn(fake: FakeProcessPort): FakeProcessPort {
+  const repo = { id: AZURE.repositoryId, name: AZURE.name, project: { name: AZURE.project, visibility: "private" }, defaultBranch: "refs/heads/main", remoteUrl: `https://${AZURE.organization}@dev.azure.com/${AZURE.organization}/${AZURE.project}/_git/${AZURE.name}` };
+  return fake
+    .on(program("az", "account", "show"), { run: { stdout: JSON.stringify({ user: { name: AZURE.user, type: "user" }, tenantId: "tenant-1", name: "Fabrikam Dev", id: "sub-1" }) } })
+    .on(azRest("https://app.vssps.visualstudio.com/_apis/profile/profiles/me"), { run: { stdout: JSON.stringify({ id: "d6245f20-2af8-44f4-9451-8107cb2767db", displayName: "Octo", emailAddress: AZURE.user }) } })
+    .on(azRest("https://app.vssps.visualstudio.com/_apis/accounts"), { run: { stdout: JSON.stringify({ value: [{ accountName: AZURE.organization }] }) } })
+    .on(azRest(`https://dev.azure.com/${AZURE.organization}/_apis/git/repositories?`), { run: { stdout: JSON.stringify({ value: [repo] }) } })
+    .on(azRest(`https://dev.azure.com/${AZURE.organization}/_apis/git/repositories/${AZURE.repositoryId}/refs`), { run: { stdout: JSON.stringify({ value: [{ name: "refs/heads/main", objectId: "a".repeat(40) }, { name: "refs/heads/dev", objectId: "b".repeat(40) }] }) } })
+    .on(gitClone, { run: (call) => fixtureGitClone(call) });
 }
 
 export const claudeRun = program("claude", "-p");

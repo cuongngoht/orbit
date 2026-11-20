@@ -4,7 +4,8 @@
 //   system/init                   -> session.started (the CLI's version, model, permission mode, loaded plugins)
 //   stream_event text deltas      -> message.started / message.delta   (partial messages)
 //   assistant text block          -> message.completed (the block's whole text)
-//   assistant tool_use block      -> tool.started (an Agent call carries its own subagent_type and description)
+//   assistant tool_use block      -> tool.started (an Agent call carries its own subagent_type and description);
+//                                    an ExitPlanMode call (plan mode's proposal) -> plan.proposed with its `plan` too
 //   user tool_result block        -> tool.completed / tool.failed (is_error), with the tool's real output
 //   result                        -> kept for the runner, which decides the outcome with the exit code;
 //                                    each permission_denials entry -> permission.denied
@@ -12,15 +13,16 @@
 //
 // Thinking blocks are not shown. Messages and tools inside a subagent carry `parentToolUseId`, the CLI's own link
 // to the Agent call that started them; no agent name is guessed.
-import type { EventDataMap, ModelChoice, PluginInfo, TransientEventType, DurableEventType } from "@orbit-web/contracts";
+import type { EffortChoice, EventDataMap, ModeChoice, ModelChoice, PluginInfo, SessionEventType } from "@orbit-web/contracts";
 import { bounded, redactSecrets } from "../../infra/security/redact.js";
 import { DeltaRedactor } from "./delta-redactor.js";
 
 export const TEXT_LIMIT = 200_000;
 export const TOOL_INPUT_LIMIT = 8_000;
 export const TOOL_OUTPUT_LIMIT = 16_000;
+export const PLAN_LIMIT = 64_000;
 
-export type MappedEvent = { [T in DurableEventType | TransientEventType]: { type: T; data: EventDataMap[T] } }[DurableEventType | TransientEventType];
+export type MappedEvent = { [T in SessionEventType]: { type: T; data: EventDataMap[T] } }[SessionEventType];
 
 export interface InitInfo {
   sessionId: string;
@@ -99,7 +101,7 @@ export class StreamMapper {
   private readonly textBlocksDone = new Map<string, number>();
   private readonly pendingTools = new Map<string, string | null>();
 
-  constructor(private readonly o: { requestedModel: ModelChoice; resumed: boolean; cwd: string }) {}
+  constructor(private readonly o: { requestedModel: ModelChoice; requestedEffort: EffortChoice; requestedMode: ModeChoice; resumed: boolean; cwd: string }) {}
 
   push(event: unknown): MappedEvent[] {
     if (!isRecord(event)) return [];
@@ -140,6 +142,8 @@ export class StreamMapper {
           claudeCodeVersion: str(e.claude_code_version),
           model: str(e.model),
           requestedModel: this.o.requestedModel,
+          requestedEffort: this.o.requestedEffort,
+          requestedMode: this.o.requestedMode,
           permissionMode: str(e.permissionMode),
           plugins,
           orbitLoaded: orbit !== undefined,
@@ -212,7 +216,9 @@ export class StreamMapper {
     this.pendingTools.set(toolUseId, parent);
     const shown = bounded(redactSecrets(JSON.stringify(input, null, 2)), TOOL_INPUT_LIMIT);
     const agent = name === "Agent" || name === "Task" ? { subagentType: str(input.subagent_type), description: str(input.description) } : null;
-    return [{ type: "tool.started", data: { toolUseId, name, title: redactSecrets(toolTitle(name, input, this.o.cwd)), input: shown.text, inputTruncated: shown.truncated, parentToolUseId: parent, agent } }];
+    const started: MappedEvent = { type: "tool.started", data: { toolUseId, name, title: redactSecrets(toolTitle(name, input, this.o.cwd)), input: shown.text, inputTruncated: shown.truncated, parentToolUseId: parent, agent } };
+    const plan = name === "ExitPlanMode" && typeof input.plan === "string" ? bounded(redactSecrets(input.plan), PLAN_LIMIT) : null;
+    return plan === null ? [started] : [started, { type: "plan.proposed", data: { toolUseId, plan: plan.text, truncated: plan.truncated } }];
   }
 
   private onUser(event: Json, message: Json): MappedEvent[] {

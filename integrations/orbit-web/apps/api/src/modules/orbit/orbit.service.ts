@@ -1,10 +1,11 @@
-// The Orbit panel of a session: read on request, and again (debounced) at tool boundaries and when a run ends.
-// `orbit.updated` / `verification.updated` are emitted only when what Orbit says changed.
-import { Inject, Injectable, Logger } from "@nestjs/common";
+// The Orbit panel of a session: read on request, and again -- a SUBSCRIBER of the session stream -- (debounced) when a
+// tool answers and at once when a run ends. `orbit.updated` / `verification.updated` are published only when what
+// Orbit says changed. A deleted chat (app stream `session.removed`) is forgotten.
+import { Inject, Injectable, Logger, type OnModuleInit } from "@nestjs/common";
 import { UNKNOWN_VERDICT, type OrbitPanel } from "@orbit-web/contracts";
 import { existsSync } from "node:fs";
 import type { AppConfig } from "../../config/config.js";
-import { EventHub } from "../../core/event-hub.js";
+import { EventBus } from "../../core/events/event-bus.js";
 import { APP_CONFIG } from "../../core/tokens.js";
 import { notFound } from "../../common/errors.js";
 import { SessionStore, type SessionRecord } from "../../infra/storage/stores.js";
@@ -14,7 +15,7 @@ import { isTaskId, OrbitGateway } from "./orbit.gateway.js";
 const changeKey = (p: OrbitPanel): string => JSON.stringify({ ...p, checkedAt: null });
 
 @Injectable()
-export class OrbitService {
+export class OrbitService implements OnModuleInit {
   private readonly logger = new Logger("Orbit");
   private readonly timers = new Map<string, NodeJS.Timeout>();
   private readonly last = new Map<string, OrbitPanel>();
@@ -24,8 +25,20 @@ export class OrbitService {
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(SessionStore) private readonly sessions: SessionStore,
     @Inject(OrbitGateway) private readonly gateway: OrbitGateway,
-    @Inject(EventHub) private readonly hub: EventHub,
+    @Inject(EventBus) private readonly bus: EventBus,
   ) {}
+
+  onModuleInit(): void {
+    this.bus.subscribe({ stream: "session", types: ["tool.completed", "tool.failed"] }, (e) => {
+      if (e.sessionId !== null) this.schedule(e.sessionId);
+    });
+    this.bus.subscribe({ stream: "session", types: ["session.completed", "session.failed", "session.interrupted"] }, (e) => {
+      if (e.sessionId !== null) this.schedule(e.sessionId, true);
+    });
+    this.bus.subscribe({ stream: "app", types: ["session.removed"] }, (e) => {
+      if (e.type === "session.removed") this.forget(e.data.sessionId);
+    });
+  }
 
   async panel(sessionId: string): Promise<OrbitPanel> {
     const session = this.sessions.get(sessionId);
@@ -89,10 +102,10 @@ export class OrbitService {
     this.last.set(sessionId, panel);
     if (previous !== undefined && changeKey(previous) === changeKey(panel)) return panel;
     if (!this.sessions.get(sessionId)) return panel;
-    this.hub.emit(sessionId, "orbit.updated", { panel }, null);
+    this.bus.publishSession(sessionId, "orbit.updated", { panel });
     const before = previous?.verdict ?? UNKNOWN_VERDICT("");
     if (previous === undefined || before.word !== panel.verdict.word || before.source !== panel.verdict.source) {
-      this.hub.emit(sessionId, "verification.updated", { word: panel.verdict.word, label: panel.verdict.label, source: panel.verdict.source }, null);
+      this.bus.publishSession(sessionId, "verification.updated", { word: panel.verdict.word, label: panel.verdict.label, source: panel.verdict.source });
     }
     return panel;
   }

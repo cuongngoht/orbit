@@ -73,8 +73,11 @@ export function repositoryFromApi(r: Record<string, unknown>): Repository | null
   const name = strOrNull(r.name);
   if (!fullName || !owner || !name) return null;
   return {
+    source: "github",
+    id: fullName,
     fullName,
     owner,
+    project: null,
     name,
     private: r.private === true,
     defaultBranch: strOrNull(r.default_branch),
@@ -89,7 +92,7 @@ export function repositoryFromList(r: Record<string, unknown>): Repository | nul
   if (!fullName || !fullName.includes("/")) return null;
   const [owner, name] = fullName.split("/") as [string, string];
   const ref = isRecord(r.defaultBranchRef) ? strOrNull(r.defaultBranchRef.name) : null;
-  return { fullName, owner, name, private: r.isPrivate === true, defaultBranch: ref, updatedAt: strOrNull(r.updatedAt), archived: r.isArchived === true, fork: r.isFork === true };
+  return { source: "github", id: fullName, fullName, owner, project: null, name, private: r.isPrivate === true, defaultBranch: ref, updatedAt: strOrNull(r.updatedAt), archived: r.isArchived === true, fork: r.isFork === true };
 }
 
 export function branchFromApi(b: Record<string, unknown>, defaultBranch: string | null): Branch | null {

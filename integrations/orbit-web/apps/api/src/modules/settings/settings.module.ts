@@ -1,8 +1,9 @@
-// GET/PATCH /api/settings: a person's preferences (default model, whether Claude may use the web tools, theme).
+// GET/PATCH /api/settings: a person's preferences (the default model, effort and mode of a new chat, whether a
+// project's skills and plugins are loaded, whether Claude may use the web tools, theme).
 // POST /api/access: in token mode, trades the access token for an HttpOnly, SameSite=Strict cookie (asked for before the
 // Claude sign-in, so it is reachable before it).
 import { Body, Controller, Get, HttpCode, Inject, Injectable, Module, Patch, Post, Res } from "@nestjs/common";
-import { checkUpdateSettings, DEFAULT_MODEL, isModelChoice, isTheme, type Settings } from "@orbit-web/contracts";
+import { checkUpdateSettings, DEFAULT_EFFORT, DEFAULT_MODE, DEFAULT_MODEL, isEffortChoice, isModeChoice, isModelChoice, isTheme, type Settings } from "@orbit-web/contracts";
 import type { Response } from "express";
 import type { AppConfig } from "../../config/config.js";
 import { APP_CONFIG } from "../../core/tokens.js";
@@ -24,6 +25,9 @@ export class SettingsService {
     const saved = this.store.get<Partial<Settings>>(KEY) ?? {};
     return {
       defaultModel: isModelChoice(saved.defaultModel) ? saved.defaultModel : DEFAULT_MODEL,
+      defaultEffort: isEffortChoice(saved.defaultEffort) ? saved.defaultEffort : DEFAULT_EFFORT,
+      defaultMode: isModeChoice(saved.defaultMode) ? saved.defaultMode : DEFAULT_MODE,
+      projectPlugins: saved.projectPlugins !== false,
       webTools: saved.webTools === true,
       azureForClaude: saved.azureForClaude === true,
       theme: isTheme(saved.theme) ? saved.theme : "system",

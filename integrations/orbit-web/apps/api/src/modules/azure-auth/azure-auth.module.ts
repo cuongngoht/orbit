@@ -1,8 +1,8 @@
-import { Body, Controller, Get, HttpCode, Inject, Module, Post, Req, Res } from "@nestjs/common";
+// The Azure CLI's sign-in, driven from Settings → Connectors. The flow's progress travels on the app stream
+// (`connector.flow`, `connector.status`), not a stream of its own.
+import { Body, Controller, Get, HttpCode, Inject, Module, Post } from "@nestjs/common";
 import { checkAzureLogin, type AzureStatus, type LoginSnapshot } from "@orbit-web/contracts";
-import type { Request, Response } from "express";
 import { accepted } from "../../common/errors.js";
-import { openSse } from "../../infra/sse/sse.js";
 import { SettingsModule } from "../settings/settings.module.js";
 import { AzureAuthService } from "./azure-auth.service.js";
 
@@ -25,14 +25,6 @@ export class AzureAuthController {
   @HttpCode(200)
   cancel(): LoginSnapshot {
     return this.azure.cancel();
-  }
-
-  @Get("login/events")
-  events(@Req() req: Request, @Res() res: Response): void {
-    let stop: () => void = () => undefined;
-    const channel = openSse(req, res, () => stop());
-    channel.send(this.azure.flowSnapshot());
-    stop = this.azure.subscribe((s) => channel.send(s));
   }
 
   @Post("logout")

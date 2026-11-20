@@ -35,7 +35,7 @@ function Workspace({ claude, settings, reloadClaude, onSignedOut }: { claude: Cl
   const [route, go] = useHashRoute();
   const setup = useResource<SetupStatus>(() => get("/api/setup/status"), [], 15_000);
   const signOut = useSignOut(onSignedOut);
-  const ready = setup.data?.ready === true;
+  const ready = setup.data?.github.state === "connected";
 
   // The sign-in ended elsewhere (a terminal, an expiry): the API says so, and the sign-in is read again.
   const lost = setup.errorCode === CLAUDE_SIGN_IN_REQUIRED || settings.errorCode === CLAUDE_SIGN_IN_REQUIRED;

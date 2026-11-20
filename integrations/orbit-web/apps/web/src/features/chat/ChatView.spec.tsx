@@ -1,6 +1,6 @@
 import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { AnyAppEvent } from "@orbit-web/contracts";
+import type { AnySessionEvent } from "@orbit-web/contracts";
 import { describe, expect, test, vi } from "vitest";
 import { useSessionStream } from "../../hooks/useSessionStream";
 import { fakeApi } from "../../testing/fakeApi";
@@ -16,7 +16,7 @@ function Live({ onChanged = () => undefined }: { onChanged?: () => void }) {
 
 let seq = 0;
 const push = (type: string, data: unknown, durable = true) =>
-  act(() => FakeEventSource.last(`/api/sessions/${SESSION_ID}/events`).emit({ type, sessionId: SESSION_ID, seq: durable ? ++seq : null, runId: "r1", at: "t", data } as AnyAppEvent));
+  act(() => FakeEventSource.last(`/api/sessions/${SESSION_ID}/events`).emit({ type, sessionId: SESSION_ID, seq: durable ? ++seq : null, runId: "r1", at: "t", data } as AnySessionEvent));
 
 describe("an open chat", () => {
   test("shows the repository, branch and model in its header", () => {

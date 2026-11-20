@@ -27,10 +27,10 @@ export function SetupPage({ status, reload, onContinue, title = "Set up Orbit We
       <SystemCard status={status} />
       {onContinue && (
         <div>
-          <Button appearance="primary" size="large" disabled={!status?.ready} onClick={onContinue}>
+          <Button appearance="primary" size="large" disabled={!(status?.github.state === "connected")} onClick={onContinue}>
             Open the chat workspace
           </Button>
-          {!status?.ready && <Text className={s.muted}> Connect GitHub to continue.</Text>}
+          {!(status?.github.state === "connected") && <Text className={s.muted}> Connect GitHub to continue.</Text>}
         </div>
       )}
     </div>

@@ -39,7 +39,7 @@ describe("the default, loopback-only surface", () => {
   });
 
   test("bodies are bounded and validated; unknown fields are refused", async () => {
-    assert.equal((await h.send("POST", "/api/sessions", { repository: "o/r", branch: "main", model: "sonnet", prompt: "x".repeat(300_000) })).status, 413);
+    assert.equal((await h.send("POST", "/api/sessions", { repository: { source: "github", id: "o/r" }, branch: "main", model: "sonnet", prompt: "x".repeat(300_000) })).status, 413);
     const bad = await fetch(`${h.url}/api/settings`, { method: "PATCH", headers: { "x-orbit-web": "1", "content-type": "application/json" }, body: "{not json" });
     assert.equal(bad.status, 400);
     assert.equal((await h.send("PATCH", "/api/settings", { theme: "dark", shell: "rm -rf /" })).status, 400);

@@ -3,7 +3,7 @@
 // not hold yet. Pure: the same events always give the same timeline.
 import {
   applyDelta,
-  type AnyAppEvent,
+  type AnySessionEvent,
   type OrbitPanel,
   type PermissionDeniedData,
   type RunNoticeData,
@@ -115,7 +115,7 @@ function workspace(state: ChatState, patch: Omit<WorkspaceItem, "kind" | "id">):
 // Messages still streaming when a run ends stop streaming (their completion, partial or not, arrives as an event).
 const settleStreaming = (items: TimelineItem[]): TimelineItem[] => items.map((i) => (i.kind === "message" && i.streaming ? { ...i, streaming: false } : i));
 
-function applyDurable(state: ChatState, e: AnyAppEvent): ChatState {
+function applyDurable(state: ChatState, e: AnySessionEvent): ChatState {
   switch (e.type) {
     case "workspace.preparing":
       return workspace(state, { step: e.data.step, state: "preparing", message: null, workBranch: null });
@@ -155,7 +155,7 @@ function applyDurable(state: ChatState, e: AnyAppEvent): ChatState {
   }
 }
 
-export function chatReducer(state: ChatState, e: AnyAppEvent): ChatState {
+export function chatReducer(state: ChatState, e: AnySessionEvent): ChatState {
   if (e.type === "message.delta") {
     return upsertMessage(state, e.data.messageId, (m) => ({ ...m, text: applyDelta(m.text, e.data), streaming: true }), { role: "assistant", text: "", streaming: true, partial: false, parentToolUseId: null });
   }

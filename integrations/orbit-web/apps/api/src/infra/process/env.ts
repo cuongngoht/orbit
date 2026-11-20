@@ -82,6 +82,12 @@ export function azureEnv(config: AppConfig): Record<string, string> {
   return { ...baseEnv(config), ...AZURE_PINS, AZURE_CONFIG_DIR: config.data.azure, BROWSER: "true" };
 }
 
+// Git cloning an Azure Repos repository: git's own hardening, and the Azure CLI's profile for the one-shot credential
+// helper git runs (it asks `az` for a token for that clone; git hands it to the server; nothing is written).
+export function azureGitEnv(config: AppConfig): Record<string, string> {
+  return { ...gitEnv(config), ...AZURE_PINS, AZURE_CONFIG_DIR: config.data.azure, BROWSER: "true" };
+}
+
 // The Claude credential variables the container was started with, by name: ignored, and said so.
 export const ignoredClaudeCredentials = (config: AppConfig): string[] => Object.keys(pick(config.sourceEnv, CLAUDE_CREDENTIAL_NAMES));
 

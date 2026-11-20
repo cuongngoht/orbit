@@ -41,7 +41,8 @@ export interface AppConfig {
   // The access cookie is marked Secure: set when Orbit Web is reached through an HTTPS proxy.
   secureCookie: boolean;
   maxBudgetUsd: number | null;
-  binaries: { claude: string; gh: string; git: string; az: string; node: string };
+  // `azureGitHelper`: the git credential helper an Azure Repos clone uses (shipped in the image).
+  binaries: { claude: string; gh: string; git: string; az: string; node: string; azureGitHelper: string };
   // The server's own environment: the only place allow-listed variables are copied from for a child process.
   sourceEnv: Readonly<Record<string, string | undefined>>;
   limits: Limits;
@@ -128,6 +129,7 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): A
       gh: env.ORBIT_WEB_GH_BIN || "gh",
       git: env.ORBIT_WEB_GIT_BIN || "git",
       az: env.ORBIT_WEB_AZ_BIN || "az",
+      azureGitHelper: env.ORBIT_WEB_AZURE_GIT_HELPER || "/opt/orbit-web/docker/git-credential-azure-cli.mjs",
       node: process.execPath,
     },
     sourceEnv: { ...env },

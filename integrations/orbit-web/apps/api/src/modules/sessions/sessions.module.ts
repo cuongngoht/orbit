@@ -1,11 +1,15 @@
 import { Body, Controller, Delete, Get, HttpCode, Inject, Module, Param, Patch, Post } from "@nestjs/common";
 import type { SessionDetail, SessionSummary } from "@orbit-web/contracts";
+import { AzureAuthModule } from "../azure-auth/azure-auth.module.js";
 import { ChangesModule } from "../changes/changes.module.js";
 import { ClaudeAuthModule } from "../claude-auth/claude-auth.module.js";
 import { ClaudeRunnerModule } from "../claude-runner/claude-runner.module.js";
 import { GithubModule } from "../github/github.module.js";
 import { OrbitModule } from "../orbit/orbit.module.js";
-import { RepositoriesModule } from "../repositories/repositories.module.js";
+import { ProjectModule } from "../project/project.module.js";
+import { SettingsModule } from "../settings/settings.module.js";
+import { SourcesModule } from "../sources/sources.module.js";
+import { SessionDirectory } from "./session-directory.js";
 import { SessionsService } from "./sessions.service.js";
 import { WorkspaceService } from "./workspace.service.js";
 
@@ -42,8 +46,8 @@ export class SessionsController {
 }
 
 @Module({
-  imports: [ClaudeAuthModule, GithubModule, RepositoriesModule, ChangesModule, ClaudeRunnerModule, OrbitModule],
-  providers: [SessionsService, WorkspaceService],
+  imports: [ClaudeAuthModule, GithubModule, AzureAuthModule, SourcesModule, ChangesModule, ClaudeRunnerModule, OrbitModule, ProjectModule, SettingsModule],
+  providers: [SessionsService, WorkspaceService, SessionDirectory],
   controllers: [SessionsController],
   exports: [SessionsService],
 })

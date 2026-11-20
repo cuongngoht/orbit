@@ -5,7 +5,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { AppConfig } from "../../config/config.js";
 import { APP_CONFIG, PROCESS_PORT } from "../../core/tokens.js";
-import { gitEnv } from "../../infra/process/env.js";
+import { azureGitEnv, gitEnv } from "../../infra/process/env.js";
 import type { ProcessPort, RunResult } from "../../infra/process/process.port.js";
 
 const HARDENING = ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-c", "diff.external=", "-c", "core.quotePath=false"];
@@ -21,6 +21,24 @@ export class GitGateway {
 
   git(cwd: string, args: string[], maxOutputBytes = 8 * 1024 * 1024): Promise<RunResult> {
     return this.process.run(this.config.binaries.git, [...HARDENING, ...args], { cwd, env: gitEnv(this.config), timeoutMs: this.config.limits.commandTimeoutMs, maxOutputBytes });
+  }
+
+  // A workspace with no repository: an empty repository on `main` (cwd is the new, empty directory), and one empty
+  // commit -- the base every change is read against -- made with Orbit Web's own name before any identity is set.
+  init(cwd: string): Promise<RunResult> {
+    return this.git(cwd, ["init", "--initial-branch=main", "--quiet", "."]);
+  }
+
+  emptyCommit(cwd: string): Promise<RunResult> {
+    return this.git(cwd, ["-c", "user.name=Orbit Web", "-c", "user.email=orbit-web@localhost", "-c", "commit.gpgsign=false", "commit", "--allow-empty", "--quiet", "-m", "Orbit Web: the start of this workspace"]);
+  }
+
+  // An Azure Repos clone. Git asks the one-shot credential helper the image ships (it asks the Azure CLI for a token
+  // for this clone and hands it to git); the helper list is reset first so no other helper answers, and nothing is
+  // written: the remote URL carries no credential and .git/config names no helper.
+  cloneAzure(cwd: string, url: string, branch: string, destination: string): Promise<RunResult> {
+    const args = ["-c", "credential.helper=", "-c", `credential.helper=${this.config.binaries.azureGitHelper}`, "clone", "--branch", branch, "--no-recurse-submodules", "--", url, destination];
+    return this.process.run(this.config.binaries.git, [...HARDENING, ...args], { cwd, env: azureGitEnv(this.config), timeoutMs: this.config.limits.cloneTimeoutMs });
   }
 
   head(cwd: string): Promise<RunResult> {

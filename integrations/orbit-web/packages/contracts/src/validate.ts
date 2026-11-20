@@ -1,11 +1,25 @@
 // Input rules, written once and enforced by the API (the web app uses the same functions only to say early what the
 // API would refuse). Plain functions over `unknown`: no schema library.
-import { isModelChoice, type ModelChoice } from "./models.js";
+import {
+  EFFORT_CHOICES,
+  isEffortChoice,
+  isModeChoice,
+  isModelChoice,
+  isRepositorySource,
+  MODE_CHOICES,
+  MODEL_CHOICES,
+  REPOSITORY_SOURCES,
+  type EffortChoice,
+  type ModeChoice,
+  type ModelChoice,
+  type RepositorySource,
+} from "./models.js";
 import { THEMES, type ThemePreference } from "./status.js";
 import type {
   AzureLoginRequest,
   ClaudeLoginCodeRequest,
   CreateSessionRequest,
+  RepositoryRef,
   SendMessageRequest,
   UpdateSessionRequest,
   UpdateSettingsRequest,
@@ -43,6 +57,30 @@ export function splitFullName(fullName: unknown): { owner: string; name: string 
   return isOwnerName(owner) && isRepoName(name) ? { owner, name } : null;
 }
 
+// An Azure DevOps organization name (letters, digits, hyphens; never something an argument parser reads as an option),
+// and a repository id (a GUID).
+const AZURE_ORGANIZATION = /^[A-Za-z0-9][A-Za-z0-9-]{0,49}$/;
+const GUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+export const isAzureOrganization = (v: unknown): v is string => typeof v === "string" && AZURE_ORGANIZATION.test(v);
+
+export const isGuid = (v: unknown): v is string => typeof v === "string" && GUID.test(v);
+
+// An Azure DevOps repository's id as the API names it: `organization/<repository id>`.
+export function splitAzureId(id: unknown): { organization: string; repositoryId: string } | null {
+  if (typeof id !== "string") return null;
+  const parts = id.split("/");
+  if (parts.length !== 2) return null;
+  const [organization, repositoryId] = parts as [string, string];
+  return isAzureOrganization(organization) && isGuid(repositoryId) ? { organization, repositoryId: repositoryId.toLowerCase() } : null;
+}
+
+// A repository reference the API accepts: a known source, and an id of that source's shape.
+export function isRepositoryRef(v: unknown): v is RepositoryRef {
+  if (!isRecord(v) || Object.keys(v).some((k) => k !== "source" && k !== "id") || !isRepositorySource(v.source)) return false;
+  return v.source === "github" ? splitFullName(v.id) !== null : splitAzureId(v.id) !== null;
+}
+
 // A branch name git would accept and no program would read as an option.
 export function isBranchName(v: unknown): v is string {
   if (typeof v !== "string" || v.length === 0 || v.length > LIMITS.branchLength) return false;
@@ -67,18 +105,31 @@ const unknownFields = (body: Record<string, unknown>, allowed: readonly string[]
 
 const checked = <T>(errors: string[], value: () => T): Checked<T> => (errors.length > 0 ? { ok: false, errors } : { ok: true, value: value() });
 
+const MODELS_SAID = `model must be one of ${MODEL_CHOICES.join(", ")}`;
+const EFFORTS_SAID = `effort must be one of ${EFFORT_CHOICES.join(", ")}`;
+const MODES_SAID = `mode must be one of ${MODE_CHOICES.join(", ")}`;
+const REPOSITORY_SAID = `repository must be { source: ${REPOSITORY_SOURCES.join(" | ")}, id } (GitHub owner/name, Azure DevOps organization/<repository id>)`;
+
+// A chat with a repository (and, optionally, its branch: the default one otherwise), or with none at all.
 export function checkCreateSession(body: unknown): Checked<CreateSessionRequest> {
   if (!isRecord(body)) return { ok: false, errors: ["the body must be a JSON object"] };
-  const errors = unknownFields(body, ["repository", "branch", "model", "title", "prompt"]);
-  if (!splitFullName(body.repository)) errors.push("repository must be owner/name");
-  if (!isBranchName(body.branch)) errors.push("branch must be a valid branch name");
-  if (!isModelChoice(body.model)) errors.push("model must be one of sonnet, opus, haiku");
+  const errors = unknownFields(body, ["repository", "branch", "model", "effort", "mode", "title", "prompt"]);
+  const repository = body.repository ?? null;
+  const branch = body.branch ?? null;
+  if (repository !== null && !isRepositoryRef(repository)) errors.push(REPOSITORY_SAID);
+  if (branch !== null && !isBranchName(branch)) errors.push("branch must be a valid branch name");
+  if (repository === null && branch !== null) errors.push("branch needs a repository");
+  if (!isModelChoice(body.model)) errors.push(MODELS_SAID);
+  if (body.effort !== undefined && !isEffortChoice(body.effort)) errors.push(EFFORTS_SAID);
+  if (body.mode !== undefined && !isModeChoice(body.mode)) errors.push(MODES_SAID);
   if (body.title !== undefined && cleanTitle(body.title) === null) errors.push(`title must be 1-${LIMITS.titleLength} printable characters`);
   if (body.prompt !== undefined && !isPromptText(body.prompt)) errors.push(`prompt must be 1-${LIMITS.promptLength} characters`);
   return checked(errors, () => ({
-    repository: body.repository as string,
-    branch: body.branch as string,
+    repository: repository === null ? null : { source: (repository as RepositoryRef).source as RepositorySource, id: (repository as RepositoryRef).id },
+    branch: branch as string | null,
     model: body.model as ModelChoice,
+    ...(body.effort !== undefined ? { effort: body.effort as EffortChoice } : {}),
+    ...(body.mode !== undefined ? { mode: body.mode as ModeChoice } : {}),
     ...(body.title !== undefined ? { title: cleanTitle(body.title) as string } : {}),
     ...(body.prompt !== undefined ? { prompt: body.prompt as string } : {}),
   }));
@@ -86,13 +137,18 @@ export function checkCreateSession(body: unknown): Checked<CreateSessionRequest>
 
 export function checkUpdateSession(body: unknown): Checked<UpdateSessionRequest> {
   if (!isRecord(body)) return { ok: false, errors: ["the body must be a JSON object"] };
-  const errors = unknownFields(body, ["title", "model"]);
-  if (body.title === undefined && body.model === undefined) errors.push("nothing to change: send title or model");
+  const fields = ["title", "model", "effort", "mode"];
+  const errors = unknownFields(body, fields);
+  if (fields.every((f) => body[f] === undefined)) errors.push("nothing to change: send title, model, effort or mode");
   if (body.title !== undefined && cleanTitle(body.title) === null) errors.push(`title must be 1-${LIMITS.titleLength} printable characters`);
-  if (body.model !== undefined && !isModelChoice(body.model)) errors.push("model must be one of sonnet, opus, haiku");
+  if (body.model !== undefined && !isModelChoice(body.model)) errors.push(MODELS_SAID);
+  if (body.effort !== undefined && !isEffortChoice(body.effort)) errors.push(EFFORTS_SAID);
+  if (body.mode !== undefined && !isModeChoice(body.mode)) errors.push(MODES_SAID);
   return checked(errors, () => ({
     ...(body.title !== undefined ? { title: cleanTitle(body.title) as string } : {}),
     ...(body.model !== undefined ? { model: body.model as ModelChoice } : {}),
+    ...(body.effort !== undefined ? { effort: body.effort as EffortChoice } : {}),
+    ...(body.mode !== undefined ? { mode: body.mode as ModeChoice } : {}),
   }));
 }
 
@@ -105,13 +161,17 @@ export function checkSendMessage(body: unknown): Checked<SendMessageRequest> {
 
 export function checkUpdateSettings(body: unknown): Checked<UpdateSettingsRequest> {
   if (!isRecord(body)) return { ok: false, errors: ["the body must be a JSON object"] };
-  const errors = unknownFields(body, ["defaultModel", "webTools", "azureForClaude", "theme"]);
-  if (body.defaultModel !== undefined && !isModelChoice(body.defaultModel)) errors.push("defaultModel must be one of sonnet, opus, haiku");
-  if (body.webTools !== undefined && typeof body.webTools !== "boolean") errors.push("webTools must be true or false");
-  if (body.azureForClaude !== undefined && typeof body.azureForClaude !== "boolean") errors.push("azureForClaude must be true or false");
+  const errors = unknownFields(body, ["defaultModel", "defaultEffort", "defaultMode", "projectPlugins", "webTools", "azureForClaude", "theme"]);
+  if (body.defaultModel !== undefined && !isModelChoice(body.defaultModel)) errors.push(`defaultModel must be one of ${MODEL_CHOICES.join(", ")}`);
+  if (body.defaultEffort !== undefined && !isEffortChoice(body.defaultEffort)) errors.push(`defaultEffort must be one of ${EFFORT_CHOICES.join(", ")}`);
+  if (body.defaultMode !== undefined && !isModeChoice(body.defaultMode)) errors.push(`defaultMode must be one of ${MODE_CHOICES.join(", ")}`);
+  for (const flag of ["projectPlugins", "webTools", "azureForClaude"]) if (body[flag] !== undefined && typeof body[flag] !== "boolean") errors.push(`${flag} must be true or false`);
   if (body.theme !== undefined && !isTheme(body.theme)) errors.push("theme must be one of system, light, dark");
   return checked(errors, () => ({
     ...(body.defaultModel !== undefined ? { defaultModel: body.defaultModel as ModelChoice } : {}),
+    ...(body.defaultEffort !== undefined ? { defaultEffort: body.defaultEffort as EffortChoice } : {}),
+    ...(body.defaultMode !== undefined ? { defaultMode: body.defaultMode as ModeChoice } : {}),
+    ...(body.projectPlugins !== undefined ? { projectPlugins: body.projectPlugins as boolean } : {}),
     ...(body.webTools !== undefined ? { webTools: body.webTools as boolean } : {}),
     ...(body.azureForClaude !== undefined ? { azureForClaude: body.azureForClaude as boolean } : {}),
     ...(body.theme !== undefined ? { theme: body.theme as ThemePreference } : {}),

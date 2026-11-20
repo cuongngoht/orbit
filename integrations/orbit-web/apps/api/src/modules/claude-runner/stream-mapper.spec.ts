@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { StreamMapper, toolTitle, type MappedEvent } from "./stream-mapper.js";
 
 const CWD = "/data/workspaces/s/repository";
-const mapper = () => new StreamMapper({ requestedModel: "sonnet", resumed: false, cwd: CWD });
+const mapper = () => new StreamMapper({ requestedModel: "sonnet", requestedEffort: "medium", requestedMode: "autonomous", resumed: false, cwd: CWD });
 const run = (m: StreamMapper, lines: unknown[]): MappedEvent[] => lines.flatMap((l) => m.push(l));
 const types = (es: MappedEvent[]) => es.map((e) => e.type);
 
@@ -128,4 +128,13 @@ test("titles come from the tool's own input", () => {
   assert.equal(toolTitle("Write", { file_path: `${CWD}/a/b.ts` }, CWD), "Write a/b.ts");
   assert.equal(toolTitle("Skill", { skill: "orbit-engineer" }, CWD), "Skill orbit-engineer");
   assert.equal(toolTitle("Mystery", {}, CWD), "Mystery");
+});
+
+test("plan mode's proposal (an ExitPlanMode call) is shown as a plan, besides the tool call itself", () => {
+  const m = mapper();
+  const plan = "## Plan\n1. Fix sum.mjs\n2. Run the test";
+  const events = m.push({ type: "assistant", message: { id: "msg_p", content: [{ type: "tool_use", id: "toolu_plan", name: "ExitPlanMode", input: { plan } }] }, parent_tool_use_id: null });
+  assert.deepEqual(events.map((e) => e.type), ["tool.started", "plan.proposed"]);
+  assert.deepEqual(events[1]?.data, { toolUseId: "toolu_plan", plan, truncated: false });
+  assert.deepEqual(m.push({ type: "assistant", message: { id: "msg_q", content: [{ type: "tool_use", id: "toolu_x", name: "ExitPlanMode", input: {} }] }, parent_tool_use_id: null }).map((e) => e.type), ["tool.started"], "no plan text, no plan");
 });

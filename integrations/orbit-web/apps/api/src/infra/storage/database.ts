@@ -1,6 +1,7 @@
 // Orbit Web's own state: one SQLite file under /data/app, through Node's built-in node:sqlite (no native module).
-// It holds settings, sessions, their messages, their durable events and their runs -- never a credential: the CLIs
-// keep their own sign-ins in their own directories.
+// It holds settings, sessions, their messages, their durable events, their runs and their projects' inventories --
+// never a credential: the CLIs keep their own sign-ins in their own directories. MIGRATIONS only ever grows: a data
+// volume of an earlier Orbit Web is brought forward in order, each step in one transaction.
 import { DatabaseSync } from "node:sqlite";
 
 const MIGRATIONS: string[] = [
@@ -58,6 +59,21 @@ const MIGRATIONS: string[] = [
      cost_usd REAL
    );
    CREATE INDEX runs_by_session ON runs(session_id);`,
+  // 0.8.0: a chat's repository has a source (GitHub or Azure DevOps) and may be none at all ('' in the two NOT NULL
+  // columns -- no table is rebuilt, so no cascade ever fires); a chat prefers an effort and a mode; a project's
+  // skills and plugins, read on the workspace's first fetch, are kept beside its chat.
+  `ALTER TABLE sessions ADD COLUMN source TEXT;
+   ALTER TABLE sessions ADD COLUMN repository_id TEXT;
+   ALTER TABLE sessions ADD COLUMN effort TEXT NOT NULL DEFAULT 'medium';
+   ALTER TABLE sessions ADD COLUMN mode TEXT NOT NULL DEFAULT 'autonomous';
+   UPDATE sessions SET source = 'github', repository_id = repository WHERE repository <> '';
+   ALTER TABLE runs ADD COLUMN effort TEXT;
+   ALTER TABLE runs ADD COLUMN mode TEXT;
+   CREATE TABLE project_inventories (
+     session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+     data TEXT NOT NULL,
+     updated_at TEXT NOT NULL
+   );`,
 ];
 
 export class Database {

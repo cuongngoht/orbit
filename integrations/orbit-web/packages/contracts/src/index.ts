@@ -1,7 +1,8 @@
 export * from "./dto.js";
-export * from "./events.js";
+export * from "./events/index.js";
 export * from "./models.js";
 export * from "./orbit.js";
+export * from "./project.js";
 export * from "./status.js";
 export * from "./validate.js";
 

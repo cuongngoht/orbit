@@ -57,17 +57,19 @@ describe("a chat, end to end through the API", () => {
   after(() => h.close());
 
   test("repositories and branches come from gh, and only a listed repository opens", async () => {
-    const list = (await h.get("/api/repositories")).body as { repositories: { fullName: string }[] };
-    assert.deepEqual(list.repositories.map((r) => r.fullName), ["octo/sum-fixture", "acme/tools"]);
-    const branches = (await h.get(`/api/repositories/${REPOSITORY}/branches`)).body as { branches: { name: string; isDefault: boolean }[] };
+    const list = (await h.get("/api/repositories?source=github")).body as { source: string; repositories: { fullName: string; source: string; id: string }[] };
+    assert.equal(list.source, "github");
+    assert.deepEqual(list.repositories.map((r) => [r.source, r.id]), [["github", "octo/sum-fixture"], ["github", "acme/tools"]]);
+    const branches = (await h.get(`/api/repositories/branches?source=github&id=${REPOSITORY}`)).body as { branches: { name: string; isDefault: boolean }[] };
     assert.deepEqual(branches.branches.map((b) => [b.name, b.isDefault]), [["main", true], ["dev", false]]);
-    assert.equal((await h.get("/api/repositories/someone/else/branches")).status, 403);
-    assert.equal((await h.send("POST", "/api/sessions", { repository: "someone/else", branch: "main", model: "sonnet" })).status, 403);
-    assert.equal((await h.send("POST", "/api/sessions", { repository: REPOSITORY, branch: "nope", model: "sonnet" })).status, 400);
+    assert.equal((await h.get("/api/repositories/branches?source=github&id=someone/else")).status, 403);
+    assert.equal((await h.get("/api/repositories?source=gitlab")).status, 400);
+    assert.equal((await h.send("POST", "/api/sessions", { repository: { source: "github", id: "someone/else" }, branch: "main", model: "sonnet" })).status, 403);
+    assert.equal((await h.send("POST", "/api/sessions", { repository: { source: "github", id: REPOSITORY }, branch: "nope", model: "sonnet" })).status, 400);
   });
 
   test("a new chat prepares its workspace, sends the first prompt, and streams the real run's events in order", async () => {
-    const created = await h.send("POST", "/api/sessions", { repository: REPOSITORY, branch: "main", model: "sonnet", prompt: "Fix the incorrect addition in sum.mjs so the existing test passes. Do not modify the test." });
+    const created = await h.send("POST", "/api/sessions", { repository: { source: "github", id: REPOSITORY }, branch: "main", model: "sonnet", prompt: "Fix the incorrect addition in sum.mjs so the existing test passes. Do not modify the test." });
     assert.equal(created.status, 201);
     session = created.body as SessionSummary;
     assert.equal(session.status, "preparing");
@@ -94,7 +96,8 @@ describe("a chat, end to end through the API", () => {
     const detail = call.args;
     assert.equal(after1(detail, "--plugin-dir"), h.config.pluginDir);
     assert.equal(after1(detail, "--model"), "sonnet");
-    assert.equal(after1(detail, "--permission-mode"), "dontAsk");
+    assert.equal(after1(detail, "--effort"), "medium", "Settings' default effort");
+    assert.equal(after1(detail, "--permission-mode"), "auto", "Autonomous is Claude Code's auto mode");
     assert.ok(after1(detail, "--session-id"));
     assert.equal(call.cwd, join(h.config.data.workspaces, session.id, "repository"));
     assert.equal(call.env.CLAUDE_CONFIG_DIR, h.config.data.claude);
@@ -142,15 +145,17 @@ describe("a chat, end to end through the API", () => {
     assert.deepEqual(events.map((e) => e.seq), [detail.lastSeq - 1, detail.lastSeq]);
   });
 
-  test("the next message continues the same Claude conversation, with the model the session now prefers", async () => {
+  test("the next message continues the same Claude conversation, with the model, effort and mode the session now prefers", async () => {
     const before = fake.children.length;
-    assert.equal((await h.send("PATCH", `/api/sessions/${session.id}`, { model: "opus", title: "Fix sum" })).status, 200);
+    assert.equal((await h.send("PATCH", `/api/sessions/${session.id}`, { model: "opus", effort: "xhigh", mode: "plan", title: "Fix sum" })).status, 200);
     assert.equal((await h.send("POST", `/api/sessions/${session.id}/messages`, { text: "Also explain the fix." })).status, 202);
     await eventually(async () => ((await h.get(`/api/sessions/${session.id}`)).body as SessionDetail).status, (s) => s === "completed");
     const call = fake.children.slice(before).find((c) => claudeRun(c.call.file, c.call.args))?.call as Call;
     const first = fake.children.find((c) => claudeRun(c.call.file, c.call.args))?.call as Call;
     assert.equal(after1(call.args, "--resume"), after1(first.args, "--session-id"));
     assert.equal(after1(call.args, "--model"), "opus");
+    assert.equal(after1(call.args, "--effort"), "xhigh");
+    assert.equal(after1(call.args, "--permission-mode"), "plan");
     const detail = (await h.get(`/api/sessions/${session.id}`)).body as SessionDetail;
     assert.equal(detail.title, "Fix sum");
     assert.equal(detail.turns, 2);

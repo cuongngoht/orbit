@@ -1,12 +1,10 @@
-// The conversation of a session: send a message (a new turn of Claude Code), follow its events over SSE (replayed
-// from the store after Last-Event-ID, then live), stop the run, and read the Orbit panel.
+// The conversation of a session: send a message (a new turn of Claude Code), follow its session stream over SSE (the
+// stream gateway: replayed from the journal after Last-Event-ID, then live), stop the run, and read the Orbit panel.
 import { Body, Controller, Get, HttpCode, Inject, Module, Param, Post, Req, Res } from "@nestjs/common";
 import { checkSendMessage, type OrbitPanel, type RunAccepted } from "@orbit-web/contracts";
 import type { Request, Response } from "express";
-import { EventHub } from "../../core/event-hub.js";
+import { StreamGateway } from "../../core/events/stream-gateway.js";
 import { accepted } from "../../common/errors.js";
-import { openSse, resumeAfter } from "../../infra/sse/sse.js";
-import { EventStore } from "../../infra/storage/stores.js";
 import { ClaudeRunnerModule } from "../claude-runner/claude-runner.module.js";
 import { ClaudeRunnerService } from "../claude-runner/claude-runner.service.js";
 import { OrbitModule } from "../orbit/orbit.module.js";
@@ -19,8 +17,7 @@ export class ChatController {
   constructor(
     @Inject(SessionsService) private readonly sessions: SessionsService,
     @Inject(ClaudeRunnerService) private readonly runner: ClaudeRunnerService,
-    @Inject(EventHub) private readonly hub: EventHub,
-    @Inject(EventStore) private readonly events: EventStore,
+    @Inject(StreamGateway) private readonly streams: StreamGateway,
     @Inject(OrbitService) private readonly orbit: OrbitService,
   ) {}
 
@@ -45,16 +42,10 @@ export class ChatController {
     return this.orbit.panel(id);
   }
 
-  // Replay and subscription happen in one synchronous step, so no event falls between them; then the text of a
-  // message still being written is sent from its start (the client keeps only what it lacks).
   @Get("events")
   stream(@Param("id") id: string, @Req() req: Request, @Res() res: Response): void {
     this.sessions.record(id);
-    let unsubscribe: () => void = () => undefined;
-    const channel = openSse(req, res, () => unsubscribe());
-    for (const event of this.events.since(id, resumeAfter(req))) channel.send(event, event.seq);
-    unsubscribe = this.hub.subscribe(id, (event) => channel.send(event, event.seq));
-    for (const snapshot of this.hub.liveSnapshots(id)) channel.send(snapshot, null);
+    this.streams.session(id, req, res);
   }
 }
 

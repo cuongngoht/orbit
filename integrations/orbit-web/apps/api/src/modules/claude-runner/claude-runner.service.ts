@@ -1,23 +1,25 @@
-// THE CLAUDE RUNNER: runs the official Claude Code CLI, headless, with the Orbit plugin, in a session's workspace.
-// One run per session at a time. The prompt goes in on stdin; the stream-json lines come out through the mapper as
-// application events; the outcome is decided from the exit status and the CLI's own result line; a stop signals the
-// process group (SIGINT, then SIGTERM, then SIGKILL). A restart of Orbit Web leaves no run "running": the ones it cut
-// short are recorded as interrupted, and nothing is started again without a person sending a message.
+// THE CLAUDE RUNNER: runs the official Claude Code CLI, headless, with the Orbit plugin (and the chat's project
+// plugins), in a session's workspace, with the model, effort and mode the session prefers. One run per session at a
+// time. The prompt goes in on stdin; the stream-json lines come out through the mapper as session events on the bus
+// (what keeps the transcript, refreshes Orbit or feeds a browser SUBSCRIBES -- the runner only publishes); the
+// outcome is decided from the exit status and the CLI's own result line; a stop signals the process group (SIGINT,
+// then SIGTERM, then SIGKILL). A restart of Orbit Web leaves no run "running": the ones it cut short are recorded as
+// interrupted, and nothing is started again without a person sending a message.
 import { type BeforeApplicationShutdown, Inject, Injectable, Logger, type OnModuleInit } from "@nestjs/common";
-import { ACCEPTS_MESSAGES, type AnyAppEvent, type RunAccepted, type SessionStatus } from "@orbit-web/contracts";
+import { ACCEPTS_MESSAGES, type AnySessionEvent, type RunAccepted, type SessionStatus } from "@orbit-web/contracts";
 import { randomUUID } from "node:crypto";
 import { createWriteStream, mkdirSync, type WriteStream } from "node:fs";
 import { join } from "node:path";
 import type { AppConfig } from "../../config/config.js";
-import { EventHub } from "../../core/event-hub.js";
+import { EventBus } from "../../core/events/event-bus.js";
 import { APP_CONFIG, PROCESS_PORT } from "../../core/tokens.js";
 import { conflict, notFound } from "../../common/errors.js";
 import { claudeEnv } from "../../infra/process/env.js";
 import { LineSplitter } from "../../infra/process/lines.js";
 import type { ExitInfo, ProcessHandle, ProcessPort } from "../../infra/process/process.port.js";
 import { redactSecrets, tail } from "../../infra/security/redact.js";
-import { MessageStore, RunStore, SessionStore, type SessionRecord } from "../../infra/storage/stores.js";
-import { OrbitService } from "../orbit/orbit.service.js";
+import { RunStore, SessionStore, type SessionRecord } from "../../infra/storage/stores.js";
+import { ProjectService } from "../project/project.service.js";
 import { SettingsService } from "../settings/settings.module.js";
 import { claudeArgs } from "./claude-args.js";
 import { decideOutcome, lostConversation } from "./outcome.js";
@@ -49,18 +51,17 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(PROCESS_PORT) private readonly process: ProcessPort,
     @Inject(SessionStore) private readonly sessions: SessionStore,
-    @Inject(MessageStore) private readonly messages: MessageStore,
     @Inject(RunStore) private readonly runs: RunStore,
-    @Inject(EventHub) private readonly hub: EventHub,
+    @Inject(EventBus) private readonly bus: EventBus,
     @Inject(SettingsService) private readonly settings: SettingsService,
-    @Inject(OrbitService) private readonly orbit: OrbitService,
+    @Inject(ProjectService) private readonly project: ProjectService,
   ) {}
 
   // After a restart nothing is running: a run the restart cut short is recorded as interrupted, never resumed.
   onModuleInit(): void {
     for (const run of this.runs.running()) this.runs.finish(run.id, "interrupted", { exitCode: null, signal: null, costUsd: null });
     for (const s of this.sessions.withStatus("running")) {
-      this.hub.emit(s.id, "session.interrupted", { reason: "server_restart", exitCode: null, signal: null }, null);
+      this.bus.publishSession(s.id, "session.interrupted", { reason: "server_restart", exitCode: null, signal: null });
       this.setStatus(s.id, "interrupted", "Orbit Web restarted while this run was active.", null);
     }
   }
@@ -78,9 +79,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     if (!ACCEPTS_MESSAGES.includes(session.status)) throw conflict("workspace_failed", "This session's workspace could not be prepared; start a new chat.");
     const runId = randomUUID();
     const messageId = randomUUID();
-    const createdAt = new Date().toISOString();
-    this.messages.add({ id: messageId, sessionId, role: "user", text, runId, createdAt });
-    this.hub.emit(sessionId, "message.completed", { messageId, role: "user", text, parentToolUseId: null, partial: false, truncated: false }, runId);
+    this.bus.publishSession(sessionId, "message.completed", { messageId, role: "user", text, parentToolUseId: null, partial: false, truncated: false }, runId);
     this.start(session, text, runId);
     return { sessionId, runId };
   }
@@ -111,9 +110,13 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     const resume = session.turns > 0;
     const prefs = this.settings.get();
     const azure = prefs.azureForClaude;
+    const project = this.project.runtime(session);
     const args = claudeArgs({
       model: session.model,
-      pluginDir: this.config.pluginDir,
+      effort: session.effort,
+      mode: session.mode,
+      pluginDirs: [this.config.pluginDir, ...project.pluginDirs],
+      enabledPlugins: project.enabledPlugins,
       sessionId: session.claudeSessionId,
       resume,
       webTools: prefs.webTools,
@@ -121,10 +124,10 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
       maxBudgetUsd: this.config.maxBudgetUsd,
       protectedDirs: [this.config.data.claude, this.config.data.github, this.config.data.app, ...(azure ? [] : [this.config.data.azure])],
     });
-    this.runs.start({ id: runId, sessionId: session.id, model: session.model, resumed: resume });
+    this.runs.start({ id: runId, sessionId: session.id, model: session.model, effort: session.effort, mode: session.mode, resumed: resume });
     this.setStatus(session.id, "running", null, runId);
     const handle = this.process.spawn(this.config.binaries.claude, args, { cwd: session.workspacePath, env: claudeEnv(this.config, { azure }) });
-    const mapper = new StreamMapper({ requestedModel: session.model, resumed: resume, cwd: session.workspacePath });
+    const mapper = new StreamMapper({ requestedModel: session.model, requestedEffort: session.effort, requestedMode: session.mode, resumed: resume, cwd: session.workspacePath });
     let resolveDone: () => void = () => undefined;
     const run: ActiveRun = {
       runId,
@@ -162,13 +165,8 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     for (const e of run.mapper.push(parsed)) this.publish(run, e);
   }
 
-  private publish(run: ActiveRun, e: MappedEvent): AnyAppEvent {
-    const event = this.hub.emit(run.session.id, e.type, e.data, run.runId);
-    if (event.type === "message.completed" && event.data.role === "assistant" && event.data.parentToolUseId === null) {
-      this.messages.add({ id: event.data.messageId, sessionId: run.session.id, role: "assistant", text: event.data.text, runId: run.runId, createdAt: event.at });
-    }
-    if (event.type === "tool.completed" || event.type === "tool.failed") this.orbit.schedule(run.session.id);
-    return event;
+  private publish(run: ActiveRun, e: MappedEvent): AnySessionEvent {
+    return this.bus.publishSession(run.session.id, e.type, e.data as never, run.runId) as AnySessionEvent;
   }
 
   private finalize(run: ActiveRun, exit: ExitInfo): void {
@@ -177,15 +175,13 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     run.splitter.end();
     for (const e of run.mapper.finish()) this.publish(run, e);
     const outcome = decideOutcome({ stoppedBy: run.stoppedBy, exit, result: run.mapper.result, stderrTail: tail(run.stderr, 6) });
-    this.hub.emit(run.session.id, outcome.type, outcome.data, run.runId);
+    this.bus.publishSession(run.session.id, outcome.type, outcome.data as never, run.runId);
     this.runs.finish(run.runId, outcome.status, { exitCode: exit.code, signal: exit.signal, costUsd: run.mapper.result?.costUsd ?? null });
     this.recordTurn(run, outcome.type === "session.failed" ? outcome.data.message : "");
     const reason = outcome.type === "session.failed" ? outcome.data.message.slice(0, 300) : outcome.type === "session.interrupted" ? outcome.data.reason : null;
     this.setStatus(run.session.id, outcome.status, reason, run.runId);
-    this.hub.dropLive(run.session.id);
     run.log?.end();
     this.active.delete(run.session.id);
-    this.orbit.schedule(run.session.id, true);
   }
 
   // A run that reached the CLI's init line is a turn of the Claude session; the next one resumes it.
@@ -195,7 +191,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     if (!current) return;
     if (lostConversation(failure) || lostConversation(run.stderr)) {
       this.sessions.update(current.id, { claudeSessionId: randomUUID(), turns: 0 });
-      this.hub.emit(current.id, "run.notice", { kind: "info", message: "Claude Code could not find the earlier conversation to resume, so the next message starts a new Claude conversation in the same workspace." }, run.runId);
+      this.bus.publishSession(current.id, "run.notice", { kind: "info", message: "Claude Code could not find the earlier conversation to resume, so the next message starts a new Claude conversation in the same workspace." }, run.runId);
       return;
     }
     if (init === null) return;
@@ -204,7 +200,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
 
   private setStatus(sessionId: string, status: SessionStatus, reason: string | null, runId: string | null): void {
     this.sessions.update(sessionId, { status, statusReason: reason });
-    this.hub.emit(sessionId, "session.status", { status, reason }, runId);
+    this.bus.publishSession(sessionId, "session.status", { status, reason }, runId);
   }
 
   // A diagnostic copy of the run's stream, masked and bounded, under /data/sessions/<session>/runs/.

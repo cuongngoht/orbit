@@ -23,7 +23,6 @@ export function setupStatus(claude: Partial<ClaudeStatus> = {}, github: Partial<
     github: g,
     azure: a,
     health: { status: "ok", api: ok, claude: { ok: true, detail: "2.1.328" }, gh: { ok: true, detail: "2.89.0" }, git: ok, az: { ok: true, detail: "2.91.0" }, orbitPlugin: { ok: true, detail: "0.6.0" }, storage: ok },
-    ready: c.state === "connected" && g.state === "connected",
   };
 }
 
@@ -33,10 +32,13 @@ export function sessionDetail(over: Partial<SessionDetail> = {}): SessionDetail 
   return {
     id: SESSION_ID,
     title: "Fix sum",
+    source: "github",
     repository: "octo/sum-fixture",
     branch: "main",
     workBranch: "orbit-web/0b6c2f5e",
     model: "sonnet",
+    effort: "medium",
+    mode: "autonomous",
     status: "ready",
     statusReason: null,
     createdAt: "2026-11-19T00:00:00.000Z",

@@ -1,10 +1,10 @@
-import type { AnyAppEvent } from "@orbit-web/contracts";
+import type { AnySessionEvent } from "@orbit-web/contracts";
 import { describe, expect, test } from "vitest";
 import { chatReducer, childrenOf, emptyChat, type ChatState } from "./chatReducer";
 
 let seq = 0;
-const ev = (type: string, data: unknown, durable = true): AnyAppEvent => ({ type, sessionId: "s", seq: durable ? ++seq : null, runId: "r", at: "t", data }) as AnyAppEvent;
-const apply = (events: AnyAppEvent[], from: ChatState = emptyChat()) => events.reduce(chatReducer, from);
+const ev = (type: string, data: unknown, durable = true): AnySessionEvent => ({ type, sessionId: "s", seq: durable ? ++seq : null, runId: "r", at: "t", data }) as AnySessionEvent;
+const apply = (events: AnySessionEvent[], from: ChatState = emptyChat()) => events.reduce(chatReducer, from);
 
 describe("the chat timeline", () => {
   test("streams a message from deltas, then takes the completed text", () => {

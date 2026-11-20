@@ -1,5 +1,5 @@
 // Request and response bodies of the Orbit Web API (`/api/...`). One definition for both sides.
-import type { ModelChoice } from "./models.js";
+import type { EffortChoice, ModeChoice, ModelChoice, RepositorySource } from "./models.js";
 import type { ConnectionState, LoginState, SessionStatus, ThemePreference } from "./status.js";
 
 export interface ApiErrorBody {
@@ -114,28 +114,49 @@ export interface AzureLoginRequest {
   tenant?: string;
 }
 
+// GET /api/setup/status: everything Settings → System shows. The chat never waits on it: once signed in to Claude, the
+// chat is open; GitHub and Azure are connectors a repository picker uses.
 export interface SetupStatus {
   versions: BuildVersions;
   claude: ClaudeStatus;
   github: GitHubStatus;
   azure: AzureStatus;
   health: HealthReport;
-  // Both required accounts (Claude and GitHub) are connected: the chat workspace may open.
-  ready: boolean;
 }
 
+// GET /api/sources: which repository sources can list repositories right now, and as whom.
+export interface SourceState {
+  source: RepositorySource;
+  state: ConnectionState;
+  // GitHub's login, or the Azure account's user name.
+  account: string | null;
+}
+
+export interface SourcesStatus {
+  sources: SourceState[];
+}
+
+// A repository a source lists. `id` is how the API names it back: GitHub `owner/name`, Azure DevOps
+// `organization/<repository id>`. `fullName` is what a person reads: `owner/name`, or `organization/project/name`.
 export interface Repository {
+  source: RepositorySource;
+  id: string;
   fullName: string;
+  // GitHub's owner, or the Azure DevOps organization.
   owner: string;
+  // The Azure DevOps project; null on GitHub.
+  project: string | null;
   name: string;
   private: boolean;
   defaultBranch: string | null;
   updatedAt: string | null;
+  // GitHub's archived flag, or Azure DevOps' disabled one.
   archived: boolean;
   fork: boolean;
 }
 
 export interface RepositoryList {
+  source: RepositorySource;
   repositories: Repository[];
   fetchedAt: string;
   partial: boolean;
@@ -149,17 +170,29 @@ export interface Branch {
 }
 
 export interface BranchList {
+  source: RepositorySource;
+  // The repository's id.
   repository: string;
   branches: Branch[];
+}
+
+// How a request names a repository: its source and the id that source listed it under.
+export interface RepositoryRef {
+  source: RepositorySource;
+  id: string;
 }
 
 export interface SessionSummary {
   id: string;
   title: string;
-  repository: string;
-  branch: string;
+  // Where the workspace came from; all three are null for a chat started without a repository.
+  source: RepositorySource | null;
+  repository: string | null;
+  branch: string | null;
   workBranch: string | null;
   model: ModelChoice;
+  effort: EffortChoice;
+  mode: ModeChoice;
   status: SessionStatus;
   statusReason: string | null;
   createdAt: string;
@@ -182,18 +215,25 @@ export interface SessionDetail extends SessionSummary {
   messages: ChatMessage[];
 }
 
+// A chat starts with or without a repository. With one, `branch` defaults to the repository's default branch; the
+// effort and the mode default to Settings'.
 export interface CreateSessionRequest {
-  repository: string;
-  branch: string;
+  repository?: RepositoryRef | null;
+  branch?: string | null;
   model: ModelChoice;
+  effort?: EffortChoice;
+  mode?: ModeChoice;
   title?: string;
   // The first message, sent once the workspace is ready.
   prompt?: string;
 }
 
+// The model, effort and mode a session prefers apply from its next message.
 export interface UpdateSessionRequest {
   title?: string;
   model?: ModelChoice;
+  effort?: EffortChoice;
+  mode?: ModeChoice;
 }
 
 export interface SendMessageRequest {
@@ -218,8 +258,9 @@ export interface ChangedFile {
 
 export interface ChangesReport {
   sessionId: string;
-  repository: string;
-  baseBranch: string;
+  repository: string | null;
+  // The branch the chat started from; null for a workspace with no repository.
+  baseBranch: string | null;
   workBranch: string | null;
   currentBranch: string | null;
   baseCommit: string | null;
@@ -241,6 +282,10 @@ export interface FileDiff {
 
 export interface Settings {
   defaultModel: ModelChoice;
+  defaultEffort: EffortChoice;
+  defaultMode: ModeChoice;
+  // A repository's own skills, commands, agents and declared plugins are loaded for its chats (on unless turned off).
+  projectPlugins: boolean;
   // WebFetch and WebSearch are offered to Claude only when this is on.
   webTools: boolean;
   // Claude Code is given the Azure CLI's sign-in (it may then run `az` as the signed-in account) only when this is on.
@@ -252,6 +297,9 @@ export interface Settings {
 
 export interface UpdateSettingsRequest {
   defaultModel?: ModelChoice;
+  defaultEffort?: EffortChoice;
+  defaultMode?: ModeChoice;
+  projectPlugins?: boolean;
   webTools?: boolean;
   azureForClaude?: boolean;
   theme?: ThemePreference;

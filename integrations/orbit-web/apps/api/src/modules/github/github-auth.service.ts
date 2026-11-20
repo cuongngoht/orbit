@@ -5,6 +5,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { ConnectionState, GitHubAccount, GitHubStatus, LoginSnapshot } from "@orbit-web/contracts";
 import type { AppConfig } from "../../config/config.js";
+import { EventBus } from "../../core/events/event-bus.js";
 import { APP_CONFIG, PROCESS_PORT } from "../../core/tokens.js";
 import { LoginFlow, lastWords, type LoginDriver, type LoginFields } from "../../common/login-flow.js";
 import { ghEnv } from "../../infra/process/env.js";
@@ -40,8 +41,18 @@ export class GithubAuthService {
     @Inject(PROCESS_PORT) process: ProcessPort,
     @Inject(GhGateway) private readonly gh: GhGateway,
     @Inject(SettingsStore) private readonly settings: SettingsStore,
+    @Inject(EventBus) private readonly bus: EventBus,
   ) {
     this.flow = new LoginFlow(process);
+    // The sign-in flow is told to every page on the app stream; its end, with what gh says now.
+    this.flow.subscribe((flow) => {
+      this.bus.publishApp("connector.flow", { connector: "github", flow });
+      if (flow.state === "connected" || flow.state === "failed") void this.connection().then((c) => this.announce(c));
+    });
+  }
+
+  private announce(c: GitHubConnection): void {
+    this.bus.publishApp("connector.status", { connector: "github", state: c.state, account: c.account?.login ?? null });
   }
 
   async status(): Promise<GitHubStatus> {
@@ -64,14 +75,6 @@ export class GithubAuthService {
     return this.flow.cancel();
   }
 
-  subscribe(listener: (s: LoginSnapshot) => void): () => void {
-    return this.flow.subscribe(listener);
-  }
-
-  flowSnapshot(): LoginSnapshot {
-    return this.flow.current();
-  }
-
   // Ends gh's local sign-in for the account it holds. GitHub keeps the authorization it granted until a person
   // revokes it in their GitHub settings (Applications); the page says so.
   async logout(): Promise<GitHubStatus> {
@@ -86,6 +89,7 @@ export class GithubAuthService {
     this.cached = null;
     this.flow.reset();
     const status = await this.status();
+    this.announce(status);
     return failures.length > 0 ? { ...status, detail: `gh auth logout did not finish: ${failures.join("; ")}` } : status;
   }
 

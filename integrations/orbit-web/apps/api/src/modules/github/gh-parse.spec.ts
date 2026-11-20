@@ -28,7 +28,7 @@ test("the device flow's one-time code and URL are read exactly as gh printed the
 test("repository and branch rows from the API and from gh repo list", () => {
   const rows = ndjson('{"full_name":"o/r","name":"r","owner":"o","private":true,"default_branch":"main","updated_at":"2026-01-01T00:00:00Z","archived":false,"fork":true}\nnot json\n');
   assert.equal(rows.length, 1);
-  assert.deepEqual(repositoryFromApi(rows[0] as Record<string, unknown>), { fullName: "o/r", owner: "o", name: "r", private: true, defaultBranch: "main", updatedAt: "2026-01-01T00:00:00Z", archived: false, fork: true });
-  assert.deepEqual(repositoryFromList({ nameWithOwner: "o/s", isPrivate: false, defaultBranchRef: { name: "trunk" }, updatedAt: null, isArchived: true, isFork: false }), { fullName: "o/s", owner: "o", name: "s", private: false, defaultBranch: "trunk", updatedAt: null, archived: true, fork: false });
+  assert.deepEqual(repositoryFromApi(rows[0] as Record<string, unknown>), { source: "github", id: "o/r", fullName: "o/r", owner: "o", project: null, name: "r", private: true, defaultBranch: "main", updatedAt: "2026-01-01T00:00:00Z", archived: false, fork: true });
+  assert.deepEqual(repositoryFromList({ nameWithOwner: "o/s", isPrivate: false, defaultBranchRef: { name: "trunk" }, updatedAt: null, isArchived: true, isFork: false }), { source: "github", id: "o/s", fullName: "o/s", owner: "o", project: null, name: "s", private: false, defaultBranch: "trunk", updatedAt: null, archived: true, fork: false });
   assert.deepEqual(branchFromApi({ name: "main", protected: true, sha: "abc" }, "main"), { name: "main", protected: true, commit: "abc", isDefault: true });
 });

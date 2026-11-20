@@ -1,5 +1,5 @@
-// GET /api/setup/status: everything the first-run page shows -- versions, both accounts, the system checks -- and
-// whether the chat workspace may open (both accounts connected).
+// GET /api/setup/status: what Settings → System shows -- versions, the Claude account and both connectors, the system
+// checks. The chat never waits on it: once signed in to Claude, the chat is open.
 import { Controller, Get, Inject, Injectable, Module } from "@nestjs/common";
 import type { SetupStatus } from "@orbit-web/contracts";
 import { AzureAuthModule } from "../azure-auth/azure-auth.module.js";
@@ -23,7 +23,7 @@ export class SetupService {
 
   async status(): Promise<SetupStatus> {
     const [tools, health, claude, github, azure] = await Promise.all([this.toolchain.get(), this.health.report(), this.claude.status(), this.github.status(), this.azure.status()]);
-    return { versions: tools.versions, claude, github, azure, health, ready: claude.state === "connected" && github.state === "connected" };
+    return { versions: tools.versions, claude, github, azure, health };
   }
 }
 

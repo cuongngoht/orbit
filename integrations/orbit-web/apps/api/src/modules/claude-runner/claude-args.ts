@@ -1,9 +1,11 @@
-// The one place Claude Code's command line is written. Headless (`-p`), the prompt on stdin, structured output
-// with partial messages, the Orbit plugin by directory, a model alias, and a permission mode that never asks: tools
-// outside the allow-list are refused (and reported back as permission denials), and pushing or driving GitHub from
-// the agent's shell is refused by rule. There is no bypass mode here, and nothing a request says becomes an argument
-// except the model alias, which is checked against the closed list first.
-import type { ModelChoice } from "@orbit-web/contracts";
+// The one place Claude Code's command line is written. Headless (`-p`), the prompt on stdin, structured output with
+// partial messages, the Orbit plugin (and the chat's project plugins) by directory, a model alias, an effort level, and
+// one of the two modes: Autonomous is Claude Code's auto mode (a classifier reviews each action before it runs; in
+// `-p` whatever would prompt is denied and reported back as a permission denial), Plan is its plan mode (read and plan,
+// change nothing). In both, pushing or driving GitHub from the agent's shell is refused by rule (deny rules bind in
+// every mode). There is no bypass mode here, and nothing a request says becomes an argument except the model, effort
+// and mode, each checked against its closed list first.
+import { MODE_PERMISSION, type EffortChoice, type ModeChoice, type ModelChoice } from "@orbit-web/contracts";
 
 export const BASE_TOOLS = ["Read", "Edit", "Write", "Glob", "Grep", "Bash", "Skill", "Agent", "TodoWrite"];
 
@@ -14,9 +16,14 @@ export const DENY_RULES = ["Bash(git push:*)", "Bash(gh:*)", "Bash(git credentia
 
 export interface ClaudeRunOptions {
   model: ModelChoice;
+  effort: EffortChoice;
+  mode: ModeChoice;
   // A person let Claude Code use the Azure CLI's sign-in; otherwise `az` is refused to it.
   azure: boolean;
-  pluginDir: string;
+  // Orbit's plugin first, then the chat's project plugins (project.service.ts).
+  pluginDirs: string[];
+  // The plugins this chat's project declares and Orbit Web installed: enabled for this run only.
+  enabledPlugins: Record<string, true>;
   // First turn: the id Orbit Web chose for the Claude session. Later turns: the id to resume.
   sessionId: string;
   resume: boolean;
@@ -40,11 +47,12 @@ export function claudeArgs(o: ClaudeRunOptions): string[] {
     "--include-partial-messages",
     "--model",
     o.model,
-    "--plugin-dir",
-    o.pluginDir,
+    "--effort",
+    o.effort,
+    ...o.pluginDirs.flatMap((dir) => ["--plugin-dir", dir]),
     ...(o.resume ? ["--resume", o.sessionId] : ["--session-id", o.sessionId]),
     "--permission-mode",
-    "dontAsk",
+    MODE_PERMISSION[o.mode],
     "--allowedTools",
     allowed.join(","),
     "--disallowedTools",
@@ -57,6 +65,7 @@ export function claudeArgs(o: ClaudeRunOptions): string[] {
     "--setting-sources",
     "user",
     "--strict-mcp-config",
+    ...(Object.keys(o.enabledPlugins).length > 0 ? ["--settings", JSON.stringify({ enabledPlugins: o.enabledPlugins })] : []),
     ...(o.maxBudgetUsd !== null ? ["--max-budget-usd", String(o.maxBudgetUsd)] : []),
   ];
 }

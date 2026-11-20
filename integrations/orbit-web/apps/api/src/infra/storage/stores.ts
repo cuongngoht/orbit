@@ -1,5 +1,16 @@
 // Typed access to Orbit Web's tables. Each store owns its SQL; nothing else writes these tables.
-import type { AnyAppEvent, ChatMessage, DurableEventType, EventDataMap, ModelChoice, SessionStatus } from "@orbit-web/contracts";
+import type {
+  AnySessionEvent,
+  ChatMessage,
+  DurableEventType,
+  EffortChoice,
+  EventDataMap,
+  ModeChoice,
+  ModelChoice,
+  ProjectInventory,
+  RepositorySource,
+  SessionStatus,
+} from "@orbit-web/contracts";
 import type { Database } from "./database.js";
 
 type Row = Record<string, unknown>;
@@ -7,6 +18,8 @@ type Row = Record<string, unknown>;
 const str = (v: unknown): string => String(v);
 const strOrNull = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
 const num = (v: unknown): number => Number(v);
+// The two columns a chat with no repository holds as '' (they were NOT NULL before chats could have none).
+const textOrNull = (v: unknown): string | null => (v === null || v === undefined || v === "" ? null : String(v));
 
 export class SettingsStore {
   constructor(private readonly database: Database) {}
@@ -30,11 +43,17 @@ export class SettingsStore {
 export interface SessionRecord {
   id: string;
   title: string;
-  repository: string;
-  branch: string;
+  // Where the workspace came from; all four are null for a chat with no repository. `repository` is the display name,
+  // `repositoryId` the id its source lists it under.
+  source: RepositorySource | null;
+  repository: string | null;
+  repositoryId: string | null;
+  branch: string | null;
   workBranch: string | null;
   baseCommit: string | null;
   model: ModelChoice;
+  effort: EffortChoice;
+  mode: ModeChoice;
   workspacePath: string;
   claudeSessionId: string;
   turns: number;
@@ -49,11 +68,15 @@ export interface SessionRecord {
 const sessionOf = (r: Row): SessionRecord => ({
   id: str(r.id),
   title: str(r.title),
-  repository: str(r.repository),
-  branch: str(r.branch),
+  source: textOrNull(r.source) as RepositorySource | null,
+  repository: textOrNull(r.repository),
+  repositoryId: textOrNull(r.repository_id),
+  branch: textOrNull(r.branch),
   workBranch: strOrNull(r.work_branch),
   baseCommit: strOrNull(r.base_commit),
   model: str(r.model) as ModelChoice,
+  effort: str(r.effort) as EffortChoice,
+  mode: str(r.mode) as ModeChoice,
   workspacePath: str(r.workspace_path),
   claudeSessionId: str(r.claude_session_id),
   turns: num(r.turns),
@@ -65,13 +88,18 @@ const sessionOf = (r: Row): SessionRecord => ({
   updatedAt: str(r.updated_at),
 });
 
-export type NewSession = Pick<SessionRecord, "id" | "title" | "repository" | "branch" | "model" | "workspacePath" | "claudeSessionId" | "status" | "pendingPrompt">;
+export type NewSession = Pick<
+  SessionRecord,
+  "id" | "title" | "source" | "repository" | "repositoryId" | "branch" | "model" | "effort" | "mode" | "workspacePath" | "claudeSessionId" | "status" | "pendingPrompt"
+>;
 
 const SESSION_COLUMNS: Record<string, string> = {
   title: "title",
   workBranch: "work_branch",
   baseCommit: "base_commit",
   model: "model",
+  effort: "effort",
+  mode: "mode",
   turns: "turns",
   status: "status",
   statusReason: "status_reason",
@@ -79,7 +107,9 @@ const SESSION_COLUMNS: Record<string, string> = {
   claudeSessionId: "claude_session_id",
 };
 
-export type SessionPatch = Partial<Pick<SessionRecord, "title" | "workBranch" | "baseCommit" | "model" | "turns" | "status" | "statusReason" | "pendingPrompt" | "claudeSessionId">>;
+export type SessionPatch = Partial<
+  Pick<SessionRecord, "title" | "workBranch" | "baseCommit" | "model" | "effort" | "mode" | "turns" | "status" | "statusReason" | "pendingPrompt" | "claudeSessionId">
+>;
 
 export class SessionStore {
   constructor(private readonly database: Database) {}
@@ -88,9 +118,9 @@ export class SessionStore {
     const now = new Date().toISOString();
     this.database.db
       .prepare(
-        "INSERT INTO sessions (id, title, repository, branch, model, workspace_path, claude_session_id, status, pending_prompt, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO sessions (id, title, source, repository, repository_id, branch, model, effort, mode, workspace_path, claude_session_id, status, pending_prompt, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
-      .run(s.id, s.title, s.repository, s.branch, s.model, s.workspacePath, s.claudeSessionId, s.status, s.pendingPrompt, now, now);
+      .run(s.id, s.title, s.source, s.repository ?? "", s.repositoryId, s.branch ?? "", s.model, s.effort, s.mode, s.workspacePath, s.claudeSessionId, s.status, s.pendingPrompt, now, now);
     return this.get(s.id) as SessionRecord;
   }
 
@@ -140,25 +170,52 @@ export class MessageStore {
   }
 }
 
+// THE JOURNAL of the session streams: every durable event, in order, per chat. A durable event's id is
+// `<session>:<seq>` -- the same whether it is delivered live or replayed.
 export class EventStore {
   constructor(private readonly database: Database) {}
 
   // Gives the event the session's next sequence number, in the same transaction that stores it: a number is never
   // handed out twice, across restarts too.
-  append<T extends DurableEventType>(sessionId: string, type: T, data: EventDataMap[T], runId: string | null): AnyAppEvent {
+  append<T extends DurableEventType>(sessionId: string, type: T, data: EventDataMap[T], runId: string | null): AnySessionEvent {
     const at = new Date().toISOString();
     return this.database.transaction(() => {
       const row = this.database.db.prepare("UPDATE sessions SET last_seq = last_seq + 1 WHERE id = ? RETURNING last_seq").get(sessionId) as Row | undefined;
       if (!row) throw new Error(`no session ${sessionId}`);
       const seq = num(row.last_seq);
       this.database.db.prepare("INSERT INTO events (session_id, seq, run_id, type, data, at) VALUES (?, ?, ?, ?, ?, ?)").run(sessionId, seq, runId, type, JSON.stringify(data), at);
-      return { type, sessionId, seq, runId, at, data } as AnyAppEvent;
+      return { id: `${sessionId}:${seq}`, type, stream: "session", sessionId, seq, runId, at, data } as AnySessionEvent;
     });
   }
 
-  since(sessionId: string, afterSeq: number, limit = 10_000): AnyAppEvent[] {
+  since(sessionId: string, afterSeq: number, limit = 10_000): AnySessionEvent[] {
     const rows = this.database.db.prepare("SELECT * FROM events WHERE session_id = ? AND seq > ? ORDER BY seq LIMIT ?").all(sessionId, afterSeq, limit) as Row[];
-    return rows.map((r) => ({ type: str(r.type), sessionId, seq: num(r.seq), runId: strOrNull(r.run_id), at: str(r.at), data: JSON.parse(str(r.data)) }) as AnyAppEvent);
+    return rows.map(
+      (r) => ({ id: `${sessionId}:${num(r.seq)}`, type: str(r.type), stream: "session", sessionId, seq: num(r.seq), runId: strOrNull(r.run_id), at: str(r.at), data: JSON.parse(str(r.data)) }) as AnySessionEvent,
+    );
+  }
+}
+
+// What a chat's repository brings (skills, commands, agents, plugins), as read on its workspace's first fetch.
+export class ProjectStore {
+  constructor(private readonly database: Database) {}
+
+  get(sessionId: string): ProjectInventory | null {
+    const row = this.database.db.prepare("SELECT data FROM project_inventories WHERE session_id = ?").get(sessionId) as Row | undefined;
+    return row ? (JSON.parse(str(row.data)) as ProjectInventory) : null;
+  }
+
+  set(sessionId: string, inventory: ProjectInventory): void {
+    this.database.db
+      .prepare("INSERT INTO project_inventories (session_id, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(session_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at")
+      .run(sessionId, JSON.stringify(inventory), new Date().toISOString());
+  }
+
+  list(): { sessionId: string; inventory: ProjectInventory }[] {
+    return (this.database.db.prepare("SELECT session_id, data FROM project_inventories ORDER BY updated_at DESC").all() as Row[]).map((r) => ({
+      sessionId: str(r.session_id),
+      inventory: JSON.parse(str(r.data)) as ProjectInventory,
+    }));
   }
 }
 
@@ -180,10 +237,10 @@ export interface RunRecord {
 export class RunStore {
   constructor(private readonly database: Database) {}
 
-  start(r: Pick<RunRecord, "id" | "sessionId" | "model" | "resumed">): void {
+  start(r: Pick<RunRecord, "id" | "sessionId" | "model" | "resumed"> & { effort: string; mode: string }): void {
     this.database.db
-      .prepare("INSERT INTO runs (id, session_id, status, model, resumed, started_at) VALUES (?, ?, 'running', ?, ?, ?)")
-      .run(r.id, r.sessionId, r.model, r.resumed ? 1 : 0, new Date().toISOString());
+      .prepare("INSERT INTO runs (id, session_id, status, model, effort, mode, resumed, started_at) VALUES (?, ?, 'running', ?, ?, ?, ?, ?)")
+      .run(r.id, r.sessionId, r.model, r.effort, r.mode, r.resumed ? 1 : 0, new Date().toISOString());
   }
 
   finish(id: string, status: Exclude<RunStatus, "running">, end: { exitCode: number | null; signal: string | null; costUsd: number | null }): void {

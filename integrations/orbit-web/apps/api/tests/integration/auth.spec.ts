@@ -20,7 +20,6 @@ describe("signed in to Claude, GitHub not connected yet", () => {
     const health = await h.get("/api/health");
     assert.equal(health.status, 200);
     const setup = (await h.get("/api/setup/status")).body as SetupStatus;
-    assert.equal(setup.ready, false);
     assert.equal(setup.claude.state, "connected");
     assert.deepEqual(setup.claude.account, { email: "octo@example.com", organization: "Octo Org", plan: "max" });
     assert.equal(setup.github.state, "not_connected");
@@ -29,8 +28,8 @@ describe("signed in to Claude, GitHub not connected yet", () => {
   });
 
   test("repositories and new chats wait for GitHub", async () => {
-    assert.equal((await h.get("/api/repositories")).status, 409);
-    const created = await h.send("POST", "/api/sessions", { repository: "octo/sum-fixture", branch: "main", model: "sonnet" });
+    assert.equal((await h.get("/api/repositories?source=github")).status, 409);
+    const created = await h.send("POST", "/api/sessions", { repository: { source: "github", id: "octo/sum-fixture" }, branch: "main", model: "sonnet" });
     assert.equal(created.status, 409);
     assert.equal((created.body as { error: { code: string } }).error.code, "github_not_connected");
   });
@@ -58,7 +57,8 @@ describe("Connect GitHub: gh's device flow driven from the page", () => {
   });
   after(() => h.close());
 
-  test("the code and URL gh prints reach the page; connected is decided by gh auth status and gh api user", async () => {
+  test("the code and URL gh prints reach every page on the app stream; connected is decided by gh auth status and gh api user", async () => {
+    const app = await h.stream("/api/events");
     let child: FakeChild | null = null;
     fake.on(program("gh", "auth", "login"), {
       spawn: (c) => {
@@ -69,10 +69,13 @@ describe("Connect GitHub: gh's device flow driven from the page", () => {
     });
     const started = await h.send("POST", "/api/github/login");
     assert.equal(started.status, 202);
-    const { events } = await h.events("/api/github/login/events", { until: (es) => es.some((e) => e.state === "awaiting_user") });
-    const waiting = events.find((e) => e.state === "awaiting_user") as unknown as LoginSnapshot;
-    assert.equal(waiting.code, "WXYZ-1234");
-    assert.equal(waiting.url, "https://github.com/login/device");
+    const flowOf = (e: Record<string, unknown>) => (e.type === "connector.flow" ? (e.data as { connector: string; flow: LoginSnapshot }) : null);
+    const events = await app.until((es) => es.some((e) => flowOf(e)?.flow.state === "awaiting_user"));
+    const waiting = events.map(flowOf).find((f) => f?.flow.state === "awaiting_user") as { connector: string; flow: LoginSnapshot };
+    assert.equal(waiting.connector, "github");
+    const flow = waiting.flow;
+    assert.equal(flow.code, "WXYZ-1234");
+    assert.equal(flow.url, "https://github.com/login/device");
     const login = fake.callsOf(program("gh", "auth", "login"))[0];
     assert.deepEqual(login?.args, ["auth", "login", "--hostname", "github.com", "--git-protocol", "https", "--web", "--skip-ssh-key", "--insecure-storage"]);
     loggedIn = true;
@@ -81,6 +84,9 @@ describe("Connect GitHub: gh's device flow driven from the page", () => {
     const status = await eventually(async () => (await h.get("/api/github/status")).body as GitHubStatus, (s) => s.flow.state === "connected");
     assert.equal(status.state, "connected");
     assert.deepEqual(status.account, { login: "octo", name: "Octo Cat" });
+    const announced = await app.until((es) => es.some((e) => e.type === "connector.status"));
+    assert.deepEqual(announced.find((e) => e.type === "connector.status")?.data, { connector: "github", state: "connected", account: "octo" });
+    app.close();
   });
 
   test("a refused sign-in is failed with gh's own words", async () => {

@@ -8,11 +8,13 @@ import { ClaudeAuthModule } from "./modules/claude-auth/claude-auth.module.js";
 import { ClaudeRunnerModule } from "./modules/claude-runner/claude-runner.module.js";
 import { GithubModule } from "./modules/github/github.module.js";
 import { HealthModule } from "./modules/health/health.module.js";
+import { EventsModule } from "./modules/events/events.module.js";
 import { OrbitModule } from "./modules/orbit/orbit.module.js";
-import { RepositoriesModule } from "./modules/repositories/repositories.module.js";
+import { ProjectModule } from "./modules/project/project.module.js";
 import { SessionsModule } from "./modules/sessions/sessions.module.js";
 import { SettingsModule } from "./modules/settings/settings.module.js";
 import { SetupModule } from "./modules/setup/setup.module.js";
+import { SourcesModule } from "./modules/sources/sources.module.js";
 
 @Module({})
 export class AppModule {
@@ -27,7 +29,9 @@ export class AppModule {
         GithubModule,
         AzureAuthModule,
         SettingsModule,
-        RepositoriesModule,
+        SourcesModule,
+        ProjectModule,
+        EventsModule,
         OrbitModule,
         ClaudeRunnerModule,
         ChangesModule,

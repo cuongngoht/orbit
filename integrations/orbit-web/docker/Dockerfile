@@ -139,6 +139,9 @@ COPY --from=build /src/packages/contracts/dist /opt/orbit-web/packages/contracts
 COPY --from=build /src/apps/api/dist /opt/orbit-web/apps/api/dist
 COPY --from=build /src/apps/web/dist /opt/orbit-web/apps/web/dist
 COPY integrations/orbit-web/docker/healthcheck.mjs integrations/orbit-web/docker/build-info.mjs /opt/orbit-web/docker/
+# The git credential helper of an Azure Repos clone (docker/git-credential-azure-cli.mjs): named on that one git
+# command by Orbit Web, never configured anywhere.
+COPY --chmod=0755 integrations/orbit-web/docker/git-credential-azure-cli.mjs /opt/orbit-web/docker/git-credential-azure-cli.mjs
 
 # CLAUDE_CONFIG_DIR: where the Claude CLI keeps its sign-in -- Orbit Web's own sign-in -- for every `claude` in the
 # container, so a terminal sign-in (`docker exec -it orbit-web claude auth login --claudeai`) lands where Orbit Web

@@ -20,7 +20,7 @@ function hangingRun(c: FakeChild, call: Call): void {
 test("a graceful restart interrupts the active run, and the next start shows it interrupted with everything kept", async () => {
   const fake = signedIn(new FakeProcessPort(new NodeProcessPort())).on(claudeRun, { spawn: hangingRun });
   const first = await startHarness({ fake });
-  const created = (await first.send("POST", "/api/sessions", { repository: REPOSITORY, branch: "main", model: "sonnet", prompt: "Work on it." })).body as SessionSummary;
+  const created = (await first.send("POST", "/api/sessions", { repository: { source: "github", id: REPOSITORY }, branch: "main", model: "sonnet", prompt: "Work on it." })).body as SessionSummary;
   await eventually(async () => ((await first.get(`/api/sessions/${created.id}`)).body as SessionDetail).status, (s) => s === "running");
   await eventually(() => fake.children.filter((c) => claudeRun(c.call.file, c.call.args)).length, (n) => n === 1);
   await new Promise((r) => setTimeout(r, 50));
@@ -44,7 +44,7 @@ test("a graceful restart interrupts the active run, and the next start shows it 
 
 test("after a crash (the record still says running), the next start marks it interrupted", async () => {
   const first = await startHarness({ fake: signedIn(new FakeProcessPort(new NodeProcessPort())).on(claudeRun, { spawn: (c) => c.onInputClosed(() => c.exit(0)) }) });
-  const created = (await first.send("POST", "/api/sessions", { repository: REPOSITORY, branch: "main", model: "haiku" })).body as SessionSummary;
+  const created = (await first.send("POST", "/api/sessions", { repository: { source: "github", id: REPOSITORY }, branch: "main", model: "haiku" })).body as SessionSummary;
   await eventually(async () => ((await first.get(`/api/sessions/${created.id}`)).body as SessionDetail).status, (s) => s === "ready");
   await first.close(true);
   const db = new DatabaseSync(join(first.dataDir, "app", "orbit-web.db"));

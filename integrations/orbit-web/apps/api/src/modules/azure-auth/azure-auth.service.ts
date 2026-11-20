@@ -6,6 +6,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { AzureAccount, AzureStatus, ConnectionState, LoginSnapshot } from "@orbit-web/contracts";
 import type { AppConfig } from "../../config/config.js";
+import { EventBus } from "../../core/events/event-bus.js";
 import { APP_CONFIG, PROCESS_PORT } from "../../core/tokens.js";
 import { LoginFlow, lastWords, type LoginDriver, type LoginFields } from "../../common/login-flow.js";
 import { azureEnv } from "../../infra/process/env.js";
@@ -54,8 +55,18 @@ export class AzureAuthService {
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(PROCESS_PORT) private readonly process: ProcessPort,
     @Inject(SettingsService) private readonly settings: SettingsService,
+    @Inject(EventBus) private readonly bus: EventBus,
   ) {
     this.flow = new LoginFlow(process);
+    // The sign-in flow is told to every page on the app stream; its end, with what az says now.
+    this.flow.subscribe((flow) => {
+      this.bus.publishApp("connector.flow", { connector: "azure", flow });
+      if (flow.state === "connected" || flow.state === "failed") void this.connection().then((c) => this.announce(c));
+    });
+  }
+
+  private announce(c: AzureConnection): void {
+    this.bus.publishApp("connector.status", { connector: "azure", state: c.state, account: c.account?.user ?? null });
   }
 
   async status(): Promise<AzureStatus> {
@@ -78,19 +89,12 @@ export class AzureAuthService {
     return this.flow.cancel();
   }
 
-  subscribe(listener: (s: LoginSnapshot) => void): () => void {
-    return this.flow.subscribe(listener);
-  }
-
-  flowSnapshot(): LoginSnapshot {
-    return this.flow.current();
-  }
-
   async logout(): Promise<AzureStatus> {
     const r = await this.az(["logout"]);
     this.cached = null;
     this.flow.reset();
     const status = await this.status();
+    this.announce(status);
     if (!succeeded(r) && status.state === "connected") return { ...status, detail: `az logout ${endedHow(r)}: ${tail(r.stderr, 2)}` };
     return status;
   }

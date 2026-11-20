@@ -2,7 +2,19 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { claudeArgs } from "./claude-args.js";
 
-const base = { model: "sonnet" as const, pluginDir: "/opt/orbit/plugin", sessionId: "11111111-2222-3333-4444-555555555555", resume: false, webTools: false, azure: false, maxBudgetUsd: null, protectedDirs: ["/data/claude", "/data/github"] };
+const base = {
+  model: "sonnet" as const,
+  effort: "medium" as const,
+  mode: "autonomous" as const,
+  pluginDirs: ["/opt/orbit/plugin"],
+  enabledPlugins: {},
+  sessionId: "11111111-2222-3333-4444-555555555555",
+  resume: false,
+  webTools: false,
+  azure: false,
+  maxBudgetUsd: null,
+  protectedDirs: ["/data/claude", "/data/github"],
+};
 
 const after = (args: string[], flag: string): string | undefined => args[args.indexOf(flag) + 1];
 
@@ -27,9 +39,27 @@ test("headless, structured, partial messages, the Orbit plugin and the model ali
   assert.equal(a.includes("--bare"), false, "Orbit's hooks and skills must load");
 });
 
-test("permissions never ask and never bypass; pushing and gh are refused", () => {
+test("the two modes are Claude Code's auto and plan modes, the effort is passed as chosen", () => {
+  const a = claudeArgs({ ...base, effort: "xhigh" });
+  assert.equal(after(a, "--permission-mode"), "auto");
+  assert.equal(after(a, "--effort"), "xhigh");
+  const plan = claudeArgs({ ...base, mode: "plan", effort: "max", model: "fable" });
+  assert.equal(after(plan, "--permission-mode"), "plan");
+  assert.equal(after(plan, "--effort"), "max");
+  assert.equal(after(plan, "--model"), "fable");
+});
+
+test("a chat's project plugins load beside Orbit's, and its declared plugins are enabled for this run only", () => {
+  const a = claudeArgs({ ...base, pluginDirs: ["/opt/orbit/plugin", "/data/sessions/s/project-plugin", "/data/workspaces/s/repository"], enabledPlugins: { "fmt@acme": true } });
+  const dirs = a.flatMap((x, i) => (x === "--plugin-dir" ? [a[i + 1]] : []));
+  assert.deepEqual(dirs, ["/opt/orbit/plugin", "/data/sessions/s/project-plugin", "/data/workspaces/s/repository"]);
+  assert.deepEqual(JSON.parse(after(a, "--settings") ?? "{}"), { enabledPlugins: { "fmt@acme": true } });
+  assert.equal(claudeArgs(base).includes("--settings"), false, "no settings flag when the project declares nothing");
+  assert.equal(after(a, "--setting-sources"), "user", "the repository's own settings stay unread");
+});
+
+test("permissions never bypass; pushing and gh are refused in every mode", () => {
   const a = claudeArgs(base);
-  assert.equal(after(a, "--permission-mode"), "dontAsk");
   assert.equal(a.some((x) => /bypass|dangerously/i.test(x)), false);
   assert.equal(after(a, "--allowedTools"), "Read,Edit,Write,Glob,Grep,Bash,Skill,Agent,TodoWrite");
   for (const rule of ["Bash(git push:*)", "Bash(gh:*)", "Read(//data/github/**)", "Edit(//data/claude/**)", "WebFetch", "WebSearch"]) assert.ok(a.includes(rule), rule);

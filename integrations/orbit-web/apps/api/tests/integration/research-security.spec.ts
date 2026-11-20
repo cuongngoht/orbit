@@ -203,6 +203,10 @@ describe("one account's research is not another's", () => {
     assert.equal(errorCode(await h.send("DELETE", `/api/research/notes/${note.id}`)), "owner_only", "a note is its writer's or the owner's to delete");
     const mine = (await h.send("POST", `/api/research/workspaces/${alice.workspace.id}/notes`, { title: "Bob's", body: "mine" })).body as ResearchNote;
     assert.equal((await h.send("DELETE", `/api/research/notes/${mine.id}`)).status, 204);
+    assert.equal(errorCode(await h.send("PATCH", `/api/research/findings/${finding.id}`, { statement: "June." })), "owner_only", "another's finding: its words are not this account's to change");
+    assert.equal(errorCode(await h.send("PATCH", `/api/research/notes/${note.id}`, { body: "June." })), "owner_only");
+    const reviewed = await h.send("PATCH", `/api/research/findings/${finding.id}`, { status: "needs_review" });
+    assert.equal((reviewed.body as ResearchFinding).status, "needs_review", "but it may review it");
     await as(ALICE);
     assert.equal((await h.send("PUT", `/api/research/workspaces/${alice.workspace.id}/access`, { people: [] })).status, 200);
     await as(BOB);

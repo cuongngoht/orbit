@@ -1,5 +1,7 @@
 // NOTES AND FINDINGS of a workspace: what a person keeps of their research. A note is free Markdown, optionally tied to a
-// source or a citation. A finding is a conclusion with the citations it rests on and a review status a PERSON moves:
+// source or a citation, changed or deleted by whoever wrote it or the workspace's owner. A finding is a conclusion with
+// the citations it rests on -- its words its writer's or the owner's to change -- and a review status a PERSON moves
+// (anybody the workspace is open to):
 // draft -> needs_review -> reviewed | rejected, back to draft. A finding's words changed after a review are a draft
 // again -- a review is of the words it reviewed. `reviewed` is a reviewed research conclusion and nothing more: it is
 // not a policy, it is never written to governance, and no run can set it (a run has no tool and no route).
@@ -85,6 +87,8 @@ export class ResearchEvidenceService {
     const req = accepted(checkUpdateFinding(body));
     const citations = req.citations === undefined ? null : this.access.citations(req.citations, workspace.id).map((c) => c.id);
     const reworded = req.title !== undefined || req.statement !== undefined || citations !== null;
+    // Its words and citations are its writer's or the workspace owner's to change; anybody it is open to may review it.
+    if (reworded) this.access.mayRemove(workspace, finding.createdBy, identity);
     // Words changed after a review make it a draft again; then the move asked for, if any, from there.
     const from: FindingStatus = reworded && (finding.status === "reviewed" || finding.status === "rejected") ? "draft" : finding.status;
     const to = req.status ?? from;

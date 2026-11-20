@@ -70,6 +70,8 @@ describe("the egress proxy", () => {
     const own = new Set(["203.0.114.7"]);
     const refused = ["127.0.0.1", "127.9.9.9", "169.254.169.254", "0.0.0.0", "10.1.2.3", "172.17.0.1", "172.31.250.2", "192.168.65.254", "100.64.0.1", "224.0.0.1", "255.255.255.255", "::1", "::", "::ffff:127.0.0.1", "::ffff:10.0.0.1", "fd00::1", "fe80::1", "ff02::1", "203.0.114.7", "not-an-address"];
     for (const a of refused) assert.equal(forbiddenAddress(a, own), true, a);
+    // An IPv4 address carried inside an IPv6 one (IPv4-compatible, NAT64, 6to4) is never reached that way.
+    for (const a of ["::7f00:1", "::a9fe:a9fe", "64:ff9b::7f00:1", "64:ff9b::a9fe:a9fe", "64:ff9b::5db8:d70e", "2002:7f00:1::1", "2002:5db8:d70e::1"]) assert.equal(forbiddenAddress(a, own), true, a);
     for (const a of ["160.79.104.10", "93.184.215.14", "2606:4700:4700::1111"]) assert.equal(forbiddenAddress(a, own), false, a);
     // An internal range the installation named is reachable (and still only where the decision allows); loopback never.
     const named = allowedPrivate(["10.20.0.0/16"]);

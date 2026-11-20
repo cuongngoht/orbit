@@ -80,9 +80,12 @@ const pinned =
     else (callback as (err: null, a: string, f: number) => void)(null, address, family);
   };
 
+// The answer's head, by the deadline -- an absolute one: a server that sends its head a byte at a time is cut off when the
+// time is up, not when it pauses.
 function get(url: URL, to: { address: string; family: 4 | 6; port: number }, deadline: number): Promise<IncomingMessage> {
   return new Promise((resolve, reject) => {
     const request = url.protocol === "https:" ? httpsRequest : httpRequest;
+    let timer: NodeJS.Timeout | null = null;
     const req = request(
       {
         protocol: url.protocol,
@@ -94,10 +97,16 @@ function get(url: URL, to: { address: string; family: 4 | 6; port: number }, dea
         lookup: pinned(to.address, to.family),
         headers: { "user-agent": `OrbitWeb-Research/${ORBIT_WEB_VERSION}`, accept: "text/html,application/xhtml+xml,application/pdf,text/plain,text/markdown;q=0.9,*/*;q=0.1", "accept-encoding": "identity" },
       },
-      resolve,
+      (res) => {
+        if (timer !== null) clearTimeout(timer);
+        resolve(res);
+      },
     );
-    req.setTimeout(Math.max(1, deadline - Date.now()), () => req.destroy(new FetchError("The page took too long to answer.")));
-    req.on("error", (err) => reject(err instanceof FetchError ? err : new FetchError(`The page could not be reached (${(err as { code?: string }).code ?? err.message}).`)));
+    timer = setTimeout(() => req.destroy(new FetchError("The page took too long to answer.")), Math.max(1, deadline - Date.now()));
+    req.on("error", (err) => {
+      if (timer !== null) clearTimeout(timer);
+      reject(err instanceof FetchError ? err : new FetchError(`The page could not be reached (${(err as { code?: string }).code ?? err.message}).`));
+    });
     req.end();
   });
 }

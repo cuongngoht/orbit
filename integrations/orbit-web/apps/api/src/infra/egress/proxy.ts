@@ -41,9 +41,11 @@ export function tokenOf(header: string | undefined): string | null {
 
 const unmapped = (a: string): string => (a.startsWith("::ffff:") ? a.slice(7) : a);
 
-// Every range that is not the public internet (IANA special-purpose registries).
+// Every range that is not the public internet (IANA special-purpose registries) -- and, for IPv6, every range that
+// carries an IPv4 address inside it (IPv4-compatible ::/96, NAT64 64:ff9b::/96, 6to4 2002::/16), which a gateway could
+// turn into a connection to an IPv4 address no check above saw: those are never reached at all.
 const NOT_PUBLIC_V4 = ["0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.0.0.0/24", "192.0.2.0/24", "192.88.99.0/24", "192.168.0.0/16", "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24", "224.0.0.0/4", "240.0.0.0/4"];
-const NOT_PUBLIC_V6 = ["::/128", "::1/128", "64:ff9b:1::/48", "100::/64", "2001:db8::/32", "fc00::/7", "fe80::/10", "ff00::/8"];
+const NOT_PUBLIC_V6 = ["::/96", "::1/128", "64:ff9b::/96", "64:ff9b:1::/48", "100::/64", "2001:db8::/32", "2002::/16", "fc00::/7", "fe80::/10", "ff00::/8"];
 
 function blockOf(v4: readonly string[], v6: readonly string[] = []): BlockList {
   const list = new BlockList();

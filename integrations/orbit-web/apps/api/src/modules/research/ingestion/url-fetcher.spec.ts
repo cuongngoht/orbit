@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import { createServer as createTcpServer, type AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
 import { FetchError, fetchUrl, publicWebPolicy, type AddressPolicy } from "./url-fetcher.js";
 
@@ -72,4 +72,28 @@ test("a name is checked by every address it resolves to, and the connection goes
   assert.equal(page.bytes.toString(), "<p>Hello</p>");
   assert.equal(lookups, 1, "resolved once, by the check; the connection used that answer");
   await assert.rejects(fetchUrl("https://nowhere.invalid/", { ...options, resolve: () => Promise.reject(new Error("ENOTFOUND")) }), /does not resolve/);
+});
+
+test("an IPv6 address that carries an IPv4 one (NAT64, 6to4, IPv4-compatible) is never reached", async () => {
+  const policy = publicWebPolicy();
+  for (const address of ["64:ff9b::7f00:1", "64:ff9b::a9fe:a9fe", "2002:a00:1::1", "::a9fe:a9fe"]) assert.equal(policy.allows(address, 443), false, address);
+  await assert.rejects(fetchUrl("https://nat64.example/", { ...options, policy, resolve: () => Promise.resolve(["64:ff9b::a9fe:a9fe"]) }), /never fetches it/);
+});
+
+test("the deadline is absolute: a server that sends its answer's head a byte at a time is cut off when the time is up", async () => {
+  const drip = createTcpServer((socket) => {
+    socket.write("HTTP/1.1 200 OK\r\n");
+    const timer = setInterval(() => socket.write("X"), 50);
+    socket.on("close", () => clearInterval(timer));
+    socket.on("error", () => clearInterval(timer));
+  });
+  await new Promise<void>((r) => drip.listen(0, "127.0.0.1", r));
+  const dripPort = (drip.address() as AddressInfo).port;
+  const started = Date.now();
+  try {
+    await assert.rejects(fetchUrl(`http://127.0.0.1:${dripPort}/`, { maxBytes: 1024, timeoutMs: 400, policy: { allows: (a, p) => a === "127.0.0.1" && p === dripPort } }), /took too long/);
+    assert.ok(Date.now() - started < 2_000, `stopped at its deadline (${Date.now() - started} ms)`);
+  } finally {
+    drip.close();
+  }
 });

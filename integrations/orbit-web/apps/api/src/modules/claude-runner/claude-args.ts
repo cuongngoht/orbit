@@ -62,7 +62,8 @@ export const AZURE_NOTE =
 
 export interface ClaudeRunOptions {
   model: ModelChoice;
-  effort: EffortChoice;
+  // Null: the model takes no effort level (the account's catalog says so), and none is passed.
+  effort: EffortChoice | null;
   mode: ModeChoice;
   // A person let Claude Code use the Azure CLI's sign-in; otherwise `az` is refused to it.
   azure: boolean;
@@ -123,8 +124,7 @@ export function claudeArgs(o: ClaudeRunOptions): string[] {
     "--include-partial-messages",
     "--model",
     o.model,
-    "--effort",
-    o.effort,
+    ...(o.effort !== null ? ["--effort", o.effort] : []),
     ...o.pluginDirs.flatMap((dir) => ["--plugin-dir", dir]),
     ...(o.resume ? ["--resume", o.sessionId] : ["--session-id", o.sessionId]),
     "--permission-mode",

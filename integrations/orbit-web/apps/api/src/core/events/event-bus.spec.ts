@@ -17,7 +17,7 @@ function setup() {
   const database = new Database(join(dir, `bus-${++n}.db`));
   const sessions = new SessionStore(database);
   const id = `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
-  sessions.create({ id, title: "t", source: null, repository: null, repositoryId: null, branch: null, model: "sonnet", effort: "medium", mode: "autonomous", workspacePath: "/w", claudeSessionId: "c", status: "preparing", pendingPrompt: null });
+  sessions.create({ id, title: "t", source: null, repository: null, repositoryId: null, branch: null, model: "sonnet", effort: "medium", mode: "autonomous", workspacePath: "/w", claudeSessionId: "c", status: "preparing", pendingPrompt: null, ownerEmail: "octo@example.com", ownerOrg: "org-1" });
   const journal = new EventStore(database);
   return { id, journal, bus: new EventBus(journal) };
 }

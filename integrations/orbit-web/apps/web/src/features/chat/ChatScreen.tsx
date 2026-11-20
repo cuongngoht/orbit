@@ -15,7 +15,8 @@ import { useViewport } from "../../hooks/useViewport";
 import { errorText, get, send } from "../../services/api";
 import { ChangesPanel } from "../changes/ChangesPanel";
 import { Composer } from "../composer/Composer";
-import { ModelEffortPicker, ModePicker } from "../composer/RunPickers";
+import { useModelCatalog } from "../../services/models/ModelCatalog";
+import { autoModeWith, ModelEffortPicker, ModePicker } from "../composer/RunPickers";
 import { WorkBranchPicker } from "../composer/WorkBranchPicker";
 import { OrbitPanel } from "../orbit/OrbitPanel";
 import { PushButton } from "../push/PushButton";
@@ -146,6 +147,7 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
   const status = state.status ?? detail.data?.status ?? "preparing";
   const running = status === "running";
   const drawerInspector = isCompact || isNarrowDesktop;
+  const catalog = useModelCatalog();
 
   // The header (title, preferences, status, working branch) is read again whenever the chat's status changes, or its
   // working branch moved (in this tab or another).
@@ -244,7 +246,7 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
           )}
           <div className={s.actions}>
             <PushButton session={session} compact={isMobile} />
-            <ShareButton sessionId={sessionId} compact={isMobile} />
+            <ShareButton sessionId={sessionId} compact={isMobile} access={session.access} />
             <Tooltip content="What changed in the workspace" relationship="description">
               <ToggleButton
                 className={isMobile ? s.touchBtn : undefined}
@@ -354,8 +356,13 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
             }
             right={
               <>
-                <ModelEffortPicker model={session.model} effort={session.effort} onModel={(model) => void attempt(() => update({ model }))} onEffort={(effort) => void attempt(() => update({ effort }))} />
-                <ModePicker mode={session.mode} onMode={(mode) => void attempt(() => update({ mode }))} />
+                <ModelEffortPicker
+                  model={session.model}
+                  effort={session.effort}
+                  onModel={(model) => void attempt(() => update({ model, ...(!autoModeWith(catalog, model) && session.mode === "autonomous" ? { mode: "plan" as const } : {}) }))}
+                  onEffort={(effort) => void attempt(() => update({ effort }))}
+                />
+                <ModePicker mode={session.mode} onMode={(mode) => void attempt(() => update({ mode }))} autoMode={autoModeWith(catalog, session.model)} />
               </>
             }
           />

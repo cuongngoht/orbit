@@ -5,11 +5,11 @@ import { Field, MessageBar, MessageBarBody, Radio, RadioGroup, Switch, Text, mak
 import { ChevronDown20Regular } from "@fluentui/react-icons";
 import {
   EFFORT_CHOICES,
-  EFFORT_LABELS,
+  effortLabel,
   MODE_CHOICES,
   MODE_LABELS,
-  MODEL_CHOICES,
-  MODEL_LABELS,
+  modelLabel,
+  modelOf,
   type EffortChoice,
   type ModeChoice,
   type ModelChoice,
@@ -19,6 +19,7 @@ import {
 } from "@orbit-web/contracts";
 import { useState, type ReactNode } from "react";
 import { errorText, send } from "../../services/api";
+import { useModelCatalog } from "../../services/models/ModelCatalog";
 import { MODE_HINTS } from "../composer/RunPickers";
 
 const useStyles = makeStyles({
@@ -165,6 +166,11 @@ export function AppearanceSection({ settings, onSettings }: SectionProps) {
 export function CodeSection({ settings, onSettings }: SectionProps) {
   const s = useStyles();
   const { error, save } = useSave(onSettings);
+  // The signed-in account's models, and the efforts the default one takes.
+  const catalog = useModelCatalog();
+  const models = catalog.models.some((m) => m.id === settings.defaultModel) ? catalog.models : [...catalog.models, { id: settings.defaultModel, label: modelLabel(settings.defaultModel, catalog) }];
+  const efforts = modelOf(catalog, settings.defaultModel)?.efforts ?? [...EFFORT_CHOICES];
+  const effortText = (e: EffortChoice) => (e === "medium" ? `${effortLabel(e)} (recommended)` : effortLabel(e));
   return (
     <div className={s.root}>
       <Group title="A new chat">
@@ -176,12 +182,12 @@ export function CodeSection({ settings, onSettings }: SectionProps) {
             <SingleCaretSelect
               fieldProps={fieldProps}
               value={settings.defaultModel}
-              displayText={MODEL_LABELS[settings.defaultModel]}
+              displayText={modelLabel(settings.defaultModel, catalog)}
               onChange={(value) => void save({ defaultModel: value as ModelChoice })}
             >
-              {MODEL_CHOICES.map((m) => (
-                <option key={m} value={m}>
-                  {MODEL_LABELS[m]}
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
                 </option>
               ))}
             </SingleCaretSelect>
@@ -192,12 +198,12 @@ export function CodeSection({ settings, onSettings }: SectionProps) {
             <SingleCaretSelect
               fieldProps={fieldProps}
               value={settings.defaultEffort}
-              displayText={settings.defaultEffort === "medium" ? `${EFFORT_LABELS[settings.defaultEffort]} (recommended)` : EFFORT_LABELS[settings.defaultEffort]}
+              displayText={efforts.length === 0 ? "This model takes no effort level" : effortText(settings.defaultEffort)}
               onChange={(value) => void save({ defaultEffort: value as EffortChoice })}
             >
-              {EFFORT_CHOICES.map((e) => (
+              {efforts.map((e) => (
                 <option key={e} value={e}>
-                  {e === "medium" ? `${EFFORT_LABELS[e]} (recommended)` : EFFORT_LABELS[e]}
+                  {effortText(e)}
                 </option>
               ))}
             </SingleCaretSelect>

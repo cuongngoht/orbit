@@ -2,7 +2,7 @@
 // preference, one Claude Code conversation. A session publishes what happens to it on the event bus: its own stream
 // (`session.status`) and, for every page, the app stream (`session.summary`, `session.removed`).
 import { Inject, Injectable } from "@nestjs/common";
-import { checkCreateSession, checkUpdateSession, CLAUDE_SIGN_IN_REQUIRED, type SessionDetail, type SessionSummary } from "@orbit-web/contracts";
+import { checkCreateSession, checkUpdateSession, CLAUDE_SIGN_IN_REQUIRED, type AccessLevel, type SessionDetail, type SessionSummary } from "@orbit-web/contracts";
 import { randomUUID } from "node:crypto";
 import { rmSync } from "node:fs";
 import { AgentFs } from "../../infra/process/agent-fs.js";
@@ -15,7 +15,9 @@ import { accepted, ApiError, conflict, notFound } from "../../common/errors.js";
 import { isSessionId } from "../../common/workspace-path.js";
 import { redactSecrets } from "../../infra/security/redact.js";
 import { MessageStore, SessionStore, type SessionRecord } from "../../infra/storage/stores.js";
+import { OwnershipService, requireIdentity } from "../access/ownership.service.js";
 import { ClaudeAuthService } from "../claude-auth/claude-auth.service.js";
+import { ClaudeModelsService } from "../claude-auth/claude-models.service.js";
 import { ClaudeRunnerService } from "../claude-runner/claude-runner.service.js";
 import { SettingsService } from "../settings/settings.module.js";
 import { SourcesService } from "../sources/sources.module.js";
@@ -24,7 +26,8 @@ import type { GovernanceContext } from "../governance/principal.js";
 import { RegistryService } from "../governance/registry.service.js";
 import { WorkspaceService } from "./workspace.service.js";
 
-export const summaryOf = (s: SessionRecord): SessionSummary => ({
+// A chat as an account sees it: `access` is that account's (its own, or shared with it).
+export const summaryOf = (s: SessionRecord, access: AccessLevel = "owner"): SessionSummary => ({
   id: s.id,
   title: s.title,
   source: s.source,
@@ -36,6 +39,8 @@ export const summaryOf = (s: SessionRecord): SessionSummary => ({
   mode: s.mode,
   status: s.status,
   statusReason: s.statusReason,
+  access,
+  owner: s.ownerEmail,
   createdAt: s.createdAt,
   updatedAt: s.updatedAt,
 });
@@ -64,15 +69,24 @@ export class SessionsService {
     @Inject(RegistryService) private readonly registry: RegistryService,
     @Inject(AgentFs) private readonly files: AgentFs,
     @Inject(MirrorService) private readonly mirror: MirrorService,
+    @Inject(OwnershipService) private readonly ownership: OwnershipService,
+    @Inject(ClaudeModelsService) private readonly models: ClaudeModelsService,
   ) {}
 
-  list(): SessionSummary[] {
-    return this.sessions.list().map(summaryOf);
+  // The chats of the account signed in now: its own, and those shared with it.
+  async list(): Promise<SessionSummary[]> {
+    const identity = await this.ownership.viewer();
+    return this.ownership.visible(identity).map((s) => summaryOf(s, this.ownership.levelOf(s, identity) ?? "shared"));
   }
 
   detail(id: string): SessionDetail {
     const s = this.record(id);
-    return { ...summaryOf(s), baseCommit: s.baseCommit, claudeSessionId: s.turns > 0 ? s.claudeSessionId : null, turns: s.turns, lastSeq: s.lastSeq, messages: this.messages.list(id) };
+    return { ...this.summary(s), baseCommit: s.baseCommit, claudeSessionId: s.turns > 0 ? s.claudeSessionId : null, turns: s.turns, lastSeq: s.lastSeq, messages: this.messages.list(id) };
+  }
+
+  // As the account signed in now sees it.
+  summary(s: SessionRecord): SessionSummary {
+    return summaryOf(s, this.ownership.levelNow(s) ?? "owner");
   }
 
   // With a repository: it must be one its source lists, and the branch one of its branches (its default when none was
@@ -82,8 +96,11 @@ export class SessionsService {
     const req = accepted(checkCreateSession(body));
     // The gate already holds every route to the Claude sign-in; this is the same rule, said where the account is used.
     if ((await this.claude.account()).state !== "connected") throw new ApiError(401, CLAUDE_SIGN_IN_REQUIRED, "Sign in to Orbit Web with your Claude account first.");
-    const origin = req.repository ? await this.sources.open(req.repository, req.branch ?? null) : null;
+    const owner = requireIdentity(await this.ownership.viewer());
     const prefs = this.settings.get();
+    // The model, effort and mode, held to what this account may use.
+    const run = await this.models.settle({ model: req.model, effort: prefs.defaultEffort, mode: prefs.defaultMode }, { ...(req.effort ? { effort: req.effort } : {}), ...(req.mode ? { mode: req.mode } : {}) });
+    const origin = req.repository ? await this.sources.open(req.repository, req.branch ?? null) : null;
     const id = randomUUID();
     const session = this.sessions.create({
       id,
@@ -92,23 +109,30 @@ export class SessionsService {
       repository: origin?.fullName ?? null,
       repositoryId: origin?.id ?? null,
       branch: origin?.branch ?? null,
-      model: req.model,
-      effort: req.effort ?? prefs.defaultEffort,
-      mode: req.mode ?? prefs.defaultMode,
+      model: run.model,
+      effort: run.effort,
+      mode: run.mode ?? prefs.defaultMode,
       workspacePath: this.workspaces.pathFor(id),
       claudeSessionId: randomUUID(),
       status: "preparing",
       pendingPrompt: req.prompt ?? null,
+      ownerEmail: owner.email,
+      ownerOrg: owner.org,
     });
     this.bus.publishSession(id, "session.status", { status: "preparing", reason: null });
     void this.workspaces.prepare(session);
-    return summaryOf(session);
+    return summaryOf(session, "owner");
   }
 
-  update(id: string, body: unknown): SessionSummary {
-    this.record(id);
+  // A rename, or the model, effort or mode of the next message -- held to what this account may use (an effort the new
+  // model does not take moves to one it does).
+  async update(id: string, body: unknown): Promise<SessionSummary> {
+    const s = this.record(id);
     const change = accepted(checkUpdateSession(body));
-    const summary = summaryOf(this.sessions.update(id, change));
+    const runChanged = change.model !== undefined || change.effort !== undefined || change.mode !== undefined;
+    const run = runChanged ? await this.models.settle({ model: s.model, effort: s.effort, mode: s.mode }, change) : null;
+    const updated = this.sessions.update(id, { ...change, ...(run !== null ? { model: run.model, effort: run.effort, mode: run.mode ?? s.mode } : {}) });
+    const summary = this.summary(updated);
     this.bus.publishApp("session.summary", { session: summary });
     return summary;
   }

@@ -4,6 +4,7 @@ export * from "./governance.js";
 export * from "./models.js";
 export * from "./orbit.js";
 export * from "./project.js";
+export * from "./research.js";
 export * from "./status.js";
 export * from "./validate.js";
 

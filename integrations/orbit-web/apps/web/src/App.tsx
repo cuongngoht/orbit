@@ -23,6 +23,7 @@ import { SharedChatPage, sharedTokenOf } from "./pages/SharedChatPage";
 import { SignInPage } from "./pages/SignInPage";
 import { get } from "./services/api";
 import { AppEventsProvider, useAppEvent } from "./services/events/AppEvents";
+import { ModelCatalogProvider } from "./services/models/ModelCatalog";
 import { isDark, themeOf, useSystemDark } from "./themes/theme";
 
 const useStyles = makeStyles({
@@ -221,7 +222,9 @@ function Gate({ claude, settings }: { claude: Resource<ClaudeStatus>; settings: 
   if (claude.data.state !== "connected") return <SignInPage status={claude.data} onChanged={reload} />;
   return (
     <AppEventsProvider>
-      <Workspace claude={claude.data} settings={settings} reloadClaude={reload} onSignedOut={claude.set} />
+      <ModelCatalogProvider>
+        <Workspace claude={claude.data} settings={settings} reloadClaude={reload} onSignedOut={claude.set} />
+      </ModelCatalogProvider>
     </AppEventsProvider>
   );
 }

@@ -1,6 +1,6 @@
 // One envelope for every event on every stream. `id` is unique per event (a client can drop one it already applied);
 // `seq` is the session stream's durable sequence number, null for anything transient and for the app stream.
-import type { AppStreamEventType, EventDataMap, EventType, SessionEventType, StreamKind } from "./catalog.js";
+import type { AppStreamEventType, EventDataMap, EventType, ResearchEventType, SessionEventType, StreamKind } from "./catalog.js";
 
 export interface StreamEvent<T extends EventType = EventType> {
   id: string;
@@ -28,3 +28,11 @@ export interface AppStreamEvent<T extends AppStreamEventType = AppStreamEventTyp
 }
 
 export type AnyAppStreamEvent = { [T in AppStreamEventType]: AppStreamEvent<T> }[AppStreamEventType];
+
+// One research session's event: `sessionId` is the research session's id.
+export interface ResearchEvent<T extends ResearchEventType = ResearchEventType> extends StreamEvent<T> {
+  stream: "research";
+  sessionId: string;
+}
+
+export type AnyResearchEvent = { [T in ResearchEventType]: ResearchEvent<T> }[ResearchEventType];

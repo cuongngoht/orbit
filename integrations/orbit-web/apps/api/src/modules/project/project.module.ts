@@ -21,6 +21,8 @@ import { APP_CONFIG } from "../../core/tokens.js";
 import { badRequest, notFound } from "../../common/errors.js";
 import { isSessionId } from "../../common/workspace-path.js";
 import { ProjectStore, SessionStore, type SessionRecord } from "../../infra/storage/stores.js";
+import { AccessModule } from "../access/access.module.js";
+import { OwnershipService } from "../access/ownership.service.js";
 import { SettingsModule, SettingsService } from "../settings/settings.module.js";
 import { frontmatter } from "./frontmatter.js";
 import { isRegularDir, readSmall } from "./inventory.js";
@@ -85,10 +87,11 @@ export class CustomizationsService implements OnModuleInit {
     });
   }
 
-  all(): Customizations {
+  // Orbit's own, and the projects of the chats this account may open (another account's are not its to see).
+  all(visible: ReadonlySet<string>): Customizations {
     this.orbit ??= readOrbitPlugin(this.config.pluginDir);
     const projects = this.projects.list().flatMap(({ sessionId, inventory }) => {
-      const session = this.sessions.get(sessionId);
+      const session = visible.has(sessionId) ? this.sessions.get(sessionId) : null;
       return session === null ? [] : [{ sessionId, title: session.title, inventory }];
     });
     return { orbit: this.orbit, projects };
@@ -100,12 +103,13 @@ export class CustomizationsService implements OnModuleInit {
     return { commands: [...project, ...this.orbitCommands()], note: this.sessionNote(session, this.projects.get(session.id)) };
   }
 
-  // A new chat: Orbit's, and the project's as the newest earlier chat of that repository that loaded them read them.
-  forRepository(source: RepositorySource | null, repositoryId: string | null): SlashCommands {
+  // A new chat: Orbit's, and the project's as the newest earlier chat of that repository that loaded them read them --
+  // an earlier chat this account may open.
+  forRepository(source: RepositorySource | null, repositoryId: string | null, visible: ReadonlySet<string>): SlashCommands {
     const orbit = this.orbitCommands();
     if (source === null || repositoryId === null) return { commands: orbit, note: null };
     if (!this.settings.get().projectSkills) return { commands: orbit, note: SLASH_NOTES.off };
-    const earlier = this.sessions.list().flatMap((s) => {
+    const earlier = this.sessions.list().filter((s) => visible.has(s.id)).flatMap((s) => {
       const inventory = s.source === source && s.repositoryId === repositoryId ? this.projects.get(s.id) : null;
       return inventory === null ? [] : [{ session: s, inventory }];
     });
@@ -134,6 +138,7 @@ export class ProjectController {
     @Inject(ProjectService) private readonly project: ProjectService,
     @Inject(CustomizationsService) private readonly customizations: CustomizationsService,
     @Inject(SessionStore) private readonly sessions: SessionStore,
+    @Inject(OwnershipService) private readonly ownership: OwnershipService,
   ) {}
 
   @Get("sessions/:id/project")
@@ -143,8 +148,8 @@ export class ProjectController {
   }
 
   @Get("customizations")
-  all(): Customizations {
-    return this.customizations.all();
+  async all(): Promise<Customizations> {
+    return this.customizations.all(this.ownership.visibleIds(await this.ownership.viewer()));
   }
 
   @Get("sessions/:id/commands")
@@ -155,16 +160,17 @@ export class ProjectController {
   }
 
   @Get("commands")
-  commands(@Query("source") source?: unknown, @Query("repository") repository?: unknown): SlashCommands {
-    if (source === undefined && repository === undefined) return this.customizations.forRepository(null, null);
+  async commands(@Query("source") source?: unknown, @Query("repository") repository?: unknown): Promise<SlashCommands> {
+    const visible = this.ownership.visibleIds(await this.ownership.viewer());
+    if (source === undefined && repository === undefined) return this.customizations.forRepository(null, null, visible);
     const known = typeof source === "string" && (REPOSITORY_SOURCES as readonly string[]).includes(source);
     if (!known || typeof repository !== "string" || repository.length === 0 || repository.length > REPOSITORY_ID_MAX) throw badRequest(`source must be ${REPOSITORY_SOURCES.join(" or ")}, with the repository's id`);
-    return this.customizations.forRepository(source as RepositorySource, repository);
+    return this.customizations.forRepository(source as RepositorySource, repository, visible);
   }
 }
 
 @Module({
-  imports: [SettingsModule],
+  imports: [SettingsModule, AccessModule],
   providers: [ProjectService, CustomizationsService],
   controllers: [ProjectController],
   exports: [ProjectService],

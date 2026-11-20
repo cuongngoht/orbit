@@ -241,6 +241,22 @@ export const CLAUDE_SIGNED_IN = { loggedIn: true, authMethod: "claude.ai", apiPr
 export const CLAUDE_SIGNED_OUT = { loggedIn: false, authMethod: "none", apiProvider: "firstParty" };
 export const REPOSITORY = "octo/sum-fixture";
 
+// What the Claude CLI's control protocol answers to `initialize` (claude-models.ts): the signed-in account's models.
+// The four aliases take every effort level and auto mode; one dated model takes neither.
+const EVERY_EFFORT = ["low", "medium", "high", "xhigh", "max"];
+export const MODEL_ENTRIES = [
+  { value: "default", resolvedModel: "claude-sonnet-5-5", displayName: "Default (recommended)", supportsEffort: true, supportedEffortLevels: EVERY_EFFORT, supportsAutoMode: true },
+  { value: "opus", resolvedModel: "claude-opus-5-5", displayName: "Opus 5.5", description: "For complex work and everyday tasks", supportsEffort: true, supportedEffortLevels: EVERY_EFFORT, supportsAutoMode: true },
+  { value: "fable", resolvedModel: "claude-fable-5-2", displayName: "Fable 5.2", description: "For your toughest challenges", supportsEffort: true, supportedEffortLevels: EVERY_EFFORT, supportsAutoMode: true },
+  { value: "sonnet", resolvedModel: "claude-sonnet-5-5", displayName: "Sonnet 5.5", description: "Most efficient for simpler tasks", supportsEffort: true, supportedEffortLevels: EVERY_EFFORT, supportsAutoMode: true },
+  { value: "haiku", resolvedModel: "claude-haiku-5-5", displayName: "Haiku 5.5", description: "Fastest for quick answers", supportsEffort: true, supportedEffortLevels: EVERY_EFFORT, supportsAutoMode: true },
+  { value: "claude-haiku-4-5-20251001", resolvedModel: "claude-haiku-4-5-20251001", displayName: "Haiku 4.5", description: "Fastest for quick answers", supportsThinkingOff: true },
+];
+
+export const modelsAnswer = (models: object[] = MODEL_ENTRIES): string => `${JSON.stringify({ type: "control_response", response: { subtype: "success", request_id: "orbit-web-models", response: { models, account: { email: "octo@example.com" } } } })}\n`;
+
+export const claudeModelsProbe = program("claude", "--input-format");
+
 const ghApi = (path: string): ((file: string, args: string[]) => boolean) => (file, args) => program("gh", "api")(file, args) && args.some((a) => a === path || a.startsWith(`${path}?`));
 
 // What `claude auto-mode defaults` prints, cut to a few entries of its environment.
@@ -261,6 +277,7 @@ export function signedIn(fake: FakeProcessPort): FakeProcessPort {
     .on(program("az", "account", "show"), { run: { code: 1, stderr: "Please run 'az login' to setup account.\n" } })
     .on(program("python3", "--version"), { run: { stdout: "Python 3.15.2\n" } })
     .on(program("claude", "auth", "status"), { run: { stdout: JSON.stringify(CLAUDE_SIGNED_IN) } })
+    .on(claudeModelsProbe, { run: { stdout: modelsAnswer() } })
     .on(program("claude", "auto-mode", "defaults"), { run: { stdout: JSON.stringify(AUTO_MODE_DEFAULTS) } })
     .on(program("gh", "auth", "status"), { run: { stdout: JSON.stringify({ hosts: { "github.com": [{ state: "success", active: true, host: "github.com", login: ACCOUNT.login, tokenSource: "/data/github/hosts.yml", gitProtocol: "https" }] } }) } })
     .on(ghApi("user"), { run: { stdout: JSON.stringify(ACCOUNT) } })

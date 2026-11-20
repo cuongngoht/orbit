@@ -1,10 +1,12 @@
-// SHARE, in an open chat's header: a read-only link to a snapshot of the conversation (modules/share on the API). It
-// says plainly who can read it and what they see; what the tools did comes along only when asked (it may hold the
-// repository's code); the copy is updated to now on request -- the same link -- and sharing stops at once. The link
-// carries its token in the fragment (`#/share/<token>`), so no server or Referer ever sees it.
+// SHARE, in an open chat's header: first, the other Claude accounts that may open the chat itself (PeopleAccess); then
+// a read-only link to a snapshot of the conversation (modules/share on the API). It says plainly who can read it and what
+// they see; what the tools did comes along only when asked (it may hold the repository's code); the copy is updated to
+// now on request -- the same link -- and sharing stops at once. The link carries its token in the fragment
+// (`#/share/<token>`), so no server or Referer ever sees it. Only the chat's owner makes, updates or stops a link.
 import {
   Button,
   Checkbox,
+  Divider,
   Dialog,
   DialogActions,
   DialogBody,
@@ -22,10 +24,11 @@ import {
   tokens,
 } from "@fluentui/react-components";
 import { Share20Regular } from "@fluentui/react-icons";
-import type { ShareInfo, ShareState } from "@orbit-web/contracts";
+import type { AccessLevel, ShareInfo, ShareState } from "@orbit-web/contracts";
 import { useState } from "react";
 import { useResource } from "../../hooks/useResource";
 import { errorText, get, send } from "../../services/api";
+import { PeopleAccess } from "./PeopleAccess";
 
 const useStyles = makeStyles({
   surface: { width: "min(520px, 94vw)", maxWidth: "min(520px, 94vw)" },
@@ -67,7 +70,7 @@ function SharedLink({ share }: { share: ShareInfo }) {
   );
 }
 
-function ShareBody({ sessionId, onBusy }: { sessionId: string; onBusy: (busy: boolean) => void }) {
+function ShareBody({ sessionId, access, onBusy }: { sessionId: string; access: AccessLevel; onBusy: (busy: boolean) => void }) {
   const s = useStyles();
   const state = useResource<ShareState>(() => get(`/api/sessions/${sessionId}/share`), [sessionId]);
   // The person's choice once made; until then, how the chat is shared now.
@@ -101,11 +104,20 @@ function ShareBody({ sessionId, onBusy }: { sessionId: string; onBusy: (busy: bo
   if (state.data === null) return state.error ? <Text>{state.error}</Text> : <Spinner size="tiny" label="Reading how this chat is shared…" />;
   return (
     <div className={s.body}>
+      <PeopleAccess path={`/api/sessions/${sessionId}/access`} what="chat" />
+      <Divider />
+      <Text weight="semibold">Public link</Text>
       <Text>
         Anyone with the link can read this conversation as it is now — not what comes after, until you update it. They need no access token and no
         Claude account, and they see nothing else of Orbit Web: not the workspace, its files, nor your other chats. Secrets are masked by their shape.
       </Text>
-      <Checkbox checked={includeTools} onChange={(_, d) => setChoice(d.checked === true)} label="Include what the tools did — the commands' and the files' contents (they may hold the repository's code)" />
+      {access === "owner" ? (
+        <Checkbox checked={includeTools} onChange={(_, d) => setChoice(d.checked === true)} label="Include what the tools did — the commands' and the files' contents (they may hold the repository's code)" />
+      ) : (
+        <Text size={200} className={s.muted}>
+          Only the chat's owner makes, updates or stops its public link.
+        </Text>
+      )}
       {share !== null && <SharedLink share={share} />}
       {error && (
         <MessageBar intent="error">
@@ -113,7 +125,7 @@ function ShareBody({ sessionId, onBusy }: { sessionId: string; onBusy: (busy: bo
         </MessageBar>
       )}
       <DialogActions className={s.actions}>
-        {share === null ? (
+        {access !== "owner" ? null : share === null ? (
           <Button appearance="primary" disabled={busy} onClick={() => void create()}>
             Create link
           </Button>
@@ -135,7 +147,7 @@ function ShareBody({ sessionId, onBusy }: { sessionId: string; onBusy: (busy: bo
   );
 }
 
-export function ShareButton({ sessionId, compact = false }: { sessionId: string; compact?: boolean }) {
+export function ShareButton({ sessionId, compact = false, access = "owner" }: { sessionId: string; compact?: boolean; access?: AccessLevel }) {
   const s = useStyles();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -153,7 +165,7 @@ export function ShareButton({ sessionId, compact = false }: { sessionId: string;
       <DialogSurface className={s.surface}>
         <DialogBody>
           <DialogTitle>Share this chat</DialogTitle>
-          <DialogContent>{open && <ShareBody sessionId={sessionId} onBusy={setBusy} />}</DialogContent>
+          <DialogContent>{open && <ShareBody sessionId={sessionId} access={access} onBusy={setBusy} />}</DialogContent>
         </DialogBody>
       </DialogSurface>
     </Dialog>

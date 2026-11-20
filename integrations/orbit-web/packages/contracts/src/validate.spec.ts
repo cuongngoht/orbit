@@ -37,7 +37,9 @@ test("a new chat has a model, and a repository of either source -- or none -- an
   assert.deepEqual(azure, { ok: true, value: { repository: { source: "azure", id: AZURE_REPO }, branch: null, model: "fable" } });
   assert.deepEqual(checkCreateSession({ model: "opus", prompt: "no repository" }), { ok: true, value: { repository: null, branch: null, model: "opus", prompt: "no repository" } });
   assert.deepEqual(checkCreateSession({ repository: null, branch: null, model: "haiku" }), { ok: true, value: { repository: null, branch: null, model: "haiku" } });
-  const bad = checkCreateSession({ repository: { source: "github", id: "o" }, branch: "-x", model: "gpt", effort: "huge", mode: "dontAsk", extra: 1 });
+  // Which models and efforts an account may use is its catalog's, held by the API; here only their shape: never an
+  // option, never whitespace.
+  const bad = checkCreateSession({ repository: { source: "github", id: "o" }, branch: "-x", model: "--dangerously-skip-permissions", effort: "Huge effort", mode: "dontAsk", extra: 1 });
   assert.equal(bad.ok, false);
   assert.equal(bad.ok ? 0 : bad.errors.length, 6);
   assert.equal(checkCreateSession({ branch: "main", model: "sonnet" }).ok, false, "a branch needs a repository");
@@ -104,7 +106,10 @@ test("the event catalog is the one list of what exists, which stream it travels 
   assert.equal(isDurableType("tool.started"), true);
   assert.equal(isEventType("constructor"), false);
   assert.equal(streamOf("connector.flow"), "app");
-  assert.equal(DURABLE_EVENT_TYPES.every((t) => streamOf(t) === "session"), true);
+  // Only a chat's and a research session's streams keep anything; the app stream never does.
+  assert.equal(DURABLE_EVENT_TYPES.every((t) => streamOf(t) === "session" || streamOf(t) === "research"), true);
+  assert.equal(isDurableType("research.message.delta"), false);
+  assert.equal(isDurableType("research.citation.recorded"), true);
 });
 
 test("a sign-in code is printable and has no whitespace", () => {

@@ -188,6 +188,10 @@ export interface RepositoryRef {
   id: string;
 }
 
+// Whose a chat (or a research workspace) is, as the Claude account signed in now sees it: its own (`owner`), or one its
+// owner shared with this account's email (`shared`). An account sees nothing else.
+export type AccessLevel = "owner" | "shared";
+
 export interface SessionSummary {
   id: string;
   title: string;
@@ -201,6 +205,9 @@ export interface SessionSummary {
   mode: ModeChoice;
   status: SessionStatus;
   statusReason: string | null;
+  access: AccessLevel;
+  // The owner's email (null for a chat that predates owners and was never claimed).
+  owner: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -394,4 +401,25 @@ export interface UpdateSettingsRequest {
 
 export interface AccessRequest {
   token: string;
+}
+
+// SHARING BETWEEN CLAUDE ACCOUNTS. A chat, or a research workspace, is its owner's alone until the owner names the
+// emails of other Claude accounts that may open it too: they read it and carry on with it as themselves; only the owner
+// deletes it, shares it on, or makes a public link of it.
+export interface AccessEntry {
+  email: string;
+  grantedBy: string;
+  grantedAt: string;
+}
+
+// GET /api/sessions/:id/access, GET /api/research/workspaces/:id/access
+export interface AccessList {
+  access: AccessLevel;
+  owner: string | null;
+  people: AccessEntry[];
+}
+
+// PUT …/access: the whole list of emails it is shared with (an empty list: shared with nobody).
+export interface UpdateAccessRequest {
+  people: string[];
 }

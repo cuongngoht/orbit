@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseClaudeStatus, readClaudeLogin, signInOf, type CliStatus } from "./claude-auth.service.js";
+import { identityOf, parseClaudeStatus, readClaudeLogin, signInOf, type CliStatus } from "./claude-auth.service.js";
 
-const cli = (over: Partial<CliStatus>): CliStatus => ({ loggedIn: false, authMethod: null, apiProvider: null, email: null, orgName: null, subscriptionType: null, ...over });
+const cli = (over: Partial<CliStatus>): CliStatus => ({ loggedIn: false, authMethod: null, apiProvider: null, email: null, orgId: null, orgName: null, subscriptionType: null, ...over });
 
 test("claude auth status (JSON) says whether it is signed in, how, and to which account", () => {
   // The shape claude 2.1.x prints for a Claude account sign-in (paths and ids left out: nothing reads them).
   const signedIn = '{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty","loginExpiresAt":"2026-12-19T11:19:26.532Z","email":"octo@example.com","orgId":"org-1","orgName":"Octo Org","subscriptionType":"team","storedClaudeAiLogin":true}';
-  assert.deepEqual(parseClaudeStatus(signedIn), cli({ loggedIn: true, authMethod: "claude.ai", apiProvider: "firstParty", email: "octo@example.com", orgName: "Octo Org", subscriptionType: "team" }));
+  assert.deepEqual(parseClaudeStatus(signedIn), cli({ loggedIn: true, authMethod: "claude.ai", apiProvider: "firstParty", email: "octo@example.com", orgId: "org-1", orgName: "Octo Org", subscriptionType: "team" }));
   assert.deepEqual(parseClaudeStatus('{"loggedIn":false,"authMethod":"none"}'), cli({ authMethod: "none" }));
   assert.deepEqual(parseClaudeStatus('{"loggedIn":false,"email":"  ","orgName":7}'), cli({}));
   assert.equal(parseClaudeStatus("Not logged in"), null);
@@ -39,4 +39,12 @@ test("claude auth login: the URL after visit:, and the prompt for the code (no n
   const url = "https://claude.com/cai/oauth/authorize?code=true&client_id=abc&state=xyz";
   assert.deepEqual(readClaudeLogin(`Opening browser to sign in…\nIf the browser didn't open, visit: ${url}\n`), { url, needsCode: false });
   assert.deepEqual(readClaudeLogin(`If the browser didn't open, visit: ${url}\nPaste code here if prompted > `), { url, needsCode: true });
+});
+
+test("who owns what is the account's email in its organization -- and nothing at all without a Claude account's email", () => {
+  assert.deepEqual(identityOf(cli({ loggedIn: true, authMethod: "claude.ai", email: "Octo@Example.com", orgId: "org-1", orgName: "Octo Org" })), { email: "octo@example.com", org: "org-1", key: "octo@example.com|org-1" });
+  assert.equal(identityOf(cli({ loggedIn: true, authMethod: "claude.ai", email: "octo@example.com", orgName: "Octo Org" }))?.org, "Octo Org", "an older CLI that names no organization id: its name");
+  assert.equal(identityOf(cli({ loggedIn: true, authMethod: "claude.ai" })), null, "no email: no identity, so nothing is anybody's");
+  assert.equal(identityOf(cli({ loggedIn: true, authMethod: "api_key", email: "octo@example.com" })), null, "an API key owns nothing");
+  assert.equal(identityOf(cli({ email: "octo@example.com" })), null, "signed out");
 });

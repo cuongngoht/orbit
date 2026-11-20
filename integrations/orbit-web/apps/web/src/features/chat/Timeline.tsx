@@ -2,7 +2,7 @@
 // about each run -- its version and whether Orbit loaded, how it ended, and anything it refused.
 import { Badge, MessageBar, MessageBarBody, Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
 import { Markdown } from "../../components/Markdown";
-import { EFFORT_LABELS, MODE_LABELS } from "@orbit-web/contracts";
+import { effortLabel, MODE_LABELS } from "@orbit-web/contracts";
 import { BranchFork16Regular } from "@fluentui/react-icons";
 import { childrenOf, type BranchItem, type MessageItem, type ProjectItem, type RunEndItem, type RunStartItem, type TimelineItem, type WorkspaceItem } from "./chatReducer";
 import { PlanCard } from "./PlanCard";
@@ -111,7 +111,7 @@ function RunStart({ item }: { item: RunStartItem }) {
       <Text size={200} className={s.meta}>
         {d.resumed ? "Continuing" : "Started"} Claude Code {d.claudeCodeVersion ?? "?"} · {d.model ?? d.requestedModel}
         {/* A run of an earlier Orbit Web named no effort or mode. */}
-        {d.requestedEffort ? ` · ${EFFORT_LABELS[d.requestedEffort]} effort` : ""}
+        {d.requestedEffort ? ` · ${effortLabel(d.requestedEffort)} effort` : ""}
         {d.requestedMode ? ` · ${MODE_LABELS[d.requestedMode]}` : ""}
       </Text>
       {d.orbitLoaded ? (

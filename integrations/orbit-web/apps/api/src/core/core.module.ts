@@ -11,7 +11,7 @@ import { SignInChannel } from "../infra/egress/sign-in-channel.js";
 import { GovernanceDatabase } from "../infra/governance/governance-db.js";
 import { AgentStore, ApprovalStore, AuditStore, FindingStore, GovernedWorkspaceStore, IsolationStore, OperatorStore, OverlayStore, ReportStore, RevisionStore, RunBindingStore } from "../infra/governance/stores.js";
 import { Database } from "../infra/storage/database.js";
-import { EventStore, MessageStore, ProjectStore, RunStore, SessionStore, SettingsStore, ShareStore } from "../infra/storage/stores.js";
+import { EventStore, MessageStore, ProjectStore, RunStore, SessionAccessStore, SessionStore, SettingsStore, ShareStore } from "../infra/storage/stores.js";
 import { EventBus } from "./events/event-bus.js";
 import { LiveText } from "./events/live-text.js";
 import { StreamGateway } from "./events/stream-gateway.js";
@@ -60,6 +60,7 @@ export class CoreModule {
         ...GOVERNANCE_STORES.map(governanceStore),
         store(SettingsStore),
         store(SessionStore),
+        store(SessionAccessStore),
         store(MessageStore),
         store(EventStore),
         store(RunStore),
@@ -70,7 +71,7 @@ export class CoreModule {
         StreamGateway,
         DatabaseCloser,
       ],
-      exports: [APP_CONFIG, PROCESS_PORT, AGENT_PROCESS_PORT, AgentFs, SignInChannel, Database, SettingsStore, SessionStore, MessageStore, EventStore, RunStore, ProjectStore, ShareStore, EventBus, LiveText, StreamGateway, GovernanceDatabase, ...GOVERNANCE_STORES],
+      exports: [APP_CONFIG, PROCESS_PORT, AGENT_PROCESS_PORT, AgentFs, SignInChannel, Database, SettingsStore, SessionStore, SessionAccessStore, MessageStore, EventStore, RunStore, ProjectStore, ShareStore, EventBus, LiveText, StreamGateway, GovernanceDatabase, ...GOVERNANCE_STORES],
     };
   }
 }

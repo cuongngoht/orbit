@@ -3,6 +3,8 @@
 // NOTIFICATIONS: a client that (re)connects reads the read models again (`/api/sessions`, `/api/sources`,
 // `/api/customizations`) and then applies these, so none of them is stored or replayed.
 import type { LoginSnapshot, SessionSummary } from "../dto.js";
+import type { ModelCatalog } from "../models.js";
+import type { ResearchSessionSummary, ResearchSourceSummary, ResearchWorkspaceSummary } from "../research.js";
 import type { ConnectionState } from "../status.js";
 
 export interface SessionSummaryData {
@@ -52,6 +54,43 @@ export interface ApprovalChangedData {
   state: string;
 }
 
+export interface ClaudeModelsData {
+  catalog: ModelCatalog;
+}
+
+export interface ResearchWorkspaceChangedData {
+  workspace: ResearchWorkspaceSummary;
+}
+
+export interface ResearchWorkspaceRemovedData {
+  workspaceId: string;
+}
+
+export interface ResearchSessionSummaryData {
+  session: ResearchSessionSummary;
+}
+
+export interface ResearchSessionRemovedData {
+  sessionId: string;
+  workspaceId: string;
+}
+
+export interface ResearchSourceChangedData {
+  source: ResearchSourceSummary;
+}
+
+export interface ResearchSourceRemovedData {
+  workspaceId: string;
+  sourceId: string;
+}
+
+export interface ResearchEvidenceChangedData {
+  workspaceId: string;
+  kind: "note" | "finding";
+  id: string;
+  removed: boolean;
+}
+
 export interface AppEventDataMap {
   "session.summary": SessionSummaryData;
   "session.removed": SessionRemovedData;
@@ -60,4 +99,12 @@ export interface AppEventDataMap {
   "customizations.changed": CustomizationsChangedData;
   "governance.changed": GovernanceChangedData;
   "approval.changed": ApprovalChangedData;
+  "claude.models": ClaudeModelsData;
+  "research.workspace.changed": ResearchWorkspaceChangedData;
+  "research.workspace.removed": ResearchWorkspaceRemovedData;
+  "research.session.summary": ResearchSessionSummaryData;
+  "research.session.removed": ResearchSessionRemovedData;
+  "research.source.changed": ResearchSourceChangedData;
+  "research.source.removed": ResearchSourceRemovedData;
+  "research.evidence.changed": ResearchEvidenceChangedData;
 }

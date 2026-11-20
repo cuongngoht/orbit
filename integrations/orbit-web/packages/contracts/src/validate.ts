@@ -1,13 +1,11 @@
 // Input rules, written once and enforced by the API (the web app uses the same functions only to say early what the
 // API would refuse). Plain functions over `unknown`: no schema library.
 import {
-  EFFORT_CHOICES,
   isEffortChoice,
   isModeChoice,
   isModelChoice,
   isRepositorySource,
   MODE_CHOICES,
-  MODEL_CHOICES,
   REPOSITORY_SOURCES,
   type EffortChoice,
   type ModeChoice,
@@ -23,6 +21,7 @@ import type {
   CreateSessionRequest,
   RepositoryRef,
   SendMessageRequest,
+  UpdateAccessRequest,
   UpdateSessionRequest,
   UpdateSettingsRequest,
 } from "./dto.js";
@@ -107,8 +106,9 @@ const unknownFields = (body: Record<string, unknown>, allowed: readonly string[]
 
 const checked = <T>(errors: string[], value: () => T): Checked<T> => (errors.length > 0 ? { ok: false, errors } : { ok: true, value: value() });
 
-const MODELS_SAID = `model must be one of ${MODEL_CHOICES.join(", ")}`;
-const EFFORTS_SAID = `effort must be one of ${EFFORT_CHOICES.join(", ")}`;
+// Which models and efforts an account may use is its catalog's (the API holds a choice to it); here, their shape.
+const MODELS_SAID = "model must be a model the Claude CLI names (an alias such as sonnet, or a model id)";
+const EFFORTS_SAID = "effort must be an effort level the Claude CLI names (such as low, medium or high)";
 const MODES_SAID = `mode must be one of ${MODE_CHOICES.join(", ")}`;
 const REPOSITORY_SAID = `repository must be { source: ${REPOSITORY_SOURCES.join(" | ")}, id } (GitHub owner/name, Azure DevOps organization/<repository id>)`;
 
@@ -172,6 +172,26 @@ export function checkUpdateSession(body: unknown): Checked<UpdateSessionRequest>
   }));
 }
 
+// An email a chat or a workspace is shared with: one address, lower case, of a plain shape.
+const EMAIL = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
+
+export const SHARE_PEOPLE_LIMIT = 20;
+
+export const normalizeEmail = (v: unknown): string | null => {
+  if (typeof v !== "string") return null;
+  const e = v.trim().toLowerCase();
+  return e.length <= 254 && EMAIL.test(e) ? e : null;
+};
+
+export function checkUpdateAccess(body: unknown): Checked<UpdateAccessRequest> {
+  if (!isRecord(body)) return { ok: false, errors: ["the body must be a JSON object"] };
+  const errors = unknownFields(body, ["people"]);
+  const people = Array.isArray(body.people) ? body.people.map(normalizeEmail) : null;
+  if (people === null || people.length > SHARE_PEOPLE_LIMIT) errors.push(`people must be a list of at most ${SHARE_PEOPLE_LIMIT} emails`);
+  else if (people.some((p) => p === null)) errors.push("every entry of people must be an email address");
+  return checked(errors, () => ({ people: [...new Set(people as string[])] }));
+}
+
 export function checkSendMessage(body: unknown): Checked<SendMessageRequest> {
   if (!isRecord(body)) return { ok: false, errors: ["the body must be a JSON object"] };
   const errors = unknownFields(body, ["text"]);
@@ -182,8 +202,8 @@ export function checkSendMessage(body: unknown): Checked<SendMessageRequest> {
 export function checkUpdateSettings(body: unknown): Checked<UpdateSettingsRequest> {
   if (!isRecord(body)) return { ok: false, errors: ["the body must be a JSON object"] };
   const errors = unknownFields(body, ["defaultModel", "defaultEffort", "defaultMode", "projectSkills", "projectPlugins", "webTools", "githubForClaude", "azureForClaude", "theme"]);
-  if (body.defaultModel !== undefined && !isModelChoice(body.defaultModel)) errors.push(`defaultModel must be one of ${MODEL_CHOICES.join(", ")}`);
-  if (body.defaultEffort !== undefined && !isEffortChoice(body.defaultEffort)) errors.push(`defaultEffort must be one of ${EFFORT_CHOICES.join(", ")}`);
+  if (body.defaultModel !== undefined && !isModelChoice(body.defaultModel)) errors.push(`default${MODELS_SAID.replace("model", "Model")}`);
+  if (body.defaultEffort !== undefined && !isEffortChoice(body.defaultEffort)) errors.push(`default${EFFORTS_SAID.replace("effort", "Effort")}`);
   if (body.defaultMode !== undefined && !isModeChoice(body.defaultMode)) errors.push(`defaultMode must be one of ${MODE_CHOICES.join(", ")}`);
   for (const flag of ["projectSkills", "projectPlugins", "webTools", "githubForClaude", "azureForClaude"]) if (body[flag] !== undefined && typeof body[flag] !== "boolean") errors.push(`${flag} must be true or false`);
   if (body.theme !== undefined && !isTheme(body.theme)) errors.push("theme must be one of system, light, dark");

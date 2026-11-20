@@ -27,6 +27,7 @@ import { GitGateway } from "../changes/git.gateway.js";
 import { ClaudeRunnerService } from "../claude-runner/claude-runner.service.js";
 import { MirrorService } from "../sources/mirror.service.js";
 import { SourcesService } from "../sources/sources.module.js";
+import { OwnershipService } from "../access/ownership.service.js";
 import { summaryOf } from "./sessions.service.js";
 
 const HEADS = "refs/heads/";
@@ -56,6 +57,7 @@ export class BranchService {
     @Inject(GitGateway) private readonly git: GitGateway,
     @Inject(ClaudeRunnerService) private readonly runner: ClaudeRunnerService,
     @Inject(MirrorService) private readonly mirror: MirrorService,
+    @Inject(OwnershipService) private readonly ownership: OwnershipService,
   ) {}
 
   // Read while Claude works too: listing changes nothing.
@@ -79,7 +81,7 @@ export class BranchService {
   private async switchTo(session: SessionRecord, name: string): Promise<SessionSummary> {
     const cwd = session.workspacePath;
     const list = await this.list(session);
-    if (list.current === name) return summaryOf(session);
+    if (list.current === name) return summaryOf(session, this.ownership.levelNow(session) ?? "owner");
     const entry = this.known(list, name);
     if (entry.isDefault) throw this.defaultRefused(name);
     this.clean(must(await this.git.status(cwd), "git status").stdout);
@@ -152,7 +154,7 @@ export class BranchService {
   private moved(session: SessionRecord, from: string | null, workBranch: string, created: boolean, baseCommit: string): SessionSummary {
     const updated = this.sessions.update(session.id, { workBranch, baseCommit });
     this.bus.publishSession(session.id, "workspace.branch", { from, workBranch, created, baseCommit });
-    const summary = summaryOf(updated);
+    const summary = summaryOf(updated, this.ownership.levelNow(updated) ?? "owner");
     this.bus.publishApp("session.summary", { session: summary });
     return summary;
   }

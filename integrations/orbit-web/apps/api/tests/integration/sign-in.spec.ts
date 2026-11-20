@@ -4,14 +4,11 @@
 // credential variables, which no child process is given); signing out closes Orbit Web again at once.
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
-import { RequestMethod } from "@nestjs/common";
-import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants.js";
-import { ModulesContainer } from "@nestjs/core";
 import { CLAUDE_SIGN_IN_REQUIRED, type ClaudeStatus, type LoginSnapshot, type SetupStatus } from "@orbit-web/contracts";
-import { BEFORE_CLAUDE_SIGN_IN } from "../../src/common/before-claude-sign-in.js";
 import { NodeProcessPort } from "../../src/infra/process/node-process.js";
 import { FakeProcessPort, program, type FakeChild } from "../../src/testing/fake-process.js";
 import { CLAUDE_SIGNED_IN, CLAUDE_SIGNED_OUT, eventually, signedIn, startHarness, type Harness, type Reply } from "../../src/testing/harness.js";
+import { routesOf } from "../../src/testing/routes.js";
 
 const claudeStatus = program("claude", "auth", "status");
 const answering = (status: object) => (fake: FakeProcessPort) => fake.on(claudeStatus, { run: { stdout: JSON.stringify(status) } });
@@ -30,35 +27,6 @@ const OPEN = [
   // A shared chat's link: one read-only snapshot, which needs no Claude account to read (modules/share).
   "GET /api/shared/:token",
 ];
-
-interface Route {
-  method: string;
-  path: string;
-  open: boolean;
-}
-
-const pathsOf = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : [String(v ?? "")]);
-const joined = (...parts: string[]): string => `/api/${parts.map((p) => p.replace(/^\/+|\/+$/g, "")).filter(Boolean).join("/")}`;
-
-// Every route the running application declares, read from Nest's own metadata, with whether it is marked open.
-function routesOf(h: Harness): Route[] {
-  const routes: Route[] = [];
-  for (const module of h.app.get(ModulesContainer).values()) {
-    for (const wrapper of module.controllers.values()) {
-      const controller = wrapper.metatype as { prototype: Record<string, unknown> } | null;
-      if (!controller) continue;
-      const classOpen = Reflect.getMetadata(BEFORE_CLAUDE_SIGN_IN, controller) === true;
-      for (const name of Object.getOwnPropertyNames(controller.prototype)) {
-        const handler = controller.prototype[name];
-        if (name === "constructor" || typeof handler !== "function" || Reflect.getMetadata(PATH_METADATA, handler) === undefined) continue;
-        const method = RequestMethod[Reflect.getMetadata(METHOD_METADATA, handler) as number];
-        const open = classOpen || Reflect.getMetadata(BEFORE_CLAUDE_SIGN_IN, handler) === true;
-        for (const base of pathsOf(Reflect.getMetadata(PATH_METADATA, controller))) for (const own of pathsOf(Reflect.getMetadata(PATH_METADATA, handler))) routes.push({ method, path: joined(base, own), open });
-      }
-    }
-  }
-  return routes;
-}
 
 const concrete = (path: string): string => path.replace(":id", "00000000-0000-4000-8000-000000000000").replace(":owner", "octo").replace(":repo", "sum-fixture");
 

@@ -1,6 +1,7 @@
 import { type DynamicModule, Module } from "@nestjs/common";
 import type { AppConfig } from "./config/config.js";
 import { CoreModule } from "./core/core.module.js";
+import { AccessModule } from "./modules/access/access.module.js";
 import { AzureAuthModule } from "./modules/azure-auth/azure-auth.module.js";
 import { BrokerModule } from "./modules/broker/broker.module.js";
 import { ChangesModule } from "./modules/changes/changes.module.js";
@@ -28,6 +29,7 @@ export class AppModule {
         HealthModule,
         SetupModule,
         ClaudeAuthModule,
+        AccessModule,
         GithubModule,
         AzureAuthModule,
         SettingsModule,

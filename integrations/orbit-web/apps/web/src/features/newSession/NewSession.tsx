@@ -3,13 +3,14 @@
 // creates the chat with them and opens it.
 import { Avatar, Button, MessageBar, MessageBarBody, Text, Title2, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
 import { Navigation20Regular } from "@fluentui/react-icons";
-import { DEFAULT_EFFORT, DEFAULT_MODE, DEFAULT_MODEL, type ClaudeAccount, type EffortChoice, type ModeChoice, type ModelChoice, type RepositorySource, type SessionSummary, type Settings, type SourcesStatus } from "@orbit-web/contracts";
+import { DEFAULT_EFFORT, DEFAULT_MODE, DEFAULT_MODEL, modelOf, type ClaudeAccount, type EffortChoice, type ModeChoice, type ModelChoice, type RepositorySource, type SessionSummary, type Settings, type SourcesStatus } from "@orbit-web/contracts";
 import { useState } from "react";
 import { useViewport } from "../../hooks/useViewport";
 import { errorText, send } from "../../services/api";
 import { Composer } from "../composer/Composer";
 import { BranchPicker, RepositoryPicker, type RepositoryChoice } from "../composer/RepositoryPicker";
-import { ModelEffortPicker, ModePicker } from "../composer/RunPickers";
+import { useModelCatalog } from "../../services/models/ModelCatalog";
+import { autoModeWith, ModelEffortPicker, ModePicker } from "../composer/RunPickers";
 
 const useStyles = makeStyles({
   root: { display: "flex", flexDirection: "column", height: "100%", minHeight: 0 },
@@ -68,10 +69,19 @@ export function NewSession({
   const [mode, setMode] = useState<ModeChoice | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const catalog = useModelCatalog();
+  // Settings' default model, unless this account cannot use it: then the one its CLI recommends.
+  const preferred = settings?.defaultModel ?? DEFAULT_MODEL;
+  const usable = catalog.source !== "account" || modelOf(catalog, preferred) !== null ? preferred : catalog.recommended;
   const run = {
-    model: model ?? settings?.defaultModel ?? DEFAULT_MODEL,
+    model: model ?? usable,
     effort: effort ?? settings?.defaultEffort ?? DEFAULT_EFFORT,
     mode: mode ?? settings?.defaultMode ?? DEFAULT_MODE,
+  };
+  // A model auto mode is not available with plans only.
+  const chooseModel = (m: ModelChoice) => {
+    setModel(m);
+    if (!autoModeWith(catalog, m) && run.mode === "autonomous") setMode("plan");
   };
 
   const start = async (prompt: string) => {
@@ -120,8 +130,8 @@ export function NewSession({
       }
       right={
         <>
-          <ModelEffortPicker model={run.model} effort={run.effort} onModel={setModel} onEffort={setEffort} />
-          <ModePicker mode={run.mode} onMode={setMode} />
+          <ModelEffortPicker model={run.model} effort={run.effort} onModel={chooseModel} onEffort={setEffort} />
+          <ModePicker mode={run.mode} onMode={setMode} autoMode={autoModeWith(catalog, run.model)} />
         </>
       }
     />

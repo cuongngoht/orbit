@@ -13,6 +13,8 @@ import { BeforeClaudeSignIn } from "../../common/before-claude-sign-in.js";
 import { accepted, ApiError, badRequest } from "../../common/errors.js";
 import { ACCESS_COOKIE, accessTokenMatches, accessTokenPresented } from "../../infra/security/guards.js";
 import { SettingsStore } from "../../infra/storage/stores.js";
+import { ClaudeAuthModule } from "../claude-auth/claude-auth.module.js";
+import { ClaudeModelsService } from "../claude-auth/claude-models.service.js";
 import { GovernanceModule } from "../governance/governance.module.js";
 import type { GovernanceContext } from "../governance/principal.js";
 import { PrincipalResolver } from "../governance/principals.js";
@@ -30,6 +32,7 @@ export class SettingsService {
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(SettingsStore) private readonly store: SettingsStore,
     @Inject(PrivilegedSettingsGate) private readonly gate: PrivilegedSettingsGate,
+    @Inject(ClaudeModelsService) private readonly models: ClaudeModelsService,
   ) {}
 
   get(): Settings {
@@ -49,10 +52,17 @@ export class SettingsService {
   }
 
   // A change of a person's preferences. Turning a PRIVILEGED setting on is authorized first (settings-gate.ts: an
-  // operator, and the Constitution in effect), and recorded before it is written; turning one off is recorded.
-  update(body: unknown, ctx: GovernanceContext, req: Request): Settings {
-    const change = accepted(checkUpdateSettings(body));
+  // operator, and the Constitution in effect), and recorded before it is written; turning one off is recorded. A new
+  // default model, effort or mode is held to what the signed-in account may use (an effort the model does not take
+  // moves to one it does).
+  async update(body: unknown, ctx: GovernanceContext, req: Request): Promise<Settings> {
+    const asked = accepted(checkUpdateSettings(body));
     const { maxBudgetUsd: _ignored, ...current } = this.get();
+    const runChanged = asked.defaultModel !== undefined || asked.defaultEffort !== undefined || asked.defaultMode !== undefined;
+    const run = runChanged
+      ? await this.models.settle({ model: current.defaultModel, effort: current.defaultEffort, mode: current.defaultMode }, { ...(asked.defaultModel ? { model: asked.defaultModel } : {}), ...(asked.defaultEffort ? { effort: asked.defaultEffort } : {}), ...(asked.defaultMode ? { mode: asked.defaultMode } : {}) })
+      : null;
+    const change = run === null ? asked : { ...asked, defaultModel: run.model, defaultEffort: run.effort, defaultMode: run.mode ?? current.defaultMode };
     const widened = PRIVILEGED_SETTINGS.filter((k) => change[k] === true && current[k] !== true);
     const narrowed = PRIVILEGED_SETTINGS.filter((k) => change[k] === false && current[k] === true);
     if (widened.length > 0) this.gate.authorize(ctx, req, widened);
@@ -76,7 +86,7 @@ export class SettingsController {
   }
 
   @Patch("settings")
-  update(@Req() req: Request, @Body() body: unknown): Settings {
+  update(@Req() req: Request, @Body() body: unknown): Promise<Settings> {
     return this.settings.update(body, this.principals.context(req), req);
   }
 
@@ -102,7 +112,7 @@ export class SettingsController {
 }
 
 @Module({
-  imports: [GovernanceModule],
+  imports: [GovernanceModule, ClaudeAuthModule],
   providers: [SettingsService],
   controllers: [SettingsController],
   exports: [SettingsService],

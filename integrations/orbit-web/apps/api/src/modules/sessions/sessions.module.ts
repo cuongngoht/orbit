@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, Inject, Module, Param, Patch, Post, Req } from "@nestjs/common";
 import type { SessionDetail, SessionSummary, WorkBranches } from "@orbit-web/contracts";
 import type { Request } from "express";
+import { AccessModule } from "../access/access.module.js";
 import { AzureAuthModule } from "../azure-auth/azure-auth.module.js";
 import { ChangesModule } from "../changes/changes.module.js";
 import { ClaudeAuthModule } from "../claude-auth/claude-auth.module.js";
@@ -26,7 +27,7 @@ export class SessionsController {
   ) {}
 
   @Get()
-  list(): SessionSummary[] {
+  list(): Promise<SessionSummary[]> {
     return this.sessions.list();
   }
 
@@ -42,7 +43,7 @@ export class SessionsController {
   }
 
   @Patch(":id")
-  update(@Param("id") id: string, @Body() body: unknown): SessionSummary {
+  update(@Param("id") id: string, @Body() body: unknown): Promise<SessionSummary> {
     return this.sessions.update(id, body);
   }
 
@@ -66,7 +67,7 @@ export class SessionsController {
 }
 
 @Module({
-  imports: [ClaudeAuthModule, GithubModule, AzureAuthModule, SourcesModule, ChangesModule, ClaudeRunnerModule, OrbitModule, ProjectModule, SettingsModule, GovernanceModule],
+  imports: [AccessModule, ClaudeAuthModule, GithubModule, AzureAuthModule, SourcesModule, ChangesModule, ClaudeRunnerModule, OrbitModule, ProjectModule, SettingsModule, GovernanceModule],
   providers: [SessionsService, WorkspaceService, BranchService, SessionDirectory],
   controllers: [SessionsController],
   exports: [SessionsService],

@@ -6,12 +6,15 @@
 //   session stream  `GET /api/sessions/:id/events`: one chat. DURABLE events are stored with a per-session sequence
 //                   number (`seq`, never reused) and replayed after `Last-Event-ID`; TRANSIENT ones (`message.delta`,
 //                   text still being written) carry none and are superseded by a durable event.
+//   research stream `GET /api/research/sessions/:id/events`: one research session, numbered and replayed like a chat's,
+//                   in a journal of its own -- a research session is not a chat and shares none of a chat's records.
 //   app stream      `GET /api/events`: notifications for every page (sidebar, connectors, customizations). None is
 //                   durable: a client that (re)connects reads the read models again, then applies them.
 import type { AppEventDataMap } from "./app.js";
+import type { ResearchEventDataMap } from "./research.js";
 import type { SessionEventDataMap } from "./session.js";
 
-export type StreamKind = "session" | "app";
+export type StreamKind = "session" | "research" | "app";
 
 export interface EventSpec {
   stream: StreamKind;
@@ -49,6 +52,24 @@ export const EVENT_CATALOG = {
   "customizations.changed": { stream: "app", durable: false, summary: "A project's skills or plugins changed." },
   "governance.changed": { stream: "app", durable: false, summary: "Something governance keeps changed (operators, the Constitution, agents, workspaces, audit, findings, reports): read it again." },
   "approval.changed": { stream: "app", durable: false, summary: "A protected action's approval was asked for, decided or spent." },
+  "claude.models": { stream: "app", durable: false, summary: "The models the signed-in Claude account may use were read again." },
+  "research.status": { stream: "research", durable: true, summary: "A research session's status changed." },
+  "research.run.started": { stream: "research", durable: true, summary: "A research run started, its evidence frozen to the sources and revisions it names." },
+  "research.message.started": { stream: "research", durable: true, summary: "A research message started." },
+  "research.message.delta": { stream: "research", durable: false, summary: "A piece of a research answer still being written." },
+  "research.message.completed": { stream: "research", durable: true, summary: "A research message is complete (or was cut off)." },
+  "research.citation.recorded": { stream: "research", durable: true, summary: "An answer's citations, each verified against the passages its run was given." },
+  "research.run.completed": { stream: "research", durable: true, summary: "A research run completed." },
+  "research.run.failed": { stream: "research", durable: true, summary: "A research run failed or was refused." },
+  "research.run.interrupted": { stream: "research", durable: true, summary: "A research run was stopped or cut short by a restart." },
+  "research.run.notice": { stream: "research", durable: true, summary: "Something a person should know about a research run (a rate limit)." },
+  "research.workspace.changed": { stream: "app", durable: false, summary: "A research workspace was created or changed." },
+  "research.workspace.removed": { stream: "app", durable: false, summary: "A research workspace was deleted." },
+  "research.session.summary": { stream: "app", durable: false, summary: "A research session was created or changed: its summary as it is now." },
+  "research.session.removed": { stream: "app", durable: false, summary: "A research session was deleted." },
+  "research.source.changed": { stream: "app", durable: false, summary: "A research source was added, or its state moved (queued, processing, ready, failed, stale)." },
+  "research.source.removed": { stream: "app", durable: false, summary: "A research source was deleted." },
+  "research.evidence.changed": { stream: "app", durable: false, summary: "A research note or finding was created, changed or deleted." },
 } as const satisfies Record<string, EventSpec>;
 
 export type EventType = keyof typeof EVENT_CATALOG;
@@ -57,10 +78,13 @@ type Catalog = typeof EVENT_CATALOG;
 
 export type SessionEventType = { [K in EventType]: Catalog[K]["stream"] extends "session" ? K : never }[EventType];
 export type AppStreamEventType = { [K in EventType]: Catalog[K]["stream"] extends "app" ? K : never }[EventType];
+export type ResearchEventType = { [K in EventType]: Catalog[K]["stream"] extends "research" ? K : never }[EventType];
 export type DurableEventType = { [K in EventType]: Catalog[K]["durable"] extends true ? K : never }[EventType];
+export type DurableSessionEventType = Extract<DurableEventType, SessionEventType>;
+export type DurableResearchEventType = Extract<DurableEventType, ResearchEventType>;
 export type TransientEventType = Exclude<SessionEventType, DurableEventType>;
 
-export type EventDataMap = SessionEventDataMap & AppEventDataMap;
+export type EventDataMap = SessionEventDataMap & AppEventDataMap & ResearchEventDataMap;
 
 export const EVENT_TYPES = Object.keys(EVENT_CATALOG) as EventType[];
 

@@ -25,8 +25,30 @@ export interface CliStatus {
   authMethod: string | null;
   apiProvider: string | null;
   email: string | null;
+  orgId: string | null;
   orgName: string | null;
   subscriptionType: string | null;
+}
+
+// WHO is signed in, as the records of chats and research workspaces are owned: the account's email (lower case) in its
+// organization (the CLI's id for it). Two organizations of one email are two accounts. Never shown as such: the page
+// shows the email.
+export interface Identity {
+  email: string;
+  org: string;
+  key: string;
+}
+
+export const identityOf = (cli: CliStatus): Identity | null => {
+  if (!cli.loggedIn || cli.authMethod !== CLAUDE_ACCOUNT_METHOD || cli.email === null) return null;
+  const email = cli.email.toLowerCase();
+  const org = cli.orgId ?? cli.orgName ?? "";
+  return { email, org, key: `${email}|${org}` };
+};
+
+interface Asked {
+  signIn: ClaudeSignIn;
+  identity: Identity | null;
 }
 
 const text = (v: unknown): string | null => (typeof v === "string" && v.trim() !== "" ? v.trim() : null);
@@ -41,6 +63,7 @@ export function parseClaudeStatus(stdout: string): CliStatus | null {
       authMethod: text(json.authMethod),
       apiProvider: text(json.apiProvider),
       email: text(json.email),
+      orgId: text(json.orgId),
       orgName: text(json.orgName),
       subscriptionType: text(json.subscriptionType),
     };
@@ -60,7 +83,7 @@ export function signInOf(cli: CliStatus, ignored: readonly string[]): ClaudeSign
   return { state: "not_connected", method: cli.loggedIn ? cli.authMethod : null, account: null, detail: [other, note].filter((s) => s !== null).join(" ") || null };
 }
 
-const unavailable = (detail: string): ClaudeSignIn => ({ state: "unavailable", method: null, account: null, detail });
+const unavailable = (detail: string): Asked => ({ signIn: { state: "unavailable", method: null, account: null, detail }, identity: null });
 
 // What `claude auth login` printed so far: the URL after "visit:", and whether it asks for the code.
 export function readClaudeLogin(output: string): LoginFields {
@@ -74,7 +97,9 @@ const CACHE_MS = 10_000;
 @Injectable()
 export class ClaudeAuthService {
   private readonly flow: LoginFlow;
-  private cached: { at: number; value: Promise<ClaudeSignIn> } | null = null;
+  private cached: { at: number; value: Promise<Asked> } | null = null;
+  // The identity the CLI reported last (synchronously: what the app stream's filter asks on each notification).
+  private last: Identity | null = null;
 
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
@@ -94,9 +119,26 @@ export class ClaudeAuthService {
   }
 
   // The sign-in, asked of the CLI at most every few seconds: the gate asks it on every request.
-  account(fresh = false): Promise<ClaudeSignIn> {
+  async account(fresh = false): Promise<ClaudeSignIn> {
+    return (await this.asked(fresh)).signIn;
+  }
+
+  // Who is signed in (null: nobody, or an account the CLI names no email for).
+  async identity(fresh = false): Promise<Identity | null> {
+    return (await this.asked(fresh)).identity;
+  }
+
+  // The identity as last read, without asking: for a filter that cannot wait.
+  currentIdentity(): Identity | null {
+    return this.last;
+  }
+
+  private asked(fresh: boolean): Promise<Asked> {
     if (!fresh && this.cached && Date.now() - this.cached.at < CACHE_MS) return this.cached.value;
-    const value = this.ask();
+    const value = this.ask().then((a) => {
+      this.last = a.identity;
+      return a;
+    });
     this.cached = { at: Date.now(), value };
     return value;
   }
@@ -146,12 +188,12 @@ export class ClaudeAuthService {
     return { cwd: this.config.data.home, env: claudeEnv(this.config), timeoutMs: this.config.limits.commandTimeoutMs };
   }
 
-  private async ask(): Promise<ClaudeSignIn> {
+  private async ask(): Promise<Asked> {
     const r = await this.process.run(this.config.binaries.claude, ["auth", "status", "--json"], this.options());
     if (r.spawnError !== null || r.timedOut) return unavailable(`claude auth status ${endedHow(r)}`);
     const parsed = parseClaudeStatus(r.stdout.trim());
     if (parsed === null) return unavailable(`claude auth status gave no answer (${endedHow(r)}): ${tail(r.stderr, 2)}`);
-    return signInOf(parsed, ignoredClaudeCredentials(this.config));
+    return { signIn: signInOf(parsed, ignoredClaudeCredentials(this.config)), identity: identityOf(parsed) };
   }
 
   // In the governed deployment the sign-in runs in the agent's container, whose only way out is the egress proxy: it

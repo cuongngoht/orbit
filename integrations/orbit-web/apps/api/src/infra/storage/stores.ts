@@ -1,5 +1,6 @@
 // Typed access to Orbit Web's tables. Each store owns its SQL; nothing else writes these tables.
 import type {
+  AccessEntry,
   AnySessionEvent,
   ChatMessage,
   DurableEventType,
@@ -62,6 +63,9 @@ export interface SessionRecord {
   statusReason: string | null;
   lastSeq: number;
   pendingPrompt: string | null;
+  // The Claude account that started it (email, organization); null for a chat from before owners, until claimed.
+  ownerEmail: string | null;
+  ownerOrg: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -85,14 +89,22 @@ const sessionOf = (r: Row): SessionRecord => ({
   statusReason: strOrNull(r.status_reason),
   lastSeq: num(r.last_seq),
   pendingPrompt: strOrNull(r.pending_prompt),
+  ownerEmail: strOrNull(r.owner_email),
+  ownerOrg: strOrNull(r.owner_org),
   createdAt: str(r.created_at),
   updatedAt: str(r.updated_at),
 });
 
 export type NewSession = Pick<
   SessionRecord,
-  "id" | "title" | "source" | "repository" | "repositoryId" | "branch" | "model" | "effort" | "mode" | "workspacePath" | "claudeSessionId" | "status" | "pendingPrompt"
+  "id" | "title" | "source" | "repository" | "repositoryId" | "branch" | "model" | "effort" | "mode" | "workspacePath" | "claudeSessionId" | "status" | "pendingPrompt" | "ownerEmail" | "ownerOrg"
 >;
+
+// Whose records are asked for: an account's email in its organization.
+export interface Owner {
+  email: string;
+  org: string;
+}
 
 const SESSION_COLUMNS: Record<string, string> = {
   title: "title",
@@ -119,10 +131,24 @@ export class SessionStore {
     const now = new Date().toISOString();
     this.database.db
       .prepare(
-        "INSERT INTO sessions (id, title, source, repository, repository_id, branch, model, effort, mode, workspace_path, claude_session_id, status, pending_prompt, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO sessions (id, title, source, repository, repository_id, branch, model, effort, mode, workspace_path, claude_session_id, status, pending_prompt, owner_email, owner_org, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
-      .run(s.id, s.title, s.source, s.repository ?? "", s.repositoryId, s.branch ?? "", s.model, s.effort, s.mode, s.workspacePath, s.claudeSessionId, s.status, s.pendingPrompt, now, now);
+      .run(s.id, s.title, s.source, s.repository ?? "", s.repositoryId, s.branch ?? "", s.model, s.effort, s.mode, s.workspacePath, s.claudeSessionId, s.status, s.pendingPrompt, s.ownerEmail, s.ownerOrg, now, now);
     return this.get(s.id) as SessionRecord;
+  }
+
+  // The chats an account owns, and those shared with its email -- newest first.
+  visibleTo(o: Owner): SessionRecord[] {
+    return (
+      this.database.db
+        .prepare("SELECT * FROM sessions WHERE (owner_email = ? AND owner_org = ?) OR id IN (SELECT session_id FROM session_access WHERE email = ?) ORDER BY updated_at DESC, created_at DESC")
+        .all(o.email, o.org, o.email) as Row[]
+    ).map(sessionOf);
+  }
+
+  // Every chat from before owners becomes this account's; how many did.
+  claimUnowned(o: Owner): number {
+    return Number(this.database.db.prepare("UPDATE sessions SET owner_email = ?, owner_org = ? WHERE owner_email IS NULL").run(o.email, o.org).changes);
   }
 
   get(id: string): SessionRecord | null {
@@ -148,6 +174,29 @@ export class SessionStore {
 
   delete(id: string): void {
     this.database.db.prepare("DELETE FROM sessions WHERE id = ?").run(id);
+  }
+}
+
+// Who an owner shared a chat with, by email.
+export class SessionAccessStore {
+  constructor(private readonly database: Database) {}
+
+  list(sessionId: string): AccessEntry[] {
+    return (this.database.db.prepare("SELECT * FROM session_access WHERE session_id = ? ORDER BY granted_at, email").all(sessionId) as Row[]).map((r) => ({ email: str(r.email), grantedBy: str(r.granted_by), grantedAt: str(r.granted_at) }));
+  }
+
+  has(sessionId: string, email: string): boolean {
+    return this.database.db.prepare("SELECT 1 FROM session_access WHERE session_id = ? AND email = ?").get(sessionId, email) !== undefined;
+  }
+
+  // The whole list, as the owner gave it: who was already on it keeps when they were added.
+  set(sessionId: string, emails: readonly string[], grantedBy: string): void {
+    const now = new Date().toISOString();
+    this.database.transaction(() => {
+      const kept = new Set(emails);
+      for (const e of this.list(sessionId)) if (!kept.has(e.email)) this.database.db.prepare("DELETE FROM session_access WHERE session_id = ? AND email = ?").run(sessionId, e.email);
+      for (const email of emails) this.database.db.prepare("INSERT INTO session_access (session_id, email, granted_by, granted_at) VALUES (?, ?, ?, ?) ON CONFLICT(session_id, email) DO NOTHING").run(sessionId, email, grantedBy, now);
+    });
   }
 }
 

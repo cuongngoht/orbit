@@ -11,7 +11,7 @@
 // chat), and otherwise binds it (a token for the gateway and the proxy) and says what the Constitution lets the runtime
 // do. A run nobody governs starts exactly as it always did.
 import { type BeforeApplicationShutdown, Inject, Injectable, Logger, type OnModuleInit } from "@nestjs/common";
-import { ACCEPTS_MESSAGES, type AnySessionEvent, type RunAccepted, type SessionStatus } from "@orbit-web/contracts";
+import { ACCEPTS_MESSAGES, effortFor, modelOf, type AnySessionEvent, type RunAccepted, type SessionStatus } from "@orbit-web/contracts";
 import { randomUUID } from "node:crypto";
 import { createWriteStream, mkdirSync, type WriteStream } from "node:fs";
 import { join } from "node:path";
@@ -24,6 +24,7 @@ import { LineSplitter } from "../../infra/process/lines.js";
 import type { ExitInfo, ProcessHandle, ProcessPort } from "../../infra/process/process.port.js";
 import { redactSecrets, tail } from "../../infra/security/redact.js";
 import { RunStore, SessionStore, type SessionRecord } from "../../infra/storage/stores.js";
+import { ClaudeModelsService } from "../claude-auth/claude-models.service.js";
 import { RunGovernanceService, type RunPlan } from "../governance/run-governance.service.js";
 import { ProjectService } from "../project/project.service.js";
 import { AutoModeService } from "./auto-mode.js";
@@ -72,6 +73,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     @Inject(ProjectService) private readonly project: ProjectService,
     @Inject(AutoModeService) private readonly autoMode: AutoModeService,
     @Inject(RunGovernanceService) private readonly governance: RunGovernanceService,
+    @Inject(ClaudeModelsService) private readonly models: ClaudeModelsService,
   ) {}
 
   // After a restart nothing is running: a run the restart cut short is recorded as interrupted, never resumed.
@@ -173,9 +175,11 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     // GitHub's sign-in only ever reaches a chat whose repository came from GitHub.
     const github = credentials && prefs.githubForClaude && session.source === "github";
     const project = this.project.runtime(session);
+    // The effort the account's catalog says this model takes (none, for a model that takes no level).
+    const catalog = this.models.cached();
     const args = claudeArgs({
       model: session.model,
-      effort: session.effort,
+      effort: effortFor(catalog === null ? null : modelOf(catalog, session.model), session.effort),
       mode: session.mode,
       pluginDirs: [this.config.pluginDir, ...project.pluginDirs],
       enabledPlugins: project.enabledPlugins,

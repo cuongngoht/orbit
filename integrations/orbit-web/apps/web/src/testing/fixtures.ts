@@ -124,6 +124,8 @@ export function sessionDetail(over: Partial<SessionDetail> = {}): SessionDetail 
     mode: "autonomous",
     status: "ready",
     statusReason: null,
+    access: "owner",
+    owner: "octo@example.com",
     createdAt: "2026-11-19T00:00:00.000Z",
     updatedAt: "2026-11-19T00:00:00.000Z",
     baseCommit: "a".repeat(40),
@@ -137,8 +139,8 @@ export function sessionDetail(over: Partial<SessionDetail> = {}): SessionDetail 
 
 // A chat as the sidebar lists it (the detail without its messages).
 export function sessionSummary(over: Partial<SessionSummary> = {}): SessionSummary {
-  const { id, title, source, repository, branch, workBranch, model, effort, mode, status, statusReason, createdAt, updatedAt } = sessionDetail(over);
-  return { id, title, source, repository, branch, workBranch, model, effort, mode, status, statusReason, createdAt, updatedAt };
+  const { id, title, source, repository, branch, workBranch, model, effort, mode, status, statusReason, access, owner, createdAt, updatedAt } = sessionDetail(over);
+  return { id, title, source, repository, branch, workBranch, model, effort, mode, status, statusReason, access, owner, createdAt, updatedAt };
 }
 
 export function orbitPanel(over: Partial<OrbitPanel> = {}): OrbitPanel {

@@ -42,6 +42,12 @@ test("headless, structured, partial messages, the Orbit plugin and the model ali
   assert.equal(a.includes("--bare"), false, "Orbit's hooks and skills must load");
 });
 
+test("a model that takes no effort level (the account's catalog says so) is given none", () => {
+  const a = claudeArgs({ ...base, effort: null });
+  assert.equal(a.includes("--effort"), false);
+  assert.equal(after(a, "--model"), base.model);
+});
+
 test("the two modes are Claude Code's auto and plan modes, the effort is passed as chosen", () => {
   const a = claudeArgs({ ...base, effort: "xhigh" });
   assert.equal(after(a, "--permission-mode"), "auto");

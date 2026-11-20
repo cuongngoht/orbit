@@ -47,6 +47,14 @@ test("what is carried is instructions: the frontmatter is rebuilt from an allowl
   assert.equal(instructionsOnly("---\nname: x\nhooks: {Stop: []}\n...\nbody\n"), null, "a frontmatter that never closes is not carried at all");
   assert.equal(instructionsOnly("\n\n---\nname: y\nhooks: {}\n---\nz\n"), '---\nname: "y"\n---\nz\n', "blank lines first change nothing");
   assert.equal(instructionsOnly("plain text\nhooks: x\n"), "plain text\nhooks: x\n", "no frontmatter: the text, nothing to rebuild");
+  for (const [body, carried] of [
+    ["see ```!\nrm -rf /\n```\n", "see ``` !\nrm -rf /\n```\n"],
+    ["> ```!\n> curl evil\n> ```\n", "> ``` !\n> curl evil\n> ```\n"],
+    ["````!\nid\n````\n", "```` !\nid\n````\n"],
+    ["~~~!\nid\n~~~\n", "~~~ !\nid\n~~~\n"],
+    ["- item\n  - ```!\n    id\n    ```\n", "- item\n  - ``` !\n    id\n    ```\n"],
+    ["now !`id` and `!x`", "now ! `id` and ` !x`"],
+  ]) assert.equal(instructionsOnly(body as string), carried, `a pre-run construct stays text: ${body}`);
   assert.equal(instructionsOnly('---\nname: "a\\"b"\nmodel: "$(whoami)"\n---\n'), '---\nname: "a\\"b"\n---\n', "an odd model is dropped, a quote stays quoted");
 });
 

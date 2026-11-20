@@ -52,8 +52,8 @@ export function frontmatter(text: string): Frontmatter {
 // frontmatter is REBUILT from an allowlist -- name, description, model, argument-hint, each written back as a quoted
 // one-line string -- and the original block never passes through, so no `hooks`, no `allowed-tools`, nothing a YAML
 // reader could see differently from this one; a file whose frontmatter never closes is not carried at all (null). In
-// the body, `!`command`` (and a ```! block), which would run before the model reads it, is moved off its backtick and
-// stays text. What Claude then does is held to the session's own permissions.
+// the body, every pre-run construct (`!`command``, a ```! or ~~~! block) is pulled apart and stays text. What Claude
+// then does is held to the session's own permissions.
 export const CARRIED_KEYS = ["name", "description", "model", "argument-hint"] as const;
 
 const SAFE_MODEL = /^[A-Za-z0-9._[\]-]{1,64}$/;
@@ -67,7 +67,10 @@ function rebuilt(block: string[]): string {
   return `---\n${lines.map((l) => `${l}\n`).join("")}---\n`;
 }
 
-const neutralised = (body: string): string => body.replace(/!`/g, "! `").replace(/^(\s*)```!/gm, "$1``` !");
+// `!` right before a backtick (inline `!`command``), and any run of backticks -- or three or more tildes -- right
+// before `!` (a fence opening a pre-run block, wherever it sits: mid-line, in a quote, four or more long) are pulled
+// apart by a space: the same characters, never a command.
+const neutralised = (body: string): string => body.replace(/!`/g, "! `").replace(/(`+|~{3,})!/g, "$1 !");
 
 export function instructionsOnly(text: string): string | null {
   const { block, body, unclosed } = split(text);

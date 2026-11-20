@@ -2,7 +2,9 @@
 // about each run -- its version and whether Orbit loaded, how it ended, and anything it refused.
 import { Badge, MessageBar, MessageBarBody, Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
 import { Markdown } from "../../components/Markdown";
-import { childrenOf, type MessageItem, type RunEndItem, type RunStartItem, type TimelineItem, type WorkspaceItem } from "./chatReducer";
+import { EFFORT_LABELS, MODE_LABELS } from "@orbit-web/contracts";
+import { childrenOf, type MessageItem, type ProjectItem, type RunEndItem, type RunStartItem, type TimelineItem, type WorkspaceItem } from "./chatReducer";
+import { PlanCard } from "./PlanCard";
 import { ToolCard } from "./ToolCard";
 
 const useStyles = makeStyles({
@@ -14,7 +16,32 @@ const useStyles = makeStyles({
   cursor: { display: "inline-block", width: "8px", height: "14px", backgroundColor: tokens.colorNeutralForeground3, marginLeft: "2px", verticalAlign: "text-bottom" },
 });
 
-const STEPS: Record<string, string> = { clone: "Cloning the repository with GitHub CLI…", branch: "Creating this session's branch…", identity: "Setting the commit identity…", orbit: "Seating the workspace with Orbit…" };
+const STEPS: Record<string, string> = {
+  clone: "Cloning the repository…",
+  init: "Creating an empty workspace…",
+  branch: "Creating this session's branch…",
+  identity: "Setting the commit identity…",
+  orbit: "Seating the workspace with Orbit…",
+  project: "Reading the project's skills and plugins…",
+};
+
+const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
+
+// What the repository brought: its skills, commands and agents (loaded as instructions), and its plugins with what
+// became of each. Settings → Skills and Plugins show them whole.
+function Project({ item }: { item: ProjectItem }) {
+  const s = useStyles();
+  const i = item.inventory;
+  const carried = [count(i.skills.length, "skill"), count(i.commands.length, "command"), count(i.agents.length, "agent")].join(", ");
+  const plugins = i.plugins.length === 0 ? "" : ` · plugins: ${i.plugins.map((p) => `${p.id} (${p.state})`).join(", ")}`;
+  if (i.skills.length + i.commands.length + i.agents.length + i.plugins.length === 0) return null;
+  return (
+    <Text size={200} className={s.meta}>
+      {i.loaded ? `Loaded from this repository: ${carried}` : `This repository has ${carried} (not loaded)`}
+      {plugins}.
+    </Text>
+  );
+}
 
 function Workspace({ item }: { item: WorkspaceItem }) {
   const s = useStyles();
@@ -35,6 +62,9 @@ function RunStart({ item }: { item: RunStartItem }) {
     <div className={s.line}>
       <Text size={200} className={s.meta}>
         {d.resumed ? "Continuing" : "Started"} Claude Code {d.claudeCodeVersion ?? "?"} · {d.model ?? d.requestedModel}
+        {/* A run of an earlier Orbit Web named no effort or mode. */}
+        {d.requestedEffort ? ` · ${EFFORT_LABELS[d.requestedEffort]} effort` : ""}
+        {d.requestedMode ? ` · ${MODE_LABELS[d.requestedMode]}` : ""}
       </Text>
       {d.orbitLoaded ? (
         <Badge appearance="tint" color="brand" size="small">
@@ -85,15 +115,25 @@ function Message({ item }: { item: MessageItem }) {
   );
 }
 
-function Item({ item, items }: { item: TimelineItem; items: TimelineItem[] }) {
+export interface TimelineActions {
+  // Carry a proposed plan out: switch to Autonomous and ask for it.
+  onRunPlan?: () => void;
+  canRunPlan?: boolean;
+}
+
+function Item({ item, items, actions }: { item: TimelineItem; items: TimelineItem[]; actions: TimelineActions }) {
   switch (item.kind) {
     case "message":
       return <Message item={item} />;
+    case "plan":
+      return <PlanCard plan={item.plan} truncated={item.truncated} onRun={actions.onRunPlan} canRun={actions.canRunPlan === true} />;
+    case "project":
+      return <Project item={item} />;
     case "tool": {
       const inner = childrenOf(items, item.id);
       return (
         <ToolCard tool={item}>
-          {inner.length > 0 && inner.map((child) => <Item key={`${child.kind}-${child.id}`} item={child} items={items} />)}
+          {inner.length > 0 && inner.map((child) => <Item key={`${child.kind}-${child.id}`} item={child} items={items} actions={actions} />)}
         </ToolCard>
       );
     }
@@ -122,13 +162,19 @@ function Item({ item, items }: { item: TimelineItem; items: TimelineItem[] }) {
   }
 }
 
-export function Timeline({ items }: { items: TimelineItem[] }) {
+// Plan mode's ExitPlanMode call (and its refusal under -p) is shown as the plan it carried, not as a tool.
+const isPlanPlumbing = (item: TimelineItem): boolean => (item.kind === "tool" && item.name === "ExitPlanMode") || (item.kind === "denied" && item.denied.toolName === "ExitPlanMode");
+
+export function Timeline({ items, actions = {} }: { items: TimelineItem[]; actions?: TimelineActions }) {
   const s = useStyles();
+  const hasPlan = items.some((i) => i.kind === "plan");
   return (
     <div className={s.list}>
-      {childrenOf(items, null).map((item) => (
-        <Item key={`${item.kind}-${item.id}`} item={item} items={items} />
-      ))}
+      {childrenOf(items, null)
+        .filter((item) => !(hasPlan && isPlanPlumbing(item)))
+        .map((item) => (
+          <Item key={`${item.kind}-${item.id}`} item={item} items={items} actions={actions} />
+        ))}
     </div>
   );
 }

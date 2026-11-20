@@ -4,11 +4,12 @@
 import { Button, Field, Input, Link, MessageBar, MessageBarBody, Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
 import type { ClaudeStatus, LoginSnapshot } from "@orbit-web/contracts";
 import { useEffect, useState } from "react";
-import { flowActive, useLoginFlow } from "../../hooks/useLoginFlow";
+import { flowActive, useClaudeLoginFlow } from "../../hooks/useLoginFlow";
 import { errorText, send } from "../../services/api";
 
 const useStyles = makeStyles({
-  body: { display: "flex", flexDirection: "column", gap: "12px" },
+  body: { display: "flex", flexDirection: "column", gap: "12px", textAlign: "left" },
+  continue: { width: "100%", borderRadius: tokens.borderRadiusXLarge },
   row: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "flex-end" },
   url: { wordBreak: "break-all" },
   hint: { color: tokens.colorNeutralForeground3 },
@@ -17,7 +18,7 @@ const useStyles = makeStyles({
 
 export function ClaudeSignIn({ status, onChanged }: { status: ClaudeStatus | null; onChanged: () => void }) {
   const s = useStyles();
-  const flow = useLoginFlow("claude", status?.flow ?? null);
+  const flow = useClaudeLoginFlow(status?.flow ?? null);
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -53,11 +54,9 @@ export function ClaudeSignIn({ status, onChanged }: { status: ClaudeStatus | nul
         </MessageBar>
       )}
       {!flowActive(flow) && (
-        <div>
-          <Button appearance="primary" size="large" disabled={busy} onClick={() => act(() => send<LoginSnapshot>("POST", "/api/claude/login"))}>
-            Sign in with Claude
-          </Button>
-        </div>
+        <Button className={s.continue} appearance="primary" size="large" disabled={busy} onClick={() => act(() => send<LoginSnapshot>("POST", "/api/claude/login"))}>
+          Continue with Claude
+        </Button>
       )}
       <Text size={200} className={s.hint}>
         If signing in here does not finish, sign in from a terminal instead: <span className={s.mono}>docker exec -it orbit-web claude auth login --claudeai</span>, then reload this page.

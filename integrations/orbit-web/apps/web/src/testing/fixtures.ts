@@ -1,5 +1,85 @@
 // What the API answers, for the web app's tests.
-import { ORBIT_WEB_VERSION, type AzureStatus, type ClaudeStatus, type GitHubStatus, type LoginSnapshot, type OrbitPanel, type SessionDetail, type SetupStatus } from "@orbit-web/contracts";
+import {
+  ORBIT_WEB_VERSION,
+  type AzureStatus,
+  type ClaudeStatus,
+  type ConnectionState,
+  type GitHubStatus,
+  type LoginSnapshot,
+  type OrbitPanel,
+  type ProjectInventory,
+  type Repository,
+  type SessionDetail,
+  type SessionSummary,
+  type Settings,
+  type SetupStatus,
+  type SourcesStatus,
+} from "@orbit-web/contracts";
+
+// GET /api/settings, as a fresh Orbit Web answers it.
+export function settings(over: Partial<Settings> = {}): Settings {
+  return { defaultModel: "sonnet", defaultEffort: "medium", defaultMode: "autonomous", projectSkills: true, projectPlugins: false, webTools: false, azureForClaude: false, theme: "system", maxBudgetUsd: null, ...over };
+}
+
+// GET /api/sources: by default neither source is connected (a chat still starts, without a repository).
+export function sources(github: ConnectionState = "not_connected", azure: ConnectionState = "not_connected"): SourcesStatus {
+  return {
+    sources: [
+      { source: "github", state: github, account: github === "connected" ? "octo" : null },
+      { source: "azure", state: azure, account: azure === "connected" ? "dev@contoso.com" : null },
+    ],
+  };
+}
+
+export const githubRepository = (over: Partial<Repository> = {}): Repository => ({
+  source: "github",
+  id: "octo/sum-fixture",
+  fullName: "octo/sum-fixture",
+  owner: "octo",
+  project: null,
+  name: "sum-fixture",
+  private: true,
+  defaultBranch: "main",
+  updatedAt: null,
+  archived: false,
+  fork: false,
+  ...over,
+});
+
+export const AZURE_REPOSITORY_ID = "contoso/3f1d2c4b-5a6e-4f70-8a9b-0c1d2e3f4a5b";
+
+export const azureRepository = (over: Partial<Repository> = {}): Repository => ({
+  source: "azure",
+  id: AZURE_REPOSITORY_ID,
+  fullName: "contoso/Platform/api",
+  owner: "contoso",
+  project: "Platform",
+  name: "api",
+  private: true,
+  defaultBranch: "develop",
+  updatedAt: null,
+  archived: false,
+  fork: false,
+  ...over,
+});
+
+// What a repository brought, as the workspace's first fetch read it.
+export function inventory(over: Partial<ProjectInventory> = {}): ProjectInventory {
+  return {
+    repository: "octo/sum-fixture",
+    loadedAt: "2026-11-20T00:00:00.000Z",
+    skills: [{ name: "release-notes", description: "Write the release notes from the merged PRs.", path: ".claude/skills/release-notes/SKILL.md" }],
+    commands: [{ name: "deploy", description: "Deploy the preview.", path: ".claude/commands/deploy.md" }],
+    agents: [],
+    claudeMd: true,
+    mcpServers: [],
+    marketplaces: [],
+    plugins: [{ id: "lint-kit@acme-tools", kind: "declared", source: "acme/claude-plugins", path: null, state: "declared", detail: null }],
+    loaded: true,
+    truncated: false,
+    ...over,
+  };
+}
 
 export const idleFlow = (): LoginSnapshot => ({ state: "idle", url: null, code: null, needsCode: false, message: null, startedAt: null, updatedAt: "2026-11-19T00:00:00.000Z" });
 
@@ -50,6 +130,12 @@ export function sessionDetail(over: Partial<SessionDetail> = {}): SessionDetail 
     messages: [],
     ...over,
   };
+}
+
+// A chat as the sidebar lists it (the detail without its messages).
+export function sessionSummary(over: Partial<SessionSummary> = {}): SessionSummary {
+  const { id, title, source, repository, branch, workBranch, model, effort, mode, status, statusReason, createdAt, updatedAt } = sessionDetail(over);
+  return { id, title, source, repository, branch, workBranch, model, effort, mode, status, statusReason, createdAt, updatedAt };
 }
 
 export function orbitPanel(over: Partial<OrbitPanel> = {}): OrbitPanel {

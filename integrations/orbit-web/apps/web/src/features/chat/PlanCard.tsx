@@ -1,0 +1,31 @@
+// A PLAN, as plan mode proposed it (the ExitPlanMode input): the plan itself, and the one way on -- switch the chat to
+// Autonomous and ask Claude to carry the plan out, in the same conversation.
+import { Button, Card, CardHeader, Text, makeStyles, tokens } from "@fluentui/react-components";
+import { ClipboardTaskList16Regular, Flash16Regular } from "@fluentui/react-icons";
+import { Markdown } from "../../components/Markdown";
+
+const useStyles = makeStyles({
+  card: { borderLeft: `3px solid ${tokens.colorBrandStroke1}` },
+  body: { display: "flex", flexDirection: "column", gap: "10px" },
+  muted: { color: tokens.colorNeutralForeground3 },
+});
+
+export function PlanCard({ plan, truncated, onRun, canRun }: { plan: string; truncated: boolean; onRun?: () => void; canRun: boolean }) {
+  const s = useStyles();
+  return (
+    <Card className={s.card} aria-label="Plan">
+      <CardHeader image={<ClipboardTaskList16Regular />} header={<Text weight="semibold">Plan</Text>} description={<Text size={200} className={s.muted}>Proposed in Plan mode. Nothing was changed.</Text>} />
+      <div className={s.body}>
+        <Markdown text={plan} />
+        {truncated && <Text size={200} className={s.muted}>(the plan was longer; this is its beginning)</Text>}
+        {onRun && (
+          <div>
+            <Button appearance="primary" icon={<Flash16Regular />} disabled={!canRun} onClick={onRun}>
+              Run it in Autonomous
+            </Button>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}

@@ -5,6 +5,7 @@ import {
   applyDelta,
   type AnySessionEvent,
   type OrbitPanel,
+  type ProjectInventory,
   type PermissionDeniedData,
   type RunNoticeData,
   type SessionCompletedData,
@@ -78,7 +79,22 @@ export interface WorkspaceItem {
   workBranch: string | null;
 }
 
-export type TimelineItem = MessageItem | ToolItem | RunStartItem | RunEndItem | NoticeItem | DeniedItem | WorkspaceItem;
+// Plan mode proposed a plan (the ExitPlanMode input): shown as a plan, with the way to carry it out.
+export interface PlanItem {
+  kind: "plan";
+  id: string;
+  plan: string;
+  truncated: boolean;
+}
+
+// What the repository brought for Claude Code, read on the workspace's first fetch.
+export interface ProjectItem {
+  kind: "project";
+  id: string;
+  inventory: ProjectInventory;
+}
+
+export type TimelineItem = MessageItem | ToolItem | RunStartItem | RunEndItem | NoticeItem | DeniedItem | WorkspaceItem | PlanItem | ProjectItem;
 
 export interface ChatState {
   lastSeq: number;
@@ -112,6 +128,12 @@ function workspace(state: ChatState, patch: Omit<WorkspaceItem, "kind" | "id">):
   return index === -1 ? { ...state, items: [...state.items, item] } : { ...state, items: replace(state.items, index, item) };
 }
 
+function project(state: ChatState, inventory: ProjectInventory): ChatState {
+  const index = findIndex(state.items, "project", "project");
+  const item: ProjectItem = { kind: "project", id: "project", inventory };
+  return index === -1 ? { ...state, items: [...state.items, item] } : { ...state, items: replace(state.items, index, item) };
+}
+
 // Messages still streaming when a run ends stop streaming (their completion, partial or not, arrives as an event).
 const settleStreaming = (items: TimelineItem[]): TimelineItem[] => items.map((i) => (i.kind === "message" && i.streaming ? { ...i, streaming: false } : i));
 
@@ -123,6 +145,16 @@ function applyDurable(state: ChatState, e: AnySessionEvent): ChatState {
       return workspace(state, { step: "ready", state: "ready", message: null, workBranch: e.data.workBranch });
     case "workspace.failed":
       return workspace(state, { step: e.data.step, state: "failed", message: e.data.message, workBranch: null });
+    case "project.inventory":
+      return project(state, e.data.inventory);
+    case "project.plugin": {
+      const current = state.items.find((i): i is ProjectItem => i.kind === "project");
+      if (!current) return state;
+      const plugins = current.inventory.plugins.map((p) => (p.id === e.data.plugin.id && p.kind === e.data.plugin.kind ? e.data.plugin : p));
+      return project(state, { ...current.inventory, plugins });
+    }
+    case "plan.proposed":
+      return { ...state, items: [...state.items, { kind: "plan", id: `plan-${e.seq}`, plan: e.data.plan, truncated: e.data.truncated }] };
     case "session.status":
       return { ...state, status: e.data.status, statusReason: e.data.reason };
     case "session.started":

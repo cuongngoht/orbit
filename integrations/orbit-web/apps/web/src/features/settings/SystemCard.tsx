@@ -1,9 +1,10 @@
 // System Status: the programs, the plugin and the storage this container holds, and the versions it was built with.
-import { Card, CardHeader, Text, makeStyles, tokens } from "@fluentui/react-components";
+import { Text, makeStyles, tokens } from "@fluentui/react-components";
 import { CheckmarkCircle16Filled, DismissCircle16Filled } from "@fluentui/react-icons";
 import type { ComponentCheck, SetupStatus } from "@orbit-web/contracts";
 
 const useStyles = makeStyles({
+  root: { display: "flex", flexDirection: "column", gap: "14px" },
   table: { display: "grid", gridTemplateColumns: "max-content 1fr", columnGap: "16px", rowGap: "6px", alignItems: "center" },
   ok: { color: tokens.colorPaletteGreenForeground1, verticalAlign: "middle" },
   bad: { color: tokens.colorPaletteRedForeground1, verticalAlign: "middle" },
@@ -28,8 +29,8 @@ export function SystemCard({ status }: { status: SetupStatus | null }) {
   if (status === null) return null;
   const v = status.versions;
   return (
-    <Card aria-label="System Status">
-      <CardHeader header={<Text weight="semibold">System Status</Text>} description={<Text className={s.muted}>{status.health.status === "ok" ? "Everything is in place." : "Something here is not usable."}</Text>} />
+    <section className={s.root} aria-label="System Status">
+      <Text className={s.muted}>{status.health.status === "ok" ? "Everything is in place." : "Something here is not usable."}</Text>
       <div className={s.table}>
         <Check label="Claude CLI" check={status.health.claude} />
         <Check label="GitHub CLI" check={status.health.gh} />
@@ -47,6 +48,6 @@ export function SystemCard({ status }: { status: SetupStatus | null }) {
         <Text>Node.js</Text>
         <Text className={s.mono}>{v.node}</Text>
       </div>
-    </Card>
+    </section>
   );
 }

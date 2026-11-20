@@ -284,8 +284,11 @@ export interface Settings {
   defaultModel: ModelChoice;
   defaultEffort: EffortChoice;
   defaultMode: ModeChoice;
+  // A repository's skills, commands and agents are loaded for its chats, as instructions only (their hooks,
+  // allowed-tools and pre-run commands removed). On unless a person turns it off.
+  projectSkills: boolean;
   // The plugins a repository is or declares are run for its chats. Off unless a person turns it on: a plugin runs code
-  // (hooks, MCP servers) in the container. A repository's skills, commands and agents load either way, as instructions.
+  // (hooks, MCP servers) in the container.
   projectPlugins: boolean;
   // WebFetch and WebSearch are offered to Claude only when this is on.
   webTools: boolean;
@@ -300,6 +303,7 @@ export interface UpdateSettingsRequest {
   defaultModel?: ModelChoice;
   defaultEffort?: EffortChoice;
   defaultMode?: ModeChoice;
+  projectSkills?: boolean;
   projectPlugins?: boolean;
   webTools?: boolean;
   azureForClaude?: boolean;

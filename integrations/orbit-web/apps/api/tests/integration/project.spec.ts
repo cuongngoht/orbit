@@ -150,6 +150,28 @@ describe("by default: the skills load, the plugins wait for a person", () => {
   });
 });
 
+describe("with project skills turned off", () => {
+  let h: Harness;
+  let fake: FakeProcessPort;
+  before(async () => {
+    fake = projectFake();
+    h = await startHarness({ fake });
+    await h.send("PATCH", "/api/settings", { projectSkills: false });
+  });
+  after(() => h.close());
+
+  test("they are listed, never carried: no session plugin, Orbit's own only", async () => {
+    const session = (await h.send("POST", "/api/sessions", { repository: { source: "github", id: REPOSITORY }, model: "sonnet", prompt: "Hello." })).body as SessionSummary;
+    await eventually(async () => ((await h.get(`/api/sessions/${session.id}`)).body as SessionDetail).status, (s) => s === "completed");
+    const { inventory } = (await h.get(`/api/sessions/${session.id}/project`)).body as { inventory: ProjectInventory };
+    assert.equal(inventory.loaded, false);
+    assert.deepEqual(inventory.skills.map((s) => s.name), ["deploy"], "still read, so a person can see them");
+    assert.equal(existsSync(join(h.config.data.sessions, session.id, "project-plugin")), false);
+    const call = fake.children.find((c) => claudeRun(c.call.file, c.call.args))?.call as Call;
+    assert.deepEqual(call.args.flatMap((a, i) => (a === "--plugin-dir" ? [call.args[i + 1]] : [])), [h.config.pluginDir]);
+  });
+});
+
 describe("a declared plugin that cannot be switched off for other chats", () => {
   let h: Harness;
   let fake: FakeProcessPort;

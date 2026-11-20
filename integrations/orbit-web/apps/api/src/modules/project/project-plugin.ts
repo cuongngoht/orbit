@@ -3,12 +3,12 @@
 // `.claude/agents` unread. Claude Code's documented way to carry them is a plugin made from those three directories,
 // loaded with `--plugin-dir`: so on the workspace's first fetch they are COPIED (a snapshot, regular files only, no
 // symlink, bounded) into /data/sessions/<id>/project-plugin, under a plugin named after the repository. Every markdown
-// file loses the frontmatter keys that would run something or allow a tool (`hooks`, `allowed-tools`): the plugin
-// carries instructions -- it has no hooks of its own and no MCP server -- and Claude's actions stay the session's to
-// permit.
+// file is carried as instructions only (frontmatter.ts `instructionsOnly`: its frontmatter rebuilt from an allowlist,
+// its pre-run `!` commands made text, and dropped when its frontmatter never closes): the plugin has no hook and no
+// MCP server of its own, and Claude's actions stay the session's to permit.
 import { copyFileSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { withoutRunnableKeys } from "./frontmatter.js";
+import { instructionsOnly } from "./frontmatter.js";
 import { within } from "./inventory.js";
 
 export const PLUGIN_COPY_LIMITS = { files: 2_000, bytes: 20 * 1024 * 1024, fileBytes: 2 * 1024 * 1024, depth: 8 } as const;
@@ -40,8 +40,11 @@ function copyTree(from: string, to: string, budget: Budget, depth = 0): number {
       budget.truncated = true;
       continue;
     }
-    if (name.endsWith(".md")) writeFileSync(join(to, name), withoutRunnableKeys(readFileSync(source, "utf8")), { mode: 0o600 });
-    else copyFileSync(source, join(to, name));
+    if (name.toLowerCase().endsWith(".md")) {
+      const carried = instructionsOnly(readFileSync(source, "utf8"));
+      if (carried === null) continue;
+      writeFileSync(join(to, name), carried, { mode: 0o600 });
+    } else copyFileSync(source, join(to, name));
     budget.files += 1;
     budget.bytes += s.size;
     copied += 1;

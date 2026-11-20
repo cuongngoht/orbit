@@ -1,12 +1,15 @@
-// The frontmatter of a SKILL.md, a command or an agent file: the block between its first two `---` lines. Only `name`
-// and `description` are read, as YAML scalars -- plain, quoted, or a folded (`>`) or literal (`|`) block of indented
-// lines -- which is all the inventory shows. Nothing else of the file is kept.
+// The frontmatter of a SKILL.md, a command or an agent file: the block between its first two `---` lines, read as
+// YAML scalars -- plain, quoted, or a folded (`>`) or literal (`|`) block of indented lines -- for the few keys
+// Orbit Web uses. Nothing else of the block is interpreted.
 export interface Frontmatter {
   name: string | null;
   description: string | null;
 }
 
 const MAX_VALUE = 1_000;
+const BOM = String.fromCharCode(0xfeff);
+
+const withoutBom = (text: string): string => (text.startsWith(BOM) ? text.slice(1) : text);
 
 const unquote = (v: string): string => {
   if (v.length >= 2 && ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'")))) return v.slice(1, -1).replace(/\\"/g, '"').replace(/''/g, "'");
@@ -28,34 +31,46 @@ function scalar(block: string[], key: string): string | null {
   return value.length > 0 ? value.slice(0, MAX_VALUE) : null;
 }
 
-export function frontmatter(text: string): Frontmatter {
-  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/);
-  if (lines[0]?.trim() !== "---") return { name: null, description: null };
+// The frontmatter block and the body after it. A text that does not open with `---` (after a BOM and blank lines) has
+// none (`block` null); one that opens with `---` and never closes it is `unclosed`: a reader that closes blocks
+// differently could still see one there.
+function split(text: string): { block: string[] | null; body: string; unclosed: boolean } {
+  const start = withoutBom(text).replace(/^\s*\n/, "");
+  const lines = start.split(/\r?\n/);
+  if (lines[0]?.trim() !== "---") return { block: null, body: withoutBom(text), unclosed: false };
   const end = lines.findIndex((l, i) => i > 0 && l.trim() === "---");
-  if (end === -1) return { name: null, description: null };
-  const block = lines.slice(1, end);
-  return { name: scalar(block, "name"), description: scalar(block, "description") };
+  if (end === -1) return { block: null, body: start, unclosed: true };
+  return { block: lines.slice(1, end), body: lines.slice(end + 1).join("\n"), unclosed: false };
 }
 
-// The frontmatter keys that make Claude Code RUN something or allow a tool without asking: `hooks` (commands run at a
-// lifecycle event, never reviewed by auto mode's classifier) and `allowed-tools`. They are dropped, with the lines that
-// belong to them, when a repository's skills, commands and agents are carried into a session's plugin: what is
-// carried is instructions, and what Claude then does is held to the session's own permissions.
-export const RUNNABLE_KEYS: readonly string[] = ["hooks", "allowed-tools", "allowedTools"];
+export function frontmatter(text: string): Frontmatter {
+  const { block } = split(text);
+  return block === null ? { name: null, description: null } : { name: scalar(block, "name"), description: scalar(block, "description") };
+}
 
-export function withoutRunnableKeys(text: string): string {
-  const lines = text.split(/(?<=\n)/);
-  if (lines[0]?.replace(/^\uFEFF/, "").trim() !== "---") return text;
-  const end = lines.findIndex((l, i) => i > 0 && l.trim() === "---");
-  if (end === -1) return text;
-  const kept: string[] = [lines[0] as string];
-  let dropping = false;
-  for (const line of lines.slice(1, end)) {
-    const key = /^([A-Za-z][\w-]*)\s*:/.exec(line)?.[1];
-    // A key at the start of a line begins an entry; an indented line or a "- " item belongs to the entry above it.
-    if (key !== undefined) dropping = RUNNABLE_KEYS.includes(key);
-    else if (!/^[\s-]/.test(line) && line.trim() !== "") dropping = false;
-    if (!dropping) kept.push(line);
-  }
-  return [...kept, ...lines.slice(end)].join("");
+// INSTRUCTIONS ONLY: how a repository's skill, command or agent file is carried into a session's plugin. Its
+// frontmatter is REBUILT from an allowlist -- name, description, model, argument-hint, each written back as a quoted
+// one-line string -- and the original block never passes through, so no `hooks`, no `allowed-tools`, nothing a YAML
+// reader could see differently from this one; a file whose frontmatter never closes is not carried at all (null). In
+// the body, `!`command`` (and a ```! block), which would run before the model reads it, is moved off its backtick and
+// stays text. What Claude then does is held to the session's own permissions.
+export const CARRIED_KEYS = ["name", "description", "model", "argument-hint"] as const;
+
+const SAFE_MODEL = /^[A-Za-z0-9._[\]-]{1,64}$/;
+
+function rebuilt(block: string[]): string {
+  const lines = CARRIED_KEYS.flatMap((key) => {
+    const value = scalar(block, key);
+    if (value === null || (key === "model" && !SAFE_MODEL.test(value))) return [];
+    return [`${key}: ${JSON.stringify(value.replace(/\s+/g, " "))}`];
+  });
+  return `---\n${lines.map((l) => `${l}\n`).join("")}---\n`;
+}
+
+const neutralised = (body: string): string => body.replace(/!`/g, "! `").replace(/^(\s*)```!/gm, "$1``` !");
+
+export function instructionsOnly(text: string): string | null {
+  const { block, body, unclosed } = split(text);
+  if (unclosed) return null;
+  return `${block === null ? "" : rebuilt(block)}${neutralised(body)}`;
 }

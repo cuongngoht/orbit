@@ -1,10 +1,11 @@
 // A PROJECT'S SKILLS AND PLUGINS: read on the workspace's first fetch (the "project" step), kept beside the chat, and
 // loaded for that chat's runs -- and only those:
 //
-//   the repository's .claude/skills, commands, agents  ALWAYS: a plugin built for the session (project-plugin.ts),
-//                                                      --plugin-dir. Instructions only: their `hooks` and
-//                                                      `allowed-tools` are dropped, and the plugin has no hook or MCP
-//                                                      server of its own.
+//   the repository's .claude/skills, commands, agents  unless a person turned off "Load project skills" (on by
+//                                                      default): a plugin built for the session (project-plugin.ts),
+//                                                      --plugin-dir. Instructions only: frontmatter rebuilt from an
+//                                                      allowlist (no hooks, no allowed-tools), pre-run `!` commands
+//                                                      made text, no hook or MCP server of its own.
 //   a plugin the repository is, or holds               only when a person turned on "Run project plugins"
 //                                                      (Settings → Code; off by default): --plugin-dir that directory
 //   a plugin the project declares (name@marketplace)   only then too: `claude plugin marketplace add` (once),
@@ -75,9 +76,10 @@ export class ProjectService {
   async load(session: SessionRecord): Promise<ProjectInventory> {
     try {
       const readout = readRepository(session.workspacePath);
-      const runPlugins = this.settings.get().projectPlugins;
-      const built = buildProjectPlugin(session.workspacePath, this.pluginDir(session.id), session.repository);
-      const inventory = this.save(session.id, this.inventoryOf(session, readout, runPlugins, built.built, built.truncated));
+      const prefs = this.settings.get();
+      const runPlugins = prefs.projectPlugins;
+      const built = prefs.projectSkills ? buildProjectPlugin(session.workspacePath, this.pluginDir(session.id), session.repository) : null;
+      const inventory = this.save(session.id, this.inventoryOf(session, readout, runPlugins, built?.built === true, built?.truncated === true));
       return runPlugins ? await this.installDeclared(session, inventory, readout.marketplaces) : inventory;
     } catch (err) {
       this.logger.warn(`the project of ${session.id} could not be read: ${err instanceof Error ? err.message : String(err)}`);

@@ -6,7 +6,7 @@ import { App } from "./App";
 import { fakeApi, withStatus } from "./testing/fakeApi";
 import { claudeStatus, setupStatus, signedOutClaude } from "./testing/fixtures";
 
-const SETTINGS: Settings = { defaultModel: "sonnet", defaultEffort: "medium", defaultMode: "autonomous", projectPlugins: true, webTools: false, azureForClaude: false, theme: "system", maxBudgetUsd: null };
+const SETTINGS: Settings = { defaultModel: "sonnet", defaultEffort: "medium", defaultMode: "autonomous", projectSkills: true, projectPlugins: false, webTools: false, azureForClaude: false, theme: "system", maxBudgetUsd: null };
 const github = { state: "connected" as const, account: { login: "octo", name: "Octo Cat" } };
 const refused = (status: number, code: string, message: string) => withStatus(status, { error: { code, message } });
 

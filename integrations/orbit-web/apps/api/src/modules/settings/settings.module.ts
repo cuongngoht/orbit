@@ -28,6 +28,7 @@ export class SettingsService {
       defaultModel: isModelChoice(saved.defaultModel) ? saved.defaultModel : DEFAULT_MODEL,
       defaultEffort: isEffortChoice(saved.defaultEffort) ? saved.defaultEffort : DEFAULT_EFFORT,
       defaultMode: isModeChoice(saved.defaultMode) ? saved.defaultMode : DEFAULT_MODE,
+      projectSkills: saved.projectSkills !== false,
       projectPlugins: saved.projectPlugins === true,
       webTools: saved.webTools === true,
       azureForClaude: saved.azureForClaude === true,

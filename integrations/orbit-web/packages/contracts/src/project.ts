@@ -51,7 +51,7 @@ export interface ProjectInventory {
   marketplaces: ProjectMarketplace[];
   plugins: ProjectPlugin[];
   // Whether the repository's own skills, commands and agents are loaded for its runs (a plugin built for the session,
-  // instructions only).
+  // instructions only); false when there were none, or "Load project skills" is off.
   loaded: boolean;
   // More than the bounds allow was found; what is listed is a prefix.
   truncated: boolean;

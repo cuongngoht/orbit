@@ -60,6 +60,8 @@ export interface ClaudeRunOptions {
   pluginDirs: string[];
   // The plugins this chat's project declares and Orbit Web installed: enabled for this run only.
   enabledPlugins: Record<string, true>;
+  // What auto mode's classifier is told about this place (auto-mode.ts); null leaves the CLI's own.
+  autoModeEnvironment: string[] | null;
   // First turn: the id Orbit Web chose for the Claude session. Later turns: the id to resume.
   sessionId: string;
   resume: boolean;
@@ -75,7 +77,16 @@ const fileRules = (dirs: string[]): string[] => dirs.flatMap((d) => [`Read(/${d}
 
 export const denyRules = (o: Pick<ClaudeRunOptions, "github" | "azure">): string[] => [...(o.github ? GITHUB_SENSITIVE : GITHUB_DENIED), ...ALWAYS_DENIED, ...(o.azure ? [] : ["Bash(az:*)"])];
 
+// The run's own settings: the project's declared plugins, and -- in Autonomous -- the classifier's environment.
+function runSettings(o: ClaudeRunOptions): Record<string, unknown> {
+  return {
+    ...(Object.keys(o.enabledPlugins).length > 0 ? { enabledPlugins: o.enabledPlugins } : {}),
+    ...(o.mode === "autonomous" && o.autoModeEnvironment !== null ? { autoMode: { environment: o.autoModeEnvironment } } : {}),
+  };
+}
+
 export function claudeArgs(o: ClaudeRunOptions): string[] {
+  const settings = runSettings(o);
   const allowed = [...BASE_TOOLS, ...(o.webTools ? WEB_TOOLS : [])];
   return [
     "-p",
@@ -104,7 +115,7 @@ export function claudeArgs(o: ClaudeRunOptions): string[] {
     "--setting-sources",
     "user",
     "--strict-mcp-config",
-    ...(Object.keys(o.enabledPlugins).length > 0 ? ["--settings", JSON.stringify({ enabledPlugins: o.enabledPlugins })] : []),
+    ...(Object.keys(settings).length > 0 ? ["--settings", JSON.stringify(settings)] : []),
     ...(o.maxBudgetUsd !== null ? ["--max-budget-usd", String(o.maxBudgetUsd)] : []),
   ];
 }

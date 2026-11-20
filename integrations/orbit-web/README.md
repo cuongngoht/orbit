@@ -69,7 +69,8 @@ CLI with `docker build --build-arg AZURE_CLI=0 …` (Azure DevOps then says it i
 | `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE`, `HTTPS_PROXY`, `NO_PROXY` | unset | passed to the CLIs, for a proxy or a private CA (`REQUESTS_CA_BUNDLE` is the Azure CLI's) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | unset | turns on **Claude Code's telemetry** (OpenTelemetry) and names the collector; a signal's own `OTEL_EXPORTER_OTLP_<SIGNAL>_ENDPOINT` does too. Unset, nothing is exported |
 | `OTEL_EXPORTER_OTLP_HEADERS` | unset | the collector's token, as OTLP headers (`Authorization=Bearer …`) |
-| any other `OTEL_*` | see below | overrides one of the fixed telemetry attributes, or adds one (`OTEL_RESOURCE_ATTRIBUTES`) |
+| any other `OTEL_*` | the image's | overrides one of the telemetry attributes the image declares, or adds one (`OTEL_RESOURCE_ATTRIBUTES`) |
+| `CLAUDE_CODE_ENABLE_TELEMETRY` | unset | `1` turns telemetry on for a `claude` started from a terminal in the container too (Orbit Web turns it on for its own runs once a collector is named) |
 
 **Telemetry.** With a collector named, every Claude Code process Orbit Web starts exports as a person's own Claude
 Code would with the same settings, and only Claude Code gets the variables (never git, gh, az or Orbit's own commands):
@@ -77,8 +78,9 @@ Code would with the same settings, and only Claude Code gets the variables (neve
 version, entrypoint, session id, account id and resource attributes (`OTEL_METRICS_INCLUDE_*=1`); and the events'
 tool details and managed settings (`OTEL_LOG_TOOL_DETAILS=1`, `OTEL_LOG_MANAGED_SETTINGS=1`) -- never a prompt, a
 response, a tool's content or a raw API body (`OTEL_LOG_USER_PROMPTS`, `OTEL_LOG_ASSISTANT_RESPONSES`,
-`OTEL_LOG_TOOL_CONTENT`, `OTEL_LOG_RAW_API_BODIES` are `0`). Keep the endpoint and the token in the container's env file
-(never in the image); a `*_HEADERS=` assignment a process prints is masked like a token.
+`OTEL_LOG_TOOL_CONTENT`, `OTEL_LOG_RAW_API_BODIES` are `0`). The image declares those attributes as `ENV` (a test holds
+them equal to the code's), so any `claude` in the container uses them. Keep the endpoint and the token in the
+container's env file (never in the image); a `*_HEADERS=` assignment a process prints is masked like a token.
 
 The data directory, plugin directory and port are fixed by the image (`/data`, `/opt/orbit/plugin`, `3000`). What a
 person chooses in the page -- theme, a new chat's model, effort and mode, whether a repository's skills load and its
@@ -206,6 +208,15 @@ the session (`git reset --hard`, `git clean -fd`, a broad `rm -rf`) when you did
 removed, and it goes ahead. It can never write the image's programs or the Orbit plugin (they belong to root), its
 file tools are refused the sign-in directories and Orbit Web's database, and the deny rules below bind in every mode.
 In **Plan** it changes nothing.
+
+**The internet.** In Autonomous, Claude Code reaches the internet as part of the work: reading pages, documentation
+and package registries, calling public APIs, installing packages (`curl`, `wget`, git over https, a package manager),
+and -- unless you switch them off in Settings → Code → Tools -- the web tools, `WebFetch` and `WebSearch` (on by
+default). Auto mode's classifier is told so: Orbit Web keeps the CLI's own environment for it (`claude auto-mode
+defaults`, read once) and replaces its two "None configured" entries, *Network posture* (open internet egress; checking
+that a public site answers is not reconnaissance) and *Host containment* (a container that keeps the CLIs' sign-ins,
+never to be read or sent). No allow rule lets a network command past the classifier, and its rules stay the CLI's own,
+so what it still refuses is sending a credential, a sign-in or the workspace's secrets anywhere.
 
 ### What a repository brings
 

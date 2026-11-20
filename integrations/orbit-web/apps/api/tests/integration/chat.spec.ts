@@ -8,7 +8,7 @@ import { after, before, describe, test } from "node:test";
 import type { ChangesReport, FileDiff, OrbitPanel, SessionDetail, SessionSummary } from "@orbit-web/contracts";
 import { FakeProcessPort, program, type Call, type FakeChild } from "../../src/testing/fake-process.js";
 import { NodeProcessPort } from "../../src/infra/process/node-process.js";
-import { claudeRun, eventually, REPOSITORY, signedIn, startHarness, type Harness } from "../../src/testing/harness.js";
+import { AUTO_MODE_DEFAULTS, claudeRun, eventually, REPOSITORY, signedIn, startHarness, type Harness } from "../../src/testing/harness.js";
 
 const after1 = (args: string[], flag: string): string | null => (args.includes(flag) ? (args[args.indexOf(flag) + 1] ?? null) : null);
 
@@ -107,6 +107,17 @@ describe("a chat, end to end through the API", () => {
     assert.deepEqual(Object.keys(call.env).filter((k) => /^(ANTHROPIC_|CLAUDE_CODE_OAUTH)/.test(k)), []);
     assert.deepEqual(child.written, ["Fix the incorrect addition in sum.mjs so the existing test passes. Do not modify the test."]);
     assert.equal(child.inputClosed, true);
+  });
+
+  test("in Autonomous, auto mode's classifier is told this container has open internet -- the CLI's other rules unchanged", () => {
+    const { call } = fake.children.find((c) => claudeRun(c.call.file, c.call.args)) as { call: Call };
+    const environment = (JSON.parse(after1(call.args, "--settings") ?? "{}") as { autoMode?: { environment: string[] } }).autoMode?.environment ?? [];
+    assert.match(environment.find((e) => e.startsWith("**Network posture**")) ?? "", /Open internet egress/);
+    assert.match(environment.find((e) => e.startsWith("**Host containment**")) ?? "", /never read, printed or sent/);
+    const untouched = (e: string) => !/^\*\*(Network posture|Host containment)\*\*/.test(e);
+    assert.deepEqual(environment.filter(untouched), AUTO_MODE_DEFAULTS.environment.filter(untouched));
+    assert.equal(after1(call.args, "--allowedTools")?.includes("curl"), false, "no rule lets a network command past the classifier");
+    assert.deepEqual(after1(call.args, "--allowedTools")?.split(",").filter((t) => t.startsWith("Web")), ["WebFetch", "WebSearch"], "the web tools are on until a person turns them off");
   });
 
   test("the session keeps its history and outcome; the workspace is on its own branch with a commit identity", async () => {

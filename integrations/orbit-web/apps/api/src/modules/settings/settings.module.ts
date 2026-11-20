@@ -30,7 +30,7 @@ export class SettingsService {
       defaultMode: isModeChoice(saved.defaultMode) ? saved.defaultMode : DEFAULT_MODE,
       projectSkills: saved.projectSkills !== false,
       projectPlugins: saved.projectPlugins === true,
-      webTools: saved.webTools === true,
+      webTools: saved.webTools !== false,
       githubForClaude: saved.githubForClaude === true,
       azureForClaude: saved.azureForClaude === true,
       theme: isTheme(saved.theme) ? saved.theme : "system",

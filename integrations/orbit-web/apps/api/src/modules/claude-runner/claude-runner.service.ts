@@ -20,6 +20,7 @@ import type { ExitInfo, ProcessHandle, ProcessPort } from "../../infra/process/p
 import { redactSecrets, tail } from "../../infra/security/redact.js";
 import { RunStore, SessionStore, type SessionRecord } from "../../infra/storage/stores.js";
 import { ProjectService } from "../project/project.service.js";
+import { AutoModeService } from "./auto-mode.js";
 import { SettingsService } from "../settings/settings.module.js";
 import { claudeArgs } from "./claude-args.js";
 import { decideOutcome, lostConversation } from "./outcome.js";
@@ -57,6 +58,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     @Inject(EventBus) private readonly bus: EventBus,
     @Inject(SettingsService) private readonly settings: SettingsService,
     @Inject(ProjectService) private readonly project: ProjectService,
+    @Inject(AutoModeService) private readonly autoMode: AutoModeService,
   ) {}
 
   // After a restart nothing is running: a run the restart cut short is recorded as interrupted, never resumed.
@@ -139,6 +141,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
       mode: session.mode,
       pluginDirs: [this.config.pluginDir, ...project.pluginDirs],
       enabledPlugins: project.enabledPlugins,
+      autoModeEnvironment: this.autoMode.current(),
       sessionId: session.claudeSessionId,
       resume,
       webTools: prefs.webTools,

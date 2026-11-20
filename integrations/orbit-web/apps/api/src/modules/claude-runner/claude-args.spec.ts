@@ -8,6 +8,7 @@ const base = {
   mode: "autonomous" as const,
   pluginDirs: ["/opt/orbit/plugin"],
   enabledPlugins: {},
+  autoModeEnvironment: null,
   sessionId: "11111111-2222-3333-4444-555555555555",
   resume: false,
   webTools: false,
@@ -102,4 +103,13 @@ test("the web tools and a budget cap are added only when set", () => {
 test("the Azure CLI is refused to Claude Code unless a person allowed it", () => {
   assert.ok(claudeArgs(base).includes("Bash(az:*)"));
   assert.equal(claudeArgs({ ...base, azure: true }).includes("Bash(az:*)"), false);
+});
+
+test("in Autonomous the classifier is told what is true of this place; Plan says nothing; no rule lets a network command past it", () => {
+  const env = ["**Network posture**: Open internet egress"];
+  assert.deepEqual(JSON.parse(after(claudeArgs({ ...base, autoModeEnvironment: env }), "--settings") ?? "{}"), { autoMode: { environment: env } });
+  assert.deepEqual(JSON.parse(after(claudeArgs({ ...base, autoModeEnvironment: env, enabledPlugins: { "fmt@acme": true } }), "--settings") ?? "{}"), { enabledPlugins: { "fmt@acme": true }, autoMode: { environment: env } });
+  assert.equal(claudeArgs({ ...base, mode: "plan", autoModeEnvironment: env }).includes("--settings"), false);
+  const a = claudeArgs({ ...base, autoModeEnvironment: env, webTools: true });
+  assert.equal(after(a, "--allowedTools")?.split(",").some((t) => /curl|wget|Bash\(/.test(t)), false);
 });

@@ -193,6 +193,14 @@ export const REPOSITORY = "octo/sum-fixture";
 
 const ghApi = (path: string): ((file: string, args: string[]) => boolean) => (file, args) => program("gh", "api")(file, args) && args.some((a) => a === path || a.startsWith(`${path}?`));
 
+// What `claude auto-mode defaults` prints, cut to a few entries of its environment.
+export const AUTO_MODE_DEFAULTS = {
+  allow: ["Local Operations: ..."],
+  soft_deny: ["Exfil Scouting: ..."],
+  hard_deny: ["Data Exfiltration: ..."],
+  environment: ["**Organization**: None configured", "**Network posture**: None configured", "**Host containment**: None configured", "**Sensitive data locations & audiences**: any file or store holding credentials"],
+};
+
 // Both accounts signed in (Claude to a Claude account), one repository with two branches, and a clone that makes a real
 // repository.
 export function signedIn(fake: FakeProcessPort): FakeProcessPort {
@@ -202,6 +210,7 @@ export function signedIn(fake: FakeProcessPort): FakeProcessPort {
     .on(program("az", "version"), { run: { stdout: '{\n  "azure-cli": "2.91.0",\n  "azure-cli-core": "2.91.0",\n  "extensions": {}\n}\n' } })
     .on(program("az", "account", "show"), { run: { code: 1, stderr: "Please run 'az login' to setup account.\n" } })
     .on(program("claude", "auth", "status"), { run: { stdout: JSON.stringify(CLAUDE_SIGNED_IN) } })
+    .on(program("claude", "auto-mode", "defaults"), { run: { stdout: JSON.stringify(AUTO_MODE_DEFAULTS) } })
     .on(program("gh", "auth", "status"), { run: { stdout: JSON.stringify({ hosts: { "github.com": [{ state: "success", active: true, host: "github.com", login: ACCOUNT.login, tokenSource: "/data/github/hosts.yml", gitProtocol: "https" }] } }) } })
     .on(ghApi("user"), { run: { stdout: JSON.stringify(ACCOUNT) } })
     .on(ghApi("user/repos"), { run: { stdout: [{ full_name: REPOSITORY, name: "sum-fixture", owner: "octo", private: true, default_branch: "main", updated_at: "2026-11-01T00:00:00Z", archived: false, fork: false }, { full_name: "acme/tools", name: "tools", owner: "acme", private: false, default_branch: "trunk", updated_at: "2026-10-01T00:00:00Z", archived: false, fork: false }].map((r) => JSON.stringify(r)).join("\n") } })

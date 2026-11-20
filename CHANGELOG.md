@@ -55,6 +55,15 @@ bundles stays 0.6.0 and its archive is unchanged; nothing under `src/`, `cli/`, 
   repository that is a plugin and installs the declared ones (`claude plugin marketplace add` / `install --scope user`
   / `disable --scope user`), enabling them for that chat's runs only. The chat says what was loaded; Settings → Skills
   and Plugins list it all, with each plugin's state.
+- **Autonomous reaches the internet.** Auto mode's classifier was told nothing about this place ("Network posture: None
+  configured") and read Claude checking that a public site answers as reconnaissance. Each Autonomous run now carries
+  the CLI's own environment (`claude auto-mode defaults`, read once, no model asked) with its *Network posture* (open
+  internet egress: reading pages, docs, registries and public APIs is ordinary work) and *Host containment* (a
+  container that keeps the CLIs' sign-ins, never read or sent) replaced; the classifier's rules stay the CLI's own, and
+  no allow rule lets a network command past it, so sending a credential or the workspace's secrets anywhere is still
+  refused. The web tools (`WebFetch`, `WebSearch`) are on by default.
+- **The image declares Claude Code's telemetry attributes** (`ENV`, held equal to the code's by a test): any `claude`
+  in the container uses them; the endpoint, the token and the switch stay the container's.
 - **The working branch, chosen in the chat.** The branch button in an open chat's toolbar lists the chat's own branches
   and its repository's (`GET /api/sessions/:id/branches`) and moves the workspace (`POST /api/sessions/:id/branch`): to
   a branch of the repository -- fetched through the source's sign-in into a bare clone of Orbit Web's own of that one
@@ -81,7 +90,7 @@ bundles stays 0.6.0 and its archive is unchanged; nothing under `src/`, `cli/`, 
   (`/api/sessions/:id/events`, replayed after `Last-Event-ID`) and the app stream (`/api/events`: the sidebar's chats,
   the connectors' sign-ins, the customizations -- notifications that replace polling). Adding an event is a catalog row
   and its payload type.
-- **Checked.** 259 deterministic tests (contracts 12, API unit 95, API integration with mocked processes 59, web 93),
+- **Checked.** 277 deterministic tests (contracts 13, API unit 100, API integration with mocked processes 66, web 98),
   `scripts/ci.mjs` green; the Docker smoke test also checks the Azure Repos helper and the runtime user's file rights.
   The real-model acceptance run is updated for the new API; a 0.8.0 run needs a person's Claude sign-in volume and is
   not recorded yet.

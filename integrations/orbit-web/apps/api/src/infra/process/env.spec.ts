@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { test } from "node:test";
 import { loadConfig } from "../../config/config.js";
 import { azureEnv, azureGitEnv, claudeEnv, ghEnv, gitEnv, orbitEnv, TELEMETRY_DEFAULTS } from "./env.js";
@@ -35,4 +37,13 @@ test("an OTEL_* variable the container sets wins over its default; nothing else 
 test("the collector's token reaches Claude Code alone: never git, gh, az or Orbit's own commands", () => {
   const c = config({ OTEL_EXPORTER_OTLP_ENDPOINT: ENDPOINT, OTEL_EXPORTER_OTLP_HEADERS: HEADERS });
   for (const env of [gitEnv(c), ghEnv(c), azureEnv(c), azureGitEnv(c), orbitEnv(c, null)]) assert.deepEqual(telemetryOf(env), {});
+});
+
+test("the image declares every telemetry attribute as the code does -- but where it goes, its token and the switch that turns it on", () => {
+  const lines = readFileSync(resolve(import.meta.dirname, "../../../../../../docker/Dockerfile"), "utf8").split("\n");
+  const dockerfile = lines.filter((l) => !l.trimStart().startsWith("#")).join("\n").replace(/\\\n/g, " ");
+  const declared = new Map([...dockerfile.matchAll(/\b((?:OTEL_|CLAUDE_CODE_ENABLE_TELEMETRY)[A-Z0-9_]*)=(\S+)/g)].map((m) => [m[1] as string, m[2] as string]));
+  const { CLAUDE_CODE_ENABLE_TELEMETRY: _on, ...attributes } = TELEMETRY_DEFAULTS;
+  assert.deepEqual(Object.fromEntries(declared), attributes);
+  for (const never of ["OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_HEADERS", "CLAUDE_CODE_ENABLE_TELEMETRY"]) assert.equal(declared.has(never), false, never);
 });

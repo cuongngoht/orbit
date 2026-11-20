@@ -101,7 +101,7 @@ describe("a project's skills and plugins, with project plugins turned on", () =>
     const call = fake.children.find((c) => claudeRun(c.call.file, c.call.args))?.call as Call;
     const dirs = call.args.flatMap((a, i) => (a === "--plugin-dir" ? [call.args[i + 1]] : []));
     assert.deepEqual(dirs, [h.config.pluginDir, join(h.config.data.sessions, session.id, "project-plugin"), join(h.config.data.workspaces, session.id, "repository")]);
-    assert.deepEqual(JSON.parse(after1(call.args, "--settings") ?? "{}"), { enabledPlugins: { "fmt@acme": true } });
+    assert.deepEqual(JSON.parse(after1(call.args, "--settings") ?? "{}").enabledPlugins, { "fmt@acme": true });
     assert.equal(after1(call.args, "--setting-sources"), "user");
     assert.equal(call.env.ANTHROPIC_BASE_URL, undefined);
   });
@@ -179,7 +179,7 @@ describe("by default: the skills load, the plugins wait for a person", () => {
     assert.deepEqual(fake.callsOf(program("claude", "plugin")), [], "nothing is installed, nothing is asked of the CLI");
     const call = fake.children.find((c) => claudeRun(c.call.file, c.call.args))?.call as Call;
     assert.deepEqual(call.args.flatMap((a, i) => (a === "--plugin-dir" ? [call.args[i + 1]] : [])), [h.config.pluginDir, join(h.config.data.sessions, session.id, "project-plugin")], "the repository itself is not loaded as a plugin");
-    assert.equal(call.args.includes("--settings"), false);
+    assert.equal(JSON.parse(after1(call.args, "--settings") ?? "{}").enabledPlugins, undefined);
   });
 });
 
@@ -230,6 +230,6 @@ describe("a declared plugin that cannot be switched off for other chats", () => 
     assert.match(fmt?.detail ?? "", /could not be switched off.*uninstalled/);
     assert.deepEqual(fake.callsOf(program("claude", "plugin", "uninstall")).map((c) => c.args), [["plugin", "uninstall", "fmt@acme", "--scope", "user"]]);
     const call = fake.children.find((c) => claudeRun(c.call.file, c.call.args))?.call as Call;
-    assert.equal(call.args.includes("--settings"), false, "a plugin that failed is enabled for no run");
+    assert.equal(JSON.parse(after1(call.args, "--settings") ?? "{}").enabledPlugins, undefined, "a plugin that failed is enabled for no run");
   });
 });

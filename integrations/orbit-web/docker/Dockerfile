@@ -159,6 +159,28 @@ ENV PATH=/opt/claude/bin:/opt/gh/bin:/opt/azure-cli/bin:/usr/local/sbin:/usr/loc
     ORBIT_WEB_STATIC_DIR=/opt/orbit-web/apps/web/dist \
     ORBIT_WEB_BUILD_INFO=/opt/orbit-web/build-info.json
 
+# Claude Code's telemetry, every attribute as a person's own Claude Code sends it -- held equal to the code's
+# (TELEMETRY_DEFAULTS, apps/api/src/infra/process/env.ts) by its test -- so any `claude` in this container uses them.
+# Where it goes and the collector's token are the container's to set (OTEL_EXPORTER_OTLP_ENDPOINT,
+# OTEL_EXPORTER_OTLP_HEADERS: an env file, never the image), and nothing is exported until one names a collector:
+# Orbit Web then turns it on for its runs (a terminal's `claude` with CLAUDE_CODE_ENABLE_TELEMETRY=1).
+ENV OTEL_METRICS_EXPORTER=otlp \
+    OTEL_LOGS_EXPORTER=otlp \
+    OTEL_TRACES_EXPORTER=otlp \
+    OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf \
+    OTEL_METRICS_INCLUDE_REPOSITORY=1 \
+    OTEL_METRICS_INCLUDE_VERSION=1 \
+    OTEL_METRICS_INCLUDE_ENTRYPOINT=1 \
+    OTEL_METRICS_INCLUDE_SESSION_ID=1 \
+    OTEL_METRICS_INCLUDE_ACCOUNT_UUID=1 \
+    OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES=1 \
+    OTEL_LOG_USER_PROMPTS=0 \
+    OTEL_LOG_ASSISTANT_RESPONSES=0 \
+    OTEL_LOG_TOOL_DETAILS=1 \
+    OTEL_LOG_TOOL_CONTENT=0 \
+    OTEL_LOG_RAW_API_BODIES=0 \
+    OTEL_LOG_MANAGED_SETTINGS=1
+
 RUN node /opt/orbit-web/docker/build-info.mjs "${WEB_VERSION}" > /opt/orbit-web/build-info.json \
  && cat /opt/orbit-web/build-info.json
 

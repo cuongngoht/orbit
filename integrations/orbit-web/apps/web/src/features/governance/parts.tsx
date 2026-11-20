@@ -9,10 +9,10 @@ export const useParts = makeStyles({
     display: "flex",
     flexDirection: "column",
     gap: "10px",
-    paddingTop: "14px",
-    paddingBottom: "14px",
-    paddingLeft: "16px",
-    paddingRight: "16px",
+    paddingTop: "16px",
+    paddingBottom: "16px",
+    paddingLeft: "18px",
+    paddingRight: "18px",
     borderTopWidth: "1px",
     borderRightWidth: "1px",
     borderBottomWidth: "1px",
@@ -25,14 +25,26 @@ export const useParts = makeStyles({
     borderRightColor: tokens.colorNeutralStroke2,
     borderBottomColor: tokens.colorNeutralStroke2,
     borderLeftColor: tokens.colorNeutralStroke2,
-    borderRadius: tokens.borderRadiusLarge,
-    backgroundColor: tokens.colorNeutralBackground1,
+    borderRadius: "14px",
+    backgroundColor: "var(--orbit-card-bg)",
+    boxShadow: "var(--orbit-soft-shadow)",
     minWidth: 0,
   },
   row: { display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" },
   between: { display: "flex", gap: "8px", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" },
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "12px" },
-  stat: { display: "flex", flexDirection: "column", gap: "2px" },
+  stat: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+    paddingTop: "12px",
+    paddingRight: "14px",
+    paddingBottom: "12px",
+    paddingLeft: "14px",
+    borderRadius: "12px",
+    backgroundColor: tokens.colorNeutralBackground2,
+    fontVariantNumeric: "tabular-nums",
+  },
   muted: { color: tokens.colorNeutralForeground3 },
   mono: { fontFamily: tokens.fontFamilyMonospace, fontSize: tokens.fontSizeBase200, wordBreak: "break-all" },
   pre: {
@@ -140,7 +152,7 @@ const LABELS: Record<string, string> = {
 // A word of governance, said as a badge whose colour says how much it allows or how bad it is.
 export function Word({ value, label }: { value: string; label?: string }) {
   return (
-    <Badge appearance="tint" color={TONES[value] ?? "informative"}>
+    <Badge appearance="tint" color={TONES[value] ?? "informative"} style={{ borderRadius: "9999px" }}>
       {label ?? LABELS[value] ?? value.replace(/_/g, " ").toLowerCase()}
     </Badge>
   );

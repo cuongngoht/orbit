@@ -6,8 +6,10 @@ import { highlighted } from "./highlight";
 const useStyles = makeStyles({
   wrap: {
     maxWidth: "100%",
-    borderRadius: tokens.borderRadiusMedium,
-    backgroundColor: tokens.colorNeutralBackground3,
+    marginTop: "6px",
+    marginBottom: "8px",
+    borderRadius: "12px",
+    backgroundColor: tokens.colorNeutralBackground2,
     ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
     overflow: "hidden",
   },
@@ -16,10 +18,10 @@ const useStyles = makeStyles({
     alignItems: "center",
     justifyContent: "space-between",
     gap: "8px",
-    paddingTop: "4px",
-    paddingRight: "6px",
-    paddingBottom: "4px",
-    paddingLeft: "12px",
+    paddingTop: "5px",
+    paddingRight: "8px",
+    paddingBottom: "5px",
+    paddingLeft: "14px",
     ...shorthands.borderBottom("1px", "solid", tokens.colorNeutralStroke2),
   },
   lang: {
@@ -33,13 +35,13 @@ const useStyles = makeStyles({
   pre: {
     margin: 0,
     paddingTop: "10px",
-    paddingRight: "12px",
-    paddingBottom: "10px",
-    paddingLeft: "12px",
+    paddingRight: "14px",
+    paddingBottom: "12px",
+    paddingLeft: "14px",
     overflowX: "auto",
     fontFamily: tokens.fontFamilyMonospace,
-    fontSize: tokens.fontSizeBase200,
-    lineHeight: tokens.lineHeightBase300,
+    fontSize: "13px",
+    lineHeight: "1.55",
   },
 });
 

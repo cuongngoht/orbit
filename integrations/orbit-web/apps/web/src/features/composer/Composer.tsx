@@ -11,61 +11,94 @@ import { useViewport } from "../../hooks/useViewport";
 import { SlashMenu, matching, optionId, slashQuery, useSlashCommands } from "./SlashMenu";
 
 const useStyles = makeStyles({
-  wrap: { width: "100%", maxWidth: "820px", margin: "0 auto", display: "flex", flexDirection: "column", gap: "6px" },
+  wrap: { width: "100%", maxWidth: "820px", marginTop: 0, marginRight: "auto", marginBottom: 0, marginLeft: "auto", display: "flex", flexDirection: "column", gap: "8px" },
   anchor: { position: "relative" },
-  box: {
+  card: {
     display: "flex",
-    alignItems: "flex-end",
-    gap: "8px",
-    paddingTop: "10px",
-    paddingRight: "10px",
-    paddingBottom: "10px",
-    paddingLeft: "16px",
-    borderRadius: "16px",
-    backgroundColor: tokens.colorNeutralBackground1,
+    flexDirection: "column",
+    borderRadius: "22px",
+    backgroundColor: "var(--orbit-card-bg)",
     ...shorthands.border("1px", "solid", tokens.colorNeutralStroke1),
-    boxShadow: tokens.shadow4,
-    ":focus-within": { ...shorthands.borderColor(tokens.colorNeutralStroke1Pressed), boxShadow: tokens.shadow8 },
+    boxShadow: "var(--orbit-composer-shadow)",
+    transitionProperty: "border-color, box-shadow",
+    transitionDuration: "160ms",
+    transitionTimingFunction: "cubic-bezier(0.2, 0, 0, 1)",
+    ":focus-within": { ...shorthands.borderColor(tokens.colorNeutralStroke1Pressed), boxShadow: "var(--orbit-composer-shadow-focus)" },
   },
-  boxMobile: {
-    paddingTop: "8px",
-    paddingRight: "8px",
-    paddingBottom: "8px",
-    paddingLeft: "8px",
-    borderRadius: "20px",
-  },
-  slashBtn: {
-    flexShrink: 0,
-    minWidth: "40px",
-    minHeight: "40px",
+  cardMobile: {
+    borderRadius: "24px",
   },
   input: {
-    flexGrow: 1,
+    width: "100%",
     minWidth: 0,
     resize: "none",
-    border: "none",
+    ...shorthands.border("0"),
     outlineStyle: "none",
     backgroundColor: "transparent",
     color: tokens.colorNeutralForeground1,
     fontFamily: tokens.fontFamilyBase,
-    fontSize: tokens.fontSizeBase400,
-    lineHeight: tokens.lineHeightBase400,
-    paddingTop: "4px",
-    paddingRight: "0",
-    paddingBottom: "4px",
-    paddingLeft: "0",
+    fontSize: "15px",
+    lineHeight: "1.5",
+    paddingTop: "14px",
+    paddingRight: "16px",
+    paddingBottom: "6px",
+    paddingLeft: "16px",
     maxHeight: "40vh",
     "::placeholder": { color: tokens.colorNeutralForeground4 },
   },
   inputMobile: {
     fontSize: "16px",
+    paddingTop: "12px",
+    paddingRight: "16px",
+    paddingBottom: "4px",
+    paddingLeft: "16px",
     maxHeight: "32dvh",
   },
-  send: { flexShrink: 0 },
-  sendTouch: { minWidth: "44px", minHeight: "44px" },
-  toolbar: { display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap", paddingTop: "0", paddingRight: "6px", paddingBottom: "0", paddingLeft: "6px" },
-  toolbarMobile: { flexWrap: "nowrap", overflowX: "auto", gap: "6px", paddingTop: "2px", paddingRight: "0", paddingBottom: "2px", paddingLeft: "0" },
-  side: { display: "flex", alignItems: "center", gap: "2px", flexWrap: "wrap", minWidth: 0 },
+  footer: {
+    display: "flex",
+    alignItems: "flex-end",
+    gap: "6px",
+    paddingTop: "4px",
+    paddingRight: "10px",
+    paddingBottom: "10px",
+    paddingLeft: "10px",
+    minWidth: 0,
+  },
+  footerMobile: {
+    paddingTop: "2px",
+    paddingRight: "8px",
+    paddingBottom: "8px",
+    paddingLeft: "8px",
+  },
+  slashBtn: {
+    flexShrink: 0,
+    minWidth: "36px",
+    minHeight: "36px",
+    borderRadius: "9999px",
+    "@media (pointer: coarse)": { minWidth: "40px", minHeight: "40px" },
+  },
+  toolbarArea: {
+    flexGrow: 1,
+    minWidth: 0,
+    display: "flex",
+    alignItems: "center",
+  },
+  send: {
+    flexShrink: 0,
+    minWidth: "36px",
+    minHeight: "36px",
+    width: "36px",
+    height: "36px",
+  },
+  sendTouch: {
+    minWidth: "40px",
+    minHeight: "40px",
+    width: "40px",
+    height: "40px",
+  },
+  toolbar: { display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap", width: "100%", minWidth: 0 },
+  toolbarMobile: { flexWrap: "nowrap", overflowX: "auto", gap: "6px", paddingRight: "18px" },
+  side: { display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap", minWidth: 0 },
   sideMobile: { flexWrap: "nowrap", flexShrink: 0, gap: "6px" },
   grow: { flexGrow: 1 },
 });
@@ -90,7 +123,7 @@ export interface ComposerProps {
   commandsVersion?: number;
 }
 
-const rowsOf = (text: string): number => Math.min(10, Math.max(2, text.split("\n").length));
+const rowsOf = (text: string, mobile: boolean): number => Math.min(mobile ? 8 : 10, Math.max(mobile ? 1 : 2, text.split("\n").length));
 
 export function Composer(p: ComposerProps) {
   const s = useStyles();
@@ -152,25 +185,16 @@ export function Composer(p: ComposerProps) {
       <div className={s.anchor}>
         {open && <SlashMenu id={listId} items={items} active={current} query={query ?? ""} state={slash} onPick={pick} onHover={setActive} onClose={() => setDismissed(text)} />}
         <form
-          className={mergeClasses(s.box, isMobile && s.boxMobile)}
+          className={mergeClasses(s.card, isMobile && s.cardMobile)}
           onSubmit={(e) => {
             e.preventDefault();
             submit();
           }}
         >
-          {isMobile && p.commandsPath !== undefined && (
-            <Button
-              className={s.slashBtn}
-              appearance={open ? "primary" : "subtle"}
-              icon={<SlashForward16Regular />}
-              aria-label="Skills and commands"
-              onClick={toggleSlash}
-            />
-          )}
           <textarea
             ref={input}
             className={mergeClasses(s.input, isMobile && s.inputMobile)}
-            rows={rowsOf(text)}
+            rows={rowsOf(text, isMobile)}
             placeholder={p.placeholder}
             aria-label="Message"
             aria-autocomplete={p.commandsPath === undefined ? undefined : "list"}
@@ -190,24 +214,38 @@ export function Composer(p: ComposerProps) {
               }
             }}
           />
-          {p.running ? (
-            <Tooltip content="Stop" relationship="label">
-              <Button className={mergeClasses(s.send, touchSized && s.sendTouch)} shape="circular" appearance="secondary" icon={<Stop16Filled />} onClick={p.onStop} />
-            </Tooltip>
-          ) : (
-            <Tooltip content="Send" relationship="label">
-              <Button className={mergeClasses(s.send, touchSized && s.sendTouch)} shape="circular" appearance="primary" type="submit" icon={<ArrowUp20Filled />} disabled={!ready} />
-            </Tooltip>
-          )}
+          <div className={mergeClasses(s.footer, isMobile && s.footerMobile)}>
+            {isMobile && p.commandsPath !== undefined && (
+              <Button
+                type="button"
+                className={s.slashBtn}
+                appearance={open ? "primary" : "subtle"}
+                icon={<SlashForward16Regular />}
+                aria-label="Skills and commands"
+                onClick={toggleSlash}
+              />
+            )}
+            <div className={s.toolbarArea}>
+              {(p.left || p.right) && (
+                <div className={mergeClasses(s.toolbar, isMobile && s.toolbarMobile, isMobile && "orbit-hscroll orbit-hscroll-fade")} role="toolbar" aria-label="How this chat runs">
+                  <div className={mergeClasses(s.side, isMobile && s.sideMobile)}>{p.left}</div>
+                  {!isMobile && <div className={s.grow} />}
+                  <div className={mergeClasses(s.side, isMobile && s.sideMobile)}>{p.right}</div>
+                </div>
+              )}
+            </div>
+            {p.running ? (
+              <Tooltip content="Stop" relationship="label">
+                <Button className={mergeClasses(s.send, touchSized && s.sendTouch)} shape="circular" appearance="secondary" icon={<Stop16Filled />} onClick={p.onStop} />
+              </Tooltip>
+            ) : (
+              <Tooltip content="Send" relationship="label">
+                <Button className={mergeClasses(s.send, touchSized && s.sendTouch)} shape="circular" appearance="primary" type="submit" icon={<ArrowUp20Filled />} disabled={!ready} />
+              </Tooltip>
+            )}
+          </div>
         </form>
       </div>
-      {(p.left || p.right) && (
-        <div className={mergeClasses(s.toolbar, isMobile && s.toolbarMobile, isMobile && "orbit-hscroll")} role="toolbar" aria-label="How this chat runs">
-          <div className={mergeClasses(s.side, isMobile && s.sideMobile)}>{p.left}</div>
-          {!isMobile && <div className={s.grow} />}
-          <div className={mergeClasses(s.side, isMobile && s.sideMobile)}>{p.right}</div>
-        </div>
-      )}
     </div>
   );
 }

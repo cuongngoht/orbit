@@ -31,7 +31,7 @@ import { AppearanceSection, CodeSection } from "./PreferenceSections";
 import { SystemCard } from "./SystemCard";
 
 const useStyles = makeStyles({
-  surface: { width: "min(1040px, 96vw)", maxWidth: "min(1040px, 96vw)", height: "min(760px, 92dvh)", paddingTop: 0, paddingRight: 0, paddingBottom: 0, paddingLeft: 0, display: "flex", overflow: "hidden" },
+  surface: { width: "min(1040px, 96vw)", maxWidth: "min(1040px, 96vw)", height: "min(760px, 92dvh)", borderRadius: "16px", backgroundColor: "var(--orbit-card-bg)", paddingTop: 0, paddingRight: 0, paddingBottom: 0, paddingLeft: 0, display: "flex", overflow: "hidden" },
   surfaceMobile: {
     width: "100vw",
     maxWidth: "100vw",
@@ -49,6 +49,10 @@ const useStyles = makeStyles({
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
+  surfaceMobileIndex: {
+    backgroundColor: tokens.colorNeutralBackground2,
   },
   nav: {
     width: "232px",
@@ -66,7 +70,7 @@ const useStyles = makeStyles({
   },
   title: { paddingTop: 0, paddingRight: "8px", paddingBottom: "8px", paddingLeft: "8px" },
   search: { marginTop: 0, marginRight: "2px", marginBottom: "8px", marginLeft: "2px" },
-  item: { justifyContent: "flex-start", fontWeight: tokens.fontWeightRegular, width: "100%" },
+  item: { justifyContent: "flex-start", fontWeight: tokens.fontWeightRegular, width: "100%", borderRadius: "10px", transitionProperty: "background-color", transitionDuration: "140ms" },
   itemSelected: { backgroundColor: tokens.colorSubtleBackgroundSelected, fontWeight: tokens.fontWeightSemibold },
   none: { padding: "8px", color: tokens.colorNeutralForeground3 },
   main: { flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" },
@@ -84,6 +88,9 @@ const useStyles = makeStyles({
     paddingRight: "8px",
     paddingBottom: "8px",
     paddingLeft: "16px",
+    backgroundColor: "var(--orbit-header-bg)",
+    backdropFilter: "blur(12px)",
+    WebkitBackdropFilter: "blur(12px)",
     ...shorthands.borderBottom("1px", "solid", tokens.colorNeutralStroke2),
     flexShrink: 0,
   },
@@ -119,15 +126,18 @@ const useStyles = makeStyles({
     paddingRight: "12px",
     paddingBottom: "10px",
     paddingLeft: "12px",
-    borderRadius: tokens.borderRadiusLarge,
+    borderRadius: "14px",
     ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
-    backgroundColor: tokens.colorNeutralBackground1,
+    backgroundColor: "var(--orbit-card-bg)",
+    boxShadow: "var(--orbit-soft-shadow)",
     color: tokens.colorNeutralForeground1,
     display: "flex",
     alignItems: "center",
     gap: "12px",
     textAlign: "left",
     cursor: "pointer",
+    transitionProperty: "background-color, border-color",
+    transitionDuration: "140ms",
   },
   mobileRowSelected: {
     ...shorthands.borderColor(tokens.colorBrandStroke1),
@@ -228,7 +238,7 @@ export function SettingsDialog(p: SettingsDialogProps) {
   if (isMobile) {
     return (
       <Dialog open onOpenChange={(_, d) => (!d.open ? p.onClose() : undefined)}>
-        <DialogSurface className={s.surfaceMobile} aria-label="Settings">
+        <DialogSurface className={mergeClasses(s.surfaceMobile, mobileStep === "index" && s.surfaceMobileIndex)} aria-label="Settings">
           {mobileStep === "index" ? (
             <>
               <header className={s.mobileBar}>

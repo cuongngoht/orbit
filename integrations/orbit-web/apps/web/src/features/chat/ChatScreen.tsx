@@ -25,7 +25,20 @@ import { Timeline } from "./Timeline";
 const useStyles = makeStyles({
   root: { display: "flex", height: "100%", minHeight: 0 },
   main: { flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" },
-  top: { display: "flex", alignItems: "center", gap: "10px", paddingTop: "10px", paddingRight: "16px", paddingBottom: "10px", paddingLeft: "16px", minHeight: "32px" },
+  top: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    paddingTop: "8px",
+    paddingRight: "16px",
+    paddingBottom: "8px",
+    paddingLeft: "16px",
+    minHeight: "52px",
+    backgroundColor: "var(--orbit-header-bg)",
+    backdropFilter: "blur(12px)",
+    WebkitBackdropFilter: "blur(12px)",
+    ...shorthands.borderBottom("1px", "solid", tokens.colorNeutralStroke2),
+  },
   topMobile: {
     gap: "6px",
     minHeight: "52px",
@@ -33,32 +46,46 @@ const useStyles = makeStyles({
     paddingRight: "8px",
     paddingBottom: "6px",
     paddingLeft: "8px",
-    ...shorthands.borderBottom("1px", "solid", tokens.colorNeutralStroke2),
   },
   touchBtn: { minWidth: "44px", minHeight: "44px", flexShrink: 0 },
   titleStack: { flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "2px" },
   statusRow: { display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" },
   actions: { display: "flex", alignItems: "center", gap: "4px", flexShrink: 0 },
   title: { flexGrow: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  titleMobile: { fontSize: "15px", letterSpacing: "-0.01em" },
   scrollWrap: { position: "relative", flexGrow: 1, minHeight: 0, display: "flex", flexDirection: "column" },
-  scroll: { flexGrow: 1, overflowY: "auto", paddingTop: "8px", paddingRight: "20px", paddingBottom: "16px", paddingLeft: "20px" },
-  scrollMobile: { paddingTop: "8px", paddingRight: "12px", paddingBottom: "16px", paddingLeft: "12px" },
+  scroll: { flexGrow: 1, overflowY: "auto", paddingTop: "12px", paddingRight: "20px", paddingBottom: "38px", paddingLeft: "20px" },
+  scrollMobile: { paddingTop: "10px", paddingRight: "12px", paddingBottom: "38px", paddingLeft: "12px" },
+  scrollFade: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: "44px",
+    pointerEvents: "none",
+    backgroundImage: "linear-gradient(to bottom, transparent 0%, var(--orbit-fade-bg) 82%)",
+  },
   jumpBtn: {
     position: "absolute",
-    right: "16px",
-    bottom: "12px",
+    left: "50%",
+    transform: "translateX(-50%)",
+    bottom: "10px",
     zIndex: 5,
-    boxShadow: tokens.shadow8,
-    minHeight: "36px",
-    "@media (pointer: coarse)": { minHeight: "44px" },
+    backgroundColor: "var(--orbit-header-bg)",
+    backdropFilter: "blur(10px)",
+    WebkitBackdropFilter: "blur(10px)",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    boxShadow: "var(--orbit-soft-shadow)",
+    minHeight: "34px",
+    "@media (pointer: coarse)": { minHeight: "40px" },
   },
-  inner: { width: "100%", maxWidth: "820px", minWidth: 0, margin: "0 auto" },
-  bottom: { paddingTop: "0", paddingRight: "20px", paddingBottom: "20px", paddingLeft: "20px", flexShrink: 0 },
-  bottomMobile: { paddingTop: "0", paddingRight: "12px", paddingBottom: "max(12px, env(safe-area-inset-bottom))", paddingLeft: "12px" },
-  chip: { display: "inline-flex", alignItems: "center", gap: "6px", paddingTop: "2px", paddingRight: "8px", paddingBottom: "2px", paddingLeft: "8px", color: tokens.colorNeutralForeground2, maxWidth: "260px", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" },
+  inner: { width: "100%", maxWidth: "820px", minWidth: 0, marginTop: 0, marginRight: "auto", marginBottom: 0, marginLeft: "auto" },
+  bottom: { paddingTop: "2px", paddingRight: "20px", paddingBottom: "18px", paddingLeft: "20px", flexShrink: 0 },
+  bottomMobile: { paddingTop: "2px", paddingRight: "12px", paddingBottom: "max(12px, env(safe-area-inset-bottom))", paddingLeft: "12px" },
+  chip: { display: "inline-flex", alignItems: "center", gap: "6px", minHeight: "30px", borderRadius: "9999px", paddingTop: "2px", paddingRight: "8px", paddingBottom: "2px", paddingLeft: "8px", fontSize: tokens.fontSizeBase200, color: tokens.colorNeutralForeground2, maxWidth: "200px", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" },
   chipMobile: {
-    minHeight: "36px",
-    maxWidth: "160px",
+    minHeight: "34px",
+    maxWidth: "164px",
     flexShrink: 0,
     borderRadius: "9999px",
     paddingTop: "0",
@@ -66,7 +93,6 @@ const useStyles = makeStyles({
     paddingBottom: "0",
     paddingLeft: "10px",
     backgroundColor: tokens.colorNeutralBackground2,
-    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
   },
   chipText: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   right: { width: "420px", flexShrink: 0, borderLeft: `1px solid ${tokens.colorNeutralStroke2}`, display: "flex", flexDirection: "column", minHeight: 0, backgroundColor: tokens.colorNeutralBackground1 },
@@ -74,8 +100,8 @@ const useStyles = makeStyles({
   bottomDrawer: {
     width: "100%",
     height: "92dvh",
-    borderTopLeftRadius: "20px",
-    borderTopRightRadius: "20px",
+    borderTopLeftRadius: "24px",
+    borderTopRightRadius: "24px",
     paddingTop: 0,
     paddingRight: 0,
     paddingBottom: 0,
@@ -84,7 +110,7 @@ const useStyles = makeStyles({
     flexDirection: "column",
     alignItems: "stretch",
     overflow: "hidden",
-    backgroundColor: tokens.colorNeutralBackground1,
+    backgroundColor: "var(--orbit-card-bg)",
   },
   endDrawer: {
     width: "min(440px, 90vw)",
@@ -97,10 +123,10 @@ const useStyles = makeStyles({
     flexDirection: "column",
     alignItems: "stretch",
     overflow: "hidden",
-    backgroundColor: tokens.colorNeutralBackground1,
+    backgroundColor: "var(--orbit-card-bg)",
   },
   grabberWrap: { display: "flex", justifyContent: "center", paddingTop: "10px", paddingBottom: "4px", flexShrink: 0 },
-  grabber: { width: "40px", height: "4px", borderRadius: "9999px", backgroundColor: tokens.colorNeutralStroke1 },
+  grabber: { width: "36px", height: "4px", borderRadius: "9999px", backgroundColor: tokens.colorNeutralStroke1, opacity: 0.45 },
   rightTop: { display: "flex", alignItems: "center", gap: "4px", paddingTop: "6px", paddingRight: "8px", paddingBottom: "6px", paddingLeft: "8px", borderBottom: `1px solid ${tokens.colorNeutralStroke2}`, flexShrink: 0 },
   rightBody: { paddingTop: "12px", paddingRight: "12px", paddingBottom: "max(16px, env(safe-area-inset-bottom))", paddingLeft: "12px", overflowY: "auto", flexGrow: 1, minHeight: 0 },
 });
@@ -191,7 +217,7 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
           {onOpenNav && <Button className={s.touchBtn} appearance="subtle" icon={<Navigation20Regular />} aria-label="Open navigation" onClick={onOpenNav} />}
           {isMobile ? (
             <div className={s.titleStack}>
-              <Text weight="semibold" className={s.title}>
+              <Text weight="semibold" className={mergeClasses(s.title, s.titleMobile)}>
                 {session.title}
               </Text>
               <div className={s.statusRow}>
@@ -287,6 +313,7 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
               Latest
             </Button>
           )}
+          <div className={s.scrollFade} aria-hidden />
         </div>
         <div className={mergeClasses(s.bottom, isMobile && s.bottomMobile)}>
           <Composer

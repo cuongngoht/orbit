@@ -4,6 +4,14 @@
   box-sizing: border-box;
 }
 
+html {
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+}
+
 html,
 body,
 #root {
@@ -14,7 +22,11 @@ body,
 }
 
 body {
-  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* Prevent iOS Safari automatic zoom when focusing form fields on small viewports. */
@@ -33,6 +45,60 @@ body {
 
 .orbit-hscroll::-webkit-scrollbar {
   display: none;
+}
+
+.orbit-hscroll-fade {
+  -webkit-mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 20px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 20px), transparent 100%);
+}
+
+@media (pointer: fine) {
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(120, 115, 105, 0.24);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(120, 115, 105, 0.42);
+  }
+}
+
+@keyframes orbit-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@keyframes orbit-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(0.85);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* highlight.js token colours, one set per theme (the app sets data-theme on <html>). */
@@ -75,6 +141,15 @@ body {
 }
 
 :root {
+  --orbit-card-bg: #ffffff;
+  --orbit-header-bg: rgba(252, 251, 249, 0.86);
+  --orbit-fade-bg: #fcfbf9;
+  --orbit-composer-shadow: 0 1px 2px rgba(28, 25, 23, 0.04), 0 8px 24px -8px rgba(28, 25, 23, 0.08);
+  --orbit-composer-shadow-focus: 0 0 0 3px rgba(75, 72, 201, 0.12), 0 2px 6px rgba(28, 25, 23, 0.05), 0 12px 30px -8px rgba(28, 25, 23, 0.12);
+  --orbit-soft-shadow: 0 1px 2px rgba(28, 25, 23, 0.04), 0 4px 12px -4px rgba(28, 25, 23, 0.06);
+  --orbit-user-bubble: #efede7;
+  --orbit-tool-bg: #f6f5f0;
+  --orbit-tool-hover: #eeece5;
   --code-keyword: #8250df;
   --code-string: #0a3069;
   --code-comment: #6e7781;
@@ -89,6 +164,15 @@ body {
 }
 
 html[data-theme="dark"] {
+  --orbit-card-bg: #252421;
+  --orbit-header-bg: rgba(28, 27, 25, 0.86);
+  --orbit-fade-bg: #1c1b19;
+  --orbit-composer-shadow: 0 2px 6px rgba(0, 0, 0, 0.25), 0 10px 28px -8px rgba(0, 0, 0, 0.42);
+  --orbit-composer-shadow-focus: 0 0 0 3px rgba(143, 141, 231, 0.2), 0 12px 30px -8px rgba(0, 0, 0, 0.48);
+  --orbit-soft-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+  --orbit-user-bubble: #2d2c28;
+  --orbit-tool-bg: #242320;
+  --orbit-tool-hover: #2c2b27;
   --code-keyword: #d2a8ff;
   --code-string: #a5d6ff;
   --code-comment: #8b949e;

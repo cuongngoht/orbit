@@ -5,9 +5,14 @@ import { ClipboardTaskList16Regular, Flash16Regular } from "@fluentui/react-icon
 import { Markdown } from "../../components/Markdown";
 
 const useStyles = makeStyles({
-  card: { borderLeft: `3px solid ${tokens.colorBrandStroke1}` },
+  card: {
+    backgroundColor: "var(--orbit-card-bg)",
+    borderRadius: "16px",
+    boxShadow: "var(--orbit-soft-shadow)",
+    borderLeft: `3px solid ${tokens.colorBrandStroke1}`,
+  },
   body: { display: "flex", flexDirection: "column", gap: "10px" },
-  runBtn: { minHeight: "40px", "@media (max-width: 639px)": { width: "100%", minHeight: "44px" } },
+  runBtn: { minHeight: "40px", borderRadius: "9999px", "@media (max-width: 639px)": { width: "100%", minHeight: "44px" } },
   muted: { color: tokens.colorNeutralForeground3 },
 });
 

@@ -61,12 +61,34 @@ const useStyles = makeStyles({
   logo: { width: "22px", height: "22px" },
   nav: { display: "flex", flexDirection: "column", gap: "2px", paddingTop: "4px", paddingRight: "8px", paddingBottom: "4px", paddingLeft: "8px", minWidth: 0 },
   navCollapsed: { paddingTop: "4px", paddingRight: "0", paddingBottom: "4px", paddingLeft: "0", alignItems: "center" },
-  navItem: { justifyContent: "flex-start", fontWeight: tokens.fontWeightRegular, width: "100%", "@media (pointer: coarse)": { minHeight: "44px" } },
-  navSelected: { backgroundColor: tokens.colorSubtleBackgroundSelected },
-  section: { display: "flex", alignItems: "center", gap: "4px", padding: "14px 16px 4px", color: tokens.colorNeutralForeground3 },
-  recents: { flexGrow: 1, minWidth: 0, maxWidth: "100%", overflowY: "auto", overflowX: "hidden", padding: "0 8px 8px", margin: 0, listStyleType: "none" },
-  item: { display: "flex", alignItems: "center", gap: "6px", minWidth: 0, maxWidth: "100%", overflow: "hidden", borderRadius: tokens.borderRadiusMedium, paddingLeft: "8px", ":hover": { backgroundColor: tokens.colorSubtleBackgroundHover } },
-  itemSelected: { backgroundColor: tokens.colorSubtleBackgroundSelected },
+  navItem: { justifyContent: "flex-start", fontWeight: tokens.fontWeightRegular, width: "100%", borderRadius: "10px", transitionProperty: "background-color", transitionDuration: "140ms", ":hover": { backgroundColor: tokens.colorSubtleBackgroundHover }, "@media (pointer: coarse)": { minHeight: "44px" } },
+  navSelected: { backgroundColor: tokens.colorSubtleBackgroundSelected, color: tokens.colorNeutralForeground1, fontWeight: tokens.fontWeightSemibold, ":hover": { backgroundColor: tokens.colorSubtleBackgroundSelected } },
+  section: { display: "flex", alignItems: "center", gap: "4px", paddingTop: "14px", paddingRight: "16px", paddingBottom: "4px", paddingLeft: "16px", color: tokens.colorNeutralForeground3 },
+  sectionText: { fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.05em" },
+  recents: { flexGrow: 1, minWidth: 0, maxWidth: "100%", overflowY: "auto", overflowX: "hidden", paddingTop: 0, paddingRight: "8px", paddingBottom: "8px", paddingLeft: "8px", marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, listStyleType: "none" },
+  item: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    minWidth: 0,
+    maxWidth: "100%",
+    overflow: "hidden",
+    borderRadius: "10px",
+    paddingLeft: "8px",
+    transitionProperty: "background-color",
+    transitionDuration: "140ms",
+    ":hover": { backgroundColor: tokens.colorSubtleBackgroundHover },
+    "@media (hover: hover) and (pointer: fine)": {
+      "& [data-row-actions]": { opacity: 0, transitionProperty: "opacity", transitionDuration: "140ms" },
+      "&:hover [data-row-actions], &:focus-within [data-row-actions]": { opacity: 1 },
+    },
+  },
+  itemSelected: {
+    backgroundColor: tokens.colorSubtleBackgroundSelected,
+    "@media (hover: hover) and (pointer: fine)": {
+      "& [data-row-actions]": { opacity: 0.85 },
+    },
+  },
   itemButton: { flexGrow: 1, minWidth: 0, maxWidth: "100%", overflow: "hidden", display: "flex", alignItems: "center", gap: "8px", border: "none", backgroundColor: "transparent", paddingTop: "7px", paddingRight: "0", paddingBottom: "7px", paddingLeft: "0", textAlign: "left", cursor: "pointer", color: tokens.colorNeutralForeground1, "@media (pointer: coarse)": { minHeight: "44px", paddingTop: "10px", paddingBottom: "10px" } },
   itemTitle: { flexGrow: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: tokens.fontSizeBase300 },
   touchBtn: { "@media (pointer: coarse)": { minWidth: "44px", minHeight: "44px" } },
@@ -240,7 +262,7 @@ export function Sidebar(p: SidebarProps) {
         )}
       </div>
       <div className={s.section}>
-        <Text size={200} weight="semibold">
+        <Text size={100} weight="semibold" className={s.sectionText}>
           Recents
         </Text>
       </div>
@@ -257,7 +279,7 @@ export function Sidebar(p: SidebarProps) {
             </button>
             <Menu>
               <MenuTrigger disableButtonEnhancement>
-                <Button className={s.touchBtn} appearance="transparent" size="small" icon={<MoreHorizontal16Regular />} aria-label={`Actions for ${x.title}`} />
+                <Button data-row-actions="" className={s.touchBtn} appearance="transparent" size="small" icon={<MoreHorizontal16Regular />} aria-label={`Actions for ${x.title}`} />
               </MenuTrigger>
               <MenuPopover>
                 <MenuList>

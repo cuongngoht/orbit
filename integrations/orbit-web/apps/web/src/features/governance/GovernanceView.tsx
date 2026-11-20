@@ -1,7 +1,7 @@
 // THE GOVERNANCE CONSOLE: the company Constitution, who administers it, which agents work under it and where, what was
 // decided, what waits for a person, the audit record, findings and reports. Every page reads the API; a control a
 // person's roles do not allow is not shown -- and the API refuses it anyway, whatever a page shows.
-import { Button, MessageBar, MessageBarBody, Select, Spinner, Text, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
+import { Button, MessageBar, MessageBarBody, Spinner, Text, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
 import { Navigation20Regular, SignOut20Regular } from "@fluentui/react-icons";
 import type { ReactNode } from "react";
 import { GOVERNANCE_PAGES, type GovernancePage } from "../../hooks/useHashRoute";
@@ -42,6 +42,9 @@ const useStyles = makeStyles({
     paddingBottom: "10px",
     paddingLeft: "16px",
     paddingRight: "16px",
+    backgroundColor: "var(--orbit-header-bg)",
+    backdropFilter: "blur(12px)",
+    WebkitBackdropFilter: "blur(12px)",
     borderBottomWidth: "1px",
     borderBottomStyle: "solid",
     borderBottomColor: tokens.colorNeutralStroke2,
@@ -58,13 +61,24 @@ const useStyles = makeStyles({
     paddingTop: "12px",
     paddingLeft: "8px",
     paddingRight: "8px",
+    backgroundColor: tokens.colorNeutralBackground2,
     borderRightWidth: "1px",
     borderRightStyle: "solid",
     borderRightColor: tokens.colorNeutralStroke2,
     overflowY: "auto",
   },
-  navItem: { justifyContent: "flex-start", width: "100%" },
-  navSelected: { backgroundColor: tokens.colorNeutralBackground1Selected },
+  navItem: { justifyContent: "flex-start", width: "100%", borderRadius: "10px", fontWeight: tokens.fontWeightRegular, transitionProperty: "background-color", transitionDuration: "140ms" },
+  navSelected: { backgroundColor: tokens.colorSubtleBackgroundSelected, fontWeight: tokens.fontWeightSemibold },
+  mobileNav: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    overflowX: "auto",
+    paddingBottom: "10px",
+    paddingRight: "18px",
+    marginBottom: "8px",
+  },
+  mobileNavPill: { flexShrink: 0, minHeight: "34px" },
   content: { flexGrow: 1, minWidth: 0, overflowY: "auto", paddingTop: "16px", paddingBottom: "32px", paddingLeft: "16px", paddingRight: "16px" },
   touch: { minWidth: "44px", minHeight: "44px" },
   muted: { color: tokens.colorNeutralForeground3 },
@@ -170,13 +184,21 @@ export function GovernanceView({ page, item, go, onOpenNav }: { page: Governance
         )}
         <div className={s.content}>
           {isMobile && (
-            <Select aria-label="Governance page" value={page} onChange={(_, d) => go(d.value as GovernancePage)} style={{ marginBottom: 12 }}>
+            <nav className={mergeClasses(s.mobileNav, "orbit-hscroll orbit-hscroll-fade")} aria-label="Governance">
               {GOVERNANCE_PAGES.map((p) => (
-                <option key={p} value={p}>
+                <Button
+                  key={p}
+                  size="small"
+                  shape="circular"
+                  appearance={p === page ? "primary" : "subtle"}
+                  className={s.mobileNavPill}
+                  aria-current={p === page ? "page" : undefined}
+                  onClick={() => go(p)}
+                >
                   {TITLES[p]}
-                </option>
+                </Button>
               ))}
-            </Select>
+            </nav>
           )}
           <Page page={page} item={item} go={go} />
         </div>

@@ -8,8 +8,8 @@ const useStyles = makeStyles({
     width: "100%",
     height: "auto",
     maxHeight: "85dvh",
-    borderTopLeftRadius: "20px",
-    borderTopRightRadius: "20px",
+    borderTopLeftRadius: "24px",
+    borderTopRightRadius: "24px",
     paddingTop: 0,
     paddingRight: 0,
     paddingBottom: 0,
@@ -18,7 +18,7 @@ const useStyles = makeStyles({
     flexDirection: "column",
     alignItems: "stretch",
     overflow: "hidden",
-    backgroundColor: tokens.colorNeutralBackground1,
+    backgroundColor: "var(--orbit-card-bg)",
   },
   grabberWrap: {
     width: "100%",
@@ -29,10 +29,11 @@ const useStyles = makeStyles({
     flexShrink: 0,
   },
   grabber: {
-    width: "40px",
+    width: "36px",
     height: "4px",
     borderRadius: "9999px",
     backgroundColor: tokens.colorNeutralStroke1,
+    opacity: 0.45,
   },
   head: {
     width: "100%",

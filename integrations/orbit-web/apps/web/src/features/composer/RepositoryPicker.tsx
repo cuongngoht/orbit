@@ -34,17 +34,28 @@ import { useViewport } from "../../hooks/useViewport";
 import { get } from "../../services/api";
 
 const useStyles = makeStyles({
-  trigger: { minWidth: "unset", maxWidth: "280px", flexShrink: 0, fontWeight: tokens.fontWeightRegular, color: tokens.colorNeutralForeground2 },
+  trigger: {
+    minWidth: "unset",
+    minHeight: "30px",
+    maxWidth: "200px",
+    flexShrink: 0,
+    borderRadius: "9999px",
+    fontWeight: tokens.fontWeightRegular,
+    color: tokens.colorNeutralForeground2,
+    transitionProperty: "background-color, color",
+    transitionDuration: "140ms",
+    ":hover": { backgroundColor: tokens.colorSubtleBackgroundHover },
+  },
   triggerMobile: {
-    maxWidth: "160px",
-    minHeight: "36px",
+    maxWidth: "164px",
+    minHeight: "34px",
     borderRadius: "9999px",
     paddingTop: "0",
     paddingRight: "10px",
     paddingBottom: "0",
     paddingLeft: "10px",
     backgroundColor: tokens.colorNeutralBackground2,
-    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    ...shorthands.border("1px", "solid", "transparent"),
   },
   label: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   surface: { width: "400px", maxWidth: "90vw", padding: "8px", display: "flex", flexDirection: "column", gap: "8px" },

@@ -165,7 +165,9 @@ export interface SessionCompletedData extends RunUsage {
 }
 
 export interface SessionFailedData extends RunUsage {
-  reason: "cli_error" | "exit" | "spawn" | "no_result";
+  // `governance`: the run was refused before it started (a governed workspace whose Constitution, agent or isolation
+  // does not let it run); the message says why.
+  reason: "cli_error" | "exit" | "spawn" | "no_result" | "governance";
   subtype: string | null;
   message: string;
   exitCode: number | null;

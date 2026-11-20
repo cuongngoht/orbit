@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { createServer, connect, type AddressInfo, type Server } from "node:net";
 import type { Server as HttpServer } from "node:http";
 import { after, before, describe, test } from "node:test";
-import { forbiddenAddress, startEgressProxy, tokenOf, type EgressAsk } from "./proxy.js";
+import { allowedPrivate, forbiddenAddress, startEgressProxy, tokenOf, type EgressAsk } from "./proxy.js";
 
 const listen = (server: Server | HttpServer): Promise<number> => new Promise((r) => server.listen(0, "127.0.0.1", () => r((server.address() as AddressInfo).port)));
 
@@ -63,12 +63,19 @@ describe("the egress proxy", () => {
     assert.equal(asked.at(-1)?.token, null);
   });
 
-  test("loopback, link-local and the control plane's own addresses are refused whatever the decision", async () => {
+  test("nothing off the public internet is reached whatever the decision: loopback, private, shared, link-local, multicast, the host's own", async () => {
     // allowed.test resolves (here) to 127.0.0.2: allowed by the decision, refused as loopback.
     const r = await connectThrough(proxyPort, `allowed.test:${echoPort}`, "good");
     assert.match(r.status, /403/);
-    for (const a of ["127.0.0.1", "127.9.9.9", "169.254.169.254", "0.0.0.0", "::1", "::ffff:127.0.0.1", "10.9.9.9"]) assert.equal(forbiddenAddress(a, new Set(["10.9.9.9"])), true, a);
-    for (const a of ["160.79.104.10", "93.184.215.14"]) assert.equal(forbiddenAddress(a, new Set(["10.9.9.9"])), false, a);
+    const own = new Set(["203.0.114.7"]);
+    const refused = ["127.0.0.1", "127.9.9.9", "169.254.169.254", "0.0.0.0", "10.1.2.3", "172.17.0.1", "172.31.250.2", "192.168.65.254", "100.64.0.1", "224.0.0.1", "255.255.255.255", "::1", "::", "::ffff:127.0.0.1", "::ffff:10.0.0.1", "fd00::1", "fe80::1", "ff02::1", "203.0.114.7", "not-an-address"];
+    for (const a of refused) assert.equal(forbiddenAddress(a, own), true, a);
+    for (const a of ["160.79.104.10", "93.184.215.14", "2606:4700:4700::1111"]) assert.equal(forbiddenAddress(a, own), false, a);
+    // An internal range the installation named is reachable (and still only where the decision allows); loopback never.
+    const named = allowedPrivate(["10.20.0.0/16"]);
+    assert.equal(forbiddenAddress("10.20.3.4", own, named), false);
+    assert.equal(forbiddenAddress("10.21.3.4", own, named), true);
+    assert.equal(forbiddenAddress("127.0.0.1", own, allowedPrivate(["127.0.0.0/8"])), true);
   });
 
   test("plain HTTP is not proxied; a garbled target is refused", async () => {

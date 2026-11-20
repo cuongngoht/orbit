@@ -16,8 +16,8 @@ export interface ComponentCheck {
   detail: string | null;
 }
 
-// GET /api/health -- what is installed and writable here. Never a path, a variable or an account. `az` is reported but
-// optional (an image may be built without the Azure CLI): it never makes the status degraded.
+// GET /api/health -- what is installed and writable here. Never a path, a variable or an account. `az` and `python` are
+// reported but optional (an image may be built without either): they never make the status degraded.
 export interface HealthReport {
   status: "ok" | "degraded";
   api: ComponentCheck;
@@ -25,6 +25,7 @@ export interface HealthReport {
   gh: ComponentCheck;
   git: ComponentCheck;
   az: ComponentCheck;
+  python: ComponentCheck;
   orbitPlugin: ComponentCheck;
   storage: ComponentCheck;
 }
@@ -37,6 +38,7 @@ export interface BuildVersions {
   gh: string | null;
   git: string | null;
   az: string | null;
+  python: string | null;
   node: string;
 }
 

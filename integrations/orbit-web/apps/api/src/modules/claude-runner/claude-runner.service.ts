@@ -5,6 +5,11 @@
 // outcome is decided from the exit status and the CLI's own result line; a stop signals the process group (SIGINT,
 // then SIGTERM, then SIGKILL). A restart of Orbit Web leaves no run "running": the ones it cut short are recorded as
 // interrupted, and nothing is started again without a person sending a message.
+//
+// GOVERNANCE (modules/governance/run-governance.service.ts) is asked before a run starts whenever the run is governed
+// -- a governed workspace, or any run in the governed deployment: it may refuse the run (recorded, and said in the
+// chat), and otherwise binds it (a token for the gateway and the proxy) and says what the Constitution lets the runtime
+// do. A run nobody governs starts exactly as it always did.
 import { type BeforeApplicationShutdown, Inject, Injectable, Logger, type OnModuleInit } from "@nestjs/common";
 import { ACCEPTS_MESSAGES, type AnySessionEvent, type RunAccepted, type SessionStatus } from "@orbit-web/contracts";
 import { randomUUID } from "node:crypto";
@@ -19,6 +24,7 @@ import { LineSplitter } from "../../infra/process/lines.js";
 import type { ExitInfo, ProcessHandle, ProcessPort } from "../../infra/process/process.port.js";
 import { redactSecrets, tail } from "../../infra/security/redact.js";
 import { RunStore, SessionStore, type SessionRecord } from "../../infra/storage/stores.js";
+import { RunGovernanceService, type RunPlan } from "../governance/run-governance.service.js";
 import { ProjectService } from "../project/project.service.js";
 import { AutoModeService } from "./auto-mode.js";
 import { SettingsService } from "../settings/settings.module.js";
@@ -41,7 +47,11 @@ interface ActiveRun {
   log: WriteStream | null;
   logBytes: number;
   done: Promise<void>;
+  plan: RunPlan;
 }
+
+// A run nobody governs: as Orbit Web always ran it.
+const UNGOVERNED: RunPlan = { scope: "LEGACY_ORBIT", binding: null, env: {}, webTools: null, execute: true, note: null, governed: false, isolation: "not_applicable" };
 
 @Injectable()
 export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutdown {
@@ -49,6 +59,8 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
   private readonly active = new Map<string, ActiveRun>();
   // Sessions whose workspace is changing (holding): no run starts in them until it is done.
   private readonly held = new Set<string>();
+  // Sessions whose governed run is being decided: it counts as running.
+  private readonly starting = new Set<string>();
 
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
@@ -59,6 +71,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     @Inject(SettingsService) private readonly settings: SettingsService,
     @Inject(ProjectService) private readonly project: ProjectService,
     @Inject(AutoModeService) private readonly autoMode: AutoModeService,
+    @Inject(RunGovernanceService) private readonly governance: RunGovernanceService,
   ) {}
 
   // After a restart nothing is running: a run the restart cut short is recorded as interrupted, never resumed.
@@ -71,17 +84,17 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
   }
 
   isRunning(sessionId: string): boolean {
-    return this.active.has(sessionId);
+    return this.active.has(sessionId) || this.starting.has(sessionId);
   }
 
   // A run, or a change of the workspace under way (its working branch moving).
   isBusy(sessionId: string): boolean {
-    return this.active.has(sessionId) || this.held.has(sessionId);
+    return this.isRunning(sessionId) || this.held.has(sessionId);
   }
 
   // Runs `work` while no run may start in this session -- refused while one runs or another change is under way.
   async holding<T>(sessionId: string, work: () => Promise<T>): Promise<T> {
-    if (this.active.has(sessionId)) throw conflict("run_active", "Claude is still working on this session. Stop it or wait for it to finish.");
+    if (this.isRunning(sessionId)) throw conflict("run_active", "Claude is still working on this session. Stop it or wait for it to finish.");
     if (this.held.has(sessionId)) throw conflict("workspace_busy", "The working branch is already changing.");
     this.held.add(sessionId);
     try {
@@ -95,15 +108,38 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
   send(sessionId: string, text: string): RunAccepted {
     const session = this.sessions.get(sessionId);
     if (!session) throw notFound("Session");
-    if (this.active.has(sessionId) || session.status === "running") throw conflict("run_active", "Claude is still working on this session. Stop it or wait for it to finish.");
+    if (this.isRunning(sessionId) || session.status === "running") throw conflict("run_active", "Claude is still working on this session. Stop it or wait for it to finish.");
     if (this.held.has(sessionId)) throw conflict("workspace_busy", "The working branch is changing; send your message once it has.");
     if (session.status === "preparing") throw conflict("workspace_not_ready", "The workspace is still being prepared.");
     if (!ACCEPTS_MESSAGES.includes(session.status)) throw conflict("workspace_failed", "This session's workspace could not be prepared; start a new chat.");
     const runId = randomUUID();
     const messageId = randomUUID();
     this.bus.publishSession(sessionId, "message.completed", { messageId, role: "user", text, parentToolUseId: null, partial: false, truncated: false }, runId);
-    this.start(session, text, runId);
+    if (!this.governance.bound(session)) this.start(session, text, runId, UNGOVERNED);
+    else {
+      this.starting.add(sessionId);
+      void this.governed(session, text, runId);
+    }
     return { sessionId, runId };
+  }
+
+  // A governed run: decided first (and recorded), started only if allowed. Anything that keeps governance from deciding
+  // refuses the run -- it never starts undecided.
+  private async governed(session: SessionRecord, prompt: string, runId: string): Promise<void> {
+    try {
+      const prepared = await this.governance.prepare(session, runId, session.mode);
+      if (!prepared.ok) return this.refuse(session, runId, prepared.message);
+      this.start(this.sessions.get(session.id) ?? session, prompt, runId, prepared.plan);
+    } catch (err) {
+      this.refuse(session, runId, `Governance could not decide this run, so it did not start: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      this.starting.delete(session.id);
+    }
+  }
+
+  private refuse(session: SessionRecord, runId: string, message: string): void {
+    this.bus.publishSession(session.id, "session.failed", { reason: "governance", subtype: null, message, exitCode: null, signal: null, permissionDenials: 0, costUsd: null, turns: null, durationMs: null }, runId);
+    this.setStatus(session.id, "failed", message.slice(0, 300), runId);
   }
 
   stop(sessionId: string, by: "user_stop" | "server_restart" = "user_stop"): void {
@@ -128,12 +164,14 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     for (const run of runs.filter((r) => this.active.has(r.session.id))) this.finalize(run, { code: null, signal: "SIGKILL", spawnError: null });
   }
 
-  private start(session: SessionRecord, prompt: string, runId: string): void {
+  private start(session: SessionRecord, prompt: string, runId: string, plan: RunPlan): void {
     const resume = session.turns > 0;
     const prefs = this.settings.get();
-    const azure = prefs.azureForClaude;
+    // A bound run (governed, or in the governed deployment) holds no CLI's sign-in whatever a switch says.
+    const credentials = plan.binding === null && this.config.governance.deployment !== "governed";
+    const azure = credentials && prefs.azureForClaude;
     // GitHub's sign-in only ever reaches a chat whose repository came from GitHub.
-    const github = prefs.githubForClaude && session.source === "github";
+    const github = credentials && prefs.githubForClaude && session.source === "github";
     const project = this.project.runtime(session);
     const args = claudeArgs({
       model: session.model,
@@ -141,10 +179,12 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
       mode: session.mode,
       pluginDirs: [this.config.pluginDir, ...project.pluginDirs],
       enabledPlugins: project.enabledPlugins,
-      autoModeEnvironment: this.autoMode.current(),
+      autoModeEnvironment: this.autoMode.current(plan.binding !== null),
       sessionId: session.claudeSessionId,
       resume,
-      webTools: prefs.webTools,
+      webTools: prefs.webTools && plan.webTools !== false,
+      execute: plan.execute,
+      governanceNote: plan.note,
       azure,
       github,
       maxBudgetUsd: this.config.maxBudgetUsd,
@@ -154,7 +194,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     });
     this.runs.start({ id: runId, sessionId: session.id, model: session.model, effort: session.effort, mode: session.mode, resumed: resume });
     this.setStatus(session.id, "running", null, runId);
-    const handle = this.process.spawn(this.config.binaries.claude, args, { cwd: session.workspacePath, env: claudeEnv(this.config, { azure, github }) });
+    const handle = this.process.spawn(this.config.binaries.claude, args, { cwd: session.workspacePath, env: { ...claudeEnv(this.config, { azure, github }), ...plan.env } });
     const mapper = new StreamMapper({ requestedModel: session.model, requestedEffort: session.effort, requestedMode: session.mode, resumed: resume, cwd: session.workspacePath });
     let resolveDone: () => void = () => undefined;
     const run: ActiveRun = {
@@ -169,6 +209,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
       log: this.openLog(session.id, runId),
       logBytes: 0,
       done: new Promise<void>((r) => (resolveDone = r)),
+      plan,
     };
     this.active.set(session.id, run);
     handle.onStdout((chunk) => run.splitter.push(chunk));
@@ -210,6 +251,11 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     this.setStatus(run.session.id, outcome.status, reason, run.runId);
     run.log?.end();
     this.active.delete(run.session.id);
+    try {
+      this.governance.finished(run.plan, run.runId, outcome.status, exit.code);
+    } catch (err) {
+      this.logger.error(`the end of governed run ${run.runId} could not be recorded: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   // A run that reached the CLI's init line is a turn of the Claude session; the next one resumes it.

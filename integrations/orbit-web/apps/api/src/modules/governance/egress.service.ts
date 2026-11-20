@@ -6,7 +6,7 @@ import { Inject, Injectable, Logger, type OnApplicationBootstrap, type OnApplica
 import type { Server } from "node:http";
 import type { AppConfig } from "../../config/config.js";
 import { AGENT_PROCESS_PORT, APP_CONFIG } from "../../core/tokens.js";
-import { startEgressProxy, type EgressAsk, type EgressVerdict } from "../../infra/egress/proxy.js";
+import { allowedPrivate, startEgressProxy, type EgressAsk, type EgressVerdict } from "../../infra/egress/proxy.js";
 import type { ProcessPort } from "../../infra/process/process.port.js";
 import { RunnerProcessPort } from "../../infra/process/runner-port.js";
 import { IsolationService } from "./isolation.service.js";
@@ -35,7 +35,7 @@ export class EgressService implements OnApplicationBootstrap, OnApplicationShutd
     if (g.deployment !== "governed" || g.proxyPort === null) return;
     if (this.agent instanceof RunnerProcessPort) this.isolation.setAttestor(new RunnerAttestor(this.config, this.agent));
     const agentNetworks = networkList(g.agentNetworks);
-    this.server = await startEgressProxy(g.proxyPort, { decide: (ask) => this.decide(ask), admit: (address) => fromNetwork(agentNetworks, address) });
+    this.server = await startEgressProxy(g.proxyPort, { decide: (ask) => this.decide(ask), admit: (address) => fromNetwork(agentNetworks, address), privateAllowed: g.egressPrivateAllow.length > 0 ? allowedPrivate(g.egressPrivateAllow) : null });
     this.logger.log(`egress proxy for the agent's container listening on ${g.proxyPort}`);
   }
 

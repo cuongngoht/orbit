@@ -21,17 +21,24 @@ export const ENVIRONMENT_HERE: Readonly<Record<string, string>> = {
     "Claude Code runs inside Orbit Web's Docker container, as a non-root user with no Docker socket, in the workspace of one chat. The same container keeps the sign-ins of the Claude, GitHub and Azure CLIs and Orbit Web's own data under /data: they are never read, printed or sent anywhere.",
 };
 
+// A GOVERNED run's place: its way out and its host are the organization's Constitution's, held by Orbit Web.
+export const ENVIRONMENT_GOVERNED: Readonly<Record<string, string>> = {
+  "Network posture":
+    "No direct egress. Every connection leaves through Orbit Web's egress proxy and is allowed only where the organization's Constitution says: the model's own service, and what a person allowed. A refused connection is the boundary, not a fault to work around -- never look for another way out, and never send this workspace's files, a credential or a token anywhere.",
+  "Host containment":
+    "Claude Code runs under Orbit Web governance, in the workspace of one chat, holding no sign-in but its own Claude account: pushing, a repository's credentials and the organization's records are Orbit Web's, reached only through the agent gateway, and every request there is decided by the Constitution and recorded.",
+};
+
 const heading = (entry: string): string | null => /^\*\*(.+?)\*\*:/.exec(entry)?.[1] ?? null;
 
-const entryOf = (topic: string): string => `**${topic}**: ${ENVIRONMENT_HERE[topic]}`;
-
 // The CLI's environment with this place's entries in place of its own (added at the end when it no longer has one).
-export function environmentFor(defaults: readonly string[]): string[] {
+export function environmentFor(defaults: readonly string[], here: Readonly<Record<string, string>> = ENVIRONMENT_HERE): string[] {
+  const entryOf = (topic: string): string => `**${topic}**: ${here[topic]}`;
   const replaced = defaults.map((e) => {
     const topic = heading(e);
-    return topic !== null && topic in ENVIRONMENT_HERE ? entryOf(topic) : e;
+    return topic !== null && topic in here ? entryOf(topic) : e;
   });
-  const missing = Object.keys(ENVIRONMENT_HERE).filter((topic) => !defaults.some((e) => heading(e) === topic));
+  const missing = Object.keys(here).filter((topic) => !defaults.some((e) => heading(e) === topic));
   return [...replaced, ...missing.map(entryOf)];
 }
 
@@ -53,6 +60,7 @@ const RETRY_MS = 5 * 60_000;
 export class AutoModeService implements OnModuleInit {
   private readonly logger = new Logger("AutoMode");
   private environment: string[] | null = null;
+  private defaults: string[] | null = null;
   private reading: Promise<void> | null = null;
   private failedAt = 0;
 
@@ -66,9 +74,10 @@ export class AutoModeService implements OnModuleInit {
     void this.read();
   }
 
-  // The environment for an Autonomous run, or null (the CLI's own then stand).
-  current(): string[] | null {
+  // The environment for an Autonomous run, or null (the CLI's own then stand). A governed run is told its own place.
+  current(governed = false): string[] | null {
     if (this.environment === null && Date.now() - this.failedAt > RETRY_MS) void this.read();
+    if (governed && this.defaults !== null) return environmentFor(this.defaults, ENVIRONMENT_GOVERNED);
     return this.environment;
   }
 
@@ -82,7 +91,10 @@ export class AutoModeService implements OnModuleInit {
       const r = await this.process.run(this.config.binaries.claude, ["auto-mode", "defaults"], { cwd: this.config.data.home, env: claudeEnv(this.config), timeoutMs: READ_TIMEOUT_MS });
       const defaults = succeeded(r) ? parseDefaults(r.stdout) : null;
       if (defaults === null) this.failed(endedHow(r));
-      else this.environment = environmentFor(defaults);
+      else {
+        this.defaults = defaults;
+        this.environment = environmentFor(defaults);
+      }
     } catch (err) {
       this.failed(err instanceof Error ? err.message : String(err));
     }

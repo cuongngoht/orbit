@@ -116,6 +116,38 @@ RUN --mount=type=secret,id=ca,required=false \
     chmod 0755 /opt/azure-cli/bin/az; \
     SCRATCH=$(mktemp -d); AZURE_CONFIG_DIR="$SCRATCH" AZURE_CORE_COLLECT_TELEMETRY=false /opt/azure-cli/bin/az version --output json; rm -rf "$SCRATCH" /tmp/python.tar.gz
 
+# --- Python for the coding agent: the newest CPython release of python-build-standalone, by SHA-256 per architecture
+# (3.15.2, release 20261110), with pip and venv. It is Claude Code's `python3`/`python`/`pip` -- what it runs the
+# projects it works on with -- and a program like the others: root's, never written by the agent. A project installs
+# into its own virtual environment (python3 -m venv .venv) or with pip --user. AGENT_PYTHON=0 leaves it out (the System
+# card then says so). The Azure CLI keeps its own pinned interpreter above. ------------------------------------------------
+FROM ${NODE_IMAGE} AS python
+ARG TARGETARCH
+ARG AGENT_PYTHON=1
+ARG AGENT_PYTHON_RELEASE=20261110
+ARG AGENT_PYTHON_VERSION=3.15.2
+ARG AGENT_PYTHON_SHA256_AMD64=182e7adf7e4f0e32dafac5143f00d466afd20eef45918ea170f78884e503ac18
+ARG AGENT_PYTHON_SHA256_ARM64=362378c07e01f1d7b18406760ace75e794c21dfff3693535b1bbffe88eec2e52
+RUN --mount=type=secret,id=ca,required=false \
+    set -eu; \
+    mkdir -p /opt/python/bin; \
+    if [ "${AGENT_PYTHON}" != "1" ]; then echo "built without Python"; exit 0; fi; \
+    if [ -s /run/secrets/ca ]; then export CURL_CA_BUNDLE=/run/secrets/ca; fi; \
+    case "${TARGETARCH}" in \
+      amd64) PY_ARCH=x86_64; PY_SHA="${AGENT_PYTHON_SHA256_AMD64}" ;; \
+      arm64) PY_ARCH=aarch64; PY_SHA="${AGENT_PYTHON_SHA256_ARM64}" ;; \
+      *) echo "unsupported architecture ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /tmp/python.tar.gz "https://github.com/astral-sh/python-build-standalone/releases/download/${AGENT_PYTHON_RELEASE}/cpython-${AGENT_PYTHON_VERSION}%2B${AGENT_PYTHON_RELEASE}-${PY_ARCH}-unknown-linux-gnu-install_only.tar.gz"; \
+    echo "${PY_SHA}  /tmp/python.tar.gz" | sha256sum -c -; \
+    rm -rf /opt/python; \
+    tar -xzf /tmp/python.tar.gz -C /opt; \
+    /opt/python/bin/python3 -m pip --version >/dev/null 2>&1 || /opt/python/bin/python3 -m ensurepip --default-pip; \
+    for name in python pip; do [ -e "/opt/python/bin/${name}" ] || ln -s "${name}3" "/opt/python/bin/${name}"; done; \
+    /opt/python/bin/python --version; /opt/python/bin/pip --version; \
+    /opt/python/bin/python3 -m venv /tmp/venv-check && rm -rf /tmp/venv-check /tmp/python.tar.gz; \
+    find /opt/python -name '__pycache__' -prune -exec rm -rf {} +
+
 # --- the image -------------------------------------------------------------------------------------------------------
 FROM ${NODE_IMAGE}
 ARG WEB_VERSION=0.8.0
@@ -138,6 +170,7 @@ COPY --from=tools /opt/tini /usr/local/bin/tini
 COPY --from=tools /opt/gh /opt/gh
 COPY --from=tools /opt/claude /opt/claude
 COPY --from=azure /opt/azure-cli /opt/azure-cli
+COPY --from=python /opt/python /opt/python
 COPY --from=plugin /opt/orbit /opt/orbit
 COPY --from=runtime-deps /opt/orbit-web /opt/orbit-web
 COPY --from=build /src/packages/contracts/dist /opt/orbit-web/packages/contracts/dist
@@ -152,7 +185,7 @@ COPY --chmod=0755 integrations/orbit-web/docker/git-credential-azure-cli.mjs /op
 # CLAUDE_CONFIG_DIR: where the Claude CLI keeps its sign-in -- Orbit Web's own sign-in -- for every `claude` in the
 # container, so a terminal sign-in (`docker exec -it orbit-web claude auth login --claudeai`) lands where Orbit Web
 # reads it. Orbit Web also names it for each Claude process it starts.
-ENV PATH=/opt/claude/bin:/opt/gh/bin:/opt/azure-cli/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+ENV PATH=/opt/claude/bin:/opt/gh/bin:/opt/azure-cli/bin:/opt/python/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     NODE_ENV=production \
     HOME=/data/home \
     CLAUDE_CONFIG_DIR=/data/claude \

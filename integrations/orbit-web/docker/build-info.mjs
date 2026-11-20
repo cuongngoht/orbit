@@ -26,6 +26,7 @@ const info = {
   gh: version("gh"),
   git: version("git"),
   az: version("az", ["version", "--output", "json"]),
+  python: version("python3"),
   node: process.versions.node,
 };
 rmSync(scratch, { recursive: true, force: true });

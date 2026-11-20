@@ -2,11 +2,13 @@
 // on an internal network with no route anywhere else, so every connection it makes to the internet comes through
 // here -- and each one is a DECISION of the Constitution in effect (`network.egress` on `host:port`), asked as the run
 // it belongs to (its token, carried as the proxy's credential) and recorded. Nothing else is tunnelled: no plain HTTP,
-// no connection that does not name a run, and never the control plane itself -- loopback, link-local and this host's
-// own addresses are refused whatever a policy says, so a permissive rule cannot become a way around the agent
-// network's gate.
+// no connection that does not name a run, and -- whatever a policy says -- never an address that is not on the public
+// internet: this host's own, loopback, link-local, the private, shared and reserved ranges, multicast, IPv6 unique-local.
+// A permissive rule therefore cannot become a way to the control plane, the Docker host or a company network; an
+// internal range is reached only when the installation names it (ORBIT_WEB_EGRESS_PRIVATE_ALLOW), and then still only
+// where the Constitution allows.
 import { createServer, type IncomingMessage, type Server } from "node:http";
-import { connect, isIP, type Socket } from "node:net";
+import { BlockList, connect, isIP, type Socket } from "node:net";
 import { lookup } from "node:dns/promises";
 import { networkInterfaces } from "node:os";
 
@@ -39,12 +41,31 @@ export function tokenOf(header: string | undefined): string | null {
 
 const unmapped = (a: string): string => (a.startsWith("::ffff:") ? a.slice(7) : a);
 
-// Addresses no agent connection may reach whatever the policy says: this host, loopback, link-local, unspecified.
-export function forbiddenAddress(address: string, own: ReadonlySet<string>): boolean {
+// Every range that is not the public internet (IANA special-purpose registries).
+const NOT_PUBLIC_V4 = ["0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.0.0.0/24", "192.0.2.0/24", "192.88.99.0/24", "192.168.0.0/16", "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24", "224.0.0.0/4", "240.0.0.0/4"];
+const NOT_PUBLIC_V6 = ["::/128", "::1/128", "64:ff9b:1::/48", "100::/64", "2001:db8::/32", "fc00::/7", "fe80::/10", "ff00::/8"];
+
+function blockOf(v4: readonly string[], v6: readonly string[] = []): BlockList {
+  const list = new BlockList();
+  for (const cidr of v4) list.addSubnet(cidr.split("/")[0] as string, Number(cidr.split("/")[1]), "ipv4");
+  for (const cidr of v6) list.addSubnet(cidr.split("/")[0] as string, Number(cidr.split("/")[1]), "ipv6");
+  return list;
+}
+
+const NOT_PUBLIC = blockOf(NOT_PUBLIC_V4, NOT_PUBLIC_V6);
+
+// The internal ranges an installation explicitly lets the agent's connections reach (still only where the Constitution
+// allows): CIDR, IPv4.
+export const allowedPrivate = (cidrs: readonly string[]): BlockList => blockOf(cidrs);
+
+// Addresses no agent connection may reach whatever the policy says: this host's own, and every address that is not on
+// the public internet -- unless the installation named its range in `allowed`.
+export function forbiddenAddress(address: string, own: ReadonlySet<string>, allowed: BlockList | null = null): boolean {
   const a = unmapped(address);
-  if (own.has(a)) return true;
-  if (isIP(a) === 4) return a.startsWith("127.") || a.startsWith("169.254.") || a === "0.0.0.0" || a.startsWith("0.");
-  return a === "::1" || a === "::" || a.toLowerCase().startsWith("fe80:");
+  const family = isIP(a) === 6 ? "ipv6" : "ipv4";
+  if (isIP(a) === 0 || own.has(a)) return true;
+  if (!NOT_PUBLIC.check(a, family)) return false;
+  return !(allowed !== null && family === "ipv4" && !a.startsWith("127.") && allowed.check(a, family));
 }
 
 const ownAddresses = (): Set<string> => new Set(Object.values(networkInterfaces()).flatMap((list) => (list ?? []).map((i) => unmapped(i.address))));
@@ -62,6 +83,8 @@ export interface ProxyOptions {
   own?: ReadonlySet<string>;
   // Which resolved addresses are never reached (default: forbiddenAddress over this host's own addresses).
   forbidden?: (address: string) => boolean;
+  // The internal ranges the installation named (ORBIT_WEB_EGRESS_PRIVATE_ALLOW).
+  privateAllowed?: BlockList | null;
 }
 
 async function tunnel(o: ProxyOptions, req: IncomingMessage, client: Socket, head: Buffer): Promise<void> {
@@ -78,8 +101,8 @@ async function tunnel(o: ProxyOptions, req: IncomingMessage, client: Socket, hea
   } catch {
     return refuse(client, 502, `${host} does not resolve`);
   }
-  const forbidden = o.forbidden ?? ((a: string) => forbiddenAddress(a, o.own ?? ownAddresses()));
-  if (forbidden(address)) return refuse(client, 403, `${host} is Orbit Web's own host or a local address: never reached through the proxy`);
+  const forbidden = o.forbidden ?? ((a: string) => forbiddenAddress(a, o.own ?? ownAddresses(), o.privateAllowed ?? null));
+  if (forbidden(address)) return refuse(client, 403, `${host} resolves to ${address}, which is not on the public internet (or is Orbit Web's own host): never reached through the proxy`);
   const upstream = connect({ host: address, port });
   upstream.on("connect", () => {
     client.write("HTTP/1.1 200 Connection Established\r\n\r\n");

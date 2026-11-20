@@ -30,6 +30,7 @@ export class HealthService {
       gh: tools.gh,
       git: tools.git,
       az: tools.az,
+      python: tools.python,
       orbitPlugin: tools.orbitPlugin,
       storage,
     };

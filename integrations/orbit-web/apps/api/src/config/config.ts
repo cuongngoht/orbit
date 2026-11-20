@@ -39,6 +39,9 @@ export interface GovernedConfig {
   proxyPort: number | null;
   // How the agent reaches the control plane: the gateway (http://<host>:<port>) and, governed, the proxy.
   agentControlHost: string;
+  // governed: internal ranges (CIDR) the egress proxy may reach -- none unless the installation names them; the
+  // Constitution still decides each connection.
+  egressPrivateAllow: string[];
 }
 
 export interface Limits {
@@ -67,7 +70,7 @@ export interface AppConfig {
   secureCookie: boolean;
   maxBudgetUsd: number | null;
   // `azureGitHelper`: the git credential helper an Azure Repos clone uses (shipped in the image).
-  binaries: { claude: string; gh: string; git: string; az: string; node: string; azureGitHelper: string };
+  binaries: { claude: string; gh: string; git: string; az: string; python: string; node: string; azureGitHelper: string };
   // The server's own environment: the only place allow-listed variables are copied from for a child process.
   sourceEnv: Readonly<Record<string, string | undefined>>;
   limits: Limits;
@@ -136,7 +139,7 @@ function githubUrlOf(raw: string | undefined): string {
 function governedConfig(env: Readonly<Record<string, string | undefined>>, port: number): GovernedConfig {
   const deployment = env.ORBIT_WEB_DEPLOYMENT === undefined || env.ORBIT_WEB_DEPLOYMENT === "" ? "single" : env.ORBIT_WEB_DEPLOYMENT;
   if (deployment !== "single" && deployment !== "governed") throw new ConfigError("ORBIT_WEB_DEPLOYMENT must be single or governed");
-  if (deployment === "single") return { deployment, runner: null, agentNetworks: [], proxyPort: null, agentControlHost: "127.0.0.1" };
+  if (deployment === "single") return { deployment, runner: null, agentNetworks: [], proxyPort: null, agentControlHost: "127.0.0.1", egressPrivateAllow: [] };
   const runner = hostPort(env.ORBIT_WEB_RUNNER, "ORBIT_WEB_RUNNER");
   const agentNetworks = hostList(env.ORBIT_WEB_AGENT_NETWORKS);
   const host = env.ORBIT_WEB_AGENT_CONTROL_HOST ?? "";
@@ -145,7 +148,9 @@ function governedConfig(env: Readonly<Record<string, string | undefined>>, port:
   if (!/^[A-Za-z0-9.-]+$/.test(host)) throw new ConfigError("ORBIT_WEB_DEPLOYMENT=governed needs ORBIT_WEB_AGENT_CONTROL_HOST (this container's name on the agent network)");
   const proxyPort = positiveInt(env.ORBIT_WEB_EGRESS_PROXY_PORT, 3128, "ORBIT_WEB_EGRESS_PROXY_PORT");
   if (proxyPort === port) throw new ConfigError("ORBIT_WEB_EGRESS_PROXY_PORT must differ from ORBIT_WEB_PORT");
-  return { deployment, runner, agentNetworks, proxyPort, agentControlHost: host };
+  const egressPrivateAllow = hostList(env.ORBIT_WEB_EGRESS_PRIVATE_ALLOW);
+  if (!egressPrivateAllow.every(isCidr)) throw new ConfigError("ORBIT_WEB_EGRESS_PRIVATE_ALLOW must be IPv4 CIDR ranges");
+  return { deployment, runner, agentNetworks, proxyPort, agentControlHost: host, egressPrivateAllow };
 }
 
 const positiveInt = (raw: string | undefined, fallback: number, name: string): number => {
@@ -205,6 +210,7 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): A
       gh: env.ORBIT_WEB_GH_BIN || "gh",
       git: env.ORBIT_WEB_GIT_BIN || "git",
       az: env.ORBIT_WEB_AZ_BIN || "az",
+      python: env.ORBIT_WEB_PYTHON_BIN || "python3",
       azureGitHelper: env.ORBIT_WEB_AZURE_GIT_HELPER || "/opt/orbit-web/docker/git-credential-azure-cli.mjs",
       node: process.execPath,
     },

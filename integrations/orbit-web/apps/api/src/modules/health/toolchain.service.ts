@@ -1,5 +1,5 @@
-// What is installed here: the claude, gh and git programs, the Orbit plugin, and the versions the image was built
-// with. Versions come from the image's build-info.json when it has one, else from the programs themselves.
+// What is installed here: the claude, gh and git programs, the Azure CLI and Python (both optional), the Orbit plugin,
+// and the versions the image was built with. Versions come from the image's build-info.json when it has one, else from the programs themselves.
 import { Inject, Injectable } from "@nestjs/common";
 import { ORBIT_WEB_VERSION, type BuildVersions, type ComponentCheck } from "@orbit-web/contracts";
 import { readFileSync } from "node:fs";
@@ -14,6 +14,7 @@ export interface Toolchain {
   gh: ComponentCheck;
   git: ComponentCheck;
   az: ComponentCheck;
+  python: ComponentCheck;
   orbitPlugin: ComponentCheck;
   versions: BuildVersions;
 }
@@ -26,6 +27,7 @@ interface BuildInfo {
   gh?: string;
   git?: string;
   az?: string;
+  python?: string;
 }
 
 const CACHE_MS = 30_000;
@@ -61,7 +63,7 @@ export class ToolchainService {
 
   private async probe(): Promise<Toolchain> {
     this.azure ??= this.version(this.config.binaries.az, ["version", "--output", "json"], azureEnv(this.config));
-    const [claude, gh, git, az] = await Promise.all([this.version(this.config.binaries.claude), this.version(this.config.binaries.gh), this.version(this.config.binaries.git), this.azure]);
+    const [claude, gh, git, az, python] = await Promise.all([this.version(this.config.binaries.claude), this.version(this.config.binaries.gh), this.version(this.config.binaries.git), this.azure, this.version(this.config.binaries.python)]);
     const plugin = this.plugin();
     const info = readJson<BuildInfo>(this.config.buildInfoFile) ?? {};
     return {
@@ -69,6 +71,7 @@ export class ToolchainService {
       gh: gh.check,
       git: git.check,
       az: az.check,
+      python: python.check,
       orbitPlugin: plugin.check,
       versions: {
         web: info.web ?? ORBIT_WEB_VERSION,
@@ -78,6 +81,7 @@ export class ToolchainService {
         gh: gh.version ?? info.gh ?? null,
         git: git.version ?? info.git ?? null,
         az: az.version ?? info.az ?? null,
+        python: python.version ?? info.python ?? null,
         node: process.versions.node,
       },
     };

@@ -114,6 +114,10 @@ async function main() {
   check("7. git is installed", versions.git.status === 0, versions.git.stdout.trim());
   check("   node is installed", versions.node.status === 0, versions.node.stdout.trim());
   check("   the Azure CLI is installed (optional component)", versions.az.status === 0, (/"azure-cli": "([^"]+)"/.exec(versions.az.stdout) ?? [])[1] ?? versions.az.stderr.trim().slice(0, 200));
+  // Claude Code's Python: the pinned CPython on PATH, with pip and venv, usable by the image's own (non-root) user.
+  const python = exec("python3", "-c", "import sys, venv, ensurepip; print(sys.version.split()[0])");
+  const venv = exec("sh", "-c", "python3 -m venv /tmp/smoke-venv && /tmp/smoke-venv/bin/python -m pip --version && rm -rf /tmp/smoke-venv");
+  check("   Python is installed for Claude Code (optional component: the pinned CPython, with pip and venv)", python.status === 0 && /^3\.\d+\.\d+$/.test(python.stdout.trim()) && venv.status === 0, `${python.stdout.trim()} ${venv.stdout.trim().split("\n").at(-1) ?? venv.stderr.trim().slice(0, 200)}`);
 
   const validate = exec("claude", "plugin", "validate", "/opt/orbit/plugin");
   check("8. the Orbit plugin is present and loadable (claude plugin validate)", validate.status === 0, validate.stdout.trim().split("\n").at(-1));

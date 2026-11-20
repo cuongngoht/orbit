@@ -81,7 +81,18 @@ export interface ClaudeRunOptions {
   maxBudgetUsd: number | null;
   // Paths the agent may not read or write through its file tools (the sign-ins, Orbit Web's own database).
   protectedDirs: string[];
+  // A governed run: whether the Constitution lets it run commands in its workspace (Bash), and what it is told about
+  // the agent gateway. Absent: as an ungoverned run.
+  execute?: boolean;
+  governanceNote?: string | null;
 }
+
+// A run under governance holds no credential at all: pushing is asked for through the agent gateway.
+export const GOVERNED_NOTE =
+  OPENING +
+  "Pushing and the GitHub CLI are not available to you here (there is no credential in this run, and they are refused by " +
+  "rule): never chain a push or a gh command into another command -- the whole command would be refused, with what " +
+  "came before it -- but commit on its own.";
 
 // Claude Code reads a rule path that starts with `//` as an absolute path (a single `/` is relative to the settings
 // file), and an Edit rule covers every built-in tool that writes a file.
@@ -101,7 +112,9 @@ function runSettings(o: ClaudeRunOptions): Record<string, unknown> {
 // like a `curl` would. Switched off, they are refused outright.
 export function claudeArgs(o: ClaudeRunOptions): string[] {
   const settings = runSettings(o);
-  const allowed = BASE_TOOLS;
+  const execute = o.execute !== false;
+  const allowed = execute ? BASE_TOOLS : BASE_TOOLS.filter((t) => t !== "Bash");
+  const governed = o.governanceNote !== undefined && o.governanceNote !== null;
   return [
     "-p",
     "--output-format",
@@ -122,8 +135,9 @@ export function claudeArgs(o: ClaudeRunOptions): string[] {
     ...denyRules(o),
     ...fileRules(o.protectedDirs),
     ...(o.webTools ? [] : WEB_TOOLS),
+    ...(execute ? [] : ["Bash"]),
     "--append-system-prompt",
-    [o.github ? WORKSPACE_NOTES.github : WORKSPACE_NOTES.local, ...(o.azure ? [AZURE_NOTE] : [])].join(" "),
+    (governed ? [GOVERNED_NOTE, o.governanceNote as string] : [o.github ? WORKSPACE_NOTES.github : WORKSPACE_NOTES.local, ...(o.azure ? [AZURE_NOTE] : [])]).join(" "),
     // The user's settings only: a repository's own .claude/settings.json is untrusted input and could set `env` (an
     // API base URL that would receive the credential) or hooks that run before any tool call.
     "--setting-sources",

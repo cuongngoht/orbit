@@ -2,6 +2,7 @@
 // privileged settings, and the audit record. The rules are governance-core's; this module binds them to the stores,
 // the HTTP routes and the clock.
 import { Module } from "@nestjs/common";
+import { HealthModule } from "../health/health.module.js";
 import { APP_GUARD } from "@nestjs/core";
 import { ApprovalService } from "./approvals.service.js";
 import { AuditController } from "./audit.controller.js";
@@ -19,9 +20,11 @@ import { OperatorService } from "./operator.service.js";
 import { PolicyService } from "./policy.service.js";
 import { PrincipalResolver } from "./principals.js";
 import { RegistryService } from "./registry.service.js";
+import { RunGovernanceService } from "./run-governance.service.js";
 import { PrivilegedSettingsGate } from "./settings-gate.js";
 
 @Module({
+  imports: [HealthModule],
   providers: [
     { provide: BOOTSTRAP_ANNOUNCER, useValue: stdoutAnnouncer },
     BootstrapCode,
@@ -36,11 +39,12 @@ import { PrivilegedSettingsGate } from "./settings-gate.js";
     FindingsService,
     IsolationService,
     EgressService,
+    RunGovernanceService,
     // After the Claude sign-in gate (its module is imported first): a signed-out Orbit Web answers every route with the
     // Claude sign-in, governance's or not.
     { provide: APP_GUARD, useClass: GovernanceGuard },
   ],
   controllers: [OperatorController, OperatorsController, AuditController, GovernanceController, AuditorController],
-  exports: [AuditService, OperatorService, PrincipalResolver, PolicyService, PrivilegedSettingsGate, ConstitutionService, RegistryService, ApprovalService, FindingsService, IsolationService],
+  exports: [AuditService, OperatorService, PrincipalResolver, PolicyService, PrivilegedSettingsGate, ConstitutionService, RegistryService, ApprovalService, FindingsService, IsolationService, RunGovernanceService],
 })
 export class GovernanceModule {}

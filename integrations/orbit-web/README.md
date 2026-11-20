@@ -71,6 +71,12 @@ CLI with `docker build --build-arg AZURE_CLI=0 …` (Azure DevOps then says it i
 | `OTEL_EXPORTER_OTLP_HEADERS` | unset | the collector's token, as OTLP headers (`Authorization=Bearer …`) |
 | any other `OTEL_*` | the image's | overrides one of the telemetry attributes the image declares, or adds one (`OTEL_RESOURCE_ATTRIBUTES`) |
 | `CLAUDE_CODE_ENABLE_TELEMETRY` | unset | `1` turns telemetry on for a `claude` started from a terminal in the container too (Orbit Web turns it on for its own runs once a collector is named) |
+| `ORBIT_WEB_DEPLOYMENT` | `single` | `governed`: the agent runs in a container of its own (`docker/compose.governed.yaml` sets this and the four below) -- [The governed deployment](#the-governed-deployment) |
+| `ORBIT_WEB_RUNNER` | -- | governed: the agent container's runner, `host:port` (`orbit-agent:7070`) |
+| `ORBIT_WEB_AGENT_NETWORKS` | -- | governed: the agent network, as CIDR; a request from it reaches the agent gateway alone |
+| `ORBIT_WEB_AGENT_CONTROL_HOST` | -- | governed: this container's name on the agent network (the gateway's and the proxy's host) |
+| `ORBIT_WEB_EGRESS_PROXY_PORT` | `3128` | governed: the egress proxy's port |
+| `ORBIT_WEB_EGRESS_PRIVATE_ALLOW` | unset | governed: internal IPv4 ranges (CIDR) the proxy may reach; none unless named -- the Constitution still decides each connection |
 
 **Telemetry.** With a collector named, every Claude Code process Orbit Web starts exports as a person's own Claude
 Code would with the same settings, and only Claude Code gets the variables (never git, gh, az or Orbit's own commands):
@@ -102,6 +108,12 @@ uid 10001) and private to it (mode 0700):
 | `/data/sessions/<session>/project-plugin/` | the chat's copy of its repository's skills, commands and agents, as instructions only | Orbit Web |
 | `/data/sessions/<session>/runs/` | a masked, bounded copy of each run's stream, for troubleshooting | Orbit Web |
 | `/data/home` | the user's home (caches the agent's tools make) | — |
+| `/data/governance` | governance's own database: the organization, operators and their sessions, the Constitution's revisions, agents, governed workspaces, approvals, findings, reports, and the hash-chained **audit record** -- deleting a chat never reaches it | Orbit Web |
+| `/data/repos/<session>.git` | Orbit Web's own bare copy of a chat's repository: what a push is made from (and, governed, what the workspace is cloned and fetched from) | git |
+| `/data/control` | the control plane's own room: its HOME for the CLIs it runs with a credential (governed) and a push's bundles in passing | Orbit Web |
+
+In the governed deployment the agent's container mounts only `claude`, `workspaces`, `sessions`, `orbit` and `home` (and
+`repos` read-only); a run's log is kept in `/data/app/run-logs/` instead of `/data/sessions/<session>/runs/`.
 
 A restart keeps all of it. A run that was going when the container stopped is shown as **interrupted** afterwards and
 is never started again by itself. Keep `hostname: orbit-web` (or `--hostname orbit-web`): Orbit's store names its
@@ -251,6 +263,42 @@ The chat says what was loaded ("Loaded from this repository: 2 skills, 1 command
 (*Loaded*, *Installed*, *Installing…*, *Not run*, *Failed* with the CLI's own words). Both switches are in
 Settings → Code.
 
+## Governance
+
+Governance is administered by **operators** -- people Orbit Web verifies itself. The Claude account opens the
+workspace; it is not an operator, and neither is the access token. Open **Governance** in the sidebar.
+
+- **The first owner.** While governance has no owner, Orbit Web prints a one-time code on its own standard output at
+  start: `docker compose logs orbit-web`. Enter it in Governance with the organization's name, your username and a
+  password (12+ characters). It works once, until Orbit Web restarts; it is never shown on a page, written to a file or
+  given to Claude Code. Locked out, or the log gone? On the container itself:
+  `docker compose exec -T orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js reset-password --username=<you> --owner < password.txt`
+  (also `status`, `init-owner --username=<u> --organization=<name>`, `verify-audit`). Every use is in the audit record.
+- **Operators and roles**: owner, security admin, policy editor, policy approver, auditor, agent operator. Roles are
+  read on every request; an operator never changes their own; the organization keeps one active owner. A session
+  lasts 12 hours (2 idle), in an HttpOnly cookie, and every change carries its CSRF token.
+- **The Company Constitution** is a JSON document (`apiVersion: orbit.governance/v1`) of rules over a closed set of
+  actions -- run an agent, read and write the workspace, run its commands, the web tools, network egress by
+  `host:port`, credentials, privileged settings, pushes, production -- each `allow`, `require_approval` or `deny`, the
+  default `deny`, the strictest winning. Start from the default (*Company Constitution → Start from the default*), then
+  validate, ask for approval, approve and publish. What a change loosens is worked out and shown before anybody approves
+  or publishes it; a **high-risk** change (loosening a sensitive action, weakening an obligation) is approved by somebody
+  who wrote none of it. A published revision never changes; a rollback is a copy published again. Overlays narrow it for
+  one project, workspace or agent. *Simulate* asks a revision what it would decide, recording nothing.
+- **Governed workspaces.** Register an agent (*Agents & workspaces*) and place a chat under it: from then on its runs
+  are decided first -- the agent registered and active, a Constitution published, the agent's isolation checked just
+  now (or the Constitution says isolation is optional), `agent.run.start` allowed -- and bound to it; it holds no CLI
+  sign-in, and asks the **agent gateway** for anything more. A chat nobody governs runs as before.
+- **Approvals.** A protected action -- a push -- waits in *Approvals* with exactly what it is (repository, remote,
+  branch, commit, where the remote's branch stood) and its fingerprint; approving binds that fingerprint, spends it once
+  and carries the action out; anything that moved since is refused and asked for again.
+- **Evidence.** *Policy decisions*, the *Audit timeline* (hash-chained, verified on demand and at every start),
+  *Security findings* worked out from the record by rules (each citing its records), and *Daily reports* (by hand, or
+  generated after a day ends when the Constitution asks).
+- **Privileged switches**: turning on *Let Claude Code push … with this GitHub sign-in*, *… use this Azure sign-in* or
+  *Run project plugins* needs an operator with that permission (and the Constitution's decision once one is published);
+  turning one off needs nobody. A request from anyone else -- the agent's shell included -- is refused and recorded.
+
 ## Connectors: GitHub and Azure DevOps
 
 **Settings → Connectors** is a table of the two repository sources -- connector, type (the CLI that signs in),
@@ -296,6 +344,46 @@ code the Azure CLI printed; enter it there and sign in. *Connected* is what `az 
   Claude Code's `az` finds the profile and may run any `az` command as that account in any chat; with it off, `az` is
   refused to it and its file tools are refused `/data/azure`. Orbit's own Azure connections (project reports, ADR 0043)
   never use this sign-in: Orbit signs in through its own Azure CLI profile, in its store.
+
+### Pushing a chat's branch (GitHub and Azure DevOps)
+
+**Push** in a chat's header (a chat whose repository came from GitHub or Azure DevOps) pushes the chat's working branch
+-- by Orbit Web itself, with the source's own sign-in (GitHub CLI's, or the Azure CLI's one-shot helper), never by
+Claude Code. It is a protected action, so it is asked for by an operator signed in to Governance: *Prepare the push*
+reads the branch's commit from the workspace, carries it into Orbit Web's own copy of the repository (every object
+checked), asks the remote where the branch stands, and shows exactly what would be pushed and its fingerprint; *Approve
+and push* pushes it (an operator without the right to approve leaves it in *Approvals*). Never forced -- what is not a
+fast-forward of the remote's branch is refused by git, so nobody's work is overwritten --, never to the branch the chat
+started from, the repository's default or a protected branch. A governed agent asks for the same push through its
+gateway; a person approves it the same way.
+
+### Python
+
+The image has CPython 3.15.2 (python-build-standalone, pinned by SHA-256) with pip and venv, as `python3`, `python`
+and `pip` for Claude Code. It is root's: a project installs into its own virtual environment (`python3 -m venv .venv`)
+or with `pip --user`. `docker build --build-arg AGENT_PYTHON=0 …` leaves it out (the System card then says so).
+
+## The governed deployment
+
+```bash
+cd integrations/orbit-web/docker && docker compose -f compose.governed.yaml up -d --build
+docker compose -f compose.governed.yaml logs orbit-web     # the first owner's one-time code
+```
+
+The same image as two containers. **orbit-web**, the control plane: the API and the page, both databases, the CLIs'
+sign-ins, Orbit Web's copies of the repositories and the **egress proxy**. **orbit-agent**: Claude Code and every
+program that touches a workspace, started by the control plane through a runner. The agent's container mounts the
+Claude configuration, the workspaces, the sessions, Orbit's store and a home -- and the repositories' copies read-only
+-- on a read-only root; it has no Orbit Web database, no governance record and no sign-in of GitHub or Azure to read.
+Its network is internal: it reaches the control plane's agent gateway and proxy and nothing else, and public names do
+not resolve. Every connection it makes leaves through the proxy as a decision of the Constitution (none until one is
+published: publish the default first), never to an address off the public internet. The control plane never writes or
+runs anything in a directory the agent can write. Before every strict run Orbit Web checks the agent's container
+(Governance → Overview shows what was checked) and records it.
+
+In this deployment the GitHub and Azure switches are refused -- a push is Orbit Web's (above) -- and declared
+marketplace plugins cannot be fetched unless the Constitution allows their host. Chats nobody governs run here too,
+isolated the same way and bound the same way for the proxy.
 
 ## How it works
 
@@ -403,18 +491,31 @@ For one person, on their own machine, by default:
   access gate and the Claude sign-in gate let through, the token (32 random bytes, in the URL's fragment) names one
   share, and the snapshot holds the conversation alone -- tools by their title unless their owner shares what they did,
   every text masked again, no id of the chat -- served `no-store` and `noindex`.
+- **Governance** (above): operators verified by Orbit Web, the Company Constitution deciding every governed run and
+  protected action, approvals spent once, and a hash-chained audit record apart from the chats' database. The agent is
+  never an operator: no request it can make -- with its run's token or without -- reaches a governance route, turns a
+  credential switch on, or approves anything; every attempt is refused and recorded.
 - **The image**: a non-root user, `cap_drop: ALL`, `no-new-privileges`, no Docker socket, no credential in any layer.
 
-**The limit, said plainly.** The coding agent's shell, the CLIs' sign-ins and Orbit Web run in **one container as one
-user**. Claude Code's tools are a coding agent's: it runs commands in the repository you opened, and that repository's
-contents are untrusted input to it. The environment scrub, the deny rules (`git push`, `gh`, reading the sign-in
-directories), auto mode's classifier, `--setting-sources user` (a repository's own `.claude/settings.json` is never
-read) and the private directories are **defence in depth, not isolation**: a determined prompt injection in a
-repository could still reach the GitHub CLI's stored token, the Azure CLI's (whether or not Claude Code is allowed to
-use them), the telemetry collector's token (it is in Claude Code's environment) or Orbit Web's local API -- through which it could also turn on the switches that hand it a sign-in. With
-GitHub's switch on, it pushes and opens pull requests as you by design. Open repositories you trust, keep *Run project plugins* off unless you trust them
-too, keep the port on loopback, and disconnect a source when you are done. Separating the sign-ins from the code
-execution (another container or user) is work for a later version.
+**The limit, said plainly.**
+
+- **The single deployment** (`docker/compose.yaml`): the coding agent's shell, the CLIs' sign-ins, governance's records
+  and Orbit Web run in **one container as one user**. The API holds -- the agent cannot turn a switch on or administer
+  governance through it -- but the files do not: a determined prompt injection could still read the GitHub CLI's stored
+  token, the Azure CLI's, the telemetry collector's token, or governance's database, and change it. The environment
+  scrub, the deny rules, auto mode's classifier, `--setting-sources user` and the private directories are **defence in
+  depth, not isolation**; a governed workspace refuses to run here while the Constitution requires isolation. With
+  GitHub's switch on, Claude Code pushes and opens pull requests as you by design.
+- **The governed deployment** (`docker/compose.governed.yaml`) holds at the container: the databases, the sign-ins and
+  the control plane's room are not in the agent's container, and its only way out is the proxy (the security lab,
+  `tests/security-lab/`, shows each attack PREVENTED but one). That one: **every governed workspace shares the one agent
+  container**, so an agent can read another workspace's files on disk (the gateway refuses another workspace's
+  approvals, the disk does not) -- run trust domains that must not see each other as separate deployments. The Claude
+  account's configuration is necessarily readable by the agent, and the model API is reachable by design. The
+  isolation check is the agent container's own answer: a check of the wiring, not proof against a runner the agent has
+  taken over. The audit chain is tamper evidence on this host, not proof against whoever controls the host.
+- Open repositories you trust, keep *Run project plugins* off unless you trust them too, keep the port on loopback, and
+  disconnect a source when you are done.
 
 ## Troubleshooting
 
@@ -444,6 +545,10 @@ execution (another container or user) is work for a later version.
 | Disk use grows | delete chats you no longer need (removes their workspaces); `docker system df -v` |
 | Build behind a proxy | `node scripts/build-image.mjs --ca-file=<the proxy CA>` |
 | Orbit panel says not seated / unavailable | the workspace is seated when it is prepared; the panel's message quotes Orbit |
+| Turning on a GitHub/Azure switch says *needs an Orbit operator* | sign in under Governance (its first owner: the code in `docker compose logs orbit-web`) |
+| A governed chat's run is refused | its message says why: no Constitution published, the agent suspended, or isolation not proven where it is required (the single deployment) |
+| *Push* says nothing is allowed | publish a Constitution first (Governance → Company Constitution); a push needs an operator to approve it |
+| In the governed deployment Claude Code cannot reach a host | every connection is the Constitution's decision: *Policy decisions* shows the refusal; allow that `host:port` (a high-risk change) |
 
 ## Develop and test
 
@@ -460,6 +565,8 @@ npm run dev -w @orbit-web/web  # the app on :5173, /api proxied to :3000
 | integration, mocked processes | `apps/api/tests/integration/*.spec.ts` | the real API over HTTP and both SSE streams with claude, gh and `az rest` scripted; git and Orbit's CLIs run for real; chats with and without a repository, Azure DevOps listing and clone (no credential in `.git/config`), a repository's skills and plugins, the Claude sign-in gate over every route the application declares |
 | web | `apps/web/src/**/*.spec.tsx` | the sign-in page, the workspace (sidebar, a new session and its pickers, the app stream), an open chat (streaming, tools, Stop, the plan card), Settings (connectors and their device sign-ins, Code, Skills, Plugins), the diff and the Orbit panel |
 | Docker | `tests/docker/smoke.mjs` | the image builds, starts, serves, holds the four programs, a loadable plugin and the Azure Repos credential helper, opens on the Claude sign-in with every other route closed, persists across restarts (with a stand-in Claude sign-in) |
+| governance | `packages/governance-core/src/*.spec.ts`, `apps/api/tests/integration/governance-*.spec.ts`, `apps/api/src/runner/*.spec.ts`, `apps/api/src/infra/egress/*.spec.ts` | the decision, lifecycle, impact, approvals, audit chain and auditor as pure rules; operators, the first owner and the offline terminal; the Constitution's lifecycle over HTTP; governed runs, the gateway and pushes to GitHub (a local remote) and Azure DevOps; the runner, the isolation check and the egress proxy |
+| security lab | `tests/security-lab/run.mjs` | the governed deployment for real (Docker): the 20-step demonstration and ten attacks from the agent's own container, each verdict read outside the agent; results in `results/0.8.0` |
 | real | `tests/acceptance/` | one capped real run with a real Claude model; see its README |
 
 Specs are named `*.spec.ts(x)` and live outside any `test/` directory, so the plugin's own `node --test` never collects

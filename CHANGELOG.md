@@ -2,8 +2,49 @@
 
 ## Orbit Web 0.8.0
 
-Orbit Web becomes a Claude Code workspace behind one sign-in: your Claude account (ADR 0061, ADR 0062). The plugin it
-bundles stays 0.6.0 and its archive is unchanged; nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
+Orbit Web becomes a Claude Code workspace behind one sign-in: your Claude account (ADR 0061, ADR 0062) -- and gains
+governance: operators verified apart from that sign-in, a Company Constitution that decides, a governed deployment that
+holds, and an audit record that shows (ADR 0063). The plugin it bundles stays 0.6.0 and its archive is unchanged;
+nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
+
+- **Governance: operators, verified by Orbit Web** (ADR 0063). The Claude account opens the workspace; governance is
+  administered by operators -- a local credential (scrypt), a server-side session (HttpOnly, SameSite=Strict, idle and
+  absolute expiry, revocation, a CSRF token), six roles read on every request, never from a request. The first owner
+  is enrolled with a one-time code printed on the control plane's own log, spent once; an offline terminal
+  (`cli/governance.js`) recovers an owner and checks the audit chain. The access token and share links open nothing of
+  governance.
+- **The Company Constitution.** A declarative policy (`orbit.governance/v1`) over a closed set of actions, each saying
+  where it is enforced (boundary, control, runtime); default deny; deny > approval > allow; overlays only narrow; an
+  agent can never be granted authority over its own governance. Its revisions go draft → validated → pending approval
+  → approved → published → superseded, each move recorded with the digest read; what a change loosens is worked out
+  from the two policies, and a high-risk change is approved by somebody who wrote none of it. Published revisions never
+  change (the database refuses it); a rollback is a new publication. Simulation records nothing.
+- **Governed workspaces and the governed deployment.** A chat an operator places under a registered agent runs only after
+  a recorded decision (agent active, Constitution published, isolation just checked, `agent.run.start` allowed), bound
+  to a run token, holding no CLI sign-in. `docker/compose.governed.yaml` runs the agent in a container of its own: no
+  database, no governance record, no sign-in, a read-only root, an internal network whose only way out is the control
+  plane's proxy (each connection a decision of the Constitution, never off the public internet), checked by canaries
+  before every strict run. In the single container governance holds at the API, not at the files, and strict runs are
+  refused while isolation is required.
+- **Privileged switches.** Turning on GitHub's or Azure's sign-in for Claude Code, or project plugins, needs an operator
+  with that permission (and the Constitution's decision); turning one off needs nobody. The agent's own requests are
+  refused and recorded -- ADR 0062's "a misled agent could turn either switch on itself" no longer holds.
+- **Push a chat's branch to GitHub or Azure DevOps.** *Push* in a chat: Orbit Web carries the branch's commit into its
+  own copy of the repository, shows exactly what would be pushed, and pushes it after an operator approves that
+  fingerprint -- with GitHub CLI's helper or the Azure CLI's one-shot helper, never forced, never to the base, default or
+  a protected branch. A governed agent asks for the same push through its gateway. An approval is spent once; a replay
+  is refused and recorded.
+- **The audit record, the auditor, the console.** A hash-chained record in governance's own database (a chat's deletion
+  never reaches it), checked at every start; findings worked out from it by rules, each citing its records; daily
+  reports by hand or schedule. Governance in the sidebar: overview, Constitution, users and roles, agents and
+  workspaces, decisions, approvals, audit timeline, findings, reports.
+- **Python 3.15.2 in the image** (python-build-standalone, SHA-256 per architecture) with pip and venv, for Claude Code;
+  the System card reports it.
+- **The security lab** (`tests/security-lab/run.mjs`): the governed deployment started for real and attacked from the
+  agent's own container; 20 demonstration steps PASS; attacks on the switches, the Constitution, owner rights,
+  administrative sessions, credentials, prohibited capabilities, approval replay, the audit record and egress
+  PREVENTED; reading another governed workspace's files on disk VULNERABLE (one agent container for every governed
+  workspace -- said in the README).
 
 - **Your Claude account is Orbit Web's sign-in, and only a Claude account** (ADR 0061). The page opens on *Sign in to
   Orbit Web* (*Continue with Claude*: `claude auth login --claudeai`) and on nothing else; a global API guard answers
@@ -112,10 +153,11 @@ bundles stays 0.6.0 and its archive is unchanged; nothing under `src/`, `cli/`, 
   (`/api/sessions/:id/events`, replayed after `Last-Event-ID`) and the app stream (`/api/events`: the sidebar's chats,
   the connectors' sign-ins, the customizations -- notifications that replace polling). Adding an event is a catalog row
   and its payload type.
-- **Checked.** 298 deterministic tests (contracts 14, API unit 103, API integration with mocked processes 74, web 107),
-  `scripts/ci.mjs` green; the Docker smoke test also checks the Azure Repos helper and the runtime user's file rights.
-  The real-model acceptance run is updated for the new API; a 0.8.0 run needs a person's Claude sign-in volume and is
-  not recorded yet.
+- **Checked.** 389 deterministic tests (governance-core 24, contracts 14, API unit 120, API integration with mocked
+  processes 110, web 121), `scripts/ci.mjs` green; the Docker smoke test (29 checks) also checks the Azure Repos helper,
+  the runtime user's file rights and Python; the security lab's governed run is recorded in
+  `tests/security-lab/results/0.8.0`. The real-model runs (the acceptance run, and the governed deployment with a real
+  model) need a person's Claude sign-in volume and are not recorded yet.
 
 ## Orbit Web 0.7.0
 

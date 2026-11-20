@@ -9,7 +9,8 @@ cũ"); in the chat, choose Azure or GitHub, then the repository; on a repository
 project's skills and plugins; the SSE streams redesigned as an event-driven architecture "so that later changes are
 easier"; and only two modes, Autonomous (Claude Code's auto mode) and Plan (its plan mode). Builds on ADR 0060 and ADR
 0061, for Orbit Web only. No engine contract changes: nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/`
-changes, the plugin stays 0.6.0, and the plugin archive is unchanged (`integrations/` is export-ignored).
+changes, the plugin stays 0.6.0, and the plugin archive is unchanged (`integrations/` is export-ignored). Amended by
+ADR 0063: the credential switches are an operator's, and a governed deployment separates the agent from the sign-ins.
 
 ## Context
 

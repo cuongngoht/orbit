@@ -124,8 +124,10 @@ or changes an audit record.
   commit as a bundle the agent's git writes, fetched with every object checked into the control plane's copy; where the
   remote's branch stands; a decision of `repository.push` on exactly that; an approval of its fingerprint by a person;
   the approval spent before the push against the fingerprint taken again; the push made with the source's own sign-in
-  (GitHub CLI's helper, or the Azure CLI's one-shot helper), never forced, never to the base, default or a protected
-  branch, and refused when the default cannot be established. A replay, or an approval presented for another action, is
+  (GitHub CLI's helper, or the Azure CLI's one-shot helper), never forced, never to the default or a protected branch,
+  and refused when the default cannot be established (`push-target.ts` decides it alone). The branch a chat started
+  from is pushed like any other when it is a working branch -- a story branch, neither default nor protected --
+  because the approval of the exact commit and git's refusal of what is not a fast-forward already guard it. A replay, or an approval presented for another action, is
   refused and recorded.
 
 ### The image's Python

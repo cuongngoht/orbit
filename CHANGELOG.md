@@ -36,8 +36,8 @@ nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
   refused and recorded -- ADR 0062's "a misled agent could turn either switch on itself" no longer holds.
 - **Push a chat's branch to GitHub or Azure DevOps.** *Push* in a chat: Orbit Web carries the branch's commit into its
   own copy of the repository, shows exactly what would be pushed, and pushes it after an operator approves that
-  fingerprint -- with GitHub CLI's helper or the Azure CLI's one-shot helper, never forced, never to the base, default or
-  a protected branch. A governed agent asks for the same push through its gateway. An approval is spent once; a replay
+  fingerprint -- with GitHub CLI's helper or the Azure CLI's one-shot helper, never forced, never to the default or a
+  protected branch (a chat started from a story branch pushes to it). A governed agent asks for the same push through its gateway. An approval is spent once; a replay
   is refused and recorded.
 - **The audit record, the auditor, the console.** A hash-chained record in governance's own database (a chat's deletion
   never reaches it), checked at every start; findings worked out from it by rules, each citing its records; daily

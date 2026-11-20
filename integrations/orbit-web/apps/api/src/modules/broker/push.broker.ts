@@ -32,6 +32,7 @@ import { GitGateway } from "../changes/git.gateway.js";
 import { ApprovalService, type ExecutionResult, type Executor } from "../governance/approvals.service.js";
 import type { GovernanceContext } from "../governance/principal.js";
 import { PolicyService } from "../governance/policy.service.js";
+import { pushRefusal } from "./push-target.js";
 import { MirrorService } from "../sources/mirror.service.js";
 import { SourcesService } from "../sources/sources.module.js";
 
@@ -130,21 +131,16 @@ export class PushBroker implements Executor, OnModuleInit {
 
   // ---- steps ------------------------------------------------------------------------------------------------------
 
-  // Never the branch the chat started from, the repository's default, or a branch the source protects: a chat's work
-  // arrives there by a pull request. Branch names are compared as the more lenient source does (Azure DevOps ignores
-  // case), and when the default cannot be established -- neither the source's listing nor the remote's own HEAD says it
-  // -- nothing is pushed.
+  // Where the branch may go is push-target.ts's to decide (never the default, never a protected branch, nothing when
+  // the default is unknown); this asks the source and the remote what it needs to.
   private async refuseProtectedBranch(session: SessionRecord, branch: string): Promise<void> {
-    const same = (a: string | null | undefined) => typeof a === "string" && a.toLowerCase() === branch.toLowerCase();
-    if (same(session.branch)) throw conflict("default_branch", `${branch} is the branch this chat started from: a chat pushes its own branch, and its work reaches ${session.branch} by a pull request.`);
     const listed = await this.sources.branches(session.source as "github" | "azure", session.repositoryId as string).catch((err: unknown) => {
       throw new ApiError(HttpStatus.BAD_GATEWAY, "branches_unavailable", `The repository's branches could not be read, so nothing is pushed: ${err instanceof Error ? err.message : String(err)}`);
     });
     const remote = await this.mirror.remoteDefault(session);
     const defaults = [listed.branches.find((b) => b.isDefault)?.name ?? null, remote.ok ? remote.branch : null].filter((b): b is string => b !== null);
-    if (defaults.length === 0) throw new ApiError(HttpStatus.BAD_GATEWAY, "default_unknown", "The repository's default branch could not be established (neither its listing nor its own HEAD names one), so nothing is pushed.");
-    if (defaults.some(same)) throw conflict("default_branch", `${branch} is the repository's default branch: a chat never pushes to it directly.`);
-    if (listed.branches.some((b) => b.protected && same(b.name))) throw conflict("protected_branch", `${branch} is a protected branch of the repository: a chat never pushes to it directly.`);
+    const refusal = pushRefusal(branch, defaults, listed.branches);
+    if (refusal !== null) throw refusal;
   }
 
   private async commitOf(session: SessionRecord, branch: string, expected: string | null): Promise<string> {

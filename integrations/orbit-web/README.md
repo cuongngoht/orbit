@@ -358,9 +358,10 @@ Claude Code. It is a protected action, so it is asked for by an operator signed 
 reads the branch's commit from the workspace, carries it into Orbit Web's own copy of the repository (every object
 checked), asks the remote where the branch stands, and shows exactly what would be pushed and its fingerprint; *Approve
 and push* pushes it (an operator without the right to approve leaves it in *Approvals*). Never forced -- what is not a
-fast-forward of the remote's branch is refused by git, so nobody's work is overwritten --, never to the branch the chat
-started from, the repository's default or a protected branch. A governed agent asks for the same push through its
-gateway; a person approves it the same way.
+fast-forward of the remote's branch is refused by git, so nobody's work is overwritten --, never to the repository's
+default or a protected branch, and nowhere when the default cannot be established. A chat started from a working
+branch (a story branch, neither default nor protected) pushes to that branch like any other. A governed agent asks for
+the same push through its gateway; a person approves it the same way.
 
 ### Python
 

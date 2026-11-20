@@ -148,7 +148,9 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
       azure,
       github,
       maxBudgetUsd: this.config.maxBudgetUsd,
-      protectedDirs: [this.config.data.claude, this.config.data.github, this.config.data.app, ...(azure ? [] : [this.config.data.azure])],
+      // Governance's records and the control plane's own room too. In the single deployment these rules are defence in
+      // depth only -- the agent shares this container's user with them (README, "The limit, said plainly").
+      protectedDirs: [this.config.data.claude, this.config.data.github, this.config.data.app, this.config.data.governance, this.config.data.control, ...(azure ? [] : [this.config.data.azure])],
     });
     this.runs.start({ id: runId, sessionId: session.id, model: session.model, effort: session.effort, mode: session.mode, resumed: resume });
     this.setStatus(session.id, "running", null, runId);

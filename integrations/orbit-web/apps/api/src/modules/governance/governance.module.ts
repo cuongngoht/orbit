@@ -3,14 +3,21 @@
 // the HTTP routes and the clock.
 import { Module } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
+import { ApprovalService } from "./approvals.service.js";
 import { AuditController } from "./audit.controller.js";
+import { AuditorController } from "./auditor.controller.js";
 import { AuditService } from "./audit.service.js";
 import { BOOTSTRAP_ANNOUNCER, BootstrapCode, stdoutAnnouncer } from "./bootstrap-code.js";
+import { ConstitutionService } from "./constitution.service.js";
+import { FindingsService } from "./findings.service.js";
+import { GovernanceController } from "./governance.controller.js";
 import { GovernanceGuard } from "./governance.guard.js";
+import { IsolationService } from "./isolation.service.js";
 import { OperatorController, OperatorsController } from "./operator.controller.js";
 import { OperatorService } from "./operator.service.js";
 import { PolicyService } from "./policy.service.js";
 import { PrincipalResolver } from "./principals.js";
+import { RegistryService } from "./registry.service.js";
 import { PrivilegedSettingsGate } from "./settings-gate.js";
 
 @Module({
@@ -22,11 +29,16 @@ import { PrivilegedSettingsGate } from "./settings-gate.js";
     PrincipalResolver,
     PolicyService,
     PrivilegedSettingsGate,
+    ConstitutionService,
+    RegistryService,
+    ApprovalService,
+    FindingsService,
+    IsolationService,
     // After the Claude sign-in gate (its module is imported first): a signed-out Orbit Web answers every route with the
     // Claude sign-in, governance's or not.
     { provide: APP_GUARD, useClass: GovernanceGuard },
   ],
-  controllers: [OperatorController, OperatorsController, AuditController],
-  exports: [AuditService, OperatorService, PrincipalResolver, PolicyService, PrivilegedSettingsGate],
+  controllers: [OperatorController, OperatorsController, AuditController, GovernanceController, AuditorController],
+  exports: [AuditService, OperatorService, PrincipalResolver, PolicyService, PrivilegedSettingsGate, ConstitutionService, RegistryService, ApprovalService, FindingsService, IsolationService],
 })
 export class GovernanceModule {}

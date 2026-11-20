@@ -17,6 +17,9 @@ import { ClaudeAuthService } from "../claude-auth/claude-auth.service.js";
 import { ClaudeRunnerService } from "../claude-runner/claude-runner.service.js";
 import { SettingsService } from "../settings/settings.module.js";
 import { SourcesService } from "../sources/sources.module.js";
+import { AuditService } from "../governance/audit.service.js";
+import type { GovernanceContext } from "../governance/principal.js";
+import { RegistryService } from "../governance/registry.service.js";
 import { WorkspaceService } from "./workspace.service.js";
 
 export const summaryOf = (s: SessionRecord): SessionSummary => ({
@@ -55,6 +58,8 @@ export class SessionsService {
     @Inject(SourcesService) private readonly sources: SourcesService,
     @Inject(WorkspaceService) private readonly workspaces: WorkspaceService,
     @Inject(ClaudeRunnerService) private readonly runner: ClaudeRunnerService,
+    @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(RegistryService) private readonly registry: RegistryService,
   ) {}
 
   list(): SessionSummary[] {
@@ -105,12 +110,14 @@ export class SessionsService {
   }
 
   // Removes the chat, its events and its workspace. Claude Code's own transcript and Orbit's store keep what they
-  // recorded, as each of them keeps it.
-  delete(id: string): void {
+  // recorded, as each of them keeps it -- and so does governance: its records are in a database of their own, which a
+  // chat's deletion never reaches. The deletion itself is recorded there first; if it cannot be, nothing is deleted.
+  delete(id: string, ctx: GovernanceContext): void {
     const s = this.record(id);
     if (s.status === "running" || this.runner.isRunning(id)) throw conflict("run_active", "Stop the run before deleting this chat.");
     if (this.runner.isBusy(id)) throw conflict("workspace_busy", "Wait until the working branch has moved before deleting this chat.");
     if (s.status === "preparing") throw conflict("workspace_preparing", "Wait until the workspace is prepared (or fails) before deleting this chat.");
+    this.audit.record(ctx, { type: "session.deleted", outcome: "deleted", workspaceId: id, data: { scope: this.registry.of(id).scope } });
     this.sessions.delete(id);
     this.workspaces.remove(id);
     rmSync(join(this.config.data.sessions, id), { recursive: true, force: true });

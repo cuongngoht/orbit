@@ -174,6 +174,15 @@ describe("operators, roles and sessions", () => {
     assert.equal(code(unknown), "invalid_credentials", "an unknown name is told nothing more");
   });
 
+  test("guesses sent all at once count as they arrive: no more than five are ever checked", async () => {
+    await owner.send("POST", "/api/governance/operators", { username: "burst", password: "the burst password", roles: [] });
+    const replies = await Promise.all(Array.from({ length: 12 }, (_, i) => h.send("POST", "/api/operator/login", { username: "burst", password: `guess number ${i}` })));
+    const codes = replies.map(code);
+    assert.equal(codes.filter((c) => c === "invalid_credentials").length, 5, codes.join(","));
+    assert.equal(codes.filter((c) => c === "sign_in_locked").length, 7, codes.join(","));
+    assert.equal(code(await h.send("POST", "/api/operator/login", { username: "burst", password: "the burst password" })), "sign_in_locked");
+  });
+
   test("signing out ends the session; changing a password ends the others", async () => {
     const a = await h.signIn("audrey", "a long auditor password");
     const b = await h.signIn("audrey", "a long auditor password");
@@ -198,7 +207,7 @@ describe("operators, roles and sessions", () => {
       ["human", "githubForClaude", true, "authorized"],
     ]);
     const list = (await owner.get("/api/governance/operators")).body as OperatorList;
-    assert.deepEqual(list.operators.map((o) => o.username), ["owner", "audrey", "eddie", "olga", "lockme"]);
+    assert.deepEqual(list.operators.map((o) => o.username), ["owner", "audrey", "eddie", "olga", "lockme", "burst"]);
   });
 });
 

@@ -61,6 +61,9 @@ export interface OpenedSession {
 
 @Injectable()
 export class OperatorService implements OnApplicationBootstrap {
+  // Sign-in attempts per name whose password is being checked right now (reserve/release).
+  private readonly inFlight = new Map<string, number>();
+
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(GovernanceDatabase) private readonly database: GovernanceDatabase,
@@ -144,13 +147,21 @@ export class OperatorService implements OnApplicationBootstrap {
 
   async login(ctx: GovernanceContext, body: unknown): Promise<OpenedSession> {
     const req = accepted(checkLogin(body));
-    const lockedUntil = this.lockedUntil(req.username);
+    // An attempt is RESERVED before the slow password check, so that guesses sent all at once count against the limit
+    // as they arrive -- not only once each has been checked.
+    const lockedUntil = this.reserve(req.username);
     if (lockedUntil !== null) {
       this.audit.record(ctx, { type: "operator.sign_in.failed", outcome: "refused", data: { username: req.username, cause: "locked" } });
-      throw new ApiError(HttpStatus.TOO_MANY_REQUESTS, "sign_in_locked", `Too many failed sign-ins for this name: try again after ${lockedUntil}.`);
+      throw new ApiError(HttpStatus.TOO_MANY_REQUESTS, "sign_in_locked", `Too many sign-in attempts for this name: try again after ${lockedUntil}.`);
     }
-    const found = this.operators.byUsername(req.username);
-    const ok = found === null ? await verifyDecoy(req.password) : await verifyPassword(req.password, found.passwordHash);
+    let ok: boolean;
+    let found: OperatorRecord | null;
+    try {
+      found = this.operators.byUsername(req.username);
+      ok = found === null ? await verifyDecoy(req.password) : await verifyPassword(req.password, found.passwordHash);
+    } finally {
+      this.release(req.username);
+    }
     const operator = this.operators.byUsername(req.username);
     if (!ok || operator === null || operator.passwordHash !== found?.passwordHash) {
       this.database.transaction(() => {
@@ -313,6 +324,25 @@ export class OperatorService implements OnApplicationBootstrap {
   private lockedUntil(username: string): string | null {
     const f = this.operators.failures(username);
     return f?.lockedUntil !== null && f?.lockedUntil !== undefined && Date.parse(f.lockedUntil) > Date.now() ? f.lockedUntil : null;
+  }
+
+  // Takes one attempt for `username`, synchronously: refused (the time the name opens again) when the failures already
+  // recorded and the attempts still being checked reach the limit.
+  private reserve(username: string): string | null {
+    const locked = this.lockedUntil(username);
+    if (locked !== null) return locked;
+    const f = this.operators.failures(username);
+    const recent = f !== null && Date.now() - Date.parse(f.firstAt) <= FAILURE_WINDOW_MS ? f.failures : 0;
+    const checking = this.inFlight.get(username) ?? 0;
+    if (recent + checking >= LOCK_AFTER) return new Date(Date.now() + LOCK_MS).toISOString();
+    this.inFlight.set(username, checking + 1);
+    return null;
+  }
+
+  private release(username: string): void {
+    const left = (this.inFlight.get(username) ?? 1) - 1;
+    if (left <= 0) this.inFlight.delete(username);
+    else this.inFlight.set(username, left);
   }
 
   private recordFailure(username: string): void {

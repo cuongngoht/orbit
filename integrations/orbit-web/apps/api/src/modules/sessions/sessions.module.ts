@@ -1,10 +1,13 @@
-import { Body, Controller, Delete, Get, HttpCode, Inject, Module, Param, Patch, Post } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Inject, Module, Param, Patch, Post, Req } from "@nestjs/common";
 import type { SessionDetail, SessionSummary, WorkBranches } from "@orbit-web/contracts";
+import type { Request } from "express";
 import { AzureAuthModule } from "../azure-auth/azure-auth.module.js";
 import { ChangesModule } from "../changes/changes.module.js";
 import { ClaudeAuthModule } from "../claude-auth/claude-auth.module.js";
 import { ClaudeRunnerModule } from "../claude-runner/claude-runner.module.js";
 import { GithubModule } from "../github/github.module.js";
+import { GovernanceModule } from "../governance/governance.module.js";
+import { PrincipalResolver } from "../governance/principals.js";
 import { OrbitModule } from "../orbit/orbit.module.js";
 import { ProjectModule } from "../project/project.module.js";
 import { SettingsModule } from "../settings/settings.module.js";
@@ -19,6 +22,7 @@ export class SessionsController {
   constructor(
     @Inject(SessionsService) private readonly sessions: SessionsService,
     @Inject(BranchService) private readonly branches: BranchService,
+    @Inject(PrincipalResolver) private readonly principals: PrincipalResolver,
   ) {}
 
   @Get()
@@ -56,13 +60,13 @@ export class SessionsController {
 
   @Delete(":id")
   @HttpCode(204)
-  remove(@Param("id") id: string): void {
-    this.sessions.delete(id);
+  remove(@Req() req: Request, @Param("id") id: string): void {
+    this.sessions.delete(id, this.principals.context(req));
   }
 }
 
 @Module({
-  imports: [ClaudeAuthModule, GithubModule, AzureAuthModule, SourcesModule, ChangesModule, ClaudeRunnerModule, OrbitModule, ProjectModule, SettingsModule],
+  imports: [ClaudeAuthModule, GithubModule, AzureAuthModule, SourcesModule, ChangesModule, ClaudeRunnerModule, OrbitModule, ProjectModule, SettingsModule, GovernanceModule],
   providers: [SessionsService, WorkspaceService, BranchService, SessionDirectory],
   controllers: [SessionsController],
   exports: [SessionsService],

@@ -65,7 +65,7 @@ export const AUDIT_EVENTS = {
   "settings.privileged.refused": row("A change of a privileged setting was refused.", "setting", "cause"),
   "isolation.attested": row("The agent runtime's isolation was checked and held.", "runner", "checks"),
   "isolation.failed": row("The agent runtime's isolation could not be shown.", "cause"),
-  "session.deleted": row("A chat was deleted; its governance records stay."),
+  "session.deleted": row("A chat was deleted; its governance records stay.", "scope"),
   "audit.verified": row("The audit chain was checked and held.", "count", "head"),
   "audit.integrity.failed": row("The audit chain does not hold.", "brokenAt", "cause"),
   "finding.status.changed": row("A finding's handling was changed.", "findingId", "resolution"),

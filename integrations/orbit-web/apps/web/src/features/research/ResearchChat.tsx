@@ -228,6 +228,9 @@ const useStyles = makeStyles({
   },
   usingMobile: {
     minHeight: "34px",
+    paddingRight: "8px",
+    paddingLeft: "8px",
+    gap: "5px",
     backgroundColor: tokens.colorNeutralBackground2,
   },
   dot: { width: "7px", height: "7px", borderRadius: "50%", flexShrink: 0, backgroundColor: tokens.colorNeutralForeground4 },
@@ -295,14 +298,15 @@ export function ResearchChat(p: ResearchChatProps) {
 
   const copy = (text: string) => void navigator.clipboard?.writeText(text).catch(() => undefined);
   const sourceTrigger = p.onOpenSources ?? p.onAddSources;
+  const sourceStatusLabel = p.selected > p.usable ? `Using ${p.usable} source${p.usable === 1 ? "" : "s"}, ${p.selected - p.usable} not ready` : `Using ${p.usable} source${p.usable === 1 ? "" : "s"}`;
   const sourceStatusContent = (
     <>
       <span className={mergeClasses(s.dot, p.usable > 0 && s.dotActive)} aria-hidden />
-      <TextBulletListSquare16Regular />
-      {`Using ${p.usable} source${p.usable === 1 ? "" : "s"}`}
+      {!isMobile && <TextBulletListSquare16Regular />}
+      {isMobile ? `${p.usable} source${p.usable === 1 ? "" : "s"}` : `Using ${p.usable} source${p.usable === 1 ? "" : "s"}`}
       {p.selected > p.usable && (
         <Badge className={s.usingBadge} appearance="tint" size="small">
-          {p.selected - p.usable} not ready
+          {p.selected - p.usable} {isMobile ? "wait" : "not ready"}
         </Badge>
       )}
     </>
@@ -456,12 +460,13 @@ export function ResearchChat(p: ResearchChatProps) {
                 <button
                   type="button"
                   className={mergeClasses(s.using, s.usingBtn, isMobile && s.usingMobile)}
+                  aria-label={isMobile ? sourceStatusLabel : undefined}
                   onClick={sourceTrigger}
                 >
                   {sourceStatusContent}
                 </button>
               ) : (
-                <span className={mergeClasses(s.using, isMobile && s.usingMobile)} tabIndex={0}>
+                <span className={mergeClasses(s.using, isMobile && s.usingMobile)} aria-label={isMobile ? sourceStatusLabel : undefined} tabIndex={0}>
                   {sourceStatusContent}
                 </span>
               )}

@@ -126,13 +126,7 @@ const useStyles = makeStyles({
   badge: { flexShrink: 0, whiteSpace: "nowrap" },
   codeBadge: { flexShrink: 0, whiteSpace: "nowrap", fontFamily: tokens.fontFamilyMonospace },
   chevron: { flexShrink: 0, color: tokens.colorNeutralForeground3 },
-  quote: {
-    whiteSpace: "pre-wrap",
-    overflowWrap: "anywhere",
-    display: "-webkit-box",
-    WebkitLineClamp: 5,
-    WebkitBoxOrient: "vertical",
-    overflow: "hidden",
+  quoteBox: {
     backgroundColor: "var(--orbit-tool-bg)",
     borderRadius: "0 8px 8px 0",
     boxShadow: `inset 2.5px 0 0 ${tokens.colorBrandStroke2}`,
@@ -140,6 +134,14 @@ const useStyles = makeStyles({
     paddingRight: "10px",
     paddingBottom: "8px",
     paddingLeft: "10px",
+  },
+  quoteText: {
+    whiteSpace: "pre-wrap",
+    overflowWrap: "anywhere",
+    display: "-webkit-box",
+    WebkitLineClamp: 4,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
     color: tokens.colorNeutralForeground2,
     fontSize: tokens.fontSizeBase200,
     lineHeight: "1.55",
@@ -318,7 +320,9 @@ function Citations({ citations, onOpen }: { citations: ResearchCitation[] | null
           <Text size={100} className={s.muted}>
             {placeOf(c) || "—"} · {c.match === "fts" ? "matched the question" : "opening of the source"}
           </Text>
-          <span className={s.quote}>{c.quote}</span>
+          <span className={s.quoteBox}>
+            <span className={s.quoteText}>{c.quote}</span>
+          </span>
         </button>
       ))}
     </>

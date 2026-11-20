@@ -77,7 +77,16 @@ const useStyles = makeStyles({
   tabListMobile: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    "& [role='tab']": { minHeight: "38px" },
+    gridAutoRows: "1fr",
+    "& [role='tab']": {
+      minHeight: "38px",
+      height: "100%",
+      paddingRight: "6px",
+      paddingLeft: "6px",
+      fontSize: "12px",
+      lineHeight: "1.2",
+      textAlign: "center",
+    },
   },
   drop: {
     display: "flex",

@@ -3,23 +3,39 @@
 //
 //   GET /api/sessions/:id/project   one chat's project inventory (null until its workspace is prepared)
 //   GET /api/customizations         Orbit's own, and every chat's project
+//   GET /api/sessions/:id/commands  what a person can type after `/` in that chat: the skills and commands of the
+//                                   plugins its runs load (slash-commands.ts), the project's first, then Orbit's
+//   GET /api/commands               the same for a new chat: Orbit's, and -- with ?source=…&repository=… -- the
+//                                   project's as an earlier chat of that repository read them (a repository is read
+//                                   only once a chat opens it), said in a note
 //
 // A projection turns a project's session events into the app stream's `customizations.changed`, so Settings → Skills
 // and Plugins follow without polling.
-import { Controller, Get, Inject, Injectable, Module, Param, type OnModuleInit } from "@nestjs/common";
-import type { Customizations, OrbitCustomizations, ProjectInventory, ProjectItem } from "@orbit-web/contracts";
+import { Controller, Get, Inject, Injectable, Module, Param, Query, type OnModuleInit } from "@nestjs/common";
+import { REPOSITORY_SOURCES, type Customizations, type OrbitCustomizations, type ProjectInventory, type ProjectItem, type RepositorySource, type SlashCommand, type SlashCommands } from "@orbit-web/contracts";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { AppConfig } from "../../config/config.js";
 import { EventBus } from "../../core/events/event-bus.js";
 import { APP_CONFIG } from "../../core/tokens.js";
-import { notFound } from "../../common/errors.js";
+import { badRequest, notFound } from "../../common/errors.js";
 import { isSessionId } from "../../common/workspace-path.js";
-import { ProjectStore, SessionStore } from "../../infra/storage/stores.js";
-import { SettingsModule } from "../settings/settings.module.js";
+import { ProjectStore, SessionStore, type SessionRecord } from "../../infra/storage/stores.js";
+import { SettingsModule, SettingsService } from "../settings/settings.module.js";
 import { frontmatter } from "./frontmatter.js";
 import { isRegularDir, readSmall } from "./inventory.js";
 import { ProjectService } from "./project.service.js";
+import { pluginCommands } from "./slash-commands.js";
+
+// What the slash menu says about the project's part when it is not simply the chat's own.
+export const SLASH_NOTES = {
+  notRead: "This repository's own skills are listed once a chat has opened it.",
+  preparing: "This repository's own skills are listed once its workspace is ready.",
+  off: "This repository's own skills are not loaded: “Load project skills” is off in Settings → Code.",
+  earlier: (title: string) => `This repository's own skills as the chat “${title}” read them; a new chat reads them again.`,
+} as const;
+
+const hasOwn = (inventory: ProjectInventory): boolean => inventory.skills.length + inventory.commands.length > 0;
 
 // Orbit's own skills (`skills/<name>/SKILL.md`) and agents (`agents/*.md`), read once from the plugin directory.
 export function readOrbitPlugin(pluginDir: string): OrbitCustomizations {
@@ -52,12 +68,15 @@ function versionOf(pluginDir: string): string | null {
 @Injectable()
 export class CustomizationsService implements OnModuleInit {
   private orbit: OrbitCustomizations | null = null;
+  private orbitSlash: SlashCommand[] | null = null;
 
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(ProjectStore) private readonly projects: ProjectStore,
     @Inject(SessionStore) private readonly sessions: SessionStore,
     @Inject(EventBus) private readonly bus: EventBus,
+    @Inject(ProjectService) private readonly project: ProjectService,
+    @Inject(SettingsService) private readonly settings: SettingsService,
   ) {}
 
   onModuleInit(): void {
@@ -74,7 +93,40 @@ export class CustomizationsService implements OnModuleInit {
     });
     return { orbit: this.orbit, projects };
   }
+
+  // An open chat: what its next run loads (the project's plugins, as `runtime` names them, then Orbit's).
+  forSession(session: SessionRecord): SlashCommands {
+    const project = this.project.runtime(session).pluginDirs.flatMap((dir) => pluginCommands(dir, "project"));
+    return { commands: [...project, ...this.orbitCommands()], note: this.sessionNote(session, this.projects.get(session.id)) };
+  }
+
+  // A new chat: Orbit's, and the project's as the newest earlier chat of that repository that loaded them read them.
+  forRepository(source: RepositorySource | null, repositoryId: string | null): SlashCommands {
+    const orbit = this.orbitCommands();
+    if (source === null || repositoryId === null) return { commands: orbit, note: null };
+    if (!this.settings.get().projectSkills) return { commands: orbit, note: SLASH_NOTES.off };
+    const earlier = this.sessions.list().flatMap((s) => {
+      const inventory = s.source === source && s.repositoryId === repositoryId ? this.projects.get(s.id) : null;
+      return inventory === null ? [] : [{ session: s, inventory }];
+    });
+    const loaded = earlier.find((e) => e.inventory.loaded);
+    if (loaded !== undefined) return { commands: [...pluginCommands(this.project.pluginDir(loaded.session.id), "project"), ...orbit], note: SLASH_NOTES.earlier(loaded.session.title) };
+    return { commands: orbit, note: earlier[0] !== undefined && !hasOwn(earlier[0].inventory) ? null : SLASH_NOTES.notRead };
+  }
+
+  private orbitCommands(): SlashCommand[] {
+    this.orbitSlash ??= pluginCommands(this.config.pluginDir, "orbit");
+    return this.orbitSlash;
+  }
+
+  private sessionNote(session: SessionRecord, inventory: ProjectInventory | null): string | null {
+    if (session.repository === null) return null;
+    if (inventory === null) return session.status === "preparing" ? SLASH_NOTES.preparing : null;
+    return hasOwn(inventory) && !inventory.loaded ? SLASH_NOTES.off : null;
+  }
 }
+
+const REPOSITORY_ID_MAX = 300;
 
 @Controller()
 export class ProjectController {
@@ -93,6 +145,21 @@ export class ProjectController {
   @Get("customizations")
   all(): Customizations {
     return this.customizations.all();
+  }
+
+  @Get("sessions/:id/commands")
+  sessionCommands(@Param("id") id: string): SlashCommands {
+    const session = isSessionId(id) ? this.sessions.get(id) : null;
+    if (session === null) throw notFound("Session");
+    return this.customizations.forSession(session);
+  }
+
+  @Get("commands")
+  commands(@Query("source") source?: unknown, @Query("repository") repository?: unknown): SlashCommands {
+    if (source === undefined && repository === undefined) return this.customizations.forRepository(null, null);
+    const known = typeof source === "string" && (REPOSITORY_SOURCES as readonly string[]).includes(source);
+    if (!known || typeof repository !== "string" || repository.length === 0 || repository.length > REPOSITORY_ID_MAX) throw badRequest(`source must be ${REPOSITORY_SOURCES.join(" or ")}, with the repository's id`);
+    return this.customizations.forRepository(source as RepositorySource, repository);
   }
 }
 

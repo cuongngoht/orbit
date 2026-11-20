@@ -1,13 +1,17 @@
 // THE COMPOSER: always at the bottom of the page, on a new session and in a chat. A rounded box for the message (Enter
 // sends, Shift+Enter is a new line, an IME composition is never cut short), Send or -- while Claude works -- Stop, and
 // under it a toolbar: what the chat starts from on the left (repository, branch), how it runs on the right (model ·
-// effort, mode). Typing is always possible; sending waits until the chat can take a message.
+// effort, mode). Typing is always possible; sending waits until the chat can take a message. `/` at the start of the
+// message opens the slash menu (SlashMenu.tsx): ↑ ↓ move, Enter or Tab takes one, Escape closes it.
 import { Button, Tooltip, makeStyles, shorthands, tokens } from "@fluentui/react-components";
 import { ArrowUp20Filled, Stop16Filled } from "@fluentui/react-icons";
-import { useState, type ReactNode } from "react";
+import type { SlashCommand } from "@orbit-web/contracts";
+import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { SlashMenu, matching, optionId, slashQuery, useSlashCommands } from "./SlashMenu";
 
 const useStyles = makeStyles({
   wrap: { width: "100%", maxWidth: "820px", margin: "0 auto", display: "flex", flexDirection: "column", gap: "6px" },
+  anchor: { position: "relative" },
   box: {
     display: "flex",
     alignItems: "flex-end",
@@ -54,6 +58,9 @@ export interface ComposerProps {
   right?: ReactNode;
   // Said just above the box (an error, a notice).
   above?: ReactNode;
+  // Where the slash menu reads what this chat can run (none: no menu), and a number that moves when that changed.
+  commandsPath?: string;
+  commandsVersion?: number;
 }
 
 const rowsOf = (text: string): number => Math.min(10, Math.max(2, text.split("\n").length));
@@ -61,47 +68,92 @@ const rowsOf = (text: string): number => Math.min(10, Math.max(2, text.split("\n
 export function Composer(p: ComposerProps) {
   const s = useStyles();
   const [text, setText] = useState("");
+  const [active, setActive] = useState(0);
+  // The text the menu was closed at with Escape: it stays closed until the text changes.
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  const input = useRef<HTMLTextAreaElement>(null);
+  const listId = useId();
+  const query = p.commandsPath === undefined ? null : slashQuery(text);
+  const open = query !== null && dismissed !== text;
+  const slash = useSlashCommands(p.commandsPath, p.commandsVersion ?? 0, open);
+  const items = open && slash.data !== null ? matching(slash.data.commands, query ?? "") : [];
+  const current = Math.min(active, Math.max(items.length - 1, 0));
+  const offering = open && items.length > 0;
   const ready = p.canSend && !p.running && !p.busy && text.trim().length > 0;
+  const edit = (value: string) => {
+    setText(value);
+    setActive(0);
+  };
   const submit = () => {
     if (!ready) return;
     p.onSend(text);
-    setText("");
+    edit("");
+  };
+  const pick = (c: SlashCommand) => {
+    edit(`/${c.name} `);
+    input.current?.focus();
+  };
+  // The menu's keys, while it offers something; true when the key was its.
+  const menuKey = (e: KeyboardEvent<HTMLTextAreaElement>): boolean => {
+    if (open && e.key === "Escape") {
+      setDismissed(text);
+      return true;
+    }
+    if (!offering) return false;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      setActive((current + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length);
+      return true;
+    }
+    const takes = e.key === "Tab" || (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing);
+    if (takes && items[current] !== undefined) pick(items[current]);
+    return takes;
   };
   return (
     <div className={s.wrap}>
       {p.above}
-      <form
-        className={s.box}
-        onSubmit={(e) => {
-          e.preventDefault();
-          submit();
-        }}
-      >
-        <textarea
-          className={s.input}
-          rows={rowsOf(text)}
-          placeholder={p.placeholder}
-          aria-label="Message"
-          value={text}
-          autoFocus={p.autoFocus}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              submit();
-            }
+      <div className={s.anchor}>
+        {open && <SlashMenu id={listId} items={items} active={current} query={query ?? ""} state={slash} onPick={pick} onHover={setActive} />}
+        <form
+          className={s.box}
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit();
           }}
-        />
-        {p.running ? (
-          <Tooltip content="Stop" relationship="label">
-            <Button className={s.send} shape="circular" appearance="secondary" icon={<Stop16Filled />} onClick={p.onStop} />
-          </Tooltip>
-        ) : (
-          <Tooltip content="Send" relationship="label">
-            <Button className={s.send} shape="circular" appearance="primary" type="submit" icon={<ArrowUp20Filled />} disabled={!ready} />
-          </Tooltip>
-        )}
-      </form>
+        >
+          <textarea
+            ref={input}
+            className={s.input}
+            rows={rowsOf(text)}
+            placeholder={p.placeholder}
+            aria-label="Message"
+            aria-autocomplete={p.commandsPath === undefined ? undefined : "list"}
+            aria-controls={offering ? listId : undefined}
+            aria-activedescendant={offering ? optionId(listId, current) : undefined}
+            value={text}
+            autoFocus={p.autoFocus}
+            onChange={(e) => edit(e.target.value)}
+            onKeyDown={(e) => {
+              if (menuKey(e)) {
+                e.preventDefault();
+                return;
+              }
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                submit();
+              }
+            }}
+          />
+          {p.running ? (
+            <Tooltip content="Stop" relationship="label">
+              <Button className={s.send} shape="circular" appearance="secondary" icon={<Stop16Filled />} onClick={p.onStop} />
+            </Tooltip>
+          ) : (
+            <Tooltip content="Send" relationship="label">
+              <Button className={s.send} shape="circular" appearance="primary" type="submit" icon={<ArrowUp20Filled />} disabled={!ready} />
+            </Tooltip>
+          )}
+        </form>
+      </div>
       {(p.left || p.right) && (
         <div className={s.toolbar} role="toolbar" aria-label="How this chat runs">
           <div className={s.side}>{p.left}</div>

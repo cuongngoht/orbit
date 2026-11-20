@@ -50,6 +50,25 @@ describe("a new session: the composer always at the bottom, and the draft in its
     expect(created(a)).toEqual({ repository: null, branch: null, model: "sonnet", effort: "medium", mode: "autonomous", prompt: "Explain how the CLI parses flags" });
   });
 
+  test("typing / lists Orbit's skills, and the chosen repository's as an earlier chat read them", async () => {
+    const a = api().on("GET", "/api/commands", (_, url) =>
+      url.searchParams.get("repository") === "octo/sum-fixture"
+        ? { commands: [{ name: "sum-fixture:deploy", description: "Deploys the app", argumentHint: null, kind: "skill", origin: "project" }, { name: "orbit:orbit-help", description: "Navigator", argumentHint: null, kind: "skill", origin: "orbit" }], note: "This repository's own skills as the chat “Fix sum” read them; a new chat reads them again." }
+        : { commands: [{ name: "orbit:orbit-help", description: "Navigator", argumentHint: null, kind: "skill", origin: "orbit" }], note: null },
+    );
+    show();
+    const box = screen.getByRole("textbox", { name: "Message" });
+    await userEvent.type(box, "/");
+    expect(await screen.findByRole("option", { name: /orbit:orbit-help/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /sum-fixture:deploy/ })).toBeNull();
+    await userEvent.clear(box);
+    await chooseRepository("octo/sum-fixture");
+    await userEvent.type(box, "/");
+    expect(await screen.findByRole("option", { name: /sum-fixture:deploy/ })).toBeInTheDocument();
+    expect(screen.getByText(/as the chat “Fix sum” read them/)).toBeInTheDocument();
+    expect(a.calls.map((c) => c.path).filter((p) => p.startsWith("/api/commands"))).toEqual(["/api/commands", "/api/commands?source=github&repository=octo%2Fsum-fixture"]);
+  });
+
   test("Shift+Enter makes a new line; an empty message cannot be sent", async () => {
     const a = api();
     show();

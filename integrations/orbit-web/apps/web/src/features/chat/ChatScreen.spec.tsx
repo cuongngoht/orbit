@@ -55,6 +55,14 @@ describe("an open chat: the conversation, and the composer always at the bottom"
     await waitFor(() => expect(api.calls.find((c) => c.method === "POST")?.body).toEqual({ text: "line one\nline two" }));
   });
 
+  test("typing / lists what this chat's runs load, read from the chat's own commands", async () => {
+    const a = fakeApi().on("GET", `${PATH}/commands`, () => ({ commands: [{ name: "sum-fixture:deploy", description: "Deploys the app", argumentHint: null, kind: "skill", origin: "project" }], note: null }));
+    open(sessionDetail(), a);
+    await userEvent.type(await screen.findByRole("textbox", { name: "Message" }), "/");
+    expect(await screen.findByRole("option", { name: /sum-fixture:deploy/ })).toBeInTheDocument();
+    expect(a.calls.filter((c) => c.path === `${PATH}/commands`)).toHaveLength(1);
+  });
+
   test("a changed model, effort or mode is the chat's from its next message", async () => {
     const { api, updated } = open();
     await userEvent.click(await screen.findByRole("button", { name: "Model Sonnet 5.5, effort Medium" }));

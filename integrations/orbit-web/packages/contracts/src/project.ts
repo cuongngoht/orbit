@@ -57,6 +57,28 @@ export interface ProjectInventory {
   truncated: boolean;
 }
 
+// WHAT A PERSON CAN TYPE AFTER `/` IN A CHAT: the skills and commands of the plugins that chat's runs load, by the
+// names Claude Code gives them -- `<plugin>:<skill directory>`, `<plugin>:<command path, ':' between folders>` -- read
+// from those plugins' own files. A message that starts with one runs it (headless Claude Code reads the slash itself).
+export interface SlashCommand {
+  name: string;
+  description: string | null;
+  // What to type after the name, as the file's `argument-hint` says.
+  argumentHint: string | null;
+  kind: "skill" | "command";
+  // Orbit's own (the plugin in the image), or the project's (a plugin built from, or in, the chat's repository).
+  origin: "orbit" | "project";
+}
+
+// GET /api/sessions/:id/commands (an open chat), GET /api/commands?source=…&repository=… (a new one).
+export interface SlashCommands {
+  // The project's first, then Orbit's.
+  commands: SlashCommand[];
+  // One sentence when the project's part is not simply this chat's own: not read yet, read in an earlier chat of the
+  // same repository, or switched off. Null otherwise.
+  note: string | null;
+}
+
 // GET /api/customizations: what Claude Code is given, Orbit's own and each project's.
 export interface OrbitCustomizations {
   version: string | null;

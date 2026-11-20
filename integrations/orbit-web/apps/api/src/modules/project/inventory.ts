@@ -87,7 +87,7 @@ function readJson(path: string): Record<string, unknown> | null {
   }
 }
 
-function entries(dir: string): string[] {
+export function entries(dir: string): string[] {
   if (!isRegularDir(dir)) return [];
   try {
     return readdirSync(dir).sort().slice(0, INVENTORY_LIMITS.entries);

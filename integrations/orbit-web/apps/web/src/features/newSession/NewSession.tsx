@@ -66,6 +66,7 @@ export function NewSession({ settings, sources, onCreated, onConnect }: { settin
           running={false}
           busy={busy}
           onSend={(text) => void start(text)}
+          commandsPath={choice ? `/api/commands?source=${choice.source}&repository=${encodeURIComponent(choice.repository.id)}` : "/api/commands"}
           above={
             error && (
               <MessageBar intent="error">

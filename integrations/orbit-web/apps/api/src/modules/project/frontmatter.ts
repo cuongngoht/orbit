@@ -48,6 +48,12 @@ export function frontmatter(text: string): Frontmatter {
   return block === null ? { name: null, description: null } : { name: scalar(block, "name"), description: scalar(block, "description") };
 }
 
+// One more scalar of the block, for the one reader that needs it (the slash menu: `argument-hint`, `user-invocable`).
+export function frontmatterValue(text: string, key: string): string | null {
+  const { block } = split(text);
+  return block === null ? null : scalar(block, key);
+}
+
 // INSTRUCTIONS ONLY: how a repository's skill, command or agent file is carried into a session's plugin. Its
 // frontmatter is REBUILT from an allowlist -- name, description, model, argument-hint, each written back as a quoted
 // one-line string -- and the original block never passes through, so no `hooks`, no `allowed-tools`, nothing a YAML

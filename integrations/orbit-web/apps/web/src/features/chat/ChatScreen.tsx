@@ -133,6 +133,8 @@ export function ChatScreen({ sessionId, onUpdated }: { sessionId: string; onUpda
             busy={sending}
             onSend={(text) => void say(text)}
             onStop={() => void attempt(() => send("POST", `/api/sessions/${sessionId}/stop`))}
+            commandsPath={`/api/sessions/${sessionId}/commands`}
+            commandsVersion={status === "preparing" ? 0 : 1}
             above={
               error && (
                 <MessageBar intent="error">

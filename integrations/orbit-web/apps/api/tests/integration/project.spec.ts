@@ -4,10 +4,11 @@
 // directory and the plugins it declares installed through the CLI and enabled for its runs only. Every step is an
 // event; a plugin that fails is said, and never fails the workspace.
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
-import type { Customizations, ProjectInventory, SessionDetail, SessionSummary } from "@orbit-web/contracts";
+import type { Customizations, ProjectInventory, SessionDetail, SessionSummary, SlashCommands } from "@orbit-web/contracts";
 import { NodeProcessPort } from "../../src/infra/process/node-process.js";
 import { FakeProcessPort, program, type Call, type FakeChild } from "../../src/testing/fake-process.js";
 import { claudeRun, eventually, fixtureClone, REPOSITORY, signedIn, startHarness, type Harness } from "../../src/testing/harness.js";
@@ -124,6 +125,38 @@ describe("a project's skills and plugins, with project plugins turned on", () =>
     assert.ok(all.orbit.agents.length > 0);
     assert.deepEqual(all.projects.map((p) => [p.sessionId, p.inventory.skills.map((s) => s.name)]), [[session.id, ["deploy"]]]);
   });
+
+  test("the chat's slash menu: its project's skills and commands first, then Orbit's, by the names Claude Code gives them", async () => {
+    const { commands, note } = (await h.get(`/api/sessions/${session.id}/commands`)).body as SlashCommands;
+    const project = commands.filter((c) => c.origin === "project");
+    assert.deepEqual(
+      project.map((c) => [c.name, c.kind, c.description]),
+      [["sum-fixture:deploy", "skill", "Deploys the app"], ["sum-fixture:review", "command", "Review the diff"]],
+      "the plugin built for the session; the repository's own plugin has no skills of its own",
+    );
+    assert.deepEqual(commands.slice(0, project.length), project, "the project's first");
+    assert.ok(commands.some((c) => c.name === "orbit:orbit-help" && c.origin === "orbit" && (c.description ?? "").length > 0));
+    assert.equal(note, null);
+  });
+
+  test("a new chat of the same repository is offered the skills an earlier chat read, and is told so", async () => {
+    const { commands, note } = (await h.get(`/api/commands?source=github&repository=${encodeURIComponent(REPOSITORY)}`)).body as SlashCommands;
+    assert.deepEqual(commands.filter((c) => c.origin === "project").map((c) => c.name), ["sum-fixture:deploy", "sum-fixture:review"]);
+    assert.ok(commands.some((c) => c.name === "orbit:orbit-help"));
+    assert.ok((note ?? "").includes(session.title), note ?? "no note");
+  });
+
+  test("a new chat with no repository, or one no chat has opened yet: Orbit's own, and why the project's are not there", async () => {
+    const none = (await h.get("/api/commands")).body as SlashCommands;
+    assert.ok(none.commands.length > 0 && none.commands.every((c) => c.origin === "orbit"));
+    assert.equal(none.note, null);
+    const fresh = (await h.get(`/api/commands?source=github&repository=${encodeURIComponent("octo/never-opened")}`)).body as SlashCommands;
+    assert.ok(fresh.commands.every((c) => c.origin === "orbit"));
+    assert.match(fresh.note ?? "", /once a chat has opened it/);
+    assert.equal((await h.get("/api/commands?source=gitlab&repository=x")).status, 400);
+    assert.equal((await h.get("/api/commands?source=github")).status, 400);
+    assert.equal((await h.get(`/api/sessions/${randomUUID()}/commands`)).status, 404);
+  });
 });
 
 describe("by default: the skills load, the plugins wait for a person", () => {
@@ -169,6 +202,12 @@ describe("with project skills turned off", () => {
     assert.equal(existsSync(join(h.config.data.sessions, session.id, "project-plugin")), false);
     const call = fake.children.find((c) => claudeRun(c.call.file, c.call.args))?.call as Call;
     assert.deepEqual(call.args.flatMap((a, i) => (a === "--plugin-dir" ? [call.args[i + 1]] : [])), [h.config.pluginDir]);
+    const menu = (await h.get(`/api/sessions/${session.id}/commands`)).body as SlashCommands;
+    assert.ok(menu.commands.length > 0 && menu.commands.every((c) => c.origin === "orbit"), "the menu offers what the runs load");
+    assert.match(menu.note ?? "", /Load project skills/);
+    const next = (await h.get(`/api/commands?source=github&repository=${encodeURIComponent(REPOSITORY)}`)).body as SlashCommands;
+    assert.ok(next.commands.every((c) => c.origin === "orbit"));
+    assert.match(next.note ?? "", /Load project skills/);
   });
 });
 

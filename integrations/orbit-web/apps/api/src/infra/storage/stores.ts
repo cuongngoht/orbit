@@ -6,6 +6,8 @@ import type {
   DurableEventType,
   EffortChoice,
   EventDataMap,
+  ImageMediaType,
+  ImageRef,
   ModeChoice,
   ModelChoice,
   ProjectInventory,
@@ -217,6 +219,97 @@ export class MessageStore {
       runId: strOrNull(r.run_id),
       createdAt: str(r.created_at),
     }));
+  }
+}
+
+export interface ImageRecord extends ImageRef {
+  ownerEmail: string;
+  ownerOrg: string;
+  sha256: string;
+  // The chat that claimed it (a message named it), and the message it went with, at its place: null until then.
+  sessionId: string | null;
+  messageId: string | null;
+  position: number | null;
+  createdAt: string;
+}
+
+const intOrNull = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
+
+const imageOf = (r: Row): ImageRecord => ({
+  id: str(r.id),
+  mediaType: str(r.media_type) as ImageMediaType,
+  width: intOrNull(r.width),
+  height: intOrNull(r.height),
+  bytes: num(r.byte_size),
+  ownerEmail: str(r.owner_email),
+  ownerOrg: str(r.owner_org),
+  sha256: str(r.sha256),
+  sessionId: strOrNull(r.session_id),
+  messageId: strOrNull(r.message_id),
+  position: intOrNull(r.position),
+  createdAt: str(r.created_at),
+});
+
+export const imageRefOf = (i: ImageRecord): ImageRef => ({ id: i.id, mediaType: i.mediaType, width: i.width, height: i.height, bytes: i.bytes });
+
+// THE IMAGES of chat messages: whose upload each is, which chat claimed it, which message it went with. Their bytes are
+// files (image-files.ts); this table names them.
+export class ImageStore {
+  constructor(private readonly database: Database) {}
+
+  insert(i: Omit<ImageRecord, "sessionId" | "messageId" | "position">): void {
+    this.database.db
+      .prepare("INSERT INTO images (id, owner_email, owner_org, media_type, byte_size, width, height, sha256, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(i.id, i.ownerEmail, i.ownerOrg, i.mediaType, i.bytes, i.width, i.height, i.sha256, i.createdAt);
+  }
+
+  get(id: string): ImageRecord | null {
+    const r = this.database.db.prepare("SELECT * FROM images WHERE id = ?").get(id) as Row | undefined;
+    return r ? imageOf(r) : null;
+  }
+
+  // Claimed for a chat, still unsent: an image a chat claimed stays that chat's.
+  claim(ids: readonly string[], sessionId: string): void {
+    this.database.transaction(() => {
+      for (const id of ids) this.database.db.prepare("UPDATE images SET session_id = ? WHERE id = ? AND message_id IS NULL AND (session_id IS NULL OR session_id = ?)").run(sessionId, id, sessionId);
+    });
+  }
+
+  // Sent with a message, in the order named.
+  attach(ids: readonly string[], sessionId: string, messageId: string): void {
+    this.database.transaction(() => {
+      ids.forEach((id, position) => this.database.db.prepare("UPDATE images SET message_id = ?, position = ? WHERE id = ? AND session_id = ? AND message_id IS NULL").run(messageId, position, id, sessionId));
+    });
+  }
+
+  // A chat's images claimed and not yet sent (a new chat's first message), in the order they were uploaded.
+  pending(sessionId: string): ImageRecord[] {
+    return (this.database.db.prepare("SELECT * FROM images WHERE session_id = ? AND message_id IS NULL ORDER BY created_at, rowid").all(sessionId) as Row[]).map(imageOf);
+  }
+
+  // The images sent in a chat, by message and place.
+  sentIn(sessionId: string): ImageRecord[] {
+    return (this.database.db.prepare("SELECT * FROM images WHERE session_id = ? AND message_id IS NOT NULL ORDER BY message_id, position").all(sessionId) as Row[]).map(imageOf);
+  }
+
+  // Every image of a chat, sent or not: what goes with it.
+  idsOf(sessionId: string): string[] {
+    return (this.database.db.prepare("SELECT id FROM images WHERE session_id = ?").all(sessionId) as Row[]).map((r) => str(r.id));
+  }
+
+  // Uploads no chat claimed since `before`.
+  unclaimedSince(before: string): string[] {
+    return (this.database.db.prepare("SELECT id FROM images WHERE session_id IS NULL AND created_at < ?").all(before) as Row[]).map((r) => str(r.id));
+  }
+
+  known(ids: readonly string[]): Set<string> {
+    if (ids.length === 0) return new Set();
+    return new Set((this.database.db.prepare("SELECT id FROM images WHERE id IN (SELECT value FROM json_each(?))").all(JSON.stringify(ids)) as Row[]).map((r) => str(r.id)));
+  }
+
+  remove(ids: readonly string[]): void {
+    if (ids.length === 0) return;
+    this.database.db.prepare("DELETE FROM images WHERE id IN (SELECT value FROM json_each(?))").run(JSON.stringify(ids));
   }
 }
 

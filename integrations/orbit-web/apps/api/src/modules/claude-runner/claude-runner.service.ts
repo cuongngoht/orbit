@@ -11,7 +11,7 @@
 // chat), and otherwise binds it (a token for the gateway and the proxy) and says what the Constitution lets the runtime
 // do. A run nobody governs starts exactly as it always did.
 import { type BeforeApplicationShutdown, Inject, Injectable, Logger, type OnModuleInit } from "@nestjs/common";
-import { ACCEPTS_MESSAGES, effortFor, modelOf, type AnySessionEvent, type RunAccepted, type SessionStatus } from "@orbit-web/contracts";
+import { ACCEPTS_MESSAGES, effortFor, modelOf, type AnySessionEvent, type ImageRef, type RunAccepted, type SessionStatus } from "@orbit-web/contracts";
 import { randomUUID } from "node:crypto";
 import { createWriteStream, mkdirSync, type WriteStream } from "node:fs";
 import { join } from "node:path";
@@ -23,7 +23,8 @@ import { claudeEnv } from "../../infra/process/env.js";
 import { LineSplitter } from "../../infra/process/lines.js";
 import type { ExitInfo, ProcessHandle, ProcessPort } from "../../infra/process/process.port.js";
 import { redactSecrets, tail } from "../../infra/security/redact.js";
-import { RunStore, SessionStore, type SessionRecord } from "../../infra/storage/stores.js";
+import { ImageFiles } from "../../infra/storage/image-files.js";
+import { ImageStore, RunStore, SessionStore, type SessionRecord } from "../../infra/storage/stores.js";
 import { ClaudeModelsService } from "../claude-auth/claude-models.service.js";
 import { RunGovernanceService, type RunPlan } from "../governance/run-governance.service.js";
 import { ProjectService } from "../project/project.service.js";
@@ -51,6 +52,12 @@ interface ActiveRun {
   plan: RunPlan;
 }
 
+// What Claude Code is given on stdin: a prompt's own text, or one stream-json user message (a message with images).
+interface RunInput {
+  streamJson: boolean;
+  data: string;
+}
+
 // A run nobody governs: as Orbit Web always ran it.
 const UNGOVERNED: RunPlan = { scope: "LEGACY_ORBIT", binding: null, env: {}, webTools: null, execute: true, note: null, governed: false, isolation: "not_applicable" };
 
@@ -74,6 +81,8 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     @Inject(AutoModeService) private readonly autoMode: AutoModeService,
     @Inject(RunGovernanceService) private readonly governance: RunGovernanceService,
     @Inject(ClaudeModelsService) private readonly models: ClaudeModelsService,
+    @Inject(ImageStore) private readonly images: ImageStore,
+    @Inject(ImageFiles) private readonly imageFiles: ImageFiles,
   ) {}
 
   // After a restart nothing is running: a run the restart cut short is recorded as interrupted, never resumed.
@@ -106,32 +115,55 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     }
   }
 
-  // A person's message: stored, shown, and handed to Claude Code as the next turn of this session.
-  send(sessionId: string, text: string): RunAccepted {
+  // A person's message: stored, shown, and handed to Claude Code as the next turn of this session -- its words, and the
+  // images it carries (already claimed for this chat: ImagesService).
+  send(sessionId: string, text: string, images: readonly ImageRef[] = []): RunAccepted {
     const session = this.sessions.get(sessionId);
     if (!session) throw notFound("Session");
     if (this.isRunning(sessionId) || session.status === "running") throw conflict("run_active", "Claude is still working on this session. Stop it or wait for it to finish.");
     if (this.held.has(sessionId)) throw conflict("workspace_busy", "The working branch is changing; send your message once it has.");
     if (session.status === "preparing") throw conflict("workspace_not_ready", "The workspace is still being prepared.");
     if (!ACCEPTS_MESSAGES.includes(session.status)) throw conflict("workspace_failed", "This session's workspace could not be prepared; start a new chat.");
+    const input = this.inputOf(text, images);
     const runId = randomUUID();
     const messageId = randomUUID();
-    this.bus.publishSession(sessionId, "message.completed", { messageId, role: "user", text, parentToolUseId: null, partial: false, truncated: false }, runId);
-    if (!this.governance.bound(session)) this.start(session, text, runId, UNGOVERNED);
+    if (images.length > 0) this.images.attach(images.map((i) => i.id), sessionId, messageId);
+    this.bus.publishSession(sessionId, "message.completed", { messageId, role: "user", text, parentToolUseId: null, partial: false, truncated: false, ...(images.length > 0 ? { images: [...images] } : {}) }, runId);
+    if (!this.governance.bound(session)) this.start(session, input, runId, UNGOVERNED);
     else {
       this.starting.add(sessionId);
-      void this.governed(session, text, runId);
+      void this.governed(session, input, runId);
     }
     return { sessionId, runId };
   }
 
   // A governed run: decided first (and recorded), started only if allowed. Anything that keeps governance from deciding
   // refuses the run -- it never starts undecided.
-  private async governed(session: SessionRecord, prompt: string, runId: string): Promise<void> {
+  // The words as the prompt -- or, with images, one stream-json user message holding the words and each image as
+  // base64, which is how the CLI takes an image headless. Read now and whole; an image gone refuses the message.
+  private inputOf(text: string, images: readonly ImageRef[]): RunInput {
+    if (images.length === 0) return { streamJson: false, data: text };
+    const bytes = images.map((i) => this.readImage(i.id));
+    const content = [
+      ...(text.trim().length > 0 ? [{ type: "text", text }] : []),
+      ...images.map((i, n) => ({ type: "image", source: { type: "base64", media_type: i.mediaType, data: (bytes[n] as Buffer).toString("base64") } })),
+    ];
+    return { streamJson: true, data: `${JSON.stringify({ type: "user", message: { role: "user", content } })}\n` };
+  }
+
+  private readImage(id: string): Buffer {
+    try {
+      return this.imageFiles.read(id);
+    } catch {
+      throw conflict("image_missing", "An image of this message is no longer kept here: paste it again.");
+    }
+  }
+
+  private async governed(session: SessionRecord, input: RunInput, runId: string): Promise<void> {
     try {
       const prepared = await this.governance.prepare(session, runId, session.mode);
       if (!prepared.ok) return this.refuse(session, runId, prepared.message);
-      this.start(this.sessions.get(session.id) ?? session, prompt, runId, prepared.plan);
+      this.start(this.sessions.get(session.id) ?? session, input, runId, prepared.plan);
     } catch (err) {
       this.refuse(session, runId, `Governance could not decide this run, so it did not start: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -166,7 +198,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     for (const run of runs.filter((r) => this.active.has(r.session.id))) this.finalize(run, { code: null, signal: "SIGKILL", spawnError: null });
   }
 
-  private start(session: SessionRecord, prompt: string, runId: string, plan: RunPlan): void {
+  private start(session: SessionRecord, input: RunInput, runId: string, plan: RunPlan): void {
     const resume = session.turns > 0;
     const prefs = this.settings.get();
     // A bound run (governed, or in the governed deployment) holds no CLI's sign-in whatever a switch says.
@@ -190,6 +222,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
       execute: plan.execute,
       governanceNote: plan.note,
       bound: plan.binding !== null,
+      streamInput: input.streamJson,
       azure,
       github,
       maxBudgetUsd: this.config.maxBudgetUsd,
@@ -223,7 +256,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
       this.finalize(run, exit);
       resolveDone();
     });
-    handle.write(prompt);
+    handle.write(input.data);
     handle.closeInput();
   }
 

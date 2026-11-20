@@ -2,11 +2,14 @@
 // sends, Shift+Enter is a new line, an IME composition is never cut short), Send or -- while Claude works -- Stop, and
 // under it a toolbar: what the chat starts from on the left (repository, branch), how it runs on the right (model ·
 // effort, mode). Typing is always possible; sending waits until the chat can take a message. `/` at the start of the
-// message opens the slash menu (SlashMenu.tsx): ↑ ↓ move, Enter or Tab takes one, Escape closes it.
+// message opens the slash menu (SlashMenu.tsx): ↑ ↓ move, Enter or Tab takes one, Escape closes it. Where the page lets
+// a message carry images (onUploadImage), a screenshot pasted, images dropped or picked go with it (ImageAttachments.tsx).
 import { Button, Tooltip, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
-import { ArrowUp20Filled, SlashForward16Regular, Stop16Filled } from "@fluentui/react-icons";
-import type { SlashCommand } from "@orbit-web/contracts";
+import { ArrowUp20Filled, ImageAdd20Regular, SlashForward16Regular, Stop16Filled } from "@fluentui/react-icons";
+import { IMAGE_MEDIA_TYPES, type SlashCommand } from "@orbit-web/contracts";
 import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import type { UploadImage } from "../../services/images";
+import { AttachmentStrip, filesOf, useImageAttachments } from "./ImageAttachments";
 import { useViewport } from "../../hooks/useViewport";
 import { SlashMenu, matching, optionId, slashQuery, useSlashCommands } from "./SlashMenu";
 
@@ -28,6 +31,7 @@ const useStyles = makeStyles({
   cardMobile: {
     borderRadius: "24px",
   },
+  cardDragging: { ...shorthands.borderColor(tokens.colorBrandStroke1), boxShadow: "var(--orbit-composer-shadow-focus)" },
   input: {
     width: "100%",
     minWidth: 0,
@@ -111,7 +115,10 @@ export interface ComposerProps {
   running: boolean;
   busy?: boolean;
   autoFocus?: boolean;
-  onSend: (text: string) => void;
+  // The words, and the ids of the images that go with them (none where the page takes no images).
+  onSend: (text: string, images: string[]) => void;
+  // Where a message may carry images: how one is uploaded. Absent: no images (research).
+  onUploadImage?: UploadImage;
   onStop?: () => void;
   // The toolbar under the box: what the chat starts from, and how it runs.
   left?: ReactNode;
@@ -133,6 +140,9 @@ export function Composer(p: ComposerProps) {
   // The text the menu was closed at with Escape: it stays closed until the text changes.
   const [dismissed, setDismissed] = useState<string | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
+  const picker = useRef<HTMLInputElement>(null);
+  const images = useImageAttachments(p.onUploadImage);
+  const [dragging, setDragging] = useState(false);
   const listId = useId();
   const query = p.commandsPath === undefined ? null : slashQuery(text);
   const open = query !== null && dismissed !== text;
@@ -140,15 +150,16 @@ export function Composer(p: ComposerProps) {
   const items = open && slash.data !== null ? matching(slash.data.commands, query ?? "") : [];
   const current = Math.min(active, Math.max(items.length - 1, 0));
   const offering = open && items.length > 0;
-  const ready = p.canSend && !p.running && !p.busy && text.trim().length > 0;
+  const ready = p.canSend && !p.running && !p.busy && !images.holding && (text.trim().length > 0 || images.ids.length > 0);
   const edit = (value: string) => {
     setText(value);
     setActive(0);
   };
   const submit = () => {
     if (!ready) return;
-    p.onSend(text);
+    p.onSend(text, images.ids);
     edit("");
+    images.clear();
   };
   const pick = (c: SlashCommand) => {
     edit(`/${c.name} `);
@@ -185,12 +196,23 @@ export function Composer(p: ComposerProps) {
       <div className={s.anchor}>
         {open && <SlashMenu id={listId} items={items} active={current} query={query ?? ""} state={slash} onPick={pick} onHover={setActive} onClose={() => setDismissed(text)} />}
         <form
-          className={mergeClasses(s.card, isMobile && s.cardMobile)}
+          className={mergeClasses(s.card, isMobile && s.cardMobile, dragging && s.cardDragging)}
           onSubmit={(e) => {
             e.preventDefault();
             submit();
           }}
+          onDragOver={(e) => {
+            if (!images.enabled || !Array.from(e.dataTransfer.types).includes("Files")) return;
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => {
+            setDragging(false);
+            if (images.add(filesOf(e.dataTransfer))) e.preventDefault();
+          }}
         >
+          <AttachmentStrip items={images.items} notice={images.notice} onRemove={images.remove} />
           <textarea
             ref={input}
             className={mergeClasses(s.input, isMobile && s.inputMobile)}
@@ -203,6 +225,10 @@ export function Composer(p: ComposerProps) {
             value={text}
             autoFocus={p.autoFocus}
             onChange={(e) => edit(e.target.value)}
+            onPaste={(e) => {
+              // A screenshot on the clipboard goes with the message; words pasted beside it are pasted as words.
+              if (images.add(filesOf(e.clipboardData)) && e.clipboardData.getData("text/plain") === "") e.preventDefault();
+            }}
             onKeyDown={(e) => {
               if (menuKey(e)) {
                 e.preventDefault();
@@ -224,6 +250,27 @@ export function Composer(p: ComposerProps) {
                 aria-label="Skills and commands"
                 onClick={toggleSlash}
               />
+            )}
+            {images.enabled && (
+              <>
+                <Tooltip content="Add images -- or paste a screenshot" relationship="label">
+                  <Button type="button" className={s.slashBtn} appearance="subtle" icon={<ImageAdd20Regular />} onClick={() => picker.current?.click()} />
+                </Tooltip>
+                <input
+                  ref={picker}
+                  type="file"
+                  accept={IMAGE_MEDIA_TYPES.join(",")}
+                  multiple
+                  hidden
+                  aria-hidden="true"
+                  tabIndex={-1}
+                  data-testid="image-picker"
+                  onChange={(e) => {
+                    images.add(Array.from(e.target.files ?? []));
+                    e.target.value = "";
+                  }}
+                />
+              </>
             )}
             <div className={s.toolbarArea}>
               {(p.left || p.right) && (

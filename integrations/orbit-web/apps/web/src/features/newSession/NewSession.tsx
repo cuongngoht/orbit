@@ -10,6 +10,7 @@ import { DEFAULT_EFFORT, DEFAULT_MODE, DEFAULT_MODEL, modelOf, type ClaudeAccoun
 import { useState } from "react";
 import { useViewport } from "../../hooks/useViewport";
 import { errorText, send } from "../../services/api";
+import { uploadImage } from "../../services/images";
 import { Composer } from "../composer/Composer";
 import { BranchPicker, RepositoryPicker, type RepositoryChoice } from "../composer/RepositoryPicker";
 import { useModelCatalog } from "../../services/models/ModelCatalog";
@@ -152,12 +153,12 @@ export function NewSession({
     if (!autoModeWith(catalog, m) && run.mode === "autonomous") setMode("plan");
   };
 
-  const start = async (prompt: string) => {
+  const start = async (prompt: string, images: string[]) => {
     setBusy(true);
     setError(null);
     try {
       const repository = choice ? { source: choice.source, id: choice.repository.id } : null;
-      const created = await send<SessionSummary>("POST", "/api/sessions", { repository, branch: choice ? (branch ?? choice.repository.defaultBranch) : null, ...run, prompt });
+      const created = await send<SessionSummary>("POST", "/api/sessions", { repository, branch: choice ? (branch ?? choice.repository.defaultBranch) : null, ...run, ...(prompt.trim().length > 0 ? { prompt } : {}), ...(images.length > 0 ? { images } : {}) });
       onCreated(created);
     } catch (err) {
       setError(errorText(err));
@@ -173,7 +174,8 @@ export function NewSession({
       canSend={!busy}
       running={false}
       busy={busy}
-      onSend={(text) => void start(text)}
+      onSend={(text, images) => void start(text, images)}
+      onUploadImage={uploadImage}
       commandsPath={choice ? `/api/commands?source=${choice.source}&repository=${encodeURIComponent(choice.repository.id)}` : "/api/commands"}
       above={
         error && (

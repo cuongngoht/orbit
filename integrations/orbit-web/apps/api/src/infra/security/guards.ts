@@ -121,7 +121,14 @@ const typeIs = (req: Request, type: string): boolean => String(req.headers["cont
 // every change; the route itself bounds what it reads (modules/research).
 export const RESEARCH_UPLOAD = /^\/api\/research\/workspaces\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/sources\/upload$/;
 
-export const isResearchUpload = (req: Pick<Request, "method" | "path" | "headers">): boolean => req.method === "POST" && RESEARCH_UPLOAD.test(routedPath(req.path)) && String(req.headers["content-type"] ?? "").startsWith("application/octet-stream");
+// A chat image's upload.
+export const IMAGE_UPLOAD = /^\/api\/images$/;
+
+// The uploads -- the only bodies besides JSON: the file's own bytes, posted to one of these routes and no other.
+export const RAW_UPLOADS: readonly RegExp[] = [RESEARCH_UPLOAD, IMAGE_UPLOAD];
+
+export const isRawUpload = (req: Pick<Request, "method" | "path" | "headers">): boolean =>
+  req.method === "POST" && RAW_UPLOADS.some((route) => route.test(routedPath(req.path))) && String(req.headers["content-type"] ?? "").startsWith("application/octet-stream");
 
 export function mutationGuard() {
   return (req: Request, res: Response, next: NextFunction): void => {
@@ -131,7 +138,7 @@ export function mutationGuard() {
     if (!originMatches(req)) return refuse(res, 403, "cross_origin", "A change must come from this page's own origin.");
     const site = req.headers["sec-fetch-site"];
     if (site !== undefined && site !== "same-origin" && site !== "none") return refuse(res, 403, "cross_site", "A change must come from this page's own origin.");
-    if (hasBody(req) && !typeIs(req, "application/json") && !isResearchUpload(req)) return refuse(res, 415, "json_required", "A request body must be JSON.");
+    if (hasBody(req) && !typeIs(req, "application/json") && !isRawUpload(req)) return refuse(res, 415, "json_required", "A request body must be JSON.");
     next();
   };
 }

@@ -40,7 +40,12 @@ const masked = (text: string): string => redactSecrets(text);
 // One event as the link shows it: masked again, the tools' doings only when shared, and nothing that names the chat.
 function shown(e: AnySessionEvent, includeTools: boolean): AnySessionEvent | null {
   const base = { id: `e${e.seq ?? 0}`, stream: "session" as const, sessionId: "shared", seq: e.seq, runId: null, at: e.at };
-  if (e.type === "message.completed") return { ...base, type: e.type, data: { ...e.data, text: masked(e.data.text) } };
+  if (e.type === "message.completed") {
+    // The words: the images a message carried stay in the chat (a link opens none), and so do their ids.
+    const data = { ...e.data, text: masked(e.data.text) };
+    delete data.images;
+    return { ...base, type: e.type, data };
+  }
   if (e.type === "tool.started") {
     const agent = e.data.agent === null ? null : { subagentType: e.data.agent.subagentType, description: e.data.agent.description === null ? null : masked(e.data.agent.description) };
     return { ...base, type: e.type, data: { ...e.data, title: masked(e.data.title), input: includeTools ? masked(e.data.input) : "", inputTruncated: includeTools && e.data.inputTruncated, agent } };

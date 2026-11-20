@@ -12,6 +12,22 @@ import { frame, MAX_FRAME, type AttestFrame, type ClientFrame, type RunnerFrame,
 
 const CONNECT_TIMEOUT_MS = 5_000;
 
+// A program's input, cut in pieces whose frames stay under MAX_FRAME whatever JSON escapes them to (at worst six
+// characters for one), never between a high and a low surrogate.
+const PIECE = Math.floor(MAX_FRAME / 8);
+
+export function inputPieces(text: string): string[] {
+  const pieces: string[] = [];
+  for (let start = 0; start < text.length; ) {
+    let end = Math.min(start + PIECE, text.length);
+    const last = text.charCodeAt(end - 1);
+    if (end < text.length && last >= 0xd800 && last <= 0xdbff) end -= 1;
+    pieces.push(text.slice(start, end));
+    start = end;
+  }
+  return pieces.length > 0 ? pieces : [text];
+}
+
 function runnerFrame(line: string): RunnerFrame | null {
   try {
     const f = JSON.parse(line) as RunnerFrame;
@@ -86,8 +102,10 @@ class RunnerHandle implements BinaryHandle {
     this.exits.push(listener);
   }
 
+  // In frames well under the protocol's limit (a message with images is megabytes of base64), and never between the
+  // two halves of a character: the runner writes them to the program's input one after another.
   write(text: string): void {
-    if (!this.socket.destroyed) this.socket.write(frame({ op: "in", d: text }));
+    for (const piece of inputPieces(text)) if (!this.socket.destroyed) this.socket.write(frame({ op: "in", d: piece }));
   }
 
   closeInput(): void {

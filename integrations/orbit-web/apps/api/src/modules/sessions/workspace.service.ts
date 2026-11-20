@@ -13,7 +13,7 @@ import { contained, repositoryDir, sessionRoot } from "../../common/workspace-pa
 import { AgentFs } from "../../infra/process/agent-fs.js";
 import { endedHow, succeeded, type RunResult } from "../../infra/process/process.port.js";
 import { tail } from "../../infra/security/redact.js";
-import { SessionStore, type SessionRecord } from "../../infra/storage/stores.js";
+import { ImageStore, imageRefOf, SessionStore, type SessionRecord } from "../../infra/storage/stores.js";
 import { AzureAuthService } from "../azure-auth/azure-auth.service.js";
 import { GitGateway } from "../changes/git.gateway.js";
 import { ClaudeAuthService } from "../claude-auth/claude-auth.service.js";
@@ -63,6 +63,7 @@ export class WorkspaceService implements OnModuleInit {
     @Inject(ClaudeRunnerService) private readonly runner: ClaudeRunnerService,
     @Inject(AgentFs) private readonly files: AgentFs,
     @Inject(MirrorService) private readonly mirror: MirrorService,
+    @Inject(ImageStore) private readonly images: ImageStore,
   ) {}
 
   // A preparation a restart cut short is not taken up again: the session says so and may be deleted.
@@ -196,9 +197,12 @@ export class WorkspaceService implements OnModuleInit {
   private sendPending(session: SessionRecord): void {
     if (session.pendingPrompt === null) return;
     const prompt = session.pendingPrompt;
+    // Its images: those the new chat claimed when it was made, in the order they were uploaded.
+    const images = this.images.pending(session.id).map(imageRefOf);
     this.sessions.update(session.id, { pendingPrompt: null });
+    if (prompt.trim().length === 0 && images.length === 0) return;
     try {
-      this.runner.send(session.id, prompt);
+      this.runner.send(session.id, prompt, images);
     } catch (err) {
       this.bus.publishSession(session.id, "run.notice", { kind: "info", message: `The first message was not sent: ${err instanceof Error ? err.message : String(err)}` });
     }

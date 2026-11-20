@@ -89,6 +89,9 @@ export interface ClaudeRunOptions {
   // Whether governance holds this run (it has a binding): then it reaches no MCP server at all. Required, so no caller
   // leaves it to be guessed from anything else.
   bound: boolean;
+  // The message goes in as one stream-json user message -- how the CLI takes images headless -- instead of the
+  // prompt's own text. Only a message that carries images.
+  streamInput?: boolean;
 }
 
 // A run under governance holds no credential at all: Orbit Web pushes for it, through the agent gateway.
@@ -123,6 +126,7 @@ export function claudeArgs(o: ClaudeRunOptions): string[] {
     "-p",
     "--output-format",
     "stream-json",
+    ...(o.streamInput === true ? ["--input-format", "stream-json"] : []),
     "--verbose",
     "--include-partial-messages",
     "--model",

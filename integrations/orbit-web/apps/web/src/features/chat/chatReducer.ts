@@ -4,6 +4,7 @@
 import {
   applyDelta,
   type AnySessionEvent,
+  type ImageRef,
   type OrbitPanel,
   type ProjectInventory,
   type PermissionDeniedData,
@@ -25,6 +26,8 @@ export interface MessageItem {
   streaming: boolean;
   partial: boolean;
   parentToolUseId: string | null;
+  // A person's message: the images it carried.
+  images?: ImageRef[];
 }
 
 export interface ToolItem {
@@ -173,7 +176,7 @@ function applyDurable(state: ChatState, e: AnySessionEvent): ChatState {
     case "message.started":
       return upsertMessage(state, e.data.messageId, (m) => m, { role: e.data.role, text: "", streaming: true, partial: false, parentToolUseId: e.data.parentToolUseId });
     case "message.completed":
-      return upsertMessage(state, e.data.messageId, (m) => ({ ...m, text: e.data.text, streaming: false, partial: e.data.partial }), { role: e.data.role, text: "", streaming: false, partial: false, parentToolUseId: e.data.parentToolUseId });
+      return upsertMessage(state, e.data.messageId, (m) => ({ ...m, text: e.data.text, streaming: false, partial: e.data.partial, ...(e.data.images ? { images: e.data.images } : {}) }), { role: e.data.role, text: "", streaming: false, partial: false, parentToolUseId: e.data.parentToolUseId });
     case "tool.started":
       return findIndex(state.items, "tool", e.data.toolUseId) !== -1
         ? state

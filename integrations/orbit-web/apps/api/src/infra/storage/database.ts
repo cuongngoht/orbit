@@ -312,6 +312,25 @@ const MIGRATIONS: string[] = [
      at TEXT NOT NULL,
      PRIMARY KEY (session_id, seq)
    );`,
+  // 0.8.0: IMAGES in a chat message. An image is the account's that uploaded it; it is claimed by one chat (session_id)
+  // when a message names it, and goes with exactly one message (message_id, at its place). Unclaimed, it is swept after
+  // a day; with its chat, it goes. Its bytes are a file named by the id, never by anything a client typed.
+  `CREATE TABLE images (
+     id TEXT PRIMARY KEY,
+     owner_email TEXT NOT NULL,
+     owner_org TEXT NOT NULL,
+     media_type TEXT NOT NULL,
+     byte_size INTEGER NOT NULL,
+     width INTEGER,
+     height INTEGER,
+     sha256 TEXT NOT NULL,
+     session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
+     message_id TEXT,
+     position INTEGER,
+     created_at TEXT NOT NULL
+   );
+   CREATE INDEX images_by_session ON images (session_id, message_id, position);
+   CREATE INDEX images_unclaimed ON images (created_at) WHERE session_id IS NULL;`,
 ];
 
 export class Database {

@@ -63,6 +63,26 @@ test("a message is non-empty text of a bounded length", () => {
   assert.equal(checkSendMessage({ text: "go", command: "rm" }).ok, false);
 });
 
+const IMG_A = "aaaaaaaa-1111-4222-8333-444444444444";
+const IMG_B = "bbbbbbbb-1111-4222-8333-444444444444";
+
+test("a message may carry images by id: with one, the words may be none; never a name twice, never more than six", () => {
+  assert.deepEqual(checkSendMessage({ text: "what is wrong here?", images: [IMG_A, IMG_B] }), { ok: true, value: { text: "what is wrong here?", images: [IMG_A, IMG_B] } });
+  assert.deepEqual(checkSendMessage({ text: "", images: [IMG_A] }), { ok: true, value: { text: "", images: [IMG_A] } });
+  assert.deepEqual(checkSendMessage({ text: "go", images: [] }), { ok: true, value: { text: "go" } }, "no images is no images");
+  assert.equal(checkSendMessage({ text: "", images: [] }).ok, false, "nothing at all is not a message");
+  assert.equal(checkSendMessage({ text: "x", images: [IMG_A, IMG_A] }).ok, false);
+  assert.equal(checkSendMessage({ text: "x", images: ["../../etc/passwd"] }).ok, false);
+  assert.equal(checkSendMessage({ text: "x", images: Array.from({ length: 7 }, (_, i) => `aaaaaaaa-1111-4222-8333-44444444444${i}`) }).ok, false);
+  assert.equal(checkSendMessage({ text: "x", images: IMG_A }).ok, false, "a list, not one id");
+});
+
+test("a new chat's first message may be images, words, or both", () => {
+  assert.deepEqual(checkCreateSession({ model: "sonnet", images: [IMG_A] }), { ok: true, value: { repository: null, branch: null, model: "sonnet", images: [IMG_A] } });
+  assert.deepEqual(checkCreateSession({ model: "sonnet", prompt: "look", images: [IMG_A] }), { ok: true, value: { repository: null, branch: null, model: "sonnet", prompt: "look", images: [IMG_A] } });
+  assert.equal(checkCreateSession({ model: "sonnet", images: ["x"] }).ok, false);
+});
+
 test("sharing names only whether the tools' doings come along, and they do not unless asked", () => {
   assert.deepEqual(checkShareRequest(undefined), { ok: true, value: { includeTools: false } });
   assert.deepEqual(checkShareRequest({}), { ok: true, value: { includeTools: false } });

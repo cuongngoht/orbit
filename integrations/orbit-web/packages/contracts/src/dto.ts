@@ -2,6 +2,7 @@
 import type { EffortChoice, ModeChoice, ModelChoice, RepositorySource } from "./models.js";
 import type { ConnectionState, LoginState, SessionStatus, ThemePreference } from "./status.js";
 import type { AnySessionEvent } from "./events/envelope.js";
+import type { ImageRef } from "./images.js";
 
 export interface ApiErrorBody {
   error: {
@@ -218,6 +219,8 @@ export interface ChatMessage {
   text: string;
   runId: string | null;
   createdAt: string;
+  // The images a person's message carried (images.ts), in the order sent; absent when none.
+  images?: ImageRef[];
 }
 
 export interface SessionDetail extends SessionSummary {
@@ -237,8 +240,9 @@ export interface CreateSessionRequest {
   effort?: EffortChoice;
   mode?: ModeChoice;
   title?: string;
-  // The first message, sent once the workspace is ready.
+  // The first message, sent once the workspace is ready -- its words, its images, or both.
   prompt?: string;
+  images?: string[];
 }
 
 // The model, effort and mode a session prefers apply from its next message.
@@ -322,7 +326,10 @@ export interface SharedChat {
 }
 
 export interface SendMessageRequest {
+  // May be empty when the message carries an image: the image is the message.
   text: string;
+  // Images uploaded first (POST /api/images), by id.
+  images?: string[];
 }
 
 export interface RunAccepted {

@@ -5,7 +5,7 @@
 // Orbit says.
 import { Badge, Button, MessageBar, MessageBarBody, OverlayDrawer, Spinner, Tab, TabList, Text, ToggleButton, Tooltip, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import { ArrowDown16Regular, Dismiss20Regular, DocumentBulletList20Regular, Info20Regular, Navigation20Regular } from "@fluentui/react-icons";
-import { ACCEPTS_MESSAGES, type SessionDetail, type SessionSummary, type UpdateSessionRequest } from "@orbit-web/contracts";
+import { ACCEPTS_MESSAGES, chatImagePath, type SessionDetail, type SessionSummary, type UpdateSessionRequest } from "@orbit-web/contracts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { SessionStatusBadge } from "../../components/StatusBadge";
 import { SourceMark } from "../../components/SourceMark";
@@ -13,6 +13,7 @@ import { useResource } from "../../hooks/useResource";
 import { useSessionStream } from "../../hooks/useSessionStream";
 import { useViewport } from "../../hooks/useViewport";
 import { errorText, get, send } from "../../services/api";
+import { uploadImage } from "../../services/images";
 import { ChangesPanel } from "../changes/ChangesPanel";
 import { Composer } from "../composer/Composer";
 import { useModelCatalog } from "../../services/models/ModelCatalog";
@@ -178,9 +179,9 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
     if (detail.data) detail.set({ ...detail.data, ...summary });
     onUpdated(summary);
   };
-  const say = async (text: string) => {
+  const say = async (text: string, images: string[] = []) => {
     setSending(true);
-    await attempt(() => send("POST", `/api/sessions/${sessionId}/messages`, { text }));
+    await attempt(() => send("POST", `/api/sessions/${sessionId}/messages`, { text, ...(images.length > 0 ? { images } : {}) }));
     setSending(false);
   };
 
@@ -288,6 +289,7 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
               <Timeline
                 items={state.items}
                 actions={{
+                  imageUrl: (imageId) => chatImagePath(sessionId, imageId),
                   canRunPlan: canSend && !sending,
                   onRunPlan: () =>
                     void attempt(async () => {
@@ -323,7 +325,8 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
             canSend={canSend}
             running={running}
             busy={sending}
-            onSend={(text) => void say(text)}
+            onSend={(text, images) => void say(text, images)}
+            onUploadImage={uploadImage}
             onStop={() => void attempt(() => send("POST", `/api/sessions/${sessionId}/stop`))}
             commandsPath={`/api/sessions/${sessionId}/commands`}
             commandsVersion={status === "preparing" ? 0 : 1}

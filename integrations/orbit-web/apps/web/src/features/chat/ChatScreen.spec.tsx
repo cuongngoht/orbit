@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { SessionDetail, ShareInfo, WorkBranches } from "@orbit-web/contracts";
 import { describe, expect, test, vi } from "vitest";
@@ -7,6 +7,11 @@ import { sessionStream } from "../../testing/events";
 import { SESSION_ID, inventory, sessionDetail, sessionSummary } from "../../testing/fixtures";
 import { renderUi } from "../../testing/render";
 import { ChatScreen } from "./ChatScreen";
+
+const IMAGE = { id: "9a9a9a9a-1111-4222-8333-444444444444", mediaType: "image/png" as const, width: 1440, height: 900, bytes: 52_000 };
+
+// The upload itself is XMLHttpRequest (its progress); here it answers at once.
+vi.mock("../../services/images", () => ({ uploadImage: vi.fn(async () => IMAGE) }));
 
 const PATH = `/api/sessions/${SESSION_ID}`;
 
@@ -61,6 +66,23 @@ describe("an open chat: the conversation, and the composer always at the bottom"
     await userEvent.type(await screen.findByRole("textbox", { name: "Message" }), "/");
     expect(await screen.findByRole("option", { name: /sum-fixture:deploy/ })).toBeInTheDocument();
     expect(a.calls.filter((c) => c.path === `${PATH}/commands`)).toHaveLength(1);
+  });
+
+  test("a pasted screenshot goes with the message, and the conversation shows it -- each image opening full size", async () => {
+    const { api, push } = open();
+    const box = await screen.findByRole("textbox", { name: "Message" });
+    await userEvent.type(box, "why is this red?");
+    const shot = new File([new Uint8Array(52_000)], "image.png", { type: "image/png" });
+    fireEvent.paste(box, { clipboardData: { items: [{ kind: "file", type: "image/png", getAsFile: () => shot }], files: [shot], types: ["Files"], getData: () => "" } });
+    expect(await screen.findByRole("list", { name: "Images to send" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).toBeEnabled());
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(api.calls.find((c) => c.method === "POST" && c.path.endsWith("/messages"))?.body).toEqual({ text: "why is this red?", images: [IMAGE.id] }));
+    push("message.completed", { messageId: "u1", role: "user", text: "why is this red?", parentToolUseId: null, partial: false, truncated: false, images: [IMAGE] });
+    const shown = await screen.findByRole("img", { name: "Image 1 of the message" });
+    expect(shown).toHaveAttribute("src", `/api/sessions/${SESSION_ID}/images/${IMAGE.id}`);
+    expect(shown.closest("a")).toHaveAttribute("target", "_blank");
+    expect(screen.getByText("why is this red?", { selector: "div" })).toBeInTheDocument();
   });
 
   test("a changed model, effort or mode is the chat's from its next message", async () => {

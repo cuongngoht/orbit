@@ -11,7 +11,8 @@ import { SignInChannel } from "../infra/egress/sign-in-channel.js";
 import { GovernanceDatabase } from "../infra/governance/governance-db.js";
 import { AgentStore, ApprovalStore, AuditStore, FindingStore, GovernedWorkspaceStore, IsolationStore, OperatorStore, OverlayStore, ReportStore, RevisionStore, RunBindingStore } from "../infra/governance/stores.js";
 import { Database } from "../infra/storage/database.js";
-import { EventStore, MessageStore, ProjectStore, RunStore, SessionAccessStore, SessionStore, SettingsStore, ShareStore } from "../infra/storage/stores.js";
+import { ImageFiles } from "../infra/storage/image-files.js";
+import { EventStore, ImageStore, MessageStore, ProjectStore, RunStore, SessionAccessStore, SessionStore, SettingsStore, ShareStore } from "../infra/storage/stores.js";
 import { EventBus } from "./events/event-bus.js";
 import { LiveText } from "./events/live-text.js";
 import { StreamGateway } from "./events/stream-gateway.js";
@@ -66,12 +67,15 @@ export class CoreModule {
         store(RunStore),
         store(ProjectStore),
         store(ShareStore),
+        store(ImageStore),
+        // Chat images' bytes: the control plane's own room, beside the database.
+        { provide: ImageFiles, useFactory: () => new ImageFiles(join(config.data.app, "images")) },
         EventBus,
         LiveText,
         StreamGateway,
         DatabaseCloser,
       ],
-      exports: [APP_CONFIG, PROCESS_PORT, AGENT_PROCESS_PORT, AgentFs, SignInChannel, Database, SettingsStore, SessionStore, SessionAccessStore, MessageStore, EventStore, RunStore, ProjectStore, ShareStore, EventBus, LiveText, StreamGateway, GovernanceDatabase, ...GOVERNANCE_STORES],
+      exports: [APP_CONFIG, PROCESS_PORT, AGENT_PROCESS_PORT, AgentFs, SignInChannel, Database, SettingsStore, SessionStore, SessionAccessStore, MessageStore, EventStore, RunStore, ProjectStore, ShareStore, ImageStore, ImageFiles, EventBus, LiveText, StreamGateway, GovernanceDatabase, ...GOVERNANCE_STORES],
     };
   }
 }

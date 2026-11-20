@@ -8,6 +8,7 @@ import { ClaudeAuthModule } from "../claude-auth/claude-auth.module.js";
 import { ClaudeRunnerModule } from "../claude-runner/claude-runner.module.js";
 import { GithubModule } from "../github/github.module.js";
 import { GovernanceModule } from "../governance/governance.module.js";
+import { ImagesModule } from "../images/images.module.js";
 import { PrincipalResolver } from "../governance/principals.js";
 import { OrbitModule } from "../orbit/orbit.module.js";
 import { ProjectModule } from "../project/project.module.js";
@@ -67,7 +68,7 @@ export class SessionsController {
 }
 
 @Module({
-  imports: [AccessModule, ClaudeAuthModule, GithubModule, AzureAuthModule, SourcesModule, ChangesModule, ClaudeRunnerModule, OrbitModule, ProjectModule, SettingsModule, GovernanceModule],
+  imports: [AccessModule, ClaudeAuthModule, GithubModule, AzureAuthModule, SourcesModule, ChangesModule, ClaudeRunnerModule, OrbitModule, ProjectModule, SettingsModule, GovernanceModule, ImagesModule],
   providers: [SessionsService, WorkspaceService, BranchService, SessionDirectory],
   controllers: [SessionsController],
   exports: [SessionsService],

@@ -12,6 +12,7 @@ import {
   type ModelChoice,
   type RepositorySource,
 } from "./models.js";
+import { imageIdsProblem } from "./images.js";
 import { THEMES, type ThemePreference } from "./status.js";
 import type {
   AzureLoginRequest,
@@ -99,6 +100,9 @@ export function cleanTitle(v: unknown): string | null {
 export const isPromptText = (v: unknown): v is string =>
   typeof v === "string" && v.trim().length > 0 && v.length <= LIMITS.promptLength;
 
+// The words beside an image: any, none included.
+const isMessageText = (v: unknown): v is string => typeof v === "string" && v.length <= LIMITS.promptLength;
+
 export const isTheme = (v: unknown): v is ThemePreference => typeof v === "string" && (THEMES as readonly string[]).includes(v);
 
 const unknownFields = (body: Record<string, unknown>, allowed: readonly string[]): string[] =>
@@ -115,7 +119,9 @@ const REPOSITORY_SAID = `repository must be { source: ${REPOSITORY_SOURCES.join(
 // A chat with a repository (and, optionally, its branch: the default one otherwise), or with none at all.
 export function checkCreateSession(body: unknown): Checked<CreateSessionRequest> {
   if (!isRecord(body)) return { ok: false, errors: ["the body must be a JSON object"] };
-  const errors = unknownFields(body, ["repository", "branch", "model", "effort", "mode", "title", "prompt"]);
+  const errors = unknownFields(body, ["repository", "branch", "model", "effort", "mode", "title", "prompt", "images"]);
+  const images = imageIdsProblem(body.images);
+  if (images !== null) errors.push(images);
   const repository = body.repository ?? null;
   const branch = body.branch ?? null;
   if (repository !== null && !isRepositoryRef(repository)) errors.push(REPOSITORY_SAID);
@@ -134,6 +140,7 @@ export function checkCreateSession(body: unknown): Checked<CreateSessionRequest>
     ...(body.mode !== undefined ? { mode: body.mode as ModeChoice } : {}),
     ...(body.title !== undefined ? { title: cleanTitle(body.title) as string } : {}),
     ...(body.prompt !== undefined ? { prompt: body.prompt as string } : {}),
+    ...(Array.isArray(body.images) && body.images.length > 0 ? { images: body.images as string[] } : {}),
   }));
 }
 
@@ -192,11 +199,15 @@ export function checkUpdateAccess(body: unknown): Checked<UpdateAccessRequest> {
   return checked(errors, () => ({ people: [...new Set(people as string[])] }));
 }
 
+// A message: words, images (by id), or both. With an image the words may be none -- the image is the message.
 export function checkSendMessage(body: unknown): Checked<SendMessageRequest> {
   if (!isRecord(body)) return { ok: false, errors: ["the body must be a JSON object"] };
-  const errors = unknownFields(body, ["text"]);
-  if (!isPromptText(body.text)) errors.push(`text must be 1-${LIMITS.promptLength} characters`);
-  return checked(errors, () => ({ text: body.text as string }));
+  const errors = unknownFields(body, ["text", "images"]);
+  const images = imageIdsProblem(body.images);
+  if (images !== null) errors.push(images);
+  const withImages = Array.isArray(body.images) && body.images.length > 0;
+  if (withImages ? !isMessageText(body.text) : !isPromptText(body.text)) errors.push(withImages ? `text must be at most ${LIMITS.promptLength} characters` : `text must be 1-${LIMITS.promptLength} characters`);
+  return checked(errors, () => ({ text: body.text as string, ...(withImages ? { images: body.images as string[] } : {}) }));
 }
 
 export function checkUpdateSettings(body: unknown): Checked<UpdateSettingsRequest> {

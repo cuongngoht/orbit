@@ -30,6 +30,9 @@ const useStyles = makeStyles({
     whiteSpace: "pre-wrap",
     overflowWrap: "anywhere",
   },
+  userImages: { alignSelf: "flex-end", display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: "6px", maxWidth: "80%", marginTop: "6px", "@media (max-width: 639px)": { maxWidth: "88%" } },
+  userImageLink: { display: "block", borderRadius: "14px", overflow: "hidden", lineHeight: 0, outlineOffset: "2px" },
+  userImage: { display: "block", maxHeight: "220px", maxWidth: "100%", width: "auto", height: "auto", objectFit: "contain", backgroundColor: tokens.colorNeutralBackground3 },
   assistant: { maxWidth: "100%", minWidth: 0 },
   meta: { color: tokens.colorNeutralForeground3, overflowWrap: "anywhere" },
   line: { display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", minWidth: 0, maxWidth: "100%" },
@@ -151,9 +154,9 @@ function RunEnd({ item }: { item: RunEndItem }) {
   );
 }
 
-function Message({ item }: { item: MessageItem }) {
+function Message({ item, imageUrl }: { item: MessageItem; imageUrl?: (imageId: string) => string }) {
   const s = useStyles();
-  if (item.role === "user") return <div className={s.user}>{item.text}</div>;
+  if (item.role === "user") return <UserMessage item={item} imageUrl={imageUrl} />;
   return (
     <div className={s.assistant} data-testid="assistant-message">
       <Markdown text={item.text} />
@@ -163,7 +166,32 @@ function Message({ item }: { item: MessageItem }) {
   );
 }
 
+// A person's message: the images it carried (each opens full size), then its words.
+function UserMessage({ item, imageUrl }: { item: MessageItem; imageUrl?: (imageId: string) => string }) {
+  const s = useStyles();
+  const images = imageUrl === undefined ? [] : (item.images ?? []);
+  return (
+    <>
+      {images.length > 0 && (
+        <div className={s.userImages} role="group" aria-label={images.length === 1 ? "Image sent" : `${images.length} images sent`}>
+          {images.map((image, n) => {
+            const url = (imageUrl as (imageId: string) => string)(image.id);
+            return (
+              <a key={image.id} className={s.userImageLink} href={url} target="_blank" rel="noopener noreferrer" title="Open full size">
+                <img className={s.userImage} src={url} alt={`Image ${n + 1} of the message`} loading="lazy" {...(image.width && image.height ? { width: image.width, height: image.height } : {})} />
+              </a>
+            );
+          })}
+        </div>
+      )}
+      {item.text.trim().length > 0 && <div className={s.user}>{item.text}</div>}
+    </>
+  );
+}
+
 export interface TimelineActions {
+  // Where an image a message carried is read.
+  imageUrl?: (imageId: string) => string;
   // Carry a proposed plan out: switch to Autonomous and ask for it.
   onRunPlan?: () => void;
   canRunPlan?: boolean;
@@ -173,7 +201,7 @@ function Item({ item, items, actions }: { item: TimelineItem; items: TimelineIte
   const s = useStyles();
   switch (item.kind) {
     case "message":
-      return <Message item={item} />;
+      return <Message item={item} imageUrl={actions.imageUrl} />;
     case "plan":
       return <PlanCard plan={item.plan} truncated={item.truncated} onRun={actions.onRunPlan} canRun={actions.canRunPlan === true} />;
     case "project":

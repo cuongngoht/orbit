@@ -1,6 +1,7 @@
 // The payloads of the SESSION stream: the life of one chat, from its workspace to each run. Orbit Web's own names,
 // mapped from Claude Code's native stream-json lines by one pure mapper on the server -- the native names are never
 // assumed to be these.
+import type { ImageRef } from "../images.js";
 import type { EffortChoice, ModeChoice, ModelChoice } from "../models.js";
 import type { OrbitPanel } from "../orbit.js";
 import type { ProjectInventory, ProjectPlugin } from "../project.js";
@@ -97,6 +98,8 @@ export interface MessageCompletedData {
   // The message was cut off (the run ended while it was written); `text` is what had arrived.
   partial: boolean;
   truncated: boolean;
+  // A person's message: the images it carried, by reference -- never their bytes.
+  images?: ImageRef[];
 }
 
 export interface AgentAttribution {

@@ -105,6 +105,7 @@ uid 10001) and private to it (mode 0700):
 | directory | holds | owner of the format |
 |---|---|---|
 | `/data/app` | Orbit Web's SQLite database: settings, sessions, messages, events, runs, what each repository brought, who owns each chat and who it is shared with -- and research: workspaces, the extracted text of every source revision and its full-text index, research sessions, their runs, citations, notes and findings | Orbit Web |
+| `/data/app/images/` | the images chat messages carried (pasted, dropped or picked), each a file named by an id the server made; an upload no chat claims is removed after a day, and a chat's images go with the chat | Orbit Web |
 | `/data/research/workspaces/<workspace>/objects/` | the files research sources were read from (uploads, URL snapshots, pasted texts), each named by its SHA-256 -- never by a name a person typed -- and stored once per workspace | Orbit Web |
 | `/data/claude` | the Claude CLI's sign-in -- Orbit Web's own sign-in -- Claude Code's native session state, and the plugins a project declared once installed (`CLAUDE_CONFIG_DIR`, set for the whole image) | Claude Code |
 | `/data/github` | GitHub CLI's sign-in (`GH_CONFIG_DIR`, stored in plain text: a container has no keyring) | GitHub CLI |
@@ -209,6 +210,11 @@ Coding** (the default, below) and **[Research](#research)**.
    skill's own name, then its plugin's, then a word of what it does); ↑ ↓ move, Enter or Tab writes `/<name> ` into the
    message for you to finish, Escape closes it. The list is what that chat's runs load: in a new chat, Orbit's, and the
    chosen repository's as an earlier chat of it read them (it says so; a repository is read once a chat opens it).
+   **Images go with a message**: paste a screenshot (⌘V / Ctrl+V), drop images on the box, or pick them with its image
+   button. Each shows as a thumbnail and is uploaded at once; Send waits until all are up (one that failed says why and
+   stays until you take it out). PNG, JPEG, GIF or WebP, at most 6 a message, 5 MB and 8000 pixels a side each -- what
+   Claude itself takes; a message may be an image alone. Claude Code is given them with the words, and the chat shows
+   them again (each opens full size). Research takes no images: its runs read only their passages.
 2. **What it starts from** -- the composer's toolbar, on the left. The repository picker has a tab per source:
    **GitHub** and **Azure DevOps**. Search, pick a repository, then a branch (the default first). A source that is not
    connected offers *Connect* (Settings → Connectors); *Refresh* reads the list again. **No repository** (the default)
@@ -636,6 +642,14 @@ For one person, on their own machine, by default:
   classifier, like any tool's). To keep a service out of Orbit Web, disconnect it at claude.ai. A run
   governance holds reaches none (`--strict-mcp-config`, and in the governed deployment
   `ENABLE_CLAUDEAI_MCP_SERVERS=false` behind the egress proxy): its Constitution has no action for one. Research never.
+- **Images in a chat message** are uploaded as their own bytes (`POST /api/images`, `application/octet-stream`: with a
+  research source, the only two bodies that are not JSON, each on its one route under the same header and origin rules).
+  What an image is, is read from its bytes -- PNG, JPEG, GIF or WebP, never SVG -- and it is held to Claude's limits; it
+  is kept under `/data/app/images` (the control plane's room) as a file named by an id the server made, and belongs to
+  the account that uploaded it: a message may name only its sender's unsent uploads, an image goes with one message, and
+  it is read back only through the chat (`GET /api/sessions/<id>/images/<image>`, under the chat's access rule, served
+  `nosniff` with `default-src 'none'`). Claude Code is given it as base64 in one stream-json message on stdin; events and
+  logs keep its id, never its bytes. The image goes to Claude (Anthropic) with the words.
 - **A shared chat's link** opens one read-only snapshot and nothing else: `GET /api/shared/<token>` is the one route the
   access gate and the Claude sign-in gate let through, the token (32 random bytes, in the URL's fragment) names one
   share, and the snapshot holds the conversation alone -- tools by their title unless their owner shares what they did,
@@ -646,7 +660,7 @@ For one person, on their own machine, by default:
 - **Research** ([above](#research)): a research run has no tool, reads no settings file, loads no MCP server, persists
   nothing and is never in a bypass mode; a process that reports or uses a tool is stopped. Documents' words reach it only
   between tags it cannot close, as data. Citations are verified against the passages the run was given. An upload is
-  the one body that is not JSON, on one route, under the same header and origin rules; files are named by their hash.
+  the file's own bytes, on its one route, under the same header and origin rules; files are named by their hash.
   The URL fetcher reaches only the public internet's web ports, checks every address and every redirect, and connects
   to the address it checked. A research run's token (governed deployment) opens the egress proxy alone, never the
   agent gateway. What a run writes is masked by token shape before it is kept; no event keeps a source's text.

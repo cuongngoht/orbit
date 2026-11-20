@@ -28,6 +28,13 @@ nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
   makes its documents, and every other service the account connected at claude.ai. Chats ran with `--strict-mcp-config`,
   which dropped them all -- so Claude in Orbit Web could make no document. A repository's `.mcp.json` still never starts;
   a run governance holds, research and the model catalog's probe keep the flag.
+- **Images in a chat message** (ADR 0065). Paste a screenshot (⌘V / Ctrl+V), drop images on the composer or pick them:
+  each is uploaded at once as its own bytes (PNG, JPEG, GIF or WebP, read from its bytes, never SVG; 6 a message, 5 MB and
+  8000 pixels a side), kept under `/data/app/images` for the account that uploaded it, and sent with the message --
+  Claude Code is given it in one stream-json message (`--input-format stream-json`, only for a message with images). The
+  chat shows it again to whoever may read the chat; an image goes with one message; a shared link keeps the words only;
+  an unsent upload is swept after a day, and a chat's images go with it. The runner protocol now carries a long stdin in
+  frames under its bound. Research takes no images.
 - **The egress proxy refuses IPv6 that carries IPv4** (IPv4-compatible `::/96`, NAT64 `64:ff9b::/96`, 6to4 `2002::/16`):
   the one definition of "not the public internet" that the proxy and research's URL import share.
 - **A stop no longer waits for an open page** (found while verifying research's restart): the HTTP server waited for the
@@ -191,8 +198,8 @@ nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
   (`/api/sessions/:id/events`, replayed after `Last-Event-ID`) and the app stream (`/api/events`: the sidebar's chats,
   the connectors' sign-ins, the customizations -- notifications that replace polling). Adding an event is a catalog row
   and its payload type.
-- **Checked.** 509 deterministic tests (governance-core 33, contracts 17, API unit 151, API integration with mocked
-  processes 156, web 152), `scripts/ci.mjs` green; the Docker smoke test (34 checks) also checks the Azure Repos helper,
+- **Checked.** 531 deterministic tests (governance-core 33, contracts 19, API unit 156, API integration with mocked
+  processes 161, web 162), `scripts/ci.mjs` green; the Docker smoke test (34 checks) also checks the Azure Repos helper,
   the runtime user's file rights (it can read everything the image ships), Python, `/data/research` private to that user,
   and a research workspace with a source read and indexed in the container kept across a restart and a new container; the security lab's governed run is recorded in
   `tests/security-lab/results/0.8.0`. Research's definition of done was run in a real Chromium against the local image

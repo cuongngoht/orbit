@@ -56,7 +56,7 @@ describe("typing / at the start of a message lists the skills and commands the c
     expect(screen.queryByRole("listbox")).toBeNull();
     expect(sent).not.toHaveBeenCalled();
     await userEvent.type(box, "add a button{Enter}");
-    expect(sent).toHaveBeenCalledWith("/orbit:orbit-develop add a button");
+    expect(sent).toHaveBeenCalledWith("/orbit:orbit-develop add a button", []);
   });
 
   test("a skill is found by its own name, without its plugin's; Tab and a click take one too", async () => {
@@ -109,7 +109,7 @@ describe("typing / at the start of a message lists the skills and commands the c
     await userEvent.type(box, "/zzz");
     expect(await screen.findByText("No skill or command matches “/zzz”.")).toBeInTheDocument();
     await userEvent.keyboard("{Enter}");
-    expect(sent).toHaveBeenCalledWith("/zzz");
+    expect(sent).toHaveBeenCalledWith("/zzz", []);
   });
 
   test("the API's note about the project's skills, and a list that could not be read, are said under it", async () => {
@@ -123,7 +123,7 @@ describe("typing / at the start of a message lists the skills and commands the c
     await userEvent.type(box, "/x");
     expect(await screen.findByText(/The skills could not be read\./)).toBeInTheDocument();
     await userEvent.keyboard("{Enter}");
-    expect(sent).toHaveBeenCalledWith("/x");
+    expect(sent).toHaveBeenCalledWith("/x", []);
   });
 
   test("a composer with nothing to read offers no list", async () => {

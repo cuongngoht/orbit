@@ -51,6 +51,13 @@ test("a run governance holds reaches no MCP server: its Constitution has no acti
   assert.ok(claudeArgs({ ...base, bound: true }).includes("--strict-mcp-config"));
 });
 
+test("a message with images goes in as stream-json; one without keeps the prompt's own text", () => {
+  assert.equal(claudeArgs(base).includes("--input-format"), false);
+  const withImages = claudeArgs({ ...base, streamInput: true });
+  assert.equal(after(withImages, "--input-format"), "stream-json");
+  assert.equal(after(withImages, "--output-format"), "stream-json");
+});
+
 test("a model that takes no effort level (the account's catalog says so) is given none", () => {
   const a = claudeArgs({ ...base, effort: null });
   assert.equal(a.includes("--effort"), false);

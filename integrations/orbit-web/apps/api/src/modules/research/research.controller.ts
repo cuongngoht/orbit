@@ -8,29 +8,12 @@ import type { Request, Response } from "express";
 import type { AppConfig } from "../../config/config.js";
 import { APP_CONFIG } from "../../core/tokens.js";
 import { ApiError } from "../../common/errors.js";
+import { readRawBody } from "../../common/raw-body.js";
 import { ResearchAccess } from "./access.js";
 import { ResearchEvidenceService } from "./evidence.service.js";
 import { ResearchSessionsService } from "./sessions.service.js";
 import { ResearchSourcesService, tooLarge } from "./sources.service.js";
 import { ResearchWorkspacesService } from "./workspaces.service.js";
-
-// The request's body, as bytes, at most `limit` of them (413 beyond).
-export function readRawBody(req: Request, limit: number): Promise<Buffer> {
-  const declared = Number(req.headers["content-length"] ?? Number.NaN);
-  if (Number.isFinite(declared) && declared > limit) return Promise.reject(tooLarge(limit));
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    let size = 0;
-    let over = false;
-    req.on("data", (chunk: Buffer) => {
-      size += chunk.length;
-      if (size > limit) over = true;
-      if (!over) chunks.push(chunk);
-    });
-    req.on("end", () => (over ? reject(tooLarge(limit)) : resolve(Buffer.concat(chunks))));
-    req.on("error", () => reject(new ApiError(400, "invalid_request", "The upload was cut off.")));
-  });
-}
 
 @Controller("research")
 export class ResearchController {
@@ -91,7 +74,7 @@ export class ResearchController {
     const identity = await this.access.viewer();
     this.access.workspace(id, identity);
     if (!String(req.headers["content-type"] ?? "").startsWith("application/octet-stream")) throw new ApiError(415, "octet_stream_required", "Send the file's own bytes as application/octet-stream.");
-    const bytes = await readRawBody(req, this.config.research.maxUploadBytes);
+    const bytes = await readRawBody(req, this.config.research.maxUploadBytes, tooLarge);
     return this.sources.upload(id, req.headers[UPLOAD_NAME_HEADER], bytes, identity);
   }
 

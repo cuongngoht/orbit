@@ -3,6 +3,7 @@
 // isolation check tells a room it can see from one it cannot, a writable directory from a read-only one, and a way out
 // from none.
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type AddressInfo, type Server } from "node:net";
 import { tmpdir } from "node:os";
@@ -67,6 +68,16 @@ describe("a program through the runner", () => {
     const slow = await port.run(NODE, ["-e", "setTimeout(()=>{},60000)"], { cwd: tmpdir(), env, timeoutMs: 300 });
     assert.equal(slow.timedOut, true);
     assert.notEqual(slow.signal, null);
+  });
+
+  // A message with images is megabytes of stdin (their base64): it goes over in frames under the protocol's limit, and
+  // a character is never cut between two of them.
+  test("an input larger than a frame arrives whole, to the byte", async () => {
+    const piece = `${"a".repeat(1023)}😀`;
+    const input = piece.repeat(Math.ceil((10 * 1024 * 1024) / piece.length));
+    const hash = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
+    const r = await port.run(NODE, ["-e", "const c=[];process.stdin.on('data',d=>c.push(d)).on('end',()=>process.stdout.write(require('crypto').createHash('sha256').update(Buffer.concat(c)).digest('hex')))"], { cwd: tmpdir(), env, input, timeoutMs: 30_000 });
+    assert.deepEqual([r.code, r.stdout], [0, hash(input)]);
   });
 
   test("bytes stay bytes", async () => {

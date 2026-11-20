@@ -2,7 +2,7 @@
 // preference, one Claude Code conversation. A session publishes what happens to it on the event bus: its own stream
 // (`session.status`) and, for every page, the app stream (`session.summary`, `session.removed`).
 import { Inject, Injectable } from "@nestjs/common";
-import { checkCreateSession, checkUpdateSession, CLAUDE_SIGN_IN_REQUIRED, type AccessLevel, type SessionDetail, type SessionSummary } from "@orbit-web/contracts";
+import { checkCreateSession, checkUpdateSession, CLAUDE_SIGN_IN_REQUIRED, type AccessLevel, type ChatMessage, type ImageRef, type SessionDetail, type SessionSummary } from "@orbit-web/contracts";
 import { randomUUID } from "node:crypto";
 import { rmSync } from "node:fs";
 import { AgentFs } from "../../infra/process/agent-fs.js";
@@ -14,7 +14,9 @@ import { APP_CONFIG } from "../../core/tokens.js";
 import { accepted, ApiError, conflict, notFound } from "../../common/errors.js";
 import { isSessionId } from "../../common/workspace-path.js";
 import { redactSecrets } from "../../infra/security/redact.js";
-import { MessageStore, SessionStore, type SessionRecord } from "../../infra/storage/stores.js";
+import { ImageFiles } from "../../infra/storage/image-files.js";
+import { ImageStore, imageRefOf, MessageStore, SessionStore, type SessionRecord } from "../../infra/storage/stores.js";
+import { ImagesService } from "../images/images.service.js";
 import { OwnershipService, requireIdentity } from "../access/ownership.service.js";
 import { ClaudeAuthService } from "../claude-auth/claude-auth.service.js";
 import { ClaudeModelsService } from "../claude-auth/claude-models.service.js";
@@ -71,6 +73,9 @@ export class SessionsService {
     @Inject(MirrorService) private readonly mirror: MirrorService,
     @Inject(OwnershipService) private readonly ownership: OwnershipService,
     @Inject(ClaudeModelsService) private readonly models: ClaudeModelsService,
+    @Inject(ImagesService) private readonly images: ImagesService,
+    @Inject(ImageStore) private readonly imageRows: ImageStore,
+    @Inject(ImageFiles) private readonly imageFiles: ImageFiles,
   ) {}
 
   // The chats of the account signed in now: its own, and those shared with it.
@@ -81,7 +86,14 @@ export class SessionsService {
 
   detail(id: string): SessionDetail {
     const s = this.record(id);
-    return { ...this.summary(s), baseCommit: s.baseCommit, claudeSessionId: s.turns > 0 ? s.claudeSessionId : null, turns: s.turns, lastSeq: s.lastSeq, messages: this.messages.list(id) };
+    return { ...this.summary(s), baseCommit: s.baseCommit, claudeSessionId: s.turns > 0 ? s.claudeSessionId : null, turns: s.turns, lastSeq: s.lastSeq, messages: this.withImages(id, this.messages.list(id)) };
+  }
+
+  // Each person's message with the images it carried, in the order they were sent.
+  private withImages(id: string, messages: ChatMessage[]): ChatMessage[] {
+    const byMessage = new Map<string, ImageRef[]>();
+    for (const image of this.imageRows.sentIn(id)) byMessage.set(image.messageId as string, [...(byMessage.get(image.messageId as string) ?? []), imageRefOf(image)]);
+    return byMessage.size === 0 ? messages : messages.map((m) => (byMessage.has(m.id) ? { ...m, images: byMessage.get(m.id) } : m));
   }
 
   // As the account signed in now sees it.
@@ -97,6 +109,9 @@ export class SessionsService {
     // The gate already holds every route to the Claude sign-in; this is the same rule, said where the account is used.
     if ((await this.claude.account()).state !== "connected") throw new ApiError(401, CLAUDE_SIGN_IN_REQUIRED, "Sign in to Orbit Web with your Claude account first.");
     const owner = requireIdentity(await this.ownership.viewer());
+    // The first message's images: the creator's own uploads, unsent -- held before anything is made.
+    const imageIds = req.images ?? [];
+    this.images.owned(imageIds, owner, null);
     const prefs = this.settings.get();
     // The model, effort and mode, held to what this account may use.
     const run = await this.models.settle({ model: req.model, effort: prefs.defaultEffort, mode: prefs.defaultMode }, { ...(req.effort ? { effort: req.effort } : {}), ...(req.mode ? { mode: req.mode } : {}) });
@@ -115,10 +130,11 @@ export class SessionsService {
       workspacePath: this.workspaces.pathFor(id),
       claudeSessionId: randomUUID(),
       status: "preparing",
-      pendingPrompt: req.prompt ?? null,
+      pendingPrompt: req.prompt ?? (imageIds.length > 0 ? "" : null),
       ownerEmail: owner.email,
       ownerOrg: owner.org,
     });
+    this.images.claim(imageIds, owner, id);
     this.bus.publishSession(id, "session.status", { status: "preparing", reason: null });
     void this.workspaces.prepare(session);
     return summaryOf(session, "owner");
@@ -146,7 +162,10 @@ export class SessionsService {
     if (this.runner.isBusy(id)) throw conflict("workspace_busy", "Wait until the working branch has moved before deleting this chat.");
     if (s.status === "preparing") throw conflict("workspace_preparing", "Wait until the workspace is prepared (or fails) before deleting this chat.");
     this.audit.record(ctx, { type: "session.deleted", outcome: "deleted", workspaceId: id, data: { scope: this.registry.of(id).scope } });
+    const images = this.imageRows.idsOf(id);
+    // Its images' records go with it (they refer to it); their files are removed here.
     this.sessions.delete(id);
+    await this.imageFiles.remove(images);
     await this.workspaces.remove(id);
     await this.files.rmrf(join(this.config.data.sessions, id));
     // The control plane's own copy of the repository: its own to remove.

@@ -6,7 +6,8 @@
 //     person lets it use GitHub CLI's sign-in (Settings), and then only where gh keeps it (never a token variable);
 //   - the CLI's own credential names (CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN) are NEVER
 //     passed: Claude Code would use one before the Claude account signed in here, and that account is the sign-in of
-//     Orbit Web itself (the Claude sign-in gate). A container started with one is told it is ignored.
+//     Orbit Web itself (the Claude sign-in gate). A container started with one is told it is ignored;
+//   - Claude Code's telemetry (OTEL_*) reaches Claude Code alone, and only once the container names a collector.
 import type { AppConfig } from "../../config/config.js";
 
 const PASS_THROUGH = [
@@ -89,6 +90,41 @@ export function azureGitEnv(config: AppConfig): Record<string, string> {
   return { ...gitEnv(config), ...AZURE_PINS, AZURE_CONFIG_DIR: config.data.azure, BROWSER: "true" };
 }
 
+// CLAUDE CODE'S TELEMETRY: OpenTelemetry as a person's own Claude Code sends it, and only once the container names a
+// collector (OTEL_EXPORTER_OTLP_ENDPOINT, or a signal's own `…_ENDPOINT`). Where it goes and the collector's token
+// (OTEL_EXPORTER_OTLP_HEADERS) come from the container's environment; every other attribute is fixed here: metrics,
+// logs and traces over OTLP http/protobuf; metrics that say which repository, version, entrypoint, session and account;
+// events with tool details -- never a prompt, a response, a tool's content or a raw API body. An OTEL_* variable the
+// container sets wins over its default. Claude Code alone is given any of it: git, gh, az and Orbit's own commands never
+// see the token.
+export const TELEMETRY_DEFAULTS: Readonly<Record<string, string>> = {
+  CLAUDE_CODE_ENABLE_TELEMETRY: "1",
+  OTEL_METRICS_EXPORTER: "otlp",
+  OTEL_LOGS_EXPORTER: "otlp",
+  OTEL_TRACES_EXPORTER: "otlp",
+  OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
+  OTEL_METRICS_INCLUDE_REPOSITORY: "1",
+  OTEL_METRICS_INCLUDE_VERSION: "1",
+  OTEL_METRICS_INCLUDE_ENTRYPOINT: "1",
+  OTEL_METRICS_INCLUDE_SESSION_ID: "1",
+  OTEL_METRICS_INCLUDE_ACCOUNT_UUID: "1",
+  OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES: "1",
+  OTEL_LOG_USER_PROMPTS: "0",
+  OTEL_LOG_ASSISTANT_RESPONSES: "0",
+  OTEL_LOG_TOOL_DETAILS: "1",
+  OTEL_LOG_TOOL_CONTENT: "0",
+  OTEL_LOG_RAW_API_BODIES: "0",
+  OTEL_LOG_MANAGED_SETTINGS: "1",
+};
+
+const TELEMETRY_NAME = /^(?:OTEL_[A-Z0-9_]+|CLAUDE_CODE_ENABLE_TELEMETRY)$/;
+const COLLECTOR = /^OTEL_EXPORTER_OTLP_(?:[A-Z]+_)?ENDPOINT$/;
+
+export function telemetryEnv(config: AppConfig): Record<string, string> {
+  const set = Object.fromEntries(Object.entries(config.sourceEnv).filter((e): e is [string, string] => TELEMETRY_NAME.test(e[0]) && typeof e[1] === "string" && e[1] !== ""));
+  return Object.keys(set).some((name) => COLLECTOR.test(name)) ? { ...TELEMETRY_DEFAULTS, ...set } : {};
+}
+
 // The Claude credential variables the container was started with, by name: ignored, and said so.
 export const ignoredClaudeCredentials = (config: AppConfig): string[] => Object.keys(pick(config.sourceEnv, CLAUDE_CREDENTIAL_NAMES));
 
@@ -118,6 +154,7 @@ export function claudeEnv(config: AppConfig, o: { azure?: boolean; github?: bool
     ORBIT_STORE_DIR: config.data.orbit,
     DISABLE_AUTOUPDATER: "1",
     BROWSER: "true",
+    ...telemetryEnv(config),
     ...(o.azure ? { ...AZURE_PINS, AZURE_CONFIG_DIR: config.data.azure } : {}),
     ...(o.github ? githubForClaude(config) : {}),
   };

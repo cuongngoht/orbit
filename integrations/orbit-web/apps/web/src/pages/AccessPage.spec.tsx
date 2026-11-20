@@ -1,7 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi } from "vitest";
-import { takeAccessLink } from "../services/accessLink";
+import { takeAccessLink, watchAccessLinks } from "../services/accessLink";
 import { fakeApi, withStatus } from "../testing/fakeApi";
 import { renderUi } from "../testing/render";
 import { AccessPage } from "./AccessPage";
@@ -43,6 +43,21 @@ describe("the access token, asked for first by an Orbit Web reachable from the i
     renderUi(<AccessPage onGranted={granted} />);
     await waitFor(() => expect(granted).toHaveBeenCalledTimes(1));
     expect(api.calls.filter((c) => c.path === "/api/access").map((c) => c.body)).toEqual([{ token: TOKEN }]);
+  });
+
+  test("a link opened over the page already open -- only the fragment changes, nothing reloads -- is taken too", async () => {
+    window.history.replaceState(null, "", "/");
+    const stop = watchAccessLinks();
+    const api = fakeApi().on("POST", "/api/access", () => undefined);
+    const granted = vi.fn();
+    renderUi(<AccessPage onGranted={granted} />);
+    expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
+    window.history.pushState(null, "", `/#access=${TOKEN}`);
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    await waitFor(() => expect(granted).toHaveBeenCalledTimes(1));
+    expect(api.calls.filter((c) => c.path === "/api/access").map((c) => c.body)).toEqual([{ token: TOKEN }]);
+    expect(window.location.hash).toBe("");
+    stop();
   });
 
   test("a fragment that is not an access link is left alone", () => {

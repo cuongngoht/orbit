@@ -4,7 +4,7 @@
 import { Button, Field, Input, MessageBar, MessageBarBody, Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
 import { ORBIT_WEB_VERSION } from "@orbit-web/contracts";
 import { useEffect, useRef, useState } from "react";
-import { accessLinkToken, forgetAccessLink } from "../services/accessLink";
+import { accessLinkToken, forgetAccessLink, onAccessLink } from "../services/accessLink";
 import { errorText, send } from "../services/api";
 
 const useStyles = makeStyles({
@@ -47,12 +47,19 @@ export function AccessPage({ onGranted }: { onGranted: () => void }) {
     void trade(value);
   };
 
-  // An access link's token is sent once, as soon as the page is here.
+  // An access link's token is sent once, as soon as the page is here -- and so is one a link brings while it is open.
   const sent = useRef(false);
+  const latest = useRef(submit);
   useEffect(() => {
-    if (sent.current || fromLink === null) return;
-    sent.current = true;
-    void trade(fromLink);
+    latest.current = submit;
+  });
+  useEffect(() => {
+    const stop = onAccessLink((t) => latest.current(t));
+    if (!sent.current && fromLink !== null) {
+      sent.current = true;
+      void trade(fromLink);
+    }
+    return stop;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arrival
   }, []);
 

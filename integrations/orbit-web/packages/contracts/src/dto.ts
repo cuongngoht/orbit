@@ -284,7 +284,8 @@ export interface Settings {
   defaultModel: ModelChoice;
   defaultEffort: EffortChoice;
   defaultMode: ModeChoice;
-  // A repository's own skills, commands, agents and declared plugins are loaded for its chats (on unless turned off).
+  // The plugins a repository is or declares are run for its chats. Off unless a person turns it on: a plugin runs code
+  // (hooks, MCP servers) in the container. A repository's skills, commands and agents load either way, as instructions.
   projectPlugins: boolean;
   // WebFetch and WebSearch are offered to Claude only when this is on.
   webTools: boolean;

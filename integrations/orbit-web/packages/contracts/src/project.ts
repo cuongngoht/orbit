@@ -11,7 +11,7 @@ export interface ProjectItem {
 }
 
 // What happened to one plugin the project declares or is.
-//   declared   the project names it; nothing done (loading project plugins is switched off)
+//   declared   the project names it; not run ("Run project plugins" is off in Settings)
 //   installing the CLI is fetching it
 //   installed  installed and enabled for this project's runs only
 //   loaded     part of the repository itself, loaded with --plugin-dir
@@ -50,7 +50,8 @@ export interface ProjectInventory {
   mcpServers: string[];
   marketplaces: ProjectMarketplace[];
   plugins: ProjectPlugin[];
-  // Whether the repository's own skills, commands and agents are loaded for its runs (a plugin built for the session).
+  // Whether the repository's own skills, commands and agents are loaded for its runs (a plugin built for the session,
+  // instructions only).
   loaded: boolean;
   // More than the bounds allow was found; what is listed is a prefix.
   truncated: boolean;

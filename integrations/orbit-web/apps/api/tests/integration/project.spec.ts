@@ -1,5 +1,6 @@
 // A project's skills and plugins, loaded on its workspace's first fetch: read from the repository's files (its
-// settings' env and hooks never), carried to Claude Code as a plugin built for the session, its own plugins loaded by
+// settings' env and hooks never), its skills, commands and agents carried to Claude Code as a plugin built for the
+// session -- instructions only, always -- and, once a person turned on "Run project plugins", its own plugins loaded by
 // directory and the plugins it declares installed through the CLI and enabled for its runs only. Every step is an
 // event; a plugin that fails is said, and never fails the workspace.
 import assert from "node:assert/strict";
@@ -43,10 +44,11 @@ function projectFake(): FakeProcessPort {
     .on(program("claude", "plugin", "marketplace", "add"), { run: { code: 0 } })
     .on(program("claude", "plugin", "install"), { run: (call) => (call.args[2] === "fmt@acme" ? { code: 0 } : { code: 1, stderr: "Plugin \"broken\" not found in marketplace \"acme\"" }) })
     .on(program("claude", "plugin", "disable"), { run: { code: 0 } })
+    .on(program("claude", "plugin", "uninstall"), { run: { code: 0 } })
     .on(claudeRun, { spawn: quickRun });
 }
 
-describe("a project's skills and plugins, on its workspace's first fetch", () => {
+describe("a project's skills and plugins, with project plugins turned on", () => {
   let h: Harness;
   let fake: FakeProcessPort;
   let session: SessionSummary;
@@ -54,6 +56,7 @@ describe("a project's skills and plugins, on its workspace's first fetch", () =>
   before(async () => {
     fake = projectFake();
     h = await startHarness({ fake });
+    assert.equal((await h.send("PATCH", "/api/settings", { projectPlugins: true })).status, 200);
     const app = await h.stream("/api/events");
     session = (await h.send("POST", "/api/sessions", { repository: { source: "github", id: REPOSITORY }, branch: "main", model: "sonnet", prompt: "Hello." })).body as SessionSummary;
     await eventually(async () => ((await h.get(`/api/sessions/${session.id}`)).body as SessionDetail).status, (s) => s === "completed");
@@ -123,7 +126,7 @@ describe("a project's skills and plugins, on its workspace's first fetch", () =>
   });
 });
 
-describe("with project skills and plugins switched off", () => {
+describe("by default: the skills load, the plugins wait for a person", () => {
   let h: Harness;
   let fake: FakeProcessPort;
   before(async () => {
@@ -132,17 +135,40 @@ describe("with project skills and plugins switched off", () => {
   });
   after(() => h.close());
 
-  test("they are listed, never loaded, and nothing is installed", async () => {
-    assert.equal((await h.send("PATCH", "/api/settings", { projectPlugins: false })).status, 200);
+  test("its skills, commands and agents load as instructions; its plugins are listed, never run, and nothing is installed", async () => {
     const session = (await h.send("POST", "/api/sessions", { repository: { source: "github", id: REPOSITORY }, model: "sonnet", prompt: "Hello." })).body as SessionSummary;
     await eventually(async () => ((await h.get(`/api/sessions/${session.id}`)).body as SessionDetail).status, (s) => s === "completed");
     const { inventory } = (await h.get(`/api/sessions/${session.id}/project`)).body as { inventory: ProjectInventory };
-    assert.equal(inventory.loaded, false);
+    assert.equal(inventory.loaded, true);
+    assert.deepEqual(inventory.skills.map((s) => s.name), ["deploy"]);
     assert.deepEqual(inventory.plugins.map((p) => p.state), ["declared", "declared", "declared"]);
-    assert.match(inventory.plugins[0]?.detail ?? "", /switched off/);
-    assert.deepEqual(fake.callsOf(program("claude", "plugin")), []);
+    assert.match(inventory.plugins[0]?.detail ?? "", /runs code/);
+    assert.deepEqual(fake.callsOf(program("claude", "plugin")), [], "nothing is installed, nothing is asked of the CLI");
     const call = fake.children.find((c) => claudeRun(c.call.file, c.call.args))?.call as Call;
-    assert.deepEqual(call.args.flatMap((a, i) => (a === "--plugin-dir" ? [call.args[i + 1]] : [])), [h.config.pluginDir]);
+    assert.deepEqual(call.args.flatMap((a, i) => (a === "--plugin-dir" ? [call.args[i + 1]] : [])), [h.config.pluginDir, join(h.config.data.sessions, session.id, "project-plugin")], "the repository itself is not loaded as a plugin");
     assert.equal(call.args.includes("--settings"), false);
+  });
+});
+
+describe("a declared plugin that cannot be switched off for other chats", () => {
+  let h: Harness;
+  let fake: FakeProcessPort;
+  before(async () => {
+    fake = projectFake().on(program("claude", "plugin", "disable"), { run: { code: 1, stderr: "could not write settings" } });
+    h = await startHarness({ fake });
+    await h.send("PATCH", "/api/settings", { projectPlugins: true });
+  });
+  after(() => h.close());
+
+  test("is uninstalled and said to have failed -- never left enabled everywhere", async () => {
+    const session = (await h.send("POST", "/api/sessions", { repository: { source: "github", id: REPOSITORY }, model: "sonnet", prompt: "Hello." })).body as SessionSummary;
+    await eventually(async () => ((await h.get(`/api/sessions/${session.id}`)).body as SessionDetail).status, (s) => s === "completed");
+    const { inventory } = (await h.get(`/api/sessions/${session.id}/project`)).body as { inventory: ProjectInventory };
+    const fmt = inventory.plugins.find((p) => p.id === "fmt@acme");
+    assert.equal(fmt?.state, "failed");
+    assert.match(fmt?.detail ?? "", /could not be switched off.*uninstalled/);
+    assert.deepEqual(fake.callsOf(program("claude", "plugin", "uninstall")).map((c) => c.args), [["plugin", "uninstall", "fmt@acme", "--scope", "user"]]);
+    const call = fake.children.find((c) => claudeRun(c.call.file, c.call.args))?.call as Call;
+    assert.equal(call.args.includes("--settings"), false, "a plugin that failed is enabled for no run");
   });
 });

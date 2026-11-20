@@ -1,16 +1,22 @@
 // A PROJECT'S SKILLS AND PLUGINS: read on the workspace's first fetch (the "project" step), kept beside the chat, and
-// loaded for that chat's runs -- and only those -- unless a person switched it off (Settings → Code):
+// loaded for that chat's runs -- and only those:
 //
-//   the repository's .claude/skills, commands, agents  a plugin built for the session (project-plugin.ts), --plugin-dir
-//   a plugin the repository is, or holds               --plugin-dir that directory
-//   a plugin the project declares (name@marketplace)   `claude plugin marketplace add` (once), `claude plugin install
-//                                                      --scope user` then `claude plugin disable --scope user` (so no
-//                                                      other chat loads it), and `--settings {"enabledPlugins": …}` on
-//                                                      this project's runs
+//   the repository's .claude/skills, commands, agents  ALWAYS: a plugin built for the session (project-plugin.ts),
+//                                                      --plugin-dir. Instructions only: their `hooks` and
+//                                                      `allowed-tools` are dropped, and the plugin has no hook or MCP
+//                                                      server of its own.
+//   a plugin the repository is, or holds               only when a person turned on "Run project plugins"
+//                                                      (Settings → Code; off by default): --plugin-dir that directory
+//   a plugin the project declares (name@marketplace)   only then too: `claude plugin marketplace add` (once),
+//                                                      `claude plugin install --scope user`, then `claude plugin
+//                                                      disable --scope user` (so no other chat loads it -- and if that
+//                                                      fails, `claude plugin uninstall`), and `--settings
+//                                                      {"enabledPlugins": …}` on this project's runs
 //
-// The repository's settings (env, hooks, permissions) are never loaded, and its .mcp.json servers are listed, never
-// started. Every step is an event; a step that fails is reported in the inventory and never fails the workspace. A
-// project's plugins are code from that project or the marketplaces it names: they run in this container as the agent.
+// A plugin RUNS CODE -- hooks at session start that no classifier reviews, MCP servers -- in this container, where the
+// sign-ins are: that is why it waits for a person's switch. The repository's settings (env, hooks, permissions) are
+// never loaded, and its .mcp.json servers are listed, never started. Every step is an event; a step that fails is
+// reported in the inventory and never fails the workspace.
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import type { ProjectInventory, ProjectPlugin } from "@orbit-web/contracts";
 import { join } from "node:path";
@@ -69,10 +75,10 @@ export class ProjectService {
   async load(session: SessionRecord): Promise<ProjectInventory> {
     try {
       const readout = readRepository(session.workspacePath);
-      const enabled = this.settings.get().projectPlugins;
-      const built = enabled ? buildProjectPlugin(session.workspacePath, this.pluginDir(session.id), session.repository) : null;
-      const inventory = this.save(session.id, this.inventoryOf(session, readout, enabled, built?.built === true, built?.truncated === true));
-      return enabled ? await this.installDeclared(session, inventory, readout.marketplaces) : inventory;
+      const runPlugins = this.settings.get().projectPlugins;
+      const built = buildProjectPlugin(session.workspacePath, this.pluginDir(session.id), session.repository);
+      const inventory = this.save(session.id, this.inventoryOf(session, readout, runPlugins, built.built, built.truncated));
+      return runPlugins ? await this.installDeclared(session, inventory, readout.marketplaces) : inventory;
     } catch (err) {
       this.logger.warn(`the project of ${session.id} could not be read: ${err instanceof Error ? err.message : String(err)}`);
       return this.save(session.id, this.inventoryOf(session, null, false, false, false));
@@ -95,10 +101,10 @@ export class ProjectService {
     return { pluginDirs: dirs, enabledPlugins };
   }
 
-  private inventoryOf(session: SessionRecord, readout: Readout | null, enabled: boolean, built: boolean, truncated: boolean): ProjectInventory {
-    const off = enabled ? null : "Loading project skills and plugins is switched off (Settings → Code).";
+  private inventoryOf(session: SessionRecord, readout: Readout | null, runPlugins: boolean, built: boolean, truncated: boolean): ProjectInventory {
+    const off = runPlugins ? null : "Not run: a plugin runs code (hooks, MCP servers) in this container. Turn on “Run project plugins” in Settings → Code to load the plugins of the repositories you open.";
     const plugins: ProjectPlugin[] = [
-      ...(readout?.repositoryPlugins ?? []).map((p) => ({ id: p.name, kind: "repository" as const, source: p.path === "." ? "this repository" : `./${p.path}`, path: p.path, state: enabled ? ("loaded" as const) : ("declared" as const), detail: off })),
+      ...(readout?.repositoryPlugins ?? []).map((p) => ({ id: p.name, kind: "repository" as const, source: p.path === "." ? "this repository" : `./${p.path}`, path: p.path, state: runPlugins ? ("loaded" as const) : ("declared" as const), detail: off })),
       ...(readout?.declaredPlugins ?? []).map((id) => ({ id, kind: "declared" as const, source: `marketplace ${marketplaceOf(id)}`, path: null, state: "declared" as const, detail: off })),
     ];
     return {
@@ -161,9 +167,13 @@ export class ProjectService {
     if (alreadyInstalled) return { ...plugin, state: "installed", detail: "Already installed here; enabled for this project's chats." };
     const r = await this.claude(["plugin", "install", plugin.id, "--scope", "user"]);
     if (!succeeded(r)) return { ...plugin, state: "failed", detail: marketplaceProblem ?? `claude plugin install ${endedHow(r)}: ${tail(r.stderr || r.stdout, 2)}` };
+    // Installed for this project's chats only: switched off for the user, then enabled per run. A plugin that cannot be
+    // switched off would run in every chat, so it is uninstalled instead.
     const off = await this.claude(["plugin", "disable", plugin.id, "--scope", "user"]);
-    const detail = succeeded(off) ? null : `Installed, but it could not be switched off for other chats: ${tail(off.stderr || off.stdout, 2)}`;
-    return { ...plugin, state: "installed", detail };
+    if (succeeded(off)) return { ...plugin, state: "installed", detail: null };
+    const removed = await this.claude(["plugin", "uninstall", plugin.id, "--scope", "user"]);
+    const after = succeeded(removed) ? "so it was uninstalled" : `and uninstalling it failed too (${tail(removed.stderr || removed.stdout, 2)}) -- remove it with \`claude plugin uninstall ${plugin.id}\``;
+    return { ...plugin, state: "failed", detail: `It could not be switched off for other chats (${tail(off.stderr || off.stdout, 2)}), ${after}.` };
   }
 
   private claude(args: string[]): Promise<RunResult> {

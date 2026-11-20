@@ -36,3 +36,26 @@ export function frontmatter(text: string): Frontmatter {
   const block = lines.slice(1, end);
   return { name: scalar(block, "name"), description: scalar(block, "description") };
 }
+
+// The frontmatter keys that make Claude Code RUN something or allow a tool without asking: `hooks` (commands run at a
+// lifecycle event, never reviewed by auto mode's classifier) and `allowed-tools`. They are dropped, with the lines that
+// belong to them, when a repository's skills, commands and agents are carried into a session's plugin: what is
+// carried is instructions, and what Claude then does is held to the session's own permissions.
+export const RUNNABLE_KEYS: readonly string[] = ["hooks", "allowed-tools", "allowedTools"];
+
+export function withoutRunnableKeys(text: string): string {
+  const lines = text.split(/(?<=\n)/);
+  if (lines[0]?.replace(/^\uFEFF/, "").trim() !== "---") return text;
+  const end = lines.findIndex((l, i) => i > 0 && l.trim() === "---");
+  if (end === -1) return text;
+  const kept: string[] = [lines[0] as string];
+  let dropping = false;
+  for (const line of lines.slice(1, end)) {
+    const key = /^([A-Za-z][\w-]*)\s*:/.exec(line)?.[1];
+    // A key at the start of a line begins an entry; an indented line or a "- " item belongs to the entry above it.
+    if (key !== undefined) dropping = RUNNABLE_KEYS.includes(key);
+    else if (!/^[\s-]/.test(line) && line.trim() !== "") dropping = false;
+    if (!dropping) kept.push(line);
+  }
+  return [...kept, ...lines.slice(end)].join("");
+}

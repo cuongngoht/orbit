@@ -1,5 +1,6 @@
-// GET/PATCH /api/settings: a person's preferences (the default model, effort and mode of a new chat, whether a
-// project's skills and plugins are loaded, whether Claude may use the web tools, theme).
+// GET/PATCH /api/settings: a person's preferences (the default model, effort and mode of a new chat, whether the
+// plugins a repository is or declares are run -- off unless a person turns it on: they run code --, whether Claude may
+// use the web tools, theme).
 // POST /api/access: in token mode, trades the access token for an HttpOnly, SameSite=Strict cookie (asked for before the
 // Claude sign-in, so it is reachable before it).
 import { Body, Controller, Get, HttpCode, Inject, Injectable, Module, Patch, Post, Res } from "@nestjs/common";
@@ -27,7 +28,7 @@ export class SettingsService {
       defaultModel: isModelChoice(saved.defaultModel) ? saved.defaultModel : DEFAULT_MODEL,
       defaultEffort: isEffortChoice(saved.defaultEffort) ? saved.defaultEffort : DEFAULT_EFFORT,
       defaultMode: isModeChoice(saved.defaultMode) ? saved.defaultMode : DEFAULT_MODE,
-      projectPlugins: saved.projectPlugins !== false,
+      projectPlugins: saved.projectPlugins === true,
       webTools: saved.webTools === true,
       azureForClaude: saved.azureForClaude === true,
       theme: isTheme(saved.theme) ? saved.theme : "system",

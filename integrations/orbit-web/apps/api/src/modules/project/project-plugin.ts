@@ -2,9 +2,13 @@
 // its hooks -- are never loaded), and that also leaves a repository's own `.claude/skills`, `.claude/commands` and
 // `.claude/agents` unread. Claude Code's documented way to carry them is a plugin made from those three directories,
 // loaded with `--plugin-dir`: so on the workspace's first fetch they are COPIED (a snapshot, regular files only, no
-// symlink, bounded) into /data/sessions/<id>/project-plugin, under a plugin named after the repository.
-import { copyFileSync, lstatSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+// symlink, bounded) into /data/sessions/<id>/project-plugin, under a plugin named after the repository. Every markdown
+// file loses the frontmatter keys that would run something or allow a tool (`hooks`, `allowed-tools`): the plugin
+// carries instructions -- it has no hooks of its own and no MCP server -- and Claude's actions stay the session's to
+// permit.
+import { copyFileSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { withoutRunnableKeys } from "./frontmatter.js";
 import { within } from "./inventory.js";
 
 export const PLUGIN_COPY_LIMITS = { files: 2_000, bytes: 20 * 1024 * 1024, fileBytes: 2 * 1024 * 1024, depth: 8 } as const;
@@ -36,7 +40,8 @@ function copyTree(from: string, to: string, budget: Budget, depth = 0): number {
       budget.truncated = true;
       continue;
     }
-    copyFileSync(source, join(to, name));
+    if (name.endsWith(".md")) writeFileSync(join(to, name), withoutRunnableKeys(readFileSync(source, "utf8")), { mode: 0o600 });
+    else copyFileSync(source, join(to, name));
     budget.files += 1;
     budget.bytes += s.size;
     copied += 1;

@@ -18,6 +18,8 @@ test("the CLI's own environment is kept, and only what is true of this place rep
   assert.equal(env[2], `**Host containment**: ${ENVIRONMENT_HERE["Host containment"]}`);
   assert.match(env[1] as string, /open internet/i);
   assert.match(env[1] as string, /credential/i, "sending a credential out is still not ordinary work");
+  assert.match(env[1] as string, /webhook|request-capture/i, "probing endpoints unrelated to the task stays reconnaissance");
+  assert.doesNotMatch(env[1] as string, /\bcurl\b|\bwget\b/, "no tool is named as ordinary: what is fetched, and why, is");
 });
 
 test("an entry the CLI no longer lists is added, never lost", () => {

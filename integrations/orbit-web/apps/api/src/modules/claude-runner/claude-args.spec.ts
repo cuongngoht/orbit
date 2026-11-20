@@ -92,10 +92,12 @@ test("a person may let Claude Code push and open pull requests: gh and git push 
   assert.equal(a.some((x) => /bypass|dangerously/i.test(x)), false);
 });
 
-test("the web tools and a budget cap are added only when set", () => {
+test("the web tools are refused when switched off, and otherwise never pre-approved: each fetch goes to the classifier", () => {
   const a = claudeArgs({ ...base, webTools: true, maxBudgetUsd: 2 });
-  assert.match(after(a, "--allowedTools") ?? "", /WebFetch,WebSearch$/);
-  assert.equal(a.includes("WebFetch") && a.indexOf("WebFetch") > a.indexOf("--disallowedTools"), false);
+  assert.equal(after(a, "--allowedTools")?.split(",").some((t) => t.startsWith("Web")), false, "a fetch can carry data in its URL: it is reviewed, never let through by a rule");
+  assert.equal(a.includes("WebFetch") || a.includes("WebSearch"), false, "and not refused");
+  const off = claudeArgs({ ...base, webTools: false });
+  assert.ok(off.indexOf("WebFetch") > off.indexOf("--disallowedTools") && off.includes("WebSearch"));
   assert.equal(after(a, "--max-budget-usd"), "2");
   assert.equal(claudeArgs(base).includes("--max-budget-usd"), false);
 });
@@ -111,5 +113,5 @@ test("in Autonomous the classifier is told what is true of this place; Plan says
   assert.deepEqual(JSON.parse(after(claudeArgs({ ...base, autoModeEnvironment: env, enabledPlugins: { "fmt@acme": true } }), "--settings") ?? "{}"), { enabledPlugins: { "fmt@acme": true }, autoMode: { environment: env } });
   assert.equal(claudeArgs({ ...base, mode: "plan", autoModeEnvironment: env }).includes("--settings"), false);
   const a = claudeArgs({ ...base, autoModeEnvironment: env, webTools: true });
-  assert.equal(after(a, "--allowedTools")?.split(",").some((t) => /curl|wget|Bash\(/.test(t)), false);
+  assert.equal(after(a, "--allowedTools")?.split(",").some((t) => /curl|wget|Bash\(|Web/.test(t)), false);
 });

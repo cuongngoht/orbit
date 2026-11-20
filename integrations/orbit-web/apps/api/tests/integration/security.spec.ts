@@ -72,13 +72,14 @@ describe("token mode, for a host name beyond loopback", () => {
     assert.equal((await h.get("/api/setup/status", { authorization: `Bearer ${token}` })).status, 200);
   });
 
-  test("the token is traded for an HttpOnly, SameSite=Strict cookie", async () => {
+  test("the token is traded for an HttpOnly, SameSite=Strict cookie kept 30 days, so a browser is asked for it once", async () => {
     assert.equal((await h.send("POST", "/api/access", { token: "wrong-token-of-enough-length" })).status, 401);
     const ok = await h.send("POST", "/api/access", { token });
     assert.equal(ok.status, 204);
     const cookie = ok.headers.get("set-cookie") ?? "";
     assert.match(cookie, /HttpOnly/);
     assert.match(cookie, /SameSite=Strict/);
+    assert.match(cookie, /Max-Age=2592000/, "not a session cookie: a browser restart or a redeploy asks for nothing again");
     assert.equal((await h.get("/api/settings", { cookie: cookie.split(";")[0] as string })).status, 200);
   });
 });

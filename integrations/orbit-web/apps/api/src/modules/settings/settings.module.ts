@@ -1,8 +1,8 @@
 // GET/PATCH /api/settings: a person's preferences (the default model, effort and mode of a new chat, whether the
 // plugins a repository is or declares are run -- off unless a person turns it on: they run code --, whether Claude may
 // use the web tools, theme).
-// POST /api/access: in token mode, trades the access token for an HttpOnly, SameSite=Strict cookie (asked for before the
-// Claude sign-in, so it is reachable before it).
+// POST /api/access: in token mode, trades the access token for an HttpOnly, SameSite=Strict cookie kept 30 days (asked for
+// before the Claude sign-in, so it is reachable before it).
 import { Body, Controller, Get, HttpCode, Inject, Injectable, Module, Patch, Post, Res } from "@nestjs/common";
 import { checkUpdateSettings, DEFAULT_EFFORT, DEFAULT_MODE, DEFAULT_MODEL, isEffortChoice, isModeChoice, isModelChoice, isTheme, type Settings } from "@orbit-web/contracts";
 import type { Response } from "express";
@@ -14,6 +14,10 @@ import { ACCESS_COOKIE, accessTokenMatches } from "../../infra/security/guards.j
 import { SettingsStore } from "../../infra/storage/stores.js";
 
 const KEY = "preferences";
+
+// A browser is asked for the access token once, then keeps the cookie this long (not just until it closes): a restart
+// of the browser or of Orbit Web asks for nothing again. A changed token ends it at once.
+const ACCESS_COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class SettingsService {
@@ -70,7 +74,7 @@ export class SettingsController {
     const token = typeof (body as { token?: unknown } | null)?.token === "string" ? (body as { token: string }).token : null;
     if (this.config.accessToken === null) throw badRequest("This Orbit Web has no access token configured.");
     if (token === null || !accessTokenMatches(this.config, token)) throw new ApiError(401, "access_token_invalid", "That is not this Orbit Web's access token.");
-    res.cookie(ACCESS_COOKIE, token, { httpOnly: true, sameSite: "strict", secure: this.config.secureCookie, path: "/" });
+    res.cookie(ACCESS_COOKIE, token, { httpOnly: true, sameSite: "strict", secure: this.config.secureCookie, path: "/", maxAge: ACCESS_COOKIE_MAX_AGE_MS });
   }
 }
 

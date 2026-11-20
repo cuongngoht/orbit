@@ -63,7 +63,7 @@ CLI with `docker build --build-arg AZURE_CLI=0 …` (Azure DevOps then says it i
 |---|---|---|
 | `ORBIT_WEB_MAX_BUDGET_USD` | unset | a per-run spending cap passed to Claude Code (`--max-budget-usd`) |
 | `ORBIT_WEB_ALLOWED_HOSTS` | loopback only | more host names to answer to (comma-separated); **requires** `ORBIT_WEB_ACCESS_TOKEN` |
-| `ORBIT_WEB_ACCESS_TOKEN` | unset | token mode: every API call needs it (min. 16 characters); the page asks for it first, or takes it from an access link `https://<host>/#access=<token>` |
+| `ORBIT_WEB_ACCESS_TOKEN` | unset | token mode: every API call needs it (min. 16 characters); the page asks for it first, or takes it from an access link `https://<host>/#access=<token>`, then keeps it 30 days in an HttpOnly cookie (a browser restart or a redeploy asks again for nothing) |
 | `ORBIT_WEB_COOKIE_SECURE` | unset | `1` marks the access cookie Secure (behind an HTTPS proxy) |
 | `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` | unset | **ignored**: Orbit Web signs in with a Claude account only and gives no credential variable to any program; the sign-in page names the ones it ignored |
 | `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE`, `HTTPS_PROXY`, `NO_PROXY` | unset | passed to the CLIs, for a proxy or a private CA (`REQUESTS_CA_BUNDLE` is the Azure CLI's) |
@@ -212,11 +212,14 @@ In **Plan** it changes nothing.
 **The internet.** In Autonomous, Claude Code reaches the internet as part of the work: reading pages, documentation
 and package registries, calling public APIs, installing packages (`curl`, `wget`, git over https, a package manager),
 and -- unless you switch them off in Settings → Code → Tools -- the web tools, `WebFetch` and `WebSearch` (on by
-default). Auto mode's classifier is told so: Orbit Web keeps the CLI's own environment for it (`claude auto-mode
-defaults`, read once) and replaces its two "None configured" entries, *Network posture* (open internet egress; checking
-that a public site answers is not reconnaissance) and *Host containment* (a container that keeps the CLIs' sign-ins,
-never to be read or sent). No allow rule lets a network command past the classifier, and its rules stay the CLI's own,
-so what it still refuses is sending a credential, a sign-in or the workspace's secrets anywhere.
+default, never pre-approved: a fetch can carry data in its URL, so each one is reviewed like a `curl`). Auto mode's
+classifier is told so: Orbit Web keeps the CLI's own environment for it (`claude auto-mode defaults`, read once) and
+replaces its two "None configured" entries, *Network posture* (open internet egress: the public documentation,
+registries, repositories and APIs the task needs are ordinary work, checking that one answers included; probing
+endpoints unrelated to the task -- webhook or request-capture sites, paste and file-sharing services, tunnels, DNS
+resolvers -- is still reconnaissance) and *Host containment* (a container that keeps the CLIs' sign-ins, never to be
+read or sent). No allow rule lets a network command past the classifier, and its rules stay the CLI's own, so it still
+refuses sending a credential, a sign-in or the workspace's secrets anywhere.
 
 ### What a repository brings
 

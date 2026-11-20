@@ -117,7 +117,7 @@ describe("a chat, end to end through the API", () => {
     const untouched = (e: string) => !/^\*\*(Network posture|Host containment)\*\*/.test(e);
     assert.deepEqual(environment.filter(untouched), AUTO_MODE_DEFAULTS.environment.filter(untouched));
     assert.equal(after1(call.args, "--allowedTools")?.includes("curl"), false, "no rule lets a network command past the classifier");
-    assert.deepEqual(after1(call.args, "--allowedTools")?.split(",").filter((t) => t.startsWith("Web")), ["WebFetch", "WebSearch"], "the web tools are on until a person turns them off");
+    assert.equal(call.args.includes("WebFetch") || call.args.includes("WebSearch"), false, "the web tools are on until a person turns them off -- and, like curl, reviewed by the classifier");
   });
 
   test("the session keeps its history and outcome; the workspace is on its own branch with a commit identity", async () => {

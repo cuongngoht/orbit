@@ -85,9 +85,11 @@ function runSettings(o: ClaudeRunOptions): Record<string, unknown> {
   };
 }
 
+// The web tools are never pre-approved: a fetch can carry data in its URL, so each one goes to auto mode's classifier
+// like a `curl` would. Switched off, they are refused outright.
 export function claudeArgs(o: ClaudeRunOptions): string[] {
   const settings = runSettings(o);
-  const allowed = [...BASE_TOOLS, ...(o.webTools ? WEB_TOOLS : [])];
+  const allowed = BASE_TOOLS;
   return [
     "-p",
     "--output-format",

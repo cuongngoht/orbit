@@ -1,7 +1,8 @@
 // WHAT AUTO MODE'S CLASSIFIER IS TOLD ABOUT THIS PLACE. In Autonomous, Claude Code's classifier reviews every action
 // against its rules and an ENVIRONMENT: a list of entries headed `**<topic>**:`, which by default say of the network
-// and the host "None configured". Left so, it reads Claude checking that a public site answers as "Exfil Scouting"
-// (testing which endpoints are reachable) and refuses it. So Orbit Web keeps the CLI's own environment -- read once from
+// and the host "None configured". Left so, it reads Claude checking that the documentation it needs answers as "Exfil
+// Scouting" (testing which endpoints are reachable) and refuses it. What is said here is narrow: the public sources the
+// task needs are ordinary, endpoints unrelated to it are still scouting, and nothing names a tool as safe. So Orbit Web keeps the CLI's own environment -- read once from
 // the CLI in the image, `claude auto-mode defaults`, which asks no model -- and replaces those two entries with what is
 // true here: open internet egress, in a container that keeps the CLIs' sign-ins. The allow, soft_deny and hard_deny
 // rules stay the CLI's own: sending a credential, a sign-in or the workspace's secrets anywhere is still refused, and
@@ -15,7 +16,7 @@ import { endedHow, succeeded, type ProcessPort } from "../../infra/process/proce
 
 export const ENVIRONMENT_HERE: Readonly<Record<string, string>> = {
   "Network posture":
-    "Open internet egress from inside this container. Reading public web pages, documentation, package registries and public APIs (curl, wget, WebFetch, WebSearch, git over https, a package manager's install) is ordinary work for the task, and checking whether such a public endpoint answers is not reconnaissance. Sending this workspace's files, a credential, a sign-in or a token anywhere is not ordinary work.",
+    "Open internet egress from inside this container. Reading the public documentation, package registries, repositories and public APIs the task needs -- and checking that such a source answers -- is ordinary work here. Probing endpoints unrelated to the task (webhook or request-capture sites, paste and file-sharing services, tunnels, DNS resolvers) is still reconnaissance, and sending this workspace's files, a credential, a sign-in or a token anywhere is never ordinary work.",
   "Host containment":
     "Claude Code runs inside Orbit Web's Docker container, as a non-root user with no Docker socket, in the workspace of one chat. The same container keeps the sign-ins of the Claude, GitHub and Azure CLIs and Orbit Web's own data under /data: they are never read, printed or sent anywhere.",
 };

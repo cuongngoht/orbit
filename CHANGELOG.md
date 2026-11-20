@@ -61,7 +61,11 @@ bundles stays 0.6.0 and its archive is unchanged; nothing under `src/`, `cli/`, 
   internet egress: reading pages, docs, registries and public APIs is ordinary work) and *Host containment* (a
   container that keeps the CLIs' sign-ins, never read or sent) replaced; the classifier's rules stay the CLI's own, and
   no allow rule lets a network command past it, so sending a credential or the workspace's secrets anywhere is still
-  refused. The web tools (`WebFetch`, `WebSearch`) are on by default.
+  refused. The web tools (`WebFetch`, `WebSearch`) are on by default and never pre-approved: a fetch can carry data in
+  its URL, so each is reviewed by the classifier like a `curl`. What is ordinary is narrow -- the public sources the task
+  needs; probing unrelated endpoints (request-capture sites, paste services, tunnels) is still reconnaissance.
+- **The access token is asked for once per browser**: the cookie it is traded for is kept 30 days, so a browser restart
+  or a redeploy no longer brings back the access page.
 - **The image declares Claude Code's telemetry attributes** (`ENV`, held equal to the code's by a test): any `claude`
   in the container uses them; the endpoint, the token and the switch stay the container's.
 - **The working branch, chosen in the chat.** The branch button in an open chat's toolbar lists the chat's own branches

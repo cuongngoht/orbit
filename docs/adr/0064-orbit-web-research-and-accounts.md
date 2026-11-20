@@ -74,6 +74,17 @@ One global guard holds every route under `/api/sessions/<id>`; research checks e
 lists, customizations and app-stream notifications are filtered the same way. Only the owner deletes, shares on, or
 makes a public link. A chat from before owners is claimed once by the first account that signs in.
 
+**A chat reaches the account's claude.ai connectors** (the owner's decision while 0.8.0 was verified, 2026-11-20:
+"Bật cho mọi chat", asked why Claude in Orbit Web made no document). Claude makes its documents through the account's
+claude.ai connector *Claude Docs*, and a chat ran with `--strict-mcp-config` (ADR 0060), which drops every claude.ai
+connector with every other MCP server; the CLI lets no claude.ai connector be declared on its own (`claudeai-proxy` is
+refused in an MCP config), so Docs cannot be let in alone. A chat now runs without that flag: it reaches every connector
+the account connected, and the MCP servers of the user's settings and of the plugins loaded. A repository's own
+`.mcp.json` stays unstarted (Claude Code starts a project's server only once settings approve it, and only the user's are
+read -- checked with Claude Code 2.1.328). A run governance holds keeps the flag (and, in the governed deployment,
+`ENABLE_CLAUDEAI_MCP_SERVERS=false` behind the egress proxy): its Constitution has no action for a connector. Research
+and the model catalog's probe keep it too.
+
 **The models are the account's.** The API asks the signed-in account's own Claude CLI through its control protocol (one
 `initialize` request, restricted, no tool, no model call) and keeps the catalog per account, read again at every
 sign-in. Chats, research sessions and Settings' defaults are held to it; an effort a new model does not take moves to
@@ -89,5 +100,6 @@ a choice is held to its shape alone.
   single deployment the research process runs as the same user as everything else. The control protocol the model
   catalog reads is the one the Agent SDK speaks, not a documented CLI command. Accounts are separated at the API and the
   pages, not on disk: GitHub's and Azure's sign-ins and Settings remain the installation's, operators see every
-  session's audit, and sharing has no read-only level. Not built: web search or "deep research", OCR, serving the
+  session's audit, and sharing has no read-only level. What the signed-in account connected at claude.ai (mail, files,
+  chat ...) Claude in any chat reaches too; the way to keep a service out is to disconnect it there. Not built: web search or "deep research", OCR, serving the
   original file, a local model, resizable panels.

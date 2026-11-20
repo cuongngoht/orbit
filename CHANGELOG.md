@@ -24,6 +24,10 @@ nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
   owner deletes, shares on, or makes a public link); a chat from before owners is claimed once by the first account that
   signs in. The models and effort levels offered are the signed-in account's own, asked of its Claude CLI at every
   sign-in (a model a program gives an account appears for it alone), and every choice is held to them.
+- **A chat reaches your Claude account's claude.ai connectors** (ADR 0064, the owner's decision): Claude Docs, where Claude
+  makes its documents, and every other service the account connected at claude.ai. Chats ran with `--strict-mcp-config`,
+  which dropped them all -- so Claude in Orbit Web could make no document. A repository's `.mcp.json` still never starts;
+  a run governance holds, research and the model catalog's probe keep the flag.
 - **The egress proxy refuses IPv6 that carries IPv4** (IPv4-compatible `::/96`, NAT64 `64:ff9b::/96`, 6to4 `2002::/16`):
   the one definition of "not the public internet" that the proxy and research's URL import share.
 - **A stop no longer waits for an open page** (found while verifying research's restart): the HTTP server waited for the
@@ -187,8 +191,8 @@ nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
   (`/api/sessions/:id/events`, replayed after `Last-Event-ID`) and the app stream (`/api/events`: the sidebar's chats,
   the connectors' sign-ins, the customizations -- notifications that replace polling). Adding an event is a catalog row
   and its payload type.
-- **Checked.** 502 deterministic tests (governance-core 33, contracts 17, API unit 149, API integration with mocked
-  processes 156, web 147), `scripts/ci.mjs` green; the Docker smoke test (34 checks) also checks the Azure Repos helper,
+- **Checked.** 504 deterministic tests (governance-core 33, contracts 17, API unit 150, API integration with mocked
+  processes 156, web 148), `scripts/ci.mjs` green; the Docker smoke test (34 checks) also checks the Azure Repos helper,
   the runtime user's file rights (it can read everything the image ships), Python, `/data/research` private to that user,
   and a research workspace with a source read and indexed in the container kept across a restart and a new container; the security lab's governed run is recorded in
   `tests/security-lab/results/0.8.0`. The real-model runs (the acceptance run, and the governed deployment with a real

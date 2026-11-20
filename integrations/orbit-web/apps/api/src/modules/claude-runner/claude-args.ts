@@ -142,7 +142,12 @@ export function claudeArgs(o: ClaudeRunOptions): string[] {
     // API base URL that would receive the credential) or hooks that run before any tool call.
     "--setting-sources",
     "user",
-    "--strict-mcp-config",
+    // A chat reaches the signed-in account's claude.ai connectors -- Claude Docs, where Claude makes its documents, and
+    // whatever else the account connected -- and the MCP servers of the user's settings and of the plugins loaded (the
+    // owner's decision, ADR 0064). A repository's own .mcp.json is still never started: Claude Code starts one only once
+    // settings approve it, and only the user's are read. A run governance holds reaches none: its Constitution decides
+    // what a run may reach, and has no action for a connector.
+    ...(governed ? ["--strict-mcp-config"] : []),
     ...(Object.keys(settings).length > 0 ? ["--settings", JSON.stringify(settings)] : []),
     ...(o.maxBudgetUsd !== null ? ["--max-budget-usd", String(o.maxBudgetUsd)] : []),
   ];

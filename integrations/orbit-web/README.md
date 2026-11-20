@@ -307,7 +307,7 @@ file, 4 levels deep, 2,000 entries a directory):
 | a repository that is a plugin (`.claude-plugin/plugin.json`), or a marketplace of local plugins | with **Run project plugins** on (**off** by default): loaded with `--plugin-dir` |
 | the plugins `.claude/settings.json` enables (`name@marketplace`) and the marketplaces it names | with **Run project plugins** on: `claude plugin marketplace add`, `claude plugin install --scope user`, then `claude plugin disable --scope user` (uninstalled again if that fails), and enabled for **that chat's runs only** (`--settings '{"enabledPlugins":…}'`); off, they are listed as *Not run* |
 | `CLAUDE.md` | read by Claude Code itself from the working directory |
-| `.mcp.json` | listed, never started (`--strict-mcp-config`) |
+| `.mcp.json` | listed, never started: Claude Code starts a project's server only once settings approve it, and only the user's settings are read |
 | the rest of `.claude/settings.json` (hooks, `env`, permissions) | never read: Claude Code runs with `--setting-sources user` |
 
 The chat says what was loaded ("Loaded from this repository: 2 skills, 1 command, 0 agents · plugins: …"), and
@@ -545,8 +545,11 @@ browser ── React + Fluent UI v9 ── HTTP + two SSE streams ──▶ Nest
   plugin> …] (--session-id <id> | --resume <id>) --permission-mode <auto|plan> --allowedTools
   Read,Edit,Write,Glob,Grep,Bash,Skill,Agent,TodoWrite --disallowedTools "Bash(git push:*)" "Bash(gh:*)" "Bash(git
   credential:*)" "Bash(git config --global:*)" ["Bash(az:*)"] "Read(//data/claude/**)" "Edit(//data/claude/**)" …
-  [WebFetch WebSearch] --append-system-prompt "<what this workspace allows>" --setting-sources user --strict-mcp-config
-  [--settings '{"enabledPlugins":…}'] [--max-budget-usd <n>]`, the prompt on stdin, cwd the workspace. With GitHub's
+  [WebFetch WebSearch] --append-system-prompt "<what this workspace allows>" --setting-sources user
+  [--strict-mcp-config] [--settings '{"enabledPlugins":…}'] [--max-budget-usd <n>]`, the prompt on stdin, cwd the
+  workspace. `--strict-mcp-config` only in a run governance holds: a chat reaches the signed-in account's claude.ai
+  connectors (Claude Docs, where Claude makes its documents, among them) and the MCP servers of the user's settings
+  and of the plugins loaded. With GitHub's
   switch on, `"Bash(git push:*)" "Bash(gh:*)"` give way to `"Bash(gh auth:*)" "Bash(gh repo delete:*)" …`. The
   appended text is one of two fixed sentences (no request or repository writes it): commit locally, and either "pushing
   and gh are not available here, never chain them" or "push the branch you work on and open a pull request with gh";
@@ -627,6 +630,12 @@ For one person, on their own machine, by default:
   loaded. **Its plugins are code** -- hooks that run at session start, MCP servers -- that would run in this container,
   where the sign-ins are; so they run only once you turn on *Run project plugins*, and then only for the chats of
   repositories that declare them.
+- **A chat reaches your Claude account's claude.ai connectors** (the owner's decision, ADR 0064): Claude Docs, where
+  Claude makes its documents, and every other service the account connected at claude.ai (mail, files, chat ...) --
+  what the account can do there, Claude in any chat can too (in Autonomous, each call reviewed by auto mode's
+  classifier, like any tool's). To keep a service out of Orbit Web, disconnect it at claude.ai. A run
+  governance holds reaches none (`--strict-mcp-config`, and in the governed deployment
+  `ENABLE_CLAUDEAI_MCP_SERVERS=false` behind the egress proxy): its Constitution has no action for one. Research never.
 - **A shared chat's link** opens one read-only snapshot and nothing else: `GET /api/shared/<token>` is the one route the
   access gate and the Claude sign-in gate let through, the token (32 random bytes, in the URL's fragment) names one
   share, and the snapshot holds the conversation alone -- tools by their title unless their owner shares what they did,

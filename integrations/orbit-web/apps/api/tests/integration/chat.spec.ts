@@ -105,6 +105,9 @@ describe("a chat, end to end through the API", () => {
     assert.deepEqual(Object.keys(call.env).filter((k) => /^(GH_|GITHUB_)/.test(k)), []);
     // The container's own Claude credential variables would take the place of the account signed in here.
     assert.deepEqual(Object.keys(call.env).filter((k) => /^(ANTHROPIC_|CLAUDE_CODE_OAUTH)/.test(k)), []);
+    // The account's claude.ai connectors (Claude Docs among them): neither the flag nor the variable switches them off.
+    assert.equal(detail.includes("--strict-mcp-config"), false);
+    assert.equal(call.env.ENABLE_CLAUDEAI_MCP_SERVERS, undefined);
     assert.deepEqual(child.written, ["Fix the incorrect addition in sum.mjs so the existing test passes. Do not modify the test."]);
     assert.equal(child.inputClosed, true);
   });

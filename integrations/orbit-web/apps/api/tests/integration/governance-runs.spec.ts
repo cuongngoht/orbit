@@ -149,6 +149,7 @@ describe("a governed workspace, its agent, and its push (GitHub)", () => {
     for (const name of ["GH_CONFIG_DIR", "AZURE_CONFIG_DIR", "GIT_CONFIG_COUNT", "GH_TOKEN"]) assert.equal(name in runEnv, false, `${name} never reaches a governed run`);
     assert.ok(run.args.includes("WebFetch"), "the default Constitution denies the web tools: they are refused to the runtime");
     assert.ok(run.args.includes("Bash(git push:*)"));
+    assert.ok(run.args.includes("--strict-mcp-config"), "a governed run reaches no MCP server, a claude.ai connector included: its Constitution has no action for one");
     assert.match(after1(run.args, "--append-system-prompt") ?? "", /GOVERNED by your organization's Constitution \(revision 2\)/);
     const who = seen.whoami?.body as AgentWhoAmI;
     assert.deepEqual([who.agentId, who.workspaceId, who.scope, who.policyRevision], [agentId, session.id, "GOVERNED_WORKSPACE", revision.id]);

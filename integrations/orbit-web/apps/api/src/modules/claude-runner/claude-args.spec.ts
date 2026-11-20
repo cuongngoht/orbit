@@ -38,8 +38,14 @@ test("headless, structured, partial messages, the Orbit plugin and the model ali
   assert.equal(after(a, "--plugin-dir"), "/opt/orbit/plugin");
   assert.equal(after(a, "--model"), "opus");
   assert.equal(after(a, "--setting-sources"), "user", "a repository's own settings file is never read: it could redirect the CLI's traffic");
-  assert.ok(a.includes("--strict-mcp-config"));
+  assert.equal(a.includes("--strict-mcp-config"), false, "a chat reaches the signed-in account's claude.ai connectors (Claude Docs makes its documents)");
   assert.equal(a.includes("--bare"), false, "Orbit's hooks and skills must load");
+});
+
+test("a run governance holds reaches no MCP server: its Constitution has no action for one", () => {
+  const governed = claudeArgs({ ...base, governanceNote: "This chat is GOVERNED by your organization's Constitution." });
+  assert.ok(governed.includes("--strict-mcp-config"));
+  assert.equal(after(governed, "--setting-sources"), "user");
 });
 
 test("a model that takes no effort level (the account's catalog says so) is given none", () => {

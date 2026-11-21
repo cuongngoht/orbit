@@ -25,6 +25,7 @@ import { accepted } from "../../../common/errors.js";
 import { GovernedResources } from "../../../modules/governance/resources.service.js";
 import { ResourcesService } from "../../execution/application/resources.service.js";
 import { SANDBOX_PROVIDER, type SandboxProvider } from "../../execution/application/sandbox.port.js";
+import { EMPLOYEE_RUNTIMES } from "../../execution/infrastructure/employee-runtimes.js";
 import { OfficeGovernance, type Actor } from "../../shared/application/commands.js";
 import { conflictWith, missing, stale, unprocessable } from "../../shared/domain.js";
 import { Outbox } from "../../shared/infrastructure/outbox.js";
@@ -214,6 +215,9 @@ export class HiringService {
     const connection: ConnectionFacts | null = asked.connectionId !== null ? await this.connections.get(orbitId, asked.connectionId) : await this.connections.defaultFor(orbitId, asked.runtime);
     if (connection === null || !usable(connection)) throw conflictWith("connection_required", "Connect an AI CLI first: hiring needs a connection that is signed in and gave its model catalog (Settings → AI Connections).", { runtime: asked.runtime });
     if (connection.runtime !== asked.runtime) throw unprocessable("connection_runtime", `That connection is ${connection.runtime}, not ${asked.runtime}.`);
+    // A runtime whose model plane cannot be held to Orbit's tools runs no employee (said now, not at its first run).
+    const refusal = EMPLOYEE_RUNTIMES[asked.runtime].refusal(connection);
+    if (refusal !== null) throw unprocessable("runtime_cannot_run_employees", refusal, { runtime: asked.runtime });
     const model = modelOf({ source: "account", models: connection.catalog.models, recommended: connection.catalog.recommended ?? "", detail: null }, asked.model);
     if (model === null) throw unprocessable("model_not_offered", `${asked.model} is not a model this connection offers (it offers ${connection.catalog.models.map((m) => m.id).join(", ")}).`, { models: connection.catalog.models.map((m) => m.id) });
     if (model.efforts.length === 0 && asked.effort !== null) throw unprocessable("effort_not_offered", `${model.label} takes no effort level.`);

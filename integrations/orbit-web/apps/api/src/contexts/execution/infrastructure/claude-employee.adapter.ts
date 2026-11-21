@@ -73,8 +73,14 @@ export function employeeEnv(base: Record<string, string>, home: string, apiKey: 
   return { ...base, CLAUDE_CONFIG_DIR: `${home}/claude`, ENABLE_CLAUDEAI_MCP_SERVERS: "false", DISABLE_AUTOUPDATER: "1", CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1", ...(apiKey !== null ? { ANTHROPIC_API_KEY: apiKey } : {}) };
 }
 
+// A plugin compiled into the unmodified binary (2.1.330 reports `{ path: "builtin", source: "<name>@builtin" }` for the
+// ones it ships): part of the CLI Orbit Web runs as it is, never read from a disk anybody could write. Recorded, allowed.
+const builtIn = (p: unknown): boolean => isRecord(p) && p.path === "builtin" && typeof p.source === "string" && p.source.endsWith("@builtin");
+
 // What the CLI's init line may report, and nothing more: the closed tool list and the bridge's tools; the bridge as the
-// only MCP server; no plugin. Anything else: the model plane is not what Orbit Web asked for -- stop it.
+// only MCP server; no plugin but the binary's own built-in ones. Anything else: the model plane is not what Orbit Web
+// asked for -- stop it. (Observed on the real 2.1.330 binary with planted user, project and local hooks, an apiKeyHelper
+// and a planted .mcp.json server: none ran, and the init line listed only the bridge's tool and server.)
 export function initViolation(line: Json, webSearch: boolean): string | null {
   const tools = Array.isArray(line.tools) ? line.tools.filter((t): t is string => typeof t === "string") : [];
   const allowed = new Set(closedTools(webSearch));
@@ -84,7 +90,8 @@ export function initViolation(line: Json, webSearch: boolean): string | null {
   const otherServers = servers.filter((s) => s !== BRIDGE_SERVER);
   if (otherServers.length > 0) return `The Claude CLI started with MCP servers other than Orbit's tools (${otherServers.slice(0, 4).join(", ")}): the run was stopped.`;
   const plugins = Array.isArray(line.plugins) ? line.plugins : [];
-  if (plugins.length > 0) return "The Claude CLI loaded a plugin on the model plane (hooks or servers could run beside the login): the run was stopped.";
+  const fromDisk = plugins.filter((p) => !builtIn(p));
+  if (fromDisk.length > 0) return `The Claude CLI loaded a plugin from disk on the model plane (${fromDisk.map((p) => (isRecord(p) ? String(p.name ?? "?") : String(p))).slice(0, 4).join(", ")}): hooks or servers could run beside the login, so the run was stopped.`;
   return null;
 }
 

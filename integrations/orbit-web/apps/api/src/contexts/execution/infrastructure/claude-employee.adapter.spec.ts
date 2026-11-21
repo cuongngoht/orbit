@@ -38,7 +38,11 @@ test("the CLI's own init line is held to what it was given: any other tool, MCP 
   assert.match(initViolation({ ...ok, tools: [...ok.tools, "WebSearch"] }, false) ?? "", /WebSearch/);
   assert.equal(initViolation({ ...ok, tools: [...closedTools(true), ...bridge] }, true), null);
   assert.match(initViolation({ ...ok, mcp_servers: [{ name: "orbit_tools" }, { name: "planted" }] }, false) ?? "", /planted/);
-  assert.match(initViolation({ ...ok, plugins: [{ name: "x" }] }, false) ?? "", /plugin/);
+  assert.match(initViolation({ ...ok, plugins: [{ name: "x", path: "/home/a/.claude/plugins/x", source: "x@market" }] }, false) ?? "", /plugin from disk/);
+  // What 2.1.330 reports for the plugins compiled into it: part of the unmodified binary.
+  const builtins = [{ name: "cc-plugin-agents-md", path: "builtin", source: "cc-plugin-agents-md@builtin" }, { name: "cc-plugin-privacy", path: "builtin", source: "cc-plugin-privacy@builtin" }];
+  assert.equal(initViolation({ ...ok, plugins: builtins }, false), null);
+  assert.match(initViolation({ ...ok, plugins: [...builtins, { name: "sneaky", path: "builtin", source: "sneaky@market" }] }, false) ?? "", /sneaky/);
 });
 
 test("the stream is folded into facts: Orbit's tool calls and searches counted, a foreign tool caught, the result kept", () => {

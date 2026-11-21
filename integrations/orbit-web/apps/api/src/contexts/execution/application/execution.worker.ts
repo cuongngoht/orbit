@@ -34,7 +34,8 @@ import { systemActor, type Actor } from "../../shared/application/commands.js";
 import { DomainError } from "../../shared/domain.js";
 import { Outbox } from "../../shared/infrastructure/outbox.js";
 import { ConnectionsReader, usable, type ConnectionFacts } from "../../workforce/infrastructure/connections.reader.js";
-import { emptyFacts, employeeArgs, employeeEnv, foldLine, initViolation, promptOf, systemPromptOf, type StreamFacts } from "../infrastructure/claude-employee.adapter.js";
+import { emptyFacts, promptOf, systemPromptOf, type StreamFacts } from "../infrastructure/claude-employee.adapter.js";
+import { EMPLOYEE_RUNTIMES, type EmployeeRuntime } from "../infrastructure/employee-runtimes.js";
 import { RunRepository, type RunRecord } from "../infrastructure/runs.repository.js";
 import { AdmissionService } from "./admission.service.js";
 import { CONNECTION_SECRETS, type ConnectionSecrets } from "./connection-secrets.port.js";
@@ -295,19 +296,22 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     // The CLI, in the model plane.
     const p = ctx.employee.profile;
     const systemPrompt = systemPromptOf({ name: ctx.employee.name, title: p.title, duties: p.duties, instructions: p.instructions, handoffStandard: p.handoffStandard, reportingRule: p.reportingRule, shell: attestation.shell, shellReason: attestation.shell ? null : attestation.detail, network: NETWORK_TEXT(prep.network), cites: ctx.sources.length > 0 });
-    const args = employeeArgs({ model: resolved.profile.model, effort: resolved.profile.effort, webSearch: resolved.profile.webSearch, bridge: { command: handle.bridgeCommand.command, args: handle.bridgeCommand.args, env: { ORBIT_TOOL_URL: spec.bridge.url, ORBIT_RUN_TOKEN: prep.token } }, systemPrompt, sessionId: randomUUID() });
-    const env = employeeEnv(this.modelPlaneBase(handle), handle.modelPlaneHome, apiKey);
-    const watched = await this.watch(entry, handle, args, env, promptOf({ goal: ctx.brief.goal, deliverables: ctx.brief.deliverables, criteria: ctx.brief.acceptanceCriteria, revisions: ctx.brief.revisions, answers: ctx.brief.answers, inputs: spec.inputs }), resolved.profile.webSearch, profile.timeoutMinutes);
+    const rt = EMPLOYEE_RUNTIMES[resolved.profile.runtime];
+    const args = rt.args({ model: resolved.profile.model, effort: resolved.profile.effort, webSearch: resolved.profile.webSearch, bridge: { command: handle.bridgeCommand.command, args: handle.bridgeCommand.args, env: { ORBIT_TOOL_URL: spec.bridge.url, ORBIT_RUN_TOKEN: prep.token } }, systemPrompt, sessionId: randomUUID() });
+    const env = rt.env(this.modelPlaneBase(handle), handle.modelPlaneHome, apiKey);
+    const watched = await this.watch(entry, handle, rt, args, env, promptOf({ goal: ctx.brief.goal, deliverables: ctx.brief.deliverables, criteria: ctx.brief.acceptanceCriteria, revisions: ctx.brief.revisions, answers: ctx.brief.answers, inputs: spec.inputs }), resolved.profile.webSearch, profile.timeoutMinutes);
     await this.settle(entry, run, actor, prep.plan, watched, this.endOf(entry, watched, profile));
   }
 
   // The execution asked, held to what the connection's own CLI says now (catalog, efforts, search) and to the policy.
   private async resolve(orbitId: string, requested: RunRecord["requested"], plan: RunPlan): Promise<{ profile: ExecutionProfile; connection: ConnectionFacts } | string> {
     const runtime = requested.runtime ?? "claude";
-    if (runtime !== "claude") return `${RUNTIME_LABELS[runtime] ?? runtime} employees cannot run in this version of Orbit Web yet.`;
+    if (EMPLOYEE_RUNTIMES[runtime] === undefined) return `${RUNTIME_LABELS[runtime] ?? runtime} is not a runtime Orbit Web knows.`;
     const connection = requested.connectionId ? await this.connections.get(orbitId, requested.connectionId) : await this.connections.defaultFor(orbitId, runtime);
     if (connection === null) return "The employee's AI connection was removed: choose another in its profile.";
     if (!usable(connection)) return `The AI connection "${connection.label}" cannot run work now${connection.reason ? `: ${connection.reason}` : ""}. Reconnect it in Settings → AI Connections, then retry.`;
+    const refusal = EMPLOYEE_RUNTIMES[runtime].refusal(connection);
+    if (refusal !== null) return refusal;
     const option = connection.catalog.models.find((m) => m.id === requested.model) ?? null;
     if (option === null) return `The model ${String(requested.model)} is not in the catalog of "${connection.label}" any more: choose another in the employee's profile.`;
     const effort = requested.effort ?? null;
@@ -317,9 +321,11 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
   }
 
   // Runs the CLI to its end: its stream folded into facts, its init line checked, its time limit kept.
-  private async watch(entry: Active, handle: AttemptHandle, args: string[], env: Record<string, string>, prompt: string, webSearch: boolean, timeoutMinutes: number): Promise<{ exit: ExitInfo; facts: StreamFacts; violation: string | null; stderr: string }> {
+  private async watch(entry: Active, handle: AttemptHandle, rt: EmployeeRuntime, args: string[], env: Record<string, string>, prompt: string, webSearch: boolean, timeoutMinutes: number): Promise<{ exit: ExitInfo; facts: StreamFacts; violation: string | null; stderr: string }> {
     const port = (this.provider as SandboxProvider).modelPlane(handle);
-    const child = port.spawn(handle.provider === "process" ? this.config.binaries.claude : "claude", args, { cwd: handle.modelPlaneCwd, env });
+    // The development provider runs the CLI installed here; a container's model plane finds it on its own PATH.
+    const program = handle.provider === "process" ? this.config.binaries[rt.runtime] : rt.program;
+    const child = port.spawn(program, args, { cwd: handle.modelPlaneCwd, env });
     entry.child = child;
     let facts = emptyFacts();
     let violation: string | null = null;
@@ -337,12 +343,12 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
         return;
       }
       if (!isRecord(message)) return;
-      if (facts.init === null && message.type === "system" && message.subtype === "init") {
-        const v = initViolation(message, webSearch);
+      if (facts.init === null && rt.isInit(message)) {
+        const v = rt.initViolation(message, webSearch);
         if (v !== null) refuse(v);
       }
-      facts = foldLine(facts, message, webSearch);
-      if (facts.foreignTool !== null) refuse(`The model plane called a tool Orbit Web did not give it (${facts.foreignTool}): the run was stopped.`);
+      facts = rt.fold(facts, message, webSearch);
+      if (facts.foreignTool !== null) refuse(`The model plane used a tool Orbit Web did not give it (${facts.foreignTool}): the run was stopped.`);
     });
     child.onStdout((chunk) => splitter.push(chunk));
     child.onStderr((chunk) => {

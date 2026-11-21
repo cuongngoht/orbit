@@ -9,9 +9,15 @@
 // The probes are sound for the only patterns a rule may hold (a name, or a prefix ending in `*`): a resource's
 // matching rules are decided by which prefixes it starts with, and each prefix is asked about with a resource that
 // starts with it and with nothing longer.
+//
+// An employee's connection is decided by the employee network access first (evaluate.ts), so it is asked about too, as
+// an assignment's run: every host:port a rule or an allow-list names, and a host nobody names, on ports 80 and 443. The
+// employee network access itself is compared field by field (network.ts): RESTRICTED to AUTONOMOUS, an allow-list that
+// lets in a host it did not, a limit raised or removed WEAKEN it, and are high risk; the reverse narrows.
 import type { Constitution, Obligations, Rule } from "./constitution.js";
 import { evaluate } from "./evaluate.js";
-import { ACTION_KINDS, ACTIONS, ENVIRONMENTS, PRINCIPAL_TYPES, rankOf, type ActionKind, type Effect, type Environment, type PrincipalType } from "./vocabulary.js";
+import { egressTargetOf, EMPLOYEE_PORTS, employeeNetworkChanges, employeeNetworkOf, type EmployeeNetworkChange, type EmployeeNetworkField } from "./network.js";
+import { ACTION_KINDS, ACTIONS, ENVIRONMENTS, PRINCIPAL_TYPES, rankOf, type ActionKind, type Effect, type Environment, type PrincipalType, type RunKind } from "./vocabulary.js";
 
 export const RISK_LEVELS = ["low", "elevated", "high"] as const;
 export type RiskLevel = (typeof RISK_LEVELS)[number];
@@ -25,10 +31,14 @@ export interface ImpactCell {
   before: Effect;
   after: Effect;
   sensitive: boolean;
+  // Set when the answers are an employee's connection's: asked as an assignment's run (resource `host:port`, or `*:port`
+  // for a host nobody names).
+  runKind?: RunKind;
 }
 
 export interface ObligationChange {
-  field: keyof Obligations | "defaults.decision";
+  // An obligation, the default decision, or a field of the employee network access.
+  field: keyof Obligations | "defaults.decision" | EmployeeNetworkField;
   before: string;
   after: string;
   weakened: boolean;
@@ -83,6 +93,47 @@ function cellsOf(base: Constitution, candidate: Constitution): ImpactCell[] {
       }
     }
   }
+  return [...cells.values(), ...employeeCellsOf(base, candidate)];
+}
+
+// A host no rule, allow-list or real network names (the `.invalid` top-level domain is reserved for that).
+const NOBODY = "probe.invalid";
+
+// The connections an employee's run could ask for that either policy says something about, each with how it is shown:
+// every host:port a network.egress rule names (a prefix ending in `:` on both ports, another prefix with a host under
+// it), every host an allow-list lets in (one host under a `*.` domain), and a host nobody names -- on ports 80 and 443.
+function employeeProbes(policies: readonly Constitution[]): Map<string, string> {
+  const probes = new Map<string, string>();
+  const add = (resource: string, shown: string): void => {
+    if (egressTargetOf(resource) !== null && !probes.has(resource)) probes.set(resource, shown);
+  };
+  for (const r of policies.flatMap((p) => p.rules.filter((x) => x.action === "network.egress" && x.resource !== undefined).map((x) => x.resource as string))) {
+    if (!r.endsWith("*")) add(r, r);
+    else for (const port of EMPLOYEE_PORTS) add(r.endsWith(":*") ? `${r.slice(0, -1)}${port}` : `${r.slice(0, -1)}${NOBODY}:${port}`, r);
+  }
+  for (const entry of policies.flatMap((p) => employeeNetworkOf(p).allow)) for (const port of EMPLOYEE_PORTS) add(`${entry.startsWith("*.") ? `probe${entry.slice(1)}` : entry}:${port}`, `${entry}:${port}`);
+  for (const port of EMPLOYEE_PORTS) add(`${NOBODY}:${port}`, `*:${port}`);
+  return new Map([...probes].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+}
+
+function employeeVerdictOf(policy: Constitution, environment: Environment, resource: string): Effect {
+  const accountId = policy.metadata.accountId;
+  return evaluate({ constitution: policy, overlays: [] }, { principalId: "probe", principalType: "agent", accountId, workspaceId: null, researchWorkspaceId: null, action: "network.egress", resource, environment, runKind: "assignment" }).verdict;
+}
+
+function employeeCellsOf(base: Constitution, candidate: Constitution): ImpactCell[] {
+  const cells = new Map<string, ImpactCell>();
+  for (const [resource, shown] of employeeProbes([base, candidate])) {
+    for (const environment of ENVIRONMENTS) {
+      const before = employeeVerdictOf(base, environment, resource);
+      const after = employeeVerdictOf(candidate, environment, resource);
+      if (before === after) continue;
+      const key = [shown, before, after].join("\u0001");
+      const cell = cells.get(key) ?? { action: "network.egress", principalType: "agent", resource: shown, environments: [], before, after, sensitive: ACTIONS["network.egress"].sensitive, runKind: "assignment" };
+      cell.environments.push(environment);
+      cells.set(key, cell);
+    }
+  }
   return [...cells.values()];
 }
 
@@ -113,12 +164,17 @@ export function ruleChanges(base: readonly Rule[], candidate: readonly Rule[]): 
   return [...removed, ...rest];
 }
 
-function reasonsOf(widened: ImpactCell[], obligations: ObligationChange[]): string[] {
-  const actions = [...new Set(widened.filter((c) => c.sensitive).map((c) => c.action))];
+const isNetworkField = (field: ObligationChange["field"]): boolean => field.startsWith("employeeNetwork.");
+
+function reasonsOf(widened: ImpactCell[], obligations: ObligationChange[], network: EmployeeNetworkChange[]): string[] {
+  const actions = [...new Set(widened.filter((c) => c.sensitive && c.runKind === undefined).map((c) => c.action))];
   const loosened = actions.map((a) => `It loosens ${a}, a sensitive action.`);
-  const weakened = obligations.filter((o) => o.weakened).map((o) => `It weakens ${o.field} from ${o.before} to ${o.after}.`);
+  const weakened = obligations.filter((o) => o.weakened && !isNetworkField(o.field)).map((o) => `It weakens ${o.field} from ${o.before} to ${o.after}.`);
+  const opened = network.flatMap((c) => (c.weakened && c.reason !== null ? [c.reason] : []));
+  // What a rule's change opens for employees, when no change of the employee network access itself says it already.
+  const employees = opened.length === 0 && widened.some((c) => c.runKind === "assignment") ? ["It lets employees' assignments reach hosts they could not reach before (network.egress), a sensitive change."] : [];
   const other = widened.some((c) => !c.sensitive) ? ["It loosens an action that is not sensitive."] : [];
-  return [...loosened, ...weakened, ...other];
+  return [...loosened, ...weakened, ...opened, ...employees, ...other];
 }
 
 function riskOf(widened: ImpactCell[], obligations: ObligationChange[]): RiskLevel {
@@ -131,6 +187,7 @@ export function impactOf(base: Constitution, candidate: Constitution): Impact {
   const cells = cellsOf(base, candidate);
   const widened = cells.filter((c) => rankOf(c.after) < rankOf(c.before));
   const narrowed = cells.filter((c) => rankOf(c.after) > rankOf(c.before));
-  const obligations = obligationChanges(base, candidate);
-  return { risk: riskOf(widened, obligations), widened, narrowed, obligations, rules: ruleChanges(base.rules, candidate.rules), reasons: reasonsOf(widened, obligations) };
+  const network = employeeNetworkChanges(employeeNetworkOf(base), employeeNetworkOf(candidate));
+  const obligations: ObligationChange[] = [...obligationChanges(base, candidate), ...network.map((c): ObligationChange => ({ field: c.field, before: c.before, after: c.after, weakened: c.weakened }))];
+  return { risk: riskOf(widened, obligations), widened, narrowed, obligations, rules: ruleChanges(base.rules, candidate.rules), reasons: reasonsOf(widened, obligations, network) };
 }

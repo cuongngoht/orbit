@@ -2,45 +2,70 @@
 // connection a recorded decision of the run's ACCOUNT policy, asked as the run it belongs to) and the isolation check of
 // the agent's container (runner-attestor.ts). In the single deployment neither exists: there is no boundary to hold,
 // and the isolation status says so.
+//
+// An employee's assignment run is decided as one: its connections by its account's employee network access (AUTONOMOUS
+// or RESTRICTED, governance-core network.ts), on ports 80 and 443 only, held to the limits that policy sets -- read again
+// at EACH connection, so a policy published while the run works applies from its next connection on -- and every one
+// kept in the run's network log (workforce.run_connections). An address the proxy refuses after the policy allowed the
+// host (one that is not on the public internet) is recorded on the account's chain as the run's. Orbit Web relays no
+// sign-in through the proxy: a CLI's login is made from an operator's terminal, never by a run.
 import { Inject, Injectable, Logger, type OnApplicationBootstrap, type OnApplicationShutdown } from "@nestjs/common";
 import type { Server } from "node:http";
 import type { AppConfig } from "../../config/config.js";
+import { egressConfig } from "../../config/egress-config.js";
 import { AGENT_PROCESS_PORT, APP_CONFIG } from "../../core/tokens.js";
-import { isClaudeAccountHost } from "@orbit-web/governance-core";
-import { allowedPrivate, startEgressProxy, type EgressAsk, type EgressVerdict } from "../../infra/egress/proxy.js";
-import { SignInChannel } from "../../infra/egress/sign-in-channel.js";
+import { Db } from "../../infra/db/db.js";
+import { RunConnectionLog } from "../../infra/egress/connection-log.js";
+import { allowedPrivate, startEgressProxy, type ConnectionSink, type EgressAsk, type EgressRun, type EgressVerdict } from "../../infra/egress/proxy.js";
+import { RunBindingStore, sha256, type RunBinding } from "../../infra/governance/stores.js";
 import type { ProcessPort } from "../../infra/process/process.port.js";
 import { RunnerProcessPort } from "../../infra/process/runner-port.js";
-import { contextOf, systemContext, type Principal } from "../auth/principal.js";
-import { fromNetwork, networkList, PrincipalResolver } from "../auth/principals.js";
+import { contextOf, type Principal } from "../auth/principal.js";
+import { fromNetwork, networkList } from "../auth/principals.js";
 import { AuditService } from "./audit.service.js";
 import { IsolationService } from "./isolation.service.js";
-import { PolicyService } from "./policy.service.js";
+import { PolicyService, type Decision } from "./policy.service.js";
 import { RunnerAttestor } from "./runner-attestor.js";
 import { scopeOf } from "./run-governance.service.js";
+
+// How many runs' bindings are kept for recording a refused address as the run's (the newest).
+const KEPT_BINDINGS = 1024;
 
 @Injectable()
 export class EgressService implements OnApplicationBootstrap, OnApplicationShutdown {
   private readonly logger = new Logger("Egress");
   private server: Server | null = null;
+  private readonly log: RunConnectionLog;
+  // The bindings of the employees' runs the proxy decided for lately.
+  private readonly recent = new Map<string, RunBinding>();
 
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(AGENT_PROCESS_PORT) private readonly agent: ProcessPort,
     @Inject(IsolationService) private readonly isolation: IsolationService,
     @Inject(PolicyService) private readonly policy: PolicyService,
-    @Inject(PrincipalResolver) private readonly principals: PrincipalResolver,
-    @Inject(SignInChannel) private readonly signIn: SignInChannel,
+    @Inject(RunBindingStore) private readonly bindings: RunBindingStore,
     @Inject(AuditService) private readonly audit: AuditService,
-  ) {}
+    @Inject(Db) db: Db,
+  ) {
+    this.log = new RunConnectionLog(db);
+  }
 
   async onApplicationBootstrap(): Promise<void> {
     const g = this.config.governance;
     if (g.deployment !== "governed" || g.proxyPort === null) return;
     if (this.agent instanceof RunnerProcessPort) this.isolation.setAttestor(new RunnerAttestor(this.config, this.agent));
     const agentNetworks = networkList(g.agentNetworks);
-    this.server = await startEgressProxy(g.proxyPort, { decide: (ask) => this.decide(ask), admit: (address) => fromNetwork(agentNetworks, address), privateAllowed: g.egressPrivateAllow.length > 0 ? allowedPrivate(g.egressPrivateAllow) : null });
-    this.logger.log(`egress proxy for the agent's container listening on ${g.proxyPort}`);
+    const { maxConnectionsPerRun } = egressConfig(process.env);
+    this.server = await startEgressProxy(g.proxyPort, {
+      decide: (ask) => this.decide(ask),
+      admit: (address) => fromNetwork(agentNetworks, address),
+      privateAllowed: g.egressPrivateAllow.length > 0 ? allowedPrivate(g.egressPrivateAllow) : null,
+      sink: this.sink(),
+      maxConnectionsPerRun,
+      warn: (message) => this.logger.warn(message),
+    });
+    this.logger.log(`egress proxy for the agent's container listening on ${g.proxyPort} (at most ${maxConnectionsPerRun} open connections a run)`);
   }
 
   async onApplicationShutdown(): Promise<void> {
@@ -48,26 +73,48 @@ export class EgressService implements OnApplicationBootstrap, OnApplicationShutd
   }
 
   // One connection out: a decision of the run's account policy in effect, as the run whose token the connection carries
-  // -- and, without one, as nobody (which is never granted anything, and is recorded on the deployment's chain).
+  // -- and, without a live one, as nobody (which is never granted anything, and is recorded on the deployment's chain).
   async decide(ask: EgressAsk): Promise<EgressVerdict> {
-    if (ask.token !== null && this.signIn.holds(ask.token)) return this.signInConnection(ask);
-    const binding = ask.token === null ? null : await this.principals.binding(ask.token);
+    const binding = ask.token === null ? null : await this.bindings.live(sha256(ask.token));
     const principal: Principal = binding === null ? { kind: "anonymous", agentNetwork: true } : { kind: "agent", binding };
     const ctx = contextOf(principal, `egress:${binding?.runId ?? "none"}`);
     const decision = await this.policy.decide(ctx, { action: "network.egress", resource: `${ask.host}:${ask.port}`, scope: binding === null ? "ACCOUNT" : scopeOf(binding), params: { host: ask.host, port: ask.port } });
-    if (decision.verdict === "allow") return { allow: true, reason: "" };
+    const run = binding === null ? null : this.runOf(binding, decision);
+    if (decision.verdict === "allow") return { allow: true, reason: "", run };
     const why = binding === null ? "no run's token was given" : `the account's policy in effect does not allow ${ask.host}:${ask.port} (${decision.reasonCodes.join(", ")})`;
-    return { allow: false, reason: `this connection is refused: ${why}. Decision ${decision.decisionId}.` };
+    return { allow: false, reason: `this connection is refused: ${why}. Decision ${decision.decisionId}.`, run };
   }
 
-  // Orbit Web's own Claude sign-in (infra/egress/sign-in-channel.ts): the Claude account's hosts and nothing else --
-  // never a policy's to grant or refuse, since the sign-in is what makes an account before one can exist. Recorded on the
-  // deployment's chain: no account is signed in yet.
-  private async signInConnection(ask: EgressAsk): Promise<EgressVerdict> {
-    const resource = `${ask.host}:${ask.port}`;
-    const allow = isClaudeAccountHost(ask.host, ask.port);
-    await this.audit.record(systemContext("claude-sign-in"), { type: "egress.sign_in", outcome: allow ? "allow" : "deny", reasonCodes: ["SIGN_IN_CHANNEL"], data: { resource } });
-    if (allow) return { allow: true, reason: "" };
-    return { allow: false, reason: `this connection is refused: the Claude sign-in reaches the Claude account's own hosts only, and ${resource} is not one.` };
+  // What the proxy says about each connection of a run: kept in an employee's run's network log, and -- an address the
+  // boundary refused after the policy allowed the host -- recorded on the account's chain as that run's.
+  sink(): ConnectionSink {
+    return {
+      opened: async (run, host, port, verdict, reason) => {
+        if (run.employee && reason?.cause === "address") await this.addressRefused(run, `${host}:${port}${reason.address !== undefined ? ` (${reason.address})` : ""}`);
+        return this.log.opened(run, host, port, verdict, reason);
+      },
+      closed: (id, bytesIn, bytesOut, cut) => this.log.closed(id, bytesIn, bytesOut, cut),
+      downloadedSince: (accountId, since) => this.log.downloadedSince(accountId, since),
+    };
+  }
+
+  // The run a connection is decided as: an employee's assignment is held to its account's employee network access, with
+  // the limits of the revision that decided this very connection.
+  private runOf(binding: RunBinding, decision: Decision): EgressRun {
+    const employee = binding.kind === "assignment";
+    if (employee) this.keep(binding);
+    return { id: binding.runId, accountId: binding.accountId, employee, limits: employee ? (decision.employeeNetwork?.limits ?? null) : null };
+  }
+
+  private keep(binding: RunBinding): void {
+    this.recent.delete(binding.runId);
+    this.recent.set(binding.runId, binding);
+    if (this.recent.size > KEPT_BINDINGS) this.recent.delete(this.recent.keys().next().value as string);
+  }
+
+  private async addressRefused(run: EgressRun, target: string): Promise<void> {
+    const binding = this.recent.get(run.id);
+    if (binding === undefined) return;
+    await this.audit.record(contextOf({ kind: "agent", binding }, `egress:${run.id}`), { type: "boundary.violation", outcome: "refused", data: { kind: "egress_address", route: "egress", target } });
   }
 }

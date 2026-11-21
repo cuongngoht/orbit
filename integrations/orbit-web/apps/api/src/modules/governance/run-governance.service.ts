@@ -16,7 +16,7 @@
 // what it runs as is a fixed profile (`claude-code` for a chat, `claude-research` for research), not a registration.
 // A research run's token opens the egress proxy alone: the agent gateway refuses it (auth/principals.ts).
 import { Inject, Injectable, type OnApplicationBootstrap } from "@nestjs/common";
-import type { EnforcementScope } from "@orbit-web/governance-core";
+import { RUN_SCOPES, type EnforcementScope } from "@orbit-web/governance-core";
 import type { IsolationState } from "@orbit-web/contracts";
 import { randomBytes } from "node:crypto";
 import type { AppConfig } from "../../config/config.js";
@@ -41,9 +41,8 @@ export const CHAT_AGENT = "claude-code";
 export const RESEARCH_AGENT = "claude-research";
 export const EMPLOYEE_AGENT = "orbit-employee";
 
-// What a run's decisions are about: a chat's, or a research workspace's.
-// An employee's assignment runs are decided like a chat's: about the workspace (the employee) they work in.
-export const scopeOf = (b: Pick<RunBinding, "kind">): EnforcementScope => (b.kind === "research" ? "ACCOUNT_RESEARCH" : "ACCOUNT_WORKSPACE");
+// What a run's decisions are about: a chat's, a research workspace's, or an employee's (an assignment's run).
+export const scopeOf = (b: Pick<RunBinding, "kind">): EnforcementScope => RUN_SCOPES[b.kind];
 
 export interface RunPlan {
   scope: EnforcementScope;
@@ -200,7 +199,7 @@ export class RunGovernanceService implements OnApplicationBootstrap {
   async prepareAssignment(subject: { accountId: string; employeeId: string; title: string; assignmentId: string }, runId: string, o: { startedBy: Principal; webSearch: boolean }): Promise<PreparedAssignment> {
     const { accountId, employeeId } = subject;
     const ctx = contextOf({ kind: "system", id: "run-start", accountId });
-    const scope: EnforcementScope = "ACCOUNT_WORKSPACE";
+    const scope: EnforcementScope = RUN_SCOPES.assignment;
     const effective = await this.policy.effective(accountId);
     if (effective === null) return this.refused(ctx, scope, employeeId, runId, "This account has no policy in effect, so nothing may run: publish one under Governance → Policy.", ["NO_PUBLISHED_POLICY"]);
     await this.resources.ensure("employee", { accountId, id: employeeId, title: subject.title });
@@ -208,7 +207,8 @@ export class RunGovernanceService implements OnApplicationBootstrap {
       const { binding, token } = await this.mint({ kind: "assignment", accountId, resourceKind: "employee", resourceId: employeeId, researchSessionId: null, agentId: EMPLOYEE_AGENT, policyRevision: effective.record.id, startedBy: labelOf(o.startedBy), workBranch: null }, runId);
       const agent: Principal = { kind: "agent", binding };
       const actx: GovernanceContext = { ...ctx, principal: agent, accountId };
-      const decide = (action: string, params: Record<string, unknown>): Promise<Decision> => this.policy.decide(actx, { action, resource: employeeId, scope, workspaceId: employeeId, params }, agent);
+      // Decided as the run's agent: its binding names the employee (an employee override applies), never a chat.
+      const decide = (action: string, params: Record<string, unknown>): Promise<Decision> => this.policy.decide(actx, { action, resource: employeeId, scope, params }, agent);
       const start = await decide("agent.run.start", { workspace: employeeId, agent: binding.agentId });
       if (start.verdict !== "allow") return this.refusedStart(ctx, scope, binding, start);
       const plan: RunPlan = {

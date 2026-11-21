@@ -359,8 +359,10 @@ export class OverrideStore {
 export interface RunBinding {
   runId: string;
   accountId: string;
+  // A chat's run, a research session's, or an employee's assignment's (one attempt: `runId` is the attempt's run).
   kind: "chat" | "research" | "assignment";
-  // What it works in: a chat (`workspace`), or a research workspace with the research session it answers.
+  // What it works in: a chat (`workspace`), a research workspace with the research session it answers, or -- an
+  // assignment -- the employee (`employee`, `resourceId` the employee's id).
   resourceKind: ResourceKind;
   resourceId: string;
   researchSessionId: string | null;
@@ -379,7 +381,7 @@ const bindingOf = (r: Row): RunBinding => ({
   runId: str(r.run_id),
   accountId: str(r.account_id),
   kind: str(r.kind) as RunBinding["kind"],
-  resourceKind: str(r.resource_kind) as ResourceKind,
+  resourceKind: str(r.resource_kind) as RunBinding["resourceKind"],
   resourceId: str(r.resource_id),
   researchSessionId: strOrNull(r.research_session_id),
   agentId: str(r.agent_id),
@@ -404,6 +406,12 @@ export class RunBindingStore {
   // A token's binding, whoever's it is: the token itself is the proof (only its own run holds it).
   async byToken(tokenHash: string): Promise<RunBinding | null> {
     const row = await this.db.one("SELECT * FROM run_bindings WHERE token_hash = $1", [tokenHash]);
+    return row === null ? null : bindingOf(row);
+  }
+
+  // A token's binding while its run is live: not ended, not past its time.
+  async live(tokenHash: string, now: string = new Date().toISOString()): Promise<RunBinding | null> {
+    const row = await this.db.one("SELECT * FROM run_bindings WHERE token_hash = $1 AND ended_at IS NULL AND expires_at > $2", [tokenHash, now]);
     return row === null ? null : bindingOf(row);
   }
 

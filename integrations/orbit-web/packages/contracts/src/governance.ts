@@ -7,7 +7,22 @@
 // One sign-in: the person whose browser finished the Claude sign-in is the OWNER of the account of that identity, and
 // governs it -- its chats, its research, its policy. There is no operator, no password and no organization to set up.
 // What is governed is that account's alone: nothing here names another account, and no request picks the account.
-import { type ActionKind, type AuditEvent, type ChainProblem, type DailyReport, type EnforcementPoint, type EnforcementScope, type Environment, type Evaluation, type Finding, type Impact, type PolicyOverlay, type PolicyWarning, type PrincipalType, type RevisionState, type RiskLevel } from "@orbit-web/governance-core";
+import { type ActionKind, type AuditEvent, type ChainProblem, type DailyReport, type EnforcementPoint, type EnforcementScope, type Environment, type Evaluation, type Finding, type Impact, type PolicyOverlay, type PolicyWarning, type PrincipalType, type RevisionState, type RiskLevel, type RunKind } from "@orbit-web/governance-core";
+
+// What the Governance pages say about the employee network access (`employeeNetwork` of the account's policy), and the
+// disclosure every page that chooses what an employee may reach shows: from governance-core, where the policy is checked.
+export {
+  EMPLOYEE_NETWORK_DISCLOSURE,
+  EMPLOYEE_NETWORK_MODES,
+  NETWORK_LIMIT_KEYS,
+  NETWORK_LIMIT_TEXT,
+  employeeNetworkOf,
+  networkHostOf,
+  type EmployeeNetwork,
+  type EmployeeNetworkMode,
+  type NetworkLimitKey,
+  type NetworkLimits,
+} from "@orbit-web/governance-core";
 
 type Checked<T> = { ok: true; value: T } | { ok: false; errors: string[] };
 
@@ -200,6 +215,10 @@ export interface SimulatedRequest {
   environment: Environment;
   workspaceId: string | null;
   researchWorkspaceId: string | null;
+  // Asked as a run of this kind (an employee's assignment: its `network.egress` is decided by the employee network
+  // access), for this employee (what an employee's override targets). Absent: not a run.
+  runKind?: RunKind;
+  employeeId?: string | null;
 }
 
 export interface SimulateRequest {
@@ -214,9 +233,10 @@ export interface SimulateResult {
   evaluation: Evaluation;
 }
 
-const SIMULATED_FIELDS = ["principalType", "action", "resource", "environment", "workspaceId", "researchWorkspaceId"];
+const SIMULATED_FIELDS = ["principalType", "action", "resource", "environment", "workspaceId", "researchWorkspaceId", "runKind", "employeeId"];
 const ENVIRONMENT_WORDS = ["local", "test", "development", "staging", "production", "unknown"];
 const PRINCIPAL_WORDS = ["human", "agent", "service"];
+const RUN_WORDS = ["chat", "research", "assignment"];
 const optionalId = (v: unknown): boolean => v === undefined || v === null || (typeof v === "string" && v.length > 0 && v.length <= 128);
 
 export function checkSimulate(body: unknown): Checked<SimulateRequest> {
@@ -230,7 +250,8 @@ export function checkSimulate(body: unknown): Checked<SimulateRequest> {
   if (typeof r.action !== "string" || r.action.length === 0 || r.action.length > 128) errors.push("request.action must name an action");
   if (typeof r.resource !== "string" || r.resource.length > GOVERNANCE_LIMITS.resourceLength) errors.push("request.resource must be text");
   if (!ENVIRONMENT_WORDS.includes(String(r.environment ?? "local"))) errors.push("request.environment is not an environment Orbit Web knows");
-  for (const f of ["workspaceId", "researchWorkspaceId"]) if (!optionalId(r[f])) errors.push(`request.${f} must be an id or null`);
+  for (const f of ["workspaceId", "researchWorkspaceId", "employeeId"]) if (!optionalId(r[f])) errors.push(`request.${f} must be an id or null`);
+  if (r.runKind !== undefined && r.runKind !== null && !RUN_WORDS.includes(String(r.runKind))) errors.push("request.runKind must be chat, research or assignment");
   if (b.revisionId !== undefined && (typeof b.revisionId !== "string" || b.revisionId.length === 0)) errors.push("revisionId must name a revision");
   return checked(errors, () => ({
     request: {
@@ -240,6 +261,8 @@ export function checkSimulate(body: unknown): Checked<SimulateRequest> {
       environment: (r.environment ?? "local") as Environment,
       workspaceId: (r.workspaceId as string | undefined) ?? null,
       researchWorkspaceId: (r.researchWorkspaceId as string | undefined) ?? null,
+      ...(r.runKind !== undefined && r.runKind !== null ? { runKind: r.runKind as RunKind } : {}),
+      ...(r.employeeId !== undefined ? { employeeId: (r.employeeId as string | null) ?? null } : {}),
     },
     ...(typeof b.revisionId === "string" ? { revisionId: b.revisionId } : {}),
   }));
@@ -486,13 +509,21 @@ export interface GovernanceOverview {
   audit: { count: number; head: string | null; lastVerification: ChainVerification | null };
 }
 
+// What each scope of a decision is about, as a page names it.
+export const ENFORCEMENT_SCOPE_TEXT: Record<EnforcementScope, string> = {
+  ACCOUNT: "The account",
+  ACCOUNT_WORKSPACE: "A chat",
+  ACCOUNT_RESEARCH: "A research workspace",
+  ACCOUNT_EMPLOYEE: "An employee's assignment",
+};
+
 // ---- the agent gateway: what a run may ask ---------------------------------------------------------------------------
 
 export interface AgentWhoAmI {
   runId: string;
   accountId: string;
-  // A chat's run (the gateway answers only those).
-  kind: "chat" | "research";
+  // A chat's run (the gateway answers only those; a research session's and an employee's assignment's are refused).
+  kind: "chat" | "research" | "assignment";
   // The chat it works in.
   workspaceId: string;
   agentId: string;

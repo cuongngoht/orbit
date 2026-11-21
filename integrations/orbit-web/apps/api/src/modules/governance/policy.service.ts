@@ -1,17 +1,20 @@
 // THE POLICY DECISION POINT: the ACCOUNT's policy in effect (its last published revision) and the overrides that narrow it
-// for one of its chats or research workspaces, asked through governance-core's one deterministic function. Whose policy
-// decides is the requester's own account -- an owner's, a run's -- never one a request names. A request names an action,
-// a resource and an environment, never a role. Every decision is an audit record on the account's chain, written BEFORE
-// the caller acts on it, so an action whose decision could not be recorded does not happen.
+// for one of its chats, research workspaces or employees, asked through governance-core's one deterministic function.
+// Whose policy decides is the requester's own account -- an owner's, a run's -- never one a request names. A request
+// names an action, a resource and an environment, never a role; a run's request is also said to be a chat's, a research
+// session's or an employee's assignment's -- by its binding, never by the run. Every decision is an audit record on the
+// account's chain, written BEFORE the caller acts on it, so an action whose decision could not be recorded does not happen.
 import { Inject, Injectable } from "@nestjs/common";
 import {
   ACTIONS,
   checkConstitution,
   checkOverlay,
+  employeeNetworkOf,
   evaluate,
   fingerprintOf,
   isActionKind,
   type Constitution,
+  type EmployeeNetwork,
   type EnforcementScope,
   type Environment,
   type Evaluation,
@@ -42,6 +45,9 @@ export interface Decision extends Evaluation {
   policyRevision: string | null;
   revision: number | null;
   fingerprint: string | null;
+  // The employee network access of the revision that decided (its limits are what an employee's connection is held
+  // to); null when no policy is in effect.
+  employeeNetwork: EmployeeNetwork | null;
 }
 
 export interface Effective {
@@ -109,6 +115,7 @@ export class PolicyService {
       action: ask.action,
       resource: ask.resource,
       environment: ask.environment ?? "local",
+      ...(binding !== null ? { runKind: binding.kind, employeeId: binding.resourceKind === "employee" ? binding.resourceId : null } : {}),
     };
     const overlays = accountId === null ? [] : await this.overrideList(accountId);
     const evaluation = evaluate({ constitution: effective?.constitution ?? null, overlays }, request);
@@ -131,7 +138,8 @@ export class PolicyService {
           },
         )
       : null;
-    return { ...evaluation, decisionId, eventId: event?.eventId ?? null, policyRevision, revision: effective?.record.revision ?? null, fingerprint };
+    const employeeNetwork = effective === null ? null : employeeNetworkOf(effective.constitution);
+    return { ...evaluation, decisionId, eventId: event?.eventId ?? null, policyRevision, revision: effective?.record.revision ?? null, fingerprint, employeeNetwork };
   }
 
   // A policy may let decisions that simply allow an ordinary action go unrecorded (obligations.auditDecisions

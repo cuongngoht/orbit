@@ -1155,9 +1155,12 @@ export function checkAnswer(body: unknown): Checked<AnswerRequest> {
 
 
 const LOCAL_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+// An IANA zone NAME ("Asia/Ho_Chi_Minh", "UTC", "Etc/GMT-7"), never a UTC offset ("+07:00"): an offset is no zone, and
+// PostgreSQL reads one with the POSIX sign (east becomes west).
+const ZONE_NAME = /^[A-Za-z][A-Za-z0-9_+\-/]*$/;
 
 export function isTimeZone(v: unknown): v is string {
-  if (typeof v !== "string" || v.length === 0 || v.length > 64) return false;
+  if (typeof v !== "string" || v.length === 0 || v.length > 64 || !ZONE_NAME.test(v)) return false;
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: v });
     return true;
@@ -1219,6 +1222,7 @@ export function checkCreateSchedule(body: unknown): Checked<Required<CreateSched
   if (criteria === null) errors.push("mission.acceptanceCriteria must be a short list of short lines");
   if (!optionalId(mission.workspaceId)) errors.push("mission.workspaceId must be a research workspace id or null");
   if (!Array.isArray(sources) || !sources.every(isWorkforceId) || sources.length > WORKFORCE_LIMITS.sources) errors.push("mission.sourceRevisionIds must be revision ids");
+  else if (sources.length > 0 && (mission.workspaceId === undefined || mission.workspaceId === null)) errors.push("mission.sourceRevisionIds needs the workspaceId they belong to");
   if (body.missedPolicy !== undefined && !(MISSED_POLICIES as readonly unknown[]).includes(body.missedPolicy)) errors.push(`missedPolicy must be one of ${MISSED_POLICIES.join(", ")}`);
   if (body.catchUpLimit !== undefined && (!Number.isInteger(body.catchUpLimit) || (body.catchUpLimit as number) < 1 || (body.catchUpLimit as number) > 8)) errors.push("catchUpLimit must be 1-8");
   return checked(errors, () => ({

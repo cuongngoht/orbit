@@ -15,39 +15,45 @@ own Claude and GitHub accounts. Only these use a model; every other test of Orbi
 
 ```bash
 node scripts/build-image.mjs --tag=orbit-web:0.8.0 [--ca-file=<proxy CA>]
-# once, by a person: sign a volume in to a Claude account (open the URL it prints, paste the code back)
-docker run --rm -it -v orbit-web-acceptance-claude:/data/claude --entrypoint claude orbit-web:0.8.0 auth login --claudeai
-node tests/acceptance/real-run.mjs --claude-volume=orbit-web-acceptance-claude --budget=2 [--image=orbit-web:0.8.0] [--ca-file=<pem>] [--out=<dir>] [--keep]
+# at a terminal: the run prints Orbit Web's sign-in URL; a person opens it and pastes the code the page shows
+node tests/acceptance/real-run.mjs --budget=2 [--claude-volume=orbit-web-acceptance-claude] [--image=orbit-web:0.8.0] [--ca-file=<pem>] [--out=<dir>] [--keep]
 ```
 
-The Claude account is Orbit Web's own sign-in (ADR 0061), and no credential variable signs anything in: Orbit Web
-gives none to Claude Code. So the run mounts the volume a person signed in once at `/data/claude`, where the image's
-Claude CLI keeps its sign-in, and never removes it; without it the run stops BLOCKED and prints the command above. The
-evidence names the sign-in's method and plan, never the account's address. Each Claude Code turn is capped with
-`--max-budget-usd` (`--budget`, default $2). GitHub is
+Orbit Web keeps its records in PostgreSQL: the run starts the pinned `pgvector/pgvector` image beside the container, on
+a network of its own (the role made by the compose files' init script), and removes both at the end.
+
+The Claude account is Orbit Web's own sign-in, finished in a BROWSER (ADR 0061, ADR 0066): no credential variable signs
+anything in, and a Claude CLI that is signed in already makes nobody the owner. So the run goes through Orbit Web's
+browser sign-in itself -- it starts the flow, prints the URL, takes the code a person pastes at the terminal, and
+exchanges the finished flow for its browser session; without a terminal it stops BLOCKED at that step. A volume named by
+`--claude-volume` keeps the Claude CLI's own files between runs (mounted at `/data/claude`, never removed); the browser
+sign-in is asked every run all the same. The evidence names the sign-in's method and plan, never the account's
+address. Each Claude Code turn is capped with `--max-budget-usd` (`--budget`, default $2). GitHub is
 stood in for by `fake-gh.mjs`, mounted read-only and named by `ORBIT_WEB_GH_BIN`: it answers the few gh commands Orbit
 Web runs about the fixture repository, so the run exercises the real Orbit Web, the real Claude Code with the real
 Orbit plugin, real git and real Orbit -- without a GitHub account. It is not in the image.
 
-Every step below is reported as **PASS**, **FAIL**, **BLOCKED** (it needs a person: the Claude browser sign-in and
-GitHub's device flow) or **STAND-IN** (GitHub's repository listing served by the fixture). The run writes
+Every step below is reported as **PASS**, **FAIL**, **BLOCKED** (it needs a person: the Claude browser sign-in without a
+terminal, and GitHub's device flow) or **STAND-IN** (GitHub's repository listing served by the fixture). The run writes
 `REPORT.md`, `evidence.json` and both turns' event streams to `--out`. The last recorded run is in
-[results/0.7.0](results/0.7.0/REPORT.md).
+[results/0.7.0](results/0.7.0/REPORT.md) (0.7.0, before PostgreSQL and the browser session).
 
 ## Manual run (21 steps, then the optional ones)
 
 Needs: Docker, a Claude account, a GitHub account with the fixture repository. Expected time: 10 minutes (20 with the
 optional steps).
 
-1. **Start Orbit Web**: `cd integrations/orbit-web/docker && docker compose up -d --build`; `docker compose ps` says
-   healthy.
+1. **Start Orbit Web**: `cd integrations/orbit-web/docker`, write the two database passwords into `.env` (README,
+   *Run*), `docker compose up -d --build`; `docker compose ps` says `postgres` and `orbit-web` healthy, and
+   `curl -s localhost:3000/api/health` says the database ok with pgvector.
 2. **Open the application**: http://localhost:3000 shows *Sign in to Orbit Web* and nothing else: no sidebar, no
    chats; `curl -s localhost:3000/api/sessions` answers 401 `claude_sign_in_required`.
 3. **Sign in with your Claude account**: *Continue with Claude* → open the link shown → sign in → paste the code the
    page gives you → *Submit code*. The workspace opens at once on *What should Orbit work on?* with the composer at the
-   bottom, and your address and plan sit at the bottom of the sidebar (from `claude auth status`). Fallback:
-   `docker exec -it orbit-web claude auth login --claudeai`, then reload. Settings → System shows the Claude CLI,
-   GitHub CLI, git, the Azure CLI and the Orbit plugin with versions, and storage ok.
+   bottom, and your address and plan sit at the bottom of the sidebar (from `claude auth status`). A terminal sign-in
+   (`docker exec -it orbit-web claude auth login --claudeai`) signs the CLI in, never a browser: the page still asks
+   this browser to finish its own sign-in. Settings → System shows the Claude CLI, GitHub CLI, git, the Azure CLI and
+   the Orbit plugin with versions, storage ok, and PostgreSQL with its schema and pgvector versions.
 4. **Connect GitHub**: the composer's repository picker (*No repository*) → *GitHub* tab → *Connect GitHub* opens
    Settings → Connectors on GitHub; *Connect GitHub* shows https://github.com/login/device, a one-time code, and
    *Waiting for authorization…*.
@@ -74,12 +80,13 @@ optional steps).
 18. **Orbit's status is read correctly**: the *Orbit* tab shows Orbit's words. With no Orbit task in the session it says
     *Unknown*, and the checks Orbit saw (`node`, named like a test, exit ok). Compare with
     `docker exec -w /data/workspaces/<id>/repository orbit-web node /opt/orbit/plugin/cli/live.mjs status`.
-19. **Restart**: `docker compose restart`; reload the page: the chat, its messages, its status (*Completed*) and its
-    changes are all there.
+19. **Restart**: `docker compose restart`; reload the page: still signed in (the browser's session is in
+    PostgreSQL), and the chat, its messages, its status (*Completed*) and its changes are all there.
 20. **Continue**: send `In one sentence, what did you change and why?`; the chat shows *Continuing Claude Code …* and
     answers about the earlier fix (the same Claude conversation, resumed).
-21. **Sign out** from the account menu at the bottom of the sidebar: the page returns to *Sign in to Orbit Web* at
-    once, and the API answers 401 again. While a chat is running, *Sign out* is refused and says to stop it first.
+21. **Sign out** from the account menu at the bottom of the sidebar: this browser's page returns to *Sign in to Orbit
+    Web* at once, and the API answers 401 to it again. Settings → Account → *Sign the account out everywhere* ends every
+    browser's session and signs the Claude CLI out; while a chat is running it is refused and says to stop it first.
 
 Optional (signed in to Claude again):
 

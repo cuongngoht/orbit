@@ -130,6 +130,9 @@ uses the account its records name, never whoever asked last.
 - Orbit Web needs PostgreSQL with pgvector; the compose files run the pinned `pgvector/pgvector` image on an internal
   network only Orbit Web joins (never the agent's container in the governed deployment), and its role is made by an
   init script. The API's integration tests run against that same image (`scripts/test-db.mjs`, the CI service).
+- The database is no longer a file the isolation check plants a canary in: the governed deployment's check asks the
+  agent's runner to CONNECT to it (`no_database`), and a database it can reach -- or one behind a local socket the
+  check cannot try -- fails the check. No database variable reaches a child process (`infra/process/env.ts`).
 - A person upgrading from an earlier Orbit Web starts with empty records: chats, research and governance of the SQLite
   files are not carried over (their files stay where they were). The workspaces on disk and the CLIs' sign-ins are kept.
 - A second browser of the same account cannot sign in while Claude works for the account (the flow would sign the CLI

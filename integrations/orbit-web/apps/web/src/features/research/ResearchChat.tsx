@@ -1,7 +1,7 @@
 // THE RESEARCH CONVERSATION: questions and answers -- an answer streams as it is written, its verified citations as
 // chips that open their passage -- with what each answer can become (a note, a finding), the run going on (how many
 // passages of which sources it was given), how a run that did not complete ended (and asking again), and the composer.
-// Mode: the selected sources only -- nothing else is offered, because nothing else is built.
+// A conversation like a chat: the selected sources are references read with each question, and none is needed to ask.
 import { Badge, Button, MessageBar, MessageBarActions, MessageBarBody, Spinner, Text, Tooltip, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import { Add16Regular, ArrowClockwise16Regular, ArrowDown16Regular, BookOpen24Regular, Checkmark16Regular, Copy16Regular, Info16Regular, Lightbulb16Regular, NoteAdd16Regular, TextBulletListSquare16Regular } from "@fluentui/react-icons";
 import type { ResearchCitation, ResearchMessage } from "@orbit-web/contracts";
@@ -327,10 +327,10 @@ export function ResearchChat(p: ResearchChatProps) {
                   <BookOpen24Regular />
                 </span>
                 <Text as="h2" className={s.emptyTitle}>
-                  Ask about your sources
+                  Ask anything
                 </Text>
                 <Text className={s.emptyCopy}>
-                  Answers come only from passages of the sources you select, each cited. When the sources do not say, the answer says so.
+                  The sources you select are references Claude reads with each question: what it takes from them is cited, and it says what comes from elsewhere. It can use your Claude connectors too -- to make a Claude Doc, for example.
                 </Text>
                 {p.usable === 0 ? (
                   <>
@@ -389,7 +389,7 @@ export function ResearchChat(p: ResearchChatProps) {
                 <MessageBarBody>{p.stream.ended.message}</MessageBarBody>
                 {lastQuestion !== null && (
                   <MessageBarActions>
-                    <Button size="small" icon={<ArrowClockwise16Regular />} onClick={() => p.onAsk(lastQuestion)} disabled={p.usable === 0}>
+                    <Button size="small" icon={<ArrowClockwise16Regular />} onClick={() => p.onAsk(lastQuestion)}>
                       Ask again
                     </Button>
                   </MessageBarActions>
@@ -420,8 +420,8 @@ export function ResearchChat(p: ResearchChatProps) {
       <div className={mergeClasses(s.bottom, isMobile && s.bottomMobile)}>
         <Composer
           autoFocus={!touch && p.usable > 0}
-          placeholder={p.usable > 0 ? "Ask about your sources…" : p.selected > 0 ? "Waiting for the selected sources to be read…" : "Select a source to ask about"}
-          canSend={p.usable > 0 && !running && !p.busy}
+          placeholder={p.usable > 0 ? "Ask anything -- your sources are references…" : p.selected > 0 ? "Ask anything -- your sources are still being read…" : "Ask anything -- or add sources as references…"}
+          canSend={!running && !p.busy}
           running={running}
           busy={p.busy}
           onSend={p.onAsk}
@@ -438,14 +438,14 @@ export function ResearchChat(p: ResearchChatProps) {
                   <div className={s.draftBody}>
                     <Info16Regular className={s.draftIcon} aria-hidden />
                     <Text size={200} className={s.draftText}>
-                      {p.usable > 0 ? "Your first question is ready to ask" : "Your first question waits for a selected source to be ready"}: “{p.draftQuestion}”
+                      {p.usable > 0 ? "Your first question is ready to ask" : "Your first question is kept -- ask it now, or add sources first"}: “{p.draftQuestion}”
                     </Text>
                   </div>
                   <Button
                     className={mergeClasses(s.draftBtn, touch && s.draftBtnTouch)}
                     size="small"
                     appearance={p.usable > 0 ? "primary" : "secondary"}
-                    disabled={p.usable === 0 || running}
+                    disabled={running}
                     onClick={() => p.onAsk(p.draftQuestion as string)}
                   >
                     Ask it now
@@ -455,7 +455,7 @@ export function ResearchChat(p: ResearchChatProps) {
             </>
           }
           left={
-            <Tooltip content="Questions are answered only from passages of the selected sources: no web search, no other workspace." relationship="description">
+            <Tooltip content="The selected sources are given to Claude as references with each question." relationship="description">
               {sourceTrigger ? (
                 <button
                   type="button"

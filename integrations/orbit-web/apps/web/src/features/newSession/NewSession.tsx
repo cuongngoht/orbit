@@ -234,7 +234,7 @@ export function NewSession({
             <Title2 as="h1" className={s.heading}>
               What do you want to research?
             </Title2>
-            <Text className={s.muted}>Gather sources in a workspace, ask questions answered only from them, and keep what you find -- with citations you can open.</Text>
+            <Text className={s.muted}>Gather sources in a workspace and ask anything: Claude reads them as references, cites what it takes from them, and can use your Claude connectors. Keep what you find -- with citations you can open.</Text>
           </div>
           <KindChooser kind={kind} onKind={setKind} />
           <NewResearchSession settings={settings} onCreated={(created) => onResearchCreated?.(created)} />

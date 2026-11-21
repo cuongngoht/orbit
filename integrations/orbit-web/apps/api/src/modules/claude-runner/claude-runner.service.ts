@@ -25,6 +25,7 @@ import type { ExitInfo, ProcessHandle, ProcessPort } from "../../infra/process/p
 import { redactSecrets, tail } from "../../infra/security/redact.js";
 import { ImageFiles } from "../../infra/storage/image-files.js";
 import { ImageStore, RunStore, SessionStore, type SessionRecord } from "../../infra/storage/stores.js";
+import { ClaudeConnectorsService } from "../claude-auth/claude-connectors.service.js";
 import { ClaudeModelsService } from "../claude-auth/claude-models.service.js";
 import { RunGovernanceService, type RunPlan } from "../governance/run-governance.service.js";
 import { ProjectService } from "../project/project.service.js";
@@ -83,6 +84,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     @Inject(ClaudeModelsService) private readonly models: ClaudeModelsService,
     @Inject(ImageStore) private readonly images: ImageStore,
     @Inject(ImageFiles) private readonly imageFiles: ImageFiles,
+    @Inject(ClaudeConnectorsService) private readonly connectors: ClaudeConnectorsService,
   ) {}
 
   // After a restart nothing is running: a run the restart cut short is recorded as interrupted, never resumed.
@@ -223,6 +225,8 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
       governanceNote: plan.note,
       bound: plan.binding !== null,
       streamInput: input.streamJson,
+      // A bound run reaches no connector at all (--strict-mcp-config); another is denied the ones unchecked for chats.
+      deniedConnectors: plan.binding === null ? this.connectors.forRun().chatDenied : [],
       azure,
       github,
       maxBudgetUsd: this.config.maxBudgetUsd,

@@ -1,3 +1,4 @@
+export * from "./connectors.js";
 export * from "./dto.js";
 export * from "./events/index.js";
 export * from "./governance.js";

@@ -12,6 +12,7 @@ import {
   type ModelChoice,
   type RepositorySource,
 } from "./models.js";
+import { CONNECTOR_LIMITS, CONNECTOR_USES, type UpdateConnectorsRequest } from "./connectors.js";
 import { imageIdsProblem } from "./images.js";
 import { THEMES, type ThemePreference } from "./status.js";
 import type {
@@ -262,4 +263,21 @@ export function checkAzureLogin(body: unknown): Checked<AzureLoginRequest> {
   const tenant = typeof body.tenant === "string" ? body.tenant.trim() : body.tenant;
   if (tenant !== undefined && tenant !== "" && !isTenant(tenant)) errors.push("tenant must be a tenant id (GUID) or a domain name");
   return checked(errors, () => (typeof tenant === "string" && tenant !== "" ? { tenant } : {}));
+}
+
+// Where each connector may be used, as a person set it: names the CLI gave (printable, bounded), each with chat and/or
+// research, true or false. A connector left out keeps what it had.
+export function checkUpdateConnectors(body: unknown): Checked<UpdateConnectorsRequest> {
+  if (!isRecord(body)) return { ok: false, errors: ["the body must be a JSON object"] };
+  const errors = unknownFields(body, ["connectors"]);
+  const given = body.connectors;
+  if (!isRecord(given)) return { ok: false, errors: [...errors, "connectors must be an object, by connector name"] };
+  const entries = Object.entries(given);
+  if (entries.length > CONNECTOR_LIMITS.names) errors.push(`at most ${CONNECTOR_LIMITS.names} connectors`);
+  for (const [name, use] of entries) {
+    if (name.trim().length === 0 || name.length > CONNECTOR_LIMITS.nameLength || CONTROL.test(name)) errors.push(`${name.slice(0, 40)} is not a connector name`);
+    else if (!isRecord(use) || Object.keys(use).length === 0 || Object.entries(use).some(([k, v]) => !(CONNECTOR_USES as readonly string[]).includes(k) || typeof v !== "boolean"))
+      errors.push(`${name}: say ${CONNECTOR_USES.join(" and/or ")}, each true or false`);
+  }
+  return checked(errors, () => ({ connectors: Object.fromEntries(entries.map(([name, use]) => [name, { ...(use as Record<string, boolean>) }])) }));
 }

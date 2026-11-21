@@ -92,6 +92,9 @@ export interface ClaudeRunOptions {
   // The message goes in as one stream-json user message -- how the CLI takes images headless -- instead of the
   // prompt's own text. Only a message that carries images.
   streamInput?: boolean;
+  // The tool prefixes of the connectors this account unchecked for chats (claude-connectors.service.ts): denied, in
+  // every mode.
+  deniedConnectors?: string[];
 }
 
 // A run under governance holds no credential at all: Orbit Web pushes for it, through the agent gateway.
@@ -143,6 +146,7 @@ export function claudeArgs(o: ClaudeRunOptions): string[] {
     ...fileRules(o.protectedDirs),
     ...(o.webTools ? [] : WEB_TOOLS),
     ...(execute ? [] : ["Bash"]),
+    ...(o.deniedConnectors ?? []),
     "--append-system-prompt",
     (governed ? [GOVERNED_NOTE, o.governanceNote as string] : [o.github ? WORKSPACE_NOTES.github : WORKSPACE_NOTES.local, ...(o.azure ? [AZURE_NOTE] : [])]).join(" "),
     // The user's settings only: a repository's own .claude/settings.json is untrusted input and could set `env` (an

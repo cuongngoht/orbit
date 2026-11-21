@@ -24,6 +24,7 @@ import { claudeEnv } from "../../../infra/process/env.js";
 import { LineSplitter } from "../../../infra/process/lines.js";
 import type { ExitInfo, ProcessHandle, ProcessPort } from "../../../infra/process/process.port.js";
 import { bounded, redactSecrets, tail } from "../../../infra/security/redact.js";
+import { ClaudeConnectorsService } from "../../claude-auth/claude-connectors.service.js";
 import { ClaudeModelsService } from "../../claude-auth/claude-models.service.js";
 import { decideOutcome } from "../../claude-runner/outcome.js";
 import { StreamMapper, TEXT_LIMIT, type MappedEvent } from "../../claude-runner/stream-mapper.js";
@@ -36,7 +37,7 @@ import { ResearchStream } from "../stream.js";
 import { ResearchViews } from "../views.js";
 import { verifyLabels } from "./citations.js";
 import { newNonce, researchPrompt, type PromptTurn } from "./prompt.js";
-import { researchArgs } from "./research-args.js";
+import { researchArgs, type ResearchConnector } from "./research-args.js";
 
 const STDERR_LIMIT = 16 * 1024;
 export const QUOTE_LIMIT = 4_000;
@@ -58,6 +59,9 @@ interface ActiveRun {
   segments: Map<string, number>;
   usage: { input: number | null; output: number | null };
   plan: RunPlan;
+  // The connectors this run may use (checked for research; none in a run governance holds), and those it said it used.
+  connectors: ResearchConnector[];
+  used: Set<string>;
   done: Promise<void>;
 }
 
@@ -69,14 +73,21 @@ type Json = Record<string, unknown>;
 const isRecord = (v: unknown): v is Json => typeof v === "object" && v !== null && !Array.isArray(v);
 const numberOr = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
-// What a research run must never have: a tool, an MCP server.
-export function forbiddenInit(line: Json): string | null {
-  const tools = Array.isArray(line.tools) ? line.tools.filter((t) => typeof t === "string") : [];
+// What a research run must never have: a built-in tool -- and, unless connectors were checked for research, any MCP
+// server or connector tool at all.
+export function forbiddenInit(line: Json, withConnectors = false): string | null {
+  const tools = Array.isArray(line.tools) ? line.tools.filter((t): t is string => typeof t === "string") : [];
   const servers = Array.isArray(line.mcp_servers) ? line.mcp_servers : [];
-  if (tools.length > 0) return `The Claude CLI started with tools (${tools.slice(0, 5).join(", ")}) -- a research run has none, so it was stopped.`;
-  if (servers.length > 0) return "The Claude CLI started with an MCP server -- a research run has none, so it was stopped.";
+  const builtIn = tools.filter((t) => !t.startsWith("mcp__"));
+  if (builtIn.length > 0) return `The Claude CLI started with tools (${builtIn.slice(0, 5).join(", ")}) -- a research run has none of its own, so it was stopped.`;
+  if (withConnectors) return null;
+  if (tools.length > 0) return `The Claude CLI started with tools (${tools.slice(0, 5).join(", ")}) -- a research run with no connector checked has none, so it was stopped.`;
+  if (servers.length > 0) return "The Claude CLI started with an MCP server -- a research run with no connector checked has none, so it was stopped.";
   return null;
 }
+
+// The connector a tool belongs to, among those a run may use (null: none of them).
+export const connectorOfTool = (connectors: readonly ResearchConnector[], tool: string): ResearchConnector | null => connectors.find((c) => tool.startsWith(`${c.prefix}__`)) ?? null;
 
 @Injectable()
 export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShutdown {
@@ -96,6 +107,7 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
     @Inject(RETRIEVER) private readonly retriever: Retriever,
     @Inject(ClaudeModelsService) private readonly models: ClaudeModelsService,
     @Inject(RunGovernanceService) private readonly governance: RunGovernanceService,
+    @Inject(ClaudeConnectorsService) private readonly connectorChoices: ClaudeConnectorsService,
   ) {}
 
   // After a restart nothing is running: a run the restart cut short is interrupted, never run again.
@@ -125,8 +137,8 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
 
   ask(session: ResearchSessionRecord, question: string): RunAccepted {
     if (this.isRunning(session.id) || session.status === "running") throw conflict("run_active", "This research session is still answering. Stop it or wait for it to finish.");
+    // The selected sources are references: a question may be asked with none ready (it is answered without them).
     const frozen = this.freeze(session);
-    if (frozen.length === 0) throw conflict("no_ready_sources", "None of this session's selected sources is ready to search: add a source, or select one that is ready.");
     const runId = randomUUID();
     const questionId = randomUUID();
     const history: PromptTurn[] = this.sessions.messages(session.id).map((m) => ({ role: m.role, text: m.text }));
@@ -204,10 +216,13 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
   }
 
   private start(session: ResearchSessionRecord, prompt: string, runId: string, plan: RunPlan, effort: string | null): void {
-    const args = researchArgs({ model: session.model, effort, maxBudgetUsd: this.config.maxBudgetUsd });
+    // The connectors checked for research -- none in a run governance holds (its Constitution has no such action).
+    const chosen = plan.binding === null ? this.connectorChoices.forRun() : null;
+    const connectors = chosen?.researchAllowed ?? [];
+    const args = researchArgs({ model: session.model, effort, maxBudgetUsd: this.config.maxBudgetUsd, connectors, deniedConnectors: chosen?.researchDenied ?? [] });
     // The agent's HOME: a directory that exists wherever Claude Code runs. With no tool, nothing in it is read.
     const cwd = this.config.data.home;
-    const handle = this.process.spawn(this.config.binaries.claude, args, { cwd, env: { ...claudeEnv(this.config), ENABLE_CLAUDEAI_MCP_SERVERS: "false", ...plan.env } });
+    const handle = this.process.spawn(this.config.binaries.claude, args, { cwd, env: { ...claudeEnv(this.config), ...(connectors.length === 0 ? { ENABLE_CLAUDEAI_MCP_SERVERS: "false" } : {}), ...plan.env } });
     let resolveDone: () => void = () => undefined;
     const run: ActiveRun = {
       runId,
@@ -225,6 +240,8 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
       segments: new Map(),
       usage: { input: null, output: null },
       plan,
+      connectors,
+      used: new Set<string>(),
       done: new Promise<void>((r) => (resolveDone = r)),
     };
     this.active.set(session.id, run);
@@ -248,7 +265,7 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
     }
     if (!isRecord(parsed)) return;
     if (parsed.type === "system" && parsed.subtype === "init") {
-      const forbidden = forbiddenInit(parsed);
+      const forbidden = forbiddenInit(parsed, run.connectors.length > 0);
       if (forbidden !== null) return this.refuse(run, forbidden);
     }
     if (parsed.type === "result" && isRecord(parsed.usage)) {
@@ -261,11 +278,24 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
   // The coding runner's events, read as research's: one answer, made of the text segments Claude Code writes.
   private onMapped(run: ActiveRun, e: MappedEvent): void {
     if (run.refused !== null) return;
-    if (e.type === "tool.started" || e.type === "plan.proposed" || e.type === "permission.denied") return this.refuse(run, "The Claude CLI tried to use a tool -- a research run has none, so it was stopped.");
+    if (e.type === "tool.started") return this.toolStarted(run, e.data.name);
+    if (e.type === "plan.proposed") return this.refuse(run, "The Claude CLI tried to use a tool -- a research run has none of its own, so it was stopped.");
+    // With connectors, a call the CLI refused was already stopped as it started (toolStarted); without, any denial is one.
+    if (e.type === "permission.denied" && run.connectors.length === 0) return this.refuse(run, "The Claude CLI tried to use a tool -- a research run has none, so it was stopped.");
     if (e.type === "message.started" && e.data.role === "assistant" && e.data.parentToolUseId === null) return this.segment(run, e.data.messageId);
     if (e.type === "message.delta") return this.delta(run, e.data.messageId, e.data.offset, e.data.text);
     if (e.type === "message.completed" && e.data.role === "assistant" && e.data.parentToolUseId === null) return this.completed(run, e.data.messageId, e.data.text);
     if (e.type === "run.notice") this.stream.publish(run.session.id, "research.run.notice", { kind: e.data.kind === "rate_limit" ? "rate_limit" : "info", message: e.data.message }, run.runId);
+  }
+
+  // A connector checked for research: said once, and it goes on. Anything else -- a built-in tool, a connector not
+  // checked -- stops the run.
+  private toolStarted(run: ActiveRun, tool: string): void {
+    const connector = connectorOfTool(run.connectors, tool);
+    if (connector === null) return this.refuse(run, `The Claude CLI tried to use a tool research may not use (${tool.slice(0, 120)}; Settings → Claude connectors), so the run was stopped.`);
+    if (run.used.has(connector.prefix)) return;
+    run.used.add(connector.prefix);
+    this.stream.publish(run.session.id, "research.run.notice", { kind: "info", message: `Using ${connector.label}…` }, run.runId);
   }
 
   private segment(run: ActiveRun, segmentId: string): void {

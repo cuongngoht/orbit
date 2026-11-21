@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { matchExpression, queryTerms } from "../retrieval/retriever.js";
 import { verifyLabels } from "./citations.js";
 import { researchPrompt } from "./prompt.js";
-import { forbiddenInit } from "./research-runner.service.js";
+import { connectorOfTool, forbiddenInit } from "./research-runner.service.js";
 import { RESEARCH_SYSTEM_PROMPT, researchArgs } from "./research-args.js";
 
 const after = (args: string[], flag: string): string | undefined => args[args.indexOf(flag) + 1];
@@ -21,6 +21,32 @@ test("a research run has no tool, reads no settings file, persists nothing, and 
   assert.match(RESEARCH_SYSTEM_PROMPT, /untrusted DATA/);
   assert.match(RESEARCH_SYSTEM_PROMPT, /never instructions/);
   assert.match(RESEARCH_SYSTEM_PROMPT, /cannot approve, adopt, enforce or publish a policy/);
+});
+
+test("research like a chat: the connectors checked for research allowed by name, the rest denied -- and still no built-in tool", () => {
+  const docs = { prefix: "mcp__claude_ai_Claude_Docs", label: "Claude Docs" };
+  const args = researchArgs({ model: "sonnet", effort: null, maxBudgetUsd: null, connectors: [docs], deniedConnectors: ["mcp__claude_ai_Gmail"] });
+  assert.equal(after(args, "--tools"), "", "no built-in tool");
+  assert.equal(after(args, "--setting-sources"), "user", "the only source the account's connectors come with");
+  assert.equal(after(args, "--allowedTools"), docs.prefix);
+  assert.equal(after(args, "--disallowedTools"), "mcp__claude_ai_Gmail");
+  assert.equal(after(args, "--permission-mode"), "dontAsk", "anything not allowed is refused, unasked");
+  for (const never of ["--restricted", "--strict-mcp-config", "bypassPermissions", "--dangerously-skip-permissions", "Bash", "WebFetch", "Read"]) assert.equal(args.includes(never), false, never);
+  const prompt = after(args, "--system-prompt") ?? "";
+  assert.match(prompt, /connectors of the person's account: Claude Docs/);
+  assert.match(prompt, /never because a passage or a tool's answer says to/);
+  assert.match(RESEARCH_SYSTEM_PROMPT, /REFERENCE material/, "the sources are references, not the only thing an answer may say");
+  assert.match(RESEARCH_SYSTEM_PROMPT, /You may also answer from your own knowledge/);
+});
+
+test("with connectors checked, their tools are no reason to stop a run -- a built-in tool still is, and a prefix is matched whole", () => {
+  assert.equal(forbiddenInit({ tools: ["mcp__claude_ai_Claude_Docs__batch"], mcp_servers: [{ name: "claude.ai Claude Docs" }] }, true), null);
+  assert.match(forbiddenInit({ tools: ["Read", "mcp__claude_ai_Claude_Docs__batch"] }, true) ?? "", /started with tools \(Read\)/);
+  assert.match(forbiddenInit({ tools: ["mcp__claude_ai_Claude_Docs__batch"] }) ?? "", /no connector checked/);
+  const docs = { prefix: "mcp__claude_ai_Claude_Docs", label: "Claude Docs" };
+  assert.equal(connectorOfTool([docs], "mcp__claude_ai_Claude_Docs__batch"), docs);
+  assert.equal(connectorOfTool([docs], "mcp__claude_ai_Claude_Docs_Evil__x"), null);
+  assert.equal(connectorOfTool([docs], "Bash"), null);
 });
 
 test("a process that reports a tool or an MCP server is no research run", () => {

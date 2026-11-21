@@ -58,6 +58,10 @@ export interface Limits {
   stopGraceMs: number;
   // How often the Orbit panel may be read again while a run is active.
   orbitRefreshMs: number;
+  // Reading an account's connectors: asked again this often until the list settles (its claude.ai connectors arrive a
+  // moment after the CLI starts), and given up after the deadline.
+  connectorPollMs: number;
+  connectorDeadlineMs: number;
 }
 
 // RESEARCH's bounds, each an ORBIT_WEB_RESEARCH_* variable.
@@ -114,6 +118,8 @@ export const DEFAULT_LIMITS: Limits = {
   cloneTimeoutMs: 15 * 60_000,
   stopGraceMs: 5_000,
   orbitRefreshMs: 4_000,
+  connectorPollMs: 1_500,
+  connectorDeadlineMs: 25_000,
 };
 
 export function dataDirs(root: string): DataDirs {

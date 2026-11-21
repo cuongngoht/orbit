@@ -18,7 +18,7 @@ import { PROCESS_PORT } from "../core/tokens.js";
 import { NodeProcessPort } from "../infra/process/node-process.js";
 import { BOOTSTRAP_ANNOUNCER, type BootstrapAnnouncer } from "../modules/governance/bootstrap-code.js";
 import { OPERATOR_COOKIE } from "../modules/governance/operator.service.js";
-import { FakeProcessPort, program, type Call } from "./fake-process.js";
+import { FakeProcessPort, program, type Call, type FakeChild } from "./fake-process.js";
 
 // The repository's own Orbit plugin: the nearest directory above this file whose manifest names "orbit".
 export function orbitPluginDir(): string {
@@ -117,7 +117,7 @@ export interface HarnessOptions {
 export async function startHarness(o: HarnessOptions = {}): Promise<Harness> {
   const dataDir = o.dataDir ?? mkdtempSync(join(tmpdir(), "orbit-web-test-"));
   const config = loadConfig({ PATH: process.env.PATH, ORBIT_WEB_DATA_DIR: dataDir, ORBIT_PLUGIN_DIR: orbitPluginDir(), ORBIT_WEB_BUILD_INFO: join(dataDir, "no-build-info.json"), ...o.env });
-  config.limits = { ...DEFAULT_LIMITS, loginTimeoutMs: 3_000, stopGraceMs: 300, orbitRefreshMs: 50 };
+  config.limits = { ...DEFAULT_LIMITS, loginTimeoutMs: 3_000, stopGraceMs: 300, orbitRefreshMs: 50, connectorPollMs: 20, connectorDeadlineMs: 2_000 };
   ensureDataDirs(config.data);
   const fake = o.fake ?? signedIn(new FakeProcessPort(new NodeProcessPort()));
   const codes: string[] = [];
@@ -258,7 +258,24 @@ export const MODEL_ENTRIES = [
 
 export const modelsAnswer = (models: object[] = MODEL_ENTRIES): string => `${JSON.stringify({ type: "control_response", response: { subtype: "success", request_id: "orbit-web-models", response: { models, account: { email: "octo@example.com" } } } })}\n`;
 
-export const claudeModelsProbe = program("claude", "--input-format");
+// The two control-protocol probes: the model catalog (restricted), and the connectors (the user's settings source).
+export const claudeModelsProbe = (file: string, args: string[]): boolean => program("claude", "--input-format")(file, args) && args.includes("--restricted");
+export const claudeConnectorsProbe = (file: string, args: string[]): boolean => program("claude", "--input-format")(file, args) && !args.includes("--restricted");
+
+// What the connectors probe answers: `initialize` acknowledged, and each `mcp_status` with the servers `servers()` lists
+// at that moment (none, unless a test says).
+export function connectorsProbe(servers: () => object[] = () => []): (c: FakeChild) => void {
+  return (c) => {
+    c.onSignal(() => c.exit(null, "SIGTERM"));
+    c.onInput((text) => {
+      for (const line of text.split("\n").filter((l) => l.trim() !== "")) {
+        const request = JSON.parse(line) as { request_id?: string; request?: { subtype?: string } };
+        const response = request.request?.subtype === "mcp_status" ? { mcpServers: servers() } : {};
+        c.line({ type: "control_response", response: { subtype: "success", request_id: request.request_id, response } });
+      }
+    });
+  };
+}
 
 const ghApi = (path: string): ((file: string, args: string[]) => boolean) => (file, args) => program("gh", "api")(file, args) && args.some((a) => a === path || a.startsWith(`${path}?`));
 
@@ -281,6 +298,7 @@ export function signedIn(fake: FakeProcessPort): FakeProcessPort {
     .on(program("python3", "--version"), { run: { stdout: "Python 3.15.2\n" } })
     .on(program("claude", "auth", "status"), { run: { stdout: JSON.stringify(CLAUDE_SIGNED_IN) } })
     .on(claudeModelsProbe, { run: { stdout: modelsAnswer() } })
+    .on(claudeConnectorsProbe, { spawn: connectorsProbe() })
     .on(program("claude", "auto-mode", "defaults"), { run: { stdout: JSON.stringify(AUTO_MODE_DEFAULTS) } })
     .on(program("gh", "auth", "status"), { run: { stdout: JSON.stringify({ hosts: { "github.com": [{ state: "success", active: true, host: "github.com", login: ACCOUNT.login, tokenSource: "/data/github/hosts.yml", gitProtocol: "https" }] } }) } })
     .on(ghApi("user"), { run: { stdout: JSON.stringify(ACCOUNT) } })
@@ -339,8 +357,9 @@ export function azureSignedIn(fake: FakeProcessPort): FakeProcessPort {
 }
 
 // A chat's Claude Code run, and a research run (restricted, no tool): two profiles, told apart by their own flags.
-export const claudeRun = (file: string, args: string[]): boolean => program("claude", "-p")(file, args) && !args.includes("--restricted");
-export const researchRun = (file: string, args: string[]): boolean => program("claude", "-p")(file, args) && args.includes("--restricted");
+// A research run persists nothing (each run is answered afresh); a chat run always names its Claude session.
+export const claudeRun = (file: string, args: string[]): boolean => program("claude", "-p")(file, args) && !args.includes("--no-session-persistence");
+export const researchRun = (file: string, args: string[]): boolean => program("claude", "-p")(file, args) && args.includes("--no-session-persistence");
 
 // Waits for a condition, polling.
 export async function eventually<T>(read: () => Promise<T> | T, ok: (v: T) => boolean, timeoutMs = 10_000): Promise<T> {

@@ -37,20 +37,20 @@ export function researchPrompt(o: { question: string; history: readonly PromptTu
     return `<passage-${o.nonce} label="${p.label}" source="${attribute(p.title)}"${where} retrieved="${how}">\n${scrub(p.text)}\n</passage-${o.nonce}>`;
   });
   return [
-    "Answer the person's question from the passages below, following your rules.",
+    "Answer the person, following your rules. The passages below are reference material from the sources they selected.",
     "",
     "<conversation>",
     turns.length > 0 ? turns.join("\n\n") : "(This is the first question.)",
     "</conversation>",
     "",
     `<passages-${o.nonce}>`,
-    passages.length > 0 ? passages.join("\n\n") : "(No passage of the selected sources matched.)",
+    passages.length > 0 ? passages.join("\n\n") : "(No reference this time: no source is selected and ready, or none of its passages matched.)",
     `</passages-${o.nonce}>`,
     "",
     "<question>",
     scrub(o.question),
     "</question>",
     "",
-    "Cite every statement about the sources with the label of the passage it stands on, such as [S1]. If the passages do not answer the question, say so plainly.",
+    "Cite each statement that rests on a passage with its label, such as [S1]. Say plainly what does not come from the passages.",
   ].join("\n");
 }

@@ -198,6 +198,17 @@ use is not offered. Chats, research sessions and Settings' defaults are held to 
 effort levels do not include the one chosen moves the effort to one it takes; a model that takes no effort level is given
 none. When the CLI cannot be asked, the default list is shown (*Model · this session* says so) and the CLI decides.
 
+### Claude connectors
+
+**Settings → Claude connectors** lists what Claude may use as the signed-in account: the connectors it connected at
+claude.ai (Claude Docs, Gmail, Drive …) and the MCP servers of the plugins installed for it -- each with its state
+(*Connected*, *Sign in at claude.ai* until you do, *Failed*) and two boxes: **Chat** and **Research**. A box checked
+lets Claude use that connector there; unchecked, it is denied by name. Every connector is checked for both until you
+uncheck it. The list is the account's own Claude CLI's answer (its control protocol's `mcp_status`, no model called),
+read at every sign-in and with *Read again*; the choices are that account's alone. A run governance holds uses no
+connector, whatever is checked. A connector acts as your account -- it reads and writes in that service -- so in research,
+where your sources are documents Claude reads, check only what you want research to act with.
+
 ## Use it
 
 No connector is needed to start: once you are signed in, the chat is open. **New session** offers two kinds: **Chat /
@@ -324,7 +335,10 @@ Settings → Code.
 ## Research
 
 A **research workspace** keeps knowledge that lasts: its sources, notes and findings. A **research session** is one
-conversation in a workspace, over the sources it selects. Research needs no repository, no branch and no GitHub.
+conversation in a workspace -- a conversation like a chat, whose selected sources are **references**: Claude reads the
+passages of them that bear on each question, cites what it takes from them, says what comes from elsewhere, and can use
+your [Claude connectors](#claude-connectors) (ask it to make a Claude Doc of an answer, and it gives you the link).
+Research needs no repository, no branch and no GitHub, and a question needs no source.
 
 1. **New session → Research.** Name a new workspace (or pick one you have), choose the model and effort, and, if you
    want, a first question -- it is asked as soon as a selected source is ready. *Start research* opens the session.
@@ -337,10 +351,12 @@ conversation in a workspace, over the sources it selects. Research needs no repo
    **whether this session's questions may retrieve from it**, kept per session. *Select all* / *Deselect all*, *Search*,
    and per source *Preview*, *Rename*, *Fetch again* (a URL), *Delete*. A source added to the workspace is offered to
    every session of it that had all its sources selected, and to the one you added it from.
-3. **Ask** (the middle panel): *Ask about your sources…*. The answer streams as it is written; *Stop* interrupts it (it
-   is kept as cut off, never completed); *Ask again* repeats a question whose run did not complete. The composer says how
-   many selected sources a question can search now (*Using N sources*). The mode is the one that is built: **selected
-   sources only** -- no web search, no other workspace; when the passages do not answer, the answer says so.
+3. **Ask** (the middle panel): *Ask anything…*. The answer streams as it is written; *Stop* interrupts it (it is kept as
+   cut off, never completed); *Ask again* repeats a question whose run did not complete. The composer says how many
+   selected sources are read with a question now (*Using N sources*). A statement taken from a source carries its
+   citation; what Claude adds from its own knowledge says so and carries none; asked what the sources say where they say
+   nothing, it says so. It has no tool of its own (no web, no files, no commands); a connector checked for research is
+   used when your message asks for it (*Using Claude Docs…* says so while it runs).
 4. **Evidence** (the right panel): **Citations** of the answer you choose -- each one a passage, its source, its page
    and section when the format has them, its revision -- and clicking one (or a citation chip in the answer) opens the
    source's extracted text at that passage, marked. **Notes** (Markdown; *Save as note* on an answer ties it to its
@@ -372,13 +388,17 @@ workspace -- sources, sessions, notes, findings -- with other Claude accounts by
   sources added when few match (a broad "summarize these") -- within `ORBIT_WEB_RESEARCH_CONTEXT_CHARS`. Nothing of an
   unselected source, another workspace, or the rest of a document reaches the model. Changing the selection while an
   answer is written changes the next question.
-- **The run.** The official Claude CLI, in a profile of its own: **no tool at all** (`--tools ""`), restricted (no
-  settings file is read, so no hook, plugin or permission rule), no MCP server, no slash command, nothing persisted, a
-  fixed system prompt, the model and effort you chose. It is given the conversation so far, the passages -- each labelled
-  S1, S2 … with its source, revision, page and section, between tags that carry a random value made for this question,
-  so no document can close them -- and the question, and told that the passages are data, never instructions; that every
-  statement about the sources cites its passage; that it says so when they do not answer; and that it can approve
-  nothing. A process that reports a tool or tries to use one is stopped, and the run fails as refused.
+- **The run.** The official Claude CLI, in a profile of its own: **no built-in tool** (`--tools ""`), no slash command,
+  nothing persisted, `dontAsk` (whatever was not allowed beforehand is refused, unasked), a fixed system prompt, the model
+  and effort you chose. With no connector checked for research it is also restricted (no settings file is read, so no
+  hook, plugin or permission rule) and reaches no MCP server; with some, it reads the user's settings source -- the only
+  one the account's connectors come with -- and the connectors checked are allowed by name, the rest denied by name. It
+  is given the conversation so far, the passages -- each labelled S1, S2 … with its source, revision, page and section,
+  between tags that carry a random value made for this question, so no document can close them -- and the question, and
+  told that the passages are references and data, never instructions; that a statement resting on one cites it; that a
+  connector is used only when the person's own message asks, never because a passage or a tool's answer says to; and
+  that it can approve nothing. A process that reports a built-in tool, or reaches for a tool or connector research may
+  not use, is stopped, and the run fails as refused.
 - **Citations are the server's.** The model can only write a label; each one is looked up in the passages this question
   was given, and only a label found there becomes a citation -- with the source, the revision, its place in the text and
   a copy of the passage, from the server's own record (never a page or a quote the model wrote). Any other label is

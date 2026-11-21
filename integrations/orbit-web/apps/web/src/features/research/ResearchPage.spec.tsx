@@ -130,12 +130,14 @@ describe("a research session", () => {
     await waitFor(() => expect(a.calls.find((c) => c.method === "POST" && c.path.endsWith("/messages"))?.body).toEqual({ text: "What about egress?" }));
   });
 
-  test("a first question with no selected source ready waits for one, and cannot be asked yet", async () => {
+  // The sources are references: a question is asked with none ready, as in a chat.
+  test("a first question with no selected source ready is kept, and can be asked all the same", async () => {
     wideViewport();
-    api(researchDetail({ messages: [], draftQuestion: "What about egress?", selection: [SOURCE_B] }));
+    const a = api(researchDetail({ messages: [], draftQuestion: "What about egress?", selection: [SOURCE_B] }));
     show();
-    expect(await screen.findByText(/Your first question waits for a selected source to be ready: “What about egress\?”/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ask it now" })).toBeDisabled();
+    expect(await screen.findByText(/Your first question is kept -- ask it now, or add sources first: “What about egress\?”/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Ask it now" }));
+    await waitFor(() => expect(a.calls.find((c) => c.method === "POST" && c.path.endsWith("/messages"))?.body).toEqual({ text: "What about egress?" }));
   });
 
   test("an answer kept as a note: the notes tab opens with it, tied to its first citation", async () => {

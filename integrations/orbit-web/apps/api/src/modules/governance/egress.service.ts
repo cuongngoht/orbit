@@ -16,6 +16,8 @@ import { egressConfig } from "../../config/egress-config.js";
 import { AGENT_PROCESS_PORT, APP_CONFIG } from "../../core/tokens.js";
 import { Db } from "../../infra/db/db.js";
 import { RunConnectionLog } from "../../infra/egress/connection-log.js";
+import { loadSandboxConfig } from "../../config/sandbox-config.js";
+import { employeeNetworkOf } from "../../contexts/execution/infrastructure/employee-network.js";
 import { allowedPrivate, startEgressProxy, type ConnectionSink, type EgressAsk, type EgressRun, type EgressVerdict } from "../../infra/egress/proxy.js";
 import { RunBindingStore, sha256, type RunBinding } from "../../infra/governance/stores.js";
 import type { ProcessPort } from "../../infra/process/process.port.js";
@@ -38,6 +40,7 @@ export class EgressService implements OnApplicationBootstrap, OnApplicationShutd
   private readonly log: RunConnectionLog;
   // The bindings of the employees' runs the proxy decided for lately.
   private readonly recent = new Map<string, RunBinding>();
+  private employees: Server | null = null;
 
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
@@ -52,6 +55,7 @@ export class EgressService implements OnApplicationBootstrap, OnApplicationShutd
   }
 
   async onApplicationBootstrap(): Promise<void> {
+    await this.startForEmployees();
     const g = this.config.governance;
     if (g.deployment !== "governed" || g.proxyPort === null) return;
     if (this.agent instanceof RunnerProcessPort) this.isolation.setAttestor(new RunnerAttestor(this.config, this.agent));
@@ -69,7 +73,26 @@ export class EgressService implements OnApplicationBootstrap, OnApplicationShutd
   }
 
   async onApplicationShutdown(): Promise<void> {
-    await new Promise<void>((resolve) => (this.server === null ? resolve() : this.server.close(() => resolve())));
+    for (const server of [this.server, this.employees]) await new Promise<void>((resolve) => (server === null ? resolve() : server.close(() => resolve())));
+  }
+
+  // Where employees' container sandboxes run, their tool planes' only way out: this proxy on the sandbox network, each
+  // connection decided as the run whose token it carries (a connection with none is refused). In the governed
+  // deployment the agent's proxy already listening on that port serves them too.
+  private async startForEmployees(): Promise<void> {
+    let container = false;
+    try {
+      container = loadSandboxConfig(this.config.sourceEnv).provider === "container";
+    } catch (err) {
+      this.logger.warn(`The sandbox's configuration is not valid, so no egress is offered to employees: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    if (!container) return;
+    const g = this.config.governance;
+    const net = employeeNetworkOf(this.config, true);
+    if (g.deployment === "governed" && g.proxyPort === net.toolEgressPort) return;
+    const { maxConnectionsPerRun } = egressConfig(process.env);
+    this.employees = await startEgressProxy(net.toolEgressPort, { decide: (ask) => this.decide(ask), admit: () => true, sink: this.sink(), maxConnectionsPerRun, warn: (message) => this.logger.warn(message) });
+    this.logger.log(`egress proxy for the employees' sandboxes listening on ${net.toolEgressPort}`);
   }
 
   // One connection out: a decision of the run's account policy in effect, as the run whose token the connection carries

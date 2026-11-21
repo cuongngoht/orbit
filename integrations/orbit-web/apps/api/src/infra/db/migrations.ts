@@ -1384,6 +1384,23 @@ CREATE TABLE workforce.team_rooms (
   FOREIGN KEY (account_id, mission_id) REFERENCES workforce.missions (account_id, id)
 );
 
+-- What changed in a team room, and which attempt changed it: read from the room after every attempt that had it (an
+-- attempt's changes are the difference between the room before and after it). A row per change; null sha: removed.
+CREATE TABLE workforce.team_room_changes (
+  seq bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  account_id uuid NOT NULL,
+  room_id uuid NOT NULL,
+  path text NOT NULL,
+  sha256 text,
+  size bigint,
+  run_id uuid,
+  assignment_id uuid,
+  employee_id uuid,
+  changed_at timestamptz NOT NULL,
+  FOREIGN KEY (account_id, room_id) REFERENCES workforce.team_rooms (account_id, id)
+);
+CREATE INDEX team_room_changes_by_room ON workforce.team_room_changes (account_id, room_id, path, seq);
+
 -- What an employee (or a mission) may do with an external connection, typed, scoped, revocable.
 CREATE TABLE workforce.connection_grants (
   id uuid PRIMARY KEY,

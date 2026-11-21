@@ -33,9 +33,8 @@ export class ToolsController {
 
   @Post("list")
   @HttpCode(HttpStatus.OK)
-  list(@Req() req: Request): { tools: ToolSpec[] } {
-    this.runOf(req);
-    return { tools: this.tools.list() };
+  async list(@Req() req: Request): Promise<{ tools: ToolSpec[] }> {
+    return { tools: await this.tools.list(this.runOf(req)) };
   }
 
   @Post("call")

@@ -18,7 +18,7 @@
 //             cannot say, the run is `unknown`, the assignment RECOVERING, and a person decides.
 import { Inject, Injectable, Logger, Optional, type OnApplicationBootstrap, type OnModuleDestroy } from "@nestjs/common";
 import { RUNTIME_LABELS, type ExecutionProfile, type ResourceEvidence, type ResourceProfile, type RunState, type SandboxAttestation } from "@orbit-web/contracts";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import type { AppConfig } from "../../../config/config.js";
 import { APP_CONFIG } from "../../../core/tokens.js";
@@ -35,6 +35,7 @@ import { DomainError } from "../../shared/domain.js";
 import { Outbox } from "../../shared/infrastructure/outbox.js";
 import { ConnectionsReader, usable, type ConnectionFacts } from "../../workforce/infrastructure/connections.reader.js";
 import { emptyFacts, promptOf, systemPromptOf, type StreamFacts } from "../infrastructure/claude-employee.adapter.js";
+import { employeeNetworkOf, type EmployeeNetworkConfig } from "../infrastructure/employee-network.js";
 import { EMPLOYEE_RUNTIMES, type EmployeeRuntime } from "../infrastructure/employee-runtimes.js";
 import { RunRepository, type RunRecord } from "../infrastructure/runs.repository.js";
 import { AdmissionService } from "./admission.service.js";
@@ -244,11 +245,11 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
       fence: run.fence,
       assignmentId: run.assignmentId,
       resources: profile as ResourceProfile,
-      modelPlane: { cpuMillis: modelPlane.cpuMillis, memoryMiB: modelPlane.memoryMiB, connectionHome: resolved.connection.home, env: {} },
-      egress: { proxyHost: this.config.governance.agentControlHost, proxyPort: this.config.governance.proxyPort ?? 0, runToken: prep.token },
+      modelPlane: { cpuMillis: modelPlane.cpuMillis, memoryMiB: modelPlane.memoryMiB, connectionHome: resolved.connection.home, env: this.modelPlaneWayOut(provider.kind) },
+      egress: { proxyHost: this.netOf(provider.kind).host, proxyPort: this.netOf(provider.kind).toolEgressPort, runToken: prep.token },
       bridge: { url: this.toolUrl(), runToken: prep.token },
-      inputs: this.research.inputsOf(run.orbitId, ctx.sources),
-      teamRoom: null,
+      inputs: [...this.research.inputsOf(run.orbitId, ctx.sources), ...this.research.unitInputsOf(run.orbitId, ctx.team.units)],
+      teamRoom: ctx.team.room,
     };
 
     // The workspace, then both planes (written down at once: a crash after this point is recovered by its dispatch key).
@@ -299,8 +300,26 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     const rt = EMPLOYEE_RUNTIMES[resolved.profile.runtime];
     const args = rt.args({ model: resolved.profile.model, effort: resolved.profile.effort, webSearch: resolved.profile.webSearch, bridge: { command: handle.bridgeCommand.command, args: handle.bridgeCommand.args, env: { ORBIT_TOOL_URL: spec.bridge.url, ORBIT_RUN_TOKEN: prep.token } }, systemPrompt, sessionId: randomUUID() });
     const env = rt.env(this.modelPlaneBase(handle), handle.modelPlaneHome, apiKey);
-    const watched = await this.watch(entry, handle, rt, args, env, promptOf({ goal: ctx.brief.goal, deliverables: ctx.brief.deliverables, criteria: ctx.brief.acceptanceCriteria, revisions: ctx.brief.revisions, answers: ctx.brief.answers, inputs: spec.inputs }), resolved.profile.webSearch, profile.timeoutMinutes);
+    const watched = await this.watch(entry, handle, rt, args, env, promptOf({ goal: ctx.brief.goal, deliverables: ctx.brief.deliverables, criteria: ctx.brief.acceptanceCriteria, revisions: ctx.brief.revisions, answers: ctx.brief.answers, inputs: spec.inputs, team: { canDelegate: ctx.team.canDelegate, colleagues: ctx.team.colleagues, units: ctx.team.units, room: ctx.team.room !== null } }), resolved.profile.webSearch, profile.timeoutMinutes);
+    if (ctx.team.room !== null) await this.roomAfter(handle, run, ctx.team.room.id);
     await this.settle(entry, run, actor, prep.plan, watched, this.endOf(entry, watched, profile));
+  }
+
+  // The team room as this attempt left it (read before its planes go): what differs from the room's last known state is
+  // recorded as this attempt's change. Files above 5 MiB are named by size only.
+  private async roomAfter(handle: AttemptHandle, run: RunRecord, roomId: string): Promise<void> {
+    const provider = this.provider as SandboxProvider;
+    try {
+      const entries = (await provider.list(handle, "/team", 1000)).filter((e) => e.type === "file");
+      const files: { path: string; sha256: string; size: number }[] = [];
+      for (const e of entries) {
+        const bytes = e.size <= 5 * 1024 * 1024 ? await provider.readFile(handle, `/team/${e.path.replace(/^\/?team\//, "").replace(/^\//, "")}`, 5 * 1024 * 1024) : null;
+        files.push({ path: e.path.replace(/^\/?team\//, "").replace(/^\//, ""), sha256: bytes === null ? `size:${e.size}` : createHash("sha256").update(bytes).digest("hex"), size: e.size });
+      }
+      await this.outcomes.teamRoomChanged(run.orbitId, roomId, { runId: run.id, assignmentId: run.assignmentId, employeeId: run.employeeId }, files);
+    } catch (err) {
+      this.logger.warn(`The team room after ${run.id} could not be read: ${this.messageOf(err)}`);
+    }
   }
 
   // The execution asked, held to what the connection's own CLI says now (catalog, efforts, search) and to the policy.
@@ -569,15 +588,30 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
 
   // ---- small things ---------------------------------------------------------------------------------------------------
 
+  private netOf(kind: SandboxProvider["kind"]): EmployeeNetworkConfig {
+    return employeeNetworkOf(this.config, kind === "container");
+  }
+
   private toolUrl(): string {
-    return this.config.sourceEnv.ORBIT_WEB_TOOL_URL ?? `http://${this.config.governance.agentControlHost}:${this.config.port}/api/runtime/tools`;
+    const kind = this.provider?.kind ?? "process";
+    return this.config.sourceEnv.ORBIT_WEB_TOOL_URL ?? `http://${this.netOf(kind).host}:${this.config.port}/api/runtime/tools`;
+  }
+
+  // A container's model plane leaves only through the model-plane egress (the providers' hosts), and reaches Orbit Web's
+  // tool endpoint directly on its network.
+  private modelPlaneWayOut(kind: SandboxProvider["kind"]): Record<string, string> {
+    if (kind !== "container") return {};
+    const n = this.netOf(kind);
+    const proxy = `http://${n.host}:${n.modelEgressPort}`;
+    const direct = `${n.host},localhost,127.0.0.1`;
+    return { HTTPS_PROXY: proxy, https_proxy: proxy, HTTP_PROXY: proxy, http_proxy: proxy, NO_PROXY: direct, no_proxy: direct };
   }
 
   // The model plane's own environment: a container's image provides its PATH; the development provider runs the CLI
   // here, with the server's allow-listed variables and an empty HOME.
   private modelPlaneBase(handle: AttemptHandle): Record<string, string> {
     if (handle.provider === "process") return { ...baseEnv(this.config, handle.modelPlaneCwd, false), HOME: handle.modelPlaneCwd };
-    return { HOME: handle.modelPlaneCwd, LANG: "C.UTF-8", NO_COLOR: "1" };
+    return { HOME: handle.modelPlaneCwd, LANG: "C.UTF-8", NO_COLOR: "1", ...this.modelPlaneWayOut(handle.provider) };
   }
 
   private isStale(err: unknown): boolean {

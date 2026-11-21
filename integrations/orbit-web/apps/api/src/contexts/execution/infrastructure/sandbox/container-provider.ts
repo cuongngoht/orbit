@@ -167,14 +167,16 @@ export const storeReader =
   };
 
 // The provider Orbit Web runs in a deployment: the allocator over its control network, the secret from its file.
-export async function containerProviderFrom(config: SandboxConfig, o: { databaseUrl: string; inputsRoot: string }): Promise<ContainerSandboxProvider> {
+// `readInput`: how an input's bytes are read from Orbit's own store (a research mission's sources), or `inputsRoot`, a
+// directory they are read from.
+export async function containerProviderFrom(config: SandboxConfig, o: { databaseUrl: string; readInput?: (storePath: string) => Promise<Buffer>; inputsRoot?: string }): Promise<ContainerSandboxProvider> {
   if (config.allocator === null) throw new Error("the container provider needs ORBIT_WEB_ALLOCATOR_URL");
   const secret = readSecret(config.allocator.secretFile);
   return new ContainerSandboxProvider(new AllocatorClient(config.allocator.url, secret), {
     secret,
     prefix: config.names.prefix,
     modelPlaneAddress: "name",
-    readInput: storeReader(o.inputsRoot),
+    readInput: o.readInput ?? storeReader(o.inputsRoot ?? "/nonexistent"),
     probes: { egress: EGRESS_PROBE, dnsName: DNS_PROBE, database: await databaseProbe(o.databaseUrl) },
     acceptSoftStorage: config.acceptSoftStorage,
   });

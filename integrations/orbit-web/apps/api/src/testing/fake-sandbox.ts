@@ -153,18 +153,18 @@ export class FakeSandboxProvider implements SandboxProvider {
   }
 
   async readFile(handle: AttemptHandle, path: string, maxBytes: number): Promise<Buffer | null> {
-    const b = this.files(handle).get(path);
+    const b = this.files(handle, path).get(path);
     return b === undefined ? null : b.subarray(0, maxBytes);
   }
 
   async writeFile(handle: AttemptHandle, path: string, bytes: Buffer): Promise<void> {
-    this.files(handle).set(path, Buffer.from(bytes));
+    this.files(handle, path).set(path, Buffer.from(bytes));
   }
 
   async list(handle: AttemptHandle, dir: string, maxEntries: number): Promise<FileEntry[]> {
     const prefix = `${dir.replace(/\/+$/, "")}/`;
     const out: FileEntry[] = [];
-    for (const [p, b] of this.files(handle)) if (p.startsWith(prefix)) out.push({ path: p.slice(prefix.length), type: "file", size: b.length });
+    for (const [p, b] of this.files(handle, dir)) if (p.startsWith(prefix)) out.push({ path: p.slice(prefix.length), type: "file", size: b.length });
     return out.sort((a, b) => a.path.localeCompare(b.path)).slice(0, maxEntries);
   }
 
@@ -186,9 +186,22 @@ export class FakeSandboxProvider implements SandboxProvider {
     return { gone: true, detail: "removed" };
   }
 
-  // The workspace of the attempt's assignment.
-  private files(handle: AttemptHandle): Map<string, Buffer> {
+  // By team room id: the files of a mission's team room ("/team/..."), shared by every attempt of that mission.
+  readonly rooms = new Map<string, Map<string, Buffer>>();
+
+  // The workspace of the attempt's assignment -- and its mission's team room under /team.
+  private files(handle: AttemptHandle, path = ""): Map<string, Buffer> {
     const a = this.attempt(handle);
+    if (path === "/team" || path.startsWith("/team/")) {
+      const id = a.spec.teamRoom?.id;
+      if (id === undefined) throw new Error("this attempt has no team room");
+      let room = this.rooms.get(id);
+      if (room === undefined) {
+        room = new Map();
+        this.rooms.set(id, room);
+      }
+      return room;
+    }
     let ws = this.workspaces.get(a.spec.assignmentId);
     if (ws === undefined) {
       ws = new Map();

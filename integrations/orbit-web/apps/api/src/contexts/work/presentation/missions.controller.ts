@@ -21,6 +21,7 @@ import { ownerActor } from "../../shared/application/commands.js";
 import { expectedVersion, sendStored } from "../../shared/presentation/http.js";
 import { MissionQueries } from "../application/mission.queries.js";
 import { MissionsService } from "../application/missions.service.js";
+import { TeamService } from "../application/team.service.js";
 
 // What a browser may show in place (a sandboxed page, never script); everything else downloads.
 const INLINE: Record<string, string> = {
@@ -41,6 +42,7 @@ export class MissionsController {
     @Inject(MissionsService) private readonly missions: MissionsService,
     @Inject(MissionQueries) private readonly queries: MissionQueries,
     @Inject(ArtifactStore) private readonly artifacts: ArtifactStore,
+    @Inject(TeamService) private readonly team: TeamService,
   ) {}
 
   @Get("missions")
@@ -57,6 +59,13 @@ export class MissionsController {
   @Get("missions/:id")
   mission(@Param("id") id: string): Promise<MissionDetail> {
     return this.queries.detail(ownerActor().command.orbitId, id);
+  }
+
+  // What changed in the mission's team room, and which employee's attempt changed it.
+  @Get("missions/:id/team-room")
+  teamRoom(@Param("id") id: string) {
+    if (!isWorkforceId(id)) throw notFound("The mission");
+    return this.team.roomHistory(ownerActor().command.orbitId, id);
   }
 
   @Post("assignments/:id/accept")

@@ -1,7 +1,7 @@
 // WHAT A RESEARCH MISSION'S EMPLOYEE READS, and how its claims are held to it (Execution, reading Research's frozen
 // records through SQL and its object store -- never writing them).
 //
-// INPUTS. Each pinned revision is given to the attempt read-only in /input, under its label: `S1 - <title>.txt` -- the
+// INPUTS. Each pinned revision is given to the attempt read-only in /input, under its label: `S1-<title>.txt` -- the
 // text Orbit Web extracted and indexed, page by page -- and, for a file that is not text, the original bytes beside it.
 // They are named by a STORE PATH the sandbox provider asks Orbit Web to read (`research-text:<revision>`,
 // `research-object:<revision>`), resolved here for the account of the attempt only: a path never names a file.
@@ -16,13 +16,15 @@ import type { AppConfig } from "../../../config/config.js";
 import { APP_CONFIG } from "../../../core/tokens.js";
 import { Db } from "../../../infra/db/db.js";
 import { ObjectStore } from "../../../modules/research/sources/object-store.js";
+import { ArtifactStore } from "../infrastructure/artifact-store.js";
 import type { PinnedSource } from "./run-outcomes.port.js";
 
 const TEXT_TYPES = /^(text\/|application\/(json|xml|csv))/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const MIN_QUOTE = 12;
 
-const fileTitle = (t: string): string => t.replace(/[^\p{L}\p{N} ._-]/gu, " ").replace(/\s+/g, " ").trim().slice(0, 60) || "source";
+// A plain file name the sandbox accepts (letters, digits, dots, dashes, underscores): `S1-invoices-q3`.
+const fileTitle = (t: string): string => t.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/-{2,}/g, "-").replace(/^[-.]+|[-.]+$/g, "").slice(0, 60) || "source";
 const extensionOf = (s: PinnedSource): string => {
   const fromName = s.fileName?.match(/\.([A-Za-z0-9]{1,8})$/)?.[1];
   if (fromName !== undefined) return fromName.toLowerCase();
@@ -49,6 +51,7 @@ export class ResearchInputs {
   constructor(
     @Inject(APP_CONFIG) config: AppConfig,
     @Inject(Db) private readonly db: Db,
+    @Inject(ArtifactStore) private readonly artifacts: ArtifactStore,
   ) {
     this.objects = new ObjectStore(config.data.research);
   }
@@ -56,14 +59,26 @@ export class ResearchInputs {
   // The inputs of an attempt: each pinned source's text, and its original bytes when it is not text.
   inputsOf(orbitId: string, sources: readonly PinnedSource[]): { name: string; storePath: string }[] {
     return sources.flatMap((s) => {
-      const base = `${s.label} - ${fileTitle(s.title)}`;
+      const base = `${s.label}-${fileTitle(s.title)}`;
       const text = { name: `${base}.txt`, storePath: `research-text:${orbitId}/${s.revisionId}` };
       return TEXT_TYPES.test(s.mediaType) ? [text] : [text, { name: `${base}.${extensionOf(s)}`, storePath: `research-object:${orbitId}/${s.revisionId}` }];
     });
   }
 
-  // What the sandbox provider asks for an input's bytes. Only the two store paths above, of a revision of that account.
+  // A manager's review: what each part handed in, as files `unit-<key>-<name>` (an accepted artifact's verified bytes).
+  unitInputsOf(orbitId: string, units: readonly { key: string; handoff: { artifacts: { name: string; sha256: string }[] } | null }[]): { name: string; storePath: string }[] {
+    return units.flatMap((u) => (u.handoff?.artifacts ?? []).map((a) => ({ name: `unit-${u.key}-${a.name.replace(/[^A-Za-z0-9._-]+/g, "-")}`.slice(0, 120), storePath: `artifact:${orbitId}/${a.sha256}` })));
+  }
+
+  // What the sandbox provider asks for an input's bytes: a research revision's text or file, or a hand-in's artifact --
+  // of that account only.
   async read(storePath: string): Promise<Buffer> {
+    const art = /^artifact:([0-9a-f-]{36})\/([0-9a-f]{64})$/.exec(storePath);
+    if (art !== null) {
+      const bytes = this.artifacts.read(art[1] as string, art[2] as string);
+      if (bytes === null) throw new Error("the artifact is missing or does not match its hash");
+      return bytes;
+    }
     const m = /^research-(text|object):([0-9a-f-]{36})\/([0-9a-f-]{36})$/.exec(storePath);
     if (m === null || !UUID.test(m[2] as string) || !UUID.test(m[3] as string)) throw new Error("not an input of a research mission");
     const [, kind, orbitId, revisionId] = m as unknown as [string, "text" | "object", string, string];

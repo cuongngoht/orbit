@@ -51,6 +51,14 @@ export interface AttemptContext {
   deliverables: { name: string; required: boolean }[];
   // The research sources the mission was pinned to, in their labelled order (S1, S2 ...).
   sources: PinnedSource[];
+  // Its team: whether this employee may give parts of the work to colleagues (and who they are), the parts it gave and
+  // what each handed in, and the mission's team room (null: none).
+  team: {
+    canDelegate: boolean;
+    colleagues: { id: string; name: string; title: string }[];
+    units: { key: string; assignmentId: string; employeeId: string; employeeName: string; state: string; dependsOn: string[]; handoff: { revision: number; summary: string; artifacts: { name: string; sha256: string }[] } | null }[];
+    room: { id: string; quotaMiB: number } | null;
+  };
   employee: {
     id: string;
     name: string;
@@ -71,6 +79,22 @@ export interface RunOutcomes {
   question(actor: Actor, assignmentId: string, fence: number, question: string): Promise<void>;
   ended(actor: Actor, assignmentId: string, fence: number, end: RunEnd): Promise<void>;
   recovering(actor: Actor, assignmentId: string, fence: number, reason: string): Promise<void>;
+  // A manager's plan: parts of its assignment given to colleagues (refused whole, with why).
+  delegate(actor: Actor, assignmentId: string, fence: number, units: DelegatedUnit[]): Promise<{ parts: number }>;
+  // A manager's decision on one part it reviews.
+  reviewUnit(actor: Actor, assignmentId: string, fence: number, unitKey: string, decision: "accept" | "revise", criteria: string): Promise<string>;
+  // The team room as an attempt left it.
+  teamRoomChanged(orbitId: string, roomId: string, by: { runId: string; assignmentId: string; employeeId: string }, files: { path: string; sha256: string; size: number }[]): Promise<number>;
+}
+
+export interface DelegatedUnit {
+  key: string;
+  employeeId: string;
+  title: string;
+  goal: string;
+  deliverables: { name: string; required: boolean }[];
+  acceptanceCriteria: string[];
+  dependsOn: string[];
 }
 
 export const RUN_OUTCOMES = Symbol("RUN_OUTCOMES");

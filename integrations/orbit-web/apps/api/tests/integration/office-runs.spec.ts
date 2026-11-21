@@ -14,7 +14,7 @@ import { FakeSandboxProvider, scriptedEmployee, type ToolCaller } from "../../sr
 import { eventually, startHarness, type Browser, type Harness } from "../../src/testing/harness.js";
 import { newWorkspace, settledSource, uploaded } from "../../src/testing/research-client.js";
 
-const FAST = { ORBIT_WEB_WORKER_TICK_MS: "100", ORBIT_WEB_RUN_HEARTBEAT_MS: "300", ORBIT_WEB_RECOVERY_SWEEP_MS: "500", ORBIT_WEB_RUN_LEASE_MS: "2000", ORBIT_WEB_STOP_GRACE_MS: "300" };
+const FAST = { ORBIT_WEB_SANDBOX_HOST: "127.0.0.1", ORBIT_WEB_WORKER_TICK_MS: "100", ORBIT_WEB_RUN_HEARTBEAT_MS: "300", ORBIT_WEB_RECOVERY_SWEEP_MS: "500", ORBIT_WEB_RUN_LEASE_MS: "2000", ORBIT_WEB_STOP_GRACE_MS: "300" };
 const code = (r: { body: unknown }): string | undefined => (r.body as { error?: { code?: string } } | null)?.error?.code;
 const ifMatch = (v: number) => ({ "if-match": `"${v}"` });
 let n = 0;
@@ -259,6 +259,6 @@ describe("the office's runs, interrupted, raced, recovered and scheduled", () =>
     assert.equal(claims[1]?.supported, false, "a quote the source does not hold supports nothing");
     assert.equal(claims[2]?.supported, false);
     assert.equal((claims[2] as { web?: { url: string } }).web?.url, "https://example.com/rates");
-    assert.ok(prompts.some((p) => p.includes("S1 - invoices-q3")));
+    assert.ok(prompts.some((p) => p.includes("S1-invoices-q3")), "inputs are named as the sandbox accepts: [A-Za-z0-9._-]");
   });
 });

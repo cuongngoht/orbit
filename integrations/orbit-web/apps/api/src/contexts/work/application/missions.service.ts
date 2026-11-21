@@ -28,7 +28,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { accepted } from "../../../common/errors.js";
 import { Db } from "../../../infra/db/db.js";
 import { RunRequests } from "../../execution/application/run-requests.js";
-import type { AttemptContext, RunEnd, RunOutcomes, SubmittedHandoff } from "../../execution/application/run-outcomes.port.js";
+import type { AttemptContext, DelegatedUnit, RunEnd, RunOutcomes, SubmittedHandoff } from "../../execution/application/run-outcomes.port.js";
 import { OfficeGovernance, systemActor, type Actor } from "../../shared/application/commands.js";
 import { conflictWith, DomainError, invalid, missing, stale, type RaisedEvent } from "../../shared/domain.js";
 import { EventDispatcher } from "../../shared/infrastructure/consumers.js";
@@ -41,6 +41,7 @@ import { Mission } from "../domain/mission.js";
 import { DecisionRepository } from "../infrastructure/decisions.js";
 import { AssignmentRepository, HandoffRepository, MissionRepository } from "../infrastructure/repositories.js";
 import { SourcesCheck } from "../infrastructure/sources.check.js";
+import { TeamService } from "./team.service.js";
 
 const AGING_MINUTES = 30;
 
@@ -70,6 +71,7 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
     @Inject(Idempotency) private readonly idempotency: Idempotency,
     @Inject(OfficeGovernance) private readonly governance: OfficeGovernance,
     @Inject(EventDispatcher) private readonly dispatcher: EventDispatcher,
+    @Inject(TeamService) private readonly team: TeamService,
   ) {}
 
   onModuleInit(): void {
@@ -304,6 +306,12 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
       brief: { goal: b.goal, deliverables: b.deliverables, acceptanceCriteria: b.acceptanceCriteria, revisions: b.revisions, answers: b.answers },
       deliverables: b.deliverables,
       sources: m === null ? [] : await this.sources.pinned(orbitId, m.data.researchWorkspaceId, m.data.sourceRevisionIds),
+      team: {
+        canDelegate: profile?.canDelegate === true,
+        colleagues: profile?.canDelegate === true ? await this.team.colleagues(orbitId, a.data.employeeId) : [],
+        units: await this.team.units(orbitId, a.id),
+        room: await this.team.room(orbitId, a.data.missionId),
+      },
       employee: { id: a.data.employeeId, name: el?.name ?? "", profile, eligible: el?.eligible ?? false, reason: el === null ? "The employee no longer exists." : el.reason, sandboxId: el?.sandboxId ?? null },
     };
   }
@@ -333,6 +341,11 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
       }
       await this.db.query("UPDATE workforce.handoffs SET status = 'superseded' WHERE account_id = $1 AND assignment_id = $2 AND revision < $3 AND status = 'submitted'", [orbitId, assignmentId, revision]);
       a.handoffSubmitted(revision, digest, fence, at);
+      // A part of a manager's work is reviewed by that manager (it wakes when every part handed in).
+      if (a.data.parentId !== null) {
+        out = { revision, digest, missing: missingNames };
+        return;
+      }
       await this.decisions.open({
         orbitId,
         kind: "acceptance",
@@ -364,6 +377,13 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
       if (a.state === "CANCELLING") {
         a.cancelled(at);
         await this.endedAssignment(actor, a);
+        return;
+      }
+      if (a.state === "REVIEWING" && e.stoppedFor !== "recover" && e.stoppedFor !== "pause" && e.stoppedFor !== "cancel") {
+        const stuck = await this.team.reviewEnded(a, at);
+        if (stuck === null) return;
+        a.block(stuck, "owner", at);
+        await this.decisions.open({ orbitId: actor.command.orbitId, kind: "blocked", missionId: a.data.missionId, assignmentId: a.id, title: "Work is blocked", reason: stuck, waiting: null, deadline: a.data.deadline, pin: { assignmentVersion: a.nextVersion, handoffDigest: null, deliveryId: null }, dedupKey: `blocked:${a.id}` });
         return;
       }
       if (a.state !== "RUNNING" && a.state !== "ASSIGNED" && a.state !== "RECOVERING") return;
@@ -399,7 +419,34 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
 
   // The worker's report about the CURRENT attempt only: an older fence is refused (and said), except that the end of a
   // cancelled assignment's run always closes it.
-  private async onRun(actor: Actor, assignmentId: string, fence: number, work: (a: Assignment) => Promise<void>, endOfRun = false): Promise<void> {
+  // ---- teams (TeamService decides; these are Execution's doors to it) -------------------------------------------------------
+
+  async delegate(actor: Actor, assignmentId: string, fence: number, units: DelegatedUnit[]): Promise<{ parts: number }> {
+    let parts = 0;
+    await this.onRun(actor, assignmentId, fence, async (a) => {
+      const profile = a.data.pinned === null ? null : await this.hiring.profileAt(actor.command.orbitId, a.data.employeeId, a.data.pinned.profileRevision);
+      const events = await this.team.delegate(actor, a, fence, units, profile?.canDelegate === true);
+      parts = units.length;
+      return events;
+    });
+    return { parts };
+  }
+
+  async reviewUnit(actor: Actor, assignmentId: string, fence: number, unitKey: string, decision: "accept" | "revise", criteria: string): Promise<string> {
+    let text = "";
+    await this.onRun(actor, assignmentId, fence, async (a) => {
+      const r = await this.team.review(actor, a, unitKey, decision, criteria);
+      text = r.text;
+      return r.events;
+    });
+    return text;
+  }
+
+  teamRoomChanged(orbitId: string, roomId: string, by: { runId: string; assignmentId: string; employeeId: string }, files: { path: string; sha256: string; size: number }[]): Promise<number> {
+    return this.db.tx(() => this.team.roomChanged(orbitId, roomId, by, files));
+  }
+
+  private async onRun(actor: Actor, assignmentId: string, fence: number, work: (a: Assignment) => Promise<void | RaisedEvent[]>, endOfRun = false): Promise<void> {
     const orbitId = actor.command.orbitId;
     await this.db.tx(async () => {
       const a = await this.assignments.get(orbitId, assignmentId, true);
@@ -409,8 +456,8 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
         await this.outbox.append(actor.command, [{ type: "StaleResultRejected", aggregateType: "assignment", aggregateId: a.id, aggregateVersion: a.data.version, missionId: a.data.missionId, payload: { fence, current: a.data.fence } }]);
         throw conflictWith("stale_fence", "This attempt was replaced: its result is kept as history, not acted on.");
       }
-      await work(a);
-      const events = a.pullEvents();
+      const extra = (await work(a)) ?? [];
+      const events = [...extra, ...a.pullEvents()];
       if (events.length === 0 && a.loadedState === a.state) return;
       await this.assignments.save(a);
       await this.outbox.append(actor.command, events);

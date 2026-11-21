@@ -23,6 +23,8 @@ export interface Brief {
   revisions: { handoffRevision: number; criteria: string; at: string }[];
   // Answers a person gave to the employee's questions.
   answers: { question: string; answer: string; at: string }[];
+  // A part of a manager's assignment: the other parts (their unit keys) it waits for before it can be claimed.
+  dependsOn?: string[];
 }
 
 // What the assignment pinned when its employee claimed it.
@@ -136,7 +138,7 @@ export class Assignment extends AccountOwned {
 
   // RUNNING (or ASSIGNED) → AWAITING_ACCEPTANCE: a handoff of the current attempt was submitted.
   handoffSubmitted(revision: number, digest: string, fence: number, at: string): void {
-    if (this.d.state !== "RUNNING" && this.d.state !== "ASSIGNED") transition(this.d.state, "receive a handoff");
+    if (this.d.state !== "RUNNING" && this.d.state !== "ASSIGNED" && this.d.state !== "REVIEWING") transition(this.d.state, "receive a handoff");
     if (fence !== this.d.fence) throw conflictWith("stale_fence", "This handoff comes from an attempt that was replaced; it is kept as history and not reviewed.");
     if (revision !== this.d.handoffRevision + 1) throw conflictWith("handoff_revision", `Expected handoff revision ${this.d.handoffRevision + 1}.`);
     this.d = { ...this.d, state: "AWAITING_ACCEPTANCE", handoffRevision: revision, reason: null, waitingOn: "owner_review", updatedAt: at };
@@ -163,7 +165,7 @@ export class Assignment extends AccountOwned {
 
   // → BLOCKED: the employee needs something (an answer, a person's action) or the run ended without a result.
   block(reason: string, waitingOn: string, at: string): void {
-    if (!["ASSIGNED", "RUNNING", "RECOVERING"].includes(this.d.state)) transition(this.d.state, "be blocked");
+    if (!["ASSIGNED", "RUNNING", "RECOVERING", "REVIEWING"].includes(this.d.state)) transition(this.d.state, "be blocked");
     this.d = { ...this.d, state: "BLOCKED", reason: reason.slice(0, 500), waitingOn, updatedAt: at };
     this.raise("AssignmentBlocked", { reason: this.d.reason, waitingOn });
   }
@@ -195,7 +197,7 @@ export class Assignment extends AccountOwned {
   // RUNNING → RECOVERING: a run's end is not known (a worker or the allocator could not be read); nothing new starts
   // until it is reconciled.
   recovering(reason: string, at: string): void {
-    if (this.d.state !== "RUNNING" && this.d.state !== "ASSIGNED") transition(this.d.state, "be reconciled");
+    if (this.d.state !== "RUNNING" && this.d.state !== "ASSIGNED" && this.d.state !== "REVIEWING") transition(this.d.state, "be reconciled");
     this.d = { ...this.d, state: "RECOVERING", reason: reason.slice(0, 500), waitingOn: "reconciliation", updatedAt: at };
     this.raise("AssignmentBlocked", { reason: this.d.reason, waitingOn: "reconciliation" });
   }
@@ -206,6 +208,29 @@ export class Assignment extends AccountOwned {
     this.d = { ...this.d, state: "ASSIGNED", reason: null, waitingOn: null, fence: this.d.fence + 1, updatedAt: at };
     this.raise("AssignmentResumed", { fence: this.d.fence });
     return this.d.fence;
+  }
+
+  // RUNNING (or REVIEWING) → WAITING_FOR_SUBORDINATES: the manager gave `units` parts of its work to its team. Its attempt
+  // ends here; it keeps the assignment (and its employee) while the team works.
+  delegated(fence: number, units: number, at: string): void {
+    if (this.d.state !== "RUNNING" && this.d.state !== "REVIEWING" && this.d.state !== "ASSIGNED") transition(this.d.state, "give parts of its work to a team");
+    if (fence !== this.d.fence) throw conflictWith("stale_fence", "A replaced attempt cannot give work to a team.");
+    this.d = { ...this.d, state: "WAITING_FOR_SUBORDINATES", reason: `${units} part(s) given to the team`, waitingOn: "team", updatedAt: at };
+    this.raise("AssignmentDelegated", { units, fence });
+  }
+
+  // WAITING_FOR_SUBORDINATES → REVIEWING: the team handed in (or ended); a new attempt of the manager reviews and integrates.
+  reviewing(at: string): number {
+    if (this.d.state !== "WAITING_FOR_SUBORDINATES") transition(this.d.state, "review its team's results");
+    this.d = { ...this.d, state: "REVIEWING", reason: null, waitingOn: null, fence: this.d.fence + 1, updatedAt: at };
+    this.raise("AssignmentReviewing", { fence: this.d.fence });
+    return this.d.fence;
+  }
+
+  // REVIEWING → WAITING_FOR_SUBORDINATES: the manager asked for revisions and waits for them.
+  waitForTeam(at: string): void {
+    if (this.d.state !== "REVIEWING") transition(this.d.state, "wait for its team");
+    this.d = { ...this.d, state: "WAITING_FOR_SUBORDINATES", reason: "Waiting for revisions it asked of its team", waitingOn: "team", updatedAt: at };
   }
 
   // Cancel: QUEUED or not running → CANCELLED at once; a live run → CANCELLING (the caller stops it, then `cancelled`).

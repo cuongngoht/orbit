@@ -32,7 +32,17 @@ import type { AppConfig } from "../../../config/config.js";
 import { APP_CONFIG } from "../../../core/tokens.js";
 import { Db, jsonParam, type Row } from "../../../infra/db/db.js";
 import { refused, stale, unprocessable } from "../../shared/domain.js";
+import { loadSandboxConfig, type SandboxConfig } from "../../../config/sandbox-config.js";
+import { infrastructureCapacity } from "../infrastructure/sandbox/capacity.js";
 import { SANDBOX_PROVIDER, type HostCapabilities, type SandboxProvider } from "./sandbox.port.js";
+
+const sandboxConfigOrNull = (env: AppConfig["sourceEnv"]): SandboxConfig | null => {
+  try {
+    return loadSandboxConfig(env);
+  } catch {
+    return null;
+  }
+};
 
 export const SYSTEM_ACCOUNT = "00000000-0000-4000-8000-000000000001";
 
@@ -101,6 +111,8 @@ export class ResourcesService {
   async refreshCapacity(): Promise<InfrastructureCapacity> {
     const probe = await this.probe();
     const env = this.config.sourceEnv;
+    const sandbox = probe === null ? null : sandboxConfigOrNull(env);
+    if (probe !== null && sandbox !== null) return this.keepCapacity(infrastructureCapacity(probe, sandbox));
     const configured = { cpuMillis: num(env.ORBIT_WEB_CAPACITY_CPU), memoryMiB: num(env.ORBIT_WEB_CAPACITY_MEMORY), storageMiB: num(env.ORBIT_WEB_CAPACITY_STORAGE) };
     const anyConfigured = configured.cpuMillis !== null || configured.memoryMiB !== null || configured.storageMiB !== null;
     const detected = this.detected(probe);
@@ -116,11 +128,15 @@ export class ResourcesService {
     };
     const usable: Amounts3 = { cpuMillis: Math.max(0, total.cpuMillis - headroom.cpuMillis), memoryMiB: Math.max(0, total.memoryMiB - headroom.memoryMiB), storageMiB: Math.max(0, total.storageMiB - headroom.storageMiB) };
     const storage = probe?.storage ?? { mechanism: "measured" as const, perArea: "SOFT_MONITORED" as const, hostProtection: "UNSUPPORTED" as const, evidence: "No container sandbox provider is configured: storage is measured, never enforced by the kernel.", probedAt: new Date().toISOString() };
-    const capacity: InfrastructureCapacity = { source: anyConfigured ? "configured" : probe !== null || detected.cpuMillis > 0 ? "detected" : "unknown", total, headroom, usable, storage, checkedAt: new Date().toISOString() };
+    return this.keepCapacity({ source: anyConfigured ? "configured" : probe !== null || detected.cpuMillis > 0 ? "detected" : "unknown", total, headroom, usable, storage, checkedAt: new Date().toISOString() });
+  }
+
+  private async keepCapacity(capacity: InfrastructureCapacity): Promise<InfrastructureCapacity> {
+    const { total, headroom, usable, storage } = capacity;
     await this.db.query(
       `INSERT INTO workforce.capacity (account_id, source, total, headroom, usable, storage, checked_at) VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6::jsonb, $7)
        ON CONFLICT (account_id) DO UPDATE SET source = excluded.source, total = excluded.total, headroom = excluded.headroom, usable = excluded.usable, storage = excluded.storage, checked_at = excluded.checked_at, version = workforce.capacity.version + 1`,
-      [SYSTEM_ACCOUNT, capacity.source, jsonParam(total), jsonParam(headroom), jsonParam(usable), jsonParam(storage), capacity.checkedAt],
+      [SYSTEM_ACCOUNT, capacity.source, jsonParam(total), jsonParam(headroom), jsonParam(usable), jsonParam(storage), capacity.checkedAt ?? new Date().toISOString()],
     );
     return capacity;
   }

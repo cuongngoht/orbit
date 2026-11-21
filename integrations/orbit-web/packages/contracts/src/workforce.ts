@@ -801,6 +801,9 @@ export const INTEGRATION_EVENTS = {
   EmployeeActivated: 1,
   MissionCreated: 1,
   MissionPlanRevised: 1,
+  // A manager gave parts of its assignment to its team, and woke to review what they handed in.
+  AssignmentDelegated: 1,
+  AssignmentReviewing: 1,
   AssignmentQueued: 1,
   AssignmentClaimed: 1,
   RunRequested: 1,

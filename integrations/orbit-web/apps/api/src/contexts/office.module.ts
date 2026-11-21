@@ -7,7 +7,10 @@
 // The sandbox provider and the connections' credential store are bound by whoever composes the application (the
 // container provider in a deployment, a fake in tests); without a provider employees are hired and their work waits.
 import { type DynamicModule, Module, type Provider } from "@nestjs/common";
+import type { AppConfig } from "../config/config.js";
+import { APP_CONFIG } from "../core/tokens.js";
 import { CredentialStore } from "../infra/connections/credentials.js";
+import { AGENT_PROCESS_PORT, type ProcessPort } from "../infra/process/process.port.js";
 import { ConnectionsModule } from "../modules/connections/connections.module.js";
 import { GovernanceModule } from "../modules/governance/governance.module.js";
 import { AdmissionService } from "./execution/application/admission.service.js";
@@ -22,6 +25,8 @@ import { RunViews } from "./execution/application/run-views.js";
 import { ToolsService } from "./execution/application/tools.service.js";
 import { WorkspacePublisher } from "./execution/application/workspace-publisher.js";
 import { ArtifactStore } from "./execution/infrastructure/artifact-store.js";
+import { ModelPlaneEgress } from "./execution/infrastructure/model-plane-egress.js";
+import { sandboxProviderOf } from "./execution/infrastructure/sandbox-provider.factory.js";
 import { RunRepository } from "./execution/infrastructure/runs.repository.js";
 import { ToolsController } from "./execution/presentation/tools.controller.js";
 import { OfficeGovernance } from "./shared/application/commands.js";
@@ -31,6 +36,7 @@ import { Outbox } from "./shared/infrastructure/outbox.js";
 import { DeliveriesService } from "./work/application/deliveries.service.js";
 import { MissionQueries } from "./work/application/mission.queries.js";
 import { SchedulesService } from "./work/application/schedules.service.js";
+import { TeamService } from "./work/application/team.service.js";
 import { MissionsService } from "./work/application/missions.service.js";
 import { DecisionRepository } from "./work/infrastructure/decisions.js";
 import { AssignmentRepository, HandoffRepository, MissionRepository } from "./work/infrastructure/repositories.js";
@@ -73,6 +79,7 @@ const PROVIDERS: Provider[] = [
   MissionQueries,
   SchedulesService,
   DeliveriesService,
+  TeamService,
   // execution
   RunRepository,
   RunRequests,
@@ -84,6 +91,7 @@ const PROVIDERS: Provider[] = [
   ToolsService,
   WorkspacePublisher,
   ExecutionWorker,
+  ModelPlaneEgress,
   { provide: RUN_OUTCOMES, useExisting: MissionsService },
 ];
 
@@ -92,10 +100,10 @@ export class OfficeModule {
   // `bindings`: the sandbox provider (SANDBOX_PROVIDER) and the connections' secrets (CONNECTION_SECRETS), when there are.
   static forRoot(bindings: Provider[] = []): DynamicModule {
     const bound = new Set(bindings.map((b) => (typeof b === "object" && "provide" in b ? b.provide : b)));
-    // An unbound sandbox provider is bound to nothing (null), so a composition -- or a test -- can override it by its token;
-    // the connections' keys are read from the Connections context's own credential store.
+    // The sandbox provider this configuration names (a test overrides it by its token); the connections' keys are read
+    // from the Connections context's own credential store.
     const defaults: Provider[] = [
-      ...(bound.has(SANDBOX_PROVIDER) ? [] : [{ provide: SANDBOX_PROVIDER, useValue: null }]),
+      ...(bound.has(SANDBOX_PROVIDER) ? [] : [{ provide: SANDBOX_PROVIDER, useFactory: (config: AppConfig, research: ResearchInputs, process: ProcessPort) => sandboxProviderOf(config, (p) => research.read(p), process), inject: [APP_CONFIG, ResearchInputs, AGENT_PROCESS_PORT] }]),
       ...(bound.has(CONNECTION_SECRETS) ? [] : [{ provide: CONNECTION_SECRETS, useExisting: CredentialStore }]),
     ];
     return {

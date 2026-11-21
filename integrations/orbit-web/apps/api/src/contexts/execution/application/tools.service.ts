@@ -42,6 +42,26 @@ const TOOLS: ToolSpec[] = [
   { name: "ask_question", description: "Ask the person who gave you the work a question you cannot continue without. The work waits for the answer.", inputSchema: obj({ question: str("The question") }, ["question"]) },
 ];
 
+// Offered only to an employee who may give work to colleagues, and only while it reviews its team's parts.
+const DELEGATE: ToolSpec = {
+  name: "delegate",
+  description: "Give parts of your assignment to colleagues (you stay responsible). Each part: a short key, the colleague (their id or exact name), a title and goal, the files it must produce, its acceptance criteria, and the keys of parts it must wait for. Your attempt ends: you are woken to review what they hand in. Use /team to share files with them.",
+  inputSchema: obj(
+    {
+      parts: {
+        type: "array",
+        items: obj({ key: str("A short key: lower-case letters, digits, dashes"), employee: str("The colleague's id or exact name"), title: str("A short title"), goal: str("What this part must achieve"), deliverables: { type: "array", items: { type: "string" } }, criteria: { type: "array", items: { type: "string" } }, waits_for: { type: "array", items: { type: "string" } } }, ["key", "employee", "title", "goal"]),
+      },
+    },
+    ["parts"],
+  ),
+};
+const REVIEW_UNIT: ToolSpec = {
+  name: "review_unit",
+  description: "Decide on a part your team handed in: accept it, or ask for a revision saying what must change (its colleague works on it again). Their files are in /input as unit-<key>-<file>.",
+  inputSchema: obj({ part: str("The part's key"), decision: { type: "string", enum: ["accept", "revise"] }, criteria: str("What must change (for a revision), or a note") }, ["part", "decision"]),
+};
+
 const MEDIA: Record<string, string> = { ".md": "text/markdown", ".txt": "text/plain", ".csv": "text/csv", ".json": "application/json", ".html": "text/html", ".pdf": "application/pdf", ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".py": "text/x-python", ".png": "image/png", ".jpg": "image/jpeg" };
 const mediaOf = (name: string): string => MEDIA[name.slice(name.lastIndexOf(".")).toLowerCase()] ?? "application/octet-stream";
 
@@ -79,8 +99,13 @@ export class ToolsService {
     @Optional() @Inject(SANDBOX_PROVIDER) private readonly provider: SandboxProvider | null = null,
   ) {}
 
-  list(): ToolSpec[] {
-    return TOOLS;
+  // The tools of this run: everyone's, and a team's where it applies.
+  async list(runId: string): Promise<ToolSpec[]> {
+    const run = await this.runs.byId(runId);
+    if (run === null) return TOOLS;
+    const ctx = await this.outcomes.current(run.orbitId, run.assignmentId, run.fence);
+    if (ctx === null) return TOOLS;
+    return [...TOOLS, ...(ctx.team.canDelegate ? [DELEGATE] : []), ...(ctx.team.units.length > 0 ? [REVIEW_UNIT] : [])];
   }
 
   async call(runId: string, name: string, args: Record<string, unknown>): Promise<ToolAnswer> {
@@ -90,6 +115,11 @@ export class ToolsService {
     const cur = await this.outcomes.current(run.orbitId, run.assignmentId, run.fence);
     if (cur === null || !cur.current) throw refused("attempt_replaced", "This attempt was replaced or stopped: its tools are closed.");
     const h = run.handle;
+    // /team exists only in a mission that has a team room.
+    for (const k of ["path", "cwd"]) {
+      const v = args[k];
+      if (typeof v === "string" && (v === "/team" || v.startsWith("/team/")) && cur.team.room === null) return { text: "There is no team room in this mission: /team is not yours to use here.", isError: true };
+    }
     switch (name) {
       case "list_files": {
         const entries = await this.provider.list(h, pathOf(args.path, false), 500);
@@ -120,6 +150,16 @@ export class ToolsService {
         return this.shell(run, h, args);
       case "submit_handoff":
         return this.submit(run, h, args);
+      case "delegate":
+        return this.delegate(run, args);
+      case "review_unit": {
+        const part = text(args.part, "part", 40).trim();
+        const decision = args.decision === "accept" || args.decision === "revise" ? args.decision : null;
+        if (decision === null) throw invalid("bad_argument", "decision must be accept or revise.");
+        const criteria = args.criteria === undefined ? "" : text(args.criteria, "criteria", 4000);
+        const said = await this.outcomes.reviewUnit(systemActor(run.orbitId, `run:${run.id}`, `tool:${run.id}`), run.assignmentId, run.fence, part, decision, criteria);
+        return { text: said, isError: false };
+      }
       case "ask_question": {
         const q = text(args.question, "question", 4000).trim();
         if (q.length === 0) throw invalid("bad_argument", "question must say something.");
@@ -129,6 +169,30 @@ export class ToolsService {
       default:
         throw invalid("unknown_tool", `There is no tool named ${name}.`);
     }
+  }
+
+  private async delegate(run: RunRecord, args: Record<string, unknown>): Promise<ToolAnswer> {
+    const ctx = await this.outcomes.current(run.orbitId, run.assignmentId, run.fence);
+    if (ctx === null || !ctx.team.canDelegate) return { text: "Your profile does not let you give work to others: do it yourself.", isError: true };
+    if (!Array.isArray(args.parts)) throw invalid("bad_argument", "parts must be a list.");
+    const byName = new Map(ctx.team.colleagues.map((c) => [c.name.toLowerCase(), c.id]));
+    const ids = new Set(ctx.team.colleagues.map((c) => c.id));
+    const list = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").slice(0, 20).map((x) => x.slice(0, 300)) : []);
+    const units = args.parts.slice(0, 20).map((p) => {
+      const x = (typeof p === "object" && p !== null ? p : {}) as Record<string, unknown>;
+      const who = String(x.employee ?? "").trim();
+      return {
+        key: String(x.key ?? "").trim(),
+        employeeId: ids.has(who) ? who : (byName.get(who.toLowerCase()) ?? who),
+        title: String(x.title ?? "").slice(0, 120),
+        goal: String(x.goal ?? "").slice(0, 8000),
+        deliverables: list(x.deliverables).filter((n) => isDeliverableName(n)).map((name) => ({ name, required: true })),
+        acceptanceCriteria: list(x.criteria),
+        dependsOn: list(x.waits_for),
+      };
+    });
+    const r = await this.outcomes.delegate(systemActor(run.orbitId, `run:${run.id}`, `tool:${run.id}`), run.assignmentId, run.fence, units);
+    return { text: `Gave ${r.parts} part(s) to your team. Stop here: you are woken to review what they hand in.`, isError: false };
   }
 
   private async shell(run: RunRecord, h: AttemptHandle, args: Record<string, unknown>): Promise<ToolAnswer> {
